@@ -19,7 +19,7 @@ const navSections: NavSection[] = [
     ],
   },
   {
-    label: 'TC COPIER',
+    label: 'TS COPIER',
     items: [
       { to: '/copier-engine', icon: Zap, label: 'Copier Engine' },
       { to: '/copier-templates', icon: LayoutTemplate, label: 'Signal Backtest' },
