@@ -1,8 +1,15 @@
 import 'dotenv/config'
 import { createClient } from '@supabase/supabase-js'
+import WebSocket from 'ws'
 import { UserSessionManager } from './sessionManager'
 import { AuthService } from './authService'
 import { startHttpServer } from './httpServer'
+
+// Supabase Realtime needs a WebSocket transport in Node < 22.
+// Railway is currently running Node 20, so we provide ws explicitly.
+if (!globalThis.WebSocket) {
+  globalThis.WebSocket = WebSocket as unknown as typeof globalThis.WebSocket
+}
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
