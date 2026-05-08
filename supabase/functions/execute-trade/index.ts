@@ -89,6 +89,24 @@ function pickTicket(result: unknown): string | null {
   return String(ticket)
 }
 
+function normalizeProviderResult(result: unknown): {
+  ticket: string | null
+  code: string | null
+  state: string | null
+  message: string | null
+} {
+  if (!result || typeof result !== "object") {
+    return { ticket: null, code: null, state: null, message: null }
+  }
+  const r = result as Record<string, unknown>
+  return {
+    ticket: pickTicket(result),
+    code: typeof r.code === "string" ? r.code : null,
+    state: typeof r.state === "string" ? r.state : (typeof (r.orderInternal as Record<string, unknown> | undefined)?.state === "string" ? String((r.orderInternal as Record<string, unknown>).state) : null),
+    message: typeof r.message === "string" ? r.message : null,
+  }
+}
+
 function operationFor(action: string, signalPrice: number | null): string {
   if (action === "buy") return signalPrice != null ? "BuyLimit" : "Buy"
   if (action === "sell") return signalPrice != null ? "SellLimit" : "Sell"
@@ -202,10 +220,30 @@ Deno.serve(async (req: Request) => {
         expirationType: "GTC",
         placedType: "Signal",
       })
+      const normalized = normalizeProviderResult(result)
+      const orderTicket = normalized.ticket
+      const ticketAsNum = Number(orderTicket)
+      const hasValidTicket = orderTicket != null && Number.isFinite(ticketAsNum) && ticketAsNum > 0
+
+      if (!hasValidTicket) {
+        const reason = `OrderSend returned no valid ticket. code=${normalized.code ?? 'null'} state=${normalized.state ?? 'null'} message=${normalized.message ?? 'null'}`
+        await logExecution(supabase, {
+          user_id: signal.user_id,
+          signal_id,
+          broker_account_id: brokerAccount.id,
+          action: parsed.action,
+          status: "failed",
+          request_payload: requestPayload,
+          response_payload: result,
+          error_message: reason,
+        })
+        await supabase.from("signals").update({ status: "failed", skip_reason: reason }).eq("id", signal_id)
+        return Response.json({ error: reason, provider: result }, { status: 400, headers: corsHeaders })
+      }
+
       // #region agent log
-      fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7e177e'},body:JSON.stringify({sessionId:'7e177e',runId:'run1',hypothesisId:'H5',location:'supabase/functions/execute-trade/index.ts:209',message:'ordersend success',data:{signalId:signal_id,resultType:typeof result},timestamp:Date.now()})}).catch(()=>{});
+      fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7e177e'},body:JSON.stringify({sessionId:'7e177e',runId:'run2',hypothesisId:'H9',location:'supabase/functions/execute-trade/index.ts:236',message:'ordersend accepted valid ticket',data:{signalId:signal_id,ticket:orderTicket,code:normalized.code,state:normalized.state},timestamp:Date.now()})}).catch(()=>{});
       // #endregion
-      const orderTicket = pickTicket(result)
       await logExecution(supabase, {
         user_id: signal.user_id,
         signal_id,

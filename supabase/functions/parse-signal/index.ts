@@ -48,6 +48,32 @@ interface ParsedSignal {
   raw_instruction: string
 }
 
+function parseSimpleSignal(message: string): ParsedSignal | null {
+  const text = message.toLowerCase().replace(/\s+/g, " ").trim()
+  if (!text) return null
+
+  const isGold = /\b(gold|xau|xauusd)\b/.test(text)
+  const isBuy = /\b(buy|long)\b/.test(text)
+  const isSell = /\b(sell|short)\b/.test(text)
+  const isNow = /\b(now|instant|market)\b/.test(text)
+
+  if (!isGold || !isNow) return null
+  if (isBuy === isSell) return null
+
+  return {
+    action: isBuy ? "buy" : "sell",
+    symbol: "XAUUSD",
+    entry_price: null,
+    entry_zone_low: null,
+    entry_zone_high: null,
+    sl: null,
+    tp: [],
+    lot_size: null,
+    confidence: 0.99,
+    raw_instruction: message,
+  }
+}
+
 async function parseWithOpenAI(message: string): Promise<ParsedSignal> {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -112,8 +138,8 @@ Deno.serve(async (req: Request) => {
       return Response.json({ error: "Signal not found" }, { status: 404, headers: corsHeaders })
     }
 
-    // Parse message
-    const parsed = await parseWithOpenAI(signal.raw_message)
+    // Parse message (deterministic fast-path first, then LLM fallback).
+    const parsed = parseSimpleSignal(signal.raw_message) ?? await parseWithOpenAI(signal.raw_message)
 
     // Update signal with parsed data
     const newStatus = parsed.action === "ignore" ? "skipped" : "parsed"
