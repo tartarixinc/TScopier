@@ -7,8 +7,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 }
 
-const METAAPI_TOKEN = Deno.env.get("METAAPI_TOKEN") ?? ""
-const METAAPI_BASE = "https://mt-client-api-v1.london.agiliumtrade.ai"
+const METATRADERAPI_KEY = Deno.env.get("METATRADERAPI_KEY") ?? ""
+const METATRADERAPI_BASE = (Deno.env.get("METATRADERAPI_BASE_URL") ?? "https://api.metatraderapi.dev").replace(/\/$/, "")
 
 interface ParsedSignal {
   action: string
@@ -22,69 +22,48 @@ interface ParsedSignal {
   confidence: number
 }
 
-async function getMarketPrice(accountId: string, symbol: string): Promise<number | null> {
-  try {
-    const res = await fetch(
-      `${METAAPI_BASE}/users/current/accounts/${accountId}/symbols/${symbol}/current-price`,
-      { headers: { "auth-token": METAAPI_TOKEN } }
-    )
-    if (!res.ok) return null
-    const data = await res.json()
-    return data.bid ?? data.ask ?? null
-  } catch {
-    return null
+type QueryValue = string | number | boolean | null | undefined
+
+async function mtGet(path: string, params: Record<string, QueryValue>) {
+  const url = new URL(`${METATRADERAPI_BASE}${path}`)
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === null || v === "") continue
+    url.searchParams.set(k, String(v))
   }
-}
-
-async function placeOrder(accountId: string, order: Record<string, unknown>) {
-  const res = await fetch(
-    `${METAAPI_BASE}/users/current/accounts/${accountId}/trade`,
-    {
-      method: "POST",
-      headers: {
-        "auth-token": METAAPI_TOKEN,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(order),
-    }
-  )
-  const data = await res.json()
-  if (!res.ok) throw new Error(data.message ?? `MetaAPI error ${res.status}`)
+  const res = await fetch(url.toString(), {
+    method: "GET",
+    headers: {
+      "x-api-key": METATRADERAPI_KEY,
+    },
+  })
+  const raw = await res.text()
+  let data: unknown = null
+  try { data = JSON.parse(raw) } catch { data = raw }
+  if (!res.ok) {
+    const msg = (data && typeof data === "object" && "message" in (data as Record<string, unknown>))
+      ? String((data as Record<string, unknown>).message)
+      : raw
+    throw new Error(msg || `Metatrader API error ${res.status}`)
+  }
   return data
 }
 
-async function modifyOrder(accountId: string, orderId: string, updates: Record<string, unknown>) {
-  const res = await fetch(
-    `${METAAPI_BASE}/users/current/accounts/${accountId}/trade`,
-    {
-      method: "POST",
-      headers: {
-        "auth-token": METAAPI_TOKEN,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ actionType: "POSITION_MODIFY", positionId: orderId, ...updates }),
-    }
-  )
-  const data = await res.json()
-  if (!res.ok) throw new Error(data.message ?? `MetaAPI modify error ${res.status}`)
-  return data
+function pickTicket(result: unknown): string | null {
+  if (!result || typeof result !== "object") return null
+  const r = result as Record<string, unknown>
+  const ticket =
+    r.ticket ??
+    (r.orderInternal as Record<string, unknown> | undefined)?.ticket ??
+    (r.dealInternalIn as Record<string, unknown> | undefined)?.ticketNumber ??
+    (r.dealInternalOut as Record<string, unknown> | undefined)?.ticketNumber
+  if (ticket === undefined || ticket === null) return null
+  return String(ticket)
 }
 
-async function closePosition(accountId: string, orderId: string) {
-  const res = await fetch(
-    `${METAAPI_BASE}/users/current/accounts/${accountId}/trade`,
-    {
-      method: "POST",
-      headers: {
-        "auth-token": METAAPI_TOKEN,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ actionType: "POSITION_CLOSE_ID", positionId: orderId }),
-    }
-  )
-  const data = await res.json()
-  if (!res.ok) throw new Error(data.message ?? `MetaAPI close error ${res.status}`)
-  return data
+function operationFor(action: string, signalPrice: number | null): string {
+  if (action === "buy") return signalPrice != null ? "BuyLimit" : "Buy"
+  if (action === "sell") return signalPrice != null ? "SellLimit" : "Sell"
+  return "Buy"
 }
 
 Deno.serve(async (req: Request) => {
@@ -93,6 +72,10 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    if (!METATRADERAPI_KEY) {
+      return Response.json({ error: "METATRADERAPI_KEY is not configured" }, { status: 503, headers: corsHeaders })
+    }
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -146,58 +129,9 @@ Deno.serve(async (req: Request) => {
 
     if (parsed.lot_size) lotSize = parsed.lot_size
 
-    const accountId = brokerAccount.metaapi_account_id
+    const accountId = brokerAccount.metaapi_account_id as string
 
-    // Handle close action
-    if (parsed.action === "close" && signal.parent_signal_id) {
-      const { data: parentTrade } = await supabase
-        .from("trades")
-        .select("metaapi_order_id")
-        .eq("signal_id", signal.parent_signal_id)
-        .maybeSingle()
-
-      if (parentTrade?.metaapi_order_id) {
-        await closePosition(accountId, parentTrade.metaapi_order_id)
-        await supabase.from("trades").update({ status: "closed", closed_at: new Date().toISOString() }).eq("signal_id", signal.parent_signal_id)
-        await supabase.from("signals").update({ status: "executed" }).eq("id", signal_id)
-        return Response.json({ executed: true, action: "close" }, { headers: corsHeaders })
-      }
-    }
-
-    // Handle modify action
-    if (parsed.action === "modify" && signal.parent_signal_id) {
-      const { data: parentTrade } = await supabase
-        .from("trades")
-        .select("metaapi_order_id")
-        .eq("signal_id", signal.parent_signal_id)
-        .maybeSingle()
-
-      if (parentTrade?.metaapi_order_id) {
-        const updates: Record<string, unknown> = {}
-        if (parsed.sl !== null) updates.stopLoss = parsed.sl
-        if (parsed.tp?.length) updates.takeProfit = parsed.tp[0]
-        await modifyOrder(accountId, parentTrade.metaapi_order_id, updates)
-        await supabase.from("signals").update({ status: "executed" }).eq("id", signal_id)
-        return Response.json({ executed: true, action: "modify" }, { headers: corsHeaders })
-      }
-    }
-
-    // Handle breakeven action
-    if (parsed.action === "breakeven" && signal.parent_signal_id) {
-      const { data: parentTrade } = await supabase
-        .from("trades")
-        .select("metaapi_order_id, entry_price")
-        .eq("signal_id", signal.parent_signal_id)
-        .maybeSingle()
-
-      if (parentTrade?.metaapi_order_id && parentTrade.entry_price) {
-        await modifyOrder(accountId, parentTrade.metaapi_order_id, { stopLoss: parentTrade.entry_price })
-        await supabase.from("signals").update({ status: "executed" }).eq("id", signal_id)
-        return Response.json({ executed: true, action: "breakeven" }, { headers: corsHeaders })
-      }
-    }
-
-    // For buy/sell: apply pip tolerance filter
+    // Simplified baseline: only execute entry signals for now.
     if (parsed.action === "buy" || parsed.action === "sell") {
       if (!parsed.symbol) {
         await supabase.from("signals").update({ status: "skipped", skip_reason: "No symbol detected" }).eq("id", signal_id)
@@ -205,37 +139,24 @@ Deno.serve(async (req: Request) => {
       }
 
       const signalPrice = parsed.entry_price ?? parsed.entry_zone_low ?? parsed.entry_zone_high
-      if (signalPrice) {
-        const marketPrice = await getMarketPrice(accountId, parsed.symbol)
-        if (marketPrice) {
-          // Rough pip calculation (works for most forex pairs)
-          const pipDiff = Math.abs(marketPrice - signalPrice) * 10000
-          if (pipDiff > pipTolerance) {
-            const reason = `Pip tolerance exceeded: ${pipDiff.toFixed(1)} pips (limit: ${pipTolerance})`
-            await supabase.from("signals").update({ status: "skipped", skip_reason: reason }).eq("id", signal_id)
-            return Response.json({ skipped: true, reason }, { headers: corsHeaders })
-          }
-        }
-      }
+      const operation = operationFor(parsed.action, signalPrice)
 
-      // Build the order
-      const actionType = parsed.action === "buy" ? "ORDER_TYPE_BUY" : "ORDER_TYPE_SELL"
-      const order: Record<string, unknown> = {
-        actionType,
+      const result = await mtGet("/OrderSend", {
+        id: accountId,
         symbol: parsed.symbol,
+        operation,
         volume: lotSize,
-      }
-
-      if (parsed.sl !== null) order.stopLoss = parsed.sl
-      if (parsed.tp?.length) order.takeProfit = parsed.tp[0]
-
-      // Use limit order if specific entry price provided
-      if (signalPrice) {
-        order.actionType = parsed.action === "buy" ? "ORDER_TYPE_BUY_LIMIT" : "ORDER_TYPE_SELL_LIMIT"
-        order.openPrice = signalPrice
-      }
-
-      const result = await placeOrder(accountId, order)
+        price: signalPrice ?? 0,
+        slippage: pipTolerance ?? 0,
+        stoploss: parsed.sl ?? 0,
+        takeprofit: parsed.tp?.[0] ?? 0,
+        comment: `TSCopier signal ${signal_id}`,
+        expertID: 0,
+        stopLimitPrice: 0,
+        expirationType: "GTC",
+        placedType: "Signal",
+      })
+      const orderTicket = pickTicket(result)
 
       // Save trade record
       const { data: tradeRow } = await supabase
@@ -244,7 +165,7 @@ Deno.serve(async (req: Request) => {
           user_id: signal.user_id,
           signal_id,
           broker_account_id: brokerAccount.id,
-          metaapi_order_id: result.orderId ?? result.positionId ?? null,
+          metaapi_order_id: orderTicket,
           symbol: parsed.symbol,
           direction: parsed.action,
           entry_price: parsed.entry_price ?? parsed.entry_zone_low ?? null,
@@ -262,8 +183,11 @@ Deno.serve(async (req: Request) => {
       return Response.json({ executed: true, trade_id: tradeRow?.id }, { headers: corsHeaders })
     }
 
-    // Unknown or unhandled action
-    await supabase.from("signals").update({ status: "skipped", skip_reason: `Unhandled action: ${parsed.action}` }).eq("id", signal_id)
+    // Non-entry actions intentionally skipped in simplified mode.
+    await supabase
+      .from("signals")
+      .update({ status: "skipped", skip_reason: `Action not executed in simplified mode: ${parsed.action}` })
+      .eq("id", signal_id)
     return Response.json({ skipped: true }, { headers: corsHeaders })
 
   } catch (err: unknown) {

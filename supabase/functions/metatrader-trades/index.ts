@@ -41,7 +41,46 @@ function normalizeLotSize(rawVolume: unknown): number | null {
     return volume / 100000000
   }
 
+  // Some history endpoints return cent/micro-lot integer units.
+  // Example: 20000 -> 0.2 lots.
+  if (volume >= 10000) {
+    return volume / 100000
+  }
+
   return volume
+}
+
+function extractRawVolume(row: Record<string, unknown>): unknown {
+  const candidates: unknown[] = [
+    row.lotSize,
+    row.lot_size,
+    row.size,
+    row.volumeLots,
+    row.VolumeLots,
+    row.volume,
+    row.Volume,
+    row.lot,
+    row.lots,
+    row.closedVolume,
+    row.closed_volume,
+    row.volumeClosed,
+    row.initialVolume,
+    row.currentVolume,
+    row.requestedVolume,
+    row.qty,
+  ]
+  // Prefer non-zero values first; many closed endpoints set one volume key to 0
+  // and another key to the executed lot size.
+  for (const c of candidates) {
+    const n = toNum(c)
+    if (n != null && n > 0) return n
+  }
+  // Fallback to any numeric value (including 0) if no positive value exists.
+  for (const c of candidates) {
+    const n = toNum(c)
+    if (n != null) return n
+  }
+  return null
 }
 
 function asArray(payload: unknown): unknown[] {
@@ -112,14 +151,7 @@ function toTrade(row: unknown, brokerAccountId: string, status: TradeStatus): Br
     ),
     sl: toNum(r.sl ?? r.stopLoss ?? r.StopLoss),
     tp: toNum(r.tp ?? r.takeProfit ?? r.TakeProfit),
-    lot_size: normalizeLotSize(
-      r.volume ??
-      r.lot ??
-      r.lots ??
-      r.Volume ??
-      r.closedVolume ??
-      r.qty
-    ),
+    lot_size: normalizeLotSize(extractRawVolume(r)),
     profit: toNum(r.profit ?? r.Profit ?? r.pnl ?? r.PnL ?? r.realizedPnl),
     status,
     opened_at: String(
