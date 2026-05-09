@@ -149,7 +149,9 @@ export function TradesPage() {
 }
 
 function TradeRow({ trade }: { trade: LiveTrade }) {
-  const isBuy = trade.direction === 'buy'
+  const dir = String(trade.direction ?? '').toLowerCase()
+  const isBuy = dir === 'buy'
+  const isSell = dir === 'sell'
   const profit = trade.profit
 
   const statusConfig: Record<string, { variant: 'success' | 'warning' | 'error' | 'neutral' | 'primary'; label: string }> = {
@@ -164,10 +166,12 @@ function TradeRow({ trade }: { trade: LiveTrade }) {
   return (
     <tr className="hover:bg-neutral-50 transition-colors">
       <td className="px-6 py-3.5 text-sm font-semibold text-neutral-900 text-center">{trade.symbol}</td>
-      <td className={`px-2 py-3.5 text-sm font-medium text-center ${isBuy ? 'text-success-600' : 'text-error-600'}`}>
+      <td className={`px-2 py-3.5 text-sm font-medium text-center ${
+        isBuy ? 'text-success-600' : isSell ? 'text-error-600' : 'text-neutral-500'
+      }`}>
         <span className="inline-flex items-center justify-center gap-1 w-full">
-          {isBuy ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
-          {isBuy ? 'Buy' : 'Sell'}
+          {isBuy ? <TrendingUp className="w-3.5 h-3.5" /> : isSell ? <TrendingDown className="w-3.5 h-3.5" /> : <Minus className="w-3.5 h-3.5" />}
+          {isBuy ? 'Buy' : isSell ? 'Sell' : (trade.direction ? String(trade.direction) : '—')}
         </span>
       </td>
       <td className="px-2 py-3.5 text-sm text-neutral-700  text-center tabular-nums">{trade.entry_price?.toFixed(5) ?? '—'}</td>

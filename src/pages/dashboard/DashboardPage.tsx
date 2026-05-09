@@ -45,6 +45,99 @@ interface AiExpertLogRow {
   request_payload: Record<string, unknown> | null
   response_payload: Record<string, unknown> | null
   error_message: string | null
+  signal_id?: string | null
+  /** FK embed from trade_execution_logs → signals */
+  signals?: {
+    parsed_data?: Record<string, unknown> | null
+    raw_message?: string | null
+  } | null
+}
+
+const MANAGEMENT_LOG_ACTIONS = new Set(['close', 'breakeven', 'partial_profit', 'modify'])
+
+function cleanSymbolLabel(v: unknown): string | null {
+  const s = typeof v === 'string' ? v.trim() : ''
+  if (!s || s === 'null' || s === 'undefined' || s === 'trade') return null
+  return s
+}
+
+/** Parse common instrument tokens from Telegram text when parser/heuristics mislabel instruments. */
+function instrumentGuessFromRawTelegram(raw: string | null | undefined): string | null {
+  if (!raw || typeof raw !== 'string') return null
+  const m = raw.match(
+    /\b(XAUUSD|XAGUSD|EURUSD|GBPUSD|USDJPY|AUDUSD|US30|NAS100|BTCUSD|BTCUSDT|ETHUSD|ETHUSDT|GER40)\b/i,
+  )
+  return m ? m[1].toUpperCase() : null
+}
+
+function collectSymbolHintsFromMtPayload(node: unknown, out: Set<string>, depth: number): void {
+  if (depth <= 0 || node == null) return
+  if (typeof node === 'string') {
+    const s = cleanSymbolLabel(node.toUpperCase().replace(/\s+/g, ''))
+    if (s && /^[A-Z0-9._]{5,}$/.test(s)) out.add(s)
+    return
+  }
+  if (typeof node !== 'object') return
+  if (Array.isArray(node)) {
+    for (const x of node) collectSymbolHintsFromMtPayload(x, out, depth - 1)
+    return
+  }
+  const o = node as Record<string, unknown>
+  const candidates = ['symbol', 'Symbol', 'name', 'Name', 'path', 'Path', 'instrument']
+  for (const k of candidates) {
+    const s = cleanSymbolLabel(o[k])
+    if (s) out.add(s.toUpperCase().replace(/\s+/g, ''))
+  }
+  for (const v of Object.values(o)) collectSymbolHintsFromMtPayload(v, out, depth - 1)
+}
+
+function bestSymbolHintFromMtResponse(payload: Record<string, unknown> | null | undefined): string | null {
+  if (!payload) return null
+  const hints = new Set<string>()
+  collectSymbolHintsFromMtPayload(payload, hints, 6)
+  if (!hints.size) return null
+  return hints.values().next().value ?? null
+}
+
+/** Prefer broker/API truth on close/modify; otherwise prefer stored signal; avoid wrong LLM fallback (e.g. XAUUSD on BTCUSD). */
+function symbolForExpertLog(row: AiExpertLogRow): string {
+  const payload = (row.request_payload ?? {}) as Record<string, unknown>
+  const response = (row.response_payload ?? {}) as Record<string, unknown>
+  const reqParsed = (payload.parsed ?? {}) as Record<string, unknown>
+
+  const fromSignal = row.signals?.parsed_data && typeof row.signals.parsed_data === 'object'
+    ? cleanSymbolLabel((row.signals.parsed_data as Record<string, unknown>).symbol)
+    : null
+
+  const fromRequest = cleanSymbolLabel(reqParsed.symbol) ?? cleanSymbolLabel(payload.symbol)
+  const fromResponse = bestSymbolHintFromMtResponse(response)
+  const fromTelegramGuess = instrumentGuessFromRawTelegram(
+    typeof row.signals?.raw_message === 'string' ? row.signals.raw_message : undefined,
+  )
+
+  const parsedAction = String(reqParsed.action ?? row.action ?? '').toLowerCase()
+  const mgmt =
+    MANAGEMENT_LOG_ACTIONS.has(parsedAction) ||
+    MANAGEMENT_LOG_ACTIONS.has(String(row.action ?? '').toLowerCase())
+
+  if (mgmt) {
+    // Stored parsed.symbol can hallucinate defaults; Telegram text + broker response are safer for CLOSE/modify lines.
+    return (
+      fromResponse ??
+      fromTelegramGuess ??
+      fromSignal ??
+      fromRequest ??
+      'the active position'
+    )
+  }
+
+  return (
+    fromSignal ??
+    fromRequest ??
+    fromResponse ??
+    fromTelegramGuess ??
+    'this instrument'
+  )
 }
 
 export function DashboardPage() {
@@ -177,7 +270,24 @@ export function DashboardPage() {
       supabase.from('signals').select('*').eq('user_id', user!.id).order('created_at', { ascending: false }).limit(10),
       supabase.from('signals').select('id,channel_id').eq('user_id', user!.id),
       supabase.from('telegram_channels').select('id,display_name').eq('user_id', user!.id),
-      supabase.from('trade_execution_logs').select('id,created_at,action,status,request_payload,response_payload,error_message').eq('user_id', user!.id).order('created_at', { ascending: false }).limit(12),
+      supabase
+        .from('trade_execution_logs')
+        .select(
+          `
+          id,
+          created_at,
+          action,
+          status,
+          request_payload,
+          response_payload,
+          error_message,
+          signal_id,
+          signals ( raw_message, parsed_data )
+        `,
+        )
+        .eq('user_id', user!.id)
+        .order('created_at', { ascending: false })
+        .limit(12),
     ])
 
     const allTrades = (tradesRes.data ?? []) as Trade[]
@@ -730,7 +840,7 @@ function AiExpertLogItem({ row }: { row: AiExpertLogRow }) {
   const payload = (row.request_payload ?? {}) as Record<string, unknown>
   const response = (row.response_payload ?? {}) as Record<string, unknown>
   const parsed = (payload.parsed ?? {}) as Record<string, unknown>
-  const symbol = String(parsed.symbol ?? payload.symbol ?? response.symbol ?? 'trade')
+  const symbol = symbolForExpertLog(row)
   const action = String(parsed.action ?? row.action ?? 'action').toLowerCase()
   const lot = Number(parsed.lot_size ?? response.volume ?? payload.volume)
   const entry = Number(parsed.entry_price ?? response.price ?? payload.price)

@@ -101,16 +101,43 @@ function asArray(payload: unknown): unknown[] {
   return []
 }
 
+/**
+ * MT4 OP_* / MT5 ORDER_TYPE_*: even 0–6 are buy-side, odd 1–7 are sell-side (incl. limits & stops).
+ * Avoid Number(true)→1 falsely mapping to sell; reject booleans.
+ */
+function mtCmdToBuySell(raw: unknown): "buy" | "sell" | null {
+  if (typeof raw === "boolean") return null
+  if (raw === 0 || raw === "0") return "buy"
+  if (raw === 1 || raw === "1") return "sell"
+  const n = typeof raw === "number"
+    ? raw
+    : (typeof raw === "string" && raw.trim() !== "" && /^-?\d+$/.test(raw.trim()) ? Number(raw) : NaN)
+  if (!Number.isInteger(n)) return null
+  if (n >= 0 && n <= 7) return n % 2 === 0 ? "buy" : "sell"
+  return null
+}
+
 function normalizeDirection(row: Record<string, unknown>): string {
-  const op = String(row.operation ?? row.type ?? row.side ?? "").toLowerCase()
-  const cmd = Number(row.cmd ?? row.command)
-  if (Number.isFinite(cmd)) {
-    if (cmd === 0) return "buy"
-    if (cmd === 1) return "sell"
-  }
-  if (op.includes("buy")) return "buy"
-  if (op.includes("sell")) return "sell"
-  return op || "—"
+  const fromCmd =
+    mtCmdToBuySell(row.cmd) ??
+    mtCmdToBuySell(row.command) ??
+    mtCmdToBuySell(row.positionType ?? row.PositionType) ??
+    mtCmdToBuySell(row.dealType ?? row.DealType) ??
+    mtCmdToBuySell(row.entryType ?? row.EntryType)
+
+  if (fromCmd) return fromCmd
+
+  // Prefer explicit text fields before generic "type" — some payloads put a numeric ORDER_TYPE under `type`,
+  // which we already mapped above via mtCmdToBuySell if present on `cmd`; also try `type` as number:
+  const fromNumericType = mtCmdToBuySell(row.type ?? row.orderType ?? row.OrderType)
+  if (fromNumericType) return fromNumericType
+
+  const op = String(row.operation ?? row.side ?? row.type ?? "").toLowerCase()
+  // Check "buy"/"long" before "sell"/"short" so mixed strings behave sensibly.
+  if (/\bbuy\b/.test(op) || /\blong\b/.test(op)) return "buy"
+  if (/\bsell\b/.test(op) || /\bshort\b/.test(op)) return "sell"
+  if (op && op !== "—") return op || "—"
+  return "—"
 }
 
 function toTrade(row: unknown, brokerAccountId: string, status: TradeStatus): BrokerTrade | null {
