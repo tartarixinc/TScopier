@@ -43,6 +43,8 @@ export interface BrokerAccount {
   label: string
   platform: string
   metaapi_account_id: string
+  /** MT server hostname as entered when linking (used to infer broker label). */
+  broker_server?: string | null
   is_active: boolean
   default_lot_size: number
   pip_tolerance: number

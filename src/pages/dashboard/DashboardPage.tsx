@@ -4,6 +4,7 @@ import { Clock, ChevronRight, ChevronDown, Info, Plus } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import type { BrokerAccount, Signal, Trade } from '../../types/database'
+import { inferBrokerLabelFromServer } from '../../lib/brokerFromServer'
 import { AddAccountModal } from '../../components/ui/AddAccountModal'
 
 interface DashboardStats {
@@ -87,6 +88,7 @@ export function DashboardPage() {
   const [showPlatformModal, setShowPlatformModal] = useState(false)
   const [loading, setLoading] = useState(true)
   const [showExpandedStats, setShowExpandedStats] = useState(false)
+  const [showExpandedPerformance, setShowExpandedPerformance] = useState(false)
   const AUTO_REFRESH_MS = 15000
   const DASHBOARD_CACHE_PREFIX = 'dashboard_cache_v1'
   const formatMoney = (value: number | null | undefined) =>
@@ -496,20 +498,39 @@ export function DashboardPage() {
 
       {/* Today's performance */}
       <div className="bg-white rounded-xl border border-neutral-100 shadow-card mb-6">
-        <div className="px-5 py-4 border-b border-neutral-100">
-          <p className="text-sm font-semibold text-neutral-900">Today&apos;s performance</p>
-          <p className="text-xs text-neutral-400">Daily performance snapshot with comparison to yesterday</p>
+        <div className="px-5 py-4 border-b border-neutral-100 flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold text-neutral-900">Today&apos;s performance</p>
+            <p className="text-xs text-neutral-400">Daily performance snapshot with comparison to yesterday</p>
+          </div>
+          {!showExpandedPerformance && (
+            <div className="text-right">
+              <p className="text-[11px] text-neutral-500">Today Profit</p>
+              <p className="text-sm font-semibold text-neutral-900">{loading ? '—' : formatMoney(stats.todayProfit)}</p>
+            </div>
+          )}
         </div>
-        <div className="p-5 grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <OverviewStat label="Total Profit & Loss" value={loading ? '—' : formatMoney(stats.totalProfitLoss)} sub={loading ? '' : formatVsYesterdayMoney(stats.totalProfitLoss, stats.yesterdayTotalProfitLoss)} />
-          <OverviewStat label="Total Volume" value={loading ? '—' : formatNumber(stats.totalVolume)} sub={loading ? '' : formatVsYesterdayNumber(stats.totalVolume, stats.yesterdayTotalVolume)} />
-          <OverviewStat label="Best Trade" value={loading ? '—' : (stats.bestTradeProfit == null ? '—' : formatMoney(stats.bestTradeProfit))} sub={loading ? '' : `vs yesterday: ${stats.yesterdayBestTradeProfit == null ? '—' : formatMoney(stats.yesterdayBestTradeProfit)}`} />
-          <OverviewStat label="Worst Trade" value={loading ? '—' : (stats.worstTradeProfit == null ? '—' : formatMoney(stats.worstTradeProfit))} sub={loading ? '' : `vs yesterday: ${stats.yesterdayWorstTradeProfit == null ? '—' : formatMoney(stats.yesterdayWorstTradeProfit)}`} />
-          <OverviewStat label="Today Profit" value={loading ? '—' : formatMoney(stats.todayProfit)} sub={loading ? '' : formatVsYesterdayMoney(stats.todayProfit, stats.yesterdayProfit)} />
-          <OverviewStat label="Most Profitable Channel" value={loading ? '—' : stats.mostProfitableChannel} sub={loading ? '' : formatVsYesterdayText(stats.yesterdayMostProfitableChannel)} />
-          <OverviewStat label="Most Traded Asset" value={loading ? '—' : stats.mostTradedAsset} sub={loading ? '' : formatVsYesterdayText(stats.yesterdayMostTradedAsset)} />
-          <OverviewStat label="Total Signals" value={loading ? '—' : String(stats.totalSignals)} sub={loading ? '' : formatVsYesterdayNumber(stats.totalSignals, stats.yesterdayTotalSignals)} />
+        <div className="border-t border-neutral-100 px-5 py-3">
+          <button
+            onClick={() => setShowExpandedPerformance(prev => !prev)}
+            className="w-full flex items-center justify-between text-xs font-medium text-neutral-600 hover:text-neutral-800 transition-colors"
+          >
+            <span>More Performance Stats</span>
+            <ChevronDown className={`w-4 h-4 transition-transform ${showExpandedPerformance ? 'rotate-180' : 'rotate-0'}`} />
+          </button>
         </div>
+        {showExpandedPerformance && (
+          <div className="border-t border-neutral-100 p-5 grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <OverviewStat label="Total Profit & Loss" value={loading ? '—' : formatMoney(stats.totalProfitLoss)} sub={loading ? '' : formatVsYesterdayMoney(stats.totalProfitLoss, stats.yesterdayTotalProfitLoss)} />
+            <OverviewStat label="Total Volume" value={loading ? '—' : formatNumber(stats.totalVolume)} sub={loading ? '' : formatVsYesterdayNumber(stats.totalVolume, stats.yesterdayTotalVolume)} />
+            <OverviewStat label="Best Trade" value={loading ? '—' : (stats.bestTradeProfit == null ? '—' : formatMoney(stats.bestTradeProfit))} sub={loading ? '' : `vs yesterday: ${stats.yesterdayBestTradeProfit == null ? '—' : formatMoney(stats.yesterdayBestTradeProfit)}`} />
+            <OverviewStat label="Worst Trade" value={loading ? '—' : (stats.worstTradeProfit == null ? '—' : formatMoney(stats.worstTradeProfit))} sub={loading ? '' : `vs yesterday: ${stats.yesterdayWorstTradeProfit == null ? '—' : formatMoney(stats.yesterdayWorstTradeProfit)}`} />
+            <OverviewStat label="Today Profit" value={loading ? '—' : formatMoney(stats.todayProfit)} sub={loading ? '' : formatVsYesterdayMoney(stats.todayProfit, stats.yesterdayProfit)} />
+            <OverviewStat label="Most Profitable Channel" value={loading ? '—' : stats.mostProfitableChannel} sub={loading ? '' : formatVsYesterdayText(stats.yesterdayMostProfitableChannel)} />
+            <OverviewStat label="Most Traded Asset" value={loading ? '—' : stats.mostTradedAsset} sub={loading ? '' : formatVsYesterdayText(stats.yesterdayMostTradedAsset)} />
+            <OverviewStat label="Total Signals" value={loading ? '—' : String(stats.totalSignals)} sub={loading ? '' : formatVsYesterdayNumber(stats.totalSignals, stats.yesterdayTotalSignals)} />
+          </div>
+        )}
       </div>
 
       
@@ -788,7 +809,11 @@ function LinkedAccountRow({
   const pnl = accountSummary?.open_pnl ?? ((accountSummary?.equity ?? 0) - (accountSummary?.balance ?? 0))
   const pnlColor = pnl >= 0 ? 'text-teal-600' : 'text-error-600'
   const pnlText = `${accountSummary?.currency ?? '$'} ${Math.abs(pnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-  const brokerText = accountSummary?.broker || '—'
+  const apiBroker = (accountSummary?.broker ?? '').trim()
+  const brokerText =
+    apiBroker ||
+    inferBrokerLabelFromServer(account.broker_server) ||
+    '—'
   const accountType = accountSummary?.account_type || '—'
 
   return (

@@ -91,6 +91,7 @@ export function BrokerConnectStep({ onDone }: Props) {
         label: form.label || `${form.platform} Account`,
         platform: form.platform,
         metaapi_account_id: `${form.broker_server.trim()}|${form.account_number.trim()}`,
+        broker_server: form.broker_server.trim(),
         default_lot_size: parseFloat(form.default_lot_size) || 0.01,
         pip_tolerance: parseInt(form.pip_tolerance) || 20,
         is_active: true,

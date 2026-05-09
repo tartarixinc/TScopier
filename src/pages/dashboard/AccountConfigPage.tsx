@@ -25,8 +25,6 @@ interface BrokerForm {
   account_number: string
   account_password: string
   broker_server: string
-  default_lot_size: string
-  pip_tolerance: string
 }
 
 const emptyForm: BrokerForm = {
@@ -35,9 +33,10 @@ const emptyForm: BrokerForm = {
   account_number: '',
   account_password: '',
   broker_server: '',
-  default_lot_size: '0.01',
-  pip_tolerance: '20',
 }
+
+const DEFAULT_LOT_SIZE = 0.01
+const DEFAULT_PIP_TOLERANCE = 20
 
 interface BrokerSummaryResult {
   summary: { balance?: number; equity?: number; currency?: string }
@@ -100,8 +99,11 @@ export function AccountConfigPage() {
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [brokerPendingDelete, setBrokerPendingDelete] = useState<BrokerAccount | null>(null)
+  const [deleteInProgress, setDeleteInProgress] = useState(false)
 
   const EDGE_CONNECT_BROKER = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/connect-metatrader-account`
+  const EDGE_DELETE_BROKER = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-metatrader-account`
   const EDGE_SERVER_SUGGESTIONS = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mt-server-suggestions`
   const EDGE_ACCOUNT_SUMMARY = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/metatrader-account-summary`
 
@@ -272,8 +274,8 @@ export function AccountConfigPage() {
             account_number: form.account_number.trim(),
             account_password: form.account_password,
             server: form.broker_server.trim(),
-            default_lot_size: parseFloat(form.default_lot_size) || 0.01,
-            pip_tolerance: parseInt(form.pip_tolerance) || 20,
+            default_lot_size: DEFAULT_LOT_SIZE,
+            pip_tolerance: DEFAULT_PIP_TOLERANCE,
           }),
         })
         const connectData = await connectRes.json()
@@ -288,7 +290,7 @@ export function AccountConfigPage() {
         setForm(emptyForm)
         setShowAddBroker(false)
       } catch {
-        setError('Failed to connect account with Metatraderapi.dev')
+        setError('Failed to connect account')
         setConnectingBroker(false)
         return
       } finally {
@@ -305,8 +307,9 @@ export function AccountConfigPage() {
         label: form.label || `${form.platform} – ${form.account_number}`,
         platform: form.platform,
         metaapi_account_id: `${form.broker_server.trim()}|${form.account_number.trim()}`,
-        default_lot_size: parseFloat(form.default_lot_size) || 0.01,
-        pip_tolerance: parseInt(form.pip_tolerance) || 20,
+        broker_server: form.broker_server.trim(),
+        default_lot_size: DEFAULT_LOT_SIZE,
+        pip_tolerance: DEFAULT_PIP_TOLERANCE,
         is_active: true,
         max_trades_per_zone: 1,
       })
@@ -321,9 +324,61 @@ export function AccountConfigPage() {
     setShowAddBroker(false)
   }
 
-  const deleteBroker = async (id: string) => {
+  const deleteBroker = async (id: string): Promise<boolean> => {
+    setError('')
+    const previous = brokers
     setBrokers(prev => prev.filter(b => b.id !== id))
-    await supabase.from('broker_accounts').delete().eq('id', id)
+    try {
+      const token = (await supabase.auth.getSession()).data.session?.access_token
+      if (!token) {
+        setBrokers(previous)
+        setError('You are not authenticated')
+        return false
+      }
+
+      const res = await fetch(EDGE_DELETE_BROKER, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ broker_account_id: id }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || data?.ok !== true) {
+        setBrokers(previous)
+        setError(data?.error || 'Failed to delete broker account')
+        return false
+      }
+      setBrokerSummaries(prev => {
+        const next = { ...prev }
+        delete next[id]
+        return next
+      })
+      setBrokerSummaryErrors(prev => {
+        const next = { ...prev }
+        delete next[id]
+        return next
+      })
+      setAccountConfigs(prev => {
+        const next = { ...prev }
+        delete next[id]
+        return next
+      })
+      return true
+    } catch {
+      setBrokers(previous)
+      setError('Failed to delete broker account')
+      return false
+    }
+  }
+
+  const confirmDeleteBroker = async () => {
+    if (!brokerPendingDelete) return
+    setDeleteInProgress(true)
+    const ok = await deleteBroker(brokerPendingDelete.id)
+    setDeleteInProgress(false)
+    if (ok) setBrokerPendingDelete(null)
   }
 
   if (loading) {
@@ -419,10 +474,6 @@ export function AccountConfigPage() {
                   </div>
                 )}
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <Input label="Default lot size" type="number" min="0.01" step="0.01" value={form.default_lot_size} onChange={e => set('default_lot_size', e.target.value)} />
-                <Input label="Pip tolerance" type="number" min="1" value={form.pip_tolerance} onChange={e => set('pip_tolerance', e.target.value)} hint="Max pips from signal before skip" />
-              </div>
               <div className="flex gap-2 pt-1">
                 <Button type="submit" loading={saving || connectingBroker} size="sm">Connect account</Button>
                 <Button type="button" variant="ghost" size="sm" onClick={() => { setShowAddBroker(false); setForm(emptyForm); setError('') }}>Cancel</Button>
@@ -488,8 +539,10 @@ export function AccountConfigPage() {
                       Configure
                     </button>
                     <button
-                      onClick={() => deleteBroker(broker.id)}
+                      type="button"
+                      onClick={() => { setError(''); setBrokerPendingDelete(broker) }}
                       className="p-1.5 rounded-lg text-neutral-400 hover:text-error-600 hover:bg-error-50 transition-colors"
+                      aria-label={`Remove ${broker.label}`}
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -510,6 +563,49 @@ export function AccountConfigPage() {
           setShowAddBroker(true)
         }}
       />
+
+      {brokerPendingDelete && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-broker-title"
+            className="w-full max-w-md rounded-2xl bg-white shadow-xl border border-neutral-200"
+          >
+            <div className="px-5 py-4 border-b border-neutral-100">
+              <h3 id="delete-broker-title" className="text-base font-semibold text-neutral-900">
+                Remove trading account?
+              </h3>
+              <p className="text-sm text-neutral-500 mt-1">
+                This disconnects <span className="font-medium text-neutral-800">{brokerPendingDelete.label}</span> from the copier. This cannot be undone.
+              </p>
+            </div>
+            {error && (
+              <div className="mx-5 mt-3 px-3 py-2 bg-error-50 border border-error-200 rounded-lg text-sm text-error-700">
+                {error}
+              </div>
+            )}
+            <div className="px-5 py-4 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={deleteInProgress}
+                onClick={() => { if (!deleteInProgress) { setBrokerPendingDelete(null); setError('') } }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="danger"
+                loading={deleteInProgress}
+                onClick={() => void confirmDeleteBroker()}
+              >
+                Remove account
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {configAccount && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
