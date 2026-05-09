@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Settings, History, Send, LayoutTemplate, ScrollText, Newspaper, Calendar, TrendingUp, GitBranch, ChartBar as BarChart2, Briefcase, ChartPie as PieChart, Search, Bell, ChevronDown, LogOut, ChartNoAxesColumn } from 'lucide-react'
+import { LayoutDashboard, Settings, History, Send, LayoutTemplate, ScrollText, Newspaper, Calendar, TrendingUp, GitBranch, ChartBar as BarChart2, Briefcase, ChartPie as PieChart, Search, Bell, ChevronDown, LogOut, ChartNoAxesColumn, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import tscopierLogo from '/tscopierlogo.png'
+import tscopierLogoCollapsed from '/tslogo-collapse.png'
 import clsx from 'clsx'
 import { useAuth } from '../../context/AuthContext'
 
@@ -49,6 +51,7 @@ const navSections: NavSection[] = [
 export function AppLayout() {
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
 
   const handleSignOut = async () => {
     await signOut()
@@ -59,19 +62,36 @@ export function AppLayout() {
   const displayName = user?.email?.split('@')[0] ?? 'User'
 
   return (
-    <div className="min-h-screen bg-neutral-50 flex">
+    <div className="flex h-[100dvh] min-h-0 w-full overflow-hidden bg-neutral-50">
       {/* Sidebar */}
-      <aside className="w-64 flex-shrink-0 bg-white border-r border-neutral-100 flex flex-col">
+      <aside
+        className={clsx(
+          'sticky top-0 z-30 flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-r border-neutral-100 bg-white transition-all duration-200',
+          isSidebarCollapsed ? 'w-20' : 'w-64'
+        )}
+      >
         {/* Logo */}
-        <div className="h-16 flex items-center px-5 border-b border-neutral-100">
-          <img src={tscopierLogo} alt="TSCopier" className="h-8 w-auto" />
+        <div
+          className={clsx(
+            'flex h-16 shrink-0 items-center border-b border-neutral-100',
+            isSidebarCollapsed ? 'justify-center px-2' : 'px-5'
+          )}
+        >
+          <img
+            src={isSidebarCollapsed ? tscopierLogoCollapsed : tscopierLogo}
+            alt="TSCopier"
+            className={clsx(
+              'transition-all duration-200',
+              isSidebarCollapsed ? 'h-10 w-10 object-contain' : 'h-8 w-auto'
+            )}
+          />
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 px-3 py-4 overflow-y-auto space-y-5">
+        <nav className="min-h-0 flex-1 space-y-5 overflow-y-auto px-3 py-4">
           {navSections.map(section => (
             <div key={section.label}>
-              <p className="px-3 text-[10px] font-semibold text-neutral-400 tracking-widest mb-1.5">
+              <p className={clsx('px-3 text-[10px] font-semibold text-neutral-400 tracking-widest mb-1.5', isSidebarCollapsed && 'hidden')}>
                 {section.label}
               </p>
               <div className="space-y-0.5">
@@ -79,18 +99,24 @@ export function AppLayout() {
                   disabled ? (
                     <div
                       key={to}
-                      className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-neutral-300 cursor-not-allowed select-none"
+                      title={label}
+                      className={clsx(
+                        'flex items-center rounded-lg px-3 py-2 text-sm text-neutral-300 cursor-not-allowed select-none',
+                        isSidebarCollapsed ? 'justify-center' : 'gap-3'
+                      )}
                     >
                       <Icon className="w-4 h-4 flex-shrink-0" />
-                      {label}
+                      {!isSidebarCollapsed && label}
                     </div>
                   ) : (
                     <NavLink
                       key={to}
                       to={to}
+                      title={label}
                       className={({ isActive }) =>
                         clsx(
-                          'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                          'flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                          isSidebarCollapsed ? 'justify-center' : 'gap-3',
                           isActive
                             ? 'bg-teal-50 text-teal-700'
                             : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900'
@@ -100,7 +126,7 @@ export function AppLayout() {
                       {({ isActive }) => (
                         <>
                           <Icon className={clsx('w-4 h-4 flex-shrink-0', isActive ? 'text-teal-600' : '')} />
-                          {label}
+                          {!isSidebarCollapsed && label}
                         </>
                       )}
                     </NavLink>
@@ -112,25 +138,31 @@ export function AppLayout() {
         </nav>
 
         {/* User bottom */}
-        <div className="px-3 py-3 border-t border-neutral-100">
+        <div className="shrink-0 border-t border-neutral-100 px-3 py-3">
           <button
             onClick={handleSignOut}
-            className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 transition-colors"
+            title="Sign out"
+            className={clsx(
+              'flex w-full items-center rounded-lg px-3 py-2 text-sm text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900',
+              isSidebarCollapsed ? 'justify-center' : 'gap-2.5'
+            )}
           >
             <LogOut className="w-4 h-4" />
-            Sign out
+            {!isSidebarCollapsed && 'Sign out'}
           </button>
         </div>
       </aside>
 
       {/* Main area */}
-      <div className="flex-1 flex flex-col min-h-screen overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {/* Top bar */}
-        <header className="h-16 bg-white border-b border-neutral-100 flex items-center px-6 gap-4 flex-shrink-0">
-          <button className="p-1.5 rounded-lg text-neutral-400 hover:bg-neutral-100 transition-colors">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-            </svg>
+        <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center gap-4 border-b border-neutral-100 bg-white px-6">
+          <button
+            onClick={() => setIsSidebarCollapsed(prev => !prev)}
+            title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            className="p-1.5 rounded-lg text-neutral-400 hover:bg-neutral-100 transition-colors"
+          >
+            {isSidebarCollapsed ? <PanelLeftOpen className="w-5 h-5" /> : <PanelLeftClose className="w-5 h-5" />}
           </button>
 
           {/* Search */}
@@ -171,7 +203,7 @@ export function AppLayout() {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-auto">
+        <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
           <Outlet />
         </main>
       </div>
