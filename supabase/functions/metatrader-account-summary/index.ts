@@ -15,6 +15,8 @@ type SummaryShape = {
   equity: number | null
   currency: string | null
   broker: string | null
+  /** MT server hostname from provider payload or our DB; used when broker/company is missing. */
+  mt_server_hint: string | null
   account_type: "Live" | "Demo" | null
   open_pnl: number | null
   open_trades: number | null
@@ -28,6 +30,50 @@ function toNumber(v: unknown): number | null {
 
 function toStringOrNull(v: unknown): string | null {
   return typeof v === "string" && v.trim() ? v.trim() : null
+}
+
+const MT_SERVER_KEYS = new Set([
+  "server",
+  "Server",
+  "brokerServer",
+  "BrokerServer",
+  "tradeServer",
+  "TradeServer",
+  "loginServer",
+  "LoginServer",
+])
+
+/** Metatraderapi.dev often nests `server` away from top-level broker/company. */
+function extractMtServerHint(payload: unknown, depth = 0): string | null {
+  if (depth > 10 || payload == null) return null
+  if (typeof payload === "object" && !Array.isArray(payload)) {
+    const o = payload as Record<string, unknown>
+    for (const [k, v] of Object.entries(o)) {
+      if (MT_SERVER_KEYS.has(k)) {
+        const s = toStringOrNull(v)
+        if (s) return s
+      }
+    }
+    for (const v of Object.values(o)) {
+      const nested = extractMtServerHint(v, depth + 1)
+      if (nested) return nested
+    }
+  }
+  if (Array.isArray(payload)) {
+    for (const item of payload) {
+      const nested = extractMtServerHint(item, depth + 1)
+      if (nested) return nested
+    }
+  }
+  return null
+}
+
+function legacyServerFromMetaapiId(id: string): string | null {
+  const t = id.trim()
+  const i = t.indexOf("|")
+  if (i <= 0) return null
+  const left = t.slice(0, i).trim()
+  return left || null
 }
 
 function parseSummary(payload: unknown, source: string): SummaryShape {
@@ -61,11 +107,17 @@ function parseSummary(payload: unknown, source: string): SummaryShape {
   const accountType: "Live" | "Demo" | null =
     isDemoFlag ? "Demo" : (rawType ? "Live" : null)
 
+  const mt_server_hint =
+    extractMtServerHint(p) ??
+    extractMtServerHint(summary) ??
+    toStringOrNull(p.server ?? p.Server ?? summary.server ?? summary.Server)
+
   return {
     balance: toNumber(p.balance ?? p.Balance ?? summary.balance ?? summary.Balance),
     equity: toNumber(p.equity ?? p.Equity ?? summary.equity ?? summary.Equity),
     currency: toStringOrNull(p.currency ?? p.Currency ?? summary.currency ?? summary.Currency),
     broker,
+    mt_server_hint,
     account_type: accountType,
     open_pnl: toNumber(
       p.openProfit ??
@@ -121,7 +173,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: brokerAccount, error: brokerErr } = await supabase
       .from("broker_accounts")
-      .select("id, user_id, metaapi_account_id")
+      .select("*")
       .eq("id", brokerAccountId)
       .eq("user_id", user.id)
       .maybeSingle()
@@ -155,6 +207,16 @@ Deno.serve(async (req: Request) => {
 
       const parsed = parseSummary(payload, c.source)
       if (parsed.balance != null || parsed.equity != null) {
+        const dbServer = toStringOrNull(
+          (brokerAccount as Record<string, unknown>).broker_server as unknown,
+        )
+        const legacy = legacyServerFromMetaapiId(brokerAccount.metaapi_account_id ?? "")
+        parsed.mt_server_hint =
+          dbServer ??
+          parsed.mt_server_hint ??
+          legacy ??
+          null
+
         // Some providers return balance/equity in AccountSummary but keep
         // open floating PnL only in TradeStats.summary.openProfit.
         if (parsed.open_pnl == null) {

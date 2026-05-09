@@ -4,7 +4,7 @@ import { Clock, ChevronRight, ChevronDown, Info, Plus } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import type { BrokerAccount, Signal, Trade } from '../../types/database'
-import { inferBrokerLabelFromServer } from '../../lib/brokerFromServer'
+import { inferBrokerLabelFromServer, resolveMtServerCandidate } from '../../lib/brokerFromServer'
 import { AddAccountModal } from '../../components/ui/AddAccountModal'
 
 interface DashboardStats {
@@ -84,13 +84,13 @@ export function DashboardPage() {
   const [copierLogs, setCopierLogs] = useState<Signal[]>([])
   const [aiExpertLogs, setAiExpertLogs] = useState<AiExpertLogRow[]>([])
   const [linkedAccounts, setLinkedAccounts] = useState<BrokerAccount[]>([])
-  const [linkedAccountBalances, setLinkedAccountBalances] = useState<Record<string, { balance?: number; equity?: number; currency?: string; broker?: string; account_type?: 'Live' | 'Demo'; open_pnl?: number; open_trades?: number }>>({})
+  const [linkedAccountBalances, setLinkedAccountBalances] = useState<Record<string, { balance?: number; equity?: number; currency?: string; broker?: string; mt_server_hint?: string; account_type?: 'Live' | 'Demo'; open_pnl?: number; open_trades?: number }>>({})
   const [showPlatformModal, setShowPlatformModal] = useState(false)
   const [loading, setLoading] = useState(true)
   const [showExpandedStats, setShowExpandedStats] = useState(false)
   const [showExpandedPerformance, setShowExpandedPerformance] = useState(false)
   const AUTO_REFRESH_MS = 15000
-  const DASHBOARD_CACHE_PREFIX = 'dashboard_cache_v1'
+  const DASHBOARD_CACHE_PREFIX = 'dashboard_cache_v2'
   const formatMoney = (value: number | null | undefined) =>
     `$${(Number.isFinite(value as number) ? Number(value) : 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   const formatNumber = (value: number | null | undefined) =>
@@ -111,7 +111,7 @@ export function DashboardPage() {
           stats?: DashboardStats
           copierLogs?: Signal[]
           linkedAccounts?: BrokerAccount[]
-          linkedAccountBalances?: Record<string, { balance?: number; equity?: number; currency?: string; broker?: string; account_type?: 'Live' | 'Demo'; open_pnl?: number; open_trades?: number }>
+          linkedAccountBalances?: Record<string, { balance?: number; equity?: number; currency?: string; broker?: string; mt_server_hint?: string; account_type?: 'Live' | 'Demo'; open_pnl?: number; open_trades?: number }>
         }
         if (parsed.stats) {
           setStats(prev => ({ ...prev, ...parsed.stats }))
@@ -312,7 +312,8 @@ export function DashboardPage() {
           const balance = Number(s.balance ?? s.Balance)
           const equity = Number(s.equity ?? s.Equity)
           const currency = String(s.currency ?? s.Currency ?? '')
-          const broker = String(s.broker ?? s.Broker ?? '')
+          const broker = String(s.broker ?? s.Broker ?? '').trim()
+          const mt_server_hint = String(s.mt_server_hint ?? '').trim()
           const accountTypeRaw = String(s.account_type ?? s.accountType ?? s.AccountType ?? '').toLowerCase()
           const open_pnl_num = Number(s.open_pnl ?? s.openProfit ?? s.OpenProfit ?? s.floatingProfit ?? s.FloatingProfit)
           const open_trades_num = Number(s.open_trades ?? s.openTrades ?? s.OpenTrades)
@@ -322,6 +323,7 @@ export function DashboardPage() {
             equity: Number.isFinite(equity) ? equity : undefined,
             currency: currency || undefined,
             broker: broker || undefined,
+            mt_server_hint: mt_server_hint || undefined,
             account_type,
             open_pnl: Number.isFinite(open_pnl_num) ? open_pnl_num : undefined,
             open_trades: Number.isFinite(open_trades_num) ? open_trades_num : undefined,
@@ -331,7 +333,7 @@ export function DashboardPage() {
         }
       })
     )
-    const balanceMap = Object.fromEntries(balanceEntries) as Record<string, { balance?: number; equity?: number; currency?: string; broker?: string; account_type?: 'Live' | 'Demo'; open_pnl?: number; open_trades?: number }>
+    const balanceMap = Object.fromEntries(balanceEntries) as Record<string, { balance?: number; equity?: number; currency?: string; broker?: string; mt_server_hint?: string; account_type?: 'Live' | 'Demo'; open_pnl?: number; open_trades?: number }>
     const totalPortfolioValue = brokerAccounts.reduce((sum, account) => {
       const acct = balanceMap[account.id]
       return sum + (acct?.equity ?? acct?.balance ?? 0)
@@ -798,7 +800,7 @@ function LinkedAccountRow({
   accountSummary,
 }: {
   account: BrokerAccount
-  accountSummary?: { balance?: number; equity?: number; currency?: string; broker?: string; account_type?: 'Live' | 'Demo'; open_pnl?: number }
+  accountSummary?: { balance?: number; equity?: number; currency?: string; broker?: string; mt_server_hint?: string; account_type?: 'Live' | 'Demo'; open_pnl?: number }
 }) {
   const statusClass = account.is_active
     ? 'text-teal-600 border-teal-200 bg-teal-50'
@@ -809,11 +811,11 @@ function LinkedAccountRow({
   const pnl = accountSummary?.open_pnl ?? ((accountSummary?.equity ?? 0) - (accountSummary?.balance ?? 0))
   const pnlColor = pnl >= 0 ? 'text-teal-600' : 'text-error-600'
   const pnlText = `${accountSummary?.currency ?? '$'} ${Math.abs(pnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-  const apiBroker = (accountSummary?.broker ?? '').trim()
-  const brokerText =
-    apiBroker ||
-    inferBrokerLabelFromServer(account.broker_server) ||
-    '—'
+  const apiRaw = (accountSummary?.broker ?? '').trim()
+  const fromApi = inferBrokerLabelFromServer(apiRaw) || apiRaw
+  const server = resolveMtServerCandidate(account, accountSummary?.mt_server_hint)
+  const fromServer = inferBrokerLabelFromServer(server) || (server?.trim() ?? '')
+  const brokerText = fromApi || fromServer || '—'
   const accountType = accountSummary?.account_type || '—'
 
   return (

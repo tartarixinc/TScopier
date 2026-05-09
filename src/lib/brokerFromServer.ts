@@ -1,3 +1,28 @@
+import type { BrokerAccount } from '../types/database'
+
+/** Legacy rows stored `metaapi_account_id` as `ServerName|Login`. */
+export function legacyServerFromMetaapiId(metaapiAccountId: string | null | undefined): string | null {
+  const id = (metaapiAccountId ?? '').trim()
+  const pipe = id.indexOf('|')
+  if (pipe <= 0) return null
+  const left = id.slice(0, pipe).trim()
+  return left || null
+}
+
+/**
+ * Best server string to infer broker from: provider hint, DB column, then legacy metaapi format.
+ */
+export function resolveMtServerCandidate(
+  account: BrokerAccount,
+  providerHint?: string | null,
+): string | null {
+  const h = (providerHint ?? '').trim()
+  if (h) return h
+  const fromCol = account.broker_server?.trim()
+  if (fromCol) return fromCol
+  return legacyServerFromMetaapiId(account.metaapi_account_id)
+}
+
 /**
  * Best-effort broker display name from an MT server string.
  * Prefer API-provided broker when available; use this as fallback.
