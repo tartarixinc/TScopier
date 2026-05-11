@@ -6,6 +6,12 @@ import {
   OrderSendArgs,
   SymbolParams,
 } from './metatraderapi'
+import {
+  planManualOrders,
+  type ChannelKeywords,
+  type ManualSettings,
+  type ParsedSignal as PlannerParsedSignal,
+} from './manualPlanner'
 
 /**
  * Direct trade-execution path. Listens to `signals` Realtime, fans out to every
@@ -171,10 +177,13 @@ export class TradeExecutor {
   private timer: NodeJS.Timeout | null = null
   private signalsChannel: RealtimeChannel | null = null
   private brokersChannel: RealtimeChannel | null = null
+  private channelsChannel: RealtimeChannel | null = null
   private brokersByUser = new Map<string, BrokerRow[]>()
   private brokersById = new Map<string, BrokerRow>()
   private inflight = new Set<string>()
   private symbolCache = new Map<string, SymbolCacheEntry>()
+  /** Cached channel rows keyed by `telegram_channels.id` — refreshed on demand. */
+  private channelKeywordsCache = new Map<string, { keywords: ChannelKeywords | null; loadedAt: number }>()
   private api: MetatraderApiClient | null
 
   constructor(private readonly supabase: SupabaseClient) {
@@ -188,6 +197,7 @@ export class TradeExecutor {
     await this.loadBrokers()
     this.subscribeSignals()
     this.subscribeBrokers()
+    this.subscribeChannelKeywords()
     // Periodic safety sweep: catch any 'parsed' signals we may have missed
     // (Realtime drops, restarts). Cheap query, runs every 15s.
     this.timer = setInterval(() => {
@@ -202,6 +212,7 @@ export class TradeExecutor {
     this.timer = null
     if (this.signalsChannel) { void this.supabase.removeChannel(this.signalsChannel); this.signalsChannel = null }
     if (this.brokersChannel) { void this.supabase.removeChannel(this.brokersChannel); this.brokersChannel = null }
+    if (this.channelsChannel) { void this.supabase.removeChannel(this.channelsChannel); this.channelsChannel = null }
   }
 
   // ── caches ────────────────────────────────────────────────────────────
@@ -291,6 +302,23 @@ export class TradeExecutor {
       .subscribe()
   }
 
+  private subscribeChannelKeywords() {
+    if (this.channelsChannel) return
+    this.channelsChannel = this.supabase
+      .channel('trade_executor_channels')
+      .on(
+        'postgres_changes' as never,
+        { event: 'UPDATE', schema: 'public', table: 'telegram_channels' } as never,
+        (payload: { new?: Record<string, unknown> }) => {
+          const row = payload.new as { id?: string; channel_keywords?: ChannelKeywords | null } | undefined
+          if (!row?.id) return
+          // Refresh cache eagerly so the next signal picks up edits made in Copier Engine.
+          this.channelKeywordsCache.set(row.id, { keywords: row.channel_keywords ?? null, loadedAt: Date.now() })
+        },
+      )
+      .subscribe()
+  }
+
   private async sweep() {
     const since = new Date(Date.now() - 5 * 60_000).toISOString()
     const { data } = await this.supabase
@@ -328,6 +356,18 @@ export class TradeExecutor {
       )
       if (!brokers.length) return
 
+      // Pre-fetch channel keywords once per signal so manual-mode brokers can
+      // honour delay_msec / prefer_entry / *_in_pips / ignore_keyword.
+      const channelKeywords = await this.getChannelKeywords(row.channel_id)
+      const rawText = String(parsed.raw_instruction ?? '').toLowerCase()
+      const ignoreKw = channelKeywords?.additional?.ignore_keyword?.trim().toLowerCase()
+      const skipKw = channelKeywords?.additional?.skip_keyword?.trim().toLowerCase()
+      if ((ignoreKw && rawText.includes(ignoreKw)) || (skipKw && rawText.includes(skipKw))) {
+        // Channel-level ignore — parse-signal usually already short-circuits this,
+        // but we double-check here so a stale parse can't slip through.
+        return
+      }
+
       if (isManagementAction(action)) {
         await this.applyManagement(row, parsed, brokers)
         return
@@ -336,76 +376,208 @@ export class TradeExecutor {
       const op = operationFor(action, parsed)
       if (!op || !parsed.symbol) return
 
-      await Promise.allSettled(brokers.map(b => this.sendOrder(row, parsed, op, b)))
+      await Promise.allSettled(brokers.map(b => this.sendOrder(row, parsed, op, b, channelKeywords)))
     } finally {
       this.inflight.delete(row.id)
     }
   }
 
-  private async sendOrder(signal: SignalRow, parsed: ParsedSignal, op: MtOperation, broker: BrokerRow): Promise<void> {
+  private async getChannelKeywords(channelId: string | null): Promise<ChannelKeywords | null> {
+    if (!channelId) return null
+    const cached = this.channelKeywordsCache.get(channelId)
+    if (cached && Date.now() - cached.loadedAt < 5 * 60_000) return cached.keywords
+    try {
+      const { data } = await this.supabase
+        .from('telegram_channels')
+        .select('channel_keywords')
+        .eq('id', channelId)
+        .maybeSingle()
+      const keywords = (data as { channel_keywords?: ChannelKeywords | null } | null)?.channel_keywords ?? null
+      this.channelKeywordsCache.set(channelId, { keywords, loadedAt: Date.now() })
+      return keywords
+    } catch {
+      this.channelKeywordsCache.set(channelId, { keywords: null, loadedAt: Date.now() })
+      return null
+    }
+  }
+
+  private async hasOpenTradeForSymbol(brokerId: string, symbol: string): Promise<boolean> {
+    try {
+      const { count } = await this.supabase
+        .from('trades')
+        .select('id', { count: 'exact', head: true })
+        .eq('broker_account_id', brokerId)
+        .eq('symbol', symbol)
+        .eq('status', 'open')
+      return (count ?? 0) > 0
+    } catch {
+      return false
+    }
+  }
+
+  private async sendOrder(
+    signal: SignalRow,
+    parsed: ParsedSignal,
+    op: MtOperation,
+    broker: BrokerRow,
+    channelKeywords: ChannelKeywords | null,
+  ): Promise<void> {
     if (!this.api) return
     const uuid = broker.metaapi_account_id!
     const symbol = applySymbolMapping(parsed.symbol!, broker)
     if (isExcluded(symbol, broker)) return
 
     const params = await this.getSymbolParams(uuid, symbol).catch(() => null)
-    const lots = roundLot(computeLot(broker, parsed), params)
+    const baseLot = roundLot(computeLot(broker, parsed), params)
 
-    const args: OrderSendArgs = {
-      symbol,
-      operation: op,
-      volume: lots,
-      price: parsed.entry_price ?? 0,
-      stoploss: parsed.sl ?? 0,
-      takeprofit: parsed.tp?.[0] ?? 0,
-      slippage: Math.max(1, Number(broker.default_lot_size != null ? 20 : 20)),
-      comment: `TSCopier:${signal.id.slice(0, 8)}`,
-      expertID: 909090,
+    const isManual = (broker.copier_mode ?? 'ai') === 'manual'
+    const manual = (broker.manual_settings ?? {}) as ManualSettings
+
+    // Stop here when the user opted out of stacking trades on the same symbol.
+    if (isManual && manual.add_new_trades_to_existing === false) {
+      const already = await this.hasOpenTradeForSymbol(broker.id, symbol)
+      if (already) {
+        await this.logSendSkipped(signal, broker, 'add_new_trades_to_existing=false', { symbol })
+        return
+      }
     }
 
-    const t0 = Date.now()
+    // Build the order list. In AI mode we keep the original single-order shape;
+    // manual mode delegates to the planner so filters / multi-TP / pip-derived
+    // SL & TP / pending expiry / reverse all apply consistently.
+    let plan: { orders: OrderSendArgs[]; skip_reason?: string; delay_ms: number }
+    if (isManual) {
+      const plannerParsed: PlannerParsedSignal = {
+        action: parsed.action,
+        symbol: parsed.symbol,
+        entry_price: parsed.entry_price,
+        entry_zone_low: parsed.entry_zone_low,
+        entry_zone_high: parsed.entry_zone_high,
+        sl: parsed.sl,
+        tp: parsed.tp,
+        lot_size: parsed.lot_size,
+        open_tp: parsed.open_tp,
+        partial_close_fraction: parsed.partial_close_fraction,
+        raw_instruction: parsed.raw_instruction,
+      }
+      plan = planManualOrders({
+        parsed: plannerParsed,
+        resolvedSymbol: symbol,
+        baseOperation: op,
+        manual,
+        channelKeywords,
+        manualLot: baseLot,
+        ctx: {
+          point: params?.point ?? 0.00001,
+          digits: params?.digits ?? 5,
+          defaultLot: Number(broker.default_lot_size ?? 0.01),
+          lastBalance: broker.last_balance ?? null,
+        },
+        commentPrefix: `TSCopier:${signal.id.slice(0, 8)}`,
+        expertId: 909090,
+        slippage: 20,
+      })
+    } else {
+      plan = {
+        orders: [{
+          symbol,
+          operation: op,
+          volume: baseLot,
+          price: parsed.entry_price ?? 0,
+          stoploss: parsed.sl ?? 0,
+          takeprofit: parsed.tp?.[0] ?? 0,
+          slippage: 20,
+          comment: `TSCopier:${signal.id.slice(0, 8)}`,
+          expertID: 909090,
+        }],
+        delay_ms: 0,
+      }
+    }
+
+    if (plan.orders.length === 0) {
+      await this.logSendSkipped(signal, broker, plan.skip_reason ?? 'filtered', { symbol })
+      return
+    }
+
+    if (plan.delay_ms > 0) {
+      await new Promise(resolve => setTimeout(resolve, Math.min(plan.delay_ms, 30_000)))
+    }
+
+    // Round volumes per the live SymbolParams before sending.
+    const ordersToSend = plan.orders.map(o => ({ ...o, volume: roundLot(o.volume, params) }))
+
+    await Promise.allSettled(
+      ordersToSend.map(async (args, idx) => {
+        const t0 = Date.now()
+        try {
+          const result = await this.api!.orderSend(uuid, args)
+          const latencyMs = Date.now() - t0
+          console.log(
+            `[tradeExecutor] OrderSend ok signal=${signal.id} broker=${broker.id} ticket=${result.ticket} leg=${idx + 1}/${ordersToSend.length} ${latencyMs}ms`,
+          )
+
+          await this.supabase.from('trades').insert({
+            user_id: signal.user_id,
+            signal_id: signal.id,
+            telegram_channel_id: signal.channel_id,
+            broker_account_id: broker.id,
+            metaapi_order_id: result.ticket != null ? String(result.ticket) : null,
+            symbol: args.symbol,
+            direction: args.operation.toLowerCase().includes('sell') ? 'sell' : 'buy',
+            entry_price: result.openPrice ?? args.price ?? null,
+            sl: result.stopLoss ?? args.stoploss ?? null,
+            tp: result.takeProfit ?? args.takeprofit ?? null,
+            lot_size: result.lots ?? args.volume,
+            status: args.operation.includes('Limit') || args.operation.includes('Stop') ? 'pending' : 'open',
+            opened_at: new Date().toISOString(),
+          })
+
+          await this.supabase.from('trade_execution_logs').insert({
+            user_id: signal.user_id,
+            signal_id: signal.id,
+            broker_account_id: broker.id,
+            action: 'order_send',
+            status: 'success',
+            request_payload: args as unknown as Record<string, unknown>,
+            response_payload: { ticket: result.ticket, latency_ms: latencyMs, leg: idx + 1, total: ordersToSend.length },
+          })
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          console.error(
+            `[tradeExecutor] OrderSend failed signal=${signal.id} broker=${broker.id} leg=${idx + 1}/${ordersToSend.length}:`,
+            msg,
+          )
+          await this.supabase.from('trade_execution_logs').insert({
+            user_id: signal.user_id,
+            signal_id: signal.id,
+            broker_account_id: broker.id,
+            action: 'order_send',
+            status: 'failed',
+            request_payload: args as unknown as Record<string, unknown>,
+            error_message: msg,
+          })
+        }
+      }),
+    )
+  }
+
+  private async logSendSkipped(
+    signal: SignalRow,
+    broker: BrokerRow,
+    reason: string,
+    extra: Record<string, unknown>,
+  ): Promise<void> {
     try {
-      const result = await this.api.orderSend(uuid, args)
-      const latencyMs = Date.now() - t0
-      console.log(`[tradeExecutor] OrderSend ok signal=${signal.id} broker=${broker.id} ticket=${result.ticket} ${latencyMs}ms`)
-
-      await this.supabase.from('trades').insert({
-        user_id: signal.user_id,
-        signal_id: signal.id,
-        telegram_channel_id: signal.channel_id,
-        broker_account_id: broker.id,
-        metaapi_order_id: result.ticket != null ? String(result.ticket) : null,
-        symbol,
-        direction: op.toLowerCase().includes('sell') ? 'sell' : 'buy',
-        entry_price: result.openPrice ?? parsed.entry_price ?? null,
-        sl: result.stopLoss ?? parsed.sl ?? null,
-        tp: result.takeProfit ?? parsed.tp?.[0] ?? null,
-        lot_size: result.lots ?? lots,
-        status: op.includes('Limit') || op.includes('Stop') ? 'pending' : 'open',
-        opened_at: new Date().toISOString(),
-      })
-
       await this.supabase.from('trade_execution_logs').insert({
         user_id: signal.user_id,
         signal_id: signal.id,
         broker_account_id: broker.id,
         action: 'order_send',
-        status: 'success',
-        request_payload: args as unknown as Record<string, unknown>,
-        response_payload: { ticket: result.ticket, latency_ms: latencyMs },
+        status: 'skipped',
+        request_payload: { skip_reason: reason, ...extra } as unknown as Record<string, unknown>,
       })
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      console.error(`[tradeExecutor] OrderSend failed signal=${signal.id} broker=${broker.id}:`, msg)
-      await this.supabase.from('trade_execution_logs').insert({
-        user_id: signal.user_id,
-        signal_id: signal.id,
-        broker_account_id: broker.id,
-        action: 'order_send',
-        status: 'failed',
-        request_payload: args as unknown as Record<string, unknown>,
-        error_message: msg,
-      })
+    } catch {
+      // Logging failure is non-fatal.
     }
   }
 
