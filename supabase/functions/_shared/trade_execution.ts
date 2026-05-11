@@ -20,6 +20,7 @@ interface ParsedSignal {
   tp: number[]
   lot_size: number | null
   confidence: number
+  raw_instruction?: string
 }
 
 type JsonRecord = Record<string, unknown>
@@ -190,6 +191,7 @@ async function resolveLotAndPips(
 
   const mode = String(brokerAccount.copier_mode ?? "ai").toLowerCase()
   const ai = normalizeAiSettings(brokerAccount.ai_settings)
+  const tpMeta = deriveTpExecutionMeta(parsed)
 
   if (mode === "manual") {
     lotSize = clampLot(defaultLot, ai.min_lot, ai.max_lot)
@@ -228,6 +230,7 @@ async function resolveLotAndPips(
 
     if (margin1 != null && margin1 > 0 && Number.isFinite(margin1)) {
       let lot = riskBudgetUsd! / margin1
+      lot *= tpMeta.tpMultiplier
       lot = clampLot(lot, ai.min_lot, ai.max_lot)
       let nextLot = lot
       if (brokerLotFloor != null && nextLot < brokerLotFloor) {
@@ -251,6 +254,9 @@ async function resolveLotAndPips(
           broker_min_lot_floor: brokerLotFloor,
           min_lot: ai.min_lot,
           max_lot: ai.max_lot,
+          tp_count: tpMeta.tpLevels.length,
+          tp_open: tpMeta.tpOpen,
+          tp_multiplier: tpMeta.tpMultiplier,
         },
       }
     }
@@ -290,6 +296,8 @@ async function resolveLotAndPips(
     }
   }
 
+  lot *= tpMeta.tpMultiplier
+
   if (!Number.isFinite(lot) || lot <= 0) {
     lot = ai.fallback_lot != null ? ai.fallback_lot : defaultLot
   }
@@ -319,12 +327,16 @@ async function resolveLotAndPips(
       default_lot_anchor: defaultLot,
       min_lot: ai.min_lot,
       max_lot: ai.max_lot,
+      tp_count: tpMeta.tpLevels.length,
+      tp_open: tpMeta.tpOpen,
+      tp_multiplier: tpMeta.tpMultiplier,
     },
   }
 }
 
 type OpenTradeRow = {
   id: string
+  signal_id: string | null
   metaapi_order_id: string | null
   symbol: string
   direction: string
@@ -332,6 +344,11 @@ type OpenTradeRow = {
   lot_size: number
   sl: number | null
   tp: number | null
+  tp_levels?: number[] | null
+  tp_open?: boolean | null
+  tp_step_policy?: Record<string, unknown> | null
+  next_tp_index?: number | null
+  opened_at?: string | null
 }
 
 async function loadOpenTradeRows(
@@ -342,7 +359,7 @@ async function loadOpenTradeRows(
 ): Promise<OpenTradeRow[]> {
   let query = supabase
     .from("trades")
-    .select("id, metaapi_order_id, symbol, direction, entry_price, lot_size, sl, tp, opened_at")
+    .select("id, signal_id, metaapi_order_id, symbol, direction, entry_price, lot_size, sl, tp, tp_levels, tp_open, tp_step_policy, next_tp_index, opened_at")
     .eq("user_id", userId)
     .eq("broker_account_id", brokerAccountId)
     .eq("status", "open")
@@ -405,7 +422,7 @@ async function fetchLatestOpenTradeForChannel(
 
   const { data: tradeList } = await supabase
     .from("trades")
-    .select("id, metaapi_order_id, symbol, direction, entry_price, lot_size, sl, tp, opened_at")
+    .select("id, signal_id, metaapi_order_id, symbol, direction, entry_price, lot_size, sl, tp, tp_levels, tp_open, tp_step_policy, next_tp_index, opened_at")
     .eq("user_id", userId)
     .eq("broker_account_id", brokerAccountId)
     .eq("status", "open")
@@ -417,6 +434,38 @@ async function fetchLatestOpenTradeForChannel(
   return row ? (row as OpenTradeRow) : null
 }
 
+async function fetchOpenTradesForChannel(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  brokerAccountId: string,
+  channelId: string,
+  direction: string | null,
+): Promise<OpenTradeRow[]> {
+  const recentSignals = 500
+  const { data: sigRows } = await supabase
+    .from("signals")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("channel_id", channelId)
+    .order("created_at", { ascending: false })
+    .limit(recentSignals)
+  const signalIds = Array.from(new Set((sigRows ?? []).map((r: { id: string }) => r.id).filter(Boolean)))
+  if (!signalIds.length) return []
+
+  let query = supabase
+    .from("trades")
+    .select("id, signal_id, metaapi_order_id, symbol, direction, entry_price, lot_size, sl, tp, tp_levels, tp_open, tp_step_policy, next_tp_index, opened_at")
+    .eq("user_id", userId)
+    .eq("broker_account_id", brokerAccountId)
+    .eq("status", "open")
+    .in("signal_id", signalIds)
+    .order("opened_at", { ascending: false })
+    .limit(80)
+  if (direction === "buy" || direction === "sell") query = query.eq("direction", direction)
+  const { data: rows } = await query
+  return (rows ?? []) as OpenTradeRow[]
+}
+
 async function findMatchingOpenTrade(
   supabase: ReturnType<typeof createClient>,
   userId: string,
@@ -426,6 +475,59 @@ async function findMatchingOpenTrade(
 ): Promise<OpenTradeRow | null> {
   const rows = await loadOpenTradeRows(supabase, userId, brokerAccountId, direction)
   return pickTradeByParsedSymbol(rows, symbol)
+}
+
+async function resolveOpenTradeForEntryContinuation(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  brokerAccountId: string,
+  parsedSymbol: string | null,
+  direction: string,
+  channelId: string | null,
+): Promise<{ trade: OpenTradeRow; resolution: string } | null> {
+  const symbol = effectiveSymbolForManagementMatch(parsedSymbol)
+  if (!symbol) return null
+  if (channelId) {
+    const rows = await fetchOpenTradesForChannel(supabase, userId, brokerAccountId, channelId, direction)
+    const bySymbol = pickTradeByParsedSymbol(rows, symbol)
+    if (bySymbol) return { trade: bySymbol, resolution: "same_direction_symbol_channel_match" }
+    return null
+  }
+  const bySymbol = await findMatchingOpenTrade(supabase, userId, brokerAccountId, symbol, direction)
+  return bySymbol ? { trade: bySymbol, resolution: "same_direction_symbol_match_no_channel" } : null
+}
+
+function getTpLevels(parsed: ParsedSignal, trade?: OpenTradeRow | null): number[] {
+  if (Array.isArray(parsed.tp) && parsed.tp.length) {
+    return parsed.tp.map((x) => Number(x)).filter((x) => Number.isFinite(x))
+  }
+  if (Array.isArray(trade?.tp_levels) && trade!.tp_levels!.length) {
+    return trade!.tp_levels!.map((x) => Number(x)).filter((x) => Number.isFinite(x))
+  }
+  const fallback = trade?.tp != null ? Number(trade.tp) : NaN
+  return Number.isFinite(fallback) ? [fallback] : []
+}
+
+function finalTpFromLevels(levels: number[]): number {
+  if (!levels.length) return 0
+  const last = levels[levels.length - 1]
+  return Number.isFinite(last) ? Number(last) : 0
+}
+
+function deriveTpExecutionMeta(parsed: ParsedSignal): { tpLevels: number[]; tpOpen: boolean; tpMultiplier: number } {
+  const tpLevels = getTpLevels(parsed, null)
+  const tpOpen = /\b(open\s*tp|without\s*tp|no\s*tp|runner|let\s+it\s+run)\b/i.test(String(parsed.raw_instruction ?? ""))
+  const tpMultiplier = Math.max(1, tpLevels.length + (tpOpen ? 1 : 0))
+  return { tpLevels, tpOpen, tpMultiplier }
+}
+
+function detectTpHitStage(rawInstruction: string): 1 | 2 | 3 | null {
+  const t = String(rawInstruction ?? "").toLowerCase()
+  if (!t) return null
+  if (/\b(tp|target)\s*1\b|\bfirst\s+(tp|target)\b|\btp1\s+hit\b|\btarget\s+1\s+hit\b/.test(t)) return 1
+  if (/\b(tp|target)\s*2\b|\bsecond\s+(tp|target)\b|\btp2\s+hit\b|\btarget\s+2\s+hit\b/.test(t)) return 2
+  if (/\b(tp|target)\s*3\b|\bthird\s+(tp|target)\b|\btp3\s+hit\b|\btarget\s+3\s+hit\b/.test(t)) return 3
+  return null
 }
 
 /**
@@ -975,6 +1077,8 @@ async function orderSendWithFallback(
   const resolvedSymbol = parsed.symbol ? await resolveTradableSymbol(accountId, parsed.symbol) : parsed.symbol
   const volSpec = resolvedSymbol ? await fetchSymbolVolumeSpec(accountId, resolvedSymbol) : null
   const volumeUsed = normalizeVolumeForOrder(lotSize, volSpec)
+  const tpMeta = deriveTpExecutionMeta(parsed)
+  const takeProfit = tpMeta.tpOpen ? 0 : finalTpFromLevels(tpMeta.tpLevels)
   const baseOperation = operationFor(parsed.action, signalPrice)
   const isLimit = baseOperation === "BuyLimit" || baseOperation === "SellLimit"
   const marketOperation = parsed.action === "buy" ? "Buy" : "Sell"
@@ -989,7 +1093,7 @@ async function orderSendWithFallback(
     volume: volumeUsed,
     slippage: pipTolerance ?? 0,
     stoploss: parsed.sl ?? 0,
-    takeprofit: parsed.tp?.[0] ?? 0,
+    takeprofit: takeProfit,
     comment: `TSCopier signal ${signalId}`,
     expertID: 0,
     stopLimitPrice: 0,
@@ -1113,6 +1217,52 @@ async function executeOneBroker(
         await logFail("No symbol detected")
         return { ok: false, error: "No symbol detected" }
       }
+      const continuation = await resolveOpenTradeForEntryContinuation(
+        supabase,
+        signal.user_id,
+        brokerAccount.id,
+        parsed.symbol,
+        parsed.action,
+        signal.channel_id,
+      )
+      if (continuation?.trade?.metaapi_order_id) {
+        const existing = continuation.trade
+        const levels = getTpLevels(parsed, existing)
+        const tpOpen = /\b(open\s*tp|without\s*tp|no\s*tp|runner|let\s+it\s+run)\b/i.test(String(parsed.raw_instruction ?? ""))
+        const hasParsedSl = parsed.sl != null && Number.isFinite(Number(parsed.sl))
+        const newSl = hasParsedSl ? Number(parsed.sl) : Number(existing.sl ?? 0)
+        const newTp = tpOpen ? 0 : finalTpFromLevels(levels)
+        const hasSlSource = hasParsedSl || (existing.sl != null && Number.isFinite(Number(existing.sl)))
+        const hasTpSource = (levels.length > 0 && !tpOpen) || (existing.tp != null && Number.isFinite(Number(existing.tp)))
+        ;(requestPayload as Record<string, unknown>).entry_continuation = {
+          resolution: continuation.resolution,
+          trade_id: existing.id,
+          ticket: existing.metaapi_order_id,
+          tp_levels: levels,
+          tp_open: tpOpen,
+        }
+        if (!hasSlSource && !hasTpSource) {
+          await logOk({ skipped: "same_direction_second_signal_no_params" }, { converted_to_modify: true, no_op: true })
+          return { ok: true, trade_id: existing.id }
+        }
+        const modifyResult = await mtOrderModify(accountId, String(existing.metaapi_order_id), newSl, newTp)
+        await logOk(modifyResult, { converted_to_modify: true, tp_levels: levels, tp_open: tpOpen })
+        await supabase
+          .from("trades")
+          .update({
+            symbol: parsed.symbol,
+            entry_price: parsed.entry_price ?? parsed.entry_zone_low ?? existing.entry_price ?? null,
+            sl: hasParsedSl ? Number(parsed.sl) : existing.sl,
+            tp: tpOpen ? null : (levels.length ? levels[levels.length - 1] : existing.tp),
+            tp_levels: levels.length ? levels : existing.tp_levels ?? null,
+            tp_open: tpOpen,
+            tp_step_policy: { tp1_close_fraction: 0.25, tp2_close_fraction: 0.5, runner_to_tp3: true },
+            next_tp_index: 1,
+            status: "modified",
+          })
+          .eq("id", existing.id)
+        return { ok: true, trade_id: existing.id }
+      }
       const sent = await orderSendWithFallback(accountId, parsed, lotSize, pipTolerance, signalId)
       const result = sent.result
       const normalized = normalizeProviderResult(result)
@@ -1127,6 +1277,8 @@ async function executeOneBroker(
       }
       await logOk(result, { volume_executed: sent.volumeUsed })
       const entryFromProvider = extractOpenPriceFromOrderResult(result)
+      const tpMeta = deriveTpExecutionMeta(parsed)
+      const finalTp = tpMeta.tpOpen ? null : (tpMeta.tpLevels.length ? tpMeta.tpLevels[tpMeta.tpLevels.length - 1] : null)
       const { data: tradeRow } = await supabase
         .from("trades")
         .insert({
@@ -1138,7 +1290,11 @@ async function executeOneBroker(
           direction: parsed.action,
           entry_price: parsed.entry_price ?? parsed.entry_zone_low ?? entryFromProvider ?? null,
           sl: parsed.sl,
-          tp: parsed.tp?.[0] ?? null,
+          tp: finalTp,
+          tp_levels: tpMeta.tpLevels,
+          tp_open: tpMeta.tpOpen,
+          tp_step_policy: { tp1_close_fraction: 0.25, tp2_close_fraction: 0.5, runner_to_tp3: true },
+          next_tp_index: 1,
           lot_size: sent.volumeUsed,
           status: "open",
           opened_at: new Date().toISOString(),
@@ -1164,7 +1320,7 @@ async function executeOneBroker(
       return { ok: false, error: msg }
     }
     const trade = resolvedMg.trade
-    const ticket = trade.metaapi_order_id
+    const ticket = String(trade.metaapi_order_id)
 
     ;(requestPayload as Record<string, unknown>).management_correlation = {
       resolution: resolvedMg.resolution,
@@ -1199,7 +1355,9 @@ async function executeOneBroker(
         return { ok: false, error: msg }
       }
       const newSl = entry
-      const tpForMt = parsed.tp?.[0] != null ? Number(parsed.tp[0]) : Number(trade.tp ?? 0)
+      const tpLevels = getTpLevels(parsed, trade)
+      const tpOpen = /\b(open\s*tp|without\s*tp|no\s*tp|runner|let\s+it\s+run)\b/i.test(String(parsed.raw_instruction ?? "")) || trade.tp_open === true
+      const tpForMt = tpOpen ? 0 : finalTpFromLevels(tpLevels)
       const result = await mtOrderModify(accountId, ticket, newSl, tpForMt)
       await logOk(result)
       const needsEntryBackfill = trade.entry_price == null || !Number.isFinite(Number(trade.entry_price))
@@ -1208,7 +1366,9 @@ async function executeOneBroker(
         .update({
           ...(needsEntryBackfill ? { entry_price: entry } : {}),
           sl: newSl,
-          tp: parsed.tp?.[0] != null ? Number(parsed.tp[0]) : trade.tp,
+          tp: tpOpen ? null : (tpLevels.length ? tpLevels[tpLevels.length - 1] : trade.tp),
+          tp_levels: tpLevels.length ? tpLevels : trade.tp_levels ?? null,
+          tp_open: tpOpen,
           status: "modified",
         })
         .eq("id", trade.id)
@@ -1222,12 +1382,11 @@ async function executeOneBroker(
         await logFail(msg)
         return { ok: false, error: msg }
       }
-      const partialVol = Math.min(
-        Math.max(0.01, Math.floor((currentLot / 2) * 100) / 100),
-        currentLot - 0.01,
-      )
+      const stage = detectTpHitStage(String(parsed.raw_instruction ?? ""))
+      const frac = stage === 1 ? 0.25 : 0.5
+      const partialVol = Math.min(Math.max(0.01, Math.floor((currentLot * frac) * 100) / 100), currentLot - 0.01)
       const result = await mtOrderClose(accountId, ticket, partialVol)
-      await logOk(result, { partial_volume: partialVol })
+      await logOk(result, { partial_volume: partialVol, tp_stage: stage ?? null, partial_fraction: frac })
       const remainder = Math.max(0, currentLot - partialVol)
       const closed = remainder < 0.02
       await supabase
@@ -1236,6 +1395,7 @@ async function executeOneBroker(
           lot_size: closed ? 0 : remainder,
           status: closed ? "closed" : "open",
           closed_at: closed ? new Date().toISOString() : null,
+          next_tp_index: stage ? Math.min(stage + 1, 3) : trade.next_tp_index ?? 1,
         })
         .eq("id", trade.id)
       return { ok: true, trade_id: trade.id }
@@ -1286,7 +1446,9 @@ async function executeOneBroker(
         return { ok: false, error: msg }
       }
       const newSl = entry
-      const tpForMt = parsed.tp?.[0] != null ? Number(parsed.tp[0]) : Number(trade.tp ?? 0)
+      const tpLevels = getTpLevels(parsed, trade)
+      const tpOpen = /\b(open\s*tp|without\s*tp|no\s*tp|runner|let\s+it\s+run)\b/i.test(String(parsed.raw_instruction ?? "")) || trade.tp_open === true
+      const tpForMt = tpOpen ? 0 : finalTpFromLevels(tpLevels)
       const modifyResult = await mtOrderModify(accountId, ticket, newSl, tpForMt)
       await logOk(modifyResult, { step: "breakeven_after_partial" })
       const needsEntryBackfill = trade.entry_price == null || !Number.isFinite(Number(trade.entry_price))
@@ -1296,7 +1458,9 @@ async function executeOneBroker(
           ...(needsEntryBackfill ? { entry_price: entry } : {}),
           lot_size: remainder,
           sl: newSl,
-          tp: parsed.tp?.[0] != null ? Number(parsed.tp[0]) : trade.tp,
+          tp: tpOpen ? null : (tpLevels.length ? tpLevels[tpLevels.length - 1] : trade.tp),
+          tp_levels: tpLevels.length ? tpLevels : trade.tp_levels ?? null,
+          tp_open: tpOpen,
           status: "modified",
         })
         .eq("id", trade.id)
@@ -1305,21 +1469,25 @@ async function executeOneBroker(
 
     if (parsed.action === "modify") {
       const hasParsedSl = parsed.sl != null && Number.isFinite(Number(parsed.sl))
-      const hasParsedTp = parsed.tp?.length && parsed.tp[0] != null && Number.isFinite(Number(parsed.tp[0]))
+      const tpLevels = getTpLevels(parsed, trade)
+      const tpOpen = /\b(open\s*tp|without\s*tp|no\s*tp|runner|let\s+it\s+run)\b/i.test(String(parsed.raw_instruction ?? "")) || trade.tp_open === true
+      const hasParsedTp = tpOpen || tpLevels.length > 0
       if (!hasParsedSl && !hasParsedTp && trade.sl == null && trade.tp == null) {
         const msg = "Modify requires SL and/or TP in signal or on trade record"
         await logFail(msg)
         return { ok: false, error: msg }
       }
       const newSl = hasParsedSl ? Number(parsed.sl) : Number(trade.sl ?? 0)
-      const newTp = hasParsedTp ? Number(parsed.tp![0]) : Number(trade.tp ?? 0)
+      const newTp = hasParsedTp ? (tpOpen ? 0 : finalTpFromLevels(tpLevels)) : Number(trade.tp ?? 0)
       const result = await mtOrderModify(accountId, ticket, newSl, newTp)
       await logOk(result)
       await supabase
         .from("trades")
         .update({
           sl: hasParsedSl ? newSl : trade.sl,
-          tp: hasParsedTp ? newTp : trade.tp,
+          tp: hasParsedTp ? (tpOpen ? null : newTp) : trade.tp,
+          tp_levels: hasParsedTp ? tpLevels : trade.tp_levels ?? null,
+          tp_open: hasParsedTp ? tpOpen : trade.tp_open ?? false,
           status: "modified",
         })
         .eq("id", trade.id)

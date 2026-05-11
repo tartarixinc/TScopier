@@ -97,6 +97,35 @@ function asNumber(value: unknown): number | null {
   return Number.isFinite(n) ? n : null
 }
 
+function inferTpAliases(rows: Array<{ raw_message: string }>): string[] {
+  const labels = new Set<string>()
+  for (const row of rows) {
+    const msg = String(row.raw_message ?? "")
+    if (/\btarget\s*\d*\b/i.test(msg)) labels.add("target")
+    if (/\btake\s*profit\b/i.test(msg)) labels.add("take profit")
+    if (/\btp\d*\b/i.test(msg)) labels.add("tp")
+  }
+  return Array.from(labels)
+}
+
+function inferActionAliases(rows: Array<{ raw_message: string }>): Record<string, string[]> {
+  const map: Record<string, Set<string>> = {
+    close: new Set<string>(),
+    modify: new Set<string>(),
+    partial_profit: new Set<string>(),
+    breakeven: new Set<string>(),
+  }
+  for (const row of rows) {
+    const msg = String(row.raw_message ?? "").toLowerCase()
+    if (/\b(flatten|exit)\b/.test(msg)) map.close.add("exit")
+    if (/\b(adjust|revise|update)\b/.test(msg)) map.modify.add("update")
+    if (/\b(target\s*1|tp1)\b/.test(msg)) map.partial_profit.add("tp1")
+    if (/\b(target\s*2|tp2)\b/.test(msg)) map.partial_profit.add("tp2")
+    if (/\b(breakeven|break\s*even|sl\s+to\s+entry)\b/.test(msg)) map.breakeven.add("breakeven")
+  }
+  return Object.fromEntries(Object.entries(map).map(([k, v]) => [k, Array.from(v)]))
+}
+
 function pipSize(symbolRaw: string | null, price: number): number {
   const symbol = (symbolRaw ?? "").toUpperCase()
   if (symbol.includes("JPY")) return 0.01
@@ -411,6 +440,19 @@ Deno.serve(async (req: Request) => {
       .select("*")
       .single()
     if (upsertErr) return Response.json({ error: upsertErr.message }, { status: 500, headers: corsHeaders })
+
+    const tpAliases = inferTpAliases(mergedRows)
+    const actionAliases = inferActionAliases(mergedRows)
+    await supabase
+      .from("channel_signal_lexicon")
+      .upsert({
+        user_id: userId,
+        channel_id: channelId,
+        action_aliases: actionAliases,
+        tp_aliases: tpAliases,
+        target_aliases: tpAliases.includes("target") ? ["target"] : [],
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "channel_id" })
 
     return Response.json({ ok: true, profile: upserted }, { headers: corsHeaders })
   } catch (e: unknown) {
