@@ -710,7 +710,7 @@ export function DashboardPage() {
             <OverviewStat label="Best Trade" value={loading ? '—' : (stats.bestTradeProfit == null ? '—' : formatMoney(stats.bestTradeProfit))} sub={loading ? '' : `vs yesterday: ${stats.yesterdayBestTradeProfit == null ? '—' : formatMoney(stats.yesterdayBestTradeProfit)}`} />
             <OverviewStat label="Worst Trade" value={loading ? '—' : (stats.worstTradeProfit == null ? '—' : formatMoney(stats.worstTradeProfit))} sub={loading ? '' : `vs yesterday: ${stats.yesterdayWorstTradeProfit == null ? '—' : formatMoney(stats.yesterdayWorstTradeProfit)}`} />
             <OverviewStat label="Today Profit" value={loading ? '—' : formatMoney(stats.todayProfit)} sub={loading ? '' : formatVsYesterdayMoney(stats.todayProfit, stats.yesterdayProfit)} />
-            <OverviewStat label="Most Profitable Channel" value={loading ? '—' : stats.mostProfitableChannel} sub={loading ? '' : formatVsYesterdayText(stats.yesterdayMostProfitableChannel)} />
+            <OverviewStat label="Most Traded Channel" value={loading ? '—' : stats.mostProfitableChannel} sub={loading ? '' : formatVsYesterdayText(stats.yesterdayMostProfitableChannel)} />
             <OverviewStat label="Most Traded Asset" value={loading ? '—' : stats.mostTradedAsset} sub={loading ? '' : formatVsYesterdayText(stats.yesterdayMostTradedAsset)} />
             <OverviewStat label="Total Signals" value={loading ? '—' : String(stats.totalSignals)} sub={loading ? '' : formatVsYesterdayNumber(stats.totalSignals, stats.yesterdayTotalSignals)} />
           </div>

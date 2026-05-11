@@ -34,6 +34,33 @@ type BrokerRow = JsonRecord & {
   signal_channel_ids?: string[] | null
   enforce_signal_channel_filter?: boolean | null
   ai_settings?: unknown
+  manual_settings?: unknown
+}
+
+type ManualTpLot = { label: string; lot: number; enabled: boolean }
+type ManualSettings = {
+  symbol_mapping: Record<string, string>
+  symbol_prefix: string
+  symbol_suffix: string
+  symbol_to_trade: string | null
+  symbols_exclude: string[]
+  risk_mode: "fixed_lot" | "dynamic_balance_percent"
+  fixed_lot: number
+  dynamic_balance_percent: number
+  tp_lots: ManualTpLot[]
+  trade_style: "single" | "multi"
+  reverse_signal: boolean
+  use_predefined_sl_pips: boolean
+  predefined_sl_pips: number
+  use_predefined_tp_pips: boolean
+  predefined_tp_pips: number[]
+  add_new_trades_to_existing: boolean
+  close_on_opposite_signal: boolean
+  time_filter_enabled: boolean
+  trade_start_time: string
+  trade_end_time: string
+  days_filter_enabled: boolean
+  trade_days: number[]
 }
 
 /**
@@ -93,6 +120,66 @@ function normalizeAiSettings(raw: unknown): {
     risk_basis: rb === "balance" ? "balance" : "equity",
     sizing_mode: sm === "margin" ? "margin" : "linear",
   }
+}
+
+function normalizeManualSettings(raw: unknown): ManualSettings {
+  const j = (raw && typeof raw === "object") ? raw as JsonRecord : {}
+  const rawMap = (j.symbol_mapping && typeof j.symbol_mapping === "object") ? j.symbol_mapping as Record<string, unknown> : {}
+  const tpRaw = Array.isArray(j.tp_lots) ? j.tp_lots : []
+  return {
+    symbol_mapping: Object.fromEntries(Object.entries(rawMap).map(([k, v]) => [String(k).toUpperCase(), String(v).toUpperCase()])),
+    symbol_prefix: String(j.symbol_prefix ?? ""),
+    symbol_suffix: String(j.symbol_suffix ?? ""),
+    symbol_to_trade: j.symbol_to_trade ? String(j.symbol_to_trade).toUpperCase() : null,
+    symbols_exclude: Array.isArray(j.symbols_exclude) ? j.symbols_exclude.map((x) => String(x).toUpperCase()) : [],
+    risk_mode: String(j.risk_mode ?? "fixed_lot") === "dynamic_balance_percent" ? "dynamic_balance_percent" : "fixed_lot",
+    fixed_lot: Math.max(0.001, Number(j.fixed_lot ?? 0.01) || 0.01),
+    dynamic_balance_percent: Math.min(20, Math.max(0.05, Number(j.dynamic_balance_percent ?? 1) || 1)),
+    tp_lots: tpRaw.map((x, i) => {
+      const r = (x && typeof x === "object") ? x as Record<string, unknown> : {}
+      return { label: String(r.label ?? `TP${i + 1}`), lot: Math.max(0.001, Number(r.lot ?? 0.01) || 0.01), enabled: r.enabled !== false }
+    }),
+    trade_style: String(j.trade_style ?? "single") === "multi" ? "multi" : "single",
+    reverse_signal: Boolean(j.reverse_signal ?? false),
+    use_predefined_sl_pips: Boolean(j.use_predefined_sl_pips ?? false),
+    predefined_sl_pips: Math.max(1, Number(j.predefined_sl_pips ?? 30) || 30),
+    use_predefined_tp_pips: Boolean(j.use_predefined_tp_pips ?? false),
+    predefined_tp_pips: Array.isArray(j.predefined_tp_pips) ? j.predefined_tp_pips.map((x) => Number(x)).filter((n) => Number.isFinite(n) && n > 0) : [],
+    add_new_trades_to_existing: j.add_new_trades_to_existing !== false,
+    close_on_opposite_signal: Boolean(j.close_on_opposite_signal ?? false),
+    time_filter_enabled: Boolean(j.time_filter_enabled ?? false),
+    trade_start_time: String(j.trade_start_time ?? "00:00"),
+    trade_end_time: String(j.trade_end_time ?? "23:59"),
+    days_filter_enabled: Boolean(j.days_filter_enabled ?? false),
+    trade_days: Array.isArray(j.trade_days) ? j.trade_days.map((x) => Number(x)).filter((n) => Number.isFinite(n)) : [1, 2, 3, 4, 5],
+  }
+}
+
+function normalizeSym(s: string | null): string {
+  return String(s ?? "").trim().toUpperCase().replace(/\s+/g, "")
+}
+
+function inManualTradingWindow(m: ManualSettings): boolean {
+  const now = new Date()
+  if (m.days_filter_enabled) {
+    const jsDay = now.getDay()
+    if (!m.trade_days.includes(jsDay)) return false
+  }
+  if (!m.time_filter_enabled) return true
+  const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`
+  return hhmm >= m.trade_start_time && hhmm <= m.trade_end_time
+}
+
+function applyManualSymbolRouting(inputSymbol: string | null, m: ManualSettings): string | null {
+  const src = normalizeSym(inputSymbol)
+  if (!src && !m.symbol_to_trade) return null
+  let sym = src
+  if (sym && m.symbol_mapping[sym]) sym = m.symbol_mapping[sym]
+  if (m.symbol_to_trade) sym = normalizeSym(m.symbol_to_trade)
+  if (m.symbol_prefix) sym = `${m.symbol_prefix}${sym}`
+  if (m.symbol_suffix) sym = `${sym}${m.symbol_suffix}`
+  if (m.symbols_exclude.includes(sym)) return null
+  return sym
 }
 
 function clampLot(n: number, min: number, max: number): number {
@@ -191,13 +278,30 @@ async function resolveLotAndPips(
 
   const mode = String(brokerAccount.copier_mode ?? "ai").toLowerCase()
   const ai = normalizeAiSettings(brokerAccount.ai_settings)
+  const manual = normalizeManualSettings(brokerAccount.manual_settings)
   const tpMeta = deriveTpExecutionMeta(parsed)
 
   if (mode === "manual") {
-    lotSize = clampLot(defaultLot, ai.min_lot, ai.max_lot)
+    if (manual.risk_mode === "dynamic_balance_percent" && metaId) {
+      const snap = await fetchAccountSnapshot(metaId)
+      const basis = snap.balance ?? snap.equity
+      if (basis != null && basis > 0) {
+        lotSize = Math.max(0.001, (basis * (manual.dynamic_balance_percent / 100)) / 10000)
+      }
+    } else {
+      lotSize = manual.fixed_lot ?? defaultLot
+    }
+    const enabledTpLots = (manual.tp_lots ?? []).filter((x) => x.enabled !== false).map((x) => Number(x.lot)).filter((n) => Number.isFinite(n) && n > 0)
+    if (enabledTpLots.length > 0) {
+      lotSize = manual.trade_style === "single" ? enabledTpLots.reduce((a, b) => a + b, 0) : enabledTpLots[0]
+    }
     if (brokerLotFloor != null && lotSize < brokerLotFloor) lotSize = brokerLotFloor
     lotSize = clampLot(lotSize, ai.min_lot, ai.max_lot)
-    return { lotSize, pipTolerance, sizingLog: { source: "manual_mode", default_lot: defaultLot, broker_min_lot_floor: brokerLotFloor } }
+    return {
+      lotSize,
+      pipTolerance,
+      sizingLog: { source: "manual_mode", risk_mode: manual.risk_mode, trade_style: manual.trade_style, enabled_tp_lots: enabledTpLots, broker_min_lot_floor: brokerLotFloor },
+    }
   }
 
   const snapshot = metaId ? await fetchAccountSnapshot(metaId) : { balance: null as number | null, equity: null as number | null }
@@ -1163,15 +1267,38 @@ async function executeOneBroker(
     return { ok: false, error: "Missing MetaAPI account id" }
   }
 
+  const mode = String(brokerAccount.copier_mode ?? "ai").toLowerCase()
+  const manual = normalizeManualSettings(brokerAccount.manual_settings)
+  let effectiveParsed: ParsedSignal = { ...parsed, tp: [...(parsed.tp ?? [])] }
+  if (mode === "manual") {
+    if (!inManualTradingWindow(manual)) return { ok: false, error: "Blocked by manual time/day filters" }
+    if (manual.reverse_signal) {
+      if (effectiveParsed.action === "buy") effectiveParsed.action = "sell"
+      else if (effectiveParsed.action === "sell") effectiveParsed.action = "buy"
+    }
+    const routed = applyManualSymbolRouting(effectiveParsed.symbol, manual)
+    if ((effectiveParsed.action === "buy" || effectiveParsed.action === "sell") && !routed) {
+      return { ok: false, error: "Symbol excluded or unresolved by manual symbol routing" }
+    }
+    if (routed) effectiveParsed.symbol = routed
+    if (manual.use_predefined_tp_pips && manual.predefined_tp_pips.length > 0) {
+      const anchor = Number(effectiveParsed.entry_price ?? effectiveParsed.entry_zone_low ?? 0)
+      if (Number.isFinite(anchor) && anchor > 0) {
+        const dir = effectiveParsed.action === "sell" ? -1 : 1
+        effectiveParsed.tp = manual.predefined_tp_pips.map((p) => anchor + (dir * (p / 100)))
+      }
+    }
+  }
+
   const { lotSize, pipTolerance, sizingLog } = await resolveLotAndPips(
     supabase,
     brokerAccount,
     { channel_id: signal.channel_id },
-    parsed,
+    effectiveParsed,
   )
   const requestPayload: Record<string, unknown> = {
     signal_id: signalId,
-    parsed,
+    parsed: effectiveParsed,
     account_id: accountId,
     broker_account_id: brokerAccount.id,
     sizing: sizingLog,
@@ -1181,7 +1308,7 @@ async function executeOneBroker(
     user_id: signal.user_id,
     signal_id: signalId,
     broker_account_id: brokerAccount.id,
-    action: parsed.action,
+    action: effectiveParsed.action,
     status: "attempt",
     request_payload: requestPayload,
   })
@@ -1191,7 +1318,7 @@ async function executeOneBroker(
       user_id: signal.user_id,
       signal_id: signalId,
       broker_account_id: brokerAccount.id,
-      action: parsed.action,
+      action: effectiveParsed.action,
       status: "failed",
       request_payload: requestPayload,
       response_payload: response ?? null,
@@ -1204,7 +1331,7 @@ async function executeOneBroker(
       user_id: signal.user_id,
       signal_id: signalId,
       broker_account_id: brokerAccount.id,
-      action: parsed.action,
+      action: effectiveParsed.action,
       status: "success",
       request_payload: extra ? { ...requestPayload, ...extra } : requestPayload,
       response_payload: response,
@@ -1212,25 +1339,43 @@ async function executeOneBroker(
   }
 
   try {
-    if (parsed.action === "buy" || parsed.action === "sell") {
-      if (!parsed.symbol) {
+    if (effectiveParsed.action === "buy" || effectiveParsed.action === "sell") {
+      if (!effectiveParsed.symbol) {
         await logFail("No symbol detected")
         return { ok: false, error: "No symbol detected" }
+      }
+      if (mode === "manual" && !manual.add_new_trades_to_existing) {
+        const existingForSymbol = await findMatchingOpenTrade(
+          supabase,
+          signal.user_id,
+          brokerAccount.id,
+          effectiveParsed.symbol,
+          null,
+        )
+        if (existingForSymbol?.metaapi_order_id) {
+          if (manual.close_on_opposite_signal && String(existingForSymbol.direction ?? "").toLowerCase() !== effectiveParsed.action) {
+            await mtOrderClose(accountId, String(existingForSymbol.metaapi_order_id))
+            await supabase.from("trades").update({ status: "closed", closed_at: new Date().toISOString() }).eq("id", existingForSymbol.id)
+          } else {
+            await logOk({ skipped: "manual_add_new_trades_to_existing_disabled" }, { manual_blocked: true })
+            return { ok: true, trade_id: existingForSymbol.id }
+          }
+        }
       }
       const continuation = await resolveOpenTradeForEntryContinuation(
         supabase,
         signal.user_id,
         brokerAccount.id,
-        parsed.symbol,
-        parsed.action,
+        effectiveParsed.symbol,
+        effectiveParsed.action,
         signal.channel_id,
       )
       if (continuation?.trade?.metaapi_order_id) {
         const existing = continuation.trade
         const levels = getTpLevels(parsed, existing)
-        const tpOpen = /\b(open\s*tp|without\s*tp|no\s*tp|runner|let\s+it\s+run)\b/i.test(String(parsed.raw_instruction ?? ""))
-        const hasParsedSl = parsed.sl != null && Number.isFinite(Number(parsed.sl))
-        const newSl = hasParsedSl ? Number(parsed.sl) : Number(existing.sl ?? 0)
+        const tpOpen = /\b(open\s*tp|without\s*tp|no\s*tp|runner|let\s+it\s+run)\b/i.test(String(effectiveParsed.raw_instruction ?? ""))
+        const hasParsedSl = effectiveParsed.sl != null && Number.isFinite(Number(effectiveParsed.sl))
+        const newSl = hasParsedSl ? Number(effectiveParsed.sl) : Number(existing.sl ?? 0)
         const newTp = tpOpen ? 0 : finalTpFromLevels(levels)
         const hasSlSource = hasParsedSl || (existing.sl != null && Number.isFinite(Number(existing.sl)))
         const hasTpSource = (levels.length > 0 && !tpOpen) || (existing.tp != null && Number.isFinite(Number(existing.tp)))
@@ -1250,9 +1395,9 @@ async function executeOneBroker(
         await supabase
           .from("trades")
           .update({
-            symbol: parsed.symbol,
+            symbol: effectiveParsed.symbol,
             entry_price: parsed.entry_price ?? parsed.entry_zone_low ?? existing.entry_price ?? null,
-            sl: hasParsedSl ? Number(parsed.sl) : existing.sl,
+            sl: hasParsedSl ? Number(effectiveParsed.sl) : existing.sl,
             tp: tpOpen ? null : (levels.length ? levels[levels.length - 1] : existing.tp),
             tp_levels: levels.length ? levels : existing.tp_levels ?? null,
             tp_open: tpOpen,
@@ -1263,7 +1408,7 @@ async function executeOneBroker(
           .eq("id", existing.id)
         return { ok: true, trade_id: existing.id }
       }
-      const sent = await orderSendWithFallback(accountId, parsed, lotSize, pipTolerance, signalId)
+      const sent = await orderSendWithFallback(accountId, effectiveParsed, lotSize, pipTolerance, signalId)
       const result = sent.result
       const normalized = normalizeProviderResult(result)
       const orderTicket = normalized.ticket
@@ -1277,7 +1422,7 @@ async function executeOneBroker(
       }
       await logOk(result, { volume_executed: sent.volumeUsed })
       const entryFromProvider = extractOpenPriceFromOrderResult(result)
-      const tpMeta = deriveTpExecutionMeta(parsed)
+      const tpMeta = deriveTpExecutionMeta(effectiveParsed)
       const finalTp = tpMeta.tpOpen ? null : (tpMeta.tpLevels.length ? tpMeta.tpLevels[tpMeta.tpLevels.length - 1] : null)
       const { data: tradeRow } = await supabase
         .from("trades")
@@ -1286,10 +1431,10 @@ async function executeOneBroker(
           signal_id: signalId,
           broker_account_id: brokerAccount.id,
           metaapi_order_id: orderTicket,
-          symbol: parsed.symbol,
-          direction: parsed.action,
-          entry_price: parsed.entry_price ?? parsed.entry_zone_low ?? entryFromProvider ?? null,
-          sl: parsed.sl,
+          symbol: effectiveParsed.symbol,
+          direction: effectiveParsed.action,
+          entry_price: effectiveParsed.entry_price ?? effectiveParsed.entry_zone_low ?? entryFromProvider ?? null,
+          sl: effectiveParsed.sl,
           tp: finalTp,
           tp_levels: tpMeta.tpLevels,
           tp_open: tpMeta.tpOpen,
@@ -1304,12 +1449,12 @@ async function executeOneBroker(
       return { ok: true, trade_id: tradeRow?.id ?? null }
     }
 
-    const symForMatch = effectiveSymbolForManagementMatch(parsed.symbol)
+    const symForMatch = effectiveSymbolForManagementMatch(effectiveParsed.symbol)
     const resolvedMg = await resolveOpenTradeForManagement(
       supabase,
       signal.user_id,
       brokerAccount.id,
-      parsed.symbol,
+      effectiveParsed.symbol,
       signal.channel_id,
     )
     if (!resolvedMg?.trade?.metaapi_order_id) {
@@ -1325,12 +1470,12 @@ async function executeOneBroker(
     ;(requestPayload as Record<string, unknown>).management_correlation = {
       resolution: resolvedMg.resolution,
       effective_symbol: trade.symbol,
-      parsed_symbol: parsed.symbol ?? null,
+      parsed_symbol: effectiveParsed.symbol ?? null,
       symbol_used_for_match: symForMatch ?? null,
       telegram_channel_id: signal.channel_id ?? null,
     }
 
-    if (parsed.action === "close") {
+    if (effectiveParsed.action === "close") {
       const result = await mtOrderClose(accountId, ticket)
       await logOk(result)
       await supabase
@@ -1343,7 +1488,7 @@ async function executeOneBroker(
       return { ok: true, trade_id: trade.id }
     }
 
-    if (parsed.action === "breakeven") {
+    if (effectiveParsed.action === "breakeven") {
       let entry = trade.entry_price != null ? Number(trade.entry_price) : null
       if (entry == null || !Number.isFinite(entry)) {
         entry = await fetchOpenPriceForPositionTicket(accountId, String(ticket))
@@ -1355,8 +1500,8 @@ async function executeOneBroker(
         return { ok: false, error: msg }
       }
       const newSl = entry
-      const tpLevels = getTpLevels(parsed, trade)
-      const tpOpen = /\b(open\s*tp|without\s*tp|no\s*tp|runner|let\s+it\s+run)\b/i.test(String(parsed.raw_instruction ?? "")) || trade.tp_open === true
+      const tpLevels = getTpLevels(effectiveParsed, trade)
+      const tpOpen = /\b(open\s*tp|without\s*tp|no\s*tp|runner|let\s+it\s+run)\b/i.test(String(effectiveParsed.raw_instruction ?? "")) || trade.tp_open === true
       const tpForMt = tpOpen ? 0 : finalTpFromLevels(tpLevels)
       const result = await mtOrderModify(accountId, ticket, newSl, tpForMt)
       await logOk(result)
@@ -1375,14 +1520,14 @@ async function executeOneBroker(
       return { ok: true, trade_id: trade.id }
     }
 
-    if (parsed.action === "partial_profit") {
+    if (effectiveParsed.action === "partial_profit") {
       const currentLot = Number(trade.lot_size)
       if (!Number.isFinite(currentLot) || currentLot <= 0.02) {
         const msg = "Position too small or invalid for partial close"
         await logFail(msg)
         return { ok: false, error: msg }
       }
-      const stage = detectTpHitStage(String(parsed.raw_instruction ?? ""))
+      const stage = detectTpHitStage(String(effectiveParsed.raw_instruction ?? ""))
       const frac = stage === 1 ? 0.25 : 0.5
       const partialVol = Math.min(Math.max(0.01, Math.floor((currentLot * frac) * 100) / 100), currentLot - 0.01)
       const result = await mtOrderClose(accountId, ticket, partialVol)
@@ -1401,7 +1546,7 @@ async function executeOneBroker(
       return { ok: true, trade_id: trade.id }
     }
 
-    if (parsed.action === "partial_breakeven") {
+    if (effectiveParsed.action === "partial_breakeven") {
       const currentLot = Number(trade.lot_size)
       if (!Number.isFinite(currentLot) || currentLot <= 0.02) {
         const msg = "Position too small or invalid for partial close"
@@ -1446,8 +1591,8 @@ async function executeOneBroker(
         return { ok: false, error: msg }
       }
       const newSl = entry
-      const tpLevels = getTpLevels(parsed, trade)
-      const tpOpen = /\b(open\s*tp|without\s*tp|no\s*tp|runner|let\s+it\s+run)\b/i.test(String(parsed.raw_instruction ?? "")) || trade.tp_open === true
+      const tpLevels = getTpLevels(effectiveParsed, trade)
+      const tpOpen = /\b(open\s*tp|without\s*tp|no\s*tp|runner|let\s+it\s+run)\b/i.test(String(effectiveParsed.raw_instruction ?? "")) || trade.tp_open === true
       const tpForMt = tpOpen ? 0 : finalTpFromLevels(tpLevels)
       const modifyResult = await mtOrderModify(accountId, ticket, newSl, tpForMt)
       await logOk(modifyResult, { step: "breakeven_after_partial" })
@@ -1467,17 +1612,17 @@ async function executeOneBroker(
       return { ok: true, trade_id: trade.id }
     }
 
-    if (parsed.action === "modify") {
-      const hasParsedSl = parsed.sl != null && Number.isFinite(Number(parsed.sl))
-      const tpLevels = getTpLevels(parsed, trade)
-      const tpOpen = /\b(open\s*tp|without\s*tp|no\s*tp|runner|let\s+it\s+run)\b/i.test(String(parsed.raw_instruction ?? "")) || trade.tp_open === true
+    if (effectiveParsed.action === "modify") {
+      const hasParsedSl = effectiveParsed.sl != null && Number.isFinite(Number(effectiveParsed.sl))
+      const tpLevels = getTpLevels(effectiveParsed, trade)
+      const tpOpen = /\b(open\s*tp|without\s*tp|no\s*tp|runner|let\s+it\s+run)\b/i.test(String(effectiveParsed.raw_instruction ?? "")) || trade.tp_open === true
       const hasParsedTp = tpOpen || tpLevels.length > 0
       if (!hasParsedSl && !hasParsedTp && trade.sl == null && trade.tp == null) {
         const msg = "Modify requires SL and/or TP in signal or on trade record"
         await logFail(msg)
         return { ok: false, error: msg }
       }
-      const newSl = hasParsedSl ? Number(parsed.sl) : Number(trade.sl ?? 0)
+      const newSl = hasParsedSl ? Number(effectiveParsed.sl) : Number(trade.sl ?? 0)
       const newTp = hasParsedTp ? (tpOpen ? 0 : finalTpFromLevels(tpLevels)) : Number(trade.tp ?? 0)
       const result = await mtOrderModify(accountId, ticket, newSl, newTp)
       await logOk(result)
@@ -1494,7 +1639,7 @@ async function executeOneBroker(
       return { ok: true, trade_id: trade.id }
     }
 
-    const msg = `Unsupported action: ${parsed.action}`
+    const msg = `Unsupported action: ${effectiveParsed.action}`
     await logFail(msg)
     return { ok: false, error: msg }
   } catch (err: unknown) {
@@ -1503,7 +1648,7 @@ async function executeOneBroker(
       user_id: signal.user_id,
       signal_id: signalId,
       broker_account_id: brokerAccount.id,
-      action: parsed.action,
+      action: effectiveParsed.action,
       status: "failed",
       request_payload: requestPayload,
       error_message: message,

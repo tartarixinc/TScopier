@@ -49,6 +49,59 @@ export interface AiBrokerSettings {
   sizing_mode?: 'linear' | 'margin'
 }
 
+export interface ManualTpLot {
+  label: string
+  lot: number
+  enabled: boolean
+}
+
+export interface ManualSettings {
+  schema_version?: number
+  symbol_mapping?: Record<string, string>
+  symbol_prefix?: string
+  symbol_suffix?: string
+  symbol_to_trade?: string | null
+  symbols_exclude?: string[]
+  risk_mode?: 'fixed_lot' | 'dynamic_balance_percent'
+  fixed_lot?: number
+  dynamic_balance_percent?: number
+  tp_lots?: ManualTpLot[]
+  trade_style?: 'single' | 'multi'
+  range_trading?: boolean
+  range_total_lot?: number
+  reverse_signal?: boolean
+  use_predefined_sl_pips?: boolean
+  predefined_sl_pips?: number
+  use_predefined_tp_pips?: boolean
+  predefined_tp_pips?: number[]
+  rr_for_sl_enabled?: boolean
+  rr_for_sl?: number
+  rr_for_tps_enabled?: boolean
+  rr_for_tps?: number[]
+  pending_expiry_hours?: number
+  add_new_trades_to_existing?: boolean
+  move_sl_to_entry_after_mode?: 'none' | 'pips' | 'rr' | 'money' | 'tp_hit'
+  move_sl_to_entry_after_value?: number
+  move_sl_to_entry_tp_index?: number
+  move_sl_to_entry_type?: 'sl_only' | 'sl_and_close_half'
+  breakeven_offset_pips?: number
+  partial_close_percent?: number
+  half_close_percent?: number
+  trailing_enabled?: boolean
+  trailing_start_pips?: number
+  trailing_step_pips?: number
+  trailing_distance_pips?: number
+  close_on_opposite_signal?: boolean
+  time_filter_enabled?: boolean
+  trade_start_time?: string
+  trade_end_time?: string
+  days_filter_enabled?: boolean
+  trade_days?: number[]
+  allow_high_impact_news?: boolean
+  close_before_news_minutes?: number
+  resume_after_news_minutes?: number
+}
+
 export interface BrokerAccount {
   id: string
   user_id: string
@@ -65,6 +118,7 @@ export interface BrokerAccount {
   /** When false (default), all connected Telegram channels copy to this broker. */
   enforce_signal_channel_filter?: boolean | null
   ai_settings?: Json | null
+  manual_settings?: Json | null
   default_lot_size: number
   pip_tolerance: number
   max_trades_per_zone: number

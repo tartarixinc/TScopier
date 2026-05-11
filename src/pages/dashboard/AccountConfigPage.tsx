@@ -7,7 +7,7 @@ import { Input } from '../../components/ui/Input'
 import { Select } from '../../components/ui/Select'
 import { Button } from '../../components/ui/Button'
 import { Badge } from '../../components/ui/Badge'
-import type { BrokerAccount } from '../../types/database'
+import type { BrokerAccount, ManualSettings, ManualTpLot } from '../../types/database'
 import { Plus, Trash2, Server, DollarSign, Eye, Activity, GitBranch } from 'lucide-react'
 import { AddAccountModal } from '../../components/ui/AddAccountModal'
 
@@ -77,6 +77,84 @@ function getOldestChannel(channels: ChannelOption[]): ChannelOption | undefined 
 interface AccountConfigDraft {
   mode: 'ai' | 'manual'
   channelIds: string[]
+  manualSettings: ManualSettings
+}
+
+const DEFAULT_MANUAL_TP_LOTS: ManualTpLot[] = [
+  { label: 'TP1', lot: 0.01, enabled: true },
+  { label: 'TP2', lot: 0.01, enabled: true },
+  { label: 'TP3', lot: 0.01, enabled: true },
+]
+
+const DEFAULT_MANUAL_SETTINGS: ManualSettings = {
+  schema_version: 1,
+  symbol_mapping: {},
+  symbol_prefix: '',
+  symbol_suffix: '',
+  symbol_to_trade: null,
+  symbols_exclude: [],
+  risk_mode: 'fixed_lot',
+  fixed_lot: 0.01,
+  dynamic_balance_percent: 1,
+  tp_lots: DEFAULT_MANUAL_TP_LOTS,
+  trade_style: 'single',
+  range_trading: false,
+  range_total_lot: 0.03,
+  reverse_signal: false,
+  use_predefined_sl_pips: false,
+  predefined_sl_pips: 30,
+  use_predefined_tp_pips: false,
+  predefined_tp_pips: [20, 40, 60],
+  rr_for_sl_enabled: false,
+  rr_for_sl: 1,
+  rr_for_tps_enabled: false,
+  rr_for_tps: [1, 2, 3],
+  pending_expiry_hours: 1,
+  add_new_trades_to_existing: true,
+  move_sl_to_entry_after_mode: 'none',
+  move_sl_to_entry_after_value: 10,
+  move_sl_to_entry_tp_index: 1,
+  move_sl_to_entry_type: 'sl_only',
+  breakeven_offset_pips: 10,
+  partial_close_percent: 25,
+  half_close_percent: 50,
+  trailing_enabled: false,
+  trailing_start_pips: 20,
+  trailing_step_pips: 5,
+  trailing_distance_pips: 10,
+  close_on_opposite_signal: false,
+  time_filter_enabled: false,
+  trade_start_time: '00:00',
+  trade_end_time: '23:59',
+  days_filter_enabled: false,
+  trade_days: [1, 2, 3, 4, 5],
+  allow_high_impact_news: true,
+  close_before_news_minutes: 10,
+  resume_after_news_minutes: 10,
+}
+
+function normalizeManualSettings(raw: unknown): ManualSettings {
+  const j = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {}
+  const map = j.symbol_mapping && typeof j.symbol_mapping === 'object' ? j.symbol_mapping as Record<string, unknown> : {}
+  const tpLotsRaw = Array.isArray(j.tp_lots) ? j.tp_lots : DEFAULT_MANUAL_TP_LOTS
+  const tpLots = tpLotsRaw.map((x, i) => {
+    const row = (x && typeof x === 'object') ? x as Record<string, unknown> : {}
+    return {
+      label: String(row.label ?? `TP${i + 1}`),
+      lot: Number(row.lot ?? 0.01) || 0.01,
+      enabled: row.enabled !== false,
+    } as ManualTpLot
+  })
+  return {
+    ...DEFAULT_MANUAL_SETTINGS,
+    ...j as ManualSettings,
+    symbol_mapping: Object.fromEntries(Object.entries(map).map(([k, v]) => [String(k).toUpperCase(), String(v).toUpperCase()])),
+    symbols_exclude: Array.isArray(j.symbols_exclude) ? j.symbols_exclude.map(String).map(s => s.toUpperCase()) : [],
+    tp_lots: tpLots,
+    predefined_tp_pips: Array.isArray(j.predefined_tp_pips) ? j.predefined_tp_pips.map(Number).filter(Number.isFinite) : DEFAULT_MANUAL_SETTINGS.predefined_tp_pips,
+    rr_for_tps: Array.isArray(j.rr_for_tps) ? j.rr_for_tps.map(Number).filter(Number.isFinite) : DEFAULT_MANUAL_SETTINGS.rr_for_tps,
+    trade_days: Array.isArray(j.trade_days) ? j.trade_days.map(Number).filter(Number.isFinite) : DEFAULT_MANUAL_SETTINGS.trade_days,
+  }
 }
 
 function getPlatformIconPath(platform: string): string | null {
@@ -111,7 +189,11 @@ export function AccountConfigPage() {
   const [brokerSummaryErrors, setBrokerSummaryErrors] = useState<Record<string, string>>({})
   const [channelOptions, setChannelOptions] = useState<ChannelOption[]>([])
   const [configAccount, setConfigAccount] = useState<BrokerAccount | null>(null)
-  const [configDraft, setConfigDraft] = useState<AccountConfigDraft>({ mode: 'ai', channelIds: [] })
+  const [configDraft, setConfigDraft] = useState<AccountConfigDraft>({
+    mode: 'ai',
+    channelIds: [],
+    manualSettings: { ...DEFAULT_MANUAL_SETTINGS },
+  })
   const [configSaving, setConfigSaving] = useState(false)
   const [showPlatformModal, setShowPlatformModal] = useState(false)
   const [showAddBroker, setShowAddBroker] = useState(false)
@@ -176,6 +258,7 @@ export function AccountConfigPage() {
     setConfigDraft({
       mode: fresh.copier_mode === 'manual' ? 'manual' : 'ai',
       channelIds,
+      manualSettings: normalizeManualSettings(fresh.manual_settings),
     })
   }
 
@@ -190,6 +273,41 @@ export function AccountConfigPage() {
         ? prev.channelIds.filter(id => id !== channelId)
         : [...prev.channelIds, channelId],
     }))
+  }
+
+  const setManual = (patch: Partial<ManualSettings>) => {
+    setConfigDraft(prev => ({
+      ...prev,
+      manualSettings: {
+        ...prev.manualSettings,
+        ...patch,
+      },
+    }))
+  }
+
+  const updateTpLotRow = (idx: number, patch: Partial<ManualTpLot>) => {
+    setConfigDraft(prev => {
+      const rows = [...(prev.manualSettings.tp_lots ?? DEFAULT_MANUAL_TP_LOTS)]
+      rows[idx] = { ...rows[idx], ...patch }
+      return { ...prev, manualSettings: { ...prev.manualSettings, tp_lots: rows } }
+    })
+  }
+
+  const addTpLotRow = () => {
+    setConfigDraft(prev => {
+      const rows = [...(prev.manualSettings.tp_lots ?? DEFAULT_MANUAL_TP_LOTS)]
+      rows.push({ label: `TP${rows.length + 1}`, lot: 0.01, enabled: true })
+      return { ...prev, manualSettings: { ...prev.manualSettings, tp_lots: rows } }
+    })
+  }
+
+  const removeTpLotRow = (idx: number) => {
+    setConfigDraft(prev => {
+      const rows = [...(prev.manualSettings.tp_lots ?? DEFAULT_MANUAL_TP_LOTS)]
+      if (rows.length <= 1) return prev
+      rows.splice(idx, 1)
+      return { ...prev, manualSettings: { ...prev.manualSettings, tp_lots: rows } }
+    })
   }
 
   const saveConfigureModal = async () => {
@@ -221,6 +339,7 @@ export function AccountConfigPage() {
         copier_mode: configDraft.mode === 'manual' ? 'manual' : 'ai',
         signal_channel_ids: channelIds,
         enforce_signal_channel_filter: restrictChannels,
+        manual_settings: configDraft.mode === 'manual' ? configDraft.manualSettings : (configAccount.manual_settings ?? {}),
       })
       .eq('id', configAccount.id)
       .eq('user_id', user.id)
@@ -400,6 +519,7 @@ export function AccountConfigPage() {
         signal_channel_ids: [],
         enforce_signal_channel_filter: false,
         ai_settings: {},
+        manual_settings: DEFAULT_MANUAL_SETTINGS,
         default_lot_size: DEFAULT_LOT_SIZE,
         pip_tolerance: DEFAULT_PIP_TOLERANCE,
         is_active: true,
@@ -811,9 +931,131 @@ export function AccountConfigPage() {
                   </div>
                 </div>
               ) : (
-                <div className="rounded-xl border border-neutral-200 p-4">
+                <div className="rounded-xl border border-neutral-200 p-4 space-y-4">
                   <p className="text-sm font-semibold text-neutral-900">Manual Configuration</p>
-                  <p className="text-sm text-neutral-500 mt-1">Manual configuration options will be added in the next phase.</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <p className="text-xs text-neutral-600 mb-1">Symbol Mapping (one per line: FROM=TO)</p>
+                      <textarea
+                        className="w-full min-h-[90px] rounded-md border border-neutral-200 px-3 py-2 text-sm"
+                        value={Object.entries(configDraft.manualSettings.symbol_mapping ?? {}).map(([k, v]) => `${k}=${v}`).join('\n')}
+                        onChange={(e) => {
+                          const next: Record<string, string> = {}
+                          for (const line of e.target.value.split('\n')) {
+                            const [a, b] = line.split('=').map(s => s.trim())
+                            if (a && b) next[a.toUpperCase()] = b.toUpperCase()
+                          }
+                          setManual({ symbol_mapping: next })
+                        }}
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input label="Symbol Prefix" value={configDraft.manualSettings.symbol_prefix ?? ''} onChange={e => setManual({ symbol_prefix: e.target.value })} />
+                      <Input label="Symbol Suffix" value={configDraft.manualSettings.symbol_suffix ?? ''} onChange={e => setManual({ symbol_suffix: e.target.value })} />
+                      <Input label="Symbol To Trade" value={configDraft.manualSettings.symbol_to_trade ?? ''} onChange={e => setManual({ symbol_to_trade: e.target.value })} />
+                      <Input
+                        label="Symbols to Exclude (comma)"
+                        value={(configDraft.manualSettings.symbols_exclude ?? []).join(',')}
+                        onChange={e => setManual({ symbols_exclude: e.target.value.split(',').map(x => x.trim().toUpperCase()).filter(Boolean) })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <Select
+                      label="Risk Mode"
+                      value={configDraft.manualSettings.risk_mode ?? 'fixed_lot'}
+                      onChange={e => setManual({ risk_mode: e.target.value as ManualSettings['risk_mode'] })}
+                      options={[
+                        { value: 'fixed_lot', label: 'Fixed Lot' },
+                        { value: 'dynamic_balance_percent', label: 'Dynamic (% Balance)' },
+                      ]}
+                    />
+                    {configDraft.manualSettings.risk_mode === 'dynamic_balance_percent' ? (
+                      <Input label="% Balance per trade" type="number" value={String(configDraft.manualSettings.dynamic_balance_percent ?? 1)} onChange={e => setManual({ dynamic_balance_percent: Number(e.target.value) })} />
+                    ) : (
+                      <Input label="Fixed Lot" type="number" value={String(configDraft.manualSettings.fixed_lot ?? 0.01)} onChange={e => setManual({ fixed_lot: Number(e.target.value) })} />
+                    )}
+                    <Select
+                      label="Trade Style"
+                      value={configDraft.manualSettings.trade_style ?? 'single'}
+                      onChange={e => setManual({ trade_style: e.target.value as ManualSettings['trade_style'] })}
+                      options={[
+                        { value: 'single', label: 'Single Trade' },
+                        { value: 'multi', label: 'Multi Trades' },
+                      ]}
+                    />
+                  </div>
+
+                  <div className="rounded-lg border border-neutral-200 p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-sm font-medium text-neutral-800">TP Lot Sizes</p>
+                      <Button variant="ghost" onClick={addTpLotRow}>Add TP</Button>
+                    </div>
+                    <div className="space-y-2">
+                      {(configDraft.manualSettings.tp_lots ?? DEFAULT_MANUAL_TP_LOTS).map((row, idx) => (
+                        <div key={`${row.label}-${idx}`} className="grid grid-cols-12 gap-2 items-center">
+                          <input className="col-span-4 rounded-md border border-neutral-200 px-2 py-1.5 text-sm" value={row.label} onChange={e => updateTpLotRow(idx, { label: e.target.value })} />
+                          <input className="col-span-3 rounded-md border border-neutral-200 px-2 py-1.5 text-sm" type="number" value={row.lot} onChange={e => updateTpLotRow(idx, { lot: Number(e.target.value) })} />
+                          <label className="col-span-3 text-xs text-neutral-700 flex items-center gap-2">
+                            <input type="checkbox" checked={row.enabled} onChange={e => updateTpLotRow(idx, { enabled: e.target.checked })} />
+                            Enabled
+                          </label>
+                          <Button className="col-span-2" variant="ghost" onClick={() => removeTpLotRow(idx)}>Remove</Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <Select label="Range Trading" value={configDraft.manualSettings.range_trading ? 'yes' : 'no'} onChange={e => setManual({ range_trading: e.target.value === 'yes' })} options={[{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }]} />
+                    <Input label="Range Total Lot" type="number" value={String(configDraft.manualSettings.range_total_lot ?? 0.03)} onChange={e => setManual({ range_total_lot: Number(e.target.value) })} />
+                    <Select label="Reverse Signal" value={configDraft.manualSettings.reverse_signal ? 'yes' : 'no'} onChange={e => setManual({ reverse_signal: e.target.value === 'yes' })} options={[{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }]} />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <label className="text-sm text-neutral-700 flex items-center gap-2"><input type="checkbox" checked={configDraft.manualSettings.use_predefined_sl_pips === true} onChange={e => setManual({ use_predefined_sl_pips: e.target.checked })} />Use Predefined SL Pips</label>
+                    <Input label="Predefined SL Pips" type="number" value={String(configDraft.manualSettings.predefined_sl_pips ?? 30)} onChange={e => setManual({ predefined_sl_pips: Number(e.target.value) })} />
+                    <label className="text-sm text-neutral-700 flex items-center gap-2"><input type="checkbox" checked={configDraft.manualSettings.use_predefined_tp_pips === true} onChange={e => setManual({ use_predefined_tp_pips: e.target.checked })} />Use Predefined TPs</label>
+                    <Input label="Predefined TP Pips (comma)" value={(configDraft.manualSettings.predefined_tp_pips ?? []).join(',')} onChange={e => setManual({ predefined_tp_pips: e.target.value.split(',').map(n => Number(n.trim())).filter(Number.isFinite) })} />
+                    <label className="text-sm text-neutral-700 flex items-center gap-2"><input type="checkbox" checked={configDraft.manualSettings.rr_for_sl_enabled === true} onChange={e => setManual({ rr_for_sl_enabled: e.target.checked })} />Enable R:R for SL</label>
+                    <Input label="SL R:R" type="number" value={String(configDraft.manualSettings.rr_for_sl ?? 1)} onChange={e => setManual({ rr_for_sl: Number(e.target.value) })} />
+                    <label className="text-sm text-neutral-700 flex items-center gap-2"><input type="checkbox" checked={configDraft.manualSettings.rr_for_tps_enabled === true} onChange={e => setManual({ rr_for_tps_enabled: e.target.checked })} />Enable R:R for TPs</label>
+                    <Input label="TP R:R values (comma)" value={(configDraft.manualSettings.rr_for_tps ?? []).join(',')} onChange={e => setManual({ rr_for_tps: e.target.value.split(',').map(n => Number(n.trim())).filter(Number.isFinite) })} />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <Input label="Pending Expiry (hours 1-24)" type="number" value={String(configDraft.manualSettings.pending_expiry_hours ?? 1)} onChange={e => setManual({ pending_expiry_hours: Number(e.target.value) })} />
+                    <Select label="Add New Trades to Existing" value={configDraft.manualSettings.add_new_trades_to_existing ? 'yes' : 'no'} onChange={e => setManual({ add_new_trades_to_existing: e.target.value === 'yes' })} options={[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]} />
+                    <Select label="Close on Opposite Signal" value={configDraft.manualSettings.close_on_opposite_signal ? 'yes' : 'no'} onChange={e => setManual({ close_on_opposite_signal: e.target.value === 'yes' })} options={[{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }]} />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <Select label="Move SL to Entry After" value={configDraft.manualSettings.move_sl_to_entry_after_mode ?? 'none'} onChange={e => setManual({ move_sl_to_entry_after_mode: e.target.value as ManualSettings['move_sl_to_entry_after_mode'] })} options={[{ value: 'none', label: 'None' }, { value: 'pips', label: 'Pips' }, { value: 'rr', label: 'RR' }, { value: 'money', label: 'Money' }, { value: 'tp_hit', label: 'TP Hit' }]} />
+                    <Input label="Move SL Trigger Value" type="number" value={String(configDraft.manualSettings.move_sl_to_entry_after_value ?? 10)} onChange={e => setManual({ move_sl_to_entry_after_value: Number(e.target.value) })} />
+                    <Select label="Move SL Type" value={configDraft.manualSettings.move_sl_to_entry_type ?? 'sl_only'} onChange={e => setManual({ move_sl_to_entry_type: e.target.value as ManualSettings['move_sl_to_entry_type'] })} options={[{ value: 'sl_only', label: 'Move SL only' }, { value: 'sl_and_close_half', label: 'Move SL and close half' }]} />
+                    <Input label="Breakeven Offset (pips)" type="number" value={String(configDraft.manualSettings.breakeven_offset_pips ?? 10)} onChange={e => setManual({ breakeven_offset_pips: Number(e.target.value) })} />
+                    <Input label="Partial Close (%)" type="number" value={String(configDraft.manualSettings.partial_close_percent ?? 25)} onChange={e => setManual({ partial_close_percent: Number(e.target.value) })} />
+                    <Input label="Half Close (%)" type="number" value={String(configDraft.manualSettings.half_close_percent ?? 50)} onChange={e => setManual({ half_close_percent: Number(e.target.value) })} />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                    <Select label="Trailing SL" value={configDraft.manualSettings.trailing_enabled ? 'yes' : 'no'} onChange={e => setManual({ trailing_enabled: e.target.value === 'yes' })} options={[{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }]} />
+                    <Input label="Trail Start (pips)" type="number" value={String(configDraft.manualSettings.trailing_start_pips ?? 20)} onChange={e => setManual({ trailing_start_pips: Number(e.target.value) })} />
+                    <Input label="Trail Step (pips)" type="number" value={String(configDraft.manualSettings.trailing_step_pips ?? 5)} onChange={e => setManual({ trailing_step_pips: Number(e.target.value) })} />
+                    <Input label="Trail Distance (pips)" type="number" value={String(configDraft.manualSettings.trailing_distance_pips ?? 10)} onChange={e => setManual({ trailing_distance_pips: Number(e.target.value) })} />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <Select label="Time Filter" value={configDraft.manualSettings.time_filter_enabled ? 'enabled' : 'disabled'} onChange={e => setManual({ time_filter_enabled: e.target.value === 'enabled' })} options={[{ value: 'disabled', label: 'Disabled' }, { value: 'enabled', label: 'Enabled' }]} />
+                    <Input label="Start Time" type="time" value={configDraft.manualSettings.trade_start_time ?? '00:00'} onChange={e => setManual({ trade_start_time: e.target.value })} />
+                    <Input label="End Time" type="time" value={configDraft.manualSettings.trade_end_time ?? '23:59'} onChange={e => setManual({ trade_end_time: e.target.value })} />
+                    <Select label="Days Filter" value={configDraft.manualSettings.days_filter_enabled ? 'enabled' : 'disabled'} onChange={e => setManual({ days_filter_enabled: e.target.value === 'enabled' })} options={[{ value: 'disabled', label: 'Disabled' }, { value: 'enabled', label: 'Enabled' }]} />
+                    <Input label="Trade Days (0-6 comma)" value={(configDraft.manualSettings.trade_days ?? [1,2,3,4,5]).join(',')} onChange={e => setManual({ trade_days: e.target.value.split(',').map(n => Number(n.trim())).filter(Number.isFinite) })} />
+                    <Select label="Allow High Impact News" value={configDraft.manualSettings.allow_high_impact_news ? 'yes' : 'no'} onChange={e => setManual({ allow_high_impact_news: e.target.value === 'yes' })} options={[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]} />
+                    <Input label="Close Before News (min)" type="number" value={String(configDraft.manualSettings.close_before_news_minutes ?? 10)} onChange={e => setManual({ close_before_news_minutes: Number(e.target.value) })} />
+                    <Input label="Resume After News (min)" type="number" value={String(configDraft.manualSettings.resume_after_news_minutes ?? 10)} onChange={e => setManual({ resume_after_news_minutes: Number(e.target.value) })} />
+                  </div>
                 </div>
               )}
             </div>
