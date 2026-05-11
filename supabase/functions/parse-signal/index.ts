@@ -23,7 +23,8 @@ Return ONLY a JSON object with this exact shape (no markdown, no explanation):
   "open_tp": boolean,
   "lot_size": number | null,
   "confidence": number (0-1),
-  "raw_instruction": string
+  "raw_instruction": string,
+  "partial_close_fraction": number | null
 }
 
 Rules:
@@ -33,6 +34,7 @@ Rules:
 - For "Set SL to X" or "Move TP to Y" messages, set action to "modify"
 - For "Close trade" or "Close all" messages, set action to "close"
 - For "Close half / take 50% / partial" together with "breakeven / SL to entry / move stop to BE", set action to "partial_breakeven"
+- For explicit "close half / 50% of position" style messages (not TP1-hit wording), set "partial_close_fraction" to 0.5. For "close partial / partials / 25% of position", set it to 0.25. Otherwise omit or null (executor uses TP-hit heuristics).
 - For "Set breakeven" messages, set action to "breakeven"
 - tp is always an array (can have multiple targets)
 - Parse target formats as TP too (TP1/2/3, repeated TP lines, Target 1/2/3, Take Profit labels); keep them ordered.
@@ -57,6 +59,8 @@ interface ParsedSignal {
   confidence: number
   raw_instruction: string
   open_tp?: boolean
+  /** 0.5 = half, 0.25 = partial channel keyword; omit for TP-tier partial heuristics. */
+  partial_close_fraction?: number | null
 }
 
 type ChannelLexiconRow = {
@@ -92,6 +96,7 @@ type ChannelKeywords = {
     set_tp4: string
     set_tp5: string
     set_tp: string
+    adjust_tp: string
     set_sl: string
     adjust_sl: string
     delete: string
@@ -138,6 +143,7 @@ const DEFAULT_CHANNEL_KEYWORDS: ChannelKeywords = {
     set_tp4: "SET TP4",
     set_tp5: "SET TP5",
     set_tp: "SET TP",
+    adjust_tp: "ADJUST TP",
     set_sl: "SET SL",
     adjust_sl: "ADJUST SL",
     delete: "DELETE",
@@ -189,6 +195,7 @@ function normalizeChannelKeywords(raw: unknown): ChannelKeywords {
       set_tp4: String(update.set_tp4 ?? DEFAULT_CHANNEL_KEYWORDS.update.set_tp4),
       set_tp5: String(update.set_tp5 ?? DEFAULT_CHANNEL_KEYWORDS.update.set_tp5),
       set_tp: String(update.set_tp ?? DEFAULT_CHANNEL_KEYWORDS.update.set_tp),
+      adjust_tp: String(update.adjust_tp ?? DEFAULT_CHANNEL_KEYWORDS.update.adjust_tp),
       set_sl: String(update.set_sl ?? DEFAULT_CHANNEL_KEYWORDS.update.set_sl),
       adjust_sl: String(update.adjust_sl ?? DEFAULT_CHANNEL_KEYWORDS.update.adjust_sl),
       delete: String(update.delete ?? DEFAULT_CHANNEL_KEYWORDS.update.delete),
@@ -329,6 +336,13 @@ function normalizeParsedFromModel(raw: unknown, fallbackText: string): ParsedSig
       ? j.raw_instruction
       : fallbackText
 
+  const pcfRaw = j.partial_close_fraction
+  let partial_close_fraction: number | undefined
+  if (pcfRaw != null && pcfRaw !== "") {
+    const n = Number(pcfRaw)
+    if (Number.isFinite(n) && n > 0 && n <= 1) partial_close_fraction = n
+  }
+
   return {
     action,
     symbol,
@@ -341,6 +355,7 @@ function normalizeParsedFromModel(raw: unknown, fallbackText: string): ParsedSig
     confidence,
     raw_instruction,
     open_tp: Boolean(j.open_tp ?? detectOpenTp(fallbackText)),
+    ...(partial_close_fraction != null ? { partial_close_fraction } : {}),
   }
 }
 
@@ -388,25 +403,32 @@ function parseDeterministicManagement(
 
   const sym = extractTradableSymbolFromMessage(t)
   let action: ParsedSignal["action"] | null = null
+  let partial_close_fraction: number | undefined
   let confidence = 0.92
   const delim = channelKeywords.additional.delimiters
   const kwClose = [
     ...splitKeywordAliases(channelKeywords.update.close_full, delim),
     ...splitKeywordAliases(channelKeywords.additional.close_all, delim),
   ]
-  const kwPartial = [
-    ...splitKeywordAliases(channelKeywords.update.close_half, delim),
-    ...splitKeywordAliases(channelKeywords.update.close_partial, delim),
+  const kwCloseHalf = splitKeywordAliases(channelKeywords.update.close_half, delim)
+  const kwClosePartialOnly = splitKeywordAliases(channelKeywords.update.close_partial, delim)
+  const kwCloseTpTiers = [
     ...splitKeywordAliases(channelKeywords.update.close_tp1, delim),
     ...splitKeywordAliases(channelKeywords.update.close_tp2, delim),
     ...splitKeywordAliases(channelKeywords.update.close_tp3, delim),
     ...splitKeywordAliases(channelKeywords.update.close_tp4, delim),
+  ]
+  const kwPartial = [
+    ...kwCloseHalf,
+    ...kwClosePartialOnly,
+    ...kwCloseTpTiers,
   ]
   const kwBreakeven = splitKeywordAliases(channelKeywords.update.break_even, delim)
   const kwModify = [
     ...splitKeywordAliases(channelKeywords.update.set_sl, delim),
     ...splitKeywordAliases(channelKeywords.update.adjust_sl, delim),
     ...splitKeywordAliases(channelKeywords.update.set_tp, delim),
+    ...splitKeywordAliases(channelKeywords.update.adjust_tp, delim),
     ...splitKeywordAliases(channelKeywords.update.set_tp1, delim),
     ...splitKeywordAliases(channelKeywords.update.set_tp2, delim),
     ...splitKeywordAliases(channelKeywords.update.set_tp3, delim),
@@ -417,10 +439,18 @@ function parseDeterministicManagement(
     ...splitKeywordAliases(channelKeywords.additional.delete_all, delim),
   ]
 
+  const hitCloseHalfKw = hasAnyKeyword(t, kwCloseHalf)
+  const hitClosePartialKw = hasAnyKeyword(t, kwClosePartialOnly)
+  const hitCloseTpTierKw = hasAnyKeyword(t, kwCloseTpTiers)
+
   // Order matters: generic MGMT_CLOSE matches "Close " in "Close half …" — evaluate partial + breakeven first.
   const wantsPartialHalf =
+    hitCloseHalfKw ||
+    hitClosePartialKw ||
+    hitCloseTpTierKw ||
     /\b(partials?|close\s+partials?|close\s+half|close\s+50%|take\s+partials?|take\s+half|take\s+50%|c\s+half|half\s+of\s+(the\s+)?(position|trade))\b/i.test(t) ||
     /\b(50|half)\s*%?\s*(of\s+)?(the\s+)?(position|trade|lot|profit)\b/i.test(t) ||
+    /\b(25|quarter)\s*%?\s*(of\s+)?(the\s+)?(position|trade|lot|profit)\b/i.test(tl) ||
     hasAnyKeyword(t, kwPartial)
   const wantsBreakeven =
     /\bbreakeven|break\s*even\b/i.test(t) ||
@@ -431,8 +461,22 @@ function parseDeterministicManagement(
     hasAnyKeyword(t, kwBreakeven)
 
   if (wantsPartialHalf && wantsBreakeven) action = "partial_breakeven"
-  else if (wantsPartialHalf) action = "partial_profit"
-  else if (wantsBreakeven) action = "breakeven"
+  else if (wantsPartialHalf) {
+    action = "partial_profit"
+    if (
+      hitCloseHalfKw ||
+      /\b(close\s+half|take\s+half|close\s+50%|take\s+50%|c\s+half|half\s+of\s+(the\s+)?(position|trade))\b/i.test(t) ||
+      /\b(50|half)\s*%?\s*(of\s+)?(the\s+)?(position|trade|lot|profit)\b/i.test(t)
+    ) {
+      partial_close_fraction = 0.5
+    } else if (
+      hitClosePartialKw ||
+      /\b(close\s+partials?|take\s+partials?|close\s+25%|take\s+25%)\b/i.test(t) ||
+      /\b(25|quarter)\s*%?\s*(of\s+)?(the\s+)?(position|trade|lot|profit)\b/i.test(tl)
+    ) {
+      partial_close_fraction = 0.25
+    }
+  } else if (wantsBreakeven) action = "breakeven"
   else if (MGMT_CLOSE.test(t) || hasAnyKeyword(t, kwClose)) action = "close"
   else if (
     /\b(set|move|adjust|bring)\s+(sl|tp|target|stop\s*loss|take\s*profit)\b|\b(stop\s*loss|take\s*profit|target)\s*(to|=)\s*[\d.]+/i
@@ -471,6 +515,7 @@ function parseDeterministicManagement(
     ...(lexicon?.target_aliases ?? []),
     ...splitKeywordAliases(channelKeywords.signal.tp, delim),
     ...splitKeywordAliases(channelKeywords.update.set_tp, delim),
+    ...splitKeywordAliases(channelKeywords.update.adjust_tp, delim),
   ]
   const tp = extractTpLevels(t, extraTp)
 
@@ -486,6 +531,7 @@ function parseDeterministicManagement(
     confidence,
     raw_instruction: message,
     open_tp: detectOpenTp(message),
+    ...(action === "partial_profit" && partial_close_fraction != null ? { partial_close_fraction } : {}),
   }
 }
 
@@ -509,6 +555,7 @@ function parseSimpleSignal(
     ...splitKeywordAliases(channelKeywords.update.set_sl, delim),
     ...splitKeywordAliases(channelKeywords.update.adjust_sl, delim),
     ...splitKeywordAliases(channelKeywords.update.set_tp, delim),
+    ...splitKeywordAliases(channelKeywords.update.adjust_tp, delim),
     ...splitKeywordAliases(channelKeywords.update.delete, delim),
     ...splitKeywordAliases(channelKeywords.additional.close_all, delim),
     ...splitKeywordAliases(channelKeywords.additional.delete_all, delim),
@@ -543,6 +590,7 @@ function parseSimpleSignal(
     ...(lexicon?.target_aliases ?? []),
     ...splitKeywordAliases(channelKeywords.signal.tp, delim),
     ...splitKeywordAliases(channelKeywords.update.set_tp, delim),
+    ...splitKeywordAliases(channelKeywords.update.adjust_tp, delim),
   ]
   const tp = extractTpLevels(message, extraTp)
 

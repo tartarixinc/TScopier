@@ -21,6 +21,8 @@ interface ParsedSignal {
   lot_size: number | null
   confidence: number
   raw_instruction?: string
+  /** When set (e.g. 0.5 = half, 0.25 = partial), partial_profit uses this instead of TP-hit heuristics. */
+  partial_close_fraction?: number | null
 }
 
 type JsonRecord = Record<string, unknown>
@@ -773,14 +775,15 @@ async function mtOrderModify(
 async function mtOrderClose(
   accountId: string,
   ticket: string | number,
-  volume?: number,
+  lots?: number,
 ): Promise<unknown> {
   const params: Record<string, QueryValue> = {
     id: accountId,
     ticket,
   }
-  if (volume != null && Number.isFinite(volume) && volume > 0) {
-    params.volume = volume
+  // MetaTrader API docs: GET /OrderClose uses query param `lots` (not `volume`); lots=0 / omitted closes entire position.
+  if (lots != null && Number.isFinite(lots) && lots > 0) {
+    params.lots = lots
   }
   return await mtGetAny(
     ["/OrderClose", "/ClosePosition", "/PositionsClose"],
@@ -1069,6 +1072,53 @@ function normalizeVolumeForOrder(volume: number, spec: SymbolVolumeSpec | null):
   }
   if (snapped < mn) snapped = mn
   return Math.min(mx, Math.max(mn, snapped))
+}
+
+/** Floor lots to symbol step (partial closes must not round *up* past intended fraction). */
+function normalizeVolumeFloorForPartial(volume: number, spec: SymbolVolumeSpec | null): number {
+  const floorMin = spec?.min && spec.min > 0 ? spec.min : 0.01
+  let v = Number(volume)
+  if (!Number.isFinite(v) || v <= 0) return 0
+  if (spec == null || !Number.isFinite(spec.step) || spec.step <= 0) {
+    return Math.floor(v * 100 + 1e-9) / 100
+  }
+  const { min: mn, step: st } = spec
+  let mx = Number(spec.max)
+  if (!Number.isFinite(mx) || mx < mn) mx = Math.max(mn * 500, 100)
+  const dec = decimalsForStep(st)
+  let snapped = Math.floor((v + 1e-12) / st) * st
+  snapped = Number(snapped.toFixed(dec))
+  if (snapped < mn) {
+    const k = Math.ceil(mn / st - 1e-14)
+    snapped = Number((k * st).toFixed(dec))
+  }
+  if (snapped > mx) {
+    const k = Math.floor(mx / st + 1e-14)
+    snapped = Number((k * st).toFixed(dec))
+  }
+  if (snapped < mn) snapped = mn
+  return Math.min(mx, Math.max(floorMin, snapped))
+}
+
+/** Partial close volume snapped *down* to symbol step; never the full position. */
+async function snapPartialCloseLots(
+  accountId: string,
+  symbol: string | null | undefined,
+  currentLot: number,
+  fraction: number,
+): Promise<number> {
+  if (!Number.isFinite(currentLot) || currentLot <= 0 || !Number.isFinite(fraction) || fraction <= 0) return 0
+  const sym = symbol?.trim()
+  const spec = sym ? await fetchSymbolVolumeSpec(accountId, sym) : null
+  const step = spec?.step && spec.step > 0 ? spec.step : 0.01
+  const raw = currentLot * fraction
+  let v = normalizeVolumeFloorForPartial(raw, spec)
+  const maxClose = Math.max(0, currentLot - step)
+  const maxCloseSnapped = normalizeVolumeFloorForPartial(maxClose, spec)
+  v = Math.min(v, maxCloseSnapped)
+  const minLot = spec?.min && spec.min > 0 ? spec.min : 0.01
+  if (!Number.isFinite(v) || v < minLot) return 0
+  return v
 }
 
 async function resolveTradableSymbol(accountId: string, requestedSymbol: string): Promise<string> {
@@ -1629,10 +1679,26 @@ async function executeOneBroker(
         return { ok: false, error: msg }
       }
       const stage = detectTpHitStage(String(effectiveParsed.raw_instruction ?? ""))
-      const frac = stage === 1 ? 0.25 : 0.5
-      const partialVol = Math.min(Math.max(0.01, Math.floor((currentLot * frac) * 100) / 100), currentLot - 0.01)
+      const explicitFrac = effectiveParsed.partial_close_fraction
+      let frac: number
+      if (explicitFrac != null && Number.isFinite(Number(explicitFrac)) && Number(explicitFrac) > 0 && Number(explicitFrac) <= 1) {
+        frac = Number(explicitFrac)
+      } else {
+        frac = stage === 1 ? 0.25 : 0.5
+      }
+      const partialVol = await snapPartialCloseLots(accountId, trade.symbol, currentLot, frac)
+      if (!partialVol || partialVol <= 0) {
+        const msg = "Position too small or volume grid prevents partial close at requested fraction"
+        await logFail(msg)
+        return { ok: false, error: msg }
+      }
       const result = await mtOrderClose(accountId, ticket, partialVol)
-      await logOk(result, { partial_volume: partialVol, tp_stage: stage ?? null, partial_fraction: frac })
+      await logOk(result, {
+        partial_volume: partialVol,
+        tp_stage: stage ?? null,
+        partial_fraction: frac,
+        partial_close_fraction: effectiveParsed.partial_close_fraction ?? null,
+      })
       const remainder = Math.max(0, currentLot - partialVol)
       const closed = remainder < 0.02
       await supabase
@@ -1654,10 +1720,12 @@ async function executeOneBroker(
         await logFail(msg)
         return { ok: false, error: msg }
       }
-      const partialVol = Math.min(
-        Math.max(0.01, Math.floor((currentLot / 2) * 100) / 100),
-        currentLot - 0.01,
-      )
+      const partialVol = await snapPartialCloseLots(accountId, trade.symbol, currentLot, 0.5)
+      if (!partialVol || partialVol <= 0) {
+        const msg = "Position too small or volume grid prevents partial close at requested fraction"
+        await logFail(msg)
+        return { ok: false, error: msg }
+      }
       const closeResult = await mtOrderClose(accountId, ticket, partialVol)
       await logOk(closeResult, { partial_volume: partialVol, step: "partial_close" })
       const remainder = Math.max(0, currentLot - partialVol)

@@ -34,6 +34,7 @@ const DEFAULT_CHANNEL_KEYWORDS: ChannelKeywords = {
     set_tp4: 'SET TP4',
     set_tp5: 'SET TP5',
     set_tp: 'SET TP',
+    adjust_tp: 'ADJUST TP',
     set_sl: 'SET SL',
     adjust_sl: 'ADJUST SL',
     delete: 'DELETE',
@@ -85,6 +86,7 @@ function normalizeChannelKeywords(raw: unknown): ChannelKeywords {
       set_tp4: String(update.set_tp4 ?? DEFAULT_CHANNEL_KEYWORDS.update.set_tp4),
       set_tp5: String(update.set_tp5 ?? DEFAULT_CHANNEL_KEYWORDS.update.set_tp5),
       set_tp: String(update.set_tp ?? DEFAULT_CHANNEL_KEYWORDS.update.set_tp),
+      adjust_tp: String(update.adjust_tp ?? DEFAULT_CHANNEL_KEYWORDS.update.adjust_tp),
       set_sl: String(update.set_sl ?? DEFAULT_CHANNEL_KEYWORDS.update.set_sl),
       adjust_sl: String(update.adjust_sl ?? DEFAULT_CHANNEL_KEYWORDS.update.adjust_sl),
       delete: String(update.delete ?? DEFAULT_CHANNEL_KEYWORDS.update.delete),
@@ -714,6 +716,7 @@ export function CopierEnginePage() {
                 <Input label="Set TP4" value={keywordsDraft.update.set_tp4} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, set_tp4: e.target.value } }))} />
                 <Input label="Set TP5" value={keywordsDraft.update.set_tp5} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, set_tp5: e.target.value } }))} />
                 <Input label="Set TP" value={keywordsDraft.update.set_tp} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, set_tp: e.target.value } }))} />
+                <Input label="Adjust TP" value={keywordsDraft.update.adjust_tp} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, adjust_tp: e.target.value } }))} />
                 <Input label="Set SL" value={keywordsDraft.update.set_sl} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, set_sl: e.target.value } }))} />
                 <Input label="Adjust SL" value={keywordsDraft.update.adjust_sl} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, adjust_sl: e.target.value } }))} />
                 <Input label="Delete" value={keywordsDraft.update.delete} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, delete: e.target.value } }))} />
