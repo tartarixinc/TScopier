@@ -236,6 +236,7 @@ export interface Trade {
   id: string
   user_id: string
   signal_id: string | null
+  telegram_channel_id?: string | null
   broker_account_id: string | null
   metaapi_order_id: string | null
   symbol: string

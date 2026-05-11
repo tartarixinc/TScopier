@@ -441,6 +441,7 @@ async function resolveLotAndPips(
 type OpenTradeRow = {
   id: string
   signal_id: string | null
+  telegram_channel_id?: string | null
   metaapi_order_id: string | null
   symbol: string
   direction: string
@@ -463,7 +464,7 @@ async function loadOpenTradeRows(
 ): Promise<OpenTradeRow[]> {
   let query = supabase
     .from("trades")
-    .select("id, signal_id, metaapi_order_id, symbol, direction, entry_price, lot_size, sl, tp, tp_levels, tp_open, tp_step_policy, next_tp_index, opened_at")
+    .select("id, signal_id, telegram_channel_id, metaapi_order_id, symbol, direction, entry_price, lot_size, sl, tp, tp_levels, tp_open, tp_step_policy, next_tp_index, opened_at")
     .eq("user_id", userId)
     .eq("broker_account_id", brokerAccountId)
     .eq("status", "open")
@@ -512,6 +513,18 @@ async function fetchLatestOpenTradeForChannel(
   brokerAccountId: string,
   channelId: string,
 ): Promise<OpenTradeRow | null> {
+  // Fast path: new trades are linked directly to telegram_channel_id.
+  const { data: directTrades } = await supabase
+    .from("trades")
+    .select("id, signal_id, telegram_channel_id, metaapi_order_id, symbol, direction, entry_price, lot_size, sl, tp, tp_levels, tp_open, tp_step_policy, next_tp_index, opened_at")
+    .eq("user_id", userId)
+    .eq("broker_account_id", brokerAccountId)
+    .eq("status", "open")
+    .eq("telegram_channel_id", channelId)
+    .order("opened_at", { ascending: false })
+    .limit(1)
+  if (directTrades?.[0]) return directTrades[0] as OpenTradeRow
+
   // Keep a wide window so symbol-less management commands (e.g. "CLOSE FULL")
   // can still correlate long-running positions whose entry signal is older.
   const recentSignals = 5000
@@ -528,7 +541,7 @@ async function fetchLatestOpenTradeForChannel(
 
   const { data: tradeList } = await supabase
     .from("trades")
-    .select("id, signal_id, metaapi_order_id, symbol, direction, entry_price, lot_size, sl, tp, tp_levels, tp_open, tp_step_policy, next_tp_index, opened_at")
+    .select("id, signal_id, telegram_channel_id, metaapi_order_id, symbol, direction, entry_price, lot_size, sl, tp, tp_levels, tp_open, tp_step_policy, next_tp_index, opened_at")
     .eq("user_id", userId)
     .eq("broker_account_id", brokerAccountId)
     .eq("status", "open")
@@ -561,7 +574,7 @@ async function fetchOpenTradesForChannel(
 
   let query = supabase
     .from("trades")
-    .select("id, signal_id, metaapi_order_id, symbol, direction, entry_price, lot_size, sl, tp, tp_levels, tp_open, tp_step_policy, next_tp_index, opened_at")
+    .select("id, signal_id, telegram_channel_id, metaapi_order_id, symbol, direction, entry_price, lot_size, sl, tp, tp_levels, tp_open, tp_step_policy, next_tp_index, opened_at")
     .eq("user_id", userId)
     .eq("broker_account_id", brokerAccountId)
     .eq("status", "open")
@@ -1445,6 +1458,7 @@ async function executeOneBroker(
         .insert({
           user_id: signal.user_id,
           signal_id: signalId,
+          telegram_channel_id: signal.channel_id,
           broker_account_id: brokerAccount.id,
           metaapi_order_id: orderTicket,
           symbol: effectiveParsed.symbol,
