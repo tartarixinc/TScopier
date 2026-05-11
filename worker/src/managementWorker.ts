@@ -19,6 +19,15 @@ type MgmtJob = {
   max_attempts: number
 }
 
+type ExecuteTradeResponse = {
+  executed?: boolean
+  skipped?: boolean
+  error?: string
+  reason?: string
+  detail?: string
+  results?: Array<{ ok?: boolean; error?: string }>
+}
+
 export class ManagementWorker {
   private timer: NodeJS.Timeout | null = null
   private running = false
@@ -103,6 +112,18 @@ export class ManagementWorker {
       const bodyText = await res.text()
       if (!res.ok) {
         throw new Error(`execute-trade ${res.status}: ${bodyText.slice(0, 400)}`)
+      }
+      let body: ExecuteTradeResponse | null = null
+      try {
+        body = bodyText ? JSON.parse(bodyText) as ExecuteTradeResponse : null
+      } catch {
+        // If body is non-JSON we keep fallback checks below.
+      }
+      const anyBrokerOk = Array.isArray(body?.results) ? body!.results!.some((x) => x?.ok === true) : false
+      const executed = body?.executed === true || anyBrokerOk
+      if (!executed) {
+        const reason = body?.error || body?.reason || body?.detail || bodyText.slice(0, 400) || 'execute-trade returned 200 without execution'
+        throw new Error(`execute-trade no-op: ${reason}`)
       }
 
       await this.supabase
