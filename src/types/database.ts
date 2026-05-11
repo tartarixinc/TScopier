@@ -55,6 +55,53 @@ export interface ManualTpLot {
   enabled: boolean
 }
 
+export interface ManualChannelKeywords {
+  signal: {
+    entry_point: string
+    buy: string
+    sell: string
+    sl: string
+    tp: string
+    market_order: string
+  }
+  update: {
+    close_tp1: string
+    close_tp2: string
+    close_tp3: string
+    close_tp4: string
+    close_full: string
+    close_half: string
+    close_partial: string
+    break_even: string
+    set_tp1: string
+    set_tp2: string
+    set_tp3: string
+    set_tp4: string
+    set_tp5: string
+    set_tp: string
+    set_sl: string
+    delete: string
+  }
+  additional: {
+    layer: string
+    close_all: string
+    delete_all: string
+    ignore_keyword: string
+    skip_keyword: string
+    remove_sl: string
+    delay_msec: number
+    prefer_entry: 'first_price' | 'last_price'
+    sl_in_pips: boolean
+    tp_in_pips: boolean
+    delimiters: string
+    all_order: boolean
+    read_forwarded: boolean
+    read_image: boolean
+  }
+}
+
+export type ChannelKeywords = ManualChannelKeywords
+
 export interface ManualSettings {
   schema_version?: number
   symbol_mapping?: Record<string, string>
@@ -145,6 +192,7 @@ export interface TelegramChannel {
   is_active: boolean
   lot_size_override: number | null
   pip_tolerance_override: number | null
+  channel_keywords?: Json | null
   created_at: string
   updated_at: string
 }

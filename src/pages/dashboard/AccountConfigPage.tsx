@@ -86,6 +86,7 @@ const DEFAULT_MANUAL_TP_LOTS: ManualTpLot[] = [
   { label: 'TP3', lot: 0.01, enabled: true },
 ]
 
+
 const DEFAULT_MANUAL_SETTINGS: ManualSettings = {
   schema_version: 1,
   symbol_mapping: {},
@@ -128,7 +129,7 @@ const DEFAULT_MANUAL_SETTINGS: ManualSettings = {
   trade_end_time: '23:59',
   days_filter_enabled: false,
   trade_days: [1, 2, 3, 4, 5],
-  allow_high_impact_news: true,
+  allow_high_impact_news: false,
   close_before_news_minutes: 10,
   resume_after_news_minutes: 10,
 }
@@ -194,6 +195,7 @@ export function AccountConfigPage() {
     channelIds: [],
     manualSettings: { ...DEFAULT_MANUAL_SETTINGS },
   })
+  const [symbolMappingText, setSymbolMappingText] = useState('')
   const [configSaving, setConfigSaving] = useState(false)
   const [showPlatformModal, setShowPlatformModal] = useState(false)
   const [showAddBroker, setShowAddBroker] = useState(false)
@@ -255,15 +257,22 @@ export function AccountConfigPage() {
       channelIds = persistedIds
     }
     setConfigAccount(fresh)
+    const manualSettings = normalizeManualSettings(fresh.manual_settings)
     setConfigDraft({
       mode: fresh.copier_mode === 'manual' ? 'manual' : 'ai',
       channelIds,
-      manualSettings: normalizeManualSettings(fresh.manual_settings),
+      manualSettings,
     })
+    setSymbolMappingText(
+      Object.entries(manualSettings.symbol_mapping ?? {})
+        .map(([k, v]) => `${k}=${v}`)
+        .join('\n'),
+    )
   }
 
   const closeConfigureModal = () => {
     setConfigAccount(null)
+    setSymbolMappingText('')
   }
 
   const toggleDraftChannel = (channelId: string) => {
@@ -938,16 +947,22 @@ export function AccountConfigPage() {
                       <p className="text-xs text-neutral-600 mb-1">Symbol Mapping (one per line: FROM=TO)</p>
                       <textarea
                         className="w-full min-h-[90px] rounded-md border border-neutral-200 px-3 py-2 text-sm"
-                        value={Object.entries(configDraft.manualSettings.symbol_mapping ?? {}).map(([k, v]) => `${k}=${v}`).join('\n')}
+                        placeholder={`GOLD=XAUUSD\nUSOIL=WTIOIL\nBTC=BTCUSD`}
+                        value={symbolMappingText}
                         onChange={(e) => {
+                          const raw = e.target.value
+                          setSymbolMappingText(raw)
                           const next: Record<string, string> = {}
-                          for (const line of e.target.value.split('\n')) {
+                          for (const line of raw.split('\n')) {
                             const [a, b] = line.split('=').map(s => s.trim())
                             if (a && b) next[a.toUpperCase()] = b.toUpperCase()
                           }
                           setManual({ symbol_mapping: next })
                         }}
                       />
+                      <p className="mt-1 text-[11px] text-neutral-500">
+                        Examples: <span className="font-mono">GOLD=XAUUSD</span>, <span className="font-mono">USOIL=WTIOIL</span>
+                      </p>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <Input label="Symbol Prefix" value={configDraft.manualSettings.symbol_prefix ?? ''} onChange={e => setManual({ symbol_prefix: e.target.value })} />
@@ -1009,19 +1024,29 @@ export function AccountConfigPage() {
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <Select label="Range Trading" value={configDraft.manualSettings.range_trading ? 'yes' : 'no'} onChange={e => setManual({ range_trading: e.target.value === 'yes' })} options={[{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }]} />
-                    <Input label="Range Total Lot" type="number" value={String(configDraft.manualSettings.range_total_lot ?? 0.03)} onChange={e => setManual({ range_total_lot: Number(e.target.value) })} />
+                    {configDraft.manualSettings.range_trading && (
+                      <Input label="Range Total Lot" type="number" value={String(configDraft.manualSettings.range_total_lot ?? 0.03)} onChange={e => setManual({ range_total_lot: Number(e.target.value) })} />
+                    )}
                     <Select label="Reverse Signal" value={configDraft.manualSettings.reverse_signal ? 'yes' : 'no'} onChange={e => setManual({ reverse_signal: e.target.value === 'yes' })} options={[{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }]} />
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <label className="text-sm text-neutral-700 flex items-center gap-2"><input type="checkbox" checked={configDraft.manualSettings.use_predefined_sl_pips === true} onChange={e => setManual({ use_predefined_sl_pips: e.target.checked })} />Use Predefined SL Pips</label>
-                    <Input label="Predefined SL Pips" type="number" value={String(configDraft.manualSettings.predefined_sl_pips ?? 30)} onChange={e => setManual({ predefined_sl_pips: Number(e.target.value) })} />
+                    {configDraft.manualSettings.use_predefined_sl_pips && (
+                      <Input label="Predefined SL Pips" type="number" value={String(configDraft.manualSettings.predefined_sl_pips ?? 30)} onChange={e => setManual({ predefined_sl_pips: Number(e.target.value) })} />
+                    )}
                     <label className="text-sm text-neutral-700 flex items-center gap-2"><input type="checkbox" checked={configDraft.manualSettings.use_predefined_tp_pips === true} onChange={e => setManual({ use_predefined_tp_pips: e.target.checked })} />Use Predefined TPs</label>
-                    <Input label="Predefined TP Pips (comma)" value={(configDraft.manualSettings.predefined_tp_pips ?? []).join(',')} onChange={e => setManual({ predefined_tp_pips: e.target.value.split(',').map(n => Number(n.trim())).filter(Number.isFinite) })} />
+                    {configDraft.manualSettings.use_predefined_tp_pips && (
+                      <Input label="Predefined TP Pips (comma)" value={(configDraft.manualSettings.predefined_tp_pips ?? []).join(',')} onChange={e => setManual({ predefined_tp_pips: e.target.value.split(',').map(n => Number(n.trim())).filter(Number.isFinite) })} />
+                    )}
                     <label className="text-sm text-neutral-700 flex items-center gap-2"><input type="checkbox" checked={configDraft.manualSettings.rr_for_sl_enabled === true} onChange={e => setManual({ rr_for_sl_enabled: e.target.checked })} />Enable R:R for SL</label>
-                    <Input label="SL R:R" type="number" value={String(configDraft.manualSettings.rr_for_sl ?? 1)} onChange={e => setManual({ rr_for_sl: Number(e.target.value) })} />
+                    {configDraft.manualSettings.rr_for_sl_enabled && (
+                      <Input label="SL R:R" type="number" value={String(configDraft.manualSettings.rr_for_sl ?? 1)} onChange={e => setManual({ rr_for_sl: Number(e.target.value) })} />
+                    )}
                     <label className="text-sm text-neutral-700 flex items-center gap-2"><input type="checkbox" checked={configDraft.manualSettings.rr_for_tps_enabled === true} onChange={e => setManual({ rr_for_tps_enabled: e.target.checked })} />Enable R:R for TPs</label>
-                    <Input label="TP R:R values (comma)" value={(configDraft.manualSettings.rr_for_tps ?? []).join(',')} onChange={e => setManual({ rr_for_tps: e.target.value.split(',').map(n => Number(n.trim())).filter(Number.isFinite) })} />
+                    {configDraft.manualSettings.rr_for_tps_enabled && (
+                      <Input label="TP R:R values (comma)" value={(configDraft.manualSettings.rr_for_tps ?? []).join(',')} onChange={e => setManual({ rr_for_tps: e.target.value.split(',').map(n => Number(n.trim())).filter(Number.isFinite) })} />
+                    )}
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -1032,8 +1057,12 @@ export function AccountConfigPage() {
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <Select label="Move SL to Entry After" value={configDraft.manualSettings.move_sl_to_entry_after_mode ?? 'none'} onChange={e => setManual({ move_sl_to_entry_after_mode: e.target.value as ManualSettings['move_sl_to_entry_after_mode'] })} options={[{ value: 'none', label: 'None' }, { value: 'pips', label: 'Pips' }, { value: 'rr', label: 'RR' }, { value: 'money', label: 'Money' }, { value: 'tp_hit', label: 'TP Hit' }]} />
-                    <Input label="Move SL Trigger Value" type="number" value={String(configDraft.manualSettings.move_sl_to_entry_after_value ?? 10)} onChange={e => setManual({ move_sl_to_entry_after_value: Number(e.target.value) })} />
-                    <Select label="Move SL Type" value={configDraft.manualSettings.move_sl_to_entry_type ?? 'sl_only'} onChange={e => setManual({ move_sl_to_entry_type: e.target.value as ManualSettings['move_sl_to_entry_type'] })} options={[{ value: 'sl_only', label: 'Move SL only' }, { value: 'sl_and_close_half', label: 'Move SL and close half' }]} />
+                    {configDraft.manualSettings.move_sl_to_entry_after_mode !== 'none' && (
+                      <Input label="Move SL Trigger Value" type="number" value={String(configDraft.manualSettings.move_sl_to_entry_after_value ?? 10)} onChange={e => setManual({ move_sl_to_entry_after_value: Number(e.target.value) })} />
+                    )}
+                    {configDraft.manualSettings.move_sl_to_entry_after_mode !== 'none' && (
+                      <Select label="Move SL Type" value={configDraft.manualSettings.move_sl_to_entry_type ?? 'sl_only'} onChange={e => setManual({ move_sl_to_entry_type: e.target.value as ManualSettings['move_sl_to_entry_type'] })} options={[{ value: 'sl_only', label: 'Move SL only' }, { value: 'sl_and_close_half', label: 'Move SL and close half' }]} />
+                    )}
                     <Input label="Breakeven Offset (pips)" type="number" value={String(configDraft.manualSettings.breakeven_offset_pips ?? 10)} onChange={e => setManual({ breakeven_offset_pips: Number(e.target.value) })} />
                     <Input label="Partial Close (%)" type="number" value={String(configDraft.manualSettings.partial_close_percent ?? 25)} onChange={e => setManual({ partial_close_percent: Number(e.target.value) })} />
                     <Input label="Half Close (%)" type="number" value={String(configDraft.manualSettings.half_close_percent ?? 50)} onChange={e => setManual({ half_close_percent: Number(e.target.value) })} />
@@ -1047,15 +1076,52 @@ export function AccountConfigPage() {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <Select label="Time Filter" value={configDraft.manualSettings.time_filter_enabled ? 'enabled' : 'disabled'} onChange={e => setManual({ time_filter_enabled: e.target.value === 'enabled' })} options={[{ value: 'disabled', label: 'Disabled' }, { value: 'enabled', label: 'Enabled' }]} />
-                    <Input label="Start Time" type="time" value={configDraft.manualSettings.trade_start_time ?? '00:00'} onChange={e => setManual({ trade_start_time: e.target.value })} />
-                    <Input label="End Time" type="time" value={configDraft.manualSettings.trade_end_time ?? '23:59'} onChange={e => setManual({ trade_end_time: e.target.value })} />
-                    <Select label="Days Filter" value={configDraft.manualSettings.days_filter_enabled ? 'enabled' : 'disabled'} onChange={e => setManual({ days_filter_enabled: e.target.value === 'enabled' })} options={[{ value: 'disabled', label: 'Disabled' }, { value: 'enabled', label: 'Enabled' }]} />
-                    <Input label="Trade Days (0-6 comma)" value={(configDraft.manualSettings.trade_days ?? [1,2,3,4,5]).join(',')} onChange={e => setManual({ trade_days: e.target.value.split(',').map(n => Number(n.trim())).filter(Number.isFinite) })} />
-                    <Select label="Allow High Impact News" value={configDraft.manualSettings.allow_high_impact_news ? 'yes' : 'no'} onChange={e => setManual({ allow_high_impact_news: e.target.value === 'yes' })} options={[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]} />
-                    <Input label="Close Before News (min)" type="number" value={String(configDraft.manualSettings.close_before_news_minutes ?? 10)} onChange={e => setManual({ close_before_news_minutes: Number(e.target.value) })} />
-                    <Input label="Resume After News (min)" type="number" value={String(configDraft.manualSettings.resume_after_news_minutes ?? 10)} onChange={e => setManual({ resume_after_news_minutes: Number(e.target.value) })} />
+                    <Select label="Time Filter" value={configDraft.manualSettings.time_filter_enabled ? 'yes' : 'no'} onChange={e => setManual({ time_filter_enabled: e.target.value === 'yes' })} options={[{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }]} />
+                    {configDraft.manualSettings.time_filter_enabled && (
+                      <Input label="Start Time" type="time" value={configDraft.manualSettings.trade_start_time ?? '00:00'} onChange={e => setManual({ trade_start_time: e.target.value })} />
+                    )}
+                    {configDraft.manualSettings.time_filter_enabled && (
+                      <Input label="End Time" type="time" value={configDraft.manualSettings.trade_end_time ?? '23:59'} onChange={e => setManual({ trade_end_time: e.target.value })} />
+                    )}
+                    <Select label="Days Filter" value={configDraft.manualSettings.days_filter_enabled ? 'yes' : 'no'} onChange={e => setManual({ days_filter_enabled: e.target.value === 'yes' })} options={[{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }]} />
+                    {configDraft.manualSettings.days_filter_enabled && (
+                      <div className="md:col-span-2">
+                        <p className="text-xs text-neutral-600 mb-1">Days of the week</p>
+                        <div className="flex flex-wrap gap-3">
+                          {[
+                            { label: 'Sunday', value: 0 },
+                            { label: 'Monday', value: 1 },
+                            { label: 'Tuesday', value: 2 },
+                            { label: 'Wednesday', value: 3 },
+                            { label: 'Thursday', value: 4 },
+                            { label: 'Friday', value: 5 },
+                            { label: 'Saturday', value: 6 },
+                          ].map((d) => (
+                            <label key={d.value} className="text-sm text-neutral-700 flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={(configDraft.manualSettings.trade_days ?? [1, 2, 3, 4, 5]).includes(d.value)}
+                                onChange={(e) => {
+                                  const prev = configDraft.manualSettings.trade_days ?? [1, 2, 3, 4, 5]
+                                  const next = e.target.checked ? [...new Set([...prev, d.value])] : prev.filter((x) => x !== d.value)
+                                  setManual({ trade_days: next })
+                                }}
+                              />
+                              {d.label}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <Select label="Allow High Impact News" value={configDraft.manualSettings.allow_high_impact_news ? 'yes' : 'no'} onChange={e => setManual({ allow_high_impact_news: e.target.value === 'yes' })} options={[{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }]} />
+                    {configDraft.manualSettings.allow_high_impact_news && (
+                      <Input label="Close Before News (min)" type="number" value={String(configDraft.manualSettings.close_before_news_minutes ?? 10)} onChange={e => setManual({ close_before_news_minutes: Number(e.target.value) })} />
+                    )}
+                    {configDraft.manualSettings.allow_high_impact_news && (
+                      <Input label="Resume After News (min)" type="number" value={String(configDraft.manualSettings.resume_after_news_minutes ?? 10)} onChange={e => setManual({ resume_after_news_minutes: Number(e.target.value) })} />
+                    )}
                   </div>
+
                 </div>
               )}
             </div>

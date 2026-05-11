@@ -68,6 +68,172 @@ type ChannelLexiconRow = {
   unknown_tokens?: string[] | null
 }
 
+type ChannelKeywords = {
+  signal: {
+    entry_point: string
+    buy: string
+    sell: string
+    sl: string
+    tp: string
+    market_order: string
+  }
+  update: {
+    close_tp1: string
+    close_tp2: string
+    close_tp3: string
+    close_tp4: string
+    close_full: string
+    close_half: string
+    close_partial: string
+    break_even: string
+    set_tp1: string
+    set_tp2: string
+    set_tp3: string
+    set_tp4: string
+    set_tp5: string
+    set_tp: string
+    set_sl: string
+    delete: string
+  }
+  additional: {
+    layer: string
+    close_all: string
+    delete_all: string
+    ignore_keyword: string
+    skip_keyword: string
+    remove_sl: string
+    delay_msec: number
+    prefer_entry: "first_price" | "last_price"
+    sl_in_pips: boolean
+    tp_in_pips: boolean
+    delimiters: string
+    all_order: boolean
+    read_forwarded: boolean
+    read_image: boolean
+  }
+}
+
+const DEFAULT_CHANNEL_KEYWORDS: ChannelKeywords = {
+  signal: {
+    entry_point: "ENTRY",
+    buy: "BUY",
+    sell: "SELL",
+    sl: "SL",
+    tp: "TP",
+    market_order: "MARKET",
+  },
+  update: {
+    close_tp1: "CLOSE TP1",
+    close_tp2: "CLOSE TP2",
+    close_tp3: "CLOSE TP3",
+    close_tp4: "CLOSE TP4",
+    close_full: "CLOSE FULL",
+    close_half: "CLOSE HALF",
+    close_partial: "CLOSE PARTIAL",
+    break_even: "BREAK EVEN",
+    set_tp1: "SET TP1",
+    set_tp2: "SET TP2",
+    set_tp3: "SET TP3",
+    set_tp4: "SET TP4",
+    set_tp5: "SET TP5",
+    set_tp: "SET TP",
+    set_sl: "SET SL",
+    delete: "DELETE",
+  },
+  additional: {
+    layer: "LAYER",
+    close_all: "CLOSE ALL",
+    delete_all: "DELETE ALL",
+    ignore_keyword: "IGNORE",
+    skip_keyword: "SKIP",
+    remove_sl: "REMOVE SL",
+    delay_msec: 0,
+    prefer_entry: "first_price",
+    sl_in_pips: false,
+    tp_in_pips: false,
+    delimiters: "",
+    all_order: false,
+    read_forwarded: true,
+    read_image: false,
+  },
+}
+
+function normalizeChannelKeywords(raw: unknown): ChannelKeywords {
+  const j = raw && typeof raw === "object" ? raw as Record<string, unknown> : {}
+  const signal = j.signal && typeof j.signal === "object" ? j.signal as Record<string, unknown> : {}
+  const update = j.update && typeof j.update === "object" ? j.update as Record<string, unknown> : {}
+  const additional = j.additional && typeof j.additional === "object" ? j.additional as Record<string, unknown> : {}
+  return {
+    signal: {
+      entry_point: String(signal.entry_point ?? DEFAULT_CHANNEL_KEYWORDS.signal.entry_point),
+      buy: String(signal.buy ?? DEFAULT_CHANNEL_KEYWORDS.signal.buy),
+      sell: String(signal.sell ?? DEFAULT_CHANNEL_KEYWORDS.signal.sell),
+      sl: String(signal.sl ?? DEFAULT_CHANNEL_KEYWORDS.signal.sl),
+      tp: String(signal.tp ?? DEFAULT_CHANNEL_KEYWORDS.signal.tp),
+      market_order: String(signal.market_order ?? DEFAULT_CHANNEL_KEYWORDS.signal.market_order),
+    },
+    update: {
+      close_tp1: String(update.close_tp1 ?? DEFAULT_CHANNEL_KEYWORDS.update.close_tp1),
+      close_tp2: String(update.close_tp2 ?? DEFAULT_CHANNEL_KEYWORDS.update.close_tp2),
+      close_tp3: String(update.close_tp3 ?? DEFAULT_CHANNEL_KEYWORDS.update.close_tp3),
+      close_tp4: String(update.close_tp4 ?? DEFAULT_CHANNEL_KEYWORDS.update.close_tp4),
+      close_full: String(update.close_full ?? DEFAULT_CHANNEL_KEYWORDS.update.close_full),
+      close_half: String(update.close_half ?? DEFAULT_CHANNEL_KEYWORDS.update.close_half),
+      close_partial: String(update.close_partial ?? DEFAULT_CHANNEL_KEYWORDS.update.close_partial),
+      break_even: String(update.break_even ?? DEFAULT_CHANNEL_KEYWORDS.update.break_even),
+      set_tp1: String(update.set_tp1 ?? DEFAULT_CHANNEL_KEYWORDS.update.set_tp1),
+      set_tp2: String(update.set_tp2 ?? DEFAULT_CHANNEL_KEYWORDS.update.set_tp2),
+      set_tp3: String(update.set_tp3 ?? DEFAULT_CHANNEL_KEYWORDS.update.set_tp3),
+      set_tp4: String(update.set_tp4 ?? DEFAULT_CHANNEL_KEYWORDS.update.set_tp4),
+      set_tp5: String(update.set_tp5 ?? DEFAULT_CHANNEL_KEYWORDS.update.set_tp5),
+      set_tp: String(update.set_tp ?? DEFAULT_CHANNEL_KEYWORDS.update.set_tp),
+      set_sl: String(update.set_sl ?? DEFAULT_CHANNEL_KEYWORDS.update.set_sl),
+      delete: String(update.delete ?? DEFAULT_CHANNEL_KEYWORDS.update.delete),
+    },
+    additional: {
+      layer: String(additional.layer ?? DEFAULT_CHANNEL_KEYWORDS.additional.layer),
+      close_all: String(additional.close_all ?? DEFAULT_CHANNEL_KEYWORDS.additional.close_all),
+      delete_all: String(additional.delete_all ?? DEFAULT_CHANNEL_KEYWORDS.additional.delete_all),
+      ignore_keyword: String(additional.ignore_keyword ?? DEFAULT_CHANNEL_KEYWORDS.additional.ignore_keyword),
+      skip_keyword: String(additional.skip_keyword ?? DEFAULT_CHANNEL_KEYWORDS.additional.skip_keyword),
+      remove_sl: String(additional.remove_sl ?? DEFAULT_CHANNEL_KEYWORDS.additional.remove_sl),
+      delay_msec: Number(additional.delay_msec ?? DEFAULT_CHANNEL_KEYWORDS.additional.delay_msec) || 0,
+      prefer_entry: String(additional.prefer_entry ?? DEFAULT_CHANNEL_KEYWORDS.additional.prefer_entry) === "last_price"
+        ? "last_price"
+        : "first_price",
+      sl_in_pips: Boolean(additional.sl_in_pips ?? DEFAULT_CHANNEL_KEYWORDS.additional.sl_in_pips),
+      tp_in_pips: Boolean(additional.tp_in_pips ?? DEFAULT_CHANNEL_KEYWORDS.additional.tp_in_pips),
+      delimiters: String(additional.delimiters ?? DEFAULT_CHANNEL_KEYWORDS.additional.delimiters),
+      all_order: Boolean(additional.all_order ?? DEFAULT_CHANNEL_KEYWORDS.additional.all_order),
+      read_forwarded: Boolean(additional.read_forwarded ?? DEFAULT_CHANNEL_KEYWORDS.additional.read_forwarded),
+      read_image: Boolean(additional.read_image ?? DEFAULT_CHANNEL_KEYWORDS.additional.read_image),
+    },
+  }
+}
+
+function splitKeywordAliases(raw: string, delimiters = ""): string[] {
+  const extra = String(delimiters ?? "").replace(/\s+/g, "")
+  const chars = [",", ";", "\n", "|", ...extra.split("")].filter(Boolean).map((c) => escapeRegExp(c))
+  const splitter = new RegExp(`[${chars.join("")}]+`)
+  return String(raw ?? "")
+    .split(splitter)
+    .map((x) => x.trim())
+    .filter(Boolean)
+}
+
+function keywordRegex(phrase: string): RegExp {
+  const p = escapeRegExp(phrase.trim()).replace(/\s+/g, "\\s+")
+  return new RegExp(`(?:^|\\b)${p}(?:\\b|$)`, "i")
+}
+
+function hasAnyKeyword(text: string, words: string[]): boolean {
+  return words.some((w) => w && keywordRegex(w).test(text))
+}
+
+function parseSideFromKeywords(text: string, words: string[]): boolean {
+  return hasAnyKeyword(text, words)
+}
+
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
@@ -94,6 +260,20 @@ function extractTpLevels(message: string, extraLabels: string[] = []): number[] 
 function detectOpenTp(message: string): boolean {
   const t = String(message ?? "")
   return /\b(open\s*tp|without\s*tp|no\s*tp|runner|let\s+it\s+run|leave\s+runner)\b/i.test(t)
+}
+
+function extractPriceByLabels(message: string, labels: string[]): number | null {
+  for (const label of labels) {
+    const k = String(label ?? "").trim()
+    if (!k) continue
+    const rx = new RegExp(`${escapeRegExp(k).replace(/\s+/g, "\\s*")}\\s*[:=\\-]?\\s*(\\d+(?:\\.\\d+)?)`, "i")
+    const m = message.match(rx)
+    if (m?.[1]) {
+      const n = Number(m[1])
+      if (Number.isFinite(n)) return n
+    }
+  }
+  return null
 }
 
 function isManagementAction(action: string): boolean {
@@ -194,7 +374,11 @@ function extractTradableSymbolFromMessage(raw: string): string | null {
 const ENTRY_KW = /\b(buy|sell|long|short)\b/i
 const MGMT_CLOSE = /\b(close\s*(all)?|flatten|kill\s*zones?|exit\s*(trade|position|long|short))\b|\b(close|closed)\s+((my|the|this)\s+)?((running|active|open)\s+)?(trade|position|btc|gold)/i
 
-function parseDeterministicManagement(message: string, lexicon: ChannelLexiconRow | null): ParsedSignal | null {
+function parseDeterministicManagement(
+  message: string,
+  lexicon: ChannelLexiconRow | null,
+  channelKeywords: ChannelKeywords,
+): ParsedSignal | null {
   const t = message.replace(/\s+/g, " ").trim()
   if (!t) return null
   const tl = t.toLowerCase()
@@ -202,25 +386,53 @@ function parseDeterministicManagement(message: string, lexicon: ChannelLexiconRo
   const sym = extractTradableSymbolFromMessage(t)
   let action: ParsedSignal["action"] | null = null
   let confidence = 0.92
+  const delim = channelKeywords.additional.delimiters
+  const kwClose = [
+    ...splitKeywordAliases(channelKeywords.update.close_full, delim),
+    ...splitKeywordAliases(channelKeywords.additional.close_all, delim),
+  ]
+  const kwPartial = [
+    ...splitKeywordAliases(channelKeywords.update.close_half, delim),
+    ...splitKeywordAliases(channelKeywords.update.close_partial, delim),
+    ...splitKeywordAliases(channelKeywords.update.close_tp1, delim),
+    ...splitKeywordAliases(channelKeywords.update.close_tp2, delim),
+    ...splitKeywordAliases(channelKeywords.update.close_tp3, delim),
+    ...splitKeywordAliases(channelKeywords.update.close_tp4, delim),
+  ]
+  const kwBreakeven = splitKeywordAliases(channelKeywords.update.break_even, delim)
+  const kwModify = [
+    ...splitKeywordAliases(channelKeywords.update.set_sl, delim),
+    ...splitKeywordAliases(channelKeywords.update.set_tp, delim),
+    ...splitKeywordAliases(channelKeywords.update.set_tp1, delim),
+    ...splitKeywordAliases(channelKeywords.update.set_tp2, delim),
+    ...splitKeywordAliases(channelKeywords.update.set_tp3, delim),
+    ...splitKeywordAliases(channelKeywords.update.set_tp4, delim),
+    ...splitKeywordAliases(channelKeywords.update.set_tp5, delim),
+    ...splitKeywordAliases(channelKeywords.additional.remove_sl, delim),
+    ...splitKeywordAliases(channelKeywords.update.delete, delim),
+    ...splitKeywordAliases(channelKeywords.additional.delete_all, delim),
+  ]
 
   // Order matters: generic MGMT_CLOSE matches "Close " in "Close half …" — evaluate partial + breakeven first.
   const wantsPartialHalf =
     /\b(partials?|close\s+partials?|close\s+half|close\s+50%|take\s+partials?|take\s+half|take\s+50%|c\s+half|half\s+of\s+(the\s+)?(position|trade))\b/i.test(t) ||
-    /\b(50|half)\s*%?\s*(of\s+)?(the\s+)?(position|trade|lot|profit)\b/i.test(t)
+    /\b(50|half)\s*%?\s*(of\s+)?(the\s+)?(position|trade|lot|profit)\b/i.test(t) ||
+    hasAnyKeyword(t, kwPartial)
   const wantsBreakeven =
     /\bbreakeven|break\s*even\b/i.test(t) ||
     /\bmoved?\s+(sl\s+)?to\s+(be|entry|entr(y)?\s?price)|\b(be|bk)\s*now\b/i.test(t) ||
     /\bstop\s*loss\s+to\s+(be|entry|breakeven|break\s*even)\b/i.test(t) ||
     /\bsl\s+to\s+(be|entry)\b/i.test(t) ||
-    /\bmove\s+.*\b(stop\s*loss|sl)\b.*\b(breakeven|break\s*even|entry|be)\b/i.test(t)
+    /\bmove\s+.*\b(stop\s*loss|sl)\b.*\b(breakeven|break\s*even|entry|be)\b/i.test(t) ||
+    hasAnyKeyword(t, kwBreakeven)
 
   if (wantsPartialHalf && wantsBreakeven) action = "partial_breakeven"
   else if (wantsPartialHalf) action = "partial_profit"
   else if (wantsBreakeven) action = "breakeven"
-  else if (MGMT_CLOSE.test(t)) action = "close"
+  else if (MGMT_CLOSE.test(t) || hasAnyKeyword(t, kwClose)) action = "close"
   else if (
     /\b(set|move|adjust|bring)\s+(sl|tp|target|stop\s*loss|take\s*profit)\b|\b(stop\s*loss|take\s*profit|target)\s*(to|=)\s*[\d.]+/i
-      .test(t)
+      .test(t) || hasAnyKeyword(t, kwModify)
   ) action = "modify"
 
   if (!action) return null
@@ -234,8 +446,13 @@ function parseDeterministicManagement(message: string, lexicon: ChannelLexiconRo
   }
 
   const slMatch = t.match(/\b(?:sl|stop\s*loss)\s*[:=]?\s*(\d+(?:\.\d+)?)/i)
-  const sl = slMatch ? Number(slMatch[1]) : null
-  const extraTp = [...(lexicon?.tp_aliases ?? []), ...(lexicon?.target_aliases ?? [])]
+  const sl = slMatch ? Number(slMatch[1]) : extractPriceByLabels(t, splitKeywordAliases(channelKeywords.signal.sl, delim))
+  const extraTp = [
+    ...(lexicon?.tp_aliases ?? []),
+    ...(lexicon?.target_aliases ?? []),
+    ...splitKeywordAliases(channelKeywords.signal.tp, delim),
+    ...splitKeywordAliases(channelKeywords.update.set_tp, delim),
+  ]
   const tp = extractTpLevels(t, extraTp)
 
   return {
@@ -254,15 +471,34 @@ function parseDeterministicManagement(message: string, lexicon: ChannelLexiconRo
 }
 
 /** Fast path: market-ish entries for common assets (gold, btc, …), not gold-only global default. */
-function parseSimpleSignal(message: string, lexicon: ChannelLexiconRow | null): ParsedSignal | null {
+function parseSimpleSignal(
+  message: string,
+  lexicon: ChannelLexiconRow | null,
+  channelKeywords: ChannelKeywords,
+): ParsedSignal | null {
   const text = message.toLowerCase().replace(/\s+/g, " ").trim()
   if (!text) return null
+  const delim = channelKeywords.additional.delimiters
+  const buyAliases = Array.from(new Set(["buy", "long", ...splitKeywordAliases(channelKeywords.signal.buy, delim)]))
+  const sellAliases = Array.from(new Set(["sell", "short", ...splitKeywordAliases(channelKeywords.signal.sell, delim)]))
+  const marketAliases = Array.from(new Set(["now", "instant", "market", "mkt", ...splitKeywordAliases(channelKeywords.signal.market_order, delim)]))
+  const mgmtAliases = [
+    ...splitKeywordAliases(channelKeywords.update.close_full, delim),
+    ...splitKeywordAliases(channelKeywords.update.close_half, delim),
+    ...splitKeywordAliases(channelKeywords.update.close_partial, delim),
+    ...splitKeywordAliases(channelKeywords.update.break_even, delim),
+    ...splitKeywordAliases(channelKeywords.update.set_sl, delim),
+    ...splitKeywordAliases(channelKeywords.update.set_tp, delim),
+    ...splitKeywordAliases(channelKeywords.update.delete, delim),
+    ...splitKeywordAliases(channelKeywords.additional.close_all, delim),
+    ...splitKeywordAliases(channelKeywords.additional.delete_all, delim),
+  ]
 
-  if (/\b(close|flatten|exit\s+trade|breakeven|break\s+even|partial|move\s+(sl|tp))\b/i.test(text)) return null
+  if (/\b(close|flatten|exit\s+trade|breakeven|break\s+even|partial|move\s+(sl|tp))\b/i.test(text) || hasAnyKeyword(message, mgmtAliases)) return null
 
-  const isBuy = /\b(buy|long)\b/.test(text)
-  const isSell = /\b(sell|short)\b/.test(text)
-  const isNow = /\b(now|instant|market|mkt\b)\b/.test(text)
+  const isBuy = parseSideFromKeywords(message, buyAliases)
+  const isSell = parseSideFromKeywords(message, sellAliases)
+  const isNow = parseSideFromKeywords(message, marketAliases)
   const atMarketLike = /\b(at\s+market|@\s*market)\b/i.test(message)
 
   if (!isNow && !atMarketLike) return null
@@ -281,8 +517,13 @@ function parseSimpleSignal(message: string, lexicon: ChannelLexiconRow | null): 
   if (!hasInstrumentContext) return null
 
   const slMatch = text.match(/\b(?:sl|stop\s*loss)\s*[:=]?\s*(\d+(?:\.\d+)?)/i)
-  const sl = slMatch ? Number(slMatch[1]) : null
-  const extraTp = [...(lexicon?.tp_aliases ?? []), ...(lexicon?.target_aliases ?? [])]
+  const sl = slMatch ? Number(slMatch[1]) : extractPriceByLabels(message, splitKeywordAliases(channelKeywords.signal.sl, delim))
+  const extraTp = [
+    ...(lexicon?.tp_aliases ?? []),
+    ...(lexicon?.target_aliases ?? []),
+    ...splitKeywordAliases(channelKeywords.signal.tp, delim),
+    ...splitKeywordAliases(channelKeywords.update.set_tp, delim),
+  ]
   const tp = extractTpLevels(message, extraTp)
 
   return {
@@ -373,6 +614,19 @@ async function loadChannelLexicon(
     .eq("channel_id", channelId)
     .maybeSingle()
   return (data ?? null) as ChannelLexiconRow | null
+}
+
+async function loadChannelKeywords(
+  supabase: ReturnType<typeof createClient>,
+  channelId: string | null,
+): Promise<ChannelKeywords> {
+  if (!channelId) return DEFAULT_CHANNEL_KEYWORDS
+  const { data } = await supabase
+    .from("telegram_channels")
+    .select("channel_keywords")
+    .eq("id", channelId)
+    .maybeSingle()
+  return normalizeChannelKeywords(data?.channel_keywords)
 }
 
 function collectUnknownActionTokens(raw: string): string[] {
@@ -477,6 +731,7 @@ Deno.serve(async (req: Request) => {
     // Optional channel profile hints (read-only; missing row is fine).
     let channelHints: string | null = null
     const lexicon = await loadChannelLexicon(supabase, signal.channel_id)
+    const channelKeywords = await loadChannelKeywords(supabase, signal.channel_id)
     if (signal.channel_id) {
       const { data: prof } = await supabase
         .from("channel_signal_profiles")
@@ -492,9 +747,28 @@ Deno.serve(async (req: Request) => {
     }
 
     // Parse message: management + multi-asset deterministic paths first, then LLM.
+    const ignoreAliases = [
+      ...splitKeywordAliases(channelKeywords.additional.ignore_keyword, channelKeywords.additional.delimiters),
+      ...splitKeywordAliases(channelKeywords.additional.skip_keyword, channelKeywords.additional.delimiters),
+    ]
     const rawParsed =
-      parseDeterministicManagement(signal.raw_message, lexicon)
-      ?? parseSimpleSignal(signal.raw_message, lexicon)
+      (hasAnyKeyword(signal.raw_message, ignoreAliases)
+        ? {
+          action: "ignore",
+          symbol: null,
+          entry_price: null,
+          entry_zone_low: null,
+          entry_zone_high: null,
+          sl: null,
+          tp: [],
+          lot_size: null,
+          confidence: 1,
+          raw_instruction: signal.raw_message,
+          open_tp: false,
+        } satisfies ParsedSignal
+        : null)
+      ?? parseDeterministicManagement(signal.raw_message, lexicon, channelKeywords)
+      ?? parseSimpleSignal(signal.raw_message, lexicon, channelKeywords)
       ?? await parseWithOpenAI(signal.raw_message, channelHints)
     const parsed = applyRawSymbolRepair(
       normalizeParsedFromModel(rawParsed, signal.raw_message),

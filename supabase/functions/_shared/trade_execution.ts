@@ -1353,6 +1353,17 @@ async function executeOneBroker(
           null,
         )
         if (existingForSymbol?.metaapi_order_id) {
+          // Guard against stale DB rows: only block new entry if the ticket still exists on broker.
+          const brokerHasPosition = await fetchOpenPriceForPositionTicket(
+            accountId,
+            String(existingForSymbol.metaapi_order_id),
+          )
+          if (brokerHasPosition == null || !Number.isFinite(Number(brokerHasPosition))) {
+            await supabase
+              .from("trades")
+              .update({ status: "closed", closed_at: new Date().toISOString() })
+              .eq("id", existingForSymbol.id)
+          } else
           if (manual.close_on_opposite_signal && String(existingForSymbol.direction ?? "").toLowerCase() !== effectiveParsed.action) {
             await mtOrderClose(accountId, String(existingForSymbol.metaapi_order_id))
             await supabase.from("trades").update({ status: "closed", closed_at: new Date().toISOString() }).eq("id", existingForSymbol.id)
