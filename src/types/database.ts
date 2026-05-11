@@ -43,6 +43,10 @@ export interface AiBrokerSettings {
   max_lot?: number
   reference_equity?: number
   fallback_lot?: number | null
+  /** `equity` (default): percent applies to equity, then balance if equity missing. `balance`: always balance when set. */
+  risk_basis?: 'equity' | 'balance'
+  /** `linear` (default): scale lots with account vs reference_equity. `margin`: risk USD / RequiredMargin per 1 lot. */
+  sizing_mode?: 'linear' | 'margin'
 }
 
 export interface BrokerAccount {
@@ -146,7 +150,7 @@ export interface Trade {
 }
 
 export type ParsedSignal = {
-  action: 'buy' | 'sell' | 'close' | 'breakeven' | 'partial_profit' | 'modify'
+  action: 'buy' | 'sell' | 'close' | 'breakeven' | 'partial_profit' | 'partial_breakeven' | 'modify'
   symbol: string
   entry_price?: number
   entry_zone_low?: number

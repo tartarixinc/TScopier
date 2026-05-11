@@ -208,7 +208,11 @@ function heuristicProfile(rows: Array<{ raw_message: string; parsed_data: unknow
         ? "mixed_sl_usage"
         : "fixed_sl"
 
-  const managementLike = (actionCounts.get("modify") ?? 0) + (actionCounts.get("breakeven") ?? 0) + (actionCounts.get("partial_profit") ?? 0)
+  const managementLike =
+    (actionCounts.get("modify") ?? 0) +
+    (actionCounts.get("breakeven") ?? 0) +
+    (actionCounts.get("partial_profit") ?? 0) +
+    (actionCounts.get("partial_breakeven") ?? 0)
   const executionLike = (actionCounts.get("buy") ?? 0) + (actionCounts.get("sell") ?? 0)
   const signalType =
     executionLike > 0 && managementLike > 0

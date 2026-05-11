@@ -53,7 +53,38 @@ interface AiExpertLogRow {
   } | null
 }
 
-const MANAGEMENT_LOG_ACTIONS = new Set(['close', 'breakeven', 'partial_profit', 'modify'])
+/** Drop in-flight `attempt` rows when the same `signal_id` already has a terminal parse row in this batch (worker logs attempt then success/failed). */
+function dedupePipelineParseAttempts(logs: AiExpertLogRow[]): AiExpertLogRow[] {
+  const terminalSignalIds = new Set(
+    logs
+      .filter(
+        r =>
+          r.action === 'pipeline_parse_dispatch' &&
+          (r.status === 'success' || r.status === 'failed') &&
+          r.signal_id,
+      )
+      .map(r => String(r.signal_id)),
+  )
+  return logs.filter(r => {
+    if (
+      r.action === 'pipeline_parse_dispatch' &&
+      r.status === 'attempt' &&
+      r.signal_id &&
+      terminalSignalIds.has(String(r.signal_id))
+    ) {
+      return false
+    }
+    return true
+  })
+}
+
+const MANAGEMENT_LOG_ACTIONS = new Set([
+  'close',
+  'breakeven',
+  'partial_profit',
+  'partial_breakeven',
+  'modify',
+])
 
 /** MT/API `volume` is often not in contract lots for crypto; reject absurd scalars so we don't show e.g. 2e6 instead of 0.02. */
 function isPlausibleRetailLot(n: number): boolean {
@@ -159,8 +190,11 @@ function symbolForExpertLog(row: AiExpertLogRow): string {
     MANAGEMENT_LOG_ACTIONS.has(String(row.action ?? '').toLowerCase())
 
   if (mgmt) {
-    // Stored parsed.symbol can hallucinate defaults; Telegram text + broker response are safer for CLOSE/modify lines.
+    const mgmtCorr = payload.management_correlation as Record<string, unknown> | undefined
+    const fromCorrelation = cleanSymbolLabel(mgmtCorr?.effective_symbol)
+    // Stored parsed.symbol can hallucinate (e.g. CHANGE); correlation + Telegram + broker response are safer.
     return (
+      fromCorrelation ??
       fromResponse ??
       fromTelegramGuess ??
       fromSignal ??
@@ -521,7 +555,7 @@ export function DashboardPage() {
       liveOpenTradesCount ??
       (hasAnyBrokerOpenTradesFromSummary ? totalLiveOpenTradesFromSummary : openTrades.length)
     setCopierLogs((logsRes.data ?? []) as Signal[])
-    setAiExpertLogs((aiLogsRes.data ?? []) as AiExpertLogRow[])
+    setAiExpertLogs(dedupePipelineParseAttempts((aiLogsRes.data ?? []) as AiExpertLogRow[]))
     setLinkedAccounts(brokerAccounts)
     setLinkedAccountBalances(balanceMap)
     const nextStats: DashboardStats = {
@@ -891,9 +925,14 @@ function AiExpertLogItem({ row }: { row: AiExpertLogRow }) {
 
   const message = (() => {
     if (row.action === 'pipeline_parse_dispatch') {
-      return row.status === 'success'
-        ? `Parser reached for ${symbol} (HTTP OK — check Copier logs for the actual parse result).`
-        : `Could not reach parse-signal for ${symbol}${row.error_message ? `: ${row.error_message}` : '.'}`
+      // Worker inserts `attempt` before the HTTP call and `success`/`failed` after — only the terminal row reflects reachability.
+      if (row.status === 'attempt') {
+        return `Calling parse-signal for ${symbol}…`
+      }
+      if (row.status === 'success') {
+        return `Parse-signal responded OK for ${symbol} (see Copier / signal for parsed fields).`
+      }
+      return `Could not reach parse-signal for ${symbol}${row.error_message ? `: ${row.error_message}` : '.'}`
     }
     if (row.status === 'success' && (action === 'buy' || action === 'sell')) {
       const lotStr = hasLot && lot != null ? formatLotSizeForMessage(lot) : ''

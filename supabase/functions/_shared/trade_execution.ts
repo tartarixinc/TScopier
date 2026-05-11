@@ -77,14 +77,20 @@ function normalizeAiSettings(raw: unknown): {
   max_lot: number
   reference_equity: number
   fallback_lot: number | null
+  risk_basis: "equity" | "balance"
+  sizing_mode: "linear" | "margin"
 } {
   const j = (raw && typeof raw === "object") ? raw as JsonRecord : {}
+  const rb = String(j.risk_basis ?? "equity").toLowerCase()
+  const sm = String(j.sizing_mode ?? "linear").toLowerCase()
   return {
     risk_percent_per_trade: Math.min(10, Math.max(0.05, Number(j.risk_percent_per_trade ?? 1) || 1)),
     min_lot: Math.max(0.001, Number(j.min_lot ?? 0.01) || 0.01),
     max_lot: Math.min(100, Math.max(0.01, Number(j.max_lot ?? 5) || 5)),
     reference_equity: Math.max(100, Number(j.reference_equity ?? 10000) || 10000),
     fallback_lot: j.fallback_lot != null && Number.isFinite(Number(j.fallback_lot)) ? Number(j.fallback_lot) : null,
+    risk_basis: rb === "balance" ? "balance" : "equity",
+    sizing_mode: sm === "margin" ? "margin" : "linear",
   }
 }
 
@@ -93,26 +99,40 @@ function clampLot(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n))
 }
 
-async function fetchAccountBalance(accountId: string): Promise<number | null> {
+function extractBalanceEquityFromAccountPayload(p: Record<string, unknown>): {
+  balance: number | null
+  equity: number | null
+} {
+  const summary = (p.summary && typeof p.summary === "object") ? p.summary as Record<string, unknown> : {}
+  const balRaw = Number(p.balance ?? p.Balance ?? summary.balance ?? summary.Balance)
+  const eqRaw = Number(p.equity ?? p.Equity ?? summary.equity ?? summary.Equity)
+  const balance = Number.isFinite(balRaw) && balRaw >= 0 ? balRaw : null
+  const equity = Number.isFinite(eqRaw) && eqRaw >= 0 ? eqRaw : null
+  return { balance, equity }
+}
+
+async function fetchAccountSnapshot(accountId: string): Promise<{ balance: number | null; equity: number | null }> {
   const from = "2024-01-01T00:00:00"
   const paths: [string, Record<string, QueryValue>][] = [
     ["/AccountSummary", { id: accountId }],
     ["/Account", { id: accountId }],
     ["/TradeStats", { id: accountId, from }],
   ]
+  let balance: number | null = null
+  let equity: number | null = null
   for (const [path, params] of paths) {
     try {
       const raw = await mtGet(path, params)
       if (!raw || typeof raw !== "object") continue
-      const p = raw as Record<string, unknown>
-      const summary = (p.summary && typeof p.summary === "object") ? p.summary as Record<string, unknown> : {}
-      const bal = Number(p.balance ?? p.Balance ?? summary.balance ?? summary.Balance)
-      if (Number.isFinite(bal) && bal >= 0) return bal
+      const snap = extractBalanceEquityFromAccountPayload(raw as Record<string, unknown>)
+      if (snap.balance != null) balance = snap.balance
+      if (snap.equity != null) equity = snap.equity
+      if (balance != null || equity != null) break
     } catch {
       // try next
     }
   }
-  return null
+  return { balance, equity }
 }
 
 /** Broker SYMBOL_VOLUME_MIN for the resolved instrument (lots), if discoverable via API. */
@@ -178,14 +198,76 @@ async function resolveLotAndPips(
     return { lotSize, pipTolerance, sizingLog: { source: "manual_mode", default_lot: defaultLot, broker_min_lot_floor: brokerLotFloor } }
   }
 
-  const balance = metaId ? await fetchAccountBalance(metaId) : null
-  /** AI default: stake `risk_percent_per_trade`% of equity per trade (`ai_settings`, default 1%). */
-  const riskUsd = balance != null && balance > 0 ? balance * (ai.risk_percent_per_trade / 100) : null
+  const snapshot = metaId ? await fetchAccountSnapshot(metaId) : { balance: null as number | null, equity: null as number | null }
+  const accountBasis = ai.risk_basis === "balance"
+    ? (snapshot.balance ?? snapshot.equity)
+    : (snapshot.equity ?? snapshot.balance)
+  const riskBudgetUsd =
+    accountBasis != null && accountBasis > 0 ? accountBasis * (ai.risk_percent_per_trade / 100) : null
 
-  // Baseline lots: normalize 1%-of-equity notionally against reference_equity (default $10k ⇒ default_lot ~= target at that size).
+  const canTryMargin =
+    ai.sizing_mode === "margin" &&
+    Boolean(metaId) &&
+    (parsed.action === "buy" || parsed.action === "sell") &&
+    Boolean(parsed.symbol?.trim()) &&
+    riskBudgetUsd != null &&
+    riskBudgetUsd > 0
+
+  if (canTryMargin) {
+    let margin1: number | null = null
+    let resolvedSym = ""
+    try {
+      resolvedSym = await resolveTradableSymbol(metaId, parsed.symbol!.trim())
+      const dealType: "DealBuy" | "DealSell" = parsed.action === "sell" ? "DealSell" : "DealBuy"
+      const pxRaw = parsed.entry_price ?? parsed.entry_zone_low ?? parsed.entry_zone_high
+      const price = pxRaw != null && Number.isFinite(Number(pxRaw)) && Number(pxRaw) > 0 ? Number(pxRaw) : 0
+      margin1 = await fetchRequiredMarginForOneLot(metaId, resolvedSym, dealType, price)
+    } catch {
+      margin1 = null
+    }
+
+    if (margin1 != null && margin1 > 0 && Number.isFinite(margin1)) {
+      let lot = riskBudgetUsd! / margin1
+      lot = clampLot(lot, ai.min_lot, ai.max_lot)
+      let nextLot = lot
+      if (brokerLotFloor != null && nextLot < brokerLotFloor) {
+        nextLot = brokerLotFloor
+        nextLot = clampLot(nextLot, ai.min_lot, ai.max_lot)
+      }
+      return {
+        lotSize: nextLot,
+        pipTolerance,
+        sizingLog: {
+          source: "ai_margin_percent",
+          sizing_mode: ai.sizing_mode,
+          margin_per_1_lot: margin1,
+          risk_budget_usd: riskBudgetUsd,
+          risk_percent_per_trade: ai.risk_percent_per_trade,
+          risk_basis: ai.risk_basis,
+          account_basis: accountBasis,
+          balance_snapshot: snapshot.balance,
+          equity_snapshot: snapshot.equity,
+          resolved_symbol: resolvedSym,
+          broker_min_lot_floor: brokerLotFloor,
+          min_lot: ai.min_lot,
+          max_lot: ai.max_lot,
+        },
+      }
+    }
+  }
+
+  const marginFallback =
+    ai.sizing_mode === "margin" && canTryMargin ? "margin_unavailable_or_invalid" : null
+  const riskUsdLinear = riskBudgetUsd ??
+    (((snapshot.balance ?? snapshot.equity) ?? 0) > 0
+      ? (snapshot.balance ?? snapshot.equity)! * (ai.risk_percent_per_trade / 100)
+      : null)
+
   const refRiskUsd = Math.max(ai.reference_equity * 0.01, 1)
   let lot =
-    riskUsd != null && riskUsd > 0 ? defaultLot * (riskUsd / refRiskUsd) : clampLot(defaultLot, ai.min_lot, ai.max_lot)
+    riskUsdLinear != null && riskUsdLinear > 0
+      ? defaultLot * (riskUsdLinear / refRiskUsd)
+      : clampLot(defaultLot, ai.min_lot, ai.max_lot)
   lot = clampLot(lot, ai.min_lot, ai.max_lot)
 
   const entry = parsed.entry_price ?? parsed.entry_zone_low ?? parsed.entry_zone_high
@@ -194,16 +276,16 @@ async function resolveLotAndPips(
     entry != null && Number.isFinite(Number(entry)) ? Math.abs(Number(entry)) : 0,
     sl != null && Number.isFinite(Number(sl)) ? Math.abs(Number(sl)) : 0,
   )
-  // SL-distance refinement: same risk USD budget vs distance (forex-style); skip huge quotes (BTC, etc.).
   const useSlDistanceRisk = refPx > 0 && refPx < 5000
+  const basisForSl = snapshot.balance ?? snapshot.equity
   if (
-    balance != null && balance > 0 && riskUsd != null && riskUsd > 0 &&
+    basisForSl != null && basisForSl > 0 && riskUsdLinear != null && riskUsdLinear > 0 &&
     entry != null && sl != null && useSlDistanceRisk &&
     Number.isFinite(entry) && Number.isFinite(sl)
   ) {
     const dist = Math.abs(Number(entry) - Number(sl))
     if (dist > 1e-8) {
-      const heuristicLots = riskUsd / (dist * 80)
+      const heuristicLots = riskUsdLinear / (dist * 80)
       lot = clampLot(heuristicLots, ai.min_lot, ai.max_lot)
     }
   }
@@ -222,12 +304,19 @@ async function resolveLotAndPips(
     lotSize,
     pipTolerance,
     sizingLog: {
-      source: "ai_money_management",
-      balance_snapshot: balance,
-      risk_usd_budget: riskUsd,
+      source: "ai_linear_risk",
+      sizing_mode: ai.sizing_mode,
+      margin_mode_fallback_reason: marginFallback,
+      formula: "default_lot * (account_basis * risk_percent/100) / (reference_equity * 0.01)",
+      balance_snapshot: snapshot.balance,
+      equity_snapshot: snapshot.equity,
+      risk_usd_budget: riskUsdLinear,
+      account_basis: accountBasis,
       broker_min_lot_floor: brokerLotFloor,
       reference_equity: ai.reference_equity,
       risk_percent_per_trade: ai.risk_percent_per_trade,
+      risk_basis: ai.risk_basis,
+      default_lot_anchor: defaultLot,
       min_lot: ai.min_lot,
       max_lot: ai.max_lot,
     },
@@ -278,6 +367,56 @@ function pickTradeByParsedSymbol(rows: OpenTradeRow[], symbol: string | null): O
   return scored[0]?.t ?? null
 }
 
+const NON_INSTRUMENT_SYMBOL_TOKENS = new Set([
+  "CHANGE", "CHANGED", "CHANGES", "UPDATE", "UPDATED", "MODIFY", "MODIFIED", "MODIFICATION",
+  "ADJUST", "ADJUSTED", "REVISE", "REVISED", "EDIT", "MOVE", "MOVED", "SHIFT", "TWEAK",
+  "CLOSE", "CLOSED", "EXIT", "QUIT", "CANCEL", "CANCELLED",
+  "BREAKEVEN", "BE", "SECURE", "LOCK", "PROFIT", "LOSS", "TRAIL", "TRAILING",
+  "SIGNAL", "SETUP", "ALERT", "CALL", "TRADE", "POSITION", "ORDER", "ACTIVE", "PENDING",
+  "BUY", "SELL", "LONG", "SHORT", "MARKET", "LIMIT", "STOP", "ENTRY", "ZONE", "RANGE",
+  "TP", "SL", "NOW", "HERE", "WAIT", "AREA", "CHANNEL", "PAIR", "CHART", "SCREEN",
+])
+
+function effectiveSymbolForManagementMatch(symbol: string | null): string | null {
+  if (!symbol?.trim()) return null
+  const u = symbol.trim().toUpperCase().replace(/\s/g, "")
+  if (u.length < 5) return null
+  if (NON_INSTRUMENT_SYMBOL_TOKENS.has(u)) return null
+  return u
+}
+
+async function fetchLatestOpenTradeForChannel(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  brokerAccountId: string,
+  channelId: string,
+): Promise<OpenTradeRow | null> {
+  const recentSignals = 400
+  const { data: sigRows } = await supabase
+    .from("signals")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("channel_id", channelId)
+    .order("created_at", { ascending: false })
+    .limit(recentSignals)
+
+  const signalIds = Array.from(new Set((sigRows ?? []).map((r: { id: string }) => r.id).filter(Boolean)))
+  if (!signalIds.length) return null
+
+  const { data: tradeList } = await supabase
+    .from("trades")
+    .select("id, metaapi_order_id, symbol, direction, entry_price, lot_size, sl, tp, opened_at")
+    .eq("user_id", userId)
+    .eq("broker_account_id", brokerAccountId)
+    .eq("status", "open")
+    .in("signal_id", signalIds)
+    .order("opened_at", { ascending: false })
+    .limit(1)
+
+  const row = tradeList?.[0]
+  return row ? (row as OpenTradeRow) : null
+}
+
 async function findMatchingOpenTrade(
   supabase: ReturnType<typeof createClient>,
   userId: string,
@@ -290,22 +429,43 @@ async function findMatchingOpenTrade(
 }
 
 /**
- * CLOSE/modify/etc.: match by symbol first; if parser picked wrong instrument, use sole open ticket when unambiguous.
+ * CLOSE/modify/etc.: plausible symbol → match; else latest open from same Telegram channel;
+ * else sole open on broker; else most recently opened open.
  */
 async function resolveOpenTradeForManagement(
   supabase: ReturnType<typeof createClient>,
   userId: string,
   brokerAccountId: string,
   parsedSymbol: string | null,
+  channelId: string | null,
 ): Promise<{ trade: OpenTradeRow; resolution: string } | null> {
   const rows = await loadOpenTradeRows(supabase, userId, brokerAccountId, null)
   if (!rows.length) return null
 
-  const bySymbol = pickTradeByParsedSymbol(rows, parsedSymbol)
+  const symForMatch = effectiveSymbolForManagementMatch(parsedSymbol)
+  const bySymbol = pickTradeByParsedSymbol(rows, symForMatch)
   if (bySymbol) return { trade: bySymbol, resolution: "symbol_match" }
+
+  if (channelId) {
+    const byChannel = await fetchLatestOpenTradeForChannel(supabase, userId, brokerAccountId, channelId)
+    if (byChannel?.metaapi_order_id) {
+      return { trade: byChannel, resolution: "latest_open_same_telegram_channel" }
+    }
+  }
 
   if (rows.length === 1) {
     return { trade: rows[0], resolution: "single_open_position_fallback" }
+  }
+
+  const sorted = [...rows].sort((a, b) => {
+    const ta = Date.parse(String(a.opened_at ?? ""))
+    const tb = Date.parse(String(b.opened_at ?? ""))
+    if (Number.isFinite(tb) && Number.isFinite(ta) && tb !== ta) return tb - ta
+    return String(b.id).localeCompare(String(a.id))
+  })
+  const latest = sorted[0]
+  if (latest?.metaapi_order_id) {
+    return { trade: latest, resolution: "latest_open_on_broker_fallback" }
   }
 
   return null
@@ -406,6 +566,55 @@ async function mtGetAny(paths: string[], params: Record<string, QueryValue>) {
     }
   }
   throw (lastError instanceof Error ? lastError : new Error("All provider endpoints failed"))
+}
+
+function parseRequiredMarginResponse(data: unknown): number | null {
+  if (typeof data === "number" && Number.isFinite(data) && data > 0) return data
+  if (typeof data === "string") {
+    const n = Number(data.trim())
+    return Number.isFinite(n) && n > 0 ? n : null
+  }
+  if (data && typeof data === "object") {
+    const o = data as Record<string, unknown>
+    const candidates = [
+      o.margin,
+      o.Margin,
+      o.requiredMargin,
+      o.RequiredMargin,
+      o.value,
+      o.Value,
+      o.result,
+      o.data,
+    ]
+    for (const c of candidates) {
+      const n = typeof c === "number" ? c : Number(c)
+      if (Number.isFinite(n) && n > 0) return n
+    }
+  }
+  return null
+}
+
+async function fetchRequiredMarginForOneLot(
+  accountId: string,
+  symbol: string,
+  dealType: "DealBuy" | "DealSell",
+  price: number,
+): Promise<number | null> {
+  const sym = symbol.trim()
+  if (!sym || !accountId.trim()) return null
+  try {
+    const px = Number.isFinite(price) && price > 0 ? price : 0
+    const data = await mtGetAny(["/RequiredMargin"], {
+      id: accountId,
+      symbol: sym,
+      lots: 1,
+      type: dealType,
+      price: px,
+    })
+    return parseRequiredMarginResponse(data)
+  } catch {
+    return null
+  }
 }
 
 function extractSymbolsFromPayload(payload: unknown): string[] {
@@ -650,6 +859,99 @@ function normalizeProviderResult(result: unknown): {
   }
 }
 
+function extractOpenPriceFromOrderResult(result: unknown): number | null {
+  if (result == null || typeof result !== "object") return null
+  const r = result as Record<string, unknown>
+  const candidates: unknown[] = [
+    r.openPrice,
+    r.OpenPrice,
+    r.priceOpen,
+    r.open_price,
+    (r.orderInternal as Record<string, unknown> | undefined)?.openPrice,
+    (r.orderInternal as Record<string, unknown> | undefined)?.price,
+    (r.dealInternalIn as Record<string, unknown> | undefined)?.openPrice,
+    (r.dealInternalIn as Record<string, unknown> | undefined)?.price,
+    (r.dealInternalOut as Record<string, unknown> | undefined)?.openPrice,
+  ]
+  for (const c of candidates) {
+    const n = typeof c === "number" ? c : Number(c)
+    if (Number.isFinite(n) && n > 0) return n
+  }
+  return null
+}
+
+function asPositionArray(payload: unknown): Record<string, unknown>[] {
+  if (Array.isArray(payload)) return payload as Record<string, unknown>[]
+  if (payload && typeof payload === "object") {
+    const p = payload as Record<string, unknown>
+    for (const k of ["data", "result", "items", "positions", "orders", "openedOrders", "trades"]) {
+      const v = p[k]
+      if (Array.isArray(v)) return v as Record<string, unknown>[]
+    }
+  }
+  return []
+}
+
+function rowTicketCandidates(row: Record<string, unknown>): string[] {
+  const keys = [
+    row.ticket,
+    row.Ticket,
+    row.orderTicket,
+    row.positionId,
+    row.positionTicket,
+    row.PositionTicket,
+    row.identifier,
+    row.Identifier,
+    row.OrderTicket,
+    row.dealTicket,
+    row.historyOrderId,
+  ]
+  return keys.filter((x) => x != null).map((x) => String(x).trim()).filter(Boolean)
+}
+
+function rowMatchesTicket(row: Record<string, unknown>, ticket: string): boolean {
+  const t = String(ticket).trim()
+  if (!t) return false
+  return rowTicketCandidates(row).some((c) => c === t || c.replace(/\.\d+$/, "") === t)
+}
+
+function extractOpenPriceFromPositionRow(row: Record<string, unknown>): number | null {
+  const candidates: unknown[] = [
+    row.openPrice,
+    row.OpenPrice,
+    row.priceOpen,
+    row.open_price,
+    row.entryPrice,
+    row.EntryPrice,
+    row.price,
+    row.Price,
+  ]
+  for (const c of candidates) {
+    const n = typeof c === "number" ? c : Number(c)
+    if (Number.isFinite(n) && n > 0) return n
+  }
+  return null
+}
+
+async function fetchOpenPriceForPositionTicket(accountId: string, ticket: string): Promise<number | null> {
+  if (!accountId.trim() || !ticket.trim()) return null
+  const paths = ["/OpenPositions", "/Positions", "/OpenedOrders", "/OpenOrders"]
+  for (const path of paths) {
+    try {
+      const data = await mtGetAny([path], { id: accountId })
+      const rows = asPositionArray(data)
+      for (const row of rows) {
+        if (!rowMatchesTicket(row, ticket)) continue
+        const px = extractOpenPriceFromPositionRow(row)
+        if (px != null) return px
+      }
+    } catch {
+      // try next
+    }
+  }
+  return null
+}
+
 function operationFor(action: string, signalPrice: number | null): string {
   if (action === "buy") return signalPrice != null ? "BuyLimit" : "Buy"
   if (action === "sell") return signalPrice != null ? "SellLimit" : "Sell"
@@ -824,6 +1126,7 @@ async function executeOneBroker(
         return { ok: false, error: reason }
       }
       await logOk(result, { volume_executed: sent.volumeUsed })
+      const entryFromProvider = extractOpenPriceFromOrderResult(result)
       const { data: tradeRow } = await supabase
         .from("trades")
         .insert({
@@ -833,7 +1136,7 @@ async function executeOneBroker(
           metaapi_order_id: orderTicket,
           symbol: parsed.symbol,
           direction: parsed.action,
-          entry_price: parsed.entry_price ?? parsed.entry_zone_low ?? null,
+          entry_price: parsed.entry_price ?? parsed.entry_zone_low ?? entryFromProvider ?? null,
           sl: parsed.sl,
           tp: parsed.tp?.[0] ?? null,
           lot_size: sent.volumeUsed,
@@ -845,17 +1148,18 @@ async function executeOneBroker(
       return { ok: true, trade_id: tradeRow?.id ?? null }
     }
 
-    // Management actions: correlate to an open position (symbol match → else single-open fallback).
+    const symForMatch = effectiveSymbolForManagementMatch(parsed.symbol)
     const resolvedMg = await resolveOpenTradeForManagement(
       supabase,
       signal.user_id,
       brokerAccount.id,
       parsed.symbol,
+      signal.channel_id,
     )
     if (!resolvedMg?.trade?.metaapi_order_id) {
-      const msg = parsed.symbol?.trim()
-        ? `No matching open trade for management action (${parsed.symbol}) — ambiguous or missing position`
-        : "No matching open trade for management action (multiple open positions; specify symbol in signal)"
+      const msg = symForMatch
+        ? `No matching open trade for management action (${symForMatch}) — no open Copier position on this broker`
+        : "No matching open trade for management action — no open Copier position on this broker for this channel"
       await logFail(msg)
       return { ok: false, error: msg }
     }
@@ -866,6 +1170,8 @@ async function executeOneBroker(
       resolution: resolvedMg.resolution,
       effective_symbol: trade.symbol,
       parsed_symbol: parsed.symbol ?? null,
+      symbol_used_for_match: symForMatch ?? null,
+      telegram_channel_id: signal.channel_id ?? null,
     }
 
     if (parsed.action === "close") {
@@ -882,9 +1188,13 @@ async function executeOneBroker(
     }
 
     if (parsed.action === "breakeven") {
-      const entry = trade.entry_price != null ? Number(trade.entry_price) : null
+      let entry = trade.entry_price != null ? Number(trade.entry_price) : null
       if (entry == null || !Number.isFinite(entry)) {
-        const msg = "Breakeven requires entry price on open trade record"
+        entry = await fetchOpenPriceForPositionTicket(accountId, String(ticket))
+      }
+      if (entry == null || !Number.isFinite(entry)) {
+        const msg =
+          "Breakeven needs the position open price (not found on trade record or broker positions list — check ticket sync)"
         await logFail(msg)
         return { ok: false, error: msg }
       }
@@ -892,9 +1202,11 @@ async function executeOneBroker(
       const tpForMt = parsed.tp?.[0] != null ? Number(parsed.tp[0]) : Number(trade.tp ?? 0)
       const result = await mtOrderModify(accountId, ticket, newSl, tpForMt)
       await logOk(result)
+      const needsEntryBackfill = trade.entry_price == null || !Number.isFinite(Number(trade.entry_price))
       await supabase
         .from("trades")
         .update({
+          ...(needsEntryBackfill ? { entry_price: entry } : {}),
           sl: newSl,
           tp: parsed.tp?.[0] != null ? Number(parsed.tp[0]) : trade.tp,
           status: "modified",
@@ -924,6 +1236,68 @@ async function executeOneBroker(
           lot_size: closed ? 0 : remainder,
           status: closed ? "closed" : "open",
           closed_at: closed ? new Date().toISOString() : null,
+        })
+        .eq("id", trade.id)
+      return { ok: true, trade_id: trade.id }
+    }
+
+    if (parsed.action === "partial_breakeven") {
+      const currentLot = Number(trade.lot_size)
+      if (!Number.isFinite(currentLot) || currentLot <= 0.02) {
+        const msg = "Position too small or invalid for partial close"
+        await logFail(msg)
+        return { ok: false, error: msg }
+      }
+      const partialVol = Math.min(
+        Math.max(0.01, Math.floor((currentLot / 2) * 100) / 100),
+        currentLot - 0.01,
+      )
+      const closeResult = await mtOrderClose(accountId, ticket, partialVol)
+      await logOk(closeResult, { partial_volume: partialVol, step: "partial_close" })
+      const remainder = Math.max(0, currentLot - partialVol)
+      const fullyClosed = remainder < 0.02
+      if (fullyClosed) {
+        await supabase
+          .from("trades")
+          .update({
+            lot_size: 0,
+            status: "closed",
+            closed_at: new Date().toISOString(),
+          })
+          .eq("id", trade.id)
+        return { ok: true, trade_id: trade.id }
+      }
+
+      let entry = trade.entry_price != null ? Number(trade.entry_price) : null
+      if (entry == null || !Number.isFinite(entry)) {
+        entry = await fetchOpenPriceForPositionTicket(accountId, String(ticket))
+      }
+      if (entry == null || !Number.isFinite(entry)) {
+        const msg =
+          "Partial close succeeded; breakeven needs the position open price (not found on trade record or broker positions list)"
+        await logFail(msg)
+        await supabase
+          .from("trades")
+          .update({
+            lot_size: remainder,
+            status: "open",
+          })
+          .eq("id", trade.id)
+        return { ok: false, error: msg }
+      }
+      const newSl = entry
+      const tpForMt = parsed.tp?.[0] != null ? Number(parsed.tp[0]) : Number(trade.tp ?? 0)
+      const modifyResult = await mtOrderModify(accountId, ticket, newSl, tpForMt)
+      await logOk(modifyResult, { step: "breakeven_after_partial" })
+      const needsEntryBackfill = trade.entry_price == null || !Number.isFinite(Number(trade.entry_price))
+      await supabase
+        .from("trades")
+        .update({
+          ...(needsEntryBackfill ? { entry_price: entry } : {}),
+          lot_size: remainder,
+          sl: newSl,
+          tp: parsed.tp?.[0] != null ? Number(parsed.tp[0]) : trade.tp,
+          status: "modified",
         })
         .eq("id", trade.id)
       return { ok: true, trade_id: trade.id }

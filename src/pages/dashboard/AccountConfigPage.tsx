@@ -774,8 +774,8 @@ export function AccountConfigPage() {
                 <div className="rounded-xl border border-neutral-200 p-4 space-y-3">
                   <p className="text-sm font-semibold text-neutral-900">AI Configuration</p>
                   <p className="text-sm text-neutral-600">
-                    AI expert mode is designed to behave like a human expert trader: dynamic lot sizing by balance, maximum lots per signal,
-                    range entry handling, TP-based management, and channel instruction interpretation.
+                  AI expert mode is designed to behave like a human expert trader: dynamic lot sizing by balance, maximum lots per signal,
+                  range entry handling, TP-based management, and channel instruction interpretation.
                   </p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div className="rounded-lg bg-neutral-50 border border-neutral-200 p-3">
@@ -783,7 +783,9 @@ export function AccountConfigPage() {
                         <DollarSign className="w-3.5 h-3.5 text-primary-600" />
                         Money Management
                       </p>
-                      <p className="text-xs text-neutral-500">Balance-aware lot sizing, risk controls, and per-signal lot limits.</p>
+                      <p className="text-xs text-neutral-500" title="Forex SL distance can refine linear lots when price context is small.">
+                        Linear sizing by default; optional margin mode; broker min lot floor; forex SL-distance refinement when applicable.
+                      </p>
                     </div>
                     <div className="rounded-lg bg-neutral-50 border border-neutral-200 p-3">
                       <p className="text-xs font-medium text-neutral-700 mb-1 flex items-center gap-1.5">

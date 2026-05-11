@@ -13,7 +13,7 @@ const SYSTEM_PROMPT = `You are a financial trade signal parser. Extract structur
 
 Return ONLY a JSON object with this exact shape (no markdown, no explanation):
 {
-  "action": "buy" | "sell" | "close" | "breakeven" | "partial_profit" | "modify" | "ignore",
+  "action": "buy" | "sell" | "close" | "breakeven" | "partial_profit" | "partial_breakeven" | "modify" | "ignore",
   "symbol": string | null,
   "entry_price": number | null,
   "entry_zone_low": number | null,
@@ -31,6 +31,7 @@ Rules:
 - For zone entries like "buy between 1.1200 and 1.1220", set entry_zone_low and entry_zone_high
 - For "Set SL to X" or "Move TP to Y" messages, set action to "modify"
 - For "Close trade" or "Close all" messages, set action to "close"
+- For "Close half / take 50% / partial" together with "breakeven / SL to entry / move stop to BE", set action to "partial_breakeven"
 - For "Set breakeven" messages, set action to "breakeven"
 - tp is always an array (can have multiple targets)
 - confidence reflects how certain you are this is a real trade signal (0 = not a trade, 1 = clear trade)
@@ -60,7 +61,16 @@ function normalizeParsedFromModel(raw: unknown, fallbackText: string): ParsedSig
   let action = String(j.action ?? "ignore").trim().toLowerCase()
   if (action === "long") action = "buy"
   if (action === "short") action = "sell"
-  const allowed = new Set(["buy", "sell", "close", "breakeven", "partial_profit", "modify", "ignore"])
+  const allowed = new Set([
+    "buy",
+    "sell",
+    "close",
+    "breakeven",
+    "partial_profit",
+    "partial_breakeven",
+    "modify",
+    "ignore",
+  ])
   if (!allowed.has(action)) action = "ignore"
 
   const numOrNull = (v: unknown): number | null => {
@@ -147,9 +157,21 @@ function parseDeterministicManagement(message: string): ParsedSignal | null {
   let action: ParsedSignal["action"] | null = null
   let confidence = 0.92
 
-  if (MGMT_CLOSE.test(t)) action = "close"
-  else if (/\bbreakeven|break\s*even\b/i.test(t) || /\bmoved?\s+(sl\s+)?to\s+(be|entry|entr(y)?\s?price)|\b(be|bk)\s*now\b/i.test(t)) action = "breakeven"
-  else if (/\bpartial\b|\bc\s*half\b|close\s+50%|close\s+half/i.test(t)) action = "partial_profit"
+  // Order matters: generic MGMT_CLOSE matches "Close " in "Close half …" — evaluate partial + breakeven first.
+  const wantsPartialHalf =
+    /\b(partial|close\s+half|close\s+50%|take\s+half|take\s+50%|c\s+half|half\s+of\s+(the\s+)?(position|trade))\b/i.test(t) ||
+    /\b(50|half)\s*%?\s*(of\s+)?(the\s+)?(position|trade|lot|profit)\b/i.test(t)
+  const wantsBreakeven =
+    /\bbreakeven|break\s*even\b/i.test(t) ||
+    /\bmoved?\s+(sl\s+)?to\s+(be|entry|entr(y)?\s?price)|\b(be|bk)\s*now\b/i.test(t) ||
+    /\bstop\s*loss\s+to\s+(be|entry|breakeven|break\s*even)\b/i.test(t) ||
+    /\bsl\s+to\s+(be|entry)\b/i.test(t) ||
+    /\bmove\s+.*\b(stop\s*loss|sl)\b.*\b(breakeven|break\s*even|entry|be)\b/i.test(t)
+
+  if (wantsPartialHalf && wantsBreakeven) action = "partial_breakeven"
+  else if (wantsPartialHalf) action = "partial_profit"
+  else if (wantsBreakeven) action = "breakeven"
+  else if (MGMT_CLOSE.test(t)) action = "close"
   else if (
     /\b(set|move|adjust|bring)\s+(sl|tp|stop\s*loss|take\s*profit)\b|\b(stop\s*loss|take\s*profit)\s*(to|=)\s*[\d.]+/i
       .test(t)
@@ -230,16 +252,24 @@ function parseSimpleSignal(message: string): ParsedSignal | null {
   }
 }
 
+const MGMT_NON_INSTRUMENT_SYMBOLS = new Set([
+  "CHANGE", "CHANGED", "UPDATE", "UPDATED", "MODIFY", "MODIFIED", "ADJUST", "MOVE", "MOVED",
+  "CLOSE", "CLOSED", "SIGNAL", "SETUP", "ENTRY", "ZONE", "TRADE", "ORDER", "POSITION",
+])
+
 /** Fix LLM hallucination (e.g. XAUUSD on BTC CLOSE) using raw Telegram text. */
 function applyRawSymbolRepair(parsed: ParsedSignal, rawMsg: string): ParsedSignal {
   const extracted = extractTradableSymbolFromMessage(rawMsg)
 
-  const cur = parsed.symbol?.toUpperCase() ?? ""
+  const cur = parsed.symbol?.toUpperCase().replace(/\s/g, "") ?? ""
   const goldHints = /\b(gold|xau|xauusd)\b/i.test(rawMsg)
   const btcHints = /\b(btc|bitcoin|btcusd|btcusdt)\b/i.test(rawMsg)
-  const mgmt = new Set(["close", "breakeven", "partial_profit", "modify"]).has(parsed.action)
+  const mgmt = new Set(["close", "breakeven", "partial_profit", "partial_breakeven", "modify"]).has(parsed.action)
 
   if (mgmt) {
+    if (cur && MGMT_NON_INSTRUMENT_SYMBOLS.has(cur)) {
+      return { ...parsed, symbol: extracted ?? null }
+    }
     if (extracted) return { ...parsed, symbol: extracted }
     if (cur === "XAUUSD" && !goldHints) return { ...parsed, symbol: null }
     return parsed
