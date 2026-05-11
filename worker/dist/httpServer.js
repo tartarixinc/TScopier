@@ -11,7 +11,7 @@ const PORT = parseInt(process.env.WORKER_PORT ?? '8080', 10);
  *
  * Endpoints:
  *  POST /auth/send_code     { user_id, phone }
- *  POST /auth/verify_code   { user_id, code, password? }
+ *  POST /auth/verify_code   { user_id, phone, code, password? }
  *  POST /auth/list_channels { user_id }
  *  POST /auth/backfill_channel_history { user_id, channel_row_id, days? }
  */
@@ -38,11 +38,11 @@ function startHttpServer(authService, sessionManager) {
                 return sendJson(res, 200, r);
             }
             if (url === '/auth/verify_code') {
-                if (!body.user_id || !body.code) {
-                    return sendJson(res, 400, { error: 'user_id and code are required' });
+                if (!body.user_id || !body.phone || !body.code) {
+                    return sendJson(res, 400, { error: 'user_id, phone, and code are required' });
                 }
                 try {
-                    const r = await authService.verifyCode(body.user_id, body.code, body.password);
+                    const r = await authService.verifyCode(body.user_id, body.phone, body.code, body.password);
                     if ('requires_password' in r) {
                         return sendJson(res, 400, {
                             error: 'Two-step verification required',

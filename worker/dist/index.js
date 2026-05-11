@@ -9,6 +9,7 @@ const ws_1 = __importDefault(require("ws"));
 const sessionManager_1 = require("./sessionManager");
 const authService_1 = require("./authService");
 const httpServer_1 = require("./httpServer");
+const managementWorker_1 = require("./managementWorker");
 // Supabase Realtime needs a WebSocket transport in Node < 22.
 // Railway is currently running Node 20, so we provide ws explicitly.
 if (!globalThis.WebSocket) {
@@ -18,9 +19,11 @@ const supabase = (0, supabase_js_1.createClient)(process.env.SUPABASE_URL, proce
 const sessionManager = new sessionManager_1.UserSessionManager(supabase);
 const authService = new authService_1.AuthService(supabase, sessionManager);
 const httpServer = (0, httpServer_1.startHttpServer)(authService, sessionManager);
+const managementWorker = new managementWorker_1.ManagementWorker(supabase);
 async function main() {
     console.log('[worker] TSCopier AI worker starting...');
     await sessionManager.loadAll();
+    managementWorker.start();
     setInterval(async () => {
         await sessionManager.syncSessions();
     }, 30000);
@@ -28,6 +31,7 @@ async function main() {
         console.log(`[worker] ${signal} received, shutting down...`);
         httpServer.close();
         authService.shutdown();
+        managementWorker.stop();
         await sessionManager.disconnectAll();
         process.exit(0);
     };

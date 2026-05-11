@@ -23,6 +23,18 @@ const SESSION_PERSIST_INTERVAL_MS = 30 * 60000;
 const CATCHUP_BACKPRESSURE_MS = 250;
 const CATCHUP_PER_CHANNEL_CAP = 200;
 const BACKFILL_PER_CHANNEL_CAP = 1000;
+const REPLY_CHAIN_SWEEP_MS = 60000;
+/** Telegram / gramjs: extract numeric reply target message id when present. */
+function extractReplyToMsgId(replyTo) {
+    if (replyTo == null || typeof replyTo !== 'object')
+        return null;
+    const r = replyTo;
+    const v = r.replyToMsgId ?? r.reply_to_msg_id;
+    if (v == null)
+        return null;
+    const s = String(v).trim();
+    return s ? s : null;
+}
 function looksLikeTradingSignal(text, isReply) {
     const normalized = text
         .toLowerCase()
@@ -79,6 +91,7 @@ class UserListener {
         this.safetyPollTimer = null;
         this.watchdogTimer = null;
         this.sessionPersistTimer = null;
+        this.replyChainSweepTimer = null;
         this.catchUpInFlight = false;
         this.isConnected = false;
         this.lastEventAt = 0;
@@ -102,12 +115,14 @@ class UserListener {
         this.startWatchdog();
         this.startSafetyPoll();
         this.startSessionPersist();
+        this.startReplyChainSweep();
     }
     async stop() {
         try {
             this.stopTimer('watchdogTimer');
             this.stopTimer('safetyPollTimer');
             this.stopTimer('sessionPersistTimer');
+            this.stopTimer('replyChainSweepTimer');
             this.removeCurrentHandler();
             await this.persistSessionIfChanged();
             await this.client.disconnect();
@@ -378,6 +393,11 @@ class UserListener {
         const messageId = String(message.id);
         const rawMessage = (message.text ?? message.message ?? '');
         const isReply = !!message.replyTo;
+        const replyToMessageId = extractReplyToMsgId(message.replyTo);
+        let parentSignalId = null;
+        if (replyToMessageId) {
+            parentSignalId = await this.resolveParentSignalIdForReply(channelRow.id, replyToMessageId);
+        }
         if (!looksLikeTradingSignal(rawMessage, isReply)) {
             console.log(`[userListener] skipped non-signal user=${this.userId} channelRow=${channelRow.id} messageId=${messageId}`);
             return false;
@@ -392,7 +412,8 @@ class UserListener {
             status: 'pending',
             telegram_message_id: messageId,
             is_modification: isReply,
-            parent_signal_id: null,
+            parent_signal_id: parentSignalId,
+            reply_to_message_id: replyToMessageId,
         }, { onConflict: 'user_id,telegram_message_id', ignoreDuplicates: true })
             .select('id')
             .maybeSingle();
@@ -405,6 +426,16 @@ class UserListener {
             console.log(`[userListener] duplicate message ignored user=${this.userId} channelRow=${channelRow.id} messageId=${messageId}`);
             return false; // duplicate — skip parse-signal
         }
+        if (replyToMessageId && !parentSignalId) {
+            const lateParent = await this.resolveParentSignalIdForReply(channelRow.id, replyToMessageId);
+            if (lateParent) {
+                await this.supabase
+                    .from('signals')
+                    .update({ parent_signal_id: lateParent })
+                    .eq('id', signalRow.id);
+            }
+        }
+        await this.relinkReplyOrphansAfterParentInsert(channelRow.id, messageId, signalRow.id);
         console.log(`[userListener] signal inserted user=${this.userId} signalId=${signalRow.id} channelRow=${channelRow.id} messageId=${messageId}`);
         // #region agent log
         fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '7e177e' }, body: JSON.stringify({ sessionId: '7e177e', runId: 'run1', hypothesisId: 'H1', location: 'worker/src/userListener.ts:422', message: 'signal inserted before parse trigger', data: { userId: this.userId, signalId: signalRow.id, channelRowId: channelRow.id, messageId }, timestamp: Date.now() }) }).catch(() => { });
@@ -426,9 +457,7 @@ class UserListener {
             fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '7e177e' }, body: JSON.stringify({ sessionId: '7e177e', runId: 'run1', hypothesisId: 'H2', location: 'worker/src/userListener.ts:426', message: 'parse trigger dispatch', data: { signalId: signalRow.id, hasParseUrl: !!PARSE_SIGNAL_URL, hasParseAuthKey: !!PARSE_SIGNAL_AUTH_KEY }, timestamp: Date.now() }) }).catch(() => { });
             // #endregion
             const controller = new AbortController();
-            // parse-signal may await MetaTrader broker round-trips inline; keep below typical worker HTTP client limits (~120s).
-            const parseTimeoutMs = Math.max(10000, Number(process.env.PARSE_SIGNAL_TIMEOUT_MS ?? 120000) || 120000);
-            const timeout = setTimeout(() => controller.abort('parse-timeout'), parseTimeoutMs);
+            const timeout = setTimeout(() => controller.abort('parse-timeout'), 10000);
             try {
                 const res = await fetch(PARSE_SIGNAL_URL, {
                     method: 'POST',
@@ -471,6 +500,61 @@ class UserListener {
             }
         }
         return true;
+    }
+    /** Resolve `signals.id` of the parent message in this channel (telegram_channels row id). */
+    async resolveParentSignalIdForReply(channelRowId, replyToMessageId) {
+        const { data } = await this.supabase
+            .from('signals')
+            .select('id')
+            .eq('user_id', this.userId)
+            .eq('channel_id', channelRowId)
+            .eq('telegram_message_id', replyToMessageId)
+            .maybeSingle();
+        return data?.id ?? null;
+    }
+    /** Link orphan replies that pointed at this Telegram message id before the parent row existed. */
+    async relinkReplyOrphansAfterParentInsert(channelRowId, parentTelegramMessageId, parentSignalUuid) {
+        await this.supabase
+            .from('signals')
+            .update({ parent_signal_id: parentSignalUuid })
+            .eq('user_id', this.userId)
+            .eq('channel_id', channelRowId)
+            .eq('reply_to_message_id', parentTelegramMessageId)
+            .is('parent_signal_id', null);
+    }
+    startReplyChainSweep() {
+        if (this.replyChainSweepTimer)
+            return;
+        this.replyChainSweepTimer = setInterval(() => {
+            this.runReplyChainSweep().catch(err => console.error(`[userListener] reply-chain sweep error for ${this.userId}:`, err));
+        }, REPLY_CHAIN_SWEEP_MS);
+        this.replyChainSweepTimer.unref?.();
+    }
+    /** Re-resolve `parent_signal_id` for recent replies (parent may have arrived later). */
+    async runReplyChainSweep() {
+        const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const { data: orphans, error } = await this.supabase
+            .from('signals')
+            .select('id, channel_id, reply_to_message_id')
+            .eq('user_id', this.userId)
+            .not('reply_to_message_id', 'is', null)
+            .is('parent_signal_id', null)
+            .gte('created_at', since)
+            .limit(80);
+        if (error || !orphans?.length)
+            return;
+        for (const row of orphans) {
+            const rid = row.reply_to_message_id?.trim();
+            if (!rid || !row.channel_id)
+                continue;
+            const parentId = await this.resolveParentSignalIdForReply(row.channel_id, rid);
+            if (parentId) {
+                await this.supabase
+                    .from('signals')
+                    .update({ parent_signal_id: parentId })
+                    .eq('id', row.id);
+            }
+        }
     }
     async bumpLastSeen(channelRowId, messageId) {
         const num = Number(messageId);
@@ -698,6 +782,7 @@ class UserListener {
         this.monitoredChannels.clear();
         await this.refreshChannelSubscription();
         await this.runCatchUp();
+        await this.runReplyChainSweep();
     }
     // ── safety poll (Realtime drop fallback) ──────────────────────────────
     startSafetyPoll() {

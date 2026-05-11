@@ -38,11 +38,6 @@ const emptyForm: BrokerForm = {
 const DEFAULT_LOT_SIZE = 0.01
 const DEFAULT_PIP_TOLERANCE = 20
 
-interface BrokerSummaryResult {
-  summary: { balance?: number; equity?: number; currency?: string }
-  error?: string
-}
-
 interface ChannelOption {
   id: string
   display_name: string
@@ -201,7 +196,6 @@ export function AccountConfigPage() {
   const [showAddBroker, setShowAddBroker] = useState(false)
   const [form, setForm] = useState<BrokerForm>(emptyForm)
   const [saving, setSaving] = useState(false)
-  const [connectingBroker, setConnectingBroker] = useState(false)
   const [serverSuggestions, setServerSuggestions] = useState<string[]>([])
   const [loadingSuggestions, setLoadingSuggestions] = useState(false)
   const [showSuggestions, setShowSuggestions] = useState(false)
@@ -210,10 +204,6 @@ export function AccountConfigPage() {
   const [brokerPendingDelete, setBrokerPendingDelete] = useState<BrokerAccount | null>(null)
   const [deleteInProgress, setDeleteInProgress] = useState(false)
 
-  const EDGE_CONNECT_BROKER = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/connect-metatrader-account`
-  const EDGE_DELETE_BROKER = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-metatrader-account`
-  const EDGE_SERVER_SUGGESTIONS = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mt-server-suggestions`
-  const EDGE_ACCOUNT_SUMMARY = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/metatrader-account-summary`
 
   useEffect(() => {
     if (!user) return
@@ -392,128 +382,25 @@ export function AccountConfigPage() {
     setForm(prev => ({ ...prev, [field]: value }))
 
   const loadBrokerSummaries = async (rows: BrokerAccount[]) => {
-    const token = (await supabase.auth.getSession()).data.session?.access_token
-    if (!token) return
-    const pairs = await Promise.all(rows.map(async (broker): Promise<readonly [string, BrokerSummaryResult]> => {
-      try {
-        const res = await fetch(EDGE_ACCOUNT_SUMMARY, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ broker_account_id: broker.id }),
-        })
-        const data = await res.json()
-        if (!res.ok || !data?.summary) {
-          return [broker.id, { summary: {}, error: data?.error || 'Unavailable' }] as const
-        }
-        const summary = data.summary as Record<string, unknown>
-        const balance = Number(summary.balance ?? summary.Balance)
-        const equity = Number(summary.equity ?? summary.Equity)
-        const currency = String(summary.currency ?? summary.Currency ?? '')
-        return [broker.id, { summary: {
-          balance: Number.isFinite(balance) ? balance : undefined,
-          equity: Number.isFinite(equity) ? equity : undefined,
-          currency: currency || undefined,
-        } }] as const
-      } catch {
-        return [broker.id, { summary: {}, error: 'Unavailable' }] as const
-      }
-    }))
     const summaryMap: Record<string, { balance?: number; equity?: number; currency?: string }> = {}
-    const errorMap: Record<string, string> = {}
-    for (const [id, payload] of pairs) {
-      summaryMap[id] = payload.summary
-      if (payload.error) errorMap[id] = payload.error
-    }
+    for (const b of rows) summaryMap[b.id] = {}
     setBrokerSummaries(summaryMap)
-    setBrokerSummaryErrors(errorMap)
+    setBrokerSummaryErrors({})
   }
 
-  const loadServerSuggestions = async (q: string, platform: string) => {
-    if (platform !== 'MT4' && platform !== 'MT5') {
-      setServerSuggestions([])
-      return
-    }
-    setLoadingSuggestions(true)
-    try {
-      const token = (await supabase.auth.getSession()).data.session?.access_token
-      if (!token) {
-        setLoadingSuggestions(false)
-        return
-      }
-      const res = await fetch(`${EDGE_SERVER_SUGGESTIONS}?platform=${encodeURIComponent(platform)}&q=${encodeURIComponent(q)}`, {
-        method: 'GET',
-        headers: { 'Authorization': `Bearer ${token}` },
-      })
-      const data = await res.json()
-      if (!res.ok || data.error) {
-        setServerSuggestions([])
-      } else {
-        setServerSuggestions((data.suggestions ?? []) as string[])
-      }
-    } catch {
-      setServerSuggestions([])
-    } finally {
-      setLoadingSuggestions(false)
-    }
+  const loadServerSuggestions = async (_q: string, _platform: string) => {
+    setServerSuggestions([])
+    setLoadingSuggestions(false)
   }
 
   const addBroker = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-    if (!form.account_number.trim() || !form.account_password.trim() || !form.broker_server.trim()) {
-      setError('Account number, password, and server are required')
+    if (!form.account_number.trim() || !form.broker_server.trim()) {
+      setError('Account number and server are required')
       return
     }
 
-    if (form.platform === 'MT4' || form.platform === 'MT5') {
-      setConnectingBroker(true)
-      try {
-        const token = (await supabase.auth.getSession()).data.session?.access_token
-        if (!token) {
-          setError('You are not authenticated')
-          setConnectingBroker(false)
-          return
-        }
-
-        const connectRes = await fetch(EDGE_CONNECT_BROKER, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            label: form.label,
-            platform: form.platform,
-            account_number: form.account_number.trim(),
-            account_password: form.account_password,
-            server: form.broker_server.trim(),
-            default_lot_size: DEFAULT_LOT_SIZE,
-            pip_tolerance: DEFAULT_PIP_TOLERANCE,
-          }),
-        })
-        const connectData = await connectRes.json()
-        if (!connectRes.ok || !connectData.ok) {
-          setError(connectData.error || 'Broker account connection failed')
-          setConnectingBroker(false)
-          return
-        }
-
-        setBrokers(prev => [...prev, connectData.broker_account as BrokerAccount])
-        void loadBrokerSummaries([...brokers, connectData.broker_account as BrokerAccount])
-        setForm(emptyForm)
-        setShowAddBroker(false)
-      } catch {
-        setError('Failed to connect account')
-        setConnectingBroker(false)
-        return
-      } finally {
-        setConnectingBroker(false)
-      }
-      return
-    }
     setSaving(true)
 
     const { data, error: dbErr } = await supabase
@@ -550,25 +437,14 @@ export function AccountConfigPage() {
     const previous = brokers
     setBrokers(prev => prev.filter(b => b.id !== id))
     try {
-      const token = (await supabase.auth.getSession()).data.session?.access_token
-      if (!token) {
+      const { error: delErr } = await supabase
+        .from('broker_accounts')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', user!.id)
+      if (delErr) {
         setBrokers(previous)
-        setError('You are not authenticated')
-        return false
-      }
-
-      const res = await fetch(EDGE_DELETE_BROKER, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ broker_account_id: id }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok || data?.ok !== true) {
-        setBrokers(previous)
-        setError(data?.error || 'Failed to delete broker account')
+        setError(delErr.message)
         return false
       }
       setBrokerSummaries(prev => {
@@ -691,7 +567,7 @@ export function AccountConfigPage() {
                 )}
               </div>
               <div className="flex gap-2 pt-1">
-                <Button type="submit" loading={saving || connectingBroker} size="sm">Connect account</Button>
+                <Button type="submit" loading={saving} size="sm">Save account</Button>
                 <Button type="button" variant="ghost" size="sm" onClick={() => { setShowAddBroker(false); setForm(emptyForm); setError('') }}>Cancel</Button>
               </div>
             </form>

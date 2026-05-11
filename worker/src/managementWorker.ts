@@ -1,11 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js'
 
-const SUPABASE_URL = process.env.SUPABASE_URL ?? ''
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
-const EXECUTE_TRADE_URL = process.env.EXECUTE_TRADE_URL ?? (
-  SUPABASE_URL ? `${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/execute-trade` : ''
-)
-
 const POLL_MS = Math.max(2000, Number(process.env.MANAGEMENT_WORKER_POLL_MS ?? 4000))
 const BATCH_SIZE = Math.max(1, Math.min(50, Number(process.env.MANAGEMENT_WORKER_BATCH_SIZE ?? 8)))
 
@@ -19,15 +13,10 @@ type MgmtJob = {
   max_attempts: number
 }
 
-type ExecuteTradeResponse = {
-  executed?: boolean
-  skipped?: boolean
-  error?: string
-  reason?: string
-  detail?: string
-  results?: Array<{ ok?: boolean; error?: string }>
-}
-
+/**
+ * Drains legacy `management_jobs` rows. Broker execution was removed; jobs are
+ * closed so the queue does not grow forever from older signals.
+ */
 export class ManagementWorker {
   private timer: NodeJS.Timeout | null = null
   private running = false
@@ -42,9 +31,8 @@ export class ManagementWorker {
     this.timer = setInterval(() => {
       this.tick().catch(err => console.error('[managementWorker] tick failed:', err))
     }, POLL_MS)
-    // fire one immediately
     this.tick().catch(err => console.error('[managementWorker] initial tick failed:', err))
-    console.log(`[managementWorker] started poll=${POLL_MS}ms batch=${BATCH_SIZE}`)
+    console.log(`[managementWorker] started (job drain only, poll=${POLL_MS}ms batch=${BATCH_SIZE})`)
   }
 
   stop() {
@@ -56,8 +44,6 @@ export class ManagementWorker {
     if (this.running) return
     this.running = true
     try {
-      if (!EXECUTE_TRADE_URL || !SUPABASE_SERVICE_ROLE_KEY) return
-
       const nowIso = new Date().toISOString()
       const { data: rows, error } = await this.supabase
         .from('management_jobs')
@@ -77,7 +63,6 @@ export class ManagementWorker {
   }
 
   private async processOne(job: MgmtJob) {
-    // cheap claim (single worker today; still prevents duplicate loop picks)
     const { data: claim, error: claimErr } = await this.supabase
       .from('management_jobs')
       .update({
@@ -89,75 +74,19 @@ export class ManagementWorker {
       })
       .eq('id', job.id)
       .eq('status', 'pending')
-      .select('id,attempts,max_attempts')
+      .select('id')
       .maybeSingle()
     if (claimErr || !claim) return
 
-    const attempts = Number(claim.attempts ?? 1)
-    const maxAttempts = Number(claim.max_attempts ?? job.max_attempts ?? 6)
-
-    try {
-      const pd = job.parsed_data as Record<string, unknown>
-      const parentFromJob = typeof pd.parent_signal_id === 'string' ? pd.parent_signal_id : null
-      const { parent_signal_id: _omit, ...parsedRest } = pd
-      const res = await fetch(EXECUTE_TRADE_URL, {
-        method: 'POST',
-        headers: {
-          apikey: SUPABASE_SERVICE_ROLE_KEY,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          signal_id: job.signal_id,
-          parsed: parsedRest,
-          parent_signal_id: parentFromJob,
-        }),
+    await this.supabase
+      .from('management_jobs')
+      .update({
+        status: 'done',
+        last_error: 'Broker execution removed; instruction is on signals.parsed_data only.',
+        locked_at: null,
+        locked_by: null,
+        updated_at: new Date().toISOString(),
       })
-
-      const bodyText = await res.text()
-      if (!res.ok) {
-        throw new Error(`execute-trade ${res.status}: ${bodyText.slice(0, 400)}`)
-      }
-      let body: ExecuteTradeResponse | null = null
-      try {
-        body = bodyText ? JSON.parse(bodyText) as ExecuteTradeResponse : null
-      } catch {
-        // If body is non-JSON we keep fallback checks below.
-      }
-      const anyBrokerOk = Array.isArray(body?.results) ? body!.results!.some((x) => x?.ok === true) : false
-      const executed = body?.executed === true || anyBrokerOk
-      if (!executed) {
-        const reason = body?.error || body?.reason || body?.detail || bodyText.slice(0, 400) || 'execute-trade returned 200 without execution'
-        throw new Error(`execute-trade no-op: ${reason}`)
-      }
-
-      await this.supabase
-        .from('management_jobs')
-        .update({
-          status: 'done',
-          locked_at: null,
-          locked_by: null,
-          last_error: null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', job.id)
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      const exhausted = attempts >= maxAttempts
-      const delayMs = Math.min(5 * 60_000, Math.max(5000, 5000 * Math.pow(2, attempts - 1)))
-      const nextRun = new Date(Date.now() + delayMs).toISOString()
-      await this.supabase
-        .from('management_jobs')
-        .update({
-          status: exhausted ? 'failed' : 'pending',
-          next_run_at: exhausted ? new Date().toISOString() : nextRun,
-          last_error: msg.slice(0, 1000),
-          locked_at: null,
-          locked_by: null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', job.id)
-      console.error(`[managementWorker] job ${job.id} failed:`, msg)
-    }
+      .eq('id', job.id)
   }
 }
-

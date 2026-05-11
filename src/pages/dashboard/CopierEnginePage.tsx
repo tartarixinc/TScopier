@@ -774,7 +774,7 @@ function ChannelRow({
           </div>
           {channel.channel_username && <p className="text-xs text-neutral-400 mt-0.5">@{channel.channel_username}</p>}
           <div className="mt-2 rounded-lg border border-neutral-100 bg-neutral-50 px-3 py-2">
-            <p className="text-[11px] font-semibold tracking-wide text-neutral-500 uppercase">AI Analysis</p>
+            <p className="text-[11px] font-semibold tracking-wide text-neutral-500 uppercase">Channel profile</p>
             {isAnalyzing ? (
               <div className="mt-1.5">
                 <p className="text-xs text-neutral-500 mb-1.5">

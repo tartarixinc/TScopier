@@ -15,7 +15,6 @@ interface TgChannel {
 
 interface Props {
   sessionId: string | null
-  brokerAccountId: string | null
   onDone: () => void
 }
 

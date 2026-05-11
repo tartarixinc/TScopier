@@ -215,8 +215,6 @@ function symbolForExpertLog(row: AiExpertLogRow): string {
 export function DashboardPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const EDGE_ACCOUNT_SUMMARY = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/metatrader-account-summary`
-  const EDGE_BROKER_TRADES = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/metatrader-trades`
   const [stats, setStats] = useState<DashboardStats>({
     accounts: 0,
     portfolioValue: 0,
@@ -366,7 +364,7 @@ export function DashboardPage() {
     const openTrades = allTrades.filter(t => t.status === 'open')
     const closedTrades = allTrades.filter(t => t.status === 'closed')
     const todaySignals = (todaySignalsRes.data ?? []) as { status: string }[]
-    const copiedToday = todaySignals.filter(s => s.status === 'executed').length
+    const copiedToday = todaySignals.filter(s => s.status === 'executed' || s.status === 'parsed').length
     const openPnlFromTrades = openTrades.reduce((sum, t) => sum + (t.profit ?? 0), 0)
     const isInRange = (dateString: string | null | undefined, start: Date, end: Date) => {
       if (!dateString) return false
@@ -475,46 +473,7 @@ export function DashboardPage() {
     const lost = closedTrades.filter(t => (t.profit ?? 0) < 0).length
     const brokerAccounts = (brokerRes.data ?? []) as BrokerAccount[]
     const activeBrokerCount = brokerAccounts.filter(account => account.is_active).length
-    const token = (await supabase.auth.getSession()).data.session?.access_token
-    const balanceEntries = await Promise.all(
-      brokerAccounts.map(async (account) => {
-        if (!token) return [account.id, {}] as const
-        try {
-          const res = await fetch(EDGE_ACCOUNT_SUMMARY, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ broker_account_id: account.id }),
-          })
-          const data = await res.json()
-          if (!res.ok || !data?.summary) return [account.id, {}] as const
-          const s = data.summary as Record<string, unknown>
-          const balance = Number(s.balance ?? s.Balance)
-          const equity = Number(s.equity ?? s.Equity)
-          const currency = String(s.currency ?? s.Currency ?? '')
-          const broker = String(s.broker ?? s.Broker ?? '').trim()
-          const mt_server_hint = String(s.mt_server_hint ?? '').trim()
-          const accountTypeRaw = String(s.account_type ?? s.accountType ?? s.AccountType ?? '').toLowerCase()
-          const open_pnl_num = Number(s.open_pnl ?? s.openProfit ?? s.OpenProfit ?? s.floatingProfit ?? s.FloatingProfit)
-          const open_trades_num = Number(s.open_trades ?? s.openTrades ?? s.OpenTrades)
-          const account_type = accountTypeRaw === 'demo' ? 'Demo' : accountTypeRaw === 'live' ? 'Live' : undefined
-          return [account.id, {
-            balance: Number.isFinite(balance) ? balance : undefined,
-            equity: Number.isFinite(equity) ? equity : undefined,
-            currency: currency || undefined,
-            broker: broker || undefined,
-            mt_server_hint: mt_server_hint || undefined,
-            account_type,
-            open_pnl: Number.isFinite(open_pnl_num) ? open_pnl_num : undefined,
-            open_trades: Number.isFinite(open_trades_num) ? open_trades_num : undefined,
-          }] as const
-        } catch {
-          return [account.id, {}] as const
-        }
-      })
-    )
+    const balanceEntries = brokerAccounts.map((account) => [account.id, {}] as const)
     const balanceMap = Object.fromEntries(balanceEntries) as Record<string, { balance?: number; equity?: number; currency?: string; broker?: string; mt_server_hint?: string; account_type?: 'Live' | 'Demo'; open_pnl?: number; open_trades?: number }>
     const totalPortfolioValue = brokerAccounts.reduce((sum, account) => {
       const acct = balanceMap[account.id]
@@ -531,29 +490,8 @@ export function DashboardPage() {
     const hasAnyBrokerOpenPnl = brokerAccounts.some(account => balanceMap[account.id]?.open_pnl != null)
     const hasAnyBrokerOpenTradesFromSummary = brokerAccounts.some(account => balanceMap[account.id]?.open_trades != null)
 
-    let liveOpenTradesCount: number | null = null
-    if (token) {
-      try {
-        const openTradesRes = await fetch(EDGE_BROKER_TRADES, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ filter: 'open' }),
-        })
-        const openTradesData = await openTradesRes.json()
-        if (openTradesRes.ok && Array.isArray(openTradesData?.trades)) {
-          liveOpenTradesCount = openTradesData.trades.length
-        }
-      } catch {
-        // fallback below
-      }
-    }
-
     const resolvedOpenTradesCount =
-      liveOpenTradesCount ??
-      (hasAnyBrokerOpenTradesFromSummary ? totalLiveOpenTradesFromSummary : openTrades.length)
+      hasAnyBrokerOpenTradesFromSummary ? totalLiveOpenTradesFromSummary : openTrades.length
     setCopierLogs((logsRes.data ?? []) as Signal[])
     setAiExpertLogs(dedupePipelineParseAttempts((aiLogsRes.data ?? []) as AiExpertLogRow[]))
     setLinkedAccounts(brokerAccounts)

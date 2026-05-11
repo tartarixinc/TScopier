@@ -16,7 +16,6 @@ export function TradesPage() {
   const [trades, setTrades] = useState<LiveTrade[]>([])
   const [filter, setFilter] = useState<Filter>('all')
   const [loading, setLoading] = useState(true)
-  const EDGE_TRADES = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/metatrader-trades`
   const AUTO_REFRESH_MS = 15000
 
   useEffect(() => {
@@ -36,25 +35,22 @@ export function TradesPage() {
   const loadTrades = async ({ silent = false }: { silent?: boolean } = {}) => {
     if (!silent) setLoading(true)
     try {
-      const token = (await supabase.auth.getSession()).data.session?.access_token
-      if (!token) {
+      if (!user?.id) {
         setTrades([])
-        if (!silent) setLoading(false)
         return
       }
-      const res = await fetch(EDGE_TRADES, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ filter }),
-      })
-      const data = await res.json()
-      if (!res.ok || data.error) {
+      let q = supabase
+        .from('trades')
+        .select('symbol, direction, entry_price, lot_size, sl, tp, tp_levels, tp_open, status, profit, opened_at')
+        .eq('user_id', user.id)
+        .order('opened_at', { ascending: false })
+      if (filter === 'open') q = q.eq('status', 'open')
+      if (filter === 'closed') q = q.eq('status', 'closed')
+      const { data, error } = await q
+      if (error || !data) {
         setTrades([])
       } else {
-        setTrades((data.trades ?? []) as LiveTrade[])
+        setTrades(data as LiveTrade[])
       }
     } catch {
       setTrades([])
@@ -108,7 +104,7 @@ export function TradesPage() {
           <div className="px-6 py-16 text-center">
             <TrendingUp className="w-10 h-10 mx-auto mb-3 text-neutral-200" />
             <p className="text-sm text-neutral-400 font-medium">No trades yet</p>
-            <p className="text-xs text-neutral-300 mt-1">Trades will appear here once signals are executed</p>
+            <p className="text-xs text-neutral-300 mt-1">Trades stored in TSCopier appear here (live broker sync was removed).</p>
           </div>
         ) : (
           <div className="overflow-x-auto">

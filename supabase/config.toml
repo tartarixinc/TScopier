@@ -1,9 +1,7 @@
 # Edge Function routing (JWT vs API keys)
 # https://supabase.com/docs/guides/functions/auth
 #
-# execute-trade is invoked only from parse-signal (same project). New Supabase
-# secrets (sb_secret_*) are NOT JWTs and must use the apikey header — Bearer is rejected by the gateway
-# as UNAUTHORIZED_INVALID_JWT_FORMAT.
+# Service-role callers use the `apikey` header (not Bearer) for sb_secret_* keys.
 
 [functions.execute-trade]
 verify_jwt = false

@@ -1,31 +1,23 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { CircleCheck as CheckCircle, CreditCard, MessageCircle, Radio } from 'lucide-react'
+import { CircleCheck as CheckCircle, MessageCircle, Radio } from 'lucide-react'
 import clsx from 'clsx'
-import { BrokerConnectStep } from './steps/BrokerConnectStep'
 import { TelegramLinkStep } from './steps/TelegramLinkStep'
 import { ChannelSelectStep } from './steps/ChannelSelectStep'
 
 const steps = [
-  { id: 1, label: 'Broker', icon: CreditCard },
-  { id: 2, label: 'Telegram', icon: MessageCircle },
-  { id: 3, label: 'Channels', icon: Radio },
+  { id: 1, label: 'Telegram', icon: MessageCircle },
+  { id: 2, label: 'Channels', icon: Radio },
 ]
 
 export function OnboardingPage() {
   const navigate = useNavigate()
   const [currentStep, setCurrentStep] = useState(1)
-  const [brokerAccountId, setBrokerAccountId] = useState<string | null>(null)
   const [sessionId, setSessionId] = useState<string | null>(null)
-
-  const handleBrokerDone = (accountId: string) => {
-    setBrokerAccountId(accountId)
-    setCurrentStep(2)
-  }
 
   const handleTelegramDone = (sid: string) => {
     setSessionId(sid)
-    setCurrentStep(3)
+    setCurrentStep(2)
   }
 
   const handleChannelsDone = () => {
@@ -35,13 +27,13 @@ export function OnboardingPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-950 via-primary-900 to-primary-800 flex items-center justify-center p-4">
       <div className="w-full max-w-lg">
-        {/* Logo */}
         <div className="text-center mb-8">
-          <h1 className="text-white font-semibold text-2xl">Set up TSCopier AI</h1>
-          <p className="text-white/60 text-sm mt-1">Three steps to start copying trades automatically</p>
+          <h1 className="text-white font-semibold text-2xl">Set up TSCopier</h1>
+          <p className="text-white/60 text-sm mt-1">
+            Link Telegram and choose signal channels. Instructions are parsed with your channel keywords — no external broker API.
+          </p>
         </div>
 
-        {/* Step indicators */}
         <div className="flex items-center justify-center mb-8">
           {steps.map((step, idx) => {
             const done = currentStep > step.id
@@ -78,14 +70,11 @@ export function OnboardingPage() {
           })}
         </div>
 
-        {/* Step content */}
         <div className="animate-slide-up">
-          {currentStep === 1 && <BrokerConnectStep onDone={handleBrokerDone} />}
-          {currentStep === 2 && <TelegramLinkStep onDone={handleTelegramDone} />}
-          {currentStep === 3 && (
+          {currentStep === 1 && <TelegramLinkStep onDone={handleTelegramDone} />}
+          {currentStep === 2 && (
             <ChannelSelectStep
               sessionId={sessionId}
-              brokerAccountId={brokerAccountId}
               onDone={handleChannelsDone}
             />
           )}

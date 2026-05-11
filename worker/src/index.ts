@@ -23,7 +23,7 @@ const httpServer = startHttpServer(authService, sessionManager)
 const managementWorker = new ManagementWorker(supabase)
 
 async function main() {
-  console.log('[worker] TSCopier AI worker starting...')
+  console.log('[worker] TSCopier Telegram worker starting...')
 
   await sessionManager.loadAll()
   managementWorker.start()

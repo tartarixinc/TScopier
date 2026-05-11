@@ -7,46 +7,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 }
 
-const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY") ?? ""
-
-const SYSTEM_PROMPT = `You are a financial trade signal parser. Extract structured trade instructions from Telegram messages.
-
-Return ONLY a JSON object with this exact shape (no markdown, no explanation):
-{
-  "action": "buy" | "sell" | "close" | "breakeven" | "partial_profit" | "partial_breakeven" | "modify" | "ignore",
-  "symbol": string | null,
-  "entry_price": number | null,
-  "entry_zone_low": number | null,
-  "entry_zone_high": number | null,
-  "sl": number | null,
-  "tp": number[],
-  "open_tp": boolean,
-  "lot_size": number | null,
-  "confidence": number (0-1),
-  "raw_instruction": string,
-  "partial_close_fraction": number | null
-}
-
-Rules:
-- If optional channel context is appended to the user message (behavior hints for this Telegram source), weigh it as soft guidance — do not refuse to parse if it conflicts with the visible message text.
-- If the message contains no trading instruction, set action to "ignore"
-- For zone entries like "buy between 1.1200 and 1.1220", set entry_zone_low and entry_zone_high
-- For "Set SL to X" or "Move TP to Y" messages, set action to "modify"
-- For "Close trade" or "Close all" messages, set action to "close"
-- For "Close half / take 50% / partial" together with "breakeven / SL to entry / move stop to BE", set action to "partial_breakeven"
-- For explicit "close half / 50% of position" style messages (not TP1-hit wording), set "partial_close_fraction" to 0.5. For "close partial / partials / 25% of position", set it to 0.25. Otherwise omit or null (executor uses TP-hit heuristics).
-- For "Set breakeven" messages, set action to "breakeven"
-- tp is always an array (can have multiple targets)
-- Parse target formats as TP too (TP1/2/3, repeated TP lines, Target 1/2/3, Take Profit labels); keep them ordered.
-- If the message says open/no TP/runner, set "open_tp" to true.
-- confidence reflects how certain you are this is a real trade signal (0 = not a trade, 1 = clear trade)
-- symbol must match what the message is about ONLY if that instrument appears in the text (or shorthand like BTC, ETH, GOLD, GU, UJ).
-- NEVER default to XAUUSD or GOLD unless the message clearly refers to gold, XAU, or XAUUSD. Crypto (BTC/Bitcoin/Ethereum) uses BTCUSD, BTCUSDT, ETHUSD as appropriate—not gold.
-- If the message implies close/modify on an unnamed single position only, symbol may be null (execution may correlate to one open trade).
-- if the message contains a broker or server hint, use it to refine the symbol
-- if the message contains a slash pair ("EUR/USD"), normalize to EURUSD-style
-`
-
+/** Structured instruction from Telegram text + per-channel keywords (no LLM, no broker calls). */
 interface ParsedSignal {
   action: string
   symbol: string | null
@@ -59,7 +20,6 @@ interface ParsedSignal {
   confidence: number
   raw_instruction: string
   open_tp?: boolean
-  /** 0.5 = half, 0.25 = partial channel keyword; omit for TP-tier partial heuristics. */
   partial_close_fraction?: number | null
 }
 
@@ -231,6 +191,10 @@ function splitKeywordAliases(raw: string, delimiters = ""): string[] {
     .filter(Boolean)
 }
 
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
 function keywordRegex(phrase: string): RegExp {
   const p = escapeRegExp(phrase.trim()).replace(/\s+/g, "\\s+")
   return new RegExp(`(?:^|\\b)${p}(?:\\b|$)`, "i")
@@ -242,10 +206,6 @@ function hasAnyKeyword(text: string, words: string[]): boolean {
 
 function parseSideFromKeywords(text: string, words: string[]): boolean {
   return hasAnyKeyword(text, words)
-}
-
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
 function buildTpRegex(extraLabels: string[] = []): RegExp {
@@ -260,7 +220,6 @@ function extractTpLevels(message: string, extraLabels: string[] = []): number[] 
   const matches = [...text.matchAll(rx)]
   const values = matches.map((m) => Number(m[1])).filter((n) => Number.isFinite(n))
   if (values.length) return values
-  // Fallback for compact formats like "TP1 4500 TP2 4540" / "Target 1 4500".
   const compact = [...text.matchAll(/\b(?:tp|target)\s*\d+\s+(\d+(?:\.\d+)?)/gi)]
     .map((m) => Number(m[1]))
     .filter((n) => Number.isFinite(n))
@@ -290,21 +249,13 @@ function isManagementAction(action: string): boolean {
   return new Set(["close", "breakeven", "partial_profit", "partial_breakeven", "modify"]).has(String(action ?? "").toLowerCase())
 }
 
-/** Coerce LLM / fast-path output so execute-trade always gets consistent types and confidence. */
 function normalizeParsedFromModel(raw: unknown, fallbackText: string): ParsedSignal {
   const j = raw && typeof raw === "object" ? raw as Record<string, unknown> : {}
   let action = String(j.action ?? "ignore").trim().toLowerCase()
   if (action === "long") action = "buy"
   if (action === "short") action = "sell"
   const allowed = new Set([
-    "buy",
-    "sell",
-    "close",
-    "breakeven",
-    "partial_profit",
-    "partial_breakeven",
-    "modify",
-    "ignore",
+    "buy", "sell", "close", "breakeven", "partial_profit", "partial_breakeven", "modify", "ignore",
   ])
   if (!allowed.has(action)) action = "ignore"
 
@@ -325,9 +276,8 @@ function normalizeParsedFromModel(raw: unknown, fallbackText: string): ParsedSig
   }
 
   let confidence = Number(j.confidence)
-  // Critical: comparisons like NaN >= 0.7 are false — would skip execution permanently.
   if (!Number.isFinite(confidence)) {
-    confidence = action !== "ignore" ? 0.82 : 0
+    confidence = action !== "ignore" ? 0.95 : 0
   }
   confidence = Math.min(1, Math.max(0, confidence))
 
@@ -359,7 +309,6 @@ function normalizeParsedFromModel(raw: unknown, fallbackText: string): ParsedSig
   }
 }
 
-/** Extract first known instrument ticker from Telegram text (any action). Order: explicit codes → slashes → slang. */
 function extractTradableSymbolFromMessage(raw: string): string | null {
   if (!raw || typeof raw !== "string") return null
   const u = raw.toUpperCase().replace(/\s+/g, " ")
@@ -390,7 +339,8 @@ function extractTradableSymbolFromMessage(raw: string): string | null {
 }
 
 const ENTRY_KW = /\b(buy|sell|long|short)\b/i
-const MGMT_CLOSE = /\b(close\s*(all)?|flatten|kill\s*zones?|exit\s*(trade|position|long|short))\b|\b(close|closed)\s+((my|the|this)\s+)?((running|active|open)\s+)?(trade|position|btc|gold)/i
+const MGMT_CLOSE =
+  /\b(close\s*(all)?|flatten|kill\s*zones?|exit\s*(trade|position|long|short))\b|\b(close|closed)\s+((my|the|this)\s+)?((running|active|open)\s+)?(trade|position|btc|gold)/i
 
 function parseDeterministicManagement(
   message: string,
@@ -418,11 +368,7 @@ function parseDeterministicManagement(
     ...splitKeywordAliases(channelKeywords.update.close_tp3, delim),
     ...splitKeywordAliases(channelKeywords.update.close_tp4, delim),
   ]
-  const kwPartial = [
-    ...kwCloseHalf,
-    ...kwClosePartialOnly,
-    ...kwCloseTpTiers,
-  ]
+  const kwPartial = [...kwCloseHalf, ...kwClosePartialOnly, ...kwCloseTpTiers]
   const kwBreakeven = splitKeywordAliases(channelKeywords.update.break_even, delim)
   const kwModify = [
     ...splitKeywordAliases(channelKeywords.update.set_sl, delim),
@@ -443,12 +389,11 @@ function parseDeterministicManagement(
   const hitClosePartialKw = hasAnyKeyword(t, kwClosePartialOnly)
   const hitCloseTpTierKw = hasAnyKeyword(t, kwCloseTpTiers)
 
-  // Order matters: generic MGMT_CLOSE matches "Close " in "Close half …" — evaluate partial + breakeven first.
   const wantsPartialHalf =
     hitCloseHalfKw ||
     hitClosePartialKw ||
     hitCloseTpTierKw ||
-    /\b(partials?|close\s+partials?|close\s+half|close\s+50%|take\s+partials?|take\s+half|take\s+50%|c\s+half|half\s+of\s+(the\s+)?(position|trade))\b/i.test(t) ||
+    /\b(close\s+partials?|close\s+half|close\s+50%|take\s+partials?|take\s+half|take\s+50%|c\s+half|half\s+of\s+(the\s+)?(position|trade))\b/i.test(t) ||
     /\b(50|half)\s*%?\s*(of\s+)?(the\s+)?(position|trade|lot|profit)\b/i.test(t) ||
     /\b(25|quarter)\s*%?\s*(of\s+)?(the\s+)?(position|trade|lot|profit)\b/i.test(tl) ||
     hasAnyKeyword(t, kwPartial)
@@ -486,11 +431,10 @@ function parseDeterministicManagement(
   if (!action) return null
   const looksEntry = ENTRY_KW.test(t) &&
     /\b(buy|sell)\s+(now|btc|bitcoin|gold|xau)|market\s+(buy|sell)/i.test(t)
-  // Avoid swallowing urgent market entries ("Sell now btc") if word "exit" typo — rare skip
   if (action === "close" && /\b(stop\s*sell|sell\s*stops?)\s+now\b/i.test(tl)) return null
 
   if (action === "close" && looksEntry && /\b(and|&)+\s*(gold|btc)\b/i.test(tl)) {
-    confidence = 0.88 // ambiguous
+    confidence = 0.88
   }
 
   const slPriceLabels = [
@@ -535,7 +479,6 @@ function parseDeterministicManagement(
   }
 }
 
-/** Fast path: market-ish entries for common assets (gold, btc, …), not gold-only global default. */
 function parseSimpleSignal(
   message: string,
   lexicon: ChannelLexiconRow | null,
@@ -546,7 +489,9 @@ function parseSimpleSignal(
   const delim = channelKeywords.additional.delimiters
   const buyAliases = Array.from(new Set(["buy", "long", ...splitKeywordAliases(channelKeywords.signal.buy, delim)]))
   const sellAliases = Array.from(new Set(["sell", "short", ...splitKeywordAliases(channelKeywords.signal.sell, delim)]))
-  const marketAliases = Array.from(new Set(["now", "instant", "market", "mkt", ...splitKeywordAliases(channelKeywords.signal.market_order, delim)]))
+  const marketAliases = Array.from(
+    new Set(["now", "instant", "market", "mkt", ...splitKeywordAliases(channelKeywords.signal.market_order, delim)]),
+  )
   const mgmtAliases = [
     ...splitKeywordAliases(channelKeywords.update.close_full, delim),
     ...splitKeywordAliases(channelKeywords.update.close_half, delim),
@@ -559,9 +504,15 @@ function parseSimpleSignal(
     ...splitKeywordAliases(channelKeywords.update.delete, delim),
     ...splitKeywordAliases(channelKeywords.additional.close_all, delim),
     ...splitKeywordAliases(channelKeywords.additional.delete_all, delim),
+    ...splitKeywordAliases(channelKeywords.update.close_tp1, delim),
+    ...splitKeywordAliases(channelKeywords.update.close_tp2, delim),
+    ...splitKeywordAliases(channelKeywords.update.close_tp3, delim),
+    ...splitKeywordAliases(channelKeywords.update.close_tp4, delim),
   ]
 
-  if (/\b(close|flatten|exit\s+trade|breakeven|break\s+even|partial|move\s+(sl|tp))\b/i.test(text) || hasAnyKeyword(message, mgmtAliases)) return null
+  if (/\b(close|flatten|exit\s+trade|breakeven|break\s+even|partial|move\s+(sl|tp))\b/i.test(text) || hasAnyKeyword(message, mgmtAliases)) {
+    return null
+  }
 
   const isBuy = parseSideFromKeywords(message, buyAliases)
   const isSell = parseSideFromKeywords(message, sellAliases)
@@ -574,7 +525,6 @@ function parseSimpleSignal(
   const instrument = extractTradableSymbolFromMessage(message)
   if (!instrument) return null
 
-  // Require commodity/pair-ish context unless we matched a precise 6-letter code
   const hasInstrumentContext =
     /\b(gold|xau|xauusd|btc|bitcoin|btcusd|btcusdt|eth|ethereum|silver|eur|gbp)\b/i.test(text) ||
     /\bEUR\/USD|EURUSD|GBPUSD|USDJPY|XAUUSD|BTCUSD|BTCUSDT\b/i.test(message) ||
@@ -609,12 +559,111 @@ function parseSimpleSignal(
   }
 }
 
+/** Entry when channel BUY/SELL + instrument + at least one price level appear (no “market” word required). */
+function parseEntryFromKeywords(
+  message: string,
+  lexicon: ChannelLexiconRow | null,
+  channelKeywords: ChannelKeywords,
+): ParsedSignal | null {
+  const text = message.replace(/\s+/g, " ").trim()
+  if (!text) return null
+  const delim = channelKeywords.additional.delimiters
+  const buyAliases = Array.from(new Set(["buy", "long", ...splitKeywordAliases(channelKeywords.signal.buy, delim)]))
+  const sellAliases = Array.from(new Set(["sell", "short", ...splitKeywordAliases(channelKeywords.signal.sell, delim)]))
+  const mgmtAliases = [
+    ...splitKeywordAliases(channelKeywords.update.close_full, delim),
+    ...splitKeywordAliases(channelKeywords.update.close_half, delim),
+    ...splitKeywordAliases(channelKeywords.update.close_partial, delim),
+    ...splitKeywordAliases(channelKeywords.update.break_even, delim),
+    ...splitKeywordAliases(channelKeywords.update.set_sl, delim),
+    ...splitKeywordAliases(channelKeywords.update.adjust_sl, delim),
+    ...splitKeywordAliases(channelKeywords.update.set_tp, delim),
+    ...splitKeywordAliases(channelKeywords.update.adjust_tp, delim),
+    ...splitKeywordAliases(channelKeywords.update.delete, delim),
+    ...splitKeywordAliases(channelKeywords.additional.close_all, delim),
+    ...splitKeywordAliases(channelKeywords.additional.delete_all, delim),
+    ...splitKeywordAliases(channelKeywords.update.close_tp1, delim),
+    ...splitKeywordAliases(channelKeywords.update.close_tp2, delim),
+    ...splitKeywordAliases(channelKeywords.update.close_tp3, delim),
+    ...splitKeywordAliases(channelKeywords.update.close_tp4, delim),
+  ]
+  if (hasAnyKeyword(message, mgmtAliases)) return null
+
+  const isBuy = parseSideFromKeywords(message, buyAliases)
+  const isSell = parseSideFromKeywords(message, sellAliases)
+  if (isBuy === isSell) return null
+
+  const instrument = extractTradableSymbolFromMessage(message)
+  if (!instrument) return null
+
+  const slPriceLabels = [
+    ...splitKeywordAliases(channelKeywords.signal.sl, delim),
+    ...splitKeywordAliases(channelKeywords.update.set_sl, delim),
+  ]
+  const slMatchStandard = text.match(/\b(?:sl|stop\s*loss)\s*[:=]?\s*(\d+(?:\.\d+)?)/i)
+  let sl: number | null = slMatchStandard?.[1] ? Number(slMatchStandard[1]) : null
+  if (sl == null || !Number.isFinite(sl)) sl = extractPriceByLabels(text, slPriceLabels)
+
+  const extraTp = [
+    ...(lexicon?.tp_aliases ?? []),
+    ...(lexicon?.target_aliases ?? []),
+    ...splitKeywordAliases(channelKeywords.signal.tp, delim),
+    ...splitKeywordAliases(channelKeywords.update.set_tp, delim),
+    ...splitKeywordAliases(channelKeywords.update.adjust_tp, delim),
+  ]
+  const tp = extractTpLevels(message, extraTp)
+
+  const entryPointHit = hasAnyKeyword(message, splitKeywordAliases(channelKeywords.signal.entry_point, delim))
+  const hasPriceEvidence =
+    entryPointHit ||
+    (sl != null && Number.isFinite(sl)) ||
+    tp.length > 0 ||
+    /\b(limit|pending|@)\b/i.test(text) ||
+    /\d{3,}(?:\.\d+)?/.test(text)
+
+  if (!hasPriceEvidence) return null
+
+  const zone = text.match(
+    /\b(?:between|from)\s+(\d+(?:\.\d+)?)\s+(?:and|to|-|–)\s+(\d+(?:\.\d+)?)\b/i,
+  )
+  let entry_zone_low: number | null = null
+  let entry_zone_high: number | null = null
+  let entry_price: number | null = null
+  if (zone?.[1] && zone?.[2]) {
+    const a = Number(zone[1])
+    const b = Number(zone[2])
+    if (Number.isFinite(a) && Number.isFinite(b)) {
+      entry_zone_low = Math.min(a, b)
+      entry_zone_high = Math.max(a, b)
+    }
+  } else {
+    const entryMatch = text.match(/\b(?:entry|buy|sell)\s+@?\s*(\d+(?:\.\d+)?)\b/i)
+    if (entryMatch?.[1]) {
+      const n = Number(entryMatch[1])
+      if (Number.isFinite(n)) entry_price = n
+    }
+  }
+
+  return {
+    action: isBuy ? "buy" : "sell",
+    symbol: instrument,
+    entry_price,
+    entry_zone_low,
+    entry_zone_high,
+    sl,
+    tp,
+    lot_size: null,
+    confidence: 0.93,
+    raw_instruction: message,
+    open_tp: detectOpenTp(message),
+  }
+}
+
 const MGMT_NON_INSTRUMENT_SYMBOLS = new Set([
   "CHANGE", "CHANGED", "UPDATE", "UPDATED", "MODIFY", "MODIFIED", "ADJUST", "MOVE", "MOVED",
   "CLOSE", "CLOSED", "SIGNAL", "SETUP", "ENTRY", "ZONE", "TRADE", "ORDER", "POSITION",
 ])
 
-/** Fix LLM hallucination (e.g. XAUUSD on BTC CLOSE) using raw Telegram text. */
 function applyRawSymbolRepair(parsed: ParsedSignal, rawMsg: string): ParsedSignal {
   const extracted = extractTradableSymbolFromMessage(rawMsg)
 
@@ -631,7 +680,6 @@ function applyRawSymbolRepair(parsed: ParsedSignal, rawMsg: string): ParsedSigna
       return { ...parsed, symbol: extracted ?? null }
     }
     if (extracted) return { ...parsed, symbol: extracted }
-    // No symbol in management text: prefer null so executor correlates to same-channel open trade.
     if (!hasAnySymbolHint && !curMentioned) return { ...parsed, symbol: null }
     if (cur === "XAUUSD" && !goldHints) return { ...parsed, symbol: null }
     return parsed
@@ -648,27 +696,20 @@ function applyRawSymbolRepair(parsed: ParsedSignal, rawMsg: string): ParsedSigna
   return parsed
 }
 
-function compactChannelProfile(row: Record<string, unknown>): string {
-  const parts: string[] = []
-  const push = (k: string, v: unknown) => {
-    if (v === null || v === undefined || v === "") return
-    const s = String(v).trim()
-    if (!s || s === "unknown") return
-    parts.push(k + "=" + s)
+function ignorePayload(raw: string): ParsedSignal {
+  return {
+    action: "ignore",
+    symbol: null,
+    entry_price: null,
+    entry_zone_low: null,
+    entry_zone_high: null,
+    sl: null,
+    tp: [],
+    lot_size: null,
+    confidence: 1,
+    raw_instruction: raw,
+    open_tp: false,
   }
-  push("signal_type", row.signal_type)
-  push("tp_style", row.tp_style)
-  push("sl_style", row.sl_style)
-  push("entry_type", row.entry_type)
-  push("asset", row.most_traded_asset)
-  if (row.estimated_tp_pips != null) push("est_tp_pips", row.estimated_tp_pips)
-  if (row.estimated_sl_pips != null) push("est_sl_pips", row.estimated_sl_pips)
-  if (typeof row.analysis_summary === "string" && row.analysis_summary.trim()) {
-    const sum = row.analysis_summary.trim()
-    const summaryBody = sum.length > 600 ? sum.slice(0, 600) + "..." : sum
-    parts.push("summary=" + summaryBody)
-  }
-  return parts.join("; ")
 }
 
 async function loadChannelLexicon(
@@ -697,73 +738,6 @@ async function loadChannelKeywords(
   return normalizeChannelKeywords(data?.channel_keywords)
 }
 
-function collectUnknownActionTokens(raw: string): string[] {
-  const text = String(raw ?? "").toLowerCase()
-  const words = text.match(/\b[a-z]{4,}\b/g) ?? []
-  const known = new Set([
-    "buy", "sell", "long", "short", "close", "modify", "update", "move", "target", "profit", "take", "stop",
-    "loss", "entry", "breakeven", "partial", "half", "gold", "bitcoin", "tp", "sl", "market", "now",
-  ])
-  return Array.from(new Set(words.filter((w) => !known.has(w)).slice(0, 8)))
-}
-
-async function upsertLexiconUnknownTokens(
-  supabase: ReturnType<typeof createClient>,
-  signal: { user_id: string; channel_id: string | null; raw_message: string },
-  lexicon: ChannelLexiconRow | null,
-) {
-  if (!signal.channel_id) return
-  const unknown = collectUnknownActionTokens(signal.raw_message)
-  if (!unknown.length) return
-  const merged = Array.from(new Set([...(lexicon?.unknown_tokens ?? []), ...unknown])).slice(0, 120)
-  await supabase
-    .from("channel_signal_lexicon")
-    .upsert({
-      user_id: signal.user_id,
-      channel_id: signal.channel_id,
-      unknown_tokens: merged,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: "channel_id" })
-}
-
-async function parseWithOpenAI(message: string, channelHints: string | null): Promise<ParsedSignal> {
-  const userContent = channelHints
-    ? "Channel context (from prior analysis of this source; may be incomplete):\n" +
-      channelHints +
-      "\n\n---\nMessage to parse:\n" +
-      message
-    : message
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${OPENAI_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: userContent },
-      ],
-      temperature: 0,
-      max_tokens: 400,
-    }),
-  })
-
-  if (!res.ok) {
-    throw new Error(`OpenAI API error: ${res.status}`)
-  }
-
-  const data = await res.json()
-  const content = data.choices?.[0]?.message?.content ?? ""
-
-  try {
-    return JSON.parse(content)
-  } catch {
-    throw new Error(`Failed to parse OpenAI response: ${content}`)
-  }
-}
-
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders })
@@ -777,15 +751,11 @@ Deno.serve(async (req: Request) => {
 
     const body = await req.json()
     const { signal_id } = body
-    // #region agent log
-    fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7e177e'},body:JSON.stringify({sessionId:'7e177e',runId:'run1',hypothesisId:'H3',location:'supabase/functions/parse-signal/index.ts:97',message:'parse-signal invoked',data:{hasSignalId:!!signal_id},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
 
     if (!signal_id) {
       return Response.json({ error: "signal_id required" }, { status: 400, headers: corsHeaders })
     }
 
-    // Load signal
     const { data: signal, error: signalErr } = await supabase
       .from("signals")
       .select("*")
@@ -796,61 +766,52 @@ Deno.serve(async (req: Request) => {
       return Response.json({ error: "Signal not found" }, { status: 404, headers: corsHeaders })
     }
 
-    // Optional channel profile hints (read-only; missing row is fine).
-    let channelHints: string | null = null
     const lexicon = await loadChannelLexicon(supabase, signal.channel_id)
     const channelKeywords = await loadChannelKeywords(supabase, signal.channel_id)
-    if (signal.channel_id) {
-      const { data: prof } = await supabase
-        .from("channel_signal_profiles")
-        .select(
-          "signal_type, tp_style, sl_style, entry_type, most_traded_asset, estimated_tp_pips, estimated_sl_pips, analysis_summary",
-        )
-        .eq("channel_id", signal.channel_id)
-        .maybeSingle()
-      if (prof && typeof prof === "object") {
-        const hint = compactChannelProfile(prof as Record<string, unknown>)
-        if (hint) channelHints = hint
-      }
-    }
 
-    // Parse message: management + multi-asset deterministic paths first, then LLM.
     const ignoreAliases = [
       ...splitKeywordAliases(channelKeywords.additional.ignore_keyword, channelKeywords.additional.delimiters),
       ...splitKeywordAliases(channelKeywords.additional.skip_keyword, channelKeywords.additional.delimiters),
     ]
-    const rawParsed =
-      (hasAnyKeyword(signal.raw_message, ignoreAliases)
-        ? {
-          action: "ignore",
-          symbol: null,
-          entry_price: null,
-          entry_zone_low: null,
-          entry_zone_high: null,
-          sl: null,
-          tp: [],
-          lot_size: null,
-          confidence: 1,
-          raw_instruction: signal.raw_message,
-          open_tp: false,
-        } satisfies ParsedSignal
-        : null)
-      ?? parseDeterministicManagement(signal.raw_message, lexicon, channelKeywords)
-      ?? parseSimpleSignal(signal.raw_message, lexicon, channelKeywords)
-      ?? await parseWithOpenAI(signal.raw_message, channelHints)
+
+    const explicitIgnore = hasAnyKeyword(signal.raw_message, ignoreAliases)
+    const keywordMatch =
+      parseDeterministicManagement(signal.raw_message, lexicon, channelKeywords) ??
+      parseSimpleSignal(signal.raw_message, lexicon, channelKeywords) ??
+      parseEntryFromKeywords(signal.raw_message, lexicon, channelKeywords)
+
+    const rawParsed = explicitIgnore
+      ? ignorePayload(signal.raw_message)
+      : keywordMatch ?? {
+        action: "ignore",
+        symbol: null,
+        entry_price: null,
+        entry_zone_low: null,
+        entry_zone_high: null,
+        sl: null,
+        tp: [],
+        lot_size: null,
+        confidence: 0,
+        raw_instruction: signal.raw_message,
+        open_tp: false,
+      }
+
     const parsed = applyRawSymbolRepair(
       normalizeParsedFromModel(rawParsed, signal.raw_message),
       signal.raw_message,
     )
 
-    // Update signal with parsed data
     const newStatus = parsed.action === "ignore" ? "skipped" : "parsed"
+    const skipReason = parsed.action === "ignore"
+      ? (explicitIgnore ? "Non-trade message" : "No matching channel keywords or price pattern")
+      : null
+
     const { error: updateErr } = await supabase
       .from("signals")
       .update({
         parsed_data: parsed,
         status: newStatus,
-        skip_reason: parsed.action === "ignore" ? "Non-trade message" : null,
+        skip_reason: skipReason,
       })
       .eq("id", signal_id)
 
@@ -858,122 +819,28 @@ Deno.serve(async (req: Request) => {
       return Response.json({ error: updateErr.message }, { status: 500, headers: corsHeaders })
     }
 
-    EdgeRuntime.waitUntil(upsertLexiconUnknownTokens(supabase, signal, lexicon))
-
-    // If valid trade signal, trigger execution (entries) or enqueue management job.
-    if (parsed.action !== "ignore" && parsed.confidence >= 0.7) {
-      if (isManagementAction(parsed.action)) {
-        EdgeRuntime.waitUntil(
-          (async () => {
-            try {
-              const secret = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-              // Execute management actions immediately first. If this no-ops/fails,
-              // enqueue to management_jobs for retry/backoff processing.
-              const execRes = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/execute-trade`, {
-                method: "POST",
-                headers: {
-                  "apikey": secret,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  signal_id,
-                  parsed,
-                  parent_signal_id: (signal as { parent_signal_id?: string | null }).parent_signal_id ?? null,
-                }),
-              })
-              const raw = await execRes.text()
-              let body: { executed?: boolean; results?: Array<{ ok?: boolean }> } | null = null
-              try {
-                body = raw ? JSON.parse(raw) as { executed?: boolean; results?: Array<{ ok?: boolean }> } : null
-              } catch {
-                body = null
-              }
-              const anyBrokerOk = Array.isArray(body?.results) && body!.results!.some((x) => x?.ok === true)
-              const executed = execRes.ok && (body?.executed === true || anyBrokerOk)
-              if (!executed) {
-                await supabase
-                  .from("management_jobs")
-                  .upsert({
-                    user_id: signal.user_id,
-                    signal_id,
-                    channel_id: signal.channel_id ?? null,
-                    action: parsed.action,
-                    parsed_data: {
-                      ...parsed,
-                      parent_signal_id: (signal as { parent_signal_id?: string | null }).parent_signal_id ?? null,
-                    },
-                    status: "pending",
-                    attempts: 0,
-                    max_attempts: 6,
-                    next_run_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString(),
-                  }, { onConflict: "signal_id" })
-              }
-            } catch (e) {
-              console.error("parse-signal management immediate dispatch error:", e)
-              try {
-                await supabase
-                  .from("management_jobs")
-                  .upsert({
-                    user_id: signal.user_id,
-                    signal_id,
-                    channel_id: signal.channel_id ?? null,
-                    action: parsed.action,
-                    parsed_data: {
-                      ...parsed,
-                      parent_signal_id: (signal as { parent_signal_id?: string | null }).parent_signal_id ?? null,
-                    },
-                    status: "pending",
-                    attempts: 0,
-                    max_attempts: 6,
-                    next_run_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString(),
-                  }, { onConflict: "signal_id" })
-              } catch (inner) {
-                console.error("parse-signal enqueue management job fallback error:", inner)
-              }
-            }
-          })(),
-        )
-      } else {
-        // Fire-and-forget trade execution for entry signals.
-        EdgeRuntime.waitUntil(
-          (async () => {
-            try {
-              // #region agent log
-              fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7e177e'},body:JSON.stringify({sessionId:'7e177e',runId:'run1',hypothesisId:'H3',location:'supabase/functions/parse-signal/index.ts:138',message:'execute-trade dispatch',data:{signalId:signal_id,action:parsed.action,confidence:parsed.confidence},timestamp:Date.now()})}).catch(()=>{});
-              // #endregion
-              const secret = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-              const execRes = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/execute-trade`, {
-                method: "POST",
-                headers: {
-                  // sb_secret_* is not a JWT; use apikey (Bearer triggers INVALID_JWT_FORMAT on the gateway).
-                  "apikey": secret,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({ signal_id, parsed }),
-              })
-              if (!execRes.ok) {
-                const raw = await execRes.text()
-                // #region agent log
-                fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7e177e'},body:JSON.stringify({sessionId:'7e177e',runId:'run1',hypothesisId:'H3',location:'supabase/functions/parse-signal/index.ts:149',message:'execute-trade non-2xx',data:{signalId:signal_id,status:execRes.status,body:raw.slice(0,300)},timestamp:Date.now()})}).catch(()=>{});
-                // #endregion
-                const reason = `Execute trade failed (${execRes.status}): ${raw.slice(0, 300)}`
-                await supabase.from("signals").update({ status: "failed", skip_reason: reason }).eq("id", signal_id)
-                console.error("parse-signal execute-trade failed:", reason)
-              }
-            } catch (e: unknown) {
-              const msg = e instanceof Error ? e.message : "execute-trade network error"
-              await supabase.from("signals").update({ status: "failed", skip_reason: msg }).eq("id", signal_id)
-              console.error("parse-signal execute-trade error:", msg)
-            }
-          })()
-        )
-      }
+    if (parsed.action !== "ignore") {
+      EdgeRuntime.waitUntil(
+        (async () => {
+          try {
+            await supabase.from("trade_execution_logs").insert({
+              user_id: signal.user_id as string,
+              signal_id,
+              broker_account_id: null,
+              action: "keyword_parse",
+              status: "success",
+              request_payload: { parser: "channel_keywords" },
+              response_payload: parsed as unknown as Record<string, unknown>,
+              error_message: null,
+            })
+          } catch {
+            // logging must not fail the request
+          }
+        })(),
+      )
     }
 
     return Response.json({ parsed, status: newStatus }, { headers: corsHeaders })
-
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Internal server error"
     console.error("parse-signal error:", message)
