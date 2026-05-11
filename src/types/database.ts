@@ -141,6 +141,10 @@ export interface Trade {
   entry_price: number | null
   sl: number | null
   tp: number | null
+  tp_levels?: number[]
+  tp_open?: boolean
+  tp_step_policy?: Json
+  next_tp_index?: number
   lot_size: number
   status: string
   opened_at: string
@@ -157,6 +161,7 @@ export type ParsedSignal = {
   entry_zone_high?: number
   sl?: number
   tp?: number[]
+  open_tp?: boolean
   lot_size?: number
   confidence: number
   raw_instruction: string
