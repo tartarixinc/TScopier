@@ -476,6 +476,14 @@ type ManagementCorrelationResult =
   | { kind: "blocked"; reason: string }
   | null
 
+/** Schema: open | modified | closed | cancelled — modified is still an active broker position after SL/TP updates. */
+const ACTIVE_POSITION_STATUSES = ["open", "modified"] as const
+
+function isActivePositionStatus(status: string | null | undefined): boolean {
+  const s = String(status ?? "").toLowerCase()
+  return s === "open" || s === "modified"
+}
+
 async function loadOpenTradeRows(
   supabase: ReturnType<typeof createClient>,
   userId: string,
@@ -487,7 +495,7 @@ async function loadOpenTradeRows(
     .select("id, signal_id, telegram_channel_id, metaapi_order_id, symbol, direction, entry_price, lot_size, sl, tp, tp_levels, tp_open, tp_step_policy, next_tp_index, opened_at")
     .eq("user_id", userId)
     .eq("broker_account_id", brokerAccountId)
-    .eq("status", "open")
+    .in("status", [...ACTIVE_POSITION_STATUSES])
 
   if (direction === "buy" || direction === "sell") {
     query = query.eq("direction", direction)
@@ -542,7 +550,7 @@ async function fetchLatestOpenTradeForChannel(
     .select("id, signal_id, telegram_channel_id, metaapi_order_id, symbol, direction, entry_price, lot_size, sl, tp, tp_levels, tp_open, tp_step_policy, next_tp_index, opened_at")
     .eq("user_id", userId)
     .eq("broker_account_id", brokerAccountId)
-    .eq("status", "open")
+    .in("status", [...ACTIVE_POSITION_STATUSES])
     .eq("telegram_channel_id", channelId)
     .order("opened_at", { ascending: false })
     .limit(1)
@@ -567,7 +575,7 @@ async function fetchLatestOpenTradeForChannel(
     .select("id, signal_id, telegram_channel_id, metaapi_order_id, symbol, direction, entry_price, lot_size, sl, tp, tp_levels, tp_open, tp_step_policy, next_tp_index, opened_at")
     .eq("user_id", userId)
     .eq("broker_account_id", brokerAccountId)
-    .eq("status", "open")
+    .in("status", [...ACTIVE_POSITION_STATUSES])
     .in("signal_id", signalIds)
     .order("opened_at", { ascending: false })
     .limit(1)
@@ -600,7 +608,7 @@ async function fetchOpenTradesForChannel(
     .select("id, signal_id, telegram_channel_id, metaapi_order_id, symbol, direction, entry_price, lot_size, sl, tp, tp_levels, tp_open, tp_step_policy, next_tp_index, opened_at")
     .eq("user_id", userId)
     .eq("broker_account_id", brokerAccountId)
-    .eq("status", "open")
+    .in("status", [...ACTIVE_POSITION_STATUSES])
     .in("signal_id", signalIds)
     .order("opened_at", { ascending: false })
     .limit(80)
@@ -695,9 +703,9 @@ async function resolveOpenTradeByParentChain(
       .limit(1)
       .maybeSingle()
     if (tradeRow) {
-      const st = String((tradeRow as { status?: string }).status ?? "").toLowerCase()
+      const st = (tradeRow as { status?: string }).status
       const ticket = (tradeRow as OpenTradeRow).metaapi_order_id
-      if (st === "open" && ticket) {
+      if (isActivePositionStatus(st) && ticket) {
         return {
           trade: tradeRow as OpenTradeRow,
           resolution: `parent_signal_chain_depth_${depth}`,

@@ -85,6 +85,7 @@ export interface ManualChannelKeywords {
     set_tp5: string
     set_tp: string
     set_sl: string
+    adjust_sl: string
     delete: string
   }
   additional: {

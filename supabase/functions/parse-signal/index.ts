@@ -93,6 +93,7 @@ type ChannelKeywords = {
     set_tp5: string
     set_tp: string
     set_sl: string
+    adjust_sl: string
     delete: string
   }
   additional: {
@@ -138,6 +139,7 @@ const DEFAULT_CHANNEL_KEYWORDS: ChannelKeywords = {
     set_tp5: "SET TP5",
     set_tp: "SET TP",
     set_sl: "SET SL",
+    adjust_sl: "ADJUST SL",
     delete: "DELETE",
   },
   additional: {
@@ -188,6 +190,7 @@ function normalizeChannelKeywords(raw: unknown): ChannelKeywords {
       set_tp5: String(update.set_tp5 ?? DEFAULT_CHANNEL_KEYWORDS.update.set_tp5),
       set_tp: String(update.set_tp ?? DEFAULT_CHANNEL_KEYWORDS.update.set_tp),
       set_sl: String(update.set_sl ?? DEFAULT_CHANNEL_KEYWORDS.update.set_sl),
+      adjust_sl: String(update.adjust_sl ?? DEFAULT_CHANNEL_KEYWORDS.update.adjust_sl),
       delete: String(update.delete ?? DEFAULT_CHANNEL_KEYWORDS.update.delete),
     },
     additional: {
@@ -402,6 +405,7 @@ function parseDeterministicManagement(
   const kwBreakeven = splitKeywordAliases(channelKeywords.update.break_even, delim)
   const kwModify = [
     ...splitKeywordAliases(channelKeywords.update.set_sl, delim),
+    ...splitKeywordAliases(channelKeywords.update.adjust_sl, delim),
     ...splitKeywordAliases(channelKeywords.update.set_tp, delim),
     ...splitKeywordAliases(channelKeywords.update.set_tp1, delim),
     ...splitKeywordAliases(channelKeywords.update.set_tp2, delim),
@@ -488,6 +492,7 @@ function parseSimpleSignal(
     ...splitKeywordAliases(channelKeywords.update.close_partial, delim),
     ...splitKeywordAliases(channelKeywords.update.break_even, delim),
     ...splitKeywordAliases(channelKeywords.update.set_sl, delim),
+    ...splitKeywordAliases(channelKeywords.update.adjust_sl, delim),
     ...splitKeywordAliases(channelKeywords.update.set_tp, delim),
     ...splitKeywordAliases(channelKeywords.update.delete, delim),
     ...splitKeywordAliases(channelKeywords.additional.close_all, delim),

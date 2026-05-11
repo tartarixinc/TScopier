@@ -35,6 +35,7 @@ const DEFAULT_CHANNEL_KEYWORDS: ChannelKeywords = {
     set_tp5: 'SET TP5',
     set_tp: 'SET TP',
     set_sl: 'SET SL',
+    adjust_sl: 'ADJUST SL',
     delete: 'DELETE',
   },
   additional: {
@@ -85,6 +86,7 @@ function normalizeChannelKeywords(raw: unknown): ChannelKeywords {
       set_tp5: String(update.set_tp5 ?? DEFAULT_CHANNEL_KEYWORDS.update.set_tp5),
       set_tp: String(update.set_tp ?? DEFAULT_CHANNEL_KEYWORDS.update.set_tp),
       set_sl: String(update.set_sl ?? DEFAULT_CHANNEL_KEYWORDS.update.set_sl),
+      adjust_sl: String(update.adjust_sl ?? DEFAULT_CHANNEL_KEYWORDS.update.adjust_sl),
       delete: String(update.delete ?? DEFAULT_CHANNEL_KEYWORDS.update.delete),
     },
     additional: {
@@ -713,6 +715,7 @@ export function CopierEnginePage() {
                 <Input label="Set TP5" value={keywordsDraft.update.set_tp5} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, set_tp5: e.target.value } }))} />
                 <Input label="Set TP" value={keywordsDraft.update.set_tp} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, set_tp: e.target.value } }))} />
                 <Input label="Set SL" value={keywordsDraft.update.set_sl} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, set_sl: e.target.value } }))} />
+                <Input label="Adjust SL" value={keywordsDraft.update.adjust_sl} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, adjust_sl: e.target.value } }))} />
                 <Input label="Delete" value={keywordsDraft.update.delete} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, delete: e.target.value } }))} />
               </div>
               <div className="space-y-2">
