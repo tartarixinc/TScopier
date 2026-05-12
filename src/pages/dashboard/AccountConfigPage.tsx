@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Plus, Trash2, Server, Activity, GitBranch, Eye, DollarSign,
@@ -11,12 +11,14 @@ import { useAuth } from '../../context/AuthContext'
 import { Card } from '../../components/ui/Card'
 import { Input } from '../../components/ui/Input'
 import { Select } from '../../components/ui/Select'
+import { Toggle } from '../../components/ui/Toggle'
 import { Button } from '../../components/ui/Button'
 import { Badge } from '../../components/ui/Badge'
 import { AddAccountModal } from '../../components/ui/AddAccountModal'
 import { BrokerServerSelect } from '../../components/ui/BrokerServerSelect'
 import { metatraderApi } from '../../lib/metatraderapi'
 import { inferBrokerLabelFromServer } from '../../lib/brokerFromServer'
+import { estimateMultiTradeOrderCount } from '../../lib/estimateMultiTradeOrders'
 import type { BrokerAccount, ManualSettings, ManualTpLot } from '../../types/database'
 
 interface ChannelOption {
@@ -89,10 +91,14 @@ const DEFAULT_MANUAL_SETTINGS: ManualSettings = {
   dynamic_balance_percent: 1,
   tp_lots: DEFAULT_MANUAL_TP_LOTS,
   multi_trade_leg_percent: 5,
-  multi_trade_max_legs: 100,
   trade_style: 'single',
   range_trading: false,
-  range_total_lot: 0.03,
+  range_percent: 50,
+  range_step_pips: 2,
+  range_distance_pips: 20,
+  close_worse_entries: false,
+  close_worse_entries_pips: 20,
+  close_worse_extra_pendings: 0,
   reverse_signal: false,
   use_predefined_sl_pips: false,
   predefined_sl_pips: 30,
@@ -126,6 +132,59 @@ const DEFAULT_MANUAL_SETTINGS: ManualSettings = {
   resume_after_news_minutes: 10,
 }
 
+/** Split `total` across `count` slots as non-negative integers that sum exactly to `total`. */
+function splitIntEqual(count: number, total: number): number[] {
+  if (count <= 0) return []
+  const base = Math.floor(total / count)
+  const rem = total - base * count
+  return Array.from({ length: count }, (_, i) => base + (i < rem ? 1 : 0))
+}
+
+function cloneTpLots(rows: ManualTpLot[] | undefined, fallback: ManualTpLot[]): ManualTpLot[] {
+  const src = rows?.length ? rows : fallback
+  return src.map(r => ({ ...r, lot: r.lot ?? 0.01 }))
+}
+
+/** Sum percent across enabled rows. Disabled rows always contribute 0. */
+function sumEnabledTpPercents(rows: ManualTpLot[]): number {
+  return rows.reduce((s, r) => s + (r.enabled ? Math.max(0, Number(r.percent) || 0) : 0), 0)
+}
+
+/**
+ * Apply `rawNew` percent to `editedIdx`, **without touching any other row**.
+ * The value is clamped to the remaining budget so the enabled total can never
+ * exceed 100%. Disabled rows are pinned at 0%.
+ */
+function applyTpPercentEdit(rows: ManualTpLot[], editedIdx: number, rawNew: number): ManualTpLot[] {
+  const out = cloneTpLots(rows, DEFAULT_MANUAL_TP_LOTS)
+  if (editedIdx < 0 || editedIdx >= out.length) return out
+
+  const target = out[editedIdx]!
+  if (!target.enabled) {
+    out[editedIdx] = { ...target, percent: 0 }
+    return out
+  }
+
+  const requested = Math.max(0, Math.min(100, Math.round(Number(rawNew) || 0)))
+  const otherEnabledSum = out.reduce(
+    (s, r, i) => (i !== editedIdx && r.enabled ? s + Math.max(0, Number(r.percent) || 0) : s),
+    0,
+  )
+  const budget = Math.max(0, 100 - otherEnabledSum)
+  const next = Math.min(requested, budget)
+  out[editedIdx] = { ...target, percent: next }
+  return out
+}
+
+/** Ensures disabled rows show 0% and percents stay in 0..100 — no auto-redistribute. */
+function sanitizeTpLots(rows: ManualTpLot[]): ManualTpLot[] {
+  return rows.map(r => ({
+    ...r,
+    lot: r.lot ?? 0.01,
+    percent: r.enabled ? Math.max(0, Math.min(100, Math.round(Number(r.percent) || 0))) : 0,
+  }))
+}
+
 function normalizeManualSettings(raw: unknown): ManualSettings {
   const j = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {}
   const map = j.symbol_mapping && typeof j.symbol_mapping === 'object' ? j.symbol_mapping as Record<string, unknown> : {}
@@ -142,20 +201,49 @@ function normalizeManualSettings(raw: unknown): ManualSettings {
   })
   const legPctRaw = Number(j.multi_trade_leg_percent)
   const legPct = Number.isFinite(legPctRaw) && legPctRaw > 0 ? Math.min(100, legPctRaw) : DEFAULT_MANUAL_SETTINGS.multi_trade_leg_percent
-  const maxLegsRaw = Number(j.multi_trade_max_legs)
-  const maxLegs = Number.isFinite(maxLegsRaw) && maxLegsRaw > 0 ? Math.min(500, Math.floor(maxLegsRaw)) : DEFAULT_MANUAL_SETTINGS.multi_trade_max_legs
 
   const merged = { ...DEFAULT_MANUAL_SETTINGS, ...(j as ManualSettings) }
-  // Drop the legacy `multi_tp_volume_mode` key if it sneaks in from older DB rows.
+  // Drop legacy keys if they sneak in from older DB rows.
   delete (merged as Record<string, unknown>).multi_tp_volume_mode
+  delete (merged as Record<string, unknown>).multi_trade_max_legs
+  delete (merged as Record<string, unknown>).range_total_lot
+
+  const readNumber = (key: string, fallback: number): number => {
+    const v = Number((j as Record<string, unknown>)[key])
+    return Number.isFinite(v) ? v : fallback
+  }
+  const rangePercent = Math.max(0, Math.min(100, readNumber('range_percent', DEFAULT_MANUAL_SETTINGS.range_percent ?? 50)))
+  const rangeStepPips = Math.max(0, readNumber('range_step_pips', DEFAULT_MANUAL_SETTINGS.range_step_pips ?? 2))
+  const rangeDistancePips = Math.max(0, readNumber('range_distance_pips', DEFAULT_MANUAL_SETTINGS.range_distance_pips ?? 20))
+  const closeWorseEntries = (j as Record<string, unknown>).close_worse_entries === true
+  const closeWorseEntriesPips = Math.max(0, readNumber('close_worse_entries_pips', DEFAULT_MANUAL_SETTINGS.close_worse_entries_pips ?? 20))
+  const closeWorseExtraPendings = Math.max(0, Math.floor(readNumber('close_worse_extra_pendings', DEFAULT_MANUAL_SETTINGS.close_worse_extra_pendings ?? 0)))
+
+  // Manual control: keep whatever the user saved. Only seed an equal split when
+  // there is literally nothing enabled with a positive percent (empty / legacy row).
+  const tpSanitized = sanitizeTpLots(tpLots)
+  let tpFinal = tpSanitized
+  if (sumEnabledTpPercents(tpSanitized) === 0) {
+    const enabledCount = tpSanitized.filter(r => r.enabled).length
+    if (enabledCount > 0) {
+      const parts = splitIntEqual(enabledCount, 100)
+      let k = 0
+      tpFinal = tpSanitized.map(r => (r.enabled ? { ...r, percent: parts[k++] ?? 0 } : { ...r, percent: 0 }))
+    }
+  }
 
   return {
     ...merged,
     multi_trade_leg_percent: legPct,
-    multi_trade_max_legs: maxLegs,
+    range_percent: rangePercent,
+    range_step_pips: rangeStepPips,
+    range_distance_pips: rangeDistancePips,
+    close_worse_entries: closeWorseEntries,
+    close_worse_entries_pips: closeWorseEntriesPips,
+    close_worse_extra_pendings: closeWorseExtraPendings,
     symbol_mapping: Object.fromEntries(Object.entries(map).map(([k, v]) => [String(k).toUpperCase(), String(v).toUpperCase()])),
     symbols_exclude: Array.isArray(j.symbols_exclude) ? j.symbols_exclude.map(String).map(s => s.toUpperCase()) : [],
-    tp_lots: tpLots,
+    tp_lots: tpFinal,
     predefined_tp_pips: Array.isArray(j.predefined_tp_pips) ? j.predefined_tp_pips.map(Number).filter(Number.isFinite) : DEFAULT_MANUAL_SETTINGS.predefined_tp_pips,
     rr_for_tps: Array.isArray(j.rr_for_tps) ? j.rr_for_tps.map(Number).filter(Number.isFinite) : DEFAULT_MANUAL_SETTINGS.rr_for_tps,
     trade_days: Array.isArray(j.trade_days) ? j.trade_days.map(Number).filter(Number.isFinite) : DEFAULT_MANUAL_SETTINGS.trade_days,
@@ -234,6 +322,53 @@ export function AccountConfigPage() {
   const [brokerPendingDelete, setBrokerPendingDelete] = useState<BrokerAccount | null>(null)
   const [deleteInProgress, setDeleteInProgress] = useState(false)
 
+  const multiTradePreview = useMemo(() => {
+    const ms = configDraft.manualSettings
+    const manualLot = Number(ms.fixed_lot ?? 0.01) || 0.01
+    const legPct = Number(ms.multi_trade_leg_percent ?? 5) || 5
+    const range = ms.range_trading
+      ? {
+          enabled: true,
+          percent: Number(ms.range_percent ?? 50) || 0,
+          stepPips: Number(ms.range_step_pips ?? 2) || 0,
+          distancePips: Number(ms.range_distance_pips ?? 20) || 0,
+        }
+      : undefined
+    return estimateMultiTradeOrderCount({ manualLot, legPercent: legPct, range })
+  }, [
+    configDraft.manualSettings.fixed_lot,
+    configDraft.manualSettings.multi_trade_leg_percent,
+    configDraft.manualSettings.range_trading,
+    configDraft.manualSettings.range_percent,
+    configDraft.manualSettings.range_step_pips,
+    configDraft.manualSettings.range_distance_pips,
+  ])
+
+  const tpLegPercentTotal = useMemo(() => {
+    const rows = configDraft.manualSettings.tp_lots ?? DEFAULT_MANUAL_TP_LOTS
+    return rows.filter(r => r.enabled).reduce((s, r) => s + (Number(r.percent) || 0), 0)
+  }, [configDraft.manualSettings.tp_lots])
+
+  // Keep close_worse_extra_pendings within the live pending count so the UI
+  // can't show a stale value larger than what the planner will actually use.
+  useEffect(() => {
+    if (!configDraft.manualSettings.range_trading) return
+    if (!configDraft.manualSettings.close_worse_entries) return
+    const max = multiTradePreview.pending ?? 0
+    const current = Math.max(0, Math.floor(Number(configDraft.manualSettings.close_worse_extra_pendings ?? 0) || 0))
+    if (current > max) {
+      setConfigDraft(prev => ({
+        ...prev,
+        manualSettings: { ...prev.manualSettings, close_worse_extra_pendings: max },
+      }))
+    }
+  }, [
+    multiTradePreview.pending,
+    configDraft.manualSettings.range_trading,
+    configDraft.manualSettings.close_worse_entries,
+    configDraft.manualSettings.close_worse_extra_pendings,
+  ])
+
   useEffect(() => {
     if (!user) return
     void loadData()
@@ -308,26 +443,53 @@ export function AccountConfigPage() {
 
   const updateTpLotRow = (idx: number, patch: Partial<ManualTpLot>) => {
     setConfigDraft(prev => {
-      const rows = [...(prev.manualSettings.tp_lots ?? DEFAULT_MANUAL_TP_LOTS)]
+      const rows = cloneTpLots(prev.manualSettings.tp_lots, DEFAULT_MANUAL_TP_LOTS)
       rows[idx] = { ...rows[idx], ...patch }
       return { ...prev, manualSettings: { ...prev.manualSettings, tp_lots: rows } }
     })
   }
 
+  const setTpDistributionPercent = (idx: number, raw: string) => {
+    const num = raw === '' ? 0 : Number(raw)
+    if (!Number.isFinite(num)) return
+    setConfigDraft(prev => ({
+      ...prev,
+      manualSettings: {
+        ...prev.manualSettings,
+        tp_lots: applyTpPercentEdit(prev.manualSettings.tp_lots ?? DEFAULT_MANUAL_TP_LOTS, idx, num),
+      },
+    }))
+  }
+
+  const setTpRowEnabled = (idx: number, enabled: boolean) => {
+    setConfigDraft(prev => {
+      const rows = cloneTpLots(prev.manualSettings.tp_lots, DEFAULT_MANUAL_TP_LOTS)
+      if (!enabled) {
+        // Keep at least one row enabled so multi-TP distribution always has a target.
+        const othersEnabled = rows.filter((r, i) => i !== idx && r.enabled)
+        if (othersEnabled.length === 0) return prev
+        rows[idx] = { ...rows[idx]!, enabled: false, percent: 0 }
+      } else {
+        rows[idx] = { ...rows[idx]!, enabled: true }
+      }
+      return { ...prev, manualSettings: { ...prev.manualSettings, tp_lots: sanitizeTpLots(rows) } }
+    })
+  }
+
   const addTpLotRow = () => {
     setConfigDraft(prev => {
-      const rows = [...(prev.manualSettings.tp_lots ?? DEFAULT_MANUAL_TP_LOTS)]
+      const rows = cloneTpLots(prev.manualSettings.tp_lots, DEFAULT_MANUAL_TP_LOTS)
       rows.push({ label: `TP${rows.length + 1}`, lot: 0.01, percent: 0, enabled: true })
-      return { ...prev, manualSettings: { ...prev.manualSettings, tp_lots: rows } }
+      return { ...prev, manualSettings: { ...prev.manualSettings, tp_lots: sanitizeTpLots(rows) } }
     })
   }
 
   const removeTpLotRow = (idx: number) => {
     setConfigDraft(prev => {
-      const rows = [...(prev.manualSettings.tp_lots ?? DEFAULT_MANUAL_TP_LOTS)]
+      const rows = cloneTpLots(prev.manualSettings.tp_lots, DEFAULT_MANUAL_TP_LOTS)
       if (rows.length <= 1) return prev
       rows.splice(idx, 1)
-      return { ...prev, manualSettings: { ...prev.manualSettings, tp_lots: rows } }
+      return { ...prev, manualSettings: { ...prev.manualSettings, tp_lots: sanitizeTpLots(rows) } }
     })
   }
 
@@ -918,68 +1080,128 @@ export function AccountConfigPage() {
                                     value={String(configDraft.manualSettings.multi_trade_leg_percent ?? 5)}
                                     onChange={e => setManual({ multi_trade_leg_percent: Number(e.target.value) })}
                                   />
-                                  <Input
-                                    label="Max legs (safety cap)"
-                                    type="number"
-                                    min={1}
-                                    max={500}
-                                    step={1}
-                                    value={String(configDraft.manualSettings.multi_trade_max_legs ?? 100)}
-                                    onChange={e => setManual({ multi_trade_max_legs: Number(e.target.value) })}
-                                  />
+                                  <div>
+                                    <p className="text-sm font-medium text-neutral-800 mb-1">Total Open Trades</p>
+                                    <div className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm font-mono text-neutral-900">
+                                      {multiTradePreview.fallsBackSingle
+                                        ? '1 (split not possible at 0.01 min / 0.01 step preview)'
+                                        : multiTradePreview.immediate != null && multiTradePreview.pending != null
+                                          ? `${multiTradePreview.totalOrders} (${multiTradePreview.immediate} immediate + ${multiTradePreview.pending} pending)`
+                                          : multiTradePreview.totalOrders}
+                                    </div>
+                                    <p className="text-xs text-neutral-500 mt-1">
+                                      Estimated from Fixed Lot and per-leg %. Live execution uses the symbol's min lot and step (may differ slightly). Capped at 500 orders per signal.
+                                      {configDraft.manualSettings.risk_mode === 'dynamic_balance_percent' && (
+                                        <> With Dynamic (% Balance) risk, the resolved lot at runtime can differ from Fixed Lot.</>
+                                      )}
+                                      {multiTradePreview.pendingCapped && (
+                                        <> Reserved more pending than the distance/step allows — pending count capped at {multiTradePreview.pending}.</>
+                                      )}
+                                      {configDraft.manualSettings.range_trading && configDraft.manualSettings.close_worse_entries && (multiTradePreview.immediate ?? 0) + Math.min(
+                                        Number(configDraft.manualSettings.close_worse_extra_pendings ?? 0) || 0,
+                                        multiTradePreview.pending ?? 0,
+                                      ) > 0 && (
+                                        <> {(multiTradePreview.immediate ?? 0) + Math.min(
+                                          Number(configDraft.manualSettings.close_worse_extra_pendings ?? 0) || 0,
+                                          multiTradePreview.pending ?? 0,
+                                        )} legs close at +{Number(configDraft.manualSettings.close_worse_entries_pips ?? 20) || 0}p.</>
+                                      )}
+                                    </p>
+                                  </div>
                                 </div>
                               </div>
                             )}
 
-                            <div className="rounded-lg border border-neutral-200 p-3 space-y-3">
-                              <div className="flex items-center justify-between">
-                                <p className="text-sm font-medium text-neutral-800">TP distribution (% of legs)</p>
-                                <Button variant="ghost" size="sm" onClick={addTpLotRow}>Add TP</Button>
-                              </div>
-                              <p className="text-xs text-neutral-600">
-                                Each row maps to a TP level from the signal. In <strong>Multi Trades</strong>,
-                                the percentages decide what share of the small legs target each TP
-                                (e.g. 50 / 30 / 20 with 20 legs places 10 / 6 / 4 at TP1 / TP2 / TP3).
-                                In <strong>Single Trade</strong>, only the first TP is used.
-                              </p>
-                              <div className="space-y-2">
-                                {(configDraft.manualSettings.tp_lots ?? DEFAULT_MANUAL_TP_LOTS).map((row, idx) => (
-                                  <div key={`${row.label}-${idx}`} className="grid grid-cols-12 gap-2 items-center">
-                                    <input
-                                      className="col-span-4 rounded-md border border-neutral-200 px-2 py-1.5 text-sm"
-                                      value={row.label}
-                                      onChange={e => updateTpLotRow(idx, { label: e.target.value })}
-                                    />
-                                    <input
-                                      className="col-span-3 rounded-md border border-neutral-200 px-2 py-1.5 text-sm"
-                                      type="number"
-                                      min={0}
-                                      max={100}
-                                      step={1}
-                                      title="Percent of legs that target this TP"
-                                      value={row.percent ?? ''}
-                                      onChange={e => updateTpLotRow(idx, { percent: Number(e.target.value) })}
-                                    />
-                                    <span className="col-span-1 text-xs text-neutral-500 text-center">%</span>
-                                    <label className="col-span-2 text-xs text-neutral-700 flex items-center gap-2">
-                                      <input
-                                        type="checkbox"
-                                        checked={row.enabled}
-                                        onChange={e => updateTpLotRow(idx, { enabled: e.target.checked })}
+                            {configDraft.manualSettings.trade_style === 'multi' && (
+                              <div className="rounded-lg border border-neutral-200 p-3 space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <p className="text-sm font-medium text-neutral-800">Range Trading</p>
+                                  <Toggle
+                                    checked={configDraft.manualSettings.range_trading === true}
+                                    onChange={v => setManual({ range_trading: v })}
+                                  />
+                                </div>
+                                <p className="text-xs text-neutral-600">
+                                  Reserve a share of the planned legs as pending Limit orders stepped away from entry by
+                                  a fixed pip interval (averaging-down). Stop-loss and TP distribution mirror the
+                                  immediate legs. If <strong>distance ÷ step</strong> caps the count, the effective
+                                  pending total is reduced — total opened orders can fall short of the immediate-only
+                                  count by design.
+                                </p>
+                                {configDraft.manualSettings.range_trading && (
+                                  <>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                      <Input
+                                        label="Range size (% of legs)"
+                                        type="number"
+                                        min={0}
+                                        max={100}
+                                        step={1}
+                                        value={String(configDraft.manualSettings.range_percent ?? 50)}
+                                        onChange={e => setManual({ range_percent: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })}
                                       />
-                                      Enabled
-                                    </label>
-                                    <Button className="col-span-2" variant="ghost" size="sm" onClick={() => removeTpLotRow(idx)}>Remove</Button>
-                                  </div>
-                                ))}
+                                      <Input
+                                        label="Step (pips per pending)"
+                                        type="number"
+                                        min={0.1}
+                                        step={0.1}
+                                        value={String(configDraft.manualSettings.range_step_pips ?? 2)}
+                                        onChange={e => setManual({ range_step_pips: Math.max(0, Number(e.target.value) || 0) })}
+                                      />
+                                      <Input
+                                        label="Range distance (pips from entry)"
+                                        type="number"
+                                        min={0}
+                                        step={1}
+                                        value={String(configDraft.manualSettings.range_distance_pips ?? 20)}
+                                        onChange={e => setManual({ range_distance_pips: Math.max(0, Number(e.target.value) || 0) })}
+                                      />
+                                    </div>
+
+                                    <div className="rounded-md border border-neutral-200 bg-neutral-50 p-3 space-y-3">
+                                      <div className="flex items-center justify-between">
+                                        <p className="text-sm font-medium text-neutral-800">Close worse entries</p>
+                                        <Toggle
+                                          checked={configDraft.manualSettings.close_worse_entries === true}
+                                          onChange={v => setManual({ close_worse_entries: v })}
+                                        />
+                                      </div>
+                                      <p className="text-xs text-neutral-600">
+                                        Immediates close at +X pips from their own entry. The deepest pendings keep
+                                        the percent-row TPs and ride for the bigger targets.
+                                      </p>
+                                      {configDraft.manualSettings.close_worse_entries && (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                          <Input
+                                            label="Close profits from worse entry (pips)"
+                                            type="number"
+                                            min={0.1}
+                                            step={0.1}
+                                            value={String(configDraft.manualSettings.close_worse_entries_pips ?? 20)}
+                                            onChange={e => setManual({ close_worse_entries_pips: Math.max(0, Number(e.target.value) || 0) })}
+                                          />
+                                          <Input
+                                            label="Also close N shallowest pendings"
+                                            type="number"
+                                            min={0}
+                                            max={multiTradePreview.pending ?? 0}
+                                            step={1}
+                                            value={String(configDraft.manualSettings.close_worse_extra_pendings ?? 0)}
+                                            onChange={e => {
+                                              const max = multiTradePreview.pending ?? 0
+                                              const v = Math.max(0, Math.floor(Number(e.target.value) || 0))
+                                              setManual({ close_worse_extra_pendings: Math.min(max, v) })
+                                            }}
+                                          />
+                                        </div>
+                                      )}
+                                    </div>
+                                  </>
+                                )}
                               </div>
-                            </div>
+                            )}
 
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                              <Select label="Range Trading" value={configDraft.manualSettings.range_trading ? 'yes' : 'no'} onChange={e => setManual({ range_trading: e.target.value === 'yes' })} options={[{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }]} />
-                              {configDraft.manualSettings.range_trading && (
-                                <Input label="Range Total Lot" type="number" value={String(configDraft.manualSettings.range_total_lot ?? 0.03)} onChange={e => setManual({ range_total_lot: Number(e.target.value) })} />
-                              )}
                               <Select label="Reverse Signal" value={configDraft.manualSettings.reverse_signal ? 'yes' : 'no'} onChange={e => setManual({ reverse_signal: e.target.value === 'yes' })} options={[{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }]} />
                             </div>
                           </div>
@@ -987,6 +1209,74 @@ export function AccountConfigPage() {
 
                         {activeManualSubTab === 'stops' && (
                           <div className="space-y-4">
+                            <div className="rounded-lg border border-neutral-200 p-3 space-y-3">
+                              <div className="flex items-center justify-between">
+                                <p className="text-sm font-medium text-neutral-800">TP distribution (% of legs)</p>
+                                <Button variant="ghost" size="sm" onClick={addTpLotRow}>Add TP</Button>
+                              </div>
+                              <p className="text-xs text-neutral-600">
+                                Set each enabled TP&apos;s share manually. The total across enabled rows cannot
+                                exceed 100% — any input is capped to the remaining budget. Disabled rows are
+                                pinned at 0%.
+                              </p>
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-neutral-600">
+                                  Enabled total:{' '}
+                                  <strong className={clsx('font-semibold', tpLegPercentTotal === 100 ? 'text-emerald-600' : 'text-amber-600')}>
+                                    {tpLegPercentTotal}%
+                                  </strong>{' '}
+                                  / 100%
+                                </span>
+                                {tpLegPercentTotal !== 100 && (
+                                  <span className="text-amber-600">
+                                    {tpLegPercentTotal < 100
+                                      ? `${100 - tpLegPercentTotal}% unallocated`
+                                      : 'Over 100% (capped on next edit)'}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="space-y-2">
+                                {(configDraft.manualSettings.tp_lots ?? DEFAULT_MANUAL_TP_LOTS).map((row, idx) => {
+                                  const tpRows = configDraft.manualSettings.tp_lots ?? DEFAULT_MANUAL_TP_LOTS
+                                  const othersSum = tpRows.reduce(
+                                    (s, r, i) => (i !== idx && r.enabled ? s + (Number(r.percent) || 0) : s),
+                                    0,
+                                  )
+                                  const rowBudget = Math.max(0, 100 - othersSum)
+                                  return (
+                                    <div key={`${row.label}-${idx}`} className="grid grid-cols-12 gap-2 items-center">
+                                      <input
+                                        className="col-span-4 rounded-md border border-neutral-200 px-2 py-1.5 text-sm"
+                                        value={row.label}
+                                        onChange={e => updateTpLotRow(idx, { label: e.target.value })}
+                                      />
+                                      <input
+                                        className="col-span-3 rounded-md border border-neutral-200 px-2 py-1.5 text-sm disabled:bg-neutral-100 disabled:text-neutral-400"
+                                        type="number"
+                                        min={0}
+                                        max={rowBudget}
+                                        step={1}
+                                        disabled={!row.enabled}
+                                        title={row.enabled ? `Max ${rowBudget}% available for this row` : 'Enable the row to edit its share'}
+                                        value={String(row.percent ?? 0)}
+                                        onChange={e => setTpDistributionPercent(idx, e.target.value)}
+                                      />
+                                      <span className="col-span-1 text-xs text-neutral-500 text-center">%</span>
+                                      <label className="col-span-2 text-xs text-neutral-700 flex items-center gap-2">
+                                        <input
+                                          type="checkbox"
+                                          checked={row.enabled}
+                                          onChange={e => setTpRowEnabled(idx, e.target.checked)}
+                                        />
+                                        Enabled
+                                      </label>
+                                      <Button className="col-span-2" variant="ghost" size="sm" onClick={() => removeTpLotRow(idx)}>Remove</Button>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                               <label className="text-sm text-neutral-700 flex items-center gap-2"><input type="checkbox" checked={configDraft.manualSettings.use_predefined_sl_pips === true} onChange={e => setManual({ use_predefined_sl_pips: e.target.checked })} />Use Predefined SL Pips</label>
                               {configDraft.manualSettings.use_predefined_sl_pips && (

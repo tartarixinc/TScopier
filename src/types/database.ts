@@ -124,10 +124,21 @@ export interface ManualSettings {
   tp_lots?: ManualTpLot[]
   /** Multi Trades: per-leg size as a percent of the resolved fixed lot (default 5). */
   multi_trade_leg_percent?: number
-  /** Multi Trades: hard cap on the number of legs the planner can emit (default 100). */
-  multi_trade_max_legs?: number
   trade_style?: 'single' | 'multi'
   range_trading?: boolean
+  /** Multi Trades + Range Trading: percent of the planned legs reserved for pending range orders (0..100). */
+  range_percent?: number
+  /** Pip distance between consecutive pending range orders. */
+  range_step_pips?: number
+  /** Total pip distance the range spans from entry. Caps the pending count to floor(distance / step). */
+  range_distance_pips?: number
+  /** Range only: when true, the immediate legs (+ a configurable number of shallowest pendings) take a small profit at `close_worse_entries_pips` instead of riding the percent-row TPs. */
+  close_worse_entries?: boolean
+  /** Pips of profit per worse-entry leg (from each leg's own entry) at which to close. Default 20. */
+  close_worse_entries_pips?: number
+  /** How many of the shallowest pendings (in addition to all immediates) should also use the tight TP. Default 0 (immediates only). Capped at the effective pending count. */
+  close_worse_extra_pendings?: number
+  /** @deprecated Legacy lot-based range; replaced by `range_percent`. Stripped on load. */
   range_total_lot?: number
   reverse_signal?: boolean
   use_predefined_sl_pips?: boolean

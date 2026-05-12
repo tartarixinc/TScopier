@@ -595,9 +595,8 @@ export class TradeExecutor {
       await new Promise(resolve => setTimeout(resolve, Math.min(plan.delay_ms, 30_000)))
     }
 
-    // Hard cap legs to prevent a runaway config from spamming OrderSend.
-    const legCap = Math.max(1, Math.min(500, Math.floor(Number(manual.multi_trade_max_legs ?? 100))))
-    const capped = plan.orders.slice(0, legCap)
+    // Hard cap: planner already respects 500; this is a final guard rail.
+    const capped = plan.orders.slice(0, 500)
     if (capped.length < plan.orders.length) {
       console.warn(
         `[tradeExecutor] capped legs ${plan.orders.length} → ${capped.length} signal=${signal.id} broker=${broker.id}`,

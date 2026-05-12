@@ -57,9 +57,15 @@ export interface ManualSettings {
   dynamic_balance_percent?: number
   tp_lots?: ManualTpLot[]
   multi_trade_leg_percent?: number
-  multi_trade_max_legs?: number
   trade_style?: 'single' | 'multi'
   range_trading?: boolean
+  range_percent?: number
+  range_step_pips?: number
+  range_distance_pips?: number
+  close_worse_entries?: boolean
+  close_worse_entries_pips?: number
+  close_worse_extra_pendings?: number
+  /** @deprecated Replaced by `range_percent`. */
   range_total_lot?: number
   reverse_signal?: boolean
   use_predefined_sl_pips?: boolean
@@ -310,7 +316,8 @@ export function planManualOrders(args: {
   }
 
   const legPct = Math.max(0.1, Math.min(100, Number(manual.multi_trade_leg_percent ?? 5)))
-  const maxLegs = Math.max(1, Math.min(500, Math.floor(Number(manual.multi_trade_max_legs ?? 100))))
+  /** Hard safety cap on concurrent OrderSend payloads per signal. */
+  const ABS_MAX_LEGS = 500
 
   const manualUnits = toUnits(manualLot)
   const targetUnits = toUnits(manualLot * (legPct / 100))
@@ -324,11 +331,46 @@ export function planManualOrders(args: {
     return { orders: [], skip_reason: 'lot_below_symbol_min', delay_ms }
   }
 
-  const totalLegs = Math.max(1, Math.min(maxLegs, Math.floor(manualUnits / targetUnits)))
+  const totalLegs = Math.max(1, Math.min(ABS_MAX_LEGS, Math.floor(manualUnits / targetUnits)))
   const targetLeg = unitsToLot(targetUnits)
 
-  // Distribute legs across TP rows by percent. With no TPs in the signal we
-  // collapse to one bucket so legs still emit (broker TP = 0).
+  // ── 6. Range Trading split ──────────────────────────────────────────────
+  // When on, a configurable share of the planned legs is reserved as pending
+  // Limit orders stepping away from entry by `range_step_pips`, bounded by
+  // `range_distance_pips`. Immediates fire at entry; pendings fill as price
+  // moves into the range. The effective leg count can shrink when the
+  // distance / step cap bites — by design, per the user spec.
+  const rangeOn = manual.range_trading === true
+  const baseIsPendingSignal = operation.includes('Limit') || operation.includes('Stop')
+  const rangePct = Math.max(0, Math.min(100, Number(manual.range_percent ?? 0)))
+  const stepPips = Math.max(0, Number(manual.range_step_pips ?? 0))
+  const distPips = Math.max(0, Number(manual.range_distance_pips ?? 0))
+
+  let immediateLegs = totalLegs
+  let effectiveRangeLegs = 0
+  let rangeFallbackReason: string | undefined
+
+  if (rangeOn && baseIsPendingSignal) {
+    // Signal already carries its own pending entry — skip the range branch.
+    rangeFallbackReason = 'range_trading_skip_pending_signal'
+  } else if (rangeOn) {
+    if (stepPips <= 0 || distPips <= 0) {
+      rangeFallbackReason = 'range_trading_invalid'
+    } else {
+      const reservedLegs = Math.round((totalLegs * rangePct) / 100)
+      const maxByDistance = Math.floor(distPips / stepPips)
+      const effective = Math.min(reservedLegs, maxByDistance)
+      if (effective <= 0) {
+        // Reserved 0 is intentional (user picked 0%); cap-to-0 is misconfig.
+        if (reservedLegs > 0) rangeFallbackReason = 'range_trading_invalid'
+      } else {
+        effectiveRangeLegs = effective
+        immediateLegs = Math.max(0, totalLegs - reservedLegs)
+      }
+    }
+  }
+
+  // ── 7. TP bucket setup (shared by immediate + range distributions) ──────
   const enabledRows = (manual.tp_lots ?? []).filter(r => r && r.enabled)
   const bucketCount = finalTps.length > 0
     ? Math.max(1, Math.min(enabledRows.length || 1, finalTps.length))
@@ -340,31 +382,46 @@ export function planManualOrders(args: {
     const p = Number(r.percent)
     return Number.isFinite(p) && p > 0 ? p : 0
   })
-  const fallbackWeights = rawWeights.every(w => w === 0) ? bucketRows.map(() => 1) : rawWeights
-  const sumW = fallbackWeights.reduce((a, b) => a + b, 0) || bucketRows.length
+  const weights = rawWeights.every(w => w === 0) ? bucketRows.map(() => 1) : rawWeights
+  const sumW = weights.reduce((a, b) => a + b, 0) || bucketRows.length
 
-  const counts = fallbackWeights.map(w => Math.round((totalLegs * w) / sumW))
-  // Fold rounding error so the bucket counts sum to totalLegs exactly.
-  let drift = totalLegs - counts.reduce((a, b) => a + b, 0)
-  let idx = counts.length - 1
-  while (drift !== 0 && counts.length > 0) {
-    if (drift > 0) {
-      counts[idx]! += 1
-      drift -= 1
-    } else if (counts[idx]! > 0) {
-      counts[idx]! -= 1
-      drift += 1
+  /** Distribute `count` legs across the TP buckets, folding rounding drift into the last bucket. */
+  const distributeCount = (count: number): number[] => {
+    const out = bucketRows.map(() => 0)
+    if (count <= 0 || bucketRows.length === 0) return out
+    for (let i = 0; i < weights.length; i++) {
+      out[i] = Math.round((count * weights[i]!) / sumW)
     }
-    idx = (idx - 1 + counts.length) % counts.length
-    if (drift < 0 && counts.every(c => c === 0)) break
+    let drift = count - out.reduce((a, b) => a + b, 0)
+    let idx = out.length - 1
+    let guard = out.length * 2
+    while (drift !== 0 && guard-- > 0) {
+      if (drift > 0) {
+        out[idx]! += 1
+        drift -= 1
+      } else if (out[idx]! > 0) {
+        out[idx]! -= 1
+        drift += 1
+      }
+      idx = (idx - 1 + out.length) % out.length
+      if (drift < 0 && out.every(c => c === 0)) break
+    }
+    return out
   }
 
+  const tpForBucket = (b: number): number | null => {
+    if (finalTps.length === 0) return null
+    return finalTps[b] ?? finalTps[finalTps.length - 1] ?? null
+  }
+
+  const immediateCounts = distributeCount(immediateLegs)
+  const rangeCounts = distributeCount(effectiveRangeLegs)
+
+  // ── 8. Emit immediate legs ──────────────────────────────────────────────
   const orders: OrderSendArgs[] = []
   for (let b = 0; b < bucketRows.length; b++) {
-    const tpPrice = finalTps.length > 0
-      ? (finalTps[b] ?? finalTps[finalTps.length - 1] ?? null)
-      : null
-    for (let k = 0; k < (counts[b] ?? 0); k++) {
+    const tpPrice = tpForBucket(b)
+    for (let k = 0; k < (immediateCounts[b] ?? 0); k++) {
       orders.push({
         ...orderBase,
         volume: targetLeg,
@@ -376,28 +433,95 @@ export function planManualOrders(args: {
     }
   }
 
-  // Soak up any leftover that still clears minLot into one extra leg at the last bucket.
-  const remainderUnits = manualUnits - totalLegs * targetUnits
-  if (remainderUnits >= minUnits && orders.length < maxLegs) {
-    const tpPrice = finalTps.length > 0
-      ? (finalTps[bucketRows.length - 1] ?? finalTps[finalTps.length - 1] ?? null)
-      : null
-    orders.push({
-      ...orderBase,
-      volume: unitsToLot(remainderUnits),
-      stoploss: roundPrice(finalSl),
-      takeprofit: roundPrice(tpPrice),
-      ...expirationFields,
-      comment: `${commentPrefix}:tp${bucketRows.length}.rem`,
-    })
+  // ── 9. Emit range pendings ──────────────────────────────────────────────
+  // Pendings always carry an expiration if `pending_expiry_hours` is set,
+  // independent of whether the immediate leg path was already a pending.
+  if (effectiveRangeLegs > 0 && entry != null) {
+    const pendingOp: MtOperation = isBuy ? 'BuyLimit' : 'SellLimit'
+    const pendingExpiration: { expiration?: string; expirationType?: OrderSendArgs['expirationType'] } = {}
+    const pendHours = Number(manual.pending_expiry_hours ?? 0)
+    if (Number.isFinite(pendHours) && pendHours > 0) {
+      const exp = new Date(now.getTime() + pendHours * 60 * 60 * 1000)
+      pendingExpiration.expiration = exp.toISOString()
+      pendingExpiration.expirationType = 'Specified'
+    }
+
+    let stepIdx = 1
+    for (let b = 0; b < bucketRows.length; b++) {
+      const tpPrice = tpForBucket(b)
+      for (let k = 0; k < (rangeCounts[b] ?? 0); k++) {
+        const legPrice = isBuy
+          ? entry - stepIdx * stepPips * pip
+          : entry + stepIdx * stepPips * pip
+        orders.push({
+          ...orderBase,
+          operation: pendingOp,
+          volume: targetLeg,
+          price: roundPrice(legPrice),
+          stoploss: roundPrice(finalSl),
+          takeprofit: roundPrice(tpPrice),
+          ...pendingExpiration,
+          comment: `${commentPrefix}:rg${stepIdx}.tp${b + 1}`,
+        })
+        stepIdx += 1
+      }
+    }
+  }
+
+  // ── 10. Remainder leg (legacy exact-lot behaviour, skipped in range mode) ─
+  // In range mode the user explicitly accepts that the effective lot can be
+  // less than manualLot, so we don't tack on a fractional remainder leg.
+  if (effectiveRangeLegs === 0) {
+    const remainderUnits = manualUnits - totalLegs * targetUnits
+    if (remainderUnits >= minUnits && orders.length < ABS_MAX_LEGS) {
+      const tpPrice = tpForBucket(bucketRows.length - 1)
+      orders.push({
+        ...orderBase,
+        volume: unitsToLot(remainderUnits),
+        stoploss: roundPrice(finalSl),
+        takeprofit: roundPrice(tpPrice),
+        ...expirationFields,
+        comment: `${commentPrefix}:tp${bucketRows.length}.rem`,
+      })
+    }
+  }
+
+  // ── 11. Close-worse-entries override (range-only) ───────────────────────
+  // All immediates plus the first N shallowest pendings get a tight TP at
+  // `legEntry ± close_worse_entries_pips * pip`, so they take a small profit
+  // while the deeper (best-priced) range legs ride for the percent-row TPs.
+  if (effectiveRangeLegs > 0 && manual.close_worse_entries === true) {
+    const cwPips = Math.max(0, Number(manual.close_worse_entries_pips ?? 0))
+    if (cwPips > 0) {
+      const extraPendings = Math.max(
+        0,
+        Math.min(effectiveRangeLegs, Math.floor(Number(manual.close_worse_extra_pendings ?? 0))),
+      )
+      const dir = isBuy ? 1 : -1
+      const overrideUpTo = immediateLegs + extraPendings
+      const fallbackEntry = roundPrice(entry ?? 0)
+      for (let k = 0; k < orders.length && k < overrideUpTo; k++) {
+        const legPrice = orders[k]!.price ?? fallbackEntry
+        const overriddenTp = roundPrice(legPrice + dir * cwPips * pip)
+        orders[k] = {
+          ...orders[k]!,
+          takeprofit: overriddenTp,
+          comment: `${orders[k]!.comment ?? ''}.cw`,
+        }
+      }
+    }
   }
 
   if (orders.length === 0) {
-    // Defensive: counts collapsed to all-zero (shouldn't happen given the math above).
+    // Defensive: shouldn't happen given totalLegs >= 1.
     return buildSingleOrder('multi_trade_fallback_zero_legs')
   }
 
-  return { orders, delay_ms }
+  return {
+    orders,
+    delay_ms,
+    ...(rangeFallbackReason ? { fallback_reason: rangeFallbackReason } : {}),
+  }
 }
 
 function flipOperation(op: MtOperation): MtOperation {
