@@ -3,6 +3,7 @@ import {
   getMetatraderApi,
   MetatraderApiClient,
   MtOperation,
+  normalizeSymbolParams,
   OrderSendArgs,
   SymbolParams,
 } from './metatraderapi'
@@ -74,6 +75,14 @@ interface SymbolCacheEntry {
   minLot: number
   maxLot: number
   lotStep: number
+  /**
+   * Units in 1.00 standard lot — e.g. 100,000 for FX majors, 100 oz for
+   * XAUUSD (or 10 oz on exotic brokers). Plumbed through to the planner so
+   * the pip calculator can derive the correct dollar pip value per lot for
+   * SL/TP, range step, and UI risk hints. `null` when /SymbolParams didn't
+   * report it; the calculator falls back to a class-conventional default.
+   */
+  contractSize: number | null
   /** Broker-reported min SL/TP distance from market, in MT points (0 = no enforcement). */
   stopsLevel: number
   /**
@@ -654,6 +663,7 @@ export class TradeExecutor {
           digits: params?.digits ?? 5,
           minLot: params?.minLot ?? 0.01,
           lotStep: params?.lotStep ?? 0.01,
+          contractSize: params?.contractSize ?? null,
           stopsLevel: params?.stopsLevel ?? 0,
           freezeLevel: params?.freezeLevel ?? 0,
           defaultLot: Number(broker.default_lot_size ?? 0.01),
@@ -791,13 +801,19 @@ export class TradeExecutor {
       const point = Number(params?.point) || 0
       const stopsLevel = Number(params?.stopsLevel) || 0
       const freezeLevel = Number(params?.freezeLevel) || 0
+      const pipValue = plan.pipQuote?.pipValuePerStdLot
+      const contractSize = plan.pipQuote?.contractSize
+      const quoteCcy = plan.pipQuote?.quoteCurrency ?? ''
       console.log(
         `[tradeExecutor] manual plan signal=${signal.id} broker=${broker.id} symbol=${symbol}`
         + ` style=${manual.trade_style ?? 'single'} legs=${legs.length + virtualPendings.length}`
         + ` (immediate=${legs.length}, virtual_pending=${virtualPendings.length})`
         + ` rangeOn=${manual.range_trading === true} cwOn=${!!plan.closeWorseEntries}`
         + (overrideTp != null ? ` cwTp=${overrideTp}` : '')
-        + ` pip=${plan.pip ?? 'n/a'} anchorSource=${anchorSource} anchor=${anchor ?? 'n/a'}`
+        + ` pip=${plan.pip ?? 'n/a'}`
+        + (pipValue != null ? ` pipValue=${pipValue.toFixed(4)}${quoteCcy ? '_' + quoteCcy : ''}/lot` : '')
+        + (contractSize != null ? ` contractSize=${contractSize}` : '')
+        + ` anchorSource=${anchorSource} anchor=${anchor ?? 'n/a'}`
         + ` stops_level=${stopsLevel} freeze_level=${freezeLevel} point=${point}`
         + (plan.fallback_reason ? ` fallback=${plan.fallback_reason}` : ''),
       )
@@ -1124,19 +1140,25 @@ export class TradeExecutor {
     if (!this.api) return null
     try {
       const p: SymbolParams = await this.api.symbolParams(uuid, symbol)
+      const n = normalizeSymbolParams(p)
       const entry: SymbolCacheEntry = {
-        digits: Number(p.symbol?.digits ?? 5),
-        point: Number(p.symbol?.point ?? 0.00001),
-        minLot: Number(p.groupParams?.minLot ?? 0.01),
-        maxLot: Number(p.groupParams?.maxLot ?? 100),
-        lotStep: Number(p.groupParams?.lotStep ?? 0.01),
-        stopsLevel: Math.max(0, Number(p.symbol?.stopsLevel ?? 0) || 0),
-        freezeLevel: Math.max(0, Number(p.symbol?.freezeLevel ?? 0) || 0),
+        digits: n.digits ?? 5,
+        point: n.point ?? 0.00001,
+        minLot: n.minLot ?? 0.01,
+        maxLot: n.maxLot ?? 100,
+        lotStep: n.lotStep ?? 0.01,
+        contractSize: Number.isFinite(n.contractSize) && (n.contractSize ?? 0) > 0 ? Number(n.contractSize) : null,
+        stopsLevel: Math.max(0, n.stopsLevel ?? 0),
+        freezeLevel: Math.max(0, n.freezeLevel ?? 0),
         loadedAt: Date.now(),
       }
+      // First-time-per-symbol diagnostic so we can confirm we actually see the
+      // broker's stops/freeze levels (not silent zeros from a casing mismatch).
+      console.log(`[tradeExecutor] symbol params loaded uuid=${uuid} symbol=${symbol} digits=${entry.digits} point=${entry.point} contractSize=${entry.contractSize ?? 'default'} stopsLevel=${entry.stopsLevel} freezeLevel=${entry.freezeLevel} minLot=${entry.minLot} lotStep=${entry.lotStep}`)
       this.symbolCache.set(key, entry)
       return entry
-    } catch {
+    } catch (e) {
+      console.warn(`[tradeExecutor] /SymbolParams failed uuid=${uuid} symbol=${symbol}:`, e instanceof Error ? e.message : e)
       return null
     }
   }

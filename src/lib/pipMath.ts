@@ -73,12 +73,27 @@ export function classifySymbol(symbol: string): SymbolClass {
   return 'other'
 }
 
+/**
+ * @deprecated Use `pipCalculator(...)` from `./pipCalculator`. The new
+ *   calculator returns the same pip price and additionally exposes the
+ *   dollar pip value per std/mini/micro lot. Implementation here mirrors
+ *   `pipCalculator(...).pipPrice` exactly; do not change one without the
+ *   other.
+ */
 export function smartPipSize(symbol: string, point: number, digits: number): number {
   if (!Number.isFinite(point) || point <= 0) return 0.0001
   const d = Number.isFinite(digits) ? Math.max(0, Math.floor(digits)) : 5
   const klass = classifySymbol(symbol)
   if (klass === 'fx_major' || klass === 'fx_jpy') {
     return d === 3 || d === 5 ? point * 10 : point
+  }
+  if (klass === 'metal') {
+    const cleaned = (symbol || '').toUpperCase()
+    const floor = cleaned.includes('XAG') ? 0.01 : 0.10
+    return Math.max(point * 10, floor)
+  }
+  if (klass === 'index') {
+    return Math.max(point * 10, 1)
   }
   return point * 10
 }

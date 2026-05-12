@@ -56,9 +56,25 @@ test('smartPipSize: XAUUSD 2-digit broker → pip = 0.10 (10 pips = $1.00)', () 
   assert.equal(10 * pip, 1.0)
 })
 
-test('smartPipSize: XAUUSD 3-digit broker → pip = 0.01', () => {
+test('smartPipSize: XAUUSD 3-digit broker → pip = 0.10 (floor)', () => {
+  // Trader convention: 1 pip on gold is $0.10 regardless of digit count, so
+  // 3-digit brokers (point=0.001, point*10=0.01) still report pip=0.10.
   const pip = smartPipSize('XAUUSD', 0.001, 3)
-  // 10 × 0.001 = 0.01
+  assert.ok(Math.abs(pip - 0.10) < 1e-9, `expected ~0.10 got ${pip}`)
+})
+
+test('smartPipSize: XAUUSD 5-digit broker → pip = 0.10 (floor protects 10-pip step)', () => {
+  // Regression: some MT5 brokers list XAUUSD with 5 digits (point=0.00001).
+  // Without the floor, pip = 0.0001 → "10 pips" = $0.001, which makes range
+  // pendings/SL/TPs collapse into the broker's stops_level → "Invalid stops".
+  const pip = smartPipSize('XAUUSD', 0.00001, 5)
+  assert.ok(Math.abs(pip - 0.10) < 1e-9, `expected ~0.10 got ${pip}`)
+  assert.equal(10 * pip, 1.0)
+})
+
+test('smartPipSize: XAGUSD 3-digit broker → pip = 0.01', () => {
+  // Silver pip is $0.01 (lower price level), not gold's $0.10.
+  const pip = smartPipSize('XAGUSD', 0.001, 3)
   assert.ok(Math.abs(pip - 0.01) < 1e-9, `expected ~0.01 got ${pip}`)
 })
 

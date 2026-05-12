@@ -8,14 +8,18 @@
  *   - FX 5-digit majors (EURUSD = 1.23456)        → pip = 10 × point   (0.0001)
  *   - FX 2-digit JPY    (USDJPY = 156.12)         → pip = point        (0.01)
  *   - FX 3-digit JPY    (USDJPY = 156.123)        → pip = 10 × point   (0.01)
- *   - Metals 2-digit    (XAUUSD = 1850.12)        → pip = 10 × point   (0.10)
- *   - Metals 3-digit    (XAUUSD = 1850.123)       → pip = 10 × point   (0.01)
+ *   - XAU/XPT/XPD       any digits                → pip = $0.10 floor
+ *   - XAG (silver)      any digits                → pip = $0.01 floor
  *   - Indices, crypto, energy, exotics            → pip = 10 × point
  *
  * Rule of thumb: for **pure FX pairs** the trader-conventional pip = `point`
  * on 2/4-digit quotes and `10 × point` on 3/5-digit "fractional pip" quotes.
- * For **everything else** the conventional pip is always `10 × point` — the
- * broker's `point` is the sub-pip increment.
+ * For **precious metals** the trader-conventional pip is a fixed dollar value
+ * regardless of digit count — some brokers list XAUUSD with 5 digits
+ * (point=0.00001), and the naive `10 × point` = $0.0001 would make a "10 pip
+ * step" render as a tenth of a cent, well inside any reasonable stops_level.
+ * For **everything else** (indices, crypto, energy) the conventional pip is
+ * `10 × point` — the broker's `point` is the sub-pip increment.
  *
  * Why we need this: on XAUUSD the executor was treating `pip = point = $0.01`,
  * so "10 pips" rendered as $0.10 — well inside the broker's stops_level. Every
@@ -113,7 +117,19 @@ export function classifySymbol(symbol: string): SymbolClass {
 }
 
 /**
- * Trader-conventional pip size for a symbol.
+ * Trader-conventional pip size for a symbol (price units).
+ *
+ * @deprecated Use `pipCalculator(symbol, point, digits, contractSize?)` from
+ *   `./pipCalculator` instead. The new calculator returns the same
+ *   `pipPrice` and additionally exposes the dollar pip value per std/mini/
+ *   micro lot — needed for risk hints and (future) auto-sizing. This
+ *   wrapper is kept so existing call sites compile while we migrate.
+ *
+ *   The pipPrice math below is intentionally identical to
+ *   `pipCalculator(...).pipPrice` so both functions stay in lockstep; we
+ *   inline it here to avoid a top-level cycle between `pipMath` and
+ *   `pipCalculator` (the calculator imports `classifySymbol` from this
+ *   file).
  *
  * @param symbol Broker symbol (with or without prefix/suffix decoration).
  * @param point  Broker `point` (smallest price increment) from /SymbolParams.
@@ -123,17 +139,16 @@ export function smartPipSize(symbol: string, point: number, digits: number): num
   if (!Number.isFinite(point) || point <= 0) return 0.0001
   const d = Number.isFinite(digits) ? Math.max(0, Math.floor(digits)) : 5
   const klass = classifySymbol(symbol)
-
-  // Pure FX pairs follow the textbook "fractional pip" rule: 3/5-digit quotes
-  // expose a sub-pip digit, so pip = 10 × point. 2/4-digit quotes pre-date that
-  // convention and use pip = point directly.
   if (klass === 'fx_major' || klass === 'fx_jpy') {
     return d === 3 || d === 5 ? point * 10 : point
   }
-
-  // Metals, indices, crypto, energy, and unknown exotics: the broker's `point`
-  // is the sub-pip increment and pip = 10 × point (e.g. XAUUSD 2-digit:
-  // point=0.01, pip=0.10 → "10 pips" = $1.00, comfortably outside any common
-  // stops_level).
+  if (klass === 'metal') {
+    const cleaned = (symbol || '').toUpperCase()
+    const floor = cleaned.includes('XAG') ? 0.01 : 0.10
+    return Math.max(point * 10, floor)
+  }
+  if (klass === 'index') {
+    return Math.max(point * 10, 1)
+  }
   return point * 10
 }

@@ -200,6 +200,67 @@ export interface SymbolParams {
     maxLot?: number
     lotStep?: number
   }
+  /**
+   * Raw passthrough so callers can recover fields that the strict typings
+   * don't enumerate (different MT5 bridge builds use different casings —
+   * `StopsLevel` vs `stopsLevel`, `volume_min` vs `minLot`, etc.). Use
+   * `readSymbolParam` to read with multi-casing fallbacks.
+   */
+  [key: string]: unknown
+}
+
+/**
+ * Normalised view of `/SymbolParams` that hides the bridge-version-specific
+ * field casings. Returns `undefined` for fields that genuinely aren't present
+ * so callers can apply their own defaults.
+ */
+export interface NormalizedSymbolParams {
+  digits?: number
+  point?: number
+  contractSize?: number
+  stopsLevel?: number
+  freezeLevel?: number
+  minLot?: number
+  maxLot?: number
+  lotStep?: number
+}
+
+/**
+ * Read a numeric field tolerating camelCase, PascalCase, and snake_case keys.
+ * MT5 bridges (and the underlying MqlSymbolInfo struct) ship every casing in
+ * the wild, so we accept any of them rather than guess.
+ */
+function readNum(obj: unknown, ...keys: string[]): number | undefined {
+  if (!obj || typeof obj !== 'object') return undefined
+  const rec = obj as Record<string, unknown>
+  for (const k of keys) {
+    const v = rec[k]
+    if (v == null) continue
+    const n = Number(v)
+    if (Number.isFinite(n)) return n
+  }
+  return undefined
+}
+
+/** Normalise a /SymbolParams response across the casing variants we've seen. */
+export function normalizeSymbolParams(p: SymbolParams | null | undefined): NormalizedSymbolParams {
+  if (!p || typeof p !== 'object') return {}
+  const sym = (p as Record<string, unknown>).symbol ?? (p as Record<string, unknown>).Symbol ?? p
+  const grp = (p as Record<string, unknown>).groupParams
+    ?? (p as Record<string, unknown>).GroupParams
+    ?? (p as Record<string, unknown>).group
+    ?? (p as Record<string, unknown>).Group
+    ?? p
+  return {
+    digits: readNum(sym, 'digits', 'Digits', 'DIGITS'),
+    point: readNum(sym, 'point', 'Point', 'POINT'),
+    contractSize: readNum(sym, 'contractSize', 'ContractSize', 'contract_size', 'TradeContractSize'),
+    stopsLevel: readNum(sym, 'stopsLevel', 'StopsLevel', 'stops_level', 'TradeStopsLevel', 'trade_stops_level'),
+    freezeLevel: readNum(sym, 'freezeLevel', 'FreezeLevel', 'freeze_level', 'TradeFreezeLevel', 'trade_freeze_level'),
+    minLot: readNum(grp, 'minLot', 'MinLot', 'min_lot', 'volume_min', 'VolumeMin', 'volumeMin'),
+    maxLot: readNum(grp, 'maxLot', 'MaxLot', 'max_lot', 'volume_max', 'VolumeMax', 'volumeMax'),
+    lotStep: readNum(grp, 'lotStep', 'LotStep', 'lot_step', 'volume_step', 'VolumeStep', 'volumeStep'),
+  }
 }
 
 /** Live quote (bid/ask) snapshot for a symbol. */

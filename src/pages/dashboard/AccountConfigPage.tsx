@@ -19,6 +19,8 @@ import { BrokerServerSelect } from '../../components/ui/BrokerServerSelect'
 import { metatraderApi } from '../../lib/metatraderapi'
 import { inferBrokerLabelFromServer } from '../../lib/brokerFromServer'
 import { estimateMultiTradeOrderCount } from '../../lib/estimateMultiTradeOrders'
+import { pipCalculator, pipValueForLots, type PipQuote } from '../../lib/pipCalculator'
+import { classifySymbol } from '../../lib/pipMath'
 import type { BrokerAccount, ManualSettings, ManualTpLot } from '../../types/database'
 
 interface ChannelOption {
@@ -348,6 +350,69 @@ export function AccountConfigPage() {
     const rows = configDraft.manualSettings.tp_lots ?? DEFAULT_MANUAL_TP_LOTS
     return rows.filter(r => r.enabled).reduce((s, r) => s + (Number(r.percent) || 0), 0)
   }, [configDraft.manualSettings.tp_lots])
+
+  /**
+   * Live pip quote for the Account Config page.
+   *
+   * Why we derive `point` / `digits` from the symbol class instead of calling
+   * /SymbolParams: this panel is an editor, not an executor. The broker round-
+   * trip would add latency to every keystroke and we already have the trader-
+   * conventional defaults baked into `pipCalculator`. The actual trade
+   * execution uses real broker data (see worker/src/tradeExecutor.ts), so
+   * server-side risk pricing is always exact.
+   *
+   * `null` means the user hasn't entered a symbol (or entered more than one).
+   * Hints in that case fall back to the legacy static text.
+   */
+  const livePipQuote: PipQuote | null = useMemo(() => {
+    const raw = (configDraft.manualSettings.symbol_to_trade ?? '').trim()
+    if (!raw) return null
+    // Symbol-to-Trade is a whitelist; only compute when there's exactly one
+    // symbol so the hint can't lie about an ambiguous multi-symbol config.
+    const parts = raw.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean)
+    if (parts.length !== 1) return null
+    const symbol = parts[0].toUpperCase()
+    const klass = classifySymbol(symbol)
+    // Trader-conventional broker quote precision per class. These mirror the
+    // pip price floors inside `pipCalculator` so the displayed pip value
+    // always matches what the planner will use on a sane 2/3/4/5-digit
+    // broker.
+    let point = 0.0001
+    let digits = 5
+    switch (klass) {
+      case 'fx_jpy':       point = 0.001;   digits = 3; break
+      case 'fx_major':     point = 0.00001; digits = 5; break
+      case 'metal':        point = 0.01;    digits = 2; break
+      case 'index':        point = 1;       digits = 0; break
+      case 'crypto':       point = 0.01;    digits = 2; break
+      case 'energy':       point = 0.01;    digits = 2; break
+      default:             point = 0.00001; digits = 5; break
+    }
+    return pipCalculator(symbol, point, digits)
+  }, [configDraft.manualSettings.symbol_to_trade])
+
+  /**
+   * Format a per-pip hint for the configured fixed_lot, e.g.
+   * `"At 0.10 lot on XAUUSD: 1 pip ≈ $1.00 (~$10.00 per 10 pips)"`.
+   * Returns null when there's no single symbol set yet so callers can fall
+   * back to their original static text.
+   */
+  const formatPipHint = useMemo(() => {
+    return (pipCount: number): string | null => {
+      if (!livePipQuote) return null
+      const fixedLot = Number(configDraft.manualSettings.fixed_lot ?? 0.01) || 0.01
+      const perPip = pipValueForLots(livePipQuote, fixedLot)
+      if (perPip <= 0) return null
+      const ccy = livePipQuote.quoteCurrency ?? ''
+      const fmt = (n: number) => (ccy === 'JPY' ? `¥${n.toFixed(0)}` : `$${n.toFixed(2)}`)
+      const symbol = (configDraft.manualSettings.symbol_to_trade ?? '').trim()
+      const head = `At ${fixedLot.toFixed(2)} lot on ${symbol.toUpperCase()}: 1 pip ≈ ${fmt(perPip)}`
+      if (pipCount > 0) {
+        return `${head} (~${fmt(perPip * pipCount)} per ${pipCount} pips)`
+      }
+      return head
+    }
+  }, [livePipQuote, configDraft.manualSettings.fixed_lot, configDraft.manualSettings.symbol_to_trade])
 
   // Keep close_worse_extra_pendings within the live pending count so the UI
   // can't show a stale value larger than what the planner will actually use.
@@ -1149,7 +1214,10 @@ export function AccountConfigPage() {
                                         min={1}
                                         step={1}
                                         placeholder="10"
-                                        hint="Pips between pendings. 10 pips ≈ $1.00 on XAUUSD, 0.0010 on EURUSD, 0.10 on USDJPY."
+                                        hint={
+                                          formatPipHint(Number(configDraft.manualSettings.range_step_pips ?? 10) || 0)
+                                          ?? 'Pips between pendings.'
+                                        }
                                         value={String(configDraft.manualSettings.range_step_pips ?? 10)}
                                         onChange={e => setManual({ range_step_pips: Math.max(1, Number(e.target.value) || 1) })}
                                       />
@@ -1159,7 +1227,10 @@ export function AccountConfigPage() {
                                         min={1}
                                         step={1}
                                         placeholder="100"
-                                        hint="Total pip span from entry. Recommend ≥ 5× step so the ladder isn't capped."
+                                        hint={
+                                          formatPipHint(Number(configDraft.manualSettings.range_distance_pips ?? 100) || 0)
+                                          ?? "Total pip span from entry. Recommend ≥ 5× step so the ladder isn't capped."
+                                        }
                                         value={String(configDraft.manualSettings.range_distance_pips ?? 100)}
                                         onChange={e => setManual({ range_distance_pips: Math.max(1, Number(e.target.value) || 1) })}
                                       />
@@ -1187,7 +1258,10 @@ export function AccountConfigPage() {
                                             min={1}
                                             step={1}
                                             placeholder="30"
-                                            hint="Pip profit from the worse entry. 30 pips ≈ $3.00 on XAUUSD, 0.0030 on EURUSD."
+                                            hint={
+                                              formatPipHint(Number(configDraft.manualSettings.close_worse_entries_pips ?? 30) || 0)
+                                              ?? 'Pip profit from the worse entry. 30 pips ≈ $3.00 on XAUUSD, 0.0030 on EURUSD.'
+                                            }
                                             value={String(configDraft.manualSettings.close_worse_entries_pips ?? 30)}
                                             onChange={e => setManual({ close_worse_entries_pips: Math.max(1, Number(e.target.value) || 1) })}
                                           />
@@ -1293,11 +1367,28 @@ export function AccountConfigPage() {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                               <label className="text-sm text-neutral-700 flex items-center gap-2"><input type="checkbox" checked={configDraft.manualSettings.use_predefined_sl_pips === true} onChange={e => setManual({ use_predefined_sl_pips: e.target.checked })} />Use Predefined SL Pips</label>
                               {configDraft.manualSettings.use_predefined_sl_pips && (
-                                <Input label="Predefined SL Pips" type="number" value={String(configDraft.manualSettings.predefined_sl_pips ?? 30)} onChange={e => setManual({ predefined_sl_pips: Number(e.target.value) })} />
+                                <Input
+                                  label="Predefined SL Pips"
+                                  type="number"
+                                  hint={formatPipHint(Number(configDraft.manualSettings.predefined_sl_pips ?? 30) || 0) ?? undefined}
+                                  value={String(configDraft.manualSettings.predefined_sl_pips ?? 30)}
+                                  onChange={e => setManual({ predefined_sl_pips: Number(e.target.value) })}
+                                />
                               )}
                               <label className="text-sm text-neutral-700 flex items-center gap-2"><input type="checkbox" checked={configDraft.manualSettings.use_predefined_tp_pips === true} onChange={e => setManual({ use_predefined_tp_pips: e.target.checked })} />Use Predefined TPs</label>
                               {configDraft.manualSettings.use_predefined_tp_pips && (
-                                <Input label="Predefined TP Pips (comma)" value={(configDraft.manualSettings.predefined_tp_pips ?? []).join(',')} onChange={e => setManual({ predefined_tp_pips: e.target.value.split(',').map(n => Number(n.trim())).filter(Number.isFinite) })} />
+                                <Input
+                                  label="Predefined TP Pips (comma)"
+                                  hint={(() => {
+                                    // For the comma-separated TP input, show the per-pip rate and let
+                                    // the user multiply themselves; otherwise the hint would have to
+                                    // pick one TP. Falls back to undefined when no symbol is set.
+                                    const h = formatPipHint(0)
+                                    return h ?? undefined
+                                  })()}
+                                  value={(configDraft.manualSettings.predefined_tp_pips ?? []).join(',')}
+                                  onChange={e => setManual({ predefined_tp_pips: e.target.value.split(',').map(n => Number(n.trim())).filter(Number.isFinite) })}
+                                />
                               )}
                               <label className="text-sm text-neutral-700 flex items-center gap-2"><input type="checkbox" checked={configDraft.manualSettings.rr_for_sl_enabled === true} onChange={e => setManual({ rr_for_sl_enabled: e.target.checked })} />Enable R:R for SL</label>
                               {configDraft.manualSettings.rr_for_sl_enabled && (

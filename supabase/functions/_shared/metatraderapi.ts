@@ -195,17 +195,21 @@ export class MetatraderApiClient {
   }> {
     const raw = await this.get<unknown>("/SymbolParams", { id, symbol })
     const root = (raw && typeof raw === "object") ? raw as Record<string, unknown> : {}
-    const sym = (root.symbol && typeof root.symbol === "object") ? root.symbol as Record<string, unknown> : root
-    const num = (v: unknown, fb: number): number => {
-      if (typeof v === "number" && Number.isFinite(v)) return v
-      if (typeof v === "string" && v.trim()) { const n = Number(v); return Number.isFinite(n) ? n : fb }
-      return fb
+    const sym = (root.symbol ?? root.Symbol ?? root) as Record<string, unknown>
+    const readNum = (...keys: string[]): number | undefined => {
+      for (const k of keys) {
+        const v = sym[k]
+        if (v == null) continue
+        const n = typeof v === "number" ? v : Number(v)
+        if (Number.isFinite(n)) return n
+      }
+      return undefined
     }
     return {
-      digits: num(sym.digits ?? sym.Digits, 5),
-      point: num(sym.point ?? sym.Point, 0.00001),
-      stopsLevel: Math.max(0, num(sym.stopsLevel ?? sym.StopsLevel, 0)),
-      freezeLevel: Math.max(0, num(sym.freezeLevel ?? sym.FreezeLevel, 0)),
+      digits: readNum("digits", "Digits", "DIGITS") ?? 5,
+      point: readNum("point", "Point", "POINT") ?? 0.00001,
+      stopsLevel: Math.max(0, readNum("stopsLevel", "StopsLevel", "stops_level", "TradeStopsLevel", "trade_stops_level") ?? 0),
+      freezeLevel: Math.max(0, readNum("freezeLevel", "FreezeLevel", "freeze_level", "TradeFreezeLevel", "trade_freeze_level") ?? 0),
     }
   }
 }

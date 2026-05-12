@@ -1,5 +1,5 @@
 import type { MtOperation, OrderSendArgs } from './metatraderapi'
-import { smartPipSize } from './pipMath'
+import { pipCalculator, type PipQuote } from './pipCalculator'
 
 /**
  * Manual-mode order planner.
@@ -110,6 +110,15 @@ export interface PlannerContext {
   minLot: number
   /** Broker-reported lot step for this symbol (e.g. 0.01). */
   lotStep: number
+  /**
+   * Units in 1.00 standard lot — e.g. 100,000 for FX majors, 100 oz for
+   * XAUUSD. Passed to `pipCalculator` so the planner can derive the
+   * dollar pip value per lot (for the manual-plan summary log and for
+   * exotic contracts where the broker reports a non-standard size).
+   * Omitted when /SymbolParams didn't expose it; the calculator falls
+   * back to a class-conventional default.
+   */
+  contractSize?: number | null
   /** Broker-reported min SL/TP distance from market, in MT points (0 = no enforcement). */
   stopsLevel?: number
   /**
@@ -194,6 +203,14 @@ export interface PlannerResult {
   /** Smart-pip size for this signal (so the executor can derive prices/CWE without
    *  recomputing classifySymbol/smartPipSize). */
   pip?: number
+  /**
+   * Full pip quote derived by `pipCalculator`. Exposed so the executor's
+   * plan-summary log can show `pipValue` per std lot and `contractSize`
+   * without re-running the calculator. `pip` above is just a shortcut for
+   * `pipQuote.pipPrice` and is kept for backwards compatibility with
+   * existing callers / tests.
+   */
+  pipQuote?: PipQuote
   /** True if this is a buy ladder (immediates Buy / pendings BuyLimit). */
   isBuy?: boolean
   /** Close-Worse-Entries policy; absent when CWE is off or there are no range legs. */
@@ -409,7 +426,11 @@ export function planManualOrders(args: {
   const entryAnchor = entryOk ? entry : null
 
   // ── 4. SL/TP derivation ─────────────────────────────────────────────────
-  const pip = smartPipSize(resolvedSymbol, ctx.point, ctx.digits)
+  // Single source of truth for both pip price (used immediately below for
+  // SL/TP/range step math) and pip value per std/mini/micro lot (surfaced
+  // on PlannerResult.pipQuote for the executor's summary log and the UI).
+  const pipQuote = pipCalculator(resolvedSymbol, ctx.point, ctx.digits, ctx.contractSize ?? null)
+  const pip = pipQuote.pipPrice
   const slInPips = channelKeywords?.additional?.sl_in_pips === true
   const tpInPips = channelKeywords?.additional?.tp_in_pips === true
 
@@ -729,6 +750,7 @@ export function planManualOrders(args: {
     ...(virtualPendings.length ? { virtualPendings } : {}),
     anchor: { source: entryAnchor != null ? 'signal' : 'unknown', value: entryAnchor },
     pip,
+    pipQuote,
     isBuy,
     ...(closeWorseEntries ? { closeWorseEntries } : {}),
     delay_ms,

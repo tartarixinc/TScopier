@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   getMetatraderApi,
   MetatraderApiClient,
+  normalizeSymbolParams,
   OrderSendArgs,
   SymbolParams,
 } from './metatraderapi'
@@ -54,6 +55,13 @@ interface SymbolCacheEntry {
   point: number
   minLot: number
   lotStep: number
+  /**
+   * Units in 1.00 standard lot. The monitor doesn't currently use this for
+   * order math, but the field keeps the cache shape aligned with the
+   * tradeExecutor cache so future risk/sizing code can be added in one
+   * place.
+   */
+  contractSize: number | null
   stopsLevel: number
   freezeLevel: number
   loadedAt: number
@@ -283,11 +291,25 @@ export class VirtualPendingMonitor {
         )
       }
       Object.assign(args, clamped.args)
+      // Sanity check the clamped result. The clamp only nudges to `ref ± minDist`,
+      // which can still be invalid when the BROKER's effective stops_level is
+      // larger than `/SymbolParams` reports (some MT5 builds quietly omit it).
+      // If the resulting TP/SL is still on the wrong side of the live ref,
+      // drop the offending side rather than send a doomed order — opening
+      // without a TP is strictly better than not opening at all for an
+      // averaging-down ladder.
+      const cleanup = this.sanitizeStops(args, refPrice)
+      if (cleanup.notes.length) {
+        console.warn(
+          `[virtualPendingMonitor] stops sanitized leg=${leg.id} symbol=${leg.symbol} op=${args.operation}: ${cleanup.notes.join(', ')}`,
+        )
+      }
+      Object.assign(args, cleanup.args)
     }
 
     const t0 = Date.now()
     try {
-      const result = await this.api.orderSend(leg.metaapi_account_id, args)
+      const result = await this.sendWithStopsFallback(leg, args)
       const latencyMs = Date.now() - t0
       console.log(
         `[virtualPendingMonitor] virtual leg fired signal=${leg.signal_id} stepIdx=${leg.step_idx} trigger=${leg.trigger_price} ref=${refPrice} ticket=${result.ticket} latency=${latencyMs}ms`,
@@ -358,13 +380,15 @@ export class VirtualPendingMonitor {
     if (cached && (Date.now() - cached.loadedAt) < SYMBOL_TTL_MS) return cached
     try {
       const p: SymbolParams = await this.api.symbolParams(uuid, symbol)
+      const n = normalizeSymbolParams(p)
       const entry: SymbolCacheEntry = {
-        digits: Number(p.symbol?.digits ?? 5),
-        point: Number(p.symbol?.point ?? 0.00001),
-        minLot: Number(p.groupParams?.minLot ?? 0.01),
-        lotStep: Number(p.groupParams?.lotStep ?? 0.01),
-        stopsLevel: Math.max(0, Number(p.symbol?.stopsLevel ?? 0) || 0),
-        freezeLevel: Math.max(0, Number(p.symbol?.freezeLevel ?? 0) || 0),
+        digits: n.digits ?? 5,
+        point: n.point ?? 0.00001,
+        minLot: n.minLot ?? 0.01,
+        lotStep: n.lotStep ?? 0.01,
+        contractSize: Number.isFinite(n.contractSize) && (n.contractSize ?? 0) > 0 ? Number(n.contractSize) : null,
+        stopsLevel: Math.max(0, n.stopsLevel ?? 0),
+        freezeLevel: Math.max(0, n.freezeLevel ?? 0),
         loadedAt: Date.now(),
       }
       this.symbolCache.set(key, entry)
@@ -406,5 +430,71 @@ export class VirtualPendingMonitor {
     if (tp !== original.tp) adjustments.push(`tp ${original.tp} → ${tp}`)
     if (adjustments.length === 0) return { args, adjustments }
     return { args: { ...args, stoploss: sl, takeprofit: tp }, adjustments }
+  }
+
+  /**
+   * Final safety pass after `clampOrderStops`. If the clamped TP/SL is still on
+   * the wrong side of the live reference price for the order's direction (which
+   * happens when the broker's real stops_level is larger than `/SymbolParams`
+   * reports, or when the signal TP was reached before our leg fired), drop the
+   * bad side instead of sending a guaranteed-rejected order.
+   */
+  private sanitizeStops(args: OrderSendArgs, refPrice: number): { args: OrderSendArgs; notes: string[] } {
+    if (!Number.isFinite(refPrice) || refPrice <= 0) return { args, notes: [] }
+    const notes: string[] = []
+    const isBuy = String(args.operation) === 'Buy'
+    let sl = Number(args.stoploss) || 0
+    let tp = Number(args.takeprofit) || 0
+    if (isBuy) {
+      // Buy: TP must sit ABOVE ref, SL must sit BELOW ref.
+      if (tp > 0 && tp <= refPrice) {
+        notes.push(`tp ${tp} <= ref ${refPrice} (wrong side for Buy) → dropping TP`)
+        tp = 0
+      }
+      if (sl > 0 && sl >= refPrice) {
+        notes.push(`sl ${sl} >= ref ${refPrice} (wrong side for Buy) → dropping SL`)
+        sl = 0
+      }
+    } else {
+      // Sell: TP must sit BELOW ref, SL must sit ABOVE ref.
+      if (tp > 0 && tp >= refPrice) {
+        notes.push(`tp ${tp} >= ref ${refPrice} (wrong side for Sell) → dropping TP`)
+        tp = 0
+      }
+      if (sl > 0 && sl <= refPrice) {
+        notes.push(`sl ${sl} <= ref ${refPrice} (wrong side for Sell) → dropping SL`)
+        sl = 0
+      }
+    }
+    if (notes.length === 0) return { args, notes }
+    return { args: { ...args, stoploss: sl, takeprofit: tp }, notes }
+  }
+
+  /**
+   * Send a market order; if the broker rejects with "Invalid stops" despite our
+   * clamp/sanitize passes, retry once with SL=0 and TP=0 so the leg actually
+   * opens. The user has explicitly opted into averaging-down by enabling range
+   * trading — opening the leg without stops is strictly preferable to silently
+   * dropping it. Subsequent SL/TP management can be done by the signal-modify
+   * flow once the position is on the books.
+   */
+  private async sendWithStopsFallback(
+    leg: PendingRow,
+    args: OrderSendArgs,
+  ): Promise<{ ticket?: number; openPrice?: number; lots?: number; stopLoss?: number; takeProfit?: number }> {
+    if (!this.api) throw new Error('api unavailable')
+    try {
+      return await this.api.orderSend(leg.metaapi_account_id, args)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      const isInvalidStops = /invalid\s+stops/i.test(msg)
+      const hasStops = (Number(args.stoploss) || 0) > 0 || (Number(args.takeprofit) || 0) > 0
+      if (!isInvalidStops || !hasStops) throw err
+      console.warn(
+        `[virtualPendingMonitor] retry without stops leg=${leg.id} signal=${leg.signal_id} stepIdx=${leg.step_idx} reason="${msg}" (sl=${args.stoploss} tp=${args.takeprofit})`,
+      )
+      const fallback: OrderSendArgs = { ...args, stoploss: 0, takeprofit: 0 }
+      return await this.api.orderSend(leg.metaapi_account_id, fallback)
+    }
   }
 }
