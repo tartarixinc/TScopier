@@ -206,13 +206,18 @@ export function planManualOrders(args: {
   const isBuy = operation.startsWith('Buy')
 
   // ── 3. Resolve entry price (with channel prefer_entry on zones) ─────────
-  let entry: number | null = parsed.entry_price ?? null
+  let entry: number | null = parsed.entry_price != null ? Number(parsed.entry_price) : null
+  if (entry != null && !Number.isFinite(entry)) entry = null
   if (entry == null && parsed.entry_zone_low != null && parsed.entry_zone_high != null) {
     const lo = Number(parsed.entry_zone_low)
     const hi = Number(parsed.entry_zone_high)
-    const prefer = channelKeywords?.additional?.prefer_entry ?? 'first_price'
-    entry = prefer === 'last_price' ? Math.max(lo, hi) : Math.min(lo, hi)
+    if (Number.isFinite(lo) && Number.isFinite(hi)) {
+      const prefer = channelKeywords?.additional?.prefer_entry ?? 'first_price'
+      entry = prefer === 'last_price' ? Math.max(lo, hi) : Math.min(lo, hi)
+    }
   }
+  const entryOk = entry != null && Number.isFinite(entry) && entry > 0
+  const entryAnchor = entryOk ? entry : null
 
   // ── 4. SL/TP derivation ─────────────────────────────────────────────────
   const pip = pipSize(ctx.point, ctx.digits)
@@ -222,44 +227,44 @@ export function planManualOrders(args: {
   // Channel reported pip distances rather than prices — convert.
   let parsedSl: number | null = parsed.sl ?? null
   let parsedTps: number[] = (parsed.tp ?? []).filter((n): n is number => typeof n === 'number' && Number.isFinite(n))
-  if (slInPips && parsedSl != null && entry != null) {
-    parsedSl = isBuy ? entry - parsedSl * pip : entry + parsedSl * pip
+  if (slInPips && parsedSl != null && entryAnchor != null) {
+    parsedSl = isBuy ? entryAnchor - parsedSl * pip : entryAnchor + parsedSl * pip
   }
-  if (tpInPips && parsedTps.length && entry != null) {
-    parsedTps = parsedTps.map(t => (isBuy ? entry + t * pip : entry - t * pip))
+  if (tpInPips && parsedTps.length && entryAnchor != null) {
+    parsedTps = parsedTps.map(t => (isBuy ? entryAnchor + t * pip : entryAnchor - t * pip))
   }
 
   // Apply manual_settings overrides for SL/TP when enabled.
   let finalSl = parsedSl
   let finalTps = parsedTps
-  if (manual.use_predefined_sl_pips && Number.isFinite(manual.predefined_sl_pips ?? NaN) && entry != null) {
+  if (manual.use_predefined_sl_pips && Number.isFinite(manual.predefined_sl_pips ?? NaN) && entryAnchor != null) {
     const sl_pips = Number(manual.predefined_sl_pips)
-    finalSl = isBuy ? entry - sl_pips * pip : entry + sl_pips * pip
+    finalSl = isBuy ? entryAnchor - sl_pips * pip : entryAnchor + sl_pips * pip
   }
-  if (manual.use_predefined_tp_pips && Array.isArray(manual.predefined_tp_pips) && entry != null) {
+  if (manual.use_predefined_tp_pips && Array.isArray(manual.predefined_tp_pips) && entryAnchor != null) {
     const tps = manual.predefined_tp_pips
       .map(Number)
       .filter(n => Number.isFinite(n) && n > 0)
     if (tps.length) {
-      finalTps = tps.map(t => (isBuy ? entry + t * pip : entry - t * pip))
+      finalTps = tps.map(t => (isBuy ? entryAnchor + t * pip : entryAnchor - t * pip))
     }
   }
 
   // R:R derivation when only one side is known.
-  if (manual.rr_for_sl_enabled && Number.isFinite(manual.rr_for_sl ?? NaN) && entry != null && finalTps.length && finalSl == null) {
+  if (manual.rr_for_sl_enabled && Number.isFinite(manual.rr_for_sl ?? NaN) && entryAnchor != null && finalTps.length && finalSl == null) {
     const rr = Number(manual.rr_for_sl)
     if (rr > 0) {
-      const tpDist = Math.abs(finalTps[0] - entry)
+      const tpDist = Math.abs(finalTps[0] - entryAnchor)
       const slDist = tpDist / rr
-      finalSl = isBuy ? entry - slDist : entry + slDist
+      finalSl = isBuy ? entryAnchor - slDist : entryAnchor + slDist
     }
   }
-  if (manual.rr_for_tps_enabled && Array.isArray(manual.rr_for_tps) && entry != null && finalSl != null && finalTps.length === 0) {
-    const slDist = Math.abs(entry - finalSl)
+  if (manual.rr_for_tps_enabled && Array.isArray(manual.rr_for_tps) && entryAnchor != null && finalSl != null && finalTps.length === 0) {
+    const slDist = Math.abs(entryAnchor - finalSl)
     finalTps = manual.rr_for_tps
       .map(Number)
       .filter(n => Number.isFinite(n) && n > 0)
-      .map(rr => (isBuy ? entry + rr * slDist : entry - rr * slDist))
+      .map(rr => (isBuy ? entryAnchor + rr * slDist : entryAnchor - rr * slDist))
   }
 
   const roundPrice = (v: number | null | undefined): number => {
@@ -288,9 +293,9 @@ export function planManualOrders(args: {
     const ceilPrice = ref - minStopDist
     return price > ceilPrice ? Number(ceilPrice.toFixed(ctx.digits)) : price
   }
-  if (entry != null && minStopDist > 0) {
-    finalSl = clampToStops(finalSl, false, entry)
-    finalTps = finalTps.map(tp => clampToStops(tp, true, entry) ?? tp)
+  if (entryAnchor != null && minStopDist > 0) {
+    finalSl = clampToStops(finalSl, false, entryAnchor)
+    finalTps = finalTps.map(tp => clampToStops(tp, true, entryAnchor) ?? tp)
   }
 
   // ── 5. Multi-Trade lot splitting ────────────────────────────────────────
@@ -299,7 +304,7 @@ export function planManualOrders(args: {
   const orderBase = {
     symbol: resolvedSymbol,
     operation,
-    price: roundPrice(entry),
+    price: entryAnchor != null ? roundPrice(entryAnchor) : roundPrice(entry),
     slippage: slippage ?? 20,
     comment: commentPrefix,
     expertID: expertId,
@@ -382,7 +387,11 @@ export function planManualOrders(args: {
     // Signal already carries its own pending entry — skip the range branch.
     rangeFallbackReason = 'range_trading_skip_pending_signal'
   } else if (rangeOn) {
-    if (stepPips <= 0 || distPips <= 0) {
+    if (!entryOk) {
+      // Need a finite entry anchor to price BuyLimit/SellLimit legs; otherwise
+      // MetatraderAPI would receive price=0 and ignore / reject the pendings.
+      rangeFallbackReason = 'range_trading_no_valid_entry'
+    } else if (stepPips <= 0 || distPips <= 0) {
       rangeFallbackReason = 'range_trading_invalid'
     } else {
       // If the configured pip step would land Limit prices inside the broker's
@@ -473,7 +482,7 @@ export function planManualOrders(args: {
   // ── 9. Emit range pendings ──────────────────────────────────────────────
   // Pendings always carry an expiration if `pending_expiry_hours` is set,
   // independent of whether the immediate leg path was already a pending.
-  if (effectiveRangeLegs > 0 && entry != null) {
+  if (effectiveRangeLegs > 0 && entryAnchor != null) {
     const pendingOp: MtOperation = isBuy ? 'BuyLimit' : 'SellLimit'
     const pendingExpiration: { expiration?: string; expirationType?: OrderSendArgs['expirationType'] } = {}
     const pendHours = Number(manual.pending_expiry_hours ?? 0)
@@ -488,8 +497,8 @@ export function planManualOrders(args: {
       const tpPrice = tpForBucket(b)
       for (let k = 0; k < (rangeCounts[b] ?? 0); k++) {
         const legPrice = isBuy
-          ? entry - stepIdx * effectiveStepPips * pip
-          : entry + stepIdx * effectiveStepPips * pip
+          ? entryAnchor - stepIdx * effectiveStepPips * pip
+          : entryAnchor + stepIdx * effectiveStepPips * pip
         orders.push({
           ...orderBase,
           operation: pendingOp,
@@ -539,7 +548,7 @@ export function planManualOrders(args: {
       )
       const dir = isBuy ? 1 : -1
       const overrideUpTo = immediateLegs + extraPendings
-      const entryRef = (entry != null && entry > 0) ? entry : null
+      const entryRef = entryAnchor
       for (let k = 0; k < orders.length && k < overrideUpTo; k++) {
         const rawLegPrice = Number(orders[k]!.price) || 0
         const legPrice = rawLegPrice > 0 ? rawLegPrice : (entryRef ?? 0)

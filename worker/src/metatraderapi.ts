@@ -30,6 +30,18 @@ export type MtOperation =
   | 'BuyStopLimit'
   | 'SellStopLimit'
 
+/** Pending / stop entry types require a positive limit/stop price on OrderSend. */
+export function orderOperationRequiresPrice(operation: string): boolean {
+  return (
+    operation === 'BuyLimit'
+    || operation === 'SellLimit'
+    || operation === 'BuyStop'
+    || operation === 'SellStop'
+    || operation === 'BuyStopLimit'
+    || operation === 'SellStopLimit'
+  )
+}
+
 export interface OrderSendArgs {
   symbol: string
   operation: MtOperation
@@ -270,12 +282,20 @@ export class MetatraderApiClient {
   }
 
   async orderSend(id: string, args: OrderSendArgs): Promise<OrderResult> {
+    const op = String(args.operation)
+    const px = Number(args.price)
+    if (orderOperationRequiresPrice(op) && (!Number.isFinite(px) || px <= 0)) {
+      throw new MetatraderApiError(
+        `OrderSend: ${op} requires a positive price (got ${String(args.price)}); refusing to send price=0 to MetatraderAPI`,
+        400,
+      )
+    }
     const raw = await this.get<unknown>('/OrderSend', {
       id,
       symbol: args.symbol,
       operation: args.operation,
       volume: args.volume,
-      price: args.price ?? 0,
+      price: Number.isFinite(px) ? px : 0,
       slippage: args.slippage ?? 20,
       stoploss: args.stoploss ?? 0,
       takeprofit: args.takeprofit ?? 0,
