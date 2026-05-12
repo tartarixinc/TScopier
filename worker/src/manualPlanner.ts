@@ -350,24 +350,27 @@ export function planManualOrders(args: {
 
   let immediateLegs = totalLegs
   let effectiveRangeLegs = 0
+  let effectiveStepPips = stepPips
   let rangeFallbackReason: string | undefined
 
   if (rangeOn && baseIsPendingSignal) {
     // Signal already carries its own pending entry — skip the range branch.
     rangeFallbackReason = 'range_trading_skip_pending_signal'
   } else if (rangeOn) {
-    // Reject when the configured pip step would land Limit prices inside the
-    // broker's stops zone (broker would reject every pending with "Invalid stops").
-    const stopsLevel = Number(ctx.stopsLevel ?? 0) || 0
-    const stepInPriceUnits = stepPips * pip
-    const minStepUnits = stopsLevel > 0 ? (stopsLevel + 2) * ctx.point : 0
     if (stepPips <= 0 || distPips <= 0) {
       rangeFallbackReason = 'range_trading_invalid'
-    } else if (minStepUnits > 0 && stepInPriceUnits < minStepUnits) {
-      rangeFallbackReason = 'range_trading_step_below_stops_level'
     } else {
+      // If the configured pip step would land Limit prices inside the broker's
+      // stops zone (e.g. 2 pips on XAUUSD where stops_level ≈ $1), grow the
+      // step to the broker minimum instead of silently dropping the feature.
+      const stopsLevel = Number(ctx.stopsLevel ?? 0) || 0
+      const minStepUnits = stopsLevel > 0 ? (stopsLevel + 2) * ctx.point : 0
+      if (minStepUnits > 0 && pip > 0 && stepPips * pip < minStepUnits) {
+        effectiveStepPips = Math.max(stepPips, Math.ceil(minStepUnits / pip))
+        rangeFallbackReason = 'range_trading_step_auto_expanded'
+      }
       const reservedLegs = Math.round((totalLegs * rangePct) / 100)
-      const maxByDistance = Math.floor(distPips / stepPips)
+      const maxByDistance = Math.floor(distPips / effectiveStepPips)
       const effective = Math.min(reservedLegs, maxByDistance)
       if (effective <= 0) {
         // Reserved 0 is intentional (user picked 0%); cap-to-0 is misconfig.
@@ -460,8 +463,8 @@ export function planManualOrders(args: {
       const tpPrice = tpForBucket(b)
       for (let k = 0; k < (rangeCounts[b] ?? 0); k++) {
         const legPrice = isBuy
-          ? entry - stepIdx * stepPips * pip
-          : entry + stepIdx * stepPips * pip
+          ? entry - stepIdx * effectiveStepPips * pip
+          : entry + stepIdx * effectiveStepPips * pip
         orders.push({
           ...orderBase,
           operation: pendingOp,

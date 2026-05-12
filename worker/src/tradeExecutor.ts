@@ -622,7 +622,11 @@ export class TradeExecutor {
 
     if (plan.fallback_reason) {
       // Non-fatal: the planner had to soften its strategy (e.g. multi → single because
-      // the per-leg target was below minLot). Surface the reason for the trades UI.
+      // the per-leg target was below minLot). Surface the reason in worker logs and
+      // also persist it for the trades UI.
+      console.warn(
+        `[tradeExecutor] plan_fallback signal=${signal.id} broker=${broker.id} symbol=${symbol} reason=${plan.fallback_reason}`,
+      )
       try {
         await this.supabase.from('trade_execution_logs').insert({
           user_id: signal.user_id,
@@ -636,12 +640,32 @@ export class TradeExecutor {
             target_leg: +(baseLot * ((Number(manual.multi_trade_leg_percent ?? 5)) / 100)).toFixed(4),
             min_lot: params?.minLot ?? null,
             lot_step: params?.lotStep ?? null,
+            stops_level: params?.stopsLevel ?? null,
             symbol,
           } as unknown as Record<string, unknown>,
         })
       } catch {
         // Logging failure is non-fatal.
       }
+    }
+
+    if (isManual) {
+      // One-line plan summary so it's obvious whether Range Trading / Close-worse-entries
+      // actually applied. Helps debug "settings not applying" reports.
+      const ops = plan.orders.map(o => String(o.operation))
+      const immediates = ops.filter(o => o === 'Buy' || o === 'Sell').length
+      const pendings = ops.length - immediates
+      const cwOn = manual.range_trading === true
+        && manual.close_worse_entries === true
+        && (Number(manual.close_worse_entries_pips ?? 0) || 0) > 0
+        && pendings > 0
+      console.log(
+        `[tradeExecutor] manual plan signal=${signal.id} broker=${broker.id} symbol=${symbol}`
+        + ` style=${manual.trade_style ?? 'single'} legs=${plan.orders.length}`
+        + ` (immediate=${immediates}, pending=${pendings})`
+        + ` rangeOn=${manual.range_trading === true} cwOn=${cwOn}`
+        + (plan.fallback_reason ? ` fallback=${plan.fallback_reason}` : ''),
+      )
     }
 
     if (plan.delay_ms > 0) {
