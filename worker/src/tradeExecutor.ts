@@ -7,13 +7,13 @@ import {
   SymbolParams,
 } from './metatraderapi'
 import {
-  applyCloseWorseEntries,
+  computeCwOverrideTp,
   planManualOrders,
   type ChannelKeywords,
   type ManualSettings,
   type ParsedSignal as PlannerParsedSignal,
   type PlannerResult,
-  type PlannerRangeMeta,
+  type VirtualPendingLeg,
 } from './manualPlanner'
 
 /**
@@ -273,49 +273,29 @@ function clampOrderStops(
 
 interface Leg {
   args: OrderSendArgs
-  meta?: PlannerRangeMeta
   idx: number
 }
 
 /**
- * Resolve final prices for every leg against the live `anchor`:
- *   • Immediate legs: keep `price` as-is (planner already set it to the anchor).
- *   • Range pendings: `price = anchor + (isBuy ? -1 : +1) × stepIdx × stepPriceOffset`.
- *   • Then apply the planner's Close-Worse-Entries policy (single trigger TP
- *     shared by all immediates + N shallowest pendings).
- *
- * When `anchor` is missing or invalid this is a no-op — the caller will drop
- * any leg that still has `price <= 0`. Pure: doesn't mutate the input legs.
+ * Compute the single CWE override TP price for this plan against the resolved
+ * anchor. The executor applies this same value to the first N immediate orders
+ * AND the first N shallowest virtual pendings (sorted by stepIdx) before
+ * sending / persisting. Returns `null` when CWE is off or inputs are missing.
  */
-function resolveLegPrices(
-  legs: Leg[],
-  anchor: number | null,
+function computeCweTp(
   plan: PlannerResult,
+  anchor: number | null,
   params: SymbolCacheEntry | null,
-): Leg[] {
-  if (anchor == null || !Number.isFinite(anchor) || anchor <= 0) return legs
+): number | null {
+  if (!plan.closeWorseEntries || plan.pip == null || plan.isBuy == null) return null
+  if (anchor == null || !Number.isFinite(anchor) || anchor <= 0) return null
   const digits = Math.max(0, Math.min(8, Number(params?.digits) || 5))
-  const roundPx = (v: number): number => Number(v.toFixed(digits))
-
-  const repriced = legs.map(leg => {
-    if (!leg.meta) return leg
-    const offset = leg.meta.stepIdx * leg.meta.stepPriceOffset
-    const price = leg.meta.isBuy ? anchor - offset : anchor + offset
-    return { ...leg, args: { ...leg.args, price: roundPx(price) } }
-  })
-
-  if (!plan.closeWorseEntries || plan.pip == null || plan.isBuy == null) {
-    return repriced
-  }
-
   const point = Number(params?.point) || 0
   const stopsLevel = Number(params?.stopsLevel) || 0
   const freezeLevel = Number(params?.freezeLevel) || 0
   const safe = Math.max(stopsLevel, freezeLevel)
   const minStopDistance = safe > 0 && point > 0 ? (safe + 2) * point : 0
-
-  const adjustedArgs = applyCloseWorseEntries({
-    orders: repriced.map(l => l.args),
+  return computeCwOverrideTp({
     policy: plan.closeWorseEntries,
     anchor,
     isBuy: plan.isBuy,
@@ -323,7 +303,18 @@ function resolveLegPrices(
     digits,
     minStopDistance,
   })
-  return repriced.map((l, i) => ({ ...l, args: adjustedArgs[i]! }))
+}
+
+/**
+ * Compute the persisted `trigger_price` for a virtual leg from the live anchor.
+ *   buy ladder  : trigger = anchor - stepIdx × stepPriceOffset (averages DOWN)
+ *   sell ladder : trigger = anchor + stepIdx × stepPriceOffset (averages UP)
+ */
+function triggerPriceFor(leg: VirtualPendingLeg, anchor: number, digits: number): number {
+  const dir = leg.isBuy ? -1 : 1
+  const px = anchor + dir * leg.stepIdx * leg.stepPriceOffset
+  const d = Math.max(0, Math.min(8, Math.floor(digits)))
+  return Number(px.toFixed(d))
 }
 
 function channelMatches(broker: BrokerRow, channelId: string | null): boolean {
@@ -369,6 +360,11 @@ export class TradeExecutor {
     }, 15_000)
     this.timer.unref?.()
     console.log('[tradeExecutor] started')
+    if (String(process.env.WORKER_LEGACY_PENDING_CLEANUP ?? '').toLowerCase() === 'true') {
+      this.cleanupLegacyBrokerPendings().catch(err =>
+        console.error('[tradeExecutor] legacy pending cleanup failed:', err),
+      )
+    }
   }
 
   stop() {
@@ -725,25 +721,26 @@ export class TradeExecutor {
 
     // Hard cap: planner already respects 500; this is a final guard rail.
     const capped = plan.orders.slice(0, 500)
-    const cappedMeta: Array<PlannerRangeMeta | undefined> = (plan.rangeMeta ?? []).slice(0, 500)
     if (capped.length < plan.orders.length) {
       console.warn(
-        `[tradeExecutor] capped legs ${plan.orders.length} → ${capped.length} signal=${signal.id} broker=${broker.id}`,
+        `[tradeExecutor] capped immediate legs ${plan.orders.length} → ${capped.length} signal=${signal.id} broker=${broker.id}`,
       )
     }
+    const virtualPendings = (plan.virtualPendings ?? []).slice(0, 500)
 
-    // Build legs with rounded volumes. Pending prices are still null at this
-    // point — resolveLegPrices() fills them in once the anchor is known.
+    // Build immediate legs with rounded volumes. Immediates already carry the
+    // planner's intended entry price (signal entry or zero for true market orders).
     const volumeRounded = capped.map(o => ({ ...o, volume: roundLot(o.volume, params) }))
-    let legs: Leg[] = volumeRounded.map((args, idx) => ({ args, meta: cappedMeta[idx], idx }))
+    let legs: Leg[] = volumeRounded.map((args, idx) => ({ args, idx }))
 
     // ── Anchor resolution ────────────────────────────────────────────────
     // Priority: parsed signal entry → live /Quote (Ask for buy, Bid for sell).
-    // We no longer wait on the first immediate fill for the anchor — that race
-    // delayed pendings by 200–500ms and broke when the very first immediate
-    // failed. /Quote is a ~50–150ms GET that gives a deterministic anchor for
-    // BOTH immediates and pendings before either is sent.
-    const needsAnchor = cappedMeta.some(m => !!m)
+    // Needed whenever we have virtual pendings to persist (so we can compute
+    // trigger prices) OR Close-Worse-Entries is on (so we can compute the
+    // single override TP). The Quote is a ~50-150ms GET that we issue BEFORE
+    // sending immediates so every leg + every virtual trigger sees the same
+    // deterministic reference price.
+    const needsAnchor = virtualPendings.length > 0 || !!plan.closeWorseEntries
     let anchor: number | null = plan.anchor?.value ?? null
     let anchorSource: 'signal' | 'quote' | 'unknown' = plan.anchor?.source ?? 'unknown'
     if (needsAnchor && (anchor == null || anchor <= 0) && this.api) {
@@ -762,8 +759,31 @@ export class TradeExecutor {
       }
     }
 
-    // Resolve pending prices + apply Close-Worse-Entries against the anchor.
-    legs = resolveLegPrices(legs, anchor, plan, params)
+    // Apply Close-Worse-Entries TP override to the first N immediates + first
+    // N shallowest virtual pendings. The single override price is shared.
+    const overrideTp = computeCweTp(plan, anchor, params)
+    if (overrideTp != null && plan.closeWorseEntries) {
+      const nImm = Math.max(0, Math.min(legs.length, plan.closeWorseEntries.immediates))
+      for (let i = 0; i < nImm; i++) {
+        legs[i] = {
+          ...legs[i]!,
+          args: {
+            ...legs[i]!.args,
+            takeprofit: overrideTp,
+            comment: `${legs[i]!.args.comment ?? ''}.cw`,
+          },
+        }
+      }
+      const nVirt = Math.max(0, Math.min(virtualPendings.length, plan.closeWorseEntries.extraPendings))
+      // Virtuals are already ordered by stepIdx ascending (shallowest first).
+      for (let i = 0; i < nVirt; i++) {
+        virtualPendings[i] = {
+          ...virtualPendings[i]!,
+          takeprofit: overrideTp,
+          comment: `${virtualPendings[i]!.comment}.cw`,
+        }
+      }
+    }
 
     if (isManual) {
       // One-line plan summary so it's obvious whether Range Trading / CWE are
@@ -771,58 +791,126 @@ export class TradeExecutor {
       const point = Number(params?.point) || 0
       const stopsLevel = Number(params?.stopsLevel) || 0
       const freezeLevel = Number(params?.freezeLevel) || 0
-      const immediates = legs.filter(l => !l.meta).length
-      const pendings = legs.length - immediates
       console.log(
         `[tradeExecutor] manual plan signal=${signal.id} broker=${broker.id} symbol=${symbol}`
-        + ` style=${manual.trade_style ?? 'single'} legs=${legs.length}`
-        + ` (immediate=${immediates}, pending=${pendings})`
+        + ` style=${manual.trade_style ?? 'single'} legs=${legs.length + virtualPendings.length}`
+        + ` (immediate=${legs.length}, virtual_pending=${virtualPendings.length})`
         + ` rangeOn=${manual.range_trading === true} cwOn=${!!plan.closeWorseEntries}`
+        + (overrideTp != null ? ` cwTp=${overrideTp}` : '')
         + ` pip=${plan.pip ?? 'n/a'} anchorSource=${anchorSource} anchor=${anchor ?? 'n/a'}`
         + ` stops_level=${stopsLevel} freeze_level=${freezeLevel} point=${point}`
         + (plan.fallback_reason ? ` fallback=${plan.fallback_reason}` : ''),
       )
     }
 
-    // Drop pendings that still don't have a valid price (no anchor available).
-    // Immediate legs always carry the anchor as their price already; pendings
-    // were `null` from the planner and only become valid after resolveLegPrices.
-    const validLegs: Leg[] = []
-    const safe = Math.max(Number(params?.stopsLevel) || 0, Number(params?.freezeLevel) || 0)
-    const zoneHi = anchor != null && safe > 0 ? anchor + (safe + 2) * (params?.point ?? 0) : null
-    const zoneLo = anchor != null && safe > 0 ? anchor - (safe + 2) * (params?.point ?? 0) : null
-    for (const leg of legs) {
-      const px = Number(leg.args.price)
-      if (leg.meta && (!Number.isFinite(px) || px <= 0)) {
+    // ── Materialize virtual pendings into range_pending_legs ───────────────
+    // Persisted with a computed `trigger_price`; the worker monitor + edge
+    // sweep race to fire each one as a MARKET OrderSend when /Quote crosses
+    // the trigger. We INSERT in bulk so all rows hit Postgres in one round-trip
+    // and the worker monitor can pick them up on its very next tick.
+    if (virtualPendings.length > 0) {
+      if (anchor == null || !Number.isFinite(anchor) || anchor <= 0) {
         console.warn(
-          `[tradeExecutor] dropped pending leg ${leg.idx + 1}/${legs.length} signal=${signal.id} stepIdx=${leg.meta.stepIdx}: no anchor available`,
+          `[tradeExecutor] dropping ${virtualPendings.length} virtual pendings: no anchor available for signal=${signal.id} broker=${broker.id} symbol=${symbol}`,
         )
-        continue
+      } else {
+        const digits = Math.max(0, Math.min(8, Number(params?.digits) || 5))
+        const safe = Math.max(Number(params?.stopsLevel) || 0, Number(params?.freezeLevel) || 0)
+        const zoneHi = safe > 0 ? anchor + (safe + 2) * (params?.point ?? 0) : null
+        const zoneLo = safe > 0 ? anchor - (safe + 2) * (params?.point ?? 0) : null
+        const nowMs = Date.now()
+        const insertRows: Record<string, unknown>[] = []
+        for (const v of virtualPendings) {
+          const triggerPrice = triggerPriceFor(v, anchor, digits)
+          // Sanity: the trigger MUST sit outside the broker's stops/freeze zone.
+          // The planner auto-expands stepPips for this — but if a downstream
+          // freeze widens, drop the leg rather than ship it.
+          if (zoneHi != null && zoneLo != null && triggerPrice > zoneLo && triggerPrice < zoneHi) {
+            console.warn(
+              `[tradeExecutor] dropped virtual pending stepIdx=${v.stepIdx} signal=${signal.id}`
+              + ` trigger=${triggerPrice} inside stops_zone=[${zoneLo}, ${zoneHi}]`,
+            )
+            continue
+          }
+          const expiresAt = v.expiryHours && v.expiryHours > 0
+            ? new Date(nowMs + v.expiryHours * 60 * 60 * 1000).toISOString()
+            : null
+          insertRows.push({
+            signal_id: signal.id,
+            user_id: signal.user_id,
+            broker_account_id: broker.id,
+            metaapi_account_id: uuid,
+            symbol,
+            step_idx: v.stepIdx,
+            is_buy: v.isBuy,
+            volume: roundLot(v.volume, params),
+            anchor_price: anchor,
+            trigger_price: triggerPrice,
+            stoploss: v.stoploss,
+            takeprofit: v.takeprofit,
+            slippage: v.slippage,
+            comment: v.comment,
+            expert_id: v.expertID ?? null,
+            expires_at: expiresAt,
+            status: 'pending',
+          })
+        }
+        if (insertRows.length > 0) {
+          const { error: insertErr } = await this.supabase
+            .from('range_pending_legs')
+            .insert(insertRows)
+          if (insertErr) {
+            console.error(
+              `[tradeExecutor] range_pending_legs INSERT failed signal=${signal.id} broker=${broker.id}: ${insertErr.message}`,
+            )
+            try {
+              await this.supabase.from('trade_execution_logs').insert({
+                user_id: signal.user_id,
+                signal_id: signal.id,
+                broker_account_id: broker.id,
+                action: 'virtual_pending_failed',
+                status: 'failed',
+                request_payload: { rows: insertRows.length, anchor, anchorSource } as unknown as Record<string, unknown>,
+                error_message: insertErr.message,
+              })
+            } catch { /* logging is best-effort */ }
+          } else {
+            console.log(
+              `[tradeExecutor] virtual pendings inserted=${insertRows.length} signal=${signal.id} broker=${broker.id} symbol=${symbol} anchor=${anchor} (${anchorSource})`,
+            )
+            try {
+              await this.supabase.from('trade_execution_logs').insert({
+                user_id: signal.user_id,
+                signal_id: signal.id,
+                broker_account_id: broker.id,
+                action: 'virtual_pending_inserted',
+                status: 'success',
+                request_payload: {
+                  rows: insertRows.length,
+                  anchor,
+                  anchorSource,
+                  symbol,
+                  stepIdxs: insertRows.map(r => r.step_idx),
+                  triggers: insertRows.map(r => r.trigger_price),
+                } as unknown as Record<string, unknown>,
+              })
+            } catch { /* logging is best-effort */ }
+          }
+        }
       }
-      // Reject pendings that landed inside the broker's stops/freeze zone even
-      // after step auto-expansion — broker will refuse them with "Invalid stops".
-      if (leg.meta && zoneHi != null && zoneLo != null && px > zoneLo && px < zoneHi) {
-        console.warn(
-          `[tradeExecutor] dropped pending leg ${leg.idx + 1}/${legs.length} signal=${signal.id} stepIdx=${leg.meta.stepIdx}`
-          + ` price=${px} inside broker stops_zone=[${zoneLo}, ${zoneHi}]`,
-        )
-        continue
-      }
-      validLegs.push(leg)
     }
 
-    if (validLegs.length === 0) {
-      console.warn(
-        `[tradeExecutor] no valid legs after anchor resolution signal=${signal.id} broker=${broker.id} symbol=${symbol}`,
-      )
+    if (legs.length === 0) {
+      // No immediates to send — the trade is purely virtual pendings (or the
+      // planner dropped them). Nothing more to do here.
       return
     }
 
-    const totalCount = validLegs.length
+    const totalCount = legs.length
 
     const sendLeg = async (leg: Leg): Promise<void> => {
       let args = leg.args
-      // Final SL/TP clamp using the actual limit/market price as the reference.
+      // Final SL/TP clamp using the actual market/entry price as the reference.
       const clamped = clampOrderStops(args, params)
       if (clamped.adjustments.length > 0) {
         console.warn(
@@ -881,9 +969,9 @@ export class TradeExecutor {
       }
     }
 
-    // All legs go out together — pendings are no longer gated on the first
-    // immediate fill, so the trade fan-out finishes in one round-trip.
-    await Promise.allSettled(validLegs.map(sendLeg))
+    // All immediates fan out in parallel. Virtual pendings are already
+    // persisted; the worker monitor + edge sweep will fire them on trigger.
+    await Promise.allSettled(legs.map(sendLeg))
   }
 
   private async logSendSkipped(
@@ -979,6 +1067,54 @@ export class TradeExecutor {
         })
       }
     }))
+  }
+
+  /**
+   * One-time cleanup of broker-side BuyLimit/SellLimit orders left over from
+   * the pre-virtual-pendings era. Filters by our `TSCopier:` comment prefix so
+   * we never touch orders placed by the user manually or other systems.
+   *
+   * Gated by env flag `WORKER_LEGACY_PENDING_CLEANUP=true`. Safe to leave on
+   * indefinitely — it becomes a no-op once the legacy pendings are gone.
+   */
+  private async cleanupLegacyBrokerPendings(): Promise<void> {
+    if (!this.api) return
+    const brokers = Array.from(this.brokersById.values()).filter(b =>
+      b.is_active && isMtUuid(b.metaapi_account_id),
+    )
+    if (!brokers.length) return
+    console.log(`[tradeExecutor] legacy pending cleanup: scanning ${brokers.length} brokers...`)
+    let totalClosed = 0
+    let totalFailed = 0
+    for (const broker of brokers) {
+      const uuid = broker.metaapi_account_id!
+      let orders: unknown[]
+      try {
+        orders = await this.api.openedOrders(uuid)
+      } catch (err) {
+        console.warn(`[tradeExecutor] legacy cleanup /OpenedOrders failed broker=${broker.id}: ${(err as Error).message}`)
+        continue
+      }
+      for (const raw of orders ?? []) {
+        if (!raw || typeof raw !== 'object') continue
+        const o = raw as Record<string, unknown>
+        const operation = String(o.operation ?? o.Operation ?? o.type ?? o.Type ?? '')
+        const comment = String(o.comment ?? o.Comment ?? '')
+        const ticket = Number(o.ticket ?? o.Ticket ?? o.orderId ?? o.OrderID ?? 0)
+        if (!operation.includes('Limit') && !operation.includes('Stop')) continue
+        if (!comment.startsWith('TSCopier:')) continue
+        if (!Number.isFinite(ticket) || ticket <= 0) continue
+        try {
+          await this.api.orderClose(uuid, { ticket })
+          totalClosed += 1
+          console.log(`[tradeExecutor] legacy cleanup closed ticket=${ticket} broker=${broker.id} op=${operation}`)
+        } catch (err) {
+          totalFailed += 1
+          console.warn(`[tradeExecutor] legacy cleanup close failed ticket=${ticket} broker=${broker.id}: ${(err as Error).message}`)
+        }
+      }
+    }
+    console.log(`[tradeExecutor] legacy pending cleanup done: closed=${totalClosed} failed=${totalFailed}`)
   }
 
   private async getSymbolParams(uuid: string, symbol: string): Promise<SymbolCacheEntry | null> {

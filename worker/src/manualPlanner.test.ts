@@ -1,12 +1,14 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 import {
-  applyCloseWorseEntries,
+  computeCwOverrideTp,
+  planManualOrders,
   planRangeSplit,
-  type PlannerRangeMeta,
+  type ManualSettings,
+  type ParsedSignal,
   type PlannerCloseWorseEntries,
+  type PlannerContext,
 } from './manualPlanner'
-import type { OrderSendArgs } from './metatraderapi'
 
 const baseSplit = {
   totalLegs: 20,
@@ -70,85 +72,169 @@ test('planRangeSplit: no signal anchor + no immediates → runtime-only fallback
   assert.equal(r.fallbackReason, 'range_trading_anchor_runtime_only')
 })
 
-function mkOrder(price: number | null, comment: string): OrderSendArgs {
-  return {
-    symbol: 'XAUUSD',
-    operation: price == null ? 'BuyLimit' : 'Buy',
-    volume: 0.01,
-    price,
-    stoploss: 1840,
-    takeprofit: 1900,
-    comment,
-  }
+test('computeCwOverrideTp: buy → anchor + pips × pip', () => {
+  const policy: PlannerCloseWorseEntries = { immediates: 2, extraPendings: 1, pipsFromAnchor: 30 }
+  const out = computeCwOverrideTp({
+    policy, anchor: 1850, isBuy: true, pip: 0.1, digits: 2, minStopDistance: 1.02,
+  })
+  // 1850 + 30 × 0.1 = 1853 (already outside the 1.02 floor).
+  assert.equal(out, 1853)
+})
+
+test('computeCwOverrideTp: respects stops/freeze floor', () => {
+  // 30 pips on EURUSD 5-digit = 0.003 price units, but broker requires 0.005.
+  const policy: PlannerCloseWorseEntries = { immediates: 1, extraPendings: 0, pipsFromAnchor: 30 }
+  const out = computeCwOverrideTp({
+    policy, anchor: 1.10000, isBuy: true, pip: 0.0001, digits: 5, minStopDistance: 0.005,
+  })
+  assert.equal(out, 1.105)
+})
+
+test('computeCwOverrideTp: sell direction inverts override', () => {
+  const policy: PlannerCloseWorseEntries = { immediates: 1, extraPendings: 0, pipsFromAnchor: 30 }
+  const out = computeCwOverrideTp({
+    policy, anchor: 1850, isBuy: false, pip: 0.1, digits: 2, minStopDistance: 0,
+  })
+  assert.equal(out, 1847) // 1850 - 30 × 0.1
+})
+
+test('computeCwOverrideTp: zero anchor returns null', () => {
+  const policy: PlannerCloseWorseEntries = { immediates: 1, extraPendings: 0, pipsFromAnchor: 30 }
+  const out = computeCwOverrideTp({
+    policy, anchor: 0, isBuy: true, pip: 0.1, digits: 2, minStopDistance: 0,
+  })
+  assert.equal(out, null)
+})
+
+test('computeCwOverrideTp: zero pipsFromAnchor returns null', () => {
+  const policy: PlannerCloseWorseEntries = { immediates: 1, extraPendings: 0, pipsFromAnchor: 0 }
+  const out = computeCwOverrideTp({
+    policy, anchor: 1850, isBuy: true, pip: 0.1, digits: 2, minStopDistance: 0,
+  })
+  assert.equal(out, null)
+})
+
+// ── Virtual leg materialization from planManualOrders ──────────────────────
+
+const baseCtx: PlannerContext = {
+  point: 0.01,
+  digits: 2,
+  minLot: 0.01,
+  lotStep: 0.01,
+  stopsLevel: 0,
+  freezeLevel: 0,
+  defaultLot: 0.01,
+  lastBalance: null,
+  now: new Date('2026-05-12T12:00:00Z'),
 }
 
-test('applyCloseWorseEntries: single trigger TP shared across CWE legs', () => {
-  const orders: OrderSendArgs[] = [
-    mkOrder(0, 'imm1'), mkOrder(0, 'imm2'),       // immediates
-    mkOrder(null, 'pend1'), mkOrder(null, 'pend2'), mkOrder(null, 'pend3'), // pendings
-  ]
-  const policy: PlannerCloseWorseEntries = { immediates: 2, extraPendings: 1, pipsFromAnchor: 30 }
-  const out = applyCloseWorseEntries({
-    orders,
-    policy,
-    anchor: 1850,
-    isBuy: true,
-    pip: 0.1,
-    digits: 2,
-    minStopDistance: 1.02,
+const baseParsed: ParsedSignal = {
+  action: 'buy',
+  symbol: 'XAUUSD',
+  entry_price: null, // market signal — no explicit entry; executor will resolve via /Quote
+  entry_zone_low: null,
+  entry_zone_high: null,
+  sl: null,
+  tp: [1900],
+  lot_size: null,
+}
+
+const baseManual: ManualSettings = {
+  risk_mode: 'fixed_lot',
+  fixed_lot: 1.0,
+  trade_style: 'multi',
+  multi_trade_leg_percent: 10,       // 10% per leg → 10 legs from 1.0 lot
+  range_trading: true,
+  range_percent: 50,                  // half immediates, half virtual pendings
+  range_step_pips: 10,
+  range_distance_pips: 100,
+  tp_lots: [{ label: 'TP1', lot: 0, percent: 100, enabled: true }],
+  pending_expiry_hours: 4,
+}
+
+test('planManualOrders: range emits virtualPendings (not OrderSendArgs)', () => {
+  const plan = planManualOrders({
+    parsed: { ...baseParsed, entry_price: 1850 },
+    resolvedSymbol: 'XAUUSD',
+    baseOperation: 'Buy',
+    manual: baseManual,
+    channelKeywords: null,
+    manualLot: 1.0,
+    ctx: baseCtx,
+    commentPrefix: 'TSCopier:abc',
   })
-  // Expected override: 1850 + 30 × 0.1 = 1853 (outside the 1.02 floor).
-  assert.equal(out[0]!.takeprofit, 1853)
-  assert.equal(out[1]!.takeprofit, 1853)
-  assert.equal(out[2]!.takeprofit, 1853) // shallowest pending also overridden
-  assert.equal(out[3]!.takeprofit, 1900) // deeper pending keeps original TP
-  assert.equal(out[4]!.takeprofit, 1900)
-  assert.ok(out[0]!.comment!.endsWith('.cw'))
-  assert.ok(!out[3]!.comment!.endsWith('.cw'))
+  // 10 legs total, 50% pendings → 5 immediates + 5 virtuals.
+  assert.equal(plan.orders.length, 5)
+  assert.equal(plan.virtualPendings?.length, 5)
+  // No pending operations leaked into plan.orders.
+  for (const o of plan.orders) {
+    assert.ok(!String(o.operation).includes('Limit'))
+    assert.ok(!String(o.operation).includes('Stop'))
+  }
+  // Virtual pendings carry the metadata needed for trigger_price computation.
+  const virtuals = plan.virtualPendings!
+  for (let i = 0; i < virtuals.length; i++) {
+    const v = virtuals[i]!
+    assert.equal(v.isBuy, true)
+    assert.equal(v.stepIdx, i + 1)
+    assert.ok(v.stepPriceOffset > 0)
+    assert.equal(v.expiryHours, 4)
+  }
 })
 
-test('applyCloseWorseEntries: respects stops/freeze floor', () => {
-  // 30 pip override on EURUSD 5-digit: pip = 0.0001 → 30 × 0.0001 = 0.003.
-  // If broker minStopDistance is 0.005, the override should snap out to 0.005.
-  const orders: OrderSendArgs[] = [mkOrder(0, 'imm1')]
-  const policy: PlannerCloseWorseEntries = { immediates: 1, extraPendings: 0, pipsFromAnchor: 30 }
-  const out = applyCloseWorseEntries({
-    orders,
-    policy,
-    anchor: 1.10000,
-    isBuy: true,
-    pip: 0.0001,
-    digits: 5,
-    minStopDistance: 0.005,
+test('planManualOrders: range off → no virtualPendings', () => {
+  const plan = planManualOrders({
+    parsed: { ...baseParsed, entry_price: 1850 },
+    resolvedSymbol: 'XAUUSD',
+    baseOperation: 'Buy',
+    manual: { ...baseManual, range_trading: false },
+    channelKeywords: null,
+    manualLot: 1.0,
+    ctx: baseCtx,
+    commentPrefix: 'TSCopier:abc',
   })
-  assert.equal(out[0]!.takeprofit, 1.105) // 1.10 + max(0.003, 0.005) = 1.105
+  assert.equal(plan.virtualPendings, undefined)
+  assert.equal(plan.orders.length, 10) // all 10 legs are immediates
 })
 
-test('applyCloseWorseEntries: sell direction inverts override', () => {
-  const orders: OrderSendArgs[] = [mkOrder(0, 'imm1')]
-  const policy: PlannerCloseWorseEntries = { immediates: 1, extraPendings: 0, pipsFromAnchor: 30 }
-  const out = applyCloseWorseEntries({
-    orders,
-    policy,
-    anchor: 1850,
-    isBuy: false,
-    pip: 0.1,
-    digits: 2,
-    minStopDistance: 0,
+test('planManualOrders: CWE policy emitted with extraPendings clamped', () => {
+  const plan = planManualOrders({
+    parsed: { ...baseParsed, entry_price: 1850 },
+    resolvedSymbol: 'XAUUSD',
+    baseOperation: 'Buy',
+    manual: {
+      ...baseManual,
+      close_worse_entries: true,
+      close_worse_entries_pips: 30,
+      close_worse_extra_pendings: 99, // way more than available → should clamp
+    },
+    channelKeywords: null,
+    manualLot: 1.0,
+    ctx: baseCtx,
+    commentPrefix: 'TSCopier:abc',
   })
-  assert.equal(out[0]!.takeprofit, 1847) // 1850 - 30 × 0.1
+  const cw = plan.closeWorseEntries
+  assert.ok(cw, 'CWE policy should be emitted when range + close_worse_entries are on')
+  assert.equal(cw!.pipsFromAnchor, 30)
+  assert.equal(cw!.immediates, 5)
+  // extraPendings should be clamped to the number of virtual pendings available (5).
+  assert.equal(cw!.extraPendings, 5)
 })
 
-test('applyCloseWorseEntries: zero anchor returns input unchanged', () => {
-  const orders: OrderSendArgs[] = [mkOrder(0, 'imm1')]
-  const policy: PlannerCloseWorseEntries = { immediates: 1, extraPendings: 0, pipsFromAnchor: 30 }
-  const out = applyCloseWorseEntries({
-    orders, policy, anchor: 0, isBuy: true, pip: 0.1, digits: 2, minStopDistance: 0,
+test('planManualOrders: sell ladder → virtualPendings carry isBuy=false', () => {
+  const plan = planManualOrders({
+    parsed: { ...baseParsed, action: 'sell', entry_price: 1850 },
+    resolvedSymbol: 'XAUUSD',
+    baseOperation: 'Sell',
+    manual: baseManual,
+    channelKeywords: null,
+    manualLot: 1.0,
+    ctx: baseCtx,
+    commentPrefix: 'TSCopier:abc',
   })
-  assert.equal(out[0]!.takeprofit, 1900) // unchanged
+  const virtuals = plan.virtualPendings ?? []
+  assert.ok(virtuals.length > 0)
+  for (const v of virtuals) {
+    assert.equal(v.isBuy, false)
+  }
 })
-
-// Silence "unused" lint on the imported PlannerRangeMeta type — the assertion
-// keeps the import live without actually using it at runtime.
-const _meta: PlannerRangeMeta | undefined = undefined
-void _meta

@@ -5,6 +5,7 @@ import { UserSessionManager } from './sessionManager'
 import { AuthService } from './authService'
 import { startHttpServer } from './httpServer'
 import { TradeExecutor } from './tradeExecutor'
+import { VirtualPendingMonitor } from './virtualPendingMonitor'
 
 // Supabase Realtime needs a WebSocket transport in Node < 22.
 // Railway is currently running Node 20, so we provide ws explicitly.
@@ -21,12 +22,14 @@ const sessionManager = new UserSessionManager(supabase)
 const authService = new AuthService(supabase, sessionManager)
 const httpServer = startHttpServer(authService, sessionManager)
 const tradeExecutor = new TradeExecutor(supabase)
+const virtualPendingMonitor = new VirtualPendingMonitor(supabase)
 
 async function main() {
   console.log('[worker] TSCopier Telegram worker starting...')
 
   await sessionManager.loadAll()
   await tradeExecutor.start()
+  virtualPendingMonitor.start()
 
   setInterval(async () => {
     await sessionManager.syncSessions()
@@ -37,6 +40,7 @@ async function main() {
     httpServer.close()
     authService.shutdown()
     tradeExecutor.stop()
+    virtualPendingMonitor.stop()
     await sessionManager.disconnectAll()
     process.exit(0)
   }

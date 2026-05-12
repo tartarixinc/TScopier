@@ -120,6 +120,93 @@ export class MetatraderApiClient {
   closedOrders(id: string): Promise<unknown[]> {
     return this.get<unknown[]>("/ClosedOrders", { id })
   }
+
+  /** Live bid/ask for one symbol. Used by the virtual-pending sweep to decide whether
+   *  a row's trigger has been crossed. */
+  async quote(id: string, symbol: string): Promise<{ bid: number; ask: number }> {
+    const raw = await this.get<unknown>("/Quote", { id, symbol })
+    const root = (raw && typeof raw === "object") ? raw as Record<string, unknown> : {}
+    const r = (root.result && typeof root.result === "object") ? root.result as Record<string, unknown> : root
+    const num = (v: unknown): number => {
+      if (typeof v === "number" && Number.isFinite(v)) return v
+      if (typeof v === "string" && v.trim()) { const n = Number(v); return Number.isFinite(n) ? n : 0 }
+      return 0
+    }
+    const bid = num(r.bid ?? r.Bid)
+    const ask = num(r.ask ?? r.Ask)
+    if (bid <= 0 || ask <= 0) {
+      throw new MetatraderApiError(`Quote: invalid bid/ask for ${symbol} (bid=${bid} ask=${ask})`, 200)
+    }
+    return { bid, ask }
+  }
+
+  /** Send a market or pending order. The sweep only ever sends market Buy/Sell. */
+  async orderSend(id: string, args: {
+    symbol: string
+    operation: string
+    volume: number
+    price?: number
+    slippage?: number
+    stoploss?: number
+    takeprofit?: number
+    comment?: string
+    expertID?: number
+  }): Promise<{ ticket?: number; openPrice?: number; lots?: number; stopLoss?: number; takeProfit?: number }> {
+    const raw = await this.get<unknown>("/OrderSend", {
+      id,
+      symbol: args.symbol,
+      operation: args.operation,
+      volume: args.volume,
+      price: args.price ?? 0,
+      slippage: args.slippage ?? 20,
+      stoploss: args.stoploss ?? 0,
+      takeprofit: args.takeprofit ?? 0,
+      comment: args.comment,
+      expertID: args.expertID ?? 0,
+    })
+    const root = (raw && typeof raw === "object") ? raw as Record<string, unknown> : {}
+    const r = (root.result && typeof root.result === "object") ? root.result as Record<string, unknown> : root
+    const num = (v: unknown): number | undefined => {
+      if (typeof v === "number" && Number.isFinite(v)) return v
+      if (typeof v === "string" && v.trim()) { const n = Number(v); return Number.isFinite(n) ? n : undefined }
+      return undefined
+    }
+    const ticket = num(r.ticket ?? r.Ticket ?? r.orderId ?? r.OrderID)
+    if (!ticket || ticket <= 0) {
+      const preview = JSON.stringify(raw).slice(0, 500)
+      throw new MetatraderApiError(`OrderSend returned no ticket (response: ${preview})`, 200)
+    }
+    return {
+      ticket,
+      openPrice: num(r.openPrice ?? r.OpenPrice ?? r.price ?? r.Price),
+      lots: num(r.lots ?? r.Lots ?? r.volume ?? r.Volume),
+      stopLoss: num(r.stoploss ?? r.StopLoss ?? r.sl ?? r.SL),
+      takeProfit: num(r.takeprofit ?? r.TakeProfit ?? r.tp ?? r.TP),
+    }
+  }
+
+  /** Pull broker-side digits/point/stops_level/freeze_level for one symbol. */
+  async symbolParams(id: string, symbol: string): Promise<{
+    digits: number
+    point: number
+    stopsLevel: number
+    freezeLevel: number
+  }> {
+    const raw = await this.get<unknown>("/SymbolParams", { id, symbol })
+    const root = (raw && typeof raw === "object") ? raw as Record<string, unknown> : {}
+    const sym = (root.symbol && typeof root.symbol === "object") ? root.symbol as Record<string, unknown> : root
+    const num = (v: unknown, fb: number): number => {
+      if (typeof v === "number" && Number.isFinite(v)) return v
+      if (typeof v === "string" && v.trim()) { const n = Number(v); return Number.isFinite(n) ? n : fb }
+      return fb
+    }
+    return {
+      digits: num(sym.digits ?? sym.Digits, 5),
+      point: num(sym.point ?? sym.Point, 0.00001),
+      stopsLevel: Math.max(0, num(sym.stopsLevel ?? sym.StopsLevel, 0)),
+      freezeLevel: Math.max(0, num(sym.freezeLevel ?? sym.FreezeLevel, 0)),
+    }
+  }
 }
 
 export function makeClientFromEnv(env: { get(name: string): string | undefined }): MetatraderApiClient {
