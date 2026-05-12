@@ -213,6 +213,144 @@ export interface PlannerAnchor {
   value: number | null
 }
 
+/**
+ * One worker-managed partial close for a single-mode trade. Emitted by
+ * `planSinglePartialTps` whenever the user configured `tp_lots` percentages
+ * AND the signal has ≥ 2 take-profits. The executor INSERTs these into
+ * `partial_tp_legs` after the parent OrderSend succeeds; `partialTpMonitor`
+ * polls /Quote and fires `/OrderClose` with `lots = closeLots` the moment
+ * `is_buy ? bid >= triggerPrice : ask <= triggerPrice`.
+ *
+ * The LAST configured bucket's TP is NOT in this list — the broker's own
+ * takeprofit handles that one, so anything that survives the worker partials
+ * rides out to the deepest target naturally.
+ */
+export interface PlannerPartialTp {
+  /** 1-based TP index (1 = TP1, 2 = TP2, …). Diagnostic + insertion ordering. */
+  tpIdx: number
+  /** Absolute price at which this partial fires. */
+  triggerPrice: number
+  /** Volume to /OrderClose at the trigger. Already rounded to lotStep + ≥ minLot. */
+  closeLots: number
+  /** Source percentage used to size `closeLots` (kept for logs / UI). */
+  percent: number
+}
+
+export interface PlanSinglePartialTpsArgs {
+  /** Already-rounded total volume of the parent single order. */
+  manualLot: number
+  minLot: number
+  lotStep: number
+  /** All TPs in the signal, signed (already converted from pip-distance to absolute price). */
+  finalTps: number[]
+  /** Enabled `tp_lots` rows (ordered, paired positionally with finalTps[0..]). */
+  bucketRows: Array<{ percent?: number }>
+}
+
+export interface PlanSinglePartialTpsResult {
+  /** TP price the broker order should ride to (= last enabled-bucket TP). Null when there
+   *  isn't enough info to derive partials — in that case the caller falls back to TP1. */
+  brokerTp: number | null
+  /** Per-bucket partials, excluding the last bucket (that's the broker TP). Empty when
+   *  the schedule degenerates to "use TP1 with no partials". */
+  partials: PlannerPartialTp[]
+  /** Non-fatal note describing why partials were dropped / capped, suitable for logging. */
+  fallbackReason?: string
+}
+
+/**
+ * Build the per-TP partial close schedule for a `trade_style === 'single'`
+ * trade.
+ *
+ * Rules:
+ *   - When `finalTps.length >= 2` AND there are enabled bucket rows, the
+ *     broker TP becomes the LAST bucket-paired TP (so the trade rides
+ *     to its deepest target) and the EARLIER buckets emit partials.
+ *   - When `finalTps.length < 2` OR no enabled bucket rows, partials don't
+ *     apply; the caller uses TP1 as the broker TP (current legacy behavior).
+ *   - `closeLots` is `floor(manualLot × percent / 100 / lotStep) × lotStep`
+ *     and is dropped when the result is below `minLot`. We never close
+ *     more than `manualLot - minLot` across all partials so the last
+ *     slice that rides to broker TP is always >= `minLot` (otherwise the
+ *     final lot would round to 0 and the broker TP becomes a no-op).
+ */
+export function planSinglePartialTps(args: PlanSinglePartialTpsArgs): PlanSinglePartialTpsResult {
+  const { manualLot, minLot, lotStep, finalTps, bucketRows } = args
+
+  if (!Number.isFinite(manualLot) || manualLot <= 0) {
+    return { brokerTp: null, partials: [], fallbackReason: 'partial_tp_invalid_lot' }
+  }
+  if (!Array.isArray(finalTps) || finalTps.length < 2 || !bucketRows.length) {
+    return { brokerTp: finalTps[0] ?? null, partials: [] }
+  }
+
+  // Pair buckets with TPs positionally and clamp to whichever side is shorter.
+  const bucketCount = Math.min(bucketRows.length, finalTps.length)
+  const pairedTps = finalTps.slice(0, bucketCount)
+  const pairedBuckets = bucketRows.slice(0, bucketCount)
+
+  // The LAST paired TP is the broker's takeprofit. The earlier ones are
+  // worker-managed partials.
+  const brokerTp = pairedTps[bucketCount - 1] ?? null
+  if (bucketCount < 2 || brokerTp == null) {
+    return { brokerTp, partials: [] }
+  }
+
+  const FP_EPS = 1e-9
+  const toUnits = (v: number): number => {
+    if (!Number.isFinite(v) || v <= 0) return 0
+    return Math.max(0, Math.floor(v / lotStep + FP_EPS))
+  }
+  const unitsToLot = (u: number): number => Number((u * lotStep).toFixed(8))
+
+  const manualUnits = toUnits(manualLot)
+  const minUnits = Math.max(1, Math.round(minLot / lotStep))
+  // Reserve at least one minLot's worth of units for the final broker-TP
+  // slice. Without this a 100%-sum schedule on a 1.0 lot would leave the
+  // broker TP riding 0.0 lots — i.e. nothing — and the deepest target would
+  // never trigger because there's no position left to close.
+  const usableUnits = Math.max(0, manualUnits - minUnits)
+  let remainingUnits = usableUnits
+
+  const partials: PlannerPartialTp[] = []
+  let fallbackReason: string | undefined
+
+  for (let i = 0; i < bucketCount - 1; i++) {
+    const tp = pairedTps[i]
+    if (tp == null || !Number.isFinite(tp) || tp <= 0) continue
+    const pctRaw = Number(pairedBuckets[i]?.percent)
+    const pct = Number.isFinite(pctRaw) && pctRaw > 0 ? Math.min(100, pctRaw) : 0
+    if (pct <= 0) continue
+    let units = toUnits(manualLot * (pct / 100))
+    if (units < minUnits) {
+      // Percentage too small relative to broker minimum lot; skip this
+      // partial. Surface it once so the user can see why their 5% TP1
+      // didn't fire on a 0.10 lot trade with 0.01 minLot.
+      fallbackReason = fallbackReason ?? 'partial_tp_below_min_lot'
+      continue
+    }
+    if (units > remainingUnits) {
+      // Cap so the cumulative partials never exceed manualLot - minLot.
+      units = remainingUnits
+      fallbackReason = fallbackReason ?? 'partial_tp_capped_remainder'
+      if (units < minUnits) continue
+    }
+    remainingUnits -= units
+    partials.push({
+      tpIdx: i + 1,
+      triggerPrice: tp,
+      closeLots: unitsToLot(units),
+      percent: pct,
+    })
+    if (remainingUnits < minUnits) {
+      // No room left for any further partials — the rest goes to broker TP.
+      break
+    }
+  }
+
+  return { brokerTp, partials, fallbackReason }
+}
+
 export interface PlannerResult {
   /** Concrete OrderSend payloads to issue immediately as MARKET orders. The
    *  range-trading "averaging-down" legs are NOT in here — they live in
@@ -240,6 +378,16 @@ export interface PlannerResult {
   isBuy?: boolean
   /** Close-Worse-Entries policy; absent when CWE is off or there are no range legs. */
   closeWorseEntries?: PlannerCloseWorseEntries
+  /**
+   * Per-TP partial close schedule for `trade_style === 'single'` plans.
+   * Empty when partials don't apply (no enabled bucket rows, only one TP,
+   * etc.). The executor INSERTs these into `partial_tp_legs` keyed to the
+   * parent trade so `partialTpMonitor` can fire `/OrderClose` slices when
+   * the live quote crosses each trigger. The LAST configured bucket's TP
+   * is the broker order's `takeprofit` and is intentionally NOT in this
+   * list.
+   */
+  partialTps?: PlannerPartialTp[]
   /** Reason for an empty plan, suitable for logging. */
   skip_reason?: string
   /** Non-fatal note when the planner had to soften its strategy (e.g. multi-trade
@@ -580,17 +728,37 @@ export function planManualOrders(args: {
   }
   const unitsToLot = (u: number): number => Number((u * lotStep).toFixed(8))
 
-  const buildSingleOrder = (fallbackReason?: string): PlannerResult => ({
-    orders: [{
-      ...orderBase,
-      volume: manualLot,
-      stoploss: roundPrice(finalSl),
-      takeprofit: roundPrice(finalTps[0] ?? null),
-      ...expirationFields,
-    }],
-    delay_ms,
-    ...(fallbackReason ? { fallback_reason: fallbackReason } : {}),
-  })
+  const buildSingleOrder = (fallbackReason?: string): PlannerResult => {
+    // Per-TP partial-close schedule. When the user configured `tp_lots`
+    // percentages AND the signal carries ≥ 2 TPs, the single trade rides
+    // to the LAST configured-bucket TP at the broker, and the EARLIER
+    // buckets become `partial_tp_legs` rows that `partialTpMonitor`
+    // /OrderCloses at each trigger. When the schedule doesn't apply we
+    // fall back to legacy "broker TP = TP1, no partials" behavior so
+    // single-TP signals keep working.
+    const enabledForSingle = (manual.tp_lots ?? []).filter(r => r && r.enabled)
+    const partialPlan = planSinglePartialTps({
+      manualLot,
+      minLot: Number.isFinite(ctx.minLot) && ctx.minLot > 0 ? ctx.minLot : 0.01,
+      lotStep: Number.isFinite(ctx.lotStep) && ctx.lotStep > 0 ? ctx.lotStep : 0.01,
+      finalTps,
+      bucketRows: enabledForSingle,
+    })
+    const brokerTp = partialPlan.brokerTp ?? finalTps[0] ?? null
+    const combinedFallback = fallbackReason ?? partialPlan.fallbackReason
+    return {
+      orders: [{
+        ...orderBase,
+        volume: manualLot,
+        stoploss: roundPrice(finalSl),
+        takeprofit: roundPrice(brokerTp),
+        ...expirationFields,
+      }],
+      delay_ms,
+      ...(combinedFallback ? { fallback_reason: combinedFallback } : {}),
+      ...(partialPlan.partials.length > 0 ? { partialTps: partialPlan.partials } : {}),
+    }
+  }
 
   if (tradeStyle !== 'multi') {
     return buildSingleOrder()

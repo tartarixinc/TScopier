@@ -4,6 +4,7 @@ import {
   computeCwOverrideTp,
   planManualOrders,
   planRangeSplit,
+  planSinglePartialTps,
   type ManualSettings,
   type ParsedSignal,
   type PlannerCloseWorseEntries,
@@ -262,4 +263,123 @@ test('planManualOrders: sell ladder → virtualPendings carry isBuy=false', () =
   for (const v of virtuals) {
     assert.equal(v.isBuy, false)
   }
+})
+
+// ── planSinglePartialTps ───────────────────────────────────────────────────
+// The pure helper that turns the user's percent rows (50 / 30 / 20) into a
+// concrete partial-close schedule for single-mode trades. Verifies that the
+// LAST configured bucket's TP becomes the broker takeprofit and the earlier
+// ones become per-TP partial /OrderClose lots.
+
+test('planSinglePartialTps: 50/30/20 on 1.0 lot → broker TP=TP3, partials at TP1 (0.5) + TP2 (0.3)', () => {
+  const r = planSinglePartialTps({
+    manualLot: 1.0,
+    minLot: 0.01,
+    lotStep: 0.01,
+    finalTps: [1.10, 1.20, 1.30],
+    bucketRows: [{ percent: 50 }, { percent: 30 }, { percent: 20 }],
+  })
+  assert.equal(r.brokerTp, 1.30)
+  assert.equal(r.partials.length, 2)
+  assert.deepEqual(r.partials[0], { tpIdx: 1, triggerPrice: 1.10, closeLots: 0.50, percent: 50 })
+  assert.deepEqual(r.partials[1], { tpIdx: 2, triggerPrice: 1.20, closeLots: 0.30, percent: 30 })
+})
+
+test('planSinglePartialTps: only 1 TP → no partials, broker TP=TP1', () => {
+  const r = planSinglePartialTps({
+    manualLot: 1.0,
+    minLot: 0.01,
+    lotStep: 0.01,
+    finalTps: [1.10],
+    bucketRows: [{ percent: 100 }],
+  })
+  assert.equal(r.brokerTp, 1.10)
+  assert.equal(r.partials.length, 0)
+})
+
+test('planSinglePartialTps: empty bucket rows → no partials, broker TP=TP1', () => {
+  const r = planSinglePartialTps({
+    manualLot: 1.0,
+    minLot: 0.01,
+    lotStep: 0.01,
+    finalTps: [1.10, 1.20, 1.30],
+    bucketRows: [],
+  })
+  assert.equal(r.brokerTp, 1.10)
+  assert.equal(r.partials.length, 0)
+})
+
+test('planSinglePartialTps: percentage below minLot is dropped with diagnostic', () => {
+  // 5% of 0.10 lot = 0.005 → below 0.01 minLot, must be skipped.
+  const r = planSinglePartialTps({
+    manualLot: 0.10,
+    minLot: 0.01,
+    lotStep: 0.01,
+    finalTps: [1.10, 1.20, 1.30],
+    bucketRows: [{ percent: 5 }, { percent: 50 }, { percent: 45 }],
+  })
+  assert.equal(r.brokerTp, 1.30)
+  // TP1 skipped (too small), TP2 emitted.
+  assert.equal(r.partials.length, 1)
+  assert.deepEqual(r.partials[0], { tpIdx: 2, triggerPrice: 1.20, closeLots: 0.05, percent: 50 })
+  assert.equal(r.fallbackReason, 'partial_tp_below_min_lot')
+})
+
+test('planSinglePartialTps: bucket count clamped to finalTps length', () => {
+  // 4 rows but only 2 TPs → 2 buckets → TP2 = broker, TP1 = partial.
+  const r = planSinglePartialTps({
+    manualLot: 1.0,
+    minLot: 0.01,
+    lotStep: 0.01,
+    finalTps: [1.10, 1.20],
+    bucketRows: [{ percent: 40 }, { percent: 30 }, { percent: 20 }, { percent: 10 }],
+  })
+  assert.equal(r.brokerTp, 1.20)
+  assert.equal(r.partials.length, 1)
+  assert.deepEqual(r.partials[0], { tpIdx: 1, triggerPrice: 1.10, closeLots: 0.40, percent: 40 })
+})
+
+test('planSinglePartialTps: cumulative partials capped so final slice >= minLot', () => {
+  // If partials would consume more than manualLot - minLot, the LAST partial
+  // shrinks to fit (so the broker-TP slice never rounds to zero).
+  // manualLot = 0.05, minLot = 0.01, partials at 90/9 (TP3 ignored).
+  // 0.9 × 0.05 = 0.045 → 0.04 (rounded down to lotStep) → leaves 0.01.
+  // After first partial (0.04), remainingUnits = 0. Second partial dropped.
+  const r = planSinglePartialTps({
+    manualLot: 0.05,
+    minLot: 0.01,
+    lotStep: 0.01,
+    finalTps: [1.10, 1.20, 1.30],
+    bucketRows: [{ percent: 90 }, { percent: 9 }, { percent: 1 }],
+  })
+  assert.equal(r.brokerTp, 1.30)
+  assert.equal(r.partials.length, 1)
+  assert.equal(r.partials[0]!.closeLots, 0.04)
+  // 0.05 - 0.04 = 0.01 left for broker TP (= minLot, the reserved floor).
+})
+
+test('planSinglePartialTps: 0% bucket is skipped without affecting later TPs', () => {
+  const r = planSinglePartialTps({
+    manualLot: 1.0,
+    minLot: 0.01,
+    lotStep: 0.01,
+    finalTps: [1.10, 1.20, 1.30],
+    bucketRows: [{ percent: 0 }, { percent: 50 }, { percent: 50 }],
+  })
+  assert.equal(r.brokerTp, 1.30)
+  assert.equal(r.partials.length, 1)
+  assert.deepEqual(r.partials[0], { tpIdx: 2, triggerPrice: 1.20, closeLots: 0.50, percent: 50 })
+})
+
+test('planSinglePartialTps: bad manualLot returns null brokerTp + reason', () => {
+  const r = planSinglePartialTps({
+    manualLot: 0,
+    minLot: 0.01,
+    lotStep: 0.01,
+    finalTps: [1.10, 1.20, 1.30],
+    bucketRows: [{ percent: 50 }, { percent: 30 }, { percent: 20 }],
+  })
+  assert.equal(r.brokerTp, null)
+  assert.equal(r.partials.length, 0)
+  assert.equal(r.fallbackReason, 'partial_tp_invalid_lot')
 })

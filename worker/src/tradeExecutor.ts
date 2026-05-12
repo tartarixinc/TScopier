@@ -13,6 +13,7 @@ import {
   type ChannelKeywords,
   type ManualSettings,
   type ParsedSignal as PlannerParsedSignal,
+  type PlannerPartialTp,
   type PlannerResult,
   type VirtualPendingLeg,
 } from './manualPlanner'
@@ -289,6 +290,13 @@ interface Leg {
    * not part of the close-worse-entries basket.
    */
   cweClosePrice?: number | null
+  /**
+   * Per-TP partial close schedule emitted by `planSinglePartialTps` for
+   * `trade_style === 'single'`. Empty / undefined for multi-trade legs.
+   * The executor INSERTs one `partial_tp_legs` row per entry after the
+   * parent OrderSend's trade row is committed.
+   */
+  partialTps?: PlannerPartialTp[]
 }
 
 /**
@@ -746,8 +754,16 @@ export class TradeExecutor {
 
     // Build immediate legs with rounded volumes. Immediates already carry the
     // planner's intended entry price (signal entry or zero for true market orders).
+    //
+    // The planner only ever emits a single-trade `partialTps` schedule when
+    // `capped.length === 1` (single mode → one order). We attach it to that
+    // single leg so the post-INSERT path can fan out the partials.
     const volumeRounded = capped.map(o => ({ ...o, volume: roundLot(o.volume, params) }))
-    let legs: Leg[] = volumeRounded.map((args, idx) => ({ args, idx }))
+    let legs: Leg[] = volumeRounded.map((args, idx) => ({
+      args,
+      idx,
+      ...(idx === 0 && plan.partialTps?.length ? { partialTps: plan.partialTps } : {}),
+    }))
 
     // ── Anchor resolution ────────────────────────────────────────────────
     // Priority: parsed signal entry → live /Quote (Ask for buy, Bid for sell).
@@ -822,10 +838,11 @@ export class TradeExecutor {
       const pipValue = plan.pipQuote?.pipValuePerStdLot
       const contractSize = plan.pipQuote?.contractSize
       const quoteCcy = plan.pipQuote?.quoteCurrency ?? ''
+      const partialCount = plan.partialTps?.length ?? 0
       console.log(
         `[tradeExecutor] manual plan signal=${signal.id} broker=${broker.id} symbol=${symbol}`
         + ` style=${manual.trade_style ?? 'single'} legs=${legs.length + virtualPendings.length}`
-        + ` (immediate=${legs.length}, virtual_pending=${virtualPendings.length})`
+        + ` (immediate=${legs.length}, virtual_pending=${virtualPendings.length}${partialCount > 0 ? `, partial_tp=${partialCount}` : ''})`
         + ` rangeOn=${manual.range_trading === true} cwOn=${!!plan.closeWorseEntries}`
         + (overrideTp != null ? ` cweClose=${overrideTp}` : '')
         + ` pip=${plan.pip ?? 'n/a'}`
@@ -965,25 +982,72 @@ export class TradeExecutor {
           `[tradeExecutor] OrderSend ok signal=${signal.id} broker=${broker.id} ticket=${result.ticket} leg=${leg.idx + 1}/${totalCount} price=${args.price ?? 0} ${latencyMs}ms`,
         )
 
-        await this.supabase.from('trades').insert({
-          user_id: signal.user_id,
-          signal_id: signal.id,
-          telegram_channel_id: signal.channel_id,
-          broker_account_id: broker.id,
-          metaapi_order_id: result.ticket != null ? String(result.ticket) : null,
-          symbol: args.symbol,
-          direction: args.operation.toLowerCase().includes('sell') ? 'sell' : 'buy',
-          entry_price: result.openPrice ?? args.price ?? null,
-          sl: result.stopLoss ?? args.stoploss ?? null,
-          tp: result.takeProfit ?? args.takeprofit ?? null,
-          lot_size: result.lots ?? args.volume,
-          status: args.operation.includes('Limit') || args.operation.includes('Stop') ? 'pending' : 'open',
-          opened_at: new Date().toISOString(),
-          // Worker-managed Close-Worse-Entries threshold (see cweCloseMonitor).
-          // Only the first N immediate legs have this; non-CWE legs leave it null
-          // and ride their bucket TP / SL normally.
-          cwe_close_price: leg.cweClosePrice ?? null,
-        })
+        const isBuy = !args.operation.toLowerCase().includes('sell')
+        // We need the row's id back so we can persist partial_tp_legs keyed to
+        // it. `.select('id').single()` keeps the INSERT to one round trip.
+        const tradeInsert = await this.supabase
+          .from('trades')
+          .insert({
+            user_id: signal.user_id,
+            signal_id: signal.id,
+            telegram_channel_id: signal.channel_id,
+            broker_account_id: broker.id,
+            metaapi_order_id: result.ticket != null ? String(result.ticket) : null,
+            symbol: args.symbol,
+            direction: isBuy ? 'buy' : 'sell',
+            entry_price: result.openPrice ?? args.price ?? null,
+            sl: result.stopLoss ?? args.stoploss ?? null,
+            tp: result.takeProfit ?? args.takeprofit ?? null,
+            lot_size: result.lots ?? args.volume,
+            status: args.operation.includes('Limit') || args.operation.includes('Stop') ? 'pending' : 'open',
+            opened_at: new Date().toISOString(),
+            // Worker-managed Close-Worse-Entries threshold (see cweCloseMonitor).
+            // Only the first N immediate legs have this; non-CWE legs leave it null
+            // and ride their bucket TP / SL normally.
+            cwe_close_price: leg.cweClosePrice ?? null,
+          })
+          .select('id')
+          .maybeSingle()
+        if (tradeInsert.error) {
+          console.error(
+            `[tradeExecutor] trades INSERT failed signal=${signal.id} broker=${broker.id} ticket=${result.ticket}: ${tradeInsert.error.message}`,
+          )
+        }
+        const tradeRowId = (tradeInsert.data as { id?: string } | null)?.id ?? null
+
+        // Single-mode trades with a partial schedule fan their partials out
+        // into `partial_tp_legs`. `partialTpMonitor` then polls /Quote and
+        // /OrderCloses each slice as the live bid/ask crosses the trigger.
+        // The LAST configured-bucket TP is the broker `takeprofit` so the
+        // residual lot rides to the deepest target with no worker intervention.
+        if (tradeRowId && leg.partialTps && leg.partialTps.length > 0) {
+          const partialRows = leg.partialTps.map(p => ({
+            trade_id: tradeRowId,
+            signal_id: signal.id,
+            user_id: signal.user_id,
+            broker_account_id: broker.id,
+            metaapi_account_id: uuid,
+            symbol: args.symbol,
+            is_buy: isBuy,
+            tp_idx: p.tpIdx,
+            trigger_price: p.triggerPrice,
+            close_lots: p.closeLots,
+            status: 'pending',
+          }))
+          const { error: partialErr } = await this.supabase
+            .from('partial_tp_legs')
+            .insert(partialRows)
+          if (partialErr) {
+            console.error(
+              `[tradeExecutor] partial_tp_legs INSERT failed signal=${signal.id} broker=${broker.id} trade=${tradeRowId}: ${partialErr.message}`,
+            )
+          } else {
+            console.log(
+              `[tradeExecutor] partial_tp_legs inserted=${partialRows.length} signal=${signal.id} broker=${broker.id} trade=${tradeRowId}`
+              + ` schedule=${leg.partialTps.map(p => `TP${p.tpIdx}@${p.triggerPrice}/${p.closeLots}`).join(',')}`,
+            )
+          }
+        }
 
         await this.supabase.from('trade_execution_logs').insert({
           user_id: signal.user_id,

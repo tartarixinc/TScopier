@@ -1151,7 +1151,7 @@ export function AccountConfigPage() {
                                       {multiTradePreview.fallsBackSingle
                                         ? '1 (split not possible at 0.01 min / 0.01 step preview)'
                                         : multiTradePreview.immediate != null && multiTradePreview.pending != null
-                                          ? `${multiTradePreview.totalOrders} (${multiTradePreview.immediate} immediate + ${multiTradePreview.pending} pending)`
+                                          ? `${multiTradePreview.totalOrders} (${multiTradePreview.immediate} instant + ${multiTradePreview.pending} for layering)`
                                           : multiTradePreview.totalOrders}
                                     </div>
                                     <p className="text-xs text-neutral-500 mt-1">
@@ -1183,7 +1183,7 @@ export function AccountConfigPage() {
                             {configDraft.manualSettings.trade_style === 'multi' && (
                               <div className="rounded-lg border border-neutral-200 p-3 space-y-3">
                                 <div className="flex items-center justify-between">
-                                  <p className="text-sm font-medium text-neutral-800">Range Trading</p>
+                                  <p className="text-sm font-medium text-neutral-800">Range Layering</p>
                                   <Toggle
                                     checked={configDraft.manualSettings.range_trading === true}
                                     onChange={v => setManual({ range_trading: v })}
@@ -1201,7 +1201,7 @@ export function AccountConfigPage() {
                                   <>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                       <Input
-                                        label="Range size (% of legs)"
+                                        label="Reserved lot (% of total)"
                                         type="number"
                                         min={0}
                                         max={100}
@@ -1212,7 +1212,7 @@ export function AccountConfigPage() {
                                         onChange={e => setManual({ range_percent: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })}
                                       />
                                       <Input
-                                        label="Step (pips per pending)"
+                                        label="Step (pips per layering)"
                                         type="number"
                                         min={1}
                                         step={1}
@@ -1249,10 +1249,10 @@ export function AccountConfigPage() {
                                       </div>
                                       <p className="text-xs text-neutral-600">
                                         When price moves +X pips beyond the worse (earliest) entry, the
-                                        worker auto-closes all immediates plus the N shallowest pendings
+                                        worker auto-closes all immediates plus the shallowest layers
                                         via /OrderClose. No broker-side TP is set on these legs (only the
                                         SL rides) — this avoids "Invalid stops" rejections when the basket
-                                        is already in profit. Deeper pendings keep their percent-row TPs
+                                        is already in profit. Deeper layers keep their percent-row TPs
                                         and ride for the bigger targets.
                                       </p>
                                       {configDraft.manualSettings.close_worse_entries && (
@@ -1271,7 +1271,7 @@ export function AccountConfigPage() {
                                             onChange={e => setManual({ close_worse_entries_pips: Math.max(1, Number(e.target.value) || 1) })}
                                           />
                                           <Input
-                                            label="Also close N shallowest pendings"
+                                            label="Also close shallowest layers"
                                             type="number"
                                             min={0}
                                             max={multiTradePreview.pending ?? 0}
@@ -1310,6 +1310,15 @@ export function AccountConfigPage() {
                                 Set each enabled TP&apos;s share manually. The total across enabled rows cannot
                                 exceed 100% — any input is capped to the remaining budget. Disabled rows are
                                 pinned at 0%.
+                              </p>
+                              <p className="text-xs text-neutral-500">
+                                <strong>Multi-trade:</strong> distributes the planned legs across TPs by these
+                                percentages (e.g. 50/30/20 of 20 legs &rarr; 10/6/4 at TP1/TP2/TP3).
+                                <br />
+                                <strong>Single-trade:</strong> the order rides to the <strong>last enabled TP</strong>{' '}
+                                at the broker; the worker auto-partial-closes the configured percentage at every
+                                earlier TP (e.g. 50/30/20 on a 1.0 lot &rarr; close 0.50 at TP1, 0.30 at TP2,
+                                remaining 0.20 closes at TP3 via the broker).
                               </p>
                               <div className="flex items-center justify-between text-xs">
                                 <span className="text-neutral-600">
