@@ -12,6 +12,8 @@ const manualPlanner_1 = require("./manualPlanner");
 const PARSED_STATUSES = new Set(['parsed']);
 const SYMBOL_CACHE_TTL_MS = 10 * 60000;
 const SYMBOL_LIST_TTL_MS = 30 * 60000;
+/** Follow-up signal merge: same-side update allowed within this window of the open trade's `opened_at`. */
+const MERGE_SIGNAL_LINK_WINDOW_MS = 4 * 60 * 60000;
 function isMtUuid(s) {
     if (!s)
         return false;
@@ -57,25 +59,12 @@ function isExcluded(symbol, broker) {
 }
 function operationFor(action, signal) {
     const a = action.toLowerCase();
-    const hasEntry = signal.entry_price != null;
+    const hasEntry = (0, manualPlanner_1.parsedHasExplicitEntryAnchor)(signal);
     if (a === 'buy')
         return hasEntry ? 'BuyLimit' : 'Buy';
     if (a === 'sell')
         return hasEntry ? 'SellLimit' : 'Sell';
     return null;
-}
-/** Parsed signal has a usable entry anchor for strict-entry vs market logic. */
-function hasSignalEntryAnchorForStrict(parsed) {
-    if (parsed.entry_price != null) {
-        const n = Number(parsed.entry_price);
-        return Number.isFinite(n) && n > 0;
-    }
-    if (parsed.entry_zone_low != null && parsed.entry_zone_high != null) {
-        const lo = Number(parsed.entry_zone_low);
-        const hi = Number(parsed.entry_zone_high);
-        return Number.isFinite(lo) && Number.isFinite(hi) && lo > 0 && hi > 0;
-    }
-    return false;
 }
 function isManagementAction(action) {
     const a = action.toLowerCase();
@@ -220,10 +209,38 @@ function channelMatches(broker, channelId) {
         return false;
     return ids.includes(channelId);
 }
+/** Best-effort open time from /OpenedOrders row (MetaTraderAPI shapes vary). */
+function brokerOrderOpenMs(o) {
+    const candidates = [
+        o.timeSetup,
+        o.TimeSetup,
+        o.setupTime,
+        o.SetupTime,
+        o.time,
+        o.Time,
+        o.openTime,
+        o.OpenTime,
+        o.created,
+        o.Created,
+    ];
+    for (const c of candidates) {
+        if (typeof c === 'number' && Number.isFinite(c) && c > 0) {
+            return c > 1e12 ? c : c * 1000;
+        }
+        if (typeof c === 'string' && c.trim()) {
+            const p = Date.parse(c);
+            if (Number.isFinite(p))
+                return p;
+        }
+    }
+    return null;
+}
 class TradeExecutor {
     constructor(supabase) {
         this.supabase = supabase;
         this.timer = null;
+        /** Cancels TSCopier broker pendings past `pending_expiry_hours` (1–24) when env enabled. */
+        this.brokerPendingSweepTimer = null;
         this.signalsChannel = null;
         this.brokersChannel = null;
         this.channelsChannel = null;
@@ -251,6 +268,10 @@ class TradeExecutor {
             this.sweep().catch(err => console.error('[tradeExecutor] sweep failed:', err));
         }, 15000);
         this.timer.unref?.();
+        this.brokerPendingSweepTimer = setInterval(() => {
+            this.sweepExpiredTscopierBrokerPendings().catch(err => console.error('[tradeExecutor] broker pending TTL sweep failed:', err));
+        }, 5 * 60000);
+        this.brokerPendingSweepTimer.unref?.();
         console.log('[tradeExecutor] started');
         if (String(process.env.WORKER_LEGACY_PENDING_CLEANUP ?? '').toLowerCase() === 'true') {
             this.cleanupLegacyBrokerPendings().catch(err => console.error('[tradeExecutor] legacy pending cleanup failed:', err));
@@ -260,6 +281,9 @@ class TradeExecutor {
         if (this.timer)
             clearInterval(this.timer);
         this.timer = null;
+        if (this.brokerPendingSweepTimer)
+            clearInterval(this.brokerPendingSweepTimer);
+        this.brokerPendingSweepTimer = null;
         if (this.signalsChannel) {
             void this.supabase.removeChannel(this.signalsChannel);
             this.signalsChannel = null;
@@ -371,7 +395,7 @@ class TradeExecutor {
         const since = new Date(Date.now() - 5 * 60000).toISOString();
         const { data } = await this.supabase
             .from('signals')
-            .select('id,user_id,channel_id,parsed_data,status,parent_signal_id,is_modification')
+            .select('id,user_id,channel_id,parsed_data,status,parent_signal_id,is_modification,created_at,telegram_message_id,reply_to_message_id')
             .eq('status', 'parsed')
             .gte('created_at', since)
             .limit(50);
@@ -423,7 +447,24 @@ class TradeExecutor {
             const op = operationFor(action, parsed);
             if (!op || !parsed.symbol)
                 return;
-            await Promise.allSettled(brokers.map(b => this.sendOrder(row, parsed, op, b, channelKeywords)));
+            const outcomes = await Promise.all(brokers.map(b => this.sendOrder(row, parsed, op, b, channelKeywords)));
+            const anyOpened = outcomes.some(o => o.openedOrMerged === true);
+            const strictSkips = outcomes.filter(o => o.signalEntryRequiredSkip === true).length;
+            if (!anyOpened && strictSkips === brokers.length && strictSkips > 0) {
+                try {
+                    const { error: sigErr } = await this.supabase
+                        .from('signals')
+                        .update({ status: 'skipped', skip_reason: manualPlanner_1.SKIP_REASON_SIGNAL_ENTRY_REQUIRED })
+                        .eq('id', row.id)
+                        .eq('status', 'parsed');
+                    if (sigErr) {
+                        console.warn(`[tradeExecutor] signal skip finalize failed id=${row.id}: ${sigErr.message}`);
+                    }
+                }
+                catch {
+                    // best-effort
+                }
+            }
         }
         finally {
             this.inflight.delete(row.id);
@@ -464,9 +505,569 @@ class TradeExecutor {
             return false;
         }
     }
-    async sendOrder(signal, parsed, op, broker, channelKeywords) {
+    async cancelRangePendingLegsForScopes(userId, logSignalId, scopes, reason) {
+        const uniq = new Map();
+        for (const s of scopes) {
+            uniq.set(`${s.signalId}|${s.brokerAccountId}|${s.symbol}`, s);
+        }
+        await Promise.allSettled([...uniq.values()].map(async (scope) => {
+            try {
+                const { data: cancelled, error: cancelErr } = await this.supabase
+                    .from('range_pending_legs')
+                    .update({ status: 'cancelled', error_message: reason })
+                    .eq('signal_id', scope.signalId)
+                    .eq('broker_account_id', scope.brokerAccountId)
+                    .eq('symbol', scope.symbol)
+                    .in('status', ['pending', 'claimed'])
+                    .select('id');
+                if (cancelErr) {
+                    console.warn(`[tradeExecutor] range_pending_legs cancel failed signal=${scope.signalId} broker=${scope.brokerAccountId} symbol=${scope.symbol}: ${cancelErr.message}`);
+                    return;
+                }
+                const rowsCancelled = (cancelled ?? []);
+                if (!rowsCancelled.length)
+                    return;
+                try {
+                    await this.supabase.from('trade_execution_logs').insert({
+                        user_id: userId,
+                        signal_id: logSignalId,
+                        broker_account_id: scope.brokerAccountId,
+                        action: 'virtual_pending_cancelled',
+                        status: 'success',
+                        request_payload: {
+                            reason,
+                            parent_signal_id: scope.signalId,
+                            symbol: scope.symbol,
+                            rows: rowsCancelled.length,
+                            leg_ids: rowsCancelled.map(r => r.id),
+                        },
+                    });
+                }
+                catch {
+                    // Logging failure is non-fatal.
+                }
+            }
+            catch {
+                // best-effort
+            }
+        }));
+    }
+    /**
+     * Manual mode: when enabled, close every open trade on this symbol that faces
+     * the opposite way from the **channel** buy/sell (before reverse / planner flip).
+     */
+    async closeOppositeDirectionTrades(signal, parsed, broker, symbol) {
         if (!this.api)
             return;
+        const manual = (broker.manual_settings ?? {});
+        if (manual.close_on_opposite_signal !== true)
+            return;
+        const a = String(parsed.action ?? '').toLowerCase();
+        if (a !== 'buy' && a !== 'sell')
+            return;
+        const channelBuy = a === 'buy';
+        const oppDir = channelBuy ? 'sell' : 'buy';
+        const uuid = broker.metaapi_account_id;
+        const { data: opposites } = await this.supabase
+            .from('trades')
+            .select('id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,lot_size')
+            .eq('broker_account_id', broker.id)
+            .eq('symbol', symbol)
+            .eq('status', 'open')
+            .eq('direction', oppDir);
+        const rows = opposites ?? [];
+        if (!rows.length)
+            return;
+        const scopes = [];
+        for (const t of rows) {
+            const ticket = Number(t.metaapi_order_id);
+            if (!Number.isFinite(ticket) || ticket <= 0)
+                continue;
+            try {
+                await this.api.orderClose(uuid, { ticket });
+                await this.supabase
+                    .from('trades')
+                    .update({ status: 'closed', closed_at: new Date().toISOString() })
+                    .eq('id', t.id);
+                scopes.push({ signalId: t.signal_id, brokerAccountId: broker.id, symbol });
+                try {
+                    await this.supabase.from('trade_execution_logs').insert({
+                        user_id: signal.user_id,
+                        signal_id: signal.id,
+                        broker_account_id: broker.id,
+                        action: 'opposite_signal_close',
+                        status: 'success',
+                        request_payload: {
+                            closed_trade_id: t.id,
+                            ticket,
+                            direction: t.direction,
+                            channel_action: a,
+                            symbol,
+                        },
+                    });
+                }
+                catch {
+                    // logging best-effort
+                }
+            }
+            catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                console.warn(`[tradeExecutor] opposite_signal_close failed trade=${t.id} ticket=${ticket} broker=${broker.id}: ${msg}`);
+                try {
+                    await this.supabase.from('trade_execution_logs').insert({
+                        user_id: signal.user_id,
+                        signal_id: signal.id,
+                        broker_account_id: broker.id,
+                        action: 'opposite_signal_close',
+                        status: 'failed',
+                        request_payload: { closed_trade_id: t.id, ticket, symbol },
+                        error_message: msg,
+                    });
+                }
+                catch {
+                    // best-effort
+                }
+            }
+        }
+        if (scopes.length) {
+            await this.cancelRangePendingLegsForScopes(signal.user_id, signal.id, scopes, 'opposite_signal_close');
+        }
+    }
+    /**
+     * When `add_new_trades_to_existing` is on, apply a same-direction follow-up
+     * (reply chain or recent time window) as SL/TP refresh on all open legs of
+     * the basket (`signal_id` family), preserving multi-trade TP distribution.
+     */
+    async tryMergeSignalIntoExistingOpenTrade(args) {
+        const { signal, parsed, op, broker, channelKeywords, baseLot, params, symbol, uuid, strictEntryPrefetch } = args;
+        if (!this.api)
+            return false;
+        const manual = (broker.manual_settings ?? {});
+        if (manual.add_new_trades_to_existing !== true)
+            return false;
+        if (manual.use_signal_entry_price === true && !(0, manualPlanner_1.parsedHasExplicitEntryAnchor)(parsed)) {
+            return false;
+        }
+        const a = String(parsed.action ?? '').toLowerCase();
+        if (a !== 'buy' && a !== 'sell')
+            return false;
+        const direction = a === 'buy' ? 'buy' : 'sell';
+        // Realtime payloads may omit `created_at` / reply fields — load authoritative row for merge linking.
+        let mergeSignal = signal;
+        try {
+            const { data: fullSig } = await this.supabase
+                .from('signals')
+                .select('created_at, reply_to_message_id, telegram_message_id')
+                .eq('id', signal.id)
+                .maybeSingle();
+            const row = fullSig;
+            if (row) {
+                mergeSignal = {
+                    ...signal,
+                    created_at: signal.created_at ?? row.created_at,
+                    reply_to_message_id: signal.reply_to_message_id ?? row.reply_to_message_id ?? null,
+                    telegram_message_id: signal.telegram_message_id ?? row.telegram_message_id ?? null,
+                };
+            }
+        }
+        catch {
+            // best-effort; keep mergeSignal = signal
+        }
+        const { data: openDesc, error: openErr } = await this.supabase
+            .from('trades')
+            .select('id,signal_id,metaapi_order_id,opened_at,lot_size,sl,tp,entry_price,direction')
+            .eq('broker_account_id', broker.id)
+            .eq('symbol', symbol)
+            .eq('status', 'open')
+            .eq('direction', direction)
+            .order('opened_at', { ascending: false })
+            .limit(64);
+        if (openErr || !openDesc?.length)
+            return false;
+        const newest = openDesc[0];
+        const anchorSignalId = newest.signal_id;
+        if (!anchorSignalId)
+            return false;
+        const familyTrades = openDesc
+            .filter(t => t.signal_id === anchorSignalId)
+            .sort((a, b) => new Date(a.opened_at).getTime() - new Date(b.opened_at).getTime());
+        if (!familyTrades.length)
+            return false;
+        const { data: origSig } = await this.supabase
+            .from('signals')
+            .select('telegram_message_id')
+            .eq('id', anchorSignalId)
+            .maybeSingle();
+        const origTg = String(origSig?.telegram_message_id ?? '').trim();
+        const replyTo = String(mergeSignal.reply_to_message_id ?? '').trim();
+        const replyOk = Boolean(replyTo && origTg && replyTo === origTg);
+        const sigTime = mergeSignal.created_at ? new Date(mergeSignal.created_at).getTime() : Date.now();
+        const tradeOpen = new Date(newest.opened_at).getTime();
+        const dt = sigTime - tradeOpen;
+        const withinWindow = dt >= -120000 && dt <= MERGE_SIGNAL_LINK_WINDOW_MS;
+        if (!replyOk && !withinWindow)
+            return false;
+        // Planner / predefined SL-TP need an entry anchor. Re-use the live trade's fill when the new parse has none.
+        const plannerParsed = {
+            action: parsed.action,
+            symbol: parsed.symbol,
+            entry_price: parsed.entry_price,
+            entry_zone_low: parsed.entry_zone_low,
+            entry_zone_high: parsed.entry_zone_high,
+            sl: parsed.sl,
+            tp: parsed.tp,
+            lot_size: parsed.lot_size,
+            open_tp: parsed.open_tp,
+            partial_close_fraction: parsed.partial_close_fraction,
+            raw_instruction: parsed.raw_instruction,
+        };
+        const hasParsedEntry = (plannerParsed.entry_price != null
+            && Number.isFinite(Number(plannerParsed.entry_price))
+            && Number(plannerParsed.entry_price) > 0)
+            || (plannerParsed.entry_zone_low != null
+                && plannerParsed.entry_zone_high != null
+                && Number.isFinite(Number(plannerParsed.entry_zone_low))
+                && Number.isFinite(Number(plannerParsed.entry_zone_high))
+                && Number(plannerParsed.entry_zone_low) > 0
+                && Number(plannerParsed.entry_zone_high) > 0);
+        if (!hasParsedEntry) {
+            const ep = Number(newest.entry_price);
+            if (Number.isFinite(ep) && ep > 0) {
+                plannerParsed.entry_price = ep;
+            }
+        }
+        const hasPlannerEntry = (plannerParsed.entry_price != null
+            && Number.isFinite(Number(plannerParsed.entry_price))
+            && Number(plannerParsed.entry_price) > 0)
+            || (plannerParsed.entry_zone_low != null
+                && plannerParsed.entry_zone_high != null
+                && Number.isFinite(Number(plannerParsed.entry_zone_low))
+                && Number.isFinite(Number(plannerParsed.entry_zone_high))
+                && Number(plannerParsed.entry_zone_low) > 0
+                && Number(plannerParsed.entry_zone_high) > 0);
+        if (!hasPlannerEntry) {
+            try {
+                const q = strictEntryPrefetch ?? await this.api.quote(uuid, symbol);
+                plannerParsed.entry_price = direction === 'buy' ? q.ask : q.bid;
+            }
+            catch {
+                console.warn(`[tradeExecutor] merge skipped: no entry anchor signal=${signal.id} symbol=${symbol}`);
+                return false;
+            }
+        }
+        // Full manual (multi + range + tp_lots %) so each immediate leg maps to the correct bucket TP.
+        const mergeBaseOp = op === 'Buy' || op === 'Sell' ? op : direction === 'buy' ? 'Buy' : 'Sell';
+        const plan = (0, manualPlanner_1.planManualOrders)({
+            parsed: plannerParsed,
+            resolvedSymbol: symbol,
+            baseOperation: mergeBaseOp,
+            manual,
+            channelKeywords,
+            manualLot: baseLot,
+            ctx: {
+                point: params?.point ?? 0.00001,
+                digits: params?.digits ?? 5,
+                minLot: params?.minLot ?? 0.01,
+                lotStep: params?.lotStep ?? 0.01,
+                contractSize: params?.contractSize ?? null,
+                stopsLevel: params?.stopsLevel ?? 0,
+                freezeLevel: params?.freezeLevel ?? 0,
+                defaultLot: Number(broker.default_lot_size ?? 0.01),
+                lastBalance: broker.last_balance ?? null,
+                liveBid: strictEntryPrefetch?.bid,
+                liveAsk: strictEntryPrefetch?.ask,
+            },
+            commentPrefix: `TSCopier:${signal.id.slice(0, 8)}`,
+            expertId: 909090,
+            slippage: 20,
+        });
+        if (plan.skip_reason || plan.orders.length === 0)
+            return false;
+        const marketOrders = plan.orders.filter(o => o.operation === 'Buy' || o.operation === 'Sell');
+        if (!marketOrders.length)
+            return false;
+        let virtualPendings = (plan.virtualPendings ?? []).slice(0, 500);
+        if (plan.delay_ms > 0) {
+            await new Promise(resolve => setTimeout(resolve, Math.min(plan.delay_ms, 30000)));
+        }
+        // Per-leg SL/TP (and optional CWE) aligned with `planManualOrders` immediate sequence.
+        const immediateArgs = marketOrders.map(o => ({ ...o }));
+        const needsAnchor = virtualPendings.length > 0 || !!plan.closeWorseEntries;
+        let anchor = plan.anchor?.value ?? null;
+        let anchorSource = plan.anchor?.source ?? 'unknown';
+        if (needsAnchor && (anchor == null || anchor <= 0) && this.api) {
+            try {
+                const q = strictEntryPrefetch ?? await this.api.quote(uuid, symbol);
+                anchor = plan.isBuy === false ? q.bid : q.ask;
+                anchorSource = 'quote';
+            }
+            catch {
+                // anchor may stay null; virtual insert path will drop legs
+            }
+        }
+        const overrideTp = computeCweTp(plan, anchor, params);
+        let nImmCwe = 0;
+        if (overrideTp != null && plan.closeWorseEntries) {
+            nImmCwe = Math.max(0, Math.min(immediateArgs.length, plan.closeWorseEntries.immediates));
+            for (let i = 0; i < nImmCwe; i++) {
+                immediateArgs[i] = {
+                    ...immediateArgs[i],
+                    takeprofit: 0,
+                    comment: `${immediateArgs[i].comment ?? ''}.cw`,
+                };
+            }
+            const nVirt = Math.max(0, Math.min(virtualPendings.length, plan.closeWorseEntries.extraPendings));
+            for (let i = 0; i < nVirt; i++) {
+                virtualPendings[i] = {
+                    ...virtualPendings[i],
+                    takeprofit: null,
+                    comment: `${virtualPendings[i].comment}.cw`,
+                    cweClosePrice: overrideTp,
+                };
+            }
+        }
+        const legPairs = Math.min(immediateArgs.length, familyTrades.length);
+        if (legPairs < immediateArgs.length || legPairs < familyTrades.length) {
+            console.warn(`[tradeExecutor] merge leg mismatch signal=${signal.id} broker=${broker.id} symbol=${symbol}`
+                + ` plan_immediate=${immediateArgs.length} open_same_family=${familyTrades.length} applying_first=${legPairs}`);
+        }
+        await this.cancelRangePendingLegsForScopes(signal.user_id, signal.id, [{
+                signalId: anchorSignalId,
+                brokerAccountId: broker.id,
+                symbol,
+            }], 'signal_merge_refresh');
+        for (const t of familyTrades) {
+            try {
+                await this.supabase.from('partial_tp_legs').delete().eq('trade_id', t.id);
+            }
+            catch {
+                // best-effort
+            }
+        }
+        let mergeFailed = false;
+        for (let i = 0; i < legPairs; i++) {
+            const tr = familyTrades[i];
+            const ord = immediateArgs[i];
+            const ticket = Number(tr.metaapi_order_id);
+            if (!Number.isFinite(ticket) || ticket <= 0) {
+                mergeFailed = true;
+                continue;
+            }
+            let ref = Number(tr.entry_price) || 0;
+            if (ref <= 0) {
+                try {
+                    const q = strictEntryPrefetch ?? await this.api.quote(uuid, symbol);
+                    ref = direction === 'buy' ? q.ask : q.bid;
+                }
+                catch {
+                    mergeFailed = true;
+                    continue;
+                }
+            }
+            if (!Number.isFinite(ref) || ref <= 0) {
+                mergeFailed = true;
+                continue;
+            }
+            const vol = roundLot(Number(tr.lot_size) || ord.volume || baseLot, params);
+            const sendShape = {
+                symbol,
+                operation: direction === 'buy' ? 'Buy' : 'Sell',
+                volume: vol,
+                price: ref,
+                stoploss: ord.stoploss ?? 0,
+                takeprofit: ord.takeprofit ?? 0,
+                slippage: ord.slippage ?? 20,
+                comment: ord.comment,
+                expertID: ord.expertID,
+            };
+            const clamped = clampOrderStops(sendShape, params);
+            if (clamped.adjustments.length > 0) {
+                console.warn(`[tradeExecutor] merge modify stops clamped signal=${signal.id} broker=${broker.id} leg=${i + 1}/${legPairs} symbol=${symbol}: ${clamped.adjustments.join(', ')}`);
+            }
+            try {
+                const modRes = await this.api.orderModify(uuid, {
+                    ticket,
+                    stoploss: clamped.args.stoploss ?? 0,
+                    takeprofit: clamped.args.takeprofit ?? 0,
+                });
+                const newSl = modRes.stopLoss ?? clamped.args.stoploss ?? null;
+                const newTp = modRes.takeProfit ?? clamped.args.takeprofit ?? null;
+                const cweClose = i < nImmCwe ? overrideTp : null;
+                await this.supabase.from('trades').update({
+                    sl: typeof newSl === 'number' && newSl > 0 ? newSl : null,
+                    tp: typeof newTp === 'number' && newTp > 0 ? newTp : null,
+                    cwe_close_price: typeof cweClose === 'number' && cweClose > 0 ? cweClose : null,
+                }).eq('id', tr.id);
+            }
+            catch (err) {
+                mergeFailed = true;
+                const msg = err instanceof Error ? err.message : String(err);
+                console.warn(`[tradeExecutor] merge OrderModify failed leg=${i + 1} trade=${tr.id} ticket=${ticket}: ${msg}`);
+            }
+        }
+        if (virtualPendings.length > 0) {
+            if (anchor == null || !Number.isFinite(anchor) || anchor <= 0) {
+                console.warn(`[tradeExecutor] merge dropping ${virtualPendings.length} virtual pendings: no anchor signal=${signal.id} broker=${broker.id} symbol=${symbol}`);
+            }
+            else {
+                const digits = Math.max(0, Math.min(8, Number(params?.digits) || 5));
+                const safe = Math.max(Number(params?.stopsLevel) || 0, Number(params?.freezeLevel) || 0);
+                const zoneHi = safe > 0 ? anchor + (safe + 2) * (params?.point ?? 0) : null;
+                const zoneLo = safe > 0 ? anchor - (safe + 2) * (params?.point ?? 0) : null;
+                const nowMs = Date.now();
+                const insertRows = [];
+                for (const v of virtualPendings) {
+                    const triggerPrice = triggerPriceFor(v, anchor, digits);
+                    if (zoneHi != null && zoneLo != null && triggerPrice > zoneLo && triggerPrice < zoneHi) {
+                        console.warn(`[tradeExecutor] merge dropped virtual pending stepIdx=${v.stepIdx} trigger=${triggerPrice} inside stops zone`);
+                        continue;
+                    }
+                    const expiresAt = v.expiryHours && v.expiryHours > 0
+                        ? new Date(nowMs + v.expiryHours * 60 * 60 * 1000).toISOString()
+                        : null;
+                    insertRows.push({
+                        signal_id: anchorSignalId,
+                        user_id: signal.user_id,
+                        broker_account_id: broker.id,
+                        metaapi_account_id: uuid,
+                        symbol,
+                        step_idx: v.stepIdx,
+                        is_buy: v.isBuy,
+                        volume: roundLot(v.volume, params),
+                        anchor_price: anchor,
+                        trigger_price: triggerPrice,
+                        stoploss: v.stoploss,
+                        takeprofit: v.takeprofit,
+                        slippage: v.slippage,
+                        comment: v.comment,
+                        expert_id: v.expertID ?? null,
+                        expires_at: expiresAt,
+                        status: 'pending',
+                        cwe_close_price: v.cweClosePrice ?? null,
+                    });
+                }
+                if (insertRows.length > 0) {
+                    const { error: insertErr } = await this.supabase.from('range_pending_legs').insert(insertRows);
+                    if (insertErr) {
+                        console.error(`[tradeExecutor] merge range_pending_legs INSERT failed signal=${signal.id}: ${insertErr.message}`);
+                        mergeFailed = true;
+                    }
+                    else {
+                        console.log(`[tradeExecutor] merge virtual pendings inserted=${insertRows.length} parent_signal=${anchorSignalId} merge_signal=${signal.id}`);
+                    }
+                }
+            }
+        }
+        if (plan.partialTps?.length && familyTrades.length === 1 && legPairs === 1) {
+            const tr0 = familyTrades[0];
+            const isBuy = direction === 'buy';
+            const partialRows = plan.partialTps.map(p => ({
+                trade_id: tr0.id,
+                signal_id: tr0.signal_id,
+                user_id: signal.user_id,
+                broker_account_id: broker.id,
+                metaapi_account_id: uuid,
+                symbol,
+                is_buy: isBuy,
+                tp_idx: p.tpIdx,
+                trigger_price: p.triggerPrice,
+                close_lots: p.closeLots,
+                status: 'pending',
+            }));
+            const { error: partialErr } = await this.supabase.from('partial_tp_legs').insert(partialRows);
+            if (partialErr) {
+                console.warn(`[tradeExecutor] merge partial_tp_legs INSERT failed: ${partialErr.message}`);
+            }
+        }
+        try {
+            await this.supabase.from('trade_execution_logs').insert({
+                user_id: signal.user_id,
+                signal_id: signal.id,
+                broker_account_id: broker.id,
+                action: 'signal_merge_into_open_trade',
+                status: mergeFailed ? 'failed' : 'success',
+                request_payload: {
+                    parent_signal_id: anchorSignalId,
+                    symbol,
+                    legs_updated: legPairs,
+                    plan_immediate_legs: immediateArgs.length,
+                    open_family_legs: familyTrades.length,
+                    virtual_pendings: virtualPendings.length,
+                    reply_chain: replyOk,
+                    within_time_window: withinWindow,
+                },
+            });
+        }
+        catch {
+            // best-effort
+        }
+        if (mergeFailed)
+            return false;
+        try {
+            await this.supabase
+                .from('signals')
+                .update({ status: 'executed' })
+                .eq('id', signal.id)
+                .eq('status', 'parsed');
+        }
+        catch {
+            // best-effort
+        }
+        return true;
+    }
+    async sweepExpiredTscopierBrokerPendings() {
+        if (!this.api)
+            return;
+        if (String(process.env.WORKER_BROKER_PENDING_EXPIRY_SWEEP ?? '').toLowerCase() !== 'true')
+            return;
+        const brokers = Array.from(this.brokersById.values()).filter(b => b.is_active && isMtUuid(b.metaapi_account_id) && (b.copier_mode ?? 'ai') === 'manual');
+        if (!brokers.length)
+            return;
+        const now = Date.now();
+        for (const broker of brokers) {
+            const manual = (broker.manual_settings ?? {});
+            const ttlH = (0, manualPlanner_1.clampPendingExpiryHours)(manual.pending_expiry_hours);
+            if (ttlH <= 0)
+                continue;
+            const uuid = broker.metaapi_account_id;
+            let orders;
+            try {
+                orders = await this.api.openedOrders(uuid);
+            }
+            catch (err) {
+                console.warn(`[tradeExecutor] TTL sweep /OpenedOrders failed broker=${broker.id}: ${err.message}`);
+                continue;
+            }
+            const cutoff = now - ttlH * 3600000;
+            for (const raw of orders ?? []) {
+                if (!raw || typeof raw !== 'object')
+                    continue;
+                const o = raw;
+                const operation = String(o.operation ?? o.Operation ?? o.type ?? o.Type ?? '');
+                const comment = String(o.comment ?? o.Comment ?? '');
+                const ticket = Number(o.ticket ?? o.Ticket ?? o.orderId ?? o.OrderID ?? 0);
+                if (!operation.includes('Limit') && !operation.includes('Stop'))
+                    continue;
+                if (!comment.startsWith('TSCopier:'))
+                    continue;
+                if (!Number.isFinite(ticket) || ticket <= 0)
+                    continue;
+                const openMs = brokerOrderOpenMs(o);
+                if (openMs == null || openMs > cutoff)
+                    continue;
+                try {
+                    await this.api.orderClose(uuid, { ticket });
+                    console.log(`[tradeExecutor] TTL sweep closed ticket=${ticket} broker=${broker.id} op=${operation} ttl_hours=${ttlH}`);
+                }
+                catch (err) {
+                    console.warn(`[tradeExecutor] TTL sweep close failed ticket=${ticket} broker=${broker.id}: ${err.message}`);
+                }
+            }
+        }
+    }
+    async sendOrder(signal, parsed, op, broker, channelKeywords) {
+        if (!this.api)
+            return {};
         const uuid = broker.metaapi_account_id;
         const mapping = applySymbolMapping(parsed.symbol, broker);
         // Whitelist mode: when the user listed multiple symbols, only let signals
@@ -478,12 +1079,12 @@ class TradeExecutor {
                     signal_symbol: parsed.symbol ?? null,
                     allowed: mapping.whitelist,
                 });
-                return;
+                return {};
             }
         }
         const requestedSymbol = mapping.symbol;
         if (isExcluded(requestedSymbol, broker))
-            return;
+            return {};
         // Resolve to the broker's actual instrument name (e.g. BTCUSD → BTCUSDm).
         // Falls back to the requested symbol when /Symbols is unavailable or has no match.
         const symbol = await this.resolveBrokerSymbol(uuid, requestedSymbol);
@@ -498,7 +1099,7 @@ class TradeExecutor {
         if (this.api
             && isManual
             && manual.use_signal_entry_price === true
-            && hasSignalEntryAnchorForStrict(parsed)) {
+            && (0, manualPlanner_1.parsedHasExplicitEntryAnchor)(parsed)) {
             try {
                 strictEntryPrefetch = await this.api.quote(uuid, symbol);
             }
@@ -507,12 +1108,31 @@ class TradeExecutor {
                 console.warn(`[tradeExecutor] /Quote prefetch failed (signal entry strictness) ${symbol} signal=${signal.id} broker=${broker.id}: ${msg}`);
             }
         }
+        if (isManual && manual.close_on_opposite_signal === true) {
+            await this.closeOppositeDirectionTrades(signal, parsed, broker, symbol);
+        }
+        if (isManual && manual.add_new_trades_to_existing === true) {
+            const merged = await this.tryMergeSignalIntoExistingOpenTrade({
+                signal,
+                parsed,
+                op,
+                broker,
+                channelKeywords,
+                baseLot,
+                params,
+                symbol,
+                uuid,
+                strictEntryPrefetch,
+            });
+            if (merged)
+                return { openedOrMerged: true };
+        }
         // Stop here when the user opted out of stacking trades on the same symbol.
         if (isManual && manual.add_new_trades_to_existing === false) {
             const already = await this.hasOpenTradeForSymbol(broker.id, symbol);
             if (already) {
                 await this.logSendSkipped(signal, broker, 'add_new_trades_to_existing=false', { symbol });
-                return;
+                return {};
             }
         }
         // Build the order list. In AI mode we keep the original single-order shape;
@@ -576,7 +1196,8 @@ class TradeExecutor {
         }
         if (plan.orders.length === 0) {
             await this.logSendSkipped(signal, broker, plan.skip_reason ?? 'filtered', { symbol });
-            return;
+            const entryStrict = isManual && plan.skip_reason === manualPlanner_1.SKIP_REASON_SIGNAL_ENTRY_REQUIRED;
+            return entryStrict ? { signalEntryRequiredSkip: true } : {};
         }
         if (plan.fallback_reason) {
             // Non-fatal: the planner had to soften its strategy (e.g. multi → single because
@@ -589,7 +1210,7 @@ class TradeExecutor {
                     signal_id: signal.id,
                     broker_account_id: broker.id,
                     action: 'plan_fallback',
-                    status: 'info',
+                    status: 'success',
                     request_payload: {
                         reason: plan.fallback_reason,
                         manual_lot: baseLot,
@@ -810,7 +1431,7 @@ class TradeExecutor {
         if (legs.length === 0) {
             // No immediates to send — the trade is purely virtual pendings (or the
             // planner dropped them). Nothing more to do here.
-            return;
+            return {};
         }
         const totalCount = legs.length;
         const sendLeg = async (leg) => {
@@ -913,6 +1534,7 @@ class TradeExecutor {
         // All immediates fan out in parallel. Virtual pendings are already
         // persisted; the worker monitor + edge sweep will fire them on trigger.
         await Promise.allSettled(legs.map(sendLeg));
+        return { openedOrMerged: true };
     }
     async logSendSkipped(signal, broker, reason, extra) {
         try {
@@ -1080,43 +1702,8 @@ class TradeExecutor {
             }
         }));
         if (action === 'close' && cancelledPendingScopes.size > 0) {
-            await Promise.allSettled(Array.from(cancelledPendingScopes).map(async (encoded) => {
-                const scope = JSON.parse(encoded);
-                const { data: cancelled, error: cancelErr } = await this.supabase
-                    .from('range_pending_legs')
-                    .update({ status: 'cancelled', error_message: 'signal_closed' })
-                    .eq('signal_id', scope.signalId)
-                    .eq('broker_account_id', scope.brokerAccountId)
-                    .eq('symbol', scope.symbol)
-                    .in('status', ['pending', 'claimed'])
-                    .select('id');
-                if (cancelErr) {
-                    console.warn(`[tradeExecutor] range_pending_legs cancel failed signal=${scope.signalId} broker=${scope.brokerAccountId} symbol=${scope.symbol}: ${cancelErr.message}`);
-                    return;
-                }
-                const rowsCancelled = (cancelled ?? []);
-                if (!rowsCancelled.length)
-                    return;
-                try {
-                    await this.supabase.from('trade_execution_logs').insert({
-                        user_id: signal.user_id,
-                        signal_id: signal.id,
-                        broker_account_id: scope.brokerAccountId,
-                        action: 'virtual_pending_cancelled',
-                        status: 'info',
-                        request_payload: {
-                            reason: 'signal_closed',
-                            parent_signal_id: scope.signalId,
-                            symbol: scope.symbol,
-                            rows: rowsCancelled.length,
-                            leg_ids: rowsCancelled.map(r => r.id),
-                        },
-                    });
-                }
-                catch {
-                    // Logging failure is non-fatal.
-                }
-            }));
+            const scopes = Array.from(cancelledPendingScopes).map(enc => JSON.parse(enc));
+            await this.cancelRangePendingLegsForScopes(signal.user_id, signal.id, scopes, 'signal_closed');
         }
         // Management messages do not insert `trades` with `signal_id = this row`,
         // so `sweep()` never skips them via the "trade already exists" guard.

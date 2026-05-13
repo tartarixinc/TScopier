@@ -12,6 +12,7 @@ import {
   computeCwOverrideTp,
   parsedHasExplicitEntryAnchor,
   planManualOrders,
+  SKIP_REASON_SIGNAL_ENTRY_REQUIRED,
   type ChannelKeywords,
   type ManualSettings,
   type ParsedSignal as PlannerParsedSignal,
@@ -19,6 +20,12 @@ import {
   type PlannerResult,
   type VirtualPendingLeg,
 } from './manualPlanner'
+
+/** Per-broker summary so `handleSignal` can flip `signals.status` when every account skips entry-strict. */
+type SendOrderOutcome = {
+  openedOrMerged?: boolean
+  signalEntryRequiredSkip?: boolean
+}
 
 /**
  * Direct trade-execution path. Listens to `signals` Realtime, fans out to every
@@ -610,7 +617,25 @@ export class TradeExecutor {
       const op = operationFor(action, parsed)
       if (!op || !parsed.symbol) return
 
-      await Promise.allSettled(brokers.map(b => this.sendOrder(row, parsed, op, b, channelKeywords)))
+      const outcomes = await Promise.all(
+        brokers.map(b => this.sendOrder(row, parsed, op, b, channelKeywords)),
+      )
+      const anyOpened = outcomes.some(o => o.openedOrMerged === true)
+      const strictSkips = outcomes.filter(o => o.signalEntryRequiredSkip === true).length
+      if (!anyOpened && strictSkips === brokers.length && strictSkips > 0) {
+        try {
+          const { error: sigErr } = await this.supabase
+            .from('signals')
+            .update({ status: 'skipped', skip_reason: SKIP_REASON_SIGNAL_ENTRY_REQUIRED })
+            .eq('id', row.id)
+            .eq('status', 'parsed')
+          if (sigErr) {
+            console.warn(`[tradeExecutor] signal skip finalize failed id=${row.id}: ${sigErr.message}`)
+          }
+        } catch {
+          // best-effort
+        }
+      }
     } finally {
       this.inflight.delete(row.id)
     }
@@ -806,6 +831,9 @@ export class TradeExecutor {
     if (!this.api) return false
     const manual = (broker.manual_settings ?? {}) as ManualSettings
     if (manual.add_new_trades_to_existing !== true) return false
+    if (manual.use_signal_entry_price === true && !parsedHasExplicitEntryAnchor(parsed)) {
+      return false
+    }
 
     const a = String(parsed.action ?? '').toLowerCase()
     if (a !== 'buy' && a !== 'sell') return false
@@ -1252,8 +1280,8 @@ export class TradeExecutor {
     op: MtOperation,
     broker: BrokerRow,
     channelKeywords: ChannelKeywords | null,
-  ): Promise<void> {
-    if (!this.api) return
+  ): Promise<SendOrderOutcome> {
+    if (!this.api) return {}
     const uuid = broker.metaapi_account_id!
     const mapping = applySymbolMapping(parsed.symbol!, broker)
 
@@ -1266,12 +1294,12 @@ export class TradeExecutor {
           signal_symbol: parsed.symbol ?? null,
           allowed: mapping.whitelist,
         })
-        return
+        return {}
       }
     }
 
     const requestedSymbol = mapping.symbol
-    if (isExcluded(requestedSymbol, broker)) return
+    if (isExcluded(requestedSymbol, broker)) return {}
 
     // Resolve to the broker's actual instrument name (e.g. BTCUSD → BTCUSDm).
     // Falls back to the requested symbol when /Symbols is unavailable or has no match.
@@ -1320,7 +1348,7 @@ export class TradeExecutor {
         uuid,
         strictEntryPrefetch,
       })
-      if (merged) return
+      if (merged) return { openedOrMerged: true }
     }
 
     // Stop here when the user opted out of stacking trades on the same symbol.
@@ -1328,7 +1356,7 @@ export class TradeExecutor {
       const already = await this.hasOpenTradeForSymbol(broker.id, symbol)
       if (already) {
         await this.logSendSkipped(signal, broker, 'add_new_trades_to_existing=false', { symbol })
-        return
+        return {}
       }
     }
 
@@ -1393,7 +1421,9 @@ export class TradeExecutor {
 
     if (plan.orders.length === 0) {
       await this.logSendSkipped(signal, broker, plan.skip_reason ?? 'filtered', { symbol })
-      return
+      const entryStrict =
+        isManual && plan.skip_reason === SKIP_REASON_SIGNAL_ENTRY_REQUIRED
+      return entryStrict ? { signalEntryRequiredSkip: true } : {}
     }
 
     if (plan.fallback_reason) {
@@ -1647,7 +1677,7 @@ export class TradeExecutor {
     if (legs.length === 0) {
       // No immediates to send — the trade is purely virtual pendings (or the
       // planner dropped them). Nothing more to do here.
-      return
+      return {}
     }
 
     const totalCount = legs.length
@@ -1767,6 +1797,7 @@ export class TradeExecutor {
     // All immediates fan out in parallel. Virtual pendings are already
     // persisted; the worker monitor + edge sweep will fire them on trigger.
     await Promise.allSettled(legs.map(sendLeg))
+    return { openedOrMerged: true }
   }
 
   private async logSendSkipped(

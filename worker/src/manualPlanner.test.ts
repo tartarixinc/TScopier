@@ -518,7 +518,7 @@ test('parsedHasExplicitEntryAnchor: false for bare action, true for price or zon
   assert.equal(parsedHasExplicitEntryAnchor({ ...baseParsed, entry_price: null, entry_zone_low: 1, entry_zone_high: 2 }), true)
 })
 
-test('planManualOrders: use_signal_entry_price ignored without explicit entry (no live quote)', () => {
+test('planManualOrders: use_signal_entry_price skips plan without explicit entry', () => {
   const plan = planManualOrders({
     parsed: { ...baseParsed, entry_price: null, entry_zone_low: null, entry_zone_high: null },
     resolvedSymbol: 'XAUUSD',
@@ -535,8 +535,8 @@ test('planManualOrders: use_signal_entry_price ignored without explicit entry (n
     ctx: { ...baseCtx, liveBid: undefined, liveAsk: undefined },
     commentPrefix: 'TSCopier:abc',
   })
-  assert.equal(plan.orders.length, 1)
-  assert.equal(plan.orders[0]!.operation, 'Buy')
+  assert.equal(plan.orders.length, 0)
+  assert.equal(plan.skip_reason, 'signal_entry_price_requires_explicit_entry')
 })
 
 test('clampPendingExpiryHours: clamps high values to 24', () => {

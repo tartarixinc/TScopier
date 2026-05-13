@@ -1,8 +1,12 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.SKIP_REASON_SIGNAL_ENTRY_REQUIRED = void 0;
 exports.planSinglePartialTps = planSinglePartialTps;
 exports.planRangeSplit = planRangeSplit;
 exports.computeCwOverrideTp = computeCwOverrideTp;
+exports.reverseSignalGateSatisfied = reverseSignalGateSatisfied;
+exports.clampPendingExpiryHours = clampPendingExpiryHours;
+exports.parsedHasExplicitEntryAnchor = parsedHasExplicitEntryAnchor;
 exports.planManualOrders = planManualOrders;
 const pipCalculator_1 = require("./pipCalculator");
 /**
@@ -201,6 +205,52 @@ function withinTimeWindow(start, end, now) {
         return cur >= s && cur <= e;
     return cur >= s || cur <= e;
 }
+/**
+ * Reverse Signal only applies when predefined SL **and** TP are enabled with
+ * valid values and an entry anchor exists — so mirrored risk comes from your
+ * settings, not channel stops (which would be on the wrong side after flip).
+ */
+function reverseSignalGateSatisfied(manual, entryAnchor) {
+    if (entryAnchor == null)
+        return false;
+    if (manual.use_predefined_sl_pips !== true || manual.use_predefined_tp_pips !== true)
+        return false;
+    const slPips = Number(manual.predefined_sl_pips);
+    if (!Number.isFinite(slPips) || slPips <= 0)
+        return false;
+    const tps = (manual.predefined_tp_pips ?? []).map(Number).filter(n => Number.isFinite(n) && n > 0);
+    return tps.length > 0;
+}
+/**
+ * Pending expiry for broker Limit/Stop sends and virtual range legs.
+ * Values are clamped to 1–24 hours; non-positive / invalid → 0 (no expiry).
+ */
+function clampPendingExpiryHours(raw) {
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n <= 0)
+        return 0;
+    return Math.max(1, Math.min(24, Math.floor(n)));
+}
+/**
+ * True when the parsed signal includes an explicit entry **price** or **zone**
+ * (not a bare market “buy now”). Used with `use_signal_entry_price` so strict
+ * market-vs-limit logic and quote prefetch only run when the message actually
+ * specifies where to work the entry.
+ */
+function parsedHasExplicitEntryAnchor(parsed) {
+    if (parsed.entry_price != null) {
+        const n = Number(parsed.entry_price);
+        return Number.isFinite(n) && n > 0;
+    }
+    if (parsed.entry_zone_low != null && parsed.entry_zone_high != null) {
+        const lo = Number(parsed.entry_zone_low);
+        const hi = Number(parsed.entry_zone_high);
+        return Number.isFinite(lo) && Number.isFinite(hi) && lo > 0 && hi > 0;
+    }
+    return false;
+}
+/** Planner / executor skip when `use_signal_entry_price` is on but the parse has no entry anchor. */
+exports.SKIP_REASON_SIGNAL_ENTRY_REQUIRED = 'signal_entry_price_requires_explicit_entry';
 /** Build the order plan. Returns an empty plan with skip_reason when filtered out. */
 function planManualOrders(args) {
     const { parsed, resolvedSymbol, baseOperation, manual, channelKeywords, manualLot, ctx, commentPrefix, expertId, slippage, } = args;
@@ -218,10 +268,10 @@ function planManualOrders(args) {
             return { orders: [], skip_reason: 'filtered_time', delay_ms };
         }
     }
-    // ── 2. Reverse direction ────────────────────────────────────────────────
-    const opSplit = manual.reverse_signal ? flipOperation(baseOperation) : baseOperation;
-    const isBuy = opSplit.startsWith('Buy');
-    // ── 3. Resolve entry price (with channel prefer_entry on zones) ─────────
+    if (manual.use_signal_entry_price === true && !parsedHasExplicitEntryAnchor(parsed)) {
+        return { orders: [], skip_reason: exports.SKIP_REASON_SIGNAL_ENTRY_REQUIRED, delay_ms };
+    }
+    // ── 2. Resolve entry price (with channel prefer_entry on zones) ─────────
     let entry = parsed.entry_price != null ? Number(parsed.entry_price) : null;
     if (entry != null && !Number.isFinite(entry))
         entry = null;
@@ -235,7 +285,15 @@ function planManualOrders(args) {
     }
     const entryOk = entry != null && Number.isFinite(entry) && entry > 0;
     const entryAnchor = entryOk ? entry : null;
+    // ── 3. Reverse direction (gated: only flip when predefined SL+TP drive geometry) ──
+    const effectiveReverse = manual.reverse_signal === true && reverseSignalGateSatisfied(manual, entryAnchor);
+    const opSplit = effectiveReverse ? flipOperation(baseOperation) : baseOperation;
+    const isBuy = opSplit.startsWith('Buy');
     // ── 4. SL/TP derivation ─────────────────────────────────────────────────
+    // Precedence (highest wins on each side): predefined pip SL/TP overrides →
+    // channel SL/TP (after sl_in_pips / tp_in_pips conversion) → RR-for-SL
+    // (derive SL when missing but TPs exist) → RR-for-TPs (derive TPs when
+    // missing but SL exists).
     // Single source of truth for both pip price (used immediately below for
     // SL/TP/range step math) and pip value per std/mini/micro lot (surfaced
     // on PlannerResult.pipQuote for the executor's summary log and the UI).
@@ -316,11 +374,11 @@ function planManualOrders(args) {
         finalTps = finalTps.map(tp => clampToStops(tp, true, entryAnchor) ?? tp);
     }
     // ── 4c. Signal entry strictness: market vs limit execution ─────────────
-    // `opSplit` drives range-split semantics (pending-shaped signals skip virtual range).
-    // `opExec` is what we actually send: market when quote is still inside tolerance.
+    // Bare "buy now" signals are filtered in section 1 when `use_signal_entry_price` is on.
     let opExec = opSplit;
     const tolPips = Number(manual.signal_entry_pip_tolerance ?? 10);
     if (manual.use_signal_entry_price === true
+        && parsedHasExplicitEntryAnchor(parsed)
         && entryAnchor != null
         && pip > 0
         && Number.isFinite(tolPips)
@@ -353,8 +411,8 @@ function planManualOrders(args) {
     };
     const expirationFields = {};
     if (opExec.includes('Limit') || opExec.includes('Stop')) {
-        const hours = Number(manual.pending_expiry_hours ?? 0);
-        if (Number.isFinite(hours) && hours > 0) {
+        const hours = clampPendingExpiryHours(manual.pending_expiry_hours);
+        if (hours > 0) {
             const exp = new Date(now.getTime() + hours * 60 * 60 * 1000);
             expirationFields.expiration = exp.toISOString();
             expirationFields.expirationType = 'Specified';
@@ -398,6 +456,10 @@ function planManualOrders(args) {
                     ...expirationFields,
                 }],
             delay_ms,
+            anchor: { source: entryAnchor != null ? 'signal' : 'unknown', value: entryAnchor },
+            pip,
+            pipQuote,
+            isBuy,
             ...(combinedFallback ? { fallback_reason: combinedFallback } : {}),
             ...(partialPlan.partials.length > 0 ? { partialTps: partialPlan.partials } : {}),
         };
@@ -515,8 +577,8 @@ function planManualOrders(args) {
     // class (stops_level / freeze_level / min-Limit-distance).
     const virtualPendings = [];
     if (effectiveRangeLegs > 0) {
-        const pendHours = Number(manual.pending_expiry_hours ?? 0);
-        const expiryHours = Number.isFinite(pendHours) && pendHours > 0 ? pendHours : undefined;
+        const pendHours = clampPendingExpiryHours(manual.pending_expiry_hours);
+        const expiryHours = pendHours > 0 ? pendHours : undefined;
         let stepIdx = 1;
         for (let b = 0; b < bucketRows.length; b++) {
             const tpPrice = tpForBucket(b);

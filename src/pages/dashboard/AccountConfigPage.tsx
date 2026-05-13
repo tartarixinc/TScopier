@@ -1658,7 +1658,7 @@ export function AccountConfigPage() {
                             <div className="rounded-lg border border-neutral-200 p-3 space-y-3">
                               <p className="text-sm font-medium text-neutral-800">Signal entry execution</p>
                               <p className="text-xs text-neutral-500">
-                                With <strong>Use Signal Entry Price</strong> enabled, the worker compares the live quote to the signal entry only when the parse includes an explicit entry (price, zone, @ price, labels like &quot;Entry Price:&quot;, or &quot;buy/sell at …&quot;). If the quote is outside tolerance, it sends a limit at that entry; otherwise a market order. Bare calls such as &quot;Gold buy now&quot; with no entry in the message skip this gate and go straight to market.
+                                With <strong>Use Signal Entry Price</strong> enabled, the signal must include an explicit entry in the parse (price, zone, @ price, labels like &quot;Entry Price:&quot;, or &quot;buy/sell at …&quot;). The worker compares the live quote to that entry: if the quote is outside tolerance it sends a limit at the entry; otherwise a market order. Bare calls such as &quot;Gold buy now&quot; with no entry in the message are skipped entirely (no trades).
                               </p>
                               <div className="rounded-md border border-neutral-200 overflow-hidden">
                                 <div className="flex items-center justify-between gap-3 bg-white px-3 py-2.5">

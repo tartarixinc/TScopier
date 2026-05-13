@@ -8,8 +8,8 @@ import { pipCalculator, type PipQuote } from './pipCalculator'
  * into one or more concrete `OrderSendArgs` payloads ready for `OrderSend`.
  *
  * Responsibilities (in order):
- *   1. Time-of-day / day-of-week filter — drops the signal entirely when outside the
- *      configured trading window.
+ *   1. Filters — day/time window; when `use_signal_entry_price` is on, also drop signals
+ *      whose parse has no explicit entry price or zone.
  *   2. Reverse signal — flips buy↔sell when enabled **and** `reverseSignalGateSatisfied`
  *      (predefined SL+TP + entry anchor) so channel stops are not mirrored blindly.
  *   3. Stops & Targets — fills in / overrides parsed SL & TPs from the predefined
@@ -25,8 +25,8 @@ import { pipCalculator, type PipQuote } from './pipCalculator'
  *   6. Channel `tp_in_pips` / `sl_in_pips` — when the channel sends raw pip distances
  *      instead of prices, converts them to absolute SL/TP using the entry price.
  *   7. Channel `prefer_entry` — chooses the first or last price from an entry zone.
- *   8. `use_signal_entry_price` — market vs limit only when the parse includes an explicit
- *      entry price or zone; bare market calls skip strict quote gating.
+ *   8. `use_signal_entry_price` — when on, signals without an explicit parsed entry (price
+ *      or zone) are skipped entirely; otherwise market vs limit is chosen from live quote vs entry.
  */
 
 export interface ParsedSignal {
@@ -601,6 +601,9 @@ export function parsedHasExplicitEntryAnchor(parsed: ParsedSignal): boolean {
   return false
 }
 
+/** Planner / executor skip when `use_signal_entry_price` is on but the parse has no entry anchor. */
+export const SKIP_REASON_SIGNAL_ENTRY_REQUIRED = 'signal_entry_price_requires_explicit_entry' as const
+
 /** Build the order plan. Returns an empty plan with skip_reason when filtered out. */
 export function planManualOrders(args: {
   parsed: ParsedSignal
@@ -641,6 +644,9 @@ export function planManualOrders(args: {
     if (!withinTimeWindow(manual.trade_start_time, manual.trade_end_time, now)) {
       return { orders: [], skip_reason: 'filtered_time', delay_ms }
     }
+  }
+  if (manual.use_signal_entry_price === true && !parsedHasExplicitEntryAnchor(parsed)) {
+    return { orders: [], skip_reason: SKIP_REASON_SIGNAL_ENTRY_REQUIRED, delay_ms }
   }
 
   // ── 2. Resolve entry price (with channel prefer_entry on zones) ─────────
@@ -752,8 +758,7 @@ export function planManualOrders(args: {
   }
 
   // ── 4c. Signal entry strictness: market vs limit execution ─────────────
-  // Only when the parse includes an explicit entry price or zone — bare
-  // "buy now" / market calls keep `opExec` aligned with `opSplit` (no quote gate).
+  // Bare "buy now" signals are filtered in section 1 when `use_signal_entry_price` is on.
   let opExec: MtOperation = opSplit
   const tolPips = Number(manual.signal_entry_pip_tolerance ?? 10)
   if (
