@@ -1651,7 +1651,7 @@ export function AccountConfigPage() {
                                 <strong>Close on opposite:</strong> in manual mode, a new channel buy/sell closes any open trades on the same symbol facing the opposite way (channel direction, before reverse), cancels their virtual range pendings, then the new plan runs.
                               </p>
                               <p className="text-xs text-neutral-500">
-                                <strong>Add to existing:</strong> follow-up on the same side can refresh SL/TP (and partial-TP schedule) on the **most recent** open position on that symbol when the Telegram message replies to the original or arrives within **4 hours** of that trade&apos;s open (timestamps come from the database, not only Realtime payloads). Uses your predefined/risk settings even if the follow-up message does not repeat every price field. If merge cannot run, a normal new entry is sent.
+                                <strong>Add to existing:</strong> follow-up on the same side refreshes every **open leg** that belongs to the same original signal (same basket), in **fill order** (oldest leg first), using the planner&apos;s **multi-trade TP distribution** (each leg gets the SL/TP of the matching immediate order from your TP lot percentage rows). Range virtual pendings for that basket are cancelled and re-inserted under the **parent** signal. Reply-thread or **4h** time window still applies. Single-trade partial-TP rows are only re-created when the basket is a single leg.
                               </p>
                             </div>
 

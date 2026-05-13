@@ -800,8 +800,8 @@ export class TradeExecutor {
 
   /**
    * When `add_new_trades_to_existing` is on, apply a same-direction follow-up
-   * (reply chain or recent time window) as SL/TP / partial schedule refresh on
-   * the single existing open trade — no new stack.
+   * (reply chain or recent time window) as SL/TP refresh on all open legs of
+   * the basket (`signal_id` family), preserving multi-trade TP distribution.
    */
   private async tryMergeSignalIntoExistingOpenTrade(args: {
     signal: SignalRow
@@ -849,7 +849,7 @@ export class TradeExecutor {
       // best-effort; keep mergeSignal = signal
     }
 
-    const { data: sameDir, error: openErr } = await this.supabase
+    const { data: openDesc, error: openErr } = await this.supabase
       .from('trades')
       .select('id,signal_id,metaapi_order_id,opened_at,lot_size,sl,tp,entry_price,direction')
       .eq('broker_account_id', broker.id)
@@ -857,23 +857,30 @@ export class TradeExecutor {
       .eq('status', 'open')
       .eq('direction', direction)
       .order('opened_at', { ascending: false })
-      .limit(12)
-    if (openErr || !sameDir?.length) return false
+      .limit(64)
+    if (openErr || !openDesc?.length) return false
 
-    const trade = sameDir[0]!
-    if (!trade.signal_id) return false
+    type OpenLeg = (typeof openDesc)[0]
+    const newest = openDesc[0] as OpenLeg
+    const anchorSignalId = newest.signal_id
+    if (!anchorSignalId) return false
+
+    const familyTrades = (openDesc as OpenLeg[])
+      .filter(t => t.signal_id === anchorSignalId)
+      .sort((a, b) => new Date(a.opened_at).getTime() - new Date(b.opened_at).getTime())
+    if (!familyTrades.length) return false
 
     const { data: origSig } = await this.supabase
       .from('signals')
       .select('telegram_message_id')
-      .eq('id', trade.signal_id)
+      .eq('id', anchorSignalId)
       .maybeSingle()
     const origTg = String(origSig?.telegram_message_id ?? '').trim()
     const replyTo = String(mergeSignal.reply_to_message_id ?? '').trim()
     const replyOk = Boolean(replyTo && origTg && replyTo === origTg)
 
     const sigTime = mergeSignal.created_at ? new Date(mergeSignal.created_at).getTime() : Date.now()
-    const tradeOpen = new Date(trade.opened_at).getTime()
+    const tradeOpen = new Date(newest.opened_at).getTime()
     const dt = sigTime - tradeOpen
     const withinWindow = dt >= -120_000 && dt <= MERGE_SIGNAL_LINK_WINDOW_MS
     if (!replyOk && !withinWindow) return false
@@ -903,7 +910,7 @@ export class TradeExecutor {
         && Number(plannerParsed.entry_zone_low) > 0
         && Number(plannerParsed.entry_zone_high) > 0)
     if (!hasParsedEntry) {
-      const ep = Number(trade.entry_price)
+      const ep = Number(newest.entry_price)
       if (Number.isFinite(ep) && ep > 0) {
         plannerParsed.entry_price = ep
       }
@@ -928,14 +935,7 @@ export class TradeExecutor {
       }
     }
 
-    // Merge only adjusts SL/TP on an existing position — plan as a single immediate leg (ignore range / multi split).
-    const manualForMerge: ManualSettings = {
-      ...manual,
-      trade_style: 'single',
-      range_trading: false,
-    }
-
-    // Merge applies SL/TP to an open **position**; plan as market-side ops so we never emit a pending-only leg.
+    // Full manual (multi + range + tp_lots %) so each immediate leg maps to the correct bucket TP.
     const mergeBaseOp: MtOperation =
       op === 'Buy' || op === 'Sell' ? op : direction === 'buy' ? 'Buy' : 'Sell'
 
@@ -943,7 +943,7 @@ export class TradeExecutor {
       parsed: plannerParsed,
       resolvedSymbol: symbol,
       baseOperation: mergeBaseOp,
-      manual: manualForMerge,
+      manual,
       channelKeywords,
       manualLot: baseLot,
       ctx: {
@@ -965,146 +965,252 @@ export class TradeExecutor {
     })
 
     if (plan.skip_reason || plan.orders.length === 0) return false
-    if (plan.virtualPendings?.length) return false
-    if (plan.orders.length !== 1) return false
+
+    const marketOrders = plan.orders.filter(o => o.operation === 'Buy' || o.operation === 'Sell')
+    if (!marketOrders.length) return false
+
+    let virtualPendings = (plan.virtualPendings ?? []).slice(0, 500)
 
     if (plan.delay_ms > 0) {
       await new Promise(resolve => setTimeout(resolve, Math.min(plan.delay_ms, 30_000)))
     }
 
-    const first = plan.orders[0]!
-    const fo = String(first.operation)
-    if (fo !== 'Buy' && fo !== 'Sell') return false
-
-    const ticket = Number(trade.metaapi_order_id)
-    if (!Number.isFinite(ticket) || ticket <= 0) return false
-
-    let ref = Number(trade.entry_price) || 0
-    if (ref <= 0) {
+    // Per-leg SL/TP (and optional CWE) aligned with `planManualOrders` immediate sequence.
+    const immediateArgs = marketOrders.map(o => ({ ...o }))
+    const needsAnchor = virtualPendings.length > 0 || !!plan.closeWorseEntries
+    let anchor: number | null = plan.anchor?.value ?? null
+    let anchorSource: 'signal' | 'quote' | 'unknown' = plan.anchor?.source ?? 'unknown'
+    if (needsAnchor && (anchor == null || anchor <= 0) && this.api) {
       try {
         const q = strictEntryPrefetch ?? await this.api.quote(uuid, symbol)
-        ref = direction === 'buy' ? q.ask : q.bid
+        anchor = plan.isBuy === false ? q.bid : q.ask
+        anchorSource = 'quote'
       } catch {
-        return false
+        // anchor may stay null; virtual insert path will drop legs
       }
     }
-    if (!Number.isFinite(ref) || ref <= 0) return false
+    const overrideTp = computeCweTp(plan, anchor, params)
+    let nImmCwe = 0
+    if (overrideTp != null && plan.closeWorseEntries) {
+      nImmCwe = Math.max(0, Math.min(immediateArgs.length, plan.closeWorseEntries.immediates))
+      for (let i = 0; i < nImmCwe; i++) {
+        immediateArgs[i] = {
+          ...immediateArgs[i]!,
+          takeprofit: 0,
+          comment: `${immediateArgs[i]!.comment ?? ''}.cw`,
+        }
+      }
+      const nVirt = Math.max(0, Math.min(virtualPendings.length, plan.closeWorseEntries.extraPendings))
+      for (let i = 0; i < nVirt; i++) {
+        virtualPendings[i] = {
+          ...virtualPendings[i]!,
+          takeprofit: null,
+          comment: `${virtualPendings[i]!.comment}.cw`,
+          cweClosePrice: overrideTp,
+        }
+      }
+    }
+
+    const legPairs = Math.min(immediateArgs.length, familyTrades.length)
+    if (legPairs < immediateArgs.length || legPairs < familyTrades.length) {
+      console.warn(
+        `[tradeExecutor] merge leg mismatch signal=${signal.id} broker=${broker.id} symbol=${symbol}`
+        + ` plan_immediate=${immediateArgs.length} open_same_family=${familyTrades.length} applying_first=${legPairs}`,
+      )
+    }
 
     await this.cancelRangePendingLegsForScopes(signal.user_id, signal.id, [{
-      signalId: trade.signal_id,
+      signalId: anchorSignalId,
       brokerAccountId: broker.id,
       symbol,
     }], 'signal_merge_refresh')
 
+    for (const t of familyTrades) {
+      try {
+        await this.supabase.from('partial_tp_legs').delete().eq('trade_id', t.id)
+      } catch {
+        // best-effort
+      }
+    }
+
+    let mergeFailed = false
+    for (let i = 0; i < legPairs; i++) {
+      const tr = familyTrades[i]!
+      const ord = immediateArgs[i]!
+      const ticket = Number(tr.metaapi_order_id)
+      if (!Number.isFinite(ticket) || ticket <= 0) {
+        mergeFailed = true
+        continue
+      }
+      let ref = Number(tr.entry_price) || 0
+      if (ref <= 0) {
+        try {
+          const q = strictEntryPrefetch ?? await this.api.quote(uuid, symbol)
+          ref = direction === 'buy' ? q.ask : q.bid
+        } catch {
+          mergeFailed = true
+          continue
+        }
+      }
+      if (!Number.isFinite(ref) || ref <= 0) {
+        mergeFailed = true
+        continue
+      }
+      const vol = roundLot(Number(tr.lot_size) || ord.volume || baseLot, params)
+      const sendShape: OrderSendArgs = {
+        symbol,
+        operation: direction === 'buy' ? 'Buy' : 'Sell',
+        volume: vol,
+        price: ref,
+        stoploss: ord.stoploss ?? 0,
+        takeprofit: ord.takeprofit ?? 0,
+        slippage: ord.slippage ?? 20,
+        comment: ord.comment,
+        expertID: ord.expertID,
+      }
+      const clamped = clampOrderStops(sendShape, params)
+      if (clamped.adjustments.length > 0) {
+        console.warn(
+          `[tradeExecutor] merge modify stops clamped signal=${signal.id} broker=${broker.id} leg=${i + 1}/${legPairs} symbol=${symbol}: ${clamped.adjustments.join(', ')}`,
+        )
+      }
+      try {
+        const modRes = await this.api.orderModify(uuid, {
+          ticket,
+          stoploss: clamped.args.stoploss ?? 0,
+          takeprofit: clamped.args.takeprofit ?? 0,
+        })
+        const newSl = modRes.stopLoss ?? clamped.args.stoploss ?? null
+        const newTp = modRes.takeProfit ?? clamped.args.takeprofit ?? null
+        const cweClose = i < nImmCwe ? overrideTp : null
+        await this.supabase.from('trades').update({
+          sl: typeof newSl === 'number' && newSl > 0 ? newSl : null,
+          tp: typeof newTp === 'number' && newTp > 0 ? newTp : null,
+          cwe_close_price: typeof cweClose === 'number' && cweClose > 0 ? cweClose : null,
+        }).eq('id', tr.id)
+      } catch (err) {
+        mergeFailed = true
+        const msg = err instanceof Error ? err.message : String(err)
+        console.warn(`[tradeExecutor] merge OrderModify failed leg=${i + 1} trade=${tr.id} ticket=${ticket}: ${msg}`)
+      }
+    }
+
+    if (virtualPendings.length > 0) {
+      if (anchor == null || !Number.isFinite(anchor) || anchor <= 0) {
+        console.warn(
+          `[tradeExecutor] merge dropping ${virtualPendings.length} virtual pendings: no anchor signal=${signal.id} broker=${broker.id} symbol=${symbol}`,
+        )
+      } else {
+        const digits = Math.max(0, Math.min(8, Number(params?.digits) || 5))
+        const safe = Math.max(Number(params?.stopsLevel) || 0, Number(params?.freezeLevel) || 0)
+        const zoneHi = safe > 0 ? anchor + (safe + 2) * (params?.point ?? 0) : null
+        const zoneLo = safe > 0 ? anchor - (safe + 2) * (params?.point ?? 0) : null
+        const nowMs = Date.now()
+        const insertRows: Record<string, unknown>[] = []
+        for (const v of virtualPendings) {
+          const triggerPrice = triggerPriceFor(v, anchor, digits)
+          if (zoneHi != null && zoneLo != null && triggerPrice > zoneLo && triggerPrice < zoneHi) {
+            console.warn(
+              `[tradeExecutor] merge dropped virtual pending stepIdx=${v.stepIdx} trigger=${triggerPrice} inside stops zone`,
+            )
+            continue
+          }
+          const expiresAt = v.expiryHours && v.expiryHours > 0
+            ? new Date(nowMs + v.expiryHours * 60 * 60 * 1000).toISOString()
+            : null
+          insertRows.push({
+            signal_id: anchorSignalId,
+            user_id: signal.user_id,
+            broker_account_id: broker.id,
+            metaapi_account_id: uuid,
+            symbol,
+            step_idx: v.stepIdx,
+            is_buy: v.isBuy,
+            volume: roundLot(v.volume, params),
+            anchor_price: anchor,
+            trigger_price: triggerPrice,
+            stoploss: v.stoploss,
+            takeprofit: v.takeprofit,
+            slippage: v.slippage,
+            comment: v.comment,
+            expert_id: v.expertID ?? null,
+            expires_at: expiresAt,
+            status: 'pending',
+            cwe_close_price: v.cweClosePrice ?? null,
+          })
+        }
+        if (insertRows.length > 0) {
+          const { error: insertErr } = await this.supabase.from('range_pending_legs').insert(insertRows)
+          if (insertErr) {
+            console.error(
+              `[tradeExecutor] merge range_pending_legs INSERT failed signal=${signal.id}: ${insertErr.message}`,
+            )
+            mergeFailed = true
+          } else {
+            console.log(
+              `[tradeExecutor] merge virtual pendings inserted=${insertRows.length} parent_signal=${anchorSignalId} merge_signal=${signal.id}`,
+            )
+          }
+        }
+      }
+    }
+
+    if (plan.partialTps?.length && familyTrades.length === 1 && legPairs === 1) {
+      const tr0 = familyTrades[0]!
+      const isBuy = direction === 'buy'
+      const partialRows = plan.partialTps.map(p => ({
+        trade_id: tr0.id,
+        signal_id: tr0.signal_id,
+        user_id: signal.user_id,
+        broker_account_id: broker.id,
+        metaapi_account_id: uuid,
+        symbol,
+        is_buy: isBuy,
+        tp_idx: p.tpIdx,
+        trigger_price: p.triggerPrice,
+        close_lots: p.closeLots,
+        status: 'pending',
+      }))
+      const { error: partialErr } = await this.supabase.from('partial_tp_legs').insert(partialRows)
+      if (partialErr) {
+        console.warn(`[tradeExecutor] merge partial_tp_legs INSERT failed: ${partialErr.message}`)
+      }
+    }
+
     try {
-      await this.supabase.from('partial_tp_legs').delete().eq('trade_id', trade.id)
+      await this.supabase.from('trade_execution_logs').insert({
+        user_id: signal.user_id,
+        signal_id: signal.id,
+        broker_account_id: broker.id,
+        action: 'signal_merge_into_open_trade',
+        status: mergeFailed ? 'failed' : 'success',
+        request_payload: {
+          parent_signal_id: anchorSignalId,
+          symbol,
+          legs_updated: legPairs,
+          plan_immediate_legs: immediateArgs.length,
+          open_family_legs: familyTrades.length,
+          virtual_pendings: virtualPendings.length,
+          reply_chain: replyOk,
+          within_time_window: withinWindow,
+        } as unknown as Record<string, unknown>,
+      })
     } catch {
       // best-effort
     }
 
-    const vol = roundLot(Number(trade.lot_size) || first.volume || baseLot, params)
-    const sendShape: OrderSendArgs = {
-      symbol,
-      operation: direction === 'buy' ? 'Buy' : 'Sell',
-      volume: vol,
-      price: ref,
-      stoploss: first.stoploss ?? 0,
-      takeprofit: first.takeprofit ?? 0,
-      slippage: first.slippage ?? 20,
-      comment: first.comment,
-      expertID: first.expertID,
-    }
-    const clamped = clampOrderStops(sendShape, params)
-    if (clamped.adjustments.length > 0) {
-      console.warn(
-        `[tradeExecutor] merge modify stops clamped signal=${signal.id} broker=${broker.id} symbol=${symbol}: ${clamped.adjustments.join(', ')}`,
-      )
-    }
+    if (mergeFailed) return false
 
     try {
-      const modRes = await this.api.orderModify(uuid, {
-        ticket,
-        stoploss: clamped.args.stoploss ?? 0,
-        takeprofit: clamped.args.takeprofit ?? 0,
-      })
-      const newSl = modRes.stopLoss ?? clamped.args.stoploss ?? null
-      const newTp = modRes.takeProfit ?? clamped.args.takeprofit ?? null
-      await this.supabase.from('trades').update({
-        sl: typeof newSl === 'number' && newSl > 0 ? newSl : null,
-        tp: typeof newTp === 'number' && newTp > 0 ? newTp : null,
-      }).eq('id', trade.id)
-
-      if (plan.partialTps?.length) {
-        const isBuy = direction === 'buy'
-        const partialRows = plan.partialTps.map(p => ({
-          trade_id: trade.id,
-          signal_id: trade.signal_id,
-          user_id: signal.user_id,
-          broker_account_id: broker.id,
-          metaapi_account_id: uuid,
-          symbol,
-          is_buy: isBuy,
-          tp_idx: p.tpIdx,
-          trigger_price: p.triggerPrice,
-          close_lots: p.closeLots,
-          status: 'pending',
-        }))
-        const { error: partialErr } = await this.supabase.from('partial_tp_legs').insert(partialRows)
-        if (partialErr) {
-          console.warn(
-            `[tradeExecutor] merge partial_tp_legs INSERT failed signal=${signal.id} trade=${trade.id}: ${partialErr.message}`,
-          )
-        }
-      }
-
-      try {
-        await this.supabase.from('trade_execution_logs').insert({
-          user_id: signal.user_id,
-          signal_id: signal.id,
-          broker_account_id: broker.id,
-          action: 'signal_merge_into_open_trade',
-          status: 'success',
-          request_payload: {
-            merged_into_trade_id: trade.id,
-            parent_signal_id: trade.signal_id,
-            ticket,
-            symbol,
-            reply_chain: replyOk,
-            within_time_window: withinWindow,
-          } as unknown as Record<string, unknown>,
-        })
-      } catch {
-        // best-effort
-      }
-
-      try {
-        await this.supabase
-          .from('signals')
-          .update({ status: 'executed' })
-          .eq('id', signal.id)
-          .eq('status', 'parsed')
-      } catch {
-        // best-effort
-      }
-      return true
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      console.warn(`[tradeExecutor] signal merge OrderModify failed signal=${signal.id} trade=${trade.id}: ${msg}`)
-      try {
-        await this.supabase.from('trade_execution_logs').insert({
-          user_id: signal.user_id,
-          signal_id: signal.id,
-          broker_account_id: broker.id,
-          action: 'signal_merge_into_open_trade',
-          status: 'failed',
-          request_payload: { merged_into_trade_id: trade.id, ticket, symbol } as unknown as Record<string, unknown>,
-          error_message: msg,
-        })
-      } catch {
-        // best-effort
-      }
-      return false
+      await this.supabase
+        .from('signals')
+        .update({ status: 'executed' })
+        .eq('id', signal.id)
+        .eq('status', 'parsed')
+    } catch {
+      // best-effort
     }
+    return true
   }
 
   private async sweepExpiredTscopierBrokerPendings(): Promise<void> {
