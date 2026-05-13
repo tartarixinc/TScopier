@@ -142,6 +142,11 @@ async function fireLeg(
     return false
   }
   if (!claimed) return false
+  const staleReason = await getStaleLegReason(sb, leg)
+  if (staleReason) {
+    await cancelClaimedLeg(sb, leg, staleReason)
+    return true
+  }
 
   // Last-second SL/TP clamp. The original anchor's clamp may be too tight if
   // freeze/stops_level widened in the meantime; pulling SymbolParams here keeps
@@ -224,5 +229,61 @@ async function fireLeg(
       error_message: msg,
     })
     return false
+  }
+}
+
+async function getStaleLegReason(
+  // deno-lint-ignore no-explicit-any
+  sb: any,
+  leg: PendingRow,
+): Promise<string | null> {
+  const { data, error } = await sb
+    .from("trades")
+    .select("status")
+    .eq("signal_id", leg.signal_id)
+    .eq("broker_account_id", leg.broker_account_id)
+    .eq("symbol", leg.symbol)
+    .limit(200)
+  if (error) {
+    console.warn(`[range-pending-sweep] stale-check failed leg=${leg.id}: ${error.message}`)
+    return null
+  }
+  const rows = (data ?? []) as Array<{ status: string | null }>
+  if (!rows.length) return null
+  const hasOpen = rows.some(r => r.status === "open" || r.status === "pending")
+  return hasOpen ? null : "signal_closed"
+}
+
+async function cancelClaimedLeg(
+  // deno-lint-ignore no-explicit-any
+  sb: any,
+  leg: PendingRow,
+  reason: string,
+): Promise<void> {
+  await sb.from("range_pending_legs")
+    .update({
+      status: "cancelled",
+      error_message: reason,
+      fired_at: new Date().toISOString(),
+    })
+    .eq("id", leg.id)
+    .eq("status", "claimed")
+  try {
+    await sb.from("trade_execution_logs").insert({
+      user_id: leg.user_id,
+      signal_id: leg.signal_id,
+      broker_account_id: leg.broker_account_id,
+      action: "virtual_pending_cancelled",
+      status: "info",
+      request_payload: {
+        leg_id: leg.id,
+        step_idx: leg.step_idx,
+        symbol: leg.symbol,
+        reason,
+        claimed_by: CLAIMED_BY,
+      },
+    })
+  } catch {
+    // Logging failure is non-fatal.
   }
 }

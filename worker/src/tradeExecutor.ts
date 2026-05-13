@@ -51,6 +51,12 @@ interface SignalRow {
   is_modification: boolean
 }
 
+interface RangePendingCancelScope {
+  signalId: string
+  brokerAccountId: string
+  symbol: string
+}
+
 interface BrokerRow {
   id: string
   user_id: string
@@ -1143,6 +1149,7 @@ export class TradeExecutor {
 
     const byBroker = new Map(brokers.map(b => [b.id, b]))
     const action = String(parsed.action).toLowerCase()
+    const cancelledPendingScopes = new Set<string>()
 
     // Coerce a DB numeric to "what /OrderModify wants for this side".
     // null / NaN / 0 → 0 (no level on broker, same as current state).
@@ -1173,6 +1180,11 @@ export class TradeExecutor {
         if (action === 'close') {
           await this.api!.orderClose(uuid, { ticket })
           await this.supabase.from('trades').update({ status: 'closed', closed_at: new Date().toISOString() }).eq('id', trade.id)
+          cancelledPendingScopes.add(JSON.stringify({
+            signalId: signal.parent_signal_id!,
+            brokerAccountId: trade.broker_account_id,
+            symbol: trade.symbol,
+          } satisfies RangePendingCancelScope))
         } else if (action === 'partial_profit' || action === 'partial_breakeven') {
           const fraction = typeof parsed.partial_close_fraction === 'number' && parsed.partial_close_fraction > 0
             ? Math.min(0.95, parsed.partial_close_fraction)
@@ -1247,6 +1259,48 @@ export class TradeExecutor {
         })
       }
     }))
+
+    if (action === 'close' && cancelledPendingScopes.size > 0) {
+      await Promise.allSettled(
+        Array.from(cancelledPendingScopes).map(async encoded => {
+          const scope = JSON.parse(encoded) as RangePendingCancelScope
+          const { data: cancelled, error: cancelErr } = await this.supabase
+            .from('range_pending_legs')
+            .update({ status: 'cancelled', error_message: 'signal_closed' })
+            .eq('signal_id', scope.signalId)
+            .eq('broker_account_id', scope.brokerAccountId)
+            .eq('symbol', scope.symbol)
+            .in('status', ['pending', 'claimed'])
+            .select('id')
+          if (cancelErr) {
+            console.warn(
+              `[tradeExecutor] range_pending_legs cancel failed signal=${scope.signalId} broker=${scope.brokerAccountId} symbol=${scope.symbol}: ${cancelErr.message}`,
+            )
+            return
+          }
+          const rowsCancelled = (cancelled ?? []) as Array<{ id: string }>
+          if (!rowsCancelled.length) return
+          try {
+            await this.supabase.from('trade_execution_logs').insert({
+              user_id: signal.user_id,
+              signal_id: signal.id,
+              broker_account_id: scope.brokerAccountId,
+              action: 'virtual_pending_cancelled',
+              status: 'info',
+              request_payload: {
+                reason: 'signal_closed',
+                parent_signal_id: scope.signalId,
+                symbol: scope.symbol,
+                rows: rowsCancelled.length,
+                leg_ids: rowsCancelled.map(r => r.id),
+              } as unknown as Record<string, unknown>,
+            })
+          } catch {
+            // Logging failure is non-fatal.
+          }
+        }),
+      )
+    }
 
     // Management messages do not insert `trades` with `signal_id = this row`,
     // so `sweep()` never skips them via the "trade already exists" guard.

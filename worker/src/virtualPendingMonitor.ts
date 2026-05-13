@@ -272,6 +272,11 @@ export class VirtualPendingMonitor {
       return false
     }
     if (!claimed) return false
+    const staleReason = await this.getStaleLegReason(leg)
+    if (staleReason) {
+      await this.cancelClaimedLeg(leg, staleReason)
+      return true
+    }
 
     // Build a MARKET order. We DO NOT send `price` for Buy/Sell — the broker
     // fills at the current bid/ask. Stops were precomputed at planning time
@@ -389,6 +394,58 @@ export class VirtualPendingMonitor {
         error_message: msg,
       })
       return false
+    }
+  }
+
+  /**
+   * A virtual pending leg is stale once a prior trade lifecycle exists for the same
+   * (signal, broker, symbol) but all such trades are now closed.
+   */
+  private async getStaleLegReason(leg: PendingRow): Promise<string | null> {
+    const { data, error } = await this.supabase
+      .from('trades')
+      .select('status')
+      .eq('signal_id', leg.signal_id)
+      .eq('broker_account_id', leg.broker_account_id)
+      .eq('symbol', leg.symbol)
+      .limit(200)
+    if (error) {
+      console.warn(`[virtualPendingMonitor] stale-check failed leg=${leg.id}: ${error.message}`)
+      return null
+    }
+    const rows = (data ?? []) as Array<{ status: string | null }>
+    if (!rows.length) return null
+    const hasOpen = rows.some(r => r.status === 'open' || r.status === 'pending')
+    return hasOpen ? null : 'signal_closed'
+  }
+
+  private async cancelClaimedLeg(leg: PendingRow, reason: string): Promise<void> {
+    await this.supabase
+      .from('range_pending_legs')
+      .update({
+        status: 'cancelled',
+        error_message: reason,
+        fired_at: new Date().toISOString(),
+      })
+      .eq('id', leg.id)
+      .eq('status', 'claimed')
+    try {
+      await this.supabase.from('trade_execution_logs').insert({
+        user_id: leg.user_id,
+        signal_id: leg.signal_id,
+        broker_account_id: leg.broker_account_id,
+        action: 'virtual_pending_cancelled',
+        status: 'info',
+        request_payload: {
+          leg_id: leg.id,
+          step_idx: leg.step_idx,
+          symbol: leg.symbol,
+          reason,
+          claimed_by: this.hostId,
+        } as unknown as Record<string, unknown>,
+      })
+    } catch {
+      // Logging failure is non-fatal.
     }
   }
 
