@@ -12,6 +12,10 @@
  *   sell ladder → fire when ask >= trigger_price
  *
  * Same CAS claim model: UPDATE status='pending' to 'claimed' wins exactly once.
+ *
+ * Same ladder discipline as the worker: at most one leg fires per
+ * (signal, broker, symbol) per invocation — shallowest triggered rung with no
+ * shallower pending/claimed row.
  */
 
 // @ts-ignore - Deno runtime resolves these
@@ -45,6 +49,55 @@ interface PendingRow {
   slippage: number
   comment: string | null
   expert_id: number | null
+}
+
+function isTriggeredSweep(leg: PendingRow, bid: number, ask: number): boolean {
+  const t = leg.trigger_price
+  if (!Number.isFinite(t) || t <= 0) return false
+  if (!Number.isFinite(bid) || !Number.isFinite(ask)) return false
+  return leg.is_buy ? bid <= t : ask >= t
+}
+
+function isBlockedByShallowerSweep(
+  leg: PendingRow,
+  activeStepsByBasket: Map<string, Set<number>>,
+): boolean {
+  const bk = `${leg.signal_id}|${leg.broker_account_id}`
+  const steps = activeStepsByBasket.get(bk)
+  if (!steps) return false
+  for (const s of steps) {
+    if (s < leg.step_idx) return true
+  }
+  return false
+}
+
+async function fetchShallowActiveStepsSweep(
+  // deno-lint-ignore no-explicit-any
+  sb: any,
+  metaapiAccountId: string,
+  symbol: string,
+  signalIds: string[],
+): Promise<Map<string, Set<number>>> {
+  const out = new Map<string, Set<number>>()
+  if (!signalIds.length) return out
+  const { data, error } = await sb
+    .from("range_pending_legs")
+    .select("signal_id, broker_account_id, step_idx")
+    .eq("metaapi_account_id", metaapiAccountId)
+    .eq("symbol", symbol)
+    .in("signal_id", signalIds)
+    .in("status", ["pending", "claimed"])
+  if (error) {
+    console.warn(`[range-pending-sweep] fetchShallowActiveSteps failed: ${error.message}`)
+    return out
+  }
+  for (const r of (data ?? []) as Array<{ signal_id: string; broker_account_id: string; step_idx: number }>) {
+    const bk = `${r.signal_id}|${r.broker_account_id}`
+    const s = out.get(bk) ?? new Set<number>()
+    s.add(r.step_idx)
+    out.set(bk, s)
+  }
+  return out
 }
 
 Deno.serve(async (_req: Request) => {
@@ -104,44 +157,66 @@ Deno.serve(async (_req: Request) => {
       console.warn(`[range-pending-sweep] /Quote failed for ${symbol}: ${(err as Error).message}`)
       continue
     }
+    const triggeredInGroup: PendingRow[] = []
     for (const leg of legs) {
-      const ref = leg.is_buy ? q.bid : q.ask
-      const hit = leg.is_buy ? ref <= leg.trigger_price : ref >= leg.trigger_price
-      if (!hit) continue
+      if (isTriggeredSweep(leg, q.bid, q.ask)) triggeredInGroup.push(leg)
+    }
+
+    const cancelledStaleIds = new Set<string>()
+    for (const leg of triggeredInGroup) {
       const staleEarly = await getStaleLegReason(sb, leg)
-      if (staleEarly) {
-        const { data: dropped } = await sb
-          .from("range_pending_legs")
-          .update({ status: "cancelled", error_message: staleEarly })
-          .eq("id", leg.id)
-          .eq("status", "pending")
-          .select("id")
-          .maybeSingle()
-        if (dropped) {
-          try {
-            await sb.from("trade_execution_logs").insert({
-              user_id: leg.user_id,
-              signal_id: leg.signal_id,
-              broker_account_id: leg.broker_account_id,
-              action: "virtual_pending_cancelled",
-              status: "info",
-              request_payload: {
-                leg_id: leg.id,
-                step_idx: leg.step_idx,
-                symbol: leg.symbol,
-                reason: staleEarly,
-                phase: "pre_claim_stale",
-                claimed_by: CLAIMED_BY,
-              },
-            })
-          } catch {
-            /* best-effort */
-          }
+      if (!staleEarly) continue
+      const { data: dropped } = await sb
+        .from("range_pending_legs")
+        .update({ status: "cancelled", error_message: staleEarly })
+        .eq("id", leg.id)
+        .eq("status", "pending")
+        .select("id")
+        .maybeSingle()
+      if (dropped) {
+        cancelledStaleIds.add(leg.id)
+        try {
+          await sb.from("trade_execution_logs").insert({
+            user_id: leg.user_id,
+            signal_id: leg.signal_id,
+            broker_account_id: leg.broker_account_id,
+            action: "virtual_pending_cancelled",
+            status: "info",
+            request_payload: {
+              leg_id: leg.id,
+              step_idx: leg.step_idx,
+              symbol: leg.symbol,
+              reason: staleEarly,
+              phase: "pre_claim_stale",
+              claimed_by: CLAIMED_BY,
+            },
+          })
+        } catch {
+          /* best-effort */
         }
-        continue
       }
+    }
+
+    const signalIds = [...new Set(legs.map((l) => l.signal_id))]
+    const activeStepsByBasket = await fetchShallowActiveStepsSweep(sb, uuid, symbol, signalIds)
+
+    const byBasket = new Map<string, PendingRow[]>()
+    for (const leg of triggeredInGroup) {
+      if (cancelledStaleIds.has(leg.id)) continue
+      if (!isTriggeredSweep(leg, q.bid, q.ask)) continue
+      if (isBlockedByShallowerSweep(leg, activeStepsByBasket)) continue
+      const bk = `${leg.signal_id}|${leg.broker_account_id}`
+      const arr = byBasket.get(bk) ?? []
+      arr.push(leg)
+      byBasket.set(bk, arr)
+    }
+
+    for (const [, arr] of byBasket) {
+      arr.sort((a, b) => a.step_idx - b.step_idx || a.id.localeCompare(b.id))
+      const winner = arr[0]
+      if (!winner) continue
       triggered += 1
-      const ok = await fireLeg(sb, api, leg, q.bid, q.ask)
+      const ok = await fireLeg(sb, api, winner, q.bid, q.ask)
       if (ok) firedOk += 1
       else firedErr += 1
     }

@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.VirtualPendingMonitor = void 0;
 exports.isTriggered = isTriggered;
+exports.isBlockedByShallowerStep = isBlockedByShallowerStep;
 const node_os_1 = __importDefault(require("node:os"));
 const metatraderapi_1 = require("./metatraderapi");
 const SYMBOL_TTL_MS = 10 * 60000;
@@ -21,6 +22,21 @@ function isTriggered(isBuy, triggerPrice, bid, ask) {
     if (!Number.isFinite(bid) || !Number.isFinite(ask))
         return false;
     return isBuy ? bid <= triggerPrice : ask >= triggerPrice;
+}
+/**
+ * True if some shallower virtual rung for the same basket is still `pending`
+ * or `claimed` (see `activeStepsByBasket` from `fetchShallowActiveSteps`).
+ */
+function isBlockedByShallowerStep(leg, activeStepsByBasket) {
+    const bk = `${leg.signal_id}|${leg.broker_account_id}`;
+    const steps = activeStepsByBasket.get(bk);
+    if (!steps)
+        return false;
+    for (const s of steps) {
+        if (s < leg.step_idx)
+            return true;
+    }
+    return false;
 }
 class VirtualPendingMonitor {
     constructor(supabase) {
@@ -148,51 +164,72 @@ class VirtualPendingMonitor {
             }
             // How far is the nearest trigger? Useful diagnostic when nothing fires.
             let nearestGap = Number.POSITIVE_INFINITY;
+            const triggeredInGroup = [];
             for (const leg of legs) {
                 const ref = leg.is_buy ? q.bid : q.ask;
-                // For buys: positive gap means bid still ABOVE trigger (waiting for drop).
-                // For sells: positive gap means ask still BELOW trigger (waiting for rise).
                 const gap = leg.is_buy ? ref - leg.trigger_price : leg.trigger_price - ref;
                 if (Number.isFinite(gap) && gap < nearestGap)
                     nearestGap = gap;
+                if (isTriggered(leg.is_buy, leg.trigger_price, q.bid, q.ask))
+                    triggeredInGroup.push(leg);
+            }
+            const cancelledStaleIds = new Set();
+            for (const leg of triggeredInGroup) {
+                const staleEarly = await this.getStaleLegReason(leg);
+                if (!staleEarly)
+                    continue;
+                const { data: dropped } = await this.supabase
+                    .from('range_pending_legs')
+                    .update({ status: 'cancelled', error_message: staleEarly })
+                    .eq('id', leg.id)
+                    .eq('status', 'pending')
+                    .select('id')
+                    .maybeSingle();
+                if (dropped) {
+                    cancelledStaleIds.add(leg.id);
+                    try {
+                        await this.supabase.from('trade_execution_logs').insert({
+                            user_id: leg.user_id,
+                            signal_id: leg.signal_id,
+                            broker_account_id: leg.broker_account_id,
+                            action: 'virtual_pending_cancelled',
+                            status: 'info',
+                            request_payload: {
+                                leg_id: leg.id,
+                                step_idx: leg.step_idx,
+                                symbol: leg.symbol,
+                                reason: staleEarly,
+                                phase: 'pre_claim_stale',
+                            },
+                        });
+                    }
+                    catch {
+                        /* logging is best-effort */
+                    }
+                }
+            }
+            const signalIds = [...new Set(legs.map(l => l.signal_id))];
+            const activeStepsByBasket = await this.fetchShallowActiveSteps(uuid, symbol, signalIds);
+            const byBasket = new Map();
+            for (const leg of triggeredInGroup) {
+                if (cancelledStaleIds.has(leg.id))
+                    continue;
                 if (!isTriggered(leg.is_buy, leg.trigger_price, q.bid, q.ask))
                     continue;
-                // Drop orphans before CAS claim: stale used to run only after `claimed`,
-                // leaving a window where price could re-fire after the basket was flat.
-                const staleEarly = await this.getStaleLegReason(leg);
-                if (staleEarly) {
-                    const { data: dropped } = await this.supabase
-                        .from('range_pending_legs')
-                        .update({ status: 'cancelled', error_message: staleEarly })
-                        .eq('id', leg.id)
-                        .eq('status', 'pending')
-                        .select('id')
-                        .maybeSingle();
-                    if (dropped) {
-                        try {
-                            await this.supabase.from('trade_execution_logs').insert({
-                                user_id: leg.user_id,
-                                signal_id: leg.signal_id,
-                                broker_account_id: leg.broker_account_id,
-                                action: 'virtual_pending_cancelled',
-                                status: 'info',
-                                request_payload: {
-                                    leg_id: leg.id,
-                                    step_idx: leg.step_idx,
-                                    symbol: leg.symbol,
-                                    reason: staleEarly,
-                                    phase: 'pre_claim_stale',
-                                },
-                            });
-                        }
-                        catch {
-                            /* logging is best-effort */
-                        }
-                    }
+                if (isBlockedByShallowerStep(leg, activeStepsByBasket))
                     continue;
-                }
+                const bk = `${leg.signal_id}|${leg.broker_account_id}`;
+                const arr = byBasket.get(bk) ?? [];
+                arr.push(leg);
+                byBasket.set(bk, arr);
+            }
+            for (const [, arr] of byBasket) {
+                arr.sort((a, b) => a.step_idx - b.step_idx || a.id.localeCompare(b.id));
+                const winner = arr[0];
+                if (!winner)
+                    continue;
                 triggeredTotal += 1;
-                const ok = await this.fireLeg(leg, q.bid, q.ask);
+                const ok = await this.fireLeg(winner, q.bid, q.ask);
                 if (ok)
                     firedOkTotal += 1;
                 else
@@ -348,6 +385,34 @@ class VirtualPendingMonitor {
             });
             return false;
         }
+    }
+    /**
+     * All `step_idx` values that still have a `pending` or `claimed` row for this
+     * basket (same metaapi account + symbol). Used so deeper rungs never fire
+     * before shallower ones on the same quote tick.
+     */
+    async fetchShallowActiveSteps(metaapiAccountId, symbol, signalIds) {
+        const out = new Map();
+        if (!signalIds.length)
+            return out;
+        const { data, error } = await this.supabase
+            .from('range_pending_legs')
+            .select('signal_id, broker_account_id, step_idx')
+            .eq('metaapi_account_id', metaapiAccountId)
+            .eq('symbol', symbol)
+            .in('signal_id', signalIds)
+            .in('status', ['pending', 'claimed']);
+        if (error) {
+            console.warn(`[virtualPendingMonitor] fetchShallowActiveSteps failed: ${error.message}`);
+            return out;
+        }
+        for (const r of (data ?? [])) {
+            const bk = `${r.signal_id}|${r.broker_account_id}`;
+            const s = out.get(bk) ?? new Set();
+            s.add(r.step_idx);
+            out.set(bk, s);
+        }
+        return out;
     }
     /**
      * A virtual pending leg is stale once a prior trade lifecycle exists for the same

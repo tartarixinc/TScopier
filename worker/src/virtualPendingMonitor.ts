@@ -33,6 +33,11 @@ import {
  *     check before claim, and DB trigger `cancel_range_pending_legs_when_basket_empty`
  *     on `trades` close) so a flat basket cannot spawn new market entries when
  *     price revisits old ladder triggers.
+ *
+ *   • Ladder discipline: at most one virtual leg fires per (signal, broker,
+ *     symbol) per tick — the shallowest triggered rung with no shallower
+ *     `pending`/`claimed` row — so one volatile quote cannot machine-gun every
+ *     deeper rung in the same millisecond.
  */
 
 interface PendingRow {
@@ -94,6 +99,23 @@ export function isTriggered(isBuy: boolean, triggerPrice: number, bid: number, a
   if (!Number.isFinite(triggerPrice) || triggerPrice <= 0) return false
   if (!Number.isFinite(bid) || !Number.isFinite(ask)) return false
   return isBuy ? bid <= triggerPrice : ask >= triggerPrice
+}
+
+/**
+ * True if some shallower virtual rung for the same basket is still `pending`
+ * or `claimed` (see `activeStepsByBasket` from `fetchShallowActiveSteps`).
+ */
+export function isBlockedByShallowerStep(
+  leg: { signal_id: string; broker_account_id: string; step_idx: number },
+  activeStepsByBasket: Map<string, Set<number>>,
+): boolean {
+  const bk = `${leg.signal_id}|${leg.broker_account_id}`
+  const steps = activeStepsByBasket.get(bk)
+  if (!steps) return false
+  for (const s of steps) {
+    if (s < leg.step_idx) return true
+  }
+  return false
 }
 
 export class VirtualPendingMonitor {
@@ -226,51 +248,72 @@ export class VirtualPendingMonitor {
       }
       // How far is the nearest trigger? Useful diagnostic when nothing fires.
       let nearestGap = Number.POSITIVE_INFINITY
+      const triggeredInGroup: PendingRow[] = []
       for (const leg of legs) {
         const ref = leg.is_buy ? q.bid : q.ask
-        // For buys: positive gap means bid still ABOVE trigger (waiting for drop).
-        // For sells: positive gap means ask still BELOW trigger (waiting for rise).
         const gap = leg.is_buy ? ref - leg.trigger_price : leg.trigger_price - ref
         if (Number.isFinite(gap) && gap < nearestGap) nearestGap = gap
-        if (!isTriggered(leg.is_buy, leg.trigger_price, q.bid, q.ask)) continue
-        // Drop orphans before CAS claim: stale used to run only after `claimed`,
-        // leaving a window where price could re-fire after the basket was flat.
+        if (isTriggered(leg.is_buy, leg.trigger_price, q.bid, q.ask)) triggeredInGroup.push(leg)
+      }
+
+      const cancelledStaleIds = new Set<string>()
+      for (const leg of triggeredInGroup) {
         const staleEarly = await this.getStaleLegReason(leg)
-        if (staleEarly) {
-          const { data: dropped } = await this.supabase
-            .from('range_pending_legs')
-            .update({ status: 'cancelled', error_message: staleEarly })
-            .eq('id', leg.id)
-            .eq('status', 'pending')
-            .select('id')
-            .maybeSingle()
-          if (dropped) {
-            try {
-              await this.supabase.from('trade_execution_logs').insert({
-                user_id: leg.user_id,
-                signal_id: leg.signal_id,
-                broker_account_id: leg.broker_account_id,
-                action: 'virtual_pending_cancelled',
-                status: 'info',
-                request_payload: {
-                  leg_id: leg.id,
-                  step_idx: leg.step_idx,
-                  symbol: leg.symbol,
-                  reason: staleEarly,
-                  phase: 'pre_claim_stale',
-                } as unknown as Record<string, unknown>,
-              })
-            } catch {
-              /* logging is best-effort */
-            }
+        if (!staleEarly) continue
+        const { data: dropped } = await this.supabase
+          .from('range_pending_legs')
+          .update({ status: 'cancelled', error_message: staleEarly })
+          .eq('id', leg.id)
+          .eq('status', 'pending')
+          .select('id')
+          .maybeSingle()
+        if (dropped) {
+          cancelledStaleIds.add(leg.id)
+          try {
+            await this.supabase.from('trade_execution_logs').insert({
+              user_id: leg.user_id,
+              signal_id: leg.signal_id,
+              broker_account_id: leg.broker_account_id,
+              action: 'virtual_pending_cancelled',
+              status: 'info',
+              request_payload: {
+                leg_id: leg.id,
+                step_idx: leg.step_idx,
+                symbol: leg.symbol,
+                reason: staleEarly,
+                phase: 'pre_claim_stale',
+              } as unknown as Record<string, unknown>,
+            })
+          } catch {
+            /* logging is best-effort */
           }
-          continue
         }
+      }
+
+      const signalIds = [...new Set(legs.map(l => l.signal_id))]
+      const activeStepsByBasket = await this.fetchShallowActiveSteps(uuid, symbol, signalIds)
+
+      const byBasket = new Map<string, PendingRow[]>()
+      for (const leg of triggeredInGroup) {
+        if (cancelledStaleIds.has(leg.id)) continue
+        if (!isTriggered(leg.is_buy, leg.trigger_price, q.bid, q.ask)) continue
+        if (isBlockedByShallowerStep(leg, activeStepsByBasket)) continue
+        const bk = `${leg.signal_id}|${leg.broker_account_id}`
+        const arr = byBasket.get(bk) ?? []
+        arr.push(leg)
+        byBasket.set(bk, arr)
+      }
+
+      for (const [, arr] of byBasket) {
+        arr.sort((a, b) => a.step_idx - b.step_idx || a.id.localeCompare(b.id))
+        const winner = arr[0]
+        if (!winner) continue
         triggeredTotal += 1
-        const ok = await this.fireLeg(leg, q.bid, q.ask)
+        const ok = await this.fireLeg(winner, q.bid, q.ask)
         if (ok) firedOkTotal += 1
         else firedErrTotal += 1
       }
+
       distances.push({ symbol, bid: q.bid, ask: q.ask, gapPriceUnits: nearestGap, legs: legs.length })
     }))
 
@@ -434,6 +477,38 @@ export class VirtualPendingMonitor {
       })
       return false
     }
+  }
+
+  /**
+   * All `step_idx` values that still have a `pending` or `claimed` row for this
+   * basket (same metaapi account + symbol). Used so deeper rungs never fire
+   * before shallower ones on the same quote tick.
+   */
+  private async fetchShallowActiveSteps(
+    metaapiAccountId: string,
+    symbol: string,
+    signalIds: string[],
+  ): Promise<Map<string, Set<number>>> {
+    const out = new Map<string, Set<number>>()
+    if (!signalIds.length) return out
+    const { data, error } = await this.supabase
+      .from('range_pending_legs')
+      .select('signal_id, broker_account_id, step_idx')
+      .eq('metaapi_account_id', metaapiAccountId)
+      .eq('symbol', symbol)
+      .in('signal_id', signalIds)
+      .in('status', ['pending', 'claimed'])
+    if (error) {
+      console.warn(`[virtualPendingMonitor] fetchShallowActiveSteps failed: ${error.message}`)
+      return out
+    }
+    for (const r of (data ?? []) as Array<{ signal_id: string; broker_account_id: string; step_idx: number }>) {
+      const bk = `${r.signal_id}|${r.broker_account_id}`
+      const s = out.get(bk) ?? new Set<number>()
+      s.add(r.step_idx)
+      out.set(bk, s)
+    }
+    return out
   }
 
   /**
