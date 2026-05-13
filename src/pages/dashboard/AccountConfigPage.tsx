@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import {
   Plus, Trash2, Server, Activity, GitBranch, Eye, DollarSign,
   SlidersHorizontal, Radio, Target, TrendingUp, Filter, Wallet,
-  ArrowLeftRight,
+  ArrowLeftRight, ChevronDown, Brain,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { supabase } from '../../lib/supabase'
@@ -30,6 +30,41 @@ interface ChannelOption {
   is_active: boolean
   created_at: string
 }
+
+// ── Channel keyword filters ────────────────────────────────────────────────
+// Each connected channel inside a broker can silence categories of management
+// commands the parser already detects (close half, breakeven, etc.). This is
+// a UI-only layer for now — the worker still honours everything. Persistence
+// and the actual filter check will land in a follow-up; see the TODO in
+// `saveConfigureModal` below.
+
+type ChannelFilterKey =
+  | 'close_full' | 'close_half' | 'break_even'
+  | 'modify_sl' | 'modify_tp' | 'close_tp_levels'
+  | 'close_all' | 'delete_pendings' | 'reverse'
+
+type ChannelFilterDecision = 'allow' | 'ignore'
+
+type ChannelFilters = Record<ChannelFilterKey, ChannelFilterDecision>
+
+const CHANNEL_FILTER_CATEGORIES: Array<{
+  key: ChannelFilterKey
+  label: string
+  example: string
+}> = [
+  { key: 'close_full',      label: 'Close full position',   example: 'e.g. "close all", "exit trade"' },
+  { key: 'close_half',      label: 'Close half / partial',  example: 'e.g. "close half", "take 50%"' },
+  { key: 'break_even',      label: 'Break-even',            example: 'e.g. "move SL to entry", "BE now"' },
+  { key: 'modify_sl',       label: 'Adjust SL',             example: 'e.g. "move SL to 4500"' },
+  { key: 'modify_tp',       label: 'Adjust TP',             example: 'e.g. "change TP to 4600"' },
+  { key: 'close_tp_levels', label: 'Close at named TP',     example: 'e.g. "close TP1", "TP2 hit"' },
+  { key: 'close_all',       label: 'Close all open trades', example: 'e.g. "flatten all"' },
+  { key: 'delete_pendings', label: 'Cancel pending orders', example: 'e.g. "cancel limit", "delete pending"' },
+  { key: 'reverse',         label: 'Reverse direction',     example: 'flips buy <-> sell' },
+]
+
+const DEFAULT_CHANNEL_FILTERS: ChannelFilters =
+  Object.fromEntries(CHANNEL_FILTER_CATEGORIES.map(c => [c.key, 'allow'])) as ChannelFilters
 
 interface BrokerForm {
   label: string
@@ -73,6 +108,27 @@ interface AccountConfigDraft {
   mode: 'ai' | 'manual'
   channelIds: string[]
   manualSettings: ManualSettings
+  // UI-only for now; persisted in a follow-up (see TODO in saveConfigureModal).
+  channelFilters: Record<string, ChannelFilters>
+}
+
+/**
+ * Build the channel-filters map for a broker draft. Every channel that may be
+ * referenced by the modal (selected today, plus everything in `channelOptions`
+ * so toggling a checkbox doesn't drop a previously-edited row) gets defaults.
+ * Existing entries in `prior` win so we don't clobber in-session edits.
+ */
+function buildChannelFiltersDraft(
+  channels: ChannelOption[],
+  selectedIds: string[],
+  prior: Record<string, ChannelFilters> = {},
+): Record<string, ChannelFilters> {
+  const keys = new Set<string>([...channels.map(c => c.id), ...selectedIds])
+  const out: Record<string, ChannelFilters> = {}
+  for (const id of keys) {
+    out[id] = prior[id] ?? { ...DEFAULT_CHANNEL_FILTERS }
+  }
+  return out
 }
 
 const DEFAULT_MANUAL_TP_LOTS: ManualTpLot[] = [
@@ -274,7 +330,7 @@ function PlatformIcon({ platform }: { platform: string }) {
 }
 
 type ConfigTabId = 'mode' | 'channels'
-type ManualSubTabId = 'symbol_routing' | 'risk' | 'stops' | 'trailing' | 'filters'
+type ManualSubTabId = 'symbol_routing' | 'risk' | 'stops' | 'trailing' | 'filters' | 'strategy'
 
 interface TabDef {
   id: ConfigTabId
@@ -289,7 +345,7 @@ interface ManualSubTabDef {
 }
 
 const ALL_TABS: TabDef[] = [
-  { id: 'mode', label: 'Mode', icon: SlidersHorizontal },
+  { id: 'mode', label: 'Trade', icon: SlidersHorizontal },
   { id: 'channels', label: 'Channels', icon: Radio },
 ]
 
@@ -299,6 +355,7 @@ const MANUAL_SUB_TABS: ManualSubTabDef[] = [
   { id: 'stops', label: 'Stops & Targets', icon: Target },
   { id: 'trailing', label: 'Trailing', icon: TrendingUp },
   { id: 'filters', label: 'Filters', icon: Filter },
+  { id: 'strategy', label: 'Strategy', icon: Brain },
 ]
 
 export function AccountConfigPage() {
@@ -310,6 +367,7 @@ export function AccountConfigPage() {
     mode: 'ai',
     channelIds: [],
     manualSettings: { ...DEFAULT_MANUAL_SETTINGS },
+    channelFilters: {},
   })
   const [activeTab, setActiveTab] = useState<ConfigTabId>('mode')
   const [activeManualSubTab, setActiveManualSubTab] = useState<ManualSubTabId>('symbol_routing')
@@ -476,6 +534,7 @@ export function AccountConfigPage() {
       mode: fresh.copier_mode === 'manual' ? 'manual' : 'ai',
       channelIds,
       manualSettings,
+      channelFilters: buildChannelFiltersDraft(channelOptions, channelIds),
     })
     setSymbolMappingText(
       Object.entries(manualSettings.symbol_mapping ?? {})
@@ -491,11 +550,44 @@ export function AccountConfigPage() {
   }
 
   const toggleDraftChannel = (channelId: string) => {
+    setConfigDraft(prev => {
+      const willEnable = !prev.channelIds.includes(channelId)
+      const channelIds = willEnable
+        ? [...prev.channelIds, channelId]
+        : prev.channelIds.filter(id => id !== channelId)
+      // Seed filters for a freshly-checked channel; leave existing rows alone
+      // when un-checking so the user's prior choices return if they re-enable.
+      const channelFilters = willEnable && !prev.channelFilters[channelId]
+        ? { ...prev.channelFilters, [channelId]: { ...DEFAULT_CHANNEL_FILTERS } }
+        : prev.channelFilters
+      return { ...prev, channelIds, channelFilters }
+    })
+  }
+
+  const setChannelFilter = (
+    channelId: string,
+    key: ChannelFilterKey,
+    value: ChannelFilterDecision,
+  ) => {
+    setConfigDraft(prev => {
+      const current = prev.channelFilters[channelId] ?? DEFAULT_CHANNEL_FILTERS
+      return {
+        ...prev,
+        channelFilters: {
+          ...prev.channelFilters,
+          [channelId]: { ...current, [key]: value },
+        },
+      }
+    })
+  }
+
+  const resetChannelFilters = (channelId: string) => {
     setConfigDraft(prev => ({
       ...prev,
-      channelIds: prev.channelIds.includes(channelId)
-        ? prev.channelIds.filter(id => id !== channelId)
-        : [...prev.channelIds, channelId],
+      channelFilters: {
+        ...prev.channelFilters,
+        [channelId]: { ...DEFAULT_CHANNEL_FILTERS },
+      },
     }))
   }
 
@@ -580,6 +672,12 @@ export function AccountConfigPage() {
     }
 
     setConfigSaving(true)
+    // TODO(channel-filters): persist configDraft.channelFilters once the schema lands.
+    //   Proposed column: broker_accounts.channel_message_filters jsonb
+    //   Shape: Record<channelId, Record<ChannelFilterKey, 'allow' | 'ignore'>>
+    //   The worker will consult this map before dispatching applyManagement /
+    //   sendOrder and skip when the action's category resolves to 'ignore' for
+    //   the originating channel. See applyManagement in worker/src/tradeExecutor.ts.
     const { data, error: upErr } = await supabase
       .from('broker_accounts')
       .update({
@@ -784,7 +882,7 @@ export function AccountConfigPage() {
                   placeholder="Trading account password"
                   value={form.account_password}
                   onChange={e => set('account_password', e.target.value)}
-                  hint="Sent to MetatraderAPI only. Never stored."
+                  hint="Sent to MT servers only. Never stored."
                   required
                 />
               </div>
@@ -945,7 +1043,7 @@ export function AccountConfigPage() {
           <div className="w-full max-w-5xl h-[88vh] flex flex-col rounded-2xl bg-white shadow-xl border border-neutral-200 overflow-hidden">
             <div className="px-6 py-4 border-b border-neutral-100 flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-semibold text-neutral-900">Configure Account</h3>
+                <h3 className="text-lg font-semibold text-neutral-900">Configure Trading</h3>
                 <p className="text-sm text-neutral-500 mt-0.5">
                   {configAccount.label} · {configAccount.platform}
                 </p>
@@ -982,15 +1080,43 @@ export function AccountConfigPage() {
                 })}
               </nav>
 
-              {/* Tab body */}
-              <div className="flex-1 overflow-y-auto px-6 py-5">
+              {/* Tab body column */}
+              <div className="flex-1 flex flex-col min-h-0">
+                {activeTab === 'mode' && configDraft.mode === 'manual' && (
+                  <div className="px-6 pt-4 bg-white border-b border-neutral-100">
+                    <div className="flex flex-wrap items-center gap-1">
+                      {MANUAL_SUB_TABS.map(sub => {
+                        const SubIcon = sub.icon
+                        const active = sub.id === activeManualSubTab
+                        return (
+                          <button
+                            key={sub.id}
+                            type="button"
+                            onClick={() => setActiveManualSubTab(sub.id)}
+                            className={clsx(
+                              'flex items-center gap-1.5 px-3 py-2 text-sm transition-colors border-b-2 -mb-px',
+                              active
+                                ? 'border-primary-600 text-primary-700'
+                                : 'border-transparent text-neutral-500 hover:text-neutral-800',
+                            )}
+                          >
+                            <SubIcon className={clsx('w-3.5 h-3.5', active ? 'text-primary-600' : 'text-neutral-400')} />
+                            {sub.label}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex-1 overflow-y-auto px-6 py-5">
                 {error && (
                   <div className="mb-4 px-3 py-2 bg-error-50 border border-error-200 rounded-lg text-sm text-error-700">{error}</div>
                 )}
 
                 {activeTab === 'mode' && (
                   <div className="space-y-5">
-                    <div>
+                    {/* <div>
                       <p className="text-sm font-medium text-neutral-800 mb-2">Configure mode</p>
                       <div className="inline-flex rounded-lg border border-neutral-200 bg-neutral-50 p-1">
                         <button
@@ -1006,7 +1132,7 @@ export function AccountConfigPage() {
                           Manual
                         </button>
                       </div>
-                    </div>
+                    </div> */}
 
                     {configDraft.mode === 'ai' ? (
                       <div className="rounded-xl border border-neutral-200 p-4 space-y-3">
@@ -1024,30 +1150,6 @@ export function AccountConfigPage() {
                       </div>
                     ) : (
                       <div className="space-y-4">
-                        <p className="text-sm font-semibold text-neutral-900">Manual</p>
-                        <div className="flex flex-wrap items-center gap-1 border-b border-neutral-100">
-                          {MANUAL_SUB_TABS.map(sub => {
-                            const SubIcon = sub.icon
-                            const active = sub.id === activeManualSubTab
-                            return (
-                              <button
-                                key={sub.id}
-                                type="button"
-                                onClick={() => setActiveManualSubTab(sub.id)}
-                                className={clsx(
-                                  'flex items-center gap-1.5 px-3 py-2 text-sm transition-colors border-b-2 -mb-px',
-                                  active
-                                    ? 'border-primary-600 text-primary-700'
-                                    : 'border-transparent text-neutral-500 hover:text-neutral-800',
-                                )}
-                              >
-                                <SubIcon className={clsx('w-3.5 h-3.5', active ? 'text-primary-600' : 'text-neutral-400')} />
-                                {sub.label}
-                              </button>
-                            )
-                          })}
-                        </div>
-
                         {activeManualSubTab === 'symbol_routing' && (
                           <div className="rounded-xl border border-neutral-200 p-4 space-y-4">
                             <p className="text-sm font-semibold text-neutral-900">Symbol routing</p>
@@ -1293,9 +1395,6 @@ export function AccountConfigPage() {
                               </div>
                             )}
 
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                              <Select label="Reverse Signal" value={configDraft.manualSettings.reverse_signal ? 'yes' : 'no'} onChange={e => setManual({ reverse_signal: e.target.value === 'yes' })} options={[{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }]} />
-                            </div>
                           </div>
                         )}
 
@@ -1378,60 +1477,6 @@ export function AccountConfigPage() {
                               </div>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                              <label className="text-sm text-neutral-700 flex items-center gap-2"><input type="checkbox" checked={configDraft.manualSettings.use_predefined_sl_pips === true} onChange={e => setManual({ use_predefined_sl_pips: e.target.checked })} />Use Predefined SL Pips</label>
-                              {configDraft.manualSettings.use_predefined_sl_pips && (
-                                <Input
-                                  label="Predefined SL Pips"
-                                  type="number"
-                                  hint={formatPipHint(Number(configDraft.manualSettings.predefined_sl_pips ?? 30) || 0) ?? undefined}
-                                  value={String(configDraft.manualSettings.predefined_sl_pips ?? 30)}
-                                  onChange={e => setManual({ predefined_sl_pips: Number(e.target.value) })}
-                                />
-                              )}
-                              <label className="text-sm text-neutral-700 flex items-center gap-2"><input type="checkbox" checked={configDraft.manualSettings.use_predefined_tp_pips === true} onChange={e => setManual({ use_predefined_tp_pips: e.target.checked })} />Use Predefined TPs</label>
-                              {configDraft.manualSettings.use_predefined_tp_pips && (
-                                <Input
-                                  label="Predefined TP Pips (comma)"
-                                  hint={(() => {
-                                    // For the comma-separated TP input, show the per-pip rate and let
-                                    // the user multiply themselves; otherwise the hint would have to
-                                    // pick one TP. Falls back to undefined when no symbol is set.
-                                    const h = formatPipHint(0)
-                                    return h ?? undefined
-                                  })()}
-                                  value={(configDraft.manualSettings.predefined_tp_pips ?? []).join(',')}
-                                  onChange={e => setManual({ predefined_tp_pips: e.target.value.split(',').map(n => Number(n.trim())).filter(Number.isFinite) })}
-                                />
-                              )}
-                              <label className="text-sm text-neutral-700 flex items-center gap-2"><input type="checkbox" checked={configDraft.manualSettings.rr_for_sl_enabled === true} onChange={e => setManual({ rr_for_sl_enabled: e.target.checked })} />Enable R:R for SL</label>
-                              {configDraft.manualSettings.rr_for_sl_enabled && (
-                                <Input label="SL R:R" type="number" value={String(configDraft.manualSettings.rr_for_sl ?? 1)} onChange={e => setManual({ rr_for_sl: Number(e.target.value) })} />
-                              )}
-                              <label className="text-sm text-neutral-700 flex items-center gap-2"><input type="checkbox" checked={configDraft.manualSettings.rr_for_tps_enabled === true} onChange={e => setManual({ rr_for_tps_enabled: e.target.checked })} />Enable R:R for TPs</label>
-                              {configDraft.manualSettings.rr_for_tps_enabled && (
-                                <Input label="TP R:R values (comma)" value={(configDraft.manualSettings.rr_for_tps ?? []).join(',')} onChange={e => setManual({ rr_for_tps: e.target.value.split(',').map(n => Number(n.trim())).filter(Number.isFinite) })} />
-                              )}
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                              <Input label="Pending Expiry (hours 1-24)" type="number" value={String(configDraft.manualSettings.pending_expiry_hours ?? 1)} onChange={e => setManual({ pending_expiry_hours: Number(e.target.value) })} />
-                              <Select label="Add New Trades to Existing" value={configDraft.manualSettings.add_new_trades_to_existing ? 'yes' : 'no'} onChange={e => setManual({ add_new_trades_to_existing: e.target.value === 'yes' })} options={[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]} />
-                              <Select label="Close on Opposite Signal" value={configDraft.manualSettings.close_on_opposite_signal ? 'yes' : 'no'} onChange={e => setManual({ close_on_opposite_signal: e.target.value === 'yes' })} options={[{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }]} />
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                              <Select label="Move SL to Entry After" value={configDraft.manualSettings.move_sl_to_entry_after_mode ?? 'none'} onChange={e => setManual({ move_sl_to_entry_after_mode: e.target.value as ManualSettings['move_sl_to_entry_after_mode'] })} options={[{ value: 'none', label: 'None' }, { value: 'pips', label: 'Pips' }, { value: 'rr', label: 'RR' }, { value: 'money', label: 'Money' }, { value: 'tp_hit', label: 'TP Hit' }]} />
-                              {configDraft.manualSettings.move_sl_to_entry_after_mode !== 'none' && (
-                                <Input label="Move SL Trigger Value" type="number" value={String(configDraft.manualSettings.move_sl_to_entry_after_value ?? 10)} onChange={e => setManual({ move_sl_to_entry_after_value: Number(e.target.value) })} />
-                              )}
-                              {configDraft.manualSettings.move_sl_to_entry_after_mode !== 'none' && (
-                                <Select label="Move SL Type" value={configDraft.manualSettings.move_sl_to_entry_type ?? 'sl_only'} onChange={e => setManual({ move_sl_to_entry_type: e.target.value as ManualSettings['move_sl_to_entry_type'] })} options={[{ value: 'sl_only', label: 'Move SL only' }, { value: 'sl_and_close_half', label: 'Move SL and close half' }]} />
-                              )}
-                              <Input label="Breakeven Offset (pips)" type="number" value={String(configDraft.manualSettings.breakeven_offset_pips ?? 10)} onChange={e => setManual({ breakeven_offset_pips: Number(e.target.value) })} />
-                              <Input label="Partial Close (%)" type="number" value={String(configDraft.manualSettings.partial_close_percent ?? 25)} onChange={e => setManual({ partial_close_percent: Number(e.target.value) })} />
-                              <Input label="Half Close (%)" type="number" value={String(configDraft.manualSettings.half_close_percent ?? 50)} onChange={e => setManual({ half_close_percent: Number(e.target.value) })} />
-                            </div>
                           </div>
                         )}
 
@@ -1498,52 +1543,294 @@ export function AccountConfigPage() {
                             </div>
                           </div>
                         )}
+
+                        {activeManualSubTab === 'strategy' && (
+                          <div className="space-y-4">
+                            <p className="text-xs text-neutral-500">
+                              Strategy controls how the copier reacts to signals, applies your own SL/TP
+                              templates, and runs in-trade automation such as breakeven and partial closes.
+                            </p>
+
+                            <div className="rounded-lg border border-neutral-200 p-3 space-y-3">
+                              <p className="text-sm font-medium text-neutral-800">Signal behavior</p>
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <Select
+                                  label="Reverse Signal"
+                                  value={configDraft.manualSettings.reverse_signal ? 'yes' : 'no'}
+                                  onChange={e => setManual({ reverse_signal: e.target.value === 'yes' })}
+                                  options={[{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }]}
+                                />
+                                <Select
+                                  label="Add New Trades to Existing"
+                                  value={configDraft.manualSettings.add_new_trades_to_existing ? 'yes' : 'no'}
+                                  onChange={e => setManual({ add_new_trades_to_existing: e.target.value === 'yes' })}
+                                  options={[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]}
+                                />
+                                <Select
+                                  label="Close on Opposite Signal"
+                                  value={configDraft.manualSettings.close_on_opposite_signal ? 'yes' : 'no'}
+                                  onChange={e => setManual({ close_on_opposite_signal: e.target.value === 'yes' })}
+                                  options={[{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }]}
+                                />
+                              </div>
+                            </div>
+
+                            <div className="rounded-lg border border-neutral-200 p-3 space-y-3">
+                              <p className="text-sm font-medium text-neutral-800">Predefined SL &amp; TP</p>
+                              <p className="text-xs text-neutral-500">
+                                Override the signal&apos;s own stops/targets with your own fixed pip values
+                                or risk-reward multiples. Useful when channels post inconsistent levels.
+                              </p>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <label className="text-sm text-neutral-700 flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={configDraft.manualSettings.use_predefined_sl_pips === true}
+                                    onChange={e => setManual({ use_predefined_sl_pips: e.target.checked })}
+                                  />
+                                  Use Predefined SL Pips
+                                </label>
+                                {configDraft.manualSettings.use_predefined_sl_pips && (
+                                  <Input
+                                    label="Predefined SL Pips"
+                                    type="number"
+                                    hint={formatPipHint(Number(configDraft.manualSettings.predefined_sl_pips ?? 30) || 0) ?? undefined}
+                                    value={String(configDraft.manualSettings.predefined_sl_pips ?? 30)}
+                                    onChange={e => setManual({ predefined_sl_pips: Number(e.target.value) })}
+                                  />
+                                )}
+                                <label className="text-sm text-neutral-700 flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={configDraft.manualSettings.use_predefined_tp_pips === true}
+                                    onChange={e => setManual({ use_predefined_tp_pips: e.target.checked })}
+                                  />
+                                  Use Predefined TPs
+                                </label>
+                                {configDraft.manualSettings.use_predefined_tp_pips && (
+                                  <Input
+                                    label="Predefined TP Pips (comma)"
+                                    hint={(() => {
+                                      const h = formatPipHint(0)
+                                      return h ?? undefined
+                                    })()}
+                                    value={(configDraft.manualSettings.predefined_tp_pips ?? []).join(',')}
+                                    onChange={e => setManual({ predefined_tp_pips: e.target.value.split(',').map(n => Number(n.trim())).filter(Number.isFinite) })}
+                                  />
+                                )}
+                                <label className="text-sm text-neutral-700 flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={configDraft.manualSettings.rr_for_sl_enabled === true}
+                                    onChange={e => setManual({ rr_for_sl_enabled: e.target.checked })}
+                                  />
+                                  Enable R:R for SL
+                                </label>
+                                {configDraft.manualSettings.rr_for_sl_enabled && (
+                                  <Input
+                                    label="SL R:R"
+                                    type="number"
+                                    value={String(configDraft.manualSettings.rr_for_sl ?? 1)}
+                                    onChange={e => setManual({ rr_for_sl: Number(e.target.value) })}
+                                  />
+                                )}
+                                <label className="text-sm text-neutral-700 flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={configDraft.manualSettings.rr_for_tps_enabled === true}
+                                    onChange={e => setManual({ rr_for_tps_enabled: e.target.checked })}
+                                  />
+                                  Enable R:R for TPs
+                                </label>
+                                {configDraft.manualSettings.rr_for_tps_enabled && (
+                                  <Input
+                                    label="TP R:R values (comma)"
+                                    value={(configDraft.manualSettings.rr_for_tps ?? []).join(',')}
+                                    onChange={e => setManual({ rr_for_tps: e.target.value.split(',').map(n => Number(n.trim())).filter(Number.isFinite) })}
+                                  />
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="rounded-lg border border-neutral-200 p-3 space-y-3">
+                              <p className="text-sm font-medium text-neutral-800">Pending orders</p>
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <Input
+                                  label="Pending Expiry (hours 1-24)"
+                                  type="number"
+                                  value={String(configDraft.manualSettings.pending_expiry_hours ?? 1)}
+                                  onChange={e => setManual({ pending_expiry_hours: Number(e.target.value) })}
+                                />
+                              </div>
+                            </div>
+
+                            <div className="rounded-lg border border-neutral-200 p-3 space-y-3">
+                              <p className="text-sm font-medium text-neutral-800">Auto-management</p>
+                              <p className="text-xs text-neutral-500">
+                                Move SL to entry once the trade reaches a milestone, and configure the
+                                default lot share for Breakeven, Partial Close and Half Close commands
+                                received from channels.
+                              </p>
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <Select
+                                  label="Move SL to Entry After"
+                                  value={configDraft.manualSettings.move_sl_to_entry_after_mode ?? 'none'}
+                                  onChange={e => setManual({ move_sl_to_entry_after_mode: e.target.value as ManualSettings['move_sl_to_entry_after_mode'] })}
+                                  options={[{ value: 'none', label: 'None' }, { value: 'pips', label: 'Pips' }, { value: 'rr', label: 'RR' }, { value: 'money', label: 'Money' }, { value: 'tp_hit', label: 'TP Hit' }]}
+                                />
+                                {configDraft.manualSettings.move_sl_to_entry_after_mode !== 'none' && (
+                                  <Input
+                                    label="Move SL Trigger Value"
+                                    type="number"
+                                    value={String(configDraft.manualSettings.move_sl_to_entry_after_value ?? 10)}
+                                    onChange={e => setManual({ move_sl_to_entry_after_value: Number(e.target.value) })}
+                                  />
+                                )}
+                                {configDraft.manualSettings.move_sl_to_entry_after_mode !== 'none' && (
+                                  <Select
+                                    label="Move SL Type"
+                                    value={configDraft.manualSettings.move_sl_to_entry_type ?? 'sl_only'}
+                                    onChange={e => setManual({ move_sl_to_entry_type: e.target.value as ManualSettings['move_sl_to_entry_type'] })}
+                                    options={[{ value: 'sl_only', label: 'Move SL only' }, { value: 'sl_and_close_half', label: 'Move SL and close half' }]}
+                                  />
+                                )}
+                                <Input
+                                  label="Breakeven Offset (pips)"
+                                  type="number"
+                                  value={String(configDraft.manualSettings.breakeven_offset_pips ?? 10)}
+                                  onChange={e => setManual({ breakeven_offset_pips: Number(e.target.value) })}
+                                />
+                                <Input
+                                  label="Partial Close (%)"
+                                  type="number"
+                                  value={String(configDraft.manualSettings.partial_close_percent ?? 25)}
+                                  onChange={e => setManual({ partial_close_percent: Number(e.target.value) })}
+                                />
+                                <Input
+                                  label="Half Close (%)"
+                                  type="number"
+                                  value={String(configDraft.manualSettings.half_close_percent ?? 50)}
+                                  onChange={e => setManual({ half_close_percent: Number(e.target.value) })}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
                 )}
 
                 {activeTab === 'channels' && (
-                  <div className="space-y-3">
-                    {channelOptions.length === 0 ? (
-                      <p className="text-sm text-neutral-500">
-                        No connected channels found. <Link to="/copier-engine" className="text-primary-600 underline">Connect channels here</Link>.
-                      </p>
-                    ) : channelOptions.length === 1 ? (
-                      <p className="text-sm text-neutral-600">
-                        One Telegram channel is connected — this broker copies from it automatically.
-                      </p>
-                    ) : (
-                      <>
+                  <div className="space-y-5">
+                    {/* Section A: pick which Telegram channels feed this broker. */}
+                    <div className="space-y-3">
+                      {channelOptions.length === 0 ? (
+                        <p className="text-sm text-neutral-500">
+                          No connected channels found. <Link to="/copier-engine" className="text-primary-600 underline">Connect channels here</Link>.
+                        </p>
+                      ) : channelOptions.length === 1 ? (
+                        <p className="text-sm text-neutral-600">
+                          One Telegram channel is connected — this broker copies from it automatically.
+                        </p>
+                      ) : (
+                        <>
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm font-semibold text-neutral-900">Signal channels</p>
+                            <p className="text-xs text-neutral-500">{configDraft.channelIds.length} selected</p>
+                          </div>
+                          <p className="text-xs text-neutral-500">
+                            All channels selected (default) copies every connected Telegram channel. Uncheck one or more to restrict this broker.
+                          </p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            {channelOptions.map(channel => (
+                              <label key={channel.id} className="flex items-center gap-2 rounded-lg border border-neutral-200 px-3 py-2 cursor-pointer hover:bg-neutral-50">
+                                <input
+                                  type="checkbox"
+                                  checked={configDraft.channelIds.includes(channel.id)}
+                                  onChange={() => toggleDraftChannel(channel.id)}
+                                />
+                                <div className="min-w-0">
+                                  <p className="text-sm text-neutral-800 truncate">{channel.display_name}</p>
+                                  {channel.channel_username && (
+                                    <p className="text-xs text-neutral-500 truncate">@{channel.channel_username}</p>
+                                  )}
+                                </div>
+                              </label>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Section B: per-channel keyword filters. Always shown
+                        when at least one channel is connected, regardless of
+                        the single-channel auto-select copy above. */}
+                    {channelOptions.length > 0 && (
+                      <div className="space-y-3">
                         <div className="flex items-center justify-between">
-                          <p className="text-sm font-semibold text-neutral-900">Signal channels</p>
-                          <p className="text-xs text-neutral-500">{configDraft.channelIds.length} selected</p>
+                          <p className="text-sm font-semibold text-neutral-900">Channel keyword filters</p>
+                          <p className="text-xs text-neutral-500">
+                            {(() => {
+                              const ids = channelOptions.length === 1
+                                ? [channelOptions[0]!.id]
+                                : configDraft.channelIds
+                              const total = ids.reduce((sum, id) => {
+                                const f = configDraft.channelFilters[id] ?? DEFAULT_CHANNEL_FILTERS
+                                return sum + CHANNEL_FILTER_CATEGORIES.reduce(
+                                  (n, c) => n + (f[c.key] === 'ignore' ? 1 : 0), 0,
+                                )
+                              }, 0)
+                              return total === 0 ? 'All categories allowed' : `${total} ignored across all channels`
+                            })()}
+                          </p>
                         </div>
                         <p className="text-xs text-neutral-500">
-                          All channels selected (default) copies every connected Telegram channel. Uncheck one or more to restrict this broker.
+                          Mark a category as Ignore to drop matching Telegram messages from that channel before
+                          this broker acts on them. Other channels are unaffected.
                         </p>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                          {channelOptions.map(channel => (
-                            <label key={channel.id} className="flex items-center gap-2 rounded-lg border border-neutral-200 px-3 py-2 cursor-pointer hover:bg-neutral-50">
-                              <input
-                                type="checkbox"
-                                checked={configDraft.channelIds.includes(channel.id)}
-                                onChange={() => toggleDraftChannel(channel.id)}
-                              />
-                              <div className="min-w-0">
-                                <p className="text-sm text-neutral-800 truncate">{channel.display_name}</p>
-                                {channel.channel_username && (
-                                  <p className="text-xs text-neutral-500 truncate">@{channel.channel_username}</p>
-                                )}
-                              </div>
-                            </label>
-                          ))}
-                        </div>
-                      </>
+
+                        {(() => {
+                          // For a 1-channel account the picker is hidden, but the user still wants filter
+                          // controls — render the lone channel directly. Otherwise honour the broker's
+                          // channelIds selection so an unchecked channel disappears from this list.
+                          const visibleIds = channelOptions.length === 1
+                            ? [channelOptions[0]!.id]
+                            : configDraft.channelIds
+                          if (visibleIds.length === 0) {
+                            return (
+                              <p className="text-xs text-neutral-400 italic">
+                                Select at least one channel above to configure its filters.
+                              </p>
+                            )
+                          }
+                          const byId = new Map(channelOptions.map(c => [c.id, c]))
+                          return (
+                            <div className="space-y-2">
+                              {visibleIds.map((id, idx) => {
+                                const channel = byId.get(id)
+                                if (!channel) return null
+                                const filters = configDraft.channelFilters[id] ?? DEFAULT_CHANNEL_FILTERS
+                                return (
+                                  <ChannelFiltersCard
+                                    key={id}
+                                    channel={channel}
+                                    filters={filters}
+                                    onChange={(key, value) => setChannelFilter(id, key, value)}
+                                    onReset={() => resetChannelFilters(id)}
+                                    defaultOpen={idx === 0 && visibleIds.length === 1}
+                                  />
+                                )
+                              })}
+                            </div>
+                          )
+                        })()}
+                      </div>
                     )}
                   </div>
                 )}
 
+                </div>
               </div>
             </div>
 
@@ -1568,6 +1855,130 @@ function FeatureBullet({ icon: Icon, title, body }: { icon: typeof DollarSign; t
         {title}
       </p>
       <p className="text-xs text-neutral-500">{body}</p>
+    </div>
+  )
+}
+
+/**
+ * Collapsible filter card for a single Telegram channel. Header always shows
+ * the channel name, optional `@username`, and a badge indicating how many of
+ * the nine categories are currently set to "ignore". Body reveals the full
+ * Allow / Ignore grid.
+ */
+function ChannelFiltersCard({
+  channel,
+  filters,
+  onChange,
+  onReset,
+  defaultOpen = false,
+}: {
+  channel: ChannelOption
+  filters: ChannelFilters
+  onChange: (key: ChannelFilterKey, value: ChannelFilterDecision) => void
+  onReset: () => void
+  defaultOpen?: boolean
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  const ignoredCount = CHANNEL_FILTER_CATEGORIES.reduce(
+    (n, c) => n + (filters[c.key] === 'ignore' ? 1 : 0),
+    0,
+  )
+  return (
+    <div className="rounded-lg border border-neutral-200 bg-white">
+      <button
+        type="button"
+        className="w-full flex items-center justify-between p-3 text-left"
+        onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
+      >
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-neutral-900 truncate">{channel.display_name || 'Unnamed channel'}</p>
+          {channel.channel_username && (
+            <p className="text-xs text-neutral-500 truncate">@{channel.channel_username}</p>
+          )}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {ignoredCount > 0 && (
+            <span className="text-[10px] font-medium uppercase tracking-wide rounded-full px-2 py-0.5 bg-amber-50 text-amber-700">
+              {ignoredCount} ignored
+            </span>
+          )}
+          <ChevronDown className={clsx('w-4 h-4 text-neutral-500 transition-transform', open && 'rotate-180')} />
+        </div>
+      </button>
+      {open && (
+        <div className="p-3 border-t border-neutral-100 space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {CHANNEL_FILTER_CATEGORIES.map(cat => (
+              <CategoryRow
+                key={cat.key}
+                label={cat.label}
+                example={cat.example}
+                value={filters[cat.key] ?? 'allow'}
+                onChange={v => onChange(cat.key, v)}
+              />
+            ))}
+          </div>
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] text-neutral-500">
+              Ignored categories drop matching messages from this channel before the worker runs them.
+            </p>
+            <button
+              type="button"
+              className="text-xs text-primary-600 hover:text-primary-700 hover:underline"
+              onClick={onReset}
+              disabled={ignoredCount === 0}
+            >
+              Reset to defaults
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CategoryRow({
+  label,
+  example,
+  value,
+  onChange,
+}: {
+  label: string
+  example: string
+  value: ChannelFilterDecision
+  onChange: (v: ChannelFilterDecision) => void
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-md border border-neutral-200 px-3 py-2">
+      <div className="min-w-0">
+        <p className="text-sm text-neutral-800 truncate">{label}</p>
+        <p className="text-[11px] text-neutral-500 truncate">{example}</p>
+      </div>
+      <div className="inline-flex items-center rounded-md border border-neutral-200 bg-neutral-50 p-0.5 shrink-0">
+        <button
+          type="button"
+          className={clsx(
+            'px-2.5 py-1 text-xs rounded',
+            value === 'allow' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-700',
+          )}
+          onClick={() => onChange('allow')}
+          aria-pressed={value === 'allow'}
+        >
+          Allow
+        </button>
+        <button
+          type="button"
+          className={clsx(
+            'px-2.5 py-1 text-xs rounded',
+            value === 'ignore' ? 'bg-amber-50 text-amber-700 shadow-sm' : 'text-neutral-500 hover:text-neutral-700',
+          )}
+          onClick={() => onChange('ignore')}
+          aria-pressed={value === 'ignore'}
+        >
+          Ignore
+        </button>
+      </div>
     </div>
   )
 }

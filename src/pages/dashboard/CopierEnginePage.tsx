@@ -806,9 +806,9 @@ function ChannelRow({
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <Toggle checked={channel.is_active} onChange={onToggle} />
-          <button onClick={onKeywords} className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 transition-colors">
+          {/* <button onClick={onKeywords} className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 transition-colors">
             <Settings className="w-4 h-4" />
-          </button>
+          </button> */}
           <button onClick={onDelete} className="p-1.5 rounded-lg text-neutral-400 hover:text-error-600 hover:bg-error-50 transition-colors">
             <Trash2 className="w-4 h-4" />
           </button>
