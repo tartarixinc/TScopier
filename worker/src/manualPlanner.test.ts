@@ -1,15 +1,18 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 import {
+  clampPendingExpiryHours,
   computeCwOverrideTp,
   planManualOrders,
   planRangeSplit,
   planSinglePartialTps,
+  reverseSignalGateSatisfied,
   type ManualSettings,
   type ParsedSignal,
   type PlannerCloseWorseEntries,
   type PlannerContext,
 } from './manualPlanner'
+import { pipCalculator } from './pipCalculator'
 
 const baseSplit = {
   totalLegs: 20,
@@ -265,6 +268,130 @@ test('planManualOrders: sell ladder → virtualPendings carry isBuy=false', () =
   }
 })
 
+test('planManualOrders: signal entry strictness buy → market when ask within tolerance', () => {
+  const pip = pipCalculator('XAUUSD', baseCtx.point, baseCtx.digits, null).pipPrice
+  const entry = 4500
+  const tol = 10
+  const maxBuy = entry + tol * pip
+  const plan = planManualOrders({
+    parsed: { ...baseParsed, entry_price: entry },
+    resolvedSymbol: 'XAUUSD',
+    baseOperation: 'BuyLimit',
+    manual: {
+      ...baseManual,
+      trade_style: 'single',
+      range_trading: false,
+      use_signal_entry_price: true,
+      signal_entry_pip_tolerance: tol,
+    },
+    channelKeywords: null,
+    manualLot: 1.0,
+    ctx: { ...baseCtx, liveBid: maxBuy - 0.5, liveAsk: maxBuy - 0.01 },
+    commentPrefix: 'TSCopier:abc',
+  })
+  assert.equal(plan.orders.length, 1)
+  assert.equal(plan.orders[0]!.operation, 'Buy')
+  assert.equal(plan.orders[0]!.price, 0)
+})
+
+test('planManualOrders: signal entry strictness buy → limit when ask above tolerance', () => {
+  const pip = pipCalculator('XAUUSD', baseCtx.point, baseCtx.digits, null).pipPrice
+  const entry = 4500
+  const tol = 10
+  const maxBuy = entry + tol * pip
+  const plan = planManualOrders({
+    parsed: { ...baseParsed, entry_price: entry },
+    resolvedSymbol: 'XAUUSD',
+    baseOperation: 'BuyLimit',
+    manual: {
+      ...baseManual,
+      trade_style: 'single',
+      range_trading: false,
+      use_signal_entry_price: true,
+      signal_entry_pip_tolerance: tol,
+    },
+    channelKeywords: null,
+    manualLot: 1.0,
+    ctx: { ...baseCtx, liveBid: maxBuy, liveAsk: maxBuy + 0.01 },
+    commentPrefix: 'TSCopier:abc',
+  })
+  assert.equal(plan.orders[0]!.operation, 'BuyLimit')
+  assert.equal(plan.orders[0]!.price, entry)
+})
+
+test('planManualOrders: signal entry strictness sell → market when bid within tolerance', () => {
+  const pip = pipCalculator('XAUUSD', baseCtx.point, baseCtx.digits, null).pipPrice
+  const entry = 4500
+  const tol = 10
+  const minSell = entry - tol * pip
+  const plan = planManualOrders({
+    parsed: { ...baseParsed, action: 'sell', entry_price: entry },
+    resolvedSymbol: 'XAUUSD',
+    baseOperation: 'SellLimit',
+    manual: {
+      ...baseManual,
+      trade_style: 'single',
+      range_trading: false,
+      use_signal_entry_price: true,
+      signal_entry_pip_tolerance: tol,
+    },
+    channelKeywords: null,
+    manualLot: 1.0,
+    ctx: { ...baseCtx, liveBid: minSell + 0.01, liveAsk: minSell + 0.5 },
+    commentPrefix: 'TSCopier:abc',
+  })
+  assert.equal(plan.orders[0]!.operation, 'Sell')
+  assert.equal(plan.orders[0]!.price, 0)
+})
+
+test('planManualOrders: signal entry strictness sell → limit when bid below tolerance', () => {
+  const pip = pipCalculator('XAUUSD', baseCtx.point, baseCtx.digits, null).pipPrice
+  const entry = 4500
+  const tol = 10
+  const minSell = entry - tol * pip
+  const plan = planManualOrders({
+    parsed: { ...baseParsed, action: 'sell', entry_price: entry },
+    resolvedSymbol: 'XAUUSD',
+    baseOperation: 'SellLimit',
+    manual: {
+      ...baseManual,
+      trade_style: 'single',
+      range_trading: false,
+      use_signal_entry_price: true,
+      signal_entry_pip_tolerance: tol,
+    },
+    channelKeywords: null,
+    manualLot: 1.0,
+    ctx: { ...baseCtx, liveBid: minSell - 0.01, liveAsk: minSell + 0.2 },
+    commentPrefix: 'TSCopier:abc',
+  })
+  assert.equal(plan.orders[0]!.operation, 'SellLimit')
+  assert.equal(plan.orders[0]!.price, entry)
+})
+
+test('planManualOrders: strict entry market exec still skips range for entry-shaped signal', () => {
+  const pip = pipCalculator('XAUUSD', baseCtx.point, baseCtx.digits, null).pipPrice
+  const entry = 4500
+  const tol = 10
+  const maxBuy = entry + tol * pip
+  const plan = planManualOrders({
+    parsed: { ...baseParsed, entry_price: entry },
+    resolvedSymbol: 'XAUUSD',
+    baseOperation: 'BuyLimit',
+    manual: {
+      ...baseManual,
+      use_signal_entry_price: true,
+      signal_entry_pip_tolerance: tol,
+    },
+    channelKeywords: null,
+    manualLot: 1.0,
+    ctx: { ...baseCtx, liveBid: maxBuy - 1, liveAsk: maxBuy - 0.5 },
+    commentPrefix: 'TSCopier:abc',
+  })
+  assert.equal(plan.orders[0]!.operation, 'Buy')
+  assert.equal(plan.virtualPendings, undefined)
+})
+
 // ── planSinglePartialTps ───────────────────────────────────────────────────
 // The pure helper that turns the user's percent rows (50 / 30 / 20) into a
 // concrete partial-close schedule for single-mode trades. Verifies that the
@@ -382,4 +509,124 @@ test('planSinglePartialTps: bad manualLot returns null brokerTp + reason', () =>
   assert.equal(r.brokerTp, null)
   assert.equal(r.partials.length, 0)
   assert.equal(r.fallbackReason, 'partial_tp_invalid_lot')
+})
+
+test('clampPendingExpiryHours: clamps high values to 24', () => {
+  assert.equal(clampPendingExpiryHours(99), 24)
+  assert.equal(clampPendingExpiryHours(1.9), 1)
+  assert.equal(clampPendingExpiryHours(0), 0)
+  assert.equal(clampPendingExpiryHours(-3), 0)
+})
+
+test('reverseSignalGateSatisfied: requires both predefined sides + anchor', () => {
+  const manual: ManualSettings = {
+    use_predefined_sl_pips: true,
+    predefined_sl_pips: 30,
+    use_predefined_tp_pips: true,
+    predefined_tp_pips: [40, 80],
+  }
+  assert.equal(reverseSignalGateSatisfied(manual, null), false)
+  assert.equal(reverseSignalGateSatisfied(manual, 1.1), true)
+})
+
+test('planManualOrders: reverse_signal ignored when gate not satisfied', () => {
+  const plan = planManualOrders({
+    parsed: {
+      action: 'buy',
+      symbol: 'EURUSD',
+      entry_price: 1.1,
+      entry_zone_low: null,
+      entry_zone_high: null,
+      sl: null,
+      tp: [1.11],
+      lot_size: null,
+    },
+    resolvedSymbol: 'EURUSD',
+    baseOperation: 'Buy',
+    manual: {
+      risk_mode: 'fixed_lot',
+      fixed_lot: 0.1,
+      trade_style: 'single',
+      range_trading: false,
+      reverse_signal: true,
+      use_predefined_sl_pips: false,
+      use_predefined_tp_pips: false,
+    },
+    channelKeywords: null,
+    manualLot: 0.1,
+    ctx: { ...baseCtx, point: 0.0001, digits: 5 },
+    commentPrefix: 'TSCopier:abc',
+  })
+  assert.equal(plan.isBuy, true)
+  assert.ok(String(plan.orders[0]?.operation ?? '').startsWith('Buy'))
+})
+
+test('planManualOrders: reverse_signal flips when predefined gate satisfied', () => {
+  const plan = planManualOrders({
+    parsed: {
+      action: 'buy',
+      symbol: 'EURUSD',
+      entry_price: 1.1,
+      entry_zone_low: null,
+      entry_zone_high: null,
+      sl: null,
+      tp: [1.11],
+      lot_size: null,
+    },
+    resolvedSymbol: 'EURUSD',
+    baseOperation: 'Buy',
+    manual: {
+      risk_mode: 'fixed_lot',
+      fixed_lot: 0.1,
+      trade_style: 'single',
+      range_trading: false,
+      reverse_signal: true,
+      use_predefined_sl_pips: true,
+      predefined_sl_pips: 100,
+      use_predefined_tp_pips: true,
+      predefined_tp_pips: [100, 200],
+    },
+    channelKeywords: null,
+    manualLot: 0.1,
+    ctx: { ...baseCtx, point: 0.0001, digits: 5 },
+    commentPrefix: 'TSCopier:abc',
+  })
+  assert.equal(plan.isBuy, false)
+  assert.ok(String(plan.orders[0]?.operation ?? '').startsWith('Sell'))
+})
+
+test('planManualOrders: predefined SL wins over rr_for_sl when both apply', () => {
+  const entry = 1.1
+  const plan = planManualOrders({
+    parsed: {
+      action: 'buy',
+      symbol: 'EURUSD',
+      entry_price: entry,
+      entry_zone_low: null,
+      entry_zone_high: null,
+      sl: null,
+      tp: [1.12],
+      lot_size: null,
+    },
+    resolvedSymbol: 'EURUSD',
+    baseOperation: 'Buy',
+    manual: {
+      risk_mode: 'fixed_lot',
+      fixed_lot: 0.1,
+      trade_style: 'single',
+      range_trading: false,
+      use_predefined_sl_pips: true,
+      predefined_sl_pips: 50,
+      use_predefined_tp_pips: false,
+      rr_for_sl_enabled: true,
+      rr_for_sl: 10,
+    },
+    channelKeywords: null,
+    manualLot: 0.1,
+    ctx: { ...baseCtx, point: 0.0001, digits: 5 },
+    commentPrefix: 'TSCopier:abc',
+  })
+  const pip = pipCalculator('EURUSD', 0.0001, 5, null).pipPrice
+  const expectedSl = Number((entry - 50 * pip).toFixed(5))
+  assert.equal(plan.orders[0]?.stoploss, expectedSl)
 })

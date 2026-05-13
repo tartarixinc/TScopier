@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.MetatraderApiClient = exports.MetatraderApiError = void 0;
 exports.orderOperationRequiresPrice = orderOperationRequiresPrice;
 exports.normalizeOrderResponse = normalizeOrderResponse;
+exports.normalizeSymbolParams = normalizeSymbolParams;
 exports.getMetatraderApi = getMetatraderApi;
 const undici_1 = require("undici");
 /**
@@ -107,6 +108,46 @@ function assertNoApiError(body) {
         }
     }
 }
+/**
+ * Read a numeric field tolerating camelCase, PascalCase, and snake_case keys.
+ * MT5 bridges (and the underlying MqlSymbolInfo struct) ship every casing in
+ * the wild, so we accept any of them rather than guess.
+ */
+function readNum(obj, ...keys) {
+    if (!obj || typeof obj !== 'object')
+        return undefined;
+    const rec = obj;
+    for (const k of keys) {
+        const v = rec[k];
+        if (v == null)
+            continue;
+        const n = Number(v);
+        if (Number.isFinite(n))
+            return n;
+    }
+    return undefined;
+}
+/** Normalise a /SymbolParams response across the casing variants we've seen. */
+function normalizeSymbolParams(p) {
+    if (!p || typeof p !== 'object')
+        return {};
+    const sym = p.symbol ?? p.Symbol ?? p;
+    const grp = p.groupParams
+        ?? p.GroupParams
+        ?? p.group
+        ?? p.Group
+        ?? p;
+    return {
+        digits: readNum(sym, 'digits', 'Digits', 'DIGITS'),
+        point: readNum(sym, 'point', 'Point', 'POINT'),
+        contractSize: readNum(sym, 'contractSize', 'ContractSize', 'contract_size', 'TradeContractSize'),
+        stopsLevel: readNum(sym, 'stopsLevel', 'StopsLevel', 'stops_level', 'TradeStopsLevel', 'trade_stops_level'),
+        freezeLevel: readNum(sym, 'freezeLevel', 'FreezeLevel', 'freeze_level', 'TradeFreezeLevel', 'trade_freeze_level'),
+        minLot: readNum(grp, 'minLot', 'MinLot', 'min_lot', 'volume_min', 'VolumeMin', 'volumeMin'),
+        maxLot: readNum(grp, 'maxLot', 'MaxLot', 'max_lot', 'volume_max', 'VolumeMax', 'volumeMax'),
+        lotStep: readNum(grp, 'lotStep', 'LotStep', 'lot_step', 'volume_step', 'VolumeStep', 'volumeStep'),
+    };
+}
 class MetatraderApiError extends Error {
     constructor(message, status, code) {
         super(message);
@@ -186,7 +227,11 @@ class MetatraderApiClient {
      * both shapes here so callers always see `{ symbol, bid, ask, time }`.
      */
     async quote(id, symbol) {
-        const raw = await this.get('/Quote', { id, symbol });
+        // Endpoint name in the API2Trade / metatraderapi.dev REST surface is
+        // `/GetQuote` (not `/Quote`). Calling `/Quote` returns HTTP 404 and breaks
+        // anchor resolution for averaging-down ladders that don't carry an
+        // explicit signal entry price.
+        const raw = await this.get('/GetQuote', { id, symbol });
         assertNoApiError(raw);
         const root = (raw && typeof raw === 'object') ? raw : {};
         const r = (root.result && typeof root.result === 'object') ? root.result : root;

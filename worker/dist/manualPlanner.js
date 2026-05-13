@@ -1,13 +1,111 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.planSinglePartialTps = planSinglePartialTps;
 exports.planRangeSplit = planRangeSplit;
-exports.applyCloseWorseEntries = applyCloseWorseEntries;
+exports.computeCwOverrideTp = computeCwOverrideTp;
 exports.planManualOrders = planManualOrders;
-const pipMath_1 = require("./pipMath");
+const pipCalculator_1 = require("./pipCalculator");
+/**
+ * Build the per-TP partial close schedule for a `trade_style === 'single'`
+ * trade.
+ *
+ * Rules:
+ *   - When `finalTps.length >= 2` AND there are enabled bucket rows, the
+ *     broker TP becomes the LAST bucket-paired TP (so the trade rides
+ *     to its deepest target) and the EARLIER buckets emit partials.
+ *   - When `finalTps.length < 2` OR no enabled bucket rows, partials don't
+ *     apply; the caller uses TP1 as the broker TP (current legacy behavior).
+ *   - `closeLots` is `floor(manualLot × percent / 100 / lotStep) × lotStep`
+ *     and is dropped when the result is below `minLot`. We never close
+ *     more than `manualLot - minLot` across all partials so the last
+ *     slice that rides to broker TP is always >= `minLot` (otherwise the
+ *     final lot would round to 0 and the broker TP becomes a no-op).
+ */
+function planSinglePartialTps(args) {
+    const { manualLot, minLot, lotStep, finalTps, bucketRows } = args;
+    if (!Number.isFinite(manualLot) || manualLot <= 0) {
+        return { brokerTp: null, partials: [], fallbackReason: 'partial_tp_invalid_lot' };
+    }
+    if (!Array.isArray(finalTps) || finalTps.length < 2 || !bucketRows.length) {
+        return { brokerTp: finalTps[0] ?? null, partials: [] };
+    }
+    // Pair buckets with TPs positionally and clamp to whichever side is shorter.
+    const bucketCount = Math.min(bucketRows.length, finalTps.length);
+    const pairedTps = finalTps.slice(0, bucketCount);
+    const pairedBuckets = bucketRows.slice(0, bucketCount);
+    // The LAST paired TP is the broker's takeprofit. The earlier ones are
+    // worker-managed partials.
+    const brokerTp = pairedTps[bucketCount - 1] ?? null;
+    if (bucketCount < 2 || brokerTp == null) {
+        return { brokerTp, partials: [] };
+    }
+    const FP_EPS = 1e-9;
+    const toUnits = (v) => {
+        if (!Number.isFinite(v) || v <= 0)
+            return 0;
+        return Math.max(0, Math.floor(v / lotStep + FP_EPS));
+    };
+    const unitsToLot = (u) => Number((u * lotStep).toFixed(8));
+    const manualUnits = toUnits(manualLot);
+    const minUnits = Math.max(1, Math.round(minLot / lotStep));
+    // Reserve at least one minLot's worth of units for the final broker-TP
+    // slice. Without this a 100%-sum schedule on a 1.0 lot would leave the
+    // broker TP riding 0.0 lots — i.e. nothing — and the deepest target would
+    // never trigger because there's no position left to close.
+    const usableUnits = Math.max(0, manualUnits - minUnits);
+    let remainingUnits = usableUnits;
+    const partials = [];
+    let fallbackReason;
+    for (let i = 0; i < bucketCount - 1; i++) {
+        const tp = pairedTps[i];
+        if (tp == null || !Number.isFinite(tp) || tp <= 0)
+            continue;
+        const pctRaw = Number(pairedBuckets[i]?.percent);
+        const pct = Number.isFinite(pctRaw) && pctRaw > 0 ? Math.min(100, pctRaw) : 0;
+        if (pct <= 0)
+            continue;
+        let units = toUnits(manualLot * (pct / 100));
+        if (units < minUnits) {
+            // Percentage too small relative to broker minimum lot; skip this
+            // partial. Surface it once so the user can see why their 5% TP1
+            // didn't fire on a 0.10 lot trade with 0.01 minLot.
+            fallbackReason = fallbackReason ?? 'partial_tp_below_min_lot';
+            continue;
+        }
+        if (units > remainingUnits) {
+            // Cap so the cumulative partials never exceed manualLot - minLot.
+            units = remainingUnits;
+            fallbackReason = fallbackReason ?? 'partial_tp_capped_remainder';
+            if (units < minUnits)
+                continue;
+        }
+        remainingUnits -= units;
+        partials.push({
+            tpIdx: i + 1,
+            triggerPrice: tp,
+            closeLots: unitsToLot(units),
+            percent: pct,
+        });
+        if (remainingUnits < minUnits) {
+            // No room left for any further partials — the rest goes to broker TP.
+            break;
+        }
+    }
+    return { brokerTp, partials, fallbackReason };
+}
 /**
  * Decide how many of the planned legs go out as immediates vs. range pendings.
  * Pure function so the split can be unit-tested and reused by the UI estimator
  * down the line.
+ *
+ * **Step does NOT shrink the pending count.** Pending count is purely
+ * `round(totalLegs × rangePct / 100)`. The `step` is the pip spacing the
+ * planner uses to place each pending. `distPips` is an advisory target span
+ * the user expects the ladder to reach — it's validated as > 0 so the user
+ * has to set SOMETHING in range mode, but it no longer caps the count.
+ * (Previously the count was capped at `floor(distPips / step)`, which meant
+ * raising the step shrank Total Open Trades — surprising UX feedback from
+ * May 12.)
  */
 function planRangeSplit(args) {
     const { totalLegs, baseIsPendingSignal, rangeOn, rangePct, stepPips, distPips, pip, minStepPriceUnits, hasSignalAnchor } = args;
@@ -32,13 +130,8 @@ function planRangeSplit(args) {
         fallbackReason = 'range_trading_step_auto_expanded';
     }
     const stepPriceOffset = effectiveStepPips * pip;
-    const reservedLegs = Math.round((totalLegs * rangePct) / 100);
-    const maxByDistance = Math.floor(distPips / effectiveStepPips);
-    const effective = Math.min(reservedLegs, maxByDistance);
-    if (effective <= 0) {
-        if (reservedLegs > 0) {
-            return { ...baseResult, effectiveStepPips, stepPriceOffset, fallbackReason: 'range_trading_invalid' };
-        }
+    const reservedLegs = Math.max(0, Math.round((totalLegs * rangePct) / 100));
+    if (reservedLegs <= 0) {
         return { ...baseResult, effectiveStepPips, stepPriceOffset, fallbackReason };
     }
     const immediateLegs = Math.max(0, totalLegs - reservedLegs);
@@ -47,42 +140,37 @@ function planRangeSplit(args) {
     // proceed and rely on the runtime anchor. We only drop the range when there
     // is literally no path to an anchor (no signal entry AND no immediate fills),
     // which the executor will detect explicitly.
-    return { immediateLegs, pendingLegs: effective, effectiveStepPips, stepPriceOffset, fallbackReason: fallbackReason ?? (!hasSignalAnchor && immediateLegs === 0 ? 'range_trading_anchor_runtime_only' : undefined) };
+    return { immediateLegs, pendingLegs: reservedLegs, effectiveStepPips, stepPriceOffset, fallbackReason: fallbackReason ?? (!hasSignalAnchor && immediateLegs === 0 ? 'range_trading_anchor_runtime_only' : undefined) };
 }
 /**
- * Apply the CWE TP override against a resolved anchor. The override is a
- * single trigger price `anchor ± cwePips × pip` shared by every CWE-eligible
- * leg (immediates + the N shallowest pendings, which the planner has already
- * sorted as the first N entries of `orders`). Returns a new array — `orders`
- * is not mutated.
+ * Compute the single CWE close-threshold price (`anchor ± cwePips × pip`).
+ * Returns `null` when CWE is off or the inputs aren't sufficient.
+ *
+ * The executor stamps this value on the `cwe_close_price` column of every
+ * CWE-eligible row — the first `policy.immediates` immediate orders (via
+ * `trades.cwe_close_price`) AND the first `policy.extraPendings` virtual
+ * pendings sorted by `stepIdx` ascending (via `range_pending_legs.cwe_close_price`).
+ *
+ * Note: unlike the previous broker-TP implementation we deliberately do
+ * NOT clamp this against the broker's stops/freeze zone. The price is
+ * only ever compared to a live quote inside `cweCloseMonitor` — it is
+ * never sent to the broker as a TP, so the stops_level / freeze_level
+ * constraints don't apply. Clamping it here would silently shift the
+ * close trigger further from the anchor than the user asked for.
+ *
+ * `minStopDistance` is accepted for API compatibility with callers that
+ * still pass it but is intentionally ignored.
  */
-function applyCloseWorseEntries(args) {
-    const { orders, policy, anchor, isBuy, pip, digits, minStopDistance } = args;
-    if (!policy || policy.pipsFromAnchor <= 0 || !Number.isFinite(anchor) || anchor <= 0) {
-        return orders;
-    }
-    const overrideUpTo = Math.max(0, Math.min(orders.length, policy.immediates + policy.extraPendings));
-    if (overrideUpTo === 0)
-        return orders;
+function computeCwOverrideTp(args) {
+    const { policy, anchor, isBuy, pip, digits } = args;
+    if (!policy || policy.pipsFromAnchor <= 0)
+        return null;
+    if (!Number.isFinite(anchor) || anchor <= 0)
+        return null;
     const dir = isBuy ? 1 : -1;
-    let overrideTp = anchor + dir * policy.pipsFromAnchor * pip;
-    if (minStopDistance > 0) {
-        if (isBuy)
-            overrideTp = Math.max(overrideTp, anchor + minStopDistance);
-        else
-            overrideTp = Math.min(overrideTp, anchor - minStopDistance);
-    }
+    const tp = anchor + dir * policy.pipsFromAnchor * pip;
     const d = Math.max(0, Math.min(8, Math.floor(digits)));
-    const rounded = Number(overrideTp.toFixed(d));
-    const out = orders.slice();
-    for (let k = 0; k < overrideUpTo; k++) {
-        out[k] = {
-            ...out[k],
-            takeprofit: rounded,
-            comment: `${out[k].comment ?? ''}.cw`,
-        };
-    }
-    return out;
+    return Number(tp.toFixed(d));
 }
 // Pip math now lives in ./pipMath. The old `pipSize(point, digits)` helper has
 // been replaced by `smartPipSize(symbol, point, digits)` which classifies the
@@ -131,8 +219,8 @@ function planManualOrders(args) {
         }
     }
     // ── 2. Reverse direction ────────────────────────────────────────────────
-    const operation = manual.reverse_signal ? flipOperation(baseOperation) : baseOperation;
-    const isBuy = operation.startsWith('Buy');
+    const opSplit = manual.reverse_signal ? flipOperation(baseOperation) : baseOperation;
+    const isBuy = opSplit.startsWith('Buy');
     // ── 3. Resolve entry price (with channel prefer_entry on zones) ─────────
     let entry = parsed.entry_price != null ? Number(parsed.entry_price) : null;
     if (entry != null && !Number.isFinite(entry))
@@ -148,7 +236,11 @@ function planManualOrders(args) {
     const entryOk = entry != null && Number.isFinite(entry) && entry > 0;
     const entryAnchor = entryOk ? entry : null;
     // ── 4. SL/TP derivation ─────────────────────────────────────────────────
-    const pip = (0, pipMath_1.smartPipSize)(resolvedSymbol, ctx.point, ctx.digits);
+    // Single source of truth for both pip price (used immediately below for
+    // SL/TP/range step math) and pip value per std/mini/micro lot (surfaced
+    // on PlannerResult.pipQuote for the executor's summary log and the UI).
+    const pipQuote = (0, pipCalculator_1.pipCalculator)(resolvedSymbol, ctx.point, ctx.digits, ctx.contractSize ?? null);
+    const pip = pipQuote.pipPrice;
     const slInPips = channelKeywords?.additional?.sl_in_pips === true;
     const tpInPips = channelKeywords?.additional?.tp_in_pips === true;
     // Channel reported pip distances rather than prices — convert.
@@ -223,18 +315,44 @@ function planManualOrders(args) {
         finalSl = clampToStops(finalSl, false, entryAnchor);
         finalTps = finalTps.map(tp => clampToStops(tp, true, entryAnchor) ?? tp);
     }
+    // ── 4c. Signal entry strictness: market vs limit execution ─────────────
+    // `opSplit` drives range-split semantics (pending-shaped signals skip virtual range).
+    // `opExec` is what we actually send: market when quote is still inside tolerance.
+    let opExec = opSplit;
+    const tolPips = Number(manual.signal_entry_pip_tolerance ?? 10);
+    if (manual.use_signal_entry_price === true
+        && entryAnchor != null
+        && pip > 0
+        && Number.isFinite(tolPips)
+        && tolPips >= 0
+        && ctx.liveBid != null
+        && ctx.liveAsk != null
+        && Number.isFinite(ctx.liveBid)
+        && Number.isFinite(ctx.liveAsk)) {
+        if (isBuy) {
+            const maxBuy = entryAnchor + tolPips * pip;
+            opExec = ctx.liveAsk <= maxBuy ? 'Buy' : 'BuyLimit';
+        }
+        else {
+            const minSell = entryAnchor - tolPips * pip;
+            opExec = ctx.liveBid >= minSell ? 'Sell' : 'SellLimit';
+        }
+    }
     // ── 5. Multi-Trade lot splitting ────────────────────────────────────────
     const tradeStyle = manual.trade_style === 'multi' ? 'multi' : 'single';
+    const isMarketExec = opExec === 'Buy' || opExec === 'Sell';
     const orderBase = {
         symbol: resolvedSymbol,
-        operation,
-        price: entryAnchor != null ? roundPrice(entryAnchor) : roundPrice(entry),
+        operation: opExec,
+        price: isMarketExec
+            ? 0
+            : (entryAnchor != null ? roundPrice(entryAnchor) : roundPrice(entry)),
         slippage: slippage ?? 20,
         comment: commentPrefix,
         expertID: expertId,
     };
     const expirationFields = {};
-    if (operation.includes('Limit') || operation.includes('Stop')) {
+    if (opExec.includes('Limit') || opExec.includes('Stop')) {
         const hours = Number(manual.pending_expiry_hours ?? 0);
         if (Number.isFinite(hours) && hours > 0) {
             const exp = new Date(now.getTime() + hours * 60 * 60 * 1000);
@@ -253,17 +371,37 @@ function planManualOrders(args) {
         return Math.max(0, Math.floor(v / lotStep + FP_EPS));
     };
     const unitsToLot = (u) => Number((u * lotStep).toFixed(8));
-    const buildSingleOrder = (fallbackReason) => ({
-        orders: [{
-                ...orderBase,
-                volume: manualLot,
-                stoploss: roundPrice(finalSl),
-                takeprofit: roundPrice(finalTps[0] ?? null),
-                ...expirationFields,
-            }],
-        delay_ms,
-        ...(fallbackReason ? { fallback_reason: fallbackReason } : {}),
-    });
+    const buildSingleOrder = (fallbackReason) => {
+        // Per-TP partial-close schedule. When the user configured `tp_lots`
+        // percentages AND the signal carries ≥ 2 TPs, the single trade rides
+        // to the LAST configured-bucket TP at the broker, and the EARLIER
+        // buckets become `partial_tp_legs` rows that `partialTpMonitor`
+        // /OrderCloses at each trigger. When the schedule doesn't apply we
+        // fall back to legacy "broker TP = TP1, no partials" behavior so
+        // single-TP signals keep working.
+        const enabledForSingle = (manual.tp_lots ?? []).filter(r => r && r.enabled);
+        const partialPlan = planSinglePartialTps({
+            manualLot,
+            minLot: Number.isFinite(ctx.minLot) && ctx.minLot > 0 ? ctx.minLot : 0.01,
+            lotStep: Number.isFinite(ctx.lotStep) && ctx.lotStep > 0 ? ctx.lotStep : 0.01,
+            finalTps,
+            bucketRows: enabledForSingle,
+        });
+        const brokerTp = partialPlan.brokerTp ?? finalTps[0] ?? null;
+        const combinedFallback = fallbackReason ?? partialPlan.fallbackReason;
+        return {
+            orders: [{
+                    ...orderBase,
+                    volume: manualLot,
+                    stoploss: roundPrice(finalSl),
+                    takeprofit: roundPrice(brokerTp),
+                    ...expirationFields,
+                }],
+            delay_ms,
+            ...(combinedFallback ? { fallback_reason: combinedFallback } : {}),
+            ...(partialPlan.partials.length > 0 ? { partialTps: partialPlan.partials } : {}),
+        };
+    };
     if (tradeStyle !== 'multi') {
         return buildSingleOrder();
     }
@@ -287,7 +425,10 @@ function planManualOrders(args) {
     // math stays pure and testable. The planner only decides COUNTS here; pending
     // PRICES are computed at the executor against the live anchor (signal entry
     // → /Quote bid/ask → first-fill openPrice).
-    const baseIsPendingSignal = operation.includes('Limit') || operation.includes('Stop');
+    // Range split must follow whether the *signal* is pending-shaped (`opSplit`),
+    // not the downgraded market `opExec` used for immediate OrderSend — otherwise
+    // entry signals would incorrectly enable virtual range legs.
+    const baseIsPendingSignal = opSplit.includes('Limit') || opSplit.includes('Stop');
     const split = planRangeSplit({
         totalLegs,
         baseIsPendingSignal,
@@ -350,9 +491,8 @@ function planManualOrders(args) {
     };
     const immediateCounts = distributeCount(immediateLegs);
     const rangeCounts = distributeCount(effectiveRangeLegs);
-    // ── 8. Emit immediate legs ──────────────────────────────────────────────
+    // ── 8. Emit immediate legs (MARKET orders sent right away) ──────────────
     const orders = [];
-    const rangeMeta = [];
     for (let b = 0; b < bucketRows.length; b++) {
         const tpPrice = tpForBucket(b);
         for (let k = 0; k < (immediateCounts[b] ?? 0); k++) {
@@ -364,39 +504,35 @@ function planManualOrders(args) {
                 ...expirationFields,
                 comment: `${commentPrefix}:tp${b + 1}.${k + 1}`,
             });
-            rangeMeta.push(undefined);
         }
     }
-    // ── 9. Emit range pendings ──────────────────────────────────────────────
-    // The planner does NOT decide pending PRICES anymore — that's the executor's
-    // job once it has resolved a live anchor (signal entry → /Quote → first-fill
-    // openPrice). We emit `price: null` and attach `rangeMeta` so the executor
-    // can compute `price = anchor + (isBuy ? -1 : +1) × stepIdx × stepPriceOffset`.
-    // Pendings always carry an expiration if `pending_expiry_hours` is set.
+    // ── 9. Build virtual range pendings (persisted, not sent to broker) ─────
+    // These are NOT placed at the broker as BuyLimit/SellLimit. The executor
+    // INSERTs them into `range_pending_legs` with a computed `trigger_price`;
+    // the worker's virtualPendingMonitor (1.5s) and the range-pending-sweep
+    // edge function (60s) poll /Quote and fire each leg as a MARKET order the
+    // moment its trigger price is hit. This sidesteps every broker rejection
+    // class (stops_level / freeze_level / min-Limit-distance).
+    const virtualPendings = [];
     if (effectiveRangeLegs > 0) {
-        const pendingOp = isBuy ? 'BuyLimit' : 'SellLimit';
-        const pendingExpiration = {};
         const pendHours = Number(manual.pending_expiry_hours ?? 0);
-        if (Number.isFinite(pendHours) && pendHours > 0) {
-            const exp = new Date(now.getTime() + pendHours * 60 * 60 * 1000);
-            pendingExpiration.expiration = exp.toISOString();
-            pendingExpiration.expirationType = 'Specified';
-        }
+        const expiryHours = Number.isFinite(pendHours) && pendHours > 0 ? pendHours : undefined;
         let stepIdx = 1;
         for (let b = 0; b < bucketRows.length; b++) {
             const tpPrice = tpForBucket(b);
             for (let k = 0; k < (rangeCounts[b] ?? 0); k++) {
-                orders.push({
-                    ...orderBase,
-                    operation: pendingOp,
+                virtualPendings.push({
+                    stepIdx,
+                    stepPriceOffset,
+                    isBuy,
                     volume: targetLeg,
-                    price: null,
-                    stoploss: roundPrice(finalSl),
-                    takeprofit: roundPrice(tpPrice),
-                    ...pendingExpiration,
+                    stoploss: finalSl,
+                    takeprofit: tpPrice,
+                    slippage: slippage ?? 20,
                     comment: `${commentPrefix}:rg${stepIdx}.tp${b + 1}`,
+                    expertID: expertId,
+                    expiryHours,
                 });
-                rangeMeta.push({ stepIdx, stepPriceOffset, isBuy });
                 stepIdx += 1;
             }
         }
@@ -416,18 +552,21 @@ function planManualOrders(args) {
                 ...expirationFields,
                 comment: `${commentPrefix}:tp${bucketRows.length}.rem`,
             });
-            rangeMeta.push(undefined);
         }
     }
     // ── 11. Close-worse-entries policy (executor applies post-anchor) ───────
     // Per user spec: "when trade is in X pip in profit from the worse (earliest)
     // entry, close those trades; keep the best entry trades." That's a SINGLE
-    // trigger price = `anchor + X pips`, applied as the takeprofit on all
-    // immediates plus the N shallowest pendings. The deeper pendings keep their
-    // percent-row TPs and ride for the bigger targets. We don't compute the
-    // override here because the planner anchor may be null (market signals on
-    // XAUUSD often arrive without entry_price); the executor will resolve a live
-    // anchor via /Quote and then call `applyCloseWorseEntries`.
+    // trigger price = `anchor + X pips`, stamped on all immediates plus the N
+    // shallowest virtual pendings. The deeper virtuals keep their percent-row TPs
+    // and ride for the bigger targets.
+    //
+    // As of May-12 the trigger is enforced by the worker (`cweCloseMonitor`),
+    // NOT by a broker-side takeprofit — see the doc on `computeCwOverrideTp`.
+    // We don't compute the actual close price here because the planner anchor
+    // may be null (market signals on XAUUSD often arrive without entry_price);
+    // the executor will resolve a live anchor via /Quote and then call
+    // `computeCwOverrideTp` and stamp `cwe_close_price` on the row.
     let closeWorseEntries;
     if (effectiveRangeLegs > 0 && manual.close_worse_entries === true) {
         const cwPips = Math.max(0, Number(manual.close_worse_entries_pips ?? 0));
@@ -440,15 +579,16 @@ function planManualOrders(args) {
             };
         }
     }
-    if (orders.length === 0) {
+    if (orders.length === 0 && virtualPendings.length === 0) {
         // Defensive: shouldn't happen given totalLegs >= 1.
         return buildSingleOrder('multi_trade_fallback_zero_legs');
     }
     return {
         orders,
-        rangeMeta,
+        ...(virtualPendings.length ? { virtualPendings } : {}),
         anchor: { source: entryAnchor != null ? 'signal' : 'unknown', value: entryAnchor },
         pip,
+        pipQuote,
         isBuy,
         ...(closeWorseEntries ? { closeWorseEntries } : {}),
         delay_ms,

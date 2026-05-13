@@ -10,7 +10,8 @@ import { pipCalculator, type PipQuote } from './pipCalculator'
  * Responsibilities (in order):
  *   1. Time-of-day / day-of-week filter — drops the signal entirely when outside the
  *      configured trading window.
- *   2. Reverse signal — flips buy↔sell when `manual_settings.reverse_signal` is on.
+ *   2. Reverse signal — flips buy↔sell when enabled **and** `reverseSignalGateSatisfied`
+ *      (predefined SL+TP + entry anchor) so channel stops are not mirrored blindly.
  *   3. Stops & Targets — fills in / overrides parsed SL & TPs from the predefined
  *      pip values; falls back to risk:reward derivation when only one side is known.
  *   4. Multi-Trade lot splitting — when `trade_style === 'multi'`, splits `manualLot`
@@ -69,6 +70,8 @@ export interface ManualSettings {
   /** @deprecated Replaced by `range_percent`. */
   range_total_lot?: number
   reverse_signal?: boolean
+  use_signal_entry_price?: boolean
+  signal_entry_pip_tolerance?: number
   use_predefined_sl_pips?: boolean
   predefined_sl_pips?: number
   use_predefined_tp_pips?: boolean
@@ -133,6 +136,9 @@ export interface PlannerContext {
   lastBalance: number | null
   /** Current wall-clock time, accepts an injected value for tests. */
   now?: Date
+  /** Live quote when executor prefetched /Quote (used with `use_signal_entry_price`). */
+  liveBid?: number
+  liveAsk?: number
 }
 
 /**
@@ -550,6 +556,30 @@ function withinTimeWindow(start: string, end: string, now: Date): boolean {
   return cur >= s || cur <= e
 }
 
+/**
+ * Reverse Signal only applies when predefined SL **and** TP are enabled with
+ * valid values and an entry anchor exists — so mirrored risk comes from your
+ * settings, not channel stops (which would be on the wrong side after flip).
+ */
+export function reverseSignalGateSatisfied(manual: ManualSettings, entryAnchor: number | null): boolean {
+  if (entryAnchor == null) return false
+  if (manual.use_predefined_sl_pips !== true || manual.use_predefined_tp_pips !== true) return false
+  const slPips = Number(manual.predefined_sl_pips)
+  if (!Number.isFinite(slPips) || slPips <= 0) return false
+  const tps = (manual.predefined_tp_pips ?? []).map(Number).filter(n => Number.isFinite(n) && n > 0)
+  return tps.length > 0
+}
+
+/**
+ * Pending expiry for broker Limit/Stop sends and virtual range legs.
+ * Values are clamped to 1–24 hours; non-positive / invalid → 0 (no expiry).
+ */
+export function clampPendingExpiryHours(raw: unknown): number {
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n <= 0) return 0
+  return Math.max(1, Math.min(24, Math.floor(n)))
+}
+
 /** Build the order plan. Returns an empty plan with skip_reason when filtered out. */
 export function planManualOrders(args: {
   parsed: ParsedSignal
@@ -592,11 +622,7 @@ export function planManualOrders(args: {
     }
   }
 
-  // ── 2. Reverse direction ────────────────────────────────────────────────
-  const operation: MtOperation = manual.reverse_signal ? flipOperation(baseOperation) : baseOperation
-  const isBuy = operation.startsWith('Buy')
-
-  // ── 3. Resolve entry price (with channel prefer_entry on zones) ─────────
+  // ── 2. Resolve entry price (with channel prefer_entry on zones) ─────────
   let entry: number | null = parsed.entry_price != null ? Number(parsed.entry_price) : null
   if (entry != null && !Number.isFinite(entry)) entry = null
   if (entry == null && parsed.entry_zone_low != null && parsed.entry_zone_high != null) {
@@ -610,7 +636,16 @@ export function planManualOrders(args: {
   const entryOk = entry != null && Number.isFinite(entry) && entry > 0
   const entryAnchor = entryOk ? entry : null
 
+  // ── 3. Reverse direction (gated: only flip when predefined SL+TP drive geometry) ──
+  const effectiveReverse = manual.reverse_signal === true && reverseSignalGateSatisfied(manual, entryAnchor)
+  const opSplit: MtOperation = effectiveReverse ? flipOperation(baseOperation) : baseOperation
+  const isBuy = opSplit.startsWith('Buy')
+
   // ── 4. SL/TP derivation ─────────────────────────────────────────────────
+  // Precedence (highest wins on each side): predefined pip SL/TP overrides →
+  // channel SL/TP (after sl_in_pips / tp_in_pips conversion) → RR-for-SL
+  // (derive SL when missing but TPs exist) → RR-for-TPs (derive TPs when
+  // missing but SL exists).
   // Single source of truth for both pip price (used immediately below for
   // SL/TP/range step math) and pip value per std/mini/micro lot (surfaced
   // on PlannerResult.pipQuote for the executor's summary log and the UI).
@@ -695,22 +730,50 @@ export function planManualOrders(args: {
     finalTps = finalTps.map(tp => clampToStops(tp, true, entryAnchor) ?? tp)
   }
 
+  // ── 4c. Signal entry strictness: market vs limit execution ─────────────
+  // `opSplit` drives range-split semantics (pending-shaped signals skip virtual range).
+  // `opExec` is what we actually send: market when quote is still inside tolerance.
+  let opExec: MtOperation = opSplit
+  const tolPips = Number(manual.signal_entry_pip_tolerance ?? 10)
+  if (
+    manual.use_signal_entry_price === true
+    && entryAnchor != null
+    && pip > 0
+    && Number.isFinite(tolPips)
+    && tolPips >= 0
+    && ctx.liveBid != null
+    && ctx.liveAsk != null
+    && Number.isFinite(ctx.liveBid)
+    && Number.isFinite(ctx.liveAsk)
+  ) {
+    if (isBuy) {
+      const maxBuy = entryAnchor + tolPips * pip
+      opExec = ctx.liveAsk <= maxBuy ? 'Buy' : 'BuyLimit'
+    } else {
+      const minSell = entryAnchor - tolPips * pip
+      opExec = ctx.liveBid >= minSell ? 'Sell' : 'SellLimit'
+    }
+  }
+
   // ── 5. Multi-Trade lot splitting ────────────────────────────────────────
   const tradeStyle = manual.trade_style === 'multi' ? 'multi' : 'single'
 
+  const isMarketExec = opExec === 'Buy' || opExec === 'Sell'
   const orderBase = {
     symbol: resolvedSymbol,
-    operation,
-    price: entryAnchor != null ? roundPrice(entryAnchor) : roundPrice(entry),
+    operation: opExec,
+    price: isMarketExec
+      ? 0
+      : (entryAnchor != null ? roundPrice(entryAnchor) : roundPrice(entry)),
     slippage: slippage ?? 20,
     comment: commentPrefix,
     expertID: expertId,
   } satisfies Omit<OrderSendArgs, 'volume' | 'stoploss' | 'takeprofit' | 'expiration' | 'expirationType'>
 
   const expirationFields: { expiration?: string; expirationType?: OrderSendArgs['expirationType'] } = {}
-  if (operation.includes('Limit') || operation.includes('Stop')) {
-    const hours = Number(manual.pending_expiry_hours ?? 0)
-    if (Number.isFinite(hours) && hours > 0) {
+  if (opExec.includes('Limit') || opExec.includes('Stop')) {
+    const hours = clampPendingExpiryHours(manual.pending_expiry_hours)
+    if (hours > 0) {
       const exp = new Date(now.getTime() + hours * 60 * 60 * 1000)
       expirationFields.expiration = exp.toISOString()
       expirationFields.expirationType = 'Specified'
@@ -755,6 +818,10 @@ export function planManualOrders(args: {
         ...expirationFields,
       }],
       delay_ms,
+      anchor: { source: entryAnchor != null ? 'signal' : 'unknown', value: entryAnchor },
+      pip,
+      pipQuote,
+      isBuy,
       ...(combinedFallback ? { fallback_reason: combinedFallback } : {}),
       ...(partialPlan.partials.length > 0 ? { partialTps: partialPlan.partials } : {}),
     }
@@ -788,7 +855,10 @@ export function planManualOrders(args: {
   // math stays pure and testable. The planner only decides COUNTS here; pending
   // PRICES are computed at the executor against the live anchor (signal entry
   // → /Quote bid/ask → first-fill openPrice).
-  const baseIsPendingSignal = operation.includes('Limit') || operation.includes('Stop')
+  // Range split must follow whether the *signal* is pending-shaped (`opSplit`),
+  // not the downgraded market `opExec` used for immediate OrderSend — otherwise
+  // entry signals would incorrectly enable virtual range legs.
+  const baseIsPendingSignal = opSplit.includes('Limit') || opSplit.includes('Stop')
   const split = planRangeSplit({
     totalLegs,
     baseIsPendingSignal,
@@ -878,8 +948,8 @@ export function planManualOrders(args: {
   // class (stops_level / freeze_level / min-Limit-distance).
   const virtualPendings: VirtualPendingLeg[] = []
   if (effectiveRangeLegs > 0) {
-    const pendHours = Number(manual.pending_expiry_hours ?? 0)
-    const expiryHours = Number.isFinite(pendHours) && pendHours > 0 ? pendHours : undefined
+    const pendHours = clampPendingExpiryHours(manual.pending_expiry_hours)
+    const expiryHours = pendHours > 0 ? pendHours : undefined
 
     let stepIdx = 1
     for (let b = 0; b < bucketRows.length; b++) {

@@ -141,6 +141,13 @@ export interface ManualSettings {
   /** @deprecated Legacy lot-based range; replaced by `range_percent`. Stripped on load. */
   range_total_lot?: number
   reverse_signal?: boolean
+  /**
+   * When true (manual mode), compare live quote to signal entry ± pip tolerance:
+   * market fill if still acceptable, otherwise limit/stop at signal entry.
+   */
+  use_signal_entry_price?: boolean
+  /** Pips above (buy) / below (sell) entry within which a market order is allowed. */
+  signal_entry_pip_tolerance?: number
   use_predefined_sl_pips?: boolean
   predefined_sl_pips?: number
   use_predefined_tp_pips?: boolean

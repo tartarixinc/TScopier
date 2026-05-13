@@ -158,6 +158,8 @@ const DEFAULT_MANUAL_SETTINGS: ManualSettings = {
   close_worse_entries_pips: 30,
   close_worse_extra_pendings: 0,
   reverse_signal: false,
+  use_signal_entry_price: false,
+  signal_entry_pip_tolerance: 10,
   use_predefined_sl_pips: false,
   predefined_sl_pips: 30,
   use_predefined_tp_pips: false,
@@ -201,6 +203,11 @@ function splitIntEqual(count: number, total: number): number[] {
 function cloneTpLots(rows: ManualTpLot[] | undefined, fallback: ManualTpLot[]): ManualTpLot[] {
   const src = rows?.length ? rows : fallback
   return src.map(r => ({ ...r, lot: r.lot ?? 0.01 }))
+}
+
+function clonePredefinedTpPips(list: number[] | undefined): number[] {
+  const src = list?.length ? list : DEFAULT_MANUAL_SETTINGS.predefined_tp_pips
+  return src.map(n => (Number.isFinite(Number(n)) ? Number(n) : 0))
 }
 
 /** Sum percent across enabled rows. Disabled rows always contribute 0. */
@@ -299,13 +306,29 @@ function normalizeManualSettings(raw: unknown): ManualSettings {
     close_worse_entries: closeWorseEntries,
     close_worse_entries_pips: closeWorseEntriesPips,
     close_worse_extra_pendings: closeWorseExtraPendings,
+    use_signal_entry_price: (j as Record<string, unknown>).use_signal_entry_price === true,
+    signal_entry_pip_tolerance: Math.max(0, readNumber('signal_entry_pip_tolerance', DEFAULT_MANUAL_SETTINGS.signal_entry_pip_tolerance ?? 10)),
     symbol_mapping: Object.fromEntries(Object.entries(map).map(([k, v]) => [String(k).toUpperCase(), String(v).toUpperCase()])),
     symbols_exclude: Array.isArray(j.symbols_exclude) ? j.symbols_exclude.map(String).map(s => s.toUpperCase()) : [],
     tp_lots: tpFinal,
     predefined_tp_pips: Array.isArray(j.predefined_tp_pips) ? j.predefined_tp_pips.map(Number).filter(Number.isFinite) : DEFAULT_MANUAL_SETTINGS.predefined_tp_pips,
     rr_for_tps: Array.isArray(j.rr_for_tps) ? j.rr_for_tps.map(Number).filter(Number.isFinite) : DEFAULT_MANUAL_SETTINGS.rr_for_tps,
     trade_days: Array.isArray(j.trade_days) ? j.trade_days.map(Number).filter(Number.isFinite) : DEFAULT_MANUAL_SETTINGS.trade_days,
+    pending_expiry_hours: (() => {
+      const peRaw = readNumber('pending_expiry_hours', DEFAULT_MANUAL_SETTINGS.pending_expiry_hours ?? 1)
+      if (peRaw <= 0) return 0
+      return Math.max(1, Math.min(24, Math.floor(peRaw)))
+    })(),
   }
+}
+
+/** Settings required for reverse flip (planner also requires signal entry anchor at runtime). */
+function reverseSignalPlannerGateSettingsOk(ms: ManualSettings): boolean {
+  if (ms.use_predefined_sl_pips !== true || ms.use_predefined_tp_pips !== true) return false
+  const sl = Number(ms.predefined_sl_pips)
+  if (!Number.isFinite(sl) || sl <= 0) return false
+  const tps = (ms.predefined_tp_pips ?? []).map(Number).filter(n => Number.isFinite(n) && n > 0)
+  return tps.length > 0
 }
 
 function getPlatformIconPath(platform: string): string | null {
@@ -654,6 +677,40 @@ export function AccountConfigPage() {
       if (rows.length <= 1) return prev
       rows.splice(idx, 1)
       return { ...prev, manualSettings: { ...prev.manualSettings, tp_lots: sanitizeTpLots(rows) } }
+    })
+  }
+
+  const setPredefinedTpPipAt = (idx: number, raw: string) => {
+    setConfigDraft(prev => {
+      const list = clonePredefinedTpPips(prev.manualSettings.predefined_tp_pips)
+      if (idx < 0 || idx >= list.length) return prev
+      if (raw === '') {
+        list[idx] = 0
+      } else {
+        const n = Number(raw)
+        if (!Number.isFinite(n)) return prev
+        list[idx] = n
+      }
+      return { ...prev, manualSettings: { ...prev.manualSettings, predefined_tp_pips: list } }
+    })
+  }
+
+  const addPredefinedTpPipRow = () => {
+    setConfigDraft(prev => {
+      const list = clonePredefinedTpPips(prev.manualSettings.predefined_tp_pips)
+      const last = list[list.length - 1] ?? 0
+      const next = Number.isFinite(last) && last > 0 ? last + 20 : 20
+      list.push(next)
+      return { ...prev, manualSettings: { ...prev.manualSettings, predefined_tp_pips: list } }
+    })
+  }
+
+  const removePredefinedTpPipRow = (idx: number) => {
+    setConfigDraft(prev => {
+      const list = clonePredefinedTpPips(prev.manualSettings.predefined_tp_pips)
+      if (list.length <= 1) return prev
+      list.splice(idx, 1)
+      return { ...prev, manualSettings: { ...prev.manualSettings, predefined_tp_pips: list } }
     })
   }
 
@@ -1566,11 +1623,15 @@ export function AccountConfigPage() {
                                 <Select
                                   label="Reverse Signal"
                                   value={configDraft.manualSettings.reverse_signal ? 'yes' : 'no'}
-                                  onChange={e => setManual({ reverse_signal: e.target.value === 'yes' })}
+                                  onChange={e => {
+                                    const v = e.target.value === 'yes'
+                                    if (v && !reverseSignalPlannerGateSettingsOk(configDraft.manualSettings)) return
+                                    setManual({ reverse_signal: v })
+                                  }}
                                   options={[{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }]}
                                 />
                                 <Select
-                                  label="Add New Trades to Existing"
+                                  label="Add New Trade to Existing"
                                   value={configDraft.manualSettings.add_new_trades_to_existing ? 'yes' : 'no'}
                                   onChange={e => setManual({ add_new_trades_to_existing: e.target.value === 'yes' })}
                                   options={[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]}
@@ -1582,6 +1643,46 @@ export function AccountConfigPage() {
                                   options={[{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }]}
                                 />
                               </div>
+                              <p className="text-xs text-neutral-500">
+                                <strong>Reverse:</strong> flips buy/sell only when the signal has an entry price or zone{' '}
+                                <em>and</em> both predefined SL and TP are enabled with positive pip values — so mirrored risk uses your template, not the channel&apos;s stops.
+                              </p>
+                              <p className="text-xs text-neutral-500">
+                                <strong>Close on opposite:</strong> in manual mode, a new channel buy/sell closes any open trades on the same symbol facing the opposite way (channel direction, before reverse), cancels their virtual range pendings, then the new plan runs.
+                              </p>
+                              <p className="text-xs text-neutral-500">
+                                <strong>Add to existing:</strong> follow-up on the same side can refresh SL/TP (and partial-TP schedule) on the single open position when the Telegram message replies to the original or arrives within 30 minutes of that trade&apos;s open — avoids stacking duplicate entries. Multiple same-side opens skip merge.
+                              </p>
+                            </div>
+
+                            <div className="rounded-lg border border-neutral-200 p-3 space-y-3">
+                              <p className="text-sm font-medium text-neutral-800">Signal entry execution</p>
+                              <p className="text-xs text-neutral-500">
+                                When the signal includes an entry price (or zone), compare the live quote before sending.
+                                If price has moved too far past entry in the wrong direction, place a limit at the signal entry instead of a market order.
+                              </p>
+                              <div className="rounded-md border border-neutral-200 overflow-hidden">
+                                <div className="flex items-center justify-between gap-3 bg-white px-3 py-2.5">
+                                  <span className="text-sm font-medium text-neutral-800">Use Signal Entry Price</span>
+                                  <Toggle
+                                    checked={configDraft.manualSettings.use_signal_entry_price === true}
+                                    onChange={v => setManual({ use_signal_entry_price: v })}
+                                  />
+                                </div>
+                                {configDraft.manualSettings.use_signal_entry_price && (
+                                  <div className="border-t border-neutral-200 bg-neutral-50/80 px-3 py-3 space-y-2">
+                                    <Input
+                                      label="Pip tolerance"
+                                      type="number"
+                                      min={0}
+                                      step={1}
+                                      hint="Buy: market if ask ≤ entry + tolerance (pips); otherwise BuyLimit at entry. Sell: market if bid ≥ entry − tolerance; otherwise SellLimit at entry."
+                                      value={String(configDraft.manualSettings.signal_entry_pip_tolerance ?? 10)}
+                                      onChange={e => setManual({ signal_entry_pip_tolerance: Math.max(0, Number(e.target.value) || 0) })}
+                                    />
+                                  </div>
+                                )}
+                              </div>
                             </div>
 
                             <div className="rounded-lg border border-neutral-200 p-3 space-y-3">
@@ -1589,86 +1690,163 @@ export function AccountConfigPage() {
                               <p className="text-xs text-neutral-500">
                                 Override the signal&apos;s own stops/targets with your own fixed pip values
                                 or risk-reward multiples. Useful when channels post inconsistent levels.
+                                Precedence: predefined pip overrides, then channel SL/TP (after pip conversion), then R:R-for-SL, then R:R-for-TPs.
                               </p>
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                <label className="text-sm text-neutral-700 flex items-center gap-2">
-                                  <input
-                                    type="checkbox"
-                                    checked={configDraft.manualSettings.use_predefined_sl_pips === true}
-                                    onChange={e => setManual({ use_predefined_sl_pips: e.target.checked })}
-                                  />
-                                  Use Predefined SL Pips
-                                </label>
-                                {configDraft.manualSettings.use_predefined_sl_pips && (
-                                  <Input
-                                    label="Predefined SL Pips"
-                                    type="number"
-                                    hint={formatPipHint(Number(configDraft.manualSettings.predefined_sl_pips ?? 30) || 0) ?? undefined}
-                                    value={String(configDraft.manualSettings.predefined_sl_pips ?? 30)}
-                                    onChange={e => setManual({ predefined_sl_pips: Number(e.target.value) })}
-                                  />
-                                )}
-                                <label className="text-sm text-neutral-700 flex items-center gap-2">
-                                  <input
-                                    type="checkbox"
-                                    checked={configDraft.manualSettings.use_predefined_tp_pips === true}
-                                    onChange={e => setManual({ use_predefined_tp_pips: e.target.checked })}
-                                  />
-                                  Use Predefined TPs
-                                </label>
-                                {configDraft.manualSettings.use_predefined_tp_pips && (
-                                  <Input
-                                    label="Predefined TP Pips (comma)"
-                                    hint={(() => {
-                                      const h = formatPipHint(0)
-                                      return h ?? undefined
-                                    })()}
-                                    value={(configDraft.manualSettings.predefined_tp_pips ?? []).join(',')}
-                                    onChange={e => setManual({ predefined_tp_pips: e.target.value.split(',').map(n => Number(n.trim())).filter(Number.isFinite) })}
-                                  />
-                                )}
-                                <label className="text-sm text-neutral-700 flex items-center gap-2">
-                                  <input
-                                    type="checkbox"
-                                    checked={configDraft.manualSettings.rr_for_sl_enabled === true}
-                                    onChange={e => setManual({ rr_for_sl_enabled: e.target.checked })}
-                                  />
-                                  Enable R:R for SL
-                                </label>
-                                {configDraft.manualSettings.rr_for_sl_enabled && (
-                                  <Input
-                                    label="SL R:R"
-                                    type="number"
-                                    value={String(configDraft.manualSettings.rr_for_sl ?? 1)}
-                                    onChange={e => setManual({ rr_for_sl: Number(e.target.value) })}
-                                  />
-                                )}
-                                <label className="text-sm text-neutral-700 flex items-center gap-2">
-                                  <input
-                                    type="checkbox"
-                                    checked={configDraft.manualSettings.rr_for_tps_enabled === true}
-                                    onChange={e => setManual({ rr_for_tps_enabled: e.target.checked })}
-                                  />
-                                  Enable R:R for TPs
-                                </label>
-                                {configDraft.manualSettings.rr_for_tps_enabled && (
-                                  <Input
-                                    label="TP R:R values (comma)"
-                                    value={(configDraft.manualSettings.rr_for_tps ?? []).join(',')}
-                                    onChange={e => setManual({ rr_for_tps: e.target.value.split(',').map(n => Number(n.trim())).filter(Number.isFinite) })}
-                                  />
-                                )}
+                              <div className="space-y-3">
+                                <div className="rounded-md border border-neutral-200 overflow-hidden">
+                                  <div className="flex items-center justify-between gap-3 bg-white px-3 py-2.5">
+                                    <span className="text-sm font-medium text-neutral-800">Use Predefined SL Pips</span>
+                                    <Toggle
+                                      checked={configDraft.manualSettings.use_predefined_sl_pips === true}
+                                      onChange={v => setManual({ use_predefined_sl_pips: v })}
+                                    />
+                                  </div>
+                                  {configDraft.manualSettings.use_predefined_sl_pips && (
+                                    <div className="border-t border-neutral-200 bg-neutral-50/80 px-3 py-3 space-y-1">
+                                      <Input
+                                        label="Predefined SL Pips"
+                                        type="number"
+                                        hint={formatPipHint(Number(configDraft.manualSettings.predefined_sl_pips ?? 30) || 0) ?? undefined}
+                                        value={String(configDraft.manualSettings.predefined_sl_pips ?? 30)}
+                                        onChange={e => setManual({ predefined_sl_pips: Number(e.target.value) })}
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="rounded-md border border-neutral-200 overflow-hidden">
+                                  <div className="flex items-center justify-between gap-3 bg-white px-3 py-2.5">
+                                    <span className="text-sm font-medium text-neutral-800">Use Predefined TPs</span>
+                                    <Toggle
+                                      checked={configDraft.manualSettings.use_predefined_tp_pips === true}
+                                      onChange={v => {
+                                        if (!v) {
+                                          setManual({ use_predefined_tp_pips: false })
+                                          return
+                                        }
+                                        setConfigDraft(prev => {
+                                          let list = prev.manualSettings.predefined_tp_pips
+                                          if (!Array.isArray(list) || list.length === 0) {
+                                            list = [...DEFAULT_MANUAL_SETTINGS.predefined_tp_pips]
+                                          } else {
+                                            const filtered = list.map(n => Number(n)).filter(Number.isFinite)
+                                            list = filtered.length > 0 ? filtered : [...DEFAULT_MANUAL_SETTINGS.predefined_tp_pips]
+                                          }
+                                          return {
+                                            ...prev,
+                                            manualSettings: {
+                                              ...prev.manualSettings,
+                                              use_predefined_tp_pips: true,
+                                              predefined_tp_pips: list,
+                                            },
+                                          }
+                                        })
+                                      }}
+                                    />
+                                  </div>
+                                  {configDraft.manualSettings.use_predefined_tp_pips && (
+                                    <div className="border-t border-neutral-200 bg-neutral-50/80 px-3 py-3 space-y-3">
+                                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                        <p className="text-xs text-neutral-600">
+                                          Distance from entry to each take-profit, in pips (TP1, TP2, …). Same pattern as{' '}
+                                          <strong>Stops &amp; Targets</strong> — add or remove rows as needed.
+                                        </p>
+                                        <Button variant="ghost" size="sm" className="shrink-0 self-start sm:self-auto" onClick={addPredefinedTpPipRow}>
+                                          Add TP
+                                        </Button>
+                                      </div>
+                                      <div className="space-y-2">
+                                        {clonePredefinedTpPips(configDraft.manualSettings.predefined_tp_pips).map((pips, idx) => (
+                                          <div key={`predef-tp-${idx}`} className="grid grid-cols-12 gap-2 items-end">
+                                            <div className="col-span-10">
+                                              <Input
+                                                label={`TP${idx + 1} (pips)`}
+                                                type="number"
+                                                min={0}
+                                                step={1}
+                                                hint={formatPipHint(Number(pips) || 0) ?? undefined}
+                                                value={String(pips)}
+                                                onChange={e => setPredefinedTpPipAt(idx, e.target.value)}
+                                              />
+                                            </div>
+                                            <Button
+                                              className="col-span-2"
+                                              variant="ghost"
+                                              size="sm"
+                                              onClick={() => removePredefinedTpPipRow(idx)}
+                                            >
+                                              Remove
+                                            </Button>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="rounded-md border border-neutral-200 overflow-hidden">
+                                  <div className="flex items-center justify-between gap-3 bg-white px-3 py-2.5">
+                                    <span className="text-sm font-medium text-neutral-800">Enable R:R for SL</span>
+                                    <Toggle
+                                      checked={configDraft.manualSettings.rr_for_sl_enabled === true}
+                                      onChange={v => setManual({ rr_for_sl_enabled: v })}
+                                    />
+                                  </div>
+                                  {configDraft.manualSettings.rr_for_sl_enabled && (
+                                    <div className="border-t border-neutral-200 bg-neutral-50/80 px-3 py-3 space-y-1">
+                                      <Input
+                                        label="SL R:R"
+                                        type="number"
+                                        hint="When SL is omitted but TP exists: SL distance = (distance from entry to TP1) ÷ this ratio. Predefined pip SL (if on) and channel SL override this."
+                                        value={String(configDraft.manualSettings.rr_for_sl ?? 1)}
+                                        onChange={e => setManual({ rr_for_sl: Number(e.target.value) })}
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="rounded-md border border-neutral-200 overflow-hidden">
+                                  <div className="flex items-center justify-between gap-3 bg-white px-3 py-2.5">
+                                    <span className="text-sm font-medium text-neutral-800">Enable R:R for TPs</span>
+                                    <Toggle
+                                      checked={configDraft.manualSettings.rr_for_tps_enabled === true}
+                                      onChange={v => setManual({ rr_for_tps_enabled: v })}
+                                    />
+                                  </div>
+                                  {configDraft.manualSettings.rr_for_tps_enabled && (
+                                    <div className="border-t border-neutral-200 bg-neutral-50/80 px-3 py-3 space-y-1">
+                                      <Input
+                                        label="TP R:R values (comma)"
+                                        hint="When TPs are omitted but SL exists: each TP = entry ± (entry→SL distance) × each ratio. Predefined pip TPs (if on) and channel TPs override this."
+                                        value={(configDraft.manualSettings.rr_for_tps ?? []).join(',')}
+                                        onChange={e => setManual({ rr_for_tps: e.target.value.split(',').map(n => Number(n.trim())).filter(Number.isFinite) })}
+                                      />
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             </div>
 
                             <div className="rounded-lg border border-neutral-200 p-3 space-y-3">
                               <p className="text-sm font-medium text-neutral-800">Pending orders</p>
+                              <p className="text-xs text-neutral-500">
+                                Applied to broker Limit/Stop sends and worker virtual range legs. Set{' '}
+                                <code className="text-[11px]">WORKER_BROKER_PENDING_EXPIRY_SWEEP=true</code> on the worker to cancel stale TSCopier broker pendings past this TTL when order open time is available from the API.
+                              </p>
                               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                 <Input
                                   label="Pending Expiry (hours 1-24)"
                                   type="number"
+                                  min={1}
+                                  max={24}
+                                  step={1}
+                                  hint="Use 1–24 hours. Values are clamped in the planner; 0 in stored settings means no expiry (not recommended from this panel)."
                                   value={String(configDraft.manualSettings.pending_expiry_hours ?? 1)}
-                                  onChange={e => setManual({ pending_expiry_hours: Number(e.target.value) })}
+                                  onChange={e => {
+                                    const n = Number(e.target.value)
+                                    const v = Number.isFinite(n) ? Math.max(1, Math.min(24, Math.floor(n))) : 1
+                                    setManual({ pending_expiry_hours: v })
+                                  }}
                                 />
                               </div>
                             </div>

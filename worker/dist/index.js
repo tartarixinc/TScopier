@@ -10,6 +10,9 @@ const sessionManager_1 = require("./sessionManager");
 const authService_1 = require("./authService");
 const httpServer_1 = require("./httpServer");
 const tradeExecutor_1 = require("./tradeExecutor");
+const virtualPendingMonitor_1 = require("./virtualPendingMonitor");
+const cweCloseMonitor_1 = require("./cweCloseMonitor");
+const partialTpMonitor_1 = require("./partialTpMonitor");
 // Supabase Realtime needs a WebSocket transport in Node < 22.
 // Railway is currently running Node 20, so we provide ws explicitly.
 if (!globalThis.WebSocket) {
@@ -20,10 +23,16 @@ const sessionManager = new sessionManager_1.UserSessionManager(supabase);
 const authService = new authService_1.AuthService(supabase, sessionManager);
 const httpServer = (0, httpServer_1.startHttpServer)(authService, sessionManager);
 const tradeExecutor = new tradeExecutor_1.TradeExecutor(supabase);
+const virtualPendingMonitor = new virtualPendingMonitor_1.VirtualPendingMonitor(supabase);
+const cweCloseMonitor = new cweCloseMonitor_1.CweCloseMonitor(supabase);
+const partialTpMonitor = new partialTpMonitor_1.PartialTpMonitor(supabase);
 async function main() {
     console.log('[worker] TSCopier Telegram worker starting...');
     await sessionManager.loadAll();
     await tradeExecutor.start();
+    virtualPendingMonitor.start();
+    cweCloseMonitor.start();
+    partialTpMonitor.start();
     setInterval(async () => {
         await sessionManager.syncSessions();
     }, 30000);
@@ -32,6 +41,9 @@ async function main() {
         httpServer.close();
         authService.shutdown();
         tradeExecutor.stop();
+        virtualPendingMonitor.stop();
+        cweCloseMonitor.stop();
+        partialTpMonitor.stop();
         await sessionManager.disconnectAll();
         process.exit(0);
     };
