@@ -7,6 +7,7 @@ import {
   planManualOrders,
   planRangeSplit,
   planSinglePartialTps,
+  resolvedParsedEntryPrice,
   reverseSignalGateSatisfied,
   type ManualSettings,
   type ParsedSignal,
@@ -292,7 +293,7 @@ test('planManualOrders: signal entry strictness buy → market when ask within t
   })
   assert.equal(plan.orders.length, 1)
   assert.equal(plan.orders[0]!.operation, 'Buy')
-  assert.equal(plan.orders[0]!.price, 0)
+  assert.equal(plan.orders[0]!.price, entry)
 })
 
 test('planManualOrders: signal entry strictness buy → limit when ask above tolerance', () => {
@@ -342,7 +343,7 @@ test('planManualOrders: signal entry strictness sell → market when bid within 
     commentPrefix: 'TSCopier:abc',
   })
   assert.equal(plan.orders[0]!.operation, 'Sell')
-  assert.equal(plan.orders[0]!.price, 0)
+  assert.equal(plan.orders[0]!.price, entry)
 })
 
 test('planManualOrders: signal entry strictness sell → limit when bid below tolerance', () => {
@@ -516,6 +517,15 @@ test('parsedHasExplicitEntryAnchor: false for bare action, true for price or zon
   assert.equal(parsedHasExplicitEntryAnchor({ ...baseParsed, entry_price: null, entry_zone_low: null, entry_zone_high: null }), false)
   assert.equal(parsedHasExplicitEntryAnchor({ ...baseParsed, entry_price: 4500, entry_zone_low: null, entry_zone_high: null }), true)
   assert.equal(parsedHasExplicitEntryAnchor({ ...baseParsed, entry_price: null, entry_zone_low: 1, entry_zone_high: 2 }), true)
+})
+
+test('resolvedParsedEntryPrice: string decimals and camelCase entryPrice', () => {
+  assert.equal(
+    resolvedParsedEntryPrice({ ...baseParsed, entry_price: '2650.5' as unknown as number, entry_zone_low: null, entry_zone_high: null }),
+    2650.5,
+  )
+  const camel = { ...baseParsed, entry_price: null, entry_zone_low: null, entry_zone_high: null } as ParsedSignal
+  assert.equal(resolvedParsedEntryPrice({ ...camel, entryPrice: 4000 } as unknown as ParsedSignal), 4000)
 })
 
 test('planManualOrders: use_signal_entry_price skips plan without explicit entry', () => {

@@ -6,6 +6,8 @@ exports.planRangeSplit = planRangeSplit;
 exports.computeCwOverrideTp = computeCwOverrideTp;
 exports.reverseSignalGateSatisfied = reverseSignalGateSatisfied;
 exports.clampPendingExpiryHours = clampPendingExpiryHours;
+exports.resolvedParsedEntryPrice = resolvedParsedEntryPrice;
+exports.resolvedParsedEntryZone = resolvedParsedEntryZone;
 exports.parsedHasExplicitEntryAnchor = parsedHasExplicitEntryAnchor;
 exports.planManualOrders = planManualOrders;
 const pipCalculator_1 = require("./pipCalculator");
@@ -231,6 +233,33 @@ function clampPendingExpiryHours(raw) {
         return 0;
     return Math.max(1, Math.min(24, Math.floor(n)));
 }
+function readPositiveNum(v) {
+    if (v === undefined || v === null || v === '')
+        return null;
+    const n = typeof v === 'number' ? v : Number(v);
+    if (!Number.isFinite(n) || n <= 0)
+        return null;
+    return n;
+}
+/**
+ * Best-effort entry price from `parsed_data` (handles string decimals and
+ * occasional camelCase keys from non–parse-signal writers).
+ */
+function resolvedParsedEntryPrice(parsed) {
+    const ext = parsed;
+    return (readPositiveNum(parsed.entry_price)
+        ?? readPositiveNum(ext.entryPrice)
+        ?? readPositiveNum(ext.entry_point));
+}
+/** Entry zone low/high with the same coercion as {@link resolvedParsedEntryPrice}. */
+function resolvedParsedEntryZone(parsed) {
+    const ext = parsed;
+    const lo = readPositiveNum(parsed.entry_zone_low) ?? readPositiveNum(ext.entryZoneLow);
+    const hi = readPositiveNum(parsed.entry_zone_high) ?? readPositiveNum(ext.entryZoneHigh);
+    if (lo == null || hi == null)
+        return null;
+    return { lo: Math.min(lo, hi), hi: Math.max(lo, hi) };
+}
 /**
  * True when the parsed signal includes an explicit entry **price** or **zone**
  * (not a bare market “buy now”). Used with `use_signal_entry_price` so strict
@@ -238,16 +267,10 @@ function clampPendingExpiryHours(raw) {
  * specifies where to work the entry.
  */
 function parsedHasExplicitEntryAnchor(parsed) {
-    if (parsed.entry_price != null) {
-        const n = Number(parsed.entry_price);
-        return Number.isFinite(n) && n > 0;
-    }
-    if (parsed.entry_zone_low != null && parsed.entry_zone_high != null) {
-        const lo = Number(parsed.entry_zone_low);
-        const hi = Number(parsed.entry_zone_high);
-        return Number.isFinite(lo) && Number.isFinite(hi) && lo > 0 && hi > 0;
-    }
-    return false;
+    if (resolvedParsedEntryPrice(parsed) != null)
+        return true;
+    const z = resolvedParsedEntryZone(parsed);
+    return z != null && z.lo > 0 && z.hi > 0;
 }
 /** Planner / executor skip when `use_signal_entry_price` is on but the parse has no entry anchor. */
 exports.SKIP_REASON_SIGNAL_ENTRY_REQUIRED = 'signal_entry_price_requires_explicit_entry';
@@ -272,15 +295,12 @@ function planManualOrders(args) {
         return { orders: [], skip_reason: exports.SKIP_REASON_SIGNAL_ENTRY_REQUIRED, delay_ms };
     }
     // ── 2. Resolve entry price (with channel prefer_entry on zones) ─────────
-    let entry = parsed.entry_price != null ? Number(parsed.entry_price) : null;
-    if (entry != null && !Number.isFinite(entry))
-        entry = null;
-    if (entry == null && parsed.entry_zone_low != null && parsed.entry_zone_high != null) {
-        const lo = Number(parsed.entry_zone_low);
-        const hi = Number(parsed.entry_zone_high);
-        if (Number.isFinite(lo) && Number.isFinite(hi)) {
+    let entry = resolvedParsedEntryPrice(parsed);
+    if (entry == null) {
+        const z = resolvedParsedEntryZone(parsed);
+        if (z) {
             const prefer = channelKeywords?.additional?.prefer_entry ?? 'first_price';
-            entry = prefer === 'last_price' ? Math.max(lo, hi) : Math.min(lo, hi);
+            entry = prefer === 'last_price' ? z.hi : z.lo;
         }
     }
     const entryOk = entry != null && Number.isFinite(entry) && entry > 0;
@@ -399,12 +419,23 @@ function planManualOrders(args) {
     // ── 5. Multi-Trade lot splitting ────────────────────────────────────────
     const tradeStyle = manual.trade_style === 'multi' ? 'multi' : 'single';
     const isMarketExec = opExec === 'Buy' || opExec === 'Sell';
+    const roundedEntry = entryAnchor != null && Number.isFinite(entryAnchor) && entryAnchor > 0
+        ? roundPrice(entryAnchor)
+        : 0;
+    let orderPrice = 0;
+    if (!isMarketExec) {
+        orderPrice = roundedEntry;
+    }
+    else if (manual.use_signal_entry_price === true && roundedEntry > 0) {
+        // With strict signal entry, always send the parsed anchor on the wire so
+        // MetatraderAPI / MT see the intended reference price (and our stop clamp
+        // uses the same ref for market legs).
+        orderPrice = roundedEntry;
+    }
     const orderBase = {
         symbol: resolvedSymbol,
         operation: opExec,
-        price: isMarketExec
-            ? 0
-            : (entryAnchor != null ? roundPrice(entryAnchor) : roundPrice(entry)),
+        price: orderPrice,
         slippage: slippage ?? 20,
         comment: commentPrefix,
         expertID: expertId,

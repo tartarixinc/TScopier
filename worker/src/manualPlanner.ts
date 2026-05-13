@@ -582,6 +582,35 @@ export function clampPendingExpiryHours(raw: unknown): number {
   return Math.max(1, Math.min(24, Math.floor(n)))
 }
 
+function readPositiveNum(v: unknown): number | null {
+  if (v === undefined || v === null || v === '') return null
+  const n = typeof v === 'number' ? v : Number(v)
+  if (!Number.isFinite(n) || n <= 0) return null
+  return n
+}
+
+/**
+ * Best-effort entry price from `parsed_data` (handles string decimals and
+ * occasional camelCase keys from non–parse-signal writers).
+ */
+export function resolvedParsedEntryPrice(parsed: ParsedSignal): number | null {
+  const ext = parsed as unknown as Record<string, unknown>
+  return (
+    readPositiveNum(parsed.entry_price)
+    ?? readPositiveNum(ext.entryPrice)
+    ?? readPositiveNum(ext.entry_point)
+  )
+}
+
+/** Entry zone low/high with the same coercion as {@link resolvedParsedEntryPrice}. */
+export function resolvedParsedEntryZone(parsed: ParsedSignal): { lo: number; hi: number } | null {
+  const ext = parsed as unknown as Record<string, unknown>
+  const lo = readPositiveNum(parsed.entry_zone_low) ?? readPositiveNum(ext.entryZoneLow)
+  const hi = readPositiveNum(parsed.entry_zone_high) ?? readPositiveNum(ext.entryZoneHigh)
+  if (lo == null || hi == null) return null
+  return { lo: Math.min(lo, hi), hi: Math.max(lo, hi) }
+}
+
 /**
  * True when the parsed signal includes an explicit entry **price** or **zone**
  * (not a bare market “buy now”). Used with `use_signal_entry_price` so strict
@@ -589,16 +618,9 @@ export function clampPendingExpiryHours(raw: unknown): number {
  * specifies where to work the entry.
  */
 export function parsedHasExplicitEntryAnchor(parsed: ParsedSignal): boolean {
-  if (parsed.entry_price != null) {
-    const n = Number(parsed.entry_price)
-    return Number.isFinite(n) && n > 0
-  }
-  if (parsed.entry_zone_low != null && parsed.entry_zone_high != null) {
-    const lo = Number(parsed.entry_zone_low)
-    const hi = Number(parsed.entry_zone_high)
-    return Number.isFinite(lo) && Number.isFinite(hi) && lo > 0 && hi > 0
-  }
-  return false
+  if (resolvedParsedEntryPrice(parsed) != null) return true
+  const z = resolvedParsedEntryZone(parsed)
+  return z != null && z.lo > 0 && z.hi > 0
 }
 
 /** Planner / executor skip when `use_signal_entry_price` is on but the parse has no entry anchor. */
@@ -650,14 +672,12 @@ export function planManualOrders(args: {
   }
 
   // ── 2. Resolve entry price (with channel prefer_entry on zones) ─────────
-  let entry: number | null = parsed.entry_price != null ? Number(parsed.entry_price) : null
-  if (entry != null && !Number.isFinite(entry)) entry = null
-  if (entry == null && parsed.entry_zone_low != null && parsed.entry_zone_high != null) {
-    const lo = Number(parsed.entry_zone_low)
-    const hi = Number(parsed.entry_zone_high)
-    if (Number.isFinite(lo) && Number.isFinite(hi)) {
+  let entry: number | null = resolvedParsedEntryPrice(parsed)
+  if (entry == null) {
+    const z = resolvedParsedEntryZone(parsed)
+    if (z) {
       const prefer = channelKeywords?.additional?.prefer_entry ?? 'first_price'
-      entry = prefer === 'last_price' ? Math.max(lo, hi) : Math.min(lo, hi)
+      entry = prefer === 'last_price' ? z.hi : z.lo
     }
   }
   const entryOk = entry != null && Number.isFinite(entry) && entry > 0
@@ -786,12 +806,24 @@ export function planManualOrders(args: {
   const tradeStyle = manual.trade_style === 'multi' ? 'multi' : 'single'
 
   const isMarketExec = opExec === 'Buy' || opExec === 'Sell'
+  const roundedEntry =
+    entryAnchor != null && Number.isFinite(entryAnchor) && entryAnchor > 0
+      ? roundPrice(entryAnchor)
+      : 0
+  let orderPrice = 0
+  if (!isMarketExec) {
+    orderPrice = roundedEntry
+  } else if (manual.use_signal_entry_price === true && roundedEntry > 0) {
+    // With strict signal entry, always send the parsed anchor on the wire so
+    // MetatraderAPI / MT see the intended reference price (and our stop clamp
+    // uses the same ref for market legs).
+    orderPrice = roundedEntry
+  }
+
   const orderBase = {
     symbol: resolvedSymbol,
     operation: opExec,
-    price: isMarketExec
-      ? 0
-      : (entryAnchor != null ? roundPrice(entryAnchor) : roundPrice(entry)),
+    price: orderPrice,
     slippage: slippage ?? 20,
     comment: commentPrefix,
     expertID: expertId,

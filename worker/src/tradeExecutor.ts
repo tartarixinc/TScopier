@@ -12,6 +12,8 @@ import {
   computeCwOverrideTp,
   parsedHasExplicitEntryAnchor,
   planManualOrders,
+  resolvedParsedEntryPrice,
+  resolvedParsedEntryZone,
   SKIP_REASON_SIGNAL_ENTRY_REQUIRED,
   type ChannelKeywords,
   type ManualSettings,
@@ -901,12 +903,14 @@ export class TradeExecutor {
     if (!replyOk && !withinWindow) return false
 
     // Planner / predefined SL-TP need an entry anchor. Re-use the live trade's fill when the new parse has none.
+    const rpe0 = resolvedParsedEntryPrice(parsed)
+    const rzo0 = resolvedParsedEntryZone(parsed)
     const plannerParsed: PlannerParsedSignal = {
       action: parsed.action,
       symbol: parsed.symbol,
-      entry_price: parsed.entry_price,
-      entry_zone_low: parsed.entry_zone_low,
-      entry_zone_high: parsed.entry_zone_high,
+      entry_price: rpe0,
+      entry_zone_low: rzo0?.lo ?? parsed.entry_zone_low,
+      entry_zone_high: rzo0?.hi ?? parsed.entry_zone_high,
       sl: parsed.sl,
       tp: parsed.tp,
       lot_size: parsed.lot_size,
@@ -914,33 +918,13 @@ export class TradeExecutor {
       partial_close_fraction: parsed.partial_close_fraction,
       raw_instruction: parsed.raw_instruction,
     }
-    const hasParsedEntry =
-      (plannerParsed.entry_price != null
-        && Number.isFinite(Number(plannerParsed.entry_price))
-        && Number(plannerParsed.entry_price) > 0)
-      || (plannerParsed.entry_zone_low != null
-        && plannerParsed.entry_zone_high != null
-        && Number.isFinite(Number(plannerParsed.entry_zone_low))
-        && Number.isFinite(Number(plannerParsed.entry_zone_high))
-        && Number(plannerParsed.entry_zone_low) > 0
-        && Number(plannerParsed.entry_zone_high) > 0)
-    if (!hasParsedEntry) {
+    if (!parsedHasExplicitEntryAnchor(plannerParsed)) {
       const ep = Number(newest.entry_price)
       if (Number.isFinite(ep) && ep > 0) {
         plannerParsed.entry_price = ep
       }
     }
-    const hasPlannerEntry =
-      (plannerParsed.entry_price != null
-        && Number.isFinite(Number(plannerParsed.entry_price))
-        && Number(plannerParsed.entry_price) > 0)
-      || (plannerParsed.entry_zone_low != null
-        && plannerParsed.entry_zone_high != null
-        && Number.isFinite(Number(plannerParsed.entry_zone_low))
-        && Number.isFinite(Number(plannerParsed.entry_zone_high))
-        && Number(plannerParsed.entry_zone_low) > 0
-        && Number(plannerParsed.entry_zone_high) > 0)
-    if (!hasPlannerEntry) {
+    if (!parsedHasExplicitEntryAnchor(plannerParsed)) {
       try {
         const q = strictEntryPrefetch ?? await this.api.quote(uuid, symbol)
         plannerParsed.entry_price = direction === 'buy' ? q.ask : q.bid
@@ -1365,12 +1349,14 @@ export class TradeExecutor {
     // SL & TP / pending expiry / reverse all apply consistently.
     let plan: PlannerResult
     if (isManual) {
+      const rpe = resolvedParsedEntryPrice(parsed)
+      const rzo = resolvedParsedEntryZone(parsed)
       const plannerParsed: PlannerParsedSignal = {
         action: parsed.action,
         symbol: parsed.symbol,
-        entry_price: parsed.entry_price,
-        entry_zone_low: parsed.entry_zone_low,
-        entry_zone_high: parsed.entry_zone_high,
+        entry_price: rpe,
+        entry_zone_low: rzo?.lo ?? parsed.entry_zone_low,
+        entry_zone_high: rzo?.hi ?? parsed.entry_zone_high,
         sl: parsed.sl,
         tp: parsed.tp,
         lot_size: parsed.lot_size,
@@ -1408,7 +1394,7 @@ export class TradeExecutor {
           symbol,
           operation: op,
           volume: baseLot,
-          price: parsed.entry_price ?? 0,
+          price: resolvedParsedEntryPrice(parsed) ?? 0,
           stoploss: parsed.sl ?? 0,
           takeprofit: parsed.tp?.[0] ?? 0,
           slippage: 20,
