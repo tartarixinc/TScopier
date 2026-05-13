@@ -1515,6 +1515,7 @@ class TradeExecutor {
                     request_payload: args,
                     response_payload: { ticket: result.ticket, latency_ms: latencyMs, leg: leg.idx + 1, total: totalCount },
                 });
+                return true;
             }
             catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);
@@ -1528,12 +1529,28 @@ class TradeExecutor {
                     request_payload: args,
                     error_message: msg,
                 });
+                return false;
             }
         };
         // All immediates fan out in parallel. Virtual pendings are already
         // persisted; the worker monitor + edge sweep will fire them on trigger.
-        await Promise.allSettled(legs.map(sendLeg));
-        return { openedOrMerged: true };
+        const sendResults = await Promise.allSettled(legs.map(sendLeg));
+        const anyImmediateOpened = sendResults.some(r => r.status === 'fulfilled' && r.value === true);
+        if (virtualPendings.length > 0 && !anyImmediateOpened) {
+            const { error: stripErr } = await this.supabase
+                .from('range_pending_legs')
+                .delete()
+                .eq('signal_id', signal.id)
+                .eq('broker_account_id', broker.id)
+                .eq('symbol', symbol);
+            if (stripErr) {
+                console.warn(`[tradeExecutor] strip orphan virtual pendings failed signal=${signal.id} broker=${broker.id}: ${stripErr.message}`);
+            }
+            else {
+                console.warn(`[tradeExecutor] stripped virtual pendings (zero successful immediates) signal=${signal.id} broker=${broker.id} symbol=${symbol}`);
+            }
+        }
+        return { openedOrMerged: anyImmediateOpened };
     }
     async logSendSkipped(signal, broker, reason, extra) {
         try {
