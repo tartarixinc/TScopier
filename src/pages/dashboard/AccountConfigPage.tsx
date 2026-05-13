@@ -1651,7 +1651,7 @@ export function AccountConfigPage() {
                                 <strong>Close on opposite:</strong> in manual mode, a new channel buy/sell closes any open trades on the same symbol facing the opposite way (channel direction, before reverse), cancels their virtual range pendings, then the new plan runs.
                               </p>
                               <p className="text-xs text-neutral-500">
-                                <strong>Add to existing:</strong> follow-up on the same side can refresh SL/TP (and partial-TP schedule) on the single open position when the Telegram message replies to the original or arrives within 30 minutes of that trade&apos;s open — avoids stacking duplicate entries. Multiple same-side opens skip merge.
+                                <strong>Add to existing:</strong> follow-up on the same side can refresh SL/TP (and partial-TP schedule) on the **most recent** open position on that symbol when the Telegram message replies to the original or arrives within **4 hours** of that trade&apos;s open (timestamps come from the database, not only Realtime payloads). Uses your predefined/risk settings even if the follow-up message does not repeat every price field. If merge cannot run, a normal new entry is sent.
                               </p>
                             </div>
 

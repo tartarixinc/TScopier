@@ -116,7 +116,7 @@ interface SymbolListCacheEntry {
 const SYMBOL_CACHE_TTL_MS = 10 * 60_000
 const SYMBOL_LIST_TTL_MS = 30 * 60_000
 /** Follow-up signal merge: same-side update allowed within this window of the open trade's `opened_at`. */
-const MERGE_SIGNAL_LINK_WINDOW_MS = 30 * 60_000
+const MERGE_SIGNAL_LINK_WINDOW_MS = 4 * 60 * 60_000
 
 function isMtUuid(s: string | null | undefined): boolean {
   if (!s) return false
@@ -824,15 +824,30 @@ export class TradeExecutor {
     if (a !== 'buy' && a !== 'sell') return false
     const direction = a === 'buy' ? 'buy' : 'sell'
 
-    const hasParamUpdate =
-      (typeof parsed.sl === 'number' && Number.isFinite(parsed.sl) && parsed.sl > 0)
-      || (Array.isArray(parsed.tp) && parsed.tp.some(x => typeof x === 'number' && Number.isFinite(x) && x > 0))
-      || (parsed.entry_price != null && Number.isFinite(Number(parsed.entry_price)) && Number(parsed.entry_price) > 0)
-      || (parsed.entry_zone_low != null
-        && parsed.entry_zone_high != null
-        && Number.isFinite(Number(parsed.entry_zone_low))
-        && Number.isFinite(Number(parsed.entry_zone_high)))
-    if (!hasParamUpdate) return false
+    // Realtime payloads may omit `created_at` / reply fields — load authoritative row for merge linking.
+    let mergeSignal: SignalRow = signal
+    try {
+      const { data: fullSig } = await this.supabase
+        .from('signals')
+        .select('created_at, reply_to_message_id, telegram_message_id')
+        .eq('id', signal.id)
+        .maybeSingle()
+      const row = fullSig as {
+        created_at?: string
+        reply_to_message_id?: string | null
+        telegram_message_id?: string | null
+      } | null
+      if (row) {
+        mergeSignal = {
+          ...signal,
+          created_at: signal.created_at ?? row.created_at,
+          reply_to_message_id: signal.reply_to_message_id ?? row.reply_to_message_id ?? null,
+          telegram_message_id: signal.telegram_message_id ?? row.telegram_message_id ?? null,
+        }
+      }
+    } catch {
+      // best-effort; keep mergeSignal = signal
+    }
 
     const { data: sameDir, error: openErr } = await this.supabase
       .from('trades')
@@ -841,8 +856,9 @@ export class TradeExecutor {
       .eq('symbol', symbol)
       .eq('status', 'open')
       .eq('direction', direction)
+      .order('opened_at', { ascending: false })
+      .limit(12)
     if (openErr || !sameDir?.length) return false
-    if (sameDir.length !== 1) return false
 
     const trade = sameDir[0]!
     if (!trade.signal_id) return false
@@ -852,16 +868,17 @@ export class TradeExecutor {
       .select('telegram_message_id')
       .eq('id', trade.signal_id)
       .maybeSingle()
-    const origTg = origSig?.telegram_message_id != null ? String(origSig.telegram_message_id) : ''
-    const replyTo = signal.reply_to_message_id != null ? String(signal.reply_to_message_id) : ''
+    const origTg = String(origSig?.telegram_message_id ?? '').trim()
+    const replyTo = String(mergeSignal.reply_to_message_id ?? '').trim()
     const replyOk = Boolean(replyTo && origTg && replyTo === origTg)
 
-    const sigTime = signal.created_at ? new Date(signal.created_at).getTime() : Date.now()
+    const sigTime = mergeSignal.created_at ? new Date(mergeSignal.created_at).getTime() : Date.now()
     const tradeOpen = new Date(trade.opened_at).getTime()
     const dt = sigTime - tradeOpen
     const withinWindow = dt >= -120_000 && dt <= MERGE_SIGNAL_LINK_WINDOW_MS
     if (!replyOk && !withinWindow) return false
 
+    // Planner / predefined SL-TP need an entry anchor. Re-use the live trade's fill when the new parse has none.
     const plannerParsed: PlannerParsedSignal = {
       action: parsed.action,
       symbol: parsed.symbol,
@@ -875,11 +892,58 @@ export class TradeExecutor {
       partial_close_fraction: parsed.partial_close_fraction,
       raw_instruction: parsed.raw_instruction,
     }
+    const hasParsedEntry =
+      (plannerParsed.entry_price != null
+        && Number.isFinite(Number(plannerParsed.entry_price))
+        && Number(plannerParsed.entry_price) > 0)
+      || (plannerParsed.entry_zone_low != null
+        && plannerParsed.entry_zone_high != null
+        && Number.isFinite(Number(plannerParsed.entry_zone_low))
+        && Number.isFinite(Number(plannerParsed.entry_zone_high))
+        && Number(plannerParsed.entry_zone_low) > 0
+        && Number(plannerParsed.entry_zone_high) > 0)
+    if (!hasParsedEntry) {
+      const ep = Number(trade.entry_price)
+      if (Number.isFinite(ep) && ep > 0) {
+        plannerParsed.entry_price = ep
+      }
+    }
+    const hasPlannerEntry =
+      (plannerParsed.entry_price != null
+        && Number.isFinite(Number(plannerParsed.entry_price))
+        && Number(plannerParsed.entry_price) > 0)
+      || (plannerParsed.entry_zone_low != null
+        && plannerParsed.entry_zone_high != null
+        && Number.isFinite(Number(plannerParsed.entry_zone_low))
+        && Number.isFinite(Number(plannerParsed.entry_zone_high))
+        && Number(plannerParsed.entry_zone_low) > 0
+        && Number(plannerParsed.entry_zone_high) > 0)
+    if (!hasPlannerEntry) {
+      try {
+        const q = strictEntryPrefetch ?? await this.api.quote(uuid, symbol)
+        plannerParsed.entry_price = direction === 'buy' ? q.ask : q.bid
+      } catch {
+        console.warn(`[tradeExecutor] merge skipped: no entry anchor signal=${signal.id} symbol=${symbol}`)
+        return false
+      }
+    }
+
+    // Merge only adjusts SL/TP on an existing position — plan as a single immediate leg (ignore range / multi split).
+    const manualForMerge: ManualSettings = {
+      ...manual,
+      trade_style: 'single',
+      range_trading: false,
+    }
+
+    // Merge applies SL/TP to an open **position**; plan as market-side ops so we never emit a pending-only leg.
+    const mergeBaseOp: MtOperation =
+      op === 'Buy' || op === 'Sell' ? op : direction === 'buy' ? 'Buy' : 'Sell'
+
     const plan = planManualOrders({
       parsed: plannerParsed,
       resolvedSymbol: symbol,
-      baseOperation: op,
-      manual,
+      baseOperation: mergeBaseOp,
+      manual: manualForMerge,
       channelKeywords,
       manualLot: baseLot,
       ctx: {
