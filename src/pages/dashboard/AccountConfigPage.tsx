@@ -373,6 +373,7 @@ export function AccountConfigPage() {
   const [activeManualSubTab, setActiveManualSubTab] = useState<ManualSubTabId>('symbol_routing')
   const [symbolMappingText, setSymbolMappingText] = useState('')
   const [configSaving, setConfigSaving] = useState(false)
+  const [configSavedAt, setConfigSavedAt] = useState<number | null>(null)
   const [showPlatformModal, setShowPlatformModal] = useState(false)
   const [showAddBroker, setShowAddBroker] = useState(false)
   const [form, setForm] = useState<BrokerForm>(emptyForm)
@@ -496,6 +497,12 @@ export function AccountConfigPage() {
     if (!user) return
     void loadData()
   }, [user])
+
+  useEffect(() => {
+    if (configSavedAt == null) return
+    const t = setTimeout(() => setConfigSavedAt(null), 2500)
+    return () => clearTimeout(t)
+  }, [configSavedAt])
 
   const loadData = async () => {
     const [brokersRes, channelsRes] = await Promise.all([
@@ -695,9 +702,11 @@ export function AccountConfigPage() {
     if (upErr) { setError(upErr.message); return }
 
     if (data) {
-      setBrokers(prev => prev.map(b => (b.id === configAccount.id ? (data as BrokerAccount) : b)))
+      const fresh = data as BrokerAccount
+      setBrokers(prev => prev.map(b => (b.id === configAccount.id ? fresh : b)))
+      setConfigAccount(fresh)
     }
-    closeConfigureModal()
+    setConfigSavedAt(Date.now())
   }
 
   // ── Channel summary helper for cards ───────────────────────────────────
@@ -1834,7 +1843,10 @@ export function AccountConfigPage() {
               </div>
             </div>
 
-            <div className="px-6 py-4 border-t border-neutral-100 flex items-center justify-end gap-2">
+            <div className="px-6 py-4 border-t border-neutral-100 flex items-center justify-end gap-3">
+              {configSavedAt != null && (
+                <span className="text-xs text-success-600 transition-opacity">Saved</span>
+              )}
               <Button variant="ghost" onClick={closeConfigureModal} disabled={configSaving}>Cancel</Button>
               <Button loading={configSaving} onClick={() => void saveConfigureModal()}>Save</Button>
             </div>
