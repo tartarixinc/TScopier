@@ -40,7 +40,7 @@ function resolveOpExecAndStrict(args) {
         && (opSplit.includes('Limit') || opSplit.includes('Stop'))) {
         // Single- and multi-trade immediates: never send broker pendings here — MT often
         // rejects "Invalid price" when the parsed limit/stop price is on the wrong side
-        // of the live quote. Virtual range legs still key off `opSplit` in planMulti.
+        // of the live quote. `planMultiManualOrders` keys range split off this op too.
         opExec = isBuy ? 'Buy' : 'Sell';
     }
     const isMarketExec = opExec === 'Buy' || opExec === 'Sell';

@@ -1,4 +1,4 @@
-import type { MtOperation, OrderSendArgs } from '../metatraderapi'
+import type { OrderSendArgs } from '../metatraderapi'
 import type { PipQuote } from '../pipCalculator'
 import type {
   ManualSettings,
@@ -16,8 +16,6 @@ export interface PlanMultiManualOrdersArgs {
   orderBase: Omit<OrderSendArgs, 'volume' | 'stoploss' | 'takeprofit' | 'expiration' | 'expirationType'>
   expirationFields: { expiration?: string; expirationType?: OrderSendArgs['expirationType'] }
   strictEntry: PlannerStrictEntry | undefined
-  /** Original signal op after reverse gate (for range split pending detection). */
-  opSplit: MtOperation
   manual: ManualSettings
   manualLot: number
   ctx: PlannerContext
@@ -41,7 +39,6 @@ export function planMultiManualOrders(args: PlanMultiManualOrdersArgs): PlannerR
     orderBase,
     expirationFields,
     strictEntry,
-    opSplit,
     manual,
     manualLot,
     ctx,
@@ -102,7 +99,12 @@ export function planMultiManualOrders(args: PlanMultiManualOrdersArgs): PlannerR
   const totalLegs = Math.max(1, Math.min(ABS_MAX_LEGS, Math.floor(manualUnits / targetUnits)))
   const targetLeg = unitsToLot(targetUnits)
 
-  const baseIsPendingSignal = opSplit.includes('Limit') || opSplit.includes('Stop')
+  // Use the *effective* immediate op (market vs broker pending), not `opSplit`.
+  // Signals with an entry used to map to BuyLimit for SL/TP geometry, but we
+  // execute immediates as Buy/Sell at price 0 — virtual range legs are not
+  // broker pendings on that path, so range layering must stay enabled.
+  const baseIsPendingSignal =
+    orderBase.operation.includes('Limit') || orderBase.operation.includes('Stop')
   const split = planRangeSplit({
     totalLegs,
     baseIsPendingSignal,

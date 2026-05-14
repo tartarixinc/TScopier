@@ -216,6 +216,25 @@ test('planManualOrders: range emits virtualPendings (not OrderSendArgs)', () => 
   }
 })
 
+test('planManualOrders: multi + BuyLimit + range uses market immediates but still emits virtual pendings', () => {
+  const plan = planManualOrders({
+    parsed: { ...baseParsed, entry_price: 1850 },
+    resolvedSymbol: 'XAUUSD',
+    baseOperation: 'BuyLimit',
+    manual: baseManual,
+    channelKeywords: null,
+    manualLot: 1.0,
+    ctx: baseCtx,
+    commentPrefix: 'TSCopier:abc',
+  })
+  assert.equal(plan.orders.length, 5)
+  assert.equal(plan.virtualPendings?.length, 5)
+  for (const o of plan.orders) {
+    assert.equal(o.operation, 'Buy')
+    assert.equal(o.price, 0)
+  }
+})
+
 test('planManualOrders: range off → no virtualPendings', () => {
   const plan = planManualOrders({
     parsed: { ...baseParsed, entry_price: 1850 },

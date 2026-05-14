@@ -141,7 +141,6 @@ export function planManualOrders(args: {
 
   return planMultiManualOrders({
     ...singleShared,
-    opSplit,
     commentPrefix,
     expertId,
     slippage,

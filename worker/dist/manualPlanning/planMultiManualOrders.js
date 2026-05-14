@@ -4,7 +4,7 @@ exports.planMultiManualOrders = planMultiManualOrders;
 const manualSettings_1 = require("./manualSettings");
 const rangeSplit_1 = require("./rangeSplit");
 function planMultiManualOrders(args) {
-    const { orderBase, expirationFields, strictEntry, opSplit, manual, manualLot, ctx, commentPrefix, expertId, slippage, finalSl, finalTps, entryAnchor, isBuy, pip, pipQuote, delay_ms, roundPrice, minStopDist, buildSingleOrder, } = args;
+    const { orderBase, expirationFields, strictEntry, manual, manualLot, ctx, commentPrefix, expertId, slippage, finalSl, finalTps, entryAnchor, isBuy, pip, pipQuote, delay_ms, roundPrice, minStopDist, buildSingleOrder, } = args;
     const minLot = Number.isFinite(ctx.minLot) && ctx.minLot > 0 ? ctx.minLot : 0.01;
     const lotStep = Number.isFinite(ctx.lotStep) && ctx.lotStep > 0 ? ctx.lotStep : 0.01;
     const FP_EPS = 1e-9;
@@ -43,7 +43,11 @@ function planMultiManualOrders(args) {
     }
     const totalLegs = Math.max(1, Math.min(ABS_MAX_LEGS, Math.floor(manualUnits / targetUnits)));
     const targetLeg = unitsToLot(targetUnits);
-    const baseIsPendingSignal = opSplit.includes('Limit') || opSplit.includes('Stop');
+    // Use the *effective* immediate op (market vs broker pending), not `opSplit`.
+    // Signals with an entry used to map to BuyLimit for SL/TP geometry, but we
+    // execute immediates as Buy/Sell at price 0 — virtual range legs are not
+    // broker pendings on that path, so range layering must stay enabled.
+    const baseIsPendingSignal = orderBase.operation.includes('Limit') || orderBase.operation.includes('Stop');
     const split = (0, rangeSplit_1.planRangeSplit)({
         totalLegs,
         baseIsPendingSignal,

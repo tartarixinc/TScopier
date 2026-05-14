@@ -106,7 +106,6 @@ function planManualOrders(args) {
     }
     return (0, planMultiManualOrders_1.planMultiManualOrders)({
         ...singleShared,
-        opSplit,
         commentPrefix,
         expertId,
         slippage,
