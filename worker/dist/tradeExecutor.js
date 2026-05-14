@@ -1624,83 +1624,85 @@ class TradeExecutor {
             const se = plan.strictEntry;
             const digits = Math.max(0, Math.min(8, Number(params?.digits) || 5));
             const entryPx = Number(se.entryPrice.toFixed(digits));
-            const anchorForRow = anchor != null && Number.isFinite(anchor) && anchor > 0 ? Number(anchor.toFixed(digits)) : entryPx;
             const pendHours = (0, manualPlanner_1.clampPendingExpiryHours)(manual.pending_expiry_hours);
             const nowMs = Date.now();
             const expiresAt = pendHours > 0
                 ? new Date(nowMs + pendHours * 60 * 60 * 1000).toISOString()
                 : null;
-            const point = Number(params?.point ?? 0);
-            const safe = Math.max(Number(params?.stopsLevel) || 0, Number(params?.freezeLevel) || 0);
-            const zoneHi = safe > 0 && point > 0 ? anchorForRow + (safe + 2) * point : null;
-            const zoneLo = safe > 0 && point > 0 ? anchorForRow - (safe + 2) * point : null;
-            if (zoneHi != null && zoneLo != null && entryPx > zoneLo && entryPx < zoneHi) {
-                console.warn(`[tradeExecutor] strict entry inside stops zone; skipping broker pending signal=${signal.id} broker=${broker.id} symbol=${symbol} entry=${entryPx}`);
+            const op = se.isBuy ? 'BuyLimit' : 'SellLimit';
+            const first = capped[0];
+            let aggVol = 0;
+            for (const o of capped)
+                aggVol += Number(o.volume) || 0;
+            const vol = roundLot(capped.length === 1 ? Number(first.volume) || 0 : aggVol, params);
+            const baseComment = first.comment ?? `TSCopier:${signal.id.slice(0, 8)}`;
+            const comment = capped.length === 1 ? `${baseComment}:strictEntry` : `${baseComment}:strictEntryAgg`;
+            // Broker pending expiry is enforced in `signalEntryPendingMonitor` via `expires_at`
+            // (MetatraderAPI GET /OrderSend rejects many `expiration` payloads for pendings).
+            const isSingleTradeStyle = manual.trade_style !== 'multi';
+            const takeprofitFromPlan = first.takeprofit ?? 0;
+            let takeprofitPx = takeprofitFromPlan;
+            if (isSingleTradeStyle) {
+                const lastParsed = (0, manualPlanner_1.lastPositiveParsedTpPrice)(parsed);
+                if (lastParsed != null && lastParsed > 0) {
+                    takeprofitPx = lastParsed;
+                }
             }
-            else {
-                const op = se.isBuy ? 'BuyLimit' : 'SellLimit';
-                const first = capped[0];
-                let aggVol = 0;
-                for (const o of capped)
-                    aggVol += Number(o.volume) || 0;
-                const vol = roundLot(capped.length === 1 ? Number(first.volume) || 0 : aggVol, params);
-                const baseComment = first.comment ?? `TSCopier:${signal.id.slice(0, 8)}`;
-                const comment = capped.length === 1 ? `${baseComment}:strictEntry` : `${baseComment}:strictEntryAgg`;
-                // Broker pending expiry is enforced in `signalEntryPendingMonitor` via `expires_at`
-                // (MetatraderAPI GET /OrderSend rejects many `expiration` payloads for pendings).
-                const isSingleTradeStyle = manual.trade_style !== 'multi';
-                const takeprofitFromPlan = first.takeprofit ?? 0;
-                let takeprofitPx = takeprofitFromPlan;
-                if (isSingleTradeStyle) {
-                    const lastParsed = (0, manualPlanner_1.lastPositiveParsedTpPrice)(parsed);
-                    if (lastParsed != null && lastParsed > 0) {
-                        takeprofitPx = lastParsed;
+            const takeprofitRounded = Number.isFinite(takeprofitPx) && takeprofitPx > 0
+                ? Number(takeprofitPx.toFixed(digits))
+                : 0;
+            const sendArgs = {
+                symbol,
+                operation: op,
+                volume: vol,
+                price: entryPx,
+                stoploss: first.stoploss ?? 0,
+                takeprofit: takeprofitRounded,
+                slippage: first.slippage ?? 20,
+                comment,
+                expertID: first.expertID ?? 909090,
+            };
+            const clamped = clampOrderStops(sendArgs, params);
+            if (clamped.adjustments.length > 0) {
+                console.warn(`[tradeExecutor] strict entry pending stops clamped signal=${signal.id} broker=${broker.id}: ${clamped.adjustments.join(', ')}`);
+            }
+            try {
+                const result = await this.api.orderSend(uuid, clamped.args);
+                const ticket = result.ticket;
+                const isBuyLeg = se.isBuy;
+                const tradeInsert = await this.supabase
+                    .from('trades')
+                    .insert({
+                    user_id: signal.user_id,
+                    signal_id: signal.id,
+                    telegram_channel_id: signal.channel_id,
+                    broker_account_id: broker.id,
+                    metaapi_order_id: String(ticket),
+                    symbol,
+                    direction: isBuyLeg ? 'buy' : 'sell',
+                    entry_price: entryPx,
+                    sl: clamped.args.stoploss && clamped.args.stoploss > 0 ? clamped.args.stoploss : null,
+                    tp: clamped.args.takeprofit && clamped.args.takeprofit > 0 ? clamped.args.takeprofit : null,
+                    lot_size: result.lots ?? vol,
+                    status: 'pending',
+                    opened_at: new Date().toISOString(),
+                    cwe_close_price: null,
+                })
+                    .select('id')
+                    .maybeSingle();
+                if (tradeInsert.error) {
+                    console.error(`[tradeExecutor] trades INSERT failed after strict pending OrderSend signal=${signal.id} broker=${broker.id} ticket=${ticket}: ${tradeInsert.error.message}`);
+                    try {
+                        await this.api.orderClose(uuid, { ticket });
+                    }
+                    catch {
+                        /* best-effort rollback */
                     }
                 }
-                const takeprofitRounded = Number.isFinite(takeprofitPx) && takeprofitPx > 0
-                    ? Number(takeprofitPx.toFixed(digits))
-                    : 0;
-                const sendArgs = {
-                    symbol,
-                    operation: op,
-                    volume: vol,
-                    price: entryPx,
-                    stoploss: first.stoploss ?? 0,
-                    takeprofit: takeprofitRounded,
-                    slippage: first.slippage ?? 20,
-                    comment,
-                    expertID: first.expertID ?? 909090,
-                };
-                const clamped = clampOrderStops(sendArgs, params);
-                if (clamped.adjustments.length > 0) {
-                    console.warn(`[tradeExecutor] strict entry pending stops clamped signal=${signal.id} broker=${broker.id}: ${clamped.adjustments.join(', ')}`);
-                }
-                try {
-                    const result = await this.api.orderSend(uuid, clamped.args);
-                    const ticket = result.ticket;
-                    const isBuyLeg = se.isBuy;
-                    const tradeInsert = await this.supabase
-                        .from('trades')
-                        .insert({
-                        user_id: signal.user_id,
-                        signal_id: signal.id,
-                        telegram_channel_id: signal.channel_id,
-                        broker_account_id: broker.id,
-                        metaapi_order_id: String(ticket),
-                        symbol,
-                        direction: isBuyLeg ? 'buy' : 'sell',
-                        entry_price: entryPx,
-                        sl: clamped.args.stoploss && clamped.args.stoploss > 0 ? clamped.args.stoploss : null,
-                        tp: clamped.args.takeprofit && clamped.args.takeprofit > 0 ? clamped.args.takeprofit : null,
-                        lot_size: result.lots ?? vol,
-                        status: 'pending',
-                        opened_at: new Date().toISOString(),
-                        cwe_close_price: null,
-                    })
-                        .select('id')
-                        .maybeSingle();
-                    if (tradeInsert.error) {
-                        console.error(`[tradeExecutor] trades INSERT failed after strict pending OrderSend signal=${signal.id} broker=${broker.id} ticket=${ticket}: ${tradeInsert.error.message}`);
+                else {
+                    const tradeId = tradeInsert.data?.id ?? null;
+                    if (!tradeId) {
+                        console.error(`[tradeExecutor] trades INSERT returned no id after strict pending OrderSend signal=${signal.id} broker=${broker.id} ticket=${ticket}`);
                         try {
                             await this.api.orderClose(uuid, { ticket });
                         }
@@ -1709,9 +1711,33 @@ class TradeExecutor {
                         }
                     }
                     else {
-                        const tradeId = tradeInsert.data?.id ?? null;
-                        if (!tradeId) {
-                            console.error(`[tradeExecutor] trades INSERT returned no id after strict pending OrderSend signal=${signal.id} broker=${broker.id} ticket=${ticket}`);
+                        const partialTpPlan = isSingleTradeStyle && capped.length === 1 && plan.partialTps?.length ? plan.partialTps : null;
+                        const { error: sepErr } = await this.supabase.from('signal_entry_pending_orders').insert({
+                            signal_id: signal.id,
+                            user_id: signal.user_id,
+                            broker_account_id: broker.id,
+                            metaapi_account_id: uuid,
+                            symbol,
+                            trade_id: tradeId,
+                            is_buy: se.isBuy,
+                            operation: op,
+                            entry_price: entryPx,
+                            volume: vol,
+                            stoploss: clamped.args.stoploss && clamped.args.stoploss > 0 ? clamped.args.stoploss : null,
+                            takeprofit: clamped.args.takeprofit && clamped.args.takeprofit > 0 ? clamped.args.takeprofit : null,
+                            slippage: clamped.args.slippage ?? 20,
+                            comment: clamped.args.comment ?? comment,
+                            expert_id: clamped.args.expertID ?? null,
+                            broker_ticket: String(ticket),
+                            status: 'broker_pending',
+                            expires_at: expiresAt,
+                            partial_tp_plan: partialTpPlan,
+                        });
+                        if (sepErr) {
+                            console.error(`[tradeExecutor] signal_entry_pending_orders INSERT failed signal=${signal.id} broker=${broker.id}: ${sepErr.message}`);
+                            if (tradeId) {
+                                await this.supabase.from('trades').delete().eq('id', tradeId);
+                            }
                             try {
                                 await this.api.orderClose(uuid, { ticket });
                             }
@@ -1720,83 +1746,47 @@ class TradeExecutor {
                             }
                         }
                         else {
-                            const partialTpPlan = isSingleTradeStyle && capped.length === 1 && plan.partialTps?.length ? plan.partialTps : null;
-                            const { error: sepErr } = await this.supabase.from('signal_entry_pending_orders').insert({
-                                signal_id: signal.id,
-                                user_id: signal.user_id,
-                                broker_account_id: broker.id,
-                                metaapi_account_id: uuid,
-                                symbol,
-                                trade_id: tradeId,
-                                is_buy: se.isBuy,
-                                operation: op,
-                                entry_price: entryPx,
-                                volume: vol,
-                                stoploss: clamped.args.stoploss && clamped.args.stoploss > 0 ? clamped.args.stoploss : null,
-                                takeprofit: clamped.args.takeprofit && clamped.args.takeprofit > 0 ? clamped.args.takeprofit : null,
-                                slippage: clamped.args.slippage ?? 20,
-                                comment: clamped.args.comment ?? comment,
-                                expert_id: clamped.args.expertID ?? null,
-                                broker_ticket: String(ticket),
-                                status: 'broker_pending',
-                                expires_at: expiresAt,
-                                partial_tp_plan: partialTpPlan,
-                            });
-                            if (sepErr) {
-                                console.error(`[tradeExecutor] signal_entry_pending_orders INSERT failed signal=${signal.id} broker=${broker.id}: ${sepErr.message}`);
-                                if (tradeId) {
-                                    await this.supabase.from('trades').delete().eq('id', tradeId);
-                                }
-                                try {
-                                    await this.api.orderClose(uuid, { ticket });
-                                }
-                                catch {
-                                    /* best-effort rollback */
-                                }
+                            strictBrokerPlaced = true;
+                            try {
+                                await this.supabase.from('trade_execution_logs').insert({
+                                    user_id: signal.user_id,
+                                    signal_id: signal.id,
+                                    broker_account_id: broker.id,
+                                    action: 'signal_entry_pending_placed',
+                                    status: 'success',
+                                    request_payload: {
+                                        ticket,
+                                        operation: op,
+                                        entry_price: entryPx,
+                                        volume: vol,
+                                        symbol,
+                                    },
+                                    response_payload: { trade_id: tradeId },
+                                });
                             }
-                            else {
-                                strictBrokerPlaced = true;
-                                try {
-                                    await this.supabase.from('trade_execution_logs').insert({
-                                        user_id: signal.user_id,
-                                        signal_id: signal.id,
-                                        broker_account_id: broker.id,
-                                        action: 'signal_entry_pending_placed',
-                                        status: 'success',
-                                        request_payload: {
-                                            ticket,
-                                            operation: op,
-                                            entry_price: entryPx,
-                                            volume: vol,
-                                            symbol,
-                                        },
-                                        response_payload: { trade_id: tradeId },
-                                    });
-                                }
-                                catch {
-                                    /* best-effort */
-                                }
+                            catch {
+                                /* best-effort */
                             }
                         }
                     }
                 }
-                catch (err) {
-                    const msg = err instanceof Error ? err.message : String(err);
-                    console.error(`[tradeExecutor] strict entry broker OrderSend failed signal=${signal.id} broker=${broker.id} op=${op} price=${entryPx}: ${msg}`);
-                    try {
-                        await this.supabase.from('trade_execution_logs').insert({
-                            user_id: signal.user_id,
-                            signal_id: signal.id,
-                            broker_account_id: broker.id,
-                            action: 'signal_entry_pending_failed',
-                            status: 'failed',
-                            request_payload: { operation: op, entry_price: entryPx, symbol },
-                            error_message: msg,
-                        });
-                    }
-                    catch {
-                        /* best-effort */
-                    }
+            }
+            catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                console.error(`[tradeExecutor] strict entry broker OrderSend failed signal=${signal.id} broker=${broker.id} op=${op} price=${entryPx}: ${msg}`);
+                try {
+                    await this.supabase.from('trade_execution_logs').insert({
+                        user_id: signal.user_id,
+                        signal_id: signal.id,
+                        broker_account_id: broker.id,
+                        action: 'signal_entry_pending_failed',
+                        status: 'failed',
+                        request_payload: { operation: op, entry_price: entryPx, symbol },
+                        error_message: msg,
+                    });
+                }
+                catch {
+                    /* best-effort */
                 }
             }
         }

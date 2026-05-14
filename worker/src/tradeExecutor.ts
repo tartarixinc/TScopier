@@ -1935,23 +1935,12 @@ export class TradeExecutor {
       const se = plan.strictEntry
       const digits = Math.max(0, Math.min(8, Number(params?.digits) || 5))
       const entryPx = Number(se.entryPrice.toFixed(digits))
-      const anchorForRow =
-        anchor != null && Number.isFinite(anchor) && anchor > 0 ? Number(anchor.toFixed(digits)) : entryPx
       const pendHours = clampPendingExpiryHours(manual.pending_expiry_hours)
       const nowMs = Date.now()
       const expiresAt = pendHours > 0
         ? new Date(nowMs + pendHours * 60 * 60 * 1000).toISOString()
         : null
-      const point = Number(params?.point ?? 0)
-      const safe = Math.max(Number(params?.stopsLevel) || 0, Number(params?.freezeLevel) || 0)
-      const zoneHi = safe > 0 && point > 0 ? anchorForRow + (safe + 2) * point : null
-      const zoneLo = safe > 0 && point > 0 ? anchorForRow - (safe + 2) * point : null
-      if (zoneHi != null && zoneLo != null && entryPx > zoneLo && entryPx < zoneHi) {
-        console.warn(
-          `[tradeExecutor] strict entry inside stops zone; skipping broker pending signal=${signal.id} broker=${broker.id} symbol=${symbol} entry=${entryPx}`,
-        )
-      } else {
-        const op: MtOperation = se.isBuy ? 'BuyLimit' : 'SellLimit'
+      const op: MtOperation = se.isBuy ? 'BuyLimit' : 'SellLimit'
         const first = capped[0]!
         let aggVol = 0
         for (const o of capped) aggVol += Number(o.volume) || 0
@@ -2112,7 +2101,6 @@ export class TradeExecutor {
             /* best-effort */
           }
         }
-      }
     }
 
     // ── Materialize virtual pendings into range_pending_legs ───────────────

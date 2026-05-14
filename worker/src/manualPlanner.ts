@@ -75,7 +75,7 @@ export interface ManualSettings {
   /** @deprecated Replaced by `range_percent`. */
   range_total_lot?: number
   reverse_signal?: boolean
-  use_signal_entry_price?: boolean
+  use_signal_entry_price?: boolean | string | number
   signal_entry_pip_tolerance?: number
   use_predefined_sl_pips?: boolean
   predefined_sl_pips?: number
@@ -95,9 +95,21 @@ export interface ManualSettings {
   trade_days?: number[]
 }
 
+/** True when `manual_settings.use_signal_entry_price` is enabled (tolerates string/number from JSON). */
+export function manualUseSignalEntryPriceOn(manual: ManualSettings): boolean {
+  const v = manual.use_signal_entry_price as unknown
+  if (v === true || v === 1) return true
+  if (v === false || v === 0 || v == null) return false
+  if (typeof v === 'string') {
+    const s = v.trim().toLowerCase()
+    return s === 'true' || s === '1' || s === 'yes'
+  }
+  return false
+}
+
 /** True when planner/executor should apply strict signal-entry routing (single trade only). */
 export function signalEntryPriceStrictEnabled(manual: ManualSettings): boolean {
-  return manual.use_signal_entry_price === true && manual.trade_style !== 'multi'
+  return manualUseSignalEntryPriceOn(manual) && manual.trade_style !== 'multi'
 }
 
 export interface ChannelKeywords {
@@ -850,10 +862,14 @@ export function planManualOrders(args: {
   let opExec: MtOperation = opSplit
   if (signalEntryPriceStrictEnabled(manual) && parsedHasExplicitEntryAnchor(parsed) && entryAnchor != null) {
     opExec = isBuy ? 'Buy' : 'Sell'
-  } else if (manual.trade_style !== 'multi' && !signalEntryPriceStrictEnabled(manual)) {
-    // "Use Signal Entry Price" off + single trade: always market execute at the broker's
-    // current price. Do not send BuyLimit/SellLimit + expiration — MT / MetaTraderAPI often
-    // rejects those expiration payloads ("Invalid order expiration date") even when entry exists.
+  } else if (
+    manual.trade_style !== 'multi'
+    && !signalEntryPriceStrictEnabled(manual)
+    && (opSplit.includes('Limit') || opSplit.includes('Stop'))
+  ) {
+    // "Use Signal Entry Price" off + single trade: if the parser shaped a pending op, execute at
+    // market so we never attach pending `expiration` (often rejected as invalid by MT). Bare
+    // Buy/Sell are left unchanged.
     opExec = isBuy ? 'Buy' : 'Sell'
   }
 

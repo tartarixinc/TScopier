@@ -387,6 +387,27 @@ test('planManualOrders: single trade + use_signal_entry_price off uses Buy/Sell 
   assert.equal(o.expirationType, undefined)
 })
 
+test('planManualOrders: single+strict off+bare Buy stays Buy (no redundant op flip)', () => {
+  const plan = planManualOrders({
+    parsed: { ...baseParsed, entry_price: null, entry_zone_low: null, entry_zone_high: null },
+    resolvedSymbol: 'XAUUSD',
+    baseOperation: 'Buy',
+    manual: {
+      ...baseManual,
+      trade_style: 'single',
+      range_trading: false,
+      use_signal_entry_price: false,
+    },
+    channelKeywords: null,
+    manualLot: 1.0,
+    ctx: baseCtx,
+    commentPrefix: 'TSCopier:abc',
+  })
+  assert.equal(plan.orders.length, 1)
+  assert.equal(plan.orders[0]!.operation, 'Buy')
+  assert.equal(plan.orders[0]!.price, 0)
+})
+
 // ── planSinglePartialTps ───────────────────────────────────────────────────
 // The pure helper that turns the user's percent rows (50 / 30 / 20) into a
 // concrete partial-close schedule for single-mode trades. Verifies that the
@@ -577,6 +598,14 @@ test('signalEntryPriceStrictEnabled: false when trade_style is multi', () => {
       ...baseManual,
       trade_style: 'single',
       use_signal_entry_price: true,
+    }),
+    true,
+  )
+  assert.equal(
+    signalEntryPriceStrictEnabled({
+      ...baseManual,
+      trade_style: 'single',
+      use_signal_entry_price: 'true' as unknown as boolean,
     }),
     true,
   )

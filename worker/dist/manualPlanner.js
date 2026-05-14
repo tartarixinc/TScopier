@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SKIP_REASON_SIGNAL_ENTRY_REQUIRED = void 0;
+exports.manualUseSignalEntryPriceOn = manualUseSignalEntryPriceOn;
 exports.signalEntryPriceStrictEnabled = signalEntryPriceStrictEnabled;
 exports.strictSignalEntryQuoteAllowsImmediate = strictSignalEntryQuoteAllowsImmediate;
 exports.lastPositiveParsedTpPrice = lastPositiveParsedTpPrice;
@@ -14,9 +15,22 @@ exports.resolvedParsedEntryZone = resolvedParsedEntryZone;
 exports.parsedHasExplicitEntryAnchor = parsedHasExplicitEntryAnchor;
 exports.planManualOrders = planManualOrders;
 const pipCalculator_1 = require("./pipCalculator");
+/** True when `manual_settings.use_signal_entry_price` is enabled (tolerates string/number from JSON). */
+function manualUseSignalEntryPriceOn(manual) {
+    const v = manual.use_signal_entry_price;
+    if (v === true || v === 1)
+        return true;
+    if (v === false || v === 0 || v == null)
+        return false;
+    if (typeof v === 'string') {
+        const s = v.trim().toLowerCase();
+        return s === 'true' || s === '1' || s === 'yes';
+    }
+    return false;
+}
 /** True when planner/executor should apply strict signal-entry routing (single trade only). */
 function signalEntryPriceStrictEnabled(manual) {
-    return manual.use_signal_entry_price === true && manual.trade_style !== 'multi';
+    return manualUseSignalEntryPriceOn(manual) && manual.trade_style !== 'multi';
 }
 /**
  * True when the live quote is already at or better than the signal entry for immediate
@@ -441,10 +455,12 @@ function planManualOrders(args) {
     if (signalEntryPriceStrictEnabled(manual) && parsedHasExplicitEntryAnchor(parsed) && entryAnchor != null) {
         opExec = isBuy ? 'Buy' : 'Sell';
     }
-    else if (manual.trade_style !== 'multi' && !signalEntryPriceStrictEnabled(manual)) {
-        // "Use Signal Entry Price" off + single trade: always market execute at the broker's
-        // current price. Do not send BuyLimit/SellLimit + expiration — MT / MetaTraderAPI often
-        // rejects those expiration payloads ("Invalid order expiration date") even when entry exists.
+    else if (manual.trade_style !== 'multi'
+        && !signalEntryPriceStrictEnabled(manual)
+        && (opSplit.includes('Limit') || opSplit.includes('Stop'))) {
+        // "Use Signal Entry Price" off + single trade: if the parser shaped a pending op, execute at
+        // market so we never attach pending `expiration` (often rejected as invalid by MT). Bare
+        // Buy/Sell are left unchanged.
         opExec = isBuy ? 'Buy' : 'Sell';
     }
     // ── 5. Multi-Trade lot splitting ────────────────────────────────────────
