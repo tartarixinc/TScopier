@@ -119,6 +119,8 @@ class VirtualPendingMonitor {
             .from('range_pending_legs')
             .select('*')
             .eq('status', 'pending')
+            .not('comment', 'ilike', '%:strictEntry%')
+            .not('comment', 'ilike', '%:strictEntryAgg%')
             .limit(500);
         if (error) {
             console.error('[virtualPendingMonitor] select failed:', error.message);
@@ -401,7 +403,9 @@ class VirtualPendingMonitor {
             .eq('metaapi_account_id', metaapiAccountId)
             .eq('symbol', symbol)
             .in('signal_id', signalIds)
-            .in('status', ['pending', 'claimed']);
+            .in('status', ['pending', 'claimed'])
+            .not('comment', 'ilike', '%:strictEntry%')
+            .not('comment', 'ilike', '%:strictEntryAgg%');
         if (error) {
             console.warn(`[virtualPendingMonitor] fetchShallowActiveSteps failed: ${error.message}`);
             return out;

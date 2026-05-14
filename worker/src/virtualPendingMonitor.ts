@@ -37,8 +37,9 @@ import {
  *   • Ladder discipline: at most one virtual leg fires per (signal, broker,
  *     symbol) per tick — the shallowest triggered rung with no shallower
  *     `pending`/`claimed` row — so one volatile quote cannot machine-gun every
- *     deeper rung in the same millisecond. `step_idx = 0` is reserved for
- *     strict signal-entry deferrals (same trigger price as the signal anchor).
+ *     deeper rung in the same millisecond. Strict signal-entry deferrals use
+ *     broker limit orders (`signal_entry_pending_orders`), not `step_idx = 0`
+ *     rows in this table.
  */
 
 interface PendingRow {
@@ -203,6 +204,8 @@ export class VirtualPendingMonitor {
       .from('range_pending_legs')
       .select('*')
       .eq('status', 'pending')
+      .not('comment', 'ilike', '%:strictEntry%')
+      .not('comment', 'ilike', '%:strictEntryAgg%')
       .limit(500)
     if (error) {
       console.error('[virtualPendingMonitor] select failed:', error.message)
@@ -499,6 +502,8 @@ export class VirtualPendingMonitor {
       .eq('symbol', symbol)
       .in('signal_id', signalIds)
       .in('status', ['pending', 'claimed'])
+      .not('comment', 'ilike', '%:strictEntry%')
+      .not('comment', 'ilike', '%:strictEntryAgg%')
     if (error) {
       console.warn(`[virtualPendingMonitor] fetchShallowActiveSteps failed: ${error.message}`)
       return out

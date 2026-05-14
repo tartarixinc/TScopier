@@ -226,8 +226,9 @@ export interface PlannerAnchor {
 /**
  * When `use_signal_entry_price` is on and the parse has an explicit entry anchor, the executor
  * compares live bid/ask to {@link entryPrice}:
- *   Buy  → immediate market only if ask ≤ entry; else defer via `range_pending_legs`.
- *   Sell → immediate market only if bid ≥ entry; else defer.
+ *   Buy  → immediate market only if ask ≤ entry; else a broker **BuyLimit** at the entry
+ *   (`signal_entry_pending_orders` + `trades` pending).
+ *   Sell → immediate market only if bid ≥ entry; else a broker **SellLimit** at the entry.
  */
 export interface PlannerStrictEntry {
   /** Rounded signal entry anchor (single price from entry or zone + prefer_entry). */
@@ -392,7 +393,9 @@ export function planSinglePartialTps(args: PlanSinglePartialTpsArgs): PlanSingle
 export interface PlannerResult {
   /** Concrete OrderSend payloads to issue immediately as MARKET orders. The
    *  range-trading "averaging-down" legs are NOT in here — they live in
-   *  `virtualPendings` and are materialized into `range_pending_legs`. */
+   *  `virtualPendings` and are materialized into `range_pending_legs`. When
+   *  `use_signal_entry_price` defers entry, the executor places broker BuyLimit /
+   *  SellLimit orders tracked in `signal_entry_pending_orders` (not in this array). */
   orders: OrderSendArgs[]
   /** Range-trading legs that are NOT placed at the broker as Limit orders.
    *  The executor persists them into `range_pending_legs` with a computed

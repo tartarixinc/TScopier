@@ -1658,7 +1658,7 @@ export function AccountConfigPage() {
                             <div className="rounded-lg border border-neutral-200 p-3 space-y-3">
                               <p className="text-sm font-medium text-neutral-800">Signal entry execution</p>
                               <p className="text-xs text-neutral-500">
-                                With <strong>Use Signal Entry Price</strong> enabled, the signal must include an explicit entry in the parse (price, zone, @ price, labels like &quot;Entry Price:&quot;, or &quot;buy/sell at …&quot;). After any channel delay, the worker compares the <strong>live</strong> quote to that entry: <strong>Buy</strong> fills immediately only when ask is at or below the entry; if ask is above the entry it stores a virtual pending at the entry (same DB path as range pendings) and opens with a market order when bid reaches the entry. <strong>Sell</strong> is the inverse (immediate when bid is at or above entry; otherwise wait until ask reaches the entry). Bare calls such as &quot;Gold buy now&quot; with no entry in the message are skipped entirely (no trades).
+                                With <strong>Use Signal Entry Price</strong> enabled, the signal must include an explicit entry in the parse (price, zone, @ price, labels like &quot;Entry Price:&quot;, or &quot;buy/sell at …&quot;). After any channel delay, the worker compares the <strong>live</strong> quote to that entry: <strong>Buy</strong> fills immediately only when ask is at or below the entry; if ask is above the entry it places a <strong>buy limit</strong> on the broker at the signal entry so you see a real pending order in MetaTrader. <strong>Sell</strong> is the inverse (immediate when bid is at or above entry; otherwise a <strong>sell limit</strong> at the entry). Copier stores a companion row for each strict-entry pending so fills sync back to your trade list. When the basket is flat, those pendings are cancelled automatically. Bare calls such as &quot;Gold buy now&quot; with no entry in the message are skipped entirely (no trades).
                               </p>
                               <div className="rounded-md border border-neutral-200 overflow-hidden">
                                 <div className="flex items-center justify-between gap-3 bg-white px-3 py-2.5">
@@ -1832,8 +1832,8 @@ export function AccountConfigPage() {
                             <div className="rounded-lg border border-neutral-200 p-3 space-y-3">
                               <p className="text-sm font-medium text-neutral-800">Pending orders</p>
                               <p className="text-xs text-neutral-500">
-                                Applied to broker Limit/Stop sends and worker virtual range legs. Set{' '}
-                                <code className="text-[11px]">WORKER_BROKER_PENDING_EXPIRY_SWEEP=true</code> on the worker to cancel stale TSCopier broker pendings past this TTL when order open time is available from the API.
+                                Applied to broker Limit/Stop sends and worker virtual range legs. 
+                                {/* <code className="text-[11px]">WORKER_BROKER_PENDING_EXPIRY_SWEEP=true</code> on the worker to cancel stale TSCopier broker pendings past this TTL when order open time is available from the API. */}
                               </p>
                               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                 <Input

@@ -24,6 +24,7 @@ import {
   type VirtualPendingLeg,
 } from './manualPlanner'
 import { isPostgresDuplicateKeyError } from './rangePendingLegPersist'
+import { cancelSignalEntryRowAtBroker, type SignalEntryPendingRow } from './signalEntryPendingHelpers'
 import {
   computeThreadLinksAnchor,
   implicitBundleTimeOk,
@@ -832,6 +833,68 @@ export class TradeExecutor {
     return null
   }
 
+  private async manualDispatchAlreadyMaterialized(signalId: string, brokerAccountId: string): Promise<boolean> {
+    const [{ count: rc, error: re }, { count: sc, error: se }] = await Promise.all([
+      this.supabase
+        .from('range_pending_legs')
+        .select('id', { count: 'exact', head: true })
+        .eq('signal_id', signalId)
+        .eq('broker_account_id', brokerAccountId),
+      this.supabase
+        .from('signal_entry_pending_orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('signal_id', signalId)
+        .eq('broker_account_id', brokerAccountId)
+        .eq('status', 'broker_pending'),
+    ])
+    if (re) {
+      console.warn(
+        `[tradeExecutor] range_pending idempotency count failed signal=${signalId} broker=${brokerAccountId}: ${re.message}`,
+      )
+    }
+    if (se) {
+      console.warn(
+        `[tradeExecutor] signal_entry_pending idempotency count failed signal=${signalId} broker=${brokerAccountId}: ${se.message}`,
+      )
+    }
+    return ((rc ?? 0) > 0 || (sc ?? 0) > 0)
+  }
+
+  private async cancelSignalEntryBrokerRowsForScope(
+    scope: RangePendingCancelScope,
+    userId: string,
+    logSignalId: string,
+    reason: string,
+  ): Promise<void> {
+    const { data: seRows, error } = await this.supabase
+      .from('signal_entry_pending_orders')
+      .select('id,signal_id,user_id,broker_account_id,metaapi_account_id,symbol,trade_id,broker_ticket,is_buy')
+      .eq('signal_id', scope.signalId)
+      .eq('broker_account_id', scope.brokerAccountId)
+      .eq('status', 'broker_pending')
+    if (error) {
+      console.warn(
+        `[tradeExecutor] signal_entry_pending_orders cancel select failed signal=${scope.signalId} broker=${scope.brokerAccountId}: ${error.message}`,
+      )
+      return
+    }
+    for (const r of (seRows ?? []) as SignalEntryPendingRow[]) {
+      if (this.api) {
+        await cancelSignalEntryRowAtBroker(this.supabase, this.api, r, reason)
+      } else {
+        await this.supabase
+          .from('signal_entry_pending_orders')
+          .update({
+            cancel_requested_at: new Date().toISOString(),
+            cancel_reason: reason,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', r.id)
+          .eq('status', 'broker_pending')
+      }
+    }
+  }
+
   private async cancelRangePendingLegsForScopes(
     userId: string,
     logSignalId: string,
@@ -859,25 +922,27 @@ export class TradeExecutor {
             return
           }
           const rowsCancelled = (cancelled ?? []) as Array<{ id: string }>
-          if (!rowsCancelled.length) return
-          try {
-            await this.supabase.from('trade_execution_logs').insert({
-              user_id: userId,
-              signal_id: logSignalId,
-              broker_account_id: scope.brokerAccountId,
-              action: 'virtual_pending_cancelled',
-              status: 'success',
-              request_payload: {
-                reason,
-                parent_signal_id: scope.signalId,
-                symbol: scope.symbol,
-                rows: rowsCancelled.length,
-                leg_ids: rowsCancelled.map(r => r.id),
-              } as unknown as Record<string, unknown>,
-            })
-          } catch {
-            // Logging failure is non-fatal.
+          if (rowsCancelled.length) {
+            try {
+              await this.supabase.from('trade_execution_logs').insert({
+                user_id: userId,
+                signal_id: logSignalId,
+                broker_account_id: scope.brokerAccountId,
+                action: 'virtual_pending_cancelled',
+                status: 'success',
+                request_payload: {
+                  reason,
+                  parent_signal_id: scope.signalId,
+                  symbol: scope.symbol,
+                  rows: rowsCancelled.length,
+                  leg_ids: rowsCancelled.map(r => r.id),
+                } as unknown as Record<string, unknown>,
+              })
+            } catch {
+              // Logging failure is non-fatal.
+            }
           }
+          await this.cancelSignalEntryBrokerRowsForScope(scope, userId, logSignalId, reason)
         } catch {
           // best-effort
         }
@@ -1713,6 +1778,16 @@ export class TradeExecutor {
     }
     const virtualPendings = (plan.virtualPendings ?? []).slice(0, 500)
 
+    if (isManual) {
+      const already = await this.manualDispatchAlreadyMaterialized(signal.id, broker.id)
+      if (already) {
+        console.warn(
+          `[tradeExecutor] skip duplicate manual dispatch signal=${signal.id} broker=${broker.id}`,
+        )
+        return { openedOrMerged: true }
+      }
+    }
+
     // ── Strict signal entry (post-delay live quote) ───────────────────────
     // Buy: immediate market only when ask ≤ entry; else one virtual pending at entry.
     // Sell: immediate only when bid ≥ entry; else virtual at entry. Quote failure → defer.
@@ -1738,7 +1813,7 @@ export class TradeExecutor {
         strictDeferred = true
         const msg = err instanceof Error ? err.message : String(err)
         console.warn(
-          `[tradeExecutor] strict entry /Quote failed; deferring to virtual pending signal=${signal.id} broker=${broker.id} symbol=${symbol}: ${msg}`,
+          `[tradeExecutor] strict entry /Quote failed; deferring to broker pending signal=${signal.id} broker=${broker.id} symbol=${symbol}: ${msg}`,
         )
       }
     }
@@ -1762,12 +1837,12 @@ export class TradeExecutor {
     // Priority: parsed signal entry → live /Quote (Ask for buy, Bid for sell).
     // Needed whenever we have virtual pendings to persist (so we can compute
     // trigger prices) OR Close-Worse-Entries is on (so we can compute the
-    // single override TP) OR strict entry was deferred (virtual wait at entry).
+    // single override TP). Strict broker pendings use the signal entry as the
+    // clamp reference — no extra quote solely for that path.
     // The Quote is a ~50-150ms GET that we issue BEFORE
     // sending immediates so every leg + every virtual trigger sees the same
     // deterministic reference price.
     const needsAnchor = virtualPendings.length > 0 || !!plan.closeWorseEntries
-      || (strictDeferred && !!plan.strictEntry)
     let anchor: number | null = plan.anchor?.value ?? plan.strictEntry?.entryPrice ?? null
     let anchorSource: 'signal' | 'quote' | 'unknown' = plan.anchor?.source ?? 'unknown'
     if (needsAnchor && (anchor == null || anchor <= 0) && this.api) {
@@ -1850,11 +1925,11 @@ export class TradeExecutor {
       )
     }
 
-    // Strict entry: when the post-delay quote is not immediately fillable, persist
-    // the planned immediate layer as worker-managed virtual pendings at the signal entry
-    // (same trigger semantics as range legs). Multi-mode aggregates into one row at step_idx 0.
-    const strictEntryVirtualRows: Record<string, unknown>[] = []
-    if (strictDeferred && plan.strictEntry && capped.length > 0) {
+    // Strict entry: when the post-delay quote is not immediately fillable, place a
+    // real BuyLimit / SellLimit on the broker at the signal entry (tracked in
+    // `signal_entry_pending_orders`). Multi-mode aggregates volume into one order.
+    let strictBrokerPlaced = false
+    if (strictDeferred && plan.strictEntry && capped.length > 0 && this.api) {
       const se = plan.strictEntry
       const digits = Math.max(0, Math.min(8, Number(params?.digits) || 5))
       const entryPx = Number(se.entryPrice.toFixed(digits))
@@ -1871,76 +1946,162 @@ export class TradeExecutor {
       const zoneLo = safe > 0 && point > 0 ? anchorForRow - (safe + 2) * point : null
       if (zoneHi != null && zoneLo != null && entryPx > zoneLo && entryPx < zoneHi) {
         console.warn(
-          `[tradeExecutor] strict entry trigger inside stops zone; dropping deferred virtual row signal=${signal.id} broker=${broker.id} symbol=${symbol} entry=${entryPx}`,
+          `[tradeExecutor] strict entry inside stops zone; skipping broker pending signal=${signal.id} broker=${broker.id} symbol=${symbol} entry=${entryPx}`,
         )
       } else {
+        const op: MtOperation = se.isBuy ? 'BuyLimit' : 'SellLimit'
         const first = capped[0]!
-        if (capped.length === 1) {
-          strictEntryVirtualRows.push({
-            signal_id: signal.id,
-            user_id: signal.user_id,
-            broker_account_id: broker.id,
-            metaapi_account_id: uuid,
-            symbol,
-            step_idx: 0,
-            is_buy: se.isBuy,
-            volume: roundLot(first.volume, params),
-            anchor_price: anchorForRow,
-            trigger_price: entryPx,
-            stoploss: first.stoploss ?? null,
-            takeprofit: first.takeprofit ?? null,
-            slippage: first.slippage ?? 20,
-            comment: `${first.comment ?? `TSCopier:${signal.id.slice(0, 8)}`}:strictEntry`,
-            expert_id: first.expertID ?? 909090,
-            expires_at: expiresAt,
-            status: 'pending',
-            cwe_close_price: null,
-          })
-        } else {
-          let sumVol = 0
-          for (const o of capped) sumVol += Number(o.volume) || 0
-          strictEntryVirtualRows.push({
-            signal_id: signal.id,
-            user_id: signal.user_id,
-            broker_account_id: broker.id,
-            metaapi_account_id: uuid,
-            symbol,
-            step_idx: 0,
-            is_buy: se.isBuy,
-            volume: roundLot(sumVol, params),
-            anchor_price: anchorForRow,
-            trigger_price: entryPx,
-            stoploss: first.stoploss ?? null,
-            takeprofit: first.takeprofit ?? null,
-            slippage: first.slippage ?? 20,
-            comment: `${first.comment ?? `TSCopier:${signal.id.slice(0, 8)}`}:strictEntryAgg`,
-            expert_id: first.expertID ?? 909090,
-            expires_at: expiresAt,
-            status: 'pending',
-            cwe_close_price: null,
-          })
+        let aggVol = 0
+        for (const o of capped) aggVol += Number(o.volume) || 0
+        const vol = roundLot(capped.length === 1 ? Number(first.volume) || 0 : aggVol, params)
+        const baseComment = first.comment ?? `TSCopier:${signal.id.slice(0, 8)}`
+        const comment = capped.length === 1 ? `${baseComment}:strictEntry` : `${baseComment}:strictEntryAgg`
+        let sendArgs: OrderSendArgs = {
+          symbol,
+          operation: op,
+          volume: vol,
+          price: entryPx,
+          stoploss: first.stoploss ?? 0,
+          takeprofit: first.takeprofit ?? 0,
+          slippage: first.slippage ?? 20,
+          comment,
+          expertID: first.expertID ?? 909090,
         }
-      }
-    }
-
-    // Idempotency: same `signals` row can be re-dispatched (Realtime, sweep).
-    // If we already materialized virtual pendings for this broker, do not
-    // insert again or re-send immediates (would double range lots).
-    if (isManual) {
-      const { count: existingPendCount, error: pendCountErr } = await this.supabase
-        .from('range_pending_legs')
-        .select('id', { count: 'exact', head: true })
-        .eq('signal_id', signal.id)
-        .eq('broker_account_id', broker.id)
-      if (pendCountErr) {
-        console.warn(
-          `[tradeExecutor] range_pending_legs idempotency count failed signal=${signal.id} broker=${broker.id}: ${pendCountErr.message}`,
-        )
-      } else if ((existingPendCount ?? 0) > 0) {
-        console.warn(
-          `[tradeExecutor] skip duplicate dispatch: range_pending_legs already exist signal=${signal.id} broker=${broker.id}`,
-        )
-        return { openedOrMerged: true }
+        if (pendHours > 0 && expiresAt) {
+          sendArgs = {
+            ...sendArgs,
+            expiration: expiresAt,
+            expirationType: 'Specified',
+          }
+        }
+        const clamped = clampOrderStops(sendArgs, params)
+        if (clamped.adjustments.length > 0) {
+          console.warn(
+            `[tradeExecutor] strict entry pending stops clamped signal=${signal.id} broker=${broker.id}: ${clamped.adjustments.join(', ')}`,
+          )
+        }
+        try {
+          const result = await this.api.orderSend(uuid, clamped.args)
+          const ticket = result.ticket
+          const isBuyLeg = se.isBuy
+          const tradeInsert = await this.supabase
+            .from('trades')
+            .insert({
+              user_id: signal.user_id,
+              signal_id: signal.id,
+              telegram_channel_id: signal.channel_id,
+              broker_account_id: broker.id,
+              metaapi_order_id: String(ticket),
+              symbol,
+              direction: isBuyLeg ? 'buy' : 'sell',
+              entry_price: entryPx,
+              sl: clamped.args.stoploss && clamped.args.stoploss > 0 ? clamped.args.stoploss : null,
+              tp: clamped.args.takeprofit && clamped.args.takeprofit > 0 ? clamped.args.takeprofit : null,
+              lot_size: result.lots ?? vol,
+              status: 'pending',
+              opened_at: new Date().toISOString(),
+              cwe_close_price: null,
+            })
+            .select('id')
+            .maybeSingle()
+          if (tradeInsert.error) {
+            console.error(
+              `[tradeExecutor] trades INSERT failed after strict pending OrderSend signal=${signal.id} broker=${broker.id} ticket=${ticket}: ${tradeInsert.error.message}`,
+            )
+            try {
+              await this.api.orderClose(uuid, { ticket })
+            } catch {
+              /* best-effort rollback */
+            }
+          } else {
+            const tradeId = (tradeInsert.data as { id?: string } | null)?.id ?? null
+            if (!tradeId) {
+              console.error(
+                `[tradeExecutor] trades INSERT returned no id after strict pending OrderSend signal=${signal.id} broker=${broker.id} ticket=${ticket}`,
+              )
+              try {
+                await this.api.orderClose(uuid, { ticket })
+              } catch {
+                /* best-effort rollback */
+              }
+            } else {
+              const partialTpPlan = capped.length === 1 && plan.partialTps?.length ? plan.partialTps : null
+              const { error: sepErr } = await this.supabase.from('signal_entry_pending_orders').insert({
+              signal_id: signal.id,
+              user_id: signal.user_id,
+              broker_account_id: broker.id,
+              metaapi_account_id: uuid,
+              symbol,
+              trade_id: tradeId,
+              is_buy: se.isBuy,
+              operation: op,
+              entry_price: entryPx,
+              volume: vol,
+              stoploss: clamped.args.stoploss && clamped.args.stoploss > 0 ? clamped.args.stoploss : null,
+              takeprofit: clamped.args.takeprofit && clamped.args.takeprofit > 0 ? clamped.args.takeprofit : null,
+              slippage: clamped.args.slippage ?? 20,
+              comment: clamped.args.comment ?? comment,
+              expert_id: clamped.args.expertID ?? null,
+              broker_ticket: String(ticket),
+              status: 'broker_pending',
+              expires_at: expiresAt,
+              partial_tp_plan: partialTpPlan,
+            })
+            if (sepErr) {
+              console.error(
+                `[tradeExecutor] signal_entry_pending_orders INSERT failed signal=${signal.id} broker=${broker.id}: ${sepErr.message}`,
+              )
+              if (tradeId) {
+                await this.supabase.from('trades').delete().eq('id', tradeId)
+              }
+              try {
+                await this.api.orderClose(uuid, { ticket })
+              } catch {
+                /* best-effort rollback */
+              }
+            } else {
+              strictBrokerPlaced = true
+              try {
+                await this.supabase.from('trade_execution_logs').insert({
+                  user_id: signal.user_id,
+                  signal_id: signal.id,
+                  broker_account_id: broker.id,
+                  action: 'signal_entry_pending_placed',
+                  status: 'success',
+                  request_payload: {
+                    ticket,
+                    operation: op,
+                    entry_price: entryPx,
+                    volume: vol,
+                    symbol,
+                  } as unknown as Record<string, unknown>,
+                  response_payload: { trade_id: tradeId } as unknown as Record<string, unknown>,
+                })
+              } catch {
+                /* best-effort */
+              }
+            }
+            }
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          console.error(
+            `[tradeExecutor] strict entry broker OrderSend failed signal=${signal.id} broker=${broker.id} op=${op} price=${entryPx}: ${msg}`,
+          )
+          try {
+            await this.supabase.from('trade_execution_logs').insert({
+              user_id: signal.user_id,
+              signal_id: signal.id,
+              broker_account_id: broker.id,
+              action: 'signal_entry_pending_failed',
+              status: 'failed',
+              request_payload: { operation: op, entry_price: entryPx, symbol } as unknown as Record<string, unknown>,
+              error_message: msg,
+            })
+          } catch {
+            /* best-effort */
+          }
+        }
       }
     }
 
@@ -1949,7 +2110,7 @@ export class TradeExecutor {
     // sweep race to fire each one as a MARKET OrderSend when /Quote crosses
     // the trigger. UPSERT with ignoreDuplicates leans on the partial unique
     // index (see migration 20260513140000_range_pending_unique_active_step).
-    const insertRows: Record<string, unknown>[] = [...strictEntryVirtualRows]
+    const insertRows: Record<string, unknown>[] = []
     if (virtualPendings.length > 0) {
       if (anchor == null || !Number.isFinite(anchor) || anchor <= 0) {
         console.warn(
@@ -2044,6 +2205,7 @@ export class TradeExecutor {
               stepIdxs: insertRows.map(r => r.step_idx),
               triggers: insertRows.map(r => r.trigger_price),
               strict_deferred: strictDeferred,
+              strict_broker_pending: strictBrokerPlaced,
             } as unknown as Record<string, unknown>,
           })
         } catch { /* logging is best-effort */ }
@@ -2051,8 +2213,8 @@ export class TradeExecutor {
     }
 
     if (legs.length === 0) {
-      // No immediates — purely virtual pendings (range and/or strict-entry deferral).
-      return materializedVirtuals ? { openedOrMerged: true } : {}
+      // No immediates — virtual range ladder and/or broker strict-entry pending.
+      return (materializedVirtuals || strictBrokerPlaced) ? { openedOrMerged: true } : {}
     }
 
     const totalCount = legs.length
@@ -2193,7 +2355,7 @@ export class TradeExecutor {
         )
       }
     }
-    return { openedOrMerged: anyImmediateOpened || materializedVirtuals }
+    return { openedOrMerged: anyImmediateOpened || materializedVirtuals || strictBrokerPlaced }
   }
 
   private async logSendSkipped(

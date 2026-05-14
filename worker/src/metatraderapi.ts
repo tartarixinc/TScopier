@@ -334,6 +334,11 @@ export class MetatraderApiClient {
     return this.get<unknown[]>('/OpenedOrders', { id })
   }
 
+  /** Recent closed deals / history (see docs: GET /ClosedOrders). */
+  closedOrders(id: string): Promise<unknown[]> {
+    return this.get<unknown[]>('/ClosedOrders', { id })
+  }
+
   accountSummary(id: string): Promise<AccountSummary> {
     return this.get<AccountSummary>('/AccountSummary', { id })
   }

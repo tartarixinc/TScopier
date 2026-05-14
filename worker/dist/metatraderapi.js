@@ -208,6 +208,10 @@ class MetatraderApiClient {
     openedOrders(id) {
         return this.get('/OpenedOrders', { id });
     }
+    /** Recent closed deals / history (see docs: GET /ClosedOrders). */
+    closedOrders(id) {
+        return this.get('/ClosedOrders', { id });
+    }
     accountSummary(id) {
         return this.get('/AccountSummary', { id });
     }

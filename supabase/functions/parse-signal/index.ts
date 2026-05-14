@@ -479,6 +479,85 @@ function parseDeterministicManagement(
   }
 }
 
+/**
+ * Pulls entry price / zone from common channel text patterns (ENTRY 2650, @2650, zones, etc.).
+ * Shared so "BUY … NOW / MARKET" simple signals still retain an anchor when the same line lists one.
+ */
+function extractOptionalEntryAnchor(
+  message: string,
+  channelKeywords: ChannelKeywords,
+): { entry_price: number | null; entry_zone_low: number | null; entry_zone_high: number | null } {
+  const text = message.replace(/\s+/g, " ").trim()
+  const delim = channelKeywords.additional.delimiters
+  const zone = text.match(
+    /\b(?:between|from)\s+(\d+(?:\.\d+)?)\s+(?:and|to|-|–)\s+(\d+(?:\.\d+)?)\b/i,
+  )
+  let entry_zone_low: number | null = null
+  let entry_zone_high: number | null = null
+  let entry_price: number | null = null
+  if (zone?.[1] && zone?.[2]) {
+    const a = Number(zone[1])
+    const b = Number(zone[2])
+    if (Number.isFinite(a) && Number.isFinite(b)) {
+      entry_zone_low = Math.min(a, b)
+      entry_zone_high = Math.max(a, b)
+    }
+  } else {
+    const entryLabel = text.match(/\bentry\s*(?:price)?\s*[:=]\s*(\d+(?:\.\d+)?)\b/i)
+    if (entryLabel?.[1]) {
+      const n = Number(entryLabel[1])
+      if (Number.isFinite(n) && n > 0) entry_price = n
+    }
+    if (entry_price == null) {
+      const atPx = text.match(/@\s*(\d+(?:\.\d+)?)\b/)
+      if (atPx?.[1]) {
+        const n = Number(atPx[1])
+        if (Number.isFinite(n) && n > 0) entry_price = n
+      }
+    }
+    if (entry_price == null) {
+      const buySellAt = text.match(/\b(?:buy|sell)\s+at\s+(\d+(?:\.\d+)?)\b/i)
+      if (buySellAt?.[1]) {
+        const n = Number(buySellAt[1])
+        if (Number.isFinite(n) && n > 0) entry_price = n
+      }
+    }
+    if (entry_price == null) {
+      const entryWord = text.match(/\bentry\s+(\d+(?:\.\d+)?)\b/i)
+      if (entryWord?.[1]) {
+        const n = Number(entryWord[1])
+        if (Number.isFinite(n) && n > 0) entry_price = n
+      }
+    }
+    if (entry_price == null) {
+      const entryLabels = splitKeywordAliases(channelKeywords.signal.entry_point, delim)
+      const fromKw = extractPriceByLabels(text, entryLabels)
+      if (fromKw != null && Number.isFinite(fromKw) && fromKw > 0) {
+        entry_price = fromKw
+      }
+    }
+    // Common signal shapes that omit "entry" / "@" labels but still carry a single anchor:
+    //   "BUY XAUUSD NOW 2650", "BUY GOLD 2645.5 MARKET", "SELL BTCUSD 98000 NOW"
+    if (entry_price == null && entry_zone_low == null) {
+      const symPriceThenMarket = text.match(
+        /\b(?:xauusd|xagusd|gold|silver|btcusd|btcusdt|ethusd|ethusdt|eurusd|gbpusd|usdjpy|us30|nas100)\s+(\d{3,}(?:\.\d+)?)\s+(?:now|instant|market|mkt)\b/i,
+      )
+      if (symPriceThenMarket?.[1]) {
+        const n = Number(symPriceThenMarket[1])
+        if (Number.isFinite(n) && n > 0) entry_price = n
+      }
+    }
+    if (entry_price == null && entry_zone_low == null) {
+      const marketThenPrice = text.match(/\b(?:now|instant|market|mkt)\s+(\d{3,}(?:\.\d+)?)\b/i)
+      if (marketThenPrice?.[1]) {
+        const n = Number(marketThenPrice[1])
+        if (Number.isFinite(n) && n > 0) entry_price = n
+      }
+    }
+  }
+  return { entry_price, entry_zone_low, entry_zone_high }
+}
+
 function parseSimpleSignal(
   message: string,
   lexicon: ChannelLexiconRow | null,
@@ -544,12 +623,14 @@ function parseSimpleSignal(
   ]
   const tp = extractTpLevels(message, extraTp)
 
+  const { entry_price, entry_zone_low, entry_zone_high } = extractOptionalEntryAnchor(message, channelKeywords)
+
   return {
     action: isBuy ? "buy" : "sell",
     symbol: instrument,
-    entry_price: null,
-    entry_zone_low: null,
-    entry_zone_high: null,
+    entry_price,
+    entry_zone_low,
+    entry_zone_high,
     sl,
     tp,
     lot_size: null,
@@ -623,54 +704,7 @@ function parseEntryFromKeywords(
 
   if (!hasPriceEvidence) return null
 
-  const zone = text.match(
-    /\b(?:between|from)\s+(\d+(?:\.\d+)?)\s+(?:and|to|-|–)\s+(\d+(?:\.\d+)?)\b/i,
-  )
-  let entry_zone_low: number | null = null
-  let entry_zone_high: number | null = null
-  let entry_price: number | null = null
-  if (zone?.[1] && zone?.[2]) {
-    const a = Number(zone[1])
-    const b = Number(zone[2])
-    if (Number.isFinite(a) && Number.isFinite(b)) {
-      entry_zone_low = Math.min(a, b)
-      entry_zone_high = Math.max(a, b)
-    }
-  } else {
-    const entryLabel = text.match(/\bentry\s*(?:price)?\s*[:=]\s*(\d+(?:\.\d+)?)\b/i)
-    if (entryLabel?.[1]) {
-      const n = Number(entryLabel[1])
-      if (Number.isFinite(n) && n > 0) entry_price = n
-    }
-    if (entry_price == null) {
-      const atPx = text.match(/@\s*(\d+(?:\.\d+)?)\b/)
-      if (atPx?.[1]) {
-        const n = Number(atPx[1])
-        if (Number.isFinite(n) && n > 0) entry_price = n
-      }
-    }
-    if (entry_price == null) {
-      const buySellAt = text.match(/\b(?:buy|sell)\s+at\s+(\d+(?:\.\d+)?)\b/i)
-      if (buySellAt?.[1]) {
-        const n = Number(buySellAt[1])
-        if (Number.isFinite(n) && n > 0) entry_price = n
-      }
-    }
-    if (entry_price == null) {
-      const entryWord = text.match(/\bentry\s+(\d+(?:\.\d+)?)\b/i)
-      if (entryWord?.[1]) {
-        const n = Number(entryWord[1])
-        if (Number.isFinite(n) && n > 0) entry_price = n
-      }
-    }
-    if (entry_price == null) {
-      const entryLabels = splitKeywordAliases(channelKeywords.signal.entry_point, delim)
-      const fromKw = extractPriceByLabels(text, entryLabels)
-      if (fromKw != null && Number.isFinite(fromKw) && fromKw > 0) {
-        entry_price = fromKw
-      }
-    }
-  }
+  const { entry_price, entry_zone_low, entry_zone_high } = extractOptionalEntryAnchor(message, channelKeywords)
 
   return {
     action: isBuy ? "buy" : "sell",

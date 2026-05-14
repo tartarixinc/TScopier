@@ -87,6 +87,8 @@ async function fetchShallowActiveStepsSweep(
     .eq("symbol", symbol)
     .in("signal_id", signalIds)
     .in("status", ["pending", "claimed"])
+    .not("comment", "ilike", "%:strictEntry%")
+    .not("comment", "ilike", "%:strictEntryAgg%")
   if (error) {
     console.warn(`[range-pending-sweep] fetchShallowActiveSteps failed: ${error.message}`)
     return out
@@ -125,6 +127,8 @@ Deno.serve(async (_req: Request) => {
     )
     .eq("status", "pending")
     .lt("created_at", ageCut)
+    .not("comment", "ilike", "%:strictEntry%")
+    .not("comment", "ilike", "%:strictEntryAgg%")
     .limit(MAX_ROWS_PER_SWEEP)
   if (error) {
     return new Response(JSON.stringify({ error: error.message }), { status: 500 })
