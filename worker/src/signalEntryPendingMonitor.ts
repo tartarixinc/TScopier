@@ -19,6 +19,7 @@ const MISSING_BEFORE_ASSUME_GONE = 6
 type MonitorRow = SignalEntryPendingRow & {
   entry_price: number
   cancel_requested_at: string | null
+  expires_at: string | null
   partial_tp_plan?: unknown
 }
 
@@ -93,7 +94,7 @@ export class SignalEntryPendingMonitor {
     const { data, error } = await this.supabase
       .from('signal_entry_pending_orders')
       .select(
-        'id,signal_id,user_id,broker_account_id,metaapi_account_id,symbol,trade_id,broker_ticket,is_buy,entry_price,cancel_requested_at,partial_tp_plan',
+        'id,signal_id,user_id,broker_account_id,metaapi_account_id,symbol,trade_id,broker_ticket,is_buy,entry_price,cancel_requested_at,expires_at,partial_tp_plan',
       )
       .eq('status', 'broker_pending')
       .limit(200)
@@ -107,8 +108,20 @@ export class SignalEntryPendingMonitor {
       return
     }
 
-    const cancelRows = rows.filter(r => r.cancel_requested_at)
-    const watchRows = rows.filter(r => !r.cancel_requested_at)
+    const nowMs = Date.now()
+    const expiredIds = new Set<string>()
+    for (const r of rows) {
+      if (!r.expires_at) continue
+      const t = Date.parse(r.expires_at)
+      if (Number.isFinite(t) && t <= nowMs) expiredIds.add(r.id)
+    }
+    const cancelRows = rows.filter(r => !expiredIds.has(r.id) && r.cancel_requested_at)
+    const watchRows = rows.filter(r => !expiredIds.has(r.id) && !r.cancel_requested_at)
+
+    for (const row of rows) {
+      if (!expiredIds.has(row.id)) continue
+      await cancelSignalEntryRowAtBroker(this.supabase, this.api, row, 'expired')
+    }
 
     for (const row of cancelRows) {
       await cancelSignalEntryRowAtBroker(this.supabase, this.api, row, 'cancel_requested')

@@ -1956,7 +1956,11 @@ export class TradeExecutor {
         const vol = roundLot(capped.length === 1 ? Number(first.volume) || 0 : aggVol, params)
         const baseComment = first.comment ?? `TSCopier:${signal.id.slice(0, 8)}`
         const comment = capped.length === 1 ? `${baseComment}:strictEntry` : `${baseComment}:strictEntryAgg`
-        let sendArgs: OrderSendArgs = {
+        // Do not pass `expiration` / `expirationType` to MetatraderAPI OrderSend here:
+        // several MT5 builds return "Invalid order expiration date" for ISO strings
+        // on GET /OrderSend. `expires_at` is still stored on `signal_entry_pending_orders`
+        // and the worker monitor closes the broker pending when that time is reached.
+        const sendArgs: OrderSendArgs = {
           symbol,
           operation: op,
           volume: vol,
@@ -1966,13 +1970,6 @@ export class TradeExecutor {
           slippage: first.slippage ?? 20,
           comment,
           expertID: first.expertID ?? 909090,
-        }
-        if (pendHours > 0 && expiresAt) {
-          sendArgs = {
-            ...sendArgs,
-            expiration: expiresAt,
-            expirationType: 'Specified',
-          }
         }
         const clamped = clampOrderStops(sendArgs, params)
         if (clamped.adjustments.length > 0) {

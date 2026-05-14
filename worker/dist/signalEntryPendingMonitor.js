@@ -76,7 +76,7 @@ class SignalEntryPendingMonitor {
             return;
         const { data, error } = await this.supabase
             .from('signal_entry_pending_orders')
-            .select('id,signal_id,user_id,broker_account_id,metaapi_account_id,symbol,trade_id,broker_ticket,is_buy,entry_price,cancel_requested_at,partial_tp_plan')
+            .select('id,signal_id,user_id,broker_account_id,metaapi_account_id,symbol,trade_id,broker_ticket,is_buy,entry_price,cancel_requested_at,expires_at,partial_tp_plan')
             .eq('status', 'broker_pending')
             .limit(200);
         if (error) {
@@ -88,8 +88,22 @@ class SignalEntryPendingMonitor {
             this.missingStreak.clear();
             return;
         }
-        const cancelRows = rows.filter(r => r.cancel_requested_at);
-        const watchRows = rows.filter(r => !r.cancel_requested_at);
+        const nowMs = Date.now();
+        const expiredIds = new Set();
+        for (const r of rows) {
+            if (!r.expires_at)
+                continue;
+            const t = Date.parse(r.expires_at);
+            if (Number.isFinite(t) && t <= nowMs)
+                expiredIds.add(r.id);
+        }
+        const cancelRows = rows.filter(r => !expiredIds.has(r.id) && r.cancel_requested_at);
+        const watchRows = rows.filter(r => !expiredIds.has(r.id) && !r.cancel_requested_at);
+        for (const row of rows) {
+            if (!expiredIds.has(row.id))
+                continue;
+            await (0, signalEntryPendingHelpers_1.cancelSignalEntryRowAtBroker)(this.supabase, this.api, row, 'expired');
+        }
         for (const row of cancelRows) {
             await (0, signalEntryPendingHelpers_1.cancelSignalEntryRowAtBroker)(this.supabase, this.api, row, 'cancel_requested');
         }
