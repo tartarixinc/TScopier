@@ -1658,7 +1658,7 @@ export function AccountConfigPage() {
                             <div className="rounded-lg border border-neutral-200 p-3 space-y-3">
                               <p className="text-sm font-medium text-neutral-800">Signal entry execution</p>
                               <p className="text-xs text-neutral-500">
-                                With <strong>Use Signal Entry Price</strong> enabled, the signal must include an explicit entry in the parse (price, zone, @ price, labels like &quot;Entry Price:&quot;, or &quot;buy/sell at …&quot;). The worker compares the live quote to that entry: if the quote is outside tolerance it sends a limit at the entry; otherwise a market order. Bare calls such as &quot;Gold buy now&quot; with no entry in the message are skipped entirely (no trades).
+                                With <strong>Use Signal Entry Price</strong> enabled, the signal must include an explicit entry in the parse (price, zone, @ price, labels like &quot;Entry Price:&quot;, or &quot;buy/sell at …&quot;). After any channel delay, the worker compares the <strong>live</strong> quote to that entry: <strong>Buy</strong> fills immediately only when ask is at or below the entry; if ask is above the entry it stores a virtual pending at the entry (same DB path as range pendings) and opens with a market order when bid reaches the entry. <strong>Sell</strong> is the inverse (immediate when bid is at or above entry; otherwise wait until ask reaches the entry). Bare calls such as &quot;Gold buy now&quot; with no entry in the message are skipped entirely (no trades).
                               </p>
                               <div className="rounded-md border border-neutral-200 overflow-hidden">
                                 <div className="flex items-center justify-between gap-3 bg-white px-3 py-2.5">
@@ -1670,12 +1670,15 @@ export function AccountConfigPage() {
                                 </div>
                                 {configDraft.manualSettings.use_signal_entry_price && (
                                   <div className="border-t border-neutral-200 bg-neutral-50/80 px-3 py-3 space-y-2">
+                                    <p className="text-xs text-neutral-500">
+                                      <strong>Pip tolerance</strong> is legacy and no longer affects execution; strict entry uses the exact parsed entry price and live bid/ask as above.
+                                    </p>
                                     <Input
-                                      label="Pip tolerance"
+                                      label="Pip tolerance (legacy)"
                                       type="number"
                                       min={0}
                                       step={1}
-                                      hint="Buy: market if ask ≤ entry + tolerance (pips); otherwise BuyLimit at entry. Sell: market if bid ≥ entry − tolerance; otherwise SellLimit at entry."
+                                      hint="Unused for strict entry routing; kept for backward compatibility with saved settings."
                                       value={String(configDraft.manualSettings.signal_entry_pip_tolerance ?? 10)}
                                       onChange={e => setManual({ signal_entry_pip_tolerance: Math.max(0, Number(e.target.value) || 0) })}
                                     />

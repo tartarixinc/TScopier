@@ -15,6 +15,7 @@ import {
   resolvedParsedEntryPrice,
   resolvedParsedEntryZone,
   SKIP_REASON_SIGNAL_ENTRY_REQUIRED,
+  strictSignalEntryQuoteAllowsImmediate,
   type ChannelKeywords,
   type ManualSettings,
   type ParsedSignal as PlannerParsedSignal,
@@ -1200,6 +1201,24 @@ export class TradeExecutor {
       await new Promise(resolve => setTimeout(resolve, Math.min(plan.delay_ms, 30_000)))
     }
 
+    // Same strict-entry live quote rule as `sendOrder`: merge refresh only when the
+    // market is already at or better than the signal entry (no virtual deferral here).
+    if (manual.use_signal_entry_price === true && plan.strictEntry && this.api) {
+      const se = plan.strictEntry
+      try {
+        const q = strictEntryPrefetch ?? await this.api.quote(uuid, symbol)
+        const immediateOk = strictSignalEntryQuoteAllowsImmediate({
+          isBuy: se.isBuy,
+          entryPrice: se.entryPrice,
+          bid: q.bid,
+          ask: q.ask,
+        })
+        if (!immediateOk) return { handled: false }
+      } catch {
+        return { handled: false }
+      }
+    }
+
     // Per-leg SL/TP (and optional CWE) aligned with `planManualOrders` immediate sequence.
     const immediateArgs = marketOrders.map(o => ({ ...o }))
     const needsAnchor = virtualPendings.length > 0 || !!plan.closeWorseEntries
@@ -1694,13 +1713,45 @@ export class TradeExecutor {
     }
     const virtualPendings = (plan.virtualPendings ?? []).slice(0, 500)
 
+    // ── Strict signal entry (post-delay live quote) ───────────────────────
+    // Buy: immediate market only when ask ≤ entry; else one virtual pending at entry.
+    // Sell: immediate only when bid ≥ entry; else virtual at entry. Quote failure → defer.
+    let strictDeferred = false
+    if (isManual && plan.strictEntry && this.api) {
+      const se = plan.strictEntry
+      try {
+        const q = await this.api.quote(uuid, symbol)
+        strictEntryPrefetch = q
+        strictDeferred = !strictSignalEntryQuoteAllowsImmediate({
+          isBuy: se.isBuy,
+          entryPrice: se.entryPrice,
+          bid: q.bid,
+          ask: q.ask,
+        })
+        if (strictDeferred) {
+          console.log(
+            `[tradeExecutor] strict entry deferred signal=${signal.id} broker=${broker.id} symbol=${symbol}`
+            + ` entry=${se.entryPrice} isBuy=${se.isBuy} bid=${q.bid} ask=${q.ask}`,
+          )
+        }
+      } catch (err) {
+        strictDeferred = true
+        const msg = err instanceof Error ? err.message : String(err)
+        console.warn(
+          `[tradeExecutor] strict entry /Quote failed; deferring to virtual pending signal=${signal.id} broker=${broker.id} symbol=${symbol}: ${msg}`,
+        )
+      }
+    }
+
+    const effectiveCapped = strictDeferred ? [] : capped
+
     // Build immediate legs with rounded volumes. Immediates already carry the
     // planner's intended entry price (signal entry or zero for true market orders).
     //
     // The planner only ever emits a single-trade `partialTps` schedule when
     // `capped.length === 1` (single mode → one order). We attach it to that
     // single leg so the post-INSERT path can fan out the partials.
-    const volumeRounded = capped.map(o => ({ ...o, volume: roundLot(o.volume, params) }))
+    const volumeRounded = effectiveCapped.map(o => ({ ...o, volume: roundLot(o.volume, params) }))
     let legs: Leg[] = volumeRounded.map((args, idx) => ({
       args,
       idx,
@@ -1711,11 +1762,13 @@ export class TradeExecutor {
     // Priority: parsed signal entry → live /Quote (Ask for buy, Bid for sell).
     // Needed whenever we have virtual pendings to persist (so we can compute
     // trigger prices) OR Close-Worse-Entries is on (so we can compute the
-    // single override TP). The Quote is a ~50-150ms GET that we issue BEFORE
+    // single override TP) OR strict entry was deferred (virtual wait at entry).
+    // The Quote is a ~50-150ms GET that we issue BEFORE
     // sending immediates so every leg + every virtual trigger sees the same
     // deterministic reference price.
     const needsAnchor = virtualPendings.length > 0 || !!plan.closeWorseEntries
-    let anchor: number | null = plan.anchor?.value ?? null
+      || (strictDeferred && !!plan.strictEntry)
+    let anchor: number | null = plan.anchor?.value ?? plan.strictEntry?.entryPrice ?? null
     let anchorSource: 'signal' | 'quote' | 'unknown' = plan.anchor?.source ?? 'unknown'
     if (needsAnchor && (anchor == null || anchor <= 0) && this.api) {
       try {
@@ -1797,6 +1850,79 @@ export class TradeExecutor {
       )
     }
 
+    // Strict entry: when the post-delay quote is not immediately fillable, persist
+    // the planned immediate layer as worker-managed virtual pendings at the signal entry
+    // (same trigger semantics as range legs). Multi-mode aggregates into one row at step_idx 0.
+    const strictEntryVirtualRows: Record<string, unknown>[] = []
+    if (strictDeferred && plan.strictEntry && capped.length > 0) {
+      const se = plan.strictEntry
+      const digits = Math.max(0, Math.min(8, Number(params?.digits) || 5))
+      const entryPx = Number(se.entryPrice.toFixed(digits))
+      const anchorForRow =
+        anchor != null && Number.isFinite(anchor) && anchor > 0 ? Number(anchor.toFixed(digits)) : entryPx
+      const pendHours = clampPendingExpiryHours(manual.pending_expiry_hours)
+      const nowMs = Date.now()
+      const expiresAt = pendHours > 0
+        ? new Date(nowMs + pendHours * 60 * 60 * 1000).toISOString()
+        : null
+      const point = Number(params?.point ?? 0)
+      const safe = Math.max(Number(params?.stopsLevel) || 0, Number(params?.freezeLevel) || 0)
+      const zoneHi = safe > 0 && point > 0 ? anchorForRow + (safe + 2) * point : null
+      const zoneLo = safe > 0 && point > 0 ? anchorForRow - (safe + 2) * point : null
+      if (zoneHi != null && zoneLo != null && entryPx > zoneLo && entryPx < zoneHi) {
+        console.warn(
+          `[tradeExecutor] strict entry trigger inside stops zone; dropping deferred virtual row signal=${signal.id} broker=${broker.id} symbol=${symbol} entry=${entryPx}`,
+        )
+      } else {
+        const first = capped[0]!
+        if (capped.length === 1) {
+          strictEntryVirtualRows.push({
+            signal_id: signal.id,
+            user_id: signal.user_id,
+            broker_account_id: broker.id,
+            metaapi_account_id: uuid,
+            symbol,
+            step_idx: 0,
+            is_buy: se.isBuy,
+            volume: roundLot(first.volume, params),
+            anchor_price: anchorForRow,
+            trigger_price: entryPx,
+            stoploss: first.stoploss ?? null,
+            takeprofit: first.takeprofit ?? null,
+            slippage: first.slippage ?? 20,
+            comment: `${first.comment ?? `TSCopier:${signal.id.slice(0, 8)}`}:strictEntry`,
+            expert_id: first.expertID ?? 909090,
+            expires_at: expiresAt,
+            status: 'pending',
+            cwe_close_price: null,
+          })
+        } else {
+          let sumVol = 0
+          for (const o of capped) sumVol += Number(o.volume) || 0
+          strictEntryVirtualRows.push({
+            signal_id: signal.id,
+            user_id: signal.user_id,
+            broker_account_id: broker.id,
+            metaapi_account_id: uuid,
+            symbol,
+            step_idx: 0,
+            is_buy: se.isBuy,
+            volume: roundLot(sumVol, params),
+            anchor_price: anchorForRow,
+            trigger_price: entryPx,
+            stoploss: first.stoploss ?? null,
+            takeprofit: first.takeprofit ?? null,
+            slippage: first.slippage ?? 20,
+            comment: `${first.comment ?? `TSCopier:${signal.id.slice(0, 8)}`}:strictEntryAgg`,
+            expert_id: first.expertID ?? 909090,
+            expires_at: expiresAt,
+            status: 'pending',
+            cwe_close_price: null,
+          })
+        }
+      }
+    }
+
     // Idempotency: same `signals` row can be re-dispatched (Realtime, sweep).
     // If we already materialized virtual pendings for this broker, do not
     // insert again or re-send immediates (would double range lots).
@@ -1823,6 +1949,7 @@ export class TradeExecutor {
     // sweep race to fire each one as a MARKET OrderSend when /Quote crosses
     // the trigger. UPSERT with ignoreDuplicates leans on the partial unique
     // index (see migration 20260513140000_range_pending_unique_active_step).
+    const insertRows: Record<string, unknown>[] = [...strictEntryVirtualRows]
     if (virtualPendings.length > 0) {
       if (anchor == null || !Number.isFinite(anchor) || anchor <= 0) {
         console.warn(
@@ -1834,7 +1961,6 @@ export class TradeExecutor {
         const zoneHi = safe > 0 ? anchor + (safe + 2) * (params?.point ?? 0) : null
         const zoneLo = safe > 0 ? anchor - (safe + 2) * (params?.point ?? 0) : null
         const nowMs = Date.now()
-        const insertRows: Record<string, unknown>[] = []
         for (const v of virtualPendings) {
           const triggerPrice = triggerPriceFor(v, anchor, digits)
           // Sanity: the trigger MUST sit outside the broker's stops/freeze zone.
@@ -1875,56 +2001,58 @@ export class TradeExecutor {
             cwe_close_price: v.cweClosePrice ?? null,
           })
         }
-        if (insertRows.length > 0) {
-          const persist = await this.persistRangePendingLegRows(
-            insertRows,
-            `standard signal=${signal.id} broker=${broker.id}`,
-          )
-          if (!persist.ok) {
-            console.error(
-              `[tradeExecutor] range_pending_legs persist failed signal=${signal.id} broker=${broker.id}: ${persist.lastError ?? 'unknown'}`,
-            )
-            try {
-              await this.supabase.from('trade_execution_logs').insert({
-                user_id: signal.user_id,
-                signal_id: signal.id,
-                broker_account_id: broker.id,
-                action: 'virtual_pending_failed',
-                status: 'failed',
-                request_payload: { rows: insertRows.length, anchor, anchorSource } as unknown as Record<string, unknown>,
-                error_message: persist.lastError ?? 'unknown',
-              })
-            } catch { /* logging is best-effort */ }
-          } else {
-            console.log(
-              `[tradeExecutor] virtual pendings inserted=${insertRows.length} signal=${signal.id} broker=${broker.id} symbol=${symbol} anchor=${anchor} (${anchorSource})`,
-            )
-            try {
-              await this.supabase.from('trade_execution_logs').insert({
-                user_id: signal.user_id,
-                signal_id: signal.id,
-                broker_account_id: broker.id,
-                action: 'virtual_pending_inserted',
-                status: 'success',
-                request_payload: {
-                  rows: insertRows.length,
-                  anchor,
-                  anchorSource,
-                  symbol,
-                  stepIdxs: insertRows.map(r => r.step_idx),
-                  triggers: insertRows.map(r => r.trigger_price),
-                } as unknown as Record<string, unknown>,
-              })
-            } catch { /* logging is best-effort */ }
-          }
-        }
+      }
+    }
+    let materializedVirtuals = false
+    if (insertRows.length > 0) {
+      const persist = await this.persistRangePendingLegRows(
+        insertRows,
+        `standard signal=${signal.id} broker=${broker.id}`,
+      )
+      materializedVirtuals = persist.ok
+      if (!persist.ok) {
+        console.error(
+          `[tradeExecutor] range_pending_legs persist failed signal=${signal.id} broker=${broker.id}: ${persist.lastError ?? 'unknown'}`,
+        )
+        try {
+          await this.supabase.from('trade_execution_logs').insert({
+            user_id: signal.user_id,
+            signal_id: signal.id,
+            broker_account_id: broker.id,
+            action: 'virtual_pending_failed',
+            status: 'failed',
+            request_payload: { rows: insertRows.length, anchor, anchorSource } as unknown as Record<string, unknown>,
+            error_message: persist.lastError ?? 'unknown',
+          })
+        } catch { /* logging is best-effort */ }
+      } else {
+        console.log(
+          `[tradeExecutor] virtual pendings inserted=${insertRows.length} signal=${signal.id} broker=${broker.id} symbol=${symbol} anchor=${anchor ?? 'n/a'} (${anchorSource})`,
+        )
+        try {
+          await this.supabase.from('trade_execution_logs').insert({
+            user_id: signal.user_id,
+            signal_id: signal.id,
+            broker_account_id: broker.id,
+            action: 'virtual_pending_inserted',
+            status: 'success',
+            request_payload: {
+              rows: insertRows.length,
+              anchor,
+              anchorSource,
+              symbol,
+              stepIdxs: insertRows.map(r => r.step_idx),
+              triggers: insertRows.map(r => r.trigger_price),
+              strict_deferred: strictDeferred,
+            } as unknown as Record<string, unknown>,
+          })
+        } catch { /* logging is best-effort */ }
       }
     }
 
     if (legs.length === 0) {
-      // No immediates to send — the trade is purely virtual pendings (or the
-      // planner dropped them). Nothing more to do here.
-      return {}
+      // No immediates — purely virtual pendings (range and/or strict-entry deferral).
+      return materializedVirtuals ? { openedOrMerged: true } : {}
     }
 
     const totalCount = legs.length
@@ -2049,7 +2177,7 @@ export class TradeExecutor {
     const anyImmediateOpened = sendResults.some(
       r => r.status === 'fulfilled' && r.value === true,
     )
-    if (virtualPendings.length > 0 && !anyImmediateOpened) {
+    if (virtualPendings.length > 0 && !anyImmediateOpened && !strictDeferred) {
       const { error: stripErr } = await this.supabase
         .from('range_pending_legs')
         .delete()
@@ -2065,7 +2193,7 @@ export class TradeExecutor {
         )
       }
     }
-    return { openedOrMerged: anyImmediateOpened }
+    return { openedOrMerged: anyImmediateOpened || materializedVirtuals }
   }
 
   private async logSendSkipped(

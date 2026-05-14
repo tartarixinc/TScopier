@@ -37,7 +37,8 @@ import {
  *   • Ladder discipline: at most one virtual leg fires per (signal, broker,
  *     symbol) per tick — the shallowest triggered rung with no shallower
  *     `pending`/`claimed` row — so one volatile quote cannot machine-gun every
- *     deeper rung in the same millisecond.
+ *     deeper rung in the same millisecond. `step_idx = 0` is reserved for
+ *     strict signal-entry deferrals (same trigger price as the signal anchor).
  */
 
 interface PendingRow {

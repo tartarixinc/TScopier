@@ -26,7 +26,9 @@ import { pipCalculator, type PipQuote } from './pipCalculator'
  *      instead of prices, converts them to absolute SL/TP using the entry price.
  *   7. Channel `prefer_entry` — chooses the first or last price from an entry zone.
  *   8. `use_signal_entry_price` — when on, signals without an explicit parsed entry (price
- *      or zone) are skipped entirely; otherwise market vs limit is chosen from live quote vs entry.
+ *      or zone) are skipped entirely; otherwise the planner emits market-shaped orders plus
+ *      {@link PlannerResult.strictEntry} and the executor compares live quote vs entry to either
+ *      send immediately or persist a virtual pending row (same mechanism as range pendings).
  */
 
 export interface ParsedSignal {
@@ -222,6 +224,34 @@ export interface PlannerAnchor {
 }
 
 /**
+ * When `use_signal_entry_price` is on and the parse has an explicit entry anchor, the executor
+ * compares live bid/ask to {@link entryPrice}:
+ *   Buy  → immediate market only if ask ≤ entry; else defer via `range_pending_legs`.
+ *   Sell → immediate market only if bid ≥ entry; else defer.
+ */
+export interface PlannerStrictEntry {
+  /** Rounded signal entry anchor (single price from entry or zone + prefer_entry). */
+  entryPrice: number
+  /** Planned direction after reverse_signal gate (same as {@link PlannerResult.isBuy}). */
+  isBuy: boolean
+}
+
+/**
+ * True when the live quote is already at or better than the signal entry for immediate
+ * execution (buy: ask ≤ entry; sell: bid ≥ entry). Used by the executor after a post-delay /Quote.
+ */
+export function strictSignalEntryQuoteAllowsImmediate(args: {
+  isBuy: boolean
+  entryPrice: number
+  bid: number
+  ask: number
+}): boolean {
+  const { isBuy, entryPrice, bid, ask } = args
+  if (!Number.isFinite(entryPrice) || entryPrice <= 0 || !Number.isFinite(bid) || !Number.isFinite(ask)) return false
+  return isBuy ? ask <= entryPrice : bid >= entryPrice
+}
+
+/**
  * One worker-managed partial close for a single-mode trade. Emitted by
  * `planSinglePartialTps` whenever the user configured `tp_lots` percentages
  * AND the signal has ≥ 2 take-profits. The executor INSERTs these into
@@ -396,6 +426,11 @@ export interface PlannerResult {
    * list.
    */
   partialTps?: PlannerPartialTp[]
+  /**
+   * Set when `use_signal_entry_price` is enabled and an explicit entry anchor exists; the
+   * executor performs live-quote gating (immediate market vs virtual pending at entry).
+   */
+  strictEntry?: PlannerStrictEntry
   /** Reason for an empty plan, suitable for logging. */
   skip_reason?: string
   /** Non-fatal note when the planner had to soften its strategy (e.g. multi-trade
@@ -613,9 +648,10 @@ export function resolvedParsedEntryZone(parsed: ParsedSignal): { lo: number; hi:
 
 /**
  * True when the parsed signal includes an explicit entry **price** or **zone**
- * (not a bare market “buy now”). Used with `use_signal_entry_price` so strict
- * market-vs-limit logic and quote prefetch only run when the message actually
- * specifies where to work the entry.
+ * (not a bare market “buy now”). Used with `use_signal_entry_price` so planning
+ * only runs when the message specifies an entry anchor. Fill timing vs live
+ * quote is enforced in the executor via {@link PlannerResult.strictEntry} and
+ * virtual pendings.
  */
 export function parsedHasExplicitEntryAnchor(parsed: ParsedSignal): boolean {
   if (resolvedParsedEntryPrice(parsed) != null) return true
@@ -777,29 +813,11 @@ export function planManualOrders(args: {
     finalTps = finalTps.map(tp => clampToStops(tp, true, entryAnchor) ?? tp)
   }
 
-  // ── 4c. Signal entry strictness: market vs limit execution ─────────────
+  // ── 4c. Signal entry strictness: always market-shaped orders; executor gates vs live quote ──
   // Bare "buy now" signals are filtered in section 1 when `use_signal_entry_price` is on.
   let opExec: MtOperation = opSplit
-  const tolPips = Number(manual.signal_entry_pip_tolerance ?? 10)
-  if (
-    manual.use_signal_entry_price === true
-    && parsedHasExplicitEntryAnchor(parsed)
-    && entryAnchor != null
-    && pip > 0
-    && Number.isFinite(tolPips)
-    && tolPips >= 0
-    && ctx.liveBid != null
-    && ctx.liveAsk != null
-    && Number.isFinite(ctx.liveBid)
-    && Number.isFinite(ctx.liveAsk)
-  ) {
-    if (isBuy) {
-      const maxBuy = entryAnchor + tolPips * pip
-      opExec = ctx.liveAsk <= maxBuy ? 'Buy' : 'BuyLimit'
-    } else {
-      const minSell = entryAnchor - tolPips * pip
-      opExec = ctx.liveBid >= minSell ? 'Sell' : 'SellLimit'
-    }
+  if (manual.use_signal_entry_price === true && parsedHasExplicitEntryAnchor(parsed) && entryAnchor != null) {
+    opExec = isBuy ? 'Buy' : 'Sell'
   }
 
   // ── 5. Multi-Trade lot splitting ────────────────────────────────────────
@@ -838,6 +856,11 @@ export function planManualOrders(args: {
       expirationFields.expirationType = 'Specified'
     }
   }
+
+  const strictEntry: PlannerStrictEntry | undefined =
+    manual.use_signal_entry_price === true && parsedHasExplicitEntryAnchor(parsed) && roundedEntry > 0
+      ? { entryPrice: roundedEntry, isBuy }
+      : undefined
 
   const minLot = Number.isFinite(ctx.minLot) && ctx.minLot > 0 ? ctx.minLot : 0.01
   const lotStep = Number.isFinite(ctx.lotStep) && ctx.lotStep > 0 ? ctx.lotStep : 0.01
@@ -881,6 +904,7 @@ export function planManualOrders(args: {
       pip,
       pipQuote,
       isBuy,
+      ...(strictEntry ? { strictEntry } : {}),
       ...(combinedFallback ? { fallback_reason: combinedFallback } : {}),
       ...(partialPlan.partials.length > 0 ? { partialTps: partialPlan.partials } : {}),
     }
@@ -1090,6 +1114,7 @@ export function planManualOrders(args: {
     pip,
     pipQuote,
     isBuy,
+    ...(strictEntry ? { strictEntry } : {}),
     ...(closeWorseEntries ? { closeWorseEntries } : {}),
     delay_ms,
     ...(rangeFallbackReason ? { fallback_reason: rangeFallbackReason } : {}),

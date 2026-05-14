@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SKIP_REASON_SIGNAL_ENTRY_REQUIRED = void 0;
+exports.strictSignalEntryQuoteAllowsImmediate = strictSignalEntryQuoteAllowsImmediate;
 exports.planSinglePartialTps = planSinglePartialTps;
 exports.planRangeSplit = planRangeSplit;
 exports.computeCwOverrideTp = computeCwOverrideTp;
@@ -11,6 +12,16 @@ exports.resolvedParsedEntryZone = resolvedParsedEntryZone;
 exports.parsedHasExplicitEntryAnchor = parsedHasExplicitEntryAnchor;
 exports.planManualOrders = planManualOrders;
 const pipCalculator_1 = require("./pipCalculator");
+/**
+ * True when the live quote is already at or better than the signal entry for immediate
+ * execution (buy: ask ≤ entry; sell: bid ≥ entry). Used by the executor after a post-delay /Quote.
+ */
+function strictSignalEntryQuoteAllowsImmediate(args) {
+    const { isBuy, entryPrice, bid, ask } = args;
+    if (!Number.isFinite(entryPrice) || entryPrice <= 0 || !Number.isFinite(bid) || !Number.isFinite(ask))
+        return false;
+    return isBuy ? ask <= entryPrice : bid >= entryPrice;
+}
 /**
  * Build the per-TP partial close schedule for a `trade_style === 'single'`
  * trade.
@@ -262,9 +273,10 @@ function resolvedParsedEntryZone(parsed) {
 }
 /**
  * True when the parsed signal includes an explicit entry **price** or **zone**
- * (not a bare market “buy now”). Used with `use_signal_entry_price` so strict
- * market-vs-limit logic and quote prefetch only run when the message actually
- * specifies where to work the entry.
+ * (not a bare market “buy now”). Used with `use_signal_entry_price` so planning
+ * only runs when the message specifies an entry anchor. Fill timing vs live
+ * quote is enforced in the executor via {@link PlannerResult.strictEntry} and
+ * virtual pendings.
  */
 function parsedHasExplicitEntryAnchor(parsed) {
     if (resolvedParsedEntryPrice(parsed) != null)
@@ -393,28 +405,11 @@ function planManualOrders(args) {
         finalSl = clampToStops(finalSl, false, entryAnchor);
         finalTps = finalTps.map(tp => clampToStops(tp, true, entryAnchor) ?? tp);
     }
-    // ── 4c. Signal entry strictness: market vs limit execution ─────────────
+    // ── 4c. Signal entry strictness: always market-shaped orders; executor gates vs live quote ──
     // Bare "buy now" signals are filtered in section 1 when `use_signal_entry_price` is on.
     let opExec = opSplit;
-    const tolPips = Number(manual.signal_entry_pip_tolerance ?? 10);
-    if (manual.use_signal_entry_price === true
-        && parsedHasExplicitEntryAnchor(parsed)
-        && entryAnchor != null
-        && pip > 0
-        && Number.isFinite(tolPips)
-        && tolPips >= 0
-        && ctx.liveBid != null
-        && ctx.liveAsk != null
-        && Number.isFinite(ctx.liveBid)
-        && Number.isFinite(ctx.liveAsk)) {
-        if (isBuy) {
-            const maxBuy = entryAnchor + tolPips * pip;
-            opExec = ctx.liveAsk <= maxBuy ? 'Buy' : 'BuyLimit';
-        }
-        else {
-            const minSell = entryAnchor - tolPips * pip;
-            opExec = ctx.liveBid >= minSell ? 'Sell' : 'SellLimit';
-        }
+    if (manual.use_signal_entry_price === true && parsedHasExplicitEntryAnchor(parsed) && entryAnchor != null) {
+        opExec = isBuy ? 'Buy' : 'Sell';
     }
     // ── 5. Multi-Trade lot splitting ────────────────────────────────────────
     const tradeStyle = manual.trade_style === 'multi' ? 'multi' : 'single';
@@ -449,6 +444,9 @@ function planManualOrders(args) {
             expirationFields.expirationType = 'Specified';
         }
     }
+    const strictEntry = manual.use_signal_entry_price === true && parsedHasExplicitEntryAnchor(parsed) && roundedEntry > 0
+        ? { entryPrice: roundedEntry, isBuy }
+        : undefined;
     const minLot = Number.isFinite(ctx.minLot) && ctx.minLot > 0 ? ctx.minLot : 0.01;
     const lotStep = Number.isFinite(ctx.lotStep) && ctx.lotStep > 0 ? ctx.lotStep : 0.01;
     // Work in integer "lot-step units" to dodge floating-point drift on things like
@@ -491,6 +489,7 @@ function planManualOrders(args) {
             pip,
             pipQuote,
             isBuy,
+            ...(strictEntry ? { strictEntry } : {}),
             ...(combinedFallback ? { fallback_reason: combinedFallback } : {}),
             ...(partialPlan.partials.length > 0 ? { partialTps: partialPlan.partials } : {}),
         };
@@ -683,6 +682,7 @@ function planManualOrders(args) {
         pip,
         pipQuote,
         isBuy,
+        ...(strictEntry ? { strictEntry } : {}),
         ...(closeWorseEntries ? { closeWorseEntries } : {}),
         delay_ms,
         ...(rangeFallbackReason ? { fallback_reason: rangeFallbackReason } : {}),

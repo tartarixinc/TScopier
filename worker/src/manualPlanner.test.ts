@@ -9,6 +9,7 @@ import {
   planSinglePartialTps,
   resolvedParsedEntryPrice,
   reverseSignalGateSatisfied,
+  strictSignalEntryQuoteAllowsImmediate,
   type ManualSettings,
   type ParsedSignal,
   type PlannerCloseWorseEntries,
@@ -270,13 +271,27 @@ test('planManualOrders: sell ladder → virtualPendings carry isBuy=false', () =
   }
 })
 
-test('planManualOrders: signal entry strictness buy → market when ask within tolerance', () => {
-  const pip = pipCalculator('XAUUSD', baseCtx.point, baseCtx.digits, null).pipPrice
-  const entry = 4500
-  const tol = 10
-  const maxBuy = entry + tol * pip
+test('strictSignalEntryQuoteAllowsImmediate: buy when ask at or below entry', () => {
+  assert.equal(strictSignalEntryQuoteAllowsImmediate({ isBuy: true, entryPrice: 4500, bid: 4499, ask: 4500 }), true)
+  assert.equal(strictSignalEntryQuoteAllowsImmediate({ isBuy: true, entryPrice: 4500, bid: 4490, ask: 4499 }), true)
+})
+
+test('strictSignalEntryQuoteAllowsImmediate: buy false when ask above entry', () => {
+  assert.equal(strictSignalEntryQuoteAllowsImmediate({ isBuy: true, entryPrice: 4500, bid: 4499, ask: 4500.01 }), false)
+})
+
+test('strictSignalEntryQuoteAllowsImmediate: sell when bid at or above entry', () => {
+  assert.equal(strictSignalEntryQuoteAllowsImmediate({ isBuy: false, entryPrice: 4500, bid: 4500, ask: 4501 }), true)
+  assert.equal(strictSignalEntryQuoteAllowsImmediate({ isBuy: false, entryPrice: 4500, bid: 4510, ask: 4511 }), true)
+})
+
+test('strictSignalEntryQuoteAllowsImmediate: sell false when bid below entry', () => {
+  assert.equal(strictSignalEntryQuoteAllowsImmediate({ isBuy: false, entryPrice: 4500, bid: 4499.99, ask: 4501 }), false)
+})
+
+test('planManualOrders: use_signal_entry_price emits strictEntry + always Buy (executor gates quote)', () => {
   const plan = planManualOrders({
-    parsed: { ...baseParsed, entry_price: entry },
+    parsed: { ...baseParsed, entry_price: 4500 },
     resolvedSymbol: 'XAUUSD',
     baseOperation: 'BuyLimit',
     manual: {
@@ -284,50 +299,23 @@ test('planManualOrders: signal entry strictness buy → market when ask within t
       trade_style: 'single',
       range_trading: false,
       use_signal_entry_price: true,
-      signal_entry_pip_tolerance: tol,
+      signal_entry_pip_tolerance: 999,
     },
     channelKeywords: null,
     manualLot: 1.0,
-    ctx: { ...baseCtx, liveBid: maxBuy - 0.5, liveAsk: maxBuy - 0.01 },
+    ctx: { ...baseCtx, liveBid: 4600, liveAsk: 4601 },
     commentPrefix: 'TSCopier:abc',
   })
   assert.equal(plan.orders.length, 1)
   assert.equal(plan.orders[0]!.operation, 'Buy')
-  assert.equal(plan.orders[0]!.price, entry)
+  assert.ok(plan.strictEntry)
+  assert.equal(plan.strictEntry!.entryPrice, 4500)
+  assert.equal(plan.strictEntry!.isBuy, true)
 })
 
-test('planManualOrders: signal entry strictness buy → limit when ask above tolerance', () => {
-  const pip = pipCalculator('XAUUSD', baseCtx.point, baseCtx.digits, null).pipPrice
-  const entry = 4500
-  const tol = 10
-  const maxBuy = entry + tol * pip
+test('planManualOrders: use_signal_entry_price sell emits strictEntry + Sell', () => {
   const plan = planManualOrders({
-    parsed: { ...baseParsed, entry_price: entry },
-    resolvedSymbol: 'XAUUSD',
-    baseOperation: 'BuyLimit',
-    manual: {
-      ...baseManual,
-      trade_style: 'single',
-      range_trading: false,
-      use_signal_entry_price: true,
-      signal_entry_pip_tolerance: tol,
-    },
-    channelKeywords: null,
-    manualLot: 1.0,
-    ctx: { ...baseCtx, liveBid: maxBuy, liveAsk: maxBuy + 0.01 },
-    commentPrefix: 'TSCopier:abc',
-  })
-  assert.equal(plan.orders[0]!.operation, 'BuyLimit')
-  assert.equal(plan.orders[0]!.price, entry)
-})
-
-test('planManualOrders: signal entry strictness sell → market when bid within tolerance', () => {
-  const pip = pipCalculator('XAUUSD', baseCtx.point, baseCtx.digits, null).pipPrice
-  const entry = 4500
-  const tol = 10
-  const minSell = entry - tol * pip
-  const plan = planManualOrders({
-    parsed: { ...baseParsed, action: 'sell', entry_price: entry },
+    parsed: { ...baseParsed, action: 'sell', entry_price: 4500 },
     resolvedSymbol: 'XAUUSD',
     baseOperation: 'SellLimit',
     manual: {
@@ -335,43 +323,19 @@ test('planManualOrders: signal entry strictness sell → market when bid within 
       trade_style: 'single',
       range_trading: false,
       use_signal_entry_price: true,
-      signal_entry_pip_tolerance: tol,
+      signal_entry_pip_tolerance: 0,
     },
     channelKeywords: null,
     manualLot: 1.0,
-    ctx: { ...baseCtx, liveBid: minSell + 0.01, liveAsk: minSell + 0.5 },
+    ctx: { ...baseCtx, liveBid: 4400, liveAsk: 4401 },
     commentPrefix: 'TSCopier:abc',
   })
   assert.equal(plan.orders[0]!.operation, 'Sell')
-  assert.equal(plan.orders[0]!.price, entry)
+  assert.ok(plan.strictEntry)
+  assert.equal(plan.strictEntry!.isBuy, false)
 })
 
-test('planManualOrders: signal entry strictness sell → limit when bid below tolerance', () => {
-  const pip = pipCalculator('XAUUSD', baseCtx.point, baseCtx.digits, null).pipPrice
-  const entry = 4500
-  const tol = 10
-  const minSell = entry - tol * pip
-  const plan = planManualOrders({
-    parsed: { ...baseParsed, action: 'sell', entry_price: entry },
-    resolvedSymbol: 'XAUUSD',
-    baseOperation: 'SellLimit',
-    manual: {
-      ...baseManual,
-      trade_style: 'single',
-      range_trading: false,
-      use_signal_entry_price: true,
-      signal_entry_pip_tolerance: tol,
-    },
-    channelKeywords: null,
-    manualLot: 1.0,
-    ctx: { ...baseCtx, liveBid: minSell - 0.01, liveAsk: minSell + 0.2 },
-    commentPrefix: 'TSCopier:abc',
-  })
-  assert.equal(plan.orders[0]!.operation, 'SellLimit')
-  assert.equal(plan.orders[0]!.price, entry)
-})
-
-test('planManualOrders: strict entry market exec still skips range for entry-shaped signal', () => {
+test('planManualOrders: strict entry + entry-shaped signal still skips range (opSplit pending)', () => {
   const pip = pipCalculator('XAUUSD', baseCtx.point, baseCtx.digits, null).pipPrice
   const entry = 4500
   const tol = 10
