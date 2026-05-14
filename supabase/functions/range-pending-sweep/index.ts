@@ -16,6 +16,9 @@
  * Same ladder discipline as the worker: at most one leg fires per
  * (signal, broker, symbol) per invocation — shallowest triggered rung with no
  * shallower pending/claimed row.
+ *
+ * Expired TTL rows and successful fires **delete** the `range_pending_legs` row
+ * (same as the worker) so the table stays free of terminal tombstones.
  */
 
 // @ts-ignore - Deno runtime resolves these
@@ -113,7 +116,7 @@ Deno.serve(async (_req: Request) => {
   const nowIso = new Date().toISOString()
   await sb
     .from("range_pending_legs")
-    .update({ status: "expired" })
+    .delete()
     .eq("status", "pending")
     .not("expires_at", "is", null)
     .lt("expires_at", nowIso)
@@ -294,13 +297,6 @@ async function fireLeg(
       comment: leg.comment ?? `TSCopier:rg${leg.step_idx}`,
       expertID: leg.expert_id ?? 909090,
     })
-    await sb.from("range_pending_legs")
-      .update({
-        status: "fired",
-        fired_at: new Date().toISOString(),
-        ticket: result.ticket != null ? String(result.ticket) : null,
-      })
-      .eq("id", leg.id)
     await sb.from("trades").insert({
       user_id: leg.user_id,
       signal_id: leg.signal_id,
@@ -324,6 +320,10 @@ async function fireLeg(
       request_payload: { leg_id: leg.id, step_idx: leg.step_idx, trigger_price: leg.trigger_price, ref_price: refPrice, claimed_by: CLAIMED_BY },
       response_payload: { ticket: result.ticket },
     })
+    const { error: delErr } = await sb.from("range_pending_legs").delete().eq("id", leg.id)
+    if (delErr) {
+      console.warn(`[range-pending-sweep] range_pending_legs delete after fire failed leg=${leg.id}: ${delErr.message}`)
+    }
     return true
   } catch (err) {
     const msg = (err as Error).message

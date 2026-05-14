@@ -40,6 +40,10 @@ import {
  *     deeper rung in the same millisecond. Strict signal-entry deferrals use
  *     broker limit orders (`signal_entry_pending_orders`), not `step_idx = 0`
  *     rows in this table.
+ *
+ *   • Terminal rows (`expired` TTL, successful `fired`) are **deleted** from
+ *     `range_pending_legs` after logging so the table does not accumulate
+ *     tombstones. Failed / cancelled legs remain for diagnostics.
  */
 
 interface PendingRow {
@@ -179,7 +183,7 @@ export class VirtualPendingMonitor {
     const nowIso = new Date().toISOString()
     const { data: expired } = await this.supabase
       .from('range_pending_legs')
-      .update({ status: 'expired' })
+      .delete()
       .eq('status', 'pending')
       .not('expires_at', 'is', null)
       .lt('expires_at', nowIso)
@@ -420,14 +424,6 @@ export class VirtualPendingMonitor {
       console.log(
         `[virtualPendingMonitor] virtual leg fired signal=${leg.signal_id} stepIdx=${leg.step_idx} trigger=${leg.trigger_price} ref=${refPrice} ticket=${result.ticket} latency=${latencyMs}ms`,
       )
-      await this.supabase
-        .from('range_pending_legs')
-        .update({
-          status: 'fired',
-          fired_at: new Date().toISOString(),
-          ticket: result.ticket != null ? String(result.ticket) : null,
-        })
-        .eq('id', leg.id)
       await this.supabase.from('trades').insert({
         user_id: leg.user_id,
         signal_id: leg.signal_id,
@@ -460,6 +456,10 @@ export class VirtualPendingMonitor {
         } as unknown as Record<string, unknown>,
         response_payload: { ticket: result.ticket, latency_ms: latencyMs, claimed_by: this.hostId },
       })
+      const { error: delErr } = await this.supabase.from('range_pending_legs').delete().eq('id', leg.id)
+      if (delErr) {
+        console.warn(`[virtualPendingMonitor] range_pending_legs delete after fire failed leg=${leg.id}: ${delErr.message}`)
+      }
       return true
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)

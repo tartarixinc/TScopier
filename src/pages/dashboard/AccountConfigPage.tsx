@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import {
   Plus, Trash2, Server, Activity, GitBranch, Eye, DollarSign,
   SlidersHorizontal, Radio, Target, TrendingUp, Filter, Wallet,
-  ArrowLeftRight, ChevronDown, Brain,
+  ArrowLeftRight, ChevronDown, Brain, Settings2,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { supabase } from '../../lib/supabase'
@@ -353,7 +353,7 @@ function PlatformIcon({ platform }: { platform: string }) {
 }
 
 type ConfigTabId = 'mode' | 'channels'
-type ManualSubTabId = 'symbol_routing' | 'risk' | 'stops' | 'trailing' | 'filters' | 'strategy'
+type ManualSubTabId = 'symbol_routing' | 'risk' | 'stops' | 'management' | 'filters' | 'strategy'
 
 interface TabDef {
   id: ConfigTabId
@@ -375,8 +375,8 @@ const ALL_TABS: TabDef[] = [
 const MANUAL_SUB_TABS: ManualSubTabDef[] = [
   { id: 'symbol_routing', label: 'Symbol Routing', icon: ArrowLeftRight },
   { id: 'risk', label: 'Risk & Sizing', icon: Wallet },
-  { id: 'stops', label: 'Stops & Targets', icon: Target },
-  { id: 'trailing', label: 'Trailing', icon: TrendingUp },
+  { id: 'stops', label: 'Targets', icon: Target },
+  { id: 'management', label: 'Management', icon: Settings2 },
   { id: 'filters', label: 'Filters', icon: Filter },
   { id: 'strategy', label: 'Strategy', icon: Brain },
 ]
@@ -1587,13 +1587,70 @@ export function AccountConfigPage() {
                           </div>
                         )}
 
-                        {activeManualSubTab === 'trailing' && (
-                          <div className="space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                              <Select label="Trailing SL" value={configDraft.manualSettings.trailing_enabled ? 'yes' : 'no'} onChange={e => setManual({ trailing_enabled: e.target.value === 'yes' })} options={[{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }]} />
-                              <Input label="Trail Start (pips)" type="number" value={String(configDraft.manualSettings.trailing_start_pips ?? 20)} onChange={e => setManual({ trailing_start_pips: Number(e.target.value) })} />
-                              <Input label="Trail Step (pips)" type="number" value={String(configDraft.manualSettings.trailing_step_pips ?? 5)} onChange={e => setManual({ trailing_step_pips: Number(e.target.value) })} />
-                              <Input label="Trail Distance (pips)" type="number" value={String(configDraft.manualSettings.trailing_distance_pips ?? 10)} onChange={e => setManual({ trailing_distance_pips: Number(e.target.value) })} />
+                        {activeManualSubTab === 'management' && (
+                          <div className="space-y-6">
+                            <div className="rounded-lg border border-neutral-200 p-3 space-y-3">
+                              <p className="text-sm font-medium text-neutral-800 flex items-center gap-2">
+                                <TrendingUp className="h-4 w-4 text-neutral-600" aria-hidden />
+                                Trailing stop
+                              </p>
+                              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                                <Select label="Trailing SL" value={configDraft.manualSettings.trailing_enabled ? 'yes' : 'no'} onChange={e => setManual({ trailing_enabled: e.target.value === 'yes' })} options={[{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }]} />
+                                <Input label="Trail Start (pips)" type="number" value={String(configDraft.manualSettings.trailing_start_pips ?? 20)} onChange={e => setManual({ trailing_start_pips: Number(e.target.value) })} />
+                                <Input label="Trail Step (pips)" type="number" value={String(configDraft.manualSettings.trailing_step_pips ?? 5)} onChange={e => setManual({ trailing_step_pips: Number(e.target.value) })} />
+                                <Input label="Trail Distance (pips)" type="number" value={String(configDraft.manualSettings.trailing_distance_pips ?? 10)} onChange={e => setManual({ trailing_distance_pips: Number(e.target.value) })} />
+                              </div>
+                            </div>
+
+                            <div className="rounded-lg border border-neutral-200 p-3 space-y-3">
+                              <p className="text-sm font-medium text-neutral-800">Auto-management</p>
+                              <p className="text-xs text-neutral-500">
+                                Move SL to entry once the trade reaches a milestone, and configure the
+                                default lot share for Breakeven, Partial Close and Half Close commands
+                                received from channels.
+                              </p>
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <Select
+                                  label="Move SL to Entry After"
+                                  value={configDraft.manualSettings.move_sl_to_entry_after_mode ?? 'none'}
+                                  onChange={e => setManual({ move_sl_to_entry_after_mode: e.target.value as ManualSettings['move_sl_to_entry_after_mode'] })}
+                                  options={[{ value: 'none', label: 'None' }, { value: 'pips', label: 'Pips' }, { value: 'rr', label: 'RR' }, { value: 'money', label: 'Money' }, { value: 'tp_hit', label: 'TP Hit' }]}
+                                />
+                                {configDraft.manualSettings.move_sl_to_entry_after_mode !== 'none' && (
+                                  <Input
+                                    label="Move SL Trigger Value"
+                                    type="number"
+                                    value={String(configDraft.manualSettings.move_sl_to_entry_after_value ?? 10)}
+                                    onChange={e => setManual({ move_sl_to_entry_after_value: Number(e.target.value) })}
+                                  />
+                                )}
+                                {configDraft.manualSettings.move_sl_to_entry_after_mode !== 'none' && (
+                                  <Select
+                                    label="Move SL Type"
+                                    value={configDraft.manualSettings.move_sl_to_entry_type ?? 'sl_only'}
+                                    onChange={e => setManual({ move_sl_to_entry_type: e.target.value as ManualSettings['move_sl_to_entry_type'] })}
+                                    options={[{ value: 'sl_only', label: 'Move SL only' }, { value: 'sl_and_close_half', label: 'Move SL and close half' }]}
+                                  />
+                                )}
+                                <Input
+                                  label="Breakeven Offset (pips)"
+                                  type="number"
+                                  value={String(configDraft.manualSettings.breakeven_offset_pips ?? 10)}
+                                  onChange={e => setManual({ breakeven_offset_pips: Number(e.target.value) })}
+                                />
+                                <Input
+                                  label="Partial Close (%)"
+                                  type="number"
+                                  value={String(configDraft.manualSettings.partial_close_percent ?? 25)}
+                                  onChange={e => setManual({ partial_close_percent: Number(e.target.value) })}
+                                />
+                                <Input
+                                  label="Half Close (%)"
+                                  type="number"
+                                  value={String(configDraft.manualSettings.half_close_percent ?? 50)}
+                                  onChange={e => setManual({ half_close_percent: Number(e.target.value) })}
+                                />
+                              </div>
                             </div>
                           </div>
                         )}
@@ -1654,8 +1711,9 @@ export function AccountConfigPage() {
                         {activeManualSubTab === 'strategy' && (
                           <div className="space-y-4">
                             <p className="text-xs text-neutral-500">
-                              Strategy controls how the copier reacts to signals, applies your own SL/TP
-                              templates, and runs in-trade automation such as breakeven and partial closes.
+                              Strategy controls how the copier reacts to signals and applies your own SL/TP
+                              templates. Trailing, move-SL-to-entry, and channel command defaults (breakeven / partial / half close) live under{' '}
+                              <strong>Management</strong>.
                             </p>
 
                             <div className="rounded-lg border border-neutral-200 p-3 space-y-3">
@@ -1858,57 +1916,6 @@ export function AccountConfigPage() {
                                     const v = Number.isFinite(n) ? Math.max(1, Math.min(24, Math.floor(n))) : 1
                                     setManual({ pending_expiry_hours: v })
                                   }}
-                                />
-                              </div>
-                            </div>
-
-                            <div className="rounded-lg border border-neutral-200 p-3 space-y-3">
-                              <p className="text-sm font-medium text-neutral-800">Auto-management</p>
-                              <p className="text-xs text-neutral-500">
-                                Move SL to entry once the trade reaches a milestone, and configure the
-                                default lot share for Breakeven, Partial Close and Half Close commands
-                                received from channels.
-                              </p>
-                              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                <Select
-                                  label="Move SL to Entry After"
-                                  value={configDraft.manualSettings.move_sl_to_entry_after_mode ?? 'none'}
-                                  onChange={e => setManual({ move_sl_to_entry_after_mode: e.target.value as ManualSettings['move_sl_to_entry_after_mode'] })}
-                                  options={[{ value: 'none', label: 'None' }, { value: 'pips', label: 'Pips' }, { value: 'rr', label: 'RR' }, { value: 'money', label: 'Money' }, { value: 'tp_hit', label: 'TP Hit' }]}
-                                />
-                                {configDraft.manualSettings.move_sl_to_entry_after_mode !== 'none' && (
-                                  <Input
-                                    label="Move SL Trigger Value"
-                                    type="number"
-                                    value={String(configDraft.manualSettings.move_sl_to_entry_after_value ?? 10)}
-                                    onChange={e => setManual({ move_sl_to_entry_after_value: Number(e.target.value) })}
-                                  />
-                                )}
-                                {configDraft.manualSettings.move_sl_to_entry_after_mode !== 'none' && (
-                                  <Select
-                                    label="Move SL Type"
-                                    value={configDraft.manualSettings.move_sl_to_entry_type ?? 'sl_only'}
-                                    onChange={e => setManual({ move_sl_to_entry_type: e.target.value as ManualSettings['move_sl_to_entry_type'] })}
-                                    options={[{ value: 'sl_only', label: 'Move SL only' }, { value: 'sl_and_close_half', label: 'Move SL and close half' }]}
-                                  />
-                                )}
-                                <Input
-                                  label="Breakeven Offset (pips)"
-                                  type="number"
-                                  value={String(configDraft.manualSettings.breakeven_offset_pips ?? 10)}
-                                  onChange={e => setManual({ breakeven_offset_pips: Number(e.target.value) })}
-                                />
-                                <Input
-                                  label="Partial Close (%)"
-                                  type="number"
-                                  value={String(configDraft.manualSettings.partial_close_percent ?? 25)}
-                                  onChange={e => setManual({ partial_close_percent: Number(e.target.value) })}
-                                />
-                                <Input
-                                  label="Half Close (%)"
-                                  type="number"
-                                  value={String(configDraft.manualSettings.half_close_percent ?? 50)}
-                                  onChange={e => setManual({ half_close_percent: Number(e.target.value) })}
                                 />
                               </div>
                             </div>
