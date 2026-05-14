@@ -390,7 +390,7 @@ test('planSinglePartialTps: only 1 TP → no partials, broker TP=TP1', () => {
   assert.equal(r.partials.length, 0)
 })
 
-test('planSinglePartialTps: empty bucket rows → no partials, broker TP=TP1', () => {
+test('planSinglePartialTps: empty bucket rows → no partials, broker TP=last TP', () => {
   const r = planSinglePartialTps({
     manualLot: 1.0,
     minLot: 0.01,
@@ -398,7 +398,7 @@ test('planSinglePartialTps: empty bucket rows → no partials, broker TP=TP1', (
     finalTps: [1.10, 1.20, 1.30],
     bucketRows: [],
   })
-  assert.equal(r.brokerTp, 1.10)
+  assert.equal(r.brokerTp, 1.30)
   assert.equal(r.partials.length, 0)
 })
 

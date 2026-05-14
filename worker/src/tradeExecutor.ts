@@ -16,6 +16,7 @@ import {
   resolvedParsedEntryZone,
   SKIP_REASON_SIGNAL_ENTRY_REQUIRED,
   strictSignalEntryQuoteAllowsImmediate,
+  lastPositiveParsedTpPrice,
   type ChannelKeywords,
   type ManualSettings,
   type ParsedSignal as PlannerParsedSignal,
@@ -1956,17 +1957,27 @@ export class TradeExecutor {
         const vol = roundLot(capped.length === 1 ? Number(first.volume) || 0 : aggVol, params)
         const baseComment = first.comment ?? `TSCopier:${signal.id.slice(0, 8)}`
         const comment = capped.length === 1 ? `${baseComment}:strictEntry` : `${baseComment}:strictEntryAgg`
-        // Do not pass `expiration` / `expirationType` to MetatraderAPI OrderSend here:
-        // several MT5 builds return "Invalid order expiration date" for ISO strings
-        // on GET /OrderSend. `expires_at` is still stored on `signal_entry_pending_orders`
-        // and the worker monitor closes the broker pending when that time is reached.
+        // Broker pending expiry is enforced in `signalEntryPendingMonitor` via `expires_at`
+        // (MetatraderAPI GET /OrderSend rejects many `expiration` payloads for pendings).
+        const isSingleTradeStyle = manual.trade_style !== 'multi'
+        const takeprofitFromPlan = first.takeprofit ?? 0
+        let takeprofitPx = takeprofitFromPlan
+        if (isSingleTradeStyle) {
+          const lastParsed = lastPositiveParsedTpPrice(parsed)
+          if (lastParsed != null && lastParsed > 0) {
+            takeprofitPx = lastParsed
+          }
+        }
+        const takeprofitRounded = Number.isFinite(takeprofitPx) && takeprofitPx > 0
+          ? Number(takeprofitPx.toFixed(digits))
+          : 0
         const sendArgs: OrderSendArgs = {
           symbol,
           operation: op,
           volume: vol,
           price: entryPx,
           stoploss: first.stoploss ?? 0,
-          takeprofit: first.takeprofit ?? 0,
+          takeprofit: takeprofitRounded,
           slippage: first.slippage ?? 20,
           comment,
           expertID: first.expertID ?? 909090,
@@ -2022,7 +2033,8 @@ export class TradeExecutor {
                 /* best-effort rollback */
               }
             } else {
-              const partialTpPlan = capped.length === 1 && plan.partialTps?.length ? plan.partialTps : null
+              const partialTpPlan =
+                isSingleTradeStyle && capped.length === 1 && plan.partialTps?.length ? plan.partialTps : null
               const { error: sepErr } = await this.supabase.from('signal_entry_pending_orders').insert({
               signal_id: signal.id,
               user_id: signal.user_id,

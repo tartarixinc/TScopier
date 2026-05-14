@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SKIP_REASON_SIGNAL_ENTRY_REQUIRED = void 0;
 exports.strictSignalEntryQuoteAllowsImmediate = strictSignalEntryQuoteAllowsImmediate;
+exports.lastPositiveParsedTpPrice = lastPositiveParsedTpPrice;
 exports.planSinglePartialTps = planSinglePartialTps;
 exports.planRangeSplit = planRangeSplit;
 exports.computeCwOverrideTp = computeCwOverrideTp;
@@ -23,6 +24,22 @@ function strictSignalEntryQuoteAllowsImmediate(args) {
     return isBuy ? ask <= entryPrice : bid >= entryPrice;
 }
 /**
+ * Rightmost positive TP from parsed signal data (TP3 when three levels are present).
+ * Used so broker orders ride to the deepest target when we are not emitting partial legs.
+ */
+function lastPositiveParsedTpPrice(parsed) {
+    const arr = parsed?.tp;
+    if (!Array.isArray(arr) || arr.length === 0)
+        return null;
+    for (let i = arr.length - 1; i >= 0; i--) {
+        const raw = arr[i];
+        const n = typeof raw === 'number' ? raw : Number(raw);
+        if (Number.isFinite(n) && n > 0)
+            return n;
+    }
+    return null;
+}
+/**
  * Build the per-TP partial close schedule for a `trade_style === 'single'`
  * trade.
  *
@@ -31,7 +48,8 @@ function strictSignalEntryQuoteAllowsImmediate(args) {
  *     broker TP becomes the LAST bucket-paired TP (so the trade rides
  *     to its deepest target) and the EARLIER buckets emit partials.
  *   - When `finalTps.length < 2` OR no enabled bucket rows, partials don't
- *     apply; the caller uses TP1 as the broker TP (current legacy behavior).
+ *     apply. With **two or more** TPs and no buckets, the broker TP is the
+ *     **last** TP (deepest target). With a single TP, broker TP is that TP.
  *   - `closeLots` is `floor(manualLot × percent / 100 / lotStep) × lotStep`
  *     and is dropped when the result is below `minLot`. We never close
  *     more than `manualLot - minLot` across all partials so the last
@@ -43,8 +61,15 @@ function planSinglePartialTps(args) {
     if (!Number.isFinite(manualLot) || manualLot <= 0) {
         return { brokerTp: null, partials: [], fallbackReason: 'partial_tp_invalid_lot' };
     }
-    if (!Array.isArray(finalTps) || finalTps.length < 2 || !bucketRows.length) {
+    if (!Array.isArray(finalTps) || finalTps.length === 0) {
+        return { brokerTp: null, partials: [], fallbackReason: 'partial_tp_invalid_lot' };
+    }
+    if (finalTps.length < 2) {
         return { brokerTp: finalTps[0] ?? null, partials: [] };
+    }
+    if (!bucketRows.length) {
+        const brokerTp = finalTps[finalTps.length - 1] ?? null;
+        return { brokerTp, partials: [] };
     }
     // Pair buckets with TPs positionally and clamp to whichever side is shorter.
     const bucketCount = Math.min(bucketRows.length, finalTps.length);
@@ -464,8 +489,8 @@ function planManualOrders(args) {
         // to the LAST configured-bucket TP at the broker, and the EARLIER
         // buckets become `partial_tp_legs` rows that `partialTpMonitor`
         // /OrderCloses at each trigger. When the schedule doesn't apply we
-        // fall back to legacy "broker TP = TP1, no partials" behavior so
-        // single-TP signals keep working.
+        // fall back to broker TP = last parsed TP when ≥2 targets, else TP1, with
+        // no partials — single-TP signals keep working.
         const enabledForSingle = (manual.tp_lots ?? []).filter(r => r && r.enabled);
         const partialPlan = planSinglePartialTps({
             manualLot,
