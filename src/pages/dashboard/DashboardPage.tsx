@@ -838,13 +838,13 @@ export function DashboardPage() {
     <div className="px-4 py-4 sm:px-6 sm:py-6 lg:p-8 max-w-[1600px] mx-auto">
       {/* Page header */}
       <div className="flex items-center justify-between mb-4 sm:mb-6">
-        <h1 className="text-xl sm:text-2xl font-bold text-neutral-900">Dashboard</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-neutral-50">Dashboard</h1>
         
       </div>
 
       {/* Stats bar */}
-      <div className="bg-white rounded-2xl border border-neutral-200 mb-6">
-        <div className="grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 lg:divide-x divide-neutral-100">
+      <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 mb-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 lg:divide-x divide-neutral-100 dark:divide-neutral-800">
           <StatBlock
             label="Total Balance"
             value={loading ? '—' : `$${stats.totalEquity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
@@ -857,12 +857,12 @@ export function DashboardPage() {
             sub={loading ? '' : formatVsYesterdayMoney(stats.todayProfit, stats.yesterdayProfit)}
             valueColor={
               loading
-                ? 'text-neutral-900'
+                ? 'text-neutral-900 dark:text-neutral-50'
                 : stats.todayProfit > 0
                   ? 'text-teal-600'
                   : stats.todayProfit < 0
                     ? 'text-error-600'
-                    : 'text-neutral-900'
+                    : 'text-neutral-900 dark:text-neutral-50'
             }
             subColor={stats.todayProfit >= 0 ? 'text-neutral-400' : 'text-error-500'}
           />
@@ -878,17 +878,17 @@ export function DashboardPage() {
             sub={loading ? '' : `${stats.openPositions} open positions`}
             valueColor={
               loading
-                ? 'text-neutral-900'
+                ? 'text-neutral-900 dark:text-neutral-50'
                 : stats.openPnl > 0
                   ? 'text-teal-600'
                   : stats.openPnl < 0
                     ? 'text-error-600'
-                    : 'text-neutral-900'
+                    : 'text-neutral-900 dark:text-neutral-50'
             }
             subColor={stats.openPnl >= 0 ? 'text-neutral-400' : 'text-error-500'}
           />
         </div>
-        <div className="border-t border-neutral-100 p-4 sm:p-5 grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="border-t border-neutral-100 dark:border-neutral-800 p-4 sm:p-5 grid grid-cols-2 lg:grid-cols-4 gap-4">
           <OverviewStat
             label="Active Signal Channels"
             value={loading ? '—' : String(stats.activeChannels)}
@@ -928,12 +928,12 @@ export function DashboardPage() {
       {/* Lower panels */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         {/* AI Expert Log */}
-          <div className="bg-white rounded-2xl border border-neutral-200 min-w-0">
-          <div className="px-4 sm:px-5 py-4 border-b border-neutral-100 flex flex-wrap items-center justify-between gap-2">
+          <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 min-w-0">
+          <div className="px-4 sm:px-5 py-4 border-b border-neutral-100 dark:border-neutral-800 flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4 text-teal-500" />
-              <span className="text-sm font-semibold text-neutral-900">Channel Worker</span>
-              <button className="text-neutral-300 hover:text-neutral-500">
+              <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Channel Worker</span>
+              <button className="text-neutral-300 hover:text-neutral-500 dark:text-neutral-400">
                 <Info className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -950,8 +950,8 @@ export function DashboardPage() {
             <div className="divide-y divide-neutral-50">
               {[...Array(5)].map((_, i) => (
                 <div key={i} className="px-5 py-3">
-                  <div className="h-4 bg-neutral-100 rounded animate-pulse w-3/4 mb-1.5" />
-                  <div className="h-3 bg-neutral-100 rounded animate-pulse w-1/3" />
+                  <div className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse w-3/4 mb-1.5" />
+                  <div className="h-3 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse w-1/3" />
                 </div>
               ))}
             </div>
@@ -965,12 +965,12 @@ export function DashboardPage() {
         </div>
 
         {/* Copier Logs */}
-        <div className="bg-white rounded-2xl border border-neutral-200 min-w-0 overflow-hidden">
-          <div className="px-4 sm:px-5 py-4 border-b border-neutral-100 flex flex-wrap items-center justify-between gap-2">
+        <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 min-w-0 overflow-hidden">
+          <div className="px-4 sm:px-5 py-4 border-b border-neutral-100 dark:border-neutral-800 flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4 text-teal-500" />
-              <span className="text-sm font-semibold text-neutral-900">Copier Logs</span>
-              <button className="text-neutral-300 hover:text-neutral-500">
+              <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Copier Logs</span>
+              <button className="text-neutral-300 hover:text-neutral-500 dark:text-neutral-400">
                 <Info className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -986,7 +986,7 @@ export function DashboardPage() {
           <div className="overflow-x-auto">
           {/* Table header */}
           <div
-            className={`${DASHBOARD_COPIER_LOG_GRID} min-w-[28rem] px-4 sm:px-5 py-3 border-b border-neutral-100 text-xs font-medium text-neutral-400 uppercase tracking-wide`}
+            className={`${DASHBOARD_COPIER_LOG_GRID} min-w-[28rem] px-4 sm:px-5 py-3 border-b border-neutral-100 dark:border-neutral-800 text-xs font-medium text-neutral-400 uppercase tracking-wide`}
           >
             <span>Status</span>
             <span className="min-w-0">Channel</span>
@@ -1000,14 +1000,14 @@ export function DashboardPage() {
               {[...Array(4)].map((_, i) => (
                 <div key={i} className={`${DASHBOARD_COPIER_LOG_GRID} px-5 py-3`}>
                   {[...Array(5)].map((_, j) => (
-                    <div key={j} className="h-4 bg-neutral-100 rounded animate-pulse min-w-0" />
+                    <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse min-w-0" />
                   ))}
                 </div>
               ))}
             </div>
           ) : copierLogs.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 px-5">
-              <div className="w-20 h-20 bg-neutral-100 rounded-2xl flex items-center justify-center mb-3 relative">
+              <div className="w-20 h-20 bg-neutral-100 dark:bg-neutral-800 rounded-2xl flex items-center justify-center mb-3 relative">
                 <svg className="w-10 h-10 text-neutral-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
@@ -1036,12 +1036,12 @@ export function DashboardPage() {
       </div>
 
       {/* Linked Accounts */}
-      <div className="mt-4 sm:mt-6 bg-white rounded-2xl border border-neutral-200 overflow-hidden">
-        <div className="px-4 sm:px-5 py-4 border-b border-neutral-100 flex flex-wrap items-center justify-between gap-2">
+      <div className="mt-4 sm:mt-6 bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden">
+        <div className="px-4 sm:px-5 py-4 border-b border-neutral-100 dark:border-neutral-800 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Clock className="w-4 h-4 text-teal-500" />
             <div>
-              <p className="text-sm font-semibold text-neutral-900">Linked Accounts</p>
+              <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Linked Accounts</p>
               <p className="text-xs text-neutral-400">Connected broker accounts used by copier</p>
             </div>
           </div>
@@ -1056,7 +1056,7 @@ export function DashboardPage() {
 
         <div className="overflow-x-auto">
         <div className="min-w-[52rem] lg:min-w-0">
-        <div className="hidden lg:grid grid-cols-9 gap-2 px-4 sm:px-5 py-3 border-b border-neutral-100 text-xs font-medium text-neutral-400">
+        <div className="hidden lg:grid grid-cols-9 gap-2 px-4 sm:px-5 py-3 border-b border-neutral-100 dark:border-neutral-800 text-xs font-medium text-neutral-400">
           <span>Account</span>
           <span>Broker</span>
           <span>Account Type</span>
@@ -1073,7 +1073,7 @@ export function DashboardPage() {
             {[...Array(3)].map((_, i) => (
               <div key={i} className="hidden lg:flex px-4 sm:px-5 py-3 gap-4">
                 {[...Array(9)].map((_, j) => (
-                  <div key={j} className="h-4 bg-neutral-100 rounded animate-pulse flex-1" />
+                  <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse flex-1" />
                 ))}
               </div>
             ))}
@@ -1103,7 +1103,7 @@ export function DashboardPage() {
   )
 }
 
-function StatBlock({ label, value, sub, subColor, valueColor = 'text-neutral-900' }: {
+function StatBlock({ label, value, sub, subColor, valueColor = 'text-neutral-900 dark:text-neutral-50' }: {
   label: string
   value: string
   sub: string
@@ -1112,7 +1112,7 @@ function StatBlock({ label, value, sub, subColor, valueColor = 'text-neutral-900
 }) {
   return (
     <div className="px-4 py-4 sm:px-6 sm:py-5">
-      <p className="text-xs sm:text-sm text-neutral-500 mb-1.5 sm:mb-2">{label}</p>
+      <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 mb-1.5 sm:mb-2">{label}</p>
       <p className={`text-xl sm:text-3xl font-semibold mb-1 sm:mb-1.5 ${valueColor}`}>{value}</p>
       <p className={`text-xs ${subColor}`}>{sub}</p>
     </div>
@@ -1135,7 +1135,7 @@ function OverviewStat({
   return (
     <div>
       <div className="flex items-center justify-between gap-2 mb-1">
-        <p className="text-xs text-neutral-500 min-w-0">{label}</p>
+        <p className="text-xs text-neutral-500 dark:text-neutral-400 min-w-0">{label}</p>
         {addTo ? (
           <Link
             to={addTo}
@@ -1146,7 +1146,7 @@ function OverviewStat({
           </Link>
         ) : null}
       </div>
-      <p className="text-2xl font-semibold text-neutral-900">{value}</p>
+      <p className="text-2xl font-semibold text-neutral-900 dark:text-neutral-50">{value}</p>
       {sub ? <p className="text-xs text-neutral-400 mt-1">{sub}</p> : null}
     </div>
   )
@@ -1157,7 +1157,7 @@ function AiExpertLogItem({ row }: { row: AiExpertLogRow }) {
 
   return (
     <div className="px-5 py-3">
-      <p className="text-sm text-neutral-800">{message}</p>
+      <p className="text-sm text-neutral-800 dark:text-neutral-100">{message}</p>
       <p className="text-[11px] text-neutral-400 mt-1">{new Date(row.created_at).toLocaleString()}</p>
     </div>
   )
@@ -1171,25 +1171,25 @@ function LogRow({ signal, channelName, symbol }: { signal: Signal; channelName: 
     executed: { color: 'text-teal-600 bg-teal-50', label: 'Executed' },
     skipped:  { color: 'text-warning-600 bg-warning-50', label: 'Skipped' },
     failed:   { color: 'text-error-600 bg-error-50', label: 'Failed' },
-    pending:  { color: 'text-neutral-500 bg-neutral-100', label: 'Pending' },
+    pending:  { color: 'text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-800', label: 'Pending' },
     parsed:   { color: 'text-teal-600 bg-teal-50', label: 'Parsed' },
   }
 
-  const s = statusConfig[signal.status] ?? { color: 'text-neutral-500 bg-neutral-100', label: signal.status }
+  const s = statusConfig[signal.status] ?? { color: 'text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-800', label: signal.status }
   const isBuy = action === 'buy'
 
   const typeLabel = action ? action.replace(/_/g, ' ') : '—'
 
   return (
-    <div className={`${DASHBOARD_COPIER_LOG_GRID} px-4 sm:px-5 py-3 hover:bg-neutral-50 transition-colors`}>
+    <div className={`${DASHBOARD_COPIER_LOG_GRID} px-4 sm:px-5 py-3 hover:bg-neutral-50 dark:bg-neutral-800/50 transition-colors`}>
       <span className={`inline-flex w-fit items-center px-2 py-0.5 rounded-md text-xs font-medium ${s.color}`}>
         {s.label}
       </span>
-      <span className="min-w-0 text-xs text-neutral-500 truncate" title={channelName}>{channelName}</span>
-      <span className="min-w-0 text-sm font-medium text-neutral-900 truncate" title={symbol}>{symbol}</span>
+      <span className="min-w-0 text-xs text-neutral-500 dark:text-neutral-400 truncate" title={channelName}>{channelName}</span>
+      <span className="min-w-0 text-sm font-medium text-neutral-900 dark:text-neutral-50 truncate" title={symbol}>{symbol}</span>
       <span
         className={`min-w-0 text-xs font-medium uppercase truncate ${
-          isBuy ? 'text-primary-600' : action === 'sell' ? 'text-error-600' : 'text-neutral-600'
+          isBuy ? 'text-primary-600' : action === 'sell' ? 'text-error-600' : 'text-neutral-600 dark:text-neutral-400'
         }`}
         title={typeLabel}
       >
@@ -1240,18 +1240,18 @@ function LinkedAccountRow({
   const accountLabel = account.label || 'Unnamed account'
 
   return (
-    <div className="grid grid-cols-9 gap-2 px-4 sm:px-5 py-3 items-center hover:bg-neutral-50 transition-colors">
+    <div className="grid grid-cols-9 gap-2 px-4 sm:px-5 py-3 items-center hover:bg-neutral-50 dark:bg-neutral-800/50 transition-colors">
       <div className="flex flex-col min-w-0">
-        <span className="text-sm font-semibold text-neutral-900 truncate">{accountLabel}</span>
+        <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 truncate">{accountLabel}</span>
         <span className="text-[11px] font-medium text-primary-600 uppercase">{account.platform}</span>
       </div>
-      <span className="text-sm font-medium text-neutral-900">{brokerText}</span>
-      <span className="text-sm font-medium text-neutral-900">{accountType}</span>
-      <span className="text-sm font-medium text-neutral-900">{balanceText}</span>
+      <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{brokerText}</span>
+      <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{accountType}</span>
+      <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{balanceText}</span>
       <span className={`text-sm font-semibold ${pnlColor}`}>{pnl >= 0 ? '+' : '-'}{pnlText}</span>
       <span className="text-sm font-semibold text-teal-600">0.0%</span>
-      <span className="text-sm font-semibold text-neutral-900">0%</span>
-      <span className="text-sm font-semibold text-neutral-900">0.0%</span>
+      <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">0%</span>
+      <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">0.0%</span>
       <div className="flex justify-end">
         <span className={`inline-flex items-center px-2.5 py-1 rounded-lg border text-xs font-semibold ${statusClass}`}>
           {account.is_active ? 'Active' : 'Warning'}

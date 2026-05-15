@@ -30,8 +30,8 @@ export function LoginPage() {
 
   return (
     <Card>
-      <h1 className="text-xl font-semibold text-neutral-900 mb-1">Welcome back</h1>
-      <p className="text-sm text-neutral-500 mb-6">Sign in to your TSCopier account</p>
+      <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-50 mb-1">Welcome back</h1>
+      <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-6">Sign in to your TSCopier account</p>
 
       {error && (
         <div className="mb-4 px-3 py-2.5 bg-error-50 border border-error-200 rounded-lg text-sm text-error-700">
@@ -62,7 +62,7 @@ export function LoginPage() {
         </Button>
       </form>
 
-      <p className="text-center text-sm text-neutral-500 mt-5">
+      <p className="text-center text-sm text-neutral-500 dark:text-neutral-400 mt-5">
         Don't have an account?{' '}
         <Link to="/signup" className="text-primary-600 hover:text-primary-700 font-medium">
           Create one

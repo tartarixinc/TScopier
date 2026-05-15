@@ -46,17 +46,17 @@ export function AddAccountModal({ open, onClose, onSelect }: AddAccountModalProp
       <div className="absolute inset-0 bg-neutral-950/40 backdrop-blur-sm animate-in" />
 
       {/* Dialog */}
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg animate-modal-in overflow-hidden">
+      <div className="relative bg-white dark:bg-neutral-900 rounded-2xl shadow-2xl w-full max-w-lg animate-modal-in overflow-hidden">
         {/* Header */}
         <div className="px-6 pt-6 pb-4">
           <div className="flex items-start justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-neutral-900">Add a trading account</h2>
-              <p className="text-sm text-neutral-500 mt-0.5">Choose your preferred trading platform to get started</p>
+              <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">Add a trading account</h2>
+              <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">Choose your preferred trading platform to get started</p>
             </div>
             <button
               onClick={onClose}
-              className="ml-4 p-1.5 rounded-lg text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 transition-colors"
+              className="ml-4 p-1.5 rounded-lg text-neutral-400 hover:text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:bg-neutral-800 transition-colors"
             >
               <X className="w-4 h-4" />
             </button>
@@ -64,7 +64,7 @@ export function AddAccountModal({ open, onClose, onSelect }: AddAccountModalProp
         </div>
 
         {/* Divider */}
-        <div className="h-px bg-neutral-100 mx-6" />
+        <div className="h-px bg-neutral-100 dark:bg-neutral-800 mx-6" />
 
         {/* Platform grid */}
         <div className="p-4 sm:p-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -73,19 +73,19 @@ export function AddAccountModal({ open, onClose, onSelect }: AddAccountModalProp
               key={p.value}
               onClick={() => onSelect(p.value)}
               className={clsx(
-                'group flex flex-col items-center gap-2.5 p-3 rounded-xl border border-neutral-150 bg-neutral-50',
-                'hover:bg-white hover:border-teal-400 hover:shadow-md hover:shadow-teal-500/10',
+                'group flex flex-col items-center gap-2.5 p-3 rounded-xl border border-neutral-150 bg-neutral-50 dark:bg-neutral-800/50',
+                'hover:bg-white dark:bg-neutral-900 hover:border-teal-400 hover:shadow-md hover:shadow-teal-500/10',
                 'transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-1'
               )}
             >
-              <div className="w-12 h-12 rounded-xl bg-white shadow-sm border border-neutral-100 flex items-center justify-center overflow-hidden group-hover:shadow-md transition-shadow duration-150">
+              <div className="w-12 h-12 rounded-xl bg-white dark:bg-neutral-900 shadow-sm border border-neutral-100 dark:border-neutral-800 flex items-center justify-center overflow-hidden group-hover:shadow-md transition-shadow duration-150">
                 <img
                   src={p.logo}
                   alt={p.label}
                   className="w-9 h-9 object-contain"
                 />
               </div>
-              <span className="text-xs font-medium text-neutral-700 text-center leading-tight group-hover:text-teal-700 transition-colors duration-150">
+              <span className="text-xs font-medium text-neutral-700 dark:text-neutral-300 text-center leading-tight group-hover:text-teal-700 transition-colors duration-150">
                 {p.label}
               </span>
             </button>

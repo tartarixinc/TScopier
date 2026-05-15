@@ -8,16 +8,63 @@
   box-sizing: border-box;
 }
 
+:root {
+  color-scheme: light;
+  --tsc-page: #f8fafc;
+  --tsc-surface: #ffffff;
+  --tsc-surface-muted: #f8fafc;
+  --tsc-border: #e2e8f0;
+  --tsc-border-subtle: #f1f5f9;
+  --tsc-text: #0f172a;
+  --tsc-text-muted: #64748b;
+}
+
+html.dark {
+  color-scheme: dark;
+  --tsc-page: #020617;
+  --tsc-surface: #0f172a;
+  --tsc-surface-muted: #1e293b;
+  --tsc-border: #334155;
+  --tsc-border-subtle: #1e293b;
+  --tsc-text: #f8fafc;
+  --tsc-text-muted: #94a3b8;
+}
+
+html.dark,
+html.dark body {
+  background-color: var(--tsc-page);
+  color: var(--tsc-text);
+}
+
 body {
   margin: 0;
   font-family: 'Inter', system-ui, sans-serif;
-  background-color: #f8fafc;
-  color: #0f172a;
+  background-color: var(--tsc-page);
+  color: var(--tsc-text);
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 #root {
   min-height: 100vh;
+}
+
+@layer components {
+  .tsc-surface {
+    @apply bg-white border-neutral-200 dark:bg-neutral-900 dark:border-neutral-800;
+  }
+
+  .tsc-surface-muted {
+    @apply bg-neutral-50 dark:bg-neutral-900/60;
+  }
+
+  .tsc-page-heading {
+    @apply text-neutral-900 dark:text-neutral-50;
+  }
+
+  .tsc-page-subtext {
+    @apply text-neutral-500 dark:text-neutral-400;
+  }
 }
 
 @layer utilities {

@@ -103,8 +103,8 @@ export function TradesPage() {
     <div className="px-4 py-4 sm:px-6 sm:py-6 lg:p-8 max-w-6xl mx-auto">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 sm:mb-6 gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-semibold text-neutral-900">Trades</h1>
-          <p className="text-sm text-neutral-500 mt-0.5">
+          <h1 className="text-xl sm:text-2xl font-semibold text-neutral-900 dark:text-neutral-50">Trades</h1>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">
             Live positions and recent closes from your linked broker accounts
             {lastSyncedAt && (
               <span className="text-neutral-400"> · synced {formatRelative(lastSyncedAt)}</span>
@@ -116,12 +116,12 @@ export function TradesPage() {
             type="button"
             onClick={() => void loadTrades({ silent: true })}
             disabled={refreshing || loading}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md font-medium border border-neutral-200 text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md font-medium border border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:bg-neutral-800/50 disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
             Refresh
           </button>
-          <div className="flex flex-wrap bg-white border border-neutral-200 rounded-lg p-0.5 gap-0.5">
+          <div className="flex flex-wrap bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg p-0.5 gap-0.5">
             {filters.map(f => (
               <button
                 key={f.value}
@@ -129,7 +129,7 @@ export function TradesPage() {
                 className={`px-3 py-1.5 text-sm rounded-md font-medium transition-colors ${
                   filter === f.value
                     ? 'bg-teal-600 text-white'
-                    : 'text-neutral-600 hover:bg-neutral-100'
+                    : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:bg-neutral-800'
                 }`}
               >
                 {f.label}
@@ -148,11 +148,11 @@ export function TradesPage() {
 
       <Card padding="none">
         {loading ? (
-          <div className="divide-y divide-neutral-100">
+          <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
             {[...Array(5)].map((_, i) => (
               <div key={i} className="px-6 py-4 flex gap-4">
                 {[...Array(9)].map((__, j) => (
-                  <div key={j} className="h-4 bg-neutral-100 rounded animate-pulse flex-1" />
+                  <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse flex-1" />
                 ))}
               </div>
             ))}
@@ -185,7 +185,7 @@ export function TradesPage() {
                 <col className="w-[6%]" />
               </colgroup>
               <thead>
-                <tr className="border-b border-neutral-100 text-xs font-medium text-neutral-500 uppercase tracking-wide">
+                <tr className="border-b border-neutral-100 dark:border-neutral-800 text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
                   <th className="px-4 py-3 text-center">Symbol</th>
                   <th className="px-2 py-3 text-center">Direction</th>
                   <th className="px-2 py-3 text-center">Broker</th>
@@ -198,7 +198,7 @@ export function TradesPage() {
                   <th className="px-4 py-3 text-center">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-neutral-100">
+              <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
                 {paginatedTrades.map(trade => <TradeRow key={trade.id} trade={trade} />)}
               </tbody>
             </table>
@@ -252,14 +252,14 @@ function TradesPagination({
   }, [page, totalPages])
 
   return (
-    <div className="flex flex-col gap-3 px-4 py-3 border-t border-neutral-100 bg-neutral-50/50 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-3 px-4 py-3 border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/50/50 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <label className="inline-flex items-center gap-2 text-sm text-neutral-600">
-          <span className="font-medium text-neutral-700">Show</span>
+        <label className="inline-flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
+          <span className="font-medium text-neutral-700 dark:text-neutral-300">Show</span>
           <select
             value={pageSize}
             onChange={e => onPageSizeChange(Number(e.target.value) as PageSizeOption)}
-            className="h-8 min-w-[4.5rem] rounded-md border border-neutral-200 bg-white px-2 text-sm text-neutral-900 tabular-nums focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+            className="h-8 min-w-[4.5rem] rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-2 text-sm text-neutral-900 dark:text-neutral-50 tabular-nums focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
             aria-label="Results per page"
           >
             {PAGE_SIZE_OPTIONS.map(n => (
@@ -268,9 +268,9 @@ function TradesPagination({
           </select>
           <span>results</span>
         </label>
-        <p className="text-xs text-neutral-500 tabular-nums">
-          Showing <span className="font-medium text-neutral-700">{rangeStart}–{rangeEnd}</span> of{' '}
-          <span className="font-medium text-neutral-700">{total}</span>
+        <p className="text-xs text-neutral-500 dark:text-neutral-400 tabular-nums">
+          Showing <span className="font-medium text-neutral-700 dark:text-neutral-300">{rangeStart}–{rangeEnd}</span> of{' '}
+          <span className="font-medium text-neutral-700 dark:text-neutral-300">{total}</span>
         </p>
       </div>
       {totalPages > 1 && (
@@ -279,7 +279,7 @@ function TradesPagination({
             type="button"
             onClick={() => onPageChange(page - 1)}
             disabled={page <= 1}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-md border border-neutral-200 text-neutral-700 hover:bg-white disabled:opacity-40 disabled:pointer-events-none"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-md border border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-white dark:bg-neutral-900 disabled:opacity-40 disabled:pointer-events-none"
             aria-label="Previous page"
           >
             <ChevronLeft className="w-4 h-4" />
@@ -308,7 +308,7 @@ function TradesPagination({
             type="button"
             onClick={() => onPageChange(page + 1)}
             disabled={page >= totalPages}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-md border border-neutral-200 text-neutral-700 hover:bg-white disabled:opacity-40 disabled:pointer-events-none"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-md border border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-white dark:bg-neutral-900 disabled:opacity-40 disabled:pointer-events-none"
             aria-label="Next page"
           >
             <span className="hidden sm:inline">Next</span>
@@ -330,7 +330,7 @@ function PageButton({ n, active, onClick }: { n: number; active: boolean; onClic
       className={`min-w-[2rem] px-2 py-1.5 text-sm rounded-md font-medium tabular-nums transition-colors ${
         active
           ? 'bg-teal-600 text-white'
-          : 'text-neutral-600 hover:bg-white border border-transparent hover:border-neutral-200'
+          : 'text-neutral-600 dark:text-neutral-400 hover:bg-white dark:bg-neutral-900 border border-transparent hover:border-neutral-200 dark:border-neutral-800'
       }`}
     >
       {n}
@@ -363,28 +363,28 @@ function TradeRow({ trade }: { trade: MtTrade }) {
         : '—'
 
   return (
-    <tr className="hover:bg-neutral-50 transition-colors">
-      <td className="px-4 py-3.5 text-sm font-semibold text-neutral-900 text-center">
+    <tr className="hover:bg-neutral-50 dark:bg-neutral-800/50 transition-colors">
+      <td className="px-4 py-3.5 text-sm font-semibold text-neutral-900 dark:text-neutral-50 text-center">
         <div>{trade.symbol || '—'}</div>
         <div className="text-[10px] text-neutral-400 font-normal tabular-nums mt-0.5">#{trade.ticket}</div>
       </td>
       <td className={`px-2 py-3.5 text-sm font-medium text-center ${
-        isBuy ? 'text-success-600' : isSell ? 'text-error-600' : 'text-neutral-500'
+        isBuy ? 'text-success-600' : isSell ? 'text-error-600' : 'text-neutral-500 dark:text-neutral-400'
       }`}>
         <span className="inline-flex items-center justify-center gap-1 w-full">
           {isBuy ? <ArrowUpRight className="w-3.5 h-3.5" /> : isSell ? <ArrowDownRight className="w-3.5 h-3.5" /> : <Minus className="w-3.5 h-3.5" />}
           {directionLabel}
         </span>
       </td>
-      <td className="px-2 py-3.5 text-xs text-neutral-600 text-center truncate" title={broker}>{broker}</td>
-      <td className="px-2 py-3.5 text-sm text-neutral-700 text-center tabular-nums">{formatPrice(trade.entry_price)}</td>
-      <td className="px-2 py-3.5 text-sm text-neutral-700 text-center tabular-nums">{formatPrice(trade.sl)}</td>
-      <td className="px-2 py-3.5 text-sm text-neutral-700 text-center tabular-nums">{formatPrice(trade.tp)}</td>
-      <td className="px-2 py-3.5 text-sm text-neutral-700 text-center tabular-nums">{trade.lot_size ? trade.lot_size.toFixed(2) : '—'}</td>
+      <td className="px-2 py-3.5 text-xs text-neutral-600 dark:text-neutral-400 text-center truncate" title={broker}>{broker}</td>
+      <td className="px-2 py-3.5 text-sm text-neutral-700 dark:text-neutral-300 text-center tabular-nums">{formatPrice(trade.entry_price)}</td>
+      <td className="px-2 py-3.5 text-sm text-neutral-700 dark:text-neutral-300 text-center tabular-nums">{formatPrice(trade.sl)}</td>
+      <td className="px-2 py-3.5 text-sm text-neutral-700 dark:text-neutral-300 text-center tabular-nums">{formatPrice(trade.tp)}</td>
+      <td className="px-2 py-3.5 text-sm text-neutral-700 dark:text-neutral-300 text-center tabular-nums">{trade.lot_size ? trade.lot_size.toFixed(2) : '—'}</td>
       <td className={`px-2 py-3.5 text-sm font-medium text-center tabular-nums ${
         profit === null ? 'text-neutral-400' :
         profit > 0 ? 'text-success-600' :
-        profit < 0 ? 'text-error-600' : 'text-neutral-500'
+        profit < 0 ? 'text-error-600' : 'text-neutral-500 dark:text-neutral-400'
       }`}>
         {profit === null ? '—' : (
           <span className="inline-flex items-center justify-center gap-1 w-full">
@@ -393,7 +393,7 @@ function TradeRow({ trade }: { trade: MtTrade }) {
           </span>
         )}
       </td>
-      <td className="px-2 py-3.5 text-xs text-neutral-500 whitespace-nowrap text-center">
+      <td className="px-2 py-3.5 text-xs text-neutral-500 dark:text-neutral-400 whitespace-nowrap text-center">
         {timeIso
           ? new Date(timeIso).toLocaleString([], {
               day: '2-digit',

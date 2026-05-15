@@ -35,8 +35,8 @@ export function SignupPage() {
 
   return (
     <Card>
-      <h1 className="text-xl font-semibold text-neutral-900 mb-1">Create your account</h1>
-      <p className="text-sm text-neutral-500 mb-6">Start copying Telegram signals in minutes</p>
+      <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-50 mb-1">Create your account</h1>
+      <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-6">Start copying Telegram signals in minutes</p>
 
       {error && (
         <div className="mb-4 px-3 py-2.5 bg-error-50 border border-error-200 rounded-lg text-sm text-error-700">
@@ -68,7 +68,7 @@ export function SignupPage() {
         </Button>
       </form>
 
-      <p className="text-center text-sm text-neutral-500 mt-5">
+      <p className="text-center text-sm text-neutral-500 dark:text-neutral-400 mt-5">
         Already have an account?{' '}
         <Link to="/login" className="text-primary-600 hover:text-primary-700 font-medium">
           Sign in

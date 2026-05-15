@@ -107,20 +107,20 @@ export function SignalHistoryPage() {
   return (
     <div className="p-6 lg:p-8 max-w-6xl mx-auto">
       <div className="mb-6 text-center">
-        <h1 className="text-3xl font-bold text-neutral-900">Signal History</h1>
-        <p className="text-sm text-neutral-500 mt-1">
+        <h1 className="text-3xl font-bold text-neutral-900 dark:text-neutral-50">Signal History</h1>
+        <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
           View parsed signals connected to your account. Filter by channel and date range.
         </p>
       </div>
 
       <Card className="mb-6" padding="none">
-        <div className="grid grid-cols-4 gap-0 divide-x divide-neutral-100">
+        <div className="grid grid-cols-4 gap-0 divide-x divide-neutral-100 dark:divide-neutral-800">
           <StatCell label="Signals received (Today)" value={stats.today} />
           <StatCell label="Signals received (Last 7 days)" value={stats.last7d} />
           <StatCell label="Signals received (Last 30 days)" value={stats.last30d} />
           <StatCell label="Signals received (Total)" value={stats.total} />
         </div>
-        <div className="grid grid-cols-4 gap-0 divide-x divide-neutral-100 border-t border-neutral-100">
+        <div className="grid grid-cols-4 gap-0 divide-x divide-neutral-100 dark:divide-neutral-800 border-t border-neutral-100 dark:border-neutral-800">
           <StatCell label="Signals received (This week)" value={stats.thisWeek} />
           <StatCell label="Signals received (This month)" value={stats.thisMonth} />
           <StatCell label="Total channels" value={stats.totalChannels} />
@@ -131,12 +131,12 @@ export function SignalHistoryPage() {
       </Card>
 
       <Card padding="none">
-        <div className="p-4 border-b border-neutral-100">
+        <div className="p-4 border-b border-neutral-100 dark:border-neutral-800">
           <div className="grid grid-cols-[1fr_1fr_auto] gap-3">
             <select
               value={channelFilter}
               onChange={e => setChannelFilter(e.target.value)}
-              className="px-3 py-2.5 rounded-lg border border-neutral-200 bg-white text-sm text-neutral-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="px-3 py-2.5 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-sm text-neutral-700 dark:text-neutral-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
               <option value="all">All Channels</option>
               {channels.map(ch => (
@@ -146,7 +146,7 @@ export function SignalHistoryPage() {
             <select
               value={timeFilter}
               onChange={e => setTimeFilter(e.target.value as TimeFilter)}
-              className="px-3 py-2.5 rounded-lg border border-neutral-200 bg-white text-sm text-neutral-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="px-3 py-2.5 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-sm text-neutral-700 dark:text-neutral-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
               <option value="all">All Time</option>
               <option value="today">Today</option>
@@ -163,7 +163,7 @@ export function SignalHistoryPage() {
           Total found: {filteredSignals.length}
         </div>
 
-        <div className="grid grid-cols-[60px_1.2fr_1fr_2.6fr_1fr_1fr] gap-3 px-4 py-3 border-b border-neutral-100 text-xs font-semibold text-neutral-500 uppercase tracking-wide">
+        <div className="grid grid-cols-[60px_1.2fr_1fr_2.6fr_1fr_1fr] gap-3 px-4 py-3 border-b border-neutral-100 dark:border-neutral-800 text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
           <span>#</span>
           <span>Channel Name</span>
           <span>Channel ID</span>
@@ -177,7 +177,7 @@ export function SignalHistoryPage() {
             {[...Array(6)].map((_, i) => (
               <div key={i} className="grid grid-cols-[60px_1.2fr_1fr_2.6fr_1fr_1fr] gap-3 px-4 py-3">
                 {[...Array(6)].map((__, j) => (
-                  <div key={j} className="h-4 bg-neutral-100 rounded animate-pulse" />
+                  <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
                 ))}
               </div>
             ))}
@@ -193,15 +193,15 @@ export function SignalHistoryPage() {
                 ? String(parsed.telegram_message_id)
                 : signal.telegram_message_id ?? signal.id.slice(0, 8)
               return (
-                <div key={signal.id} className="grid grid-cols-[60px_1.2fr_1fr_2.6fr_1fr_1fr] gap-3 px-4 py-3 text-sm hover:bg-neutral-50 transition-colors">
-                  <span className="text-neutral-600">{index + 1}</span>
-                  <span className="font-medium text-neutral-900 truncate">{channel?.display_name ?? 'Unknown'}</span>
-                  <span className="text-neutral-700 truncate">{channel?.channel_id ?? '—'}</span>
-                  <span className="text-neutral-800 truncate" title={signal.raw_message}>
+                <div key={signal.id} className="grid grid-cols-[60px_1.2fr_1fr_2.6fr_1fr_1fr] gap-3 px-4 py-3 text-sm hover:bg-neutral-50 dark:bg-neutral-800/50 transition-colors">
+                  <span className="text-neutral-600 dark:text-neutral-400">{index + 1}</span>
+                  <span className="font-medium text-neutral-900 dark:text-neutral-50 truncate">{channel?.display_name ?? 'Unknown'}</span>
+                  <span className="text-neutral-700 dark:text-neutral-300 truncate">{channel?.channel_id ?? '—'}</span>
+                  <span className="text-neutral-800 dark:text-neutral-100 truncate" title={signal.raw_message}>
                     {signal.raw_message || '(image signal)'}
                   </span>
-                  <span className="text-neutral-700">{signalRef}</span>
-                  <span className="text-neutral-600 whitespace-nowrap">
+                  <span className="text-neutral-700 dark:text-neutral-300">{signalRef}</span>
+                  <span className="text-neutral-600 dark:text-neutral-400 whitespace-nowrap">
                     {new Date(signal.created_at).toLocaleString([], {
                       day: '2-digit',
                       month: 'short',
@@ -223,7 +223,7 @@ function StatCell({ label, value }: { label: string; value: number }) {
   return (
     <div className="px-6 py-4">
       <p className="text-xs text-neutral-400 mb-1.5">{label}</p>
-      <p className="text-3xl font-semibold text-neutral-900">{value}</p>
+      <p className="text-3xl font-semibold text-neutral-900 dark:text-neutral-50">{value}</p>
     </div>
   )
 }

@@ -101,8 +101,8 @@ export function ChannelSelectStep({ onDone }: Props) {
   return (
     <Card>
       <div className="mb-5">
-        <h2 className="text-lg font-semibold text-neutral-900">Select signal channels</h2>
-        <p className="text-sm text-neutral-500 mt-1">
+        <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">Select signal channels</h2>
+        <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
           Choose which Telegram channels to monitor for trade signals. You can change this later.
         </p>
       </div>
@@ -116,7 +116,7 @@ export function ChannelSelectStep({ onDone }: Props) {
       {loading ? (
         <div className="space-y-2">
           {[...Array(4)].map((_, i) => (
-            <div key={i} className="h-14 bg-neutral-100 rounded-lg animate-pulse" />
+            <div key={i} className="h-14 bg-neutral-100 dark:bg-neutral-800 rounded-lg animate-pulse" />
           ))}
         </div>
       ) : channels.length === 0 ? (
@@ -137,7 +137,7 @@ export function ChannelSelectStep({ onDone }: Props) {
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border text-left transition-colors ${
                   isSelected
                     ? 'border-primary-200 bg-primary-50'
-                    : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
+                    : 'border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 hover:bg-neutral-50 dark:bg-neutral-800/50'
                 }`}
               >
                 <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border transition-colors ${
@@ -146,7 +146,7 @@ export function ChannelSelectStep({ onDone }: Props) {
                   {isSelected && <Check className="w-3 h-3 text-white" />}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-neutral-900 truncate">{channel.title}</p>
+                  <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50 truncate">{channel.title}</p>
                   {channel.username && (
                     <p className="text-xs text-neutral-400">@{channel.username}</p>
                   )}
@@ -163,7 +163,7 @@ export function ChannelSelectStep({ onDone }: Props) {
       )}
 
       <div className="flex items-center justify-between pt-2">
-        <span className="text-sm text-neutral-500">
+        <span className="text-sm text-neutral-500 dark:text-neutral-400">
           {selected.size > 0 ? `${selected.size} selected` : 'Select channels to monitor'}
         </span>
         <Button

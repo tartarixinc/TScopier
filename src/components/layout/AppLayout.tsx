@@ -33,6 +33,7 @@ import tscopierLogo from '/tscopierlogo.png'
 import tscopierLogoCollapsed from '/tslogo-collapse.png'
 import clsx from 'clsx'
 import { useAuth } from '../../context/AuthContext'
+import { ThemeToggle } from '../ui/ThemeToggle'
 
 interface NavSection {
   label: string
@@ -132,8 +133,8 @@ export function AppLayout() {
         'flex items-center px-3 py-2.5 rounded-lg text-sm font-medium transition-colors min-h-[44px]',
         isCollapsed ? 'justify-center' : 'gap-3',
         isActive
-          ? 'bg-teal-50 text-teal-700'
-          : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900',
+          ? 'bg-teal-50 text-teal-700 dark:bg-teal-950/60 dark:text-teal-400'
+          : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100',
       )
 
   const renderNav = (opts: { collapsed: boolean; onNavigate?: () => void }) => (
@@ -142,7 +143,7 @@ export function AppLayout() {
         <div key={section.label}>
           <p
             className={clsx(
-              'px-3 text-[10px] font-semibold text-neutral-400 tracking-widest mb-1.5',
+              'px-3 text-[10px] font-semibold text-neutral-400 dark:text-neutral-500 tracking-widest mb-1.5',
               opts.collapsed && 'hidden',
             )}
           >
@@ -155,7 +156,7 @@ export function AppLayout() {
                   key={to}
                   title={label}
                   className={clsx(
-                    'flex items-center rounded-lg px-3 py-2.5 text-sm text-neutral-300 cursor-not-allowed select-none min-h-[44px]',
+                    'flex items-center rounded-lg px-3 py-2.5 text-sm text-neutral-300 dark:text-neutral-600 cursor-not-allowed select-none min-h-[44px]',
                     opts.collapsed ? 'justify-center' : 'gap-3',
                   )}
                 >
@@ -172,7 +173,12 @@ export function AppLayout() {
                 >
                   {({ isActive }) => (
                     <>
-                      <Icon className={clsx('w-4 h-4 flex-shrink-0', isActive ? 'text-teal-600' : '')} />
+                      <Icon
+                        className={clsx(
+                          'w-4 h-4 flex-shrink-0',
+                          isActive ? 'text-teal-600 dark:text-teal-400' : '',
+                        )}
+                      />
                       <span className={clsx(opts.collapsed && 'lg:hidden')}>{label}</span>
                     </>
                   )}
@@ -186,7 +192,7 @@ export function AppLayout() {
   )
 
   return (
-    <div className="flex h-[100dvh] min-h-0 w-full overflow-hidden bg-white">
+    <div className="flex h-[100dvh] min-h-0 w-full overflow-hidden bg-neutral-50 dark:bg-neutral-950">
       {/* Mobile backdrop */}
       {mobileNavOpen && (
         <button
@@ -200,7 +206,7 @@ export function AppLayout() {
       {/* Sidebar — drawer on mobile, docked on lg+ */}
       <aside
         className={clsx(
-          'fixed inset-y-0 left-0 z-50 flex h-full min-h-0 flex-col overflow-hidden border-r border-neutral-100 bg-white transition-transform duration-200 ease-out',
+          'fixed inset-y-0 left-0 z-50 flex h-full min-h-0 flex-col overflow-hidden border-r border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900 transition-transform duration-200 ease-out',
           'w-64 max-w-[85vw]',
           mobileNavOpen ? 'translate-x-0' : '-translate-x-full',
           'lg:sticky lg:top-0 lg:z-30 lg:max-w-none lg:translate-x-0',
@@ -209,7 +215,7 @@ export function AppLayout() {
       >
         <div
           className={clsx(
-            'flex h-16 shrink-0 items-center border-b border-neutral-100',
+            'flex h-16 shrink-0 items-center border-b border-neutral-100 dark:border-neutral-800',
             sidebarExpanded ? 'justify-between px-4' : 'justify-center px-2',
           )}
         >
@@ -224,7 +230,7 @@ export function AppLayout() {
           />
           <button
             type="button"
-            className="p-2 rounded-lg text-neutral-500 hover:bg-neutral-100 lg:hidden"
+            className="p-2 rounded-lg text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800 lg:hidden"
             aria-label="Close menu"
             onClick={() => setMobileNavOpen(false)}
           >
@@ -239,12 +245,12 @@ export function AppLayout() {
           })}
         </nav>
 
-        <div className="shrink-0 border-t border-neutral-100 px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <div className="shrink-0 border-t border-neutral-100 dark:border-neutral-800 px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <button
             onClick={handleSignOut}
             title="Sign out"
             className={clsx(
-              'flex w-full items-center rounded-lg px-3 py-2.5 text-sm text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900 min-h-[44px]',
+              'flex w-full items-center rounded-lg px-3 py-2.5 text-sm text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100 min-h-[44px]',
               sidebarExpanded ? 'gap-2.5' : 'justify-center',
             )}
           >
@@ -256,11 +262,11 @@ export function AppLayout() {
 
       {/* Main area */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="sticky top-0 z-20 flex h-14 sm:h-16 shrink-0 items-center gap-2 sm:gap-4 border-b border-neutral-100 bg-white px-3 sm:px-6 pt-[env(safe-area-inset-top)]">
+        <header className="sticky top-0 z-20 flex h-14 sm:h-16 shrink-0 items-center gap-2 sm:gap-4 border-b border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 sm:px-6 pt-[env(safe-area-inset-top)]">
           <button
             type="button"
             onClick={() => setMobileNavOpen(true)}
-            className="p-2 rounded-lg text-neutral-600 hover:bg-neutral-100 transition-colors lg:hidden"
+            className="p-2 rounded-lg text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800 transition-colors lg:hidden"
             aria-label="Open menu"
           >
             <Menu className="w-5 h-5" />
@@ -270,7 +276,7 @@ export function AppLayout() {
             type="button"
             onClick={() => setIsSidebarCollapsed(prev => !prev)}
             title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            className="hidden lg:block p-1.5 rounded-lg text-neutral-400 hover:bg-neutral-100 transition-colors"
+            className="hidden lg:block p-1.5 rounded-lg text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
           >
             {isSidebarCollapsed ? <PanelLeftOpen className="w-5 h-5" /> : <PanelLeftClose className="w-5 h-5" />}
           </button>
@@ -281,7 +287,7 @@ export function AppLayout() {
               <input
                 type="text"
                 placeholder="Search"
-                className="w-full pl-9 pr-4 py-2 text-sm bg-neutral-50 border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent placeholder:text-neutral-400"
+                className="w-full pl-9 pr-4 py-2 text-sm bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent placeholder:text-neutral-400 dark:text-neutral-100"
               />
             </div>
           </div>
@@ -289,15 +295,16 @@ export function AppLayout() {
           <div className="flex-1 min-w-0" />
 
           <div className="flex items-center gap-1 sm:gap-3 shrink-0">
+            <ThemeToggle />
             <button
               type="button"
-              className="hidden sm:block p-2 rounded-lg text-neutral-400 hover:bg-neutral-100 transition-colors"
+              className="hidden sm:block p-2 rounded-lg text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
             >
               <Settings className="w-5 h-5" />
             </button>
             <button
               type="button"
-              className="p-2 rounded-lg text-neutral-400 hover:bg-neutral-100 transition-colors"
+              className="p-2 rounded-lg text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
             >
               <Bell className="w-5 h-5" />
             </button>
@@ -307,7 +314,7 @@ export function AppLayout() {
                 {initials}
               </div>
               <div className="hidden md:block text-left">
-                <p className="text-sm font-medium text-neutral-900 leading-tight truncate max-w-[8rem]">
+                <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 leading-tight truncate max-w-[8rem]">
                   {displayName}
                 </p>
                 <p className="text-xs text-neutral-400 leading-tight">Free</p>
@@ -317,7 +324,7 @@ export function AppLayout() {
           </div>
         </header>
 
-        <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain">
+        <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain bg-neutral-50 dark:bg-neutral-950">
           <Outlet />
         </main>
       </div>

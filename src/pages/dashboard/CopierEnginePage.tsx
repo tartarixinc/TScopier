@@ -450,8 +450,8 @@ export function CopierEnginePage() {
     <div className="px-4 py-4 lg:px-6 lg:py-5 max-w-5xl mx-auto">
       <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
         <div>
-          <h1 className="text-xl font-bold text-neutral-900">Channels</h1>
-          <p className="text-sm text-neutral-500 mt-0.5">Configure which Telegram channels feed into the copier</p>
+          <h1 className="text-xl font-bold text-neutral-900 dark:text-neutral-50">Channels</h1>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">Configure which Telegram channels feed into the copier</p>
         </div>
         <div className="flex gap-2">
           {!hasTgSession && tgStage === 'idle' && (
@@ -493,7 +493,7 @@ export function CopierEnginePage() {
                 loading="lazy"
               />
             </div>
-            <p className="text-sm font-semibold text-neutral-900">
+            <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
               {tgStage === 'phone' ? 'Connect Telegram: enter your phone number' : 'Connect Telegram: enter verification code'}
             </p>
           </div>
@@ -552,9 +552,9 @@ export function CopierEnginePage() {
       {/* Telegram channels panel */}
       {hasTgSession && (
         <Card className="mb-3" padding="none">
-          <div className="px-4 py-2.5 border-b border-neutral-100 flex items-center justify-between gap-2">
+          <div className="px-4 py-2.5 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <p className="text-sm font-semibold text-neutral-900">Your Telegram channels</p>
+              <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Your Telegram channels</p>
               <Badge variant="success" size="sm">Connected</Badge>
             </div>
             <div className="flex items-center gap-2">
@@ -562,7 +562,7 @@ export function CopierEnginePage() {
                 variant="ghost"
                 size="sm"
                 onClick={() => setTgChannelsCollapsed(prev => !prev)}
-                className="text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700"
+                className="text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:bg-neutral-800 hover:text-neutral-700 dark:text-neutral-300"
               >
                 <ChevronDown className={`w-3.5 h-3.5 transition-transform ${tgChannelsCollapsed ? '-rotate-90' : 'rotate-0'}`} />
                 {tgChannelsCollapsed ? 'Expand' : 'Collapse'}
@@ -580,10 +580,10 @@ export function CopierEnginePage() {
             <div className="divide-y divide-neutral-50">
               {[...Array(4)].map((_, i) => (
                 <div key={i} className="px-4 py-2.5 flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-neutral-100 animate-pulse flex-shrink-0" />
+                  <div className="w-8 h-8 rounded-lg bg-neutral-100 dark:bg-neutral-800 animate-pulse flex-shrink-0" />
                   <div className="flex-1 space-y-1.5">
-                    <div className="h-3 bg-neutral-100 rounded animate-pulse w-48" />
-                    <div className="h-2.5 bg-neutral-100 rounded animate-pulse w-24" />
+                    <div className="h-3 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse w-48" />
+                    <div className="h-2.5 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse w-24" />
                   </div>
                 </div>
               ))}
@@ -605,10 +605,10 @@ export function CopierEnginePage() {
               {tgChannels.map(ch => {
                 const alreadyAdded = channels.some(c => c.channel_id === ch.id)
                 return (
-                  <div key={ch.id} className="px-4 py-2.5 flex items-center gap-3 hover:bg-neutral-50 transition-colors">
+                  <div key={ch.id} className="px-4 py-2.5 flex items-center gap-3 hover:bg-neutral-50 dark:bg-neutral-800/50 transition-colors">
                     <TgChannelAvatar title={ch.title} username={ch.username} />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-neutral-900 truncate">{ch.title}</p>
+                      <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50 truncate">{ch.title}</p>
                       {ch.username && <p className="text-xs text-neutral-400">@{ch.username}</p>}
                     </div>
                     {ch.members_count > 0 && (
@@ -618,7 +618,7 @@ export function CopierEnginePage() {
                       onClick={() => addFromTg(ch)}
                       className={`px-3 py-1 text-xs font-medium rounded-lg border transition-colors flex-shrink-0 ${
                         alreadyAdded
-                          ? 'border-neutral-200 text-neutral-400 cursor-default'
+                          ? 'border-neutral-200 dark:border-neutral-800 text-neutral-400 cursor-default'
                           : 'border-primary-500 text-primary-600 hover:bg-primary-50'
                       }`}
                       disabled={alreadyAdded}
@@ -636,7 +636,7 @@ export function CopierEnginePage() {
       {/* Manual add form */}
       {showAdd && (
         <Card className="mb-3">
-          <h3 className="text-sm font-semibold text-neutral-900 mb-3">Add channel manually</h3>
+          <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 mb-3">Add channel manually</h3>
           {error && <div className="mb-3 px-3 py-2 bg-error-50 border border-error-200 rounded-lg text-sm text-error-700">{error}</div>}
           <form onSubmit={addManual} className="space-y-3">
             <Input label="Channel name" placeholder="e.g. Gold Signals Pro" value={newChannel.display_name} onChange={e => setNewChannel(p => ({ ...p, display_name: e.target.value }))} required />
@@ -655,21 +655,21 @@ export function CopierEnginePage() {
       {/* Channel list */}
       {loading ? (
         <div className="space-y-2">
-          {[...Array(3)].map((_, i) => <div key={i} className="h-14 bg-white rounded-xl border border-neutral-100 animate-pulse" />)}
+          {[...Array(3)].map((_, i) => <div key={i} className="h-14 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-100 dark:border-neutral-800 animate-pulse" />)}
         </div>
       ) : channels.length === 0 ? (
-        <div className="bg-white rounded-xl border border-dashed border-neutral-200 py-10 text-center">
+        <div className="bg-white dark:bg-neutral-900 rounded-xl border border-dashed border-neutral-200 dark:border-neutral-800 py-10 text-center">
           <Radio className="w-8 h-8 mx-auto mb-2 text-neutral-200" />
           <p className="text-sm font-medium text-neutral-400">No channels configured</p>
           <p className="text-xs text-neutral-300 mt-0.5">Add Telegram channels above to start the copier</p>
         </div>
       ) : (
         <Card padding="none" className="overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-neutral-100 flex items-center justify-between">
-            <p className="text-sm font-semibold text-neutral-900">Active channels</p>
+          <div className="px-4 py-2.5 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
+            <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Active channels</p>
             <span className="text-xs text-neutral-400">{channels.length} configured</span>
           </div>
-          <div className="divide-y divide-neutral-100">
+          <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
             {channels.map(channel => (
               <ChannelRow
                 key={channel.id}
@@ -688,17 +688,17 @@ export function CopierEnginePage() {
 
       {keywordsChannel && (
         <div className="fixed inset-0 z-50 bg-black/40 px-4 flex items-center justify-center">
-          <div className="w-full max-w-5xl max-h-[86vh] overflow-y-auto rounded-2xl bg-white border border-neutral-200 shadow-xl">
-            <div className="px-4 py-3 border-b border-neutral-100 flex items-center justify-between">
+          <div className="w-full max-w-5xl max-h-[86vh] overflow-y-auto rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 shadow-xl">
+            <div className="px-4 py-3 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
               <div>
-                <h3 className="text-base font-semibold text-neutral-900">Channel Keywords</h3>
-                <p className="text-sm text-neutral-500 mt-0.5">{keywordsChannel.display_name}</p>
+                <h3 className="text-base font-semibold text-neutral-900 dark:text-neutral-50">Channel Keywords</h3>
+                <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">{keywordsChannel.display_name}</p>
               </div>
-              <button onClick={closeChannelKeywords} className="px-3 py-1.5 text-sm text-neutral-500 hover:text-neutral-700">Close</button>
+              <button onClick={closeChannelKeywords} className="px-3 py-1.5 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:text-neutral-300">Close</button>
             </div>
             <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
-                <p className="text-xs font-semibold text-neutral-700">Signal Keyword</p>
+                <p className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">Signal Keyword</p>
                 <Input label="Entry Point" value={keywordsDraft.signal.entry_point} onChange={e => setKeywordsDraft(p => ({ ...p, signal: { ...p.signal, entry_point: e.target.value } }))} />
                 <Input label="BUY" value={keywordsDraft.signal.buy} onChange={e => setKeywordsDraft(p => ({ ...p, signal: { ...p.signal, buy: e.target.value } }))} />
                 <Input label="SELL" value={keywordsDraft.signal.sell} onChange={e => setKeywordsDraft(p => ({ ...p, signal: { ...p.signal, sell: e.target.value } }))} />
@@ -707,7 +707,7 @@ export function CopierEnginePage() {
                 <Input label="Market Order" value={keywordsDraft.signal.market_order} onChange={e => setKeywordsDraft(p => ({ ...p, signal: { ...p.signal, market_order: e.target.value } }))} />
               </div>
               <div className="space-y-2">
-                <p className="text-xs font-semibold text-neutral-700">Update Keyword</p>
+                <p className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">Update Keyword</p>
                 <Input label="Close TP1" value={keywordsDraft.update.close_tp1} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, close_tp1: e.target.value } }))} />
                 <Input label="Close TP2" value={keywordsDraft.update.close_tp2} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, close_tp2: e.target.value } }))} />
                 <Input label="Close TP3" value={keywordsDraft.update.close_tp3} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, close_tp3: e.target.value } }))} />
@@ -728,7 +728,7 @@ export function CopierEnginePage() {
                 <Input label="Delete" value={keywordsDraft.update.delete} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, delete: e.target.value } }))} />
               </div>
               <div className="space-y-2">
-                <p className="text-xs font-semibold text-neutral-700">Additional Keyword</p>
+                <p className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">Additional Keyword</p>
                 <Input label="Layer" value={keywordsDraft.additional.layer} onChange={e => setKeywordsDraft(p => ({ ...p, additional: { ...p.additional, layer: e.target.value } }))} />
                 <Input label="Close All" value={keywordsDraft.additional.close_all} onChange={e => setKeywordsDraft(p => ({ ...p, additional: { ...p.additional, close_all: e.target.value } }))} />
                 <Input label="Delete All" value={keywordsDraft.additional.delete_all} onChange={e => setKeywordsDraft(p => ({ ...p, additional: { ...p.additional, delete_all: e.target.value } }))} />
@@ -745,7 +745,7 @@ export function CopierEnginePage() {
                 <Select label="Read Image" value={keywordsDraft.additional.read_image ? 'true' : 'false'} onChange={e => setKeywordsDraft(p => ({ ...p, additional: { ...p.additional, read_image: e.target.value === 'true' } }))} options={[{ value: 'false', label: 'False' }, { value: 'true', label: 'True' }]} />
               </div>
             </div>
-            <div className="px-4 py-3 border-t border-neutral-100 flex justify-end gap-2">
+            <div className="px-4 py-3 border-t border-neutral-100 dark:border-neutral-800 flex justify-end gap-2">
               <Button variant="ghost" onClick={closeChannelKeywords} disabled={keywordsSaving}>Cancel</Button>
               <Button loading={keywordsSaving} onClick={() => void saveChannelKeywords()}>Save Keywords</Button>
             </div>
@@ -770,15 +770,15 @@ function ChannelRow({
   const username = channel.channel_username?.replace(/^@/, '') || undefined
 
   return (
-    <div className="hover:bg-neutral-50/80 transition-colors">
+    <div className="hover:bg-neutral-50 dark:bg-neutral-800/50/80 transition-colors">
       <div className="flex items-center gap-3 px-4 py-3">
         <TgChannelAvatar title={channel.display_name} username={username} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-sm font-semibold text-neutral-900">{channel.display_name}</h3>
+            <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{channel.display_name}</h3>
             {!channel.is_active && <Badge variant="neutral" size="sm">Paused</Badge>}
           </div>
-          {username && <p className="mt-0.5 text-xs text-neutral-500">@{username}</p>}
+          {username && <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">@{username}</p>}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Toggle checked={channel.is_active} onChange={onToggle} />
@@ -792,10 +792,10 @@ function ChannelRow({
           </button>
         </div>
       </div>
-      <div className="border-t border-neutral-100 bg-neutral-50/60 px-4 py-2.5">
+      <div className="border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/50/60 px-4 py-2.5">
         {isAnalyzing ? (
           <div>
-            <p className="text-xs text-neutral-500 mb-1.5">
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-1.5">
               Analyzing last 30 days… {Math.max(0, Math.min(100, Math.round(analysisProgress)))}%
             </p>
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200">
@@ -806,7 +806,7 @@ function ChannelRow({
             </div>
           </div>
         ) : !profile ? (
-          <p className="text-xs text-neutral-500">Profile insights will appear after analysis completes.</p>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400">Profile insights will appear after analysis completes.</p>
         ) : (
           <div className="space-y-1">
             <div className="flex flex-wrap gap-1.5">
@@ -816,7 +816,7 @@ function ChannelRow({
               <Badge variant="neutral" size="sm">SL: {profile.sl_style}</Badge>
             </div>
             {profile.analysis_summary && (
-              <p className="text-[11px] text-neutral-500 line-clamp-2">{profile.analysis_summary}</p>
+              <p className="text-[11px] text-neutral-500 dark:text-neutral-400 line-clamp-2">{profile.analysis_summary}</p>
             )}
           </div>
         )}

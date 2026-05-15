@@ -59,7 +59,7 @@ export function BrokerServerSelect({
   return (
     <div className="flex flex-col gap-1.5" ref={containerRef}>
       {label && (
-        <label className="text-sm font-medium text-neutral-700">
+        <label className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
           {label}
           {required && <span className="text-error-500"> *</span>}
         </label>
@@ -72,23 +72,23 @@ export function BrokerServerSelect({
           onChange={e => { onChange(e.target.value); setOpen(true) }}
           onFocus={() => setOpen(true)}
           placeholder={loading ? 'Loading servers…' : `Search ${totalServers} ${platform} servers…`}
-          className="w-full px-3 py-2 pr-9 text-sm rounded-lg border border-neutral-200 bg-white text-neutral-900 placeholder:text-neutral-400 hover:border-neutral-300 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+          className="w-full px-3 py-2 pr-9 text-sm rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-50 placeholder:text-neutral-400 hover:border-neutral-300 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
         />
         <button
           type="button"
           tabIndex={-1}
           onClick={() => setOpen(o => !o)}
-          className="absolute inset-y-0 right-0 flex items-center px-2 text-neutral-400 hover:text-neutral-600"
+          className="absolute inset-y-0 right-0 flex items-center px-2 text-neutral-400 hover:text-neutral-600 dark:text-neutral-400"
         >
           <ChevronDown className={clsx('w-4 h-4 transition-transform', open && 'rotate-180')} />
         </button>
 
         {open && (
-          <div className="absolute z-30 mt-1 w-full max-h-72 overflow-y-auto rounded-lg border border-neutral-200 bg-white shadow-lg">
+          <div className="absolute z-30 mt-1 w-full max-h-72 overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-lg">
             {loading ? (
-              <div className="px-3 py-2 text-sm text-neutral-500">Loading…</div>
+              <div className="px-3 py-2 text-sm text-neutral-500 dark:text-neutral-400">Loading…</div>
             ) : visibleGroups.length === 0 ? (
-              <div className="px-3 py-2 text-sm text-neutral-500">
+              <div className="px-3 py-2 text-sm text-neutral-500 dark:text-neutral-400">
                 No matching server. You can still use "{value || '—'}" as a free-text server.
               </div>
             ) : (
@@ -107,7 +107,7 @@ export function BrokerServerSelect({
                         setOpen(false)
                       }}
                       className={clsx(
-                        'w-full text-left px-3 py-1.5 text-sm hover:bg-neutral-50',
+                        'w-full text-left px-3 py-1.5 text-sm hover:bg-neutral-50 dark:bg-neutral-800/50',
                         server.server_name === value && 'bg-primary-50 text-primary-700',
                       )}
                     >
@@ -120,7 +120,7 @@ export function BrokerServerSelect({
           </div>
         )}
       </div>
-      {hint && <p className="text-xs text-neutral-500">{hint}</p>}
+      {hint && <p className="text-xs text-neutral-500 dark:text-neutral-400">{hint}</p>}
     </div>
   )
 }

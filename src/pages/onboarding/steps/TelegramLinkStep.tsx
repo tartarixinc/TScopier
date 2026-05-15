@@ -110,8 +110,8 @@ export function TelegramLinkStep({ onDone }: Props) {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h2 className="text-lg font-semibold text-neutral-900">Telegram connected</h2>
-          <p className="text-sm text-neutral-500 mt-1">Your session is saved and active.</p>
+          <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">Telegram connected</h2>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">Your session is saved and active.</p>
         </div>
       </Card>
     )
@@ -123,28 +123,28 @@ export function TelegramLinkStep({ onDone }: Props) {
         <div className="mb-5">
           <div className="flex items-center gap-2 mb-1">
             <ShieldCheck className="w-5 h-5 text-teal-600" />
-            <h2 className="text-lg font-semibold text-neutral-900">Secure your Telegram account</h2>
+            <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">Secure your Telegram account</h2>
           </div>
-          <p className="text-sm text-neutral-500">
+          <p className="text-sm text-neutral-500 dark:text-neutral-400">
             Accounts without a Two-Step Verification password are auto-flagged by Telegram much faster.
             Set one in the Telegram app before you continue, then confirm below.
           </p>
         </div>
 
-        <ol className="space-y-2.5 text-sm text-neutral-700 mb-5 list-decimal list-inside">
+        <ol className="space-y-2.5 text-sm text-neutral-700 dark:text-neutral-300 mb-5 list-decimal list-inside">
           <li>Open the Telegram app on your phone.</li>
           <li>Go to <span className="font-medium">Settings → Privacy and Security → Two-Step Verification</span>.</li>
           <li>Set a password and a recovery email.</li>
         </ol>
 
-        <label className="flex items-start gap-2.5 p-3 border border-neutral-200 rounded-lg cursor-pointer hover:bg-neutral-50 transition-colors">
+        <label className="flex items-start gap-2.5 p-3 border border-neutral-200 dark:border-neutral-800 rounded-lg cursor-pointer hover:bg-neutral-50 dark:bg-neutral-800/50 transition-colors">
           <input
             type="checkbox"
             checked={twoFaConfirmed}
             onChange={e => setTwoFaConfirmed(e.target.checked)}
             className="mt-0.5 w-4 h-4 rounded border-neutral-300 text-teal-600 focus:ring-teal-500"
           />
-          <span className="text-sm text-neutral-700">
+          <span className="text-sm text-neutral-700 dark:text-neutral-300">
             I have set a Two-Step Verification password on this Telegram account.
           </span>
         </label>
@@ -165,8 +165,8 @@ export function TelegramLinkStep({ onDone }: Props) {
   return (
     <Card>
       <div className="mb-5">
-        <h2 className="text-lg font-semibold text-neutral-900">Link your Telegram</h2>
-        <p className="text-sm text-neutral-500 mt-1">
+        <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">Link your Telegram</h2>
+        <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
           {stage === 'phone'
             ? 'Enter your phone number to receive a verification code.'
             : 'Enter the code Telegram sent you.'}

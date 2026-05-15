@@ -87,8 +87,8 @@ export function ChannelsPage() {
     <div className="p-6 lg:p-8 max-w-3xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-neutral-900">Channels</h1>
-          <p className="text-sm text-neutral-500 mt-0.5">Manage which Telegram channels you're monitoring</p>
+          <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-50">Channels</h1>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">Manage which Telegram channels you're monitoring</p>
         </div>
         <Button onClick={() => setShowAdd(true)} size="sm">
           <Plus className="w-3.5 h-3.5" />
@@ -98,7 +98,7 @@ export function ChannelsPage() {
 
       {showAdd && (
         <Card className="mb-4">
-          <h2 className="text-sm font-semibold text-neutral-900 mb-4">Add channel manually</h2>
+          <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 mb-4">Add channel manually</h2>
           {error && (
             <div className="mb-3 px-3 py-2 bg-error-50 border border-error-200 rounded-lg text-sm text-error-700">
               {error}
@@ -136,14 +136,14 @@ export function ChannelsPage() {
       {loading ? (
         <div className="space-y-3">
           {[...Array(3)].map((_, i) => (
-            <div key={i} className="h-16 bg-white rounded-xl border border-neutral-200 animate-pulse" />
+            <div key={i} className="h-16 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 animate-pulse" />
           ))}
         </div>
       ) : channels.length === 0 ? (
         <Card>
           <div className="text-center py-8">
             <Radio className="w-10 h-10 mx-auto mb-3 text-neutral-200" />
-            <p className="text-neutral-500 text-sm font-medium">No channels yet</p>
+            <p className="text-neutral-500 dark:text-neutral-400 text-sm font-medium">No channels yet</p>
             <p className="text-neutral-400 text-xs mt-1">Add a signal channel to start monitoring</p>
           </div>
         </Card>
@@ -192,7 +192,7 @@ function ChannelCard({
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <p className="text-sm font-medium text-neutral-900 truncate">{channel.display_name}</p>
+            <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50 truncate">{channel.display_name}</p>
             {!channel.is_active && <Badge variant="neutral" size="sm">Paused</Badge>}
           </div>
           {channel.channel_username && (
@@ -203,7 +203,7 @@ function ChannelCard({
           <Toggle checked={channel.is_active} onChange={onToggle} />
           <button
             onClick={onEditToggle}
-            className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 transition-colors"
+            className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:bg-neutral-800 transition-colors"
           >
             <Settings className="w-4 h-4" />
           </button>
@@ -217,8 +217,8 @@ function ChannelCard({
       </div>
 
       {isEditing && (
-        <div className="px-4 pb-4 border-t border-neutral-100 pt-3">
-          <p className="text-xs font-medium text-neutral-500 mb-3">Per-channel overrides</p>
+        <div className="px-4 pb-4 border-t border-neutral-100 dark:border-neutral-800 pt-3">
+          <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-3">Per-channel overrides</p>
           <div className="grid grid-cols-2 gap-3">
             <Input
               label="Lot size override"
