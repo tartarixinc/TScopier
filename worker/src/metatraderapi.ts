@@ -294,6 +294,21 @@ function trimEnv(v: string | undefined): string {
   return (v ?? '').trim()
 }
 
+/** Strip copy-paste junk from env URLs, e.g. `(https://mt4.mt4api.dev/)` → `https://mt4.mt4api.dev` */
+function normalizeBaseUrl(raw: string, fallback: string): string {
+  let u = trimEnv(raw)
+  if (!u) return fallback.replace(/\/+$/, '')
+  u = u.replace(/^[<\[(]+/, '').replace(/[>\])]+$/, '')
+  u = u.replace(/\/+$/, '')
+  try {
+    const parsed = new URL(u.includes('://') ? u : `https://${u}`)
+    return `${parsed.protocol}//${parsed.host}`
+  } catch {
+    console.warn(`[metatraderapi] invalid base URL "${raw.slice(0, 80)}", using default`)
+    return fallback.replace(/\/+$/, '')
+  }
+}
+
 /** RFC 7617: Authorization: Basic base64(username + ":" + password) */
 function basicAuthHeaderFromUserPass(user: string, password: string): string {
   return `Basic ${Buffer.from(`${user}:${password}`, 'utf8').toString('base64')}`
@@ -417,7 +432,7 @@ export class MetatraderApiClient {
     }
     this.platform = platform
     const defaultBase = platform === 'MT5' ? DEFAULT_MT5_BASE : DEFAULT_MT4_BASE
-    this.baseUrl = (baseUrl ?? defaultBase).replace(/\/+$/, '')
+    this.baseUrl = normalizeBaseUrl(baseUrl ?? '', defaultBase)
     this.authHeader = normalizeAuthorizationHeader(header)
     this.timeoutMs = timeoutMs
     this.paths = pathsFor(platform)
@@ -616,9 +631,11 @@ export function getMetatraderApi(platform: MtPlatform = 'MT5'): MetatraderApiCli
     clientCache.set(platform, null)
     return null
   }
-  const baseUrl = platform === 'MT5'
-    ? (trimEnv(process.env.MT4API_MT5_BASE_URL) || DEFAULT_MT5_BASE)
-    : (trimEnv(process.env.MT4API_MT4_BASE_URL) || DEFAULT_MT4_BASE)
+  const defaultBase = platform === 'MT5' ? DEFAULT_MT5_BASE : DEFAULT_MT4_BASE
+  const rawBase = platform === 'MT5'
+    ? trimEnv(process.env.MT4API_MT5_BASE_URL)
+    : trimEnv(process.env.MT4API_MT4_BASE_URL)
+  const baseUrl = normalizeBaseUrl(rawBase, defaultBase)
   const client = new MetatraderApiClient(platform, authHeader, baseUrl)
   clientCache.set(platform, client)
   return client

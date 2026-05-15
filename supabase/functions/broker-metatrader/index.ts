@@ -543,7 +543,11 @@ Deno.serve(async (req: Request) => {
     return bad(400, `Unknown action: ${action} (${BUILD_TAG})`)
   } catch (e: unknown) {
     const apiErr = e instanceof MetatraderApiError ? friendlyMtApiError(e) : null
-    const msg = apiErr?.message ?? (e instanceof Error ? e.message : "Internal server error")
+    let msg = apiErr?.message ?? (e instanceof Error ? e.message : "Internal server error")
+    if (/invalid dns name/i.test(msg)) {
+      msg =
+        "Invalid MT API host URL (DNS error). Check Supabase secrets MT4API_MT4_BASE_URL / MT4API_MT5_BASE_URL — use exactly https://mt4.mt4api.dev or https://mt5.mt4api.dev with no trailing slash or parentheses."
+    }
     const status = apiErr?.status ?? (e instanceof MetatraderApiError ? e.status : 500)
     return Response.json({ error: msg }, { status: status >= 400 && status < 600 ? status : 500, headers: corsHeaders })
   }
