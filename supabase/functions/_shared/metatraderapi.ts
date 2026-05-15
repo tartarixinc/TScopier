@@ -8,6 +8,27 @@ const DEFAULT_MT4_BASE = "https://mt4.mt4api.dev"
 
 export type MtPlatform = "MT4" | "MT5"
 
+export interface BrokerSearchResult {
+  name?: string
+  access?: string[]
+}
+
+export interface BrokerSearchCompany {
+  companyName?: string
+  results?: BrokerSearchResult[]
+}
+
+export function extractServerNamesFromSearch(companies: BrokerSearchCompany[]): string[] {
+  const names = new Set<string>()
+  for (const c of companies) {
+    for (const r of c.results ?? []) {
+      const n = (r.name ?? "").trim()
+      if (n) names.add(n)
+    }
+  }
+  return [...names]
+}
+
 export interface AccountSummary {
   balance?: number
   credit?: number
@@ -275,6 +296,17 @@ export class MetatraderApiClient {
 
   checkConnect(id: string): Promise<string> {
     return this.get<string>("/CheckConnect", { id })
+  }
+
+  /** Broker/server discovery — `company` must be at least 4 characters. */
+  async searchBrokers(company: string): Promise<BrokerSearchCompany[]> {
+    const q = company.trim()
+    if (q.length < 4) {
+      throw new MetatraderApiError("Search company must be at least 4 characters", 400)
+    }
+    const raw = await this.get<unknown>("/Search", { company: q })
+    if (!Array.isArray(raw)) return []
+    return raw as BrokerSearchCompany[]
   }
 
   async accountSummary(id: string): Promise<AccountSummary> {

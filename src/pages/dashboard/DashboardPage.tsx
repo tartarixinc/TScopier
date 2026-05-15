@@ -6,6 +6,7 @@ import { useAuth } from '../../context/AuthContext'
 import type { BrokerAccount, Signal, Trade } from '../../types/database'
 import { inferBrokerLabelFromServer, resolveMtServerCandidate } from '../../lib/brokerFromServer'
 import { AddAccountModal } from '../../components/ui/AddAccountModal'
+import { Toggle } from '../../components/ui/Toggle'
 import { metatraderApi, type MtTrade } from '../../lib/metatraderapi'
 import {
   buildCopierLogSymbolLabels,
@@ -180,6 +181,7 @@ export function DashboardPage() {
   const [linkedAccountBalances, setLinkedAccountBalances] = useState<Record<string, { balance?: number; equity?: number; currency?: string; broker?: string; mt_server_hint?: string; account_type?: 'Live' | 'Demo'; open_pnl?: number; open_trades?: number }>>({})
   const [chartTrades, setChartTrades] = useState<DashboardChartTrade[]>([])
   const [showPlatformModal, setShowPlatformModal] = useState(false)
+  const [togglingBrokerId, setTogglingBrokerId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const AUTO_REFRESH_MS = 15000
   const BROKER_SUMMARY_REFRESH_MS = 30000
@@ -834,6 +836,39 @@ export function DashboardPage() {
     )
   }
 
+  const toggleBrokerActive = async (id: string, is_active: boolean) => {
+    if (!user) return
+    setLinkedAccounts(prev => {
+      const next = prev.map(a => (a.id === id ? { ...a, is_active } : a))
+      const activeCount = next.filter(a => a.is_active).length
+      setStats(s => ({
+        ...s,
+        accounts: activeCount,
+        copierHealth: activeCount > 0 ? (s.copierHealth === 'Offline' ? 'Stable' : s.copierHealth) : 'Offline',
+      }))
+      return next
+    })
+    setTogglingBrokerId(id)
+    const { error: upErr } = await supabase
+      .from('broker_accounts')
+      .update({ is_active })
+      .eq('id', id)
+      .eq('user_id', user.id)
+    setTogglingBrokerId(null)
+    if (upErr) {
+      setLinkedAccounts(prev => {
+        const next = prev.map(a => (a.id === id ? { ...a, is_active: !is_active } : a))
+        const activeCount = next.filter(a => a.is_active).length
+        setStats(s => ({
+          ...s,
+          accounts: activeCount,
+          copierHealth: activeCount > 0 ? (s.copierHealth === 'Offline' ? 'Stable' : s.copierHealth) : 'Offline',
+        }))
+        return next
+      })
+    }
+  }
+
   return (
     <div className="px-4 py-4 sm:px-6 sm:py-6 lg:p-8 max-w-[1600px] mx-auto">
       {/* Page header */}
@@ -1083,7 +1118,13 @@ export function DashboardPage() {
         ) : (
           <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
             {linkedAccounts.map(account => (
-              <LinkedAccountRow key={account.id} account={account} accountSummary={linkedAccountBalances[account.id]} />
+              <LinkedAccountRow
+                key={account.id}
+                account={account}
+                accountSummary={linkedAccountBalances[account.id]}
+                onToggleActive={is_active => { void toggleBrokerActive(account.id, is_active) }}
+                toggleDisabled={togglingBrokerId === account.id}
+              />
             ))}
           </div>
         )}
@@ -1212,13 +1253,17 @@ function LogRow({ signal, channelName, symbol }: { signal: Signal; channelName: 
 function LinkedAccountRow({
   account,
   accountSummary,
+  onToggleActive,
+  toggleDisabled,
 }: {
   account: BrokerAccount
   accountSummary?: { balance?: number; equity?: number; currency?: string; broker?: string; mt_server_hint?: string; account_type?: 'Live' | 'Demo'; open_pnl?: number }
+  onToggleActive: (is_active: boolean) => void
+  toggleDisabled?: boolean
 }) {
   const statusClass = account.is_active
     ? 'text-teal-700 border-teal-200 bg-teal-50 dark:text-teal-300 dark:border-teal-800 dark:bg-teal-950/50'
-    : 'text-warning-700 border-warning-200 bg-warning-50 dark:text-warning-300 dark:border-warning-800 dark:bg-warning-950/40'
+    : 'text-neutral-600 border-neutral-200 bg-neutral-100 dark:text-neutral-400 dark:border-neutral-700 dark:bg-neutral-800/80'
   const balance = accountSummary?.balance ?? account.last_balance ?? null
   const equity = accountSummary?.equity ?? account.last_equity ?? null
   const currencyRaw = (accountSummary?.currency ?? account.last_currency ?? '').trim()
@@ -1252,9 +1297,14 @@ function LinkedAccountRow({
       <span className="text-sm font-semibold text-teal-600">0.0%</span>
       <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">0%</span>
       <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">0.0%</span>
-      <div className="flex justify-end">
+      <div className="flex justify-end items-center gap-2">
+        <Toggle
+          checked={account.is_active}
+          onChange={onToggleActive}
+          disabled={toggleDisabled}
+        />
         <span className={`inline-flex items-center px-2.5 py-1 rounded-lg border text-xs font-semibold ${statusClass}`}>
-          {account.is_active ? 'Active' : 'Warning'}
+          {account.is_active ? 'Active' : 'Paused'}
         </span>
       </div>
     </div>

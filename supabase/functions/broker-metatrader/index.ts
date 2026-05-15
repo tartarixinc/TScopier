@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
+import { inferBrokerLabel } from "../_shared/brokerLabel.ts"
 import {
   isMtApiAuthConfigured,
   makeClientFromEnv,
@@ -51,42 +52,6 @@ function friendlyMtApiError(e: MetatraderApiError): MetatraderApiError {
     )
   }
   return e
-}
-
-function inferBrokerLabel(server: string): string {
-  const s = (server ?? "").trim()
-  if (!s) return ""
-  const lower = s.toLowerCase()
-  const rules: [string, string][] = [
-    ["icmarkets", "IC Markets"],
-    ["exness", "Exness"],
-    ["ftmo", "FTMO"],
-    ["deriv", "Deriv"],
-    ["eightcap", "Eightcap"],
-    ["vpfx", "VPFX"],
-    ["m4markets", "M4 Markets"],
-    ["olympicmarkets", "Olympic Markets"],
-    ["hfmarkets", "HFM"],
-    ["fxdd", "FXDD"],
-    ["vtmarkets", "VT Markets"],
-    ["lmax", "LMAX"],
-    ["robomarkets", "RoboMarkets"],
-    ["trading.com", "Trading.com"],
-    ["metaquotes", "MetaQuotes"],
-    ["pepperstone", "Pepperstone"],
-    ["oanda", "OANDA"],
-    ["fxtm", "FXTM"],
-    ["admiral", "Admirals"],
-    ["tickmill", "Tickmill"],
-    ["thinkmarkets", "ThinkMarkets"],
-    ["vantage", "Vantage"],
-  ]
-  for (const [needle, label] of rules) {
-    if (lower.includes(needle)) return label
-  }
-  const first = s.split(/[-_/]/)[0]?.trim() ?? ""
-  if (first.length < 2) return s
-  return first.charAt(0).toUpperCase() + first.slice(1)
 }
 
 /**

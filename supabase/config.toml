@@ -5,3 +5,6 @@
 
 [functions.execute-trade]
 verify_jwt = false
+
+[functions.sync-mt-servers]
+verify_jwt = false

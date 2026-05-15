@@ -428,6 +428,7 @@ export function AccountConfigPage() {
   const [loading, setLoading] = useState(true)
   const [brokerPendingDelete, setBrokerPendingDelete] = useState<BrokerAccount | null>(null)
   const [deleteInProgress, setDeleteInProgress] = useState(false)
+  const [togglingBrokerId, setTogglingBrokerId] = useState<string | null>(null)
 
   const multiTradePreview = useMemo(() => {
     const ms = configDraft.manualSettings
@@ -882,6 +883,22 @@ export function AccountConfigPage() {
     }
   }
 
+  const toggleBrokerActive = async (id: string, is_active: boolean) => {
+    if (!user) return
+    setBrokers(prev => prev.map(b => (b.id === id ? { ...b, is_active } : b)))
+    setTogglingBrokerId(id)
+    const { error: upErr } = await supabase
+      .from('broker_accounts')
+      .update({ is_active })
+      .eq('id', id)
+      .eq('user_id', user.id)
+    setTogglingBrokerId(null)
+    if (upErr) {
+      setBrokers(prev => prev.map(b => (b.id === id ? { ...b, is_active: !is_active } : b)))
+      setError(upErr.message)
+    }
+  }
+
   const tabs = ALL_TABS
 
   // ── Loading ────────────────────────────────────────────────────────────
@@ -995,12 +1012,14 @@ export function AccountConfigPage() {
           <div className="space-y-3">
             {brokers.map(broker => {
               const statusVariant: 'success' | 'neutral' | 'error' =
-                broker.connection_status === 'connected' ? 'success'
+                !broker.is_active ? 'neutral'
+                : broker.connection_status === 'connected' ? 'success'
                 : broker.connection_status === 'error' ? 'error'
-                : broker.is_active ? 'success' : 'neutral'
-              const statusLabel = broker.connection_status === 'connected' ? 'Connected'
+                : 'neutral'
+              const statusLabel = !broker.is_active ? 'Paused'
+                : broker.connection_status === 'connected' ? 'Connected'
                 : broker.connection_status === 'error' ? 'Error'
-                : broker.is_active ? 'Active' : 'Paused'
+                : 'Disconnected'
               const brokerLabel = broker.broker_name
                 || inferBrokerLabelFromServer(broker.broker_server ?? null)
                 || broker.broker_server
@@ -1028,6 +1047,16 @@ export function AccountConfigPage() {
                       </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
+                      <div className="flex items-center gap-2 pr-1 border-r border-neutral-200 dark:border-neutral-700 mr-1">
+                        <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400 hidden sm:inline">
+                          Copy trades
+                        </span>
+                        <Toggle
+                          checked={broker.is_active}
+                          onChange={is_active => { void toggleBrokerActive(broker.id, is_active) }}
+                          disabled={togglingBrokerId === broker.id}
+                        />
+                      </div>
                       <button
                         type="button"
                         onClick={() => openConfigureModal(broker)}
