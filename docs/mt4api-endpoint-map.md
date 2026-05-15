@@ -25,4 +25,9 @@ Session `id` is a client-supplied UUID v4 (ConnectEx) or server-returned token; 
 
 Swagger: `https://mt5.mt4api.dev/swagger/v1/swagger.json`, `https://mt4.mt4api.dev/swagger/v1/swagger.json` (Basic Auth).
 
-Environment variables: `MT4API_BASIC_USER`, `MT4API_BASIC_PASSWORD`, `MT4API_MT5_BASE_URL`, `MT4API_MT4_BASE_URL`.
+Environment variables:
+
+- **Recommended:** `MT4API_BASIC_USER` and `MT4API_BASIC_PASSWORD` — plain text from support (not base64). TSCopier sends `Authorization: Basic base64(user:password)` per [RFC 7617](https://datatracker.ietf.org/doc/html/rfc7617).
+- **Optional:** `MT4API_BASIC_TOKEN` — if you already have only the base64 blob (without `Basic ` prefix).
+- **Optional:** `MT4API_AUTHORIZATION` — full header value (`Basic …`).
+- `MT4API_MT5_BASE_URL`, `MT4API_MT4_BASE_URL` — defaults to `https://mt5.mt4api.dev` and `https://mt4.mt4api.dev`.

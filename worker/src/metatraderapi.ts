@@ -290,8 +290,48 @@ function buildQuery(params: Record<string, string | number | undefined | null>):
   return out.toString()
 }
 
-function basicAuthHeader(user: string, password: string): string {
+function trimEnv(v: string | undefined): string {
+  return (v ?? '').trim()
+}
+
+/** RFC 7617: Authorization: Basic base64(username + ":" + password) */
+function basicAuthHeaderFromUserPass(user: string, password: string): string {
   return `Basic ${Buffer.from(`${user}:${password}`, 'utf8').toString('base64')}`
+}
+
+function normalizeAuthorizationHeader(value: string): string {
+  const v = value.trim()
+  if (!v) return ''
+  return /^Basic\s+/i.test(v) ? v : `Basic ${v}`
+}
+
+/**
+ * Resolve MT API Basic Auth from env. Prefer plain USER + PASSWORD (we base64-encode).
+ * Optional: MT4API_BASIC_TOKEN = already-encoded base64(user:pass), or
+ * MT4API_AUTHORIZATION = full header value ("Basic …").
+ */
+export function resolveBasicAuthHeader(env: NodeJS.ProcessEnv): string {
+  const authorization = trimEnv(env.MT4API_AUTHORIZATION)
+  if (authorization) return normalizeAuthorizationHeader(authorization)
+
+  const token = trimEnv(env.MT4API_BASIC_TOKEN)
+  if (token) return normalizeAuthorizationHeader(token)
+
+  const user = trimEnv(env.MT4API_BASIC_USER ?? env.METATRADERAPI_BASIC_USER)
+  const password = trimEnv(env.MT4API_BASIC_PASSWORD ?? env.METATRADERAPI_BASIC_PASSWORD)
+  if (!user || !password) {
+    throw new Error('MT4API_BASIC_USER and MT4API_BASIC_PASSWORD are required (plain text, not base64)')
+  }
+  return basicAuthHeaderFromUserPass(user, password)
+}
+
+export function isMtApiAuthConfigured(env: NodeJS.ProcessEnv = process.env): boolean {
+  try {
+    resolveBasicAuthHeader(env)
+    return true
+  } catch {
+    return false
+  }
 }
 
 function parseToken(body: unknown, fallbackId: string): string {
@@ -355,9 +395,7 @@ export function mtPlatformFrom(s: string | null | undefined): MtPlatform {
 }
 
 export function hasMetatraderApiConfigured(): boolean {
-  const user = process.env.MT4API_BASIC_USER?.trim() ?? ''
-  const pass = process.env.MT4API_BASIC_PASSWORD?.trim() ?? ''
-  return Boolean(user && pass)
+  return isMtApiAuthConfigured(process.env)
 }
 
 export class MetatraderApiClient {
@@ -369,18 +407,18 @@ export class MetatraderApiClient {
 
   constructor(
     platform: MtPlatform,
-    basicUser: string,
-    basicPassword: string,
+    authHeader: string,
     baseUrl?: string,
     timeoutMs: number = 30_000,
   ) {
-    if (!basicUser || !basicPassword) {
-      throw new Error('MetatraderApiClient: Basic Auth credentials required')
+    const header = authHeader.trim()
+    if (!header) {
+      throw new Error('MetatraderApiClient: Authorization header required')
     }
     this.platform = platform
     const defaultBase = platform === 'MT5' ? DEFAULT_MT5_BASE : DEFAULT_MT4_BASE
     this.baseUrl = (baseUrl ?? defaultBase).replace(/\/+$/, '')
-    this.authHeader = basicAuthHeader(basicUser, basicPassword)
+    this.authHeader = normalizeAuthorizationHeader(header)
     this.timeoutMs = timeoutMs
     this.paths = pathsFor(platform)
   }
@@ -571,16 +609,17 @@ const clientCache = new Map<MtPlatform, MetatraderApiClient | null>()
 
 export function getMetatraderApi(platform: MtPlatform = 'MT5'): MetatraderApiClient | null {
   if (clientCache.has(platform)) return clientCache.get(platform) ?? null
-  const user = process.env.MT4API_BASIC_USER?.trim() ?? ''
-  const password = process.env.MT4API_BASIC_PASSWORD?.trim() ?? ''
-  if (!user || !password) {
+  let authHeader: string
+  try {
+    authHeader = resolveBasicAuthHeader(process.env)
+  } catch {
     clientCache.set(platform, null)
     return null
   }
   const baseUrl = platform === 'MT5'
-    ? (process.env.MT4API_MT5_BASE_URL?.trim() || DEFAULT_MT5_BASE)
-    : (process.env.MT4API_MT4_BASE_URL?.trim() || DEFAULT_MT4_BASE)
-  const client = new MetatraderApiClient(platform, user, password, baseUrl)
+    ? (trimEnv(process.env.MT4API_MT5_BASE_URL) || DEFAULT_MT5_BASE)
+    : (trimEnv(process.env.MT4API_MT4_BASE_URL) || DEFAULT_MT4_BASE)
+  const client = new MetatraderApiClient(platform, authHeader, baseUrl)
   clientCache.set(platform, client)
   return client
 }

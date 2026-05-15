@@ -1,6 +1,11 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
-import { makeClientFromEnv, MetatraderApiError, type MtPlatform } from "../_shared/metatraderapi.ts"
+import {
+  isMtApiAuthConfigured,
+  makeClientFromEnv,
+  MetatraderApiError,
+  type MtPlatform,
+} from "../_shared/metatraderapi.ts"
 
 function mtClient(env: { get(name: string): string | undefined }, platform: string): ReturnType<typeof makeClientFromEnv> {
   const p: MtPlatform = platform === "MT4" ? "MT4" : "MT5"
@@ -17,6 +22,35 @@ const PLATFORMS = new Set(["MT4", "MT5"])
 
 function bad(status: number, msg: string) {
   return Response.json({ error: msg }, { status, headers: corsHeaders })
+}
+
+function ensureMtApiConfigured(env: { get(name: string): string | undefined }): void {
+  if (!isMtApiAuthConfigured(env)) {
+    throw new MetatraderApiError(
+      "MT API is not configured on the server. Set MT4API_BASIC_USER + MT4API_BASIC_PASSWORD (plain text from support) in Supabase Edge secrets, then redeploy broker-metatrader.",
+      503,
+    )
+  }
+}
+
+/** Turn mt4api.dev HTTP statuses into actionable UI copy. */
+function friendlyMtApiError(e: MetatraderApiError): MetatraderApiError {
+  const raw = e.message.trim()
+  if (e.status === 401 || /^unauthorized$/i.test(raw)) {
+    return new MetatraderApiError(
+      "MT API rejected the request (missing or invalid Basic Auth). Set MT4API_BASIC_USER and MT4API_BASIC_PASSWORD in Supabase Edge secrets — these are your mt4api.dev API credentials, not your MT5 login.",
+      e.status,
+      e.code,
+    )
+  }
+  if (e.status === 403 || /^forbidden$/i.test(raw)) {
+    return new MetatraderApiError(
+      "MT API rejected the API credentials (Forbidden). Check MT4API_BASIC_USER and MT4API_BASIC_PASSWORD in Supabase Edge secrets match what mt4api.dev support gave you. Do not use your MT5 account login here, and do not use the old METATRADERAPI_KEY.",
+      e.status,
+      e.code,
+    )
+  }
+  return e
 }
 
 function inferBrokerLabel(server: string): string {
@@ -82,6 +116,7 @@ Deno.serve(async (req: Request) => {
     if (!action) return bad(400, "action required")
 
     if (action === "register") {
+      ensureMtApiConfigured(Deno.env)
       const platform = String((body as Record<string, unknown>).platform ?? "MT5").toUpperCase()
       if (!PLATFORMS.has(platform)) return bad(400, "platform must be MT4 or MT5")
       const client = mtClient(Deno.env, platform)
@@ -507,8 +542,9 @@ Deno.serve(async (req: Request) => {
 
     return bad(400, `Unknown action: ${action} (${BUILD_TAG})`)
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : "Internal server error"
-    const status = e instanceof MetatraderApiError ? e.status : 500
-    return Response.json({ error: msg }, { status, headers: corsHeaders })
+    const apiErr = e instanceof MetatraderApiError ? friendlyMtApiError(e) : null
+    const msg = apiErr?.message ?? (e instanceof Error ? e.message : "Internal server error")
+    const status = apiErr?.status ?? (e instanceof MetatraderApiError ? e.status : 500)
+    return Response.json({ error: msg }, { status: status >= 400 && status < 600 ? status : 500, headers: corsHeaders })
   }
 })

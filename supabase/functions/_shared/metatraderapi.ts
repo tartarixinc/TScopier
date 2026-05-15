@@ -42,11 +42,53 @@ function buildQuery(params: Record<string, string | number | undefined | null>):
   return out.toString()
 }
 
-function basicAuthHeader(user: string, password: string): string {
+type EnvGetter = { get(name: string): string | undefined }
+
+function trimEnv(v: string | undefined): string {
+  return (v ?? "").trim()
+}
+
+/** RFC 7617: Authorization: Basic base64(username + ":" + password) */
+function basicAuthHeaderFromUserPass(user: string, password: string): string {
   const bytes = new TextEncoder().encode(`${user}:${password}`)
   let binary = ""
   for (const b of bytes) binary += String.fromCharCode(b)
   return `Basic ${btoa(binary)}`
+}
+
+function normalizeAuthorizationHeader(value: string): string {
+  const v = value.trim()
+  if (!v) return ""
+  return /^Basic\s+/i.test(v) ? v : `Basic ${v}`
+}
+
+/**
+ * Resolve MT API Basic Auth from env. Prefer plain USER + PASSWORD (we base64-encode).
+ * Optional: MT4API_BASIC_TOKEN = already-encoded base64(user:pass), or
+ * MT4API_AUTHORIZATION = full header value ("Basic …").
+ */
+export function resolveBasicAuthHeader(env: EnvGetter): string {
+  const authorization = trimEnv(env.get("MT4API_AUTHORIZATION"))
+  if (authorization) return normalizeAuthorizationHeader(authorization)
+
+  const token = trimEnv(env.get("MT4API_BASIC_TOKEN"))
+  if (token) return normalizeAuthorizationHeader(token)
+
+  const user = trimEnv(env.get("MT4API_BASIC_USER") ?? env.get("METATRADERAPI_BASIC_USER"))
+  const password = trimEnv(env.get("MT4API_BASIC_PASSWORD") ?? env.get("METATRADERAPI_BASIC_PASSWORD"))
+  if (!user || !password) {
+    throw new Error("MT4API_BASIC_USER and MT4API_BASIC_PASSWORD are required (plain text, not base64)")
+  }
+  return basicAuthHeaderFromUserPass(user, password)
+}
+
+export function isMtApiAuthConfigured(env: EnvGetter): boolean {
+  try {
+    resolveBasicAuthHeader(env)
+    return true
+  } catch {
+    return false
+  }
 }
 
 function parseToken(body: unknown, fallbackId: string): string {
@@ -137,14 +179,15 @@ export class MetatraderApiClient {
   private readonly paths: PlatformPaths
   readonly platform: MtPlatform
 
-  constructor(platform: MtPlatform, basicUser: string, basicPassword: string, baseUrl?: string) {
-    if (!basicUser || !basicPassword) {
-      throw new Error("MetatraderApiClient: Basic Auth credentials required")
+  constructor(platform: MtPlatform, authHeader: string, baseUrl?: string) {
+    const header = authHeader.trim()
+    if (!header) {
+      throw new Error("MetatraderApiClient: Authorization header required")
     }
     this.platform = platform
     const defaultBase = platform === "MT5" ? DEFAULT_MT5_BASE : DEFAULT_MT4_BASE
     this.baseUrl = (baseUrl ?? defaultBase).replace(/\/+$/, "")
-    this.authHeader = basicAuthHeader(basicUser, basicPassword)
+    this.authHeader = normalizeAuthorizationHeader(header)
     this.paths = pathsFor(platform)
   }
 
@@ -321,13 +364,12 @@ export function makeClientFromEnv(
   const cached = clientCache.get(platform)
   if (cached) return cached
 
-  const user = env.get("MT4API_BASIC_USER") ?? env.get("METATRADERAPI_BASIC_USER") ?? ""
-  const password = env.get("MT4API_BASIC_PASSWORD") ?? env.get("METATRADERAPI_BASIC_PASSWORD") ?? ""
+  const authHeader = resolveBasicAuthHeader(env)
   const baseUrl = platform === "MT5"
-    ? (env.get("MT4API_MT5_BASE_URL") ?? env.get("METATRADERAPI_BASE_URL") ?? DEFAULT_MT5_BASE)
-    : (env.get("MT4API_MT4_BASE_URL") ?? env.get("METATRADERAPI_BASE_URL") ?? DEFAULT_MT4_BASE)
+    ? (trimEnv(env.get("MT4API_MT5_BASE_URL")) || trimEnv(env.get("METATRADERAPI_BASE_URL")) || DEFAULT_MT5_BASE)
+    : (trimEnv(env.get("MT4API_MT4_BASE_URL")) || trimEnv(env.get("METATRADERAPI_BASE_URL")) || DEFAULT_MT4_BASE)
 
-  const client = new MetatraderApiClient(platform, user, password, baseUrl)
+  const client = new MetatraderApiClient(platform, authHeader, baseUrl)
   clientCache.set(platform, client)
   return client
 }
