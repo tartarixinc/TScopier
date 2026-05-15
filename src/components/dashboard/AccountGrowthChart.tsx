@@ -10,7 +10,7 @@ import {
 } from 'recharts'
 import type { AccountGrowthSeries } from '../../lib/dashboardCharts'
 import { useTheme } from '../../context/ThemeContext'
-import { chartThemeColors } from '../../lib/chartTheme'
+import { chartThemeColors, chartTooltipProps } from '../../lib/chartTheme'
 
 interface AccountGrowthChartProps {
   data: Array<Record<string, string | number>>
@@ -78,13 +78,8 @@ export function AccountGrowthChart({ data, series, loading }: AccountGrowthChart
                 tickMargin={2}
               />
               <Tooltip
-                contentStyle={{
-                  borderRadius: 8,
-                  border: `1px solid ${colors.tooltipBorder}`,
-                  backgroundColor: colors.tooltipBg,
-                  color: colors.tooltipText,
-                  fontSize: 12,
-                }}
+                {...chartTooltipProps(colors)}
+                cursor={{ stroke: colors.axis, strokeWidth: 1 }}
                 formatter={value => formatMoney(Number(value ?? 0))}
                 labelFormatter={label => String(label)}
               />

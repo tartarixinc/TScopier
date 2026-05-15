@@ -10,7 +10,7 @@ import {
 } from 'recharts'
 import type { TradeVolumeDay } from '../../lib/dashboardCharts'
 import { useTheme } from '../../context/ThemeContext'
-import { chartThemeColors } from '../../lib/chartTheme'
+import { chartThemeColors, chartTooltipProps } from '../../lib/chartTheme'
 
 interface TradeVolumeChartProps {
   data: TradeVolumeDay[]
@@ -67,13 +67,7 @@ export function TradeVolumeChart({ data, loading }: TradeVolumeChartProps) {
                 width={40}
               />
               <Tooltip
-                contentStyle={{
-                  borderRadius: 8,
-                  border: `1px solid ${colors.tooltipBorder}`,
-                  backgroundColor: colors.tooltipBg,
-                  color: colors.tooltipText,
-                  fontSize: 12,
-                }}
+                {...chartTooltipProps(colors)}
                 formatter={(value, name) => {
                   const n = Number(value ?? 0)
                   const label = String(name ?? '')
@@ -82,9 +76,33 @@ export function TradeVolumeChart({ data, loading }: TradeVolumeChartProps) {
                 }}
               />
               <Legend wrapperStyle={{ fontSize: 12, color: colors.tick }} />
-              <Bar yAxisId="money" dataKey="profit" name="Profit" fill="#0d9488" radius={[4, 4, 0, 0]} maxBarSize={28} />
-              <Bar yAxisId="money" dataKey="loss" name="Loss" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={28} />
-              <Bar yAxisId="lots" dataKey="volume" name="Volume (lots)" fill="#a3a3a3" radius={[4, 4, 0, 0]} maxBarSize={28} />
+              <Bar
+                yAxisId="money"
+                dataKey="profit"
+                name="Profit"
+                fill="#0d9488"
+                activeBar={{ fill: colors.barActive.profit, stroke: colors.barActive.profit }}
+                radius={[4, 4, 0, 0]}
+                maxBarSize={28}
+              />
+              <Bar
+                yAxisId="money"
+                dataKey="loss"
+                name="Loss"
+                fill="#ef4444"
+                activeBar={{ fill: colors.barActive.loss, stroke: colors.barActive.loss }}
+                radius={[4, 4, 0, 0]}
+                maxBarSize={28}
+              />
+              <Bar
+                yAxisId="lots"
+                dataKey="volume"
+                name="Volume (lots)"
+                fill="#737373"
+                activeBar={{ fill: colors.barActive.volume, stroke: colors.barActive.volume }}
+                radius={[4, 4, 0, 0]}
+                maxBarSize={28}
+              />
             </BarChart>
           </ResponsiveContainer>
         </div>

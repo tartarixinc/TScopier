@@ -2102,7 +2102,7 @@ export function AccountConfigPage() {
                           </p>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                             {channelOptions.map(channel => (
-                              <label key={channel.id} className="flex items-center gap-2 rounded-lg border border-neutral-200 dark:border-neutral-800 px-3 py-2 cursor-pointer hover:bg-neutral-50 dark:bg-neutral-800/50">
+                              <label key={channel.id} className="flex items-center gap-2 rounded-lg border border-neutral-200 dark:border-neutral-800 px-3 py-2 cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
                                 <input
                                   type="checkbox"
                                   checked={configDraft.channelIds.includes(channel.id)}

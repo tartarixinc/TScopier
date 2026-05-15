@@ -118,7 +118,7 @@ export function CopierLogsPage() {
         </div>
 
         {loading ? (
-          <div className="divide-y divide-neutral-50">
+          <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
             {[...Array(6)].map((_, i) => (
               <div key={i} className="px-5 py-3.5 grid grid-cols-7 gap-3">
                 {[...Array(7)].map((_, j) => (
@@ -138,7 +138,7 @@ export function CopierLogsPage() {
             <p className="text-xs text-neutral-300 mt-1">Signal logs will appear here once your copier receives messages</p>
           </div>
         ) : (
-          <div className="divide-y divide-neutral-50">
+          <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
             {signals.map(signal => {
               const parsed = signal.parsed_data as Record<string, unknown> | null
               const action = parsed?.action as string | undefined
@@ -147,7 +147,7 @@ export function CopierLogsPage() {
               const channelName = channelLabel(signal.channel_id, channelDisplayNames)
 
               return (
-                <div key={signal.id} className="grid grid-cols-[1.5fr_1.2fr_1fr_1.2fr_1fr_1fr_auto] gap-3 min-w-[44rem] px-4 sm:px-5 py-3.5 items-center hover:bg-neutral-50 dark:bg-neutral-800/50 transition-colors">
+                <div key={signal.id} className="grid grid-cols-[1.5fr_1.2fr_1fr_1.2fr_1fr_1fr_auto] gap-3 min-w-[44rem] px-4 sm:px-5 py-3.5 items-center hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors">
                   <Badge variant={s.variant} size="sm">{s.label}</Badge>
                   <span
                     className="text-xs text-neutral-500 dark:text-neutral-400 truncate"

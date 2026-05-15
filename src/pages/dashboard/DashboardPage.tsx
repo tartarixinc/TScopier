@@ -939,7 +939,7 @@ export function DashboardPage() {
             </div>
             <button
               onClick={() => navigate('/copier-engine')}
-              className="flex items-center gap-1.5 px-3 py-1.5 border border-teal-500 text-teal-600 rounded-lg text-xs font-medium hover:bg-teal-50 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 border border-teal-500 dark:border-teal-600 text-teal-600 dark:text-teal-400 rounded-lg text-xs font-medium hover:bg-teal-50 dark:hover:bg-teal-950/50 transition-colors"
             >
               Channels
               <ChevronRight className="w-3 h-3" />
@@ -947,7 +947,7 @@ export function DashboardPage() {
           </div>
 
           {loading ? (
-            <div className="divide-y divide-neutral-50">
+            <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
               {[...Array(5)].map((_, i) => (
                 <div key={i} className="px-5 py-3">
                   <div className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse w-3/4 mb-1.5" />
@@ -958,7 +958,7 @@ export function DashboardPage() {
           ) : aiExpertLogs.length === 0 ? (
             <div className="px-5 py-10 text-sm text-neutral-400">No channel worker logs yet.</div>
           ) : (
-            <div className="divide-y divide-neutral-50 max-h-96 overflow-y-auto">
+            <div className="divide-y divide-neutral-100 dark:divide-neutral-800 max-h-96 overflow-y-auto">
               {aiExpertLogs.map(row => <AiExpertLogItem key={row.id} row={row} />)}
             </div>
           )}
@@ -976,7 +976,7 @@ export function DashboardPage() {
             </div>
             <button
               onClick={() => navigate('/copier-logs')}
-              className="flex items-center gap-1.5 px-3 py-1.5 border border-teal-500 text-teal-600 rounded-lg text-xs font-medium hover:bg-teal-50 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 border border-teal-500 dark:border-teal-600 text-teal-600 dark:text-teal-400 rounded-lg text-xs font-medium hover:bg-teal-50 dark:hover:bg-teal-950/50 transition-colors"
             >
               Copier Logs
               <ChevronRight className="w-3 h-3" />
@@ -996,7 +996,7 @@ export function DashboardPage() {
           </div>
 
           {loading ? (
-            <div className="divide-y divide-neutral-50">
+            <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
               {[...Array(4)].map((_, i) => (
                 <div key={i} className={`${DASHBOARD_COPIER_LOG_GRID} px-5 py-3`}>
                   {[...Array(5)].map((_, j) => (
@@ -1020,7 +1020,7 @@ export function DashboardPage() {
               <p className="text-sm text-neutral-400 font-medium">No Data</p>
             </div>
           ) : (
-            <div className="divide-y divide-neutral-50 max-h-80 overflow-y-auto min-w-[28rem]">
+            <div className="divide-y divide-neutral-100 dark:divide-neutral-800 max-h-80 overflow-y-auto min-w-[28rem]">
               {copierLogs.map(log => (
                 <LogRow
                   key={log.id}
@@ -1042,12 +1042,12 @@ export function DashboardPage() {
             <Clock className="w-4 h-4 text-teal-500" />
             <div>
               <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Linked Accounts</p>
-              <p className="text-xs text-neutral-400">Connected broker accounts used by copier</p>
+              <p className="text-xs text-neutral-400 dark:text-neutral-500">Connected broker accounts used by copier</p>
             </div>
           </div>
           <button
             onClick={() => setShowPlatformModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 border border-teal-500 text-teal-600 rounded-lg text-xs font-medium hover:bg-teal-50 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-teal-500 dark:border-teal-600 text-teal-600 dark:text-teal-400 rounded-lg text-xs font-medium hover:bg-teal-50 dark:hover:bg-teal-950/50 transition-colors"
           >
             <Plus className="w-3.5 h-3.5" />
             Add
@@ -1069,7 +1069,7 @@ export function DashboardPage() {
         </div>
 
         {loading ? (
-          <div className="divide-y divide-neutral-50">
+          <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
             {[...Array(3)].map((_, i) => (
               <div key={i} className="hidden lg:flex px-4 sm:px-5 py-3 gap-4">
                 {[...Array(9)].map((_, j) => (
@@ -1081,7 +1081,7 @@ export function DashboardPage() {
         ) : linkedAccounts.length === 0 ? (
           <div className="px-5 py-8 text-sm text-neutral-400">No linked accounts yet.</div>
         ) : (
-          <div className="divide-y divide-neutral-50">
+          <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
             {linkedAccounts.map(account => (
               <LinkedAccountRow key={account.id} account={account} accountSummary={linkedAccountBalances[account.id]} />
             ))}
@@ -1140,7 +1140,7 @@ function OverviewStat({
           <Link
             to={addTo}
             aria-label={addLabel ?? `Go to ${label}`}
-            className="shrink-0 flex items-center justify-center w-6 h-6 rounded-md border border-teal-200 text-teal-600 hover:bg-teal-50 hover:border-teal-300 transition-colors"
+            className="shrink-0 flex items-center justify-center w-6 h-6 rounded-md border border-teal-200 dark:border-teal-800 text-teal-600 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-950/50 hover:border-teal-300 dark:hover:border-teal-700 transition-colors"
           >
             <Plus className="w-3.5 h-3.5" />
           </Link>
@@ -1168,11 +1168,11 @@ function LogRow({ signal, channelName, symbol }: { signal: Signal; channelName: 
   const action = parsed?.action as string | undefined
 
   const statusConfig: Record<string, { color: string; label: string }> = {
-    executed: { color: 'text-teal-600 bg-teal-50', label: 'Executed' },
-    skipped:  { color: 'text-warning-600 bg-warning-50', label: 'Skipped' },
-    failed:   { color: 'text-error-600 bg-error-50', label: 'Failed' },
-    pending:  { color: 'text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-800', label: 'Pending' },
-    parsed:   { color: 'text-teal-600 bg-teal-50', label: 'Parsed' },
+    executed: { color: 'text-teal-700 bg-teal-50 dark:text-teal-300 dark:bg-teal-950/60', label: 'Executed' },
+    skipped:  { color: 'text-warning-800 bg-warning-50 dark:!text-amber-100 dark:!bg-amber-900', label: 'Skipped' },
+    failed:   { color: 'text-error-800 bg-error-50 dark:text-error-300 dark:bg-error-950/70', label: 'Failed' },
+    pending:  { color: 'text-neutral-600 bg-neutral-100 dark:text-neutral-300 dark:bg-neutral-800', label: 'Pending' },
+    parsed:   { color: 'text-teal-700 bg-teal-50 dark:text-teal-300 dark:bg-teal-950/60', label: 'Parsed' },
   }
 
   const s = statusConfig[signal.status] ?? { color: 'text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-800', label: signal.status }
@@ -1181,7 +1181,7 @@ function LogRow({ signal, channelName, symbol }: { signal: Signal; channelName: 
   const typeLabel = action ? action.replace(/_/g, ' ') : '—'
 
   return (
-    <div className={`${DASHBOARD_COPIER_LOG_GRID} px-4 sm:px-5 py-3 hover:bg-neutral-50 dark:bg-neutral-800/50 transition-colors`}>
+    <div className={`${DASHBOARD_COPIER_LOG_GRID} px-4 sm:px-5 py-3 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors`}>
       <span className={`inline-flex w-fit items-center px-2 py-0.5 rounded-md text-xs font-medium ${s.color}`}>
         {s.label}
       </span>
@@ -1217,8 +1217,8 @@ function LinkedAccountRow({
   accountSummary?: { balance?: number; equity?: number; currency?: string; broker?: string; mt_server_hint?: string; account_type?: 'Live' | 'Demo'; open_pnl?: number }
 }) {
   const statusClass = account.is_active
-    ? 'text-teal-600 border-teal-200 bg-teal-50'
-    : 'text-warning-600 border-warning-200 bg-warning-50'
+    ? 'text-teal-700 border-teal-200 bg-teal-50 dark:text-teal-300 dark:border-teal-800 dark:bg-teal-950/50'
+    : 'text-warning-700 border-warning-200 bg-warning-50 dark:text-warning-300 dark:border-warning-800 dark:bg-warning-950/40'
   const balance = accountSummary?.balance ?? account.last_balance ?? null
   const equity = accountSummary?.equity ?? account.last_equity ?? null
   const currencyRaw = (accountSummary?.currency ?? account.last_currency ?? '').trim()
@@ -1240,7 +1240,7 @@ function LinkedAccountRow({
   const accountLabel = account.label || 'Unnamed account'
 
   return (
-    <div className="grid grid-cols-9 gap-2 px-4 sm:px-5 py-3 items-center hover:bg-neutral-50 dark:bg-neutral-800/50 transition-colors">
+    <div className="grid grid-cols-9 gap-2 px-4 sm:px-5 py-3 items-center hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors">
       <div className="flex flex-col min-w-0">
         <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 truncate">{accountLabel}</span>
         <span className="text-[11px] font-medium text-primary-600 uppercase">{account.platform}</span>

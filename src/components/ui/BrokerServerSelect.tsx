@@ -107,7 +107,7 @@ export function BrokerServerSelect({
                         setOpen(false)
                       }}
                       className={clsx(
-                        'w-full text-left px-3 py-1.5 text-sm hover:bg-neutral-50 dark:bg-neutral-800/50',
+                        'w-full text-left px-3 py-1.5 text-sm hover:bg-neutral-50 dark:hover:bg-neutral-800/50',
                         server.server_name === value && 'bg-primary-50 text-primary-700',
                       )}
                     >

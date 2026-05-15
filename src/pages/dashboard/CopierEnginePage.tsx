@@ -605,7 +605,7 @@ export function CopierEnginePage() {
               {tgChannels.map(ch => {
                 const alreadyAdded = channels.some(c => c.channel_id === ch.id)
                 return (
-                  <div key={ch.id} className="px-4 py-2.5 flex items-center gap-3 hover:bg-neutral-50 dark:bg-neutral-800/50 transition-colors">
+                  <div key={ch.id} className="px-4 py-2.5 flex items-center gap-3 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors">
                     <TgChannelAvatar title={ch.title} username={ch.username} />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50 truncate">{ch.title}</p>
@@ -770,7 +770,7 @@ function ChannelRow({
   const username = channel.channel_username?.replace(/^@/, '') || undefined
 
   return (
-    <div className="hover:bg-neutral-50 dark:bg-neutral-800/80 transition-colors">
+    <div className="hover:bg-neutral-50 dark:hover:bg-neutral-800/80 transition-colors">
       <div className="flex items-center gap-3 px-4 py-3">
         <TgChannelAvatar title={channel.display_name} username={username} />
         <div className="min-w-0 flex-1">

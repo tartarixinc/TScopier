@@ -137,7 +137,7 @@ export function ChannelSelectStep({ onDone }: Props) {
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border text-left transition-colors ${
                   isSelected
                     ? 'border-primary-200 bg-primary-50'
-                    : 'border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 hover:bg-neutral-50 dark:bg-neutral-800/50'
+                    : 'border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800/50'
                 }`}
               >
                 <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border transition-colors ${

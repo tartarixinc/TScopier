@@ -137,7 +137,7 @@ export function TelegramLinkStep({ onDone }: Props) {
           <li>Set a password and a recovery email.</li>
         </ol>
 
-        <label className="flex items-start gap-2.5 p-3 border border-neutral-200 dark:border-neutral-800 rounded-lg cursor-pointer hover:bg-neutral-50 dark:bg-neutral-800/50 transition-colors">
+        <label className="flex items-start gap-2.5 p-3 border border-neutral-200 dark:border-neutral-800 rounded-lg cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors">
           <input
             type="checkbox"
             checked={twoFaConfirmed}

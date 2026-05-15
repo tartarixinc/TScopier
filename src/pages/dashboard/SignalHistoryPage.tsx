@@ -193,7 +193,7 @@ export function SignalHistoryPage() {
                 ? String(parsed.telegram_message_id)
                 : signal.telegram_message_id ?? signal.id.slice(0, 8)
               return (
-                <div key={signal.id} className="grid grid-cols-[60px_1.2fr_1fr_2.6fr_1fr_1fr] gap-3 px-4 py-3 text-sm hover:bg-neutral-50 dark:bg-neutral-800/50 transition-colors">
+                <div key={signal.id} className="grid grid-cols-[60px_1.2fr_1fr_2.6fr_1fr_1fr] gap-3 px-4 py-3 text-sm hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors">
                   <span className="text-neutral-600 dark:text-neutral-400">{index + 1}</span>
                   <span className="font-medium text-neutral-900 dark:text-neutral-50 truncate">{channel?.display_name ?? 'Unknown'}</span>
                   <span className="text-neutral-700 dark:text-neutral-300 truncate">{channel?.channel_id ?? '—'}</span>

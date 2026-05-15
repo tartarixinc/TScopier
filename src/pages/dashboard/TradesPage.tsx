@@ -116,7 +116,7 @@ export function TradesPage() {
             type="button"
             onClick={() => void loadTrades({ silent: true })}
             disabled={refreshing || loading}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md font-medium border border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:bg-neutral-800/50 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md font-medium border border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
             Refresh
@@ -363,7 +363,7 @@ function TradeRow({ trade }: { trade: MtTrade }) {
         : '—'
 
   return (
-    <tr className="hover:bg-neutral-50 dark:bg-neutral-800/50 transition-colors">
+    <tr className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors">
       <td className="px-4 py-3.5 text-sm font-semibold text-neutral-900 dark:text-neutral-50 text-center">
         <div>{trade.symbol || '—'}</div>
         <div className="text-[10px] text-neutral-400 font-normal tabular-nums mt-0.5">#{trade.ticket}</div>
