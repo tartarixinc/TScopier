@@ -1629,17 +1629,53 @@ export function AccountConfigPage() {
 
                         {activeManualSubTab === 'management' && (
                           <div className="space-y-6">
-                            <div className="rounded-lg border border-neutral-200 p-3 space-y-3">
-                              <p className="text-sm font-medium text-neutral-800 flex items-center gap-2">
-                                <TrendingUp className="h-4 w-4 text-neutral-600" aria-hidden />
-                                Trailing stop
-                              </p>
-                              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                                <Select label="Trailing SL" value={configDraft.manualSettings.trailing_enabled ? 'yes' : 'no'} onChange={e => setManual({ trailing_enabled: e.target.value === 'yes' })} options={[{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }]} />
-                                <Input label="Trail Start (pips)" type="number" value={String(configDraft.manualSettings.trailing_start_pips ?? 20)} onChange={e => setManual({ trailing_start_pips: Number(e.target.value) })} />
-                                <Input label="Trail Step (pips)" type="number" value={String(configDraft.manualSettings.trailing_step_pips ?? 5)} onChange={e => setManual({ trailing_step_pips: Number(e.target.value) })} />
-                                <Input label="Trail Distance (pips)" type="number" value={String(configDraft.manualSettings.trailing_distance_pips ?? 10)} onChange={e => setManual({ trailing_distance_pips: Number(e.target.value) })} />
+                            <div className="rounded-md border border-neutral-200 overflow-hidden">
+                              <div className="flex items-center justify-between gap-3 bg-white px-3 py-2.5">
+                                <div>
+                                  <p className="text-sm font-medium text-neutral-800 flex items-center gap-2">
+                                    <TrendingUp className="h-4 w-4 text-neutral-600" aria-hidden />
+                                    Trailing stop
+                                  </p>
+                                  <p className="text-xs text-neutral-500 mt-0.5">
+                                    Single Trade mode only. Moves stop loss as price moves in your favor.
+                                  </p>
+                                </div>
+                                <Toggle
+                                  checked={configDraft.manualSettings.trailing_enabled === true}
+                                  onChange={v => setManual({ trailing_enabled: v })}
+                                />
                               </div>
+                              {configDraft.manualSettings.trailing_enabled && (
+                                <div className="border-t border-neutral-200 bg-neutral-50/80 px-3 py-3">
+                                  <p className="text-xs font-medium text-neutral-600 mb-2">Trailing settings</p>
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                    <Input
+                                      label="Trail Start (pips)"
+                                      type="number"
+                                      min={0}
+                                      step={1}
+                                      value={String(configDraft.manualSettings.trailing_start_pips ?? 20)}
+                                      onChange={e => setManual({ trailing_start_pips: Math.max(0, Number(e.target.value) || 0) })}
+                                    />
+                                    <Input
+                                      label="Trail Step (pips)"
+                                      type="number"
+                                      min={0}
+                                      step={1}
+                                      value={String(configDraft.manualSettings.trailing_step_pips ?? 5)}
+                                      onChange={e => setManual({ trailing_step_pips: Math.max(0, Number(e.target.value) || 0) })}
+                                    />
+                                    <Input
+                                      label="Trail Distance (pips)"
+                                      type="number"
+                                      min={0}
+                                      step={1}
+                                      value={String(configDraft.manualSettings.trailing_distance_pips ?? 10)}
+                                      onChange={e => setManual({ trailing_distance_pips: Math.max(0, Number(e.target.value) || 0) })}
+                                    />
+                                  </div>
+                                </div>
+                              )}
                             </div>
 
                             <div className="rounded-lg border border-neutral-200 p-3 space-y-3">

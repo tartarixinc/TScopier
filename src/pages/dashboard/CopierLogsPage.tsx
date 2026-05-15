@@ -4,12 +4,36 @@ import { useAuth } from '../../context/AuthContext'
 import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
 import type { Signal } from '../../types/database'
+import {
+  buildSignalSymbolLookup,
+  symbolForCopierLog,
+  type SignalSymbolLookupRow,
+} from '../../lib/copierLogDisplay'
 
 type Filter = 'all' | 'executed' | 'skipped' | 'failed' | 'pending'
+
+type ChannelNameRow = { id: string; display_name: string; channel_username?: string | null }
+
+function buildChannelDisplayNames(channels: ChannelNameRow[]): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const c of channels) {
+    const name = c.display_name?.trim()
+    const username = c.channel_username?.trim().replace(/^@/, '')
+    out[c.id] = name || (username ? `@${username}` : 'Unnamed channel')
+  }
+  return out
+}
+
+function channelLabel(channelId: string | null | undefined, names: Record<string, string>): string {
+  if (!channelId) return '—'
+  return names[channelId] ?? 'Unknown channel'
+}
 
 export function CopierLogsPage() {
   const { user } = useAuth()
   const [signals, setSignals] = useState<Signal[]>([])
+  const [channelDisplayNames, setChannelDisplayNames] = useState<Record<string, string>>({})
+  const [symbolLookup, setSymbolLookup] = useState<Map<string, SignalSymbolLookupRow>>(() => new Map())
   const [filter, setFilter] = useState<Filter>('all')
   const [loading, setLoading] = useState(true)
 
@@ -27,8 +51,17 @@ export function CopierLogsPage() {
       .order('created_at', { ascending: false })
       .limit(100)
     if (filter !== 'all') query = query.eq('status', filter)
-    const { data } = await query
-    setSignals((data ?? []) as Signal[])
+    const [channelsRes, signalsRes] = await Promise.all([
+      supabase
+        .from('telegram_channels')
+        .select('id,display_name,channel_username')
+        .eq('user_id', user!.id),
+      query,
+    ])
+    const loaded = (signalsRes.data ?? []) as Signal[]
+    setChannelDisplayNames(buildChannelDisplayNames((channelsRes.data ?? []) as ChannelNameRow[]))
+    setSymbolLookup(await buildSignalSymbolLookup(supabase, user!.id, loaded))
+    setSignals(loaded)
     setLoading(false)
   }
 
@@ -108,8 +141,9 @@ export function CopierLogsPage() {
             {signals.map(signal => {
               const parsed = signal.parsed_data as Record<string, unknown> | null
               const action = parsed?.action as string | undefined
-              const symbol = parsed?.symbol != null ? String(parsed.symbol) : '—'
+              const symbol = symbolForCopierLog(signal, symbolLookup)
               const s = statusConfig[signal.status] ?? { variant: 'neutral' as const, label: signal.status }
+              const channelName = channelLabel(signal.channel_id, channelDisplayNames)
 
               return (
                 <div key={signal.id} className="grid grid-cols-[1.5fr_1.2fr_1fr_1.2fr_1fr_1fr_auto] gap-3 px-5 py-3.5 items-center hover:bg-neutral-50 transition-colors">
@@ -122,7 +156,9 @@ export function CopierLogsPage() {
                       ? (signal.skip_reason.length > 42 ? signal.skip_reason.slice(0, 42) + '…' : signal.skip_reason)
                       : '—'}
                   </span>
-                  <span className="text-xs text-neutral-400 truncate">—</span>
+                  <span className="text-xs text-neutral-600 truncate" title={channelName}>
+                    {channelName}
+                  </span>
                   <span className="text-sm font-medium text-neutral-900">{symbol}</span>
                   <span className="text-xs text-neutral-500 truncate" title={signal.raw_message}>
                     {signal.raw_message?.slice(0, 60) || '(image)'}

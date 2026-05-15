@@ -62,6 +62,10 @@ export interface ManualSettings {
   trade_end_time?: string
   days_filter_enabled?: boolean
   trade_days?: number[]
+  trailing_enabled?: boolean
+  trailing_start_pips?: number
+  trailing_step_pips?: number
+  trailing_distance_pips?: number
 }
 
 export interface ChannelKeywords {

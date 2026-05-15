@@ -25,6 +25,7 @@ import {
   type PlannerResult,
   type VirtualPendingLeg,
 } from './manualPlanner'
+import { trailingTradeRowSnapshot } from './trailingStop'
 import { isPostgresDuplicateKeyError } from './rangePendingLegPersist'
 import { cancelSignalEntryRowAtBroker, type SignalEntryPendingRow } from './signalEntryPendingHelpers'
 import {
@@ -1598,7 +1599,7 @@ export class TradeExecutor {
     if (mapping.whitelist.length > 0) {
       const sig = (parsed.symbol ?? '').toUpperCase()
       if (!mapping.whitelist.includes(sig)) {
-        await this.logSendSkipped(signal, broker, 'symbol_not_in_whitelist', {
+        await this.logSendSkipped(signal, broker, 'symbol_exempted_from_trading', {
           signal_symbol: parsed.symbol ?? null,
           allowed: mapping.whitelist,
         })
@@ -1607,7 +1608,14 @@ export class TradeExecutor {
     }
 
     const requestedSymbol = mapping.symbol
-    if (isExcluded(requestedSymbol, broker)) return {}
+    if (isExcluded(requestedSymbol, broker)) {
+      await this.logSendSkipped(signal, broker, 'symbol_exempted_from_trading', {
+        signal_symbol: parsed.symbol ?? null,
+        trade_symbol: requestedSymbol,
+        reason: 'symbols_exclude',
+      })
+      return {}
+    }
 
     // Resolve to the broker's actual instrument name (e.g. BTCUSD → BTCUSDm).
     // Falls back to the requested symbol when /Symbols is unavailable or has no match.
@@ -2217,6 +2225,13 @@ export class TradeExecutor {
     }
 
     const totalCount = legs.length
+    const orderLogContext: Record<string, unknown> = {
+      signal_symbol: parsed.symbol ?? null,
+      trade_symbol: requestedSymbol,
+    }
+    if (mapping.whitelist.length > 0) {
+      orderLogContext.allowed_symbols = mapping.whitelist
+    }
 
     const sendLeg = async (leg: Leg): Promise<boolean> => {
       let args = leg.args
@@ -2237,6 +2252,13 @@ export class TradeExecutor {
         )
 
         const isBuy = !args.operation.toLowerCase().includes('sell')
+        const entryPx = result.openPrice ?? args.price ?? null
+        const openSl = result.stopLoss ?? args.stoploss ?? null
+        const trailCols = trailingTradeRowSnapshot(
+          manual,
+          entryPx,
+          openSl,
+        )
         // We need the row's id back so we can persist partial_tp_legs keyed to
         // it. `.select('id').single()` keeps the INSERT to one round trip.
         const tradeInsert = await this.supabase
@@ -2249,8 +2271,8 @@ export class TradeExecutor {
             metaapi_order_id: result.ticket != null ? String(result.ticket) : null,
             symbol: args.symbol,
             direction: isBuy ? 'buy' : 'sell',
-            entry_price: result.openPrice ?? args.price ?? null,
-            sl: result.stopLoss ?? args.stoploss ?? null,
+            entry_price: entryPx,
+            sl: openSl,
             tp: result.takeProfit ?? args.takeprofit ?? null,
             lot_size: result.lots ?? args.volume,
             status: args.operation.includes('Limit') || args.operation.includes('Stop') ? 'pending' : 'open',
@@ -2259,6 +2281,7 @@ export class TradeExecutor {
             // Only the first N immediate legs have this; non-CWE legs leave it null
             // and ride their bucket TP / SL normally.
             cwe_close_price: leg.cweClosePrice ?? null,
+            ...trailCols,
           })
           .select('id')
           .maybeSingle()
@@ -2309,7 +2332,7 @@ export class TradeExecutor {
           broker_account_id: broker.id,
           action: 'order_send',
           status: 'success',
-          request_payload: args as unknown as Record<string, unknown>,
+          request_payload: { ...args, ...orderLogContext } as unknown as Record<string, unknown>,
           response_payload: { ticket: result.ticket, latency_ms: latencyMs, leg: leg.idx + 1, total: totalCount },
         })
         return true
@@ -2325,7 +2348,7 @@ export class TradeExecutor {
           broker_account_id: broker.id,
           action: 'order_send',
           status: 'failed',
-          request_payload: args as unknown as Record<string, unknown>,
+          request_payload: { ...args, ...orderLogContext } as unknown as Record<string, unknown>,
           error_message: msg,
         })
         return false

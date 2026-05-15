@@ -1,12 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Clock, ChevronRight, ChevronDown, Info, Plus } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { Clock, ChevronRight, Info, Plus } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import type { BrokerAccount, Signal, Trade } from '../../types/database'
 import { inferBrokerLabelFromServer, resolveMtServerCandidate } from '../../lib/brokerFromServer'
 import { AddAccountModal } from '../../components/ui/AddAccountModal'
 import { metatraderApi, type MtTrade } from '../../lib/metatraderapi'
+import {
+  buildCopierLogSymbolLabels,
+  buildSignalSymbolLookup,
+} from '../../lib/copierLogDisplay'
+import { channelWorkerLogMessage } from '../../lib/channelWorkerLogMessage'
+
+/** Shared column template for dashboard Copier Logs header + rows. */
+const DASHBOARD_COPIER_LOG_GRID =
+  'grid grid-cols-[5.75rem_minmax(0,1fr)_minmax(4rem,0.85fr)_minmax(4.75rem,auto)_minmax(6.75rem,auto)] gap-x-3 items-center'
 
 interface DashboardStats {
   accounts: number
@@ -61,6 +70,23 @@ interface AiExpertLogRow {
 }
 
 /** Drop in-flight `attempt` rows when the same `signal_id` already has a terminal parse row in this batch (worker logs attempt then success/failed). */
+type ChannelNameRow = { id: string; display_name: string; channel_username?: string | null }
+
+function buildChannelDisplayNames(channels: ChannelNameRow[]): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const c of channels) {
+    const name = c.display_name?.trim()
+    const username = c.channel_username?.trim().replace(/^@/, '')
+    out[c.id] = name || (username ? `@${username}` : 'Unnamed channel')
+  }
+  return out
+}
+
+function channelLabel(channelId: string | null | undefined, names: Record<string, string>): string {
+  if (!channelId) return '—'
+  return names[channelId] ?? 'Unknown channel'
+}
+
 function dedupePipelineParseAttempts(logs: AiExpertLogRow[]): AiExpertLogRow[] {
   const terminalSignalIds = new Set(
     logs
@@ -85,46 +111,6 @@ function dedupePipelineParseAttempts(logs: AiExpertLogRow[]): AiExpertLogRow[] {
   })
 }
 
-const MANAGEMENT_LOG_ACTIONS = new Set([
-  'close',
-  'breakeven',
-  'partial_profit',
-  'partial_breakeven',
-  'modify',
-])
-
-/** MT/API `volume` is often not in contract lots for crypto; reject absurd scalars so we don't show e.g. 2e6 instead of 0.02. */
-function isPlausibleRetailLot(n: number): boolean {
-  return Number.isFinite(n) && n > 0 && n < 1_000_000
-}
-
-/** Prefer lots recorded by execute-trade (`volume_executed`); never prefer raw provider volume when it looks like units not lots. */
-function lotSizeForExpertLogDisplay(row: AiExpertLogRow): number | null {
-  const payload = (row.request_payload ?? {}) as Record<string, unknown>
-  const parsed = (payload.parsed ?? {}) as Record<string, unknown>
-  const response = (row.response_payload ?? {}) as Record<string, unknown>
-  const sizing = (payload.sizing ?? {}) as Record<string, unknown>
-
-  const volExec = Number(payload.volume_executed)
-  if (Number.isFinite(volExec) && volExec > 0) return volExec
-
-  const parsedLot = Number(parsed.lot_size)
-  if (Number.isFinite(parsedLot) && parsedLot > 0 && isPlausibleRetailLot(parsedLot)) return parsedLot
-
-  const sizingParsed = Number(sizing.parsed_lot)
-  if (Number.isFinite(sizingParsed) && sizingParsed > 0 && isPlausibleRetailLot(sizingParsed)) return sizingParsed
-
-  const pv = Number(payload.volume)
-  if (Number.isFinite(pv) && pv > 0 && isPlausibleRetailLot(pv)) return pv
-
-  const rv = Number(response.volume ?? response.Volume)
-  if (Number.isFinite(rv) && rv > 0 && isPlausibleRetailLot(rv)) return rv
-
-  if (Number.isFinite(parsedLot) && parsedLot > 0) return parsedLot
-
-  return null
-}
-
 /** Sum of (current equity − performance baseline) per linked broker that has a baseline set. */
 function aggregateTotalProfitFromBaselines(
   accounts: BrokerAccount[],
@@ -143,100 +129,6 @@ function aggregateTotalProfitFromBaselines(
     n++
   }
   return n > 0 ? sum : null
-}
-
-function formatLotSizeForMessage(lots: number): string {
-  if (!Number.isFinite(lots) || lots <= 0) return ''
-  const n = lots >= 1 ? Number(lots.toFixed(2)) : Number.parseFloat(lots.toFixed(8))
-  return String(n)
-}
-
-function cleanSymbolLabel(v: unknown): string | null {
-  const s = typeof v === 'string' ? v.trim() : ''
-  if (!s || s === 'null' || s === 'undefined' || s === 'trade') return null
-  return s
-}
-
-/** Parse common instrument tokens from Telegram text when parser/heuristics mislabel instruments. */
-function instrumentGuessFromRawTelegram(raw: string | null | undefined): string | null {
-  if (!raw || typeof raw !== 'string') return null
-  const m = raw.match(
-    /\b(XAUUSD|XAGUSD|EURUSD|GBPUSD|USDJPY|AUDUSD|US30|NAS100|BTCUSD|BTCUSDT|ETHUSD|ETHUSDT|GER40)\b/i,
-  )
-  return m ? m[1].toUpperCase() : null
-}
-
-function collectSymbolHintsFromMtPayload(node: unknown, out: Set<string>, depth: number): void {
-  if (depth <= 0 || node == null) return
-  if (typeof node === 'string') {
-    const s = cleanSymbolLabel(node.toUpperCase().replace(/\s+/g, ''))
-    if (s && /^[A-Z0-9._]{5,}$/.test(s)) out.add(s)
-    return
-  }
-  if (typeof node !== 'object') return
-  if (Array.isArray(node)) {
-    for (const x of node) collectSymbolHintsFromMtPayload(x, out, depth - 1)
-    return
-  }
-  const o = node as Record<string, unknown>
-  const candidates = ['symbol', 'Symbol', 'name', 'Name', 'path', 'Path', 'instrument']
-  for (const k of candidates) {
-    const s = cleanSymbolLabel(o[k])
-    if (s) out.add(s.toUpperCase().replace(/\s+/g, ''))
-  }
-  for (const v of Object.values(o)) collectSymbolHintsFromMtPayload(v, out, depth - 1)
-}
-
-function bestSymbolHintFromMtResponse(payload: Record<string, unknown> | null | undefined): string | null {
-  if (!payload) return null
-  const hints = new Set<string>()
-  collectSymbolHintsFromMtPayload(payload, hints, 6)
-  if (!hints.size) return null
-  return hints.values().next().value ?? null
-}
-
-/** Prefer broker/API truth on close/modify; otherwise prefer stored signal; avoid wrong LLM fallback (e.g. XAUUSD on BTCUSD). */
-function symbolForExpertLog(row: AiExpertLogRow): string {
-  const payload = (row.request_payload ?? {}) as Record<string, unknown>
-  const response = (row.response_payload ?? {}) as Record<string, unknown>
-  const reqParsed = (payload.parsed ?? {}) as Record<string, unknown>
-
-  const fromSignal = row.signals?.parsed_data && typeof row.signals.parsed_data === 'object'
-    ? cleanSymbolLabel((row.signals.parsed_data as Record<string, unknown>).symbol)
-    : null
-
-  const fromRequest = cleanSymbolLabel(reqParsed.symbol) ?? cleanSymbolLabel(payload.symbol)
-  const fromResponse = bestSymbolHintFromMtResponse(response)
-  const fromTelegramGuess = instrumentGuessFromRawTelegram(
-    typeof row.signals?.raw_message === 'string' ? row.signals.raw_message : undefined,
-  )
-
-  const parsedAction = String(reqParsed.action ?? row.action ?? '').toLowerCase()
-  const mgmt =
-    MANAGEMENT_LOG_ACTIONS.has(parsedAction) ||
-    MANAGEMENT_LOG_ACTIONS.has(String(row.action ?? '').toLowerCase())
-
-  if (mgmt) {
-    const mgmtCorr = payload.management_correlation as Record<string, unknown> | undefined
-    const fromCorrelation = cleanSymbolLabel(mgmtCorr?.effective_symbol)
-    // Stored parsed.symbol can hallucinate (e.g. CHANGE); correlation + Telegram + broker response are safer.
-    return (
-      fromCorrelation ??
-      fromResponse ??
-      fromTelegramGuess ??
-      fromSignal ??
-      fromRequest ??
-      'the active position'
-    )
-  }
-
-  return (
-    fromSignal ??
-    fromRequest ??
-    fromResponse ??
-    fromTelegramGuess ??
-    'this instrument'
-  )
 }
 
 export function DashboardPage() {
@@ -273,13 +165,13 @@ export function DashboardPage() {
     yesterdayMostTradedAsset: '—',
   })
   const [copierLogs, setCopierLogs] = useState<Signal[]>([])
+  const [copierLogSymbols, setCopierLogSymbols] = useState<Record<string, string>>({})
+  const [channelDisplayNames, setChannelDisplayNames] = useState<Record<string, string>>({})
   const [aiExpertLogs, setAiExpertLogs] = useState<AiExpertLogRow[]>([])
   const [linkedAccounts, setLinkedAccounts] = useState<BrokerAccount[]>([])
   const [linkedAccountBalances, setLinkedAccountBalances] = useState<Record<string, { balance?: number; equity?: number; currency?: string; broker?: string; mt_server_hint?: string; account_type?: 'Live' | 'Demo'; open_pnl?: number; open_trades?: number }>>({})
   const [showPlatformModal, setShowPlatformModal] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [showExpandedStats, setShowExpandedStats] = useState(false)
-  const [showExpandedPerformance, setShowExpandedPerformance] = useState(false)
   const AUTO_REFRESH_MS = 15000
   const BROKER_SUMMARY_REFRESH_MS = 30000
   const MT_TRADES_REFRESH_MS = 30000
@@ -297,10 +189,6 @@ export function DashboardPage() {
   const liveBrokerStateRef = useRef<Record<string, { open_pnl?: number; open_trades?: number }>>({})
   const formatMoney = (value: number | null | undefined) =>
     `$${(Number.isFinite(value as number) ? Number(value) : 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-  const formatNumber = (value: number | null | undefined) =>
-    (Number.isFinite(value as number) ? Number(value) : 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  const formatVsYesterdayNumber = (todayValue: number | null | undefined, yesterdayValue: number | null | undefined) =>
-    `vs yesterday: ${formatNumber(yesterdayValue)} (${((Number.isFinite(todayValue as number) ? Number(todayValue) : 0) - (Number.isFinite(yesterdayValue as number) ? Number(yesterdayValue) : 0)) >= 0 ? '+' : ''}${formatNumber((Number.isFinite(todayValue as number) ? Number(todayValue) : 0) - (Number.isFinite(yesterdayValue as number) ? Number(yesterdayValue) : 0))})`
   const formatVsYesterdayMoney = (todayValue: number | null | undefined, yesterdayValue: number | null | undefined) => {
     if (yesterdayValue == null) return ''
     const t = Number.isFinite(todayValue as number) ? Number(todayValue) : 0
@@ -308,7 +196,6 @@ export function DashboardPage() {
     const delta = t - y
     return `vs yesterday: ${formatMoney(yesterdayValue)} (${delta >= 0 ? '+' : ''}${formatMoney(delta)})`
   }
-  const formatVsYesterdayText = (yesterdayValue: string) => `vs yesterday: ${yesterdayValue || '—'}`
 
   useEffect(() => {
     if (!user) return
@@ -319,6 +206,8 @@ export function DashboardPage() {
         const parsed = JSON.parse(cached) as {
           stats?: DashboardStats
           copierLogs?: Signal[]
+          copierLogSymbols?: Record<string, string>
+          channelDisplayNames?: Record<string, string>
           linkedAccounts?: BrokerAccount[]
           linkedAccountBalances?: Record<string, { balance?: number; equity?: number; currency?: string; broker?: string; mt_server_hint?: string; account_type?: 'Live' | 'Demo'; open_pnl?: number; open_trades?: number }>
         }
@@ -326,6 +215,8 @@ export function DashboardPage() {
           setStats(prev => ({ ...prev, ...parsed.stats }))
         }
         if (parsed.copierLogs) setCopierLogs(parsed.copierLogs)
+        if (parsed.copierLogSymbols) setCopierLogSymbols(parsed.copierLogSymbols)
+        if (parsed.channelDisplayNames) setChannelDisplayNames(parsed.channelDisplayNames)
         if (parsed.linkedAccounts) setLinkedAccounts(parsed.linkedAccounts)
         if (parsed.linkedAccountBalances) {
           setLinkedAccountBalances(parsed.linkedAccountBalances)
@@ -396,7 +287,7 @@ export function DashboardPage() {
       supabase.from('signals').select('status').eq('user_id', user!.id).gte('created_at', yesterdayStart.toISOString()).lt('created_at', todayStart.toISOString()),
       supabase.from('signals').select('*').eq('user_id', user!.id).order('created_at', { ascending: false }).limit(10),
       supabase.from('signals').select('id,channel_id').eq('user_id', user!.id),
-      supabase.from('telegram_channels').select('id,display_name').eq('user_id', user!.id),
+      supabase.from('telegram_channels').select('id,display_name,channel_username').eq('user_id', user!.id),
       supabase
         .from('trade_execution_logs')
         .select(
@@ -629,7 +520,13 @@ export function DashboardPage() {
 
     const resolvedOpenTradesCount =
       hasAnyBrokerOpenTradesFromSummary ? totalLiveOpenTradesFromSummary : openTrades.length
-    setCopierLogs((logsRes.data ?? []) as Signal[])
+    const channelNames = buildChannelDisplayNames((channelsMetaRes.data ?? []) as ChannelNameRow[])
+    const logs = (logsRes.data ?? []) as Signal[]
+    const symbolLookup = await buildSignalSymbolLookup(supabase, user!.id, logs)
+    const logSymbols = buildCopierLogSymbolLabels(logs, symbolLookup)
+    setChannelDisplayNames(channelNames)
+    setCopierLogSymbols(logSymbols)
+    setCopierLogs(logs)
     setAiExpertLogs(dedupePipelineParseAttempts((aiLogsRes.data ?? []) as AiExpertLogRow[]))
     setLinkedAccounts(brokerAccounts)
     setLinkedAccountBalances(balanceMap)
@@ -668,7 +565,9 @@ export function DashboardPage() {
       const cacheKey = `${DASHBOARD_CACHE_PREFIX}:${user.id}`
       sessionStorage.setItem(cacheKey, JSON.stringify({
         stats: nextStats,
-        copierLogs: (logsRes.data ?? []) as Signal[],
+        copierLogs: logs,
+        copierLogSymbols: logSymbols,
+        channelDisplayNames: channelNames,
         linkedAccounts: brokerAccounts,
         linkedAccountBalances: balanceMap,
       }))
@@ -920,15 +819,24 @@ export function DashboardPage() {
         <div className="grid grid-cols-4 divide-x divide-neutral-100">
           <StatBlock
             label="Total Balance"
-            value={loading ? '—' : `$${stats.portfolioValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            value={loading ? '—' : `$${stats.totalEquity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
             sub={loading ? '' : `Across ${stats.accounts} connected account${stats.accounts === 1 ? '' : 's'}`}
             subColor="text-neutral-400"
           />
           <StatBlock
-            label="Equity"
-            value={loading ? '—' : `$${stats.totalEquity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-            sub={loading ? '' : `Balance ${(stats.openPnl >= 0 ? '+' : '-')}$${Math.abs(stats.openPnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} floating P/L`}
-            subColor={stats.openPnl >= 0 ? 'text-neutral-400' : 'text-error-500'}
+            label="Today's Profit"
+            value={loading ? '—' : formatMoney(stats.todayProfit)}
+            sub={loading ? '' : formatVsYesterdayMoney(stats.todayProfit, stats.yesterdayProfit)}
+            valueColor={
+              loading
+                ? 'text-neutral-900'
+                : stats.todayProfit > 0
+                  ? 'text-teal-600'
+                  : stats.todayProfit < 0
+                    ? 'text-error-600'
+                    : 'text-neutral-900'
+            }
+            subColor={stats.todayProfit >= 0 ? 'text-neutral-400' : 'text-error-500'}
           />
           <StatBlock
             label="Trades Taken"
@@ -952,79 +860,33 @@ export function DashboardPage() {
             subColor={stats.openPnl >= 0 ? 'text-neutral-400' : 'text-error-500'}
           />
         </div>
-        <div className="border-t border-neutral-100 px-5 py-3">
-          <button
-            onClick={() => setShowExpandedStats(prev => !prev)}
-            className="w-full flex items-center justify-between text-xs font-medium text-neutral-600 hover:text-neutral-800 transition-colors"
-          >
-            <span>More Stats</span>
-            <ChevronDown className={`w-4 h-4 transition-transform ${showExpandedStats ? 'rotate-180' : 'rotate-0'}`} />
-          </button>
+        <div className="border-t border-neutral-100 p-5 grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <OverviewStat
+            label="Active Signal Channels"
+            value={loading ? '—' : String(stats.activeChannels)}
+            sub={loading ? '' : 'Connected Telegram channels'}
+            addTo="/copier-engine"
+            addLabel="Manage channels"
+          />
+          <OverviewStat
+            label="Open Trades"
+            value={loading ? '—' : String(stats.openTrades)}
+            sub={loading ? '' : 'Active broker positions'}
+          />
+          <OverviewStat
+            label="Trading Accounts Connected"
+            value={loading ? '—' : String(stats.accounts)}
+            sub={loading ? '' : 'Active linked accounts'}
+            addTo="/account-configuration"
+            addLabel="Add or manage accounts"
+          />
+          <OverviewStat
+            label="Trades Copied Today"
+            value={loading ? '—' : String(stats.tradesCopiedToday)}
+            sub={loading ? '' : 'Executed from channel signals'}
+          />
         </div>
-        {showExpandedStats && (
-          <div className="border-t border-neutral-100 p-5 grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <OverviewStat
-              label="Active Signal Channels"
-              value={loading ? '—' : String(stats.activeChannels)}
-              sub={loading ? '' : 'Connected Telegram channels'}
-            />
-            <OverviewStat
-              label="Open Trades"
-              value={loading ? '—' : String(stats.openTrades)}
-              sub={loading ? '' : 'Currently active broker positions'}
-            />
-            <OverviewStat
-              label="Trading Accounts Connected"
-              value={loading ? '—' : String(stats.accounts)}
-              sub={loading ? '' : 'Active linked accounts'}
-            />
-            <OverviewStat
-              label="Trades Copied Today"
-              value={loading ? '—' : String(stats.tradesCopiedToday)}
-              sub={loading ? '' : 'Executed from channel signals'}
-            />
-          </div>
-        )}
       </div>
-
-      {/* Today's performance */}
-      <div className="bg-white rounded-xl border border-neutral-100 shadow-card mb-6">
-        <div className="px-5 py-4 border-b border-neutral-100 flex items-start justify-between gap-4">
-          <div>
-            <p className="text-sm font-semibold text-neutral-900">Today&apos;s performance</p>
-            <p className="text-xs text-neutral-400">Daily performance snapshot with comparison to yesterday</p>
-          </div>
-          {!showExpandedPerformance && (
-            <div className="text-right">
-              <p className="text-[11px] text-neutral-500">Today Profit</p>
-              <p className="text-sm font-semibold text-neutral-900">{loading ? '—' : formatMoney(stats.todayProfit)}</p>
-            </div>
-          )}
-        </div>
-        <div className="border-t border-neutral-100 px-5 py-3">
-          <button
-            onClick={() => setShowExpandedPerformance(prev => !prev)}
-            className="w-full flex items-center justify-between text-xs font-medium text-neutral-600 hover:text-neutral-800 transition-colors"
-          >
-            <span>More Performance Stats</span>
-            <ChevronDown className={`w-4 h-4 transition-transform ${showExpandedPerformance ? 'rotate-180' : 'rotate-0'}`} />
-          </button>
-        </div>
-        {showExpandedPerformance && (
-          <div className="border-t border-neutral-100 p-5 grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <OverviewStat label="Total Profit & Loss" value={loading ? '—' : stats.totalProfitLoss == null ? '—' : formatMoney(stats.totalProfitLoss)} sub={loading ? '' : stats.totalProfitLoss == null ? 'Equity vs balance when your account was first linked' : formatVsYesterdayMoney(stats.totalProfitLoss, stats.yesterdayTotalProfitLoss)} />
-            <OverviewStat label="Total Volume" value={loading ? '—' : formatNumber(stats.totalVolume)} sub={loading ? '' : formatVsYesterdayNumber(stats.totalVolume, stats.yesterdayTotalVolume)} />
-            <OverviewStat label="Best Trade" value={loading ? '—' : formatMoney(stats.bestTradeProfit)} sub={loading ? '' : `vs yesterday: ${formatMoney(stats.yesterdayBestTradeProfit)}`} />
-            <OverviewStat label="Worst Trade" value={loading ? '—' : formatMoney(stats.worstTradeProfit)} sub={loading ? '' : `vs yesterday: ${formatMoney(stats.yesterdayWorstTradeProfit)}`} />
-            <OverviewStat label="Today Profit" value={loading ? '—' : formatMoney(stats.todayProfit)} sub={loading ? '' : formatVsYesterdayMoney(stats.todayProfit, stats.yesterdayProfit)} />
-            <OverviewStat label="Most Traded Channel" value={loading ? '—' : stats.mostProfitableChannel} sub={loading ? '' : formatVsYesterdayText(stats.yesterdayMostProfitableChannel)} />
-            <OverviewStat label="Most Traded Asset" value={loading ? '—' : stats.mostTradedAsset} sub={loading ? '' : formatVsYesterdayText(stats.yesterdayMostTradedAsset)} />
-            <OverviewStat label="Total Signals" value={loading ? '—' : String(stats.totalSignals)} sub={loading ? '' : formatVsYesterdayNumber(stats.totalSignals, stats.yesterdayTotalSignals)} />
-          </div>
-        )}
-      </div>
-
-      
 
       {/* Lower panels */}
       <div className="grid grid-cols-2 gap-6">
@@ -1033,7 +895,7 @@ export function DashboardPage() {
           <div className="px-5 py-4 border-b border-neutral-100 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4 text-teal-500" />
-              <span className="text-sm font-semibold text-neutral-900">AI Expert Log</span>
+              <span className="text-sm font-semibold text-neutral-900">Channel Worker</span>
               <button className="text-neutral-300 hover:text-neutral-500">
                 <Info className="w-3.5 h-3.5" />
               </button>
@@ -1057,7 +919,7 @@ export function DashboardPage() {
               ))}
             </div>
           ) : aiExpertLogs.length === 0 ? (
-            <div className="px-5 py-10 text-sm text-neutral-400">No AI trade process logs yet.</div>
+            <div className="px-5 py-10 text-sm text-neutral-400">No channel worker logs yet.</div>
           ) : (
             <div className="divide-y divide-neutral-50 max-h-96 overflow-y-auto">
               {aiExpertLogs.map(row => <AiExpertLogItem key={row.id} row={row} />)}
@@ -1085,20 +947,22 @@ export function DashboardPage() {
           </div>
 
           {/* Table header */}
-          <div className="grid grid-cols-6 gap-2 px-5 py-3 border-b border-neutral-100 text-xs font-medium text-neutral-400 uppercase tracking-wide">
+          <div
+            className={`${DASHBOARD_COPIER_LOG_GRID} px-5 py-3 border-b border-neutral-100 text-xs font-medium text-neutral-400 uppercase tracking-wide`}
+          >
             <span>Status</span>
-            <span>Channel</span>
-            <span className="col-span-2">Symbol</span>
+            <span className="min-w-0">Channel</span>
+            <span>Symbol</span>
             <span>Type</span>
-            <span className="text-right">P/L</span>
+            <span className="text-right">Time</span>
           </div>
 
           {loading ? (
             <div className="divide-y divide-neutral-50">
               {[...Array(4)].map((_, i) => (
-                <div key={i} className="px-5 py-3 flex gap-4">
-                  {[...Array(6)].map((_, j) => (
-                    <div key={j} className="h-4 bg-neutral-100 rounded animate-pulse flex-1" />
+                <div key={i} className={`${DASHBOARD_COPIER_LOG_GRID} px-5 py-3`}>
+                  {[...Array(5)].map((_, j) => (
+                    <div key={j} className="h-4 bg-neutral-100 rounded animate-pulse min-w-0" />
                   ))}
                 </div>
               ))}
@@ -1119,7 +983,14 @@ export function DashboardPage() {
             </div>
           ) : (
             <div className="divide-y divide-neutral-50 max-h-80 overflow-y-auto">
-              {copierLogs.map(log => <LogRow key={log.id} signal={log} />)}
+              {copierLogs.map(log => (
+                <LogRow
+                  key={log.id}
+                  signal={log}
+                  channelName={channelLabel(log.channel_id, channelDisplayNames)}
+                  symbol={copierLogSymbols[log.id] ?? '—'}
+                />
+              ))}
             </div>
           )}
         </div>
@@ -1205,10 +1076,33 @@ function StatBlock({ label, value, sub, subColor, valueColor = 'text-neutral-900
   )
 }
 
-function OverviewStat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function OverviewStat({
+  label,
+  value,
+  sub,
+  addTo,
+  addLabel,
+}: {
+  label: string
+  value: string
+  sub?: string
+  addTo?: string
+  addLabel?: string
+}) {
   return (
     <div>
-      <p className="text-xs text-neutral-500 mb-1">{label}</p>
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <p className="text-xs text-neutral-500 min-w-0">{label}</p>
+        {addTo ? (
+          <Link
+            to={addTo}
+            aria-label={addLabel ?? `Go to ${label}`}
+            className="shrink-0 flex items-center justify-center w-6 h-6 rounded-md border border-teal-200 text-teal-600 hover:bg-teal-50 hover:border-teal-300 transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </Link>
+        ) : null}
+      </div>
       <p className="text-2xl font-semibold text-neutral-900">{value}</p>
       {sub ? <p className="text-xs text-neutral-400 mt-1">{sub}</p> : null}
     </div>
@@ -1216,40 +1110,7 @@ function OverviewStat({ label, value, sub }: { label: string; value: string; sub
 }
 
 function AiExpertLogItem({ row }: { row: AiExpertLogRow }) {
-  const payload = (row.request_payload ?? {}) as Record<string, unknown>
-  const response = (row.response_payload ?? {}) as Record<string, unknown>
-  const parsed = (payload.parsed ?? {}) as Record<string, unknown>
-  const symbol = symbolForExpertLog(row)
-  const action = String(parsed.action ?? row.action ?? 'action').toLowerCase()
-  const lot = lotSizeForExpertLogDisplay(row)
-  const entry = Number(parsed.entry_price ?? response.price ?? payload.price)
-  const tp = Array.isArray(parsed.tp) ? Number(parsed.tp[0]) : Number(parsed.tp)
-  const sl = Number(parsed.sl)
-  const hasLot = lot != null && Number.isFinite(lot) && lot > 0
-  const hasEntry = Number.isFinite(entry) && entry > 0
-  const hasTp = Number.isFinite(tp) && tp > 0
-  const hasSl = Number.isFinite(sl) && sl > 0
-
-  const message = (() => {
-    if (row.action === 'pipeline_parse_dispatch') {
-      // Worker inserts `attempt` before the HTTP call and `success`/`failed` after — only the terminal row reflects reachability.
-      if (row.status === 'attempt') {
-        return `Calling parse-signal for ${symbol}…`
-      }
-      if (row.status === 'success') {
-        return `Parse-signal responded OK for ${symbol} (see Copier / signal for parsed fields).`
-      }
-      return `Could not reach parse-signal for ${symbol}${row.error_message ? `: ${row.error_message}` : '.'}`
-    }
-    if (row.status === 'success' && (action === 'buy' || action === 'sell')) {
-      const lotStr = hasLot && lot != null ? formatLotSizeForMessage(lot) : ''
-      return `Opened a ${lotStr ? `${lotStr} ` : 'new '}${action.toUpperCase()} position on ${symbol}${hasEntry ? ` @ ${entry}` : ''}${hasTp || hasSl ? ` (${hasTp ? `TP1 ${tp}` : ''}${hasTp && hasSl ? ', ' : ''}${hasSl ? `SL ${sl}` : ''})` : ''}.`
-    }
-    if (row.status === 'failed') {
-      return `Failed to execute ${action.toUpperCase()} on ${symbol}${row.error_message ? `: ${row.error_message}` : '.'}`
-    }
-    return `Processed ${action.toUpperCase()} workflow for ${symbol}.`
-  })()
+  const message = channelWorkerLogMessage(row)
 
   return (
     <div className="px-5 py-3">
@@ -1259,10 +1120,9 @@ function AiExpertLogItem({ row }: { row: AiExpertLogRow }) {
   )
 }
 
-function LogRow({ signal }: { signal: Signal }) {
+function LogRow({ signal, channelName, symbol }: { signal: Signal; channelName: string; symbol: string }) {
   const parsed = signal.parsed_data as Record<string, unknown> | null
   const action = parsed?.action as string | undefined
-  const symbol = parsed?.symbol != null ? String(parsed.symbol) : '—'
 
   const statusConfig: Record<string, { color: string; label: string }> = {
     executed: { color: 'text-teal-600 bg-teal-50', label: 'Executed' },
@@ -1275,17 +1135,33 @@ function LogRow({ signal }: { signal: Signal }) {
   const s = statusConfig[signal.status] ?? { color: 'text-neutral-500 bg-neutral-100', label: signal.status }
   const isBuy = action === 'buy'
 
+  const typeLabel = action ? action.replace(/_/g, ' ') : '—'
+
   return (
-    <div className="grid grid-cols-6 gap-2 px-5 py-3 items-center hover:bg-neutral-50 transition-colors">
-      <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium ${s.color}`}>
+    <div className={`${DASHBOARD_COPIER_LOG_GRID} px-5 py-3 hover:bg-neutral-50 transition-colors`}>
+      <span className={`inline-flex w-fit items-center px-2 py-0.5 rounded-md text-xs font-medium ${s.color}`}>
         {s.label}
       </span>
-      <span className="text-xs text-neutral-500 truncate">—</span>
-      <span className="col-span-2 text-sm font-medium text-neutral-900">{symbol}</span>
-      <span className={`text-xs font-medium uppercase ${isBuy ? 'text-primary-600' : action === 'sell' ? 'text-error-600' : 'text-neutral-500'}`}>
-        {action ?? '—'}
+      <span className="min-w-0 text-xs text-neutral-500 truncate" title={channelName}>{channelName}</span>
+      <span className="min-w-0 text-sm font-medium text-neutral-900 truncate" title={symbol}>{symbol}</span>
+      <span
+        className={`min-w-0 text-xs font-medium uppercase truncate ${
+          isBuy ? 'text-primary-600' : action === 'sell' ? 'text-error-600' : 'text-neutral-600'
+        }`}
+        title={typeLabel}
+      >
+        {typeLabel}
       </span>
-      <span className="text-xs text-neutral-400 text-right">—</span>
+      <span className="text-xs text-neutral-400 text-right whitespace-nowrap tabular-nums">
+        {signal.created_at
+          ? new Date(signal.created_at).toLocaleString([], {
+              month: 'short',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            })
+          : '—'}
+      </span>
     </div>
   )
 }

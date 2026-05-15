@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Radio, Trash2, RefreshCw, CircleAlert as AlertCircle, ChevronDown, Settings } from 'lucide-react'
+import { Radio, Trash2, RefreshCw, CircleAlert as AlertCircle, ChevronDown } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { Card } from '../../components/ui/Card'
@@ -447,10 +447,10 @@ export function CopierEnginePage() {
   }
 
   return (
-    <div className="p-6 lg:p-8 max-w-4xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+    <div className="px-4 py-4 lg:px-6 lg:py-5 max-w-5xl mx-auto">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
         <div>
-          <h1 className="text-2xl font-bold text-neutral-900">Channels</h1>
+          <h1 className="text-xl font-bold text-neutral-900">Channels</h1>
           <p className="text-sm text-neutral-500 mt-0.5">Configure which Telegram channels feed into the copier</p>
         </div>
         <div className="flex gap-2">
@@ -476,15 +476,15 @@ export function CopierEnginePage() {
         </div>
       )} */}
       {!hasTgSession && tgStage === 'idle' && (
-        <div className="mb-4 px-4 py-3 bg-warning-50 border border-warning-200 rounded-xl text-sm text-warning-700 flex items-center gap-2">
+        <div className="mb-3 px-3 py-2 bg-warning-50 border border-warning-200 rounded-lg text-sm text-warning-700 flex items-center gap-2">
           <span className="font-medium">Telegram not connected.</span>
           <span>Connect Telegram here to load and manage your channel list.</span>
         </div>
       )}
 
       {!hasTgSession && tgStage !== 'idle' && (
-        <Card className="mb-4">
-          <div className="flex items-center gap-2 mb-4">
+        <Card className="mb-3">
+          <div className="flex items-center gap-2 mb-3">
             <div className="w-7 h-7 rounded-full bg-primary-100 flex items-center justify-center overflow-hidden">
               <img
                 src="/Telegram.svg"
@@ -551,8 +551,8 @@ export function CopierEnginePage() {
 
       {/* Telegram channels panel */}
       {hasTgSession && (
-        <Card className="mb-4" padding="none">
-          <div className="px-5 py-3 border-b border-neutral-100 flex items-center justify-between">
+        <Card className="mb-3" padding="none">
+          <div className="px-4 py-2.5 border-b border-neutral-100 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <p className="text-sm font-semibold text-neutral-900">Your Telegram channels</p>
               <Badge variant="success" size="sm">Connected</Badge>
@@ -579,7 +579,7 @@ export function CopierEnginePage() {
           {!tgChannelsCollapsed && (loadingTg ? (
             <div className="divide-y divide-neutral-50">
               {[...Array(4)].map((_, i) => (
-                <div key={i} className="px-5 py-3 flex items-center gap-3">
+                <div key={i} className="px-4 py-2.5 flex items-center gap-3">
                   <div className="w-8 h-8 rounded-lg bg-neutral-100 animate-pulse flex-shrink-0" />
                   <div className="flex-1 space-y-1.5">
                     <div className="h-3 bg-neutral-100 rounded animate-pulse w-48" />
@@ -589,13 +589,13 @@ export function CopierEnginePage() {
               ))}
             </div>
           ) : error ? (
-            <div className="px-5 py-10 text-center">
+            <div className="px-4 py-8 text-center">
               <AlertCircle className="w-8 h-8 mx-auto mb-2 text-error-300" />
               <p className="text-sm text-error-600 font-medium">{error}</p>
               <p className="text-xs text-neutral-400 mt-0.5">Use Refresh after fixing Telegram connection or worker issues.</p>
             </div>
           ) : tgChannels.length === 0 ? (
-            <div className="px-5 py-10 text-center">
+            <div className="px-4 py-8 text-center">
               <Radio className="w-8 h-8 mx-auto mb-2 text-neutral-200" />
               <p className="text-sm text-neutral-400">No channels or groups found</p>
               <p className="text-xs text-neutral-300 mt-0.5">Make sure you are a member of the signal channels</p>
@@ -605,7 +605,7 @@ export function CopierEnginePage() {
               {tgChannels.map(ch => {
                 const alreadyAdded = channels.some(c => c.channel_id === ch.id)
                 return (
-                  <div key={ch.id} className="px-5 py-3 flex items-center gap-3 hover:bg-neutral-50 transition-colors">
+                  <div key={ch.id} className="px-4 py-2.5 flex items-center gap-3 hover:bg-neutral-50 transition-colors">
                     <TgChannelAvatar title={ch.title} username={ch.username} />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-neutral-900 truncate">{ch.title}</p>
@@ -635,8 +635,8 @@ export function CopierEnginePage() {
 
       {/* Manual add form */}
       {showAdd && (
-        <Card className="mb-4">
-          <h3 className="text-sm font-semibold text-neutral-900 mb-4">Add channel manually</h3>
+        <Card className="mb-3">
+          <h3 className="text-sm font-semibold text-neutral-900 mb-3">Add channel manually</h3>
           {error && <div className="mb-3 px-3 py-2 bg-error-50 border border-error-200 rounded-lg text-sm text-error-700">{error}</div>}
           <form onSubmit={addManual} className="space-y-3">
             <Input label="Channel name" placeholder="e.g. Gold Signals Pro" value={newChannel.display_name} onChange={e => setNewChannel(p => ({ ...p, display_name: e.target.value }))} required />
@@ -655,42 +655,48 @@ export function CopierEnginePage() {
       {/* Channel list */}
       {loading ? (
         <div className="space-y-2">
-          {[...Array(3)].map((_, i) => <div key={i} className="h-16 bg-white rounded-xl border border-neutral-100 animate-pulse" />)}
+          {[...Array(3)].map((_, i) => <div key={i} className="h-14 bg-white rounded-xl border border-neutral-100 animate-pulse" />)}
         </div>
       ) : channels.length === 0 ? (
-        <div className="bg-white rounded-xl border border-dashed border-neutral-200 py-16 text-center">
-          <Radio className="w-10 h-10 mx-auto mb-3 text-neutral-200" />
+        <div className="bg-white rounded-xl border border-dashed border-neutral-200 py-10 text-center">
+          <Radio className="w-8 h-8 mx-auto mb-2 text-neutral-200" />
           <p className="text-sm font-medium text-neutral-400">No channels configured</p>
-          <p className="text-xs text-neutral-300 mt-1">Add signal channels to start the copier</p>
+          <p className="text-xs text-neutral-300 mt-0.5">Add Telegram channels above to start the copier</p>
         </div>
       ) : (
-        <div className="space-y-2">
-          {channels.map(channel => (
-            <ChannelRow
-              key={channel.id}
-              channel={channel}
-              profile={channelProfiles[channel.id]}
-              isAnalyzing={analyzingChannels.has(channel.id)}
-              analysisProgress={analysisProgress[channel.id] ?? 0}
-              onToggle={v => toggleChannel(channel.id, v)}
-              onDelete={() => deleteChannel(channel.id)}
-              onKeywords={() => openChannelKeywords(channel)}
-            />
-          ))}
-        </div>
+        <Card padding="none" className="overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-neutral-100 flex items-center justify-between">
+            <p className="text-sm font-semibold text-neutral-900">Active channels</p>
+            <span className="text-xs text-neutral-400">{channels.length} configured</span>
+          </div>
+          <div className="divide-y divide-neutral-100">
+            {channels.map(channel => (
+              <ChannelRow
+                key={channel.id}
+                channel={channel}
+                profile={channelProfiles[channel.id]}
+                isAnalyzing={analyzingChannels.has(channel.id)}
+                analysisProgress={analysisProgress[channel.id] ?? 0}
+                onToggle={v => toggleChannel(channel.id, v)}
+                onDelete={() => deleteChannel(channel.id)}
+                onKeywords={() => openChannelKeywords(channel)}
+              />
+            ))}
+          </div>
+        </Card>
       )}
 
       {keywordsChannel && (
         <div className="fixed inset-0 z-50 bg-black/40 px-4 flex items-center justify-center">
           <div className="w-full max-w-5xl max-h-[86vh] overflow-y-auto rounded-2xl bg-white border border-neutral-200 shadow-xl">
-            <div className="px-5 py-4 border-b border-neutral-100 flex items-center justify-between">
+            <div className="px-4 py-3 border-b border-neutral-100 flex items-center justify-between">
               <div>
                 <h3 className="text-base font-semibold text-neutral-900">Channel Keywords</h3>
                 <p className="text-sm text-neutral-500 mt-0.5">{keywordsChannel.display_name}</p>
               </div>
               <button onClick={closeChannelKeywords} className="px-3 py-1.5 text-sm text-neutral-500 hover:text-neutral-700">Close</button>
             </div>
-            <div className="p-5 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <p className="text-xs font-semibold text-neutral-700">Signal Keyword</p>
                 <Input label="Entry Point" value={keywordsDraft.signal.entry_point} onChange={e => setKeywordsDraft(p => ({ ...p, signal: { ...p.signal, entry_point: e.target.value } }))} />
@@ -739,7 +745,7 @@ export function CopierEnginePage() {
                 <Select label="Read Image" value={keywordsDraft.additional.read_image ? 'true' : 'false'} onChange={e => setKeywordsDraft(p => ({ ...p, additional: { ...p.additional, read_image: e.target.value === 'true' } }))} options={[{ value: 'false', label: 'False' }, { value: 'true', label: 'True' }]} />
               </div>
             </div>
-            <div className="px-5 py-4 border-t border-neutral-100 flex justify-end gap-2">
+            <div className="px-4 py-3 border-t border-neutral-100 flex justify-end gap-2">
               <Button variant="ghost" onClick={closeChannelKeywords} disabled={keywordsSaving}>Cancel</Button>
               <Button loading={keywordsSaving} onClick={() => void saveChannelKeywords()}>Save Keywords</Button>
             </div>
@@ -751,7 +757,7 @@ export function CopierEnginePage() {
 }
 
 function ChannelRow({
-  channel, profile, isAnalyzing, analysisProgress, onToggle, onDelete, onKeywords,
+  channel, profile, isAnalyzing, analysisProgress, onToggle, onDelete,
 }: {
   channel: TelegramChannel
   profile?: ChannelSignalProfile
@@ -761,58 +767,59 @@ function ChannelRow({
   onDelete: () => void
   onKeywords: () => void
 }) {
+  const username = channel.channel_username?.replace(/^@/, '') || undefined
+
   return (
-    <div className="bg-white rounded-xl border border-neutral-100 shadow-card overflow-hidden">
-      <div className="px-4 py-3.5 flex items-center gap-3">
-        <div className="w-9 h-9 bg-primary-50 rounded-lg flex items-center justify-center flex-shrink-0">
-          <Radio className="w-4 h-4 text-primary-600" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <p className="text-sm font-medium text-neutral-900">{channel.display_name}</p>
+    <div className="hover:bg-neutral-50/80 transition-colors">
+      <div className="flex items-center gap-3 px-4 py-3">
+        <TgChannelAvatar title={channel.display_name} username={username} />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-sm font-semibold text-neutral-900">{channel.display_name}</h3>
             {!channel.is_active && <Badge variant="neutral" size="sm">Paused</Badge>}
           </div>
-          {channel.channel_username && <p className="text-xs text-neutral-400 mt-0.5">@{channel.channel_username}</p>}
-          <div className="mt-2 rounded-lg border border-neutral-100 bg-neutral-50 px-3 py-2">
-            <p className="text-[11px] font-semibold tracking-wide text-neutral-500 uppercase">Channel profile</p>
-            {isAnalyzing ? (
-              <div className="mt-1.5">
-                <p className="text-xs text-neutral-500 mb-1.5">
-                  Analyzing Signals for the last 30 days... {Math.max(0, Math.min(100, Math.round(analysisProgress)))}%
-                </p>
-                <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-200">
-                  <div
-                    className="h-full rounded-full bg-primary-500 transition-all duration-300"
-                    style={{ width: `${Math.max(0, Math.min(100, analysisProgress))}%` }}
-                  />
-                </div>
-              </div>
-            ) : !profile ? (
-              <p className="text-xs text-neutral-400 mt-1">No insights yet. Insights will be generated automatically when this channel is added.</p>
-            ) : (
-              <>
-                <div className="flex flex-wrap gap-1.5 mt-1.5">
-                  <Badge variant="neutral" size="sm">Type: {profile.signal_type}</Badge>
-                  <Badge variant="neutral" size="sm">Entry: {profile.entry_type}</Badge>
-                  <Badge variant="neutral" size="sm">TP: {profile.tp_style}</Badge>
-                  <Badge variant="neutral" size="sm">SL: {profile.sl_style}</Badge>
-                </div>
-                {profile.analysis_summary && (
-                  <p className="text-[11px] text-neutral-400 mt-0.5">{profile.analysis_summary}</p>
-                )}
-              </>
-            )}
-          </div>
+          {username && <p className="mt-0.5 text-xs text-neutral-500">@{username}</p>}
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex shrink-0 items-center gap-2">
           <Toggle checked={channel.is_active} onChange={onToggle} />
-          {/* <button onClick={onKeywords} className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 transition-colors">
-            <Settings className="w-4 h-4" />
-          </button> */}
-          <button onClick={onDelete} className="p-1.5 rounded-lg text-neutral-400 hover:text-error-600 hover:bg-error-50 transition-colors">
+          <button
+            type="button"
+            onClick={onDelete}
+            className="rounded-lg p-1.5 text-neutral-400 hover:bg-error-50 hover:text-error-600 transition-colors"
+            aria-label={`Remove ${channel.display_name}`}
+          >
             <Trash2 className="w-4 h-4" />
           </button>
         </div>
+      </div>
+      <div className="border-t border-neutral-100 bg-neutral-50/60 px-4 py-2.5">
+        {isAnalyzing ? (
+          <div>
+            <p className="text-xs text-neutral-500 mb-1.5">
+              Analyzing last 30 days… {Math.max(0, Math.min(100, Math.round(analysisProgress)))}%
+            </p>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200">
+              <div
+                className="h-full rounded-full bg-primary-500 transition-all duration-300"
+                style={{ width: `${Math.max(0, Math.min(100, analysisProgress))}%` }}
+              />
+            </div>
+          </div>
+        ) : !profile ? (
+          <p className="text-xs text-neutral-500">Profile insights will appear after analysis completes.</p>
+        ) : (
+          <div className="space-y-1">
+            <div className="flex flex-wrap gap-1.5">
+              <Badge variant="neutral" size="sm">Type: {profile.signal_type}</Badge>
+              <Badge variant="neutral" size="sm">Entry: {profile.entry_type}</Badge>
+              <Badge variant="neutral" size="sm">TP: {profile.tp_style}</Badge>
+              <Badge variant="neutral" size="sm">SL: {profile.sl_style}</Badge>
+            </div>
+            {profile.analysis_summary && (
+              <p className="text-[11px] text-neutral-500 line-clamp-2">{profile.analysis_summary}</p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
