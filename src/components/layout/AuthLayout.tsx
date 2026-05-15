@@ -1,6 +1,6 @@
 import { Outlet } from 'react-router-dom'
-import tscopierLogo from '/tscopierlogo.png'
 import { ThemeToggle } from '../ui/ThemeToggle'
+import { TscopierLogo } from '../ui/TscopierLogo'
 
 export function AuthLayout() {
   return (
@@ -11,7 +11,7 @@ export function AuthLayout() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="flex items-center justify-center mb-8">
-          <img src={tscopierLogo} alt="TSCopier" className="h-10 w-auto" />
+          <TscopierLogo className="h-10 w-auto" />
         </div>
 
         <Outlet />

@@ -7,6 +7,7 @@ exports.PartialTpMonitor = void 0;
 exports.isPartialTpTriggered = isPartialTpTriggered;
 const node_os_1 = __importDefault(require("node:os"));
 const metatraderapi_1 = require("./metatraderapi");
+const mtApiByAccount_1 = require("./mtApiByAccount");
 const TICK_INTERVAL_MS = 1500;
 const STALE_CLAIM_AFTER_MS = 30000;
 /**
@@ -32,19 +33,19 @@ class PartialTpMonitor {
     constructor(supabase) {
         this.supabase = supabase;
         this.timer = null;
+        this.platformByUuid = new Map();
         this.ticking = false;
         this.firstTickLogged = false;
         /** Heartbeat counter so we log one summary line every ~30s when there's
          *  work waiting but no triggers crossing. */
         this.quietTicks = 0;
-        this.api = (0, metatraderapi_1.getMetatraderApi)();
         this.hostId = `worker:${node_os_1.default.hostname()}:${process.pid}`;
     }
     start() {
         if (this.timer)
             return;
-        if (!this.api) {
-            console.warn('[partialTpMonitor] METATRADERAPI_KEY missing — partial TP monitor disabled');
+        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)()) {
+            console.warn('[partialTpMonitor] MT4API_BASIC_USER/PASSWORD missing — partial TP monitor disabled');
             return;
         }
         this.timer = setInterval(() => {
@@ -66,7 +67,7 @@ class PartialTpMonitor {
         }
     }
     async tick() {
-        if (!this.api)
+        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
             return;
         // Re-claim stuck rows so a crashed worker can't strand a partial. Same
         // 30s threshold as virtualPendingMonitor.
@@ -94,6 +95,7 @@ class PartialTpMonitor {
             this.quietTicks = 0;
             return;
         }
+        this.platformByUuid = await (0, mtApiByAccount_1.loadPlatformByMetaapiId)(this.supabase, rows.map(r => r.metaapi_account_id));
         // Group by (metaapi_account_id, symbol) → at most ONE /Quote per group
         // per tick. Same shape as the other monitors for consistency.
         const groups = new Map();
@@ -111,9 +113,12 @@ class PartialTpMonitor {
             const [uuid, symbol] = key.split('|');
             if (!uuid || !symbol)
                 return;
+            const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(this.platformByUuid, uuid);
+            if (!api)
+                return;
             let q;
             try {
-                q = await this.api.quote(uuid, symbol);
+                q = await api.quote(uuid, symbol);
             }
             catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);
@@ -131,7 +136,7 @@ class PartialTpMonitor {
                 if (!isPartialTpTriggered(partial.is_buy, partial.trigger_price, q.bid, q.ask))
                     continue;
                 triggeredTotal += 1;
-                const ok = await this.firePartial(partial, q.bid, q.ask);
+                const ok = await this.firePartial(partial, api, q.bid, q.ask);
                 if (ok)
                     firedOkTotal += 1;
                 else
@@ -166,9 +171,7 @@ class PartialTpMonitor {
      *   3. /OrderClose with `lots = close_lots`.
      *   4. UPDATE status: 'claimed' → 'fired' (or 'failed' on error).
      */
-    async firePartial(partial, bid, ask) {
-        if (!this.api)
-            return false;
+    async firePartial(partial, api, bid, ask) {
         // CAS claim.
         const { data: claimed, error: claimErr } = await this.supabase
             .from('partial_tp_legs')
@@ -209,7 +212,7 @@ class PartialTpMonitor {
         const t0 = Date.now();
         const refPrice = partial.is_buy ? bid : ask;
         try {
-            const result = await this.api.orderClose(partial.metaapi_account_id, {
+            const result = await api.orderClose(partial.metaapi_account_id, {
                 ticket: ticketNum,
                 lots: partial.close_lots,
                 // price=0 lets the broker fill at market (same as a manual partial

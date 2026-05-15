@@ -8,11 +8,12 @@ import {
 } from './autoManagement'
 import { pipCalculator, pipValueForLots } from './pipCalculator'
 import {
-  getMetatraderApi,
-  MetatraderApiClient,
+  hasMetatraderApiConfigured,
   normalizeSymbolParams,
+  type MetatraderApiClient,
   type SymbolParams,
 } from './metatraderapi'
+import { apiForMetaapiAccount, loadPlatformByMetaapiId, type PlatformByMetaapiId } from './mtApiByAccount'
 
 interface AutoBeTradeRow {
   id: string
@@ -44,6 +45,7 @@ interface PartialLegRow {
 interface BrokerRow {
   id: string
   metaapi_account_id: string
+  platform: string
 }
 
 const TICK_INTERVAL_MS = 1_500
@@ -58,20 +60,18 @@ type SymbolCacheEntry = {
 
 export class AutoManagementMonitor {
   private timer: NodeJS.Timeout | null = null
-  private api: MetatraderApiClient | null
+  private platformByUuid: PlatformByMetaapiId = new Map()
   private ticking = false
   private firstTickLogged = false
   private quietTicks = 0
   private symbolCache = new Map<string, SymbolCacheEntry>()
 
-  constructor(private readonly supabase: SupabaseClient) {
-    this.api = getMetatraderApi()
-  }
+  constructor(private readonly supabase: SupabaseClient) {}
 
   start() {
     if (this.timer) return
-    if (!this.api) {
-      console.warn('[autoManagementMonitor] METATRADERAPI_KEY missing — auto-management monitor disabled')
+    if (!hasMetatraderApiConfigured()) {
+      console.warn('[autoManagementMonitor] MT4API_BASIC_USER/PASSWORD missing — auto-management monitor disabled')
       return
     }
     this.timer = setInterval(() => {
@@ -94,7 +94,7 @@ export class AutoManagementMonitor {
   }
 
   private async tick(): Promise<void> {
-    if (!this.api) return
+    if (!hasMetatraderApiConfigured()) return
 
     const { data, error } = await this.supabase
       .from('trades')
@@ -123,13 +123,17 @@ export class AutoManagementMonitor {
     const brokerIds = [...new Set(rows.map(r => r.broker_account_id).filter(Boolean))] as string[]
     const { data: brokers, error: brokerErr } = await this.supabase
       .from('broker_accounts')
-      .select('id,metaapi_account_id')
+      .select('id,metaapi_account_id,platform')
       .in('id', brokerIds)
     if (brokerErr) {
       console.error('[autoManagementMonitor] broker lookup failed:', brokerErr.message)
       return
     }
     const brokerById = new Map((brokers ?? []).map(b => [b.id, b as BrokerRow]))
+    this.platformByUuid = await loadPlatformByMetaapiId(
+      this.supabase,
+      (brokers ?? []).map(b => String((b as BrokerRow).metaapi_account_id ?? '')),
+    )
 
     const groups = new Map<string, AutoBeTradeRow[]>()
     for (const row of rows) {
@@ -148,8 +152,10 @@ export class AutoManagementMonitor {
       const symbol = group[0]?.symbol ?? ''
       let bid = NaN
       let ask = NaN
+      const api = apiForMetaapiAccount(this.platformByUuid, uuid)
+      if (!api) continue
       try {
-        const q = await this.api.quote(uuid, symbol)
+        const q = await api.quote(uuid, symbol)
         bid = q.bid
         ask = q.ask
       } catch (err) {
@@ -160,7 +166,7 @@ export class AutoManagementMonitor {
 
       for (const trade of group) {
         const partials = partialByTrade.get(trade.id) ?? []
-        const ok = await this.maybeApplyBreakeven(trade, uuid, bid, ask, partials)
+        const ok = await this.maybeApplyBreakeven(trade, uuid, api, bid, ask, partials)
         if (ok === true) appliedTotal++
         if (ok === false) applyErrTotal++
       }
@@ -199,11 +205,11 @@ export class AutoManagementMonitor {
   private async maybeApplyBreakeven(
     trade: AutoBeTradeRow,
     uuid: string,
+    api: MetatraderApiClient,
     bid: number,
     ask: number,
     partials: PartialLegRow[],
   ): Promise<boolean | null> {
-    if (!this.api) return null
     const ticketNum = Number(trade.metaapi_order_id)
     if (!Number.isFinite(ticketNum) || ticketNum <= 0) {
       await this.markApplied(trade.id, { clearWatch: true })
@@ -276,7 +282,7 @@ export class AutoManagementMonitor {
     const tpSanitize = brokerTp ?? 0
 
     try {
-      await this.api.orderModify(uuid, {
+      await api.orderModify(uuid, {
         ticket: ticketNum,
         stoploss: beSl,
         takeprofit: tpSanitize,
@@ -287,7 +293,7 @@ export class AutoManagementMonitor {
         const closeLots = +(lots * 0.5).toFixed(2)
         if (closeLots >= 0.01) {
           try {
-            await this.api.orderClose(uuid, { ticket: ticketNum, lots: closeLots })
+            await api.orderClose(uuid, { ticket: ticketNum, lots: closeLots })
             remainingLots = Math.max(0, +(lots - closeLots).toFixed(2))
           } catch (halfErr) {
             const msg = halfErr instanceof Error ? halfErr.message : String(halfErr)
@@ -380,9 +386,10 @@ export class AutoManagementMonitor {
     const key = `${uuid}:${symbol.toUpperCase()}`
     const cached = this.symbolCache.get(key)
     if (cached && Date.now() - cached.loadedAt < SYMBOL_CACHE_TTL_MS) return cached
-    if (!this.api) return null
+    const api = apiForMetaapiAccount(this.platformByUuid, uuid)
+    if (!api) return null
     try {
-      const p: SymbolParams = await this.api.symbolParams(uuid, symbol)
+      const p: SymbolParams = await api.symbolParams(uuid, symbol)
       const n = normalizeSymbolParams(p)
       const entry: SymbolCacheEntry = {
         digits: n.digits ?? 5,

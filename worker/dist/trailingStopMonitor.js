@@ -4,23 +4,24 @@ exports.TrailingStopMonitor = void 0;
 const pipCalculator_1 = require("./pipCalculator");
 const trailingStop_1 = require("./trailingStop");
 const metatraderapi_1 = require("./metatraderapi");
+const mtApiByAccount_1 = require("./mtApiByAccount");
 const TICK_INTERVAL_MS = 1500;
 const SYMBOL_CACHE_TTL_MS = 5 * 60000;
 class TrailingStopMonitor {
     constructor(supabase) {
         this.supabase = supabase;
         this.timer = null;
+        this.platformByUuid = new Map();
         this.ticking = false;
         this.firstTickLogged = false;
         this.quietTicks = 0;
         this.symbolCache = new Map();
-        this.api = (0, metatraderapi_1.getMetatraderApi)();
     }
     start() {
         if (this.timer)
             return;
-        if (!this.api) {
-            console.warn('[trailingStopMonitor] METATRADERAPI_KEY missing — trailing stop monitor disabled');
+        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)()) {
+            console.warn('[trailingStopMonitor] MT4API_BASIC_USER/PASSWORD missing — trailing stop monitor disabled');
             return;
         }
         this.timer = setInterval(() => {
@@ -42,7 +43,7 @@ class TrailingStopMonitor {
         }
     }
     async tick() {
-        if (!this.api)
+        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
             return;
         const { data, error } = await this.supabase
             .from('trades')
@@ -65,13 +66,14 @@ class TrailingStopMonitor {
         const brokerIds = [...new Set(rows.map(r => r.broker_account_id).filter(Boolean))];
         const { data: brokers, error: brokerErr } = await this.supabase
             .from('broker_accounts')
-            .select('id,metaapi_account_id')
+            .select('id,metaapi_account_id,platform')
             .in('id', brokerIds);
         if (brokerErr) {
             console.error('[trailingStopMonitor] broker lookup failed:', brokerErr.message);
             return;
         }
         const brokerById = new Map((brokers ?? []).map(b => [b.id, b]));
+        this.platformByUuid = await (0, mtApiByAccount_1.loadPlatformByMetaapiId)(this.supabase, (brokers ?? []).map(b => String(b.metaapi_account_id ?? '')));
         const groups = new Map();
         for (const row of rows) {
             const b = brokerById.get(row.broker_account_id ?? '');
@@ -89,8 +91,11 @@ class TrailingStopMonitor {
             const symbol = group[0]?.symbol ?? '';
             let bid = NaN;
             let ask = NaN;
+            const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(this.platformByUuid, uuid);
+            if (!api)
+                continue;
             try {
-                const q = await this.api.quote(uuid, symbol);
+                const q = await api.quote(uuid, symbol);
                 bid = q.bid;
                 ask = q.ask;
             }
@@ -100,7 +105,7 @@ class TrailingStopMonitor {
                 continue;
             }
             for (const trade of group) {
-                const ok = await this.maybeTrailTrade(trade, uuid, bid, ask);
+                const ok = await this.maybeTrailTrade(trade, uuid, api, bid, ask);
                 if (ok === true)
                     modifiedTotal++;
                 if (ok === false)
@@ -116,9 +121,7 @@ class TrailingStopMonitor {
             console.log(`[trailingStopMonitor] heartbeat rows=${rows.length} groups=${groups.size} (no SL updates this cycle)`);
         }
     }
-    async maybeTrailTrade(trade, uuid, bid, ask) {
-        if (!this.api)
-            return null;
+    async maybeTrailTrade(trade, uuid, api, bid, ask) {
         const ticketNum = Number(trade.metaapi_order_id);
         if (!Number.isFinite(ticketNum) || ticketNum <= 0) {
             await this.clearTrailWatch(trade.id);
@@ -157,7 +160,7 @@ class TrailingStopMonitor {
             ? Number(trade.tp)
             : 0;
         try {
-            await this.api.orderModify(uuid, {
+            await api.orderModify(uuid, {
                 ticket: ticketNum,
                 stoploss: update.newSl,
                 takeprofit: tpSanitize,
@@ -220,10 +223,11 @@ class TrailingStopMonitor {
         const cached = this.symbolCache.get(key);
         if (cached && Date.now() - cached.loadedAt < SYMBOL_CACHE_TTL_MS)
             return cached;
-        if (!this.api)
+        const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(this.platformByUuid, uuid);
+        if (!api)
             return null;
         try {
-            const p = await this.api.symbolParams(uuid, symbol);
+            const p = await api.symbolParams(uuid, symbol);
             const n = (0, metatraderapi_1.normalizeSymbolParams)(p);
             const entry = {
                 digits: n.digits ?? 5,

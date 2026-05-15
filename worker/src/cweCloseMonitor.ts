@@ -1,8 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import {
-  getMetatraderApi,
-  MetatraderApiClient,
-} from './metatraderapi'
+import { hasMetatraderApiConfigured, type MetatraderApiClient } from './metatraderapi'
+import { apiForMetaapiAccount, loadPlatformByMetaapiId } from './mtApiByAccount'
 
 /**
  * Worker-side monitor that closes "Close-Worse-Entries" positions once the
@@ -50,6 +48,7 @@ interface CweTradeRow {
 interface BrokerRow {
   id: string
   metaapi_account_id: string
+  platform: string
 }
 
 const TICK_INTERVAL_MS = 1_500
@@ -73,7 +72,6 @@ export function isCweTriggered(direction: 'buy' | 'sell' | string, threshold: nu
 
 export class CweCloseMonitor {
   private timer: NodeJS.Timeout | null = null
-  private api: MetatraderApiClient | null
   private ticking = false
   private firstTickLogged = false
   /** Heartbeat: log one summary line every ~30s (20 ticks × 1.5s) when there
@@ -81,14 +79,12 @@ export class CweCloseMonitor {
    *  visible in worker logs vs. "dead". */
   private quietTicks = 0
 
-  constructor(private readonly supabase: SupabaseClient) {
-    this.api = getMetatraderApi()
-  }
+  constructor(private readonly supabase: SupabaseClient) {}
 
   start() {
     if (this.timer) return
-    if (!this.api) {
-      console.warn('[cweCloseMonitor] METATRADERAPI_KEY missing — close-worse-entries monitor disabled')
+    if (!hasMetatraderApiConfigured()) {
+      console.warn('[cweCloseMonitor] MT4API_BASIC_USER/PASSWORD missing — close-worse-entries monitor disabled')
       return
     }
     this.timer = setInterval(() => {
@@ -111,7 +107,7 @@ export class CweCloseMonitor {
   }
 
   private async tick(): Promise<void> {
-    if (!this.api) return
+    if (!hasMetatraderApiConfigured()) return
 
     // Pull every open trade that has a CWE close threshold pinned to it.
     // The partial index `trades_cwe_open_idx` makes this a constant-time
@@ -144,7 +140,7 @@ export class CweCloseMonitor {
     if (brokerIds.length > 0) {
       const { data: brokers, error: brokerErr } = await this.supabase
         .from('broker_accounts')
-        .select('id,metaapi_account_id')
+        .select('id,metaapi_account_id,platform')
         .in('id', brokerIds)
       if (brokerErr) {
         console.error('[cweCloseMonitor] broker lookup failed:', brokerErr.message)
@@ -154,6 +150,10 @@ export class CweCloseMonitor {
         if (b.metaapi_account_id) brokerMap.set(b.id, b.metaapi_account_id)
       }
     }
+    const platformByUuid = await loadPlatformByMetaapiId(
+      this.supabase,
+      Array.from(brokerMap.values()),
+    )
 
     // Group by (metaapi_account_id, symbol) so we issue at most ONE /Quote per
     // group per tick. Same shape as virtualPendingMonitor for consistency.
@@ -177,9 +177,11 @@ export class CweCloseMonitor {
     await Promise.all(Array.from(groups.entries()).map(async ([key, trades]) => {
       const [uuid, symbol] = key.split('|')
       if (!uuid || !symbol) return
+      const api = apiForMetaapiAccount(platformByUuid, uuid)
+      if (!api) return
       let q
       try {
-        q = await this.api!.quote(uuid, symbol)
+        q = await api.quote(uuid, symbol)
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         console.warn(`[cweCloseMonitor] /Quote failed for ${symbol} (account=${uuid}): ${msg}`)
@@ -196,7 +198,7 @@ export class CweCloseMonitor {
         if (Number.isFinite(gap) && gap < nearestGap) nearestGap = gap
         if (!isCweTriggered(trade.direction, trade.cwe_close_price, q.bid, q.ask)) continue
         triggeredTotal += 1
-        const ok = await this.closeTrade(trade, uuid, q.bid, q.ask)
+        const ok = await this.closeTrade(trade, uuid, api, q.bid, q.ask)
         if (ok) closedOkTotal += 1
         else closedErrTotal += 1
       }
@@ -231,8 +233,13 @@ export class CweCloseMonitor {
    * update returns no row and this function bails — only one /OrderClose
    * ever lands per ticket.
    */
-  private async closeTrade(trade: CweTradeRow, uuid: string, bid: number, ask: number): Promise<boolean> {
-    if (!this.api) return false
+  private async closeTrade(
+    trade: CweTradeRow,
+    uuid: string,
+    api: MetatraderApiClient,
+    bid: number,
+    ask: number,
+  ): Promise<boolean> {
     const ticketNum = Number(trade.metaapi_order_id)
     if (!Number.isFinite(ticketNum) || ticketNum <= 0) {
       // Missing ticket — nothing for us to close. Clear the watch so we
@@ -266,7 +273,7 @@ export class CweCloseMonitor {
     const isBuy = String(trade.direction).toLowerCase() === 'buy'
     const refPrice = isBuy ? bid : ask
     try {
-      const result = await this.api.orderClose(uuid, {
+      const result = await api.orderClose(uuid, {
         ticket: ticketNum,
         lots: trade.lot_size ?? 0,
         // Leaving price=0 lets the broker fill at market — same behavior as

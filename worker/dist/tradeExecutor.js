@@ -269,10 +269,19 @@ class TradeExecutor {
         this.symbolListCache = new Map();
         /** Cached channel rows keyed by `telegram_channels.id` — refreshed on demand. */
         this.channelKeywordsCache = new Map();
-        this.api = (0, metatraderapi_1.getMetatraderApi)();
-        if (!this.api) {
-            console.warn('[tradeExecutor] METATRADERAPI_KEY missing — trade execution disabled.');
+        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)()) {
+            console.warn('[tradeExecutor] MT4API_BASIC_USER/PASSWORD missing — trade execution disabled.');
         }
+    }
+    apiFor(broker) {
+        return (0, metatraderapi_1.getMetatraderApi)((0, metatraderapi_1.mtPlatformFrom)(broker.platform));
+    }
+    apiForUuid(uuid) {
+        for (const b of this.brokersById.values()) {
+            if (b.metaapi_account_id === uuid)
+                return this.apiFor(b);
+        }
+        return (0, metatraderapi_1.getMetatraderApi)('MT5');
     }
     async start() {
         await this.loadBrokers();
@@ -333,6 +342,26 @@ class TradeExecutor {
             this.brokersByUser.set(row.user_id, arr);
         }
         console.log(`[tradeExecutor] cached ${this.brokersById.size} broker accounts across ${this.brokersByUser.size} users`);
+        if (String(process.env.MT4API_RECONNECT_ON_START ?? '').toLowerCase() === 'true') {
+            await this.reconnectCachedBrokers();
+        }
+    }
+    async reconnectCachedBrokers() {
+        for (const row of this.brokersById.values()) {
+            const uuid = row.metaapi_account_id;
+            if (!uuid || uuid.includes('|'))
+                continue;
+            const api = this.apiFor(row);
+            if (!api)
+                continue;
+            try {
+                await api.ensureConnected(uuid);
+            }
+            catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                console.warn(`[tradeExecutor] ConnectByToken failed for ${uuid}: ${msg}`);
+            }
+        }
     }
     upsertBrokerCache(row) {
         const previous = this.brokersById.get(row.id);
@@ -431,7 +460,7 @@ class TradeExecutor {
     }
     // ── execution ─────────────────────────────────────────────────────────
     async handleSignal(row) {
-        if (!this.api)
+        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
             return;
         if (this.inflight.has(row.id))
             return;
@@ -686,8 +715,9 @@ class TradeExecutor {
             return;
         }
         for (const r of (seRows ?? [])) {
-            if (this.api) {
-                await (0, signalEntryPendingHelpers_1.cancelSignalEntryRowAtBroker)(this.supabase, this.api, r, reason);
+            const api = this.apiForUuid(r.metaapi_account_id);
+            if (api) {
+                await (0, signalEntryPendingHelpers_1.cancelSignalEntryRowAtBroker)(this.supabase, api, r, reason);
             }
             else {
                 await this.supabase
@@ -785,7 +815,7 @@ class TradeExecutor {
      * the opposite way from the **channel** buy/sell (before reverse / planner flip).
      */
     async closeOppositeDirectionTrades(signal, parsed, broker, symbol) {
-        if (!this.api)
+        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
             return;
         const manual = (broker.manual_settings ?? {});
         if (manual.close_on_opposite_signal !== true)
@@ -798,6 +828,9 @@ class TradeExecutor {
         const channelBuy = a === 'buy';
         const oppDir = channelBuy ? 'sell' : 'buy';
         const uuid = broker.metaapi_account_id;
+        const api = this.apiFor(broker);
+        if (!api)
+            return;
         const { data: opposites } = await this.supabase
             .from('trades')
             .select('id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,lot_size')
@@ -814,7 +847,7 @@ class TradeExecutor {
             if (!Number.isFinite(ticket) || ticket <= 0)
                 continue;
             try {
-                await this.api.orderClose(uuid, { ticket });
+                await api.orderClose(uuid, { ticket });
                 await this.supabase
                     .from('trades')
                     .update({ status: 'closed', closed_at: new Date().toISOString() })
@@ -871,7 +904,10 @@ class TradeExecutor {
      */
     async tryMergeSignalIntoExistingOpenTrade(args) {
         const { signal, parsed, op, broker, channelKeywords, baseLot, params, symbol, uuid, strictEntryPrefetch } = args;
-        if (!this.api)
+        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
+            return { handled: false };
+        const api = this.apiFor(broker);
+        if (!api)
             return { handled: false };
         const manual = (broker.manual_settings ?? {});
         if (manual.add_new_trades_to_existing !== true)
@@ -990,7 +1026,7 @@ class TradeExecutor {
         }
         if (!(0, manualPlanner_1.parsedHasExplicitEntryAnchor)(plannerParsed)) {
             try {
-                const q = strictEntryPrefetch ?? await this.api.quote(uuid, symbol);
+                const q = strictEntryPrefetch ?? await api.quote(uuid, symbol);
                 plannerParsed.entry_price = direction === 'buy' ? q.ask : q.bid;
             }
             catch {
@@ -1035,10 +1071,10 @@ class TradeExecutor {
         }
         // Same strict-entry live quote rule as `sendOrder`: merge refresh only when the
         // market is already at or better than the signal entry (no virtual deferral here).
-        if ((0, manualPlanner_1.signalEntryPriceStrictEnabled)(manual) && plan.strictEntry && this.api) {
+        if ((0, manualPlanner_1.signalEntryPriceStrictEnabled)(manual) && plan.strictEntry) {
             const se = plan.strictEntry;
             try {
-                const q = strictEntryPrefetch ?? await this.api.quote(uuid, symbol);
+                const q = strictEntryPrefetch ?? await api.quote(uuid, symbol);
                 const immediateOk = (0, manualPlanner_1.strictSignalEntryQuoteAllowsImmediate)({
                     isBuy: se.isBuy,
                     entryPrice: se.entryPrice,
@@ -1057,9 +1093,9 @@ class TradeExecutor {
         const needsAnchor = virtualPendings.length > 0 || !!plan.closeWorseEntries;
         let anchor = plan.anchor?.value ?? null;
         let anchorSource = plan.anchor?.source ?? 'unknown';
-        if (needsAnchor && (anchor == null || anchor <= 0) && this.api) {
+        if (needsAnchor && (anchor == null || anchor <= 0)) {
             try {
-                const q = strictEntryPrefetch ?? await this.api.quote(uuid, symbol);
+                const q = strictEntryPrefetch ?? await api.quote(uuid, symbol);
                 anchor = plan.isBuy === false ? q.bid : q.ask;
                 anchorSource = 'quote';
             }
@@ -1109,7 +1145,7 @@ class TradeExecutor {
             let ref = Number(tr.entry_price) || 0;
             if (ref <= 0) {
                 try {
-                    const q = strictEntryPrefetch ?? await this.api.quote(uuid, symbol);
+                    const q = strictEntryPrefetch ?? await api.quote(uuid, symbol);
                     ref = direction === 'buy' ? q.ask : q.bid;
                 }
                 catch {
@@ -1138,7 +1174,7 @@ class TradeExecutor {
                 console.warn(`[tradeExecutor] merge modify stops clamped signal=${signal.id} broker=${broker.id} leg=${i + 1}/${legPairs} symbol=${symbol}: ${clamped.adjustments.join(', ')}`);
             }
             try {
-                const modRes = await this.api.orderModify(uuid, {
+                const modRes = await api.orderModify(uuid, {
                     ticket,
                     stoploss: clamped.args.stoploss ?? 0,
                     takeprofit: clamped.args.takeprofit ?? 0,
@@ -1277,7 +1313,7 @@ class TradeExecutor {
         return { handled: true, success: !mergeFailed };
     }
     async sweepExpiredTscopierBrokerPendings() {
-        if (!this.api)
+        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
             return;
         if (String(process.env.WORKER_BROKER_PENDING_EXPIRY_SWEEP ?? '').toLowerCase() !== 'true')
             return;
@@ -1291,9 +1327,12 @@ class TradeExecutor {
             if (ttlH <= 0)
                 continue;
             const uuid = broker.metaapi_account_id;
+            const api = this.apiFor(broker);
+            if (!api)
+                continue;
             let orders;
             try {
-                orders = await this.api.openedOrders(uuid);
+                orders = await api.openedOrders(uuid);
             }
             catch (err) {
                 console.warn(`[tradeExecutor] TTL sweep /OpenedOrders failed broker=${broker.id}: ${err.message}`);
@@ -1317,7 +1356,7 @@ class TradeExecutor {
                 if (openMs == null || openMs > cutoff)
                     continue;
                 try {
-                    await this.api.orderClose(uuid, { ticket });
+                    await api.orderClose(uuid, { ticket });
                     console.log(`[tradeExecutor] TTL sweep closed ticket=${ticket} broker=${broker.id} op=${operation} ttl_hours=${ttlH}`);
                 }
                 catch (err) {
@@ -1327,7 +1366,10 @@ class TradeExecutor {
         }
     }
     async sendOrder(signal, parsed, op, broker, channelKeywords) {
-        if (!this.api)
+        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
+            return {};
+        const api = this.apiFor(broker);
+        if (!api)
             return {};
         const uuid = broker.metaapi_account_id;
         const mapping = applySymbolMapping(parsed.symbol, broker);
@@ -1363,12 +1405,11 @@ class TradeExecutor {
         const isManual = (broker.copier_mode ?? 'ai') === 'manual';
         const manual = (broker.manual_settings ?? {});
         let strictEntryPrefetch = null;
-        if (this.api
-            && isManual
+        if (isManual
             && (0, manualPlanner_1.signalEntryPriceStrictEnabled)(manual)
             && (0, manualPlanner_1.parsedHasExplicitEntryAnchor)(parsed)) {
             try {
-                strictEntryPrefetch = await this.api.quote(uuid, symbol);
+                strictEntryPrefetch = await api.quote(uuid, symbol);
             }
             catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);
@@ -1517,10 +1558,10 @@ class TradeExecutor {
         // Buy: immediate market only when ask ≤ entry; else one virtual pending at entry.
         // Sell: immediate only when bid ≥ entry; else virtual at entry. Quote failure → defer.
         let strictDeferred = false;
-        if (isManual && plan.strictEntry && this.api) {
+        if (isManual && plan.strictEntry && api) {
             const se = plan.strictEntry;
             try {
-                const q = await this.api.quote(uuid, symbol);
+                const q = await api.quote(uuid, symbol);
                 strictEntryPrefetch = q;
                 strictDeferred = !(0, manualPlanner_1.strictSignalEntryQuoteAllowsImmediate)({
                     isBuy: se.isBuy,
@@ -1564,9 +1605,9 @@ class TradeExecutor {
         const needsAnchor = virtualPendings.length > 0 || !!plan.closeWorseEntries;
         let anchor = plan.anchor?.value ?? plan.strictEntry?.entryPrice ?? null;
         let anchorSource = plan.anchor?.source ?? 'unknown';
-        if (needsAnchor && (anchor == null || anchor <= 0) && this.api) {
+        if (needsAnchor && (anchor == null || anchor <= 0) && api) {
             try {
-                const q = strictEntryPrefetch ?? await this.api.quote(uuid, symbol);
+                const q = strictEntryPrefetch ?? await api.quote(uuid, symbol);
                 if (!strictEntryPrefetch)
                     strictEntryPrefetch = q;
                 anchor = plan.isBuy === false ? q.bid : q.ask;
@@ -1630,7 +1671,7 @@ class TradeExecutor {
         // real BuyLimit / SellLimit on the broker at the signal entry (tracked in
         // `signal_entry_pending_orders`). Multi-mode aggregates volume into one order.
         let strictBrokerPlaced = false;
-        if (strictDeferred && plan.strictEntry && capped.length > 0 && this.api) {
+        if (strictDeferred && plan.strictEntry && capped.length > 0 && api) {
             const se = plan.strictEntry;
             const digits = Math.max(0, Math.min(8, Number(params?.digits) || 5));
             const entryPx = Number(se.entryPrice.toFixed(digits));
@@ -1677,7 +1718,7 @@ class TradeExecutor {
                 console.warn(`[tradeExecutor] strict entry pending stops clamped signal=${signal.id} broker=${broker.id}: ${clamped.adjustments.join(', ')}`);
             }
             try {
-                const result = await this.api.orderSend(uuid, clamped.args);
+                const result = await api.orderSend(uuid, clamped.args);
                 const ticket = result.ticket;
                 const isBuyLeg = se.isBuy;
                 const pendingSl = clamped.args.stoploss && clamped.args.stoploss > 0 ? clamped.args.stoploss : null;
@@ -1706,7 +1747,7 @@ class TradeExecutor {
                 if (tradeInsert.error) {
                     console.error(`[tradeExecutor] trades INSERT failed after strict pending OrderSend signal=${signal.id} broker=${broker.id} ticket=${ticket}: ${tradeInsert.error.message}`);
                     try {
-                        await this.api.orderClose(uuid, { ticket });
+                        await api.orderClose(uuid, { ticket });
                     }
                     catch {
                         /* best-effort rollback */
@@ -1717,7 +1758,7 @@ class TradeExecutor {
                     if (!tradeId) {
                         console.error(`[tradeExecutor] trades INSERT returned no id after strict pending OrderSend signal=${signal.id} broker=${broker.id} ticket=${ticket}`);
                         try {
-                            await this.api.orderClose(uuid, { ticket });
+                            await api.orderClose(uuid, { ticket });
                         }
                         catch {
                             /* best-effort rollback */
@@ -1752,7 +1793,7 @@ class TradeExecutor {
                                 await this.supabase.from('trades').delete().eq('id', tradeId);
                             }
                             try {
-                                await this.api.orderClose(uuid, { ticket });
+                                await api.orderClose(uuid, { ticket });
                             }
                             catch {
                                 /* best-effort rollback */
@@ -1924,7 +1965,7 @@ class TradeExecutor {
             args = clamped.args;
             const t0 = Date.now();
             try {
-                const result = await this.api.orderSend(uuid, args);
+                const result = await api.orderSend(uuid, args);
                 const latencyMs = Date.now() - t0;
                 console.log(`[tradeExecutor] OrderSend ok signal=${signal.id} broker=${broker.id} ticket=${result.ticket} leg=${leg.idx + 1}/${totalCount} price=${args.price ?? 0} ${latencyMs}ms`);
                 const isBuy = !args.operation.toLowerCase().includes('sell');
@@ -2054,7 +2095,7 @@ class TradeExecutor {
         }
     }
     async applyManagement(signal, parsed, brokers) {
-        if (!this.api)
+        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
             return;
         if (!signal.parent_signal_id)
             return;
@@ -2172,9 +2213,12 @@ class TradeExecutor {
             const ticket = Number(trade.metaapi_order_id);
             if (!Number.isFinite(ticket) || ticket <= 0)
                 return;
+            const api = this.apiFor(broker);
+            if (!api)
+                return;
             try {
                 if (action === 'close') {
-                    await this.api.orderClose(uuid, { ticket });
+                    await api.orderClose(uuid, { ticket });
                     await this.supabase.from('trades').update({ status: 'closed', closed_at: new Date().toISOString() }).eq('id', trade.id);
                     cancelledPendingScopes.add(JSON.stringify({
                         signalId: basketAnchorId,
@@ -2187,7 +2231,7 @@ class TradeExecutor {
                         ? Math.min(0.95, parsed.partial_close_fraction)
                         : 0.5;
                     const lots = +(trade.lot_size * fraction).toFixed(2);
-                    await this.api.orderClose(uuid, { ticket, lots });
+                    await api.orderClose(uuid, { ticket, lots });
                     // Keep the row aligned with what we asked the broker to close so any
                     // future management math (or a delayed retry) does not re-use the
                     // pre-partial lot size.
@@ -2209,7 +2253,7 @@ class TradeExecutor {
                         // Preserve the existing TP. Without this, breakeven silently
                         // wiped the take-profit because /OrderModify's takeprofit
                         // defaults to 0.
-                        await this.api.orderModify(uuid, {
+                        await api.orderModify(uuid, {
                             ticket,
                             stoploss: entry,
                             takeprofit: sanitizeLevel(trade.tp),
@@ -2223,7 +2267,7 @@ class TradeExecutor {
                     // "Adjust SL to 4500" keep the existing TP intact (and vice versa).
                     const newSl = hasNewSl ? parsed.sl : sanitizeLevel(trade.sl);
                     const newTp = hasNewTp ? parsed.tp[0] : sanitizeLevel(trade.tp);
-                    await this.api.orderModify(uuid, {
+                    await api.orderModify(uuid, {
                         ticket,
                         stoploss: newSl,
                         takeprofit: newTp,
@@ -2308,7 +2352,7 @@ class TradeExecutor {
      * `close_worse_entries_pips` of the live quote at instruction time.
      */
     async applyCloseWorseEntriesInstruction(signal, parsed, rows, byBroker) {
-        if (!this.api)
+        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
             return;
         const openRows = rows.filter(r => r.status === 'open');
         if (!openRows.length) {
@@ -2351,6 +2395,9 @@ class TradeExecutor {
             }
             const pips = Math.max(1, Number(manual.close_worse_entries_pips ?? 30));
             const uuid = broker.metaapi_account_id;
+            const api = this.apiFor(broker);
+            if (!api)
+                return;
             const params = await this.getSymbolParams(uuid, symbol).catch(() => null);
             const pipQuote = (0, pipCalculator_1.pipCalculator)(symbol, params?.point ?? 0.00001, params?.digits ?? 5, params?.contractSize ?? null);
             const pipSize = pipQuote.pipPrice;
@@ -2360,7 +2407,7 @@ class TradeExecutor {
             }
             let q;
             try {
-                q = await this.api.quote(uuid, symbol);
+                q = await api.quote(uuid, symbol);
             }
             catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);
@@ -2382,7 +2429,7 @@ class TradeExecutor {
                 if (!Number.isFinite(ticket) || ticket <= 0)
                     continue;
                 try {
-                    await this.api.orderClose(uuid, { ticket, lots: trade.lot_size });
+                    await api.orderClose(uuid, { ticket, lots: trade.lot_size });
                     await this.supabase
                         .from('trades')
                         .update({
@@ -2464,7 +2511,7 @@ class TradeExecutor {
      * indefinitely — it becomes a no-op once the legacy pendings are gone.
      */
     async cleanupLegacyBrokerPendings() {
-        if (!this.api)
+        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
             return;
         const brokers = Array.from(this.brokersById.values()).filter(b => b.is_active && isMtUuid(b.metaapi_account_id));
         if (!brokers.length)
@@ -2474,9 +2521,12 @@ class TradeExecutor {
         let totalFailed = 0;
         for (const broker of brokers) {
             const uuid = broker.metaapi_account_id;
+            const api = this.apiFor(broker);
+            if (!api)
+                continue;
             let orders;
             try {
-                orders = await this.api.openedOrders(uuid);
+                orders = await api.openedOrders(uuid);
             }
             catch (err) {
                 console.warn(`[tradeExecutor] legacy cleanup /OpenedOrders failed broker=${broker.id}: ${err.message}`);
@@ -2496,7 +2546,7 @@ class TradeExecutor {
                 if (!Number.isFinite(ticket) || ticket <= 0)
                     continue;
                 try {
-                    await this.api.orderClose(uuid, { ticket });
+                    await api.orderClose(uuid, { ticket });
                     totalClosed += 1;
                     console.log(`[tradeExecutor] legacy cleanup closed ticket=${ticket} broker=${broker.id} op=${operation}`);
                 }
@@ -2513,10 +2563,13 @@ class TradeExecutor {
         const cached = this.symbolCache.get(key);
         if (cached && (Date.now() - cached.loadedAt) < SYMBOL_CACHE_TTL_MS)
             return cached;
-        if (!this.api)
+        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
+            return null;
+        const api = this.apiForUuid(uuid);
+        if (!api)
             return null;
         try {
-            const p = await this.api.symbolParams(uuid, symbol);
+            const p = await api.symbolParams(uuid, symbol);
             const n = (0, metatraderapi_1.normalizeSymbolParams)(p);
             const entry = {
                 digits: n.digits ?? 5,
@@ -2545,10 +2598,13 @@ class TradeExecutor {
         const cached = this.symbolListCache.get(uuid);
         if (cached && (Date.now() - cached.loadedAt) < SYMBOL_LIST_TTL_MS)
             return cached;
-        if (!this.api)
+        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
+            return null;
+        const api = this.apiForUuid(uuid);
+        if (!api)
             return null;
         try {
-            const raw = await this.api.symbols(uuid);
+            const raw = await api.symbols(uuid);
             const list = [];
             const set = new Set();
             if (Array.isArray(raw)) {

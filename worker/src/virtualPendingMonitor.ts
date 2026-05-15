@@ -1,12 +1,12 @@
 import os from 'node:os'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
-  getMetatraderApi,
-  MetatraderApiClient,
+  hasMetatraderApiConfigured,
   normalizeSymbolParams,
   OrderSendArgs,
   SymbolParams,
 } from './metatraderapi'
+import { apiForMetaapiAccount, loadPlatformByMetaapiId, type PlatformByMetaapiId } from './mtApiByAccount'
 
 /**
  * Worker-side monitor that turns persisted "virtual range pendings" into
@@ -126,7 +126,7 @@ export function isBlockedByShallowerStep(
 
 export class VirtualPendingMonitor {
   private timer: NodeJS.Timeout | null = null
-  private api: MetatraderApiClient | null
+  private platformByUuid: PlatformByMetaapiId = new Map()
   private symbolCache = new Map<string, SymbolCacheEntry>()
   private hostId: string
   private ticking = false
@@ -137,14 +137,13 @@ export class VirtualPendingMonitor {
   private firstTickLogged = false
 
   constructor(private readonly supabase: SupabaseClient) {
-    this.api = getMetatraderApi()
     this.hostId = `worker:${os.hostname()}:${process.pid}`
   }
 
   start() {
     if (this.timer) return
-    if (!this.api) {
-      console.warn('[virtualPendingMonitor] METATRADERAPI_KEY missing — virtual pending monitor disabled')
+    if (!hasMetatraderApiConfigured()) {
+      console.warn('[virtualPendingMonitor] MT4API_BASIC_USER/PASSWORD missing — virtual pending monitor disabled')
       return
     }
     this.timer = setInterval(() => {
@@ -166,7 +165,7 @@ export class VirtualPendingMonitor {
   }
 
   private async tick(): Promise<void> {
-    if (!this.api) return
+    if (!hasMetatraderApiConfigured()) return
 
     // Re-open rows whose claim is stale. Anything older than STALE_CLAIM_AFTER_MS
     // is considered abandoned (the claiming worker probably crashed); reset it
@@ -227,6 +226,11 @@ export class VirtualPendingMonitor {
       return
     }
 
+    this.platformByUuid = await loadPlatformByMetaapiId(
+      this.supabase,
+      rows.map(r => r.metaapi_account_id),
+    )
+
     // Group by (account, symbol) so we issue at most ONE /Quote per group.
     const groups = new Map<string, PendingRow[]>()
     for (const r of rows) {
@@ -246,9 +250,11 @@ export class VirtualPendingMonitor {
     await Promise.all(Array.from(groups.entries()).map(async ([key, legs]) => {
       const [uuid, symbol] = key.split('|')
       if (!uuid || !symbol) return
+      const api = apiForMetaapiAccount(this.platformByUuid, uuid)
+      if (!api) return
       let q
       try {
-        q = await this.api!.quote(uuid, symbol)
+        q = await api.quote(uuid, symbol)
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         console.warn(`[virtualPendingMonitor] /Quote failed for ${symbol} (account=${uuid}): ${msg}`)
@@ -347,7 +353,8 @@ export class VirtualPendingMonitor {
   }
 
   private async fireLeg(leg: PendingRow, bid: number, ask: number): Promise<boolean> {
-    if (!this.api) return false
+    const api = apiForMetaapiAccount(this.platformByUuid, leg.metaapi_account_id)
+    if (!api) return false
     // CAS claim. If another monitor (worker peer or edge fn) beat us, .maybeSingle()
     // returns no row and we walk away.
     const { data: claimed, error: claimErr } = await this.supabase
@@ -572,12 +579,13 @@ export class VirtualPendingMonitor {
   }
 
   private async getSymbolParams(uuid: string, symbol: string): Promise<SymbolCacheEntry | null> {
-    if (!this.api) return null
+    const api = apiForMetaapiAccount(this.platformByUuid, uuid)
+    if (!api) return null
     const key = `${uuid}:${symbol.toUpperCase()}`
     const cached = this.symbolCache.get(key)
     if (cached && (Date.now() - cached.loadedAt) < SYMBOL_TTL_MS) return cached
     try {
-      const p: SymbolParams = await this.api.symbolParams(uuid, symbol)
+      const p: SymbolParams = await api.symbolParams(uuid, symbol)
       const n = normalizeSymbolParams(p)
       const entry: SymbolCacheEntry = {
         digits: n.digits ?? 5,
@@ -680,9 +688,10 @@ export class VirtualPendingMonitor {
     leg: PendingRow,
     args: OrderSendArgs,
   ): Promise<{ ticket?: number; openPrice?: number; lots?: number; stopLoss?: number; takeProfit?: number }> {
-    if (!this.api) throw new Error('api unavailable')
+    const api = apiForMetaapiAccount(this.platformByUuid, leg.metaapi_account_id)
+    if (!api) throw new Error('api unavailable')
     try {
-      return await this.api.orderSend(leg.metaapi_account_id, args)
+      return await api.orderSend(leg.metaapi_account_id, args)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       const isInvalidStops = /invalid\s+stops/i.test(msg)
@@ -692,7 +701,7 @@ export class VirtualPendingMonitor {
         `[virtualPendingMonitor] retry without stops leg=${leg.id} signal=${leg.signal_id} stepIdx=${leg.step_idx} reason="${msg}" (sl=${args.stoploss} tp=${args.takeprofit})`,
       )
       const fallback: OrderSendArgs = { ...args, stoploss: 0, takeprofit: 0 }
-      return await this.api.orderSend(leg.metaapi_account_id, fallback)
+      return await api.orderSend(leg.metaapi_account_id, fallback)
     }
   }
 }

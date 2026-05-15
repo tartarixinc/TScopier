@@ -1,8 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import {
-  getMetatraderApi,
-  MetatraderApiClient,
-} from './metatraderapi'
+import { hasMetatraderApiConfigured } from './metatraderapi'
+import { apiForMetaapiAccount, loadPlatformByMetaapiId, type PlatformByMetaapiId } from './mtApiByAccount'
 import {
   cancelSignalEntryRowAtBroker,
   findClosedRowForTicket,
@@ -59,19 +57,17 @@ function extractOpenPrice(raw: Record<string, unknown>): number | null {
  */
 export class SignalEntryPendingMonitor {
   private timer: NodeJS.Timeout | null = null
-  private api: MetatraderApiClient | null
+  private platformByUuid: PlatformByMetaapiId = new Map()
   private ticking = false
   /** row id → consecutive ticks where ticket was absent from /OpenedOrders */
   private missingStreak = new Map<string, number>()
 
-  constructor(private readonly supabase: SupabaseClient) {
-    this.api = getMetatraderApi()
-  }
+  constructor(private readonly supabase: SupabaseClient) {}
 
   start() {
     if (this.timer) return
-    if (!this.api) {
-      console.warn('[signalEntryPendingMonitor] METATRADERAPI_KEY missing — signal entry pending monitor disabled')
+    if (!hasMetatraderApiConfigured()) {
+      console.warn('[signalEntryPendingMonitor] MT4API_BASIC_USER/PASSWORD missing — signal entry pending monitor disabled')
       return
     }
     this.timer = setInterval(() => {
@@ -91,7 +87,7 @@ export class SignalEntryPendingMonitor {
   }
 
   private async tick(): Promise<void> {
-    if (!this.api) return
+    if (!hasMetatraderApiConfigured()) return
 
     const { data, error } = await this.supabase
       .from('signal_entry_pending_orders')
@@ -110,6 +106,11 @@ export class SignalEntryPendingMonitor {
       return
     }
 
+    this.platformByUuid = await loadPlatformByMetaapiId(
+      this.supabase,
+      rows.map(r => r.metaapi_account_id),
+    )
+
     const nowMs = Date.now()
     const expiredIds = new Set<string>()
     for (const r of rows) {
@@ -122,11 +123,13 @@ export class SignalEntryPendingMonitor {
 
     for (const row of rows) {
       if (!expiredIds.has(row.id)) continue
-      await cancelSignalEntryRowAtBroker(this.supabase, this.api, row, 'expired')
+      const api = apiForMetaapiAccount(this.platformByUuid, row.metaapi_account_id)
+      if (api) await cancelSignalEntryRowAtBroker(this.supabase, api, row, 'expired')
     }
 
     for (const row of cancelRows) {
-      await cancelSignalEntryRowAtBroker(this.supabase, this.api, row, 'cancel_requested')
+      const api = apiForMetaapiAccount(this.platformByUuid, row.metaapi_account_id)
+      if (api) await cancelSignalEntryRowAtBroker(this.supabase, api, row, 'cancel_requested')
     }
 
     const byAccount = new Map<string, MonitorRow[]>()
@@ -138,9 +141,11 @@ export class SignalEntryPendingMonitor {
     }
 
     for (const [uuid, group] of byAccount) {
+      const api = apiForMetaapiAccount(this.platformByUuid, uuid)
+      if (!api) continue
       let opened: unknown[] = []
       try {
-        opened = await this.api.openedOrders(uuid)
+        opened = await api.openedOrders(uuid)
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         console.warn(`[signalEntryPendingMonitor] /OpenedOrders failed account=${uuid}: ${msg}`)
@@ -182,7 +187,7 @@ export class SignalEntryPendingMonitor {
       let closed: unknown[] = []
       if (needClosed.length) {
         try {
-          closed = await this.api.closedOrders(uuid)
+          closed = await api.closedOrders(uuid)
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
           console.warn(`[signalEntryPendingMonitor] /ClosedOrders failed account=${uuid}: ${msg}`)

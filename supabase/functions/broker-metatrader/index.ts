@@ -1,6 +1,11 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
-import { makeClientFromEnv, MetatraderApiError } from "../_shared/metatraderapi.ts"
+import { makeClientFromEnv, MetatraderApiError, type MtPlatform } from "../_shared/metatraderapi.ts"
+
+function mtClient(env: { get(name: string): string | undefined }, platform: string): ReturnType<typeof makeClientFromEnv> {
+  const p: MtPlatform = platform === "MT4" ? "MT4" : "MT5"
+  return makeClientFromEnv(env, p)
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -76,11 +81,10 @@ Deno.serve(async (req: Request) => {
     const action = String((body as Record<string, unknown>).action ?? "")
     if (!action) return bad(400, "action required")
 
-    const client = makeClientFromEnv(Deno.env)
-
     if (action === "register") {
       const platform = String((body as Record<string, unknown>).platform ?? "MT5").toUpperCase()
       if (!PLATFORMS.has(platform)) return bad(400, "platform must be MT4 or MT5")
+      const client = mtClient(Deno.env, platform)
       const server = String((body as Record<string, unknown>).server ?? "").trim()
       const login = String((body as Record<string, unknown>).login ?? "").trim()
       const password = String((body as Record<string, unknown>).password ?? "")
@@ -95,17 +99,16 @@ Deno.serve(async (req: Request) => {
 
       const brokerName = inferBrokerLabel(server)
       const displayLabel = label || `${platform} • ${login}`
-      const reg = await client.registerAccount({
-        platform: platform as "MT4" | "MT5",
+      const sessionId = crypto.randomUUID()
+      const uuid = await client.connectEx({
+        id: sessionId,
         server,
         login,
         password,
-        name: displayLabel,
       })
-      const uuid = reg.id
-      if (!uuid) return bad(502, "MetatraderAPI did not return an account id")
+      if (!uuid) return bad(502, "MetatraderAPI did not return a session id")
 
-      // After RegisterAccount the MT5 session needs a moment to authenticate
+      // After ConnectEx the session needs a moment to authenticate
       // before /AccountSummary returns real numbers. CheckConnect both
       // waits for the connection and triggers a reconnect if needed, and
       // we retry the summary a few times with backoff in case the first
@@ -184,7 +187,7 @@ Deno.serve(async (req: Request) => {
 
       const { data: broker } = await supabase
         .from("broker_accounts")
-        .select("id,user_id,metaapi_account_id")
+        .select("id,user_id,metaapi_account_id,platform")
         .eq("id", brokerId)
         .eq("user_id", userId)
         .maybeSingle()
@@ -192,7 +195,9 @@ Deno.serve(async (req: Request) => {
 
       const uuid = String(broker.metaapi_account_id ?? "").trim()
       if (uuid && !uuid.includes("|")) {
-        try { await client.deleteAccount(uuid) } catch { /* swallow — proceed with DB delete */ }
+        try {
+          await mtClient(Deno.env, String(broker.platform ?? "MT5")).disconnect(uuid)
+        } catch { /* swallow — proceed with DB delete */ }
       }
 
       const { error: delErr } = await supabase
@@ -210,17 +215,17 @@ Deno.serve(async (req: Request) => {
       if (!brokerId) return bad(400, "broker_id required")
       const { data: broker } = await supabase
         .from("broker_accounts")
-        .select("id,metaapi_account_id,performance_baseline_balance")
+        .select("id,metaapi_account_id,performance_baseline_balance,platform")
         .eq("id", brokerId)
         .eq("user_id", userId)
         .maybeSingle()
       if (!broker) return bad(404, "Broker account not found")
       const uuid = String(broker.metaapi_account_id ?? "").trim()
       if (!uuid || uuid.includes("|")) return bad(400, "Broker is not linked to MetatraderAPI yet")
+      const client = mtClient(Deno.env, String(broker.platform ?? "MT5"))
 
       try {
-        // Reconnect if needed before reading account state; falls through silently.
-        try { await client.checkConnect(uuid) } catch { /* swallow */ }
+        try { await client.ensureConnected(uuid) } catch { /* swallow */ }
         let summary: Awaited<ReturnType<typeof client.accountSummary>> | null = null
         let lastErr: unknown = null
         for (let i = 0; i < 3; i++) {
@@ -292,15 +297,17 @@ Deno.serve(async (req: Request) => {
       if (!brokerId) return bad(400, "broker_id required")
       const { data: broker } = await supabase
         .from("broker_accounts")
-        .select("id,metaapi_account_id")
+        .select("id,metaapi_account_id,platform")
         .eq("id", brokerId)
         .eq("user_id", userId)
         .maybeSingle()
       if (!broker) return bad(404, "Broker account not found")
       const uuid = String(broker.metaapi_account_id ?? "").trim()
       if (!uuid || uuid.includes("|")) return bad(400, "Broker is not linked to MetatraderAPI yet")
+      const client = mtClient(Deno.env, String(broker.platform ?? "MT5"))
 
       try {
+        await client.ensureConnected(uuid)
         const result = await client.checkConnect(uuid)
         await supabase
           .from("broker_accounts")
@@ -326,11 +333,11 @@ Deno.serve(async (req: Request) => {
       const wantOpen = scope === "all" || scope === "open"
       const wantClosed = scope === "all" || scope === "closed"
 
-      let brokers: { id: string; label: string; metaapi_account_id: string; broker_name: string | null }[] = []
+      let brokers: { id: string; label: string; metaapi_account_id: string; broker_name: string | null; platform: string }[] = []
       if (brokerId) {
         const { data } = await supabase
           .from("broker_accounts")
-          .select("id,label,metaapi_account_id,broker_name")
+          .select("id,label,metaapi_account_id,broker_name,platform")
           .eq("id", brokerId)
           .eq("user_id", userId)
           .maybeSingle()
@@ -339,7 +346,7 @@ Deno.serve(async (req: Request) => {
       } else {
         const { data } = await supabase
           .from("broker_accounts")
-          .select("id,label,metaapi_account_id,broker_name")
+          .select("id,label,metaapi_account_id,broker_name,platform")
           .eq("user_id", userId)
         brokers = ((data ?? []) as typeof brokers)
       }
@@ -460,9 +467,11 @@ Deno.serve(async (req: Request) => {
         brokers.map(async (b) => {
           const uuid = String(b.metaapi_account_id ?? "").trim()
           if (!uuid || uuid.includes("|")) return [] as ReturnType<typeof normalize>[]
+          const bClient = mtClient(Deno.env, String(b.platform ?? "MT5"))
+          try { await bClient.ensureConnected(uuid) } catch { /* best-effort */ }
           const [openedRes, closedRes] = await Promise.allSettled([
-            wantOpen ? client.openedOrders(uuid) : Promise.resolve([] as unknown[]),
-            wantClosed ? client.closedOrders(uuid) : Promise.resolve([] as unknown[]),
+            wantOpen ? bClient.openedOrders(uuid) : Promise.resolve([] as unknown[]),
+            wantClosed ? bClient.closedOrders(uuid) : Promise.resolve([] as unknown[]),
           ])
           const out: ReturnType<typeof normalize>[] = []
           if (openedRes.status === "fulfilled" && Array.isArray(openedRes.value)) {

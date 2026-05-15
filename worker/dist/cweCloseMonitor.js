@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CweCloseMonitor = void 0;
 exports.isCweTriggered = isCweTriggered;
 const metatraderapi_1 = require("./metatraderapi");
+const mtApiByAccount_1 = require("./mtApiByAccount");
 const TICK_INTERVAL_MS = 1500;
 /**
  * Pure trigger check. Exported so the unit test can lock the
@@ -32,13 +33,12 @@ class CweCloseMonitor {
          *  are watched trades but none have triggered. Makes "alive but waiting"
          *  visible in worker logs vs. "dead". */
         this.quietTicks = 0;
-        this.api = (0, metatraderapi_1.getMetatraderApi)();
     }
     start() {
         if (this.timer)
             return;
-        if (!this.api) {
-            console.warn('[cweCloseMonitor] METATRADERAPI_KEY missing — close-worse-entries monitor disabled');
+        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)()) {
+            console.warn('[cweCloseMonitor] MT4API_BASIC_USER/PASSWORD missing — close-worse-entries monitor disabled');
             return;
         }
         this.timer = setInterval(() => {
@@ -60,7 +60,7 @@ class CweCloseMonitor {
         }
     }
     async tick() {
-        if (!this.api)
+        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
             return;
         // Pull every open trade that has a CWE close threshold pinned to it.
         // The partial index `trades_cwe_open_idx` makes this a constant-time
@@ -92,7 +92,7 @@ class CweCloseMonitor {
         if (brokerIds.length > 0) {
             const { data: brokers, error: brokerErr } = await this.supabase
                 .from('broker_accounts')
-                .select('id,metaapi_account_id')
+                .select('id,metaapi_account_id,platform')
                 .in('id', brokerIds);
             if (brokerErr) {
                 console.error('[cweCloseMonitor] broker lookup failed:', brokerErr.message);
@@ -103,6 +103,7 @@ class CweCloseMonitor {
                     brokerMap.set(b.id, b.metaapi_account_id);
             }
         }
+        const platformByUuid = await (0, mtApiByAccount_1.loadPlatformByMetaapiId)(this.supabase, Array.from(brokerMap.values()));
         // Group by (metaapi_account_id, symbol) so we issue at most ONE /Quote per
         // group per tick. Same shape as virtualPendingMonitor for consistency.
         const groups = new Map();
@@ -125,9 +126,12 @@ class CweCloseMonitor {
             const [uuid, symbol] = key.split('|');
             if (!uuid || !symbol)
                 return;
+            const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(platformByUuid, uuid);
+            if (!api)
+                return;
             let q;
             try {
-                q = await this.api.quote(uuid, symbol);
+                q = await api.quote(uuid, symbol);
             }
             catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);
@@ -146,7 +150,7 @@ class CweCloseMonitor {
                 if (!isCweTriggered(trade.direction, trade.cwe_close_price, q.bid, q.ask))
                     continue;
                 triggeredTotal += 1;
-                const ok = await this.closeTrade(trade, uuid, q.bid, q.ask);
+                const ok = await this.closeTrade(trade, uuid, api, q.bid, q.ask);
                 if (ok)
                     closedOkTotal += 1;
                 else
@@ -178,9 +182,7 @@ class CweCloseMonitor {
      * update returns no row and this function bails — only one /OrderClose
      * ever lands per ticket.
      */
-    async closeTrade(trade, uuid, bid, ask) {
-        if (!this.api)
-            return false;
+    async closeTrade(trade, uuid, api, bid, ask) {
         const ticketNum = Number(trade.metaapi_order_id);
         if (!Number.isFinite(ticketNum) || ticketNum <= 0) {
             // Missing ticket — nothing for us to close. Clear the watch so we
@@ -212,7 +214,7 @@ class CweCloseMonitor {
         const isBuy = String(trade.direction).toLowerCase() === 'buy';
         const refPrice = isBuy ? bid : ask;
         try {
-            const result = await this.api.orderClose(uuid, {
+            const result = await api.orderClose(uuid, {
                 ticket: ticketNum,
                 lots: trade.lot_size ?? 0,
                 // Leaving price=0 lets the broker fill at market — same behavior as

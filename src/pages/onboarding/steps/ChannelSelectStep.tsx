@@ -3,6 +3,7 @@ import { useAuth } from '../../../context/AuthContext'
 import { supabase } from '../../../lib/supabase'
 import { Card } from '../../../components/ui/Card'
 import { Button } from '../../../components/ui/Button'
+import { Alert } from '../../../components/ui/Alert'
 import { Badge } from '../../../components/ui/Badge'
 import { Radio, Check } from 'lucide-react'
 
@@ -107,11 +108,7 @@ export function ChannelSelectStep({ onDone }: Props) {
         </p>
       </div>
 
-      {error && (
-        <div className="mb-4 px-3 py-2.5 bg-error-50 border border-error-200 rounded-lg text-sm text-error-700">
-          {error}
-        </div>
-      )}
+      {error && <Alert className="mb-4 py-2.5">{error}</Alert>}
 
       {loading ? (
         <div className="space-y-2">

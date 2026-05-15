@@ -3,6 +3,7 @@ import { ArrowUpRight, ArrowDownRight, ChevronLeft, ChevronRight, Minus, Refresh
 import { useAuth } from '../../context/AuthContext'
 import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
+import { Alert } from '../../components/ui/Alert'
 import { metatraderApi, type MtTrade } from '../../lib/metatraderapi'
 
 type Filter = 'all' | 'open' | 'closed'
@@ -140,11 +141,7 @@ export function TradesPage() {
         </div>
       </div>
 
-      {error && !loading && (
-        <div className="mb-4 px-4 py-2.5 rounded-md bg-error-50 border border-error-100 text-sm text-error-700">
-          {error}
-        </div>
-      )}
+      {error && !loading && <Alert className="mb-4 px-4 py-2.5">{error}</Alert>}
 
       <Card padding="none">
         {loading ? (

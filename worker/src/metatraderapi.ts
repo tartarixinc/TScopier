@@ -3,13 +3,12 @@ import { Agent, request } from 'undici'
 /**
  * MetatraderAPI (metatraderapi.dev) Node client tuned for low order-send latency.
  *
- * - Singleton undici Agent keeps a TLS-warm connection pool to api.metatraderapi.dev,
- *   so OrderSend round-trips skip TLS handshakes after the first call.
- * - All endpoints are GET with query parameters per
- *   https://docs.metatraderapi.dev/docs/metatrader-5-api.
+ * - Singleton undici Agent keeps TLS-warm pools per platform host (mt4/mt5.mt4api.dev).
+ * - Basic Auth; platform-specific paths (OrderSendSafe vs OrderSend). See docs/mt4api-endpoint-map.md.
  */
 
-const DEFAULT_BASE_URL = 'https://api.metatraderapi.dev'
+const DEFAULT_MT5_BASE = 'https://mt5.mt4api.dev'
+const DEFAULT_MT4_BASE = 'https://mt4.mt4api.dev'
 
 const KEEP_ALIVE_AGENT = new Agent({
   keepAliveTimeout: 30_000,
@@ -291,16 +290,99 @@ function buildQuery(params: Record<string, string | number | undefined | null>):
   return out.toString()
 }
 
+function basicAuthHeader(user: string, password: string): string {
+  return `Basic ${Buffer.from(`${user}:${password}`, 'utf8').toString('base64')}`
+}
+
+function parseToken(body: unknown, fallbackId: string): string {
+  if (typeof body === 'string') {
+    const t = body.trim().replace(/^"|"$/g, '')
+    if (t) return t
+  }
+  if (body && typeof body === 'object') {
+    const o = body as Record<string, unknown>
+    const id = o.id ?? o.Id ?? o.token ?? o.Token
+    if (id != null && String(id).trim()) return String(id).trim()
+  }
+  return fallbackId
+}
+
+function normalizeAccountSummary(body: unknown): AccountSummary {
+  if (body == null || typeof body !== 'object') return {}
+  const root = body as Record<string, unknown>
+  const o = (root.result && typeof root.result === 'object')
+    ? root.result as Record<string, unknown>
+    : root
+  return {
+    balance: num(o.balance ?? o.Balance),
+    credit: num(o.credit ?? o.Credit),
+    profit: num(o.profit ?? o.Profit),
+    equity: num(o.equity ?? o.Equity),
+    margin: num(o.margin ?? o.Margin),
+    freeMargin: num(o.freeMargin ?? o.FreeMargin ?? o.marginFree ?? o.MarginFree),
+    marginLevel: num(o.marginLevel ?? o.MarginLevel),
+    leverage: num(o.leverage ?? o.Leverage),
+    currency: typeof o.currency === 'string' ? o.currency : typeof o.Currency === 'string' ? o.Currency : undefined,
+  }
+}
+
+interface PlatformPaths {
+  orderSend: string
+  orderModify: string
+  orderClose: string
+  quote: string
+}
+
+function pathsFor(platform: MtPlatform): PlatformPaths {
+  if (platform === 'MT5') {
+    return {
+      orderSend: '/OrderSendSafe',
+      orderModify: '/OrderModifySafe',
+      orderClose: '/OrderCloseSafe',
+      quote: '/GetQuote',
+    }
+  }
+  return {
+    orderSend: '/OrderSend',
+    orderModify: '/OrderModify',
+    orderClose: '/OrderClose',
+    quote: '/Quote',
+  }
+}
+
+export function mtPlatformFrom(s: string | null | undefined): MtPlatform {
+  return s === 'MT4' ? 'MT4' : 'MT5'
+}
+
+export function hasMetatraderApiConfigured(): boolean {
+  const user = process.env.MT4API_BASIC_USER?.trim() ?? ''
+  const pass = process.env.MT4API_BASIC_PASSWORD?.trim() ?? ''
+  return Boolean(user && pass)
+}
+
 export class MetatraderApiClient {
   private readonly baseUrl: string
-  private readonly apiKey: string
+  private readonly authHeader: string
   private readonly timeoutMs: number
+  private readonly paths: PlatformPaths
+  readonly platform: MtPlatform
 
-  constructor(apiKey: string, baseUrl: string = DEFAULT_BASE_URL, timeoutMs: number = 30_000) {
-    if (!apiKey) throw new Error('MetatraderApiClient: apiKey is required')
-    this.apiKey = apiKey
-    this.baseUrl = baseUrl.replace(/\/+$/, '')
+  constructor(
+    platform: MtPlatform,
+    basicUser: string,
+    basicPassword: string,
+    baseUrl?: string,
+    timeoutMs: number = 30_000,
+  ) {
+    if (!basicUser || !basicPassword) {
+      throw new Error('MetatraderApiClient: Basic Auth credentials required')
+    }
+    this.platform = platform
+    const defaultBase = platform === 'MT5' ? DEFAULT_MT5_BASE : DEFAULT_MT4_BASE
+    this.baseUrl = (baseUrl ?? defaultBase).replace(/\/+$/, '')
+    this.authHeader = basicAuthHeader(basicUser, basicPassword)
     this.timeoutMs = timeoutMs
+    this.paths = pathsFor(platform)
   }
 
   private async get<T>(path: string, params: Record<string, string | number | undefined | null>): Promise<T> {
@@ -308,7 +390,7 @@ export class MetatraderApiClient {
     const url = `${this.baseUrl}${path}${qs ? `?${qs}` : ''}`
     const res = await request(url, {
       method: 'GET',
-      headers: { 'x-api-key': this.apiKey, accept: 'application/json' },
+      headers: { Authorization: this.authHeader, accept: 'application/json, text/plain' },
       dispatcher: KEEP_ALIVE_AGENT,
       headersTimeout: this.timeoutMs,
       bodyTimeout: this.timeoutMs,
@@ -330,6 +412,43 @@ export class MetatraderApiClient {
     return body as T
   }
 
+  async connectEx(args: {
+    id: string
+    server: string
+    login: string
+    password: string
+  }): Promise<string> {
+    const userNum = Number(args.login)
+    if (!Number.isFinite(userNum)) {
+      throw new MetatraderApiError('Invalid MT login number', 400)
+    }
+    const raw = await this.get<unknown>('/ConnectEx', {
+      id: args.id,
+      user: userNum,
+      password: args.password,
+      server: args.server,
+    })
+    return parseToken(raw, args.id)
+  }
+
+  async connectByToken(id: string): Promise<void> {
+    await this.get<unknown>('/ConnectByToken', { id })
+  }
+
+  async ensureConnected(id: string): Promise<void> {
+    try {
+      await this.checkConnect(id)
+      return
+    } catch {
+      /* reconnect */
+    }
+    await this.connectByToken(id)
+  }
+
+  async disconnect(id: string): Promise<void> {
+    await this.get<unknown>('/Disconnect', { id })
+  }
+
   openedOrders(id: string): Promise<unknown[]> {
     return this.get<unknown[]>('/OpenedOrders', { id })
   }
@@ -339,8 +458,10 @@ export class MetatraderApiClient {
     return this.get<unknown[]>('/ClosedOrders', { id })
   }
 
-  accountSummary(id: string): Promise<AccountSummary> {
-    return this.get<AccountSummary>('/AccountSummary', { id })
+  async accountSummary(id: string): Promise<AccountSummary> {
+    const raw = await this.get<unknown>('/AccountSummary', { id })
+    assertNoApiError(raw)
+    return normalizeAccountSummary(raw)
   }
 
   checkConnect(id: string): Promise<string> {
@@ -366,7 +487,7 @@ export class MetatraderApiClient {
     // `/GetQuote` (not `/Quote`). Calling `/Quote` returns HTTP 404 and breaks
     // anchor resolution for averaging-down ladders that don't carry an
     // explicit signal entry price.
-    const raw = await this.get<unknown>('/GetQuote', { id, symbol })
+    const raw = await this.get<unknown>(this.paths.quote, { id, symbol })
     assertNoApiError(raw)
     const root = (raw && typeof raw === 'object') ? raw as Record<string, unknown> : {}
     const r = (root.result && typeof root.result === 'object') ? root.result as Record<string, unknown> : root
@@ -396,7 +517,7 @@ export class MetatraderApiClient {
         400,
       )
     }
-    const raw = await this.get<unknown>('/OrderSend', {
+    const raw = await this.get<unknown>(this.paths.orderSend, {
       id,
       symbol: args.symbol,
       operation: args.operation,
@@ -420,7 +541,7 @@ export class MetatraderApiClient {
   }
 
   async orderModify(id: string, args: OrderModifyArgs): Promise<OrderResult> {
-    const raw = await this.get<unknown>('/OrderModify', {
+    const raw = await this.get<unknown>(this.paths.orderModify, {
       id,
       ticket: args.ticket,
       stoploss: args.stoploss ?? 0,
@@ -434,7 +555,7 @@ export class MetatraderApiClient {
   }
 
   async orderClose(id: string, args: OrderCloseArgs): Promise<OrderResult> {
-    const raw = await this.get<unknown>('/OrderClose', {
+    const raw = await this.get<unknown>(this.paths.orderClose, {
       id,
       ticket: args.ticket,
       lots: args.lots ?? 0,
@@ -446,13 +567,20 @@ export class MetatraderApiClient {
   }
 }
 
-let cachedClient: MetatraderApiClient | null = null
+const clientCache = new Map<MtPlatform, MetatraderApiClient | null>()
 
-export function getMetatraderApi(): MetatraderApiClient | null {
-  if (cachedClient) return cachedClient
-  const apiKey = process.env.METATRADERAPI_KEY?.trim() ?? ''
-  if (!apiKey) return null
-  const baseUrl = process.env.METATRADERAPI_BASE_URL?.trim() || DEFAULT_BASE_URL
-  cachedClient = new MetatraderApiClient(apiKey, baseUrl)
-  return cachedClient
+export function getMetatraderApi(platform: MtPlatform = 'MT5'): MetatraderApiClient | null {
+  if (clientCache.has(platform)) return clientCache.get(platform) ?? null
+  const user = process.env.MT4API_BASIC_USER?.trim() ?? ''
+  const password = process.env.MT4API_BASIC_PASSWORD?.trim() ?? ''
+  if (!user || !password) {
+    clientCache.set(platform, null)
+    return null
+  }
+  const baseUrl = platform === 'MT5'
+    ? (process.env.MT4API_MT5_BASE_URL?.trim() || DEFAULT_MT5_BASE)
+    : (process.env.MT4API_MT4_BASE_URL?.trim() || DEFAULT_MT4_BASE)
+  const client = new MetatraderApiClient(platform, user, password, baseUrl)
+  clientCache.set(platform, client)
+  return client
 }

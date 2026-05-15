@@ -1,9 +1,7 @@
 import os from 'node:os'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import {
-  getMetatraderApi,
-  MetatraderApiClient,
-} from './metatraderapi'
+import { hasMetatraderApiConfigured, type MetatraderApiClient } from './metatraderapi'
+import { apiForMetaapiAccount, loadPlatformByMetaapiId, type PlatformByMetaapiId } from './mtApiByAccount'
 
 /**
  * Worker-side monitor that fires partial /OrderClose calls for single-mode
@@ -76,7 +74,7 @@ export function isPartialTpTriggered(isBuy: boolean, triggerPrice: number, bid: 
 
 export class PartialTpMonitor {
   private timer: NodeJS.Timeout | null = null
-  private api: MetatraderApiClient | null
+  private platformByUuid: PlatformByMetaapiId = new Map()
   private hostId: string
   private ticking = false
   private firstTickLogged = false
@@ -85,14 +83,13 @@ export class PartialTpMonitor {
   private quietTicks = 0
 
   constructor(private readonly supabase: SupabaseClient) {
-    this.api = getMetatraderApi()
     this.hostId = `worker:${os.hostname()}:${process.pid}`
   }
 
   start() {
     if (this.timer) return
-    if (!this.api) {
-      console.warn('[partialTpMonitor] METATRADERAPI_KEY missing — partial TP monitor disabled')
+    if (!hasMetatraderApiConfigured()) {
+      console.warn('[partialTpMonitor] MT4API_BASIC_USER/PASSWORD missing — partial TP monitor disabled')
       return
     }
     this.timer = setInterval(() => {
@@ -115,7 +112,7 @@ export class PartialTpMonitor {
   }
 
   private async tick(): Promise<void> {
-    if (!this.api) return
+    if (!hasMetatraderApiConfigured()) return
 
     // Re-claim stuck rows so a crashed worker can't strand a partial. Same
     // 30s threshold as virtualPendingMonitor.
@@ -145,6 +142,11 @@ export class PartialTpMonitor {
       return
     }
 
+    this.platformByUuid = await loadPlatformByMetaapiId(
+      this.supabase,
+      rows.map(r => r.metaapi_account_id),
+    )
+
     // Group by (metaapi_account_id, symbol) → at most ONE /Quote per group
     // per tick. Same shape as the other monitors for consistency.
     const groups = new Map<string, PartialRow[]>()
@@ -163,9 +165,11 @@ export class PartialTpMonitor {
     await Promise.all(Array.from(groups.entries()).map(async ([key, partials]) => {
       const [uuid, symbol] = key.split('|')
       if (!uuid || !symbol) return
+      const api = apiForMetaapiAccount(this.platformByUuid, uuid)
+      if (!api) return
       let q
       try {
-        q = await this.api!.quote(uuid, symbol)
+        q = await api.quote(uuid, symbol)
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         console.warn(`[partialTpMonitor] /Quote failed for ${symbol} (account=${uuid}): ${msg}`)
@@ -180,7 +184,7 @@ export class PartialTpMonitor {
         if (Number.isFinite(gap) && gap < nearestGap) nearestGap = gap
         if (!isPartialTpTriggered(partial.is_buy, partial.trigger_price, q.bid, q.ask)) continue
         triggeredTotal += 1
-        const ok = await this.firePartial(partial, q.bid, q.ask)
+        const ok = await this.firePartial(partial, api, q.bid, q.ask)
         if (ok) firedOkTotal += 1
         else firedErrTotal += 1
       }
@@ -218,8 +222,12 @@ export class PartialTpMonitor {
    *   3. /OrderClose with `lots = close_lots`.
    *   4. UPDATE status: 'claimed' → 'fired' (or 'failed' on error).
    */
-  private async firePartial(partial: PartialRow, bid: number, ask: number): Promise<boolean> {
-    if (!this.api) return false
+  private async firePartial(
+    partial: PartialRow,
+    api: MetatraderApiClient,
+    bid: number,
+    ask: number,
+  ): Promise<boolean> {
 
     // CAS claim.
     const { data: claimed, error: claimErr } = await this.supabase
@@ -262,7 +270,7 @@ export class PartialTpMonitor {
     const t0 = Date.now()
     const refPrice = partial.is_buy ? bid : ask
     try {
-      const result = await this.api.orderClose(partial.metaapi_account_id, {
+      const result = await api.orderClose(partial.metaapi_account_id, {
         ticket: ticketNum,
         lots: partial.close_lots,
         // price=0 lets the broker fill at market (same as a manual partial

@@ -29,9 +29,8 @@ import {
   Menu,
   X,
 } from 'lucide-react'
-import tscopierLogo from '/tscopierlogo.png'
-import tscopierLogoCollapsed from '/tslogo-collapse.png'
 import clsx from 'clsx'
+import { TscopierLogo } from '../ui/TscopierLogo'
 import { useAuth } from '../../context/AuthContext'
 import { ThemeToggle } from '../ui/ThemeToggle'
 
@@ -219,15 +218,18 @@ export function AppLayout() {
             sidebarExpanded ? 'justify-between px-4' : 'justify-center px-2',
           )}
         >
-          <img src={tscopierLogo} alt="TSCopier" className="h-8 w-auto lg:hidden" />
-          <img
-            src={sidebarExpanded ? tscopierLogo : tscopierLogoCollapsed}
-            alt="TSCopier"
+          <TscopierLogo className="h-8 w-auto lg:hidden" />
+          <div
             className={clsx(
               'hidden lg:block transition-all duration-200',
-              sidebarExpanded ? 'h-8 w-auto' : 'h-10 w-10 object-contain',
+              !sidebarExpanded && 'mx-auto',
             )}
-          />
+          >
+            <TscopierLogo
+              collapsed={!sidebarExpanded}
+              className={sidebarExpanded ? 'h-8 w-auto' : undefined}
+            />
+          </div>
           <button
             type="button"
             className="p-2 rounded-lg text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800 lg:hidden"

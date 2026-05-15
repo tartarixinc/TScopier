@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SignalEntryPendingMonitor = void 0;
 const metatraderapi_1 = require("./metatraderapi");
+const mtApiByAccount_1 = require("./mtApiByAccount");
 const signalEntryPendingHelpers_1 = require("./signalEntryPendingHelpers");
 const TICK_MS = 2000;
 const MISSING_BEFORE_ASSUME_GONE = 6;
@@ -43,16 +44,16 @@ class SignalEntryPendingMonitor {
     constructor(supabase) {
         this.supabase = supabase;
         this.timer = null;
+        this.platformByUuid = new Map();
         this.ticking = false;
         /** row id → consecutive ticks where ticket was absent from /OpenedOrders */
         this.missingStreak = new Map();
-        this.api = (0, metatraderapi_1.getMetatraderApi)();
     }
     start() {
         if (this.timer)
             return;
-        if (!this.api) {
-            console.warn('[signalEntryPendingMonitor] METATRADERAPI_KEY missing — signal entry pending monitor disabled');
+        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)()) {
+            console.warn('[signalEntryPendingMonitor] MT4API_BASIC_USER/PASSWORD missing — signal entry pending monitor disabled');
             return;
         }
         this.timer = setInterval(() => {
@@ -72,7 +73,7 @@ class SignalEntryPendingMonitor {
         this.timer = null;
     }
     async tick() {
-        if (!this.api)
+        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
             return;
         const { data, error } = await this.supabase
             .from('signal_entry_pending_orders')
@@ -88,6 +89,7 @@ class SignalEntryPendingMonitor {
             this.missingStreak.clear();
             return;
         }
+        this.platformByUuid = await (0, mtApiByAccount_1.loadPlatformByMetaapiId)(this.supabase, rows.map(r => r.metaapi_account_id));
         const nowMs = Date.now();
         const expiredIds = new Set();
         for (const r of rows) {
@@ -102,10 +104,14 @@ class SignalEntryPendingMonitor {
         for (const row of rows) {
             if (!expiredIds.has(row.id))
                 continue;
-            await (0, signalEntryPendingHelpers_1.cancelSignalEntryRowAtBroker)(this.supabase, this.api, row, 'expired');
+            const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(this.platformByUuid, row.metaapi_account_id);
+            if (api)
+                await (0, signalEntryPendingHelpers_1.cancelSignalEntryRowAtBroker)(this.supabase, api, row, 'expired');
         }
         for (const row of cancelRows) {
-            await (0, signalEntryPendingHelpers_1.cancelSignalEntryRowAtBroker)(this.supabase, this.api, row, 'cancel_requested');
+            const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(this.platformByUuid, row.metaapi_account_id);
+            if (api)
+                await (0, signalEntryPendingHelpers_1.cancelSignalEntryRowAtBroker)(this.supabase, api, row, 'cancel_requested');
         }
         const byAccount = new Map();
         for (const r of watchRows) {
@@ -115,9 +121,12 @@ class SignalEntryPendingMonitor {
             byAccount.set(k, list);
         }
         for (const [uuid, group] of byAccount) {
+            const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(this.platformByUuid, uuid);
+            if (!api)
+                continue;
             let opened = [];
             try {
-                opened = await this.api.openedOrders(uuid);
+                opened = await api.openedOrders(uuid);
             }
             catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);
@@ -157,7 +166,7 @@ class SignalEntryPendingMonitor {
             let closed = [];
             if (needClosed.length) {
                 try {
-                    closed = await this.api.closedOrders(uuid);
+                    closed = await api.closedOrders(uuid);
                 }
                 catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);

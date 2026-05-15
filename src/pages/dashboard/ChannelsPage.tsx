@@ -6,6 +6,7 @@ import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
 import { Toggle } from '../../components/ui/Toggle'
 import { Button } from '../../components/ui/Button'
+import { Alert } from '../../components/ui/Alert'
 import { Input } from '../../components/ui/Input'
 import type { TelegramChannel } from '../../types/database'
 
@@ -99,11 +100,7 @@ export function ChannelsPage() {
       {showAdd && (
         <Card className="mb-4">
           <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 mb-4">Add channel manually</h2>
-          {error && (
-            <div className="mb-3 px-3 py-2 bg-error-50 border border-error-200 rounded-lg text-sm text-error-700">
-              {error}
-            </div>
-          )}
+          {error && <Alert className="mb-3">{error}</Alert>}
           <form onSubmit={addChannel} className="space-y-3">
             <Input
               label="Channel name"

@@ -4,23 +4,24 @@ exports.AutoManagementMonitor = void 0;
 const autoManagement_1 = require("./autoManagement");
 const pipCalculator_1 = require("./pipCalculator");
 const metatraderapi_1 = require("./metatraderapi");
+const mtApiByAccount_1 = require("./mtApiByAccount");
 const TICK_INTERVAL_MS = 1500;
 const SYMBOL_CACHE_TTL_MS = 5 * 60000;
 class AutoManagementMonitor {
     constructor(supabase) {
         this.supabase = supabase;
         this.timer = null;
+        this.platformByUuid = new Map();
         this.ticking = false;
         this.firstTickLogged = false;
         this.quietTicks = 0;
         this.symbolCache = new Map();
-        this.api = (0, metatraderapi_1.getMetatraderApi)();
     }
     start() {
         if (this.timer)
             return;
-        if (!this.api) {
-            console.warn('[autoManagementMonitor] METATRADERAPI_KEY missing — auto-management monitor disabled');
+        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)()) {
+            console.warn('[autoManagementMonitor] MT4API_BASIC_USER/PASSWORD missing — auto-management monitor disabled');
             return;
         }
         this.timer = setInterval(() => {
@@ -42,7 +43,7 @@ class AutoManagementMonitor {
         }
     }
     async tick() {
-        if (!this.api)
+        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
             return;
         const { data, error } = await this.supabase
             .from('trades')
@@ -68,13 +69,14 @@ class AutoManagementMonitor {
         const brokerIds = [...new Set(rows.map(r => r.broker_account_id).filter(Boolean))];
         const { data: brokers, error: brokerErr } = await this.supabase
             .from('broker_accounts')
-            .select('id,metaapi_account_id')
+            .select('id,metaapi_account_id,platform')
             .in('id', brokerIds);
         if (brokerErr) {
             console.error('[autoManagementMonitor] broker lookup failed:', brokerErr.message);
             return;
         }
         const brokerById = new Map((brokers ?? []).map(b => [b.id, b]));
+        this.platformByUuid = await (0, mtApiByAccount_1.loadPlatformByMetaapiId)(this.supabase, (brokers ?? []).map(b => String(b.metaapi_account_id ?? '')));
         const groups = new Map();
         for (const row of rows) {
             const b = brokerById.get(row.broker_account_id ?? '');
@@ -92,8 +94,11 @@ class AutoManagementMonitor {
             const symbol = group[0]?.symbol ?? '';
             let bid = NaN;
             let ask = NaN;
+            const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(this.platformByUuid, uuid);
+            if (!api)
+                continue;
             try {
-                const q = await this.api.quote(uuid, symbol);
+                const q = await api.quote(uuid, symbol);
                 bid = q.bid;
                 ask = q.ask;
             }
@@ -104,7 +109,7 @@ class AutoManagementMonitor {
             }
             for (const trade of group) {
                 const partials = partialByTrade.get(trade.id) ?? [];
-                const ok = await this.maybeApplyBreakeven(trade, uuid, bid, ask, partials);
+                const ok = await this.maybeApplyBreakeven(trade, uuid, api, bid, ask, partials);
                 if (ok === true)
                     appliedTotal++;
                 if (ok === false)
@@ -139,9 +144,7 @@ class AutoManagementMonitor {
         }
         return out;
     }
-    async maybeApplyBreakeven(trade, uuid, bid, ask, partials) {
-        if (!this.api)
-            return null;
+    async maybeApplyBreakeven(trade, uuid, api, bid, ask, partials) {
         const ticketNum = Number(trade.metaapi_order_id);
         if (!Number.isFinite(ticketNum) || ticketNum <= 0) {
             await this.markApplied(trade.id, { clearWatch: true });
@@ -199,7 +202,7 @@ class AutoManagementMonitor {
         }
         const tpSanitize = brokerTp ?? 0;
         try {
-            await this.api.orderModify(uuid, {
+            await api.orderModify(uuid, {
                 ticket: ticketNum,
                 stoploss: beSl,
                 takeprofit: tpSanitize,
@@ -209,7 +212,7 @@ class AutoManagementMonitor {
                 const closeLots = +(lots * 0.5).toFixed(2);
                 if (closeLots >= 0.01) {
                     try {
-                        await this.api.orderClose(uuid, { ticket: ticketNum, lots: closeLots });
+                        await api.orderClose(uuid, { ticket: ticketNum, lots: closeLots });
                         remainingLots = Math.max(0, +(lots - closeLots).toFixed(2));
                     }
                     catch (halfErr) {
@@ -294,10 +297,11 @@ class AutoManagementMonitor {
         const cached = this.symbolCache.get(key);
         if (cached && Date.now() - cached.loadedAt < SYMBOL_CACHE_TTL_MS)
             return cached;
-        if (!this.api)
+        const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(this.platformByUuid, uuid);
+        if (!api)
             return null;
         try {
-            const p = await this.api.symbolParams(uuid, symbol);
+            const p = await api.symbolParams(uuid, symbol);
             const n = (0, metatraderapi_1.normalizeSymbolParams)(p);
             const entry = {
                 digits: n.digits ?? 5,

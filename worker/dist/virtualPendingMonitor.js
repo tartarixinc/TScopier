@@ -8,6 +8,7 @@ exports.isTriggered = isTriggered;
 exports.isBlockedByShallowerStep = isBlockedByShallowerStep;
 const node_os_1 = __importDefault(require("node:os"));
 const metatraderapi_1 = require("./metatraderapi");
+const mtApiByAccount_1 = require("./mtApiByAccount");
 const SYMBOL_TTL_MS = 10 * 60000;
 const TICK_INTERVAL_MS = 1500;
 const STALE_CLAIM_AFTER_MS = 30000;
@@ -42,6 +43,7 @@ class VirtualPendingMonitor {
     constructor(supabase) {
         this.supabase = supabase;
         this.timer = null;
+        this.platformByUuid = new Map();
         this.symbolCache = new Map();
         this.ticking = false;
         /** Heartbeat counter: when there ARE pending rows but none triggered, we
@@ -49,14 +51,13 @@ class VirtualPendingMonitor {
          *  and how far the live quote sits from the nearest trigger. */
         this.quietTicks = 0;
         this.firstTickLogged = false;
-        this.api = (0, metatraderapi_1.getMetatraderApi)();
         this.hostId = `worker:${node_os_1.default.hostname()}:${process.pid}`;
     }
     start() {
         if (this.timer)
             return;
-        if (!this.api) {
-            console.warn('[virtualPendingMonitor] METATRADERAPI_KEY missing — virtual pending monitor disabled');
+        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)()) {
+            console.warn('[virtualPendingMonitor] MT4API_BASIC_USER/PASSWORD missing — virtual pending monitor disabled');
             return;
         }
         this.timer = setInterval(() => {
@@ -78,7 +79,7 @@ class VirtualPendingMonitor {
         this.timer = null;
     }
     async tick() {
-        if (!this.api)
+        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
             return;
         // Re-open rows whose claim is stale. Anything older than STALE_CLAIM_AFTER_MS
         // is considered abandoned (the claiming worker probably crashed); reset it
@@ -137,6 +138,7 @@ class VirtualPendingMonitor {
             this.quietTicks = 0;
             return;
         }
+        this.platformByUuid = await (0, mtApiByAccount_1.loadPlatformByMetaapiId)(this.supabase, rows.map(r => r.metaapi_account_id));
         // Group by (account, symbol) so we issue at most ONE /Quote per group.
         const groups = new Map();
         for (const r of rows) {
@@ -155,9 +157,12 @@ class VirtualPendingMonitor {
             const [uuid, symbol] = key.split('|');
             if (!uuid || !symbol)
                 return;
+            const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(this.platformByUuid, uuid);
+            if (!api)
+                return;
             let q;
             try {
-                q = await this.api.quote(uuid, symbol);
+                q = await api.quote(uuid, symbol);
             }
             catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);
@@ -257,7 +262,8 @@ class VirtualPendingMonitor {
         }
     }
     async fireLeg(leg, bid, ask) {
-        if (!this.api)
+        const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(this.platformByUuid, leg.metaapi_account_id);
+        if (!api)
             return false;
         // CAS claim. If another monitor (worker peer or edge fn) beat us, .maybeSingle()
         // returns no row and we walk away.
@@ -469,14 +475,15 @@ class VirtualPendingMonitor {
         }
     }
     async getSymbolParams(uuid, symbol) {
-        if (!this.api)
+        const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(this.platformByUuid, uuid);
+        if (!api)
             return null;
         const key = `${uuid}:${symbol.toUpperCase()}`;
         const cached = this.symbolCache.get(key);
         if (cached && (Date.now() - cached.loadedAt) < SYMBOL_TTL_MS)
             return cached;
         try {
-            const p = await this.api.symbolParams(uuid, symbol);
+            const p = await api.symbolParams(uuid, symbol);
             const n = (0, metatraderapi_1.normalizeSymbolParams)(p);
             const entry = {
                 digits: n.digits ?? 5,
@@ -582,10 +589,11 @@ class VirtualPendingMonitor {
      * flow once the position is on the books.
      */
     async sendWithStopsFallback(leg, args) {
-        if (!this.api)
+        const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(this.platformByUuid, leg.metaapi_account_id);
+        if (!api)
             throw new Error('api unavailable');
         try {
-            return await this.api.orderSend(leg.metaapi_account_id, args);
+            return await api.orderSend(leg.metaapi_account_id, args);
         }
         catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
@@ -595,7 +603,7 @@ class VirtualPendingMonitor {
                 throw err;
             console.warn(`[virtualPendingMonitor] retry without stops leg=${leg.id} signal=${leg.signal_id} stepIdx=${leg.step_idx} reason="${msg}" (sl=${args.stoploss} tp=${args.takeprofit})`);
             const fallback = { ...args, stoploss: 0, takeprofit: 0 };
-            return await this.api.orderSend(leg.metaapi_account_id, fallback);
+            return await api.orderSend(leg.metaapi_account_id, fallback);
         }
     }
 }

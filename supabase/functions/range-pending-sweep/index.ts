@@ -24,7 +24,12 @@
 // @ts-ignore - Deno runtime resolves these
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4"
 // @ts-ignore - Deno-only import
-import { makeClientFromEnv, MetatraderApiClient } from "../_shared/metatraderapi.ts"
+import { makeClientFromEnv, MetatraderApiClient, type MtPlatform } from "../_shared/metatraderapi.ts"
+
+function mtClient(env: { get(name: string): string | undefined }, platform: string): MetatraderApiClient {
+  const p: MtPlatform = platform === "MT4" ? "MT4" : "MT5"
+  return makeClientFromEnv(env, p)
+}
 
 // @ts-ignore Deno globals
 declare const Deno: { env: { get(name: string): string | undefined }; serve: (handler: (req: Request) => Response | Promise<Response>) => void }
@@ -110,7 +115,6 @@ Deno.serve(async (_req: Request) => {
     return new Response(JSON.stringify({ error: "missing Supabase env" }), { status: 500 })
   }
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } })
-  const api: MetatraderApiClient = makeClientFromEnv(Deno.env)
 
   // Expire stale rows first so we don't bother quoting them.
   const nowIso = new Date().toISOString()
@@ -141,6 +145,19 @@ Deno.serve(async (_req: Request) => {
     return new Response(JSON.stringify({ rows: 0, triggered: 0, fired: 0 }), { status: 200 })
   }
 
+  const accountIds = [...new Set(rows.map((r) => r.metaapi_account_id).filter(Boolean))]
+  const { data: brokerPlatforms } = await sb
+    .from("broker_accounts")
+    .select("metaapi_account_id,platform")
+    .in("metaapi_account_id", accountIds)
+  const platformByUuid = new Map<string, MtPlatform>()
+  for (const row of brokerPlatforms ?? []) {
+    const id = String((row as { metaapi_account_id?: string }).metaapi_account_id ?? "").trim()
+    if (!id) continue
+    const plat = String((row as { platform?: string }).platform ?? "MT5")
+    platformByUuid.set(id, plat === "MT4" ? "MT4" : "MT5")
+  }
+
   // Group by (account, symbol) to coalesce /Quote calls.
   const groups = new Map<string, PendingRow[]>()
   for (const r of rows) {
@@ -157,6 +174,7 @@ Deno.serve(async (_req: Request) => {
   for (const [key, legs] of groups.entries()) {
     const [uuid, symbol] = key.split("|")
     if (!uuid || !symbol) continue
+    const api = mtClient(Deno.env, platformByUuid.get(uuid) ?? "MT5")
     let q: { bid: number; ask: number }
     try {
       q = await api.quote(uuid, symbol)

@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { Card } from '../../components/ui/Card'
 import { Input } from '../../components/ui/Input'
 import { Button } from '../../components/ui/Button'
+import { Alert } from '../../components/ui/Alert'
 
 export function SignupPage() {
   const navigate = useNavigate()
@@ -38,11 +39,7 @@ export function SignupPage() {
       <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-50 mb-1">Create your account</h1>
       <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-6">Start copying Telegram signals in minutes</p>
 
-      {error && (
-        <div className="mb-4 px-3 py-2.5 bg-error-50 border border-error-200 rounded-lg text-sm text-error-700">
-          {error}
-        </div>
-      )}
+      {error && <Alert className="mb-4 py-2.5">{error}</Alert>}
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <Input

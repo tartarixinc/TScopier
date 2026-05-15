@@ -6,6 +6,7 @@ import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
 import { Toggle } from '../../components/ui/Toggle'
 import { Button } from '../../components/ui/Button'
+import { Alert } from '../../components/ui/Alert'
 import { Input } from '../../components/ui/Input'
 import { Select } from '../../components/ui/Select'
 import type { ChannelKeywords, ChannelSignalProfile, TelegramChannel } from '../../types/database'
@@ -498,9 +499,7 @@ export function CopierEnginePage() {
             </p>
           </div>
 
-          {tgError && (
-            <div className="mb-3 px-3 py-2 bg-error-50 border border-error-200 rounded-lg text-sm text-error-700">{tgError}</div>
-          )}
+          {tgError && <Alert className="mb-3">{tgError}</Alert>}
 
           {tgStage === 'phone' ? (
             <form onSubmit={sendCode} className="space-y-3">
@@ -637,7 +636,7 @@ export function CopierEnginePage() {
       {showAdd && (
         <Card className="mb-3">
           <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 mb-3">Add channel manually</h3>
-          {error && <div className="mb-3 px-3 py-2 bg-error-50 border border-error-200 rounded-lg text-sm text-error-700">{error}</div>}
+          {error && <Alert className="mb-3">{error}</Alert>}
           <form onSubmit={addManual} className="space-y-3">
             <Input label="Channel name" placeholder="e.g. Gold Signals Pro" value={newChannel.display_name} onChange={e => setNewChannel(p => ({ ...p, display_name: e.target.value }))} required />
             <div className="grid grid-cols-2 gap-3">

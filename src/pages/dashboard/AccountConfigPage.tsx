@@ -14,6 +14,7 @@ import { Select } from '../../components/ui/Select'
 import { Toggle } from '../../components/ui/Toggle'
 import { Button } from '../../components/ui/Button'
 import { Badge } from '../../components/ui/Badge'
+import { Alert } from '../../components/ui/Alert'
 import { AddAccountModal } from '../../components/ui/AddAccountModal'
 import { BrokerServerSelect } from '../../components/ui/BrokerServerSelect'
 import { metatraderApi } from '../../lib/metatraderapi'
@@ -449,6 +450,11 @@ export function AccountConfigPage() {
     configDraft.manualSettings.range_step_pips,
     configDraft.manualSettings.range_distance_pips,
   ])
+
+  const brokersNeedingReconnect = useMemo(
+    () => brokers.filter(b => b.connection_status === 'error'),
+    [brokers],
+  )
 
   const tpLegPercentTotal = useMemo(() => {
     const rows = configDraft.manualSettings.tp_lots ?? DEFAULT_MANUAL_TP_LOTS
@@ -909,9 +915,7 @@ export function AccountConfigPage() {
             <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 mb-4">
               Connect a new {form.platform} account
             </h3>
-            {error && (
-              <div className="mb-3 px-3 py-2 bg-error-50 border border-error-200 rounded-lg text-sm text-error-700">{error}</div>
-            )}
+            {error && <Alert className="mb-3">{error}</Alert>}
             <form onSubmit={addBroker} className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <Input
@@ -971,6 +975,14 @@ export function AccountConfigPage() {
               </div>
             </form>
           </Card>
+        )}
+
+        {brokersNeedingReconnect.length > 0 && (
+          <Alert variant="warning" className="mb-3">
+            {brokersNeedingReconnect.length === 1
+              ? 'This account lost its broker connection after the API upgrade. Remove it and connect again with your MT login and password so copying can resume.'
+              : `${brokersNeedingReconnect.length} accounts need to be reconnected after the API upgrade. Remove each account and add it again with your MT login and password.`}
+          </Alert>
         )}
 
         {brokers.length === 0 ? (
@@ -1094,11 +1106,7 @@ export function AccountConfigPage() {
                 This disconnects <span className="font-medium text-neutral-800 dark:text-neutral-100">{brokerPendingDelete.label}</span> from MetatraderAPI and the copier. This cannot be undone.
               </p>
             </div>
-            {error && (
-              <div className="mx-5 mt-3 px-3 py-2 bg-error-50 border border-error-200 rounded-lg text-sm text-error-700">
-                {error}
-              </div>
-            )}
+            {error && <Alert className="mx-5 mt-3">{error}</Alert>}
             <div className="px-5 py-4 flex justify-end gap-2">
               <Button
                 type="button"
@@ -1193,9 +1201,7 @@ export function AccountConfigPage() {
                 )}
 
                 <div className="flex-1 overflow-y-auto px-6 py-5">
-                {error && (
-                  <div className="mb-4 px-3 py-2 bg-error-50 border border-error-200 rounded-lg text-sm text-error-700">{error}</div>
-                )}
+                {error && <Alert className="mb-4">{error}</Alert>}
 
                 {activeTab === 'mode' && (
                   <div className="space-y-5">
