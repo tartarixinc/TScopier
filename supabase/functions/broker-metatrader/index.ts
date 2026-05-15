@@ -132,7 +132,7 @@ Deno.serve(async (req: Request) => {
         account_login: login,
         broker_name: brokerName,
         connection_status: "connected" as const,
-        copier_mode: "ai" as const,
+        copier_mode: "manual" as const,
         signal_channel_ids: channelIds,
         enforce_signal_channel_filter: false,
         ai_settings: {},

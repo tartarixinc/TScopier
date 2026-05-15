@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Plus, Trash2, Server, Activity, GitBranch, Eye, DollarSign,
@@ -104,6 +104,9 @@ function getOldestChannel(channels: ChannelOption[]): ChannelOption | undefined 
   })
 }
 
+/** When false, the configure modal only shows manual settings (AI tab hidden). */
+const AI_CONFIGURATION_ENABLED = false
+
 interface AccountConfigDraft {
   mode: 'ai' | 'manual'
   channelIds: string[]
@@ -152,8 +155,8 @@ const DEFAULT_MANUAL_SETTINGS: ManualSettings = {
   trade_style: 'single',
   range_trading: false,
   range_percent: 50,
-  range_step_pips: 10,
-  range_distance_pips: 100,
+  range_step_pips: 3,
+  range_distance_pips: 30,
   close_worse_entries: false,
   close_worse_entries_pips: 30,
   close_worse_extra_pendings: 0,
@@ -278,8 +281,8 @@ function normalizeManualSettings(raw: unknown): ManualSettings {
     return Number.isFinite(v) ? v : fallback
   }
   const rangePercent = Math.max(0, Math.min(100, readNumber('range_percent', DEFAULT_MANUAL_SETTINGS.range_percent ?? 50)))
-  const rangeStepPips = Math.max(0, readNumber('range_step_pips', DEFAULT_MANUAL_SETTINGS.range_step_pips ?? 10))
-  const rangeDistancePips = Math.max(0, readNumber('range_distance_pips', DEFAULT_MANUAL_SETTINGS.range_distance_pips ?? 100))
+  const rangeStepPips = Math.max(0, readNumber('range_step_pips', DEFAULT_MANUAL_SETTINGS.range_step_pips ?? 3))
+  const rangeDistancePips = Math.max(0, readNumber('range_distance_pips', DEFAULT_MANUAL_SETTINGS.range_distance_pips ?? 30))
   const closeWorseEntries = (j as Record<string, unknown>).close_worse_entries === true
   const closeWorseEntriesPips = Math.max(0, readNumber('close_worse_entries_pips', DEFAULT_MANUAL_SETTINGS.close_worse_entries_pips ?? 30))
   const closeWorseExtraPendings = Math.max(0, Math.floor(readNumber('close_worse_extra_pendings', DEFAULT_MANUAL_SETTINGS.close_worse_extra_pendings ?? 0)))
@@ -352,6 +355,32 @@ function PlatformIcon({ platform }: { platform: string }) {
   )
 }
 
+function formatBrokerMoney(value: number | null | undefined, currency?: string | null): string {
+  if (value == null || !Number.isFinite(value)) return '—'
+  const formatted = value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const cur = (currency ?? '').trim()
+  return cur ? `${formatted} ${cur}` : formatted
+}
+
+function AccountDetailCell({
+  label,
+  value,
+  className,
+}: {
+  label: string
+  value: ReactNode
+  className?: string
+}) {
+  return (
+    <div className={clsx('min-w-0 px-4 py-2.5', className)}>
+      <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">{label}</p>
+      <p className="mt-0.5 text-sm text-neutral-900 truncate" title={typeof value === 'string' ? value : undefined}>
+        {value}
+      </p>
+    </div>
+  )
+}
+
 type ConfigTabId = 'mode' | 'channels'
 type ManualSubTabId = 'symbol_routing' | 'risk' | 'stops' | 'management' | 'filters' | 'strategy'
 
@@ -374,7 +403,7 @@ const ALL_TABS: TabDef[] = [
 
 const MANUAL_SUB_TABS: ManualSubTabDef[] = [
   { id: 'symbol_routing', label: 'Symbol Routing', icon: ArrowLeftRight },
-  { id: 'risk', label: 'Risk & Sizing', icon: Wallet },
+  { id: 'risk', label: 'Risk & Entry', icon: Wallet },
   { id: 'stops', label: 'Targets', icon: Target },
   { id: 'management', label: 'Management', icon: Settings2 },
   { id: 'filters', label: 'Filters', icon: Filter },
@@ -387,7 +416,7 @@ export function AccountConfigPage() {
   const [channelOptions, setChannelOptions] = useState<ChannelOption[]>([])
   const [configAccount, setConfigAccount] = useState<BrokerAccount | null>(null)
   const [configDraft, setConfigDraft] = useState<AccountConfigDraft>({
-    mode: 'ai',
+    mode: 'manual',
     channelIds: [],
     manualSettings: { ...DEFAULT_MANUAL_SETTINGS },
     channelFilters: {},
@@ -414,8 +443,8 @@ export function AccountConfigPage() {
       ? {
           enabled: true,
           percent: Number(ms.range_percent ?? 50) || 0,
-          stepPips: Number(ms.range_step_pips ?? 2) || 0,
-          distancePips: Number(ms.range_distance_pips ?? 20) || 0,
+          stepPips: Number(ms.range_step_pips ?? DEFAULT_MANUAL_SETTINGS.range_step_pips) || 0,
+          distancePips: Number(ms.range_distance_pips ?? DEFAULT_MANUAL_SETTINGS.range_distance_pips) || 0,
         }
       : undefined
     return estimateMultiTradeOrderCount({ manualLot, legPercent: legPct, range })
@@ -561,7 +590,7 @@ export function AccountConfigPage() {
     setActiveManualSubTab('symbol_routing')
     const manualSettings = normalizeManualSettings(fresh.manual_settings)
     setConfigDraft({
-      mode: fresh.copier_mode === 'manual' ? 'manual' : 'ai',
+      mode: AI_CONFIGURATION_ENABLED && fresh.copier_mode !== 'manual' ? 'ai' : 'manual',
       channelIds,
       manualSettings,
       channelFilters: buildChannelFiltersDraft(channelOptions, channelIds),
@@ -745,10 +774,10 @@ export function AccountConfigPage() {
     const { data, error: upErr } = await supabase
       .from('broker_accounts')
       .update({
-        copier_mode: configDraft.mode === 'manual' ? 'manual' : 'ai',
+        copier_mode: AI_CONFIGURATION_ENABLED && configDraft.mode === 'ai' ? 'ai' : 'manual',
         signal_channel_ids: channelIds,
         enforce_signal_channel_filter: restrictChannels,
-        manual_settings: configDraft.mode === 'manual' ? configDraft.manualSettings : (configAccount.manual_settings ?? {}),
+        manual_settings: configDraft.manualSettings,
       })
       .eq('id', configAccount.id)
       .eq('user_id', user.id)
@@ -876,31 +905,27 @@ export function AccountConfigPage() {
 
   if (loading) {
     return (
-      <div className="p-6 lg:p-8 max-w-3xl mx-auto space-y-4">
-        {[...Array(3)].map((_, i) => <div key={i} className="h-24 bg-white rounded-xl border border-neutral-100 animate-pulse" />)}
+      <div className="px-4 py-4 lg:px-6 lg:py-5 max-w-5xl mx-auto space-y-3">
+        {[...Array(2)].map((_, i) => <div key={i} className="h-28 bg-white rounded-xl border border-neutral-100 animate-pulse" />)}
       </div>
     )
   }
 
   return (
-    <div className="p-6 lg:p-8 max-w-3xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-neutral-900">Account &amp; Configuration</h1>
-        <p className="text-sm text-neutral-500 mt-0.5">Connect MetaTrader accounts and tune how each one copies signals.</p>
+    <div className="px-4 py-4 lg:px-6 lg:py-5 max-w-5xl mx-auto">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+        <div>
+          <h1 className="text-xl font-bold text-neutral-900">Account &amp; Configuration</h1>
+          <p className="text-sm text-neutral-500 mt-0.5">Connect MetaTrader accounts and tune how each one copies signals.</p>
+        </div>
+        <Button size="sm" onClick={() => setShowPlatformModal(true)}>
+          <Plus className="w-3.5 h-3.5" />
+          Add account
+        </Button>
       </div>
 
       {/* ── Broker Accounts ── */}
-      <section className="mb-6">
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h2 className="text-base font-semibold text-neutral-900">Trading Accounts</h2>
-            <p className="text-xs text-neutral-400 mt-0.5">Connect your broker accounts via MetatraderAPI.</p>
-          </div>
-          <Button size="sm" onClick={() => setShowPlatformModal(true)}>
-            <Plus className="w-3.5 h-3.5" />
-            Add account
-          </Button>
-        </div>
+      <section>
 
         {showAddBroker && (
           <Card className="mb-3">
@@ -972,13 +997,13 @@ export function AccountConfigPage() {
         )}
 
         {brokers.length === 0 ? (
-          <div className="bg-white rounded-xl border border-dashed border-neutral-200 py-10 text-center">
+          <div className="bg-white rounded-xl border border-dashed border-neutral-200 py-8 text-center">
             <Server className="w-8 h-8 mx-auto mb-2 text-neutral-300" />
             <p className="text-sm text-neutral-400">No accounts connected yet</p>
             <p className="text-xs text-neutral-300 mt-0.5">Add your trading account to get started</p>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-3">
             {brokers.map(broker => {
               const statusVariant: 'success' | 'neutral' | 'error' =
                 broker.connection_status === 'connected' ? 'success'
@@ -991,56 +1016,68 @@ export function AccountConfigPage() {
                 || inferBrokerLabelFromServer(broker.broker_server ?? null)
                 || broker.broker_server
                 || ''
+              const channelsLabel = getBrokerSignalChannelsLabel(broker.id)
               return (
-                <Card key={broker.id} padding="sm">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 bg-primary-50 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <PlatformIcon platform={broker.platform} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-sm font-medium text-neutral-900">{broker.label}</p>
-                        <Badge variant={statusVariant} size="sm">{statusLabel}</Badge>
-                        <Badge variant="neutral" size="sm">{broker.platform}</Badge>
-                        {brokerLabel && (
-                          <Badge variant="neutral" size="sm">{brokerLabel}</Badge>
+                <Card key={broker.id} padding="none" className="overflow-hidden">
+                  <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary-50">
+                        <PlatformIcon platform={broker.platform} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="text-sm font-semibold text-neutral-900">{broker.label}</h3>
+                          <Badge variant={statusVariant} size="sm">{statusLabel}</Badge>
+                          <Badge variant="neutral" size="sm">{broker.platform}</Badge>
+                          {brokerLabel && (
+                            <Badge variant="neutral" size="sm">{brokerLabel}</Badge>
+                          )}
+                        </div>
+                        {broker.broker_server && (
+                          <p className="mt-0.5 truncate text-xs text-neutral-500">{broker.broker_server}</p>
                         )}
                       </div>
-                      <p className="text-xs text-neutral-500 mt-0.5">
-                        <span className="font-medium text-neutral-700">Login:</span> {broker.account_login || '—'}
-                        {broker.broker_server && (<><span className="mx-1.5">·</span><span className="font-medium text-neutral-700">Server:</span> {broker.broker_server}</>)}
-                      </p>
-                      <p className="text-xs text-neutral-500 mt-0.5">
-                        <span className="font-medium text-neutral-700">Signal Channels:</span> {getBrokerSignalChannelsLabel(broker.id)}
-                      </p>
-                      {(broker.last_balance != null || broker.last_equity != null) && (
-                        <p className="text-xs text-neutral-500 mt-0.5">
-                          {broker.last_balance != null && (
-                            <span>Balance: {broker.last_balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {broker.last_currency ?? ''}</span>
-                          )}
-                          {broker.last_balance != null && broker.last_equity != null && ' · '}
-                          {broker.last_equity != null && (
-                            <span>Equity: {broker.last_equity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {broker.last_currency ?? ''}</span>
-                          )}
-                        </p>
-                      )}
                     </div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
+                    <div className="flex shrink-0 items-center gap-2">
                       <button
+                        type="button"
                         onClick={() => openConfigureModal(broker)}
-                        className="px-3 py-1.5 text-xs font-medium border border-neutral-200 rounded-lg text-neutral-600 hover:bg-neutral-50 transition-colors"
+                        className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50 transition-colors"
                       >
                         Configure
                       </button>
                       <button
                         type="button"
                         onClick={() => { setError(''); setBrokerPendingDelete(broker) }}
-                        className="p-1.5 rounded-lg text-neutral-400 hover:text-error-600 hover:bg-error-50 transition-colors"
+                        className="rounded-lg p-1.5 text-neutral-400 hover:bg-error-50 hover:text-error-600 transition-colors"
                         aria-label={`Remove ${broker.label}`}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
+                  </div>
+                  <div className="grid grid-cols-2 border-t border-neutral-100 bg-neutral-50/60 lg:grid-cols-5">
+                    <AccountDetailCell label="Login" value={broker.account_login || '—'} />
+                    <AccountDetailCell
+                      label="Server"
+                      value={broker.broker_server || '—'}
+                      className="border-l border-neutral-100 max-lg:border-t-0"
+                    />
+                    <AccountDetailCell
+                      label="Signal channels"
+                      value={channelsLabel}
+                      className="col-span-2 border-t border-neutral-100 lg:col-span-1 lg:border-t-0 lg:border-l"
+                    />
+                    <AccountDetailCell
+                      label="Balance"
+                      value={formatBrokerMoney(broker.last_balance, broker.last_currency)}
+                      className="border-t border-l border-neutral-100 lg:border-t-0"
+                    />
+                    <AccountDetailCell
+                      label="Equity"
+                      value={formatBrokerMoney(broker.last_equity, broker.last_currency)}
+                      className="border-t border-neutral-100 lg:border-l lg:border-t-0"
+                    />
                   </div>
                 </Card>
               )
@@ -1151,7 +1188,7 @@ export function AccountConfigPage() {
 
               {/* Tab body column */}
               <div className="flex-1 flex flex-col min-h-0">
-                {activeTab === 'mode' && configDraft.mode === 'manual' && (
+                {activeTab === 'mode' && (
                   <div className="px-6 pt-4 bg-white border-b border-neutral-100">
                     <div className="flex flex-wrap items-center gap-1">
                       {MANUAL_SUB_TABS.map(sub => {
@@ -1203,7 +1240,7 @@ export function AccountConfigPage() {
                       </div>
                     </div> */}
 
-                    {configDraft.mode === 'ai' ? (
+                    {AI_CONFIGURATION_ENABLED && configDraft.mode === 'ai' ? (
                       <div className="rounded-xl border border-neutral-200 p-4 space-y-3">
                         <p className="text-sm font-semibold text-neutral-900">AI configuration</p>
                         <p className="text-sm text-neutral-600">
@@ -1430,10 +1467,10 @@ export function AccountConfigPage() {
                                         step={1}
                                         placeholder="10"
                                         hint={
-                                          formatPipHint(Number(configDraft.manualSettings.range_step_pips ?? 10) || 0)
+                                          formatPipHint(Number(configDraft.manualSettings.range_step_pips ?? DEFAULT_MANUAL_SETTINGS.range_step_pips) || 0)
                                           ?? 'Pips between pendings.'
                                         }
-                                        value={String(configDraft.manualSettings.range_step_pips ?? 10)}
+                                        value={String(configDraft.manualSettings.range_step_pips ?? DEFAULT_MANUAL_SETTINGS.range_step_pips)}
                                         onChange={e => setManual({ range_step_pips: Math.max(1, Number(e.target.value) || 1) })}
                                       />
                                       <Input
@@ -1443,10 +1480,10 @@ export function AccountConfigPage() {
                                         step={1}
                                         placeholder="100"
                                         hint={
-                                          formatPipHint(Number(configDraft.manualSettings.range_distance_pips ?? 100) || 0)
+                                          formatPipHint(Number(configDraft.manualSettings.range_distance_pips ?? DEFAULT_MANUAL_SETTINGS.range_distance_pips) || 0)
                                           ?? "Advisory target span. Actual ladder reach = pending count × step (Total Open Trades is not capped by this)."
                                         }
-                                        value={String(configDraft.manualSettings.range_distance_pips ?? 100)}
+                                        value={String(configDraft.manualSettings.range_distance_pips ?? DEFAULT_MANUAL_SETTINGS.range_distance_pips)}
                                         onChange={e => setManual({ range_distance_pips: Math.max(1, Number(e.target.value) || 1) })}
                                       />
                                     </div>
@@ -1477,7 +1514,7 @@ export function AccountConfigPage() {
                                             placeholder="30"
                                             hint={
                                               formatPipHint(Number(configDraft.manualSettings.close_worse_entries_pips ?? 30) || 0)
-                                              ?? 'Pip profit from the worse entry. 30 pips ≈ $3.00 on XAUUSD, 0.0030 on EURUSD.'
+                                              ?? 'Pip profit from the worse entry.'
                                             }
                                             value={String(configDraft.manualSettings.close_worse_entries_pips ?? 30)}
                                             onChange={e => setManual({ close_worse_entries_pips: Math.max(1, Number(e.target.value) || 1) })}
