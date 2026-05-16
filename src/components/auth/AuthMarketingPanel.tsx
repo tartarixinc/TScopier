@@ -21,7 +21,7 @@ const features = [
 
 export function AuthMarketingPanel() {
   return (
-    <aside className="relative hidden lg:flex lg:w-[min(52%,560px)] shrink-0 flex-col justify-between overflow-hidden bg-primary-950 text-white p-10 xl:p-14">
+    <aside className="relative hidden lg:flex lg:w-[min(52%,400px)] shrink-0 flex-col justify-between overflow-hidden bg-primary-950 text-white p-10 xl:p-14">
       <div
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_20%_0%,rgba(45,212,191,0.22),transparent),radial-gradient(ellipse_60%_50%_at_100%_100%,rgba(13,148,136,0.35),transparent)]"
         aria-hidden
@@ -43,7 +43,7 @@ export function AuthMarketingPanel() {
       <div className="relative z-10 space-y-10">
         <div>
     
-          <h1 className="text-3xl xl:text-5xl font-semibold leading-tight tracking-tight text-white">
+          <h1 className="text-3xl xl:text-2xl font-semibold leading-tight tracking-tight text-white">
             One Seamless Copier for every Telegram Signal
           </h1>
         </div>
