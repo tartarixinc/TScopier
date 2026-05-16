@@ -1,5 +1,7 @@
 import { PlaceholderPage } from './PlaceholderPage'
+import { useT } from '../../context/LocaleContext'
 
 export function MarketNewsPage() {
-  return <PlaceholderPage title="Market News" description="Stay up to date with the latest financial market news and analysis." />
+  const t = useT()
+  return <PlaceholderPage title={t.pages.marketNews.title} description={t.pages.marketNews.description} />
 }

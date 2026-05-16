@@ -1,5 +1,7 @@
 import { PlaceholderPage } from './PlaceholderPage'
+import { useT } from '../../context/LocaleContext'
 
 export function AnalysisHubPage() {
-  return <PlaceholderPage title="Analysis Hub" description="Advanced charting and AI-powered analysis tools for your trading signals." />
+  const t = useT()
+  return <PlaceholderPage title={t.pages.analysisHub.title} description={t.pages.analysisHub.description} />
 }

@@ -1,12 +1,15 @@
 import { Link, Outlet, useLocation } from 'react-router-dom'
 import clsx from 'clsx'
 import { AuthMarketingPanel } from '../auth/AuthMarketingPanel'
+import { LanguageSwitcher } from '../auth/LanguageSwitcher'
 import { ThemeToggle } from '../ui/ThemeToggle'
 import { AuthBrandLogo } from '../auth/AuthBrandLogo'
 import { TscopierLogo } from '../ui/TscopierLogo'
+import { useLocale } from '../../context/LocaleContext'
 
 export function AuthLayout() {
   const { pathname } = useLocation()
+  const { auth } = useLocale()
   const isLogin = pathname === '/login'
   const isSignup = pathname === '/signup'
 
@@ -26,7 +29,10 @@ export function AuthLayout() {
             )}
           </Link>
           <div className="hidden lg:block" aria-hidden />
-          <ThemeToggle />
+          <div className="flex items-center gap-1 sm:gap-1.5">
+            <LanguageSwitcher />
+            <ThemeToggle />
+          </div>
         </header>
 
         <div className="flex flex-1 flex-col items-center justify-center px-5 pb-10 sm:px-8">
@@ -44,7 +50,7 @@ export function AuthLayout() {
                     : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200',
                 )}
               >
-                Sign in
+                {auth.nav.signIn}
               </Link>
               <Link
                 to="/signup"
@@ -55,7 +61,7 @@ export function AuthLayout() {
                     : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200',
                 )}
               >
-                Create account
+                {auth.nav.createAccount}
               </Link>
             </nav>
 
@@ -64,7 +70,7 @@ export function AuthLayout() {
         </div>
 
         <p className="pb-6 text-center text-xs text-neutral-400 dark:text-neutral-500 lg:hidden">
-          One seamless copier for every Telegram signal
+          {auth.nav.mobileTagline}
         </p>
       </main>
     </div>

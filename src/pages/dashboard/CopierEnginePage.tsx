@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Radio, Trash2, RefreshCw, CircleAlert as AlertCircle, ChevronDown } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { useT } from '../../context/LocaleContext'
 import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
 import { Toggle } from '../../components/ui/Toggle'
@@ -144,6 +145,7 @@ function TgChannelAvatar({ title, username }: { title: string; username?: string
 }
 
 export function CopierEnginePage() {
+  const t = useT()
   const { user, session } = useAuth()
   const [channels, setChannels] = useState<TelegramChannel[]>([])
   const [channelProfiles, setChannelProfiles] = useState<Record<string, ChannelSignalProfile>>({})
@@ -451,8 +453,8 @@ export function CopierEnginePage() {
     <div className="px-4 py-4 lg:px-6 lg:py-5 max-w-5xl mx-auto">
       <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
         <div>
-          <h1 className="text-xl font-bold text-neutral-900 dark:text-neutral-50">Channels</h1>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">Configure which Telegram channels feed into the copier</p>
+          <h1 className="text-xl font-bold text-neutral-900 dark:text-neutral-50">{t.pages.copierEngine.title}</h1>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">{t.pages.copierEngine.description}</p>
         </div>
         <div className="flex gap-2">
           {!hasTgSession && tgStage === 'idle' && (

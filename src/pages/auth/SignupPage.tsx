@@ -6,9 +6,12 @@ import { PasswordInput } from '../../components/auth/PasswordInput'
 import { Input } from '../../components/ui/Input'
 import { Button } from '../../components/ui/Button'
 import { Alert } from '../../components/ui/Alert'
+import { useLocale } from '../../context/LocaleContext'
 
 export function SignupPage() {
   const navigate = useNavigate()
+  const { auth } = useLocale()
+  const t = auth.signup
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -19,7 +22,7 @@ export function SignupPage() {
     setError('')
 
     if (password.length < 6) {
-      setError('Password must be at least 6 characters')
+      setError(t.passwordTooShort)
       return
     }
 
@@ -37,13 +40,13 @@ export function SignupPage() {
 
   return (
     <AuthFormShell
-      title="Create your account"
-      subtitle="Set up in minutes — connect Telegram, link a broker, and start copying signals."
+      title={t.title}
+      subtitle={t.subtitle}
       footer={
         <p className="text-center text-sm text-neutral-500 dark:text-neutral-400">
-          Already have an account?{' '}
+          {t.footerPrompt}{' '}
           <Link to="/login" className="font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300">
-            Sign in
+            {t.footerLink}
           </Link>
         </p>
       }
@@ -52,9 +55,9 @@ export function SignupPage() {
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <Input
-          label="Email"
+          label={t.email}
           type="email"
-          placeholder="you@example.com"
+          placeholder={t.emailPlaceholder}
           value={email}
           onChange={e => setEmail(e.target.value)}
           required
@@ -63,21 +66,21 @@ export function SignupPage() {
           className="py-2.5"
         />
         <PasswordInput
-          label="Password"
-          placeholder="Choose a password"
+          label={t.password}
+          placeholder={t.passwordPlaceholder}
           value={password}
           onChange={e => setPassword(e.target.value)}
           required
           autoComplete="new-password"
-          hint="At least 6 characters"
+          hint={t.passwordHint}
         />
         <Button type="submit" loading={loading} className="w-full !mt-6" size="lg">
-          Create account
+          {t.submit}
         </Button>
       </form>
 
       <p className="mt-4 text-center text-xs text-neutral-400 dark:text-neutral-500 leading-relaxed">
-        By creating an account, you agree to use TSCopier responsibly and comply with your broker&apos;s terms.
+        {t.terms}
       </p>
     </AuthFormShell>
   )

@@ -1,55 +1,32 @@
 import { PlaceholderPage } from './PlaceholderPage'
+import { useT } from '../../context/LocaleContext'
 
 export function ContactSupportPage() {
-  return (
-    <PlaceholderPage
-      title="Contact Support"
-      description="Get help from the TSCopier team with your account, copier setup, or technical issues."
-    />
-  )
+  const t = useT()
+  return <PlaceholderPage title={t.pages.contactSupport.title} description={t.pages.contactSupport.description} />
 }
 
 export function FeatureRequestPage() {
-  return (
-    <PlaceholderPage
-      title="Feature Request"
-      description="Suggest improvements and vote on what we should build next."
-    />
-  )
+  const t = useT()
+  return <PlaceholderPage title={t.pages.featureRequest.title} description={t.pages.featureRequest.description} />
 }
 
 export function PartnerWithUsPage() {
-  return (
-    <PlaceholderPage
-      title="Partner with us"
-      description="Explore partnership opportunities for signal providers, educators, and brokers."
-    />
-  )
+  const t = useT()
+  return <PlaceholderPage title={t.pages.partnerWithUs.title} description={t.pages.partnerWithUs.description} />
 }
 
 export function AffiliateProgramPage() {
-  return (
-    <PlaceholderPage
-      title="Affiliate program"
-      description="Earn by referring traders to TSCopier."
-    />
-  )
+  const t = useT()
+  return <PlaceholderPage title={t.pages.affiliateProgram.title} description={t.pages.affiliateProgram.description} />
 }
 
 export function BillingPage() {
-  return (
-    <PlaceholderPage
-      title="Billing"
-      description="View invoices, payment methods, and billing history."
-    />
-  )
+  const t = useT()
+  return <PlaceholderPage title={t.pages.billing.title} description={t.pages.billing.description} />
 }
 
 export function SubscriptionsPage() {
-  return (
-    <PlaceholderPage
-      title="Subscriptions"
-      description="Manage your plan, upgrades, and renewal settings."
-    />
-  )
+  const t = useT()
+  return <PlaceholderPage title={t.pages.subscriptions.title} description={t.pages.subscriptions.description} />
 }

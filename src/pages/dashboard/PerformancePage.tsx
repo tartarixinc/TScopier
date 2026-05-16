@@ -1,5 +1,7 @@
 import { PlaceholderPage } from './PlaceholderPage'
+import { useT } from '../../context/LocaleContext'
 
 export function PerformancePage() {
-  return <PlaceholderPage title="Performance" description="Deep-dive analytics on your trade history, win rate, and profitability." />
+  const t = useT()
+  return <PlaceholderPage title={t.pages.performance.title} description={t.pages.performance.description} />
 }

@@ -1,5 +1,7 @@
 import { PlaceholderPage } from './PlaceholderPage'
+import { useT } from '../../context/LocaleContext'
 
 export function PortfolioPage() {
-  return <PlaceholderPage title="Portfolio" description="View and manage your overall trading portfolio across all connected accounts." />
+  const t = useT()
+  return <PlaceholderPage title={t.pages.portfolio.title} description={t.pages.portfolio.description} />
 }

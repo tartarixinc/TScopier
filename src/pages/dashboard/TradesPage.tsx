@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowUpRight, ArrowDownRight, ChevronLeft, ChevronRight, Minus, RefreshCw, TrendingUp, TrendingDown } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
+import { useT } from '../../context/LocaleContext'
+import { interpolate } from '../../i18n/interpolate'
 import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
 import { Alert } from '../../components/ui/Alert'
@@ -13,6 +15,7 @@ const PAGE_SIZE_OPTIONS = [10, 50, 100] as const
 type PageSizeOption = (typeof PAGE_SIZE_OPTIONS)[number]
 
 export function TradesPage() {
+  const t = useT()
   const { user } = useAuth()
   const [trades, setTrades] = useState<MtTrade[]>([])
   const [filter, setFilter] = useState<Filter>('all')
@@ -71,11 +74,14 @@ export function TradesPage() {
     return () => window.clearInterval(interval)
   }, [user, loadTrades])
 
-  const filters: { value: Filter; label: string; count: number }[] = [
-    { value: 'all', label: 'All', count: trades.length },
-    { value: 'open', label: 'Open', count: trades.filter(t => t.status === 'open').length },
-    { value: 'closed', label: 'Closed', count: trades.filter(t => t.status === 'closed').length },
-  ]
+  const filters: { value: Filter; label: string; count: number }[] = useMemo(
+    () => [
+      { value: 'all', label: t.trades.filterAll, count: trades.length },
+      { value: 'open', label: t.trades.filterOpen, count: trades.filter(tr => tr.status === 'open').length },
+      { value: 'closed', label: t.trades.filterClosed, count: trades.filter(tr => tr.status === 'closed').length },
+    ],
+    [t, trades],
+  )
 
   const visibleTrades = useMemo(
     () => (filter === 'all' ? trades : trades.filter(t => t.status === filter)),
@@ -104,11 +110,14 @@ export function TradesPage() {
     <div className="px-4 py-4 sm:px-6 sm:py-6 lg:p-8 max-w-6xl mx-auto">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 sm:mb-6 gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-semibold text-neutral-900 dark:text-neutral-50">Trades</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold text-neutral-900 dark:text-neutral-50">{t.trades.title}</h1>
           <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">
-            Live positions and recent closes from your linked broker accounts
+            {t.trades.subtitle}
             {lastSyncedAt && (
-              <span className="text-neutral-400"> · synced {formatRelative(lastSyncedAt)}</span>
+              <span className="text-neutral-400">
+                {' '}
+                · {interpolate(t.common.synced, { time: formatRelative(lastSyncedAt) })}
+              </span>
             )}
           </p>
         </div>
@@ -120,7 +129,7 @@ export function TradesPage() {
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md font-medium border border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-            Refresh
+            {t.trades.refresh}
           </button>
           <div className="flex flex-wrap bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg p-0.5 gap-0.5">
             {filters.map(f => (

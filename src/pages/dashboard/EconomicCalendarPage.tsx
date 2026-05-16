@@ -1,5 +1,9 @@
 import { PlaceholderPage } from './PlaceholderPage'
+import { useT } from '../../context/LocaleContext'
 
 export function EconomicCalendarPage() {
-  return <PlaceholderPage title="Economic Calendar" description="Track upcoming economic events and their potential market impact." />
+  const t = useT()
+  return (
+    <PlaceholderPage title={t.pages.economicCalendar.title} description={t.pages.economicCalendar.description} />
+  )
 }

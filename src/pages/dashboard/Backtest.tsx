@@ -13,6 +13,7 @@ import {
 import clsx from 'clsx'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { useT } from '../../context/LocaleContext'
 import { backtestApi, type BacktestPreviewResult } from '../../lib/backtestApi'
 import type {
   BacktestRunConfig,
@@ -91,6 +92,7 @@ function StatCard({
 }
 
 export function Backtest() {
+  const t = useT()
   const { user } = useAuth()
   const [channels, setChannels] = useState<ChannelOption[]>([])
   const [config, setConfig] = useState<BacktestRunConfig>(defaultConfig)
@@ -272,16 +274,13 @@ export function Backtest() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-50 flex items-center gap-2">
-            Channel Signal Backtest
+            {t.backtest.title}
           </h1>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1 max-w-xl">
-            Replay your Telegram signal history with live market data. Test breakeven rules,
-            TP ladders, and portfolio sizing before risking live capital.
-          </p>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1 max-w-xl">{t.backtest.subtitle}</p>
         </div>
         {import.meta.env.VITE_BACKTEST_ENABLED === 'false' ? (
           <span className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-950/40 px-2 py-1 rounded-lg">
-            Preview
+            {t.common.preview}
           </span>
         ) : null}
       </div>
@@ -294,11 +293,11 @@ export function Backtest() {
           <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5 space-y-4">
             <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 flex items-center gap-2">
               <Radio className="w-4 h-4 text-teal-500" />
-              Channels
+              {t.backtest.channels}
             </h2>
             <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto">
               {channels.length === 0 ? (
-                <p className="text-xs text-neutral-400">No active Telegram channels</p>
+                <p className="text-xs text-neutral-400">{t.backtest.noActiveChannels}</p>
               ) : (
                 channels.map(ch => (
                   <button
@@ -322,7 +321,7 @@ export function Backtest() {
               <div className="space-y-2 border-t border-neutral-100 dark:border-neutral-800 pt-4">
                 <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 flex items-center gap-2">
                   <Coins className="w-4 h-4 text-teal-500" />
-                  Symbols
+                  {t.backtest.symbols}
                 </h2>
                 <BacktestSymbolPicker
                   availableSymbols={preview?.available_symbols ?? []}
@@ -335,7 +334,7 @@ export function Backtest() {
 
             <div className="grid grid-cols-2 gap-3">
               <label className="block">
-                <span className="text-xs text-neutral-500">From</span>
+                <span className="text-xs text-neutral-500">{t.backtest.from}</span>
                 <input
                   type="date"
                   value={config.dateFrom}
@@ -344,7 +343,7 @@ export function Backtest() {
                 />
               </label>
               <label className="block">
-                <span className="text-xs text-neutral-500">To</span>
+                <span className="text-xs text-neutral-500">{t.backtest.to}</span>
                 <input
                   type="date"
                   value={config.dateTo}
@@ -356,7 +355,7 @@ export function Backtest() {
 
             <div className="grid grid-cols-2 gap-3">
               <label className="block">
-                <span className="text-xs text-neutral-500">Timeframe</span>
+                <span className="text-xs text-neutral-500">{t.backtest.timeframe}</span>
                 <select
                   value={config.timeframe}
                   onChange={e => setConfig(p => ({ ...p, timeframe: e.target.value as BacktestRunConfig['timeframe'] }))}
@@ -369,24 +368,24 @@ export function Backtest() {
                 </select>
               </label>
               <label className="block">
-                <span className="text-xs text-neutral-500">Execution</span>
+                <span className="text-xs text-neutral-500">{t.backtest.execution}</span>
                 <select
                   value={config.executionMode}
                   onChange={e => setConfig(p => ({ ...p, executionMode: e.target.value as BacktestRunConfig['executionMode'] }))}
                   className="mt-1 w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-2 py-1.5 text-sm"
                 >
-                  <option value="tick_quotes">Tick quotes (forex)</option>
-                  <option value="minute_bars">OHLC bars</option>
+                  <option value="tick_quotes">{t.backtest.executionTick}</option>
+                  <option value="minute_bars">{t.backtest.executionBars}</option>
                 </select>
               </label>
             </div>
 
             <div className="border-t border-neutral-100 dark:border-neutral-800 pt-4 space-y-3">
               <h3 className="text-xs font-semibold uppercase text-neutral-400 flex items-center gap-1">
-                <Shield className="w-3.5 h-3.5" /> Strategy
+                <Shield className="w-3.5 h-3.5" /> {t.backtest.strategy}
               </h3>
               <label className="flex items-center justify-between gap-2">
-                <span className="text-sm text-neutral-600 dark:text-neutral-400">Breakeven after TP</span>
+                <span className="text-sm text-neutral-600 dark:text-neutral-400">{t.backtest.breakevenAfterTp}</span>
                 <select
                   value={config.strategy.breakevenAfterTp}
                   onChange={e => setConfig(p => ({
@@ -395,14 +394,14 @@ export function Backtest() {
                   }))}
                   className="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-2 py-1 text-sm"
                 >
-                  <option value={0}>Disabled</option>
+                  <option value={0}>{t.backtest.breakevenDisabled}</option>
                   <option value={1}>TP1</option>
                   <option value={2}>TP2</option>
                   <option value={3}>TP3</option>
                 </select>
               </label>
               <label className="flex items-center justify-between gap-2">
-                <span className="text-sm text-neutral-600 dark:text-neutral-400">Intrabar priority</span>
+                <span className="text-sm text-neutral-600 dark:text-neutral-400">{t.backtest.intrabarPriority}</span>
                 <select
                   value={config.strategy.intrabarPriority}
                   onChange={e => setConfig(p => ({
@@ -411,18 +410,18 @@ export function Backtest() {
                   }))}
                   className="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-2 py-1 text-sm"
                 >
-                  <option value="sl_first">SL first (conservative)</option>
-                  <option value="tp_first">TP first (optimistic)</option>
+                  <option value="sl_first">{t.backtest.intrabarSlFirst}</option>
+                  <option value="tp_first">{t.backtest.intrabarTpFirst}</option>
                 </select>
               </label>
             </div>
 
             <div className="border-t border-neutral-100 dark:border-neutral-800 pt-4 space-y-3">
               <h3 className="text-xs font-semibold uppercase text-neutral-400 flex items-center gap-1">
-                <Target className="w-3.5 h-3.5" /> Account
+                <Target className="w-3.5 h-3.5" /> {t.backtest.account}
               </h3>
               <label className="block">
-                <span className="text-xs text-neutral-500">Starting balance ($)</span>
+                <span className="text-xs text-neutral-500">{t.backtest.startingBalance}</span>
                 <input
                   type="number"
                   min={100}
@@ -433,19 +432,19 @@ export function Backtest() {
                 />
               </label>
               <label className="block">
-                <span className="text-xs text-neutral-500">Sizing</span>
+                <span className="text-xs text-neutral-500">{t.backtest.sizing}</span>
                 <select
                   value={config.sizingMode}
                   onChange={e => setConfig(p => ({ ...p, sizingMode: e.target.value as BacktestRunConfig['sizingMode'] }))}
                   className="mt-1 w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-2 py-1.5 text-sm"
                 >
-                  <option value="fixed_lot">Fixed lot</option>
-                  <option value="risk_percent">Risk % per trade</option>
+                  <option value="fixed_lot">{t.backtest.sizingFixed}</option>
+                  <option value="risk_percent">{t.backtest.sizingRisk}</option>
                 </select>
               </label>
               {config.sizingMode === 'fixed_lot' ? (
                 <label className="block">
-                  <span className="text-xs text-neutral-500">Lot size</span>
+                  <span className="text-xs text-neutral-500">{t.backtest.lotSize}</span>
                   <input
                     type="number"
                     min={0.01}
@@ -457,7 +456,7 @@ export function Backtest() {
                 </label>
               ) : (
                 <label className="block">
-                  <span className="text-xs text-neutral-500">Risk % of equity</span>
+                  <span className="text-xs text-neutral-500">{t.backtest.riskPercent}</span>
                   <input
                     type="number"
                     min={0.1}
@@ -531,13 +530,13 @@ export function Backtest() {
               disabled={running || config.channelIds.length === 0}
             >
               {running ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-              Run backtest
+              {t.backtest.runBacktest}
             </Button>
           </div>
 
           {runs.length > 0 ? (
             <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
-              <p className="text-xs font-medium text-neutral-400 mb-2">Recent runs</p>
+              <p className="text-xs font-medium text-neutral-400 mb-2">{t.backtest.recentRuns}</p>
               <div className="space-y-1 max-h-40 overflow-y-auto">
                 {runs.map(r => (
                   <button
@@ -675,7 +674,7 @@ export function Backtest() {
             <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 overflow-hidden">
               <div className="px-5 py-3 border-b border-neutral-100 dark:border-neutral-800">
                 <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
-                  Signal breakdown
+                  {t.backtest.signalBreakdown}
                 </h2>
                 <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
                   {trades.length} simulated signal{trades.length === 1 ? '' : 's'} · grouped by month

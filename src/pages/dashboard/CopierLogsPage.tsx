@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { useT } from '../../context/LocaleContext'
+import { interpolate } from '../../i18n/interpolate'
 import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
 import type { Signal } from '../../types/database'
@@ -34,6 +36,7 @@ function channelLabel(channelId: string | null | undefined, names: Record<string
 }
 
 export function CopierLogsPage() {
+  const t = useT()
   const { user } = useAuth()
   const [signals, setSignals] = useState<Signal[]>([])
   const [channelDisplayNames, setChannelDisplayNames] = useState<Record<string, string>>({})
@@ -93,28 +96,34 @@ export function CopierLogsPage() {
   const rangeStart = totalCount === 0 ? 0 : (page - 1) * pageSize + 1
   const rangeEnd = Math.min(page * pageSize, totalCount)
 
-  const filters: { value: Filter; label: string }[] = [
-    { value: 'all', label: 'All' },
-    { value: 'executed', label: 'Executed' },
-    { value: 'skipped', label: 'Skipped' },
-    { value: 'failed', label: 'Failed' },
-    { value: 'pending', label: 'Pending' },
-  ]
+  const filters: { value: Filter; label: string }[] = useMemo(
+    () => [
+      { value: 'all', label: t.copierLogs.filterAll },
+      { value: 'executed', label: t.copierLogs.filterExecuted },
+      { value: 'skipped', label: t.copierLogs.filterSkipped },
+      { value: 'failed', label: t.copierLogs.filterFailed },
+      { value: 'pending', label: t.copierLogs.filterPending },
+    ],
+    [t],
+  )
 
-  const statusConfig: Record<string, { variant: 'success' | 'warning' | 'error' | 'neutral' | 'primary'; label: string }> = {
-    executed: { variant: 'success', label: 'Executed' },
-    skipped:  { variant: 'warning', label: 'Skipped' },
-    failed:   { variant: 'error', label: 'Failed' },
-    pending:  { variant: 'neutral', label: 'Pending' },
-    parsed:   { variant: 'primary', label: 'Parsed' },
-  }
+  const statusConfig: Record<string, { variant: 'success' | 'warning' | 'error' | 'neutral' | 'primary'; label: string }> = useMemo(
+    () => ({
+      executed: { variant: 'success', label: t.copierLogs.statusExecuted },
+      skipped: { variant: 'warning', label: t.copierLogs.statusSkipped },
+      failed: { variant: 'error', label: t.copierLogs.statusFailed },
+      pending: { variant: 'neutral', label: t.copierLogs.statusPending },
+      parsed: { variant: 'primary', label: t.copierLogs.statusParsed },
+    }),
+    [t],
+  )
 
   return (
     <div className="px-4 py-4 sm:px-6 sm:py-6 lg:p-8 max-w-5xl mx-auto">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 sm:mb-6 gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-neutral-50">Copier Logs</h1>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">Full history of signals received and their execution outcome</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-neutral-50">{t.copierLogs.title}</h1>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">{t.copierLogs.subtitle}</p>
         </div>
         <div className="flex bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg p-0.5 gap-0.5">
           {filters.map(f => (
@@ -135,13 +144,13 @@ export function CopierLogsPage() {
       <Card padding="none" className="overflow-hidden">
         <div className="overflow-x-auto">
         <div className="grid grid-cols-[1.5fr_1.2fr_1fr_1.2fr_1fr_1fr_auto] gap-3 min-w-[44rem] px-4 sm:px-5 py-3 border-b border-neutral-100 dark:border-neutral-800 text-xs font-semibold text-neutral-400 uppercase tracking-wide">
-          <span>Status</span>
-          <span>Reason</span>
-          <span>Channel</span>
-          <span>Symbol</span>
-          <span>Message</span>
-          <span>Type</span>
-          <span className="text-right">Time</span>
+          <span>{t.copierLogs.colStatus}</span>
+          <span>{t.copierLogs.colReason}</span>
+          <span>{t.copierLogs.colChannel}</span>
+          <span>{t.copierLogs.colSymbol}</span>
+          <span>{t.copierLogs.colMessage}</span>
+          <span>{t.copierLogs.colType}</span>
+          <span className="text-right">{t.copierLogs.colTime}</span>
         </div>
 
         {loading ? (
@@ -161,8 +170,8 @@ export function CopierLogsPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </div>
-            <p className="text-sm font-medium text-neutral-400">No logs yet</p>
-            <p className="text-xs text-neutral-300 mt-1">Signal logs will appear here once your copier receives messages</p>
+            <p className="text-sm font-medium text-neutral-400">{t.copierLogs.emptyTitle}</p>
+            <p className="text-xs text-neutral-300 mt-1">{t.copierLogs.emptySubtitle}</p>
           </div>
         ) : (
           <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
@@ -221,6 +230,14 @@ export function CopierLogsPage() {
             total={totalCount}
             onPageChange={setPage}
             onPageSizeChange={setPageSize}
+            labels={{
+              show: t.common.show,
+              results: t.common.results,
+              previous: t.common.previous,
+              next: t.common.next,
+              showingRange: (start, end, total) =>
+                interpolate(t.common.showingRange, { start, end, total }),
+            }}
           />
         ) : null}
         </div>
@@ -238,6 +255,7 @@ function CopierLogsPagination({
   total,
   onPageChange,
   onPageSizeChange,
+  labels,
 }: {
   page: number
   pageSize: PageSizeOption
@@ -247,6 +265,13 @@ function CopierLogsPagination({
   total: number
   onPageChange: (page: number) => void
   onPageSizeChange: (size: PageSizeOption) => void
+  labels: {
+    show: string
+    results: string
+    previous: string
+    next: string
+    showingRange: (start: number, end: number, total: number) => string
+  }
 }) {
   const pageNumbers = useMemo(() => {
     const maxButtons = 5
@@ -263,7 +288,7 @@ function CopierLogsPagination({
     <div className="flex flex-col gap-3 px-4 py-3 border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/50 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <label className="inline-flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
-          <span className="font-medium text-neutral-700 dark:text-neutral-300">Show</span>
+          <span className="font-medium text-neutral-700 dark:text-neutral-300">{labels.show}</span>
           <select
             value={pageSize}
             onChange={e => onPageSizeChange(Number(e.target.value) as PageSizeOption)}
@@ -274,11 +299,10 @@ function CopierLogsPagination({
               <option key={n} value={n}>{n}</option>
             ))}
           </select>
-          <span>results</span>
+          <span>{labels.results}</span>
         </label>
         <p className="text-xs text-neutral-500 dark:text-neutral-400 tabular-nums">
-          Showing <span className="font-medium text-neutral-700 dark:text-neutral-300">{rangeStart}–{rangeEnd}</span> of{' '}
-          <span className="font-medium text-neutral-700 dark:text-neutral-300">{total}</span>
+          {labels.showingRange(rangeStart, rangeEnd, total)}
         </p>
       </div>
       {totalPages > 1 && (
@@ -291,7 +315,7 @@ function CopierLogsPagination({
             aria-label="Previous page"
           >
             <ChevronLeft className="w-4 h-4" />
-            <span className="hidden sm:inline">Previous</span>
+            <span className="hidden sm:inline">{labels.previous}</span>
           </button>
           <div className="flex items-center gap-0.5">
             {pageNumbers[0]! > 1 && (
@@ -319,7 +343,7 @@ function CopierLogsPagination({
             className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-md border border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-white dark:hover:bg-neutral-900 disabled:opacity-40 disabled:pointer-events-none"
             aria-label="Next page"
           >
-            <span className="hidden sm:inline">Next</span>
+            <span className="hidden sm:inline">{labels.next}</span>
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>

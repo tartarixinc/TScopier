@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
+import { LocaleProvider } from './context/LocaleContext'
 import { AuthLayout } from './components/layout/AuthLayout'
 import { AppLayout } from './components/layout/AppLayout'
 import { ProtectedRoute } from './components/layout/ProtectedRoute'
@@ -30,6 +31,7 @@ import { SignalHistoryPage } from './pages/dashboard/SignalHistoryPage'
 export default function App() {
   return (
     <AuthProvider>
+      <LocaleProvider>
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -76,6 +78,7 @@ export default function App() {
           </Route>
         </Routes>
       </BrowserRouter>
+      </LocaleProvider>
     </AuthProvider>
   )
 }

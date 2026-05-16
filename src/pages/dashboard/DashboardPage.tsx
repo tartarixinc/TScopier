@@ -36,6 +36,8 @@ import {
 import { AccountGrowthChart } from '../../components/dashboard/AccountGrowthChart'
 import { TradeVolumeChart } from '../../components/dashboard/TradeVolumeChart'
 import { useDashboardRealtime } from '../../hooks/useDashboardRealtime'
+import { useT } from '../../context/LocaleContext'
+import { interpolate } from '../../i18n/interpolate'
 
 /** Shared column template for dashboard Copier Logs header + rows. */
 const DASHBOARD_COPIER_LOG_GRID =
@@ -347,6 +349,7 @@ function seedLiveBrokerStateFromBalances(
 }
 
 export function DashboardPage() {
+  const t = useT()
   const { user } = useAuth()
   const navigate = useNavigate()
   const bootCache = useMemo(() => readBootstrapDashboardCache(), [])
@@ -1208,7 +1211,7 @@ export function DashboardPage() {
     <div className="px-4 py-4 sm:px-6 sm:py-6 lg:p-8 max-w-[1600px] mx-auto">
       {/* Page header */}
       <div className="flex items-center justify-between mb-4 sm:mb-6">
-        <h1 className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-neutral-50">Dashboard</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-neutral-50">{t.dashboard.title}</h1>
         
       </div>
 
@@ -1216,13 +1219,13 @@ export function DashboardPage() {
       <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 mb-6">
         <div className="grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 lg:divide-x divide-neutral-100 dark:divide-neutral-800">
           <StatBlock
-            label="Total Balance"
+            label={t.dashboard.totalBalance}
             value={`$${stats.totalEquity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-            sub={`Across ${stats.accounts} connected account${stats.accounts === 1 ? '' : 's'}`}
+            sub={interpolate(t.dashboard.acrossAccounts, { count: stats.accounts })}
             subColor="text-neutral-400"
           />
           <StatBlock
-            label="Today's Profit"
+            label={t.dashboard.todaysProfit}
             value={formatMoney(stats.todayProfit)}
             sub={formatVsYesterdayMoney(stats.todayProfit, stats.yesterdayProfit)}
             valueColor={
@@ -1235,21 +1238,27 @@ export function DashboardPage() {
             subColor={stats.todayProfit >= 0 ? 'text-neutral-400' : 'text-error-500'}
           />
           <StatBlock
-            label="Trades Taken Today"
+            label={t.dashboard.tradesTakenToday}
             value={String(stats.tradesTaken)}
             sub={
               stats.tradesTaken === 0 ? (
-                'No closed trades today'
+                t.dashboard.noClosedTradesToday
               ) : (
                 <span className="inline-flex flex-wrap items-center gap-x-1 gap-y-0.5">
-                  <span className="text-teal-600 dark:text-teal-500">Won {stats.tradesWon}</span>
+                  <span className="text-teal-600 dark:text-teal-500">
+                    {interpolate(t.common.won, { count: stats.tradesWon })}
+                  </span>
                   <span className="text-neutral-300 dark:text-neutral-600">•</span>
-                  <span className="text-error-500">Lost {stats.tradesLost}</span>
+                  <span className="text-error-500">
+                    {interpolate(t.common.lost, { count: stats.tradesLost })}
+                  </span>
                   {stats.tradesTaken > stats.tradesWon + stats.tradesLost ? (
                     <>
                       <span className="text-neutral-300 dark:text-neutral-600">•</span>
                       <span className="text-neutral-500 dark:text-neutral-400">
-                        {stats.tradesTaken - stats.tradesWon - stats.tradesLost} breakeven
+                        {interpolate(t.common.breakeven, {
+                          count: stats.tradesTaken - stats.tradesWon - stats.tradesLost,
+                        })}
                       </span>
                     </>
                   ) : null}
@@ -1259,9 +1268,9 @@ export function DashboardPage() {
             subColor="text-neutral-400"
           />
           <StatBlock
-            label="Open PnL"
+            label={t.dashboard.openPnl}
             value={`$${stats.openPnl.toFixed(2)}`}
-            sub={'Across all accounts'}
+            sub={t.dashboard.acrossAllAccounts}
             valueColor={
               stats.openPnl > 0
                 ? 'text-teal-600'
@@ -1274,28 +1283,28 @@ export function DashboardPage() {
         </div>
         <div className="border-t border-neutral-100 dark:border-neutral-800 p-4 sm:p-5 grid grid-cols-2 lg:grid-cols-4 gap-4">
           <OverviewStat
-            label="Active Signal Channels"
+            label={t.dashboard.activeSignalChannels}
             value={String(stats.activeChannels)}
-            sub="Connected Telegram channels"
+            sub={t.dashboard.connectedTelegramChannels}
             addTo="/copier-engine"
-            addLabel="Manage channels"
+            addLabel={t.dashboard.manageChannels}
           />
           <OverviewStat
-            label="Open Trades"
+            label={t.dashboard.openTrades}
             value={String(stats.openTrades)}
-            sub="Active broker positions"
+            sub={t.dashboard.activeBrokerPositions}
           />
           <OverviewStat
-            label="Trading Accounts Connected"
+            label={t.dashboard.tradingAccountsConnected}
             value={String(stats.accounts)}
-            sub="Active linked accounts"
+            sub={interpolate(t.dashboard.acrossAccounts, { count: stats.accounts })}
             addTo="/account-configuration"
-            addLabel="Add or manage accounts"
+            addLabel={t.dashboard.addOrManageAccounts}
           />
           <OverviewStat
-            label="Trades Copied Today"
+            label={t.dashboard.tradesCopiedToday}
             value={String(stats.tradesCopiedToday)}
-            sub="Executed from channel signals"
+            sub={t.dashboard.executedFromSignals}
           />
         </div>
       </div>
@@ -1325,7 +1334,7 @@ export function DashboardPage() {
               onClick={() => navigate('/copier-engine')}
               className="flex items-center gap-1.5 px-3 py-1.5 border border-teal-500 dark:border-teal-600 text-teal-600 dark:text-teal-400 rounded-lg text-xs font-medium hover:bg-teal-50 dark:hover:bg-teal-950/50 transition-colors"
             >
-              Channels
+              {t.nav.items.channels}
               <ChevronRight className="w-3 h-3" />
             </button>
           </div>
@@ -1353,7 +1362,7 @@ export function DashboardPage() {
           <div className="px-4 sm:px-5 py-4 border-b border-neutral-100 dark:border-neutral-800 flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4 text-teal-500" />
-              <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Copier Logs</span>
+              <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{t.dashboard.copierLogs}</span>
               <button className="text-neutral-300 hover:text-neutral-500 dark:text-neutral-400">
                 <Info className="w-3.5 h-3.5" />
               </button>
@@ -1362,7 +1371,7 @@ export function DashboardPage() {
               onClick={() => navigate('/copier-logs')}
               className="flex items-center gap-1.5 px-3 py-1.5 border border-teal-500 dark:border-teal-600 text-teal-600 dark:text-teal-400 rounded-lg text-xs font-medium hover:bg-teal-50 dark:hover:bg-teal-950/50 transition-colors"
             >
-              Copier Logs
+              {t.dashboard.copierLogs}
               <ChevronRight className="w-3 h-3" />
             </button>
           </div>
@@ -1372,11 +1381,11 @@ export function DashboardPage() {
           <div
             className={`${DASHBOARD_COPIER_LOG_GRID} min-w-[28rem] px-4 sm:px-5 py-3 border-b border-neutral-100 dark:border-neutral-800 text-xs font-medium text-neutral-400 uppercase tracking-wide`}
           >
-            <span>Status</span>
-            <span className="min-w-0">Channel</span>
-            <span>Symbol</span>
-            <span>Type</span>
-            <span className="text-right">Time</span>
+            <span>{t.copierLogs.colStatus}</span>
+            <span className="min-w-0">{t.copierLogs.colChannel}</span>
+            <span>{t.copierLogs.colSymbol}</span>
+            <span>{t.copierLogs.colType}</span>
+            <span className="text-right">{t.copierLogs.colTime}</span>
           </div>
 
           {copierLogs.length === 0 && chartsEmpty ? (

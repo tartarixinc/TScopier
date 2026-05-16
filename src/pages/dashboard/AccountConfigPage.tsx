@@ -8,6 +8,7 @@ import {
 import clsx from 'clsx'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { useT } from '../../context/LocaleContext'
 import { Card } from '../../components/ui/Card'
 import { Input } from '../../components/ui/Input'
 import { Select } from '../../components/ui/Select'
@@ -416,6 +417,7 @@ const MANUAL_SUB_TABS: ManualSubTabDef[] = [
 ]
 
 export function AccountConfigPage() {
+  const t = useT()
   const { user } = useAuth()
   const [brokers, setBrokers] = useState<BrokerAccount[]>([])
   const [channelOptions, setChannelOptions] = useState<ChannelOption[]>([])
@@ -978,8 +980,8 @@ export function AccountConfigPage() {
     <div className="px-4 py-4 lg:px-6 lg:py-5 max-w-5xl mx-auto">
       <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
         <div>
-          <h1 className="text-xl font-bold text-neutral-900 dark:text-neutral-50">Account &amp; Configuration</h1>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">Connect MetaTrader accounts and tune how each one copies signals.</p>
+          <h1 className="text-xl font-bold text-neutral-900 dark:text-neutral-50">{t.pages.accountConfiguration.title}</h1>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">{t.pages.accountConfiguration.description}</p>
         </div>
         <Button size="sm" onClick={() => setShowPlatformModal(true)}>
           <Plus className="w-3.5 h-3.5" />

@@ -6,9 +6,12 @@ import { PasswordInput } from '../../components/auth/PasswordInput'
 import { Input } from '../../components/ui/Input'
 import { Button } from '../../components/ui/Button'
 import { Alert } from '../../components/ui/Alert'
+import { useLocale } from '../../context/LocaleContext'
 
 export function LoginPage() {
   const navigate = useNavigate()
+  const { auth } = useLocale()
+  const t = auth.login
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -32,13 +35,13 @@ export function LoginPage() {
 
   return (
     <AuthFormShell
-      title="Welcome back"
-      subtitle="Sign in to manage your copier, channels, and live trades."
+      title={t.title}
+      subtitle={t.subtitle}
       footer={
         <p className="text-center text-sm text-neutral-500 dark:text-neutral-400">
-          New to TSCopier?{' '}
+          {t.footerPrompt}{' '}
           <Link to="/signup" className="font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300">
-            Create a free account
+            {t.footerLink}
           </Link>
         </p>
       }
@@ -47,9 +50,9 @@ export function LoginPage() {
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <Input
-          label="Email"
+          label={t.email}
           type="email"
-          placeholder="you@example.com"
+          placeholder={t.emailPlaceholder}
           value={email}
           onChange={e => setEmail(e.target.value)}
           required
@@ -58,15 +61,15 @@ export function LoginPage() {
           className="py-2.5"
         />
         <PasswordInput
-          label="Password"
-          placeholder="Enter your password"
+          label={t.password}
+          placeholder={t.passwordPlaceholder}
           value={password}
           onChange={e => setPassword(e.target.value)}
           required
           autoComplete="current-password"
         />
         <Button type="submit" loading={loading} className="w-full !mt-6" size="lg">
-          Sign in
+          {t.submit}
         </Button>
       </form>
     </AuthFormShell>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { useT } from '../../context/LocaleContext'
 import { Card } from '../../components/ui/Card'
 import { Button } from '../../components/ui/Button'
 import type { Signal, TelegramChannel } from '../../types/database'
@@ -8,6 +9,7 @@ import type { Signal, TelegramChannel } from '../../types/database'
 type TimeFilter = 'all' | 'today' | '7d' | '30d'
 
 export function SignalHistoryPage() {
+  const t = useT()
   const { user } = useAuth()
   const [signals, setSignals] = useState<Signal[]>([])
   const [channels, setChannels] = useState<TelegramChannel[]>([])
@@ -107,10 +109,8 @@ export function SignalHistoryPage() {
   return (
     <div className="p-6 lg:p-8 max-w-6xl mx-auto">
       <div className="mb-6 text-center">
-        <h1 className="text-3xl font-bold text-neutral-900 dark:text-neutral-50">Signal History</h1>
-        <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
-          View parsed signals connected to your account. Filter by channel and date range.
-        </p>
+        <h1 className="text-3xl font-bold text-neutral-900 dark:text-neutral-50">{t.pages.signalHistory.title}</h1>
+        <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">{t.pages.signalHistory.description}</p>
       </div>
 
       <Card className="mb-6" padding="none">
