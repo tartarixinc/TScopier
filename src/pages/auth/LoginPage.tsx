@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import { Card } from '../../components/ui/Card'
+import { AuthFormShell } from '../../components/auth/AuthFormShell'
+import { PasswordInput } from '../../components/auth/PasswordInput'
 import { Input } from '../../components/ui/Input'
 import { Button } from '../../components/ui/Button'
 import { Alert } from '../../components/ui/Alert'
@@ -18,10 +19,10 @@ export function LoginPage() {
     setError('')
     setLoading(true)
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
 
-    if (error) {
-      setError(error.message)
+    if (signInError) {
+      setError(signInError.message)
       setLoading(false)
       return
     }
@@ -30,11 +31,19 @@ export function LoginPage() {
   }
 
   return (
-    <Card>
-      <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-50 mb-1">Welcome back</h1>
-      <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-6">Sign in to your TSCopier account</p>
-
-      {error && <Alert className="mb-4 py-2.5">{error}</Alert>}
+    <AuthFormShell
+      title="Welcome back"
+      subtitle="Sign in to manage your copier, channels, and live trades."
+      footer={
+        <p className="text-center text-sm text-neutral-500 dark:text-neutral-400">
+          New to TSCopier?{' '}
+          <Link to="/signup" className="font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300">
+            Create a free account
+          </Link>
+        </p>
+      }
+    >
+      {error ? <Alert variant="error" className="mb-5 py-2.5">{error}</Alert> : null}
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <Input
@@ -44,27 +53,22 @@ export function LoginPage() {
           value={email}
           onChange={e => setEmail(e.target.value)}
           required
+          autoComplete="email"
           autoFocus
+          className="py-2.5"
         />
-        <Input
+        <PasswordInput
           label="Password"
-          type="password"
-          placeholder="••••••••"
+          placeholder="Enter your password"
           value={password}
           onChange={e => setPassword(e.target.value)}
           required
+          autoComplete="current-password"
         />
-        <Button type="submit" loading={loading} className="w-full" size="lg">
+        <Button type="submit" loading={loading} className="w-full !mt-6" size="lg">
           Sign in
         </Button>
       </form>
-
-      <p className="text-center text-sm text-neutral-500 dark:text-neutral-400 mt-5">
-        Don't have an account?{' '}
-        <Link to="/signup" className="text-primary-600 hover:text-primary-700 font-medium">
-          Create one
-        </Link>
-      </p>
-    </Card>
+    </AuthFormShell>
   )
 }

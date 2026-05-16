@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import { Card } from '../../components/ui/Card'
+import { AuthFormShell } from '../../components/auth/AuthFormShell'
+import { PasswordInput } from '../../components/auth/PasswordInput'
 import { Input } from '../../components/ui/Input'
 import { Button } from '../../components/ui/Button'
 import { Alert } from '../../components/ui/Alert'
@@ -23,10 +24,10 @@ export function SignupPage() {
     }
 
     setLoading(true)
-    const { error } = await supabase.auth.signUp({ email, password })
+    const { error: signUpError } = await supabase.auth.signUp({ email, password })
 
-    if (error) {
-      setError(error.message)
+    if (signUpError) {
+      setError(signUpError.message)
       setLoading(false)
       return
     }
@@ -35,11 +36,19 @@ export function SignupPage() {
   }
 
   return (
-    <Card>
-      <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-50 mb-1">Create your account</h1>
-      <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-6">Start copying Telegram signals in minutes</p>
-
-      {error && <Alert className="mb-4 py-2.5">{error}</Alert>}
+    <AuthFormShell
+      title="Create your account"
+      subtitle="Set up in minutes — connect Telegram, link a broker, and start copying signals."
+      footer={
+        <p className="text-center text-sm text-neutral-500 dark:text-neutral-400">
+          Already have an account?{' '}
+          <Link to="/login" className="font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300">
+            Sign in
+          </Link>
+        </p>
+      }
+    >
+      {error ? <Alert variant="error" className="mb-5 py-2.5">{error}</Alert> : null}
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <Input
@@ -49,28 +58,27 @@ export function SignupPage() {
           value={email}
           onChange={e => setEmail(e.target.value)}
           required
+          autoComplete="email"
           autoFocus
+          className="py-2.5"
         />
-        <Input
+        <PasswordInput
           label="Password"
-          type="password"
-          placeholder="••••••••"
+          placeholder="Choose a password"
           value={password}
           onChange={e => setPassword(e.target.value)}
           required
-          hint="Minimum 6 characters"
+          autoComplete="new-password"
+          hint="At least 6 characters"
         />
-        <Button type="submit" loading={loading} className="w-full" size="lg">
+        <Button type="submit" loading={loading} className="w-full !mt-6" size="lg">
           Create account
         </Button>
       </form>
 
-      <p className="text-center text-sm text-neutral-500 dark:text-neutral-400 mt-5">
-        Already have an account?{' '}
-        <Link to="/login" className="text-primary-600 hover:text-primary-700 font-medium">
-          Sign in
-        </Link>
+      <p className="mt-4 text-center text-xs text-neutral-400 dark:text-neutral-500 leading-relaxed">
+        By creating an account, you agree to use TSCopier responsibly and comply with your broker&apos;s terms.
       </p>
-    </Card>
+    </AuthFormShell>
   )
 }
