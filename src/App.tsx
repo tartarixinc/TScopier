@@ -51,6 +51,7 @@ export default function App() {
             <Route path="/account-trades" element={<TradesPage />} />
             <Route path="/copier-engine" element={<CopierEnginePage />} />
             <Route path="/backtest" element={<Backtest />} />
+            <Route path="/copier-templates" element={<Navigate to="/backtest" replace />} />
             <Route path="/copier-logs" element={<CopierLogsPage />} />
             <Route path="/signal-history" element={<SignalHistoryPage />} />
             <Route path="/market-news" element={<MarketNewsPage />} />

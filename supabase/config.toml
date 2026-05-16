@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.sync-mt-servers]
 verify_jwt = false
+
+[functions.backtest-run]
+verify_jwt = false

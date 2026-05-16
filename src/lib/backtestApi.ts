@@ -12,15 +12,22 @@ async function call<T>(body: Record<string, unknown>): Promise<T> {
   if (!token) throw new Error('Not signed in')
 
   const url = `${import.meta.env.VITE_SUPABASE_URL as string}/functions/v1/backtest-run`
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-      apikey: import.meta.env.VITE_SUPABASE_ANON_KEY as string,
-    },
-    body: JSON.stringify(body),
-  })
+  let res: Response
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY as string,
+      },
+      body: JSON.stringify(body),
+    })
+  } catch {
+    throw new Error(
+      'Could not reach backtest-run. Deploy the edge function and apply the backtest migration (see docs/backtest-setup.md).',
+    )
+  }
 
   const text = await res.text()
   let data: unknown = null

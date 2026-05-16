@@ -224,11 +224,10 @@ export function Backtest() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-50 flex items-center gap-2">
-            <BarChart3 className="w-7 h-7 text-teal-500" />
-            Signal Backtest
+            Channel Signal Backtest
           </h1>
           <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1 max-w-xl">
-            Replay your Telegram signal history against Massive.com market data. Test breakeven rules,
+            Replay your Telegram signal history with live market data. Test breakeven rules,
             TP ladders, and portfolio sizing before risking live capital.
           </p>
         </div>
@@ -241,7 +240,7 @@ export function Backtest() {
 
       {error ? <Alert variant="error">{error}</Alert> : null}
 
-      <div className="grid lg:grid-cols-5 gap-6">
+      <div className="grid lg:grid-cols-5 gap-6 min-w-0">
         {/* Config panel */}
         <div className="lg:col-span-2 space-y-4">
           <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5 space-y-4">
@@ -444,7 +443,7 @@ export function Backtest() {
         </div>
 
         {/* Results */}
-        <div className="lg:col-span-3 space-y-4">
+        <div className="lg:col-span-3 space-y-4 min-w-0">
           {activeRun?.status === 'running' ? (
             <Alert>
               <Loader2 className="w-4 h-4 animate-spin inline mr-2" />

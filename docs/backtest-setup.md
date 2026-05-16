@@ -10,10 +10,14 @@ Backtests replay parsed Telegram signals against historical market data from [Ma
 
 2. Apply migration `20260516150000_backtest.sql`.
 
-3. Deploy edge function:
+3. Link the project (once) and deploy the edge function:
    ```bash
+   supabase link --project-ref YOUR_PROJECT_REF
    supabase functions deploy backtest-run
    ```
+   `supabase/config.toml` sets `verify_jwt = false` for `backtest-run` so browser preflight (OPTIONS) succeeds; the function still validates the user JWT in code.
+
+   If the UI shows a CORS error on `backtest-run`, the function is usually missing or not deployed to the same project as `VITE_SUPABASE_URL`.
 
 4. Open **Backtest** in the app sidebar (`/backtest`).
 
