@@ -12,7 +12,7 @@ export function AuthBrandLogo({ className }: AuthBrandLogoProps) {
     <img
       src={AUTH_LOGIN_LOGO}
       alt="TSCopier AI"
-      className={clsx('h-auto w-auto max-w-full object-contain', className)}
+      className={clsx('h-8 w-auto max-w-[140px] object-contain', className)}
       draggable={false}
     />
   )

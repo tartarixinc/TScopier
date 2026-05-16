@@ -37,7 +37,7 @@ export function AuthMarketingPanel() {
       />
 
       <div className="relative z-10">
-        <AuthBrandLogo className="h-6 w-auto max-w-[140px]" />
+        <AuthBrandLogo className="h-8 w-auto max-w-[140px]" />
       </div>
 
       <div className="relative z-10 space-y-10">
