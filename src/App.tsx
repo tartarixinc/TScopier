@@ -9,7 +9,7 @@ import { DashboardPage } from './pages/dashboard/DashboardPage'
 import { AccountConfigPage } from './pages/dashboard/AccountConfigPage'
 import { CopierEnginePage } from './pages/dashboard/CopierEnginePage'
 import { CopierLogsPage } from './pages/dashboard/CopierLogsPage'
-import { CopierTemplatesPage } from './pages/dashboard/CopierTemplatesPage'
+import { Backtest } from './pages/dashboard/Backtest'
 import { TradesPage } from './pages/dashboard/TradesPage'
 import { MarketNewsPage } from './pages/dashboard/MarketNewsPage'
 import { EconomicCalendarPage } from './pages/dashboard/EconomicCalendarPage'
@@ -50,7 +50,7 @@ export default function App() {
             <Route path="/account-configuration" element={<AccountConfigPage />} />
             <Route path="/account-trades" element={<TradesPage />} />
             <Route path="/copier-engine" element={<CopierEnginePage />} />
-            <Route path="/copier-templates" element={<CopierTemplatesPage />} />
+            <Route path="/backtest" element={<Backtest />} />
             <Route path="/copier-logs" element={<CopierLogsPage />} />
             <Route path="/signal-history" element={<SignalHistoryPage />} />
             <Route path="/market-news" element={<MarketNewsPage />} />

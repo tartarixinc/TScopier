@@ -52,7 +52,7 @@ const navSections: NavSection[] = [
     label: 'SIGNALS',
     items: [
       { to: '/copier-engine', icon: Send, label: 'Channels' },
-      { to: '/copier-templates', icon: LayoutTemplate, label: 'Backtest' },
+      { to: '/backtest', icon: LayoutTemplate, label: 'Backtest' },
       { to: '/copier-logs', icon: ScrollText, label: 'Copier Logs' },
       { to: '/signal-history', icon: ChartNoAxesColumn, label: 'History' },
     ],
