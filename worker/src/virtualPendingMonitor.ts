@@ -7,6 +7,7 @@ import {
   SymbolParams,
 } from './metatraderapi'
 import { apiForMetaapiAccount, loadPlatformByMetaapiId, type PlatformByMetaapiId } from './mtApiByAccount'
+import { tryApplyBasketFollowUpToNewFill } from './basketModFollowUp'
 
 /**
  * Worker-side monitor that turns persisted "virtual range pendings" into
@@ -431,14 +432,15 @@ export class VirtualPendingMonitor {
       console.log(
         `[virtualPendingMonitor] virtual leg fired signal=${leg.signal_id} stepIdx=${leg.step_idx} trigger=${leg.trigger_price} ref=${refPrice} ticket=${result.ticket} latency=${latencyMs}ms`,
       )
-      await this.supabase.from('trades').insert({
+      const entryPx = result.openPrice ?? refPrice ?? null
+      const { data: insTrade, error: insErr } = await this.supabase.from('trades').insert({
         user_id: leg.user_id,
         signal_id: leg.signal_id,
         broker_account_id: leg.broker_account_id,
         metaapi_order_id: result.ticket != null ? String(result.ticket) : null,
         symbol: leg.symbol,
         direction: leg.is_buy ? 'buy' : 'sell',
-        entry_price: result.openPrice ?? refPrice,
+        entry_price: entryPx,
         sl: result.stopLoss ?? args.stoploss ?? null,
         tp: result.takeProfit ?? args.takeprofit ?? null,
         lot_size: result.lots ?? args.volume,
@@ -448,7 +450,39 @@ export class VirtualPendingMonitor {
         // newly-filled leg alongside its sibling immediates. Null for
         // non-CWE pendings.
         cwe_close_price: leg.cwe_close_price,
-      })
+      }).select('id').maybeSingle()
+      if (insErr) {
+        console.warn(`[virtualPendingMonitor] trades insert failed leg=${leg.id}: ${insErr.message}`)
+      }
+
+      const ticketNum = result.ticket != null ? Number(result.ticket) : NaN
+      const tradeRowId = (insTrade as { id?: string } | null)?.id ?? null
+      if (
+        tradeRowId
+        && Number.isFinite(ticketNum)
+        && ticketNum > 0
+        && hasMetatraderApiConfigured()
+      ) {
+        try {
+          await tryApplyBasketFollowUpToNewFill(this.supabase, api, {
+            userId: leg.user_id,
+            basketSignalId: leg.signal_id,
+            brokerAccountId: leg.broker_account_id,
+            metaUuid: leg.metaapi_account_id,
+            symbol: leg.symbol,
+            ticket: ticketNum,
+            tradeRowId,
+            entryPrice: entryPx,
+            existingSl: result.stopLoss ?? args.stoploss ?? null,
+            existingTp: result.takeProfit ?? args.takeprofit ?? null,
+          })
+        } catch (hookErr) {
+          console.warn(
+            `[virtualPendingMonitor] SL/TP follow-up for range leg=${leg.id} signal=${leg.signal_id}:`,
+            hookErr,
+          )
+        }
+      }
       await this.supabase.from('trade_execution_logs').insert({
         user_id: leg.user_id,
         signal_id: leg.signal_id,

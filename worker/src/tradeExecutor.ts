@@ -261,11 +261,7 @@ function isManagementAction(action: string): boolean {
 function computeLot(broker: BrokerRow, signal: ParsedSignal): number {
   const mode = broker.copier_mode ?? 'ai'
   if (mode === 'manual') {
-    const m = (broker.manual_settings ?? {}) as {
-      risk_mode?: 'fixed_lot' | 'dynamic_balance_percent'
-      fixed_lot?: number
-      dynamic_balance_percent?: number
-    }
+    const m = (broker.manual_settings ?? {}) as ManualSettings
     if (m.risk_mode === 'dynamic_balance_percent') {
       const pct = Number(m.dynamic_balance_percent ?? 1)
       const bal = Number(broker.last_balance ?? 0)
@@ -274,7 +270,15 @@ function computeLot(broker: BrokerRow, signal: ParsedSignal): number {
         return Math.max(0.01, +(bal * (pct / 100) / 1000).toFixed(2))
       }
     }
-    if (typeof signal.lot_size === 'number' && signal.lot_size > 0) return signal.lot_size
+    // Multi-trade leg counts are computed from Fixed Lot on the Configure screen.
+    // Parsed telegram `lot_size` would bypass it and inflate leg counts vs the preview.
+    if (
+      typeof signal.lot_size === 'number'
+      && signal.lot_size > 0
+      && m.trade_style !== 'multi'
+    ) {
+      return signal.lot_size
+    }
     return Math.max(0.01, Number(m.fixed_lot ?? broker.default_lot_size ?? 0.01))
   }
 
@@ -2473,6 +2477,24 @@ export class TradeExecutor {
     }
   }
 
+  private async countActiveBasketRangePendingLegs(
+    basketSignalId: string,
+    brokerAccountIds: string[],
+  ): Promise<number> {
+    if (!brokerAccountIds.length) return 0
+    const { count, error } = await this.supabase
+      .from('range_pending_legs')
+      .select('id', { count: 'exact', head: true })
+      .eq('signal_id', basketSignalId)
+      .in('broker_account_id', brokerAccountIds)
+      .in('status', ['pending', 'claimed'])
+    if (error) {
+      console.warn(`[tradeExecutor] countActiveBasketRangePendingLegs failed: ${error.message}`)
+      return 0
+    }
+    return count ?? 0
+  }
+
   private async applyManagement(signal: SignalRow, parsed: ParsedSignal, brokers: BrokerRow[]): Promise<void> {
     if (!hasMetatraderApiConfigured()) return
     if (!signal.parent_signal_id) return
@@ -2758,6 +2780,18 @@ export class TradeExecutor {
         })
       if (scopes.length > 0) {
         await this.cancelRangePendingLegsForScopes(signal.user_id, signal.id, scopes, 'signal_closed')
+      }
+    }
+
+    const deferFinalizeActions = ['modify', 'breakeven']
+    if (deferFinalizeActions.includes(action)) {
+      const pendingRange = await this.countActiveBasketRangePendingLegs(basketAnchorId, brokerAccountIds)
+      if (pendingRange > 0) {
+        console.warn(
+          `[tradeExecutor] mgmt signal=${signal.id} (${action}) stay parsed: `
+          + `${pendingRange} range_pending_legs still active for basket=${basketAnchorId} — will retry after ladders fill`,
+        )
+        return
       }
     }
 

@@ -101,8 +101,13 @@ function computeLot(broker, signal) {
                 return Math.max(0.01, +(bal * (pct / 100) / 1000).toFixed(2));
             }
         }
-        if (typeof signal.lot_size === 'number' && signal.lot_size > 0)
+        // Multi-trade leg counts are computed from Fixed Lot on the Configure screen.
+        // Parsed telegram `lot_size` would bypass it and inflate leg counts vs the preview.
+        if (typeof signal.lot_size === 'number'
+            && signal.lot_size > 0
+            && m.trade_style !== 'multi') {
             return signal.lot_size;
+        }
         return Math.max(0.01, Number(m.fixed_lot ?? broker.default_lot_size ?? 0.01));
     }
     // AI mode
@@ -2097,6 +2102,21 @@ class TradeExecutor {
             // Logging failure is non-fatal.
         }
     }
+    async countActiveBasketRangePendingLegs(basketSignalId, brokerAccountIds) {
+        if (!brokerAccountIds.length)
+            return 0;
+        const { count, error } = await this.supabase
+            .from('range_pending_legs')
+            .select('id', { count: 'exact', head: true })
+            .eq('signal_id', basketSignalId)
+            .in('broker_account_id', brokerAccountIds)
+            .in('status', ['pending', 'claimed']);
+        if (error) {
+            console.warn(`[tradeExecutor] countActiveBasketRangePendingLegs failed: ${error.message}`);
+            return 0;
+        }
+        return count ?? 0;
+    }
     async applyManagement(signal, parsed, brokers) {
         if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
             return;
@@ -2333,7 +2353,7 @@ class TradeExecutor {
                 }
             }));
             // Exit when nothing applies, or each eligible basket leg has both a broker
-            // ticket and a successful mtg dispatch (so late INSERTs/tickets pick up SL/TP).
+            // ticket and a successful management dispatch (so late INSERTs/tickets pick up SL/TP).
             let allEligibleApplied = eligiblePairs.length > 0;
             for (const { trade } of eligiblePairs) {
                 const tid = Number(trade.metaapi_order_id);
@@ -2356,6 +2376,15 @@ class TradeExecutor {
             });
             if (scopes.length > 0) {
                 await this.cancelRangePendingLegsForScopes(signal.user_id, signal.id, scopes, 'signal_closed');
+            }
+        }
+        const deferFinalizeActions = ['modify', 'breakeven'];
+        if (deferFinalizeActions.includes(action)) {
+            const pendingRange = await this.countActiveBasketRangePendingLegs(basketAnchorId, brokerAccountIds);
+            if (pendingRange > 0) {
+                console.warn(`[tradeExecutor] mgmt signal=${signal.id} (${action}) stay parsed: `
+                    + `${pendingRange} range_pending_legs still active for basket=${basketAnchorId} — will retry after ladders fill`);
+                return;
             }
         }
         // Management messages do not insert `trades` with `signal_id = this row`,

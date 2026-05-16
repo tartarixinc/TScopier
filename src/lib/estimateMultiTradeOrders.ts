@@ -35,6 +35,9 @@ export interface EstimateMultiTradeOrderResult {
  * `reservedLegs = round(baseLegs * percent / 100)` logic. In range mode no remainder
  * leg is emitted, so `totalOrders = immediate + pending`.
  *
+ * Preview-only: multi-trade sizing at execution uses **Fixed Lot** from settings
+ * (signal-parsed telegram lots are ignored in multi-trade mode so counts match UI).
+ *
  * **Step does NOT affect the count.** The pending count is purely
  * `round(baseLegs × percent / 100)`. The `range.stepPips` is the pip spacing
  * the planner will use to place each pending; `range.distancePips` is the

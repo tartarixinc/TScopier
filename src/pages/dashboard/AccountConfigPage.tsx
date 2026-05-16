@@ -1466,7 +1466,8 @@ export function AccountConfigPage() {
                                           : multiTradePreview.totalOrders}
                                     </div>
                                     <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-                                      Estimated from Fixed Lot and per-leg %. Live execution uses the symbol's min lot and step (may differ slightly). Capped at 500 orders per signal.
+                                      Estimated from Fixed Lot and per-leg %. Live execution uses the symbol&apos;s min lot and step (may differ slightly). Capped at 500 orders per signal.
+                                      {' '}Telegram-reported lots on each signal do not resize multi-trade baskets—they always split your Fixed Lot.
                                       {configDraft.manualSettings.risk_mode === 'dynamic_balance_percent' && (
                                         <> With Dynamic (% Balance) risk, the resolved lot at runtime can differ from Fixed Lot.</>
                                       )}
