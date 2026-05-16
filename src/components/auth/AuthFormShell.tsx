@@ -13,8 +13,8 @@ export function AuthFormShell({ title, subtitle, children, footer, className }: 
   return (
     <div
       className={clsx(
-        'w-full animate-slide-up rounded-2xl border border-neutral-200/80 dark:border-neutral-800',
-        'bg-white dark:bg-neutral-900 shadow-card-lg dark:shadow-none',
+        'w-full animate-slide-up rounded-3xl border border-neutral-300 dark:border-neutral-800',
+        'bg-white dark:bg-neutral-900',
         'p-6 sm:p-8',
         className,
       )}
