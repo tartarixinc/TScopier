@@ -152,61 +152,208 @@ function countClosedTradeOutcomes(
   }
 }
 
+type BrokerBalanceSnapshot = {
+  balance?: number
+  equity?: number
+  currency?: string
+  broker?: string
+  mt_server_hint?: string
+  account_type?: 'Live' | 'Demo'
+  open_pnl?: number
+  open_trades?: number
+}
+
+/** Keep live MT equity/open stats when a quiet DB refresh would overwrite them. */
+function mergeBrokerBalances(
+  fromDb: Record<string, BrokerBalanceSnapshot>,
+  prev: Record<string, BrokerBalanceSnapshot>,
+  sticky: Record<string, { open_pnl?: number; open_trades?: number }>,
+): Record<string, BrokerBalanceSnapshot> {
+  const out: Record<string, BrokerBalanceSnapshot> = { ...fromDb }
+  for (const id of new Set([...Object.keys(fromDb), ...Object.keys(prev)])) {
+    const db = fromDb[id]
+    const old = prev[id]
+    const st = sticky[id]
+    if (!db && !old) continue
+    out[id] = {
+      ...(db ?? {}),
+      balance: old?.balance ?? db?.balance,
+      equity: old?.equity ?? db?.equity,
+      currency: db?.currency ?? old?.currency,
+      broker: db?.broker ?? old?.broker,
+      mt_server_hint: db?.mt_server_hint ?? old?.mt_server_hint,
+      account_type: db?.account_type ?? old?.account_type,
+      open_pnl: st?.open_pnl ?? old?.open_pnl ?? db?.open_pnl,
+      open_trades: st?.open_trades ?? old?.open_trades ?? db?.open_trades,
+    }
+  }
+  return out
+}
+
+type DashboardCachePayload = {
+  stats: DashboardStats
+  copierLogs: Signal[]
+  copierLogSymbols: Record<string, string>
+  channelDisplayNames: Record<string, string>
+  linkedAccounts: BrokerAccount[]
+  linkedAccountBalances: Record<string, BrokerBalanceSnapshot>
+  chartTrades?: DashboardChartTrade[]
+  aiExpertLogs?: AiExpertLogRow[]
+  mtTrades?: MtTrade[]
+}
+
+const DASHBOARD_CACHE_VERSION = 'dashboard_cache_v8'
+const DASHBOARD_CACHE_LEGACY_KEYS = ['dashboard_cache_v7'] as const
+const DASHBOARD_ACTIVE_USER_KEY = 'dashboard_cache_active_user_id'
+
+const DEFAULT_DASHBOARD_STATS: DashboardStats = {
+  accounts: 0,
+  portfolioValue: 0,
+  totalEquity: 0,
+  tradesTaken: 0,
+  tradesWon: 0,
+  tradesLost: 0,
+  openPnl: 0,
+  openPositions: 0,
+  openTrades: 0,
+  tradesCopiedToday: 0,
+  activeChannels: 0,
+  copierHealth: 'Stable',
+  totalSignals: 0,
+  yesterdayTotalSignals: 0,
+  totalVolume: 0,
+  yesterdayTotalVolume: 0,
+  totalProfitLoss: null,
+  yesterdayTotalProfitLoss: null,
+  bestTradeProfit: 0,
+  yesterdayBestTradeProfit: 0,
+  worstTradeProfit: 0,
+  yesterdayWorstTradeProfit: 0,
+  todayProfit: 0,
+  yesterdayProfit: 0,
+  mostProfitableChannel: '—',
+  yesterdayMostProfitableChannel: '—',
+  mostTradedAsset: '—',
+  yesterdayMostTradedAsset: '—',
+}
+
+function readBootstrapDashboardCache(): DashboardCachePayload | null {
+  if (typeof sessionStorage === 'undefined') return null
+  const userId = sessionStorage.getItem(DASHBOARD_ACTIVE_USER_KEY)
+  if (!userId) return null
+  return readDashboardCache(userId)
+}
+
+/** Avoid flashing DB/empty snapshots over live MT or session-cached figures. */
+function mergeDashboardStats(prev: DashboardStats, next: DashboardStats, authoritative: boolean): DashboardStats {
+  if (authoritative) return { ...prev, ...next }
+  const keepNum = (p: number, n: number) => (Number.isFinite(n) && !(n === 0 && p !== 0) ? n : p)
+  const keepStr = (p: string, n: string) => (n === '—' && p !== '—' ? p : n)
+  return {
+    ...next,
+    totalEquity: keepNum(prev.totalEquity, next.totalEquity),
+    portfolioValue: keepNum(prev.portfolioValue, next.portfolioValue),
+    openPnl: keepNum(prev.openPnl, next.openPnl),
+    openPositions: keepNum(prev.openPositions, next.openPositions),
+    openTrades: keepNum(prev.openTrades, next.openTrades),
+    todayProfit: keepNum(prev.todayProfit, next.todayProfit),
+    yesterdayProfit: keepNum(prev.yesterdayProfit, next.yesterdayProfit),
+    tradesTaken: keepNum(prev.tradesTaken, next.tradesTaken),
+    tradesWon: keepNum(prev.tradesWon, next.tradesWon),
+    tradesLost: keepNum(prev.tradesLost, next.tradesLost),
+    totalVolume: keepNum(prev.totalVolume, next.totalVolume),
+    yesterdayTotalVolume: keepNum(prev.yesterdayTotalVolume, next.yesterdayTotalVolume),
+    bestTradeProfit: keepNum(prev.bestTradeProfit, next.bestTradeProfit),
+    yesterdayBestTradeProfit: keepNum(prev.yesterdayBestTradeProfit, next.yesterdayBestTradeProfit),
+    worstTradeProfit:
+      next.worstTradeProfit === 0 && prev.worstTradeProfit < 0 ? prev.worstTradeProfit : next.worstTradeProfit,
+    yesterdayWorstTradeProfit:
+      next.yesterdayWorstTradeProfit === 0 && prev.yesterdayWorstTradeProfit < 0
+        ? prev.yesterdayWorstTradeProfit
+        : next.yesterdayWorstTradeProfit,
+    mostTradedAsset: keepStr(prev.mostTradedAsset, next.mostTradedAsset),
+    yesterdayMostTradedAsset: keepStr(prev.yesterdayMostTradedAsset, next.yesterdayMostTradedAsset),
+    mostProfitableChannel: keepStr(prev.mostProfitableChannel, next.mostProfitableChannel),
+    yesterdayMostProfitableChannel: keepStr(
+      prev.yesterdayMostProfitableChannel,
+      next.yesterdayMostProfitableChannel,
+    ),
+  }
+}
+
+function preferChartTrades(prev: DashboardChartTrade[], next: DashboardChartTrade[]): DashboardChartTrade[] {
+  return next.length > 0 ? next : prev
+}
+
+function writeDashboardCache(userId: string, payload: DashboardCachePayload) {
+  sessionStorage.setItem(DASHBOARD_ACTIVE_USER_KEY, userId)
+  sessionStorage.setItem(`${DASHBOARD_CACHE_VERSION}:${userId}`, JSON.stringify(payload))
+}
+
+function readDashboardCache(userId: string): DashboardCachePayload | null {
+  const keys = [
+    `${DASHBOARD_CACHE_VERSION}:${userId}`,
+    ...DASHBOARD_CACHE_LEGACY_KEYS.map(v => `${v}:${userId}`),
+  ]
+  for (const cacheKey of keys) {
+    const raw = sessionStorage.getItem(cacheKey)
+    if (!raw) continue
+    try {
+      return JSON.parse(raw) as DashboardCachePayload
+    } catch {
+      continue
+    }
+  }
+  return null
+}
+
+function seedLiveBrokerStateFromBalances(
+  balances: Record<string, BrokerBalanceSnapshot> | undefined,
+  target: Record<string, { open_pnl?: number; open_trades?: number }>,
+) {
+  if (!balances) return
+  for (const [id, v] of Object.entries(balances)) {
+    if (!v) continue
+    target[id] = {
+      open_pnl: typeof v.open_pnl === 'number' ? v.open_pnl : target[id]?.open_pnl,
+      open_trades: typeof v.open_trades === 'number' ? v.open_trades : target[id]?.open_trades,
+    }
+  }
+}
+
 export function DashboardPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const [stats, setStats] = useState<DashboardStats>({
-    accounts: 0,
-    portfolioValue: 0,
-    totalEquity: 0,
-    tradesTaken: 0,
-    tradesWon: 0,
-    tradesLost: 0,
-    openPnl: 0,
-    openPositions: 0,
-    openTrades: 0,
-    tradesCopiedToday: 0,
-    activeChannels: 0,
-    copierHealth: 'Stable',
-    totalSignals: 0,
-    yesterdayTotalSignals: 0,
-    totalVolume: 0,
-    yesterdayTotalVolume: 0,
-    totalProfitLoss: null,
-    yesterdayTotalProfitLoss: null,
-    bestTradeProfit: 0,
-    yesterdayBestTradeProfit: 0,
-    worstTradeProfit: 0,
-    yesterdayWorstTradeProfit: 0,
-    todayProfit: 0,
-    yesterdayProfit: 0,
-    mostProfitableChannel: '—',
-    yesterdayMostProfitableChannel: '—',
-    mostTradedAsset: '—',
-    yesterdayMostTradedAsset: '—',
-  })
-  const [copierLogs, setCopierLogs] = useState<Signal[]>([])
-  const [copierLogSymbols, setCopierLogSymbols] = useState<Record<string, string>>({})
-  const [channelDisplayNames, setChannelDisplayNames] = useState<Record<string, string>>({})
-  const [aiExpertLogs, setAiExpertLogs] = useState<AiExpertLogRow[]>([])
-  const [linkedAccounts, setLinkedAccounts] = useState<BrokerAccount[]>([])
-  const [linkedAccountBalances, setLinkedAccountBalances] = useState<Record<string, { balance?: number; equity?: number; currency?: string; broker?: string; mt_server_hint?: string; account_type?: 'Live' | 'Demo'; open_pnl?: number; open_trades?: number }>>({})
-  const [chartTrades, setChartTrades] = useState<DashboardChartTrade[]>([])
+  const bootCache = useMemo(() => readBootstrapDashboardCache(), [])
+  const [stats, setStats] = useState<DashboardStats>(() => bootCache?.stats ?? DEFAULT_DASHBOARD_STATS)
+  const [copierLogs, setCopierLogs] = useState<Signal[]>(() => bootCache?.copierLogs ?? [])
+  const [copierLogSymbols, setCopierLogSymbols] = useState<Record<string, string>>(
+    () => bootCache?.copierLogSymbols ?? {},
+  )
+  const [channelDisplayNames, setChannelDisplayNames] = useState<Record<string, string>>(
+    () => bootCache?.channelDisplayNames ?? {},
+  )
+  const [aiExpertLogs, setAiExpertLogs] = useState<AiExpertLogRow[]>(() => bootCache?.aiExpertLogs ?? [])
+  const [linkedAccounts, setLinkedAccounts] = useState<BrokerAccount[]>(() => bootCache?.linkedAccounts ?? [])
+  const [linkedAccountBalances, setLinkedAccountBalances] = useState<Record<string, BrokerBalanceSnapshot>>(
+    () => bootCache?.linkedAccountBalances ?? {},
+  )
+  const [chartTrades, setChartTrades] = useState<DashboardChartTrade[]>(() => bootCache?.chartTrades ?? [])
   const [showPlatformModal, setShowPlatformModal] = useState(false)
   const [togglingBrokerId, setTogglingBrokerId] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
   /** Background MT/broker poll — DB changes use Supabase Realtime instead. */
   const MT_LIVE_REFRESH_MS = 45_000
   const BROKER_SUMMARY_REFRESH_MS = 30_000
   const MT_TRADES_REFRESH_MS = 30_000
-  const DASHBOARD_CACHE_PREFIX = 'dashboard_cache_v7'
   const lastBrokerRefreshRef = useRef<number>(0)
   const lastMtTradesRefreshRef = useRef<number>(0)
-  /** Ignore stale responses when a newer loadDashboard run started. */
+  /** Ignore stale responses when a newer *fresh* loadDashboard run started. */
   const loadGenerationRef = useRef(0)
+  const dashboardReadyRef = useRef(Boolean(bootCache?.stats))
+  const linkedBalancesRef = useRef<Record<string, BrokerBalanceSnapshot>>(bootCache?.linkedAccountBalances ?? {})
   const refreshQuietRef = useRef<() => void>(() => {})
   /** Last successful MT trades response, kept across renders so stats survive throttled refresh windows. */
-  const mtTradesRef = useRef<MtTrade[] | null>(null)
+  const mtTradesRef = useRef<MtTrade[] | null>(bootCache?.mtTrades ?? null)
   /**
    * Last known MT live values per broker id, kept across `loadDashboard` calls so
    * the auto-refresh tick (15s) doesn't bounce stats back to DB defaults while
@@ -214,6 +361,34 @@ export function DashboardPage() {
    * Active Trades stat fluctuates 0/1 between ticks.
    */
   const liveBrokerStateRef = useRef<Record<string, { open_pnl?: number; open_trades?: number }>>({})
+  if (bootCache?.linkedAccountBalances && Object.keys(liveBrokerStateRef.current).length === 0) {
+    seedLiveBrokerStateFromBalances(bootCache.linkedAccountBalances, liveBrokerStateRef.current)
+  }
+  const hydratedUserRef = useRef<string | null>(bootCache ? sessionStorage.getItem(DASHBOARD_ACTIVE_USER_KEY) : null)
+  const statsRef = useRef(stats)
+  useEffect(() => {
+    statsRef.current = stats
+  }, [stats])
+
+  if (user?.id && hydratedUserRef.current !== user.id) {
+    hydratedUserRef.current = user.id
+    const cached = readDashboardCache(user.id)
+    if (cached?.stats) {
+      setStats(cached.stats)
+      setCopierLogs(cached.copierLogs ?? [])
+      setCopierLogSymbols(cached.copierLogSymbols ?? {})
+      setChannelDisplayNames(cached.channelDisplayNames ?? {})
+      setLinkedAccounts(cached.linkedAccounts ?? [])
+      const balances = cached.linkedAccountBalances ?? {}
+      linkedBalancesRef.current = balances
+      setLinkedAccountBalances(balances)
+      if (cached.chartTrades?.length) setChartTrades(cached.chartTrades)
+      if (cached.aiExpertLogs?.length) setAiExpertLogs(cached.aiExpertLogs)
+      if (cached.mtTrades?.length) mtTradesRef.current = cached.mtTrades
+      seedLiveBrokerStateFromBalances(balances, liveBrokerStateRef.current)
+    }
+    dashboardReadyRef.current = Boolean(cached?.stats)
+  }
   const formatMoney = (value: number | null | undefined) =>
     `$${(Number.isFinite(value as number) ? Number(value) : 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   const tradeVolume7Day = useMemo(
@@ -243,8 +418,8 @@ export function DashboardPage() {
 
   const loadDashboard = async (opts: { fresh?: boolean; syncLive?: boolean } = {}) => {
     const { fresh = false, syncLive = fresh } = opts
-    const generation = ++loadGenerationRef.current
-    if (fresh) setLoading(true)
+    const generation = fresh ? ++loadGenerationRef.current : loadGenerationRef.current
+    try {
     const now = new Date()
     const todayStart = new Date(now)
     todayStart.setHours(0, 0, 0, 0)
@@ -296,7 +471,8 @@ export function DashboardPage() {
     // Prefer live MT trades when we have a cached snapshot; otherwise use the
     // local `trades` table. The live snapshot is refreshed in the background.
     const mtTrades = mtTradesRef.current
-    const useMtTrades = syncLive && Array.isArray(mtTrades) && mtTrades.length > 0
+    const hasMtCache = Array.isArray(mtTrades) && mtTrades.length > 0
+    const useMtTrades = hasMtCache
     type WindowedTrade = {
       symbol: string
       profit: number | null
@@ -464,31 +640,36 @@ export function DashboardPage() {
           },
         ]
       }),
-    ) as Record<string, { balance?: number; equity?: number; currency?: string; broker?: string; mt_server_hint?: string; account_type?: 'Live' | 'Demo'; open_pnl?: number; open_trades?: number }>
+    ) as Record<string, BrokerBalanceSnapshot>
+    const mergedBalances = mergeBrokerBalances(
+      balanceMap,
+      linkedBalancesRef.current,
+      liveBrokerStateRef.current,
+    )
     /** Lifetime-style total vs baseline balance at link (sum of equity − baseline per account). */
     const yesterdayTotalProfitLoss: number | null = null
     const totalProfitLoss = aggregateTotalProfitFromBaselines(brokerAccounts, (account) => {
-      const m = balanceMap[account.id]
+      const m = mergedBalances[account.id]
       return Number(m?.equity ?? m?.balance ?? account.last_equity ?? account.last_balance ?? Number.NaN)
     })
     const totalPortfolioValue = brokerAccounts.reduce((sum, account) => {
-      const acct = balanceMap[account.id]
+      const acct = mergedBalances[account.id]
       return sum + (acct?.balance ?? 0)
     }, 0)
     const totalEquityValue = brokerAccounts.reduce((sum, account) => {
-      const acct = balanceMap[account.id]
+      const acct = mergedBalances[account.id]
       return sum + (acct?.equity ?? acct?.balance ?? 0)
     }, 0)
     const totalLiveOpenPnl = brokerAccounts.reduce((sum, account) => {
-      const acct = balanceMap[account.id]
+      const acct = mergedBalances[account.id]
       return sum + (acct?.open_pnl ?? 0)
     }, 0)
     const totalLiveOpenTradesFromSummary = brokerAccounts.reduce((sum, account) => {
-      const acct = balanceMap[account.id]
+      const acct = mergedBalances[account.id]
       return sum + (acct?.open_trades ?? 0)
     }, 0)
-    const hasAnyBrokerOpenPnl = brokerAccounts.some(account => balanceMap[account.id]?.open_pnl != null)
-    const hasAnyBrokerOpenTradesFromSummary = brokerAccounts.some(account => balanceMap[account.id]?.open_trades != null)
+    const hasAnyBrokerOpenPnl = brokerAccounts.some(account => mergedBalances[account.id]?.open_pnl != null)
+    const hasAnyBrokerOpenTradesFromSummary = brokerAccounts.some(account => mergedBalances[account.id]?.open_trades != null)
 
     const resolvedOpenTradesCount =
       hasAnyBrokerOpenTradesFromSummary ? totalLiveOpenTradesFromSummary : openTrades.length
@@ -526,43 +707,73 @@ export function DashboardPage() {
       mostTradedAsset,
       yesterdayMostTradedAsset,
     }
-    if (generation !== loadGenerationRef.current) return
+    if (fresh && generation !== loadGenerationRef.current) return
 
-    setStats(nextStats)
+    const aiLogs = dedupePipelineParseAttempts((aiLogsRes.data ?? []) as AiExpertLogRow[])
+    const chartFromDb = resolveDashboardChartTrades(hasMtCache ? mtTradesRef.current : null, allTrades)
+
+    const mergedAfterDb = mergeDashboardStats(statsRef.current, nextStats, useMtTrades)
+    statsRef.current = mergedAfterDb
+    setStats(mergedAfterDb)
     setCopierLogs(logs)
     setCopierLogSymbols(logSymbols)
     setChannelDisplayNames(channelNames)
     setLinkedAccounts(brokerAccounts)
-    setLinkedAccountBalances(balanceMap)
-    setAiExpertLogs(dedupePipelineParseAttempts((aiLogsRes.data ?? []) as AiExpertLogRow[]))
-    if (user) {
-      const cacheKey = `${DASHBOARD_CACHE_PREFIX}:${user.id}`
-      sessionStorage.setItem(cacheKey, JSON.stringify({
-        stats: nextStats,
+    linkedBalancesRef.current = mergedBalances
+    setLinkedAccountBalances(mergedBalances)
+    setAiExpertLogs(aiLogs)
+    setChartTrades(prev => {
+      const next = preferChartTrades(prev, chartFromDb)
+      return next
+    })
+
+    if (syncLive) {
+      await Promise.allSettled([
+        refreshBrokerSummaries(brokerAccounts, mergedBalances, { force: true }),
+        refreshMtTrades(brokerAccounts, { force: true }),
+      ])
+      if (fresh && generation !== loadGenerationRef.current) return
+      const chartFromMt = resolveDashboardChartTrades(mtTradesRef.current, allTrades)
+      const mergedAfterMt = mergeDashboardStats(statsRef.current, nextStats, true)
+      statsRef.current = mergedAfterMt
+      setStats(mergedAfterMt)
+      setChartTrades(prev => preferChartTrades(prev, chartFromMt))
+      if (user) {
+        writeDashboardCache(user.id, {
+          stats: mergedAfterMt,
+          copierLogs: logs,
+          copierLogSymbols: logSymbols,
+          channelDisplayNames: channelNames,
+          linkedAccounts: brokerAccounts,
+          linkedAccountBalances: linkedBalancesRef.current,
+          chartTrades: chartFromMt.length > 0 ? chartFromMt : chartFromDb,
+          aiExpertLogs: aiLogs,
+          mtTrades: mtTradesRef.current ?? undefined,
+        })
+      }
+    } else if (user) {
+      writeDashboardCache(user.id, {
+        stats: mergedAfterDb,
         copierLogs: logs,
         copierLogSymbols: logSymbols,
         channelDisplayNames: channelNames,
         linkedAccounts: brokerAccounts,
-        linkedAccountBalances: balanceMap,
-      }))
+        linkedAccountBalances: mergedBalances,
+        chartTrades: chartFromDb,
+        aiExpertLogs: aiLogs,
+        mtTrades: mtTradesRef.current ?? undefined,
+      })
     }
-    setChartTrades(
-      resolveDashboardChartTrades(syncLive ? mtTradesRef.current : null, allTrades),
-    )
-
-    if (syncLive) {
-      await Promise.allSettled([
-        refreshBrokerSummaries(brokerAccounts, balanceMap, { force: true }),
-        refreshMtTrades(brokerAccounts, { force: true }),
-      ])
-      if (generation !== loadGenerationRef.current) return
-      setChartTrades(resolveDashboardChartTrades(mtTradesRef.current, allTrades))
+    if (fresh && generation !== loadGenerationRef.current) return
+    } finally {
+      if (fresh && generation === loadGenerationRef.current) {
+        dashboardReadyRef.current = true
+      }
     }
-    if (generation !== loadGenerationRef.current) return
-    if (fresh) setLoading(false)
   }
 
   refreshQuietRef.current = () => {
+    if (!dashboardReadyRef.current) return
     void loadDashboard({ fresh: false, syncLive: false })
   }
 
@@ -570,26 +781,6 @@ export function DashboardPage() {
 
   useEffect(() => {
     if (!user) return
-    const cacheKey = `${DASHBOARD_CACHE_PREFIX}:${user.id}`
-    const cached = sessionStorage.getItem(cacheKey)
-    if (cached) {
-      try {
-        const parsed = JSON.parse(cached) as {
-          linkedAccountBalances?: Record<string, { balance?: number; equity?: number; currency?: string; broker?: string; mt_server_hint?: string; account_type?: 'Live' | 'Demo'; open_pnl?: number; open_trades?: number }>
-        }
-        if (parsed.linkedAccountBalances) {
-          for (const [id, v] of Object.entries(parsed.linkedAccountBalances)) {
-            if (!v) continue
-            liveBrokerStateRef.current[id] = {
-              open_pnl: typeof v.open_pnl === 'number' ? v.open_pnl : liveBrokerStateRef.current[id]?.open_pnl,
-              open_trades: typeof v.open_trades === 'number' ? v.open_trades : liveBrokerStateRef.current[id]?.open_trades,
-            }
-          }
-        }
-      } catch {
-        // Ignore malformed cache and do a normal load below.
-      }
-    }
     void loadDashboard({ fresh: true, syncLive: true })
   }, [user])
 
@@ -652,7 +843,8 @@ export function DashboardPage() {
       return
     }
     mtTradesRef.current = trades
-    setChartTrades(resolveDashboardChartTrades(trades, []))
+    const chartNext = resolveDashboardChartTrades(trades, [])
+    setChartTrades(prev => preferChartTrades(prev, chartNext))
     if (trades.length === 0) return
 
     const today0 = new Date()
@@ -689,8 +881,8 @@ export function DashboardPage() {
     }
 
     const closedOutcomes = countClosedTradeOutcomes(trades)
-    setStats(prev => ({
-      ...prev,
+    const mtStatsPatch: DashboardStats = {
+      ...statsRef.current,
       tradesTaken: closedOutcomes.taken,
       tradesWon: closedOutcomes.won,
       tradesLost: closedOutcomes.lost,
@@ -704,7 +896,22 @@ export function DashboardPage() {
       yesterdayProfit: closedYesterday.reduce((sum, t) => sum + (t.profit ?? 0), 0),
       mostTradedAsset: topSymbol(today),
       yesterdayMostTradedAsset: topSymbol(yesterday),
-    }))
+    }
+    statsRef.current = mtStatsPatch
+    setStats(mtStatsPatch)
+    if (user) {
+      writeDashboardCache(user.id, {
+        stats: mtStatsPatch,
+        copierLogs,
+        copierLogSymbols,
+        channelDisplayNames,
+        linkedAccounts,
+        linkedAccountBalances: linkedBalancesRef.current,
+        chartTrades: chartNext.length > 0 ? chartNext : chartTrades,
+        aiExpertLogs,
+        mtTrades: trades,
+      })
+    }
   }
 
   /**
@@ -782,6 +989,7 @@ export function DashboardPage() {
         open_trades: typeof liveOpenTrades === 'number' ? liveOpenTrades : liveBrokerStateRef.current[r.id]?.open_trades,
       }
     }
+    linkedBalancesRef.current = nextBalances
     setLinkedAccountBalances(nextBalances)
 
     const sawOpenPosCount = successes.some(r => typeof r.open_positions === 'number')
@@ -828,7 +1036,7 @@ export function DashboardPage() {
           live?.equity ?? live?.balance ?? account.last_equity ?? account.last_balance ?? Number.NaN,
         )
       })
-      return {
+      const next = {
         ...prev,
         portfolioValue,
         totalEquity,
@@ -836,6 +1044,8 @@ export function DashboardPage() {
         totalProfitLoss,
         ...(sawOpenPosCount ? { openPositions: mtOpenTotal, openTrades: mtOpenTotal } : {}),
       }
+      statsRef.current = next
+      return next
     })
 
     // Persist the freshly-fetched values back to the broker row state so the
@@ -895,6 +1105,8 @@ export function DashboardPage() {
     }
   }
 
+  const chartsEmpty = chartTrades.length === 0 && linkedAccounts.length === 0
+
   return (
     <div className="px-4 py-4 sm:px-6 sm:py-6 lg:p-8 max-w-[1600px] mx-auto">
       {/* Page header */}
@@ -908,32 +1120,28 @@ export function DashboardPage() {
         <div className="grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 lg:divide-x divide-neutral-100 dark:divide-neutral-800">
           <StatBlock
             label="Total Balance"
-            value={loading ? '—' : `$${stats.totalEquity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-            sub={loading ? '' : `Across ${stats.accounts} connected account${stats.accounts === 1 ? '' : 's'}`}
+            value={`$${stats.totalEquity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            sub={`Across ${stats.accounts} connected account${stats.accounts === 1 ? '' : 's'}`}
             subColor="text-neutral-400"
           />
           <StatBlock
             label="Today's Profit"
-            value={loading ? '—' : formatMoney(stats.todayProfit)}
-            sub={loading ? '' : formatVsYesterdayMoney(stats.todayProfit, stats.yesterdayProfit)}
+            value={formatMoney(stats.todayProfit)}
+            sub={formatVsYesterdayMoney(stats.todayProfit, stats.yesterdayProfit)}
             valueColor={
-              loading
-                ? 'text-neutral-900 dark:text-neutral-50'
-                : stats.todayProfit > 0
-                  ? 'text-teal-600'
-                  : stats.todayProfit < 0
-                    ? 'text-error-600'
-                    : 'text-neutral-900 dark:text-neutral-50'
+              stats.todayProfit > 0
+                ? 'text-teal-600'
+                : stats.todayProfit < 0
+                  ? 'text-error-600'
+                  : 'text-neutral-900 dark:text-neutral-50'
             }
             subColor={stats.todayProfit >= 0 ? 'text-neutral-400' : 'text-error-500'}
           />
           <StatBlock
             label="Trades Taken"
-            value={loading ? '—' : String(stats.tradesTaken)}
+            value={String(stats.tradesTaken)}
             sub={
-              loading ? (
-                ''
-              ) : stats.tradesTaken === 0 ? (
+              stats.tradesTaken === 0 ? (
                 'No closed trades yet'
               ) : (
                 <span className="inline-flex flex-wrap items-center gap-x-1 gap-y-0.5">
@@ -955,16 +1163,14 @@ export function DashboardPage() {
           />
           <StatBlock
             label="Open PnL"
-            value={loading ? '—' : `$${stats.openPnl.toFixed(2)}`}
-            sub={loading ? '' : `${stats.openPositions} open positions`}
+            value={`$${stats.openPnl.toFixed(2)}`}
+            sub={`${stats.openPositions} open positions`}
             valueColor={
-              loading
-                ? 'text-neutral-900 dark:text-neutral-50'
-                : stats.openPnl > 0
-                  ? 'text-teal-600'
-                  : stats.openPnl < 0
-                    ? 'text-error-600'
-                    : 'text-neutral-900 dark:text-neutral-50'
+              stats.openPnl > 0
+                ? 'text-teal-600'
+                : stats.openPnl < 0
+                  ? 'text-error-600'
+                  : 'text-neutral-900 dark:text-neutral-50'
             }
             subColor={stats.openPnl >= 0 ? 'text-neutral-400' : 'text-error-500'}
           />
@@ -972,37 +1178,37 @@ export function DashboardPage() {
         <div className="border-t border-neutral-100 dark:border-neutral-800 p-4 sm:p-5 grid grid-cols-2 lg:grid-cols-4 gap-4">
           <OverviewStat
             label="Active Signal Channels"
-            value={loading ? '—' : String(stats.activeChannels)}
-            sub={loading ? '' : 'Connected Telegram channels'}
+            value={String(stats.activeChannels)}
+            sub="Connected Telegram channels"
             addTo="/copier-engine"
             addLabel="Manage channels"
           />
           <OverviewStat
             label="Open Trades"
-            value={loading ? '—' : String(stats.openTrades)}
-            sub={loading ? '' : 'Active broker positions'}
+            value={String(stats.openTrades)}
+            sub="Active broker positions"
           />
           <OverviewStat
             label="Trading Accounts Connected"
-            value={loading ? '—' : String(stats.accounts)}
-            sub={loading ? '' : 'Active linked accounts'}
+            value={String(stats.accounts)}
+            sub="Active linked accounts"
             addTo="/account-configuration"
             addLabel="Add or manage accounts"
           />
           <OverviewStat
             label="Trades Copied Today"
-            value={loading ? '—' : String(stats.tradesCopiedToday)}
-            sub={loading ? '' : 'Executed from channel signals'}
+            value={String(stats.tradesCopiedToday)}
+            sub="Executed from channel signals"
           />
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <TradeVolumeChart data={tradeVolume7Day} loading={loading} />
+        <TradeVolumeChart data={tradeVolume7Day} loading={chartsEmpty} />
         <AccountGrowthChart
           data={accountGrowth.data}
           series={accountGrowth.series}
-          loading={loading}
+          loading={chartsEmpty}
         />
       </div>
 
@@ -1027,7 +1233,7 @@ export function DashboardPage() {
             </button>
           </div>
 
-          {loading ? (
+          {aiExpertLogs.length === 0 && chartsEmpty ? (
             <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
               {[...Array(5)].map((_, i) => (
                 <div key={i} className="px-5 py-3">
@@ -1076,7 +1282,7 @@ export function DashboardPage() {
             <span className="text-right">Time</span>
           </div>
 
-          {loading ? (
+          {copierLogs.length === 0 && chartsEmpty ? (
             <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
               {[...Array(4)].map((_, i) => (
                 <div key={i} className={`${DASHBOARD_COPIER_LOG_GRID} px-5 py-3`}>
@@ -1149,7 +1355,7 @@ export function DashboardPage() {
           <span className="text-right">Status</span>
         </div>
 
-        {loading ? (
+        {linkedAccounts.length === 0 && chartsEmpty ? (
           <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
             {[...Array(3)].map((_, i) => (
               <div key={i} className="hidden lg:flex px-4 sm:px-5 py-3 gap-4">

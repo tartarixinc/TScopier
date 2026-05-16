@@ -1,3 +1,4 @@
+import clsx from 'clsx'
 import {
   Bar,
   BarChart,
@@ -15,13 +16,15 @@ import { chartThemeColors, chartTooltipProps } from '../../lib/chartTheme'
 interface TradeVolumeChartProps {
   data: TradeVolumeDay[]
   loading?: boolean
+  /** Dim cached chart while a background refresh is in flight. */
+  stale?: boolean
 }
 
 function formatMoney(v: number): string {
   return `$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
 }
 
-export function TradeVolumeChart({ data, loading }: TradeVolumeChartProps) {
+export function TradeVolumeChart({ data, loading, stale }: TradeVolumeChartProps) {
   const { theme } = useTheme()
   const colors = chartThemeColors(theme)
 
@@ -40,7 +43,7 @@ export function TradeVolumeChart({ data, loading }: TradeVolumeChartProps) {
           No closed trades in the last 7 days
         </div>
       ) : (
-        <div className="h-64 w-full">
+        <div className={clsx('h-64 w-full', stale && 'opacity-60 transition-opacity duration-300')}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} vertical={false} />

@@ -1,3 +1,4 @@
+import clsx from 'clsx'
 import {
   CartesianGrid,
   Legend,
@@ -16,6 +17,7 @@ interface AccountGrowthChartProps {
   data: Array<Record<string, string | number>>
   series: AccountGrowthSeries[]
   loading?: boolean
+  stale?: boolean
 }
 
 function formatMoney(v: number): string {
@@ -37,7 +39,7 @@ function formatAxisMoney(v: number): string {
   return `${sign}$${Math.round(n)}`
 }
 
-export function AccountGrowthChart({ data, series, loading }: AccountGrowthChartProps) {
+export function AccountGrowthChart({ data, series, loading, stale }: AccountGrowthChartProps) {
   const { theme } = useTheme()
   const colors = chartThemeColors(theme)
   const dataKeyFor = (s: AccountGrowthSeries) => `acc_${s.id.replace(/-/g, '')}`
@@ -57,7 +59,7 @@ export function AccountGrowthChart({ data, series, loading }: AccountGrowthChart
           Connect a broker account with a performance baseline to see growth over time
         </div>
       ) : (
-        <div className="h-64 w-full">
+        <div className={clsx('h-64 w-full', stale && 'opacity-60 transition-opacity duration-300')}>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={data} margin={{ top: 8, right: 8, left: 2, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} vertical={false} />
