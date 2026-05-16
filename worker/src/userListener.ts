@@ -416,6 +416,41 @@ export class UserListener {
     return { imported: messages.length, messages }
   }
 
+  /**
+   * Fetch Telegram messages in [fromIso, toIso], store as signals (with channel_id),
+   * and trigger parse-signal for each new row.
+   */
+  async importBacktestChannelHistory(
+    channelRowId: string,
+    fromIso: string,
+    toIso: string,
+  ): Promise<{ imported: number; messages_scanned: number }> {
+    const fromMs = new Date(fromIso).getTime()
+    const toMs = new Date(toIso.includes('T') ? toIso : `${toIso}T23:59:59.999Z`).getTime()
+    if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || toMs < fromMs) {
+      throw new Error('Invalid backtest date range')
+    }
+
+    const { data: row, error } = await this.supabase
+      .from('telegram_channels')
+      .select('id, channel_id, channel_username, last_seen_message_id')
+      .eq('user_id', this.userId)
+      .eq('id', channelRowId)
+      .eq('is_active', true)
+      .maybeSingle()
+    if (error) throw new Error(error.message)
+    if (!row) throw new Error('Channel not found')
+
+    const collected = await this.fetchMessagesBetween(row as ChannelRow, fromMs, toMs)
+    let imported = 0
+    for (const m of collected) {
+      const ok = await this.logSignal(row as ChannelRow, m)
+      if (ok) imported++
+    }
+
+    return { imported, messages_scanned: collected.length }
+  }
+
   // ── live message handling ─────────────────────────────────────────────
 
   private async handleMessage(event: NewMessageEvent) {
@@ -809,6 +844,74 @@ export class UserListener {
       if (mid <= minId) continue
       await this.logSignal(row, m)
     }
+  }
+
+  private messageEpochSec(m: MessageLike & { date?: number | Date | string }): number {
+    const dateRaw = m.date
+    if (typeof dateRaw === 'number') return dateRaw
+    if (dateRaw instanceof Date) return Math.floor(dateRaw.getTime() / 1000)
+    if (typeof dateRaw === 'string') {
+      const t = Date.parse(dateRaw)
+      return Number.isFinite(t) ? Math.floor(t / 1000) : 0
+    }
+    return 0
+  }
+
+  private async fetchMessagesBetween(
+    row: ChannelRow,
+    fromMs: number,
+    toMs: number,
+  ): Promise<MessageLike[]> {
+    const fromSec = Math.floor(fromMs / 1000)
+    const toSec = Math.floor(toMs / 1000)
+
+    let peer: unknown
+    try {
+      peer = await this.client.getInputEntity(row.channel_username || row.channel_id)
+    } catch {
+      throw new Error('Failed to resolve Telegram channel entity')
+    }
+
+    const collected: MessageLike[] = []
+    let offsetId = 0
+    const batchSize = 100
+
+    while (collected.length < BACKFILL_PER_CHANNEL_CAP) {
+      let batch: Array<MessageLike & { id: number | bigint; date?: number | Date | string }>
+      try {
+        batch = (await this.client.getMessages(peer as never, {
+          limit: batchSize,
+          offsetId,
+        })) as unknown as Array<MessageLike & { id: number | bigint; date?: number | Date | string }>
+      } catch {
+        break
+      }
+      if (!batch.length) break
+
+      let reachedOlderThanRange = false
+      for (const m of batch) {
+        const msgEpochSec = this.messageEpochSec(m)
+        if (msgEpochSec && msgEpochSec < fromSec) {
+          reachedOlderThanRange = true
+          continue
+        }
+        if (msgEpochSec && msgEpochSec > toSec) {
+          continue
+        }
+        const raw = String(m.text ?? m.message ?? '').trim()
+        if (!raw) continue
+        const isReply = !!m.replyTo
+        if (!looksLikeTradingSignal(raw, isReply)) continue
+        collected.push(m)
+      }
+
+      offsetId = Number(batch[batch.length - 1].id)
+      if (batch.length < batchSize || reachedOlderThanRange) break
+      await new Promise(r => setTimeout(r, CATCHUP_BACKPRESSURE_MS))
+    }
+
+    collected.sort((a, b) => Number(a.id) - Number(b.id))
+    return collected
   }
 
   private async backfillChannelFromDate(row: ChannelRow, days: number): Promise<string[]> {

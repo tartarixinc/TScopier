@@ -12,7 +12,7 @@ import {
 import clsx from 'clsx'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
-import { backtestApi } from '../../lib/backtestApi'
+import { backtestApi, type BacktestPreviewResult } from '../../lib/backtestApi'
 import type {
   BacktestRunConfig,
   BacktestRunRow,
@@ -96,6 +96,8 @@ export function Backtest() {
   const [loading, setLoading] = useState(true)
   const [running, setRunning] = useState(false)
   const [error, setError] = useState('')
+  const [preview, setPreview] = useState<BacktestPreviewResult | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
 
   const activeRun = useMemo(
     () => runs.find(r => r.id === activeRunId) ?? null,
@@ -170,6 +172,22 @@ export function Backtest() {
     const t = window.setInterval(() => { void loadRunDetail(run.id) }, 3000)
     return () => clearInterval(t)
   }, [activeRun, loadRunDetail])
+
+  useEffect(() => {
+    if (config.channelIds.length === 0) {
+      setPreview(null)
+      return
+    }
+    const t = window.setTimeout(() => {
+      setPreviewLoading(true)
+      backtestApi
+        .preview(config)
+        .then(setPreview)
+        .catch(() => setPreview(null))
+        .finally(() => setPreviewLoading(false))
+    }, 400)
+    return () => clearTimeout(t)
+  }, [config.channelIds, config.dateFrom, config.dateTo])
 
   const toggleChannel = (id: string) => {
     setConfig(prev => ({
@@ -406,6 +424,40 @@ export function Backtest() {
                 </label>
               )}
             </div>
+
+            {config.channelIds.length > 0 ? (
+              <div className="rounded-xl border border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/40 px-3 py-2.5 text-xs space-y-1">
+                {previewLoading ? (
+                  <p className="text-neutral-400">Checking signal history…</p>
+                ) : preview ? (
+                  <>
+                    <p className="font-medium text-neutral-700 dark:text-neutral-200">
+                      {preview.tradeable_count} tradeable buy/sell signal{preview.tradeable_count === 1 ? '' : 's'} in range
+                    </p>
+                    <p className="text-neutral-500">
+                      {preview.parsed_count} parsed · {preview.pending_count} pending parse
+                      {preview.synced_rows > 0 ? ` · synced ${preview.synced_rows}` : ''}
+                    </p>
+                    {!preview.massive_configured ? (
+                      <p className="text-amber-600 dark:text-amber-400">
+                        MASSIVE_API_KEY is not set on the server — market data will not load.
+                      </p>
+                    ) : null}
+                    {preview.tradeable_count === 0 ? (
+                      <p className="text-neutral-500">
+                        Running a backtest imports Telegram history for your date range (worker must be online).
+                        Ensure Telegram is connected, channels are active, and messages parse as buy/sell with entry and SL or TP.
+                      </p>
+                    ) : null}
+                    {preview.migration_hint ? (
+                      <p className="text-amber-600">{preview.migration_hint}</p>
+                    ) : null}
+                  </>
+                ) : (
+                  <p className="text-neutral-400">Could not load signal preview</p>
+                )}
+              </div>
+            ) : null}
 
             <Button
               className="w-full"

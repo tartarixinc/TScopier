@@ -12,6 +12,8 @@ interface Body {
   password?: string
   channel_row_id?: string
   days?: number
+  from?: string
+  to?: string
   // legacy fields ignored — the worker holds state across calls now
   phone_code_hash?: string
   session_string?: string
@@ -27,6 +29,7 @@ interface Body {
  *  POST /auth/verify_code   { user_id, phone, code, password? }
  *  POST /auth/list_channels { user_id }
  *  POST /auth/backfill_channel_history { user_id, channel_row_id, days? }
+ *  POST /auth/import_backtest_history { user_id, channel_row_id, from, to }
  */
 export function startHttpServer(
   authService: AuthService,
@@ -103,6 +106,24 @@ export function startHttpServer(
           return sendJson(res, 200, result)
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : 'Failed to backfill channel history'
+          return sendJson(res, 400, { error: msg })
+        }
+      }
+
+      if (url === '/auth/import_backtest_history') {
+        if (!body.user_id || !body.channel_row_id || !body.from || !body.to) {
+          return sendJson(res, 400, { error: 'user_id, channel_row_id, from, and to are required' })
+        }
+        try {
+          const result = await sessionManager.importBacktestChannelHistory(
+            body.user_id,
+            body.channel_row_id,
+            body.from,
+            body.to,
+          )
+          return sendJson(res, 200, result)
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : 'Failed to import backtest history'
           return sendJson(res, 400, { error: msg })
         }
       }

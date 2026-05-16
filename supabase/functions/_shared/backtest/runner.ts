@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2"
 import { MassiveClient } from "../massiveApi.ts"
-import { parseSignalRow } from "./parseSignal.ts"
+import { loadBacktestSignals } from "./loadSignals.ts"
 import { runPortfolioSimulation } from "./portfolio.ts"
 import { barsToMidPoints, quotesToMidPoints, simulateTradeOnSeries } from "./simulator.ts"
 import { mapSymbolToMassive, timeframeToAgg } from "./symbolMap.ts"
@@ -50,23 +50,56 @@ export async function executeBacktestRun(
     }
   }
 
-  const { data: signalRows, error: sigErr } = await supabase
-    .from("signals")
-    .select("id, channel_id, created_at, parsed_data, status")
-    .eq("user_id", userId)
-    .in("channel_id", channelIds.length ? channelIds : ["00000000-0000-0000-0000-000000000000"])
-    .gte("created_at", fromIso)
-    .lte("created_at", toIso)
-    .in("status", ["parsed", "executed"])
-    .order("created_at", { ascending: true })
+  const loaded = await loadBacktestSignals(
+    supabase,
+    userId,
+    channelIds,
+    fromIso,
+    toIso,
+    channelNames,
+  )
+  const signals = loaded.signals
 
-  if (sigErr) throw new Error(sigErr.message)
+  if (signals.length === 0) {
+    const hint = loaded.rawParsedCount > 0
+      ? `${loaded.rawParsedCount} parsed signal(s) lack entry/SL/TP for backtest`
+      : "No parsed buy/sell signals in date range — ensure channels are monitored and parse-signal has run"
+    await updateProgress(100, hint)
+    await supabase.from("backtest_runs").update({
+      status: "completed",
+      progress_pct: 100,
+      progress_message: hint,
+      summary: {
+        totalSignals: 0,
+        tradedSignals: 0,
+        skippedSignals: 0,
+        wins: 0,
+        losses: 0,
+        breakevenExits: 0,
+        tp1BeforeBe: 0,
+        tp1BeforeSl: 0,
+        allTpHits: 0,
+        finalEquity: config.initialBalance,
+        netPnl: 0,
+        returnPct: 0,
+        maxDrawdownPct: 0,
+        profitFactor: null,
+        winRate: 0,
+        byChannel: {},
+        message: hint,
+        signalSource: loaded.source,
+        rawParsedCount: loaded.rawParsedCount,
+      },
+      completed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }).eq("id", runId)
+    return
+  }
 
-  const signals = (signalRows ?? [])
-    .map((row) => parseSignalRow(row, channelNames.get(row.channel_id) ?? "Channel"))
-    .filter((s): s is NonNullable<typeof s> => s != null)
-
-  await updateProgress(10, `Loaded ${signals.length} tradeable signals`)
+  await updateProgress(
+    10,
+    `Loaded ${signals.length} tradeable signal(s) from ${loaded.source}${loaded.refreshedCount != null ? ` (synced ${loaded.refreshedCount})` : ""}`,
+  )
 
   const fromMs = new Date(config.dateFrom).getTime()
   const toMs = new Date(config.dateTo + "T23:59:59.999Z").getTime()
@@ -74,6 +107,9 @@ export async function executeBacktestRun(
 
   const barCache = new Map<BarCacheKey, ReturnType<typeof barsToMidPoints>>()
   const quoteCache = new Map<BarCacheKey, ReturnType<typeof quotesToMidPoints>>()
+
+  const symbolsNeeded = [...new Set(signals.map((s) => s.symbol))]
+  await updateProgress(12, `Fetching market data from Massive for ${symbolsNeeded.length} symbol(s)…`)
 
   const fetchSeries = async (symbol: string) => {
     const key = `${symbol}|${config.timeframe}|${config.executionMode}`
@@ -114,10 +150,13 @@ export async function executeBacktestRun(
   let i = 0
   for (const sig of signals) {
     i++
-    if (i % 5 === 0) {
-      await updateProgress(10 + Math.min(75, (i / Math.max(1, signals.length)) * 65), `Simulating ${i}/${signals.length}…`)
-    }
     const series = await fetchSeries(sig.symbol)
+    if (i === 1 || i % 5 === 0) {
+      await updateProgress(
+        10 + Math.min(75, (i / Math.max(1, signals.length)) * 65),
+        `Massive · ${i}/${signals.length} (${sig.symbol})…`,
+      )
+    }
     const lot = sig.lotSize ?? config.fixedLot
     const sim = simulateTradeOnSeries(sig, series, config.strategy, lot)
     results.push(sim)

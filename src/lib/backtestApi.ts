@@ -43,9 +43,23 @@ async function call<T>(body: Record<string, unknown>): Promise<T> {
   return data as T
 }
 
+export interface BacktestPreviewResult {
+  tradeable_count: number
+  parsed_count: number
+  pending_count: number
+  synced_rows: number
+  massive_configured: boolean
+  signal_source?: string
+  migration_hint: string | null
+}
+
 export const backtestApi = {
   listRuns(): Promise<{ runs: BacktestRunRow[] }> {
     return call({ action: 'list' })
+  },
+
+  preview(config: BacktestRunConfig): Promise<BacktestPreviewResult> {
+    return call({ action: 'preview', config })
   },
 
   createRun(name: string, config: BacktestRunConfig): Promise<{ run_id: string }> {

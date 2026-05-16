@@ -1,5 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
+import { importTelegramHistoryForBacktest } from "../_shared/backtest/importTelegramHistory.ts"
+import { loadBacktestSignals } from "../_shared/backtest/loadSignals.ts"
 import { executeBacktestRun } from "../_shared/backtest/runner.ts"
 import type { BacktestRunConfig } from "../_shared/backtest/types.ts"
 import { MassiveApiError, MassiveClient } from "../_shared/massiveApi.ts"
@@ -59,6 +61,80 @@ Deno.serve(async (req: Request) => {
         .limit(50)
       if (error) return bad(500, error.message)
       return Response.json({ ok: true, runs: data ?? [] }, { headers: corsHeaders })
+    }
+
+    if (action === "preview") {
+      const cfg = { ...DEFAULT_CONFIG, ...(body.config as Partial<BacktestRunConfig> ?? {}) }
+      const channelIds = Array.isArray(cfg.channelIds) ? cfg.channelIds.map(String).filter(Boolean) : []
+      if (channelIds.length === 0) return bad(400, "At least one channel required")
+
+      const fromIso = new Date(cfg.dateFrom).toISOString()
+      const toIso = new Date(cfg.dateTo + "T23:59:59.999Z").toISOString()
+
+      let refreshed = 0
+      const { data: refreshData, error: refreshErr } = await supabase.rpc(
+        "refresh_backtest_channel_signals",
+        {
+          p_user_id: userId,
+          p_channel_ids: channelIds,
+          p_from: fromIso,
+          p_to: toIso,
+        },
+      )
+      if (!refreshErr && typeof refreshData === "number") refreshed = refreshData
+
+      const channelNames = new Map<string, string>()
+      const { data: chMeta } = await supabase
+        .from("telegram_channels")
+        .select("id, display_name")
+        .in("id", channelIds)
+      for (const ch of chMeta ?? []) {
+        channelNames.set(ch.id as string, (ch.display_name as string) || "Channel")
+      }
+
+      const loaded = await loadBacktestSignals(
+        supabase,
+        userId,
+        channelIds,
+        fromIso,
+        toIso,
+        channelNames,
+      )
+
+      const { count: parsedCount } = await supabase
+        .from("signals")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .in("channel_id", channelIds)
+        .gte("created_at", fromIso)
+        .lte("created_at", toIso)
+        .in("status", ["parsed", "executed"])
+
+      const { count: pendingCount } = await supabase
+        .from("signals")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .in("channel_id", channelIds)
+        .gte("created_at", fromIso)
+        .lte("created_at", toIso)
+        .eq("status", "pending")
+
+      const massiveConfigured = Boolean(
+        (Deno.env.get("MASSIVE_API_KEY") ?? Deno.env.get("POLYGON_API_KEY") ?? "").trim(),
+      )
+
+      return Response.json({
+        ok: true,
+        tradeable_count: loaded.signals.length,
+        parsed_count: parsedCount ?? 0,
+        pending_count: pendingCount ?? 0,
+        synced_rows: refreshed,
+        massive_configured: massiveConfigured,
+        signal_source: loaded.source,
+        migration_hint: refreshErr?.message?.includes("refresh_backtest_channel_signals")
+          ? "Apply migrations through 20260516180000_backtest_channel_signals.sql (supabase db push)"
+          : null,
+      }, { headers: corsHeaders })
     }
 
     if (action === "get") {
@@ -121,7 +197,25 @@ Deno.serve(async (req: Request) => {
 
       const massive = MassiveClient.fromEnv(Deno.env)
 
-      const runPromise = executeBacktestRun(supabase, massive, runId, userId, cfg as BacktestRunConfig)
+      const runPromise = (async () => {
+        await supabase.from("backtest_runs").update({
+          progress_pct: 1,
+          progress_message: "Importing Telegram signal history for selected dates…",
+        }).eq("id", runId)
+
+        const imp = await importTelegramHistoryForBacktest(
+          Deno.env,
+          userId,
+          channelIds,
+          cfg.dateFrom,
+          cfg.dateTo,
+        )
+        if (imp.errors.length) {
+          console.warn("[backtest-run] telegram import warnings:", imp.errors.join("; "))
+        }
+
+        await executeBacktestRun(supabase, massive, runId, userId, cfg as BacktestRunConfig)
+      })()
         .catch(async (e) => {
           const msg = e instanceof Error ? e.message : String(e)
           await supabase.from("backtest_runs").update({
