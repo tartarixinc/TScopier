@@ -7,6 +7,7 @@ Backtests replay parsed Telegram signals against historical market data from [Ma
 1. Create a Massive API key and add to **Supabase Edge secrets**:
    - `MASSIVE_API_KEY` (or legacy `POLYGON_API_KEY`)
    - Optional: `MASSIVE_API_BASE_URL` (default `https://api.massive.com`)
+   - Optional: `MASSIVE_CALLS_PER_MINUTE` (default `5`) — spaces API requests to respect your plan quota
 
 2. Apply migrations:
    - `20260516150000_backtest.sql` (runs, simulated trades, equity)
@@ -36,7 +37,12 @@ Backtests replay parsed Telegram signals against historical market data from [Ma
 
    If the UI shows a CORS error on `backtest-run`, the function is usually missing or not deployed to the same project as `VITE_SUPABASE_URL`.
 
-   If **no Massive API calls** appear: the run had **zero tradeable signals** in the date range (check the signal preview on the Backtest page). Massive is only called once there is at least one buy/sell signal with entry + SL or TP.
+   If **no Massive API calls** appear on your Massive dashboard:
+   - Confirm `MASSIVE_API_KEY` is set under **Supabase → Project Settings → Edge Functions → Secrets** (not only in the worker `.env`).
+   - The signal preview checks that the key is set (it does **not** call Massive on every config change, to save your quota).
+   - Use **OHLC bars** execution on free/starter plans (5 calls/min). Tick quotes need a higher limit.
+   - You need at least one **tradeable signal** in `backtest_channel_signals` (buy/sell with entry + SL or TP). Massive is not called when the signal count is zero.
+   - Ensure `WORKER_URL` and `WORKER_INTERNAL_TOKEN` are set on the edge function so Telegram import does not wipe signals without replacing them.
 
 4. Open **Backtest** in the app sidebar (`/backtest`).
 

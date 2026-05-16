@@ -1,12 +1,14 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2"
 import { MassiveClient } from "../massiveApi.ts"
 import { loadBacktestSignals } from "./loadSignals.ts"
+import { preloadMarketData } from "./marketData.ts"
 import { runPortfolioSimulation } from "./portfolio.ts"
-import { barsToMidPoints, quotesToMidPoints, simulateTradeOnSeries } from "./simulator.ts"
-import { mapSymbolToMassive, timeframeToAgg } from "./symbolMap.ts"
+import { simulateTradeOnSeries } from "./simulator.ts"
 import type { BacktestRunConfig, SimulatedTradeResult } from "./types.ts"
 
-type BarCacheKey = string
+export interface BacktestRunContext {
+  importWarnings?: string[]
+}
 
 export async function executeBacktestRun(
   supabase: SupabaseClient,
@@ -14,6 +16,7 @@ export async function executeBacktestRun(
   runId: string,
   userId: string,
   config: BacktestRunConfig,
+  ctx: BacktestRunContext = {},
 ): Promise<void> {
   const updateProgress = async (pct: number, message: string) => {
     await supabase.from("backtest_runs").update({
@@ -57,11 +60,25 @@ export async function executeBacktestRun(
     fromIso,
     toIso,
     channelNames,
+    config.symbols,
   )
   const signals = loaded.signals
 
+  const importWarnings = ctx.importWarnings ?? []
+
+  const symbolFilter = (config.symbols ?? []).map((s) => String(s).trim().toUpperCase()).filter(Boolean)
+
   if (signals.length === 0) {
-    const hint = "No tradeable backtest signals in date range — run import (Telegram connected, worker online)"
+    const parts = [
+      "No tradeable backtest signals in date range.",
+      symbolFilter.length
+        ? `Symbol filter: ${symbolFilter.join(", ")}. Clear symbol selection or run import first.`
+        : "Connect Telegram, ensure the worker is online (WORKER_URL), and run again to import history.",
+    ]
+    if (importWarnings.length) {
+      parts.push(`Import: ${importWarnings.slice(0, 3).join("; ")}`)
+    }
+    const hint = parts.join(" ")
     await updateProgress(100, hint)
     await supabase.from("backtest_runs").update({
       status: "completed",
@@ -87,6 +104,8 @@ export async function executeBacktestRun(
         message: hint,
         signalSource: "backtest_channel_signals",
         rawParsedCount: loaded.rawParsedCount,
+        massiveApiCalls: 0,
+        importWarnings,
       },
       completed_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -96,63 +115,45 @@ export async function executeBacktestRun(
 
   await updateProgress(
     10,
-    `Loaded ${signals.length} tradeable backtest signal(s)`,
+    `Loaded ${signals.length} tradeable signal(s) — fetching Massive market data…`,
   )
 
   const fromMs = new Date(config.dateFrom).getTime()
   const toMs = new Date(config.dateTo + "T23:59:59.999Z").getTime()
-  const { multiplier, timespan } = timeframeToAgg(config.timeframe)
-
-  const barCache = new Map<BarCacheKey, ReturnType<typeof barsToMidPoints>>()
-  const quoteCache = new Map<BarCacheKey, ReturnType<typeof quotesToMidPoints>>()
-
   const symbolsNeeded = [...new Set(signals.map((s) => s.symbol))]
-  await updateProgress(12, `Fetching market data from Massive for ${symbolsNeeded.length} symbol(s)…`)
 
-  const fetchSeries = async (symbol: string) => {
-    const key = `${symbol}|${config.timeframe}|${config.executionMode}`
-    if (config.executionMode === "tick_quotes") {
-      if (quoteCache.has(key)) return quoteCache.get(key)!
-      const mapped = mapSymbolToMassive(symbol)
-      if (!mapped || mapped.assetClass !== "forex") {
-        return barCache.get(key) ?? []
-      }
-      const fromNs = fromMs * 1_000_000
-      const toNs = toMs * 1_000_000
-      try {
-        const quotes = await massive.getForexQuotes(mapped.massiveTicker, fromNs, toNs)
-        const pts = quotesToMidPoints(quotes)
-        quoteCache.set(key, pts)
-        return pts
-      } catch {
-        const bars = await fetchBars(mapped.massiveTicker)
-        const pts = barsToMidPoints(bars)
-        barCache.set(key, pts)
-        return pts
-      }
-    }
-    if (barCache.has(key)) return barCache.get(key)!
-    const mapped = mapSymbolToMassive(symbol)
-    if (!mapped) return []
-    const bars = await fetchBars(mapped.massiveTicker)
-    const pts = barsToMidPoints(bars)
-    barCache.set(key, pts)
-    return pts
-  }
+  const callsPerMinute = massive.callsPerMinute
+  const estMinutes = Math.max(1, Math.ceil(symbolsNeeded.length / Math.max(1, callsPerMinute)))
+  await updateProgress(
+    12,
+    `Massive: ~${symbolsNeeded.length} symbol(s), ${callsPerMinute}/min limit (~${estMinutes} min)…`,
+  )
 
-  const fetchBars = async (ticker: string) => {
-    return massive.getAggregates(ticker, multiplier, timespan, fromMs, toMs, { sort: "asc" })
-  }
+  const { seriesBySymbol, apiCalls, fetchLog } = await preloadMarketData(
+    massive,
+    symbolsNeeded,
+    config,
+    fromMs,
+    toMs,
+    callsPerMinute,
+  )
+
+  console.log("[backtest-run] Massive preload:", { apiCalls, fetchLog })
+
+  await updateProgress(
+    20,
+    `Massive: ${apiCalls} API request(s) · ${symbolsNeeded.length} symbol(s)`,
+  )
 
   const results: SimulatedTradeResult[] = []
   let i = 0
   for (const sig of signals) {
     i++
-    const series = await fetchSeries(sig.symbol)
-    if (i === 1 || i % 5 === 0) {
+    const series = seriesBySymbol.get(sig.symbol) ?? []
+    if (i === 1 || i % 5 === 0 || i === signals.length) {
       await updateProgress(
-        10 + Math.min(75, (i / Math.max(1, signals.length)) * 65),
-        `Massive · ${i}/${signals.length} (${sig.symbol})…`,
+        20 + Math.min(65, (i / Math.max(1, signals.length)) * 65),
+        `Simulating ${i}/${signals.length} (${sig.symbol}, ${series.length} points)…`,
       )
     }
     const lot = sig.lotSize ?? config.fixedLot
@@ -167,6 +168,11 @@ export async function executeBacktestRun(
     channelName: channelNames.get(r.channelId) ?? "Channel",
   }))
   const { equityCurve, summary } = runPortfolioSimulation(config, portfolioInput)
+
+  summary.massiveApiCalls = apiCalls
+  summary.importWarnings = importWarnings.length ? importWarnings : undefined
+  summary.signalSource = "backtest_channel_signals"
+  summary.rawParsedCount = loaded.rawParsedCount
 
   await supabase.from("backtest_trades").delete().eq("run_id", runId)
   await supabase.from("backtest_equity_points").delete().eq("run_id", runId)
@@ -212,10 +218,15 @@ export async function executeBacktestRun(
     }
   }
 
+  const noDataCount = results.filter((r) => r.outcome === "no_data").length
+  const progressMsg = noDataCount > 0
+    ? `Complete · ${noDataCount} signal(s) had no market data (check Massive plan / symbol mapping)`
+    : `Complete · Massive ${apiCalls} request(s)`
+
   await supabase.from("backtest_runs").update({
     status: "completed",
     progress_pct: 100,
-    progress_message: "Complete",
+    progress_message: progressMsg,
     summary,
     completed_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),

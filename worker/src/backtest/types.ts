@@ -13,6 +13,7 @@ export interface BacktestStrategyConfig {
 
 export interface BacktestRunConfig {
   channelIds: string[]
+  symbols: string[]
   dateFrom: string
   dateTo: string
   timeframe: BacktestTimeframe

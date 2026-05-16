@@ -1,10 +1,11 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
 import { importTelegramHistoryForBacktest } from "../_shared/backtest/importTelegramHistory.ts"
-import { loadBacktestSignals } from "../_shared/backtest/loadSignals.ts"
+import { listBacktestSymbolsInRange, loadBacktestSignals } from "../_shared/backtest/loadSignals.ts"
+import { normalizeSymbolFilter } from "../_shared/backtest/symbols.ts"
 import { executeBacktestRun } from "../_shared/backtest/runner.ts"
 import type { BacktestRunConfig } from "../_shared/backtest/types.ts"
-import { MassiveApiError, MassiveClient } from "../_shared/massiveApi.ts"
+import { MassiveApiError, MassiveClient, massiveCallsPerMinuteFromEnv } from "../_shared/massiveApi.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -18,10 +19,11 @@ function bad(status: number, msg: string) {
 
 const DEFAULT_CONFIG: BacktestRunConfig = {
   channelIds: [],
+  symbols: [],
   dateFrom: new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10),
   dateTo: new Date().toISOString().slice(0, 10),
   timeframe: "1m",
-  executionMode: "tick_quotes",
+  executionMode: "minute_bars",
   initialBalance: 10_000,
   currency: "USD",
   sizingMode: "fixed_lot",
@@ -80,6 +82,15 @@ Deno.serve(async (req: Request) => {
         channelNames.set(ch.id as string, (ch.display_name as string) || "Channel")
       }
 
+      const symbolFilter = normalizeSymbolFilter(cfg.symbols)
+      const availableSymbols = await listBacktestSymbolsInRange(
+        supabase,
+        userId,
+        channelIds,
+        fromIso,
+        toIso,
+      )
+
       const loaded = await loadBacktestSignals(
         supabase,
         userId,
@@ -87,6 +98,7 @@ Deno.serve(async (req: Request) => {
         fromIso,
         toIso,
         channelNames,
+        symbolFilter,
       )
 
       const { count: storedCount } = await supabase
@@ -97,15 +109,28 @@ Deno.serve(async (req: Request) => {
         .gte("signal_at", fromIso)
         .lte("signal_at", toIso)
 
-      const massiveConfigured = Boolean(
-        (Deno.env.get("MASSIVE_API_KEY") ?? Deno.env.get("POLYGON_API_KEY") ?? "").trim(),
-      )
+      const massiveKey = (Deno.env.get("MASSIVE_API_KEY") ?? Deno.env.get("POLYGON_API_KEY") ?? "").trim()
+      const massiveConfigured = Boolean(massiveKey)
+
+      const callsPerMinute = massiveCallsPerMinuteFromEnv(Deno.env)
+      // Skip live probe on preview — it burns the 5/min quota on every config change.
+      const runLiveProbe = body.probe_massive === true
+
+      let massiveProbe: { ok: boolean; error?: string; bars?: number } | undefined
+      if (massiveConfigured && runLiveProbe) {
+        const massive = MassiveClient.fromEnv(Deno.env)
+        massiveProbe = await massive.probeConnectivity()
+      }
 
       return Response.json({
         ok: true,
         tradeable_count: loaded.signals.length,
         stored_count: storedCount ?? 0,
+        available_symbols: availableSymbols,
+        symbols_filter: symbolFilter,
         massive_configured: massiveConfigured,
+        massive_calls_per_minute: callsPerMinute,
+        massive_probe: massiveProbe,
         signal_source: "backtest_channel_signals",
         copier_isolated: true,
       }, { headers: corsHeaders })
@@ -189,7 +214,21 @@ Deno.serve(async (req: Request) => {
           console.warn("[backtest-run] telegram import warnings:", imp.errors.join("; "))
         }
 
-        await executeBacktestRun(supabase, massive, runId, userId, cfg as BacktestRunConfig)
+        await executeBacktestRun(
+          supabase,
+          massive,
+          runId,
+          userId,
+          cfg as BacktestRunConfig,
+          {
+            importWarnings: [
+              ...imp.errors,
+              ...(imp.imported === 0 && imp.messages_scanned === 0
+                ? ["Telegram import returned 0 messages — using any signals already in backtest_channel_signals"]
+                : []),
+            ],
+          },
+        )
       })()
         .catch(async (e) => {
           const msg = e instanceof Error ? e.message : String(e)

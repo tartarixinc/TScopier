@@ -46,7 +46,11 @@ async function call<T>(body: Record<string, unknown>): Promise<T> {
 export interface BacktestPreviewResult {
   tradeable_count: number
   stored_count: number
+  available_symbols?: string[]
+  symbols_filter?: string[]
   massive_configured: boolean
+  massive_calls_per_minute?: number
+  massive_probe?: { ok: boolean; error?: string; bars?: number }
   signal_source?: string
   copier_isolated?: boolean
 }

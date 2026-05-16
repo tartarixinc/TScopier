@@ -35,15 +35,6 @@ export async function importTelegramHistoryForBacktest(
     return { imported: 0, messages_scanned: 0, errors: [] }
   }
 
-  await supabase
-    .from("backtest_channel_signals")
-    .delete()
-    .eq("user_id", userId)
-    .in("channel_id", channelIds)
-    .eq("source", "telegram_import")
-    .gte("signal_at", fromIso)
-    .lte("signal_at", toIso)
-
   const workerUrl = (env.get("WORKER_URL") ?? "").trim().replace(/\/+$/, "")
   const workerToken = env.get("WORKER_INTERNAL_TOKEN") ?? ""
   const supabaseUrl = (env.get("SUPABASE_URL") ?? "").replace(/\/$/, "")
@@ -89,6 +80,22 @@ export async function importTelegramHistoryForBacktest(
       messagesScanned += Number(data.messages_scanned ?? messages.length)
     } catch (e) {
       errors.push(e instanceof Error ? e.message : String(e))
+      continue
+    }
+
+    if (messages.length === 0) continue
+
+    // Replace prior import rows for this channel/range only after a successful Telegram fetch.
+    const { error: delErr } = await supabase
+      .from("backtest_channel_signals")
+      .delete()
+      .eq("user_id", userId)
+      .eq("channel_id", channelRowId)
+      .eq("source", "telegram_import")
+      .gte("signal_at", fromIso)
+      .lte("signal_at", toIso)
+    if (delErr) {
+      errors.push(`clear prior import: ${delErr.message}`)
       continue
     }
 

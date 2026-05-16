@@ -1,10 +1,39 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2"
+import { normalizeSymbolFilter } from "./symbols.ts"
 import type { ParsedSignalForBacktest } from "./types.ts"
 
 export interface LoadedSignalsResult {
   signals: ParsedSignalForBacktest[]
   source: "backtest_channel_signals"
   rawParsedCount: number
+}
+
+/** Distinct symbols present in backtest_channel_signals for the range (any row). */
+export async function listBacktestSymbolsInRange(
+  supabase: SupabaseClient,
+  userId: string,
+  channelIds: string[],
+  fromIso: string,
+  toIso: string,
+): Promise<string[]> {
+  if (channelIds.length === 0) return []
+
+  const { data, error } = await supabase
+    .from("backtest_channel_signals")
+    .select("symbol")
+    .eq("user_id", userId)
+    .in("channel_id", channelIds)
+    .gte("signal_at", fromIso)
+    .lte("signal_at", toIso)
+
+  if (error) throw new Error(error.message)
+
+  const out = new Set<string>()
+  for (const row of data ?? []) {
+    const s = String((row as { symbol?: string }).symbol ?? "").trim().toUpperCase()
+    if (s) out.add(s)
+  }
+  return [...out].sort()
 }
 
 /** Load tradeable signals for simulation — backtest table only (never copier `signals`). */
@@ -15,8 +44,11 @@ export async function loadBacktestSignals(
   fromIso: string,
   toIso: string,
   channelNames: Map<string, string>,
+  symbolFilter?: string[],
 ): Promise<LoadedSignalsResult> {
-  const { data: tradeRows, error: tradeErr } = await supabase
+  const filter = normalizeSymbolFilter(symbolFilter ?? [])
+
+  let query = supabase
     .from("backtest_channel_signals")
     .select(
       "id, signal_id, channel_id, signal_at, direction, symbol, entry_price, sl, tp_levels, lot_size",
@@ -25,7 +57,12 @@ export async function loadBacktestSignals(
     .in("channel_id", channelIds.length ? channelIds : ["00000000-0000-0000-0000-000000000000"])
     .gte("signal_at", fromIso)
     .lte("signal_at", toIso)
-    .order("signal_at", { ascending: true })
+
+  if (filter.length > 0) {
+    query = query.in("symbol", filter)
+  }
+
+  const { data: tradeRows, error: tradeErr } = await query.order("signal_at", { ascending: true })
 
   if (tradeErr) throw new Error(tradeErr.message)
 

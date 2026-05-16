@@ -10,6 +10,8 @@ export interface BacktestStrategyConfig {
 
 export interface BacktestRunConfig {
   channelIds: string[]
+  /** Empty = all symbols in range; otherwise only these instruments. */
+  symbols: string[]
   dateFrom: string
   dateTo: string
   timeframe: BacktestTimeframe
@@ -44,6 +46,11 @@ export interface BacktestSummary {
     netPnl: number
     winRate: number
   }>
+  message?: string
+  signalSource?: string
+  rawParsedCount?: number
+  massiveApiCalls?: number
+  importWarnings?: string[]
 }
 
 export interface BacktestRunRow {
@@ -67,8 +74,12 @@ export interface BacktestTradeRow {
   outcome: string
   tps_hit: number
   pnl: number
+  pnl_r: number | null
   entry_price: number
   exit_price: number | null
+  sl: number | null
+  tp_levels: number[]
+  lot_size: number
   channel_id: string | null
 }
 
