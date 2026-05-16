@@ -290,6 +290,21 @@ function buildQuery(params: Record<string, string | number | undefined | null>):
   return out.toString()
 }
 
+/** MetatraderAPI date query format (yyyy-MM-ddTHH:mm:ss). */
+export function formatMtApiDateTime(d: Date): string {
+  return d.toISOString().slice(0, 19)
+}
+
+export function unwrapOrderList(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) return raw
+  if (raw && typeof raw === 'object') {
+    const r = raw as Record<string, unknown>
+    if (Array.isArray(r.result)) return r.result
+    if (Array.isArray(r.Result)) return r.Result
+  }
+  return []
+}
+
 function trimEnv(v: string | undefined): string {
   return (v ?? '').trim()
 }
@@ -506,9 +521,19 @@ export class MetatraderApiClient {
     return this.get<unknown[]>('/OpenedOrders', { id })
   }
 
-  /** Recent closed deals / history (see docs: GET /ClosedOrders). */
+  /** Last ~100 closed orders in the current session only (see GET /ClosedOrders). */
   closedOrders(id: string): Promise<unknown[]> {
     return this.get<unknown[]>('/ClosedOrders', { id })
+  }
+
+  /**
+   * Full closed order history in a date range (GET /OrderHistory).
+   * `from` / `to` format: yyyy-MM-ddTHH:mm:ss (API docs).
+   */
+  async orderHistory(id: string, from: string, to: string): Promise<unknown[]> {
+    const raw = await this.get<unknown>('/OrderHistory', { id, from, to })
+    assertNoApiError(raw)
+    return unwrapOrderList(raw)
   }
 
   async accountSummary(id: string): Promise<AccountSummary> {

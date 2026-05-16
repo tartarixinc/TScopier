@@ -323,6 +323,24 @@ export class MetatraderApiClient {
     return this.get<unknown[]>("/ClosedOrders", { id })
   }
 
+  async orderHistory(id: string, from: string, to: string): Promise<unknown[]> {
+    const raw = await this.get<unknown>("/OrderHistory", { id, from, to })
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      const err = (raw as Record<string, unknown>).error
+      if (err && typeof err === "object") {
+        const m = String((err as Record<string, unknown>).message ?? "").trim()
+        if (m) throw new MetatraderApiError(m, 200)
+      }
+    }
+    if (Array.isArray(raw)) return raw
+    if (raw && typeof raw === "object") {
+      const r = raw as Record<string, unknown>
+      if (Array.isArray(r.result)) return r.result
+      if (Array.isArray(r.Result)) return r.Result
+    }
+    return []
+  }
+
   async quote(id: string, symbol: string): Promise<{ bid: number; ask: number }> {
     const raw = await this.get<unknown>(this.paths.quote, { id, symbol })
     assertNoApiError(raw)

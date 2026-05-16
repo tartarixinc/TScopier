@@ -60,7 +60,7 @@ function friendlyMtApiError(e: MetatraderApiError): MetatraderApiError {
  * register / delete / refresh balance / check connection calls, plus the trades read
  * for the Trades page.
  */
-const BUILD_TAG = "broker-metatrader@trades-v1"
+const BUILD_TAG = "broker-metatrader@trades-order-history-v1"
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders })
 
@@ -328,10 +328,30 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === "trades") {
-      const brokerId = String((body as Record<string, unknown>).broker_id ?? "").trim()
-      const scope = String((body as Record<string, unknown>).scope ?? "all").toLowerCase()
+      const bodyRec = body as Record<string, unknown>
+      const brokerId = String(bodyRec.broker_id ?? "").trim()
+      const scope = String(bodyRec.scope ?? "all").toLowerCase()
       const wantOpen = scope === "all" || scope === "open"
       const wantClosed = scope === "all" || scope === "closed"
+      const formatMtDt = (d: Date) => d.toISOString().slice(0, 19)
+      const historyTo = typeof bodyRec.history_to === "string" && bodyRec.history_to.trim()
+        ? String(bodyRec.history_to).trim()
+        : formatMtDt(new Date())
+      const defaultHistoryFrom = new Date()
+      defaultHistoryFrom.setDate(defaultHistoryFrom.getDate() - 90)
+      const historyFrom = typeof bodyRec.history_from === "string" && bodyRec.history_from.trim()
+        ? String(bodyRec.history_from).trim()
+        : formatMtDt(defaultHistoryFrom)
+      type RawOrder = Record<string, unknown>
+      const unwrapOrders = (raw: unknown): RawOrder[] => {
+        if (Array.isArray(raw)) return raw as RawOrder[]
+        if (raw && typeof raw === "object") {
+          const r = raw as Record<string, unknown>
+          if (Array.isArray(r.result)) return r.result as RawOrder[]
+          if (Array.isArray(r.Result)) return r.Result as RawOrder[]
+        }
+        return []
+      }
 
       let brokers: { id: string; label: string; metaapi_account_id: string; broker_name: string | null; platform: string }[] = []
       if (brokerId) {
@@ -350,8 +370,6 @@ Deno.serve(async (req: Request) => {
           .eq("user_id", userId)
         brokers = ((data ?? []) as typeof brokers)
       }
-
-      type RawOrder = Record<string, unknown>
 
       const num = (v: unknown): number | null => {
         if (v === null || v === undefined) return null
@@ -471,7 +489,9 @@ Deno.serve(async (req: Request) => {
           try { await bClient.ensureConnected(uuid) } catch { /* best-effort */ }
           const [openedRes, closedRes] = await Promise.allSettled([
             wantOpen ? bClient.openedOrders(uuid) : Promise.resolve([] as unknown[]),
-            wantClosed ? bClient.closedOrders(uuid) : Promise.resolve([] as unknown[]),
+            wantClosed
+              ? bClient.orderHistory(uuid, historyFrom, historyTo).catch(() => bClient.closedOrders(uuid))
+              : Promise.resolve([] as unknown[]),
           ])
           const out: ReturnType<typeof normalize>[] = []
           if (openedRes.status === "fulfilled" && Array.isArray(openedRes.value)) {
@@ -480,8 +500,9 @@ Deno.serve(async (req: Request) => {
               out.push(normalize(o, b, "open"))
             }
           }
-          if (closedRes.status === "fulfilled" && Array.isArray(closedRes.value)) {
-            for (const o of closedRes.value as RawOrder[]) {
+          if (closedRes.status === "fulfilled") {
+            const closedRows = unwrapOrders(closedRes.value)
+            for (const o of closedRows) {
               if (!firstRawSample) firstRawSample = o
               out.push(normalize(o, b, "closed"))
             }

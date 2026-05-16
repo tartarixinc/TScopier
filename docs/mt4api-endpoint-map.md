@@ -15,7 +15,8 @@ Session `id` is a client-supplied UUID v4 (ConnectEx) or server-returned token; 
 | Health | GET | `/CheckConnect` | `/CheckConnect` | |
 | Balance | GET | `/AccountSummary` | `/AccountSummary` | |
 | Open orders | GET | `/OpenedOrders` | `/OpenedOrders` | |
-| Closed orders | GET | `/ClosedOrders` | `/ClosedOrders` | |
+| Closed orders (session, ~100) | GET | `/ClosedOrders` | `/ClosedOrders` | Recent session only |
+| Order history (date range) | GET | `/OrderHistory` | `/OrderHistory` | Query: `id`, `from`, `to` (`yyyy-MM-ddTHH:mm:ss`) |
 | Quote | GET | `/GetQuote` | `/Quote` | |
 | Symbol params | GET | `/SymbolParams` | `/SymbolParams` | |
 | Symbols list | GET | `/Symbols` | `/Symbols` | |

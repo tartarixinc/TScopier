@@ -141,15 +141,33 @@ function aggregateTotalProfitFromBaselines(
   return n > 0 ? sum : null
 }
 
-function countClosedTradeOutcomes(
-  rows: Array<{ status: string; profit: number | null }>,
+function isTradeableClosedRow(row: {
+  status: string
+  symbol: string
+  lot_size: number
+}): boolean {
+  if (row.status !== 'closed') return false
+  if (!(row.symbol ?? '').trim()) return false
+  return (row.lot_size ?? 0) > 0
+}
+
+/** Closed buy/sell positions that finished today (by `closed_at`). */
+function countTodayClosedTradeOutcomes(
+  rows: Array<{ status: string; profit: number | null; closed_at: string | null; symbol: string; lot_size: number }>,
+  closedBetween: (closedAt: string | null) => boolean,
 ): { taken: number; won: number; lost: number } {
-  const closed = rows.filter(t => t.status === 'closed')
+  const closedToday = rows.filter(
+    t => isTradeableClosedRow(t) && closedBetween(t.closed_at),
+  )
   return {
-    taken: closed.length,
-    won: closed.filter(t => typeof t.profit === 'number' && t.profit > 0).length,
-    lost: closed.filter(t => typeof t.profit === 'number' && t.profit < 0).length,
+    taken: closedToday.length,
+    won: closedToday.filter(t => typeof t.profit === 'number' && t.profit > 0).length,
+    lost: closedToday.filter(t => typeof t.profit === 'number' && t.profit < 0).length,
   }
+}
+
+function formatMtApiDateTime(d: Date): string {
+  return d.toISOString().slice(0, 19)
 }
 
 type BrokerBalanceSnapshot = {
@@ -500,7 +518,8 @@ export function DashboardPage() {
         }))
       : []
     const sourceTrades: WindowedTrade[] = useMtTrades ? mtWindowed : dbWindowed
-    const closedOutcomes = countClosedTradeOutcomes(sourceTrades)
+    const closedTodayForStats = (closedAt: string | null) => isInRange(closedAt, todayStart, tomorrowStart)
+    const closedOutcomesToday = countTodayClosedTradeOutcomes(sourceTrades, closedTodayForStats)
 
     const tradesToday = sourceTrades.filter(t => isInRange(t.opened_at, todayStart, tomorrowStart))
     const tradesYesterday = sourceTrades.filter(t => isInRange(t.opened_at, yesterdayStart, todayStart))
@@ -681,9 +700,9 @@ export function DashboardPage() {
       accounts: activeBrokerCount,
       portfolioValue: totalPortfolioValue,
       totalEquity: totalEquityValue,
-      tradesTaken: closedOutcomes.taken,
-      tradesWon: closedOutcomes.won,
-      tradesLost: closedOutcomes.lost,
+      tradesTaken: closedOutcomesToday.taken,
+      tradesWon: closedOutcomesToday.won,
+      tradesLost: closedOutcomesToday.lost,
       openPnl: hasAnyBrokerOpenPnl ? totalLiveOpenPnl : openPnlFromTrades,
       openPositions: resolvedOpenTradesCount,
       openTrades: resolvedOpenTradesCount,
@@ -835,9 +854,15 @@ export function DashboardPage() {
     if (!hasMtBroker) return
     lastMtTradesRefreshRef.current = now
 
+    const historyFrom = new Date()
+    historyFrom.setDate(historyFrom.getDate() - 90)
     let trades: MtTrade[]
     try {
-      const res = await metatraderApi.trades({ scope: 'all' })
+      const res = await metatraderApi.trades({
+        scope: 'all',
+        historyFrom: formatMtApiDateTime(historyFrom),
+        historyTo: formatMtApiDateTime(new Date()),
+      })
       trades = res.trades ?? []
     } catch {
       return
@@ -880,12 +905,22 @@ export function DashboardPage() {
       return best
     }
 
-    const closedOutcomes = countClosedTradeOutcomes(trades)
+    const closedTodayForStats = (closedAt: string | null) => inRange(closedAt, today0, tomorrow0)
+    const closedOutcomesToday = countTodayClosedTradeOutcomes(
+      trades.map(t => ({
+        status: t.status,
+        profit: t.profit,
+        closed_at: t.closed_at,
+        symbol: t.symbol,
+        lot_size: t.lot_size,
+      })),
+      closedTodayForStats,
+    )
     const mtStatsPatch: DashboardStats = {
       ...statsRef.current,
-      tradesTaken: closedOutcomes.taken,
-      tradesWon: closedOutcomes.won,
-      tradesLost: closedOutcomes.lost,
+      tradesTaken: closedOutcomesToday.taken,
+      tradesWon: closedOutcomesToday.won,
+      tradesLost: closedOutcomesToday.lost,
       totalVolume: today.reduce((sum, t) => sum + (t.lot_size ?? 0), 0),
       yesterdayTotalVolume: yesterday.reduce((sum, t) => sum + (t.lot_size ?? 0), 0),
       bestTradeProfit: posToday.length ? Math.max(...posToday) : 0,
@@ -1138,11 +1173,11 @@ export function DashboardPage() {
             subColor={stats.todayProfit >= 0 ? 'text-neutral-400' : 'text-error-500'}
           />
           <StatBlock
-            label="Trades Taken"
+            label="Trades Taken Today"
             value={String(stats.tradesTaken)}
             sub={
               stats.tradesTaken === 0 ? (
-                'No closed trades yet'
+                'No closed trades today'
               ) : (
                 <span className="inline-flex flex-wrap items-center gap-x-1 gap-y-0.5">
                   <span className="text-teal-600 dark:text-teal-500">Won {stats.tradesWon}</span>

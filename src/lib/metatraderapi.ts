@@ -96,12 +96,20 @@ export const metatraderApi = {
     })
   },
 
-  trades(args: { brokerId?: string; scope?: 'all' | 'open' | 'closed' } = {}): Promise<{ trades: MtTrade[]; debug?: { raw_sample_keys: string[]; raw_sample: Record<string, unknown> } }> {
+  trades(args: {
+    brokerId?: string
+    scope?: 'all' | 'open' | 'closed'
+    /** OrderHistory range (yyyy-MM-ddTHH:mm:ss). Defaults: last 90 days → now. */
+    historyFrom?: string
+    historyTo?: string
+  } = {}): Promise<{ trades: MtTrade[]; debug?: { raw_sample_keys: string[]; raw_sample: Record<string, unknown> } }> {
     return call({
       body: {
         action: 'trades',
         broker_id: args.brokerId ?? '',
         scope: args.scope ?? 'all',
+        ...(args.historyFrom ? { history_from: args.historyFrom } : {}),
+        ...(args.historyTo ? { history_to: args.historyTo } : {}),
       },
       expect: (b) => b as { trades: MtTrade[]; debug?: { raw_sample_keys: string[]; raw_sample: Record<string, unknown> } },
     })
