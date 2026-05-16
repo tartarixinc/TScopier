@@ -826,6 +826,54 @@ async function loadChannelKeywords(
   return normalizeChannelKeywords(data?.channel_keywords)
 }
 
+async function parseRawChannelMessage(
+  supabase: ReturnType<typeof createClient>,
+  channelId: string | null,
+  rawMessage: string,
+): Promise<{ parsed: ParsedSignal; status: string; skip_reason: string | null }> {
+  const lexicon = await loadChannelLexicon(supabase, channelId)
+  const channelKeywords = await loadChannelKeywords(supabase, channelId)
+
+  const ignoreAliases = [
+    ...splitKeywordAliases(channelKeywords.additional.ignore_keyword, channelKeywords.additional.delimiters),
+    ...splitKeywordAliases(channelKeywords.additional.skip_keyword, channelKeywords.additional.delimiters),
+  ]
+
+  const explicitIgnore = hasAnyKeyword(rawMessage, ignoreAliases)
+  const keywordMatch =
+    parseDeterministicManagement(rawMessage, lexicon, channelKeywords) ??
+    parseSimpleSignal(rawMessage, lexicon, channelKeywords) ??
+    parseEntryFromKeywords(rawMessage, lexicon, channelKeywords)
+
+  const rawParsed = explicitIgnore
+    ? ignorePayload(rawMessage)
+    : keywordMatch ?? {
+      action: "ignore",
+      symbol: null,
+      entry_price: null,
+      entry_zone_low: null,
+      entry_zone_high: null,
+      sl: null,
+      tp: [],
+      lot_size: null,
+      confidence: 0,
+      raw_instruction: rawMessage,
+      open_tp: false,
+    }
+
+  const parsed = applyRawSymbolRepair(
+    normalizeParsedFromModel(rawParsed, rawMessage),
+    rawMessage,
+  )
+
+  const status = parsed.action === "ignore" ? "skipped" : "parsed"
+  const skip_reason = parsed.action === "ignore"
+    ? (explicitIgnore ? "Non-trade message" : "No matching channel keywords or price pattern")
+    : null
+
+  return { parsed, status, skip_reason }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders })
@@ -837,9 +885,24 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     )
 
-    const body = await req.json()
-    const { signal_id } = body
+    const body = await req.json() as Record<string, unknown>
 
+    if (body.parse_only === true) {
+      const channel_id = String(body.channel_id ?? "")
+      const raw_message = String(body.raw_message ?? "")
+      if (!channel_id || !raw_message.trim()) {
+        return Response.json({ error: "channel_id and raw_message required" }, { status: 400, headers: corsHeaders })
+      }
+      const result = await parseRawChannelMessage(supabase, channel_id, raw_message)
+      return Response.json({
+        parsed: result.parsed,
+        status: result.status,
+        skip_reason: result.skip_reason,
+        parse_only: true,
+      }, { headers: corsHeaders })
+    }
+
+    const signal_id = String(body.signal_id ?? "")
     if (!signal_id) {
       return Response.json({ error: "signal_id required" }, { status: 400, headers: corsHeaders })
     }
@@ -854,45 +917,11 @@ Deno.serve(async (req: Request) => {
       return Response.json({ error: "Signal not found" }, { status: 404, headers: corsHeaders })
     }
 
-    const lexicon = await loadChannelLexicon(supabase, signal.channel_id)
-    const channelKeywords = await loadChannelKeywords(supabase, signal.channel_id)
-
-    const ignoreAliases = [
-      ...splitKeywordAliases(channelKeywords.additional.ignore_keyword, channelKeywords.additional.delimiters),
-      ...splitKeywordAliases(channelKeywords.additional.skip_keyword, channelKeywords.additional.delimiters),
-    ]
-
-    const explicitIgnore = hasAnyKeyword(signal.raw_message, ignoreAliases)
-    const keywordMatch =
-      parseDeterministicManagement(signal.raw_message, lexicon, channelKeywords) ??
-      parseSimpleSignal(signal.raw_message, lexicon, channelKeywords) ??
-      parseEntryFromKeywords(signal.raw_message, lexicon, channelKeywords)
-
-    const rawParsed = explicitIgnore
-      ? ignorePayload(signal.raw_message)
-      : keywordMatch ?? {
-        action: "ignore",
-        symbol: null,
-        entry_price: null,
-        entry_zone_low: null,
-        entry_zone_high: null,
-        sl: null,
-        tp: [],
-        lot_size: null,
-        confidence: 0,
-        raw_instruction: signal.raw_message,
-        open_tp: false,
-      }
-
-    const parsed = applyRawSymbolRepair(
-      normalizeParsedFromModel(rawParsed, signal.raw_message),
-      signal.raw_message,
+    const { parsed, status: newStatus, skip_reason: skipReason } = await parseRawChannelMessage(
+      supabase,
+      signal.channel_id as string | null,
+      signal.raw_message as string,
     )
-
-    const newStatus = parsed.action === "ignore" ? "skipped" : "parsed"
-    const skipReason = parsed.action === "ignore"
-      ? (explicitIgnore ? "Non-trade message" : "No matching channel keywords or price pattern")
-      : null
 
     const { error: updateErr } = await supabase
       .from("signals")

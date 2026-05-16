@@ -435,8 +435,7 @@ export function Backtest() {
                       {preview.tradeable_count} tradeable buy/sell signal{preview.tradeable_count === 1 ? '' : 's'} in range
                     </p>
                     <p className="text-neutral-500">
-                      {preview.parsed_count} parsed · {preview.pending_count} pending parse
-                      {preview.synced_rows > 0 ? ` · synced ${preview.synced_rows}` : ''}
+                      {preview.stored_count} stored in backtest table (copier logs not used)
                     </p>
                     {!preview.massive_configured ? (
                       <p className="text-amber-600 dark:text-amber-400">
@@ -448,9 +447,6 @@ export function Backtest() {
                         Running a backtest imports Telegram history for your date range (worker must be online).
                         Ensure Telegram is connected, channels are active, and messages parse as buy/sell with entry and SL or TP.
                       </p>
-                    ) : null}
-                    {preview.migration_hint ? (
-                      <p className="text-amber-600">{preview.migration_hint}</p>
                     ) : null}
                   </>
                 ) : (

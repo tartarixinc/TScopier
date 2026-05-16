@@ -61,9 +61,7 @@ export async function executeBacktestRun(
   const signals = loaded.signals
 
   if (signals.length === 0) {
-    const hint = loaded.rawParsedCount > 0
-      ? `${loaded.rawParsedCount} parsed signal(s) lack entry/SL/TP for backtest`
-      : "No parsed buy/sell signals in date range — ensure channels are monitored and parse-signal has run"
+    const hint = "No tradeable backtest signals in date range — run import (Telegram connected, worker online)"
     await updateProgress(100, hint)
     await supabase.from("backtest_runs").update({
       status: "completed",
@@ -87,7 +85,7 @@ export async function executeBacktestRun(
         winRate: 0,
         byChannel: {},
         message: hint,
-        signalSource: loaded.source,
+        signalSource: "backtest_channel_signals",
         rawParsedCount: loaded.rawParsedCount,
       },
       completed_at: new Date().toISOString(),
@@ -98,7 +96,7 @@ export async function executeBacktestRun(
 
   await updateProgress(
     10,
-    `Loaded ${signals.length} tradeable signal(s) from ${loaded.source}${loaded.refreshedCount != null ? ` (synced ${loaded.refreshedCount})` : ""}`,
+    `Loaded ${signals.length} tradeable backtest signal(s)`,
   )
 
   const fromMs = new Date(config.dateFrom).getTime()

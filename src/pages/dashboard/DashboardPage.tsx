@@ -1261,7 +1261,7 @@ export function DashboardPage() {
           <StatBlock
             label="Open PnL"
             value={`$${stats.openPnl.toFixed(2)}`}
-            sub={`${stats.openPositions} open positions`}
+            sub={'Across all accounts'}
             valueColor={
               stats.openPnl > 0
                 ? 'text-teal-600'
@@ -1269,7 +1269,7 @@ export function DashboardPage() {
                   ? 'text-error-600'
                   : 'text-neutral-900 dark:text-neutral-50'
             }
-            subColor={stats.openPnl >= 0 ? 'text-neutral-400' : 'text-error-500'}
+            subColor="text-neutral-500"
           />
         </div>
         <div className="border-t border-neutral-100 dark:border-neutral-800 p-4 sm:p-5 grid grid-cols-2 lg:grid-cols-4 gap-4">

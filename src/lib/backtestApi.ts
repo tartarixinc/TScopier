@@ -45,12 +45,10 @@ async function call<T>(body: Record<string, unknown>): Promise<T> {
 
 export interface BacktestPreviewResult {
   tradeable_count: number
-  parsed_count: number
-  pending_count: number
-  synced_rows: number
+  stored_count: number
   massive_configured: boolean
   signal_source?: string
-  migration_hint: string | null
+  copier_isolated?: boolean
 }
 
 export const backtestApi = {

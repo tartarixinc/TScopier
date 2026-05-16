@@ -23,7 +23,7 @@ Backtests replay parsed Telegram signals against historical market data from [Ma
    - **`signals`** — live copier log (all Telegram messages).
    - **`backtest_channel_signals`** — normalized buy/sell rows used for backtests.
 
-   When you run a backtest, the worker **imports Telegram history** for your selected channels and date range, parses messages, then syncs tradeable rows into `backtest_channel_signals` before calling Massive.
+   When you run a backtest, the worker **fetches Telegram history** for your selected date range. Parsing uses `parse-signal` in **`parse_only` mode** (no writes to `signals`, no trade execution). Tradeable rows go only into `backtest_channel_signals`. Copier Logs are unaffected.
 
 3. Link the project (once) and deploy the edge function:
    ```bash

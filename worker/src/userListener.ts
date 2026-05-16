@@ -417,14 +417,14 @@ export class UserListener {
   }
 
   /**
-   * Fetch Telegram messages in [fromIso, toIso], store as signals (with channel_id),
-   * and trigger parse-signal for each new row.
+   * Fetch Telegram messages in [fromIso, toIso] for backtest only.
+   * Does not write to `signals` or trigger copier parse/trade execution.
    */
   async importBacktestChannelHistory(
     channelRowId: string,
     fromIso: string,
     toIso: string,
-  ): Promise<{ imported: number; messages_scanned: number }> {
+  ): Promise<{ messages: Array<{ telegram_message_id: string; raw_message: string; signal_at: string }>; messages_scanned: number }> {
     const fromMs = new Date(fromIso).getTime()
     const toMs = new Date(toIso.includes('T') ? toIso : `${toIso}T23:59:59.999Z`).getTime()
     if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || toMs < fromMs) {
@@ -442,13 +442,23 @@ export class UserListener {
     if (!row) throw new Error('Channel not found')
 
     const collected = await this.fetchMessagesBetween(row as ChannelRow, fromMs, toMs)
-    let imported = 0
+    const messages: Array<{ telegram_message_id: string; raw_message: string; signal_at: string }> = []
+
     for (const m of collected) {
-      const ok = await this.logSignal(row as ChannelRow, m)
-      if (ok) imported++
+      const raw = String(m.text ?? m.message ?? '').trim()
+      if (!raw) continue
+      const epoch = this.messageEpochSec(m as MessageLike & { date?: number | Date | string })
+      const signalAt = epoch > 0
+        ? new Date(epoch * 1000).toISOString()
+        : new Date().toISOString()
+      messages.push({
+        telegram_message_id: String(m.id),
+        raw_message: raw,
+        signal_at: signalAt,
+      })
     }
 
-    return { imported, messages_scanned: collected.length }
+    return { messages, messages_scanned: collected.length }
   }
 
   // ── live message handling ─────────────────────────────────────────────
