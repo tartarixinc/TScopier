@@ -118,6 +118,34 @@ test('isMergeFollowUpLinked: implicit bundle blocked outside tight window', () =
   )
 })
 
+test('isMergeFollowUpLinked: same-channel SL/TP parameter refresh within long window', () => {
+  assert.equal(
+    isMergeFollowUpLinked({
+      replyOk: false,
+      withinWindow: true,
+      threadLinksAnchor: false,
+      implicitBundleWithinTightWindow: false,
+      implicitSameChannelBundle: false,
+      parameterRefreshSameChannel: true,
+    }),
+    true,
+  )
+})
+
+test('isMergeFollowUpLinked: parameter refresh blocked outside long window', () => {
+  assert.equal(
+    isMergeFollowUpLinked({
+      replyOk: false,
+      withinWindow: false,
+      threadLinksAnchor: false,
+      implicitBundleWithinTightWindow: false,
+      implicitSameChannelBundle: false,
+      parameterRefreshSameChannel: true,
+    }),
+    false,
+  )
+})
+
 test('computeThreadLinksAnchor: parent alone (no reply) links thread', () => {
   assert.equal(
     computeThreadLinksAnchor({

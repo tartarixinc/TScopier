@@ -77,6 +77,13 @@ function operationFor(action, signal) {
         return hasEntry ? 'SellLimit' : 'Sell';
     return null;
 }
+/** Planner immediates used only for per-leg SL/TP during merge (not sent as new orders). */
+function mergePlanImmediateOrders(plan) {
+    return plan.orders.filter(o => {
+        const op = String(o.operation);
+        return op === 'Buy' || op === 'Sell' || op.includes('Limit') || op.includes('Stop');
+    });
+}
 function isManagementAction(action) {
     const a = action.toLowerCase();
     return a === 'close'
@@ -993,13 +1000,27 @@ class TradeExecutor {
             mergeCh === anchorChannelId &&
             !replyOk &&
             !threadLinksAnchor);
+        const hasSl = typeof parsed.sl === 'number' && Number.isFinite(parsed.sl) && parsed.sl > 0;
+        const hasTp = Array.isArray(parsed.tp)
+            && parsed.tp.some(t => typeof t === 'number' && Number.isFinite(t) && t > 0);
+        const parameterRefreshSameChannel = Boolean(mergeCh &&
+            anchorChannelId &&
+            mergeCh === anchorChannelId &&
+            withinWindow &&
+            !replyOk &&
+            !threadLinksAnchor &&
+            (hasSl || hasTp || (0, manualPlanner_1.parsedHasExplicitEntryAnchor)(parsed)));
         if (!(0, signalMergeLink_1.isMergeFollowUpLinked)({
             replyOk,
             withinWindow,
             threadLinksAnchor,
             implicitBundleWithinTightWindow,
             implicitSameChannelBundle,
+            parameterRefreshSameChannel,
         })) {
+            console.warn(`[tradeExecutor] merge not linked signal=${signal.id} broker=${broker.id} symbol=${symbol}`
+                + ` reply=${replyOk} window=${withinWindow} thread=${threadLinksAnchor}`
+                + ` implicit=${implicitSameChannelBundle} paramRefresh=${parameterRefreshSameChannel} dt_ms=${dt}`);
             return { handled: false };
         }
         // Planner / predefined SL-TP need an entry anchor. Re-use the live trade's fill when the new parse has none.
@@ -1060,12 +1081,13 @@ class TradeExecutor {
             expertId: 909090,
             slippage: 20,
         });
-        if (plan.skip_reason || plan.orders.length === 0)
-            return { handled: false };
-        const marketOrders = plan.orders.filter(o => o.operation === 'Buy' || o.operation === 'Sell');
-        if (!marketOrders.length)
+        if (plan.skip_reason)
             return { handled: false };
         let virtualPendings = (plan.virtualPendings ?? []).slice(0, 500);
+        const hasVirtualPlan = virtualPendings.length > 0;
+        let immediateArgs = mergePlanImmediateOrders(plan);
+        if (!immediateArgs.length && !hasVirtualPlan && !familyTrades.length)
+            return { handled: false };
         if (plan.delay_ms > 0) {
             await new Promise(resolve => setTimeout(resolve, Math.min(plan.delay_ms, 30000)));
         }
@@ -1088,8 +1110,26 @@ class TradeExecutor {
                 return { handled: false };
             }
         }
+        // When range mode puts every leg on the ladder (0 immediates), still refresh open
+        // legs + virtual pendings from parsed SL/TP instead of opening a second basket.
+        if (!immediateArgs.length && familyTrades.length > 0 && (hasSl || hasTp)) {
+            const tps = (parsed.tp ?? []).filter((t) => typeof t === 'number' && Number.isFinite(t) && t > 0);
+            immediateArgs = familyTrades.map((tr, i) => ({
+                symbol,
+                operation: direction === 'buy' ? 'Buy' : 'Sell',
+                volume: Number(tr.lot_size) || baseLot,
+                price: Number(tr.entry_price) || 0,
+                stoploss: hasSl ? parsed.sl : 0,
+                takeprofit: tps.length ? (tps[Math.min(i, tps.length - 1)] ?? tps[0]) : 0,
+                slippage: 20,
+                comment: `TSCopier:${signal.id.slice(0, 8)}:mergeRefresh`,
+                expertID: 909090,
+            }));
+        }
+        if (!immediateArgs.length && !hasVirtualPlan)
+            return { handled: false };
         // Per-leg SL/TP (and optional CWE) aligned with `planManualOrders` immediate sequence.
-        const immediateArgs = marketOrders.map(o => ({ ...o }));
+        immediateArgs = immediateArgs.map(o => ({ ...o }));
         const needsAnchor = virtualPendings.length > 0 || !!plan.closeWorseEntries;
         let anchor = plan.anchor?.value ?? null;
         let anchorSource = plan.anchor?.source ?? 'unknown';
@@ -1290,6 +1330,7 @@ class TradeExecutor {
                     thread_links_anchor: threadLinksAnchor,
                     implicit_bundle_within_tight_window: implicitBundleWithinTightWindow,
                     implicit_same_channel_bundle: implicitSameChannelBundle,
+                    parameter_refresh_same_channel: parameterRefreshSameChannel,
                     implicit_bundle_dt_ms: dt,
                     merge_implicit_tight_window_ms: signalMergeLink_1.MERGE_IMPLICIT_CHANNEL_BUNDLE_MS,
                 },

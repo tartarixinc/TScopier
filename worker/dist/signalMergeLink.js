@@ -48,11 +48,14 @@ function computeThreadLinksAnchor(args) {
  * True when this follow-up may refresh SL/TP on the anchor basket:
  * - Direct Telegram reply to the anchor entry (`replyOk`), or
  * - Long window + thread/parent link (`withinWindow && threadLinksAnchor`), or
- * - Tight window + same-channel implicit bundle (caller sets `implicitSameChannelBundle`).
+ * - Tight window + same-channel implicit bundle (caller sets `implicitSameChannelBundle`), or
+ * - Long window + same channel + SL/TP/entry parameter post (typical “entry + SL + TP”
+ *   follow-up that is not a Telegram reply).
  */
 function isMergeFollowUpLinked(args) {
     const implicitPath = args.implicitBundleWithinTightWindow && args.implicitSameChannelBundle;
     return (args.replyOk ||
         (args.withinWindow && args.threadLinksAnchor) ||
-        implicitPath);
+        implicitPath ||
+        args.parameterRefreshSameChannel === true);
 }
