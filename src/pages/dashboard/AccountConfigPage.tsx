@@ -1103,11 +1103,6 @@ export function AccountConfigPage() {
                           <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{broker.label}</h3>
                           <Badge variant={statusVariant} size="sm">{statusLabel}</Badge>
                           <Badge variant="neutral" size="sm">{broker.platform}</Badge>
-                          {accountType ? (
-                            <Badge variant={accountType === 'Demo' ? 'warning' : 'primary'} size="sm">
-                              {accountType}
-                            </Badge>
-                          ) : null}
                           {brokerLabel && (
                             <Badge variant="neutral" size="sm">{brokerLabel}</Badge>
                           )}
