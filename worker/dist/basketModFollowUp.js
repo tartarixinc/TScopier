@@ -96,6 +96,7 @@ async function tryApplyBasketFollowUpToNewFill(supabase, api, args) {
                     basket_signal_id: args.basketSignalId,
                     source_mgmt_signal: row.id,
                     release_action: act,
+                    source: 'worker_virtual_pending',
                 },
             });
         }
@@ -113,6 +114,7 @@ async function tryApplyBasketFollowUpToNewFill(supabase, api, args) {
                     basket_signal_id: args.basketSignalId,
                     source_mgmt_signal: row.id,
                     release_action: act,
+                    source: 'worker_virtual_pending',
                 },
                 error_message: msg,
             });

@@ -1,5 +1,9 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
-import type { MetatraderApiClient } from './metatraderapi'
+/**
+ * Apply SL/TP (or breakeven) from the latest channel management signal to a newly
+ * opened basket leg. Keep in sync with worker/src/basketModFollowUp.ts.
+ */
+
+import type { MetatraderApiClient } from "./metatraderapi.ts"
 
 type ParsedMgmt = {
   action?: string
@@ -9,25 +13,23 @@ type ParsedMgmt = {
 }
 
 function sanitizeLevel(v: number | null | undefined): number {
-  const n = typeof v === 'number' ? v : Number(v ?? 0)
+  const n = typeof v === "number" ? v : Number(v ?? 0)
   return Number.isFinite(n) && n > 0 ? n : 0
 }
 
-export function symbolsCompatibleForBasket(signalSym: string | null | undefined, brokerSym: string): boolean {
-  const norm = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, '')
-  const a = norm(String(signalSym ?? ''))
-  const b = norm(String(brokerSym ?? ''))
+function symbolsCompatibleForBasket(signalSym: string | null | undefined, brokerSym: string): boolean {
+  const norm = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "")
+  const a = norm(String(signalSym ?? ""))
+  const b = norm(String(brokerSym ?? ""))
   if (!a.length || !b.length) return false
   return a === b || b.includes(a) || a.includes(b)
 }
 
-/**
- * When a virtual range leg fills after an SL/TP (or breakeven) message was already
- * processed for the basket, apply the newest matching management instruction to this
- * position immediately (do not wait for the trade-executor sweep).
- */
+// deno-lint-ignore no-explicit-any
+type SupabaseLike = any
+
 export async function tryApplyBasketFollowUpToNewFill(
-  supabase: SupabaseClient,
+  supabase: SupabaseLike,
   api: MetatraderApiClient,
   args: {
     userId: string
@@ -43,9 +45,9 @@ export async function tryApplyBasketFollowUpToNewFill(
   },
 ): Promise<void> {
   const { data: basket } = await supabase
-    .from('signals')
-    .select('channel_id, created_at')
-    .eq('id', args.basketSignalId)
+    .from("signals")
+    .select("channel_id, created_at")
+    .eq("id", args.basketSignalId)
     .maybeSingle()
 
   const channelId = basket?.channel_id as string | null | undefined
@@ -53,32 +55,32 @@ export async function tryApplyBasketFollowUpToNewFill(
   if (!channelId || !createdAt) return
 
   const { data: candidates } = await supabase
-    .from('signals')
-    .select('id, parsed_data, created_at')
-    .eq('user_id', args.userId)
-    .eq('channel_id', channelId)
-    .eq('is_modification', true)
-    .in('status', ['parsed', 'executed'])
-    .gte('created_at', createdAt)
-    .order('created_at', { ascending: false })
+    .from("signals")
+    .select("id, parsed_data, created_at")
+    .eq("user_id", args.userId)
+    .eq("channel_id", channelId)
+    .eq("is_modification", true)
+    .in("status", ["parsed", "executed"])
+    .gte("created_at", createdAt)
+    .order("created_at", { ascending: false })
     .limit(40)
 
   for (const row of candidates ?? []) {
     const parsed = row.parsed_data as ParsedMgmt | null
     if (!parsed?.action) continue
     const act = String(parsed.action).toLowerCase()
-    if (act !== 'modify' && act !== 'breakeven') continue
+    if (act !== "modify" && act !== "breakeven") continue
     if (!symbolsCompatibleForBasket(parsed.symbol, args.symbol)) continue
 
     let stoploss = 0
     let takeprofit = 0
-    let dbPatch: Record<string, number | null> = {}
+    const dbPatch: Record<string, number | null> = {}
 
-    if (act === 'modify') {
-      const hasNewSl = typeof parsed.sl === 'number' && Number.isFinite(parsed.sl) && parsed.sl > 0
+    if (act === "modify") {
+      const hasNewSl = typeof parsed.sl === "number" && Number.isFinite(parsed.sl) && parsed.sl > 0
       const hasNewTp = Array.isArray(parsed.tp)
         && parsed.tp.length > 0
-        && typeof parsed.tp[0] === 'number'
+        && typeof parsed.tp[0] === "number"
         && Number.isFinite(parsed.tp[0] as number)
         && (parsed.tp[0] as number) > 0
       if (!hasNewSl && !hasNewTp) continue
@@ -101,39 +103,39 @@ export async function tryApplyBasketFollowUpToNewFill(
         takeprofit,
       })
       if (Object.keys(dbPatch).length > 0) {
-        await supabase.from('trades').update(dbPatch).eq('id', args.tradeRowId)
+        await supabase.from("trades").update(dbPatch).eq("id", args.tradeRowId)
       }
-      await supabase.from('trade_execution_logs').insert({
+      await supabase.from("trade_execution_logs").insert({
         user_id: args.userId,
         signal_id: row.id,
         broker_account_id: args.brokerAccountId,
-        action: 'mgmt_range_leg_followup',
-        status: 'success',
+        action: "mgmt_range_leg_followup",
+        status: "success",
         request_payload: {
           ticket: args.ticket,
           trade_id: args.tradeRowId,
           basket_signal_id: args.basketSignalId,
           source_mgmt_signal: row.id,
           release_action: act,
-          source: 'worker_virtual_pending',
-        } as Record<string, unknown>,
+          source: "edge_range_sweep",
+        },
       })
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      await supabase.from('trade_execution_logs').insert({
+      await supabase.from("trade_execution_logs").insert({
         user_id: args.userId,
         signal_id: row.id,
         broker_account_id: args.brokerAccountId,
-        action: 'mgmt_range_leg_followup',
-        status: 'failed',
+        action: "mgmt_range_leg_followup",
+        status: "failed",
         request_payload: {
           ticket: args.ticket,
           trade_id: args.tradeRowId,
           basket_signal_id: args.basketSignalId,
           source_mgmt_signal: row.id,
           release_action: act,
-          source: 'worker_virtual_pending',
-        } as Record<string, unknown>,
+          source: "edge_range_sweep",
+        },
         error_message: msg,
       })
     }

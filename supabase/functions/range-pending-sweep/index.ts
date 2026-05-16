@@ -25,6 +25,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4"
 // @ts-ignore - Deno-only import
 import { makeClientFromEnv, MetatraderApiClient, type MtPlatform } from "../_shared/metatraderapi.ts"
+import { tryApplyBasketFollowUpToNewFill } from "../_shared/basketModFollowUp.ts"
 
 function mtClient(env: { get(name: string): string | undefined }, platform: string): MetatraderApiClient {
   const p: MtPlatform = platform === "MT4" ? "MT4" : "MT5"
@@ -315,20 +316,44 @@ async function fireLeg(
       comment: leg.comment ?? `TSCopier:rg${leg.step_idx}`,
       expertID: leg.expert_id ?? 909090,
     })
-    await sb.from("trades").insert({
+    const entryPx = result.openPrice ?? refPrice ?? null
+    const { data: insTrade, error: insErr } = await sb.from("trades").insert({
       user_id: leg.user_id,
       signal_id: leg.signal_id,
       broker_account_id: leg.broker_account_id,
       metaapi_order_id: result.ticket != null ? String(result.ticket) : null,
       symbol: leg.symbol,
       direction: leg.is_buy ? "buy" : "sell",
-      entry_price: result.openPrice ?? refPrice,
+      entry_price: entryPx,
       sl: result.stopLoss ?? sl,
       tp: result.takeProfit ?? tp,
       lot_size: result.lots ?? leg.volume,
       status: "open",
       opened_at: new Date().toISOString(),
-    })
+    }).select("id").maybeSingle()
+    if (insErr) {
+      console.warn(`[range-pending-sweep] trades insert failed leg=${leg.id}: ${insErr.message}`)
+    }
+    const ticketNum = result.ticket != null ? Number(result.ticket) : NaN
+    const tradeRowId = (insTrade as { id?: string } | null)?.id ?? null
+    if (tradeRowId && Number.isFinite(ticketNum) && ticketNum > 0) {
+      try {
+        await tryApplyBasketFollowUpToNewFill(sb, api, {
+          userId: leg.user_id,
+          basketSignalId: leg.signal_id,
+          brokerAccountId: leg.broker_account_id,
+          metaUuid: leg.metaapi_account_id,
+          symbol: leg.symbol,
+          ticket: ticketNum,
+          tradeRowId,
+          entryPrice: entryPx,
+          existingSl: result.stopLoss ?? sl ?? null,
+          existingTp: result.takeProfit ?? tp ?? null,
+        })
+      } catch (hookErr) {
+        console.warn(`[range-pending-sweep] basket follow-up leg=${leg.id}:`, hookErr)
+      }
+    }
     await sb.from("trade_execution_logs").insert({
       user_id: leg.user_id,
       signal_id: leg.signal_id,
