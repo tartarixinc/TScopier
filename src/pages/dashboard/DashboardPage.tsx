@@ -9,10 +9,12 @@ import { AddAccountModal } from '../../components/ui/AddAccountModal'
 import { Toggle } from '../../components/ui/Toggle'
 import { metatraderApi, type MtTrade } from '../../lib/metatraderapi'
 import {
+  computeLinkedAccountPerformanceMap,
   countClosedTradeOutcomesInRange,
   isTradeableClosedRow,
   netClosedLegProfit,
   sumTradeableClosedProfitInRange,
+  type LinkedAccountPerformance,
   type TradeStatsRow,
 } from '../../lib/dashboardTradeStats'
 import {
@@ -414,17 +416,61 @@ export function DashboardPage() {
     [chartTrades],
   )
 
-  const accountGrowth = useMemo(() => {
-    const equityByAccountId: Record<string, number> = {}
+  const equityByAccountId = useMemo(() => {
+    const out: Record<string, number> = {}
     for (const account of linkedAccounts) {
       const live = linkedAccountBalances[account.id]
       const eq = live?.equity ?? live?.balance ?? account.last_equity ?? account.last_balance
       if (eq != null && Number.isFinite(Number(eq))) {
-        equityByAccountId[account.id] = Number(eq)
+        out[account.id] = Number(eq)
       }
     }
-    return buildAccountGrowthSeries(linkedAccounts, chartTrades, equityByAccountId)
-  }, [linkedAccounts, linkedAccountBalances, chartTrades])
+    return out
+  }, [linkedAccounts, linkedAccountBalances])
+
+  const accountGrowth = useMemo(
+    () => buildAccountGrowthSeries(linkedAccounts, chartTrades, equityByAccountId),
+    [linkedAccounts, chartTrades, equityByAccountId],
+  )
+
+  const linkedAccountPerformance = useMemo(() => {
+    const tradesByAccountId: Record<string, TradeStatsRow[]> = {}
+    const mtTrades = mtTradesRef.current
+    if (mtTrades && mtTrades.length > 0) {
+      for (const t of mtTrades) {
+        const row: TradeStatsRow = {
+          status: t.status,
+          profit: t.profit,
+          closed_at: t.closed_at,
+          symbol: t.symbol,
+          lot_size: t.lot_size,
+          direction: t.direction,
+          type: t.type,
+          swap: t.swap,
+          commission: t.commission,
+        }
+        const list = tradesByAccountId[t.broker_id] ?? []
+        list.push(row)
+        tradesByAccountId[t.broker_id] = list
+      }
+    } else {
+      for (const t of chartTrades) {
+        if (t.status !== 'closed' || !t.closedAt) continue
+        const row: TradeStatsRow = {
+          status: 'closed',
+          profit: t.profit,
+          closed_at: t.closedAt,
+          symbol: t.lotSize > 0 ? 'trade' : '',
+          lot_size: t.lotSize,
+          direction: t.lotSize > 0 ? 'buy' : '',
+        }
+        const list = tradesByAccountId[t.brokerAccountId] ?? []
+        list.push(row)
+        tradesByAccountId[t.brokerAccountId] = list
+      }
+    }
+    return computeLinkedAccountPerformanceMap(linkedAccounts, tradesByAccountId, equityByAccountId)
+  }, [linkedAccounts, chartTrades, equityByAccountId])
 
   const formatVsYesterdayMoney = (todayValue: number | null | undefined, yesterdayValue: number | null | undefined) => {
     if (yesterdayValue == null) return ''
@@ -1410,6 +1456,7 @@ export function DashboardPage() {
                 key={account.id}
                 account={account}
                 accountSummary={linkedAccountBalances[account.id]}
+                performance={linkedAccountPerformance[account.id]}
                 onToggleActive={is_active => { void toggleBrokerActive(account.id, is_active) }}
                 toggleDisabled={togglingBrokerId === account.id}
               />
@@ -1542,14 +1589,27 @@ function LogRow({ signal, channelName, symbol }: { signal: Signal; channelName: 
   )
 }
 
+function formatPerformancePct(value: number | null | undefined, digits = 1): string {
+  if (value == null || !Number.isFinite(value)) return '—'
+  return `${value.toFixed(digits)}%`
+}
+
+function formatRoiPct(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return '—'
+  const sign = value > 0 ? '+' : ''
+  return `${sign}${value.toFixed(1)}%`
+}
+
 function LinkedAccountRow({
   account,
   accountSummary,
+  performance,
   onToggleActive,
   toggleDisabled,
 }: {
   account: BrokerAccount
   accountSummary?: { balance?: number; equity?: number; currency?: string; broker?: string; mt_server_hint?: string; account_type?: 'Live' | 'Demo'; open_pnl?: number }
+  performance?: LinkedAccountPerformance
   onToggleActive: (is_active: boolean) => void
   toggleDisabled?: boolean
 }) {
@@ -1575,6 +1635,15 @@ function LinkedAccountRow({
   const accountType = accountSummary?.account_type || '—'
 
   const accountLabel = account.label || 'Unnamed account'
+  const roi = performance?.roi ?? null
+  const winRate = performance?.winRate ?? null
+  const maxDd = performance?.maxDrawdownPct ?? null
+  const roiColor =
+    roi == null ? 'text-neutral-900 dark:text-neutral-50' : roi > 0 ? 'text-teal-600' : roi < 0 ? 'text-error-600' : 'text-neutral-600 dark:text-neutral-400'
+  const winRateColor =
+    winRate == null ? 'text-neutral-900 dark:text-neutral-50' : winRate >= 50 ? 'text-teal-600' : 'text-neutral-900 dark:text-neutral-50'
+  const ddColor =
+    maxDd == null ? 'text-neutral-900 dark:text-neutral-50' : maxDd > 0 ? 'text-error-600' : 'text-neutral-600 dark:text-neutral-400'
 
   return (
     <div className="grid grid-cols-9 gap-2 px-4 sm:px-5 py-3 items-center hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors">
@@ -1586,9 +1655,9 @@ function LinkedAccountRow({
       <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{accountType}</span>
       <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{balanceText}</span>
       <span className={`text-sm font-semibold ${pnlColor}`}>{pnl >= 0 ? '+' : '-'}{pnlText}</span>
-      <span className="text-sm font-semibold text-teal-600">0.0%</span>
-      <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">0%</span>
-      <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">0.0%</span>
+      <span className={`text-sm font-semibold tabular-nums ${roiColor}`}>{formatRoiPct(roi)}</span>
+      <span className={`text-sm font-semibold tabular-nums ${winRateColor}`}>{formatPerformancePct(winRate, 0)}</span>
+      <span className={`text-sm font-semibold tabular-nums ${ddColor}`}>{formatPerformancePct(maxDd)}</span>
       <div className="flex justify-end items-center gap-2">
         <Toggle
           checked={account.is_active}

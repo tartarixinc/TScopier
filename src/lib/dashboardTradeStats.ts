@@ -70,3 +70,92 @@ export function countClosedTradeOutcomesInRange(
     lost: closed.filter(t => netClosedLegProfit(t) < 0).length,
   }
 }
+
+export type LinkedAccountPerformance = {
+  /** Return on investment vs performance baseline (%). */
+  roi: number | null
+  /** Share of closed tradeable legs with net profit > 0 (%). */
+  winRate: number | null
+  /** Peak-to-trough equity decline from baseline through history (%). */
+  maxDrawdownPct: number | null
+}
+
+function parseCloseMs(iso: string | null): number {
+  if (!iso) return 0
+  const t = new Date(iso).getTime()
+  return Number.isFinite(t) ? t : 0
+}
+
+/** Per-account ROI, win rate, and max drawdown from closed trade history + live equity. */
+export function computeLinkedAccountPerformance(
+  account: {
+    performance_baseline_balance?: number | null
+    last_balance?: number | null
+  },
+  trades: TradeStatsRow[],
+  liveEquity?: number | null,
+): LinkedAccountPerformance {
+  const baseline = Number(account.performance_baseline_balance ?? account.last_balance)
+  const equity =
+    liveEquity != null && Number.isFinite(liveEquity)
+      ? liveEquity
+      : null
+
+  let roi: number | null = null
+  if (Number.isFinite(baseline) && baseline > 0 && equity != null) {
+    roi = ((equity - baseline) / baseline) * 100
+  }
+
+  const closed = trades.filter(isTradeableClosedRow)
+  let winRate: number | null = null
+  if (closed.length > 0) {
+    const wins = closed.filter(t => netClosedLegProfit(t) > 0).length
+    winRate = (wins / closed.length) * 100
+  }
+
+  let maxDrawdownPct: number | null = null
+  if (Number.isFinite(baseline) && baseline > 0) {
+    const sorted = closed.slice().sort((a, b) => parseCloseMs(a.closed_at) - parseCloseMs(b.closed_at))
+    let peak = baseline
+    let curve = baseline
+    let maxDd = 0
+    for (const t of sorted) {
+      curve += netClosedLegProfit(t)
+      if (curve > peak) peak = curve
+      if (peak > 0) {
+        const dd = ((peak - curve) / peak) * 100
+        if (dd > maxDd) maxDd = dd
+      }
+    }
+    if (equity != null) {
+      if (equity > peak) peak = equity
+      if (peak > 0) {
+        const dd = ((peak - equity) / peak) * 100
+        if (dd > maxDd) maxDd = dd
+      }
+    }
+    maxDrawdownPct = maxDd
+  }
+
+  return { roi, winRate, maxDrawdownPct }
+}
+
+export function computeLinkedAccountPerformanceMap(
+  accounts: Array<{
+    id: string
+    performance_baseline_balance?: number | null
+    last_balance?: number | null
+  }>,
+  tradesByAccountId: Record<string, TradeStatsRow[]>,
+  equityByAccountId: Record<string, number | undefined>,
+): Record<string, LinkedAccountPerformance> {
+  const out: Record<string, LinkedAccountPerformance> = {}
+  for (const account of accounts) {
+    out[account.id] = computeLinkedAccountPerformance(
+      account,
+      tradesByAccountId[account.id] ?? [],
+      equityByAccountId[account.id],
+    )
+  }
+  return out
+}
