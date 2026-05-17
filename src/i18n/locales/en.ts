@@ -1,8 +1,10 @@
 import { authEn } from '../auth/en'
+import { channelWorkerEn } from '../channelWorker/en'
 import type { Translations } from './types'
 
 export const en: Translations = {
   auth: authEn,
+  channelWorker: channelWorkerEn,
   nav: {
     sections: {
       general: 'GENERAL',

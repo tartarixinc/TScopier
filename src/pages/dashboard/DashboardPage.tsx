@@ -1556,7 +1556,8 @@ function OverviewStat({
 }
 
 function AiExpertLogItem({ row }: { row: AiExpertLogRow }) {
-  const message = channelWorkerLogMessage(row)
+  const t = useT()
+  const message = channelWorkerLogMessage(row, t.channelWorker)
 
   return (
     <div className="px-5 py-3">

@@ -1,4 +1,5 @@
 import type { AuthTranslations } from '../auth/types'
+import type { ChannelWorkerTranslations } from '../channelWorker/types'
 
 export interface NavTranslations {
   sections: {
@@ -176,6 +177,7 @@ export interface BacktestTranslations {
 
 export interface Translations {
   auth: AuthTranslations
+  channelWorker: ChannelWorkerTranslations
   nav: NavTranslations
   common: CommonTranslations
   dashboard: DashboardTranslations

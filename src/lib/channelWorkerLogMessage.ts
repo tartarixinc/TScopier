@@ -1,3 +1,5 @@
+import type { ChannelWorkerTranslations } from '../i18n/channelWorker/types'
+import { interpolate } from '../i18n/interpolate'
 import {
   instrumentGuessFromRawTelegram,
   isPlausibleCopierSymbol,
@@ -124,8 +126,22 @@ function signalActionFromLog(row: ChannelWorkerLogRow): string {
   return logAction
 }
 
-function errSuffix(row: ChannelWorkerLogRow): string {
-  return row.error_message ? `: ${row.error_message}` : ''
+function translateBrokerError(message: string, cw: ChannelWorkerTranslations): string {
+  const ticket = message.match(/Ticket\s+(\d+)\s+not found/i)
+  if (ticket) return interpolate(cw.errorTicketNotFound, { ticket: ticket[1] })
+  const sym = message.match(/symbol not found:\s*([A-Z0-9._#+]+)/i)
+  if (sym) return interpolate(cw.errorSymbolNotFound, { symbol: sym[1]!.toUpperCase() })
+  return message
+}
+
+function errSuffix(row: ChannelWorkerLogRow, cw: ChannelWorkerTranslations): string {
+  if (!row.error_message) return ''
+  return interpolate(cw.errSuffix, { detail: translateBrokerError(row.error_message, cw) })
+}
+
+function translateSkipReason(reason: string, cw: ChannelWorkerTranslations): string {
+  const key = reason.trim().toLowerCase()
+  return cw.skipReasons[key] ?? reason.replace(/_/g, ' ')
 }
 
 const SYMBOL_EXEMPTED_SKIP_REASONS = new Set([
@@ -133,8 +149,6 @@ const SYMBOL_EXEMPTED_SKIP_REASONS = new Set([
   'symbol_not_in_whitelist',
   'symbol_excluded',
 ])
-
-const SYMBOL_EXEMPTED_MESSAGE = 'Symbol exempted from trading'
 
 function symbolFromNotFoundError(message: string): string | null {
   const m = message.match(/symbol not found:\s*([A-Z0-9._#+]+)/i)
@@ -152,12 +166,58 @@ function allowedSymbolsFromPayload(payload: Record<string, unknown>): string[] {
   return raw.map(s => String(s).toUpperCase()).filter(Boolean)
 }
 
+function forInstrument(instr: string | null, cw: ChannelWorkerTranslations): string {
+  return instr ? interpolate(cw.forSymbol, { symbol: instr }) : ''
+}
+
+function onInstrument(instr: string | null, cw: ChannelWorkerTranslations): string {
+  return instr ? interpolate(cw.onSymbol, { symbol: instr }) : cw.onOpenTrade
+}
+
+function namedOrGeneric(
+  instr: string | null,
+  named: (symbol: string) => string,
+  generic: () => string,
+): string {
+  return instr ? named(instr) : generic()
+}
+
+function pctSuffix(frac: number): string {
+  if (!Number.isFinite(frac) || frac <= 0 || frac > 1) return ''
+  return ` (${Math.round(frac * 100)}%)`
+}
+
+function slPart(newSl: unknown, cw: ChannelWorkerTranslations, mode: 'to' | 'at' | 'paren'): string {
+  if (newSl == null || newSl === '') return ''
+  const sl = String(newSl)
+  if (mode === 'paren') return interpolate(cw.slParen, { sl })
+  if (mode === 'at') return interpolate(cw.slAt, { sl })
+  return interpolate(cw.slTo, { sl })
+}
+
+function localizedSide(side: string, cw: ChannelWorkerTranslations): string {
+  if (side === 'buy') return cw.sideBuy
+  if (side === 'sell') return cw.sideSell
+  return side
+}
+
+function localizedVerb(side: string, cw: ChannelWorkerTranslations): string {
+  if (side === 'sell') return cw.verbSell
+  if (side === 'buy') return cw.verbBuy
+  return cw.verbTrade
+}
+
 /** User-facing reason for order_send skipped/failed (symbol filters, broker "not found", etc.). */
-export function orderSendOutcomeSuffix(row: ChannelWorkerLogRow, instr: string | null): string {
+export function orderSendOutcomeSuffix(
+  row: ChannelWorkerLogRow,
+  instr: string | null,
+  cw: ChannelWorkerTranslations,
+): string {
   const payload = row.request_payload ?? {}
+  const exempted = `: ${cw.symbolExempted}`
   const skipReason = String(payload.skip_reason ?? '')
   if (SYMBOL_EXEMPTED_SKIP_REASONS.has(skipReason)) {
-    return `: ${SYMBOL_EXEMPTED_MESSAGE}`
+    return exempted
   }
 
   const allowed = allowedSymbolsFromPayload(payload)
@@ -165,7 +225,7 @@ export function orderSendOutcomeSuffix(row: ChannelWorkerLogRow, instr: string |
     payload.signal_symbol ?? getSignalParsedFromLog(row).symbol ?? '',
   ).toUpperCase()
   if (allowed.length > 0 && signalSym && !allowed.includes(signalSym)) {
-    return `: ${SYMBOL_EXEMPTED_MESSAGE}`
+    return exempted
   }
 
   const err = (row.error_message ?? '').trim()
@@ -177,64 +237,52 @@ export function orderSendOutcomeSuffix(row: ChannelWorkerLogRow, instr: string |
 
   if (/symbol not found/i.test(err)) {
     if (allowed.length > 0 && signalSym && !allowed.includes(signalSym)) {
-      return `: ${SYMBOL_EXEMPTED_MESSAGE}`
+      return exempted
     }
     if (errSym && displaySym && errSym !== displaySym) {
-      return `: ${SYMBOL_EXEMPTED_MESSAGE}`
+      return exempted
     }
     if (errSym && sentSym && displaySym && errSym === sentSym && displaySym !== sentSym) {
-      return `: ${SYMBOL_EXEMPTED_MESSAGE}`
+      return exempted
     }
   }
 
-  return `: ${err}`
+  return interpolate(cw.errSuffix, { detail: translateBrokerError(err, cw) })
 }
 
-/** "for XAUUSD" or "" */
-function forInstrument(instr: string | null): string {
-  return instr ? ` for ${instr}` : ''
-}
-
-/** "on XAUUSD" or "on your open trade" */
-function onInstrument(instr: string | null): string {
-  return instr ? `on ${instr}` : 'on your open trade'
-}
-
-function namedOrGeneric(instr: string | null, named: (symbol: string) => string, generic: () => string): string {
-  return instr ? named(instr) : generic()
-}
-
-/** Plain-English line for the dashboard Channel Worker feed. */
-export function channelWorkerLogMessage(row: ChannelWorkerLogRow): string {
+/** Localized line for the dashboard Channel Worker feed. */
+export function channelWorkerLogMessage(row: ChannelWorkerLogRow, cw: ChannelWorkerTranslations): string {
   const instr = resolveInstrumentSymbol(row)
   const logAction = row.action.toLowerCase()
   const status = row.status.toLowerCase()
   const signalAction = signalActionFromLog(row)
   const payload = row.request_payload ?? {}
   const parsed = getSignalParsedFromLog(row)
+  const forInstr = forInstrument(instr, cw)
+  const err = errSuffix(row, cw)
 
   if (logAction === 'pipeline_parse_dispatch') {
     if (status === 'attempt') {
-      return `Reading the channel message${forInstrument(instr)}…`
+      return interpolate(cw.pipelineReading, { for: forInstr })
     }
     if (status === 'success') {
-      return `Understood the channel message${forInstrument(instr)}.`
+      return interpolate(cw.pipelineUnderstood, { for: forInstr })
     }
-    return `Could not read the channel message${forInstrument(instr)}${errSuffix(row)}`
+    return interpolate(cw.pipelineCouldNotRead, { for: forInstr, err })
   }
 
   if (logAction === 'keyword_parse') {
     if (status === 'failed') {
-      return `Could not understand the message${forInstrument(instr)}${errSuffix(row)}`
+      return interpolate(cw.keywordCouldNotUnderstand, { for: forInstr, err })
     }
-    return messageForSignalAction(signalAction, instr, parsed, 'understood')
+    return messageForSignalAction(signalAction, instr, parsed, 'understood', cw)
   }
 
   if (logAction === 'plan_fallback') {
     return namedOrGeneric(
       instr,
-      s => `Adjusted the order plan for ${s} (using one order instead of several).`,
-      () => 'Adjusted the order plan (using one order instead of several).',
+      s => interpolate(cw.planFallbackNamed, { symbol: s }),
+      () => cw.planFallbackGeneric,
     )
   }
 
@@ -246,93 +294,112 @@ export function channelWorkerLogMessage(row: ChannelWorkerLogRow): string {
     const isPending = op.includes('limit') || op.includes('stop')
     const tradeSym = cleanTradeSymbol(payload.trade_symbol)
     const orderInstr = tradeSym ?? instr
-    const on = onInstrument(orderInstr)
+    const on = onInstrument(orderInstr, cw)
 
     if (status === 'skipped') {
-      const exempted = orderSendOutcomeSuffix(row, orderInstr)
-      if (exempted.includes(SYMBOL_EXEMPTED_MESSAGE)) {
+      const outcome = orderSendOutcomeSuffix(row, orderInstr, cw)
+      if (outcome.includes(cw.symbolExempted)) {
         return orderInstr
-          ? `Did not place an order on ${onInstrument(orderInstr)}${exempted}`
-          : `Did not place an order${exempted}`
+          ? interpolate(cw.orderDidNotPlaceNamed, { on, err: outcome })
+          : interpolate(cw.orderDidNotPlaceGeneric, { err: outcome })
       }
-      const reason = String(payload.skip_reason ?? row.error_message ?? 'not placed')
-      return `Did not place an order ${on} (${reason.replace(/_/g, ' ')}).`
+      const reason = translateSkipReason(
+        String(payload.skip_reason ?? row.error_message ?? cw.notPlaced),
+        cw,
+      )
+      return interpolate(cw.orderDidNotPlaceSkipped, { on, reason })
     }
     if (status === 'failed') {
-      const verb = side === 'sell' ? 'sell' : side === 'buy' ? 'buy' : 'trade'
-      const outcome = orderSendOutcomeSuffix(row, orderInstr)
+      const verb = localizedVerb(side, cw)
+      const outcome = orderSendOutcomeSuffix(row, orderInstr, cw)
       return orderInstr
-        ? `Could not ${verb} ${orderInstr}${outcome}`
-        : `Could not place the order${outcome}`
+        ? interpolate(cw.orderCouldNotVerb, { verb, symbol: orderInstr, err: outcome })
+        : interpolate(cw.orderCouldNotPlace, { err: outcome })
     }
     if (isPending && Number.isFinite(price) && price > 0) {
-      const lotStr = Number.isFinite(lot) && lot > 0 ? `${formatLot(lot)} ` : ''
-      return `Placed a pending ${side} order ${on} at ${price}${lotStr ? ` (${lotStr.trim()} lots)` : ''}.`
+      const lotStr = Number.isFinite(lot) && lot > 0 ? formatLot(lot) : ''
+      const lots = lotStr ? interpolate(cw.lotsParen, { lots: lotStr.trim() }) : ''
+      return interpolate(cw.orderPending, {
+        side: localizedSide(side, cw),
+        on,
+        price,
+        lots,
+      })
     }
     if (side === 'buy' || side === 'sell') {
       const lotStr = Number.isFinite(lot) && lot > 0 ? `${formatLot(lot)} ` : ''
-      const priceBit = Number.isFinite(price) && price > 0 ? ` at ${price}` : ''
-      return `Opened a ${lotStr}${side} ${on}${priceBit}.`
+      const priceBit =
+        Number.isFinite(price) && price > 0 ? interpolate(cw.priceAt, { price }) : ''
+      return interpolate(cw.orderOpened, {
+        lots: lotStr,
+        side: localizedSide(side, cw),
+        on,
+        price: priceBit,
+      })
     }
-    return `Sent an order to the broker ${on}.`
+    return interpolate(cw.orderSent, { on })
   }
 
   if (logAction.startsWith('mgmt_') || MANAGEMENT_COPIER_ACTIONS.has(signalAction)) {
     const mgmt = logAction.startsWith('mgmt_') ? logAction.slice(5) : signalAction
     if (status === 'failed') {
-      return `${mgmtFailurePhrase(mgmt, instr)}${errSuffix(row)}`
+      return `${mgmtFailurePhrase(mgmt, instr, cw)}${err}`
     }
     if (status === 'skipped') {
-      const reason = String(payload.skip_reason ?? row.error_message ?? 'no matching open trade')
-      return `${mgmtSkippedPhrase(mgmt, instr)} (${reason.replace(/_/g, ' ')}).`
+      const phrase = mgmtSkippedPhrase(mgmt, instr, cw)
+      const reason = translateSkipReason(
+        String(payload.skip_reason ?? row.error_message ?? cw.noMatchingOpenTrade),
+        cw,
+      )
+      return interpolate(cw.mgmtSkippedReason, { phrase, reason })
     }
-    return mgmtSuccessPhrase(mgmt, instr, parsed)
+    return mgmtSuccessPhrase(mgmt, instr, parsed, cw)
   }
 
   if (logAction === 'virtual_pending_inserted') {
     const rows = Number(payload.rows)
-    const count = Number.isFinite(rows) && rows > 0 ? rows : 'several'
+    const count = Number.isFinite(rows) && rows > 0 ? String(rows) : cw.several
     return namedOrGeneric(
       instr,
-      s => `Set up ${count} layered entry orders for ${s}.`,
-      () => `Set up ${count} layered entry orders on your open trade.`,
+      s => interpolate(cw.virtualInsertedNamed, { count, symbol: s }),
+      () => interpolate(cw.virtualInsertedGeneric, { count }),
     )
   }
   if (logAction === 'virtual_pending_fired') {
-    return `Layered entry order triggered ${onInstrument(instr)}.`
+    return interpolate(cw.virtualFired, { on: onInstrument(instr, cw) })
   }
   if (logAction === 'virtual_pending_cancelled') {
-    return `Cancelled a pending layered order ${onInstrument(instr)}.`
+    return interpolate(cw.virtualCancelled, { on: onInstrument(instr, cw) })
   }
   if (logAction === 'virtual_pending_expired') {
-    return `A pending layered order ${onInstrument(instr)} expired.`
+    return interpolate(cw.virtualExpired, { on: onInstrument(instr, cw) })
   }
   if (logAction === 'virtual_pending_failed') {
     return namedOrGeneric(
       instr,
-      s => `Could not place layered entry orders for ${s}${errSuffix(row)}`,
-      () => `Could not place layered entry orders${errSuffix(row)}`,
+      s => interpolate(cw.virtualFailedNamed, { symbol: s, err }),
+      () => interpolate(cw.virtualFailedGeneric, { err }),
     )
   }
 
   if (logAction === 'signal_entry_pending_placed') {
-    return `Placed a waiting entry order ${onInstrument(instr)}.`
+    return interpolate(cw.entryPlaced, { on: onInstrument(instr, cw) })
   }
   if (logAction === 'signal_entry_pending_filled') {
-    return `Entry order filled ${onInstrument(instr)}.`
+    return interpolate(cw.entryFilled, { on: onInstrument(instr, cw) })
   }
   if (logAction === 'signal_entry_pending_cancelled') {
-    return `Cancelled the waiting entry order ${onInstrument(instr)}.`
+    return interpolate(cw.entryCancelled, { on: onInstrument(instr, cw) })
   }
   if (logAction === 'signal_entry_pending_failed') {
-    return `Entry order failed ${onInstrument(instr)}${errSuffix(row)}`
+    return interpolate(cw.entryFailed, { on: onInstrument(instr, cw), err })
   }
 
   if (logAction === 'signal_merge_into_open_trade') {
     return namedOrGeneric(
       instr,
-      s => `Added to the existing ${s} position.`,
-      () => 'Added to your open trade.',
+      s => interpolate(cw.mergeAddedNamed, { symbol: s }),
+      () => cw.mergeAddedGeneric,
     )
   }
   if (logAction === 'merge_routed_modify_only' || logAction === 'merge_modify_summary') {
@@ -343,91 +410,105 @@ export function channelWorkerLogMessage(row: ChannelWorkerLogRow): string {
     const userMsg = typeof payload.user_message === 'string' ? payload.user_message : null
     if (status === 'success') {
       const n = Number.isFinite(modified) && modified > 0 ? modified : null
+      const count = n ?? cw.all
+      const legsLabel = n === 1 ? cw.leg : cw.legs
+      const legsDetail =
+        n != null
+          ? interpolate(cw.legsDetail, { count: n, legsLabel })
+          : ''
       return namedOrGeneric(
         instr,
-        s => `Updated stop loss and take profit on ${n ?? 'all'} open ${s} leg${n === 1 ? '' : 's'} (no new trades opened).`,
-        () => `Updated stop loss and take profit on your open trade${n != null ? ` (${n} leg${n === 1 ? '' : 's'})` : ''} — no new trades opened.`,
+        s =>
+          interpolate(cw.mergeSlTpSuccessNamed, {
+            count,
+            symbol: s,
+            legsLabel,
+          }),
+        () => interpolate(cw.mergeSlTpSuccessGeneric, { legsDetail }),
       )
     }
     if (userMsg) {
       return namedOrGeneric(
         instr,
-        s => `${userMsg} (${s}).`,
+        s => interpolate(cw.mergeUserMsgNamed, { message: userMsg, symbol: s }),
         () => userMsg,
       )
     }
     const detail =
       Number.isFinite(openLegs) && Number.isFinite(modified)
-        ? `${modified}/${openLegs} legs updated`
-        : 'partial update'
+        ? interpolate(cw.legsUpdated, { modified, openLegs })
+        : cw.partialUpdate
     const legErrors = payload.leg_errors
     const firstLegErr =
       Array.isArray(legErrors) && legErrors.length > 0 && typeof legErrors[0] === 'object' && legErrors[0] !== null
         ? String((legErrors[0] as Record<string, unknown>).error ?? '').trim()
         : ''
     const extra =
-      (Number.isFinite(skipped) && skipped > 0 ? `; ${skipped} awaiting ticket` : '')
-      + (Number.isFinite(failed) && failed > 0 ? `; ${failed} broker errors` : '')
-      + (firstLegErr ? ` — e.g. ${firstLegErr.slice(0, 120)}` : '')
+      (Number.isFinite(skipped) && skipped > 0
+        ? interpolate(cw.awaitingTicket, { count: skipped })
+        : '')
+      + (Number.isFinite(failed) && failed > 0 ? interpolate(cw.brokerErrors, { count: failed }) : '')
+      + (firstLegErr ? interpolate(cw.egError, { error: firstLegErr.slice(0, 120) }) : '')
     return namedOrGeneric(
       instr,
-      s => `Could not update every open ${s} leg (${detail}${extra})`,
-      () => `Could not update every open leg (${detail}${extra})`,
+      s => interpolate(cw.mergeCouldNotUpdateNamed, { symbol: s, detail, extra }),
+      () => interpolate(cw.mergeCouldNotUpdateGeneric, { detail, extra }),
     )
   }
   if (logAction === 'merge_anchor_selected') {
     if (status === 'success') {
       return namedOrGeneric(
         instr,
-        s => `Applying SL/TP to the open ${s} basket.`,
-        () => 'Applying SL/TP to your open trade basket.',
+        s => interpolate(cw.mergeAnchorNamed, { symbol: s }),
+        () => cw.mergeAnchorGeneric,
       )
     }
   }
   if (logAction === 'opposite_signal_close') {
     return namedOrGeneric(
       instr,
-      s => `Closed the opposite ${s} position before opening a new one.`,
-      () => 'Closed the opposite position before opening a new one.',
+      s => interpolate(cw.oppositeCloseNamed, { symbol: s }),
+      () => cw.oppositeCloseGeneric,
     )
   }
   if (logAction === 'partial_tp_fired') {
-    return `Take-profit level hit ${onInstrument(instr)} — closed part of the position.`
+    return interpolate(cw.partialTpFired, { on: onInstrument(instr, cw) })
   }
   if (logAction === 'trailing_stop') {
     if (status === 'success') {
-      const newSl = payload.new_sl
-      return `Moved trailing stop loss ${onInstrument(instr)}${newSl != null ? ` to ${newSl}` : ''}.`
+      return interpolate(cw.trailingMoved, {
+        on: onInstrument(instr, cw),
+        sl: slPart(payload.new_sl, cw, 'to'),
+      })
     }
-    return `Could not update trailing stop ${onInstrument(instr)}${errSuffix(row)}`
+    return interpolate(cw.trailingCouldNot, { on: onInstrument(instr, cw), err })
   }
   if (logAction === 'auto_be') {
     if (status === 'success') {
-      const newSl = payload.new_sl
       const half = payload.half_close === true
-      return half
-        ? `Auto-management: moved stop loss to break-even and closed half ${onInstrument(instr)}${newSl != null ? ` (SL ${newSl})` : ''}.`
-        : `Auto-management: moved stop loss to break-even ${onInstrument(instr)}${newSl != null ? ` at ${newSl}` : ''}.`
+      const on = onInstrument(instr, cw)
+      const sl = slPart(payload.new_sl, cw, half ? 'paren' : 'at')
+      return half ? interpolate(cw.autoBeHalf, { on, sl }) : interpolate(cw.autoBe, { on, sl })
     }
-    return `Auto-management could not move stop loss to break-even ${onInstrument(instr)}${errSuffix(row)}`
+    return interpolate(cw.autoBeFailed, { on: onInstrument(instr, cw), err })
   }
   if (logAction === 'cwe_close') {
     return namedOrGeneric(
       instr,
-      s => `Closed ${s} (channel close rule).`,
-      () => 'Closed your open trade (channel close rule).',
+      s => interpolate(cw.cweCloseNamed, { symbol: s }),
+      () => cw.cweCloseGeneric,
     )
   }
 
   if (status === 'failed') {
     return namedOrGeneric(
       instr,
-      s => `Something went wrong while handling ${s}${errSuffix(row)}`,
-      () => `Something went wrong${errSuffix(row)}`,
+      s => interpolate(cw.genericFailedNamed, { symbol: s, err }),
+      () => interpolate(cw.genericFailedGeneric, { err }),
     )
   }
 
-  return messageForSignalAction(signalAction, instr, parsed, 'completed')
+  return messageForSignalAction(signalAction, instr, parsed, 'completed', cw)
 }
 
 function messageForSignalAction(
@@ -435,105 +516,122 @@ function messageForSignalAction(
   instr: string | null,
   parsed: Record<string, unknown>,
   tense: 'understood' | 'completed',
+  cw: ChannelWorkerTranslations,
 ): string {
-  const prefix = tense === 'understood' ? 'Understood' : 'Completed'
-  const on = onInstrument(instr)
+  const prefix = tense === 'understood' ? cw.understood : cw.completed
+  const on = onInstrument(instr, cw)
+  const forInstr = forInstrument(instr, cw)
   switch (action) {
     case 'buy':
-      return instr ? `${prefix}: buy ${instr}.` : `${prefix}: buy signal.`
+      return instr
+        ? interpolate(cw.signalBuyNamed, { prefix, symbol: instr })
+        : interpolate(cw.signalBuyGeneric, { prefix })
     case 'sell':
-      return instr ? `${prefix}: sell ${instr}.` : `${prefix}: sell signal.`
+      return instr
+        ? interpolate(cw.signalSellNamed, { prefix, symbol: instr })
+        : interpolate(cw.signalSellGeneric, { prefix })
     case 'close':
       return namedOrGeneric(
         instr,
-        s => `${prefix}: close ${s}.`,
-        () => `${prefix}: close your open trade.`,
+        s => interpolate(cw.signalCloseNamed, { prefix, symbol: s }),
+        () => interpolate(cw.signalCloseGeneric, { prefix }),
       )
     case 'breakeven':
       return tense === 'understood'
-        ? `Understood: move stop loss to break-even ${on}.`
-        : `Moved stop loss to break-even ${on}.`
+        ? interpolate(cw.signalBreakevenUnderstood, { on })
+        : interpolate(cw.signalBreakevenCompleted, { on })
     case 'partial_profit': {
       const frac = Number(parsed.partial_close_fraction)
-      const pct =
-        Number.isFinite(frac) && frac > 0 && frac <= 1 ? ` (${Math.round(frac * 100)}%)` : ''
-      return `${prefix}: take partial profit ${on}${pct}.`
+      const pct = pctSuffix(frac)
+      return interpolate(cw.signalPartialProfit, { prefix, on, pct })
     }
     case 'partial_breakeven':
-      return `${prefix}: take partial profit and move to break-even ${on}.`
+      return interpolate(cw.signalPartialBreakeven, { prefix, on })
     case 'modify':
-      return `${prefix}: update stop loss or take profit ${on}.`
+      return interpolate(cw.signalModify, { prefix, on })
     case 'ignore':
-      return `${prefix}: this message is not a trade signal.`
+      return interpolate(cw.signalIgnore, { prefix })
     default:
-      return `${prefix} the channel update${forInstrument(instr)}.`
+      return interpolate(cw.signalDefault, { prefix, for: forInstr })
   }
 }
 
-function mgmtSuccessPhrase(action: string, instr: string | null, parsed: Record<string, unknown>): string {
-  const on = onInstrument(instr)
+function mgmtSuccessPhrase(
+  action: string,
+  instr: string | null,
+  parsed: Record<string, unknown>,
+  cw: ChannelWorkerTranslations,
+): string {
+  const on = onInstrument(instr, cw)
   switch (action) {
     case 'close':
       return namedOrGeneric(
         instr,
-        s => `Closed the ${s} position.`,
-        () => 'Closed your open trade.',
+        s => interpolate(cw.mgmtCloseSuccessNamed, { symbol: s }),
+        () => cw.mgmtCloseSuccessGeneric,
       )
     case 'breakeven':
-      return `Moved stop loss to break-even ${on}.`
+      return interpolate(cw.mgmtBreakevenSuccess, { on })
     case 'partial_profit': {
       const frac = Number(parsed.partial_close_fraction)
-      const pct =
-        Number.isFinite(frac) && frac > 0 && frac <= 1 ? ` (${Math.round(frac * 100)}%)` : ''
-      return `Took partial profit ${on}${pct}.`
+      const pct = pctSuffix(frac)
+      return interpolate(cw.mgmtPartialProfit, { on, pct })
     }
     case 'partial_breakeven':
-      return `Took partial profit and moved stop loss to break-even ${on}.`
+      return interpolate(cw.mgmtPartialBreakeven, { on })
     case 'modify':
-      return `Updated stop loss or take profit ${on}.`
+      return interpolate(cw.mgmtModifySuccess, { on })
     default:
       return namedOrGeneric(
         instr,
-        s => `Applied the update to ${s}.`,
-        () => 'Applied the update to your open trade.',
+        s => interpolate(cw.mgmtAppliedNamed, { symbol: s }),
+        () => cw.mgmtAppliedGeneric,
       )
   }
 }
 
-function mgmtFailurePhrase(action: string, instr: string | null): string {
+function mgmtFailurePhrase(action: string, instr: string | null, cw: ChannelWorkerTranslations): string {
   switch (action) {
     case 'close':
-      return namedOrGeneric(instr, s => `Could not close ${s}`, () => 'Could not close your open trade')
+      return namedOrGeneric(
+        instr,
+        s => interpolate(cw.mgmtCloseFailNamed, { symbol: s }),
+        () => cw.mgmtCloseFailGeneric,
+      )
     case 'breakeven':
       return namedOrGeneric(
         instr,
-        s => `Could not move ${s} to break-even`,
-        () => 'Could not move your open trade to break-even',
+        s => interpolate(cw.mgmtBreakevenFailNamed, { symbol: s }),
+        () => cw.mgmtBreakevenFailGeneric,
       )
     case 'partial_profit':
-      return `Could not take partial profit ${onInstrument(instr)}`
+      return interpolate(cw.mgmtPartialProfitFail, { on: onInstrument(instr, cw) })
     case 'partial_breakeven':
-      return `Could not take partial profit or move to break-even ${onInstrument(instr)}`
+      return interpolate(cw.mgmtPartialBreakevenFail, { on: onInstrument(instr, cw) })
     case 'modify':
-      return `Could not update stop loss or take profit ${onInstrument(instr)}`
+      return interpolate(cw.mgmtModifyFail, { on: onInstrument(instr, cw) })
     default:
       return namedOrGeneric(
         instr,
-        s => `Could not apply the update to ${s}`,
-        () => 'Could not apply the update to your open trade',
+        s => interpolate(cw.mgmtApplyFailNamed, { symbol: s }),
+        () => cw.mgmtApplyFailGeneric,
       )
   }
 }
 
-function mgmtSkippedPhrase(action: string, instr: string | null): string {
+function mgmtSkippedPhrase(action: string, instr: string | null, cw: ChannelWorkerTranslations): string {
   switch (action) {
     case 'close':
-      return namedOrGeneric(instr, s => `Did not close ${s}`, () => 'Did not close your open trade')
+      return namedOrGeneric(
+        instr,
+        s => interpolate(cw.mgmtCloseSkippedNamed, { symbol: s }),
+        () => cw.mgmtCloseSkippedGeneric,
+      )
     default:
       return namedOrGeneric(
         instr,
-        s => `Skipped the ${s} update`,
-        () => 'Skipped the update to your open trade',
+        s => interpolate(cw.mgmtSkippedNamed, { symbol: s }),
+        () => cw.mgmtSkippedGeneric,
       )
   }
 }
