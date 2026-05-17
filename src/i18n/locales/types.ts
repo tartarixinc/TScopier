@@ -98,6 +98,17 @@ export interface DashboardTranslations {
   healthStable: string
   healthDegraded: string
   healthOffline: string
+  tradeOutcomeTitle: string
+  tradeOutcomeSubtitle: string
+  tradeOutcomeEmpty: string
+  chartProfit: string
+  chartLoss: string
+  accountGrowthTitle: string
+  accountGrowthSubtitle: string
+  accountGrowthEmpty: string
+  channelWorker: string
+  noChannelWorkerLogs: string
+  noData: string
 }
 
 export interface CopierLogsTranslations {
