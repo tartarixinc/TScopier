@@ -265,12 +265,18 @@ export function Backtest() {
   }
 
   return (
-    <div className="p-4 lg:p-8 max-w-6xl mx-auto space-y-6">
+    <div
+      className={clsx(
+        'relative min-h-full',
+        isCollatingResults && 'overflow-hidden',
+      )}
+    >
       <BacktestRunOverlay
         open={isCollatingResults}
         message={collatingMessage}
         progressPct={activeRun?.progress_pct}
       />
+      <div className="p-4 lg:p-8 max-w-6xl mx-auto space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-50 flex items-center gap-2">
@@ -469,60 +475,7 @@ export function Backtest() {
               )}
             </div>
 
-            {config.channelIds.length > 0 ? (
-              <div className="rounded-xl border border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/40 px-3 py-2.5 text-xs space-y-1">
-                {previewLoading ? (
-                  <p className="text-neutral-400">Checking signal history…</p>
-                ) : preview ? (
-                  <>
-                    <p className="font-medium text-neutral-700 dark:text-neutral-200">
-                      {preview.tradeable_count} tradeable signal{preview.tradeable_count === 1 ? '' : 's'} in range
-                      {config.symbols.length > 0
-                        ? ` (${config.symbols.join(', ')})`
-                        : preview.available_symbols?.length
-                          ? ` · ${preview.available_symbols.length} symbol${preview.available_symbols.length === 1 ? '' : 's'} in channel`
-                          : ''}
-                    </p>
-                    <p className="text-neutral-500">
-                      {preview.stored_count} stored in backtest table (copier logs not used)
-                    </p>
-                    {!preview.massive_configured ? (
-                      <p className="text-amber-600 dark:text-amber-400">
-                        MASSIVE_API_KEY is not set in Supabase Edge secrets — market data will not load.
-                      </p>
-                    ) : (
-                      <p className="text-teal-600 dark:text-teal-400">
-                        Massive API key configured
-                        {preview.massive_calls_per_minute
-                          ? ` · ${preview.massive_calls_per_minute} calls/min limit (OHLC bars recommended)`
-                          : ''}
-                        .
-                        {preview.massive_probe ? (
-                          preview.massive_probe.ok
-                            ? ` Probe OK (${preview.massive_probe.bars ?? 0} bars).`
-                            : ` Probe: ${preview.massive_probe.error ?? 'failed'}.`
-                        ) : (
-                          ' Market data loads when you run a backtest.'
-                        )}
-                      </p>
-                    )}
-                    {config.executionMode === 'tick_quotes' && (preview.massive_calls_per_minute ?? 5) <= 5 ? (
-                      <p className="text-amber-600 dark:text-amber-400">
-                        Tick quotes use many API calls. On a 5/min plan the engine uses OHLC bars instead.
-                      </p>
-                    ) : null}
-                    {preview.tradeable_count === 0 ? (
-                      <p className="text-neutral-500">
-                        Running a backtest imports Telegram history for your date range (worker must be online).
-                        Ensure Telegram is connected, channels are active, and messages parse as buy/sell with entry and SL or TP.
-                      </p>
-                    ) : null}
-                  </>
-                ) : (
-                  <p className="text-neutral-400">Could not load signal preview</p>
-                )}
-              </div>
-            ) : null}
+            
 
             <Button
               className="w-full"
@@ -561,30 +514,7 @@ export function Backtest() {
 
         {/* Results */}
         <div className="lg:col-span-3 space-y-4 min-w-0">
-          {activeRun?.status === 'failed' ? (
-            <Alert variant="error">{activeRun.error_message ?? 'Backtest failed'}</Alert>
-          ) : null}
-          {activeRun?.progress_message && activeRun.status !== 'failed' && !isCollatingResults ? (
-            <p className="text-xs text-neutral-500 dark:text-neutral-400">{activeRun.progress_message}</p>
-          ) : null}
-          {summary?.massiveApiCalls != null && activeRun?.status === 'completed' ? (
-            <p className="text-xs text-neutral-500 dark:text-neutral-400">
-              Massive API: {summary.massiveApiCalls} request{summary.massiveApiCalls === 1 ? '' : 's'}
-              {summary.massiveApiCalls === 0
-                ? ' — no market data was fetched (zero tradeable signals or run did not reach simulation)'
-                : ''}
-            </p>
-          ) : null}
-          {summary?.importWarnings && summary.importWarnings.length > 0 ? (
-            <Alert variant="warning">
-              Import: {summary.importWarnings.slice(0, 2).join(' · ')}
-              {summary.importWarnings.length > 2 ? ` (+${summary.importWarnings.length - 2} more)` : ''}
-            </Alert>
-          ) : null}
-          {summary?.message && (summary.totalSignals ?? 0) === 0 ? (
-            <Alert variant="warning">{summary.message}</Alert>
-          ) : null}
-
+          
           {summary ? (
             <>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -686,6 +616,7 @@ export function Backtest() {
             </div>
           ) : null}
         </div>
+      </div>
       </div>
     </div>
   )

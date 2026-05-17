@@ -26,12 +26,15 @@ Backtests replay parsed Telegram signals against historical market data from [Ma
 
    When you run a backtest, the worker **fetches Telegram history** for your selected date range. Parsing uses `parse-signal` in **`parse_only` mode** (no writes to `signals`, no trade execution). Tradeable rows go only into `backtest_channel_signals`. Copier Logs are unaffected.
 
-3. Link the project (once) and deploy the edge function:
+3. Link the project (once) and deploy edge functions:
    ```bash
    supabase link --project-ref YOUR_PROJECT_REF
    supabase functions deploy backtest-run
+   supabase functions deploy parse-signal
    ```
-   `supabase/config.toml` sets `verify_jwt = false` for `backtest-run` so browser preflight (OPTIONS) succeeds; the function still validates the user JWT in code.
+   `supabase/config.toml` sets `verify_jwt = false` for `backtest-run` and `parse-signal` so browser preflight (OPTIONS) and server-to-server import (service role) succeed. `backtest-run` still validates the user JWT in code.
+
+   If import shows **`parse failed (401)`**, redeploy both functions above. The importer must call `parse-signal` with the **service role** key for both `Authorization` and `apikey` (mixing anon `apikey` with service Bearer causes 401).
 
    Set **`MASSIVE_API_KEY`** in Supabase Edge secrets. Without it, runs fail before market data is fetched.
 

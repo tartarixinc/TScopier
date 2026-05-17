@@ -9,7 +9,6 @@ import {
   ScrollText,
   Newspaper,
   Calendar,
-  TrendingUp,
   ChartBar as BarChart2,
   LifeBuoy,
   Lightbulb,
@@ -17,8 +16,6 @@ import {
   Share2,
   CreditCard,
   Repeat,
-  Briefcase,
-  ChartPie as PieChart,
   Search,
   Bell,
   ChevronDown,
@@ -61,6 +58,7 @@ export function AppLayout() {
           { to: '/backtest', icon: LayoutTemplate, label: t.nav.items.backtest },
           { to: '/copier-logs', icon: ScrollText, label: t.nav.items.copierLogs },
           { to: '/signal-history', icon: ChartNoAxesColumn, label: t.nav.items.signalHistory },
+          { to: '/performance', icon: BarChart2, label: t.nav.items.performance },
         ],
       },
       {
@@ -68,15 +66,6 @@ export function AppLayout() {
         items: [
           { to: '/market-news', icon: Newspaper, label: t.nav.items.marketNews },
           { to: '/economic-calendar', icon: Calendar, label: t.nav.items.economicCalendar },
-          { to: '/sentiments', icon: TrendingUp, label: t.nav.items.sentiments },
-        ],
-      },
-      {
-        label: t.nav.sections.signalAnalyzer,
-        items: [
-          { to: '/performance', icon: BarChart2, label: t.nav.items.performance },
-          { to: '/portfolio', icon: Briefcase, label: t.nav.items.portfolio },
-          { to: '/analysis-hub', icon: PieChart, label: t.nav.items.analysisHub },
         ],
       },
       {

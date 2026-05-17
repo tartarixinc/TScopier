@@ -1236,41 +1236,50 @@ export function AccountConfigPage() {
       )}
 
       {configAccount && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-5xl h-[88vh] flex flex-col rounded-2xl bg-white dark:bg-neutral-900 shadow-xl border border-neutral-200 dark:border-neutral-800 overflow-hidden">
-            <div className="px-6 py-4 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">Configure Trading</h3>
-                <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="configure-trading-title"
+            className="w-full max-w-5xl h-[100dvh] sm:h-[88vh] max-h-[100dvh] sm:max-h-[88vh] flex flex-col rounded-none sm:rounded-2xl bg-white dark:bg-neutral-900 shadow-xl border-0 sm:border border-neutral-200 dark:border-neutral-800 overflow-hidden"
+          >
+            <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-neutral-100 dark:border-neutral-800 flex items-start justify-between gap-3 shrink-0">
+              <div className="min-w-0 flex-1">
+                <h3 id="configure-trading-title" className="text-base sm:text-lg font-semibold text-neutral-900 dark:text-neutral-50 truncate">
+                  Configure Trading
+                </h3>
+                <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 mt-0.5 truncate">
                   {configAccount.label} · {configAccount.platform}
                 </p>
               </div>
               <button
+                type="button"
                 onClick={closeConfigureModal}
-                className="px-3 py-1.5 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:text-neutral-300"
+                className="shrink-0 min-h-[44px] px-3 py-2 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800"
               >
                 Close
               </button>
             </div>
 
-            <div className="flex flex-1 min-h-0">
-              {/* Side tabs */}
-              <nav className="w-52 border-r border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/50 p-3 space-y-0.5 overflow-y-auto">
+            <div className="flex flex-col sm:flex-row flex-1 min-h-0 min-w-0">
+              {/* Primary tabs — horizontal scroll on mobile, sidebar on sm+ */}
+              <nav className="shrink-0 flex sm:flex-col w-full sm:w-52 border-b sm:border-b-0 sm:border-r border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/50 p-2 sm:p-3 gap-1 sm:space-y-0.5 overflow-x-auto sm:overflow-y-auto overscroll-x-contain">
                 {tabs.map(tab => {
                   const Icon = tab.icon
                   const active = tab.id === activeTab
                   return (
                     <button
                       key={tab.id}
+                      type="button"
                       onClick={() => setActiveTab(tab.id)}
                       className={clsx(
-                        'w-full flex items-center gap-2 text-left px-3 py-2 rounded-lg text-sm transition-colors',
+                        'shrink-0 sm:w-full flex items-center gap-2 text-left px-3 py-2.5 sm:py-2 rounded-lg text-sm transition-colors min-h-[44px] sm:min-h-0 whitespace-nowrap',
                         active
-                          ? 'bg-white dark:bg-neutral-900 text-primary-700 shadow-sm border border-primary-100'
-                          : 'text-neutral-600 dark:text-neutral-400 hover:bg-white dark:bg-neutral-900 hover:text-neutral-900 dark:text-neutral-50',
+                          ? 'bg-white dark:bg-neutral-900 text-primary-700 shadow-sm border border-primary-100 dark:border-primary-900/50'
+                          : 'text-neutral-600 dark:text-neutral-400 hover:bg-white dark:hover:bg-neutral-900 hover:text-neutral-900 dark:hover:text-neutral-50 border border-transparent',
                       )}
                     >
-                      <Icon className={clsx('w-4 h-4', active ? 'text-primary-600' : 'text-neutral-400')} />
+                      <Icon className={clsx('w-4 h-4 shrink-0', active ? 'text-primary-600' : 'text-neutral-400')} />
                       {tab.label}
                     </button>
                   )
@@ -1278,10 +1287,10 @@ export function AccountConfigPage() {
               </nav>
 
               {/* Tab body column */}
-              <div className="flex-1 flex flex-col min-h-0">
+              <div className="flex-1 flex flex-col min-h-0 min-w-0">
                 {activeTab === 'mode' && (
-                  <div className="px-6 pt-4 bg-white dark:bg-neutral-900 border-b border-neutral-100 dark:border-neutral-800">
-                    <div className="flex flex-wrap items-center gap-1">
+                  <div className="shrink-0 px-4 sm:px-6 pt-3 sm:pt-4 bg-white dark:bg-neutral-900 border-b border-neutral-100 dark:border-neutral-800 overflow-x-auto overscroll-x-contain">
+                    <div className="flex flex-nowrap items-center gap-1 min-w-max sm:min-w-0 sm:flex-wrap pb-px">
                       {MANUAL_SUB_TABS.map(sub => {
                         const SubIcon = sub.icon
                         const active = sub.id === activeManualSubTab
@@ -1291,13 +1300,13 @@ export function AccountConfigPage() {
                             type="button"
                             onClick={() => setActiveManualSubTab(sub.id)}
                             className={clsx(
-                              'flex items-center gap-1.5 px-3 py-2 text-sm transition-colors border-b-2 -mb-px',
+                              'shrink-0 flex items-center gap-1.5 px-3 py-2.5 sm:py-2 text-sm transition-colors border-b-2 -mb-px min-h-[44px] sm:min-h-0 whitespace-nowrap',
                               active
-                                ? 'border-primary-600 text-primary-700'
-                                : 'border-transparent text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:text-neutral-100',
+                                ? 'border-primary-600 text-primary-700 dark:text-primary-400'
+                                : 'border-transparent text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-100',
                             )}
                           >
-                            <SubIcon className={clsx('w-3.5 h-3.5', active ? 'text-primary-600' : 'text-neutral-400')} />
+                            <SubIcon className={clsx('w-3.5 h-3.5 shrink-0', active ? 'text-primary-600' : 'text-neutral-400')} />
                             {sub.label}
                           </button>
                         )
@@ -1306,7 +1315,7 @@ export function AccountConfigPage() {
                   </div>
                 )}
 
-                <div className="flex-1 overflow-y-auto px-6 py-5">
+                <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 sm:px-6 py-4 sm:py-5 min-h-0 overscroll-y-contain">
                 {error && <Alert className="mb-4">{error}</Alert>}
 
                 {activeTab === 'mode' && (
@@ -1370,7 +1379,7 @@ export function AccountConfigPage() {
                                   Examples: <span className="font-mono">GOLD=XAUUSD</span>, <span className="font-mono">USOIL=WTIOIL</span>
                                 </p>
                               </div>
-                              <div className="grid grid-cols-2 gap-2">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                 <Input label="Symbol Prefix" value={configDraft.manualSettings.symbol_prefix ?? ''} onChange={e => setManual({ symbol_prefix: e.target.value })} />
                                 <Input label="Symbol Suffix" value={configDraft.manualSettings.symbol_suffix ?? ''} onChange={e => setManual({ symbol_suffix: e.target.value })} />
                                 <div className="col-span-2">
@@ -2308,12 +2317,12 @@ export function AccountConfigPage() {
               </div>
             </div>
 
-            <div className="px-6 py-4 border-t border-neutral-100 dark:border-neutral-800 flex items-center justify-end gap-3">
+            <div className="shrink-0 px-4 sm:px-6 py-3 sm:py-4 border-t border-neutral-100 dark:border-neutral-800 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 sm:gap-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-4">
               {configSavedAt != null && (
-                <span className="text-xs text-success-600 transition-opacity">Saved</span>
+                <span className="text-xs text-success-600 text-center sm:text-left sm:mr-auto transition-opacity">Saved</span>
               )}
-              <Button variant="ghost" onClick={closeConfigureModal} disabled={configSaving}>Cancel</Button>
-              <Button loading={configSaving} onClick={() => void saveConfigureModal()}>Save</Button>
+              <Button variant="ghost" className="w-full sm:w-auto min-h-[44px]" onClick={closeConfigureModal} disabled={configSaving}>Cancel</Button>
+              <Button className="w-full sm:w-auto min-h-[44px]" loading={configSaving} onClick={() => void saveConfigureModal()}>Save</Button>
             </div>
           </div>
         </div>
@@ -2396,13 +2405,13 @@ function ChannelFiltersCard({
               />
             ))}
           </div>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
               Ignored categories drop matching messages from this channel before the worker runs them.
             </p>
             <button
               type="button"
-              className="text-xs text-primary-600 hover:text-primary-700 hover:underline"
+              className="text-xs text-primary-600 hover:text-primary-700 hover:underline shrink-0 self-start sm:self-auto"
               onClick={onReset}
               disabled={ignoredCount === 0}
             >

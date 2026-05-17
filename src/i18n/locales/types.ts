@@ -6,7 +6,6 @@ export interface NavTranslations {
     general: string
     signals: string
     tradingTools: string
-    signalAnalyzer: string
     feedback: string
     growth: string
     membership: string
@@ -21,10 +20,7 @@ export interface NavTranslations {
     signalHistory: string
     marketNews: string
     economicCalendar: string
-    sentiments: string
     performance: string
-    portfolio: string
-    analysisHub: string
     contactSupport: string
     featureRequest: string
     partnerWithUs: string
@@ -145,6 +141,83 @@ export interface TradesTranslations {
   refresh: string
 }
 
+export interface EconomicCalendarTranslations {
+  title: string
+  subtitle: string
+  from: string
+  to: string
+  country: string
+  countryAll: string
+  impact: string
+  impactAll: string
+  impactHigh: string
+  impactMedium: string
+  impactLow: string
+  newsFilter: string
+  actual: string
+  forecast: string
+  previous: string
+  loadError: string
+  empty: string
+  lastUpdated: string
+  relatedNews: string
+  relatedNewsEmpty: string
+  readArticle: string
+  dataByFmp: string
+}
+
+export interface MarketNewsTranslations {
+  title: string
+  subtitle: string
+  symbol: string
+  symbolAll: string
+  forexBadge: string
+  readArticle: string
+  lastUpdated: string
+  loadError: string
+  emptyTitle: string
+  emptySubtitle: string
+  emptyFilterTitle: string
+  emptyFilterSubtitle: string
+  moreHeadlines: string
+  dataByFmp: string
+}
+
+export interface PerformanceTranslations {
+  title: string
+  subtitle: string
+  period7d: string
+  period30d: string
+  period90d: string
+  periodAll: string
+  lastUpdated: string
+  realizedPnl: string
+  closedTrades: string
+  winRate: string
+  winLoss: string
+  profitFactor: string
+  avgRoi: string
+  accountsTracked: string
+  noBaseline: string
+  maxDrawdown: string
+  outcomeTitle: string
+  outcomeTitleAll: string
+  outcomeSubtitle: string
+  outcomeEmpty: string
+  accountsTitle: string
+  accountsSubtitle: string
+  viewTrades: string
+  accountsEmpty: string
+  colAccount: string
+  colBroker: string
+  colEquity: string
+  colRoi: string
+  colWinRate: string
+  colMaxDrawdown: string
+  configure: string
+  baselineNote: string
+}
+
 export interface BacktestTranslations {
   title: string
   subtitle: string
@@ -184,6 +257,9 @@ export interface Translations {
   copierLogs: CopierLogsTranslations
   trades: TradesTranslations
   backtest: BacktestTranslations
+  marketNews: MarketNewsTranslations
+  economicCalendar: EconomicCalendarTranslations
+  performance: PerformanceTranslations
   pages: {
     accountConfiguration: PageMeta
     contactSupport: PageMeta
@@ -194,7 +270,6 @@ export interface Translations {
     subscriptions: PageMeta
     marketNews: PageMeta
     economicCalendar: PageMeta
-    sentiments: PageMeta
     performance: PageMeta
     portfolio: PageMeta
     analysisHub: PageMeta

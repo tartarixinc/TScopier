@@ -14,7 +14,6 @@ import { Backtest } from './pages/dashboard/Backtest'
 import { TradesPage } from './pages/dashboard/TradesPage'
 import { MarketNewsPage } from './pages/dashboard/MarketNewsPage'
 import { EconomicCalendarPage } from './pages/dashboard/EconomicCalendarPage'
-import { SentimentsPage } from './pages/dashboard/SentimentsPage'
 import { PerformancePage } from './pages/dashboard/PerformancePage'
 import {
   AffiliateProgramPage,
@@ -58,7 +57,6 @@ export default function App() {
             <Route path="/signal-history" element={<SignalHistoryPage />} />
             <Route path="/market-news" element={<MarketNewsPage />} />
             <Route path="/economic-calendar" element={<EconomicCalendarPage />} />
-            <Route path="/sentiments" element={<SentimentsPage />} />
             <Route path="/contact-support" element={<ContactSupportPage />} />
             <Route path="/feature-request" element={<FeatureRequestPage />} />
             <Route path="/partner-with-us" element={<PartnerWithUsPage />} />
@@ -75,6 +73,7 @@ export default function App() {
             <Route path="/settings" element={<Navigate to="/account-configuration" replace />} />
             <Route path="/onboarding" element={<Navigate to="/dashboard" replace />} />
             <Route path="/integrations" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/sentiments" element={<Navigate to="/market-news" replace />} />
           </Route>
         </Routes>
       </BrowserRouter>

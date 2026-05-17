@@ -1,21 +1,11 @@
-import { useEffect } from 'react'
-
 interface BacktestRunOverlayProps {
   open: boolean
   message?: string | null
   progressPct?: number | null
 }
 
+/** Full-bleed overlay within the backtest page container (not the whole app shell). */
 export function BacktestRunOverlay({ open, message, progressPct }: BacktestRunOverlayProps) {
-  useEffect(() => {
-    if (!open) return
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = prev
-    }
-  }, [open])
-
   if (!open) return null
 
   const pct = progressPct != null && Number.isFinite(Number(progressPct))
@@ -28,7 +18,7 @@ export function BacktestRunOverlay({ open, message, progressPct }: BacktestRunOv
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-white/85 dark:bg-neutral-950/90 backdrop-blur-sm"
+      className="absolute inset-0 z-50 flex items-center justify-center bg-white/85 dark:bg-neutral-950/90 backdrop-blur-sm"
       role="alert"
       aria-busy="true"
       aria-live="polite"

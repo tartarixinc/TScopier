@@ -11,3 +11,12 @@ verify_jwt = false
 
 [functions.backtest-run]
 verify_jwt = false
+
+[functions.parse-signal]
+verify_jwt = false
+
+[functions.market-news]
+verify_jwt = true
+
+[functions.economic-calendar]
+verify_jwt = true

@@ -109,11 +109,16 @@ export function dbTradeToChartRow(t: {
   }
 }
 
-/** Last 7 calendar days (including today), closed-trade P/L and lot volume per day. */
-export function buildTradeVolume7Day(trades: DashboardChartTrade[], now = new Date()): TradeVolumeDay[] {
+/** Last N calendar days (including today), closed-trade P/L per day. */
+export function buildTradeVolumeByDays(
+  trades: DashboardChartTrade[],
+  dayCount: number,
+  now = new Date(),
+): TradeVolumeDay[] {
+  const count = Math.max(1, Math.floor(dayCount))
   const today = startOfLocalDay(now)
   const days: Date[] = []
-  for (let i = 6; i >= 0; i--) {
+  for (let i = count - 1; i >= 0; i--) {
     const d = new Date(today)
     d.setDate(d.getDate() - i)
     days.push(d)
@@ -139,6 +144,11 @@ export function buildTradeVolume7Day(trades: DashboardChartTrade[], now = new Da
   }
 
   return days.map(d => buckets.get(dayKey(d))!).filter(Boolean)
+}
+
+/** Last 7 calendar days (including today), closed-trade P/L and lot volume per day. */
+export function buildTradeVolume7Day(trades: DashboardChartTrade[], now = new Date()): TradeVolumeDay[] {
+  return buildTradeVolumeByDays(trades, 7, now)
 }
 
 export interface AccountGrowthResult {

@@ -49,7 +49,17 @@ export async function importTelegramHistoryForBacktest(
   }
 
   const workerBase = /^https?:\/\//i.test(workerUrl) ? workerUrl : `https://${workerUrl}`
-  const parseUrl = `${supabaseUrl}/functions/v1/parse-signal`
+
+  const pushImportError = (errors: string[], msg: string) => {
+    if (errors.length < 5) {
+      errors.push(msg)
+      return
+    }
+    const last = errors[errors.length - 1]
+    if (!last?.startsWith("(+")) {
+      errors.push("(+more errors; fix parse auth and redeploy backtest-run + parse-signal)")
+    }
+  }
 
   for (const channelRowId of channelIds) {
     let messages: WorkerMessage[] = []
@@ -73,13 +83,13 @@ export async function importTelegramHistoryForBacktest(
         error?: string
       }
       if (!res.ok) {
-        errors.push(data.error ?? `Telegram fetch failed (${res.status})`)
+        pushImportError(errors, data.error ?? `Telegram fetch failed (${res.status})`)
         continue
       }
       messages = data.messages ?? []
       messagesScanned += Number(data.messages_scanned ?? messages.length)
     } catch (e) {
-      errors.push(e instanceof Error ? e.message : String(e))
+      pushImportError(errors, e instanceof Error ? e.message : String(e))
       continue
     }
 
@@ -95,7 +105,7 @@ export async function importTelegramHistoryForBacktest(
       .gte("signal_at", fromIso)
       .lte("signal_at", toIso)
     if (delErr) {
-      errors.push(`clear prior import: ${delErr.message}`)
+      pushImportError(errors, `clear prior import: ${delErr.message}`)
       continue
     }
 
@@ -103,26 +113,13 @@ export async function importTelegramHistoryForBacktest(
       if (!msg.raw_message?.trim() || !msg.telegram_message_id) continue
 
       try {
-        const parseRes = await fetch(parseUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${serviceKey}`,
-            apikey: env.get("SUPABASE_ANON_KEY") ?? serviceKey,
-          },
-          body: JSON.stringify({
-            parse_only: true,
-            channel_id: channelRowId,
-            raw_message: msg.raw_message,
-          }),
+        const parseBody = await invokeParseSignal(supabase, serviceKey, supabaseUrl, {
+          parse_only: true,
+          channel_id: channelRowId,
+          raw_message: msg.raw_message,
         })
-        const parseBody = await parseRes.json().catch(() => ({})) as {
-          parsed?: Record<string, unknown>
-          status?: string
-          error?: string
-        }
-        if (!parseRes.ok) {
-          errors.push(parseBody.error ?? `parse failed (${parseRes.status})`)
+        if (parseBody.error) {
+          pushImportError(errors, parseBody.error)
           continue
         }
         if (parseBody.status !== "parsed" || !parseBody.parsed) continue
@@ -147,15 +144,67 @@ export async function importTelegramHistoryForBacktest(
           p_signal_at: msg.signal_at,
         })
         if (upsertErr) {
-          errors.push(upsertErr.message)
+          pushImportError(errors, upsertErr.message)
           continue
         }
         imported++
       } catch (e) {
-        errors.push(e instanceof Error ? e.message : String(e))
+        pushImportError(errors, e instanceof Error ? e.message : String(e))
       }
     }
   }
 
   return { imported, messages_scanned: messagesScanned, errors }
+}
+
+type ParseSignalBody = {
+  parse_only: true
+  channel_id: string
+  raw_message: string
+}
+
+type ParseSignalResult = {
+  parsed?: Record<string, unknown>
+  status?: string
+  error?: string
+}
+
+/** Invoke parse-signal with service-role auth (anon apikey + service bearer caused 401). */
+async function invokeParseSignal(
+  supabase: SupabaseClient,
+  serviceKey: string,
+  supabaseUrl: string,
+  body: ParseSignalBody,
+): Promise<ParseSignalResult> {
+  const { data, error } = await supabase.functions.invoke("parse-signal", { body })
+  if (!error && data && typeof data === "object") {
+    const row = data as ParseSignalResult & { error?: string }
+    if (row.error) return { error: row.error }
+    return row
+  }
+
+  if (serviceKey && supabaseUrl) {
+    const parseUrl = `${supabaseUrl.replace(/\/$/, "")}/functions/v1/parse-signal`
+    const parseRes = await fetch(parseUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${serviceKey}`,
+        apikey: serviceKey,
+      },
+      body: JSON.stringify(body),
+    })
+    const parseBody = await parseRes.json().catch(() => ({})) as ParseSignalResult
+    if (!parseRes.ok) {
+      return {
+        error: parseBody.error
+          ?? `parse failed (${parseRes.status}) — redeploy parse-signal with verify_jwt=false`,
+      }
+    }
+    return parseBody
+  }
+
+  return {
+    error: error?.message ?? "parse-signal invoke failed (check SUPABASE_SERVICE_ROLE_KEY)",
+  }
 }
