@@ -1,4 +1,5 @@
 import type { MassiveAssetClass } from "../massiveApi.ts"
+import { isTradableInstrumentSymbol } from "../tradableSymbol.ts"
 
 export interface SymbolMapping {
   massiveTicker: string
@@ -37,7 +38,7 @@ export function mapSymbolToMassive(raw: string): SymbolMapping | null {
     return { massiveTicker: `X:${s}USD`, assetClass: "crypto" }
   }
 
-  if (s.length === 6) {
+  if (s.length === 6 && isTradableInstrumentSymbol(s)) {
     return { massiveTicker: `C:${s.slice(0, 3)}${s.slice(3)}`, assetClass: "forex" }
   }
   if (s.length === 7 && s.includes("USD")) {

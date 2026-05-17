@@ -13,12 +13,13 @@ export interface PricePoint {
   mid: number
 }
 
+/** OHLC bar → bid/ask envelope for conservative intrabar SL/TP checks. */
 export function barsToMidPoints(bars: MassiveBar[]): PricePoint[] {
   return bars.map((b) => ({
     ts: b.t,
     bid: b.l,
     ask: b.h,
-    mid: (b.o + b.c) / 2,
+    mid: b.c,
   }))
 }
 
@@ -95,6 +96,10 @@ export function simulateTradeOnSeries(
   const entryPx = signal.entryPrice > 0
     ? signal.entryPrice
     : executionPrice(signal.direction, "entry", window[entryIdx]!)
+  if (!(signal.entryPrice > 0)) {
+    base.entryPrice = entryPx
+    base.details.marketEntry = true
+  }
 
   let sl = signal.sl
   let tps = [...signal.tpLevels].sort((a, b) =>

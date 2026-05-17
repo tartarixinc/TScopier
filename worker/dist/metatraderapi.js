@@ -446,9 +446,9 @@ class MetatraderApiClient {
             /* optional */
         }
         const settled = await Promise.allSettled([
-            this.orderHistory(id, from, to),
-            this.historyPositions(id, from, to),
             this.closedOrders(id),
+            this.historyPositions(id, from, to),
+            this.orderHistory(id, from, to),
         ]);
         for (const r of settled) {
             if (r.status === 'fulfilled')

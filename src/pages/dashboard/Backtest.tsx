@@ -1,72 +1,113 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import {
-  Play,
-  Loader2,
-  TrendingUp,
-  TrendingDown,
-  Target,
-  Shield,
-  BarChart3,
-  Radio,
-  Coins,
-} from 'lucide-react'
+import { Play, Loader2, Radio, RefreshCw } from 'lucide-react'
 import clsx from 'clsx'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useT } from '../../context/LocaleContext'
-import { backtestApi, type BacktestPreviewResult } from '../../lib/backtestApi'
+import { backtestApi } from '../../lib/backtestApi'
 import type {
-  BacktestRunConfig,
+  BacktestEquityRow,
   BacktestRunRow,
   BacktestSummary,
   BacktestTradeRow,
-  BacktestEquityRow,
+  SimpleBacktestConfig,
+  StoredBacktestSignal,
 } from '../../lib/backtestTypes'
 import { BacktestEquityChart } from '../../components/backtest/BacktestEquityChart'
 import { BacktestSignalBreakdown } from '../../components/backtest/BacktestSignalBreakdown'
-import { BacktestSymbolPicker } from '../../components/backtest/BacktestSymbolPicker'
-import { BacktestRunOverlay } from '../../components/backtest/BacktestRunOverlay'
+import { sanitizeBacktestUserError } from '../../lib/backtestDisplay'
 import { Button } from '../../components/ui/Button'
 import { Alert } from '../../components/ui/Alert'
+
+const LAST_RUN_KEY = 'backtest_last_run_id'
 
 interface ChannelOption {
   id: string
   display_name: string
 }
 
-const OUTCOME_LABELS: Record<string, string> = {
-  sl_before_tp: 'SL before TP',
-  tp1_then_sl: 'TP1 then SL',
-  tp_then_be: 'TP then BE',
-  all_tp_hit: 'All TPs hit',
-  breakeven: 'Breakeven',
-  no_data: 'No market data',
-  skipped: 'Skipped',
-  open: 'Still open',
-}
-
-function defaultConfig(): BacktestRunConfig {
+function defaultConfig(): SimpleBacktestConfig {
   const to = new Date()
   const from = new Date()
   from.setDate(from.getDate() - 30)
   return {
     channelIds: [],
-    symbols: [],
     dateFrom: from.toISOString().slice(0, 10),
     dateTo: to.toISOString().slice(0, 10),
-    timeframe: '1m',
-    executionMode: 'minute_bars',
     initialBalance: 10_000,
-    currency: 'USD',
-    sizingMode: 'fixed_lot',
     fixedLot: 0.1,
-    riskPercent: 1,
-    strategy: {
-      breakevenAfterTp: 1,
-      partialClosePerTp: 0,
-      intrabarPriority: 'sl_first',
-    },
+    timeframe: '1m',
   }
+}
+
+function StoredSignalsPanel({
+  config,
+  storedSignals,
+  storedLoading,
+}: {
+  config: SimpleBacktestConfig
+  storedSignals: StoredBacktestSignal[]
+  storedLoading: boolean
+}) {
+  return (
+    <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <div>
+          <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100">
+            Stored signals
+          </p>
+          <p className="text-xs text-neutral-500 mt-0.5">
+            Table <code className="text-[11px]">backtest_channel_signals</code> for selected channels and dates
+          </p>
+        </div>
+        <span className="text-sm tabular-nums text-neutral-600 dark:text-neutral-300">
+          {storedLoading ? '…' : storedSignals.length}
+        </span>
+      </div>
+      {config.channelIds.length === 0 ? (
+        <p className="text-sm text-neutral-400">Select a channel to view stored signals.</p>
+      ) : storedSignals.length === 0 && !storedLoading ? (
+        <p className="text-sm text-neutral-400">
+          No rows yet. Use <strong>Sync signals only</strong> or <strong>Run backtest</strong> to import from Telegram.
+        </p>
+      ) : (
+        <div className="overflow-x-auto max-h-64 overflow-y-auto">
+          <table className="w-full text-xs">
+            <thead className="text-neutral-500 sticky top-0 bg-white dark:bg-neutral-900">
+              <tr className="border-b border-neutral-100 dark:border-neutral-800">
+                <th className="text-left py-2 pr-2 font-medium">Time</th>
+                <th className="text-left py-2 pr-2 font-medium">Symbol</th>
+                <th className="text-left py-2 pr-2 font-medium">Side</th>
+                <th className="text-right py-2 pr-2 font-medium">Entry</th>
+                <th className="text-right py-2 pr-2 font-medium">SL</th>
+                <th className="text-left py-2 font-medium">TPs</th>
+              </tr>
+            </thead>
+            <tbody>
+              {storedSignals.map(row => (
+                <tr key={row.id} className="border-b border-neutral-50 dark:border-neutral-800/80">
+                  <td className="py-1.5 pr-2 whitespace-nowrap text-neutral-600 dark:text-neutral-400">
+                    {new Date(row.signal_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </td>
+                  <td className="py-1.5 pr-2 font-medium">{row.symbol}</td>
+                  <td className={clsx('py-1.5 pr-2 uppercase', row.direction === 'buy' ? 'text-teal-600' : 'text-error-600')}>
+                    {row.direction}
+                  </td>
+                  <td className="py-1.5 pr-2 text-right tabular-nums">
+                    {row.entry_price > 0 ? row.entry_price : 'MKT'}
+                  </td>
+                  <td className="py-1.5 pr-2 text-right tabular-nums">{row.sl ?? '—'}</td>
+                  <td className="py-1.5 tabular-nums">
+                    {(row.tp_levels ?? []).length ? row.tp_levels.join(', ') : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
 }
 
 function StatCard({
@@ -95,115 +136,129 @@ export function Backtest() {
   const t = useT()
   const { user } = useAuth()
   const [channels, setChannels] = useState<ChannelOption[]>([])
-  const [config, setConfig] = useState<BacktestRunConfig>(defaultConfig)
-  const [runs, setRuns] = useState<BacktestRunRow[]>([])
-  const [activeRunId, setActiveRunId] = useState<string | null>(null)
+  const [config, setConfig] = useState<SimpleBacktestConfig>(defaultConfig)
+  const [activeRun, setActiveRun] = useState<BacktestRunRow | null>(null)
   const [trades, setTrades] = useState<BacktestTradeRow[]>([])
   const [equity, setEquity] = useState<BacktestEquityRow[]>([])
-  const [loading, setLoading] = useState(true)
   const [running, setRunning] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [storedSignals, setStoredSignals] = useState<StoredBacktestSignal[]>([])
+  const [storedLoading, setStoredLoading] = useState(false)
+  const [syncNote, setSyncNote] = useState('')
   const [error, setError] = useState('')
-  const [preview, setPreview] = useState<BacktestPreviewResult | null>(null)
-  const [previewLoading, setPreviewLoading] = useState(false)
 
-  const activeRun = useMemo(
-    () => runs.find(r => r.id === activeRunId) ?? null,
-    [runs, activeRunId],
-  )
   const summary = activeRun?.summary as BacktestSummary | null | undefined
+  const isActive = running || activeRun?.status === 'running' || activeRun?.status === 'pending'
 
-  const isCollatingResults =
-    running
-    || activeRun?.status === 'running'
-    || activeRun?.status === 'pending'
+  const channelNames = useMemo(() => {
+    const m: Record<string, string> = {}
+    for (const ch of channels) m[ch.id] = ch.display_name
+    return m
+  }, [channels])
 
-  const collatingMessage = running && activeRun?.status !== 'running'
-    ? 'Starting backtest and importing Telegram signals…'
-    : activeRun?.progress_message
+  const noDataCount = useMemo(
+    () => trades.filter(tr => tr.outcome === 'no_data').length,
+    [trades],
+  )
 
-  const loadChannels = useCallback(async () => {
-    if (!user) return
-    const { data } = await supabase
-      .from('telegram_channels')
-      .select('id, display_name')
-      .eq('user_id', user.id)
-      .eq('is_active', true)
-      .order('display_name')
-    setChannels((data ?? []) as ChannelOption[])
-  }, [user])
-
-  const loadRuns = useCallback(async () => {
-    try {
-      const { runs: list } = await backtestApi.listRuns()
-      setRuns(list)
-      if (!activeRunId && list[0]) setActiveRunId(list[0].id)
-    } catch {
-      /* first visit */
+  const loadStoredSignals = useCallback(async () => {
+    if (!user || config.channelIds.length === 0) {
+      setStoredSignals([])
+      return
     }
-  }, [activeRunId])
+    setStoredLoading(true)
+    const fromIso = new Date(config.dateFrom).toISOString()
+    const toIso = new Date(`${config.dateTo}T23:59:59.999Z`).toISOString()
+    const { data, error: qErr } = await supabase
+      .from('backtest_channel_signals')
+      .select('id, channel_id, symbol, direction, entry_price, sl, tp_levels, signal_at, source')
+      .eq('user_id', user.id)
+      .in('channel_id', config.channelIds)
+      .gte('signal_at', fromIso)
+      .lte('signal_at', toIso)
+      .order('signal_at', { ascending: false })
+    setStoredLoading(false)
+    if (qErr) {
+      setSyncNote(qErr.message)
+      return
+    }
+    setStoredSignals((data ?? []) as StoredBacktestSignal[])
+  }, [user, config.channelIds, config.dateFrom, config.dateTo])
 
-  const loadRunDetail = useCallback(async (runId: string) => {
+  const loadRun = useCallback(async (runId: string) => {
     const { run, trades: t, equity: e } = await backtestApi.getRun(runId)
-    setRuns(prev => {
-      const idx = prev.findIndex(r => r.id === runId)
-      if (idx < 0) return [run, ...prev]
-      const next = [...prev]
-      next[idx] = run
-      return next
-    })
+    setActiveRun(run)
     setTrades(t)
     setEquity(e)
+    return run
   }, [])
 
   useEffect(() => {
     if (!user) return
     void (async () => {
-      setLoading(true)
-      await Promise.all([loadChannels(), loadRuns()])
-      setLoading(false)
+      const { data } = await supabase
+        .from('telegram_channels')
+        .select('id, display_name')
+        .eq('user_id', user.id)
+        .eq('is_active', true)
+        .order('display_name')
+      setChannels((data ?? []).map(r => ({
+        id: r.id as string,
+        display_name: (r.display_name as string) || 'Channel',
+      })))
+      const lastId = localStorage.getItem(LAST_RUN_KEY)
+      if (lastId) {
+        try {
+          await loadRun(lastId)
+        } catch {
+          localStorage.removeItem(LAST_RUN_KEY)
+        }
+      }
     })()
-  }, [user, loadChannels, loadRuns])
+  }, [user, loadRun])
 
   useEffect(() => {
-    if (!activeRunId) return
-    void loadRunDetail(activeRunId).catch(() => {})
-  }, [activeRunId, loadRunDetail])
+    const t = setTimeout(() => { void loadStoredSignals() }, 400)
+    return () => clearTimeout(t)
+  }, [loadStoredSignals])
 
   useEffect(() => {
-    if (!user || !activeRunId) return
+    if (!isActive) return
+    const t = setInterval(() => { void loadStoredSignals() }, 4000)
+    return () => clearInterval(t)
+  }, [isActive, loadStoredSignals])
+
+  useEffect(() => {
+    if (!activeRun?.id || !isActive) return
+    const runId = activeRun.id
+    const poll = setInterval(() => {
+      void loadRun(runId).then(run => {
+        void loadStoredSignals()
+        if (run.status === 'completed' || run.status === 'failed') {
+          setRunning(false)
+        }
+      }).catch(() => {})
+    }, 3000)
+    return () => clearInterval(poll)
+  }, [activeRun?.id, isActive, loadRun])
+
+  useEffect(() => {
+    if (!activeRun?.id || !isActive) return
     const ch = supabase
-      .channel(`backtest-run-${activeRunId}`)
+      .channel(`backtest-run-${activeRun.id}`)
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'backtest_runs', filter: `id=eq.${activeRunId}` },
-        () => { void loadRunDetail(activeRunId) },
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'backtest_runs',
+          filter: `id=eq.${activeRun.id}`,
+        },
+        () => { void loadRun(activeRun.id) },
       )
       .subscribe()
     return () => { void supabase.removeChannel(ch) }
-  }, [user, activeRunId, loadRunDetail])
-
-  useEffect(() => {
-    const run = activeRun
-    if (!run || run.status !== 'running') return
-    const t = window.setInterval(() => { void loadRunDetail(run.id) }, 3000)
-    return () => clearInterval(t)
-  }, [activeRun, loadRunDetail])
-
-  useEffect(() => {
-    if (config.channelIds.length === 0) {
-      setPreview(null)
-      return
-    }
-    const t = window.setTimeout(() => {
-      setPreviewLoading(true)
-      backtestApi
-        .preview(config)
-        .then(setPreview)
-        .catch(() => setPreview(null))
-        .finally(() => setPreviewLoading(false))
-    }, 400)
-    return () => clearTimeout(t)
-  }, [config.channelIds, config.dateFrom, config.dateTo, config.symbols])
+  }, [activeRun?.id, isActive, loadRun])
 
   const toggleChannel = (id: string) => {
     setConfig(prev => ({
@@ -214,96 +269,80 @@ export function Backtest() {
     }))
   }
 
-  const runBacktest = async () => {
-    setError('')
+  const handleSyncOnly = async () => {
     if (config.channelIds.length === 0) {
-      setError('Select at least one signal channel')
+      setError('Select at least one channel')
       return
     }
-    setRunning(true)
+    setError('')
+    setSyncNote('')
+    setSyncing(true)
     try {
-      const { run_id } = await backtestApi.createRun(
-        `Backtest ${config.dateFrom} → ${config.dateTo}`,
-        config,
-      )
-      setActiveRunId(run_id)
-      await loadRuns()
-      await loadRunDetail(run_id)
+      const result = await backtestApi.sync(config)
+      const msg = result.imported > 0
+        ? `Stored ${result.imported} signal(s) in backtest_channel_signals (${result.candidates} candidates, ${result.messages_scanned} messages scanned).`
+        : 'No tradeable signals stored.'
+      setSyncNote([msg, ...result.errors].filter(Boolean).join(' '))
+      await loadStoredSignals()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Backtest failed')
+      setError(sanitizeBacktestUserError(e instanceof Error ? e.message : String(e)))
     } finally {
+      setSyncing(false)
+    }
+  }
+
+  const handleRun = async () => {
+    if (config.channelIds.length === 0) {
+      setError('Select at least one channel')
+      return
+    }
+    setError('')
+    setRunning(true)
+    setTrades([])
+    setEquity([])
+    try {
+      const { run_id } = await backtestApi.run(config)
+      localStorage.setItem(LAST_RUN_KEY, run_id)
+      const run = await loadRun(run_id)
+      if (run.status === 'completed' || run.status === 'failed') {
+        setRunning(false)
+        void loadStoredSignals()
+      }
+    } catch (e) {
+      setError(sanitizeBacktestUserError(e instanceof Error ? e.message : String(e)))
       setRunning(false)
     }
   }
 
-  const outcomeCounts = useMemo(() => {
-    const m = new Map<string, number>()
-    for (const t of trades) {
-      m.set(t.outcome, (m.get(t.outcome) ?? 0) + 1)
-    }
-    return [...m.entries()].sort((a, b) => b[1] - a[1])
-  }, [trades])
-
-  const channelNames = useMemo(() => {
-    const map: Record<string, string> = {}
-    for (const ch of channels) map[ch.id] = ch.display_name
-    if (summary?.byChannel) {
-      for (const [id, ch] of Object.entries(summary.byChannel)) {
-        if (ch.channelName) map[id] = ch.channelName
-      }
-    }
-    return map
-  }, [channels, summary?.byChannel])
-
-  if (loading) {
-    return (
-      <div className="p-6 lg:p-8 max-w-6xl mx-auto space-y-4">
-        <div className="h-10 w-48 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
-        <div className="h-64 bg-neutral-100 dark:bg-neutral-800 rounded-xl animate-pulse" />
-      </div>
-    )
-  }
+  const statusLine = activeRun?.progress_message
+    ?? (running ? 'Starting backtest…' : null)
 
   return (
-    <div
-      className={clsx(
-        'relative min-h-full',
-        isCollatingResults && 'overflow-hidden',
-      )}
-    >
-      <BacktestRunOverlay
-        open={isCollatingResults}
-        message={collatingMessage}
-        progressPct={activeRun?.progress_pct}
-      />
-      <div className="p-4 lg:p-8 max-w-6xl mx-auto space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-50 flex items-center gap-2">
-            {t.backtest.title}
-          </h1>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1 max-w-xl">{t.backtest.subtitle}</p>
-        </div>
-        {import.meta.env.VITE_BACKTEST_ENABLED === 'false' ? (
-          <span className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-950/40 px-2 py-1 rounded-lg">
-            {t.common.preview}
-          </span>
-        ) : null}
+    <div className="max-w-6xl mx-auto px-4 py-8 space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-50">
+          {t.backtest.title}
+        </h1>
+        <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
+          Sync Telegram signals, simulate TP/SL outcomes.
+        </p>
       </div>
 
       {error ? <Alert variant="error">{error}</Alert> : null}
+      {activeRun?.status === 'failed' && activeRun.error_message ? (
+        <Alert variant="error">{sanitizeBacktestUserError(activeRun.error_message)}</Alert>
+      ) : null}
 
-      <div className="grid lg:grid-cols-5 gap-6 min-w-0">
-        {/* Config panel */}
-        <div className="lg:col-span-2 space-y-4">
-          <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5 space-y-4">
-            <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 flex items-center gap-2">
-              <Radio className="w-4 h-4 text-teal-500" />
-              {t.backtest.channels}
-            </h2>
-            <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto">
+      <div className="grid lg:grid-cols-[minmax(280px,340px)_1fr] gap-6">
+        <div className="space-y-4 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5">
+          <div>
+            <p className="text-xs font-medium text-neutral-500 mb-2 flex items-center gap-1.5">
+              <Radio className="w-3.5 h-3.5" />
+              Channels
+            </p>
+            <div className="flex flex-wrap gap-2">
               {channels.length === 0 ? (
-                <p className="text-xs text-neutral-400">{t.backtest.noActiveChannels}</p>
+                <p className="text-sm text-neutral-400">No active Telegram channels</p>
               ) : (
                 channels.map(ch => (
                   <button
@@ -311,312 +350,163 @@ export function Backtest() {
                     type="button"
                     onClick={() => toggleChannel(ch.id)}
                     className={clsx(
-                      'px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors',
+                      'px-3 py-1.5 rounded-lg text-sm border transition-colors',
                       config.channelIds.includes(ch.id)
-                        ? 'bg-teal-50 border-teal-300 text-teal-800 dark:bg-teal-950/50 dark:border-teal-700 dark:text-teal-200'
-                        : 'border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400',
+                        ? 'border-teal-500 bg-teal-50 text-teal-800 dark:bg-teal-950 dark:text-teal-200'
+                        : 'border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300',
                     )}
                   >
-                    {ch.display_name || 'Unnamed'}
+                    {ch.display_name}
                   </button>
                 ))
               )}
             </div>
-
-            {config.channelIds.length > 0 ? (
-              <div className="space-y-2 border-t border-neutral-100 dark:border-neutral-800 pt-4">
-                <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 flex items-center gap-2">
-                  <Coins className="w-4 h-4 text-teal-500" />
-                  {t.backtest.symbols}
-                </h2>
-                <BacktestSymbolPicker
-                  availableSymbols={preview?.available_symbols ?? []}
-                  selected={config.symbols}
-                  onChange={symbols => setConfig(p => ({ ...p, symbols }))}
-                  disabled={previewLoading}
-                />
-              </div>
-            ) : null}
-
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block">
-                <span className="text-xs text-neutral-500">{t.backtest.from}</span>
-                <input
-                  type="date"
-                  value={config.dateFrom}
-                  onChange={e => setConfig(p => ({ ...p, dateFrom: e.target.value }))}
-                  className="mt-1 w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-2 py-1.5 text-sm"
-                />
-              </label>
-              <label className="block">
-                <span className="text-xs text-neutral-500">{t.backtest.to}</span>
-                <input
-                  type="date"
-                  value={config.dateTo}
-                  onChange={e => setConfig(p => ({ ...p, dateTo: e.target.value }))}
-                  className="mt-1 w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-2 py-1.5 text-sm"
-                />
-              </label>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block">
-                <span className="text-xs text-neutral-500">{t.backtest.timeframe}</span>
-                <select
-                  value={config.timeframe}
-                  onChange={e => setConfig(p => ({ ...p, timeframe: e.target.value as BacktestRunConfig['timeframe'] }))}
-                  className="mt-1 w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-2 py-1.5 text-sm"
-                >
-                  <option value="1m">1 minute</option>
-                  <option value="5m">5 minutes</option>
-                  <option value="15m">15 minutes</option>
-                  <option value="1h">1 hour</option>
-                </select>
-              </label>
-              <label className="block">
-                <span className="text-xs text-neutral-500">{t.backtest.execution}</span>
-                <select
-                  value={config.executionMode}
-                  onChange={e => setConfig(p => ({ ...p, executionMode: e.target.value as BacktestRunConfig['executionMode'] }))}
-                  className="mt-1 w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-2 py-1.5 text-sm"
-                >
-                  <option value="tick_quotes">{t.backtest.executionTick}</option>
-                  <option value="minute_bars">{t.backtest.executionBars}</option>
-                </select>
-              </label>
-            </div>
-
-            <div className="border-t border-neutral-100 dark:border-neutral-800 pt-4 space-y-3">
-              <h3 className="text-xs font-semibold uppercase text-neutral-400 flex items-center gap-1">
-                <Shield className="w-3.5 h-3.5" /> {t.backtest.strategy}
-              </h3>
-              <label className="flex items-center justify-between gap-2">
-                <span className="text-sm text-neutral-600 dark:text-neutral-400">{t.backtest.breakevenAfterTp}</span>
-                <select
-                  value={config.strategy.breakevenAfterTp}
-                  onChange={e => setConfig(p => ({
-                    ...p,
-                    strategy: { ...p.strategy, breakevenAfterTp: Number(e.target.value) },
-                  }))}
-                  className="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-2 py-1 text-sm"
-                >
-                  <option value={0}>{t.backtest.breakevenDisabled}</option>
-                  <option value={1}>TP1</option>
-                  <option value={2}>TP2</option>
-                  <option value={3}>TP3</option>
-                </select>
-              </label>
-              <label className="flex items-center justify-between gap-2">
-                <span className="text-sm text-neutral-600 dark:text-neutral-400">{t.backtest.intrabarPriority}</span>
-                <select
-                  value={config.strategy.intrabarPriority}
-                  onChange={e => setConfig(p => ({
-                    ...p,
-                    strategy: { ...p.strategy, intrabarPriority: e.target.value as 'sl_first' | 'tp_first' },
-                  }))}
-                  className="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-2 py-1 text-sm"
-                >
-                  <option value="sl_first">{t.backtest.intrabarSlFirst}</option>
-                  <option value="tp_first">{t.backtest.intrabarTpFirst}</option>
-                </select>
-              </label>
-            </div>
-
-            <div className="border-t border-neutral-100 dark:border-neutral-800 pt-4 space-y-3">
-              <h3 className="text-xs font-semibold uppercase text-neutral-400 flex items-center gap-1">
-                <Target className="w-3.5 h-3.5" /> {t.backtest.account}
-              </h3>
-              <label className="block">
-                <span className="text-xs text-neutral-500">{t.backtest.startingBalance}</span>
-                <input
-                  type="number"
-                  min={100}
-                  step={100}
-                  value={config.initialBalance}
-                  onChange={e => setConfig(p => ({ ...p, initialBalance: Number(e.target.value) }))}
-                  className="mt-1 w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-2 py-1.5 text-sm"
-                />
-              </label>
-              <label className="block">
-                <span className="text-xs text-neutral-500">{t.backtest.sizing}</span>
-                <select
-                  value={config.sizingMode}
-                  onChange={e => setConfig(p => ({ ...p, sizingMode: e.target.value as BacktestRunConfig['sizingMode'] }))}
-                  className="mt-1 w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-2 py-1.5 text-sm"
-                >
-                  <option value="fixed_lot">{t.backtest.sizingFixed}</option>
-                  <option value="risk_percent">{t.backtest.sizingRisk}</option>
-                </select>
-              </label>
-              {config.sizingMode === 'fixed_lot' ? (
-                <label className="block">
-                  <span className="text-xs text-neutral-500">{t.backtest.lotSize}</span>
-                  <input
-                    type="number"
-                    min={0.01}
-                    step={0.01}
-                    value={config.fixedLot}
-                    onChange={e => setConfig(p => ({ ...p, fixedLot: Number(e.target.value) }))}
-                    className="mt-1 w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-2 py-1.5 text-sm"
-                  />
-                </label>
-              ) : (
-                <label className="block">
-                  <span className="text-xs text-neutral-500">{t.backtest.riskPercent}</span>
-                  <input
-                    type="number"
-                    min={0.1}
-                    step={0.1}
-                    value={config.riskPercent}
-                    onChange={e => setConfig(p => ({ ...p, riskPercent: Number(e.target.value) }))}
-                    className="mt-1 w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-2 py-1.5 text-sm"
-                  />
-                </label>
-              )}
-            </div>
-
-            
-
-            <Button
-              className="w-full"
-              onClick={() => { void runBacktest() }}
-              disabled={running || config.channelIds.length === 0}
-            >
-              {running ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-              {t.backtest.runBacktest}
-            </Button>
           </div>
 
-          {runs.length > 0 ? (
-            <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
-              <p className="text-xs font-medium text-neutral-400 mb-2">{t.backtest.recentRuns}</p>
-              <div className="space-y-1 max-h-40 overflow-y-auto">
-                {runs.map(r => (
-                  <button
-                    key={r.id}
-                    type="button"
-                    onClick={() => setActiveRunId(r.id)}
-                    className={clsx(
-                      'w-full text-left px-2 py-1.5 rounded-lg text-xs transition-colors',
-                      activeRunId === r.id
-                        ? 'bg-teal-50 dark:bg-teal-950/40 text-teal-800 dark:text-teal-200'
-                        : 'hover:bg-neutral-50 dark:hover:bg-neutral-800',
-                    )}
-                  >
-                    <span className="font-medium">{r.name}</span>
-                    <span className="ml-2 text-neutral-400">{r.status}</span>
-                  </button>
-                ))}
-              </div>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="text-xs text-neutral-500">From</span>
+              <input
+                type="date"
+                className="mt-1 w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm"
+                value={config.dateFrom}
+                onChange={e => setConfig(c => ({ ...c, dateFrom: e.target.value }))}
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs text-neutral-500">To</span>
+              <input
+                type="date"
+                className="mt-1 w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm"
+                value={config.dateTo}
+                onChange={e => setConfig(c => ({ ...c, dateTo: e.target.value }))}
+              />
+            </label>
+          </div>
+
+          <label className="block">
+            <span className="text-xs text-neutral-500">Starting balance (USD)</span>
+            <input
+              type="number"
+              min={100}
+              step={100}
+              className="mt-1 w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm"
+              value={config.initialBalance}
+              onChange={e => setConfig(c => ({ ...c, initialBalance: Number(e.target.value) }))}
+            />
+          </label>
+
+          <label className="block">
+            <span className="text-xs text-neutral-500">Lot size</span>
+            <input
+              type="number"
+              min={0.01}
+              step={0.01}
+              className="mt-1 w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm"
+              value={config.fixedLot}
+              onChange={e => setConfig(c => ({ ...c, fixedLot: Number(e.target.value) }))}
+            />
+          </label>
+
+          <Button
+            variant="secondary"
+            className="w-full"
+            onClick={() => void handleSyncOnly()}
+            disabled={isActive || syncing || config.channelIds.length === 0}
+          >
+            {syncing ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                Syncing Telegram…
+              </>
+            ) : (
+              <>
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Sync signals only
+              </>
+            )}
+          </Button>
+
+          <Button
+            className="w-full"
+            onClick={() => void handleRun()}
+            disabled={isActive || syncing || config.channelIds.length === 0}
+          >
+            {isActive ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                Running…
+              </>
+            ) : (
+              <>
+                <Play className="w-4 h-4 mr-2" />
+                {t.backtest.runBacktest}
+              </>
+            )}
+          </Button>
+
+          {syncNote ? (
+            <p className="text-xs text-neutral-600 dark:text-neutral-300">{syncNote}</p>
+          ) : null}
+          {statusLine ? (
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">{statusLine}</p>
+          ) : null}
+          {isActive && activeRun?.progress_pct != null ? (
+            <div className="h-1.5 rounded-full bg-neutral-100 dark:bg-neutral-800 overflow-hidden">
+              <div
+                className="h-full bg-teal-500 transition-all duration-500"
+                style={{ width: `${Math.min(100, activeRun.progress_pct)}%` }}
+              />
             </div>
           ) : null}
         </div>
 
-        {/* Results */}
-        <div className="lg:col-span-3 space-y-4 min-w-0">
-          
-          {summary ? (
+        <div className="space-y-4">
+          <StoredSignalsPanel
+            config={config}
+            storedSignals={storedSignals}
+            storedLoading={storedLoading}
+          />
+
+          {summary && activeRun?.status === 'completed' ? (
             <>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <StatCard
-                  label="Return"
-                  value={`${summary.returnPct >= 0 ? '+' : ''}${summary.returnPct}%`}
-                  tone={summary.returnPct >= 0 ? 'good' : 'bad'}
+                  label="Net PnL"
+                  value={`$${summary.netPnl.toFixed(2)}`}
+                  tone={summary.netPnl >= 0 ? 'good' : 'bad'}
                 />
-                <StatCard label="Final equity" value={`$${summary.finalEquity.toLocaleString()}`} />
-                <StatCard label="Max DD" value={`${summary.maxDrawdownPct}%`} tone="bad" />
-                <StatCard label="Win rate" value={`${summary.winRate}%`} />
-                <StatCard label="TP1 → BE" value={String(summary.tp1BeforeBe)} sub="Hit TP1 then breakeven" />
-                <StatCard label="TP1 → SL" value={String(summary.tp1BeforeSl)} sub="Hit TP1 then stopped" />
-                <StatCard label="All TPs" value={String(summary.allTpHits)} />
                 <StatCard
-                  label="Profit factor"
-                  value={summary.profitFactor != null ? String(summary.profitFactor) : '—'}
+                  label="Win rate"
+                  value={`${(summary.winRate * 100).toFixed(1)}%`}
+                />
+                <StatCard
+                  label="Max drawdown"
+                  value={`${summary.maxDrawdownPct.toFixed(1)}%`}
+                  tone="bad"
+                />
+                <StatCard
+                  label="Signals"
+                  value={String(summary.totalSignals)}
+                  sub={noDataCount > 0 ? `${noDataCount} no market data` : undefined}
                 />
               </div>
 
-              <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5">
-                <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 mb-3 flex items-center gap-2">
-                  {summary.netPnl >= 0 ? (
-                    <TrendingUp className="w-4 h-4 text-teal-500" />
-                  ) : (
-                    <TrendingDown className="w-4 h-4 text-error-500" />
-                  )}
-                  Equity curve
-                </h2>
+              <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
+                <p className="text-sm font-medium text-neutral-700 dark:text-neutral-200 mb-3">Equity curve</p>
                 <BacktestEquityChart equity={equity} />
               </div>
 
-              {Object.keys(summary.byChannel ?? {}).length > 0 ? (
-                <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5">
-                  <h2 className="text-sm font-semibold mb-3">Channel leaderboard</h2>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="text-left text-xs text-neutral-400 border-b border-neutral-100 dark:border-neutral-800">
-                          <th className="pb-2">Channel</th>
-                          <th className="pb-2">Trades</th>
-                          <th className="pb-2">Net P/L</th>
-                          <th className="pb-2">Win %</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {Object.entries(summary.byChannel).map(([id, ch]) => (
-                          <tr key={id} className="border-b border-neutral-50 dark:border-neutral-800/80">
-                            <td className="py-2 font-medium">{ch.channelName}</td>
-                            <td className="py-2 tabular-nums">{ch.trades}</td>
-                            <td className={clsx('py-2 tabular-nums font-medium', ch.netPnl >= 0 ? 'text-teal-600' : 'text-error-600')}>
-                              ${ch.netPnl.toFixed(2)}
-                            </td>
-                            <td className="py-2 tabular-nums">{ch.winRate}%</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              ) : null}
-
-              {outcomeCounts.length > 0 ? (
-                <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5">
-                  <h2 className="text-sm font-semibold mb-3">Outcome distribution</h2>
-                  <div className="flex flex-wrap gap-2">
-                    {outcomeCounts.map(([k, n]) => (
-                      <span
-                        key={k}
-                        className="px-2.5 py-1 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-xs font-medium"
-                      >
-                        {OUTCOME_LABELS[k] ?? k}: {n}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
+              <BacktestSignalBreakdown trades={trades} channelNames={channelNames} />
             </>
           ) : (
-            <div className="rounded-2xl border border-dashed border-neutral-200 dark:border-neutral-700 py-16 text-center">
-              <BarChart3 className="w-10 h-10 mx-auto text-neutral-300 dark:text-neutral-600 mb-3" />
-              <p className="text-sm text-neutral-500">Configure channels and run your first backtest</p>
+            <div className="rounded-xl border border-dashed border-neutral-200 dark:border-neutral-800 p-12 text-center text-sm text-neutral-400">
+              {isActive
+                ? 'Backtest in progress…'
+                : 'Configure channels and dates, then run a backtest to see results.'}
             </div>
           )}
-
-          {trades.length > 0 ? (
-            <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 overflow-hidden">
-              <div className="px-5 py-3 border-b border-neutral-100 dark:border-neutral-800">
-                <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
-                  {t.backtest.signalBreakdown}
-                </h2>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-                  {trades.length} simulated signal{trades.length === 1 ? '' : 's'} · grouped by month
-                </p>
-              </div>
-              <div className="max-h-[32rem] overflow-y-auto">
-                <BacktestSignalBreakdown trades={trades} channelNames={channelNames} />
-              </div>
-            </div>
-          ) : null}
         </div>
-      </div>
       </div>
     </div>
   )

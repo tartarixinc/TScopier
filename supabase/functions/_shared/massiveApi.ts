@@ -74,9 +74,36 @@ function parseErrorMessage(body: unknown, fallback: string): string {
   return fallback
 }
 
+/** Parse "Retry after 50527ms" from Massive/Polygon rate-limit bodies. */
+export function parseRetryAfterMsFromMessage(message: string): number | null {
+  const ms = message.match(/retry after (\d+)\s*ms/i)
+  if (ms?.[1]) return Number(ms[1])
+  const sec = message.match(/retry after (\d+)\s*s(?:ec)?/i)
+  if (sec?.[1]) return Number(sec[1]) * 1000
+  return null
+}
+
+/** User-facing text without trace IDs or duplicated retry clauses. */
+export function sanitizeMarketDataErrorMessage(raw: string): string {
+  const t = String(raw ?? "").trim()
+  if (!t) return "Market data request failed"
+  if (/rate limit exceeded for trace/i.test(t)) {
+    const waitMs = parseRetryAfterMsFromMessage(t)
+    if (waitMs != null && waitMs > 0) {
+      const sec = Math.ceil(waitMs / 1000)
+      return `Market data rate limit — wait about ${sec}s and try again, or set MASSIVE_CALLS_PER_MINUTE lower in edge secrets.`
+    }
+    return "Market data rate limit — wait a minute and try again, or set MASSIVE_CALLS_PER_MINUTE lower in edge secrets."
+  }
+  if (/rate limit/i.test(t)) {
+    return "Market data rate limit — try again in a minute or reduce MASSIVE_CALLS_PER_MINUTE."
+  }
+  return t.replace(/\s*·\s*Rate limit exceeded for trace [a-f0-9]+\.?\s*/gi, "").trim() || t
+}
+
 export function massiveCallsPerMinuteFromEnv(env: { get(name: string): string | undefined }): number {
-  const n = Number(env.get("MASSIVE_CALLS_PER_MINUTE") ?? "5")
-  return Number.isFinite(n) && n > 0 ? n : 5
+  const n = Number(env.get("MASSIVE_CALLS_PER_MINUTE") ?? "3")
+  return Number.isFinite(n) && n > 0 ? n : 3
 }
 
 export class MassiveClient {
@@ -142,7 +169,8 @@ export class MassiveClient {
     let lastErr: unknown
     let lastStatus = 0
 
-    for (let attempt = 0; attempt < 4; attempt++) {
+    const maxAttempts = 6
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
       await this.limiter.acquire()
       try {
         const res = await fetch(url.toString())
@@ -153,18 +181,27 @@ export class MassiveClient {
         }
 
         if (res.status === 429) {
-          const retrySec = Number(res.headers.get("Retry-After") ?? "0") || 60
+          const rawMsg = parseErrorMessage(body, text || "")
+          const headerSec = Number(res.headers.get("Retry-After") ?? "0")
+          const bodyMs = parseRetryAfterMsFromMessage(rawMsg)
+          const waitMs = bodyMs != null && bodyMs > 0
+            ? bodyMs + 500
+            : headerSec > 0
+            ? headerSec * 1000
+            : 60_000
           lastStatus = 429
           lastErr = new MassiveApiError(
-            `Rate limited (max ~${this.callsPerMinute} calls/min). Retry after ${retrySec}s.`,
+            sanitizeMarketDataErrorMessage(rawMsg || `Rate limited (~${this.callsPerMinute}/min)`),
             429,
           )
-          await sleep(Math.min(90_000, retrySec * 1000))
+          await sleep(Math.min(120_000, waitMs))
           continue
         }
 
         if (!res.ok) {
-          const msg = parseErrorMessage(body, text || `HTTP ${res.status}`)
+          const msg = sanitizeMarketDataErrorMessage(
+            parseErrorMessage(body, text || `HTTP ${res.status}`),
+          )
           throw new MassiveApiError(msg, res.status)
         }
 
@@ -182,8 +219,8 @@ export class MassiveClient {
     if (lastErr instanceof MassiveApiError) throw lastErr
     throw new MassiveApiError(
       lastStatus === 429
-        ? `Massive rate limit exceeded (~${this.callsPerMinute} calls/min on your plan)`
-        : "Massive API request failed after retries",
+        ? sanitizeMarketDataErrorMessage("Rate limit exceeded")
+        : "Market data request failed after retries",
       lastStatus || 502,
     )
   }
@@ -198,13 +235,17 @@ export class MassiveClient {
       try { body = JSON.parse(text) } catch { body = text }
     }
     if (res.status === 429) {
+      const rawMsg = parseErrorMessage(body, text || "")
       throw new MassiveApiError(
-        `Rate limited (~${this.callsPerMinute} calls/min)`,
+        sanitizeMarketDataErrorMessage(rawMsg || "Rate limit exceeded"),
         429,
       )
     }
     if (!res.ok) {
-      throw new MassiveApiError(parseErrorMessage(body, text || `HTTP ${res.status}`), res.status)
+      throw new MassiveApiError(
+        sanitizeMarketDataErrorMessage(parseErrorMessage(body, text || `HTTP ${res.status}`)),
+        res.status,
+      )
     }
     return body as T
   }

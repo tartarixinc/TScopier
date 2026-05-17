@@ -121,31 +121,34 @@ export function TradesPage() {
             )}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+        <div className="flex flex-col gap-2 w-full sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
           <button
             type="button"
             onClick={() => void loadTrades({ silent: true })}
             disabled={refreshing || loading}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md font-medium border border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-sm rounded-md font-medium border border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 disabled:opacity-50 w-full sm:w-auto"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
             {t.trades.refresh}
           </button>
-          <div className="flex flex-wrap bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg p-0.5 gap-0.5">
-            {filters.map(f => (
-              <button
-                key={f.value}
-                onClick={() => setFilter(f.value)}
-                className={`px-3 py-1.5 text-sm rounded-md font-medium transition-colors ${
-                  filter === f.value
-                    ? 'bg-teal-600 text-white'
-                    : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:bg-neutral-800'
-                }`}
-              >
+          <div className="-mx-4 px-4 sm:mx-0 sm:px-0 overflow-x-auto w-full sm:w-auto">
+            <div className="inline-flex bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg p-0.5 gap-0.5">
+              {filters.map(f => (
+                <button
+                  key={f.value}
+                  type="button"
+                  onClick={() => setFilter(f.value)}
+                  className={`shrink-0 px-3 py-2 text-sm rounded-md font-medium transition-colors whitespace-nowrap ${
+                    filter === f.value
+                      ? 'bg-teal-600 text-white'
+                      : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:bg-neutral-800'
+                  }`}
+                >
                 {f.label}
                 <span className={`ml-1.5 text-xs ${filter === f.value ? 'text-teal-100' : 'text-neutral-400'}`}>{f.count}</span>
               </button>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -154,17 +157,34 @@ export function TradesPage() {
 
       <Card padding="none">
         {loading ? (
-          <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="px-6 py-4 flex gap-4">
-                {[...Array(9)].map((__, j) => (
-                  <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse flex-1" />
-                ))}
-              </div>
-            ))}
-          </div>
+          <>
+            <div className="md:hidden divide-y divide-neutral-100 dark:divide-neutral-800">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="px-4 py-4 space-y-3">
+                  <div className="flex justify-between gap-3">
+                    <div className="h-5 w-24 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
+                    <div className="h-5 w-16 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[...Array(4)].map((__, j) => (
+                      <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="hidden md:block divide-y divide-neutral-100 dark:divide-neutral-800">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="px-6 py-4 flex gap-4">
+                  {[...Array(9)].map((__, j) => (
+                    <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse flex-1" />
+                  ))}
+                </div>
+              ))}
+            </div>
+          </>
         ) : visibleTrades.length === 0 ? (
-          <div className="px-6 py-16 text-center">
+          <div className="px-4 sm:px-6 py-12 sm:py-16 text-center">
             <ArrowUpRight className="w-10 h-10 mx-auto mb-3 text-neutral-200" />
             <p className="text-sm text-neutral-400 font-medium">No trades to show</p>
             <p className="text-xs text-neutral-300 mt-1">
@@ -176,38 +196,33 @@ export function TradesPage() {
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full table-fixed">
-              <colgroup>
-                <col className="w-[13%]" />
-                <col className="w-[10%]" />
-                <col className="w-[12%]" />
-                <col className="w-[9%]" />
-                <col className="w-[9%]" />
-                <col className="w-[9%]" />
-                <col className="w-[8%]" />
-                <col className="w-[10%]" />
-                <col className="w-[14%]" />
-                <col className="w-[6%]" />
-              </colgroup>
-              <thead>
-                <tr className="border-b border-neutral-100 dark:border-neutral-800 text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
-                  <th className="px-4 py-3 text-center">Symbol</th>
-                  <th className="px-2 py-3 text-center">Direction</th>
-                  <th className="px-2 py-3 text-center">Broker</th>
-                  <th className="px-2 py-3 text-center">Entry</th>
-                  <th className="px-2 py-3 text-center">SL</th>
-                  <th className="px-2 py-3 text-center">TP</th>
-                  <th className="px-2 py-3 text-center">Lots</th>
-                  <th className="px-2 py-3 text-center">PnL</th>
-                  <th className="px-2 py-3 text-center">Time</th>
-                  <th className="px-4 py-3 text-center">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
-                {paginatedTrades.map(trade => <TradeRow key={trade.id} trade={trade} />)}
-              </tbody>
-            </table>
+          <>
+            <div className="md:hidden divide-y divide-neutral-100 dark:divide-neutral-800">
+              {paginatedTrades.map(trade => (
+                <TradeCard key={trade.id} trade={trade} />
+              ))}
+            </div>
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full min-w-[52rem]">
+                <thead>
+                  <tr className="border-b border-neutral-100 dark:border-neutral-800 text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
+                    <th className="px-4 py-3 text-center">Symbol</th>
+                    <th className="px-2 py-3 text-center">Direction</th>
+                    <th className="px-2 py-3 text-center">Broker</th>
+                    <th className="px-2 py-3 text-center">Entry</th>
+                    <th className="px-2 py-3 text-center">SL</th>
+                    <th className="px-2 py-3 text-center">TP</th>
+                    <th className="px-2 py-3 text-center">Lots</th>
+                    <th className="px-2 py-3 text-center">PnL</th>
+                    <th className="px-2 py-3 text-center">Time</th>
+                    <th className="px-4 py-3 text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
+                  {paginatedTrades.map(trade => <TradeRow key={trade.id} trade={trade} />)}
+                </tbody>
+              </table>
+            </div>
             {visibleTrades.length > 0 && (
               <TradesPagination
                 page={page}
@@ -220,7 +235,7 @@ export function TradesPage() {
                 onPageSizeChange={setPageSize}
               />
             )}
-          </div>
+          </>
         )}
       </Card>
     </div>
@@ -258,7 +273,7 @@ function TradesPagination({
   }, [page, totalPages])
 
   return (
-    <div className="flex flex-col gap-3 px-4 py-3 border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/50 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-3 px-3 sm:px-4 py-3 border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/50 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <label className="inline-flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
           <span className="font-medium text-neutral-700 dark:text-neutral-300">Show</span>
@@ -280,7 +295,7 @@ function TradesPagination({
         </p>
       </div>
       {totalPages > 1 && (
-        <div className="flex items-center gap-1 justify-end">
+        <div className="flex flex-wrap items-center gap-1 justify-center sm:justify-end">
           <button
             type="button"
             onClick={() => onPageChange(page - 1)}
@@ -344,22 +359,17 @@ function PageButton({ n, active, onClick }: { n: number; active: boolean; onClic
   )
 }
 
-function TradeRow({ trade }: { trade: MtTrade }) {
+function useTradeDisplay(trade: MtTrade) {
   const isBuy = trade.direction === 'buy'
   const isSell = trade.direction === 'sell'
   const profit = trade.profit
-
   const statusConfig: Record<string, { variant: 'success' | 'warning' | 'error' | 'neutral' | 'primary'; label: string }> = {
     open: { variant: 'primary', label: 'Open' },
     closed: { variant: 'neutral', label: 'Closed' },
   }
-  const status = statusConfig[trade.status] ?? { variant: 'neutral', label: trade.status }
-
+  const status = statusConfig[trade.status] ?? { variant: 'neutral' as const, label: trade.status }
   const timeIso = trade.status === 'closed' ? (trade.closed_at ?? trade.opened_at) : trade.opened_at
   const broker = trade.broker_name || trade.broker_label || '—'
-
-  // Prefer the normalized type label (handles "Buy", "Sell", "Buy Limit", etc.).
-  // Fall back to the bare direction so we never render an empty cell for tradeable rows.
   const directionLabel = trade.type
     ? trade.type
     : isBuy
@@ -367,6 +377,84 @@ function TradeRow({ trade }: { trade: MtTrade }) {
       : isSell
         ? 'Sell'
         : '—'
+  const timeLabel = timeIso
+    ? new Date(timeIso).toLocaleString([], {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '—'
+
+  return { isBuy, isSell, profit, status, broker, directionLabel, timeLabel }
+}
+
+function TradeCard({ trade }: { trade: MtTrade }) {
+  const { isBuy, isSell, profit, status, broker, directionLabel, timeLabel } = useTradeDisplay(trade)
+
+  return (
+    <article className="px-4 py-4 hover:bg-neutral-50 dark:hover:bg-neutral-800/40 transition-colors">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="min-w-0">
+          <p className="text-base font-semibold text-neutral-900 dark:text-neutral-50 truncate">
+            {trade.symbol || '—'}
+          </p>
+          <p className="text-[11px] text-neutral-400 tabular-nums mt-0.5">#{trade.ticket}</p>
+        </div>
+        <div className="flex flex-col items-end gap-1.5 shrink-0">
+          <Badge variant={status.variant} size="sm">{status.label}</Badge>
+          <span className={`text-sm font-semibold tabular-nums ${
+            profit === null ? 'text-neutral-400' :
+            profit > 0 ? 'text-success-600' :
+            profit < 0 ? 'text-error-600' : 'text-neutral-500 dark:text-neutral-400'
+          }`}>
+            {profit === null ? '—' : `${profit > 0 ? '+' : ''}${profit.toFixed(2)}`}
+          </span>
+        </div>
+      </div>
+
+      <div className={`inline-flex items-center gap-1 text-sm font-medium mb-3 ${
+        isBuy ? 'text-success-600' : isSell ? 'text-error-600' : 'text-neutral-500 dark:text-neutral-400'
+      }`}>
+        {isBuy ? <ArrowUpRight className="w-3.5 h-3.5" /> : isSell ? <ArrowDownRight className="w-3.5 h-3.5" /> : <Minus className="w-3.5 h-3.5" />}
+        {directionLabel}
+      </div>
+
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+        <div>
+          <dt className="text-neutral-400 uppercase tracking-wide">Broker</dt>
+          <dd className="text-neutral-700 dark:text-neutral-300 truncate mt-0.5" title={broker}>{broker}</dd>
+        </div>
+        <div>
+          <dt className="text-neutral-400 uppercase tracking-wide">Lots</dt>
+          <dd className="text-neutral-700 dark:text-neutral-300 tabular-nums mt-0.5">
+            {trade.lot_size ? trade.lot_size.toFixed(2) : '—'}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-neutral-400 uppercase tracking-wide">Entry</dt>
+          <dd className="text-neutral-700 dark:text-neutral-300 tabular-nums mt-0.5">{formatPrice(trade.entry_price)}</dd>
+        </div>
+        <div>
+          <dt className="text-neutral-400 uppercase tracking-wide">Time</dt>
+          <dd className="text-neutral-600 dark:text-neutral-400 mt-0.5">{timeLabel}</dd>
+        </div>
+        <div>
+          <dt className="text-neutral-400 uppercase tracking-wide">SL</dt>
+          <dd className="text-neutral-700 dark:text-neutral-300 tabular-nums mt-0.5">{formatPrice(trade.sl)}</dd>
+        </div>
+        <div>
+          <dt className="text-neutral-400 uppercase tracking-wide">TP</dt>
+          <dd className="text-neutral-700 dark:text-neutral-300 tabular-nums mt-0.5">{formatPrice(trade.tp)}</dd>
+        </div>
+      </dl>
+    </article>
+  )
+}
+
+function TradeRow({ trade }: { trade: MtTrade }) {
+  const { isBuy, isSell, profit, status, broker, directionLabel, timeLabel } = useTradeDisplay(trade)
 
   return (
     <tr className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors">
@@ -400,15 +488,7 @@ function TradeRow({ trade }: { trade: MtTrade }) {
         )}
       </td>
       <td className="px-2 py-3.5 text-xs text-neutral-500 dark:text-neutral-400 whitespace-nowrap text-center">
-        {timeIso
-          ? new Date(timeIso).toLocaleString([], {
-              day: '2-digit',
-              month: 'short',
-              year: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
-            })
-          : '—'}
+        {timeLabel}
       </td>
       <td className="px-4 py-3.5 text-center">
         <span className="inline-flex justify-center w-full">

@@ -1,5 +1,20 @@
 import type { BacktestTradeRow } from './backtestTypes'
 
+/** Hide raw Massive/Polygon trace rate-limit blobs in the UI. */
+export function sanitizeBacktestUserError(raw: string): string {
+  const t = String(raw ?? '').trim()
+  if (!t) return ''
+  if (/rate limit exceeded for trace/i.test(t)) {
+    return 'Market data rate limit — wait about a minute and run again, or set MASSIVE_CALLS_PER_MINUTE to 2–3 in Supabase edge secrets.'
+  }
+  return t.replace(/\s*·\s*Rate limit exceeded for trace [a-f0-9]+\.?\s*Retry after \d+ms\.?/gi, '').trim() || t
+}
+
+/** Omit noisy API errors from import preview (rate limits are handled during the run). */
+export function filterImportPreviewErrors(errors: string[]): string[] {
+  return errors.filter((e) => !/rate limit exceeded for trace/i.test(e))
+}
+
 /** Matches simulator `pipValuePerLot` in backtest engine. */
 const PIP_VALUE_PER_LOT = 10
 

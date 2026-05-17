@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
+import clsx from 'clsx'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useT } from '../../context/LocaleContext'
@@ -20,6 +21,8 @@ type PageSizeOption = (typeof PAGE_SIZE_OPTIONS)[number]
 
 type ChannelNameRow = { id: string; display_name: string; channel_username?: string | null }
 
+type StatusVariant = 'success' | 'warning' | 'error' | 'neutral' | 'primary'
+
 function buildChannelDisplayNames(channels: ChannelNameRow[]): Record<string, string> {
   const out: Record<string, string> = {}
   for (const c of channels) {
@@ -33,6 +36,134 @@ function buildChannelDisplayNames(channels: ChannelNameRow[]): Record<string, st
 function channelLabel(channelId: string | null | undefined, names: Record<string, string>): string {
   if (!channelId) return '—'
   return names[channelId] ?? 'Unknown channel'
+}
+
+function useCopierLogDisplay(
+  signal: Signal,
+  channelDisplayNames: Record<string, string>,
+  symbolLookup: Map<string, SignalSymbolLookupRow>,
+  statusConfig: Record<string, { variant: StatusVariant; label: string }>,
+) {
+  const parsed = signal.parsed_data as Record<string, unknown> | null
+  const action = parsed?.action as string | undefined
+  const symbol = symbolForCopierLog(signal, symbolLookup)
+  const status = statusConfig[signal.status] ?? { variant: 'neutral' as const, label: signal.status }
+  const channelName = channelLabel(signal.channel_id, channelDisplayNames)
+  const reason = signal.skip_reason?.trim() || '—'
+  const reasonShort = signal.skip_reason
+    ? (signal.skip_reason.length > 42 ? `${signal.skip_reason.slice(0, 42)}…` : signal.skip_reason)
+    : '—'
+  const messagePreview = signal.raw_message
+    ? (signal.raw_message.length > 60 ? `${signal.raw_message.slice(0, 60)}…` : signal.raw_message)
+    : '(image)'
+  const timeLabel = new Date(signal.created_at).toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+
+  return { action, symbol, status, channelName, reason, reasonShort, messagePreview, timeLabel }
+}
+
+function CopierLogCard({
+  signal,
+  channelDisplayNames,
+  symbolLookup,
+  statusConfig,
+  labels,
+}: {
+  signal: Signal
+  channelDisplayNames: Record<string, string>
+  symbolLookup: Map<string, SignalSymbolLookupRow>
+  statusConfig: Record<string, { variant: StatusVariant; label: string }>
+  labels: { colReason: string }
+}) {
+  const { action, symbol, status, channelName, reason, messagePreview, timeLabel } = useCopierLogDisplay(
+    signal,
+    channelDisplayNames,
+    symbolLookup,
+    statusConfig,
+  )
+
+  return (
+    <article className="px-4 py-4 hover:bg-neutral-50 dark:hover:bg-neutral-800/40 transition-colors">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="min-w-0">
+          <p className="text-base font-semibold text-neutral-900 dark:text-neutral-50 truncate">{symbol}</p>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate mt-0.5" title={channelName}>
+            {channelName}
+          </p>
+        </div>
+        <div className="flex flex-col items-end gap-1.5 shrink-0">
+          <Badge variant={status.variant} size="sm">{status.label}</Badge>
+          <span className="text-xs text-neutral-400 whitespace-nowrap">{timeLabel}</span>
+        </div>
+      </div>
+
+      {action ? (
+        <p className={clsx(
+          'text-sm font-medium uppercase mb-3',
+          action === 'buy' ? 'text-primary-600' : action === 'sell' ? 'text-error-600' : 'text-neutral-400',
+        )}>
+          {action}
+        </p>
+      ) : null}
+
+      <p className="text-sm text-neutral-600 dark:text-neutral-300 mb-3 line-clamp-3" title={signal.raw_message ?? ''}>
+        {messagePreview}
+      </p>
+
+      {reason !== '—' ? (
+        <p className="text-xs text-neutral-500 dark:text-neutral-400" title={signal.skip_reason ?? ''}>
+          <span className="font-medium text-neutral-600 dark:text-neutral-300">{labels.colReason}: </span>
+          {reason}
+        </p>
+      ) : null}
+    </article>
+  )
+}
+
+function CopierLogRow({
+  signal,
+  channelDisplayNames,
+  symbolLookup,
+  statusConfig,
+}: {
+  signal: Signal
+  channelDisplayNames: Record<string, string>
+  symbolLookup: Map<string, SignalSymbolLookupRow>
+  statusConfig: Record<string, { variant: StatusVariant; label: string }>
+}) {
+  const { action, symbol, status, channelName, reasonShort, messagePreview, timeLabel } = useCopierLogDisplay(
+    signal,
+    channelDisplayNames,
+    symbolLookup,
+    statusConfig,
+  )
+
+  return (
+    <div className="grid grid-cols-[1.5fr_1.2fr_1fr_1.2fr_1fr_1fr_auto] gap-3 min-w-[44rem] px-4 sm:px-5 py-3.5 items-center hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors">
+      <Badge variant={status.variant} size="sm">{status.label}</Badge>
+      <span className="text-xs text-neutral-500 dark:text-neutral-400 truncate" title={signal.skip_reason ?? ''}>
+        {reasonShort}
+      </span>
+      <span className="text-xs text-neutral-600 dark:text-neutral-400 truncate" title={channelName}>
+        {channelName}
+      </span>
+      <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{symbol}</span>
+      <span className="text-xs text-neutral-500 dark:text-neutral-400 truncate" title={signal.raw_message ?? ''}>
+        {messagePreview}
+      </span>
+      <span className={clsx(
+        'text-xs font-medium uppercase',
+        action === 'buy' ? 'text-primary-600' : action === 'sell' ? 'text-error-600' : 'text-neutral-400',
+      )}>
+        {action ?? '—'}
+      </span>
+      <span className="text-xs text-neutral-400 text-right whitespace-nowrap">{timeLabel}</span>
+    </div>
+  )
 }
 
 export function CopierLogsPage() {
@@ -107,7 +238,7 @@ export function CopierLogsPage() {
     [t],
   )
 
-  const statusConfig: Record<string, { variant: 'success' | 'warning' | 'error' | 'neutral' | 'primary'; label: string }> = useMemo(
+  const statusConfig: Record<string, { variant: StatusVariant; label: string }> = useMemo(
     () => ({
       executed: { variant: 'success', label: t.copierLogs.statusExecuted },
       skipped: { variant: 'warning', label: t.copierLogs.statusSkipped },
@@ -118,6 +249,8 @@ export function CopierLogsPage() {
     [t],
   )
 
+  const cardLabels = useMemo(() => ({ colReason: t.copierLogs.colReason }), [t])
+
   return (
     <div className="px-4 py-4 sm:px-6 sm:py-6 lg:p-8 max-w-5xl mx-auto">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 sm:mb-6 gap-4">
@@ -125,46 +258,51 @@ export function CopierLogsPage() {
           <h1 className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-neutral-50">{t.copierLogs.title}</h1>
           <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">{t.copierLogs.subtitle}</p>
         </div>
-        <div className="flex bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg p-0.5 gap-0.5">
-          {filters.map(f => (
-            <button
-              key={f.value}
-              type="button"
-              onClick={() => setFilter(f.value)}
-              className={`px-3 py-1.5 text-xs rounded-md font-medium transition-colors ${
-                filter === f.value ? 'bg-teal-600 text-white' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
+        <div className="-mx-4 px-4 sm:mx-0 sm:px-0 overflow-x-auto w-full sm:w-auto">
+          <div className="inline-flex bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg p-0.5 gap-0.5">
+            {filters.map(f => (
+              <button
+                key={f.value}
+                type="button"
+                onClick={() => setFilter(f.value)}
+                className={`shrink-0 px-3 py-2 text-xs rounded-md font-medium transition-colors whitespace-nowrap ${
+                  filter === f.value ? 'bg-teal-600 text-white' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
       <Card padding="none" className="overflow-hidden">
-        <div className="overflow-x-auto">
-        <div className="grid grid-cols-[1.5fr_1.2fr_1fr_1.2fr_1fr_1fr_auto] gap-3 min-w-[44rem] px-4 sm:px-5 py-3 border-b border-neutral-100 dark:border-neutral-800 text-xs font-semibold text-neutral-400 uppercase tracking-wide">
-          <span>{t.copierLogs.colStatus}</span>
-          <span>{t.copierLogs.colReason}</span>
-          <span>{t.copierLogs.colChannel}</span>
-          <span>{t.copierLogs.colSymbol}</span>
-          <span>{t.copierLogs.colMessage}</span>
-          <span>{t.copierLogs.colType}</span>
-          <span className="text-right">{t.copierLogs.colTime}</span>
-        </div>
-
         {loading ? (
-          <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
-            {[...Array(pageSize > 6 ? 6 : pageSize)].map((_, i) => (
-              <div key={i} className="px-5 py-3.5 grid grid-cols-7 gap-3">
-                {[...Array(7)].map((_, j) => (
-                  <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
-                ))}
-              </div>
-            ))}
-          </div>
+          <>
+            <div className="md:hidden divide-y divide-neutral-100 dark:divide-neutral-800">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="px-4 py-4 space-y-3">
+                  <div className="flex justify-between gap-3">
+                    <div className="h-5 w-20 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
+                    <div className="h-5 w-16 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
+                  </div>
+                  <div className="h-4 w-full bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
+                  <div className="h-4 w-3/4 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
+                </div>
+              ))}
+            </div>
+            <div className="hidden md:block divide-y divide-neutral-100 dark:divide-neutral-800">
+              {[...Array(pageSize > 6 ? 6 : pageSize)].map((_, i) => (
+                <div key={i} className="px-5 py-3.5 grid grid-cols-7 gap-3">
+                  {[...Array(7)].map((_, j) => (
+                    <div key={j} className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse" />
+                  ))}
+                </div>
+              ))}
+            </div>
+          </>
         ) : signals.length === 0 ? (
-          <div className="py-20 text-center">
+          <div className="px-4 sm:px-6 py-12 sm:py-20 text-center">
             <div className="w-16 h-16 bg-neutral-100 dark:bg-neutral-800 rounded-2xl mx-auto mb-3 flex items-center justify-center">
               <svg className="w-8 h-8 text-neutral-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -174,50 +312,42 @@ export function CopierLogsPage() {
             <p className="text-xs text-neutral-300 mt-1">{t.copierLogs.emptySubtitle}</p>
           </div>
         ) : (
-          <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
-            {signals.map(signal => {
-              const parsed = signal.parsed_data as Record<string, unknown> | null
-              const action = parsed?.action as string | undefined
-              const symbol = symbolForCopierLog(signal, symbolLookup)
-              const s = statusConfig[signal.status] ?? { variant: 'neutral' as const, label: signal.status }
-              const channelName = channelLabel(signal.channel_id, channelDisplayNames)
-
-              return (
-                <div key={signal.id} className="grid grid-cols-[1.5fr_1.2fr_1fr_1.2fr_1fr_1fr_auto] gap-3 min-w-[44rem] px-4 sm:px-5 py-3.5 items-center hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors">
-                  <Badge variant={s.variant} size="sm">{s.label}</Badge>
-                  <span
-                    className="text-xs text-neutral-500 dark:text-neutral-400 truncate"
-                    title={signal.skip_reason ?? ''}
-                  >
-                    {signal.skip_reason
-                      ? (signal.skip_reason.length > 42 ? signal.skip_reason.slice(0, 42) + '…' : signal.skip_reason)
-                      : '—'}
-                  </span>
-                  <span className="text-xs text-neutral-600 dark:text-neutral-400 truncate" title={channelName}>
-                    {channelName}
-                  </span>
-                  <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{symbol}</span>
-                  <span className="text-xs text-neutral-500 dark:text-neutral-400 truncate" title={signal.raw_message}>
-                    {signal.raw_message?.slice(0, 60) || '(image)'}
-                    {(signal.raw_message?.length ?? 0) > 60 ? '…' : ''}
-                  </span>
-                  <span className={`text-xs font-medium uppercase ${
-                    action === 'buy' ? 'text-primary-600' :
-                    action === 'sell' ? 'text-error-600' :
-                    'text-neutral-400'
-                  }`}>
-                    {action ?? '—'}
-                  </span>
-                  <span className="text-xs text-neutral-400 text-right whitespace-nowrap">
-                    {new Date(signal.created_at).toLocaleString([], {
-                      month: 'short', day: 'numeric',
-                      hour: '2-digit', minute: '2-digit',
-                    })}
-                  </span>
-                </div>
-              )
-            })}
-          </div>
+          <>
+            <div className="md:hidden divide-y divide-neutral-100 dark:divide-neutral-800">
+              {signals.map(signal => (
+                <CopierLogCard
+                  key={signal.id}
+                  signal={signal}
+                  channelDisplayNames={channelDisplayNames}
+                  symbolLookup={symbolLookup}
+                  statusConfig={statusConfig}
+                  labels={cardLabels}
+                />
+              ))}
+            </div>
+            <div className="hidden md:block overflow-x-auto">
+              <div className="grid grid-cols-[1.5fr_1.2fr_1fr_1.2fr_1fr_1fr_auto] gap-3 min-w-[44rem] px-4 sm:px-5 py-3 border-b border-neutral-100 dark:border-neutral-800 text-xs font-semibold text-neutral-400 uppercase tracking-wide">
+                <span>{t.copierLogs.colStatus}</span>
+                <span>{t.copierLogs.colReason}</span>
+                <span>{t.copierLogs.colChannel}</span>
+                <span>{t.copierLogs.colSymbol}</span>
+                <span>{t.copierLogs.colMessage}</span>
+                <span>{t.copierLogs.colType}</span>
+                <span className="text-right">{t.copierLogs.colTime}</span>
+              </div>
+              <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
+                {signals.map(signal => (
+                  <CopierLogRow
+                    key={signal.id}
+                    signal={signal}
+                    channelDisplayNames={channelDisplayNames}
+                    symbolLookup={symbolLookup}
+                    statusConfig={statusConfig}
+                  />
+                ))}
+              </div>
+            </div>
+          </>
         )}
 
         {!loading && totalCount > 0 ? (
@@ -240,7 +370,6 @@ export function CopierLogsPage() {
             }}
           />
         ) : null}
-        </div>
       </Card>
     </div>
   )
@@ -285,7 +414,7 @@ function CopierLogsPagination({
   }, [page, totalPages])
 
   return (
-    <div className="flex flex-col gap-3 px-4 py-3 border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/50 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-3 px-3 sm:px-4 py-3 border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/50 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <label className="inline-flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
           <span className="font-medium text-neutral-700 dark:text-neutral-300">{labels.show}</span>
@@ -306,7 +435,7 @@ function CopierLogsPagination({
         </p>
       </div>
       {totalPages > 1 && (
-        <div className="flex items-center gap-1 justify-end">
+        <div className="flex flex-wrap items-center gap-1 justify-center sm:justify-end">
           <button
             type="button"
             onClick={() => onPageChange(page - 1)}

@@ -1,9 +1,9 @@
 import { supabase } from './supabase'
 import type {
   BacktestEquityRow,
-  BacktestRunConfig,
   BacktestRunRow,
   BacktestTradeRow,
+  SimpleBacktestConfig,
 } from './backtestTypes'
 
 async function call<T>(body: Record<string, unknown>): Promise<T> {
@@ -43,29 +43,20 @@ async function call<T>(body: Record<string, unknown>): Promise<T> {
   return data as T
 }
 
-export interface BacktestPreviewResult {
-  tradeable_count: number
-  stored_count: number
-  available_symbols?: string[]
-  symbols_filter?: string[]
-  massive_configured: boolean
-  massive_calls_per_minute?: number
-  massive_probe?: { ok: boolean; error?: string; bars?: number }
-  signal_source?: string
-  copier_isolated?: boolean
+export interface BacktestSyncResult {
+  messages_scanned: number
+  candidates: number
+  imported: number
+  errors: string[]
 }
 
 export const backtestApi = {
-  listRuns(): Promise<{ runs: BacktestRunRow[] }> {
-    return call({ action: 'list' })
+  sync(config: SimpleBacktestConfig): Promise<BacktestSyncResult> {
+    return call({ action: 'sync', config })
   },
 
-  preview(config: BacktestRunConfig): Promise<BacktestPreviewResult> {
-    return call({ action: 'preview', config })
-  },
-
-  createRun(name: string, config: BacktestRunConfig): Promise<{ run_id: string }> {
-    return call({ action: 'create', name, config })
+  run(config: SimpleBacktestConfig): Promise<{ run_id: string }> {
+    return call({ action: 'run', config })
   },
 
   getRun(runId: string): Promise<{

@@ -1,6 +1,11 @@
 import { pipCalculator, type PipQuote } from '../pipCalculator'
 import type { ChannelKeywords, ManualSettings, ParsedSignal, PlannerContext } from './types'
 
+/** True when manual settings request pip-based SL and/or TP overrides. */
+export function usesPredefinedStops(manual: ManualSettings): boolean {
+  return manual.use_predefined_sl_pips === true || manual.use_predefined_tp_pips === true
+}
+
 /**
  * Reverse Signal only applies when predefined SL **and** TP are enabled with
  * valid values and an entry anchor exists — so mirrored risk comes from your
@@ -40,22 +45,27 @@ export function deriveManualStopsWithClamp(args: {
   const slInPips = channelKeywords?.additional?.sl_in_pips === true
   const tpInPips = channelKeywords?.additional?.tp_in_pips === true
 
-  let parsedSl: number | null = parsed.sl ?? null
-  let parsedTps: number[] = (parsed.tp ?? []).filter((n): n is number => typeof n === 'number' && Number.isFinite(n))
-  if (slInPips && parsedSl != null && entryAnchor != null) {
+  const usePreSl = manual.use_predefined_sl_pips === true
+  const usePreTp = manual.use_predefined_tp_pips === true
+
+  let parsedSl: number | null = usePreSl ? null : (parsed.sl ?? null)
+  let parsedTps: number[] = usePreTp
+    ? []
+    : (parsed.tp ?? []).filter((n): n is number => typeof n === 'number' && Number.isFinite(n))
+  if (!usePreSl && slInPips && parsedSl != null && entryAnchor != null) {
     parsedSl = isBuy ? entryAnchor - parsedSl * pip : entryAnchor + parsedSl * pip
   }
-  if (tpInPips && parsedTps.length && entryAnchor != null) {
+  if (!usePreTp && tpInPips && parsedTps.length && entryAnchor != null) {
     parsedTps = parsedTps.map(t => (isBuy ? entryAnchor + t * pip : entryAnchor - t * pip))
   }
 
   let finalSl = parsedSl
   let finalTps = parsedTps
-  if (manual.use_predefined_sl_pips && Number.isFinite(manual.predefined_sl_pips ?? NaN) && entryAnchor != null) {
+  if (usePreSl && Number.isFinite(manual.predefined_sl_pips ?? NaN) && entryAnchor != null) {
     const sl_pips = Number(manual.predefined_sl_pips)
     finalSl = isBuy ? entryAnchor - sl_pips * pip : entryAnchor + sl_pips * pip
   }
-  if (manual.use_predefined_tp_pips && Array.isArray(manual.predefined_tp_pips) && entryAnchor != null) {
+  if (usePreTp && Array.isArray(manual.predefined_tp_pips) && entryAnchor != null) {
     const tps = manual.predefined_tp_pips
       .map(Number)
       .filter(n => Number.isFinite(n) && n > 0)

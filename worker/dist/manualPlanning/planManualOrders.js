@@ -55,10 +55,20 @@ function planManualOrders(args) {
         }
     }
     const entryOk = entry != null && Number.isFinite(entry) && entry > 0;
-    const entryAnchor = entryOk ? entry : null;
-    const effectiveReverse = manual.reverse_signal === true && (0, manualStops_1.reverseSignalGateSatisfied)(manual, entryAnchor);
+    const entryAnchorFromSignal = entryOk ? entry : null;
+    const effectiveReverse = manual.reverse_signal === true && (0, manualStops_1.reverseSignalGateSatisfied)(manual, entryAnchorFromSignal);
     const opSplit = effectiveReverse ? (0, executionShape_1.flipOperation)(baseOperation) : baseOperation;
     const isBuy = opSplit.startsWith('Buy');
+    let entryAnchor = entryAnchorFromSignal;
+    if (entryAnchor == null
+        && (manual.use_predefined_sl_pips === true || manual.use_predefined_tp_pips === true)) {
+        const ask = ctx.liveAsk;
+        const bid = ctx.liveBid;
+        if (isBuy && typeof ask === 'number' && Number.isFinite(ask) && ask > 0)
+            entryAnchor = ask;
+        else if (!isBuy && typeof bid === 'number' && Number.isFinite(bid) && bid > 0)
+            entryAnchor = bid;
+    }
     const { pipQuote, pip, finalSl, finalTps, minStopDist, roundPrice } = (0, manualStops_1.deriveManualStopsWithClamp)({
         parsed,
         manual,

@@ -1,4 +1,6 @@
-/** Map parse-signal JSON into backtest_channel_signals upsert fields. */
+import { isTradableInstrumentSymbol, sanitizeParsedSymbol } from "../tradableSymbol.ts"
+
+/** Map parse-signal / AI JSON into backtest_channel_signals upsert fields. */
 export function tradeableFromParsed(parsed: Record<string, unknown>): {
   direction: "buy" | "sell"
   symbol: string
@@ -6,15 +8,20 @@ export function tradeableFromParsed(parsed: Record<string, unknown>): {
   sl: number | null
   tp_levels: number[]
   lot_size: number | null
+  market_entry: boolean
 } | null {
   const action = String(parsed.action ?? "").toLowerCase()
   if (action !== "buy" && action !== "sell") return null
 
-  const symbol = String(parsed.symbol ?? "").trim().toUpperCase()
-  if (!symbol) return null
+  const symbol = sanitizeParsedSymbol(
+    typeof parsed.symbol === "string" ? parsed.symbol : null,
+  )
+  if (!symbol || !isTradableInstrumentSymbol(symbol)) return null
 
-  const entry = num(parsed.entry_price) ?? num(parsed.entry_zone_low) ?? num(parsed.entry_zone_high)
-  if (entry == null || entry <= 0) return null
+  const entryExplicit =
+    num(parsed.entry_price) ??
+    num(parsed.entry_zone_low) ??
+    num(parsed.entry_zone_high)
 
   const sl = num(parsed.sl)
   const tpRaw = parsed.tp
@@ -24,15 +31,19 @@ export function tradeableFromParsed(parsed: Record<string, unknown>): {
 
   if (sl == null && tp_levels.length === 0) return null
 
+  const market_entry = entryExplicit == null || entryExplicit <= 0
+  const entry_price = market_entry ? 0 : entryExplicit
+
   const lot = num(parsed.lot_size)
 
   return {
     direction: action as "buy" | "sell",
     symbol,
-    entry_price: entry,
+    entry_price,
     sl,
     tp_levels,
     lot_size: lot,
+    market_entry,
   }
 }
 

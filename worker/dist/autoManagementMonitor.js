@@ -69,7 +69,7 @@ class AutoManagementMonitor {
         const brokerIds = [...new Set(rows.map(r => r.broker_account_id).filter(Boolean))];
         const { data: brokers, error: brokerErr } = await this.supabase
             .from('broker_accounts')
-            .select('id,metaapi_account_id,platform')
+            .select('id,metaapi_account_id,platform,manual_settings')
             .in('id', brokerIds);
         if (brokerErr) {
             console.error('[autoManagementMonitor] broker lookup failed:', brokerErr.message);
@@ -109,7 +109,10 @@ class AutoManagementMonitor {
             }
             for (const trade of group) {
                 const partials = partialByTrade.get(trade.id) ?? [];
-                const ok = await this.maybeApplyBreakeven(trade, uuid, api, bid, ask, partials);
+                const broker = brokerById.get(trade.broker_account_id ?? '');
+                const manual = (broker?.manual_settings ?? {});
+                const halfClosePct = Math.min(99, Math.max(1, Math.floor(Number(manual.half_close_percent ?? 50) || 50)));
+                const ok = await this.maybeApplyBreakeven(trade, uuid, api, bid, ask, partials, halfClosePct);
                 if (ok === true)
                     appliedTotal++;
                 if (ok === false)
@@ -144,7 +147,7 @@ class AutoManagementMonitor {
         }
         return out;
     }
-    async maybeApplyBreakeven(trade, uuid, api, bid, ask, partials) {
+    async maybeApplyBreakeven(trade, uuid, api, bid, ask, partials, halfClosePercent) {
         const ticketNum = Number(trade.metaapi_order_id);
         if (!Number.isFinite(ticketNum) || ticketNum <= 0) {
             await this.markApplied(trade.id, { clearWatch: true });
@@ -209,7 +212,7 @@ class AutoManagementMonitor {
             });
             let remainingLots = lots;
             if (beType === 'sl_and_close_half' && lots > 0.0001) {
-                const closeLots = +(lots * 0.5).toFixed(2);
+                const closeLots = +(lots * (halfClosePercent / 100)).toFixed(2);
                 if (closeLots >= 0.01) {
                     try {
                         await api.orderClose(uuid, { ticket: ticketNum, lots: closeLots });

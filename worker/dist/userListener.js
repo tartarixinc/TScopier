@@ -4,6 +4,8 @@ exports.UserListener = void 0;
 const events_1 = require("telegram/events");
 const tl_1 = require("telegram/tl");
 const telegramClient_1 = require("./telegramClient");
+const backtestSignal_1 = require("./backtestSignal");
+const tradableSymbol_1 = require("./tradableSymbol");
 const SUPABASE_URL = process.env.SUPABASE_URL ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
 const PARSE_SIGNAL_URL = process.env.PARSE_SIGNAL_URL ?? (SUPABASE_URL ? `${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/parse-signal` : '');
@@ -53,9 +55,7 @@ function looksLikeTradingSignal(text, isReply) {
         .trim();
     if (!normalized)
         return false;
-    // Common instrument patterns: EURUSD, XAUUSD, BTCUSDT, US30, etc.
-    const hasInstrument = /\b[a-z]{6,7}\b/.test(normalized) ||
-        /\b(xauusd|xagusd|us30|nas100|spx500|ger40|uk100|btcusdt|ethusdt)\b/.test(normalized);
+    const hasInstrument = (0, tradableSymbol_1.hasTradableInstrumentInText)(text);
     const hasDirectionOrAction = /\b(buy|sell|long|short|close|tp|take profit|sl|stop loss|breakeven|be)\b/.test(normalized);
     const hasPriceContext = /\b\d{1,5}(?:\.\d{1,5})\b/.test(normalized) ||
         /\b(entry|zone|between|above|below|now)\b/.test(normalized);
@@ -328,6 +328,216 @@ class UserListener {
             throw new Error('Channel not found');
         const messages = await this.backfillChannelFromDate(row, lookbackDays);
         return { imported: messages.length, messages };
+    }
+    /**
+     * Fetch Telegram messages in [fromIso, toIso] for backtest only.
+     * Does not write to `signals` or trigger copier parse/trade execution.
+     */
+    async importBacktestChannelHistory(channelRowId, fromIso, toIso) {
+        const fromMs = new Date(fromIso).getTime();
+        const toMs = new Date(toIso.includes('T') ? toIso : `${toIso}T23:59:59.999Z`).getTime();
+        if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || toMs < fromMs) {
+            throw new Error('Invalid backtest date range');
+        }
+        const { data: row, error } = await this.supabase
+            .from('telegram_channels')
+            .select('id, channel_id, channel_username, last_seen_message_id')
+            .eq('user_id', this.userId)
+            .eq('id', channelRowId)
+            .eq('is_active', true)
+            .maybeSingle();
+        if (error)
+            throw new Error(error.message);
+        if (!row)
+            throw new Error('Channel not found');
+        const collected = await this.fetchMessagesBetweenForBacktest(row, fromMs, toMs);
+        const messages = [];
+        for (const m of collected) {
+            const raw = String(m.text ?? m.message ?? '').trim();
+            if (!raw)
+                continue;
+            const epoch = this.messageEpochSec(m);
+            const signalAt = epoch > 0
+                ? new Date(epoch * 1000).toISOString()
+                : new Date().toISOString();
+            messages.push({
+                telegram_message_id: String(m.id),
+                raw_message: raw,
+                signal_at: signalAt,
+            });
+        }
+        return { messages, messages_scanned: collected.length };
+    }
+    /**
+     * Sync Telegram history into backtest_channel_signals (parse + upsert on worker).
+     */
+    async syncBacktestSignals(channelRowId, fromIso, toIso, opts) {
+        const fromMs = new Date(fromIso).getTime();
+        const toMs = new Date(toIso.includes('T') ? toIso : `${toIso}T23:59:59.999Z`).getTime();
+        if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || toMs < fromMs) {
+            throw new Error('Invalid backtest date range');
+        }
+        if (!PARSE_SIGNAL_URL || !PARSE_SIGNAL_AUTH_KEY) {
+            throw new Error('PARSE_SIGNAL_URL / service role key not configured on worker');
+        }
+        const { data: row, error } = await this.supabase
+            .from('telegram_channels')
+            .select('id, channel_id, channel_username, last_seen_message_id')
+            .eq('user_id', this.userId)
+            .eq('id', channelRowId)
+            .eq('is_active', true)
+            .maybeSingle();
+        if (error)
+            throw new Error(error.message);
+        if (!row)
+            throw new Error('Channel not found');
+        const collected = await this.fetchMessagesBetweenForBacktest(row, fromMs, toMs);
+        const errors = [];
+        const rangeFromIso = new Date(fromMs).toISOString();
+        const rangeToIso = new Date(toMs).toISOString();
+        const { error: delErr } = await this.supabase
+            .from('backtest_channel_signals')
+            .delete()
+            .eq('user_id', this.userId)
+            .eq('channel_id', channelRowId)
+            .eq('source', 'telegram_import')
+            .gte('signal_at', rangeFromIso)
+            .lte('signal_at', rangeToIso);
+        if (delErr)
+            errors.push(`clear prior import: ${delErr.message}`);
+        const candidates = [];
+        for (const m of collected) {
+            const raw = String(m.text ?? m.message ?? '').trim();
+            if (!raw)
+                continue;
+            const isReply = !!m.replyTo;
+            if (!looksLikeTradingSignal(raw, isReply))
+                continue;
+            const epoch = this.messageEpochSec(m);
+            candidates.push({
+                raw,
+                signalAt: epoch > 0 ? new Date(epoch * 1000).toISOString() : new Date().toISOString(),
+                telegramMessageId: String(m.id),
+            });
+        }
+        let imported = 0;
+        const parseConcurrency = Math.max(1, Math.min(8, Number(process.env.BACKTEST_PARSE_CONCURRENCY ?? 4)));
+        const parseDelayMs = Math.max(0, Number(process.env.BACKTEST_PARSE_DELAY_MS ?? 0));
+        const runId = opts?.runId;
+        const reportSyncProgress = async (parsed, total) => {
+            if (!runId)
+                return;
+            const pct = total > 0 ? 2 + Math.floor((parsed / total) * 12) : 2;
+            await this.supabase.from('backtest_runs').update({
+                progress_pct: pct,
+                progress_message: `Syncing Telegram: parsing ${parsed}/${total} candidate message(s)…`,
+                updated_at: new Date().toISOString(),
+            }).eq('id', runId).eq('user_id', this.userId);
+        };
+        await reportSyncProgress(0, candidates.length);
+        let parsedCount = 0;
+        await this.mapWithConcurrency(candidates, parseConcurrency, async (c) => {
+            try {
+                const parsed = await this.parseSignalForBacktest(channelRowId, c.raw);
+                if (!parsed)
+                    return;
+                const tradeable = (0, backtestSignal_1.tradeableFromParsed)(parsed);
+                if (!tradeable)
+                    return;
+                const { error: upsertErr } = await this.supabase.rpc('upsert_backtest_channel_signal', {
+                    p_user_id: this.userId,
+                    p_channel_id: channelRowId,
+                    p_signal_id: null,
+                    p_telegram_message_id: c.telegramMessageId,
+                    p_source: 'telegram_import',
+                    p_direction: tradeable.direction,
+                    p_symbol: tradeable.symbol,
+                    p_entry_price: tradeable.entry_price,
+                    p_sl: tradeable.sl,
+                    p_tp_levels: tradeable.tp_levels,
+                    p_lot_size: tradeable.lot_size,
+                    p_raw_message: c.raw,
+                    p_parsed_data: parsed,
+                    p_signal_at: c.signalAt,
+                });
+                if (upsertErr) {
+                    errors.push(upsertErr.message);
+                    return;
+                }
+                imported++;
+            }
+            catch (e) {
+                errors.push(e instanceof Error ? e.message : String(e));
+            }
+            finally {
+                parsedCount++;
+                if (parsedCount % 3 === 0 || parsedCount === candidates.length) {
+                    await reportSyncProgress(parsedCount, candidates.length);
+                }
+                if (parseDelayMs > 0) {
+                    await new Promise(r => setTimeout(r, parseDelayMs));
+                }
+            }
+        });
+        if (collected.length === 0) {
+            errors.push('0 messages from Telegram — check session and channel access');
+        }
+        else if (candidates.length === 0) {
+            errors.push('No messages looked like trade signals in this range');
+        }
+        else if (imported === 0 && errors.length === 0) {
+            errors.push('No tradeable signals — messages need buy/sell, valid symbol, and SL or TP');
+        }
+        return {
+            messages_scanned: collected.length,
+            candidates: candidates.length,
+            imported,
+            errors,
+        };
+    }
+    async mapWithConcurrency(items, concurrency, fn) {
+        if (items.length === 0)
+            return;
+        let next = 0;
+        const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+            while (true) {
+                const i = next++;
+                if (i >= items.length)
+                    break;
+                await fn(items[i]);
+            }
+        });
+        await Promise.all(workers);
+    }
+    async parseSignalForBacktest(channelRowId, rawMessage) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort('parse-timeout'), 15000);
+        try {
+            const res = await fetch(PARSE_SIGNAL_URL, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${PARSE_SIGNAL_AUTH_KEY}`,
+                    apikey: PARSE_SIGNAL_API_KEY,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    parse_only: true,
+                    channel_id: channelRowId,
+                    raw_message: rawMessage,
+                }),
+                signal: controller.signal,
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error(data.error ?? `parse-signal ${res.status}`);
+            }
+            if (data.error)
+                throw new Error(data.error);
+            return data.parsed ?? null;
+        }
+        finally {
+            clearTimeout(timeout);
+        }
     }
     // ── live message handling ─────────────────────────────────────────────
     async handleMessage(event) {
@@ -680,6 +890,81 @@ class UserListener {
                 continue;
             await this.logSignal(row, m);
         }
+    }
+    messageEpochSec(m) {
+        const dateRaw = m.date;
+        if (typeof dateRaw === 'number')
+            return dateRaw;
+        if (dateRaw instanceof Date)
+            return Math.floor(dateRaw.getTime() / 1000);
+        if (typeof dateRaw === 'string') {
+            const t = Date.parse(dateRaw);
+            return Number.isFinite(t) ? Math.floor(t / 1000) : 0;
+        }
+        return 0;
+    }
+    /** All non-empty messages in range (no trading heuristic) — used for backtest import only. */
+    async fetchMessagesBetweenForBacktest(row, fromMs, toMs) {
+        return this.fetchMessagesBetween(row, fromMs, toMs, { forBacktest: true });
+    }
+    async fetchMessagesBetween(row, fromMs, toMs, opts) {
+        const fromSec = Math.floor(fromMs / 1000);
+        const toSec = Math.floor(toMs / 1000);
+        let peer;
+        try {
+            peer = await this.client.getInputEntity(row.channel_username || row.channel_id);
+        }
+        catch {
+            throw new Error('Failed to resolve Telegram channel entity');
+        }
+        const collected = [];
+        let offsetId = 0;
+        const batchSize = 100;
+        while (collected.length < BACKFILL_PER_CHANNEL_CAP) {
+            let batch;
+            try {
+                batch = (await this.client.getMessages(peer, {
+                    limit: batchSize,
+                    offsetId,
+                }));
+            }
+            catch {
+                break;
+            }
+            if (!batch.length)
+                break;
+            let reachedOlderThanRange = false;
+            for (const m of batch) {
+                const msgEpochSec = this.messageEpochSec(m);
+                if (msgEpochSec && msgEpochSec < fromSec) {
+                    reachedOlderThanRange = true;
+                    continue;
+                }
+                if (msgEpochSec && msgEpochSec > toSec) {
+                    continue;
+                }
+                const raw = String(m.text ?? m.message ?? '').trim();
+                if (!raw)
+                    continue;
+                const isReply = !!m.replyTo;
+                const fetchAllForBacktest = process.env.BACKTEST_FETCH_ALL_MESSAGES === 'true';
+                if (!opts?.forBacktest) {
+                    if (!looksLikeTradingSignal(raw, isReply))
+                        continue;
+                }
+                else if (!fetchAllForBacktest) {
+                    if (!looksLikeTradingSignal(raw, isReply))
+                        continue;
+                }
+                collected.push(m);
+            }
+            offsetId = Number(batch[batch.length - 1].id);
+            if (batch.length < batchSize || reachedOlderThanRange)
+                break;
+            await new Promise(r => setTimeout(r, CATCHUP_BACKPRESSURE_MS));
+        }
+        collected.sort((a, b) => Number(a.id) - Number(b.id));
+        return collected;
     }
     async backfillChannelFromDate(row, days) {
         let peer;

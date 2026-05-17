@@ -1,5 +1,10 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
+import {
+  extractTradableSymbolFromMessage,
+  isTradableInstrumentSymbol,
+  sanitizeParsedSymbol,
+} from "../_shared/tradableSymbol.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -272,10 +277,9 @@ function normalizeParsedFromModel(raw: unknown, fallbackText: string): ParsedSig
     return Number.isFinite(n) ? n : null
   }
 
-  let symbol: string | null = null
-  if (typeof j.symbol === "string" && j.symbol.trim()) {
-    symbol = j.symbol.trim().toUpperCase().replace(/\s+/g, "")
-  }
+  let symbol = sanitizeParsedSymbol(
+    typeof j.symbol === "string" ? j.symbol : null,
+  )
 
   let tp: number[] = []
   if (Array.isArray(j.tp)) {
@@ -314,35 +318,6 @@ function normalizeParsedFromModel(raw: unknown, fallbackText: string): ParsedSig
     open_tp: Boolean(j.open_tp ?? detectOpenTp(fallbackText)),
     ...(partial_close_fraction != null ? { partial_close_fraction } : {}),
   }
-}
-
-function extractTradableSymbolFromMessage(raw: string): string | null {
-  if (!raw || typeof raw !== "string") return null
-  const u = raw.toUpperCase().replace(/\s+/g, " ")
-
-  const slash = raw.match(/\b([A-Z]{3,})\s*\/\s*([A-Z]{3,})\b/i)
-  if (slash) return (slash[1] + slash[2]).toUpperCase()
-
-  const explicit = u.match(
-    /\b(BTCUSD|BTCUSDT|BTCEUR|ETHUSD|ETHUSDT|EURUSD|GBPUSD|USDJPY|AUDUSD|NZDUSD|USDCAD|USDCHF|XAUUSD|XAGUSD|US30|US500|NAS100|GER40|UK100|SPX500|USTEC)\b/,
-  )
-  if (explicit) return explicit[1]
-
-  if (/\bBITCOIN\b|\bBTC\b/.test(u) && /\bEUR\b/.test(u) && !/\bUSD\b|\bUSDT\b|\bPERP\b/.test(u)) return "BTCEUR"
-  if (/\bBITCOIN\b|\bBTC\b/.test(u)) return /\bUSDT\b/.test(u) ? "BTCUSDT" : "BTCUSD"
-  if (/\bETHER(EUM)?\b|\bETH\b/.test(u)) return /\bUSDT\b/.test(u) ? "ETHUSDT" : "ETHUSD"
-  if (/\b(XAUUSD|XAU\b|GOLD)\b/.test(u)) return "XAUUSD"
-  if (/\bSILVER\b|\bXAG\b|\bXAGUSD\b/.test(u)) return "XAGUSD"
-
-  const bogusSix = new Set([
-    "CLOSED", "CLOSES", "SIGNAL", "MARKET", "SILVER", "GOLDEN", "MASTER", "PUBLIC", "TRADER", "BROKER",
-    "MARGIN", "POSITION", "TRADES", "ORDERS", "ADJUST", "UPDATE", "MODIFY", "CHANGE", "TARGET", "STOPLO",
-  ])
-  const six = u.match(/\b([A-Z]{6})\b/)
-  if (six && !bogusSix.has(six[1])) {
-    return six[1]
-  }
-  return null
 }
 
 const ENTRY_KW = /\b(buy|sell|long|short)\b/i
@@ -624,10 +599,10 @@ function parseSimpleSignal(
   if (!instrument) return null
 
   const hasInstrumentContext =
+    isTradableInstrumentSymbol(instrument) ||
     /\b(gold|xau|xauusd|btc|bitcoin|btcusd|btcusdt|eth|ethereum|silver|eur|gbp)\b/i.test(text) ||
     /\bEUR\/USD|EURUSD|GBPUSD|USDJPY|XAUUSD|BTCUSD|BTCUSDT\b/i.test(message) ||
-    /\b(us30|nas100|ger40|uk100|ustec|spx500)\b/i.test(text) ||
-    /^[A-Z]{4,}$/i.test(instrument.trim())
+    /\b(us30|nas100|ger40|uk100|ustec|spx500)\b/i.test(text)
 
   if (!hasInstrumentContext) return null
 
@@ -778,8 +753,25 @@ function applyRawSymbolRepair(parsed: ParsedSignal, rawMsg: string): ParsedSigna
   ) {
     return { ...parsed, symbol: extracted }
   }
-  if ((!cur || cur !== extracted) && (btcHints || goldHints || /^[A-Z]{6}$/.test(extracted))) {
+  if ((!cur || cur !== extracted) && (btcHints || goldHints || isTradableInstrumentSymbol(extracted))) {
     return { ...parsed, symbol: extracted }
+  }
+  return parsed
+}
+
+function dropInvalidTradeSymbol(parsed: ParsedSignal): ParsedSignal {
+  const symbol = sanitizeParsedSymbol(parsed.symbol)
+  const needsSymbol = parsed.action === "buy" || parsed.action === "sell"
+  if (needsSymbol && !symbol) {
+    return {
+      ...parsed,
+      symbol: null,
+      action: "ignore",
+      confidence: 0,
+    }
+  }
+  if (symbol !== parsed.symbol) {
+    return { ...parsed, symbol }
   }
   return parsed
 }
@@ -861,9 +853,11 @@ async function parseRawChannelMessage(
       open_tp: false,
     }
 
-  const parsed = applyRawSymbolRepair(
-    normalizeParsedFromModel(rawParsed, rawMessage),
-    rawMessage,
+  const parsed = dropInvalidTradeSymbol(
+    applyRawSymbolRepair(
+      normalizeParsedFromModel(rawParsed, rawMessage),
+      rawMessage,
+    ),
   )
 
   const status = parsed.action === "ignore" ? "skipped" : "parsed"

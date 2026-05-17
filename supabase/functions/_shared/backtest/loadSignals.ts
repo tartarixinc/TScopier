@@ -86,7 +86,7 @@ function rowToParsed(
   const symbol = String(row.symbol ?? "").trim().toUpperCase()
   if (!symbol) return null
   const entry = Number(row.entry_price)
-  if (!Number.isFinite(entry) || entry <= 0) return null
+  if (!Number.isFinite(entry) || entry < 0) return null
   const channelId = String(row.channel_id ?? "")
   const rowId = String(row.id ?? "")
   if (!channelId || !rowId) return null

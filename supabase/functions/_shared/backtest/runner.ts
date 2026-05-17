@@ -60,23 +60,18 @@ export async function executeBacktestRun(
     fromIso,
     toIso,
     channelNames,
-    config.symbols,
   )
   const signals = loaded.signals
 
   const importWarnings = ctx.importWarnings ?? []
 
-  const symbolFilter = (config.symbols ?? []).map((s) => String(s).trim().toUpperCase()).filter(Boolean)
-
   if (signals.length === 0) {
     const parts = [
       "No tradeable backtest signals in date range.",
-      symbolFilter.length
-        ? `Symbol filter: ${symbolFilter.join(", ")}. Clear symbol selection or run import first.`
-        : "Connect Telegram, ensure the worker is online (WORKER_URL), and run again to import history.",
+      "Connect Telegram, ensure the worker is online (WORKER_URL), and run again.",
     ]
     if (importWarnings.length) {
-      parts.push(`Import: ${importWarnings.slice(0, 3).join("; ")}`)
+      parts.push(`Import: ${importWarnings.slice(0, 5).join("; ")}`)
     }
     const hint = parts.join(" ")
     await updateProgress(100, hint)
@@ -129,21 +124,22 @@ export async function executeBacktestRun(
     `Massive: ~${symbolsNeeded.length} symbol(s), ${callsPerMinute}/min limit (~${estMinutes} min)…`,
   )
 
-  const { seriesBySymbol, apiCalls, fetchLog } = await preloadMarketData(
+  const { seriesBySymbol, apiCalls, fetchLog, rateLimitHits } = await preloadMarketData(
     massive,
     symbolsNeeded,
+    signals,
     config,
     fromMs,
     toMs,
     callsPerMinute,
   )
 
-  console.log("[backtest-run] Massive preload:", { apiCalls, fetchLog })
+  console.log("[backtest-run] Massive preload:", { apiCalls, fetchLog, rateLimitHits })
 
-  await updateProgress(
-    20,
-    `Massive: ${apiCalls} API request(s) · ${symbolsNeeded.length} symbol(s)`,
-  )
+  const massiveProgress = rateLimitHits > 0
+    ? `Massive: ${apiCalls} request(s) · ${rateLimitHits} symbol(s) skipped (rate limit)`
+    : `Massive: ${apiCalls} API request(s) · ${symbolsNeeded.length} symbol(s)`
+  await updateProgress(20, massiveProgress)
 
   const results: SimulatedTradeResult[] = []
   let i = 0
@@ -220,7 +216,7 @@ export async function executeBacktestRun(
 
   const noDataCount = results.filter((r) => r.outcome === "no_data").length
   const progressMsg = noDataCount > 0
-    ? `Complete · ${noDataCount} signal(s) had no market data (check Massive plan / symbol mapping)`
+    ? `Complete · ${noDataCount} signal(s) had no market data${rateLimitHits > 0 ? " (some symbols hit rate limit)" : ""}`
     : `Complete · Massive ${apiCalls} request(s)`
 
   await supabase.from("backtest_runs").update({

@@ -173,6 +173,11 @@ export interface ManualSettings {
   trade_end_time?: string
   days_filter_enabled?: boolean
   trade_days?: number[]
+  /** When true, signals may copy through news windows (no calendar blackout). */
+  news_trading_enabled?: boolean
+  /** Impact levels to avoid when `news_trading_enabled` is false. */
+  news_avoid_impacts?: Array<'high' | 'medium' | 'low'>
+  /** @deprecated Use `news_trading_enabled`. */
   allow_high_impact_news?: boolean
   close_before_news_minutes?: number
   resume_after_news_minutes?: number

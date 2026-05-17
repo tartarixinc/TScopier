@@ -4,6 +4,8 @@ import { NewMessage } from 'telegram/events'
 import type { NewMessageEvent } from 'telegram/events/NewMessage'
 import { Api } from 'telegram/tl'
 import { buildClient, tgInvoke } from './telegramClient'
+import { tradeableFromParsed } from './backtestSignal'
+import { hasTradableInstrumentInText } from './tradableSymbol'
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? ''
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
@@ -103,10 +105,7 @@ function looksLikeTradingSignal(text: string, isReply: boolean): boolean {
 
   if (!normalized) return false
 
-  // Common instrument patterns: EURUSD, XAUUSD, BTCUSDT, US30, etc.
-  const hasInstrument =
-    /\b[a-z]{6,7}\b/.test(normalized) ||
-    /\b(xauusd|xagusd|us30|nas100|spx500|ger40|uk100|btcusdt|ethusdt)\b/.test(normalized)
+  const hasInstrument = hasTradableInstrumentInText(text)
 
   const hasDirectionOrAction =
     /\b(buy|sell|long|short|close|tp|take profit|sl|stop loss|breakeven|be)\b/.test(normalized)
@@ -441,7 +440,7 @@ export class UserListener {
     if (error) throw new Error(error.message)
     if (!row) throw new Error('Channel not found')
 
-    const collected = await this.fetchMessagesBetween(row as ChannelRow, fromMs, toMs)
+    const collected = await this.fetchMessagesBetweenForBacktest(row as ChannelRow, fromMs, toMs)
     const messages: Array<{ telegram_message_id: string; raw_message: string; signal_at: string }> = []
 
     for (const m of collected) {
@@ -459,6 +458,201 @@ export class UserListener {
     }
 
     return { messages, messages_scanned: collected.length }
+  }
+
+  /**
+   * Sync Telegram history into backtest_channel_signals (parse + upsert on worker).
+   */
+  async syncBacktestSignals(
+    channelRowId: string,
+    fromIso: string,
+    toIso: string,
+    opts?: { runId?: string },
+  ): Promise<{
+    messages_scanned: number
+    candidates: number
+    imported: number
+    errors: string[]
+  }> {
+    const fromMs = new Date(fromIso).getTime()
+    const toMs = new Date(toIso.includes('T') ? toIso : `${toIso}T23:59:59.999Z`).getTime()
+    if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || toMs < fromMs) {
+      throw new Error('Invalid backtest date range')
+    }
+
+    if (!PARSE_SIGNAL_URL || !PARSE_SIGNAL_AUTH_KEY) {
+      throw new Error('PARSE_SIGNAL_URL / service role key not configured on worker')
+    }
+
+    const { data: row, error } = await this.supabase
+      .from('telegram_channels')
+      .select('id, channel_id, channel_username, last_seen_message_id')
+      .eq('user_id', this.userId)
+      .eq('id', channelRowId)
+      .eq('is_active', true)
+      .maybeSingle()
+    if (error) throw new Error(error.message)
+    if (!row) throw new Error('Channel not found')
+
+    const collected = await this.fetchMessagesBetweenForBacktest(row as ChannelRow, fromMs, toMs)
+    const errors: string[] = []
+    const rangeFromIso = new Date(fromMs).toISOString()
+    const rangeToIso = new Date(toMs).toISOString()
+
+    const { error: delErr } = await this.supabase
+      .from('backtest_channel_signals')
+      .delete()
+      .eq('user_id', this.userId)
+      .eq('channel_id', channelRowId)
+      .eq('source', 'telegram_import')
+      .gte('signal_at', rangeFromIso)
+      .lte('signal_at', rangeToIso)
+    if (delErr) errors.push(`clear prior import: ${delErr.message}`)
+
+    type Candidate = {
+      raw: string
+      signalAt: string
+      telegramMessageId: string
+    }
+    const candidates: Candidate[] = []
+    for (const m of collected) {
+      const raw = String(m.text ?? m.message ?? '').trim()
+      if (!raw) continue
+      const isReply = !!(m as MessageLike & { replyTo?: unknown }).replyTo
+      if (!looksLikeTradingSignal(raw, isReply)) continue
+      const epoch = this.messageEpochSec(m as MessageLike & { date?: number | Date | string })
+      candidates.push({
+        raw,
+        signalAt: epoch > 0 ? new Date(epoch * 1000).toISOString() : new Date().toISOString(),
+        telegramMessageId: String(m.id),
+      })
+    }
+
+    let imported = 0
+    const parseConcurrency = Math.max(1, Math.min(8, Number(process.env.BACKTEST_PARSE_CONCURRENCY ?? 4)))
+    const parseDelayMs = Math.max(0, Number(process.env.BACKTEST_PARSE_DELAY_MS ?? 0))
+    const runId = opts?.runId
+
+    const reportSyncProgress = async (parsed: number, total: number) => {
+      if (!runId) return
+      const pct = total > 0 ? 2 + Math.floor((parsed / total) * 12) : 2
+      await this.supabase.from('backtest_runs').update({
+        progress_pct: pct,
+        progress_message: `Syncing Telegram: parsing ${parsed}/${total} candidate message(s)…`,
+        updated_at: new Date().toISOString(),
+      }).eq('id', runId).eq('user_id', this.userId)
+    }
+
+    await reportSyncProgress(0, candidates.length)
+
+    let parsedCount = 0
+    await this.mapWithConcurrency(candidates, parseConcurrency, async (c) => {
+      try {
+        const parsed = await this.parseSignalForBacktest(channelRowId, c.raw)
+        if (!parsed) return
+        const tradeable = tradeableFromParsed(parsed)
+        if (!tradeable) return
+
+        const { error: upsertErr } = await this.supabase.rpc('upsert_backtest_channel_signal', {
+          p_user_id: this.userId,
+          p_channel_id: channelRowId,
+          p_signal_id: null,
+          p_telegram_message_id: c.telegramMessageId,
+          p_source: 'telegram_import',
+          p_direction: tradeable.direction,
+          p_symbol: tradeable.symbol,
+          p_entry_price: tradeable.entry_price,
+          p_sl: tradeable.sl,
+          p_tp_levels: tradeable.tp_levels,
+          p_lot_size: tradeable.lot_size,
+          p_raw_message: c.raw,
+          p_parsed_data: parsed,
+          p_signal_at: c.signalAt,
+        })
+        if (upsertErr) {
+          errors.push(upsertErr.message)
+          return
+        }
+        imported++
+      } catch (e) {
+        errors.push(e instanceof Error ? e.message : String(e))
+      } finally {
+        parsedCount++
+        if (parsedCount % 3 === 0 || parsedCount === candidates.length) {
+          await reportSyncProgress(parsedCount, candidates.length)
+        }
+        if (parseDelayMs > 0) {
+          await new Promise(r => setTimeout(r, parseDelayMs))
+        }
+      }
+    })
+
+    if (collected.length === 0) {
+      errors.push('0 messages from Telegram — check session and channel access')
+    } else if (candidates.length === 0) {
+      errors.push('No messages looked like trade signals in this range')
+    } else if (imported === 0 && errors.length === 0) {
+      errors.push('No tradeable signals — messages need buy/sell, valid symbol, and SL or TP')
+    }
+
+    return {
+      messages_scanned: collected.length,
+      candidates: candidates.length,
+      imported,
+      errors,
+    }
+  }
+
+  private async mapWithConcurrency<T>(
+    items: T[],
+    concurrency: number,
+    fn: (item: T) => Promise<void>,
+  ): Promise<void> {
+    if (items.length === 0) return
+    let next = 0
+    const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+      while (true) {
+        const i = next++
+        if (i >= items.length) break
+        await fn(items[i])
+      }
+    })
+    await Promise.all(workers)
+  }
+
+  private async parseSignalForBacktest(
+    channelRowId: string,
+    rawMessage: string,
+  ): Promise<Record<string, unknown> | null> {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort('parse-timeout'), 15_000)
+    try {
+      const res = await fetch(PARSE_SIGNAL_URL, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${PARSE_SIGNAL_AUTH_KEY}`,
+          apikey: PARSE_SIGNAL_API_KEY,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          parse_only: true,
+          channel_id: channelRowId,
+          raw_message: rawMessage,
+        }),
+        signal: controller.signal,
+      })
+      const data = await res.json().catch(() => ({})) as {
+        parsed?: Record<string, unknown>
+        error?: string
+      }
+      if (!res.ok) {
+        throw new Error(data.error ?? `parse-signal ${res.status}`)
+      }
+      if (data.error) throw new Error(data.error)
+      return data.parsed ?? null
+    } finally {
+      clearTimeout(timeout)
+    }
   }
 
   // ── live message handling ─────────────────────────────────────────────
@@ -867,10 +1061,20 @@ export class UserListener {
     return 0
   }
 
+  /** All non-empty messages in range (no trading heuristic) — used for backtest import only. */
+  private async fetchMessagesBetweenForBacktest(
+    row: ChannelRow,
+    fromMs: number,
+    toMs: number,
+  ): Promise<MessageLike[]> {
+    return this.fetchMessagesBetween(row, fromMs, toMs, { forBacktest: true })
+  }
+
   private async fetchMessagesBetween(
     row: ChannelRow,
     fromMs: number,
     toMs: number,
+    opts?: { forBacktest?: boolean },
   ): Promise<MessageLike[]> {
     const fromSec = Math.floor(fromMs / 1000)
     const toSec = Math.floor(toMs / 1000)
@@ -911,7 +1115,12 @@ export class UserListener {
         const raw = String(m.text ?? m.message ?? '').trim()
         if (!raw) continue
         const isReply = !!m.replyTo
-        if (!looksLikeTradingSignal(raw, isReply)) continue
+        const fetchAllForBacktest = process.env.BACKTEST_FETCH_ALL_MESSAGES === 'true'
+        if (!opts?.forBacktest) {
+          if (!looksLikeTradingSignal(raw, isReply)) continue
+        } else if (!fetchAllForBacktest) {
+          if (!looksLikeTradingSignal(raw, isReply)) continue
+        }
         collected.push(m)
       }
 
