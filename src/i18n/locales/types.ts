@@ -1,4 +1,5 @@
 import type { AuthTranslations } from '../auth/types'
+import type { ChannelWorkerTranslations } from '../channelWorker/types'
 
 export interface NavTranslations {
   sections: {
@@ -98,6 +99,17 @@ export interface DashboardTranslations {
   healthStable: string
   healthDegraded: string
   healthOffline: string
+  tradeOutcomeTitle: string
+  tradeOutcomeSubtitle: string
+  tradeOutcomeEmpty: string
+  chartProfit: string
+  chartLoss: string
+  accountGrowthTitle: string
+  accountGrowthSubtitle: string
+  accountGrowthEmpty: string
+  channelWorker: string
+  noChannelWorkerLogs: string
+  noData: string
 }
 
 export interface CopierLogsTranslations {
@@ -165,6 +177,7 @@ export interface BacktestTranslations {
 
 export interface Translations {
   auth: AuthTranslations
+  channelWorker: ChannelWorkerTranslations
   nav: NavTranslations
   common: CommonTranslations
   dashboard: DashboardTranslations

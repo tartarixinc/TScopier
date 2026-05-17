@@ -1,8 +1,10 @@
 import { authEn } from '../auth/en'
+import { channelWorkerEn } from '../channelWorker/en'
 import type { Translations } from './types'
 
 export const en: Translations = {
   auth: authEn,
+  channelWorker: channelWorkerEn,
   nav: {
     sections: {
       general: 'GENERAL',
@@ -94,6 +96,17 @@ export const en: Translations = {
     healthStable: 'Stable',
     healthDegraded: 'Degraded',
     healthOffline: 'Offline',
+    tradeOutcomeTitle: 'Trade Outcome (7 days)',
+    tradeOutcomeSubtitle: 'Closed-trade profit and loss per day',
+    tradeOutcomeEmpty: 'No closed trades in the last 7 days',
+    chartProfit: 'Profit',
+    chartLoss: 'Loss',
+    accountGrowthTitle: 'Account growth',
+    accountGrowthSubtitle: 'Equity from link date; multiple accounts shown as separate lines',
+    accountGrowthEmpty: 'Connect a broker account with a performance baseline to see growth over time',
+    channelWorker: 'Channel Worker',
+    noChannelWorkerLogs: 'No channel worker logs yet.',
+    noData: 'No Data',
   },
   copierLogs: {
     title: 'Copier Logs',

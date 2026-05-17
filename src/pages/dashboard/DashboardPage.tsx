@@ -1325,7 +1325,7 @@ export function DashboardPage() {
           <div className="px-4 sm:px-5 py-4 border-b border-neutral-100 dark:border-neutral-800 flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4 text-teal-500" />
-              <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Channel Worker</span>
+              <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{t.dashboard.channelWorker}</span>
               <button className="text-neutral-300 hover:text-neutral-500 dark:text-neutral-400">
                 <Info className="w-3.5 h-3.5" />
               </button>
@@ -1349,7 +1349,7 @@ export function DashboardPage() {
               ))}
             </div>
           ) : aiExpertLogs.length === 0 ? (
-            <div className="px-5 py-10 text-sm text-neutral-400">No channel worker logs yet.</div>
+            <div className="px-5 py-10 text-sm text-neutral-400">{t.dashboard.noChannelWorkerLogs}</div>
           ) : (
             <div className="divide-y divide-neutral-100 dark:divide-neutral-800 max-h-96 overflow-y-auto">
               {aiExpertLogs.map(row => <AiExpertLogItem key={row.id} row={row} />)}
@@ -1410,7 +1410,7 @@ export function DashboardPage() {
                   </svg>
                 </div>
               </div>
-              <p className="text-sm text-neutral-400 font-medium">No Data</p>
+              <p className="text-sm text-neutral-400 font-medium">{t.dashboard.noData}</p>
             </div>
           ) : (
             <div className="divide-y divide-neutral-100 dark:divide-neutral-800 max-h-80 overflow-y-auto min-w-[28rem]">
@@ -1556,7 +1556,8 @@ function OverviewStat({
 }
 
 function AiExpertLogItem({ row }: { row: AiExpertLogRow }) {
-  const message = channelWorkerLogMessage(row)
+  const t = useT()
+  const message = channelWorkerLogMessage(row, t.channelWorker)
 
   return (
     <div className="px-5 py-3">
@@ -1567,15 +1568,16 @@ function AiExpertLogItem({ row }: { row: AiExpertLogRow }) {
 }
 
 function LogRow({ signal, channelName, symbol }: { signal: Signal; channelName: string; symbol: string }) {
+  const t = useT()
   const parsed = signal.parsed_data as Record<string, unknown> | null
   const action = parsed?.action as string | undefined
 
   const statusConfig: Record<string, { color: string; label: string }> = {
-    executed: { color: 'text-teal-700 bg-teal-50 dark:text-teal-300 dark:bg-teal-950/60', label: 'Executed' },
-    skipped:  { color: 'text-warning-800 bg-warning-50 dark:!text-amber-100 dark:!bg-amber-900', label: 'Skipped' },
-    failed:   { color: 'text-error-800 bg-error-50 dark:text-error-300 dark:bg-error-950/70', label: 'Failed' },
-    pending:  { color: 'text-neutral-600 bg-neutral-100 dark:text-neutral-300 dark:bg-neutral-800', label: 'Pending' },
-    parsed:   { color: 'text-teal-700 bg-teal-50 dark:text-teal-300 dark:bg-teal-950/60', label: 'Parsed' },
+    executed: { color: 'text-teal-700 bg-teal-50 dark:text-teal-300 dark:bg-teal-950/60', label: t.copierLogs.statusExecuted },
+    skipped:  { color: 'text-warning-800 bg-warning-50 dark:!text-amber-100 dark:!bg-amber-900', label: t.copierLogs.statusSkipped },
+    failed:   { color: 'text-error-800 bg-error-50 dark:text-error-300 dark:bg-error-950/70', label: t.copierLogs.statusFailed },
+    pending:  { color: 'text-neutral-600 bg-neutral-100 dark:text-neutral-300 dark:bg-neutral-800', label: t.copierLogs.statusPending },
+    parsed:   { color: 'text-teal-700 bg-teal-50 dark:text-teal-300 dark:bg-teal-950/60', label: t.copierLogs.statusParsed },
   }
 
   const s = statusConfig[signal.status] ?? { color: 'text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-800', label: signal.status }

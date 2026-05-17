@@ -1,8 +1,10 @@
 import { authFr } from '../auth/fr'
+import { channelWorkerFr } from '../channelWorker/fr'
 import type { Translations } from './types'
 
 export const fr: Translations = {
   auth: authFr,
+  channelWorker: channelWorkerFr,
   nav: {
     sections: {
       general: 'GÉNÉRAL',
@@ -94,6 +96,17 @@ export const fr: Translations = {
     healthStable: 'Stable',
     healthDegraded: 'Dégradé',
     healthOffline: 'Hors ligne',
+    tradeOutcomeTitle: 'Résultat des trades (7 jours)',
+    tradeOutcomeSubtitle: 'Profit et perte par jour sur les trades clôturés',
+    tradeOutcomeEmpty: 'Aucun trade clôturé sur les 7 derniers jours',
+    chartProfit: 'Profit',
+    chartLoss: 'Perte',
+    accountGrowthTitle: 'Croissance du compte',
+    accountGrowthSubtitle: 'Équité depuis la liaison ; plusieurs comptes en lignes séparées',
+    accountGrowthEmpty: 'Connectez un compte avec une base de performance pour voir la croissance',
+    channelWorker: 'Worker des canaux',
+    noChannelWorkerLogs: 'Aucun journal du worker des canaux pour le moment.',
+    noData: 'Aucune donnée',
   },
   copierLogs: {
     title: 'Journaux du copieur',

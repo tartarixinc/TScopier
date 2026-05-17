@@ -11,6 +11,7 @@ import {
 } from 'recharts'
 import type { TradeVolumeDay } from '../../lib/dashboardCharts'
 import { useTheme } from '../../context/ThemeContext'
+import { useT } from '../../context/LocaleContext'
 import { chartThemeColors, chartTooltipProps } from '../../lib/chartTheme'
 
 interface TradeVolumeChartProps {
@@ -25,22 +26,21 @@ function formatMoney(v: number): string {
 }
 
 export function TradeVolumeChart({ data, loading, stale }: TradeVolumeChartProps) {
+  const t = useT()
   const { theme } = useTheme()
   const colors = chartThemeColors(theme)
 
   return (
     <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-4 sm:p-5 min-w-0">
       <div className="mb-4">
-        <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Trade Outcome (7 days)</h2>
-        <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-          Closed-trade profit and loss per day
-        </p>
+        <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{t.dashboard.tradeOutcomeTitle}</h2>
+        <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">{t.dashboard.tradeOutcomeSubtitle}</p>
       </div>
       {loading ? (
         <div className="h-64 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl animate-pulse" />
       ) : data.every(d => d.profit === 0 && d.loss === 0) ? (
         <div className="h-64 flex items-center justify-center text-sm text-neutral-400 dark:text-neutral-500">
-          No closed trades in the last 7 days
+          {t.dashboard.tradeOutcomeEmpty}
         </div>
       ) : (
         <div className={clsx('h-64 w-full', stale && 'opacity-60 transition-opacity duration-300')}>
@@ -67,7 +67,7 @@ export function TradeVolumeChart({ data, loading, stale }: TradeVolumeChartProps
               <Legend wrapperStyle={{ fontSize: 12, color: colors.tick }} />
               <Bar
                 dataKey="profit"
-                name="Profit"
+                name={t.dashboard.chartProfit}
                 fill="#0d9488"
                 activeBar={{ fill: colors.barActive.profit, stroke: colors.barActive.profit }}
                 radius={[4, 4, 0, 0]}
@@ -75,7 +75,7 @@ export function TradeVolumeChart({ data, loading, stale }: TradeVolumeChartProps
               />
               <Bar
                 dataKey="loss"
-                name="Loss"
+                name={t.dashboard.chartLoss}
                 fill="#ef4444"
                 activeBar={{ fill: colors.barActive.loss, stroke: colors.barActive.loss }}
                 radius={[4, 4, 0, 0]}

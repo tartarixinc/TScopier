@@ -11,6 +11,7 @@ import {
 } from 'recharts'
 import type { AccountGrowthSeries } from '../../lib/dashboardCharts'
 import { useTheme } from '../../context/ThemeContext'
+import { useT } from '../../context/LocaleContext'
 import { chartThemeColors, chartTooltipProps } from '../../lib/chartTheme'
 
 interface AccountGrowthChartProps {
@@ -40,6 +41,7 @@ function formatAxisMoney(v: number): string {
 }
 
 export function AccountGrowthChart({ data, series, loading, stale }: AccountGrowthChartProps) {
+  const t = useT()
   const { theme } = useTheme()
   const colors = chartThemeColors(theme)
   const dataKeyFor = (s: AccountGrowthSeries) => `acc_${s.id.replace(/-/g, '')}`
@@ -47,16 +49,14 @@ export function AccountGrowthChart({ data, series, loading, stale }: AccountGrow
   return (
     <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-4 sm:p-5 min-w-0">
       <div className="mb-4">
-        <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Account growth</h2>
-        <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-          Equity from link date; multiple accounts shown as separate lines
-        </p>
+        <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{t.dashboard.accountGrowthTitle}</h2>
+        <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">{t.dashboard.accountGrowthSubtitle}</p>
       </div>
       {loading ? (
         <div className="h-64 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl animate-pulse" />
       ) : series.length === 0 || data.length === 0 ? (
         <div className="h-64 flex items-center justify-center text-sm text-neutral-400 dark:text-neutral-500 text-center px-6">
-          Connect a broker account with a performance baseline to see growth over time
+          {t.dashboard.accountGrowthEmpty}
         </div>
       ) : (
         <div className={clsx('h-64 w-full', stale && 'opacity-60 transition-opacity duration-300')}>
