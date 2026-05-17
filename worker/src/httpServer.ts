@@ -14,6 +14,7 @@ interface Body {
   days?: number
   from?: string
   to?: string
+  run_id?: string
   // legacy fields ignored — the worker holds state across calls now
   phone_code_hash?: string
   session_string?: string
@@ -139,6 +140,7 @@ export function startHttpServer(
             body.channel_row_id,
             body.from,
             body.to,
+            body.run_id,
           )
           return sendJson(res, 200, result)
         } catch (err: unknown) {

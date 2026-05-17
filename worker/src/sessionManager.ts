@@ -199,6 +199,7 @@ export class UserSessionManager {
     channelRowId: string,
     fromIso: string,
     toIso: string,
+    runId?: string,
   ) {
     let listener = this.listeners.get(userId)
     if (!listener) {
@@ -216,7 +217,7 @@ export class UserSessionManager {
       listener = this.listeners.get(userId)
     }
     if (!listener) throw new Error('Failed to start listener for user')
-    return listener.syncBacktestSignals(channelRowId, fromIso, toIso)
+    return listener.syncBacktestSignals(channelRowId, fromIso, toIso, { runId })
   }
 
   private async startListener(userId: string, sessionString: string) {

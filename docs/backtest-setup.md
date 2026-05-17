@@ -40,7 +40,10 @@ The worker must be running with:
 - `PARSE_SIGNAL_URL` (or `SUPABASE_URL` + `/functions/v1/parse-signal`)
 - `SUPABASE_SERVICE_ROLE_KEY` for parse auth and RPC upsert
 
-Optional: `BACKTEST_PARSE_DELAY_MS` (default `100`) — pause between parse-signal calls during sync.
+Optional env on worker:
+- `BACKTEST_PARSE_CONCURRENCY` (default `4`) — parallel parse-signal calls
+- `BACKTEST_PARSE_DELAY_MS` (default `0`) — pause between parses (raise if parse-signal rate-limits)
+- `BACKTEST_FETCH_ALL_MESSAGES=true` — scan every Telegram text message (slow); default filters to trade-like messages only
 
 Deploy/restart the worker after pulling changes (new route `POST /auth/backtest_sync_signals`).
 

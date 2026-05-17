@@ -43,7 +43,18 @@ async function call<T>(body: Record<string, unknown>): Promise<T> {
   return data as T
 }
 
+export interface BacktestSyncResult {
+  messages_scanned: number
+  candidates: number
+  imported: number
+  errors: string[]
+}
+
 export const backtestApi = {
+  sync(config: SimpleBacktestConfig): Promise<BacktestSyncResult> {
+    return call({ action: 'sync', config })
+  },
+
   run(config: SimpleBacktestConfig): Promise<{ run_id: string }> {
     return call({ action: 'run', config })
   },

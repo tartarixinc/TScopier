@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Play, Loader2, Radio } from 'lucide-react'
+import { Play, Loader2, Radio, RefreshCw } from 'lucide-react'
 import clsx from 'clsx'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
@@ -11,6 +11,7 @@ import type {
   BacktestSummary,
   BacktestTradeRow,
   SimpleBacktestConfig,
+  StoredBacktestSignal,
 } from '../../lib/backtestTypes'
 import { BacktestEquityChart } from '../../components/backtest/BacktestEquityChart'
 import { BacktestSignalBreakdown } from '../../components/backtest/BacktestSignalBreakdown'
@@ -37,6 +38,76 @@ function defaultConfig(): SimpleBacktestConfig {
     fixedLot: 0.1,
     timeframe: '1m',
   }
+}
+
+function StoredSignalsPanel({
+  config,
+  storedSignals,
+  storedLoading,
+}: {
+  config: SimpleBacktestConfig
+  storedSignals: StoredBacktestSignal[]
+  storedLoading: boolean
+}) {
+  return (
+    <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <div>
+          <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100">
+            Stored signals
+          </p>
+          <p className="text-xs text-neutral-500 mt-0.5">
+            Table <code className="text-[11px]">backtest_channel_signals</code> for selected channels and dates
+          </p>
+        </div>
+        <span className="text-sm tabular-nums text-neutral-600 dark:text-neutral-300">
+          {storedLoading ? '…' : storedSignals.length}
+        </span>
+      </div>
+      {config.channelIds.length === 0 ? (
+        <p className="text-sm text-neutral-400">Select a channel to view stored signals.</p>
+      ) : storedSignals.length === 0 && !storedLoading ? (
+        <p className="text-sm text-neutral-400">
+          No rows yet. Use <strong>Sync signals only</strong> or <strong>Run backtest</strong> to import from Telegram.
+        </p>
+      ) : (
+        <div className="overflow-x-auto max-h-64 overflow-y-auto">
+          <table className="w-full text-xs">
+            <thead className="text-neutral-500 sticky top-0 bg-white dark:bg-neutral-900">
+              <tr className="border-b border-neutral-100 dark:border-neutral-800">
+                <th className="text-left py-2 pr-2 font-medium">Time</th>
+                <th className="text-left py-2 pr-2 font-medium">Symbol</th>
+                <th className="text-left py-2 pr-2 font-medium">Side</th>
+                <th className="text-right py-2 pr-2 font-medium">Entry</th>
+                <th className="text-right py-2 pr-2 font-medium">SL</th>
+                <th className="text-left py-2 font-medium">TPs</th>
+              </tr>
+            </thead>
+            <tbody>
+              {storedSignals.map(row => (
+                <tr key={row.id} className="border-b border-neutral-50 dark:border-neutral-800/80">
+                  <td className="py-1.5 pr-2 whitespace-nowrap text-neutral-600 dark:text-neutral-400">
+                    {new Date(row.signal_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </td>
+                  <td className="py-1.5 pr-2 font-medium">{row.symbol}</td>
+                  <td className={clsx('py-1.5 pr-2 uppercase', row.direction === 'buy' ? 'text-teal-600' : 'text-error-600')}>
+                    {row.direction}
+                  </td>
+                  <td className="py-1.5 pr-2 text-right tabular-nums">
+                    {row.entry_price > 0 ? row.entry_price : 'MKT'}
+                  </td>
+                  <td className="py-1.5 pr-2 text-right tabular-nums">{row.sl ?? '—'}</td>
+                  <td className="py-1.5 tabular-nums">
+                    {(row.tp_levels ?? []).length ? row.tp_levels.join(', ') : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
 }
 
 function StatCard({
@@ -70,6 +141,10 @@ export function Backtest() {
   const [trades, setTrades] = useState<BacktestTradeRow[]>([])
   const [equity, setEquity] = useState<BacktestEquityRow[]>([])
   const [running, setRunning] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [storedSignals, setStoredSignals] = useState<StoredBacktestSignal[]>([])
+  const [storedLoading, setStoredLoading] = useState(false)
+  const [syncNote, setSyncNote] = useState('')
   const [error, setError] = useState('')
 
   const summary = activeRun?.summary as BacktestSummary | null | undefined
@@ -85,6 +160,30 @@ export function Backtest() {
     () => trades.filter(tr => tr.outcome === 'no_data').length,
     [trades],
   )
+
+  const loadStoredSignals = useCallback(async () => {
+    if (!user || config.channelIds.length === 0) {
+      setStoredSignals([])
+      return
+    }
+    setStoredLoading(true)
+    const fromIso = new Date(config.dateFrom).toISOString()
+    const toIso = new Date(`${config.dateTo}T23:59:59.999Z`).toISOString()
+    const { data, error: qErr } = await supabase
+      .from('backtest_channel_signals')
+      .select('id, channel_id, symbol, direction, entry_price, sl, tp_levels, signal_at, source')
+      .eq('user_id', user.id)
+      .in('channel_id', config.channelIds)
+      .gte('signal_at', fromIso)
+      .lte('signal_at', toIso)
+      .order('signal_at', { ascending: false })
+    setStoredLoading(false)
+    if (qErr) {
+      setSyncNote(qErr.message)
+      return
+    }
+    setStoredSignals((data ?? []) as StoredBacktestSignal[])
+  }, [user, config.channelIds, config.dateFrom, config.dateTo])
 
   const loadRun = useCallback(async (runId: string) => {
     const { run, trades: t, equity: e } = await backtestApi.getRun(runId)
@@ -119,10 +218,22 @@ export function Backtest() {
   }, [user, loadRun])
 
   useEffect(() => {
+    const t = setTimeout(() => { void loadStoredSignals() }, 400)
+    return () => clearTimeout(t)
+  }, [loadStoredSignals])
+
+  useEffect(() => {
+    if (!isActive) return
+    const t = setInterval(() => { void loadStoredSignals() }, 4000)
+    return () => clearInterval(t)
+  }, [isActive, loadStoredSignals])
+
+  useEffect(() => {
     if (!activeRun?.id || !isActive) return
     const runId = activeRun.id
     const poll = setInterval(() => {
       void loadRun(runId).then(run => {
+        void loadStoredSignals()
         if (run.status === 'completed' || run.status === 'failed') {
           setRunning(false)
         }
@@ -158,6 +269,28 @@ export function Backtest() {
     }))
   }
 
+  const handleSyncOnly = async () => {
+    if (config.channelIds.length === 0) {
+      setError('Select at least one channel')
+      return
+    }
+    setError('')
+    setSyncNote('')
+    setSyncing(true)
+    try {
+      const result = await backtestApi.sync(config)
+      const msg = result.imported > 0
+        ? `Stored ${result.imported} signal(s) in backtest_channel_signals (${result.candidates} candidates, ${result.messages_scanned} messages scanned).`
+        : 'No tradeable signals stored.'
+      setSyncNote([msg, ...result.errors].filter(Boolean).join(' '))
+      await loadStoredSignals()
+    } catch (e) {
+      setError(sanitizeBacktestUserError(e instanceof Error ? e.message : String(e)))
+    } finally {
+      setSyncing(false)
+    }
+  }
+
   const handleRun = async () => {
     if (config.channelIds.length === 0) {
       setError('Select at least one channel')
@@ -173,6 +306,7 @@ export function Backtest() {
       const run = await loadRun(run_id)
       if (run.status === 'completed' || run.status === 'failed') {
         setRunning(false)
+        void loadStoredSignals()
       }
     } catch (e) {
       setError(sanitizeBacktestUserError(e instanceof Error ? e.message : String(e)))
@@ -190,7 +324,7 @@ export function Backtest() {
           {t.backtest.title}
         </h1>
         <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
-          Sync Telegram signals, replay against Massive OHLC bars, simulate TP/SL outcomes.
+          Sync Telegram signals, simulate TP/SL outcomes.
         </p>
       </div>
 
@@ -275,9 +409,28 @@ export function Backtest() {
           </label>
 
           <Button
+            variant="secondary"
+            className="w-full"
+            onClick={() => void handleSyncOnly()}
+            disabled={isActive || syncing || config.channelIds.length === 0}
+          >
+            {syncing ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                Syncing Telegram…
+              </>
+            ) : (
+              <>
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Sync signals only
+              </>
+            )}
+          </Button>
+
+          <Button
             className="w-full"
             onClick={() => void handleRun()}
-            disabled={isActive || config.channelIds.length === 0}
+            disabled={isActive || syncing || config.channelIds.length === 0}
           >
             {isActive ? (
               <>
@@ -292,6 +445,9 @@ export function Backtest() {
             )}
           </Button>
 
+          {syncNote ? (
+            <p className="text-xs text-neutral-600 dark:text-neutral-300">{syncNote}</p>
+          ) : null}
           {statusLine ? (
             <p className="text-xs text-neutral-500 dark:text-neutral-400">{statusLine}</p>
           ) : null}
@@ -306,6 +462,12 @@ export function Backtest() {
         </div>
 
         <div className="space-y-4">
+          <StoredSignalsPanel
+            config={config}
+            storedSignals={storedSignals}
+            storedLoading={storedLoading}
+          />
+
           {summary && activeRun?.status === 'completed' ? (
             <>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

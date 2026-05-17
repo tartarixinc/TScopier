@@ -174,7 +174,7 @@ class UserSessionManager {
             throw new Error('Failed to start listener for user');
         return listener.importBacktestChannelHistory(channelRowId, fromIso, toIso);
     }
-    async syncBacktestSignals(userId, channelRowId, fromIso, toIso) {
+    async syncBacktestSignals(userId, channelRowId, fromIso, toIso, runId) {
         let listener = this.listeners.get(userId);
         if (!listener) {
             const { data: sess, error } = await this.supabase
@@ -193,7 +193,7 @@ class UserSessionManager {
         }
         if (!listener)
             throw new Error('Failed to start listener for user');
-        return listener.syncBacktestSignals(channelRowId, fromIso, toIso);
+        return listener.syncBacktestSignals(channelRowId, fromIso, toIso, { runId });
     }
     async startListener(userId, sessionString) {
         if (this.listeners.has(userId))

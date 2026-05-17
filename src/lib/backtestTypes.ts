@@ -73,3 +73,16 @@ export interface BacktestEquityRow {
   equity: number
   drawdown_pct: number
 }
+
+/** Rows in `backtest_channel_signals` for the selected channel(s) and date range. */
+export interface StoredBacktestSignal {
+  id: string
+  channel_id: string
+  symbol: string
+  direction: string
+  entry_price: number
+  sl: number | null
+  tp_levels: number[]
+  signal_at: string
+  source: string
+}

@@ -62,6 +62,25 @@ Deno.serve(async (req: Request) => {
       }, { headers: corsHeaders })
     }
 
+    if (action === "sync") {
+      const simple = parseSimpleConfig((body.config ?? {}) as Record<string, unknown>)
+      if (simple.channelIds.length === 0) return bad(400, "At least one channel required")
+
+      const sync = await syncBacktestSignalsViaWorker(
+        Deno.env,
+        userId,
+        simple.channelIds,
+        simple.dateFrom,
+        simple.dateTo,
+      )
+
+      return Response.json({
+        ok: true,
+        ...sync,
+        table: "backtest_channel_signals",
+      }, { headers: corsHeaders })
+    }
+
     if (action === "run") {
       const simple = parseSimpleConfig((body.config ?? {}) as Record<string, unknown>)
       if (simple.channelIds.length === 0) return bad(400, "At least one channel required")
@@ -111,7 +130,29 @@ Deno.serve(async (req: Request) => {
           simple.channelIds,
           cfg.dateFrom,
           cfg.dateTo,
+          {
+            runId,
+            onChannelStart: async (i, channelId) => {
+              const n = simple.channelIds.length
+              await supabase.from("backtest_runs").update({
+                progress_message: n > 1
+                  ? `Syncing Telegram (${i + 1}/${n} channels)…`
+                  : "Syncing Telegram signals…",
+                progress_pct: 2,
+                updated_at: new Date().toISOString(),
+              }).eq("id", runId)
+              void channelId
+            },
+          },
         )
+
+        await supabase.from("backtest_runs").update({
+          progress_pct: 14,
+          progress_message: sync.imported > 0
+            ? `Stored ${sync.imported} signal(s) in backtest_channel_signals — loading for simulation…`
+            : "No tradeable signals stored — check sync warnings",
+          updated_at: new Date().toISOString(),
+        }).eq("id", runId)
 
         const importWarnings = [...sync.errors]
         if (sync.messages_scanned === 0 && sync.imported === 0) {
@@ -120,7 +161,7 @@ Deno.serve(async (req: Request) => {
           )
         } else if (sync.imported > 0) {
           importWarnings.unshift(
-            `Synced ${sync.imported} tradeable signal(s) from ${sync.messages_scanned} message(s)`,
+            `Synced ${sync.imported} tradeable signal(s) (${sync.candidates} candidates, ${sync.messages_scanned} Telegram messages scanned)`,
           )
         }
 

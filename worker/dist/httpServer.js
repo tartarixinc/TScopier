@@ -102,7 +102,7 @@ function startHttpServer(authService, sessionManager) {
                     return sendJson(res, 400, { error: 'user_id, channel_row_id, from, and to are required' });
                 }
                 try {
-                    const result = await sessionManager.syncBacktestSignals(body.user_id, body.channel_row_id, body.from, body.to);
+                    const result = await sessionManager.syncBacktestSignals(body.user_id, body.channel_row_id, body.from, body.to, body.run_id);
                     return sendJson(res, 200, result);
                 }
                 catch (err) {
