@@ -51,8 +51,8 @@ export const authEs: AuthTranslations = {
       },
       {
         quote:
-          'Gestionamos varios canales de señales en dos cuentas. La lógica de cesta y los escalones de TP funcionan mejor que nuestra solución anterior.',
-        author: 'James Okonkwo',
+          'Este es el copiador de señales más sencillo y fiable que he usado. Es mejor que los demás en cuanto a rango y negociación por capas, aunque su función de cierre de entradas es peor. Puedo copiar señales con total tranquilidad.',
+        author: 'Eloise Laurent',
       },
     ],
     copyright: '© {year} Tartarix Inc.',

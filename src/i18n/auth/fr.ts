@@ -51,8 +51,8 @@ export const authFr: AuthTranslations = {
       },
       {
         quote:
-          'Nous gérons plusieurs canaux de signaux sur deux comptes. La logique panier et les paliers de TP surpassent notre ancienne stack.',
-        author: 'James Okonkwo',
+          'C\'est le copieur de signaux le plus simple et le plus fiable que j\'aie jamais utilisé. Meilleur que les autres grâce à son système de trading par plage et par couches, et malgré une fonction de fermeture automatique des entrées moins performante, je peux copier les signaux en toute sérénité.',
+        author: 'Eloise Laurent',
       },
     ],
     copyright: '© {year} Tartarix Inc.',

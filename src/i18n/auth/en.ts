@@ -51,8 +51,8 @@ export const authEn: AuthTranslations = {
       },
       {
         quote:
-          'We run multiple signal channels across two accounts. Basket logic and TP ladders work better than our old stack.',
-        author: 'James Okonkwo',
+          'This is the simplest and most reliable signal copier I have ever used. Better than the rest with it\'s range and layer trading, worse entries closing feature, I can copy signals with rest of mind.',
+        author: 'Eloise Laurent',
       },
     ],
     copyright: '© {year} Tartarix Inc.',
