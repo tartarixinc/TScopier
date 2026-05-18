@@ -38,12 +38,35 @@ export type MergeModifySummary = {
   skippedNoTicket: number
 }
 
-/** True when the message carries SL and/or TP levels to apply to an existing basket. */
-export function isParameterFollowUpSignal(parsed: ParsedSignalLike): boolean {
+/** True when the parsed message includes SL and/or TP price levels. */
+export function parsedHasSlOrTp(parsed: ParsedSignalLike): boolean {
   const hasSl = typeof parsed.sl === 'number' && Number.isFinite(parsed.sl) && parsed.sl > 0
   const hasTp = Array.isArray(parsed.tp)
     && parsed.tp.some(t => typeof t === 'number' && Number.isFinite(t) && (t as number) > 0)
   return hasSl || hasTp
+}
+
+/** @alias {@link parsedHasSlOrTp} */
+export function isParameterFollowUpSignal(parsed: ParsedSignalLike): boolean {
+  return parsedHasSlOrTp(parsed)
+}
+
+/**
+ * True when this signal should refresh SL/TP on an existing basket (modify-only),
+ * not open a new trade. False for one-shot entry alerts (priced entry or bare NOW).
+ */
+export function shouldRouteAsBasketParameterRefresh(parsed: ParsedSignalLike): boolean {
+  if (!parsedHasSlOrTp(parsed)) return false
+  const act = String(parsed.action ?? '').toLowerCase()
+  if (act === 'modify') return true
+  if (act === 'buy' || act === 'sell') {
+    if (parsedHasExplicitEntryAnchor(parsed as Parameters<typeof parsedHasExplicitEntryAnchor>[0])) {
+      return false
+    }
+    if (isBareEntryFollowUp(parsed)) return false
+    return true
+  }
+  return false
 }
 
 /** Planner immediates used only for per-leg SL/TP during merge (never sent as new orders). */
@@ -183,7 +206,7 @@ export async function resolveLatestOpenBasketAnchor(
 /** Entry-shaped follow-up without SL/TP is not a parameter refresh. */
 export function isBareEntryFollowUp(parsed: ParsedSignalLike): boolean {
   return (
-    !isParameterFollowUpSignal(parsed)
+    !parsedHasSlOrTp(parsed)
     && !parsedHasExplicitEntryAnchor(parsed as Parameters<typeof parsedHasExplicitEntryAnchor>[0])
   )
 }

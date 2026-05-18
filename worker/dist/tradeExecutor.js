@@ -958,15 +958,72 @@ class TradeExecutor {
             await this.cancelRangePendingLegsForScopes(signal.user_id, signal.id, scopes, 'opposite_signal_close');
         }
     }
+    /** Realtime payloads may omit reply/parent fields — load authoritative signal row for merge linking. */
+    async loadMergeSignalForLinking(signal) {
+        try {
+            const { data: fullSig } = await this.supabase
+                .from('signals')
+                .select('created_at, reply_to_message_id, telegram_message_id, parent_signal_id, channel_id')
+                .eq('id', signal.id)
+                .maybeSingle();
+            const row = fullSig;
+            if (!row)
+                return signal;
+            return {
+                ...signal,
+                created_at: signal.created_at ?? row.created_at,
+                reply_to_message_id: signal.reply_to_message_id ?? row.reply_to_message_id ?? null,
+                telegram_message_id: signal.telegram_message_id ?? row.telegram_message_id ?? null,
+                parent_signal_id: signal.parent_signal_id ?? row.parent_signal_id ?? null,
+                channel_id: signal.channel_id ?? row.channel_id ?? null,
+            };
+        }
+        catch {
+            return signal;
+        }
+    }
+    async resolveBasketMergeLinkContext(args) {
+        const { mergeSignal, anchorSignalId, newestTradeOpenedAt, parsed } = args;
+        const { data: origSig } = await this.supabase
+            .from('signals')
+            .select('telegram_message_id, channel_id')
+            .eq('id', anchorSignalId)
+            .maybeSingle();
+        const origTg = String(origSig?.telegram_message_id ?? '').trim();
+        const anchorChannelId = String(origSig?.channel_id ?? '').trim() || null;
+        const replyTo = String(mergeSignal.reply_to_message_id ?? '').trim();
+        const parentLinksAnchor = String(mergeSignal.parent_signal_id ?? '') === anchorSignalId;
+        let ancestorChainContainsAnchor = false;
+        if (replyTo && !parentLinksAnchor) {
+            ancestorChainContainsAnchor = await this.parentSignalIdChainContainsAnchor(mergeSignal.parent_signal_id, anchorSignalId);
+        }
+        const hasSl = typeof parsed.sl === 'number' && Number.isFinite(parsed.sl) && parsed.sl > 0;
+        const hasTp = Array.isArray(parsed.tp)
+            && parsed.tp.some(t => typeof t === 'number' && Number.isFinite(t) && t > 0);
+        const sigTime = mergeSignal.created_at ? new Date(mergeSignal.created_at).getTime() : Date.now();
+        return (0, signalMergeLink_1.computeBasketMergeLinkContext)({
+            signalCreatedAtMs: sigTime,
+            newestTradeOpenedAtMs: new Date(newestTradeOpenedAt).getTime(),
+            replyToTelegramId: replyTo,
+            anchorTelegramMessageId: origTg,
+            mergeChannelId: String(mergeSignal.channel_id ?? '').trim() || null,
+            anchorChannelId,
+            parentSignalId: mergeSignal.parent_signal_id,
+            anchorSignalId,
+            hasSl,
+            hasTp,
+            ancestorChainContainsAnchor,
+        });
+    }
     /**
-     * Parameter follow-up (SL/TP present): refresh the latest open basket on this
-     * channel + symbol + direction. Never opens new trades.
+     * Parameter follow-up (SL/TP on a linked prior entry): refresh the latest open basket.
+     * Fresh one-shot entries with SL/TP skip this path and use OrderSend.
      */
     async tryParameterFollowUpMergeModifyOnly(args) {
         const { signal, parsed, broker, channelKeywords, baseLot, params, symbol, uuid, strictEntryPrefetch } = args;
         if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
             return { handled: false };
-        if (!(0, multiTradeMerge_1.isParameterFollowUpSignal)(parsed))
+        if (!(0, multiTradeMerge_1.shouldRouteAsBasketParameterRefresh)(parsed))
             return { handled: false };
         const api = this.apiFor(broker);
         if (!api)
@@ -1000,7 +1057,35 @@ class TradeExecutor {
                 });
             }
             catch { /* best-effort */ }
-            return { handled: true, success: false };
+            return { handled: false };
+        }
+        const mergeSignal = await this.loadMergeSignalForLinking(signal);
+        const link = await this.resolveBasketMergeLinkContext({
+            mergeSignal,
+            anchorSignalId: anchor.anchorSignalId,
+            newestTradeOpenedAt: anchor.newestOpenedAt,
+            parsed,
+        });
+        if (!link.isLinked) {
+            try {
+                await this.supabase.from('trade_execution_logs').insert({
+                    user_id: signal.user_id,
+                    signal_id: signal.id,
+                    broker_account_id: broker.id,
+                    action: 'merge_routed_modify_only',
+                    status: 'skipped',
+                    request_payload: {
+                        skip_reason: 'parameter_follow_up_not_linked',
+                        symbol,
+                        direction,
+                        channel_id: signal.channel_id,
+                        anchor_signal_id: anchor.anchorSignalId,
+                        dt_ms: link.dtMs,
+                    },
+                });
+            }
+            catch { /* best-effort */ }
+            return { handled: false };
         }
         console.log(`[tradeExecutor] merge_anchor_selected signal=${signal.id} broker=${broker.id}`
             + ` anchor=${anchor.anchorSignalId} symbol=${symbol} direction=${direction}`);
@@ -1040,7 +1125,7 @@ class TradeExecutor {
             familyTrades: anchorFamily,
         });
         if (ghostCheck.isGhostBasket) {
-            return { handled: true, success: false };
+            return { handled: false };
         }
         const outcome = await this.applyBasketSlTpRefresh({
             signal,
@@ -1055,6 +1140,18 @@ class TradeExecutor {
             anchorSignalId: anchor.anchorSignalId,
             direction,
             logAction: 'merge_routed_modify_only',
+            mergeLinkMeta: {
+                reply_chain: link.replyOk,
+                within_time_window: link.withinWindow,
+                parent_links_anchor: link.parentLinksAnchor,
+                thread_links_anchor: link.threadLinksAnchor,
+                implicit_bundle_within_tight_window: link.implicitBundleWithinTightWindow,
+                implicit_same_channel_bundle: link.implicitSameChannelBundle,
+                parameter_refresh_same_channel: link.parameterRefreshSameChannel,
+                implicit_bundle_dt_ms: link.dtMs,
+                merge_implicit_tight_window_ms: signalMergeLink_1.MERGE_IMPLICIT_CHANNEL_BUNDLE_MS,
+                legacy_merge_linking: (0, multiTradeMerge_1.legacyMergeLinkingEnabled)(),
+            },
         });
         return { handled: true, success: outcome.success };
     }
@@ -1477,7 +1574,7 @@ class TradeExecutor {
         const manual = (broker.manual_settings ?? {});
         if (manual.add_new_trades_to_existing !== true)
             return { handled: false };
-        if ((0, multiTradeMerge_1.isParameterFollowUpSignal)(parsed))
+        if ((0, multiTradeMerge_1.shouldRouteAsBasketParameterRefresh)(parsed))
             return { handled: false };
         if ((0, manualPlanner_1.signalEntryPriceStrictEnabled)(manual) && !(0, manualPlanner_1.parsedHasExplicitEntryAnchor)(parsed)) {
             return { handled: false };
@@ -1486,29 +1583,7 @@ class TradeExecutor {
         if (a !== 'buy' && a !== 'sell')
             return { handled: false };
         const direction = a === 'buy' ? 'buy' : 'sell';
-        // Realtime payloads may omit `created_at` / reply fields — load authoritative row for merge linking.
-        let mergeSignal = signal;
-        try {
-            const { data: fullSig } = await this.supabase
-                .from('signals')
-                .select('created_at, reply_to_message_id, telegram_message_id, parent_signal_id, channel_id')
-                .eq('id', signal.id)
-                .maybeSingle();
-            const row = fullSig;
-            if (row) {
-                mergeSignal = {
-                    ...signal,
-                    created_at: signal.created_at ?? row.created_at,
-                    reply_to_message_id: signal.reply_to_message_id ?? row.reply_to_message_id ?? null,
-                    telegram_message_id: signal.telegram_message_id ?? row.telegram_message_id ?? null,
-                    parent_signal_id: signal.parent_signal_id ?? row.parent_signal_id ?? null,
-                    channel_id: signal.channel_id ?? row.channel_id ?? null,
-                };
-            }
-        }
-        catch {
-            // best-effort; keep mergeSignal = signal
-        }
+        const mergeSignal = await this.loadMergeSignalForLinking(signal);
         const { data: openDesc, error: openErr } = await this.supabase
             .from('trades')
             .select('id,signal_id,metaapi_order_id,opened_at,lot_size,sl,tp,entry_price,direction')
@@ -1539,58 +1614,17 @@ class TradeExecutor {
         });
         if (ghostCheck.isGhostBasket)
             return { handled: false };
-        const { data: origSig } = await this.supabase
-            .from('signals')
-            .select('telegram_message_id, channel_id')
-            .eq('id', anchorSignalId)
-            .maybeSingle();
-        const origTg = String(origSig?.telegram_message_id ?? '').trim();
-        const anchorChannelId = String(origSig?.channel_id ?? '').trim() || null;
-        const replyTo = String(mergeSignal.reply_to_message_id ?? '').trim();
-        const replyOk = Boolean(replyTo && origTg && replyTo === origTg);
-        const sigTime = mergeSignal.created_at ? new Date(mergeSignal.created_at).getTime() : Date.now();
-        const tradeOpen = new Date(newest.opened_at).getTime();
-        const dt = (0, signalMergeLink_1.mergeSignalTimeDeltaMs)({ signalCreatedAtMs: sigTime, newestTradeOpenedAtMs: tradeOpen });
-        const withinWindow = (0, signalMergeLink_1.isWithinMergeSignalTimeWindow)(dt);
-        const parentLinksAnchor = (0, signalMergeLink_1.parentSignalLinksAnchor)(mergeSignal.parent_signal_id, anchorSignalId);
-        const hasReplyToTelegram = Boolean(replyTo);
-        let ancestorChainContainsAnchor = false;
-        if (hasReplyToTelegram && !parentLinksAnchor) {
-            ancestorChainContainsAnchor = await this.parentSignalIdChainContainsAnchor(mergeSignal.parent_signal_id, anchorSignalId);
-        }
-        const threadLinksAnchor = (0, signalMergeLink_1.computeThreadLinksAnchor)({
-            parentLinksAnchor,
-            hasReplyToTelegram,
-            ancestorChainContainsAnchor,
+        const link = await this.resolveBasketMergeLinkContext({
+            mergeSignal,
+            anchorSignalId,
+            newestTradeOpenedAt: newest.opened_at,
+            parsed,
         });
-        const mergeCh = String(mergeSignal.channel_id ?? '').trim() || null;
-        const implicitBundleWithinTightWindow = (0, signalMergeLink_1.implicitBundleTimeOk)(dt, signalMergeLink_1.MERGE_IMPLICIT_CHANNEL_BUNDLE_MS);
-        const implicitSameChannelBundle = Boolean(mergeCh &&
-            anchorChannelId &&
-            mergeCh === anchorChannelId &&
-            !replyOk &&
-            !threadLinksAnchor);
-        const hasSl = typeof parsed.sl === 'number' && Number.isFinite(parsed.sl) && parsed.sl > 0;
-        const hasTp = Array.isArray(parsed.tp)
-            && parsed.tp.some(t => typeof t === 'number' && Number.isFinite(t) && t > 0);
-        const parameterRefreshSameChannel = Boolean(mergeCh &&
-            anchorChannelId &&
-            mergeCh === anchorChannelId &&
-            withinWindow &&
-            !replyOk &&
-            !threadLinksAnchor &&
-            (hasSl || hasTp || (0, manualPlanner_1.parsedHasExplicitEntryAnchor)(parsed)));
-        if (!(0, signalMergeLink_1.isMergeFollowUpLinked)({
-            replyOk,
-            withinWindow,
-            threadLinksAnchor,
-            implicitBundleWithinTightWindow,
-            implicitSameChannelBundle,
-            parameterRefreshSameChannel,
-        })) {
+        if (!link.isLinked) {
             console.warn(`[tradeExecutor] merge not linked signal=${signal.id} broker=${broker.id} symbol=${symbol}`
-                + ` reply=${replyOk} window=${withinWindow} thread=${threadLinksAnchor}`
-                + ` implicit=${implicitSameChannelBundle} paramRefresh=${parameterRefreshSameChannel} dt_ms=${dt}`);
+                + ` reply=${link.replyOk} window=${link.withinWindow} thread=${link.threadLinksAnchor}`
+                + ` implicit=${link.implicitSameChannelBundle} paramRefresh=${link.parameterRefreshSameChannel}`
+                + ` dt_ms=${link.dtMs}`);
             return { handled: false };
         }
         const refresh = await this.applyBasketSlTpRefresh({
@@ -1607,16 +1641,15 @@ class TradeExecutor {
             direction,
             logAction: 'signal_merge_into_open_trade',
             mergeLinkMeta: {
-                reply_chain: replyOk,
-                within_time_window: withinWindow,
-                parent_links_anchor: parentLinksAnchor,
-                has_reply_to_telegram: hasReplyToTelegram,
-                ancestor_chain_contains_anchor: ancestorChainContainsAnchor,
-                thread_links_anchor: threadLinksAnchor,
-                implicit_bundle_within_tight_window: implicitBundleWithinTightWindow,
-                implicit_same_channel_bundle: implicitSameChannelBundle,
-                parameter_refresh_same_channel: parameterRefreshSameChannel,
-                implicit_bundle_dt_ms: dt,
+                reply_chain: link.replyOk,
+                within_time_window: link.withinWindow,
+                parent_links_anchor: link.parentLinksAnchor,
+                has_reply_to_telegram: Boolean(String(mergeSignal.reply_to_message_id ?? '').trim()),
+                thread_links_anchor: link.threadLinksAnchor,
+                implicit_bundle_within_tight_window: link.implicitBundleWithinTightWindow,
+                implicit_same_channel_bundle: link.implicitSameChannelBundle,
+                parameter_refresh_same_channel: link.parameterRefreshSameChannel,
+                implicit_bundle_dt_ms: link.dtMs,
                 merge_implicit_tight_window_ms: signalMergeLink_1.MERGE_IMPLICIT_CHANNEL_BUNDLE_MS,
                 legacy_merge_linking: (0, multiTradeMerge_1.legacyMergeLinkingEnabled)(),
             },
@@ -1742,8 +1775,8 @@ class TradeExecutor {
         if (isManual && manual.close_on_opposite_signal === true) {
             await this.closeOppositeDirectionTrades(signal, parsed, broker, symbol);
         }
-        // SL/TP parameter posts always refresh the latest open basket — never open a second basket.
-        if (isManual && (0, multiTradeMerge_1.isParameterFollowUpSignal)(parsed)) {
+        // Linked SL/TP follow-ups refresh an existing basket; fresh entries fall through to OrderSend.
+        if (isManual && (0, multiTradeMerge_1.shouldRouteAsBasketParameterRefresh)(parsed)) {
             const paramOutcome = await this.tryParameterFollowUpMergeModifyOnly({
                 signal,
                 parsed,

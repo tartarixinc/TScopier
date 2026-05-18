@@ -4,7 +4,9 @@
  * latest open basket (same channel + symbol + direction) without opening new trades.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.parsedHasSlOrTp = parsedHasSlOrTp;
 exports.isParameterFollowUpSignal = isParameterFollowUpSignal;
+exports.shouldRouteAsBasketParameterRefresh = shouldRouteAsBasketParameterRefresh;
 exports.mergePlanImmediateOrders = mergePlanImmediateOrders;
 exports.buildPerLegStopTargets = buildPerLegStopTargets;
 exports.legacyMergeLinkingEnabled = legacyMergeLinkingEnabled;
@@ -12,12 +14,36 @@ exports.resolveLatestOpenBasketAnchor = resolveLatestOpenBasketAnchor;
 exports.isBareEntryFollowUp = isBareEntryFollowUp;
 const manualPlanner_1 = require("./manualPlanner");
 const basketModFollowUp_1 = require("./basketModFollowUp");
-/** True when the message carries SL and/or TP levels to apply to an existing basket. */
-function isParameterFollowUpSignal(parsed) {
+/** True when the parsed message includes SL and/or TP price levels. */
+function parsedHasSlOrTp(parsed) {
     const hasSl = typeof parsed.sl === 'number' && Number.isFinite(parsed.sl) && parsed.sl > 0;
     const hasTp = Array.isArray(parsed.tp)
         && parsed.tp.some(t => typeof t === 'number' && Number.isFinite(t) && t > 0);
     return hasSl || hasTp;
+}
+/** @alias {@link parsedHasSlOrTp} */
+function isParameterFollowUpSignal(parsed) {
+    return parsedHasSlOrTp(parsed);
+}
+/**
+ * True when this signal should refresh SL/TP on an existing basket (modify-only),
+ * not open a new trade. False for one-shot entry alerts (priced entry or bare NOW).
+ */
+function shouldRouteAsBasketParameterRefresh(parsed) {
+    if (!parsedHasSlOrTp(parsed))
+        return false;
+    const act = String(parsed.action ?? '').toLowerCase();
+    if (act === 'modify')
+        return true;
+    if (act === 'buy' || act === 'sell') {
+        if ((0, manualPlanner_1.parsedHasExplicitEntryAnchor)(parsed)) {
+            return false;
+        }
+        if (isBareEntryFollowUp(parsed))
+            return false;
+        return true;
+    }
+    return false;
 }
 /** Planner immediates used only for per-leg SL/TP during merge (never sent as new orders). */
 function mergePlanImmediateOrders(plan) {
@@ -125,6 +151,6 @@ async function resolveLatestOpenBasketAnchor(supabase, args) {
 }
 /** Entry-shaped follow-up without SL/TP is not a parameter refresh. */
 function isBareEntryFollowUp(parsed) {
-    return (!isParameterFollowUpSignal(parsed)
+    return (!parsedHasSlOrTp(parsed)
         && !(0, manualPlanner_1.parsedHasExplicitEntryAnchor)(parsed));
 }
