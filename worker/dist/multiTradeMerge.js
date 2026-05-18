@@ -13,6 +13,7 @@ exports.legacyMergeLinkingEnabled = legacyMergeLinkingEnabled;
 exports.resolveLatestOpenBasketAnchor = resolveLatestOpenBasketAnchor;
 exports.isBareEntryFollowUp = isBareEntryFollowUp;
 const manualPlanner_1 = require("./manualPlanner");
+const tpBucketDistribution_1 = require("./manualPlanning/tpBucketDistribution");
 const basketModFollowUp_1 = require("./basketModFollowUp");
 /** True when the parsed message includes SL and/or TP price levels. */
 function parsedHasSlOrTp(parsed) {
@@ -57,7 +58,7 @@ function mergePlanImmediateOrders(plan) {
  * to parsed levels when the plan emitted zero immediates (range-only layout).
  */
 function buildPerLegStopTargets(args) {
-    const { plan, parsed, openLegCount } = args;
+    const { plan, parsed, openLegCount, tpLots } = args;
     const n = Math.max(0, openLegCount);
     if (n === 0)
         return [];
@@ -68,19 +69,25 @@ function buildPerLegStopTargets(args) {
     if (fromPlan.length >= n) {
         return fromPlan.slice(0, n);
     }
-    if (fromPlan.length > 0) {
-        const out = [];
-        for (let i = 0; i < n; i++) {
-            out.push(fromPlan[Math.min(i, fromPlan.length - 1)]);
-        }
-        return out;
-    }
     const hasSl = typeof parsed.sl === 'number' && Number.isFinite(parsed.sl) && parsed.sl > 0;
-    const tps = (parsed.tp ?? []).filter((t) => typeof t === 'number' && Number.isFinite(t) && t > 0);
-    const sl = hasSl ? parsed.sl : 0;
-    return Array.from({ length: n }, (_, i) => ({
+    const parsedTps = (parsed.tp ?? []).filter((t) => typeof t === 'number' && Number.isFinite(t) && t > 0);
+    const sl = hasSl
+        ? parsed.sl
+        : (fromPlan[0]?.stoploss ?? 0);
+    let finalTps = parsedTps;
+    if (!finalTps.length && fromPlan.length > 0) {
+        finalTps = fromPlan
+            .map(o => o.takeprofit)
+            .filter(tp => typeof tp === 'number' && Number.isFinite(tp) && tp > 0);
+    }
+    const tpPrices = (0, tpBucketDistribution_1.buildDistributedPerLegTakeProfits)({
+        openLegCount: n,
+        finalTps,
+        tpLots,
+    });
+    return tpPrices.map(tp => ({
         stoploss: sl,
-        takeprofit: tps.length ? (tps[Math.min(i, tps.length - 1)] ?? tps[0]) : 0,
+        takeprofit: tp,
     }));
 }
 /** When false, entry follow-ups still use legacy reply/thread merge linking. */

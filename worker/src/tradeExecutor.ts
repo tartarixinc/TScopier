@@ -1612,6 +1612,7 @@ export class TradeExecutor {
       plan,
       parsed,
       openLegCount: familyTrades.length,
+      tpLots: manual.tp_lots,
     })
 
     let anchor: number | null = plan.anchor?.value ?? null
@@ -1677,6 +1678,7 @@ export class TradeExecutor {
           plan,
           parsed,
           openLegCount: familyTrades.length,
+          tpLots: manual.tp_lots,
         })
         if (refreshedTargets.length) {
           perLegTargets.length = 0

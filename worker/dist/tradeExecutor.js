@@ -1277,6 +1277,7 @@ class TradeExecutor {
             plan,
             parsed,
             openLegCount: familyTrades.length,
+            tpLots: manual.tp_lots,
         });
         let anchor = plan.anchor?.value ?? null;
         if ((virtualPendings.length > 0 || !!plan.closeWorseEntries) && (anchor == null || anchor <= 0)) {
@@ -1337,6 +1338,7 @@ class TradeExecutor {
                     plan,
                     parsed,
                     openLegCount: familyTrades.length,
+                    tpLots: manual.tp_lots,
                 });
                 if (refreshedTargets.length) {
                     perLegTargets.length = 0;

@@ -7,6 +7,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { OrderSendArgs } from './metatraderapi'
 import type { PlannerResult } from './manualPlanner'
 import { parsedHasExplicitEntryAnchor } from './manualPlanner'
+import { buildDistributedPerLegTakeProfits } from './manualPlanning/tpBucketDistribution'
+import type { ManualTpLot } from './manualPlanning/types'
 import { symbolsCompatibleForBasket } from './basketModFollowUp'
 
 export type ParsedSignalLike = {
@@ -85,8 +87,10 @@ export function buildPerLegStopTargets(args: {
   plan: PlannerResult
   parsed: ParsedSignalLike
   openLegCount: number
+  /** Configure Trading → Targets % rows; used when legs outnumber planner immediates. */
+  tpLots?: ManualTpLot[] | null
 }): PerLegStopTarget[] {
-  const { plan, parsed, openLegCount } = args
+  const { plan, parsed, openLegCount, tpLots } = args
   const n = Math.max(0, openLegCount)
   if (n === 0) return []
 
@@ -99,22 +103,29 @@ export function buildPerLegStopTargets(args: {
     return fromPlan.slice(0, n)
   }
 
-  if (fromPlan.length > 0) {
-    const out: PerLegStopTarget[] = []
-    for (let i = 0; i < n; i++) {
-      out.push(fromPlan[Math.min(i, fromPlan.length - 1)]!)
-    }
-    return out
-  }
-
   const hasSl = typeof parsed.sl === 'number' && Number.isFinite(parsed.sl) && parsed.sl > 0
-  const tps = (parsed.tp ?? []).filter(
+  const parsedTps = (parsed.tp ?? []).filter(
     (t): t is number => typeof t === 'number' && Number.isFinite(t) && t > 0,
   )
-  const sl = hasSl ? (parsed.sl as number) : 0
-  return Array.from({ length: n }, (_, i) => ({
+  const sl = hasSl
+    ? (parsed.sl as number)
+    : (fromPlan[0]?.stoploss ?? 0)
+
+  let finalTps = parsedTps
+  if (!finalTps.length && fromPlan.length > 0) {
+    finalTps = fromPlan
+      .map(o => o.takeprofit)
+      .filter(tp => typeof tp === 'number' && Number.isFinite(tp) && tp > 0)
+  }
+
+  const tpPrices = buildDistributedPerLegTakeProfits({
+    openLegCount: n,
+    finalTps,
+    tpLots,
+  })
+  return tpPrices.map(tp => ({
     stoploss: sl,
-    takeprofit: tps.length ? (tps[Math.min(i, tps.length - 1)] ?? tps[0]!) : 0,
+    takeprofit: tp,
   }))
 }
 

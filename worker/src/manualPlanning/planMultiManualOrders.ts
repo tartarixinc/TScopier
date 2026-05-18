@@ -11,6 +11,10 @@ import type {
 import { clampPendingExpiryHours } from './manualSettings'
 import type { PlanSingleManualOrdersArgs } from './planSingleManualOrders'
 import { planRangeSplit } from './rangeSplit'
+import {
+  distributeCountAcrossTpBuckets,
+  resolveTpBucketRows,
+} from './tpBucketDistribution'
 
 export interface PlanMultiManualOrdersArgs {
   orderBase: Omit<OrderSendArgs, 'volume' | 'stoploss' | 'takeprofit' | 'expiration' | 'expirationType'>
@@ -121,42 +125,9 @@ export function planMultiManualOrders(args: PlanMultiManualOrdersArgs): PlannerR
   const stepPriceOffset = split.stepPriceOffset
   const rangeFallbackReason = split.fallbackReason
 
-  const enabledRows = (manual.tp_lots ?? []).filter(r => r && r.enabled)
-  const bucketCount = finalTps.length > 0
-    ? Math.max(1, Math.min(enabledRows.length || 1, finalTps.length))
-    : 1
-  const bucketRows = (enabledRows.length ? enabledRows : [{ label: 'TP1', lot: 0, percent: 100, enabled: true }])
-    .slice(0, bucketCount)
-
-  const rawWeights = bucketRows.map(r => {
-    const p = Number(r.percent)
-    return Number.isFinite(p) && p > 0 ? p : 0
-  })
-  const weights = rawWeights.every(w => w === 0) ? bucketRows.map(() => 1) : rawWeights
-  const sumW = weights.reduce((a, b) => a + b, 0) || bucketRows.length
-
-  const distributeCount = (count: number): number[] => {
-    const out = bucketRows.map(() => 0)
-    if (count <= 0 || bucketRows.length === 0) return out
-    for (let i = 0; i < weights.length; i++) {
-      out[i] = Math.round((count * weights[i]!) / sumW)
-    }
-    let drift = count - out.reduce((a, b) => a + b, 0)
-    let idx = out.length - 1
-    let guard = out.length * 2
-    while (drift !== 0 && guard-- > 0) {
-      if (drift > 0) {
-        out[idx]! += 1
-        drift -= 1
-      } else if (out[idx]! > 0) {
-        out[idx]! -= 1
-        drift += 1
-      }
-      idx = (idx - 1 + out.length) % out.length
-      if (drift < 0 && out.every(c => c === 0)) break
-    }
-    return out
-  }
+  const { bucketRows } = resolveTpBucketRows(finalTps, manual.tp_lots)
+  const distributeCount = (count: number): number[] =>
+    distributeCountAcrossTpBuckets(count, bucketRows)
 
   const tpForBucket = (b: number): number | null => {
     if (finalTps.length === 0) return null

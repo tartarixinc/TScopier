@@ -250,6 +250,37 @@ test('planManualOrders: range off → no virtualPendings', () => {
   assert.equal(plan.orders.length, 10) // all 10 legs are immediates
 })
 
+test('planManualOrders: multi + 3 signal TPs uses Targets % on each leg', () => {
+  const plan = planManualOrders({
+    parsed: {
+      ...baseParsed,
+      entry_price: 4550,
+      sl: 4570,
+      tp: [4530, 4510, 4490],
+    },
+    resolvedSymbol: 'XAUUSD',
+    baseOperation: 'Sell',
+    manual: {
+      ...baseManual,
+      range_trading: false,
+      multi_trade_leg_percent: 10,
+      tp_lots: [
+        { label: 'TP1', lot: 0, percent: 50, enabled: true },
+        { label: 'TP2', lot: 0, percent: 30, enabled: true },
+        { label: 'TP3', lot: 0, percent: 20, enabled: true },
+      ],
+    },
+    channelKeywords: null,
+    manualLot: 1.0,
+    ctx: baseCtx,
+    commentPrefix: 'TSCopier:abc',
+  })
+  assert.equal(plan.orders.length, 10)
+  assert.equal(plan.orders.filter(o => o.takeprofit === 4530).length, 5)
+  assert.equal(plan.orders.filter(o => o.takeprofit === 4510).length, 3)
+  assert.equal(plan.orders.filter(o => o.takeprofit === 4490).length, 2)
+})
+
 test('planManualOrders: multi + BuyLimit → market immediates (price 0; avoids MT invalid pending price)', () => {
   const plan = planManualOrders({
     parsed: { ...baseParsed, entry_price: 2650 },
