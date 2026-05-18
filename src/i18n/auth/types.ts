@@ -16,12 +16,19 @@ export interface AuthTranslations {
   signup: {
     footerPrompt: string
     footerLink: string
+    firstName: string
+    firstNamePlaceholder: string
+    lastName: string
+    lastNamePlaceholder: string
     email: string
     emailPlaceholder: string
     password: string
     passwordPlaceholder: string
+    confirmPassword: string
+    confirmPasswordPlaceholder: string
     passwordHint: string
     passwordTooShort: string
+    passwordMismatch: string
     submit: string
     terms: string
   }
