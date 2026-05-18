@@ -3,7 +3,7 @@ import { TelegramClient } from 'telegram'
 import { NewMessage } from 'telegram/events'
 import type { NewMessageEvent } from 'telegram/events/NewMessage'
 import { Api } from 'telegram/tl'
-import { buildClient, tgInvoke } from './telegramClient'
+import { buildClient, isAuthKeyUnregistered, rethrowIfSessionInvalid, TelegramSessionInvalidError, tgInvoke } from './telegramClient'
 import { tradeableFromParsed } from './backtestSignal'
 import { hasTradableInstrumentInText } from './tradableSymbol'
 import type { SignalRow } from './tradeExecutor'
@@ -23,6 +23,8 @@ const PARSE_SIGNAL_API_KEY = SUPABASE_SERVICE_ROLE_KEY
 /** Min seconds between client.connect() and first getDialogs on a fresh session. */
 const COLD_FANOUT_DELAY_MS = 8000
 const DIALOG_CACHE_TTL_MS = 60_000
+const DIALOG_PAGE_SIZE = 100
+const DIALOG_MAX_SCAN = 500
 const WATCHDOG_INTERVAL_MS = 30_000
 const WATCHDOG_FAILURE_THRESHOLD = 2
 const SAFETY_POLL_INTERVAL_MS = 60_000
@@ -200,7 +202,12 @@ export class UserListener {
         const jitter = Math.floor(Math.random() * (jm + 1))
         if (jitter > 0) await new Promise(r => setTimeout(r, jitter))
       }
-      await this.client.connect()
+      try {
+        await this.client.connect()
+      } catch (err) {
+        if (isAuthKeyUnregistered(err)) throw new TelegramSessionInvalidError()
+        throw err
+      }
     }
     this.isConnected = true
     this.startedAt = Date.now()
@@ -228,7 +235,13 @@ export class UserListener {
       // ignore disconnect errors
     } finally {
       this.isConnected = false
+      this.clearDialogsCache()
     }
+  }
+
+  private clearDialogsCache() {
+    this.dialogsCache = null
+    this.dialogsCacheAt = 0
   }
 
   private stopTimer(field: 'watchdogTimer' | 'safetyPollTimer' | 'sessionPersistTimer' | 'replyChainSweepTimer') {
@@ -382,23 +395,68 @@ export class UserListener {
       return this.dialogsCache
     }
 
-    const dialogs = await this.client.getDialogs({ limit: 20 })
-    const channels: ChannelInfo[] = dialogs
-      .filter(d => d.isChannel || d.isGroup)
-      .map(d => {
-        const entity = (d.entity ?? {}) as { username?: string; participantsCount?: number }
-        return {
-          id: String(d.id ?? ''),
-          title: d.title ?? 'Unknown',
-          username: entity.username ?? '',
-          members_count: entity.participantsCount ?? 0,
-        }
+    let dialogs: Awaited<ReturnType<TelegramClient['getDialogs']>>
+    try {
+      dialogs = await this.fetchAllDialogs()
+    } catch (err) {
+      rethrowIfSessionInvalid(err)
+    }
+
+    const byId = new Map<string, ChannelInfo>()
+    for (const d of dialogs) {
+      if (!d.isChannel && !d.isGroup) continue
+      const entity = (d.entity ?? {}) as { username?: string; participantsCount?: number }
+      const id = String(d.id ?? '')
+      if (!id) continue
+      byId.set(id, {
+        id,
+        title: d.title ?? 'Unknown',
+        username: entity.username ?? '',
+        members_count: entity.participantsCount ?? 0,
       })
-      .filter(c => !!c.id)
+    }
+    const channels = [...byId.values()]
 
     this.dialogsCache = channels
     this.dialogsCacheAt = Date.now()
     return channels
+  }
+
+  /** Paginate getDialogs until all channel/group dialogs are collected (capped). */
+  private async fetchAllDialogs(): Promise<Awaited<ReturnType<TelegramClient['getDialogs']>>> {
+    const all: Awaited<ReturnType<TelegramClient['getDialogs']>> = []
+    let offsetDate: number | undefined
+    let offsetId: number | undefined
+    let offsetPeer: unknown
+
+    while (all.length < DIALOG_MAX_SCAN) {
+      const page = await this.client.getDialogs({
+        limit: DIALOG_PAGE_SIZE,
+        ...(offsetDate != null ? { offsetDate } : {}),
+        ...(offsetId != null ? { offsetId } : {}),
+        ...(offsetPeer != null ? { offsetPeer: offsetPeer as never } : {}),
+      })
+      if (!page.length) break
+      all.push(...page)
+      if (page.length < DIALOG_PAGE_SIZE) break
+
+      const last = page[page.length - 1]
+      const lastDate = last.date as Date | number | undefined
+      if (lastDate != null && typeof lastDate === 'object' && 'getTime' in lastDate) {
+        offsetDate = Math.floor((lastDate as Date).getTime() / 1000)
+      } else if (typeof lastDate === 'number') {
+        offsetDate = lastDate
+      } else {
+        break
+      }
+      const rawId = last.id
+      offsetId = typeof rawId === 'bigint' ? Number(rawId) : Number(rawId)
+      if (!Number.isFinite(offsetId)) break
+      offsetPeer = (last as { inputEntity?: unknown }).inputEntity ?? last.entity
+      if (offsetPeer == null) break
+    }
+
+    return all
   }
 
   /**
@@ -1267,6 +1325,7 @@ export class UserListener {
 
   private async forceReconnect() {
     console.log(`[userListener] force reconnect for ${this.userId}`)
+    this.clearDialogsCache()
     this.lastReconnectAt = Date.now()
     this.consecutiveProbeFailures = 0
     this.isConnected = false

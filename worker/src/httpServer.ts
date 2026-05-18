@@ -1,5 +1,6 @@
 import { createServer, IncomingMessage, Server, ServerResponse } from 'http'
 import { AuthService } from './authService'
+import { TelegramSessionInvalidError, TELEGRAM_SESSION_INVALID_CODE } from './telegramClient'
 import { UserSessionManager } from './sessionManager'
 
 const INTERNAL_TOKEN = process.env.WORKER_INTERNAL_TOKEN ?? ''
@@ -15,23 +16,47 @@ interface Body {
   from?: string
   to?: string
   run_id?: string
-  // legacy fields ignored — the worker holds state across calls now
   phone_code_hash?: string
   session_string?: string
+}
+
+function isTelegramSessionInvalid(err: unknown): err is TelegramSessionInvalidError {
+  return err instanceof TelegramSessionInvalidError
+}
+
+async function handleTelegramRpcError(
+  res: ServerResponse,
+  userId: string | undefined,
+  sessionManager: UserSessionManager,
+  err: unknown,
+  fallbackMessage: string,
+): Promise<void> {
+  if (userId && isTelegramSessionInvalid(err)) {
+    await sessionManager.invalidateTelegramSession(userId)
+    return sendSessionInvalid(res)
+  }
+  const msg = err instanceof Error ? err.message : fallbackMessage
+  return sendJson(res, 400, { error: sanitizeClientError(msg) })
+}
+
+function sendSessionInvalid(res: ServerResponse) {
+  sendJson(res, 401, {
+    error: 'telegram_session_invalid',
+    code: TELEGRAM_SESSION_INVALID_CODE,
+    message: 'Your Telegram session expired. Please connect again.',
+  })
+}
+
+/** Strip gramjs "(caused by …)" tails from messages shown to users. */
+function sanitizeClientError(msg: string): string {
+  const idx = msg.indexOf('(caused by')
+  return (idx > 0 ? msg.slice(0, idx) : msg).trim() || 'Request failed'
 }
 
 /**
  * Authenticated HTTP API consumed only by the supabase telegram-auth
  * edge function. Authenticates with a static internal token so requests
  * cannot originate from the public internet without the secret.
- *
- * Endpoints:
- *  POST /auth/send_code     { user_id, phone }
- *  POST /auth/verify_code   { user_id, phone, code, password? }
- *  POST /auth/list_channels { user_id }
- *  POST /auth/backfill_channel_history { user_id, channel_row_id, days? }
- *  POST /auth/import_backtest_history { user_id, channel_row_id, from, to }
- *  POST /auth/backtest_sync_signals { user_id, channel_row_id, from, to }
  */
 export function startHttpServer(
   authService: AuthService,
@@ -78,7 +103,7 @@ export function startHttpServer(
           return sendJson(res, 200, r)
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : 'Verification failed'
-          return sendJson(res, 400, { error: msg })
+          return sendJson(res, 400, { error: sanitizeClientError(msg) })
         }
       }
 
@@ -90,8 +115,7 @@ export function startHttpServer(
           const channels = await sessionManager.listChannels(body.user_id)
           return sendJson(res, 200, { channels })
         } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : 'Failed to list channels'
-          return sendJson(res, 400, { error: msg })
+          return handleTelegramRpcError(res, body.user_id, sessionManager, err, 'Failed to list channels')
         }
       }
 
@@ -107,8 +131,7 @@ export function startHttpServer(
           )
           return sendJson(res, 200, result)
         } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : 'Failed to backfill channel history'
-          return sendJson(res, 400, { error: msg })
+          return handleTelegramRpcError(res, body.user_id, sessionManager, err, 'Failed to backfill channel history')
         }
       }
 
@@ -125,8 +148,7 @@ export function startHttpServer(
           )
           return sendJson(res, 200, result)
         } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : 'Failed to import backtest history'
-          return sendJson(res, 400, { error: msg })
+          return handleTelegramRpcError(res, body.user_id, sessionManager, err, 'Failed to import backtest history')
         }
       }
 
@@ -144,18 +166,12 @@ export function startHttpServer(
           )
           return sendJson(res, 200, result)
         } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : 'Failed to sync backtest signals'
-          return sendJson(res, 400, { error: msg })
+          return handleTelegramRpcError(res, body.user_id, sessionManager, err, 'Failed to sync backtest signals')
         }
       }
 
       if (url === '/health') {
         const status = sessionManager.getStatus()
-        // A listener is "healthy" if it's connected and either has not
-        // received any event yet (just started) or saw something within
-        // the last 5 minutes. Most signal channels post several times an
-        // hour, so 5 min of silence on a previously-active listener is a
-        // reliable stall signal.
         const now = Date.now()
         const STALE_MS = 5 * 60 * 1000
         const ok = status.every(s =>
@@ -173,7 +189,7 @@ export function startHttpServer(
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Internal error'
       console.error('[httpServer] error:', msg)
-      return sendJson(res, 500, { error: msg })
+      return sendJson(res, 500, { error: sanitizeClientError(msg) })
     }
   })
 

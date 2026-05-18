@@ -1,7 +1,10 @@
 import { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js'
 import { TelegramClient } from 'telegram'
+import { TelegramSessionInvalidError } from './telegramClient'
 import { ChannelInfo, ListenerStatus, UserListener } from './userListener'
 import type { TradeExecutor } from './tradeExecutor'
+
+export { TelegramSessionInvalidError }
 
 export class UserSessionManager {
   private listeners = new Map<string, UserListener>()
@@ -39,7 +42,11 @@ export class UserSessionManager {
       if (i++ > 0 && staggerMs > 0) {
         await new Promise(r => setTimeout(r, staggerMs))
       }
-      await this.startListener(session.user_id, session.session_string)
+      try {
+        await this.startListener(session.user_id, session.session_string)
+      } catch (err) {
+        console.error(`[sessionManager] Failed to start listener for ${session.user_id}:`, err)
+      }
     }
 
     this.subscribeToChannelChanges()
@@ -90,7 +97,11 @@ export class UserSessionManager {
 
     for (const session of sessions ?? []) {
       if (session.is_active && !this.listeners.has(session.user_id)) {
-        await this.startListener(session.user_id, session.session_string)
+        try {
+          await this.startListener(session.user_id, session.session_string)
+        } catch (err) {
+          console.error(`[sessionManager] Failed to start listener for ${session.user_id}:`, err)
+        }
       }
     }
 
@@ -141,43 +152,49 @@ export class UserSessionManager {
     console.log(`[sessionManager] Adopted live client for user ${userId}`)
   }
 
-  async listChannels(userId: string): Promise<ChannelInfo[]> {
-    let listener = this.listeners.get(userId)
-    if (!listener) {
-      const { data: sess, error } = await this.supabase
-        .from('telegram_sessions')
-        .select('session_string, is_active')
-        .eq('user_id', userId)
-        .maybeSingle()
-
-      if (error) throw new Error(`Failed to load session: ${error.message}`)
-      if (!sess?.session_string) throw new Error('No Telegram session for this user')
-      if (!sess.is_active) throw new Error('Telegram session is paused')
-
-      await this.startListener(userId, sess.session_string)
-      listener = this.listeners.get(userId)
+  /** Drop worker listener + DB session when Telegram rejects the auth key. */
+  async invalidateTelegramSession(userId: string): Promise<void> {
+    await this.stopListener(userId)
+    await this.supabase.from('telegram_auth_pending').delete().eq('user_id', userId)
+    const [sessionRes, channelsRes] = await Promise.all([
+      this.supabase.from('telegram_sessions').delete().eq('user_id', userId),
+      this.supabase.from('telegram_channels').delete().eq('user_id', userId),
+    ])
+    if (sessionRes.error) {
+      console.warn(`[sessionManager] invalidateTelegramSession session delete failed for ${userId}:`, sessionRes.error.message)
     }
-    if (!listener) throw new Error('Failed to start listener for user')
+    if (channelsRes.error) {
+      console.warn(`[sessionManager] invalidateTelegramSession channels delete failed for ${userId}:`, channelsRes.error.message)
+    }
+  }
+
+  async listChannels(userId: string): Promise<ChannelInfo[]> {
+    const listener = await this.ensureListener(userId)
     return listener.listChannels()
   }
 
-  async backfillChannelHistory(userId: string, channelRowId: string, days: number) {
+  private async ensureListener(userId: string): Promise<UserListener> {
     let listener = this.listeners.get(userId)
-    if (!listener) {
-      const { data: sess, error } = await this.supabase
-        .from('telegram_sessions')
-        .select('session_string, is_active')
-        .eq('user_id', userId)
-        .maybeSingle()
+    if (listener) return listener
 
-      if (error) throw new Error(`Failed to load session: ${error.message}`)
-      if (!sess?.session_string) throw new Error('No Telegram session for this user')
-      if (!sess.is_active) throw new Error('Telegram session is paused')
+    const { data: sess, error } = await this.supabase
+      .from('telegram_sessions')
+      .select('session_string, is_active')
+      .eq('user_id', userId)
+      .maybeSingle()
 
-      await this.startListener(userId, sess.session_string)
-      listener = this.listeners.get(userId)
-    }
+    if (error) throw new Error(`Failed to load session: ${error.message}`)
+    if (!sess?.session_string) throw new Error('No Telegram session for this user')
+    if (!sess.is_active) throw new Error('Telegram session is paused')
+
+    await this.startListener(userId, sess.session_string)
+    listener = this.listeners.get(userId)
     if (!listener) throw new Error('Failed to start listener for user')
+    return listener
+  }
+
+  async backfillChannelHistory(userId: string, channelRowId: string, days: number) {
+    const listener = await this.ensureListener(userId)
     return listener.backfillChannelHistory(channelRowId, days)
   }
 
@@ -187,22 +204,7 @@ export class UserSessionManager {
     fromIso: string,
     toIso: string,
   ) {
-    let listener = this.listeners.get(userId)
-    if (!listener) {
-      const { data: sess, error } = await this.supabase
-        .from('telegram_sessions')
-        .select('session_string, is_active')
-        .eq('user_id', userId)
-        .maybeSingle()
-
-      if (error) throw new Error(`Failed to load session: ${error.message}`)
-      if (!sess?.session_string) throw new Error('No Telegram session for this user')
-      if (!sess.is_active) throw new Error('Telegram session is paused')
-
-      await this.startListener(userId, sess.session_string)
-      listener = this.listeners.get(userId)
-    }
-    if (!listener) throw new Error('Failed to start listener for user')
+    const listener = await this.ensureListener(userId)
     return listener.importBacktestChannelHistory(channelRowId, fromIso, toIso)
   }
 
@@ -213,39 +215,27 @@ export class UserSessionManager {
     toIso: string,
     runId?: string,
   ) {
-    let listener = this.listeners.get(userId)
-    if (!listener) {
-      const { data: sess, error } = await this.supabase
-        .from('telegram_sessions')
-        .select('session_string, is_active')
-        .eq('user_id', userId)
-        .maybeSingle()
-
-      if (error) throw new Error(`Failed to load session: ${error.message}`)
-      if (!sess?.session_string) throw new Error('No Telegram session for this user')
-      if (!sess.is_active) throw new Error('Telegram session is paused')
-
-      await this.startListener(userId, sess.session_string)
-      listener = this.listeners.get(userId)
-    }
-    if (!listener) throw new Error('Failed to start listener for user')
+    const listener = await this.ensureListener(userId)
     return listener.syncBacktestSignals(channelRowId, fromIso, toIso, { runId })
   }
 
-  private async startListener(userId: string, sessionString: string) {
+  private async startListener(userId: string, sessionString: string): Promise<void> {
     if (this.listeners.has(userId)) return
 
-    try {
-      const listener = new UserListener(userId, sessionString, this.supabase)
-      if (this.tradeExecutor) {
-        listener.setOnSignalParsed(row => this.tradeExecutor!.dispatchParsedSignal(row))
-      }
-      await listener.start()
-      this.listeners.set(userId, listener)
-      console.log(`[sessionManager] Started listener for user ${userId}`)
-    } catch (err) {
-      console.error(`[sessionManager] Failed to start listener for ${userId}:`, err)
+    const listener = new UserListener(userId, sessionString, this.supabase)
+    if (this.tradeExecutor) {
+      listener.setOnSignalParsed(row => this.tradeExecutor!.dispatchParsedSignal(row))
     }
+    try {
+      await listener.start()
+    } catch (err) {
+      if (err instanceof TelegramSessionInvalidError) {
+        await this.invalidateTelegramSession(userId)
+      }
+      throw err
+    }
+    this.listeners.set(userId, listener)
+    console.log(`[sessionManager] Started listener for user ${userId}`)
   }
 
   private async stopListener(userId: string) {

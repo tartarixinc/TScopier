@@ -46,6 +46,29 @@ export function buildClient(sessionString: string = ''): TelegramClient {
  * instead of bubbling up. Use for auth flows where we cannot afford a
  * hard error mid-handshake.
  */
+export const TELEGRAM_SESSION_INVALID_CODE = 'TELEGRAM_SESSION_INVALID' as const
+
+export class TelegramSessionInvalidError extends Error {
+  readonly code = TELEGRAM_SESSION_INVALID_CODE
+
+  constructor(message = 'Telegram session is no longer valid') {
+    super(message)
+    this.name = 'TelegramSessionInvalidError'
+  }
+}
+
+export function isAuthKeyUnregistered(err: unknown): boolean {
+  const m = err instanceof Error ? err.message : String(err)
+  return m.includes('AUTH_KEY_UNREGISTERED')
+}
+
+export function rethrowIfSessionInvalid(err: unknown): never {
+  if (isAuthKeyUnregistered(err)) {
+    throw new TelegramSessionInvalidError()
+  }
+  throw err
+}
+
 export async function tgInvoke<T>(client: TelegramClient, req: unknown): Promise<T> {
   try {
     return (await client.invoke(req as never)) as T

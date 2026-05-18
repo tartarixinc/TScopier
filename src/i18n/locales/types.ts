@@ -463,6 +463,10 @@ export interface CopierEnginePageTranslations {
   failedSendCode: string
   verificationFailed: string
   failedLoadTgChannels: string
+  telegramSessionExpired: string
+  reconnectTelegram: string
+  channelSearchPlaceholder: string
+  noChannelSearchResults: string
   yourTelegramChannels: string
   connected: string
   expand: string

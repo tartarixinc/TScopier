@@ -89,7 +89,19 @@ Deno.serve(async (req: Request) => {
     })
 
     const text = await workerRes.text()
-    return new Response(text, {
+    let payload: unknown = text
+    try {
+      payload = text ? JSON.parse(text) : {}
+    } catch {
+      payload = { error: "Invalid response from Telegram service" }
+    }
+    if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+      const rec = payload as Record<string, unknown>
+      if (typeof rec.error === "string") {
+        rec.error = String(rec.error).replace(/\s*\(caused by[\s\S]*$/i, "").trim()
+      }
+    }
+    return new Response(JSON.stringify(payload), {
       status: workerRes.status,
       headers: { ...corsHeaders, "content-type": "application/json" },
     })
