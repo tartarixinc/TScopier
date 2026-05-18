@@ -9,6 +9,22 @@ export function legacyServerFromMetaapiId(metaapiAccountId: string | null | unde
   return left || null
 }
 
+/** Legacy MT login from `ServerName|Login` in metaapi_account_id. */
+export function legacyLoginFromMetaapiId(metaapiAccountId: string | null | undefined): string | null {
+  const id = (metaapiAccountId ?? '').trim()
+  const pipe = id.indexOf('|')
+  if (pipe < 0 || pipe >= id.length - 1) return null
+  const login = id.slice(pipe + 1).trim()
+  return login || null
+}
+
+/** MT account number for display (DB column, then legacy link format). */
+export function resolveAccountLogin(account: BrokerAccount): string | null {
+  const fromCol = (account.account_login ?? '').trim()
+  if (fromCol) return fromCol
+  return legacyLoginFromMetaapiId(account.metaapi_account_id)
+}
+
 /**
  * Best server string to infer broker from: provider hint, DB column, then legacy metaapi format.
  */

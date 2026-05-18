@@ -6,6 +6,7 @@ import { useAuth } from '../../context/AuthContext'
 import type { BrokerAccount, Signal, Trade } from '../../types/database'
 import {
   inferBrokerLabelFromServer,
+  resolveAccountLogin,
   resolveLinkedAccountType,
   resolveMtServerCandidate,
   type LinkedAccountType,
@@ -1897,6 +1898,9 @@ function LinkedAccountRow({
         : 'text-neutral-900 dark:text-neutral-50'
 
   const accountLabel = account.label || la.unnamedAccount
+  const platformLabel = (account.platform ?? '').trim().toUpperCase() || '—'
+  const accountLogin = resolveAccountLogin(account)
+  const platformLine = accountLogin ? `${platformLabel} • ${accountLogin}` : platformLabel
   const accountTypeLabel =
     accountType === 'Live'
       ? la.accountTypeLive
@@ -1917,7 +1921,7 @@ function LinkedAccountRow({
     <div className="grid grid-cols-9 gap-2 px-4 sm:px-5 py-3 items-center hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors">
       <div className="flex flex-col min-w-0">
         <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 truncate">{accountLabel}</span>
-        <span className="text-[11px] font-medium text-primary-600 uppercase">{account.platform}</span>
+        <span className="text-[11px] font-medium text-primary-600 uppercase tabular-nums">{platformLine}</span>
       </div>
       <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{brokerText}</span>
       <span className={`text-sm font-semibold ${accountTypeClass}`}>{accountTypeLabel}</span>
