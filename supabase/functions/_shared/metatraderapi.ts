@@ -3,7 +3,7 @@
  * Basic Auth + platform-specific hosts. See docs/mt4api-endpoint-map.md.
  */
 
-import { ingestMtHistoryRows } from "./mtTradeFields.ts"
+import { ingestMtHistoryRows, type MtHistoryProfile } from "./mtTradeFields.ts"
 
 const DEFAULT_MT5_BASE = "https://mt5.mt4api.dev"
 const DEFAULT_MT4_BASE = "https://mt4.mt4api.dev"
@@ -426,13 +426,17 @@ export class MetatraderApiClient {
   }
 
   /**
-   * Full closed history from MT API deal endpoints (not session `/ClosedOrders`).
-   * OrderHistory + pagination are authoritative; HistoryPositions enriches position-level rows.
+   * Closed history for charts/stats (`dashboard`) or Trades page (`trades`).
+   * Profiles use different merge + field parsing — do not share one path.
    */
-  async closedOrdersHistory(id: string, from: string, to: string): Promise<unknown[]> {
+  async closedOrdersHistory(
+    id: string,
+    from: string,
+    to: string,
+    profile: MtHistoryProfile = "dashboard",
+  ): Promise<unknown[]> {
     const byKey = new Map<string, Record<string, unknown>>()
-
-    const ingest = (rows: unknown[]) => ingestMtHistoryRows(byKey, rows)
+    const ingest = (rows: unknown[]) => ingestMtHistoryRows(byKey, rows, profile)
 
     try {
       let page = 0
@@ -448,11 +452,17 @@ export class MetatraderApiClient {
       /* pagination optional on some builds */
     }
 
-    // HistoryPositions first, then OrderHistory overwrites/enriches (deal profit / lots).
-    const settled = await Promise.allSettled([
-      this.historyPositions(id, from, to),
-      this.orderHistory(id, from, to),
-    ])
+    const settled = profile === "dashboard"
+      ? await Promise.allSettled([
+        this.closedOrders(id),
+        this.historyPositions(id, from, to),
+        this.orderHistory(id, from, to),
+      ])
+      : await Promise.allSettled([
+        this.historyPositions(id, from, to),
+        this.orderHistory(id, from, to),
+      ])
+
     for (const r of settled) {
       if (r.status === "fulfilled") ingest(r.value)
     }

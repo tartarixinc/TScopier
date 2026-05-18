@@ -1,5 +1,5 @@
 import { Agent, request } from 'undici'
-import { ingestMtHistoryRows } from './mtTradeFields.js'
+import { ingestMtHistoryRows, type MtHistoryProfile } from './mtTradeFields.js'
 
 /**
  * MetatraderAPI (metatraderapi.dev) Node client tuned for low order-send latency.
@@ -663,10 +663,14 @@ export class MetatraderApiClient {
     return { orders: unwrapOrderList(raw), pagesCount: 1 }
   }
 
-  /** OrderHistory + pagination (authoritative); HistoryPositions enriches position-level rows. */
-  async closedOrdersHistory(id: string, from: string, to: string): Promise<unknown[]> {
+  async closedOrdersHistory(
+    id: string,
+    from: string,
+    to: string,
+    profile: MtHistoryProfile = 'dashboard',
+  ): Promise<unknown[]> {
     const byKey = new Map<string, Record<string, unknown>>()
-    const ingest = (rows: unknown[]) => ingestMtHistoryRows(byKey, rows)
+    const ingest = (rows: unknown[]) => ingestMtHistoryRows(byKey, rows, profile)
 
     try {
       let page = 0
@@ -682,10 +686,17 @@ export class MetatraderApiClient {
       /* optional */
     }
 
-    const settled = await Promise.allSettled([
-      this.historyPositions(id, from, to),
-      this.orderHistory(id, from, to),
-    ])
+    const settled = profile === 'dashboard'
+      ? await Promise.allSettled([
+        this.closedOrders(id),
+        this.historyPositions(id, from, to),
+        this.orderHistory(id, from, to),
+      ])
+      : await Promise.allSettled([
+        this.historyPositions(id, from, to),
+        this.orderHistory(id, from, to),
+      ])
+
     for (const r of settled) {
       if (r.status === 'fulfilled') ingest(r.value as unknown[])
     }

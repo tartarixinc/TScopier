@@ -43,6 +43,7 @@ export function TradesPage() {
         historyFrom.setDate(historyFrom.getDate() - DASHBOARD_MT_HISTORY_DAYS)
         const res = await metatraderApi.trades({
           scope: 'all',
+          historyProfile: 'trades',
           historyFrom: historyFrom.toISOString().slice(0, 19),
         })
         setTrades(res.trades ?? [])

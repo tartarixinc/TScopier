@@ -1073,6 +1073,7 @@ export function DashboardPage() {
     try {
       const res = await metatraderApi.trades({
         scope: 'all',
+        historyProfile: 'dashboard',
         historyFrom: formatMtApiDateTime(historyFrom),
         historyTo: formatMtApiDateTime(dayEnd),
       })

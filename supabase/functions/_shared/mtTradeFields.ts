@@ -2,8 +2,10 @@
 
 export type RawMtOrder = Record<string, unknown>
 
-/** Nested protobuf / REST objects that carry real lots & profit when top-level fields are 0. */
-const MT_NESTED_OBJECTS = [
+/** Dashboard charts: position-level merge. Trades list: deal-level + nested deal fields. */
+export type MtHistoryProfile = "dashboard" | "trades"
+
+const MT_DEAL_NESTED_OBJECTS = [
   "dealInternalOut",
   "DealInternalOut",
   "dealInternalIn",
@@ -28,13 +30,28 @@ function scalarValue(v: unknown): boolean {
   return v !== null && v !== undefined && typeof v !== "object"
 }
 
+function shallowUnwrapResult(row: RawMtOrder): RawMtOrder {
+  const flat: RawMtOrder = { ...row }
+  if (isPlainObject(flat.result)) {
+    for (const [k, v] of Object.entries(flat.result as RawMtOrder)) {
+      if (!scalarValue(v)) continue
+      if (flat[k] === undefined || flat[k] === null) flat[k] = v
+    }
+  }
+  return flat
+}
+
 /**
- * Hoist nested deal/order fields to the top level. MT5 REST often returns
- * `volume: 0` and `profit: 0` on the parent while `dealInternalOut` has the
- * closed deal profit and lots (see metatraderapi.dev Order schema).
+ * Trades list only: hoist nested deal fields when top-level volume/profit are 0.
+ * Do not use for dashboard charts — it can copy OUT-deal profit onto every leg.
  */
-export function flattenMtOrder(row: unknown): RawMtOrder {
+export function flattenMtOrder(
+  row: unknown,
+  profile: MtHistoryProfile = "trades",
+): RawMtOrder {
   if (!isPlainObject(row)) return {}
+  if (profile === "dashboard") return shallowUnwrapResult(row)
+
   const flat: RawMtOrder = { ...row }
 
   const absorb = (src: RawMtOrder) => {
@@ -45,7 +62,6 @@ export function flattenMtOrder(row: unknown): RawMtOrder {
         flat[k] = v
         continue
       }
-      // Top-level numeric zeros are often placeholders; prefer nested non-zero.
       if (typeof cur === "number" && cur === 0 && typeof v === "number" && v !== 0) {
         flat[k] = v
       }
@@ -54,7 +70,7 @@ export function flattenMtOrder(row: unknown): RawMtOrder {
 
   if (isPlainObject(flat.result)) absorb(flat.result as RawMtOrder)
 
-  for (const key of MT_NESTED_OBJECTS) {
+  for (const key of MT_DEAL_NESTED_OBJECTS) {
     const nested = flat[key]
     if (isPlainObject(nested)) absorb(nested)
   }
@@ -70,49 +86,63 @@ export function flattenMtOrder(row: unknown): RawMtOrder {
   return flat
 }
 
-export function pickMtField(order: RawMtOrder, ...keys: string[]): unknown {
-  const flat = flattenMtOrder(order)
+export function pickMtField(
+  order: RawMtOrder,
+  profile: MtHistoryProfile,
+  ...keys: string[]
+): unknown {
+  if (profile === "trades") {
+    const flat = flattenMtOrder(order, "trades")
+    for (const k of keys) {
+      if (flat[k] !== undefined && flat[k] !== null) return flat[k]
+    }
+    return undefined
+  }
+
   for (const k of keys) {
-    if (flat[k] !== undefined && flat[k] !== null) return flat[k]
+    if (order[k] !== undefined && order[k] !== null) return order[k]
+  }
+  const ex = order.ex
+  if (isPlainObject(ex)) {
+    for (const k of keys) {
+      if (ex[k] !== undefined && ex[k] !== null) return ex[k]
+    }
   }
   return undefined
 }
 
-export function numMtField(order: RawMtOrder, ...keys: string[]): number | null {
-  const v = pickMtField(order, ...keys)
+function numMtField(
+  order: RawMtOrder,
+  profile: MtHistoryProfile,
+  ...keys: string[]
+): number | null {
+  const v = pickMtField(order, profile, ...keys)
   if (v === null || v === undefined) return null
   const n = Number(v)
   return Number.isFinite(n) ? n : null
 }
 
 /** Convert MT volume / lots fields to standard lots (0.01 = 0.01 lot). */
-export function resolveMtLots(order: RawMtOrder): number {
-  const flat = flattenMtOrder(order)
+export function resolveMtLots(order: RawMtOrder, profile: MtHistoryProfile): number {
+  const keys = profile === "trades"
+    ? [
+      "lots", "Lots", "lot", "Lot", "volumeLots", "VolumeLots", "volume_lots",
+      "closeLots", "CloseLots", "requestLots", "RequestLots",
+    ]
+    : ["lots", "Lots", "lot", "Lot", "volumeLots", "VolumeLots", "volume_lots"]
 
-  const direct = numMtField(
-    flat,
-    "lots",
-    "Lots",
-    "lot",
-    "Lot",
-    "volumeLots",
-    "VolumeLots",
-    "volume_lots",
-    "closeLots",
-    "CloseLots",
-    "requestLots",
-    "RequestLots",
-  )
+  const direct = numMtField(order, profile, ...keys)
   if (direct != null && direct > 0) return direct
 
-  const volExt = numMtField(flat, "volumeExt", "VolumeExt")
+  const volExt = numMtField(order, profile, "volumeExt", "VolumeExt")
   if (volExt != null && volExt > 0) {
     if (volExt >= 1_000_000) return volExt / 100_000_000
     if (volExt >= 10_000) return volExt / 10_000
   }
 
   const vol = numMtField(
-    flat,
+    order,
+    profile,
     "volume",
     "Volume",
     "volumeClosed",
@@ -125,19 +155,18 @@ export function resolveMtLots(order: RawMtOrder): number {
     "DealVolume",
   )
   if (vol == null || vol <= 0) return 0
-
-  // MT5 integer volume: 100 = 0.01 lot, 10_000 = 1.0 lot (1/10000 lot units).
   if (vol >= 100 && Number.isInteger(vol)) return vol / 10_000
-
   return vol
 }
 
 /** Deal profit from MT row (terminal profit column). */
-export function resolveMtDealProfit(order: RawMtOrder): number | null {
-  const flat = flattenMtOrder(order)
-
+export function resolveMtDealProfit(
+  order: RawMtOrder,
+  profile: MtHistoryProfile,
+): number | null {
   const p = numMtField(
-    flat,
+    order,
+    profile,
     "profit",
     "Profit",
     "dealProfit",
@@ -148,33 +177,31 @@ export function resolveMtDealProfit(order: RawMtOrder): number | null {
     "CloseProfit",
     "realizedProfit",
     "RealizedProfit",
-    "freeProfit",
-    "FreeProfit",
+    ...(profile === "trades" ? ["freeProfit", "FreeProfit"] as const : []),
   )
-  if (p != null && p !== 0) return p
+  if (profile === "dashboard" || (p != null && p !== 0)) return p
 
-  // Closed P/L is usually on the OUT deal; IN deal profit is often 0.
   for (const key of ["dealInternalOut", "DealInternalOut"] as const) {
     const out = order[key]
     if (!isPlainObject(out)) continue
-    const op = numMtField(out, "profit", "Profit", "freeProfit", "FreeProfit")
+    const op = numMtField(out, "trades", "profit", "Profit", "freeProfit", "FreeProfit")
     if (op != null) return op
   }
 
   return p
 }
 
-export function resolveMtTicket(order: RawMtOrder): number {
-  const flat = flattenMtOrder(order)
+export function resolveMtTicket(order: RawMtOrder, profile: MtHistoryProfile): number {
   const ticket = Number(
-    pickMtField(flat, "ticket", "Ticket", "order", "Order", "deal", "Deal") ?? 0,
+    pickMtField(order, profile, "ticket", "Ticket", "order", "Order", "deal", "Deal") ?? 0,
   )
   return Number.isFinite(ticket) && ticket > 0 ? ticket : 0
 }
 
-function closeTimeKey(order: RawMtOrder): string {
+function closeTimeKey(order: RawMtOrder, profile: MtHistoryProfile): string {
   const ct = pickMtField(
     order,
+    profile,
     "closeTime",
     "CloseTime",
     "close_time",
@@ -188,49 +215,56 @@ function closeTimeKey(order: RawMtOrder): string {
   return ct != null ? String(ct) : ""
 }
 
-export function historyRowKey(order: RawMtOrder): string {
-  const ticket = resolveMtTicket(order)
+export function historyRowKey(order: RawMtOrder, profile: MtHistoryProfile): string {
+  const ticket = resolveMtTicket(order, profile)
   if (ticket <= 0) return ""
-  const ct = closeTimeKey(order)
+  if (profile === "dashboard") return String(ticket)
+  const ct = closeTimeKey(order, profile)
   return ct ? `${ticket}:${ct}` : String(ticket)
 }
 
 /** Merge two raw history rows; prefer non-zero lots and non-zero deal profit. */
-export function mergeMtHistoryRow(prev: RawMtOrder, next: RawMtOrder): RawMtOrder {
-  const prevFlat = flattenMtOrder(prev)
-  const nextFlat = flattenMtOrder(next)
-  const merged: RawMtOrder = { ...prevFlat, ...nextFlat }
+export function mergeMtHistoryRow(
+  prev: RawMtOrder,
+  next: RawMtOrder,
+  profile: MtHistoryProfile,
+): RawMtOrder {
+  const prevRow = profile === "trades" ? flattenMtOrder(prev, "trades") : prev
+  const nextRow = profile === "trades" ? flattenMtOrder(next, "trades") : next
+  const merged: RawMtOrder = { ...prevRow, ...nextRow }
 
-  const prevLots = resolveMtLots(prevFlat)
-  const nextLots = resolveMtLots(nextFlat)
+  const prevLots = resolveMtLots(prevRow, profile)
+  const nextLots = resolveMtLots(nextRow, profile)
   if (nextLots <= 0 && prevLots > 0) {
     for (const k of ["lots", "Lots", "lot", "volume", "Volume", "volumeExt", "VolumeExt", "closeLots", "CloseLots"]) {
-      if (prevFlat[k] != null) merged[k] = prevFlat[k]
+      if (prevRow[k] != null) merged[k] = prevRow[k]
     }
   }
 
-  const prevProfit = resolveMtDealProfit(prevFlat)
-  const nextProfit = resolveMtDealProfit(nextFlat)
+  const prevProfit = resolveMtDealProfit(prevRow, profile)
+  const nextProfit = resolveMtDealProfit(nextRow, profile)
   if ((nextProfit == null || nextProfit === 0) && prevProfit != null && prevProfit !== 0) {
     for (const k of ["profit", "Profit", "dealProfit", "DealProfit", "grossProfit", "GrossProfit"]) {
-      if (prevFlat[k] != null) merged[k] = prevFlat[k]
+      if (prevRow[k] != null) merged[k] = prevRow[k]
     }
-    for (const key of ["dealInternalOut", "DealInternalOut"] as const) {
-      if (isPlainObject(prevFlat[key])) merged[key] = prevFlat[key]
+    if (profile === "trades") {
+      for (const key of ["dealInternalOut", "DealInternalOut"] as const) {
+        if (isPlainObject(prevRow[key])) merged[key] = prevRow[key]
+      }
     }
   }
 
   for (const k of ["swap", "Swap", "commission", "Commission", "fee", "Fee"]) {
-    if (merged[k] == null && prevFlat[k] != null) merged[k] = prevFlat[k]
+    if (merged[k] == null && prevRow[k] != null) merged[k] = prevRow[k]
   }
 
-  if (!pickMtField(merged, "closeTime", "CloseTime", "close_time", "timeClose", "TimeClose")) {
-    const ct = pickMtField(prevFlat, "closeTime", "CloseTime", "close_time", "timeClose", "TimeClose")
+  if (!pickMtField(merged, profile, "closeTime", "CloseTime", "close_time", "timeClose", "TimeClose")) {
+    const ct = pickMtField(prevRow, profile, "closeTime", "CloseTime", "close_time", "timeClose", "TimeClose")
     if (ct) merged.closeTime = ct
   }
 
-  if (!pickMtField(merged, "symbol", "Symbol") && pickMtField(prevFlat, "symbol", "Symbol")) {
-    merged.symbol = pickMtField(prevFlat, "symbol", "Symbol")
+  if (!pickMtField(merged, profile, "symbol", "Symbol") && pickMtField(prevRow, profile, "symbol", "Symbol")) {
+    merged.symbol = pickMtField(prevRow, profile, "symbol", "Symbol")
   }
 
   return merged
@@ -239,13 +273,14 @@ export function mergeMtHistoryRow(prev: RawMtOrder, next: RawMtOrder): RawMtOrde
 export function ingestMtHistoryRows(
   target: Map<string, RawMtOrder>,
   rows: unknown[],
+  profile: MtHistoryProfile,
 ): void {
   for (const row of rows) {
     if (!row || typeof row !== "object") continue
-    const o = flattenMtOrder(row)
-    const key = historyRowKey(o)
+    const o = profile === "trades" ? flattenMtOrder(row, "trades") : (row as RawMtOrder)
+    const key = historyRowKey(o, profile)
     if (!key) continue
     const prev = target.get(key)
-    target.set(key, prev ? mergeMtHistoryRow(prev, o) : o)
+    target.set(key, prev ? mergeMtHistoryRow(prev, o, profile) : o)
   }
 }

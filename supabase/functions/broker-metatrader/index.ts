@@ -19,6 +19,7 @@ import {
   pickMtField,
   resolveMtDealProfit,
   resolveMtLots,
+  type MtHistoryProfile,
 } from "../_shared/mtTradeFields.ts"
 
 function mtClient(env: { get(name: string): string | undefined }, platform: string): ReturnType<typeof makeClientFromEnv> {
@@ -488,6 +489,8 @@ Deno.serve(async (req: Request) => {
       const historyFrom = typeof bodyRec.history_from === "string" && bodyRec.history_from.trim()
         ? String(bodyRec.history_from).trim()
         : formatMtDt(defaultHistoryFrom)
+      const historyProfile: MtHistoryProfile =
+        bodyRec.history_profile === "trades" ? "trades" : "dashboard"
       type RawOrder = Record<string, unknown>
 
       let brokers: { id: string; label: string; metaapi_account_id: string; broker_name: string | null; platform: string }[] = []
@@ -514,7 +517,8 @@ Deno.serve(async (req: Request) => {
         return Number.isFinite(n) ? n : null
       }
 
-      const pick = (order: RawOrder, ...keys: string[]): unknown => pickMtField(order, ...keys)
+      const pick = (order: RawOrder, ...keys: string[]): unknown =>
+        pickMtField(order, historyProfile, ...keys)
 
       // MT order code → direction + label. MT4 CMD 6 = balance; MT5 OrderType 6 = buy stop limit.
       const codeMapMt5: Record<number, { direction: "buy" | "sell" | ""; label: string }> = {
@@ -604,11 +608,11 @@ Deno.serve(async (req: Request) => {
         broker: typeof brokers[number],
         status: "open" | "closed",
       ) => {
-        const row = flattenMtOrder(order)
+        const row = historyProfile === "trades" ? flattenMtOrder(order, "trades") : order
         const ticket = Number(pick(row, "ticket", "Ticket") ?? 0)
         const platform = String(broker.platform ?? "MT5")
         const { direction, type_label } = resolveDirection(row, platform)
-        const lot_size = resolveMtLots(row)
+        const lot_size = resolveMtLots(row, historyProfile)
         const openTime = pick(
           row,
           "openTime", "OpenTime", "open_time", "timeOpen", "TimeOpen",
@@ -633,7 +637,7 @@ Deno.serve(async (req: Request) => {
           close_price: num(pick(row, "closePrice", "ClosePrice")),
           profit: isNonTradeEntry(direction, type_label, lot_size)
             ? null
-            : resolveMtDealProfit(row),
+            : resolveMtDealProfit(row, historyProfile),
           swap: num(pick(row, "swap", "Swap")),
           commission: num(pick(row, "commission", "Commission")),
           comment: (pick(row, "comment", "Comment") as string | undefined) ?? null,
@@ -655,7 +659,7 @@ Deno.serve(async (req: Request) => {
           const [openedRes, closedRes] = await Promise.allSettled([
             wantOpen ? bClient.openedOrders(uuid) : Promise.resolve([] as unknown[]),
             wantClosed
-              ? bClient.closedOrdersHistory(uuid, historyFrom, historyTo)
+              ? bClient.closedOrdersHistory(uuid, historyFrom, historyTo, historyProfile)
               : Promise.resolve([] as unknown[]),
           ])
           const out: ReturnType<typeof normalize>[] = []
