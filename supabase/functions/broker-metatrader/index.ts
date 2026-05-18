@@ -14,6 +14,13 @@ import {
   MetatraderApiError,
   type MtPlatform,
 } from "../_shared/metatraderapi.ts"
+import {
+  flattenMtOrder,
+  pickMtField,
+  resolveMtDealProfit,
+  resolveMtLots,
+  type MtHistoryProfile,
+} from "../_shared/mtTradeFields.ts"
 
 function mtClient(env: { get(name: string): string | undefined }, platform: string): ReturnType<typeof makeClientFromEnv> {
   const p: MtPlatform = platform === "MT4" ? "MT4" : "MT5"
@@ -482,6 +489,8 @@ Deno.serve(async (req: Request) => {
       const historyFrom = typeof bodyRec.history_from === "string" && bodyRec.history_from.trim()
         ? String(bodyRec.history_from).trim()
         : formatMtDt(defaultHistoryFrom)
+      const historyProfile: MtHistoryProfile =
+        bodyRec.history_profile === "trades" ? "trades" : "dashboard"
       type RawOrder = Record<string, unknown>
 
       let brokers: { id: string; label: string; metaapi_account_id: string; broker_name: string | null; platform: string }[] = []
@@ -508,12 +517,8 @@ Deno.serve(async (req: Request) => {
         return Number.isFinite(n) ? n : null
       }
 
-      const pick = (order: RawOrder, ...keys: string[]): unknown => {
-        for (const k of keys) {
-          if (order[k] !== undefined && order[k] !== null) return order[k]
-        }
-        return undefined
-      }
+      const pick = (order: RawOrder, ...keys: string[]): unknown =>
+        pickMtField(order, historyProfile, ...keys)
 
       // MT order code → direction + label. MT4 CMD 6 = balance; MT5 OrderType 6 = buy stop limit.
       const codeMapMt5: Record<number, { direction: "buy" | "sell" | ""; label: string }> = {
@@ -603,16 +608,17 @@ Deno.serve(async (req: Request) => {
         broker: typeof brokers[number],
         status: "open" | "closed",
       ) => {
-        const ticket = Number(pick(order, "ticket", "Ticket") ?? 0)
+        const row = historyProfile === "trades" ? flattenMtOrder(order, "trades") : order
+        const ticket = Number(pick(row, "ticket", "Ticket") ?? 0)
         const platform = String(broker.platform ?? "MT5")
-        const { direction, type_label } = resolveDirection(order, platform)
-        const lot_size = num(pick(order, "lots", "Lots", "volume", "Volume")) ?? 0
+        const { direction, type_label } = resolveDirection(row, platform)
+        const lot_size = resolveMtLots(row, historyProfile)
         const openTime = pick(
-          order,
+          row,
           "openTime", "OpenTime", "open_time", "timeOpen", "TimeOpen",
         ) as string | undefined
         const closeTime = pick(
-          order,
+          row,
           "closeTime", "CloseTime", "close_time", "timeClose", "TimeClose", "doneTime", "DoneTime",
         ) as string | undefined
         return {
@@ -621,24 +627,24 @@ Deno.serve(async (req: Request) => {
           broker_label: broker.label,
           broker_name: broker.broker_name,
           ticket,
-          symbol: String(pick(order, "symbol", "Symbol") ?? ""),
+          symbol: String(pick(row, "symbol", "Symbol") ?? ""),
           direction,
           type: type_label,
           lot_size,
-          entry_price: num(pick(order, "openPrice", "OpenPrice", "price")),
-          sl: num(pick(order, "stopLoss", "StopLoss", "sl")),
-          tp: num(pick(order, "takeProfit", "TakeProfit", "tp")),
-          close_price: num(pick(order, "closePrice", "ClosePrice")),
+          entry_price: num(pick(row, "openPrice", "OpenPrice", "price")),
+          sl: num(pick(row, "stopLoss", "StopLoss", "sl")),
+          tp: num(pick(row, "takeProfit", "TakeProfit", "tp")),
+          close_price: num(pick(row, "closePrice", "ClosePrice")),
           profit: isNonTradeEntry(direction, type_label, lot_size)
             ? null
-            : num(pick(order, "profit", "Profit", "dealProfit", "DealProfit")),
-          swap: num(pick(order, "swap", "Swap")),
-          commission: num(pick(order, "commission", "Commission")),
-          comment: (pick(order, "comment", "Comment") as string | undefined) ?? null,
-          magic: num(pick(order, "magicNumber", "MagicNumber", "magic", "Magic", "expertId", "ExpertId")),
+            : resolveMtDealProfit(row, historyProfile),
+          swap: num(pick(row, "swap", "Swap")),
+          commission: num(pick(row, "commission", "Commission")),
+          comment: (pick(row, "comment", "Comment") as string | undefined) ?? null,
+          magic: num(pick(row, "magicNumber", "MagicNumber", "magic", "Magic", "expertId", "ExpertId")),
           opened_at: openTime ?? null,
           closed_at: closeTime ?? null,
-          state: (pick(order, "state", "State") as string | undefined) ?? null,
+          state: (pick(row, "state", "State") as string | undefined) ?? null,
           status,
         }
       }
@@ -653,7 +659,7 @@ Deno.serve(async (req: Request) => {
           const [openedRes, closedRes] = await Promise.allSettled([
             wantOpen ? bClient.openedOrders(uuid) : Promise.resolve([] as unknown[]),
             wantClosed
-              ? bClient.closedOrdersHistory(uuid, historyFrom, historyTo)
+              ? bClient.closedOrdersHistory(uuid, historyFrom, historyTo, historyProfile)
               : Promise.resolve([] as unknown[]),
           ])
           const out: ReturnType<typeof normalize>[] = []
@@ -682,7 +688,14 @@ Deno.serve(async (req: Request) => {
       // When at least one trade is missing direction, echo back the raw shape so the
       // client can show the diagnostic and we can extend the parser if needed.
       const hasMissingDirection = trades.some((t) => !t.direction)
-      const debug = hasMissingDirection && firstRawSample
+      const hasSparseClosed = trades.some(
+        (t) =>
+          t.status === "closed" &&
+          Boolean(t.symbol?.trim()) &&
+          t.lot_size <= 0 &&
+          (t.profit === 0 || t.profit === null),
+      )
+      const debug = (hasMissingDirection || hasSparseClosed) && firstRawSample
         ? { raw_sample_keys: Object.keys(firstRawSample), raw_sample: firstRawSample }
         : undefined
       return Response.json({ ok: true, trades, debug }, { headers: corsHeaders })

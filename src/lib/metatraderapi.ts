@@ -145,12 +145,18 @@ export const metatraderApi = {
     /** OrderHistory range (yyyy-MM-ddTHH:mm:ss). Defaults: last 90 days → now. */
     historyFrom?: string
     historyTo?: string
+    /**
+     * `dashboard` — charts / Today's profit (position-level merge, no deal-internal flatten).
+     * `trades` — Account Trades page (deal-level rows + nested profit/lots).
+     */
+    historyProfile?: 'dashboard' | 'trades'
   } = {}): Promise<{ trades: MtTrade[]; debug?: { raw_sample_keys: string[]; raw_sample: Record<string, unknown> } }> {
     return call({
       body: {
         action: 'trades',
         broker_id: args.brokerId ?? '',
         scope: args.scope ?? 'all',
+        history_profile: args.historyProfile ?? 'dashboard',
         ...(args.historyFrom ? { history_from: args.historyFrom } : {}),
         ...(args.historyTo ? { history_to: args.historyTo } : {}),
       },

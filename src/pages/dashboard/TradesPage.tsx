@@ -6,6 +6,7 @@ import { interpolate } from '../../i18n/interpolate'
 import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
 import { Alert } from '../../components/ui/Alert'
+import { DASHBOARD_MT_HISTORY_DAYS } from '../../lib/dashboardCharts'
 import { metatraderApi, type MtTrade } from '../../lib/metatraderapi'
 
 type Filter = 'all' | 'open' | 'closed'
@@ -38,7 +39,13 @@ export function TradesPage() {
           setTrades([])
           return
         }
-        const res = await metatraderApi.trades({ scope: 'all' })
+        const historyFrom = new Date()
+        historyFrom.setDate(historyFrom.getDate() - DASHBOARD_MT_HISTORY_DAYS)
+        const res = await metatraderApi.trades({
+          scope: 'all',
+          historyProfile: 'trades',
+          historyFrom: historyFrom.toISOString().slice(0, 19),
+        })
         setTrades(res.trades ?? [])
         setError(null)
         setLastSyncedAt(Date.now())
@@ -361,10 +368,26 @@ function PageButton({ n, active, onClick }: { n: number; active: boolean; onClic
   )
 }
 
+function formatLots(lotSize: number): string {
+  if (!Number.isFinite(lotSize)) return '—'
+  return lotSize.toFixed(2)
+}
+
+/** Prefer deal profit; if API returned 0 with swap/commission, show net realized P/L. */
+function displayProfit(trade: MtTrade): number | null {
+  const p = trade.profit
+  if (p == null || !Number.isFinite(p)) return null
+  if (p !== 0 || trade.status !== 'closed') return p
+  const swap = typeof trade.swap === 'number' && Number.isFinite(trade.swap) ? trade.swap : 0
+  const commission = typeof trade.commission === 'number' && Number.isFinite(trade.commission) ? trade.commission : 0
+  const net = p + swap + commission
+  return net !== 0 ? net : p
+}
+
 function useTradeDisplay(trade: MtTrade) {
   const isBuy = trade.direction === 'buy'
   const isSell = trade.direction === 'sell'
-  const profit = trade.profit
+  const profit = displayProfit(trade)
   const statusConfig: Record<string, { variant: 'success' | 'warning' | 'error' | 'neutral' | 'primary'; label: string }> = {
     open: { variant: 'primary', label: 'Open' },
     closed: { variant: 'neutral', label: 'Closed' },
@@ -431,7 +454,7 @@ function TradeCard({ trade }: { trade: MtTrade }) {
         <div>
           <dt className="text-neutral-400 uppercase tracking-wide">Lots</dt>
           <dd className="text-neutral-700 dark:text-neutral-300 tabular-nums mt-0.5">
-            {trade.lot_size ? trade.lot_size.toFixed(2) : '—'}
+            {formatLots(trade.lot_size)}
           </dd>
         </div>
         <div>
@@ -476,7 +499,7 @@ function TradeRow({ trade }: { trade: MtTrade }) {
       <td className="px-2 py-3.5 text-sm text-neutral-700 dark:text-neutral-300 text-center tabular-nums">{formatPrice(trade.entry_price)}</td>
       <td className="px-2 py-3.5 text-sm text-neutral-700 dark:text-neutral-300 text-center tabular-nums">{formatPrice(trade.sl)}</td>
       <td className="px-2 py-3.5 text-sm text-neutral-700 dark:text-neutral-300 text-center tabular-nums">{formatPrice(trade.tp)}</td>
-      <td className="px-2 py-3.5 text-sm text-neutral-700 dark:text-neutral-300 text-center tabular-nums">{trade.lot_size ? trade.lot_size.toFixed(2) : '—'}</td>
+      <td className="px-2 py-3.5 text-sm text-neutral-700 dark:text-neutral-300 text-center tabular-nums">{formatLots(trade.lot_size)}</td>
       <td className={`px-2 py-3.5 text-sm font-medium text-center tabular-nums ${
         profit === null ? 'text-neutral-400' :
         profit > 0 ? 'text-success-600' :

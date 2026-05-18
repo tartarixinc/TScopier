@@ -3,6 +3,8 @@
  * Basic Auth + platform-specific hosts. See docs/mt4api-endpoint-map.md.
  */
 
+import { ingestMtHistoryRows, type MtHistoryProfile } from "./mtTradeFields.ts"
+
 const DEFAULT_MT5_BASE = "https://mt5.mt4api.dev"
 const DEFAULT_MT4_BASE = "https://mt4.mt4api.dev"
 
@@ -423,22 +425,18 @@ export class MetatraderApiClient {
     return MetatraderApiClient.parsePaginationOrders(raw)
   }
 
-  /** Full closed history: pagination + OrderHistory + HistoryPositions + session ClosedOrders. */
-  async closedOrdersHistory(id: string, from: string, to: string): Promise<unknown[]> {
+  /**
+   * Closed history for charts/stats (`dashboard`) or Trades page (`trades`).
+   * Profiles use different merge + field parsing — do not share one path.
+   */
+  async closedOrdersHistory(
+    id: string,
+    from: string,
+    to: string,
+    profile: MtHistoryProfile = "dashboard",
+  ): Promise<unknown[]> {
     const byKey = new Map<string, Record<string, unknown>>()
-    const ingest = (rows: unknown[]) => {
-      for (const row of rows) {
-        if (!row || typeof row !== "object") continue
-        const o = row as Record<string, unknown>
-        const ticket = Number(o.ticket ?? o.Ticket ?? 0)
-        if (!Number.isFinite(ticket) || ticket <= 0) continue
-        const closeTime = String(
-          o.closeTime ?? o.CloseTime ?? o.close_time ?? o.timeClose ?? o.TimeClose ?? "",
-        )
-        const key = closeTime ? `${ticket}:${closeTime}` : String(ticket)
-        byKey.set(key, o)
-      }
-    }
+    const ingest = (rows: unknown[]) => ingestMtHistoryRows(byKey, rows, profile)
 
     try {
       let page = 0
@@ -454,12 +452,17 @@ export class MetatraderApiClient {
       /* pagination optional on some builds */
     }
 
-    // Ingest lowest-priority sources first; deal-level OrderHistory wins over position snapshots.
-    const settled = await Promise.allSettled([
-      this.closedOrders(id),
-      this.historyPositions(id, from, to),
-      this.orderHistory(id, from, to),
-    ])
+    const settled = profile === "dashboard"
+      ? await Promise.allSettled([
+        this.closedOrders(id),
+        this.historyPositions(id, from, to),
+        this.orderHistory(id, from, to),
+      ])
+      : await Promise.allSettled([
+        this.historyPositions(id, from, to),
+        this.orderHistory(id, from, to),
+      ])
+
     for (const r of settled) {
       if (r.status === "fulfilled") ingest(r.value)
     }

@@ -142,6 +142,11 @@ export function AppLayout() {
   }, [location.pathname])
 
   useEffect(() => {
+    document.documentElement.classList.add('app-viewport-lock')
+    return () => document.documentElement.classList.remove('app-viewport-lock')
+  }, [])
+
+  useEffect(() => {
     if (!mobileNavOpen) return
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
@@ -221,7 +226,7 @@ export function AppLayout() {
   )
 
   return (
-    <div className="flex h-[100dvh] min-h-0 w-full overflow-hidden bg-neutral-50 dark:bg-neutral-950">
+    <div className="flex h-[100dvh] min-h-0 w-full overflow-hidden overscroll-none bg-neutral-50 dark:bg-neutral-950">
       {mobileNavOpen && (
         <button
           type="button"
@@ -277,11 +282,15 @@ export function AppLayout() {
 
       </aside>
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden overscroll-none">
         <AppSearchProvider headerEl={headerEl}>
         <header
           ref={setHeaderEl}
-          className="sticky top-0 z-20 flex h-14 sm:h-16 shrink-0 items-center gap-2 sm:gap-4 border-b border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 sm:px-6 pt-[env(safe-area-inset-top)]"
+          className={clsx(
+            'z-30 flex shrink-0 touch-none items-center gap-2 border-b border-neutral-100 bg-white px-3 dark:border-neutral-800 dark:bg-neutral-900 sm:gap-4 sm:px-6',
+            'fixed inset-x-0 top-0 h-[calc(3.5rem+env(safe-area-inset-top,0px))] pt-[env(safe-area-inset-top,0px)] sm:h-[calc(4rem+env(safe-area-inset-top,0px))]',
+            'lg:static lg:z-20 lg:h-16 lg:min-h-0 lg:pt-0 lg:touch-auto',
+          )}
         >
           <button
             type="button"
@@ -387,7 +396,13 @@ export function AppLayout() {
         </header>
         </AppSearchProvider>
 
-        <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain bg-neutral-50 dark:bg-neutral-950">
+        <main
+          className={clsx(
+            'min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain bg-neutral-50 dark:bg-neutral-950',
+            'pt-[calc(3.5rem+env(safe-area-inset-top,0px))] sm:pt-[calc(4rem+env(safe-area-inset-top,0px))]',
+            'lg:pt-0',
+          )}
+        >
           <Outlet />
         </main>
       </div>

@@ -58,6 +58,20 @@ body {
   min-height: 100vh;
 }
 
+/** Applied while AppLayout is mounted — prevents iOS rubber-band dragging the chrome away. */
+html.app-viewport-lock,
+html.app-viewport-lock body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+html.app-viewport-lock #root {
+  height: 100%;
+  min-height: 100%;
+  overflow: hidden;
+}
+
 @layer components {
   .tsc-surface {
     @apply bg-white border-neutral-200 dark:bg-neutral-900 dark:border-neutral-800;

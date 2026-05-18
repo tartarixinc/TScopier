@@ -46,6 +46,7 @@ async function fetchPerformancePayload(userId: string): Promise<PerformanceCache
     const historyFrom = new Date()
     historyFrom.setDate(historyFrom.getDate() - DASHBOARD_MT_HISTORY_DAYS)
     const tradesRes = await metatraderApi.trades({
+      historyProfile: 'dashboard',
       scope: 'all',
       historyFrom: formatLocalMtApiDateTime(historyFrom),
       historyTo: formatLocalMtApiDateTime(historyTo),
