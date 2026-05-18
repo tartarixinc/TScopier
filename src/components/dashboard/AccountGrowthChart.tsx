@@ -20,9 +20,11 @@ interface AccountGrowthChartProps {
   series: AccountGrowthSeries[]
   loading?: boolean
   stale?: boolean
+  /** When true, show empty state (same closed-trade window as Trade Outcome). */
+  isEmpty?: boolean
 }
 
-export function AccountGrowthChart({ data, series, loading, stale }: AccountGrowthChartProps) {
+export function AccountGrowthChart({ data, series, loading, stale, isEmpty }: AccountGrowthChartProps) {
   const { formatMoney, formatAxisMoney } = useFormatMoney()
   const t = useT()
   const { theme } = useTheme()
@@ -37,7 +39,7 @@ export function AccountGrowthChart({ data, series, loading, stale }: AccountGrow
       </div>
       {loading ? (
         <div className="h-64 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl animate-pulse" />
-      ) : series.length === 0 || data.length === 0 ? (
+      ) : isEmpty || series.length === 0 || data.length === 0 ? (
         <div className="h-64 flex items-center justify-center text-sm text-neutral-400 dark:text-neutral-500 text-center px-6">
           {t.dashboard.accountGrowthEmpty}
         </div>

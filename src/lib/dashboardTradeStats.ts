@@ -176,10 +176,10 @@ export function computeLinkedAccountPerformance(
     roi = ((equity - baseline) / baseline) * 100
   }
 
-  const closed = trades.filter(isTradeableClosedRow)
+  const closed = trades.filter(isMtClosedDealForOutcome)
   let winRate: number | null = null
   if (closed.length > 0) {
-    const wins = closed.filter(t => netClosedLegProfit(t) > 0).length
+    const wins = closed.filter(t => (closedDealProfit(t) ?? 0) > CLOSED_TRADE_OUTCOME_EPSILON).length
     winRate = (wins / closed.length) * 100
   }
 
@@ -190,7 +190,7 @@ export function computeLinkedAccountPerformance(
     let curve = baseline
     let maxDd = 0
     for (const t of sorted) {
-      curve += netClosedLegProfit(t)
+      curve += closedDealProfit(t) ?? 0
       if (curve > peak) peak = curve
       if (peak > 0) {
         const dd = ((peak - curve) / peak) * 100

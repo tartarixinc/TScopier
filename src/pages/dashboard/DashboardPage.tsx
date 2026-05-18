@@ -43,6 +43,8 @@ import {
   netPnlFromTradeOutcomeDay,
   summarizeTodayFromChartTrades,
   resolveDashboardChartTrades,
+  DASHBOARD_MT_HISTORY_DAYS,
+  sumClosedDealProfitByBroker,
   type DashboardChartTrade,
 } from '../../lib/dashboardCharts'
 import { AccountGrowthChart } from '../../components/dashboard/AccountGrowthChart'
@@ -537,6 +539,13 @@ export function DashboardPage() {
     [chartTrades],
   )
 
+  const closedProfitByAccountId = useMemo(
+    () => sumClosedDealProfitByBroker(chartTrades),
+    [chartTrades],
+  )
+
+  const hasMtTradeHistory = chartTrades.length > 0
+
   /** Headline stats: today P/L is the same net as today's bar on Trade Outcome (7 days). */
   const headlineStats = useMemo(() => {
     const todayProfit = netPnlFromTradeOutcomeDay(todayOutcomeDay)
@@ -562,10 +571,24 @@ export function DashboardPage() {
     return out
   }, [linkedAccounts, linkedAccountBalances])
 
+  const balanceByAccountId = useMemo(() => {
+    const out: Record<string, number> = {}
+    for (const account of linkedAccounts) {
+      const live = linkedAccountBalances[account.id]
+      const bal = live?.balance ?? account.last_balance ?? live?.equity ?? account.last_equity
+      if (bal != null && Number.isFinite(Number(bal))) {
+        out[account.id] = Number(bal)
+      }
+    }
+    return out
+  }, [linkedAccounts, linkedAccountBalances])
+
   const accountGrowth = useMemo(
-    () => buildAccountGrowthSeries(linkedAccounts, chartTrades, equityByAccountId),
-    [linkedAccounts, chartTrades, equityByAccountId],
+    () => buildAccountGrowthSeries(linkedAccounts, chartTrades, balanceByAccountId, 7),
+    [linkedAccounts, chartTrades, balanceByAccountId],
   )
+
+  const tradeOutcomeEmpty = tradeVolume7Day.every(d => d.profit === 0 && d.loss === 0)
 
   const linkedAccountPerformance = useMemo(() => {
     const tradesByAccountId: Record<string, TradeStatsRow[]> = {}
@@ -1043,9 +1066,9 @@ export function DashboardPage() {
     if (!hasMtBroker) return
     lastMtTradesRefreshRef.current = now
 
-    const { todayStart: dayStart, tomorrowStart: dayEnd } = getLocalCalendarDayBounds()
-    const historyFrom = new Date(dayStart)
-    historyFrom.setDate(historyFrom.getDate() - 7)
+    const { tomorrowStart: dayEnd } = getLocalCalendarDayBounds()
+    const historyFrom = new Date()
+    historyFrom.setDate(historyFrom.getDate() - DASHBOARD_MT_HISTORY_DAYS)
     let trades: MtTrade[]
     try {
       const res = await metatraderApi.trades({
@@ -1496,6 +1519,7 @@ export function DashboardPage() {
           data={accountGrowth.data}
           series={accountGrowth.series}
           loading={chartsEmpty}
+          isEmpty={tradeOutcomeEmpty}
         />
       </div>
 
@@ -1634,7 +1658,7 @@ export function DashboardPage() {
           <span>{la.colBroker}</span>
           <span>{la.colAccountType}</span>
           <span>{la.colBalance}</span>
-          <span>{la.colPnl}</span>
+          <span title={la.colPnlHint}>{la.colPnl}</span>
           <span>{la.colRoi}</span>
           <span>{la.colWinRate}</span>
           <span>{la.colDd}</span>
@@ -1661,6 +1685,9 @@ export function DashboardPage() {
                 account={account}
                 accountSummary={linkedAccountBalances[account.id]}
                 performance={linkedAccountPerformance[account.id]}
+                closedHistoryPnl={
+                  hasMtTradeHistory ? (closedProfitByAccountId[account.id] ?? 0) : null
+                }
                 onToggleActive={is_active => { void toggleBrokerActive(account.id, is_active) }}
                 toggleDisabled={togglingBrokerId === account.id}
               />
@@ -1819,12 +1846,15 @@ function LinkedAccountRow({
   account,
   accountSummary,
   performance,
+  closedHistoryPnl,
   onToggleActive,
   toggleDisabled,
 }: {
   account: BrokerAccount
   accountSummary?: { balance?: number; equity?: number; currency?: string; broker?: string; mt_server_hint?: string; account_type?: 'Live' | 'Demo'; open_pnl?: number }
   performance?: LinkedAccountPerformance
+  /** Sum of closed-deal profit from MT history; null until trade history is loaded. */
+  closedHistoryPnl?: number | null
   onToggleActive: (is_active: boolean) => void
   toggleDisabled?: boolean
 }) {
@@ -1840,7 +1870,10 @@ function LinkedAccountRow({
   const accountCurrency = (accountSummary?.currency ?? account.last_currency ?? '').trim() || undefined
   const balanceText = formatMoneyWithCode(balance, accountCurrency, { locale: intlLocale })
   const hasBoth = balance != null && equity != null
-  const pnl = accountSummary?.open_pnl ?? (hasBoth ? (equity! - balance!) : 0)
+  const pnl =
+    closedHistoryPnl != null
+      ? closedHistoryPnl
+      : accountSummary?.open_pnl ?? (hasBoth ? equity! - balance! : 0)
   const pnlColor = pnl >= 0 ? 'text-teal-600' : 'text-error-600'
   const pnlFormatted = formatMoneyWithCode(Math.abs(pnl), accountCurrency, { locale: intlLocale, nullAsDash: false })
   const apiRaw = (accountSummary?.broker ?? '').trim()

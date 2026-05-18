@@ -196,9 +196,10 @@ export const es: Translations = {
     tradeOutcomeEmpty: 'Sin operaciones cerradas en los últimos 7 días',
     chartProfit: 'Beneficio',
     chartLoss: 'Pérdida',
-    accountGrowthTitle: 'Crecimiento de cuenta',
-    accountGrowthSubtitle: 'Equidad desde la vinculación; varias cuentas como líneas separadas',
-    accountGrowthEmpty: 'Conecta una cuenta con línea base de rendimiento para ver el crecimiento',
+    accountGrowthTitle: 'Crecimiento de cuenta (7 días)',
+    accountGrowthSubtitle:
+      'Saldo de la cuenta en los últimos 7 días (saldo actual con P/L de operaciones cerradas día a día)',
+    accountGrowthEmpty: 'Sin operaciones cerradas en los últimos 7 días',
     channelWorker: 'Worker de canales',
     noChannelWorkerLogs: 'Aún no hay registros del worker de canales.',
     noData: 'Sin datos',
@@ -211,6 +212,7 @@ export const es: Translations = {
       colAccountType: 'Tipo de cuenta',
       colBalance: 'Balance',
       colPnl: 'PnL',
+      colPnlHint: 'P/L realizado total de todas las operaciones cerradas en el historial del bróker',
       colRoi: 'ROI',
       colWinRate: 'Tasa de acierto',
       colDd: 'DD',
@@ -453,7 +455,11 @@ export const es: Translations = {
   performance: {
     title: 'Rendimiento',
     subtitle:
-      'Sigue el P/L realizado, el win rate y el ROI por cuenta en tus brokers vinculados. Cambia el periodo para ver resultados recientes o el historial completo.',
+      'Estadísticas en vivo de tus cuentas MetaTrader vinculadas: historial de operaciones cerradas, saldos y filtros por periodo.',
+    noMtBroker:
+      'Vincula una cuenta MetaTrader activa para cargar datos. Las cuentas en pausa o sin conexión al broker no se incluyen.',
+    noTradeHistory:
+      'El broker no devolvió historial de operaciones cerradas. Revisa la conexión en el Panel o pulsa Actualizar.',
     period7d: '7 días',
     period30d: '30 días',
     period90d: '90 días',

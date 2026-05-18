@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Radio, Trash2, RefreshCw, CircleAlert as AlertCircle, ChevronDown } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
@@ -119,8 +119,10 @@ function channelNeedsProfiling(profile: ChannelSignalProfile | undefined): boole
     profile.meta && typeof profile.meta === 'object' && !Array.isArray(profile.meta)
       ? (profile.meta as Record<string, unknown>)
       : {}
-  if (meta.profiling === 'disabled' || meta.keywords_only === true) return true
-  return profile.sample_size <= 0 && profile.signal_type === 'unknown'
+  if (meta.profiling === 'disabled' || meta.keywords_only === true) return false
+  if (profile.sample_size > 0) return false
+  if (profile.signal_type !== 'unknown') return false
+  return true
 }
 
 function getTelegramAvatarUrl(username?: string): string | null {
@@ -283,20 +285,6 @@ export function CopierEnginePage() {
     }
   }, [session?.access_token])
 
-  const autoProfileQueuedRef = useRef<Set<string>>(new Set())
-
-  useEffect(() => {
-    if (!session?.access_token || loading) return
-    for (const ch of channels) {
-      if (!ch.is_active) continue
-      if (analyzingChannels.has(ch.id)) continue
-      if (!channelNeedsProfiling(channelProfiles[ch.id])) continue
-      if (autoProfileQueuedRef.current.has(ch.id)) continue
-      autoProfileQueuedRef.current.add(ch.id)
-      void analyzeChannelProfile(ch.id)
-    }
-  }, [session?.access_token, loading, channels, channelProfiles, analyzingChannels, analyzeChannelProfile])
-
   const fetchTgChannels = async () => {
     setLoadingTg(true)
     setError('')
@@ -323,7 +311,6 @@ export function CopierEnginePage() {
     setChannels(prev => prev.map(c => c.id === id ? { ...c, is_active } : c))
     await supabase.from('telegram_channels').update({ is_active }).eq('id', id)
     if (is_active && channelNeedsProfiling(channelProfiles[id])) {
-      autoProfileQueuedRef.current.delete(id)
       void analyzeChannelProfile(id)
     }
   }
@@ -355,7 +342,6 @@ export function CopierEnginePage() {
     setChannels(prev => [inserted, ...prev])
     setNewChannel({ channel_id: '', channel_username: '', display_name: '' })
     setShowAdd(false)
-    autoProfileQueuedRef.current.delete(inserted.id)
     void analyzeChannelProfile(inserted.id)
   }
 
@@ -382,7 +368,6 @@ export function CopierEnginePage() {
         const exists = prev.find(c => c.channel_id === ch.id)
         return exists ? prev.map(c => c.channel_id === ch.id ? upserted : c) : [upserted, ...prev]
       })
-      autoProfileQueuedRef.current.delete(upserted.id)
       void analyzeChannelProfile(upserted.id)
     }
   }

@@ -196,9 +196,10 @@ export const en: Translations = {
     tradeOutcomeEmpty: 'No closed trades in the last 7 days',
     chartProfit: 'Profit',
     chartLoss: 'Loss',
-    accountGrowthTitle: 'Account growth',
-    accountGrowthSubtitle: 'Equity from link date; multiple accounts shown as separate lines',
-    accountGrowthEmpty: 'Connect a broker account with a performance baseline to see growth over time',
+    accountGrowthTitle: 'Account growth (7 days)',
+    accountGrowthSubtitle:
+      'Account balance over the last 7 days (current balance with closed-trade P/L applied day by day)',
+    accountGrowthEmpty: 'No closed trades in the last 7 days',
     channelWorker: 'Channel Worker',
     noChannelWorkerLogs: 'No channel worker logs yet.',
     noData: 'No Data',
@@ -211,6 +212,7 @@ export const en: Translations = {
       colAccountType: 'Account type',
       colBalance: 'Balance',
       colPnl: 'PnL',
+      colPnlHint: 'Total realized P/L from all closed trades in broker history',
       colRoi: 'ROI',
       colWinRate: 'Win rate',
       colDd: 'DD',
@@ -453,7 +455,11 @@ export const en: Translations = {
   performance: {
     title: 'Performance',
     subtitle:
-      'Track realized P/L, win rate, and account-level ROI across your linked broker accounts. Switch the period to focus on recent results or the full history.',
+      'Live stats from your linked MetaTrader accounts — closed trade history, balances, and period filters for charts and headline metrics.',
+    noMtBroker:
+      'Link an active MetaTrader account to load performance data. Paused or legacy accounts without a broker connection are not included.',
+    noTradeHistory:
+      'No closed trade history was returned from the broker. Check the connection on the Dashboard or try Refresh.',
     period7d: '7 days',
     period30d: '30 days',
     period90d: '90 days',

@@ -14,8 +14,12 @@ import { useAuth } from '../../context/AuthContext'
 import { useT } from '../../context/LocaleContext'
 import { useFormatMoney } from '../../context/UserProfileContext'
 import { interpolate } from '../../i18n/interpolate'
-import { buildTradeVolumeByDays } from '../../lib/dashboardCharts'
-import { periodToDays, type PerformancePeriod } from '../../lib/performanceAnalytics'
+import { buildAccountGrowthSeries, buildTradeVolumeByDays } from '../../lib/dashboardCharts'
+import {
+  computePeriodStatsFromVolumeBuckets,
+  periodToDays,
+  type PerformancePeriod,
+} from '../../lib/performanceAnalytics'
 import { usePerformanceData } from '../../hooks/usePerformanceData'
 import { AccountGrowthChart } from '../../components/dashboard/AccountGrowthChart'
 import { AccountPerformanceTable } from '../../components/performance/AccountPerformanceTable'
@@ -46,11 +50,13 @@ export function PerformancePage() {
   const {
     accounts,
     chartTrades,
+    hasMtHistory,
+    hasMtBrokers,
     perAccountPerformance,
     aggregate,
-    accountGrowth,
     periodStats,
     equityByAccountId,
+    balanceByAccountId,
     loading,
     refreshing,
     error,
@@ -58,12 +64,27 @@ export function PerformancePage() {
     refresh,
   } = usePerformanceData(user?.id)
 
-  const stats = useMemo(() => periodStats(period), [periodStats, period])
+  const periodDays = periodToDays(period)
 
   const volumeData = useMemo(
-    () => buildTradeVolumeByDays(chartTrades, periodToDays(period)),
-    [chartTrades, period],
+    () => buildTradeVolumeByDays(chartTrades, periodDays),
+    [chartTrades, periodDays],
   )
+
+  const stats = useMemo(() => {
+    if (chartTrades.length > 0 && volumeData.length > 0) {
+      return computePeriodStatsFromVolumeBuckets(chartTrades, volumeData)
+    }
+    return periodStats(period)
+  }, [chartTrades, volumeData, period, periodStats])
+
+  const accountGrowth = useMemo(
+    () => buildAccountGrowthSeries(accounts, chartTrades, balanceByAccountId, periodDays),
+    [accounts, chartTrades, balanceByAccountId, periodDays],
+  )
+
+  const tradeOutcomeEmpty = volumeData.every(d => d.profit === 0 && d.loss === 0)
+  const growthEmpty = tradeOutcomeEmpty || accountGrowth.series.length === 0
 
   const periodLabels: Record<PerformancePeriod, string> = {
     '7d': p.period7d,
@@ -114,6 +135,12 @@ export function PerformancePage() {
       </div>
 
       {error ? <Alert>{error}</Alert> : null}
+      {!loading && !error && accounts.length > 0 && !hasMtBrokers ? (
+        <Alert>{p.noMtBroker}</Alert>
+      ) : null}
+      {!loading && !error && hasMtBrokers && !hasMtHistory ? (
+        <Alert>{p.noTradeHistory}</Alert>
+      ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <PerformanceStatCard
@@ -171,7 +198,8 @@ export function PerformancePage() {
           data={accountGrowth.data}
           series={accountGrowth.series}
           loading={loading}
-          stale={refreshing}
+          stale={refreshing && !loading}
+          isEmpty={!loading && growthEmpty}
         />
         <PerformanceTradeOutcomeChart
           data={volumeData}
@@ -181,7 +209,7 @@ export function PerformancePage() {
           profitLabel={t.dashboard.chartProfit}
           lossLabel={t.dashboard.chartLoss}
           loading={loading}
-          stale={refreshing}
+          stale={refreshing && !loading}
         />
       </div>
 

@@ -1,5 +1,6 @@
 import type { BrokerAccount } from '../types/database'
 import { inferBrokerLabelFromServer } from './brokerFromServer'
+import { coerceMtTimestamp, parseMtHistoryTimestamp } from './mtApiDateTime'
 import type { MtTrade } from './metatraderapi'
 
 /** Normalized trade row for dashboard charts (MT or DB). */
@@ -26,6 +27,9 @@ export interface AccountGrowthSeries {
   name: string
   color: string
 }
+
+/** How far back to pull MT closed history for charts and linked-account total P/L. */
+export const DASHBOARD_MT_HISTORY_DAYS = 365 * 10
 
 export const ACCOUNT_CHART_COLORS = [
   '#0d9488',
@@ -55,10 +59,28 @@ function shortDayLabel(d: Date): string {
   return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
-function parseDay(iso: string | null): Date | null {
-  if (!iso) return null
-  const t = new Date(iso)
-  return Number.isFinite(t.getTime()) ? startOfLocalDay(t) : null
+/** Local calendar day of an MT close/open timestamp. */
+export function closedTradeLocalDay(
+  iso: string | number | null | undefined,
+): Date | null {
+  const ts = parseMtHistoryTimestamp(iso)
+  if (ts != null) return startOfLocalDay(new Date(ts))
+  if (iso == null || iso === '') return null
+  const direct = new Date(typeof iso === 'number' ? iso : String(iso))
+  return Number.isFinite(direct.getTime()) ? startOfLocalDay(direct) : null
+}
+
+export function closedTradeDayKey(
+  iso: string | number | null | undefined,
+): string | null {
+  const d = closedTradeLocalDay(iso)
+  return d ? dayKey(d) : null
+}
+
+/** Calendar day key for a closed chart row (close time, else open time). */
+export function chartTradeDayKey(t: DashboardChartTrade): string | null {
+  if (t.status !== 'closed') return null
+  return closedTradeDayKey(t.closedAt) ?? closedTradeDayKey(t.openedAt)
 }
 
 export function mtTradeToChartRow(t: MtTrade): DashboardChartTrade | null {
@@ -70,8 +92,8 @@ export function mtTradeToChartRow(t: MtTrade): DashboardChartTrade | null {
     lotSize: Number(t.lot_size) || 0,
     profit: typeof t.profit === 'number' && Number.isFinite(t.profit) ? t.profit : null,
     status: t.status,
-    closedAt: t.closed_at,
-    openedAt: t.opened_at,
+    closedAt: coerceMtTimestamp(t.closed_at),
+    openedAt: coerceMtTimestamp(t.opened_at),
   }
 }
 
@@ -132,9 +154,8 @@ export function buildTradeVolumeByDays(
 
   for (const t of trades) {
     if (t.status !== 'closed') continue
-    const closed = parseDay(t.closedAt)
-    if (!closed) continue
-    const key = dayKey(closed)
+    const key = chartTradeDayKey(t)
+    if (!key) continue
     const bucket = buckets.get(key)
     if (!bucket) continue
     bucket.volume += t.lotSize
@@ -157,12 +178,33 @@ export function netPnlFromTradeOutcomeDay(day: TradeVolumeDay | undefined): numb
   return day.profit - day.loss
 }
 
+/** Sum of daily net P/L across Trade Outcome buckets (profit − loss per day). */
+export function sumNetPnlFromTradeVolumeDays(days: TradeVolumeDay[]): number {
+  return days.reduce((sum, d) => sum + d.profit - d.loss, 0)
+}
+
 export function findTodayTradeOutcomeDay(
   trades: DashboardChartTrade[],
   now = new Date(),
 ): TradeVolumeDay | undefined {
   const todayKey = dayKey(startOfLocalDay(now))
   return buildTradeVolume7Day(trades, now).find(b => b.key === todayKey)
+}
+
+/** Sum deal `profit` on every closed leg per broker (same rules as Trade Outcome chart). */
+export function sumClosedDealProfitByBroker(
+  trades: DashboardChartTrade[],
+): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const t of trades) {
+    if (t.status !== 'closed') continue
+    const p = t.profit
+    if (p == null || !Number.isFinite(p)) continue
+    const id = t.brokerAccountId
+    if (!id) continue
+    out[id] = (out[id] ?? 0) + p
+  }
+  return out
 }
 
 const OUTCOME_EPSILON = 0.01
@@ -189,8 +231,8 @@ export function summarizeTodayFromChartTrades(
 
   for (const t of trades) {
     if (t.status !== 'closed') continue
-    const closed = parseDay(t.closedAt)
-    if (!closed || dayKey(closed) !== todayKey) continue
+    const key = chartTradeDayKey(t)
+    if (key !== todayKey) continue
     const p = t.profit
     if (p == null || !Number.isFinite(p)) continue
     taken++
@@ -222,49 +264,85 @@ function accountDisplayName(account: BrokerAccount): string {
   return label || `Account ${account.id.slice(0, 6)}`
 }
 
-/** Equity curve per linked account from baseline + cumulative closed P/L; ends at live equity. */
+/** Daily net closed P/L per account (deal profit), keyed like {@link buildTradeVolumeByDays}. */
+function dailyNetPnlByAccount(
+  trades: DashboardChartTrade[],
+  dayKeys: ReadonlySet<string>,
+): Map<string, Map<string, number>> {
+  const out = new Map<string, Map<string, number>>()
+  for (const t of trades) {
+    if (t.status !== 'closed') continue
+    const key = chartTradeDayKey(t)
+    if (!key || !dayKeys.has(key)) continue
+    const p = t.profit
+    if (p == null || !Number.isFinite(p)) continue
+    const byDay = out.get(t.brokerAccountId) ?? new Map<string, number>()
+    byDay.set(key, (byDay.get(key) ?? 0) + p)
+    out.set(t.brokerAccountId, byDay)
+  }
+  return out
+}
+
+function resolveAccountAnchorBalance(
+  account: BrokerAccount,
+  balanceByAccountId: Record<string, number | undefined>,
+): number | null {
+  const live = balanceByAccountId[account.id]
+  if (live != null && Number.isFinite(live) && live > 0) return live
+  const fallback =
+    account.performance_baseline_balance ?? account.last_equity ?? account.last_balance
+  const n = Number(fallback)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
+/**
+ * Account balance over the same calendar-day window as Trade Outcome (default 7 days):
+ * opening balance (back-calculated from current balance − period P/L) plus cumulative
+ * closed-trade net P/L per day. Last point uses live balance when provided.
+ */
 export function buildAccountGrowthSeries(
   accounts: BrokerAccount[],
   trades: DashboardChartTrade[],
-  equityByAccountId: Record<string, number | undefined>,
+  balanceByAccountId: Record<string, number | undefined>,
+  dayCount = 7,
   now = new Date(),
 ): AccountGrowthResult {
+  const buckets = buildTradeVolumeByDays(trades, dayCount, now)
+  if (buckets.length === 0) {
+    return { data: [], series: [] }
+  }
+
+  const dayKeys = new Set(buckets.map(b => b.key))
+  const dailyByAccount = dailyNetPnlByAccount(trades, dayKeys)
   const active = accounts.filter(a => a.is_active)
-  const series: AccountGrowthSeries[] = []
-  const today = startOfLocalDay(now)
 
   type AccState = {
     id: string
     dataKey: string
-    baseline: number
-    start: Date
-    cumByDay: Map<string, number>
+    opening: number
+    anchor: number
   }
 
   const states: AccState[] = []
+  const series: AccountGrowthSeries[] = []
 
   active.forEach((account, idx) => {
-    const baselineRaw = account.performance_baseline_balance ?? account.last_balance
-    const baseline = Number(baselineRaw)
-    if (!Number.isFinite(baseline) || baseline <= 0) return
+    const anchor = resolveAccountAnchorBalance(account, balanceByAccountId)
+    if (anchor == null) return
 
-    const created = parseDay(account.created_at) ?? today
-    const dataKey = `acc_${account.id.replace(/-/g, '')}`
-    const closedForAccount = trades
-      .filter(t => t.brokerAccountId === account.id && t.status === 'closed')
-      .map(t => ({ closed: parseDay(t.closedAt), profit: t.profit ?? 0 }))
-      .filter((t): t is { closed: Date; profit: number } => t.closed != null)
-      .sort((a, b) => a.closed.getTime() - b.closed.getTime())
-
-    const cumByDay = new Map<string, number>()
-    let running = 0
-    for (const row of closedForAccount) {
-      if (row.closed < created) continue
-      running += row.profit
-      cumByDay.set(dayKey(row.closed), running)
+    let periodPnl = 0
+    const daily = dailyByAccount.get(account.id)
+    if (daily) {
+      for (const v of daily.values()) periodPnl += v
     }
 
-    states.push({ id: account.id, dataKey, baseline, start: created, cumByDay })
+    const dataKey = `acc_${account.id.replace(/-/g, '')}`
+    states.push({
+      id: account.id,
+      dataKey,
+      opening: anchor - periodPnl,
+      anchor,
+    })
     series.push({
       id: account.id,
       name: accountDisplayName(account),
@@ -276,42 +354,21 @@ export function buildAccountGrowthSeries(
     return { data: [], series: [] }
   }
 
-  const rangeStart = startOfLocalDay(
-    new Date(Math.min(...states.map(s => s.start.getTime()))),
-  )
-  const allDays: Date[] = []
-  const cur = new Date(rangeStart)
-  while (cur <= today) {
-    allDays.push(new Date(cur))
-    cur.setDate(cur.getDate() + 1)
-  }
+  const lastKey = buckets[buckets.length - 1]!.key
+  const running = new Map<string, number>()
 
-  const maxPoints = 120
-  const step = allDays.length > maxPoints ? Math.ceil(allDays.length / maxPoints) : 1
-  const sampledDays = allDays.filter((_, i) => i % step === 0 || i === allDays.length - 1)
-
-  const data = sampledDays.map(day => {
-    const key = dayKey(day)
+  const data = buckets.map(bucket => {
     const row: Record<string, string | number> = {
-      key,
-      label: shortDayLabel(day),
+      key: bucket.key,
+      label: bucket.label,
     }
+    const isLast = bucket.key === lastKey
     for (const st of states) {
-      if (day < st.start) {
-        row[st.dataKey] = st.baseline
-        continue
-      }
-      let cum = 0
-      for (const [dk, v] of st.cumByDay) {
-        if (dk <= key) cum = v
-      }
-      const isLast = dayKey(day) === dayKey(today)
-      const live = equityByAccountId[st.id]
-      if (isLast && live != null && Number.isFinite(live)) {
-        row[st.dataKey] = Number(live.toFixed(2))
-      } else {
-        row[st.dataKey] = Number((st.baseline + cum).toFixed(2))
-      }
+      const daily = dailyByAccount.get(st.id)?.get(bucket.key) ?? 0
+      const cum = (running.get(st.id) ?? 0) + daily
+      running.set(st.id, cum)
+      const value = isLast ? st.anchor : st.opening + cum
+      row[st.dataKey] = Number(value.toFixed(2))
     }
     return row
   })

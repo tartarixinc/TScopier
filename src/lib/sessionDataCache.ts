@@ -36,6 +36,15 @@ export function readSessionCache<T>(key: string, ttlMs: number): { data: T; fetc
   }
 }
 
+export function clearSessionCacheKey(key: string): void {
+  memory.delete(key)
+  try {
+    sessionStorage.removeItem(storageKey(key))
+  } catch {
+    /* ignore */
+  }
+}
+
 export function writeSessionCache<T>(key: string, data: T): number {
   const fetchedAt = Date.now()
   const envelope: CacheEnvelope<T> = { data, fetchedAt }

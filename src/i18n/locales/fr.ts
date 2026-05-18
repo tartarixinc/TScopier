@@ -196,9 +196,10 @@ export const fr: Translations = {
     tradeOutcomeEmpty: 'Aucun trade clôturé sur les 7 derniers jours',
     chartProfit: 'Profit',
     chartLoss: 'Perte',
-    accountGrowthTitle: 'Croissance du compte',
-    accountGrowthSubtitle: 'Équité depuis la liaison ; plusieurs comptes en lignes séparées',
-    accountGrowthEmpty: 'Connectez un compte avec une base de performance pour voir la croissance',
+    accountGrowthTitle: 'Croissance du compte (7 jours)',
+    accountGrowthSubtitle:
+      'Solde du compte sur 7 jours (solde actuel avec P/L des trades clôturés appliqué jour par jour)',
+    accountGrowthEmpty: 'Aucun trade clôturé sur les 7 derniers jours',
     channelWorker: 'Worker des canaux',
     noChannelWorkerLogs: 'Aucun journal du worker des canaux pour le moment.',
     noData: 'Aucune donnée',
@@ -211,6 +212,7 @@ export const fr: Translations = {
       colAccountType: 'Type de compte',
       colBalance: 'Solde',
       colPnl: 'PnL',
+      colPnlHint: 'P/L réalisé total de toutes les transactions clôturées dans l’historique du courtier',
       colRoi: 'ROI',
       colWinRate: 'Taux de réussite',
       colDd: 'DD',
@@ -453,7 +455,11 @@ export const fr: Translations = {
   performance: {
     title: 'Performance',
     subtitle:
-      'Suivez le P/L réalisé, le taux de réussite et le ROI par compte sur vos brokers connectés. Changez la période pour les résultats récents ou l’historique complet.',
+      'Statistiques en direct depuis vos comptes MetaTrader liés : historique des trades clôturés, soldes et filtres par période.',
+    noMtBroker:
+      'Liez un compte MetaTrader actif pour charger les données. Les comptes en pause ou sans connexion broker sont exclus.',
+    noTradeHistory:
+      'Aucun historique de trades clôturés n’a été renvoyé par le courtier. Vérifiez la connexion sur le tableau de bord ou actualisez.',
     period7d: '7 jours',
     period30d: '30 jours',
     period90d: '90 jours',

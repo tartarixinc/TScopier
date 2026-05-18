@@ -106,6 +106,7 @@ export interface DashboardLinkedAccountsTranslations {
   colAccountType: string
   colBalance: string
   colPnl: string
+  colPnlHint: string
   colRoi: string
   colWinRate: string
   colDd: string
@@ -311,6 +312,8 @@ export interface MarketNewsTranslations {
 export interface PerformanceTranslations {
   title: string
   subtitle: string
+  noMtBroker: string
+  noTradeHistory: string
   period7d: string
   period30d: string
   period90d: string

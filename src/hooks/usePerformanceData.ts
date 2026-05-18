@@ -1,100 +1,203 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { buildAccountGrowthSeries, mtTradeToChartRow } from '../lib/dashboardCharts'
-import { computeLinkedAccountPerformanceMap } from '../lib/dashboardTradeStats'
+import { DASHBOARD_MT_HISTORY_DAYS, resolveDashboardChartTrades } from '../lib/dashboardCharts'
+import {
+  computeLinkedAccountPerformanceMap,
+  getLocalCalendarDayBounds,
+} from '../lib/dashboardTradeStats'
 import { formatLocalCalendarDay } from '../lib/dayStartBalance'
+import { formatLocalMtApiDateTime } from '../lib/mtApiDateTime'
+import {
+  PERFORMANCE_CACHE_TTL_MS,
+  performanceCacheKey,
+  type PerformanceCachePayload,
+} from '../lib/performanceSessionCache'
+import { readSessionCache, writeSessionCache } from '../lib/sessionDataCache'
 import { metatraderApi, type MtTrade } from '../lib/metatraderapi'
 import {
   aggregateAccountPerformance,
   chartTradesToStatsRows,
+  computePeriodStatsFromChartTrades,
   computePeriodTradeStats,
   mtTradesToStatsRows,
   type PerformancePeriod,
 } from '../lib/performanceAnalytics'
 import type { BrokerAccount } from '../types/database'
 
+function isMtLinkedBroker(account: BrokerAccount): boolean {
+  const uuid = (account.metaapi_account_id ?? '').trim()
+  return account.is_active && uuid.length > 0 && !uuid.includes('|')
+}
+
+async function fetchPerformancePayload(userId: string): Promise<PerformanceCachePayload> {
+  const brokerRes = await supabase
+    .from('broker_accounts')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('is_active', true)
+  if (brokerRes.error) throw brokerRes.error
+
+  const linked = (brokerRes.data ?? []) as BrokerAccount[]
+  const mtBrokers = linked.filter(isMtLinkedBroker)
+
+  let trades: MtTrade[] = []
+  if (mtBrokers.length > 0) {
+    const { tomorrowStart: historyTo } = getLocalCalendarDayBounds()
+    const historyFrom = new Date()
+    historyFrom.setDate(historyFrom.getDate() - DASHBOARD_MT_HISTORY_DAYS)
+    const tradesRes = await metatraderApi.trades({
+      scope: 'all',
+      historyFrom: formatLocalMtApiDateTime(historyFrom),
+      historyTo: formatLocalMtApiDateTime(historyTo),
+    })
+    trades = tradesRes.trades ?? []
+  }
+
+  const calendarDay = formatLocalCalendarDay()
+  const timezoneOffsetMinutes = new Date().getTimezoneOffset()
+  const equity: Record<string, number> = {}
+  const balance: Record<string, number> = {}
+  const baselineById: Record<string, number> = {}
+
+  await Promise.all(
+    linked.map(async account => {
+      if (!isMtLinkedBroker(account)) {
+        const eq = account.last_equity ?? account.last_balance
+        const bal = account.last_balance ?? account.last_equity
+        if (eq != null && Number.isFinite(Number(eq))) equity[account.id] = Number(eq)
+        if (bal != null && Number.isFinite(Number(bal))) balance[account.id] = Number(bal)
+        return
+      }
+      try {
+        const { summary, performance_baseline_balance } = await metatraderApi.summary(account.id, {
+          calendarDay,
+          timezoneOffsetMinutes,
+        })
+        const eq = summary.equity ?? summary.balance
+        const bal = summary.balance ?? summary.equity
+        if (eq != null && Number.isFinite(Number(eq))) equity[account.id] = Number(eq)
+        if (bal != null && Number.isFinite(Number(bal))) balance[account.id] = Number(bal)
+        const baseline = Number(performance_baseline_balance)
+        if (Number.isFinite(baseline) && baseline > 0) {
+          baselineById[account.id] = baseline
+        }
+      } catch {
+        const eq = account.last_equity ?? account.last_balance
+        const bal = account.last_balance ?? account.last_equity
+        if (eq != null && Number.isFinite(Number(eq))) equity[account.id] = Number(eq)
+        if (bal != null && Number.isFinite(Number(bal))) balance[account.id] = Number(bal)
+      }
+    }),
+  )
+
+  const accounts = linked.map(a => {
+    const baseline = baselineById[a.id]
+    return baseline != null ? { ...a, performance_baseline_balance: baseline } : a
+  })
+
+  return { accounts, mtTrades: trades, equityByAccountId: equity, balanceByAccountId: balance }
+}
+
 export function usePerformanceData(userId: string | undefined) {
   const [accounts, setAccounts] = useState<BrokerAccount[]>([])
   const [mtTrades, setMtTrades] = useState<MtTrade[]>([])
   const [equityByAccountId, setEquityByAccountId] = useState<Record<string, number>>({})
+  const [balanceByAccountId, setBalanceByAccountId] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const inflightRef = useRef(false)
   const mtTradesRef = useRef<MtTrade[]>([])
+  const hydratedUserRef = useRef<string | null>(null)
+
+  const applyPayload = useCallback((payload: PerformanceCachePayload) => {
+    setAccounts(payload.accounts)
+    mtTradesRef.current = payload.mtTrades
+    setMtTrades(payload.mtTrades)
+    setEquityByAccountId(payload.equityByAccountId)
+    setBalanceByAccountId(payload.balanceByAccountId)
+  }, [])
 
   const load = useCallback(
-    async (isRefresh = false) => {
+    async (opts?: { force?: boolean; background?: boolean }) => {
       if (!userId || inflightRef.current) return
-      inflightRef.current = true
-      if (isRefresh) setRefreshing(true)
-      else setLoading(true)
-      setError(null)
-      try {
-        const [brokerRes, tradesRes] = await Promise.all([
-          supabase.from('broker_accounts').select('*').eq('user_id', userId).eq('is_active', true),
-          metatraderApi.trades({ scope: 'all' }),
-        ])
-        if (brokerRes.error) throw brokerRes.error
-        const linked = (brokerRes.data ?? []) as BrokerAccount[]
-        setAccounts(linked)
-        const incoming = tradesRes.trades ?? []
-        if (incoming.length > 0) {
-          mtTradesRef.current = incoming
-          setMtTrades(incoming)
-        } else if (!isRefresh || mtTradesRef.current.length === 0) {
-          mtTradesRef.current = incoming
-          setMtTrades(incoming)
-        }
+      const key = performanceCacheKey(userId)
+      const cached =
+        !opts?.force ? readSessionCache<PerformanceCachePayload>(key, PERFORMANCE_CACHE_TTL_MS) : null
 
-        const equity: Record<string, number> = {}
-        await Promise.all(
-          linked.map(async account => {
-            try {
-              const { summary } = await metatraderApi.summary(account.id, {
-                calendarDay: formatLocalCalendarDay(),
-                timezoneOffsetMinutes: new Date().getTimezoneOffset(),
-              })
-              const eq = summary.equity ?? summary.balance
-              if (eq != null && Number.isFinite(Number(eq))) {
-                equity[account.id] = Number(eq)
-              }
-            } catch {
-              const fallback = account.last_equity ?? account.last_balance
-              if (fallback != null && Number.isFinite(Number(fallback))) {
-                equity[account.id] = Number(fallback)
-              }
-            }
-          }),
-        )
-        setEquityByAccountId(equity)
-        setLastUpdated(new Date())
+      if (cached && !opts?.force) {
+        applyPayload(cached.data)
+        setLastUpdated(new Date(cached.fetchedAt))
+        setError(null)
+        if (!opts?.background) setLoading(false)
+        if (Date.now() - cached.fetchedAt < PERFORMANCE_CACHE_TTL_MS) return
+      }
+
+      inflightRef.current = true
+      if (opts?.force || cached) {
+        setRefreshing(true)
+      } else {
+        setLoading(true)
+      }
+      setError(null)
+
+      try {
+        const payload = await fetchPerformancePayload(userId)
+        const fetchedAt = writeSessionCache(key, payload)
+        applyPayload(payload)
+        setLastUpdated(new Date(fetchedAt))
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Failed to load performance data')
+        if (!cached) {
+          setError(e instanceof Error ? e.message : 'Failed to load performance data')
+        }
       } finally {
         inflightRef.current = false
         setLoading(false)
         setRefreshing(false)
       }
     },
-    [userId],
+    [userId, applyPayload],
   )
 
   useEffect(() => {
+    if (!userId) {
+      hydratedUserRef.current = null
+      setLoading(false)
+      return
+    }
+
+    if (hydratedUserRef.current !== userId) {
+      hydratedUserRef.current = userId
+      const key = performanceCacheKey(userId)
+      const cached = readSessionCache<PerformanceCachePayload>(key, PERFORMANCE_CACHE_TTL_MS)
+      if (cached) {
+        applyPayload(cached.data)
+        setLastUpdated(new Date(cached.fetchedAt))
+        setLoading(false)
+        setError(null)
+        if (Date.now() - cached.fetchedAt < PERFORMANCE_CACHE_TTL_MS) return
+        void load({ background: true })
+        return
+      }
+      setLoading(true)
+    }
+
     void load()
-  }, [load])
+  }, [userId, load, applyPayload])
+
+  const hasMtHistory = mtTrades.length > 0
 
   const chartTrades = useMemo(() => {
-    if (mtTrades.length > 0) {
-      return mtTrades.map(mtTradeToChartRow).filter((r): r is NonNullable<typeof r> => r != null)
+    if (hasMtHistory) {
+      return resolveDashboardChartTrades(mtTrades, [])
     }
     return []
-  }, [mtTrades])
+  }, [hasMtHistory, mtTrades])
 
   const statsRows = useMemo(
-    () => (mtTrades.length > 0 ? mtTradesToStatsRows(mtTrades) : chartTradesToStatsRows(chartTrades)),
-    [mtTrades, chartTrades],
+    () => (hasMtHistory ? mtTradesToStatsRows(mtTrades) : chartTradesToStatsRows(chartTrades)),
+    [hasMtHistory, mtTrades, chartTrades],
   )
 
   const tradesByAccountId = useMemo(() => {
@@ -119,28 +222,30 @@ export function usePerformanceData(userId: string | undefined) {
     [perAccountPerformance],
   )
 
-  const accountGrowth = useMemo(
-    () => buildAccountGrowthSeries(accounts, chartTrades, equityByAccountId),
-    [accounts, chartTrades, equityByAccountId],
+  const periodStats = useCallback(
+    (period: PerformancePeriod) =>
+      chartTrades.length > 0
+        ? computePeriodStatsFromChartTrades(chartTrades, period)
+        : computePeriodTradeStats(statsRows, period),
+    [chartTrades, statsRows],
   )
 
-  const periodStats = useCallback(
-    (period: PerformancePeriod) => computePeriodTradeStats(statsRows, period),
-    [statsRows],
-  )
+  const hasMtBrokers = accounts.some(isMtLinkedBroker)
 
   return {
     accounts,
     chartTrades,
+    hasMtHistory,
+    hasMtBrokers,
     equityByAccountId,
+    balanceByAccountId,
     perAccountPerformance,
     aggregate,
-    accountGrowth,
     periodStats,
     loading,
     refreshing,
     error,
     lastUpdated,
-    refresh: () => void load(true),
+    refresh: () => void load({ force: true }),
   }
 }

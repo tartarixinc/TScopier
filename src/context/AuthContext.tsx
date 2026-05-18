@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState } from 'react'
 import type { User, Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import { clearDashboardSessionCache } from '../lib/dashboardSessionCache'
+import { clearPerformanceSessionCache } from '../lib/performanceSessionCache'
 
 interface AuthContextValue {
   user: User | null
@@ -39,7 +40,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const signOut = async () => {
-    clearDashboardSessionCache(user?.id ?? null)
+    const uid = user?.id ?? null
+    clearDashboardSessionCache(uid)
+    clearPerformanceSessionCache(uid)
     await supabase.auth.signOut()
   }
 

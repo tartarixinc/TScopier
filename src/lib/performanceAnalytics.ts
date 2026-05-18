@@ -1,12 +1,20 @@
-import type { DashboardChartTrade } from './dashboardCharts'
 import {
+  buildTradeVolumeByDays,
+  chartTradeDayKey,
+  type DashboardChartTrade,
+  type TradeVolumeDay,
+} from './dashboardCharts'
+import {
+  CLOSED_TRADE_OUTCOME_EPSILON,
   countClosedTradeOutcomesInRange,
+  getLocalCalendarDayBounds,
   isTradeableClosedRow,
   netClosedLegProfit,
   sumTradeableClosedProfitInRange,
   type LinkedAccountPerformance,
   type TradeStatsRow,
 } from './dashboardTradeStats'
+import { isMtTimestampInRange } from './mtApiDateTime'
 
 export type PerformancePeriod = '7d' | '30d' | '90d' | 'all'
 
@@ -30,19 +38,13 @@ export function periodRange(
     }
   }
   const days = periodToDays(period)
-  const start = new Date(end)
+  const { todayStart, tomorrowStart } = getLocalCalendarDayBounds(now)
+  const start = new Date(todayStart)
   start.setDate(start.getDate() - (days - 1))
-  start.setHours(0, 0, 0, 0)
-  const startMs = start.getTime()
-  const endMs = end.getTime()
   return {
     start,
     end,
-    inRange: (closedAt: string | null) => {
-      if (!closedAt) return false
-      const t = new Date(closedAt).getTime()
-      return Number.isFinite(t) && t >= startMs && t <= endMs
-    },
+    inRange: (closedAt: string | null) => isMtTimestampInRange(closedAt, start, tomorrowStart),
   }
 }
 
@@ -53,6 +55,62 @@ export interface PeriodTradeStats {
   tradesLost: number
   winRate: number | null
   profitFactor: number | null
+}
+
+/** Headline stats for a Trade Outcome bucket set (must match chart data). */
+export function computePeriodStatsFromVolumeBuckets(
+  trades: DashboardChartTrade[],
+  buckets: TradeVolumeDay[],
+): PeriodTradeStats {
+  const bucketKeys = new Set(buckets.map(b => b.key))
+
+  let grossProfit = 0
+  let grossLoss = 0
+  for (const b of buckets) {
+    grossProfit += b.profit
+    grossLoss += b.loss
+  }
+  const realizedPnl = grossProfit - grossLoss
+
+  let taken = 0
+  let won = 0
+  let lost = 0
+  for (const t of trades) {
+    if (t.status !== 'closed') continue
+    const key = chartTradeDayKey(t)
+    if (!key || !bucketKeys.has(key)) continue
+    const p = t.profit
+    if (p == null || !Number.isFinite(p)) continue
+    taken++
+    if (p > CLOSED_TRADE_OUTCOME_EPSILON) won++
+    else if (p < -CLOSED_TRADE_OUTCOME_EPSILON) lost++
+  }
+
+  const winRate = taken > 0 ? (won / taken) * 100 : null
+  const profitFactor =
+    grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? null : null
+
+  return {
+    realizedPnl,
+    tradesTaken: taken,
+    tradesWon: won,
+    tradesLost: lost,
+    winRate,
+    profitFactor: profitFactor != null && Number.isFinite(profitFactor) ? profitFactor : null,
+  }
+}
+
+/**
+ * Period headline stats aligned with the Trade Outcome chart: same calendar-day
+ * buckets and deal `profit` (profit bar − loss bar per day).
+ */
+export function computePeriodStatsFromChartTrades(
+  trades: DashboardChartTrade[],
+  period: PerformancePeriod,
+  now = new Date(),
+): PeriodTradeStats {
+  const buckets = buildTradeVolumeByDays(trades, periodToDays(period), now)
+  return computePeriodStatsFromVolumeBuckets(trades, buckets)
 }
 
 export function computePeriodTradeStats(
