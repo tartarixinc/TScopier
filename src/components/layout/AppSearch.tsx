@@ -256,7 +256,7 @@ export function AppSearch({ className }: { className?: string }) {
           if (query.trim().length > 0) setOpen(true)
         }}
         onKeyDown={onInputKeyDown}
-        className="w-full rounded-lg border border-neutral-200 bg-neutral-50 py-2 pl-9 pr-14 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary-500 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
+        className="w-full rounded-lg border border-neutral-200 bg-neutral-50 py-2 pl-9 pr-14 text-base md:text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary-500 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
       />
       <kbd className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 rounded border border-neutral-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-neutral-400 sm:inline dark:border-neutral-600 dark:bg-neutral-900">
         {shortcutLabel}

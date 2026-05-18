@@ -17,7 +17,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
         <select
           ref={ref}
           className={clsx(
-            'w-full px-3 py-2 text-sm rounded-lg border bg-white dark:bg-neutral-900 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent appearance-none',
+            'w-full px-3 py-2 text-base md:text-sm rounded-lg border bg-white dark:bg-neutral-900 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent appearance-none',
             error
               ? 'border-error-500 text-neutral-900 dark:text-neutral-100'
               : 'border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100 hover:border-neutral-300 dark:hover:border-neutral-600',
