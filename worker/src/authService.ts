@@ -11,6 +11,8 @@ interface PendingAuth {
   phone: string
   phoneCodeHash: string
   createdAt: number
+  /** Code step succeeded; waiting for cloud password (do not call SignIn again). */
+  awaitingPassword?: boolean
 }
 
 /**
@@ -89,7 +91,7 @@ export class AuthService {
   private async restorePendingFromDatabase(userId: string, phone: string): Promise<PendingAuth | null> {
     const { data: row, error } = await this.supabase
       .from('telegram_auth_pending')
-      .select('phone, phone_code_hash, expires_at')
+      .select('phone, phone_code_hash, expires_at, awaiting_password, auth_session_string')
       .eq('user_id', userId)
       .maybeSingle()
 
@@ -103,23 +105,41 @@ export class AuthService {
       return null
     }
 
-    const { data: claimed, error: delErr } = await this.supabase
-      .from('telegram_auth_pending')
-      .delete()
-      .eq('user_id', userId)
-      .select('phone, phone_code_hash')
-      .maybeSingle()
+    const awaitingPassword = Boolean(row.awaiting_password)
+    const savedSession =
+      awaitingPassword && typeof row.auth_session_string === 'string' && row.auth_session_string.trim()
+        ? row.auth_session_string.trim()
+        : ''
 
-    if (delErr || !claimed) return null
-
-    const client = buildClient('')
+    const client = buildClient(savedSession)
     await client.connect()
     return {
       client,
-      phone: claimed.phone,
-      phoneCodeHash: claimed.phone_code_hash,
+      phone: row.phone,
+      phoneCodeHash: row.phone_code_hash,
       createdAt: Date.now(),
+      awaitingPassword,
     }
+  }
+
+  private async persistAwaitingPassword(userId: string, client: TelegramClient): Promise<void> {
+    const authSessionString = (client.session.save() as unknown) as string
+    const { error } = await this.supabase
+      .from('telegram_auth_pending')
+      .update({
+        awaiting_password: true,
+        auth_session_string: authSessionString,
+      })
+      .eq('user_id', userId)
+    if (error) {
+      console.warn(`[authService] persistAwaitingPassword failed for ${userId}:`, error.message)
+    }
+  }
+
+  private async completePasswordStep(client: TelegramClient, password: string): Promise<void> {
+    const srpResult = await tgInvoke<Api.account.Password>(client, new Api.account.GetPassword())
+    const srpCheck = await computeCheck(srpResult, password)
+    await tgInvoke(client, new Api.auth.CheckPassword({ password: srpCheck }))
   }
 
   async sendCode(userId: string, phone: string): Promise<{ phone_code_hash: string }> {
@@ -192,8 +212,13 @@ export class AuthService {
     const { client, phone: pendingPhone, phoneCodeHash } = pending
 
     try {
-      if (password) {
-        // Code path 2: user re-submitted with password after first attempt asked for it.
+      if (pending.awaitingPassword) {
+        if (!password?.trim()) {
+          throw new Error('Two-step verification password is required')
+        }
+        await this.completePasswordStep(client, password.trim())
+      } else if (password?.trim()) {
+        // Legacy: password sent on first submit — try sign-in then 2FA if needed.
         try {
           await tgInvoke(client, new Api.auth.SignIn({
             phoneNumber: pendingPhone,
@@ -203,10 +228,10 @@ export class AuthService {
         } catch (signInErr: unknown) {
           const msg = signInErr instanceof Error ? signInErr.message : String(signInErr)
           if (!msg.includes('SESSION_PASSWORD_NEEDED')) throw signInErr
+          pending.awaitingPassword = true
+          await this.persistAwaitingPassword(userId, client)
+          await this.completePasswordStep(client, password.trim())
         }
-        const srpResult = await tgInvoke<Api.account.Password>(client, new Api.account.GetPassword())
-        const srpCheck = await computeCheck(srpResult, password)
-        await tgInvoke(client, new Api.auth.CheckPassword({ password: srpCheck }))
       } else {
         try {
           await tgInvoke(client, new Api.auth.SignIn({
@@ -217,7 +242,8 @@ export class AuthService {
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : String(err)
           if (msg.includes('SESSION_PASSWORD_NEEDED')) {
-            // Keep the pending client alive — frontend will resend with password.
+            pending.awaitingPassword = true
+            await this.persistAwaitingPassword(userId, client)
             return { requires_password: true }
           }
           throw err

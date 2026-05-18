@@ -95,8 +95,7 @@ export function startHttpServer(
         try {
           const r = await authService.verifyCode(body.user_id, body.phone, body.code, body.password)
           if ('requires_password' in r) {
-            return sendJson(res, 400, {
-              error: 'Two-step verification required',
+            return sendJson(res, 200, {
               requires_password: true,
             })
           }

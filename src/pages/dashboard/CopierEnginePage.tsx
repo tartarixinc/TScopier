@@ -177,13 +177,12 @@ export function CopierEnginePage() {
   const [error, setError] = useState('')
   const [tgChannelSearch, setTgChannelSearch] = useState('')
   const [hasTgSession, setHasTgSession] = useState(false)
-  const [tgStage, setTgStage] = useState<'idle' | 'phone' | 'code' | 'linked'>('idle')
+  const [tgStage, setTgStage] = useState<'idle' | 'phone' | 'code' | 'twoFa' | 'linked'>('idle')
   const [tgPhone, setTgPhone] = useState('')
   const [tgCode, setTgCode] = useState('')
   const [tgPassword, setTgPassword] = useState('')
   const [tgLoading, setTgLoading] = useState(false)
   const [tgError, setTgError] = useState('')
-  const [requiresPassword, setRequiresPassword] = useState(false)
   const [keywordsChannel, setKeywordsChannel] = useState<TelegramChannel | null>(null)
   const [keywordsDraft, setKeywordsDraft] = useState<ChannelKeywords>(DEFAULT_CHANNEL_KEYWORDS)
   const [keywordsSaving, setKeywordsSaving] = useState(false)
@@ -307,7 +306,6 @@ export function CopierEnginePage() {
     setError('')
     setTgCode('')
     setTgPassword('')
-    setRequiresPassword(false)
     setTgStage(nextStage)
   }, [user])
 
@@ -342,7 +340,10 @@ export function CopierEnginePage() {
           }
           if (!res.ok || data.error) {
             if (attempt < maxAttempts - 1) continue
-            if (!opts?.background) setError(ce.failedLoadTgChannels)
+            if (!opts?.background) {
+              const msg = typeof data.error === 'string' ? data.error : ce.failedLoadTgChannels
+              setError(msg)
+            }
             return
           }
           setTgChannels(data.channels ?? [])
@@ -475,17 +476,18 @@ export function CopierEnginePage() {
           action: 'verify_code',
           phone: tgPhone,
           code: tgCode,
-          password: requiresPassword ? tgPassword : undefined,
+          password: tgStage === 'twoFa' ? tgPassword : undefined,
         }),
       })
       const data = await res.json().catch(() => ({}))
+      if (data.requires_password) {
+        setTgStage('twoFa')
+        setTgError('')
+        return
+      }
       if (!res.ok || data.error) {
-        if (data.requires_password) {
-          setRequiresPassword(true)
-          setTgError(ce.twoFaRequired)
-          return
-        }
-        setTgError(ce.verificationFailed)
+        const msg = typeof data.error === 'string' ? data.error : ce.verificationFailed
+        setTgError(msg)
         return
       }
       if (Array.isArray(data.channels)) {
@@ -509,7 +511,13 @@ export function CopierEnginePage() {
   const handleTgStageChange = (stage: TelegramConnectStage) => {
     setTgStage(stage)
     setTgError('')
-    if (stage === 'phone') setTgCode('')
+    if (stage === 'phone') {
+      setTgCode('')
+      setTgPassword('')
+    }
+    if (stage === 'code') {
+      setTgPassword('')
+    }
   }
 
   const openChannelKeywords = (channel: TelegramChannel) => {
@@ -585,7 +593,6 @@ export function CopierEnginePage() {
           onCodeChange={setTgCode}
           password={tgPassword}
           onPasswordChange={setTgPassword}
-          requiresPassword={requiresPassword}
           loading={tgLoading}
           error={tgError}
           onSendCode={sendCode}
