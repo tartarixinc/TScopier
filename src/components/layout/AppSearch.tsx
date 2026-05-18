@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -66,13 +75,25 @@ function isMacPlatform(): boolean {
   return /Mac|iPhone|iPad|iPod/.test(navigator.platform)
 }
 
-interface AppSearchProps {
-  className?: string
-  headerEl?: HTMLElement | null
-  mobileTriggerSlot?: HTMLElement | null
+type AppSearchController = ReturnType<typeof useAppSearchController>
+
+const AppSearchContext = createContext<AppSearchController | null>(null)
+
+function useIsMobileViewport() {
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches,
+  )
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 1023px)')
+    const update = () => setIsMobile(mq.matches)
+    update()
+    mq.addEventListener('change', update)
+    return () => mq.removeEventListener('change', update)
+  }, [])
+  return isMobile
 }
 
-export function AppSearch({ className, headerEl, mobileTriggerSlot }: AppSearchProps) {
+function useAppSearchController(headerEl: HTMLElement | null) {
   const t = useT()
   const gs = t.globalSearch
   const { user } = useAuth()
@@ -85,23 +106,16 @@ export function AppSearch({ className, headerEl, mobileTriggerSlot }: AppSearchP
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const [mobileExpanded, setMobileExpanded] = useState(false)
-  const [isMobile, setIsMobile] = useState(false)
+  const isMobile = useIsMobileViewport()
   const [activeIndex, setActiveIndex] = useState(0)
+
+  useEffect(() => {
+    if (!isMobile) setMobileExpanded(false)
+  }, [isMobile])
   const [brokers, setBrokers] = useState<{ id: string; label: string; server: string }[]>([])
   const [channels, setChannels] = useState<{ id: string; name: string; username: string }[]>([])
 
   const shortcutLabel = useMemo(() => (isMacPlatform() ? '⌘K' : 'Ctrl+K'), [])
-
-  useEffect(() => {
-    const mq = window.matchMedia('(max-width: 1023px)')
-    const update = () => setIsMobile(mq.matches)
-    update()
-    mq.addEventListener('change', e => {
-      update()
-      if (!e.matches) setMobileExpanded(false)
-    })
-    return () => mq.removeEventListener('change', update)
-  }, [])
 
   const containsSearchUi = useCallback((node: Node | null) => {
     if (!node) return false
@@ -407,25 +421,22 @@ export function AppSearch({ className, headerEl, mobileTriggerSlot }: AppSearchP
     )
   }
 
-  const mobileTrigger =
-    mobileTriggerSlot &&
-    createPortal(
-      <button
-        type="button"
-        onClick={expandMobile}
-        aria-label={t.nav.search}
-        aria-expanded={mobileExpanded}
-        className={clsx(
-          'rounded-lg p-2 transition-colors',
-          mobileExpanded
-            ? 'text-teal-600 bg-teal-50 dark:text-teal-400 dark:bg-teal-950/50'
-            : 'text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800',
-        )}
-      >
-        <Search className="h-5 w-5" />
-      </button>,
-      mobileTriggerSlot,
-    )
+  const mobileTriggerButton = (
+    <button
+      type="button"
+      onClick={expandMobile}
+      aria-label={t.nav.search}
+      aria-expanded={mobileExpanded}
+      className={clsx(
+        'shrink-0 rounded-lg p-2 transition-colors lg:hidden',
+        mobileExpanded
+          ? 'text-teal-600 bg-teal-50 dark:text-teal-400 dark:bg-teal-950/50'
+          : 'text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800',
+      )}
+    >
+      <Search className="h-5 w-5" />
+    </button>
+  )
 
   const mobileOverlay =
     headerEl &&
@@ -457,15 +468,44 @@ export function AppSearch({ className, headerEl, mobileTriggerSlot }: AppSearchP
       headerEl,
     )
 
-  return (
-    <>
-      {mobileTrigger}
-      {mobileOverlay}
-
-      <div ref={desktopRef} className={clsx('relative hidden min-w-0 lg:block', className)}>
-        {renderInput({ showShortcut: true })}
-        {renderSuggestions('desktop')}
-      </div>
-    </>
+  const renderDesktop = (className?: string) => (
+    <div ref={desktopRef} className={clsx('relative hidden min-w-0 lg:block', className)}>
+      {renderInput({ showShortcut: true })}
+      {renderSuggestions('desktop')}
+    </div>
   )
+
+  return {
+    mobileTriggerButton,
+    mobileOverlay,
+    renderDesktop,
+  }
+}
+
+export function AppSearchProvider({
+  headerEl,
+  children,
+}: {
+  headerEl: HTMLElement | null
+  children: ReactNode
+}) {
+  const controller = useAppSearchController(headerEl)
+  return (
+    <AppSearchContext.Provider value={controller}>
+      {children}
+      {controller.mobileOverlay}
+    </AppSearchContext.Provider>
+  )
+}
+
+export function AppSearchDesktop({ className }: { className?: string }) {
+  const ctx = useContext(AppSearchContext)
+  if (!ctx) return null
+  return ctx.renderDesktop(className)
+}
+
+export function AppSearchMobileTrigger() {
+  const ctx = useContext(AppSearchContext)
+  if (!ctx) return null
+  return ctx.mobileTriggerButton
 }

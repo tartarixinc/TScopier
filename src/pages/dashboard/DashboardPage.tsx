@@ -28,6 +28,12 @@ import {
 } from '../../lib/copierLogDisplay'
 import { channelWorkerLogMessage } from '../../lib/channelWorkerLogMessage'
 import {
+  DASHBOARD_ACTIVE_USER_KEY,
+  DASHBOARD_CACHE_LEGACY_KEYS,
+  DASHBOARD_CACHE_VERSION,
+  clearDashboardSessionCache,
+} from '../../lib/dashboardSessionCache'
+import {
   buildAccountGrowthSeries,
   buildTradeVolume7Day,
   resolveDashboardChartTrades,
@@ -213,10 +219,6 @@ type DashboardCachePayload = {
   mtTrades?: MtTrade[]
 }
 
-const DASHBOARD_CACHE_VERSION = 'dashboard_cache_v9'
-const DASHBOARD_CACHE_LEGACY_KEYS = ['dashboard_cache_v8', 'dashboard_cache_v7'] as const
-const DASHBOARD_ACTIVE_USER_KEY = 'dashboard_cache_active_user_id'
-
 const DEFAULT_DASHBOARD_STATS: DashboardStats = {
   accounts: 0,
   portfolioValue: 0,
@@ -248,10 +250,10 @@ const DEFAULT_DASHBOARD_STATS: DashboardStats = {
   yesterdayMostTradedAsset: '—',
 }
 
-function readBootstrapDashboardCache(): DashboardCachePayload | null {
-  if (typeof sessionStorage === 'undefined') return null
+function readBootstrapDashboardCache(expectedUserId: string | null | undefined): DashboardCachePayload | null {
+  if (typeof sessionStorage === 'undefined' || !expectedUserId) return null
   const userId = sessionStorage.getItem(DASHBOARD_ACTIVE_USER_KEY)
-  if (!userId) return null
+  if (!userId || userId !== expectedUserId) return null
   return readDashboardCache(userId)
 }
 
@@ -260,7 +262,7 @@ function mergeDashboardStats(
   prev: DashboardStats,
   next: DashboardStats,
   authoritative: boolean,
-  opts?: { mtHasClosedTrades?: boolean },
+  opts?: { mtHasClosedTrades?: boolean; trustOpenTrades?: boolean },
 ): DashboardStats {
   if (authoritative) {
     if (opts?.mtHasClosedTrades === false) {
@@ -272,19 +274,24 @@ function mergeDashboardStats(
         copierHealth: next.copierHealth,
         totalSignals: next.totalSignals,
         yesterdayTotalSignals: next.yesterdayTotalSignals,
+        ...(opts.trustOpenTrades
+          ? { openTrades: next.openTrades, openPositions: next.openPositions, openPnl: next.openPnl }
+          : {}),
       }
     }
     return { ...prev, ...next }
   }
   const keepNum = (p: number, n: number) => (Number.isFinite(n) && !(n === 0 && p !== 0) ? n : p)
+  const keepOpenCount = (p: number, n: number) =>
+    opts?.trustOpenTrades ? (Number.isFinite(n) ? n : p) : keepNum(p, n)
   const keepStr = (p: string, n: string) => (n === '—' && p !== '—' ? p : n)
   return {
     ...next,
     totalEquity: keepNum(prev.totalEquity, next.totalEquity),
     portfolioValue: keepNum(prev.portfolioValue, next.portfolioValue),
     openPnl: keepNum(prev.openPnl, next.openPnl),
-    openPositions: keepNum(prev.openPositions, next.openPositions),
-    openTrades: keepNum(prev.openTrades, next.openTrades),
+    openPositions: keepOpenCount(prev.openPositions, next.openPositions),
+    openTrades: keepOpenCount(prev.openTrades, next.openTrades),
     todayProfit: keepNum(prev.todayProfit, next.todayProfit),
     yesterdayProfit: keepNum(prev.yesterdayProfit, next.yesterdayProfit),
     tradesTaken: keepNum(prev.tradesTaken, next.tradesTaken),
@@ -356,7 +363,7 @@ export function DashboardPage() {
   const { user } = useAuth()
   const { formatMoney, formatSignedMoney } = useFormatMoney()
   const navigate = useNavigate()
-  const bootCache = useMemo(() => readBootstrapDashboardCache(), [])
+  const bootCache = useMemo(() => readBootstrapDashboardCache(user?.id), [user?.id])
   const [stats, setStats] = useState<DashboardStats>(() => bootCache?.stats ?? DEFAULT_DASHBOARD_STATS)
   const [copierLogs, setCopierLogs] = useState<Signal[]>(() => bootCache?.copierLogs ?? [])
   const [copierLogSymbols, setCopierLogSymbols] = useState<Record<string, string>>(
@@ -396,14 +403,23 @@ export function DashboardPage() {
   if (bootCache?.linkedAccountBalances && Object.keys(liveBrokerStateRef.current).length === 0) {
     seedLiveBrokerStateFromBalances(bootCache.linkedAccountBalances, liveBrokerStateRef.current)
   }
-  const hydratedUserRef = useRef<string | null>(bootCache ? sessionStorage.getItem(DASHBOARD_ACTIVE_USER_KEY) : null)
+  const hydratedUserRef = useRef<string | null>(null)
   const statsRef = useRef(stats)
   useEffect(() => {
     statsRef.current = stats
   }, [stats])
 
-  if (user?.id && hydratedUserRef.current !== user.id) {
+  useEffect(() => {
+    if (!user?.id) return
+    if (hydratedUserRef.current === user.id) return
+    const previousUser = hydratedUserRef.current
     hydratedUserRef.current = user.id
+    if (previousUser && previousUser !== user.id) {
+      clearDashboardSessionCache(previousUser)
+    }
+    liveBrokerStateRef.current = {}
+    mtTradesRef.current = null
+    linkedBalancesRef.current = {}
     const cached = readDashboardCache(user.id)
     if (cached?.stats) {
       setStats(cached.stats)
@@ -418,9 +434,18 @@ export function DashboardPage() {
       if (cached.aiExpertLogs?.length) setAiExpertLogs(cached.aiExpertLogs)
       if (cached.mtTrades?.length) mtTradesRef.current = cached.mtTrades
       seedLiveBrokerStateFromBalances(balances, liveBrokerStateRef.current)
+    } else {
+      setStats(DEFAULT_DASHBOARD_STATS)
+      setCopierLogs([])
+      setCopierLogSymbols({})
+      setChannelDisplayNames({})
+      setLinkedAccounts([])
+      setLinkedAccountBalances({})
+      setChartTrades([])
+      setAiExpertLogs([])
     }
     dashboardReadyRef.current = Boolean(cached?.stats)
-  }
+  }, [user?.id])
   const tradeVolume7Day = useMemo(
     () => buildTradeVolume7Day(chartTrades),
     [chartTrades],
@@ -493,6 +518,9 @@ export function DashboardPage() {
   const loadDashboard = async (opts: { fresh?: boolean; syncLive?: boolean } = {}) => {
     const { fresh = false, syncLive = fresh } = opts
     const generation = fresh ? ++loadGenerationRef.current : loadGenerationRef.current
+    if (fresh) {
+      liveBrokerStateRef.current = {}
+    }
     try {
     const now = new Date()
     const todayStart = new Date(now)
@@ -715,7 +743,7 @@ export function DashboardPage() {
               resolveMtServerCandidate(account, account.broker_server ?? undefined),
             ),
             open_pnl: sticky?.open_pnl ?? cachedOpenPnl,
-            open_trades: sticky?.open_trades,
+            open_trades: fresh ? undefined : sticky?.open_trades,
           },
         ]
       }),
@@ -791,7 +819,9 @@ export function DashboardPage() {
     const aiLogs = dedupePipelineParseAttempts((aiLogsRes.data ?? []) as AiExpertLogRow[])
     const chartFromDb = resolveDashboardChartTrades(hasMtCache ? mtTradesRef.current : null, allTrades)
 
-    const mergedAfterDb = mergeDashboardStats(statsRef.current, nextStats, useMtTrades)
+    const mergedAfterDb = mergeDashboardStats(statsRef.current, nextStats, useMtTrades, {
+      trustOpenTrades: hasAnyBrokerOpenTradesFromSummary,
+    })
     statsRef.current = mergedAfterDb
     setStats(mergedAfterDb)
     setCopierLogs(logs)

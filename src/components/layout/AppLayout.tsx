@@ -20,7 +20,7 @@ import {
 } from 'lucide-react'
 import clsx from 'clsx'
 import { TscopierLogo } from '../ui/TscopierLogo'
-import { AppSearch } from './AppSearch'
+import { AppSearchDesktop, AppSearchMobileTrigger, AppSearchProvider } from './AppSearch'
 import { useAuth } from '../../context/AuthContext'
 import { useT } from '../../context/LocaleContext'
 import { ThemeToggle } from '../ui/ThemeToggle'
@@ -39,7 +39,6 @@ export function AppLayout() {
   const [helpMenuOpen, setHelpMenuOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [headerEl, setHeaderEl] = useState<HTMLElement | null>(null)
-  const [mobileSearchSlot, setMobileSearchSlot] = useState<HTMLDivElement | null>(null)
   const helpMenuRef = useRef<HTMLDivElement>(null)
   const userMenuRef = useRef<HTMLDivElement>(null)
   const helpMenuCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -279,9 +278,10 @@ export function AppLayout() {
       </aside>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <AppSearchProvider headerEl={headerEl}>
         <header
           ref={setHeaderEl}
-          className="sticky top-0 z-20 flex h-14 sm:h-16 shrink-0 items-center gap-2 sm:gap-4 overflow-hidden border-b border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 sm:px-6 pt-[env(safe-area-inset-top)]"
+          className="sticky top-0 z-20 flex h-14 sm:h-16 shrink-0 items-center gap-2 sm:gap-4 border-b border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 sm:px-6 pt-[env(safe-area-inset-top)]"
         >
           <button
             type="button"
@@ -301,16 +301,12 @@ export function AppLayout() {
             {isSidebarCollapsed ? <PanelLeftOpen className="w-5 h-5" /> : <PanelLeftClose className="w-5 h-5" />}
           </button>
 
-          <AppSearch
-            className="flex-1 max-w-md min-w-0"
-            headerEl={headerEl}
-            mobileTriggerSlot={mobileSearchSlot}
-          />
+          <AppSearchDesktop className="flex-1 max-w-md min-w-0" />
 
           <div className="flex-1 min-w-0 lg:hidden" />
 
-          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-            <div ref={setMobileSearchSlot} className="lg:hidden" />
+          <div className="relative z-40 flex shrink-0 items-center gap-1 sm:gap-2 lg:ml-auto">
+            <AppSearchMobileTrigger />
             <LanguageSwitcher />
             <ThemeToggle />
             <div
@@ -389,6 +385,7 @@ export function AppLayout() {
             </div>
           </div>
         </header>
+        </AppSearchProvider>
 
         <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain bg-neutral-50 dark:bg-neutral-950">
           <Outlet />
