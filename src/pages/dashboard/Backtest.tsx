@@ -4,6 +4,7 @@ import clsx from 'clsx'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useT } from '../../context/LocaleContext'
+import { useFormatMoney } from '../../context/UserProfileContext'
 import { backtestApi } from '../../lib/backtestApi'
 import type {
   BacktestEquityRow,
@@ -144,6 +145,7 @@ function StatCard({
 }
 
 export function Backtest() {
+  const { formatSignedMoney } = useFormatMoney()
   const t = useT()
   const { user } = useAuth()
   const [channels, setChannels] = useState<ChannelOption[]>([])
@@ -553,7 +555,7 @@ export function Backtest() {
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <StatCard
                       label="Net PnL"
-                      value={`$${summary.netPnl.toFixed(2)}`}
+                      value={formatSignedMoney(summary.netPnl)}
                       tone={summary.netPnl >= 0 ? 'good' : 'bad'}
                     />
                     <StatCard

@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import type { BrokerAccount } from '../../types/database'
 import type { LinkedAccountPerformance } from '../../lib/dashboardTradeStats'
 import { inferBrokerLabelFromServer } from '../../lib/brokerFromServer'
+import { useFormatMoney } from '../../context/UserProfileContext'
 
 interface AccountPerformanceTableProps {
   accounts: BrokerAccount[]
@@ -17,11 +18,6 @@ interface AccountPerformanceTableProps {
     configure: string
     empty: string
   }
-}
-
-function formatMoney(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return '—'
-  return `$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
 function formatPct(value: number | null | undefined, digits = 1): string {
@@ -41,6 +37,7 @@ export function AccountPerformanceTable({
   equityByAccountId,
   labels,
 }: AccountPerformanceTableProps) {
+  const { formatMoney } = useFormatMoney()
   if (accounts.length === 0) {
     return (
       <p className="px-4 py-10 text-center text-sm text-neutral-500 dark:text-neutral-400">{labels.empty}</p>

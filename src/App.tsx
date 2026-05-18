@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { LocaleProvider } from './context/LocaleContext'
+import { UserProfileProvider } from './context/UserProfileContext'
 import { AuthLayout } from './components/layout/AuthLayout'
 import { AppLayout } from './components/layout/AppLayout'
 import { ProtectedRoute } from './components/layout/ProtectedRoute'
@@ -32,6 +33,7 @@ export default function App() {
   return (
     <AuthProvider>
       <LocaleProvider>
+      <UserProfileProvider>
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -78,6 +80,7 @@ export default function App() {
           </Route>
         </Routes>
       </BrowserRouter>
+      </UserProfileProvider>
       </LocaleProvider>
     </AuthProvider>
   )

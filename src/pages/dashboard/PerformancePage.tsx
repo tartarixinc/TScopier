@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useT } from '../../context/LocaleContext'
+import { useFormatMoney } from '../../context/UserProfileContext'
 import { interpolate } from '../../i18n/interpolate'
 import { buildTradeVolumeByDays } from '../../lib/dashboardCharts'
 import { periodToDays, type PerformancePeriod } from '../../lib/performanceAnalytics'
@@ -23,11 +24,6 @@ import { PerformanceStatCard } from '../../components/performance/PerformanceSta
 import { PerformanceTradeOutcomeChart } from '../../components/performance/PerformanceTradeOutcomeChart'
 import { Button } from '../../components/ui/Button'
 import { Alert } from '../../components/ui/Alert'
-
-function formatMoney(v: number): string {
-  const sign = v < 0 ? '-' : ''
-  return `${sign}$${Math.abs(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-}
 
 function formatPct(value: number | null, digits = 1): string {
   if (value == null || !Number.isFinite(value)) return '—'
@@ -44,6 +40,7 @@ export function PerformancePage() {
   const t = useT()
   const p = t.performance
   const { user } = useAuth()
+  const { formatSignedMoney } = useFormatMoney()
   const [period, setPeriod] = useState<PerformancePeriod>('30d')
 
   const {
@@ -121,7 +118,7 @@ export function PerformancePage() {
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <PerformanceStatCard
           label={p.realizedPnl}
-          value={loading ? '—' : formatMoney(stats.realizedPnl)}
+          value={loading ? '—' : formatSignedMoney(stats.realizedPnl)}
           sub={interpolate(p.closedTrades, { count: String(stats.tradesTaken) })}
           icon={stats.realizedPnl >= 0 ? ArrowUpRight : ArrowDownRight}
           tone={stats.realizedPnl > 0 ? 'positive' : stats.realizedPnl < 0 ? 'negative' : 'neutral'}

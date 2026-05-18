@@ -8,6 +8,7 @@ import {
   YAxis,
 } from 'recharts'
 import { useTheme } from '../../context/ThemeContext'
+import { useFormatMoney } from '../../context/UserProfileContext'
 import { chartThemeColors, chartTooltipProps } from '../../lib/chartTheme'
 import type { BacktestEquityRow } from '../../lib/backtestTypes'
 
@@ -18,6 +19,7 @@ interface BacktestEquityChartProps {
 }
 
 export function BacktestEquityChart({ equity }: BacktestEquityChartProps) {
+  const { formatMoney, formatAxisMoney } = useFormatMoney()
   const { theme } = useTheme()
   const colors = chartThemeColors(theme)
 
@@ -51,12 +53,12 @@ export function BacktestEquityChart({ equity }: BacktestEquityChartProps) {
           <XAxis dataKey="label" tick={{ fontSize: 10, fill: colors.tick }} tickLine={false} />
           <YAxis
             tick={{ fontSize: 9, fill: colors.tick }}
-            tickFormatter={v => `$${Number(v).toLocaleString()}`}
+            tickFormatter={v => formatAxisMoney(Number(v))}
             width={52}
           />
           <Tooltip
             {...chartTooltipProps(colors)}
-            formatter={(v, name) => [`$${Number(v ?? 0).toFixed(2)}`, String(name ?? 'Equity')]}
+            formatter={(v, name) => [formatMoney(Number(v ?? 0)), String(name ?? 'Equity')]}
           />
           <Area
             type="monotone"

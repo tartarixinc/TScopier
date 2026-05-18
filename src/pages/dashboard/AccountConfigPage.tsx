@@ -30,6 +30,7 @@ import {
 import { estimateMultiTradeOrderCount } from '../../lib/estimateMultiTradeOrders'
 import { pipCalculator, pipValueForLots, type PipQuote } from '../../lib/pipCalculator'
 import { classifySymbol } from '../../lib/pipMath'
+import { formatMoneyWithCode } from '../../lib/currency'
 import type { BrokerAccount, ManualSettings, ManualTpLot } from '../../types/database'
 import {
   DEFAULT_CHANNEL_FILTERS,
@@ -393,10 +394,7 @@ function PlatformIcon({ platform }: { platform: string }) {
 }
 
 function formatBrokerMoney(value: number | null | undefined, currency?: string | null): string {
-  if (value == null || !Number.isFinite(value)) return '—'
-  const formatted = value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  const cur = (currency ?? '').trim()
-  return cur ? `${formatted} ${cur}` : formatted
+  return formatMoneyWithCode(value, currency?.trim() || undefined)
 }
 
 function accountTypeValueClass(type: LinkedAccountType | undefined): string {
@@ -620,8 +618,8 @@ export function AccountConfigPage() {
       const fixedLot = Number(configDraft.manualSettings.fixed_lot ?? 0.01) || 0.01
       const perPip = pipValueForLots(livePipQuote, fixedLot)
       if (perPip <= 0) return null
-      const ccy = livePipQuote.quoteCurrency ?? ''
-      const fmt = (n: number) => (ccy === 'JPY' ? `¥${n.toFixed(0)}` : `$${n.toFixed(2)}`)
+      const ccy = livePipQuote.quoteCurrency ?? undefined
+      const fmt = (n: number) => formatMoneyWithCode(n, ccy, { nullAsDash: false })
       const symbol = (configDraft.manualSettings.symbol_to_trade ?? '').trim()
       const head = `At ${fixedLot.toFixed(2)} lot on ${symbol.toUpperCase()}: 1 pip ≈ ${fmt(perPip)}`
       if (pipCount > 0) {

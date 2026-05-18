@@ -36,7 +36,9 @@ import {
 import { AccountGrowthChart } from '../../components/dashboard/AccountGrowthChart'
 import { TradeVolumeChart } from '../../components/dashboard/TradeVolumeChart'
 import { useDashboardRealtime } from '../../hooks/useDashboardRealtime'
-import { useT } from '../../context/LocaleContext'
+import { useLocale, useT } from '../../context/LocaleContext'
+import { useFormatMoney } from '../../context/UserProfileContext'
+import { formatMoneyWithCode } from '../../lib/currency'
 import { interpolate } from '../../i18n/interpolate'
 
 /** Shared column template for dashboard Copier Logs header + rows. */
@@ -351,6 +353,7 @@ function seedLiveBrokerStateFromBalances(
 export function DashboardPage() {
   const t = useT()
   const { user } = useAuth()
+  const { formatMoney, formatSignedMoney } = useFormatMoney()
   const navigate = useNavigate()
   const bootCache = useMemo(() => readBootstrapDashboardCache(), [])
   const [stats, setStats] = useState<DashboardStats>(() => bootCache?.stats ?? DEFAULT_DASHBOARD_STATS)
@@ -417,8 +420,6 @@ export function DashboardPage() {
     }
     dashboardReadyRef.current = Boolean(cached?.stats)
   }
-  const formatMoney = (value: number | null | undefined) =>
-    `$${(Number.isFinite(value as number) ? Number(value) : 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   const tradeVolume7Day = useMemo(
     () => buildTradeVolume7Day(chartTrades),
     [chartTrades],
@@ -1220,7 +1221,7 @@ export function DashboardPage() {
         <div className="grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 lg:divide-x divide-neutral-100 dark:divide-neutral-800">
           <StatBlock
             label={t.dashboard.totalBalance}
-            value={`$${stats.totalEquity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            value={formatMoney(stats.totalEquity)}
             sub={interpolate(t.dashboard.acrossAccounts, { count: stats.accounts })}
             subColor="text-neutral-400"
           />
@@ -1269,7 +1270,7 @@ export function DashboardPage() {
           />
           <StatBlock
             label={t.dashboard.openPnl}
-            value={`$${stats.openPnl.toFixed(2)}`}
+            value={formatSignedMoney(stats.openPnl)}
             sub={t.dashboard.acrossAllAccounts}
             valueColor={
               stats.openPnl > 0
@@ -1638,20 +1639,19 @@ function LinkedAccountRow({
   onToggleActive: (is_active: boolean) => void
   toggleDisabled?: boolean
 }) {
+  const { locale } = useLocale()
+  const intlLocale = locale === 'en' ? undefined : locale
   const statusClass = account.is_active
     ? 'text-teal-700 border-teal-200 bg-teal-50 dark:text-teal-300 dark:border-teal-800 dark:bg-teal-950/50'
     : 'text-neutral-600 border-neutral-200 bg-neutral-100 dark:text-neutral-400 dark:border-neutral-700 dark:bg-neutral-800/80'
   const balance = accountSummary?.balance ?? account.last_balance ?? null
   const equity = accountSummary?.equity ?? account.last_equity ?? null
-  const currencyRaw = (accountSummary?.currency ?? account.last_currency ?? '').trim()
-  const currencyPrefix = !currencyRaw || currencyRaw.toUpperCase() === 'USD' ? '$' : `${currencyRaw} `
-  const balanceText = balance != null
-    ? `${currencyPrefix}${balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-    : '—'
+  const accountCurrency = (accountSummary?.currency ?? account.last_currency ?? '').trim() || undefined
+  const balanceText = formatMoneyWithCode(balance, accountCurrency, { locale: intlLocale })
   const hasBoth = balance != null && equity != null
   const pnl = accountSummary?.open_pnl ?? (hasBoth ? (equity! - balance!) : 0)
   const pnlColor = pnl >= 0 ? 'text-teal-600' : 'text-error-600'
-  const pnlText = `${currencyPrefix}${Math.abs(pnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  const pnlFormatted = formatMoneyWithCode(Math.abs(pnl), accountCurrency, { locale: intlLocale, nullAsDash: false })
   const apiRaw = (accountSummary?.broker ?? '').trim()
   const fromApi = inferBrokerLabelFromServer(apiRaw) || apiRaw
   const server = resolveMtServerCandidate(account, accountSummary?.mt_server_hint)
@@ -1691,7 +1691,10 @@ function LinkedAccountRow({
       <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{brokerText}</span>
       <span className={`text-sm font-semibold ${accountTypeClass}`}>{accountType}</span>
       <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{balanceText}</span>
-      <span className={`text-sm font-semibold ${pnlColor}`}>{pnl >= 0 ? '+' : '-'}{pnlText}</span>
+      <span className={`text-sm font-semibold ${pnlColor}`}>
+        {pnl >= 0 ? '+' : '-'}
+        {pnlFormatted}
+      </span>
       <span className={`text-sm font-semibold tabular-nums ${roiColor}`}>{formatRoiPct(roi)}</span>
       <span className={`text-sm font-semibold tabular-nums ${winRateColor}`}>{formatPerformancePct(winRate, 0)}</span>
       <span className={`text-sm font-semibold tabular-nums ${ddColor}`}>{formatPerformancePct(maxDd)}</span>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Globe,
   Lock,
@@ -10,13 +10,8 @@ import {
 import clsx from 'clsx'
 import { useAuth } from '../../context/AuthContext'
 import { useLocale, useT } from '../../context/LocaleContext'
-import {
-  EMPTY_USER_PROFILE,
-  loadUserProfile,
-  saveUserProfile,
-  updatePassword,
-  type UserProfile,
-} from '../../lib/userProfile'
+import { useUserProfile } from '../../context/UserProfileContext'
+import { updatePassword } from '../../lib/userProfile'
 import { buildCountryOptions } from '../../lib/countryOptions'
 import { BASE_CURRENCIES } from '../../lib/settingsOptions'
 import { TIMEZONE_OPTIONS } from '../../lib/timezoneOptions'
@@ -61,14 +56,13 @@ export function SettingsPage() {
   const t = useT()
   const { locale } = useLocale()
   const { user } = useAuth()
+  const { profile, loading, patchProfile, persistProfile } = useUserProfile()
 
   const countryOptions = useMemo(
     () => buildCountryOptions(locale, t.settings.placeholders.selectCountry),
     [locale, t.settings.placeholders.selectCountry],
   )
   const [section, setSection] = useState<SettingsSection>('personal')
-  const [loading, setLoading] = useState(true)
-  const [profile, setProfile] = useState<Omit<UserProfile, 'user_id'>>(EMPTY_USER_PROFILE)
   const [email, setEmail] = useState('')
 
   const [personalSaving, setPersonalSaving] = useState(false)
@@ -88,65 +82,32 @@ export function SettingsPage() {
     { id: 'security', label: t.settings.sections.security, icon: Shield },
   ]
 
-  const load = useCallback(async () => {
-    if (!user) return
-    setLoading(true)
-    setEmail(user.email ?? '')
-    try {
-      const row = await loadUserProfile(user.id)
-      if (row) {
-        setProfile({
-          display_name: row.display_name ?? '',
-          first_name: row.first_name ?? '',
-          last_name: row.last_name ?? '',
-          username: row.username ?? '',
-          country: row.country ?? '',
-          city: row.city ?? '',
-          mobile_number: row.mobile_number ?? '',
-          address: row.address ?? '',
-          base_currency: row.base_currency ?? 'USD',
-          timezone: row.timezone ?? EMPTY_USER_PROFILE.timezone,
-        })
-      } else {
-        const meta = user.user_metadata as Record<string, unknown> | undefined
-        const full = String(meta?.full_name ?? meta?.name ?? '').trim()
-        const parts = full.split(/\s+/)
-        setProfile({
-          ...EMPTY_USER_PROFILE,
-          first_name: String(meta?.first_name ?? parts[0] ?? ''),
-          last_name: String(meta?.last_name ?? parts.slice(1).join(' ') ?? ''),
-          username: String(user.email?.split('@')[0] ?? ''),
-        })
-      }
-    } catch (e) {
-      setPersonalMsg({
-        type: 'error',
-        text: e instanceof Error ? e.message : t.settings.loadError,
-      })
-    } finally {
-      setLoading(false)
-    }
-  }, [user, t.settings.loadError])
-
   useEffect(() => {
-    void load()
-  }, [load])
+    setEmail(user?.email ?? '')
+  }, [user?.email])
 
-  const patchProfile = (patch: Partial<Omit<UserProfile, 'user_id'>>) => {
-    setProfile(prev => ({ ...prev, ...patch }))
+  const applyPreference = async (
+    patch: Partial<typeof profile>,
+    setMsg: (msg: { type: 'success' | 'error'; text: string } | null) => void,
+  ) => {
+    patchProfile(patch)
+    try {
+      await persistProfile(patch)
+      setMsg({ type: 'success', text: t.settings.saved })
+    } catch (e) {
+      setMsg({
+        type: 'error',
+        text: e instanceof Error ? e.message : t.settings.saveError,
+      })
+    }
   }
-
-  const profileForSave = () => ({
-    ...profile,
-    display_name: [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim(),
-  })
 
   const handleSavePersonal = async () => {
     if (!user) return
     setPersonalSaving(true)
     setPersonalMsg(null)
     try {
-      await saveUserProfile(user.id, profileForSave())
+      await persistProfile()
       setPersonalMsg({ type: 'success', text: t.settings.saved })
     } catch (e) {
       setPersonalMsg({
@@ -159,11 +120,10 @@ export function SettingsPage() {
   }
 
   const handleSaveGeneral = async () => {
-    if (!user) return
     setGeneralSaving(true)
     setGeneralMsg(null)
     try {
-      await saveUserProfile(user.id, profileForSave())
+      await persistProfile()
       setGeneralMsg({ type: 'success', text: t.settings.saved })
     } catch (e) {
       setGeneralMsg({
@@ -343,13 +303,13 @@ export function SettingsPage() {
                 <Select
                   label={t.settings.fields.baseCurrency}
                   value={profile.base_currency}
-                  onChange={e => patchProfile({ base_currency: e.target.value })}
+                  onChange={e => void applyPreference({ base_currency: e.target.value }, setGeneralMsg)}
                   options={[...BASE_CURRENCIES]}
                 />
                 <SearchableSelect
                   label={t.settings.fields.timezone}
                   value={profile.timezone}
-                  onChange={timezone => patchProfile({ timezone })}
+                  onChange={timezone => void applyPreference({ timezone }, setGeneralMsg)}
                   options={TIMEZONE_OPTIONS}
                   placeholder={t.settings.placeholders.selectTimezone}
                   searchPlaceholder={t.settings.placeholders.searchTimezone}

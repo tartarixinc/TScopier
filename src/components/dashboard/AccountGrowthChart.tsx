@@ -12,6 +12,7 @@ import {
 import type { AccountGrowthSeries } from '../../lib/dashboardCharts'
 import { useTheme } from '../../context/ThemeContext'
 import { useT } from '../../context/LocaleContext'
+import { useFormatMoney } from '../../context/UserProfileContext'
 import { chartThemeColors, chartTooltipProps } from '../../lib/chartTheme'
 
 interface AccountGrowthChartProps {
@@ -21,26 +22,8 @@ interface AccountGrowthChartProps {
   stale?: boolean
 }
 
-function formatMoney(v: number): string {
-  return `$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-}
-
-/** Shorter labels for the Y-axis so values are not clipped on narrow charts. */
-function formatAxisMoney(v: number): string {
-  const sign = v < 0 ? '-' : ''
-  const n = Math.abs(v)
-  if (n >= 1_000_000) {
-    const m = n / 1_000_000
-    return `${sign}$${m >= 10 ? m.toFixed(0) : m.toFixed(1)}M`
-  }
-  if (n >= 1_000) {
-    const k = n / 1_000
-    return `${sign}$${k >= 10 ? k.toFixed(0) : k.toFixed(1)}k`
-  }
-  return `${sign}$${Math.round(n)}`
-}
-
 export function AccountGrowthChart({ data, series, loading, stale }: AccountGrowthChartProps) {
+  const { formatMoney, formatAxisMoney } = useFormatMoney()
   const t = useT()
   const { theme } = useTheme()
   const colors = chartThemeColors(theme)
