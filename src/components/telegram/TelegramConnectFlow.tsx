@@ -1,6 +1,6 @@
 import { type FormEvent } from 'react'
 import clsx from 'clsx'
-import { Check, Smartphone, KeyRound, ListPlus, TriangleAlert } from 'lucide-react'
+import { Check, Smartphone, KeyRound, ListPlus, ShieldCheck, TriangleAlert } from 'lucide-react'
 import { useT } from '../../context/LocaleContext'
 import { interpolate } from '../../i18n/interpolate'
 import { Card } from '../ui/Card'
@@ -8,7 +8,7 @@ import { Button } from '../ui/Button'
 import { Alert } from '../ui/Alert'
 import { Input } from '../ui/Input'
 
-export type TelegramConnectStage = 'idle' | 'phone' | 'code'
+export type TelegramConnectStage = 'idle' | 'phone' | 'code' | 'twoFa'
 
 interface TelegramConnectFlowProps {
   stage: TelegramConnectStage
@@ -19,7 +19,6 @@ interface TelegramConnectFlowProps {
   onCodeChange: (value: string) => void
   password: string
   onPasswordChange: (value: string) => void
-  requiresPassword: boolean
   loading: boolean
   error: string
   onSendCode: (e: FormEvent) => void
@@ -29,13 +28,16 @@ interface TelegramConnectFlowProps {
 const STEPS = [
   { id: 'phone' as const, icon: Smartphone },
   { id: 'code' as const, icon: KeyRound },
+  { id: 'twoFa' as const, icon: ShieldCheck },
   { id: 'channels' as const, icon: ListPlus },
 ]
 
 function stepIndex(stage: TelegramConnectStage): number {
   if (stage === 'idle') return 0
   if (stage === 'phone') return 1
-  return 2
+  if (stage === 'code') return 2
+  if (stage === 'twoFa') return 3
+  return 0
 }
 
 export function TelegramConnectFlow({
@@ -47,7 +49,6 @@ export function TelegramConnectFlow({
   onCodeChange,
   password,
   onPasswordChange,
-  requiresPassword,
   loading,
   error,
   onSendCode,
@@ -57,7 +58,7 @@ export function TelegramConnectFlow({
   const ce = t.copierEnginePage
   const activeStep = stepIndex(stage)
 
-  const stepLabels = [ce.tgConnectStepPhone, ce.tgConnectStepCode, ce.tgConnectStepChannels]
+  const stepLabels = [ce.tgConnectStepPhone, ce.tgConnectStepCode, ce.tgConnectStepTwoFa, ce.tgConnectStepChannels]
   const howItWorks = [ce.tgConnectHowItWorks1, ce.tgConnectHowItWorks2, ce.tgConnectHowItWorks3]
 
   return (
@@ -72,14 +73,18 @@ export function TelegramConnectFlow({
               ? ce.tgConnectPhoneTitle
               : stage === 'code'
                 ? ce.tgConnectCodeTitle
-                : ce.tgConnectHeroTitle}
+                : stage === 'twoFa'
+                  ? ce.tgConnectTwoFaTitle
+                  : ce.tgConnectHeroTitle}
           </h2>
           <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
             {stage === 'phone'
               ? ce.tgConnectPhoneSubtitle
               : stage === 'code'
                 ? ce.tgConnectCodeSubtitle
-                : ce.tgConnectHeroSubtitle}
+                : stage === 'twoFa'
+                  ? ce.tgConnectTwoFaSubtitle
+                  : ce.tgConnectHeroSubtitle}
           </p>
         </div>
 
@@ -139,7 +144,7 @@ export function TelegramConnectFlow({
           </ul>
         )}
 
-        {(stage === 'phone' || stage === 'code') && (
+        {(stage === 'phone' || stage === 'code' || stage === 'twoFa') && (
           <div className="mb-4 px-3 py-2.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-900/50 rounded-xl flex items-start gap-2.5">
             <TriangleAlert className="w-4 h-4 text-amber-600 dark:text-amber-500 flex-shrink-0 mt-0.5" />
             <p className="text-xs text-amber-800 dark:text-amber-200/90 leading-relaxed">{ce.tgConnectPhoneWarning}</p>
@@ -187,16 +192,6 @@ export function TelegramConnectFlow({
               required
               autoFocus
             />
-            {requiresPassword && (
-              <Input
-                label={ce.twoFaPassword}
-                type="password"
-                placeholder={ce.twoFaPlaceholder}
-                value={password}
-                onChange={e => onPasswordChange(e.target.value)}
-                required
-              />
-            )}
             <Button type="submit" loading={loading} size="lg" className="w-full">
               {ce.verify}
             </Button>
@@ -204,11 +199,42 @@ export function TelegramConnectFlow({
               type="button"
               variant="ghost"
               className="w-full"
-              onClick={() => {
-                onStageChange('phone')
-              }}
+              onClick={() => onStageChange('phone')}
             >
               {ce.useDifferentNumber}
+            </Button>
+          </form>
+        )}
+
+        {stage === 'twoFa' && (
+          <form onSubmit={onVerifyCode} className="space-y-4">
+            <div className="rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/50 px-4 py-3">
+              <p className="text-xs text-neutral-500 dark:text-neutral-400">{ce.verificationCode}</p>
+              <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50 mt-0.5 font-mono tracking-wide">
+                {code || '—'}
+              </p>
+              <p className="text-xs text-neutral-400 mt-1">{interpolate(ce.sentTo, { phone })}</p>
+            </div>
+            <Input
+              label={ce.twoFaPassword}
+              type="password"
+              placeholder={ce.twoFaPlaceholder}
+              value={password}
+              onChange={e => onPasswordChange(e.target.value)}
+              hint={ce.twoFaRequired}
+              required
+              autoFocus
+            />
+            <Button type="submit" loading={loading} size="lg" className="w-full">
+              {ce.verify}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full"
+              onClick={() => onStageChange('code')}
+            >
+              {ce.backToVerificationCode}
             </Button>
           </form>
         )}

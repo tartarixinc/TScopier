@@ -15,6 +15,7 @@ exports.mtPlatformFrom = mtPlatformFrom;
 exports.hasMetatraderApiConfigured = hasMetatraderApiConfigured;
 exports.getMetatraderApi = getMetatraderApi;
 const undici_1 = require("undici");
+const mtTradeFields_js_1 = require("./mtTradeFields.js");
 /**
  * MetatraderAPI (metatraderapi.dev) Node client tuned for low order-send latency.
  *
@@ -515,20 +516,9 @@ class MetatraderApiClient {
         }
         return { orders: unwrapOrderList(raw), pagesCount: 1 };
     }
-    /** Pagination + OrderHistory + HistoryPositions + session ClosedOrders (deduped by ticket). */
-    async closedOrdersHistory(id, from, to) {
-        const byTicket = new Map();
-        const ingest = (rows) => {
-            for (const row of rows) {
-                if (!row || typeof row !== 'object')
-                    continue;
-                const o = row;
-                const ticket = Number(o.ticket ?? o.Ticket ?? 0);
-                if (!Number.isFinite(ticket) || ticket <= 0)
-                    continue;
-                byTicket.set(ticket, o);
-            }
-        };
+    async closedOrdersHistory(id, from, to, profile = 'dashboard') {
+        const byKey = new Map();
+        const ingest = (rows) => (0, mtTradeFields_js_1.ingestMtHistoryRows)(byKey, rows, profile);
         try {
             let page = 0;
             let pagesCount = 1;
@@ -544,16 +534,21 @@ class MetatraderApiClient {
         catch {
             /* optional */
         }
-        const settled = await Promise.allSettled([
-            this.closedOrders(id),
-            this.historyPositions(id, from, to),
-            this.orderHistory(id, from, to),
-        ]);
+        const settled = profile === 'dashboard'
+            ? await Promise.allSettled([
+                this.closedOrders(id),
+                this.historyPositions(id, from, to),
+                this.orderHistory(id, from, to),
+            ])
+            : await Promise.allSettled([
+                this.historyPositions(id, from, to),
+                this.orderHistory(id, from, to),
+            ]);
         for (const r of settled) {
             if (r.status === 'fulfilled')
                 ingest(r.value);
         }
-        return [...byTicket.values()];
+        return [...byKey.values()];
     }
     async accountSummary(id) {
         const raw = await this.get('/AccountSummary', { id });

@@ -18,6 +18,8 @@ const PARSE_SIGNAL_API_KEY = SUPABASE_SERVICE_ROLE_KEY;
 /** Min seconds between client.connect() and first getDialogs on a fresh session. */
 const COLD_FANOUT_DELAY_MS = 8000;
 const DIALOG_CACHE_TTL_MS = 60000;
+const DIALOG_PAGE_SIZE = 100;
+const DIALOG_MAX_SCAN = 500;
 const WATCHDOG_INTERVAL_MS = 30000;
 const WATCHDOG_FAILURE_THRESHOLD = 2;
 const SAFETY_POLL_INTERVAL_MS = 60000;
@@ -97,6 +99,8 @@ class UserListener {
         this.currentHandler = null;
         this.currentEventBuilder = null;
         this.startedAt = 0;
+        /** Set when start() reuses the auth-time client (no second connect). */
+        this.startedWithLiveClient = false;
         this.dialogsCache = null;
         this.dialogsCacheAt = 0;
         this.safetyPollTimer = null;
@@ -127,7 +131,14 @@ class UserListener {
                 if (jitter > 0)
                     await new Promise(r => setTimeout(r, jitter));
             }
-            await this.client.connect();
+            try {
+                await this.client.connect();
+            }
+            catch (err) {
+                if ((0, telegramClient_1.isAuthKeyUnregistered)(err))
+                    throw new telegramClient_1.TelegramSessionInvalidError();
+                throw err;
+            }
         }
         this.isConnected = true;
         this.startedAt = Date.now();
@@ -154,7 +165,12 @@ class UserListener {
         }
         finally {
             this.isConnected = false;
+            this.clearDialogsCache();
         }
+    }
+    clearDialogsCache() {
+        this.dialogsCache = null;
+        this.dialogsCacheAt = 0;
     }
     stopTimer(field) {
         const t = this[field];
@@ -288,30 +304,49 @@ class UserListener {
      * avoid cold-session fan-out, pages with a small limit, and caches the
      * result briefly so onboarding UI re-renders don't re-hit Telegram.
      */
-    async listChannels() {
-        const elapsed = Date.now() - this.startedAt;
-        if (elapsed >= 0 && elapsed < COLD_FANOUT_DELAY_MS) {
-            await new Promise(r => setTimeout(r, COLD_FANOUT_DELAY_MS - elapsed));
+    async listChannels(opts) {
+        if (!opts?.skipColdDelay && !this.startedWithLiveClient) {
+            const elapsed = Date.now() - this.startedAt;
+            if (elapsed >= 0 && elapsed < COLD_FANOUT_DELAY_MS) {
+                await new Promise(r => setTimeout(r, COLD_FANOUT_DELAY_MS - elapsed));
+            }
         }
         if (this.dialogsCache && (Date.now() - this.dialogsCacheAt) < DIALOG_CACHE_TTL_MS) {
             return this.dialogsCache;
         }
-        const dialogs = await this.client.getDialogs({ limit: 20 });
-        const channels = dialogs
-            .filter(d => d.isChannel || d.isGroup)
-            .map(d => {
+        let dialogs;
+        try {
+            dialogs = await this.fetchAllDialogs();
+        }
+        catch (err) {
+            (0, telegramClient_1.rethrowIfSessionInvalid)(err);
+        }
+        const byId = new Map();
+        for (const d of dialogs) {
+            if (!d.isChannel && !d.isGroup)
+                continue;
             const entity = (d.entity ?? {});
-            return {
-                id: String(d.id ?? ''),
+            const id = String(d.id ?? '');
+            if (!id)
+                continue;
+            byId.set(id, {
+                id,
                 title: d.title ?? 'Unknown',
                 username: entity.username ?? '',
                 members_count: entity.participantsCount ?? 0,
-            };
-        })
-            .filter(c => !!c.id);
+            });
+        }
+        const channels = [...byId.values()];
         this.dialogsCache = channels;
         this.dialogsCacheAt = Date.now();
         return channels;
+    }
+    /**
+     * Load channel/group dialogs (capped). Uses gramjs built-in pagination, which
+     * offsets by top *message* id — not dialog/peer id (large channel ids overflow int32).
+     */
+    async fetchAllDialogs() {
+        return this.client.getDialogs({ limit: DIALOG_MAX_SCAN });
     }
     /**
      * Explicit historical import used by channel insights profiling.
@@ -1091,6 +1126,7 @@ class UserListener {
     }
     async forceReconnect() {
         console.log(`[userListener] force reconnect for ${this.userId}`);
+        this.clearDialogsCache();
         this.lastReconnectAt = Date.now();
         this.consecutiveProbeFailures = 0;
         this.isConnected = false;

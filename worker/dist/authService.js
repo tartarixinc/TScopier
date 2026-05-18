@@ -69,7 +69,7 @@ class AuthService {
     async restorePendingFromDatabase(userId, phone) {
         const { data: row, error } = await this.supabase
             .from('telegram_auth_pending')
-            .select('phone, phone_code_hash, expires_at')
+            .select('phone, phone_code_hash, expires_at, awaiting_password, auth_session_string')
             .eq('user_id', userId)
             .maybeSingle();
         if (error || !row)
@@ -82,22 +82,37 @@ class AuthService {
             console.warn(`[authService] verify phone mismatch for user ${userId}`);
             return null;
         }
-        const { data: claimed, error: delErr } = await this.supabase
-            .from('telegram_auth_pending')
-            .delete()
-            .eq('user_id', userId)
-            .select('phone, phone_code_hash')
-            .maybeSingle();
-        if (delErr || !claimed)
-            return null;
-        const client = (0, telegramClient_1.buildClient)('');
+        const awaitingPassword = Boolean(row.awaiting_password);
+        const savedSession = awaitingPassword && typeof row.auth_session_string === 'string' && row.auth_session_string.trim()
+            ? row.auth_session_string.trim()
+            : '';
+        const client = (0, telegramClient_1.buildClient)(savedSession);
         await client.connect();
         return {
             client,
-            phone: claimed.phone,
-            phoneCodeHash: claimed.phone_code_hash,
+            phone: row.phone,
+            phoneCodeHash: row.phone_code_hash,
             createdAt: Date.now(),
+            awaitingPassword,
         };
+    }
+    async persistAwaitingPassword(userId, client) {
+        const authSessionString = client.session.save();
+        const { error } = await this.supabase
+            .from('telegram_auth_pending')
+            .update({
+            awaiting_password: true,
+            auth_session_string: authSessionString,
+        })
+            .eq('user_id', userId);
+        if (error) {
+            console.warn(`[authService] persistAwaitingPassword failed for ${userId}:`, error.message);
+        }
+    }
+    async completePasswordStep(client, password) {
+        const srpResult = await (0, telegramClient_1.tgInvoke)(client, new tl_1.Api.account.GetPassword());
+        const srpCheck = await (0, Password_1.computeCheck)(srpResult, password);
+        await (0, telegramClient_1.tgInvoke)(client, new tl_1.Api.auth.CheckPassword({ password: srpCheck }));
     }
     async sendCode(userId, phone) {
         const existing = this.pending.get(userId);
@@ -162,8 +177,14 @@ class AuthService {
         }
         const { client, phone: pendingPhone, phoneCodeHash } = pending;
         try {
-            if (password) {
-                // Code path 2: user re-submitted with password after first attempt asked for it.
+            if (pending.awaitingPassword) {
+                if (!password?.trim()) {
+                    throw new Error('Two-step verification password is required');
+                }
+                await this.completePasswordStep(client, password.trim());
+            }
+            else if (password?.trim()) {
+                // Legacy: password sent on first submit — try sign-in then 2FA if needed.
                 try {
                     await (0, telegramClient_1.tgInvoke)(client, new tl_1.Api.auth.SignIn({
                         phoneNumber: pendingPhone,
@@ -175,10 +196,10 @@ class AuthService {
                     const msg = signInErr instanceof Error ? signInErr.message : String(signInErr);
                     if (!msg.includes('SESSION_PASSWORD_NEEDED'))
                         throw signInErr;
+                    pending.awaitingPassword = true;
+                    await this.persistAwaitingPassword(userId, client);
+                    await this.completePasswordStep(client, password.trim());
                 }
-                const srpResult = await (0, telegramClient_1.tgInvoke)(client, new tl_1.Api.account.GetPassword());
-                const srpCheck = await (0, Password_1.computeCheck)(srpResult, password);
-                await (0, telegramClient_1.tgInvoke)(client, new tl_1.Api.auth.CheckPassword({ password: srpCheck }));
             }
             else {
                 try {
@@ -191,7 +212,8 @@ class AuthService {
                 catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);
                     if (msg.includes('SESSION_PASSWORD_NEEDED')) {
-                        // Keep the pending client alive — frontend will resend with password.
+                        pending.awaitingPassword = true;
+                        await this.persistAwaitingPassword(userId, client);
                         return { requires_password: true };
                     }
                     throw err;
@@ -231,14 +253,27 @@ class AuthService {
         // becomes the long-running listener — no second connect from this host.
         this.pending.delete(userId);
         await this.clearPendingRow(userId);
+        let channels;
         try {
             await this.sessionManager.adoptClient(userId, client, sessionString);
+            try {
+                channels = await this.sessionManager.listChannels(userId, { skipColdDelay: true });
+            }
+            catch (listErr) {
+                console.warn(`[authService] listChannels after verify failed for ${userId}:`, listErr);
+            }
         }
         catch (err) {
             console.error(`[authService] adoptClient failed for ${userId}:`, err);
-            // Session is persisted; manager will pick it up on next syncSessions tick.
+            try {
+                await client.disconnect();
+            }
+            catch {
+                /* ignore */
+            }
+            // Session is persisted; ensureListener can start a single fresh client on list_channels.
         }
-        return { ok: true, session_id: row.id };
+        return { ok: true, session_id: row.id, channels };
     }
 }
 exports.AuthService = AuthService;

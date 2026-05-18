@@ -2,20 +2,36 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.startHttpServer = startHttpServer;
 const http_1 = require("http");
+const telegramClient_1 = require("./telegramClient");
 const INTERNAL_TOKEN = process.env.WORKER_INTERNAL_TOKEN ?? '';
 const PORT = parseInt(process.env.WORKER_PORT ?? '8080', 10);
+function isTelegramSessionInvalid(err) {
+    return err instanceof telegramClient_1.TelegramSessionInvalidError;
+}
+async function handleTelegramRpcError(res, userId, sessionManager, err, fallbackMessage) {
+    if (userId && isTelegramSessionInvalid(err)) {
+        await sessionManager.invalidateTelegramSession(userId);
+        return sendSessionInvalid(res);
+    }
+    const msg = err instanceof Error ? err.message : fallbackMessage;
+    return sendJson(res, 400, { error: sanitizeClientError(msg) });
+}
+function sendSessionInvalid(res) {
+    sendJson(res, 401, {
+        error: 'telegram_session_invalid',
+        code: telegramClient_1.TELEGRAM_SESSION_INVALID_CODE,
+        message: 'Your Telegram session expired. Please connect again.',
+    });
+}
+/** Strip gramjs "(caused by …)" tails from messages shown to users. */
+function sanitizeClientError(msg) {
+    const idx = msg.indexOf('(caused by');
+    return (idx > 0 ? msg.slice(0, idx) : msg).trim() || 'Request failed';
+}
 /**
  * Authenticated HTTP API consumed only by the supabase telegram-auth
  * edge function. Authenticates with a static internal token so requests
  * cannot originate from the public internet without the secret.
- *
- * Endpoints:
- *  POST /auth/send_code     { user_id, phone }
- *  POST /auth/verify_code   { user_id, phone, code, password? }
- *  POST /auth/list_channels { user_id }
- *  POST /auth/backfill_channel_history { user_id, channel_row_id, days? }
- *  POST /auth/import_backtest_history { user_id, channel_row_id, from, to }
- *  POST /auth/backtest_sync_signals { user_id, channel_row_id, from, to }
  */
 function startHttpServer(authService, sessionManager) {
     if (!INTERNAL_TOKEN) {
@@ -46,8 +62,7 @@ function startHttpServer(authService, sessionManager) {
                 try {
                     const r = await authService.verifyCode(body.user_id, body.phone, body.code, body.password);
                     if ('requires_password' in r) {
-                        return sendJson(res, 400, {
-                            error: 'Two-step verification required',
+                        return sendJson(res, 200, {
                             requires_password: true,
                         });
                     }
@@ -55,7 +70,7 @@ function startHttpServer(authService, sessionManager) {
                 }
                 catch (err) {
                     const msg = err instanceof Error ? err.message : 'Verification failed';
-                    return sendJson(res, 400, { error: msg });
+                    return sendJson(res, 400, { error: sanitizeClientError(msg) });
                 }
             }
             if (url === '/auth/list_channels') {
@@ -67,8 +82,7 @@ function startHttpServer(authService, sessionManager) {
                     return sendJson(res, 200, { channels });
                 }
                 catch (err) {
-                    const msg = err instanceof Error ? err.message : 'Failed to list channels';
-                    return sendJson(res, 400, { error: msg });
+                    return handleTelegramRpcError(res, body.user_id, sessionManager, err, 'Failed to list channels');
                 }
             }
             if (url === '/auth/backfill_channel_history') {
@@ -80,8 +94,7 @@ function startHttpServer(authService, sessionManager) {
                     return sendJson(res, 200, result);
                 }
                 catch (err) {
-                    const msg = err instanceof Error ? err.message : 'Failed to backfill channel history';
-                    return sendJson(res, 400, { error: msg });
+                    return handleTelegramRpcError(res, body.user_id, sessionManager, err, 'Failed to backfill channel history');
                 }
             }
             if (url === '/auth/import_backtest_history') {
@@ -93,8 +106,7 @@ function startHttpServer(authService, sessionManager) {
                     return sendJson(res, 200, result);
                 }
                 catch (err) {
-                    const msg = err instanceof Error ? err.message : 'Failed to import backtest history';
-                    return sendJson(res, 400, { error: msg });
+                    return handleTelegramRpcError(res, body.user_id, sessionManager, err, 'Failed to import backtest history');
                 }
             }
             if (url === '/auth/backtest_sync_signals') {
@@ -106,17 +118,11 @@ function startHttpServer(authService, sessionManager) {
                     return sendJson(res, 200, result);
                 }
                 catch (err) {
-                    const msg = err instanceof Error ? err.message : 'Failed to sync backtest signals';
-                    return sendJson(res, 400, { error: msg });
+                    return handleTelegramRpcError(res, body.user_id, sessionManager, err, 'Failed to sync backtest signals');
                 }
             }
             if (url === '/health') {
                 const status = sessionManager.getStatus();
-                // A listener is "healthy" if it's connected and either has not
-                // received any event yet (just started) or saw something within
-                // the last 5 minutes. Most signal channels post several times an
-                // hour, so 5 min of silence on a previously-active listener is a
-                // reliable stall signal.
                 const now = Date.now();
                 const STALE_MS = 5 * 60 * 1000;
                 const ok = status.every(s => s.connected && (s.last_event_at === 0 || now - s.last_event_at < STALE_MS));
@@ -132,7 +138,7 @@ function startHttpServer(authService, sessionManager) {
         catch (err) {
             const msg = err instanceof Error ? err.message : 'Internal error';
             console.error('[httpServer] error:', msg);
-            return sendJson(res, 500, { error: msg });
+            return sendJson(res, 500, { error: sanitizeClientError(msg) });
         }
     });
     server.listen(PORT, () => {

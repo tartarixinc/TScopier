@@ -168,9 +168,9 @@ export class UserSessionManager {
     }
   }
 
-  async listChannels(userId: string): Promise<ChannelInfo[]> {
+  async listChannels(userId: string, opts?: { skipColdDelay?: boolean }): Promise<ChannelInfo[]> {
     const listener = await this.ensureListener(userId)
-    return listener.listChannels()
+    return listener.listChannels(opts)
   }
 
   private async ensureListener(userId: string): Promise<UserListener> {

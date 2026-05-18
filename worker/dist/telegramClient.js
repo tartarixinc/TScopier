@@ -1,7 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.API_HASH = exports.API_ID = void 0;
+exports.TelegramSessionInvalidError = exports.TELEGRAM_SESSION_INVALID_CODE = exports.API_HASH = exports.API_ID = void 0;
 exports.buildClient = buildClient;
+exports.isAuthKeyUnregistered = isAuthKeyUnregistered;
+exports.rethrowIfSessionInvalid = rethrowIfSessionInvalid;
 exports.tgInvoke = tgInvoke;
 const telegram_1 = require("telegram");
 const sessions_1 = require("telegram/sessions");
@@ -43,6 +45,25 @@ function buildClient(sessionString = '') {
  * instead of bubbling up. Use for auth flows where we cannot afford a
  * hard error mid-handshake.
  */
+exports.TELEGRAM_SESSION_INVALID_CODE = 'TELEGRAM_SESSION_INVALID';
+class TelegramSessionInvalidError extends Error {
+    constructor(message = 'Telegram session is no longer valid') {
+        super(message);
+        this.code = exports.TELEGRAM_SESSION_INVALID_CODE;
+        this.name = 'TelegramSessionInvalidError';
+    }
+}
+exports.TelegramSessionInvalidError = TelegramSessionInvalidError;
+function isAuthKeyUnregistered(err) {
+    const m = err instanceof Error ? err.message : String(err);
+    return m.includes('AUTH_KEY_UNREGISTERED');
+}
+function rethrowIfSessionInvalid(err) {
+    if (isAuthKeyUnregistered(err)) {
+        throw new TelegramSessionInvalidError();
+    }
+    throw err;
+}
 async function tgInvoke(client, req) {
     try {
         return (await client.invoke(req));

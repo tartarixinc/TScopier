@@ -453,7 +453,11 @@ export interface CopierEnginePageTranslations {
   tgConnectCodeSubtitle: string
   tgConnectStepPhone: string
   tgConnectStepCode: string
+  tgConnectStepTwoFa: string
   tgConnectStepChannels: string
+  tgConnectTwoFaTitle: string
+  tgConnectTwoFaSubtitle: string
+  backToVerificationCode: string
   tgConnectStepsAria: string
   tgConnectHowItWorks1: string
   tgConnectHowItWorks2: string
