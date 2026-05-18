@@ -119,7 +119,7 @@ export function AppLayout() {
       {
         label: t.nav.sections.signals,
         items: [
-          { to: '/copier-engine', icon: Send, label: t.nav.items.channels },
+          { to: '/channels', icon: Send, label: t.nav.items.channels },
           { to: '/backtest', icon: LayoutTemplate, label: t.nav.items.backtest },
           { to: '/copier-logs', icon: ScrollText, label: t.nav.items.copierLogs },
           { to: '/signal-history', icon: ChartNoAxesColumn, label: t.nav.items.signalHistory },

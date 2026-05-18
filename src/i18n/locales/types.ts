@@ -445,8 +445,22 @@ export interface CopierEnginePageTranslations {
   connectTelegram: string
   telegramNotConnectedTitle: string
   telegramNotConnectedBody: string
+  tgConnectHeroTitle: string
+  tgConnectHeroSubtitle: string
   tgConnectPhoneTitle: string
+  tgConnectPhoneSubtitle: string
   tgConnectCodeTitle: string
+  tgConnectCodeSubtitle: string
+  tgConnectStepPhone: string
+  tgConnectStepCode: string
+  tgConnectStepChannels: string
+  tgConnectStepsAria: string
+  tgConnectHowItWorks1: string
+  tgConnectHowItWorks2: string
+  tgConnectHowItWorks3: string
+  tgConnectPhoneWarning: string
+  useDifferentNumber: string
+  cancelConnect: string
   phoneLabel: string
   phonePlaceholder: string
   phoneHint: string
@@ -468,6 +482,7 @@ export interface CopierEnginePageTranslations {
   channelSearchPlaceholder: string
   noChannelSearchResults: string
   yourTelegramChannels: string
+  telegramConnectedHint: string
   connected: string
   expand: string
   collapse: string
@@ -481,6 +496,7 @@ export interface CopierEnginePageTranslations {
   add: string
   configuredEmptyTitle: string
   configuredEmptySubtitle: string
+  configuredEmptyConnectHint: string
   activeChannels: string
   configuredCount: string
   statusPaused: string

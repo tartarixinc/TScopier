@@ -49,7 +49,7 @@ const PAGE_ICONS: Record<string, typeof LayoutDashboard> = {
   '/account-configuration': Settings,
   '/account-trades': History,
   '/settings': Settings,
-  '/copier-engine': Send,
+  '/channels': Send,
   '/backtest': LayoutTemplate,
   '/copier-logs': ScrollText,
   '/signal-history': ChartNoAxesColumn,
@@ -200,7 +200,7 @@ function useAppSearchController(headerEl: HTMLElement | null) {
       kind: 'channel',
       title: c.name,
       subtitle: c.username ? `@${c.username.replace(/^@/, '')}` : undefined,
-      path: '/copier-engine',
+      path: '/channels',
       sectionLabel: t.globalSearch.groupChannels,
       keywords: [c.username, c.id, 'telegram', 'channel'],
     }))

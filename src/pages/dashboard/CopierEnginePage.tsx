@@ -11,6 +11,7 @@ import { Button } from '../../components/ui/Button'
 import { Alert } from '../../components/ui/Alert'
 import { Input } from '../../components/ui/Input'
 import { Select } from '../../components/ui/Select'
+import { TelegramConnectFlow, type TelegramConnectStage } from '../../components/telegram/TelegramConnectFlow'
 import type { ChannelKeywords, ChannelSignalProfile, TelegramChannel } from '../../types/database'
 
 const DEFAULT_CHANNEL_KEYWORDS: ChannelKeywords = {
@@ -484,6 +485,12 @@ export function CopierEnginePage() {
     await clearTelegramConnection('idle')
   }
 
+  const handleTgStageChange = (stage: TelegramConnectStage) => {
+    setTgStage(stage)
+    setTgError('')
+    if (stage === 'phone') setTgCode('')
+  }
+
   const openChannelKeywords = (channel: TelegramChannel) => {
     setKeywordsChannel(channel)
     setKeywordsDraft(normalizeChannelKeywords(channel.channel_keywords))
@@ -547,85 +554,40 @@ export function CopierEnginePage() {
           <a href="/account-configuration" className="underline text-warning-800">Connect one in Account Configuration.</a>
         </div>
       )} */}
-      {!hasTgSession && tgStage === 'idle' && (
-        <div className="mb-3 px-3 py-2 bg-warning-50 border border-warning-200 rounded-lg text-sm text-warning-700 flex items-center gap-2">
-          <span className="font-medium">{ce.telegramNotConnectedTitle}</span>
-          <span>{ce.telegramNotConnectedBody}</span>
-        </div>
+      {!hasTgSession && (
+        <TelegramConnectFlow
+          stage={tgStage === 'linked' ? 'idle' : tgStage}
+          onStageChange={handleTgStageChange}
+          phone={tgPhone}
+          onPhoneChange={setTgPhone}
+          code={tgCode}
+          onCodeChange={setTgCode}
+          password={tgPassword}
+          onPasswordChange={setTgPassword}
+          requiresPassword={requiresPassword}
+          loading={tgLoading}
+          error={tgError}
+          onSendCode={sendCode}
+          onVerifyCode={verifyCode}
+        />
       )}
 
-      {!hasTgSession && tgStage !== 'idle' && (
-        <Card className="mb-3">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-7 h-7 rounded-full bg-primary-100 flex items-center justify-center overflow-hidden">
-              <img
-                src="/Telegram.svg"
-                alt="Telegram"
-                className="w-4 h-4 object-contain"
-                loading="lazy"
-              />
-            </div>
-            <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
-              {tgStage === 'phone' ? ce.tgConnectPhoneTitle : ce.tgConnectCodeTitle}
-            </p>
-          </div>
-
-          {tgError && <Alert className="mb-3">{tgError}</Alert>}
-
-          {tgStage === 'phone' ? (
-            <form onSubmit={sendCode} className="space-y-3">
-              <Input
-                label={ce.phoneLabel}
-                type="tel"
-                placeholder={ce.phonePlaceholder}
-                value={tgPhone}
-                onChange={e => setTgPhone(e.target.value)}
-                hint={ce.phoneHint}
-                required
-                autoFocus
-              />
-              <div className="flex gap-2">
-                <Button type="submit" loading={tgLoading} size="sm">{ce.sendCode}</Button>
-                <Button type="button" variant="ghost" size="sm" onClick={() => setTgStage('idle')}>{t.common.cancel}</Button>
-              </div>
-            </form>
-          ) : (
-            <form onSubmit={verifyCode} className="space-y-3">
-              <Input
-                label={ce.verificationCode}
-                placeholder={ce.verificationPlaceholder}
-                value={tgCode}
-                onChange={e => setTgCode(e.target.value)}
-                hint={interpolate(ce.sentTo, { phone: tgPhone })}
-                required
-                autoFocus
-              />
-              {requiresPassword && (
-                <Input
-                  label={ce.twoFaPassword}
-                  type="password"
-                  placeholder={ce.twoFaPlaceholder}
-                  value={tgPassword}
-                  onChange={e => setTgPassword(e.target.value)}
-                  required
-                />
-              )}
-              <div className="flex gap-2">
-                <Button type="submit" loading={tgLoading} size="sm">{ce.verify}</Button>
-                <Button type="button" variant="ghost" size="sm" onClick={() => { setTgStage('phone'); setTgError('') }}>{ce.back}</Button>
-              </div>
-            </form>
-          )}
-        </Card>
-      )}
 
       {/* Telegram channels panel */}
       {hasTgSession && (
         <Card className="mb-3" padding="none">
-          <div className="px-4 py-2.5 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{ce.yourTelegramChannels}</p>
-              <Badge variant="success" size="sm">{ce.connected}</Badge>
+          <div className="px-4 py-2.5 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between gap-2 bg-gradient-to-r from-[#229ED9]/8 to-transparent dark:from-[#229ED9]/15">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-lg bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 flex items-center justify-center flex-shrink-0 shadow-sm">
+                <img src="/Telegram.svg" alt="" className="w-[18px] h-[18px] object-contain" loading="lazy" aria-hidden />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 truncate">{ce.yourTelegramChannels}</p>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">{ce.telegramConnectedHint}</p>
+              </div>
+              <span className="flex-shrink-0 hidden sm:inline-flex">
+                <Badge variant="success" size="sm">{ce.connected}</Badge>
+              </span>
             </div>
             <div className="flex items-center gap-2">
               <Button
@@ -758,19 +720,9 @@ export function CopierEnginePage() {
         <div className="bg-white dark:bg-neutral-900 rounded-xl border border-dashed border-neutral-200 dark:border-neutral-800 py-10 text-center">
           <Radio className="w-8 h-8 mx-auto mb-2 text-neutral-200" />
           <p className="text-sm font-medium text-neutral-400">{ce.configuredEmptyTitle}</p>
-          <p className="text-xs text-neutral-300 mt-0.5">{ce.configuredEmptySubtitle}</p>
-          {!hasTgSession && (
-            <Button size="lg" className="mt-5" onClick={() => setTgStage('phone')}>
-              <img
-                src="/Telegram.svg"
-                alt=""
-                className="w-5 h-5 object-contain"
-                loading="lazy"
-                aria-hidden
-              />
-              {ce.connectTelegram}
-            </Button>
-          )}
+          <p className="text-xs text-neutral-300 mt-0.5 max-w-sm mx-auto">
+            {!hasTgSession ? ce.configuredEmptyConnectHint : ce.configuredEmptySubtitle}
+          </p>
         </div>
       ) : (
         <Card padding="none" className="overflow-hidden">

@@ -29,7 +29,7 @@ export function buildAppSearchPages(t: Translations): AppSearchPageDef[] {
     { path: '/account-configuration', title: t.nav.items.configuration, sectionLabel: t.nav.sections.general, subtitle: p.accountConfiguration.description, keywords: ['broker', 'mt4', 'mt5', 'account', 'copier'] },
     { path: '/account-trades', title: t.nav.items.trades, sectionLabel: t.nav.sections.general, keywords: ['positions', 'orders', 'history', 'trades'] },
     { path: '/settings', title: t.nav.settings, sectionLabel: t.nav.sections.general, subtitle: p.settings.description, keywords: ['profile', 'password', 'timezone'] },
-    { path: '/copier-engine', title: t.nav.items.channels, sectionLabel: t.nav.sections.signals, subtitle: p.copierEngine.description, keywords: ['telegram', 'signals'] },
+    { path: '/channels', title: t.nav.items.channels, sectionLabel: t.nav.sections.signals, subtitle: p.copierEngine.description, keywords: ['telegram', 'signals'] },
     { path: '/backtest', title: t.nav.items.backtest, sectionLabel: t.nav.sections.signals, subtitle: t.backtest.subtitle, keywords: ['simulate', 'test'] },
     { path: '/copier-logs', title: t.nav.items.copierLogs, sectionLabel: t.nav.sections.signals, keywords: ['logs', 'executed', 'skipped'] },
     { path: '/signal-history', title: t.nav.items.signalHistory, sectionLabel: t.nav.sections.signals, subtitle: p.signalHistory.description, keywords: ['parsed', 'messages'] },

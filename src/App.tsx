@@ -49,7 +49,8 @@ export default function App() {
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/account-configuration" element={<AccountConfigPage />} />
             <Route path="/account-trades" element={<TradesPage />} />
-            <Route path="/copier-engine" element={<CopierEnginePage />} />
+            <Route path="/channels" element={<CopierEnginePage />} />
+            <Route path="/copier-engine" element={<Navigate to="/channels" replace />} />
             <Route path="/backtest" element={<Backtest />} />
             <Route path="/copier-templates" element={<Navigate to="/backtest" replace />} />
             <Route path="/copier-logs" element={<CopierLogsPage />} />
@@ -68,7 +69,6 @@ export default function App() {
             <Route path="/settings" element={<SettingsPage />} />
 
             {/* Legacy redirects */}
-            <Route path="/channels" element={<Navigate to="/copier-engine" replace />} />
             <Route path="/trades" element={<Navigate to="/account-trades" replace />} />
             <Route path="/onboarding" element={<Navigate to="/dashboard" replace />} />
             <Route path="/integrations" element={<Navigate to="/dashboard" replace />} />

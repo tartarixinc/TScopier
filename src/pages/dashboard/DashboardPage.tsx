@@ -1492,7 +1492,7 @@ export function DashboardPage() {
             label={t.dashboard.activeSignalChannels}
             value={String(stats.activeChannels)}
             sub={t.dashboard.connectedTelegramChannels}
-            addTo="/copier-engine"
+            addTo="/channels"
             addLabel={t.dashboard.manageChannels}
           />
           <OverviewStat
@@ -1538,7 +1538,7 @@ export function DashboardPage() {
               </button>
             </div>
             <button
-              onClick={() => navigate('/copier-engine')}
+              onClick={() => navigate('/channels')}
               className="flex items-center gap-1.5 px-3 py-1.5 border border-teal-500 dark:border-teal-600 text-teal-600 dark:text-teal-400 rounded-lg text-xs font-medium hover:bg-teal-50 dark:hover:bg-teal-950/50 transition-colors"
             >
               {t.nav.items.channels}

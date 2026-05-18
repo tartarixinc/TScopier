@@ -2491,7 +2491,7 @@ export function AccountConfigPage() {
                     <div className="space-y-3">
                       {channelOptions.length === 0 ? (
                         <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                          No connected channels found. <Link to="/copier-engine" className="text-primary-600 underline">Connect channels here</Link>.
+                          No connected channels found. <Link to="/channels" className="text-primary-600 underline">Connect channels here</Link>.
                         </p>
                       ) : channelOptions.length === 1 ? (
                         <p className="text-sm text-neutral-600 dark:text-neutral-400">
