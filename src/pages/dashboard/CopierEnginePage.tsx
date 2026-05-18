@@ -12,6 +12,12 @@ import { Alert } from '../../components/ui/Alert'
 import { Input } from '../../components/ui/Input'
 import { Select } from '../../components/ui/Select'
 import { TelegramConnectFlow, type TelegramConnectStage } from '../../components/telegram/TelegramConnectFlow'
+import {
+  getCachedTgChannels,
+  invalidateTgChannelsCache,
+  setCachedTgChannels,
+  type TgChannelListItem,
+} from '../../lib/telegramChannelsCache'
 import type { ChannelKeywords, ChannelSignalProfile, TelegramChannel } from '../../types/database'
 
 const DEFAULT_CHANNEL_KEYWORDS: ChannelKeywords = {
@@ -163,11 +169,12 @@ export function CopierEnginePage() {
   const ce = t.copierEnginePage
   const ch = t.channelsPage
   const { user, session } = useAuth()
+  const initialTgCache = user?.id ? getCachedTgChannels(user.id) : null
   const [channels, setChannels] = useState<TelegramChannel[]>([])
   const [channelProfiles, setChannelProfiles] = useState<Record<string, ChannelSignalProfile>>({})
   const [analyzingChannels, setAnalyzingChannels] = useState<Set<string>>(new Set())
   const [analysisProgress, setAnalysisProgress] = useState<Record<string, number>>({})
-  const [tgChannels, setTgChannels] = useState<{ id: string; title: string; username: string; members_count: number }[]>([])
+  const [tgChannels, setTgChannels] = useState<TgChannelListItem[]>(initialTgCache ?? [])
   const [loading, setLoading] = useState(true)
   const [loadingTg, setLoadingTg] = useState(false)
   const [tgChannelsCollapsed, setTgChannelsCollapsed] = useState(false)
@@ -192,10 +199,12 @@ export function CopierEnginePage() {
 
   useEffect(() => {
     if (!user) return
-    loadData()
+    const cached = getCachedTgChannels(user.id)
+    if (cached) setTgChannels(cached)
+    void loadData({ skipTgFetch: Boolean(cached) })
   }, [user])
 
-  const loadData = async (opts?: { skipTgFetch?: boolean; backgroundTgFetch?: boolean }) => {
+  const loadData = async (opts?: { skipTgFetch?: boolean; backgroundTgFetch?: boolean; forceTgFetch?: boolean }) => {
     const [channelsRes, sessionRes] = await Promise.all([
       supabase.from('telegram_channels').select('*').eq('user_id', user!.id).order('created_at', { ascending: false }),
       supabase.from('telegram_sessions').select('id').eq('user_id', user!.id).maybeSingle(),
@@ -208,7 +217,15 @@ export function CopierEnginePage() {
     setTgStage(hasSession ? 'linked' : 'idle')
     setLoading(false)
     if (hasSession && !opts?.skipTgFetch) {
-      void fetchTgChannels({ background: opts?.backgroundTgFetch })
+      const cached = user?.id ? getCachedTgChannels(user.id) : null
+      if (cached && !opts?.forceTgFetch) {
+        setTgChannels(cached)
+      } else {
+        void fetchTgChannels({
+          background: opts?.backgroundTgFetch ?? Boolean(cached),
+          force: opts?.forceTgFetch,
+        })
+      }
     }
   }
 
@@ -302,6 +319,7 @@ export function CopierEnginePage() {
     setAnalysisProgress({})
     setTgChannels([])
     setTgChannelSearch('')
+    if (user?.id) invalidateTgChannelsCache(user.id)
     setTgError('')
     setError('')
     setTgCode('')
@@ -318,7 +336,14 @@ export function CopierEnginePage() {
     await reconnectTelegram()
   }, [reconnectTelegram])
 
-  const fetchTgChannels = async (opts?: { background?: boolean }) => {
+  const fetchTgChannels = async (opts?: { background?: boolean; force?: boolean }) => {
+    if (!opts?.force && user?.id) {
+      const cached = getCachedTgChannels(user.id)
+      if (cached) {
+        setTgChannels(cached)
+        return
+      }
+    }
     setLoadingTg(true)
     if (!opts?.background) setError('')
     const maxAttempts = 3
@@ -346,7 +371,9 @@ export function CopierEnginePage() {
             }
             return
           }
-          setTgChannels(data.channels ?? [])
+          const list = (data.channels ?? []) as TgChannelListItem[]
+          setTgChannels(list)
+          if (user?.id) setCachedTgChannels(user.id, list)
           if (!opts?.background) setError('')
           return
         } catch {
@@ -491,9 +518,10 @@ export function CopierEnginePage() {
         return
       }
       if (Array.isArray(data.channels)) {
-        setTgChannels(data.channels)
+        const list = data.channels as TgChannelListItem[]
+        setTgChannels(list)
+        if (user?.id) setCachedTgChannels(user.id, list)
         await loadData({ skipTgFetch: true })
-        void fetchTgChannels({ background: true })
       } else {
         await loadData()
       }
@@ -568,7 +596,7 @@ export function CopierEnginePage() {
         </div>
         {hasTgSession && (
           <div className="flex gap-2">
-            <Button variant="secondary" size="sm" onClick={() => void fetchTgChannels()} loading={loadingTg}>
+            <Button variant="secondary" size="sm" onClick={() => void fetchTgChannels({ force: true })} loading={loadingTg}>
               <RefreshCw className="w-3.5 h-3.5" />
               {t.common.refresh}
             </Button>
@@ -649,7 +677,7 @@ export function CopierEnginePage() {
               />
             </div>
           )}
-          {!tgChannelsCollapsed && (loadingTg ? (
+          {!tgChannelsCollapsed && (loadingTg && tgChannels.length === 0 ? (
             <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
               {[...Array(4)].map((_, i) => (
                 <div key={i} className="px-4 py-2.5 flex items-center gap-3">
@@ -666,7 +694,7 @@ export function CopierEnginePage() {
               <AlertCircle className="w-8 h-8 mx-auto mb-2 text-error-300" />
               <p className="text-sm text-neutral-700 dark:text-neutral-300 font-medium">{error}</p>
               <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-                <Button size="sm" variant="secondary" onClick={() => void fetchTgChannels()} loading={loadingTg}>
+                <Button size="sm" variant="secondary" onClick={() => void fetchTgChannels({ force: true })} loading={loadingTg}>
                   <RefreshCw className="w-3.5 h-3.5" />
                   {t.common.refresh}
                 </Button>
