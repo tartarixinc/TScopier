@@ -156,9 +156,15 @@ export class UserSessionManager {
   async invalidateTelegramSession(userId: string): Promise<void> {
     await this.stopListener(userId)
     await this.supabase.from('telegram_auth_pending').delete().eq('user_id', userId)
-    const { error } = await this.supabase.from('telegram_sessions').delete().eq('user_id', userId)
-    if (error) {
-      console.warn(`[sessionManager] invalidateTelegramSession delete failed for ${userId}:`, error.message)
+    const [sessionRes, channelsRes] = await Promise.all([
+      this.supabase.from('telegram_sessions').delete().eq('user_id', userId),
+      this.supabase.from('telegram_channels').delete().eq('user_id', userId),
+    ])
+    if (sessionRes.error) {
+      console.warn(`[sessionManager] invalidateTelegramSession session delete failed for ${userId}:`, sessionRes.error.message)
+    }
+    if (channelsRes.error) {
+      console.warn(`[sessionManager] invalidateTelegramSession channels delete failed for ${userId}:`, channelsRes.error.message)
     }
   }
 

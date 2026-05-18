@@ -286,11 +286,18 @@ export function CopierEnginePage() {
     }
   }, [session?.access_token])
 
-  /** Clear DB session and open the phone → code connect flow (same as Disconnect + Connect). */
-  const reconnectTelegram = useCallback(async () => {
+  /** Remove Telegram session and all configured channels for this user. */
+  const clearTelegramConnection = useCallback(async (nextStage: 'idle' | 'phone') => {
     if (!user?.id) return
-    await supabase.from('telegram_sessions').delete().eq('user_id', user.id)
+    await Promise.all([
+      supabase.from('telegram_sessions').delete().eq('user_id', user.id),
+      supabase.from('telegram_channels').delete().eq('user_id', user.id),
+    ])
     setHasTgSession(false)
+    setChannels([])
+    setChannelProfiles({})
+    setAnalyzingChannels(new Set())
+    setAnalysisProgress({})
     setTgChannels([])
     setTgChannelSearch('')
     setTgError('')
@@ -298,8 +305,13 @@ export function CopierEnginePage() {
     setTgCode('')
     setTgPassword('')
     setRequiresPassword(false)
-    setTgStage('phone')
+    setTgStage(nextStage)
   }, [user])
+
+  /** Clear DB session + channels and open the phone → code connect flow. */
+  const reconnectTelegram = useCallback(async () => {
+    await clearTelegramConnection('phone')
+  }, [clearTelegramConnection])
 
   const handleTelegramSessionInvalid = useCallback(async () => {
     await reconnectTelegram()
@@ -469,12 +481,7 @@ export function CopierEnginePage() {
   }
 
   const disconnectTelegram = async () => {
-    await supabase.from('telegram_sessions').delete().eq('user_id', user!.id)
-    setHasTgSession(false)
-    setTgStage('idle')
-    setTgChannels([])
-    setTgChannelSearch('')
-    setError('')
+    await clearTelegramConnection('idle')
   }
 
   const openChannelKeywords = (channel: TelegramChannel) => {
