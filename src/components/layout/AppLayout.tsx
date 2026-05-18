@@ -38,6 +38,8 @@ export function AppLayout() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [helpMenuOpen, setHelpMenuOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const [headerEl, setHeaderEl] = useState<HTMLElement | null>(null)
+  const [mobileSearchSlot, setMobileSearchSlot] = useState<HTMLDivElement | null>(null)
   const helpMenuRef = useRef<HTMLDivElement>(null)
   const userMenuRef = useRef<HTMLDivElement>(null)
   const helpMenuCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -277,7 +279,10 @@ export function AppLayout() {
       </aside>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="sticky top-0 z-20 flex h-14 sm:h-16 shrink-0 items-center gap-2 sm:gap-4 border-b border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 sm:px-6 pt-[env(safe-area-inset-top)]">
+        <header
+          ref={setHeaderEl}
+          className="sticky top-0 z-20 flex h-14 sm:h-16 shrink-0 items-center gap-2 sm:gap-4 overflow-hidden border-b border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 sm:px-6 pt-[env(safe-area-inset-top)]"
+        >
           <button
             type="button"
             onClick={() => setMobileNavOpen(true)}
@@ -296,11 +301,16 @@ export function AppLayout() {
             {isSidebarCollapsed ? <PanelLeftOpen className="w-5 h-5" /> : <PanelLeftClose className="w-5 h-5" />}
           </button>
 
-          <AppSearch className="flex-1 max-w-md min-w-0" />
+          <AppSearch
+            className="flex-1 max-w-md min-w-0"
+            headerEl={headerEl}
+            mobileTriggerSlot={mobileSearchSlot}
+          />
 
-          <div className="flex-1 min-w-0" />
+          <div className="flex-1 min-w-0 lg:hidden" />
 
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            <div ref={setMobileSearchSlot} className="lg:hidden" />
             <LanguageSwitcher />
             <ThemeToggle />
             <div

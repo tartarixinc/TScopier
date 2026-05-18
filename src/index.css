@@ -45,6 +45,15 @@ body {
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
+/* iOS Safari zooms focused inputs when font-size < 16px */
+@media screen and (max-width: 767px) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='hidden']):not([type='file']),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
 #root {
   min-height: 100vh;
 }

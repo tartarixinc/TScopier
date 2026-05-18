@@ -24,7 +24,7 @@ export function PasswordInput({ label, error, hint, className, id, ...props }: P
           id={inputId}
           type={visible ? 'text' : 'password'}
           className={clsx(
-            'w-full px-3 py-2.5 pr-10 text-sm rounded-lg border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-500/40 focus:border-teal-500',
+            'w-full px-3 py-2.5 pr-10 text-base md:text-sm rounded-lg border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-500/40 focus:border-teal-500',
             error
               ? 'border-error-500 bg-error-50 dark:bg-error-950/40 text-neutral-900 dark:text-neutral-100'
               : 'border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 hover:border-neutral-300 dark:hover:border-neutral-600',
