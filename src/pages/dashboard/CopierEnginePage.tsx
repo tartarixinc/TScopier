@@ -530,19 +530,14 @@ export function CopierEnginePage() {
           <h1 className="text-xl font-bold text-neutral-900 dark:text-neutral-50">{t.pages.copierEngine.title}</h1>
           <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">{t.pages.copierEngine.description}</p>
         </div>
-        <div className="flex gap-2">
-          {!hasTgSession && tgStage === 'idle' && (
-            <Button size="sm" onClick={() => setTgStage('phone')}>
-              {ce.connectTelegram}
-            </Button>
-          )}
-          {hasTgSession && (
+        {hasTgSession && (
+          <div className="flex gap-2">
             <Button variant="secondary" size="sm" onClick={fetchTgChannels} loading={loadingTg}>
               <RefreshCw className="w-3.5 h-3.5" />
               {t.common.refresh}
             </Button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Status row */}
@@ -764,6 +759,18 @@ export function CopierEnginePage() {
           <Radio className="w-8 h-8 mx-auto mb-2 text-neutral-200" />
           <p className="text-sm font-medium text-neutral-400">{ce.configuredEmptyTitle}</p>
           <p className="text-xs text-neutral-300 mt-0.5">{ce.configuredEmptySubtitle}</p>
+          {!hasTgSession && (
+            <Button size="lg" className="mt-5" onClick={() => setTgStage('phone')}>
+              <img
+                src="/Telegram.svg"
+                alt=""
+                className="w-5 h-5 object-contain"
+                loading="lazy"
+                aria-hidden
+              />
+              {ce.connectTelegram}
+            </Button>
+          )}
         </div>
       ) : (
         <Card padding="none" className="overflow-hidden">
