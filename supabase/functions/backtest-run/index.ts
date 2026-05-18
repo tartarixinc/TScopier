@@ -1,6 +1,11 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
-import { parseSimpleConfig, toBacktestRunConfig } from "../_shared/backtest/config.ts"
+import {
+  parseSimpleConfig,
+  toBacktestRunConfig,
+  type BacktestRunMode,
+} from "../_shared/backtest/config.ts"
+import { countStoredBacktestSignals } from "../_shared/backtest/countSignals.ts"
 import { executeBacktestRun } from "../_shared/backtest/runner.ts"
 import { syncBacktestSignalsViaWorker } from "../_shared/backtest/workerSync.ts"
 import {
@@ -17,6 +22,129 @@ const corsHeaders = {
 
 function bad(status: number, msg: string) {
   return Response.json({ error: msg }, { status, headers: corsHeaders })
+}
+
+async function startBacktestRun(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  simple: ReturnType<typeof parseSimpleConfig>,
+  mode: BacktestRunMode,
+  opts: { forceSync?: boolean },
+): Promise<Response> {
+  const cfg = toBacktestRunConfig(simple, mode)
+  const runLabel = mode === "tpsl" ? "TP/SL backtest" : "Trade simulation"
+  const name = `${runLabel} ${cfg.dateFrom} → ${cfg.dateTo}`
+
+  const { data: run, error: insErr } = await supabase
+    .from("backtest_runs")
+    .insert({
+      user_id: userId,
+      name,
+      status: "pending",
+      config: { ...cfg, runMode: mode },
+    })
+    .select("id")
+    .single()
+  if (insErr) return bad(500, insErr.message)
+
+  const runId = run.id as string
+  await supabase.from("backtest_run_channels").insert(
+    simple.channelIds.map((channel_id) => ({ run_id: runId, channel_id })),
+  )
+
+  const massiveKey = Deno.env.get("MASSIVE_API_KEY") ?? Deno.env.get("POLYGON_API_KEY") ?? ""
+  if (!massiveKey.trim()) {
+    await supabase.from("backtest_runs").update({
+      status: "failed",
+      error_message: "MASSIVE_API_KEY not configured on server",
+    }).eq("id", runId)
+    return bad(503, "MASSIVE_API_KEY not configured")
+  }
+
+  const massive = MassiveClient.fromEnv(Deno.env)
+
+  const runPromise = (async () => {
+    await supabase.from("backtest_runs").update({
+      status: "running",
+      started_at: new Date().toISOString(),
+      progress_pct: 5,
+      progress_message: "Loading stored signals…",
+    }).eq("id", runId)
+
+    const importWarnings: string[] = []
+    const existing = await countStoredBacktestSignals(
+      supabase,
+      userId,
+      simple.channelIds,
+      cfg.dateFrom,
+      cfg.dateTo,
+    )
+    const shouldSync = opts.forceSync === true || existing === 0
+
+    if (shouldSync) {
+      await supabase.from("backtest_runs").update({
+        progress_pct: 8,
+        progress_message: "Syncing Telegram signals…",
+      }).eq("id", runId)
+
+      const sync = await syncBacktestSignalsViaWorker(
+        Deno.env,
+        userId,
+        simple.channelIds,
+        cfg.dateFrom,
+        cfg.dateTo,
+        { runId },
+      )
+
+      if (sync.messages_scanned === 0 && sync.imported === 0) {
+        importWarnings.push(
+          "0 messages from Telegram — check session and channel access",
+        )
+      } else if (sync.imported > 0) {
+        importWarnings.unshift(
+          `Synced ${sync.imported} tradeable signal(s) from Telegram`,
+        )
+      }
+      importWarnings.push(...sync.errors)
+    } else {
+      importWarnings.push(
+        "Using signals already in backtest_channel_signals (skipped Telegram sync)",
+      )
+    }
+
+    await supabase.from("backtest_runs").update({
+      progress_pct: 14,
+      progress_message: "Fetching Massive market data…",
+    }).eq("id", runId)
+
+    await executeBacktestRun(
+      supabase,
+      massive,
+      runId,
+      userId,
+      cfg,
+      { importWarnings, mode },
+    )
+  })()
+    .catch(async (e) => {
+      const msg = sanitizeMarketDataErrorMessage(
+        e instanceof Error ? e.message : String(e),
+      )
+      await supabase.from("backtest_runs").update({
+        status: "failed",
+        error_message: msg,
+        completed_at: new Date().toISOString(),
+      }).eq("id", runId)
+    })
+
+  // @ts-ignore EdgeRuntime.waitUntil
+  if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
+    EdgeRuntime.waitUntil(runPromise)
+  } else {
+    await runPromise
+  }
+
+  return Response.json({ ok: true, run_id: runId, run_mode: mode }, { headers: corsHeaders })
 }
 
 Deno.serve(async (req: Request) => {
@@ -81,118 +209,15 @@ Deno.serve(async (req: Request) => {
       }, { headers: corsHeaders })
     }
 
-    if (action === "run") {
+    const runActions = new Set(["run", "backtest_tpsl", "simulate_trades"])
+    if (runActions.has(action)) {
       const simple = parseSimpleConfig((body.config ?? {}) as Record<string, unknown>)
       if (simple.channelIds.length === 0) return bad(400, "At least one channel required")
 
-      const cfg = toBacktestRunConfig(simple)
-      const name = String(body.name ?? `Backtest ${cfg.dateFrom} → ${cfg.dateTo}`).trim()
+      const mode: BacktestRunMode = action === "backtest_tpsl" ? "tpsl" : "simulate"
+      const forceSync = body.force_sync === true
 
-      const { data: run, error: insErr } = await supabase
-        .from("backtest_runs")
-        .insert({
-          user_id: userId,
-          name,
-          status: "pending",
-          config: cfg,
-        })
-        .select("id")
-        .single()
-      if (insErr) return bad(500, insErr.message)
-
-      const runId = run.id as string
-      await supabase.from("backtest_run_channels").insert(
-        simple.channelIds.map((channel_id) => ({ run_id: runId, channel_id })),
-      )
-
-      const massiveKey = Deno.env.get("MASSIVE_API_KEY") ?? Deno.env.get("POLYGON_API_KEY") ?? ""
-      if (!massiveKey.trim()) {
-        await supabase.from("backtest_runs").update({
-          status: "failed",
-          error_message: "MASSIVE_API_KEY not configured on server",
-        }).eq("id", runId)
-        return bad(503, "MASSIVE_API_KEY not configured")
-      }
-
-      const massive = MassiveClient.fromEnv(Deno.env)
-
-      const runPromise = (async () => {
-        await supabase.from("backtest_runs").update({
-          status: "running",
-          started_at: new Date().toISOString(),
-          progress_pct: 2,
-          progress_message: "Syncing Telegram signals…",
-        }).eq("id", runId)
-
-        const sync = await syncBacktestSignalsViaWorker(
-          Deno.env,
-          userId,
-          simple.channelIds,
-          cfg.dateFrom,
-          cfg.dateTo,
-          {
-            runId,
-            onChannelStart: async (i, channelId) => {
-              const n = simple.channelIds.length
-              await supabase.from("backtest_runs").update({
-                progress_message: n > 1
-                  ? `Syncing Telegram (${i + 1}/${n} channels)…`
-                  : "Syncing Telegram signals…",
-                progress_pct: 2,
-                updated_at: new Date().toISOString(),
-              }).eq("id", runId)
-              void channelId
-            },
-          },
-        )
-
-        await supabase.from("backtest_runs").update({
-          progress_pct: 14,
-          progress_message: sync.imported > 0
-            ? `Stored ${sync.imported} signal(s) in backtest_channel_signals — loading for simulation…`
-            : "No tradeable signals stored — check sync warnings",
-          updated_at: new Date().toISOString(),
-        }).eq("id", runId)
-
-        const importWarnings = [...sync.errors]
-        if (sync.messages_scanned === 0 && sync.imported === 0) {
-          importWarnings.push(
-            "0 messages from Telegram — check session and channel access",
-          )
-        } else if (sync.imported > 0) {
-          importWarnings.unshift(
-            `Synced ${sync.imported} tradeable signal(s) (${sync.candidates} candidates, ${sync.messages_scanned} Telegram messages scanned)`,
-          )
-        }
-
-        await executeBacktestRun(
-          supabase,
-          massive,
-          runId,
-          userId,
-          cfg,
-          { importWarnings },
-        )
-      })()
-        .catch(async (e) => {
-          const msg = sanitizeMarketDataErrorMessage(
-            e instanceof Error ? e.message : String(e),
-          )
-          await supabase.from("backtest_runs").update({
-            status: "failed",
-            error_message: msg,
-            completed_at: new Date().toISOString(),
-          }).eq("id", runId)
-        })
-
-      // @ts-ignore EdgeRuntime.waitUntil
-      if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
-        EdgeRuntime.waitUntil(runPromise)
-      } else {
-        await runPromise
-      }
-
-      return Response.json({ ok: true, run_id: runId }, { headers: corsHeaders })
+      return await startBacktestRun(supabase, userId, simple, mode, { forceSync })
     }
 
     return bad(400, `Unknown action: ${action}`)

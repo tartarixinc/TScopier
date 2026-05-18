@@ -36,7 +36,9 @@ import {
 import { AccountGrowthChart } from '../../components/dashboard/AccountGrowthChart'
 import { TradeVolumeChart } from '../../components/dashboard/TradeVolumeChart'
 import { useDashboardRealtime } from '../../hooks/useDashboardRealtime'
-import { useT } from '../../context/LocaleContext'
+import { useLocale, useT } from '../../context/LocaleContext'
+import { useFormatMoney } from '../../context/UserProfileContext'
+import { formatMoneyWithCode } from '../../lib/currency'
 import { interpolate } from '../../i18n/interpolate'
 
 /** Shared column template for dashboard Copier Logs header + rows. */
@@ -350,7 +352,9 @@ function seedLiveBrokerStateFromBalances(
 
 export function DashboardPage() {
   const t = useT()
+  const la = t.dashboard.linkedAccounts
   const { user } = useAuth()
+  const { formatMoney, formatSignedMoney } = useFormatMoney()
   const navigate = useNavigate()
   const bootCache = useMemo(() => readBootstrapDashboardCache(), [])
   const [stats, setStats] = useState<DashboardStats>(() => bootCache?.stats ?? DEFAULT_DASHBOARD_STATS)
@@ -417,8 +421,6 @@ export function DashboardPage() {
     }
     dashboardReadyRef.current = Boolean(cached?.stats)
   }
-  const formatMoney = (value: number | null | undefined) =>
-    `$${(Number.isFinite(value as number) ? Number(value) : 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   const tradeVolume7Day = useMemo(
     () => buildTradeVolume7Day(chartTrades),
     [chartTrades],
@@ -1220,7 +1222,7 @@ export function DashboardPage() {
         <div className="grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 lg:divide-x divide-neutral-100 dark:divide-neutral-800">
           <StatBlock
             label={t.dashboard.totalBalance}
-            value={`$${stats.totalEquity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            value={formatMoney(stats.totalEquity)}
             sub={interpolate(t.dashboard.acrossAccounts, { count: stats.accounts })}
             subColor="text-neutral-400"
           />
@@ -1269,7 +1271,7 @@ export function DashboardPage() {
           />
           <StatBlock
             label={t.dashboard.openPnl}
-            value={`$${stats.openPnl.toFixed(2)}`}
+            value={formatSignedMoney(stats.openPnl)}
             sub={t.dashboard.acrossAllAccounts}
             valueColor={
               stats.openPnl > 0
@@ -1433,8 +1435,8 @@ export function DashboardPage() {
         <div className="px-4 sm:px-5 py-4 border-b border-neutral-100 dark:border-neutral-800 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <div>
-              <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Linked Accounts</p>
-              <p className="text-xs text-neutral-400 dark:text-neutral-500">Connected broker accounts used by copier</p>
+              <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{la.title}</p>
+              <p className="text-xs text-neutral-400 dark:text-neutral-500">{la.subtitle}</p>
             </div>
           </div>
           <button
@@ -1442,22 +1444,22 @@ export function DashboardPage() {
             className="flex items-center gap-1.5 px-3 py-1.5 border border-teal-500 dark:border-teal-600 text-teal-600 dark:text-teal-400 rounded-lg text-xs font-medium hover:bg-teal-50 dark:hover:bg-teal-950/50 transition-colors"
           >
             <Plus className="w-3.5 h-3.5" />
-            Add
+            {t.common.add}
           </button>
         </div>
 
         <div className="overflow-x-auto">
         <div className="min-w-[52rem] lg:min-w-0">
         <div className="hidden lg:grid grid-cols-9 gap-2 px-4 sm:px-5 py-3 border-b border-neutral-100 dark:border-neutral-800 text-xs font-medium text-neutral-400">
-          <span>Account</span>
-          <span>Broker</span>
-          <span>Account Type</span>
-          <span>Balance</span>
-          <span>PnL</span>
-          <span>ROI</span>
-          <span>WinRate</span>
-          <span>DD</span>
-          <span className="text-right">Status</span>
+          <span>{la.colAccount}</span>
+          <span>{la.colBroker}</span>
+          <span>{la.colAccountType}</span>
+          <span>{la.colBalance}</span>
+          <span>{la.colPnl}</span>
+          <span>{la.colRoi}</span>
+          <span>{la.colWinRate}</span>
+          <span>{la.colDd}</span>
+          <span className="text-right">{la.colStatus}</span>
         </div>
 
         {linkedAccounts.length === 0 && chartsEmpty ? (
@@ -1471,7 +1473,7 @@ export function DashboardPage() {
             ))}
           </div>
         ) : linkedAccounts.length === 0 ? (
-          <div className="px-5 py-8 text-sm text-neutral-400">No linked accounts yet.</div>
+          <div className="px-5 py-8 text-sm text-neutral-400">{la.empty}</div>
         ) : (
           <div className="divide-y divide-neutral-100 dark:divide-neutral-800"> 
             {linkedAccounts.map(account => (
@@ -1638,20 +1640,21 @@ function LinkedAccountRow({
   onToggleActive: (is_active: boolean) => void
   toggleDisabled?: boolean
 }) {
+  const t = useT()
+  const la = t.dashboard.linkedAccounts
+  const { locale } = useLocale()
+  const intlLocale = locale === 'en' ? undefined : locale
   const statusClass = account.is_active
     ? 'text-teal-700 border-teal-200 bg-teal-50 dark:text-teal-300 dark:border-teal-800 dark:bg-teal-950/50'
     : 'text-neutral-600 border-neutral-200 bg-neutral-100 dark:text-neutral-400 dark:border-neutral-700 dark:bg-neutral-800/80'
   const balance = accountSummary?.balance ?? account.last_balance ?? null
   const equity = accountSummary?.equity ?? account.last_equity ?? null
-  const currencyRaw = (accountSummary?.currency ?? account.last_currency ?? '').trim()
-  const currencyPrefix = !currencyRaw || currencyRaw.toUpperCase() === 'USD' ? '$' : `${currencyRaw} `
-  const balanceText = balance != null
-    ? `${currencyPrefix}${balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-    : '—'
+  const accountCurrency = (accountSummary?.currency ?? account.last_currency ?? '').trim() || undefined
+  const balanceText = formatMoneyWithCode(balance, accountCurrency, { locale: intlLocale })
   const hasBoth = balance != null && equity != null
   const pnl = accountSummary?.open_pnl ?? (hasBoth ? (equity! - balance!) : 0)
   const pnlColor = pnl >= 0 ? 'text-teal-600' : 'text-error-600'
-  const pnlText = `${currencyPrefix}${Math.abs(pnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  const pnlFormatted = formatMoneyWithCode(Math.abs(pnl), accountCurrency, { locale: intlLocale, nullAsDash: false })
   const apiRaw = (accountSummary?.broker ?? '').trim()
   const fromApi = inferBrokerLabelFromServer(apiRaw) || apiRaw
   const server = resolveMtServerCandidate(account, accountSummary?.mt_server_hint)
@@ -1671,7 +1674,13 @@ function LinkedAccountRow({
         ? 'text-teal-700 dark:text-teal-300'
         : 'text-neutral-900 dark:text-neutral-50'
 
-  const accountLabel = account.label || 'Unnamed account'
+  const accountLabel = account.label || la.unnamedAccount
+  const accountTypeLabel =
+    accountType === 'Live'
+      ? la.accountTypeLive
+      : accountType === 'Demo'
+        ? la.accountTypeDemo
+        : accountType
   const roi = performance?.roi ?? null
   const winRate = performance?.winRate ?? null
   const maxDd = performance?.maxDrawdownPct ?? null
@@ -1689,9 +1698,12 @@ function LinkedAccountRow({
         <span className="text-[11px] font-medium text-primary-600 uppercase">{account.platform}</span>
       </div>
       <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{brokerText}</span>
-      <span className={`text-sm font-semibold ${accountTypeClass}`}>{accountType}</span>
+      <span className={`text-sm font-semibold ${accountTypeClass}`}>{accountTypeLabel}</span>
       <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{balanceText}</span>
-      <span className={`text-sm font-semibold ${pnlColor}`}>{pnl >= 0 ? '+' : '-'}{pnlText}</span>
+      <span className={`text-sm font-semibold ${pnlColor}`}>
+        {pnl >= 0 ? '+' : '-'}
+        {pnlFormatted}
+      </span>
       <span className={`text-sm font-semibold tabular-nums ${roiColor}`}>{formatRoiPct(roi)}</span>
       <span className={`text-sm font-semibold tabular-nums ${winRateColor}`}>{formatPerformancePct(winRate, 0)}</span>
       <span className={`text-sm font-semibold tabular-nums ${ddColor}`}>{formatPerformancePct(maxDd)}</span>
@@ -1702,7 +1714,7 @@ function LinkedAccountRow({
           disabled={toggleDisabled}
         />
         <span className={`inline-flex items-center px-2.5 py-1 rounded-lg border text-xs font-semibold ${statusClass}`}>
-          {account.is_active ? 'Active' : 'Paused'}
+          {account.is_active ? la.statusActive : la.statusPaused}
         </span>
       </div>
     </div>

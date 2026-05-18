@@ -33,10 +33,8 @@ export async function syncBacktestSignalsViaWorker(
   let imported = 0
   const errors: string[] = []
 
-  for (let i = 0; i < channelIds.length; i++) {
-    const channelRowId = channelIds[i]
-    await opts?.onChannelStart?.(i, channelRowId)
-
+  const syncOne = async (channelRowId: string, index: number): Promise<BacktestWorkerSyncResult> => {
+    await opts?.onChannelStart?.(index, channelRowId)
     try {
       const res = await fetch(`${workerUrl}/auth/backtest_sync_signals`, {
         method: "POST",
@@ -54,17 +52,38 @@ export async function syncBacktestSignalsViaWorker(
       })
       const data = await res.json().catch(() => ({})) as BacktestWorkerSyncResult & { error?: string }
       if (!res.ok) {
-        errors.push(data.error ?? `Telegram sync failed (${res.status})`)
-        continue
+        return {
+          messages_scanned: 0,
+          candidates: 0,
+          imported: 0,
+          errors: [data.error ?? `Telegram sync failed (${res.status})`],
+        }
       }
-      messagesScanned += Number(data.messages_scanned ?? 0)
-      candidates += Number(data.candidates ?? 0)
-      imported += Number(data.imported ?? 0)
-      for (const e of data.errors ?? []) {
-        if (e) errors.push(e)
+      return {
+        messages_scanned: Number(data.messages_scanned ?? 0),
+        candidates: Number(data.candidates ?? 0),
+        imported: Number(data.imported ?? 0),
+        errors: (data.errors ?? []).filter(Boolean) as string[],
       }
     } catch (e) {
-      errors.push(e instanceof Error ? e.message : String(e))
+      return {
+        messages_scanned: 0,
+        candidates: 0,
+        imported: 0,
+        errors: [e instanceof Error ? e.message : String(e)],
+      }
+    }
+  }
+
+  const concurrency = Math.min(2, Math.max(1, channelIds.length))
+  for (let i = 0; i < channelIds.length; i += concurrency) {
+    const batch = channelIds.slice(i, i + concurrency)
+    const parts = await Promise.all(batch.map((id, j) => syncOne(id, i + j)))
+    for (const part of parts) {
+      messagesScanned += part.messages_scanned
+      candidates += part.candidates
+      imported += part.imported
+      errors.push(...part.errors)
     }
   }
 

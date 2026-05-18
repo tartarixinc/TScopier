@@ -112,7 +112,8 @@ Deno.serve(async () => {
 
     const api = mtClient(Deno.env, String(broker?.platform ?? "MT5"))
     try {
-      await api.ensureConnected(uuid)
+      const alive = await api.keepSessionAlive(uuid)
+      if (!alive) continue
     } catch (err) {
       await release(supabase, row.id, (err as Error).message, row.attempts)
       continue

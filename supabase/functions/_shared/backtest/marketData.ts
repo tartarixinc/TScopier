@@ -22,6 +22,14 @@ export interface PreloadedMarketData {
   rateLimitHits: number
 }
 
+function maxPagesForAgg(multiplier: number, timespan: "minute" | "hour" | "day"): number {
+  if (timespan === "day") return 2
+  if (timespan === "hour") return 3
+  if (multiplier >= 15) return 3
+  if (multiplier >= 5) return 4
+  return 5
+}
+
 function signalWindowForSymbol(
   symbol: string,
   signals: ParsedSignalForBacktest[],
@@ -34,8 +42,8 @@ function signalWindowForSymbol(
   }
   const minSig = Math.min(...symSigs.map((s) => s.signalAt.getTime()))
   const maxSig = Math.max(...symSigs.map((s) => s.signalAt.getTime()))
-  const padBefore = 2 * 24 * 3_600_000
-  const padAfter = 14 * 24 * 3_600_000
+  const padBefore = 24 * 3_600_000
+  const padAfter = 5 * 24 * 3_600_000
   return {
     fromMs: Math.max(configFromMs, minSig - padBefore),
     toMs: Math.min(configToMs, maxSig + padAfter),
@@ -58,7 +66,7 @@ async function fetchBarsForSymbol(
       timespan,
       fromMs,
       toMs,
-      { sort: "asc", maxPages: 12 },
+      { sort: "asc", maxPages: maxPagesForAgg(multiplier, timespan) },
     )
     const pts = barsToMidPoints(bars)
     return {

@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import type {
   BacktestEquityRow,
+  BacktestRunMode,
   BacktestRunRow,
   BacktestTradeRow,
   SimpleBacktestConfig,
@@ -55,8 +56,12 @@ export const backtestApi = {
     return call({ action: 'sync', config })
   },
 
-  run(config: SimpleBacktestConfig): Promise<{ run_id: string }> {
-    return call({ action: 'run', config })
+  backtestTpsl(config: SimpleBacktestConfig): Promise<{ run_id: string; run_mode: BacktestRunMode }> {
+    return call({ action: 'backtest_tpsl', config })
+  },
+
+  simulateTrades(config: SimpleBacktestConfig): Promise<{ run_id: string; run_mode: BacktestRunMode }> {
+    return call({ action: 'simulate_trades', config })
   },
 
   getRun(runId: string): Promise<{

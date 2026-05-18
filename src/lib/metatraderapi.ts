@@ -98,6 +98,24 @@ export const metatraderApi = {
     })
   },
 
+  reconnect(brokerId: string): Promise<{
+    ok: boolean
+    connection_status: 'connected' | 'error'
+    message?: string
+    summary?: AccountSummary | null
+  }> {
+    return call({
+      body: { action: 'reconnect', broker_id: brokerId },
+      expect: (b) =>
+        b as {
+          ok: boolean
+          connection_status: 'connected' | 'error'
+          message?: string
+          summary?: AccountSummary | null
+        },
+    })
+  },
+
   trades(args: {
     brokerId?: string
     scope?: 'all' | 'open' | 'closed'

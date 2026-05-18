@@ -23,6 +23,22 @@ export function barsToMidPoints(bars: MassiveBar[]): PricePoint[] {
   }))
 }
 
+/** Trim shared symbol series to the window needed for one signal (faster than scanning full history). */
+export function sliceSeriesForSignal(
+  series: PricePoint[],
+  signalAt: Date,
+  maxAfterMs = 5 * 86_400_000,
+): PricePoint[] {
+  if (!series.length) return series
+  const start = signalAt.getTime() - 60_000
+  const end = signalAt.getTime() + maxAfterMs
+  let i = 0
+  while (i < series.length && series[i]!.ts < start) i++
+  let j = i
+  while (j < series.length && series[j]!.ts <= end) j++
+  return series.slice(i, j)
+}
+
 export function quotesToMidPoints(quotes: MassiveQuote[]): PricePoint[] {
   return quotes
     .filter((q) => Number.isFinite(q.bid_price) && Number.isFinite(q.ask_price))
@@ -146,6 +162,11 @@ export function simulateTradeOnSeries(
         remainingFraction -= closeFrac
         tpIdx += 1
         base.tpsHit = tpIdx
+        const events = Array.isArray(base.details.tpEvents)
+          ? (base.details.tpEvents as Array<{ index: number; price: number; ts: number }>)
+          : []
+        events.push({ index: tpIdx, price: lvl.price, ts: p.ts })
+        base.details.tpEvents = events
 
         if (strategy.breakevenAfterTp > 0 && tpIdx >= strategy.breakevenAfterTp) {
           beActive = true

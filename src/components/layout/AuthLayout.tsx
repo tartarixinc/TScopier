@@ -1,78 +1,45 @@
-import { Link, Outlet, useLocation } from 'react-router-dom'
-import clsx from 'clsx'
-import { AuthMarketingPanel } from '../auth/AuthMarketingPanel'
+import { Link } from 'react-router-dom'
+import { AuthReviewsPanel } from '../auth/AuthReviewsPanel'
+import { AuthPage } from '../../pages/auth/AuthPage'
 import { LanguageSwitcher } from '../auth/LanguageSwitcher'
 import { ThemeToggle } from '../ui/ThemeToggle'
-import { AuthBrandLogo } from '../auth/AuthBrandLogo'
 import { TscopierLogo } from '../ui/TscopierLogo'
 import { useLocale } from '../../context/LocaleContext'
 
 export function AuthLayout() {
-  const { pathname } = useLocation()
   const { auth } = useLocale()
-  const isLogin = pathname === '/login'
-  const isSignup = pathname === '/signup'
+  const year = new Date().getFullYear()
+  const copyright = auth.marketing.copyright.replace('{year}', String(year))
 
   return (
-    <div className="min-h-screen flex bg-neutral-50 dark:bg-neutral-950">
-      <AuthMarketingPanel />
-
-      <main className="relative flex flex-1 flex-col min-h-screen">
-        <header className="flex items-center justify-between px-5 py-4 sm:px-8">
-          <Link to={isLogin ? '/login' : '/signup'} className="lg:hidden flex items-center">
-            {isLogin ? (
-              <span className="inline-flex rounded-xl bg-primary-950 px-3 py-2">
-                <AuthBrandLogo className="h-7 w-auto max-w-[200px]" />
-              </span>
-            ) : (
-              <TscopierLogo className="h-8 w-auto" />
-            )}
+    <div className="flex min-h-screen flex-col bg-white dark:bg-neutral-950 lg:flex-row">
+      <main className="relative flex min-h-screen w-full flex-1 flex-col lg:w-1/2">
+        <header className="flex shrink-0 items-center justify-between px-5 py-4 sm:px-8 lg:px-10">
+          <Link to="/login" className="flex items-center">
+            <TscopierLogo className="h-8 w-auto sm:h-6" />
           </Link>
-          <div className="hidden lg:block" aria-hidden />
           <div className="flex items-center gap-1 sm:gap-1.5">
             <LanguageSwitcher />
             <ThemeToggle />
           </div>
         </header>
 
-        <div className="flex flex-1 flex-col items-center justify-center px-5 pb-10 sm:px-8">
-          <div className="w-full max-w-[420px]">
-            <nav
-              className="mb-6 flex rounded-xl bg-neutral-200/60 dark:bg-neutral-800/80 p-1"
-              aria-label="Authentication"
-            >
-              <Link
-                to="/login"
-                className={clsx(
-                  'flex-1 rounded-lg py-2 text-center text-sm font-medium transition-all',
-                  isLogin
-                    ? 'bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-50 shadow-sm'
-                    : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200',
-                )}
-              >
-                {auth.nav.signIn}
-              </Link>
-              <Link
-                to="/signup"
-                className={clsx(
-                  'flex-1 rounded-lg py-2 text-center text-sm font-medium transition-all',
-                  isSignup
-                    ? 'bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-50 shadow-sm'
-                    : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200',
-                )}
-              >
-                {auth.nav.createAccount}
-              </Link>
-            </nav>
+        <div className="flex min-h-0 flex-1 flex-col px-5 sm:px-8 lg:px-10">
+          <div className="mx-auto flex w-full max-w-[420px] flex-1 flex-col justify-center py-6 lg:py-8">
+            <h1 className="mb-8 max-w-md text-2xl font-semibold leading-tight tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-3xl">
+              {auth.marketing.headline}
+            </h1>
 
-            <Outlet />
+            <AuthPage />
           </div>
-        </div>
 
-        <p className="pb-6 text-center text-xs text-neutral-400 dark:text-neutral-500 lg:hidden">
-          {auth.nav.mobileTagline}
-        </p>
+          <footer className="mx-auto w-full max-w-[420px] shrink-0 pb-6 pt-4 lg:pb-8">
+            <p className="text-xs text-neutral-400 dark:text-neutral-500">{copyright}</p>
+          </footer>
+        </div>
       </main>
+
+      <AuthReviewsPanel />
     </div>
   )
 }

@@ -1,7 +1,7 @@
-import { useEffect, useState, useMemo, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, useMemo, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  Plus, Trash2, Server, Activity, GitBranch, Eye, DollarSign,
+  Plus, Trash2, Server, Activity, GitBranch, Eye, DollarSign, RefreshCw,
   SlidersHorizontal, Radio, Target, Filter, Wallet,
   ArrowLeftRight, ChevronDown, Brain, Settings2,
 } from 'lucide-react'
@@ -9,6 +9,7 @@ import clsx from 'clsx'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useT } from '../../context/LocaleContext'
+import { interpolate } from '../../i18n/interpolate'
 import { Card } from '../../components/ui/Card'
 import { Input } from '../../components/ui/Input'
 import { Select } from '../../components/ui/Select'
@@ -19,6 +20,7 @@ import { Alert } from '../../components/ui/Alert'
 import { AddAccountModal } from '../../components/ui/AddAccountModal'
 import { BrokerServerSelect } from '../../components/ui/BrokerServerSelect'
 import { metatraderApi } from '../../lib/metatraderapi'
+import { isLegacyBrokerLink, isMtSessionUuid } from '../../lib/brokerLink'
 import {
   inferBrokerLabelFromServer,
   resolveLinkedAccountType,
@@ -28,6 +30,7 @@ import {
 import { estimateMultiTradeOrderCount } from '../../lib/estimateMultiTradeOrders'
 import { pipCalculator, pipValueForLots, type PipQuote } from '../../lib/pipCalculator'
 import { classifySymbol } from '../../lib/pipMath'
+import { formatMoneyWithCode } from '../../lib/currency'
 import type { BrokerAccount, ManualSettings, ManualTpLot } from '../../types/database'
 import {
   DEFAULT_CHANNEL_FILTERS,
@@ -391,10 +394,7 @@ function PlatformIcon({ platform }: { platform: string }) {
 }
 
 function formatBrokerMoney(value: number | null | undefined, currency?: string | null): string {
-  if (value == null || !Number.isFinite(value)) return '—'
-  const formatted = value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  const cur = (currency ?? '').trim()
-  return cur ? `${formatted} ${cur}` : formatted
+  return formatMoneyWithCode(value, currency?.trim() || undefined)
 }
 
 function accountTypeValueClass(type: LinkedAccountType | undefined): string {
@@ -451,8 +451,19 @@ const MANUAL_SUB_TABS: ManualSubTabDef[] = [
   { id: 'strategy', label: 'Strategy', icon: Brain },
 ]
 
+function formatLinkedAccountTypeLabel(
+  type: LinkedAccountType | undefined,
+  labels: { demo: string; live: string },
+): string {
+  if (!type) return '—'
+  if (type === 'Demo') return labels.demo
+  if (type === 'Live') return labels.live
+  return type
+}
+
 export function AccountConfigPage() {
   const t = useT()
+  const bl = t.accountConfig.brokerList
   const { user } = useAuth()
   const [brokers, setBrokers] = useState<BrokerAccount[]>([])
   const [channelOptions, setChannelOptions] = useState<ChannelOption[]>([])
@@ -501,10 +512,54 @@ export function AccountConfigPage() {
     configDraft.manualSettings.range_distance_pips,
   ])
 
+  const [reconnectingBrokerIds, setReconnectingBrokerIds] = useState<Set<string>>(() => new Set())
+
   const brokersNeedingReconnect = useMemo(
-    () => brokers.filter(b => b.connection_status === 'error'),
+    () => brokers.filter(b => b.connection_status === 'error' && isMtSessionUuid(b.metaapi_account_id)),
     [brokers],
   )
+
+  const brokersNeedingRelink = useMemo(
+    () => brokers.filter(b => isLegacyBrokerLink(b.metaapi_account_id)),
+    [brokers],
+  )
+
+  const reconnectBroker = useCallback(async (brokerId: string) => {
+    setReconnectingBrokerIds(prev => new Set(prev).add(brokerId))
+    setError('')
+    try {
+      const result = await metatraderApi.reconnect(brokerId)
+      setBrokers(prev =>
+        prev.map(b => {
+          if (b.id !== brokerId) return b
+          if (result.connection_status !== 'connected') return { ...b, connection_status: 'error' as const }
+          return {
+            ...b,
+            connection_status: 'connected' as const,
+            last_synced_at: new Date().toISOString(),
+            ...(result.summary
+              ? {
+                  last_balance: result.summary.balance ?? b.last_balance,
+                  last_equity: result.summary.equity ?? b.last_equity,
+                  last_currency: result.summary.currency ?? b.last_currency,
+                }
+              : {}),
+          }
+        }),
+      )
+      if (result.connection_status !== 'connected' && result.message) {
+        setError(result.message)
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : bl.reconnectFailed)
+    } finally {
+      setReconnectingBrokerIds(prev => {
+        const next = new Set(prev)
+        next.delete(brokerId)
+        return next
+      })
+    }
+  }, [bl.reconnectFailed])
 
   const tpLegPercentTotal = useMemo(() => {
     const rows = configDraft.manualSettings.tp_lots ?? DEFAULT_MANUAL_TP_LOTS
@@ -563,8 +618,8 @@ export function AccountConfigPage() {
       const fixedLot = Number(configDraft.manualSettings.fixed_lot ?? 0.01) || 0.01
       const perPip = pipValueForLots(livePipQuote, fixedLot)
       if (perPip <= 0) return null
-      const ccy = livePipQuote.quoteCurrency ?? ''
-      const fmt = (n: number) => (ccy === 'JPY' ? `¥${n.toFixed(0)}` : `$${n.toFixed(2)}`)
+      const ccy = livePipQuote.quoteCurrency ?? undefined
+      const fmt = (n: number) => formatMoneyWithCode(n, ccy, { nullAsDash: false })
       const symbol = (configDraft.manualSettings.symbol_to_trade ?? '').trim()
       const head = `At ${fixedLot.toFixed(2)} lot on ${symbol.toUpperCase()}: 1 pip ≈ ${fmt(perPip)}`
       if (pipCount > 0) {
@@ -599,22 +654,7 @@ export function AccountConfigPage() {
     }
     setBrokerAccountTypes(prev => ({ ...fromServer, ...prev }))
 
-    const results = await Promise.allSettled(
-      linked.map(async b => {
-        const { summary } = await metatraderApi.summary(b.id)
-        const accountType = resolveLinkedAccountType(summary.type, resolveMtServerCandidate(b, b.broker_server))
-        return { id: b.id, accountType }
-      }),
-    )
-    const fromMt: Record<string, LinkedAccountType> = {}
-    for (const r of results) {
-      if (r.status === 'fulfilled' && r.value.accountType) {
-        fromMt[r.value.id] = r.value.accountType
-      }
-    }
-    if (Object.keys(fromMt).length > 0) {
-      setBrokerAccountTypes(prev => ({ ...prev, ...fromMt }))
-    }
+    // Account type from server name only — avoid summary() here (it can mark brokers disconnected).
   }
 
   const loadData = async () => {
@@ -868,22 +908,22 @@ export function AccountConfigPage() {
   // ── Channel summary helper for cards ───────────────────────────────────
 
   const getBrokerSignalChannelsLabel = (brokerId: string) => {
-    if (channelOptions.length === 0) return 'None selected'
+    if (channelOptions.length === 0) return bl.channelsNoneSelected
     const oldest = getOldestChannel(channelOptions)
     if (channelOptions.length === 1) {
       const name = oldest?.display_name?.trim()
-      return name || 'Signal channel'
+      return name || bl.channelsSignalChannel
     }
     const brokerRow = brokers.find(b => b.id === brokerId)
     const persistedIds = normalizeSignalChannelIds(brokerRow)
     const restricts = brokerRow?.enforce_signal_channel_filter === true
-    if (!restricts || persistedIds.length === 0) return 'All signal channels'
+    if (!restricts || persistedIds.length === 0) return bl.channelsAll
     const labels = channelOptions
       .filter(ch => persistedIds.includes(ch.id))
       .map(ch => ch.display_name)
       .filter(Boolean)
     if (labels.length) return labels.join(', ')
-    return 'None selected'
+    return bl.channelsNoneSelected
   }
 
   // ── Add account flow ───────────────────────────────────────────────────
@@ -895,7 +935,7 @@ export function AccountConfigPage() {
     e.preventDefault()
     setError('')
     if (!form.account_number.trim() || !form.broker_server.trim() || !form.account_password) {
-      setError('Account number, password, and server are required')
+      setError(t.accountConfig.connectForm.validationRequired)
       return
     }
 
@@ -926,7 +966,7 @@ export function AccountConfigPage() {
         void tailRefreshBrokerSummary(broker.id)
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to connect account')
+      setError(err instanceof Error ? err.message : t.accountConfig.connectForm.connectFailed)
     } finally {
       setSaving(false)
     }
@@ -980,7 +1020,7 @@ export function AccountConfigPage() {
       setBrokers(prev => prev.filter(b => b.id !== id))
       setBrokerPendingDelete(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete broker')
+      setError(err instanceof Error ? err.message : bl.deleteFailed)
     } finally {
       setDeleteInProgress(false)
     }
@@ -1023,7 +1063,7 @@ export function AccountConfigPage() {
         </div>
         <Button size="sm" onClick={() => setShowPlatformModal(true)}>
           <Plus className="w-3.5 h-3.5" />
-          Add account
+          {t.accountConfig.connectForm.addAccountButton}
         </Button>
       </div>
 
@@ -1033,24 +1073,26 @@ export function AccountConfigPage() {
         {showAddBroker && (
           <Card className="mb-3">
             <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 mb-4">
-              Connect a new {form.platform} account
+              {interpolate(t.accountConfig.connectForm.title, { platform: form.platform })}
             </h3>
             {error && <Alert className="mb-3">{error}</Alert>}
             <form onSubmit={addBroker} className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <Input
-                  label="Account label (optional)"
-                  placeholder={`e.g. Live ${form.platform}`}
+                  label={t.accountConfig.connectForm.accountLabel}
+                  placeholder={interpolate(t.accountConfig.connectForm.accountLabelPlaceholder, {
+                    platform: form.platform,
+                  })}
                   value={form.label}
                   onChange={e => set('label', e.target.value)}
                 />
                 <Select
-                  label="Platform"
+                  label={t.accountConfig.connectForm.platformLabel}
                   value={form.platform}
                   onChange={e => set('platform', e.target.value as 'MT4' | 'MT5')}
                   options={[
-                    { value: 'MT5', label: 'MetaTrader 5 (MT5)' },
-                    { value: 'MT4', label: 'MetaTrader 4 (MT4)' },
+                    { value: 'MT5', label: t.accountConfig.connectForm.platformMt5 },
+                    { value: 'MT4', label: t.accountConfig.connectForm.platformMt4 },
                   ]}
                 />
               </div>
@@ -1059,57 +1101,84 @@ export function AccountConfigPage() {
                 platform={form.platform}
                 value={form.broker_server}
                 onChange={(v) => set('broker_server', v)}
-                hint="Start typing to filter by broker (IC Markets, Exness, FTMO, …) or server name."
+                hint={t.accountConfig.connectForm.brokerServerHint}
                 required
               />
 
               <div className="grid grid-cols-2 gap-3">
                 <Input
-                  label="MT login"
-                  placeholder="Trading account number"
+                  label={t.accountConfig.connectForm.mtLoginLabel}
+                  placeholder={t.accountConfig.connectForm.mtLoginPlaceholder}
                   value={form.account_number}
                   onChange={e => set('account_number', e.target.value)}
                   required
                 />
                 <Input
-                  label="Password"
+                  label={t.accountConfig.connectForm.passwordLabel}
                   type="password"
-                  placeholder="Trading account password"
+                  placeholder={t.accountConfig.connectForm.passwordPlaceholder}
                   value={form.account_password}
                   onChange={e => set('account_password', e.target.value)}
-                  hint="Sent to MT servers only. Never stored."
+                  hint={t.accountConfig.connectForm.passwordHint}
                   required
                 />
               </div>
 
               <div className="flex gap-2 pt-1">
-                <Button type="submit" loading={saving} size="sm">Connect account</Button>
+                <Button type="submit" loading={saving} size="sm">
+                  {t.accountConfig.connectForm.connectButton}
+                </Button>
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
                   onClick={() => { setShowAddBroker(false); setForm(emptyForm); setError('') }}
                 >
-                  Cancel
+                  {t.common.cancel}
                 </Button>
               </div>
             </form>
           </Card>
         )}
 
-        {brokersNeedingReconnect.length > 0 && (
+        {brokersNeedingRelink.length > 0 && (
           <Alert variant="warning" className="mb-3">
-            {brokersNeedingReconnect.length === 1
-              ? 'This account lost its broker connection after the API upgrade. Remove it and connect again with your MT login and password so copying can resume.'
-              : `${brokersNeedingReconnect.length} accounts need to be reconnected after the API upgrade. Remove each account and add it again with your MT login and password.`}
+            {brokersNeedingRelink.length === 1
+              ? bl.relinkOne
+              : interpolate(bl.relinkMany, { count: String(brokersNeedingRelink.length) })}
+          </Alert>
+        )}
+
+        {brokersNeedingReconnect.length > 0 && (
+          <Alert variant="warning" className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <span>
+              {brokersNeedingReconnect.length === 1
+                ? bl.reconnectDroppedOne
+                : interpolate(bl.reconnectDroppedMany, { count: String(brokersNeedingReconnect.length) })}
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              className="shrink-0"
+              loading={reconnectingBrokerIds.size > 0}
+              onClick={() => {
+                for (const b of brokersNeedingReconnect) {
+                  void reconnectBroker(b.id)
+                }
+              }}
+            >
+              <RefreshCw className="w-4 h-4" />
+              {bl.reconnectAll}
+            </Button>
           </Alert>
         )}
 
         {brokers.length === 0 ? (
           <div className="bg-white dark:bg-neutral-900 rounded-xl border border-dashed border-neutral-200 dark:border-neutral-800 py-8 text-center">
             <Server className="w-8 h-8 mx-auto mb-2 text-neutral-300 dark:text-neutral-600" />
-            <p className="text-sm text-neutral-400 dark:text-neutral-500">No accounts connected yet</p>
-            <p className="text-xs text-neutral-300 dark:text-neutral-600 mt-0.5">Add your trading account to get started</p>
+            <p className="text-sm text-neutral-400 dark:text-neutral-500">{t.accountConfig.brokersEmptyTitle}</p>
+            <p className="text-xs text-neutral-300 dark:text-neutral-600 mt-0.5">{t.accountConfig.brokersEmptySubtitle}</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -1119,10 +1188,14 @@ export function AccountConfigPage() {
                 : broker.connection_status === 'connected' ? 'success'
                 : broker.connection_status === 'error' ? 'error'
                 : 'neutral'
-              const statusLabel = !broker.is_active ? 'Paused'
-                : broker.connection_status === 'connected' ? 'Connected'
-                : broker.connection_status === 'error' ? 'Error'
-                : 'Disconnected'
+              const isReconnecting = reconnectingBrokerIds.has(broker.id)
+              const statusLabel = !broker.is_active
+                ? bl.statusPaused
+                : broker.connection_status === 'connected'
+                  ? bl.statusConnected
+                  : broker.connection_status === 'error'
+                    ? bl.statusError
+                    : bl.statusDisconnected
               const brokerLabel = broker.broker_name
                 || inferBrokerLabelFromServer(broker.broker_server ?? null)
                 || broker.broker_server
@@ -1155,7 +1228,7 @@ export function AccountConfigPage() {
                     <div className="flex shrink-0 items-center gap-2">
                       <div className="flex items-center gap-2 pr-1 border-r border-neutral-200 dark:border-neutral-700 mr-1">
                         <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400 hidden sm:inline">
-                          Copy trades
+                          {bl.copyTrades}
                         </span>
                         <Toggle
                           checked={broker.is_active}
@@ -1163,51 +1236,66 @@ export function AccountConfigPage() {
                           disabled={togglingBrokerId === broker.id}
                         />
                       </div>
+                      {broker.connection_status === 'error' && isMtSessionUuid(broker.metaapi_account_id) ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          loading={isReconnecting}
+                          onClick={() => void reconnectBroker(broker.id)}
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          {bl.reconnect}
+                        </Button>
+                      ) : null}
                       <button
                         type="button"
                         onClick={() => openConfigureModal(broker)}
                         className="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors"
                       >
-                        Configure
+                        {bl.configure}
                       </button>
                       <button
                         type="button"
                         onClick={() => { setError(''); setBrokerPendingDelete(broker) }}
                         className="rounded-lg p-1.5 text-neutral-400 dark:text-neutral-500 hover:bg-error-50 dark:hover:bg-error-950/40 hover:text-error-600 dark:hover:text-error-400 transition-colors"
-                        aria-label={`Remove ${broker.label}`}
+                        aria-label={interpolate(bl.removeAria, { label: broker.label })}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/60 lg:grid-cols-6">
-                    <AccountDetailCell label="Login" value={broker.account_login || '—'} />
+                    <AccountDetailCell label={bl.detailLogin} value={broker.account_login || '—'} />
                     <AccountDetailCell
-                      label="Account type"
+                      label={bl.detailAccountType}
                       value={
                         <span className={accountTypeValueClass(accountType)}>
-                          {accountType ?? '—'}
+                          {formatLinkedAccountTypeLabel(accountType, {
+                            demo: bl.accountTypeDemo,
+                            live: bl.accountTypeLive,
+                          })}
                         </span>
                       }
                       className="border-l border-neutral-100 dark:border-neutral-800 max-lg:border-t-0"
                     />
                     <AccountDetailCell
-                      label="Server"
+                      label={bl.detailServer}
                       value={broker.broker_server || '—'}
                       className="border-l border-neutral-100 dark:border-neutral-800 max-lg:border-t-0"
                     />
                     <AccountDetailCell
-                      label="Signal channels"
+                      label={bl.detailSignalChannels}
                       value={channelsLabel}
                       className="col-span-2 border-t border-neutral-100 dark:border-neutral-800 lg:col-span-1 lg:border-t-0 lg:border-l"
                     />
                     <AccountDetailCell
-                      label="Balance"
+                      label={bl.detailBalance}
                       value={formatBrokerMoney(broker.last_balance, broker.last_currency)}
                       className="border-t border-l border-neutral-100 dark:border-neutral-800 lg:border-t-0"
                     />
                     <AccountDetailCell
-                      label="Equity"
+                      label={bl.detailEquity}
                       value={formatBrokerMoney(broker.last_equity, broker.last_currency)}
                       className="border-t border-neutral-100 dark:border-neutral-800 lg:border-l lg:border-t-0"
                     />
@@ -1224,7 +1312,7 @@ export function AccountConfigPage() {
         onClose={() => setShowPlatformModal(false)}
         onSelect={(platform) => {
           if (platform !== 'MT4' && platform !== 'MT5') {
-            setError(`${platform} integration is coming soon. Pick MT4 or MT5 for now.`)
+            setError(interpolate(t.accountConfig.addAccount.comingSoonPlatform, { platform }))
             setShowPlatformModal(false)
             return
           }
@@ -1244,10 +1332,10 @@ export function AccountConfigPage() {
           >
             <div className="px-5 py-4 border-b border-neutral-100 dark:border-neutral-800">
               <h3 id="delete-broker-title" className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
-                Remove trading account?
+                {bl.deleteTitle}
               </h3>
               <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
-                This disconnects <span className="font-medium text-neutral-800 dark:text-neutral-100">{brokerPendingDelete.label}</span> from MetatraderAPI and the copier. This cannot be undone.
+                {interpolate(bl.deleteBody, { label: brokerPendingDelete.label })}
               </p>
             </div>
             {error && <Alert className="mx-5 mt-3">{error}</Alert>}
@@ -1258,7 +1346,7 @@ export function AccountConfigPage() {
                 disabled={deleteInProgress}
                 onClick={() => { if (!deleteInProgress) { setBrokerPendingDelete(null); setError('') } }}
               >
-                Cancel
+                {t.common.cancel}
               </Button>
               <Button
                 type="button"
@@ -1266,7 +1354,7 @@ export function AccountConfigPage() {
                 loading={deleteInProgress}
                 onClick={() => void confirmDeleteBroker()}
               >
-                Remove account
+                {bl.deleteConfirm}
               </Button>
             </div>
           </div>

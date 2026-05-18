@@ -52,7 +52,7 @@ Deploy/restart the worker after pulling changes (new route `POST /auth/backtest_
 | Secret | Purpose |
 |--------|---------|
 | `MASSIVE_API_KEY` (or `POLYGON_API_KEY`) | Market data |
-| `MASSIVE_CALLS_PER_MINUTE` | Default `3` — rate limit spacing |
+| `MASSIVE_CALLS_PER_MINUTE` | Default `5` — rate limit spacing (raise if your plan allows) |
 | `WORKER_URL` | Base URL of the worker (no trailing slash) |
 | `WORKER_INTERNAL_TOKEN` | Must match worker env |
 
@@ -90,7 +90,8 @@ Open **Backtest** in the sidebar (`/backtest`).
 ## Limits (v1)
 
 - Telegram history: newest→oldest pagination, **~1000 messages** per channel sync
-- OHLC bars only (1m default)
+- OHLC bars only (5m default for 30-day ranges; auto-coarsens for longer ranges)
+- Telegram sync on run only when no signals exist in range; use **Sync signals only** to refresh
 - Fixed lot sizing; breakeven after TP1 (built-in strategy)
 - Latest run persisted in browser `localStorage` for refresh
 

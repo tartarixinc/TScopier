@@ -5,8 +5,6 @@ export interface AuthTranslations {
     mobileTagline: string
   }
   login: {
-    title: string
-    subtitle: string
     footerPrompt: string
     footerLink: string
     email: string
@@ -16,8 +14,6 @@ export interface AuthTranslations {
     submit: string
   }
   signup: {
-    title: string
-    subtitle: string
     footerPrompt: string
     footerLink: string
     email: string
@@ -31,8 +27,9 @@ export interface AuthTranslations {
   }
   marketing: {
     headline: string
-    features: Array<{ title: string; description: string }>
     copyright: string
+    trustpilotLabel: string
+    reviews: Array<{ quote: string; author: string }>
   }
   language: {
     label: string

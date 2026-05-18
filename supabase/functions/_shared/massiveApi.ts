@@ -102,8 +102,8 @@ export function sanitizeMarketDataErrorMessage(raw: string): string {
 }
 
 export function massiveCallsPerMinuteFromEnv(env: { get(name: string): string | undefined }): number {
-  const n = Number(env.get("MASSIVE_CALLS_PER_MINUTE") ?? "3")
-  return Number.isFinite(n) && n > 0 ? n : 3
+  const n = Number(env.get("MASSIVE_CALLS_PER_MINUTE") ?? "5")
+  return Number.isFinite(n) && n > 0 ? n : 5
 }
 
 export class MassiveClient {

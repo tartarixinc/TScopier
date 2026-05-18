@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Radio, Trash2, RefreshCw, CircleAlert as AlertCircle, ChevronDown } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useT } from '../../context/LocaleContext'
+import { interpolate } from '../../i18n/interpolate'
 import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
 import { Toggle } from '../../components/ui/Toggle'
@@ -112,6 +113,16 @@ function normalizeChannelKeywords(raw: unknown): ChannelKeywords {
   }
 }
 
+function channelNeedsProfiling(profile: ChannelSignalProfile | undefined): boolean {
+  if (!profile) return true
+  const meta =
+    profile.meta && typeof profile.meta === 'object' && !Array.isArray(profile.meta)
+      ? (profile.meta as Record<string, unknown>)
+      : {}
+  if (meta.profiling === 'disabled' || meta.keywords_only === true) return true
+  return profile.sample_size <= 0 && profile.signal_type === 'unknown'
+}
+
 function getTelegramAvatarUrl(username?: string): string | null {
   if (!username) return null
   return `https://t.me/i/userpic/320/${username}.jpg`
@@ -146,6 +157,8 @@ function TgChannelAvatar({ title, username }: { title: string; username?: string
 
 export function CopierEnginePage() {
   const t = useT()
+  const ce = t.copierEnginePage
+  const ch = t.channelsPage
   const { user, session } = useAuth()
   const [channels, setChannels] = useState<TelegramChannel[]>([])
   const [channelProfiles, setChannelProfiles] = useState<Record<string, ChannelSignalProfile>>({})
@@ -184,9 +197,9 @@ export function CopierEnginePage() {
       supabase.from('telegram_channels').select('*').eq('user_id', user!.id).order('created_at', { ascending: false }),
       supabase.from('telegram_sessions').select('id').eq('user_id', user!.id).maybeSingle(),
     ])
-    setChannels((channelsRes.data ?? []) as TelegramChannel[])
     const channelRows = (channelsRes.data ?? []) as TelegramChannel[]
-    void loadChannelProfiles(channelRows.map(c => c.id))
+    setChannels(channelRows)
+    void loadChannelProfiles(channelRows)
     const hasSession = !!sessionRes.data
     setHasTgSession(hasSession)
     setTgStage(hasSession ? 'linked' : 'idle')
@@ -194,7 +207,8 @@ export function CopierEnginePage() {
     if (hasSession) fetchTgChannels()
   }
 
-  const loadChannelProfiles = async (channelIds: string[]) => {
+  const loadChannelProfiles = async (channelRows: TelegramChannel[]) => {
+    const channelIds = channelRows.map(c => c.id)
     if (!channelIds.length) {
       setChannelProfiles({})
       return
@@ -209,7 +223,7 @@ export function CopierEnginePage() {
     setChannelProfiles(next)
   }
 
-  const analyzeChannelProfile = async (channelId: string) => {
+  const analyzeChannelProfile = useCallback(async (channelId: string) => {
     if (!session?.access_token) return
     setAnalyzingChannels(prev => {
       const next = new Set(prev)
@@ -267,7 +281,21 @@ export function CopierEnginePage() {
         return next
       })
     }
-  }
+  }, [session?.access_token])
+
+  const autoProfileQueuedRef = useRef<Set<string>>(new Set())
+
+  useEffect(() => {
+    if (!session?.access_token || loading) return
+    for (const ch of channels) {
+      if (!ch.is_active) continue
+      if (analyzingChannels.has(ch.id)) continue
+      if (!channelNeedsProfiling(channelProfiles[ch.id])) continue
+      if (autoProfileQueuedRef.current.has(ch.id)) continue
+      autoProfileQueuedRef.current.add(ch.id)
+      void analyzeChannelProfile(ch.id)
+    }
+  }, [session?.access_token, loading, channels, channelProfiles, analyzingChannels, analyzeChannelProfile])
 
   const fetchTgChannels = async () => {
     setLoadingTg(true)
@@ -280,12 +308,12 @@ export function CopierEnginePage() {
       })
       const data = await res.json()
       if (!res.ok || data.error) {
-        setError(data.error || 'Failed to load Telegram channels')
+        setError(data.error || ce.failedLoadTgChannels)
         return
       }
       setTgChannels(data.channels ?? [])
     } catch {
-      setError('Failed to load Telegram channels')
+      setError(ce.failedLoadTgChannels)
     } finally {
       setLoadingTg(false)
     }
@@ -294,6 +322,10 @@ export function CopierEnginePage() {
   const toggleChannel = async (id: string, is_active: boolean) => {
     setChannels(prev => prev.map(c => c.id === id ? { ...c, is_active } : c))
     await supabase.from('telegram_channels').update({ is_active }).eq('id', id)
+    if (is_active && channelNeedsProfiling(channelProfiles[id])) {
+      autoProfileQueuedRef.current.delete(id)
+      void analyzeChannelProfile(id)
+    }
   }
 
   const deleteChannel = async (id: string) => {
@@ -304,7 +336,7 @@ export function CopierEnginePage() {
   const addManual = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-    if (!newChannel.display_name.trim()) { setError('Channel name is required'); return }
+    if (!newChannel.display_name.trim()) { setError(ch.nameRequired); return }
     setSaving(true)
     const { data, error: dbErr } = await supabase
       .from('telegram_channels')
@@ -323,6 +355,7 @@ export function CopierEnginePage() {
     setChannels(prev => [inserted, ...prev])
     setNewChannel({ channel_id: '', channel_username: '', display_name: '' })
     setShowAdd(false)
+    autoProfileQueuedRef.current.delete(inserted.id)
     void analyzeChannelProfile(inserted.id)
   }
 
@@ -349,6 +382,7 @@ export function CopierEnginePage() {
         const exists = prev.find(c => c.channel_id === ch.id)
         return exists ? prev.map(c => c.channel_id === ch.id ? upserted : c) : [upserted, ...prev]
       })
+      autoProfileQueuedRef.current.delete(upserted.id)
       void analyzeChannelProfile(upserted.id)
     }
   }
@@ -368,12 +402,12 @@ export function CopierEnginePage() {
       })
       const data = await res.json()
       if (!res.ok || data.error) {
-        setTgError(data.error || 'Failed to send code')
+        setTgError(data.error || ce.failedSendCode)
         return
       }
       setTgStage('code')
     } catch {
-      setTgError('Network error')
+      setTgError(ce.networkError)
     } finally {
       setTgLoading(false)
     }
@@ -401,15 +435,15 @@ export function CopierEnginePage() {
       if (!res.ok || data.error) {
         if (data.requires_password) {
           setRequiresPassword(true)
-          setTgError('Enter your Telegram 2FA password.')
+          setTgError(ce.twoFaRequired)
           return
         }
-        setTgError(data.error || 'Verification failed')
+        setTgError(data.error || ce.verificationFailed)
         return
       }
       await loadData()
     } catch {
-      setTgError('Network error')
+      setTgError(ce.networkError)
     } finally {
       setTgLoading(false)
     }
@@ -449,6 +483,18 @@ export function CopierEnginePage() {
     closeChannelKeywords()
   }
 
+  const sk = ce.signalKeywords
+  const uk = ce.updateKeywords
+  const ak = ce.additionalKeywords
+  const boolSelectOptions = [
+    { value: 'false', label: t.common.no },
+    { value: 'true', label: t.common.yes },
+  ]
+  const entrySelectOptions = [
+    { value: 'first_price', label: ak.firstPrice },
+    { value: 'last_price', label: ak.lastPrice },
+  ]
+
   return (
     <div className="px-4 py-4 lg:px-6 lg:py-5 max-w-5xl mx-auto">
       <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
@@ -459,13 +505,13 @@ export function CopierEnginePage() {
         <div className="flex gap-2">
           {!hasTgSession && tgStage === 'idle' && (
             <Button size="sm" onClick={() => setTgStage('phone')}>
-              Connect Telegram
+              {ce.connectTelegram}
             </Button>
           )}
           {hasTgSession && (
             <Button variant="secondary" size="sm" onClick={fetchTgChannels} loading={loadingTg}>
               <RefreshCw className="w-3.5 h-3.5" />
-              Refresh
+              {t.common.refresh}
             </Button>
           )}
         </div>
@@ -480,8 +526,8 @@ export function CopierEnginePage() {
       )} */}
       {!hasTgSession && tgStage === 'idle' && (
         <div className="mb-3 px-3 py-2 bg-warning-50 border border-warning-200 rounded-lg text-sm text-warning-700 flex items-center gap-2">
-          <span className="font-medium">Telegram not connected.</span>
-          <span>Connect Telegram here to load and manage your channel list.</span>
+          <span className="font-medium">{ce.telegramNotConnectedTitle}</span>
+          <span>{ce.telegramNotConnectedBody}</span>
         </div>
       )}
 
@@ -497,7 +543,7 @@ export function CopierEnginePage() {
               />
             </div>
             <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
-              {tgStage === 'phone' ? 'Connect Telegram: enter your phone number' : 'Connect Telegram: enter verification code'}
+              {tgStage === 'phone' ? ce.tgConnectPhoneTitle : ce.tgConnectCodeTitle}
             </p>
           </div>
 
@@ -506,44 +552,44 @@ export function CopierEnginePage() {
           {tgStage === 'phone' ? (
             <form onSubmit={sendCode} className="space-y-3">
               <Input
-                label="Phone number"
+                label={ce.phoneLabel}
                 type="tel"
-                placeholder="+1 234 567 8900"
+                placeholder={ce.phonePlaceholder}
                 value={tgPhone}
                 onChange={e => setTgPhone(e.target.value)}
-                hint="Include country code"
+                hint={ce.phoneHint}
                 required
                 autoFocus
               />
               <div className="flex gap-2">
-                <Button type="submit" loading={tgLoading} size="sm">Send code</Button>
-                <Button type="button" variant="ghost" size="sm" onClick={() => setTgStage('idle')}>Cancel</Button>
+                <Button type="submit" loading={tgLoading} size="sm">{ce.sendCode}</Button>
+                <Button type="button" variant="ghost" size="sm" onClick={() => setTgStage('idle')}>{t.common.cancel}</Button>
               </div>
             </form>
           ) : (
             <form onSubmit={verifyCode} className="space-y-3">
               <Input
-                label="Verification code"
-                placeholder="12345"
+                label={ce.verificationCode}
+                placeholder={ce.verificationPlaceholder}
                 value={tgCode}
                 onChange={e => setTgCode(e.target.value)}
-                hint={`Sent to ${tgPhone}`}
+                hint={interpolate(ce.sentTo, { phone: tgPhone })}
                 required
                 autoFocus
               />
               {requiresPassword && (
                 <Input
-                  label="2FA password"
+                  label={ce.twoFaPassword}
                   type="password"
-                  placeholder="Your Telegram password"
+                  placeholder={ce.twoFaPlaceholder}
                   value={tgPassword}
                   onChange={e => setTgPassword(e.target.value)}
                   required
                 />
               )}
               <div className="flex gap-2">
-                <Button type="submit" loading={tgLoading} size="sm">Verify</Button>
-                <Button type="button" variant="ghost" size="sm" onClick={() => { setTgStage('phone'); setTgError('') }}>Back</Button>
+                <Button type="submit" loading={tgLoading} size="sm">{ce.verify}</Button>
+                <Button type="button" variant="ghost" size="sm" onClick={() => { setTgStage('phone'); setTgError('') }}>{ce.back}</Button>
               </div>
             </form>
           )}
@@ -555,8 +601,8 @@ export function CopierEnginePage() {
         <Card className="mb-3" padding="none">
           <div className="px-4 py-2.5 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Your Telegram channels</p>
-              <Badge variant="success" size="sm">Connected</Badge>
+              <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{ce.yourTelegramChannels}</p>
+              <Badge variant="success" size="sm">{ce.connected}</Badge>
             </div>
             <div className="flex items-center gap-2">
               <Button
@@ -566,19 +612,21 @@ export function CopierEnginePage() {
                 className="text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:bg-neutral-800 hover:text-neutral-700 dark:text-neutral-300"
               >
                 <ChevronDown className={`w-3.5 h-3.5 transition-transform ${tgChannelsCollapsed ? '-rotate-90' : 'rotate-0'}`} />
-                {tgChannelsCollapsed ? 'Expand' : 'Collapse'}
+                {tgChannelsCollapsed ? ce.expand : ce.collapse}
               </Button>
               <Button variant="ghost" size="sm" onClick={disconnectTelegram} className="text-error-600 hover:bg-error-50 hover:text-error-700">
                 <AlertCircle className="w-3.5 h-3.5" />
-                Disconnect
+                {ce.disconnect}
               </Button>
             {tgChannels.length > 0 && (
-              <span className="text-xs text-neutral-400">{tgChannels.length} found</span>
+              <span className="text-xs text-neutral-400">
+                {interpolate(ce.channelsFound, { count: String(tgChannels.length) })}
+              </span>
             )}
             </div>
           </div>
           {!tgChannelsCollapsed && (loadingTg ? (
-            <div className="divide-y divide-neutral-50">
+            <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
               {[...Array(4)].map((_, i) => (
                 <div key={i} className="px-4 py-2.5 flex items-center gap-3">
                   <div className="w-8 h-8 rounded-lg bg-neutral-100 dark:bg-neutral-800 animate-pulse flex-shrink-0" />
@@ -593,16 +641,16 @@ export function CopierEnginePage() {
             <div className="px-4 py-8 text-center">
               <AlertCircle className="w-8 h-8 mx-auto mb-2 text-error-300" />
               <p className="text-sm text-error-600 font-medium">{error}</p>
-              <p className="text-xs text-neutral-400 mt-0.5">Use Refresh after fixing Telegram connection or worker issues.</p>
+              <p className="text-xs text-neutral-400 mt-0.5">{ce.refreshAfterFix}</p>
             </div>
           ) : tgChannels.length === 0 ? (
             <div className="px-4 py-8 text-center">
               <Radio className="w-8 h-8 mx-auto mb-2 text-neutral-200" />
-              <p className="text-sm text-neutral-400">No channels or groups found</p>
-              <p className="text-xs text-neutral-300 mt-0.5">Make sure you are a member of the signal channels</p>
+              <p className="text-sm text-neutral-400">{ce.noTgChannelsTitle}</p>
+              <p className="text-xs text-neutral-300 mt-0.5">{ce.noTgChannelsSubtitle}</p>
             </div>
           ) : (
-            <div className="divide-y divide-neutral-50 max-h-72 overflow-y-auto">
+            <div className="divide-y divide-neutral-100 dark:divide-neutral-800 max-h-72 overflow-y-auto">
               {tgChannels.map(ch => {
                 const alreadyAdded = channels.some(c => c.channel_id === ch.id)
                 return (
@@ -613,7 +661,9 @@ export function CopierEnginePage() {
                       {ch.username && <p className="text-xs text-neutral-400">@{ch.username}</p>}
                     </div>
                     {ch.members_count > 0 && (
-                      <span className="text-xs text-neutral-400 flex-shrink-0">{ch.members_count.toLocaleString()} members</span>
+                      <span className="text-xs text-neutral-400 flex-shrink-0">
+                        {interpolate(ce.members, { count: ch.members_count.toLocaleString() })}
+                      </span>
                     )}
                     <button
                       onClick={() => addFromTg(ch)}
@@ -624,7 +674,7 @@ export function CopierEnginePage() {
                       }`}
                       disabled={alreadyAdded}
                     >
-                      {alreadyAdded ? 'Added' : 'Add'}
+                      {alreadyAdded ? ce.added : ce.add}
                     </button>
                   </div>
                 )
@@ -637,17 +687,17 @@ export function CopierEnginePage() {
       {/* Manual add form */}
       {showAdd && (
         <Card className="mb-3">
-          <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 mb-3">Add channel manually</h3>
+          <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 mb-3">{ch.addFormTitle}</h3>
           {error && <Alert className="mb-3">{error}</Alert>}
           <form onSubmit={addManual} className="space-y-3">
-            <Input label="Channel name" placeholder="e.g. Gold Signals Pro" value={newChannel.display_name} onChange={e => setNewChannel(p => ({ ...p, display_name: e.target.value }))} required />
+            <Input label={ch.channelName} placeholder={ch.channelNamePlaceholder} value={newChannel.display_name} onChange={e => setNewChannel(p => ({ ...p, display_name: e.target.value }))} required />
             <div className="grid grid-cols-2 gap-3">
-              <Input label="Username (optional)" placeholder="@channelname" value={newChannel.channel_username} onChange={e => setNewChannel(p => ({ ...p, channel_username: e.target.value }))} />
-              <Input label="Channel ID (optional)" placeholder="Telegram channel ID" value={newChannel.channel_id} onChange={e => setNewChannel(p => ({ ...p, channel_id: e.target.value }))} />
+              <Input label={ch.usernameOptional} placeholder={ch.usernamePlaceholder} value={newChannel.channel_username} onChange={e => setNewChannel(p => ({ ...p, channel_username: e.target.value }))} />
+              <Input label={ch.channelIdOptional} placeholder={ch.channelIdPlaceholder} value={newChannel.channel_id} onChange={e => setNewChannel(p => ({ ...p, channel_id: e.target.value }))} />
             </div>
             <div className="flex gap-2 pt-1">
-              <Button type="submit" loading={saving} size="sm">Add channel</Button>
-              <Button type="button" variant="ghost" size="sm" onClick={() => setShowAdd(false)}>Cancel</Button>
+              <Button type="submit" loading={saving} size="sm">{ch.addChannel}</Button>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setShowAdd(false)}>{t.common.cancel}</Button>
             </div>
           </form>
         </Card>
@@ -661,14 +711,16 @@ export function CopierEnginePage() {
       ) : channels.length === 0 ? (
         <div className="bg-white dark:bg-neutral-900 rounded-xl border border-dashed border-neutral-200 dark:border-neutral-800 py-10 text-center">
           <Radio className="w-8 h-8 mx-auto mb-2 text-neutral-200" />
-          <p className="text-sm font-medium text-neutral-400">No channels configured</p>
-          <p className="text-xs text-neutral-300 mt-0.5">Add Telegram channels above to start the copier</p>
+          <p className="text-sm font-medium text-neutral-400">{ce.configuredEmptyTitle}</p>
+          <p className="text-xs text-neutral-300 mt-0.5">{ce.configuredEmptySubtitle}</p>
         </div>
       ) : (
         <Card padding="none" className="overflow-hidden">
           <div className="px-4 py-2.5 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
-            <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Active channels</p>
-            <span className="text-xs text-neutral-400">{channels.length} configured</span>
+            <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{ce.activeChannels}</p>
+            <span className="text-xs text-neutral-400">
+              {interpolate(ce.configuredCount, { count: String(channels.length) })}
+            </span>
           </div>
           <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
             {channels.map(channel => (
@@ -692,63 +744,63 @@ export function CopierEnginePage() {
           <div className="w-full max-w-5xl max-h-[86vh] overflow-y-auto rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 shadow-xl">
             <div className="px-4 py-3 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
               <div>
-                <h3 className="text-base font-semibold text-neutral-900 dark:text-neutral-50">Channel Keywords</h3>
+                <h3 className="text-base font-semibold text-neutral-900 dark:text-neutral-50">{ce.keywordsTitle}</h3>
                 <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">{keywordsChannel.display_name}</p>
               </div>
-              <button onClick={closeChannelKeywords} className="px-3 py-1.5 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:text-neutral-300">Close</button>
+              <button onClick={closeChannelKeywords} className="px-3 py-1.5 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:text-neutral-300">{ce.keywordsClose}</button>
             </div>
             <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
-                <p className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">Signal Keyword</p>
-                <Input label="Entry Point" value={keywordsDraft.signal.entry_point} onChange={e => setKeywordsDraft(p => ({ ...p, signal: { ...p.signal, entry_point: e.target.value } }))} />
-                <Input label="BUY" value={keywordsDraft.signal.buy} onChange={e => setKeywordsDraft(p => ({ ...p, signal: { ...p.signal, buy: e.target.value } }))} />
-                <Input label="SELL" value={keywordsDraft.signal.sell} onChange={e => setKeywordsDraft(p => ({ ...p, signal: { ...p.signal, sell: e.target.value } }))} />
-                <Input label="SL" value={keywordsDraft.signal.sl} onChange={e => setKeywordsDraft(p => ({ ...p, signal: { ...p.signal, sl: e.target.value } }))} />
-                <Input label="TP" value={keywordsDraft.signal.tp} onChange={e => setKeywordsDraft(p => ({ ...p, signal: { ...p.signal, tp: e.target.value } }))} />
-                <Input label="Market Order" value={keywordsDraft.signal.market_order} onChange={e => setKeywordsDraft(p => ({ ...p, signal: { ...p.signal, market_order: e.target.value } }))} />
+                <p className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">{ce.signalKeywordSection}</p>
+                <Input label={sk.entryPoint} value={keywordsDraft.signal.entry_point} onChange={e => setKeywordsDraft(p => ({ ...p, signal: { ...p.signal, entry_point: e.target.value } }))} />
+                <Input label={sk.buy} value={keywordsDraft.signal.buy} onChange={e => setKeywordsDraft(p => ({ ...p, signal: { ...p.signal, buy: e.target.value } }))} />
+                <Input label={sk.sell} value={keywordsDraft.signal.sell} onChange={e => setKeywordsDraft(p => ({ ...p, signal: { ...p.signal, sell: e.target.value } }))} />
+                <Input label={sk.sl} value={keywordsDraft.signal.sl} onChange={e => setKeywordsDraft(p => ({ ...p, signal: { ...p.signal, sl: e.target.value } }))} />
+                <Input label={sk.tp} value={keywordsDraft.signal.tp} onChange={e => setKeywordsDraft(p => ({ ...p, signal: { ...p.signal, tp: e.target.value } }))} />
+                <Input label={sk.marketOrder} value={keywordsDraft.signal.market_order} onChange={e => setKeywordsDraft(p => ({ ...p, signal: { ...p.signal, market_order: e.target.value } }))} />
               </div>
               <div className="space-y-2">
-                <p className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">Update Keyword</p>
-                <Input label="Close TP1" value={keywordsDraft.update.close_tp1} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, close_tp1: e.target.value } }))} />
-                <Input label="Close TP2" value={keywordsDraft.update.close_tp2} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, close_tp2: e.target.value } }))} />
-                <Input label="Close TP3" value={keywordsDraft.update.close_tp3} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, close_tp3: e.target.value } }))} />
-                <Input label="Close TP4" value={keywordsDraft.update.close_tp4} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, close_tp4: e.target.value } }))} />
-                <Input label="Close Full" value={keywordsDraft.update.close_full} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, close_full: e.target.value } }))} />
-                <Input label="Close Half" value={keywordsDraft.update.close_half} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, close_half: e.target.value } }))} />
-                <Input label="Close Partial" value={keywordsDraft.update.close_partial} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, close_partial: e.target.value } }))} />
-                <Input label="Break Even" value={keywordsDraft.update.break_even} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, break_even: e.target.value } }))} />
-                <Input label="Set TP1" value={keywordsDraft.update.set_tp1} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, set_tp1: e.target.value } }))} />
-                <Input label="Set TP2" value={keywordsDraft.update.set_tp2} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, set_tp2: e.target.value } }))} />
-                <Input label="Set TP3" value={keywordsDraft.update.set_tp3} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, set_tp3: e.target.value } }))} />
-                <Input label="Set TP4" value={keywordsDraft.update.set_tp4} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, set_tp4: e.target.value } }))} />
-                <Input label="Set TP5" value={keywordsDraft.update.set_tp5} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, set_tp5: e.target.value } }))} />
-                <Input label="Set TP" value={keywordsDraft.update.set_tp} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, set_tp: e.target.value } }))} />
-                <Input label="Adjust TP" value={keywordsDraft.update.adjust_tp} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, adjust_tp: e.target.value } }))} />
-                <Input label="Set SL" value={keywordsDraft.update.set_sl} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, set_sl: e.target.value } }))} />
-                <Input label="Adjust SL" value={keywordsDraft.update.adjust_sl} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, adjust_sl: e.target.value } }))} />
-                <Input label="Delete" value={keywordsDraft.update.delete} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, delete: e.target.value } }))} />
+                <p className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">{ce.updateKeywordSection}</p>
+                <Input label={uk.closeTp1} value={keywordsDraft.update.close_tp1} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, close_tp1: e.target.value } }))} />
+                <Input label={uk.closeTp2} value={keywordsDraft.update.close_tp2} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, close_tp2: e.target.value } }))} />
+                <Input label={uk.closeTp3} value={keywordsDraft.update.close_tp3} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, close_tp3: e.target.value } }))} />
+                <Input label={uk.closeTp4} value={keywordsDraft.update.close_tp4} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, close_tp4: e.target.value } }))} />
+                <Input label={uk.closeFull} value={keywordsDraft.update.close_full} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, close_full: e.target.value } }))} />
+                <Input label={uk.closeHalf} value={keywordsDraft.update.close_half} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, close_half: e.target.value } }))} />
+                <Input label={uk.closePartial} value={keywordsDraft.update.close_partial} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, close_partial: e.target.value } }))} />
+                <Input label={uk.breakEven} value={keywordsDraft.update.break_even} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, break_even: e.target.value } }))} />
+                <Input label={uk.setTp1} value={keywordsDraft.update.set_tp1} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, set_tp1: e.target.value } }))} />
+                <Input label={uk.setTp2} value={keywordsDraft.update.set_tp2} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, set_tp2: e.target.value } }))} />
+                <Input label={uk.setTp3} value={keywordsDraft.update.set_tp3} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, set_tp3: e.target.value } }))} />
+                <Input label={uk.setTp4} value={keywordsDraft.update.set_tp4} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, set_tp4: e.target.value } }))} />
+                <Input label={uk.setTp5} value={keywordsDraft.update.set_tp5} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, set_tp5: e.target.value } }))} />
+                <Input label={uk.setTp} value={keywordsDraft.update.set_tp} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, set_tp: e.target.value } }))} />
+                <Input label={uk.adjustTp} value={keywordsDraft.update.adjust_tp} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, adjust_tp: e.target.value } }))} />
+                <Input label={uk.setSl} value={keywordsDraft.update.set_sl} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, set_sl: e.target.value } }))} />
+                <Input label={uk.adjustSl} value={keywordsDraft.update.adjust_sl} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, adjust_sl: e.target.value } }))} />
+                <Input label={uk.delete} value={keywordsDraft.update.delete} onChange={e => setKeywordsDraft(p => ({ ...p, update: { ...p.update, delete: e.target.value } }))} />
               </div>
               <div className="space-y-2">
-                <p className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">Additional Keyword</p>
-                <Input label="Layer" value={keywordsDraft.additional.layer} onChange={e => setKeywordsDraft(p => ({ ...p, additional: { ...p.additional, layer: e.target.value } }))} />
-                <Input label="Close All" value={keywordsDraft.additional.close_all} onChange={e => setKeywordsDraft(p => ({ ...p, additional: { ...p.additional, close_all: e.target.value } }))} />
-                <Input label="Delete All" value={keywordsDraft.additional.delete_all} onChange={e => setKeywordsDraft(p => ({ ...p, additional: { ...p.additional, delete_all: e.target.value } }))} />
-                <Input label="Ignore Keyword" value={keywordsDraft.additional.ignore_keyword} onChange={e => setKeywordsDraft(p => ({ ...p, additional: { ...p.additional, ignore_keyword: e.target.value } }))} />
-                <Input label="Skip Keyword" value={keywordsDraft.additional.skip_keyword} onChange={e => setKeywordsDraft(p => ({ ...p, additional: { ...p.additional, skip_keyword: e.target.value } }))} />
-                <Input label="Remove SL" value={keywordsDraft.additional.remove_sl} onChange={e => setKeywordsDraft(p => ({ ...p, additional: { ...p.additional, remove_sl: e.target.value } }))} />
-                <Input label="Delay in Msec" type="number" value={String(keywordsDraft.additional.delay_msec)} onChange={e => setKeywordsDraft(p => ({ ...p, additional: { ...p.additional, delay_msec: Number(e.target.value) } }))} />
-                <Select label="Prefer Entry" value={keywordsDraft.additional.prefer_entry} onChange={e => setKeywordsDraft(p => ({ ...p, additional: { ...p.additional, prefer_entry: e.target.value as 'first_price' | 'last_price' } }))} options={[{ value: 'first_price', label: 'First Price' }, { value: 'last_price', label: 'Last Price' }]} />
-                <Select label="SL In Pips" value={keywordsDraft.additional.sl_in_pips ? 'true' : 'false'} onChange={e => setKeywordsDraft(p => ({ ...p, additional: { ...p.additional, sl_in_pips: e.target.value === 'true' } }))} options={[{ value: 'false', label: 'False' }, { value: 'true', label: 'True' }]} />
-                <Select label="TP In Pips" value={keywordsDraft.additional.tp_in_pips ? 'true' : 'false'} onChange={e => setKeywordsDraft(p => ({ ...p, additional: { ...p.additional, tp_in_pips: e.target.value === 'true' } }))} options={[{ value: 'false', label: 'False' }, { value: 'true', label: 'True' }]} />
-                <Input label="Delimiters" value={keywordsDraft.additional.delimiters} onChange={e => setKeywordsDraft(p => ({ ...p, additional: { ...p.additional, delimiters: e.target.value } }))} />
-                <Select label="ALL Order" value={keywordsDraft.additional.all_order ? 'true' : 'false'} onChange={e => setKeywordsDraft(p => ({ ...p, additional: { ...p.additional, all_order: e.target.value === 'true' } }))} options={[{ value: 'false', label: 'False' }, { value: 'true', label: 'True' }]} />
-                <Select label="Read Forwarded" value={keywordsDraft.additional.read_forwarded ? 'true' : 'false'} onChange={e => setKeywordsDraft(p => ({ ...p, additional: { ...p.additional, read_forwarded: e.target.value === 'true' } }))} options={[{ value: 'false', label: 'False' }, { value: 'true', label: 'True' }]} />
-                <Select label="Read Image" value={keywordsDraft.additional.read_image ? 'true' : 'false'} onChange={e => setKeywordsDraft(p => ({ ...p, additional: { ...p.additional, read_image: e.target.value === 'true' } }))} options={[{ value: 'false', label: 'False' }, { value: 'true', label: 'True' }]} />
+                <p className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">{ce.additionalKeywordSection}</p>
+                <Input label={ak.layer} value={keywordsDraft.additional.layer} onChange={e => setKeywordsDraft(p => ({ ...p, additional: { ...p.additional, layer: e.target.value } }))} />
+                <Input label={ak.closeAll} value={keywordsDraft.additional.close_all} onChange={e => setKeywordsDraft(p => ({ ...p, additional: { ...p.additional, close_all: e.target.value } }))} />
+                <Input label={ak.deleteAll} value={keywordsDraft.additional.delete_all} onChange={e => setKeywordsDraft(p => ({ ...p, additional: { ...p.additional, delete_all: e.target.value } }))} />
+                <Input label={ak.ignoreKeyword} value={keywordsDraft.additional.ignore_keyword} onChange={e => setKeywordsDraft(p => ({ ...p, additional: { ...p.additional, ignore_keyword: e.target.value } }))} />
+                <Input label={ak.skipKeyword} value={keywordsDraft.additional.skip_keyword} onChange={e => setKeywordsDraft(p => ({ ...p, additional: { ...p.additional, skip_keyword: e.target.value } }))} />
+                <Input label={ak.removeSl} value={keywordsDraft.additional.remove_sl} onChange={e => setKeywordsDraft(p => ({ ...p, additional: { ...p.additional, remove_sl: e.target.value } }))} />
+                <Input label={ak.delayMsec} type="number" value={String(keywordsDraft.additional.delay_msec)} onChange={e => setKeywordsDraft(p => ({ ...p, additional: { ...p.additional, delay_msec: Number(e.target.value) } }))} />
+                <Select label={ak.preferEntry} value={keywordsDraft.additional.prefer_entry} onChange={e => setKeywordsDraft(p => ({ ...p, additional: { ...p.additional, prefer_entry: e.target.value as 'first_price' | 'last_price' } }))} options={entrySelectOptions} />
+                <Select label={ak.slInPips} value={keywordsDraft.additional.sl_in_pips ? 'true' : 'false'} onChange={e => setKeywordsDraft(p => ({ ...p, additional: { ...p.additional, sl_in_pips: e.target.value === 'true' } }))} options={boolSelectOptions} />
+                <Select label={ak.tpInPips} value={keywordsDraft.additional.tp_in_pips ? 'true' : 'false'} onChange={e => setKeywordsDraft(p => ({ ...p, additional: { ...p.additional, tp_in_pips: e.target.value === 'true' } }))} options={boolSelectOptions} />
+                <Input label={ak.delimiters} value={keywordsDraft.additional.delimiters} onChange={e => setKeywordsDraft(p => ({ ...p, additional: { ...p.additional, delimiters: e.target.value } }))} />
+                <Select label={ak.allOrder} value={keywordsDraft.additional.all_order ? 'true' : 'false'} onChange={e => setKeywordsDraft(p => ({ ...p, additional: { ...p.additional, all_order: e.target.value === 'true' } }))} options={boolSelectOptions} />
+                <Select label={ak.readForwarded} value={keywordsDraft.additional.read_forwarded ? 'true' : 'false'} onChange={e => setKeywordsDraft(p => ({ ...p, additional: { ...p.additional, read_forwarded: e.target.value === 'true' } }))} options={boolSelectOptions} />
+                <Select label={ak.readImage} value={keywordsDraft.additional.read_image ? 'true' : 'false'} onChange={e => setKeywordsDraft(p => ({ ...p, additional: { ...p.additional, read_image: e.target.value === 'true' } }))} options={boolSelectOptions} />
               </div>
             </div>
             <div className="px-4 py-3 border-t border-neutral-100 dark:border-neutral-800 flex justify-end gap-2">
-              <Button variant="ghost" onClick={closeChannelKeywords} disabled={keywordsSaving}>Cancel</Button>
-              <Button loading={keywordsSaving} onClick={() => void saveChannelKeywords()}>Save Keywords</Button>
+              <Button variant="ghost" onClick={closeChannelKeywords} disabled={keywordsSaving}>{t.common.cancel}</Button>
+              <Button loading={keywordsSaving} onClick={() => void saveChannelKeywords()}>{ce.keywordsSave}</Button>
             </div>
           </div>
         </div>
@@ -768,6 +820,8 @@ function ChannelRow({
   onDelete: () => void
   onKeywords: () => void
 }) {
+  const t = useT()
+  const ce = t.copierEnginePage
   const username = channel.channel_username?.replace(/^@/, '') || undefined
 
   return (
@@ -777,7 +831,7 @@ function ChannelRow({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{channel.display_name}</h3>
-            {!channel.is_active && <Badge variant="neutral" size="sm">Paused</Badge>}
+            {!channel.is_active && <Badge variant="neutral" size="sm">{ce.statusPaused}</Badge>}
           </div>
           {username && <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">@{username}</p>}
         </div>
@@ -787,7 +841,7 @@ function ChannelRow({
             type="button"
             onClick={onDelete}
             className="rounded-lg p-1.5 text-neutral-400 hover:bg-error-50 hover:text-error-600 transition-colors"
-            aria-label={`Remove ${channel.display_name}`}
+            aria-label={interpolate(ce.removeAria, { label: channel.display_name })}
           >
             <Trash2 className="w-4 h-4" />
           </button>
@@ -797,7 +851,9 @@ function ChannelRow({
         {isAnalyzing ? (
           <div>
             <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-1.5">
-              Analyzing last 30 days… {Math.max(0, Math.min(100, Math.round(analysisProgress)))}%
+              {interpolate(ce.analyzing, {
+                percent: String(Math.max(0, Math.min(100, Math.round(analysisProgress)))),
+              })}
             </p>
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200">
               <div
@@ -807,14 +863,14 @@ function ChannelRow({
             </div>
           </div>
         ) : !profile ? (
-          <p className="text-xs text-neutral-500 dark:text-neutral-400">Profile insights will appear after analysis completes.</p>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400">{ce.profilePending}</p>
         ) : (
           <div className="space-y-1">
             <div className="flex flex-wrap gap-1.5">
-              <Badge variant="neutral" size="sm">Type: {profile.signal_type}</Badge>
-              <Badge variant="neutral" size="sm">Entry: {profile.entry_type}</Badge>
-              <Badge variant="neutral" size="sm">TP: {profile.tp_style}</Badge>
-              <Badge variant="neutral" size="sm">SL: {profile.sl_style}</Badge>
+              <Badge variant="neutral" size="sm">{interpolate(ce.profileType, { value: profile.signal_type })}</Badge>
+              <Badge variant="neutral" size="sm">{interpolate(ce.profileEntry, { value: profile.entry_type })}</Badge>
+              <Badge variant="neutral" size="sm">{interpolate(ce.profileTp, { value: profile.tp_style })}</Badge>
+              <Badge variant="neutral" size="sm">{interpolate(ce.profileSl, { value: profile.sl_style })}</Badge>
             </div>
             {profile.analysis_summary && (
               <p className="text-[11px] text-neutral-500 dark:text-neutral-400 line-clamp-2">{profile.analysis_summary}</p>

@@ -51,6 +51,14 @@ export interface BacktestRunRow {
   completed_at: string | null
 }
 
+export type BacktestRunMode = 'tpsl' | 'simulate'
+
+export interface BacktestTpEvent {
+  index: number
+  price: number
+  ts: number
+}
+
 export interface BacktestTradeRow {
   id: string
   symbol: string
@@ -62,10 +70,12 @@ export interface BacktestTradeRow {
   pnl_r: number | null
   entry_price: number
   exit_price: number | null
+  closed_at: string | null
   sl: number | null
   tp_levels: number[]
   lot_size: number
   channel_id: string | null
+  details?: { tpEvents?: BacktestTpEvent[]; marketEntry?: boolean } | Record<string, unknown>
 }
 
 export interface BacktestEquityRow {

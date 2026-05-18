@@ -2,6 +2,12 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
 import { inferBrokerLabel } from "../_shared/brokerLabel.ts"
 import {
+  isLegacyBrokerLink,
+  makeMtClient,
+  parseBrokerSessionId,
+  reconnectBrokerSession,
+} from "../_shared/brokerSession.ts"
+import {
   isMtApiAuthConfigured,
   makeClientFromEnv,
   MetatraderApiError,
@@ -215,17 +221,26 @@ Deno.serve(async (req: Request) => {
       if (!brokerId) return bad(400, "broker_id required")
       const { data: broker } = await supabase
         .from("broker_accounts")
-        .select("id,metaapi_account_id,performance_baseline_balance,platform")
+        .select(
+          "id,metaapi_account_id,performance_baseline_balance,platform,last_balance,last_equity,last_currency,connection_status",
+        )
         .eq("id", brokerId)
         .eq("user_id", userId)
         .maybeSingle()
       if (!broker) return bad(404, "Broker account not found")
-      const uuid = String(broker.metaapi_account_id ?? "").trim()
-      if (!uuid || uuid.includes("|")) return bad(400, "Broker is not linked to MetatraderAPI yet")
+      const uuid = parseBrokerSessionId(broker.metaapi_account_id)
+      if (!uuid) {
+        return bad(
+          400,
+          isLegacyBrokerLink(broker.metaapi_account_id)
+            ? "This account uses the legacy link format. Remove it and connect again with your MT login and password."
+            : "Broker is not linked to MetatraderAPI yet",
+        )
+      }
       const client = mtClient(Deno.env, String(broker.platform ?? "MT5"))
 
       try {
-        try { await client.ensureConnected(uuid) } catch { /* swallow */ }
+        try { await client.keepSessionAlive(uuid) } catch { /* swallow */ }
         let summary: Awaited<ReturnType<typeof client.accountSummary>> | null = null
         let lastErr: unknown = null
         for (let i = 0; i < 3; i++) {
@@ -281,6 +296,28 @@ Deno.serve(async (req: Request) => {
           { headers: corsHeaders },
         )
       } catch (e) {
+        let sessionAlive = false
+        try {
+          sessionAlive = await client.keepSessionAlive(uuid)
+        } catch { /* ignore */ }
+        if (sessionAlive) {
+          const cachedBalance = broker?.last_balance != null ? Number(broker.last_balance) : null
+          const cachedEquity = broker?.last_equity != null ? Number(broker.last_equity) : null
+          return Response.json(
+            {
+              ok: true,
+              summary: {
+                balance: cachedBalance,
+                equity: cachedEquity,
+                currency: broker?.last_currency ?? null,
+              },
+              open_positions: null,
+              performance_baseline_balance: broker?.performance_baseline_balance ?? null,
+              stale: true,
+            },
+            { headers: corsHeaders },
+          )
+        }
         await supabase
           .from("broker_accounts")
           .update({ connection_status: "error" })
@@ -290,6 +327,26 @@ Deno.serve(async (req: Request) => {
         const msg = e instanceof Error ? e.message : "AccountSummary failed"
         return bad(status >= 400 && status < 600 ? status : 502, msg)
       }
+    }
+
+    if (action === "reconnect") {
+      ensureMtApiConfigured(Deno.env)
+      const brokerId = String((body as Record<string, unknown>).broker_id ?? "")
+      if (!brokerId) return bad(400, "broker_id required")
+      const { data: broker } = await supabase
+        .from("broker_accounts")
+        .select("id,user_id,metaapi_account_id,platform,performance_baseline_balance")
+        .eq("id", brokerId)
+        .eq("user_id", userId)
+        .maybeSingle()
+      if (!broker) return bad(404, "Broker account not found")
+      const client = makeMtClient(Deno.env, String(broker.platform ?? "MT5"))
+      const result = await reconnectBrokerSession(client, supabase, broker)
+      if (!result.ok) {
+        const status = result.message?.includes("legacy") ? 400 : 502
+        return bad(status, result.message ?? "Reconnect failed")
+      }
+      return Response.json({ ok: true, ...result }, { headers: corsHeaders })
     }
 
     if (action === "check") {
@@ -302,12 +359,20 @@ Deno.serve(async (req: Request) => {
         .eq("user_id", userId)
         .maybeSingle()
       if (!broker) return bad(404, "Broker account not found")
-      const uuid = String(broker.metaapi_account_id ?? "").trim()
-      if (!uuid || uuid.includes("|")) return bad(400, "Broker is not linked to MetatraderAPI yet")
+      const uuid = parseBrokerSessionId(broker.metaapi_account_id)
+      if (!uuid) {
+        return bad(
+          400,
+          isLegacyBrokerLink(broker.metaapi_account_id)
+            ? "This account uses the legacy link format. Remove it and connect again with your MT login and password."
+            : "Broker is not linked to MetatraderAPI yet",
+        )
+      }
       const client = mtClient(Deno.env, String(broker.platform ?? "MT5"))
 
       try {
-        await client.ensureConnected(uuid)
+        const alive = await client.keepSessionAlive(uuid)
+        if (!alive) throw new Error("Broker session is not connected")
         const result = await client.checkConnect(uuid)
         await supabase
           .from("broker_accounts")
@@ -509,7 +574,7 @@ Deno.serve(async (req: Request) => {
           const uuid = String(b.metaapi_account_id ?? "").trim()
           if (!uuid || uuid.includes("|")) return [] as ReturnType<typeof normalize>[]
           const bClient = mtClient(Deno.env, String(b.platform ?? "MT5"))
-          try { await bClient.ensureConnected(uuid) } catch { /* best-effort */ }
+          try { await bClient.keepSessionAlive(uuid) } catch { /* best-effort */ }
           const [openedRes, closedRes] = await Promise.allSettled([
             wantOpen ? bClient.openedOrders(uuid) : Promise.resolve([] as unknown[]),
             wantClosed

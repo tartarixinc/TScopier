@@ -11,6 +11,7 @@ import {
 } from 'recharts'
 import type { TradeVolumeDay } from '../../lib/dashboardCharts'
 import { useTheme } from '../../context/ThemeContext'
+import { useFormatMoney } from '../../context/UserProfileContext'
 import { chartThemeColors, chartTooltipProps } from '../../lib/chartTheme'
 
 interface PerformanceTradeOutcomeChartProps {
@@ -24,10 +25,6 @@ interface PerformanceTradeOutcomeChartProps {
   stale?: boolean
 }
 
-function formatMoney(v: number): string {
-  return `$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
-}
-
 export function PerformanceTradeOutcomeChart({
   data,
   title,
@@ -38,6 +35,7 @@ export function PerformanceTradeOutcomeChart({
   loading,
   stale,
 }: PerformanceTradeOutcomeChartProps) {
+  const { formatMoney } = useFormatMoney()
   const { theme } = useTheme()
   const colors = chartThemeColors(theme)
   const empty = data.every((d) => d.profit === 0 && d.loss === 0)

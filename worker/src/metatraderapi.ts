@@ -506,13 +506,25 @@ export class MetatraderApiClient {
   }
 
   async ensureConnected(id: string): Promise<void> {
+    const alive = await this.keepSessionAlive(id)
+    if (!alive) throw new MetatraderApiError('Broker session is not connected', 502)
+  }
+
+  /** Ping session; reconnect by token only when CheckConnect fails. */
+  async keepSessionAlive(id: string): Promise<boolean> {
     try {
       await this.checkConnect(id)
-      return
+      return true
     } catch {
       /* reconnect */
     }
-    await this.connectByToken(id)
+    try {
+      await this.connectByToken(id)
+      await this.checkConnect(id)
+      return true
+    } catch {
+      return false
+    }
   }
 
   async disconnect(id: string): Promise<void> {

@@ -21,12 +21,50 @@ const PIP_VALUE_PER_LOT = 10
 export const BACKTEST_OUTCOME_SHORT: Record<string, string> = {
   all_tp_hit: 'All TPs',
   tp_then_be: 'TP → BE',
-  tp1_then_sl: 'TP1 → SL',
-  sl_before_tp: 'SL',
+  tp1_then_sl: 'Partial',
+  sl_before_tp: 'SL Hit',
   breakeven: 'BE',
   no_data: 'No data',
   skipped: 'Skipped',
   open: 'Open',
+}
+
+export function displayOutcomeLabel(
+  outcome: string,
+  tpsHit: number,
+  tpCount: number,
+): string {
+  if (
+    (outcome === 'tp1_then_sl' || outcome === 'tp_then_be')
+    && tpsHit > 0
+    && tpCount > 0
+    && tpsHit < tpCount
+  ) {
+    return 'Partial'
+  }
+  if (outcome === 'tp1_then_sl' && tpsHit >= 1) return 'TP1 → SL'
+  return BACKTEST_OUTCOME_SHORT[outcome] ?? outcome
+}
+
+export function formatDurationMs(ms: number | null): string {
+  if (ms == null || !Number.isFinite(ms) || ms < 0) return '—'
+  const totalMin = Math.floor(ms / 60_000)
+  const h = Math.floor(totalMin / 60)
+  const m = totalMin % 60
+  if (h > 0) return `${h}h ${m}m`
+  if (m > 0) return `${m}m`
+  return '<1m'
+}
+
+export function tradeDurationMs(
+  signalAt: string,
+  closedAt: string | null | undefined,
+): number | null {
+  if (!closedAt) return null
+  const start = new Date(signalAt).getTime()
+  const end = new Date(closedAt).getTime()
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return null
+  return end - start
 }
 
 /** Price-distance pips implied by simulated dollar P/L (same units as engine). */

@@ -7,8 +7,6 @@ export const authEn: AuthTranslations = {
     mobileTagline: 'One seamless copier for every Telegram signal',
   },
   login: {
-    title: 'Welcome back',
-    subtitle: 'Sign in to manage your copier, channels, and live trades.',
     footerPrompt: 'New to TSCopier?',
     footerLink: 'Create a free account',
     email: 'Email',
@@ -18,8 +16,6 @@ export const authEn: AuthTranslations = {
     submit: 'Sign in',
   },
   signup: {
-    title: 'Create your account',
-    subtitle: 'Set up in minutes — connect Telegram, link a broker, and start copying signals.',
     footerPrompt: 'Already have an account?',
     footerLink: 'Sign in',
     email: 'Email',
@@ -34,18 +30,22 @@ export const authEn: AuthTranslations = {
   },
   marketing: {
     headline: 'One Seamless Copier for every Telegram Signal',
-    features: [
+    trustpilotLabel: 'Trustpilot',
+    reviews: [
       {
-        title: 'Connect any signal channel',
-        description: 'Link Telegram channels and copy trades to your broker in seconds.',
+        quote:
+          'TSCopier cut my manual copying time to almost zero. Signals land on my MT5 account within seconds — exactly what I needed for my Telegram channels.',
+        author: 'Rob Flemming',
       },
       {
-        title: 'Execute with precision',
-        description: 'Keyword parsing, TP ladders, and basket logic built for real channels.',
+        quote:
+          'Clean dashboard, reliable parsing, and the copier logs make debugging easy. Support answered quickly when I had a broker question.',
+        author: 'Sarah Mitchell',
       },
       {
-        title: 'Stay in control',
-        description: 'Per-channel rules, risk limits, and live logs on every signal.',
+        quote:
+          'We run multiple signal channels across two accounts. Basket logic and TP ladders work better than our old stack.',
+        author: 'James Okonkwo',
       },
     ],
     copyright: '© {year} Tartarix Inc.',

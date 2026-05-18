@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard,
@@ -10,16 +10,8 @@ import {
   Newspaper,
   Calendar,
   ChartBar as BarChart2,
-  LifeBuoy,
-  Lightbulb,
-  Handshake,
-  Share2,
-  CreditCard,
-  Repeat,
-  Search,
-  Bell,
+  CircleHelp,
   ChevronDown,
-  LogOut,
   ChartNoAxesColumn,
   PanelLeftClose,
   PanelLeftOpen,
@@ -28,10 +20,14 @@ import {
 } from 'lucide-react'
 import clsx from 'clsx'
 import { TscopierLogo } from '../ui/TscopierLogo'
+import { AppSearch } from './AppSearch'
 import { useAuth } from '../../context/AuthContext'
 import { useT } from '../../context/LocaleContext'
 import { ThemeToggle } from '../ui/ThemeToggle'
 import { LanguageSwitcher } from '../auth/LanguageSwitcher'
+import { HelpMenuDropdown } from './HelpMenuDropdown'
+import { UserMenuDropdown } from './UserMenuDropdown'
+import { useUserProfile } from '../../context/UserProfileContext'
 
 export function AppLayout() {
   const t = useT()
@@ -40,6 +36,74 @@ export function AppLayout() {
   const location = useLocation()
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [helpMenuOpen, setHelpMenuOpen] = useState(false)
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const helpMenuRef = useRef<HTMLDivElement>(null)
+  const userMenuRef = useRef<HTMLDivElement>(null)
+  const helpMenuCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const userMenuCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const { profile } = useUserProfile()
+
+  const openHelpMenu = () => {
+    if (helpMenuCloseTimerRef.current) {
+      clearTimeout(helpMenuCloseTimerRef.current)
+      helpMenuCloseTimerRef.current = null
+    }
+    setHelpMenuOpen(true)
+  }
+
+  const scheduleCloseHelpMenu = () => {
+    if (helpMenuCloseTimerRef.current) clearTimeout(helpMenuCloseTimerRef.current)
+    helpMenuCloseTimerRef.current = setTimeout(() => {
+      setHelpMenuOpen(false)
+      helpMenuCloseTimerRef.current = null
+    }, 150)
+  }
+
+  const openUserMenu = () => {
+    if (userMenuCloseTimerRef.current) {
+      clearTimeout(userMenuCloseTimerRef.current)
+      userMenuCloseTimerRef.current = null
+    }
+    setUserMenuOpen(true)
+  }
+
+  const scheduleCloseUserMenu = () => {
+    if (userMenuCloseTimerRef.current) clearTimeout(userMenuCloseTimerRef.current)
+    userMenuCloseTimerRef.current = setTimeout(() => {
+      setUserMenuOpen(false)
+      userMenuCloseTimerRef.current = null
+    }, 150)
+  }
+
+  useEffect(() => {
+    return () => {
+      if (helpMenuCloseTimerRef.current) clearTimeout(helpMenuCloseTimerRef.current)
+      if (userMenuCloseTimerRef.current) clearTimeout(userMenuCloseTimerRef.current)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!helpMenuOpen) return
+    const onDoc = (e: MouseEvent) => {
+      if (!helpMenuRef.current?.contains(e.target as Node)) {
+        setHelpMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [helpMenuOpen])
+
+  useEffect(() => {
+    if (!userMenuOpen) return
+    const onDoc = (e: MouseEvent) => {
+      if (!userMenuRef.current?.contains(e.target as Node)) {
+        setUserMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [userMenuOpen])
 
   const navSections = useMemo(
     () => [
@@ -68,27 +132,6 @@ export function AppLayout() {
           { to: '/economic-calendar', icon: Calendar, label: t.nav.items.economicCalendar },
         ],
       },
-      {
-        label: t.nav.sections.feedback,
-        items: [
-          { to: '/contact-support', icon: LifeBuoy, label: t.nav.items.contactSupport },
-          { to: '/feature-request', icon: Lightbulb, label: t.nav.items.featureRequest },
-        ],
-      },
-      {
-        label: t.nav.sections.growth,
-        items: [
-          { to: '/partner-with-us', icon: Handshake, label: t.nav.items.partnerWithUs },
-          { to: '/affiliate-program', icon: Share2, label: t.nav.items.affiliateProgram },
-        ],
-      },
-      {
-        label: t.nav.sections.membership,
-        items: [
-          { to: '/billing', icon: CreditCard, label: t.nav.items.billing },
-          { to: '/subscriptions', icon: Repeat, label: t.nav.items.subscriptions },
-        ],
-      },
     ],
     [t],
   )
@@ -111,8 +154,18 @@ export function AppLayout() {
     navigate('/login')
   }
 
-  const initials = user?.email?.slice(0, 2).toUpperCase() ?? 'U'
-  const displayName = user?.email?.split('@')[0] ?? 'User'
+  const initials = (() => {
+    const first = profile.first_name?.trim()
+    const last = profile.last_name?.trim()
+    if (first && last) return `${first[0]}${last[0]}`.toUpperCase()
+    if (first) return first.slice(0, 2).toUpperCase()
+    return user?.email?.slice(0, 2).toUpperCase() ?? 'U'
+  })()
+  const displayName =
+    [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim() ||
+    profile.display_name?.trim() ||
+    user?.email?.split('@')[0] ||
+    'User'
 
   const sidebarExpanded = !isSidebarCollapsed
 
@@ -192,7 +245,7 @@ export function AppLayout() {
             sidebarExpanded ? 'justify-between px-4' : 'justify-center px-2',
           )}
         >
-          <TscopierLogo className="h-8 w-auto lg:hidden" />
+          <TscopierLogo className="h-6 w-auto lg:hidden" />
           <div
             className={clsx(
               'hidden lg:block transition-all duration-200',
@@ -201,7 +254,7 @@ export function AppLayout() {
           >
             <TscopierLogo
               collapsed={!sidebarExpanded}
-              className={sidebarExpanded ? 'h-8 w-auto' : undefined}
+              className={sidebarExpanded ? 'h-6 w-auto' : undefined}
             />
           </div>
           <button
@@ -221,19 +274,6 @@ export function AppLayout() {
           })}
         </nav>
 
-        <div className="shrink-0 border-t border-neutral-100 dark:border-neutral-800 px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <button
-            onClick={handleSignOut}
-            title={t.nav.signOut}
-            className={clsx(
-              'flex w-full items-center rounded-lg px-3 py-2.5 text-sm text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100 min-h-[44px]',
-              sidebarExpanded ? 'gap-2.5' : 'justify-center',
-            )}
-          >
-            <LogOut className="w-4 h-4" />
-            {sidebarExpanded && t.nav.signOut}
-          </button>
-        </div>
       </aside>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -256,36 +296,65 @@ export function AppLayout() {
             {isSidebarCollapsed ? <PanelLeftOpen className="w-5 h-5" /> : <PanelLeftClose className="w-5 h-5" />}
           </button>
 
-          <div className="hidden sm:block flex-1 max-w-sm min-w-0">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
-              <input
-                type="text"
-                placeholder={t.nav.search}
-                className="w-full pl-9 pr-4 py-2 text-sm bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent placeholder:text-neutral-400 dark:text-neutral-100"
-              />
-            </div>
-          </div>
+          <AppSearch className="flex-1 max-w-md min-w-0" />
 
           <div className="flex-1 min-w-0" />
 
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             <LanguageSwitcher />
             <ThemeToggle />
-            <button
-              type="button"
-              className="hidden sm:block p-2 rounded-lg text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+            <div
+              ref={helpMenuRef}
+              className="relative"
+              onMouseEnter={openHelpMenu}
+              onMouseLeave={scheduleCloseHelpMenu}
             >
-              <Settings className="w-5 h-5" />
-            </button>
-            <button
-              type="button"
-              className="p-2 rounded-lg text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-            >
-              <Bell className="w-5 h-5" />
-            </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!window.matchMedia('(hover: hover)').matches) {
+                    setHelpMenuOpen(open => !open)
+                  }
+                }}
+                title={t.nav.help}
+                aria-label={t.nav.help}
+                aria-haspopup="menu"
+                aria-expanded={helpMenuOpen}
+                className={clsx(
+                  'p-2 rounded-lg transition-colors',
+                  helpMenuOpen
+                    ? 'text-teal-600 bg-teal-50 dark:text-teal-400 dark:bg-teal-950/50'
+                    : 'text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800',
+                )}
+              >
+                <CircleHelp className="w-5 h-5" />
+              </button>
+              <HelpMenuDropdown open={helpMenuOpen} onClose={() => setHelpMenuOpen(false)} />
+            </div>
 
-            <button type="button" className="flex items-center gap-2 pl-1 min-h-[44px]">
+            <div
+              ref={userMenuRef}
+              className="relative"
+              onMouseEnter={openUserMenu}
+              onMouseLeave={scheduleCloseUserMenu}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  if (!window.matchMedia('(hover: hover)').matches) {
+                    setUserMenuOpen(open => !open)
+                  }
+                }}
+                aria-haspopup="menu"
+                aria-expanded={userMenuOpen}
+                aria-label={t.nav.userMenu.menuLabel}
+                className={clsx(
+                  'flex items-center gap-2 rounded-lg pl-1 pr-2 min-h-[44px] transition-colors',
+                  userMenuOpen
+                    ? 'bg-neutral-100 dark:bg-neutral-800'
+                    : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/60',
+                )}
+              >
               <div className="w-8 h-8 rounded-full bg-teal-600 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">
                 {initials}
               </div>
@@ -295,8 +364,19 @@ export function AppLayout() {
                 </p>
                 <p className="text-xs text-neutral-400 leading-tight">{t.nav.planFree}</p>
               </div>
-              <ChevronDown className="hidden md:block w-3.5 h-3.5 text-neutral-400 shrink-0" />
-            </button>
+                <ChevronDown
+                  className={clsx(
+                    'hidden md:block w-3.5 h-3.5 text-neutral-400 shrink-0 transition-transform',
+                    userMenuOpen && 'rotate-180',
+                  )}
+                />
+              </button>
+              <UserMenuDropdown
+                open={userMenuOpen}
+                onClose={() => setUserMenuOpen(false)}
+                onSignOut={handleSignOut}
+              />
+            </div>
           </div>
         </header>
 

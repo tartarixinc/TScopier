@@ -1,6 +1,15 @@
 import type { AuthTranslations } from '../auth/types'
 import type { ChannelWorkerTranslations } from '../channelWorker/types'
 
+export interface GlobalSearchTranslations {
+  placeholder: string
+  noResults: string
+  groupPages: string
+  groupBrokers: string
+  groupChannels: string
+  shortcut: string
+}
+
 export interface NavTranslations {
   sections: {
     general: string
@@ -35,6 +44,24 @@ export interface NavTranslations {
   expandSidebar: string
   collapseSidebar: string
   planFree: string
+  settings: string
+  help: string
+  helpMenu: {
+    title: string
+    documentation: string
+    liveChat: string
+    whatsapp: string
+    telegram: string
+    status: string
+    statusOperational: string
+  }
+  userMenu: {
+    menuLabel: string
+    profileSettings: string
+    subscriptionBilling: string
+    affiliateProgram: string
+    signOut: string
+  }
 }
 
 export interface CommonTranslations {
@@ -68,6 +95,26 @@ export interface CommonTranslations {
 export interface PageMeta {
   title: string
   description: string
+}
+
+export interface DashboardLinkedAccountsTranslations {
+  title: string
+  subtitle: string
+  empty: string
+  colAccount: string
+  colBroker: string
+  colAccountType: string
+  colBalance: string
+  colPnl: string
+  colRoi: string
+  colWinRate: string
+  colDd: string
+  colStatus: string
+  unnamedAccount: string
+  statusActive: string
+  statusPaused: string
+  accountTypeLive: string
+  accountTypeDemo: string
 }
 
 export interface DashboardTranslations {
@@ -106,6 +153,7 @@ export interface DashboardTranslations {
   channelWorker: string
   noChannelWorkerLogs: string
   noData: string
+  linkedAccounts: DashboardLinkedAccountsTranslations
 }
 
 export interface CopierLogsTranslations {
@@ -132,6 +180,77 @@ export interface CopierLogsTranslations {
   statusParsed: string
 }
 
+export interface AccountConfigAddAccountModalTranslations {
+  title: string
+  subtitle: string
+  footerHint: string
+  comingSoonBadge: string
+  comingSoonPlatform: string
+}
+
+export interface AccountConfigConnectFormTranslations {
+  addAccountButton: string
+  title: string
+  accountLabel: string
+  accountLabelPlaceholder: string
+  platformLabel: string
+  platformMt5: string
+  platformMt4: string
+  brokerServerLabel: string
+  brokerServerHint: string
+  brokerServerLoading: string
+  brokerServerSearch: string
+  brokerServerNoMatch: string
+  mtLoginLabel: string
+  mtLoginPlaceholder: string
+  passwordLabel: string
+  passwordPlaceholder: string
+  passwordHint: string
+  connectButton: string
+  validationRequired: string
+  connectFailed: string
+}
+
+export interface AccountConfigBrokerListTranslations {
+  statusPaused: string
+  statusConnected: string
+  statusError: string
+  statusDisconnected: string
+  copyTrades: string
+  reconnect: string
+  reconnectAll: string
+  configure: string
+  removeAria: string
+  detailLogin: string
+  detailAccountType: string
+  accountTypeDemo: string
+  accountTypeLive: string
+  detailServer: string
+  detailSignalChannels: string
+  detailBalance: string
+  detailEquity: string
+  channelsNoneSelected: string
+  channelsSignalChannel: string
+  channelsAll: string
+  relinkOne: string
+  relinkMany: string
+  reconnectDroppedOne: string
+  reconnectDroppedMany: string
+  reconnectFailed: string
+  deleteFailed: string
+  deleteTitle: string
+  deleteBody: string
+  deleteConfirm: string
+}
+
+export interface AccountConfigTranslations {
+  brokersEmptyTitle: string
+  brokersEmptySubtitle: string
+  addAccount: AccountConfigAddAccountModalTranslations
+  connectForm: AccountConfigConnectFormTranslations
+  brokerList: AccountConfigBrokerListTranslations
+}
+
 export interface TradesTranslations {
   title: string
   subtitle: string
@@ -139,6 +258,10 @@ export interface TradesTranslations {
   filterClosed: string
   filterAll: string
   refresh: string
+  emptyTitle: string
+  emptySubtitleConnect: string
+  emptySubtitleOpen: string
+  emptySubtitleClosed: string
 }
 
 export interface EconomicCalendarTranslations {
@@ -218,6 +341,180 @@ export interface PerformanceTranslations {
   baselineNote: string
 }
 
+export interface SettingsTranslations {
+  title: string
+  subtitle: string
+  loadError: string
+  saveError: string
+  saved: string
+  emailHint: string
+  passwordHint: string
+  passwordTooShort: string
+  passwordMismatch: string
+  passwordUpdated: string
+  passwordError: string
+  sections: {
+    personal: string
+    general: string
+    security: string
+  }
+  personal: { title: string; description: string }
+  general: { title: string; description: string }
+  security: { title: string; description: string; updatePassword: string }
+  fields: {
+    firstName: string
+    lastName: string
+    username: string
+    email: string
+    country: string
+    city: string
+    mobile: string
+    address: string
+    baseCurrency: string
+    timezone: string
+    newPassword: string
+    confirmPassword: string
+  }
+  placeholders: {
+    address: string
+    selectCountry: string
+    selectTimezone: string
+    selectCurrency: string
+    searchCountry: string
+    searchTimezone: string
+    searchCurrency: string
+    noMatches: string
+  }
+}
+
+export interface CopierEngineSignalKeywordTranslations {
+  entryPoint: string
+  buy: string
+  sell: string
+  sl: string
+  tp: string
+  marketOrder: string
+}
+
+export interface CopierEngineUpdateKeywordTranslations {
+  closeTp1: string
+  closeTp2: string
+  closeTp3: string
+  closeTp4: string
+  closeFull: string
+  closeHalf: string
+  closePartial: string
+  breakEven: string
+  setTp1: string
+  setTp2: string
+  setTp3: string
+  setTp4: string
+  setTp5: string
+  setTp: string
+  adjustTp: string
+  setSl: string
+  adjustSl: string
+  delete: string
+}
+
+export interface CopierEngineAdditionalKeywordTranslations {
+  layer: string
+  closeAll: string
+  deleteAll: string
+  ignoreKeyword: string
+  skipKeyword: string
+  removeSl: string
+  delayMsec: string
+  preferEntry: string
+  slInPips: string
+  tpInPips: string
+  delimiters: string
+  allOrder: string
+  readForwarded: string
+  readImage: string
+  firstPrice: string
+  lastPrice: string
+}
+
+export interface CopierEnginePageTranslations {
+  connectTelegram: string
+  telegramNotConnectedTitle: string
+  telegramNotConnectedBody: string
+  tgConnectPhoneTitle: string
+  tgConnectCodeTitle: string
+  phoneLabel: string
+  phonePlaceholder: string
+  phoneHint: string
+  sendCode: string
+  verificationCode: string
+  verificationPlaceholder: string
+  sentTo: string
+  twoFaPassword: string
+  twoFaPlaceholder: string
+  twoFaRequired: string
+  verify: string
+  back: string
+  networkError: string
+  failedSendCode: string
+  verificationFailed: string
+  failedLoadTgChannels: string
+  yourTelegramChannels: string
+  connected: string
+  expand: string
+  collapse: string
+  disconnect: string
+  channelsFound: string
+  refreshAfterFix: string
+  noTgChannelsTitle: string
+  noTgChannelsSubtitle: string
+  members: string
+  added: string
+  add: string
+  configuredEmptyTitle: string
+  configuredEmptySubtitle: string
+  activeChannels: string
+  configuredCount: string
+  statusPaused: string
+  removeAria: string
+  analyzing: string
+  profilePending: string
+  profileType: string
+  profileEntry: string
+  profileTp: string
+  profileSl: string
+  keywordsTitle: string
+  keywordsClose: string
+  keywordsSave: string
+  signalKeywordSection: string
+  updateKeywordSection: string
+  additionalKeywordSection: string
+  signalKeywords: CopierEngineSignalKeywordTranslations
+  updateKeywords: CopierEngineUpdateKeywordTranslations
+  additionalKeywords: CopierEngineAdditionalKeywordTranslations
+}
+
+export interface ChannelsPageTranslations {
+  title: string
+  subtitle: string
+  addChannel: string
+  addFormTitle: string
+  channelName: string
+  channelNamePlaceholder: string
+  usernameOptional: string
+  usernamePlaceholder: string
+  channelIdOptional: string
+  channelIdPlaceholder: string
+  channelIdHint: string
+  nameRequired: string
+  emptyTitle: string
+  emptySubtitle: string
+  statusPaused: string
+  overridesTitle: string
+  lotSizeOverride: string
+  pipToleranceOverride: string
+  useBrokerDefault: string
+}
+
 export interface BacktestTranslations {
   title: string
   subtitle: string
@@ -252,14 +549,19 @@ export interface Translations {
   auth: AuthTranslations
   channelWorker: ChannelWorkerTranslations
   nav: NavTranslations
+  globalSearch: GlobalSearchTranslations
   common: CommonTranslations
+  accountConfig: AccountConfigTranslations
   dashboard: DashboardTranslations
   copierLogs: CopierLogsTranslations
   trades: TradesTranslations
+  channelsPage: ChannelsPageTranslations
+  copierEnginePage: CopierEnginePageTranslations
   backtest: BacktestTranslations
   marketNews: MarketNewsTranslations
   economicCalendar: EconomicCalendarTranslations
   performance: PerformanceTranslations
+  settings: SettingsTranslations
   pages: {
     accountConfiguration: PageMeta
     contactSupport: PageMeta
@@ -275,5 +577,6 @@ export interface Translations {
     analysisHub: PageMeta
     signalHistory: PageMeta
     copierEngine: PageMeta
+    settings: PageMeta
   }
 }

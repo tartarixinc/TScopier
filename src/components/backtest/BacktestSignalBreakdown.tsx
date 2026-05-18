@@ -3,13 +3,15 @@ import { ChevronDown, ChevronRight, TrendingDown, TrendingUp } from 'lucide-reac
 import clsx from 'clsx'
 import type { BacktestTradeRow } from '../../lib/backtestTypes'
 import {
-  BACKTEST_OUTCOME_SHORT,
+  displayOutcomeLabel,
+  formatDurationMs,
   formatEntryPrice,
   formatPipValue,
   formatSignalTimestamp,
   monthGroupKey,
   monthGroupLabel,
   outcomeTone,
+  tradeDurationMs,
   tradePipPnl,
 } from '../../lib/backtestDisplay'
 
@@ -182,7 +184,11 @@ function SignalRow({
   const pips = tradePipPnl(trade)
   const tone = outcomeTone(trade.outcome, pips)
   const tpCount = trade.tp_levels.length
-  const outcomeLabel = BACKTEST_OUTCOME_SHORT[trade.outcome] ?? trade.outcome
+  const outcomeLabel = displayOutcomeLabel(trade.outcome, trade.tps_hit, tpCount)
+  const durationMs = tradeDurationMs(trade.signal_at, trade.closed_at)
+  const tpEvents = Array.isArray(trade.details?.tpEvents)
+    ? trade.details!.tpEvents!
+    : []
 
   const pipClass =
     tone === 'good'
@@ -262,14 +268,20 @@ function SignalRow({
       </button>
 
       {expanded ? (
-        <div className="border-t border-neutral-100 bg-neutral-50/50 px-4 py-3 text-xs dark:border-neutral-800 dark:bg-neutral-800/30 sm:px-5 sm:pl-[4.25rem]">
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            <Detail label="Outcome" value={OUTCOME_DETAIL[trade.outcome] ?? outcomeLabel} />
-            <Detail label="P/L ($)" value={`${trade.pnl >= 0 ? '+' : ''}${trade.pnl.toFixed(2)}`} />
+        <div className="border-t border-neutral-100 bg-neutral-50/50 px-4 py-4 text-xs dark:border-neutral-800 dark:bg-neutral-800/30 sm:px-5 sm:pl-[4.25rem]">
+          <div className="mb-3 rounded-lg border border-teal-200 bg-teal-50/80 px-3 py-2 font-medium text-teal-800 dark:border-teal-900 dark:bg-teal-950/40 dark:text-teal-200">
+            {outcomeLabel === 'All TPs' ? 'All TPs Hit' : outcomeLabel}
+          </div>
+          <div className="grid gap-2 sm:grid-cols-3 mb-4">
+            <Detail label="Pips" value={formatPipValue(pips)} />
             <Detail
-              label="R multiple"
-              value={trade.pnl_r != null ? `${trade.pnl_r >= 0 ? '+' : ''}${trade.pnl_r.toFixed(2)}R` : '—'}
+              label="R:R ratio"
+              value={trade.pnl_r != null ? `1:${Math.abs(trade.pnl_r).toFixed(1)}` : '—'}
             />
+            <Detail label="Duration" value={formatDurationMs(durationMs)} />
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 mb-4">
+            <Detail label="Outcome" value={OUTCOME_DETAIL[trade.outcome] ?? outcomeLabel} />
             <Detail
               label="Exit"
               value={trade.exit_price != null ? formatEntryPrice(trade.exit_price) : '—'}
@@ -277,13 +289,27 @@ function SignalRow({
             {trade.sl != null ? (
               <Detail label="Stop loss" value={formatEntryPrice(trade.sl)} />
             ) : null}
-            <Detail label="Lot size" value={String(trade.lot_size)} />
-            <Detail
-              className="sm:hidden"
-              label="Status"
-              value={outcomeLabel}
-            />
           </div>
+          {tpEvents.length > 0 ? (
+            <div>
+              <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-400 mb-2">
+                Event timeline
+              </p>
+              <ul className="space-y-2 border-l-2 border-neutral-200 dark:border-neutral-700 pl-3">
+                {tpEvents.map((ev) => (
+                  <li key={ev.index} className="relative">
+                    <span className="absolute -left-[1.15rem] top-1 h-2 w-2 rounded-full bg-teal-500" />
+                    <p className="font-medium text-teal-700 dark:text-teal-300">
+                      TP{ev.index} Hit → {formatEntryPrice(ev.price)}
+                    </p>
+                    <p className="text-neutral-500 dark:text-neutral-400">
+                      {new Date(ev.ts).toLocaleString()}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </li>

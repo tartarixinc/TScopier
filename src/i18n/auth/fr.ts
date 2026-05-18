@@ -7,8 +7,6 @@ export const authFr: AuthTranslations = {
     mobileTagline: 'Un copieur fluide pour chaque signal Telegram',
   },
   login: {
-    title: 'Bon retour',
-    subtitle: 'Connectez-vous pour gérer votre copieur, vos canaux et vos trades en direct.',
     footerPrompt: 'Nouveau sur TSCopier ?',
     footerLink: 'Créer un compte gratuit',
     email: 'E-mail',
@@ -18,9 +16,6 @@ export const authFr: AuthTranslations = {
     submit: 'Se connecter',
   },
   signup: {
-    title: 'Créez votre compte',
-    subtitle:
-      'Configuration en quelques minutes — connectez Telegram, liez un broker et copiez les signaux.',
     footerPrompt: 'Vous avez déjà un compte ?',
     footerLink: 'Se connecter',
     email: 'E-mail',
@@ -35,18 +30,22 @@ export const authFr: AuthTranslations = {
   },
   marketing: {
     headline: 'Un copieur fluide pour chaque signal Telegram',
-    features: [
+    trustpilotLabel: 'Trustpilot',
+    reviews: [
       {
-        title: 'Connectez tout canal de signaux',
-        description: 'Liez des canaux Telegram et copiez les trades vers votre broker en quelques secondes.',
+        quote:
+          'TSCopier a presque éliminé mon temps de copie manuelle. Les signaux arrivent sur mon compte MT5 en quelques secondes — exactement ce qu’il me fallait pour mes canaux Telegram.',
+        author: 'Rob Flemming',
       },
       {
-        title: 'Exécutez avec précision',
-        description: 'Analyse par mots-clés, paliers de TP et logique panier pour de vrais canaux.',
+        quote:
+          'Tableau de bord clair, analyse fiable et journaux du copieur faciles à déboguer. Le support a répondu vite pour une question broker.',
+        author: 'Sarah Mitchell',
       },
       {
-        title: 'Gardez le contrôle',
-        description: 'Règles par canal, limites de risque et journaux en direct pour chaque signal.',
+        quote:
+          'Nous gérons plusieurs canaux de signaux sur deux comptes. La logique panier et les paliers de TP surpassent notre ancienne stack.',
+        author: 'James Okonkwo',
       },
     ],
     copyright: '© {year} Tartarix Inc.',

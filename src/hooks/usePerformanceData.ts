@@ -21,6 +21,7 @@ export function usePerformanceData(userId: string | undefined) {
   const [error, setError] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const inflightRef = useRef(false)
+  const mtTradesRef = useRef<MtTrade[]>([])
 
   const load = useCallback(
     async (isRefresh = false) => {
@@ -37,7 +38,14 @@ export function usePerformanceData(userId: string | undefined) {
         if (brokerRes.error) throw brokerRes.error
         const linked = (brokerRes.data ?? []) as BrokerAccount[]
         setAccounts(linked)
-        setMtTrades(tradesRes.trades ?? [])
+        const incoming = tradesRes.trades ?? []
+        if (incoming.length > 0) {
+          mtTradesRef.current = incoming
+          setMtTrades(incoming)
+        } else if (!isRefresh || mtTradesRef.current.length === 0) {
+          mtTradesRef.current = incoming
+          setMtTrades(incoming)
+        }
 
         const equity: Record<string, number> = {}
         await Promise.all(

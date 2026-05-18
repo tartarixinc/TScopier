@@ -38,8 +38,29 @@ export interface Database {
         Insert: Omit<Trade, 'id' | 'created_at'>
         Update: Partial<Omit<Trade, 'id' | 'created_at'>>
       }
+      user_profiles: {
+        Row: UserProfileRow
+        Insert: Omit<UserProfileRow, 'created_at' | 'updated_at'> & { created_at?: string; updated_at?: string }
+        Update: Partial<Omit<UserProfileRow, 'user_id' | 'created_at'>>
+      }
     }
   }
+}
+
+export interface UserProfileRow {
+  user_id: string
+  display_name: string
+  first_name: string
+  last_name: string
+  username: string
+  country: string
+  city: string
+  mobile_number: string
+  address: string
+  base_currency: string
+  timezone: string
+  created_at: string
+  updated_at: string
 }
 
 export interface AiBrokerSettings {

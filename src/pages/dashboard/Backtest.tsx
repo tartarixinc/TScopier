@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Play, Loader2, Radio, RefreshCw } from 'lucide-react'
+import { BarChart3, Crosshair, Loader2, Play, Radio, RefreshCw } from 'lucide-react'
 import clsx from 'clsx'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useT } from '../../context/LocaleContext'
+import { useFormatMoney } from '../../context/UserProfileContext'
 import { backtestApi } from '../../lib/backtestApi'
 import type {
   BacktestEquityRow,
+  BacktestRunMode,
   BacktestRunRow,
   BacktestSummary,
   BacktestTradeRow,
@@ -20,6 +22,12 @@ import { Button } from '../../components/ui/Button'
 import { Alert } from '../../components/ui/Alert'
 
 const LAST_RUN_KEY = 'backtest_last_run_id'
+
+function runModeFromConfig(config: BacktestRunRow['config'] | null | undefined): BacktestRunMode | null {
+  if (!config || typeof config !== 'object') return null
+  const mode = (config as Record<string, unknown>).runMode
+  return mode === 'tpsl' || mode === 'simulate' ? mode : null
+}
 
 interface ChannelOption {
   id: string
@@ -36,7 +44,7 @@ function defaultConfig(): SimpleBacktestConfig {
     dateTo: to.toISOString().slice(0, 10),
     initialBalance: 10_000,
     fixedLot: 0.1,
-    timeframe: '1m',
+    timeframe: '5m',
   }
 }
 
@@ -61,14 +69,18 @@ function StoredSignalsPanel({
           </p>
         </div>
         <span className="text-sm tabular-nums text-neutral-600 dark:text-neutral-300">
-          {storedLoading ? '…' : storedSignals.length}
+          {storedSignals.length}
         </span>
       </div>
       {config.channelIds.length === 0 ? (
         <p className="text-sm text-neutral-400">Select a channel to view stored signals.</p>
-      ) : storedSignals.length === 0 && !storedLoading ? (
+      ) : storedLoading && storedSignals.length === 0 ? (
+        <div className="py-8 flex justify-center">
+          <Loader2 className="w-5 h-5 animate-spin text-neutral-400" />
+        </div>
+      ) : storedSignals.length === 0 ? (
         <p className="text-sm text-neutral-400">
-          No rows yet. Use <strong>Sync signals only</strong> or <strong>Run backtest</strong> to import from Telegram.
+          No rows yet. Use <strong>Sync signals only</strong> to import from Telegram, then run a backtest.
         </p>
       ) : (
         <div className="overflow-x-auto max-h-64 overflow-y-auto">
@@ -133,6 +145,7 @@ function StatCard({
 }
 
 export function Backtest() {
+  const { formatSignedMoney } = useFormatMoney()
   const t = useT()
   const { user } = useAuth()
   const [channels, setChannels] = useState<ChannelOption[]>([])
@@ -141,11 +154,13 @@ export function Backtest() {
   const [trades, setTrades] = useState<BacktestTradeRow[]>([])
   const [equity, setEquity] = useState<BacktestEquityRow[]>([])
   const [running, setRunning] = useState(false)
+  const [resultMode, setResultMode] = useState<BacktestRunMode | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [storedSignals, setStoredSignals] = useState<StoredBacktestSignal[]>([])
   const [storedLoading, setStoredLoading] = useState(false)
   const [syncNote, setSyncNote] = useState('')
   const [error, setError] = useState('')
+  const [showSimulateConfig, setShowSimulateConfig] = useState(false)
 
   const summary = activeRun?.summary as BacktestSummary | null | undefined
   const isActive = running || activeRun?.status === 'running' || activeRun?.status === 'pending'
@@ -161,12 +176,14 @@ export function Backtest() {
     [trades],
   )
 
-  const loadStoredSignals = useCallback(async () => {
+  const loadStoredSignals = useCallback(async (opts?: { silent?: boolean }) => {
     if (!user || config.channelIds.length === 0) {
       setStoredSignals([])
+      setStoredLoading(false)
       return
     }
-    setStoredLoading(true)
+    const silent = opts?.silent === true
+    if (!silent) setStoredLoading(true)
     const fromIso = new Date(config.dateFrom).toISOString()
     const toIso = new Date(`${config.dateTo}T23:59:59.999Z`).toISOString()
     const { data, error: qErr } = await supabase
@@ -177,7 +194,7 @@ export function Backtest() {
       .gte('signal_at', fromIso)
       .lte('signal_at', toIso)
       .order('signal_at', { ascending: false })
-    setStoredLoading(false)
+    if (!silent) setStoredLoading(false)
     if (qErr) {
       setSyncNote(qErr.message)
       return
@@ -190,6 +207,8 @@ export function Backtest() {
     setActiveRun(run)
     setTrades(t)
     setEquity(e)
+    const mode = runModeFromConfig(run.config)
+    if (mode) setResultMode(mode)
     return run
   }, [])
 
@@ -223,24 +242,26 @@ export function Backtest() {
   }, [loadStoredSignals])
 
   useEffect(() => {
-    if (!isActive) return
-    const t = setInterval(() => { void loadStoredSignals() }, 4000)
-    return () => clearInterval(t)
-  }, [isActive, loadStoredSignals])
-
-  useEffect(() => {
     if (!activeRun?.id || !isActive) return
     const runId = activeRun.id
+    const syncing = activeRun.progress_message?.toLowerCase().includes('syncing telegram') ?? false
+    if (syncing) {
+      void loadStoredSignals({ silent: true })
+    }
     const poll = setInterval(() => {
       void loadRun(runId).then(run => {
-        void loadStoredSignals()
+        const stillSyncing = run.progress_message?.toLowerCase().includes('syncing telegram') ?? false
+        if (stillSyncing) {
+          void loadStoredSignals({ silent: true })
+        }
         if (run.status === 'completed' || run.status === 'failed') {
           setRunning(false)
+          void loadStoredSignals({ silent: true })
         }
       }).catch(() => {})
     }, 3000)
     return () => clearInterval(poll)
-  }, [activeRun?.id, isActive, loadRun])
+  }, [activeRun?.id, activeRun?.progress_message, isActive, loadRun, loadStoredSignals])
 
   useEffect(() => {
     if (!activeRun?.id || !isActive) return
@@ -291,22 +312,28 @@ export function Backtest() {
     }
   }
 
-  const handleRun = async () => {
+  const startBacktest = async (mode: BacktestRunMode) => {
     if (config.channelIds.length === 0) {
       setError('Select at least one channel')
       return
     }
+    if (mode === 'simulate') setShowSimulateConfig(false)
     setError('')
     setRunning(true)
+    setResultMode(mode)
     setTrades([])
     setEquity([])
+    setActiveRun(null)
     try {
-      const { run_id } = await backtestApi.run(config)
+      const start =
+        mode === 'tpsl'
+          ? backtestApi.backtestTpsl(config)
+          : backtestApi.simulateTrades(config)
+      const { run_id } = await start
       localStorage.setItem(LAST_RUN_KEY, run_id)
       const run = await loadRun(run_id)
       if (run.status === 'completed' || run.status === 'failed') {
         setRunning(false)
-        void loadStoredSignals()
       }
     } catch (e) {
       setError(sanitizeBacktestUserError(e instanceof Error ? e.message : String(e)))
@@ -314,8 +341,12 @@ export function Backtest() {
     }
   }
 
+  const activeMode = resultMode ?? runModeFromConfig(activeRun?.config)
+  const isSimulate = activeMode === 'simulate'
+  const isTpsl = activeMode === 'tpsl'
+
   const statusLine = activeRun?.progress_message
-    ?? (running ? 'Starting backtest…' : null)
+    ?? (running ? (isTpsl ? 'Starting TP/SL backtest…' : 'Starting trade simulation…') : null)
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-6">
@@ -324,7 +355,7 @@ export function Backtest() {
           {t.backtest.title}
         </h1>
         <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
-          Sync Telegram signals, simulate TP/SL outcomes.
+          Sync signals, backtest TP/SL levels, or simulate portfolio performance across stored signals.
         </p>
       </div>
 
@@ -384,29 +415,8 @@ export function Backtest() {
             </label>
           </div>
 
-          <label className="block">
-            <span className="text-xs text-neutral-500">Starting balance (USD)</span>
-            <input
-              type="number"
-              min={100}
-              step={100}
-              className="mt-1 w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm"
-              value={config.initialBalance}
-              onChange={e => setConfig(c => ({ ...c, initialBalance: Number(e.target.value) }))}
-            />
-          </label>
-
-          <label className="block">
-            <span className="text-xs text-neutral-500">Lot size</span>
-            <input
-              type="number"
-              min={0.01}
-              step={0.01}
-              className="mt-1 w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm"
-              value={config.fixedLot}
-              onChange={e => setConfig(c => ({ ...c, fixedLot: Number(e.target.value) }))}
-            />
-          </label>
+          <div className="border-t border-neutral-100 dark:border-neutral-800 pt-4 space-y-3">
+            <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">Actions</p>
 
           <Button
             variant="secondary"
@@ -429,21 +439,91 @@ export function Backtest() {
 
           <Button
             className="w-full"
-            onClick={() => void handleRun()}
+            onClick={() => {
+              setShowSimulateConfig(false)
+              void startBacktest('tpsl')
+            }}
             disabled={isActive || syncing || config.channelIds.length === 0}
           >
-            {isActive ? (
+            {isActive && isTpsl ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                Running…
+                Backtesting…
               </>
             ) : (
               <>
-                <Play className="w-4 h-4 mr-2" />
-                {t.backtest.runBacktest}
+                <Crosshair className="w-4 h-4 mr-2" />
+                Backtest TPs/SL
               </>
             )}
           </Button>
+
+          <Button
+            variant={showSimulateConfig ? 'primary' : 'secondary'}
+            className="w-full"
+            onClick={() => {
+              if (isActive && isSimulate) return
+              setShowSimulateConfig(open => !open)
+            }}
+            disabled={isActive || syncing || config.channelIds.length === 0}
+          >
+            {isActive && isSimulate ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                Simulating…
+              </>
+            ) : (
+              <>
+                <BarChart3 className="w-4 h-4 mr-2" />
+                Simulate Trades
+              </>
+            )}
+          </Button>
+
+          {showSimulateConfig && !isActive ? (
+            <div className="rounded-lg border border-teal-200/80 bg-teal-50/40 dark:border-teal-900/60 dark:bg-teal-950/20 p-3 space-y-3">
+              <p className="text-xs text-neutral-600 dark:text-neutral-300">
+                Set portfolio parameters, then run the simulation.
+              </p>
+              <label className="block">
+                <span className="text-xs text-neutral-500">Starting balance (USD)</span>
+                <input
+                  type="number"
+                  min={100}
+                  step={100}
+                  className="mt-1 w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm"
+                  value={config.initialBalance}
+                  onChange={e => setConfig(c => ({ ...c, initialBalance: Number(e.target.value) }))}
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs text-neutral-500">Lot size</span>
+                <input
+                  type="number"
+                  min={0.01}
+                  step={0.01}
+                  className="mt-1 w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm"
+                  value={config.fixedLot}
+                  onChange={e => setConfig(c => ({ ...c, fixedLot: Number(e.target.value) }))}
+                />
+              </label>
+              <Button
+                className="w-full"
+                onClick={() => void startBacktest('simulate')}
+                disabled={config.channelIds.length === 0}
+              >
+                <Play className="w-4 h-4 mr-2" />
+                Run simulation
+              </Button>
+            </div>
+          ) : null}
+          </div>
+
+          {storedSignals.length > 0 ? (
+            <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
+              {storedSignals.length} stored signal{storedSignals.length === 1 ? '' : 's'} — runs use stored rows only (no Telegram). Use <strong>Sync signals only</strong> to refresh.
+            </p>
+          ) : null}
 
           {syncNote ? (
             <p className="text-xs text-neutral-600 dark:text-neutral-300">{syncNote}</p>
@@ -470,40 +550,72 @@ export function Backtest() {
 
           {summary && activeRun?.status === 'completed' ? (
             <>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <StatCard
-                  label="Net PnL"
-                  value={`$${summary.netPnl.toFixed(2)}`}
-                  tone={summary.netPnl >= 0 ? 'good' : 'bad'}
-                />
-                <StatCard
-                  label="Win rate"
-                  value={`${(summary.winRate * 100).toFixed(1)}%`}
-                />
-                <StatCard
-                  label="Max drawdown"
-                  value={`${summary.maxDrawdownPct.toFixed(1)}%`}
-                  tone="bad"
-                />
-                <StatCard
-                  label="Signals"
-                  value={String(summary.totalSignals)}
-                  sub={noDataCount > 0 ? `${noDataCount} no market data` : undefined}
-                />
-              </div>
+              {isSimulate ? (
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <StatCard
+                      label="Net PnL"
+                      value={formatSignedMoney(summary.netPnl)}
+                      tone={summary.netPnl >= 0 ? 'good' : 'bad'}
+                    />
+                    <StatCard
+                      label="Win rate"
+                      value={`${(summary.winRate * 100).toFixed(1)}%`}
+                    />
+                    <StatCard
+                      label="Max drawdown"
+                      value={`${summary.maxDrawdownPct.toFixed(1)}%`}
+                      tone="bad"
+                    />
+                    <StatCard
+                      label="Signals"
+                      value={String(summary.totalSignals)}
+                      sub={noDataCount > 0 ? `${noDataCount} no market data` : undefined}
+                    />
+                  </div>
 
-              <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
-                <p className="text-sm font-medium text-neutral-700 dark:text-neutral-200 mb-3">Equity curve</p>
-                <BacktestEquityChart equity={equity} />
-              </div>
+                  <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
+                    <p className="text-sm font-medium text-neutral-700 dark:text-neutral-200 mb-3">Equity curve</p>
+                    <BacktestEquityChart equity={equity} />
+                  </div>
+                </>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <StatCard
+                    label="Win rate"
+                    value={`${(summary.winRate * 100).toFixed(1)}%`}
+                  />
+                  <StatCard
+                    label="All TPs hit"
+                    value={String(summary.allTpHits)}
+                    tone="good"
+                  />
+                  <StatCard
+                    label="Wins / losses"
+                    value={`${summary.wins} / ${summary.losses}`}
+                  />
+                  <StatCard
+                    label="Signals"
+                    value={String(summary.tradedSignals)}
+                    sub={noDataCount > 0 ? `${noDataCount} no market data` : undefined}
+                  />
+                </div>
+              )}
 
-              <BacktestSignalBreakdown trades={trades} channelNames={channelNames} />
+              <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 overflow-hidden">
+                <p className="text-sm font-medium text-neutral-700 dark:text-neutral-200 px-4 pt-4 pb-2 sm:px-5">
+                  {isTpsl ? 'All backtests' : 'Signal breakdown'}
+                </p>
+                <BacktestSignalBreakdown trades={trades} channelNames={channelNames} />
+              </div>
             </>
           ) : (
             <div className="rounded-xl border border-dashed border-neutral-200 dark:border-neutral-800 p-12 text-center text-sm text-neutral-400">
               {isActive
-                ? 'Backtest in progress…'
-                : 'Configure channels and dates, then run a backtest to see results.'}
+                ? (isTpsl
+                  ? 'Fetching market data and checking TP/SL levels…'
+                  : 'Simulating trades across stored signals…')
+                : 'Configure channels and dates, then backtest TPs/SL or simulate trades.'}
             </div>
           )}
         </div>

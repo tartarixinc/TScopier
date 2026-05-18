@@ -121,7 +121,8 @@ export class BasketSlTpReconcileMonitor {
     }
 
     try {
-      await api.ensureConnected(uuid)
+      const alive = await api.keepSessionAlive(uuid)
+      if (!alive) continue
     } catch (err) {
       await this.releaseJob(row.id, (err as Error).message, row.attempts)
       return

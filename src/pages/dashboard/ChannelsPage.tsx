@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Plus, Radio, Trash2, Settings } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { useT } from '../../context/LocaleContext'
 import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
 import { Toggle } from '../../components/ui/Toggle'
@@ -11,6 +12,8 @@ import { Input } from '../../components/ui/Input'
 import type { TelegramChannel } from '../../types/database'
 
 export function ChannelsPage() {
+  const t = useT()
+  const ch = t.channelsPage
   const { user } = useAuth()
   const [channels, setChannels] = useState<TelegramChannel[]>([])
   const [loading, setLoading] = useState(true)
@@ -49,7 +52,7 @@ export function ChannelsPage() {
     e.preventDefault()
     setError('')
     if (!newChannel.display_name.trim()) {
-      setError('Channel name is required')
+      setError(ch.nameRequired)
       return
     }
 
@@ -88,43 +91,45 @@ export function ChannelsPage() {
     <div className="p-6 lg:p-8 max-w-3xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-50">Channels</h1>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">Manage which Telegram channels you're monitoring</p>
+          <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-50">{ch.title}</h1>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">{ch.subtitle}</p>
         </div>
         <Button onClick={() => setShowAdd(true)} size="sm">
           <Plus className="w-3.5 h-3.5" />
-          Add channel
+          {ch.addChannel}
         </Button>
       </div>
 
       {showAdd && (
         <Card className="mb-4">
-          <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 mb-4">Add channel manually</h2>
+          <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 mb-4">{ch.addFormTitle}</h2>
           {error && <Alert className="mb-3">{error}</Alert>}
           <form onSubmit={addChannel} className="space-y-3">
             <Input
-              label="Channel name"
-              placeholder="e.g. Gold Signals Pro"
+              label={ch.channelName}
+              placeholder={ch.channelNamePlaceholder}
               value={newChannel.display_name}
               onChange={e => setNewChannel(p => ({ ...p, display_name: e.target.value }))}
               required
             />
             <Input
-              label="Username (optional)"
-              placeholder="@channelname"
+              label={ch.usernameOptional}
+              placeholder={ch.usernamePlaceholder}
               value={newChannel.channel_username}
               onChange={e => setNewChannel(p => ({ ...p, channel_username: e.target.value }))}
             />
             <Input
-              label="Channel ID (optional)"
-              placeholder="Telegram channel ID"
+              label={ch.channelIdOptional}
+              placeholder={ch.channelIdPlaceholder}
               value={newChannel.channel_id}
               onChange={e => setNewChannel(p => ({ ...p, channel_id: e.target.value }))}
-              hint="Leave blank to use username"
+              hint={ch.channelIdHint}
             />
             <div className="flex gap-2 pt-1">
-              <Button type="submit" loading={saving} size="sm">Add channel</Button>
-              <Button type="button" variant="ghost" size="sm" onClick={() => setShowAdd(false)}>Cancel</Button>
+              <Button type="submit" loading={saving} size="sm">{ch.addChannel}</Button>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setShowAdd(false)}>
+                {t.common.cancel}
+              </Button>
             </div>
           </form>
         </Card>
@@ -140,8 +145,8 @@ export function ChannelsPage() {
         <Card>
           <div className="text-center py-8">
             <Radio className="w-10 h-10 mx-auto mb-3 text-neutral-200" />
-            <p className="text-neutral-500 dark:text-neutral-400 text-sm font-medium">No channels yet</p>
-            <p className="text-neutral-400 text-xs mt-1">Add a signal channel to start monitoring</p>
+            <p className="text-neutral-500 dark:text-neutral-400 text-sm font-medium">{ch.emptyTitle}</p>
+            <p className="text-neutral-400 text-xs mt-1">{ch.emptySubtitle}</p>
           </div>
         </Card>
       ) : (
@@ -178,6 +183,8 @@ function ChannelCard({
   onEditToggle: () => void
   onSave: (updates: Partial<TelegramChannel>) => void
 }) {
+  const t = useT()
+  const ch = t.channelsPage
   const [lotSize, setLotSize] = useState(channel.lot_size_override?.toString() ?? '')
   const [pipTolerance, setPipTolerance] = useState(channel.pip_tolerance_override?.toString() ?? '')
 
@@ -190,7 +197,7 @@ function ChannelCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50 truncate">{channel.display_name}</p>
-            {!channel.is_active && <Badge variant="neutral" size="sm">Paused</Badge>}
+            {!channel.is_active && <Badge variant="neutral" size="sm">{ch.statusPaused}</Badge>}
           </div>
           {channel.channel_username && (
             <p className="text-xs text-neutral-400">@{channel.channel_username}</p>
@@ -199,12 +206,14 @@ function ChannelCard({
         <div className="flex items-center gap-2 flex-shrink-0">
           <Toggle checked={channel.is_active} onChange={onToggle} />
           <button
+            type="button"
             onClick={onEditToggle}
             className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:bg-neutral-800 transition-colors"
           >
             <Settings className="w-4 h-4" />
           </button>
           <button
+            type="button"
             onClick={onDelete}
             className="p-1.5 rounded-lg text-neutral-400 hover:text-error-600 hover:bg-error-50 transition-colors"
           >
@@ -215,22 +224,22 @@ function ChannelCard({
 
       {isEditing && (
         <div className="px-4 pb-4 border-t border-neutral-100 dark:border-neutral-800 pt-3">
-          <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-3">Per-channel overrides</p>
+          <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-3">{ch.overridesTitle}</p>
           <div className="grid grid-cols-2 gap-3">
             <Input
-              label="Lot size override"
+              label={ch.lotSizeOverride}
               type="number"
               min="0.01"
               step="0.01"
-              placeholder="Use broker default"
+              placeholder={ch.useBrokerDefault}
               value={lotSize}
               onChange={e => setLotSize(e.target.value)}
             />
             <Input
-              label="Pip tolerance override"
+              label={ch.pipToleranceOverride}
               type="number"
               min="1"
-              placeholder="Use broker default"
+              placeholder={ch.useBrokerDefault}
               value={pipTolerance}
               onChange={e => setPipTolerance(e.target.value)}
             />
@@ -243,9 +252,11 @@ function ChannelCard({
                 pip_tolerance_override: pipTolerance ? parseInt(pipTolerance) : null,
               })}
             >
-              Save
+              {t.common.save}
             </Button>
-            <Button size="sm" variant="ghost" onClick={onEditToggle}>Cancel</Button>
+            <Button size="sm" variant="ghost" onClick={onEditToggle}>
+              {t.common.cancel}
+            </Button>
           </div>
         </div>
       )}

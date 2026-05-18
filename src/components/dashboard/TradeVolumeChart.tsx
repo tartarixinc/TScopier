@@ -12,6 +12,7 @@ import {
 import type { TradeVolumeDay } from '../../lib/dashboardCharts'
 import { useTheme } from '../../context/ThemeContext'
 import { useT } from '../../context/LocaleContext'
+import { useFormatMoney } from '../../context/UserProfileContext'
 import { chartThemeColors, chartTooltipProps } from '../../lib/chartTheme'
 
 interface TradeVolumeChartProps {
@@ -21,11 +22,8 @@ interface TradeVolumeChartProps {
   stale?: boolean
 }
 
-function formatMoney(v: number): string {
-  return `$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
-}
-
 export function TradeVolumeChart({ data, loading, stale }: TradeVolumeChartProps) {
+  const { formatMoney } = useFormatMoney()
   const t = useT()
   const { theme } = useTheme()
   const colors = chartThemeColors(theme)

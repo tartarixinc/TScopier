@@ -186,13 +186,15 @@ export function TradesPage() {
         ) : visibleTrades.length === 0 ? (
           <div className="px-4 sm:px-6 py-12 sm:py-16 text-center">
             <ArrowUpRight className="w-10 h-10 mx-auto mb-3 text-neutral-200" />
-            <p className="text-sm text-neutral-400 font-medium">No trades to show</p>
+            <p className="text-sm text-neutral-400 font-medium">{t.trades.emptyTitle}</p>
             <p className="text-xs text-neutral-300 mt-1">
               {filter === 'open'
-                ? 'No open positions on any of your linked broker accounts.'
+                ? t.trades.emptySubtitleOpen
                 : filter === 'closed'
-                  ? 'No recent closed orders in this MT session.'
-                  : 'Connect a broker account in Account & Configuration to see live trades here.'}
+                  ? t.trades.emptySubtitleClosed
+                  : interpolate(t.trades.emptySubtitleConnect, {
+                      page: t.pages.accountConfiguration.title,
+                    })}
             </p>
           </div>
         ) : (

@@ -551,9 +551,7 @@ export class TradeExecutor {
       this.brokersByUser.set(row.user_id, arr)
     }
     console.log(`[tradeExecutor] cached ${this.brokersById.size} broker accounts across ${this.brokersByUser.size} users`)
-    if (String(process.env.MT4API_RECONNECT_ON_START ?? '').toLowerCase() === 'true') {
-      await this.reconnectCachedBrokers()
-    }
+    await this.reconnectCachedBrokers()
   }
 
   private async reconnectCachedBrokers() {
@@ -562,11 +560,22 @@ export class TradeExecutor {
       if (!uuid || uuid.includes('|')) continue
       const api = this.apiFor(row)
       if (!api) continue
-      try {
-        await api.ensureConnected(uuid)
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        console.warn(`[tradeExecutor] ConnectByToken failed for ${uuid}: ${msg}`)
+      const alive = await api.keepSessionAlive(uuid)
+      if (alive) {
+        if (row.connection_status !== 'connected') {
+          await this.supabase
+            .from('broker_accounts')
+            .update({ connection_status: 'connected' })
+            .eq('id', row.id)
+        }
+      } else {
+        console.warn(`[tradeExecutor] session down for broker=${row.id}`)
+        if (row.connection_status !== 'error') {
+          await this.supabase
+            .from('broker_accounts')
+            .update({ connection_status: 'error' })
+            .eq('id', row.id)
+        }
       }
     }
   }
@@ -1921,6 +1930,15 @@ export class TradeExecutor {
     const api = this.apiFor(broker)
     if (!api) return {}
     const uuid = broker.metaapi_account_id!
+    const alive = await api.keepSessionAlive(uuid)
+    if (!alive) {
+      console.warn(`[tradeExecutor] broker ${broker.id} not connected before order`)
+      await this.supabase
+        .from('broker_accounts')
+        .update({ connection_status: 'error' })
+        .eq('id', broker.id)
+      return {}
+    }
     const mapping = applySymbolMapping(parsed.symbol!, broker)
 
     // Whitelist mode: when the user listed multiple symbols, only let signals

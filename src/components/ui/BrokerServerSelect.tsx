@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
 import { ChevronDown, Server } from 'lucide-react'
+import { useT } from '../../context/LocaleContext'
+import { interpolate } from '../../i18n/interpolate'
 import {
   loadBrokerServers,
   filterBrokerGroups,
@@ -25,10 +27,13 @@ export function BrokerServerSelect({
   platform,
   value,
   onChange,
-  label = 'Broker server',
+  label,
   hint,
   required,
 }: BrokerServerSelectProps) {
+  const t = useT()
+  const cf = t.accountConfig.connectForm
+  const resolvedLabel = label ?? cf.brokerServerLabel
   const [groups, setGroups] = useState<BrokerServerGroup[]>([])
   const [loading, setLoading] = useState(false)
   const [open, setOpen] = useState(false)
@@ -58,9 +63,9 @@ export function BrokerServerSelect({
 
   return (
     <div className="flex flex-col gap-1.5" ref={containerRef}>
-      {label && (
+      {resolvedLabel && (
         <label className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
-          {label}
+          {resolvedLabel}
           {required && <span className="text-error-500"> *</span>}
         </label>
       )}
@@ -71,7 +76,11 @@ export function BrokerServerSelect({
           required={required}
           onChange={e => { onChange(e.target.value); setOpen(true) }}
           onFocus={() => setOpen(true)}
-          placeholder={loading ? 'Loading servers…' : `Search ${totalServers} ${platform} servers…`}
+          placeholder={
+            loading
+              ? cf.brokerServerLoading
+              : interpolate(cf.brokerServerSearch, { count: String(totalServers), platform })
+          }
           className="w-full px-3 py-2 pr-9 text-sm rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-50 placeholder:text-neutral-400 hover:border-neutral-300 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
         />
         <button
@@ -86,10 +95,10 @@ export function BrokerServerSelect({
         {open && (
           <div className="absolute z-30 mt-1 w-full max-h-72 overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-lg">
             {loading ? (
-              <div className="px-3 py-2 text-sm text-neutral-500 dark:text-neutral-400">Loading…</div>
+              <div className="px-3 py-2 text-sm text-neutral-500 dark:text-neutral-400">{t.common.loading}</div>
             ) : visibleGroups.length === 0 ? (
               <div className="px-3 py-2 text-sm text-neutral-500 dark:text-neutral-400">
-                No matching server. You can still use "{value || '—'}" as a free-text server.
+                {interpolate(cf.brokerServerNoMatch, { server: value || '—' })}
               </div>
             ) : (
               visibleGroups.map(group => (

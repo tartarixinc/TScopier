@@ -1,11 +1,10 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { LocaleProvider } from './context/LocaleContext'
+import { UserProfileProvider } from './context/UserProfileContext'
 import { AuthLayout } from './components/layout/AuthLayout'
 import { AppLayout } from './components/layout/AppLayout'
 import { ProtectedRoute } from './components/layout/ProtectedRoute'
-import { LoginPage } from './pages/auth/LoginPage'
-import { SignupPage } from './pages/auth/SignupPage'
 import { DashboardPage } from './pages/dashboard/DashboardPage'
 import { AccountConfigPage } from './pages/dashboard/AccountConfigPage'
 import { CopierEnginePage } from './pages/dashboard/CopierEnginePage'
@@ -26,19 +25,19 @@ import {
 import { PortfolioPage } from './pages/dashboard/PortfolioPage'
 import { AnalysisHubPage } from './pages/dashboard/AnalysisHubPage'
 import { SignalHistoryPage } from './pages/dashboard/SignalHistoryPage'
+import { SettingsPage } from './pages/dashboard/SettingsPage'
 
 export default function App() {
   return (
     <AuthProvider>
       <LocaleProvider>
+      <UserProfileProvider>
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
-          <Route element={<AuthLayout />}>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/signup" element={<SignupPage />} />
-          </Route>
+          <Route path="/login" element={<AuthLayout />} />
+          <Route path="/signup" element={<AuthLayout />} />
 
           <Route
             element={
@@ -66,17 +65,18 @@ export default function App() {
             <Route path="/performance" element={<PerformancePage />} />
             <Route path="/portfolio" element={<PortfolioPage />} />
             <Route path="/analysis-hub" element={<AnalysisHubPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
 
             {/* Legacy redirects */}
             <Route path="/channels" element={<Navigate to="/copier-engine" replace />} />
             <Route path="/trades" element={<Navigate to="/account-trades" replace />} />
-            <Route path="/settings" element={<Navigate to="/account-configuration" replace />} />
             <Route path="/onboarding" element={<Navigate to="/dashboard" replace />} />
             <Route path="/integrations" element={<Navigate to="/dashboard" replace />} />
             <Route path="/sentiments" element={<Navigate to="/market-news" replace />} />
           </Route>
         </Routes>
       </BrowserRouter>
+      </UserProfileProvider>
       </LocaleProvider>
     </AuthProvider>
   )
