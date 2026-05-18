@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import {
   Search,
+  X,
   LayoutDashboard,
   Settings,
   History,
@@ -64,22 +66,62 @@ function isMacPlatform(): boolean {
   return /Mac|iPhone|iPad|iPod/.test(navigator.platform)
 }
 
-export function AppSearch({ className }: { className?: string }) {
+interface AppSearchProps {
+  className?: string
+  headerEl?: HTMLElement | null
+  mobileTriggerSlot?: HTMLElement | null
+}
+
+export function AppSearch({ className, headerEl, mobileTriggerSlot }: AppSearchProps) {
   const t = useT()
   const gs = t.globalSearch
   const { user } = useAuth()
   const navigate = useNavigate()
-  const rootRef = useRef<HTMLDivElement>(null)
+  const desktopRef = useRef<HTMLDivElement>(null)
+  const mobileOverlayRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
+  const [mobileExpanded, setMobileExpanded] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
   const [brokers, setBrokers] = useState<{ id: string; label: string; server: string }[]>([])
   const [channels, setChannels] = useState<{ id: string; name: string; username: string }[]>([])
 
   const shortcutLabel = useMemo(() => (isMacPlatform() ? '⌘K' : 'Ctrl+K'), [])
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 1023px)')
+    const update = () => setIsMobile(mq.matches)
+    update()
+    mq.addEventListener('change', e => {
+      update()
+      if (!e.matches) setMobileExpanded(false)
+    })
+    return () => mq.removeEventListener('change', update)
+  }, [])
+
+  const containsSearchUi = useCallback((node: Node | null) => {
+    if (!node) return false
+    return (
+      desktopRef.current?.contains(node) ||
+      mobileOverlayRef.current?.contains(node) ||
+      false
+    )
+  }, [])
+
+  const collapseMobile = useCallback(() => {
+    setMobileExpanded(false)
+    setOpen(false)
+    inputRef.current?.blur()
+  }, [])
+
+  const expandMobile = useCallback(() => {
+    setMobileExpanded(true)
+    requestAnimationFrame(() => inputRef.current?.focus())
+  }, [])
 
   useEffect(() => {
     if (!user?.id) return
@@ -175,42 +217,46 @@ export function AppSearch({ className }: { className?: string }) {
   }, [query, open])
 
   useEffect(() => {
-    if (!open) return
+    if (!open && !mobileExpanded) return
     const onDoc = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) {
+      if (!containsSearchUi(e.target as Node)) {
         setOpen(false)
+        if (isMobile) setMobileExpanded(false)
       }
     }
     document.addEventListener('mousedown', onDoc)
     return () => document.removeEventListener('mousedown', onDoc)
-  }, [open])
+  }, [open, mobileExpanded, isMobile, containsSearchUi])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
-        inputRef.current?.focus()
+        if (isMobile) expandMobile()
+        else inputRef.current?.focus()
       }
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [])
+  }, [isMobile, expandMobile])
 
   const selectResult = useCallback(
     (item: AppSearchResult) => {
       navigate(item.path)
       setQuery('')
       setOpen(false)
+      if (isMobile) setMobileExpanded(false)
       inputRef.current?.blur()
     },
-    [navigate],
+    [navigate, isMobile],
   )
 
   const onInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Escape') {
       setOpen(false)
       setQuery('')
-      inputRef.current?.blur()
+      if (isMobile) collapseMobile()
+      else inputRef.current?.blur()
       return
     }
     if (!flatResults.length) return
@@ -227,16 +273,28 @@ export function AppSearch({ className }: { className?: string }) {
     }
   }
 
+  const onInputBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    if (!isMobile || !mobileExpanded) return
+    const related = e.relatedTarget as Node | null
+    if (related && containsSearchUi(related)) return
+    window.setTimeout(() => {
+      if (!containsSearchUi(document.activeElement)) {
+        collapseMobile()
+      }
+    }, 120)
+  }
+
   useEffect(() => {
     if (!showSuggestions || !listRef.current) return
     const active = listRef.current.querySelector('[data-active="true"]')
     active?.scrollIntoView({ block: 'nearest' })
   }, [activeIndex, showSuggestions])
 
-  let flatIdx = -1
+  const inputClassName =
+    'w-full rounded-lg border border-neutral-200 bg-neutral-50 py-2 pl-9 pr-3 text-base md:text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary-500 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 lg:pr-14'
 
-  return (
-    <div ref={rootRef} className={clsx('relative min-w-0', className)}>
+  const renderInput = (opts: { showShortcut: boolean }) => (
+    <>
       <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
       <input
         ref={inputRef}
@@ -253,26 +311,44 @@ export function AppSearch({ className }: { className?: string }) {
           setOpen(next.trim().length > 0)
         }}
         onFocus={() => {
+          if (isMobile) setMobileExpanded(true)
           if (query.trim().length > 0) setOpen(true)
         }}
+        onBlur={onInputBlur}
         onKeyDown={onInputKeyDown}
-        className="w-full rounded-lg border border-neutral-200 bg-neutral-50 py-2 pl-9 pr-14 text-base md:text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary-500 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
+        className={inputClassName}
       />
-      <kbd className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 rounded border border-neutral-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-neutral-400 sm:inline dark:border-neutral-600 dark:bg-neutral-900">
-        {shortcutLabel}
-      </kbd>
+      {opts.showShortcut ? (
+        <kbd className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 rounded border border-neutral-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-neutral-400 lg:inline dark:border-neutral-600 dark:bg-neutral-900">
+          {shortcutLabel}
+        </kbd>
+      ) : null}
+    </>
+  )
 
-      {showSuggestions && (
-        <div
-          id="app-search-listbox"
-          ref={listRef}
-          role="listbox"
-          className="absolute left-0 right-0 top-[calc(100%+6px)] z-50 max-h-[min(22rem,70vh)] overflow-y-auto rounded-xl border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-900"
-        >
-          {flatResults.length === 0 ? (
-            <p className="px-3 py-6 text-center text-sm text-neutral-500 dark:text-neutral-400">{gs.noResults}</p>
-          ) : (
-            grouped.map(group => (
+  const renderSuggestions = (anchor: 'desktop' | 'mobile') => {
+    if (!showSuggestions) return null
+    const positionClass =
+      anchor === 'mobile'
+        ? 'fixed left-3 right-3 top-[calc(env(safe-area-inset-top)+3.5rem)] z-[60] sm:top-16'
+        : 'absolute left-0 right-0 top-[calc(100%+6px)] z-50'
+
+    return (
+      <div
+        id="app-search-listbox"
+        ref={listRef}
+        role="listbox"
+        className={clsx(
+          positionClass,
+          'max-h-[min(22rem,70vh)] overflow-y-auto rounded-xl border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-900',
+        )}
+      >
+        {flatResults.length === 0 ? (
+          <p className="px-3 py-6 text-center text-sm text-neutral-500 dark:text-neutral-400">{gs.noResults}</p>
+        ) : (
+          (() => {
+            let flatIdx = -1
+            return grouped.map(group => (
               <div key={group.kind}>
                 <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
                   {group.label}
@@ -293,6 +369,7 @@ export function AppSearch({ className }: { className?: string }) {
                       aria-selected={isActive}
                       data-active={isActive ? 'true' : undefined}
                       onMouseEnter={() => setActiveIndex(idx)}
+                      onMouseDown={e => e.preventDefault()}
                       onClick={() => selectResult(item)}
                       className={clsx(
                         'flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors',
@@ -324,9 +401,71 @@ export function AppSearch({ className }: { className?: string }) {
                 })}
               </div>
             ))
-          )}
+          })()
+        )}
+      </div>
+    )
+  }
+
+  const mobileTrigger =
+    mobileTriggerSlot &&
+    createPortal(
+      <button
+        type="button"
+        onClick={expandMobile}
+        aria-label={t.nav.search}
+        aria-expanded={mobileExpanded}
+        className={clsx(
+          'rounded-lg p-2 transition-colors',
+          mobileExpanded
+            ? 'text-teal-600 bg-teal-50 dark:text-teal-400 dark:bg-teal-950/50'
+            : 'text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800',
+        )}
+      >
+        <Search className="h-5 w-5" />
+      </button>,
+      mobileTriggerSlot,
+    )
+
+  const mobileOverlay =
+    headerEl &&
+    isMobile &&
+    createPortal(
+      <div
+        ref={mobileOverlayRef}
+        className={clsx(
+          'absolute inset-y-0 z-50 flex items-center gap-2 border-neutral-100 bg-white px-2 transition-[left,opacity] duration-200 ease-out dark:border-neutral-800 dark:bg-neutral-900',
+          mobileExpanded
+            ? 'left-12 right-0 border-b opacity-100'
+            : 'pointer-events-none left-full right-0 opacity-0',
+        )}
+        aria-hidden={!mobileExpanded}
+      >
+        <div className="relative min-w-0 flex-1">
+          {renderInput({ showShortcut: false })}
         </div>
-      )}
-    </div>
+        <button
+          type="button"
+          onClick={collapseMobile}
+          aria-label={t.nav.closeMenu}
+          className="shrink-0 rounded-lg p-2 text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
+        >
+          <X className="h-5 w-5" />
+        </button>
+        {mobileExpanded ? renderSuggestions('mobile') : null}
+      </div>,
+      headerEl,
+    )
+
+  return (
+    <>
+      {mobileTrigger}
+      {mobileOverlay}
+
+      <div ref={desktopRef} className={clsx('relative hidden min-w-0 lg:block', className)}>
+        {renderInput({ showShortcut: true })}
+        {renderSuggestions('desktop')}
+      </div>
+    </>
   )
 }
