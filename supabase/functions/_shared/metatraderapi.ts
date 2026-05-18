@@ -167,6 +167,54 @@ function normalizeAccountSummary(body: unknown): AccountSummary {
   }
 }
 
+export function isCheckConnectOk(body: unknown): boolean {
+  if (body === true) return true
+  if (body === false) return false
+  if (typeof body === "number") return body > 0
+  if (typeof body === "string") {
+    const s = body.trim().toLowerCase()
+    if (!s) return false
+    if (s === "true" || s === "ok" || s === "connected" || s === "yes" || s === "1") return true
+    if (
+      s === "false" || s === "0" || s.includes("not connected") || s.includes("disconnected") || s.includes("notconnected")
+    ) {
+      return false
+    }
+    return true
+  }
+  if (body && typeof body === "object") {
+    const r = body as Record<string, unknown>
+    const nested = r.result ?? r.Result
+    if (nested !== undefined && nested !== r) return isCheckConnectOk(nested)
+    const flag = r.connected ?? r.Connected ?? r.isConnected ?? r.IsConnected
+    if (typeof flag === "boolean") return flag
+    if (typeof flag === "string" || typeof flag === "number") return isCheckConnectOk(flag)
+  }
+  return true
+}
+
+export function isMtSessionGoneMessage(message: string): boolean {
+  const m = message.trim().toLowerCase()
+  if (!m) return false
+  return (
+    m.includes("client with id")
+    || m.includes("client not found")
+    || (m.includes("not found") && (m.includes("client") || m.includes("id =")))
+    || m.includes("unknown client")
+    || m.includes("session not found")
+    || m.includes("account not found")
+  )
+}
+
+export function isMtSessionGoneError(err: unknown): boolean {
+  if (err instanceof MetatraderApiError) return isMtSessionGoneMessage(err.message)
+  if (err instanceof Error) return isMtSessionGoneMessage(err.message)
+  return isMtSessionGoneMessage(String(err))
+}
+
+export const MT_SESSION_EXPIRED_HINT =
+  "Trading session expired on the broker API. In Account Configuration, use Reconnect and enter your MT password (or remove and link the account again)."
+
 function assertNoApiError(body: unknown): void {
   if (body == null || typeof body !== "object") return
   const root = body as Record<string, unknown>
@@ -270,7 +318,8 @@ export class MetatraderApiClient {
 
   /** Reconnect using stored token (no password). */
   async connectByToken(id: string): Promise<void> {
-    await this.get<unknown>("/ConnectByToken", { id })
+    const raw = await this.get<unknown>("/ConnectByToken", { id })
+    assertNoApiError(raw)
   }
 
   async ensureConnected(id: string): Promise<void> {
@@ -278,19 +327,20 @@ export class MetatraderApiClient {
     if (!alive) throw new MetatraderApiError("Broker session is not connected", 502)
   }
 
-  /** Ping session; reconnect by token only when CheckConnect fails. */
+  /** Ping session; ConnectByToken only when the session still exists on the bridge. */
   async keepSessionAlive(id: string): Promise<boolean> {
     try {
       await this.checkConnect(id)
       return true
-    } catch {
-      /* reconnect */
+    } catch (first) {
+      if (isMtSessionGoneError(first)) return false
     }
     try {
       await this.connectByToken(id)
       await this.checkConnect(id)
       return true
-    } catch {
+    } catch (second) {
+      if (isMtSessionGoneError(second)) return false
       return false
     }
   }
@@ -306,8 +356,12 @@ export class MetatraderApiClient {
     return { message: "OK" }
   }
 
-  checkConnect(id: string): Promise<string> {
-    return this.get<string>("/CheckConnect", { id })
+  async checkConnect(id: string): Promise<void> {
+    const raw = await this.get<unknown>("/CheckConnect", { id })
+    assertNoApiError(raw)
+    if (!isCheckConnectOk(raw)) {
+      throw new MetatraderApiError("Broker session is not connected", 502)
+    }
   }
 
   /** Broker/server discovery — `company` must be at least 4 characters. */
@@ -327,12 +381,14 @@ export class MetatraderApiClient {
     return normalizeAccountSummary(raw)
   }
 
-  openedOrders(id: string): Promise<unknown[]> {
-    return this.get<unknown[]>("/OpenedOrders", { id })
+  async openedOrders(id: string): Promise<unknown[]> {
+    const raw = await this.get<unknown>("/OpenedOrders", { id })
+    return MetatraderApiClient.parseOrderList(raw)
   }
 
-  closedOrders(id: string): Promise<unknown[]> {
-    return this.get<unknown[]>("/ClosedOrders", { id })
+  async closedOrders(id: string): Promise<unknown[]> {
+    const raw = await this.get<unknown>("/ClosedOrders", { id })
+    return MetatraderApiClient.parseOrderList(raw)
   }
 
   /** yyyy-MM-ddTHH:mm:ss for mt4api.dev / mt5.mt4api.dev query params. */
@@ -415,6 +471,12 @@ export class MetatraderApiClient {
       if (Array.isArray(r.Result)) return r.Result
       if (Array.isArray(r.orders)) return r.orders
       if (Array.isArray(r.Orders)) return r.Orders
+      const nested = r.result ?? r.Result
+      if (nested && typeof nested === "object") {
+        const pr = nested as Record<string, unknown>
+        const orders = pr.Orders ?? pr.orders
+        if (Array.isArray(orders)) return orders
+      }
     }
     return []
   }

@@ -396,6 +396,34 @@ export function channelWorkerLogMessage(row: ChannelWorkerLogRow, cw: ChannelWor
   }
 
   if (logAction === 'signal_merge_into_open_trade') {
+    const userMsg = typeof payload.user_message === 'string' ? payload.user_message.trim() : ''
+    const errMsg = typeof row.error_message === 'string' ? row.error_message.trim() : ''
+    if (status !== 'success') {
+      const message = userMsg || errMsg
+      if (message) {
+        return namedOrGeneric(
+          instr,
+          s => interpolate(cw.mergeUserMsgNamed, { message, symbol: s }),
+          () => message,
+        )
+      }
+      const openLegs = Number(payload.openLegs)
+      const modified = Number(payload.modified)
+      const skippedBroker = Number(payload.skippedNotOnBroker)
+      const detail =
+        Number.isFinite(openLegs) && Number.isFinite(modified)
+          ? interpolate(cw.legsUpdated, { modified, openLegs })
+          : cw.partialUpdate
+      const extra =
+        Number.isFinite(skippedBroker) && skippedBroker > 0
+          ? ` (${skippedBroker} not on broker)`
+          : ''
+      return namedOrGeneric(
+        instr,
+        s => `${detail.replace(/\.$/, '')} on ${s}.${extra}`,
+        () => `${detail}${extra}`,
+      )
+    }
     return namedOrGeneric(
       instr,
       s => interpolate(cw.mergeAddedNamed, { symbol: s }),

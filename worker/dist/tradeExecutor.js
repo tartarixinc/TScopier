@@ -18,6 +18,7 @@ const multiTradeMerge_1 = require("./multiTradeMerge");
 const basketModFollowUp_1 = require("./basketModFollowUp");
 const basketSlTpReconcile_1 = require("./basketSlTpReconcile");
 const rangePendingLadderSync_1 = require("./rangePendingLadderSync");
+const brokerChannelFilter_1 = require("./brokerChannelFilter");
 /** When true (default), channel-attached signals only execute if MTProto is connected in this process. */
 function telegramLiveTradeGateEnabled() {
     const v = String(process.env.WORKER_REQUIRE_TELEGRAM_LIVE_FOR_TRADES ?? 'true').toLowerCase();
@@ -221,17 +222,6 @@ function triggerPriceFor(leg, anchor, digits) {
     const d = Math.max(0, Math.min(8, Math.floor(digits)));
     return Number(px.toFixed(d));
 }
-function channelMatches(broker, channelId) {
-    const enforce = broker.enforce_signal_channel_filter === true;
-    if (!enforce)
-        return true;
-    const ids = broker.signal_channel_ids ?? [];
-    if (!ids.length)
-        return true;
-    if (!channelId)
-        return false;
-    return ids.includes(channelId);
-}
 /** Best-effort open time from /OpenedOrders row (MetaTraderAPI shapes vary). */
 function brokerOrderOpenMs(o) {
     const candidates = [
@@ -349,7 +339,8 @@ class TradeExecutor {
             this.brokersByUser.set(row.user_id, arr);
         }
         console.log(`[tradeExecutor] cached ${this.brokersById.size} broker accounts across ${this.brokersByUser.size} users`);
-        if (String(process.env.MT4API_RECONNECT_ON_START ?? '').toLowerCase() === 'true') {
+        const pingOnStart = String(process.env.BROKER_PING_ON_WORKER_START ?? 'true').toLowerCase();
+        if (pingOnStart !== 'false' && pingOnStart !== '0') {
             await this.reconnectCachedBrokers();
         }
     }
@@ -361,12 +352,23 @@ class TradeExecutor {
             const api = this.apiFor(row);
             if (!api)
                 continue;
-            try {
-                await api.ensureConnected(uuid);
+            const alive = await api.keepSessionAlive(uuid);
+            if (alive) {
+                if (row.connection_status !== 'connected') {
+                    await this.supabase
+                        .from('broker_accounts')
+                        .update({ connection_status: 'connected' })
+                        .eq('id', row.id);
+                }
             }
-            catch (err) {
-                const msg = err instanceof Error ? err.message : String(err);
-                console.warn(`[tradeExecutor] ConnectByToken failed for ${uuid}: ${msg}`);
+            else {
+                console.warn(`[tradeExecutor] session down for broker=${row.id}`);
+                if (row.connection_status !== 'error') {
+                    await this.supabase
+                        .from('broker_accounts')
+                        .update({ connection_status: 'error' })
+                        .eq('id', row.id);
+                }
             }
         }
     }
@@ -487,9 +489,11 @@ class TradeExecutor {
             const action = String(parsed.action).toLowerCase();
             if (action === 'ignore')
                 return;
-            const brokers = (this.brokersByUser.get(row.user_id) ?? []).filter(b => b.is_active && isMtUuid(b.metaapi_account_id) && channelMatches(b, row.channel_id));
-            if (!brokers.length)
+            const brokers = (this.brokersByUser.get(row.user_id) ?? []).filter(b => b.is_active && isMtUuid(b.metaapi_account_id) && (0, brokerChannelFilter_1.channelMatchesBrokerSignal)(b, row.channel_id));
+            if (!brokers.length) {
+                console.warn(`[tradeExecutor] skip signal ${row.id}: no active broker matches channel=${row.channel_id ?? 'none'} (check Configure Trading channel selection)`);
                 return;
+            }
             // Pre-fetch channel keywords once per signal so manual-mode brokers can
             // honour delay_msec / prefer_entry / *_in_pips / ignore_keyword.
             const channelKeywords = await this.getChannelKeywords(row.channel_id);
@@ -577,6 +581,57 @@ class TradeExecutor {
         catch {
             return false;
         }
+    }
+    /**
+     * When DB shows open legs but /OpenedOrders has none of their tickets, close stale rows
+     * so merge/modify paths do not block new OrderSend.
+     */
+    async reconcileGhostBasketLegs(args) {
+        const { signal, broker, uuid, anchorSignalId, symbol, familyTrades } = args;
+        if (!familyTrades.length)
+            return { isGhostBasket: false, closedCount: 0 };
+        const api = this.apiFor(broker);
+        if (!api)
+            return { isGhostBasket: false, closedCount: 0 };
+        const alive = await api.keepSessionAlive(uuid);
+        if (!alive)
+            return { isGhostBasket: false, closedCount: 0 };
+        let brokerTickets;
+        try {
+            brokerTickets = await (0, basketSlTpReconcile_1.fetchOpenBrokerTicketsStrict)(api, uuid);
+        }
+        catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.warn(`[tradeExecutor] ghost basket check skipped broker=${broker.id} anchor=${anchorSignalId}: ${msg}`);
+            return { isGhostBasket: false, closedCount: 0 };
+        }
+        const { onBroker, ghost } = (0, basketSlTpReconcile_1.classifyGhostBasketLegs)(familyTrades, brokerTickets);
+        if (onBroker.length > 0)
+            return { isGhostBasket: false, closedCount: 0 };
+        if (!ghost.length)
+            return { isGhostBasket: false, closedCount: 0 };
+        const closedCount = await (0, basketSlTpReconcile_1.closeStaleOpenTrades)(this.supabase, ghost.map(tr => tr.id));
+        await (0, basketSlTpReconcile_1.markBasketReconcileDoneForAnchor)(this.supabase, broker.id, anchorSignalId);
+        console.log(`[tradeExecutor] stale_basket_reconciled signal=${signal.id} broker=${broker.id}`
+            + ` anchor=${anchorSignalId} symbol=${symbol} closed=${closedCount}/${ghost.length}`);
+        try {
+            await this.supabase.from('trade_execution_logs').insert({
+                user_id: signal.user_id,
+                signal_id: signal.id,
+                broker_account_id: broker.id,
+                action: 'stale_basket_reconciled',
+                status: 'success',
+                request_payload: {
+                    anchor_signal_id: anchorSignalId,
+                    symbol,
+                    closed_count: closedCount,
+                    ghost_leg_count: ghost.length,
+                    user_message: basketSlTpReconcile_1.GHOST_BASKET_CLOSED_USER_MESSAGE,
+                },
+            });
+        }
+        catch { /* best-effort */ }
+        return { isGhostBasket: true, closedCount };
     }
     /**
      * Walk `signals.parent_signal_id` from the merge row's immediate parent upward.
@@ -966,6 +1021,27 @@ class TradeExecutor {
             });
         }
         catch { /* best-effort */ }
+        const { data: anchorFamilyRows } = await this.supabase
+            .from('trades')
+            .select('id,signal_id,metaapi_order_id,opened_at,lot_size,sl,tp,entry_price,direction,symbol')
+            .eq('broker_account_id', broker.id)
+            .eq('signal_id', anchor.anchorSignalId)
+            .eq('status', 'open')
+            .order('opened_at', { ascending: true })
+            .limit(500);
+        const anchorFamily = (anchorFamilyRows ?? []).filter(tr => (0, basketModFollowUp_1.symbolsCompatibleForBasket)(parsed.symbol ?? symbol, tr.symbol)
+            || (0, basketModFollowUp_1.symbolsCompatibleForBasket)(symbol, tr.symbol));
+        const ghostCheck = await this.reconcileGhostBasketLegs({
+            signal,
+            broker,
+            uuid,
+            anchorSignalId: anchor.anchorSignalId,
+            symbol,
+            familyTrades: anchorFamily,
+        });
+        if (ghostCheck.isGhostBasket) {
+            return { handled: true, success: false };
+        }
         const outcome = await this.applyBasketSlTpRefresh({
             signal,
             parsed,
@@ -1279,15 +1355,29 @@ class TradeExecutor {
                     + ` skip_consumed=${ladderSync.skippedConsumed} skip_cap=${ladderSync.skippedCap}`);
             }
         }
-        const mergeFailed = summary.modified < summary.openLegs;
+        let mergeFailed = summary.modified < summary.openLegs;
         const skippedBroker = summary.skippedNotOnBroker ?? 0;
-        const partialMsg = mergeFailed
+        const allLegsGhostOnBroker = summary.openLegs > 0
+            && skippedBroker >= summary.openLegs
+            && summary.modified === 0
+            && stillMissingTicket === 0;
+        if (allLegsGhostOnBroker) {
+            const closedCount = await (0, basketSlTpReconcile_1.closeStaleOpenTrades)(this.supabase, familyTrades.map(tr => tr.id));
+            await (0, basketSlTpReconcile_1.markBasketReconcileDoneForAnchor)(this.supabase, broker.id, anchorSignalId);
+            mergeFailed = true;
+            console.log(`[tradeExecutor] ghost basket closed after modify signal=${signal.id} broker=${broker.id}`
+                + ` anchor=${anchorSignalId} closed=${closedCount}`);
+        }
+        let partialMsg = mergeFailed
             ? `Not all trades were modified (${summary.modified}/${summary.openLegs} open legs`
                 + `${stillMissingTicket > 0 ? `; ${stillMissingTicket} still waiting for broker ticket` : ''}`
                 + `${skippedBroker > 0 ? `; ${skippedBroker} not on broker` : ''}`
                 + `${summary.failed > 0 ? `; ${summary.failed} broker modify errors` : ''})`
             : null;
-        if (mergeFailed) {
+        if (allLegsGhostOnBroker) {
+            partialMsg = basketSlTpReconcile_1.GHOST_BASKET_CLOSED_USER_MESSAGE;
+        }
+        if (mergeFailed && !allLegsGhostOnBroker) {
             await (0, basketSlTpReconcile_1.upsertBasketReconcileJob)(this.supabase, {
                 userId: signal.user_id,
                 brokerAccountId: broker.id,
@@ -1439,6 +1529,16 @@ class TradeExecutor {
             .sort((a, b) => new Date(a.opened_at).getTime() - new Date(b.opened_at).getTime());
         if (!familyTrades.length)
             return { handled: false };
+        const ghostCheck = await this.reconcileGhostBasketLegs({
+            signal,
+            broker,
+            uuid,
+            anchorSignalId,
+            symbol,
+            familyTrades: familyTrades,
+        });
+        if (ghostCheck.isGhostBasket)
+            return { handled: false };
         const { data: origSig } = await this.supabase
             .from('signals')
             .select('telegram_message_id, channel_id')
@@ -1583,6 +1683,16 @@ class TradeExecutor {
         if (!api)
             return {};
         const uuid = broker.metaapi_account_id;
+        const alive = await api.keepSessionAlive(uuid);
+        if (!alive) {
+            console.warn(`[tradeExecutor] broker ${broker.id} session check failed before order; attempting OrderSend anyway`);
+        }
+        else if (broker.connection_status !== 'connected') {
+            void this.supabase
+                .from('broker_accounts')
+                .update({ connection_status: 'connected' })
+                .eq('id', broker.id);
+        }
         const mapping = applySymbolMapping(parsed.symbol, broker);
         // Whitelist mode: when the user listed multiple symbols, only let signals
         // matching one of them through. Skip the signal otherwise.
@@ -1645,7 +1755,12 @@ class TradeExecutor {
                 uuid,
                 strictEntryPrefetch,
             });
-            return { openedOrMerged: paramOutcome.handled === true && paramOutcome.success === true };
+            if (paramOutcome.handled && paramOutcome.success) {
+                return { openedOrMerged: true };
+            }
+            if (paramOutcome.handled) {
+                return { openedOrMerged: false };
+            }
         }
         if (isManual && manual.add_new_trades_to_existing === true) {
             const mergeOutcome = await this.tryMergeSignalIntoExistingOpenTrade({
@@ -1660,8 +1775,8 @@ class TradeExecutor {
                 uuid,
                 strictEntryPrefetch,
             });
-            if (mergeOutcome.handled) {
-                return { openedOrMerged: mergeOutcome.success };
+            if (mergeOutcome.handled && mergeOutcome.success) {
+                return { openedOrMerged: true };
             }
         }
         // Stop here when the user opted out of stacking trades on the same symbol.

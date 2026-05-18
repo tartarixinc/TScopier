@@ -66,14 +66,20 @@ import {
 } from './multiTradeMerge'
 import { symbolsCompatibleForBasket } from './basketModFollowUp'
 import {
+  classifyGhostBasketLegs,
+  closeStaleOpenTrades,
   fetchOpenBrokerTickets,
+  fetchOpenBrokerTicketsStrict,
+  GHOST_BASKET_CLOSED_USER_MESSAGE,
   markBasketReconcileDone,
+  markBasketReconcileDoneForAnchor,
   runBasketLegModifies,
   upsertBasketReconcileJob,
   type BasketOpenLeg,
   type BasketSymbolParams,
 } from './basketSlTpReconcile'
 import { syncRangePendingLadderOnBasketRefresh } from './rangePendingLadderSync'
+import { channelMatchesBrokerSignal } from './brokerChannelFilter'
 
 /** When true (default), channel-attached signals only execute if MTProto is connected in this process. */
 function telegramLiveTradeGateEnabled(): boolean {
@@ -139,6 +145,7 @@ interface BrokerRow {
   user_id: string
   is_active: boolean
   platform: string
+  connection_status?: string | null
   metaapi_account_id: string | null
   account_login: string | null
   broker_server: string | null
@@ -426,15 +433,6 @@ function triggerPriceFor(leg: VirtualPendingLeg, anchor: number, digits: number)
   return Number(px.toFixed(d))
 }
 
-function channelMatches(broker: BrokerRow, channelId: string | null): boolean {
-  const enforce = broker.enforce_signal_channel_filter === true
-  if (!enforce) return true
-  const ids = broker.signal_channel_ids ?? []
-  if (!ids.length) return true
-  if (!channelId) return false
-  return ids.includes(channelId)
-}
-
 /** Best-effort open time from /OpenedOrders row (MetaTraderAPI shapes vary). */
 function brokerOrderOpenMs(o: Record<string, unknown>): number | null {
   const candidates = [
@@ -551,7 +549,10 @@ export class TradeExecutor {
       this.brokersByUser.set(row.user_id, arr)
     }
     console.log(`[tradeExecutor] cached ${this.brokersById.size} broker accounts across ${this.brokersByUser.size} users`)
-    await this.reconnectCachedBrokers()
+    const pingOnStart = String(process.env.BROKER_PING_ON_WORKER_START ?? 'true').toLowerCase()
+    if (pingOnStart !== 'false' && pingOnStart !== '0') {
+      await this.reconnectCachedBrokers()
+    }
   }
 
   private async reconnectCachedBrokers() {
@@ -707,9 +708,14 @@ export class TradeExecutor {
       if (action === 'ignore') return
 
       const brokers = (this.brokersByUser.get(row.user_id) ?? []).filter(b =>
-        b.is_active && isMtUuid(b.metaapi_account_id) && channelMatches(b, row.channel_id),
+        b.is_active && isMtUuid(b.metaapi_account_id) && channelMatchesBrokerSignal(b, row.channel_id),
       )
-      if (!brokers.length) return
+      if (!brokers.length) {
+        console.warn(
+          `[tradeExecutor] skip signal ${row.id}: no active broker matches channel=${row.channel_id ?? 'none'} (check Configure Trading channel selection)`,
+        )
+        return
+      }
 
       // Pre-fetch channel keywords once per signal so manual-mode brokers can
       // honour delay_msec / prefer_entry / *_in_pips / ignore_keyword.
@@ -803,6 +809,71 @@ export class TradeExecutor {
     } catch {
       return false
     }
+  }
+
+  /**
+   * When DB shows open legs but /OpenedOrders has none of their tickets, close stale rows
+   * so merge/modify paths do not block new OrderSend.
+   */
+  private async reconcileGhostBasketLegs(args: {
+    signal: SignalRow
+    broker: BrokerRow
+    uuid: string
+    anchorSignalId: string
+    symbol: string
+    familyTrades: BasketOpenLeg[]
+  }): Promise<{ isGhostBasket: boolean; closedCount: number }> {
+    const { signal, broker, uuid, anchorSignalId, symbol, familyTrades } = args
+    if (!familyTrades.length) return { isGhostBasket: false, closedCount: 0 }
+    const api = this.apiFor(broker)
+    if (!api) return { isGhostBasket: false, closedCount: 0 }
+    const alive = await api.keepSessionAlive(uuid)
+    if (!alive) return { isGhostBasket: false, closedCount: 0 }
+
+    let brokerTickets: Set<number>
+    try {
+      brokerTickets = await fetchOpenBrokerTicketsStrict(api, uuid)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.warn(
+        `[tradeExecutor] ghost basket check skipped broker=${broker.id} anchor=${anchorSignalId}: ${msg}`,
+      )
+      return { isGhostBasket: false, closedCount: 0 }
+    }
+
+    const { onBroker, ghost } = classifyGhostBasketLegs(familyTrades, brokerTickets)
+    if (onBroker.length > 0) return { isGhostBasket: false, closedCount: 0 }
+    if (!ghost.length) return { isGhostBasket: false, closedCount: 0 }
+
+    const closedCount = await closeStaleOpenTrades(
+      this.supabase,
+      ghost.map(tr => tr.id),
+    )
+    await markBasketReconcileDoneForAnchor(this.supabase, broker.id, anchorSignalId)
+
+    console.log(
+      `[tradeExecutor] stale_basket_reconciled signal=${signal.id} broker=${broker.id}`
+      + ` anchor=${anchorSignalId} symbol=${symbol} closed=${closedCount}/${ghost.length}`,
+    )
+
+    try {
+      await this.supabase.from('trade_execution_logs').insert({
+        user_id: signal.user_id,
+        signal_id: signal.id,
+        broker_account_id: broker.id,
+        action: 'stale_basket_reconciled',
+        status: 'success',
+        request_payload: {
+          anchor_signal_id: anchorSignalId,
+          symbol,
+          closed_count: closedCount,
+          ghost_leg_count: ghost.length,
+          user_message: GHOST_BASKET_CLOSED_USER_MESSAGE,
+        } as unknown as Record<string, unknown>,
+      })
+    } catch { /* best-effort */ }
+
+    return { isGhostBasket: true, closedCount }
   }
 
   /**
@@ -1245,6 +1316,30 @@ export class TradeExecutor {
       })
     } catch { /* best-effort */ }
 
+    const { data: anchorFamilyRows } = await this.supabase
+      .from('trades')
+      .select('id,signal_id,metaapi_order_id,opened_at,lot_size,sl,tp,entry_price,direction,symbol')
+      .eq('broker_account_id', broker.id)
+      .eq('signal_id', anchor.anchorSignalId)
+      .eq('status', 'open')
+      .order('opened_at', { ascending: true })
+      .limit(500)
+    const anchorFamily = ((anchorFamilyRows ?? []) as BasketOpenLeg[]).filter(tr =>
+      symbolsCompatibleForBasket(parsed.symbol ?? symbol, tr.symbol)
+      || symbolsCompatibleForBasket(symbol, tr.symbol),
+    )
+    const ghostCheck = await this.reconcileGhostBasketLegs({
+      signal,
+      broker,
+      uuid,
+      anchorSignalId: anchor.anchorSignalId,
+      symbol,
+      familyTrades: anchorFamily,
+    })
+    if (ghostCheck.isGhostBasket) {
+      return { handled: true, success: false }
+    }
+
     const outcome = await this.applyBasketSlTpRefresh({
       signal,
       parsed,
@@ -1595,16 +1690,38 @@ export class TradeExecutor {
       }
     }
 
-    const mergeFailed = summary.modified < summary.openLegs
+    let mergeFailed = summary.modified < summary.openLegs
     const skippedBroker = summary.skippedNotOnBroker ?? 0
-    const partialMsg = mergeFailed
+    const allLegsGhostOnBroker =
+      summary.openLegs > 0
+      && skippedBroker >= summary.openLegs
+      && summary.modified === 0
+      && stillMissingTicket === 0
+
+    if (allLegsGhostOnBroker) {
+      const closedCount = await closeStaleOpenTrades(
+        this.supabase,
+        familyTrades.map(tr => tr.id),
+      )
+      await markBasketReconcileDoneForAnchor(this.supabase, broker.id, anchorSignalId)
+      mergeFailed = true
+      console.log(
+        `[tradeExecutor] ghost basket closed after modify signal=${signal.id} broker=${broker.id}`
+        + ` anchor=${anchorSignalId} closed=${closedCount}`,
+      )
+    }
+
+    let partialMsg = mergeFailed
       ? `Not all trades were modified (${summary.modified}/${summary.openLegs} open legs`
         + `${stillMissingTicket > 0 ? `; ${stillMissingTicket} still waiting for broker ticket` : ''}`
         + `${skippedBroker > 0 ? `; ${skippedBroker} not on broker` : ''}`
         + `${summary.failed > 0 ? `; ${summary.failed} broker modify errors` : ''})`
       : null
+    if (allLegsGhostOnBroker) {
+      partialMsg = GHOST_BASKET_CLOSED_USER_MESSAGE
+    }
 
-    if (mergeFailed) {
+    if (mergeFailed && !allLegsGhostOnBroker) {
       await upsertBasketReconcileJob(this.supabase, {
         userId: signal.user_id,
         brokerAccountId: broker.id,
@@ -1775,6 +1892,16 @@ export class TradeExecutor {
       .sort((a, b) => new Date(a.opened_at).getTime() - new Date(b.opened_at).getTime())
     if (!familyTrades.length) return { handled: false }
 
+    const ghostCheck = await this.reconcileGhostBasketLegs({
+      signal,
+      broker,
+      uuid,
+      anchorSignalId,
+      symbol,
+      familyTrades: familyTrades as BasketOpenLeg[],
+    })
+    if (ghostCheck.isGhostBasket) return { handled: false }
+
     const { data: origSig } = await this.supabase
       .from('signals')
       .select('telegram_message_id, channel_id')
@@ -1932,12 +2059,14 @@ export class TradeExecutor {
     const uuid = broker.metaapi_account_id!
     const alive = await api.keepSessionAlive(uuid)
     if (!alive) {
-      console.warn(`[tradeExecutor] broker ${broker.id} not connected before order`)
-      await this.supabase
+      console.warn(
+        `[tradeExecutor] broker ${broker.id} session check failed before order; attempting OrderSend anyway`,
+      )
+    } else if (broker.connection_status !== 'connected') {
+      void this.supabase
         .from('broker_accounts')
-        .update({ connection_status: 'error' })
+        .update({ connection_status: 'connected' })
         .eq('id', broker.id)
-      return {}
     }
     const mapping = applySymbolMapping(parsed.symbol!, broker)
 
@@ -2015,7 +2144,12 @@ export class TradeExecutor {
         uuid,
         strictEntryPrefetch,
       })
-      return { openedOrMerged: paramOutcome.handled === true && paramOutcome.success === true }
+      if (paramOutcome.handled && paramOutcome.success) {
+        return { openedOrMerged: true }
+      }
+      if (paramOutcome.handled) {
+        return { openedOrMerged: false }
+      }
     }
 
     if (isManual && manual.add_new_trades_to_existing === true) {
@@ -2031,8 +2165,8 @@ export class TradeExecutor {
         uuid,
         strictEntryPrefetch,
       })
-      if (mergeOutcome.handled) {
-        return { openedOrMerged: mergeOutcome.success }
+      if (mergeOutcome.handled && mergeOutcome.success) {
+        return { openedOrMerged: true }
       }
     }
 

@@ -3,6 +3,7 @@ import {
   makeClientFromEnv,
   MetatraderApiClient,
   MetatraderApiError,
+  MT_SESSION_EXPIRED_HINT,
   type MtPlatform,
 } from "./metatraderapi.ts"
 
@@ -39,8 +40,11 @@ export async function reconnectBrokerSession(
     id: string
     user_id: string
     metaapi_account_id: string | null
+    account_login?: string | null
+    broker_server?: string | null
     performance_baseline_balance?: number | null
   },
+  opts?: { password?: string },
 ): Promise<BrokerReconnectResult> {
   const uuid = parseBrokerSessionId(broker.metaapi_account_id)
   if (!uuid) {
@@ -54,14 +58,38 @@ export async function reconnectBrokerSession(
   }
 
   try {
-    const alive = await keepBrokerSessionAlive(client, uuid)
+    let alive = await keepBrokerSessionAlive(client, uuid)
+    const password = opts?.password?.trim()
+    if (!alive && password) {
+      const login = String(broker.account_login ?? "").trim()
+      const server = String(broker.broker_server ?? "").trim()
+      if (login && server) {
+        try {
+          await client.connectEx({
+            id: uuid,
+            server,
+            login,
+            password,
+          })
+          alive = await keepBrokerSessionAlive(client, uuid)
+        } catch (e) {
+          const msg = e instanceof MetatraderApiError ? e.message : e instanceof Error ? e.message : "Connect failed"
+          await supabase
+            .from("broker_accounts")
+            .update({ connection_status: "error" })
+            .eq("id", broker.id)
+            .eq("user_id", broker.user_id)
+          return { ok: false, connection_status: "error", message: msg }
+        }
+      }
+    }
     if (!alive) {
       await supabase
         .from("broker_accounts")
         .update({ connection_status: "error" })
         .eq("id", broker.id)
         .eq("user_id", broker.user_id)
-      return { ok: false, connection_status: "error", message: "Broker session is not connected" }
+      return { ok: false, connection_status: "error", message: MT_SESSION_EXPIRED_HINT }
     }
 
     let summary: Awaited<ReturnType<MetatraderApiClient["accountSummary"]>> | null = null

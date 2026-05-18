@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.MetatraderApiClient = exports.MetatraderApiError = void 0;
+exports.MetatraderApiClient = exports.MT_SESSION_EXPIRED_HINT = exports.MetatraderApiError = void 0;
 exports.orderOperationRequiresPrice = orderOperationRequiresPrice;
 exports.normalizeOrderResponse = normalizeOrderResponse;
 exports.normalizeSymbolParams = normalizeSymbolParams;
@@ -8,6 +8,9 @@ exports.formatMtApiDateTime = formatMtApiDateTime;
 exports.unwrapOrderList = unwrapOrderList;
 exports.resolveBasicAuthHeader = resolveBasicAuthHeader;
 exports.isMtApiAuthConfigured = isMtApiAuthConfigured;
+exports.isCheckConnectOk = isCheckConnectOk;
+exports.isMtSessionGoneMessage = isMtSessionGoneMessage;
+exports.isMtSessionGoneError = isMtSessionGoneError;
 exports.mtPlatformFrom = mtPlatformFrom;
 exports.hasMetatraderApiConfigured = hasMetatraderApiConfigured;
 exports.getMetatraderApi = getMetatraderApi;
@@ -188,6 +191,13 @@ function unwrapOrderList(raw) {
             return r.orders;
         if (Array.isArray(r.Orders))
             return r.Orders;
+        const nested = r.result ?? r.Result;
+        if (nested && typeof nested === 'object') {
+            const pr = nested;
+            const orders = pr.Orders ?? pr.orders;
+            if (Array.isArray(orders))
+                return orders;
+        }
     }
     return [];
 }
@@ -248,6 +258,62 @@ function isMtApiAuthConfigured(env = process.env) {
         return false;
     }
 }
+/** Interpret /CheckConnect payloads across MT4/MT5 bridge versions. */
+function isCheckConnectOk(body) {
+    if (body === true)
+        return true;
+    if (body === false)
+        return false;
+    if (typeof body === 'number')
+        return body > 0;
+    if (typeof body === 'string') {
+        const s = body.trim().toLowerCase();
+        if (!s)
+            return false;
+        if (s === 'true' || s === 'ok' || s === 'connected' || s === 'yes' || s === '1')
+            return true;
+        if (s === 'false'
+            || s === '0'
+            || s.includes('not connected')
+            || s.includes('disconnected')
+            || s.includes('notconnected')) {
+            return false;
+        }
+        return true;
+    }
+    if (body && typeof body === 'object') {
+        const r = body;
+        const nested = r.result ?? r.Result;
+        if (nested !== undefined && nested !== r)
+            return isCheckConnectOk(nested);
+        const flag = r.connected ?? r.Connected ?? r.isConnected ?? r.IsConnected;
+        if (typeof flag === 'boolean')
+            return flag;
+        if (typeof flag === 'string' || typeof flag === 'number')
+            return isCheckConnectOk(flag);
+    }
+    return true;
+}
+/** MT bridge no longer holds this session id (restart, expiry, or never connected). */
+function isMtSessionGoneMessage(message) {
+    const m = message.trim().toLowerCase();
+    if (!m)
+        return false;
+    return (m.includes('client with id')
+        || m.includes('client not found')
+        || (m.includes('not found') && (m.includes('client') || m.includes('id =')))
+        || m.includes('unknown client')
+        || m.includes('session not found')
+        || m.includes('account not found'));
+}
+function isMtSessionGoneError(err) {
+    if (err instanceof MetatraderApiError)
+        return isMtSessionGoneMessage(err.message);
+    if (err instanceof Error)
+        return isMtSessionGoneMessage(err.message);
+    return isMtSessionGoneMessage(String(err));
+}
+exports.MT_SESSION_EXPIRED_HINT = 'Trading session expired on the broker API. In Account Configuration, use Reconnect and enter your MT password (or remove and link the account again).';
 function parseToken(body, fallbackId) {
     if (typeof body === 'string') {
         const t = body.trim().replace(/^"|"$/g, '');
@@ -361,27 +427,60 @@ class MetatraderApiClient {
         return parseToken(raw, args.id);
     }
     async connectByToken(id) {
-        await this.get('/ConnectByToken', { id });
+        const raw = await this.get('/ConnectByToken', { id });
+        assertNoApiError(raw);
     }
     async ensureConnected(id) {
+        const alive = await this.keepSessionAlive(id);
+        if (!alive)
+            throw new MetatraderApiError('Broker session is not connected', 502);
+    }
+    /**
+     * Ping session; call ConnectByToken only when the session exists but CheckConnect
+     * failed for a transient reason. When the bridge reports "client not found",
+     * ConnectByToken cannot recreate the session — user must ConnectEx with password.
+     */
+    async keepSessionAlive(id) {
         try {
             await this.checkConnect(id);
-            return;
+            return true;
         }
-        catch {
-            /* reconnect */
+        catch (first) {
+            if (isMtSessionGoneError(first)) {
+                console.warn(`[metatraderapi] MT session gone id=${id} — ${exports.MT_SESSION_EXPIRED_HINT}`);
+                return false;
+            }
+            const msg = first instanceof Error ? first.message : String(first);
+            console.warn(`[metatraderapi] CheckConnect failed id=${id}: ${msg}; trying ConnectByToken`);
         }
-        await this.connectByToken(id);
+        try {
+            await this.connectByToken(id);
+            await this.checkConnect(id);
+            return true;
+        }
+        catch (second) {
+            if (isMtSessionGoneError(second)) {
+                console.warn(`[metatraderapi] MT session gone id=${id} (ConnectByToken) — ${exports.MT_SESSION_EXPIRED_HINT}`);
+                return false;
+            }
+            const msg = second instanceof Error ? second.message : String(second);
+            console.warn(`[metatraderapi] keepSessionAlive failed id=${id}: ${msg}`);
+            return false;
+        }
     }
     async disconnect(id) {
         await this.get('/Disconnect', { id });
     }
-    openedOrders(id) {
-        return this.get('/OpenedOrders', { id });
+    async openedOrders(id) {
+        const raw = await this.get('/OpenedOrders', { id });
+        assertNoApiError(raw);
+        return unwrapOrderList(raw);
     }
     /** Last ~100 closed orders in the current session only (see GET /ClosedOrders). */
-    closedOrders(id) {
-        return this.get('/ClosedOrders', { id });
+    async closedOrders(id) {
+        const raw = await this.get('/ClosedOrders', { id });
+        assertNoApiError(raw);
+        return unwrapOrderList(raw);
     }
     async orderHistory(id, from, to) {
         const raw = await this.get('/OrderHistory', { id, from, to });
@@ -461,8 +560,12 @@ class MetatraderApiClient {
         assertNoApiError(raw);
         return normalizeAccountSummary(raw);
     }
-    checkConnect(id) {
-        return this.get('/CheckConnect', { id });
+    async checkConnect(id) {
+        const raw = await this.get('/CheckConnect', { id });
+        assertNoApiError(raw);
+        if (!isCheckConnectOk(raw)) {
+            throw new MetatraderApiError('Broker session is not connected', 502);
+        }
     }
     symbolParams(id, symbol) {
         return this.get('/SymbolParams', { id, symbol });

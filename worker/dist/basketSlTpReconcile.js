@@ -4,9 +4,14 @@
  * Used by tradeExecutor (realtime), BasketSlTpReconcileMonitor, and edge sweep.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.GHOST_BASKET_CLOSED_USER_MESSAGE = void 0;
 exports.clampBasketOrderStops = clampBasketOrderStops;
 exports.roundBasketLot = roundBasketLot;
 exports.fetchOpenBrokerTickets = fetchOpenBrokerTickets;
+exports.fetchOpenBrokerTicketsStrict = fetchOpenBrokerTicketsStrict;
+exports.classifyGhostBasketLegs = classifyGhostBasketLegs;
+exports.closeStaleOpenTrades = closeStaleOpenTrades;
+exports.markBasketReconcileDoneForAnchor = markBasketReconcileDoneForAnchor;
 exports.logBasketLegModify = logBasketLegModify;
 exports.runBasketLegModifies = runBasketLegModifies;
 exports.reconcileBackoffMs = reconcileBackoffMs;
@@ -64,25 +69,79 @@ function roundBasketLot(volume, params) {
     const rounded = Math.round(volume / step) * step;
     return Math.max(min, +rounded.toFixed(2));
 }
-/** Tickets currently open on the broker account (from /OpenedOrders). */
-async function fetchOpenBrokerTickets(api, uuid) {
+function ingestBrokerTickets(orders) {
     const tickets = new Set();
-    try {
-        const orders = await api.openedOrders(uuid);
-        for (const raw of orders ?? []) {
-            if (!raw || typeof raw !== 'object')
-                continue;
-            const o = raw;
-            const ticket = Number(o.ticket ?? o.Ticket ?? o.orderId ?? o.OrderID ?? 0);
-            if (Number.isFinite(ticket) && ticket > 0)
-                tickets.add(ticket);
-        }
-    }
-    catch {
-        /* caller treats empty set as "skip preflight" */
+    for (const raw of orders ?? []) {
+        if (!raw || typeof raw !== 'object')
+            continue;
+        const o = raw;
+        const ticket = Number(o.ticket ?? o.Ticket ?? o.orderId ?? o.OrderID ?? 0);
+        if (Number.isFinite(ticket) && ticket > 0)
+            tickets.add(ticket);
     }
     return tickets;
 }
+/** Tickets currently open on the broker account (from /OpenedOrders). */
+async function fetchOpenBrokerTickets(api, uuid) {
+    try {
+        const orders = await api.openedOrders(uuid);
+        return ingestBrokerTickets(orders);
+    }
+    catch {
+        /* caller treats empty set as "skip preflight" */
+        return new Set();
+    }
+}
+/** Same as fetchOpenBrokerTickets but propagates API errors (for ghost-basket reconcile). */
+async function fetchOpenBrokerTicketsStrict(api, uuid) {
+    const orders = await api.openedOrders(uuid);
+    return ingestBrokerTickets(orders);
+}
+function classifyGhostBasketLegs(familyTrades, brokerTickets) {
+    const onBroker = [];
+    const ghost = [];
+    for (const tr of familyTrades) {
+        const ticket = Number(tr.metaapi_order_id);
+        if (!Number.isFinite(ticket) || ticket <= 0) {
+            ghost.push(tr);
+            continue;
+        }
+        if (brokerTickets.has(ticket))
+            onBroker.push(tr);
+        else
+            ghost.push(tr);
+    }
+    return { onBroker, ghost };
+}
+/** Mark DB open legs closed when they are absent from the broker (manual close / expired session). */
+async function closeStaleOpenTrades(supabase, tradeIds) {
+    if (!tradeIds.length)
+        return 0;
+    const now = new Date().toISOString();
+    const { data, error } = await supabase
+        .from('trades')
+        .update({ status: 'closed', closed_at: now })
+        .in('id', tradeIds)
+        .eq('status', 'open')
+        .select('id');
+    if (error) {
+        console.warn(`[basketSlTpReconcile] closeStaleOpenTrades failed: ${error.message}`);
+        return 0;
+    }
+    return (data ?? []).length;
+}
+async function markBasketReconcileDoneForAnchor(supabase, brokerAccountId, anchorSignalId) {
+    const { data: existingJob } = await supabase
+        .from('basket_reconcile_jobs')
+        .select('id')
+        .eq('broker_account_id', brokerAccountId)
+        .eq('anchor_signal_id', anchorSignalId)
+        .maybeSingle();
+    if (existingJob?.id) {
+        await markBasketReconcileDone(supabase, existingJob.id);
+    }
+}
+exports.GHOST_BASKET_CLOSED_USER_MESSAGE = 'Open basket existed only in TSCopier (not on the broker); stale legs were closed. Send a new entry to open on MT.';
 function stopsAlreadyMatch(tr, target, nImmCwe, legIdx) {
     if (legIdx < nImmCwe) {
         const tpOk = tr.tp == null || Number(tr.tp) === 0;

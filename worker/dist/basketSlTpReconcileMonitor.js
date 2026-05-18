@@ -101,7 +101,11 @@ class BasketSlTpReconcileMonitor {
             return;
         }
         try {
-            await api.ensureConnected(uuid);
+            const alive = await api.keepSessionAlive(uuid);
+            if (!alive) {
+                await this.releaseJob(row.id, 'broker session not connected', row.attempts);
+                return;
+            }
         }
         catch (err) {
             await this.releaseJob(row.id, err.message, row.attempts);

@@ -122,7 +122,10 @@ export class BasketSlTpReconcileMonitor {
 
     try {
       const alive = await api.keepSessionAlive(uuid)
-      if (!alive) continue
+      if (!alive) {
+        await this.releaseJob(row.id, 'broker session not connected', row.attempts)
+        return
+      }
     } catch (err) {
       await this.releaseJob(row.id, (err as Error).message, row.attempts)
       return

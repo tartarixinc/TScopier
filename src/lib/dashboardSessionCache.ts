@@ -1,5 +1,5 @@
-export const DASHBOARD_CACHE_VERSION = 'dashboard_cache_v9'
-export const DASHBOARD_CACHE_LEGACY_KEYS = ['dashboard_cache_v8', 'dashboard_cache_v7'] as const
+export const DASHBOARD_CACHE_VERSION = 'dashboard_cache_v10'
+export const DASHBOARD_CACHE_LEGACY_KEYS = ['dashboard_cache_v9', 'dashboard_cache_v8', 'dashboard_cache_v7'] as const
 export const DASHBOARD_ACTIVE_USER_KEY = 'dashboard_cache_active_user_id'
 
 /** Clear per-user dashboard session cache (call on sign-out or user switch). */

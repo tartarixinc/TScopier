@@ -79,6 +79,8 @@ export const metatraderApi = {
     summary: AccountSummary
     open_positions: number | null
     performance_baseline_balance?: number | null
+    /** True when balance is cached because live AccountSummary failed. */
+    stale?: boolean
   }> {
     return call({
       body: { action: 'summary', broker_id: brokerId },
@@ -87,6 +89,7 @@ export const metatraderApi = {
           summary: AccountSummary
           open_positions: number | null
           performance_baseline_balance?: number | null
+          stale?: boolean
         },
     })
   },
@@ -98,14 +101,18 @@ export const metatraderApi = {
     })
   },
 
-  reconnect(brokerId: string): Promise<{
+  reconnect(brokerId: string, password?: string): Promise<{
     ok: boolean
     connection_status: 'connected' | 'error'
     message?: string
     summary?: AccountSummary | null
   }> {
     return call({
-      body: { action: 'reconnect', broker_id: brokerId },
+      body: {
+        action: 'reconnect',
+        broker_id: brokerId,
+        ...(password?.trim() ? { password: password.trim() } : {}),
+      },
       expect: (b) =>
         b as {
           ok: boolean

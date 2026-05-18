@@ -180,18 +180,47 @@ type BrokerBalanceSnapshot = {
   open_trades?: number
 }
 
+function isBrokerLiveConnected(account: Pick<BrokerAccount, 'connection_status'>): boolean {
+  return account.connection_status === 'connected'
+}
+
+/** Sum open positions only from brokers with a live connected session. */
+function sumConnectedOpenTrades(
+  accounts: BrokerAccount[],
+  balances: Record<string, BrokerBalanceSnapshot>,
+): number {
+  return accounts.reduce((sum, account) => {
+    if (!isBrokerLiveConnected(account)) return sum
+    const n = balances[account.id]?.open_trades
+    return sum + (typeof n === 'number' && Number.isFinite(n) ? n : 0)
+  }, 0)
+}
+
+function hasConnectedBrokerOpenTrades(
+  accounts: BrokerAccount[],
+  balances: Record<string, BrokerBalanceSnapshot>,
+): boolean {
+  return accounts.some(
+    account =>
+      isBrokerLiveConnected(account) && typeof balances[account.id]?.open_trades === 'number',
+  )
+}
+
 /** Keep live MT equity/open stats when a quiet DB refresh would overwrite them. */
 function mergeBrokerBalances(
   fromDb: Record<string, BrokerBalanceSnapshot>,
   prev: Record<string, BrokerBalanceSnapshot>,
   sticky: Record<string, { open_pnl?: number; open_trades?: number }>,
+  accounts: BrokerAccount[],
 ): Record<string, BrokerBalanceSnapshot> {
+  const connected = new Set(accounts.filter(isBrokerLiveConnected).map(a => a.id))
   const out: Record<string, BrokerBalanceSnapshot> = { ...fromDb }
   for (const id of new Set([...Object.keys(fromDb), ...Object.keys(prev)])) {
     const db = fromDb[id]
     const old = prev[id]
     const st = sticky[id]
     if (!db && !old) continue
+    const liveOk = connected.has(id)
     out[id] = {
       ...(db ?? {}),
       balance: old?.balance ?? db?.balance,
@@ -200,8 +229,8 @@ function mergeBrokerBalances(
       broker: db?.broker ?? old?.broker,
       mt_server_hint: db?.mt_server_hint ?? old?.mt_server_hint,
       account_type: db?.account_type ?? old?.account_type,
-      open_pnl: st?.open_pnl ?? old?.open_pnl ?? db?.open_pnl,
-      open_trades: st?.open_trades ?? old?.open_trades ?? db?.open_trades,
+      open_pnl: liveOk ? (st?.open_pnl ?? old?.open_pnl ?? db?.open_pnl) : 0,
+      open_trades: liveOk ? (st?.open_trades ?? old?.open_trades ?? db?.open_trades) : 0,
     }
   }
   return out
@@ -257,6 +286,22 @@ function readBootstrapDashboardCache(expectedUserId: string | null | undefined):
   return readDashboardCache(userId)
 }
 
+function statsFromDashboardCache(cached: DashboardCachePayload | null): DashboardStats {
+  if (!cached?.stats) return DEFAULT_DASHBOARD_STATS
+  const accounts = cached.linkedAccounts ?? []
+  const balances = cached.linkedAccountBalances ?? {}
+  const openTrades = hasConnectedBrokerOpenTrades(accounts, balances)
+    ? sumConnectedOpenTrades(accounts, balances)
+    : 0
+  const openPnl = accounts.some(a => isBrokerLiveConnected(a) && balances[a.id]?.open_pnl != null)
+    ? accounts.reduce((sum, a) => {
+        if (!isBrokerLiveConnected(a)) return sum
+        return sum + (balances[a.id]?.open_pnl ?? 0)
+      }, 0)
+    : cached.stats.openPnl
+  return { ...cached.stats, openTrades, openPositions: openTrades, openPnl }
+}
+
 /** Avoid flashing DB/empty snapshots over live MT or session-cached figures. */
 function mergeDashboardStats(
   prev: DashboardStats,
@@ -283,7 +328,7 @@ function mergeDashboardStats(
   }
   const keepNum = (p: number, n: number) => (Number.isFinite(n) && !(n === 0 && p !== 0) ? n : p)
   const keepOpenCount = (p: number, n: number) =>
-    opts?.trustOpenTrades ? (Number.isFinite(n) ? n : p) : keepNum(p, n)
+    opts?.trustOpenTrades ? (Number.isFinite(n) ? n : p) : (Number.isFinite(n) ? n : p)
   const keepStr = (p: string, n: string) => (n === '—' && p !== '—' ? p : n)
   return {
     ...next,
@@ -346,10 +391,15 @@ function readDashboardCache(userId: string): DashboardCachePayload | null {
 function seedLiveBrokerStateFromBalances(
   balances: Record<string, BrokerBalanceSnapshot> | undefined,
   target: Record<string, { open_pnl?: number; open_trades?: number }>,
+  accounts?: BrokerAccount[],
 ) {
   if (!balances) return
+  const connected = accounts
+    ? new Set(accounts.filter(isBrokerLiveConnected).map(a => a.id))
+    : null
   for (const [id, v] of Object.entries(balances)) {
     if (!v) continue
+    if (connected && !connected.has(id)) continue
     target[id] = {
       open_pnl: typeof v.open_pnl === 'number' ? v.open_pnl : target[id]?.open_pnl,
       open_trades: typeof v.open_trades === 'number' ? v.open_trades : target[id]?.open_trades,
@@ -364,7 +414,7 @@ export function DashboardPage() {
   const { formatMoney, formatSignedMoney } = useFormatMoney()
   const navigate = useNavigate()
   const bootCache = useMemo(() => readBootstrapDashboardCache(user?.id), [user?.id])
-  const [stats, setStats] = useState<DashboardStats>(() => bootCache?.stats ?? DEFAULT_DASHBOARD_STATS)
+  const [stats, setStats] = useState<DashboardStats>(() => statsFromDashboardCache(bootCache))
   const [copierLogs, setCopierLogs] = useState<Signal[]>(() => bootCache?.copierLogs ?? [])
   const [copierLogSymbols, setCopierLogSymbols] = useState<Record<string, string>>(
     () => bootCache?.copierLogSymbols ?? {},
@@ -401,7 +451,11 @@ export function DashboardPage() {
    */
   const liveBrokerStateRef = useRef<Record<string, { open_pnl?: number; open_trades?: number }>>({})
   if (bootCache?.linkedAccountBalances && Object.keys(liveBrokerStateRef.current).length === 0) {
-    seedLiveBrokerStateFromBalances(bootCache.linkedAccountBalances, liveBrokerStateRef.current)
+    seedLiveBrokerStateFromBalances(
+      bootCache.linkedAccountBalances,
+      liveBrokerStateRef.current,
+      bootCache.linkedAccounts,
+    )
   }
   const hydratedUserRef = useRef<string | null>(null)
   const statsRef = useRef(stats)
@@ -422,7 +476,7 @@ export function DashboardPage() {
     linkedBalancesRef.current = {}
     const cached = readDashboardCache(user.id)
     if (cached?.stats) {
-      setStats(cached.stats)
+      setStats(statsFromDashboardCache(cached))
       setCopierLogs(cached.copierLogs ?? [])
       setCopierLogSymbols(cached.copierLogSymbols ?? {})
       setChannelDisplayNames(cached.channelDisplayNames ?? {})
@@ -433,7 +487,7 @@ export function DashboardPage() {
       if (cached.chartTrades?.length) setChartTrades(cached.chartTrades)
       if (cached.aiExpertLogs?.length) setAiExpertLogs(cached.aiExpertLogs)
       if (cached.mtTrades?.length) mtTradesRef.current = cached.mtTrades
-      seedLiveBrokerStateFromBalances(balances, liveBrokerStateRef.current)
+      seedLiveBrokerStateFromBalances(balances, liveBrokerStateRef.current, cached.linkedAccounts)
     } else {
       setStats(DEFAULT_DASHBOARD_STATS)
       setCopierLogs([])
@@ -730,6 +784,7 @@ export function DashboardPage() {
         // Re-apply the last MT live values we've already fetched this session so
         // the stat doesn't bounce between throttled refresh windows.
         const sticky = liveBrokerStateRef.current[account.id]
+        const liveOk = isBrokerLiveConnected(account)
         return [
           account.id,
           {
@@ -742,8 +797,8 @@ export function DashboardPage() {
               undefined,
               resolveMtServerCandidate(account, account.broker_server ?? undefined),
             ),
-            open_pnl: sticky?.open_pnl ?? cachedOpenPnl,
-            open_trades: fresh ? undefined : sticky?.open_trades,
+            open_pnl: liveOk ? (sticky?.open_pnl ?? cachedOpenPnl) : 0,
+            open_trades: liveOk && !fresh ? sticky?.open_trades : liveOk ? undefined : 0,
           },
         ]
       }),
@@ -752,6 +807,7 @@ export function DashboardPage() {
       balanceMap,
       linkedBalancesRef.current,
       liveBrokerStateRef.current,
+      brokerAccounts,
     )
     /** Lifetime-style total vs baseline balance at link (sum of equity − baseline per account). */
     const yesterdayTotalProfitLoss: number | null = null
@@ -768,15 +824,15 @@ export function DashboardPage() {
       return sum + (acct?.equity ?? acct?.balance ?? 0)
     }, 0)
     const totalLiveOpenPnl = brokerAccounts.reduce((sum, account) => {
+      if (!isBrokerLiveConnected(account)) return sum
       const acct = mergedBalances[account.id]
       return sum + (acct?.open_pnl ?? 0)
     }, 0)
-    const totalLiveOpenTradesFromSummary = brokerAccounts.reduce((sum, account) => {
-      const acct = mergedBalances[account.id]
-      return sum + (acct?.open_trades ?? 0)
-    }, 0)
-    const hasAnyBrokerOpenPnl = brokerAccounts.some(account => mergedBalances[account.id]?.open_pnl != null)
-    const hasAnyBrokerOpenTradesFromSummary = brokerAccounts.some(account => mergedBalances[account.id]?.open_trades != null)
+    const totalLiveOpenTradesFromSummary = sumConnectedOpenTrades(brokerAccounts, mergedBalances)
+    const hasAnyBrokerOpenPnl = brokerAccounts.some(
+      account => isBrokerLiveConnected(account) && mergedBalances[account.id]?.open_pnl != null,
+    )
+    const hasAnyBrokerOpenTradesFromSummary = hasConnectedBrokerOpenTrades(brokerAccounts, mergedBalances)
 
     const resolvedOpenTradesCount =
       hasAnyBrokerOpenTradesFromSummary ? totalLiveOpenTradesFromSummary : openTrades.length
@@ -1065,11 +1121,13 @@ export function DashboardPage() {
     const results = await Promise.all(
       mtBrokers.map(async (b) => {
         try {
-          const { summary, open_positions, performance_baseline_balance } = await metatraderApi.summary(b.id)
+          const { summary, open_positions, performance_baseline_balance, stale } =
+            await metatraderApi.summary(b.id)
           return {
             id: b.id,
             summary,
             open_positions,
+            stale: stale === true,
             performance_baseline_balance: performance_baseline_balance ?? null,
             error: null as Error | null,
           }
@@ -1078,6 +1136,7 @@ export function DashboardPage() {
             id: b.id,
             summary: null,
             open_positions: null as number | null,
+            stale: false,
             performance_baseline_balance: null as number | null,
             error: err instanceof Error ? err : new Error('summary failed'),
           }
@@ -1085,14 +1144,29 @@ export function DashboardPage() {
       }),
     )
 
-    const successes = results.filter(r => r.summary)
-    if (successes.length === 0) return
-
     const prevBalances = balanceSeed ?? linkedAccountBalances
     const nextBalances = { ...prevBalances }
-    for (const r of successes) {
-      const s = r.summary!
+    const successes: typeof results = []
+    for (const r of results) {
       const broker = sourceAccounts.find(b => b.id === r.id)
+      if (r.error || !r.summary) {
+        delete liveBrokerStateRef.current[r.id]
+        nextBalances[r.id] = {
+          ...(nextBalances[r.id] ?? {}),
+          open_pnl: 0,
+          open_trades: 0,
+        }
+        if (broker) {
+          setLinkedAccounts(prev =>
+            prev.map(row =>
+              row.id === r.id ? { ...row, connection_status: 'error' as const } : row,
+            ),
+          )
+        }
+        continue
+      }
+      successes.push(r)
+      const s = r.summary
       const server = broker
         ? resolveMtServerCandidate(broker, nextBalances[r.id]?.mt_server_hint ?? broker.broker_server)
         : null
@@ -1103,9 +1177,12 @@ export function DashboardPage() {
         s.profit != null
           ? s.profit
           : (nextBalance != null && nextEquity != null ? nextEquity - nextBalance : nextBalances[r.id]?.open_pnl)
-      const liveOpenTrades = typeof r.open_positions === 'number'
-        ? r.open_positions
-        : nextBalances[r.id]?.open_trades
+      const liveOpenTrades =
+        typeof r.open_positions === 'number'
+          ? r.open_positions
+          : r.stale
+            ? 0
+            : undefined
       nextBalances[r.id] = {
         ...(nextBalances[r.id] ?? {}),
         balance: nextBalance,
@@ -1115,20 +1192,22 @@ export function DashboardPage() {
         open_pnl: liveProfit,
         open_trades: liveOpenTrades,
       }
-      // Persist live values across throttled refreshes / loadDashboard ticks.
       liveBrokerStateRef.current[r.id] = {
-        open_pnl: typeof liveProfit === 'number' ? liveProfit : liveBrokerStateRef.current[r.id]?.open_pnl,
-        open_trades: typeof liveOpenTrades === 'number' ? liveOpenTrades : liveBrokerStateRef.current[r.id]?.open_trades,
+        open_pnl: typeof liveProfit === 'number' ? liveProfit : undefined,
+        open_trades: typeof liveOpenTrades === 'number' ? liveOpenTrades : undefined,
       }
     }
-    linkedBalancesRef.current = nextBalances
-    setLinkedAccountBalances(nextBalances)
+    const mergedForDisplay = mergeBrokerBalances(
+      nextBalances,
+      nextBalances,
+      liveBrokerStateRef.current,
+      sourceAccounts,
+    )
+    linkedBalancesRef.current = mergedForDisplay
+    setLinkedAccountBalances(mergedForDisplay)
 
-    const sawOpenPosCount = successes.some(r => typeof r.open_positions === 'number')
-    const mtOpenTotal = mtBrokers.reduce((sum, b) => {
-      const v = nextBalances[b.id]?.open_trades
-      return sum + (typeof v === 'number' && Number.isFinite(v) ? v : 0)
-    }, 0)
+    const sawOpenPosCount = successes.length > 0
+    const mtOpenTotal = sumConnectedOpenTrades(sourceAccounts, mergedForDisplay)
 
     // Recompute portfolio value (pure balance), equity, and open PnL from the freshest snapshot.
     setStats(prev => {
@@ -1137,12 +1216,13 @@ export function DashboardPage() {
       let openPnl = 0
       let sawLivePnl = false
       for (const account of sourceAccounts) {
-        const live = successes.find(r => r.id === account.id)?.summary
+        const row = successes.find(r => r.id === account.id)
+        const live = row?.summary
         const equity = live?.equity ?? account.last_equity ?? account.last_balance ?? 0
         const balance = live?.balance ?? account.last_balance ?? 0
         portfolioValue += balance || 0
         totalEquity += equity || balance || 0
-        if (live) {
+        if (live && isBrokerLiveConnected(account) && !row?.stale) {
           const profit = live.profit ?? (live.equity != null && live.balance != null ? live.equity - live.balance : null)
           if (profit != null && Number.isFinite(profit)) {
             openPnl += profit
@@ -1174,7 +1254,9 @@ export function DashboardPage() {
         totalEquity,
         openPnl: sawLivePnl ? openPnl : prev.openPnl,
         totalProfitLoss,
-        ...(sawOpenPosCount ? { openPositions: mtOpenTotal, openTrades: mtOpenTotal } : {}),
+        ...(sawOpenPosCount
+          ? { openPositions: mtOpenTotal, openTrades: mtOpenTotal }
+          : { openPositions: 0, openTrades: 0 }),
       }
       statsRef.current = next
       return next
