@@ -114,25 +114,96 @@ export function roundBasketLot(volume: number, params: BasketSymbolParams | null
   return Math.max(min, +rounded.toFixed(2))
 }
 
+function ingestBrokerTickets(orders: unknown[]): Set<number> {
+  const tickets = new Set<number>()
+  for (const raw of orders ?? []) {
+    if (!raw || typeof raw !== 'object') continue
+    const o = raw as Record<string, unknown>
+    const ticket = Number(o.ticket ?? o.Ticket ?? o.orderId ?? o.OrderID ?? 0)
+    if (Number.isFinite(ticket) && ticket > 0) tickets.add(ticket)
+  }
+  return tickets
+}
+
 /** Tickets currently open on the broker account (from /OpenedOrders). */
 export async function fetchOpenBrokerTickets(
   api: MetatraderApiClient,
   uuid: string,
 ): Promise<Set<number>> {
-  const tickets = new Set<number>()
   try {
     const orders = await api.openedOrders(uuid)
-    for (const raw of orders ?? []) {
-      if (!raw || typeof raw !== 'object') continue
-      const o = raw as Record<string, unknown>
-      const ticket = Number(o.ticket ?? o.Ticket ?? o.orderId ?? o.OrderID ?? 0)
-      if (Number.isFinite(ticket) && ticket > 0) tickets.add(ticket)
-    }
+    return ingestBrokerTickets(orders)
   } catch {
     /* caller treats empty set as "skip preflight" */
+    return new Set()
   }
-  return tickets
 }
+
+/** Same as fetchOpenBrokerTickets but propagates API errors (for ghost-basket reconcile). */
+export async function fetchOpenBrokerTicketsStrict(
+  api: MetatraderApiClient,
+  uuid: string,
+): Promise<Set<number>> {
+  const orders = await api.openedOrders(uuid)
+  return ingestBrokerTickets(orders)
+}
+
+export function classifyGhostBasketLegs(
+  familyTrades: BasketOpenLeg[],
+  brokerTickets: Set<number>,
+): { onBroker: BasketOpenLeg[]; ghost: BasketOpenLeg[] } {
+  const onBroker: BasketOpenLeg[] = []
+  const ghost: BasketOpenLeg[] = []
+  for (const tr of familyTrades) {
+    const ticket = Number(tr.metaapi_order_id)
+    if (!Number.isFinite(ticket) || ticket <= 0) {
+      ghost.push(tr)
+      continue
+    }
+    if (brokerTickets.has(ticket)) onBroker.push(tr)
+    else ghost.push(tr)
+  }
+  return { onBroker, ghost }
+}
+
+/** Mark DB open legs closed when they are absent from the broker (manual close / expired session). */
+export async function closeStaleOpenTrades(
+  supabase: SupabaseClient,
+  tradeIds: string[],
+): Promise<number> {
+  if (!tradeIds.length) return 0
+  const now = new Date().toISOString()
+  const { data, error } = await supabase
+    .from('trades')
+    .update({ status: 'closed', closed_at: now })
+    .in('id', tradeIds)
+    .eq('status', 'open')
+    .select('id')
+  if (error) {
+    console.warn(`[basketSlTpReconcile] closeStaleOpenTrades failed: ${error.message}`)
+    return 0
+  }
+  return (data ?? []).length
+}
+
+export async function markBasketReconcileDoneForAnchor(
+  supabase: SupabaseClient,
+  brokerAccountId: string,
+  anchorSignalId: string,
+): Promise<void> {
+  const { data: existingJob } = await supabase
+    .from('basket_reconcile_jobs')
+    .select('id')
+    .eq('broker_account_id', brokerAccountId)
+    .eq('anchor_signal_id', anchorSignalId)
+    .maybeSingle()
+  if (existingJob?.id) {
+    await markBasketReconcileDone(supabase, existingJob.id as string)
+  }
+}
+
+export const GHOST_BASKET_CLOSED_USER_MESSAGE =
+  'Open basket existed only in TSCopier (not on the broker); stale legs were closed. Send a new entry to open on MT.'
 
 function stopsAlreadyMatch(
   tr: BasketOpenLeg,

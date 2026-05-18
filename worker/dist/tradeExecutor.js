@@ -583,6 +583,57 @@ class TradeExecutor {
         }
     }
     /**
+     * When DB shows open legs but /OpenedOrders has none of their tickets, close stale rows
+     * so merge/modify paths do not block new OrderSend.
+     */
+    async reconcileGhostBasketLegs(args) {
+        const { signal, broker, uuid, anchorSignalId, symbol, familyTrades } = args;
+        if (!familyTrades.length)
+            return { isGhostBasket: false, closedCount: 0 };
+        const api = this.apiFor(broker);
+        if (!api)
+            return { isGhostBasket: false, closedCount: 0 };
+        const alive = await api.keepSessionAlive(uuid);
+        if (!alive)
+            return { isGhostBasket: false, closedCount: 0 };
+        let brokerTickets;
+        try {
+            brokerTickets = await (0, basketSlTpReconcile_1.fetchOpenBrokerTicketsStrict)(api, uuid);
+        }
+        catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.warn(`[tradeExecutor] ghost basket check skipped broker=${broker.id} anchor=${anchorSignalId}: ${msg}`);
+            return { isGhostBasket: false, closedCount: 0 };
+        }
+        const { onBroker, ghost } = (0, basketSlTpReconcile_1.classifyGhostBasketLegs)(familyTrades, brokerTickets);
+        if (onBroker.length > 0)
+            return { isGhostBasket: false, closedCount: 0 };
+        if (!ghost.length)
+            return { isGhostBasket: false, closedCount: 0 };
+        const closedCount = await (0, basketSlTpReconcile_1.closeStaleOpenTrades)(this.supabase, ghost.map(tr => tr.id));
+        await (0, basketSlTpReconcile_1.markBasketReconcileDoneForAnchor)(this.supabase, broker.id, anchorSignalId);
+        console.log(`[tradeExecutor] stale_basket_reconciled signal=${signal.id} broker=${broker.id}`
+            + ` anchor=${anchorSignalId} symbol=${symbol} closed=${closedCount}/${ghost.length}`);
+        try {
+            await this.supabase.from('trade_execution_logs').insert({
+                user_id: signal.user_id,
+                signal_id: signal.id,
+                broker_account_id: broker.id,
+                action: 'stale_basket_reconciled',
+                status: 'success',
+                request_payload: {
+                    anchor_signal_id: anchorSignalId,
+                    symbol,
+                    closed_count: closedCount,
+                    ghost_leg_count: ghost.length,
+                    user_message: basketSlTpReconcile_1.GHOST_BASKET_CLOSED_USER_MESSAGE,
+                },
+            });
+        }
+        catch { /* best-effort */ }
+        return { isGhostBasket: true, closedCount };
+    }
+    /**
      * Walk `signals.parent_signal_id` from the merge row's immediate parent upward.
      * True if `anchorSignalId` appears (multi-hop Telegram reply threads where
      * `parent_signal_id` points at an intermediate signal, not the basket anchor).
@@ -970,6 +1021,27 @@ class TradeExecutor {
             });
         }
         catch { /* best-effort */ }
+        const { data: anchorFamilyRows } = await this.supabase
+            .from('trades')
+            .select('id,signal_id,metaapi_order_id,opened_at,lot_size,sl,tp,entry_price,direction,symbol')
+            .eq('broker_account_id', broker.id)
+            .eq('signal_id', anchor.anchorSignalId)
+            .eq('status', 'open')
+            .order('opened_at', { ascending: true })
+            .limit(500);
+        const anchorFamily = (anchorFamilyRows ?? []).filter(tr => (0, basketModFollowUp_1.symbolsCompatibleForBasket)(parsed.symbol ?? symbol, tr.symbol)
+            || (0, basketModFollowUp_1.symbolsCompatibleForBasket)(symbol, tr.symbol));
+        const ghostCheck = await this.reconcileGhostBasketLegs({
+            signal,
+            broker,
+            uuid,
+            anchorSignalId: anchor.anchorSignalId,
+            symbol,
+            familyTrades: anchorFamily,
+        });
+        if (ghostCheck.isGhostBasket) {
+            return { handled: true, success: false };
+        }
         const outcome = await this.applyBasketSlTpRefresh({
             signal,
             parsed,
@@ -1283,15 +1355,29 @@ class TradeExecutor {
                     + ` skip_consumed=${ladderSync.skippedConsumed} skip_cap=${ladderSync.skippedCap}`);
             }
         }
-        const mergeFailed = summary.modified < summary.openLegs;
+        let mergeFailed = summary.modified < summary.openLegs;
         const skippedBroker = summary.skippedNotOnBroker ?? 0;
-        const partialMsg = mergeFailed
+        const allLegsGhostOnBroker = summary.openLegs > 0
+            && skippedBroker >= summary.openLegs
+            && summary.modified === 0
+            && stillMissingTicket === 0;
+        if (allLegsGhostOnBroker) {
+            const closedCount = await (0, basketSlTpReconcile_1.closeStaleOpenTrades)(this.supabase, familyTrades.map(tr => tr.id));
+            await (0, basketSlTpReconcile_1.markBasketReconcileDoneForAnchor)(this.supabase, broker.id, anchorSignalId);
+            mergeFailed = true;
+            console.log(`[tradeExecutor] ghost basket closed after modify signal=${signal.id} broker=${broker.id}`
+                + ` anchor=${anchorSignalId} closed=${closedCount}`);
+        }
+        let partialMsg = mergeFailed
             ? `Not all trades were modified (${summary.modified}/${summary.openLegs} open legs`
                 + `${stillMissingTicket > 0 ? `; ${stillMissingTicket} still waiting for broker ticket` : ''}`
                 + `${skippedBroker > 0 ? `; ${skippedBroker} not on broker` : ''}`
                 + `${summary.failed > 0 ? `; ${summary.failed} broker modify errors` : ''})`
             : null;
-        if (mergeFailed) {
+        if (allLegsGhostOnBroker) {
+            partialMsg = basketSlTpReconcile_1.GHOST_BASKET_CLOSED_USER_MESSAGE;
+        }
+        if (mergeFailed && !allLegsGhostOnBroker) {
             await (0, basketSlTpReconcile_1.upsertBasketReconcileJob)(this.supabase, {
                 userId: signal.user_id,
                 brokerAccountId: broker.id,
@@ -1442,6 +1528,16 @@ class TradeExecutor {
             .filter(t => t.signal_id === anchorSignalId)
             .sort((a, b) => new Date(a.opened_at).getTime() - new Date(b.opened_at).getTime());
         if (!familyTrades.length)
+            return { handled: false };
+        const ghostCheck = await this.reconcileGhostBasketLegs({
+            signal,
+            broker,
+            uuid,
+            anchorSignalId,
+            symbol,
+            familyTrades: familyTrades,
+        });
+        if (ghostCheck.isGhostBasket)
             return { handled: false };
         const { data: origSig } = await this.supabase
             .from('signals')
@@ -1659,7 +1755,12 @@ class TradeExecutor {
                 uuid,
                 strictEntryPrefetch,
             });
-            return { openedOrMerged: paramOutcome.handled === true && paramOutcome.success === true };
+            if (paramOutcome.handled && paramOutcome.success) {
+                return { openedOrMerged: true };
+            }
+            if (paramOutcome.handled) {
+                return { openedOrMerged: false };
+            }
         }
         if (isManual && manual.add_new_trades_to_existing === true) {
             const mergeOutcome = await this.tryMergeSignalIntoExistingOpenTrade({
@@ -1674,8 +1775,8 @@ class TradeExecutor {
                 uuid,
                 strictEntryPrefetch,
             });
-            if (mergeOutcome.handled) {
-                return { openedOrMerged: mergeOutcome.success };
+            if (mergeOutcome.handled && mergeOutcome.success) {
+                return { openedOrMerged: true };
             }
         }
         // Stop here when the user opted out of stacking trades on the same symbol.
