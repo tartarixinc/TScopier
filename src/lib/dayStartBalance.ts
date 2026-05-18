@@ -47,19 +47,24 @@ export function resolveDayStartBalance(input: DayStartRollInput): {
     timezoneOffsetMinutes,
   } = input
 
-  if (storedDay === calendarDay && storedStart != null && Number.isFinite(storedStart)) {
-    return { dayStartBalance: storedStart, dayStartOn: calendarDay, rolled: false }
+  const day = normalizeDayKey(calendarDay)
+  const stored = normalizeDayKey(storedDay)
+  if (stored === day && storedStart != null && Number.isFinite(storedStart)) {
+    return { dayStartBalance: storedStart, dayStartOn: day, rolled: false }
   }
 
   let start = currentBalance
   if (lastBalance != null && Number.isFinite(lastBalance) && lastSyncedAt) {
     const syncDay = isoToLocalCalendarDay(lastSyncedAt, timezoneOffsetMinutes)
-    if (syncDay && syncDay < calendarDay) {
+    if (syncDay && syncDay < day) {
+      start = lastBalance
+    } else if (syncDay === day) {
+      // Already synced today before day_start was stored — don't snap open to now (zeros P/L).
       start = lastBalance
     }
   }
 
-  return { dayStartBalance: start, dayStartOn: calendarDay, rolled: true }
+  return { dayStartBalance: start, dayStartOn: day, rolled: true }
 }
 
 export function accountTodaysProfitFromBalance(
@@ -69,19 +74,57 @@ export function accountTodaysProfitFromBalance(
   calendarDay: string,
 ): number | null {
   if (balance == null || !Number.isFinite(balance)) return null
-  if (dayStartOn !== calendarDay || dayStartBalance == null || !Number.isFinite(dayStartBalance)) {
+  if (
+    normalizeDayKey(dayStartOn) !== normalizeDayKey(calendarDay) ||
+    dayStartBalance == null ||
+    !Number.isFinite(dayStartBalance)
+  ) {
     return null
   }
   return balance - dayStartBalance
+}
+
+/**
+ * Stable headline today P/L: prefer closed-deal chart net when balance delta was zeroed
+ * (common after intraday day-start reset or open-position summary polls).
+ */
+export function resolveDisplayedTodayProfit(opts: {
+  balanceDelta: number | null
+  balanceDayReady: boolean
+  chartNetPnl: number | null
+  chartHasData: boolean
+}): number {
+  const chart =
+    opts.chartHasData && opts.chartNetPnl != null && Number.isFinite(opts.chartNetPnl)
+      ? opts.chartNetPnl
+      : null
+  const balance =
+    opts.balanceDayReady && opts.balanceDelta != null && Number.isFinite(opts.balanceDelta)
+      ? opts.balanceDelta
+      : null
+
+  if (chart != null) {
+    if (balance != null && Math.abs(balance) < 0.01 && Math.abs(chart) >= 0.01) return chart
+    if (balance == null) return chart
+    if (Math.abs(balance) >= 0.01) return balance
+    return chart
+  }
+  return balance ?? 0
+}
+
+function normalizeDayKey(value: string | null | undefined): string {
+  if (!value) return ''
+  return String(value).trim().slice(0, 10)
 }
 
 export function hasBalanceDayStartForToday(
   accounts: Array<{ day_start_balance?: number | null; day_start_balance_on?: string | null }>,
   calendarDay: string,
 ): boolean {
+  const day = normalizeDayKey(calendarDay)
   return accounts.some(
     a =>
-      a.day_start_balance_on === calendarDay &&
+      normalizeDayKey(a.day_start_balance_on) === day &&
       a.day_start_balance != null &&
       Number.isFinite(Number(a.day_start_balance)),
   )

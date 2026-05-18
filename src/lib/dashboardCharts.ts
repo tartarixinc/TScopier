@@ -151,6 +151,20 @@ export function buildTradeVolume7Day(trades: DashboardChartTrade[], now = new Da
   return buildTradeVolumeByDays(trades, 7, now)
 }
 
+/** Net closed P/L for a day bucket — same figure as the Trade Outcome chart (profit bar − loss bar). */
+export function netPnlFromTradeOutcomeDay(day: TradeVolumeDay | undefined): number {
+  if (!day) return 0
+  return day.profit - day.loss
+}
+
+export function findTodayTradeOutcomeDay(
+  trades: DashboardChartTrade[],
+  now = new Date(),
+): TradeVolumeDay | undefined {
+  const todayKey = dayKey(startOfLocalDay(now))
+  return buildTradeVolume7Day(trades, now).find(b => b.key === todayKey)
+}
+
 const OUTCOME_EPSILON = 0.01
 
 /** Today’s closed-deal stats using the same rules as {@link buildTradeVolume7Day}. */

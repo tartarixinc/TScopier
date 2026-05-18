@@ -10,6 +10,11 @@ export function isoToLocalCalendarDay(iso: string, timezoneOffsetMinutes: number
   return `${y}-${m}-${day}`
 }
 
+function normalizeDayKey(value: string | null | undefined): string {
+  if (!value) return ""
+  return String(value).trim().slice(0, 10)
+}
+
 export type DayStartRollInput = {
   calendarDay: string
   currentBalance: number
@@ -35,19 +40,23 @@ export function resolveDayStartBalance(input: DayStartRollInput): {
     timezoneOffsetMinutes,
   } = input
 
-  if (storedDay === calendarDay && storedStart != null && Number.isFinite(storedStart)) {
-    return { dayStartBalance: storedStart, dayStartOn: calendarDay, rolled: false }
+  const day = normalizeDayKey(calendarDay)
+  const stored = normalizeDayKey(storedDay)
+  if (stored === day && storedStart != null && Number.isFinite(storedStart)) {
+    return { dayStartBalance: storedStart, dayStartOn: day, rolled: false }
   }
 
   let start = currentBalance
   if (lastBalance != null && Number.isFinite(lastBalance) && lastSyncedAt) {
     const syncDay = isoToLocalCalendarDay(lastSyncedAt, timezoneOffsetMinutes)
-    if (syncDay && syncDay < calendarDay) {
+    if (syncDay && syncDay < day) {
+      start = lastBalance
+    } else if (syncDay === day) {
       start = lastBalance
     }
   }
 
-  return { dayStartBalance: start, dayStartOn: calendarDay, rolled: true }
+  return { dayStartBalance: start, dayStartOn: day, rolled: true }
 }
 
 export function accountTodaysProfitFromBalance(
@@ -57,7 +66,11 @@ export function accountTodaysProfitFromBalance(
   calendarDay: string,
 ): number | null {
   if (balance == null || !Number.isFinite(balance)) return null
-  if (dayStartOn !== calendarDay || dayStartBalance == null || !Number.isFinite(dayStartBalance)) {
+  if (
+    normalizeDayKey(dayStartOn) !== normalizeDayKey(calendarDay) ||
+    dayStartBalance == null ||
+    !Number.isFinite(dayStartBalance)
+  ) {
     return null
   }
   return balance - dayStartBalance

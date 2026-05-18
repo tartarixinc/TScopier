@@ -170,7 +170,7 @@ export const fr: Translations = {
     acrossAccounts: 'Sur {count} compte(s) connecté(s)',
     todaysProfit: "Profit du jour",
     todaysProfitHint:
-      'Variation du solde du compte depuis le début de la journée (solde actuel moins solde d’ouverture du jour chez votre courtier). Reflète le P/L des trades clôturés ; dépôts et retraits peuvent modifier le chiffre.',
+      'P/L net des trades clôturés aujourd’hui — même calcul que le graphique Résultat des trades (7 jours) (profit vert moins perte rouge du jour).',
     tradesTakenToday: "Trades aujourd'hui",
     noClosedTradesToday: 'Aucun trade clôturé aujourd\'hui',
     openPnl: 'PnL ouvert',

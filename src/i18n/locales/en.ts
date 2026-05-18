@@ -170,7 +170,7 @@ export const en: Translations = {
     acrossAccounts: 'Across {count} connected account(s)',
     todaysProfit: "Today's Profit",
     todaysProfitHint:
-      'Change in account balance since the start of today (current balance minus today’s opening balance from your broker). Reflects closed-trade P/L; deposits and withdrawals can affect this figure.',
+      'Net closed-trade P/L for today — the same calculation as the Trade Outcome (7 days) chart (green profit minus red loss for today).',
     tradesTakenToday: 'Trades Taken Today',
     noClosedTradesToday: 'No closed trades today',
     openPnl: 'Open PnL',
