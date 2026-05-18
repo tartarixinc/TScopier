@@ -87,10 +87,10 @@ test('countClosedTradeOutcomesInRange: uses deal profit only (not commission)', 
     },
   ]
   const outcomes = countClosedTradeOutcomesInRange(rows, () => true)
-  assert.equal(outcomes.taken, 2)
+  assert.equal(outcomes.taken, 3)
   assert.equal(outcomes.won, 1)
   assert.equal(outcomes.lost, 1)
-  assert.equal(outcomes.breakeven, 0)
+  assert.equal(outcomes.breakeven, 1)
 })
 
 test('isTimestampInRange: half-open interval', () => {

@@ -16,6 +16,7 @@ import { metatraderApi, type MtTrade } from '../../lib/metatraderapi'
 import {
   aggregateTodaysProfitFromDayStart,
   formatLocalCalendarDay,
+  hasBalanceDayStartForToday,
 } from '../../lib/dayStartBalance'
 import { formatLocalMtApiDateTime, isMtTimestampInRange } from '../../lib/mtApiDateTime'
 import {
@@ -42,6 +43,7 @@ import {
 import {
   buildAccountGrowthSeries,
   buildTradeVolume7Day,
+  summarizeTodayFromChartTrades,
   resolveDashboardChartTrades,
   type DashboardChartTrade,
 } from '../../lib/dashboardCharts'
@@ -524,6 +526,34 @@ export function DashboardPage() {
     () => buildTradeVolume7Day(chartTrades),
     [chartTrades],
   )
+
+  const todayChartStats = useMemo(
+    () => summarizeTodayFromChartTrades(chartTrades),
+    [chartTrades],
+  )
+
+  /** Headline stats: trade counts + today P/L follow the 7-day chart when it has data. */
+  const headlineStats = useMemo(() => {
+    const calendarDayToday = formatLocalCalendarDay()
+    const balanceDayReady = hasBalanceDayStartForToday(linkedAccounts, calendarDayToday)
+    const todayProfit =
+      balanceDayReady && Number.isFinite(stats.todayProfit)
+        ? stats.todayProfit
+        : todayChartStats.hasData
+          ? todayChartStats.netPnl
+          : stats.todayProfit
+    if (!todayChartStats.hasData) {
+      return { ...stats, todayProfit }
+    }
+    return {
+      ...stats,
+      todayProfit,
+      tradesTaken: todayChartStats.taken,
+      tradesWon: todayChartStats.won,
+      tradesLost: todayChartStats.lost,
+      tradesBreakeven: todayChartStats.breakeven,
+    }
+  }, [stats, todayChartStats, linkedAccounts])
 
   const equityByAccountId = useMemo(() => {
     const out: Record<string, number> = {}
@@ -1075,7 +1105,15 @@ export function DashboardPage() {
       swap: t.swap,
       commission: t.commission,
     }))
-    const closedOutcomesToday = countClosedTradeOutcomesInRange(tradeRows, closedTodayForStats)
+    const chartToday = summarizeTodayFromChartTrades(chartNext)
+    const closedOutcomesToday = chartToday.hasData
+      ? {
+          taken: chartToday.taken,
+          won: chartToday.won,
+          lost: chartToday.lost,
+          breakeven: chartToday.breakeven,
+        }
+      : countClosedTradeOutcomesInRange(tradeRows, closedTodayForStats)
     const closedTradeableToday = tradeRows.filter(
       t => isTradeableClosedRow(t) && closedTodayForStats(t.closed_at),
     )
@@ -1093,6 +1131,7 @@ export function DashboardPage() {
       tradesWon: closedOutcomesToday.won,
       tradesLost: closedOutcomesToday.lost,
       tradesBreakeven: closedOutcomesToday.breakeven,
+      ...(chartToday.hasData ? { todayProfit: chartToday.netPnl } : {}),
       totalVolume: today.reduce((sum, t) => sum + (t.lot_size ?? 0), 0),
       yesterdayTotalVolume: yesterday.reduce((sum, t) => sum + (t.lot_size ?? 0), 0),
       bestTradeProfit: posTodayLeg.length ? Math.max(...posTodayLeg) : 0,
@@ -1399,37 +1438,37 @@ export function DashboardPage() {
           <StatBlock
             label={t.dashboard.todaysProfit}
             labelHint={t.dashboard.todaysProfitHint}
-            value={formatMoney(stats.todayProfit)}
-            sub={formatVsYesterdayMoney(stats.yesterdayProfit)}
+            value={formatMoney(headlineStats.todayProfit)}
+            sub={formatVsYesterdayMoney(headlineStats.yesterdayProfit)}
             valueColor={
-              stats.todayProfit > 0
+              headlineStats.todayProfit > 0
                 ? 'text-teal-600'
-                : stats.todayProfit < 0
+                : headlineStats.todayProfit < 0
                   ? 'text-error-600'
                   : 'text-neutral-900 dark:text-neutral-50'
             }
-            subColor={stats.todayProfit >= 0 ? 'text-neutral-400' : 'text-error-500'}
+            subColor={headlineStats.todayProfit >= 0 ? 'text-neutral-400' : 'text-error-500'}
           />
           <StatBlock
             label={t.dashboard.tradesTakenToday}
-            value={String(stats.tradesTaken)}
+            value={String(headlineStats.tradesTaken)}
             sub={
-              stats.tradesTaken === 0 ? (
+              headlineStats.tradesTaken === 0 ? (
                 t.dashboard.noClosedTradesToday
               ) : (
                 <span className="inline-flex flex-wrap items-center gap-x-1 gap-y-0.5">
                   <span className="text-teal-600 dark:text-teal-500">
-                    {interpolate(t.common.won, { count: stats.tradesWon })}
+                    {interpolate(t.common.won, { count: headlineStats.tradesWon })}
                   </span>
                   <span className="text-neutral-300 dark:text-neutral-600">•</span>
                   <span className="text-error-500">
-                    {interpolate(t.common.lost, { count: stats.tradesLost })}
+                    {interpolate(t.common.lost, { count: headlineStats.tradesLost })}
                   </span>
-                  {stats.tradesBreakeven > 0 ? (
+                  {headlineStats.tradesBreakeven > 0 ? (
                     <>
                       <span className="text-neutral-300 dark:text-neutral-600">•</span>
                       <span className="text-neutral-500 dark:text-neutral-400">
-                        {interpolate(t.common.breakeven, { count: stats.tradesBreakeven })}
+                        {interpolate(t.common.breakeven, { count: headlineStats.tradesBreakeven })}
                       </span>
                     </>
                   ) : null}

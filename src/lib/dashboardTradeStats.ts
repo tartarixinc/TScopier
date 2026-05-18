@@ -53,9 +53,7 @@ export function closedDealProfit(row: TradeStatsRow): number | null {
 export function isMtClosedDealForOutcome(row: TradeStatsRow & { status?: string }): boolean {
   if ((row.status ?? 'closed') !== 'closed') return false
   if (!isTradeableClosedRow(row)) return false
-  const p = closedDealProfit(row)
-  if (p == null || p === 0) return false
-  return true
+  return closedDealProfit(row) != null
 }
 
 export function netClosedLegProfit(row: {

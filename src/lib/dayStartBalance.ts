@@ -75,6 +75,18 @@ export function accountTodaysProfitFromBalance(
   return balance - dayStartBalance
 }
 
+export function hasBalanceDayStartForToday(
+  accounts: Array<{ day_start_balance?: number | null; day_start_balance_on?: string | null }>,
+  calendarDay: string,
+): boolean {
+  return accounts.some(
+    a =>
+      a.day_start_balance_on === calendarDay &&
+      a.day_start_balance != null &&
+      Number.isFinite(Number(a.day_start_balance)),
+  )
+}
+
 export function aggregateTodaysProfitFromDayStart(
   accounts: Array<{
     id: string
