@@ -3,6 +3,11 @@
  */
 
 import type { MetatraderApiClient } from "./metatraderapi.ts"
+import {
+  expandPerLegTargetsToCount,
+  type ManualTpLotLike,
+  type PerLegStopTargetLike,
+} from "./tpBucketDistribution.ts"
 
 // deno-lint-ignore no-explicit-any
 type SupabaseLike = any
@@ -109,6 +114,8 @@ export async function runEdgeBasketLegModifies(args: {
   brokerAccountId: string
   familyTrades: BasketOpenLeg[]
   perLegTargets: PerLegStopTarget[]
+  signalTps?: number[]
+  tpLots?: ManualTpLotLike[] | null
   nImmCwe: number
   overrideTp: number | null
   openedTickets: Set<number>
@@ -119,16 +126,25 @@ export async function runEdgeBasketLegModifies(args: {
 }): Promise<{ modified: number; openLegs: number; failed: number }> {
   const {
     supabase, api, uuid, symbol, direction, baseLot, signalId, userId, brokerAccountId,
-    familyTrades, perLegTargets, nImmCwe, overrideTp, openedTickets,
+    familyTrades, perLegTargets: rawTargets, signalTps, tpLots, nImmCwe, overrideTp, openedTickets,
     stopsLevel, freezeLevel, point, digits,
   } = args
+  const parsedTps = (signalTps ?? []).filter((t) => typeof t === "number" && Number.isFinite(t) && t > 0)
+  const perLegTargets = expandPerLegTargetsToCount({
+    targets: rawTargets as PerLegStopTargetLike[],
+    openLegCount: familyTrades.length,
+    finalTps: parsedTps.length
+      ? parsedTps
+      : rawTargets.map((t) => t.takeprofit).filter((tp) => tp > 0),
+    tpLots,
+  }) as PerLegStopTarget[]
   let modified = 0
   let failed = 0
   const isBuy = direction === "buy"
 
   for (let i = 0; i < familyTrades.length; i++) {
     const tr = familyTrades[i]!
-    const target = perLegTargets[i] ?? perLegTargets[perLegTargets.length - 1]
+    const target = perLegTargets[i]
     if (!target) continue
     const ticket = Number(tr.metaapi_order_id)
     if (!Number.isFinite(ticket) || ticket <= 0) continue

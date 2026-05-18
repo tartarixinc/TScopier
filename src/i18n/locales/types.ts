@@ -122,6 +122,8 @@ export interface DashboardTranslations {
   totalBalance: string
   acrossAccounts: string
   todaysProfit: string
+  /** Tooltip: how Today's profit is calculated vs broker terminal. */
+  todaysProfitHint: string
   tradesTakenToday: string
   noClosedTradesToday: string
   openPnl: string

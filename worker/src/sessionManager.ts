@@ -1,14 +1,23 @@
 import { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js'
 import { TelegramClient } from 'telegram'
 import { ChannelInfo, ListenerStatus, UserListener } from './userListener'
+import type { TradeExecutor } from './tradeExecutor'
 
 export class UserSessionManager {
   private listeners = new Map<string, UserListener>()
   private supabase: SupabaseClient
   private channelChannel: RealtimeChannel | null = null
+  private tradeExecutor: TradeExecutor | null = null
 
   constructor(supabase: SupabaseClient) {
     this.supabase = supabase
+  }
+
+  setTradeExecutor(executor: TradeExecutor): void {
+    this.tradeExecutor = executor
+    for (const listener of this.listeners.values()) {
+      listener.setOnSignalParsed(row => executor.dispatchParsedSignal(row))
+    }
   }
 
   async loadAll() {
@@ -124,6 +133,9 @@ export class UserSessionManager {
   async adoptClient(userId: string, client: TelegramClient, sessionString: string) {
     await this.stopListener(userId)
     const listener = new UserListener(userId, sessionString, this.supabase, client)
+    if (this.tradeExecutor) {
+      listener.setOnSignalParsed(row => this.tradeExecutor!.dispatchParsedSignal(row))
+    }
     await listener.start({ alreadyConnected: true })
     this.listeners.set(userId, listener)
     console.log(`[sessionManager] Adopted live client for user ${userId}`)
@@ -225,6 +237,9 @@ export class UserSessionManager {
 
     try {
       const listener = new UserListener(userId, sessionString, this.supabase)
+      if (this.tradeExecutor) {
+        listener.setOnSignalParsed(row => this.tradeExecutor!.dispatchParsedSignal(row))
+      }
       await listener.start()
       this.listeners.set(userId, listener)
       console.log(`[sessionManager] Started listener for user ${userId}`)

@@ -151,6 +151,51 @@ export function buildTradeVolume7Day(trades: DashboardChartTrade[], now = new Da
   return buildTradeVolumeByDays(trades, 7, now)
 }
 
+const OUTCOME_EPSILON = 0.01
+
+/** Today’s closed-deal stats using the same rules as {@link buildTradeVolume7Day}. */
+export function summarizeTodayFromChartTrades(
+  trades: DashboardChartTrade[],
+  now = new Date(),
+): {
+  hasData: boolean
+  taken: number
+  won: number
+  lost: number
+  breakeven: number
+  /** Sum of deal profit for closes today (net P/L, matches the chart). */
+  netPnl: number
+} {
+  const todayKey = dayKey(startOfLocalDay(now))
+  let taken = 0
+  let won = 0
+  let lost = 0
+  let breakeven = 0
+  let netPnl = 0
+
+  for (const t of trades) {
+    if (t.status !== 'closed') continue
+    const closed = parseDay(t.closedAt)
+    if (!closed || dayKey(closed) !== todayKey) continue
+    const p = t.profit
+    if (p == null || !Number.isFinite(p)) continue
+    taken++
+    netPnl += p
+    if (p > OUTCOME_EPSILON) won++
+    else if (p < -OUTCOME_EPSILON) lost++
+    else breakeven++
+  }
+
+  return {
+    hasData: taken > 0,
+    taken,
+    won,
+    lost,
+    breakeven,
+    netPnl,
+  }
+}
+
 export interface AccountGrowthResult {
   data: Array<Record<string, string | number>>
   series: AccountGrowthSeries[]

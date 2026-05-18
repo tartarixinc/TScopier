@@ -169,6 +169,8 @@ export const es: Translations = {
     totalBalance: 'Balance total',
     acrossAccounts: 'En {count} cuenta(s) conectada(s)',
     todaysProfit: 'Beneficio de hoy',
+    todaysProfitHint:
+      'Cambio del saldo de la cuenta desde el inicio del día (saldo actual menos saldo de apertura de hoy en tu bróker). Incluye P/L de operaciones cerradas; depósitos y retiros pueden afectar la cifra.',
     tradesTakenToday: 'Operaciones hoy',
     noClosedTradesToday: 'Sin operaciones cerradas hoy',
     openPnl: 'PnL abierto',

@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.symbolsCompatibleForBasket = symbolsCompatibleForBasket;
 exports.tryApplyBasketFollowUpToNewFill = tryApplyBasketFollowUpToNewFill;
+const tpBucketDistribution_1 = require("./manualPlanning/tpBucketDistribution");
 function isParameterRefreshParsed(parsed) {
     if (!parsed)
         return false;
@@ -16,6 +17,9 @@ function isParameterRefreshParsed(parsed) {
 function sanitizeLevel(v) {
     const n = typeof v === 'number' ? v : Number(v ?? 0);
     return Number.isFinite(n) && n > 0 ? n : 0;
+}
+function positiveTps(parsed) {
+    return (parsed?.tp ?? []).filter((t) => typeof t === 'number' && Number.isFinite(t) && t > 0);
 }
 function symbolsCompatibleForBasket(signalSym, brokerSym) {
     const norm = (s) => s.toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -33,13 +37,32 @@ function symbolsCompatibleForBasket(signalSym, brokerSym) {
 async function tryApplyBasketFollowUpToNewFill(supabase, api, args) {
     const { data: basket } = await supabase
         .from('signals')
-        .select('channel_id, created_at')
+        .select('channel_id, created_at, parsed_data')
         .eq('id', args.basketSignalId)
         .maybeSingle();
     const channelId = basket?.channel_id;
     const createdAt = basket?.created_at;
+    const anchorParsed = basket?.parsed_data;
     if (!channelId || !createdAt)
         return;
+    let tpLots = args.tpLots;
+    if (tpLots === undefined) {
+        const { data: br } = await supabase
+            .from('broker_accounts')
+            .select('manual_settings')
+            .eq('id', args.brokerAccountId)
+            .maybeSingle();
+        tpLots = (br?.manual_settings ?? {}).tp_lots;
+    }
+    const { data: openLegs } = await supabase
+        .from('trades')
+        .select('id')
+        .eq('broker_account_id', args.brokerAccountId)
+        .eq('signal_id', args.basketSignalId)
+        .eq('status', 'open')
+        .order('opened_at', { ascending: true })
+        .limit(500);
+    const legIndex = (openLegs ?? []).findIndex(r => r.id === args.tradeRowId);
     const { data: candidates } = await supabase
         .from('signals')
         .select('id, parsed_data, created_at, is_modification')
@@ -64,19 +87,33 @@ async function tryApplyBasketFollowUpToNewFill(supabase, api, args) {
         let dbPatch = {};
         if (act === 'modify' || paramRefresh) {
             const hasNewSl = typeof parsed.sl === 'number' && Number.isFinite(parsed.sl) && parsed.sl > 0;
-            const hasNewTp = Array.isArray(parsed.tp)
-                && parsed.tp.length > 0
-                && typeof parsed.tp[0] === 'number'
-                && Number.isFinite(parsed.tp[0])
-                && parsed.tp[0] > 0;
+            const signalTps = positiveTps(parsed);
+            const anchorTps = positiveTps(anchorParsed);
+            const finalTps = signalTps.length ? signalTps : anchorTps;
+            const hasNewTp = finalTps.length > 0;
             if (!hasNewSl && !hasNewTp)
                 continue;
             stoploss = hasNewSl ? parsed.sl : sanitizeLevel(args.existingSl);
-            takeprofit = hasNewTp ? parsed.tp[0] : sanitizeLevel(args.existingTp);
+            if (hasNewTp) {
+                const openLegCount = Math.max((openLegs ?? []).length, legIndex + 1);
+                const idx = legIndex >= 0 ? legIndex : openLegCount - 1;
+                takeprofit = (0, tpBucketDistribution_1.takeProfitForLegIndex)({
+                    legIndex: idx,
+                    openLegCount,
+                    finalTps,
+                    tpLots,
+                });
+                if (takeprofit <= 0) {
+                    takeprofit = finalTps[finalTps.length - 1];
+                }
+            }
+            else {
+                takeprofit = sanitizeLevel(args.existingTp);
+            }
             if (hasNewSl)
                 dbPatch.sl = parsed.sl;
-            if (hasNewTp)
-                dbPatch.tp = parsed.tp[0];
+            if (hasNewTp && takeprofit > 0)
+                dbPatch.tp = takeprofit;
         }
         else {
             const entry = sanitizeLevel(args.entryPrice);
@@ -104,32 +141,29 @@ async function tryApplyBasketFollowUpToNewFill(supabase, api, args) {
                 request_payload: {
                     ticket: args.ticket,
                     trade_id: args.tradeRowId,
+                    leg_index: legIndex >= 0 ? legIndex + 1 : null,
+                    stoploss,
+                    takeprofit,
                     basket_signal_id: args.basketSignalId,
-                    source_mgmt_signal: row.id,
-                    release_action: act,
-                    source: 'worker_virtual_pending',
                 },
             });
+            return;
         }
-        catch (e) {
-            const msg = e instanceof Error ? e.message : String(e);
+        catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
             await supabase.from('trade_execution_logs').insert({
                 user_id: args.userId,
                 signal_id: row.id,
                 broker_account_id: args.brokerAccountId,
                 action: 'mgmt_range_leg_followup',
                 status: 'failed',
+                error_message: msg,
                 request_payload: {
                     ticket: args.ticket,
                     trade_id: args.tradeRowId,
                     basket_signal_id: args.basketSignalId,
-                    source_mgmt_signal: row.id,
-                    release_action: act,
-                    source: 'worker_virtual_pending',
                 },
-                error_message: msg,
             });
         }
-        return;
     }
 }

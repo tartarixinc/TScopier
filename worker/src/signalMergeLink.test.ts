@@ -4,6 +4,7 @@ import {
   MERGE_IMPLICIT_CHANNEL_BUNDLE_MS,
   MERGE_SIGNAL_LINK_WINDOW_MS,
   MERGE_SIGNAL_PRE_OPEN_SKEW_MS,
+  computeBasketMergeLinkContext,
   computeThreadLinksAnchor,
   implicitBundleTimeOk,
   isMergeFollowUpLinked,
@@ -130,6 +131,25 @@ test('isMergeFollowUpLinked: same-channel SL/TP parameter refresh within long wi
     }),
     true,
   )
+})
+
+test('computeBasketMergeLinkContext: SL/TP same-channel refresh without entry anchor', () => {
+  const now = Date.now()
+  const ctx = computeBasketMergeLinkContext({
+    signalCreatedAtMs: now,
+    newestTradeOpenedAtMs: now - 60_000,
+    replyToTelegramId: '',
+    anchorTelegramMessageId: '100',
+    mergeChannelId: 'ch-1',
+    anchorChannelId: 'ch-1',
+    parentSignalId: null,
+    anchorSignalId: 'anchor-1',
+    hasSl: true,
+    hasTp: true,
+    ancestorChainContainsAnchor: false,
+  })
+  assert.equal(ctx.parameterRefreshSameChannel, true)
+  assert.equal(ctx.isLinked, true)
 })
 
 test('isMergeFollowUpLinked: parameter refresh blocked outside long window', () => {

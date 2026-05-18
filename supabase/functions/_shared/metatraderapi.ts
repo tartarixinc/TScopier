@@ -411,7 +411,7 @@ export class MetatraderApiClient {
     from: string,
     to: string,
     pageNumber: number,
-    ordersPerPage = 500,
+    ordersPerPage = 1000,
   ): Promise<{ orders: unknown[]; pagesCount: number }> {
     const raw = await this.get<unknown>("/OrderHistoryPagination", {
       id,
@@ -425,21 +425,25 @@ export class MetatraderApiClient {
 
   /** Full closed history: pagination + OrderHistory + HistoryPositions + session ClosedOrders. */
   async closedOrdersHistory(id: string, from: string, to: string): Promise<unknown[]> {
-    const byTicket = new Map<number, Record<string, unknown>>()
+    const byKey = new Map<string, Record<string, unknown>>()
     const ingest = (rows: unknown[]) => {
       for (const row of rows) {
         if (!row || typeof row !== "object") continue
         const o = row as Record<string, unknown>
         const ticket = Number(o.ticket ?? o.Ticket ?? 0)
         if (!Number.isFinite(ticket) || ticket <= 0) continue
-        byTicket.set(ticket, o)
+        const closeTime = String(
+          o.closeTime ?? o.CloseTime ?? o.close_time ?? o.timeClose ?? o.TimeClose ?? "",
+        )
+        const key = closeTime ? `${ticket}:${closeTime}` : String(ticket)
+        byKey.set(key, o)
       }
     }
 
     try {
       let page = 0
       let pagesCount = 1
-      while (page < pagesCount && page < 100) {
+      while (page < pagesCount && page < 250) {
         const { orders, pagesCount: totalPages } = await this.orderHistoryPage(id, from, to, page)
         ingest(orders)
         pagesCount = Math.max(1, totalPages)
@@ -459,7 +463,7 @@ export class MetatraderApiClient {
     for (const r of settled) {
       if (r.status === "fulfilled") ingest(r.value)
     }
-    return [...byTicket.values()]
+    return [...byKey.values()]
   }
 
   static parseOrderList(raw: unknown): unknown[] {

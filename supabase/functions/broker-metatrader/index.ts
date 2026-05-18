@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
 import { inferBrokerLabel } from "../_shared/brokerLabel.ts"
+import { accountTodaysProfitFromBalance, resolveDayStartBalance } from "../_shared/dayStartBalance.ts"
 import {
   isLegacyBrokerLink,
   makeMtClient,
@@ -17,6 +18,16 @@ import {
 function mtClient(env: { get(name: string): string | undefined }, platform: string): ReturnType<typeof makeClientFromEnv> {
   const p: MtPlatform = platform === "MT4" ? "MT4" : "MT5"
   return makeClientFromEnv(env, p)
+}
+
+function parseCalendarDay(raw: unknown): string | null {
+  const s = String(raw ?? "").trim()
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null
+}
+
+function parseTimezoneOffsetMinutes(raw: unknown): number {
+  const n = Number(raw)
+  return Number.isFinite(n) ? Math.trunc(n) : 0
 }
 
 const corsHeaders = {
@@ -155,6 +166,10 @@ Deno.serve(async (req: Request) => {
         last_currency: summary?.currency ?? null,
         last_synced_at: summary ? new Date().toISOString() : null,
         performance_baseline_balance: summary?.balance ?? null,
+        day_start_balance: summary?.balance ?? null,
+        day_start_balance_on: summary?.balance != null
+          ? new Date().toISOString().slice(0, 10)
+          : null,
       }
 
       const { data: row, error: insErr } = await supabase
@@ -219,10 +234,16 @@ Deno.serve(async (req: Request) => {
     if (action === "summary") {
       const brokerId = String((body as Record<string, unknown>).broker_id ?? "")
       if (!brokerId) return bad(400, "broker_id required")
+      const calendarDay =
+        parseCalendarDay((body as Record<string, unknown>).calendar_day) ??
+        new Date().toISOString().slice(0, 10)
+      const timezoneOffsetMinutes = parseTimezoneOffsetMinutes(
+        (body as Record<string, unknown>).timezone_offset_minutes,
+      )
       const { data: broker } = await supabase
         .from("broker_accounts")
         .select(
-          "id,metaapi_account_id,performance_baseline_balance,platform,last_balance,last_equity,last_currency,connection_status",
+          "id,metaapi_account_id,performance_baseline_balance,platform,last_balance,last_equity,last_currency,connection_status,day_start_balance,day_start_balance_on,last_synced_at",
         )
         .eq("id", brokerId)
         .eq("user_id", userId)
@@ -278,20 +299,58 @@ Deno.serve(async (req: Request) => {
         ) {
           updatePayload.performance_baseline_balance = summary.balance
         }
+        let dayStartBalance =
+          broker?.day_start_balance != null ? Number(broker.day_start_balance) : null
+        let dayStartOn = broker?.day_start_balance_on
+          ? String(broker.day_start_balance_on).slice(0, 10)
+          : null
+        if (summary?.balance != null && Number.isFinite(summary.balance)) {
+          const roll = resolveDayStartBalance({
+            calendarDay,
+            currentBalance: summary.balance,
+            storedDay: dayStartOn,
+            storedStart: dayStartBalance,
+            lastBalance: broker?.last_balance != null ? Number(broker.last_balance) : null,
+            lastSyncedAt: broker?.last_synced_at ?? null,
+            timezoneOffsetMinutes,
+          })
+          if (roll.rolled) {
+            updatePayload.day_start_balance = roll.dayStartBalance
+            updatePayload.day_start_balance_on = roll.dayStartOn
+          }
+          dayStartBalance = roll.dayStartBalance
+          dayStartOn = roll.dayStartOn
+        }
         const { data: updatedRow, error: updErr } = await supabase
           .from("broker_accounts")
           .update(updatePayload)
           .eq("id", brokerId)
           .eq("user_id", userId)
-          .select("performance_baseline_balance")
+          .select("performance_baseline_balance,day_start_balance,day_start_balance_on")
           .maybeSingle()
         if (updErr) throw new Error(updErr.message)
+        const resolvedDayStart =
+          updatedRow?.day_start_balance != null
+            ? Number(updatedRow.day_start_balance)
+            : dayStartBalance
+        const resolvedDayOn = updatedRow?.day_start_balance_on
+          ? String(updatedRow.day_start_balance_on).slice(0, 10)
+          : dayStartOn
+        const todaysProfitFromBalance = accountTodaysProfitFromBalance(
+          summary?.balance ?? null,
+          resolvedDayStart,
+          resolvedDayOn,
+          calendarDay,
+        )
         return Response.json(
           {
             ok: true,
             summary,
             open_positions: openPositions,
             performance_baseline_balance: updatedRow?.performance_baseline_balance ?? null,
+            day_start_balance: resolvedDayStart,
+            day_start_balance_on: resolvedDayOn,
+            todays_profit_from_balance: todaysProfitFromBalance,
           },
           { headers: corsHeaders },
         )
@@ -313,6 +372,19 @@ Deno.serve(async (req: Request) => {
               },
               open_positions: null,
               performance_baseline_balance: broker?.performance_baseline_balance ?? null,
+              day_start_balance:
+                broker?.day_start_balance != null ? Number(broker.day_start_balance) : null,
+              day_start_balance_on: broker?.day_start_balance_on
+                ? String(broker.day_start_balance_on).slice(0, 10)
+                : null,
+              todays_profit_from_balance: accountTodaysProfitFromBalance(
+                cachedBalance,
+                broker?.day_start_balance != null ? Number(broker.day_start_balance) : null,
+                broker?.day_start_balance_on
+                  ? String(broker.day_start_balance_on).slice(0, 10)
+                  : null,
+                calendarDay,
+              ),
               stale: true,
             },
             { headers: corsHeaders },

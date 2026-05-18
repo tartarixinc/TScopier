@@ -1,5 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { MetatraderApiClient } from './metatraderapi'
+import type { ManualTpLot } from './manualPlanning/types'
+import { takeProfitForLegIndex } from './manualPlanning/tpBucketDistribution'
 
 type ParsedMgmt = {
   action?: string
@@ -21,6 +23,12 @@ function isParameterRefreshParsed(parsed: ParsedMgmt | null | undefined): boolea
 function sanitizeLevel(v: number | null | undefined): number {
   const n = typeof v === 'number' ? v : Number(v ?? 0)
   return Number.isFinite(n) && n > 0 ? n : 0
+}
+
+function positiveTps(parsed: ParsedMgmt | null | undefined): number[] {
+  return (parsed?.tp ?? []).filter(
+    (t): t is number => typeof t === 'number' && Number.isFinite(t) && t > 0,
+  )
 }
 
 export function symbolsCompatibleForBasket(signalSym: string | null | undefined, brokerSym: string): boolean {
@@ -50,17 +58,39 @@ export async function tryApplyBasketFollowUpToNewFill(
     entryPrice: number | null
     existingSl: number | null
     existingTp: number | null
+    tpLots?: ManualTpLot[] | null
   },
 ): Promise<void> {
   const { data: basket } = await supabase
     .from('signals')
-    .select('channel_id, created_at')
+    .select('channel_id, created_at, parsed_data')
     .eq('id', args.basketSignalId)
     .maybeSingle()
 
   const channelId = basket?.channel_id as string | null | undefined
   const createdAt = basket?.created_at as string | null | undefined
+  const anchorParsed = basket?.parsed_data as ParsedMgmt | null | undefined
   if (!channelId || !createdAt) return
+
+  let tpLots = args.tpLots
+  if (tpLots === undefined) {
+    const { data: br } = await supabase
+      .from('broker_accounts')
+      .select('manual_settings')
+      .eq('id', args.brokerAccountId)
+      .maybeSingle()
+    tpLots = ((br?.manual_settings ?? {}) as { tp_lots?: ManualTpLot[] | null }).tp_lots
+  }
+
+  const { data: openLegs } = await supabase
+    .from('trades')
+    .select('id')
+    .eq('broker_account_id', args.brokerAccountId)
+    .eq('signal_id', args.basketSignalId)
+    .eq('status', 'open')
+    .order('opened_at', { ascending: true })
+    .limit(500)
+  const legIndex = (openLegs ?? []).findIndex(r => r.id === args.tradeRowId)
 
   const { data: candidates } = await supabase
     .from('signals')
@@ -86,16 +116,29 @@ export async function tryApplyBasketFollowUpToNewFill(
 
     if (act === 'modify' || paramRefresh) {
       const hasNewSl = typeof parsed.sl === 'number' && Number.isFinite(parsed.sl) && parsed.sl > 0
-      const hasNewTp = Array.isArray(parsed.tp)
-        && parsed.tp.length > 0
-        && typeof parsed.tp[0] === 'number'
-        && Number.isFinite(parsed.tp[0] as number)
-        && (parsed.tp[0] as number) > 0
+      const signalTps = positiveTps(parsed)
+      const anchorTps = positiveTps(anchorParsed)
+      const finalTps = signalTps.length ? signalTps : anchorTps
+      const hasNewTp = finalTps.length > 0
       if (!hasNewSl && !hasNewTp) continue
       stoploss = hasNewSl ? (parsed.sl as number) : sanitizeLevel(args.existingSl)
-      takeprofit = hasNewTp ? (parsed.tp![0] as number) : sanitizeLevel(args.existingTp)
+      if (hasNewTp) {
+        const openLegCount = Math.max((openLegs ?? []).length, legIndex + 1)
+        const idx = legIndex >= 0 ? legIndex : openLegCount - 1
+        takeprofit = takeProfitForLegIndex({
+          legIndex: idx,
+          openLegCount,
+          finalTps,
+          tpLots,
+        })
+        if (takeprofit <= 0) {
+          takeprofit = finalTps[finalTps.length - 1]!
+        }
+      } else {
+        takeprofit = sanitizeLevel(args.existingTp)
+      }
       if (hasNewSl) dbPatch.sl = parsed.sl as number
-      if (hasNewTp) dbPatch.tp = parsed.tp![0] as number
+      if (hasNewTp && takeprofit > 0) dbPatch.tp = takeprofit
     } else {
       const entry = sanitizeLevel(args.entryPrice)
       if (entry <= 0) continue
@@ -122,31 +165,28 @@ export async function tryApplyBasketFollowUpToNewFill(
         request_payload: {
           ticket: args.ticket,
           trade_id: args.tradeRowId,
+          leg_index: legIndex >= 0 ? legIndex + 1 : null,
+          stoploss,
+          takeprofit,
           basket_signal_id: args.basketSignalId,
-          source_mgmt_signal: row.id,
-          release_action: act,
-          source: 'worker_virtual_pending',
-        } as Record<string, unknown>,
+        } as unknown as Record<string, unknown>,
       })
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
+      return
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
       await supabase.from('trade_execution_logs').insert({
         user_id: args.userId,
         signal_id: row.id,
         broker_account_id: args.brokerAccountId,
         action: 'mgmt_range_leg_followup',
         status: 'failed',
+        error_message: msg,
         request_payload: {
           ticket: args.ticket,
           trade_id: args.tradeRowId,
           basket_signal_id: args.basketSignalId,
-          source_mgmt_signal: row.id,
-          release_action: act,
-          source: 'worker_virtual_pending',
-        } as Record<string, unknown>,
-        error_message: msg,
+        } as unknown as Record<string, unknown>,
       })
     }
-    return
   }
 }

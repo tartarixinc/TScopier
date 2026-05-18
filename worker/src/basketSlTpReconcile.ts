@@ -6,6 +6,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { MetatraderApiClient, OrderSendArgs } from './metatraderapi'
 import type { MergeModifySummary, PerLegStopTarget } from './multiTradeMerge'
+import { expandPerLegTargetsToCount } from './manualPlanning/tpBucketDistribution'
+import type { ManualTpLot } from './manualPlanning/types'
 import { symbolsCompatibleForBasket } from './basketModFollowUp'
 
 export type BasketSymbolParams = {
@@ -276,6 +278,9 @@ export async function runBasketLegModifies(args: {
   brokerAccountId: string
   familyTrades: BasketOpenLeg[]
   perLegTargets: PerLegStopTarget[]
+  /** Parsed signal TP ladder; used when perLegTargets is shorter than open legs. */
+  signalTps?: number[]
+  tpLots?: ManualTpLot[] | null
   nImmCwe: number
   overrideTp: number | null
   strictEntryPrefetch: { bid: number; ask: number } | null
@@ -285,9 +290,19 @@ export async function runBasketLegModifies(args: {
 }): Promise<RunBasketLegModifyResult> {
   const {
     supabase, api, uuid, symbol, direction, baseLot, params,
-    signalId, userId, brokerAccountId, familyTrades, perLegTargets,
-    nImmCwe, strictEntryPrefetch, openedTickets, skipAlreadySynced, alreadyModified,
+    signalId, userId, brokerAccountId, familyTrades, perLegTargets: rawTargets,
+    signalTps, tpLots, nImmCwe, strictEntryPrefetch, openedTickets, skipAlreadySynced, alreadyModified,
   } = args
+
+  const parsedTps = (signalTps ?? []).filter(t => typeof t === 'number' && Number.isFinite(t) && t > 0)
+  const perLegTargets = expandPerLegTargetsToCount({
+    targets: rawTargets,
+    openLegCount: familyTrades.length,
+    finalTps: parsedTps.length
+      ? parsedTps
+      : rawTargets.map(t => t.takeprofit).filter(tp => tp > 0),
+    tpLots,
+  }) as PerLegStopTarget[]
 
   const summary: MergeModifySummary & { skippedNotOnBroker: number } = {
     openLegs: familyTrades.length,
@@ -308,7 +323,7 @@ export async function runBasketLegModifies(args: {
       summary.modified += 1
       continue
     }
-    const target = perLegTargets[i] ?? perLegTargets[perLegTargets.length - 1]
+    const target = perLegTargets[i]
     if (!target) continue
 
     const legIdx = familyTrades.findIndex(t => t.id === tr.id)
@@ -493,6 +508,9 @@ export async function upsertBasketReconcileJob(
     direction: 'buy' | 'sell'
     perLegTargets: PerLegStopTarget[]
     familyTrades: BasketOpenLeg[]
+    /** Parsed TP ladder from anchor signal; used to expand targets when leg count grows. */
+    signalTps?: number[]
+    tpLots?: ManualTpLot[] | null
     virtualPendingsSnapshot?: unknown
     nImmCwe: number
     overrideTp: number | null
@@ -503,6 +521,16 @@ export async function upsertBasketReconcileJob(
     120,
     Math.max(6, Number(process.env.BASKET_RECONCILE_MAX_ATTEMPTS ?? 48)),
   )
+  const parsedTps = (args.signalTps ?? []).filter(t => typeof t === 'number' && Number.isFinite(t) && t > 0)
+  const storedTargets = expandPerLegTargetsToCount({
+    targets: args.perLegTargets,
+    openLegCount: Math.max(args.familyTrades.length, args.perLegTargets.length),
+    finalTps: parsedTps.length
+      ? parsedTps
+      : args.perLegTargets.map(t => t.takeprofit).filter(tp => tp > 0),
+    tpLots: args.tpLots,
+  })
+
   const { data: job, error: jobErr } = await supabase
     .from('basket_reconcile_jobs')
     .upsert({
@@ -513,7 +541,7 @@ export async function upsertBasketReconcileJob(
       channel_id: args.channelId,
       symbol: args.symbol,
       direction: args.direction,
-      per_leg_targets: args.perLegTargets,
+      per_leg_targets: storedTargets,
       virtual_pendings_snapshot: args.virtualPendingsSnapshot ?? null,
       n_imm_cwe: args.nImmCwe,
       override_tp: args.overrideTp,
@@ -532,8 +560,16 @@ export async function upsertBasketReconcileJob(
   }
 
   const jobId = job.id as string
+  const expandedTargets = expandPerLegTargetsToCount({
+    targets: storedTargets,
+    openLegCount: args.familyTrades.length,
+    finalTps: parsedTps.length
+      ? parsedTps
+      : storedTargets.map(t => t.takeprofit).filter(tp => tp > 0),
+    tpLots: args.tpLots,
+  })
   const legRows = args.familyTrades.map((tr, i) => {
-    const target = args.perLegTargets[i] ?? args.perLegTargets[args.perLegTargets.length - 1]
+    const target = expandedTargets[i]
     const ticket = Number(tr.metaapi_order_id)
     return {
       trade_id: tr.id,

@@ -108,10 +108,15 @@ class UserListener {
         this.lastEventAt = 0;
         this.lastReconnectAt = 0;
         this.consecutiveProbeFailures = 0;
+        this.onSignalParsed = null;
         this.userId = userId;
         this.supabase = supabase;
         this.client = adoptedClient ?? (0, telegramClient_1.buildClient)(sessionString);
         this.lastSavedSession = sessionString;
+    }
+    /** Immediate trade dispatch after parse (avoids waiting on Supabase Realtime). */
+    setOnSignalParsed(handler) {
+        this.onSignalParsed = handler;
     }
     // ── lifecycle ─────────────────────────────────────────────────────────
     async start(opts = {}) {
@@ -668,9 +673,6 @@ class UserListener {
         }
         await this.relinkReplyOrphansAfterParentInsert(channelRow.id, messageId, signalRow.id);
         console.log(`[userListener] signal inserted user=${this.userId} signalId=${signalRow.id} channelRow=${channelRow.id} messageId=${messageId}`);
-        // #region agent log
-        fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '7e177e' }, body: JSON.stringify({ sessionId: '7e177e', runId: 'run1', hypothesisId: 'H1', location: 'worker/src/userListener.ts:422', message: 'signal inserted before parse trigger', data: { userId: this.userId, signalId: signalRow.id, channelRowId: channelRow.id, messageId }, timestamp: Date.now() }) }).catch(() => { });
-        // #endregion
         if (PARSE_SIGNAL_URL) {
             await this.supabase.from('trade_execution_logs').insert({
                 user_id: this.userId,
@@ -684,11 +686,10 @@ class UserListener {
                     signal_id: signalRow.id,
                 },
             });
-            // #region agent log
-            fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '7e177e' }, body: JSON.stringify({ sessionId: '7e177e', runId: 'run1', hypothesisId: 'H2', location: 'worker/src/userListener.ts:426', message: 'parse trigger dispatch', data: { signalId: signalRow.id, hasParseUrl: !!PARSE_SIGNAL_URL, hasParseAuthKey: !!PARSE_SIGNAL_AUTH_KEY }, timestamp: Date.now() }) }).catch(() => { });
-            // #endregion
+            const parseTimeoutMs = Math.max(2000, Math.min(15000, Number(process.env.PARSE_SIGNAL_TIMEOUT_MS ?? 6000)));
             const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort('parse-timeout'), 10000);
+            const timeout = setTimeout(() => controller.abort('parse-timeout'), parseTimeoutMs);
+            const parseT0 = Date.now();
             try {
                 const res = await fetch(PARSE_SIGNAL_URL, {
                     method: 'POST',
@@ -700,17 +701,32 @@ class UserListener {
                     body: JSON.stringify({ signal_id: signalRow.id }),
                     signal: controller.signal,
                 });
+                const body = await res.json().catch(() => ({}));
+                const parseMs = Date.now() - parseT0;
                 await this.supabase.from('trade_execution_logs').insert({
                     user_id: this.userId,
                     signal_id: signalRow.id,
                     action: 'pipeline_parse_dispatch',
                     status: res.ok ? 'success' : 'failed',
-                    response_payload: { status: res.status, ok: res.ok },
-                    error_message: res.ok ? null : `parse-signal returned ${res.status}`,
+                    response_payload: { status: res.status, ok: res.ok, parse_ms: parseMs },
+                    error_message: res.ok ? null : (body.error ?? `parse-signal returned ${res.status}`),
                 });
-                // #region agent log
-                fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '7e177e' }, body: JSON.stringify({ sessionId: '7e177e', runId: 'run1', hypothesisId: 'H2', location: 'worker/src/userListener.ts:434', message: 'parse trigger response', data: { signalId: signalRow.id, status: res.status, ok: res.ok }, timestamp: Date.now() }) }).catch(() => { });
-                // #endregion
+                if (res.ok && body.parsed && this.onSignalParsed) {
+                    const status = String(body.status ?? 'parsed');
+                    if (status === 'parsed') {
+                        this.onSignalParsed({
+                            id: signalRow.id,
+                            user_id: this.userId,
+                            channel_id: channelRow.id,
+                            parsed_data: body.parsed,
+                            status,
+                            parent_signal_id: parentSignalId,
+                            is_modification: isReply,
+                            telegram_message_id: messageId,
+                            reply_to_message_id: replyToMessageId,
+                        });
+                    }
+                }
             }
             catch (err) {
                 const errMsg = err instanceof Error ? err.message : String(err);
@@ -721,10 +737,8 @@ class UserListener {
                     action: 'pipeline_parse_dispatch',
                     status: 'failed',
                     error_message: errMsg,
+                    response_payload: { parse_ms: Date.now() - parseT0 },
                 });
-                // #region agent log
-                fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '7e177e' }, body: JSON.stringify({ sessionId: '7e177e', runId: 'run1', hypothesisId: 'H2', location: 'worker/src/userListener.ts:438', message: 'parse trigger failed', data: { signalId: signalRow.id, error: errMsg }, timestamp: Date.now() }) }).catch(() => { });
-                // #endregion
             }
             finally {
                 clearTimeout(timeout);

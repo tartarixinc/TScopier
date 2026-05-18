@@ -19,6 +19,7 @@ import { Badge } from '../../components/ui/Badge'
 import { Alert } from '../../components/ui/Alert'
 import { AddAccountModal } from '../../components/ui/AddAccountModal'
 import { BrokerServerSelect } from '../../components/ui/BrokerServerSelect'
+import { formatLocalCalendarDay } from '../../lib/dayStartBalance'
 import { metatraderApi } from '../../lib/metatraderapi'
 import { isLegacyBrokerLink, isMtSessionUuid } from '../../lib/brokerLink'
 import {
@@ -989,7 +990,10 @@ export function AccountConfigPage() {
     for (const delay of delays) {
       await new Promise(r => setTimeout(r, delay))
       try {
-        const { summary, performance_baseline_balance } = await metatraderApi.summary(brokerId)
+        const { summary, performance_baseline_balance } = await metatraderApi.summary(brokerId, {
+          calendarDay: formatLocalCalendarDay(),
+          timezoneOffsetMinutes: new Date().getTimezoneOffset(),
+        })
         if (summary && (summary.balance != null || summary.equity != null || summary.currency)) {
           const patch = {
             last_balance: summary.balance ?? null,

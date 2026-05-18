@@ -11,6 +11,7 @@ import {
   type BasketReconcileJobRow,
   type BasketSymbolParams,
 } from './basketSlTpReconcile'
+import type { ManualTpLot } from './manualPlanning/types'
 import { normalizeSymbolParams } from './metatraderapi'
 
 const TICK_INTERVAL_MS = Math.min(
@@ -98,7 +99,7 @@ export class BasketSlTpReconcileMonitor {
     const row = claimed as BasketReconcileJobRow
     const { data: broker } = await this.supabase
       .from('broker_accounts')
-      .select('id,user_id,metaapi_account_id,platform,default_lot_size')
+      .select('id,user_id,metaapi_account_id,platform,default_lot_size,manual_settings')
       .eq('id', row.broker_account_id)
       .maybeSingle()
 
@@ -166,6 +167,18 @@ export class BasketSlTpReconcileMonitor {
 
     const openedTickets = await fetchOpenBrokerTickets(api, uuid)
     const baseLot = Number(broker.default_lot_size ?? 0.01)
+    const manual = (broker.manual_settings ?? {}) as { tp_lots?: ManualTpLot[] | null }
+    const { data: anchorSig } = await this.supabase
+      .from('signals')
+      .select('parsed_data')
+      .eq('id', row.anchor_signal_id)
+      .maybeSingle()
+    const anchorParsed = (anchorSig as { parsed_data?: { tp?: number[] } } | null)?.parsed_data
+    const signalTps = Array.isArray(anchorParsed?.tp)
+      ? anchorParsed.tp.filter(
+          (t): t is number => typeof t === 'number' && Number.isFinite(t) && t > 0,
+        )
+      : []
     const { summary, legErrors } = await runBasketLegModifies({
       supabase: this.supabase,
       api,
@@ -179,6 +192,8 @@ export class BasketSlTpReconcileMonitor {
       brokerAccountId: row.broker_account_id,
       familyTrades,
       perLegTargets,
+      signalTps,
+      tpLots: manual.tp_lots,
       nImmCwe: row.n_imm_cwe ?? 0,
       overrideTp: row.override_tp,
       strictEntryPrefetch: null,

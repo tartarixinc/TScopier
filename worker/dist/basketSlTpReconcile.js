@@ -19,6 +19,7 @@ exports.upsertBasketReconcileJob = upsertBasketReconcileJob;
 exports.markBasketReconcileDone = markBasketReconcileDone;
 exports.loadOpenBasketLegs = loadOpenBasketLegs;
 exports.parsePerLegTargets = parsePerLegTargets;
+const tpBucketDistribution_1 = require("./manualPlanning/tpBucketDistribution");
 const basketModFollowUp_1 = require("./basketModFollowUp");
 function isBuySideOp(op) {
     return op === 'Buy' || op === 'BuyLimit' || op === 'BuyStop' || op === 'BuyStopLimit';
@@ -183,7 +184,16 @@ async function logBasketLegModify(supabase, args) {
     catch { /* best-effort */ }
 }
 async function runBasketLegModifies(args) {
-    const { supabase, api, uuid, symbol, direction, baseLot, params, signalId, userId, brokerAccountId, familyTrades, perLegTargets, nImmCwe, strictEntryPrefetch, openedTickets, skipAlreadySynced, alreadyModified, } = args;
+    const { supabase, api, uuid, symbol, direction, baseLot, params, signalId, userId, brokerAccountId, familyTrades, perLegTargets: rawTargets, signalTps, tpLots, nImmCwe, strictEntryPrefetch, openedTickets, skipAlreadySynced, alreadyModified, } = args;
+    const parsedTps = (signalTps ?? []).filter(t => typeof t === 'number' && Number.isFinite(t) && t > 0);
+    const perLegTargets = (0, tpBucketDistribution_1.expandPerLegTargetsToCount)({
+        targets: rawTargets,
+        openLegCount: familyTrades.length,
+        finalTps: parsedTps.length
+            ? parsedTps
+            : rawTargets.map(t => t.takeprofit).filter(tp => tp > 0),
+        tpLots,
+    });
     const summary = {
         openLegs: familyTrades.length,
         attempted: 0,
@@ -202,7 +212,7 @@ async function runBasketLegModifies(args) {
             summary.modified += 1;
             continue;
         }
-        const target = perLegTargets[i] ?? perLegTargets[perLegTargets.length - 1];
+        const target = perLegTargets[i];
         if (!target)
             continue;
         const legIdx = familyTrades.findIndex(t => t.id === tr.id);
@@ -364,6 +374,15 @@ function reconcileBackoffMs(attempts) {
 }
 async function upsertBasketReconcileJob(supabase, args) {
     const maxAttempts = Math.min(120, Math.max(6, Number(process.env.BASKET_RECONCILE_MAX_ATTEMPTS ?? 48)));
+    const parsedTps = (args.signalTps ?? []).filter(t => typeof t === 'number' && Number.isFinite(t) && t > 0);
+    const storedTargets = (0, tpBucketDistribution_1.expandPerLegTargetsToCount)({
+        targets: args.perLegTargets,
+        openLegCount: Math.max(args.familyTrades.length, args.perLegTargets.length),
+        finalTps: parsedTps.length
+            ? parsedTps
+            : args.perLegTargets.map(t => t.takeprofit).filter(tp => tp > 0),
+        tpLots: args.tpLots,
+    });
     const { data: job, error: jobErr } = await supabase
         .from('basket_reconcile_jobs')
         .upsert({
@@ -374,7 +393,7 @@ async function upsertBasketReconcileJob(supabase, args) {
         channel_id: args.channelId,
         symbol: args.symbol,
         direction: args.direction,
-        per_leg_targets: args.perLegTargets,
+        per_leg_targets: storedTargets,
         virtual_pendings_snapshot: args.virtualPendingsSnapshot ?? null,
         n_imm_cwe: args.nImmCwe,
         override_tp: args.overrideTp,
@@ -391,8 +410,16 @@ async function upsertBasketReconcileJob(supabase, args) {
         return null;
     }
     const jobId = job.id;
+    const expandedTargets = (0, tpBucketDistribution_1.expandPerLegTargetsToCount)({
+        targets: storedTargets,
+        openLegCount: args.familyTrades.length,
+        finalTps: parsedTps.length
+            ? parsedTps
+            : storedTargets.map(t => t.takeprofit).filter(tp => tp > 0),
+        tpLots: args.tpLots,
+    });
     const legRows = args.familyTrades.map((tr, i) => {
-        const target = args.perLegTargets[i] ?? args.perLegTargets[args.perLegTargets.length - 1];
+        const target = expandedTargets[i];
         const ticket = Number(tr.metaapi_order_id);
         return {
             trade_id: tr.id,

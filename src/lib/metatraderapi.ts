@@ -75,20 +75,36 @@ export const metatraderApi = {
     })
   },
 
-  summary(brokerId: string): Promise<{
+  summary(
+    brokerId: string,
+    opts?: { calendarDay?: string; timezoneOffsetMinutes?: number },
+  ): Promise<{
     summary: AccountSummary
     open_positions: number | null
     performance_baseline_balance?: number | null
+    day_start_balance?: number | null
+    day_start_balance_on?: string | null
+    todays_profit_from_balance?: number | null
     /** True when balance is cached because live AccountSummary failed. */
     stale?: boolean
   }> {
     return call({
-      body: { action: 'summary', broker_id: brokerId },
+      body: {
+        action: 'summary',
+        broker_id: brokerId,
+        ...(opts?.calendarDay ? { calendar_day: opts.calendarDay } : {}),
+        ...(opts?.timezoneOffsetMinutes != null
+          ? { timezone_offset_minutes: opts.timezoneOffsetMinutes }
+          : {}),
+      },
       expect: (b) =>
         b as {
           summary: AccountSummary
           open_positions: number | null
           performance_baseline_balance?: number | null
+          day_start_balance?: number | null
+          day_start_balance_on?: string | null
+          todays_profit_from_balance?: number | null
           stale?: boolean
         },
     })

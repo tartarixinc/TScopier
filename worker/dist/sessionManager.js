@@ -6,7 +6,14 @@ class UserSessionManager {
     constructor(supabase) {
         this.listeners = new Map();
         this.channelChannel = null;
+        this.tradeExecutor = null;
         this.supabase = supabase;
+    }
+    setTradeExecutor(executor) {
+        this.tradeExecutor = executor;
+        for (const listener of this.listeners.values()) {
+            listener.setOnSignalParsed(row => executor.dispatchParsedSignal(row));
+        }
     }
     async loadAll() {
         const { data: sessions, error } = await this.supabase
@@ -107,6 +114,9 @@ class UserSessionManager {
     async adoptClient(userId, client, sessionString) {
         await this.stopListener(userId);
         const listener = new userListener_1.UserListener(userId, sessionString, this.supabase, client);
+        if (this.tradeExecutor) {
+            listener.setOnSignalParsed(row => this.tradeExecutor.dispatchParsedSignal(row));
+        }
         await listener.start({ alreadyConnected: true });
         this.listeners.set(userId, listener);
         console.log(`[sessionManager] Adopted live client for user ${userId}`);
@@ -200,6 +210,9 @@ class UserSessionManager {
             return;
         try {
             const listener = new userListener_1.UserListener(userId, sessionString, this.supabase);
+            if (this.tradeExecutor) {
+                listener.setOnSignalParsed(row => this.tradeExecutor.dispatchParsedSignal(row));
+            }
             await listener.start();
             this.listeners.set(userId, listener);
             console.log(`[sessionManager] Started listener for user ${userId}`);

@@ -100,9 +100,20 @@ Deno.serve(async () => {
     const row = claimed as JobRow
     const { data: broker } = await supabase
       .from("broker_accounts")
-      .select("metaapi_account_id,platform,default_lot_size")
+      .select("metaapi_account_id,platform,default_lot_size,manual_settings")
       .eq("id", row.broker_account_id)
       .maybeSingle()
+
+    const { data: anchorSig } = await supabase
+      .from("signals")
+      .select("parsed_data")
+      .eq("id", row.anchor_signal_id)
+      .maybeSingle()
+    const anchorParsed = (anchorSig as { parsed_data?: { tp?: unknown } } | null)?.parsed_data
+    const signalTps = (anchorParsed?.tp ?? []).filter(
+      (t): t is number => typeof t === "number" && Number.isFinite(t) && t > 0,
+    )
+    const tpLots = ((broker?.manual_settings ?? {}) as { tp_lots?: unknown }).tp_lots ?? null
 
     const uuid = broker?.metaapi_account_id as string | undefined
     if (!uuid || uuid.includes("|")) {
@@ -156,6 +167,8 @@ Deno.serve(async () => {
       brokerAccountId: row.broker_account_id,
       familyTrades,
       perLegTargets,
+      signalTps,
+      tpLots: tpLots as import("../_shared/tpBucketDistribution.ts").ManualTpLotLike[] | null,
       nImmCwe: row.n_imm_cwe ?? 0,
       overrideTp: row.override_tp,
       openedTickets,

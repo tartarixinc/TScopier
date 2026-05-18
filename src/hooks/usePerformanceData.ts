@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { buildAccountGrowthSeries, mtTradeToChartRow } from '../lib/dashboardCharts'
 import { computeLinkedAccountPerformanceMap } from '../lib/dashboardTradeStats'
+import { formatLocalCalendarDay } from '../lib/dayStartBalance'
 import { metatraderApi, type MtTrade } from '../lib/metatraderapi'
 import {
   aggregateAccountPerformance,
@@ -51,7 +52,10 @@ export function usePerformanceData(userId: string | undefined) {
         await Promise.all(
           linked.map(async account => {
             try {
-              const { summary } = await metatraderApi.summary(account.id)
+              const { summary } = await metatraderApi.summary(account.id, {
+                calendarDay: formatLocalCalendarDay(),
+                timezoneOffsetMinutes: new Date().getTimezoneOffset(),
+              })
               const eq = summary.equity ?? summary.balance
               if (eq != null && Number.isFinite(Number(eq))) {
                 equity[account.id] = Number(eq)

@@ -29,6 +29,7 @@ const sessionManager = new sessionManager_1.UserSessionManager(supabase);
 const authService = new authService_1.AuthService(supabase, sessionManager);
 const httpServer = (0, httpServer_1.startHttpServer)(authService, sessionManager);
 const tradeExecutor = new tradeExecutor_1.TradeExecutor(supabase, sessionManager);
+sessionManager.setTradeExecutor(tradeExecutor);
 const virtualPendingMonitor = new virtualPendingMonitor_1.VirtualPendingMonitor(supabase);
 const cweCloseMonitor = new cweCloseMonitor_1.CweCloseMonitor(supabase);
 const partialTpMonitor = new partialTpMonitor_1.PartialTpMonitor(supabase);

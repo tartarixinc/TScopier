@@ -229,6 +229,10 @@ export interface BrokerAccount {
    * Dashboard total profit uses current equity minus this baseline per account.
    */
   performance_baseline_balance?: number | null
+  /** Balance at the start of `day_start_balance_on` (local calendar day). */
+  day_start_balance?: number | null
+  /** Local calendar day (YYYY-MM-DD) for `day_start_balance`. */
+  day_start_balance_on?: string | null
   is_active: boolean
   /** AI uses balance-scaled sizing; Manual uses defaults unless signal specifies lots. */
   copier_mode?: 'ai' | 'manual'

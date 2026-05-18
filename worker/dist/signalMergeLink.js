@@ -14,6 +14,7 @@ exports.implicitBundleTimeOk = implicitBundleTimeOk;
 exports.parentSignalLinksAnchor = parentSignalLinksAnchor;
 exports.computeThreadLinksAnchor = computeThreadLinksAnchor;
 exports.isMergeFollowUpLinked = isMergeFollowUpLinked;
+exports.computeBasketMergeLinkContext = computeBasketMergeLinkContext;
 /** Max span after newest open leg `opened_at` for parent-linked follow-ups. */
 exports.MERGE_SIGNAL_LINK_WINDOW_MS = 4 * 60 * 60000;
 /** Allow clock skew / ordering where the signal row is stamped slightly before fill. */
@@ -58,4 +59,47 @@ function isMergeFollowUpLinked(args) {
         (args.withinWindow && args.threadLinksAnchor) ||
         implicitPath ||
         (args.withinWindow && args.parameterRefreshSameChannel === true));
+}
+/** Shared merge-link flags for entry merge and SL/TP parameter refresh paths. */
+function computeBasketMergeLinkContext(input) {
+    const dtMs = mergeSignalTimeDeltaMs({
+        signalCreatedAtMs: input.signalCreatedAtMs,
+        newestTradeOpenedAtMs: input.newestTradeOpenedAtMs,
+    });
+    const withinWindow = isWithinMergeSignalTimeWindow(dtMs);
+    const replyOk = Boolean(input.replyToTelegramId
+        && input.anchorTelegramMessageId
+        && input.replyToTelegramId === input.anchorTelegramMessageId);
+    const parentLinksAnchor = parentSignalLinksAnchor(input.parentSignalId, input.anchorSignalId);
+    const hasReplyToTelegram = Boolean(input.replyToTelegramId);
+    const threadLinksAnchor = computeThreadLinksAnchor({
+        parentLinksAnchor,
+        hasReplyToTelegram,
+        ancestorChainContainsAnchor: input.ancestorChainContainsAnchor,
+    });
+    const mergeCh = String(input.mergeChannelId ?? '').trim() || null;
+    const anchorCh = String(input.anchorChannelId ?? '').trim() || null;
+    const implicitBundleWithinTightWindow = implicitBundleTimeOk(dtMs, exports.MERGE_IMPLICIT_CHANNEL_BUNDLE_MS);
+    const implicitSameChannelBundle = Boolean(mergeCh && anchorCh && mergeCh === anchorCh && !replyOk && !threadLinksAnchor);
+    const parameterRefreshSameChannel = Boolean(mergeCh
+        && anchorCh
+        && mergeCh === anchorCh
+        && withinWindow
+        && !replyOk
+        && !threadLinksAnchor
+        && (input.hasSl || input.hasTp));
+    const flags = {
+        replyOk,
+        withinWindow,
+        threadLinksAnchor,
+        implicitBundleWithinTightWindow,
+        implicitSameChannelBundle,
+        parameterRefreshSameChannel,
+    };
+    return {
+        ...flags,
+        parentLinksAnchor,
+        dtMs,
+        isLinked: isMergeFollowUpLinked(flags),
+    };
 }

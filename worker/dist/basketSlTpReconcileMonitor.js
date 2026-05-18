@@ -82,7 +82,7 @@ class BasketSlTpReconcileMonitor {
         const row = claimed;
         const { data: broker } = await this.supabase
             .from('broker_accounts')
-            .select('id,user_id,metaapi_account_id,platform,default_lot_size')
+            .select('id,user_id,metaapi_account_id,platform,default_lot_size,manual_settings')
             .eq('id', row.broker_account_id)
             .maybeSingle();
         if (!broker?.metaapi_account_id) {
@@ -138,6 +138,16 @@ class BasketSlTpReconcileMonitor {
         catch { /* optional */ }
         const openedTickets = await (0, basketSlTpReconcile_1.fetchOpenBrokerTickets)(api, uuid);
         const baseLot = Number(broker.default_lot_size ?? 0.01);
+        const manual = (broker.manual_settings ?? {});
+        const { data: anchorSig } = await this.supabase
+            .from('signals')
+            .select('parsed_data')
+            .eq('id', row.anchor_signal_id)
+            .maybeSingle();
+        const anchorParsed = anchorSig?.parsed_data;
+        const signalTps = Array.isArray(anchorParsed?.tp)
+            ? anchorParsed.tp.filter((t) => typeof t === 'number' && Number.isFinite(t) && t > 0)
+            : [];
         const { summary, legErrors } = await (0, basketSlTpReconcile_1.runBasketLegModifies)({
             supabase: this.supabase,
             api,
@@ -151,6 +161,8 @@ class BasketSlTpReconcileMonitor {
             brokerAccountId: row.broker_account_id,
             familyTrades,
             perLegTargets,
+            signalTps,
+            tpLots: manual.tp_lots,
             nImmCwe: row.n_imm_cwe ?? 0,
             overrideTp: row.override_tp,
             strictEntryPrefetch: null,
