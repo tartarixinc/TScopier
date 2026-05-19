@@ -83,6 +83,19 @@ Assign users with `shard = hash(user_id) % WORKER_SHARD_COUNT`. Each listener se
 
 Apply migration `20260520120000_worker_session_leases.sql` before enabling split deploys.
 
+## Channel management instructions (copier)
+
+Management messages (`Close half`, `Close worse entries`, `Adjust SL`, etc.) are scoped as follows:
+
+| Message type | Applies to |
+|--------------|------------|
+| **Reply** to a Telegram signal (`reply_to_message_id` set) | That signal’s basket only (e.g. Gold entry + SL/TP in the reply thread) |
+| **Channel post**, no symbol in text | All **open trades** on that Telegram channel |
+| **Channel post** with symbol (`Close half on EURUSD`, `for gold`) | Open trades on that channel for that symbol only |
+| **Modify SL/TP** with no symbol, multiple symbols open | Symbols where the price is plausible; if none match, the **most recently opened** symbol on the channel |
+
+Deploy **Trade worker** after logic changes; deploy **`parse-signal`** Edge if symbol parsing (`on` / `for`) changed.
+
 ## Environment reference
 
 See `worker/.env.example` for catch-up, lease, and parse tuning variables.

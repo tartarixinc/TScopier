@@ -31,3 +31,8 @@ test('sanitizeParsedSymbol strips invalid model output', () => {
   assert.equal(sanitizeParsedSymbol('JOINED'), null)
   assert.equal(sanitizeParsedSymbol('eurusd'), 'EURUSD')
 })
+
+test('extractTradableSymbolFromMessage prefers on/for phrase', () => {
+  assert.equal(extractTradableSymbolFromMessage('Close half on EURUSD'), 'EURUSD')
+  assert.equal(extractTradableSymbolFromMessage('breakeven for gold'), 'XAUUSD')
+})

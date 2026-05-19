@@ -20,6 +20,7 @@ const basketSlTpReconcile_1 = require("./basketSlTpReconcile");
 const rangePendingLadderSync_1 = require("./rangePendingLadderSync");
 const brokerChannelFilter_1 = require("./brokerChannelFilter");
 const tpBucketDistribution_1 = require("./manualPlanning/tpBucketDistribution");
+const managementScope_1 = require("./managementScope");
 /** When true (default), channel-attached signals only execute if MTProto is connected in this process. */
 function telegramLiveTradeGateEnabled() {
     const v = String(process.env.WORKER_REQUIRE_TELEGRAM_LIVE_FOR_TRADES ?? 'true').toLowerCase();
@@ -2707,114 +2708,122 @@ class TradeExecutor {
             // Logging failure is non-fatal.
         }
     }
+    async skipMgmtSignal(signalId, reason) {
+        try {
+            await this.supabase
+                .from('signals')
+                .update({ status: 'skipped', skip_reason: reason })
+                .eq('id', signalId)
+                .eq('status', 'parsed');
+        }
+        catch { /* best-effort */ }
+    }
     async applyManagement(signal, parsed, brokers) {
         if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
             return;
-        if (!signal.parent_signal_id)
-            return;
         const brokerAccountIds = brokers.map(b => b.id);
-        let symbolHint = parsed.symbol != null && String(parsed.symbol).trim()
-            ? String(parsed.symbol).trim()
-            : null;
-        try {
-            const { data: ps } = await this.supabase
-                .from('signals')
-                .select('parsed_data')
-                .eq('id', signal.parent_signal_id)
-                .maybeSingle();
-            const p = ps?.parsed_data;
-            const fromParent = p?.symbol != null && String(p.symbol).trim() ? String(p.symbol).trim() : null;
-            if (fromParent)
-                symbolHint = fromParent;
-        }
-        catch {
-            // best-effort
-        }
-        let basketAnchorId = signal.parent_signal_id;
-        const { count: parentOpenCount } = await this.supabase
-            .from('trades')
-            .select('id', { count: 'exact', head: true })
-            .eq('signal_id', signal.parent_signal_id)
-            .in('broker_account_id', brokerAccountIds)
-            .eq('status', 'open');
-        if ((parentOpenCount ?? 0) === 0) {
-            const mgmtAction = String(parsed.action ?? '').toLowerCase();
-            const mgmtDir = mgmtAction === 'buy' || mgmtAction === 'sell'
-                ? mgmtAction
-                : null;
-            const symForResolve = symbolHint?.trim() ?? '';
-            if (mgmtDir && symForResolve && signal.channel_id && brokerAccountIds[0]) {
-                const latest = await (0, multiTradeMerge_1.resolveLatestOpenBasketAnchor)(this.supabase, {
-                    userId: signal.user_id,
-                    brokerAccountId: brokerAccountIds[0],
-                    brokerSymbol: symForResolve,
-                    signalSymbol: symForResolve,
-                    direction: mgmtDir,
-                    channelId: signal.channel_id,
-                });
-                if (latest)
-                    basketAnchorId = latest.anchorSignalId;
-            }
-            if (!basketAnchorId || basketAnchorId === signal.parent_signal_id) {
-                basketAnchorId = await this.resolveBasketAnchorSignalIdForOpenTrades({
-                    userId: signal.user_id,
-                    brokerAccountIds,
-                    channelId: signal.channel_id,
-                    parentSignalId: signal.parent_signal_id,
-                    symbolHint,
-                });
-            }
-        }
-        if (!basketAnchorId) {
+        const replyScoped = (0, managementScope_1.isReplyScopedManagement)(signal);
+        const symbolFromText = (0, managementScope_1.explicitMgmtSymbol)(parsed);
+        let basketAnchorId = null;
+        let rows = [];
+        if (replyScoped && signal.parent_signal_id) {
+            let symbolHint = symbolFromText;
             try {
-                await this.supabase
+                const { data: ps } = await this.supabase
                     .from('signals')
-                    .update({ status: 'skipped', skip_reason: 'mgmt_no_parent_trades' })
-                    .eq('id', signal.id)
-                    .eq('status', 'parsed');
+                    .select('parsed_data')
+                    .eq('id', signal.parent_signal_id)
+                    .maybeSingle();
+                const p = ps?.parsed_data;
+                const fromParent = p?.symbol != null && String(p.symbol).trim() ? String(p.symbol).trim() : null;
+                if (!symbolHint && fromParent)
+                    symbolHint = fromParent;
             }
-            catch { /* best-effort */ }
-            return;
-        }
-        const byBroker = new Map(brokers.map(b => [b.id, b]));
-        const action = String(parsed.action).toLowerCase();
-        const cancelledPendingScopes = new Set();
-        // Coerce a DB numeric to "what /OrderModify wants for this side".
-        // null / NaN / 0 → 0 (no level on broker, same as current state).
-        const sanitizeLevel = (v) => {
-            const n = typeof v === 'number' ? v : Number(v ?? 0);
-            return Number.isFinite(n) && n > 0 ? n : 0;
-        };
-        // A signal "contains" an SL / TP value only when the parser actually
-        // populated it. parsed.sl = null and parsed.tp = null (or []) both mean
-        // "the signal did not mention this side, leave it as-is". We never
-        // infer "remove the level" from missing data — that requires an
-        // explicit close/cancel action upstream.
-        const hasNewSl = typeof parsed.sl === 'number' && Number.isFinite(parsed.sl) && parsed.sl > 0;
-        const parsedTpLevels = (parsed.tp ?? []).filter((t) => typeof t === 'number' && Number.isFinite(t) && t > 0);
-        const hasNewTp = parsedTpLevels.length > 0;
-        const mgmtCtx = { hasNewSl, hasNewTp };
-        const loadOpenBasketTrades = async () => {
+            catch {
+                // best-effort
+            }
+            basketAnchorId = signal.parent_signal_id;
+            const { count: parentOpenCount } = await this.supabase
+                .from('trades')
+                .select('id', { count: 'exact', head: true })
+                .eq('signal_id', signal.parent_signal_id)
+                .in('broker_account_id', brokerAccountIds)
+                .eq('status', 'open');
+            if ((parentOpenCount ?? 0) === 0) {
+                const mgmtAction = String(parsed.action ?? '').toLowerCase();
+                const mgmtDir = mgmtAction === 'buy' || mgmtAction === 'sell'
+                    ? mgmtAction
+                    : null;
+                const symForResolve = symbolHint?.trim() ?? '';
+                if (mgmtDir && symForResolve && signal.channel_id && brokerAccountIds[0]) {
+                    const latest = await (0, multiTradeMerge_1.resolveLatestOpenBasketAnchor)(this.supabase, {
+                        userId: signal.user_id,
+                        brokerAccountId: brokerAccountIds[0],
+                        brokerSymbol: symForResolve,
+                        signalSymbol: symForResolve,
+                        direction: mgmtDir,
+                        channelId: signal.channel_id,
+                    });
+                    if (latest)
+                        basketAnchorId = latest.anchorSignalId;
+                }
+                if (!basketAnchorId || basketAnchorId === signal.parent_signal_id) {
+                    basketAnchorId = await this.resolveBasketAnchorSignalIdForOpenTrades({
+                        userId: signal.user_id,
+                        brokerAccountIds,
+                        channelId: signal.channel_id,
+                        parentSignalId: signal.parent_signal_id,
+                        symbolHint,
+                    });
+                }
+            }
+            if (!basketAnchorId) {
+                await this.skipMgmtSignal(signal.id, 'mgmt_no_open_trades');
+                return;
+            }
             const { data } = await this.supabase
                 .from('trades')
-                .select('id,broker_account_id,metaapi_order_id,symbol,direction,lot_size,status,sl,tp,entry_price')
+                .select('id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,lot_size,status,sl,tp,entry_price,opened_at')
                 .eq('signal_id', basketAnchorId)
                 .eq('status', 'open')
                 .order('opened_at', { ascending: true })
                 .limit(500);
-            return (data ?? []);
+            rows = (data ?? []);
+        }
+        else {
+            if (!signal.channel_id) {
+                await this.skipMgmtSignal(signal.id, 'mgmt_no_open_trades');
+                return;
+            }
+            const actionPre = String(parsed.action ?? '').toLowerCase();
+            let channelRows = await (0, managementScope_1.loadOpenTradesForManagement)(this.supabase, {
+                userId: signal.user_id,
+                channelId: signal.channel_id,
+                brokerAccountIds,
+                symbolFilter: symbolFromText,
+            });
+            if (actionPre === 'modify'
+                && !symbolFromText
+                && channelRows.length > 0) {
+                channelRows = (0, managementScope_1.resolveChannelModifyTargets)(channelRows, parsed);
+            }
+            rows = channelRows;
+            basketAnchorId = rows[0]?.signal_id ?? null;
+        }
+        const byBroker = new Map(brokers.map(b => [b.id, b]));
+        const action = String(parsed.action).toLowerCase();
+        const cancelledPendingScopes = new Set();
+        const sanitizeLevel = (v) => {
+            const n = typeof v === 'number' ? v : Number(v ?? 0);
+            return Number.isFinite(n) && n > 0 ? n : 0;
         };
+        const hasNewSl = typeof parsed.sl === 'number' && Number.isFinite(parsed.sl) && parsed.sl > 0;
+        const parsedTpLevels = (parsed.tp ?? []).filter((t) => typeof t === 'number' && Number.isFinite(t) && t > 0);
+        const hasNewTp = parsedTpLevels.length > 0;
+        const mgmtCtx = { hasNewSl, hasNewTp };
         if (action === 'close_worse_entries') {
-            const rows = await loadOpenBasketTrades();
             if (!rows.length) {
-                try {
-                    await this.supabase
-                        .from('signals')
-                        .update({ status: 'skipped', skip_reason: 'mgmt_no_parent_trades' })
-                        .eq('id', signal.id)
-                        .eq('status', 'parsed');
-                }
-                catch { /* best-effort */ }
+                await this.skipMgmtSignal(signal.id, 'mgmt_no_open_trades');
                 return;
             }
             const eligibleBrokers = brokers.filter(b => !(0, channelMessageFilters_1.isChannelManagementBlocked)((0, channelMessageFilters_1.normalizeChannelMessageFiltersMap)(b.channel_message_filters), signal.channel_id, action, mgmtCtx));
@@ -2835,23 +2844,19 @@ class TradeExecutor {
             await this.applyCloseWorseEntriesInstruction(signal, parsed, eligibleRows, eligibleByBroker);
             return;
         }
-        const rows = await loadOpenBasketTrades();
         if (!rows.length) {
-            try {
-                await this.supabase
-                    .from('signals')
-                    .update({ status: 'skipped', skip_reason: 'mgmt_no_parent_trades' })
-                    .eq('id', signal.id)
-                    .eq('status', 'parsed');
-            }
-            catch { /* best-effort */ }
+            const skipReason = action === 'modify' && !symbolFromText && !replyScoped
+                ? 'mgmt_ambiguous_modify'
+                : 'mgmt_no_open_trades';
+            await this.skipMgmtSignal(signal.id, skipReason);
             return;
         }
-        const rowsByBroker = new Map();
+        const rowsByBrokerSignal = new Map();
         for (const tr of rows) {
-            const list = rowsByBroker.get(tr.broker_account_id) ?? [];
+            const key = `${tr.broker_account_id}|${tr.signal_id}`;
+            const list = rowsByBrokerSignal.get(key) ?? [];
             list.push(tr);
-            rowsByBroker.set(tr.broker_account_id, list);
+            rowsByBrokerSignal.set(key, list);
         }
         await Promise.allSettled(rows.map(async (trade) => {
             const broker = byBroker.get(trade.broker_account_id);
@@ -2867,7 +2872,8 @@ class TradeExecutor {
             const api = this.apiFor(broker);
             if (!api)
                 return;
-            const brokerRows = rowsByBroker.get(trade.broker_account_id) ?? [trade];
+            const basketKey = `${trade.broker_account_id}|${trade.signal_id}`;
+            const brokerRows = rowsByBrokerSignal.get(basketKey) ?? [trade];
             const legIndex = brokerRows.findIndex(r => r.id === trade.id);
             const manual = (broker.manual_settings ?? {});
             const multiBasket = manual.trade_style === 'multi'
@@ -2878,7 +2884,7 @@ class TradeExecutor {
                     await api.orderClose(uuid, { ticket });
                     await this.supabase.from('trades').update({ status: 'closed', closed_at: new Date().toISOString() }).eq('id', trade.id);
                     cancelledPendingScopes.add(JSON.stringify({
-                        signalId: basketAnchorId,
+                        signalId: trade.signal_id,
                         brokerAccountId: trade.broker_account_id,
                         symbol: trade.symbol,
                     }));
@@ -2948,7 +2954,8 @@ class TradeExecutor {
                     request_payload: {
                         ticket,
                         action,
-                        basket_anchor_signal_id: basketAnchorId,
+                        basket_anchor_signal_id: trade.signal_id,
+                        mgmt_scope: replyScoped ? 'reply_basket' : 'channel',
                         mgmt_parent_signal_id: signal.parent_signal_id,
                     },
                 });
@@ -2964,7 +2971,8 @@ class TradeExecutor {
                     request_payload: {
                         ticket,
                         action,
-                        basket_anchor_signal_id: basketAnchorId,
+                        basket_anchor_signal_id: trade.signal_id,
+                        mgmt_scope: replyScoped ? 'reply_basket' : 'channel',
                         mgmt_parent_signal_id: signal.parent_signal_id,
                     },
                     error_message: msg,
