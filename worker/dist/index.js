@@ -57,6 +57,9 @@ async function main() {
         authService = new authService_1.AuthService(supabase, sessionManager);
         httpServer = (0, httpServer_1.startHttpServer)(authService, sessionManager);
     }
+    else if (workerConfig_1.workerConfig.runsTrade) {
+        httpServer = (0, httpServer_1.startHealthOnlyServer)(sessionManager);
+    }
     if (workerConfig_1.workerConfig.runsTrade) {
         tradeExecutor = new tradeExecutor_1.TradeExecutor(supabase, sessionManager);
         sessionManager.setTradeExecutor(tradeExecutor);

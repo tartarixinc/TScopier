@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import WebSocket from 'ws'
 import { UserSessionManager } from './sessionManager'
 import { AuthService } from './authService'
-import { startHttpServer } from './httpServer'
+import { startHealthOnlyServer, startHttpServer } from './httpServer'
 import { TradeExecutor } from './tradeExecutor'
 import { VirtualPendingMonitor } from './virtualPendingMonitor'
 import { CweCloseMonitor } from './cweCloseMonitor'
@@ -76,6 +76,8 @@ async function main() {
   if (workerConfig.runsListener || workerConfig.runsBacktestHttp) {
     authService = new AuthService(supabase, sessionManager)
     httpServer = startHttpServer(authService, sessionManager)
+  } else if (workerConfig.runsTrade) {
+    httpServer = startHealthOnlyServer(sessionManager)
   }
 
   if (workerConfig.runsTrade) {

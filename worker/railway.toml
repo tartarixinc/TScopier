@@ -1,13 +1,12 @@
-# Railway template for TSCopier worker (one service per role/shard).
-# Copy env from docs/worker-deployment.md. Listener shards: numReplicas = 1 only.
+# Railway build config for TSCopier worker (shared by listener / trade / backtest).
+# Healthcheck: enable in Railway UI → GET /health on WORKER_PORT (default 8080).
+# Trade workers expose health-only HTTP; listener/backtest expose full telegram-auth API.
+#
+# Listener shards: set numReplicas = 1 in Railway UI (never scale a shard horizontally).
 
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-healthcheckPath = "/health"
-healthcheckTimeout = 15
 restartPolicyType = "ON_FAILURE"
-# Listener: set numReplicas = 1 in Railway UI (do not scale horizontally per shard).
-numReplicas = 1

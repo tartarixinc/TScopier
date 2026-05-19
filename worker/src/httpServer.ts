@@ -190,6 +190,32 @@ export function startHttpServer(
   return server
 }
 
+/**
+ * Trade-only workers: `/health` for Railway/uptime (no telegram-auth routes).
+ */
+export function startHealthOnlyServer(sessionManager: UserSessionManager): Server {
+  const server = createServer(async (req, res) => {
+    try {
+      const url = (req.url ?? '').split('?')[0] ?? ''
+      if (url === '/health' && (req.method === 'GET' || req.method === 'POST')) {
+        const payload = await sessionManager.getHealthPayload()
+        return sendJson(res, payload.ok ? 200 : 503, payload)
+      }
+      return sendJson(res, 404, { error: 'Not found' })
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Internal error'
+      console.error('[httpServer] health error:', msg)
+      return sendJson(res, 500, { error: 'Health check failed' })
+    }
+  })
+
+  server.listen(PORT, () => {
+    console.log(`[httpServer] health-only listening on :${PORT} (trade worker)`)
+  })
+
+  return server
+}
+
 async function readJson(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = []
   for await (const c of req) chunks.push(c as Buffer)

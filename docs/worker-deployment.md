@@ -39,6 +39,7 @@ WORKER_REQUIRE_TELEGRAM_LIVE_FOR_TRADES=true
 ```
 
 - **Replicas:** 2+ as needed.
+- **Health check:** `GET /health` (health-only HTTP server; no telegram-auth routes).
 - No `WORKER_URL` required for ingest; uses Supabase Realtime + lease gate before `OrderSend`.
 - Trade gate checks `worker_session_leases` heartbeat when not co-located with a listener.
 

@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.startHttpServer = startHttpServer;
+exports.startHealthOnlyServer = startHealthOnlyServer;
 const http_1 = require("http");
 const telegramClient_1 = require("./telegramClient");
 const INTERNAL_TOKEN = process.env.WORKER_INTERNAL_TOKEN ?? '';
@@ -135,6 +136,30 @@ function startHttpServer(authService, sessionManager) {
     });
     server.listen(PORT, () => {
         console.log(`[httpServer] listening on :${PORT}`);
+    });
+    return server;
+}
+/**
+ * Trade-only workers: `/health` for Railway/uptime (no telegram-auth routes).
+ */
+function startHealthOnlyServer(sessionManager) {
+    const server = (0, http_1.createServer)(async (req, res) => {
+        try {
+            const url = (req.url ?? '').split('?')[0] ?? '';
+            if (url === '/health' && (req.method === 'GET' || req.method === 'POST')) {
+                const payload = await sessionManager.getHealthPayload();
+                return sendJson(res, payload.ok ? 200 : 503, payload);
+            }
+            return sendJson(res, 404, { error: 'Not found' });
+        }
+        catch (err) {
+            const msg = err instanceof Error ? err.message : 'Internal error';
+            console.error('[httpServer] health error:', msg);
+            return sendJson(res, 500, { error: 'Health check failed' });
+        }
+    });
+    server.listen(PORT, () => {
+        console.log(`[httpServer] health-only listening on :${PORT} (trade worker)`);
     });
     return server;
 }
