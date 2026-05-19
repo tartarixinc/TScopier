@@ -41,18 +41,21 @@ function startTradeMonitors() {
         signalEntryPendingMonitor.start();
         monitors.push(virtualPendingMonitor, cweCloseMonitor, partialTpMonitor, signalEntryPendingMonitor);
     }
+    if (workerConfig_1.workerConfig.runsTrade) {
+        const brokerConnectionMonitor = new brokerConnectionMonitor_1.BrokerConnectionMonitor(supabase);
+        brokerConnectionMonitor.start();
+        monitors.push(brokerConnectionMonitor);
+    }
     if (workerConfig_1.workerConfig.runsManagementMonitors) {
         const trailingStopMonitor = new trailingStopMonitor_1.TrailingStopMonitor(supabase);
         const autoManagementMonitor = new autoManagementMonitor_1.AutoManagementMonitor(supabase);
         const basketSlTpReconcileMonitor = new basketSlTpReconcileMonitor_1.BasketSlTpReconcileMonitor(supabase);
         const newsTradingMonitor = new newsTradingMonitor_1.NewsTradingMonitor(supabase);
-        const brokerConnectionMonitor = new brokerConnectionMonitor_1.BrokerConnectionMonitor(supabase);
         trailingStopMonitor.start();
         autoManagementMonitor.start();
         basketSlTpReconcileMonitor.start();
         newsTradingMonitor.start();
-        brokerConnectionMonitor.start();
-        monitors.push(trailingStopMonitor, autoManagementMonitor, basketSlTpReconcileMonitor, newsTradingMonitor, brokerConnectionMonitor);
+        monitors.push(trailingStopMonitor, autoManagementMonitor, basketSlTpReconcileMonitor, newsTradingMonitor);
     }
 }
 async function main() {

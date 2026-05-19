@@ -26,6 +26,9 @@ const tpBucketDistribution_1 = require("./manualPlanning/tpBucketDistribution");
 const managementScope_1 = require("./managementScope");
 const channelActiveTradeParams_1 = require("./channelActiveTradeParams");
 const managementPendingLegs_1 = require("./managementPendingLegs");
+const pipelineTimestamps_1 = require("./pipelineTimestamps");
+const postFillFollowUp_1 = require("./postFillFollowUp");
+const channelKeywordsCache_1 = require("./channelKeywordsCache");
 /** When true (default), channel-attached signals only execute if MTProto is connected in this process. */
 function telegramLiveTradeGateEnabled() {
     const v = String(process.env.WORKER_REQUIRE_TELEGRAM_LIVE_FOR_TRADES ?? 'true').toLowerCase();
@@ -40,7 +43,8 @@ function telegramLiveTradeGateEnabled() {
 const PARSED_STATUSES = new Set(['parsed']);
 const SYMBOL_CACHE_TTL_MS = 10 * 60000;
 const SYMBOL_LIST_TTL_MS = 30 * 60000;
-const SESSION_PING_MIN_INTERVAL_MS = Math.max(5000, Math.min(120000, Number(process.env.BROKER_SESSION_PING_MIN_INTERVAL_MS ?? 25000)));
+const BROKER_SESSION_HEARTBEAT_MS = Math.max(5000, Math.min(60000, Number(process.env.BROKER_SESSION_HEARTBEAT_MS ?? 15000)));
+const SESSION_PING_MIN_INTERVAL_MS = Math.max(5000, Math.min(120000, Number(process.env.BROKER_SESSION_PING_MIN_INTERVAL_MS ?? BROKER_SESSION_HEARTBEAT_MS)));
 const EXECUTOR_PARSED_SWEEP_MS = Math.max(1500, Math.min(60000, Number(process.env.EXECUTOR_PARSED_SWEEP_MS ?? 3000)));
 /** Sweep + Realtime replay window; older `parsed` rows are not re-executed (live dispatch exempt). */
 const EXECUTOR_REPLAY_MAX_AGE_MS = Math.max(60000, Math.min(30 * 60000, Number(process.env.EXECUTOR_REPLAY_MAX_AGE_MS ?? 5 * 60000)));
@@ -264,6 +268,7 @@ class TradeExecutor {
         this.timer = null;
         /** Cancels TSCopier broker pendings past `pending_expiry_hours` (1–24) when env enabled. */
         this.brokerPendingSweepTimer = null;
+        this.sessionHeartbeatTimer = null;
         this.signalsChannel = null;
         this.brokersChannel = null;
         this.channelsChannel = null;
@@ -315,6 +320,11 @@ class TradeExecutor {
         if (String(process.env.WORKER_LEGACY_PENDING_CLEANUP ?? '').toLowerCase() === 'true') {
             this.cleanupLegacyBrokerPendings().catch(err => console.error('[tradeExecutor] legacy pending cleanup failed:', err));
         }
+        void this.prewarmBrokerCaches();
+        this.sessionHeartbeatTimer = setInterval(() => {
+            void this.sessionHeartbeatTick();
+        }, BROKER_SESSION_HEARTBEAT_MS);
+        this.sessionHeartbeatTimer.unref?.();
     }
     stop() {
         if (this.timer)
@@ -323,6 +333,9 @@ class TradeExecutor {
         if (this.brokerPendingSweepTimer)
             clearInterval(this.brokerPendingSweepTimer);
         this.brokerPendingSweepTimer = null;
+        if (this.sessionHeartbeatTimer)
+            clearInterval(this.sessionHeartbeatTimer);
+        this.sessionHeartbeatTimer = null;
         if (this.signalsChannel) {
             void this.supabase.removeChannel(this.signalsChannel);
             this.signalsChannel = null;
@@ -358,6 +371,40 @@ class TradeExecutor {
         const pingOnStart = String(process.env.BROKER_PING_ON_WORKER_START ?? 'true').toLowerCase();
         if (pingOnStart !== 'false' && pingOnStart !== '0') {
             await this.reconnectCachedBrokers();
+        }
+    }
+    prewarmSymbolsEnabled() {
+        const v = String(process.env.EXECUTOR_PREWARM_SYMBOLS ?? 'true').toLowerCase();
+        return v !== '0' && v !== 'false' && v !== 'no';
+    }
+    async prewarmBrokerCaches() {
+        if (!this.prewarmSymbolsEnabled() || !(0, metatraderapi_1.hasMetatraderApiConfigured)())
+            return;
+        for (const row of this.brokersById.values()) {
+            const uuid = row.metaapi_account_id;
+            if (!isMtUuid(uuid))
+                continue;
+            void this.getSymbolList(uuid);
+            const manual = (row.manual_settings ?? {});
+            const symbols = parseSymbolToTradeList(manual.symbol_to_trade);
+            for (const sym of symbols.length > 0 ? symbols : ['XAUUSD', 'EURUSD']) {
+                void this.getSymbolParams(uuid, sym).catch(() => null);
+            }
+        }
+    }
+    async sessionHeartbeatTick() {
+        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
+            return;
+        for (const row of this.brokersById.values()) {
+            const uuid = row.metaapi_account_id;
+            if (!isMtUuid(uuid))
+                continue;
+            const api = this.apiFor(row);
+            if (!api)
+                continue;
+            const alive = await api.keepSessionAlive(uuid);
+            if (alive)
+                this.sessionPingAt.set(uuid, Date.now());
         }
     }
     async reconnectCachedBrokers() {
@@ -462,6 +509,7 @@ class TradeExecutor {
                 return;
             // Refresh cache eagerly so the next signal picks up edits made in Copier Engine.
             this.channelKeywordsCache.set(row.id, { keywords: row.channel_keywords ?? null, loadedAt: Date.now() });
+            (0, channelKeywordsCache_1.invalidateChannelParseCache)(row.id);
         })
             .subscribe();
     }
@@ -494,11 +542,21 @@ class TradeExecutor {
         }
         const source = opts?.source ?? 'dispatch';
         const receivedAt = Date.now();
-        void this.logPipelineStage(row, 'dispatch_received', { source, priority: opts?.priority ?? null });
-        if (this.shouldUseEntryFastPath(row)) {
+        const rowWithTs = {
+            ...row,
+            pipeline_ts: {
+                ...row.pipeline_ts,
+                t_dispatch_received: receivedAt,
+            },
+        };
+        const entryFast = this.shouldUseEntryFastPath(rowWithTs);
+        if (!entryFast) {
+            void this.logPipelineStage(rowWithTs, 'dispatch_received', { source, priority: opts?.priority ?? null });
+        }
+        if (entryFast) {
             if (this.inflight.has(row.id) || this.queuedIds.has(row.id))
                 return true;
-            void this.handleSignal(row, {
+            void this.handleSignal(rowWithTs, {
                 liveDispatch: true,
                 dispatchSource: source,
                 dispatchReceivedAt: receivedAt,
@@ -506,7 +564,7 @@ class TradeExecutor {
             });
             return true;
         }
-        this.enqueueSignal(row, {
+        this.enqueueSignal(rowWithTs, {
             liveDispatch: true,
             priority: opts?.priority,
             source,
@@ -608,6 +666,23 @@ class TradeExecutor {
             /* best-effort */
         }
     }
+    logPipelineSummaryBackground(signal, extra) {
+        const ts = signal.pipeline_ts ?? {};
+        void this.supabase
+            .from('trade_execution_logs')
+            .insert({
+            user_id: signal.user_id,
+            signal_id: signal.id,
+            action: 'pipeline_summary',
+            status: 'success',
+            request_payload: (0, pipelineTimestamps_1.pipelineSummaryPayload)(ts, extra),
+        })
+            .then(({ error }) => {
+            if (error) {
+                console.warn(`[tradeExecutor] pipeline_summary log failed signal=${signal.id}: ${error.message}`);
+            }
+        });
+    }
     async markSignalExecuted(signalId) {
         try {
             await this.supabase
@@ -697,24 +772,22 @@ class TradeExecutor {
         if (!this.claimSignalExecution(row.id))
             return;
         const handleStartMs = Date.now();
+        const liveFast = opts?.liveDispatch === true && opts?.lightIdempotency === true;
         const queueWaitMs = opts?.dispatchReceivedAt != null
             ? Math.max(0, handleStartMs - opts.dispatchReceivedAt)
             : null;
+        let pipelineOutcome = { live_fast: liveFast };
         try {
             if (!opts?.liveDispatch && this.signalTooOldForReplay(row))
                 return;
-            void this.logPipelineStage(row, 'handle_start', {
-                live_dispatch: opts?.liveDispatch === true,
-                source: opts?.dispatchSource ?? null,
-                queue_wait_ms: queueWaitMs,
-            });
-            if (opts?.lightIdempotency) {
-                if (await this.signalLiveDispatchAlreadyHandled(row.id)) {
-                    await this.markSignalExecuted(row.id);
-                    return;
-                }
+            if (!liveFast) {
+                void this.logPipelineStage(row, 'handle_start', {
+                    live_dispatch: opts?.liveDispatch === true,
+                    source: opts?.dispatchSource ?? null,
+                    queue_wait_ms: queueWaitMs,
+                });
             }
-            else if (await this.signalAlreadyHandled(row.id)) {
+            if (!opts?.lightIdempotency && await this.signalAlreadyHandled(row.id)) {
                 await this.markSignalExecuted(row.id);
                 return;
             }
@@ -771,9 +844,18 @@ class TradeExecutor {
             const op = operationFor(action, parsed);
             if (!op || !parsed.symbol)
                 return;
-            const outcomes = await Promise.all(brokers.map(b => this.sendOrder(row, parsed, op, b, channelKeywords, pipelineT0)));
+            if (liveFast && row.pipeline_ts) {
+                row.pipeline_ts.t_order_send_start = Date.now();
+            }
+            const outcomes = await Promise.all(brokers.map(b => this.sendOrder(row, parsed, op, b, channelKeywords, pipelineT0, {
+                liveEntryFast: liveFast,
+            })));
+            if (liveFast && row.pipeline_ts) {
+                row.pipeline_ts.t_order_send_done = Date.now();
+            }
             const anyOpened = outcomes.some(o => o.openedOrMerged === true);
             const pipelineMs = Date.now() - pipelineT0;
+            pipelineOutcome = { ...pipelineOutcome, any_opened: anyOpened, pipeline_ms: pipelineMs, brokers: brokers.length };
             if (pipelineMs > 4000) {
                 console.warn(`[tradeExecutor] slow pipeline signal=${row.id} user=${row.user_id} ms=${pipelineMs} brokers=${brokers.length}`);
             }
@@ -794,15 +876,25 @@ class TradeExecutor {
                 }
             }
             else if (anyOpened) {
-                await this.markSignalExecuted(row.id);
+                if (liveFast) {
+                    void this.markSignalExecuted(row.id);
+                }
+                else {
+                    await this.markSignalExecuted(row.id);
+                }
             }
         }
         finally {
             const handleMs = Date.now() - handleStartMs;
-            void this.logPipelineStage(row, 'handle_end', {
-                handle_ms: handleMs,
-                source: opts?.dispatchSource ?? null,
-            });
+            if (liveFast) {
+                this.logPipelineSummaryBackground(row, { handle_ms: handleMs, ...pipelineOutcome });
+            }
+            else {
+                void this.logPipelineStage(row, 'handle_end', {
+                    handle_ms: handleMs,
+                    source: opts?.dispatchSource ?? null,
+                });
+            }
             this.inflight.delete(row.id);
             this.queuedIds.delete(row.id);
         }
@@ -2098,7 +2190,8 @@ class TradeExecutor {
         }
         return alive;
     }
-    async sendOrder(signal, parsed, op, broker, channelKeywords, pipelineT0) {
+    async sendOrder(signal, parsed, op, broker, channelKeywords, pipelineT0, sendOpts) {
+        const liveEntryFast = sendOpts?.liveEntryFast === true;
         if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
             return {};
         const api = this.apiFor(broker);
@@ -2129,10 +2222,10 @@ class TradeExecutor {
         }
         const isManual = (broker.copier_mode ?? 'ai') === 'manual';
         const manual = (broker.manual_settings ?? {});
-        const needsQuotePrefetch = isManual
-            && (((0, manualPlanner_1.signalEntryPriceStrictEnabled)(manual) && (0, manualPlanner_1.parsedHasExplicitEntryAnchor)(parsed))
-                || ((manual.use_predefined_sl_pips === true || manual.use_predefined_tp_pips === true)
-                    && !(0, manualPlanner_1.parsedHasExplicitEntryAnchor)(parsed)));
+        const needsQuotePrefetch = !liveEntryFast
+            && isManual
+            && (0, manualPlanner_1.signalEntryPriceStrictEnabled)(manual)
+            && (0, manualPlanner_1.parsedHasExplicitEntryAnchor)(parsed);
         const [sessionOk, symbol, paramsFromRequested] = await Promise.all([
             this.ensureBrokerSession(api, uuid, broker),
             this.resolveBrokerSymbol(uuid, requestedSymbol),
@@ -2156,65 +2249,68 @@ class TradeExecutor {
                 console.warn(`[tradeExecutor] /Quote prefetch failed ${symbol} signal=${signal.id} broker=${broker.id}: ${msg}`);
             }
         }
-        if (isManual && manual.close_on_opposite_signal === true) {
-            await this.closeOppositeDirectionTrades(signal, parsed, broker, symbol);
-        }
-        // Linked SL/TP follow-ups refresh an existing basket; fresh entries fall through to OrderSend.
-        if (isManual && (0, multiTradeMerge_1.shouldRouteAsBasketParameterRefresh)(parsed)) {
-            const paramOutcome = await this.tryParameterFollowUpMergeModifyOnly({
-                signal,
-                parsed,
-                broker,
-                channelKeywords,
-                baseLot,
-                params,
-                symbol,
-                uuid,
-                strictEntryPrefetch,
-            });
-            if (paramOutcome.handled && paramOutcome.success) {
-                return { openedOrMerged: true };
+        if (!liveEntryFast) {
+            if (isManual && manual.close_on_opposite_signal === true) {
+                await this.closeOppositeDirectionTrades(signal, parsed, broker, symbol);
             }
-            if (paramOutcome.handled) {
-                return { openedOrMerged: false };
-            }
-        }
-        if (isManual && manual.add_new_trades_to_existing === true) {
-            const mergeOutcome = await this.tryMergeSignalIntoExistingOpenTrade({
-                signal,
-                parsed,
-                op,
-                broker,
-                channelKeywords,
-                baseLot,
-                params,
-                symbol,
-                uuid,
-                strictEntryPrefetch,
-            });
-            if (mergeOutcome.handled && mergeOutcome.success) {
-                return { openedOrMerged: true };
-            }
-        }
-        // Stop here when the user opted out of stacking trades on the same symbol.
-        if (isManual && manual.add_new_trades_to_existing === false) {
-            const already = await this.hasOpenTradeForSymbol(broker.id, symbol);
-            if (already) {
-                await this.logSendSkipped(signal, broker, 'add_new_trades_to_existing=false', { symbol });
-                return {};
-            }
-        }
-        if (isManual && !(0, settings_1.isNewsTradingEnabled)(manual)) {
-            const events = await (0, calendarProvider_1.getCalendarEventsCached)();
-            const blackout = (0, blackout_1.findActiveNewsBlackout)(events, manual, symbol);
-            if (blackout) {
-                await this.logSendSkipped(signal, broker, 'filtered_news', {
+            if (isManual && (0, multiTradeMerge_1.shouldRouteAsBasketParameterRefresh)(parsed)) {
+                const paramOutcome = await this.tryParameterFollowUpMergeModifyOnly({
+                    signal,
+                    parsed,
+                    broker,
+                    channelKeywords,
+                    baseLot,
+                    params,
                     symbol,
-                    phase: blackout.phase,
-                    event: blackout.event.event,
-                    currency: blackout.event.currency,
+                    uuid,
+                    strictEntryPrefetch,
                 });
-                return {};
+                if (paramOutcome.handled && paramOutcome.success) {
+                    return { openedOrMerged: true };
+                }
+                if (paramOutcome.handled) {
+                    return { openedOrMerged: false };
+                }
+            }
+            if (isManual && manual.add_new_trades_to_existing === true) {
+                const mergeOutcome = await this.tryMergeSignalIntoExistingOpenTrade({
+                    signal,
+                    parsed,
+                    op,
+                    broker,
+                    channelKeywords,
+                    baseLot,
+                    params,
+                    symbol,
+                    uuid,
+                    strictEntryPrefetch,
+                });
+                if (mergeOutcome.handled && mergeOutcome.success) {
+                    return { openedOrMerged: true };
+                }
+            }
+            if (isManual && manual.add_new_trades_to_existing === false) {
+                const already = await this.hasOpenTradeForSymbol(broker.id, symbol);
+                if (already) {
+                    await this.logSendSkipped(signal, broker, 'add_new_trades_to_existing=false', { symbol });
+                    return {};
+                }
+            }
+            const newsPreFill = String(process.env.EXECUTOR_NEWS_BLACKOUT_PRE_FILL ?? 'false').toLowerCase();
+            if ((newsPreFill === '1' || newsPreFill === 'true' || newsPreFill === 'yes')
+                && isManual
+                && !(0, settings_1.isNewsTradingEnabled)(manual)) {
+                const events = await (0, calendarProvider_1.getCalendarEventsCached)();
+                const blackout = (0, blackout_1.findActiveNewsBlackout)(events, manual, symbol);
+                if (blackout) {
+                    await this.logSendSkipped(signal, broker, 'filtered_news', {
+                        symbol,
+                        phase: blackout.phase,
+                        event: blackout.event.event,
+                        currency: blackout.event.currency,
+                    });
+                    return {};
+                }
             }
         }
         // Build the order list. In AI mode we keep the original single-order shape;
@@ -2238,7 +2334,7 @@ class TradeExecutor {
                 partial_close_fraction: parsed.partial_close_fraction,
                 raw_instruction: parsed.raw_instruction,
             };
-            if (signal.channel_id && (0, channelActiveTradeParams_1.shouldMergeChannelParamsForEntry)(plannerParsed)) {
+            if (!liveEntryFast && signal.channel_id && (0, channelActiveTradeParams_1.shouldMergeChannelParamsForEntry)(plannerParsed)) {
                 const channelParams = await (0, channelActiveTradeParams_1.loadChannelActiveTradeParamsForSymbol)(this.supabase, signal.user_id, signal.channel_id, symbol);
                 if (channelParams) {
                     plannerParsed = (0, channelActiveTradeParams_1.mergeParsedWithChannelParams)(plannerParsed, channelParams);
@@ -2771,11 +2867,12 @@ class TradeExecutor {
         if (mapping.whitelist.length > 0) {
             orderLogContext.allowed_symbols = mapping.whitelist;
         }
+        const filledLegs = [];
         const sendLeg = async (leg) => {
             let args = leg.args;
             const isBuyLeg = isBuySideOp(String(args.operation));
             const isMarket = args.operation === 'Buy' || args.operation === 'Sell';
-            if (isMarket && (!args.price || args.price <= 0) && api) {
+            if (!liveEntryFast && isMarket && (!args.price || args.price <= 0) && api) {
                 try {
                     const q = strictEntryPrefetch ?? await api.quote(uuid, symbol);
                     args = { ...args, price: isBuyLeg ? q.ask : q.bid };
@@ -2845,71 +2942,140 @@ class TradeExecutor {
                     console.error(`[tradeExecutor] trades INSERT failed signal=${signal.id} broker=${broker.id} ticket=${result.ticket}: ${tradeInsert.error.message}`);
                 }
                 const tradeRowId = tradeInsert.data?.id ?? null;
-                // Single-mode trades with a partial schedule fan their partials out
-                // into `partial_tp_legs`. `partialTpMonitor` then polls /Quote and
-                // /OrderCloses each slice as the live bid/ask crosses the trigger.
-                // The LAST configured-bucket TP is the broker `takeprofit` so the
-                // residual lot rides to the deepest target with no worker intervention.
-                if (tradeRowId && leg.partialTps && leg.partialTps.length > 0) {
-                    const partialRows = leg.partialTps.map(p => ({
-                        trade_id: tradeRowId,
-                        signal_id: signal.id,
-                        user_id: signal.user_id,
-                        broker_account_id: broker.id,
-                        metaapi_account_id: uuid,
-                        symbol: args.symbol,
-                        is_buy: isBuy,
-                        tp_idx: p.tpIdx,
-                        trigger_price: p.triggerPrice,
-                        close_lots: p.closeLots,
-                        status: 'pending',
-                    }));
-                    const { error: partialErr } = await this.supabase
-                        .from('partial_tp_legs')
-                        .insert(partialRows);
-                    if (partialErr) {
-                        console.error(`[tradeExecutor] partial_tp_legs INSERT failed signal=${signal.id} broker=${broker.id} trade=${tradeRowId}: ${partialErr.message}`);
-                    }
-                    else {
-                        console.log(`[tradeExecutor] partial_tp_legs inserted=${partialRows.length} signal=${signal.id} broker=${broker.id} trade=${tradeRowId}`
-                            + ` schedule=${leg.partialTps.map(p => `TP${p.tpIdx}@${p.triggerPrice}/${p.closeLots}`).join(',')}`);
-                    }
-                }
-                await this.supabase.from('trade_execution_logs').insert({
-                    user_id: signal.user_id,
-                    signal_id: signal.id,
-                    broker_account_id: broker.id,
-                    action: 'order_send',
-                    status: 'success',
-                    request_payload: { ...args, ...orderLogContext },
-                    response_payload: {
-                        ticket: result.ticket,
-                        latency_ms: latencyMs,
-                        pipeline_ms: pipelineT0 != null ? Date.now() - pipelineT0 : undefined,
-                        leg: leg.idx + 1,
-                        total: totalCount,
-                    },
+                filledLegs.push({
+                    tradeRowId,
+                    ticket: result.ticket,
+                    symbol: args.symbol,
+                    direction: isBuy ? 'buy' : 'sell',
+                    entryPrice: entryPx,
+                    openSl: openSl != null ? Number(openSl) : null,
+                    openTp: (result.takeProfit ?? args.takeprofit) != null
+                        ? Number(result.takeProfit ?? args.takeprofit)
+                        : null,
                 });
+                const persistPostFillDb = async () => {
+                    if (tradeRowId && leg.partialTps && leg.partialTps.length > 0) {
+                        const partialRows = leg.partialTps.map(p => ({
+                            trade_id: tradeRowId,
+                            signal_id: signal.id,
+                            user_id: signal.user_id,
+                            broker_account_id: broker.id,
+                            metaapi_account_id: uuid,
+                            symbol: args.symbol,
+                            is_buy: isBuy,
+                            tp_idx: p.tpIdx,
+                            trigger_price: p.triggerPrice,
+                            close_lots: p.closeLots,
+                            status: 'pending',
+                        }));
+                        const { error: partialErr } = await this.supabase
+                            .from('partial_tp_legs')
+                            .insert(partialRows);
+                        if (partialErr) {
+                            console.error(`[tradeExecutor] partial_tp_legs INSERT failed signal=${signal.id} broker=${broker.id} trade=${tradeRowId}: ${partialErr.message}`);
+                        }
+                    }
+                    await this.supabase.from('trade_execution_logs').insert({
+                        user_id: signal.user_id,
+                        signal_id: signal.id,
+                        broker_account_id: broker.id,
+                        action: 'order_send',
+                        status: 'success',
+                        request_payload: { ...args, ...orderLogContext },
+                        response_payload: {
+                            ticket: result.ticket,
+                            latency_ms: latencyMs,
+                            pipeline_ms: pipelineT0 != null ? Date.now() - pipelineT0 : undefined,
+                            leg: leg.idx + 1,
+                            total: totalCount,
+                        },
+                    });
+                };
+                if (liveEntryFast) {
+                    void persistPostFillDb().catch(err => {
+                        console.error(`[tradeExecutor] post-fill DB failed signal=${signal.id}:`, err);
+                    });
+                }
+                else {
+                    await persistPostFillDb();
+                }
                 return true;
             }
             catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);
                 console.error(`[tradeExecutor] OrderSend failed signal=${signal.id} broker=${broker.id} leg=${leg.idx + 1}/${totalCount} op=${args.operation} price=${args.price ?? 0}:`, msg);
-                await this.supabase.from('trade_execution_logs').insert({
-                    user_id: signal.user_id,
-                    signal_id: signal.id,
-                    broker_account_id: broker.id,
-                    action: 'order_send',
-                    status: 'failed',
-                    request_payload: { ...args, ...orderLogContext },
-                    error_message: msg,
-                });
+                if (liveEntryFast) {
+                    void this.supabase.from('trade_execution_logs').insert({
+                        user_id: signal.user_id,
+                        signal_id: signal.id,
+                        broker_account_id: broker.id,
+                        action: 'order_send',
+                        status: 'failed',
+                        request_payload: { ...args, ...orderLogContext },
+                        error_message: msg,
+                    });
+                }
+                else {
+                    await this.supabase.from('trade_execution_logs').insert({
+                        user_id: signal.user_id,
+                        signal_id: signal.id,
+                        broker_account_id: broker.id,
+                        action: 'order_send',
+                        status: 'failed',
+                        request_payload: { ...args, ...orderLogContext },
+                        error_message: msg,
+                    });
+                }
                 return false;
             }
         };
         // All immediates fan out in parallel. Virtual pendings are already
         // persisted; the worker monitor + edge sweep will fire them on trigger.
         const sendResults = await Promise.allSettled(legs.map(sendLeg));
+        if (liveEntryFast && filledLegs.length > 0) {
+            const plannerCtx = params
+                ? {
+                    point: params.point,
+                    digits: params.digits,
+                    minLot: params.minLot,
+                    lotStep: params.lotStep,
+                    contractSize: params.contractSize,
+                    stopsLevel: params.stopsLevel,
+                    freezeLevel: params.freezeLevel,
+                    defaultLot: Number(broker.default_lot_size ?? 0.01),
+                    lastBalance: broker.last_balance ?? null,
+                }
+                : null;
+            void (0, postFillFollowUp_1.applyPostFillFollowUp)({
+                supabase: this.supabase,
+                api,
+                uuid,
+                signal,
+                parsed,
+                op,
+                broker,
+                channelKeywords,
+                symbol,
+                baseLot,
+                params: plannerCtx,
+                filledLegs,
+                hooks: {
+                    closeOppositeDirectionTrades: (s, p, _b, sym) => this.closeOppositeDirectionTrades(s, p, broker, sym),
+                    tryParameterFollowUpMergeModifyOnly: a => this.tryParameterFollowUpMergeModifyOnly({
+                        ...a,
+                        broker,
+                        params,
+                    }),
+                    tryMergeSignalIntoExistingOpenTrade: a => this.tryMergeSignalIntoExistingOpenTrade({
+                        ...a,
+                        broker,
+                        params,
+                    }),
+                },
+            }).catch(err => {
+                console.error(`[tradeExecutor] postFillFollowUp failed signal=${signal.id}:`, err);
+            });
+        }
         const anyImmediateOpened = sendResults.some(r => r.status === 'fulfilled' && r.value === true);
         if (isManual
             && manual.trade_style === 'multi'

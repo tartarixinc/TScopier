@@ -19,14 +19,29 @@ interface BrokerRow {
  * Keeps MetatraderAPI sessions alive with lightweight CheckConnect pings.
  * Only calls ConnectByToken when the session is down; avoids flipping status on transient blips.
  */
+const BROKER_SESSION_HEARTBEAT_MS = Math.max(
+  5_000,
+  Math.min(60_000, Number(process.env.BROKER_SESSION_HEARTBEAT_MS ?? 15_000)),
+)
+
 export class BrokerConnectionMonitor {
   private timer: ReturnType<typeof setInterval> | null = null
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null
   private running = false
+  private heartbeatRunning = false
   private readonly failStreak = new Map<string, number>()
 
   constructor(private readonly supabase: SupabaseClient) {}
 
   start() {
+    if (!this.heartbeatTimer) {
+      void this.heartbeatTick()
+      this.heartbeatTimer = setInterval(() => {
+        void this.heartbeatTick()
+      }, BROKER_SESSION_HEARTBEAT_MS)
+      this.heartbeatTimer.unref?.()
+      console.log(`[brokerConnection] session heartbeat every ${BROKER_SESSION_HEARTBEAT_MS}ms`)
+    }
     if (this.timer) return
     const intervalMs = Math.max(
       60_000,
@@ -37,12 +52,37 @@ export class BrokerConnectionMonitor {
       void this.tick()
     }, intervalMs)
     this.timer.unref?.()
-    console.log(`[brokerConnection] started (every ${intervalMs}ms)`)
+    console.log(`[brokerConnection] reconnect sweep every ${intervalMs}ms`)
   }
 
   stop() {
     if (this.timer) clearInterval(this.timer)
     this.timer = null
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer)
+    this.heartbeatTimer = null
+  }
+
+  /** Lightweight CheckConnect ping so OrderSend hot path skips session checks. */
+  private async heartbeatTick() {
+    if (!hasMetatraderApiConfigured()) return
+    if (this.heartbeatRunning) return
+    this.heartbeatRunning = true
+    try {
+      const { data, error } = await this.supabase
+        .from('broker_accounts')
+        .select('id,platform,metaapi_account_id')
+        .eq('is_active', true)
+      if (error) return
+      for (const row of (data ?? []) as BrokerRow[]) {
+        const uuid = row.metaapi_account_id?.trim()
+        if (!isMtUuid(uuid)) continue
+        const api = this.clientFor(row.platform)
+        if (!api) continue
+        await api.keepSessionAlive(uuid!)
+      }
+    } finally {
+      this.heartbeatRunning = false
+    }
   }
 
   private clientFor(platform: string) {

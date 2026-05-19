@@ -51,23 +51,26 @@ function startTradeMonitors() {
     )
   }
 
+  if (workerConfig.runsTrade) {
+    const brokerConnectionMonitor = new BrokerConnectionMonitor(supabase)
+    brokerConnectionMonitor.start()
+    monitors.push(brokerConnectionMonitor)
+  }
+
   if (workerConfig.runsManagementMonitors) {
     const trailingStopMonitor = new TrailingStopMonitor(supabase)
     const autoManagementMonitor = new AutoManagementMonitor(supabase)
     const basketSlTpReconcileMonitor = new BasketSlTpReconcileMonitor(supabase)
     const newsTradingMonitor = new NewsTradingMonitor(supabase)
-    const brokerConnectionMonitor = new BrokerConnectionMonitor(supabase)
     trailingStopMonitor.start()
     autoManagementMonitor.start()
     basketSlTpReconcileMonitor.start()
     newsTradingMonitor.start()
-    brokerConnectionMonitor.start()
     monitors.push(
       trailingStopMonitor,
       autoManagementMonitor,
       basketSlTpReconcileMonitor,
       newsTradingMonitor,
-      brokerConnectionMonitor,
     )
   }
 }

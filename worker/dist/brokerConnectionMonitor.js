@@ -14,14 +14,25 @@ function isMtUuid(s) {
  * Keeps MetatraderAPI sessions alive with lightweight CheckConnect pings.
  * Only calls ConnectByToken when the session is down; avoids flipping status on transient blips.
  */
+const BROKER_SESSION_HEARTBEAT_MS = Math.max(5000, Math.min(60000, Number(process.env.BROKER_SESSION_HEARTBEAT_MS ?? 15000)));
 class BrokerConnectionMonitor {
     constructor(supabase) {
         this.supabase = supabase;
         this.timer = null;
+        this.heartbeatTimer = null;
         this.running = false;
+        this.heartbeatRunning = false;
         this.failStreak = new Map();
     }
     start() {
+        if (!this.heartbeatTimer) {
+            void this.heartbeatTick();
+            this.heartbeatTimer = setInterval(() => {
+                void this.heartbeatTick();
+            }, BROKER_SESSION_HEARTBEAT_MS);
+            this.heartbeatTimer.unref?.();
+            console.log(`[brokerConnection] session heartbeat every ${BROKER_SESSION_HEARTBEAT_MS}ms`);
+        }
         if (this.timer)
             return;
         const intervalMs = Math.max(60000, Number(process.env.BROKER_RECONNECT_INTERVAL_MS ?? 300000) || 300000);
@@ -30,12 +41,43 @@ class BrokerConnectionMonitor {
             void this.tick();
         }, intervalMs);
         this.timer.unref?.();
-        console.log(`[brokerConnection] started (every ${intervalMs}ms)`);
+        console.log(`[brokerConnection] reconnect sweep every ${intervalMs}ms`);
     }
     stop() {
         if (this.timer)
             clearInterval(this.timer);
         this.timer = null;
+        if (this.heartbeatTimer)
+            clearInterval(this.heartbeatTimer);
+        this.heartbeatTimer = null;
+    }
+    /** Lightweight CheckConnect ping so OrderSend hot path skips session checks. */
+    async heartbeatTick() {
+        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
+            return;
+        if (this.heartbeatRunning)
+            return;
+        this.heartbeatRunning = true;
+        try {
+            const { data, error } = await this.supabase
+                .from('broker_accounts')
+                .select('id,platform,metaapi_account_id')
+                .eq('is_active', true);
+            if (error)
+                return;
+            for (const row of (data ?? [])) {
+                const uuid = row.metaapi_account_id?.trim();
+                if (!isMtUuid(uuid))
+                    continue;
+                const api = this.clientFor(row.platform);
+                if (!api)
+                    continue;
+                await api.keepSessionAlive(uuid);
+            }
+        }
+        finally {
+            this.heartbeatRunning = false;
+        }
     }
     clientFor(platform) {
         return (0, metatraderapi_1.getMetatraderApi)((0, metatraderapi_1.mtPlatformFrom)(platform));

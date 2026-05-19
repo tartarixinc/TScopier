@@ -12,7 +12,7 @@ const DEFAULT_MT5_BASE = 'https://mt5.mt4api.dev'
 const DEFAULT_MT4_BASE = 'https://mt4.mt4api.dev'
 
 const KEEP_ALIVE_AGENT = new Agent({
-  keepAliveTimeout: 30_000,
+  keepAliveTimeout: 60_000,
   keepAliveMaxTimeout: 600_000,
   connections: 32,
   pipelining: 1,
@@ -516,15 +516,20 @@ export class MetatraderApiClient {
     this.paths = pathsFor(platform)
   }
 
-  private async get<T>(path: string, params: Record<string, string | number | undefined | null>): Promise<T> {
+  private async get<T>(
+    path: string,
+    params: Record<string, string | number | undefined | null>,
+    timeoutMs?: number,
+  ): Promise<T> {
     const qs = buildQuery(params)
     const url = `${this.baseUrl}${path}${qs ? `?${qs}` : ''}`
+    const t = timeoutMs ?? this.timeoutMs
     const res = await request(url, {
       method: 'GET',
       headers: { Authorization: this.authHeader, accept: 'application/json, text/plain' },
       dispatcher: KEEP_ALIVE_AGENT,
-      headersTimeout: this.timeoutMs,
-      bodyTimeout: this.timeoutMs,
+      headersTimeout: t,
+      bodyTimeout: t,
     })
     const text = await res.body.text()
     let body: unknown = null
@@ -710,7 +715,11 @@ export class MetatraderApiClient {
   }
 
   async checkConnect(id: string): Promise<void> {
-    const raw = await this.get<unknown>('/CheckConnect', { id })
+    const checkTimeoutMs = Math.max(
+      500,
+      Math.min(5_000, Number(process.env.MT4API_CHECK_CONNECT_TIMEOUT_MS ?? 1_500)),
+    )
+    const raw = await this.get<unknown>('/CheckConnect', { id }, checkTimeoutMs)
     assertNoApiError(raw)
     if (!isCheckConnectOk(raw)) {
       throw new MetatraderApiError('Broker session is not connected', 502)

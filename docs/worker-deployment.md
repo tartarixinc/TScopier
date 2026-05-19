@@ -34,7 +34,7 @@ WORKER_SESSION_LEASE_TTL_MS=45000
 - **Replicas:** min=1, max=1 (never scale this service horizontally for the same shard).
 - **Health check:** `GET /health` on `WORKER_PORT` (default 8080).
 - **Does not** run trade monitors or backtest sync on the live client.
-- After `parse-signal`, pushes parsed rows to trade workers via `POST /internal/dispatch-signal` (Realtime remains fallback).
+- **Inline parse** in-process (default `LISTENER_INLINE_PARSE=true`); edge `parse-signal` is fallback only when inline is off. After parse, pushes to trade workers via `POST /internal/dispatch-signal` **before** background `signals` upsert (Realtime remains fallback).
 
 ### 2. Trade entry (`WORKER_ROLE=trade_entry`) — recommended for latency
 
@@ -112,35 +112,59 @@ Apply migration `20260520120000_worker_session_leases.sql` before enabling split
 
 ## Low-latency path (split deploy)
 
-1. **Listener → trade HTTP push** — After `parse-signal`, the listener `POST`s to `TRADE_WORKER_URL` (entries) or `TRADE_MGMT_WORKER_URL` (management). This avoids waiting for Supabase Realtime (~100ms–several seconds).
-2. **Entry fast path** — On `trade_entry` / `all`, live `buy`/`sell` dispatch calls `handleSignal` directly (no priority queue). Sweep, Realtime replay, and management still use the queue.
-3. **Concurrent queue drain** — `EXECUTOR_MAX_CONCURRENT_SIGNALS` (default **4**) runs multiple queued signals in parallel so one slow management job does not block unrelated entries on a combined `trade` worker.
-4. **Lease gate cache** — `WORKER_LEASE_GATE_CACHE_MS` (default **8000**) caches `isTelegramListenerLiveForUser` per user on trade workers to avoid a DB round-trip on every signal.
-5. **Optional role split** — `trade_entry` vs `trade_mgmt` scales and isolates CPU; `trade` runs both.
-6. **Monolith (`WORKER_ROLE=all`)** — Uses in-process `dispatchParsedSignal` (no HTTP push). Realtime + sweep remain fallbacks everywhere.
+**Target:** Telegram event → broker `OrderSend` P50 **&lt;800ms**, P99 **&lt;2s** (variance from bridge round-trip only).
 
-Broker `OrderSend` latency is unchanged; this stack removes ingest/dispatch delay before the first API call.
+```mermaid
+sequenceDiagram
+  participant TG as Telegram
+  participant L as Listener
+  participant TE as Trade Entry
+  participant MT as MT4API
+  participant BG as Background
+  TG->>L: NewMessage
+  L->>L: inline parse + signal UUID
+  L->>TE: dispatch (HTTP or in-process)
+  TE->>MT: OrderSend (warm session, cached params)
+  MT-->>TE: ticket
+  TE->>BG: trades row + pipeline_summary + post-fill modify
+  L->>BG: signals upsert + bumpLastSeen
+```
+
+1. **Inline parse** — `worker/src/parseSignal.ts` + `channelKeywordsCache` (no edge HTTP on live path).
+2. **Dispatch-first** — Pre-generated `signals.id`, `POST /internal/dispatch-signal` before DB writes; listener persists in background.
+3. **Entry fast path** — Live `buy`/`sell` bypass queue and heavy DB idempotency (`inflight` only); `OrderSend` first, management (opposite close, merge, channel SL/TP, pip stops) in `postFillFollowUp`.
+4. **Broker pre-warm** — `EXECUTOR_PREWARM_SYMBOLS` loads symbol list/params on start; `BROKER_SESSION_HEARTBEAT_MS` (default **15s**) keeps sessions warm.
+5. **No market `/Quote` on live path** — Clamp from cached `SymbolParams`; pip/channel stops applied via `OrderModify` post-fill.
+6. **Concurrent queue drain** — `EXECUTOR_MAX_CONCURRENT_SIGNALS` (default **4**) for sweep/realtime/management.
+7. **Lease gate cache** — `WORKER_LEASE_GATE_CACHE_MS` (default **8000**).
 
 ### Diagnosing slow execution
 
-`trade_execution_logs` records pipeline stages per signal:
+Live entries write one consolidated row:
 
 | `action` | Meaning |
 |----------|---------|
-| `dispatch_received` | HTTP push or in-process dispatch accepted |
-| `handle_start` / `handle_end` | Trade worker began/finished `handleSignal` (`queue_wait_ms` on live path) |
-| `order_send` | Broker `OrderSend` (see `request_payload.pipeline_ms`) |
-
-Example for one signal (replace `<signal_id>`):
+| `pipeline_summary` | End-to-end timings (`telegram_to_listener_ms`, `parse_ms`, `dispatch_ms`, `prep_ms`, `order_send_ms`, `total_ms`) |
 
 ```sql
-select action, status, request_payload, created_at
+select
+  created_at,
+  request_payload->>'total_ms' as total_ms,
+  request_payload->>'parse_ms' as parse_ms,
+  request_payload->>'dispatch_ms' as dispatch_ms,
+  request_payload->>'prep_ms' as prep_ms,
+  request_payload->>'order_send_ms' as order_send_ms,
+  request_payload->'timestamps' as timestamps
 from trade_execution_logs
 where signal_id = '<signal_id>'
-order by created_at;
+  and action = 'pipeline_summary'
+order by created_at desc
+limit 1;
 ```
 
-Look for a large gap between `handle_start` (`queue_wait_ms`) and the first successful `order_send`, or intentional delay from Copier Engine **`delay_msec`** on the channel.
+Sweep/realtime/management paths still emit `dispatch_received`, `handle_start`, `handle_end`, and per-leg `order_send` rows.
+
+Look for `parse_ms` &gt; 100 (inline parse should stay &lt;30ms) or large `prep_ms` (broker session cold — check heartbeat logs).
 
 ### Range pending legs (duplicate opens)
 

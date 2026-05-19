@@ -1,12 +1,15 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UserListener = void 0;
+const node_crypto_1 = require("node:crypto");
 const events_1 = require("telegram/events");
 const tl_1 = require("telegram/tl");
 const telegramClient_1 = require("./telegramClient");
 const backtestSignal_1 = require("./backtestSignal");
 const tradableSymbol_1 = require("./tradableSymbol");
 const tradeSignalPush_1 = require("./tradeSignalPush");
+const channelKeywordsCache_1 = require("./channelKeywordsCache");
+const parseSignal_1 = require("./parseSignal");
 const workerMetrics_1 = require("./workerMetrics");
 const workerConfig_1 = require("./workerConfig");
 const SUPABASE_URL = process.env.SUPABASE_URL ?? '';
@@ -18,6 +21,10 @@ const PARSE_SIGNAL_AUTH_KEY = isJwt(RAW_PARSE_SIGNAL_KEY)
     ? RAW_PARSE_SIGNAL_KEY
     : SUPABASE_SERVICE_ROLE_KEY;
 const PARSE_SIGNAL_API_KEY = SUPABASE_SERVICE_ROLE_KEY;
+function listenerInlineParseEnabled() {
+    const v = String(process.env.LISTENER_INLINE_PARSE ?? 'true').toLowerCase();
+    return v !== '0' && v !== 'false' && v !== 'no';
+}
 /** Min seconds between client.connect() and first getDialogs on a fresh session. */
 const COLD_FANOUT_DELAY_MS = 8000;
 const DIALOG_CACHE_TTL_MS = 60000;
@@ -219,6 +226,16 @@ class UserListener {
      * NewMessage filter and runs catch-up for any newly added channels.
      */
     async onChannelsChanged() {
+        const { data: activeChannelRows } = await this.supabase
+            .from('telegram_channels')
+            .select('id')
+            .eq('user_id', this.userId)
+            .eq('is_active', true);
+        for (const row of activeChannelRows ?? []) {
+            const id = row.id;
+            if (id)
+                (0, channelKeywordsCache_1.invalidateChannelParseCache)(id);
+        }
         const previous = new Set(this.monitoredChannels);
         await this.refreshChannelSubscription();
         const added = [...this.monitoredChannels].filter(c => !previous.has(c));
@@ -740,119 +757,179 @@ class UserListener {
             console.log(`[userListener] skipped non-signal user=${this.userId} channelRow=${channelRow.id} messageId=${messageId}`);
             return false;
         }
-        const { data: signalRow, error: insertErr } = await this.supabase
+        const { count: dupCount } = await this.supabase
             .from('signals')
-            .upsert({
-            user_id: this.userId,
-            channel_id: channelRow.id,
-            raw_message: rawMessage,
-            raw_image_url: null,
-            status: 'pending',
-            telegram_message_id: messageId,
-            is_modification: isReply,
-            parent_signal_id: parentSignalId,
-            reply_to_message_id: replyToMessageId,
-        }, { onConflict: 'user_id,telegram_message_id', ignoreDuplicates: true })
-            .select('id')
-            .maybeSingle();
-        if (insertErr) {
-            console.error(`[userListener] logSignal upsert failed for ${this.userId}:`, insertErr.message);
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', this.userId)
+            .eq('telegram_message_id', messageId);
+        if ((dupCount ?? 0) > 0) {
+            console.log(`[userListener] duplicate message ignored user=${this.userId} channelRow=${channelRow.id} messageId=${messageId}`);
             return false;
         }
-        if (!signalRow) {
-            console.log(`[userListener] duplicate message ignored user=${this.userId} channelRow=${channelRow.id} messageId=${messageId}`);
-            return false; // duplicate — skip parse-signal
-        }
-        await this.bumpLastSeen(channelRow.id, messageId);
-        if (replyToMessageId && !parentSignalId) {
-            const lateParent = await this.resolveParentSignalIdForReply(channelRow.id, replyToMessageId);
-            if (lateParent) {
-                await this.supabase
-                    .from('signals')
-                    .update({ parent_signal_id: lateParent })
-                    .eq('id', signalRow.id);
+        const signalId = (0, node_crypto_1.randomUUID)();
+        const tListenerReceived = Date.now();
+        const pipelineTs = {
+            t_telegram_event: messageEpochSec > 0 ? messageEpochSec * 1000 : undefined,
+            t_listener_received: tListenerReceived,
+        };
+        let parseResult;
+        try {
+            if (listenerInlineParseEnabled()) {
+                const { keywords, lexicon } = await (0, channelKeywordsCache_1.getChannelParseContext)(this.supabase, channelRow.id);
+                parseResult = (0, parseSignal_1.parseChannelMessageSync)(rawMessage, keywords, lexicon);
+            }
+            else if (PARSE_SIGNAL_URL) {
+                parseResult = await this.parseViaEdgeFunction(signalId, rawMessage, channelRow.id);
+            }
+            else {
+                parseResult = await (0, parseSignal_1.parseRawChannelMessage)(this.supabase, channelRow.id, rawMessage);
             }
         }
-        await this.relinkReplyOrphansAfterParentInsert(channelRow.id, messageId, signalRow.id);
-        console.log(`[userListener] signal inserted user=${this.userId} signalId=${signalRow.id} channelRow=${channelRow.id} messageId=${messageId}`);
-        if (PARSE_SIGNAL_URL) {
-            await this.supabase.from('trade_execution_logs').insert({
-                user_id: this.userId,
-                signal_id: signalRow.id,
-                action: 'pipeline_parse_dispatch',
-                status: 'attempt',
-                request_payload: {
-                    parse_signal_url: PARSE_SIGNAL_URL,
-                    has_parse_auth_key: !!PARSE_SIGNAL_AUTH_KEY,
-                    parse_auth_source: isJwt(RAW_PARSE_SIGNAL_KEY) ? 'PARSE_SIGNAL_KEY(jwt)' : 'SUPABASE_SERVICE_ROLE_KEY(fallback)',
-                    signal_id: signalRow.id,
+        catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            console.error(`[userListener] parse failed user=${this.userId} signalId=${signalId}:`, errMsg);
+            void this.persistSignalBackground({
+                signalId,
+                channelRow,
+                rawMessage,
+                messageId,
+                parentSignalId,
+                replyToMessageId,
+                isReply,
+                parseResult: {
+                    parsed: {
+                        action: 'ignore',
+                        symbol: null,
+                        entry_price: null,
+                        entry_zone_low: null,
+                        entry_zone_high: null,
+                        sl: null,
+                        tp: [],
+                        lot_size: null,
+                        confidence: 0,
+                        raw_instruction: rawMessage,
+                        open_tp: false,
+                    },
+                    status: 'error',
+                    skip_reason: errMsg,
                 },
             });
-            const parseTimeoutMs = Math.max(2000, Math.min(15000, Number(process.env.PARSE_SIGNAL_TIMEOUT_MS ?? 6000)));
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort('parse-timeout'), parseTimeoutMs);
-            const parseT0 = Date.now();
-            try {
-                const res = await fetch(PARSE_SIGNAL_URL, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${PARSE_SIGNAL_AUTH_KEY}`,
-                        'apikey': PARSE_SIGNAL_API_KEY,
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ signal_id: signalRow.id }),
-                    signal: controller.signal,
-                });
-                const body = await res.json().catch(() => ({}));
-                const parseMs = Date.now() - parseT0;
-                await this.supabase.from('trade_execution_logs').insert({
-                    user_id: this.userId,
-                    signal_id: signalRow.id,
-                    action: 'pipeline_parse_dispatch',
-                    status: res.ok ? 'success' : 'failed',
-                    response_payload: { status: res.status, ok: res.ok, parse_ms: parseMs },
-                    error_message: res.ok ? null : (body.error ?? `parse-signal returned ${res.status}`),
-                });
-                if (res.ok && body.parsed) {
-                    const status = String(body.status ?? 'parsed');
-                    if (status === 'parsed') {
-                        const dispatchRow = {
-                            id: signalRow.id,
-                            user_id: this.userId,
-                            channel_id: channelRow.id,
-                            parsed_data: body.parsed,
-                            status,
-                            parent_signal_id: parentSignalId,
-                            is_modification: isReply,
-                            telegram_message_id: messageId,
-                            reply_to_message_id: replyToMessageId,
-                        };
-                        if (this.onSignalParsed) {
-                            this.onSignalParsed(dispatchRow);
-                        }
-                        if (workerConfig_1.workerConfig.runsListener && !workerConfig_1.workerConfig.runsTrade) {
-                            (0, tradeSignalPush_1.pushParsedSignalToTradeWorker)(dispatchRow);
-                        }
-                    }
-                }
-            }
-            catch (err) {
-                const errMsg = err instanceof Error ? err.message : String(err);
-                console.error(`[userListener] parse-signal call failed for signal ${signalRow.id}:`, errMsg);
-                await this.supabase.from('trade_execution_logs').insert({
-                    user_id: this.userId,
-                    signal_id: signalRow.id,
-                    action: 'pipeline_parse_dispatch',
-                    status: 'failed',
-                    error_message: errMsg,
-                    response_payload: { parse_ms: Date.now() - parseT0 },
-                });
-            }
-            finally {
-                clearTimeout(timeout);
-            }
+            return false;
+        }
+        pipelineTs.t_parse_done = Date.now();
+        void this.persistSignalBackground({
+            signalId,
+            channelRow,
+            rawMessage,
+            messageId,
+            parentSignalId,
+            replyToMessageId,
+            isReply,
+            parseResult,
+        });
+        if (parseResult.status !== 'parsed') {
+            return true;
+        }
+        pipelineTs.t_dispatch_sent = Date.now();
+        const dispatchRow = {
+            id: signalId,
+            user_id: this.userId,
+            channel_id: channelRow.id,
+            parsed_data: parseResult.parsed,
+            status: parseResult.status,
+            parent_signal_id: parentSignalId,
+            is_modification: isReply,
+            telegram_message_id: messageId,
+            reply_to_message_id: replyToMessageId,
+            created_at: new Date().toISOString(),
+            pipeline_ts: pipelineTs,
+        };
+        console.log(`[userListener] dispatch signal user=${this.userId} signalId=${signalId} channelRow=${channelRow.id} messageId=${messageId}`);
+        if (this.onSignalParsed) {
+            this.onSignalParsed(dispatchRow);
+        }
+        if (workerConfig_1.workerConfig.runsListener && !workerConfig_1.workerConfig.runsTrade) {
+            (0, tradeSignalPush_1.pushParsedSignalToTradeWorker)(dispatchRow);
         }
         return true;
+    }
+    /** Edge parse fallback when LISTENER_INLINE_PARSE=false (UI preview path unchanged on edge). */
+    async parseViaEdgeFunction(signalId, rawMessage, channelRowId) {
+        if (!PARSE_SIGNAL_URL) {
+            return (0, parseSignal_1.parseRawChannelMessage)(this.supabase, channelRowId, rawMessage);
+        }
+        const parseTimeoutMs = Math.max(2000, Math.min(15000, Number(process.env.PARSE_SIGNAL_TIMEOUT_MS ?? 6000)));
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort('parse-timeout'), parseTimeoutMs);
+        try {
+            await this.supabase.from('signals').upsert({
+                id: signalId,
+                user_id: this.userId,
+                channel_id: channelRowId,
+                raw_message: rawMessage,
+                raw_image_url: null,
+                status: 'pending',
+            });
+            const res = await fetch(PARSE_SIGNAL_URL, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${PARSE_SIGNAL_AUTH_KEY}`,
+                    apikey: PARSE_SIGNAL_API_KEY,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ signal_id: signalId }),
+                signal: controller.signal,
+            });
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error(body.error ?? `parse-signal returned ${res.status}`);
+            }
+            return {
+                parsed: (body.parsed ?? {}),
+                status: String(body.status ?? 'parsed'),
+                skip_reason: body.skip_reason ?? null,
+            };
+        }
+        finally {
+            clearTimeout(timeout);
+        }
+    }
+    persistSignalBackground(args) {
+        const { signalId, channelRow, rawMessage, messageId, parentSignalId, replyToMessageId, isReply, parseResult, } = args;
+        void (async () => {
+            const { error: insertErr } = await this.supabase.from('signals').upsert({
+                id: signalId,
+                user_id: this.userId,
+                channel_id: channelRow.id,
+                raw_message: rawMessage,
+                raw_image_url: null,
+                status: parseResult.status,
+                parsed_data: parseResult.parsed,
+                skip_reason: parseResult.skip_reason,
+                telegram_message_id: messageId,
+                is_modification: isReply,
+                parent_signal_id: parentSignalId,
+                reply_to_message_id: replyToMessageId,
+            }, { onConflict: 'user_id,telegram_message_id', ignoreDuplicates: true });
+            if (insertErr) {
+                console.error(`[userListener] signal upsert failed signalId=${signalId}:`, insertErr.message);
+                return;
+            }
+            await this.bumpLastSeen(channelRow.id, messageId);
+            let resolvedParent = parentSignalId;
+            if (replyToMessageId && !resolvedParent) {
+                resolvedParent = await this.resolveParentSignalIdForReply(channelRow.id, replyToMessageId);
+                if (resolvedParent) {
+                    await this.supabase
+                        .from('signals')
+                        .update({ parent_signal_id: resolvedParent })
+                        .eq('id', signalId);
+                }
+            }
+            await this.relinkReplyOrphansAfterParentInsert(channelRow.id, messageId, signalId);
+        })().catch(err => {
+            console.error(`[userListener] persistSignalBackground failed signalId=${signalId}:`, err);
+        });
     }
     /** Resolve `signals.id` of the parent message in this channel (telegram_channels row id). */
     async resolveParentSignalIdForReply(channelRowId, replyToMessageId) {

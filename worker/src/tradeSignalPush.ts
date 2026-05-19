@@ -3,6 +3,7 @@
  */
 
 import { dispatchPriorityForAction, isManagementAction, parsedAction } from './tradeSignalActions'
+import type { PipelineTimestamps } from './pipelineTimestamps'
 
 export type TradeSignalPushPayload = {
   id: string
@@ -15,6 +16,7 @@ export type TradeSignalPushPayload = {
   telegram_message_id?: string | null
   reply_to_message_id?: string | null
   created_at?: string
+  pipeline_ts?: PipelineTimestamps
 }
 
 function tradePushEnabled(): boolean {
