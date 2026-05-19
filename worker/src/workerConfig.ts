@@ -2,21 +2,42 @@
  * Worker process role and shard configuration (Railway / multi-service deploy).
  *
  * WORKER_ROLE:
- *   all      — monolith (default): listener + trade monitors + backtest HTTP
- *   listener — Telegram ingest only; no trade monitors; backtest HTTP returns 503
- *   trade    — TradeExecutor + monitors; no Telegram listeners
- *   backtest — Ephemeral Telegram client for backtest sync only; no live listener
+ *   all          — monolith (default): listener + trade monitors + backtest HTTP
+ *   listener     — Telegram ingest only; no trade monitors; backtest HTTP returns 503
+ *   trade        — TradeExecutor (entries + management) + all monitors
+ *   trade_entry  — buy/sell only + execution-side monitors (virtual pending, CWE, …)
+ *   trade_mgmt   — management only + reconcile / auto-mgmt monitors
+ *   backtest     — Ephemeral Telegram client for backtest sync only
  */
 
-export type WorkerRole = 'all' | 'listener' | 'trade' | 'backtest'
+import { tradeExecutorModeForRole, type TradeExecutorMode } from './tradeSignalActions'
+
+export type WorkerRole =
+  | 'all'
+  | 'listener'
+  | 'trade'
+  | 'trade_entry'
+  | 'trade_mgmt'
+  | 'backtest'
 
 function parseRole(raw: string | undefined): WorkerRole {
   const v = String(raw ?? 'all').toLowerCase().trim()
-  if (v === 'listener' || v === 'trade' || v === 'backtest') return v
+  if (
+    v === 'listener'
+    || v === 'trade'
+    || v === 'trade_entry'
+    || v === 'trade_mgmt'
+    || v === 'backtest'
+  ) {
+    return v
+  }
   return 'all'
 }
 
 const role = parseRole(process.env.WORKER_ROLE)
+
+const runsTradeRole =
+  role === 'all' || role === 'trade' || role === 'trade_entry' || role === 'trade_mgmt'
 
 export const workerConfig = {
   role,
@@ -27,7 +48,12 @@ export const workerConfig = {
   shardId: Math.max(0, Math.floor(Number(process.env.WORKER_SHARD_ID ?? 0))),
   shardCount: Math.max(1, Math.floor(Number(process.env.WORKER_SHARD_COUNT ?? 1))),
   runsListener: role === 'all' || role === 'listener',
-  runsTrade: role === 'all' || role === 'trade',
+  runsTrade: runsTradeRole,
+  tradeExecutorMode: tradeExecutorModeForRole(role) as TradeExecutorMode,
+  runsExecutionMonitors:
+    role === 'all' || role === 'trade' || role === 'trade_entry',
+  runsManagementMonitors:
+    role === 'all' || role === 'trade' || role === 'trade_mgmt',
   runsBacktestHttp: role === 'all' || role === 'backtest',
   /** Backtest uses a short-lived Telegram client, never the live listener connection. */
   backtestUsesEphemeralClient: role !== 'all' || process.env.BACKTEST_EPHEMERAL_CLIENT !== 'false',

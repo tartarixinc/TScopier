@@ -8,6 +8,8 @@ const calendarProvider_1 = require("./newsTrading/calendarProvider");
 const settings_1 = require("./newsTrading/settings");
 const autoManagement_1 = require("./autoManagement");
 const closeWorseEntries_1 = require("./closeWorseEntries");
+const tradeSignalActions_1 = require("./tradeSignalActions");
+const workerConfig_1 = require("./workerConfig");
 const channelMessageFilters_1 = require("./channelMessageFilters");
 const signalPip_1 = require("./signalPip");
 const trailingStop_1 = require("./trailingStop");
@@ -98,15 +100,6 @@ function operationFor(action, signal) {
     if (a === 'sell')
         return hasEntry ? 'SellLimit' : 'Sell';
     return null;
-}
-function isManagementAction(action) {
-    const a = action.toLowerCase();
-    return a === 'close'
-        || a === 'close_worse_entries'
-        || a === 'breakeven'
-        || a === 'partial_profit'
-        || a === 'partial_breakeven'
-        || a === 'modify';
 }
 function computeLot(broker, signal) {
     const mode = broker.copier_mode ?? 'ai';
@@ -275,6 +268,11 @@ class TradeExecutor {
         this.brokersByUser = new Map();
         this.brokersById = new Map();
         this.inflight = new Set();
+        this.queuedIds = new Set();
+        this.highPriorityQueue = [];
+        this.normalPriorityQueue = [];
+        this.queueDrainScheduled = false;
+        this.queueDraining = false;
         this.symbolCache = new Map();
         /** Per-broker `/Symbols` cache used to map signal symbols (e.g. BTCUSD) to broker variants (BTCUSDm). */
         this.symbolListCache = new Map();
@@ -310,7 +308,7 @@ class TradeExecutor {
             this.sweepExpiredTscopierBrokerPendings().catch(err => console.error('[tradeExecutor] broker pending TTL sweep failed:', err));
         }, 5 * 60000);
         this.brokerPendingSweepTimer.unref?.();
-        console.log('[tradeExecutor] started');
+        console.log(`[tradeExecutor] started mode=${workerConfig_1.workerConfig.tradeExecutorMode} role=${workerConfig_1.workerConfig.role}`);
         if (String(process.env.WORKER_LEGACY_PENDING_CLEANUP ?? '').toLowerCase() === 'true') {
             this.cleanupLegacyBrokerPendings().catch(err => console.error('[tradeExecutor] legacy pending cleanup failed:', err));
         }
@@ -420,7 +418,7 @@ class TradeExecutor {
                 return;
             if (!PARSED_STATUSES.has(row.status))
                 return;
-            this.handleSignal(row).catch(err => console.error(`[tradeExecutor] handleSignal failed for ${row.id}:`, err));
+            this.enqueueSignal(row, { source: 'realtime' });
         })
             .subscribe();
     }
@@ -476,17 +474,80 @@ class TradeExecutor {
                 await this.markSignalExecuted(row.id);
                 continue;
             }
-            await this.handleSignal(row);
+            this.enqueueSignal(row, { source: 'sweep' });
         }
     }
     /**
-     * Run trade logic immediately after parse (same process), without waiting
-     * for Supabase Realtime. Realtime/sweep remain as fallbacks.
+     * HTTP push from listener (split deploy) or in-process callback after parse.
+     */
+    acceptDispatchSignal(row, opts) {
+        if (!PARSED_STATUSES.has(row.status))
+            return false;
+        if (!(0, tradeSignalActions_1.signalMatchesExecutorMode)(row.parsed_data, workerConfig_1.workerConfig.tradeExecutorMode)) {
+            return false;
+        }
+        this.enqueueSignal(row, {
+            liveDispatch: true,
+            priority: opts?.priority,
+            source: opts?.source ?? 'dispatch',
+        });
+        return true;
+    }
+    /**
+     * In-process fast path (monolith). Same priority queue as HTTP push / Realtime.
      */
     dispatchParsedSignal(row) {
+        this.acceptDispatchSignal(row, {
+            priority: (0, tradeSignalActions_1.dispatchPriorityForAction)((0, tradeSignalActions_1.parsedAction)(row.parsed_data)),
+            source: 'in_process',
+        });
+    }
+    enqueueSignal(row, opts) {
         if (!PARSED_STATUSES.has(row.status))
             return;
-        void this.handleSignal(row, { liveDispatch: true });
+        if (!(0, tradeSignalActions_1.signalMatchesExecutorMode)(row.parsed_data, workerConfig_1.workerConfig.tradeExecutorMode))
+            return;
+        if (this.inflight.has(row.id) || this.queuedIds.has(row.id))
+            return;
+        const action = (0, tradeSignalActions_1.parsedAction)(row.parsed_data);
+        const high = (opts?.priority ?? (0, tradeSignalActions_1.dispatchPriorityForAction)(action)) === 'high';
+        this.queuedIds.add(row.id);
+        if (high) {
+            this.highPriorityQueue.push(row);
+        }
+        else {
+            this.normalPriorityQueue.push(row);
+        }
+        this.scheduleQueueDrain();
+    }
+    scheduleQueueDrain() {
+        if (this.queueDrainScheduled)
+            return;
+        this.queueDrainScheduled = true;
+        setImmediate(() => {
+            this.queueDrainScheduled = false;
+            void this.drainSignalQueues();
+        });
+    }
+    async drainSignalQueues() {
+        if (this.queueDraining)
+            return;
+        this.queueDraining = true;
+        try {
+            while (this.highPriorityQueue.length > 0 || this.normalPriorityQueue.length > 0) {
+                const row = this.highPriorityQueue.shift() ?? this.normalPriorityQueue.shift();
+                if (!row)
+                    break;
+                this.queuedIds.delete(row.id);
+                await this.handleSignal(row, { liveDispatch: true }).catch(err => console.error(`[tradeExecutor] handleSignal failed for ${row.id}:`, err));
+            }
+        }
+        finally {
+            this.queueDraining = false;
+            if (this.highPriorityQueue.length > 0 || this.normalPriorityQueue.length > 0) {
+                this.scheduleQueueDrain();
+            }
+        }
     }
     async markSignalExecuted(signalId) {
         try {
@@ -582,7 +643,7 @@ class TradeExecutor {
                 // but we double-check here so a stale parse can't slip through.
                 return;
             }
-            if (isManagementAction(action)) {
+            if ((0, tradeSignalActions_1.isManagementAction)(action)) {
                 const mgmtBrokers = brokers.filter(b => !(0, channelMessageFilters_1.isChannelManagementBlocked)((0, channelMessageFilters_1.normalizeChannelMessageFiltersMap)(b.channel_message_filters), row.channel_id, action));
                 if (!mgmtBrokers.length) {
                     try {

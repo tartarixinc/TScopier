@@ -6,7 +6,9 @@ const tl_1 = require("telegram/tl");
 const telegramClient_1 = require("./telegramClient");
 const backtestSignal_1 = require("./backtestSignal");
 const tradableSymbol_1 = require("./tradableSymbol");
+const tradeSignalPush_1 = require("./tradeSignalPush");
 const workerMetrics_1 = require("./workerMetrics");
+const workerConfig_1 = require("./workerConfig");
 const SUPABASE_URL = process.env.SUPABASE_URL ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
 const PARSE_SIGNAL_URL = process.env.PARSE_SIGNAL_URL ?? (SUPABASE_URL ? `${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/parse-signal` : '');
@@ -811,10 +813,10 @@ class UserListener {
                     response_payload: { status: res.status, ok: res.ok, parse_ms: parseMs },
                     error_message: res.ok ? null : (body.error ?? `parse-signal returned ${res.status}`),
                 });
-                if (res.ok && body.parsed && this.onSignalParsed) {
+                if (res.ok && body.parsed) {
                     const status = String(body.status ?? 'parsed');
                     if (status === 'parsed') {
-                        this.onSignalParsed({
+                        const dispatchRow = {
                             id: signalRow.id,
                             user_id: this.userId,
                             channel_id: channelRow.id,
@@ -824,7 +826,13 @@ class UserListener {
                             is_modification: isReply,
                             telegram_message_id: messageId,
                             reply_to_message_id: replyToMessageId,
-                        });
+                        };
+                        if (this.onSignalParsed) {
+                            this.onSignalParsed(dispatchRow);
+                        }
+                        if (workerConfig_1.workerConfig.runsListener && !workerConfig_1.workerConfig.runsTrade) {
+                            (0, tradeSignalPush_1.pushParsedSignalToTradeWorker)(dispatchRow);
+                        }
                     }
                 }
             }

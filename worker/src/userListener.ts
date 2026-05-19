@@ -7,7 +7,9 @@ import { buildClient, isAuthKeyUnregistered, rethrowIfSessionInvalid, TelegramSe
 import { tradeableFromParsed } from './backtestSignal'
 import { hasTradableInstrumentInText } from './tradableSymbol'
 import type { SignalRow } from './tradeExecutor'
+import { pushParsedSignalToTradeWorker } from './tradeSignalPush'
 import { incMetric } from './workerMetrics'
+import { workerConfig } from './workerConfig'
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? ''
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
@@ -984,10 +986,10 @@ export class UserListener {
           response_payload: { status: res.status, ok: res.ok, parse_ms: parseMs },
           error_message: res.ok ? null : (body.error ?? `parse-signal returned ${res.status}`),
         })
-        if (res.ok && body.parsed && this.onSignalParsed) {
+        if (res.ok && body.parsed) {
           const status = String(body.status ?? 'parsed')
           if (status === 'parsed') {
-            this.onSignalParsed({
+            const dispatchRow: SignalRow = {
               id: signalRow.id,
               user_id: this.userId,
               channel_id: channelRow.id,
@@ -997,7 +999,13 @@ export class UserListener {
               is_modification: isReply,
               telegram_message_id: messageId,
               reply_to_message_id: replyToMessageId,
-            })
+            }
+            if (this.onSignalParsed) {
+              this.onSignalParsed(dispatchRow)
+            }
+            if (workerConfig.runsListener && !workerConfig.runsTrade) {
+              pushParsedSignalToTradeWorker(dispatchRow)
+            }
           }
         }
       } catch (err) {

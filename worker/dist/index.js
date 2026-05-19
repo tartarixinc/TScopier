@@ -30,25 +30,30 @@ let authService = null;
 let tradeExecutor = null;
 const monitors = [];
 function startTradeMonitors() {
-    const virtualPendingMonitor = new virtualPendingMonitor_1.VirtualPendingMonitor(supabase);
-    const cweCloseMonitor = new cweCloseMonitor_1.CweCloseMonitor(supabase);
-    const partialTpMonitor = new partialTpMonitor_1.PartialTpMonitor(supabase);
-    const signalEntryPendingMonitor = new signalEntryPendingMonitor_1.SignalEntryPendingMonitor(supabase);
-    const trailingStopMonitor = new trailingStopMonitor_1.TrailingStopMonitor(supabase);
-    const autoManagementMonitor = new autoManagementMonitor_1.AutoManagementMonitor(supabase);
-    const basketSlTpReconcileMonitor = new basketSlTpReconcileMonitor_1.BasketSlTpReconcileMonitor(supabase);
-    const newsTradingMonitor = new newsTradingMonitor_1.NewsTradingMonitor(supabase);
-    const brokerConnectionMonitor = new brokerConnectionMonitor_1.BrokerConnectionMonitor(supabase);
-    virtualPendingMonitor.start();
-    cweCloseMonitor.start();
-    partialTpMonitor.start();
-    signalEntryPendingMonitor.start();
-    trailingStopMonitor.start();
-    autoManagementMonitor.start();
-    basketSlTpReconcileMonitor.start();
-    newsTradingMonitor.start();
-    brokerConnectionMonitor.start();
-    monitors.push(virtualPendingMonitor, cweCloseMonitor, partialTpMonitor, signalEntryPendingMonitor, trailingStopMonitor, autoManagementMonitor, basketSlTpReconcileMonitor, newsTradingMonitor, brokerConnectionMonitor);
+    if (workerConfig_1.workerConfig.runsExecutionMonitors) {
+        const virtualPendingMonitor = new virtualPendingMonitor_1.VirtualPendingMonitor(supabase);
+        const cweCloseMonitor = new cweCloseMonitor_1.CweCloseMonitor(supabase);
+        const partialTpMonitor = new partialTpMonitor_1.PartialTpMonitor(supabase);
+        const signalEntryPendingMonitor = new signalEntryPendingMonitor_1.SignalEntryPendingMonitor(supabase);
+        virtualPendingMonitor.start();
+        cweCloseMonitor.start();
+        partialTpMonitor.start();
+        signalEntryPendingMonitor.start();
+        monitors.push(virtualPendingMonitor, cweCloseMonitor, partialTpMonitor, signalEntryPendingMonitor);
+    }
+    if (workerConfig_1.workerConfig.runsManagementMonitors) {
+        const trailingStopMonitor = new trailingStopMonitor_1.TrailingStopMonitor(supabase);
+        const autoManagementMonitor = new autoManagementMonitor_1.AutoManagementMonitor(supabase);
+        const basketSlTpReconcileMonitor = new basketSlTpReconcileMonitor_1.BasketSlTpReconcileMonitor(supabase);
+        const newsTradingMonitor = new newsTradingMonitor_1.NewsTradingMonitor(supabase);
+        const brokerConnectionMonitor = new brokerConnectionMonitor_1.BrokerConnectionMonitor(supabase);
+        trailingStopMonitor.start();
+        autoManagementMonitor.start();
+        basketSlTpReconcileMonitor.start();
+        newsTradingMonitor.start();
+        brokerConnectionMonitor.start();
+        monitors.push(trailingStopMonitor, autoManagementMonitor, basketSlTpReconcileMonitor, newsTradingMonitor, brokerConnectionMonitor);
+    }
 }
 async function main() {
     console.log(`[worker] starting role=${workerConfig_1.workerConfig.role} shard=${workerConfig_1.workerConfig.shardId}/${workerConfig_1.workerConfig.shardCount}`
@@ -57,14 +62,14 @@ async function main() {
         authService = new authService_1.AuthService(supabase, sessionManager);
         httpServer = (0, httpServer_1.startHttpServer)(authService, sessionManager);
     }
-    else if (workerConfig_1.workerConfig.runsTrade) {
-        httpServer = (0, httpServer_1.startHealthOnlyServer)(sessionManager);
-    }
     if (workerConfig_1.workerConfig.runsTrade) {
         tradeExecutor = new tradeExecutor_1.TradeExecutor(supabase, sessionManager);
         sessionManager.setTradeExecutor(tradeExecutor);
         await tradeExecutor.start();
         startTradeMonitors();
+        if (!httpServer) {
+            httpServer = (0, httpServer_1.startTradeHttpServer)(sessionManager, tradeExecutor);
+        }
     }
     else {
         sessionManager.setTradeExecutor(null);

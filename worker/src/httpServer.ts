@@ -1,7 +1,9 @@
 import { createServer, IncomingMessage, Server, ServerResponse } from 'http'
 import { AuthService } from './authService'
 import { TelegramSessionInvalidError, TELEGRAM_SESSION_INVALID_CODE } from './telegramClient'
+import type { SignalRow, TradeExecutor } from './tradeExecutor'
 import { UserSessionManager } from './sessionManager'
+import { userBelongsToShard } from './workerConfig'
 
 const INTERNAL_TOKEN = process.env.WORKER_INTERNAL_TOKEN ?? ''
 const PORT = parseInt(process.env.WORKER_PORT ?? '8080', 10)
@@ -191,29 +193,72 @@ export function startHttpServer(
 }
 
 /**
- * Trade-only workers: `/health` for Railway/uptime (no telegram-auth routes).
+ * Trade workers: `/health` + optional `/internal/dispatch-signal` (listener push).
  */
-export function startHealthOnlyServer(sessionManager: UserSessionManager): Server {
+export function startTradeHttpServer(
+  sessionManager: UserSessionManager,
+  tradeExecutor: TradeExecutor | null,
+): Server {
   const server = createServer(async (req, res) => {
     try {
       const url = (req.url ?? '').split('?')[0] ?? ''
+
       if (url === '/health' && (req.method === 'GET' || req.method === 'POST')) {
         const payload = await sessionManager.getHealthPayload()
         return sendJson(res, payload.ok ? 200 : 503, payload)
       }
+
+      if (url === '/internal/dispatch-signal' && req.method === 'POST') {
+        if (!INTERNAL_TOKEN) {
+          return sendJson(res, 503, { error: 'WORKER_INTERNAL_TOKEN not configured' })
+        }
+        const token = req.headers['x-internal-token']
+        if (token !== INTERNAL_TOKEN) {
+          return sendJson(res, 401, { error: 'Unauthorized' })
+        }
+        if (!tradeExecutor) {
+          return sendJson(res, 503, { error: 'trade_executor_not_running' })
+        }
+        const body = (await readJson(req)) as {
+          signal?: Record<string, unknown>
+          priority?: 'high' | 'normal'
+          source?: string
+        }
+        const raw = body.signal
+        if (!raw || typeof raw.id !== 'string' || typeof raw.user_id !== 'string') {
+          return sendJson(res, 400, { error: 'signal.id and signal.user_id required' })
+        }
+        if (!userBelongsToShard(raw.user_id as string)) {
+          return sendJson(res, 200, { accepted: false, reason: 'wrong_shard' })
+        }
+        const accepted = tradeExecutor.acceptDispatchSignal(raw as unknown as SignalRow, {
+          priority: body.priority,
+          source: body.source,
+        })
+        return sendJson(res, 200, { accepted })
+      }
+
       return sendJson(res, 404, { error: 'Not found' })
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Internal error'
-      console.error('[httpServer] health error:', msg)
-      return sendJson(res, 500, { error: 'Health check failed' })
+      console.error('[httpServer] trade http error:', msg)
+      return sendJson(res, 500, { error: 'Request failed' })
     }
   })
 
   server.listen(PORT, () => {
-    console.log(`[httpServer] health-only listening on :${PORT} (trade worker)`)
+    console.log(`[httpServer] trade API listening on :${PORT}`)
   })
 
   return server
+}
+
+/** @deprecated Use startTradeHttpServer */
+export function startHealthOnlyServer(
+  sessionManager: UserSessionManager,
+  tradeExecutor?: TradeExecutor | null,
+): Server {
+  return startTradeHttpServer(sessionManager, tradeExecutor ?? null)
 }
 
 async function readJson(req: IncomingMessage): Promise<unknown> {

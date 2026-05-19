@@ -38,6 +38,13 @@ import {
   selectTradesForCweInstruction,
 } from './closeWorseEntries'
 import {
+  dispatchPriorityForAction,
+  isManagementAction,
+  parsedAction,
+  signalMatchesExecutorMode,
+} from './tradeSignalActions'
+import { workerConfig } from './workerConfig'
+import {
   isChannelManagementBlocked,
   isOppositeSignalCloseBlocked,
   isPendingCancelBlocked,
@@ -306,16 +313,6 @@ function operationFor(action: string, signal: ParsedSignal): MtOperation | null 
   return null
 }
 
-function isManagementAction(action: string): boolean {
-  const a = action.toLowerCase()
-  return a === 'close'
-    || a === 'close_worse_entries'
-    || a === 'breakeven'
-    || a === 'partial_profit'
-    || a === 'partial_breakeven'
-    || a === 'modify'
-}
-
 function computeLot(broker: BrokerRow, signal: ParsedSignal): number {
   const mode = broker.copier_mode ?? 'ai'
   if (mode === 'manual') {
@@ -508,6 +505,11 @@ export class TradeExecutor {
   private brokersByUser = new Map<string, BrokerRow[]>()
   private brokersById = new Map<string, BrokerRow>()
   private inflight = new Set<string>()
+  private queuedIds = new Set<string>()
+  private highPriorityQueue: SignalRow[] = []
+  private normalPriorityQueue: SignalRow[] = []
+  private queueDrainScheduled = false
+  private queueDraining = false
   private symbolCache = new Map<string, SymbolCacheEntry>()
   /** Per-broker `/Symbols` cache used to map signal symbols (e.g. BTCUSD) to broker variants (BTCUSDm). */
   private symbolListCache = new Map<string, SymbolListCacheEntry>()
@@ -551,7 +553,9 @@ export class TradeExecutor {
       )
     }, 5 * 60_000)
     this.brokerPendingSweepTimer.unref?.()
-    console.log('[tradeExecutor] started')
+    console.log(
+      `[tradeExecutor] started mode=${workerConfig.tradeExecutorMode} role=${workerConfig.role}`,
+    )
     if (String(process.env.WORKER_LEGACY_PENDING_CLEANUP ?? '').toLowerCase() === 'true') {
       this.cleanupLegacyBrokerPendings().catch(err =>
         console.error('[tradeExecutor] legacy pending cleanup failed:', err),
@@ -655,9 +659,7 @@ export class TradeExecutor {
           const row = payload.new as SignalRow | undefined
           if (!row) return
           if (!PARSED_STATUSES.has(row.status)) return
-          this.handleSignal(row).catch(err =>
-            console.error(`[tradeExecutor] handleSignal failed for ${row.id}:`, err),
-          )
+          this.enqueueSignal(row, { source: 'realtime' })
         },
       )
       .subscribe()
@@ -719,17 +721,86 @@ export class TradeExecutor {
         await this.markSignalExecuted(row.id)
         continue
       }
-      await this.handleSignal(row)
+      this.enqueueSignal(row, { source: 'sweep' })
     }
   }
 
   /**
-   * Run trade logic immediately after parse (same process), without waiting
-   * for Supabase Realtime. Realtime/sweep remain as fallbacks.
+   * HTTP push from listener (split deploy) or in-process callback after parse.
+   */
+  acceptDispatchSignal(
+    row: SignalRow,
+    opts?: { priority?: 'high' | 'normal'; source?: string },
+  ): boolean {
+    if (!PARSED_STATUSES.has(row.status)) return false
+    if (!signalMatchesExecutorMode(row.parsed_data, workerConfig.tradeExecutorMode)) {
+      return false
+    }
+    this.enqueueSignal(row, {
+      liveDispatch: true,
+      priority: opts?.priority,
+      source: opts?.source ?? 'dispatch',
+    })
+    return true
+  }
+
+  /**
+   * In-process fast path (monolith). Same priority queue as HTTP push / Realtime.
    */
   dispatchParsedSignal(row: SignalRow): void {
+    this.acceptDispatchSignal(row, {
+      priority: dispatchPriorityForAction(parsedAction(row.parsed_data)),
+      source: 'in_process',
+    })
+  }
+
+  private enqueueSignal(
+    row: SignalRow,
+    opts?: { liveDispatch?: boolean; priority?: 'high' | 'normal'; source?: string },
+  ): void {
     if (!PARSED_STATUSES.has(row.status)) return
-    void this.handleSignal(row, { liveDispatch: true })
+    if (!signalMatchesExecutorMode(row.parsed_data, workerConfig.tradeExecutorMode)) return
+    if (this.inflight.has(row.id) || this.queuedIds.has(row.id)) return
+
+    const action = parsedAction(row.parsed_data)
+    const high = (opts?.priority ?? dispatchPriorityForAction(action)) === 'high'
+
+    this.queuedIds.add(row.id)
+    if (high) {
+      this.highPriorityQueue.push(row)
+    } else {
+      this.normalPriorityQueue.push(row)
+    }
+    this.scheduleQueueDrain()
+  }
+
+  private scheduleQueueDrain(): void {
+    if (this.queueDrainScheduled) return
+    this.queueDrainScheduled = true
+    setImmediate(() => {
+      this.queueDrainScheduled = false
+      void this.drainSignalQueues()
+    })
+  }
+
+  private async drainSignalQueues(): Promise<void> {
+    if (this.queueDraining) return
+    this.queueDraining = true
+    try {
+      while (this.highPriorityQueue.length > 0 || this.normalPriorityQueue.length > 0) {
+        const row = this.highPriorityQueue.shift() ?? this.normalPriorityQueue.shift()
+        if (!row) break
+        this.queuedIds.delete(row.id)
+        await this.handleSignal(row, { liveDispatch: true }).catch(err =>
+          console.error(`[tradeExecutor] handleSignal failed for ${row.id}:`, err),
+        )
+      }
+    } finally {
+      this.queueDraining = false
+      if (this.highPriorityQueue.length > 0 || this.normalPriorityQueue.length > 0) {
+        this.scheduleQueueDrain()
+      }
+    }
   }
 
   private async markSignalExecuted(signalId: string): Promise<void> {

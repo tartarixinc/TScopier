@@ -7,7 +7,8 @@ Telegram allows **exactly one** active connection per `telegram_sessions` auth k
 | Service type | Replicas | Scale lever |
 |--------------|----------|-------------|
 | `listener-shard-*` | **1** per shard | Add shard services (`WORKER_SHARD_ID` / `WORKER_SHARD_COUNT`) |
-| `trade-worker` | 2–N | Horizontal replicas (no Telegram client) |
+| `trade-worker` / `trade-entry` | 2–N | Horizontal replicas (no Telegram client) |
+| `trade-mgmt` | 1–N | Management + reconcile monitors |
 | `backtest-worker` | 0–2 | Bursty history sync only |
 | Monolith (`WORKER_ROLE=all`) | **1** | Early commercial only |
 
@@ -21,6 +22,9 @@ Use the **same Docker image** with different env per service:
 WORKER_ROLE=listener
 WORKER_SHARD_ID=0
 WORKER_SHARD_COUNT=1
+WORKER_INTERNAL_TOKEN=<same secret as trade workers>
+TRADE_WORKER_URL=https://your-trade-entry.up.railway.app
+TRADE_MGMT_WORKER_URL=https://your-trade-mgmt.up.railway.app
 TELEGRAM_SHUTDOWN_DRAIN_MS=8000
 WORKER_HEALTH_STALE_MS=180000
 WORKER_LEASE_RENEW_INTERVAL_MS=20000
@@ -30,20 +34,42 @@ WORKER_SESSION_LEASE_TTL_MS=45000
 - **Replicas:** min=1, max=1 (never scale this service horizontally for the same shard).
 - **Health check:** `GET /health` on `WORKER_PORT` (default 8080).
 - **Does not** run trade monitors or backtest sync on the live client.
+- After `parse-signal`, pushes parsed rows to trade workers via `POST /internal/dispatch-signal` (Realtime remains fallback).
 
-### 2. Trade (`WORKER_ROLE=trade`)
+### 2. Trade entry (`WORKER_ROLE=trade_entry`) — recommended for latency
+
+```env
+WORKER_ROLE=trade_entry
+WORKER_REQUIRE_TELEGRAM_LIVE_FOR_TRADES=true
+WORKER_INTERNAL_TOKEN=<shared secret>
+```
+
+- **Replicas:** 2+ as needed.
+- Executes **buy/sell** only; high-priority queue drains before management backlog.
+- Monitors: virtual pending, CWE close, partial TP, signal entry pending.
+- **Health:** `GET /health`; **dispatch:** `POST /internal/dispatch-signal` with `x-internal-token`.
+
+### 3. Trade management (`WORKER_ROLE=trade_mgmt`) — optional split
+
+```env
+WORKER_ROLE=trade_mgmt
+WORKER_INTERNAL_TOKEN=<shared secret>
+```
+
+- Handles **close / modify / breakeven / close worse entries**, etc.
+- Monitors: basket SL/TP reconcile, auto-management, trailing stop, news filter, broker connection.
+
+### 4. Trade combined (`WORKER_ROLE=trade`)
 
 ```env
 WORKER_ROLE=trade
 WORKER_REQUIRE_TELEGRAM_LIVE_FOR_TRADES=true
 ```
 
-- **Replicas:** 2+ as needed.
-- **Health check:** `GET /health` (health-only HTTP server; no telegram-auth routes).
-- No `WORKER_URL` required for ingest; uses Supabase Realtime + lease gate before `OrderSend`.
-- Trade gate checks `worker_session_leases` heartbeat when not co-located with a listener.
+- Same as running `trade_entry` + `trade_mgmt` in one process (all monitors, all actions).
+- Use when you do not want a separate management fleet yet.
 
-### 3. Backtest (`WORKER_ROLE=backtest`)
+### 5. Backtest (`WORKER_ROLE=backtest`)
 
 ```env
 WORKER_ROLE=backtest
@@ -83,6 +109,15 @@ Assign users with `shard = hash(user_id) % WORKER_SHARD_COUNT`. Each listener se
 
 Apply migration `20260520120000_worker_session_leases.sql` before enabling split deploys.
 
+## Low-latency path (split deploy)
+
+1. **Listener → trade HTTP push** — After `parse-signal`, the listener `POST`s to `TRADE_WORKER_URL` (entries) or `TRADE_MGMT_WORKER_URL` (management). This avoids waiting for Supabase Realtime (~100ms–several seconds).
+2. **Priority queue** — Buy/sell signals use a **high** queue; management uses **normal**, so a burst of channel updates does not block new entries on the same worker.
+3. **Optional role split** — `trade_entry` vs `trade_mgmt` scales and isolates CPU; `trade` runs both.
+4. **Monolith (`WORKER_ROLE=all`)** — Uses in-process `dispatchParsedSignal` (no HTTP push). Realtime + sweep remain fallbacks everywhere.
+
+Broker `OrderSend` latency is unchanged; this stack removes ingest/dispatch delay before the first API call.
+
 ## Channel management instructions (copier)
 
 Management messages (`Close half`, `Close worse entries`, `Adjust SL`, etc.) are scoped as follows:
@@ -94,6 +129,7 @@ Management messages (`Close half`, `Close worse entries`, `Adjust SL`, etc.) are
 **Close worse entries** (channel post) closes open legs on that channel whose entry is within your configured pip band of the live price, and always closes legs tagged with `cwe_close_price` (range multi-trade CWE immediates). Requires **Multi Trades** + **Close worse entries** enabled on the broker account. Redeploy **trade worker** and **parse-signal** after CWE fixes.
 
 Channel **Adjust SL / TP** instructions are stored in `channel_active_trade_params` (per channel + symbol) and applied to all `range_pending_legs` on that channel, including ladder rungs inserted after the adjustment. Redeploy the **trade worker** and run migration `20260520130000_channel_active_trade_params.sql` when upgrading.
+
 | **Channel post**, no symbol in text | All **open trades** on that Telegram channel |
 | **Channel post** with symbol (`Close half on EURUSD`, `for gold`) | Open trades on that channel for that symbol only |
 | **Modify SL/TP** with no symbol, multiple symbols open | Symbols where the price is plausible; if none match, the **most recently opened** symbol on the channel |

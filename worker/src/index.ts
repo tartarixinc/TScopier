@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import WebSocket from 'ws'
 import { UserSessionManager } from './sessionManager'
 import { AuthService } from './authService'
-import { startHealthOnlyServer, startHttpServer } from './httpServer'
+import { startHttpServer, startTradeHttpServer } from './httpServer'
 import { TradeExecutor } from './tradeExecutor'
 import { VirtualPendingMonitor } from './virtualPendingMonitor'
 import { CweCloseMonitor } from './cweCloseMonitor'
@@ -34,37 +34,42 @@ let tradeExecutor: TradeExecutor | null = null
 const monitors: Array<{ stop: () => void }> = []
 
 function startTradeMonitors() {
-  const virtualPendingMonitor = new VirtualPendingMonitor(supabase)
-  const cweCloseMonitor = new CweCloseMonitor(supabase)
-  const partialTpMonitor = new PartialTpMonitor(supabase)
-  const signalEntryPendingMonitor = new SignalEntryPendingMonitor(supabase)
-  const trailingStopMonitor = new TrailingStopMonitor(supabase)
-  const autoManagementMonitor = new AutoManagementMonitor(supabase)
-  const basketSlTpReconcileMonitor = new BasketSlTpReconcileMonitor(supabase)
-  const newsTradingMonitor = new NewsTradingMonitor(supabase)
-  const brokerConnectionMonitor = new BrokerConnectionMonitor(supabase)
+  if (workerConfig.runsExecutionMonitors) {
+    const virtualPendingMonitor = new VirtualPendingMonitor(supabase)
+    const cweCloseMonitor = new CweCloseMonitor(supabase)
+    const partialTpMonitor = new PartialTpMonitor(supabase)
+    const signalEntryPendingMonitor = new SignalEntryPendingMonitor(supabase)
+    virtualPendingMonitor.start()
+    cweCloseMonitor.start()
+    partialTpMonitor.start()
+    signalEntryPendingMonitor.start()
+    monitors.push(
+      virtualPendingMonitor,
+      cweCloseMonitor,
+      partialTpMonitor,
+      signalEntryPendingMonitor,
+    )
+  }
 
-  virtualPendingMonitor.start()
-  cweCloseMonitor.start()
-  partialTpMonitor.start()
-  signalEntryPendingMonitor.start()
-  trailingStopMonitor.start()
-  autoManagementMonitor.start()
-  basketSlTpReconcileMonitor.start()
-  newsTradingMonitor.start()
-  brokerConnectionMonitor.start()
-
-  monitors.push(
-    virtualPendingMonitor,
-    cweCloseMonitor,
-    partialTpMonitor,
-    signalEntryPendingMonitor,
-    trailingStopMonitor,
-    autoManagementMonitor,
-    basketSlTpReconcileMonitor,
-    newsTradingMonitor,
-    brokerConnectionMonitor,
-  )
+  if (workerConfig.runsManagementMonitors) {
+    const trailingStopMonitor = new TrailingStopMonitor(supabase)
+    const autoManagementMonitor = new AutoManagementMonitor(supabase)
+    const basketSlTpReconcileMonitor = new BasketSlTpReconcileMonitor(supabase)
+    const newsTradingMonitor = new NewsTradingMonitor(supabase)
+    const brokerConnectionMonitor = new BrokerConnectionMonitor(supabase)
+    trailingStopMonitor.start()
+    autoManagementMonitor.start()
+    basketSlTpReconcileMonitor.start()
+    newsTradingMonitor.start()
+    brokerConnectionMonitor.start()
+    monitors.push(
+      trailingStopMonitor,
+      autoManagementMonitor,
+      basketSlTpReconcileMonitor,
+      newsTradingMonitor,
+      brokerConnectionMonitor,
+    )
+  }
 }
 
 async function main() {
@@ -76,8 +81,6 @@ async function main() {
   if (workerConfig.runsListener || workerConfig.runsBacktestHttp) {
     authService = new AuthService(supabase, sessionManager)
     httpServer = startHttpServer(authService, sessionManager)
-  } else if (workerConfig.runsTrade) {
-    httpServer = startHealthOnlyServer(sessionManager)
   }
 
   if (workerConfig.runsTrade) {
@@ -85,6 +88,9 @@ async function main() {
     sessionManager.setTradeExecutor(tradeExecutor)
     await tradeExecutor.start()
     startTradeMonitors()
+    if (!httpServer) {
+      httpServer = startTradeHttpServer(sessionManager, tradeExecutor)
+    }
   } else {
     sessionManager.setTradeExecutor(null)
   }
