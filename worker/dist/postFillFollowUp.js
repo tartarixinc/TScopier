@@ -101,33 +101,7 @@ async function applyPostFillFollowUp(args) {
     if (manual.close_on_opposite_signal === true) {
         await hooks.closeOppositeDirectionTrades(signal, parsed, broker, symbol);
     }
-    const paramOutcome = await hooks.tryParameterFollowUpMergeModifyOnly({
-        signal,
-        parsed,
-        broker,
-        channelKeywords: args.channelKeywords,
-        baseLot,
-        params,
-        symbol,
-        uuid,
-        strictEntryPrefetch: null,
-    });
-    if (paramOutcome.handled)
-        return;
-    if (manual.add_new_trades_to_existing === true) {
-        await hooks.tryMergeSignalIntoExistingOpenTrade({
-            signal,
-            parsed,
-            op,
-            broker,
-            channelKeywords: args.channelKeywords,
-            baseLot,
-            params,
-            symbol,
-            uuid,
-            strictEntryPrefetch: null,
-        });
-    }
+    // Basket SL/TP refresh and add-to-existing merge run in sendOrder before OrderSend.
     if (!newsBlackoutPreFillEnabled() && !(0, settings_1.isNewsTradingEnabled)(manual)) {
         try {
             const events = await (0, calendarProvider_1.getCalendarEventsCached)();

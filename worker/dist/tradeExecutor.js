@@ -591,7 +591,13 @@ class TradeExecutor {
         const mode = workerConfig_1.workerConfig.tradeExecutorMode;
         if (mode !== 'entry' && mode !== 'all')
             return false;
-        return (0, tradeSignalActions_1.isEntryAction)((0, tradeSignalActions_1.parsedAction)(row.parsed_data));
+        const parsed = row.parsed_data;
+        if (!parsed)
+            return false;
+        // SL/TP follow-ups (replies / adjust posts) must modify the open basket — never OrderSend first.
+        if ((0, multiTradeMerge_1.shouldRouteAsBasketParameterRefresh)(parsed))
+            return false;
+        return (0, tradeSignalActions_1.isEntryAction)((0, tradeSignalActions_1.parsedAction)(parsed));
     }
     enqueueSignal(row, opts) {
         if (!PARSED_STATUSES.has(row.status))
@@ -2266,45 +2272,49 @@ class TradeExecutor {
                 console.warn(`[tradeExecutor] /Quote prefetch failed ${symbol} signal=${signal.id} broker=${broker.id}: ${msg}`);
             }
         }
+        // Basket SL/TP refresh — always before OrderSend (not deferred to post-fill).
+        if (isManual && (0, multiTradeMerge_1.shouldRouteAsBasketParameterRefresh)(parsed)) {
+            const paramOutcome = await this.tryParameterFollowUpMergeModifyOnly({
+                signal,
+                parsed,
+                broker,
+                channelKeywords,
+                baseLot,
+                params,
+                symbol,
+                uuid,
+                strictEntryPrefetch,
+            });
+            if (paramOutcome.handled && paramOutcome.success) {
+                return { openedOrMerged: true };
+            }
+            if (paramOutcome.handled) {
+                return { openedOrMerged: false };
+            }
+        }
+        // Stack-into-basket — before OrderSend on every path (not post-fill only).
+        if (isManual
+            && manual.add_new_trades_to_existing === true
+            && !(0, multiTradeMerge_1.shouldRouteAsBasketParameterRefresh)(parsed)) {
+            const mergeOutcome = await this.tryMergeSignalIntoExistingOpenTrade({
+                signal,
+                parsed,
+                op,
+                broker,
+                channelKeywords,
+                baseLot,
+                params,
+                symbol,
+                uuid,
+                strictEntryPrefetch,
+            });
+            if (mergeOutcome.handled && mergeOutcome.success) {
+                return { openedOrMerged: true };
+            }
+        }
         if (!liveEntryFast) {
             if (isManual && manual.close_on_opposite_signal === true) {
                 await this.closeOppositeDirectionTrades(signal, parsed, broker, symbol);
-            }
-            if (isManual && (0, multiTradeMerge_1.shouldRouteAsBasketParameterRefresh)(parsed)) {
-                const paramOutcome = await this.tryParameterFollowUpMergeModifyOnly({
-                    signal,
-                    parsed,
-                    broker,
-                    channelKeywords,
-                    baseLot,
-                    params,
-                    symbol,
-                    uuid,
-                    strictEntryPrefetch,
-                });
-                if (paramOutcome.handled && paramOutcome.success) {
-                    return { openedOrMerged: true };
-                }
-                if (paramOutcome.handled) {
-                    return { openedOrMerged: false };
-                }
-            }
-            if (isManual && manual.add_new_trades_to_existing === true) {
-                const mergeOutcome = await this.tryMergeSignalIntoExistingOpenTrade({
-                    signal,
-                    parsed,
-                    op,
-                    broker,
-                    channelKeywords,
-                    baseLot,
-                    params,
-                    symbol,
-                    uuid,
-                    strictEntryPrefetch,
-                });
-                if (mergeOutcome.handled && mergeOutcome.success) {
-                    return { openedOrMerged: true };
-                }
             }
             if (isManual && manual.add_new_trades_to_existing === false) {
                 const already = await this.hasOpenTradeForSymbol(broker.id, symbol);
@@ -3157,16 +3167,8 @@ class TradeExecutor {
                 filledLegs,
                 hooks: {
                     closeOppositeDirectionTrades: (s, p, _b, sym) => this.closeOppositeDirectionTrades(s, p, broker, sym),
-                    tryParameterFollowUpMergeModifyOnly: a => this.tryParameterFollowUpMergeModifyOnly({
-                        ...a,
-                        broker,
-                        params,
-                    }),
-                    tryMergeSignalIntoExistingOpenTrade: a => this.tryMergeSignalIntoExistingOpenTrade({
-                        ...a,
-                        broker,
-                        params,
-                    }),
+                    tryParameterFollowUpMergeModifyOnly: async () => ({ handled: false }),
+                    tryMergeSignalIntoExistingOpenTrade: async () => ({ handled: false }),
                 },
             }).catch(err => {
                 console.error(`[tradeExecutor] postFillFollowUp failed signal=${signal.id}:`, err);
