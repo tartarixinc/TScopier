@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useT } from '../../context/LocaleContext'
+import { PageHeader } from '../../components/layout/PageHeader'
+import { PageShell } from '../../components/layout/PageShell'
 import { Card } from '../../components/ui/Card'
 import { Button } from '../../components/ui/Button'
 import type { Signal, TelegramChannel } from '../../types/database'
@@ -107,11 +109,8 @@ export function SignalHistoryPage() {
   }
 
   return (
-    <div className="p-6 lg:p-8 max-w-6xl mx-auto">
-      <div className="mb-6 text-center">
-        <h1 className="text-3xl font-bold text-neutral-900 dark:text-neutral-50">{t.pages.signalHistory.title}</h1>
-        <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">{t.pages.signalHistory.description}</p>
-      </div>
+    <PageShell maxWidth="lg">
+      <PageHeader title={t.pages.signalHistory.title} subtitle={t.pages.signalHistory.description} />
 
       <Card className="mb-6" padding="none">
         <div className="grid grid-cols-4 gap-0 divide-x divide-neutral-100 dark:divide-neutral-800">
@@ -215,7 +214,7 @@ export function SignalHistoryPage() {
           </div>
         )}
       </Card>
-    </div>
+    </PageShell>
   )
 }
 

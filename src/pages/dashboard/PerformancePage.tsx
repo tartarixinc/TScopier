@@ -26,6 +26,8 @@ import { AccountPerformanceTable } from '../../components/performance/AccountPer
 import { PerformancePeriodTabs } from '../../components/performance/PerformancePeriodTabs'
 import { PerformanceStatCard } from '../../components/performance/PerformanceStatCard'
 import { PerformanceTradeOutcomeChart } from '../../components/performance/PerformanceTradeOutcomeChart'
+import { PageHeader } from '../../components/layout/PageHeader'
+import { PageShell } from '../../components/layout/PageShell'
 import { Button } from '../../components/ui/Button'
 import { Alert } from '../../components/ui/Alert'
 
@@ -112,27 +114,28 @@ export function PerformancePage() {
         : '—'
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 p-4 lg:p-8">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-50">{p.title}</h1>
-          <p className="mt-1 max-w-2xl text-sm text-neutral-500 dark:text-neutral-400">{p.subtitle}</p>
-        </div>
-        <div className="flex flex-col items-stretch gap-3 sm:items-end">
-          <PerformancePeriodTabs value={period} labels={periodLabels} onChange={setPeriod} />
-          <div className="flex items-center justify-end gap-2">
-            {lastUpdatedLabel && !loading ? (
-              <span className="text-xs tabular-nums text-neutral-400 dark:text-neutral-500">
-                {lastUpdatedLabel}
-              </span>
-            ) : null}
-            <Button variant="secondary" size="sm" loading={refreshing} disabled={loading} onClick={refresh}>
-              <RefreshCw className="h-4 w-4" />
-              {t.common.refresh}
-            </Button>
-          </div>
-        </div>
-      </div>
+    <PageShell maxWidth="lg">
+      <PageHeader
+        title={p.title}
+        subtitle={p.subtitle}
+        actionsBreakpoint="lg"
+        actions={(
+          <>
+            <PerformancePeriodTabs value={period} labels={periodLabels} onChange={setPeriod} />
+            <div className="flex items-center justify-end gap-2">
+              {lastUpdatedLabel && !loading ? (
+                <span className="text-xs tabular-nums text-neutral-400 dark:text-neutral-500">
+                  {lastUpdatedLabel}
+                </span>
+              ) : null}
+              <Button variant="secondary" size="sm" loading={refreshing} disabled={loading} onClick={refresh}>
+                <RefreshCw className="h-4 w-4" />
+                {t.common.refresh}
+              </Button>
+            </div>
+          </>
+        )}
+      />
 
       {error ? <Alert>{error}</Alert> : null}
       {!loading && !error && accounts.length > 0 && !hasMtBrokers ? (
@@ -253,6 +256,6 @@ export function PerformancePage() {
       </section>
 
       <p className="text-xs text-neutral-400 dark:text-neutral-500">{p.baselineNote}</p>
-    </div>
+    </PageShell>
   )
 }

@@ -14,6 +14,8 @@ import { Card } from '../../components/ui/Card'
 import { Input } from '../../components/ui/Input'
 import { Select } from '../../components/ui/Select'
 import { Toggle } from '../../components/ui/Toggle'
+import { PageHeader } from '../../components/layout/PageHeader'
+import { PageShell } from '../../components/layout/PageShell'
 import { Button } from '../../components/ui/Button'
 import { Badge } from '../../components/ui/Badge'
 import { Alert } from '../../components/ui/Alert'
@@ -1063,24 +1065,24 @@ export function AccountConfigPage() {
 
   if (loading) {
     return (
-      <div className="px-4 py-4 lg:px-6 lg:py-5 max-w-5xl mx-auto space-y-3">
+      <PageShell maxWidth="lg" spacing="none" className="space-y-3">
         {[...Array(2)].map((_, i) => <div key={i} className="h-28 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-100 dark:border-neutral-800 animate-pulse" />)}
-      </div>
+      </PageShell>
     )
   }
 
   return (
-    <div className="px-4 py-4 lg:px-6 lg:py-5 max-w-5xl mx-auto">
-      <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
-        <div>
-          <h1 className="text-xl font-bold text-neutral-900 dark:text-neutral-50">{t.pages.accountConfiguration.title}</h1>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">{t.pages.accountConfiguration.description}</p>
-        </div>
-        <Button size="sm" onClick={() => setShowPlatformModal(true)}>
-          <Plus className="w-3.5 h-3.5" />
-          {t.accountConfig.connectForm.addAccountButton}
-        </Button>
-      </div>
+    <PageShell maxWidth="lg" spacing="none" className="space-y-6">
+      <PageHeader
+        title={t.pages.accountConfiguration.title}
+        subtitle={t.pages.accountConfiguration.description}
+        actions={(
+          <Button size="sm" onClick={() => setShowPlatformModal(true)}>
+            <Plus className="w-3.5 h-3.5" />
+            {t.accountConfig.connectForm.addAccountButton}
+          </Button>
+        )}
+      />
 
       {/* ── Broker Accounts ── */}
       <section>
@@ -2599,7 +2601,7 @@ export function AccountConfigPage() {
           </div>
         </div>
       )}
-    </div>
+    </PageShell>
   )
 }
 

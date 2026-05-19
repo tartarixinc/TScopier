@@ -32,6 +32,8 @@ import {
   sanitizeBacktestUserError,
   tradePipPnl,
 } from '../../lib/backtestDisplay'
+import { PageHeader } from '../../components/layout/PageHeader'
+import { PageShell } from '../../components/layout/PageShell'
 import { Button } from '../../components/ui/Button'
 import { Alert } from '../../components/ui/Alert'
 
@@ -304,30 +306,26 @@ export function Backtest() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8 space-y-8">
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-        <div className="space-y-2">
-          <h1 className="text-2xl sm:text-2xl font-semibold text-neutral-900 dark:text-neutral-50 tracking-tight">
-            {t.backtest.title}
-          </h1>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400 max-w-xl">
-            Pull Telegram signals, pick a symbol, then replay TP/SL against market data.
-          </p>
-        </div>
-        <Button
-          variant="secondary"
-          className="shrink-0"
-          onClick={() => setHistoryOpen(true)}
-          disabled={(isBusy && !historyOpen) || loadingHistoryRun}
-        >
-          {loadingHistoryRun ? (
-            <Loader2 className="w-4 h-4 animate-spin mr-2" />
-          ) : (
-            <History className="w-4 h-4 mr-2" />
-          )}
-          {t.backtest.history}
-        </Button>
-      </div>
+    <PageShell maxWidth="lg" spacing="none" className="space-y-6">
+      <PageHeader
+        title={t.backtest.title}
+        subtitle={t.backtest.subtitle}
+        actions={(
+          <Button
+            variant="secondary"
+            className="shrink-0"
+            onClick={() => setHistoryOpen(true)}
+            disabled={(isBusy && !historyOpen) || loadingHistoryRun}
+          >
+            {loadingHistoryRun ? (
+              <Loader2 className="w-4 h-4 animate-spin mr-2" />
+            ) : (
+              <History className="w-4 h-4 mr-2" />
+            )}
+            {t.backtest.history}
+          </Button>
+        )}
+      />
 
       {error ? <Alert variant="error">{error}</Alert> : null}
       {activeRun?.status === 'failed' && activeRun.error_message ? (
@@ -561,6 +559,6 @@ export function Backtest() {
         onClose={() => setHistoryOpen(false)}
         onSelectRun={run => { void openHistoryRun(run) }}
       />
-    </div>
+    </PageShell>
   )
 }

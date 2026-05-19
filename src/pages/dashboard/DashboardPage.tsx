@@ -11,6 +11,8 @@ import {
   resolveMtServerCandidate,
   type LinkedAccountType,
 } from '../../lib/brokerFromServer'
+import { PageHeader } from '../../components/layout/PageHeader'
+import { PageShell } from '../../components/layout/PageShell'
 import { AddAccountModal } from '../../components/ui/AddAccountModal'
 import { Toggle } from '../../components/ui/Toggle'
 import { metatraderApi, type MtTrade } from '../../lib/metatraderapi'
@@ -1415,12 +1417,8 @@ export function DashboardPage() {
   const chartsEmpty = chartTrades.length === 0 && linkedAccounts.length === 0
 
   return (
-    <div className="px-4 py-4 sm:px-6 sm:py-6 lg:p-8 max-w-[1600px] mx-auto">
-      {/* Page header */}
-      <div className="flex items-center justify-between mb-4 sm:mb-6">
-        <h1 className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-neutral-50">{t.dashboard.title}</h1>
-        
-      </div>
+    <PageShell maxWidth="xl" spacing="none" className="space-y-6">
+      <PageHeader title={t.dashboard.title} />
 
       {/* Stats bar */}
       <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 mb-6">
@@ -1708,7 +1706,7 @@ export function DashboardPage() {
           navigate('/account-config')
         }}
       />
-    </div>
+    </PageShell>
   )
 }
 

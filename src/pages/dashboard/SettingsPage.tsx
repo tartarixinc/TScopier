@@ -17,6 +17,8 @@ import { buildBaseCurrencyOptions } from '../../lib/baseCurrencies'
 import { TIMEZONE_OPTIONS } from '../../lib/timezoneOptions'
 import { Input } from '../../components/ui/Input'
 import { SearchableSelect } from '../../components/ui/SearchableSelect'
+import { PageHeader } from '../../components/layout/PageHeader'
+import { PageShell } from '../../components/layout/PageShell'
 import { Button } from '../../components/ui/Button'
 import { Alert } from '../../components/ui/Alert'
 
@@ -173,17 +175,10 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
-      <header className="mb-6 sm:mb-8">
-        <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-50">
-          {t.settings.title}
-        </h1>
-        <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
-          {t.settings.subtitle}
-        </p>
-      </header>
+    <PageShell maxWidth="md" spacing="none" className="space-y-6 lg:space-y-8">
+      <PageHeader title={t.settings.title} subtitle={t.settings.subtitle} />
 
-      <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
+      <div className="flex flex-col gap-6 lg:flex-row lg:gap-8">
         <nav className="lg:w-52 shrink-0 flex lg:flex-col gap-1 overflow-x-auto pb-1 lg:pb-0">
           {sections.map(({ id, label, icon: Icon }) => {
             const active = section === id
@@ -365,6 +360,6 @@ export function SettingsPage() {
           ) : null}
         </div>
       </div>
-    </div>
+    </PageShell>
   )
 }
