@@ -153,7 +153,11 @@ select
   request_payload->>'parse_ms' as parse_ms,
   request_payload->>'dispatch_ms' as dispatch_ms,
   request_payload->>'prep_ms' as prep_ms,
-  request_payload->>'order_send_ms' as order_send_ms,
+  request_payload->>'order_send_ms' as send_order_ms,
+  request_payload->>'broker_send_ms' as broker_send_ms,
+  request_payload->>'channel_delay_ms' as channel_delay_ms,
+  request_payload->>'channel_delay_skipped' as channel_delay_skipped,
+  request_payload->>'has_listener_timestamps' as has_listener_timestamps,
   request_payload->'timestamps' as timestamps
 from trade_execution_logs
 where signal_id = '<signal_id>'
@@ -162,9 +166,20 @@ order by created_at desc
 limit 1;
 ```
 
+**How to read timings**
+
+| Field | Meaning |
+|-------|---------|
+| `parse_ms` | Listener inline parse (`t_parse_done − t_listener_received`). `null` = trade worker never got listener stamps (redeploy listener, or signal came from sweep/realtime only). |
+| `dispatch_ms` | HTTP push RTT (`t_dispatch_received − t_dispatch_sent`). |
+| `prep_ms` | Trade worker before `sendOrder` (gate, keywords, broker list). |
+| `order_send_ms` / `send_order_ms` | **Entire `sendOrder`** — includes channel `delay_msec`, planning, virtual-pending DB, and all leg `OrderSend` calls. |
+| `broker_send_ms` | First→last broker `OrderSend` API only (after deploy with stamp fields). |
+| `channel_delay_ms` | Configured Copier Engine delay; on live fast path this is **skipped** (`channel_delay_skipped: true`) so entries are not held 15s+. |
+
 Sweep/realtime/management paths still emit `dispatch_received`, `handle_start`, `handle_end`, and per-leg `order_send` rows.
 
-Look for `parse_ms` &gt; 100 (inline parse should stay &lt;30ms) or large `prep_ms` (broker session cold — check heartbeat logs).
+Look for `parse_ms` &gt; 100 (inline parse should stay &lt;30ms), `order_send_ms` ≈ `channel_delay_ms` (delay was blocking — fixed on live fast path), or large `prep_ms` (broker session cold — check heartbeat logs).
 
 ### Range pending legs (duplicate opens)
 

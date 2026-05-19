@@ -231,9 +231,13 @@ export function startTradeHttpServer(
         if (!userBelongsToShard(raw.user_id as string)) {
           return sendJson(res, 200, { accepted: false, reason: 'wrong_shard' })
         }
-        const accepted = tradeExecutor.acceptDispatchSignal(raw as unknown as SignalRow, {
+        const signalRow = {
+          ...raw,
+          pipeline_ts: (raw as { pipeline_ts?: unknown }).pipeline_ts,
+        } as unknown as SignalRow
+        const accepted = tradeExecutor.acceptDispatchSignal(signalRow, {
           priority: body.priority,
-          source: body.source,
+          source: body.source ?? 'listener_push',
         })
         return sendJson(res, 200, { accepted })
       }

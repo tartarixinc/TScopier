@@ -111,7 +111,7 @@ import {
   pendingLegsToCancelScopes,
   updateRangePendingLegsForManagement,
 } from './managementPendingLegs'
-import { pipelineSummaryPayload, type PipelineTimestamps } from './pipelineTimestamps'
+import { parsePipelineTimestamps, pipelineSummaryPayload, type PipelineTimestamps } from './pipelineTimestamps'
 import { applyPostFillFollowUp, type PostFillTradeLeg } from './postFillFollowUp'
 import { invalidateChannelParseCache } from './channelKeywordsCache'
 
@@ -125,6 +125,9 @@ function telegramLiveTradeGateEnabled(): boolean {
 type SendOrderOutcome = {
   openedOrMerged?: boolean
   signalEntryRequiredSkip?: boolean
+  /** Channel `delay_msec` from Copier Engine (skipped on live fast path). */
+  channelDelayMs?: number
+  channelDelaySkipped?: boolean
 }
 
 /**
@@ -802,7 +805,7 @@ export class TradeExecutor {
     const rowWithTs: SignalRow = {
       ...row,
       pipeline_ts: {
-        ...row.pipeline_ts,
+        ...(parsePipelineTimestamps(row.pipeline_ts) ?? {}),
         t_dispatch_received: receivedAt,
       },
     }
@@ -1160,7 +1163,18 @@ export class TradeExecutor {
       }
       const anyOpened = outcomes.some(o => o.openedOrMerged === true)
       const pipelineMs = Date.now() - pipelineT0
-      pipelineOutcome = { ...pipelineOutcome, any_opened: anyOpened, pipeline_ms: pipelineMs, brokers: brokers.length }
+      const channelDelayMs = Math.max(...outcomes.map(o => o.channelDelayMs ?? 0))
+      const channelDelaySkipped = outcomes.some(o => o.channelDelaySkipped === true)
+      pipelineOutcome = {
+        ...pipelineOutcome,
+        any_opened: anyOpened,
+        pipeline_ms: pipelineMs,
+        brokers: brokers.length,
+        dispatch_source: opts?.dispatchSource ?? null,
+        channel_delay_ms: channelDelayMs > 0 ? channelDelayMs : null,
+        channel_delay_skipped: channelDelaySkipped || null,
+        has_listener_timestamps: !!(row.pipeline_ts?.t_listener_received && row.pipeline_ts?.t_dispatch_sent),
+      }
       if (pipelineMs > 4000) {
         console.warn(
           `[tradeExecutor] slow pipeline signal=${row.id} user=${row.user_id} ms=${pipelineMs} brokers=${brokers.length}`,
@@ -2933,8 +2947,16 @@ export class TradeExecutor {
       }
     }
 
-    if (plan.delay_ms > 0) {
-      await new Promise(resolve => setTimeout(resolve, Math.min(plan.delay_ms, 30_000)))
+    const channelDelayMs = Math.max(0, plan.delay_ms)
+    const channelDelaySkipped = liveEntryFast && channelDelayMs > 0
+    if (channelDelayMs > 0) {
+      if (liveEntryFast) {
+        console.log(
+          `[tradeExecutor] live fast: skipping channel delay_msec=${channelDelayMs} signal=${signal.id} broker=${broker.id}`,
+        )
+      } else {
+        await new Promise(resolve => setTimeout(resolve, Math.min(channelDelayMs, 30_000)))
+      }
     }
 
     // Hard cap: planner already respects 500; this is a final guard rail.
@@ -2993,7 +3015,7 @@ export class TradeExecutor {
       }
     }
 
-    if (isManual) {
+    if (isManual && !liveEntryFast) {
       const already = await this.manualDispatchAlreadyMaterialized(signal.id, broker.id)
       if (already) {
         console.warn(
@@ -3060,7 +3082,12 @@ export class TradeExecutor {
     const needsAnchor = virtualPendings.length > 0 || !!plan.closeWorseEntries
     let anchor: number | null = plan.anchor?.value ?? plan.strictEntry?.entryPrice ?? null
     let anchorSource: 'signal' | 'quote' | 'unknown' = plan.anchor?.source ?? 'unknown'
-    if (needsAnchor && (anchor == null || anchor <= 0) && api) {
+    if (needsAnchor && (anchor == null || anchor <= 0)) {
+      const parsedEntry = resolvedParsedEntryPrice(parsed)
+      if (parsedEntry != null && parsedEntry > 0) {
+        anchor = parsedEntry
+        anchorSource = 'signal'
+      } else if (api && !liveEntryFast) {
       try {
         const q = strictEntryPrefetch ?? await api.quote(uuid, symbol)
         if (!strictEntryPrefetch) strictEntryPrefetch = q
@@ -3074,6 +3101,16 @@ export class TradeExecutor {
         console.warn(
           `[tradeExecutor] /Quote failed for ${symbol} signal=${signal.id} broker=${broker.id}: ${msg}`,
         )
+      }
+      } else if (api && liveEntryFast) {
+        try {
+          const q = strictEntryPrefetch ?? await api.quote(uuid, symbol)
+          if (!strictEntryPrefetch) strictEntryPrefetch = q
+          anchor = plan.isBuy === false ? q.bid : q.ask
+          anchorSource = 'quote'
+        } catch {
+          /* virtual ladder may drop without anchor */
+        }
       }
     }
 
@@ -3369,9 +3406,20 @@ export class TradeExecutor {
     }
     let materializedVirtuals = false
         if (insertRows.length > 0) {
+          const persistLabel = `standard signal=${signal.id} broker=${broker.id}`
+          if (liveEntryFast) {
+            void this.persistRangePendingLegRows(insertRows, persistLabel).then(persist => {
+              if (!persist.ok) {
+                console.error(
+                  `[tradeExecutor] range_pending_legs persist failed signal=${signal.id} broker=${broker.id}: ${persist.lastError ?? 'unknown'}`,
+                )
+              }
+            })
+            materializedVirtuals = true
+          } else {
           const persist = await this.persistRangePendingLegRows(
             insertRows,
-            `standard signal=${signal.id} broker=${broker.id}`,
+            persistLabel,
           )
       materializedVirtuals = persist.ok
           if (!persist.ok) {
@@ -3412,12 +3460,15 @@ export class TradeExecutor {
                 } as unknown as Record<string, unknown>,
               })
             } catch { /* logging is best-effort */ }
-      }
-    }
+          }
+          }
+        }
 
     if (legs.length === 0) {
       // No immediates — virtual range ladder and/or broker strict-entry pending.
-      return (materializedVirtuals || strictBrokerPlaced) ? { openedOrMerged: true } : {}
+      return (materializedVirtuals || strictBrokerPlaced)
+        ? { openedOrMerged: true, channelDelayMs, channelDelaySkipped }
+        : { channelDelayMs, channelDelaySkipped }
     }
 
     const totalCount = legs.length
@@ -3468,9 +3519,15 @@ export class TradeExecutor {
       }
       args = clamped.args
       const t0 = Date.now()
+      if (liveEntryFast && signal.pipeline_ts && signal.pipeline_ts.t_first_broker_send == null) {
+        signal.pipeline_ts.t_first_broker_send = t0
+      }
       try {
         const result = await api.orderSend(uuid, args)
         const latencyMs = Date.now() - t0
+        if (liveEntryFast && signal.pipeline_ts) {
+          signal.pipeline_ts.t_last_broker_send = Date.now()
+        }
         console.log(
           `[tradeExecutor] OrderSend ok signal=${signal.id} broker=${broker.id} ticket=${result.ticket} leg=${leg.idx + 1}/${totalCount} price=${args.price ?? 0} ${latencyMs}ms`,
         )
@@ -3698,7 +3755,11 @@ export class TradeExecutor {
         )
       }
     }
-    return { openedOrMerged: anyImmediateOpened || materializedVirtuals || strictBrokerPlaced }
+    return {
+      openedOrMerged: anyImmediateOpened || materializedVirtuals || strictBrokerPlaced,
+      channelDelayMs,
+      channelDelaySkipped,
+    }
   }
 
   private async logSendSkipped(

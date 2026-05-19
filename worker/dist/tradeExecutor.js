@@ -545,7 +545,7 @@ class TradeExecutor {
         const rowWithTs = {
             ...row,
             pipeline_ts: {
-                ...row.pipeline_ts,
+                ...((0, pipelineTimestamps_1.parsePipelineTimestamps)(row.pipeline_ts) ?? {}),
                 t_dispatch_received: receivedAt,
             },
         };
@@ -855,7 +855,18 @@ class TradeExecutor {
             }
             const anyOpened = outcomes.some(o => o.openedOrMerged === true);
             const pipelineMs = Date.now() - pipelineT0;
-            pipelineOutcome = { ...pipelineOutcome, any_opened: anyOpened, pipeline_ms: pipelineMs, brokers: brokers.length };
+            const channelDelayMs = Math.max(...outcomes.map(o => o.channelDelayMs ?? 0));
+            const channelDelaySkipped = outcomes.some(o => o.channelDelaySkipped === true);
+            pipelineOutcome = {
+                ...pipelineOutcome,
+                any_opened: anyOpened,
+                pipeline_ms: pipelineMs,
+                brokers: brokers.length,
+                dispatch_source: opts?.dispatchSource ?? null,
+                channel_delay_ms: channelDelayMs > 0 ? channelDelayMs : null,
+                channel_delay_skipped: channelDelaySkipped || null,
+                has_listener_timestamps: !!(row.pipeline_ts?.t_listener_received && row.pipeline_ts?.t_dispatch_sent),
+            };
             if (pipelineMs > 4000) {
                 console.warn(`[tradeExecutor] slow pipeline signal=${row.id} user=${row.user_id} ms=${pipelineMs} brokers=${brokers.length}`);
             }
@@ -2415,8 +2426,15 @@ class TradeExecutor {
                 // Logging failure is non-fatal.
             }
         }
-        if (plan.delay_ms > 0) {
-            await new Promise(resolve => setTimeout(resolve, Math.min(plan.delay_ms, 30000)));
+        const channelDelayMs = Math.max(0, plan.delay_ms);
+        const channelDelaySkipped = liveEntryFast && channelDelayMs > 0;
+        if (channelDelayMs > 0) {
+            if (liveEntryFast) {
+                console.log(`[tradeExecutor] live fast: skipping channel delay_msec=${channelDelayMs} signal=${signal.id} broker=${broker.id}`);
+            }
+            else {
+                await new Promise(resolve => setTimeout(resolve, Math.min(channelDelayMs, 30000)));
+            }
         }
         // Hard cap: planner already respects 500; this is a final guard rail.
         const capped = plan.orders.slice(0, 500);
@@ -2459,7 +2477,7 @@ class TradeExecutor {
                 /* best-effort */
             }
         }
-        if (isManual) {
+        if (isManual && !liveEntryFast) {
             const already = await this.manualDispatchAlreadyMaterialized(signal.id, broker.id);
             if (already) {
                 console.warn(`[tradeExecutor] skip duplicate manual dispatch signal=${signal.id} broker=${broker.id}`);
@@ -2517,18 +2535,37 @@ class TradeExecutor {
         const needsAnchor = virtualPendings.length > 0 || !!plan.closeWorseEntries;
         let anchor = plan.anchor?.value ?? plan.strictEntry?.entryPrice ?? null;
         let anchorSource = plan.anchor?.source ?? 'unknown';
-        if (needsAnchor && (anchor == null || anchor <= 0) && api) {
-            try {
-                const q = strictEntryPrefetch ?? await api.quote(uuid, symbol);
-                if (!strictEntryPrefetch)
-                    strictEntryPrefetch = q;
-                anchor = plan.isBuy === false ? q.bid : q.ask;
-                anchorSource = 'quote';
-                console.log(`[tradeExecutor] quote anchor signal=${signal.id} broker=${broker.id} symbol=${symbol} bid=${q.bid} ask=${q.ask} anchor=${anchor}`);
+        if (needsAnchor && (anchor == null || anchor <= 0)) {
+            const parsedEntry = (0, manualPlanner_1.resolvedParsedEntryPrice)(parsed);
+            if (parsedEntry != null && parsedEntry > 0) {
+                anchor = parsedEntry;
+                anchorSource = 'signal';
             }
-            catch (err) {
-                const msg = err instanceof Error ? err.message : String(err);
-                console.warn(`[tradeExecutor] /Quote failed for ${symbol} signal=${signal.id} broker=${broker.id}: ${msg}`);
+            else if (api && !liveEntryFast) {
+                try {
+                    const q = strictEntryPrefetch ?? await api.quote(uuid, symbol);
+                    if (!strictEntryPrefetch)
+                        strictEntryPrefetch = q;
+                    anchor = plan.isBuy === false ? q.bid : q.ask;
+                    anchorSource = 'quote';
+                    console.log(`[tradeExecutor] quote anchor signal=${signal.id} broker=${broker.id} symbol=${symbol} bid=${q.bid} ask=${q.ask} anchor=${anchor}`);
+                }
+                catch (err) {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    console.warn(`[tradeExecutor] /Quote failed for ${symbol} signal=${signal.id} broker=${broker.id}: ${msg}`);
+                }
+            }
+            else if (api && liveEntryFast) {
+                try {
+                    const q = strictEntryPrefetch ?? await api.quote(uuid, symbol);
+                    if (!strictEntryPrefetch)
+                        strictEntryPrefetch = q;
+                    anchor = plan.isBuy === false ? q.bid : q.ask;
+                    anchorSource = 'quote';
+                }
+                catch {
+                    /* virtual ladder may drop without anchor */
+                }
             }
         }
         // Apply Close-Worse-Entries to immediate legs. As of May-12 this is a *worker-managed* close: the
@@ -2814,50 +2851,63 @@ class TradeExecutor {
         }
         let materializedVirtuals = false;
         if (insertRows.length > 0) {
-            const persist = await this.persistRangePendingLegRows(insertRows, `standard signal=${signal.id} broker=${broker.id}`);
-            materializedVirtuals = persist.ok;
-            if (!persist.ok) {
-                console.error(`[tradeExecutor] range_pending_legs persist failed signal=${signal.id} broker=${broker.id}: ${persist.lastError ?? 'unknown'}`);
-                try {
-                    await this.supabase.from('trade_execution_logs').insert({
-                        user_id: signal.user_id,
-                        signal_id: signal.id,
-                        broker_account_id: broker.id,
-                        action: 'virtual_pending_failed',
-                        status: 'failed',
-                        request_payload: { rows: insertRows.length, anchor, anchorSource },
-                        error_message: persist.lastError ?? 'unknown',
-                    });
-                }
-                catch { /* logging is best-effort */ }
+            const persistLabel = `standard signal=${signal.id} broker=${broker.id}`;
+            if (liveEntryFast) {
+                void this.persistRangePendingLegRows(insertRows, persistLabel).then(persist => {
+                    if (!persist.ok) {
+                        console.error(`[tradeExecutor] range_pending_legs persist failed signal=${signal.id} broker=${broker.id}: ${persist.lastError ?? 'unknown'}`);
+                    }
+                });
+                materializedVirtuals = true;
             }
             else {
-                console.log(`[tradeExecutor] virtual pendings inserted=${insertRows.length} signal=${signal.id} broker=${broker.id} symbol=${symbol} anchor=${anchor ?? 'n/a'} (${anchorSource})`);
-                try {
-                    await this.supabase.from('trade_execution_logs').insert({
-                        user_id: signal.user_id,
-                        signal_id: signal.id,
-                        broker_account_id: broker.id,
-                        action: 'virtual_pending_inserted',
-                        status: 'success',
-                        request_payload: {
-                            rows: insertRows.length,
-                            anchor,
-                            anchorSource,
-                            symbol,
-                            stepIdxs: insertRows.map(r => r.step_idx),
-                            triggers: insertRows.map(r => r.trigger_price),
-                            strict_deferred: strictDeferred,
-                            strict_broker_pending: strictBrokerPlaced,
-                        },
-                    });
+                const persist = await this.persistRangePendingLegRows(insertRows, persistLabel);
+                materializedVirtuals = persist.ok;
+                if (!persist.ok) {
+                    console.error(`[tradeExecutor] range_pending_legs persist failed signal=${signal.id} broker=${broker.id}: ${persist.lastError ?? 'unknown'}`);
+                    try {
+                        await this.supabase.from('trade_execution_logs').insert({
+                            user_id: signal.user_id,
+                            signal_id: signal.id,
+                            broker_account_id: broker.id,
+                            action: 'virtual_pending_failed',
+                            status: 'failed',
+                            request_payload: { rows: insertRows.length, anchor, anchorSource },
+                            error_message: persist.lastError ?? 'unknown',
+                        });
+                    }
+                    catch { /* logging is best-effort */ }
                 }
-                catch { /* logging is best-effort */ }
+                else {
+                    console.log(`[tradeExecutor] virtual pendings inserted=${insertRows.length} signal=${signal.id} broker=${broker.id} symbol=${symbol} anchor=${anchor ?? 'n/a'} (${anchorSource})`);
+                    try {
+                        await this.supabase.from('trade_execution_logs').insert({
+                            user_id: signal.user_id,
+                            signal_id: signal.id,
+                            broker_account_id: broker.id,
+                            action: 'virtual_pending_inserted',
+                            status: 'success',
+                            request_payload: {
+                                rows: insertRows.length,
+                                anchor,
+                                anchorSource,
+                                symbol,
+                                stepIdxs: insertRows.map(r => r.step_idx),
+                                triggers: insertRows.map(r => r.trigger_price),
+                                strict_deferred: strictDeferred,
+                                strict_broker_pending: strictBrokerPlaced,
+                            },
+                        });
+                    }
+                    catch { /* logging is best-effort */ }
+                }
             }
         }
         if (legs.length === 0) {
             // No immediates — virtual range ladder and/or broker strict-entry pending.
-            return (materializedVirtuals || strictBrokerPlaced) ? { openedOrMerged: true } : {};
+            return (materializedVirtuals || strictBrokerPlaced)
+                ? { openedOrMerged: true, channelDelayMs, channelDelaySkipped }
+                : { channelDelayMs, channelDelaySkipped };
         }
         const totalCount = legs.length;
         const orderLogContext = {
@@ -2902,9 +2952,15 @@ class TradeExecutor {
             }
             args = clamped.args;
             const t0 = Date.now();
+            if (liveEntryFast && signal.pipeline_ts && signal.pipeline_ts.t_first_broker_send == null) {
+                signal.pipeline_ts.t_first_broker_send = t0;
+            }
             try {
                 const result = await api.orderSend(uuid, args);
                 const latencyMs = Date.now() - t0;
+                if (liveEntryFast && signal.pipeline_ts) {
+                    signal.pipeline_ts.t_last_broker_send = Date.now();
+                }
                 console.log(`[tradeExecutor] OrderSend ok signal=${signal.id} broker=${broker.id} ticket=${result.ticket} leg=${leg.idx + 1}/${totalCount} price=${args.price ?? 0} ${latencyMs}ms`);
                 const isBuy = !args.operation.toLowerCase().includes('sell');
                 const entryPx = result.openPrice ?? args.price ?? null;
@@ -3107,7 +3163,11 @@ class TradeExecutor {
                 console.warn(`[tradeExecutor] stripped virtual pendings (zero successful immediates) signal=${signal.id} broker=${broker.id}`);
             }
         }
-        return { openedOrMerged: anyImmediateOpened || materializedVirtuals || strictBrokerPlaced };
+        return {
+            openedOrMerged: anyImmediateOpened || materializedVirtuals || strictBrokerPlaced,
+            channelDelayMs,
+            channelDelaySkipped,
+        };
     }
     async logSendSkipped(signal, broker, reason, extra) {
         try {

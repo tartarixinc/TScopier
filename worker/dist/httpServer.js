@@ -171,9 +171,13 @@ function startTradeHttpServer(sessionManager, tradeExecutor) {
                 if (!(0, workerConfig_1.userBelongsToShard)(raw.user_id)) {
                     return sendJson(res, 200, { accepted: false, reason: 'wrong_shard' });
                 }
-                const accepted = tradeExecutor.acceptDispatchSignal(raw, {
+                const signalRow = {
+                    ...raw,
+                    pipeline_ts: raw.pipeline_ts,
+                };
+                const accepted = tradeExecutor.acceptDispatchSignal(signalRow, {
                     priority: body.priority,
-                    source: body.source,
+                    source: body.source ?? 'listener_push',
                 });
                 return sendJson(res, 200, { accepted });
             }
