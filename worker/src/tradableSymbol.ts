@@ -112,6 +112,24 @@ export function extractTradableSymbolFromMessage(raw: string): string | null {
     if (isTradableInstrumentSymbol(combined)) return combined
   }
 
+  const onFor = raw.match(
+    /\b(?:on|for)\s+([A-Za-z][A-Za-z0-9./]{2,20})\b/i,
+  )
+  if (onFor?.[1]) {
+    const sub = onFor[1].trim()
+    const subUp = sub.toUpperCase()
+    if (/\b(GOLD|XAU)\b/.test(subUp)) return 'XAUUSD'
+    if (/\b(SILVER|XAG)\b/.test(subUp)) return 'XAGUSD'
+    if (/\b(BITCOIN|BTC)\b/.test(subUp)) return /\bUSDT\b/i.test(sub) ? 'BTCUSDT' : 'BTCUSD'
+    const slashOn = sub.match(/^([A-Za-z]{3,})\s*\/\s*([A-Za-z]{3,})$/i)
+    if (slashOn) {
+      const combined = cleanInstrumentSymbol(slashOn[1] + slashOn[2])
+      if (isTradableInstrumentSymbol(combined)) return combined
+    }
+    const sym = cleanInstrumentSymbol(sub.replace(/\s+/g, ''))
+    if (isTradableInstrumentSymbol(sym)) return sym
+  }
+
   const explicit = u.match(
     /\b(BTCUSDT|BTCEUR|BTCUSD|ETHUSDT|ETHUSD|EURUSD|GBPUSD|USDJPY|AUDUSD|NZDUSD|USDCAD|USDCHF|XAUUSD|XAGUSD|NAS100|SPX500|USTEC|US100|US500|US30|GER40|UK100|DJ30|DJI|DAX40|JP225|JPN225|AUS200|HK50|EU50|FRA40|DE40|CHN50|CN50)\b/,
   )

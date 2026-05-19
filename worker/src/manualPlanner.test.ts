@@ -18,6 +18,7 @@ import {
   type PlannerContext,
 } from './manualPlanner'
 import { pipCalculator } from './pipCalculator'
+import { signalPipPrice } from './signalPip'
 
 const baseSplit = {
   totalLegs: 20,
@@ -813,7 +814,7 @@ test('planManualOrders: predefined SL wins over rr_for_sl when both apply', () =
     ctx: { ...baseCtx, point: 0.0001, digits: 5 },
     commentPrefix: 'TSCopier:abc',
   })
-  const pip = pipCalculator('EURUSD', 0.0001, 5, null).pipPrice
+  const pip = signalPipPrice('EURUSD')
   const expectedSl = Number((entry - 50 * pip).toFixed(5))
   assert.equal(plan.orders[0]?.stoploss, expectedSl)
 })

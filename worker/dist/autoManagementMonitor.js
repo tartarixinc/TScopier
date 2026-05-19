@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AutoManagementMonitor = void 0;
 const autoManagement_1 = require("./autoManagement");
 const pipCalculator_1 = require("./pipCalculator");
+const signalPip_1 = require("./signalPip");
 const metatraderapi_1 = require("./metatraderapi");
 const mtApiByAccount_1 = require("./mtApiByAccount");
 const TICK_INTERVAL_MS = 1500;
@@ -160,6 +161,7 @@ class AutoManagementMonitor {
         if (!symEntry)
             return null;
         const pipQuote = (0, pipCalculator_1.pipCalculator)(trade.symbol, symEntry.point, symEntry.digits, symEntry.contractSize);
+        const signalPip = (0, signalPip_1.signalPipPrice)(trade.symbol);
         const lots = Number(trade.lot_size ?? 0);
         const pipValuePerLot = (0, pipCalculator_1.pipValueForLots)(pipQuote, lots > 0 ? lots : 0.01);
         const mode = String(trade.auto_be_mode).toLowerCase();
@@ -180,9 +182,9 @@ class AutoManagementMonitor {
         const riskSl = trade.auto_be_risk_sl != null && Number.isFinite(Number(trade.auto_be_risk_sl))
             ? Number(trade.auto_be_risk_sl)
             : (trade.sl != null && Number.isFinite(Number(trade.sl)) ? Number(trade.sl) : null);
-        const beSl = (0, autoManagement_1.computeBreakevenStopLoss)(isBuy, entry, offsetPips, pipQuote.pipPrice, symEntry.digits);
+        const beSl = (0, autoManagement_1.computeBreakevenStopLoss)(isBuy, entry, offsetPips, signalPip, symEntry.digits);
         const currentSl = trade.sl != null && Number.isFinite(Number(trade.sl)) ? Number(trade.sl) : null;
-        if ((0, autoManagement_1.isSlAtOrBeyondBreakeven)(isBuy, currentSl, beSl, pipQuote.pipPrice)) {
+        if ((0, autoManagement_1.isSlAtOrBeyondBreakeven)(isBuy, currentSl, beSl, signalPip)) {
             await this.markApplied(trade.id, { sl: currentSl ?? beSl });
             return null;
         }
@@ -195,7 +197,7 @@ class AutoManagementMonitor {
             riskSl,
             bid,
             ask,
-            pipPrice: pipQuote.pipPrice,
+            pipPrice: signalPip,
             pipValuePerLot,
             partialTpFiredIndices,
             partialTpTriggers,

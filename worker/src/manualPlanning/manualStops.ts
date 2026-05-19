@@ -1,4 +1,5 @@
 import { pipCalculator, type PipQuote } from '../pipCalculator'
+import { signalPipPrice } from '../signalPip'
 import type { ChannelKeywords, ManualSettings, ParsedSignal, PlannerContext } from './types'
 
 /** True when manual settings request pip-based SL and/or TP overrides. */
@@ -41,7 +42,7 @@ export function deriveManualStopsWithClamp(args: {
   const { parsed, manual, channelKeywords, resolvedSymbol, ctx, entryAnchor, isBuy } = args
 
   const pipQuote = pipCalculator(resolvedSymbol, ctx.point, ctx.digits, ctx.contractSize ?? null)
-  const pip = pipQuote.pipPrice
+  const pip = signalPipPrice(resolvedSymbol)
   const slInPips = channelKeywords?.additional?.sl_in_pips === true
   const tpInPips = channelKeywords?.additional?.tp_in_pips === true
 

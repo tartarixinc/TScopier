@@ -16,8 +16,8 @@ services:
     ports:
       - "8080:8080"
     healthcheck:
-      # /health returns 200 only when every listener is connected and has
-      # received an event within the last 5 minutes (or has just started).
+      # /health returns 200 when listeners are connected and last_event_at is
+      # within WORKER_HEALTH_STALE_MS (default 3 minutes).
       # Docker will mark the container "unhealthy" after 3 consecutive
       # failures; combined with `restart: always` an orchestrator that
       # respects health (Swarm / Docker Engine + autoheal sidecar) will

@@ -5,7 +5,12 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import {
+  applyChannelParamsToVirtualLeg,
+  type ChannelActiveTradeParams,
+} from './channelActiveTradeParams'
 import type { VirtualPendingLeg } from './manualPlanner'
+import type { ManualTpLot } from './manualPlanning/types'
 
 export const TERMINAL_RANGE_LEG_STATUSES = ['fired', 'expired', 'cancelled', 'failed'] as const
 
@@ -73,6 +78,8 @@ export async function syncRangePendingLadderOnBasketRefresh(args: {
   openTradeCount: number
   plannedImmediateLegs: number
   plannedRangeLegs: number
+  channelParams?: ChannelActiveTradeParams | null
+  tpLots?: ManualTpLot[] | null
   buildInsertRow: (leg: VirtualPendingLeg) => Record<string, unknown> | null
   persistRows: (rows: Record<string, unknown>[], context: string) => Promise<{ ok: boolean }>
   context: string
@@ -84,6 +91,8 @@ export async function syncRangePendingLadderOnBasketRefresh(args: {
     openTradeCount,
     plannedImmediateLegs,
     plannedRangeLegs,
+    channelParams,
+    tpLots,
     buildInsertRow,
     persistRows,
     context,
@@ -111,9 +120,18 @@ export async function syncRangePendingLadderOnBasketRefresh(args: {
   for (const row of activeRows) {
     const planLeg = planByStep.get(row.step_idx)
     if (!planLeg) continue
+    const openLegCount = Math.max(openTradeCount, row.step_idx + 1)
+    const stops = applyChannelParamsToVirtualLeg(
+      {
+        stoploss: planLeg.stoploss,
+        takeprofit: planLeg.cweClosePrice != null ? null : planLeg.takeprofit,
+      },
+      channelParams ?? null,
+      { stepIdx: row.step_idx, openLegCount, tpLots },
+    )
     const patch: Record<string, unknown> = {
-      stoploss: planLeg.stoploss,
-      takeprofit: planLeg.cweClosePrice != null ? null : planLeg.takeprofit,
+      stoploss: stops.stoploss,
+      takeprofit: planLeg.cweClosePrice != null ? null : stops.takeprofit,
       cwe_close_price: planLeg.cweClosePrice ?? null,
     }
     const { error } = await supabase
@@ -142,7 +160,18 @@ export async function syncRangePendingLadderOnBasketRefresh(args: {
       continue
     }
 
-    const row = buildInsertRow(v)
+    const openLegCount = Math.max(openTradeCount, v.stepIdx + 1)
+    const stops = applyChannelParamsToVirtualLeg(
+      { stoploss: v.stoploss, takeprofit: v.takeprofit },
+      channelParams ?? null,
+      { stepIdx: v.stepIdx, openLegCount, tpLots },
+    )
+    const legForRow: VirtualPendingLeg = {
+      ...v,
+      stoploss: stops.stoploss ?? v.stoploss,
+      takeprofit: stops.takeprofit ?? v.takeprofit,
+    }
+    const row = buildInsertRow(legForRow)
     if (row) insertRows.push(row)
   }
 
@@ -160,7 +189,7 @@ export async function markRangeLegFired(
   legId: string,
   ticket: number | string | null,
 ): Promise<void> {
-  await supabase
+  const { error } = await supabase
     .from('range_pending_legs')
     .update({
       status: 'fired',
@@ -170,6 +199,9 @@ export async function markRangeLegFired(
       claimed_by: null,
     })
     .eq('id', legId)
+  if (error) {
+    throw new Error(`markRangeLegFired failed leg=${legId}: ${error.message}`)
+  }
 }
 
 /** Mark expired TTL legs (retain row). */

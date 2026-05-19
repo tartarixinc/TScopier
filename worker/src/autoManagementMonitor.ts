@@ -7,6 +7,7 @@ import {
   type AutoBeType,
 } from './autoManagement'
 import { pipCalculator, pipValueForLots } from './pipCalculator'
+import { signalPipPrice } from './signalPip'
 import {
   hasMetatraderApiConfigured,
   normalizeSymbolParams,
@@ -236,6 +237,7 @@ export class AutoManagementMonitor {
       symEntry.digits,
       symEntry.contractSize,
     )
+    const signalPip = signalPipPrice(trade.symbol)
     const lots = Number(trade.lot_size ?? 0)
     const pipValuePerLot = pipValueForLots(pipQuote, lots > 0 ? lots : 0.01)
 
@@ -261,10 +263,10 @@ export class AutoManagementMonitor {
       ? Number(trade.auto_be_risk_sl)
       : (trade.sl != null && Number.isFinite(Number(trade.sl)) ? Number(trade.sl) : null)
 
-    const beSl = computeBreakevenStopLoss(isBuy, entry, offsetPips, pipQuote.pipPrice, symEntry.digits)
+    const beSl = computeBreakevenStopLoss(isBuy, entry, offsetPips, signalPip, symEntry.digits)
     const currentSl = trade.sl != null && Number.isFinite(Number(trade.sl)) ? Number(trade.sl) : null
 
-    if (isSlAtOrBeyondBreakeven(isBuy, currentSl, beSl, pipQuote.pipPrice)) {
+    if (isSlAtOrBeyondBreakeven(isBuy, currentSl, beSl, signalPip)) {
       await this.markApplied(trade.id, { sl: currentSl ?? beSl })
       return null
     }
@@ -278,7 +280,7 @@ export class AutoManagementMonitor {
       riskSl,
       bid,
       ask,
-      pipPrice: pipQuote.pipPrice,
+      pipPrice: signalPip,
       pipValuePerLot,
       partialTpFiredIndices,
       partialTpTriggers,

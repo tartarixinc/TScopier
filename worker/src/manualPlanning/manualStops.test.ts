@@ -40,7 +40,8 @@ test('deriveManualStopsWithClamp: predefined SL ignores signal SL price', () => 
     isBuy: true,
   })
   const expected = Number((entry - 30 * pip).toFixed(5))
-  assert.equal(finalSl, expected)
+  assert.ok(finalSl != null)
+  assert.equal(Number(finalSl.toFixed(5)), expected)
   assert.notEqual(finalSl, signalSl)
 })
 

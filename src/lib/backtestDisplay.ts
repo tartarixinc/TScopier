@@ -4,7 +4,7 @@ import type {
   BacktestTranslations,
 } from '../i18n/locales/types'
 import type { BacktestSummary, BacktestTradeRow } from './backtestTypes'
-import { computePipsFromSignalOutcome } from './backtestPip'
+import { computePipsFromSignalOutcome } from './signalPip'
 
 export type BacktestDisplayLabels = Pick<
   BacktestTranslations,

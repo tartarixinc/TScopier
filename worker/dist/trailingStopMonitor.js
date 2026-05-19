@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TrailingStopMonitor = void 0;
-const pipCalculator_1 = require("./pipCalculator");
+const signalPip_1 = require("./signalPip");
 const trailingStop_1 = require("./trailingStop");
 const metatraderapi_1 = require("./metatraderapi");
 const mtApiByAccount_1 = require("./mtApiByAccount");
@@ -135,7 +135,7 @@ class TrailingStopMonitor {
         const symEntry = await this.getSymbolCache(uuid, trade.symbol);
         if (!symEntry)
             return null;
-        const pipQuote = (0, pipCalculator_1.pipCalculator)(trade.symbol, symEntry.point, symEntry.digits, symEntry.contractSize);
+        const signalPip = (0, signalPip_1.signalPipPrice)(trade.symbol);
         const config = (0, trailingStop_1.normalizeTrailingConfig)({
             trailing_start_pips: trade.trail_start_pips ?? undefined,
             trailing_step_pips: trade.trail_step_pips ?? undefined,
@@ -150,7 +150,7 @@ class TrailingStopMonitor {
             trailPeak: peak,
             bid,
             ask,
-            pipPrice: pipQuote.pipPrice,
+            pipPrice: signalPip,
             digits: symEntry.digits,
             config,
         });

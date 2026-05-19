@@ -1,8 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.startHttpServer = startHttpServer;
+exports.startTradeHttpServer = startTradeHttpServer;
+exports.startHealthOnlyServer = startHealthOnlyServer;
 const http_1 = require("http");
 const telegramClient_1 = require("./telegramClient");
+const workerConfig_1 = require("./workerConfig");
 const INTERNAL_TOKEN = process.env.WORKER_INTERNAL_TOKEN ?? '';
 const PORT = parseInt(process.env.WORKER_PORT ?? '8080', 10);
 function isTelegramSessionInvalid(err) {
@@ -39,6 +42,11 @@ function startHttpServer(authService, sessionManager) {
     }
     const server = (0, http_1.createServer)(async (req, res) => {
         try {
+            const url = (req.url ?? '').split('?')[0] ?? '';
+            if (url === '/health' && (req.method === 'GET' || req.method === 'POST')) {
+                const payload = await sessionManager.getHealthPayload();
+                return sendJson(res, payload.ok ? 200 : 503, payload);
+            }
             if (req.method !== 'POST') {
                 return sendJson(res, 404, { error: 'Not found' });
             }
@@ -47,7 +55,6 @@ function startHttpServer(authService, sessionManager) {
                 return sendJson(res, 401, { error: 'Unauthorized' });
             }
             const body = (await readJson(req));
-            const url = req.url ?? '';
             if (url === '/auth/send_code') {
                 if (!body.user_id || !body.phone) {
                     return sendJson(res, 400, { error: 'user_id and phone are required' });
@@ -121,18 +128,6 @@ function startHttpServer(authService, sessionManager) {
                     return handleTelegramRpcError(res, body.user_id, sessionManager, err, 'Failed to sync backtest signals');
                 }
             }
-            if (url === '/health') {
-                const status = sessionManager.getStatus();
-                const now = Date.now();
-                const STALE_MS = 5 * 60 * 1000;
-                const ok = status.every(s => s.connected && (s.last_event_at === 0 || now - s.last_event_at < STALE_MS));
-                return sendJson(res, ok ? 200 : 503, {
-                    ok,
-                    listeners: status.length,
-                    detail: status,
-                    checked_at: new Date(now).toISOString(),
-                });
-            }
             return sendJson(res, 404, { error: 'Unknown route' });
         }
         catch (err) {
@@ -145,6 +140,63 @@ function startHttpServer(authService, sessionManager) {
         console.log(`[httpServer] listening on :${PORT}`);
     });
     return server;
+}
+/**
+ * Trade workers: `/health` + optional `/internal/dispatch-signal` (listener push).
+ */
+function startTradeHttpServer(sessionManager, tradeExecutor) {
+    const server = (0, http_1.createServer)(async (req, res) => {
+        try {
+            const url = (req.url ?? '').split('?')[0] ?? '';
+            if (url === '/health' && (req.method === 'GET' || req.method === 'POST')) {
+                const payload = await sessionManager.getHealthPayload();
+                return sendJson(res, payload.ok ? 200 : 503, payload);
+            }
+            if (url === '/internal/dispatch-signal' && req.method === 'POST') {
+                if (!INTERNAL_TOKEN) {
+                    return sendJson(res, 503, { error: 'WORKER_INTERNAL_TOKEN not configured' });
+                }
+                const token = req.headers['x-internal-token'];
+                if (token !== INTERNAL_TOKEN) {
+                    return sendJson(res, 401, { error: 'Unauthorized' });
+                }
+                if (!tradeExecutor) {
+                    return sendJson(res, 503, { error: 'trade_executor_not_running' });
+                }
+                const body = (await readJson(req));
+                const raw = body.signal;
+                if (!raw || typeof raw.id !== 'string' || typeof raw.user_id !== 'string') {
+                    return sendJson(res, 400, { error: 'signal.id and signal.user_id required' });
+                }
+                if (!(0, workerConfig_1.userBelongsToShard)(raw.user_id)) {
+                    return sendJson(res, 200, { accepted: false, reason: 'wrong_shard' });
+                }
+                const signalRow = {
+                    ...raw,
+                    pipeline_ts: raw.pipeline_ts,
+                };
+                const accepted = tradeExecutor.acceptDispatchSignal(signalRow, {
+                    priority: body.priority,
+                    source: body.source ?? 'listener_push',
+                });
+                return sendJson(res, 200, { accepted });
+            }
+            return sendJson(res, 404, { error: 'Not found' });
+        }
+        catch (err) {
+            const msg = err instanceof Error ? err.message : 'Internal error';
+            console.error('[httpServer] trade http error:', msg);
+            return sendJson(res, 500, { error: 'Request failed' });
+        }
+    });
+    server.listen(PORT, () => {
+        console.log(`[httpServer] trade API listening on :${PORT}`);
+    });
+    return server;
+}
+/** @deprecated Use startTradeHttpServer */
+function startHealthOnlyServer(sessionManager, tradeExecutor) {
+    return startTradeHttpServer(sessionManager, tradeExecutor ?? null);
 }
 async function readJson(req) {
     const chunks = [];

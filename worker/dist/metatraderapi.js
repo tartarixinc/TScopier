@@ -15,7 +15,7 @@ exports.mtPlatformFrom = mtPlatformFrom;
 exports.hasMetatraderApiConfigured = hasMetatraderApiConfigured;
 exports.getMetatraderApi = getMetatraderApi;
 const undici_1 = require("undici");
-const mtTradeFields_js_1 = require("./mtTradeFields.js");
+const mtTradeFields_1 = require("./mtTradeFields");
 /**
  * MetatraderAPI (metatraderapi.dev) Node client tuned for low order-send latency.
  *
@@ -25,7 +25,7 @@ const mtTradeFields_js_1 = require("./mtTradeFields.js");
 const DEFAULT_MT5_BASE = 'https://mt5.mt4api.dev';
 const DEFAULT_MT4_BASE = 'https://mt4.mt4api.dev';
 const KEEP_ALIVE_AGENT = new undici_1.Agent({
-    keepAliveTimeout: 30000,
+    keepAliveTimeout: 60000,
     keepAliveMaxTimeout: 600000,
     connections: 32,
     pipelining: 1,
@@ -383,15 +383,16 @@ class MetatraderApiClient {
         this.timeoutMs = timeoutMs;
         this.paths = pathsFor(platform);
     }
-    async get(path, params) {
+    async get(path, params, timeoutMs) {
         const qs = buildQuery(params);
         const url = `${this.baseUrl}${path}${qs ? `?${qs}` : ''}`;
+        const t = timeoutMs ?? this.timeoutMs;
         const res = await (0, undici_1.request)(url, {
             method: 'GET',
             headers: { Authorization: this.authHeader, accept: 'application/json, text/plain' },
             dispatcher: KEEP_ALIVE_AGENT,
-            headersTimeout: this.timeoutMs,
-            bodyTimeout: this.timeoutMs,
+            headersTimeout: t,
+            bodyTimeout: t,
         });
         const text = await res.body.text();
         let body = null;
@@ -518,7 +519,7 @@ class MetatraderApiClient {
     }
     async closedOrdersHistory(id, from, to, profile = 'dashboard') {
         const byKey = new Map();
-        const ingest = (rows) => (0, mtTradeFields_js_1.ingestMtHistoryRows)(byKey, rows, profile);
+        const ingest = (rows) => (0, mtTradeFields_1.ingestMtHistoryRows)(byKey, rows, profile);
         try {
             let page = 0;
             let pagesCount = 1;
@@ -556,7 +557,8 @@ class MetatraderApiClient {
         return normalizeAccountSummary(raw);
     }
     async checkConnect(id) {
-        const raw = await this.get('/CheckConnect', { id });
+        const checkTimeoutMs = Math.max(500, Math.min(5000, Number(process.env.MT4API_CHECK_CONNECT_TIMEOUT_MS ?? 1500)));
+        const raw = await this.get('/CheckConnect', { id }, checkTimeoutMs);
         assertNoApiError(raw);
         if (!isCheckConnectOk(raw)) {
             throw new MetatraderApiError('Broker session is not connected', 502);

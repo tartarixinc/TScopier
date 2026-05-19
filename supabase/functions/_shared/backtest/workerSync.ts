@@ -16,7 +16,8 @@ export async function syncBacktestSignalsViaWorker(
     onChannelStart?: (channelIndex: number, channelId: string) => Promise<void>
   },
 ): Promise<BacktestWorkerSyncResult> {
-  const workerUrl = (env.get("WORKER_URL") ?? "").trim().replace(/\/+$/, "")
+  const backtestUrl = (env.get("BACKTEST_WORKER_URL") ?? "").trim().replace(/\/+$/, "")
+  const workerUrl = (backtestUrl || (env.get("WORKER_URL") ?? "")).trim().replace(/\/+$/, "")
   const token = (env.get("WORKER_INTERNAL_TOKEN") ?? "").trim()
 
   if (!workerUrl || !token) {

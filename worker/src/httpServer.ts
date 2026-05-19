@@ -1,7 +1,9 @@
 import { createServer, IncomingMessage, Server, ServerResponse } from 'http'
 import { AuthService } from './authService'
 import { TelegramSessionInvalidError, TELEGRAM_SESSION_INVALID_CODE } from './telegramClient'
+import type { SignalRow, TradeExecutor } from './tradeExecutor'
 import { UserSessionManager } from './sessionManager'
+import { userBelongsToShard } from './workerConfig'
 
 const INTERNAL_TOKEN = process.env.WORKER_INTERNAL_TOKEN ?? ''
 const PORT = parseInt(process.env.WORKER_PORT ?? '8080', 10)
@@ -68,6 +70,13 @@ export function startHttpServer(
 
   const server = createServer(async (req, res) => {
     try {
+      const url = (req.url ?? '').split('?')[0] ?? ''
+
+      if (url === '/health' && (req.method === 'GET' || req.method === 'POST')) {
+        const payload = await sessionManager.getHealthPayload()
+        return sendJson(res, payload.ok ? 200 : 503, payload)
+      }
+
       if (req.method !== 'POST') {
         return sendJson(res, 404, { error: 'Not found' })
       }
@@ -78,7 +87,6 @@ export function startHttpServer(
       }
 
       const body = (await readJson(req)) as Body
-      const url = req.url ?? ''
 
       if (url === '/auth/send_code') {
         if (!body.user_id || !body.phone) {
@@ -169,21 +177,6 @@ export function startHttpServer(
         }
       }
 
-      if (url === '/health') {
-        const status = sessionManager.getStatus()
-        const now = Date.now()
-        const STALE_MS = 5 * 60 * 1000
-        const ok = status.every(s =>
-          s.connected && (s.last_event_at === 0 || now - s.last_event_at < STALE_MS)
-        )
-        return sendJson(res, ok ? 200 : 503, {
-          ok,
-          listeners: status.length,
-          detail: status,
-          checked_at: new Date(now).toISOString(),
-        })
-      }
-
       return sendJson(res, 404, { error: 'Unknown route' })
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Internal error'
@@ -197,6 +190,79 @@ export function startHttpServer(
   })
 
   return server
+}
+
+/**
+ * Trade workers: `/health` + optional `/internal/dispatch-signal` (listener push).
+ */
+export function startTradeHttpServer(
+  sessionManager: UserSessionManager,
+  tradeExecutor: TradeExecutor | null,
+): Server {
+  const server = createServer(async (req, res) => {
+    try {
+      const url = (req.url ?? '').split('?')[0] ?? ''
+
+      if (url === '/health' && (req.method === 'GET' || req.method === 'POST')) {
+        const payload = await sessionManager.getHealthPayload()
+        return sendJson(res, payload.ok ? 200 : 503, payload)
+      }
+
+      if (url === '/internal/dispatch-signal' && req.method === 'POST') {
+        if (!INTERNAL_TOKEN) {
+          return sendJson(res, 503, { error: 'WORKER_INTERNAL_TOKEN not configured' })
+        }
+        const token = req.headers['x-internal-token']
+        if (token !== INTERNAL_TOKEN) {
+          return sendJson(res, 401, { error: 'Unauthorized' })
+        }
+        if (!tradeExecutor) {
+          return sendJson(res, 503, { error: 'trade_executor_not_running' })
+        }
+        const body = (await readJson(req)) as {
+          signal?: Record<string, unknown>
+          priority?: 'high' | 'normal'
+          source?: string
+        }
+        const raw = body.signal
+        if (!raw || typeof raw.id !== 'string' || typeof raw.user_id !== 'string') {
+          return sendJson(res, 400, { error: 'signal.id and signal.user_id required' })
+        }
+        if (!userBelongsToShard(raw.user_id as string)) {
+          return sendJson(res, 200, { accepted: false, reason: 'wrong_shard' })
+        }
+        const signalRow = {
+          ...raw,
+          pipeline_ts: (raw as { pipeline_ts?: unknown }).pipeline_ts,
+        } as unknown as SignalRow
+        const accepted = tradeExecutor.acceptDispatchSignal(signalRow, {
+          priority: body.priority,
+          source: body.source ?? 'listener_push',
+        })
+        return sendJson(res, 200, { accepted })
+      }
+
+      return sendJson(res, 404, { error: 'Not found' })
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Internal error'
+      console.error('[httpServer] trade http error:', msg)
+      return sendJson(res, 500, { error: 'Request failed' })
+    }
+  })
+
+  server.listen(PORT, () => {
+    console.log(`[httpServer] trade API listening on :${PORT}`)
+  })
+
+  return server
+}
+
+/** @deprecated Use startTradeHttpServer */
+export function startHealthOnlyServer(
+  sessionManager: UserSessionManager,
+  tradeExecutor?: TradeExecutor | null,
+): Server {
+  return startTradeHttpServer(sessionManager, tradeExecutor ?? null)
 }
 
 async function readJson(req: IncomingMessage): Promise<unknown> {

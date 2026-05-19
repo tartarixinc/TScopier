@@ -8,6 +8,7 @@ exports.resolveMtDealProfit = resolveMtDealProfit;
 exports.resolveMtTicket = resolveMtTicket;
 exports.historyRowKey = historyRowKey;
 exports.mergeMtHistoryRow = mergeMtHistoryRow;
+exports.adjustMtTradesPositionDirection = adjustMtTradesPositionDirection;
 exports.ingestMtHistoryRows = ingestMtHistoryRows;
 const MT_DEAL_NESTED_OBJECTS = [
     'dealInternalOut',
@@ -180,6 +181,100 @@ function mergeMtHistoryRow(prev, next, profile) {
         }
     }
     return merged;
+}
+function invertMtDirection(direction) {
+    if (direction === 'buy')
+        return 'sell';
+    if (direction === 'sell')
+        return 'buy';
+    return '';
+}
+function directionFromTypeString(raw) {
+    const cleaned = raw.replace(/^(OrderType_|DealType_|DEAL_TYPE_|ORDER_TYPE_)/i, '').trim();
+    if (!cleaned)
+        return null;
+    const lower = cleaned.toLowerCase();
+    const direction = lower.startsWith('buy') ? 'buy' : lower.startsWith('sell') ? 'sell' : '';
+    const label = cleaned.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ').trim();
+    return { direction, label };
+}
+function directionFromOrderRow(order, profile) {
+    const flat = profile === 'trades' ? flattenMtOrder(order, 'trades') : order;
+    for (const key of [
+        'type', 'Type', 'orderType', 'OrderType', 'dealType', 'DealType', 'cmdString', 'action', 'Action',
+    ]) {
+        const v = pickMtField(flat, profile, key);
+        if (typeof v === 'string' && v.trim()) {
+            const parsed = directionFromTypeString(v);
+            if (parsed?.direction)
+                return parsed.direction;
+        }
+    }
+    return '';
+}
+function parseMtDealEntry(order, profile) {
+    const flat = profile === 'trades' ? flattenMtOrder(order, 'trades') : order;
+    const v = pickMtField(flat, profile, 'entry', 'Entry', 'dealEntry', 'DealEntry', 'deal_entry', 'orderEntry', 'OrderEntry');
+    if (typeof v === 'string' && v.trim()) {
+        const lower = v.toLowerCase().replace(/^(deal_entry_|dealentry_)/i, '');
+        if (lower.includes('out_by') || lower === 'out' || lower.endsWith('_out') || lower.includes(' exit')) {
+            return 'out';
+        }
+        if (lower.includes('inout') || lower.includes('in_out'))
+            return 'unknown';
+        if (lower.includes('in') || lower === 'in' || lower.endsWith('_in'))
+            return 'in';
+    }
+    if (typeof v === 'number') {
+        if (v === 1 || v === 3)
+            return 'out';
+        if (v === 0)
+            return 'in';
+    }
+    return 'unknown';
+}
+function labelForPositionDirection(direction, typeLabel) {
+    if (direction !== 'buy' && direction !== 'sell')
+        return typeLabel;
+    const wantsDealPrefix = /deal/i.test(typeLabel);
+    if (direction === 'buy')
+        return wantsDealPrefix ? 'Deal Buy' : 'Buy';
+    return wantsDealPrefix ? 'Deal Sell' : 'Sell';
+}
+function adjustMtTradesPositionDirection(order, profile, resolved) {
+    if (profile !== 'trades')
+        return resolved;
+    const flat = flattenMtOrder(order, 'trades');
+    for (const key of ['dealInternalIn', 'DealInternalIn', 'position', 'Position']) {
+        const nested = flat[key];
+        if (!isPlainObject(nested))
+            continue;
+        const fromNested = directionFromOrderRow(nested, 'trades');
+        if (fromNested) {
+            return {
+                direction: fromNested,
+                type_label: labelForPositionDirection(fromNested, resolved.type_label),
+            };
+        }
+    }
+    let { direction, type_label } = resolved;
+    const entry = parseMtDealEntry(order, profile);
+    if (entry === 'out' && (direction === 'buy' || direction === 'sell')) {
+        direction = invertMtDirection(direction);
+        type_label = labelForPositionDirection(direction, type_label);
+        return { direction, type_label };
+    }
+    if (entry === 'unknown' && (direction === 'buy' || direction === 'sell')) {
+        const hasOutNested = isPlainObject(flat.dealInternalOut) ||
+            isPlainObject(flat.DealInternalOut);
+        const hasInNested = isPlainObject(flat.dealInternalIn) ||
+            isPlainObject(flat.DealInternalIn);
+        if (hasOutNested && !hasInNested) {
+            direction = invertMtDirection(direction);
+            type_label = labelForPositionDirection(direction, type_label);
+        }
+    }
+    return { direction, type_label };
 }
 function ingestMtHistoryRows(target, rows, profile) {
     for (const row of rows) {

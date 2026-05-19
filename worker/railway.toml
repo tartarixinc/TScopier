@@ -1,0 +1,12 @@
+# Railway build config for TSCopier worker (shared by listener / trade / backtest).
+# Healthcheck: enable in Railway UI → GET /health on WORKER_PORT (default 8080).
+# Trade workers expose health-only HTTP; listener/backtest expose full telegram-auth API.
+#
+# Listener shards: set numReplicas = 1 in Railway UI (never scale a shard horizontally).
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+restartPolicyType = "ON_FAILURE"

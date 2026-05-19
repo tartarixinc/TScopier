@@ -11,6 +11,7 @@ const metatraderapi_1 = require("./metatraderapi");
 const mtApiByAccount_1 = require("./mtApiByAccount");
 const basketModFollowUp_1 = require("./basketModFollowUp");
 const rangePendingLadderSync_1 = require("./rangePendingLadderSync");
+const rangePendingFireGuard_1 = require("./rangePendingFireGuard");
 const SYMBOL_TTL_MS = 10 * 60000;
 const TICK_INTERVAL_MS = 1500;
 const STALE_CLAIM_AFTER_MS = 30000;
@@ -87,11 +88,10 @@ class VirtualPendingMonitor {
         // is considered abandoned (the claiming worker probably crashed); reset it
         // so another monitor can pick it up.
         const staleCut = new Date(Date.now() - STALE_CLAIM_AFTER_MS).toISOString();
-        await this.supabase
-            .from('range_pending_legs')
-            .update({ status: 'pending', claimed_at: null, claimed_by: null })
-            .eq('status', 'claimed')
-            .lt('claimed_at', staleCut);
+        const staleStats = await (0, rangePendingFireGuard_1.reconcileStaleClaimedLegs)(this.supabase, staleCut);
+        if (staleStats.cancelled > 0 || staleStats.reset > 0) {
+            console.log(`[virtualPendingMonitor] stale claims reconciled cancelled=${staleStats.cancelled} reset=${staleStats.reset}`);
+        }
         // Expire any rows whose pending_expiry_hours have lapsed BEFORE we try to
         // fire them — keeps the queue tight.
         const nowIso = new Date().toISOString();
@@ -263,10 +263,31 @@ class VirtualPendingMonitor {
             }
         }
     }
+    async markLegFiredWithRetry(legId, ticket) {
+        let lastErr;
+        for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+                await (0, rangePendingLadderSync_1.markRangeLegFired)(this.supabase, legId, ticket);
+                return;
+            }
+            catch (err) {
+                lastErr = err;
+                await new Promise(r => setTimeout(r, 80 * (attempt + 1)));
+            }
+        }
+        throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+    }
     async fireLeg(leg, bid, ask) {
         const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(this.platformByUuid, leg.metaapi_account_id);
         if (!api)
             return false;
+        const block = await (0, rangePendingFireGuard_1.shouldBlockVirtualLegFire)(this.supabase, leg);
+        if (block.block) {
+            if (block.reason) {
+                console.log(`[virtualPendingMonitor] skip fire leg=${leg.id} signal=${leg.signal_id} step=${leg.step_idx}: ${block.reason}`);
+            }
+            return false;
+        }
         // CAS claim. If another monitor (worker peer or edge fn) beat us, .maybeSingle()
         // returns no row and we walk away.
         const { data: claimed, error: claimErr } = await this.supabase
@@ -333,6 +354,9 @@ class VirtualPendingMonitor {
         const t0 = Date.now();
         try {
             const result = await this.sendWithStopsFallback(leg, args);
+            // Mark fired immediately after OrderSend so a slow trades insert / log write
+            // cannot leave the row `claimed` and get reset to `pending` (30s stale reclaim).
+            await this.markLegFiredWithRetry(leg.id, result.ticket ?? null);
             const latencyMs = Date.now() - t0;
             console.log(`[virtualPendingMonitor] virtual leg fired signal=${leg.signal_id} stepIdx=${leg.step_idx} trigger=${leg.trigger_price} ref=${refPrice} ticket=${result.ticket} latency=${latencyMs}ms`);
             const entryPx = result.openPrice ?? refPrice ?? null;
@@ -381,21 +405,25 @@ class VirtualPendingMonitor {
                     console.warn(`[virtualPendingMonitor] SL/TP follow-up for range leg=${leg.id} signal=${leg.signal_id}:`, hookErr);
                 }
             }
-            await this.supabase.from('trade_execution_logs').insert({
-                user_id: leg.user_id,
-                signal_id: leg.signal_id,
-                broker_account_id: leg.broker_account_id,
-                action: 'virtual_pending_fired',
-                status: 'success',
-                request_payload: {
-                    leg_id: leg.id,
-                    step_idx: leg.step_idx,
-                    trigger_price: leg.trigger_price,
-                    ref_price: refPrice,
-                },
-                response_payload: { ticket: result.ticket, latency_ms: latencyMs, claimed_by: this.hostId },
-            });
-            await (0, rangePendingLadderSync_1.markRangeLegFired)(this.supabase, leg.id, result.ticket ?? null);
+            try {
+                await this.supabase.from('trade_execution_logs').insert({
+                    user_id: leg.user_id,
+                    signal_id: leg.signal_id,
+                    broker_account_id: leg.broker_account_id,
+                    action: 'virtual_pending_fired',
+                    status: 'success',
+                    request_payload: {
+                        leg_id: leg.id,
+                        step_idx: leg.step_idx,
+                        trigger_price: leg.trigger_price,
+                        ref_price: refPrice,
+                    },
+                    response_payload: { ticket: result.ticket, latency_ms: latencyMs, claimed_by: this.hostId },
+                });
+            }
+            catch {
+                /* logging is best-effort; leg is already `fired` */
+            }
             return true;
         }
         catch (err) {

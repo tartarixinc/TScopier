@@ -12,6 +12,7 @@ exports.maxConsumedStepIndex = maxConsumedStepIndex;
 exports.syncRangePendingLadderOnBasketRefresh = syncRangePendingLadderOnBasketRefresh;
 exports.markRangeLegFired = markRangeLegFired;
 exports.markRangeLegsExpired = markRangeLegsExpired;
+const channelActiveTradeParams_1 = require("./channelActiveTradeParams");
 exports.TERMINAL_RANGE_LEG_STATUSES = ['fired', 'expired', 'cancelled', 'failed'];
 async function loadRangeLegRows(supabase, scope) {
     const { data, error } = await supabase
@@ -49,7 +50,7 @@ function maxConsumedStepIndex(consumed) {
  * have not fired and respect total leg budget (immediates + range layering).
  */
 async function syncRangePendingLadderOnBasketRefresh(args) {
-    const { supabase, scope, virtualPendings, openTradeCount, plannedImmediateLegs, plannedRangeLegs, buildInsertRow, persistRows, context, } = args;
+    const { supabase, scope, virtualPendings, openTradeCount, plannedImmediateLegs, plannedRangeLegs, channelParams, tpLots, buildInsertRow, persistRows, context, } = args;
     const stats = { updated: 0, inserted: 0, skippedConsumed: 0, skippedCap: 0 };
     if (!virtualPendings.length)
         return stats;
@@ -69,9 +70,14 @@ async function syncRangePendingLadderOnBasketRefresh(args) {
         const planLeg = planByStep.get(row.step_idx);
         if (!planLeg)
             continue;
-        const patch = {
+        const openLegCount = Math.max(openTradeCount, row.step_idx + 1);
+        const stops = (0, channelActiveTradeParams_1.applyChannelParamsToVirtualLeg)({
             stoploss: planLeg.stoploss,
             takeprofit: planLeg.cweClosePrice != null ? null : planLeg.takeprofit,
+        }, channelParams ?? null, { stepIdx: row.step_idx, openLegCount, tpLots });
+        const patch = {
+            stoploss: stops.stoploss,
+            takeprofit: planLeg.cweClosePrice != null ? null : stops.takeprofit,
             cwe_close_price: planLeg.cweClosePrice ?? null,
         };
         const { error } = await supabase
@@ -99,7 +105,14 @@ async function syncRangePendingLadderOnBasketRefresh(args) {
             stats.skippedCap += 1;
             continue;
         }
-        const row = buildInsertRow(v);
+        const openLegCount = Math.max(openTradeCount, v.stepIdx + 1);
+        const stops = (0, channelActiveTradeParams_1.applyChannelParamsToVirtualLeg)({ stoploss: v.stoploss, takeprofit: v.takeprofit }, channelParams ?? null, { stepIdx: v.stepIdx, openLegCount, tpLots });
+        const legForRow = {
+            ...v,
+            stoploss: stops.stoploss ?? v.stoploss,
+            takeprofit: stops.takeprofit ?? v.takeprofit,
+        };
+        const row = buildInsertRow(legForRow);
         if (row)
             insertRows.push(row);
     }
@@ -112,7 +125,7 @@ async function syncRangePendingLadderOnBasketRefresh(args) {
 }
 /** Mark leg fired (retain row for ladder history). */
 async function markRangeLegFired(supabase, legId, ticket) {
-    await supabase
+    const { error } = await supabase
         .from('range_pending_legs')
         .update({
         status: 'fired',
@@ -122,6 +135,9 @@ async function markRangeLegFired(supabase, legId, ticket) {
         claimed_by: null,
     })
         .eq('id', legId);
+    if (error) {
+        throw new Error(`markRangeLegFired failed leg=${legId}: ${error.message}`);
+    }
 }
 /** Mark expired TTL legs (retain row). */
 async function markRangeLegsExpired(supabase, legIds) {

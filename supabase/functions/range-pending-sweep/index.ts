@@ -26,6 +26,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4"
 // @ts-ignore - Deno-only import
 import { makeClientFromEnv, MetatraderApiClient, type MtPlatform } from "../_shared/metatraderapi.ts"
 import { tryApplyBasketFollowUpToNewFill } from "../_shared/basketModFollowUp.ts"
+import { shouldBlockVirtualLegFire } from "../_shared/rangePendingFireGuard.ts"
 
 function mtClient(env: { get(name: string): string | undefined }, platform: string): MetatraderApiClient {
   const p: MtPlatform = platform === "MT4" ? "MT4" : "MT5"
@@ -262,6 +263,14 @@ async function fireLeg(
   bid: number,
   ask: number,
 ): Promise<boolean> {
+  const block = await shouldBlockVirtualLegFire(sb, leg)
+  if (block.block) {
+    console.log(
+      `[range-pending-sweep] skip fire leg=${leg.id} signal=${leg.signal_id} step=${leg.step_idx}: ${block.reason ?? "blocked"}`,
+    )
+    return false
+  }
+
   // CAS claim — the worker monitor may grab it under us; that's fine.
   const { data: claimed, error: claimErr } = await sb
     .from("range_pending_legs")
@@ -316,6 +325,16 @@ async function fireLeg(
       comment: leg.comment ?? `TSCopier:rg${leg.step_idx}`,
       expertID: leg.expert_id ?? 909090,
     })
+    await sb
+      .from("range_pending_legs")
+      .update({
+        status: "fired",
+        fired_at: new Date().toISOString(),
+        ticket: result.ticket != null ? String(result.ticket) : null,
+        claimed_at: null,
+        claimed_by: null,
+      })
+      .eq("id", leg.id)
     const entryPx = result.openPrice ?? refPrice ?? null
     const { data: insTrade, error: insErr } = await sb.from("trades").insert({
       user_id: leg.user_id,
@@ -354,25 +373,19 @@ async function fireLeg(
         console.warn(`[range-pending-sweep] basket follow-up leg=${leg.id}:`, hookErr)
       }
     }
-    await sb.from("trade_execution_logs").insert({
-      user_id: leg.user_id,
-      signal_id: leg.signal_id,
-      broker_account_id: leg.broker_account_id,
-      action: "virtual_pending_fired",
-      status: "success",
-      request_payload: { leg_id: leg.id, step_idx: leg.step_idx, trigger_price: leg.trigger_price, ref_price: refPrice, claimed_by: CLAIMED_BY },
-      response_payload: { ticket: result.ticket },
-    })
-    await sb
-      .from("range_pending_legs")
-      .update({
-        status: "fired",
-        fired_at: new Date().toISOString(),
-        ticket: result.ticket != null ? String(result.ticket) : null,
-        claimed_at: null,
-        claimed_by: null,
+    try {
+      await sb.from("trade_execution_logs").insert({
+        user_id: leg.user_id,
+        signal_id: leg.signal_id,
+        broker_account_id: leg.broker_account_id,
+        action: "virtual_pending_fired",
+        status: "success",
+        request_payload: { leg_id: leg.id, step_idx: leg.step_idx, trigger_price: leg.trigger_price, ref_price: refPrice, claimed_by: CLAIMED_BY },
+        response_payload: { ticket: result.ticket },
       })
-      .eq("id", leg.id)
+    } catch {
+      /* best-effort */
+    }
     return true
   } catch (err) {
     const msg = (err as Error).message

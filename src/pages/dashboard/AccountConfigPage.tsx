@@ -33,6 +33,7 @@ import {
 import { estimateMultiTradeOrderCount } from '../../lib/estimateMultiTradeOrders'
 import { pipCalculator, pipValueForLots, type PipQuote } from '../../lib/pipCalculator'
 import { classifySymbol } from '../../lib/pipMath'
+import { pipsToPriceOffset, signalPipPrice } from '../../lib/signalPip'
 import { formatMoneyWithCode } from '../../lib/currency'
 import type { BrokerAccount, ManualSettings, ManualTpLot } from '../../types/database'
 import {
@@ -624,25 +625,41 @@ export function AccountConfigPage() {
   }, [configDraft.manualSettings.symbol_to_trade])
 
   /**
-   * Format a per-pip hint for the configured fixed_lot, e.g.
-   * `"At 0.10 lot on XAUUSD: 1 pip ≈ $1.00 (~$10.00 per 10 pips)"`.
-   * Returns null when there's no single symbol set yet so callers can fall
-   * back to their original static text.
+   * Pip-count hint: signal pip size (matches backtest) plus optional $/lot from pipCalculator.
    */
   const formatPipHint = useMemo(() => {
     return (pipCount: number): string | null => {
-      if (!livePipQuote) return null
+      const raw = (configDraft.manualSettings.symbol_to_trade ?? '').trim()
+      if (!raw) return null
+      const parts = raw.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean)
+      if (parts.length !== 1) return null
+      const symbol = parts[0].toUpperCase()
+      const pipPx = signalPipPrice(symbol)
+      const klass = classifySymbol(symbol)
+      const priceDigits =
+        klass === 'fx_major' ? 4
+          : klass === 'fx_jpy' ? 2
+            : klass === 'index' ? 0
+              : 2
+      const fmtPrice = (n: number) => n.toFixed(priceDigits)
+
+      const distance =
+        pipCount > 0
+          ? `${pipCount} pip${pipCount === 1 ? '' : 's'} ≈ ${fmtPrice(pipsToPriceOffset(pipCount, symbol))} price on ${symbol}`
+          : `1 pip = ${fmtPrice(pipPx)} price on ${symbol}`
+
+      if (!livePipQuote) return distance
+
       const fixedLot = Number(configDraft.manualSettings.fixed_lot ?? 0.01) || 0.01
       const perPip = pipValueForLots(livePipQuote, fixedLot)
-      if (perPip <= 0) return null
+      if (perPip <= 0) return distance
       const ccy = livePipQuote.quoteCurrency ?? undefined
-      const fmt = (n: number) => formatMoneyWithCode(n, ccy, { nullAsDash: false })
-      const symbol = (configDraft.manualSettings.symbol_to_trade ?? '').trim()
-      const head = `At ${fixedLot.toFixed(2)} lot on ${symbol.toUpperCase()}: 1 pip ≈ ${fmt(perPip)}`
-      if (pipCount > 0) {
-        return `${head} (~${fmt(perPip * pipCount)} per ${pipCount} pips)`
-      }
-      return head
+      const fmtMoney = (n: number) => formatMoneyWithCode(n, ccy, { nullAsDash: false })
+      const money =
+        pipCount > 0
+          ? ` · At ${fixedLot.toFixed(2)} lot ≈ ${fmtMoney(perPip * pipCount)}`
+          : ` · At ${fixedLot.toFixed(2)} lot ≈ ${fmtMoney(perPip)}/pip`
+      return `${distance}${money}`
     }
   }, [livePipQuote, configDraft.manualSettings.fixed_lot, configDraft.manualSettings.symbol_to_trade])
 

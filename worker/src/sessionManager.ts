@@ -1,7 +1,16 @@
 import { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js'
 import { TelegramClient } from 'telegram'
+import { runEphemeralBacktestSync, runWithEphemeralListener } from './backtestSync'
 import { TelegramSessionInvalidError } from './telegramClient'
 import { ChannelInfo, ListenerStatus, UserListener } from './userListener'
+import {
+  acquireSessionLease,
+  listActiveLeases,
+  releaseSessionLease,
+  renewSessionLease,
+} from './sessionLease'
+import { getMetricsSnapshot } from './workerMetrics'
+import { userBelongsToShard, workerConfig } from './workerConfig'
 import type { TradeExecutor } from './tradeExecutor'
 
 export { TelegramSessionInvalidError }
@@ -16,14 +25,18 @@ export class UserSessionManager {
     this.supabase = supabase
   }
 
-  setTradeExecutor(executor: TradeExecutor): void {
+  setTradeExecutor(executor: TradeExecutor | null): void {
     this.tradeExecutor = executor
     for (const listener of this.listeners.values()) {
-      listener.setOnSignalParsed(row => executor.dispatchParsedSignal(row))
+      listener.setOnSignalParsed(
+        executor ? row => executor.dispatchParsedSignal(row) : null,
+      )
     }
   }
 
   async loadAll() {
+    if (!workerConfig.runsListener) return
+
     const { data: sessions, error } = await this.supabase
       .from('telegram_sessions')
       .select('user_id, session_string, phone_number')
@@ -34,11 +47,15 @@ export class UserSessionManager {
       return
     }
 
-    console.log(`[sessionManager] Loading ${sessions?.length ?? 0} sessions`)
+    const owned = (sessions ?? []).filter(s => userBelongsToShard(s.user_id))
+    console.log(
+      `[sessionManager] Loading ${owned.length}/${sessions?.length ?? 0} sessions`
+      + ` (shard ${workerConfig.shardId}/${workerConfig.shardCount})`,
+    )
 
     const staggerMs = Math.max(0, Math.min(30_000, Number(process.env.TELEGRAM_MULTI_SESSION_STAGGER_MS ?? 600)))
     let i = 0
-    for (const session of sessions ?? []) {
+    for (const session of owned) {
       if (i++ > 0 && staggerMs > 0) {
         await new Promise(r => setTimeout(r, staggerMs))
       }
@@ -52,26 +69,26 @@ export class UserSessionManager {
     this.subscribeToChannelChanges()
   }
 
-  /**
-   * Subscribe to Supabase Realtime postgres_changes on telegram_channels.
-   * When a user toggles a channel on/off the relevant listener rebinds
-   * its NewMessage filter immediately instead of waiting up to 60s for
-   * the safety poll inside UserListener.
-   */
+  async renewAllLeases(): Promise<void> {
+    for (const userId of this.listeners.keys()) {
+      await renewSessionLease(this.supabase, userId).catch(err =>
+        console.warn(`[sessionManager] lease renew failed ${userId}:`, err),
+      )
+    }
+  }
+
   private subscribeToChannelChanges() {
     if (this.channelChannel) return
 
     this.channelChannel = this.supabase
       .channel('telegram_channels_changes')
       .on(
-        // postgres_changes is provided via the realtime-js add-on; the
-        // type is a string literal not present in supabase-js core types,
-        // hence the explicit cast.
         'postgres_changes' as never,
         { event: '*', schema: 'public', table: 'telegram_channels' } as never,
         (payload: { new?: Record<string, unknown>; old?: Record<string, unknown> }) => {
           const userId = (payload.new?.user_id ?? payload.old?.user_id) as string | undefined
           if (!userId) return
+          if (!userBelongsToShard(userId)) return
           const listener = this.listeners.get(userId)
           if (!listener) return
           listener.onChannelsChanged().catch(err =>
@@ -89,14 +106,19 @@ export class UserSessionManager {
   }
 
   async syncSessions() {
+    if (!workerConfig.runsListener) return
+
     const { data: sessions } = await this.supabase
       .from('telegram_sessions')
       .select('user_id, session_string, is_active')
 
-    const activeSessions = new Set((sessions ?? []).filter(s => s.is_active).map(s => s.user_id))
+    const activeOnShard = (sessions ?? []).filter(
+      s => s.is_active && userBelongsToShard(s.user_id),
+    )
+    const activeSessions = new Set(activeOnShard.map(s => s.user_id))
 
-    for (const session of sessions ?? []) {
-      if (session.is_active && !this.listeners.has(session.user_id)) {
+    for (const session of activeOnShard) {
+      if (!this.listeners.has(session.user_id)) {
         try {
           await this.startListener(session.user_id, session.session_string)
         } catch (err) {
@@ -116,15 +138,21 @@ export class UserSessionManager {
     return this.listeners.has(userId)
   }
 
-  /**
-   * Channel-attached copier signals should only execute when this worker holds
-   * a live MTProto session for the user; otherwise parsed rows (Realtime/sweep)
-   * can still fire orders while Telegram is down or on another host.
-   */
   canExecuteTelegramCopierTrades(userId: string): boolean {
-    const listener = this.listeners.get(userId)
-    if (!listener) return false
-    return listener.isTelegramConnected()
+    if (workerConfig.runsListener) {
+      const listener = this.listeners.get(userId)
+      if (listener?.isTelegramConnected()) return true
+    }
+    return false
+  }
+
+  /** Async lease check for trade-only workers. */
+  async canExecuteTelegramCopierTradesAsync(userId: string): Promise<boolean> {
+    if (workerConfig.runsListener) {
+      return this.canExecuteTelegramCopierTrades(userId)
+    }
+    const { isTelegramListenerLiveForUser } = await import('./sessionLease')
+    return isTelegramListenerLiveForUser(this.supabase, userId)
   }
 
   getStatus(): ListenerStatus[] {
@@ -135,13 +163,48 @@ export class UserSessionManager {
     return out
   }
 
-  /**
-   * Take ownership of an already-connected, authenticated TelegramClient
-   * (e.g. one produced by AuthService.verifyCode) and run it as the
-   * long-lived listener. Avoids the second connect from the same host
-   * that previously came from the worker spinning up its own client.
-   */
+  async getHealthPayload(): Promise<{
+    ok: boolean
+    role: string
+    shard: string
+    instance: string
+    listeners: number
+    detail: ListenerStatus[]
+    active_leases: number
+    metrics: Record<string, number>
+    checked_at: string
+  }> {
+    const status = this.getStatus()
+    const now = Date.now()
+    const staleMs = Math.max(
+      60_000,
+      Math.min(600_000, Number(process.env.WORKER_HEALTH_STALE_MS ?? 180_000)),
+    )
+    const listenerOk = !workerConfig.runsListener
+      || status.length === 0
+      || status.every(s =>
+        s.connected && (s.last_event_at === 0 || now - s.last_event_at < staleMs),
+      )
+    const leases = workerConfig.runsListener
+      ? await listActiveLeases(this.supabase)
+      : []
+    return {
+      ok: listenerOk,
+      role: workerConfig.role,
+      shard: `${workerConfig.shardId}/${workerConfig.shardCount}`,
+      instance: workerConfig.instanceId,
+      listeners: status.length,
+      detail: status,
+      active_leases: leases.length,
+      metrics: getMetricsSnapshot(),
+      checked_at: new Date(now).toISOString(),
+    }
+  }
+
   async adoptClient(userId: string, client: TelegramClient, sessionString: string) {
+    if (!workerConfig.runsListener) {
+      throw new Error('Telegram listener not enabled on this worker (WORKER_ROLE)')
+    }
     await this.stopListener(userId)
     const listener = new UserListener(userId, sessionString, this.supabase, client)
     if (this.tradeExecutor) {
@@ -149,12 +212,13 @@ export class UserSessionManager {
     }
     await listener.start({ alreadyConnected: true })
     this.listeners.set(userId, listener)
+    await acquireSessionLease(this.supabase, userId)
     console.log(`[sessionManager] Adopted live client for user ${userId}`)
   }
 
-  /** Drop worker listener + DB session when Telegram rejects the auth key. */
   async invalidateTelegramSession(userId: string): Promise<void> {
     await this.stopListener(userId)
+    await releaseSessionLease(this.supabase, userId)
     await this.supabase.from('telegram_auth_pending').delete().eq('user_id', userId)
     const [sessionRes, channelsRes] = await Promise.all([
       this.supabase.from('telegram_sessions').delete().eq('user_id', userId),
@@ -177,6 +241,10 @@ export class UserSessionManager {
     let listener = this.listeners.get(userId)
     if (listener) return listener
 
+    if (!workerConfig.runsListener) {
+      throw new Error('Live Telegram listener not available on this worker')
+    }
+
     const { data: sess, error } = await this.supabase
       .from('telegram_sessions')
       .select('session_string, is_active')
@@ -194,8 +262,14 @@ export class UserSessionManager {
   }
 
   async backfillChannelHistory(userId: string, channelRowId: string, days: number) {
-    const listener = await this.ensureListener(userId)
-    return listener.backfillChannelHistory(channelRowId, days)
+    if (!workerConfig.runsBacktestHttp) {
+      throw new Error('Backtest not enabled on this worker')
+    }
+    return this.withEphemeralTelegram(userId, () =>
+      runWithEphemeralListener(this.supabase, userId, listener =>
+        listener.backfillChannelHistory(channelRowId, days),
+      ),
+    )
   }
 
   async importBacktestChannelHistory(
@@ -204,8 +278,14 @@ export class UserSessionManager {
     fromIso: string,
     toIso: string,
   ) {
-    const listener = await this.ensureListener(userId)
-    return listener.importBacktestChannelHistory(channelRowId, fromIso, toIso)
+    if (!workerConfig.runsBacktestHttp) {
+      throw new Error('Backtest not enabled on this worker')
+    }
+    return this.withEphemeralTelegram(userId, () =>
+      runWithEphemeralListener(this.supabase, userId, listener =>
+        listener.importBacktestChannelHistory(channelRowId, fromIso, toIso),
+      ),
+    )
   }
 
   async syncBacktestSignals(
@@ -215,12 +295,60 @@ export class UserSessionManager {
     toIso: string,
     runId?: string,
   ) {
-    const listener = await this.ensureListener(userId)
-    return listener.syncBacktestSignals(channelRowId, fromIso, toIso, { runId })
+    if (!workerConfig.runsBacktestHttp) {
+      throw new Error(
+        'Backtest sync is not enabled on this worker. Use a WORKER_ROLE=backtest or all service.',
+      )
+    }
+
+    if (workerConfig.role === 'listener') {
+      throw new Error(
+        'Backtest sync blocked on listener-only workers. Point BACKTEST_WORKER_URL to a backtest service.',
+      )
+    }
+
+    return this.withEphemeralTelegram(userId, () =>
+      runEphemeralBacktestSync(this.supabase, userId, channelRowId, fromIso, toIso, runId),
+    )
+  }
+
+  /**
+   * Runs fn while the live listener is stopped (if any) so backtest can use the sole MTProto slot.
+   */
+  private async withEphemeralTelegram<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+    const pauseLive = workerConfig.runsListener
+      && (workerConfig.role === 'all' || process.env.BACKTEST_PAUSE_LIVE_LISTENER !== 'false')
+
+    let sessionString: string | null = null
+    if (pauseLive && this.listeners.has(userId)) {
+      sessionString = (await this.supabase
+        .from('telegram_sessions')
+        .select('session_string')
+        .eq('user_id', userId)
+        .maybeSingle()).data?.session_string ?? null
+      console.log(`[sessionManager] pausing live listener for backtest user=${userId}`)
+      await this.stopListener(userId)
+      await new Promise(r => setTimeout(r, 2000))
+    }
+
+    try {
+      return await fn()
+    } finally {
+      if (pauseLive && sessionString) {
+        await this.startListener(userId, sessionString)
+      }
+    }
   }
 
   private async startListener(userId: string, sessionString: string): Promise<void> {
     if (this.listeners.has(userId)) return
+    if (!userBelongsToShard(userId)) return
+
+    const lease = await acquireSessionLease(this.supabase, userId)
+    if (!lease.ok) {
+      console.warn(`[sessionManager] skip listener for ${userId}: ${lease.reason}`)
+      return
+    }
 
     const listener = new UserListener(userId, sessionString, this.supabase)
     if (this.tradeExecutor) {
@@ -229,6 +357,7 @@ export class UserSessionManager {
     try {
       await listener.start()
     } catch (err) {
+      await releaseSessionLease(this.supabase, userId)
       if (err instanceof TelegramSessionInvalidError) {
         await this.invalidateTelegramSession(userId)
       }
@@ -243,6 +372,7 @@ export class UserSessionManager {
     if (!listener) return
     await listener.stop()
     this.listeners.delete(userId)
+    await releaseSessionLease(this.supabase, userId)
     console.log(`[sessionManager] Stopped listener for user ${userId}`)
   }
 
@@ -253,6 +383,7 @@ export class UserSessionManager {
     }
     for (const [userId, listener] of this.listeners) {
       await listener.stop()
+      await releaseSessionLease(this.supabase, userId)
       console.log(`[sessionManager] Disconnected ${userId}`)
     }
     this.listeners.clear()

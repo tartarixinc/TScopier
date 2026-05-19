@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { pipCalculator } from './pipCalculator'
+import { signalPipPrice } from './signalPip'
 import {
   computeTrailingStopUpdate,
   normalizeTrailingConfig,
@@ -189,12 +189,7 @@ export class TrailingStopMonitor {
     const symEntry = await this.getSymbolCache(uuid, trade.symbol)
     if (!symEntry) return null
 
-    const pipQuote = pipCalculator(
-      trade.symbol,
-      symEntry.point,
-      symEntry.digits,
-      symEntry.contractSize,
-    )
+    const signalPip = signalPipPrice(trade.symbol)
     const config: TrailingStopConfig = normalizeTrailingConfig({
       trailing_start_pips: trade.trail_start_pips ?? undefined,
       trailing_step_pips: trade.trail_step_pips ?? undefined,
@@ -210,7 +205,7 @@ export class TrailingStopMonitor {
       trailPeak: peak,
       bid,
       ask,
-      pipPrice: pipQuote.pipPrice,
+      pipPrice: signalPip,
       digits: symEntry.digits,
       config,
     })

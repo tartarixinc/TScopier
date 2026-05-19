@@ -9,6 +9,7 @@ import {
 import { apiForMetaapiAccount, loadPlatformByMetaapiId, type PlatformByMetaapiId } from './mtApiByAccount'
 import { tryApplyBasketFollowUpToNewFill } from './basketModFollowUp'
 import { markRangeLegFired, markRangeLegsExpired } from './rangePendingLadderSync'
+import { reconcileStaleClaimedLegs, shouldBlockVirtualLegFire } from './rangePendingFireGuard'
 
 /**
  * Worker-side monitor that turns persisted "virtual range pendings" into
@@ -173,11 +174,12 @@ export class VirtualPendingMonitor {
     // is considered abandoned (the claiming worker probably crashed); reset it
     // so another monitor can pick it up.
     const staleCut = new Date(Date.now() - STALE_CLAIM_AFTER_MS).toISOString()
-    await this.supabase
-      .from('range_pending_legs')
-      .update({ status: 'pending', claimed_at: null, claimed_by: null })
-      .eq('status', 'claimed')
-      .lt('claimed_at', staleCut)
+    const staleStats = await reconcileStaleClaimedLegs(this.supabase, staleCut)
+    if (staleStats.cancelled > 0 || staleStats.reset > 0) {
+      console.log(
+        `[virtualPendingMonitor] stale claims reconciled cancelled=${staleStats.cancelled} reset=${staleStats.reset}`,
+      )
+    }
 
     // Expire any rows whose pending_expiry_hours have lapsed BEFORE we try to
     // fire them — keeps the queue tight.
@@ -354,9 +356,37 @@ export class VirtualPendingMonitor {
     }
   }
 
+  private async markLegFiredWithRetry(
+    legId: string,
+    ticket: number | string | null,
+  ): Promise<void> {
+    let lastErr: unknown
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await markRangeLegFired(this.supabase, legId, ticket)
+        return
+      } catch (err) {
+        lastErr = err
+        await new Promise(r => setTimeout(r, 80 * (attempt + 1)))
+      }
+    }
+    throw lastErr instanceof Error ? lastErr : new Error(String(lastErr))
+  }
+
   private async fireLeg(leg: PendingRow, bid: number, ask: number): Promise<boolean> {
     const api = apiForMetaapiAccount(this.platformByUuid, leg.metaapi_account_id)
     if (!api) return false
+
+    const block = await shouldBlockVirtualLegFire(this.supabase, leg)
+    if (block.block) {
+      if (block.reason) {
+        console.log(
+          `[virtualPendingMonitor] skip fire leg=${leg.id} signal=${leg.signal_id} step=${leg.step_idx}: ${block.reason}`,
+        )
+      }
+      return false
+    }
+
     // CAS claim. If another monitor (worker peer or edge fn) beat us, .maybeSingle()
     // returns no row and we walk away.
     const { data: claimed, error: claimErr } = await this.supabase
@@ -429,6 +459,9 @@ export class VirtualPendingMonitor {
     const t0 = Date.now()
     try {
       const result = await this.sendWithStopsFallback(leg, args)
+      // Mark fired immediately after OrderSend so a slow trades insert / log write
+      // cannot leave the row `claimed` and get reset to `pending` (30s stale reclaim).
+      await this.markLegFiredWithRetry(leg.id, result.ticket ?? null)
       const latencyMs = Date.now() - t0
       console.log(
         `[virtualPendingMonitor] virtual leg fired signal=${leg.signal_id} stepIdx=${leg.step_idx} trigger=${leg.trigger_price} ref=${refPrice} ticket=${result.ticket} latency=${latencyMs}ms`,
@@ -484,21 +517,24 @@ export class VirtualPendingMonitor {
           )
         }
       }
-      await this.supabase.from('trade_execution_logs').insert({
-        user_id: leg.user_id,
-        signal_id: leg.signal_id,
-        broker_account_id: leg.broker_account_id,
-        action: 'virtual_pending_fired',
-        status: 'success',
-        request_payload: {
-          leg_id: leg.id,
-          step_idx: leg.step_idx,
-          trigger_price: leg.trigger_price,
-          ref_price: refPrice,
-        } as unknown as Record<string, unknown>,
-        response_payload: { ticket: result.ticket, latency_ms: latencyMs, claimed_by: this.hostId },
-      })
-      await markRangeLegFired(this.supabase, leg.id, result.ticket ?? null)
+      try {
+        await this.supabase.from('trade_execution_logs').insert({
+          user_id: leg.user_id,
+          signal_id: leg.signal_id,
+          broker_account_id: leg.broker_account_id,
+          action: 'virtual_pending_fired',
+          status: 'success',
+          request_payload: {
+            leg_id: leg.id,
+            step_idx: leg.step_idx,
+            trigger_price: leg.trigger_price,
+            ref_price: refPrice,
+          } as unknown as Record<string, unknown>,
+          response_payload: { ticket: result.ticket, latency_ms: latencyMs, claimed_by: this.hostId },
+        })
+      } catch {
+        /* logging is best-effort; leg is already `fired` */
+      }
       return true
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
