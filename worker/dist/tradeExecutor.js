@@ -36,6 +36,14 @@ const SYMBOL_CACHE_TTL_MS = 10 * 60000;
 const SYMBOL_LIST_TTL_MS = 30 * 60000;
 const SESSION_PING_MIN_INTERVAL_MS = Math.max(5000, Math.min(120000, Number(process.env.BROKER_SESSION_PING_MIN_INTERVAL_MS ?? 25000)));
 const EXECUTOR_PARSED_SWEEP_MS = Math.max(1500, Math.min(60000, Number(process.env.EXECUTOR_PARSED_SWEEP_MS ?? 3000)));
+/** Sweep + Realtime replay window; older `parsed` rows are not re-executed (live dispatch exempt). */
+const EXECUTOR_REPLAY_MAX_AGE_MS = Math.max(60000, Math.min(30 * 60000, Number(process.env.EXECUTOR_REPLAY_MAX_AGE_MS ?? 5 * 60000)));
+const EXECUTION_LOG_ACTIONS_HANDLED = [
+    'order_send',
+    'virtual_pending_inserted',
+    'merge_modify_summary',
+    'mgmt_close_worse_entries',
+];
 function isMtUuid(s) {
     if (!s)
         return false;
@@ -451,7 +459,7 @@ class TradeExecutor {
             .subscribe();
     }
     async sweep() {
-        const since = new Date(Date.now() - 5 * 60000).toISOString();
+        const since = new Date(Date.now() - EXECUTOR_REPLAY_MAX_AGE_MS).toISOString();
         const { data } = await this.supabase
             .from('signals')
             .select('id,user_id,channel_id,parsed_data,status,parent_signal_id,is_modification,created_at,telegram_message_id,reply_to_message_id')
@@ -461,13 +469,10 @@ class TradeExecutor {
         for (const row of (data ?? [])) {
             if (this.inflight.has(row.id))
                 continue;
-            // Skip if a trade for this signal already exists.
-            const { count } = await this.supabase
-                .from('trades')
-                .select('id', { count: 'exact', head: true })
-                .eq('signal_id', row.id);
-            if ((count ?? 0) > 0)
+            if (await this.signalAlreadyHandled(row.id)) {
+                await this.markSignalExecuted(row.id);
                 continue;
+            }
             await this.handleSignal(row);
         }
     }
@@ -478,14 +483,66 @@ class TradeExecutor {
     dispatchParsedSignal(row) {
         if (!PARSED_STATUSES.has(row.status))
             return;
-        void this.handleSignal(row);
+        void this.handleSignal(row, { liveDispatch: true });
+    }
+    async markSignalExecuted(signalId) {
+        try {
+            await this.supabase
+                .from('signals')
+                .update({ status: 'executed' })
+                .eq('id', signalId)
+                .eq('status', 'parsed');
+        }
+        catch {
+            /* best-effort */
+        }
+    }
+    /** True when this signal row already drove execution (trades, virtuals, or success logs). */
+    async signalAlreadyHandled(signalId) {
+        const [trades, range, entry, logs] = await Promise.all([
+            this.supabase
+                .from('trades')
+                .select('id', { count: 'exact', head: true })
+                .eq('signal_id', signalId),
+            this.supabase
+                .from('range_pending_legs')
+                .select('id', { count: 'exact', head: true })
+                .eq('signal_id', signalId),
+            this.supabase
+                .from('signal_entry_pending_orders')
+                .select('id', { count: 'exact', head: true })
+                .eq('signal_id', signalId),
+            this.supabase
+                .from('trade_execution_logs')
+                .select('id', { count: 'exact', head: true })
+                .eq('signal_id', signalId)
+                .eq('status', 'success')
+                .in('action', [...EXECUTION_LOG_ACTIONS_HANDLED]),
+        ]);
+        return ((trades.count ?? 0) > 0
+            || (range.count ?? 0) > 0
+            || (entry.count ?? 0) > 0
+            || (logs.count ?? 0) > 0);
+    }
+    signalTooOldForReplay(row) {
+        if (!row.created_at)
+            return false;
+        const ageMs = Date.now() - new Date(row.created_at).getTime();
+        return Number.isFinite(ageMs) && ageMs > EXECUTOR_REPLAY_MAX_AGE_MS;
     }
     // ── execution ─────────────────────────────────────────────────────────
-    async handleSignal(row) {
+    async handleSignal(row, opts) {
         if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
             return;
         if (this.inflight.has(row.id))
             return;
+        if (!opts?.liveDispatch && this.signalTooOldForReplay(row)) {
+            return;
+        }
+        if (await this.signalAlreadyHandled(row.id)) {
+            await this.markSignalExecuted(row.id);
+            return;
+        }
         if (telegramLiveTradeGateEnabled() && row.channel_id) {
             const live = this.sessionManager
                 ? await this.sessionManager.canExecuteTelegramCopierTradesAsync(row.user_id)
@@ -562,6 +619,9 @@ class TradeExecutor {
                 catch {
                     // best-effort
                 }
+            }
+            else if (anyOpened) {
+                await this.markSignalExecuted(row.id);
             }
         }
         finally {
