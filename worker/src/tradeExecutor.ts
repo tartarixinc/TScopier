@@ -810,6 +810,16 @@ export class TradeExecutor {
       },
     }
     const entryFast = this.shouldUseEntryFastPath(rowWithTs)
+    const listenerTs = parsePipelineTimestamps(rowWithTs.pipeline_ts)
+    if (
+      source === 'listener_push'
+      && !listenerTs?.t_listener_received
+    ) {
+      console.warn(
+        `[tradeExecutor] listener_push missing pipeline_ts listener stamps signal=${row.id}`
+        + ' — redeploy listener service (LISTENER_INLINE_PARSE + pipeline_ts on dispatch)',
+      )
+    }
     if (!entryFast) {
       void this.logPipelineStage(rowWithTs, 'dispatch_received', { source, priority: opts?.priority ?? null })
     }
@@ -2967,7 +2977,7 @@ export class TradeExecutor {
       )
     }
     let virtualPendings = (plan.virtualPendings ?? []).slice(0, 500)
-    if (virtualPendings.length > 0 && signal.channel_id && mergedChannelParams) {
+    if (!liveEntryFast && virtualPendings.length > 0 && signal.channel_id && mergedChannelParams) {
       const channelParams = await loadChannelActiveTradeParamsForSymbol(
         this.supabase,
         signal.user_id,
@@ -2985,8 +2995,9 @@ export class TradeExecutor {
     if (isManual && manual.trade_style === 'multi') {
       const tpOnOrders = capped.map(o => Number(o.takeprofit) || 0).filter(tp => tp > 0)
       const tpDistinct = [...new Set(tpOnOrders)]
-      try {
-        await this.supabase.from('trade_execution_logs').insert({
+      const logMultiPlan = () => {
+        try {
+          void this.supabase.from('trade_execution_logs').insert({
           user_id: signal.user_id,
           signal_id: signal.id,
           broker_account_id: broker.id,
@@ -3010,8 +3021,41 @@ export class TradeExecutor {
             tp_lots_enabled: (manual.tp_lots ?? []).filter(r => r?.enabled !== false).length,
           } as unknown as Record<string, unknown>,
         })
-      } catch {
-        /* best-effort */
+        } catch {
+          /* best-effort */
+        }
+      }
+      if (liveEntryFast) {
+        logMultiPlan()
+      } else {
+        try {
+          await this.supabase.from('trade_execution_logs').insert({
+            user_id: signal.user_id,
+            signal_id: signal.id,
+            broker_account_id: broker.id,
+            action: 'multi_range_plan',
+            status: 'success',
+            request_payload: {
+              manual_lot_used: baseLot,
+              multi_trade_leg_percent: Number(manual.multi_trade_leg_percent ?? 5),
+              immediate_orders: capped.length,
+              virtual_pending_rows: virtualPendings.length,
+              range_trading: manual.range_trading === true,
+              range_percent: manual.range_percent ?? null,
+              range_step_pips: manual.range_step_pips ?? null,
+              range_distance_pips: manual.range_distance_pips ?? null,
+              symbol,
+              plan_fallback: plan.fallback_reason ?? null,
+              parsed_tp_levels: (parsed.tp ?? []).filter(
+                (t): t is number => typeof t === 'number' && Number.isFinite(t) && t > 0,
+              ),
+              immediate_tp_distinct: tpDistinct,
+              tp_lots_enabled: (manual.tp_lots ?? []).filter(r => r?.enabled !== false).length,
+            } as unknown as Record<string, unknown>,
+          })
+        } catch {
+          /* best-effort */
+        }
       }
     }
 
@@ -3029,7 +3073,7 @@ export class TradeExecutor {
     // Buy: immediate market only when ask ≤ entry; else one virtual pending at entry.
     // Sell: immediate only when bid ≥ entry; else virtual at entry. Quote failure → defer.
     let strictDeferred = false
-    if (isManual && plan.strictEntry && api) {
+    if (isManual && plan.strictEntry && api && !liveEntryFast) {
       const se = plan.strictEntry
       try {
         const q = await api.quote(uuid, symbol)

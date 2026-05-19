@@ -36,6 +36,19 @@ function pushParsedSignalToTradeWorker(row) {
     const timeoutMs = Math.max(500, Math.min(10000, Number(process.env.TRADE_SIGNAL_PUSH_TIMEOUT_MS ?? 4000)));
     const url = `${baseUrl}/internal/dispatch-signal`;
     const priority = (0, tradeSignalActions_1.dispatchPriorityForAction)(action);
+    const signalBody = {
+        id: row.id,
+        user_id: row.user_id,
+        channel_id: row.channel_id,
+        parsed_data: row.parsed_data,
+        status: row.status,
+        parent_signal_id: row.parent_signal_id ?? null,
+        is_modification: row.is_modification ?? false,
+        telegram_message_id: row.telegram_message_id ?? null,
+        reply_to_message_id: row.reply_to_message_id ?? null,
+        created_at: row.created_at,
+        pipeline_ts: row.pipeline_ts,
+    };
     void (async () => {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort('trade-push-timeout'), timeoutMs);
@@ -46,7 +59,7 @@ function pushParsedSignalToTradeWorker(row) {
                     'Content-Type': 'application/json',
                     'x-internal-token': token,
                 },
-                body: JSON.stringify({ signal: row, priority, source: 'listener_push' }),
+                body: JSON.stringify({ signal: signalBody, priority, source: 'listener_push' }),
                 signal: controller.signal,
             });
             if (!res.ok) {

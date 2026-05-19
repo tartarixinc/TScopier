@@ -43,6 +43,10 @@ function pipelineSummaryPayload(ts, extra) {
     const brokerSendMs = ts.t_last_broker_send != null && ts.t_first_broker_send != null
         ? ts.t_last_broker_send - ts.t_first_broker_send
         : null;
+    /** Planning + quotes + virtual-pending setup inside sendOrder before first OrderSend. */
+    const sendOrderPrepMs = ts.t_first_broker_send != null && ts.t_order_send_start != null
+        ? ts.t_first_broker_send - ts.t_order_send_start
+        : null;
     const totalMs = t0 != null ? tEnd - t0 : null;
     const telegramToListenerMs = ts.t_listener_received != null && ts.t_telegram_event != null
         ? ts.t_listener_received - ts.t_telegram_event
@@ -56,6 +60,7 @@ function pipelineSummaryPayload(ts, extra) {
         order_send_ms: sendOrderMs,
         send_order_ms: sendOrderMs,
         broker_send_ms: brokerSendMs,
+        send_order_prep_ms: sendOrderPrepMs,
         total_ms: totalMs,
         timestamps: ts,
     };
