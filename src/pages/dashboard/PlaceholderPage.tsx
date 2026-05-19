@@ -1,4 +1,6 @@
 import { Construction } from 'lucide-react'
+import { PageHeader } from '../../components/layout/PageHeader'
+import { PageShell } from '../../components/layout/PageShell'
 import { useT } from '../../context/LocaleContext'
 
 interface PlaceholderPageProps {
@@ -10,16 +12,13 @@ export function PlaceholderPage({ title, description }: PlaceholderPageProps) {
   const t = useT()
 
   return (
-    <div className="p-6 lg:p-8 max-w-3xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-50">{title}</h1>
-        <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">{description}</p>
-      </div>
-      <div className="bg-white dark:bg-neutral-900 rounded-xl border border-dashed border-neutral-200 dark:border-neutral-700 py-20 text-center">
-        <Construction className="w-10 h-10 mx-auto mb-3 text-neutral-300 dark:text-neutral-600" />
+    <PageShell maxWidth="sm">
+      <PageHeader title={title} subtitle={description} />
+      <div className="rounded-xl border border-dashed border-neutral-200 bg-white py-20 text-center dark:border-neutral-700 dark:bg-neutral-900">
+        <Construction className="mx-auto mb-3 h-10 w-10 text-neutral-300 dark:text-neutral-600" />
         <p className="text-sm font-medium text-neutral-500 dark:text-neutral-400">{t.common.comingSoon}</p>
-        <p className="text-xs text-neutral-300 dark:text-neutral-600 mt-1">{t.common.underDevelopment}</p>
+        <p className="mt-1 text-xs text-neutral-300 dark:text-neutral-600">{t.common.underDevelopment}</p>
       </div>
-    </div>
+    </PageShell>
   )
 }

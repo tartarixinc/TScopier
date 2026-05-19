@@ -1,11 +1,12 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 import {
+  adjustMtTradesPositionDirection,
   flattenMtOrder,
   mergeMtHistoryRow,
   resolveMtDealProfit,
   resolveMtLots,
-} from './mtTradeFields.js'
+} from './mtTradeFields'
 
 test('resolveMtLots: MT5 integer volume and explicit lots', () => {
   assert.equal(resolveMtLots({ volume: 100 }, 'dashboard'), 0.01)
@@ -47,6 +48,37 @@ test('dashboard profile: does not copy dealInternalOut profit onto top-level row
 
 test('resolveMtLots: closeLots on closed order (trades)', () => {
   assert.equal(resolveMtLots({ volume: 0, closeLots: 0.25 }, 'trades'), 0.25)
+})
+
+test('adjustMtTradesPositionDirection: closing sell position uses sell not exit buy deal', () => {
+  const row = {
+    ticket: 100,
+    dealType: 'DEAL_TYPE_BUY',
+    entry: 1,
+    dealInternalOut: { profit: 10, lots: 0.1 },
+  }
+  const adjusted = adjustMtTradesPositionDirection(
+    row,
+    'trades',
+    { direction: 'buy', type_label: 'Deal Buy' },
+  )
+  assert.equal(adjusted.direction, 'sell')
+  assert.equal(adjusted.type_label, 'Deal Sell')
+})
+
+test('adjustMtTradesPositionDirection: closing buy position uses buy not exit sell deal', () => {
+  const row = {
+    ticket: 101,
+    dealType: 'DEAL_TYPE_SELL',
+    entry: 1,
+  }
+  const adjusted = adjustMtTradesPositionDirection(
+    row,
+    'trades',
+    { direction: 'sell', type_label: 'Deal Sell' },
+  )
+  assert.equal(adjusted.direction, 'buy')
+  assert.equal(adjusted.type_label, 'Deal Buy')
 })
 
 test('mergeMtHistoryRow: keeps deal profit and lots when position snapshot is sparse', () => {

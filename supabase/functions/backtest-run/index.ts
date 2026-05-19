@@ -5,7 +5,6 @@ import {
   toBacktestRunConfig,
   type BacktestRunMode,
 } from "../_shared/backtest/config.ts"
-import { countStoredBacktestSignals } from "../_shared/backtest/countSignals.ts"
 import { executeBacktestRun } from "../_shared/backtest/runner.ts"
 import { syncBacktestSignalsViaWorker } from "../_shared/backtest/workerSync.ts"
 import {
@@ -64,57 +63,23 @@ async function startBacktestRun(
   const massive = MassiveClient.fromEnv(Deno.env)
 
   const runPromise = (async () => {
-    await supabase.from("backtest_runs").update({
-      status: "running",
-      started_at: new Date().toISOString(),
-      progress_pct: 5,
-      progress_message: "Loading stored signals…",
-    }).eq("id", runId)
-
     const importWarnings: string[] = []
-    const existing = await countStoredBacktestSignals(
-      supabase,
-      userId,
-      simple.channelIds,
-      cfg.dateFrom,
-      cfg.dateTo,
-    )
-    const shouldSync = opts.forceSync === true || existing === 0
+    const symbolFilter = cfg.symbols ?? []
 
-    if (shouldSync) {
+    if (symbolFilter.length === 0) {
       await supabase.from("backtest_runs").update({
-        progress_pct: 8,
-        progress_message: "Syncing Telegram signals…",
+        status: "failed",
+        error_message: "Select a symbol to backtest (profile signals first).",
+        completed_at: new Date().toISOString(),
       }).eq("id", runId)
-
-      const sync = await syncBacktestSignalsViaWorker(
-        Deno.env,
-        userId,
-        simple.channelIds,
-        cfg.dateFrom,
-        cfg.dateTo,
-        { runId },
-      )
-
-      if (sync.messages_scanned === 0 && sync.imported === 0) {
-        importWarnings.push(
-          "0 messages from Telegram — check session and channel access",
-        )
-      } else if (sync.imported > 0) {
-        importWarnings.unshift(
-          `Synced ${sync.imported} tradeable signal(s) from Telegram`,
-        )
-      }
-      importWarnings.push(...sync.errors)
-    } else {
-      importWarnings.push(
-        "Using signals already in backtest_channel_signals (skipped Telegram sync)",
-      )
+      return
     }
 
     await supabase.from("backtest_runs").update({
-      progress_pct: 14,
-      progress_message: "Fetching Massive market data…",
+      status: "running",
+      started_at: new Date().toISOString(),
+      progress_pct: 8,
+      progress_message: `Backtesting ${symbolFilter.join(", ")}…`,
     }).eq("id", runId)
 
     await executeBacktestRun(
@@ -209,15 +174,15 @@ Deno.serve(async (req: Request) => {
       }, { headers: corsHeaders })
     }
 
-    const runActions = new Set(["run", "backtest_tpsl", "simulate_trades"])
-    if (runActions.has(action)) {
+    if (action === "simulate_trades") {
+      return bad(400, "Trade simulation is disabled. Use backtest_tpsl for TP/SL and pip analysis.")
+    }
+
+    if (action === "backtest_tpsl" || action === "run") {
       const simple = parseSimpleConfig((body.config ?? {}) as Record<string, unknown>)
       if (simple.channelIds.length === 0) return bad(400, "At least one channel required")
 
-      const mode: BacktestRunMode = action === "backtest_tpsl" ? "tpsl" : "simulate"
-      const forceSync = body.force_sync === true
-
-      return await startBacktestRun(supabase, userId, simple, mode, { forceSync })
+      return await startBacktestRun(supabase, userId, simple, "tpsl", { forceSync: false })
     }
 
     return bad(400, `Unknown action: ${action}`)

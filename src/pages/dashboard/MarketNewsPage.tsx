@@ -10,6 +10,8 @@ import { MarketNewsFilters } from '../../components/market-news/MarketNewsFilter
 import { formatForexPairLabel } from '../../lib/forexNewsSymbols'
 import { MarketNewsSkeleton } from '../../components/market-news/MarketNewsSkeleton'
 import { MarketNewsEmpty } from '../../components/market-news/MarketNewsEmpty'
+import { PageHeader } from '../../components/layout/PageHeader'
+import { PageShell } from '../../components/layout/PageShell'
 import { Button } from '../../components/ui/Button'
 import { Alert } from '../../components/ui/Alert'
 
@@ -84,30 +86,30 @@ export function MarketNewsPage() {
     : null
 
   return (
-    <div className="p-4 lg:p-8 max-w-6xl mx-auto space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-50">{mn.title}</h1>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1 max-w-xl">{mn.subtitle}</p>
-        </div>
-        <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
-          {lastUpdatedLabel && !loading ? (
-            <span className="text-xs text-neutral-400 dark:text-neutral-500 tabular-nums">
-              {lastUpdatedLabel}
-            </span>
-          ) : null}
-          <Button
-            variant="secondary"
-            size="sm"
-            loading={refreshing}
-            disabled={loading}
-            onClick={() => void load(true)}
-          >
-            <RefreshCw className="h-4 w-4" />
-            {t.common.refresh}
-          </Button>
-        </div>
-      </div>
+    <PageShell maxWidth="lg">
+      <PageHeader
+        title={mn.title}
+        subtitle={mn.subtitle}
+        actions={(
+          <>
+            {lastUpdatedLabel && !loading ? (
+              <span className="text-xs tabular-nums text-neutral-400 dark:text-neutral-500">
+                {lastUpdatedLabel}
+              </span>
+            ) : null}
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={refreshing}
+              disabled={loading}
+              onClick={() => void load(true)}
+            >
+              <RefreshCw className="h-4 w-4" />
+              {t.common.refresh}
+            </Button>
+          </>
+        )}
+      />
 
       {error ? <Alert>{error}</Alert> : null}
 
@@ -166,6 +168,6 @@ export function MarketNewsPage() {
           {mn.dataByFmp}
         </a>
       </footer>
-    </div>
+    </PageShell>
   )
 }

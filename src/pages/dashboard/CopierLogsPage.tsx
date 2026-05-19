@@ -5,6 +5,8 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useT } from '../../context/LocaleContext'
 import { interpolate } from '../../i18n/interpolate'
+import { PageHeader } from '../../components/layout/PageHeader'
+import { PageShell } from '../../components/layout/PageShell'
 import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
 import type { Signal } from '../../types/database'
@@ -252,13 +254,12 @@ export function CopierLogsPage() {
   const cardLabels = useMemo(() => ({ colReason: t.copierLogs.colReason }), [t])
 
   return (
-    <div className="px-4 py-4 sm:px-6 sm:py-6 lg:p-8 max-w-5xl mx-auto">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 sm:mb-6 gap-4">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-neutral-50">{t.copierLogs.title}</h1>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">{t.copierLogs.subtitle}</p>
-        </div>
-        <div className="-mx-4 px-4 sm:mx-0 sm:px-0 overflow-x-auto w-full sm:w-auto">
+    <PageShell maxWidth="lg" spacing="none" className="space-y-6">
+      <PageHeader
+        title={t.copierLogs.title}
+        subtitle={t.copierLogs.subtitle}
+        actions={(
+          <div className="-mx-4 w-full overflow-x-auto px-4 sm:mx-0 sm:w-auto sm:px-0">
           <div className="inline-flex bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg p-0.5 gap-0.5">
             {filters.map(f => (
               <button
@@ -273,8 +274,9 @@ export function CopierLogsPage() {
               </button>
             ))}
           </div>
-        </div>
-      </div>
+          </div>
+        )}
+      />
 
       <Card padding="none" className="overflow-hidden">
         {loading ? (
@@ -371,7 +373,7 @@ export function CopierLogsPage() {
           />
         ) : null}
       </Card>
-    </div>
+    </PageShell>
   )
 }
 

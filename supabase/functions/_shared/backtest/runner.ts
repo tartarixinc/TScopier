@@ -21,7 +21,7 @@ export async function executeBacktestRun(
   config: BacktestRunConfig,
   ctx: BacktestRunContext = {},
 ): Promise<void> {
-  const mode = ctx.mode ?? "simulate"
+  const mode = ctx.mode ?? "tpsl"
   let lastProgressAt = 0
   let lastProgressPct = -1
   const updateProgress = async (pct: number, message: string) => {
@@ -71,6 +71,7 @@ export async function executeBacktestRun(
     fromIso,
     toIso,
     channelNames,
+    config.symbols,
   )
   const signals = loaded.signals
 
@@ -200,7 +201,8 @@ export async function executeBacktestRun(
   if (results.length > 0) {
     const tradeRows = results.map((r) => ({
       run_id: runId,
-      signal_id: r.signalId,
+      // FK references signals(id); Telegram imports use backtest_channel_signals.id only
+      signal_id: r.copierSignalId,
       channel_id: r.channelId,
       symbol: r.symbol,
       direction: r.direction,
@@ -217,10 +219,17 @@ export async function executeBacktestRun(
       pnl_r: r.pnlR,
       max_favorable_excursion: r.mfe,
       max_adverse_excursion: r.mae,
-      details: r.details,
+      details: {
+        ...r.details,
+        backtestChannelSignalId: r.signalId,
+      },
     }))
     for (let off = 0; off < tradeRows.length; off += 200) {
-      await supabase.from("backtest_trades").insert(tradeRows.slice(off, off + 200))
+      const chunk = tradeRows.slice(off, off + 200)
+      const { error: insErr } = await supabase.from("backtest_trades").insert(chunk)
+      if (insErr) {
+        throw new Error(`Failed to save backtest trades: ${insErr.message}`)
+      }
     }
   }
 

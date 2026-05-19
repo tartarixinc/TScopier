@@ -3,6 +3,8 @@ import { Plus, Radio, Trash2, Settings } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useT } from '../../context/LocaleContext'
+import { PageHeader } from '../../components/layout/PageHeader'
+import { PageShell } from '../../components/layout/PageShell'
 import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
 import { Toggle } from '../../components/ui/Toggle'
@@ -88,17 +90,17 @@ export function ChannelsPage() {
   }
 
   return (
-    <div className="p-6 lg:p-8 max-w-3xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-50">{ch.title}</h1>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">{ch.subtitle}</p>
-        </div>
-        <Button onClick={() => setShowAdd(true)} size="sm">
-          <Plus className="w-3.5 h-3.5" />
-          {ch.addChannel}
-        </Button>
-      </div>
+    <PageShell maxWidth="lg" spacing="none" className="space-y-6">
+      <PageHeader
+        title={ch.title}
+        subtitle={ch.subtitle}
+        actions={(
+          <Button onClick={() => setShowAdd(true)} size="sm">
+            <Plus className="w-3.5 h-3.5" />
+            {ch.addChannel}
+          </Button>
+        )}
+      />
 
       {showAdd && (
         <Card className="mb-4">
@@ -164,7 +166,7 @@ export function ChannelsPage() {
           ))}
         </div>
       )}
-    </div>
+    </PageShell>
   )
 }
 

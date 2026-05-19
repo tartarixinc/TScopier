@@ -3,6 +3,8 @@ import { ArrowUpRight, ArrowDownRight, ChevronLeft, ChevronRight, Minus, Refresh
 import { useAuth } from '../../context/AuthContext'
 import { useT } from '../../context/LocaleContext'
 import { interpolate } from '../../i18n/interpolate'
+import { PageHeader } from '../../components/layout/PageHeader'
+import { PageShell } from '../../components/layout/PageShell'
 import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
 import { Alert } from '../../components/ui/Alert'
@@ -114,11 +116,11 @@ export function TradesPage() {
   const rangeEnd = Math.min(page * pageSize, visibleTrades.length)
 
   return (
-    <div className="px-4 py-4 sm:px-6 sm:py-6 lg:p-8 max-w-6xl mx-auto">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 sm:mb-6 gap-4">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-semibold text-neutral-900 dark:text-neutral-50">{t.trades.title}</h1>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">
+    <PageShell maxWidth="lg" spacing="none" className="space-y-6">
+      <PageHeader
+        title={t.trades.title}
+        subtitle={(
+          <>
             {t.trades.subtitle}
             {lastSyncedAt && (
               <span className="text-neutral-400">
@@ -126,9 +128,10 @@ export function TradesPage() {
                 · {interpolate(t.common.synced, { time: formatRelative(lastSyncedAt) })}
               </span>
             )}
-          </p>
-        </div>
-        <div className="flex flex-col gap-2 w-full sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
+          </>
+        )}
+        actions={(
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
           <button
             type="button"
             onClick={() => void loadTrades({ silent: true })}
@@ -157,8 +160,9 @@ export function TradesPage() {
               ))}
             </div>
           </div>
-        </div>
-      </div>
+          </div>
+        )}
+      />
 
       {error && !loading && <Alert className="mb-4 px-4 py-2.5">{error}</Alert>}
 
@@ -247,7 +251,7 @@ export function TradesPage() {
           </>
         )}
       </Card>
-    </div>
+    </PageShell>
   )
 }
 
@@ -395,13 +399,15 @@ function useTradeDisplay(trade: MtTrade) {
   const status = statusConfig[trade.status] ?? { variant: 'neutral' as const, label: trade.status }
   const timeIso = trade.status === 'closed' ? (trade.closed_at ?? trade.opened_at) : trade.opened_at
   const broker = trade.broker_name || trade.broker_label || '—'
-  const directionLabel = trade.type
-    ? trade.type
-    : isBuy
-      ? 'Buy'
-      : isSell
-        ? 'Sell'
-        : '—'
+  const directionLabel = (() => {
+    if (trade.direction === 'buy') {
+      return /deal/i.test(trade.type ?? '') ? 'Deal Buy' : trade.type || 'Buy'
+    }
+    if (trade.direction === 'sell') {
+      return /deal/i.test(trade.type ?? '') ? 'Deal Sell' : trade.type || 'Sell'
+    }
+    return trade.type || '—'
+  })()
   const timeLabel = timeIso
     ? new Date(timeIso).toLocaleString([], {
         day: '2-digit',

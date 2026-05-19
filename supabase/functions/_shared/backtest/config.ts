@@ -1,5 +1,10 @@
 import { effectiveTimeframeForRange } from "./effectiveTimeframe.ts"
+import { normalizeSymbolFilter } from "./symbols.ts"
 import type { BacktestRunConfig, BacktestTimeframe } from "./types.ts"
+
+function normalizeSymbols(symbols: string[] | undefined): string[] {
+  return normalizeSymbolFilter(symbols ?? [])
+}
 
 export interface SimpleBacktestConfig {
   channelIds: string[]
@@ -8,6 +13,8 @@ export interface SimpleBacktestConfig {
   initialBalance: number
   fixedLot: number
   timeframe?: BacktestTimeframe
+  /** When set, only these symbols are simulated (profile first, then backtest). */
+  symbols?: string[]
 }
 
 export type BacktestRunMode = "tpsl" | "simulate"
@@ -26,11 +33,11 @@ const SIMULATE_STRATEGY: BacktestRunConfig["strategy"] = {
 
 export function toBacktestRunConfig(
   cfg: SimpleBacktestConfig,
-  mode: BacktestRunMode = "simulate",
+  mode: BacktestRunMode = "tpsl",
 ): BacktestRunConfig {
   return {
     channelIds: cfg.channelIds,
-    symbols: [],
+    symbols: normalizeSymbols(cfg.symbols),
     dateFrom: cfg.dateFrom,
     dateTo: cfg.dateTo,
     timeframe: effectiveTimeframeForRange(cfg.dateFrom, cfg.dateTo, cfg.timeframe),
@@ -55,5 +62,8 @@ export function parseSimpleConfig(raw: Partial<SimpleBacktestConfig>): SimpleBac
     initialBalance: Number(raw.initialBalance ?? 10_000),
     fixedLot: Number(raw.fixedLot ?? 0.1),
     timeframe: (raw.timeframe as BacktestTimeframe | undefined) ?? "5m",
+    symbols: normalizeSymbols(
+      Array.isArray(raw.symbols) ? raw.symbols.map(String) : [],
+    ),
   }
 }

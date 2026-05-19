@@ -1,11 +1,17 @@
+import { computePipsFromSignalOutcome } from "./pip.ts"
 import type { BacktestRunConfig, BacktestSummary, SimulatedTradeResult } from "./types.ts"
 
-export function tradePipPnlFromSim(r: SimulatedTradeResult, pipValuePerLot = 10): number | null {
-  if (r.outcome === "skipped" || r.outcome === "no_data" || r.outcome === "open") return null
-  const lot = r.lotSize > 0 ? r.lotSize : 0.01
-  const denom = lot * pipValuePerLot * 100
-  if (denom <= 0) return null
-  return r.pnl / denom
+export function tradePipPnlFromSim(r: SimulatedTradeResult): number | null {
+  if (r.pipPnl != null && Number.isFinite(r.pipPnl)) return r.pipPnl
+  return computePipsFromSignalOutcome({
+    symbol: r.symbol,
+    direction: r.direction,
+    entry: r.entryPrice,
+    sl: r.sl,
+    tpLevels: r.tpLevels,
+    outcome: r.outcome,
+    tpsHit: r.tpsHit,
+  })
 }
 
 export function buildTpslSummary(
@@ -21,6 +27,7 @@ export function buildTpslSummary(
   let allTpHits = 0
   let skippedSignals = 0
   let netPnl = 0
+  let totalPips = 0
   const byChannel: BacktestSummary["byChannel"] = {}
   const channelWins = new Map<string, number>()
 
@@ -33,6 +40,7 @@ export function buildTpslSummary(
     const pips = tradePipPnlFromSim(r)
     if (pips != null) {
       netPnl += r.pnl
+      totalPips += pips
       if (pips > 0) {
         wins++
         channelWins.set(r.channelId, (channelWins.get(r.channelId) ?? 0) + 1)
@@ -80,6 +88,7 @@ export function buildTpslSummary(
     maxDrawdownPct: 0,
     profitFactor: null,
     winRate,
+    totalPips,
     byChannel,
     message: "TP/SL backtest (no portfolio simulation)",
   }

@@ -58,15 +58,17 @@ export async function loadBacktestSignals(
     .gte("signal_at", fromIso)
     .lte("signal_at", toIso)
 
-  if (filter.length > 0) {
-    query = query.in("symbol", filter)
-  }
-
   const { data: tradeRows, error: tradeErr } = await query.order("signal_at", { ascending: true })
 
   if (tradeErr) throw new Error(tradeErr.message)
 
-  const signals = (tradeRows ?? []).map((row) =>
+  const filteredRows = filter.length > 0
+    ? (tradeRows ?? []).filter((row) =>
+      filter.includes(String((row as { symbol?: string }).symbol ?? "").trim().toUpperCase())
+    )
+    : (tradeRows ?? [])
+
+  const signals = filteredRows.map((row) =>
     rowToParsed(row as Record<string, unknown>, channelNames)
   ).filter((s): s is ParsedSignalForBacktest => s != null)
 
@@ -103,8 +105,13 @@ function rowToParsed(
   const lot = row.lot_size == null ? null : Number(row.lot_size)
   const signalAt = new Date(String(row.signal_at))
 
+  const copierSignalId = row.signal_id != null && String(row.signal_id).length > 0
+    ? String(row.signal_id)
+    : null
+
   return {
-    signalId: String(row.signal_id ?? rowId),
+    signalId: rowId,
+    copierSignalId,
     channelId,
     channelName: channelNames.get(channelId) ?? "Channel",
     signalAt,

@@ -14,6 +14,8 @@ import { Card } from '../../components/ui/Card'
 import { Input } from '../../components/ui/Input'
 import { Select } from '../../components/ui/Select'
 import { Toggle } from '../../components/ui/Toggle'
+import { PageHeader } from '../../components/layout/PageHeader'
+import { PageShell } from '../../components/layout/PageShell'
 import { Button } from '../../components/ui/Button'
 import { Badge } from '../../components/ui/Badge'
 import { Alert } from '../../components/ui/Alert'
@@ -1063,24 +1065,24 @@ export function AccountConfigPage() {
 
   if (loading) {
     return (
-      <div className="px-4 py-4 lg:px-6 lg:py-5 max-w-5xl mx-auto space-y-3">
+      <PageShell maxWidth="lg" spacing="none" className="space-y-3">
         {[...Array(2)].map((_, i) => <div key={i} className="h-28 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-100 dark:border-neutral-800 animate-pulse" />)}
-      </div>
+      </PageShell>
     )
   }
 
   return (
-    <div className="px-4 py-4 lg:px-6 lg:py-5 max-w-5xl mx-auto">
-      <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
-        <div>
-          <h1 className="text-xl font-bold text-neutral-900 dark:text-neutral-50">{t.pages.accountConfiguration.title}</h1>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">{t.pages.accountConfiguration.description}</p>
-        </div>
-        <Button size="sm" onClick={() => setShowPlatformModal(true)}>
-          <Plus className="w-3.5 h-3.5" />
-          {t.accountConfig.connectForm.addAccountButton}
-        </Button>
-      </div>
+    <PageShell maxWidth="lg" spacing="none" className="space-y-6">
+      <PageHeader
+        title={t.pages.accountConfiguration.title}
+        subtitle={t.pages.accountConfiguration.description}
+        actions={(
+          <Button size="sm" onClick={() => setShowPlatformModal(true)}>
+            <Plus className="w-3.5 h-3.5" />
+            {t.accountConfig.connectForm.addAccountButton}
+          </Button>
+        )}
+      />
 
       {/* ── Broker Accounts ── */}
       <section>
@@ -2356,18 +2358,6 @@ export function AccountConfigPage() {
 
                         {activeManualSubTab === 'strategy' && (
                           <div className="space-y-4">
-                            <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                              Strategy controls how the copier reacts to signals and applies your own SL/TP
-                              templates. Trailing stop and auto breakeven (move SL after movement) are under <strong>Auto-Management</strong>.
-                            </p>
-
-                            <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3 space-y-3">
-                              <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                                <strong>Predefined SL &amp; TP</strong> (override signal stops) are under <strong>Stops &amp; Targets</strong>.
-                                R:R fallbacks below apply only when predefined and channel levels are missing.
-                              </p>
-                            </div>
-
                             <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3 space-y-3">
                               <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100">Signal behavior</p>
                               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -2611,7 +2601,7 @@ export function AccountConfigPage() {
           </div>
         </div>
       )}
-    </div>
+    </PageShell>
   )
 }
 

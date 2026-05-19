@@ -15,6 +15,7 @@ import {
   type MtPlatform,
 } from "../_shared/metatraderapi.ts"
 import {
+  adjustMtTradesPositionDirection,
   flattenMtOrder,
   pickMtField,
   resolveMtDealProfit,
@@ -611,7 +612,11 @@ Deno.serve(async (req: Request) => {
         const row = historyProfile === "trades" ? flattenMtOrder(order, "trades") : order
         const ticket = Number(pick(row, "ticket", "Ticket") ?? 0)
         const platform = String(broker.platform ?? "MT5")
-        const { direction, type_label } = resolveDirection(row, platform)
+        const { direction, type_label } = adjustMtTradesPositionDirection(
+          order,
+          historyProfile,
+          resolveDirection(row, platform),
+        )
         const lot_size = resolveMtLots(row, historyProfile)
         const openTime = pick(
           row,

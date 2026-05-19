@@ -18,6 +18,8 @@ import type { MarketNewsArticle } from '../../lib/marketNewsTypes'
 import { EconomicCalendarFilters } from '../../components/economic-calendar/EconomicCalendarFilters'
 import { EconomicEventRow } from '../../components/economic-calendar/EconomicEventRow'
 import { RelatedNewsPanel } from '../../components/economic-calendar/RelatedNewsPanel'
+import { PageHeader } from '../../components/layout/PageHeader'
+import { PageShell } from '../../components/layout/PageShell'
 import { Button } from '../../components/ui/Button'
 import { Alert } from '../../components/ui/Alert'
 
@@ -164,30 +166,30 @@ export function EconomicCalendarPage() {
     : null
 
   return (
-    <div className="p-4 lg:p-8 max-w-6xl mx-auto space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-50">{ec.title}</h1>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1 max-w-xl">{ec.subtitle}</p>
-        </div>
-        <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
-          {lastUpdatedLabel && !loading ? (
-            <span className="text-xs text-neutral-400 dark:text-neutral-500 tabular-nums">
-              {lastUpdatedLabel}
-            </span>
-          ) : null}
-          <Button
-            variant="secondary"
-            size="sm"
-            loading={refreshing}
-            disabled={loading}
-            onClick={() => void load(true)}
-          >
-            <RefreshCw className="h-4 w-4" />
-            {t.common.refresh}
-          </Button>
-        </div>
-      </div>
+    <PageShell maxWidth="lg">
+      <PageHeader
+        title={ec.title}
+        subtitle={ec.subtitle}
+        actions={(
+          <>
+            {lastUpdatedLabel && !loading ? (
+              <span className="text-xs tabular-nums text-neutral-400 dark:text-neutral-500">
+                {lastUpdatedLabel}
+              </span>
+            ) : null}
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={refreshing}
+              disabled={loading}
+              onClick={() => void load(true)}
+            >
+              <RefreshCw className="h-4 w-4" />
+              {t.common.refresh}
+            </Button>
+          </>
+        )}
+      />
 
       <EconomicCalendarFilters
         from={from}
@@ -272,6 +274,6 @@ export function EconomicCalendarPage() {
           {ec.dataByFmp}
         </a>
       </footer>
-    </div>
+    </PageShell>
   )
 }

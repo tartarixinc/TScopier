@@ -1,216 +1,176 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { BarChart3, Crosshair, Loader2, Play, Radio, RefreshCw } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  ArrowLeft,
+  ArrowRight,
+  Crosshair,
+  History,
+  Loader2,
+  Radio,
+  RefreshCw,
+} from 'lucide-react'
 import clsx from 'clsx'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { interpolate } from '../../i18n/interpolate'
 import { useT } from '../../context/LocaleContext'
-import { useFormatMoney } from '../../context/UserProfileContext'
 import { backtestApi } from '../../lib/backtestApi'
 import type {
-  BacktestEquityRow,
-  BacktestRunMode,
   BacktestRunRow,
-  BacktestSummary,
   BacktestTradeRow,
   SimpleBacktestConfig,
   StoredBacktestSignal,
 } from '../../lib/backtestTypes'
-import { BacktestEquityChart } from '../../components/backtest/BacktestEquityChart'
-import { BacktestSignalBreakdown } from '../../components/backtest/BacktestSignalBreakdown'
-import { sanitizeBacktestUserError } from '../../lib/backtestDisplay'
+import { buildSymbolProfiles } from '../../components/backtest/ProfileSignalsPanel'
+import { BacktestResultsList } from '../../components/backtest/BacktestResultsList'
+import { BacktestResultModal } from '../../components/backtest/BacktestResultModal'
+import {
+  BacktestHistoryModal,
+  type BacktestHistoryRow,
+} from '../../components/backtest/BacktestHistoryModal'
+import {
+  formatPipValue,
+  parseSummary,
+  sanitizeBacktestUserError,
+  tradePipPnl,
+} from '../../lib/backtestDisplay'
+import { PageHeader } from '../../components/layout/PageHeader'
+import { PageShell } from '../../components/layout/PageShell'
 import { Button } from '../../components/ui/Button'
 import { Alert } from '../../components/ui/Alert'
-
-const LAST_RUN_KEY = 'backtest_last_run_id'
-
-function runModeFromConfig(config: BacktestRunRow['config'] | null | undefined): BacktestRunMode | null {
-  if (!config || typeof config !== 'object') return null
-  const mode = (config as Record<string, unknown>).runMode
-  return mode === 'tpsl' || mode === 'simulate' ? mode : null
-}
 
 interface ChannelOption {
   id: string
   display_name: string
 }
 
-function defaultConfig(): SimpleBacktestConfig {
+type FlowStep = 'configure' | 'symbol' | 'results'
+
+function defaultDateRange(): { dateFrom: string; dateTo: string } {
   const to = new Date()
   const from = new Date()
   from.setDate(from.getDate() - 30)
   return {
-    channelIds: [],
     dateFrom: from.toISOString().slice(0, 10),
     dateTo: to.toISOString().slice(0, 10),
-    initialBalance: 10_000,
-    fixedLot: 0.1,
-    timeframe: '5m',
   }
 }
 
-function StoredSignalsPanel({
-  config,
-  storedSignals,
-  storedLoading,
-}: {
-  config: SimpleBacktestConfig
-  storedSignals: StoredBacktestSignal[]
-  storedLoading: boolean
-}) {
-  return (
-    <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
-      <div className="flex items-center justify-between gap-2 mb-3">
-        <div>
-          <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100">
-            Stored signals
-          </p>
-          <p className="text-xs text-neutral-500 mt-0.5">
-            Table <code className="text-[11px]">backtest_channel_signals</code> for selected channels and dates
-          </p>
-        </div>
-        <span className="text-sm tabular-nums text-neutral-600 dark:text-neutral-300">
-          {storedSignals.length}
-        </span>
-      </div>
-      {config.channelIds.length === 0 ? (
-        <p className="text-sm text-neutral-400">Select a channel to view stored signals.</p>
-      ) : storedLoading && storedSignals.length === 0 ? (
-        <div className="py-8 flex justify-center">
-          <Loader2 className="w-5 h-5 animate-spin text-neutral-400" />
-        </div>
-      ) : storedSignals.length === 0 ? (
-        <p className="text-sm text-neutral-400">
-          No rows yet. Use <strong>Sync signals only</strong> to import from Telegram, then run a backtest.
-        </p>
-      ) : (
-        <div className="overflow-x-auto max-h-64 overflow-y-auto">
-          <table className="w-full text-xs">
-            <thead className="text-neutral-500 sticky top-0 bg-white dark:bg-neutral-900">
-              <tr className="border-b border-neutral-100 dark:border-neutral-800">
-                <th className="text-left py-2 pr-2 font-medium">Time</th>
-                <th className="text-left py-2 pr-2 font-medium">Symbol</th>
-                <th className="text-left py-2 pr-2 font-medium">Side</th>
-                <th className="text-right py-2 pr-2 font-medium">Entry</th>
-                <th className="text-right py-2 pr-2 font-medium">SL</th>
-                <th className="text-left py-2 font-medium">TPs</th>
-              </tr>
-            </thead>
-            <tbody>
-              {storedSignals.map(row => (
-                <tr key={row.id} className="border-b border-neutral-50 dark:border-neutral-800/80">
-                  <td className="py-1.5 pr-2 whitespace-nowrap text-neutral-600 dark:text-neutral-400">
-                    {new Date(row.signal_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                  </td>
-                  <td className="py-1.5 pr-2 font-medium">{row.symbol}</td>
-                  <td className={clsx('py-1.5 pr-2 uppercase', row.direction === 'buy' ? 'text-teal-600' : 'text-error-600')}>
-                    {row.direction}
-                  </td>
-                  <td className="py-1.5 pr-2 text-right tabular-nums">
-                    {row.entry_price > 0 ? row.entry_price : 'MKT'}
-                  </td>
-                  <td className="py-1.5 pr-2 text-right tabular-nums">{row.sl ?? '—'}</td>
-                  <td className="py-1.5 tabular-nums">
-                    {(row.tp_levels ?? []).length ? row.tp_levels.join(', ') : '—'}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  )
+function buildConfig(
+  channelId: string,
+  dateFrom: string,
+  dateTo: string,
+  symbols?: string[],
+): SimpleBacktestConfig {
+  return {
+    channelIds: [channelId],
+    dateFrom,
+    dateTo,
+    initialBalance: 10_000,
+    fixedLot: 0.1,
+    timeframe: '5m',
+    ...(symbols?.length ? { symbols } : {}),
+  }
 }
 
-function StatCard({
-  label,
-  value,
-  sub,
-  tone = 'neutral',
-}: {
-  label: string
-  value: string
-  sub?: string
-  tone?: 'neutral' | 'good' | 'bad'
-}) {
-  const valueClass =
-    tone === 'good' ? 'text-teal-600' : tone === 'bad' ? 'text-error-600' : 'text-neutral-900 dark:text-neutral-50'
-  return (
-    <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
-      <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">{label}</p>
-      <p className={clsx('text-xl font-semibold mt-1 tabular-nums', valueClass)}>{value}</p>
-      {sub ? <p className="text-xs text-neutral-500 mt-0.5">{sub}</p> : null}
-    </div>
-  )
-}
 
 export function Backtest() {
-  const { formatSignedMoney } = useFormatMoney()
   const t = useT()
+  const bt = t.backtest
   const { user } = useAuth()
+  const defaultDates = useMemo(() => defaultDateRange(), [])
   const [channels, setChannels] = useState<ChannelOption[]>([])
-  const [config, setConfig] = useState<SimpleBacktestConfig>(defaultConfig)
+  const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null)
+  const [dateFrom, setDateFrom] = useState(defaultDates.dateFrom)
+  const [dateTo, setDateTo] = useState(defaultDates.dateTo)
+  const [profiledSignals, setProfiledSignals] = useState<StoredBacktestSignal[]>([])
+  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null)
+  const [profileNote, setProfileNote] = useState('')
+  const [profiling, setProfiling] = useState(false)
+  const [profileKey, setProfileKey] = useState('')
+  const [step, setStep] = useState<FlowStep>('configure')
   const [activeRun, setActiveRun] = useState<BacktestRunRow | null>(null)
   const [trades, setTrades] = useState<BacktestTradeRow[]>([])
-  const [equity, setEquity] = useState<BacktestEquityRow[]>([])
+  const [selectedTrade, setSelectedTrade] = useState<BacktestTradeRow | null>(null)
   const [running, setRunning] = useState(false)
-  const [resultMode, setResultMode] = useState<BacktestRunMode | null>(null)
-  const [syncing, setSyncing] = useState(false)
-  const [storedSignals, setStoredSignals] = useState<StoredBacktestSignal[]>([])
-  const [storedLoading, setStoredLoading] = useState(false)
-  const [syncNote, setSyncNote] = useState('')
   const [error, setError] = useState('')
-  const [showSimulateConfig, setShowSimulateConfig] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [loadingHistoryRun, setLoadingHistoryRun] = useState(false)
 
-  const summary = activeRun?.summary as BacktestSummary | null | undefined
-  const isActive = running || activeRun?.status === 'running' || activeRun?.status === 'pending'
+  const summary = parseSummary(activeRun?.summary)
+  const isBacktestActive = running || activeRun?.status === 'running' || activeRun?.status === 'pending'
+  const isBusy = profiling || isBacktestActive
 
-  const channelNames = useMemo(() => {
-    const m: Record<string, string> = {}
-    for (const ch of channels) m[ch.id] = ch.display_name
-    return m
-  }, [channels])
-
-  const noDataCount = useMemo(
-    () => trades.filter(tr => tr.outcome === 'no_data').length,
-    [trades],
+  const symbolProfiles = useMemo(
+    () => buildSymbolProfiles(profiledSignals),
+    [profiledSignals],
   )
 
-  const loadStoredSignals = useCallback(async (opts?: { silent?: boolean }) => {
-    if (!user || config.channelIds.length === 0) {
-      setStoredSignals([])
-      setStoredLoading(false)
-      return
+  const selectionKey = `${selectedChannelId ?? ''}|${dateFrom}|${dateTo}`
+  const hasValidProfile =
+    profileKey === selectionKey && profiledSignals.length > 0 && Boolean(selectedChannelId)
+
+  const channelName = channels.find(c => c.id === selectedChannelId)?.display_name ?? bt.channelFallback
+
+  const channelNameMap = useMemo(
+    () => new Map(channels.map(c => [c.id, c.display_name])),
+    [channels],
+  )
+
+  const totalPips = useMemo(() => {
+    if (summary?.totalPips != null && Number.isFinite(summary.totalPips)) {
+      return summary.totalPips
     }
-    const silent = opts?.silent === true
-    if (!silent) setStoredLoading(true)
-    const fromIso = new Date(config.dateFrom).toISOString()
-    const toIso = new Date(`${config.dateTo}T23:59:59.999Z`).toISOString()
+    let sum = 0
+    let hasAny = false
+    for (const tr of trades) {
+      const p = tradePipPnl(tr)
+      if (p == null) continue
+      sum += p
+      hasAny = true
+    }
+    return hasAny ? sum : null
+  }, [summary?.totalPips, trades])
+
+  const loadStoredSignals = useCallback(async (channelId: string, from: string, to: string) => {
+    if (!user) return []
+    const fromIso = new Date(from).toISOString()
+    const toIso = new Date(`${to}T23:59:59.999Z`).toISOString()
     const { data, error: qErr } = await supabase
       .from('backtest_channel_signals')
       .select('id, channel_id, symbol, direction, entry_price, sl, tp_levels, signal_at, source')
       .eq('user_id', user.id)
-      .in('channel_id', config.channelIds)
+      .eq('channel_id', channelId)
       .gte('signal_at', fromIso)
       .lte('signal_at', toIso)
       .order('signal_at', { ascending: false })
-    if (!silent) setStoredLoading(false)
-    if (qErr) {
-      setSyncNote(qErr.message)
-      return
-    }
-    setStoredSignals((data ?? []) as StoredBacktestSignal[])
-  }, [user, config.channelIds, config.dateFrom, config.dateTo])
+    if (qErr) throw new Error(qErr.message)
+    return (data ?? []) as StoredBacktestSignal[]
+  }, [user])
 
   const loadRun = useCallback(async (runId: string) => {
-    const { run, trades: t, equity: e } = await backtestApi.getRun(runId)
+    const { run, trades: loaded } = await backtestApi.getRun(runId)
     setActiveRun(run)
-    setTrades(t)
-    setEquity(e)
-    const mode = runModeFromConfig(run.config)
-    if (mode) setResultMode(mode)
+    setTrades(loaded)
     return run
   }, [])
+
+  const clearResults = useCallback(() => {
+    setActiveRun(null)
+    setTrades([])
+    setSelectedTrade(null)
+  }, [])
+
+  const prevSelectionKey = useRef(selectionKey)
+  useEffect(() => {
+    if (prevSelectionKey.current === selectionKey) return
+    prevSelectionKey.current = selectionKey
+    setProfiledSignals([])
+    setSelectedSymbol(null)
+    setProfileNote('')
+    setProfileKey('')
+    clearResults()
+    setStep('configure')
+  }, [selectionKey, clearResults])
 
   useEffect(() => {
     if (!user) return
@@ -223,168 +183,197 @@ export function Backtest() {
         .order('display_name')
       setChannels((data ?? []).map(r => ({
         id: r.id as string,
-        display_name: (r.display_name as string) || 'Channel',
+        display_name: (r.display_name as string) || bt.channelFallback,
       })))
-      const lastId = localStorage.getItem(LAST_RUN_KEY)
-      if (lastId) {
-        try {
-          await loadRun(lastId)
-        } catch {
-          localStorage.removeItem(LAST_RUN_KEY)
-        }
-      }
     })()
-  }, [user, loadRun])
+  }, [user, bt.channelFallback])
+
+  const userError = (e: unknown) =>
+    sanitizeBacktestUserError(e instanceof Error ? e.message : String(e), bt.errors.rateLimit)
 
   useEffect(() => {
-    const t = setTimeout(() => { void loadStoredSignals() }, 400)
-    return () => clearTimeout(t)
-  }, [loadStoredSignals])
-
-  useEffect(() => {
-    if (!activeRun?.id || !isActive) return
+    if (!activeRun?.id) return
+    if (!isBacktestActive && activeRun.status !== 'running' && activeRun.status !== 'pending') return
     const runId = activeRun.id
-    const syncing = activeRun.progress_message?.toLowerCase().includes('syncing telegram') ?? false
-    if (syncing) {
-      void loadStoredSignals({ silent: true })
-    }
     const poll = setInterval(() => {
-      void loadRun(runId).then(run => {
-        const stillSyncing = run.progress_message?.toLowerCase().includes('syncing telegram') ?? false
-        if (stillSyncing) {
-          void loadStoredSignals({ silent: true })
-        }
+      void loadRun(runId).then(async run => {
         if (run.status === 'completed' || run.status === 'failed') {
+          if (run.status === 'completed') await loadRun(runId)
           setRunning(false)
-          void loadStoredSignals({ silent: true })
+          if (run.status === 'completed') setStep('results')
         }
       }).catch(() => {})
-    }, 3000)
+    }, 2000)
     return () => clearInterval(poll)
-  }, [activeRun?.id, activeRun?.progress_message, isActive, loadRun, loadStoredSignals])
+  }, [activeRun?.id, activeRun?.status, isBacktestActive, loadRun])
 
   useEffect(() => {
-    if (!activeRun?.id || !isActive) return
+    if (!activeRun?.id || !isBacktestActive) return
     const ch = supabase
       .channel(`backtest-run-${activeRun.id}`)
       .on(
         'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'backtest_runs',
-          filter: `id=eq.${activeRun.id}`,
-        },
+        { event: 'UPDATE', schema: 'public', table: 'backtest_runs', filter: `id=eq.${activeRun.id}` },
         () => { void loadRun(activeRun.id) },
       )
       .subscribe()
     return () => { void supabase.removeChannel(ch) }
-  }, [activeRun?.id, isActive, loadRun])
+  }, [activeRun?.id, isBacktestActive, loadRun])
 
-  const toggleChannel = (id: string) => {
-    setConfig(prev => ({
-      ...prev,
-      channelIds: prev.channelIds.includes(id)
-        ? prev.channelIds.filter(c => c !== id)
-        : [...prev.channelIds, id],
-    }))
-  }
-
-  const handleSyncOnly = async () => {
-    if (config.channelIds.length === 0) {
-      setError('Select at least one channel')
+  const profileSignals = async () => {
+    if (!selectedChannelId) {
+      setError(bt.selectChannelError)
       return
     }
     setError('')
-    setSyncNote('')
-    setSyncing(true)
+    setProfileNote('')
+    setProfiledSignals([])
+    setSelectedSymbol(null)
+    setProfileKey('')
+    clearResults()
+    setProfiling(true)
     try {
+      const config = buildConfig(selectedChannelId, dateFrom, dateTo)
       const result = await backtestApi.sync(config)
+      const signals = await loadStoredSignals(selectedChannelId, dateFrom, dateTo)
+      setProfiledSignals(signals)
+      setProfileKey(`${selectedChannelId}|${dateFrom}|${dateTo}`)
       const msg = result.imported > 0
-        ? `Stored ${result.imported} signal(s) in backtest_channel_signals (${result.candidates} candidates, ${result.messages_scanned} messages scanned).`
-        : 'No tradeable signals stored.'
-      setSyncNote([msg, ...result.errors].filter(Boolean).join(' '))
-      await loadStoredSignals()
+        ? interpolate(bt.profileImported, {
+            imported: String(result.imported),
+            scanned: String(result.messages_scanned),
+          })
+        : result.candidates > 0
+          ? interpolate(bt.profileCandidates, { candidates: String(result.candidates) })
+          : interpolate(bt.profileNoTradeable, { scanned: String(result.messages_scanned) })
+      setProfileNote([msg, ...result.errors].filter(Boolean).join(' '))
+      if (signals.length > 0) {
+        setSelectedSymbol(buildSymbolProfiles(signals)[0]?.symbol ?? null)
+        setStep('symbol')
+      }
     } catch (e) {
-      setError(sanitizeBacktestUserError(e instanceof Error ? e.message : String(e)))
+      setError(userError(e))
     } finally {
-      setSyncing(false)
+      setProfiling(false)
     }
   }
 
-  const startBacktest = async (mode: BacktestRunMode) => {
-    if (config.channelIds.length === 0) {
-      setError('Select at least one channel')
+  const startBacktest = async () => {
+    if (!selectedChannelId || !hasValidProfile || !selectedSymbol) {
+      setError(!hasValidProfile ? bt.profileFirstError : bt.selectSymbolError)
       return
     }
-    if (mode === 'simulate') setShowSimulateConfig(false)
     setError('')
     setRunning(true)
-    setResultMode(mode)
-    setTrades([])
-    setEquity([])
-    setActiveRun(null)
+    clearResults()
     try {
-      const start =
-        mode === 'tpsl'
-          ? backtestApi.backtestTpsl(config)
-          : backtestApi.simulateTrades(config)
-      const { run_id } = await start
-      localStorage.setItem(LAST_RUN_KEY, run_id)
-      const run = await loadRun(run_id)
-      if (run.status === 'completed' || run.status === 'failed') {
+      const config = buildConfig(selectedChannelId, dateFrom, dateTo, [selectedSymbol])
+      const { run_id } = await backtestApi.backtestTpsl(config)
+      let run = await loadRun(run_id)
+      if (run.status === 'completed') run = await loadRun(run_id)
+      if (run.status === 'completed') {
+        setStep('results')
+        setRunning(false)
+      } else if (run.status === 'failed') {
         setRunning(false)
       }
     } catch (e) {
-      setError(sanitizeBacktestUserError(e instanceof Error ? e.message : String(e)))
+      setError(userError(e))
       setRunning(false)
     }
   }
 
-  const activeMode = resultMode ?? runModeFromConfig(activeRun?.config)
-  const isSimulate = activeMode === 'simulate'
-  const isTpsl = activeMode === 'tpsl'
+  const totalPipsTone = totalPips == null ? 'neutral' : totalPips >= 0 ? 'good' : 'bad'
+  const canProfile = Boolean(selectedChannelId) && !isBusy
+  const canBacktest = hasValidProfile && Boolean(selectedSymbol) && !isBusy
 
-  const statusLine = activeRun?.progress_message
-    ?? (running ? (isTpsl ? 'Starting TP/SL backtest…' : 'Starting trade simulation…') : null)
+  const openHistoryRun = async (row: BacktestHistoryRow) => {
+    setHistoryOpen(false)
+    setError('')
+    setLoadingHistoryRun(true)
+    setSelectedTrade(null)
+    try {
+      const cfg = row.config as SimpleBacktestConfig & { channelIds?: string[]; symbols?: string[] }
+      const chId = Array.isArray(cfg.channelIds) ? cfg.channelIds[0] : null
+      if (chId) setSelectedChannelId(String(chId))
+      if (cfg.dateFrom) setDateFrom(String(cfg.dateFrom))
+      if (cfg.dateTo) setDateTo(String(cfg.dateTo))
+      const sym = Array.isArray(cfg.symbols) ? cfg.symbols[0] : null
+      if (sym) setSelectedSymbol(String(sym).toUpperCase())
+
+      const run = await loadRun(row.id)
+      setStep('results')
+      if (run.status === 'running' || run.status === 'pending') {
+        setRunning(true)
+      }
+    } catch (e) {
+      setError(userError(e))
+    } finally {
+      setLoadingHistoryRun(false)
+    }
+  }
+
+  const signalListLabel =
+    trades.length === 1
+      ? bt.oneSignal
+      : interpolate(bt.nSignals, { count: String(trades.length) })
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8 space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-50">
-          {t.backtest.title}
-        </h1>
-        <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
-          Sync signals, backtest TP/SL levels, or simulate portfolio performance across stored signals.
-        </p>
-      </div>
+    <PageShell maxWidth="lg" spacing="none" className="space-y-6">
+      <PageHeader
+        title={bt.title}
+        subtitle={bt.subtitle}
+        actions={(
+          <Button
+            variant="secondary"
+            className="shrink-0"
+            onClick={() => setHistoryOpen(true)}
+            disabled={(isBusy && !historyOpen) || loadingHistoryRun}
+          >
+            {loadingHistoryRun ? (
+              <Loader2 className="w-4 h-4 animate-spin mr-2" />
+            ) : (
+              <History className="w-4 h-4 mr-2" />
+            )}
+            {bt.history}
+          </Button>
+        )}
+      />
 
       {error ? <Alert variant="error">{error}</Alert> : null}
       {activeRun?.status === 'failed' && activeRun.error_message ? (
-        <Alert variant="error">{sanitizeBacktestUserError(activeRun.error_message)}</Alert>
+        <Alert variant="error">{sanitizeBacktestUserError(activeRun.error_message, bt.errors.rateLimit)}</Alert>
       ) : null}
 
-      <div className="grid lg:grid-cols-[minmax(280px,340px)_1fr] gap-6">
-        <div className="space-y-4 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5">
+      {step === 'configure' ? (
+        <section className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 space-y-6 shadow-sm">
+          <div>
+            <p className="text-sm text-neutral-500 mt-1">{bt.configureHint}</p>
+          </div>
+
           <div>
             <p className="text-xs font-medium text-neutral-500 mb-2 flex items-center gap-1.5">
               <Radio className="w-3.5 h-3.5" />
-              Channels
+              {bt.signalChannel}
             </p>
             <div className="flex flex-wrap gap-2">
               {channels.length === 0 ? (
-                <p className="text-sm text-neutral-400">No active Telegram channels</p>
+                <p className="text-sm text-neutral-400">{bt.noActiveChannels}</p>
               ) : (
                 channels.map(ch => (
                   <button
                     key={ch.id}
                     type="button"
-                    onClick={() => toggleChannel(ch.id)}
+                    onClick={() => {
+                      setSelectedChannelId(prev => (prev === ch.id ? null : ch.id))
+                      setError('')
+                    }}
+                    disabled={isBusy}
                     className={clsx(
-                      'px-3 py-1.5 rounded-lg text-sm border transition-colors',
-                      config.channelIds.includes(ch.id)
-                        ? 'border-teal-500 bg-teal-50 text-teal-800 dark:bg-teal-950 dark:text-teal-200'
-                        : 'border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300',
+                      'px-3 py-2 rounded-xl text-sm border transition-all disabled:opacity-50',
+                      selectedChannelId === ch.id
+                        ? 'border-teal-500 bg-teal-500 text-white shadow-sm'
+                        : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-300',
                     )}
                   >
                     {ch.display_name}
@@ -394,232 +383,203 @@ export function Backtest() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-4">
             <label className="block">
-              <span className="text-xs text-neutral-500">From</span>
+              <span className="text-xs font-medium text-neutral-500">{bt.from}</span>
               <input
                 type="date"
-                className="mt-1 w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm"
-                value={config.dateFrom}
-                onChange={e => setConfig(c => ({ ...c, dateFrom: e.target.value }))}
+                disabled={isBusy}
+                className="mt-1.5 w-full rounded-xl border border-neutral-200 dark:border-neutral-700 bg-transparent px-3 py-2.5 text-sm disabled:opacity-50"
+                value={dateFrom}
+                onChange={e => setDateFrom(e.target.value)}
               />
             </label>
             <label className="block">
-              <span className="text-xs text-neutral-500">To</span>
+              <span className="text-xs font-medium text-neutral-500">{bt.to}</span>
               <input
                 type="date"
-                className="mt-1 w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm"
-                value={config.dateTo}
-                onChange={e => setConfig(c => ({ ...c, dateTo: e.target.value }))}
+                disabled={isBusy}
+                className="mt-1.5 w-full rounded-xl border border-neutral-200 dark:border-neutral-700 bg-transparent px-3 py-2.5 text-sm disabled:opacity-50"
+                value={dateTo}
+                onChange={e => setDateTo(e.target.value)}
               />
             </label>
           </div>
 
-          <div className="border-t border-neutral-100 dark:border-neutral-800 pt-4 space-y-3">
-            <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">Actions</p>
-
-          <Button
-            variant="secondary"
-            className="w-full"
-            onClick={() => void handleSyncOnly()}
-            disabled={isActive || syncing || config.channelIds.length === 0}
-          >
-            {syncing ? (
+          <Button className="w-full" onClick={() => void profileSignals()} disabled={!canProfile}>
+            {profiling ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                Syncing Telegram…
+                {bt.pullingSignals}
               </>
             ) : (
               <>
                 <RefreshCw className="w-4 h-4 mr-2" />
-                Sync signals only
+                {bt.pullProfileSignals}
+                <ArrowRight className="w-4 h-4 ml-2 opacity-70" />
               </>
             )}
           </Button>
+        </section>
+      ) : null}
 
-          <Button
-            className="w-full"
-            onClick={() => {
-              setShowSimulateConfig(false)
-              void startBacktest('tpsl')
-            }}
-            disabled={isActive || syncing || config.channelIds.length === 0}
-          >
-            {isActive && isTpsl ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                Backtesting…
-              </>
-            ) : (
-              <>
-                <Crosshair className="w-4 h-4 mr-2" />
-                Backtest TPs/SL
-              </>
-            )}
-          </Button>
-
-          <Button
-            variant={showSimulateConfig ? 'primary' : 'secondary'}
-            className="w-full"
-            onClick={() => {
-              if (isActive && isSimulate) return
-              setShowSimulateConfig(open => !open)
-            }}
-            disabled={isActive || syncing || config.channelIds.length === 0}
-          >
-            {isActive && isSimulate ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                Simulating…
-              </>
-            ) : (
-              <>
-                <BarChart3 className="w-4 h-4 mr-2" />
-                Simulate Trades
-              </>
-            )}
-          </Button>
-
-          {showSimulateConfig && !isActive ? (
-            <div className="rounded-lg border border-teal-200/80 bg-teal-50/40 dark:border-teal-900/60 dark:bg-teal-950/20 p-3 space-y-3">
-              <p className="text-xs text-neutral-600 dark:text-neutral-300">
-                Set portfolio parameters, then run the simulation.
+      {step === 'symbol' ? (
+        <section className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 space-y-6 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">{bt.readyTitle}</h2>
+              <p className="text-sm text-neutral-500 mt-1">
+                {interpolate(bt.readyMeta, {
+                  channel: channelName,
+                  count: String(profiledSignals.length),
+                  from: dateFrom,
+                  to: dateTo,
+                })}
               </p>
-              <label className="block">
-                <span className="text-xs text-neutral-500">Starting balance (USD)</span>
-                <input
-                  type="number"
-                  min={100}
-                  step={100}
-                  className="mt-1 w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm"
-                  value={config.initialBalance}
-                  onChange={e => setConfig(c => ({ ...c, initialBalance: Number(e.target.value) }))}
-                />
-              </label>
-              <label className="block">
-                <span className="text-xs text-neutral-500">Lot size</span>
-                <input
-                  type="number"
-                  min={0.01}
-                  step={0.01}
-                  className="mt-1 w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm"
-                  value={config.fixedLot}
-                  onChange={e => setConfig(c => ({ ...c, fixedLot: Number(e.target.value) }))}
-                />
-              </label>
-              <Button
-                className="w-full"
-                onClick={() => void startBacktest('simulate')}
-                disabled={config.channelIds.length === 0}
-              >
-                <Play className="w-4 h-4 mr-2" />
-                Run simulation
-              </Button>
             </div>
-          ) : null}
+            <button
+              type="button"
+              onClick={() => setStep('configure')}
+              className="text-sm text-neutral-500 hover:text-neutral-800 flex items-center gap-1 shrink-0"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              {bt.back}
+            </button>
           </div>
 
-          {storedSignals.length > 0 ? (
-            <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
-              {storedSignals.length} stored signal{storedSignals.length === 1 ? '' : 's'} — runs use stored rows only (no Telegram). Use <strong>Sync signals only</strong> to refresh.
+          {profileNote ? (
+            <p className="text-sm text-neutral-600 dark:text-neutral-400 rounded-xl bg-neutral-50 dark:bg-neutral-800/50 px-4 py-3">
+              {profileNote}
             </p>
           ) : null}
 
-          {syncNote ? (
-            <p className="text-xs text-neutral-600 dark:text-neutral-300">{syncNote}</p>
-          ) : null}
-          {statusLine ? (
-            <p className="text-xs text-neutral-500 dark:text-neutral-400">{statusLine}</p>
-          ) : null}
-          {isActive && activeRun?.progress_pct != null ? (
-            <div className="h-1.5 rounded-full bg-neutral-100 dark:bg-neutral-800 overflow-hidden">
-              <div
-                className="h-full bg-teal-500 transition-all duration-500"
-                style={{ width: `${Math.min(100, activeRun.progress_pct)}%` }}
-              />
+          <div>
+            <p className="text-xs font-medium text-neutral-500 mb-3">{bt.symbolToBacktest}</p>
+            <div className="flex flex-wrap gap-2">
+              {symbolProfiles.map(({ symbol, count }) => (
+                <button
+                  key={symbol}
+                  type="button"
+                  onClick={() => {
+                    setSelectedSymbol(symbol)
+                    clearResults()
+                  }}
+                  className={clsx(
+                    'px-4 py-2.5 rounded-xl text-sm font-medium border transition-all',
+                    selectedSymbol === symbol
+                      ? 'border-teal-500 bg-teal-500 text-white shadow-md shadow-teal-500/20'
+                      : 'border-neutral-200 dark:border-neutral-700 hover:border-teal-300',
+                  )}
+                >
+                  {symbol}
+                  <span className={clsx('ml-2 tabular-nums text-xs', selectedSymbol === symbol ? 'opacity-90' : 'opacity-60')}>
+                    {count}
+                  </span>
+                </button>
+              ))}
             </div>
-          ) : null}
-        </div>
+          </div>
 
-        <div className="space-y-4">
-          <StoredSignalsPanel
-            config={config}
-            storedSignals={storedSignals}
-            storedLoading={storedLoading}
-          />
-
-          {summary && activeRun?.status === 'completed' ? (
-            <>
-              {isSimulate ? (
-                <>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <StatCard
-                      label="Net PnL"
-                      value={formatSignedMoney(summary.netPnl)}
-                      tone={summary.netPnl >= 0 ? 'good' : 'bad'}
-                    />
-                    <StatCard
-                      label="Win rate"
-                      value={`${(summary.winRate * 100).toFixed(1)}%`}
-                    />
-                    <StatCard
-                      label="Max drawdown"
-                      value={`${summary.maxDrawdownPct.toFixed(1)}%`}
-                      tone="bad"
-                    />
-                    <StatCard
-                      label="Signals"
-                      value={String(summary.totalSignals)}
-                      sub={noDataCount > 0 ? `${noDataCount} no market data` : undefined}
-                    />
-                  </div>
-
-                  <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
-                    <p className="text-sm font-medium text-neutral-700 dark:text-neutral-200 mb-3">Equity curve</p>
-                    <BacktestEquityChart equity={equity} />
-                  </div>
-                </>
-              ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <StatCard
-                    label="Win rate"
-                    value={`${(summary.winRate * 100).toFixed(1)}%`}
-                  />
-                  <StatCard
-                    label="All TPs hit"
-                    value={String(summary.allTpHits)}
-                    tone="good"
-                  />
-                  <StatCard
-                    label="Wins / losses"
-                    value={`${summary.wins} / ${summary.losses}`}
-                  />
-                  <StatCard
-                    label="Signals"
-                    value={String(summary.tradedSignals)}
-                    sub={noDataCount > 0 ? `${noDataCount} no market data` : undefined}
+          {isBacktestActive ? (
+            <div className="space-y-3 rounded-xl border border-teal-200 dark:border-teal-900 bg-teal-50/50 dark:bg-teal-950/20 p-4">
+              <div className="flex items-center gap-2 text-sm text-teal-800 dark:text-teal-200">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                {activeRun?.progress_message ?? bt.runningDefault}
+              </div>
+              {activeRun?.progress_pct != null ? (
+                <div className="h-2 rounded-full bg-teal-100 dark:bg-teal-900 overflow-hidden">
+                  <div
+                    className="h-full bg-teal-500 transition-all duration-500"
+                    style={{ width: `${Math.min(100, activeRun.progress_pct)}%` }}
                   />
                 </div>
-              )}
-
-              <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 overflow-hidden">
-                <p className="text-sm font-medium text-neutral-700 dark:text-neutral-200 px-4 pt-4 pb-2 sm:px-5">
-                  {isTpsl ? 'All backtests' : 'Signal breakdown'}
-                </p>
-                <BacktestSignalBreakdown trades={trades} channelNames={channelNames} />
-              </div>
-            </>
-          ) : (
-            <div className="rounded-xl border border-dashed border-neutral-200 dark:border-neutral-800 p-12 text-center text-sm text-neutral-400">
-              {isActive
-                ? (isTpsl
-                  ? 'Fetching market data and checking TP/SL levels…'
-                  : 'Simulating trades across stored signals…')
-                : 'Configure channels and dates, then backtest TPs/SL or simulate trades.'}
+              ) : null}
             </div>
+          ) : (
+            <Button className="w-full" onClick={() => void startBacktest()} disabled={!canBacktest}>
+              <Crosshair className="w-4 h-4 mr-2" />
+              {bt.runBacktest}{selectedSymbol ? ` · ${selectedSymbol}` : ''}
+            </Button>
           )}
-        </div>
-      </div>
-    </div>
+        </section>
+      ) : null}
+
+      {step === 'results' ? (
+        <section className="space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">{bt.resultsTitle}</h2>
+              <p className="text-sm text-neutral-500 mt-0.5">
+                {interpolate(bt.resultsSubtitle, {
+                  symbol: selectedSymbol ?? '—',
+                  channel: channelName,
+                })}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setStep('symbol')
+                clearResults()
+              }}
+              className="text-sm text-neutral-500 hover:text-neutral-800 flex items-center gap-1"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              {bt.newRun}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4 col-span-2 sm:col-span-1">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">{bt.totalPips}</p>
+              <p
+                className={clsx(
+                  'text-3xl font-bold tabular-nums mt-1',
+                  totalPipsTone === 'good' && 'text-teal-600',
+                  totalPipsTone === 'bad' && 'text-error-600',
+                )}
+              >
+                {formatPipValue(totalPips)}
+              </p>
+            </div>
+            {summary ? (
+              <>
+                <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
+                  <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">{bt.winRate}</p>
+                  <p className="text-2xl font-bold mt-1">{(summary.winRate * 100).toFixed(0)}%</p>
+                </div>
+                <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
+                  <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">{bt.winLoss}</p>
+                  <p className="text-2xl font-bold mt-1 tabular-nums">{summary.wins}/{summary.losses}</p>
+                </div>
+                <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
+                  <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">{bt.signalsLabel}</p>
+                  <p className="text-2xl font-bold mt-1 tabular-nums">{summary.tradedSignals}</p>
+                </div>
+              </>
+            ) : null}
+          </div>
+
+          <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 overflow-hidden shadow-sm">
+            <div className="px-4 py-3 border-b border-neutral-100 dark:border-neutral-800">
+              <p className="text-sm font-medium text-neutral-700 dark:text-neutral-200">
+                {signalListLabel}
+              </p>
+            </div>
+            <BacktestResultsList trades={trades} onSelect={setSelectedTrade} />
+          </div>
+        </section>
+      ) : null}
+
+      <BacktestResultModal trade={selectedTrade} onClose={() => setSelectedTrade(null)} />
+
+      <BacktestHistoryModal
+        open={historyOpen}
+        userId={user?.id}
+        channelNames={channelNameMap}
+        onClose={() => setHistoryOpen(false)}
+        onSelectRun={run => { void openHistoryRun(run) }}
+      />
+    </PageShell>
   )
 }

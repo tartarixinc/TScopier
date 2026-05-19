@@ -4,10 +4,10 @@ Backtests replay parsed Telegram signals against historical OHLC bars from [Mass
 
 ## Flow
 
-1. **UI** — pick channel(s), date range, starting balance, lot size → **Run backtest**
-2. **Edge** (`backtest-run`) — creates a run, calls the worker once per channel
+1. **UI** — pick one signal channel, date range → **Backtest**
+2. **Edge** (`backtest-run`) — creates a run, calls the worker once per channel (Telegram sync with live progress on the run)
 3. **Worker** (`POST /auth/backtest_sync_signals`) — fetches Telegram history, calls `parse-signal` in `parse_only` mode, upserts `backtest_channel_signals`
-4. **Edge** — loads signals, fetches Massive bars per symbol, simulates TP/SL, writes trades + equity
+4. **Edge** — loads signals, fetches Massive bars per symbol, simulates TP/SL (pips + duration per signal), writes trades and summary (`totalPips`)
 
 No preview import, no OpenAI, no symbol filter, no tick-quote mode in v1.
 

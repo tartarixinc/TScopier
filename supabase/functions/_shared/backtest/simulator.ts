@@ -1,4 +1,5 @@
 import type { MassiveBar, MassiveQuote } from "../massiveApi.ts"
+import { computePipsFromSignalOutcome } from "./pip.ts"
 import type {
   BacktestStrategyConfig,
   ParsedSignalForBacktest,
@@ -79,6 +80,7 @@ export function simulateTradeOnSeries(
 ): SimulatedTradeResult {
   const base: SimulatedTradeResult = {
     signalId: signal.signalId,
+    copierSignalId: signal.copierSignalId,
     channelId: signal.channelId,
     symbol: signal.symbol,
     direction: signal.direction,
@@ -92,6 +94,7 @@ export function simulateTradeOnSeries(
     exitPrice: null,
     closedAt: null,
     pnl: 0,
+    pipPnl: null,
     pnlR: null,
     mfe: 0,
     mae: 0,
@@ -156,30 +159,45 @@ export function simulateTradeOnSeries(
       if (!hitLevel(signal.direction, lvl.price, p, kind === "tp" ? "tp" : "sl")) continue
 
       if (kind === "tp") {
-        const closeFrac = Math.min(remainingFraction, partialFrac)
-        const legPnl = moveAtPrice(signal.direction, entryPx, lvl.price, closeFrac, lotSize, pipValuePerLot)
-        realizedPnl += legPnl
-        remainingFraction -= closeFrac
-        tpIdx += 1
-        base.tpsHit = tpIdx
-        const events = Array.isArray(base.details.tpEvents)
-          ? (base.details.tpEvents as Array<{ index: number; price: number; ts: number }>)
-          : []
-        events.push({ index: tpIdx, price: lvl.price, ts: p.ts })
-        base.details.tpEvents = events
+        // Multiple TPs can trigger on the same candle (TelegramBacktester behavior).
+        let hitAnyTp = false
+        while (tpIdx < tps.length) {
+          const tpPrice = tps[tpIdx]!
+          if (!hitLevel(signal.direction, tpPrice, p, "tp")) break
 
-        if (strategy.breakevenAfterTp > 0 && tpIdx >= strategy.breakevenAfterTp) {
-          beActive = true
-          sl = entryPx
-        }
+          const closeFrac = Math.min(remainingFraction, partialFrac)
+          const legPnl = moveAtPrice(signal.direction, entryPx, tpPrice, closeFrac, lotSize, pipValuePerLot)
+          realizedPnl += legPnl
+          remainingFraction -= closeFrac
+          tpIdx += 1
+          base.tpsHit = tpIdx
+          hitAnyTp = true
 
-        if (tpIdx >= tps.length) {
-          return finalize(base, outcomeFromTps(base.tpsHit, tps.length, beActive), lvl.price, p.ts, realizedPnl, riskDistance, mfe, mae, { beActive })
+          const events = Array.isArray(base.details.tpEvents)
+            ? (base.details.tpEvents as Array<{ index: number; price: number; ts: number }>)
+            : []
+          events.push({ index: tpIdx, price: tpPrice, ts: p.ts })
+          base.details.tpEvents = events
+
+          if (strategy.breakevenAfterTp > 0 && tpIdx >= strategy.breakevenAfterTp) {
+            beActive = true
+            sl = entryPx
+          }
+
+          if (tpIdx >= tps.length) {
+            return finalize(
+              base, outcomeFromTps(base.tpsHit, tps.length, beActive), tpPrice, p.ts,
+              realizedPnl, tps, riskDistance, mfe, mae, { beActive },
+            )
+          }
+          if (remainingFraction <= 0.001) {
+            return finalize(
+              base, "all_tp_hit", tpPrice, p.ts,
+              realizedPnl, tps, riskDistance, mfe, mae, {},
+            )
+          }
         }
-        if (remainingFraction <= 0.001) {
-          return finalize(base, "all_tp_hit", lvl.price, p.ts, realizedPnl, riskDistance, mfe, mae, {})
-        }
-        break
+        if (hitAnyTp) break
       }
 
       if (kind === "sl" || kind === "be") {
@@ -187,7 +205,11 @@ export function simulateTradeOnSeries(
           ? (base.tpsHit > 0 ? "tp_then_be" : "breakeven")
           : (base.tpsHit >= 1 ? "tp1_then_sl" : "sl_before_tp")
         const closePnl = moveAtPrice(signal.direction, entryPx, lvl.price, remainingFraction, lotSize, pipValuePerLot)
-        return finalize(base, out, lvl.price, p.ts, realizedPnl + closePnl, riskDistance, mfe, mae, { beActive })
+        return finalize(
+          base, out, lvl.price, p.ts,
+          realizedPnl + closePnl,
+          tps, riskDistance, mfe, mae, { beActive },
+        )
       }
     }
   }
@@ -224,22 +246,34 @@ function finalize(
   exitPrice: number,
   closedMs: number,
   pnl: number,
+  tpLevels: number[],
   riskDistance: number | null,
   mfe: number,
   mae: number,
   details: Record<string, unknown>,
 ): SimulatedTradeResult {
+  const pipPnl = computePipsFromSignalOutcome({
+    symbol: base.symbol,
+    direction: base.direction,
+    entry: base.entryPrice,
+    sl: base.sl,
+    tpLevels,
+    outcome,
+    tpsHit: base.tpsHit,
+  })
+
   return {
     ...base,
     outcome,
     exitPrice,
     closedAt: new Date(closedMs),
     pnl,
+    pipPnl,
     pnlR: riskDistance && riskDistance > 0
       ? pnl / (riskDistance * base.lotSize * 10)
       : null,
     mfe,
     mae,
-    details: { ...base.details, ...details },
+    details: { ...base.details, ...details, pipPnl: Number.isFinite(pipPnl) ? pipPnl : null },
   }
 }

@@ -7,6 +7,8 @@ import { interpolate } from '../../i18n/interpolate'
 import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
 import { Toggle } from '../../components/ui/Toggle'
+import { PageHeader } from '../../components/layout/PageHeader'
+import { PageShell } from '../../components/layout/PageShell'
 import { Button } from '../../components/ui/Button'
 import { Alert } from '../../components/ui/Alert'
 import { Input } from '../../components/ui/Input'
@@ -588,21 +590,19 @@ export function CopierEnginePage() {
   ]
 
   return (
-    <div className="px-4 py-4 lg:px-6 lg:py-5 max-w-5xl mx-auto">
-      <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
-        <div>
-          <h1 className="text-xl font-bold text-neutral-900 dark:text-neutral-50">{t.pages.copierEngine.title}</h1>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">{t.pages.copierEngine.description}</p>
-        </div>
-        {hasTgSession && (
-          <div className="flex gap-2">
+    <PageShell maxWidth="lg" spacing="none" className="space-y-6">
+      <PageHeader
+        title={t.pages.copierEngine.title}
+        subtitle={t.pages.copierEngine.description}
+        actions={
+          hasTgSession ? (
             <Button variant="secondary" size="sm" onClick={() => void fetchTgChannels({ force: true })} loading={loadingTg}>
               <RefreshCw className="w-3.5 h-3.5" />
               {t.common.refresh}
             </Button>
-          </div>
-        )}
-      </div>
+          ) : undefined
+        }
+      />
 
       {/* Status row */}
       {/* {brokers.length === 0 && (
@@ -871,7 +871,7 @@ export function CopierEnginePage() {
           </div>
         </div>
       )}
-    </div>
+    </PageShell>
   )
 }
 

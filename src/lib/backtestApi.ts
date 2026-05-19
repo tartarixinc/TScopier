@@ -60,10 +60,6 @@ export const backtestApi = {
     return call({ action: 'backtest_tpsl', config })
   },
 
-  simulateTrades(config: SimpleBacktestConfig): Promise<{ run_id: string; run_mode: BacktestRunMode }> {
-    return call({ action: 'simulate_trades', config })
-  },
-
   getRun(runId: string): Promise<{
     run: BacktestRunRow
     trades: BacktestTradeRow[]

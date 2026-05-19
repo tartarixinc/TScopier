@@ -544,6 +544,18 @@ export interface ChannelsPageTranslations {
   useBrokerDefault: string
 }
 
+export interface BacktestOutcomeLabels {
+  allTpHit: string
+  tpThenBe: string
+  partial: string
+  tp1ThenSl: string
+  slHit: string
+  breakeven: string
+  noData: string
+  skipped: string
+  open: string
+}
+
 export interface BacktestTranslations {
   title: string
   subtitle: string
@@ -570,8 +582,79 @@ export interface BacktestTranslations {
   riskPercent: string
   runBacktest: string
   recentRuns: string
+  history: string
   signalBreakdown: string
   noActiveChannels: string
+  configureHint: string
+  signalChannel: string
+  pullingSignals: string
+  pullProfileSignals: string
+  selectChannelError: string
+  profileFirstError: string
+  selectSymbolError: string
+  profileImported: string
+  profileCandidates: string
+  profileNoTradeable: string
+  readyTitle: string
+  readyMeta: string
+  back: string
+  symbolToBacktest: string
+  runningDefault: string
+  resultsTitle: string
+  resultsSubtitle: string
+  newRun: string
+  totalPips: string
+  winRate: string
+  winLoss: string
+  signalsLabel: string
+  oneSignal: string
+  nSignals: string
+  channelFallback: string
+  channelMore: string
+  historyModalTitle: string
+  historyModalSubtitle: string
+  historyEmpty: string
+  close: string
+  statusCompleted: string
+  statusFailed: string
+  statusRunning: string
+  statusCancelled: string
+  noResults: string
+  buy: string
+  sell: string
+  resultsPerPage: string
+  showing: string
+  resultModalTitle: string
+  pips: string
+  riskReward: string
+  duration: string
+  eventTimeline: string
+  noEvents: string
+  outcomes: BacktestOutcomeLabels
+  banners: {
+    allTpHit: string
+    slHit: string
+    breakeven: string
+    tpThenBe: string
+    partialHit: string
+    noMarketData: string
+    skipped: string
+    open: string
+  }
+  events: {
+    tpHit: string
+    slHit: string
+    breakeven: string
+  }
+  priceLevels: {
+    entry: string
+    sl: string
+    be: string
+    tp: string
+  }
+  errors: {
+    rateLimit: string
+  }
 }
 
 export interface Translations {

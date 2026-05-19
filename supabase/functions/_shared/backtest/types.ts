@@ -28,7 +28,10 @@ export interface BacktestRunConfig {
 }
 
 export interface ParsedSignalForBacktest {
+  /** `backtest_channel_signals.id` */
   signalId: string
+  /** Set when row is linked to live copier `signals` table (FK-safe for backtest_trades). */
+  copierSignalId: string | null
   channelId: string
   channelName: string
   signalAt: Date
@@ -53,6 +56,7 @@ export type TradeOutcome =
 
 export interface SimulatedTradeResult {
   signalId: string
+  copierSignalId: string | null
   channelId: string
   symbol: string
   direction: "buy" | "sell"
@@ -66,6 +70,8 @@ export interface SimulatedTradeResult {
   exitPrice: number | null
   closedAt: Date | null
   pnl: number
+  /** Signal-style pip P/L (price move ÷ pip size), lot-independent. */
+  pipPnl: number | null
   pnlR: number | null
   mfe: number
   mae: number
@@ -88,6 +94,7 @@ export interface BacktestSummary {
   maxDrawdownPct: number
   profitFactor: number | null
   winRate: number
+  totalPips?: number
   byChannel: Record<string, {
     channelName: string
     trades: number
