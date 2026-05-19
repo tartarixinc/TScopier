@@ -85,6 +85,7 @@ import {
   type BasketSymbolParams,
 } from './basketSlTpReconcile'
 import { syncRangePendingLadderOnBasketRefresh } from './rangePendingLadderSync'
+import { loadExistingRangeStepIndices } from './rangePendingFireGuard'
 import { channelMatchesBrokerSignal } from './brokerChannelFilter'
 import { takeProfitForLegIndex } from './manualPlanning/tpBucketDistribution'
 import {
@@ -1449,6 +1450,30 @@ export class TradeExecutor {
     context: string,
   ): Promise<{ ok: boolean; lastError?: string }> {
     if (!rows.length) return { ok: true }
+
+    const first = rows[0]!
+    const signalId = String(first.signal_id ?? '')
+    const brokerId = String(first.broker_account_id ?? '')
+    const symbol = String(first.symbol ?? '')
+    if (signalId && brokerId && symbol) {
+      const existingSteps = await loadExistingRangeStepIndices(
+        this.supabase,
+        signalId,
+        brokerId,
+        symbol,
+      )
+      if (existingSteps.size > 0) {
+        const before = rows.length
+        rows = rows.filter(r => !existingSteps.has(Number(r.step_idx)))
+        if (rows.length < before) {
+          console.log(
+            `[tradeExecutor] skipped ${before - rows.length} range_pending_legs insert(s) — step already exists (${context})`,
+          )
+        }
+      }
+    }
+    if (!rows.length) return { ok: true }
+
     let { error } = await this.supabase.from('range_pending_legs').upsert(rows, {
       onConflict: 'signal_id,broker_account_id,symbol,step_idx',
       ignoreDuplicates: true,

@@ -11,6 +11,7 @@ const metatraderapi_1 = require("./metatraderapi");
 const mtApiByAccount_1 = require("./mtApiByAccount");
 const basketModFollowUp_1 = require("./basketModFollowUp");
 const rangePendingLadderSync_1 = require("./rangePendingLadderSync");
+const rangePendingFireGuard_1 = require("./rangePendingFireGuard");
 const SYMBOL_TTL_MS = 10 * 60000;
 const TICK_INTERVAL_MS = 1500;
 const STALE_CLAIM_AFTER_MS = 30000;
@@ -87,11 +88,10 @@ class VirtualPendingMonitor {
         // is considered abandoned (the claiming worker probably crashed); reset it
         // so another monitor can pick it up.
         const staleCut = new Date(Date.now() - STALE_CLAIM_AFTER_MS).toISOString();
-        await this.supabase
-            .from('range_pending_legs')
-            .update({ status: 'pending', claimed_at: null, claimed_by: null })
-            .eq('status', 'claimed')
-            .lt('claimed_at', staleCut);
+        const staleStats = await (0, rangePendingFireGuard_1.reconcileStaleClaimedLegs)(this.supabase, staleCut);
+        if (staleStats.cancelled > 0 || staleStats.reset > 0) {
+            console.log(`[virtualPendingMonitor] stale claims reconciled cancelled=${staleStats.cancelled} reset=${staleStats.reset}`);
+        }
         // Expire any rows whose pending_expiry_hours have lapsed BEFORE we try to
         // fire them — keeps the queue tight.
         const nowIso = new Date().toISOString();
@@ -281,6 +281,13 @@ class VirtualPendingMonitor {
         const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(this.platformByUuid, leg.metaapi_account_id);
         if (!api)
             return false;
+        const block = await (0, rangePendingFireGuard_1.shouldBlockVirtualLegFire)(this.supabase, leg);
+        if (block.block) {
+            if (block.reason) {
+                console.log(`[virtualPendingMonitor] skip fire leg=${leg.id} signal=${leg.signal_id} step=${leg.step_idx}: ${block.reason}`);
+            }
+            return false;
+        }
         // CAS claim. If another monitor (worker peer or edge fn) beat us, .maybeSingle()
         // returns no row and we walk away.
         const { data: claimed, error: claimErr } = await this.supabase

@@ -20,6 +20,7 @@ const multiTradeMerge_1 = require("./multiTradeMerge");
 const basketModFollowUp_1 = require("./basketModFollowUp");
 const basketSlTpReconcile_1 = require("./basketSlTpReconcile");
 const rangePendingLadderSync_1 = require("./rangePendingLadderSync");
+const rangePendingFireGuard_1 = require("./rangePendingFireGuard");
 const brokerChannelFilter_1 = require("./brokerChannelFilter");
 const tpBucketDistribution_1 = require("./manualPlanning/tpBucketDistribution");
 const managementScope_1 = require("./managementScope");
@@ -1102,6 +1103,22 @@ class TradeExecutor {
      * per-row `insert` and treat duplicate-key as success (idempotent retries).
      */
     async persistRangePendingLegRows(rows, context) {
+        if (!rows.length)
+            return { ok: true };
+        const first = rows[0];
+        const signalId = String(first.signal_id ?? '');
+        const brokerId = String(first.broker_account_id ?? '');
+        const symbol = String(first.symbol ?? '');
+        if (signalId && brokerId && symbol) {
+            const existingSteps = await (0, rangePendingFireGuard_1.loadExistingRangeStepIndices)(this.supabase, signalId, brokerId, symbol);
+            if (existingSteps.size > 0) {
+                const before = rows.length;
+                rows = rows.filter(r => !existingSteps.has(Number(r.step_idx)));
+                if (rows.length < before) {
+                    console.log(`[tradeExecutor] skipped ${before - rows.length} range_pending_legs insert(s) — step already exists (${context})`);
+                }
+            }
+        }
         if (!rows.length)
             return { ok: true };
         let { error } = await this.supabase.from('range_pending_legs').upsert(rows, {

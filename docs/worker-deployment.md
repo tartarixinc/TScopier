@@ -141,6 +141,35 @@ order by created_at;
 
 Look for a large gap between `handle_start` (`queue_wait_ms`) and the first successful `order_send`, or intentional delay from Copier Engine **`delay_msec`** on the channel.
 
+### Range pending legs (duplicate opens)
+
+The worker monitor (`virtualPendingMonitor`, 1.5s) is the primary firer; **`range-pending-sweep`** (Supabase cron, ~60s) only picks up rows the worker missed for 45s+.
+
+Guards (worker + edge sweep):
+
+- Do not fire a `step_idx` that already has a **`fired`** row for the same `(signal_id, broker_account_id, symbol)`.
+- Do not insert a new pending row for a `step_idx` that already exists (any status) — the partial unique index only blocks duplicate **active** rows, so re-plans after fire used to create a second pending rung.
+- Stale `claimed` rows are reconciled (re-fire only when no `virtual_pending_fired` log exists for that leg id).
+- Open trades are capped using `virtual_pending_inserted.rows` + successful `order_send` count from execution logs.
+
+If you already have runaway duplicates, cancel orphan actives (keep one `fired` row per step):
+
+```sql
+-- Pending/claimed rows where the same step already fired
+update range_pending_legs dup
+set status = 'cancelled', error_message = 'manual_duplicate_cleanup'
+from range_pending_legs fired
+where dup.status in ('pending', 'claimed')
+  and fired.status = 'fired'
+  and dup.signal_id = fired.signal_id
+  and dup.broker_account_id = fired.broker_account_id
+  and dup.symbol = fired.symbol
+  and dup.step_idx = fired.step_idx
+  and dup.id <> fired.id;
+```
+
+Redeploy **Trade Entry** and **`range-pending-sweep`** after guard changes.
+
 ## Channel management instructions (copier)
 
 Management messages (`Close half`, `Close worse entries`, `Adjust SL`, etc.) are scoped as follows:

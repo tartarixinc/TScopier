@@ -9,6 +9,7 @@ import {
 import { apiForMetaapiAccount, loadPlatformByMetaapiId, type PlatformByMetaapiId } from './mtApiByAccount'
 import { tryApplyBasketFollowUpToNewFill } from './basketModFollowUp'
 import { markRangeLegFired, markRangeLegsExpired } from './rangePendingLadderSync'
+import { reconcileStaleClaimedLegs, shouldBlockVirtualLegFire } from './rangePendingFireGuard'
 
 /**
  * Worker-side monitor that turns persisted "virtual range pendings" into
@@ -173,11 +174,12 @@ export class VirtualPendingMonitor {
     // is considered abandoned (the claiming worker probably crashed); reset it
     // so another monitor can pick it up.
     const staleCut = new Date(Date.now() - STALE_CLAIM_AFTER_MS).toISOString()
-    await this.supabase
-      .from('range_pending_legs')
-      .update({ status: 'pending', claimed_at: null, claimed_by: null })
-      .eq('status', 'claimed')
-      .lt('claimed_at', staleCut)
+    const staleStats = await reconcileStaleClaimedLegs(this.supabase, staleCut)
+    if (staleStats.cancelled > 0 || staleStats.reset > 0) {
+      console.log(
+        `[virtualPendingMonitor] stale claims reconciled cancelled=${staleStats.cancelled} reset=${staleStats.reset}`,
+      )
+    }
 
     // Expire any rows whose pending_expiry_hours have lapsed BEFORE we try to
     // fire them — keeps the queue tight.
@@ -374,6 +376,17 @@ export class VirtualPendingMonitor {
   private async fireLeg(leg: PendingRow, bid: number, ask: number): Promise<boolean> {
     const api = apiForMetaapiAccount(this.platformByUuid, leg.metaapi_account_id)
     if (!api) return false
+
+    const block = await shouldBlockVirtualLegFire(this.supabase, leg)
+    if (block.block) {
+      if (block.reason) {
+        console.log(
+          `[virtualPendingMonitor] skip fire leg=${leg.id} signal=${leg.signal_id} step=${leg.step_idx}: ${block.reason}`,
+        )
+      }
+      return false
+    }
+
     // CAS claim. If another monitor (worker peer or edge fn) beat us, .maybeSingle()
     // returns no row and we walk away.
     const { data: claimed, error: claimErr } = await this.supabase
