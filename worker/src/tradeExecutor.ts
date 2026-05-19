@@ -32,8 +32,10 @@ import { getCalendarEventsCached } from './newsTrading/calendarProvider'
 import { isNewsTradingEnabled } from './newsTrading/settings'
 import { autoManagementTradeSnapshot } from './autoManagement'
 import {
-  filterTradesWithinPipsOfReference,
   referencePriceForDirection,
+  cweInstructionGroupKey,
+  parseCweInstructionGroupKey,
+  selectTradesForCweInstruction,
 } from './closeWorseEntries'
 import {
   isChannelManagementBlocked,
@@ -3358,7 +3360,7 @@ export class TradeExecutor {
       const { data } = await this.supabase
         .from('trades')
         .select(
-          'id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,lot_size,status,sl,tp,entry_price,opened_at',
+          'id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,lot_size,status,sl,tp,entry_price,opened_at,cwe_close_price',
         )
         .eq('signal_id', basketAnchorId)
         .eq('status', 'open')
@@ -3727,6 +3729,7 @@ export class TradeExecutor {
       lot_size: number
       status: string
       entry_price: number | null
+      cwe_close_price?: number | null
     }>,
     byBroker: Map<string, BrokerRow>,
   ): Promise<void> {
@@ -3746,15 +3749,17 @@ export class TradeExecutor {
 
     const groups = new Map<string, typeof openRows>()
     for (const t of openRows) {
-      const key = `${t.broker_account_id}|${t.symbol}`
+      const key = cweInstructionGroupKey(t)
       const list = groups.get(key) ?? []
       list.push(t)
       groups.set(key, list)
     }
 
     await Promise.allSettled(Array.from(groups.entries()).map(async ([key, groupTrades]) => {
-      const [brokerId, symbol] = key.split('|')
-      const broker = brokerId ? byBroker.get(brokerId) : undefined
+      const parsedKey = parseCweInstructionGroupKey(key)
+      if (!parsedKey) return
+      const { brokerId, symbol, direction } = parsedKey
+      const broker = byBroker.get(brokerId)
       if (!broker || !isMtUuid(broker.metaapi_account_id)) return
 
       const manual = (broker.manual_settings ?? {}) as ManualSettings
@@ -3768,6 +3773,7 @@ export class TradeExecutor {
           request_payload: {
             reason: 'close_worse_entries_disabled',
             trade_style: manual.trade_style ?? 'single',
+            close_worse_entries: manual.close_worse_entries === true,
           },
         })
         return
@@ -3792,9 +3798,8 @@ export class TradeExecutor {
         return
       }
 
-      const direction = groupTrades[0]!.direction
       const ref = referencePriceForDirection(direction, q.bid, q.ask)
-      const toClose = filterTradesWithinPipsOfReference({
+      const toClose = selectTradesForCweInstruction({
         trades: groupTrades,
         referencePrice: ref,
         pips,

@@ -2814,7 +2814,7 @@ class TradeExecutor {
             }
             const { data } = await this.supabase
                 .from('trades')
-                .select('id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,lot_size,status,sl,tp,entry_price,opened_at')
+                .select('id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,lot_size,status,sl,tp,entry_price,opened_at,cwe_close_price')
                 .eq('signal_id', basketAnchorId)
                 .eq('status', 'open')
                 .order('opened_at', { ascending: true })
@@ -3153,14 +3153,17 @@ class TradeExecutor {
         }
         const groups = new Map();
         for (const t of openRows) {
-            const key = `${t.broker_account_id}|${t.symbol}`;
+            const key = (0, closeWorseEntries_1.cweInstructionGroupKey)(t);
             const list = groups.get(key) ?? [];
             list.push(t);
             groups.set(key, list);
         }
         await Promise.allSettled(Array.from(groups.entries()).map(async ([key, groupTrades]) => {
-            const [brokerId, symbol] = key.split('|');
-            const broker = brokerId ? byBroker.get(brokerId) : undefined;
+            const parsedKey = (0, closeWorseEntries_1.parseCweInstructionGroupKey)(key);
+            if (!parsedKey)
+                return;
+            const { brokerId, symbol, direction } = parsedKey;
+            const broker = byBroker.get(brokerId);
             if (!broker || !isMtUuid(broker.metaapi_account_id))
                 return;
             const manual = (broker.manual_settings ?? {});
@@ -3174,6 +3177,7 @@ class TradeExecutor {
                     request_payload: {
                         reason: 'close_worse_entries_disabled',
                         trade_style: manual.trade_style ?? 'single',
+                        close_worse_entries: manual.close_worse_entries === true,
                     },
                 });
                 return;
@@ -3197,9 +3201,8 @@ class TradeExecutor {
                 console.warn(`[tradeExecutor] cwe instruction /Quote failed symbol=${symbol}: ${msg}`);
                 return;
             }
-            const direction = groupTrades[0].direction;
             const ref = (0, closeWorseEntries_1.referencePriceForDirection)(direction, q.bid, q.ask);
-            const toClose = (0, closeWorseEntries_1.filterTradesWithinPipsOfReference)({
+            const toClose = (0, closeWorseEntries_1.selectTradesForCweInstruction)({
                 trades: groupTrades,
                 referencePrice: ref,
                 pips,

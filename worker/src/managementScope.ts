@@ -31,6 +31,7 @@ export type MgmtTradeRow = {
   tp: number | null
   entry_price: number | null
   opened_at: string | null
+  cwe_close_price?: number | null
 }
 
 const MAX_PLAUSIBLE_PIPS = 500
@@ -191,7 +192,7 @@ export async function loadOpenTradesForManagement(
   const { data: byChannelCol } = await supabase
     .from('trades')
     .select(
-      'id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,lot_size,status,sl,tp,entry_price,opened_at',
+      'id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,lot_size,status,sl,tp,entry_price,opened_at,cwe_close_price',
     )
     .eq('user_id', userId)
     .in('broker_account_id', brokerAccountIds)
@@ -204,7 +205,7 @@ export async function loadOpenTradesForManagement(
     ? await supabase
       .from('trades')
       .select(
-        'id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,lot_size,status,sl,tp,entry_price,opened_at',
+        'id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,lot_size,status,sl,tp,entry_price,opened_at,cwe_close_price',
       )
       .eq('user_id', userId)
       .in('broker_account_id', brokerAccountIds)

@@ -54,6 +54,7 @@ type ChannelKeywords = {
     close_full: string
     close_half: string
     close_partial: string
+    close_worse_entries: string
     break_even: string
     set_tp1: string
     set_tp2: string
@@ -101,6 +102,7 @@ const DEFAULT_CHANNEL_KEYWORDS: ChannelKeywords = {
     close_full: "CLOSE FULL",
     close_half: "CLOSE HALF",
     close_partial: "CLOSE PARTIAL",
+    close_worse_entries: "CLOSE WORSE ENTRIES|CLOSE WORSE|CWE",
     break_even: "BREAK EVEN",
     set_tp1: "SET TP1",
     set_tp2: "SET TP2",
@@ -153,6 +155,7 @@ function normalizeChannelKeywords(raw: unknown): ChannelKeywords {
       close_full: String(update.close_full ?? DEFAULT_CHANNEL_KEYWORDS.update.close_full),
       close_half: String(update.close_half ?? DEFAULT_CHANNEL_KEYWORDS.update.close_half),
       close_partial: String(update.close_partial ?? DEFAULT_CHANNEL_KEYWORDS.update.close_partial),
+      close_worse_entries: String(update.close_worse_entries ?? DEFAULT_CHANNEL_KEYWORDS.update.close_worse_entries),
       break_even: String(update.break_even ?? DEFAULT_CHANNEL_KEYWORDS.update.break_even),
       set_tp1: String(update.set_tp1 ?? DEFAULT_CHANNEL_KEYWORDS.update.set_tp1),
       set_tp2: String(update.set_tp2 ?? DEFAULT_CHANNEL_KEYWORDS.update.set_tp2),
@@ -352,6 +355,7 @@ function parseDeterministicManagement(
   ]
   const kwPartial = [...kwCloseHalf, ...kwClosePartialOnly, ...kwCloseTpTiers]
   const kwBreakeven = splitKeywordAliases(channelKeywords.update.break_even, delim)
+  const kwCloseWorse = splitKeywordAliases(channelKeywords.update.close_worse_entries, delim)
   const kwModify = [
     ...splitKeywordAliases(channelKeywords.update.set_sl, delim),
     ...splitKeywordAliases(channelKeywords.update.adjust_sl, delim),
@@ -389,7 +393,8 @@ function parseDeterministicManagement(
 
   const wantsCloseWorseEntries =
     /\bclose\s+worse\s+entr(?:y|ies)\b/i.test(t) ||
-    /\bclose\s+worse\b/i.test(t)
+    /\bclose\s+worse\b/i.test(t) ||
+    hasAnyKeyword(t, kwCloseWorse)
 
   if (wantsCloseWorseEntries) action = "close_worse_entries"
   else if (wantsPartialHalf && wantsBreakeven) action = "partial_breakeven"

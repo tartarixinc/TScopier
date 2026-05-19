@@ -146,7 +146,7 @@ async function loadOpenTradesForManagement(supabase, args) {
     const signalIds = (channelSignals ?? []).map((r) => r.id);
     const { data: byChannelCol } = await supabase
         .from('trades')
-        .select('id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,lot_size,status,sl,tp,entry_price,opened_at')
+        .select('id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,lot_size,status,sl,tp,entry_price,opened_at,cwe_close_price')
         .eq('user_id', userId)
         .in('broker_account_id', brokerAccountIds)
         .eq('status', 'open')
@@ -156,7 +156,7 @@ async function loadOpenTradesForManagement(supabase, args) {
     const { data: bySignalId } = signalIds.length
         ? await supabase
             .from('trades')
-            .select('id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,lot_size,status,sl,tp,entry_price,opened_at')
+            .select('id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,lot_size,status,sl,tp,entry_price,opened_at,cwe_close_price')
             .eq('user_id', userId)
             .in('broker_account_id', brokerAccountIds)
             .eq('status', 'open')
