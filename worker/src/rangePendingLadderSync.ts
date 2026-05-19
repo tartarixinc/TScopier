@@ -189,7 +189,7 @@ export async function markRangeLegFired(
   legId: string,
   ticket: number | string | null,
 ): Promise<void> {
-  await supabase
+  const { error } = await supabase
     .from('range_pending_legs')
     .update({
       status: 'fired',
@@ -199,6 +199,9 @@ export async function markRangeLegFired(
       claimed_by: null,
     })
     .eq('id', legId)
+  if (error) {
+    throw new Error(`markRangeLegFired failed leg=${legId}: ${error.message}`)
+  }
 }
 
 /** Mark expired TTL legs (retain row). */

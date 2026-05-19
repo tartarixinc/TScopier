@@ -263,6 +263,20 @@ class VirtualPendingMonitor {
             }
         }
     }
+    async markLegFiredWithRetry(legId, ticket) {
+        let lastErr;
+        for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+                await (0, rangePendingLadderSync_1.markRangeLegFired)(this.supabase, legId, ticket);
+                return;
+            }
+            catch (err) {
+                lastErr = err;
+                await new Promise(r => setTimeout(r, 80 * (attempt + 1)));
+            }
+        }
+        throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+    }
     async fireLeg(leg, bid, ask) {
         const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(this.platformByUuid, leg.metaapi_account_id);
         if (!api)
@@ -333,6 +347,9 @@ class VirtualPendingMonitor {
         const t0 = Date.now();
         try {
             const result = await this.sendWithStopsFallback(leg, args);
+            // Mark fired immediately after OrderSend so a slow trades insert / log write
+            // cannot leave the row `claimed` and get reset to `pending` (30s stale reclaim).
+            await this.markLegFiredWithRetry(leg.id, result.ticket ?? null);
             const latencyMs = Date.now() - t0;
             console.log(`[virtualPendingMonitor] virtual leg fired signal=${leg.signal_id} stepIdx=${leg.step_idx} trigger=${leg.trigger_price} ref=${refPrice} ticket=${result.ticket} latency=${latencyMs}ms`);
             const entryPx = result.openPrice ?? refPrice ?? null;
@@ -381,21 +398,25 @@ class VirtualPendingMonitor {
                     console.warn(`[virtualPendingMonitor] SL/TP follow-up for range leg=${leg.id} signal=${leg.signal_id}:`, hookErr);
                 }
             }
-            await this.supabase.from('trade_execution_logs').insert({
-                user_id: leg.user_id,
-                signal_id: leg.signal_id,
-                broker_account_id: leg.broker_account_id,
-                action: 'virtual_pending_fired',
-                status: 'success',
-                request_payload: {
-                    leg_id: leg.id,
-                    step_idx: leg.step_idx,
-                    trigger_price: leg.trigger_price,
-                    ref_price: refPrice,
-                },
-                response_payload: { ticket: result.ticket, latency_ms: latencyMs, claimed_by: this.hostId },
-            });
-            await (0, rangePendingLadderSync_1.markRangeLegFired)(this.supabase, leg.id, result.ticket ?? null);
+            try {
+                await this.supabase.from('trade_execution_logs').insert({
+                    user_id: leg.user_id,
+                    signal_id: leg.signal_id,
+                    broker_account_id: leg.broker_account_id,
+                    action: 'virtual_pending_fired',
+                    status: 'success',
+                    request_payload: {
+                        leg_id: leg.id,
+                        step_idx: leg.step_idx,
+                        trigger_price: leg.trigger_price,
+                        ref_price: refPrice,
+                    },
+                    response_payload: { ticket: result.ticket, latency_ms: latencyMs, claimed_by: this.hostId },
+                });
+            }
+            catch {
+                /* logging is best-effort; leg is already `fired` */
+            }
             return true;
         }
         catch (err) {

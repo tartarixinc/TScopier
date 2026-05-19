@@ -125,7 +125,7 @@ async function syncRangePendingLadderOnBasketRefresh(args) {
 }
 /** Mark leg fired (retain row for ladder history). */
 async function markRangeLegFired(supabase, legId, ticket) {
-    await supabase
+    const { error } = await supabase
         .from('range_pending_legs')
         .update({
         status: 'fired',
@@ -135,6 +135,9 @@ async function markRangeLegFired(supabase, legId, ticket) {
         claimed_by: null,
     })
         .eq('id', legId);
+    if (error) {
+        throw new Error(`markRangeLegFired failed leg=${legId}: ${error.message}`);
+    }
 }
 /** Mark expired TTL legs (retain row). */
 async function markRangeLegsExpired(supabase, legIds) {

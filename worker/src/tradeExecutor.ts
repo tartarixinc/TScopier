@@ -885,13 +885,38 @@ export class TradeExecutor {
     }
   }
 
-  /** Cheaper idempotency for live entry dispatch (trades row only). */
-  private async signalHasExistingTrade(signalId: string): Promise<boolean> {
-    const { count } = await this.supabase
-      .from('trades')
-      .select('id', { count: 'exact', head: true })
-      .eq('signal_id', signalId)
-    return (count ?? 0) > 0
+  /**
+   * Live entry idempotency: must include virtual range ladder state, not only trades.
+   * A re-dispatch while legs are still `pending` would insert duplicate rungs (fired
+   * rows no longer block the partial unique index) and machine-gun market orders.
+   */
+  private async signalLiveDispatchAlreadyHandled(signalId: string): Promise<boolean> {
+    const [trades, range, entry, logs] = await Promise.all([
+      this.supabase
+        .from('trades')
+        .select('id', { count: 'exact', head: true })
+        .eq('signal_id', signalId),
+      this.supabase
+        .from('range_pending_legs')
+        .select('id', { count: 'exact', head: true })
+        .eq('signal_id', signalId),
+      this.supabase
+        .from('signal_entry_pending_orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('signal_id', signalId),
+      this.supabase
+        .from('trade_execution_logs')
+        .select('id', { count: 'exact', head: true })
+        .eq('signal_id', signalId)
+        .eq('status', 'success')
+        .in('action', [...EXECUTION_LOG_ACTIONS_HANDLED]),
+    ])
+    return (
+      (trades.count ?? 0) > 0
+      || (range.count ?? 0) > 0
+      || (entry.count ?? 0) > 0
+      || (logs.count ?? 0) > 0
+    )
   }
 
   /** True when this signal row already drove execution (trades, virtuals, or success logs). */
@@ -964,7 +989,7 @@ export class TradeExecutor {
       })
 
       if (opts?.lightIdempotency) {
-        if (await this.signalHasExistingTrade(row.id)) {
+        if (await this.signalLiveDispatchAlreadyHandled(row.id)) {
           await this.markSignalExecuted(row.id)
           return
         }
