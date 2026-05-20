@@ -74,6 +74,8 @@ test('buildPerLegStopTargets: extends planner rows to every open leg', () => {
     plan,
     parsed: { sl: 100, tp: [200, 300] },
     openLegCount: 4,
+    totalPlannedLegCount: 4,
+    immediateLegCount: 2,
     tpLots: [
       { label: 'TP1', lot: 0, percent: 50, enabled: true },
       { label: 'TP2', lot: 0, percent: 50, enabled: true },
@@ -81,8 +83,8 @@ test('buildPerLegStopTargets: extends planner rows to every open leg', () => {
   })
   assert.equal(targets.length, 4)
   assert.equal(targets[0]!.takeprofit, 200)
-  assert.equal(targets[1]!.takeprofit, 200)
-  assert.equal(targets[2]!.takeprofit, 300)
+  assert.equal(targets[1]!.takeprofit, 300)
+  assert.equal(targets[2]!.takeprofit, 200)
   assert.equal(targets[3]!.takeprofit, 300)
 })
 
@@ -120,6 +122,8 @@ test('buildPerLegStopTargets: never clones last immediate TP when open legs exce
     plan,
     parsed: { sl: 4570, tp: [4530, 4510, 4490] },
     openLegCount: 10,
+    totalPlannedLegCount: 10,
+    immediateLegCount: 5,
     tpLots: [
       { label: 'TP1', lot: 0, percent: 50, enabled: true },
       { label: 'TP2', lot: 0, percent: 30, enabled: true },
@@ -127,9 +131,9 @@ test('buildPerLegStopTargets: never clones last immediate TP when open legs exce
     ],
   })
   assert.equal(targets.length, 10)
-  assert.equal(targets.filter(t => t.takeprofit === 4490).length, 2)
-  assert.equal(targets.filter(t => t.takeprofit === 4530).length, 5)
-  assert.equal(targets.filter(t => t.takeprofit === 4510).length, 3)
+  assert.equal(targets.filter(t => t.takeprofit === 4490).length, 0)
+  assert.equal(targets.filter(t => t.takeprofit === 4530).length, 6)
+  assert.equal(targets.filter(t => t.takeprofit === 4510).length, 4)
 })
 
 test('buildPerLegStopTargets: spreads TPs by Targets % when plan has fewer immediates than legs', () => {
@@ -145,6 +149,8 @@ test('buildPerLegStopTargets: spreads TPs by Targets % when plan has fewer immed
     plan,
     parsed: { sl: 4570, tp: [4530, 4510, 4490] },
     openLegCount: 10,
+    totalPlannedLegCount: 10,
+    immediateLegCount: 3,
     tpLots: [
       { label: 'TP1', lot: 0, percent: 50, enabled: true },
       { label: 'TP2', lot: 0, percent: 30, enabled: true },
@@ -152,15 +158,17 @@ test('buildPerLegStopTargets: spreads TPs by Targets % when plan has fewer immed
     ],
   })
   assert.equal(targets.length, 10)
-  assert.equal(targets.filter(t => t.takeprofit === 4530).length, 5)
+  assert.equal(targets.filter(t => t.takeprofit === 4530).length, 6)
   assert.equal(targets.filter(t => t.takeprofit === 4510).length, 3)
-  assert.equal(targets.filter(t => t.takeprofit === 4490).length, 2)
+  assert.equal(targets.filter(t => t.takeprofit === 4490).length, 1)
 })
 
-test('buildPerLegStopTargets: uses totalPlannedLegCount for stable indices while basket fills', () => {
+test('buildPerLegStopTargets: split pools keep instant vs range TP slots', () => {
   const plan: PlannerResult = {
     orders: [
       { symbol: 'XAUUSD', operation: 'Sell', volume: 0.01, price: 0, stoploss: 4570, takeprofit: 4530, slippage: 20, comment: 'a', expertID: 1 },
+      { symbol: 'XAUUSD', operation: 'Sell', volume: 0.01, price: 0, stoploss: 4570, takeprofit: 4510, slippage: 20, comment: 'b', expertID: 1 },
+      { symbol: 'XAUUSD', operation: 'Sell', volume: 0.01, price: 0, stoploss: 4570, takeprofit: 4490, slippage: 20, comment: 'c', expertID: 1 },
     ],
     delay_ms: 0,
     virtualPendings: [],
@@ -170,6 +178,7 @@ test('buildPerLegStopTargets: uses totalPlannedLegCount for stable indices while
     parsed: { sl: 4570, tp: [4530, 4510, 4490] },
     openLegCount: 3,
     totalPlannedLegCount: 10,
+    immediateLegCount: 3,
     tpLots: [
       { label: 'TP1', lot: 0, percent: 50, enabled: true },
       { label: 'TP2', lot: 0, percent: 30, enabled: true },
@@ -179,7 +188,7 @@ test('buildPerLegStopTargets: uses totalPlannedLegCount for stable indices while
   assert.equal(targets.length, 3)
   assert.equal(targets[0]!.takeprofit, 4530)
   assert.equal(targets[1]!.takeprofit, 4530)
-  assert.equal(targets[2]!.takeprofit, 4530)
+  assert.equal(targets[2]!.takeprofit, 4510)
 })
 
 test('mergePlanImmediateOrders: includes limits', () => {

@@ -7,7 +7,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   applyChannelParamsToVirtualLeg,
-  globalLegIndexForRangePending,
   type ChannelActiveTradeParams,
 } from './channelActiveTradeParams'
 import type { VirtualPendingLeg } from './manualPlanner'
@@ -121,17 +120,14 @@ export async function syncRangePendingLadderOnBasketRefresh(args: {
   for (const row of activeRows) {
     const planLeg = planByStep.get(row.step_idx)
     if (!planLeg) continue
-    const legIndex = globalLegIndexForRangePending({
-      immediateLegCount: plannedImmediateLegs,
-      stepIdx: row.step_idx,
-    })
+    const legIndex = Math.max(0, row.step_idx - 1)
     const stops = applyChannelParamsToVirtualLeg(
       {
         stoploss: planLeg.stoploss,
         takeprofit: planLeg.cweClosePrice != null ? null : planLeg.takeprofit,
       },
       channelParams ?? null,
-      { legIndex, totalLegCount: maxTotalLegs, tpLots },
+      { rangeLegIndex: legIndex, rangeLegCount: plannedRangeLegs, tpLots },
     )
     const patch: Record<string, unknown> = {
       stoploss: stops.stoploss,
@@ -164,14 +160,11 @@ export async function syncRangePendingLadderOnBasketRefresh(args: {
       continue
     }
 
-    const legIndex = globalLegIndexForRangePending({
-      immediateLegCount: plannedImmediateLegs,
-      stepIdx: v.stepIdx,
-    })
+    const legIndex = Math.max(0, v.stepIdx - 1)
     const stops = applyChannelParamsToVirtualLeg(
       { stoploss: v.stoploss, takeprofit: v.takeprofit },
       channelParams ?? null,
-      { legIndex, totalLegCount: maxTotalLegs, tpLots },
+      { rangeLegIndex: legIndex, rangeLegCount: plannedRangeLegs, tpLots },
     )
     const legForRow: VirtualPendingLeg = {
       ...v,

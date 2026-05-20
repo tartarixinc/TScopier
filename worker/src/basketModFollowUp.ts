@@ -5,7 +5,7 @@ import { normalizeManualSettingsForExecution } from './manualPlanning/normalizeM
 import {
   estimateBasketTotalPlannedLegs,
 } from './channelActiveTradeParams'
-import { takeProfitForLegIndex } from './manualPlanning/tpBucketDistribution'
+import { takeProfitForSplitBasketLeg } from './manualPlanning/tpBucketDistribution'
 
 type ParsedMgmt = {
   action?: string
@@ -111,6 +111,9 @@ export async function tryApplyBasketFollowUpToNewFill(
     activePendingCount,
     maxPendingStepIdx,
   })
+  const firedPendingApprox = Math.max(0, maxPendingStepIdx - activePendingCount)
+  const immediateLegCount = Math.max(0, openCount - firedPendingApprox)
+  const rangeLegCount = Math.max(0, totalPlannedLegs - immediateLegCount)
 
   const { data: candidates } = await supabase
     .from('signals')
@@ -144,9 +147,10 @@ export async function tryApplyBasketFollowUpToNewFill(
       stoploss = hasNewSl ? (parsed.sl as number) : sanitizeLevel(args.existingSl)
       if (hasNewTp) {
         const idx = legIndex >= 0 ? legIndex : openCount - 1
-        takeprofit = takeProfitForLegIndex({
+        takeprofit = takeProfitForSplitBasketLeg({
           legIndex: idx,
-          openLegCount: totalPlannedLegs,
+          immediateLegCount,
+          rangeLegCount,
           finalTps,
           tpLots,
         })

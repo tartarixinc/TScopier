@@ -282,7 +282,7 @@ test('planManualOrders: multi + 3 signal TPs uses Targets % on each leg', () => 
   assert.equal(plan.orders.filter(o => o.takeprofit === 4490).length, 2)
 })
 
-test('planManualOrders: multi + range keeps unified 50/30/20 across immediates and pendings', () => {
+test('planManualOrders: multi + range applies Targets % separately to instant and range pools', () => {
   const plan = planManualOrders({
     parsed: {
       ...baseParsed,
@@ -310,13 +310,15 @@ test('planManualOrders: multi + range keeps unified 50/30/20 across immediates a
   })
   assert.equal(plan.orders.length, 5)
   assert.equal(plan.virtualPendings?.length, 5)
-  const allTps = [
-    ...plan.orders.map(o => o.takeprofit),
-    ...(plan.virtualPendings ?? []).map(v => v.takeprofit),
-  ]
-  assert.equal(allTps.filter(tp => tp === 4530).length, 5)
-  assert.equal(allTps.filter(tp => tp === 4510).length, 3)
-  assert.equal(allTps.filter(tp => tp === 4490).length, 2)
+  // Instant pool (5 legs): 50/30/20 → 3 / 2 / 0
+  assert.equal(plan.orders.filter(o => o.takeprofit === 4530).length, 3)
+  assert.equal(plan.orders.filter(o => o.takeprofit === 4510).length, 2)
+  assert.equal(plan.orders.filter(o => o.takeprofit === 4490).length, 0)
+  // Range pool (5 legs): same split independently
+  const rangeTps = (plan.virtualPendings ?? []).map(v => v.takeprofit)
+  assert.equal(rangeTps.filter(tp => tp === 4530).length, 3)
+  assert.equal(rangeTps.filter(tp => tp === 4510).length, 2)
+  assert.equal(rangeTps.filter(tp => tp === 4490).length, 0)
 })
 
 test('planManualOrders: multi + BuyLimit → market immediates (price 0; avoids MT invalid pending price)', () => {

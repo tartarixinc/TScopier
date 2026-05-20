@@ -3,7 +3,6 @@ import { describe, test } from 'node:test'
 import {
   applyChannelParamsToVirtualLeg,
   estimateBasketTotalPlannedLegs,
-  globalLegIndexForRangePending,
   mergeParsedWithChannelParams,
   parsedSignalHasExplicitStops,
   shouldMergeChannelParamsForEntry,
@@ -67,13 +66,13 @@ describe('channelActiveTradeParams', () => {
     assert.deepEqual(out.tp, [4550, 4620])
   })
 
-  test('applyChannelParamsToVirtualLeg uses global leg index in full basket', () => {
+  test('applyChannelParamsToVirtualLeg distributes TP within range pool only', () => {
     const out = applyChannelParamsToVirtualLeg(
       { stoploss: 4400, takeprofit: 4600 },
       { symbol: 'XAUUSD', stoploss: 4470, tpLevels: [4530, 4510, 4490] },
       {
-        legIndex: globalLegIndexForRangePending({ immediateLegCount: 5, stepIdx: 3 }),
-        totalLegCount: 10,
+        rangeLegIndex: 3,
+        rangeLegCount: 5,
         tpLots: [
           { label: 'TP1', lot: 0, percent: 50, enabled: true },
           { label: 'TP2', lot: 0, percent: 30, enabled: true },

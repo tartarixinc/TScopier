@@ -126,19 +126,64 @@ export function expandPerLegTargetsToCount(args: {
   return tpPrices.map(tp => ({ stoploss: sl, takeprofit: tp }))
 }
 
-/** Targets % TP price for a single leg index (0 = oldest open leg). */
+/** Targets % TP price for a single leg index within one pool (instant or range). */
+export function takeProfitForPoolLegIndex(args: {
+  poolLegIndex: number
+  poolLegCount: number
+  finalTps: number[]
+  tpLots?: ManualTpLot[] | null
+}): number {
+  const prices = buildDistributedPerLegTakeProfits({
+    openLegCount: args.poolLegCount,
+    finalTps: args.finalTps,
+    tpLots: args.tpLots,
+  })
+  const i = args.poolLegIndex
+  if (i < 0 || i >= prices.length) return 0
+  return prices[i] ?? 0
+}
+
+/**
+ * Targets % for a layered basket: instant legs and range legs each get their own
+ * 50/30/20 (or configured %) split — not one combined pool across both groups.
+ */
+export function takeProfitForSplitBasketLeg(args: {
+  legIndex: number
+  immediateLegCount: number
+  rangeLegCount: number
+  finalTps: number[]
+  tpLots?: ManualTpLot[] | null
+}): number {
+  const { legIndex, immediateLegCount, rangeLegCount, finalTps, tpLots } = args
+  if (legIndex < immediateLegCount) {
+    return takeProfitForPoolLegIndex({
+      poolLegIndex: legIndex,
+      poolLegCount: immediateLegCount,
+      finalTps,
+      tpLots,
+    })
+  }
+  const rangeIdx = legIndex - immediateLegCount
+  if (rangeIdx < 0 || rangeIdx >= rangeLegCount) return 0
+  return takeProfitForPoolLegIndex({
+    poolLegIndex: rangeIdx,
+    poolLegCount: rangeLegCount,
+    finalTps,
+    tpLots,
+  })
+}
+
+/** @deprecated Prefer {@link takeProfitForPoolLegIndex} or {@link takeProfitForSplitBasketLeg}. */
 export function takeProfitForLegIndex(args: {
   legIndex: number
   openLegCount: number
   finalTps: number[]
   tpLots?: ManualTpLot[] | null
 }): number {
-  const prices = buildDistributedPerLegTakeProfits({
-    openLegCount: args.openLegCount,
+  return takeProfitForPoolLegIndex({
+    poolLegIndex: args.legIndex,
+    poolLegCount: args.openLegCount,
     finalTps: args.finalTps,
     tpLots: args.tpLots,
   })
-  const i = args.legIndex
-  if (i < 0 || i >= prices.length) return 0
-  return prices[i] ?? 0
 }

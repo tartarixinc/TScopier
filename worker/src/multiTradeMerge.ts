@@ -7,7 +7,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { OrderSendArgs } from './metatraderapi'
 import type { PlannerResult } from './manualPlanner'
 import { parsedHasExplicitEntryAnchor } from './manualPlanner'
-import { buildDistributedPerLegTakeProfits } from './manualPlanning/tpBucketDistribution'
+import { takeProfitForSplitBasketLeg } from './manualPlanning/tpBucketDistribution'
 import type { ManualTpLot } from './manualPlanning/types'
 import { symbolsCompatibleForBasket } from './basketModFollowUp'
 
@@ -88,12 +88,14 @@ export function buildPerLegStopTargets(args: {
   plan: PlannerResult
   parsed: ParsedSignalLike
   openLegCount: number
-  /** Full basket size (immediates + range pendings). Keeps TP1/TP2/TP3 stable as legs fill. */
+  /** Full basket size (immediates + range pendings). */
   totalPlannedLegCount?: number
-  /** Configure Trading → Targets % rows; used when legs outnumber planner immediates. */
+  /** Instant leg count from the entry plan (defaults to plan.orders length). */
+  immediateLegCount?: number
+  /** Configure Trading → Targets % rows. */
   tpLots?: ManualTpLot[] | null
 }): PerLegStopTarget[] {
-  const { plan, parsed, openLegCount, totalPlannedLegCount, tpLots } = args
+  const { plan, parsed, openLegCount, totalPlannedLegCount, immediateLegCount, tpLots } = args
   const n = Math.max(0, openLegCount)
   if (n === 0) return []
 
@@ -117,15 +119,18 @@ export function buildPerLegStopTargets(args: {
       .filter(tp => typeof tp === 'number' && Number.isFinite(tp) && tp > 0)
   }
 
-  const bucketN = Math.max(n, totalPlannedLegCount ?? n)
-  const tpPrices = buildDistributedPerLegTakeProfits({
-    openLegCount: bucketN,
-    finalTps,
-    tpLots,
-  })
-  return tpPrices.slice(0, n).map(tp => ({
+  const immCount = Math.max(0, immediateLegCount ?? fromPlan.length)
+  const total = Math.max(n, totalPlannedLegCount ?? n)
+  const rangeCount = Math.max(0, total - immCount)
+  return Array.from({ length: n }, (_, i) => ({
     stoploss: sl,
-    takeprofit: tp,
+    takeprofit: takeProfitForSplitBasketLeg({
+      legIndex: i,
+      immediateLegCount: immCount,
+      rangeLegCount: rangeCount,
+      finalTps,
+      tpLots,
+    }),
   }))
 }
 

@@ -1988,13 +1988,15 @@ export class TradeExecutor {
     if (error || !(familyRows ?? []).length) return
 
     const familyTrades = (familyRows ?? []) as BasketOpenLeg[]
+    const immediateLegCount = mergePlanImmediateOrders(plan).length
     const totalPlannedLegCount =
-      familyTrades.length + (plan.virtualPendings?.length ?? 0)
+      immediateLegCount + (plan.virtualPendings?.length ?? 0)
     const perLegTargets = buildPerLegStopTargets({
       plan,
       parsed,
       openLegCount: familyTrades.length,
       totalPlannedLegCount,
+      immediateLegCount,
       tpLots: manual.tp_lots,
     })
     if (!perLegTargets.length) return
@@ -2038,7 +2040,7 @@ export class TradeExecutor {
         overrideTp: null,
         strictEntryPrefetch: null,
         openedTickets,
-        skipAlreadySynced: true,
+        skipAlreadySynced: false,
       })
     } catch (err) {
       console.warn(
@@ -2242,11 +2244,16 @@ export class TradeExecutor {
         )
       }
     }
+    const refreshImmediateLegCount = Math.max(
+      mergePlanImmediateOrders(plan).length,
+      Math.max(0, familyTrades.length - Math.max(0, maxPendingStepIdx - activePendingCount)),
+    )
     let perLegTargets = buildPerLegStopTargets({
       plan,
       parsed,
       openLegCount: familyTrades.length,
       totalPlannedLegCount: basketTotalPlannedLegs,
+      immediateLegCount: refreshImmediateLegCount,
       tpLots: manual.tp_lots,
     })
 
@@ -2314,6 +2321,7 @@ export class TradeExecutor {
           parsed,
           openLegCount: familyTrades.length,
           totalPlannedLegCount: basketTotalPlannedLegs,
+          immediateLegCount: refreshImmediateLegCount,
           tpLots: manual.tp_lots,
         })
         if (refreshedTargets.length) {
@@ -3816,12 +3824,19 @@ export class TradeExecutor {
     const anyImmediateOpened = sendResults.some(
       r => r.status === 'fulfilled' && r.value === true,
     )
+    const parsedTpCount = (parsed.tp ?? []).filter(
+      (t): t is number => typeof t === 'number' && Number.isFinite(t) && t > 0,
+    ).length
+    const tpLotBuckets = (manual.tp_lots ?? []).filter(
+      r => r?.enabled !== false && Number(r.percent) > 0,
+    ).length
+    const needsPerLegTpSync = parsedTpCount >= 2 || tpLotBuckets >= 2
     if (
       isManual
       && manual.trade_style === 'multi'
       && anyImmediateOpened
-      && (parsed.tp ?? []).filter((t): t is number => typeof t === 'number' && Number.isFinite(t) && t > 0).length >= 2
       && legs.length > 1
+      && needsPerLegTpSync
     ) {
       await this.syncMultiBasketLegTakeProfits({
         signal,

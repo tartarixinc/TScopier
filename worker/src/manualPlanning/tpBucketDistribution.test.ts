@@ -5,6 +5,7 @@ import {
   distributeCountAcrossTpBuckets,
   resolveTpBucketRows,
   takeProfitForLegIndex,
+  takeProfitForSplitBasketLeg,
 } from './tpBucketDistribution'
 import { normalizeManualSettingsForExecution } from './normalizeManualSettings'
 
@@ -31,6 +32,55 @@ test('buildDistributedPerLegTakeProfits: maps legs to TP1/TP2/TP3 prices', () =>
   assert.equal(prices.filter(p => p === 4530).length, 5)
   assert.equal(prices.filter(p => p === 4510).length, 3)
   assert.equal(prices.filter(p => p === 4490).length, 2)
+})
+
+test('takeProfitForSplitBasketLeg: instant and range pools each get 50/30/20', () => {
+  const tpLots = [
+    { label: 'TP1', lot: 0, percent: 50, enabled: true },
+    { label: 'TP2', lot: 0, percent: 30, enabled: true },
+    { label: 'TP3', lot: 0, percent: 20, enabled: true },
+  ]
+  const tps = [4530, 4510, 4490]
+  assert.equal(
+    takeProfitForSplitBasketLeg({
+      legIndex: 0,
+      immediateLegCount: 5,
+      rangeLegCount: 5,
+      finalTps: tps,
+      tpLots,
+    }),
+    4530,
+  )
+  assert.equal(
+    takeProfitForSplitBasketLeg({
+      legIndex: 4,
+      immediateLegCount: 5,
+      rangeLegCount: 5,
+      finalTps: tps,
+      tpLots,
+    }),
+    4510,
+  )
+  assert.equal(
+    takeProfitForSplitBasketLeg({
+      legIndex: 5,
+      immediateLegCount: 5,
+      rangeLegCount: 5,
+      finalTps: tps,
+      tpLots,
+    }),
+    4530,
+  )
+  assert.equal(
+    takeProfitForSplitBasketLeg({
+      legIndex: 9,
+      immediateLegCount: 5,
+      rangeLegCount: 5,
+      finalTps: tps,
+      tpLots,
+    }),
+    4510,
+  )
 })
 
 test('takeProfitForLegIndex: leg 6 of 10 gets TP2 price', () => {

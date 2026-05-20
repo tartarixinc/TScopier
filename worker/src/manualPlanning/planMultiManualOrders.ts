@@ -123,21 +123,32 @@ export function planMultiManualOrders(args: PlanMultiManualOrdersArgs): PlannerR
   const rangeFallbackReason = split.fallbackReason
 
   const totalLegsForTp = immediateLegs + effectiveRangeLegs
-  const perLegTpPrices = buildDistributedPerLegTakeProfits({
-    openLegCount: totalLegsForTp,
+  const immediateTpPrices = buildDistributedPerLegTakeProfits({
+    openLegCount: immediateLegs,
     finalTps,
     tpLots: manual.tp_lots,
   })
-  const tpForLegIndex = (idx: number): number | null => {
+  const rangeTpPrices = buildDistributedPerLegTakeProfits({
+    openLegCount: effectiveRangeLegs,
+    finalTps,
+    tpLots: manual.tp_lots,
+  })
+  const tpForImmediateIndex = (idx: number): number | null => {
     if (finalTps.length === 0) return null
-    const price = perLegTpPrices[idx]
+    const price = immediateTpPrices[idx]
+    if (typeof price === 'number' && Number.isFinite(price) && price > 0) return price
+    return finalTps[finalTps.length - 1] ?? null
+  }
+  const tpForRangeIndex = (idx: number): number | null => {
+    if (finalTps.length === 0) return null
+    const price = rangeTpPrices[idx]
     if (typeof price === 'number' && Number.isFinite(price) && price > 0) return price
     return finalTps[finalTps.length - 1] ?? null
   }
 
   const orders: OrderSendArgs[] = []
   for (let i = 0; i < immediateLegs; i++) {
-    const tpPrice = tpForLegIndex(i)
+    const tpPrice = tpForImmediateIndex(i)
     orders.push({
       ...orderBase,
       volume: targetLeg,
@@ -154,8 +165,8 @@ export function planMultiManualOrders(args: PlanMultiManualOrdersArgs): PlannerR
     const expiryHours = pendHours > 0 ? pendHours : undefined
 
     let stepIdx = 1
-    for (let i = immediateLegs; i < totalLegsForTp; i++) {
-      const tpPrice = tpForLegIndex(i)
+    for (let i = 0; i < effectiveRangeLegs; i++) {
+      const tpPrice = tpForRangeIndex(i)
       virtualPendings.push({
         stepIdx,
         stepPriceOffset,
@@ -175,7 +186,8 @@ export function planMultiManualOrders(args: PlanMultiManualOrdersArgs): PlannerR
   if (effectiveRangeLegs === 0) {
     const remainderUnits = manualUnits - totalLegs * targetUnits
     if (remainderUnits >= minUnits && orders.length < ABS_MAX_LEGS) {
-      const tpPrice = tpForLegIndex(Math.max(0, totalLegsForTp - 1))
+      const tpPrice = tpForImmediateIndex(Math.max(0, immediateLegs - 1))
+        ?? tpForImmediateIndex(0)
       orders.push({
         ...orderBase,
         volume: unitsToLot(remainderUnits),
