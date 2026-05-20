@@ -79,6 +79,7 @@ export function CopierEnginePage() {
   const [brokers, setBrokers] = useState<BrokerAccount[]>([])
   const [connectMenuChannelId, setConnectMenuChannelId] = useState<string | null>(null)
   const [connectingBrokerId, setConnectingBrokerId] = useState<string | null>(null)
+  const [connectingAllChannelId, setConnectingAllChannelId] = useState<string | null>(null)
   const [disconnectingLinkKey, setDisconnectingLinkKey] = useState<string | null>(null)
   const [tgChannels, setTgChannels] = useState<TgChannelListItem[]>(initialTgCache ?? [])
   const [loading, setLoading] = useState(true)
@@ -249,6 +250,13 @@ export function CopierEnginePage() {
     })
   }, [tgChannels, tgChannelSearch])
 
+  const unlinkedActiveChannels = useMemo(() => {
+    const activeBrokers = brokers.filter(b => b.is_active)
+    return channels.filter(
+      ch => ch.is_active && brokersMatchingChannel(activeBrokers, ch.id).length === 0,
+    )
+  }, [channels, brokers])
+
   const toggleChannel = async (id: string, is_active: boolean) => {
     setChannels(prev => prev.map(c => c.id === id ? { ...c, is_active } : c))
     await supabase.from('telegram_channels').update({ is_active }).eq('id', id)
@@ -279,6 +287,36 @@ export function CopierEnginePage() {
     if (updated) {
       setBrokers(prev => prev.map(b => (b.id === brokerId ? updated : b)))
     }
+    setConnectMenuChannelId(null)
+  }
+
+  const handleConnectAllBrokersToChannel = async (channelId: string) => {
+    if (!user) return
+    const toLink = brokersNotMatchingChannel(
+      brokers.filter(b => b.is_active),
+      channelId,
+    )
+    if (toLink.length === 0) return
+    setConnectingAllChannelId(channelId)
+    setError('')
+    let nextBrokers = [...brokers]
+    for (const broker of toLink) {
+      const { broker: updated, error: linkErr } = await connectChannelToBroker(
+        supabase,
+        user.id,
+        broker,
+        channelId,
+      )
+      if (linkErr) {
+        setError(linkErr)
+        break
+      }
+      if (updated) {
+        nextBrokers = nextBrokers.map(b => (b.id === updated.id ? updated : b))
+      }
+    }
+    setBrokers(nextBrokers)
+    setConnectingAllChannelId(null)
     setConnectMenuChannelId(null)
   }
 
@@ -627,6 +665,12 @@ export function CopierEnginePage() {
         </Card>
       )}
 
+      {unlinkedActiveChannels.length > 0 && (
+        <Alert className="mb-4">
+          {interpolate(ce.channelsUnlinkedWarning, { count: String(unlinkedActiveChannels.length) })}
+        </Alert>
+      )}
+
       {/* Channel list */}
       {loading ? (
         <div className="space-y-2">
@@ -656,12 +700,14 @@ export function CopierEnginePage() {
                 brokers={brokers}
                 connectMenuOpen={connectMenuChannelId === channel.id}
                 connectingBrokerId={connectingBrokerId}
+                connectingAll={connectingAllChannelId === channel.id}
                 disconnectingLinkKey={disconnectingLinkKey}
                 onToggleConnectMenu={() => setConnectMenuChannelId(
                   connectMenuChannelId === channel.id ? null : channel.id,
                 )}
                 onCloseConnectMenu={() => setConnectMenuChannelId(null)}
                 onConnectBroker={brokerId => void handleConnectChannelToBroker(channel.id, brokerId)}
+                onConnectAllBrokers={() => void handleConnectAllBrokersToChannel(channel.id)}
                 onDisconnectBroker={brokerId => void handleDisconnectChannelFromBroker(channel.id, brokerId)}
                 onToggle={v => toggleChannel(channel.id, v)}
                 onDelete={() => deleteChannel(channel.id)}
@@ -676,18 +722,20 @@ export function CopierEnginePage() {
 
 function ChannelRow({
   channel, brokers,
-  connectMenuOpen, connectingBrokerId, disconnectingLinkKey,
-  onToggleConnectMenu, onCloseConnectMenu, onConnectBroker, onDisconnectBroker,
+  connectMenuOpen, connectingBrokerId, connectingAll, disconnectingLinkKey,
+  onToggleConnectMenu, onCloseConnectMenu, onConnectBroker, onConnectAllBrokers, onDisconnectBroker,
   onToggle, onDelete,
 }: {
   channel: TelegramChannel
   brokers: BrokerAccount[]
   connectMenuOpen: boolean
   connectingBrokerId: string | null
+  connectingAll: boolean
   disconnectingLinkKey: string | null
   onToggleConnectMenu: () => void
   onCloseConnectMenu: () => void
   onConnectBroker: (brokerId: string) => void
+  onConnectAllBrokers: () => void
   onDisconnectBroker: (brokerId: string) => void
   onToggle: (v: boolean) => void
   onDelete: () => void
@@ -814,13 +862,28 @@ function ChannelRow({
               )}
             </div>
           ) : hasAnyBrokers ? (
-            <div className="relative inline-block" ref={menuRef}>
+            <div className="flex flex-wrap items-center gap-2">
+              {availableBrokers.length >= 2 && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  loading={connectingAll}
+                  disabled={connectingBrokerId !== null}
+                  onClick={onConnectAllBrokers}
+                  aria-label={interpolate(ce.connectAllBrokersAria, { channel: channel.display_name })}
+                >
+                  {ce.connectAllBrokers}
+                </Button>
+              )}
+              <div className="relative inline-block" ref={menuRef}>
               <Button
                 type="button"
                 variant="secondary"
                 size="sm"
                 onClick={onToggleConnectMenu}
-                loading={connectingBrokerId !== null}
+                loading={connectingBrokerId !== null && !connectingAll}
+                disabled={connectingAll}
               >
                 {ce.connectToBroker}
               </Button>
@@ -839,6 +902,7 @@ function ChannelRow({
                   ))}
                 </div>
               )}
+            </div>
             </div>
           ) : (
             <Link

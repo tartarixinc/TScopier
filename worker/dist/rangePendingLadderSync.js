@@ -70,11 +70,11 @@ async function syncRangePendingLadderOnBasketRefresh(args) {
         const planLeg = planByStep.get(row.step_idx);
         if (!planLeg)
             continue;
-        const openLegCount = Math.max(openTradeCount, row.step_idx + 1);
+        const legIndex = Math.max(0, row.step_idx - 1);
         const stops = (0, channelActiveTradeParams_1.applyChannelParamsToVirtualLeg)({
             stoploss: planLeg.stoploss,
             takeprofit: planLeg.cweClosePrice != null ? null : planLeg.takeprofit,
-        }, channelParams ?? null, { stepIdx: row.step_idx, openLegCount, tpLots });
+        }, channelParams ?? null, { rangeLegIndex: legIndex, rangeLegCount: plannedRangeLegs, tpLots });
         const patch = {
             stoploss: stops.stoploss,
             takeprofit: planLeg.cweClosePrice != null ? null : stops.takeprofit,
@@ -105,8 +105,8 @@ async function syncRangePendingLadderOnBasketRefresh(args) {
             stats.skippedCap += 1;
             continue;
         }
-        const openLegCount = Math.max(openTradeCount, v.stepIdx + 1);
-        const stops = (0, channelActiveTradeParams_1.applyChannelParamsToVirtualLeg)({ stoploss: v.stoploss, takeprofit: v.takeprofit }, channelParams ?? null, { stepIdx: v.stepIdx, openLegCount, tpLots });
+        const legIndex = Math.max(0, v.stepIdx - 1);
+        const stops = (0, channelActiveTradeParams_1.applyChannelParamsToVirtualLeg)({ stoploss: v.stoploss, takeprofit: v.takeprofit }, channelParams ?? null, { rangeLegIndex: legIndex, rangeLegCount: plannedRangeLegs, tpLots });
         const legForRow = {
             ...v,
             stoploss: stops.stoploss ?? v.stoploss,

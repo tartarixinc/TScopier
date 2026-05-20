@@ -214,6 +214,14 @@ export function isMtSessionGoneError(err: unknown): boolean {
   return isMtSessionGoneMessage(String(err))
 }
 
+/** OrderSend/CheckConnect rejected because the MT terminal session is offline. */
+export function isBrokerDisconnectedMessage(message: string): boolean {
+  const m = message.trim().toLowerCase()
+  if (!m) return false
+  if (isMtSessionGoneMessage(message)) return true
+  return m.includes("not connected") || m.includes("broker session is not connected")
+}
+
 export const MT_SESSION_EXPIRED_HINT =
   "Trading session expired on the broker API. In Account Configuration, use Reconnect and enter your MT password (or remove and link the account again)."
 
@@ -343,6 +351,27 @@ export class MetatraderApiClient {
       return true
     } catch (second) {
       if (isMtSessionGoneError(second)) return false
+      return false
+    }
+  }
+
+  /**
+   * CheckConnect alone can report "connected" while OrderSend still fails with
+   * "Not connected (:login)". Confirm the terminal can serve trading APIs.
+   */
+  async verifyTradingReady(id: string): Promise<boolean> {
+    if (!await this.keepSessionAlive(id)) return false
+    try {
+      const summary = await this.accountSummary(id)
+      const hasSummary =
+        summary != null
+        && (summary.balance != null || summary.equity != null || summary.currency)
+      if (!hasSummary) return false
+      await this.openedOrders(id)
+      return true
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (isBrokerDisconnectedMessage(msg) || isMtSessionGoneError(err)) return false
       return false
     }
   }

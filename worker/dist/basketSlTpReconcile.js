@@ -21,6 +21,7 @@ exports.loadOpenBasketLegs = loadOpenBasketLegs;
 exports.parsePerLegTargets = parsePerLegTargets;
 const tpBucketDistribution_1 = require("./manualPlanning/tpBucketDistribution");
 const basketModFollowUp_1 = require("./basketModFollowUp");
+const orderModifyBenign_1 = require("./orderModifyBenign");
 function isBuySideOp(op) {
     return op === 'Buy' || op === 'BuyLimit' || op === 'BuyStop' || op === 'BuyStopLimit';
 }
@@ -144,22 +145,7 @@ async function markBasketReconcileDoneForAnchor(supabase, brokerAccountId, ancho
 }
 exports.GHOST_BASKET_CLOSED_USER_MESSAGE = 'Open basket existed only in TSCopier (not on the broker); stale legs were closed. Send a new entry to open on MT.';
 function stopsAlreadyMatch(tr, target, nImmCwe, legIdx) {
-    if (legIdx < nImmCwe) {
-        const tpOk = tr.tp == null || Number(tr.tp) === 0;
-        if (!tpOk)
-            return false;
-    }
-    else if (target.takeprofit > 0) {
-        const curTp = Number(tr.tp);
-        if (!Number.isFinite(curTp) || Math.abs(curTp - target.takeprofit) > 1e-8)
-            return false;
-    }
-    if (target.stoploss > 0) {
-        const curSl = Number(tr.sl);
-        if (!Number.isFinite(curSl) || Math.abs(curSl - target.stoploss) > 1e-8)
-            return false;
-    }
-    return true;
+    return (0, orderModifyBenign_1.stopsAlreadyMatchDb)(tr, target, nImmCwe, legIdx);
 }
 async function logBasketLegModify(supabase, args) {
     try {
@@ -332,8 +318,26 @@ async function runBasketLegModifies(args) {
             });
         }
         catch (err) {
-            summary.failed += 1;
             const msg = err instanceof Error ? err.message : String(err);
+            if ((0, orderModifyBenign_1.isBenignOrderModifyError)(msg)) {
+                modifiedTradeIds.push(tr.id);
+                summary.modified += 1;
+                await logBasketLegModify(supabase, {
+                    userId,
+                    signalId,
+                    brokerAccountId,
+                    status: 'skipped',
+                    tradeId: tr.id,
+                    ticket,
+                    legIndex: i + 1,
+                    brokerSymbol: tr.symbol,
+                    targetSl: clamped.args.stoploss ?? 0,
+                    targetTp: clamped.args.takeprofit ?? 0,
+                    skipReason: 'already_synced_on_broker',
+                });
+                continue;
+            }
+            summary.failed += 1;
             legErrors.push({
                 trade_id: tr.id,
                 ticket,

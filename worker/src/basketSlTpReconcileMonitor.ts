@@ -11,44 +11,67 @@ import {
   type BasketReconcileJobRow,
   type BasketSymbolParams,
 } from './basketSlTpReconcile'
+import {
+  applyShardToQuery,
+  hasWorkOnShard,
+  monitorActiveIntervalMs,
+  monitorIdleIntervalMs,
+  startMonitorLoop,
+  type MonitorLoopHandle,
+} from './monitorIdleGate'
 import { normalizeManualSettingsForExecution } from './manualPlanning/normalizeManualSettings'
 import { normalizeSymbolParams } from './metatraderapi'
 
-const TICK_INTERVAL_MS = Math.min(
-  60_000,
-  Math.max(5_000, Number(process.env.BASKET_RECONCILE_TICK_MS ?? 15_000)),
-)
+const ACTIVE_MS = monitorActiveIntervalMs('BASKET_RECONCILE_TICK_MS', 15_000)
+const IDLE_MS = monitorIdleIntervalMs('BASKET_RECONCILE_IDLE_MS', 120_000)
 const BATCH_LIMIT = 20
 const HOST_ID = `worker-${process.pid}`
 
 export class BasketSlTpReconcileMonitor {
-  private timer: NodeJS.Timeout | null = null
+  private loop: MonitorLoopHandle | null = null
   private ticking = false
   private platformByUuid: PlatformByMetaapiId = new Map()
 
   constructor(private readonly supabase: SupabaseClient) {}
 
   start() {
-    if (this.timer) return
+    if (this.loop) return
     if (!hasMetatraderApiConfigured()) {
       console.warn('[basketSlTpReconcileMonitor] MT4API_BASIC_USER/PASSWORD missing — disabled')
       return
     }
-    this.timer = setInterval(() => {
-      if (this.ticking) return
-      this.ticking = true
-      this.tick()
-        .catch(err => console.error('[basketSlTpReconcileMonitor] tick failed:', err))
-        .finally(() => { this.ticking = false })
-    }, TICK_INTERVAL_MS)
-    this.timer.unref?.()
-    console.log(`[basketSlTpReconcileMonitor] started interval=${TICK_INTERVAL_MS}ms`)
+    this.loop = startMonitorLoop({
+      name: 'basketSlTpReconcileMonitor',
+      supabase: this.supabase,
+      activeIntervalMs: ACTIVE_MS,
+      idleIntervalMs: IDLE_MS,
+      hasWork: (sb) => {
+        const now = new Date().toISOString()
+        return hasWorkOnShard(sb, 'basket_reconcile_jobs', q =>
+          q.eq('status', 'pending').lte('next_run_at', now),
+        )
+      },
+      tick: () => this.runTick(),
+    })
+    console.log(`[basketSlTpReconcileMonitor] started active=${ACTIVE_MS}ms idle=${IDLE_MS}ms`)
   }
 
   stop() {
-    if (this.timer) {
-      clearInterval(this.timer)
-      this.timer = null
+    this.loop?.stop()
+    this.loop = null
+  }
+
+  getLoopHandle(): MonitorLoopHandle | null {
+    return this.loop
+  }
+
+  private async runTick(): Promise<void> {
+    if (this.ticking) return
+    this.ticking = true
+    try {
+      await this.tick()
+    } finally {
+      this.ticking = false
     }
   }
 

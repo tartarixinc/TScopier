@@ -146,6 +146,8 @@ export const en: Translations = {
       detailBalance: 'Balance',
       detailEquity: 'Equity',
       channelsNoneSelected: 'None selected',
+      channelsEmptySaveWarning:
+        'No signal channels selected — this broker will not copy any Telegram signals. Save anyway?',
       channelsSignalChannel: 'Signal channel',
       channelsAll: 'All signal channels',
       relinkOne:
@@ -153,15 +155,21 @@ export const en: Translations = {
       relinkMany:
         '{count} accounts use an older link format. Remove each one and connect again with your MT login and password.',
       reconnectDroppedOne:
-        'Broker connection dropped. Use Reconnect on the account to restore the session.',
+        'Broker connection lost. The account is shown as Disconnected — use Reconnect to restore trading.',
       reconnectDroppedMany:
-        '{count} accounts lost their broker connection. Use Reconnect on each account.',
+        '{count} accounts lost their broker connection and are shown as Disconnected. Use Reconnect on each account.',
       reconnectFailed: 'Could not reconnect broker',
+      reconnectPasswordPrompt:
+        'Your broker session expired on the trade server. Enter your MT account password to reconnect:',
       deleteFailed: 'Failed to delete broker',
+      deleteSessionExpired:
+        'Your sign-in session expired. Refresh the page and try again, or sign out and back in.',
+      duplicateMtLogin:
+        'This MT login is already linked on another account here. Remove it first or use Reconnect — the same login cannot be connected twice.',
       deleteTitle: 'Remove trading account?',
       deleteBody:
         'This disconnects {label} from MetatraderAPI and the copier. This cannot be undone.',
-      deleteConfirm: 'Remove account',
+      deleteConfirm: 'Disconnect',
     },
   },
   dashboard: {
@@ -222,8 +230,11 @@ export const en: Translations = {
       unnamedAccount: 'Unnamed account',
       statusActive: 'Active',
       statusPaused: 'Paused',
+      statusConnected: 'Connected',
       accountTypeLive: 'Live',
       accountTypeDemo: 'Demo',
+      statusDisconnected: 'Disconnected',
+      reconnect: 'Reconnect',
     },
   },
   copierLogs: {
@@ -328,6 +339,8 @@ export const en: Translations = {
     reconnectTelegram: 'Reconnect Telegram',
     channelSearchPlaceholder: 'Search channels…',
     noChannelSearchResults: 'No channels match your search',
+    channelsUnlinkedWarning:
+      '{count} active channel(s) have no broker linked — signals will not copy. Open Account Configuration → each broker → Channels tab, check the channel, and Save (or use Connect to broker below).',
     yourTelegramChannels: 'Your Telegram channels',
     telegramConnectedHint: 'Add channels below to start copying signals',
     connected: 'Connected',
@@ -358,6 +371,8 @@ export const en: Translations = {
     profileSl: 'SL: {value}',
     connectedBrokers: 'Connected brokers',
     connectToBroker: 'Connect to Broker',
+    connectAllBrokers: 'Connect all brokers',
+    connectAllBrokersAria: 'Link {channel} to all active broker accounts',
     addBrokerConnectionAria: 'Connect {channel} to another broker',
     removeBrokerConnectionAria: 'Disconnect {broker} from {channel}',
     noBrokersYet: 'No broker accounts yet',

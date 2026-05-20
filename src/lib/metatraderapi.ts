@@ -6,10 +6,27 @@ interface CallOpts<T> {
   expect?: (body: unknown) => T
 }
 
-async function call<T = unknown>(opts: CallOpts<T>): Promise<T> {
-  const session = (await supabase.auth.getSession()).data.session
+/** Validate / refresh the Supabase JWT before edge calls (avoids stale-session 401s). */
+export async function ensureFreshAuthSession(): Promise<string> {
+  const { data: userData, error: userErr } = await supabase.auth.getUser()
+  if (userErr || !userData.user) throw new Error('Not signed in')
+
+  const { data: sessionData } = await supabase.auth.getSession()
+  const session = sessionData.session
   const token = session?.access_token
   if (!token) throw new Error('Not signed in')
+
+  const expiresAt = session.expires_at ?? 0
+  const nowSec = Math.floor(Date.now() / 1000)
+  if (expiresAt - nowSec > 120) return token
+
+  const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession()
+  if (refreshErr || !refreshed.session?.access_token) return token
+  return refreshed.session.access_token
+}
+
+async function call<T = unknown>(opts: CallOpts<T>): Promise<T> {
+  const token = await ensureFreshAuthSession()
 
   const url = (import.meta.env.VITE_SUPABASE_URL as string) + '/functions/v1/broker-metatrader'
   const res = await fetch(url, {

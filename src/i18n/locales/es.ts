@@ -146,6 +146,8 @@ export const es: Translations = {
       detailBalance: 'Balance',
       detailEquity: 'Equidad',
       channelsNoneSelected: 'Ninguno seleccionado',
+      channelsEmptySaveWarning:
+        'No hay canales de señales seleccionados — este broker no copiará señales de Telegram. ¿Guardar de todos modos?',
       channelsSignalChannel: 'Canal de señales',
       channelsAll: 'Todos los canales de señales',
       relinkOne:
@@ -157,11 +159,17 @@ export const es: Translations = {
       reconnectDroppedMany:
         '{count} cuentas perdieron la conexión con el broker. Usa Reconectar en cada una.',
       reconnectFailed: 'No se pudo reconectar el broker',
+      reconnectPasswordPrompt:
+        'La sesión del broker expiró en el servidor de trading. Introduce la contraseña de tu cuenta MT para reconectar:',
       deleteFailed: 'No se pudo eliminar la cuenta',
+      deleteSessionExpired:
+        'Tu sesión expiró. Actualiza la página o vuelve a iniciar sesión e inténtalo de nuevo.',
+      duplicateMtLogin:
+        'Este login MT ya está vinculado a otra cuenta aquí. Elimínala primero o usa Reconnect — no se puede conectar el mismo login dos veces.',
       deleteTitle: '¿Eliminar cuenta de trading?',
       deleteBody:
         'Esto desconecta {label} de MetatraderAPI y del copiador. No se puede deshacer.',
-      deleteConfirm: 'Eliminar cuenta',
+      deleteConfirm: 'Desconectar',
     },
   },
   dashboard: {
@@ -222,8 +230,11 @@ export const es: Translations = {
       unnamedAccount: 'Cuenta sin nombre',
       statusActive: 'Activa',
       statusPaused: 'Pausada',
+      statusConnected: 'Conectada',
       accountTypeLive: 'Real',
       accountTypeDemo: 'Demo',
+      statusDisconnected: 'Desconectado',
+      reconnect: 'Reconectar',
     },
   },
   copierLogs: {
@@ -328,6 +339,8 @@ export const es: Translations = {
     reconnectTelegram: 'Reconectar Telegram',
     channelSearchPlaceholder: 'Buscar canales…',
     noChannelSearchResults: 'Ningún canal coincide con tu búsqueda',
+    channelsUnlinkedWarning:
+      '{count} canal(es) activo(s) sin broker vinculado — no se copiarán señales. Abra Configuración de cuenta → cada broker → pestaña Canales, marque el canal y guarde.',
     yourTelegramChannels: 'Tus canales de Telegram',
     telegramConnectedHint: 'Añade canales abajo para empezar a copiar señales',
     connected: 'Conectado',
@@ -358,6 +371,8 @@ export const es: Translations = {
     profileSl: 'SL: {value}',
     connectedBrokers: 'Brokers conectados',
     connectToBroker: 'Conectar al broker',
+    connectAllBrokers: 'Conectar todos los brokers',
+    connectAllBrokersAria: 'Vincular {channel} a todas las cuentas de broker activas',
     addBrokerConnectionAria: 'Conectar {channel} a otro broker',
     removeBrokerConnectionAria: 'Desconectar {broker} de {channel}',
     noBrokersYet: 'Aún no hay cuentas de broker',

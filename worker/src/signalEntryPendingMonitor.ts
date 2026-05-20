@@ -2,6 +2,14 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { hasMetatraderApiConfigured } from './metatraderapi'
 import { apiForMetaapiAccount, loadPlatformByMetaapiId, type PlatformByMetaapiId } from './mtApiByAccount'
 import {
+  applyShardToQuery,
+  hasWorkOnShard,
+  monitorActiveIntervalMs,
+  monitorIdleIntervalMs,
+  startMonitorLoop,
+  type MonitorLoopHandle,
+} from './monitorIdleGate'
+import {
   cancelSignalEntryRowAtBroker,
   findClosedRowForTicket,
   findOpenedRowByTicket,
@@ -13,7 +21,8 @@ import {
   type SignalEntryPendingRow,
 } from './signalEntryPendingHelpers'
 
-const TICK_MS = 2_000
+const ACTIVE_MS = monitorActiveIntervalMs('SIGNAL_ENTRY_PENDING_TICK_MS', 2_000)
+const IDLE_MS = monitorIdleIntervalMs('SIGNAL_ENTRY_PENDING_IDLE_MS', 60_000)
 const MISSING_BEFORE_ASSUME_GONE = 6
 
 type MonitorRow = SignalEntryPendingRow & {
@@ -56,7 +65,7 @@ function extractOpenPrice(raw: Record<string, unknown>): number | null {
  * cancels (basket flat), detects fills / manual deletes, and updates `trades`.
  */
 export class SignalEntryPendingMonitor {
-  private timer: NodeJS.Timeout | null = null
+  private loop: MonitorLoopHandle | null = null
   private platformByUuid: PlatformByMetaapiId = new Map()
   private ticking = false
   /** row id → consecutive ticks where ticket was absent from /OpenedOrders */
@@ -65,37 +74,58 @@ export class SignalEntryPendingMonitor {
   constructor(private readonly supabase: SupabaseClient) {}
 
   start() {
-    if (this.timer) return
+    if (this.loop) return
     if (!hasMetatraderApiConfigured()) {
       console.warn('[signalEntryPendingMonitor] MT4API_BASIC_USER/PASSWORD missing — signal entry pending monitor disabled')
       return
     }
-    this.timer = setInterval(() => {
-      if (this.ticking) return
-      this.ticking = true
-      this.tick()
-        .catch(err => console.error('[signalEntryPendingMonitor] tick failed:', err))
-        .finally(() => { this.ticking = false })
-    }, TICK_MS)
-    this.timer.unref?.()
-    console.log(`[signalEntryPendingMonitor] started interval=${TICK_MS}ms`)
+    this.loop = startMonitorLoop({
+      name: 'signalEntryPendingMonitor',
+      supabase: this.supabase,
+      activeIntervalMs: ACTIVE_MS,
+      idleIntervalMs: IDLE_MS,
+      hasWork: sb => hasWorkOnShard(sb, 'signal_entry_pending_orders', q =>
+        q.eq('status', 'broker_pending'),
+      ),
+      tick: () => this.runTick(),
+    })
+    console.log(`[signalEntryPendingMonitor] started active=${ACTIVE_MS}ms idle=${IDLE_MS}ms`)
   }
 
   stop() {
-    if (this.timer) clearInterval(this.timer)
-    this.timer = null
+    this.loop?.stop()
+    this.loop = null
+  }
+
+  getLoopHandle(): MonitorLoopHandle | null {
+    return this.loop
+  }
+
+  private async runTick(): Promise<void> {
+    if (this.ticking) return
+    this.ticking = true
+    try {
+      await this.tick()
+    } finally {
+      this.ticking = false
+    }
   }
 
   private async tick(): Promise<void> {
     if (!hasMetatraderApiConfigured()) return
 
-    const { data, error } = await this.supabase
-      .from('signal_entry_pending_orders')
-      .select(
-        'id,signal_id,user_id,broker_account_id,metaapi_account_id,symbol,trade_id,broker_ticket,is_buy,entry_price,cancel_requested_at,expires_at,partial_tp_plan',
-      )
-      .eq('status', 'broker_pending')
-      .limit(200)
+    const rowsQ = await applyShardToQuery(
+      this.supabase,
+      this.supabase
+        .from('signal_entry_pending_orders')
+        .select(
+          'id,signal_id,user_id,broker_account_id,metaapi_account_id,symbol,trade_id,broker_ticket,is_buy,entry_price,cancel_requested_at,expires_at,partial_tp_plan',
+        )
+        .eq('status', 'broker_pending')
+        .limit(200),
+    )
+    if (!rowsQ) return
+    const { data, error } = await rowsQ
     if (error) {
       console.error('[signalEntryPendingMonitor] select failed:', error.message)
       return

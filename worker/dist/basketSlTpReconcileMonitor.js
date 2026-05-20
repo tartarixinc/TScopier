@@ -4,40 +4,56 @@ exports.BasketSlTpReconcileMonitor = void 0;
 const metatraderapi_1 = require("./metatraderapi");
 const mtApiByAccount_1 = require("./mtApiByAccount");
 const basketSlTpReconcile_1 = require("./basketSlTpReconcile");
+const monitorIdleGate_1 = require("./monitorIdleGate");
 const normalizeManualSettings_1 = require("./manualPlanning/normalizeManualSettings");
 const metatraderapi_2 = require("./metatraderapi");
-const TICK_INTERVAL_MS = Math.min(60000, Math.max(5000, Number(process.env.BASKET_RECONCILE_TICK_MS ?? 15000)));
+const ACTIVE_MS = (0, monitorIdleGate_1.monitorActiveIntervalMs)('BASKET_RECONCILE_TICK_MS', 15000);
+const IDLE_MS = (0, monitorIdleGate_1.monitorIdleIntervalMs)('BASKET_RECONCILE_IDLE_MS', 120000);
 const BATCH_LIMIT = 20;
 const HOST_ID = `worker-${process.pid}`;
 class BasketSlTpReconcileMonitor {
     constructor(supabase) {
         this.supabase = supabase;
-        this.timer = null;
+        this.loop = null;
         this.ticking = false;
         this.platformByUuid = new Map();
     }
     start() {
-        if (this.timer)
+        if (this.loop)
             return;
         if (!(0, metatraderapi_1.hasMetatraderApiConfigured)()) {
             console.warn('[basketSlTpReconcileMonitor] MT4API_BASIC_USER/PASSWORD missing — disabled');
             return;
         }
-        this.timer = setInterval(() => {
-            if (this.ticking)
-                return;
-            this.ticking = true;
-            this.tick()
-                .catch(err => console.error('[basketSlTpReconcileMonitor] tick failed:', err))
-                .finally(() => { this.ticking = false; });
-        }, TICK_INTERVAL_MS);
-        this.timer.unref?.();
-        console.log(`[basketSlTpReconcileMonitor] started interval=${TICK_INTERVAL_MS}ms`);
+        this.loop = (0, monitorIdleGate_1.startMonitorLoop)({
+            name: 'basketSlTpReconcileMonitor',
+            supabase: this.supabase,
+            activeIntervalMs: ACTIVE_MS,
+            idleIntervalMs: IDLE_MS,
+            hasWork: (sb) => {
+                const now = new Date().toISOString();
+                return (0, monitorIdleGate_1.hasWorkOnShard)(sb, 'basket_reconcile_jobs', q => q.eq('status', 'pending').lte('next_run_at', now));
+            },
+            tick: () => this.runTick(),
+        });
+        console.log(`[basketSlTpReconcileMonitor] started active=${ACTIVE_MS}ms idle=${IDLE_MS}ms`);
     }
     stop() {
-        if (this.timer) {
-            clearInterval(this.timer);
-            this.timer = null;
+        this.loop?.stop();
+        this.loop = null;
+    }
+    getLoopHandle() {
+        return this.loop;
+    }
+    async runTick() {
+        if (this.ticking)
+            return;
+        this.ticking = true;
+        try {
+            await this.tick();
+        }
+        finally {
+            this.ticking = false;
         }
     }
     async tick() {

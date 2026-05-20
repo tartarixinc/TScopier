@@ -1,6 +1,14 @@
 import os from 'node:os'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { hasMetatraderApiConfigured, type MetatraderApiClient } from './metatraderapi'
+import {
+  applyShardToQuery,
+  hasWorkOnShard,
+  monitorActiveIntervalMs,
+  monitorIdleIntervalMs,
+  startMonitorLoop,
+  type MonitorLoopHandle,
+} from './monitorIdleGate'
 import { apiForMetaapiAccount, loadPlatformByMetaapiId, type PlatformByMetaapiId } from './mtApiByAccount'
 
 /**
@@ -51,7 +59,8 @@ interface ParentTradeRow {
   status: string
 }
 
-const TICK_INTERVAL_MS = 1_500
+const ACTIVE_MS = monitorActiveIntervalMs('PARTIAL_TP_TICK_MS', 1_500)
+const IDLE_MS = monitorIdleIntervalMs('PARTIAL_TP_IDLE_MS', 60_000)
 const STALE_CLAIM_AFTER_MS = 30_000
 
 /**
@@ -73,7 +82,7 @@ export function isPartialTpTriggered(isBuy: boolean, triggerPrice: number, bid: 
 }
 
 export class PartialTpMonitor {
-  private timer: NodeJS.Timeout | null = null
+  private loop: MonitorLoopHandle | null = null
   private platformByUuid: PlatformByMetaapiId = new Map()
   private hostId: string
   private ticking = false
@@ -87,27 +96,45 @@ export class PartialTpMonitor {
   }
 
   start() {
-    if (this.timer) return
+    if (this.loop) return
     if (!hasMetatraderApiConfigured()) {
       console.warn('[partialTpMonitor] MT4API_BASIC_USER/PASSWORD missing — partial TP monitor disabled')
       return
     }
-    this.timer = setInterval(() => {
-      if (this.ticking) return
-      this.ticking = true
-      this.tick()
-        .catch(err => {
-          console.error('[partialTpMonitor] tick error:', err instanceof Error ? err.message : String(err))
-        })
-        .finally(() => { this.ticking = false })
-    }, TICK_INTERVAL_MS)
-    console.log(`[partialTpMonitor] started (interval=${TICK_INTERVAL_MS}ms)`)
+    const staleCutoff = () => new Date(Date.now() - STALE_CLAIM_AFTER_MS).toISOString()
+    this.loop = startMonitorLoop({
+      name: 'partialTpMonitor',
+      supabase: this.supabase,
+      activeIntervalMs: ACTIVE_MS,
+      idleIntervalMs: IDLE_MS,
+      hasWork: async sb => {
+        const pending = await hasWorkOnShard(sb, 'partial_tp_legs', q => q.eq('status', 'pending'))
+        if (pending) return true
+        return hasWorkOnShard(sb, 'partial_tp_legs', q =>
+          q.eq('status', 'claimed').lt('claimed_at', staleCutoff()),
+        )
+      },
+      tick: () => this.runTick(),
+    })
+    console.log(`[partialTpMonitor] started active=${ACTIVE_MS}ms idle=${IDLE_MS}ms`)
   }
 
   stop() {
-    if (this.timer) {
-      clearInterval(this.timer)
-      this.timer = null
+    this.loop?.stop()
+    this.loop = null
+  }
+
+  getLoopHandle(): MonitorLoopHandle | null {
+    return this.loop
+  }
+
+  private async runTick(): Promise<void> {
+    if (this.ticking) return
+    this.ticking = true
+    try {
+      await this.tick()
+    } finally {
+      this.ticking = false
     }
   }
 
@@ -123,11 +150,16 @@ export class PartialTpMonitor {
       .eq('status', 'claimed')
       .lt('claimed_at', staleCutoff)
 
-    const { data, error } = await this.supabase
-      .from('partial_tp_legs')
-      .select('id,trade_id,signal_id,user_id,broker_account_id,metaapi_account_id,symbol,is_buy,tp_idx,trigger_price,close_lots,status')
-      .eq('status', 'pending')
-      .limit(500)
+    const legsQ = await applyShardToQuery(
+      this.supabase,
+      this.supabase
+        .from('partial_tp_legs')
+        .select('id,trade_id,signal_id,user_id,broker_account_id,metaapi_account_id,symbol,is_buy,tp_idx,trigger_price,close_lots,status')
+        .eq('status', 'pending')
+        .limit(500),
+    )
+    if (!legsQ) return
+    const { data, error } = await legsQ
     if (error) {
       console.error('[partialTpMonitor] select failed:', error.message)
       return

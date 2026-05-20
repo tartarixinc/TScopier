@@ -131,7 +131,16 @@ export const channelWorkerEn: ChannelWorkerTranslations = {
     symbol_exempted_from_trading: 'symbol exempted from trading',
     symbol_not_in_whitelist: 'symbol not in whitelist',
     symbol_excluded: 'symbol excluded',
+    broker_session_not_connected: 'broker not connected — open Account Configuration and use Reconnect for this account',
+    no_broker_channel_match:
+      'no broker account is linked to this channel — open Account Configuration, select each broker, Channels tab, check the signal channel, and Save',
+    telegram_listener_not_live:
+      'Telegram listener is not connected — open Copier Engine and reconnect Telegram',
   },
+  dispatchSkipped: 'Did not copy this signal ({reason}).',
   errorTicketNotFound: 'Ticket {ticket} not found',
   errorSymbolNotFound: 'Symbol not found: {symbol}',
+  errorBrokerNotConnected:
+    'Broker not connected — in Account Configuration, use Reconnect and enter your MT password for this account',
+  errorStopsAlreadySet: 'Stop loss and take profit were already set on the broker (no change needed).',
 }

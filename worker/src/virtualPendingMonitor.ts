@@ -9,6 +9,14 @@ import {
 import { apiForMetaapiAccount, loadPlatformByMetaapiId, type PlatformByMetaapiId } from './mtApiByAccount'
 import { tryApplyBasketFollowUpToNewFill } from './basketModFollowUp'
 import { markRangeLegFired, markRangeLegsExpired } from './rangePendingLadderSync'
+import {
+  hasWorkOnShard,
+  monitorActiveIntervalMs,
+  monitorIdleIntervalMs,
+  applyShardToQuery,
+  startMonitorLoop,
+  type MonitorLoopHandle,
+} from './monitorIdleGate'
 import { reconcileStaleClaimedLegs, shouldBlockVirtualLegFire } from './rangePendingFireGuard'
 
 /**
@@ -96,8 +104,25 @@ interface SymbolCacheEntry {
 }
 
 const SYMBOL_TTL_MS = 10 * 60_000
-const TICK_INTERVAL_MS = 1_500
+const ACTIVE_MS = monitorActiveIntervalMs('VIRTUAL_PENDING_TICK_MS', 1_500)
+const IDLE_MS = monitorIdleIntervalMs('VIRTUAL_PENDING_IDLE_MS', 60_000)
 const STALE_CLAIM_AFTER_MS = 30_000
+
+async function virtualPendingHasWork(
+  supabase: SupabaseClient,
+  staleCut: string,
+): Promise<boolean> {
+  const pending = await hasWorkOnShard(supabase, 'range_pending_legs', q =>
+    q
+      .eq('status', 'pending')
+      .not('comment', 'ilike', '%:strictEntry%')
+      .not('comment', 'ilike', '%:strictEntryAgg%'),
+  )
+  if (pending) return true
+  return hasWorkOnShard(supabase, 'range_pending_legs', q =>
+    q.eq('status', 'claimed').lt('claimed_at', staleCut),
+  )
+}
 
 /**
  * Pure trigger-check used by both the worker monitor and the edge sweep:
@@ -128,7 +153,7 @@ export function isBlockedByShallowerStep(
 }
 
 export class VirtualPendingMonitor {
-  private timer: NodeJS.Timeout | null = null
+  private loop: MonitorLoopHandle | null = null
   private platformByUuid: PlatformByMetaapiId = new Map()
   private symbolCache = new Map<string, SymbolCacheEntry>()
   private hostId: string
@@ -144,27 +169,40 @@ export class VirtualPendingMonitor {
   }
 
   start() {
-    if (this.timer) return
+    if (this.loop) return
     if (!hasMetatraderApiConfigured()) {
       console.warn('[virtualPendingMonitor] MT4API_BASIC_USER/PASSWORD missing — virtual pending monitor disabled')
       return
     }
-    this.timer = setInterval(() => {
-      // Skip if a previous tick is still running — avoids piling up overlapping
-      // /Quote calls when the API is slow.
-      if (this.ticking) return
-      this.ticking = true
-      this.tick()
-        .catch(err => console.error('[virtualPendingMonitor] tick failed:', err))
-        .finally(() => { this.ticking = false })
-    }, TICK_INTERVAL_MS)
-    this.timer.unref?.()
-    console.log(`[virtualPendingMonitor] started host=${this.hostId} interval=${TICK_INTERVAL_MS}ms`)
+    const staleCut = () => new Date(Date.now() - STALE_CLAIM_AFTER_MS).toISOString()
+    this.loop = startMonitorLoop({
+      name: 'virtualPendingMonitor',
+      supabase: this.supabase,
+      activeIntervalMs: ACTIVE_MS,
+      idleIntervalMs: IDLE_MS,
+      hasWork: sb => virtualPendingHasWork(sb, staleCut()),
+      tick: () => this.runTick(),
+    })
+    console.log(`[virtualPendingMonitor] started host=${this.hostId} active=${ACTIVE_MS}ms idle=${IDLE_MS}ms`)
   }
 
   stop() {
-    if (this.timer) clearInterval(this.timer)
-    this.timer = null
+    this.loop?.stop()
+    this.loop = null
+  }
+
+  getLoopHandle(): MonitorLoopHandle | null {
+    return this.loop
+  }
+
+  private async runTick(): Promise<void> {
+    if (this.ticking) return
+    this.ticking = true
+    try {
+      await this.tick()
+    } finally {
+      this.ticking = false
+    }
   }
 
   private async tick(): Promise<void> {
@@ -207,13 +245,18 @@ export class VirtualPendingMonitor {
     }
 
     // Pull the live pending queue.
-    const { data, error } = await this.supabase
-      .from('range_pending_legs')
-      .select('*')
-      .eq('status', 'pending')
-      .not('comment', 'ilike', '%:strictEntry%')
-      .not('comment', 'ilike', '%:strictEntryAgg%')
-      .limit(500)
+    const pendingQ = await applyShardToQuery(
+      this.supabase,
+      this.supabase
+        .from('range_pending_legs')
+        .select('*')
+        .eq('status', 'pending')
+        .not('comment', 'ilike', '%:strictEntry%')
+        .not('comment', 'ilike', '%:strictEntryAgg%')
+        .limit(500),
+    )
+    if (!pendingQ) return
+    const { data, error } = await pendingQ
     if (error) {
       console.error('[virtualPendingMonitor] select failed:', error.message)
       return

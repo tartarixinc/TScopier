@@ -12,6 +12,15 @@ import {
   type SymbolParams,
 } from './metatraderapi'
 import { apiForMetaapiAccount, loadPlatformByMetaapiId, type PlatformByMetaapiId } from './mtApiByAccount'
+import { isBenignOrderModifyError } from './orderModifyBenign'
+import {
+  applyShardToQuery,
+  hasWorkOnShard,
+  monitorActiveIntervalMs,
+  monitorIdleIntervalMs,
+  startMonitorLoop,
+  type MonitorLoopHandle,
+} from './monitorIdleGate'
 
 interface TrailTradeRow {
   id: string
@@ -37,7 +46,8 @@ interface BrokerRow {
   platform: string
 }
 
-const TICK_INTERVAL_MS = 1_500
+const ACTIVE_MS = monitorActiveIntervalMs('TRAILING_STOP_TICK_MS', 1_500)
+const IDLE_MS = monitorIdleIntervalMs('TRAILING_STOP_IDLE_MS', 60_000)
 const SYMBOL_CACHE_TTL_MS = 5 * 60_000
 
 type SymbolCacheEntry = {
@@ -48,7 +58,7 @@ type SymbolCacheEntry = {
 }
 
 export class TrailingStopMonitor {
-  private timer: NodeJS.Timeout | null = null
+  private loop: MonitorLoopHandle | null = null
   private platformByUuid: PlatformByMetaapiId = new Map()
   private ticking = false
   private firstTickLogged = false
@@ -58,42 +68,60 @@ export class TrailingStopMonitor {
   constructor(private readonly supabase: SupabaseClient) {}
 
   start() {
-    if (this.timer) return
+    if (this.loop) return
     if (!hasMetatraderApiConfigured()) {
       console.warn('[trailingStopMonitor] MT4API_BASIC_USER/PASSWORD missing — trailing stop monitor disabled')
       return
     }
-    this.timer = setInterval(() => {
-      if (this.ticking) return
-      this.ticking = true
-      this.tick()
-        .catch(err => {
-          console.error('[trailingStopMonitor] tick error:', err instanceof Error ? err.message : String(err))
-        })
-        .finally(() => { this.ticking = false })
-    }, TICK_INTERVAL_MS)
-    console.log(`[trailingStopMonitor] started (interval=${TICK_INTERVAL_MS}ms)`)
+    this.loop = startMonitorLoop({
+      name: 'trailingStopMonitor',
+      supabase: this.supabase,
+      activeIntervalMs: ACTIVE_MS,
+      idleIntervalMs: IDLE_MS,
+      hasWork: sb => hasWorkOnShard(sb, 'trades', q =>
+        q.eq('status', 'open').not('trail_peak_price', 'is', null),
+      ),
+      tick: () => this.runTick(),
+    })
+    console.log(`[trailingStopMonitor] started active=${ACTIVE_MS}ms idle=${IDLE_MS}ms`)
   }
 
   stop() {
-    if (this.timer) {
-      clearInterval(this.timer)
-      this.timer = null
+    this.loop?.stop()
+    this.loop = null
+  }
+
+  getLoopHandle(): MonitorLoopHandle | null {
+    return this.loop
+  }
+
+  private async runTick(): Promise<void> {
+    if (this.ticking) return
+    this.ticking = true
+    try {
+      await this.tick()
+    } finally {
+      this.ticking = false
     }
   }
 
   private async tick(): Promise<void> {
     if (!hasMetatraderApiConfigured()) return
 
-    const { data, error } = await this.supabase
-      .from('trades')
-      .select(
-        'id,user_id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,entry_price,sl,tp,'
-        + 'trail_peak_price,trail_last_sl,trail_start_pips,trail_step_pips,trail_distance_pips',
-      )
-      .eq('status', 'open')
-      .not('trail_peak_price', 'is', null)
-      .limit(500)
+    const tradesQ = await applyShardToQuery(
+      this.supabase,
+      this.supabase
+        .from('trades')
+        .select(
+          'id,user_id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,entry_price,sl,tp,'
+          + 'trail_peak_price,trail_last_sl,trail_start_pips,trail_step_pips,trail_distance_pips',
+        )
+        .eq('status', 'open')
+        .not('trail_peak_price', 'is', null)
+        .limit(500),
+    )
+    if (!tradesQ) return
+    const { data, error } = await tradesQ
     if (error) {
       console.error('[trailingStopMonitor] select failed:', error.message)
       return
@@ -252,6 +280,7 @@ export class TrailingStopMonitor {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       const benign = /not\s+found|already\s+closed|invalid\s+ticket|no\s+such\s+order/i.test(msg)
+        || isBenignOrderModifyError(msg)
       if (benign) {
         await this.supabase
           .from('trades')

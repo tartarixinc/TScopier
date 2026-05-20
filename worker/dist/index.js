@@ -20,6 +20,9 @@ const basketSlTpReconcileMonitor_1 = require("./basketSlTpReconcileMonitor");
 const newsTradingMonitor_1 = require("./newsTradingMonitor");
 const brokerConnectionMonitor_1 = require("./brokerConnectionMonitor");
 const workerConfig_1 = require("./workerConfig");
+const tradeSignalPush_1 = require("./tradeSignalPush");
+const monitorWorkWake_1 = require("./monitorWorkWake");
+const tradeLogRetention_1 = require("./tradeLogRetention");
 if (!globalThis.WebSocket) {
     globalThis.WebSocket = ws_1.default;
 }
@@ -29,6 +32,20 @@ let httpServer = null;
 let authService = null;
 let tradeExecutor = null;
 const monitors = [];
+const monitorLoops = [];
+let stopLogRetention = null;
+let stopWorkWake = null;
+function trackMonitor(m) {
+    monitors.push(m);
+    if (m.getLoopHandle) {
+        const h = m.getLoopHandle();
+        if (h)
+            monitorLoops.push(h);
+    }
+    if (m.getLoopHandles) {
+        monitorLoops.push(...m.getLoopHandles());
+    }
+}
 function startTradeMonitors() {
     if (workerConfig_1.workerConfig.runsExecutionMonitors) {
         const virtualPendingMonitor = new virtualPendingMonitor_1.VirtualPendingMonitor(supabase);
@@ -39,12 +56,15 @@ function startTradeMonitors() {
         cweCloseMonitor.start();
         partialTpMonitor.start();
         signalEntryPendingMonitor.start();
-        monitors.push(virtualPendingMonitor, cweCloseMonitor, partialTpMonitor, signalEntryPendingMonitor);
+        trackMonitor(virtualPendingMonitor);
+        trackMonitor(cweCloseMonitor);
+        trackMonitor(partialTpMonitor);
+        trackMonitor(signalEntryPendingMonitor);
     }
     if (workerConfig_1.workerConfig.runsTrade) {
         const brokerConnectionMonitor = new brokerConnectionMonitor_1.BrokerConnectionMonitor(supabase);
         brokerConnectionMonitor.start();
-        monitors.push(brokerConnectionMonitor);
+        trackMonitor(brokerConnectionMonitor);
     }
     if (workerConfig_1.workerConfig.runsManagementMonitors) {
         const trailingStopMonitor = new trailingStopMonitor_1.TrailingStopMonitor(supabase);
@@ -55,10 +75,21 @@ function startTradeMonitors() {
         autoManagementMonitor.start();
         basketSlTpReconcileMonitor.start();
         newsTradingMonitor.start();
-        monitors.push(trailingStopMonitor, autoManagementMonitor, basketSlTpReconcileMonitor, newsTradingMonitor);
+        trackMonitor(trailingStopMonitor);
+        trackMonitor(autoManagementMonitor);
+        trackMonitor(basketSlTpReconcileMonitor);
+        trackMonitor(newsTradingMonitor);
     }
+    stopLogRetention = (0, tradeLogRetention_1.startTradeLogRetention)(supabase);
 }
 async function main() {
+    if (workerConfig_1.workerConfig.runsListener) {
+        const shardErr = (0, tradeSignalPush_1.validateListenerTradeShardConfig)();
+        if (shardErr) {
+            console.error(`[worker] FATAL: ${shardErr}`);
+            process.exit(1);
+        }
+    }
     console.log(`[worker] starting role=${workerConfig_1.workerConfig.role} shard=${workerConfig_1.workerConfig.shardId}/${workerConfig_1.workerConfig.shardCount}`
         + ` instance=${workerConfig_1.workerConfig.instanceId}`);
     if (workerConfig_1.workerConfig.runsListener || workerConfig_1.workerConfig.runsBacktestHttp) {
@@ -69,7 +100,13 @@ async function main() {
         tradeExecutor = new tradeExecutor_1.TradeExecutor(supabase, sessionManager);
         sessionManager.setTradeExecutor(tradeExecutor);
         await tradeExecutor.start();
+        const sweepHandle = tradeExecutor.getSweepLoopHandle();
+        if (sweepHandle)
+            monitorLoops.push(sweepHandle);
         startTradeMonitors();
+        if (monitorLoops.length > 0 && !stopWorkWake) {
+            stopWorkWake = (0, monitorWorkWake_1.subscribeMonitorWorkWake)(supabase, monitorLoops);
+        }
         if (!httpServer) {
             httpServer = (0, httpServer_1.startTradeHttpServer)(sessionManager, tradeExecutor);
         }
@@ -95,6 +132,8 @@ async function main() {
         console.log(`[worker] ${signal} received, shutting down...`);
         httpServer?.close();
         authService?.shutdown();
+        stopWorkWake?.();
+        stopLogRetention?.();
         tradeExecutor?.stop();
         for (const m of monitors)
             m.stop();

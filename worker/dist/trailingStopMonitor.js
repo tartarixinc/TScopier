@@ -5,12 +5,15 @@ const signalPip_1 = require("./signalPip");
 const trailingStop_1 = require("./trailingStop");
 const metatraderapi_1 = require("./metatraderapi");
 const mtApiByAccount_1 = require("./mtApiByAccount");
-const TICK_INTERVAL_MS = 1500;
+const orderModifyBenign_1 = require("./orderModifyBenign");
+const monitorIdleGate_1 = require("./monitorIdleGate");
+const ACTIVE_MS = (0, monitorIdleGate_1.monitorActiveIntervalMs)('TRAILING_STOP_TICK_MS', 1500);
+const IDLE_MS = (0, monitorIdleGate_1.monitorIdleIntervalMs)('TRAILING_STOP_IDLE_MS', 60000);
 const SYMBOL_CACHE_TTL_MS = 5 * 60000;
 class TrailingStopMonitor {
     constructor(supabase) {
         this.supabase = supabase;
-        this.timer = null;
+        this.loop = null;
         this.platformByUuid = new Map();
         this.ticking = false;
         this.firstTickLogged = false;
@@ -18,40 +21,53 @@ class TrailingStopMonitor {
         this.symbolCache = new Map();
     }
     start() {
-        if (this.timer)
+        if (this.loop)
             return;
         if (!(0, metatraderapi_1.hasMetatraderApiConfigured)()) {
             console.warn('[trailingStopMonitor] MT4API_BASIC_USER/PASSWORD missing — trailing stop monitor disabled');
             return;
         }
-        this.timer = setInterval(() => {
-            if (this.ticking)
-                return;
-            this.ticking = true;
-            this.tick()
-                .catch(err => {
-                console.error('[trailingStopMonitor] tick error:', err instanceof Error ? err.message : String(err));
-            })
-                .finally(() => { this.ticking = false; });
-        }, TICK_INTERVAL_MS);
-        console.log(`[trailingStopMonitor] started (interval=${TICK_INTERVAL_MS}ms)`);
+        this.loop = (0, monitorIdleGate_1.startMonitorLoop)({
+            name: 'trailingStopMonitor',
+            supabase: this.supabase,
+            activeIntervalMs: ACTIVE_MS,
+            idleIntervalMs: IDLE_MS,
+            hasWork: sb => (0, monitorIdleGate_1.hasWorkOnShard)(sb, 'trades', q => q.eq('status', 'open').not('trail_peak_price', 'is', null)),
+            tick: () => this.runTick(),
+        });
+        console.log(`[trailingStopMonitor] started active=${ACTIVE_MS}ms idle=${IDLE_MS}ms`);
     }
     stop() {
-        if (this.timer) {
-            clearInterval(this.timer);
-            this.timer = null;
+        this.loop?.stop();
+        this.loop = null;
+    }
+    getLoopHandle() {
+        return this.loop;
+    }
+    async runTick() {
+        if (this.ticking)
+            return;
+        this.ticking = true;
+        try {
+            await this.tick();
+        }
+        finally {
+            this.ticking = false;
         }
     }
     async tick() {
         if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
             return;
-        const { data, error } = await this.supabase
+        const tradesQ = await (0, monitorIdleGate_1.applyShardToQuery)(this.supabase, this.supabase
             .from('trades')
             .select('id,user_id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,entry_price,sl,tp,'
             + 'trail_peak_price,trail_last_sl,trail_start_pips,trail_step_pips,trail_distance_pips')
             .eq('status', 'open')
             .not('trail_peak_price', 'is', null)
-            .limit(500);
+            .limit(500));
+        if (!tradesQ)
+            return;
+        const { data, error } = await tradesQ;
         if (error) {
             console.error('[trailingStopMonitor] select failed:', error.message);
             return;
@@ -194,7 +210,8 @@ class TrailingStopMonitor {
         }
         catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
-            const benign = /not\s+found|already\s+closed|invalid\s+ticket|no\s+such\s+order/i.test(msg);
+            const benign = /not\s+found|already\s+closed|invalid\s+ticket|no\s+such\s+order/i.test(msg)
+                || (0, orderModifyBenign_1.isBenignOrderModifyError)(msg);
             if (benign) {
                 await this.supabase
                     .from('trades')

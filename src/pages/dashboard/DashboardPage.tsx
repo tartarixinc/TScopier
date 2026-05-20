@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Clock, ChevronRight, Info, Plus } from 'lucide-react'
+import { Clock, ChevronRight, Info, Plus, RefreshCw } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import type { BrokerAccount, Signal, Trade } from '../../types/database'
@@ -15,6 +15,7 @@ import { PageHeader } from '../../components/layout/PageHeader'
 import { PageShell } from '../../components/layout/PageShell'
 import { AddAccountModal } from '../../components/ui/AddAccountModal'
 import { Toggle } from '../../components/ui/Toggle'
+import { Button } from '../../components/ui/Button'
 import { metatraderApi, type MtTrade } from '../../lib/metatraderapi'
 import { formatLocalCalendarDay } from '../../lib/dayStartBalance'
 import { formatLocalMtApiDateTime, isMtTimestampInRange } from '../../lib/mtApiDateTime'
@@ -53,6 +54,15 @@ import {
 import { AccountGrowthChart } from '../../components/dashboard/AccountGrowthChart'
 import { TradeVolumeChart } from '../../components/dashboard/TradeVolumeChart'
 import { useDashboardRealtime } from '../../hooks/useDashboardRealtime'
+import { useBrokerReconnect } from '../../hooks/useBrokerReconnect'
+import { useBrokerAccountsRealtime } from '../../hooks/useBrokerAccountsRealtime'
+import { useBrokerConnectionHealth } from '../../hooks/useBrokerConnectionHealth'
+import { useBrokerSessionFailureRealtime } from '../../hooks/useBrokerSessionFailureRealtime'
+import {
+  brokerCanReconnect,
+  brokerConnectionStatusLabel,
+  isBrokerSessionConnected,
+} from '../../lib/brokerReconnect'
 import { useLocale, useT } from '../../context/LocaleContext'
 import { useFormatMoney } from '../../context/UserProfileContext'
 import { formatMoneyWithCode } from '../../lib/currency'
@@ -200,7 +210,7 @@ type BrokerBalanceSnapshot = {
 }
 
 function isBrokerLiveConnected(account: Pick<BrokerAccount, 'connection_status'>): boolean {
-  return account.connection_status === 'connected'
+  return isBrokerSessionConnected(account)
 }
 
 /** Sum open positions only from brokers with a live connected session. */
@@ -480,6 +490,8 @@ export function DashboardPage() {
   chartTradesRef.current = chartTrades
   const [showPlatformModal, setShowPlatformModal] = useState(false)
   const [togglingBrokerId, setTogglingBrokerId] = useState<string | null>(null)
+  const [brokerReconnectError, setBrokerReconnectError] = useState('')
+  const loadDashboardLiveRef = useRef<() => void>(() => {})
   /** Background MT/broker poll — DB changes use Supabase Realtime instead. */
   const MT_LIVE_REFRESH_MS = 45_000
   const BROKER_SUMMARY_REFRESH_MS = 30_000
@@ -1058,7 +1070,35 @@ export function DashboardPage() {
     void loadDashboard({ fresh: false, syncLive: false })
   }
 
-  useDashboardRealtime(user?.id, () => refreshQuietRef.current())
+  loadDashboardLiveRef.current = () => {
+    if (!dashboardReadyRef.current) return
+    void loadDashboard({ fresh: false, syncLive: true })
+  }
+
+  const bl = t.accountConfig.brokerList
+  const {
+    reconnectBroker,
+    brokersNeedingReconnect,
+    isReconnecting: isBrokerReconnecting,
+  } = useBrokerReconnect({
+    brokers: linkedAccounts,
+    setBrokers: setLinkedAccounts,
+    autoReconnect: false,
+    onError: setBrokerReconnectError,
+    onClearError: () => setBrokerReconnectError(''),
+    reconnectFailedLabel: bl.reconnectFailed,
+    passwordPrompt: bl.reconnectPasswordPrompt,
+    onReconnectSuccess: () => loadDashboardLiveRef.current(),
+  })
+
+  useDashboardRealtime(user?.id, () => refreshQuietRef.current(), broker => {
+    setLinkedAccounts(prev =>
+      prev.map(a => (a.id === broker.id ? { ...a, ...broker } : a)),
+    )
+  })
+  useBrokerAccountsRealtime(user?.id, setLinkedAccounts)
+  useBrokerConnectionHealth(linkedAccounts, setLinkedAccounts)
+  useBrokerSessionFailureRealtime(user?.id, setLinkedAccounts)
 
   useEffect(() => {
     if (!user) return
@@ -1288,14 +1328,14 @@ export function DashboardPage() {
     const successes: typeof results = []
     for (const r of results) {
       const broker = sourceAccounts.find(b => b.id === r.id)
-      if (r.error || !r.summary) {
+      if (r.error || !r.summary || r.stale) {
         delete liveBrokerStateRef.current[r.id]
         nextBalances[r.id] = {
           ...(nextBalances[r.id] ?? {}),
           open_pnl: 0,
           open_trades: 0,
         }
-        if (broker) {
+        if (broker && (r.error || r.stale || !r.summary)) {
           setLinkedAccounts(prev =>
             prev.map(row =>
               row.id === r.id ? { ...row, connection_status: 'error' as const } : row,
@@ -1419,7 +1459,7 @@ export function DashboardPage() {
           last_equity: live.equity ?? b.last_equity ?? null,
           last_currency: live.currency ?? b.last_currency ?? null,
           last_synced_at: new Date().toISOString(),
-          connection_status: 'connected',
+          ...(row.stale ? {} : { connection_status: 'connected' as const }),
           performance_baseline_balance: nextBaseline ?? b.performance_baseline_balance,
           day_start_balance: row.day_start_balance ?? b.day_start_balance ?? null,
           day_start_balance_on: row.day_start_balance_on ?? b.day_start_balance_on ?? null,
@@ -1698,6 +1738,20 @@ export function DashboardPage() {
           </button>
         </div>
 
+        {brokerReconnectError ? (
+          <div className="px-4 sm:px-5 py-2 text-sm text-error-600 dark:text-error-400 border-b border-neutral-100 dark:border-neutral-800">
+            {brokerReconnectError}
+          </div>
+        ) : null}
+
+        {brokersNeedingReconnect.length > 0 ? (
+          <div className="px-4 sm:px-5 py-2 text-sm text-amber-700 dark:text-amber-300 border-b border-neutral-100 dark:border-neutral-800">
+            {brokersNeedingReconnect.length === 1
+              ? bl.reconnectDroppedOne
+              : interpolate(bl.reconnectDroppedMany, { count: String(brokersNeedingReconnect.length) })}
+          </div>
+        ) : null}
+
         <div className="overflow-x-auto">
         <div className="min-w-[52rem] lg:min-w-0">
         <div className="hidden lg:grid grid-cols-9 gap-2 px-4 sm:px-5 py-3 border-b border-neutral-100 dark:border-neutral-800 text-xs font-medium text-neutral-400">
@@ -1737,6 +1791,9 @@ export function DashboardPage() {
                 }
                 onToggleActive={is_active => { void toggleBrokerActive(account.id, is_active) }}
                 toggleDisabled={togglingBrokerId === account.id}
+                showReconnect={brokerCanReconnect(account)}
+                isReconnecting={isBrokerReconnecting(account.id)}
+                onReconnect={() => { void reconnectBroker(account.id) }}
               />
             ))}
           </div>
@@ -1750,7 +1807,7 @@ export function DashboardPage() {
         onClose={() => setShowPlatformModal(false)}
         onSelect={() => {
           setShowPlatformModal(false)
-          navigate('/account-config')
+          navigate('/account-configuration')
         }}
       />
     </PageShell>
@@ -1896,6 +1953,9 @@ function LinkedAccountRow({
   closedHistoryPnl,
   onToggleActive,
   toggleDisabled,
+  showReconnect,
+  isReconnecting,
+  onReconnect,
 }: {
   account: BrokerAccount
   accountSummary?: { balance?: number; equity?: number; currency?: string; broker?: string; mt_server_hint?: string; account_type?: 'Live' | 'Demo'; open_pnl?: number }
@@ -1904,14 +1964,20 @@ function LinkedAccountRow({
   closedHistoryPnl?: number | null
   onToggleActive: (is_active: boolean) => void
   toggleDisabled?: boolean
+  showReconnect?: boolean
+  isReconnecting?: boolean
+  onReconnect?: () => void
 }) {
   const t = useT()
   const la = t.dashboard.linkedAccounts
   const { locale } = useLocale()
   const intlLocale = locale === 'en' ? undefined : locale
-  const statusClass = account.is_active
-    ? 'text-teal-700 border-teal-200 bg-teal-50 dark:text-teal-300 dark:border-teal-800 dark:bg-teal-950/50'
-    : 'text-neutral-600 border-neutral-200 bg-neutral-100 dark:text-neutral-400 dark:border-neutral-700 dark:bg-neutral-800/80'
+  const isDisconnected = !isBrokerSessionConnected(account)
+  const statusClass = isDisconnected
+    ? 'text-error-700 border-error-200 bg-error-50 dark:text-error-300 dark:border-error-800 dark:bg-error-950/50'
+    : account.is_active
+      ? 'text-teal-700 border-teal-200 bg-teal-50 dark:text-teal-300 dark:border-teal-800 dark:bg-teal-950/50'
+      : 'text-neutral-600 border-neutral-200 bg-neutral-100 dark:text-neutral-400 dark:border-neutral-700 dark:bg-neutral-800/80'
   const balance = accountSummary?.balance ?? account.last_balance ?? null
   const equity = accountSummary?.equity ?? account.last_equity ?? null
   const accountCurrency = (accountSummary?.currency ?? account.last_currency ?? '').trim() || undefined
@@ -1979,13 +2045,25 @@ function LinkedAccountRow({
       <span className={`text-sm font-semibold tabular-nums ${winRateColor}`}>{formatPerformancePct(winRate, 0)}</span>
       <span className={`text-sm font-semibold tabular-nums ${ddColor}`}>{formatPerformancePct(maxDd)}</span>
       <div className="flex justify-end items-center gap-2">
+        {showReconnect ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            loading={isReconnecting}
+            onClick={onReconnect}
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            {la.reconnect}
+          </Button>
+        ) : null}
         <Toggle
           checked={account.is_active}
           onChange={onToggleActive}
           disabled={toggleDisabled}
         />
         <span className={`inline-flex items-center px-2.5 py-1 rounded-lg border text-xs font-semibold ${statusClass}`}>
-          {account.is_active ? la.statusActive : la.statusPaused}
+          {brokerConnectionStatusLabel(account, la)}
         </span>
       </div>
     </div>

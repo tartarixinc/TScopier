@@ -18,6 +18,7 @@ import { deriveManualStopsWithClamp } from './manualPlanning/manualStops'
 import { usesPredefinedStops } from './manualPlanning/manualStops'
 import type { ChannelKeywords, ManualSettings, ParsedSignal } from './manualPlanning/types'
 import type { SignalRow } from './tradeExecutor'
+import { isBenignOrderModifyError } from './orderModifyBenign'
 
 /** Minimal broker fields for post-fill (avoids circular import from tradeExecutor). */
 export type PostFillBrokerRow = {
@@ -175,6 +176,7 @@ async function applyPipAndChannelStops(args: ApplyPostFillFollowUpArgs): Promise
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
+      if (isBenignOrderModifyError(msg)) continue
       console.warn(
         `[postFillFollowUp] OrderModify stops failed signal=${signal.id} ticket=${leg.ticket}: ${msg}`,
       )

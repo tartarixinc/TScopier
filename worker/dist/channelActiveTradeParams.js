@@ -10,6 +10,8 @@ exports.parsedSignalHasExplicitStops = parsedSignalHasExplicitStops;
 exports.shouldMergeChannelParamsForEntry = shouldMergeChannelParamsForEntry;
 exports.mergeParsedWithChannelParams = mergeParsedWithChannelParams;
 exports.stripInvalidStopsForSide = stripInvalidStopsForSide;
+exports.estimateBasketTotalPlannedLegs = estimateBasketTotalPlannedLegs;
+exports.globalLegIndexForRangePending = globalLegIndexForRangePending;
 exports.resolvePendingLegTp = resolvePendingLegTp;
 exports.applyChannelParamsToVirtualPendingList = applyChannelParamsToVirtualPendingList;
 exports.applyChannelParamsToVirtualLeg = applyChannelParamsToVirtualLeg;
@@ -102,13 +104,25 @@ function shouldMergeChannelParamsForEntry(parsed) {
     return parsedSignalHasExplicitStops(parsed);
 }
 /** Overlay channel SL/TP onto parsed signal before planning orders / virtual pendings. */
-function mergeParsedWithChannelParams(parsed, params) {
+function mergeParsedWithChannelParams(parsed, params, opts) {
     if (!params)
         return parsed;
-    const next = { ...parsed };
-    if (params.stoploss != null)
+    const next = {
+        ...parsed,
+        tp: parsed.tp ? [...parsed.tp] : parsed.tp,
+    };
+    const hasSl = positiveLevel(parsed.sl) != null;
+    const hasTp = (parsed.tp ?? []).some(t => positiveLevel(t) != null);
+    if (opts?.overlay) {
+        if (params.stoploss != null)
+            next.sl = params.stoploss;
+        if (params.tpLevels.length > 0)
+            next.tp = [...params.tpLevels];
+        return next;
+    }
+    if (!hasSl && params.stoploss != null)
         next.sl = params.stoploss;
-    if (params.tpLevels.length > 0)
+    if (!hasTp && params.tpLevels.length > 0)
         next.tp = [...params.tpLevels];
     return next;
 }
@@ -138,14 +152,25 @@ function stripInvalidStopsForSide(args) {
     }
     return { stoploss, takeprofit, stripped };
 }
+function estimateBasketTotalPlannedLegs(args) {
+    const { openLegCount, activePendingCount, maxPendingStepIdx } = args;
+    if (maxPendingStepIdx <= 0)
+        return Math.max(0, openLegCount);
+    const firedPendingApprox = Math.max(0, maxPendingStepIdx - activePendingCount);
+    const immediateLegCount = Math.max(0, openLegCount - firedPendingApprox);
+    return immediateLegCount + maxPendingStepIdx;
+}
+function globalLegIndexForRangePending(args) {
+    return Math.max(0, args.immediateLegCount + args.stepIdx - 1);
+}
 function resolvePendingLegTp(args) {
-    const { stepIdx, openLegCount, channelTpLevels, tpLots, fallbackTp } = args;
+    const { stepIdx, rangeLegCount, channelTpLevels, tpLots, fallbackTp } = args;
     if (!channelTpLevels.length)
         return positiveLevel(fallbackTp);
-    const legIndex = Math.max(0, stepIdx);
-    const distributed = (0, tpBucketDistribution_1.takeProfitForLegIndex)({
-        legIndex,
-        openLegCount: Math.max(openLegCount, legIndex + 1),
+    const rangeLegIndex = Math.max(0, stepIdx - 1);
+    const distributed = (0, tpBucketDistribution_1.takeProfitForPoolLegIndex)({
+        poolLegIndex: rangeLegIndex,
+        poolLegCount: Math.max(rangeLegCount, rangeLegIndex + 1),
         finalTps: channelTpLevels,
         tpLots,
     });
@@ -153,13 +178,14 @@ function resolvePendingLegTp(args) {
         return distributed;
     return channelTpLevels[channelTpLevels.length - 1] ?? positiveLevel(fallbackTp);
 }
-function applyChannelParamsToVirtualPendingList(legs, params, immediateLegCount, tpLots) {
+function applyChannelParamsToVirtualPendingList(legs, params, _immediateLegCount, tpLots, _totalPlannedLegCount) {
     if (!params)
         return legs;
+    const rangeLegCount = legs.length;
     return legs.map(v => {
         const stops = applyChannelParamsToVirtualLeg(v, params, {
-            stepIdx: v.stepIdx,
-            openLegCount: Math.max(immediateLegCount, 1) + v.stepIdx,
+            rangeLegIndex: Math.max(0, v.stepIdx - 1),
+            rangeLegCount,
             tpLots,
         });
         return {
@@ -178,8 +204,8 @@ function applyChannelParamsToVirtualLeg(leg, params, args) {
         stoploss = params.stoploss;
     if (params.tpLevels.length > 0) {
         takeprofit = resolvePendingLegTp({
-            stepIdx: args.stepIdx,
-            openLegCount: args.openLegCount,
+            stepIdx: args.rangeLegIndex + 1,
+            rangeLegCount: args.rangeLegCount,
             channelTpLevels: params.tpLevels,
             tpLots: args.tpLots,
             fallbackTp: leg.takeprofit,
@@ -217,13 +243,25 @@ async function reapplyChannelParamsToPendingLegs(args) {
         return 0;
     }
     let updated = 0;
+    const pendingByBasket = new Map();
+    for (const leg of data ?? []) {
+        const basketKey = `${leg.signal_id}|${leg.broker_account_id}`;
+        const list = pendingByBasket.get(basketKey) ?? [];
+        list.push(leg);
+        pendingByBasket.set(basketKey, list);
+    }
     for (const leg of data ?? []) {
         if (!(0, basketModFollowUp_1.symbolsCompatibleForBasket)(args.symbolHint, leg.symbol))
             continue;
         const basketKey = `${leg.signal_id}|${leg.broker_account_id}`;
-        const openLegCount = Math.max(args.openLegCountByBasket.get(basketKey) ?? 0, leg.step_idx + 1);
+        const basketPending = pendingByBasket.get(basketKey) ?? [leg];
+        const maxStepIdx = Math.max(...basketPending.map(row => row.step_idx), 0);
         const tpLots = args.tpLotsByBroker.get(leg.broker_account_id);
-        const applied = applyChannelParamsToVirtualLeg({ stoploss: leg.stoploss, takeprofit: leg.takeprofit }, params, { stepIdx: leg.step_idx, openLegCount, tpLots });
+        const applied = applyChannelParamsToVirtualLeg({ stoploss: leg.stoploss, takeprofit: leg.takeprofit }, params, {
+            rangeLegIndex: Math.max(0, leg.step_idx - 1),
+            rangeLegCount: maxStepIdx,
+            tpLots,
+        });
         const patch = {
             stoploss: applied.stoploss,
             takeprofit: leg.cwe_close_price != null ? null : applied.takeprofit,

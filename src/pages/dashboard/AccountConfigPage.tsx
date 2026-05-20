@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useMemo, type ReactNode } from 'react'
+import { useEffect, useState, useMemo, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Plus, Trash2, Server, Activity, GitBranch, Eye, DollarSign, RefreshCw,
@@ -23,7 +23,12 @@ import { AddAccountModal } from '../../components/ui/AddAccountModal'
 import { BrokerServerSelect } from '../../components/ui/BrokerServerSelect'
 import { formatLocalCalendarDay } from '../../lib/dayStartBalance'
 import { metatraderApi } from '../../lib/metatraderapi'
-import { isLegacyBrokerLink, isMtSessionUuid } from '../../lib/brokerLink'
+import { isLegacyBrokerLink } from '../../lib/brokerLink'
+import { brokerCanReconnect, brokerConnectionBadgeVariant, brokerConnectionStatusLabel } from '../../lib/brokerReconnect'
+import { useBrokerReconnect } from '../../hooks/useBrokerReconnect'
+import { useBrokerAccountsRealtime } from '../../hooks/useBrokerAccountsRealtime'
+import { useBrokerConnectionHealth } from '../../hooks/useBrokerConnectionHealth'
+import { useBrokerSessionFailureRealtime } from '../../hooks/useBrokerSessionFailureRealtime'
 import {
   inferBrokerLabelFromServer,
   resolveLinkedAccountType,
@@ -501,68 +506,29 @@ export function AccountConfigPage() {
     configDraft.manualSettings.range_distance_pips,
   ])
 
-  const [reconnectingBrokerIds, setReconnectingBrokerIds] = useState<Set<string>>(() => new Set())
-
-  const brokersNeedingReconnect = useMemo(
-    () => brokers.filter(b => b.connection_status === 'error' && isMtSessionUuid(b.metaapi_account_id)),
-    [brokers],
-  )
-
   const brokersNeedingRelink = useMemo(
     () => brokers.filter(b => isLegacyBrokerLink(b.metaapi_account_id)),
     [brokers],
   )
 
-  const reconnectBroker = useCallback(async (brokerId: string) => {
-    setReconnectingBrokerIds(prev => new Set(prev).add(brokerId))
-    setError('')
-    try {
-      let result = await metatraderApi.reconnect(brokerId)
-      const needsPassword =
-        result.connection_status !== 'connected'
-        && typeof result.message === 'string'
-        && /session expired|not connected|password/i.test(result.message)
-      if (needsPassword) {
-        const entered = window.prompt(
-          'Your broker session expired on the trade server. Enter your MT account password to reconnect:',
-        )
-        if (!entered?.trim()) {
-          setError(result.message ?? bl.reconnectFailed)
-          return
-        }
-        result = await metatraderApi.reconnect(brokerId, entered.trim())
-      }
-      setBrokers(prev =>
-        prev.map(b => {
-          if (b.id !== brokerId) return b
-          if (result.connection_status !== 'connected') return { ...b, connection_status: 'error' as const }
-          return {
-            ...b,
-            connection_status: 'connected' as const,
-            last_synced_at: new Date().toISOString(),
-            ...(result.summary
-              ? {
-                  last_balance: result.summary.balance ?? b.last_balance,
-                  last_equity: result.summary.equity ?? b.last_equity,
-                  last_currency: result.summary.currency ?? b.last_currency,
-                }
-              : {}),
-          }
-        }),
-      )
-      if (result.connection_status !== 'connected' && result.message) {
-        setError(result.message)
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : bl.reconnectFailed)
-    } finally {
-      setReconnectingBrokerIds(prev => {
-        const next = new Set(prev)
-        next.delete(brokerId)
-        return next
-      })
-    }
-  }, [bl.reconnectFailed])
+  const {
+    reconnectBroker,
+    reconnectingBrokerIds,
+    brokersNeedingReconnect,
+    isReconnecting: isBrokerReconnecting,
+  } = useBrokerReconnect({
+    brokers,
+    setBrokers,
+    autoReconnect: false,
+    onError: setError,
+    onClearError: () => setError(''),
+    reconnectFailedLabel: bl.reconnectFailed,
+    passwordPrompt: bl.reconnectPasswordPrompt,
+  })
+
+  useBrokerAccountsRealtime(user?.id, setBrokers)
+  useBrokerConnectionHealth(brokers, setBrokers)
+  useBrokerSessionFailureRealtime(user?.id, setBrokers)
 
   const tpLegPercentTotal = useMemo(() => {
     const rows = configDraft.manualSettings.tp_lots ?? DEFAULT_MANUAL_TP_LOTS
@@ -868,6 +834,11 @@ export function AccountConfigPage() {
     let channelIds = configDraft.channelIds
     const restrictChannels = channelIds.length > 0
 
+    if (channelIds.length === 0) {
+      const proceed = window.confirm(bl.channelsEmptySaveWarning)
+      if (!proceed) return
+    }
+
     setConfigSaving(true)
     const channelMessageFilters: ChannelMessageFiltersMap = {}
     const filterChannelIds = new Set([...channelOptions.map(c => c.id), ...channelIds])
@@ -933,11 +904,22 @@ export function AccountConfigPage() {
     }
 
     setSaving(true)
+    const login = form.account_number.trim()
+    const server = form.broker_server.trim()
+    const duplicate = brokers.find(
+      b => b.account_login === login && b.broker_server === server,
+    )
+    if (duplicate) {
+      setError(bl.duplicateMtLogin)
+      setSaving(false)
+      return
+    }
+
     try {
       const { broker, summary } = await metatraderApi.register({
         platform: form.platform,
-        server: form.broker_server.trim(),
-        login: form.account_number.trim(),
+        server,
+        login,
         password: form.account_password,
         label: form.label.trim() || undefined,
       })
@@ -1007,16 +989,53 @@ export function AccountConfigPage() {
   }
 
   const confirmDeleteBroker = async () => {
-    if (!brokerPendingDelete) return
+    if (!brokerPendingDelete || !user) return
     setDeleteInProgress(true)
     setError('')
     const id = brokerPendingDelete.id
+    const removed = brokerPendingDelete
+
+    setBrokers(prev => prev.filter(b => b.id !== id))
+    setBrokerPendingDelete(null)
+    if (configAccount?.id === id) closeConfigureModal()
+    setBrokerAccountTypes(prev => {
+      const next = { ...prev }
+      delete next[id]
+      return next
+    })
+
     try {
       await metatraderApi.remove(id)
-      setBrokers(prev => prev.filter(b => b.id !== id))
-      setBrokerPendingDelete(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : bl.deleteFailed)
+      const msg = err instanceof Error ? err.message : bl.deleteFailed
+
+      const { error: directDelErr } = await supabase
+        .from('broker_accounts')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', user.id)
+
+      if (!directDelErr) {
+        void metatraderApi.remove(id).catch(() => {})
+        return
+      }
+
+      const { data: stillThere } = await supabase
+        .from('broker_accounts')
+        .select('id')
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      if (stillThere) {
+        setBrokers(prev => {
+          if (prev.some(b => b.id === id)) return prev
+          return [...prev, removed].sort(
+            (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+          )
+        })
+        setError(/unauthorized/i.test(msg) ? bl.deleteSessionExpired : msg)
+      }
     } finally {
       setDeleteInProgress(false)
     }
@@ -1179,19 +1198,9 @@ export function AccountConfigPage() {
         ) : (
           <div className="space-y-3">
             {brokers.map(broker => {
-              const statusVariant: 'success' | 'neutral' | 'error' =
-                !broker.is_active ? 'neutral'
-                : broker.connection_status === 'connected' ? 'success'
-                : broker.connection_status === 'error' ? 'error'
-                : 'neutral'
-              const isReconnecting = reconnectingBrokerIds.has(broker.id)
-              const statusLabel = !broker.is_active
-                ? bl.statusPaused
-                : broker.connection_status === 'connected'
-                  ? bl.statusConnected
-                  : broker.connection_status === 'error'
-                    ? bl.statusError
-                    : bl.statusDisconnected
+              const statusVariant = brokerConnectionBadgeVariant(broker)
+              const isReconnecting = isBrokerReconnecting(broker.id)
+              const statusLabel = brokerConnectionStatusLabel(broker, bl)
               const brokerLabel = broker.broker_name
                 || inferBrokerLabelFromServer(broker.broker_server ?? null)
                 || broker.broker_server
@@ -1232,7 +1241,7 @@ export function AccountConfigPage() {
                           disabled={togglingBrokerId === broker.id}
                         />
                       </div>
-                      {broker.connection_status === 'error' && isMtSessionUuid(broker.metaapi_account_id) ? (
+                      {brokerCanReconnect(broker) ? (
                         <Button
                           type="button"
                           size="sm"

@@ -11,10 +11,21 @@ const metatraderapi_1 = require("./metatraderapi");
 const mtApiByAccount_1 = require("./mtApiByAccount");
 const basketModFollowUp_1 = require("./basketModFollowUp");
 const rangePendingLadderSync_1 = require("./rangePendingLadderSync");
+const monitorIdleGate_1 = require("./monitorIdleGate");
 const rangePendingFireGuard_1 = require("./rangePendingFireGuard");
 const SYMBOL_TTL_MS = 10 * 60000;
-const TICK_INTERVAL_MS = 1500;
+const ACTIVE_MS = (0, monitorIdleGate_1.monitorActiveIntervalMs)('VIRTUAL_PENDING_TICK_MS', 1500);
+const IDLE_MS = (0, monitorIdleGate_1.monitorIdleIntervalMs)('VIRTUAL_PENDING_IDLE_MS', 60000);
 const STALE_CLAIM_AFTER_MS = 30000;
+async function virtualPendingHasWork(supabase, staleCut) {
+    const pending = await (0, monitorIdleGate_1.hasWorkOnShard)(supabase, 'range_pending_legs', q => q
+        .eq('status', 'pending')
+        .not('comment', 'ilike', '%:strictEntry%')
+        .not('comment', 'ilike', '%:strictEntryAgg%'));
+    if (pending)
+        return true;
+    return (0, monitorIdleGate_1.hasWorkOnShard)(supabase, 'range_pending_legs', q => q.eq('status', 'claimed').lt('claimed_at', staleCut));
+}
 /**
  * Pure trigger-check used by both the worker monitor and the edge sweep:
  *   buy ladder  → trigger fires when bid <= trigger_price (price dropped)
@@ -45,7 +56,7 @@ function isBlockedByShallowerStep(leg, activeStepsByBasket) {
 class VirtualPendingMonitor {
     constructor(supabase) {
         this.supabase = supabase;
-        this.timer = null;
+        this.loop = null;
         this.platformByUuid = new Map();
         this.symbolCache = new Map();
         this.ticking = false;
@@ -57,29 +68,40 @@ class VirtualPendingMonitor {
         this.hostId = `worker:${node_os_1.default.hostname()}:${process.pid}`;
     }
     start() {
-        if (this.timer)
+        if (this.loop)
             return;
         if (!(0, metatraderapi_1.hasMetatraderApiConfigured)()) {
             console.warn('[virtualPendingMonitor] MT4API_BASIC_USER/PASSWORD missing — virtual pending monitor disabled');
             return;
         }
-        this.timer = setInterval(() => {
-            // Skip if a previous tick is still running — avoids piling up overlapping
-            // /Quote calls when the API is slow.
-            if (this.ticking)
-                return;
-            this.ticking = true;
-            this.tick()
-                .catch(err => console.error('[virtualPendingMonitor] tick failed:', err))
-                .finally(() => { this.ticking = false; });
-        }, TICK_INTERVAL_MS);
-        this.timer.unref?.();
-        console.log(`[virtualPendingMonitor] started host=${this.hostId} interval=${TICK_INTERVAL_MS}ms`);
+        const staleCut = () => new Date(Date.now() - STALE_CLAIM_AFTER_MS).toISOString();
+        this.loop = (0, monitorIdleGate_1.startMonitorLoop)({
+            name: 'virtualPendingMonitor',
+            supabase: this.supabase,
+            activeIntervalMs: ACTIVE_MS,
+            idleIntervalMs: IDLE_MS,
+            hasWork: sb => virtualPendingHasWork(sb, staleCut()),
+            tick: () => this.runTick(),
+        });
+        console.log(`[virtualPendingMonitor] started host=${this.hostId} active=${ACTIVE_MS}ms idle=${IDLE_MS}ms`);
     }
     stop() {
-        if (this.timer)
-            clearInterval(this.timer);
-        this.timer = null;
+        this.loop?.stop();
+        this.loop = null;
+    }
+    getLoopHandle() {
+        return this.loop;
+    }
+    async runTick() {
+        if (this.ticking)
+            return;
+        this.ticking = true;
+        try {
+            await this.tick();
+        }
+        finally {
+            this.ticking = false;
+        }
     }
     async tick() {
         if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
@@ -118,13 +140,16 @@ class VirtualPendingMonitor {
             }
         }
         // Pull the live pending queue.
-        const { data, error } = await this.supabase
+        const pendingQ = await (0, monitorIdleGate_1.applyShardToQuery)(this.supabase, this.supabase
             .from('range_pending_legs')
             .select('*')
             .eq('status', 'pending')
             .not('comment', 'ilike', '%:strictEntry%')
             .not('comment', 'ilike', '%:strictEntryAgg%')
-            .limit(500);
+            .limit(500));
+        if (!pendingQ)
+            return;
+        const { data, error } = await pendingQ;
         if (error) {
             console.error('[virtualPendingMonitor] select failed:', error.message);
             return;

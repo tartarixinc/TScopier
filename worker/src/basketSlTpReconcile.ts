@@ -9,6 +9,7 @@ import type { MergeModifySummary, PerLegStopTarget } from './multiTradeMerge'
 import { expandPerLegTargetsToCount } from './manualPlanning/tpBucketDistribution'
 import type { ManualTpLot } from './manualPlanning/types'
 import { symbolsCompatibleForBasket } from './basketModFollowUp'
+import { isBenignOrderModifyError, stopsAlreadyMatchDb } from './orderModifyBenign'
 
 export type BasketSymbolParams = {
   digits?: number
@@ -213,18 +214,7 @@ function stopsAlreadyMatch(
   nImmCwe: number,
   legIdx: number,
 ): boolean {
-  if (legIdx < nImmCwe) {
-    const tpOk = tr.tp == null || Number(tr.tp) === 0
-    if (!tpOk) return false
-  } else if (target.takeprofit > 0) {
-    const curTp = Number(tr.tp)
-    if (!Number.isFinite(curTp) || Math.abs(curTp - target.takeprofit) > 1e-8) return false
-  }
-  if (target.stoploss > 0) {
-    const curSl = Number(tr.sl)
-    if (!Number.isFinite(curSl) || Math.abs(curSl - target.stoploss) > 1e-8) return false
-  }
-  return true
+  return stopsAlreadyMatchDb(tr, target, nImmCwe, legIdx)
 }
 
 export async function logBasketLegModify(
@@ -447,8 +437,26 @@ export async function runBasketLegModifies(args: {
         targetTp: clamped.args.takeprofit ?? 0,
       })
     } catch (err) {
-      summary.failed += 1
       const msg = err instanceof Error ? err.message : String(err)
+      if (isBenignOrderModifyError(msg)) {
+        modifiedTradeIds.push(tr.id)
+        summary.modified += 1
+        await logBasketLegModify(supabase, {
+          userId,
+          signalId,
+          brokerAccountId,
+          status: 'skipped',
+          tradeId: tr.id,
+          ticket,
+          legIndex: i + 1,
+          brokerSymbol: tr.symbol,
+          targetSl: clamped.args.stoploss ?? 0,
+          targetTp: clamped.args.takeprofit ?? 0,
+          skipReason: 'already_synced_on_broker',
+        })
+        continue
+      }
+      summary.failed += 1
       legErrors.push({
         trade_id: tr.id,
         ticket,

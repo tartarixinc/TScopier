@@ -59,7 +59,7 @@ function mergePlanImmediateOrders(plan) {
  * immediate `plan.orders`, so we never clone the last immediate order's TP onto extras.
  */
 function buildPerLegStopTargets(args) {
-    const { plan, parsed, openLegCount, tpLots } = args;
+    const { plan, parsed, openLegCount, totalPlannedLegCount, immediateLegCount, tpLots } = args;
     const n = Math.max(0, openLegCount);
     if (n === 0)
         return [];
@@ -78,14 +78,18 @@ function buildPerLegStopTargets(args) {
             .map(o => o.takeprofit)
             .filter(tp => typeof tp === 'number' && Number.isFinite(tp) && tp > 0);
     }
-    const tpPrices = (0, tpBucketDistribution_1.buildDistributedPerLegTakeProfits)({
-        openLegCount: n,
-        finalTps,
-        tpLots,
-    });
-    return tpPrices.map(tp => ({
+    const immCount = Math.max(0, immediateLegCount ?? fromPlan.length);
+    const total = Math.max(n, totalPlannedLegCount ?? n);
+    const rangeCount = Math.max(0, total - immCount);
+    return Array.from({ length: n }, (_, i) => ({
         stoploss: sl,
-        takeprofit: tp,
+        takeprofit: (0, tpBucketDistribution_1.takeProfitForSplitBasketLeg)({
+            legIndex: i,
+            immediateLegCount: immCount,
+            rangeLegCount: rangeCount,
+            finalTps,
+            tpLots,
+        }),
     }));
 }
 /** When false, entry follow-ups still use legacy reply/thread merge linking. */

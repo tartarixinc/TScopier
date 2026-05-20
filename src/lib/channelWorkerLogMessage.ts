@@ -131,6 +131,12 @@ function translateBrokerError(message: string, cw: ChannelWorkerTranslations): s
   if (ticket) return interpolate(cw.errorTicketNotFound, { ticket: ticket[1] })
   const sym = message.match(/symbol not found:\s*([A-Z0-9._#+]+)/i)
   if (sym) return interpolate(cw.errorSymbolNotFound, { symbol: sym[1]!.toUpperCase() })
+  if (/not connected/i.test(message) || /broker session is not connected/i.test(message)) {
+    return cw.errorBrokerNotConnected
+  }
+  if (/already\s+have\s+(this\s+)?parameters/i.test(message)) {
+    return cw.errorStopsAlreadySet
+  }
   return message
 }
 
@@ -260,6 +266,14 @@ export function channelWorkerLogMessage(row: ChannelWorkerLogRow, cw: ChannelWor
   const parsed = getSignalParsedFromLog(row)
   const forInstr = forInstrument(instr, cw)
   const err = errSuffix(row, cw)
+
+  if (logAction === 'dispatch_skipped') {
+    const reason = translateSkipReason(
+      String(payload.skip_reason ?? row.error_message ?? cw.notPlaced),
+      cw,
+    )
+    return interpolate(cw.dispatchSkipped, { reason })
+  }
 
   if (logAction === 'pipeline_parse_dispatch') {
     if (status === 'attempt') {

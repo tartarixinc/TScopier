@@ -4,7 +4,9 @@ exports.CweCloseMonitor = void 0;
 exports.isCweTriggered = isCweTriggered;
 const metatraderapi_1 = require("./metatraderapi");
 const mtApiByAccount_1 = require("./mtApiByAccount");
-const TICK_INTERVAL_MS = 1500;
+const monitorIdleGate_1 = require("./monitorIdleGate");
+const ACTIVE_MS = (0, monitorIdleGate_1.monitorActiveIntervalMs)('CWE_CLOSE_TICK_MS', 1500);
+const IDLE_MS = (0, monitorIdleGate_1.monitorIdleIntervalMs)('CWE_CLOSE_IDLE_MS', 60000);
 /**
  * Pure trigger check. Exported so the unit test can lock the
  * direction-aware comparison without spinning up a Supabase client.
@@ -26,7 +28,7 @@ function isCweTriggered(direction, threshold, bid, ask) {
 class CweCloseMonitor {
     constructor(supabase) {
         this.supabase = supabase;
-        this.timer = null;
+        this.loop = null;
         this.ticking = false;
         this.firstTickLogged = false;
         /** Heartbeat: log one summary line every ~30s (20 ticks × 1.5s) when there
@@ -35,28 +37,38 @@ class CweCloseMonitor {
         this.quietTicks = 0;
     }
     start() {
-        if (this.timer)
+        if (this.loop)
             return;
         if (!(0, metatraderapi_1.hasMetatraderApiConfigured)()) {
             console.warn('[cweCloseMonitor] MT4API_BASIC_USER/PASSWORD missing — close-worse-entries monitor disabled');
             return;
         }
-        this.timer = setInterval(() => {
-            if (this.ticking)
-                return;
-            this.ticking = true;
-            this.tick()
-                .catch(err => {
-                console.error('[cweCloseMonitor] tick error:', err instanceof Error ? err.message : String(err));
-            })
-                .finally(() => { this.ticking = false; });
-        }, TICK_INTERVAL_MS);
-        console.log(`[cweCloseMonitor] started (interval=${TICK_INTERVAL_MS}ms)`);
+        this.loop = (0, monitorIdleGate_1.startMonitorLoop)({
+            name: 'cweCloseMonitor',
+            supabase: this.supabase,
+            activeIntervalMs: ACTIVE_MS,
+            idleIntervalMs: IDLE_MS,
+            hasWork: sb => (0, monitorIdleGate_1.hasWorkOnShard)(sb, 'trades', q => q.eq('status', 'open').not('cwe_close_price', 'is', null)),
+            tick: () => this.runTick(),
+        });
+        console.log(`[cweCloseMonitor] started active=${ACTIVE_MS}ms idle=${IDLE_MS}ms`);
     }
     stop() {
-        if (this.timer) {
-            clearInterval(this.timer);
-            this.timer = null;
+        this.loop?.stop();
+        this.loop = null;
+    }
+    getLoopHandle() {
+        return this.loop;
+    }
+    async runTick() {
+        if (this.ticking)
+            return;
+        this.ticking = true;
+        try {
+            await this.tick();
+        }
+        finally {
+            this.ticking = false;
         }
     }
     async tick() {
@@ -65,12 +77,15 @@ class CweCloseMonitor {
         // Pull every open trade that has a CWE close threshold pinned to it.
         // The partial index `trades_cwe_open_idx` makes this a constant-time
         // probe even with millions of historical trades on the table.
-        const { data, error } = await this.supabase
+        const tradesQ = await (0, monitorIdleGate_1.applyShardToQuery)(this.supabase, this.supabase
             .from('trades')
             .select('id,user_id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,lot_size,cwe_close_price')
             .eq('status', 'open')
             .not('cwe_close_price', 'is', null)
-            .limit(500);
+            .limit(500));
+        if (!tradesQ)
+            return;
+        const { data, error } = await tradesQ;
         if (error) {
             console.error('[cweCloseMonitor] select failed:', error.message);
             return;

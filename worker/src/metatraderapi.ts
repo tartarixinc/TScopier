@@ -11,10 +11,15 @@ import { ingestMtHistoryRows, type MtHistoryProfile } from './mtTradeFields'
 const DEFAULT_MT5_BASE = 'https://mt5.mt4api.dev'
 const DEFAULT_MT4_BASE = 'https://mt4.mt4api.dev'
 
+const MT4API_HTTP_CONNECTIONS = Math.max(
+  8,
+  Math.min(512, Number(process.env.MT4API_HTTP_CONNECTIONS ?? 128)),
+)
+
 const KEEP_ALIVE_AGENT = new Agent({
   keepAliveTimeout: 60_000,
   keepAliveMaxTimeout: 600_000,
-  connections: 32,
+  connections: MT4API_HTTP_CONNECTIONS,
   pipelining: 1,
 })
 
@@ -418,6 +423,14 @@ export function isMtSessionGoneMessage(message: string): boolean {
   )
 }
 
+/** OrderSend/CheckConnect rejected because the MT terminal session is offline. */
+export function isBrokerDisconnectedMessage(message: string): boolean {
+  const m = message.trim().toLowerCase()
+  if (!m) return false
+  if (isMtSessionGoneMessage(message)) return true
+  return m.includes('not connected') || m.includes('broker session is not connected')
+}
+
 export function isMtSessionGoneError(err: unknown): boolean {
   if (err instanceof MetatraderApiError) return isMtSessionGoneMessage(err.message)
   if (err instanceof Error) return isMtSessionGoneMessage(err.message)
@@ -605,6 +618,28 @@ export class MetatraderApiClient {
       }
       const msg = second instanceof Error ? second.message : String(second)
       console.warn(`[metatraderapi] keepSessionAlive failed id=${id}: ${msg}`)
+      return false
+    }
+  }
+
+  /**
+   * CheckConnect alone can report "connected" while OrderSend still fails with
+   * "Not connected (:login)". Confirm the terminal can serve trading APIs.
+   */
+  async verifyTradingReady(id: string): Promise<boolean> {
+    if (!await this.keepSessionAlive(id)) return false
+    try {
+      const summary = await this.accountSummary(id)
+      const hasSummary =
+        summary != null
+        && (summary.balance != null || summary.equity != null || summary.currency)
+      if (!hasSummary) return false
+      await this.openedOrders(id)
+      return true
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (isBrokerDisconnectedMessage(msg) || isMtSessionGoneError(err)) return false
+      console.warn(`[metatraderapi] verifyTradingReady failed id=${id}: ${msg}`)
       return false
     }
   }

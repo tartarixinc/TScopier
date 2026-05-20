@@ -7,8 +7,8 @@ Telegram allows **exactly one** active connection per `telegram_sessions` auth k
 | Service type | Replicas | Scale lever |
 |--------------|----------|-------------|
 | `listener-shard-*` | **1** per shard | Add shard services (`WORKER_SHARD_ID` / `WORKER_SHARD_COUNT`) |
-| `trade-worker` / `trade-entry` | 2–N | Horizontal replicas (no Telegram client) |
-| `trade-mgmt` | 1–N | Management + reconcile monitors |
+| `trade-entry-shard-*` | **1** per shard index | Add trade shards (`WORKER_SHARD_ID` + matching `TRADE_WORKER_SHARD_URLS` on listener) |
+| `trade-mgmt-shard-*` | **1** per shard index | Same hash partition as trade entry |
 | `backtest-worker` | 0–2 | Bursty history sync only |
 | Monolith (`WORKER_ROLE=all`) | **1** | Early commercial only |
 
@@ -25,6 +25,11 @@ WORKER_SHARD_COUNT=1
 WORKER_INTERNAL_TOKEN=<same secret as trade workers>
 TRADE_WORKER_URL=https://your-trade-entry.up.railway.app
 TRADE_MGMT_WORKER_URL=https://your-trade-mgmt.up.railway.app
+# Optional: N trade entry shards (comma-separated, index = WORKER_SHARD_ID)
+# TRADE_WORKER_SHARD_URLS=https://trade-shard-0.up.railway.app,https://trade-shard-1.up.railway.app
+# TRADE_WORKER_SHARD_COUNT=2
+# TRADE_SIGNAL_PUSH_MAX_ATTEMPTS=3
+# TRADE_SIGNAL_PUSH_RETRY_BASE_MS=75
 TELEGRAM_SHUTDOWN_DRAIN_MS=8000
 WORKER_HEALTH_STALE_MS=180000
 WORKER_LEASE_RENEW_INTERVAL_MS=20000
@@ -40,25 +45,31 @@ WORKER_SESSION_LEASE_TTL_MS=45000
 
 ```env
 WORKER_ROLE=trade_entry
+WORKER_SHARD_ID=0
+WORKER_SHARD_COUNT=1
 WORKER_REQUIRE_TELEGRAM_LIVE_FOR_TRADES=true
 WORKER_INTERNAL_TOKEN=<shared secret>
+EXECUTOR_REALTIME_SIGNALS=false
 ```
 
-- **Replicas:** start with **1** until you confirm no duplicate `order_send` logs per signal. With 2+ replicas, each used to subscribe to Supabase Realtime and could **double-execute** the same signal (in-memory dedupe is per process). Default: `EXECUTOR_REALTIME_SIGNALS=false` on split roles; listener push is primary, sweep is fallback.
-- Executes **buy/sell** only; high-priority queue drains before management backlog.
-- Monitors: virtual pending, CWE close, partial TP, signal entry pending.
+- **Replicas:** one process per **shard index** (`WORKER_SHARD_ID=0..N-1`). Do not run two containers with the same shard id.
+- Executes **buy/sell** only; listener HTTP push is primary, idle-aware sweep is fallback.
+- Monitors: virtual pending, CWE close, partial TP, signal entry pending, broker heartbeat (shard-scoped).
 - **Health:** `GET /health`; **dispatch:** `POST /internal/dispatch-signal` with `x-internal-token`.
-- Startup log must show `realtime=false` on trade_entry unless you intentionally enabled it on a **single** replica.
 
 ### 3. Trade management (`WORKER_ROLE=trade_mgmt`) — optional split
 
 ```env
 WORKER_ROLE=trade_mgmt
+WORKER_SHARD_ID=0
+WORKER_SHARD_COUNT=1
 WORKER_INTERNAL_TOKEN=<shared secret>
+EXECUTOR_REALTIME_SIGNALS=false
 ```
 
+- Same sharding env as trade entry — each mgmt shard handles management for its user partition.
 - Handles **close / modify / breakeven / close worse entries**, etc.
-- Monitors: basket SL/TP reconcile, auto-management, trailing stop, news filter, broker connection.
+- Monitors: basket SL/TP reconcile, auto-management, trailing stop, news filter.
 
 ### 4. Trade combined (`WORKER_ROLE=trade`)
 
@@ -108,7 +119,39 @@ Use external uptime checks on this URL for production paging.
 
 Assign users with `shard = hash(user_id) % WORKER_SHARD_COUNT`. Each listener service sets `WORKER_SHARD_ID` to its index (0 … N-1).
 
+**Trade workers** use the same hash: set `WORKER_SHARD_ID` / `WORKER_SHARD_COUNT` on each trade service so monitors and `TradeExecutor` only query users on that shard. On the **listener**, set `TRADE_WORKER_SHARD_URLS` to a comma-separated list of trade-entry public URLs (same order as shard ids). Listener push routes `POST /internal/dispatch-signal` to `shardUrls[hash(user_id) % N]`.
+
+| Service | `WORKER_SHARD_ID` | `WORKER_SHARD_COUNT` | Notes |
+|---------|-------------------|----------------------|-------|
+| listener-shard-0 | 0 | N | `TRADE_WORKER_SHARD_URLS` lists all trade entry URLs |
+| trade-entry-shard-0 | 0 | N | Monitors + executor scoped to shard 0 users |
+| trade-entry-shard-1 | 1 | N | Same image, different env |
+
 Apply migration `20260520120000_worker_session_leases.sql` before enabling split deploys.
+
+Apply scale migrations before growth push:
+
+- `20260521100000_security_hardening_and_indexes.sql` — hot-path indexes + RPC lockdown
+- `20260521110000_trade_execution_logs_batch_prune.sql` — drops per-insert log prune trigger; worker calls `prune_all_trade_execution_logs` on a schedule
+
+## Scale / idle polling (Phase 1)
+
+Worker monitors use **idle-aware backoff**: a cheap `EXISTS` probe runs first; when no pending legs / open auto-BE / trail rows exist, the monitor sleeps at the **idle** interval (default 60s) instead of polling every 1.5s. Supabase Realtime on work tables (`range_pending_legs`, `signals`, `trades`, …) **pokes** monitors awake when new work arrives (Phase 3 hybrid — safety sweep still runs on idle interval).
+
+Tune via env (see `worker/.env.example`):
+
+| Monitor | Active (default) | Idle (default) |
+|---------|------------------|----------------|
+| virtual pending / partial TP / auto-mgmt / trail / CWE / signal entry | 1500ms | 60000ms |
+| basket reconcile | 15000ms | 120000ms |
+| executor parsed sweep | 3000ms | 60000ms |
+| broker heartbeat | 15000ms | 120000ms |
+
+**`connection_status`** is written only by the worker (`brokerConnectionMonitor`, session-down paths), debounced to at most once per 60s per broker when status unchanged. Edge `check` and frontend health polls are read-only for DB status (local UI state only).
+
+**`trade_execution_logs`** retention runs every 10 minutes via worker RPC — not on every INSERT.
+
+Expected idle DB load drop: **~60–80%** vs fixed 1.5s global polls.
 
 ## Low-latency path (split deploy)
 
@@ -137,6 +180,10 @@ sequenceDiagram
 5. **No market `/Quote` on live path** — Clamp from cached `SymbolParams`; pip/channel stops applied via `OrderModify` post-fill.
 6. **Concurrent queue drain** — `EXECUTOR_MAX_CONCURRENT_SIGNALS` (default **4**) for sweep/realtime/management.
 7. **Lease gate cache** — `WORKER_LEASE_GATE_CACHE_MS` (default **8000**).
+8. **MT HTTP pool** — `MT4API_HTTP_CONNECTIONS` (default **128**) per MT4/MT5 host; raise for burst copy at scale.
+9. **Broker keepalive** — `TradeExecutor.sessionHeartbeatTick` pings cached sessions; `BrokerConnectionMonitor` handles reconnect/status only (no duplicate heartbeat loop).
+
+**Staging sharding pilot:** see [`docs/staging-shard-fleet.md`](staging-shard-fleet.md). **Load tests:** [`scripts/load/README.md`](../scripts/load/README.md). **Latency SQL:** [`scripts/diagnostics/pipeline_latency.sql`](../scripts/diagnostics/pipeline_latency.sql).
 
 ### Diagnosing slow execution
 
@@ -216,6 +263,8 @@ Redeploy **Trade Entry** and **`range-pending-sweep`** after guard changes.
 |-------|--------|
 | `TRADE_WORKER_URL` = **Trade Entry** public URL (https, no trailing slash) | **Listener** service only |
 | `TRADE_MGMT_WORKER_URL` = **Trade Management** URL | **Listener** only |
+| `TRADE_WORKER_SHARD_URLS` = comma-separated trade entry URLs (shard 0, 1, …) when using N trade shards | **Listener** only |
+| Each trade service: `WORKER_SHARD_ID` matches its index in `TRADE_WORKER_SHARD_URLS`; `WORKER_SHARD_COUNT` = N | **Trade Entry / Trade Mgmt** |
 | `WORKER_URL` is **not** used for copier execution (telegram-auth / backtest only) | Supabase Edge secrets |
 | Old **`WORKER_ROLE=trade`** service is **stopped/deleted** — if it still runs, it duplicates Entry + Management | Railway |
 | Trade Entry logs: `started mode=entry … realtime=false` | Trade Entry deploy logs |

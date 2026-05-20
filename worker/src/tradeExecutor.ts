@@ -2,6 +2,8 @@ import { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js'
 import {
   getMetatraderApi,
   hasMetatraderApiConfigured,
+  isBrokerDisconnectedMessage,
+  MT_SESSION_EXPIRED_HINT,
   mtPlatformFrom,
   MetatraderApiClient,
   MtOperation,
@@ -45,7 +47,16 @@ import {
   parsedAction,
   signalMatchesExecutorMode,
 } from './tradeSignalActions'
-import { workerConfig } from './workerConfig'
+import { workerConfig, userBelongsToShard } from './workerConfig'
+import { writeBrokerConnectionStatus } from './brokerConnectionStatus'
+import {
+  applyShardToQuery,
+  hasWorkOnShard,
+  monitorActiveIntervalMs,
+  monitorIdleIntervalMs,
+  startMonitorLoop,
+  type MonitorLoopHandle,
+} from './monitorIdleGate'
 import {
   isChannelManagementBlocked,
   isOppositeSignalCloseBlocked,
@@ -116,6 +127,7 @@ import {
 } from './managementPendingLegs'
 import { parsePipelineTimestamps, pipelineSummaryPayload, type PipelineTimestamps } from './pipelineTimestamps'
 import { applyPostFillFollowUp, type PostFillTradeLeg } from './postFillFollowUp'
+import { isBenignOrderModifyError } from './orderModifyBenign'
 import { invalidateChannelParseCache } from './channelKeywordsCache'
 
 /** When true (default), channel-attached signals only execute if MTProto is connected in this process. */
@@ -247,10 +259,8 @@ const SESSION_PING_MIN_INTERVAL_MS = Math.max(
   5_000,
   Math.min(120_000, Number(process.env.BROKER_SESSION_PING_MIN_INTERVAL_MS ?? BROKER_SESSION_HEARTBEAT_MS)),
 )
-const EXECUTOR_PARSED_SWEEP_MS = Math.max(
-  1_500,
-  Math.min(60_000, Number(process.env.EXECUTOR_PARSED_SWEEP_MS ?? 3_000)),
-)
+const EXECUTOR_PARSED_SWEEP_MS = monitorActiveIntervalMs('EXECUTOR_PARSED_SWEEP_MS', 3_000)
+const EXECUTOR_SWEEP_IDLE_MS = monitorIdleIntervalMs('EXECUTOR_SWEEP_IDLE_MS', 60_000)
 /** Sweep + Realtime replay window; older `parsed` rows are not re-executed (live dispatch exempt). */
 const EXECUTOR_REPLAY_MAX_AGE_MS = Math.max(
   60_000,
@@ -519,7 +529,7 @@ function brokerOrderOpenMs(o: Record<string, unknown>): number | null {
 }
 
 export class TradeExecutor {
-  private timer: NodeJS.Timeout | null = null
+  private sweepLoop: MonitorLoopHandle | null = null
   /** Cancels TSCopier broker pendings past `pending_expiry_hours` (1–24) when env enabled. */
   private brokerPendingSweepTimer: NodeJS.Timeout | null = null
   private sessionHeartbeatTimer: NodeJS.Timeout | null = null
@@ -540,6 +550,8 @@ export class TradeExecutor {
   /** Cached channel rows keyed by `telegram_channels.id` — refreshed on demand. */
   private channelKeywordsCache = new Map<string, { keywords: ChannelKeywords | null; loadedAt: number }>()
   private sessionPingAt = new Map<string, number>()
+  /** After OrderSend "Not connected", block re-trading until user reconnects. */
+  private sessionOrderBlocked = new Set<string>()
   constructor(
     private readonly supabase: SupabaseClient,
     private readonly sessionManager?: UserSessionManager,
@@ -565,12 +577,19 @@ export class TradeExecutor {
     this.subscribeSignals()
     this.subscribeBrokers()
     this.subscribeChannelKeywords()
-    // Periodic safety sweep: catch any 'parsed' signals we may have missed
-    // (Realtime drops, restarts). Default 3s (EXECUTOR_PARSED_SWEEP_MS).
-    this.timer = setInterval(() => {
-      this.sweep().catch(err => console.error('[tradeExecutor] sweep failed:', err))
-    }, EXECUTOR_PARSED_SWEEP_MS)
-    this.timer.unref?.()
+    const replaySince = () =>
+      new Date(Date.now() - EXECUTOR_REPLAY_MAX_AGE_MS).toISOString()
+    this.sweepLoop = startMonitorLoop({
+      name: 'tradeExecutorSweep',
+      supabase: this.supabase,
+      activeIntervalMs: EXECUTOR_PARSED_SWEEP_MS,
+      idleIntervalMs: EXECUTOR_SWEEP_IDLE_MS,
+      hasWork: sb =>
+        hasWorkOnShard(sb, 'signals', q =>
+          q.eq('status', 'parsed').gte('created_at', replaySince()),
+        ),
+      tick: () => this.sweep(),
+    })
     this.brokerPendingSweepTimer = setInterval(() => {
       this.sweepExpiredTscopierBrokerPendings().catch(err =>
         console.error('[tradeExecutor] broker pending TTL sweep failed:', err),
@@ -594,8 +613,8 @@ export class TradeExecutor {
   }
 
   stop() {
-    if (this.timer) clearInterval(this.timer)
-    this.timer = null
+    this.sweepLoop?.stop()
+    this.sweepLoop = null
     if (this.brokerPendingSweepTimer) clearInterval(this.brokerPendingSweepTimer)
     this.brokerPendingSweepTimer = null
     if (this.sessionHeartbeatTimer) clearInterval(this.sessionHeartbeatTimer)
@@ -614,11 +633,21 @@ export class TradeExecutor {
     }
   }
 
+  getSweepLoopHandle(): MonitorLoopHandle | null {
+    return this.sweepLoop
+  }
+
   private async loadBrokers() {
-    const { data, error } = await this.supabase
-      .from('broker_accounts')
-      .select('*')
-      .eq('is_active', true)
+    const brokersQ = await applyShardToQuery(
+      this.supabase,
+      this.supabase.from('broker_accounts').select('*').eq('is_active', true),
+    )
+    if (!brokersQ) {
+      this.brokersByUser.clear()
+      this.brokersById.clear()
+      return
+    }
+    const { data, error } = await brokersQ
     if (error) {
       console.error('[tradeExecutor] loadBrokers failed:', error.message)
       return
@@ -676,30 +705,23 @@ export class TradeExecutor {
       if (!uuid || uuid.includes('|')) continue
       const api = this.apiFor(row)
       if (!api) continue
-      const alive = await api.keepSessionAlive(uuid)
-      if (alive) {
-        if (row.connection_status !== 'connected') {
-          await this.supabase
-            .from('broker_accounts')
-            .update({ connection_status: 'connected' })
-            .eq('id', row.id)
-        }
-      } else {
-        console.warn(`[tradeExecutor] session down for broker=${row.id}`)
-        if (row.connection_status !== 'error') {
-          await this.supabase
-            .from('broker_accounts')
-            .update({ connection_status: 'error' })
-            .eq('id', row.id)
-        }
+      const ready = await api.verifyTradingReady(uuid)
+      if (!ready) {
+        console.warn(`[tradeExecutor] session not trading-ready for broker=${row.id}`)
+        row.connection_status = 'error'
+        await writeBrokerConnectionStatus(this.supabase, row.id, 'error')
       }
     }
   }
 
   private upsertBrokerCache(row: BrokerRow) {
+    if (!userBelongsToShard(row.user_id)) return
     const normalized = this.normalizeBrokerRow(row)
     const previous = this.brokersById.get(row.id)
     this.brokersById.set(row.id, normalized)
+    if (normalized.connection_status === 'connected') {
+      this.sessionOrderBlocked.delete(row.id)
+    }
     const userId = row.user_id
     const list = (this.brokersByUser.get(userId) ?? []).filter(b => b.id !== row.id)
     if (normalized.is_active) list.push(normalized)
@@ -733,6 +755,7 @@ export class TradeExecutor {
         (payload: { new?: Record<string, unknown> }) => {
           const row = payload.new as SignalRow | undefined
           if (!row) return
+          if (!userBelongsToShard(row.user_id)) return
           if (!PARSED_STATUSES.has(row.status)) return
           this.enqueueSignal(row, { source: 'realtime' })
         },
@@ -756,8 +779,12 @@ export class TradeExecutor {
           }
           const row = payload.new as BrokerRow | undefined
           if (!row) return
+          if (!userBelongsToShard(row.user_id)) return
           if (row.is_active === false) this.removeBrokerCache(row.id)
-          else this.upsertBrokerCache(row)
+          else {
+            this.upsertBrokerCache(row)
+            void this.pingBrokerSession(row)
+          }
         },
       )
       .subscribe()
@@ -783,14 +810,19 @@ export class TradeExecutor {
 
   private async sweep() {
     const since = new Date(Date.now() - EXECUTOR_REPLAY_MAX_AGE_MS).toISOString()
-    const { data } = await this.supabase
-      .from('signals')
-      .select(
-        'id,user_id,channel_id,parsed_data,status,parent_signal_id,is_modification,created_at,telegram_message_id,reply_to_message_id',
-      )
-      .eq('status', 'parsed')
-      .gte('created_at', since)
-      .limit(50)
+    const signalsQ = await applyShardToQuery(
+      this.supabase,
+      this.supabase
+        .from('signals')
+        .select(
+          'id,user_id,channel_id,parsed_data,status,parent_signal_id,is_modification,created_at,telegram_message_id,reply_to_message_id',
+        )
+        .eq('status', 'parsed')
+        .gte('created_at', since)
+        .limit(50),
+    )
+    if (!signalsQ) return
+    const { data } = await signalsQ
     for (const row of (data ?? []) as SignalRow[]) {
       if (this.inflight.has(row.id)) continue
       if (await this.signalAlreadyHandled(row.id)) {
@@ -966,6 +998,35 @@ export class TradeExecutor {
     }
   }
 
+  /** Visible in Channel Worker when trade dispatch is skipped (no silent failures). */
+  private async logDispatchSkipped(
+    signal: SignalRow,
+    skipReason: string,
+    extra?: Record<string, unknown>,
+  ): Promise<void> {
+    try {
+      await this.supabase.from('trade_execution_logs').insert({
+        user_id: signal.user_id,
+        signal_id: signal.id,
+        action: 'dispatch_skipped',
+        status: 'skipped',
+        error_message: skipReason,
+        request_payload: {
+          skip_reason: skipReason,
+          channel_id: signal.channel_id ?? null,
+          ...extra,
+        },
+      })
+      await this.supabase
+        .from('signals')
+        .update({ status: 'skipped', skip_reason: skipReason })
+        .eq('id', signal.id)
+        .in('status', ['parsed', 'pending'])
+    } catch {
+      /* best-effort */
+    }
+  }
+
   private logPipelineSummaryBackground(
     signal: SignalRow,
     extra?: Record<string, unknown>,
@@ -1115,11 +1176,10 @@ export class TradeExecutor {
           ? await this.sessionManager.canExecuteTelegramCopierTradesAsync(row.user_id)
           : false
         if (!live) {
-          if (String(process.env.WORKER_LOG_TELEGRAM_TRADE_GATE ?? '').toLowerCase() === 'true') {
-            console.log(
-              `[tradeExecutor] skip signal ${row.id} (user ${row.user_id}): telegram listener not live for channel-backed copier`,
-            )
-          }
+          console.warn(
+            `[tradeExecutor] skip signal ${row.id} (user ${row.user_id}): telegram listener not live for channel-backed copier`,
+          )
+          await this.logDispatchSkipped(row, 'telegram_listener_not_live')
           return
         }
       }
@@ -1136,6 +1196,7 @@ export class TradeExecutor {
         console.warn(
           `[tradeExecutor] skip signal ${row.id}: no active broker matches channel=${row.channel_id ?? 'none'} (check Configure Trading channel selection)`,
         )
+        await this.logDispatchSkipped(row, 'no_broker_channel_match')
         return
       }
 
@@ -2040,7 +2101,7 @@ export class TradeExecutor {
         overrideTp: null,
         strictEntryPrefetch: null,
         openedTickets,
-        skipAlreadySynced: false,
+        skipAlreadySynced: true,
       })
     } catch (err) {
       console.warn(
@@ -2732,19 +2793,47 @@ export class TradeExecutor {
     }
   }
 
-  private async ensureBrokerSession(api: MetatraderApiClient, uuid: string, broker: BrokerRow): Promise<boolean> {
+  private async markBrokerSessionDown(broker: BrokerRow, uuid: string, reason: string): Promise<void> {
+    this.sessionPingAt.delete(uuid)
+    this.sessionOrderBlocked.add(broker.id)
+    console.warn(`[tradeExecutor] broker ${broker.id} session down: ${reason}`)
+    broker.connection_status = 'error'
+    await writeBrokerConnectionStatus(this.supabase, broker.id, 'error')
+  }
+
+  private async pingBrokerSession(row: BrokerRow): Promise<void> {
+    const uuid = row.metaapi_account_id
+    if (!isMtUuid(uuid)) return
+    const api = this.apiFor(row)
+    if (!api) return
+    const ready = await api.verifyTradingReady(uuid!)
+    if (ready) {
+      this.sessionPingAt.set(uuid!, Date.now())
+      return
+    }
+    await this.markBrokerSessionDown(row, uuid!, 'verifyTradingReady failed')
+  }
+
+  private async ensureBrokerSession(
+    api: MetatraderApiClient,
+    uuid: string,
+    broker: BrokerRow,
+    opts?: { force?: boolean },
+  ): Promise<boolean> {
+    if (this.sessionOrderBlocked.has(broker.id)) {
+      await this.markBrokerSessionDown(broker, uuid, 'session blocked after prior OrderSend disconnect')
+      return false
+    }
     const now = Date.now()
     const last = this.sessionPingAt.get(uuid) ?? 0
-    if (now - last < SESSION_PING_MIN_INTERVAL_MS) return true
-    const alive = await api.keepSessionAlive(uuid)
-    if (alive) this.sessionPingAt.set(uuid, now)
-    if (alive && broker.connection_status !== 'connected') {
-      void this.supabase
-        .from('broker_accounts')
-        .update({ connection_status: 'connected' })
-        .eq('id', broker.id)
+    if (!opts?.force && now - last < SESSION_PING_MIN_INTERVAL_MS) return true
+    const ready = await api.verifyTradingReady(uuid)
+    if (ready) {
+      this.sessionPingAt.set(uuid, now)
+      return true
     }
-    return alive
+    await this.markBrokerSessionDown(broker, uuid, 'verifyTradingReady failed before OrderSend')
+    return false
   }
 
   private async sendOrder(
@@ -2796,14 +2885,17 @@ export class TradeExecutor {
       && parsedHasExplicitEntryAnchor(parsed)
 
     const [sessionOk, symbol, paramsFromRequested] = await Promise.all([
-      this.ensureBrokerSession(api, uuid, broker),
+      this.ensureBrokerSession(api, uuid, broker, { force: true }),
       this.resolveBrokerSymbol(uuid, requestedSymbol),
       this.getSymbolParams(uuid, requestedSymbol).catch(() => null),
     ])
     if (!sessionOk) {
-      console.warn(
-        `[tradeExecutor] broker ${broker.id} session check failed before order; attempting OrderSend anyway`,
-      )
+      await this.logSendSkipped(signal, broker, 'broker_session_not_connected', {
+        symbol: requestedSymbol,
+        metaapi_account_id: uuid,
+        hint: MT_SESSION_EXPIRED_HINT,
+      })
+      return {}
     }
     if (symbol.toUpperCase() !== requestedSymbol.toUpperCase()) {
       console.log(`[tradeExecutor] symbol resolved broker=${broker.id} ${requestedSymbol} → ${symbol}`)
@@ -3752,6 +3844,9 @@ export class TradeExecutor {
         return true
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
+        if (isBrokerDisconnectedMessage(msg)) {
+          await this.markBrokerSessionDown(broker, uuid, msg)
+        }
         console.error(
           `[tradeExecutor] OrderSend failed signal=${signal.id} broker=${broker.id} leg=${leg.idx + 1}/${totalCount} op=${args.operation} price=${args.price ?? 0}:`,
           msg,
@@ -3879,6 +3974,12 @@ export class TradeExecutor {
     reason: string,
     extra: Record<string, unknown>,
   ): Promise<void> {
+    if (reason === 'broker_session_not_connected') {
+      const uuid = broker.metaapi_account_id
+      if (uuid) {
+        await this.markBrokerSessionDown(broker, uuid, 'broker_session_not_connected')
+      }
+    }
     try {
       await this.supabase.from('trade_execution_logs').insert({
         user_id: signal.user_id,
@@ -4199,20 +4300,22 @@ export class TradeExecutor {
         })
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
+        const benign = isBenignOrderModifyError(msg)
         await this.supabase.from('trade_execution_logs').insert({
           user_id: signal.user_id,
           signal_id: signal.id,
           broker_account_id: broker.id,
           action: `mgmt_${action}`,
-          status: 'failed',
+          status: benign ? 'success' : 'failed',
           request_payload: {
             ticket,
             action,
             basket_anchor_signal_id: trade.signal_id,
             mgmt_scope: replyScoped ? 'reply_basket' : 'channel',
             mgmt_parent_signal_id: signal.parent_signal_id,
+            already_synced: benign || undefined,
           },
-          error_message: msg,
+          error_message: benign ? null : msg,
         })
       }
     }))

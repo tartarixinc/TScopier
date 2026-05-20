@@ -131,7 +131,17 @@ export const channelWorkerFr: ChannelWorkerTranslations = {
     symbol_exempted_from_trading: 'symbole exempté du trading',
     symbol_not_in_whitelist: 'symbole hors liste blanche',
     symbol_excluded: 'symbole exclu',
+    broker_session_not_connected:
+      'courtier non connecté — ouvrez Configuration du compte et utilisez Reconnect pour ce compte',
+    no_broker_channel_match:
+      'aucun compte courtier n\'est lié à ce canal — ouvrez Configuration du compte, onglet Canaux, cochez le canal et enregistrez',
+    telegram_listener_not_live:
+      'écoute Telegram inactive — ouvrez Copier Engine et reconnectez Telegram',
   },
+  dispatchSkipped: 'Signal non copié ({reason}).',
   errorTicketNotFound: 'Ticket {ticket} introuvable',
   errorSymbolNotFound: 'Symbole introuvable : {symbol}',
+  errorBrokerNotConnected:
+    'Courtier non connecté — dans Configuration du compte, utilisez Reconnect et entrez votre mot de passe MT',
+  errorStopsAlreadySet: 'Le SL et le TP étaient déjà définis sur le courtier (aucun changement requis).',
 }

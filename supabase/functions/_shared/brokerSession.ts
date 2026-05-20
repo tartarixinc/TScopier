@@ -92,6 +92,16 @@ export async function reconnectBrokerSession(
       return { ok: false, connection_status: "error", message: MT_SESSION_EXPIRED_HINT }
     }
 
+    const tradingReady = await client.verifyTradingReady(uuid)
+    if (!tradingReady) {
+      await supabase
+        .from("broker_accounts")
+        .update({ connection_status: "error" })
+        .eq("id", broker.id)
+        .eq("user_id", broker.user_id)
+      return { ok: false, connection_status: "error", message: MT_SESSION_EXPIRED_HINT }
+    }
+
     let summary: Awaited<ReturnType<MetatraderApiClient["accountSummary"]>> | null = null
     let lastErr: unknown = null
     for (let i = 0; i < 4; i++) {
@@ -107,21 +117,29 @@ export async function reconnectBrokerSession(
       await new Promise((r) => setTimeout(r, 400 + i * 350))
     }
 
+    if (!summary) {
+      const msg = lastErr instanceof Error ? lastErr.message : "AccountSummary returned no data"
+      await supabase
+        .from("broker_accounts")
+        .update({ connection_status: "error" })
+        .eq("id", broker.id)
+        .eq("user_id", broker.user_id)
+      return { ok: false, connection_status: "error", message: msg }
+    }
+
     const updatePayload: Record<string, unknown> = {
       connection_status: "connected",
       last_synced_at: new Date().toISOString(),
+      last_balance: summary.balance ?? null,
+      last_equity: summary.equity ?? null,
+      last_currency: summary.currency ?? null,
     }
-    if (summary) {
-      updatePayload.last_balance = summary.balance ?? null
-      updatePayload.last_equity = summary.equity ?? null
-      updatePayload.last_currency = summary.currency ?? null
-      if (
-        broker.performance_baseline_balance == null &&
-        summary.balance != null &&
-        Number.isFinite(summary.balance)
-      ) {
-        updatePayload.performance_baseline_balance = summary.balance
-      }
+    if (
+      broker.performance_baseline_balance == null &&
+      summary.balance != null &&
+      Number.isFinite(summary.balance)
+    ) {
+      updatePayload.performance_baseline_balance = summary.balance
     }
 
     await supabase
@@ -129,11 +147,6 @@ export async function reconnectBrokerSession(
       .update(updatePayload)
       .eq("id", broker.id)
       .eq("user_id", broker.user_id)
-
-    if (!summary && lastErr) {
-      const msg = lastErr instanceof Error ? lastErr.message : "AccountSummary returned no data"
-      return { ok: true, connection_status: "connected", message: msg, summary: null }
-    }
 
     return { ok: true, connection_status: "connected", summary }
   } catch (e) {

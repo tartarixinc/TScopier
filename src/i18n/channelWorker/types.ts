@@ -122,7 +122,11 @@ export interface ChannelWorkerTranslations {
   mgmtSkippedGeneric: string
   mgmtSkippedReason: string
 
+  dispatchSkipped: string
+
   skipReasons: Record<string, string>
   errorTicketNotFound: string
   errorSymbolNotFound: string
+  errorBrokerNotConnected: string
+  errorStopsAlreadySet: string
 }

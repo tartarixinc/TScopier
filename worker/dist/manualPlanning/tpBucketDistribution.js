@@ -5,6 +5,8 @@ exports.resolveTpBucketRows = resolveTpBucketRows;
 exports.distributeCountAcrossTpBuckets = distributeCountAcrossTpBuckets;
 exports.buildDistributedPerLegTakeProfits = buildDistributedPerLegTakeProfits;
 exports.expandPerLegTargetsToCount = expandPerLegTargetsToCount;
+exports.takeProfitForPoolLegIndex = takeProfitForPoolLegIndex;
+exports.takeProfitForSplitBasketLeg = takeProfitForSplitBasketLeg;
 exports.takeProfitForLegIndex = takeProfitForLegIndex;
 /** Treat legacy rows without `enabled` as on (matches AccountConfig sanitize). */
 function isTpLotRowEnabled(row) {
@@ -110,15 +112,48 @@ function expandPerLegTargetsToCount(args) {
     });
     return tpPrices.map(tp => ({ stoploss: sl, takeprofit: tp }));
 }
-/** Targets % TP price for a single leg index (0 = oldest open leg). */
-function takeProfitForLegIndex(args) {
+/** Targets % TP price for a single leg index within one pool (instant or range). */
+function takeProfitForPoolLegIndex(args) {
     const prices = buildDistributedPerLegTakeProfits({
-        openLegCount: args.openLegCount,
+        openLegCount: args.poolLegCount,
         finalTps: args.finalTps,
         tpLots: args.tpLots,
     });
-    const i = args.legIndex;
+    const i = args.poolLegIndex;
     if (i < 0 || i >= prices.length)
         return 0;
     return prices[i] ?? 0;
+}
+/**
+ * Targets % for a layered basket: instant legs and range legs each get their own
+ * 50/30/20 (or configured %) split — not one combined pool across both groups.
+ */
+function takeProfitForSplitBasketLeg(args) {
+    const { legIndex, immediateLegCount, rangeLegCount, finalTps, tpLots } = args;
+    if (legIndex < immediateLegCount) {
+        return takeProfitForPoolLegIndex({
+            poolLegIndex: legIndex,
+            poolLegCount: immediateLegCount,
+            finalTps,
+            tpLots,
+        });
+    }
+    const rangeIdx = legIndex - immediateLegCount;
+    if (rangeIdx < 0 || rangeIdx >= rangeLegCount)
+        return 0;
+    return takeProfitForPoolLegIndex({
+        poolLegIndex: rangeIdx,
+        poolLegCount: rangeLegCount,
+        finalTps,
+        tpLots,
+    });
+}
+/** @deprecated Prefer {@link takeProfitForPoolLegIndex} or {@link takeProfitForSplitBasketLeg}. */
+function takeProfitForLegIndex(args) {
+    return takeProfitForPoolLegIndex({
+        poolLegIndex: args.legIndex,
+        poolLegCount: args.openLegCount,
+        finalTps: args.finalTps,
+        tpLots: args.tpLots,
+    });
 }

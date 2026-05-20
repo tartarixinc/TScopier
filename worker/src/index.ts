@@ -15,6 +15,10 @@ import { BasketSlTpReconcileMonitor } from './basketSlTpReconcileMonitor'
 import { NewsTradingMonitor } from './newsTradingMonitor'
 import { BrokerConnectionMonitor } from './brokerConnectionMonitor'
 import { workerConfig } from './workerConfig'
+import { validateListenerTradeShardConfig } from './tradeSignalPush'
+import type { MonitorLoopHandle } from './monitorIdleGate'
+import { subscribeMonitorWorkWake } from './monitorWorkWake'
+import { startTradeLogRetention } from './tradeLogRetention'
 import type { Server } from 'http'
 
 if (!globalThis.WebSocket) {
@@ -32,6 +36,20 @@ let authService: AuthService | null = null
 let tradeExecutor: TradeExecutor | null = null
 
 const monitors: Array<{ stop: () => void }> = []
+const monitorLoops: MonitorLoopHandle[] = []
+let stopLogRetention: (() => void) | null = null
+let stopWorkWake: (() => void) | null = null
+
+function trackMonitor(m: { stop: () => void; getLoopHandle?: () => MonitorLoopHandle | null; getLoopHandles?: () => MonitorLoopHandle[] }) {
+  monitors.push(m)
+  if (m.getLoopHandle) {
+    const h = m.getLoopHandle()
+    if (h) monitorLoops.push(h)
+  }
+  if (m.getLoopHandles) {
+    monitorLoops.push(...m.getLoopHandles())
+  }
+}
 
 function startTradeMonitors() {
   if (workerConfig.runsExecutionMonitors) {
@@ -43,18 +61,16 @@ function startTradeMonitors() {
     cweCloseMonitor.start()
     partialTpMonitor.start()
     signalEntryPendingMonitor.start()
-    monitors.push(
-      virtualPendingMonitor,
-      cweCloseMonitor,
-      partialTpMonitor,
-      signalEntryPendingMonitor,
-    )
+    trackMonitor(virtualPendingMonitor)
+    trackMonitor(cweCloseMonitor)
+    trackMonitor(partialTpMonitor)
+    trackMonitor(signalEntryPendingMonitor)
   }
 
   if (workerConfig.runsTrade) {
     const brokerConnectionMonitor = new BrokerConnectionMonitor(supabase)
     brokerConnectionMonitor.start()
-    monitors.push(brokerConnectionMonitor)
+    trackMonitor(brokerConnectionMonitor)
   }
 
   if (workerConfig.runsManagementMonitors) {
@@ -66,16 +82,24 @@ function startTradeMonitors() {
     autoManagementMonitor.start()
     basketSlTpReconcileMonitor.start()
     newsTradingMonitor.start()
-    monitors.push(
-      trailingStopMonitor,
-      autoManagementMonitor,
-      basketSlTpReconcileMonitor,
-      newsTradingMonitor,
-    )
+    trackMonitor(trailingStopMonitor)
+    trackMonitor(autoManagementMonitor)
+    trackMonitor(basketSlTpReconcileMonitor)
+    trackMonitor(newsTradingMonitor)
   }
+
+  stopLogRetention = startTradeLogRetention(supabase)
 }
 
 async function main() {
+  if (workerConfig.runsListener) {
+    const shardErr = validateListenerTradeShardConfig()
+    if (shardErr) {
+      console.error(`[worker] FATAL: ${shardErr}`)
+      process.exit(1)
+    }
+  }
+
   console.log(
     `[worker] starting role=${workerConfig.role} shard=${workerConfig.shardId}/${workerConfig.shardCount}`
     + ` instance=${workerConfig.instanceId}`,
@@ -90,7 +114,12 @@ async function main() {
     tradeExecutor = new TradeExecutor(supabase, sessionManager)
     sessionManager.setTradeExecutor(tradeExecutor)
     await tradeExecutor.start()
+    const sweepHandle = tradeExecutor.getSweepLoopHandle()
+    if (sweepHandle) monitorLoops.push(sweepHandle)
     startTradeMonitors()
+    if (monitorLoops.length > 0 && !stopWorkWake) {
+      stopWorkWake = subscribeMonitorWorkWake(supabase, monitorLoops)
+    }
     if (!httpServer) {
       httpServer = startTradeHttpServer(sessionManager, tradeExecutor)
     }
@@ -117,6 +146,8 @@ async function main() {
     console.log(`[worker] ${signal} received, shutting down...`)
     httpServer?.close()
     authService?.shutdown()
+    stopWorkWake?.()
+    stopLogRetention?.()
     tradeExecutor?.stop()
     for (const m of monitors) m.stop()
     if (workerConfig.runsListener) {

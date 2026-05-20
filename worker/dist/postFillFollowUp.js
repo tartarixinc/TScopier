@@ -7,6 +7,7 @@ const calendarProvider_1 = require("./newsTrading/calendarProvider");
 const settings_1 = require("./newsTrading/settings");
 const manualStops_1 = require("./manualPlanning/manualStops");
 const manualStops_2 = require("./manualPlanning/manualStops");
+const orderModifyBenign_1 = require("./orderModifyBenign");
 function newsBlackoutPreFillEnabled() {
     const v = String(process.env.EXECUTOR_NEWS_BLACKOUT_PRE_FILL ?? 'false').toLowerCase();
     return v === '1' || v === 'true' || v === 'yes';
@@ -14,6 +15,11 @@ function newsBlackoutPreFillEnabled() {
 async function applyPipAndChannelStops(args) {
     const { api, uuid, signal, parsed, broker, channelKeywords, symbol, params, filledLegs } = args;
     const manual = (broker.manual_settings ?? {});
+    if ((manual.trade_style ?? 'single') === 'multi') {
+        // Multi-trade legs already carry per-bucket TPs from the planner; syncMultiBasketLegTakeProfits
+        // reconciles them. Flattening to tp[0] here caused wrong targets on layered baskets.
+        return;
+    }
     const isBuy = !String(parsed.action ?? '').toLowerCase().includes('sell');
     for (const leg of filledLegs) {
         const entry = leg.entryPrice;
@@ -89,6 +95,8 @@ async function applyPipAndChannelStops(args) {
         }
         catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
+            if ((0, orderModifyBenign_1.isBenignOrderModifyError)(msg))
+                continue;
             console.warn(`[postFillFollowUp] OrderModify stops failed signal=${signal.id} ticket=${leg.ticket}: ${msg}`);
         }
     }

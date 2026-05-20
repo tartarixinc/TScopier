@@ -122,6 +122,20 @@ Deno.serve(async (req: Request) => {
       if (!login) return bad(400, "login required")
       if (!password) return bad(400, "password required")
 
+      const { data: duplicateLogin } = await supabase
+        .from("broker_accounts")
+        .select("id,label")
+        .eq("user_id", userId)
+        .eq("account_login", login)
+        .eq("broker_server", server)
+        .maybeSingle()
+      if (duplicateLogin) {
+        return bad(
+          409,
+          `This MT login is already linked as "${duplicateLogin.label}". Remove that account first or use Reconnect — linking the same login twice causes session conflicts.`,
+        )
+      }
+
       const brokerName = inferBrokerLabel(server)
       const displayLabel = label || `${platform} • ${login}`
       const sessionId = crypto.randomUUID()
@@ -223,18 +237,26 @@ Deno.serve(async (req: Request) => {
       if (!broker) return bad(404, "Broker account not found")
 
       const uuid = String(broker.metaapi_account_id ?? "").trim()
-      if (uuid && !uuid.includes("|")) {
-        try {
-          await mtClient(Deno.env, String(broker.platform ?? "MT5")).disconnect(uuid)
-        } catch { /* swallow — proceed with DB delete */ }
-      }
+      const platform = String(broker.platform ?? "MT5")
 
+      // Remove the row first so the UI/realtime updates immediately; MT disconnect
+      // can hang on a dead session and must not block account removal.
       const { error: delErr } = await supabase
         .from("broker_accounts")
         .delete()
         .eq("id", brokerId)
         .eq("user_id", userId)
       if (delErr) return bad(500, delErr.message)
+
+      if (uuid && !uuid.includes("|")) {
+        const client = mtClient(Deno.env, platform)
+        void Promise.race([
+          client.disconnect(uuid),
+          new Promise<void>((_, reject) => {
+            setTimeout(() => reject(new Error("disconnect timeout")), 8_000)
+          }),
+        ]).catch(() => { /* best-effort */ })
+      }
 
       return Response.json({ ok: true }, { headers: corsHeaders })
     }
@@ -269,7 +291,10 @@ Deno.serve(async (req: Request) => {
       const client = mtClient(Deno.env, String(broker.platform ?? "MT5"))
 
       try {
-        try { await client.keepSessionAlive(uuid) } catch { /* swallow */ }
+        const ready = await client.verifyTradingReady(uuid)
+        if (!ready) {
+          throw new MetatraderApiError("Broker session is not connected", 502)
+        }
         let summary: Awaited<ReturnType<typeof client.accountSummary>> | null = null
         let lastErr: unknown = null
         for (let i = 0; i < 3; i++) {
@@ -363,41 +388,6 @@ Deno.serve(async (req: Request) => {
           { headers: corsHeaders },
         )
       } catch (e) {
-        let sessionAlive = false
-        try {
-          sessionAlive = await client.keepSessionAlive(uuid)
-        } catch { /* ignore */ }
-        if (sessionAlive) {
-          const cachedBalance = broker?.last_balance != null ? Number(broker.last_balance) : null
-          const cachedEquity = broker?.last_equity != null ? Number(broker.last_equity) : null
-          return Response.json(
-            {
-              ok: true,
-              summary: {
-                balance: cachedBalance,
-                equity: cachedEquity,
-                currency: broker?.last_currency ?? null,
-              },
-              open_positions: null,
-              performance_baseline_balance: broker?.performance_baseline_balance ?? null,
-              day_start_balance:
-                broker?.day_start_balance != null ? Number(broker.day_start_balance) : null,
-              day_start_balance_on: broker?.day_start_balance_on
-                ? String(broker.day_start_balance_on).slice(0, 10)
-                : null,
-              todays_profit_from_balance: accountTodaysProfitFromBalance(
-                cachedBalance,
-                broker?.day_start_balance != null ? Number(broker.day_start_balance) : null,
-                broker?.day_start_balance_on
-                  ? String(broker.day_start_balance_on).slice(0, 10)
-                  : null,
-                calendarDay,
-              ),
-              stale: true,
-            },
-            { headers: corsHeaders },
-          )
-        }
         await supabase
           .from("broker_accounts")
           .update({ connection_status: "error" })
@@ -454,21 +444,10 @@ Deno.serve(async (req: Request) => {
       const client = mtClient(Deno.env, String(broker.platform ?? "MT5"))
 
       try {
-        const alive = await client.keepSessionAlive(uuid)
-        if (!alive) throw new Error("Broker session is not connected")
-        await client.checkConnect(uuid)
-        await supabase
-          .from("broker_accounts")
-          .update({ connection_status: "connected" })
-          .eq("id", brokerId)
-          .eq("user_id", userId)
+        const ready = await client.verifyTradingReady(uuid)
+        if (!ready) throw new Error("Broker session is not connected")
         return Response.json({ ok: true, result: "connected" }, { headers: corsHeaders })
       } catch (e) {
-        await supabase
-          .from("broker_accounts")
-          .update({ connection_status: "error" })
-          .eq("id", brokerId)
-          .eq("user_id", userId)
         const status = e instanceof MetatraderApiError ? e.status : 502
         const msg = e instanceof Error ? e.message : "CheckConnect failed"
         return bad(status >= 400 && status < 600 ? status : 502, msg)

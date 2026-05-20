@@ -15,6 +15,14 @@ import {
   type SymbolParams,
 } from './metatraderapi'
 import { apiForMetaapiAccount, loadPlatformByMetaapiId, type PlatformByMetaapiId } from './mtApiByAccount'
+import {
+  applyShardToQuery,
+  hasWorkOnShard,
+  monitorActiveIntervalMs,
+  monitorIdleIntervalMs,
+  startMonitorLoop,
+  type MonitorLoopHandle,
+} from './monitorIdleGate'
 
 interface AutoBeTradeRow {
   id: string
@@ -50,7 +58,8 @@ interface BrokerRow {
   manual_settings: Record<string, unknown> | null
 }
 
-const TICK_INTERVAL_MS = 1_500
+const ACTIVE_MS = monitorActiveIntervalMs('AUTO_MANAGEMENT_TICK_MS', 1_500)
+const IDLE_MS = monitorIdleIntervalMs('AUTO_MANAGEMENT_IDLE_MS', 60_000)
 const SYMBOL_CACHE_TTL_MS = 5 * 60_000
 
 type SymbolCacheEntry = {
@@ -61,7 +70,7 @@ type SymbolCacheEntry = {
 }
 
 export class AutoManagementMonitor {
-  private timer: NodeJS.Timeout | null = null
+  private loop: MonitorLoopHandle | null = null
   private platformByUuid: PlatformByMetaapiId = new Map()
   private ticking = false
   private firstTickLogged = false
@@ -71,43 +80,61 @@ export class AutoManagementMonitor {
   constructor(private readonly supabase: SupabaseClient) {}
 
   start() {
-    if (this.timer) return
+    if (this.loop) return
     if (!hasMetatraderApiConfigured()) {
       console.warn('[autoManagementMonitor] MT4API_BASIC_USER/PASSWORD missing — auto-management monitor disabled')
       return
     }
-    this.timer = setInterval(() => {
-      if (this.ticking) return
-      this.ticking = true
-      this.tick()
-        .catch(err => {
-          console.error('[autoManagementMonitor] tick error:', err instanceof Error ? err.message : String(err))
-        })
-        .finally(() => { this.ticking = false })
-    }, TICK_INTERVAL_MS)
-    console.log(`[autoManagementMonitor] started (interval=${TICK_INTERVAL_MS}ms)`)
+    this.loop = startMonitorLoop({
+      name: 'autoManagementMonitor',
+      supabase: this.supabase,
+      activeIntervalMs: ACTIVE_MS,
+      idleIntervalMs: IDLE_MS,
+      hasWork: sb => hasWorkOnShard(sb, 'trades', q =>
+        q.eq('status', 'open').not('auto_be_mode', 'is', null).is('auto_be_applied_at', null),
+      ),
+      tick: () => this.runTick(),
+    })
+    console.log(`[autoManagementMonitor] started active=${ACTIVE_MS}ms idle=${IDLE_MS}ms`)
   }
 
   stop() {
-    if (this.timer) {
-      clearInterval(this.timer)
-      this.timer = null
+    this.loop?.stop()
+    this.loop = null
+  }
+
+  getLoopHandle(): MonitorLoopHandle | null {
+    return this.loop
+  }
+
+  private async runTick(): Promise<void> {
+    if (this.ticking) return
+    this.ticking = true
+    try {
+      await this.tick()
+    } finally {
+      this.ticking = false
     }
   }
 
   private async tick(): Promise<void> {
     if (!hasMetatraderApiConfigured()) return
 
-    const { data, error } = await this.supabase
-      .from('trades')
-      .select(
-        'id,user_id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,entry_price,sl,tp,lot_size,'
-        + 'auto_be_mode,auto_be_trigger_value,auto_be_tp_index,auto_be_type,auto_be_offset_pips,auto_be_risk_sl',
-      )
-      .eq('status', 'open')
-      .not('auto_be_mode', 'is', null)
-      .is('auto_be_applied_at', null)
-      .limit(500)
+    const tradesQ = await applyShardToQuery(
+      this.supabase,
+      this.supabase
+        .from('trades')
+        .select(
+          'id,user_id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,entry_price,sl,tp,lot_size,'
+          + 'auto_be_mode,auto_be_trigger_value,auto_be_tp_index,auto_be_type,auto_be_offset_pips,auto_be_risk_sl',
+        )
+        .eq('status', 'open')
+        .not('auto_be_mode', 'is', null)
+        .is('auto_be_applied_at', null)
+        .limit(500),
+    )
+    if (!tradesQ) return
+    const { data, error } = await tradesQ
     if (error) {
       console.error('[autoManagementMonitor] select failed:', error.message)
       return
