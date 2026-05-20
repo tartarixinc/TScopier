@@ -513,6 +513,11 @@ export interface CopierEnginePageTranslations {
   profileEntry: string
   profileTp: string
   profileSl: string
+  connectedBrokers: string
+  connectToBroker: string
+  addBrokerConnectionAria: string
+  noBrokersYet: string
+  connectBrokerInConfig: string
   keywordsTitle: string
   keywordsClose: string
   keywordsSave: string

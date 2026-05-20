@@ -36,7 +36,14 @@ function planSinglePartialTps(args) {
     const bucketCount = Math.min(bucketRows.length, finalTps.length);
     const pairedTps = finalTps.slice(0, bucketCount);
     const pairedBuckets = bucketRows.slice(0, bucketCount);
-    const brokerTp = pairedTps[bucketCount - 1] ?? null;
+    let brokerTpIndex = bucketCount - 1;
+    while (brokerTpIndex > 0) {
+        const pct = Number(pairedBuckets[brokerTpIndex]?.percent);
+        if (Number.isFinite(pct) && pct > 0)
+            break;
+        brokerTpIndex -= 1;
+    }
+    const brokerTp = pairedTps[brokerTpIndex] ?? null;
     if (bucketCount < 2 || brokerTp == null) {
         return { brokerTp, partials: [] };
     }

@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.symbolsCompatibleForBasket = symbolsCompatibleForBasket;
 exports.tryApplyBasketFollowUpToNewFill = tryApplyBasketFollowUpToNewFill;
+const normalizeManualSettings_1 = require("./manualPlanning/normalizeManualSettings");
 const tpBucketDistribution_1 = require("./manualPlanning/tpBucketDistribution");
 function isParameterRefreshParsed(parsed) {
     if (!parsed)
@@ -52,7 +53,7 @@ async function tryApplyBasketFollowUpToNewFill(supabase, api, args) {
             .select('manual_settings')
             .eq('id', args.brokerAccountId)
             .maybeSingle();
-        tpLots = (br?.manual_settings ?? {}).tp_lots;
+        tpLots = (0, normalizeManualSettings_1.normalizeManualSettingsForExecution)(br?.manual_settings).tp_lots;
     }
     const { data: openLegs } = await supabase
         .from('trades')

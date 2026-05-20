@@ -1,9 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Radio, Trash2, RefreshCw, CircleAlert as AlertCircle, ChevronDown } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { Radio, Trash2, RefreshCw, CircleAlert as AlertCircle, ChevronDown, Plus } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useT } from '../../context/LocaleContext'
 import { interpolate } from '../../i18n/interpolate'
+import {
+  brokersMatchingChannel,
+  brokersNotMatchingChannel,
+  connectChannelToBroker,
+  getBrokerDisplayLabel,
+  reconcileBrokerChannelLinks,
+} from '../../lib/brokerChannelLink'
 import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
 import { Toggle } from '../../components/ui/Toggle'
@@ -20,7 +28,7 @@ import {
   setCachedTgChannels,
   type TgChannelListItem,
 } from '../../lib/telegramChannelsCache'
-import type { ChannelKeywords, ChannelSignalProfile, TelegramChannel } from '../../types/database'
+import type { BrokerAccount, ChannelKeywords, ChannelSignalProfile, TelegramChannel } from '../../types/database'
 
 const DEFAULT_CHANNEL_KEYWORDS: ChannelKeywords = {
   signal: {
@@ -173,6 +181,9 @@ export function CopierEnginePage() {
   const { user, session } = useAuth()
   const initialTgCache = user?.id ? getCachedTgChannels(user.id) : null
   const [channels, setChannels] = useState<TelegramChannel[]>([])
+  const [brokers, setBrokers] = useState<BrokerAccount[]>([])
+  const [connectMenuChannelId, setConnectMenuChannelId] = useState<string | null>(null)
+  const [connectingBrokerId, setConnectingBrokerId] = useState<string | null>(null)
   const [channelProfiles, setChannelProfiles] = useState<Record<string, ChannelSignalProfile>>({})
   const [analyzingChannels, setAnalyzingChannels] = useState<Set<string>>(new Set())
   const [analysisProgress, setAnalysisProgress] = useState<Record<string, number>>({})
@@ -207,13 +218,17 @@ export function CopierEnginePage() {
   }, [user])
 
   const loadData = async (opts?: { skipTgFetch?: boolean; backgroundTgFetch?: boolean; forceTgFetch?: boolean }) => {
-    const [channelsRes, sessionRes] = await Promise.all([
+    const [channelsRes, sessionRes, brokersRes] = await Promise.all([
       supabase.from('telegram_channels').select('*').eq('user_id', user!.id).order('created_at', { ascending: false }),
       supabase.from('telegram_sessions').select('id').eq('user_id', user!.id).maybeSingle(),
+      supabase.from('broker_accounts').select('*').eq('user_id', user!.id).order('created_at', { ascending: false }),
     ])
     const channelRows = (channelsRes.data ?? []) as TelegramChannel[]
     setChannels(channelRows)
     void loadChannelProfiles(channelRows)
+    const brokerRows = (brokersRes.data ?? []) as BrokerAccount[]
+    const reconciled = await reconcileBrokerChannelLinks(supabase, user!.id, channelRows, brokerRows)
+    setBrokers(reconciled)
     const hasSession = !!sessionRes.data
     setHasTgSession(hasSession)
     setTgStage(hasSession ? 'linked' : 'idle')
@@ -307,21 +322,14 @@ export function CopierEnginePage() {
     }
   }, [session?.access_token])
 
-  /** Remove Telegram session and all configured channels for this user. */
+  /** Remove Telegram session only (manual disconnect). Keeps configured channels. */
   const clearTelegramConnection = useCallback(async (nextStage: 'idle' | 'phone') => {
     if (!user?.id) return
-    await Promise.all([
-      supabase.from('telegram_sessions').delete().eq('user_id', user.id),
-      supabase.from('telegram_channels').delete().eq('user_id', user.id),
-    ])
+    await supabase.from('telegram_sessions').delete().eq('user_id', user.id)
     setHasTgSession(false)
-    setChannels([])
-    setChannelProfiles({})
-    setAnalyzingChannels(new Set())
-    setAnalysisProgress({})
     setTgChannels([])
     setTgChannelSearch('')
-    if (user?.id) invalidateTgChannelsCache(user.id)
+    if (user.id) invalidateTgChannelsCache(user.id)
     setTgError('')
     setError('')
     setTgCode('')
@@ -329,14 +337,30 @@ export function CopierEnginePage() {
     setTgStage(nextStage)
   }, [user])
 
-  /** Clear DB session + channels and open the phone → code connect flow. */
+  /** Open phone → code flow without removing configured channels. */
   const reconnectTelegram = useCallback(async () => {
-    await clearTelegramConnection('phone')
-  }, [clearTelegramConnection])
+    setTgError('')
+    setTgCode('')
+    setTgPassword('')
+    setTgStage('phone')
+  }, [])
 
+  /** Session revoked server-side — show reconnect UI; never wipe configured channels. */
   const handleTelegramSessionInvalid = useCallback(async () => {
-    await reconnectTelegram()
-  }, [reconnectTelegram])
+    if (!user?.id) return
+    setHasTgSession(false)
+    setTgChannels([])
+    setTgChannelSearch('')
+    invalidateTgChannelsCache(user.id)
+    setTgError(ce.telegramSessionExpired)
+    const { data: channelRows } = await supabase
+      .from('telegram_channels')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+    setChannels((channelRows ?? []) as TelegramChannel[])
+    setTgStage('phone')
+  }, [user, ce.telegramSessionExpired])
 
   const fetchTgChannels = async (opts?: { background?: boolean; force?: boolean }) => {
     if (!opts?.force && user?.id) {
@@ -361,8 +385,15 @@ export function CopierEnginePage() {
             body: JSON.stringify({ action: 'list_channels' }),
           })
           const data = await res.json().catch(() => ({}))
-          if (res.status === 401 || data.code === 'TELEGRAM_SESSION_INVALID') {
+          if (data.code === 'TELEGRAM_SESSION_INVALID') {
             await handleTelegramSessionInvalid()
+            return
+          }
+          if (res.status === 401) {
+            if (!opts?.background) {
+              const msg = typeof data.error === 'string' ? data.error : ce.failedLoadTgChannels
+              setError(msg)
+            }
             return
           }
           if (!res.ok || data.error) {
@@ -412,6 +443,36 @@ export function CopierEnginePage() {
     await supabase.from('telegram_channels').delete().eq('id', id)
   }
 
+  const handleConnectChannelToBroker = async (channelId: string, brokerId: string) => {
+    if (!user) return
+    const broker = brokers.find(b => b.id === brokerId)
+    if (!broker) return
+    setConnectingBrokerId(brokerId)
+    setError('')
+    const { broker: updated, error: linkErr } = await connectChannelToBroker(
+      supabase,
+      user.id,
+      broker,
+      channelId,
+      channels,
+    )
+    setConnectingBrokerId(null)
+    if (linkErr) {
+      setError(linkErr)
+      return
+    }
+    if (updated) {
+      setBrokers(prev => prev.map(b => (b.id === brokerId ? updated : b)))
+    }
+    setConnectMenuChannelId(null)
+  }
+
+  const linkChannelAfterAdd = async (channelRows: TelegramChannel[]) => {
+    if (!user || !channelRows.length) return
+    const reconciled = await reconcileBrokerChannelLinks(supabase, user.id, channelRows, brokers)
+    setBrokers(reconciled)
+  }
+
   const addManual = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
@@ -431,10 +492,12 @@ export function CopierEnginePage() {
     setSaving(false)
     if (dbErr) { setError(dbErr.message); return }
     const inserted = data as TelegramChannel
+    const nextChannels = [inserted, ...channels]
     setChannels(prev => [inserted, ...prev])
     setNewChannel({ channel_id: '', channel_username: '', display_name: '' })
     setShowAdd(false)
     void analyzeChannelProfile(inserted.id)
+    void linkChannelAfterAdd(nextChannels)
   }
 
   const addFromTg = async (ch: { id: string; title: string; username: string }) => {
@@ -456,11 +519,16 @@ export function CopierEnginePage() {
     }
     if (!dbErr && data) {
       const upserted = data as TelegramChannel
+      const exists = channels.find(c => c.channel_id === ch.id)
+      const nextChannels = exists
+        ? channels.map(c => c.channel_id === ch.id ? upserted : c)
+        : [upserted, ...channels]
       setChannels(prev => {
-        const exists = prev.find(c => c.channel_id === ch.id)
-        return exists ? prev.map(c => c.channel_id === ch.id ? upserted : c) : [upserted, ...prev]
+        const prevExists = prev.find(c => c.channel_id === ch.id)
+        return prevExists ? prev.map(c => c.channel_id === ch.id ? upserted : c) : [upserted, ...prev]
       })
       void analyzeChannelProfile(upserted.id)
+      void linkChannelAfterAdd(nextChannels)
     }
   }
 
@@ -796,6 +864,14 @@ export function CopierEnginePage() {
                 profile={channelProfiles[channel.id]}
                 isAnalyzing={analyzingChannels.has(channel.id)}
                 analysisProgress={analysisProgress[channel.id] ?? 0}
+                brokers={brokers}
+                connectMenuOpen={connectMenuChannelId === channel.id}
+                connectingBrokerId={connectingBrokerId}
+                onToggleConnectMenu={() => setConnectMenuChannelId(
+                  connectMenuChannelId === channel.id ? null : channel.id,
+                )}
+                onCloseConnectMenu={() => setConnectMenuChannelId(null)}
+                onConnectBroker={brokerId => void handleConnectChannelToBroker(channel.id, brokerId)}
                 onToggle={v => toggleChannel(channel.id, v)}
                 onDelete={() => deleteChannel(channel.id)}
                 onKeywords={() => openChannelKeywords(channel)}
@@ -876,12 +952,20 @@ export function CopierEnginePage() {
 }
 
 function ChannelRow({
-  channel, profile, isAnalyzing, analysisProgress, onToggle, onDelete,
+  channel, profile, isAnalyzing, analysisProgress, brokers,
+  connectMenuOpen, connectingBrokerId, onToggleConnectMenu, onCloseConnectMenu, onConnectBroker,
+  onToggle, onDelete,
 }: {
   channel: TelegramChannel
   profile?: ChannelSignalProfile
   isAnalyzing: boolean
   analysisProgress: number
+  brokers: BrokerAccount[]
+  connectMenuOpen: boolean
+  connectingBrokerId: string | null
+  onToggleConnectMenu: () => void
+  onCloseConnectMenu: () => void
+  onConnectBroker: (brokerId: string) => void
   onToggle: (v: boolean) => void
   onDelete: () => void
   onKeywords: () => void
@@ -889,6 +973,27 @@ function ChannelRow({
   const t = useT()
   const ce = t.copierEnginePage
   const username = channel.channel_username?.replace(/^@/, '') || undefined
+  const menuRef = useRef<HTMLDivElement>(null)
+  const connectedBrokers = useMemo(
+    () => brokersMatchingChannel(brokers, channel.id),
+    [brokers, channel.id],
+  )
+  const availableBrokers = useMemo(
+    () => brokersNotMatchingChannel(brokers, channel.id),
+    [brokers, channel.id],
+  )
+  const hasAnyBrokers = brokers.some(b => b.is_active)
+
+  useEffect(() => {
+    if (!connectMenuOpen) return
+    const onPointerDown = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        onCloseConnectMenu()
+      }
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    return () => document.removeEventListener('mousedown', onPointerDown)
+  }, [connectMenuOpen, onCloseConnectMenu])
 
   return (
     <div className="hover:bg-neutral-50 dark:hover:bg-neutral-800/80 transition-colors">
@@ -913,7 +1018,95 @@ function ChannelRow({
           </button>
         </div>
       </div>
-      <div className="border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/60 px-4 py-2.5">
+      <div className="border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/60 px-4 py-2.5 space-y-2.5">
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-400 mb-1.5">{ce.connectedBrokers}</p>
+          {connectedBrokers.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {connectedBrokers.map(broker => (
+                <Badge key={broker.id} variant="neutral" size="sm">
+                  {getBrokerDisplayLabel(broker)}
+                </Badge>
+              ))}
+              {(availableBrokers.length > 0 || connectedBrokers.length > 0) && (
+                <div className="relative" ref={menuRef}>
+                  <button
+                    type="button"
+                    onClick={onToggleConnectMenu}
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-neutral-200 dark:border-neutral-700 text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-100 hover:bg-white dark:hover:bg-neutral-900 transition-colors"
+                    aria-label={interpolate(ce.addBrokerConnectionAria, { channel: channel.display_name })}
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                  {connectMenuOpen && (
+                    <div className="absolute left-0 top-full z-20 mt-1 min-w-[12rem] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg py-1">
+                      {!hasAnyBrokers ? (
+                        <p className="px-3 py-2 text-xs text-neutral-500 dark:text-neutral-400">{ce.noBrokersYet}</p>
+                      ) : availableBrokers.length === 0 ? (
+                        <p className="px-3 py-2 text-xs text-neutral-500 dark:text-neutral-400">{ce.connectedBrokers}</p>
+                      ) : (
+                        availableBrokers.map(broker => (
+                          <button
+                            key={broker.id}
+                            type="button"
+                            disabled={connectingBrokerId === broker.id}
+                            onClick={() => onConnectBroker(broker.id)}
+                            className="w-full px-3 py-2 text-left text-sm text-neutral-800 dark:text-neutral-100 hover:bg-neutral-50 dark:hover:bg-neutral-800 disabled:opacity-50"
+                          >
+                            {getBrokerDisplayLabel(broker)}
+                          </button>
+                        ))
+                      )}
+                      <div className="border-t border-neutral-100 dark:border-neutral-800 mt-1 pt-1">
+                        <Link
+                          to="/account-configuration"
+                          className="block px-3 py-2 text-xs text-primary-600 hover:bg-neutral-50 dark:hover:bg-neutral-800"
+                          onClick={onCloseConnectMenu}
+                        >
+                          {ce.connectBrokerInConfig}
+                        </Link>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : hasAnyBrokers ? (
+            <div className="relative inline-block" ref={menuRef}>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={onToggleConnectMenu}
+                loading={connectingBrokerId !== null}
+              >
+                {ce.connectToBroker}
+              </Button>
+              {connectMenuOpen && availableBrokers.length > 0 && (
+                <div className="absolute left-0 top-full z-20 mt-1 min-w-[12rem] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg py-1">
+                  {availableBrokers.map(broker => (
+                    <button
+                      key={broker.id}
+                      type="button"
+                      disabled={connectingBrokerId === broker.id}
+                      onClick={() => onConnectBroker(broker.id)}
+                      className="w-full px-3 py-2 text-left text-sm text-neutral-800 dark:text-neutral-100 hover:bg-neutral-50 dark:hover:bg-neutral-800 disabled:opacity-50"
+                    >
+                      {getBrokerDisplayLabel(broker)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <Link
+              to="/account-configuration"
+              className="inline-flex items-center rounded-lg border border-dashed border-neutral-300 dark:border-neutral-600 px-3 py-1.5 text-xs font-medium text-primary-600 hover:bg-white dark:hover:bg-neutral-900 transition-colors"
+            >
+              {ce.connectToBroker}
+            </Link>
+          )}
+        </div>
         {isAnalyzing ? (
           <div>
             <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-1.5">

@@ -199,19 +199,18 @@ class UserSessionManager {
         await (0, sessionLease_1.acquireSessionLease)(this.supabase, userId);
         console.log(`[sessionManager] Adopted live client for user ${userId}`);
     }
+    /**
+     * Telegram revoked the auth key (AUTH_KEY_UNREGISTERED). Drop the dead session
+     * so we stop reconnect loops, but keep configured telegram_channels — the user
+     * reconnects manually without re-adding channels.
+     */
     async invalidateTelegramSession(userId) {
         await this.stopListener(userId);
         await (0, sessionLease_1.releaseSessionLease)(this.supabase, userId);
         await this.supabase.from('telegram_auth_pending').delete().eq('user_id', userId);
-        const [sessionRes, channelsRes] = await Promise.all([
-            this.supabase.from('telegram_sessions').delete().eq('user_id', userId),
-            this.supabase.from('telegram_channels').delete().eq('user_id', userId),
-        ]);
-        if (sessionRes.error) {
-            console.warn(`[sessionManager] invalidateTelegramSession session delete failed for ${userId}:`, sessionRes.error.message);
-        }
-        if (channelsRes.error) {
-            console.warn(`[sessionManager] invalidateTelegramSession channels delete failed for ${userId}:`, channelsRes.error.message);
+        const { error } = await this.supabase.from('telegram_sessions').delete().eq('user_id', userId);
+        if (error) {
+            console.warn(`[sessionManager] invalidateTelegramSession session delete failed for ${userId}:`, error.message);
         }
     }
     async listChannels(userId, opts) {

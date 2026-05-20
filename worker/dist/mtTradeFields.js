@@ -238,8 +238,8 @@ function labelForPositionDirection(direction, typeLabel) {
         return typeLabel;
     const wantsDealPrefix = /deal/i.test(typeLabel);
     if (direction === 'buy')
-        return wantsDealPrefix ? 'Deal Buy' : 'Buy';
-    return wantsDealPrefix ? 'Deal Sell' : 'Sell';
+        return wantsDealPrefix ? 'Sell' : 'Buy';
+    return wantsDealPrefix ? 'Buy' : 'Sell';
 }
 function adjustMtTradesPositionDirection(order, profile, resolved) {
     if (profile !== 'trades')

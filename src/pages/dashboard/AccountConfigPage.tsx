@@ -23,6 +23,7 @@ import { AddAccountModal } from '../../components/ui/AddAccountModal'
 import { BrokerServerSelect } from '../../components/ui/BrokerServerSelect'
 import { formatLocalCalendarDay } from '../../lib/dayStartBalance'
 import { metatraderApi } from '../../lib/metatraderapi'
+import { linkBrokersToChannelsOnRegister } from '../../lib/brokerChannelLink'
 import { isLegacyBrokerLink, isMtSessionUuid } from '../../lib/brokerLink'
 import {
   inferBrokerLabelFromServer,
@@ -35,7 +36,7 @@ import { pipCalculator, pipValueForLots, type PipQuote } from '../../lib/pipCalc
 import { classifySymbol } from '../../lib/pipMath'
 import { pipsToPriceOffset, signalPipPrice } from '../../lib/signalPip'
 import { formatMoneyWithCode } from '../../lib/currency'
-import type { BrokerAccount, ManualSettings, ManualTpLot } from '../../types/database'
+import type { BrokerAccount, ManualSettings, ManualTpLot, TelegramChannel } from '../../types/database'
 import {
   DEFAULT_CHANNEL_FILTERS,
   normalizeChannelFilters,
@@ -979,13 +980,21 @@ export function AccountConfigPage() {
         password: form.account_password,
         label: form.label.trim() || undefined,
       })
-      setBrokers(prev => [...prev, broker])
+      const linkedBroker = user
+        ? await linkBrokersToChannelsOnRegister(
+          supabase,
+          user.id,
+          broker,
+          channelOptions.map(ch => ({ ...ch, user_id: user.id } as TelegramChannel)),
+        )
+        : broker
+      setBrokers(prev => [...prev, linkedBroker])
       const registeredType = resolveLinkedAccountType(
         summary?.type,
-        resolveMtServerCandidate(broker, broker.broker_server),
+        resolveMtServerCandidate(linkedBroker, linkedBroker.broker_server),
       )
       if (registeredType) {
-        setBrokerAccountTypes(prev => ({ ...prev, [broker.id]: registeredType }))
+        setBrokerAccountTypes(prev => ({ ...prev, [linkedBroker.id]: registeredType }))
       }
       setForm(emptyForm)
       setShowAddBroker(false)
@@ -994,7 +1003,7 @@ export function AccountConfigPage() {
       // session to come up), keep tailing for it client-side so the card
       // is populated without the user having to click Refresh.
       if (broker?.id && (broker.last_balance == null && broker.last_equity == null)) {
-        void tailRefreshBrokerSummary(broker.id)
+        void tailRefreshBrokerSummary(linkedBroker.id)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : t.accountConfig.connectForm.connectFailed)
