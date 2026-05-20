@@ -4,6 +4,7 @@ exports.BasketSlTpReconcileMonitor = void 0;
 const metatraderapi_1 = require("./metatraderapi");
 const mtApiByAccount_1 = require("./mtApiByAccount");
 const basketSlTpReconcile_1 = require("./basketSlTpReconcile");
+const normalizeManualSettings_1 = require("./manualPlanning/normalizeManualSettings");
 const metatraderapi_2 = require("./metatraderapi");
 const TICK_INTERVAL_MS = Math.min(60000, Math.max(5000, Number(process.env.BASKET_RECONCILE_TICK_MS ?? 15000)));
 const BATCH_LIMIT = 20;
@@ -138,7 +139,7 @@ class BasketSlTpReconcileMonitor {
         catch { /* optional */ }
         const openedTickets = await (0, basketSlTpReconcile_1.fetchOpenBrokerTickets)(api, uuid);
         const baseLot = Number(broker.default_lot_size ?? 0.01);
-        const manual = (broker.manual_settings ?? {});
+        const manual = (0, normalizeManualSettings_1.normalizeManualSettingsForExecution)(broker.manual_settings);
         const { data: anchorSig } = await this.supabase
             .from('signals')
             .select('parsed_data')

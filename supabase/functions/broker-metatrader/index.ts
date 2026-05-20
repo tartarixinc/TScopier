@@ -162,7 +162,7 @@ Deno.serve(async (req: Request) => {
         connection_status: "connected" as const,
         copier_mode: "manual" as const,
         signal_channel_ids: channelIds,
-        enforce_signal_channel_filter: false,
+        enforce_signal_channel_filter: channelIds.length > 0,
         ai_settings: {},
         manual_settings: {},
         default_lot_size: 0.01,

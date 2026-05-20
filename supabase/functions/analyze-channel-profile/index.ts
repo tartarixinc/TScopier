@@ -262,7 +262,9 @@ function heuristicProfile(rows: Array<{ raw_message: string; parsed_data: unknow
     most_traded_asset: topSymbol,
     estimated_tp_pips: average(tp1Pips),
     estimated_sl_pips: average(slPips),
-    analysis_summary: `Analyzed ${sampleSize} signal messages from last 30 days.`,
+    analysis_summary: sampleSize > 0
+      ? `Analyzed ${sampleSize} signal messages from last 30 days.`
+      : 'No signal messages found in the lookback window. Ensure Telegram is connected and the channel has recent trading posts.',
     sample_size: sampleSize,
     meta: {
       action_counts: Object.fromEntries(actionCounts),

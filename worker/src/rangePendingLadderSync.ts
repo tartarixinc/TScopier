@@ -120,14 +120,14 @@ export async function syncRangePendingLadderOnBasketRefresh(args: {
   for (const row of activeRows) {
     const planLeg = planByStep.get(row.step_idx)
     if (!planLeg) continue
-    const openLegCount = Math.max(openTradeCount, row.step_idx + 1)
+    const legIndex = Math.max(0, row.step_idx - 1)
     const stops = applyChannelParamsToVirtualLeg(
       {
         stoploss: planLeg.stoploss,
         takeprofit: planLeg.cweClosePrice != null ? null : planLeg.takeprofit,
       },
       channelParams ?? null,
-      { stepIdx: row.step_idx, openLegCount, tpLots },
+      { rangeLegIndex: legIndex, rangeLegCount: plannedRangeLegs, tpLots },
     )
     const patch: Record<string, unknown> = {
       stoploss: stops.stoploss,
@@ -160,11 +160,11 @@ export async function syncRangePendingLadderOnBasketRefresh(args: {
       continue
     }
 
-    const openLegCount = Math.max(openTradeCount, v.stepIdx + 1)
+    const legIndex = Math.max(0, v.stepIdx - 1)
     const stops = applyChannelParamsToVirtualLeg(
       { stoploss: v.stoploss, takeprofit: v.takeprofit },
       channelParams ?? null,
-      { stepIdx: v.stepIdx, openLegCount, tpLots },
+      { rangeLegIndex: legIndex, rangeLegCount: plannedRangeLegs, tpLots },
     )
     const legForRow: VirtualPendingLeg = {
       ...v,

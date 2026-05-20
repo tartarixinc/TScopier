@@ -216,19 +216,18 @@ export class UserSessionManager {
     console.log(`[sessionManager] Adopted live client for user ${userId}`)
   }
 
+  /**
+   * Telegram revoked the auth key (AUTH_KEY_UNREGISTERED). Drop the dead session
+   * so we stop reconnect loops, but keep configured telegram_channels — the user
+   * reconnects manually without re-adding channels.
+   */
   async invalidateTelegramSession(userId: string): Promise<void> {
     await this.stopListener(userId)
     await releaseSessionLease(this.supabase, userId)
     await this.supabase.from('telegram_auth_pending').delete().eq('user_id', userId)
-    const [sessionRes, channelsRes] = await Promise.all([
-      this.supabase.from('telegram_sessions').delete().eq('user_id', userId),
-      this.supabase.from('telegram_channels').delete().eq('user_id', userId),
-    ])
-    if (sessionRes.error) {
-      console.warn(`[sessionManager] invalidateTelegramSession session delete failed for ${userId}:`, sessionRes.error.message)
-    }
-    if (channelsRes.error) {
-      console.warn(`[sessionManager] invalidateTelegramSession channels delete failed for ${userId}:`, channelsRes.error.message)
+    const { error } = await this.supabase.from('telegram_sessions').delete().eq('user_id', userId)
+    if (error) {
+      console.warn(`[sessionManager] invalidateTelegramSession session delete failed for ${userId}:`, error.message)
     }
   }
 
@@ -262,8 +261,26 @@ export class UserSessionManager {
   }
 
   async backfillChannelHistory(userId: string, channelRowId: string, days: number) {
+    // Prefer the live listener (listener-only deploys). Avoids a second MTProto
+    // connection that would trigger AUTH_KEY_DUPLICATED.
+    if (workerConfig.runsListener) {
+      let listener = this.listeners.get(userId)
+      if (!listener?.isTelegramConnected()) {
+        try {
+          listener = await this.ensureListener(userId)
+        } catch {
+          listener = undefined
+        }
+      }
+      if (listener?.isTelegramConnected()) {
+        return listener.backfillChannelHistory(channelRowId, days)
+      }
+    }
+
     if (!workerConfig.runsBacktestHttp) {
-      throw new Error('Backtest not enabled on this worker')
+      throw new Error(
+        'Telegram listener is not connected. Link Telegram on Copier Engine, wait a few seconds, then refresh.',
+      )
     }
     return this.withEphemeralTelegram(userId, () =>
       runWithEphemeralListener(this.supabase, userId, listener =>

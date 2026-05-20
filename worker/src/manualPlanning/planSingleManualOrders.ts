@@ -2,6 +2,7 @@ import type { OrderSendArgs } from '../metatraderapi'
 import type { PipQuote } from '../pipCalculator'
 import type { ManualSettings, PlannerContext, PlannerResult, PlannerStrictEntry } from './types'
 import { planSinglePartialTps } from './partialTpSchedule'
+import { resolveTpBucketRows } from './tpBucketDistribution'
 
 export interface PlanSingleManualOrdersArgs {
   orderBase: Omit<OrderSendArgs, 'volume' | 'stoploss' | 'takeprofit' | 'expiration' | 'expirationType'>
@@ -40,13 +41,13 @@ export function planSingleManualOrders(args: PlanSingleManualOrdersArgs): Planne
     fallbackReason,
   } = args
 
-  const enabledForSingle = (manual.tp_lots ?? []).filter(r => r && r.enabled)
+  const { bucketRows } = resolveTpBucketRows(finalTps, manual.tp_lots)
   const partialPlan = planSinglePartialTps({
     manualLot,
     minLot: Number.isFinite(ctx.minLot) && ctx.minLot > 0 ? ctx.minLot : 0.01,
     lotStep: Number.isFinite(ctx.lotStep) && ctx.lotStep > 0 ? ctx.lotStep : 0.01,
     finalTps,
-    bucketRows: enabledForSingle,
+    bucketRows,
   })
   const brokerTp =
     partialPlan.brokerTp

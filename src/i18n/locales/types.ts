@@ -128,7 +128,9 @@ export interface DashboardTranslations {
   tradesTakenToday: string
   noClosedTradesToday: string
   openPnl: string
-  acrossAllAccounts: string
+  openPnlNoOpen: string
+  openPnlAcrossOneAccount: string
+  openPnlAcrossAccounts: string
   activeSignalChannels: string
   connectedTelegramChannels: string
   manageChannels: string
@@ -507,10 +509,18 @@ export interface CopierEnginePageTranslations {
   removeAria: string
   analyzing: string
   profilePending: string
+  profileAnalyzeFailed: string
+  profileNoMessages: string
   profileType: string
   profileEntry: string
   profileTp: string
   profileSl: string
+  connectedBrokers: string
+  connectToBroker: string
+  addBrokerConnectionAria: string
+  removeBrokerConnectionAria: string
+  noBrokersYet: string
+  connectBrokerInConfig: string
   keywordsTitle: string
   keywordsClose: string
   keywordsSave: string

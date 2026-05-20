@@ -3,7 +3,7 @@
  *
  * WORKER_ROLE:
  *   all          — monolith (default): listener + trade monitors + backtest HTTP
- *   listener     — Telegram ingest only; no trade monitors; backtest HTTP returns 503
+ *   listener     — Telegram ingest only; profile backfill uses live MTProto client
  *   trade        — TradeExecutor (entries + management) + all monitors
  *   trade_entry  — buy/sell only + execution-side monitors (virtual pending, CWE, …)
  *   trade_mgmt   — management only + reconcile / auto-mgmt monitors

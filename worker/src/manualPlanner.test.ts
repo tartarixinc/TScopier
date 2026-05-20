@@ -282,6 +282,45 @@ test('planManualOrders: multi + 3 signal TPs uses Targets % on each leg', () => 
   assert.equal(plan.orders.filter(o => o.takeprofit === 4490).length, 2)
 })
 
+test('planManualOrders: multi + range applies Targets % separately to instant and range pools', () => {
+  const plan = planManualOrders({
+    parsed: {
+      ...baseParsed,
+      entry_price: 4550,
+      sl: 4570,
+      tp: [4530, 4510, 4490],
+    },
+    resolvedSymbol: 'XAUUSD',
+    baseOperation: 'Sell',
+    manual: {
+      ...baseManual,
+      range_trading: true,
+      range_percent: 50,
+      multi_trade_leg_percent: 10,
+      tp_lots: [
+        { label: 'TP1', lot: 0, percent: 50, enabled: true },
+        { label: 'TP2', lot: 0, percent: 30, enabled: true },
+        { label: 'TP3', lot: 0, percent: 20, enabled: true },
+      ],
+    },
+    channelKeywords: null,
+    manualLot: 1.0,
+    ctx: baseCtx,
+    commentPrefix: 'TSCopier:abc',
+  })
+  assert.equal(plan.orders.length, 5)
+  assert.equal(plan.virtualPendings?.length, 5)
+  // Instant pool (5 legs): 50/30/20 → 3 / 2 / 0
+  assert.equal(plan.orders.filter(o => o.takeprofit === 4530).length, 3)
+  assert.equal(plan.orders.filter(o => o.takeprofit === 4510).length, 2)
+  assert.equal(plan.orders.filter(o => o.takeprofit === 4490).length, 0)
+  // Range pool (5 legs): same split independently
+  const rangeTps = (plan.virtualPendings ?? []).map(v => v.takeprofit)
+  assert.equal(rangeTps.filter(tp => tp === 4530).length, 3)
+  assert.equal(rangeTps.filter(tp => tp === 4510).length, 2)
+  assert.equal(rangeTps.filter(tp => tp === 4490).length, 0)
+})
+
 test('planManualOrders: multi + BuyLimit → market immediates (price 0; avoids MT invalid pending price)', () => {
   const plan = planManualOrders({
     parsed: { ...baseParsed, entry_price: 2650 },

@@ -27,6 +27,12 @@ export type { PlanSinglePartialTpsArgs, PlanSinglePartialTpsResult } from './man
 export { manualUseSignalEntryPriceOn, signalEntryPriceStrictEnabled, clampPendingExpiryHours } from './manualPlanning/manualSettings'
 
 export {
+  normalizeManualSettingsForExecution,
+  sanitizeTpLots,
+  DEFAULT_MANUAL_TP_LOTS,
+} from './manualPlanning/normalizeManualSettings'
+
+export {
   resolvedParsedEntryPrice,
   resolvedParsedEntryZone,
   parsedHasExplicitEntryAnchor,

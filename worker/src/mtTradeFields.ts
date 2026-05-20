@@ -280,8 +280,8 @@ function parseMtDealEntry(order: RawMtOrder, profile: MtHistoryProfile): 'in' | 
 function labelForPositionDirection(direction: MtDirection, typeLabel: string): string {
   if (direction !== 'buy' && direction !== 'sell') return typeLabel
   const wantsDealPrefix = /deal/i.test(typeLabel)
-  if (direction === 'buy') return wantsDealPrefix ? 'Deal Buy' : 'Buy'
-  return wantsDealPrefix ? 'Deal Sell' : 'Sell'
+  if (direction === 'buy') return wantsDealPrefix ? 'Sell' : 'Buy'
+  return wantsDealPrefix ? 'Buy' : 'Sell'
 }
 
 export function adjustMtTradesPositionDirection(

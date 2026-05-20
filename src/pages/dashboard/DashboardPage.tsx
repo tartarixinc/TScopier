@@ -24,7 +24,6 @@ import {
   getLocalCalendarDayBounds,
   isTradeableClosedRow,
   netClosedLegProfit,
-  sumClosedWinningProfitInRange,
   type LinkedAccountPerformance,
   type TradeStatsRow,
 } from '../../lib/dashboardTradeStats'
@@ -43,6 +42,7 @@ import {
   buildAccountGrowthSeries,
   buildTradeVolume7Day,
   findTodayTradeOutcomeDay,
+  findYesterdayTradeOutcomeDay,
   netPnlFromTradeOutcomeDay,
   summarizeTodayFromChartTrades,
   resolveDashboardChartTrades,
@@ -223,6 +223,29 @@ function hasConnectedBrokerOpenTrades(
     account =>
       isBrokerLiveConnected(account) && typeof balances[account.id]?.open_trades === 'number',
   )
+}
+
+/** Connected brokers with at least one open position (live summary or MT trade list). */
+function countAccountsWithOpenPositions(
+  accounts: BrokerAccount[],
+  balances: Record<string, BrokerBalanceSnapshot>,
+  mtTrades: MtTrade[] | null | undefined,
+): number {
+  const fromLive = accounts.filter(account => {
+    if (!isBrokerLiveConnected(account)) return false
+    const openTrades = balances[account.id]?.open_trades
+    if (typeof openTrades === 'number' && openTrades > 0) return true
+    const openPnl = balances[account.id]?.open_pnl
+    return typeof openPnl === 'number' && Number.isFinite(openPnl) && openPnl !== 0
+  }).length
+  if (fromLive > 0) return fromLive
+
+  if (!mtTrades?.length) return 0
+  const brokers = new Set<string>()
+  for (const t of mtTrades) {
+    if (t.status === 'open' && t.broker_id) brokers.add(t.broker_id)
+  }
+  return brokers.size
 }
 
 /** Keep live MT equity/open stats when a quiet DB refresh would overwrite them. */
@@ -537,6 +560,11 @@ export function DashboardPage() {
     [chartTrades],
   )
 
+  const yesterdayOutcomeDay = useMemo(
+    () => findYesterdayTradeOutcomeDay(chartTrades),
+    [chartTrades],
+  )
+
   const todayChartStats = useMemo(
     () => summarizeTodayFromChartTrades(chartTrades),
     [chartTrades],
@@ -549,18 +577,37 @@ export function DashboardPage() {
 
   const hasMtTradeHistory = chartTrades.length > 0
 
-  /** Headline stats: today P/L is the same net as today's bar on Trade Outcome (7 days). */
+  /** Headline stats: today/yesterday P/L match Trade Outcome bars (profit − loss). */
   const headlineStats = useMemo(() => {
     const todayProfit = netPnlFromTradeOutcomeDay(todayOutcomeDay)
+    const yesterdayProfit = netPnlFromTradeOutcomeDay(yesterdayOutcomeDay)
     return {
       ...stats,
       todayProfit,
+      yesterdayProfit,
       tradesTaken: todayChartStats.taken,
       tradesWon: todayChartStats.won,
       tradesLost: todayChartStats.lost,
       tradesBreakeven: todayChartStats.breakeven,
     }
-  }, [stats, todayChartStats, todayOutcomeDay])
+  }, [stats, todayChartStats, todayOutcomeDay, yesterdayOutcomeDay])
+
+  const openPnlSub = useMemo(() => {
+    let accountCount = countAccountsWithOpenPositions(
+      linkedAccounts,
+      linkedAccountBalances,
+      mtTradesRef.current,
+    )
+    if (accountCount === 0 && stats.openTrades > 0) {
+      const brokers = new Set(
+        chartTrades.filter(t => t.status === 'open').map(t => t.brokerAccountId),
+      )
+      accountCount = brokers.size
+    }
+    if (accountCount === 0) return t.dashboard.openPnlNoOpen
+    if (accountCount === 1) return t.dashboard.openPnlAcrossOneAccount
+    return interpolate(t.dashboard.openPnlAcrossAccounts, { count: String(accountCount) })
+  }, [linkedAccounts, linkedAccountBalances, chartTrades, stats.openTrades, t])
 
   const equityByAccountId = useMemo(() => {
     const out: Record<string, number> = {}
@@ -829,7 +876,6 @@ export function DashboardPage() {
     })()
     const brokerAccounts = (brokerRes.data ?? []) as BrokerAccount[]
     const mtBrokerConnected = hasActiveMtBroker(brokerAccounts)
-    const grossProfitYesterday = sumClosedWinningProfitInRange(sourceTrades, closedYesterdayForStats)
     const activeBrokerCount = brokerAccounts.filter(account => account.is_active).length
     // Seed the balance map from the cached columns the worker / edge function
     // wrote on AccountSummary. This is what makes the page render instantly
@@ -875,8 +921,9 @@ export function DashboardPage() {
     const todayProfit = mtBrokerConnected && !useMtTrades
       ? statsRef.current.todayProfit
       : netPnlFromTradeOutcomeDay(findTodayTradeOutcomeDay(chartTradesForLoad))
-    const yesterdayProfit =
-      mtBrokerConnected && !useMtTrades ? statsRef.current.yesterdayProfit : grossProfitYesterday
+    const yesterdayProfit = mtBrokerConnected && !useMtTrades
+      ? statsRef.current.yesterdayProfit
+      : netPnlFromTradeOutcomeDay(findYesterdayTradeOutcomeDay(chartTradesForLoad))
     /** Lifetime-style total vs baseline balance at link (sum of equity − baseline per account). */
     const yesterdayTotalProfitLoss: number | null = null
     const totalProfitLoss = aggregateTotalProfitFromBaselines(brokerAccounts, (account) => {
@@ -1151,7 +1198,7 @@ export function DashboardPage() {
       yesterdayBestTradeProfit: posYestLeg.length ? Math.max(...posYestLeg) : 0,
       worstTradeProfit: negTodayLeg.length ? Math.min(...negTodayLeg) : 0,
       yesterdayWorstTradeProfit: negYestLeg.length ? Math.min(...negYestLeg) : 0,
-      yesterdayProfit: sumClosedWinningProfitInRange(tradeRows, closedYesterdayForStats),
+      yesterdayProfit: netPnlFromTradeOutcomeDay(findYesterdayTradeOutcomeDay(chartNext)),
       mostTradedAsset: topSymbol(today),
       yesterdayMostTradedAsset: topSymbol(yesterday),
     }
@@ -1474,7 +1521,7 @@ export function DashboardPage() {
           <StatBlock
             label={t.dashboard.openPnl}
             value={formatSignedMoney(stats.openPnl)}
-            sub={t.dashboard.acrossAllAccounts}
+            sub={openPnlSub}
             valueColor={
               stats.openPnl > 0
                 ? 'text-teal-600'
@@ -1489,26 +1536,26 @@ export function DashboardPage() {
           <OverviewStat
             label={t.dashboard.activeSignalChannels}
             value={String(stats.activeChannels)}
-            sub={t.dashboard.connectedTelegramChannels}
+            // sub={t.dashboard.connectedTelegramChannels}
             addTo="/channels"
             addLabel={t.dashboard.manageChannels}
           />
           <OverviewStat
             label={t.dashboard.openTrades}
             value={String(stats.openTrades)}
-            sub={t.dashboard.activeBrokerPositions}
+            // sub={t.dashboard.activeBrokerPositions}
           />
           <OverviewStat
             label={t.dashboard.tradingAccountsConnected}
             value={String(stats.accounts)}
-            sub={interpolate(t.dashboard.acrossAccounts, { count: stats.accounts })}
+            // sub={interpolate(t.dashboard.acrossAccounts, { count: stats.accounts })}
             addTo="/account-configuration"
             addLabel={t.dashboard.addOrManageAccounts}
           />
           <OverviewStat
             label={t.dashboard.tradesCopiedToday}
             value={String(stats.tradesCopiedToday)}
-            sub={t.dashboard.executedFromSignals}
+            // sub={t.dashboard.executedFromSignals}
           />
         </div>
       </div>

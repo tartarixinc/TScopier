@@ -12,20 +12,28 @@ function isTpLotRowEnabled(row) {
         return false;
     return row.enabled !== false;
 }
-/** Enabled target rows paired with parsed TP prices (same rules as multi-trade planner). */
+/**
+ * One bucket per signal TP index (TP1 → finalTps[0], …). Disabled / 0% rows keep
+ * their slot but contribute no leg count — percents apply only on active buckets.
+ */
 function resolveTpBucketRows(finalTps, tpLots) {
-    const enabledRows = (tpLots ?? []).filter(r => isTpLotRowEnabled(r));
-    const bucketCount = finalTps.length > 0
-        ? Math.max(1, Math.min(enabledRows.length || 1, finalTps.length))
-        : 1;
-    const bucketRows = (enabledRows.length
-        ? enabledRows
-        : [{ label: 'TP1', lot: 0, percent: 100, enabled: true }])
-        .slice(0, bucketCount)
-        .map(r => ({
-        label: String(r.label ?? 'TP'),
-        percent: Number(r.percent),
-    }));
+    const tpCount = finalTps.length > 0 ? finalTps.length : 1;
+    const lots = tpLots ?? [];
+    const bucketRows = [];
+    for (let i = 0; i < tpCount; i++) {
+        const row = lots[i];
+        const enabled = row ? isTpLotRowEnabled(row) : false;
+        const pctRaw = enabled && row ? Number(row.percent) : 0;
+        const percent = Number.isFinite(pctRaw) && pctRaw > 0 ? pctRaw : 0;
+        bucketRows.push({
+            label: String(row?.label ?? `TP${i + 1}`),
+            percent,
+        });
+    }
+    if (lots.length === 0 && bucketRows.length > 0) {
+        bucketRows[0] = { label: 'TP1', percent: 100 };
+    }
+    const bucketCount = bucketRows.length > 0 ? bucketRows.length : 1;
     return { bucketRows, bucketCount };
 }
 /** Split `count` open legs across TP buckets using Targets % (50/30/20, etc.). */
@@ -37,7 +45,8 @@ function distributeCountAcrossTpBuckets(count, bucketRows) {
         const p = Number(r.percent);
         return Number.isFinite(p) && p > 0 ? p : 0;
     });
-    const weights = rawWeights.every(w => w === 0) ? bucketRows.map(() => 1) : rawWeights;
+    const hasPositive = rawWeights.some(w => w > 0);
+    const weights = hasPositive ? rawWeights : bucketRows.map(() => 1);
     const sumW = weights.reduce((a, b) => a + b, 0) || bucketRows.length;
     for (let i = 0; i < weights.length; i++) {
         out[i] = Math.round((count * weights[i]) / sumW);
@@ -47,8 +56,10 @@ function distributeCountAcrossTpBuckets(count, bucketRows) {
     let guard = out.length * 2;
     while (drift !== 0 && guard-- > 0) {
         if (drift > 0) {
-            out[idx] += 1;
-            drift -= 1;
+            if (weights[idx] > 0 || !hasPositive) {
+                out[idx] += 1;
+                drift -= 1;
+            }
         }
         else if (out[idx] > 0) {
             out[idx] -= 1;

@@ -3,6 +3,7 @@ import type { User, Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import { clearDashboardSessionCache } from '../lib/dashboardSessionCache'
 import { clearPerformanceSessionCache } from '../lib/performanceSessionCache'
+import { clearTradesSessionCache } from '../lib/tradesSessionCache'
 
 interface AuthContextValue {
   user: User | null
@@ -43,6 +44,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const uid = user?.id ?? null
     clearDashboardSessionCache(uid)
     clearPerformanceSessionCache(uid)
+    clearTradesSessionCache(uid)
     await supabase.auth.signOut()
   }
 

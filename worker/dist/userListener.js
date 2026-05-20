@@ -1028,16 +1028,47 @@ class UserListener {
             this.catchUpInFlight = false;
         }
     }
+    async resolveChannelPeer(row) {
+        const key = row.channel_username?.replace(/^@/, '') || row.channel_id;
+        try {
+            return await this.client.getInputEntity(key);
+        }
+        catch {
+            // Entity cache miss — warm from dialogs (common right after connect).
+        }
+        const wantUser = (row.channel_username ?? '').replace(/^@/, '').toLowerCase();
+        const idVariants = new Set(toChannelIdVariants(row.channel_id));
+        try {
+            const dialogs = await this.fetchAllDialogs();
+            for (const d of dialogs) {
+                if (!d.isChannel && !d.isGroup)
+                    continue;
+                const entity = d.entity;
+                if (!entity)
+                    continue;
+                const id = String(d.id ?? '');
+                const username = String(entity.username ?? '').toLowerCase();
+                const matches = (wantUser && username === wantUser)
+                    || idVariants.has(id)
+                    || [...idVariants].some(v => id === v || id.endsWith(v));
+                if (matches) {
+                    return await this.client.getInputEntity(entity);
+                }
+            }
+            return await this.client.getInputEntity(key);
+        }
+        catch (err) {
+            (0, telegramClient_1.rethrowIfSessionInvalid)(err);
+            throw new Error('Failed to resolve Telegram channel entity');
+        }
+    }
     async catchUpChannel(row) {
         let peer;
         try {
-            peer = await this.client.getInputEntity(row.channel_username || row.channel_id);
+            peer = await this.resolveChannelPeer(row);
         }
         catch (err) {
-            // Entity cache miss (common right after fresh connect for channels
-            // we've never seen via dialogs). The next live message will
-            // populate the cache; subsequent reconnects can catch up then.
-            console.warn(`[userListener] getInputEntity miss for channel ${row.id}; skipping catch-up this round`);
+            console.warn(`[userListener] resolveChannelPeer miss for channel ${row.id}; skipping catch-up this round`, err);
             return;
         }
         const minIdRaw = row.last_seen_message_id;
@@ -1119,7 +1150,7 @@ class UserListener {
         const toSec = Math.floor(toMs / 1000);
         let peer;
         try {
-            peer = await this.client.getInputEntity(row.channel_username || row.channel_id);
+            peer = await this.resolveChannelPeer(row);
         }
         catch {
             throw new Error('Failed to resolve Telegram channel entity');
@@ -1176,7 +1207,7 @@ class UserListener {
     async backfillChannelFromDate(row, days) {
         let peer;
         try {
-            peer = await this.client.getInputEntity(row.channel_username || row.channel_id);
+            peer = await this.resolveChannelPeer(row);
         }
         catch {
             throw new Error('Failed to resolve Telegram channel entity');

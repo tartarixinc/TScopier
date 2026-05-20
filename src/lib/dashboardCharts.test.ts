@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import {
   buildTradeVolume7Day,
   findTodayTradeOutcomeDay,
+  findYesterdayTradeOutcomeDay,
   netPnlFromTradeOutcomeDay,
   summarizeTodayFromChartTrades,
   buildAccountGrowthSeries,
@@ -164,4 +165,30 @@ test('netPnlFromTradeOutcomeDay matches buildTradeVolume7Day today bucket', () =
   assert.equal(netPnlFromTradeOutcomeDay(today), 70)
   assert.equal(today.profit, 100)
   assert.equal(today.loss, 30)
+})
+
+test('findYesterdayTradeOutcomeDay: net is profit minus loss', () => {
+  const now = new Date(2026, 4, 19, 12, 0, 0)
+  const trades: DashboardChartTrade[] = [
+    {
+      brokerAccountId: 'a',
+      lotSize: 0.1,
+      profit: 200,
+      status: 'closed',
+      closedAt: '2026-05-18T10:00:00',
+      openedAt: null,
+    },
+    {
+      brokerAccountId: 'a',
+      lotSize: 0.1,
+      profit: -50,
+      status: 'closed',
+      closedAt: '2026-05-18T14:00:00',
+      openedAt: null,
+    },
+  ]
+  const bucket = findYesterdayTradeOutcomeDay(trades, now)!
+  assert.equal(netPnlFromTradeOutcomeDay(bucket), 150)
+  assert.equal(bucket.profit, 200)
+  assert.equal(bucket.loss, 50)
 })

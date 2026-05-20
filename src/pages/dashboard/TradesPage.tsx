@@ -1,87 +1,28 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ArrowUpRight, ArrowDownRight, ChevronLeft, ChevronRight, Minus, RefreshCw, TrendingUp, TrendingDown } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useT } from '../../context/LocaleContext'
 import { interpolate } from '../../i18n/interpolate'
+import { useTradesData } from '../../hooks/useTradesData'
 import { PageHeader } from '../../components/layout/PageHeader'
 import { PageShell } from '../../components/layout/PageShell'
 import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
 import { Alert } from '../../components/ui/Alert'
-import { DASHBOARD_MT_HISTORY_DAYS } from '../../lib/dashboardCharts'
-import { metatraderApi, type MtTrade } from '../../lib/metatraderapi'
+import type { MtTrade } from '../../lib/metatraderapi'
 
 type Filter = 'all' | 'open' | 'closed'
 
-const AUTO_REFRESH_MS = 15000
 const PAGE_SIZE_OPTIONS = [10, 50, 100] as const
 type PageSizeOption = (typeof PAGE_SIZE_OPTIONS)[number]
 
 export function TradesPage() {
   const t = useT()
   const { user } = useAuth()
-  const [trades, setTrades] = useState<MtTrade[]>([])
+  const { trades, loading, refreshing, error, lastSyncedAt, refresh } = useTradesData(user?.id)
   const [filter, setFilter] = useState<Filter>('all')
-  const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState<PageSizeOption>(10)
-  const inflightRef = useRef(false)
-
-  const loadTrades = useCallback(
-    async ({ silent = false }: { silent?: boolean } = {}) => {
-      if (inflightRef.current) return
-      inflightRef.current = true
-      if (!silent) setLoading(true)
-      else setRefreshing(true)
-      try {
-        if (!user?.id) {
-          setTrades([])
-          return
-        }
-        const historyFrom = new Date()
-        historyFrom.setDate(historyFrom.getDate() - DASHBOARD_MT_HISTORY_DAYS)
-        const res = await metatraderApi.trades({
-          scope: 'all',
-          historyProfile: 'trades',
-          historyFrom: historyFrom.toISOString().slice(0, 19),
-        })
-        setTrades(res.trades ?? [])
-        setError(null)
-        setLastSyncedAt(Date.now())
-        if (res.debug?.raw_sample) {
-          console.info('[Trades] raw sample order keys:', res.debug.raw_sample_keys)
-          console.info('[Trades] raw sample order:', res.debug.raw_sample)
-        }
-      } catch (e) {
-        if (!silent) {
-          setTrades([])
-        }
-        setError(e instanceof Error ? e.message : 'Failed to load trades')
-      } finally {
-        inflightRef.current = false
-        if (!silent) setLoading(false)
-        else setRefreshing(false)
-      }
-    },
-    [user?.id],
-  )
-
-  useEffect(() => {
-    if (!user) return
-    void loadTrades()
-  }, [user, loadTrades])
-
-  useEffect(() => {
-    if (!user) return
-    const interval = window.setInterval(() => {
-      if (document.visibilityState !== 'visible') return
-      void loadTrades({ silent: true })
-    }, AUTO_REFRESH_MS)
-    return () => window.clearInterval(interval)
-  }, [user, loadTrades])
 
   const filters: { value: Filter; label: string; count: number }[] = useMemo(
     () => [
@@ -93,7 +34,7 @@ export function TradesPage() {
   )
 
   const visibleTrades = useMemo(
-    () => (filter === 'all' ? trades : trades.filter(t => t.status === filter)),
+    () => (filter === 'all' ? trades : trades.filter(tr => tr.status === filter)),
     [trades, filter],
   )
 
@@ -115,6 +56,8 @@ export function TradesPage() {
   const rangeStart = visibleTrades.length === 0 ? 0 : (page - 1) * pageSize + 1
   const rangeEnd = Math.min(page * pageSize, visibleTrades.length)
 
+  const showInitialSkeleton = loading && trades.length === 0
+
   return (
     <PageShell maxWidth="lg" spacing="none" className="space-y-6">
       <PageHeader
@@ -134,8 +77,8 @@ export function TradesPage() {
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
           <button
             type="button"
-            onClick={() => void loadTrades({ silent: true })}
-            disabled={refreshing || loading}
+            onClick={() => refresh()}
+            disabled={refreshing || showInitialSkeleton}
             className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-sm rounded-md font-medium border border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 disabled:opacity-50 w-full sm:w-auto"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
@@ -164,10 +107,10 @@ export function TradesPage() {
         )}
       />
 
-      {error && !loading && <Alert className="mb-4 px-4 py-2.5">{error}</Alert>}
+      {error && !showInitialSkeleton && <Alert className="mb-4 px-4 py-2.5">{error}</Alert>}
 
       <Card padding="none">
-        {loading ? (
+        {showInitialSkeleton ? (
           <>
             <div className="md:hidden divide-y divide-neutral-100 dark:divide-neutral-800">
               {[...Array(4)].map((_, i) => (
@@ -254,7 +197,6 @@ export function TradesPage() {
     </PageShell>
   )
 }
-
 function TradesPagination({
   page,
   pageSize,

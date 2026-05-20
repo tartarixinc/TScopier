@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import {
   applyChannelParamsToVirtualLeg,
+  estimateBasketTotalPlannedLegs,
   mergeParsedWithChannelParams,
   parsedSignalHasExplicitStops,
   shouldMergeChannelParamsForEntry,
@@ -10,7 +11,25 @@ import {
 } from './channelActiveTradeParams'
 
 describe('channelActiveTradeParams', () => {
-  test('mergeParsedWithChannelParams overlays SL and TP', () => {
+  test('mergeParsedWithChannelParams fills gaps only by default', () => {
+    const out = mergeParsedWithChannelParams(
+      {
+        action: 'buy',
+        symbol: 'XAUUSD',
+        entry_price: 4500,
+        entry_zone_low: null,
+        entry_zone_high: null,
+        sl: 4400,
+        tp: [4600, 4650],
+        lot_size: null,
+      },
+      { symbol: 'XAUUSD', stoploss: 4470, tpLevels: [4550, 4620] },
+    )
+    assert.equal(out.sl, 4400)
+    assert.deepEqual(out.tp, [4600, 4650])
+  })
+
+  test('mergeParsedWithChannelParams overlay replaces explicit stops', () => {
     const out = mergeParsedWithChannelParams(
       {
         action: 'buy',
@@ -23,20 +42,57 @@ describe('channelActiveTradeParams', () => {
         lot_size: null,
       },
       { symbol: 'XAUUSD', stoploss: 4470, tpLevels: [4550, 4620] },
+      { overlay: true },
     )
     assert.equal(out.sl, 4470)
     assert.deepEqual(out.tp, [4550, 4620])
   })
 
-  test('applyChannelParamsToVirtualLeg distributes TP by step', () => {
+  test('mergeParsedWithChannelParams fills missing SL/TP from channel memory', () => {
+    const out = mergeParsedWithChannelParams(
+      {
+        action: 'buy',
+        symbol: 'XAUUSD',
+        entry_price: 4500,
+        entry_zone_low: null,
+        entry_zone_high: null,
+        sl: null,
+        tp: null,
+        lot_size: null,
+      },
+      { symbol: 'XAUUSD', stoploss: 4470, tpLevels: [4550, 4620] },
+    )
+    assert.equal(out.sl, 4470)
+    assert.deepEqual(out.tp, [4550, 4620])
+  })
+
+  test('applyChannelParamsToVirtualLeg distributes TP within range pool only', () => {
     const out = applyChannelParamsToVirtualLeg(
       { stoploss: 4400, takeprofit: 4600 },
-      { symbol: 'XAUUSD', stoploss: 4470, tpLevels: [4550, 4620] },
-      { stepIdx: 2, openLegCount: 4, tpLots: null },
+      { symbol: 'XAUUSD', stoploss: 4470, tpLevels: [4530, 4510, 4490] },
+      {
+        rangeLegIndex: 3,
+        rangeLegCount: 5,
+        tpLots: [
+          { label: 'TP1', lot: 0, percent: 50, enabled: true },
+          { label: 'TP2', lot: 0, percent: 30, enabled: true },
+          { label: 'TP3', lot: 0, percent: 20, enabled: true },
+        ],
+      },
     )
     assert.equal(out.stoploss, 4470)
-    assert.ok(typeof out.takeprofit === 'number' && out.takeprofit > 0)
-    assert.notEqual(out.takeprofit, 4600)
+    assert.equal(out.takeprofit, 4510)
+  })
+
+  test('estimateBasketTotalPlannedLegs accounts for fired range legs', () => {
+    assert.equal(
+      estimateBasketTotalPlannedLegs({
+        openLegCount: 7,
+        activePendingCount: 3,
+        maxPendingStepIdx: 5,
+      }),
+      10,
+    )
   })
 
   test('shouldMergeChannelParamsForEntry requires explicit signal stops', () => {

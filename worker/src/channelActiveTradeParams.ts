@@ -4,7 +4,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { symbolsCompatibleForBasket } from './basketModFollowUp'
-import { takeProfitForLegIndex } from './manualPlanning/tpBucketDistribution'
+import { takeProfitForPoolLegIndex } from './manualPlanning/tpBucketDistribution'
 import type { ManualTpLot, ParsedSignal, VirtualPendingLeg } from './manualPlanning/types'
 
 export type ChannelActiveTradeParams = {
@@ -127,11 +127,22 @@ export function shouldMergeChannelParamsForEntry(parsed: ParsedSignal): boolean 
 export function mergeParsedWithChannelParams(
   parsed: ParsedSignal,
   params: ChannelActiveTradeParams | null,
+  opts?: { overlay?: boolean },
 ): ParsedSignal {
   if (!params) return parsed
-  const next: ParsedSignal = { ...parsed }
-  if (params.stoploss != null) next.sl = params.stoploss
-  if (params.tpLevels.length > 0) next.tp = [...params.tpLevels]
+  const next: ParsedSignal = {
+    ...parsed,
+    tp: parsed.tp ? [...parsed.tp] : parsed.tp,
+  }
+  const hasSl = positiveLevel(parsed.sl) != null
+  const hasTp = (parsed.tp ?? []).some(t => positiveLevel(t) != null)
+  if (opts?.overlay) {
+    if (params.stoploss != null) next.sl = params.stoploss
+    if (params.tpLevels.length > 0) next.tp = [...params.tpLevels]
+    return next
+  }
+  if (!hasSl && params.stoploss != null) next.sl = params.stoploss
+  if (!hasTp && params.tpLevels.length > 0) next.tp = [...params.tpLevels]
   return next
 }
 
@@ -167,19 +178,38 @@ export function stripInvalidStopsForSide(args: {
   return { stoploss, takeprofit, stripped }
 }
 
+export function estimateBasketTotalPlannedLegs(args: {
+  openLegCount: number
+  activePendingCount: number
+  maxPendingStepIdx: number
+}): number {
+  const { openLegCount, activePendingCount, maxPendingStepIdx } = args
+  if (maxPendingStepIdx <= 0) return Math.max(0, openLegCount)
+  const firedPendingApprox = Math.max(0, maxPendingStepIdx - activePendingCount)
+  const immediateLegCount = Math.max(0, openLegCount - firedPendingApprox)
+  return immediateLegCount + maxPendingStepIdx
+}
+
+export function globalLegIndexForRangePending(args: {
+  immediateLegCount: number
+  stepIdx: number
+}): number {
+  return Math.max(0, args.immediateLegCount + args.stepIdx - 1)
+}
+
 export function resolvePendingLegTp(args: {
   stepIdx: number
-  openLegCount: number
+  rangeLegCount: number
   channelTpLevels: number[]
   tpLots?: ManualTpLot[] | null
   fallbackTp: number | null | undefined
 }): number | null {
-  const { stepIdx, openLegCount, channelTpLevels, tpLots, fallbackTp } = args
+  const { stepIdx, rangeLegCount, channelTpLevels, tpLots, fallbackTp } = args
   if (!channelTpLevels.length) return positiveLevel(fallbackTp)
-  const legIndex = Math.max(0, stepIdx)
-  const distributed = takeProfitForLegIndex({
-    legIndex,
-    openLegCount: Math.max(openLegCount, legIndex + 1),
+  const rangeLegIndex = Math.max(0, stepIdx - 1)
+  const distributed = takeProfitForPoolLegIndex({
+    poolLegIndex: rangeLegIndex,
+    poolLegCount: Math.max(rangeLegCount, rangeLegIndex + 1),
     finalTps: channelTpLevels,
     tpLots,
   })
@@ -190,14 +220,16 @@ export function resolvePendingLegTp(args: {
 export function applyChannelParamsToVirtualPendingList(
   legs: VirtualPendingLeg[],
   params: ChannelActiveTradeParams | null,
-  immediateLegCount: number,
+  _immediateLegCount: number,
   tpLots?: ManualTpLot[] | null,
+  _totalPlannedLegCount?: number,
 ): VirtualPendingLeg[] {
   if (!params) return legs
+  const rangeLegCount = legs.length
   return legs.map(v => {
     const stops = applyChannelParamsToVirtualLeg(v, params, {
-      stepIdx: v.stepIdx,
-      openLegCount: Math.max(immediateLegCount, 1) + v.stepIdx,
+      rangeLegIndex: Math.max(0, v.stepIdx - 1),
+      rangeLegCount,
       tpLots,
     })
     return {
@@ -211,7 +243,7 @@ export function applyChannelParamsToVirtualPendingList(
 export function applyChannelParamsToVirtualLeg(
   leg: VirtualLegStops,
   params: ChannelActiveTradeParams | null,
-  args: { stepIdx: number; openLegCount: number; tpLots?: ManualTpLot[] | null },
+  args: { rangeLegIndex: number; rangeLegCount: number; tpLots?: ManualTpLot[] | null },
 ): VirtualLegStops {
   if (!params) return leg
   let stoploss = leg.stoploss
@@ -219,8 +251,8 @@ export function applyChannelParamsToVirtualLeg(
   if (params.stoploss != null) stoploss = params.stoploss
   if (params.tpLevels.length > 0) {
     takeprofit = resolvePendingLegTp({
-      stepIdx: args.stepIdx,
-      openLegCount: args.openLegCount,
+      stepIdx: args.rangeLegIndex + 1,
+      rangeLegCount: args.rangeLegCount,
       channelTpLevels: params.tpLevels,
       tpLots: args.tpLots,
       fallbackTp: leg.takeprofit,
@@ -275,15 +307,28 @@ export async function reapplyChannelParamsToPendingLegs(args: {
   }
 
   let updated = 0
+  const pendingByBasket = new Map<string, typeof data>()
+  for (const leg of data ?? []) {
+    const basketKey = `${leg.signal_id}|${leg.broker_account_id}`
+    const list = pendingByBasket.get(basketKey) ?? []
+    list.push(leg)
+    pendingByBasket.set(basketKey, list)
+  }
+
   for (const leg of data ?? []) {
     if (!symbolsCompatibleForBasket(args.symbolHint, leg.symbol)) continue
     const basketKey = `${leg.signal_id}|${leg.broker_account_id}`
-    const openLegCount = Math.max(args.openLegCountByBasket.get(basketKey) ?? 0, leg.step_idx + 1)
+    const basketPending = pendingByBasket.get(basketKey) ?? [leg]
+    const maxStepIdx = Math.max(...basketPending.map(row => row.step_idx), 0)
     const tpLots = args.tpLotsByBroker.get(leg.broker_account_id)
     const applied = applyChannelParamsToVirtualLeg(
       { stoploss: leg.stoploss, takeprofit: leg.takeprofit },
       params,
-      { stepIdx: leg.step_idx, openLegCount, tpLots },
+      {
+        rangeLegIndex: Math.max(0, leg.step_idx - 1),
+        rangeLegCount: maxStepIdx,
+        tpLots,
+      },
     )
     const patch: Record<string, unknown> = {
       stoploss: applied.stoploss,

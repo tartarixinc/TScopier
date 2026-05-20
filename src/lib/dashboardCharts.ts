@@ -191,6 +191,17 @@ export function findTodayTradeOutcomeDay(
   return buildTradeVolume7Day(trades, now).find(b => b.key === todayKey)
 }
 
+/** Yesterday's Trade Outcome bucket (profit − loss), same rules as {@link findTodayTradeOutcomeDay}. */
+export function findYesterdayTradeOutcomeDay(
+  trades: DashboardChartTrade[],
+  now = new Date(),
+): TradeVolumeDay | undefined {
+  const yesterday = startOfLocalDay(now)
+  yesterday.setDate(yesterday.getDate() - 1)
+  const yesterdayKey = dayKey(yesterday)
+  return buildTradeVolume7Day(trades, now).find(b => b.key === yesterdayKey)
+}
+
 /** Sum deal `profit` on every closed leg per broker (same rules as Trade Outcome chart). */
 export function sumClosedDealProfitByBroker(
   trades: DashboardChartTrade[],

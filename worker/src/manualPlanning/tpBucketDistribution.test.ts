@@ -3,8 +3,11 @@ import { test } from 'node:test'
 import {
   buildDistributedPerLegTakeProfits,
   distributeCountAcrossTpBuckets,
+  resolveTpBucketRows,
   takeProfitForLegIndex,
+  takeProfitForSplitBasketLeg,
 } from './tpBucketDistribution'
+import { normalizeManualSettingsForExecution } from './normalizeManualSettings'
 
 test('distributeCountAcrossTpBuckets: 50/30/20 on 10 legs', () => {
   const counts = distributeCountAcrossTpBuckets(10, [
@@ -31,6 +34,55 @@ test('buildDistributedPerLegTakeProfits: maps legs to TP1/TP2/TP3 prices', () =>
   assert.equal(prices.filter(p => p === 4490).length, 2)
 })
 
+test('takeProfitForSplitBasketLeg: instant and range pools each get 50/30/20', () => {
+  const tpLots = [
+    { label: 'TP1', lot: 0, percent: 50, enabled: true },
+    { label: 'TP2', lot: 0, percent: 30, enabled: true },
+    { label: 'TP3', lot: 0, percent: 20, enabled: true },
+  ]
+  const tps = [4530, 4510, 4490]
+  assert.equal(
+    takeProfitForSplitBasketLeg({
+      legIndex: 0,
+      immediateLegCount: 5,
+      rangeLegCount: 5,
+      finalTps: tps,
+      tpLots,
+    }),
+    4530,
+  )
+  assert.equal(
+    takeProfitForSplitBasketLeg({
+      legIndex: 4,
+      immediateLegCount: 5,
+      rangeLegCount: 5,
+      finalTps: tps,
+      tpLots,
+    }),
+    4510,
+  )
+  assert.equal(
+    takeProfitForSplitBasketLeg({
+      legIndex: 5,
+      immediateLegCount: 5,
+      rangeLegCount: 5,
+      finalTps: tps,
+      tpLots,
+    }),
+    4530,
+  )
+  assert.equal(
+    takeProfitForSplitBasketLeg({
+      legIndex: 9,
+      immediateLegCount: 5,
+      rangeLegCount: 5,
+      finalTps: tps,
+      tpLots,
+    }),
+    4510,
+  )
+})
+
 test('takeProfitForLegIndex: leg 6 of 10 gets TP2 price', () => {
   const tp = takeProfitForLegIndex({
     legIndex: 5,
@@ -43,4 +95,41 @@ test('takeProfitForLegIndex: leg 6 of 10 gets TP2 price', () => {
     ],
   })
   assert.equal(tp, 4510)
+})
+
+test('resolveTpBucketRows: disabled middle TP keeps positional prices (50/0/50)', () => {
+  const { bucketRows } = resolveTpBucketRows([4530, 4510, 4490], [
+    { label: 'TP1', lot: 0, percent: 50, enabled: true },
+    { label: 'TP2', lot: 0, percent: 30, enabled: false },
+    { label: 'TP3', lot: 0, percent: 50, enabled: true },
+  ])
+  assert.deepEqual(bucketRows.map(r => r.percent), [50, 0, 50])
+  const counts = distributeCountAcrossTpBuckets(10, bucketRows)
+  assert.deepEqual(counts, [5, 0, 5])
+  const prices = buildDistributedPerLegTakeProfits({
+    openLegCount: 10,
+    finalTps: [4530, 4510, 4490],
+    tpLots: [
+      { label: 'TP1', lot: 0, percent: 50, enabled: true },
+      { label: 'TP2', lot: 0, percent: 30, enabled: false },
+      { label: 'TP3', lot: 0, percent: 50, enabled: true },
+    ],
+  })
+  assert.equal(prices.filter(p => p === 4530).length, 5)
+  assert.equal(prices.filter(p => p === 4510).length, 0)
+  assert.equal(prices.filter(p => p === 4490).length, 5)
+})
+
+test('normalizeManualSettingsForExecution: equal split when enabled rows have 0%', () => {
+  const m = normalizeManualSettingsForExecution({
+    tp_lots: [
+      { label: 'TP1', lot: 0.01, percent: 0, enabled: true },
+      { label: 'TP2', lot: 0.01, percent: 0, enabled: true },
+      { label: 'TP3', lot: 0.01, percent: 0, enabled: false },
+    ],
+  })
+  assert.deepEqual(
+    (m.tp_lots ?? []).filter(r => r.enabled).map(r => r.percent),
+    [50, 50],
+  )
 })

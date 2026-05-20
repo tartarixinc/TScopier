@@ -8,23 +8,34 @@ export function isTpLotRowEnabled(row: ManualTpLot | null | undefined): boolean 
   return row.enabled !== false
 }
 
-/** Enabled target rows paired with parsed TP prices (same rules as multi-trade planner). */
+/**
+ * One bucket per signal TP index (TP1 → finalTps[0], …). Disabled / 0% rows keep
+ * their slot but contribute no leg count — percents apply only on active buckets.
+ */
 export function resolveTpBucketRows(
   finalTps: number[],
   tpLots?: ManualTpLot[] | null,
 ): { bucketRows: TpBucketRow[]; bucketCount: number } {
-  const enabledRows = (tpLots ?? []).filter(r => isTpLotRowEnabled(r))
-  const bucketCount = finalTps.length > 0
-    ? Math.max(1, Math.min(enabledRows.length || 1, finalTps.length))
-    : 1
-  const bucketRows: TpBucketRow[] = (enabledRows.length
-    ? enabledRows
-    : [{ label: 'TP1', lot: 0, percent: 100, enabled: true } as ManualTpLot])
-    .slice(0, bucketCount)
-    .map(r => ({
-      label: String(r.label ?? 'TP'),
-      percent: Number(r.percent),
-    }))
+  const tpCount = finalTps.length > 0 ? finalTps.length : 1
+  const lots = tpLots ?? []
+
+  const bucketRows: TpBucketRow[] = []
+  for (let i = 0; i < tpCount; i++) {
+    const row = lots[i]
+    const enabled = row ? isTpLotRowEnabled(row) : false
+    const pctRaw = enabled && row ? Number(row.percent) : 0
+    const percent = Number.isFinite(pctRaw) && pctRaw > 0 ? pctRaw : 0
+    bucketRows.push({
+      label: String(row?.label ?? `TP${i + 1}`),
+      percent,
+    })
+  }
+
+  if (lots.length === 0 && bucketRows.length > 0) {
+    bucketRows[0] = { label: 'TP1', percent: 100 }
+  }
+
+  const bucketCount = bucketRows.length > 0 ? bucketRows.length : 1
   return { bucketRows, bucketCount }
 }
 
@@ -40,7 +51,8 @@ export function distributeCountAcrossTpBuckets(
     const p = Number(r.percent)
     return Number.isFinite(p) && p > 0 ? p : 0
   })
-  const weights = rawWeights.every(w => w === 0) ? bucketRows.map(() => 1) : rawWeights
+  const hasPositive = rawWeights.some(w => w > 0)
+  const weights = hasPositive ? rawWeights : bucketRows.map(() => 1)
   const sumW = weights.reduce((a, b) => a + b, 0) || bucketRows.length
 
   for (let i = 0; i < weights.length; i++) {
@@ -51,8 +63,10 @@ export function distributeCountAcrossTpBuckets(
   let guard = out.length * 2
   while (drift !== 0 && guard-- > 0) {
     if (drift > 0) {
-      out[idx]! += 1
-      drift -= 1
+      if (weights[idx]! > 0 || !hasPositive) {
+        out[idx]! += 1
+        drift -= 1
+      }
     } else if (out[idx]! > 0) {
       out[idx]! -= 1
       drift += 1
@@ -112,19 +126,64 @@ export function expandPerLegTargetsToCount(args: {
   return tpPrices.map(tp => ({ stoploss: sl, takeprofit: tp }))
 }
 
-/** Targets % TP price for a single leg index (0 = oldest open leg). */
+/** Targets % TP price for a single leg index within one pool (instant or range). */
+export function takeProfitForPoolLegIndex(args: {
+  poolLegIndex: number
+  poolLegCount: number
+  finalTps: number[]
+  tpLots?: ManualTpLot[] | null
+}): number {
+  const prices = buildDistributedPerLegTakeProfits({
+    openLegCount: args.poolLegCount,
+    finalTps: args.finalTps,
+    tpLots: args.tpLots,
+  })
+  const i = args.poolLegIndex
+  if (i < 0 || i >= prices.length) return 0
+  return prices[i] ?? 0
+}
+
+/**
+ * Targets % for a layered basket: instant legs and range legs each get their own
+ * 50/30/20 (or configured %) split — not one combined pool across both groups.
+ */
+export function takeProfitForSplitBasketLeg(args: {
+  legIndex: number
+  immediateLegCount: number
+  rangeLegCount: number
+  finalTps: number[]
+  tpLots?: ManualTpLot[] | null
+}): number {
+  const { legIndex, immediateLegCount, rangeLegCount, finalTps, tpLots } = args
+  if (legIndex < immediateLegCount) {
+    return takeProfitForPoolLegIndex({
+      poolLegIndex: legIndex,
+      poolLegCount: immediateLegCount,
+      finalTps,
+      tpLots,
+    })
+  }
+  const rangeIdx = legIndex - immediateLegCount
+  if (rangeIdx < 0 || rangeIdx >= rangeLegCount) return 0
+  return takeProfitForPoolLegIndex({
+    poolLegIndex: rangeIdx,
+    poolLegCount: rangeLegCount,
+    finalTps,
+    tpLots,
+  })
+}
+
+/** @deprecated Prefer {@link takeProfitForPoolLegIndex} or {@link takeProfitForSplitBasketLeg}. */
 export function takeProfitForLegIndex(args: {
   legIndex: number
   openLegCount: number
   finalTps: number[]
   tpLots?: ManualTpLot[] | null
 }): number {
-  const prices = buildDistributedPerLegTakeProfits({
-    openLegCount: args.openLegCount,
+  return takeProfitForPoolLegIndex({
+    poolLegIndex: args.legIndex,
+    poolLegCount: args.openLegCount,
     finalTps: args.finalTps,
     tpLots: args.tpLots,
   })
-  const i = args.legIndex
-  if (i < 0 || i >= prices.length) return 0
-  return prices[i] ?? 0
 }

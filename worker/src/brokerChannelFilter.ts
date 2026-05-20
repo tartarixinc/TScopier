@@ -11,16 +11,13 @@ export function normalizeSignalChannelIds(raw: string[] | null | undefined): str
 
 /**
  * True when this broker should copy signals from `channelId`.
- * Whitelist applies only when `enforce_signal_channel_filter` is true (saved from
- * Configure Trading). Stale `signal_channel_ids` with enforce off are ignored.
+ * Channels copy only when explicitly listed in `signal_channel_ids`.
  */
 export function channelMatchesBrokerSignal(
   broker: BrokerChannelFilterFields,
   channelId: string | null,
 ): boolean {
-  if (broker.enforce_signal_channel_filter !== true) return true
   const ids = normalizeSignalChannelIds(broker.signal_channel_ids)
-  if (!ids.length) return true
-  if (!channelId) return false
+  if (!ids.length || !channelId) return false
   return ids.includes(channelId)
 }

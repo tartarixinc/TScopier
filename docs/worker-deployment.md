@@ -244,6 +244,31 @@ Channel **Adjust SL / TP** instructions are stored in `channel_active_trade_para
 
 Deploy **Trade worker** after logic changes; deploy **`parse-signal`** Edge if symbol parsing (`on` / `for`) changed.
 
+## Telegram session persistence (one login)
+
+TScopier stores a GramJS **StringSession** in `telegram_sessions.session_string` after you verify your phone once. The **listener worker** holds a single long-lived MTProto socket and persists session rotations every ~30 minutes. The UI never opens its own Telegram connection.
+
+### my.telegram.org — Test vs Production
+
+| Field | Purpose |
+|-------|---------|
+| **Production configuration** | Real `api_id` + `api_hash` for live Telegram. **Use these** in `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` on the listener worker. |
+| **Test configuration** | Separate credentials for Telegram’s **test DCs** (fake users, not production traffic). Do **not** use for TSCopier. |
+| **DC 2 IP addresses** | Telegram datacenter server IPs. The MTProto client picks the correct DC automatically; you do not configure these in env. |
+| **Public Key** | Telegram server RSA key used during MTProto encryption handshake. Handled internally by GramJS — not an env var. |
+
+### What disconnects a session (and what does not)
+
+| Event | Result |
+|-------|--------|
+| User clicks **Disconnect** on Copier Engine | Session row deleted; **configured channels kept** |
+| Transient worker/network error | Watchdog reconnects; session **not** cleared |
+| `AUTH_KEY_DUPLICATED` | Two workers connected with the same session — fix replicas; listener retries |
+| `AUTH_KEY_UNREGISTERED` | Telegram revoked the key (rare); session row removed; **channels kept**; user re-verifies phone |
+| Supabase/worker 401 (misconfigured token) | Error shown; session **not** auto-deleted |
+
+**Never run more than one listener replica per shard** with the same user session. See `WORKER_LEASE_*` and `docs/worker-deployment.md` hard rule above.
+
 ## Environment reference
 
 See `worker/.env.example` for catch-up, lease, and parse tuning variables.

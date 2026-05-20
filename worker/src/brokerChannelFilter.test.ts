@@ -6,23 +6,21 @@ describe('channelMatchesBrokerSignal', () => {
   const chA = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
   const chB = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
 
-  it('allows any channel when no whitelist is configured', () => {
-    assert.equal(channelMatchesBrokerSignal({}, chA), true)
-    assert.equal(channelMatchesBrokerSignal({ enforce_signal_channel_filter: false }, chA), true)
+  it('blocks all channels when whitelist is empty', () => {
+    assert.equal(channelMatchesBrokerSignal({}, chA), false)
+    assert.equal(channelMatchesBrokerSignal({ enforce_signal_channel_filter: false }, chA), false)
+    assert.equal(channelMatchesBrokerSignal({ enforce_signal_channel_filter: true }, chA), false)
   })
 
-  it('restricts to listed channels when enforce is true', () => {
+  it('allows only listed channels', () => {
     const broker = { enforce_signal_channel_filter: true, signal_channel_ids: [chA] }
     assert.equal(channelMatchesBrokerSignal(broker, chA), true)
     assert.equal(channelMatchesBrokerSignal(broker, chB), false)
   })
 
-  it('ignores signal_channel_ids when enforce is false (legacy rows)', () => {
+  it('ignores enforce flag when ids are present (whitelist is authoritative)', () => {
     const broker = { enforce_signal_channel_filter: false, signal_channel_ids: [chA] }
-    assert.equal(channelMatchesBrokerSignal(broker, chB), true)
-  })
-
-  it('allows all channels when enforce is on but list is empty (mis-save)', () => {
-    assert.equal(channelMatchesBrokerSignal({ enforce_signal_channel_filter: true }, chA), true)
+    assert.equal(channelMatchesBrokerSignal(broker, chA), true)
+    assert.equal(channelMatchesBrokerSignal(broker, chB), false)
   })
 })

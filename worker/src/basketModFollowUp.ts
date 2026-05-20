@@ -1,7 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { MetatraderApiClient } from './metatraderapi'
 import type { ManualTpLot } from './manualPlanning/types'
-import { takeProfitForLegIndex } from './manualPlanning/tpBucketDistribution'
+import { normalizeManualSettingsForExecution } from './manualPlanning/normalizeManualSettings'
+import {
+  estimateBasketTotalPlannedLegs,
+} from './channelActiveTradeParams'
+import { takeProfitForSplitBasketLeg } from './manualPlanning/tpBucketDistribution'
 
 type ParsedMgmt = {
   action?: string
@@ -79,7 +83,7 @@ export async function tryApplyBasketFollowUpToNewFill(
       .select('manual_settings')
       .eq('id', args.brokerAccountId)
       .maybeSingle()
-    tpLots = ((br?.manual_settings ?? {}) as { tp_lots?: ManualTpLot[] | null }).tp_lots
+    tpLots = normalizeManualSettingsForExecution(br?.manual_settings).tp_lots
   }
 
   const { data: openLegs } = await supabase
@@ -91,6 +95,25 @@ export async function tryApplyBasketFollowUpToNewFill(
     .order('opened_at', { ascending: true })
     .limit(500)
   const legIndex = (openLegs ?? []).findIndex(r => r.id === args.tradeRowId)
+
+  const { data: pendingRows } = await supabase
+    .from('range_pending_legs')
+    .select('step_idx')
+    .eq('broker_account_id', args.brokerAccountId)
+    .eq('signal_id', args.basketSignalId)
+    .in('status', ['pending', 'claimed'])
+    .limit(500)
+  const openCount = openLegs?.length ?? 0
+  const activePendingCount = pendingRows?.length ?? 0
+  const maxPendingStepIdx = Math.max(0, ...(pendingRows ?? []).map(r => Number(r.step_idx) || 0))
+  const totalPlannedLegs = estimateBasketTotalPlannedLegs({
+    openLegCount: openCount,
+    activePendingCount,
+    maxPendingStepIdx,
+  })
+  const firedPendingApprox = Math.max(0, maxPendingStepIdx - activePendingCount)
+  const immediateLegCount = Math.max(0, openCount - firedPendingApprox)
+  const rangeLegCount = Math.max(0, totalPlannedLegs - immediateLegCount)
 
   const { data: candidates } = await supabase
     .from('signals')
@@ -123,11 +146,11 @@ export async function tryApplyBasketFollowUpToNewFill(
       if (!hasNewSl && !hasNewTp) continue
       stoploss = hasNewSl ? (parsed.sl as number) : sanitizeLevel(args.existingSl)
       if (hasNewTp) {
-        const openLegCount = Math.max((openLegs ?? []).length, legIndex + 1)
-        const idx = legIndex >= 0 ? legIndex : openLegCount - 1
-        takeprofit = takeProfitForLegIndex({
+        const idx = legIndex >= 0 ? legIndex : openCount - 1
+        takeprofit = takeProfitForSplitBasketLeg({
           legIndex: idx,
-          openLegCount,
+          immediateLegCount,
+          rangeLegCount,
           finalTps,
           tpLots,
         })

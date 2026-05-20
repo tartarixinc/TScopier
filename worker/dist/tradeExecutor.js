@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.TradeExecutor = void 0;
 const metatraderapi_1 = require("./metatraderapi");
 const manualPlanner_1 = require("./manualPlanner");
+const normalizeManualSettings_1 = require("./manualPlanning/normalizeManualSettings");
 const blackout_1 = require("./newsTrading/blackout");
 const calendarProvider_1 = require("./newsTrading/calendarProvider");
 const settings_1 = require("./newsTrading/settings");
@@ -350,6 +351,12 @@ class TradeExecutor {
         }
     }
     // ── caches ────────────────────────────────────────────────────────────
+    normalizeBrokerRow(row) {
+        return {
+            ...row,
+            manual_settings: (0, normalizeManualSettings_1.normalizeManualSettingsForExecution)(row.manual_settings),
+        };
+    }
     async loadBrokers() {
         const { data, error } = await this.supabase
             .from('broker_accounts')
@@ -362,9 +369,10 @@ class TradeExecutor {
         this.brokersByUser.clear();
         this.brokersById.clear();
         for (const row of (data ?? [])) {
-            this.brokersById.set(row.id, row);
+            const normalized = this.normalizeBrokerRow(row);
+            this.brokersById.set(row.id, normalized);
             const arr = this.brokersByUser.get(row.user_id) ?? [];
-            arr.push(row);
+            arr.push(normalized);
             this.brokersByUser.set(row.user_id, arr);
         }
         console.log(`[tradeExecutor] cached ${this.brokersById.size} broker accounts across ${this.brokersByUser.size} users`);
@@ -436,12 +444,13 @@ class TradeExecutor {
         }
     }
     upsertBrokerCache(row) {
+        const normalized = this.normalizeBrokerRow(row);
         const previous = this.brokersById.get(row.id);
-        this.brokersById.set(row.id, row);
+        this.brokersById.set(row.id, normalized);
         const userId = row.user_id;
         const list = (this.brokersByUser.get(userId) ?? []).filter(b => b.id !== row.id);
-        if (row.is_active)
-            list.push(row);
+        if (normalized.is_active)
+            list.push(normalized);
         this.brokersByUser.set(userId, list);
         if (previous && previous.user_id !== userId) {
             const prev = (this.brokersByUser.get(previous.user_id) ?? []).filter(b => b.id !== row.id);

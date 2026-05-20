@@ -11,7 +11,7 @@ import {
   type BasketReconcileJobRow,
   type BasketSymbolParams,
 } from './basketSlTpReconcile'
-import type { ManualTpLot } from './manualPlanning/types'
+import { normalizeManualSettingsForExecution } from './manualPlanning/normalizeManualSettings'
 import { normalizeSymbolParams } from './metatraderapi'
 
 const TICK_INTERVAL_MS = Math.min(
@@ -167,7 +167,7 @@ export class BasketSlTpReconcileMonitor {
 
     const openedTickets = await fetchOpenBrokerTickets(api, uuid)
     const baseLot = Number(broker.default_lot_size ?? 0.01)
-    const manual = (broker.manual_settings ?? {}) as { tp_lots?: ManualTpLot[] | null }
+    const manual = normalizeManualSettingsForExecution(broker.manual_settings)
     const { data: anchorSig } = await this.supabase
       .from('signals')
       .select('parsed_data')

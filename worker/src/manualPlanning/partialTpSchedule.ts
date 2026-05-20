@@ -7,7 +7,7 @@ export interface PlanSinglePartialTpsArgs {
   lotStep: number
   /** All TPs in the signal, signed (already converted from pip-distance to absolute price). */
   finalTps: number[]
-  /** Enabled `tp_lots` rows (ordered, paired positionally with finalTps[0..]). */
+  /** Targets % rows aligned to finalTps[0..] (from resolveTpBucketRows). */
   bucketRows: Array<{ percent?: number }>
 }
 
@@ -60,7 +60,13 @@ export function planSinglePartialTps(args: PlanSinglePartialTpsArgs): PlanSingle
   const pairedTps = finalTps.slice(0, bucketCount)
   const pairedBuckets = bucketRows.slice(0, bucketCount)
 
-  const brokerTp = pairedTps[bucketCount - 1] ?? null
+  let brokerTpIndex = bucketCount - 1
+  while (brokerTpIndex > 0) {
+    const pct = Number(pairedBuckets[brokerTpIndex]?.percent)
+    if (Number.isFinite(pct) && pct > 0) break
+    brokerTpIndex -= 1
+  }
+  const brokerTp = pairedTps[brokerTpIndex] ?? null
   if (bucketCount < 2 || brokerTp == null) {
     return { brokerTp, partials: [] }
   }

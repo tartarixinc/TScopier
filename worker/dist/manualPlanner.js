@@ -6,11 +6,15 @@
  * stable public surface so callers (e.g. `tradeExecutor`) keep importing `./manualPlanner`.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.planManualOrders = exports.strictSignalEntryQuoteAllowsImmediate = exports.computeCwOverrideTp = exports.planRangeSplit = exports.planSinglePartialTps = exports.reverseSignalGateSatisfied = exports.SKIP_REASON_SIGNAL_ENTRY_REQUIRED = exports.lastPositiveParsedTpPrice = exports.parsedHasExplicitEntryAnchor = exports.resolvedParsedEntryZone = exports.resolvedParsedEntryPrice = exports.clampPendingExpiryHours = exports.signalEntryPriceStrictEnabled = exports.manualUseSignalEntryPriceOn = void 0;
+exports.planManualOrders = exports.strictSignalEntryQuoteAllowsImmediate = exports.computeCwOverrideTp = exports.planRangeSplit = exports.planSinglePartialTps = exports.reverseSignalGateSatisfied = exports.SKIP_REASON_SIGNAL_ENTRY_REQUIRED = exports.lastPositiveParsedTpPrice = exports.parsedHasExplicitEntryAnchor = exports.resolvedParsedEntryZone = exports.resolvedParsedEntryPrice = exports.DEFAULT_MANUAL_TP_LOTS = exports.sanitizeTpLots = exports.normalizeManualSettingsForExecution = exports.clampPendingExpiryHours = exports.signalEntryPriceStrictEnabled = exports.manualUseSignalEntryPriceOn = void 0;
 var manualSettings_1 = require("./manualPlanning/manualSettings");
 Object.defineProperty(exports, "manualUseSignalEntryPriceOn", { enumerable: true, get: function () { return manualSettings_1.manualUseSignalEntryPriceOn; } });
 Object.defineProperty(exports, "signalEntryPriceStrictEnabled", { enumerable: true, get: function () { return manualSettings_1.signalEntryPriceStrictEnabled; } });
 Object.defineProperty(exports, "clampPendingExpiryHours", { enumerable: true, get: function () { return manualSettings_1.clampPendingExpiryHours; } });
+var normalizeManualSettings_1 = require("./manualPlanning/normalizeManualSettings");
+Object.defineProperty(exports, "normalizeManualSettingsForExecution", { enumerable: true, get: function () { return normalizeManualSettings_1.normalizeManualSettingsForExecution; } });
+Object.defineProperty(exports, "sanitizeTpLots", { enumerable: true, get: function () { return normalizeManualSettings_1.sanitizeTpLots; } });
+Object.defineProperty(exports, "DEFAULT_MANUAL_TP_LOTS", { enumerable: true, get: function () { return normalizeManualSettings_1.DEFAULT_MANUAL_TP_LOTS; } });
 var parsedEntry_1 = require("./manualPlanning/parsedEntry");
 Object.defineProperty(exports, "resolvedParsedEntryPrice", { enumerable: true, get: function () { return parsedEntry_1.resolvedParsedEntryPrice; } });
 Object.defineProperty(exports, "resolvedParsedEntryZone", { enumerable: true, get: function () { return parsedEntry_1.resolvedParsedEntryZone; } });
