@@ -16,17 +16,11 @@ const MT4API_HTTP_CONNECTIONS = Math.max(
   Math.min(512, Number(process.env.MT4API_HTTP_CONNECTIONS ?? 128)),
 )
 
-const MT4API_ORDER_TIMEOUT_MS = Math.max(
-  3_000,
-  Math.min(30_000, Number(process.env.MT4API_ORDER_TIMEOUT_MS ?? 10_000)),
-)
-
 const KEEP_ALIVE_AGENT = new Agent({
   keepAliveTimeout: 60_000,
   keepAliveMaxTimeout: 600_000,
   connections: MT4API_HTTP_CONNECTIONS,
   pipelining: 1,
-  connect: { timeout: 5_000 },
 })
 
 export type MtPlatform = 'MT4' | 'MT5'
@@ -443,23 +437,6 @@ export function isMtSessionGoneError(err: unknown): boolean {
   return isMtSessionGoneMessage(String(err))
 }
 
-export function isTimeoutOrNetworkError(err: unknown): boolean {
-  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase()
-  return (
-    msg.includes('headers timeout')
-    || msg.includes('body timeout')
-    || msg.includes('connect timeout')
-    || msg.includes('und_err_headers_timeout')
-    || msg.includes('und_err_body_timeout')
-    || msg.includes('und_err_connect_timeout')
-    || msg.includes('fetch failed')
-    || msg.includes('network error')
-    || msg.includes('econnrefused')
-    || msg.includes('econnreset')
-    || msg.includes('socket hang up')
-  )
-}
-
 export const MT_SESSION_EXPIRED_HINT =
   'Trading session expired on the broker API. In Account Configuration, use Reconnect and enter your MT password (or remove and link the account again).'
 
@@ -846,7 +823,7 @@ export class MetatraderApiClient {
       expertID: args.expertID ?? 0,
       expiration: args.expiration,
       expirationType: args.expirationType,
-    }, MT4API_ORDER_TIMEOUT_MS)
+    })
     assertNoApiError(raw)
     const out = normalizeOrderResponse(raw)
     if (!Number.isFinite(out.ticket) || out.ticket <= 0) {
@@ -865,7 +842,7 @@ export class MetatraderApiClient {
       price: args.price ?? 0,
       expiration: args.expiration,
       expirationType: args.expirationType,
-    }, MT4API_ORDER_TIMEOUT_MS)
+    })
     assertNoApiError(raw)
     return normalizeOrderResponse(raw)
   }
@@ -877,7 +854,7 @@ export class MetatraderApiClient {
       lots: args.lots ?? 0,
       price: args.price ?? 0,
       slippage: args.slippage ?? 20,
-    }, MT4API_ORDER_TIMEOUT_MS)
+    })
     assertNoApiError(raw)
     return normalizeOrderResponse(raw)
   }
