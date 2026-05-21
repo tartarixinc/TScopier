@@ -4,6 +4,7 @@ import { TelegramSessionInvalidError, TELEGRAM_SESSION_INVALID_CODE } from './te
 import type { SignalRow, TradeExecutor } from './tradeExecutor'
 import { UserSessionManager } from './sessionManager'
 import { userBelongsToShard } from './workerConfig'
+import { getQueueHealthMetrics } from './queue/queueHealth'
 
 const INTERNAL_TOKEN = process.env.WORKER_INTERNAL_TOKEN ?? ''
 const PORT = parseInt(process.env.WORKER_PORT ?? '8080', 10)
@@ -205,7 +206,11 @@ export function startTradeHttpServer(
 
       if (url === '/health' && (req.method === 'GET' || req.method === 'POST')) {
         const payload = await sessionManager.getHealthPayload()
-        return sendJson(res, payload.ok ? 200 : 503, payload)
+        const queue = await getQueueHealthMetrics()
+        return sendJson(res, payload.ok ? 200 : 503, {
+          ...payload,
+          queue,
+        })
       }
 
       if (url === '/internal/dispatch-signal' && req.method === 'POST') {

@@ -6,6 +6,7 @@ exports.startHealthOnlyServer = startHealthOnlyServer;
 const http_1 = require("http");
 const telegramClient_1 = require("./telegramClient");
 const workerConfig_1 = require("./workerConfig");
+const queueHealth_1 = require("./queue/queueHealth");
 const INTERNAL_TOKEN = process.env.WORKER_INTERNAL_TOKEN ?? '';
 const PORT = parseInt(process.env.WORKER_PORT ?? '8080', 10);
 function isTelegramSessionInvalid(err) {
@@ -150,7 +151,11 @@ function startTradeHttpServer(sessionManager, tradeExecutor) {
             const url = (req.url ?? '').split('?')[0] ?? '';
             if (url === '/health' && (req.method === 'GET' || req.method === 'POST')) {
                 const payload = await sessionManager.getHealthPayload();
-                return sendJson(res, payload.ok ? 200 : 503, payload);
+                const queue = await (0, queueHealth_1.getQueueHealthMetrics)();
+                return sendJson(res, payload.ok ? 200 : 503, {
+                    ...payload,
+                    queue,
+                });
             }
             if (url === '/internal/dispatch-signal' && req.method === 'POST') {
                 if (!INTERNAL_TOKEN) {

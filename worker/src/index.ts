@@ -15,7 +15,10 @@ import { BasketSlTpReconcileMonitor } from './basketSlTpReconcileMonitor'
 import { NewsTradingMonitor } from './newsTradingMonitor'
 import { BrokerConnectionMonitor } from './brokerConnectionMonitor'
 import { workerConfig } from './workerConfig'
-import { validateListenerTradeShardConfig } from './tradeSignalPush'
+import { validateListenerTradeShardConfig, validateListenerQueueConfig } from './tradeSignalPush'
+import { SignalQueueConsumerManager } from './queue/signalQueueConsumer'
+import { signalQueueConfig, redisQueueConfigured } from './queue/signalQueueConfig'
+import { setQueueMetricsProvider } from './queue/queueHealth'
 import type { MonitorLoopHandle } from './monitorIdleGate'
 import { subscribeMonitorWorkWake } from './monitorWorkWake'
 import { startTradeLogRetention } from './tradeLogRetention'
@@ -34,6 +37,7 @@ const sessionManager = new UserSessionManager(supabase)
 let httpServer: Server | null = null
 let authService: AuthService | null = null
 let tradeExecutor: TradeExecutor | null = null
+let signalQueueConsumers: SignalQueueConsumerManager | null = null
 
 const monitors: Array<{ stop: () => void }> = []
 const monitorLoops: MonitorLoopHandle[] = []
@@ -98,6 +102,11 @@ async function main() {
       console.error(`[worker] FATAL: ${shardErr}`)
       process.exit(1)
     }
+    const queueErr = validateListenerQueueConfig()
+    if (queueErr) {
+      console.error(`[worker] FATAL: ${queueErr}`)
+      process.exit(1)
+    }
   }
 
   console.log(
@@ -122,6 +131,17 @@ async function main() {
     }
     if (!httpServer) {
       httpServer = startTradeHttpServer(sessionManager, tradeExecutor)
+    }
+
+    const queueCfg = signalQueueConfig()
+    if (queueCfg.enabled && redisQueueConfigured()) {
+      signalQueueConsumers = new SignalQueueConsumerManager(supabase, tradeExecutor)
+      signalQueueConsumers.start()
+      setQueueMetricsProvider(() => signalQueueConsumers!.getMetrics())
+      console.log('[worker] signal queue consumers started')
+    } else if (queueCfg.enabled) {
+      console.warn('[worker] TRADE_SIGNAL_QUEUE_ENABLED=true but Redis REST URL/token missing — queue disabled')
+      setQueueMetricsProvider(null)
     }
   } else {
     sessionManager.setTradeExecutor(null)
@@ -148,6 +168,8 @@ async function main() {
     authService?.shutdown()
     stopWorkWake?.()
     stopLogRetention?.()
+    setQueueMetricsProvider(null)
+    await signalQueueConsumers?.stop()
     tradeExecutor?.stop()
     for (const m of monitors) m.stop()
     if (workerConfig.runsListener) {

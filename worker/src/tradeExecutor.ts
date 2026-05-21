@@ -891,6 +891,44 @@ export class TradeExecutor {
   }
 
   /**
+   * Redis Streams consumer path: await execution before XACK (at-least-once safety).
+   * Bypasses the in-process priority queue — the stream is the queue.
+   */
+  async acceptDispatchSignalAwait(
+    row: SignalRow,
+    opts?: { priority?: 'high' | 'normal'; source?: string },
+  ): Promise<boolean> {
+    if (!PARSED_STATUSES.has(row.status)) return false
+    if (!signalMatchesExecutorMode(row.parsed_data, workerConfig.tradeExecutorMode)) {
+      return false
+    }
+    const source = opts?.source ?? 'queue'
+    const receivedAt = Date.now()
+    const rowWithTs: SignalRow = {
+      ...row,
+      pipeline_ts: {
+        ...(parsePipelineTimestamps(row.pipeline_ts) ?? {}),
+        t_dispatch_received: receivedAt,
+      },
+    }
+    const entryFast = this.shouldUseEntryFastPath(rowWithTs)
+
+    if (!entryFast) {
+      await this.logPipelineStage(rowWithTs, 'dispatch_received', { source, priority: opts?.priority ?? null })
+    }
+
+    if (this.inflight.has(row.id)) return true
+
+    await this.handleSignal(rowWithTs, {
+      liveDispatch: true,
+      dispatchSource: source,
+      dispatchReceivedAt: receivedAt,
+      lightIdempotency: entryFast,
+    })
+    return true
+  }
+
+  /**
    * In-process fast path (monolith). Live buy/sell bypass the queue when role allows.
    */
   dispatchParsedSignal(row: SignalRow): boolean {

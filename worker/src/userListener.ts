@@ -8,6 +8,8 @@ import { buildClient, isAuthKeyUnregistered, rethrowIfSessionInvalid, TelegramSe
 import { tradeableFromParsed } from './backtestSignal'
 import { hasTradableInstrumentInText } from './tradableSymbol'
 import type { SignalRow } from './tradeExecutor'
+import { enqueueParsedSignal } from './queue/signalQueuePublisher'
+import { signalQueueConfig } from './queue/signalQueueConfig'
 import { pushParsedSignalToTradeWorker } from './tradeSignalPush'
 import { getChannelParseContext, invalidateChannelParseCache } from './channelKeywordsCache'
 import { parseChannelMessageSync, parseRawChannelMessage } from './parseSignal'
@@ -1042,16 +1044,30 @@ export class UserListener {
     const dispatchedInProcess = this.onSignalParsed ? this.onSignalParsed(dispatchRow) === true : false
     const shouldPush = workerConfig.runsListener && (!workerConfig.runsTrade || !dispatchedInProcess)
     void (async () => {
+      let queueResult: Awaited<ReturnType<typeof enqueueParsedSignal>> | null = null
+      if (shouldPush) {
+        queueResult = await enqueueParsedSignal(this.supabase, dispatchRow)
+      }
+      const queueCfg = signalQueueConfig()
+      const queueSucceeded = queueResult?.ok === true
+      const pushFallback = queueCfg.pushFallbackOnQueueFail
+      const shouldHttpPush = shouldPush && (
+        !queueSucceeded
+        && (pushFallback || !queueResult || queueResult.skipped)
+      )
       const { error } = await this.supabase.from('trade_execution_logs').insert({
         user_id: this.userId,
         signal_id: signalId,
         action: 'dispatch_route_decision',
         status: 'success',
         request_payload: {
-          run_id: 'latency-v2',
-          hypothesis_id: 'H4',
           dispatched_in_process: dispatchedInProcess,
           should_push: shouldPush,
+          queue_enabled: queueCfg.enabled,
+          queue_enqueued: queueSucceeded,
+          queue_skipped_reason: queueResult?.skipped ? queueResult.reason : null,
+          queue_error: queueResult?.error ?? null,
+          http_push_fallback: shouldHttpPush,
           runs_trade: workerConfig.runsTrade,
           runs_listener: workerConfig.runsListener,
         },
@@ -1059,10 +1075,10 @@ export class UserListener {
       if (error) {
         /* best-effort */
       }
+      if (shouldHttpPush) {
+        pushParsedSignalToTradeWorker(dispatchRow)
+      }
     })()
-    if (shouldPush) {
-      pushParsedSignalToTradeWorker(dispatchRow)
-    }
 
     return true
   }

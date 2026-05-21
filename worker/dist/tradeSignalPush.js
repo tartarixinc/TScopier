@@ -6,7 +6,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.parseTradeWorkerShardUrls = parseTradeWorkerShardUrls;
 exports.pushParsedSignalToTradeWorker = pushParsedSignalToTradeWorker;
 exports.validateListenerTradeShardConfig = validateListenerTradeShardConfig;
+exports.validateListenerQueueConfig = validateListenerQueueConfig;
 const tradeSignalActions_1 = require("./tradeSignalActions");
+const signalQueueConfig_1 = require("./queue/signalQueueConfig");
 const workerConfig_1 = require("./workerConfig");
 const PUSH_MAX_ATTEMPTS = Math.max(1, Math.min(5, Number(process.env.TRADE_SIGNAL_PUSH_MAX_ATTEMPTS ?? 3)));
 const PUSH_RETRY_BASE_MS = Math.max(25, Math.min(500, Number(process.env.TRADE_SIGNAL_PUSH_RETRY_BASE_MS ?? 75)));
@@ -161,9 +163,6 @@ function pushParsedSignalToTradeWorker(row) {
         pipeline_ts: row.pipeline_ts,
     };
     void (async () => {
-        // #region agent log
-        fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '551fbc' }, body: JSON.stringify({ sessionId: '551fbc', runId: 'latency-v1', hypothesisId: 'H1', location: 'tradeSignalPush.ts:push-start', message: 'push start', data: { signalId: row.id, userId: row.user_id, action, baseUrl, timeoutMs, maxAttempts: PUSH_MAX_ATTEMPTS }, timestamp: Date.now() }) }).catch(() => { });
-        // #endregion
         await logPushAttemptToDb(row, 'success', {
             run_id: 'latency-v3',
             phase: 'start',
@@ -175,9 +174,6 @@ function pushParsedSignalToTradeWorker(row) {
         for (let attempt = 1; attempt <= PUSH_MAX_ATTEMPTS; attempt++) {
             const attemptStartedAt = Date.now();
             const result = await postDispatchSignal(url, token, signalBody, priority, timeoutMs);
-            // #region agent log
-            fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '551fbc' }, body: JSON.stringify({ sessionId: '551fbc', runId: 'latency-v1', hypothesisId: 'H1', location: 'tradeSignalPush.ts:push-attempt', message: 'push attempt result', data: { signalId: row.id, userId: row.user_id, attempt, ok: result.ok, status: result.status, retryable: result.retryable, elapsedMs: Date.now() - attemptStartedAt, detail: result.detail.slice(0, 120) }, timestamp: Date.now() }) }).catch(() => { });
-            // #endregion
             await logPushAttemptToDb(row, result.ok ? 'success' : 'failed', {
                 run_id: 'latency-v3',
                 phase: 'attempt',
@@ -220,6 +216,21 @@ function validateListenerTradeShardConfig() {
     }
     if (shardUrls.length !== expected) {
         return `TRADE_WORKER_SHARD_URLS has ${shardUrls.length} URL(s) but TRADE_WORKER_SHARD_COUNT=${expected}`;
+    }
+    return null;
+}
+/**
+ * Listener startup check for Redis queue env when queue mode is enabled.
+ */
+function validateListenerQueueConfig() {
+    const cfg = (0, signalQueueConfig_1.signalQueueConfig)();
+    if (!cfg.enabled)
+        return null;
+    if (!(0, signalQueueConfig_1.redisQueueConfigured)()) {
+        return 'TRADE_SIGNAL_QUEUE_ENABLED=true but UPSTASH_REDIS_REST_URL/TOKEN (or REDIS_REST_*) are missing';
+    }
+    if (cfg.shardCount < 1) {
+        return 'TRADE_SIGNAL_QUEUE_SHARD_COUNT must be >= 1';
     }
     return null;
 }
