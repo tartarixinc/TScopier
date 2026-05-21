@@ -216,6 +216,13 @@ interface BrokerRow {
   last_currency: string | null
   performance_baseline_balance?: number | null
   channel_message_filters?: ChannelMessageFiltersMap | null
+  /**
+   * Wall time the broker's `is_active` most recently flipped to TRUE
+   * (maintained by `broker_accounts_stamp_activated_at` trigger). Used to
+   * reject parsed signals that pre-date a reactivation, so sweep replay
+   * doesn't fire trades that piled up while the broker was disabled.
+   */
+  last_activated_at?: string | null
 }
 
 interface SymbolCacheEntry {
@@ -251,8 +258,29 @@ interface SymbolListCacheEntry {
   loadedAt: number
 }
 
-const SYMBOL_CACHE_TTL_MS = 10 * 60_000
-const SYMBOL_LIST_TTL_MS = 30 * 60_000
+/**
+ * Long-lived cache TTLs (24h). Symbol-cache keepalive refreshes entries every
+ * SYMBOL_CACHE_KEEPALIVE_MS so we never serve content older than that even if
+ * the broker quietly changes contract specs. Stale-while-revalidate then
+ * guarantees the live-entry hot path never blocks on a cache fill.
+ */
+const SYMBOL_CACHE_TTL_MS = 24 * 60 * 60_000
+const SYMBOL_LIST_TTL_MS = 24 * 60 * 60_000
+/**
+ * Background refresh cadence for cached entries. Returning stale-while-
+ * revalidate means: if an entry exists, the live path returns it instantly
+ * AND schedules a background refresh when older than this threshold. The
+ * standalone keepalive timer below provides a safety net for fully idle
+ * symbols that never get touched by a signal.
+ */
+const SYMBOL_CACHE_STALE_MS = Math.max(
+  30_000,
+  Math.min(SYMBOL_CACHE_TTL_MS, Number(process.env.SYMBOL_CACHE_STALE_MS ?? 5 * 60_000)),
+)
+const SYMBOL_CACHE_KEEPALIVE_MS = Math.max(
+  30_000,
+  Math.min(SYMBOL_CACHE_TTL_MS, Number(process.env.SYMBOL_CACHE_KEEPALIVE_MS ?? 5 * 60_000)),
+)
 const BROKER_SESSION_HEARTBEAT_MS = Math.max(
   5_000,
   Math.min(60_000, Number(process.env.BROKER_SESSION_HEARTBEAT_MS ?? 15_000)),
@@ -535,6 +563,7 @@ export class TradeExecutor {
   /** Cancels TSCopier broker pendings past `pending_expiry_hours` (1–24) when env enabled. */
   private brokerPendingSweepTimer: NodeJS.Timeout | null = null
   private sessionHeartbeatTimer: NodeJS.Timeout | null = null
+  private symbolCacheKeepaliveTimer: NodeJS.Timeout | null = null
   private signalsChannel: RealtimeChannel | null = null
   private brokersChannel: RealtimeChannel | null = null
   private channelsChannel: RealtimeChannel | null = null
@@ -552,8 +581,22 @@ export class TradeExecutor {
   /** Cached channel rows keyed by `telegram_channels.id` — refreshed on demand. */
   private channelKeywordsCache = new Map<string, { keywords: ChannelKeywords | null; loadedAt: number }>()
   private sessionPingAt = new Map<string, number>()
+  /** Coalesce concurrent session checks per MT uuid (burst fan-out). */
+  private sessionCheckInflight = new Map<string, Promise<boolean>>()
+  /** Coalesce concurrent /Symbols fetches per MT uuid. */
+  private symbolListInflight = new Map<string, Promise<SymbolListCacheEntry | null>>()
+  /** Coalesce concurrent /SymbolParams fetches per `${uuid}:${symbol}` key. */
+  private symbolParamsInflight = new Map<string, Promise<SymbolCacheEntry | null>>()
   /** After OrderSend "Not connected", block re-trading until user reconnects. */
   private sessionOrderBlocked = new Set<string>()
+  /**
+   * Per-broker "last reactivated" wall time. Set whenever `is_active` flips
+   * to true (including the initial load when the broker is already active).
+   * Signals whose `created_at` is older than this timestamp are treated as
+   * stale-after-outage and skipped, so the 5-minute sweep can't fire trades
+   * that piled up while the broker was disabled.
+   */
+  private brokerActivatedAt = new Map<string, number>()
   constructor(
     private readonly supabase: SupabaseClient,
     private readonly sessionManager?: UserSessionManager,
@@ -612,6 +655,14 @@ export class TradeExecutor {
       void this.sessionHeartbeatTick()
     }, BROKER_SESSION_HEARTBEAT_MS)
     this.sessionHeartbeatTimer.unref?.()
+    // Re-fetch every cached symbol list / params entry before its TTL expires
+    // so the live-entry hot path always finds a warm cache. Without this,
+    // signal symbols outside `symbol_to_trade` fall back to a cold broker
+    // round-trip (~1.5s) each time and inflate `send_order_prep_ms`.
+    this.symbolCacheKeepaliveTimer = setInterval(() => {
+      void this.symbolCacheKeepaliveTick()
+    }, SYMBOL_CACHE_KEEPALIVE_MS)
+    this.symbolCacheKeepaliveTimer.unref?.()
   }
 
   stop() {
@@ -621,6 +672,8 @@ export class TradeExecutor {
     this.brokerPendingSweepTimer = null
     if (this.sessionHeartbeatTimer) clearInterval(this.sessionHeartbeatTimer)
     this.sessionHeartbeatTimer = null
+    if (this.symbolCacheKeepaliveTimer) clearInterval(this.symbolCacheKeepaliveTimer)
+    this.symbolCacheKeepaliveTimer = null
     if (this.signalsChannel) { void this.supabase.removeChannel(this.signalsChannel); this.signalsChannel = null }
     if (this.brokersChannel) { void this.supabase.removeChannel(this.brokersChannel); this.brokersChannel = null }
     if (this.channelsChannel) { void this.supabase.removeChannel(this.channelsChannel); this.channelsChannel = null }
@@ -656,12 +709,14 @@ export class TradeExecutor {
     }
     this.brokersByUser.clear()
     this.brokersById.clear()
+    this.brokerActivatedAt.clear()
     for (const row of (data ?? []) as BrokerRow[]) {
       const normalized = this.normalizeBrokerRow(row)
       this.brokersById.set(row.id, normalized)
       const arr = this.brokersByUser.get(row.user_id) ?? []
       arr.push(normalized)
       this.brokersByUser.set(row.user_id, arr)
+      this.trackBrokerActivation(normalized)
     }
     console.log(`[tradeExecutor] cached ${this.brokersById.size} broker accounts across ${this.brokersByUser.size} users`)
     const pingOnStart = String(process.env.BROKER_PING_ON_WORKER_START ?? 'true').toLowerCase()
@@ -684,7 +739,14 @@ export class TradeExecutor {
       const manual = (row.manual_settings ?? {}) as { symbol_to_trade?: string | null }
       const symbols = parseSymbolToTradeList(manual.symbol_to_trade)
       for (const sym of symbols.length > 0 ? symbols : ['XAUUSD', 'EURUSD']) {
-        void this.getSymbolParams(uuid!, sym).catch(() => null)
+        // Cache under BOTH the canonical signal symbol and the broker-mapped
+        // variant (e.g. XAUUSD → XAUUSDm). Otherwise the live path looks up
+        // the mapped key and misses every time.
+        const mapping = applySymbolMapping(sym, row)
+        void this.getSymbolParams(uuid!, mapping.symbol).catch(() => null)
+        if (mapping.symbol.toUpperCase() !== sym.toUpperCase()) {
+          void this.getSymbolParams(uuid!, sym).catch(() => null)
+        }
       }
     }
   }
@@ -699,6 +761,51 @@ export class TradeExecutor {
       const alive = await api.keepSessionAlive(uuid!)
       if (alive) this.sessionPingAt.set(uuid!, Date.now())
     }
+  }
+
+  /**
+   * Re-fetch every entry currently in `symbolListCache` and `symbolCache` so
+   * the next live signal hits a warm cache. Force-bypasses the TTL guard by
+   * clearing `loadedAt`; the on-demand fetch will repopulate. Background
+   * only — never blocks a signal.
+   */
+  private async symbolCacheKeepaliveTick(): Promise<void> {
+    if (!hasMetatraderApiConfigured()) return
+    if (!this.prewarmSymbolsEnabled()) return
+
+    const uuidsWithList = [...this.symbolListCache.keys()]
+    await Promise.all(uuidsWithList.map(async uuid => {
+      try {
+        const fresh = await this.fetchSymbolList(uuid)
+        if (fresh) this.symbolListCache.set(uuid, fresh)
+      } catch { /* best-effort */ }
+    }))
+
+    const paramsKeys = [...this.symbolCache.keys()]
+    await Promise.all(paramsKeys.map(async key => {
+      const sepIdx = key.indexOf(':')
+      if (sepIdx < 0) return
+      const uuid = key.slice(0, sepIdx)
+      const symbol = key.slice(sepIdx + 1)
+      if (!isMtUuid(uuid) || !symbol) return
+      const api = this.apiForUuid(uuid)
+      if (!api) return
+      try {
+        const p: SymbolParams = await api.symbolParams(uuid, symbol)
+        const n = normalizeSymbolParams(p)
+        this.symbolCache.set(key, {
+          digits: n.digits ?? 5,
+          point: n.point ?? 0.00001,
+          minLot: n.minLot ?? 0.01,
+          maxLot: n.maxLot ?? 100,
+          lotStep: n.lotStep ?? 0.01,
+          contractSize: Number.isFinite(n.contractSize) && (n.contractSize ?? 0) > 0 ? Number(n.contractSize) : null,
+          stopsLevel: Math.max(0, n.stopsLevel ?? 0),
+          freezeLevel: Math.max(0, n.freezeLevel ?? 0),
+          loadedAt: Date.now(),
+        })
+      } catch { /* best-effort */ }
+    }))
   }
 
   private async reconnectCachedBrokers() {
@@ -724,6 +831,7 @@ export class TradeExecutor {
     if (normalized.connection_status === 'connected') {
       this.sessionOrderBlocked.delete(row.id)
     }
+    this.trackBrokerActivation(normalized, previous)
     const userId = row.user_id
     const list = (this.brokersByUser.get(userId) ?? []).filter(b => b.id !== row.id)
     if (normalized.is_active) list.push(normalized)
@@ -740,6 +848,45 @@ export class TradeExecutor {
     this.brokersById.delete(id)
     const list = (this.brokersByUser.get(row.user_id) ?? []).filter(b => b.id !== id)
     this.brokersByUser.set(row.user_id, list)
+    this.brokerActivatedAt.delete(id)
+  }
+
+  /**
+   * Maintain `brokerActivatedAt` so the executor can reject signals that
+   * pre-date a reactivation. Prefers the DB-persisted `last_activated_at`
+   * column (set by the `broker_accounts_stamp_activated_at` trigger) so the
+   * value survives worker restarts. Falls back to `Date.now()` if the row
+   * lacks the field but is currently active.
+   */
+  private trackBrokerActivation(current: BrokerRow, previous?: BrokerRow): void {
+    if (!current.is_active) return
+    const dbStampMs = current.last_activated_at
+      ? Date.parse(current.last_activated_at)
+      : NaN
+    if (Number.isFinite(dbStampMs)) {
+      this.brokerActivatedAt.set(current.id, dbStampMs)
+      return
+    }
+    // Trigger missing (e.g. older DB): treat any false→true flip as a fresh
+    // activation and otherwise leave any existing memory value intact.
+    if (previous && previous.is_active === false) {
+      this.brokerActivatedAt.set(current.id, Date.now())
+    } else if (!this.brokerActivatedAt.has(current.id)) {
+      this.brokerActivatedAt.set(current.id, Date.now())
+    }
+  }
+
+  /** True iff the signal was created AFTER this broker was last reactivated. */
+  private brokerEligibleForSignal(broker: BrokerRow, signal: SignalRow): boolean {
+    const activatedAt = this.brokerActivatedAt.get(broker.id)
+    if (activatedAt == null) return true
+    const createdAtRaw = (signal as { created_at?: string | number | null }).created_at
+    if (createdAtRaw == null) return true
+    const createdMs = typeof createdAtRaw === 'number'
+      ? createdAtRaw
+      : Date.parse(String(createdAtRaw))
+    if (!Number.isFinite(createdMs)) return true
+    return createdMs >= activatedAt
   }
 
   // ── realtime ──────────────────────────────────────────────────────────
@@ -855,6 +1002,12 @@ export class TradeExecutor {
         t_dispatch_received: receivedAt,
       },
     }
+    // Start broker caches warming the instant we accept dispatch — even before
+    // we know which brokers will actually trade this signal. With SWR caches
+    // this is sub-ms for warm symbols and starts the broker round-trip
+    // immediately for cold ones, so sendOrder's Promise.all is mostly a
+    // cache hit by the time it runs.
+    this.prewarmForDispatch(rowWithTs)
     const entryFast = this.shouldUseEntryFastPath(rowWithTs)
     const listenerTs = parsePipelineTimestamps(rowWithTs.pipeline_ts)
     if (
@@ -886,6 +1039,45 @@ export class TradeExecutor {
       priority: opts?.priority,
       source,
       dispatchReceivedAt: receivedAt,
+    })
+    return true
+  }
+
+  /**
+   * Redis Streams consumer path: await execution before XACK (at-least-once safety).
+   * Bypasses the in-process priority queue — the stream is the queue.
+   */
+  async acceptDispatchSignalAwait(
+    row: SignalRow,
+    opts?: { priority?: 'high' | 'normal'; source?: string },
+  ): Promise<boolean> {
+    if (!PARSED_STATUSES.has(row.status)) return false
+    if (!signalMatchesExecutorMode(row.parsed_data, workerConfig.tradeExecutorMode)) {
+      return false
+    }
+    const source = opts?.source ?? 'queue'
+    const receivedAt = Date.now()
+    const rowWithTs: SignalRow = {
+      ...row,
+      pipeline_ts: {
+        ...(parsePipelineTimestamps(row.pipeline_ts) ?? {}),
+        t_dispatch_received: receivedAt,
+      },
+    }
+    this.prewarmForDispatch(rowWithTs)
+    const entryFast = this.shouldUseEntryFastPath(rowWithTs)
+
+    if (!entryFast) {
+      await this.logPipelineStage(rowWithTs, 'dispatch_received', { source, priority: opts?.priority ?? null })
+    }
+
+    if (this.inflight.has(row.id)) return true
+
+    await this.handleSignal(rowWithTs, {
+      liveDispatch: true,
+      dispatchSource: source,
+      dispatchReceivedAt: receivedAt,
+      lightIdempotency: entryFast,
     })
     return true
   }
@@ -1191,10 +1383,29 @@ export class TradeExecutor {
       const action = String(parsed.action).toLowerCase()
       if (action === 'ignore') return
 
-      const brokers = (this.brokersByUser.get(row.user_id) ?? []).filter(b =>
+      const allMatchingBrokers = (this.brokersByUser.get(row.user_id) ?? []).filter(b =>
         b.is_active && isMtUuid(b.metaapi_account_id) && channelMatchesBrokerSignal(b, row.channel_id),
       )
+      const brokers = allMatchingBrokers.filter(b => this.brokerEligibleForSignal(b, row))
       if (!brokers.length) {
+        if (allMatchingBrokers.length > 0) {
+          // A matching broker exists but it was reactivated AFTER the signal
+          // arrived — i.e. the signal piled up while the broker was disabled.
+          // Marking as skipped here prevents the 5-min sweep from picking it
+          // up the moment the user re-enables a broker.
+          console.warn(
+            `[tradeExecutor] skip signal ${row.id}: all matching brokers reactivated after signal arrival (stale-after-outage)`,
+          )
+          await this.logDispatchSkipped(row, 'broker_reactivated_after_signal', {
+            matching_brokers: allMatchingBrokers.length,
+            broker_activated_at: allMatchingBrokers.map(b => ({
+              id: b.id,
+              activated_at: this.brokerActivatedAt.get(b.id) ?? null,
+            })),
+            signal_created_at: row.created_at ?? null,
+          })
+          return
+        }
         console.warn(
           `[tradeExecutor] skip signal ${row.id}: no active broker matches channel=${row.channel_id ?? 'none'} (check Configure Trading channel selection)`,
         )
@@ -1239,6 +1450,17 @@ export class TradeExecutor {
       const op = operationFor(action, parsed)
       if (!op || !parsed.symbol) return
 
+      if (liveFast) {
+        // Hot-path skip: when session is freshly pinged AND symbol caches are
+        // warm, sendOrder will hit cached values inline (sub-ms). Skipping
+        // prewarm entirely keeps prep_ms ~0 instead of paying for a needless
+        // round-trip. When cold, kick prewarm off in the background so
+        // sendOrder's internal Promise.all (deduped via inflight maps) does
+        // the awaiting — we no longer double-block before t_order_send_start.
+        if (!this.brokersWarmForLiveEntry(brokers, parsed.symbol ?? '')) {
+          void this.prewarmBrokersForLiveEntry(brokers, parsed.symbol ?? '')
+        }
+      }
       if (liveFast && row.pipeline_ts) {
         row.pipeline_ts.t_order_send_start = Date.now()
       }
@@ -1915,21 +2137,22 @@ export class TradeExecutor {
       channelId: signal.channel_id,
     })
     if (!anchor) {
-      try {
-        await this.supabase.from('trade_execution_logs').insert({
-          user_id: signal.user_id,
-          signal_id: signal.id,
-          broker_account_id: broker.id,
-          action: 'merge_routed_modify_only',
-          status: 'skipped',
-          request_payload: {
-            skip_reason: 'parameter_follow_up_no_open_basket',
-            symbol,
-            direction,
-            channel_id: signal.channel_id,
-          } as unknown as Record<string, unknown>,
-        })
-      } catch { /* best-effort */ }
+      // Fire-and-forget: this is a diagnostic-only log on the live-entry hot
+      // path; awaiting it adds ~50–150 ms to send_plan_ms for no functional
+      // benefit. Errors are tolerated silently (best-effort).
+      void this.supabase.from('trade_execution_logs').insert({
+        user_id: signal.user_id,
+        signal_id: signal.id,
+        broker_account_id: broker.id,
+        action: 'merge_routed_modify_only',
+        status: 'skipped',
+        request_payload: {
+          skip_reason: 'parameter_follow_up_no_open_basket',
+          symbol,
+          direction,
+          channel_id: signal.channel_id,
+        } as unknown as Record<string, unknown>,
+      }).then(() => undefined, () => undefined)
       return { handled: false }
     }
 
@@ -1947,43 +2170,39 @@ export class TradeExecutor {
     const allowUnlinkedSingleSlotRefresh =
       manual.add_new_trades_to_existing === false && parsedSignalHasExplicitStops(parsed)
     if (!link.replyOk && !link.threadLinksAnchor && !link.parentLinksAnchor && !allowUnlinkedSingleSlotRefresh) {
-      try {
-        await this.supabase.from('trade_execution_logs').insert({
-          user_id: signal.user_id,
-          signal_id: signal.id,
-          broker_account_id: broker.id,
-          action: 'merge_routed_modify_only',
-          status: 'skipped',
-          request_payload: {
-            skip_reason: 'parameter_follow_up_requires_explicit_link',
-            symbol,
-            direction,
-            channel_id: signal.channel_id,
-            anchor_signal_id: anchor.anchorSignalId,
-            dt_ms: link.dtMs,
-          } as unknown as Record<string, unknown>,
-        })
-      } catch { /* best-effort */ }
+      void this.supabase.from('trade_execution_logs').insert({
+        user_id: signal.user_id,
+        signal_id: signal.id,
+        broker_account_id: broker.id,
+        action: 'merge_routed_modify_only',
+        status: 'skipped',
+        request_payload: {
+          skip_reason: 'parameter_follow_up_requires_explicit_link',
+          symbol,
+          direction,
+          channel_id: signal.channel_id,
+          anchor_signal_id: anchor.anchorSignalId,
+          dt_ms: link.dtMs,
+        } as unknown as Record<string, unknown>,
+      }).then(() => undefined, () => undefined)
       return { handled: false }
     }
     if (!link.isLinked) {
-      try {
-        await this.supabase.from('trade_execution_logs').insert({
-          user_id: signal.user_id,
-          signal_id: signal.id,
-          broker_account_id: broker.id,
-          action: 'merge_routed_modify_only',
-          status: 'skipped',
-          request_payload: {
-            skip_reason: 'parameter_follow_up_not_linked',
-            symbol,
-            direction,
-            channel_id: signal.channel_id,
-            anchor_signal_id: anchor.anchorSignalId,
-            dt_ms: link.dtMs,
-          } as unknown as Record<string, unknown>,
-        })
-      } catch { /* best-effort */ }
+      void this.supabase.from('trade_execution_logs').insert({
+        user_id: signal.user_id,
+        signal_id: signal.id,
+        broker_account_id: broker.id,
+        action: 'merge_routed_modify_only',
+        status: 'skipped',
+        request_payload: {
+          skip_reason: 'parameter_follow_up_not_linked',
+          symbol,
+          direction,
+          channel_id: signal.channel_id,
+          anchor_signal_id: anchor.anchorSignalId,
+          dt_ms: link.dtMs,
+        } as unknown as Record<string, unknown>,
+      }).then(() => undefined, () => undefined)
       return { handled: false }
     }
 
@@ -2881,6 +3100,113 @@ export class TradeExecutor {
     return false
   }
 
+  /** Live entry: CheckConnect only (not AccountSummary+OpenedOrders). Deduped per uuid. */
+  private async ensureBrokerSessionLiveFast(
+    api: MetatraderApiClient,
+    uuid: string,
+    broker: BrokerRow,
+  ): Promise<boolean> {
+    if (this.sessionOrderBlocked.has(broker.id)) {
+      await this.markBrokerSessionDown(broker, uuid, 'session blocked after prior OrderSend disconnect')
+      return false
+    }
+    const now = Date.now()
+    const last = this.sessionPingAt.get(uuid) ?? 0
+    if (now - last < SESSION_PING_MIN_INTERVAL_MS) return true
+
+    const inflight = this.sessionCheckInflight.get(uuid)
+    if (inflight) return inflight
+
+    const check = (async () => {
+      try {
+        const alive = await api.keepSessionAlive(uuid)
+        if (alive) {
+          this.sessionPingAt.set(uuid, Date.now())
+          return true
+        }
+        await this.markBrokerSessionDown(broker, uuid, 'keepSessionAlive failed before live OrderSend')
+        return false
+      } finally {
+        this.sessionCheckInflight.delete(uuid)
+      }
+    })()
+    this.sessionCheckInflight.set(uuid, check)
+    return check
+  }
+
+  /**
+   * Synchronous warm-cache check used to decide whether to block on prewarm.
+   * Returns true only when every broker has a recent session ping AND both
+   * the broker's symbol list and the requested symbol's params are cached.
+   * Inflight-but-not-yet-resolved entries count as cold so we still kick
+   * off prewarm (in the background).
+   */
+  private brokersWarmForLiveEntry(brokers: BrokerRow[], signalSymbol: string): boolean {
+    if (!brokers.length) return true
+    const now = Date.now()
+    for (const broker of brokers) {
+      const uuid = broker.metaapi_account_id
+      if (!isMtUuid(uuid)) continue
+      if (this.sessionOrderBlocked.has(broker.id)) return false
+      const lastPing = this.sessionPingAt.get(uuid!) ?? 0
+      if (now - lastPing >= SESSION_PING_MIN_INTERVAL_MS) return false
+      const symbolList = this.symbolListCache.get(uuid!)
+      if (!symbolList || now - symbolList.loadedAt >= SYMBOL_LIST_TTL_MS) return false
+      const mapping = applySymbolMapping(signalSymbol, broker)
+      const requested = mapping.symbol
+      const key = `${uuid}:${requested.toUpperCase()}`
+      const params = this.symbolCache.get(key)
+      if (!params || now - params.loadedAt >= SYMBOL_CACHE_TTL_MS) return false
+    }
+    return true
+  }
+
+  /**
+   * Fire-and-forget warm-up issued the instant a dispatch is accepted.
+   * Touches `getSymbolParams` / `getSymbolList` for every broker that could
+   * possibly handle the signal so by the time `sendOrder` runs the broker
+   * round-trip is already in flight (or done). With SWR caches this is a
+   * no-op for warm symbols.
+   *
+   * Scalability: bounded by `brokersByUser[userId].length`, which is the user's
+   * own connected MT count. It does NOT scale with the total number of users
+   * or channels in the system — every signal touches only its own user's
+   * brokers.
+   */
+  private prewarmForDispatch(row: SignalRow): void {
+    if (!hasMetatraderApiConfigured()) return
+    const parsed = row.parsed_data as ParsedSignal | null
+    const signalSymbol = parsed?.symbol
+    if (!signalSymbol) return
+    const brokers = this.brokersByUser.get(row.user_id) ?? []
+    if (!brokers.length) return
+    for (const broker of brokers) {
+      const uuid = broker.metaapi_account_id
+      if (!isMtUuid(uuid)) continue
+      const mapping = applySymbolMapping(signalSymbol, broker)
+      const requested = mapping.symbol
+      void this.getSymbolList(uuid!).catch(() => null)
+      void this.getSymbolParams(uuid!, requested).catch(() => null)
+    }
+  }
+
+  /** Warm session + symbol caches once per live signal before OrderSend. */
+  private async prewarmBrokersForLiveEntry(brokers: BrokerRow[], signalSymbol: string): Promise<void> {
+    await Promise.all(brokers.map(async broker => {
+      const uuid = broker.metaapi_account_id
+      if (!isMtUuid(uuid)) return
+      const api = this.apiFor(broker)
+      if (!api) return
+      const mapping = applySymbolMapping(signalSymbol, broker)
+      const requested = mapping.symbol
+      await Promise.all([
+        this.ensureBrokerSessionLiveFast(api, uuid!, broker),
+        this.getSymbolList(uuid!).catch(() => null),
+        this.getSymbolParams(uuid!, requested).catch(() => null),
+      ])
+    }))
+  }
+
   private async sendOrder(
     signal: SignalRow,
     parsed: ParsedSignal,
@@ -2929,11 +3255,39 @@ export class TradeExecutor {
       && signalEntryPriceStrictEnabled(manual)
       && parsedHasExplicitEntryAnchor(parsed)
 
+    const stampOnResolve = liveEntryFast && !!signal.pipeline_ts
+    const sessionPromise = (liveEntryFast
+      ? this.ensureBrokerSessionLiveFast(api, uuid, broker)
+      : this.ensureBrokerSession(api, uuid, broker, { force: true })
+    ).then(r => {
+      if (stampOnResolve && signal.pipeline_ts && signal.pipeline_ts.t_session_resolved == null) {
+        signal.pipeline_ts.t_session_resolved = Date.now()
+      }
+      return r
+    })
+    const symbolPromise = (liveEntryFast
+      ? this.resolveBrokerSymbolForLiveEntry(uuid, requestedSymbol)
+      : this.resolveBrokerSymbol(uuid, requestedSymbol)
+    ).then(r => {
+      if (stampOnResolve && signal.pipeline_ts && signal.pipeline_ts.t_symbol_resolved == null) {
+        signal.pipeline_ts.t_symbol_resolved = Date.now()
+      }
+      return r
+    })
+    const paramsPromise = this.getSymbolParams(uuid, requestedSymbol).catch(() => null).then(r => {
+      if (stampOnResolve && signal.pipeline_ts && signal.pipeline_ts.t_params_resolved == null) {
+        signal.pipeline_ts.t_params_resolved = Date.now()
+      }
+      return r
+    })
     const [sessionOk, symbol, paramsFromRequested] = await Promise.all([
-      this.ensureBrokerSession(api, uuid, broker, { force: true }),
-      this.resolveBrokerSymbol(uuid, requestedSymbol),
-      this.getSymbolParams(uuid, requestedSymbol).catch(() => null),
+      sessionPromise,
+      symbolPromise,
+      paramsPromise,
     ])
+    if (liveEntryFast && signal.pipeline_ts && signal.pipeline_ts.t_send_caches_resolved == null) {
+      signal.pipeline_ts.t_send_caches_resolved = Date.now()
+    }
     if (!sessionOk) {
       await this.logSendSkipped(signal, broker, 'broker_session_not_connected', {
         symbol: requestedSymbol,
@@ -3332,10 +3686,15 @@ export class TradeExecutor {
     // trigger prices) OR Close-Worse-Entries is on (so we can compute the
     // single override TP). Strict broker pendings use the signal entry as the
     // clamp reference — no extra quote solely for that path.
-    // The Quote is a ~50-150ms GET that we issue BEFORE
-    // sending immediates so every leg + every virtual trigger sees the same
-    // deterministic reference price.
-    const needsAnchor = virtualPendings.length > 0 || !!plan.closeWorseEntries
+    // The Quote is a ~50-150ms GET that we issue BEFORE sending immediates so every
+    // leg + every virtual trigger sees the same deterministic reference price.
+    // Live fast + immediate legs: defer virtual-only anchor work until after OrderSend.
+    const deferVirtualAnchor = liveEntryFast
+      && legs.length > 0
+      && virtualPendings.length > 0
+      && !plan.closeWorseEntries
+    const needsAnchor = !deferVirtualAnchor
+      && (virtualPendings.length > 0 || !!plan.closeWorseEntries)
     let anchor: number | null = plan.anchor?.value ?? plan.strictEntry?.entryPrice ?? null
     let anchorSource: 'signal' | 'quote' | 'unknown' = plan.anchor?.source ?? 'unknown'
     if (needsAnchor && (anchor == null || anchor <= 0)) {
@@ -3607,7 +3966,7 @@ export class TradeExecutor {
     // the trigger. UPSERT with ignoreDuplicates leans on the partial unique
     // index (see migration 20260513140000_range_pending_unique_active_step).
     const insertRows: Record<string, unknown>[] = []
-    if (virtualPendings.length > 0) {
+    if (virtualPendings.length > 0 && !deferVirtualAnchor) {
       if (anchor == null || !Number.isFinite(anchor) || anchor <= 0) {
         console.warn(
           `[tradeExecutor] dropping ${virtualPendings.length} virtual pendings: no anchor available for signal=${signal.id} broker=${broker.id} symbol=${symbol}`,
@@ -3797,42 +4156,26 @@ export class TradeExecutor {
           openSl,
         )
         const autoBeCols = autoManagementTradeSnapshot(manual, entryPx, openSl)
-        // We need the row's id back so we can persist partial_tp_legs keyed to
-        // it. `.select('id').single()` keeps the INSERT to one round trip.
-        const tradeInsert = await this.supabase
-          .from('trades')
-          .insert({
-            user_id: signal.user_id,
-            signal_id: signal.id,
-            telegram_channel_id: signal.channel_id,
-            broker_account_id: broker.id,
-            metaapi_order_id: result.ticket != null ? String(result.ticket) : null,
-            symbol: args.symbol,
-            direction: isBuy ? 'buy' : 'sell',
-            entry_price: entryPx,
-            sl: openSl,
-            tp: result.takeProfit ?? args.takeprofit ?? null,
-            lot_size: result.lots ?? args.volume,
-            status: args.operation.includes('Limit') || args.operation.includes('Stop') ? 'pending' : 'open',
-            opened_at: new Date().toISOString(),
-            // Worker-managed Close-Worse-Entries threshold (see cweCloseMonitor).
-            // Only the first N immediate legs have this; non-CWE legs leave it null
-            // and ride their bucket TP / SL normally.
-            cwe_close_price: leg.cweClosePrice ?? null,
-            ...trailCols,
-            ...autoBeCols,
-          })
-          .select('id')
-          .maybeSingle()
-        if (tradeInsert.error) {
-          console.error(
-            `[tradeExecutor] trades INSERT failed signal=${signal.id} broker=${broker.id} ticket=${result.ticket}: ${tradeInsert.error.message}`,
-          )
+        const tradeRowPayload = {
+          user_id: signal.user_id,
+          signal_id: signal.id,
+          telegram_channel_id: signal.channel_id,
+          broker_account_id: broker.id,
+          metaapi_order_id: result.ticket != null ? String(result.ticket) : null,
+          symbol: args.symbol,
+          direction: isBuy ? 'buy' : 'sell',
+          entry_price: entryPx,
+          sl: openSl,
+          tp: result.takeProfit ?? args.takeprofit ?? null,
+          lot_size: result.lots ?? args.volume,
+          status: args.operation.includes('Limit') || args.operation.includes('Stop') ? 'pending' : 'open',
+          opened_at: new Date().toISOString(),
+          cwe_close_price: leg.cweClosePrice ?? null,
+          ...trailCols,
+          ...autoBeCols,
         }
-        const tradeRowId = (tradeInsert.data as { id?: string } | null)?.id ?? null
-
-        filledLegs.push({
-          tradeRowId,
+        const filledLeg: PostFillTradeLeg = {
+          tradeRowId: null,
           ticket: result.ticket,
           symbol: args.symbol,
           direction: isBuy ? 'buy' : 'sell',
@@ -3841,9 +4184,9 @@ export class TradeExecutor {
           openTp: (result.takeProfit ?? args.takeprofit) != null
             ? Number(result.takeProfit ?? args.takeprofit)
             : null,
-        })
+        }
 
-        const persistPostFillDb = async () => {
+        const persistPostFillDb = async (tradeRowId: string | null) => {
           if (tradeRowId && leg.partialTps && leg.partialTps.length > 0) {
             const partialRows = leg.partialTps.map(p => ({
               trade_id: tradeRowId,
@@ -3885,11 +4228,38 @@ export class TradeExecutor {
         }
 
         if (liveEntryFast) {
-          void persistPostFillDb().catch(err => {
-            console.error(`[tradeExecutor] post-fill DB failed signal=${signal.id}:`, err)
+          filledLegs.push(filledLeg)
+          void (async () => {
+            const tradeInsert = await this.supabase
+              .from('trades')
+              .insert(tradeRowPayload)
+              .select('id')
+              .maybeSingle()
+            if (tradeInsert.error) {
+              console.error(
+                `[tradeExecutor] trades INSERT failed signal=${signal.id} broker=${broker.id} ticket=${result.ticket}: ${tradeInsert.error.message}`,
+              )
+            }
+            const tradeRowId = (tradeInsert.data as { id?: string } | null)?.id ?? null
+            filledLeg.tradeRowId = tradeRowId
+            await persistPostFillDb(tradeRowId)
+          })().catch(err => {
+            console.error(`[tradeExecutor] live-fast trade persist failed signal=${signal.id}:`, err)
           })
         } else {
-          await persistPostFillDb()
+          const tradeInsert = await this.supabase
+            .from('trades')
+            .insert(tradeRowPayload)
+            .select('id')
+            .maybeSingle()
+          if (tradeInsert.error) {
+            console.error(
+              `[tradeExecutor] trades INSERT failed signal=${signal.id} broker=${broker.id} ticket=${result.ticket}: ${tradeInsert.error.message}`,
+            )
+          }
+          filledLeg.tradeRowId = (tradeInsert.data as { id?: string } | null)?.id ?? null
+          filledLegs.push(filledLeg)
+          await persistPostFillDb(filledLeg.tradeRowId)
         }
         return true
       } catch (err) {
@@ -3929,6 +4299,25 @@ export class TradeExecutor {
     // All immediates fan out in parallel. Virtual pendings are already
     // persisted; the worker monitor + edge sweep will fire them on trigger.
     const sendResults = await Promise.allSettled(legs.map(sendLeg))
+    if (deferVirtualAnchor && virtualPendings.length > 0 && api) {
+      void this.deferredVirtualPendingMaterialize({
+        signal,
+        broker,
+        uuid,
+        api,
+        symbol,
+        virtualPendings,
+        parsed,
+        plan,
+        params,
+        strictEntryPrefetch,
+      }).catch(err => {
+        console.error(
+          `[tradeExecutor] deferred virtual pending failed signal=${signal.id} broker=${broker.id}:`,
+          err,
+        )
+      })
+    }
     if (liveEntryFast && filledLegs.length > 0) {
       const plannerCtx = params
         ? {
@@ -3983,7 +4372,7 @@ export class TradeExecutor {
       && legs.length > 1
       && needsPerLegTpSync
     ) {
-      await this.syncMultiBasketLegTakeProfits({
+      const syncArgs = {
         signal,
         parsed,
         broker,
@@ -3992,8 +4381,15 @@ export class TradeExecutor {
         uuid,
         params,
         manual,
-        direction: op.toLowerCase().includes('sell') ? 'sell' : 'buy',
-      })
+        direction: op.toLowerCase().includes('sell') ? 'sell' as const : 'buy' as const,
+      }
+      if (liveEntryFast) {
+        void this.syncMultiBasketLegTakeProfits(syncArgs).catch(err => {
+          console.error(`[tradeExecutor] syncMultiBasketLegTakeProfits failed signal=${signal.id}:`, err)
+        })
+      } else {
+        await this.syncMultiBasketLegTakeProfits(syncArgs)
+      }
     }
     if (virtualPendings.length > 0 && !anyImmediateOpened && !strictDeferred) {
       const { error: stripErr } = await this.supabase
@@ -4702,39 +5098,107 @@ export class TradeExecutor {
   private async getSymbolParams(uuid: string, symbol: string): Promise<SymbolCacheEntry | null> {
     const key = `${uuid}:${symbol.toUpperCase()}`
     const cached = this.symbolCache.get(key)
-    if (cached && (Date.now() - cached.loadedAt) < SYMBOL_CACHE_TTL_MS) return cached
-    if (!hasMetatraderApiConfigured()) return null
-    const api = this.apiForUuid(uuid)
-    if (!api) return null
-    try {
-      const p: SymbolParams = await api.symbolParams(uuid, symbol)
-      const n = normalizeSymbolParams(p)
-      const entry: SymbolCacheEntry = {
-        digits: n.digits ?? 5,
-        point: n.point ?? 0.00001,
-        minLot: n.minLot ?? 0.01,
-        maxLot: n.maxLot ?? 100,
-        lotStep: n.lotStep ?? 0.01,
-        contractSize: Number.isFinite(n.contractSize) && (n.contractSize ?? 0) > 0 ? Number(n.contractSize) : null,
-        stopsLevel: Math.max(0, n.stopsLevel ?? 0),
-        freezeLevel: Math.max(0, n.freezeLevel ?? 0),
-        loadedAt: Date.now(),
+    const now = Date.now()
+
+    // Stale-while-revalidate: if we have ANY cached value, return it
+    // immediately and kick off a background refresh when stale. The live
+    // entry hot path therefore never waits on a broker round-trip after the
+    // first signal for a symbol.
+    if (cached) {
+      const age = now - cached.loadedAt
+      if (age >= SYMBOL_CACHE_STALE_MS && age < SYMBOL_CACHE_TTL_MS) {
+        void this.refreshSymbolParams(uuid, symbol, key)
       }
-      // First-time-per-symbol diagnostic so we can confirm we actually see the
-      // broker's stops/freeze levels (not silent zeros from a casing mismatch).
-      console.log(`[tradeExecutor] symbol params loaded uuid=${uuid} symbol=${symbol} digits=${entry.digits} point=${entry.point} contractSize=${entry.contractSize ?? 'default'} stopsLevel=${entry.stopsLevel} freezeLevel=${entry.freezeLevel} minLot=${entry.minLot} lotStep=${entry.lotStep}`)
-      this.symbolCache.set(key, entry)
-      return entry
-    } catch (e) {
-      console.warn(`[tradeExecutor] /SymbolParams failed uuid=${uuid} symbol=${symbol}:`, e instanceof Error ? e.message : e)
-      return null
+      if (age < SYMBOL_CACHE_TTL_MS) return cached
     }
+
+    if (!hasMetatraderApiConfigured()) return null
+    return this.refreshSymbolParams(uuid, symbol, key)
   }
 
-  /** Load (and cache) the broker's full symbol list. Returns null if unavailable. */
+  /**
+   * Force-refresh a single symbol params entry. Coalesces concurrent callers
+   * (background refreshers + live-path lookups) via `symbolParamsInflight` so
+   * we never duplicate broker API calls for the same `(uuid, symbol)` pair.
+   */
+  private async refreshSymbolParams(
+    uuid: string,
+    symbol: string,
+    key?: string,
+  ): Promise<SymbolCacheEntry | null> {
+    const cacheKey = key ?? `${uuid}:${symbol.toUpperCase()}`
+    const existing = this.symbolParamsInflight.get(cacheKey)
+    if (existing) return existing
+
+    const api = this.apiForUuid(uuid)
+    if (!api) return null
+
+    const promise = (async (): Promise<SymbolCacheEntry | null> => {
+      try {
+        const p: SymbolParams = await api.symbolParams(uuid, symbol)
+        const n = normalizeSymbolParams(p)
+        const entry: SymbolCacheEntry = {
+          digits: n.digits ?? 5,
+          point: n.point ?? 0.00001,
+          minLot: n.minLot ?? 0.01,
+          maxLot: n.maxLot ?? 100,
+          lotStep: n.lotStep ?? 0.01,
+          contractSize: Number.isFinite(n.contractSize) && (n.contractSize ?? 0) > 0 ? Number(n.contractSize) : null,
+          stopsLevel: Math.max(0, n.stopsLevel ?? 0),
+          freezeLevel: Math.max(0, n.freezeLevel ?? 0),
+          loadedAt: Date.now(),
+        }
+        // First-time-per-symbol diagnostic so we can confirm we actually see the
+        // broker's stops/freeze levels (not silent zeros from a casing mismatch).
+        if (!this.symbolCache.has(cacheKey)) {
+          console.log(`[tradeExecutor] symbol params loaded uuid=${uuid} symbol=${symbol} digits=${entry.digits} point=${entry.point} contractSize=${entry.contractSize ?? 'default'} stopsLevel=${entry.stopsLevel} freezeLevel=${entry.freezeLevel} minLot=${entry.minLot} lotStep=${entry.lotStep}`)
+        }
+        this.symbolCache.set(cacheKey, entry)
+        return entry
+      } catch (e) {
+        console.warn(`[tradeExecutor] /SymbolParams failed uuid=${uuid} symbol=${symbol}:`, e instanceof Error ? e.message : e)
+        return null
+      } finally {
+        this.symbolParamsInflight.delete(cacheKey)
+      }
+    })()
+
+    this.symbolParamsInflight.set(cacheKey, promise)
+    return promise
+  }
+
+  /**
+   * Load (and cache) the broker's full symbol list. Returns null if unavailable.
+   * Stale-while-revalidate: live path returns the cached value immediately if
+   * present and kicks off a background refresh when stale.
+   */
   private async getSymbolList(uuid: string): Promise<SymbolListCacheEntry | null> {
     const cached = this.symbolListCache.get(uuid)
-    if (cached && (Date.now() - cached.loadedAt) < SYMBOL_LIST_TTL_MS) return cached
+    const now = Date.now()
+    if (cached) {
+      const age = now - cached.loadedAt
+      if (age >= SYMBOL_CACHE_STALE_MS && age < SYMBOL_LIST_TTL_MS) {
+        if (!this.symbolListInflight.has(uuid)) {
+          const refresh = this.fetchSymbolList(uuid).finally(() => {
+            this.symbolListInflight.delete(uuid)
+          })
+          this.symbolListInflight.set(uuid, refresh)
+        }
+      }
+      if (age < SYMBOL_LIST_TTL_MS) return cached
+    }
+
+    const inflight = this.symbolListInflight.get(uuid)
+    if (inflight) return inflight
+
+    const fetchPromise = this.fetchSymbolList(uuid).finally(() => {
+      this.symbolListInflight.delete(uuid)
+    })
+    this.symbolListInflight.set(uuid, fetchPromise)
+    return fetchPromise
+  }
+
+  private async fetchSymbolList(uuid: string): Promise<SymbolListCacheEntry | null> {
     if (!hasMetatraderApiConfigured()) return null
     const api = this.apiForUuid(uuid)
     if (!api) return null
@@ -4766,18 +5230,11 @@ export class TradeExecutor {
     }
   }
 
-  /**
-   * Map a generic symbol (e.g. 'BTCUSD') to the exact instrument name the broker
-   * exposes (e.g. 'BTCUSDm', 'BTCUSD.r', 'BTCUSD_i'). Strategy:
-   *   1. Honour an explicit manual mapping when one exists for this symbol.
-   *   2. Fall back to fuzzy matching against `/Symbols` using common broker suffixes
-   *      and prefix/suffix substitution. Picks the shortest match (closest variant).
-   */
-  private async resolveBrokerSymbol(uuid: string, requested: string): Promise<string> {
+  private resolveBrokerSymbolFromInventory(
+    inventory: SymbolListCacheEntry,
+    requested: string,
+  ): string {
     const target = requested.toUpperCase()
-    const inventory = await this.getSymbolList(uuid)
-    if (!inventory) return requested
-
     if (inventory.set.has(target)) {
       const exact = inventory.list.find(s => s.toUpperCase() === target)
       return exact ?? requested
@@ -4794,17 +5251,124 @@ export class TradeExecutor {
       candidates.sort((a, b) => a.length - b.length)
       const winner = candidates[0]
       const exact = inventory.list.find(s => s.toUpperCase() === winner)
-      return exact ?? winner
+      return exact ?? winner!
     }
 
-    // Last resort: any instrument that CONTAINS the requested ticker (e.g. "XAUUSDpro").
     const contains = inventory.list.filter(s => s.toUpperCase().includes(target))
-    if (contains.length === 1) return contains[0]
+    if (contains.length === 1) return contains[0]!
     if (contains.length > 1) {
       contains.sort((a, b) => a.length - b.length)
-      return contains[0]
+      return contains[0]!
     }
 
     return requested
+  }
+
+  private async resolveBrokerSymbolForLiveEntry(uuid: string, requested: string): Promise<string> {
+    const cached = this.symbolListCache.get(uuid)
+    if (cached && (Date.now() - cached.loadedAt) < SYMBOL_LIST_TTL_MS) {
+      return this.resolveBrokerSymbolFromInventory(cached, requested)
+    }
+    const inventory = await this.getSymbolList(uuid)
+    if (!inventory) return requested
+    return this.resolveBrokerSymbolFromInventory(inventory, requested)
+  }
+
+  private async deferredVirtualPendingMaterialize(args: {
+    signal: SignalRow
+    broker: BrokerRow
+    uuid: string
+    api: MetatraderApiClient
+    symbol: string
+    virtualPendings: VirtualPendingLeg[]
+    parsed: ParsedSignal
+    plan: PlannerResult
+    params: SymbolCacheEntry | null
+    strictEntryPrefetch: { bid: number; ask: number } | null
+  }): Promise<void> {
+    const {
+      signal, broker, uuid, api, symbol, virtualPendings, parsed, plan, params, strictEntryPrefetch,
+    } = args
+    let anchor: number | null = plan.anchor?.value ?? plan.strictEntry?.entryPrice ?? null
+    const parsedEntry = resolvedParsedEntryPrice(parsed)
+    if (parsedEntry != null && parsedEntry > 0) {
+      anchor = parsedEntry
+    } else {
+      try {
+        const q = strictEntryPrefetch ?? await api.quote(uuid, symbol)
+        anchor = plan.isBuy === false ? q.bid : q.ask
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        console.warn(
+          `[tradeExecutor] deferred virtual /Quote failed signal=${signal.id} broker=${broker.id}: ${msg}`,
+        )
+        return
+      }
+    }
+    if (anchor == null || !Number.isFinite(anchor) || anchor <= 0) {
+      console.warn(
+        `[tradeExecutor] deferred virtual: no anchor signal=${signal.id} broker=${broker.id}`,
+      )
+      return
+    }
+
+    const digits = Math.max(0, Math.min(8, Number(params?.digits) || 5))
+    const safe = Math.max(Number(params?.stopsLevel) || 0, Number(params?.freezeLevel) || 0)
+    const zoneHi = safe > 0 ? anchor + (safe + 2) * (params?.point ?? 0) : null
+    const zoneLo = safe > 0 ? anchor - (safe + 2) * (params?.point ?? 0) : null
+    const nowMs = Date.now()
+    const insertRows: Record<string, unknown>[] = []
+    for (const v of virtualPendings) {
+      const triggerPrice = triggerPriceFor(v, anchor, digits)
+      if (zoneHi != null && zoneLo != null && triggerPrice > zoneLo && triggerPrice < zoneHi) {
+        continue
+      }
+      const expiresAt = v.expiryHours && v.expiryHours > 0
+        ? new Date(nowMs + v.expiryHours * 60 * 60 * 1000).toISOString()
+        : null
+      insertRows.push({
+        signal_id: signal.id,
+        user_id: signal.user_id,
+        broker_account_id: broker.id,
+        metaapi_account_id: uuid,
+        symbol,
+        step_idx: v.stepIdx,
+        is_buy: v.isBuy,
+        volume: roundLot(v.volume, params),
+        anchor_price: anchor,
+        trigger_price: triggerPrice,
+        stoploss: v.stoploss,
+        takeprofit: v.takeprofit,
+        slippage: v.slippage,
+        comment: v.comment,
+        expert_id: v.expertID ?? null,
+        expires_at: expiresAt,
+        status: 'pending',
+        cwe_close_price: v.cweClosePrice ?? null,
+      })
+    }
+    if (insertRows.length === 0) return
+    const persist = await this.persistRangePendingLegRows(
+      insertRows,
+      `deferred live signal=${signal.id} broker=${broker.id}`,
+    )
+    if (!persist.ok) {
+      console.error(
+        `[tradeExecutor] deferred virtual persist failed signal=${signal.id} broker=${broker.id}: ${persist.lastError ?? 'unknown'}`,
+      )
+    }
+  }
+
+  /**
+   * Map a generic symbol (e.g. 'BTCUSD') to the exact instrument name the broker
+   * exposes (e.g. 'BTCUSDm', 'BTCUSD.r', 'BTCUSD_i'). Strategy:
+   *   1. Honour an explicit manual mapping when one exists for this symbol.
+   *   2. Fall back to fuzzy matching against `/Symbols` using common broker suffixes
+   *      and prefix/suffix substitution. Picks the shortest match (closest variant).
+   */
+  private async resolveBrokerSymbol(uuid: string, requested: string): Promise<string> {
+    const inventory = await this.getSymbolList(uuid)
+    if (!inventory) return requested
+    return this.resolveBrokerSymbolFromInventory(inventory, requested)
   }
 }

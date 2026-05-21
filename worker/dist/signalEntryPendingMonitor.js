@@ -170,9 +170,6 @@ class SignalEntryPendingMonitor {
                     const px = extractOpenPrice(hit);
                     if (px != null) {
                         this.missingStreak.delete(row.id);
-                        // #region agent log
-                        fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '551fbc' }, body: JSON.stringify({ sessionId: '551fbc', runId: 'latency-v2', hypothesisId: 'H7', location: 'signalEntryPendingMonitor.ts:mark-filled-opened', message: 'pending order resolved as filled from opened orders', data: { rowId: row.id, signalId: row.signal_id, userId: row.user_id, brokerId: row.broker_account_id, ticket, openPrice: px }, timestamp: Date.now() }) }).catch(() => { });
-                        // #endregion
                         const posTicket = (0, signalEntryPendingHelpers_1.rawOrderTicket)(hit);
                         await (0, signalEntryPendingHelpers_1.markSignalEntryFilled)(this.supabase, row, px, {
                             partialTpPlan: parsePartialTpPlan(row.partial_tp_plan),
@@ -215,9 +212,6 @@ class SignalEntryPendingMonitor {
                 }
                 const streak = (this.missingStreak.get(row.id) ?? 0) + 1;
                 this.missingStreak.set(row.id, streak);
-                // #region agent log
-                fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '551fbc' }, body: JSON.stringify({ sessionId: '551fbc', runId: 'latency-v2', hypothesisId: 'H8', location: 'signalEntryPendingMonitor.ts:missing-streak', message: 'pending ticket absent from opened/closed check', data: { rowId: row.id, signalId: row.signal_id, userId: row.user_id, brokerId: row.broker_account_id, ticket, streak }, timestamp: Date.now() }) }).catch(() => { });
-                // #endregion
                 if (streak >= MISSING_BEFORE_ASSUME_GONE) {
                     this.missingStreak.delete(row.id);
                     await (0, signalEntryPendingHelpers_1.markSignalEntryGoneFromBroker)(this.supabase, row, 'pending_order_absent_from_opened_orders');

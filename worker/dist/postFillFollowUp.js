@@ -7,6 +7,7 @@ const calendarProvider_1 = require("./newsTrading/calendarProvider");
 const settings_1 = require("./newsTrading/settings");
 const manualStops_1 = require("./manualPlanning/manualStops");
 const manualStops_2 = require("./manualPlanning/manualStops");
+const parsedEntry_1 = require("./manualPlanning/parsedEntry");
 const orderModifyBenign_1 = require("./orderModifyBenign");
 function newsBlackoutPreFillEnabled() {
     const v = String(process.env.EXECUTOR_NEWS_BLACKOUT_PRE_FILL ?? 'false').toLowerCase();
@@ -15,7 +16,8 @@ function newsBlackoutPreFillEnabled() {
 async function applyPipAndChannelStops(args) {
     const { api, uuid, signal, parsed, broker, channelKeywords, symbol, params, filledLegs } = args;
     const manual = (broker.manual_settings ?? {});
-    if ((manual.trade_style ?? 'single') === 'multi') {
+    const isSingleTradeStyle = (manual.trade_style ?? 'single') !== 'multi';
+    if (!isSingleTradeStyle) {
         // Multi-trade legs already carry per-bucket TPs from the planner; syncMultiBasketLegTakeProfits
         // reconciles them. Flattening to tp[0] here caused wrong targets on layered baskets.
         return;
@@ -59,14 +61,17 @@ async function applyPipAndChannelStops(args) {
             });
             if (derived.finalSl != null)
                 targetSl = derived.roundPrice(derived.finalSl);
-            if (derived.finalTps.length)
-                targetTp = derived.roundPrice(derived.finalTps[0]);
+            if (derived.finalTps.length) {
+                const lastTp = derived.finalTps[derived.finalTps.length - 1] ?? derived.finalTps[0];
+                targetTp = derived.roundPrice(lastTp);
+            }
         }
         else if ((0, channelActiveTradeParams_1.shouldMergeChannelParamsForEntry)(plannerParsed)) {
             if (plannerParsed.sl != null)
                 targetSl = plannerParsed.sl;
-            if (plannerParsed.tp?.length)
-                targetTp = plannerParsed.tp[0] ?? targetTp;
+            const lastTp = (0, parsedEntry_1.lastPositiveParsedTpPrice)(plannerParsed);
+            if (lastTp != null)
+                targetTp = lastTp;
         }
         const stripped = (0, channelActiveTradeParams_1.stripInvalidStopsForSide)({
             stoploss: Number(targetSl) || 0,

@@ -21,6 +21,9 @@ const newsTradingMonitor_1 = require("./newsTradingMonitor");
 const brokerConnectionMonitor_1 = require("./brokerConnectionMonitor");
 const workerConfig_1 = require("./workerConfig");
 const tradeSignalPush_1 = require("./tradeSignalPush");
+const signalQueueConsumer_1 = require("./queue/signalQueueConsumer");
+const signalQueueConfig_1 = require("./queue/signalQueueConfig");
+const queueHealth_1 = require("./queue/queueHealth");
 const monitorWorkWake_1 = require("./monitorWorkWake");
 const tradeLogRetention_1 = require("./tradeLogRetention");
 if (!globalThis.WebSocket) {
@@ -31,6 +34,7 @@ const sessionManager = new sessionManager_1.UserSessionManager(supabase);
 let httpServer = null;
 let authService = null;
 let tradeExecutor = null;
+let signalQueueConsumers = null;
 const monitors = [];
 const monitorLoops = [];
 let stopLogRetention = null;
@@ -89,6 +93,11 @@ async function main() {
             console.error(`[worker] FATAL: ${shardErr}`);
             process.exit(1);
         }
+        const queueErr = (0, tradeSignalPush_1.validateListenerQueueConfig)();
+        if (queueErr) {
+            console.error(`[worker] FATAL: ${queueErr}`);
+            process.exit(1);
+        }
     }
     console.log(`[worker] starting role=${workerConfig_1.workerConfig.role} shard=${workerConfig_1.workerConfig.shardId}/${workerConfig_1.workerConfig.shardCount}`
         + ` instance=${workerConfig_1.workerConfig.instanceId}`);
@@ -109,6 +118,30 @@ async function main() {
         }
         if (!httpServer) {
             httpServer = (0, httpServer_1.startTradeHttpServer)(sessionManager, tradeExecutor);
+        }
+        const queueCfg = (0, signalQueueConfig_1.signalQueueConfig)();
+        if (queueCfg.enabled && (0, signalQueueConfig_1.redisQueueConfigured)()) {
+            if (queueCfg.shardCount > 1 && workerConfig_1.workerConfig.shardCount <= 1) {
+                console.warn(`[worker] TRADE_SIGNAL_QUEUE_SHARD_COUNT=${queueCfg.shardCount} but this worker`
+                    + ` is shard ${workerConfig_1.workerConfig.shardId} only — users on other shards need matching trade workers`);
+            }
+            if (workerConfig_1.workerConfig.shardId >= queueCfg.shardCount) {
+                console.error(`[worker] FATAL: WORKER_SHARD_ID=${workerConfig_1.workerConfig.shardId} >= TRADE_SIGNAL_QUEUE_SHARD_COUNT=${queueCfg.shardCount}`);
+                process.exit(1);
+            }
+            const tradeShards = (0, signalQueueConfig_1.deployedTradeShardCount)();
+            if (queueCfg.shardCount > tradeShards && workerConfig_1.workerConfig.shardId === 0) {
+                console.warn(`[worker] queue shard count (${queueCfg.shardCount}) > deployed trade shards (${tradeShards})`
+                    + ' — set TRADE_SIGNAL_QUEUE_SHARD_COUNT=1 on listener and worker');
+            }
+            signalQueueConsumers = new signalQueueConsumer_1.SignalQueueConsumerManager(supabase, tradeExecutor);
+            signalQueueConsumers.start();
+            (0, queueHealth_1.setQueueMetricsProvider)(() => signalQueueConsumers.getMetrics());
+            console.log('[worker] signal queue consumers started');
+        }
+        else if (queueCfg.enabled) {
+            console.warn('[worker] TRADE_SIGNAL_QUEUE_ENABLED=true but Redis REST URL/token missing — queue disabled');
+            (0, queueHealth_1.setQueueMetricsProvider)(null);
         }
     }
     else {
@@ -134,6 +167,8 @@ async function main() {
         authService?.shutdown();
         stopWorkWake?.();
         stopLogRetention?.();
+        (0, queueHealth_1.setQueueMetricsProvider)(null);
+        await signalQueueConsumers?.stop();
         tradeExecutor?.stop();
         for (const m of monitors)
             m.stop();

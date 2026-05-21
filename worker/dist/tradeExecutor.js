@@ -291,6 +291,10 @@ class TradeExecutor {
         /** Cached channel rows keyed by `telegram_channels.id` — refreshed on demand. */
         this.channelKeywordsCache = new Map();
         this.sessionPingAt = new Map();
+        /** Coalesce concurrent session checks per MT uuid (burst fan-out). */
+        this.sessionCheckInflight = new Map();
+        /** Coalesce concurrent /Symbols fetches per MT uuid. */
+        this.symbolListInflight = new Map();
         /** After OrderSend "Not connected", block re-trading until user reconnects. */
         this.sessionOrderBlocked = new Set();
         if (!(0, metatraderapi_1.hasMetatraderApiConfigured)()) {
@@ -576,9 +580,6 @@ class TradeExecutor {
         };
         const entryFast = this.shouldUseEntryFastPath(rowWithTs);
         const listenerTs = (0, pipelineTimestamps_1.parsePipelineTimestamps)(rowWithTs.pipeline_ts);
-        // #region agent log
-        fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '551fbc' }, body: JSON.stringify({ sessionId: '551fbc', runId: 'latency-v1', hypothesisId: 'H2', location: 'tradeExecutor.ts:acceptDispatchSignal', message: 'dispatch accepted', data: { signalId: row.id, userId: row.user_id, source, entryFast, priority: opts?.priority ?? null, dispatchLagMs: listenerTs?.t_dispatch_sent != null ? receivedAt - listenerTs.t_dispatch_sent : null, hasListenerTs: Boolean(listenerTs?.t_listener_received) }, timestamp: Date.now() }) }).catch(() => { });
-        // #endregion
         if (source === 'listener_push'
             && !listenerTs?.t_listener_received) {
             console.warn(`[tradeExecutor] listener_push missing pipeline_ts listener stamps signal=${row.id}`
@@ -603,6 +604,39 @@ class TradeExecutor {
             priority: opts?.priority,
             source,
             dispatchReceivedAt: receivedAt,
+        });
+        return true;
+    }
+    /**
+     * Redis Streams consumer path: await execution before XACK (at-least-once safety).
+     * Bypasses the in-process priority queue — the stream is the queue.
+     */
+    async acceptDispatchSignalAwait(row, opts) {
+        if (!PARSED_STATUSES.has(row.status))
+            return false;
+        if (!(0, tradeSignalActions_1.signalMatchesExecutorMode)(row.parsed_data, workerConfig_1.workerConfig.tradeExecutorMode)) {
+            return false;
+        }
+        const source = opts?.source ?? 'queue';
+        const receivedAt = Date.now();
+        const rowWithTs = {
+            ...row,
+            pipeline_ts: {
+                ...((0, pipelineTimestamps_1.parsePipelineTimestamps)(row.pipeline_ts) ?? {}),
+                t_dispatch_received: receivedAt,
+            },
+        };
+        const entryFast = this.shouldUseEntryFastPath(rowWithTs);
+        if (!entryFast) {
+            await this.logPipelineStage(rowWithTs, 'dispatch_received', { source, priority: opts?.priority ?? null });
+        }
+        if (this.inflight.has(row.id))
+            return true;
+        await this.handleSignal(rowWithTs, {
+            liveDispatch: true,
+            dispatchSource: source,
+            dispatchReceivedAt: receivedAt,
+            lightIdempotency: entryFast,
         });
         return true;
     }
@@ -841,9 +875,6 @@ class TradeExecutor {
         const queueWaitMs = opts?.dispatchReceivedAt != null
             ? Math.max(0, handleStartMs - opts.dispatchReceivedAt)
             : null;
-        // #region agent log
-        fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '551fbc' }, body: JSON.stringify({ sessionId: '551fbc', runId: 'latency-v1', hypothesisId: 'H3', location: 'tradeExecutor.ts:handle-start', message: 'handle signal start', data: { signalId: row.id, userId: row.user_id, source: opts?.dispatchSource ?? null, liveFast, queueWaitMs }, timestamp: Date.now() }) }).catch(() => { });
-        // #endregion
         let pipelineOutcome = { live_fast: liveFast };
         try {
             if (!opts?.liveDispatch && this.signalTooOldForReplay(row))
@@ -912,6 +943,9 @@ class TradeExecutor {
             const op = operationFor(action, parsed);
             if (!op || !parsed.symbol)
                 return;
+            if (liveFast) {
+                await this.prewarmBrokersForLiveEntry(brokers, parsed.symbol ?? '');
+            }
             if (liveFast && row.pipeline_ts) {
                 row.pipeline_ts.t_order_send_start = Date.now();
             }
@@ -939,11 +973,30 @@ class TradeExecutor {
                 console.warn(`[tradeExecutor] slow pipeline signal=${row.id} user=${row.user_id} ms=${pipelineMs} brokers=${brokers.length}`);
             }
             const strictSkips = outcomes.filter(o => o.signalEntryRequiredSkip === true).length;
+            const finalizeSkipReasons = outcomes
+                .map(o => o.finalizeSkipReason)
+                .filter((r) => typeof r === 'string' && r.length > 0);
             if (!anyOpened && strictSkips === brokers.length && strictSkips > 0) {
                 try {
                     const { error: sigErr } = await this.supabase
                         .from('signals')
                         .update({ status: 'skipped', skip_reason: manualPlanner_1.SKIP_REASON_SIGNAL_ENTRY_REQUIRED })
+                        .eq('id', row.id)
+                        .eq('status', 'parsed');
+                    if (sigErr) {
+                        console.warn(`[tradeExecutor] signal skip finalize failed id=${row.id}: ${sigErr.message}`);
+                    }
+                }
+                catch {
+                    // best-effort
+                }
+            }
+            else if (!anyOpened && finalizeSkipReasons.length === brokers.length && finalizeSkipReasons.length > 0) {
+                const skipReason = finalizeSkipReasons[0];
+                try {
+                    const { error: sigErr } = await this.supabase
+                        .from('signals')
+                        .update({ status: 'skipped', skip_reason: skipReason })
                         .eq('id', row.id)
                         .eq('status', 'parsed');
                     if (sigErr) {
@@ -1514,8 +1567,11 @@ class TradeExecutor {
             parsed,
         });
         // Parameter follow-up (modify-only) must be explicitly linked by reply/thread/parent.
-        // Same-channel implicit bundling is too ambiguous and can hijack fresh entries.
-        if (!link.replyOk && !link.threadLinksAnchor && !link.parentLinksAnchor) {
+        // Exception: when add_new_trades_to_existing=false, the strategy is "single slot";
+        // a same-direction signal carrying explicit stops should refresh that live slot.
+        const manual = (broker.manual_settings ?? {});
+        const allowUnlinkedSingleSlotRefresh = manual.add_new_trades_to_existing === false && (0, channelActiveTradeParams_1.parsedSignalHasExplicitStops)(parsed);
+        if (!link.replyOk && !link.threadLinksAnchor && !link.parentLinksAnchor && !allowUnlinkedSingleSlotRefresh) {
             try {
                 await this.supabase.from('trade_execution_logs').insert({
                     user_id: signal.user_id,
@@ -2339,6 +2395,54 @@ class TradeExecutor {
         await this.markBrokerSessionDown(broker, uuid, 'verifyTradingReady failed before OrderSend');
         return false;
     }
+    /** Live entry: CheckConnect only (not AccountSummary+OpenedOrders). Deduped per uuid. */
+    async ensureBrokerSessionLiveFast(api, uuid, broker) {
+        if (this.sessionOrderBlocked.has(broker.id)) {
+            await this.markBrokerSessionDown(broker, uuid, 'session blocked after prior OrderSend disconnect');
+            return false;
+        }
+        const now = Date.now();
+        const last = this.sessionPingAt.get(uuid) ?? 0;
+        if (now - last < SESSION_PING_MIN_INTERVAL_MS)
+            return true;
+        const inflight = this.sessionCheckInflight.get(uuid);
+        if (inflight)
+            return inflight;
+        const check = (async () => {
+            try {
+                const alive = await api.keepSessionAlive(uuid);
+                if (alive) {
+                    this.sessionPingAt.set(uuid, Date.now());
+                    return true;
+                }
+                await this.markBrokerSessionDown(broker, uuid, 'keepSessionAlive failed before live OrderSend');
+                return false;
+            }
+            finally {
+                this.sessionCheckInflight.delete(uuid);
+            }
+        })();
+        this.sessionCheckInflight.set(uuid, check);
+        return check;
+    }
+    /** Warm session + symbol caches once per live signal before OrderSend. */
+    async prewarmBrokersForLiveEntry(brokers, signalSymbol) {
+        await Promise.all(brokers.map(async (broker) => {
+            const uuid = broker.metaapi_account_id;
+            if (!isMtUuid(uuid))
+                return;
+            const api = this.apiFor(broker);
+            if (!api)
+                return;
+            const mapping = applySymbolMapping(signalSymbol, broker);
+            const requested = mapping.symbol;
+            await Promise.all([
+                this.ensureBrokerSessionLiveFast(api, uuid, broker),
+                this.getSymbolList(uuid).catch(() => null),
+                this.getSymbolParams(uuid, requested).catch(() => null),
+            ]);
+        }));
+    }
     async sendOrder(signal, parsed, op, broker, channelKeywords, pipelineT0, sendOpts) {
         const liveEntryFast = sendOpts?.liveEntryFast === true;
         if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
@@ -2376,13 +2480,14 @@ class TradeExecutor {
             && (0, manualPlanner_1.signalEntryPriceStrictEnabled)(manual)
             && (0, manualPlanner_1.parsedHasExplicitEntryAnchor)(parsed);
         const [sessionOk, symbol, paramsFromRequested] = await Promise.all([
-            this.ensureBrokerSession(api, uuid, broker, { force: true }),
-            this.resolveBrokerSymbol(uuid, requestedSymbol),
+            liveEntryFast
+                ? this.ensureBrokerSessionLiveFast(api, uuid, broker)
+                : this.ensureBrokerSession(api, uuid, broker, { force: true }),
+            liveEntryFast
+                ? this.resolveBrokerSymbolForLiveEntry(uuid, requestedSymbol)
+                : this.resolveBrokerSymbol(uuid, requestedSymbol),
             this.getSymbolParams(uuid, requestedSymbol).catch(() => null),
         ]);
-        // #region agent log
-        fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '551fbc' }, body: JSON.stringify({ sessionId: '551fbc', runId: 'latency-v1', hypothesisId: 'H4', location: 'tradeExecutor.ts:sendOrder-precheck', message: 'sendOrder precheck complete', data: { signalId: signal.id, userId: signal.user_id, brokerId: broker.id, requestedSymbol, resolvedSymbol: symbol, sessionOk, hasSymbolParams: Boolean(paramsFromRequested) }, timestamp: Date.now() }) }).catch(() => { });
-        // #endregion
         if (!sessionOk) {
             await this.logSendSkipped(signal, broker, 'broker_session_not_connected', {
                 symbol: requestedSymbol,
@@ -2447,6 +2552,10 @@ class TradeExecutor {
             }
         }
         if (!liveEntryFast) {
+            if (isManual && manual.add_new_trades_to_existing === false && !(0, channelActiveTradeParams_1.parsedSignalHasExplicitStops)(parsed)) {
+                await this.logSendSkipped(signal, broker, 'explicit_stops_required_when_add_to_existing_off', { symbol });
+                return { finalizeSkipReason: 'explicit_stops_required_when_add_to_existing_off' };
+            }
             if (isManual && manual.close_on_opposite_signal === true) {
                 await this.closeOppositeDirectionTrades(signal, parsed, broker, symbol);
             }
@@ -2454,7 +2563,7 @@ class TradeExecutor {
                 const already = await this.hasOpenTradeForSymbol(broker.id, symbol);
                 if (already) {
                     await this.logSendSkipped(signal, broker, 'add_new_trades_to_existing=false', { symbol });
-                    return {};
+                    return { finalizeSkipReason: 'add_new_trades_to_existing=false' };
                 }
             }
             const newsPreFill = String(process.env.EXECUTOR_NEWS_BLACKOUT_PRE_FILL ?? 'false').toLowerCase();
@@ -2593,14 +2702,8 @@ class TradeExecutor {
         if (channelDelayMs > 0) {
             if (liveEntryFast) {
                 console.log(`[tradeExecutor] live fast: skipping channel delay_msec=${channelDelayMs} signal=${signal.id} broker=${broker.id}`);
-                // #region agent log
-                fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '551fbc' }, body: JSON.stringify({ sessionId: '551fbc', runId: 'latency-v1', hypothesisId: 'H5', location: 'tradeExecutor.ts:channel-delay-skip', message: 'channel delay skipped on live fast path', data: { signalId: signal.id, userId: signal.user_id, brokerId: broker.id, channelDelayMs }, timestamp: Date.now() }) }).catch(() => { });
-                // #endregion
             }
             else {
-                // #region agent log
-                fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '551fbc' }, body: JSON.stringify({ sessionId: '551fbc', runId: 'latency-v1', hypothesisId: 'H5', location: 'tradeExecutor.ts:channel-delay-wait-start', message: 'channel delay wait start', data: { signalId: signal.id, userId: signal.user_id, brokerId: broker.id, channelDelayMs, waitAppliedMs: Math.min(channelDelayMs, 30000) }, timestamp: Date.now() }) }).catch(() => { });
-                // #endregion
                 await new Promise(resolve => setTimeout(resolve, Math.min(channelDelayMs, 30000)));
             }
         }
@@ -2705,18 +2808,12 @@ class TradeExecutor {
                 if (strictDeferred) {
                     console.log(`[tradeExecutor] strict entry deferred signal=${signal.id} broker=${broker.id} symbol=${symbol}`
                         + ` entry=${se.entryPrice} isBuy=${se.isBuy} bid=${q.bid} ask=${q.ask}`);
-                    // #region agent log
-                    fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '551fbc' }, body: JSON.stringify({ sessionId: '551fbc', runId: 'latency-v2', hypothesisId: 'H6', location: 'tradeExecutor.ts:strict-deferred', message: 'strict entry deferred to pending', data: { signalId: signal.id, userId: signal.user_id, brokerId: broker.id, symbol, entryPrice: se.entryPrice, isBuy: se.isBuy, bid: q.bid, ask: q.ask }, timestamp: Date.now() }) }).catch(() => { });
-                    // #endregion
                 }
             }
             catch (err) {
                 strictDeferred = true;
                 const msg = err instanceof Error ? err.message : String(err);
                 console.warn(`[tradeExecutor] strict entry /Quote failed; deferring to broker pending signal=${signal.id} broker=${broker.id} symbol=${symbol}: ${msg}`);
-                // #region agent log
-                fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '551fbc' }, body: JSON.stringify({ sessionId: '551fbc', runId: 'latency-v2', hypothesisId: 'H6', location: 'tradeExecutor.ts:strict-deferred-quote-fail', message: 'strict entry deferred due quote failure', data: { signalId: signal.id, userId: signal.user_id, brokerId: broker.id, symbol, error: msg.slice(0, 180) }, timestamp: Date.now() }) }).catch(() => { });
-                // #endregion
             }
         }
         const effectiveCapped = strictDeferred ? [] : capped;
@@ -2738,10 +2835,15 @@ class TradeExecutor {
         // trigger prices) OR Close-Worse-Entries is on (so we can compute the
         // single override TP). Strict broker pendings use the signal entry as the
         // clamp reference — no extra quote solely for that path.
-        // The Quote is a ~50-150ms GET that we issue BEFORE
-        // sending immediates so every leg + every virtual trigger sees the same
-        // deterministic reference price.
-        const needsAnchor = virtualPendings.length > 0 || !!plan.closeWorseEntries;
+        // The Quote is a ~50-150ms GET that we issue BEFORE sending immediates so every
+        // leg + every virtual trigger sees the same deterministic reference price.
+        // Live fast + immediate legs: defer virtual-only anchor work until after OrderSend.
+        const deferVirtualAnchor = liveEntryFast
+            && legs.length > 0
+            && virtualPendings.length > 0
+            && !plan.closeWorseEntries;
+        const needsAnchor = !deferVirtualAnchor
+            && (virtualPendings.length > 0 || !!plan.closeWorseEntries);
         let anchor = plan.anchor?.value ?? plan.strictEntry?.entryPrice ?? null;
         let anchorSource = plan.anchor?.source ?? 'unknown';
         if (needsAnchor && (anchor == null || anchor <= 0)) {
@@ -2958,9 +3060,6 @@ class TradeExecutor {
                             }
                         }
                         else {
-                            // #region agent log
-                            fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '551fbc' }, body: JSON.stringify({ sessionId: '551fbc', runId: 'latency-v2', hypothesisId: 'H7', location: 'tradeExecutor.ts:signal-entry-pending-insert', message: 'signal entry pending row inserted', data: { signalId: signal.id, userId: signal.user_id, brokerId: broker.id, symbol, ticket, entryPrice: entryPx }, timestamp: Date.now() }) }).catch(() => { });
-                            // #endregion
                             strictBrokerPlaced = true;
                             try {
                                 await this.supabase.from('trade_execution_logs').insert({
@@ -3011,7 +3110,7 @@ class TradeExecutor {
         // the trigger. UPSERT with ignoreDuplicates leans on the partial unique
         // index (see migration 20260513140000_range_pending_unique_active_step).
         const insertRows = [];
-        if (virtualPendings.length > 0) {
+        if (virtualPendings.length > 0 && !deferVirtualAnchor) {
             if (anchor == null || !Number.isFinite(anchor) || anchor <= 0) {
                 console.warn(`[tradeExecutor] dropping ${virtualPendings.length} virtual pendings: no anchor available for signal=${signal.id} broker=${broker.id} symbol=${symbol}`);
             }
@@ -3170,9 +3269,6 @@ class TradeExecutor {
             try {
                 const result = await api.orderSend(uuid, args);
                 const latencyMs = Date.now() - t0;
-                // #region agent log
-                fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '551fbc' }, body: JSON.stringify({ sessionId: '551fbc', runId: 'latency-v1', hypothesisId: 'H4', location: 'tradeExecutor.ts:order-send-success', message: 'order send success', data: { signalId: signal.id, userId: signal.user_id, brokerId: broker.id, symbol: args.symbol, ticket: result.ticket, elapsedMs: latencyMs, leg: leg.idx + 1, total: totalCount }, timestamp: Date.now() }) }).catch(() => { });
-                // #endregion
                 if (liveEntryFast && signal.pipeline_ts) {
                     signal.pipeline_ts.t_last_broker_send = Date.now();
                 }
@@ -3182,11 +3278,7 @@ class TradeExecutor {
                 const openSl = result.stopLoss ?? args.stoploss ?? null;
                 const trailCols = (0, trailingStop_1.trailingTradeRowSnapshot)(manual, entryPx, openSl);
                 const autoBeCols = (0, autoManagement_1.autoManagementTradeSnapshot)(manual, entryPx, openSl);
-                // We need the row's id back so we can persist partial_tp_legs keyed to
-                // it. `.select('id').single()` keeps the INSERT to one round trip.
-                const tradeInsert = await this.supabase
-                    .from('trades')
-                    .insert({
+                const tradeRowPayload = {
                     user_id: signal.user_id,
                     signal_id: signal.id,
                     telegram_channel_id: signal.channel_id,
@@ -3200,21 +3292,12 @@ class TradeExecutor {
                     lot_size: result.lots ?? args.volume,
                     status: args.operation.includes('Limit') || args.operation.includes('Stop') ? 'pending' : 'open',
                     opened_at: new Date().toISOString(),
-                    // Worker-managed Close-Worse-Entries threshold (see cweCloseMonitor).
-                    // Only the first N immediate legs have this; non-CWE legs leave it null
-                    // and ride their bucket TP / SL normally.
                     cwe_close_price: leg.cweClosePrice ?? null,
                     ...trailCols,
                     ...autoBeCols,
-                })
-                    .select('id')
-                    .maybeSingle();
-                if (tradeInsert.error) {
-                    console.error(`[tradeExecutor] trades INSERT failed signal=${signal.id} broker=${broker.id} ticket=${result.ticket}: ${tradeInsert.error.message}`);
-                }
-                const tradeRowId = tradeInsert.data?.id ?? null;
-                filledLegs.push({
-                    tradeRowId,
+                };
+                const filledLeg = {
+                    tradeRowId: null,
                     ticket: result.ticket,
                     symbol: args.symbol,
                     direction: isBuy ? 'buy' : 'sell',
@@ -3223,8 +3306,8 @@ class TradeExecutor {
                     openTp: (result.takeProfit ?? args.takeprofit) != null
                         ? Number(result.takeProfit ?? args.takeprofit)
                         : null,
-                });
-                const persistPostFillDb = async () => {
+                };
+                const persistPostFillDb = async (tradeRowId) => {
                     if (tradeRowId && leg.partialTps && leg.partialTps.length > 0) {
                         const partialRows = leg.partialTps.map(p => ({
                             trade_id: tradeRowId,
@@ -3263,20 +3346,40 @@ class TradeExecutor {
                     });
                 };
                 if (liveEntryFast) {
-                    void persistPostFillDb().catch(err => {
-                        console.error(`[tradeExecutor] post-fill DB failed signal=${signal.id}:`, err);
+                    filledLegs.push(filledLeg);
+                    void (async () => {
+                        const tradeInsert = await this.supabase
+                            .from('trades')
+                            .insert(tradeRowPayload)
+                            .select('id')
+                            .maybeSingle();
+                        if (tradeInsert.error) {
+                            console.error(`[tradeExecutor] trades INSERT failed signal=${signal.id} broker=${broker.id} ticket=${result.ticket}: ${tradeInsert.error.message}`);
+                        }
+                        const tradeRowId = tradeInsert.data?.id ?? null;
+                        filledLeg.tradeRowId = tradeRowId;
+                        await persistPostFillDb(tradeRowId);
+                    })().catch(err => {
+                        console.error(`[tradeExecutor] live-fast trade persist failed signal=${signal.id}:`, err);
                     });
                 }
                 else {
-                    await persistPostFillDb();
+                    const tradeInsert = await this.supabase
+                        .from('trades')
+                        .insert(tradeRowPayload)
+                        .select('id')
+                        .maybeSingle();
+                    if (tradeInsert.error) {
+                        console.error(`[tradeExecutor] trades INSERT failed signal=${signal.id} broker=${broker.id} ticket=${result.ticket}: ${tradeInsert.error.message}`);
+                    }
+                    filledLeg.tradeRowId = tradeInsert.data?.id ?? null;
+                    filledLegs.push(filledLeg);
+                    await persistPostFillDb(filledLeg.tradeRowId);
                 }
                 return true;
             }
             catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);
-                // #region agent log
-                fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '551fbc' }, body: JSON.stringify({ sessionId: '551fbc', runId: 'latency-v1', hypothesisId: 'H4', location: 'tradeExecutor.ts:order-send-failed', message: 'order send failed', data: { signalId: signal.id, userId: signal.user_id, brokerId: broker.id, symbol: args.symbol, elapsedMs: Date.now() - t0, error: msg.slice(0, 180) }, timestamp: Date.now() }) }).catch(() => { });
-                // #endregion
                 if ((0, metatraderapi_1.isBrokerDisconnectedMessage)(msg)) {
                     await this.markBrokerSessionDown(broker, uuid, msg);
                 }
@@ -3309,6 +3412,22 @@ class TradeExecutor {
         // All immediates fan out in parallel. Virtual pendings are already
         // persisted; the worker monitor + edge sweep will fire them on trigger.
         const sendResults = await Promise.allSettled(legs.map(sendLeg));
+        if (deferVirtualAnchor && virtualPendings.length > 0 && api) {
+            void this.deferredVirtualPendingMaterialize({
+                signal,
+                broker,
+                uuid,
+                api,
+                symbol,
+                virtualPendings,
+                parsed,
+                plan,
+                params,
+                strictEntryPrefetch,
+            }).catch(err => {
+                console.error(`[tradeExecutor] deferred virtual pending failed signal=${signal.id} broker=${broker.id}:`, err);
+            });
+        }
         if (liveEntryFast && filledLegs.length > 0) {
             const plannerCtx = params
                 ? {
@@ -3354,7 +3473,7 @@ class TradeExecutor {
             && anyImmediateOpened
             && legs.length > 1
             && needsPerLegTpSync) {
-            await this.syncMultiBasketLegTakeProfits({
+            const syncArgs = {
                 signal,
                 parsed,
                 broker,
@@ -3364,7 +3483,15 @@ class TradeExecutor {
                 params,
                 manual,
                 direction: op.toLowerCase().includes('sell') ? 'sell' : 'buy',
-            });
+            };
+            if (liveEntryFast) {
+                void this.syncMultiBasketLegTakeProfits(syncArgs).catch(err => {
+                    console.error(`[tradeExecutor] syncMultiBasketLegTakeProfits failed signal=${signal.id}:`, err);
+                });
+            }
+            else {
+                await this.syncMultiBasketLegTakeProfits(syncArgs);
+            }
         }
         if (virtualPendings.length > 0 && !anyImmediateOpened && !strictDeferred) {
             const { error: stripErr } = await this.supabase
@@ -4053,6 +4180,19 @@ class TradeExecutor {
         const cached = this.symbolListCache.get(uuid);
         if (cached && (Date.now() - cached.loadedAt) < SYMBOL_LIST_TTL_MS)
             return cached;
+        const inflight = this.symbolListInflight.get(uuid);
+        if (inflight)
+            return inflight;
+        const fetchPromise = this.fetchSymbolList(uuid);
+        this.symbolListInflight.set(uuid, fetchPromise);
+        try {
+            return await fetchPromise;
+        }
+        finally {
+            this.symbolListInflight.delete(uuid);
+        }
+    }
+    async fetchSymbolList(uuid) {
         if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
             return null;
         const api = this.apiForUuid(uuid);
@@ -4089,18 +4229,8 @@ class TradeExecutor {
             return null;
         }
     }
-    /**
-     * Map a generic symbol (e.g. 'BTCUSD') to the exact instrument name the broker
-     * exposes (e.g. 'BTCUSDm', 'BTCUSD.r', 'BTCUSD_i'). Strategy:
-     *   1. Honour an explicit manual mapping when one exists for this symbol.
-     *   2. Fall back to fuzzy matching against `/Symbols` using common broker suffixes
-     *      and prefix/suffix substitution. Picks the shortest match (closest variant).
-     */
-    async resolveBrokerSymbol(uuid, requested) {
+    resolveBrokerSymbolFromInventory(inventory, requested) {
         const target = requested.toUpperCase();
-        const inventory = await this.getSymbolList(uuid);
-        if (!inventory)
-            return requested;
         if (inventory.set.has(target)) {
             const exact = inventory.list.find(s => s.toUpperCase() === target);
             return exact ?? requested;
@@ -4120,7 +4250,6 @@ class TradeExecutor {
             const exact = inventory.list.find(s => s.toUpperCase() === winner);
             return exact ?? winner;
         }
-        // Last resort: any instrument that CONTAINS the requested ticker (e.g. "XAUUSDpro").
         const contains = inventory.list.filter(s => s.toUpperCase().includes(target));
         if (contains.length === 1)
             return contains[0];
@@ -4129,6 +4258,93 @@ class TradeExecutor {
             return contains[0];
         }
         return requested;
+    }
+    async resolveBrokerSymbolForLiveEntry(uuid, requested) {
+        const cached = this.symbolListCache.get(uuid);
+        if (cached && (Date.now() - cached.loadedAt) < SYMBOL_LIST_TTL_MS) {
+            return this.resolveBrokerSymbolFromInventory(cached, requested);
+        }
+        const inventory = await this.getSymbolList(uuid);
+        if (!inventory)
+            return requested;
+        return this.resolveBrokerSymbolFromInventory(inventory, requested);
+    }
+    async deferredVirtualPendingMaterialize(args) {
+        const { signal, broker, uuid, api, symbol, virtualPendings, parsed, plan, params, strictEntryPrefetch, } = args;
+        let anchor = plan.anchor?.value ?? plan.strictEntry?.entryPrice ?? null;
+        const parsedEntry = (0, manualPlanner_1.resolvedParsedEntryPrice)(parsed);
+        if (parsedEntry != null && parsedEntry > 0) {
+            anchor = parsedEntry;
+        }
+        else {
+            try {
+                const q = strictEntryPrefetch ?? await api.quote(uuid, symbol);
+                anchor = plan.isBuy === false ? q.bid : q.ask;
+            }
+            catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                console.warn(`[tradeExecutor] deferred virtual /Quote failed signal=${signal.id} broker=${broker.id}: ${msg}`);
+                return;
+            }
+        }
+        if (anchor == null || !Number.isFinite(anchor) || anchor <= 0) {
+            console.warn(`[tradeExecutor] deferred virtual: no anchor signal=${signal.id} broker=${broker.id}`);
+            return;
+        }
+        const digits = Math.max(0, Math.min(8, Number(params?.digits) || 5));
+        const safe = Math.max(Number(params?.stopsLevel) || 0, Number(params?.freezeLevel) || 0);
+        const zoneHi = safe > 0 ? anchor + (safe + 2) * (params?.point ?? 0) : null;
+        const zoneLo = safe > 0 ? anchor - (safe + 2) * (params?.point ?? 0) : null;
+        const nowMs = Date.now();
+        const insertRows = [];
+        for (const v of virtualPendings) {
+            const triggerPrice = triggerPriceFor(v, anchor, digits);
+            if (zoneHi != null && zoneLo != null && triggerPrice > zoneLo && triggerPrice < zoneHi) {
+                continue;
+            }
+            const expiresAt = v.expiryHours && v.expiryHours > 0
+                ? new Date(nowMs + v.expiryHours * 60 * 60 * 1000).toISOString()
+                : null;
+            insertRows.push({
+                signal_id: signal.id,
+                user_id: signal.user_id,
+                broker_account_id: broker.id,
+                metaapi_account_id: uuid,
+                symbol,
+                step_idx: v.stepIdx,
+                is_buy: v.isBuy,
+                volume: roundLot(v.volume, params),
+                anchor_price: anchor,
+                trigger_price: triggerPrice,
+                stoploss: v.stoploss,
+                takeprofit: v.takeprofit,
+                slippage: v.slippage,
+                comment: v.comment,
+                expert_id: v.expertID ?? null,
+                expires_at: expiresAt,
+                status: 'pending',
+                cwe_close_price: v.cweClosePrice ?? null,
+            });
+        }
+        if (insertRows.length === 0)
+            return;
+        const persist = await this.persistRangePendingLegRows(insertRows, `deferred live signal=${signal.id} broker=${broker.id}`);
+        if (!persist.ok) {
+            console.error(`[tradeExecutor] deferred virtual persist failed signal=${signal.id} broker=${broker.id}: ${persist.lastError ?? 'unknown'}`);
+        }
+    }
+    /**
+     * Map a generic symbol (e.g. 'BTCUSD') to the exact instrument name the broker
+     * exposes (e.g. 'BTCUSDm', 'BTCUSD.r', 'BTCUSD_i'). Strategy:
+     *   1. Honour an explicit manual mapping when one exists for this symbol.
+     *   2. Fall back to fuzzy matching against `/Symbols` using common broker suffixes
+     *      and prefix/suffix substitution. Picks the shortest match (closest variant).
+     */
+    async resolveBrokerSymbol(uuid, requested) {
+        const inventory = await this.getSymbolList(uuid);
+        if (!inventory)
+            return requested;
+        return this.resolveBrokerSymbolFromInventory(inventory, requested);
     }
 }
 exports.TradeExecutor = TradeExecutor;

@@ -133,6 +133,58 @@ Apply scale migrations before growth push:
 
 - `20260521100000_security_hardening_and_indexes.sql` — hot-path indexes + RPC lockdown
 - `20260521110000_trade_execution_logs_batch_prune.sql` — drops per-insert log prune trigger; worker calls `prune_all_trade_execution_logs` on a schedule
+- `20260521120000_signal_queue_tables.sql` — idempotency + dead-letter tables for Redis Streams queue
+
+## Redis Streams queue (10k-ready dispatch)
+
+Durable listener → trade dispatch via **Upstash Redis Streams** (shard-scoped streams, at-least-once with idempotency).
+
+```mermaid
+flowchart LR
+  listener[Listener] --> entryStream["signals:entry:shardN"]
+  listener --> mgmtStream["signals:mgmt:shardN"]
+  entryStream --> tradeEntry[trade_entry shard N]
+  mgmtStream --> tradeMgmt[trade_mgmt shard N]
+```
+
+### Env (listener + all trade shards)
+
+```env
+UPSTASH_REDIS_REST_URL=https://xxx.upstash.io
+UPSTASH_REDIS_REST_TOKEN=your-token
+TRADE_SIGNAL_QUEUE_ENABLED=true
+TRADE_SIGNAL_QUEUE_SHARD_COUNT=4
+TRADE_SIGNAL_QUEUE_ENTRY_STREAM=signals:entry
+TRADE_SIGNAL_QUEUE_MGMT_STREAM=signals:mgmt
+# Canary: only shard 0 uses queue initially; other shards stay on HTTP push
+TRADE_SIGNAL_QUEUE_CANARY_SHARDS=0
+TRADE_SIGNAL_PUSH_FALLBACK_ON_QUEUE_FAIL=true
+```
+
+Trade shards also need the same Redis env + `TRADE_SIGNAL_QUEUE_ENABLED=true` + matching `WORKER_SHARD_ID` / `TRADE_SIGNAL_QUEUE_SHARD_COUNT`.
+
+### Cutover playbook
+
+1. **Dark launch** — Deploy code with `TRADE_SIGNAL_QUEUE_ENABLED=false` (no behavior change).
+2. **Canary shard 0** — Set `TRADE_SIGNAL_QUEUE_CANARY_SHARDS=0`, enable queue on listener + trade-entry-shard-0 + trade-mgmt-shard-0. Keep `TRADE_SIGNAL_PUSH_FALLBACK_ON_QUEUE_FAIL=true`.
+3. **Monitor** — Run queue slices in [`scripts/diagnostics/scalability_scorecard.sql`](../scripts/diagnostics/scalability_scorecard.sql) (#10–#14). Check trade `/health` → `queue[]` pending/lag.
+4. **Expand** — Add shards to canary list (`0,1`, then all). When enqueue p99 and `queue_dead_letter` are stable for 24h+, set `TRADE_SIGNAL_PUSH_FALLBACK_ON_QUEUE_FAIL=false` on canaried shards.
+5. **Full cutover** — Remove `TRADE_SIGNAL_QUEUE_CANARY_SHARDS`, then `TRADE_SIGNAL_PUSH_ENABLED=false` on listener (HTTP push disabled).
+6. **Rollback** — Set `TRADE_SIGNAL_QUEUE_ENABLED=false` or re-enable `TRADE_SIGNAL_PUSH_ENABLED=true` immediately.
+
+### Health / SLO guardrails
+
+Trade worker `GET /health` includes `queue[]` per lane: `stream_length`, `pending`, `last_read_at`, `last_ack_at`.
+
+Alert when (see scorecard #14):
+
+- `enqueue_to_start_ms` p99 &gt; 5000
+- `dispatch_enqueue_failed` &gt; 1% of attempts for 15m
+- `queue_dead_letter` growth &gt; 10/hour
+- `http_push_fallback` &gt; 5% while queue enabled
+
+Dead letters persist in `signal_queue_dead_letters`; replay via `worker/src/queue/signalQueueReplay.ts` helpers.
+
 
 ## Scale / idle polling (Phase 1)
 
@@ -166,7 +218,8 @@ sequenceDiagram
   participant BG as Background
   TG->>L: NewMessage
   L->>L: inline parse + signal UUID
-  L->>TE: dispatch (HTTP or in-process)
+  L->>L: XADD signals:entry:N or signals:mgmt:N
+  L->>TE: dispatch (queue consumer or HTTP fallback)
   TE->>MT: OrderSend (warm session, cached params)
   MT-->>TE: ticket
   TE->>BG: trades row + pipeline_summary + post-fill modify
