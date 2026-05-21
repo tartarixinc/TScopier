@@ -74,6 +74,10 @@ function reconnectCooldownMs(): number {
   return Math.max(500, Math.min(120_000, Number(process.env.TELEGRAM_RECONNECT_COOLDOWN_MS ?? 3500)))
 }
 
+const AUTH_KEY_DUP_RECONNECT_DELAY_MS = Math.max(
+  2_000, Math.min(30_000, Number(process.env.TELEGRAM_AUTH_DUP_RECONNECT_DELAY_MS ?? 10_000)),
+)
+
 function startConnectJitterMaxMs(): number {
   return Math.max(0, Math.min(30_000, Number(process.env.TELEGRAM_START_JITTER_MAX_MS ?? 2000)))
 }
@@ -189,6 +193,7 @@ export class UserListener {
   private userId: string
   private supabase: SupabaseClient
   private monitoredChannels = new Set<string>()
+  private channelRowCache = new Map<string, ChannelRow>()
   private currentHandler: Handler | null = null
   private currentEventBuilder: NewMessage | null = null
   private startedAt = 0
@@ -240,7 +245,18 @@ export class UserListener {
         await this.client.connect()
       } catch (err) {
         if (isAuthKeyUnregistered(err)) throw new TelegramSessionInvalidError()
-        throw err
+        if (isAuthKeyDuplicated(err)) {
+          console.warn(
+            `[userListener] AUTH_KEY_DUPLICATED on initial connect for ${this.userId}`
+            + ` — old session still releasing; waiting ${AUTH_KEY_DUP_RECONNECT_DELAY_MS}ms then retrying`,
+          )
+          incMetric('auth_key_duplicated')
+          try { await this.client.disconnect() } catch { /* ignore */ }
+          await new Promise(r => setTimeout(r, AUTH_KEY_DUP_RECONNECT_DELAY_MS))
+          await this.client.connect()
+        } else {
+          throw err
+        }
       }
     }
     this.isConnected = true
@@ -276,6 +292,7 @@ export class UserListener {
   private clearDialogsCache() {
     this.dialogsCache = null
     this.dialogsCacheAt = 0
+    this.channelRowCache.clear()
   }
 
   private stopTimer(field: 'watchdogTimer' | 'safetyPollTimer' | 'sessionPersistTimer' | 'replyChainSweepTimer') {
@@ -407,16 +424,24 @@ export class UserListener {
   private async loadChannels(): Promise<Set<string>> {
     const { data } = await this.supabase
       .from('telegram_channels')
-      .select('channel_id, channel_username')
+      .select('id, channel_id, channel_username, last_seen_message_id')
       .eq('user_id', this.userId)
       .eq('is_active', true)
 
     const next = new Set<string>()
-    for (const ch of data ?? []) {
+    this.channelRowCache.clear()
+    for (const ch of (data ?? []) as ChannelRow[]) {
       if (ch.channel_id) {
-        for (const v of toChannelIdVariants(ch.channel_id)) next.add(v)
+        for (const v of toChannelIdVariants(ch.channel_id)) {
+          next.add(v)
+          this.channelRowCache.set(v, ch)
+        }
       }
-      if (ch.channel_username) next.add(ch.channel_username.toLowerCase())
+      if (ch.channel_username) {
+        const lower = ch.channel_username.toLowerCase()
+        next.add(lower)
+        this.channelRowCache.set(lower, ch)
+      }
     }
     return next
   }
@@ -444,7 +469,11 @@ export class UserListener {
     try {
       dialogs = await this.fetchAllDialogs()
     } catch (err) {
-      rethrowIfSessionInvalid(err)
+      if (isAuthKeyDuplicated(err)) {
+        dialogs = await this.reconnectAndRetryDialogs()
+      } else {
+        rethrowIfSessionInvalid(err)
+      }
     }
 
     const byId = new Map<string, ChannelInfo>()
@@ -465,6 +494,20 @@ export class UserListener {
     this.dialogsCache = channels
     this.dialogsCacheAt = Date.now()
     return channels
+  }
+
+  private async reconnectAndRetryDialogs(): Promise<Awaited<ReturnType<TelegramClient['getDialogs']>>> {
+    console.warn(
+      `[userListener] AUTH_KEY_DUPLICATED on getDialogs for ${this.userId}`
+      + ' — disconnecting, waiting for old session to release, then reconnecting',
+    )
+    incMetric('auth_key_duplicated')
+    this.isConnected = false
+    try { await this.client.disconnect() } catch { /* ignore */ }
+    await new Promise(r => setTimeout(r, AUTH_KEY_DUP_RECONNECT_DELAY_MS))
+    await this.client.connect()
+    this.isConnected = true
+    return this.fetchAllDialogs()
   }
 
   /**
@@ -760,29 +803,40 @@ export class UserListener {
     )
 
     // Prefer channel_id matching across normalized variants, fallback to username.
+    // Use in-memory cache first (populated by loadChannels), fall back to DB.
     let channelRow: ChannelRow | null = null
-    if (chatIdVariants.length > 0) {
-      const idRes = await this.supabase
-        .from('telegram_channels')
-        .select('id, channel_id, channel_username, last_seen_message_id')
-        .eq('user_id', this.userId)
-        .eq('is_active', true)
-        .in('channel_id', chatIdVariants)
-        .limit(1)
-        .maybeSingle()
-      channelRow = (idRes.data as ChannelRow | null) ?? null
+    for (const v of chatIdVariants) {
+      channelRow = this.channelRowCache.get(v) ?? null
+      if (channelRow) break
+    }
+    if (!channelRow && chatUsername) {
+      channelRow = this.channelRowCache.get(chatUsername.toLowerCase()) ?? null
     }
 
-    if (!channelRow && chatUsername) {
-      const usernameRes = await this.supabase
-        .from('telegram_channels')
-        .select('id, channel_id, channel_username, last_seen_message_id')
-        .eq('user_id', this.userId)
-        .eq('is_active', true)
-        .eq('channel_username', chatUsername)
-        .limit(1)
-        .maybeSingle()
-      channelRow = (usernameRes.data as ChannelRow | null) ?? null
+    if (!channelRow) {
+      // Cache miss — fall back to Supabase (handles race with channel activation)
+      if (chatIdVariants.length > 0) {
+        const idRes = await this.supabase
+          .from('telegram_channels')
+          .select('id, channel_id, channel_username, last_seen_message_id')
+          .eq('user_id', this.userId)
+          .eq('is_active', true)
+          .in('channel_id', chatIdVariants)
+          .limit(1)
+          .maybeSingle()
+        channelRow = (idRes.data as ChannelRow | null) ?? null
+      }
+      if (!channelRow && chatUsername) {
+        const usernameRes = await this.supabase
+          .from('telegram_channels')
+          .select('id, channel_id, channel_username, last_seen_message_id')
+          .eq('user_id', this.userId)
+          .eq('is_active', true)
+          .eq('channel_username', chatUsername)
+          .limit(1)
+          .maybeSingle()
+        channelRow = (usernameRes.data as ChannelRow | null) ?? null
+      }
     }
 
     if (!channelRow) {
@@ -1578,6 +1632,7 @@ export class UserListener {
     // session and may not survive the reconnect cleanly.
     this.removeCurrentHandler()
     this.monitoredChannels.clear()
+    this.channelRowCache.clear()
     await this.refreshChannelSubscription()
     // Do NOT run history catch-up here: `runCatchUp` walks Telegram history and
     // calls `logSignal` for each candidate, which can re-dispatch parse/trade

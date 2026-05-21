@@ -60,6 +60,7 @@ function isAuthKeyDuplicated(err) {
 function reconnectCooldownMs() {
     return Math.max(500, Math.min(120000, Number(process.env.TELEGRAM_RECONNECT_COOLDOWN_MS ?? 3500)));
 }
+const AUTH_KEY_DUP_RECONNECT_DELAY_MS = Math.max(2000, Math.min(30000, Number(process.env.TELEGRAM_AUTH_DUP_RECONNECT_DELAY_MS ?? 10000)));
 function startConnectJitterMaxMs() {
     return Math.max(0, Math.min(30000, Number(process.env.TELEGRAM_START_JITTER_MAX_MS ?? 2000)));
 }
@@ -163,7 +164,20 @@ class UserListener {
             catch (err) {
                 if ((0, telegramClient_1.isAuthKeyUnregistered)(err))
                     throw new telegramClient_1.TelegramSessionInvalidError();
-                throw err;
+                if (isAuthKeyDuplicated(err)) {
+                    console.warn(`[userListener] AUTH_KEY_DUPLICATED on initial connect for ${this.userId}`
+                        + ` — old session still releasing; waiting ${AUTH_KEY_DUP_RECONNECT_DELAY_MS}ms then retrying`);
+                    (0, workerMetrics_1.incMetric)('auth_key_duplicated');
+                    try {
+                        await this.client.disconnect();
+                    }
+                    catch { /* ignore */ }
+                    await new Promise(r => setTimeout(r, AUTH_KEY_DUP_RECONNECT_DELAY_MS));
+                    await this.client.connect();
+                }
+                else {
+                    throw err;
+                }
             }
         }
         this.isConnected = true;
@@ -355,7 +369,12 @@ class UserListener {
             dialogs = await this.fetchAllDialogs();
         }
         catch (err) {
-            (0, telegramClient_1.rethrowIfSessionInvalid)(err);
+            if (isAuthKeyDuplicated(err)) {
+                dialogs = await this.reconnectAndRetryDialogs();
+            }
+            else {
+                (0, telegramClient_1.rethrowIfSessionInvalid)(err);
+            }
         }
         const byId = new Map();
         for (const d of dialogs) {
@@ -376,6 +395,20 @@ class UserListener {
         this.dialogsCache = channels;
         this.dialogsCacheAt = Date.now();
         return channels;
+    }
+    async reconnectAndRetryDialogs() {
+        console.warn(`[userListener] AUTH_KEY_DUPLICATED on getDialogs for ${this.userId}`
+            + ' — disconnecting, waiting for old session to release, then reconnecting');
+        (0, workerMetrics_1.incMetric)('auth_key_duplicated');
+        this.isConnected = false;
+        try {
+            await this.client.disconnect();
+        }
+        catch { /* ignore */ }
+        await new Promise(r => setTimeout(r, AUTH_KEY_DUP_RECONNECT_DELAY_MS));
+        await this.client.connect();
+        this.isConnected = true;
+        return this.fetchAllDialogs();
     }
     /**
      * Load channel/group dialogs (capped). Uses gramjs built-in pagination, which
