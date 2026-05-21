@@ -3137,6 +3137,9 @@ export class TradeExecutor {
         : this.resolveBrokerSymbol(uuid, requestedSymbol),
       this.getSymbolParams(uuid, requestedSymbol).catch(() => null),
     ])
+    if (liveEntryFast && signal.pipeline_ts && signal.pipeline_ts.t_send_caches_resolved == null) {
+      signal.pipeline_ts.t_send_caches_resolved = Date.now()
+    }
     if (!sessionOk) {
       await this.logSendSkipped(signal, broker, 'broker_session_not_connected', {
         symbol: requestedSymbol,
