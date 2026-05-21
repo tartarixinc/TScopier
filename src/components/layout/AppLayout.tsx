@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard,
   Settings,
@@ -251,17 +251,30 @@ export function AppLayout() {
             sidebarExpanded ? 'justify-between px-4' : 'justify-center px-2',
           )}
         >
-          <TscopierLogo className="h-6 w-auto lg:hidden" />
+          <Link
+            to="/dashboard"
+            className="flex shrink-0 items-center lg:hidden"
+            aria-label={t.nav.items.dashboard}
+            onClick={() => setMobileNavOpen(false)}
+          >
+            <TscopierLogo className="h-6 w-auto" />
+          </Link>
           <div
             className={clsx(
               'hidden lg:block transition-all duration-200',
               !sidebarExpanded && 'mx-auto',
             )}
           >
-            <TscopierLogo
-              collapsed={!sidebarExpanded}
-              className={sidebarExpanded ? 'h-6 w-auto' : undefined}
-            />
+            <Link
+              to="/dashboard"
+              className="flex items-center"
+              aria-label={t.nav.items.dashboard}
+            >
+              <TscopierLogo
+                collapsed={!sidebarExpanded}
+                className={sidebarExpanded ? 'h-6 w-auto' : undefined}
+              />
+            </Link>
           </div>
           <button
             type="button"
