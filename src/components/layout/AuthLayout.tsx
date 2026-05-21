@@ -5,7 +5,7 @@ import { AuthReviewsPanel } from '../auth/AuthReviewsPanel'
 import { AuthPage } from '../../pages/auth/AuthPage'
 import { LanguageSwitcher } from '../auth/LanguageSwitcher'
 import { ThemeToggle } from '../ui/ThemeToggle'
-import { TscopierLogo } from '../ui/TscopierLogo'
+import { AuthBrandLogo } from '../auth/AuthBrandLogo'
 import { useLocale } from '../../context/LocaleContext'
 
 export function AuthLayout() {
@@ -28,8 +28,8 @@ export function AuthLayout() {
             'lg:static lg:z-auto lg:h-auto lg:px-10 lg:py-4 lg:touch-auto',
           )}
         >
-          <Link to="/login" className="flex items-center">
-            <TscopierLogo className="h-8 w-auto sm:h-6" />
+          <Link to="/" className="flex items-center" aria-label="TSCopier home">
+            <AuthBrandLogo className="h-8 w-auto sm:h-6" />
           </Link>
           <div className="flex items-center gap-1 sm:gap-1.5">
             <LanguageSwitcher />
