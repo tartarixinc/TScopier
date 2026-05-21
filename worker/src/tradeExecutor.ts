@@ -112,10 +112,8 @@ import {
   applyChannelParamsToVirtualPendingList,
   estimateBasketTotalPlannedLegs,
   loadChannelActiveTradeParamsForSymbol,
-  mergeParsedWithChannelParams,
   reapplyChannelParamsToPendingLegs,
   parsedSignalHasExplicitStops,
-  shouldMergeChannelParamsForEntry,
   stripInvalidStopsForSide,
   symbolsForChannelParamsPersist,
   upsertChannelActiveTradeParams,
@@ -3042,7 +3040,6 @@ export class TradeExecutor {
     // Build the order list. In AI mode we keep the original single-order shape;
     // manual mode delegates to the planner so filters / multi-TP / pip-derived
     // SL & TP / pending expiry / reverse all apply consistently.
-    let mergedChannelParams = false
     let plan: PlannerResult
     if (isManual) {
       const rpe = resolvedParsedEntryPrice(parsed)
@@ -3072,17 +3069,6 @@ export class TradeExecutor {
             stoploss: plannerParsed.sl,
             tpLevels: refreshTpLevels,
           })
-        } else {
-          const channelParams = await loadChannelActiveTradeParamsForSymbol(
-            this.supabase,
-            signal.user_id,
-            signal.channel_id,
-            symbol,
-          )
-          if (channelParams) {
-            plannerParsed = mergeParsedWithChannelParams(plannerParsed, channelParams)
-            mergedChannelParams = true
-          }
         }
       }
       plan = planManualOrders({
@@ -3182,23 +3168,8 @@ export class TradeExecutor {
         `[tradeExecutor] capped immediate legs ${plan.orders.length} → ${capped.length} signal=${signal.id} broker=${broker.id}`,
       )
     }
-    let virtualPendings = (plan.virtualPendings ?? []).slice(0, 500)
+    const virtualPendings = (plan.virtualPendings ?? []).slice(0, 500)
     const totalPlannedLegCount = capped.length + virtualPendings.length
-    if (!liveEntryFast && virtualPendings.length > 0 && signal.channel_id && mergedChannelParams) {
-      const channelParams = await loadChannelActiveTradeParamsForSymbol(
-        this.supabase,
-        signal.user_id,
-        signal.channel_id,
-        symbol,
-      )
-      virtualPendings = applyChannelParamsToVirtualPendingList(
-        virtualPendings,
-        channelParams,
-        capped.length,
-        manual.tp_lots,
-        totalPlannedLegCount,
-      )
-    }
 
     if (isManual && manual.trade_style === 'multi') {
       const tpOnOrders = capped.map(o => Number(o.takeprofit) || 0).filter(tp => tp > 0)
