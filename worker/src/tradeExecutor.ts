@@ -1282,7 +1282,15 @@ export class TradeExecutor {
       if (!op || !parsed.symbol) return
 
       if (liveFast) {
-        await this.prewarmBrokersForLiveEntry(brokers, parsed.symbol ?? '')
+        // Hot-path skip: when session is freshly pinged AND symbol caches are
+        // warm, sendOrder will hit cached values inline (sub-ms). Skipping
+        // prewarm entirely keeps prep_ms ~0 instead of paying for a needless
+        // round-trip. When cold, kick prewarm off in the background so
+        // sendOrder's internal Promise.all (deduped via inflight maps) does
+        // the awaiting — we no longer double-block before t_order_send_start.
+        if (!this.brokersWarmForLiveEntry(brokers, parsed.symbol ?? '')) {
+          void this.prewarmBrokersForLiveEntry(brokers, parsed.symbol ?? '')
+        }
       }
       if (liveFast && row.pipeline_ts) {
         row.pipeline_ts.t_order_send_start = Date.now()
@@ -2958,6 +2966,33 @@ export class TradeExecutor {
     })()
     this.sessionCheckInflight.set(uuid, check)
     return check
+  }
+
+  /**
+   * Synchronous warm-cache check used to decide whether to block on prewarm.
+   * Returns true only when every broker has a recent session ping AND both
+   * the broker's symbol list and the requested symbol's params are cached.
+   * Inflight-but-not-yet-resolved entries count as cold so we still kick
+   * off prewarm (in the background).
+   */
+  private brokersWarmForLiveEntry(brokers: BrokerRow[], signalSymbol: string): boolean {
+    if (!brokers.length) return true
+    const now = Date.now()
+    for (const broker of brokers) {
+      const uuid = broker.metaapi_account_id
+      if (!isMtUuid(uuid)) continue
+      if (this.sessionOrderBlocked.has(broker.id)) return false
+      const lastPing = this.sessionPingAt.get(uuid!) ?? 0
+      if (now - lastPing >= SESSION_PING_MIN_INTERVAL_MS) return false
+      const symbolList = this.symbolListCache.get(uuid!)
+      if (!symbolList || now - symbolList.loadedAt >= SYMBOL_LIST_TTL_MS) return false
+      const mapping = applySymbolMapping(signalSymbol, broker)
+      const requested = mapping.symbol
+      const key = `${uuid}:${requested.toUpperCase()}`
+      const params = this.symbolCache.get(key)
+      if (!params || now - params.loadedAt >= SYMBOL_CACHE_TTL_MS) return false
+    }
+    return true
   }
 
   /** Warm session + symbol caches once per live signal before OrderSend. */
