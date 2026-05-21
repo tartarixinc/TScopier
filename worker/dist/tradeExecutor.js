@@ -576,6 +576,9 @@ class TradeExecutor {
         };
         const entryFast = this.shouldUseEntryFastPath(rowWithTs);
         const listenerTs = (0, pipelineTimestamps_1.parsePipelineTimestamps)(rowWithTs.pipeline_ts);
+        // #region agent log
+        fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '551fbc' }, body: JSON.stringify({ sessionId: '551fbc', runId: 'latency-v1', hypothesisId: 'H2', location: 'tradeExecutor.ts:acceptDispatchSignal', message: 'dispatch accepted', data: { signalId: row.id, userId: row.user_id, source, entryFast, priority: opts?.priority ?? null, dispatchLagMs: listenerTs?.t_dispatch_sent != null ? receivedAt - listenerTs.t_dispatch_sent : null, hasListenerTs: Boolean(listenerTs?.t_listener_received) }, timestamp: Date.now() }) }).catch(() => { });
+        // #endregion
         if (source === 'listener_push'
             && !listenerTs?.t_listener_received) {
             console.warn(`[tradeExecutor] listener_push missing pipeline_ts listener stamps signal=${row.id}`
@@ -607,7 +610,7 @@ class TradeExecutor {
      * In-process fast path (monolith). Live buy/sell bypass the queue when role allows.
      */
     dispatchParsedSignal(row) {
-        this.acceptDispatchSignal(row, {
+        return this.acceptDispatchSignal(row, {
             priority: (0, tradeSignalActions_1.dispatchPriorityForAction)((0, tradeSignalActions_1.parsedAction)(row.parsed_data)),
             source: 'in_process',
         });
@@ -838,6 +841,9 @@ class TradeExecutor {
         const queueWaitMs = opts?.dispatchReceivedAt != null
             ? Math.max(0, handleStartMs - opts.dispatchReceivedAt)
             : null;
+        // #region agent log
+        fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '551fbc' }, body: JSON.stringify({ sessionId: '551fbc', runId: 'latency-v1', hypothesisId: 'H3', location: 'tradeExecutor.ts:handle-start', message: 'handle signal start', data: { signalId: row.id, userId: row.user_id, source: opts?.dispatchSource ?? null, liveFast, queueWaitMs }, timestamp: Date.now() }) }).catch(() => { });
+        // #endregion
         let pipelineOutcome = { live_fast: liveFast };
         try {
             if (!opts?.liveDispatch && this.signalTooOldForReplay(row))
@@ -1507,6 +1513,29 @@ class TradeExecutor {
             newestTradeOpenedAt: anchor.newestOpenedAt,
             parsed,
         });
+        // Parameter follow-up (modify-only) must be explicitly linked by reply/thread/parent.
+        // Same-channel implicit bundling is too ambiguous and can hijack fresh entries.
+        if (!link.replyOk && !link.threadLinksAnchor && !link.parentLinksAnchor) {
+            try {
+                await this.supabase.from('trade_execution_logs').insert({
+                    user_id: signal.user_id,
+                    signal_id: signal.id,
+                    broker_account_id: broker.id,
+                    action: 'merge_routed_modify_only',
+                    status: 'skipped',
+                    request_payload: {
+                        skip_reason: 'parameter_follow_up_requires_explicit_link',
+                        symbol,
+                        direction,
+                        channel_id: signal.channel_id,
+                        anchor_signal_id: anchor.anchorSignalId,
+                        dt_ms: link.dtMs,
+                    },
+                });
+            }
+            catch { /* best-effort */ }
+            return { handled: false };
+        }
         if (!link.isLinked) {
             try {
                 await this.supabase.from('trade_execution_logs').insert({
@@ -2351,6 +2380,9 @@ class TradeExecutor {
             this.resolveBrokerSymbol(uuid, requestedSymbol),
             this.getSymbolParams(uuid, requestedSymbol).catch(() => null),
         ]);
+        // #region agent log
+        fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '551fbc' }, body: JSON.stringify({ sessionId: '551fbc', runId: 'latency-v1', hypothesisId: 'H4', location: 'tradeExecutor.ts:sendOrder-precheck', message: 'sendOrder precheck complete', data: { signalId: signal.id, userId: signal.user_id, brokerId: broker.id, requestedSymbol, resolvedSymbol: symbol, sessionOk, hasSymbolParams: Boolean(paramsFromRequested) }, timestamp: Date.now() }) }).catch(() => { });
+        // #endregion
         if (!sessionOk) {
             await this.logSendSkipped(signal, broker, 'broker_session_not_connected', {
                 symbol: requestedSymbol,
@@ -2561,8 +2593,14 @@ class TradeExecutor {
         if (channelDelayMs > 0) {
             if (liveEntryFast) {
                 console.log(`[tradeExecutor] live fast: skipping channel delay_msec=${channelDelayMs} signal=${signal.id} broker=${broker.id}`);
+                // #region agent log
+                fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '551fbc' }, body: JSON.stringify({ sessionId: '551fbc', runId: 'latency-v1', hypothesisId: 'H5', location: 'tradeExecutor.ts:channel-delay-skip', message: 'channel delay skipped on live fast path', data: { signalId: signal.id, userId: signal.user_id, brokerId: broker.id, channelDelayMs }, timestamp: Date.now() }) }).catch(() => { });
+                // #endregion
             }
             else {
+                // #region agent log
+                fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '551fbc' }, body: JSON.stringify({ sessionId: '551fbc', runId: 'latency-v1', hypothesisId: 'H5', location: 'tradeExecutor.ts:channel-delay-wait-start', message: 'channel delay wait start', data: { signalId: signal.id, userId: signal.user_id, brokerId: broker.id, channelDelayMs, waitAppliedMs: Math.min(channelDelayMs, 30000) }, timestamp: Date.now() }) }).catch(() => { });
+                // #endregion
                 await new Promise(resolve => setTimeout(resolve, Math.min(channelDelayMs, 30000)));
             }
         }
@@ -2667,12 +2705,18 @@ class TradeExecutor {
                 if (strictDeferred) {
                     console.log(`[tradeExecutor] strict entry deferred signal=${signal.id} broker=${broker.id} symbol=${symbol}`
                         + ` entry=${se.entryPrice} isBuy=${se.isBuy} bid=${q.bid} ask=${q.ask}`);
+                    // #region agent log
+                    fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '551fbc' }, body: JSON.stringify({ sessionId: '551fbc', runId: 'latency-v2', hypothesisId: 'H6', location: 'tradeExecutor.ts:strict-deferred', message: 'strict entry deferred to pending', data: { signalId: signal.id, userId: signal.user_id, brokerId: broker.id, symbol, entryPrice: se.entryPrice, isBuy: se.isBuy, bid: q.bid, ask: q.ask }, timestamp: Date.now() }) }).catch(() => { });
+                    // #endregion
                 }
             }
             catch (err) {
                 strictDeferred = true;
                 const msg = err instanceof Error ? err.message : String(err);
                 console.warn(`[tradeExecutor] strict entry /Quote failed; deferring to broker pending signal=${signal.id} broker=${broker.id} symbol=${symbol}: ${msg}`);
+                // #region agent log
+                fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '551fbc' }, body: JSON.stringify({ sessionId: '551fbc', runId: 'latency-v2', hypothesisId: 'H6', location: 'tradeExecutor.ts:strict-deferred-quote-fail', message: 'strict entry deferred due quote failure', data: { signalId: signal.id, userId: signal.user_id, brokerId: broker.id, symbol, error: msg.slice(0, 180) }, timestamp: Date.now() }) }).catch(() => { });
+                // #endregion
             }
         }
         const effectiveCapped = strictDeferred ? [] : capped;
@@ -2914,6 +2958,9 @@ class TradeExecutor {
                             }
                         }
                         else {
+                            // #region agent log
+                            fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '551fbc' }, body: JSON.stringify({ sessionId: '551fbc', runId: 'latency-v2', hypothesisId: 'H7', location: 'tradeExecutor.ts:signal-entry-pending-insert', message: 'signal entry pending row inserted', data: { signalId: signal.id, userId: signal.user_id, brokerId: broker.id, symbol, ticket, entryPrice: entryPx }, timestamp: Date.now() }) }).catch(() => { });
+                            // #endregion
                             strictBrokerPlaced = true;
                             try {
                                 await this.supabase.from('trade_execution_logs').insert({
@@ -3123,6 +3170,9 @@ class TradeExecutor {
             try {
                 const result = await api.orderSend(uuid, args);
                 const latencyMs = Date.now() - t0;
+                // #region agent log
+                fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '551fbc' }, body: JSON.stringify({ sessionId: '551fbc', runId: 'latency-v1', hypothesisId: 'H4', location: 'tradeExecutor.ts:order-send-success', message: 'order send success', data: { signalId: signal.id, userId: signal.user_id, brokerId: broker.id, symbol: args.symbol, ticket: result.ticket, elapsedMs: latencyMs, leg: leg.idx + 1, total: totalCount }, timestamp: Date.now() }) }).catch(() => { });
+                // #endregion
                 if (liveEntryFast && signal.pipeline_ts) {
                     signal.pipeline_ts.t_last_broker_send = Date.now();
                 }
@@ -3224,6 +3274,9 @@ class TradeExecutor {
             }
             catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);
+                // #region agent log
+                fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '551fbc' }, body: JSON.stringify({ sessionId: '551fbc', runId: 'latency-v1', hypothesisId: 'H4', location: 'tradeExecutor.ts:order-send-failed', message: 'order send failed', data: { signalId: signal.id, userId: signal.user_id, brokerId: broker.id, symbol: args.symbol, elapsedMs: Date.now() - t0, error: msg.slice(0, 180) }, timestamp: Date.now() }) }).catch(() => { });
+                // #endregion
                 if ((0, metatraderapi_1.isBrokerDisconnectedMessage)(msg)) {
                     await this.markBrokerSessionDown(broker, uuid, msg);
                 }

@@ -136,6 +136,8 @@ export const channelWorkerEn: ChannelWorkerTranslations = {
       'no broker account is linked to this channel — open Account Configuration, select each broker, Channels tab, check the signal channel, and Save',
     telegram_listener_not_live:
       'Telegram listener is not connected — open Copier Engine and reconnect Telegram',
+    explicit_stops_required_when_add_to_existing_off:
+      'this channel is in single-slot mode (Add to Existing Trades is off), so new entries must include TP/SL parameters',
   },
   dispatchSkipped: 'Did not copy this signal ({reason}).',
   errorTicketNotFound: 'Ticket {ticket} not found',

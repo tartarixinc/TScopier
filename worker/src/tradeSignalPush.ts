@@ -22,6 +22,8 @@ export type TradeSignalPushPayload = {
 
 const PUSH_MAX_ATTEMPTS = Math.max(1, Math.min(5, Number(process.env.TRADE_SIGNAL_PUSH_MAX_ATTEMPTS ?? 3)))
 const PUSH_RETRY_BASE_MS = Math.max(25, Math.min(500, Number(process.env.TRADE_SIGNAL_PUSH_RETRY_BASE_MS ?? 75)))
+const SUPABASE_URL = String(process.env.SUPABASE_URL ?? '').trim()
+const SUPABASE_SERVICE_ROLE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY ?? '').trim()
 
 function tradePushEnabled(): boolean {
   const v = String(process.env.TRADE_SIGNAL_PUSH_ENABLED ?? 'true').toLowerCase()
@@ -92,6 +94,34 @@ function logPushFailed(
       reason,
     }),
   )
+}
+
+async function logPushAttemptToDb(
+  row: TradeSignalPushPayload,
+  status: 'success' | 'failed',
+  payload: Record<string, unknown>,
+): Promise<void> {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/trade_execution_logs`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        Prefer: 'return=minimal',
+      },
+      body: JSON.stringify([{
+        user_id: row.user_id,
+        signal_id: row.id,
+        action: 'dispatch_push_attempt',
+        status,
+        request_payload: payload,
+      }]),
+    })
+  } catch {
+    /* best-effort */
+  }
 }
 
 async function postDispatchSignal(
@@ -177,8 +207,28 @@ export function pushParsedSignalToTradeWorker(row: TradeSignalPushPayload): void
   }
 
   void (async () => {
+    await logPushAttemptToDb(row, 'success', {
+      run_id: 'latency-v3',
+      phase: 'start',
+      action,
+      base_url: baseUrl,
+      timeout_ms: timeoutMs,
+      max_attempts: PUSH_MAX_ATTEMPTS,
+    })
     for (let attempt = 1; attempt <= PUSH_MAX_ATTEMPTS; attempt++) {
+      const attemptStartedAt = Date.now()
       const result = await postDispatchSignal(url, token, signalBody, priority, timeoutMs)
+      await logPushAttemptToDb(row, result.ok ? 'success' : 'failed', {
+        run_id: 'latency-v3',
+        phase: 'attempt',
+        action,
+        attempt,
+        ok: result.ok,
+        status_code: result.status,
+        retryable: result.retryable,
+        elapsed_ms: Date.now() - attemptStartedAt,
+        detail: result.detail.slice(0, 120),
+      })
       if (result.ok) return
 
       const reason = result.status > 0

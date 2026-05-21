@@ -877,11 +877,35 @@ class UserListener {
             created_at: new Date().toISOString(),
             pipeline_ts: pipelineTs,
         };
+        // #region agent log
+        fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '551fbc' }, body: JSON.stringify({ sessionId: '551fbc', runId: 'latency-v1', hypothesisId: 'H1', location: 'userListener.ts:dispatch', message: 'listener dispatch created', data: { userId: this.userId, signalId, channelId: channelRow.id, action: String(parseResult.parsed?.action ?? ''), dispatchDeltaMs: pipelineTs.t_parse_done != null && pipelineTs.t_dispatch_sent != null ? pipelineTs.t_dispatch_sent - pipelineTs.t_parse_done : null }, timestamp: Date.now() }) }).catch(() => { });
+        // #endregion
         console.log(`[userListener] dispatch signal user=${this.userId} signalId=${signalId} channelRow=${channelRow.id} messageId=${messageId}`);
-        if (this.onSignalParsed) {
-            this.onSignalParsed(dispatchRow);
-        }
-        if (workerConfig_1.workerConfig.runsListener && !workerConfig_1.workerConfig.runsTrade) {
+        const dispatchedInProcess = this.onSignalParsed ? this.onSignalParsed(dispatchRow) === true : false;
+        const shouldPush = workerConfig_1.workerConfig.runsListener && (!workerConfig_1.workerConfig.runsTrade || !dispatchedInProcess);
+        // #region agent log
+        fetch('http://127.0.0.1:7911/ingest/9eb853c4-6a95-4829-9e4e-863df98c5251', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '551fbc' }, body: JSON.stringify({ sessionId: '551fbc', runId: 'latency-v2', hypothesisId: 'H4', location: 'userListener.ts:dispatch-route', message: 'dispatch route decision', data: { signalId, userId: this.userId, dispatchedInProcess, shouldPush, runsTrade: workerConfig_1.workerConfig.runsTrade, runsListener: workerConfig_1.workerConfig.runsListener }, timestamp: Date.now() }) }).catch(() => { });
+        // #endregion
+        void (async () => {
+            const { error } = await this.supabase.from('trade_execution_logs').insert({
+                user_id: this.userId,
+                signal_id: signalId,
+                action: 'dispatch_route_decision',
+                status: 'success',
+                request_payload: {
+                    run_id: 'latency-v2',
+                    hypothesis_id: 'H4',
+                    dispatched_in_process: dispatchedInProcess,
+                    should_push: shouldPush,
+                    runs_trade: workerConfig_1.workerConfig.runsTrade,
+                    runs_listener: workerConfig_1.workerConfig.runsListener,
+                },
+            });
+            if (error) {
+                /* best-effort */
+            }
+        })();
+        if (shouldPush) {
             (0, tradeSignalPush_1.pushParsedSignalToTradeWorker)(dispatchRow);
         }
         return true;

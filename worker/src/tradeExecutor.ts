@@ -3,7 +3,6 @@ import {
   getMetatraderApi,
   hasMetatraderApiConfigured,
   isBrokerDisconnectedMessage,
-  isTimeoutOrNetworkError,
   MT_SESSION_EXPIRED_HINT,
   mtPlatformFrom,
   MetatraderApiClient,
@@ -141,6 +140,8 @@ function telegramLiveTradeGateEnabled(): boolean {
 type SendOrderOutcome = {
   openedOrMerged?: boolean
   signalEntryRequiredSkip?: boolean
+  /** Deterministic no-op where retrying the same parsed signal won't change outcome. */
+  finalizeSkipReason?: string
   /** Channel `delay_msec` from Copier Engine (skipped on live fast path). */
   channelDelayMs?: number
   channelDelaySkipped?: boolean
@@ -260,12 +261,6 @@ const SESSION_PING_MIN_INTERVAL_MS = Math.max(
   5_000,
   Math.min(120_000, Number(process.env.BROKER_SESSION_PING_MIN_INTERVAL_MS ?? BROKER_SESSION_HEARTBEAT_MS)),
 )
-const SESSION_FAST_CHECK_STALE_MS = Math.max(
-  2_000,
-  Math.min(30_000, Number(process.env.BROKER_SESSION_FAST_CHECK_STALE_MS ?? 5_000)),
-)
-const MGMT_CLOSE_RETRY_MAX = Math.max(1, Math.min(5, Number(process.env.MGMT_CLOSE_RETRY_MAX ?? 2)))
-const MGMT_CLOSE_RETRY_DELAY_MS = Math.max(500, Math.min(5_000, Number(process.env.MGMT_CLOSE_RETRY_DELAY_MS ?? 2_000)))
 const EXECUTOR_PARSED_SWEEP_MS = monitorActiveIntervalMs('EXECUTOR_PARSED_SWEEP_MS', 3_000)
 const EXECUTOR_SWEEP_IDLE_MS = monitorIdleIntervalMs('EXECUTOR_SWEEP_IDLE_MS', 60_000)
 /** Sweep + Realtime replay window; older `parsed` rows are not re-executed (live dispatch exempt). */
@@ -696,19 +691,14 @@ export class TradeExecutor {
 
   private async sessionHeartbeatTick(): Promise<void> {
     if (!hasMetatraderApiConfigured()) return
-    const checks: Promise<void>[] = []
     for (const row of this.brokersById.values()) {
       const uuid = row.metaapi_account_id
       if (!isMtUuid(uuid)) continue
       const api = this.apiFor(row)
       if (!api) continue
-      checks.push(
-        api.verifyTradingReady(uuid!).then(ready => {
-          if (ready) this.sessionPingAt.set(uuid!, Date.now())
-        }).catch(() => { /* non-fatal */ }),
-      )
+      const alive = await api.keepSessionAlive(uuid!)
+      if (alive) this.sessionPingAt.set(uuid!, Date.now())
     }
-    await Promise.allSettled(checks)
   }
 
   private async reconnectCachedBrokers() {
@@ -903,8 +893,8 @@ export class TradeExecutor {
   /**
    * In-process fast path (monolith). Live buy/sell bypass the queue when role allows.
    */
-  dispatchParsedSignal(row: SignalRow): void {
-    this.acceptDispatchSignal(row, {
+  dispatchParsedSignal(row: SignalRow): boolean {
+    return this.acceptDispatchSignal(row, {
       priority: dispatchPriorityForAction(parsedAction(row.parsed_data)),
       source: 'in_process',
     })
@@ -1280,11 +1270,28 @@ export class TradeExecutor {
         )
       }
       const strictSkips = outcomes.filter(o => o.signalEntryRequiredSkip === true).length
+      const finalizeSkipReasons = outcomes
+        .map(o => o.finalizeSkipReason)
+        .filter((r): r is string => typeof r === 'string' && r.length > 0)
       if (!anyOpened && strictSkips === brokers.length && strictSkips > 0) {
         try {
           const { error: sigErr } = await this.supabase
             .from('signals')
             .update({ status: 'skipped', skip_reason: SKIP_REASON_SIGNAL_ENTRY_REQUIRED })
+            .eq('id', row.id)
+            .eq('status', 'parsed')
+          if (sigErr) {
+            console.warn(`[tradeExecutor] signal skip finalize failed id=${row.id}: ${sigErr.message}`)
+          }
+        } catch {
+          // best-effort
+        }
+      } else if (!anyOpened && finalizeSkipReasons.length === brokers.length && finalizeSkipReasons.length > 0) {
+        const skipReason = finalizeSkipReasons[0]!
+        try {
+          const { error: sigErr } = await this.supabase
+            .from('signals')
+            .update({ status: 'skipped', skip_reason: skipReason })
             .eq('id', row.id)
             .eq('status', 'parsed')
           if (sigErr) {
@@ -1751,24 +1758,7 @@ export class TradeExecutor {
       const ticket = Number(t.metaapi_order_id)
       if (!Number.isFinite(ticket) || ticket <= 0) continue
       try {
-        let closed = false
-        for (let attempt = 1; attempt <= MGMT_CLOSE_RETRY_MAX; attempt++) {
-          try {
-            await api.orderClose(uuid, { ticket })
-            closed = true
-            break
-          } catch (closeErr) {
-            if (attempt < MGMT_CLOSE_RETRY_MAX && isTimeoutOrNetworkError(closeErr)) {
-              console.warn(
-                `[tradeExecutor] opposite_close retry attempt=${attempt} trade=${t.id} ticket=${ticket}: ${closeErr instanceof Error ? closeErr.message : String(closeErr)}`,
-              )
-              await new Promise(r => setTimeout(r, MGMT_CLOSE_RETRY_DELAY_MS))
-            } else {
-              throw closeErr
-            }
-          }
-        }
-        if (!closed) continue
+        await api.orderClose(uuid, { ticket })
         await this.supabase
           .from('trades')
           .update({ status: 'closed', closed_at: new Date().toISOString() })
@@ -1950,6 +1940,32 @@ export class TradeExecutor {
       newestTradeOpenedAt: anchor.newestOpenedAt,
       parsed,
     })
+    // Parameter follow-up (modify-only) must be explicitly linked by reply/thread/parent.
+    // Exception: when add_new_trades_to_existing=false, the strategy is "single slot";
+    // a same-direction signal carrying explicit stops should refresh that live slot.
+    const manual = (broker.manual_settings ?? {}) as ManualSettings
+    const allowUnlinkedSingleSlotRefresh =
+      manual.add_new_trades_to_existing === false && parsedSignalHasExplicitStops(parsed)
+    if (!link.replyOk && !link.threadLinksAnchor && !link.parentLinksAnchor && !allowUnlinkedSingleSlotRefresh) {
+      try {
+        await this.supabase.from('trade_execution_logs').insert({
+          user_id: signal.user_id,
+          signal_id: signal.id,
+          broker_account_id: broker.id,
+          action: 'merge_routed_modify_only',
+          status: 'skipped',
+          request_payload: {
+            skip_reason: 'parameter_follow_up_requires_explicit_link',
+            symbol,
+            direction,
+            channel_id: signal.channel_id,
+            anchor_signal_id: anchor.anchorSignalId,
+            dt_ms: link.dtMs,
+          } as unknown as Record<string, unknown>,
+        })
+      } catch { /* best-effort */ }
+      return { handled: false }
+    }
     if (!link.isLinked) {
       try {
         await this.supabase.from('trade_execution_logs').insert({
@@ -2847,7 +2863,7 @@ export class TradeExecutor {
     api: MetatraderApiClient,
     uuid: string,
     broker: BrokerRow,
-    opts?: { force?: boolean; lightCheck?: boolean },
+    opts?: { force?: boolean },
   ): Promise<boolean> {
     if (this.sessionOrderBlocked.has(broker.id)) {
       await this.markBrokerSessionDown(broker, uuid, 'session blocked after prior OrderSend disconnect')
@@ -2856,19 +2872,6 @@ export class TradeExecutor {
     const now = Date.now()
     const last = this.sessionPingAt.get(uuid) ?? 0
     if (!opts?.force && now - last < SESSION_PING_MIN_INTERVAL_MS) return true
-
-    if (opts?.lightCheck) {
-      // Only CheckConnect (1.5s timeout) on the hot path when cache is stale
-      try {
-        await api.checkConnect(uuid)
-        this.sessionPingAt.set(uuid, now)
-        return true
-      } catch {
-        await this.markBrokerSessionDown(broker, uuid, 'checkConnect failed before OrderSend')
-        return false
-      }
-    }
-
     const ready = await api.verifyTradingReady(uuid)
     if (ready) {
       this.sessionPingAt.set(uuid, now)
@@ -2926,12 +2929,8 @@ export class TradeExecutor {
       && signalEntryPriceStrictEnabled(manual)
       && parsedHasExplicitEntryAnchor(parsed)
 
-    const lastPing = this.sessionPingAt.get(uuid) ?? 0
-    const sessionStale = Date.now() - lastPing >= SESSION_FAST_CHECK_STALE_MS
     const [sessionOk, symbol, paramsFromRequested] = await Promise.all([
-      sessionStale
-        ? this.ensureBrokerSession(api, uuid, broker, { lightCheck: true })
-        : Promise.resolve(true),
+      this.ensureBrokerSession(api, uuid, broker, { force: true }),
       this.resolveBrokerSymbol(uuid, requestedSymbol),
       this.getSymbolParams(uuid, requestedSymbol).catch(() => null),
     ])
@@ -3007,6 +3006,11 @@ export class TradeExecutor {
     }
 
     if (!liveEntryFast) {
+      if (isManual && manual.add_new_trades_to_existing === false && !parsedSignalHasExplicitStops(parsed)) {
+        await this.logSendSkipped(signal, broker, 'explicit_stops_required_when_add_to_existing_off', { symbol })
+        return { finalizeSkipReason: 'explicit_stops_required_when_add_to_existing_off' }
+      }
+
       if (isManual && manual.close_on_opposite_signal === true) {
         await this.closeOppositeDirectionTrades(signal, parsed, broker, symbol)
       }
@@ -3015,7 +3019,7 @@ export class TradeExecutor {
         const already = await this.hasOpenTradeForSymbol(broker.id, symbol)
         if (already) {
           await this.logSendSkipped(signal, broker, 'add_new_trades_to_existing=false', { symbol })
-          return {}
+          return { finalizeSkipReason: 'add_new_trades_to_existing=false' }
         }
       }
 
@@ -4273,31 +4277,13 @@ export class TradeExecutor {
 
       try {
         if (action === 'close') {
-          let closed = false
-          for (let attempt = 1; attempt <= MGMT_CLOSE_RETRY_MAX; attempt++) {
-            try {
-              await api.orderClose(uuid, { ticket })
-              closed = true
-              break
-            } catch (closeErr) {
-              if (attempt < MGMT_CLOSE_RETRY_MAX && isTimeoutOrNetworkError(closeErr)) {
-                console.warn(
-                  `[tradeExecutor] close retry attempt=${attempt} trade=${trade.id} ticket=${ticket}: ${closeErr instanceof Error ? closeErr.message : String(closeErr)}`,
-                )
-                await new Promise(r => setTimeout(r, MGMT_CLOSE_RETRY_DELAY_MS))
-              } else {
-                throw closeErr
-              }
-            }
-          }
-          if (closed) {
-            await this.supabase.from('trades').update({ status: 'closed', closed_at: new Date().toISOString() }).eq('id', trade.id)
-            cancelledPendingScopes.add(JSON.stringify({
-              signalId: trade.signal_id,
-              brokerAccountId: trade.broker_account_id,
-              symbol: trade.symbol,
-            } satisfies RangePendingCancelScope))
-          }
+          await api.orderClose(uuid, { ticket })
+          await this.supabase.from('trades').update({ status: 'closed', closed_at: new Date().toISOString() }).eq('id', trade.id)
+          cancelledPendingScopes.add(JSON.stringify({
+            signalId: trade.signal_id,
+            brokerAccountId: trade.broker_account_id,
+            symbol: trade.symbol,
+          } satisfies RangePendingCancelScope))
         } else if (action === 'partial_profit' || action === 'partial_breakeven') {
           const fraction = typeof parsed.partial_close_fraction === 'number' && parsed.partial_close_fraction > 0
             ? Math.min(0.95, parsed.partial_close_fraction)

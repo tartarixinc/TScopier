@@ -137,6 +137,8 @@ export const channelWorkerFr: ChannelWorkerTranslations = {
       'aucun compte courtier n\'est lié à ce canal — ouvrez Configuration du compte, onglet Canaux, cochez le canal et enregistrez',
     telegram_listener_not_live:
       'écoute Telegram inactive — ouvrez Copier Engine et reconnectez Telegram',
+    explicit_stops_required_when_add_to_existing_off:
+      'ce canal est en mode position unique (Ajouter aux trades existants désactivé), les nouvelles entrées doivent inclure TP/SL',
   },
   dispatchSkipped: 'Signal non copié ({reason}).',
   errorTicketNotFound: 'Ticket {ticket} introuvable',

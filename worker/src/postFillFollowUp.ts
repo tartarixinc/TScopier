@@ -16,6 +16,7 @@ import { getCalendarEventsCached } from './newsTrading/calendarProvider'
 import { isNewsTradingEnabled } from './newsTrading/settings'
 import { deriveManualStopsWithClamp } from './manualPlanning/manualStops'
 import { usesPredefinedStops } from './manualPlanning/manualStops'
+import { lastPositiveParsedTpPrice } from './manualPlanning/parsedEntry'
 import type { ChannelKeywords, ManualSettings, ParsedSignal } from './manualPlanning/types'
 import type { SignalRow } from './tradeExecutor'
 import { isBenignOrderModifyError } from './orderModifyBenign'
@@ -94,7 +95,8 @@ function newsBlackoutPreFillEnabled(): boolean {
 async function applyPipAndChannelStops(args: ApplyPostFillFollowUpArgs): Promise<void> {
   const { api, uuid, signal, parsed, broker, channelKeywords, symbol, params, filledLegs } = args
   const manual = (broker.manual_settings ?? {}) as ManualSettings
-  if ((manual.trade_style ?? 'single') === 'multi') {
+  const isSingleTradeStyle = (manual.trade_style ?? 'single') !== 'multi'
+  if (!isSingleTradeStyle) {
     // Multi-trade legs already carry per-bucket TPs from the planner; syncMultiBasketLegTakeProfits
     // reconciles them. Flattening to tp[0] here caused wrong targets on layered baskets.
     return
@@ -144,10 +146,14 @@ async function applyPipAndChannelStops(args: ApplyPostFillFollowUpArgs): Promise
         isBuy,
       })
       if (derived.finalSl != null) targetSl = derived.roundPrice(derived.finalSl)
-      if (derived.finalTps.length) targetTp = derived.roundPrice(derived.finalTps[0])
+      if (derived.finalTps.length) {
+        const lastTp = derived.finalTps[derived.finalTps.length - 1] ?? derived.finalTps[0]
+        targetTp = derived.roundPrice(lastTp)
+      }
     } else if (shouldMergeChannelParamsForEntry(plannerParsed)) {
       if (plannerParsed.sl != null) targetSl = plannerParsed.sl
-      if (plannerParsed.tp?.length) targetTp = plannerParsed.tp[0] ?? targetTp
+      const lastTp = lastPositiveParsedTpPrice(plannerParsed)
+      if (lastTp != null) targetTp = lastTp
     }
 
     const stripped = stripInvalidStopsForSide({
