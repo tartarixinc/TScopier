@@ -142,27 +142,7 @@ html.app-viewport-lock #root {
   }
 
   .marketing-hero-bg {
-    @apply relative min-h-screen overflow-hidden bg-neutral-50;
-  }
-
-  html.dark .marketing-hero-bg {
-    @apply bg-neutral-950;
-  }
-
-  .marketing-hero-bg::before {
-    content: '';
-    @apply pointer-events-none absolute inset-0;
-    background:
-      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(45, 212, 191, 0.15), transparent),
-      radial-gradient(ellipse 60% 40% at 100% 50%, rgba(13, 148, 136, 0.08), transparent),
-      radial-gradient(ellipse 50% 30% at 0% 80%, rgba(20, 184, 166, 0.06), transparent);
-  }
-
-  html.dark .marketing-hero-bg::before {
-    background:
-      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(45, 212, 191, 0.12), transparent),
-      radial-gradient(ellipse 60% 40% at 100% 50%, rgba(13, 148, 136, 0.06), transparent),
-      radial-gradient(ellipse 50% 30% at 0% 80%, rgba(20, 184, 166, 0.04), transparent);
+    @apply min-h-screen overflow-hidden;
   }
 
   .marketing-nav-header {
@@ -177,7 +157,7 @@ html.app-viewport-lock #root {
   }
 
   .marketing-nav-float {
-    @apply relative h-14 rounded-2xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900;
+    @apply relative h-14 rounded-2xl border border-neutral-200/80 bg-white/90 backdrop-blur-md dark:border-neutral-800/80 dark:bg-neutral-900/90;
     transition:
       height 0.35s cubic-bezier(0.4, 0, 0.2, 1),
       background-color 0.35s cubic-bezier(0.4, 0, 0.2, 1),
@@ -189,7 +169,7 @@ html.app-viewport-lock #root {
   }
 
   .marketing-nav-mobile {
-    @apply rounded-2xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900;
+    @apply rounded-2xl border border-neutral-200/80 bg-white/90 backdrop-blur-md dark:border-neutral-800/80 dark:bg-neutral-900/90;
     transition:
       background-color 0.35s cubic-bezier(0.4, 0, 0.2, 1),
       border-color 0.35s cubic-bezier(0.4, 0, 0.2, 1);

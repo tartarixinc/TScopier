@@ -15,13 +15,8 @@ export function HeroSection() {
   const l = useT().landing
 
   return (
-    <section
-      id="product"
-      className="trustpilot-panel-bg trustpilot-panel-surface relative scroll-mt-28 overflow-hidden"
-    >
-      <div className="trustpilot-panel-radial" aria-hidden />
-
-      <div className="relative z-10 mx-auto max-w-6xl px-5 pb-4 pt-10 sm:px-8 sm:pt-14 sm:pb-8 lg:pt-16">
+    <section id="product" className="relative scroll-mt-28 overflow-hidden">
+      <div className="relative mx-auto max-w-6xl px-5 pb-4 pt-6 sm:px-8 sm:pt-8 sm:pb-8 lg:pt-10">
         <div className="mx-auto max-w-3xl text-center">
           <div className="flex flex-wrap items-center justify-center gap-3">
             <div className="flex -space-x-2.5">
@@ -109,11 +104,6 @@ export function HeroSection() {
           <div className="hero-product-reflection" aria-hidden />
         </div>
       </div>
-
-      <div
-        className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-24 bg-gradient-to-t from-neutral-50 via-neutral-50/90 to-transparent dark:from-neutral-950 dark:via-neutral-950/90"
-        aria-hidden
-      />
     </section>
   )
 }
