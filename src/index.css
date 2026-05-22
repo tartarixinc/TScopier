@@ -245,6 +245,246 @@ html.app-viewport-lock #root {
   html.dark .hero-product-reflection {
     background: radial-gradient(ellipse 80% 40% at 50% 0%, rgba(45, 212, 191, 0.12), transparent 70%);
   }
+
+  .marketing-feature-panel {
+    @apply relative overflow-hidden rounded-2xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900;
+  }
+
+  .marketing-feature-panel-grid {
+    @apply pointer-events-none absolute inset-0 opacity-60 dark:opacity-40;
+    background-image:
+      linear-gradient(to right, rgba(148, 163, 184, 0.14) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(148, 163, 184, 0.14) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+
+  html.dark .marketing-feature-panel-grid {
+    background-image:
+      linear-gradient(to right, rgba(148, 163, 184, 0.08) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
+  }
+
+  .marketing-feature-visual {
+    @apply relative overflow-hidden rounded-xl border border-neutral-200/80 bg-neutral-50/80 dark:border-neutral-800 dark:bg-neutral-950/50;
+  }
+
+  .marketing-feature-node {
+    @apply rounded-xl border border-neutral-200 bg-white px-4 py-3 dark:border-neutral-700 dark:bg-neutral-800/90;
+  }
+
+  .marketing-feature-node--telegram {
+    @apply border-teal-200/80 bg-teal-50/50 dark:border-teal-500/30 dark:bg-teal-950/30;
+  }
+
+  .marketing-feature-node-label {
+    @apply text-[10px] font-semibold uppercase tracking-wide text-teal-600 dark:text-teal-400;
+  }
+
+  .marketing-feature-node--broker {
+    @apply px-3 py-3;
+  }
+
+  .marketing-feature-hub {
+    @apply inline-flex items-center justify-center rounded-full bg-teal-600 px-5 py-2.5;
+  }
+
+  .marketing-feature-flow::before {
+    content: '';
+    @apply pointer-events-none absolute left-1/2 top-[4.5rem] bottom-[5.5rem] w-px -translate-x-1/2 bg-neutral-300 dark:bg-neutral-600;
+  }
+
+  .marketing-feature-flow::after {
+    content: '';
+    @apply pointer-events-none absolute left-1/2 top-[8.5rem] h-px w-[55%] max-w-[200px] -translate-x-1/2 bg-neutral-300 dark:bg-neutral-600;
+  }
+
+  .marketing-feature-pulse-ring {
+    @apply pointer-events-none absolute left-1/2 top-1/2 h-48 w-48 -translate-x-1/2 -translate-y-1/2 rounded-full border border-teal-400/30;
+    animation: marketing-pulse-ring 3s ease-out infinite;
+  }
+
+  .marketing-feature-float {
+    @apply absolute z-20 inline-flex items-center gap-1.5 rounded-full border border-neutral-700/10 bg-neutral-800 px-3 py-1.5 text-[10px] font-semibold text-white;
+    animation: marketing-float 4s ease-in-out infinite;
+  }
+
+  html.dark .marketing-feature-float {
+    @apply border-neutral-600 bg-neutral-700;
+  }
+
+  .marketing-feature-float--tl {
+    @apply left-2 top-4;
+    animation-delay: 0s;
+  }
+
+  .marketing-feature-float--tr {
+    @apply right-2 top-8;
+    animation-delay: 0.6s;
+  }
+
+  .marketing-feature-float--bl {
+    @apply bottom-6 left-4;
+    animation-delay: 1.2s;
+  }
+
+  .marketing-feature-float--br {
+    @apply bottom-4 right-2;
+    animation-delay: 0.9s;
+  }
+
+  .marketing-feature-float--center {
+    @apply left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2;
+  }
+
+  .marketing-feature-log-row {
+    animation: marketing-log-in 0.5s ease-out backwards;
+  }
+
+  .marketing-feature-progress {
+    width: 68%;
+    animation: marketing-progress 2.5s ease-in-out infinite alternate;
+  }
+
+  .marketing-feature-bar {
+    animation: marketing-bar-grow 1.2s ease-out backwards;
+  }
+
+  .marketing-feature-bar:nth-child(odd) {
+    animation-delay: 0.1s;
+  }
+
+  .marketing-feature-bar:nth-child(even) {
+    animation-delay: 0.25s;
+  }
+
+  .marketing-feature-orbit-ring {
+    @apply pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed border-neutral-300 dark:border-neutral-600;
+    animation: marketing-orbit-spin 48s linear infinite;
+  }
+
+  .marketing-feature-orbit-ring--outer {
+    @apply h-[220px] w-[220px];
+  }
+
+  .marketing-feature-orbit-ring--inner {
+    @apply h-[160px] w-[160px];
+    animation-direction: reverse;
+    animation-duration: 32s;
+  }
+
+  .marketing-feature-orbit-icon,
+  .marketing-feature-orbit-item {
+    @apply absolute z-10 flex flex-col items-center rounded-xl border border-neutral-200 bg-white px-2 py-2 dark:border-neutral-700 dark:bg-neutral-800;
+    animation: marketing-float 5s ease-in-out infinite;
+  }
+
+  .marketing-feature-orbit-icon--1 {
+    @apply left-[8%] top-[18%];
+  }
+
+  .marketing-feature-orbit-icon--2 {
+    @apply right-[6%] top-[12%];
+    animation-delay: 0.8s;
+  }
+
+  .marketing-feature-orbit-icon--3 {
+    @apply bottom-[14%] left-1/2 -translate-x-1/2;
+    animation-delay: 1.4s;
+  }
+
+  .marketing-feature-orbit-item--1 {
+    @apply right-[4%] top-[28%];
+  }
+
+  .marketing-feature-orbit-item--2 {
+    @apply bottom-[20%] left-[6%];
+    animation-delay: 1s;
+  }
+
+  .marketing-feature-orbit-item--3 {
+    @apply left-[18%] top-[8%];
+    animation-delay: 1.6s;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .marketing-feature-pulse-ring,
+    .marketing-feature-float,
+    .marketing-feature-log-row,
+    .marketing-feature-progress,
+    .marketing-feature-bar,
+    .marketing-feature-orbit-ring,
+    .marketing-feature-orbit-icon,
+    .marketing-feature-orbit-item {
+      animation: none;
+    }
+  }
+}
+
+@keyframes marketing-pulse-ring {
+  0% {
+    transform: translate(-50%, -50%) scale(0.85);
+    opacity: 0.6;
+  }
+  70% {
+    transform: translate(-50%, -50%) scale(1.15);
+    opacity: 0;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.15);
+    opacity: 0;
+  }
+}
+
+@keyframes marketing-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes marketing-log-in {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes marketing-progress {
+  from {
+    width: 52%;
+  }
+  to {
+    width: 78%;
+  }
+}
+
+@keyframes marketing-bar-grow {
+  from {
+    transform: scaleY(0.2);
+    transform-origin: bottom;
+    opacity: 0.4;
+  }
+  to {
+    transform: scaleY(1);
+    transform-origin: bottom;
+    opacity: 1;
+  }
+}
+
+@keyframes marketing-orbit-spin {
+  from {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
 }
 
 @layer utilities {

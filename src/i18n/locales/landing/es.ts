@@ -46,34 +46,173 @@ export const landingEs: LandingTranslations = {
     ],
   },
   features: {
+    eyebrow: 'Funciones de la plataforma',
     title: 'Hecho para copiar señales en serio',
-    subtitle: 'Todo lo que necesitas para automatizar Telegram sin perder el control.',
-    items: [
+    subtitle:
+      'Todo lo que necesitas para automatizar Telegram sin perder el control, con los mismos flujos que usas en la app.',
+    showcases: [
       {
-        title: 'MT4 y MT5',
-        description: 'Vincula cuentas demo o reales y copia al broker que ya usas.',
+        eyebrow: 'Copiador de señales',
+        title: 'Copia señales de Telegram a MT4 y MT5 con precisión',
+        description:
+          'Refleja canales de confianza en tus cuentas de broker. TSCopier analiza entradas, TPs, capas de rango e instrucciones de gestión, y ejecuta con tus reglas de lote, multi-trade y capas en cada cuenta conectada.',
+        visual: 'copier',
       },
       {
-        title: 'Multi-trade y capas',
-        description: 'Divide lotes en TPs, apila pendings en rango y cierra peores entradas primero.',
+        eyebrow: 'Control por canal',
+        title: 'Filtros y reglas por palabra clave',
+        description:
+          'Permite o bloquea tipos de instrucción por canal: cierres, break-even, ajustes SL/TP y más. Solo las señales que quieres llegan al broker.',
+        visual: 'filters',
       },
       {
-        title: 'Backtest de señales',
-        description: 'Reproduce el historial del canal con tu configuración manual antes de ir en vivo.',
+        eyebrow: 'Backtest',
+        title: 'Reproduce el historial antes de ir en vivo',
+        description:
+          'Ejecuta señales pasadas con tu configuración manual y ve cómo habría operado el copiador. Valida el análisis y la lógica sin arriesgar capital.',
+        visual: 'backtest',
       },
       {
-        title: 'Filtros por canal',
-        description: 'Permite o ignora cierre, break-even, ajuste SL/TP y otras instrucciones por canal.',
+        eyebrow: 'Logs del copiador',
+        title: 'Transparencia total en cada ejecución',
+        description:
+          'Ve qué analizó, planificó y envió el worker, con marcas de tiempo en milisegundos para depurar canales y verificar fills en tiempo real.',
+        visual: 'logs',
       },
       {
-        title: 'Noticias y calendario',
-        description: 'Noticias de mercado y calendario económico con bloqueo opcional por noticias.',
+        eyebrow: 'Herramientas de mercado',
+        title: 'Noticias y calendario económico integrados',
+        description:
+          'Sigue eventos de alto impacto y titulares seleccionados desde el mismo panel, con bloqueo opcional alrededor de noticias.',
+        visual: 'news',
       },
       {
-        title: 'Logs del copiador',
-        description: 'Registros transparentes para ver qué hizo el worker y cuándo.',
+        eyebrow: 'Integraciones',
+        title: 'Funciona con las plataformas que ya usas',
+        description:
+          'Conecta canales de Telegram y copia a cuentas MetaTrader que ya gestionas, sin EA local ni scripts en VPS.',
+        visual: 'integrations',
       },
     ],
+    visuals: {
+      copier: {
+        telegramLabel: 'Canal de señales',
+        channelName: 'Gold Signals Pro',
+        channelMeta: '3 señales nuevas · ahora',
+        hubLabel: 'TSCopier',
+        mt4Label: 'Cuenta MT4',
+        mt4Meta: 'Copiando · reglas 0.10 lot',
+        mt5Label: 'Cuenta MT5',
+        mt5Meta: 'Copiando · multi-TP',
+        pillLayering: 'Capas de rango',
+        pillLots: 'Tamaño de lote',
+        pillChannels: 'Canales en vivo',
+      },
+      filters: {
+        allowLabel: 'Permitir',
+        ignoreLabel: 'Ignorar',
+        rules: [
+          {
+            label: 'Close full position',
+            example: 'e.g. "close", "exit trade", "flatten"',
+            decision: 'allow',
+          },
+          {
+            label: 'Break-even',
+            example: 'e.g. "move SL to entry", "BE now"',
+            decision: 'allow',
+          },
+          {
+            label: 'Adjust TP',
+            example: 'e.g. "change TP to 4600"',
+            decision: 'allow',
+          },
+          {
+            label: 'Close all open trades',
+            example: 'e.g. "close all", "flatten all"',
+            decision: 'allow',
+          },
+          {
+            label: 'Cancel pending orders',
+            example: 'e.g. "cancel limit", "delete pending"',
+            decision: 'allow',
+          },
+        ],
+      },
+      backtest: {
+        resultsTitle: 'Resultados del backtest',
+        resultsSubtitle: 'XAUUSD · Canal',
+        newRunLabel: 'Nueva ejecución',
+        totalPipsLabel: 'Pips totales',
+        totalPips: '+544.0p',
+        winRateLabel: 'Tasa de acierto',
+        winRate: '67%',
+        winLossLabel: 'G / P',
+        winLoss: '16/8',
+        signalsLabel: 'Señales',
+        signalsCount: '24',
+        signalsListLabel: '24 señales',
+        signals: [
+          {
+            symbol: 'XAUUSD',
+            side: 'sell',
+            timestamp: '2026-05-18 09:37',
+            outcome: 'Todos los TP',
+            pips: '+62.0p',
+            pipsTone: 'good',
+            duration: '23m',
+          },
+          {
+            symbol: 'EURUSD',
+            side: 'buy',
+            timestamp: '2026-05-17 14:22',
+            outcome: 'SL tocado',
+            pips: '-18.0p',
+            pipsTone: 'bad',
+            duration: '1h 12m',
+          },
+          {
+            symbol: 'NAS100',
+            side: 'sell',
+            timestamp: '2026-05-16 11:05',
+            outcome: 'Parcial',
+            pips: '+24.5p',
+            pipsTone: 'good',
+            duration: '45m',
+          },
+        ],
+      },
+      logs: {
+        hubLabel: 'Logs del copiador',
+        pillLatency: 'Traza de latencia',
+        pillLive: 'En vivo',
+        entries: [
+          { stage: 'Analizado', message: 'BUY XAUUSD · 2 TPs · capa', latency: '42ms' },
+          { stage: 'Enviado', message: 'Orden #88291 · MT5', latency: '128ms' },
+          { stage: 'Ejecutado', message: '0.10 lot @ 2,324.50', latency: '312ms' },
+        ],
+      },
+      news: {
+        calendarTitle: 'Calendario económico',
+        impactHigh: 'Alto',
+        impactMed: 'Med',
+        pillCalendar: 'Bloqueo por noticias',
+        events: [
+          { name: 'Nóminas no agrícolas EE.UU.', time: 'Hoy · 13:30 UTC', impact: 'high' },
+          { name: 'Decisión BCE', time: 'Jue · 12:15 UTC', impact: 'high' },
+          { name: 'IPC Reino Unido', time: 'Vie · 07:00 UTC', impact: 'med' },
+        ],
+        headlines: [
+          { label: 'El oro sigue al alza' },
+          { label: 'EUR/USD rompe 1.10' },
+          { label: 'BTC supera $70k' },
+        ],
+      },
+      integrations: {
+        hubLabel: 'TSCopier',
+        labels: { telegram: 'Telegram', mt4: 'MT4', mt5: 'MT5' },
+      },
+    },
   },
   steps: {
     title: 'Cómo funciona',
