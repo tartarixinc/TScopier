@@ -26,10 +26,23 @@ export interface LandingFilterRuleVisual {
   decision: LandingFilterDecision
 }
 
-export interface LandingLogEntryVisual {
-  stage: string
-  message: string
-  latency: string
+export type LandingCopierLogType =
+  | 'buy'
+  | 'sell'
+  | 'close'
+  | 'breakeven'
+  | 'partial_profit'
+  | 'partial_breakeven'
+  | 'modify'
+
+export interface LandingCopierLogRowVisual {
+  symbol: string | null
+  type: LandingCopierLogType
+  time: string
+}
+
+export interface LandingCopierLogsVisualCopy {
+  rows: LandingCopierLogRowVisual[]
 }
 
 export interface LandingCalendarEventVisual {
@@ -90,12 +103,7 @@ export interface LandingFeatureVisualsCopy {
     rules: LandingFilterRuleVisual[]
   }
   backtest: LandingBacktestVisualCopy
-  logs: {
-    hubLabel: string
-    pillLatency: string
-    pillLive: string
-    entries: LandingLogEntryVisual[]
-  }
+  logs: LandingCopierLogsVisualCopy
   news: {
     calendarTitle: string
     impactHigh: string

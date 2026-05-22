@@ -260,13 +260,14 @@ export const landingEn: LandingTranslations = {
         ],
       },
       logs: {
-        hubLabel: 'Copier logs',
-        pillLatency: 'Latency trace',
-        pillLive: 'Live stream',
-        entries: [
-          { stage: 'Parsed', message: 'BUY XAUUSD · 2 TPs · range leg', latency: '42ms' },
-          { stage: 'Sent', message: 'Order #88291 · MT5 slave', latency: '128ms' },
-          { stage: 'Filled', message: '0.10 lot @ 2,324.50', latency: '312ms' },
+        rows: [
+          { symbol: 'XAUUSD', type: 'close', time: 'May 22, 07:50 PM' },
+          { symbol: 'XAUUSD', type: 'sell', time: 'May 22, 07:50 PM' },
+          { symbol: 'XAUUSD', type: 'breakeven', time: 'May 22, 07:50 PM' },
+          { symbol: 'XAUUSD', type: 'buy', time: 'May 22, 07:49 PM' },
+          { symbol: 'XAUUSD', type: 'partial_profit', time: 'May 22, 07:49 PM' },
+          { symbol: 'XAUUSD', type: 'modify', time: 'May 22, 07:48 PM' },
+          { symbol: 'XAUUSD', type: 'partial_breakeven', time: 'May 22, 07:48 PM' },
         ],
       },
       news: {
