@@ -45,6 +45,13 @@ export const authEn: AuthTranslations = {
     terms:
       "By creating an account, you agree to use TSCopier responsibly and comply with your broker's terms.",
   },
+  verify: {
+    heading: 'Check your email',
+    subtitle: 'We just sent a verification link to {email}.',
+    resend: 'Resend email',
+    resent: 'Email sent!',
+    backToLogin: 'Back to login',
+  },
   marketing: {
     headline: 'One Seamless Copier for every Telegram Signal',
     trustpilotLabel: 'Trustpilot',

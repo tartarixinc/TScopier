@@ -4,6 +4,7 @@ import clsx from 'clsx'
 import { AuthReviewsPanel } from '../auth/AuthReviewsPanel'
 import { AuthPage } from '../../pages/auth/AuthPage'
 import { SignupPage } from '../../pages/auth/SignupPage'
+import { VerifyEmailPage } from '../../pages/auth/VerifyEmailPage'
 import { LanguageSwitcher } from '../auth/LanguageSwitcher'
 import { ThemeToggle } from '../ui/ThemeToggle'
 import { AuthBrandLogo } from '../auth/AuthBrandLogo'
@@ -13,6 +14,7 @@ export function AuthLayout() {
   const { auth } = useLocale()
   const { pathname } = useLocation()
   const isSignup = pathname === '/signup'
+  const isVerify = pathname === '/verify-email'
   const year = new Date().getFullYear()
   const copyright = auth.marketing.copyright.replace('{year}', String(year))
 
@@ -47,7 +49,7 @@ export function AuthLayout() {
           )}
         >
           <div className="mx-auto flex w-full max-w-[420px] flex-1 flex-col justify-center py-6 lg:py-8">
-            {isSignup ? <SignupPage /> : <AuthPage />}
+            {isVerify ? <VerifyEmailPage /> : isSignup ? <SignupPage /> : <AuthPage />}
           </div>
 
           <footer className="mx-auto w-full max-w-[420px] shrink-0 pb-6 pt-4 lg:pb-8">

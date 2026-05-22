@@ -94,24 +94,35 @@ export function SignupPage() {
       return
     }
 
-    if (data.user && data.session) {
+    if (data.user) {
       const displayName = [trimmedFirst, trimmedLast].filter(Boolean).join(' ')
-      try {
-        await saveUserProfile(data.user.id, {
-          ...EMPTY_USER_PROFILE,
-          first_name: trimmedFirst,
-          last_name: trimmedLast,
-          display_name: displayName,
-          username: email.split('@')[0] ?? '',
-        })
-      } catch (profileError) {
-        setError(profileError instanceof Error ? profileError.message : 'Failed to save profile')
-        setLoading(false)
-        return
+      if (data.session) {
+        try {
+          await saveUserProfile(data.user.id, {
+            ...EMPTY_USER_PROFILE,
+            first_name: trimmedFirst,
+            last_name: trimmedLast,
+            display_name: displayName,
+            username: email.split('@')[0] ?? '',
+          })
+        } catch {
+          // Profile save is non-blocking for verification flow
+        }
+
+        const confirmUrl = `${window.location.origin}/dashboard`
+        const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-verification-email`
+        await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${data.session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ confirmUrl }),
+        }).catch(() => {})
       }
     }
 
-    navigate('/dashboard')
+    navigate(`/verify-email?email=${encodeURIComponent(email)}`)
   }
 
   return (
@@ -221,3 +232,6 @@ export function SignupPage() {
     </div>
   )
 }
+
+
+export { SignupPage }

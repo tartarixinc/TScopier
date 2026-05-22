@@ -42,6 +42,13 @@ export interface AuthTranslations {
     submit: string
     terms: string
   }
+  verify: {
+    heading: string
+    subtitle: string
+    resend: string
+    resent: string
+    backToLogin: string
+  }
   marketing: {
     headline: string
     copyright: string
