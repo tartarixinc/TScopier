@@ -4,6 +4,10 @@ export interface AuthTranslations {
     createAccount: string
     mobileTagline: string
   }
+  oauth: {
+    continueWithGoogle: string
+    orDivider: string
+  }
   login: {
     footerPrompt: string
     footerLink: string

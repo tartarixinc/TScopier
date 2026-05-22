@@ -6,6 +6,10 @@ export const authFr: AuthTranslations = {
     createAccount: 'Créer un compte',
     mobileTagline: 'Un copieur fluide pour chaque signal Telegram',
   },
+  oauth: {
+    continueWithGoogle: 'Continuer avec Google',
+    orDivider: 'ou',
+  },
   login: {
     footerPrompt: 'Nouveau sur TSCopier ?',
     footerLink: 'Créer un compte gratuit',
