@@ -1,4 +1,5 @@
 import { ArrowRight, Lock } from 'lucide-react'
+import { HeroDashboardPreview } from '../HeroDashboardPreview'
 import { useT } from '../../../context/LocaleContext'
 import { appUrl } from '../../../lib/site'
 
@@ -7,9 +8,6 @@ const HERO_AVATARS = [
   '/marketing/hero-avatar-2.jpg',
   '/marketing/hero-avatar-3.jpg',
 ] as const
-
-const HERO_DASHBOARD_LIGHT = '/dashboard-light.png'
-const HERO_DASHBOARD_DARK = '/dashboard-dark.png'
 
 export function HeroSection() {
   const l = useT().landing
@@ -79,25 +77,7 @@ export function HeroSection() {
               </div>
             </div>
             <div className="hero-product-screen">
-              <img
-                src={HERO_DASHBOARD_LIGHT}
-                alt={l.hero.imageAlt}
-                width={1920}
-                height={1080}
-                className="hero-product-screenshot dark:hidden"
-                loading="eager"
-                fetchPriority="high"
-                decoding="async"
-              />
-              <img
-                src={HERO_DASHBOARD_DARK}
-                alt={l.hero.imageAlt}
-                width={1920}
-                height={1080}
-                className="hero-product-screenshot hidden dark:block"
-                loading="eager"
-                decoding="async"
-              />
+              <HeroDashboardPreview />
             </div>
           </div>
 

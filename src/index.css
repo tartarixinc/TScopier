@@ -225,15 +225,11 @@ html.app-viewport-lock #root {
   }
 
   .hero-product-screen {
-    @apply overflow-hidden bg-neutral-100;
+    @apply overflow-hidden bg-neutral-50 dark:bg-neutral-950;
   }
 
-  html.dark .hero-product-screen {
-    @apply bg-neutral-950;
-  }
-
-  .hero-product-screenshot {
-    @apply block h-auto w-full align-top;
+  .hero-product-screen > * {
+    @apply w-full;
   }
 
   .hero-product-reflection {

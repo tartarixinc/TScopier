@@ -131,6 +131,57 @@ export interface LandingPlanTeaserTranslation {
   cta: string
 }
 
+export type LandingHeroStatTone = 'good' | 'bad' | 'neutral'
+
+export type LandingHeroHeadlineStatKey =
+  | 'totalBalance'
+  | 'todaysProfit'
+  | 'tradesTakenToday'
+  | 'openPnl'
+
+export type LandingHeroOverviewStatKey =
+  | 'activeSignalChannels'
+  | 'openTrades'
+  | 'tradingAccountsConnected'
+  | 'tradesCopiedToday'
+
+export interface LandingHeroHeadlineStat {
+  key: LandingHeroHeadlineStatKey
+  value: string
+  sub: string
+  valueTone: LandingHeroStatTone
+  showHint?: boolean
+}
+
+export interface LandingHeroOverviewStat {
+  key: LandingHeroOverviewStatKey
+  value: string
+  showAdd?: boolean
+}
+
+export type LandingHeroCopierLogStatus = 'executed' | 'parsed' | 'skipped' | 'failed' | 'pending'
+
+export interface LandingHeroCopierLogRow {
+  status: LandingHeroCopierLogStatus
+  channel: string
+  symbol: string
+  type: string
+  side: 'buy' | 'sell'
+  time: string
+}
+
+export interface LandingHeroChannelWorkerLog {
+  message: string
+  time: string
+}
+
+export interface LandingHeroDashboardCopy {
+  headlineStats: LandingHeroHeadlineStat[]
+  overviewStats: LandingHeroOverviewStat[]
+  channelWorkerLogs: LandingHeroChannelWorkerLog[]
+  copierLogRows: LandingHeroCopierLogRow[]
+}
+
 export interface LandingTranslations {
   nav: {
     product: string
@@ -151,6 +202,7 @@ export interface LandingTranslations {
     secondaryCta: string
     imageAlt: string
     previewUrl: string
+    dashboard: LandingHeroDashboardCopy
   }
   whyChoose: {
     title: string

@@ -22,6 +22,81 @@ export const landingEs: LandingTranslations = {
     imageAlt:
       'Panel de TSCopier con saldo, beneficio diario, resultados de operaciones y gráficos de crecimiento',
     previewUrl: 'app.tscopier.ai/dashboard',
+    dashboard: {
+      headlineStats: [
+        {
+          key: 'totalBalance',
+          value: '$54,250.00',
+          sub: 'En 5 cuentas conectadas',
+          valueTone: 'neutral',
+        },
+        {
+          key: 'todaysProfit',
+          value: '+$542.50',
+          sub: 'vs ayer +$712',
+          valueTone: 'good',
+          showHint: true,
+        },
+        {
+          key: 'tradesTakenToday',
+          value: '12',
+          sub: '8 ganadas · 4 perdidas',
+          valueTone: 'neutral',
+        },
+        {
+          key: 'openPnl',
+          value: '+$126.40',
+          sub: 'De 2 cuentas',
+          valueTone: 'good',
+        },
+      ],
+      overviewStats: [
+        { key: 'activeSignalChannels', value: '4', showAdd: true },
+        { key: 'openTrades', value: '16' },
+        { key: 'tradingAccountsConnected', value: '3', showAdd: true },
+        { key: 'tradesCopiedToday', value: '3' },
+      ],
+      channelWorkerLogs: [
+        {
+          message: 'Canal Gold Signals Pro · listener conectado',
+          time: '22 may, 09:36',
+        },
+        {
+          message: 'Analizado BUY XAUUSD · 2 TPs desde Gold Signals Pro',
+          time: '22 may, 09:37',
+        },
+        {
+          message: 'Orden enviada a MT5 · cuenta #88291',
+          time: '22 may, 09:37',
+        },
+      ],
+      copierLogRows: [
+        {
+          status: 'executed',
+          channel: 'Gold Signals Pro',
+          symbol: 'XAUUSD',
+          type: 'buy',
+          side: 'buy',
+          time: '22 may, 09:37',
+        },
+        {
+          status: 'parsed',
+          channel: 'FX Scalper VIP',
+          symbol: 'EURUSD',
+          type: 'sell',
+          side: 'sell',
+          time: '22 may, 09:35',
+        },
+        {
+          status: 'executed',
+          channel: 'Indices Daily',
+          symbol: 'NAS100',
+          type: 'buy',
+          side: 'buy',
+          time: '22 may, 09:31',
+        },
+      ],
+    },
   },
   whyChoose: {
     title: '¿Por qué elegir TSCopier?',
