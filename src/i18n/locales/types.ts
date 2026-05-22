@@ -682,9 +682,14 @@ export interface PricingTranslations {
   subtitle: string
   skip: string
   monthly: string
+  annual: string
   perMonth: string
+  perYear: string
+  save20: string
+  billedAnnually: string
   extraAccountLabel: string
   extraAccountUnit: string
+  extraAccountUnitAnnual: string
   subscribe: string
   startTrial: string
   trialDays: string

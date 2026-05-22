@@ -44,7 +44,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const { plan, extraAccounts, successUrl, cancelUrl } = await req.json();
+    const { plan, interval, extraAccounts, successUrl, cancelUrl } = await req.json();
 
     if (!plan || !["basic", "advanced"].includes(plan)) {
       return new Response(
@@ -53,11 +53,19 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    const billingInterval = interval === "annual" ? "annual" : "monthly";
+
     const stripe = new Stripe(stripeKey, { apiVersion: "2024-12-18.acacia" });
 
+    // Monthly price IDs
     const basicPriceId = Deno.env.get("STRIPE_BASIC_PRICE_ID")!;
     const advancedPriceId = Deno.env.get("STRIPE_ADVANCED_PRICE_ID")!;
     const extraAccountPriceId = Deno.env.get("STRIPE_EXTRA_ACCOUNT_PRICE_ID")!;
+
+    // Annual price IDs (20% discount)
+    const basicAnnualPriceId = Deno.env.get("STRIPE_BASIC_ANNUAL_PRICE_ID")!;
+    const advancedAnnualPriceId = Deno.env.get("STRIPE_ADVANCED_ANNUAL_PRICE_ID")!;
+    const extraAccountAnnualPriceId = Deno.env.get("STRIPE_EXTRA_ACCOUNT_ANNUAL_PRICE_ID")!;
 
     // Find or create Stripe customer
     const { data: existingSub } = await supabase
@@ -76,16 +84,25 @@ Deno.serve(async (req: Request) => {
       customerId = customer.id;
     }
 
-    // Build line items
+    // Build line items based on plan and interval
     const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
 
     if (plan === "basic") {
-      lineItems.push({ price: basicPriceId, quantity: 1 });
+      lineItems.push({
+        price: billingInterval === "annual" ? basicAnnualPriceId : basicPriceId,
+        quantity: 1,
+      });
     } else {
-      lineItems.push({ price: advancedPriceId, quantity: 1 });
+      lineItems.push({
+        price: billingInterval === "annual" ? advancedAnnualPriceId : advancedPriceId,
+        quantity: 1,
+      });
       const extra = Math.max(0, Math.min(95, Number(extraAccounts) || 0));
       if (extra > 0) {
-        lineItems.push({ price: extraAccountPriceId, quantity: extra });
+        lineItems.push({
+          price: billingInterval === "annual" ? extraAccountAnnualPriceId : extraAccountPriceId,
+          quantity: extra,
+        });
       }
     }
 
@@ -98,12 +115,14 @@ Deno.serve(async (req: Request) => {
       metadata: {
         supabase_user_id: user.id,
         plan,
+        interval: billingInterval,
         extra_accounts: String(extraAccounts || 0),
       },
       subscription_data: {
         metadata: {
           supabase_user_id: user.id,
           plan,
+          interval: billingInterval,
           extra_accounts: String(extraAccounts || 0),
         },
       },

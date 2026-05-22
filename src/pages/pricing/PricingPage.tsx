@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Check, Zap } from 'lucide-react'
+import clsx from 'clsx'
 import { useT } from '../../context/LocaleContext'
 import { useAuth } from '../../context/AuthContext'
 import { Button } from '../../components/ui/Button'
@@ -33,15 +34,28 @@ const ADVANCED_FEATURES = [
   'Channel Keyword follow',
 ]
 
+const MONTHLY_BASIC = 9.99
+const MONTHLY_ADVANCED = 39.99
+const MONTHLY_EXTRA_ACCOUNT = 10
+const ANNUAL_BASIC = +(MONTHLY_BASIC * 12 * 0.8).toFixed(2)
+const ANNUAL_ADVANCED = +(MONTHLY_ADVANCED * 12 * 0.8).toFixed(2)
+const ANNUAL_EXTRA_ACCOUNT = +(MONTHLY_EXTRA_ACCOUNT * 12 * 0.8).toFixed(2)
+
 export function PricingPage() {
   const t = useT()
   const pt = t.pricing
   const navigate = useNavigate()
   const { session } = useAuth()
+  const [interval, setInterval] = useState<'monthly' | 'annual'>('monthly')
   const [extraAccounts, setExtraAccounts] = useState(0)
   const [loadingPlan, setLoadingPlan] = useState<'basic' | 'advanced' | null>(null)
 
-  const advancedTotal = 39.99 + extraAccounts * 10
+  const isAnnual = interval === 'annual'
+
+  const basicPrice = isAnnual ? ANNUAL_BASIC : MONTHLY_BASIC
+  const advancedBase = isAnnual ? ANNUAL_ADVANCED : MONTHLY_ADVANCED
+  const extraAccountPrice = isAnnual ? ANNUAL_EXTRA_ACCOUNT : MONTHLY_EXTRA_ACCOUNT
+  const advancedTotal = advancedBase + extraAccounts * extraAccountPrice
 
   const handleCheckout = async (plan: 'basic' | 'advanced') => {
     setLoadingPlan(plan)
@@ -55,6 +69,7 @@ export function PricingPage() {
         },
         body: JSON.stringify({
           plan,
+          interval,
           extraAccounts: plan === 'advanced' ? extraAccounts : 0,
           successUrl: `${window.location.origin}/dashboard?checkout=success`,
           cancelUrl: `${window.location.origin}/pricing`,
@@ -81,9 +96,41 @@ export function PricingPage() {
           <p className="mt-3 text-base text-neutral-500 dark:text-neutral-400">
             {pt.subtitle}
           </p>
+
+          {/* Billing toggle */}
+          <div className="mt-8 inline-flex items-center rounded-full border border-neutral-200 bg-white p-1 dark:border-neutral-700 dark:bg-neutral-900">
+            <button
+              type="button"
+              onClick={() => setInterval('monthly')}
+              className={clsx(
+                'rounded-full px-5 py-2 text-sm font-medium transition-all',
+                !isAnnual
+                  ? 'bg-teal-600 text-white shadow-sm'
+                  : 'text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100',
+              )}
+            >
+              {pt.monthly}
+            </button>
+            <button
+              type="button"
+              onClick={() => setInterval('annual')}
+              className={clsx(
+                'rounded-full px-5 py-2 text-sm font-medium transition-all',
+                isAnnual
+                  ? 'bg-teal-600 text-white shadow-sm'
+                  : 'text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100',
+              )}
+            >
+              {pt.annual}
+              <span className="ml-2 inline-block rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                {pt.save20}
+              </span>
+            </button>
+          </div>
+
           <button
             onClick={() => navigate('/dashboard')}
-            className="mt-4 inline-block text-sm font-medium text-neutral-400 underline underline-offset-4 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300 transition-colors"
+            className="mt-4 block mx-auto text-sm font-medium text-neutral-400 underline underline-offset-4 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300 transition-colors"
           >
             {pt.skip}
           </button>
@@ -102,10 +149,20 @@ export function PricingPage() {
               </p>
             </div>
 
-            <div className="mb-8">
-              <span className="text-4xl font-bold text-neutral-900 dark:text-neutral-50">$9.99</span>
-              <span className="text-base text-neutral-500 dark:text-neutral-400">{pt.perMonth}</span>
+            <div className="mb-2">
+              <span className="text-4xl font-bold text-neutral-900 dark:text-neutral-50">
+                ${basicPrice.toFixed(2)}
+              </span>
+              <span className="text-base text-neutral-500 dark:text-neutral-400">
+                {isAnnual ? pt.perYear : pt.perMonth}
+              </span>
             </div>
+            {isAnnual && (
+              <p className="mb-6 text-xs text-neutral-400 dark:text-neutral-500">
+                {pt.billedAnnually}
+              </p>
+            )}
+            {!isAnnual && <div className="mb-6" />}
 
             <Button
               size="lg"
@@ -148,12 +205,20 @@ export function PricingPage() {
               </p>
             </div>
 
-            <div className="mb-4">
+            <div className="mb-2">
               <span className="text-4xl font-bold text-neutral-900 dark:text-neutral-50">
                 ${advancedTotal.toFixed(2)}
               </span>
-              <span className="text-base text-neutral-500 dark:text-neutral-400">{pt.perMonth}</span>
+              <span className="text-base text-neutral-500 dark:text-neutral-400">
+                {isAnnual ? pt.perYear : pt.perMonth}
+              </span>
             </div>
+            {isAnnual && (
+              <p className="mb-4 text-xs text-neutral-400 dark:text-neutral-500">
+                {pt.billedAnnually}
+              </p>
+            )}
+            {!isAnnual && <div className="mb-4" />}
 
             {/* Extra accounts selector */}
             <div className="mb-6 rounded-lg border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-700 dark:bg-neutral-800">
@@ -163,7 +228,7 @@ export function PricingPage() {
                     {pt.extraAccountLabel}
                   </p>
                   <p className="text-xs text-neutral-400 dark:text-neutral-500">
-                    {pt.extraAccountUnit}
+                    {isAnnual ? pt.extraAccountUnitAnnual : pt.extraAccountUnit}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
