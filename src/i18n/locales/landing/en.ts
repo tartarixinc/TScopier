@@ -588,6 +588,10 @@ export const landingEn: LandingTranslations = {
     title: 'Choose your plan',
     subtitle: 'Start copying signals to your trading accounts today.',
   },
+  pricingSnippet: {
+    basic: 'Basic — $9.99/month',
+    advanced: 'Advanced — 10 days free, then $39.99/month',
+  },
   footer: {
     cta: {
       title: 'Ready to copy signals without the manual work?',

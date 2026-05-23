@@ -6,6 +6,7 @@ import { LanguageSwitcher } from '../auth/LanguageSwitcher'
 import { useT } from '../../context/LocaleContext'
 import { appUrl } from '../../lib/site'
 import { HELP_LINKS } from '../../lib/helpLinks'
+import { MarketingPricingHint } from './MarketingPricingHint'
 
 const FOOTER_PLATFORMS = [
   { src: '/Telegram.svg', alt: 'Telegram' },
@@ -57,7 +58,9 @@ function FooterNavColumn({
 }
 
 export function MarketingFooter() {
-  const f = useT().landing.footer
+  const { landing } = useT()
+  const f = landing.footer
+  const { pricingSnippet } = landing
   const year = new Date().getFullYear()
   const copyright = f.copyright.replace('{year}', String(year))
 
@@ -97,20 +100,27 @@ export function MarketingFooter() {
                 {f.cta.subtitle}
               </p>
             </div>
-            <div className="flex w-full shrink-0 flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
-              <a
-                href={appUrl('/signup')}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-teal-600 bg-teal-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:border-teal-700 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-950"
-              >
-                {f.cta.primary}
-                <ArrowRight className="h-4 w-4" aria-hidden />
-              </a>
-              <a
-                href={appUrl('/login')}
-                className="inline-flex items-center justify-center rounded-xl border border-neutral-200 bg-white px-5 py-2.5 text-sm font-medium text-neutral-800 transition-colors hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800"
-              >
-                {f.cta.secondary}
-              </a>
+            <div className="flex w-full shrink-0 flex-col items-center sm:w-auto sm:items-end">
+              <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center">
+                <a
+                  href={appUrl('/signup')}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-teal-600 bg-teal-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:border-teal-700 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-950"
+                >
+                  {f.cta.primary}
+                  <ArrowRight className="h-4 w-4" aria-hidden />
+                </a>
+                <a
+                  href={appUrl('/login')}
+                  className="inline-flex items-center justify-center rounded-xl border border-neutral-200 bg-white px-5 py-2.5 text-sm font-medium text-neutral-800 transition-colors hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800"
+                >
+                  {f.cta.secondary}
+                </a>
+              </div>
+              <MarketingPricingHint
+                basic={pricingSnippet.basic}
+                advanced={pricingSnippet.advanced}
+                className="mt-3 text-center text-xs leading-relaxed text-neutral-500 sm:text-right dark:text-neutral-400"
+              />
             </div>
           </div>
         </div>

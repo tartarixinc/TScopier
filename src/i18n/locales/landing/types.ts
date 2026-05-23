@@ -342,6 +342,10 @@ export interface LandingTranslations {
     title: string
     subtitle: string
   }
+  pricingSnippet: {
+    basic: string
+    advanced: string
+  }
   footer: {
     cta: {
       title: string

@@ -589,6 +589,10 @@ export const landingFr: LandingTranslations = {
     title: 'Choisissez votre plan',
     subtitle: 'Commencez à copier des signaux vers vos comptes de trading aujourd\'hui.',
   },
+  pricingSnippet: {
+    basic: 'Basic — 9,99 $/mois',
+    advanced: 'Advanced — 10 jours gratuits, puis 39,99 $/mois',
+  },
   footer: {
     cta: {
       title: 'Prêt à copier des signaux sans le travail manuel ?',
