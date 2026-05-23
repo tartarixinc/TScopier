@@ -1,6 +1,7 @@
 import clsx from 'clsx'
 import { Check, X } from 'lucide-react'
 import { useT } from '../../../context/LocaleContext'
+import type { LandingComparisonRow } from '../../../i18n/locales/landing/types'
 import { appUrl } from '../../../lib/site'
 
 export function ComparisonSection() {
@@ -18,8 +19,20 @@ export function ComparisonSection() {
         <p className="mt-4 text-base text-neutral-600 dark:text-neutral-400">{c.subtitle}</p>
       </div>
 
-      <div className="marketing-comparison-table-wrap mt-10 sm:mt-12">
-        <table className="marketing-comparison-table w-full min-w-[36rem] border-collapse text-left text-sm">
+      <ul className="mt-10 flex flex-col gap-3 sm:mt-12 md:hidden">
+        {c.rows.map((row, index) => (
+          <ComparisonMobileCard
+            key={row.aspect}
+            row={row}
+            otherLabel={c.otherLabel}
+            tscopierLabel={c.tscopierLabel}
+            striped={index % 2 === 0}
+          />
+        ))}
+      </ul>
+
+      <div className="marketing-comparison-table-wrap mt-10 hidden sm:mt-12 md:block">
+        <table className="marketing-comparison-table w-full border-collapse text-left text-sm">
           <thead>
             <tr>
               <th
@@ -80,6 +93,43 @@ export function ComparisonSection() {
   )
 }
 
+function ComparisonMobileCard({
+  row,
+  otherLabel,
+  tscopierLabel,
+  striped,
+}: {
+  row: LandingComparisonRow
+  otherLabel: string
+  tscopierLabel: string
+  striped: boolean
+}) {
+  return (
+    <li
+      className={clsx(
+        'overflow-hidden rounded-2xl border border-neutral-200/90 shadow-sm dark:border-neutral-800',
+        striped ? 'bg-white dark:bg-neutral-900' : 'bg-neutral-50/60 dark:bg-neutral-900/50',
+      )}
+    >
+      <p className="border-b border-neutral-200/90 px-4 py-3 text-sm font-semibold text-neutral-900 dark:border-neutral-800 dark:text-neutral-50">
+        {row.aspect}
+      </p>
+      <div className="border-b border-neutral-100 px-4 py-3.5 dark:border-neutral-800">
+        <p className="mb-2 text-[0.65rem] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+          {otherLabel}
+        </p>
+        <ComparisonCell negative>{row.other}</ComparisonCell>
+      </div>
+      <div className="bg-teal-50/70 px-4 py-3.5 dark:bg-teal-950/40">
+        <p className="mb-2 text-[0.65rem] font-semibold uppercase tracking-wide text-teal-700 dark:text-teal-400">
+          {tscopierLabel}
+        </p>
+        <ComparisonCell positive>{row.tscopier}</ComparisonCell>
+      </div>
+    </li>
+  )
+}
+
 function ComparisonCell({
   children,
   positive,
@@ -107,7 +157,7 @@ function ComparisonCell({
       ) : null}
       <span
         className={clsx(
-          'leading-relaxed',
+          'text-sm leading-relaxed',
           positive && 'text-neutral-800 dark:text-neutral-100',
           negative && 'text-neutral-600 dark:text-neutral-400',
         )}
