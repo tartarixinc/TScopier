@@ -18,7 +18,7 @@ export const landingEs: LandingTranslations = {
     headlineAccent: 'Impulsado por IA.',
     subheadline:
       'Conecta tu cuenta MT4/MT5, elige canales de señales y deja que TSCopier ejecute entradas, capas y gestión — con control total del riesgo y filtros.',
-    primaryCta: 'Empezar gratis',
+    primaryCta: 'Pruébalo gratis',
     secondaryCta: 'Iniciar sesión',
     imageAlt:
       'Panel de TSCopier con saldo, beneficio diario, resultados de operaciones y gráficos de crecimiento',
@@ -594,7 +594,7 @@ export const landingEs: LandingTranslations = {
       title: '¿Listo para copiar señales sin trabajo manual?',
       subtitle:
         'Conecta Telegram, enlaza MT4 o MT5 y empieza a copiar en minutos — sin VPS ni instalación.',
-      primary: 'Empezar gratis',
+      primary: 'Pruébalo gratis',
       secondary: 'Iniciar sesión',
     },
     tagline: 'Copiador de señales de Telegram ultrarrápido para cuentas MetaTrader.',

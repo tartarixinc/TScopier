@@ -1,5 +1,6 @@
 import { ArrowRight, Lock } from 'lucide-react'
 import { HeroDashboardPreview } from '../HeroDashboardPreview'
+import { HeroPlatformFlow } from '../HeroPlatformFlow'
 import { useT } from '../../../context/LocaleContext'
 import { appUrl } from '../../../lib/site'
 
@@ -7,12 +8,6 @@ const HERO_AVATARS = [
   '/marketing/hero-avatar-1.jpg',
   '/marketing/hero-avatar-2.jpg',
   '/marketing/hero-avatar-3.jpg',
-] as const
-
-const HERO_PLATFORMS = [
-  { src: '/Telegram.svg', alt: 'Telegram' },
-  { src: '/MT5.png', alt: 'MetaTrader 5' },
-  // { src: '/MT4.png', alt: 'MetaTrader 4' },
 ] as const
 
 export function HeroSection() {
@@ -23,21 +18,8 @@ export function HeroSection() {
       <div className="marketing-hero-grid" aria-hidden />
       <div className="relative z-[1] mx-auto max-w-6xl px-5 pb-4 pt-6 sm:px-8 sm:pt-8 sm:pb-8 lg:pt-10">
         <div className="mx-auto max-w-3xl text-center">
-          <div className="mb-6 flex items-center justify-center gap-3 sm:mb-8 sm:gap-4">
-            {HERO_PLATFORMS.map((platform) => (
-              <span
-                key={platform.src}
-                className="flex h-12 w-12 items-center justify-center rounded-xl border border-neutral-200/90 bg-white shadow-sm dark:border-neutral-700 dark:bg-neutral-900 sm:h-14 sm:w-14"
-              >
-                <img
-                  src={platform.src}
-                  alt={platform.alt}
-                  className="h-7 w-7 object-contain sm:h-8 sm:w-8"
-                  width={32}
-                  height={32}
-                />
-              </span>
-            ))}
+          <div className="mb-6 sm:mb-8">
+            <HeroPlatformFlow />
           </div>
 
           <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl xl:text-[2.5rem] xl:leading-[1.08]">
