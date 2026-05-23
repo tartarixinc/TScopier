@@ -156,6 +156,12 @@ export interface LandingReviewTranslation {
   author: string
 }
 
+export interface LandingComparisonRow {
+  aspect: string
+  other: string
+  tscopier: string
+}
+
 export interface LandingPlanTeaserTranslation {
   name: string
   description: string
@@ -270,6 +276,15 @@ export interface LandingTranslations {
     title: string
     trustpilotLabel: string
     items: LandingReviewTranslation[]
+  }
+  comparison: {
+    eyebrow: string
+    title: string
+    subtitle: string
+    otherLabel: string
+    tscopierLabel: string
+    cta: string
+    rows: LandingComparisonRow[]
   }
   pricing: {
     title: string

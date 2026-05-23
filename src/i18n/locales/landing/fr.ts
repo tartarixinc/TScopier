@@ -434,6 +434,67 @@ export const landingFr: LandingTranslations = {
       },
     ],
   },
+  comparison: {
+    eyebrow: 'Pourquoi les traders changent',
+    title: 'Passez au niveau supérieur avec TSCopier',
+    subtitle:
+      'Copieurs Telegram classiques vs une plateforme cloud conçue pour la vitesse, la clarté et l’échelle.',
+    otherLabel: 'Autres copieurs',
+    tscopierLabel: 'TSCopier',
+    cta: 'Commencer gratuitement',
+    rows: [
+      {
+        aspect: 'Mise en route',
+        other: 'Configuration difficile—beaucoup d’utilisateurs dépendent du support pour démarrer.',
+        tscopier: 'Onboarding guidé dans le navigateur ; la plupart copient en environ deux minutes.',
+      },
+      {
+        aspect: 'Tableau de bord',
+        other: 'Interfaces encombrées qui noient l’essentiel.',
+        tscopier: 'Un tableau de bord épuré centré sur les canaux, l’exécution et la santé des comptes.',
+      },
+      {
+        aspect: 'Réglages',
+        other: 'Trop d’options—facile de mal configurer et de perdre confiance.',
+        tscopier: 'Valeurs par défaut intelligentes et contrôle fin par canal quand vous en avez besoin.',
+      },
+      {
+        aspect: 'Infrastructure',
+        other: 'VPS nécessaire pour faire tourner les EA 24h/24.',
+        tscopier: '100 % cloud : pas de téléchargement, pas d’EA ni de VPS à maintenir.',
+      },
+      {
+        aspect: 'Exécution',
+        other: 'Exécution lente après réception du signal sur Telegram.',
+        tscopier: 'Pipeline sous 150 ms du parsing à l’envoi courtier.',
+      },
+      {
+        aspect: 'Limite de comptes',
+        other: 'Souvent plafonné à 3–4 comptes liés.',
+        tscopier: 'Jusqu’à 100 connexions MT4/MT5 par utilisateur.',
+      },
+      {
+        aspect: 'Tarifs',
+        other: 'Grilles complexes, options payantes et limites surprises.',
+        tscopier: 'Offres claires avec les fonctions copieur essentielles incluses.',
+      },
+      {
+        aspect: 'Gestion des trades',
+        other: 'Intervention manuelle encore nécessaire pour modifications et clôtures.',
+        tscopier: 'Entrées, couches, déplacements SL/TP et signaux de gestion automatisés.',
+      },
+      {
+        aspect: 'Plateforme',
+        other: 'Fonctions clés vendues en modules ou upgrades séparés.',
+        tscopier: 'Copieur, backtest, journaux, actualités et calendrier dans un abonnement.',
+      },
+      {
+        aspect: 'Backtest',
+        other: 'Peu ou pas de replay réel de l’historique du canal avec vos règles.',
+        tscopier: 'Backtest des signaux passés avec vos réglages réels avant le live.',
+      },
+    ],
+  },
   pricing: {
     title: 'Tarifs simples',
     subtitle: 'Commencez avec Basic ou débloquez les stratégies avancées avec Advanced.',

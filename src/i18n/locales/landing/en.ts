@@ -434,6 +434,66 @@ export const landingEn: LandingTranslations = {
       },
     ],
   },
+  comparison: {
+    eyebrow: 'Why traders switch',
+    title: 'Level up with TSCopier',
+    subtitle: 'Typical Telegram copiers vs a cloud platform built for speed, clarity, and scale.',
+    otherLabel: 'Other copiers',
+    tscopierLabel: 'TSCopier',
+    cta: 'Start free',
+    rows: [
+      {
+        aspect: 'Setup',
+        other: 'Hard to set up—many users need hands-on support just to go live.',
+        tscopier: 'Guided onboarding in the browser; most traders are copying in about two minutes.',
+      },
+      {
+        aspect: 'Dashboard',
+        other: 'Cluttered, crowded dashboards that bury what matters.',
+        tscopier: 'A clean dashboard focused on channels, execution, and account health.',
+      },
+      {
+        aspect: 'Configuration',
+        other: 'Too many knobs and toggles—easy to misconfigure and lose confidence.',
+        tscopier: 'Smart defaults with deep per-channel control when you actually need it.',
+      },
+      {
+        aspect: 'Infrastructure',
+        other: 'VPS required to keep EAs running around the clock.',
+        tscopier: '100% cloud—no download, no EA, and no VPS to maintain.',
+      },
+      {
+        aspect: 'Execution',
+        other: 'Slow trade execution after the signal hits Telegram.',
+        tscopier: 'Sub-150ms pipeline from parse to broker dispatch.',
+      },
+      {
+        aspect: 'Account limits',
+        other: 'Often capped at 3–4 linked accounts.',
+        tscopier: 'Up to 100 MT4/MT5 connections per user.',
+      },
+      {
+        aspect: 'Pricing',
+        other: 'Complex tiers, add-ons, and surprise limits.',
+        tscopier: 'Straightforward plans with core copier features included.',
+      },
+      {
+        aspect: 'Trade management',
+        other: 'Manual intervention still needed for modifies, partials, and closes.',
+        tscopier: 'Automated entries, layering, SL/TP moves, and management signals.',
+      },
+      {
+        aspect: 'Platform',
+        other: 'Key capabilities sold as separate products or upgrades.',
+        tscopier: 'Copier, backtest, logs, news, and calendar in one subscription.',
+      },
+      {
+        aspect: 'Backtesting',
+        other: 'Little or no real replay of channel history on your rules.',
+        tscopier: 'Backtest past signals against your actual copy settings before going live.',
+      },
+    ],
+  },
   pricing: {
     title: 'Simple pricing',
     subtitle: 'Start with Basic or unlock advanced strategies on Advanced.',

@@ -162,6 +162,15 @@ html.app-viewport-lock #root {
     color: white;
   }
 
+  .marketing-comparison-table-wrap {
+    @apply overflow-x-auto rounded-2xl border border-neutral-200/90 shadow-sm dark:border-neutral-800;
+  }
+
+  .marketing-comparison-table tbody tr:last-child th,
+  .marketing-comparison-table tbody tr:last-child td {
+    border-bottom-width: 0;
+  }
+
   /* Auth Trustpilot reviews panel + landing hero */
   .trustpilot-panel-bg {
     @apply bg-neutral-100;
