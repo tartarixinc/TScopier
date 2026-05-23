@@ -14,7 +14,8 @@ export function HeroSection() {
 
   return (
     <section id="product" className="relative scroll-mt-28 overflow-hidden">
-      <div className="relative mx-auto max-w-6xl px-5 pb-4 pt-6 sm:px-8 sm:pt-8 sm:pb-8 lg:pt-10">
+      <div className="marketing-hero-grid" aria-hidden />
+      <div className="relative z-[1] mx-auto max-w-6xl px-5 pb-4 pt-6 sm:px-8 sm:pt-8 sm:pb-8 lg:pt-10">
         <div className="mx-auto max-w-3xl text-center">
           <div className="flex flex-wrap items-center justify-center gap-3">
             <div className="flex -space-x-2.5">

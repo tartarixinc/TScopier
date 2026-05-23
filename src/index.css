@@ -310,18 +310,30 @@ html.app-viewport-lock #root {
     @apply relative overflow-hidden rounded-2xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900;
   }
 
-  .marketing-feature-panel-grid {
-    @apply pointer-events-none absolute inset-0 opacity-60 dark:opacity-40;
+  .marketing-grid-pattern {
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    opacity: 0.6;
     background-image:
       linear-gradient(to right, rgba(148, 163, 184, 0.14) 1px, transparent 1px),
       linear-gradient(to bottom, rgba(148, 163, 184, 0.14) 1px, transparent 1px);
     background-size: 32px 32px;
   }
 
-  html.dark .marketing-feature-panel-grid {
+  html.dark .marketing-grid-pattern {
+    opacity: 0.4;
     background-image:
       linear-gradient(to right, rgba(148, 163, 184, 0.08) 1px, transparent 1px),
       linear-gradient(to bottom, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
+  }
+
+  .marketing-feature-panel-grid {
+    @apply marketing-grid-pattern;
+  }
+
+  .marketing-hero-grid {
+    @apply marketing-grid-pattern;
   }
 
   .marketing-feature-visual {
