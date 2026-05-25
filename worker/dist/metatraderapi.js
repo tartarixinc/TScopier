@@ -12,6 +12,7 @@ exports.isCheckConnectOk = isCheckConnectOk;
 exports.isMtSessionGoneMessage = isMtSessionGoneMessage;
 exports.isBrokerDisconnectedMessage = isBrokerDisconnectedMessage;
 exports.isMtSessionGoneError = isMtSessionGoneError;
+exports.isTransientMtApiError = isTransientMtApiError;
 exports.mtPlatformFrom = mtPlatformFrom;
 exports.hasMetatraderApiConfigured = hasMetatraderApiConfigured;
 exports.getMetatraderApi = getMetatraderApi;
@@ -325,6 +326,15 @@ function isMtSessionGoneError(err) {
         return isMtSessionGoneMessage(err.message);
     return isMtSessionGoneMessage(String(err));
 }
+function isTransientMtApiError(err) {
+    if (err instanceof MetatraderApiError) {
+        const s = err.status;
+        if (s === 502 || s === 503 || s === 504)
+            return true;
+    }
+    const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+    return /timeout|econnreset|econnrefused|fetch failed|network error|socket hang up|epipe|ehostunreach/.test(msg);
+}
 exports.MT_SESSION_EXPIRED_HINT = 'Trading session expired on the broker API. In Account Configuration, use Reconnect and enter your MT password (or remove and link the account again).';
 function parseToken(body, fallbackId) {
     if (typeof body === 'string') {
@@ -466,20 +476,29 @@ class MetatraderApiClient {
             const msg = first instanceof Error ? first.message : String(first);
             console.warn(`[metatraderapi] CheckConnect failed id=${id}: ${msg}; trying ConnectByToken`);
         }
-        try {
-            await this.connectByToken(id);
-            await this.checkConnect(id);
-            return true;
-        }
-        catch (second) {
-            if (isMtSessionGoneError(second)) {
-                console.warn(`[metatraderapi] MT session gone id=${id} (ConnectByToken) — ${exports.MT_SESSION_EXPIRED_HINT}`);
+        const MAX_RETRIES = 3;
+        for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+            try {
+                await this.connectByToken(id);
+                await this.checkConnect(id);
+                return true;
+            }
+            catch (err) {
+                if (isMtSessionGoneError(err)) {
+                    console.warn(`[metatraderapi] MT session gone id=${id} (ConnectByToken attempt ${attempt + 1}) — ${exports.MT_SESSION_EXPIRED_HINT}`);
+                    return false;
+                }
+                if (attempt < MAX_RETRIES - 1 && isTransientMtApiError(err)) {
+                    const jitterMs = 1000 + Math.random() * 2000;
+                    await new Promise(r => setTimeout(r, jitterMs));
+                    continue;
+                }
+                const msg = err instanceof Error ? err.message : String(err);
+                console.warn(`[metatraderapi] keepSessionAlive failed id=${id} (attempt ${attempt + 1}): ${msg}`);
                 return false;
             }
-            const msg = second instanceof Error ? second.message : String(second);
-            console.warn(`[metatraderapi] keepSessionAlive failed id=${id}: ${msg}`);
-            return false;
         }
+        return false;
     }
     /**
      * CheckConnect alone can report "connected" while OrderSend still fails with

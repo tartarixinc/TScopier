@@ -279,6 +279,10 @@ export interface TelegramChannel {
   lot_size_override: number | null
   pip_tolerance_override: number | null
   channel_keywords?: Json | null
+  /** High-water mark of last Telegram message id seen by the listener. */
+  last_seen_message_id?: number | null
+  /** When the listener last mapped a message to this channel row. */
+  last_seen_at?: string | null
   created_at: string
   updated_at: string
 }

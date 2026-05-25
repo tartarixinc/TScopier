@@ -533,6 +533,12 @@ export interface CopierEnginePageTranslations {
   removeBrokerConnectionAria: string
   noBrokersYet: string
   connectBrokerInConfig: string
+  channelTelegramId: string
+  channelLastHeard: string
+  channelNeverHeard: string
+  invalidChannelIdentity: string
+  manualIdentityRequired: string
+  invalidChannelIdFormat: string
   keywordsTitle: string
   keywordsClose: string
   keywordsSave: string

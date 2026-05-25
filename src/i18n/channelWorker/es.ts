@@ -135,6 +135,8 @@ export const channelWorkerEs: ChannelWorkerTranslations = {
       'broker no conectado — abra Configuración de cuenta y use Reconnect para esta cuenta',
     no_broker_channel_match:
       'ninguna cuenta está vinculada a este canal — abra Configuración de cuenta, pestaña Canales, marque el canal y guarde',
+    non_trade_message:
+      'el mensaje no parece una señal de trading (requiere dirección, símbolo y precio o SL/TP)',
     telegram_listener_not_live:
       'listener de Telegram inactivo — abra Copier Engine y reconecte Telegram',
     explicit_stops_required_when_add_to_existing_off:

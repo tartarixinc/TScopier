@@ -42,3 +42,20 @@ left join broker_accounts b on b.user_id = tc.user_id and b.is_active
 where tc.is_active
 group by tc.user_id, tc.id, tc.display_name
 having count(b.id) filter (where tc.id = any(b.signal_channel_ids)) = 0;
+
+-- 7) Active channels with invalid Telegram identity (listener cannot map messages)
+-- channel_id must be numeric OR channel_username must be set; display_name alone is not enough.
+select user_id, id as channel_row_id, display_name, channel_id as tg_chat_id,
+       channel_username, is_active, last_seen_at,
+       case
+         when coalesce(nullif(trim(channel_username), ''), '') <> '' then false
+         when channel_id ~ '^-?[0-9]+$' then false
+         else true
+       end as invalid_identity
+from telegram_channels
+where is_active
+  and (
+    coalesce(nullif(trim(channel_username), ''), '') = ''
+    and (channel_id is null or channel_id !~ '^-?[0-9]+$')
+  )
+order by user_id, display_name;

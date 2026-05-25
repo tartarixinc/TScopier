@@ -39,6 +39,7 @@ const CATCHUP_BACKPRESSURE_MS = 250;
 const CATCHUP_PER_CHANNEL_CAP = 200;
 const BACKFILL_PER_CHANNEL_CAP = 1000;
 const REPLY_CHAIN_SWEEP_MS = 60000;
+const ENTITY_WARMUP_INTERVAL_MS = Math.max(60000, Math.min(30 * 60000, Number(process.env.TELEGRAM_ENTITY_WARMUP_INTERVAL_MS ?? 10 * 60000)));
 function catchUpOnStartEnabled() {
     const v = String(process.env.TELEGRAM_CATCHUP_ON_START ?? 'true').toLowerCase();
     return v !== '0' && v !== 'false' && v !== 'no';
@@ -134,6 +135,7 @@ class UserListener {
         this.watchdogTimer = null;
         this.sessionPersistTimer = null;
         this.replyChainSweepTimer = null;
+        this.entityWarmupTimer = null;
         this.catchUpInFlight = false;
         this.catchUpParseActive = 0;
         this.lastLiveMessageAt = 0;
@@ -185,12 +187,15 @@ class UserListener {
         this.isConnected = true;
         this.startedAt = Date.now();
         this.lastEventAt = Date.now();
+        // Warm gramjs entity cache so NewMessage events fire for all channels.
+        await this.warmEntityCache();
         await this.refreshChannelSubscription();
         this.scheduleCatchUpOnStart();
         this.startWatchdog();
         this.startSafetyPoll();
         this.startSessionPersist();
         this.startReplyChainSweep();
+        this.startEntityWarmup();
     }
     async stop() {
         try {
@@ -198,6 +203,7 @@ class UserListener {
             this.stopTimer('safetyPollTimer');
             this.stopTimer('sessionPersistTimer');
             this.stopTimer('replyChainSweepTimer');
+            this.stopTimer('entityWarmupTimer');
             this.removeCurrentHandler();
             await this.persistSessionIfChanged();
             await this.client.disconnect();
@@ -692,7 +698,17 @@ class UserListener {
             channelRow = usernameRes.data ?? null;
         }
         if (!channelRow) {
-            console.warn(`[userListener] monitored message could not map to telegram_channels row user=${this.userId} chatId=${chatId} username=${chatUsername || '-'} variants=${chatIdVariants.join(',')}`);
+            const { data: configured } = await this.supabase
+                .from('telegram_channels')
+                .select('display_name, channel_id, channel_username')
+                .eq('user_id', this.userId)
+                .eq('is_active', true);
+            const configuredSummary = (configured ?? [])
+                .map(c => `${c.display_name ?? '?'} id=${c.channel_id ?? '-'} @${c.channel_username ?? '-'}`)
+                .join('; ');
+            console.warn(`[userListener] monitored message could not map to telegram_channels row user=${this.userId}`
+                + ` chatId=${chatId} username=${chatUsername || '-'} variants=${chatIdVariants.join(',')}`
+                + ` configured=[${configuredSummary}]`);
             return;
         }
         await this.logSignal(channelRow, {
@@ -793,6 +809,14 @@ class UserListener {
         }
         if (!looksLikeTradingSignal(rawMessage, isReply)) {
             console.log(`[userListener] skipped non-signal user=${this.userId} channelRow=${channelRow.id} messageId=${messageId}`);
+            void this.persistNonSignalSkip({
+                channelRow,
+                rawMessage,
+                messageId,
+                parentSignalId,
+                replyToMessageId,
+                isReply,
+            });
             return false;
         }
         const { count: dupCount } = await this.supabase
@@ -961,6 +985,52 @@ class UserListener {
             clearTimeout(timeout);
         }
     }
+    persistNonSignalSkip(args) {
+        const { channelRow, rawMessage, messageId, parentSignalId, replyToMessageId, isReply } = args;
+        void (async () => {
+            const { count: dupCount } = await this.supabase
+                .from('signals')
+                .select('id', { count: 'exact', head: true })
+                .eq('user_id', this.userId)
+                .eq('telegram_message_id', messageId);
+            if ((dupCount ?? 0) > 0)
+                return;
+            const signalId = (0, node_crypto_1.randomUUID)();
+            const { error: insertErr } = await this.supabase.from('signals').upsert({
+                id: signalId,
+                user_id: this.userId,
+                channel_id: channelRow.id,
+                raw_message: rawMessage,
+                raw_image_url: null,
+                status: 'skipped',
+                parsed_data: {
+                    action: 'ignore',
+                    symbol: null,
+                    entry_price: null,
+                    entry_zone_low: null,
+                    entry_zone_high: null,
+                    sl: null,
+                    tp: [],
+                    lot_size: null,
+                    confidence: 0,
+                    raw_instruction: rawMessage,
+                    open_tp: false,
+                },
+                skip_reason: 'non_trade_message',
+                telegram_message_id: messageId,
+                is_modification: isReply,
+                parent_signal_id: parentSignalId,
+                reply_to_message_id: replyToMessageId,
+            }, { onConflict: 'user_id,telegram_message_id', ignoreDuplicates: true });
+            if (insertErr) {
+                console.error(`[userListener] non-signal upsert failed signalId=${signalId}:`, insertErr.message);
+                return;
+            }
+            await this.bumpLastSeen(channelRow.id, messageId);
+        })().catch(err => {
+            console.error('[userListener] persistNonSignalSkip failed:', err);
+        });
+    }
     persistSignalBackground(args) {
         const { signalId, channelRow, rawMessage, messageId, parentSignalId, replyToMessageId, isReply, parseResult, } = args;
         void (async () => {
@@ -1093,6 +1163,63 @@ class UserListener {
         }
         finally {
             this.catchUpInFlight = false;
+        }
+    }
+    async runRecentCatchUp() {
+        if (this.catchUpInFlight)
+            return;
+        this.catchUpInFlight = true;
+        try {
+            const { data: rows } = await this.supabase
+                .from('telegram_channels')
+                .select('id, channel_id, channel_username, last_seen_message_id')
+                .eq('user_id', this.userId)
+                .eq('is_active', true);
+            for (const row of (rows ?? [])) {
+                await this.catchUpChannelRecent(row).catch(err => console.error(`[userListener] recent catchUp failed for channel ${row.id}:`, err));
+            }
+        }
+        finally {
+            this.catchUpInFlight = false;
+        }
+    }
+    async catchUpChannelRecent(row) {
+        let peer;
+        try {
+            peer = await this.resolveChannelPeer(row);
+        }
+        catch {
+            return;
+        }
+        const minIdRaw = row.last_seen_message_id;
+        const minId = minIdRaw == null ? 0 : Number(minIdRaw);
+        if (!Number.isFinite(minId) || minId <= 0)
+            return;
+        let batch;
+        try {
+            batch = (await this.client.getMessages(peer, {
+                limit: 20,
+                minId,
+            }));
+        }
+        catch {
+            return;
+        }
+        if (!batch.length)
+            return;
+        const now = Date.now();
+        const maxAgeMs = 60000;
+        const recent = batch
+            .filter(m => {
+            const mid = Number(m.id);
+            if (!Number.isFinite(mid) || mid <= minId)
+                return false;
+            const epoch = this.messageEpochSec(m);
+            return epoch > 0 && (now - epoch * 1000) <= maxAgeMs;
+        })
+            .sort((a, b) => Number(a.id) - Number(b.id));
+        for (const m of recent) {
+            await this.logSignal(row, m, { source: 'catchup' });
         }
     }
     async resolveChannelPeer(row) {
@@ -1421,13 +1548,14 @@ class UserListener {
         // session and may not survive the reconnect cleanly.
         this.removeCurrentHandler();
         this.monitoredChannels.clear();
+        // Warm entity cache BEFORE registering the handler so gramjs can
+        // deliver NewMessage events for all monitored channels.
+        await this.warmEntityCache();
         await this.refreshChannelSubscription();
-        // Do NOT run history catch-up here: `runCatchUp` walks Telegram history and
-        // calls `logSignal` for each candidate, which can re-dispatch parse/trade
-        // for messages the worker already processed (duplicate handling + last_seen
-        // edge cases). Mid-session reconnects should rely on live `NewMessage`
-        // updates + Telegram's own gap recovery. Full catch-up only runs from
-        // `start()` after a cold boot.
+        // Run a lightweight catch-up for very recent messages (last 60s) that
+        // may have arrived during the reconnect window. Full history replay is
+        // NOT done here to avoid stale trade execution.
+        void this.runRecentCatchUp().catch(err => console.error(`[userListener] recent catch-up after reconnect failed for ${this.userId}:`, err));
         await this.runReplyChainSweep();
     }
     // ── safety poll (Realtime drop fallback) ──────────────────────────────
@@ -1438,6 +1566,32 @@ class UserListener {
             this.refreshChannelSubscription().catch(err => console.error(`[userListener] safety poll error for ${this.userId}:`, err));
         }, SAFETY_POLL_INTERVAL_MS);
         this.safetyPollTimer.unref?.();
+    }
+    // ── entity cache warmup ────────────────────────────────────────────────
+    startEntityWarmup() {
+        if (this.entityWarmupTimer)
+            return;
+        this.entityWarmupTimer = setInterval(() => {
+            this.warmEntityCache().catch(err => console.error(`[userListener] entity warmup error for ${this.userId}:`, err));
+        }, ENTITY_WARMUP_INTERVAL_MS);
+        this.entityWarmupTimer.unref?.();
+    }
+    async warmEntityCache() {
+        if (!this.isConnected)
+            return;
+        try {
+            const dialogs = await this.client.getDialogs({ limit: DIALOG_MAX_SCAN });
+            const channelCount = dialogs.filter((d) => d.isChannel || d.isGroup).length;
+            console.log(`[userListener] entity cache warmed user=${this.userId} dialogs=${dialogs.length} channels=${channelCount}`);
+            (0, workerMetrics_1.incMetric)('entity_cache_warmed');
+        }
+        catch (err) {
+            if (isAuthKeyDuplicated(err))
+                return;
+            if ((0, telegramClient_1.isAuthKeyUnregistered)(err))
+                (0, telegramClient_1.rethrowIfSessionInvalid)(err);
+            console.warn(`[userListener] entity warmup getDialogs failed for ${this.userId}:`, err instanceof Error ? err.message : String(err));
+        }
     }
     // ── session string rotation ───────────────────────────────────────────
     startSessionPersist() {

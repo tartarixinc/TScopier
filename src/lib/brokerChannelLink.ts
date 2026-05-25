@@ -61,6 +61,28 @@ export async function connectChannelToBroker(
   return { broker: data as BrokerAccount, error: null }
 }
 
+/** Link one channel to every active broker that does not already have it. */
+export async function linkChannelToAllActiveBrokers(
+  supabase: SupabaseClient,
+  userId: string,
+  channelId: string,
+  brokers: BrokerAccount[],
+): Promise<{ brokers: BrokerAccount[]; error: string | null }> {
+  const active = brokers.filter(b => b.is_active)
+  if (active.length === 0) return { brokers, error: null }
+
+  let nextBrokers = [...brokers]
+  for (const broker of active) {
+    if (channelMatchesBrokerSignal(broker, channelId)) continue
+    const { broker: updated, error } = await connectChannelToBroker(supabase, userId, broker, channelId)
+    if (error) return { brokers: nextBrokers, error }
+    if (updated) {
+      nextBrokers = nextBrokers.map(b => (b.id === updated.id ? updated : b))
+    }
+  }
+  return { brokers: nextBrokers, error: null }
+}
+
 export async function disconnectChannelFromBroker(
   supabase: SupabaseClient,
   userId: string,

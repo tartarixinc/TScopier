@@ -830,8 +830,18 @@ export class UserListener {
     }
 
     if (!channelRow) {
+      const { data: configured } = await this.supabase
+        .from('telegram_channels')
+        .select('display_name, channel_id, channel_username')
+        .eq('user_id', this.userId)
+        .eq('is_active', true)
+      const configuredSummary = (configured ?? [])
+        .map(c => `${c.display_name ?? '?'} id=${c.channel_id ?? '-'} @${c.channel_username ?? '-'}`)
+        .join('; ')
       console.warn(
-        `[userListener] monitored message could not map to telegram_channels row user=${this.userId} chatId=${chatId} username=${chatUsername || '-'} variants=${chatIdVariants.join(',')}`,
+        `[userListener] monitored message could not map to telegram_channels row user=${this.userId}`
+        + ` chatId=${chatId} username=${chatUsername || '-'} variants=${chatIdVariants.join(',')}`
+        + ` configured=[${configuredSummary}]`,
       )
       return
     }
@@ -955,6 +965,14 @@ export class UserListener {
       console.log(
         `[userListener] skipped non-signal user=${this.userId} channelRow=${channelRow.id} messageId=${messageId}`,
       )
+      void this.persistNonSignalSkip({
+        channelRow,
+        rawMessage,
+        messageId,
+        parentSignalId,
+        replyToMessageId,
+        isReply,
+      })
       return false
     }
 
@@ -1145,6 +1163,63 @@ export class UserListener {
     } finally {
       clearTimeout(timeout)
     }
+  }
+
+  private persistNonSignalSkip(args: {
+    channelRow: ChannelRow
+    rawMessage: string
+    messageId: string
+    parentSignalId: string | null
+    replyToMessageId: string | null
+    isReply: boolean
+  }): void {
+    const { channelRow, rawMessage, messageId, parentSignalId, replyToMessageId, isReply } = args
+    void (async () => {
+      const { count: dupCount } = await this.supabase
+        .from('signals')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', this.userId)
+        .eq('telegram_message_id', messageId)
+      if ((dupCount ?? 0) > 0) return
+
+      const signalId = randomUUID()
+      const { error: insertErr } = await this.supabase.from('signals').upsert(
+        {
+          id: signalId,
+          user_id: this.userId,
+          channel_id: channelRow.id,
+          raw_message: rawMessage,
+          raw_image_url: null,
+          status: 'skipped',
+          parsed_data: {
+            action: 'ignore',
+            symbol: null,
+            entry_price: null,
+            entry_zone_low: null,
+            entry_zone_high: null,
+            sl: null,
+            tp: [],
+            lot_size: null,
+            confidence: 0,
+            raw_instruction: rawMessage,
+            open_tp: false,
+          },
+          skip_reason: 'non_trade_message',
+          telegram_message_id: messageId,
+          is_modification: isReply,
+          parent_signal_id: parentSignalId,
+          reply_to_message_id: replyToMessageId,
+        },
+        { onConflict: 'user_id,telegram_message_id', ignoreDuplicates: true },
+      )
+      if (insertErr) {
+        console.error(`[userListener] non-signal upsert failed signalId=${signalId}:`, insertErr.message)
+        return
+      }
+      await this.bumpLastSeen(channelRow.id, messageId)
+    })().catch(err => {
+      console.error('[userListener] persistNonSignalSkip failed:', err)
+    })
   }
 
   private persistSignalBackground(args: {

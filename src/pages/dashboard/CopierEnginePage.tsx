@@ -12,8 +12,14 @@ import {
   connectChannelToBroker,
   disconnectChannelFromBroker,
   getBrokerDisplayLabel,
+  linkChannelToAllActiveBrokers,
   pruneStaleBrokerChannelIds,
 } from '../../lib/brokerChannelLink'
+import {
+  hasValidTelegramChannelIdentity,
+  isNumericTelegramChatId,
+  validateManualChannelInput,
+} from '../../lib/telegramChannelIdentity'
 import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
 import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
@@ -284,6 +290,18 @@ export function CopierEnginePage() {
     setConnectMenuChannelId(null)
   }
 
+  const autoLinkChannelToBrokers = async (channelRowId: string, brokerSnapshot = brokers) => {
+    if (!user) return
+    const { brokers: linked, error: linkErr } = await linkChannelToAllActiveBrokers(
+      supabase,
+      user.id,
+      channelRowId,
+      brokerSnapshot,
+    )
+    if (linkErr) setError(linkErr)
+    else setBrokers(linked)
+  }
+
   const handleConnectAllBrokersToChannel = async (channelId: string) => {
     if (!user) return
     const toLink = brokersNotMatchingChannel(
@@ -340,14 +358,22 @@ export function CopierEnginePage() {
   const addManual = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-    if (!newChannel.display_name.trim()) { setError(ch.nameRequired); return }
+    const validation = validateManualChannelInput(newChannel)
+    if (validation.ok === false) {
+      if (validation.errorKey === 'nameRequired') setError(ch.nameRequired)
+      else if (validation.errorKey === 'identityRequired') setError(ce.manualIdentityRequired)
+      else setError(ce.invalidChannelIdFormat)
+      return
+    }
     setSaving(true)
+    const username = newChannel.channel_username.trim().replace(/^@/, '')
+    const chatId = newChannel.channel_id.trim()
     const { data, error: dbErr } = await supabase
       .from('telegram_channels')
       .insert({
         user_id: user!.id,
-        channel_id: newChannel.channel_id.trim() || newChannel.channel_username.trim(),
-        channel_username: newChannel.channel_username.trim().replace(/^@/, ''),
+        channel_id: chatId || username,
+        channel_username: username,
         display_name: newChannel.display_name.trim(),
         is_active: true,
       })
@@ -359,6 +385,7 @@ export function CopierEnginePage() {
     setChannels(prev => [inserted, ...prev])
     setNewChannel({ channel_id: '', channel_username: '', display_name: '' })
     setShowAdd(false)
+    await autoLinkChannelToBrokers(inserted.id)
   }
 
   const addFromTg = async (ch: { id: string; title: string; username: string }) => {
@@ -384,6 +411,7 @@ export function CopierEnginePage() {
         const prevExists = prev.find(c => c.channel_id === ch.id)
         return prevExists ? prev.map(c => c.channel_id === ch.id ? upserted : c) : [upserted, ...prev]
       })
+      await autoLinkChannelToBrokers(upserted.id)
     }
   }
 
@@ -742,6 +770,12 @@ function ChannelRow({
     [brokers, channel.id],
   )
   const hasAnyBrokers = brokers.some(b => b.is_active)
+  const identityValid = hasValidTelegramChannelIdentity(channel)
+  const lastHeardLabel = channel.last_seen_at
+    ? interpolate(ce.channelLastHeard, {
+        time: new Date(channel.last_seen_at).toLocaleString(),
+      })
+    : ce.channelNeverHeard
 
   useEffect(() => {
     if (!connectMenuOpen) return
@@ -766,7 +800,16 @@ function ChannelRow({
             <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{channel.display_name}</h3>
             {!channel.is_active && <Badge variant="neutral" size="sm">{ce.statusPaused}</Badge>}
           </div>
+          {!identityValid && (
+            <p className="mt-1 text-xs text-warning-800 dark:text-amber-200">{ce.invalidChannelIdentity}</p>
+          )}
           {username && <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">@{username}</p>}
+          {isNumericTelegramChatId(channel.channel_id) && (
+            <p className="mt-0.5 text-xs text-neutral-400 dark:text-neutral-500 font-mono">
+              {interpolate(ce.channelTelegramId, { id: channel.channel_id })}
+            </p>
+          )}
+          <p className="mt-0.5 text-xs text-neutral-400 dark:text-neutral-500">{lastHeardLabel}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Toggle checked={channel.is_active} onChange={onToggle} />

@@ -451,6 +451,13 @@ export const en: Translations = {
     removeBrokerConnectionAria: 'Disconnect {broker} from {channel}',
     noBrokersYet: 'No broker accounts yet',
     connectBrokerInConfig: 'Add a broker in Account Configuration first',
+    channelTelegramId: 'Telegram ID: {id}',
+    channelLastHeard: 'Last heard: {time}',
+    channelNeverHeard: 'Never heard from Telegram',
+    invalidChannelIdentity:
+      'Invalid Telegram ID — remove this channel and re-add it from the Telegram picker above.',
+    manualIdentityRequired: 'Enter a numeric Telegram channel ID or @username.',
+    invalidChannelIdFormat: 'Telegram channel ID must be numeric (e.g. -1001234567890).',
     keywordsTitle: 'Channel Keywords',
     keywordsClose: 'Close',
     keywordsSave: 'Save Keywords',

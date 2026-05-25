@@ -134,6 +134,8 @@ export const channelWorkerEn: ChannelWorkerTranslations = {
     broker_session_not_connected: 'broker not connected — open Account Configuration and use Reconnect for this account',
     no_broker_channel_match:
       'no broker account is linked to this channel — open Account Configuration, select each broker, Channels tab, check the signal channel, and Save',
+    non_trade_message:
+      'message did not look like a trading signal (needs direction, symbol, and price or SL/TP cues)',
     telegram_listener_not_live:
       'Telegram listener is not connected — open Copier Engine and reconnect Telegram',
     explicit_stops_required_when_add_to_existing_off:
