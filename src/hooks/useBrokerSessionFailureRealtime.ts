@@ -31,8 +31,10 @@ function isSessionDisconnectLog(row: {
 export function useBrokerSessionFailureRealtime(
   userId: string | undefined,
   setBrokers: Dispatch<SetStateAction<BrokerAccount[]>>,
+  options?: { silentReconnect?: boolean },
 ): void {
   const reconnectTimeouts = useRef(new Map<string, ReturnType<typeof setTimeout>>())
+  const silentReconnect = options?.silentReconnect !== false
 
   useEffect(() => {
     if (!userId) return
@@ -64,7 +66,7 @@ export function useBrokerSessionFailureRealtime(
             ),
           )
 
-          if (!reconnectTimeouts.current.has(brokerId)) {
+          if (silentReconnect && !reconnectTimeouts.current.has(brokerId)) {
             const timeout = setTimeout(async () => {
               reconnectTimeouts.current.delete(brokerId)
               try {
@@ -103,5 +105,5 @@ export function useBrokerSessionFailureRealtime(
       for (const t of reconnectTimeouts.current.values()) clearTimeout(t)
       reconnectTimeouts.current.clear()
     }
-  }, [userId, setBrokers])
+  }, [userId, setBrokers, silentReconnect])
 }

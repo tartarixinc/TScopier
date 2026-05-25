@@ -54,10 +54,7 @@ import {
 import { AccountGrowthChart } from '../../components/dashboard/AccountGrowthChart'
 import { TradeVolumeChart } from '../../components/dashboard/TradeVolumeChart'
 import { useDashboardRealtime } from '../../hooks/useDashboardRealtime'
-import { useBrokerReconnect } from '../../hooks/useBrokerReconnect'
-import { useBrokerAccountsRealtime } from '../../hooks/useBrokerAccountsRealtime'
-import { useBrokerConnectionHealth } from '../../hooks/useBrokerConnectionHealth'
-import { useBrokerSessionFailureRealtime } from '../../hooks/useBrokerSessionFailureRealtime'
+import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
 import {
   brokerCanReconnect,
   brokerConnectionStatusLabel,
@@ -469,6 +466,18 @@ export function DashboardPage() {
   const t = useT()
   const la = t.dashboard.linkedAccounts
   const { user } = useAuth()
+  const {
+    brokers: linkedAccounts,
+    setBrokers,
+    patchBroker,
+    replaceBroker,
+    toggleBrokerActive: toggleBrokerActiveInStore,
+    reconnectBroker,
+    brokersNeedingReconnect,
+    isReconnecting: isBrokerReconnecting,
+    setReconnectErrorHandler,
+    setReconnectSuccessHandler,
+  } = useBrokerAccounts()
   const { formatMoney, formatSignedMoney } = useFormatMoney()
   const navigate = useNavigate()
   const bootCache = useMemo(() => readBootstrapDashboardCache(user?.id), [user?.id])
@@ -481,7 +490,6 @@ export function DashboardPage() {
     () => bootCache?.channelDisplayNames ?? {},
   )
   const [aiExpertLogs, setAiExpertLogs] = useState<AiExpertLogRow[]>(() => bootCache?.aiExpertLogs ?? [])
-  const [linkedAccounts, setLinkedAccounts] = useState<BrokerAccount[]>(() => bootCache?.linkedAccounts ?? [])
   const [linkedAccountBalances, setLinkedAccountBalances] = useState<Record<string, BrokerBalanceSnapshot>>(
     () => bootCache?.linkedAccountBalances ?? {},
   )
@@ -542,7 +550,6 @@ export function DashboardPage() {
       setCopierLogs(cached.copierLogs ?? [])
       setCopierLogSymbols(cached.copierLogSymbols ?? {})
       setChannelDisplayNames(cached.channelDisplayNames ?? {})
-      setLinkedAccounts(cached.linkedAccounts ?? [])
       const balances = cached.linkedAccountBalances ?? {}
       linkedBalancesRef.current = balances
       setLinkedAccountBalances(balances)
@@ -555,7 +562,6 @@ export function DashboardPage() {
       setCopierLogs([])
       setCopierLogSymbols({})
       setChannelDisplayNames({})
-      setLinkedAccounts([])
       setLinkedAccountBalances({})
       setChartTrades([])
       setAiExpertLogs([])
@@ -1014,7 +1020,7 @@ export function DashboardPage() {
     setCopierLogs(logs)
     setCopierLogSymbols(logSymbols)
     setChannelDisplayNames(channelNames)
-    setLinkedAccounts(brokerAccounts)
+    setBrokers(brokerAccounts)
     linkedBalancesRef.current = mergedBalances
     setLinkedAccountBalances(mergedBalances)
     setAiExpertLogs(aiLogs)
@@ -1076,29 +1082,19 @@ export function DashboardPage() {
   }
 
   const bl = t.accountConfig.brokerList
-  const {
-    reconnectBroker,
-    brokersNeedingReconnect,
-    isReconnecting: isBrokerReconnecting,
-  } = useBrokerReconnect({
-    brokers: linkedAccounts,
-    setBrokers: setLinkedAccounts,
-    autoReconnect: false,
-    onError: setBrokerReconnectError,
-    onClearError: () => setBrokerReconnectError(''),
-    reconnectFailedLabel: bl.reconnectFailed,
-    passwordPrompt: bl.reconnectPasswordPrompt,
-    onReconnectSuccess: () => loadDashboardLiveRef.current(),
-  })
+
+  useEffect(() => {
+    setReconnectErrorHandler(message => setBrokerReconnectError(message))
+    setReconnectSuccessHandler(() => loadDashboardLiveRef.current())
+    return () => {
+      setReconnectErrorHandler(null)
+      setReconnectSuccessHandler(null)
+    }
+  }, [setReconnectErrorHandler, setReconnectSuccessHandler])
 
   useDashboardRealtime(user?.id, () => refreshQuietRef.current(), broker => {
-    setLinkedAccounts(prev =>
-      prev.map(a => (a.id === broker.id ? { ...a, ...broker } : a)),
-    )
+    replaceBroker(broker)
   })
-  useBrokerAccountsRealtime(user?.id, setLinkedAccounts)
-  useBrokerConnectionHealth(linkedAccounts, setLinkedAccounts)
-  useBrokerSessionFailureRealtime(user?.id, setLinkedAccounts)
 
   useEffect(() => {
     if (!user) return
@@ -1336,11 +1332,7 @@ export function DashboardPage() {
           open_trades: 0,
         }
         if (broker && (r.error || r.stale || !r.summary)) {
-          setLinkedAccounts(prev =>
-            prev.map(row =>
-              row.id === r.id ? { ...row, connection_status: 'error' as const } : row,
-            ),
-          )
+          patchBroker(r.id, { connection_status: 'error' })
         }
         continue
       }
@@ -1441,64 +1433,24 @@ export function DashboardPage() {
       statsRef.current = next
       return next
     })
-
-    // Persist the freshly-fetched values back to the broker row state so the
-    // session cache (and any subsequent re-render) keeps the live numbers.
-    setLinkedAccounts(prev =>
-      prev.map(b => {
-        const row = successes.find(r => r.id === b.id)
-        const live = row?.summary
-        if (!live) return b
-        const nextBaseline =
-          row.performance_baseline_balance != null && Number.isFinite(Number(row.performance_baseline_balance))
-            ? Number(row.performance_baseline_balance)
-            : b.performance_baseline_balance
-        return {
-          ...b,
-          last_balance: live.balance ?? b.last_balance ?? null,
-          last_equity: live.equity ?? b.last_equity ?? null,
-          last_currency: live.currency ?? b.last_currency ?? null,
-          last_synced_at: new Date().toISOString(),
-          ...(row.stale ? {} : { connection_status: 'connected' as const }),
-          performance_baseline_balance: nextBaseline ?? b.performance_baseline_balance,
-          day_start_balance: row.day_start_balance ?? b.day_start_balance ?? null,
-          day_start_balance_on: row.day_start_balance_on ?? b.day_start_balance_on ?? null,
-        }
-      }),
-    )
   }
 
   const toggleBrokerActive = async (id: string, is_active: boolean) => {
     if (!user) return
-    setLinkedAccounts(prev => {
-      const next = prev.map(a => (a.id === id ? { ...a, is_active } : a))
-      const activeCount = next.filter(a => a.is_active).length
+    const snapshot = linkedAccounts
+    const applyActiveStats = (accounts: BrokerAccount[]) => {
+      const activeCount = accounts.filter(a => a.is_active).length
       setStats(s => ({
         ...s,
         accounts: activeCount,
         copierHealth: activeCount > 0 ? (s.copierHealth === 'Offline' ? 'Stable' : s.copierHealth) : 'Offline',
       }))
-      return next
-    })
-    setTogglingBrokerId(id)
-    const { error: upErr } = await supabase
-      .from('broker_accounts')
-      .update({ is_active })
-      .eq('id', id)
-      .eq('user_id', user.id)
-    setTogglingBrokerId(null)
-    if (upErr) {
-      setLinkedAccounts(prev => {
-        const next = prev.map(a => (a.id === id ? { ...a, is_active: !is_active } : a))
-        const activeCount = next.filter(a => a.is_active).length
-        setStats(s => ({
-          ...s,
-          accounts: activeCount,
-          copierHealth: activeCount > 0 ? (s.copierHealth === 'Offline' ? 'Stable' : s.copierHealth) : 'Offline',
-        }))
-        return next
-      })
     }
+    applyActiveStats(snapshot.map(a => (a.id === id ? { ...a, is_active } : a)))
+    setTogglingBrokerId(id)
+    const { error: upErr } = await toggleBrokerActiveInStore(id, is_active)
+    setTogglingBrokerId(null)
+    if (upErr) applyActiveStats(snapshot)
   }
 
   const chartsEmpty = chartTrades.length === 0 && linkedAccounts.length === 0

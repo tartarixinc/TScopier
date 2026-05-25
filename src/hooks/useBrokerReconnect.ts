@@ -10,6 +10,7 @@ export interface UseBrokerReconnectOptions {
   setBrokers: Dispatch<SetStateAction<BrokerAccount[]>>
   autoReconnect?: boolean
   autoReconnectActiveOnly?: boolean
+  autoReconnectPaused?: boolean
   onError?: (message: string) => void
   onClearError?: () => void
   reconnectFailedLabel: string
@@ -133,7 +134,7 @@ export function useBrokerReconnect(opts: UseBrokerReconnectOptions) {
 
   // Initial auto-reconnect on mount
   useEffect(() => {
-    if (!opts.autoReconnect) return
+    if (!opts.autoReconnect || opts.autoReconnectPaused) return
     const activeOnly = opts.autoReconnectActiveOnly !== false
     for (const b of opts.brokers) {
       if (activeOnly && !b.is_active) continue
@@ -145,11 +146,11 @@ export function useBrokerReconnect(opts: UseBrokerReconnectOptions) {
 
   // Periodic silent reconnect loop for disconnected brokers
   useEffect(() => {
-    if (!opts.autoReconnect) return
+    if (!opts.autoReconnect || opts.autoReconnectPaused) return
     const activeOnly = opts.autoReconnectActiveOnly !== false
 
     const runSilentSweep = () => {
-      if (document.visibilityState !== 'visible') return
+      if (opts.autoReconnectPaused || document.visibilityState !== 'visible') return
       for (const b of opts.brokers) {
         if (activeOnly && !b.is_active) continue
         if (!brokerCanReconnect(b)) continue
@@ -168,7 +169,7 @@ export function useBrokerReconnect(opts: UseBrokerReconnectOptions) {
       clearInterval(timer)
       document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [opts.autoReconnect, opts.autoReconnectActiveOnly, opts.brokers, silentReconnectBroker])
+  }, [opts.autoReconnect, opts.autoReconnectActiveOnly, opts.autoReconnectPaused, opts.brokers, silentReconnectBroker])
 
   return {
     reconnectBroker,

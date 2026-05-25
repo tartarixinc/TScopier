@@ -14,6 +14,7 @@ import {
   getBrokerDisplayLabel,
   pruneStaleBrokerChannelIds,
 } from '../../lib/brokerChannelLink'
+import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
 import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
 import { Toggle } from '../../components/ui/Toggle'
@@ -75,8 +76,8 @@ export function CopierEnginePage() {
   const { user, session } = useAuth()
   const initialTgCache = user?.id ? getCachedTgChannels(user.id) : null
   const initialTgSession = user?.id ? getCachedTgSession(user.id) : null
+  const { brokers, replaceBroker, setBrokers, refreshBrokers } = useBrokerAccounts()
   const [channels, setChannels] = useState<TelegramChannel[]>([])
-  const [brokers, setBrokers] = useState<BrokerAccount[]>([])
   const [connectMenuChannelId, setConnectMenuChannelId] = useState<string | null>(null)
   const [connectingBrokerId, setConnectingBrokerId] = useState<string | null>(null)
   const [connectingAllChannelId, setConnectingAllChannelId] = useState<string | null>(null)
@@ -110,14 +111,13 @@ export function CopierEnginePage() {
   }, [user])
 
   const loadData = async (opts?: { skipTgFetch?: boolean; backgroundTgFetch?: boolean; forceTgFetch?: boolean }) => {
-    const [channelsRes, sessionRes, brokersRes] = await Promise.all([
+    const [channelsRes, sessionRes] = await Promise.all([
       supabase.from('telegram_channels').select('*').eq('user_id', user!.id).order('created_at', { ascending: false }),
       supabase.from('telegram_sessions').select('id').eq('user_id', user!.id).maybeSingle(),
-      supabase.from('broker_accounts').select('*').eq('user_id', user!.id).order('created_at', { ascending: false }),
     ])
     const channelRows = (channelsRes.data ?? []) as TelegramChannel[]
     setChannels(channelRows)
-    const brokerRows = (brokersRes.data ?? []) as BrokerAccount[]
+    const brokerRows = await refreshBrokers({ silent: true })
     const reconciled = await pruneStaleBrokerChannelIds(supabase, user!.id, channelRows, brokerRows)
     setBrokers(reconciled)
     const hasSession = !!sessionRes.data
@@ -285,7 +285,7 @@ export function CopierEnginePage() {
       return
     }
     if (updated) {
-      setBrokers(prev => prev.map(b => (b.id === brokerId ? updated : b)))
+      replaceBroker(updated)
     }
     setConnectMenuChannelId(null)
   }
@@ -339,7 +339,7 @@ export function CopierEnginePage() {
       return
     }
     if (updated) {
-      setBrokers(prev => prev.map(b => (b.id === brokerId ? updated : b)))
+      replaceBroker(updated)
     }
   }
 

@@ -4,7 +4,7 @@ import { LocaleProvider } from './context/LocaleContext'
 import { UserProfileProvider } from './context/UserProfileContext'
 import { SubscriptionProvider } from './context/SubscriptionContext'
 import { AuthLayout } from './components/layout/AuthLayout'
-import { AppLayout } from './components/layout/AppLayout'
+import { AppShell } from './components/layout/AppShell'
 import { ProtectedRoute } from './components/layout/ProtectedRoute'
 import { SubscriptionGuard } from './components/layout/SubscriptionGuard'
 import { PricingPage } from './pages/pricing/PricingPage'
@@ -60,7 +60,7 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <SubscriptionGuard>
-                  <AppLayout />
+                  <AppShell />
                 </SubscriptionGuard>
               </ProtectedRoute>
             }

@@ -34,11 +34,12 @@ const SubscriptionContext = createContext<SubscriptionContextValue>({
 
 export function SubscriptionProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth()
+  const userId = user?.id ?? null
   const [subscription, setSubscription] = useState<Subscription | null>(null)
   const [loading, setLoading] = useState(true)
 
   const fetchSubscription = useCallback(async () => {
-    if (!user) {
+    if (!userId) {
       setSubscription(null)
       setLoading(false)
       return
@@ -47,17 +48,22 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     const { data } = await supabase
       .from('subscriptions')
       .select('*')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .maybeSingle()
 
     setSubscription(data as Subscription | null)
     setLoading(false)
-  }, [user])
+  }, [userId])
 
   useEffect(() => {
+    if (!userId) {
+      setSubscription(null)
+      setLoading(false)
+      return
+    }
     setLoading(true)
-    fetchSubscription()
-  }, [fetchSubscription])
+    void fetchSubscription()
+  }, [userId, fetchSubscription])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)

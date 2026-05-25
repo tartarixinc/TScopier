@@ -25,10 +25,7 @@ import { formatLocalCalendarDay } from '../../lib/dayStartBalance'
 import { metatraderApi } from '../../lib/metatraderapi'
 import { isLegacyBrokerLink } from '../../lib/brokerLink'
 import { brokerCanReconnect, brokerConnectionBadgeVariant, brokerConnectionStatusLabel } from '../../lib/brokerReconnect'
-import { useBrokerReconnect } from '../../hooks/useBrokerReconnect'
-import { useBrokerAccountsRealtime } from '../../hooks/useBrokerAccountsRealtime'
-import { useBrokerConnectionHealth } from '../../hooks/useBrokerConnectionHealth'
-import { useBrokerSessionFailureRealtime } from '../../hooks/useBrokerSessionFailureRealtime'
+import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
 import {
   inferBrokerLabelFromServer,
   resolveLinkedAccountType,
@@ -66,6 +63,9 @@ interface ChannelOption {
   is_active: boolean
   created_at: string
 }
+
+/** Survives route unmount so sidebar navigation does not flash the loading skeleton. */
+const channelOptionsCache = new Map<string, ChannelOption[]>()
 
 interface BrokerForm {
   label: string
@@ -462,8 +462,25 @@ export function AccountConfigPage() {
     [cm],
   )
   const { user } = useAuth()
-  const [brokers, setBrokers] = useState<BrokerAccount[]>([])
-  const [channelOptions, setChannelOptions] = useState<ChannelOption[]>([])
+  const userId = user?.id ?? null
+  const {
+    brokers,
+    loading: brokersLoading,
+    upsertBroker,
+    replaceBroker,
+    removeBroker,
+    patchBroker,
+    setBrokers,
+    toggleBrokerActive: toggleBrokerActiveInStore,
+    reconnectBroker,
+    reconnectingBrokerIds,
+    brokersNeedingReconnect,
+    isReconnecting: isBrokerReconnecting,
+    setReconnectErrorHandler,
+  } = useBrokerAccounts()
+  const [channelOptions, setChannelOptions] = useState<ChannelOption[]>(() =>
+    userId ? (channelOptionsCache.get(userId) ?? []) : [],
+  )
   const [configAccount, setConfigAccount] = useState<BrokerAccount | null>(null)
   const [configDraft, setConfigDraft] = useState<AccountConfigDraft>({
     mode: 'manual',
@@ -481,11 +498,24 @@ export function AccountConfigPage() {
   const [form, setForm] = useState<BrokerForm>(emptyForm)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [loading, setLoading] = useState(true)
+  const [channelsLoading, setChannelsLoading] = useState(() =>
+    !(userId && channelOptionsCache.has(userId)),
+  )
+  const loading =
+    (brokersLoading && brokers.length === 0)
+    || (channelsLoading && channelOptions.length === 0)
   const [brokerPendingDelete, setBrokerPendingDelete] = useState<BrokerAccount | null>(null)
   const [deleteInProgress, setDeleteInProgress] = useState(false)
   const [togglingBrokerId, setTogglingBrokerId] = useState<string | null>(null)
   const [brokerAccountTypes, setBrokerAccountTypes] = useState<Record<string, LinkedAccountType>>({})
+  const brokerAccountTypeKey = useMemo(
+    () => brokers.map(b => `${b.id}:${b.broker_server ?? ''}`).join('|'),
+    [brokers],
+  )
+
+  useEffect(() => {
+    if (brokers.length > 0) void syncBrokerAccountTypes(brokers)
+  }, [brokerAccountTypeKey])
 
   const multiTradePreview = useMemo(() => {
     const ms = configDraft.manualSettings
@@ -514,24 +544,10 @@ export function AccountConfigPage() {
     [brokers],
   )
 
-  const {
-    reconnectBroker,
-    reconnectingBrokerIds,
-    brokersNeedingReconnect,
-    isReconnecting: isBrokerReconnecting,
-  } = useBrokerReconnect({
-    brokers,
-    setBrokers,
-    autoReconnect: false,
-    onError: setError,
-    onClearError: () => setError(''),
-    reconnectFailedLabel: bl.reconnectFailed,
-    passwordPrompt: bl.reconnectPasswordPrompt,
-  })
-
-  useBrokerAccountsRealtime(user?.id, setBrokers)
-  useBrokerConnectionHealth(brokers, setBrokers)
-  useBrokerSessionFailureRealtime(user?.id, setBrokers)
+  useEffect(() => {
+    setReconnectErrorHandler(message => setError(message))
+    return () => setReconnectErrorHandler(null)
+  }, [setReconnectErrorHandler])
 
   const tpLegPercentTotal = useMemo(() => {
     const rows = configDraft.manualSettings.tp_lots ?? DEFAULT_MANUAL_TP_LOTS
@@ -615,9 +631,9 @@ export function AccountConfigPage() {
   }, [cm.pipHint, livePipQuote, configDraft.manualSettings.fixed_lot, configDraft.manualSettings.symbol_to_trade])
 
   useEffect(() => {
-    if (!user) return
-    void loadData()
-  }, [user])
+    if (!userId) return
+    void loadData(userId)
+  }, [userId])
 
   useEffect(() => {
     if (configSavedAt == null) return
@@ -642,21 +658,22 @@ export function AccountConfigPage() {
     // Account type from server name only — avoid summary() here (it can mark brokers disconnected).
   }
 
-  const loadData = async () => {
-    const [brokersRes, channelsRes] = await Promise.all([
-      supabase.from('broker_accounts').select('*').eq('user_id', user!.id).order('created_at'),
-      supabase
-        .from('telegram_channels')
-        .select('id,display_name,channel_username,is_active,created_at')
-        .eq('user_id', user!.id)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false }),
-    ])
-    const nextBrokers = (brokersRes.data ?? []) as BrokerAccount[]
-    setBrokers(nextBrokers)
-    setChannelOptions((channelsRes.data ?? []) as ChannelOption[])
-    setLoading(false)
-    void syncBrokerAccountTypes(nextBrokers)
+  const loadData = async (uid: string) => {
+    const cached = channelOptionsCache.get(uid)
+    if (cached) {
+      setChannelOptions(cached)
+      setChannelsLoading(false)
+    }
+    const channelsRes = await supabase
+      .from('telegram_channels')
+      .select('id,display_name,channel_username,is_active,created_at')
+      .eq('user_id', uid)
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+    const next = (channelsRes.data ?? []) as ChannelOption[]
+    channelOptionsCache.set(uid, next)
+    setChannelOptions(next)
+    setChannelsLoading(false)
   }
 
   // ── Configure modal ────────────────────────────────────────────────────
@@ -867,7 +884,7 @@ export function AccountConfigPage() {
 
     if (data) {
       const fresh = data as BrokerAccount
-      setBrokers(prev => prev.map(b => (b.id === configAccount.id ? fresh : b)))
+      replaceBroker(fresh)
       setConfigAccount(fresh)
     }
     setConfigSavedAt(Date.now())
@@ -923,7 +940,7 @@ export function AccountConfigPage() {
         password: form.account_password,
         label: form.label.trim() || undefined,
       })
-      setBrokers(prev => [...prev, broker])
+      upsertBroker(broker)
       const registeredType = resolveLinkedAccountType(
         summary?.type,
         resolveMtServerCandidate(broker, broker.broker_server),
@@ -968,17 +985,15 @@ export function AccountConfigPage() {
               ? { performance_baseline_balance: Number(performance_baseline_balance) }
               : {}),
           }
-          setBrokers(prev => {
-            const match = prev.find(b => b.id === brokerId)
-            const accountType = resolveLinkedAccountType(
-              summary.type,
-              match ? resolveMtServerCandidate(match, match.broker_server) : null,
-            )
-            if (accountType) {
-              setBrokerAccountTypes(types => ({ ...types, [brokerId]: accountType }))
-            }
-            return prev.map(b => (b.id === brokerId ? { ...b, ...patch } : b))
-          })
+          const match = brokers.find(b => b.id === brokerId)
+          const accountType = resolveLinkedAccountType(
+            summary.type,
+            match ? resolveMtServerCandidate(match, match.broker_server) : null,
+          )
+          patchBroker(brokerId, patch)
+          if (accountType) {
+            setBrokerAccountTypes(types => ({ ...types, [brokerId]: accountType }))
+          }
           setConfigAccount(prev => prev && prev.id === brokerId ? { ...prev, ...patch } : prev)
           return
         }
@@ -995,7 +1010,7 @@ export function AccountConfigPage() {
     const id = brokerPendingDelete.id
     const removed = brokerPendingDelete
 
-    setBrokers(prev => prev.filter(b => b.id !== id))
+    removeBroker(id)
     setBrokerPendingDelete(null)
     if (configAccount?.id === id) closeConfigureModal()
     setBrokerAccountTypes(prev => {
@@ -1042,19 +1057,10 @@ export function AccountConfigPage() {
   }
 
   const toggleBrokerActive = async (id: string, is_active: boolean) => {
-    if (!user) return
-    setBrokers(prev => prev.map(b => (b.id === id ? { ...b, is_active } : b)))
     setTogglingBrokerId(id)
-    const { error: upErr } = await supabase
-      .from('broker_accounts')
-      .update({ is_active })
-      .eq('id', id)
-      .eq('user_id', user.id)
+    const { error: upErr } = await toggleBrokerActiveInStore(id, is_active)
     setTogglingBrokerId(null)
-    if (upErr) {
-      setBrokers(prev => prev.map(b => (b.id === id ? { ...b, is_active: !is_active } : b)))
-      setError(upErr.message)
-    }
+    if (upErr) setError(upErr)
   }
 
   // ── Loading ────────────────────────────────────────────────────────────

@@ -28,7 +28,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const applySession = (next: Session | null) => {
       setSession(next)
-      setUser(next?.user ?? null)
+      setUser(prev => {
+        const nextUser = next?.user ?? null
+        // TOKEN_REFRESHED fires on tab focus with a new object reference — keep
+        // the stable reference so downstream [user] effects don't remount the app.
+        if (prev?.id != null && nextUser?.id === prev.id) return prev
+        return nextUser
+      })
       if (next?.user) setAuthPresenceCookie()
     }
 

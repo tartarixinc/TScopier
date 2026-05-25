@@ -7,6 +7,12 @@ import { metatraderApi } from '../lib/metatraderapi'
 
 const FAILURES_BEFORE_DISCONNECT = 2
 
+interface UseBrokerConnectionHealthOptions {
+  enabled?: boolean
+  baseIntervalMs?: number
+  refreshOnVisible?: boolean
+}
+
 /**
  * Periodically verify brokers marked "connected" can actually reach trading APIs.
  * Ignores auth/platform blips and requires consecutive failures before marking error.
@@ -14,24 +20,30 @@ const FAILURES_BEFORE_DISCONNECT = 2
 export function useBrokerConnectionHealth(
   brokers: BrokerAccount[],
   setBrokers: Dispatch<SetStateAction<BrokerAccount[]>>,
-  baseIntervalMs = 20_000,
+  options?: UseBrokerConnectionHealthOptions,
 ): void {
   const failCountsRef = useRef(new Map<string, number>())
   const reconnectingRef = useRef(new Set<string>())
+  const enabled = options?.enabled ?? true
+  const refreshOnVisible = options?.refreshOnVisible ?? true
 
-  const connectedIds = useMemo(
+  const connectedKey = useMemo(
     () =>
       brokers
         .filter(b => b.connection_status === 'connected' && isMtSessionUuid(b.metaapi_account_id))
-        .map(b => b.id),
+        .map(b => b.id)
+        .join(','),
     [brokers],
   )
-  const connectedKey = connectedIds.join(',')
-  const pollIntervalMs = brokerHealthPollIntervalMs(connectedIds.length, baseIntervalMs)
+  const connectedCount = connectedKey ? connectedKey.split(',').length : 0
+  const baseIntervalMs = options?.baseIntervalMs ?? 20_000
+  const pollIntervalMs = brokerHealthPollIntervalMs(connectedCount, baseIntervalMs)
 
   useEffect(() => {
+    if (!enabled) return
     if (!connectedKey) return
 
+    const connectedIds = connectedKey.split(',')
     let cancelled = false
     const activeIds = new Set(connectedIds)
 
@@ -104,7 +116,7 @@ export function useBrokerConnectionHealth(
     }, pollIntervalMs)
 
     const onVisible = () => {
-      if (document.visibilityState === 'visible') void verifyAll()
+      if (refreshOnVisible && document.visibilityState === 'visible') void verifyAll()
     }
     document.addEventListener('visibilitychange', onVisible)
 
@@ -113,5 +125,5 @@ export function useBrokerConnectionHealth(
       clearInterval(timer)
       document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [connectedKey, connectedIds, pollIntervalMs, setBrokers])
+  }, [connectedKey, enabled, pollIntervalMs, refreshOnVisible, setBrokers])
 }

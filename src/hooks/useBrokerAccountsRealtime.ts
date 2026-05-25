@@ -10,8 +10,10 @@ const RECONNECT_DEBOUNCE_MS = 3_000
 export function useBrokerAccountsRealtime(
   userId: string | undefined,
   setBrokers: Dispatch<SetStateAction<BrokerAccount[]>>,
+  options?: { silentReconnect?: boolean },
 ): void {
   const reconnectTimeouts = useRef(new Map<string, ReturnType<typeof setTimeout>>())
+  const silentReconnect = options?.silentReconnect !== false
 
   useEffect(() => {
     if (!userId) return
@@ -44,7 +46,8 @@ export function useBrokerAccountsRealtime(
           })
 
           if (
-            row.connection_status === 'error'
+            silentReconnect
+            && row.connection_status === 'error'
             && row.is_active
             && isMtSessionUuid(row.metaapi_account_id)
             && !reconnectTimeouts.current.has(row.id)
@@ -91,5 +94,5 @@ export function useBrokerAccountsRealtime(
       for (const t of reconnectTimeouts.current.values()) clearTimeout(t)
       reconnectTimeouts.current.clear()
     }
-  }, [userId, setBrokers])
+  }, [userId, setBrokers, silentReconnect])
 }
