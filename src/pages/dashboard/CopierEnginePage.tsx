@@ -250,12 +250,6 @@ export function CopierEnginePage() {
     })
   }, [tgChannels, tgChannelSearch])
 
-  const unlinkedActiveChannels = useMemo(() => {
-    const activeBrokers = brokers.filter(b => b.is_active)
-    return channels.filter(
-      ch => ch.is_active && brokersMatchingChannel(activeBrokers, ch.id).length === 0,
-    )
-  }, [channels, brokers])
 
   const toggleChannel = async (id: string, is_active: boolean) => {
     setChannels(prev => prev.map(c => c.id === id ? { ...c, is_active } : c))
@@ -665,11 +659,6 @@ export function CopierEnginePage() {
         </Card>
       )}
 
-      {unlinkedActiveChannels.length > 0 && (
-        <Alert className="mb-4">
-          {interpolate(ce.channelsUnlinkedWarning, { count: String(unlinkedActiveChannels.length) })}
-        </Alert>
-      )}
 
       {/* Channel list */}
       {loading ? (

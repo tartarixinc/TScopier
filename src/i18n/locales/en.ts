@@ -415,8 +415,6 @@ export const en: Translations = {
     reconnectTelegram: 'Reconnect Telegram',
     channelSearchPlaceholder: 'Search channels…',
     noChannelSearchResults: 'No channels match your search',
-    channelsUnlinkedWarning:
-      '{count} active channel(s) have no broker linked — signals will not copy. Open Account Configuration → each broker → Channels tab, check the channel, and Save (or use Connect to broker below).',
     yourTelegramChannels: 'Your Telegram channels',
     telegramConnectedHint: 'Add channels below to start copying signals',
     connected: 'Connected',

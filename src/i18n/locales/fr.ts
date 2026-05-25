@@ -415,8 +415,6 @@ export const fr: Translations = {
     reconnectTelegram: 'Reconnecter Telegram',
     channelSearchPlaceholder: 'Rechercher des canaux…',
     noChannelSearchResults: 'Aucun canal ne correspond à votre recherche',
-    channelsUnlinkedWarning:
-      '{count} canal(aux) actif(s) sans courtier lié — les signaux ne seront pas copiés. Ouvrez Configuration du compte → chaque courtier → onglet Canaux, cochez le canal et enregistrez.',
     yourTelegramChannels: 'Vos canaux Telegram',
     telegramConnectedHint: 'Ajoutez des canaux ci-dessous pour commencer à copier les signaux',
     connected: 'Connecté',

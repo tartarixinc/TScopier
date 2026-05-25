@@ -497,7 +497,6 @@ export interface CopierEnginePageTranslations {
   reconnectTelegram: string
   channelSearchPlaceholder: string
   noChannelSearchResults: string
-  channelsUnlinkedWarning: string
   yourTelegramChannels: string
   telegramConnectedHint: string
   connected: string
