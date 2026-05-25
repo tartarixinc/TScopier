@@ -3,6 +3,8 @@ import type { BrokerAccount } from '../types/database'
 import { metatraderApi } from '../lib/metatraderapi'
 import { brokerCanReconnect, brokerNeedsPasswordForReconnect } from '../lib/brokerReconnect'
 
+const SILENT_RECONNECT_INTERVAL_MS = 45_000
+
 export interface UseBrokerReconnectOptions {
   brokers: BrokerAccount[]
   setBrokers: Dispatch<SetStateAction<BrokerAccount[]>>
@@ -17,7 +19,7 @@ export interface UseBrokerReconnectOptions {
 
 export function useBrokerReconnect(opts: UseBrokerReconnectOptions) {
   const [reconnectingBrokerIds, setReconnectingBrokerIds] = useState<Set<string>>(() => new Set())
-  const autoAttemptedRef = useRef(new Set<string>())
+  const silentReconnectingRef = useRef(new Set<string>())
 
   const brokersNeedingReconnect = useMemo(
     () => opts.brokers.filter(brokerCanReconnect),
@@ -98,28 +100,79 @@ export function useBrokerReconnect(opts: UseBrokerReconnectOptions) {
     }
   }, [applyReconnectResult, opts])
 
-  useEffect(() => {
-    for (const b of opts.brokers) {
-      if (b.connection_status === 'connected') {
-        autoAttemptedRef.current.delete(b.id)
+  const silentReconnectBroker = useCallback(async (brokerId: string) => {
+    if (silentReconnectingRef.current.has(brokerId)) return
+    silentReconnectingRef.current.add(brokerId)
+    try {
+      const result = await metatraderApi.reconnect(brokerId)
+      if (result.connection_status === 'connected') {
+        opts.setBrokers(prev =>
+          prev.map(b => {
+            if (b.id !== brokerId) return b
+            return {
+              ...b,
+              connection_status: 'connected' as const,
+              last_synced_at: new Date().toISOString(),
+              ...(result.summary
+                ? {
+                    last_balance: result.summary.balance ?? b.last_balance,
+                    last_equity: result.summary.equity ?? b.last_equity,
+                    last_currency: result.summary.currency ?? b.last_currency,
+                  }
+                : {}),
+            }
+          }),
+        )
       }
+    } catch {
+      // Silent — no user-facing error
+    } finally {
+      silentReconnectingRef.current.delete(brokerId)
     }
-  }, [opts.brokers])
+  }, [opts])
 
+  // Initial auto-reconnect on mount
   useEffect(() => {
     if (!opts.autoReconnect) return
     const activeOnly = opts.autoReconnectActiveOnly !== false
     for (const b of opts.brokers) {
       if (activeOnly && !b.is_active) continue
       if (!brokerCanReconnect(b)) continue
-      if (autoAttemptedRef.current.has(b.id)) continue
-      autoAttemptedRef.current.add(b.id)
-      void reconnectBroker(b.id, { allowPasswordPrompt: false })
+      void silentReconnectBroker(b.id)
     }
-  }, [opts.autoReconnect, opts.autoReconnectActiveOnly, opts.brokers, reconnectBroker])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Periodic silent reconnect loop for disconnected brokers
+  useEffect(() => {
+    if (!opts.autoReconnect) return
+    const activeOnly = opts.autoReconnectActiveOnly !== false
+
+    const runSilentSweep = () => {
+      if (document.visibilityState !== 'visible') return
+      for (const b of opts.brokers) {
+        if (activeOnly && !b.is_active) continue
+        if (!brokerCanReconnect(b)) continue
+        void silentReconnectBroker(b.id)
+      }
+    }
+
+    const timer = setInterval(runSilentSweep, SILENT_RECONNECT_INTERVAL_MS)
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') runSilentSweep()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+
+    return () => {
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [opts.autoReconnect, opts.autoReconnectActiveOnly, opts.brokers, silentReconnectBroker])
 
   return {
     reconnectBroker,
+    silentReconnectBroker,
     reconnectingBrokerIds,
     brokersNeedingReconnect,
     isReconnecting: (brokerId: string) => reconnectingBrokerIds.has(brokerId),
