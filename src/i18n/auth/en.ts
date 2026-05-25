@@ -1,4 +1,3 @@
-import { testimonialsEn } from '../testimonials/en'
 import type { AuthTranslations } from './types'
 
 export const authEn: AuthTranslations = {
@@ -56,7 +55,23 @@ export const authEn: AuthTranslations = {
   marketing: {
     headline: 'One Seamless Copier for every Telegram Signal',
     trustpilotLabel: 'Trustpilot',
-    reviews: testimonialsEn,
+    reviews: [
+      {
+        quote:
+          'TSCopier cut my manual copying time to almost zero. Signals land on my MT5 account within seconds — exactly what I needed for my Telegram channels.',
+        author: 'Rob Flemming',
+      },
+      {
+        quote:
+          'Clean dashboard, reliable parsing, and the copier logs make debugging easy. Support answered quickly when I had a broker question.',
+        author: 'Sarah Mitchell',
+      },
+      {
+        quote:
+          'This is the simplest and most reliable signal copier I have ever used. Better than the rest with it\'s range and layer trading, worse entries closing feature, I can copy signals with rest of mind.',
+        author: 'Eloise Laurent',
+      },
+    ],
     copyright: '© {year} Tartarix Inc.',
   },
   language: {

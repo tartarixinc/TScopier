@@ -18,7 +18,7 @@ export function FeatureShowcasePanel({
 }: FeatureShowcasePanelProps) {
   return (
     <article className="marketing-feature-panel">
-      <div className="marketing-grid-pattern" aria-hidden />
+      <div className="marketing-feature-panel-grid" aria-hidden />
       <div
         className={clsx(
           'relative grid items-center gap-10 p-6 sm:p-8 lg:grid-cols-2 lg:gap-12 lg:p-10',

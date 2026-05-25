@@ -262,7 +262,6 @@ export interface AccountConfigTranslations {
   addAccount: AccountConfigAddAccountModalTranslations
   connectForm: AccountConfigConnectFormTranslations
   brokerList: AccountConfigBrokerListTranslations
-  configureModal: ConfigureModalTranslations
 }
 
 export interface TradesTranslations {
@@ -697,9 +696,6 @@ export interface PricingTranslations {
   trialDays: string
   features: string
   popular: string
-  basicFeatures: string[]
-  advancedFeatures: string[]
-  extraAccountsSummary: string
   basic: {
     name: string
     description: string

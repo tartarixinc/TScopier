@@ -9,6 +9,7 @@ export type LandingFeatureVisualId =
   | 'backtest'
   | 'logs'
   | 'news'
+  | 'integrations'
 
 export interface LandingFeatureShowcase {
   eyebrow: string
@@ -25,44 +26,20 @@ export interface LandingFilterRuleVisual {
   decision: LandingFilterDecision
 }
 
-export type LandingCopierLogType =
-  | 'buy'
-  | 'sell'
-  | 'close'
-  | 'breakeven'
-  | 'partial_profit'
-  | 'partial_breakeven'
-  | 'modify'
-
-export interface LandingCopierLogRowVisual {
-  symbol: string | null
-  type: LandingCopierLogType
-  time: string
+export interface LandingLogEntryVisual {
+  stage: string
+  message: string
+  latency: string
 }
-
-export interface LandingCopierLogsVisualCopy {
-  rows: LandingCopierLogRowVisual[]
-}
-
-export type LandingCalendarImpact = 'high' | 'medium' | 'low'
-
-export type LandingCalendarActualTone = 'good' | 'bad' | 'neutral'
 
 export interface LandingCalendarEventVisual {
-  time: string
-  currency: string
   name: string
-  impact: LandingCalendarImpact
-  actual: string
-  forecast: string
-  previous: string
-  actualTone: LandingCalendarActualTone
+  time: string
+  impact: 'high' | 'med'
 }
 
-export interface LandingNewsArticleVisual {
-  headline: string
-  source: string
-  relativeTime: string
+export interface LandingNewsHeadlineVisual {
+  label: string
 }
 
 export type LandingBacktestPipsTone = 'good' | 'bad' | 'neutral'
@@ -113,168 +90,45 @@ export interface LandingFeatureVisualsCopy {
     rules: LandingFilterRuleVisual[]
   }
   backtest: LandingBacktestVisualCopy
-  logs: LandingCopierLogsVisualCopy
+  logs: {
+    hubLabel: string
+    pillLatency: string
+    pillLive: string
+    entries: LandingLogEntryVisual[]
+  }
   news: {
-    dayHeading: string
+    calendarTitle: string
+    impactHigh: string
+    impactMed: string
+    pillCalendar: string
     events: LandingCalendarEventVisual[]
-    articles: LandingNewsArticleVisual[]
+    headlines: LandingNewsHeadlineVisual[]
+  }
+  integrations: {
+    hubLabel: string
+    labels: {
+      telegram: string
+      mt4: string
+      mt5: string
+    }
   }
 }
 
-export type LandingBentoIcon =
-  | 'zap'
-  | 'cloud'
-  | 'link'
-  | 'clock'
-  | 'activity'
-  | 'chart'
-  | 'layers'
-  | 'settings'
-  | 'messages'
-  | 'history'
-
-export type LandingBentoCardLayout = 'tall' | 'short' | 'featured'
-
-export type LandingBentoMetricVariant = 'teal' | 'neutral' | 'amber'
-
-export interface LandingBentoCard {
-  label: string
-  metric: string
-  metricVariant: LandingBentoMetricVariant
-  description: string
-  layout: LandingBentoCardLayout
-  icon: LandingBentoIcon
-}
-
-export type LandingStepVisualId = 'telegram' | 'configure' | 'copy'
-
-export interface LandingStepItem {
+export interface LandingStepTranslation {
   title: string
   description: string
-  visual: LandingStepVisualId
-}
-
-export interface LandingStepsTelegramChannelVisual {
-  name: string
-  username: string
-  active: boolean
-  brokers: string[]
-}
-
-export interface LandingStepsConfigureTpVisual {
-  label: string
-  percent: string
-}
-
-export interface LandingStepsConfigureFilterVisual {
-  label: string
-  decision: LandingFilterDecision
-}
-
-export interface LandingStepsCopyLogVisual {
-  symbol: string
-  type: 'buy' | 'sell'
-  time: string
-}
-
-export interface LandingStepsVisualsCopy {
-  telegram: {
-    channels: LandingStepsTelegramChannelVisual[]
-  }
-  configure: {
-    accountName: string
-    login: string
-    lotSize: string
-    rangeLabel: string
-    rangeValue: string
-    tpRows: LandingStepsConfigureTpVisual[]
-    filters: LandingStepsConfigureFilterVisual[]
-  }
-  copy: {
-    workerLogs: { message: string; time: string }[]
-    logRows: LandingStepsCopyLogVisual[]
-  }
 }
 
 export interface LandingReviewTranslation {
   quote: string
   author: string
-  role?: string
 }
 
-export interface LandingComparisonRow {
-  aspect: string
-  other: string
-  tscopier: string
-}
-
-export interface LandingFaqItem {
-  question: string
-  answer: string
-}
-
-export type LandingHeroStatTone = 'good' | 'bad' | 'neutral'
-
-export type LandingHeroHeadlineStatKey =
-  | 'totalBalance'
-  | 'todaysProfit'
-  | 'tradesTakenToday'
-  | 'openPnl'
-
-export type LandingHeroOverviewStatKey =
-  | 'activeSignalChannels'
-  | 'openTrades'
-  | 'tradingAccountsConnected'
-  | 'tradesCopiedToday'
-
-export interface LandingHeroLiveMoney {
-  /** Starting amount when the hero preview mounts. */
-  from: number
-  /** Soft ceiling; ticks hover just below with small jitter. */
-  cap: number
-  stepMin: number
-  stepMax: number
-  /** Prefix with + for P/L style values. */
-  signed?: boolean
-}
-
-export interface LandingHeroHeadlineStat {
-  key: LandingHeroHeadlineStatKey
-  /** Static fallback (reduced motion) and SEO; omit when `live` is set. */
-  value?: string
-  live?: LandingHeroLiveMoney
-  sub: string
-  valueTone: LandingHeroStatTone
-  showHint?: boolean
-}
-
-export interface LandingHeroOverviewStat {
-  key: LandingHeroOverviewStatKey
-  value: string
-  showAdd?: boolean
-}
-
-export type LandingHeroCopierLogStatus = 'executed' | 'parsed' | 'skipped' | 'failed' | 'pending'
-
-export interface LandingHeroCopierLogRow {
-  status: LandingHeroCopierLogStatus
-  channel: string
-  symbol: string
-  type: string
-  side: 'buy' | 'sell'
-  time: string
-}
-
-export interface LandingHeroChannelWorkerLog {
-  message: string
-  time: string
-}
-
-export interface LandingHeroDashboardCopy {
-  headlineStats: LandingHeroHeadlineStat[]
-  overviewStats: LandingHeroOverviewStat[]
-  channelWorkerLogs: LandingHeroChannelWorkerLog[]
-  copierLogRows: LandingHeroCopierLogRow[]
+export interface LandingPlanTeaserTranslation {
+  name: string
+  description: string
+  priceLabel: string
+  cta: string
 }
 
 export interface LandingTranslations {
@@ -297,12 +151,11 @@ export interface LandingTranslations {
     secondaryCta: string
     imageAlt: string
     previewUrl: string
-    dashboard: LandingHeroDashboardCopy
   }
   whyChoose: {
-    eyebrow: string
     title: string
-    cards: LandingBentoCard[]
+    subtitle: string
+    items: LandingFeatureTranslation[]
   }
   features: {
     eyebrow: string
@@ -312,64 +165,28 @@ export interface LandingTranslations {
     visuals: LandingFeatureVisualsCopy
   }
   steps: {
-    eyebrow: string
     title: string
     subtitle: string
-    items: LandingStepItem[]
-    visuals: LandingStepsVisualsCopy
-  }
-  faq: {
-    eyebrow: string
-    title: string
-    subtitle: string
-    items: LandingFaqItem[]
+    items: LandingStepTranslation[]
   }
   reviews: {
     title: string
     trustpilotLabel: string
     items: LandingReviewTranslation[]
   }
-  comparison: {
-    eyebrow: string
-    title: string
-    subtitle: string
-    otherLabel: string
-    tscopierLabel: string
-    cta: string
-    rows: LandingComparisonRow[]
-  }
   pricing: {
     title: string
     subtitle: string
+    perMonth: string
+    popular: string
+    viewPlans: string
+    basic: LandingPlanTeaserTranslation
+    advanced: LandingPlanTeaserTranslation
   }
   footer: {
-    cta: {
-      title: string
-      subtitle: string
-      primary: string
-      secondary: string
-    }
-    tagline: string
-    columns: {
-      product: string
-      resources: string
-      account: string
-    }
-    links: {
-      overview: string
-      features: string
-      pricing: string
-      howItWorks: string
-      faq: string
-      docs: string
-      status: string
-      telegram: string
-      signIn: string
-      signUp: string
-      openApp: string
-    }
-    platforms: string
     copyright: string
-    disclaimer: string
+    docs: string
+    status: string
+    openApp: string
   }
 }

@@ -2,7 +2,6 @@ import { authEs } from '../auth/es'
 import { channelWorkerEs } from '../channelWorker/es'
 import { landingEs } from './landing/es'
 import type { Translations } from './types'
-import { configureModalEs } from './configureModal/es'
 
 export const es: Translations = {
   auth: authEs,
@@ -86,34 +85,6 @@ export const es: Translations = {
     trialDays: 'Prueba gratuita de 10 días',
     features: 'Características',
     popular: 'Más Popular',
-    basicFeatures: [
-      '1 cuenta demo/real',
-      '5 backtests de señales/mes',
-      '5 canales de Telegram',
-      '3 TPs',
-      'Modo single trading',
-      'Noticias de mercado',
-      'Calendario económico',
-      'Filtro horario/días/noticias',
-    ],
-    advancedFeatures: [
-      '5 cuentas demo/real (ampliable a 100)',
-      'Backtests de señales ilimitados/mes',
-      'Canales de Telegram ilimitados',
-      'TPs/SLs ilimitados',
-      'Modo single y range',
-      'Capas en rango',
-      'Cerrar primero las entradas peores',
-      'Señal inversa',
-      'Auto break-even y cierre (pips, dinero, RR, TP)',
-      'Modo risk reward',
-      'Noticias de mercado',
-      'Calendario económico',
-      'Filtro horario/días/noticias',
-      'Seguimiento por palabras clave del canal',
-    ],
-    extraAccountsSummary:
-      '{included} incluidas + {extra} extra = {total} cuentas en total',
     basic: {
       name: 'Básico',
       description: 'Para traders principiantes que buscan un copiador de señales de Telegram simple para su MT4/5.',
@@ -246,7 +217,6 @@ export const es: Translations = {
         'Esto desconecta {label} de MetatraderAPI y del copiador. No se puede deshacer.',
       deleteConfirm: 'Desconectar',
     },
-    configureModal: configureModalEs,
   },
   dashboard: {
     title: 'Panel',

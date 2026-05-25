@@ -53,7 +53,7 @@ export interface AuthTranslations {
     headline: string
     copyright: string
     trustpilotLabel: string
-    reviews: Array<{ quote: string; author: string; role?: string }>
+    reviews: Array<{ quote: string; author: string }>
   }
   language: {
     label: string

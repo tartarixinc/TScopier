@@ -1,4 +1,3 @@
-import { testimonialsFr } from '../testimonials/fr'
 import type { AuthTranslations } from './types'
 
 export const authFr: AuthTranslations = {
@@ -56,7 +55,23 @@ export const authFr: AuthTranslations = {
   marketing: {
     headline: 'Un copieur fluide pour chaque signal Telegram',
     trustpilotLabel: 'Trustpilot',
-    reviews: testimonialsFr,
+    reviews: [
+      {
+        quote:
+          'TSCopier a presque éliminé mon temps de copie manuelle. Les signaux arrivent sur mon compte MT5 en quelques secondes — exactement ce qu’il me fallait pour mes canaux Telegram.',
+        author: 'Rob Flemming',
+      },
+      {
+        quote:
+          'Tableau de bord clair, analyse fiable et journaux du copieur faciles à déboguer. Le support a répondu vite pour une question broker.',
+        author: 'Sarah Mitchell',
+      },
+      {
+        quote:
+          'C\'est le copieur de signaux le plus simple et le plus fiable que j\'aie jamais utilisé. Meilleur que les autres grâce à son système de trading par plage et par couches, et malgré une fonction de fermeture automatique des entrées moins performante, je peux copier les signaux en toute sérénité.',
+        author: 'Eloise Laurent',
+      },
+    ],
     copyright: '© {year} Tartarix Inc.',
   },
   language: {

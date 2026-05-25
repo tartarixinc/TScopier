@@ -6,7 +6,6 @@ import { TrustpilotBadge, TrustpilotStars } from './TrustpilotStars'
 export interface AuthReview {
   quote: string
   author: string
-  role?: string
 }
 
 interface AuthTrustpilotSliderProps {
@@ -51,7 +50,7 @@ export function AuthTrustpilotSlider({ reviews, trustpilotLabel }: AuthTrustpilo
       </span>
 
       <div
-        className="relative min-h-[12rem] w-full overflow-hidden sm:min-h-[11rem]"
+        className="relative min-h-[10rem] w-full overflow-hidden sm:min-h-[9rem]"
         aria-live="polite"
         aria-atomic="true"
       >
@@ -68,18 +67,11 @@ export function AuthTrustpilotSlider({ reviews, trustpilotLabel }: AuthTrustpilo
               className="w-full shrink-0 px-1"
               aria-hidden={index !== active}
             >
-              <p className="text-base font-semibold leading-relaxed tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-lg">
+              <p className="text-lg font-semibold leading-snug tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-xl">
                 &ldquo;{item.quote}&rdquo;
               </p>
-              <footer className="mt-5">
-                <p className="text-base font-medium text-neutral-900 dark:text-neutral-100">
-                  {item.author}
-                </p>
-                {item.role ? (
-                  <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-                    {item.role}
-                  </p>
-                ) : null}
+              <footer className="mt-5 text-base font-medium text-neutral-600 dark:text-neutral-300">
+                {item.author}
               </footer>
             </blockquote>
           ))}

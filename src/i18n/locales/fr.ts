@@ -2,7 +2,6 @@ import { authFr } from '../auth/fr'
 import { channelWorkerFr } from '../channelWorker/fr'
 import { landingFr } from './landing/fr'
 import type { Translations } from './types'
-import { configureModalFr } from './configureModal/fr'
 
 export const fr: Translations = {
   auth: authFr,
@@ -86,34 +85,6 @@ export const fr: Translations = {
     trialDays: 'Essai gratuit de 10 jours',
     features: 'Fonctionnalités',
     popular: 'Le plus populaire',
-    basicFeatures: [
-      '1 compte démo/réel',
-      '5 backtests de signaux/mois',
-      '5 canaux Telegram',
-      '3 TPs',
-      'Mode single trading',
-      'Actualités marché',
-      'Calendrier économique',
-      'Filtre horaire/jours/actualités',
-    ],
-    advancedFeatures: [
-      '5 comptes démo/réel (extensible à 100)',
-      'Backtests de signaux illimités/mois',
-      'Canaux Telegram illimités',
-      'TPs/SLs illimités',
-      'Modes single et range',
-      'Couches en range',
-      'Fermer d’abord les entrées les plus défavorables',
-      'Signal inversé',
-      'Auto break-even et clôture (pips, montant, RR, TP)',
-      'Mode risk reward',
-      'Actualités marché',
-      'Calendrier économique',
-      'Filtre horaire/jours/actualités',
-      'Suivi par mots-clés du canal',
-    ],
-    extraAccountsSummary:
-      '{included} inclus + {extra} en plus = {total} comptes au total',
     basic: {
       name: 'Basique',
       description: 'Pour les traders débutants cherchant un copieur de signaux Telegram simple pour leur MT4/5.',
@@ -246,7 +217,6 @@ export const fr: Translations = {
         'Cela déconnecte {label} de MetatraderAPI et du copieur. Cette action est irréversible.',
       deleteConfirm: 'Déconnecter',
     },
-    configureModal: configureModalFr,
   },
   dashboard: {
     title: 'Tableau de bord',

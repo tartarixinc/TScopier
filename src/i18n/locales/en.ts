@@ -2,7 +2,6 @@ import { authEn } from '../auth/en'
 import { channelWorkerEn } from '../channelWorker/en'
 import { landingEn } from './landing/en'
 import type { Translations } from './types'
-import { configureModalEn } from './configureModal/en'
 
 export const en: Translations = {
   auth: authEn,
@@ -86,34 +85,6 @@ export const en: Translations = {
     trialDays: '10-day free trial',
     features: 'Features',
     popular: 'Most Popular',
-    basicFeatures: [
-      '1 demo/live account',
-      '5 Signal Backtests/month',
-      '5 Telegram Channels',
-      '3 TPs',
-      'Single Trading Mode',
-      'Market News',
-      'Economic Calendar',
-      'Time/Days/News Filter',
-    ],
-    advancedFeatures: [
-      '5 demo/live accounts (expandable to 100)',
-      'Unlimited signal backtests/month',
-      'Unlimited Telegram Channels',
-      'Unlimited TPs/SLs',
-      'Single & Range Trading Mode',
-      'Range Layering',
-      'Close worse entries first',
-      'Reverse signal',
-      'Auto breakeven & close (Pips, Money, RR, TP Hit)',
-      'Risk Reward Mode',
-      'Market News',
-      'Economic Calendar',
-      'Time/Days/News Filter',
-      'Channel Keyword follow',
-    ],
-    extraAccountsSummary:
-      '{included} included + {extra} extra = {total} total accounts',
     basic: {
       name: 'Basic',
       description: 'For beginner traders looking for a simple Telegram signal copier for their MT4/5.',
@@ -246,7 +217,6 @@ export const en: Translations = {
         'This disconnects {label} from MetatraderAPI and the copier. This cannot be undone.',
       deleteConfirm: 'Disconnect',
     },
-    configureModal: configureModalEn,
   },
   dashboard: {
     title: 'Dashboard',

@@ -15,23 +15,16 @@ export function ReviewsSection() {
           {l.title}
         </h2>
       </div>
-      <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        {l.items.map((review, index) => (
-          <GlassCard key={`${review.author}-${index}`} className="flex flex-col p-6">
+      <div className="mt-12 grid gap-6 md:grid-cols-3">
+        {l.items.map((review) => (
+          <GlassCard key={review.author} className="flex flex-col p-6">
             <TrustpilotStars className="mb-4 justify-start" />
             <blockquote className="flex-1 text-sm leading-relaxed text-neutral-700 dark:text-neutral-300">
               &ldquo;{review.quote}&rdquo;
             </blockquote>
-            <div className="mt-4">
-              <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
-                {review.author}
-              </p>
-              {review.role ? (
-                <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
-                  {review.role}
-                </p>
-              ) : null}
-            </div>
+            <p className="mt-4 text-sm font-medium text-neutral-900 dark:text-neutral-50">
+              {review.author}
+            </p>
           </GlassCard>
         ))}
       </div>

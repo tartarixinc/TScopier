@@ -1,5 +1,4 @@
 import { ArrowRight, Lock } from 'lucide-react'
-import { HeroDashboardPreview } from '../HeroDashboardPreview'
 import { useT } from '../../../context/LocaleContext'
 import { appUrl } from '../../../lib/site'
 
@@ -9,38 +8,35 @@ const HERO_AVATARS = [
   '/marketing/hero-avatar-3.jpg',
 ] as const
 
-const HERO_PLATFORMS = [
-  { src: '/Telegram.svg', alt: 'Telegram' },
-  { src: '/MT5.png', alt: 'MetaTrader 5' },
-  // { src: '/MT4.png', alt: 'MetaTrader 4' },
-] as const
+const HERO_DASHBOARD_LIGHT = '/dashboard-light.png'
+const HERO_DASHBOARD_DARK = '/dashboard-dark.png'
 
 export function HeroSection() {
   const l = useT().landing
 
   return (
     <section id="product" className="relative scroll-mt-28 overflow-hidden">
-      <div className="marketing-hero-grid" aria-hidden />
-      <div className="relative z-[1] mx-auto max-w-6xl px-5 pb-4 pt-6 sm:px-8 sm:pt-8 sm:pb-8 lg:pt-10">
+      <div className="relative mx-auto max-w-6xl px-5 pb-4 pt-6 sm:px-8 sm:pt-8 sm:pb-8 lg:pt-10">
         <div className="mx-auto max-w-3xl text-center">
-          <div className="mb-6 flex items-center justify-center gap-3 sm:mb-8 sm:gap-4">
-            {HERO_PLATFORMS.map((platform) => (
-              <span
-                key={platform.src}
-                className="flex h-12 w-12 items-center justify-center rounded-xl border border-neutral-200/90 bg-white shadow-sm dark:border-neutral-700 dark:bg-neutral-900 sm:h-14 sm:w-14"
-              >
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <div className="flex -space-x-2.5">
+              {HERO_AVATARS.map((src, i) => (
                 <img
-                  src={platform.src}
-                  alt={platform.alt}
-                  className="h-7 w-7 object-contain sm:h-8 sm:w-8"
-                  width={32}
-                  height={32}
+                  key={src}
+                  src={src}
+                  alt={l.hero.avatarAlts[i]}
+                  width={36}
+                  height={36}
+                  className="h-9 w-9 rounded-full border-2 border-white object-cover dark:border-neutral-700"
                 />
-              </span>
-            ))}
+              ))}
+            </div>
+            <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">
+              {l.hero.trustedBy}
+            </p>
           </div>
 
-          <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl xl:text-[2.5rem] xl:leading-[1.08]">
+          <h1 className="mt-6 text-4xl font-semibold tracking-tight sm:text-5xl xl:text-[2.5rem] xl:leading-[1.08]">
             <span className="block text-neutral-900 dark:text-neutral-50">{l.hero.headline}</span>
             <span className="mt-1 block text-teal-600 dark:text-teal-400">{l.hero.headlineAccent}</span>
           </h1>
@@ -67,24 +63,6 @@ export function HeroSection() {
               {l.hero.secondaryCta}
             </a>
           </div>
-
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-3 sm:mt-10">
-            <div className="flex -space-x-2.5">
-              {HERO_AVATARS.map((src, i) => (
-                <img
-                  key={src}
-                  src={src}
-                  alt={l.hero.avatarAlts[i]}
-                  width={36}
-                  height={36}
-                  className="h-6 w-6 rounded-full border-2 border-white object-cover dark:border-neutral-700"
-                />
-              ))}
-            </div>
-            <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">
-              {l.hero.trustedBy}
-            </p>
-          </div>
         </div>
 
         <div className="hero-product-showcase relative mx-auto mt-12 w-full max-w-5xl sm:mt-14 lg:mt-16">
@@ -101,7 +79,25 @@ export function HeroSection() {
               </div>
             </div>
             <div className="hero-product-screen">
-              <HeroDashboardPreview />
+              <img
+                src={HERO_DASHBOARD_LIGHT}
+                alt={l.hero.imageAlt}
+                width={1920}
+                height={1080}
+                className="hero-product-screenshot dark:hidden"
+                loading="eager"
+                fetchPriority="high"
+                decoding="async"
+              />
+              <img
+                src={HERO_DASHBOARD_DARK}
+                alt={l.hero.imageAlt}
+                width={1920}
+                height={1080}
+                className="hero-product-screenshot hidden dark:block"
+                loading="eager"
+                decoding="async"
+              />
             </div>
           </div>
 

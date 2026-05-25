@@ -1,4 +1,3 @@
-import { testimonialsFr } from '../../testimonials/fr'
 import type { LandingTranslations } from './types'
 
 export const landingFr: LandingTranslations = {
@@ -12,7 +11,7 @@ export const landingFr: LandingTranslations = {
     menuClose: 'Fermer le menu',
   },
   hero: {
-    trustedBy: 'Plus de 30 000 traders de 156 pays ont déjà rejoint',
+    trustedBy: 'Plébiscité par plus de 30 000 traders dans 156 pays',
     avatarAlts: ['Avatar de trader', 'Avatar de trader', 'Avatar de trader'],
     headline: 'Copieur de signaux Telegram ultra-rapide',
     headlineAccent: 'Propulsé par l’IA.',
@@ -23,170 +22,26 @@ export const landingFr: LandingTranslations = {
     imageAlt:
       'Tableau de bord TSCopier avec solde, profit du jour, résultats des trades et graphiques de croissance',
     previewUrl: 'app.tscopier.ai/dashboard',
-    dashboard: {
-      headlineStats: [
-        {
-          key: 'totalBalance',
-          value: '$54,650.00',
-          live: { from: 48120, cap: 54650, stepMin: 14, stepMax: 52 },
-          sub: 'Sur 5 comptes connectés',
-          valueTone: 'neutral',
-        },
-        {
-          key: 'todaysProfit',
-          value: '+$542.50',
-          sub: 'vs hier +$712',
-          valueTone: 'good',
-          showHint: true,
-        },
-        {
-          key: 'tradesTakenToday',
-          value: '12',
-          sub: '8 gagnés · 4 perdus',
-          valueTone: 'neutral',
-        },
-        {
-          key: 'openPnl',
-          value: '+$134.80',
-          live: { from: 102.3, cap: 134.8, stepMin: 0.25, stepMax: 1.75, signed: true },
-          sub: 'Sur 2 comptes',
-          valueTone: 'good',
-        },
-      ],
-      overviewStats: [
-        { key: 'activeSignalChannels', value: '4', showAdd: true },
-        { key: 'openTrades', value: '16' },
-        { key: 'tradingAccountsConnected', value: '3', showAdd: true },
-        { key: 'tradesCopiedToday', value: '3' },
-      ],
-      channelWorkerLogs: [
-        {
-          message: 'Canal Gold Signals Pro · écoute connectée',
-          time: '22 mai, 09:36',
-        },
-        {
-          message: 'Analysé BUY XAUUSD · 2 TPs depuis Gold Signals Pro',
-          time: '22 mai, 09:37',
-        },
-        {
-          message: 'Ordre envoyé vers MT5 · compte #88291',
-          time: '22 mai, 09:37',
-        },
-      ],
-      copierLogRows: [
-        {
-          status: 'executed',
-          channel: 'Gold Signals Pro',
-          symbol: 'XAUUSD',
-          type: 'buy',
-          side: 'buy',
-          time: '22 mai, 09:37',
-        },
-        {
-          status: 'parsed',
-          channel: 'FX Scalper VIP',
-          symbol: 'EURUSD',
-          type: 'sell',
-          side: 'sell',
-          time: '22 mai, 09:35',
-        },
-        {
-          status: 'executed',
-          channel: 'Indices Daily',
-          symbol: 'NAS100',
-          type: 'buy',
-          side: 'buy',
-          time: '22 mai, 09:31',
-        },
-      ],
-    },
   },
   whyChoose: {
-    eyebrow: 'Une copie plus intelligente commence par de meilleurs outils',
-    title:
-      'Chaque fonction de TSCopier est conçue pour vous donner contrôle, clarté et des résultats mesurables.',
-    cards: [
+    title: 'Pourquoi choisir TSCopier ?',
+    subtitle:
+      'Trois raisons pour lesquelles les traders quittent la copie manuelle et les EA locaux pour un copieur cloud conçu pour la vitesse.',
+    items: [
       {
-        label: 'Vitesse d’exécution',
-        metric: '<150ms',
-        metricVariant: 'teal',
-        description: 'Latence inférieure à 150 ms du parsing du signal à l’envoi courtier.',
-        layout: 'tall',
-        icon: 'zap',
-      },
-      {
-        label: 'Plateforme cloud',
-        metric: '100%',
-        metricVariant: 'teal',
+        title: 'Exécution rapide',
         description:
-          '100 % cloud : pas de téléchargement, pas d’EA ni de VPS. Tout depuis le navigateur.',
-        layout: 'short',
-        icon: 'cloud',
+          'Les signaux sont analysés et envoyés à votre broker en quelques secondes, pas en minutes. Notre worker cloud utilise un pipeline à faible latence pour que entrées, modifications et clôtures Telegram atteignent MT4/MT5 tant que le prix reste pertinent—avec des journaux copieur pour chaque action.',
       },
       {
-        label: 'Échelle courtiers',
-        metric: '100',
-        metricVariant: 'neutral',
-        description: 'Jusqu’à 100 connexions MT5/MT4 par utilisateur.',
-        layout: 'short',
-        icon: 'link',
-      },
-      {
-        label: 'Opérations',
-        metric: '24/7',
-        metricVariant: 'teal',
-        description: 'Opérations 24/7 sans surveiller une machine locale.',
-        layout: 'short',
-        icon: 'clock',
-      },
-      {
-        label: 'Moteur de copie',
-        metric: 'Avancé',
-        metricVariant: 'amber',
+        title: 'Aucun téléchargement',
         description:
-          'Stratégie de copie avancée : modèles, filtres, backtest et règles par canal.',
-        layout: 'featured',
-        icon: 'settings',
+          'TSCopier est 100 % cloud. Pas d’EA à installer, pas de VPS à louer ni de scripts terminal à mettre à jour après chaque build. Connectez-vous depuis le navigateur, liez votre compte et gérez vos canaux depuis un seul tableau de bord—vos réglages se synchronisent automatiquement.',
       },
       {
-        label: 'Fiabilité',
-        metric: '99,99%',
-        metricVariant: 'teal',
-        description: '99,99 % de disponibilité pour copier quand le marché bouge.',
-        layout: 'short',
-        icon: 'activity',
-      },
-      {
-        label: 'Contrôles de risque',
-        metric: 'Layering',
-        metricVariant: 'neutral',
-        description: 'Layering et clôture des entrées les plus défavorables sur signaux range et multi-TP.',
-        layout: 'tall',
-        icon: 'layers',
-      },
-      {
-        label: 'Modes de trade',
-        metric: 'Single & Range',
-        metricVariant: 'neutral',
-        description: 'Trading single et range avec règles de lot partagées.',
-        layout: 'short',
-        icon: 'chart',
-      },
-      {
-        label: 'Telegram',
-        metric: 'Illimité',
-        metricVariant: 'teal',
-        description: 'Canaux et groupes Telegram illimités.',
-        layout: 'tall',
-        icon: 'messages',
-      },
-      {
-        label: 'Backtest',
-        metric: 'Replay',
-        metricVariant: 'teal',
-        description: 'Rejouez l’historique du canal avec vos règles avant de risquer du capital réel.',
-        layout: 'short',
-        icon: 'history',
+        title: 'Configuration en 2 minutes',
+        description:
+          'Créez votre compte, reliez Telegram et connectez MT4 ou MT5 en quelques étapes guidées. La plupart des traders copient leur premier canal en environ deux minutes—sans branchements complexes, erreurs de compilation ni VPS à configurer le week-end.',
       },
     ],
   },
@@ -230,6 +85,13 @@ export const landingFr: LandingTranslations = {
         description:
           'Suivez les événements à fort impact et les titres sélectionnés depuis le même tableau de bord, avec blackout news optionnel.',
         visual: 'news',
+      },
+      {
+        eyebrow: 'Intégrations',
+        title: 'Compatible avec vos plateformes actuelles',
+        description:
+          'Connectez des canaux Telegram et copiez vers MetaTrader sans EA local ni scripts VPS.',
+        visual: 'integrations',
       },
     ],
     visuals: {
@@ -321,304 +183,99 @@ export const landingFr: LandingTranslations = {
         ],
       },
       logs: {
-        rows: [
-          { symbol: 'XAUUSD', type: 'close', time: '22 mai, 19:50' },
-          { symbol: 'XAUUSD', type: 'sell', time: '22 mai, 19:50' },
-          { symbol: 'XAUUSD', type: 'breakeven', time: '22 mai, 19:50' },
-          { symbol: 'XAUUSD', type: 'buy', time: '22 mai, 19:49' },
-          { symbol: 'XAUUSD', type: 'partial_profit', time: '22 mai, 19:49' },
-          { symbol: 'XAUUSD', type: 'modify', time: '22 mai, 19:48' },
-          { symbol: 'XAUUSD', type: 'partial_breakeven', time: '22 mai, 19:48' },
+        hubLabel: 'Journaux copieur',
+        pillLatency: 'Trace latence',
+        pillLive: 'Flux live',
+        entries: [
+          { stage: 'Analysé', message: 'BUY XAUUSD · 2 TPs · couche', latency: '42ms' },
+          { stage: 'Envoyé', message: 'Ordre #88291 · MT5', latency: '128ms' },
+          { stage: 'Exécuté', message: '0.10 lot @ 2,324.50', latency: '312ms' },
         ],
       },
       news: {
-        dayHeading: 'Jeudi 21 mai',
+        calendarTitle: 'Calendrier économique',
+        impactHigh: 'Élevé',
+        impactMed: 'Moy.',
+        pillCalendar: 'Blackout news',
         events: [
-          {
-            time: '01:00',
-            currency: 'JPY',
-            name: 'Taux d’inflation YoY (avr.)',
-            impact: 'high',
-            actual: '1,40 %',
-            forecast: '1,80 %',
-            previous: '2,00 %',
-            actualTone: 'bad',
-          },
-          {
-            time: '01:30',
-            currency: 'JPY',
-            name: 'Décision de taux BoJ',
-            impact: 'high',
-            actual: '0,50 %',
-            forecast: '0,50 %',
-            previous: '0,25 %',
-            actualTone: 'neutral',
-          },
-          {
-            time: '08:30',
-            currency: 'USD',
-            name: 'Demandes initiales de chômage',
-            impact: 'high',
-            actual: '228K',
-            forecast: '230K',
-            previous: '224K',
-            actualTone: 'good',
-          },
-          {
-            time: '09:30',
-            currency: 'GBP',
-            name: 'PMI manufacturier S&P Global (mai)',
-            impact: 'high',
-            actual: '51,2',
-            forecast: '50,8',
-            previous: '50,3',
-            actualTone: 'good',
-          },
+          { name: 'NFP États-Unis', time: 'Auj. · 13:30 UTC', impact: 'high' },
+          { name: 'Décision BCE', time: 'Jeu. · 12:15 UTC', impact: 'high' },
+          { name: 'IPC Royaume-Uni', time: 'Ven. · 07:00 UTC', impact: 'med' },
         ],
-        articles: [
-          {
-            headline:
-              'Or (XAUUSD), argent et platine — l’or recule alors que les traders s’inquiètent...',
-            source: 'fxempire.com',
-            relativeTime: 'il y a 10 h',
-          },
-          {
-            headline: 'EUR/USD : les haussiers ont besoin d’un dollar plus faible pour franchir 1,10',
-            source: 'fxstreet.com',
-            relativeTime: 'il y a 12 h',
-          },
-          {
-            headline: 'USD/JPY proche des sommets avec l’écart des taux avant le NFP',
-            source: 'investing.com',
-            relativeTime: 'il y a 14 h',
-          },
+        headlines: [
+          { label: 'L’or poursuit sa hausse' },
+          { label: 'EUR/USD franchit 1.10' },
+          { label: 'BTC dépasse $70k' },
         ],
+      },
+      integrations: {
+        hubLabel: 'TSCopier',
+        labels: { telegram: 'Telegram', mt4: 'MT4', mt5: 'MT5' },
       },
     },
   },
   steps: {
-    eyebrow: 'Démarrage',
     title: 'Comment ça marche',
-    subtitle: 'Du canal Telegram au broker en trois étapes — avec les mêmes écrans que dans l’app.',
+    subtitle: 'Du canal Telegram au broker en trois étapes.',
     items: [
       {
         title: 'Connecter Telegram',
-        description:
-          'Liez votre compte Telegram, choisissez les canaux de signaux et reliez-les aux comptes MT4/MT5 qui copient.',
-        visual: 'telegram',
+        description: 'Liez les canaux de confiance. Seuls ceux cochés alimentent votre broker.',
       },
       {
         title: 'Configurer le broker',
-        description:
-          'Définissez le lot, la répartition des TPs, les règles de range et les filtres autoriser/ignorer par canal.',
-        visual: 'configure',
+        description: 'Lot, TPs, couches, filtres et auto-gestion par compte.',
       },
       {
         title: 'Copier les signaux',
-        description:
-          'Le channel worker analyse chaque message ; les journaux copieur affichent chaque exécution en direct.',
-        visual: 'copy',
-      },
-    ],
-    visuals: {
-      telegram: {
-        channels: [
-          {
-            name: 'Gold Signals Pro',
-            username: 'goldsignalspro',
-            active: true,
-            brokers: ['MT5 · #88291'],
-          },
-          {
-            name: 'FX Scalper VIP',
-            username: 'fxscalpervip',
-            active: true,
-            brokers: ['MT4 · #44102'],
-          },
-        ],
-      },
-      configure: {
-        accountName: 'IC Markets · MT5',
-        login: 'Login #88291',
-        lotSize: '0,10',
-        rangeLabel: 'Couches en range',
-        rangeValue: '50 % · 3 pips',
-        tpRows: [
-          { label: 'TP1', percent: '50%' },
-          { label: 'TP2', percent: '30%' },
-          { label: 'TP3', percent: '20%' },
-        ],
-        filters: [
-          { label: 'Signaux de clôture', decision: 'allow' },
-          { label: 'Modifier SL / TP', decision: 'allow' },
-          { label: 'Passage au BE', decision: 'allow' },
-        ],
-      },
-      copy: {
-        workerLogs: [
-          {
-            message: 'Analysé BUY XAUUSD · 2 TPs depuis Gold Signals Pro',
-            time: '22 mai, 09:37',
-          },
-          {
-            message: 'Envoyé 0,10 lot vers MT5 · compte #88291',
-            time: '22 mai, 09:37',
-          },
-        ],
-        logRows: [
-          { symbol: 'XAUUSD', type: 'buy', time: '09:37' },
-          { symbol: 'XAUUSD', type: 'sell', time: '09:35' },
-        ],
-      },
-    },
-  },
-  faq: {
-    eyebrow: 'FAQ',
-    title: 'Questions fréquentes',
-    subtitle: 'Réponses rapides sur la configuration, la copie et ce qui distingue TSCopier.',
-    items: [
-      {
-        question: 'Faut-il installer un EA ou un VPS ?',
-        answer:
-          'Non. TSCopier est entièrement cloud. Vous vous connectez dans le navigateur, liez Telegram et vos comptes MT4/MT5, et le copieur tourne sur notre infrastructure—sans EA ni VPS à maintenir.',
-      },
-      {
-        question: 'Quelles plateformes TSCopier prend-il en charge ?',
-        answer:
-          'Vous connectez des canaux de signaux Telegram et copiez vers MetaTrader 4 et 5. Liez plusieurs courtiers et routez chaque canal vers les comptes de votre choix.',
-      },
-      {
-        question: 'À quelle vitesse les trades sont-ils copiés ?',
-        answer:
-          'Notre pipeline vise une faible latence—souvent sous 150 ms du parsing à l’envoi courtier—pour que entrées, modifications et clôtures arrivent tant que le prix reste pertinent.',
-      },
-      {
-        question: 'Combien de comptes puis-je connecter ?',
-        answer:
-          'Jusqu’à 100 connexions MT4/MT5 par utilisateur selon votre forfait. Chaque canal Telegram peut être relié à un ou plusieurs comptes depuis la page Canaux.',
-      },
-      {
-        question: 'TSCopier lit-il mes messages Telegram privés ?',
-        answer:
-          'TSCopier ne lit pas vos conversations personnelles. La connexion Telegram donne seulement accès aux canaux et groupes dont vous êtes membre pour recevoir les signaux que vous ajoutez.',
-      },
-      {
-        question: 'Puis-je tester un canal avant le live ?',
-        answer:
-          'Oui. Utilisez le backtest pour rejouer les signaux passés avec vos règles de lot, TPs, range et filtres—puis examinez les résultats avant d’activer la copie live.',
-      },
-      {
-        question: 'Prenez-vous en charge le range, le layering et la gestion ?',
-        answer:
-          'Oui. TSCopier gère entrées single et range, répartition multi-TP, layering, clôture des pires entrées, break-even, profits partiels et plus, avec filtres autoriser/ignorer par canal.',
-      },
-      {
-        question: 'Que comprend Basic vs Advanced ?',
-        answer:
-          'Basic couvre la copie essentielle sur un compte avec backtests et filtres de base. Advanced ajoute multi-comptes, couches en range, auto-gestion et canaux illimités. Voir Tarifs pour le détail actuel.',
+        description: 'TSCopier parse, planifie et envoie les ordres — vous supervisez depuis le tableau de bord.',
       },
     ],
   },
   reviews: {
-    title: 'Ce que disent les traders',
+    title: 'Approuvé par des traders',
     trustpilotLabel: 'Trustpilot',
-    items: testimonialsFr,
-  },
-  comparison: {
-    eyebrow: 'Pourquoi les traders changent',
-    title: 'Passez au niveau supérieur avec TSCopier',
-    subtitle:
-      'Copieurs Telegram classiques vs une plateforme cloud conçue pour la vitesse, la clarté et l’échelle.',
-    otherLabel: 'Autres copieurs',
-    tscopierLabel: 'TSCopier',
-    cta: 'Commencer gratuitement',
-    rows: [
+    items: [
       {
-        aspect: 'Mise en route',
-        other: 'Configuration difficile—beaucoup d’utilisateurs dépendent du support pour démarrer.',
-        tscopier: 'Onboarding guidé dans le navigateur ; la plupart copient en environ deux minutes.',
+        quote:
+          'TSCopier a réduit mon copiage manuel presque à zéro. Les signaux arrivent sur MT5 en quelques secondes.',
+        author: 'Rob Flemming',
       },
       {
-        aspect: 'Tableau de bord',
-        other: 'Interfaces encombrées qui noient l’essentiel.',
-        tscopier: 'Un tableau de bord épuré centré sur les canaux, l’exécution et la santé des comptes.',
+        quote:
+          'Tableau de bord clair, analyse fiable et logs faciles à déboguer.',
+        author: 'Sarah Mitchell',
       },
       {
-        aspect: 'Réglages',
-        other: 'Trop d’options—facile de mal configurer et de perdre confiance.',
-        tscopier: 'Valeurs par défaut intelligentes et contrôle fin par canal quand vous en avez besoin.',
-      },
-      {
-        aspect: 'Infrastructure',
-        other: 'VPS nécessaire pour faire tourner les EA 24h/24.',
-        tscopier: '100 % cloud : pas de téléchargement, pas d’EA ni de VPS à maintenir.',
-      },
-      {
-        aspect: 'Exécution',
-        other: 'Exécution lente après réception du signal sur Telegram.',
-        tscopier: 'Pipeline sous 150 ms du parsing à l’envoi courtier.',
-      },
-      {
-        aspect: 'Limite de comptes',
-        other: 'Souvent plafonné à 3–4 comptes liés.',
-        tscopier: 'Jusqu’à 100 connexions MT4/MT5 par utilisateur.',
-      },
-      {
-        aspect: 'Tarifs',
-        other: 'Grilles complexes, options payantes et limites surprises.',
-        tscopier: 'Offres claires avec les fonctions copieur essentielles incluses.',
-      },
-      {
-        aspect: 'Gestion des trades',
-        other: 'Intervention manuelle encore nécessaire pour modifications et clôtures.',
-        tscopier: 'Entrées, couches, déplacements SL/TP et signaux de gestion automatisés.',
-      },
-      {
-        aspect: 'Plateforme',
-        other: 'Fonctions clés vendues en modules ou upgrades séparés.',
-        tscopier: 'Copieur, backtest, journaux, actualités et calendrier dans un abonnement.',
-      },
-      {
-        aspect: 'Backtest',
-        other: 'Peu ou pas de replay réel de l’historique du canal avec vos règles.',
-        tscopier: 'Backtest des signaux passés avec vos réglages réels avant le live.',
+        quote:
+          'Couches en range et fermeture des pires entrées — je copie les signaux l’esprit tranquille.',
+        author: 'Eloise Laurent',
       },
     ],
   },
   pricing: {
-    title: 'Choisissez votre plan',
-    subtitle: 'Commencez à copier des signaux vers vos comptes de trading aujourd\'hui.',
+    title: 'Tarifs simples',
+    subtitle: 'Commencez avec Basic ou débloquez les stratégies avancées avec Advanced.',
+    perMonth: '/mois',
+    popular: 'Le plus populaire',
+    viewPlans: 'Voir tous les forfaits',
+    basic: {
+      name: 'Basic',
+      description: 'Un compte, mode single-trade, backtests et filtres essentiels.',
+      priceLabel: '9,99 $',
+      cta: 'Commencer avec Basic',
+    },
+    advanced: {
+      name: 'Advanced',
+      description: 'Multi-comptes, couches en range, auto-gestion, canaux illimités.',
+      priceLabel: '39,99 $',
+      cta: 'Essai 10 jours',
+    },
   },
   footer: {
-    cta: {
-      title: 'Prêt à copier des signaux sans le travail manuel ?',
-      subtitle:
-        'Reliez Telegram, connectez MT4 ou MT5 et commencez à copier en quelques minutes — sans VPS ni installation.',
-      primary: 'Commencer gratuitement',
-      secondary: 'Se connecter',
-    },
-    tagline: 'Copieur de signaux Telegram ultra-rapide pour comptes MetaTrader.',
-    columns: {
-      product: 'Produit',
-      resources: 'Ressources',
-      account: 'Compte',
-    },
-    links: {
-      overview: 'Aperçu',
-      features: 'Fonctionnalités',
-      pricing: 'Tarifs',
-      howItWorks: 'Comment ça marche',
-      faq: 'FAQ',
-      docs: 'Documentation',
-      status: 'État du système',
-      telegram: 'Support Telegram',
-      signIn: 'Se connecter',
-      signUp: 'Créer un compte',
-      openApp: 'Ouvrir le tableau de bord',
-    },
-    platforms: 'Compatible avec',
-    copyright: '© {year} Tartarix Inc. Tous droits réservés.',
-    disclaimer:
-      'Le trading comporte des risques. TSCopier est un outil de copie — pas un conseil financier.',
+    copyright: '© {year} Tartarix Inc.',
+    docs: 'Documentation',
+    status: 'Statut',
+    openApp: 'Ouvrir l’app',
   },
 }
