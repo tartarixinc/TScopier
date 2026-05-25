@@ -1,6 +1,9 @@
-import { useEffect, type Dispatch, type SetStateAction } from 'react'
+import { useEffect, useRef, type Dispatch, type SetStateAction } from 'react'
 import { supabase } from '../lib/supabase'
 import type { BrokerAccount } from '../types/database'
+import { metatraderApi } from '../lib/metatraderapi'
+
+const RECONNECT_DEBOUNCE_MS = 3_000
 
 function isSessionDisconnectLog(row: {
   action?: string
@@ -23,12 +26,14 @@ function isSessionDisconnectLog(row: {
 
 /**
  * When the worker logs an order failure/skip due to a dead MT session, reflect
- * that immediately on the broker list (don't wait for the next health poll).
+ * that immediately on the broker list and trigger a silent reconnect attempt.
  */
 export function useBrokerSessionFailureRealtime(
   userId: string | undefined,
   setBrokers: Dispatch<SetStateAction<BrokerAccount[]>>,
 ): void {
+  const reconnectTimeouts = useRef(new Map<string, ReturnType<typeof setTimeout>>())
+
   useEffect(() => {
     if (!userId) return
 
@@ -58,12 +63,45 @@ export function useBrokerSessionFailureRealtime(
               b.id === brokerId ? { ...b, connection_status: 'error' as const } : b,
             ),
           )
+
+          if (!reconnectTimeouts.current.has(brokerId)) {
+            const timeout = setTimeout(async () => {
+              reconnectTimeouts.current.delete(brokerId)
+              try {
+                const result = await metatraderApi.reconnect(brokerId)
+                if (result.connection_status === 'connected') {
+                  setBrokers(prev =>
+                    prev.map(b => {
+                      if (b.id !== brokerId) return b
+                      return {
+                        ...b,
+                        connection_status: 'connected' as const,
+                        last_synced_at: new Date().toISOString(),
+                        ...(result.summary
+                          ? {
+                              last_balance: result.summary.balance ?? b.last_balance,
+                              last_equity: result.summary.equity ?? b.last_equity,
+                              last_currency: result.summary.currency ?? b.last_currency,
+                            }
+                          : {}),
+                      }
+                    }),
+                  )
+                }
+              } catch {
+                // Silent — periodic reconnect loop will handle retries
+              }
+            }, RECONNECT_DEBOUNCE_MS)
+            reconnectTimeouts.current.set(brokerId, timeout)
+          }
         },
       )
       .subscribe()
 
     return () => {
       void supabase.removeChannel(channel)
+      for (const t of reconnectTimeouts.current.values()) clearTimeout(t)
+      reconnectTimeouts.current.clear()
     }
   }, [userId, setBrokers])
 }

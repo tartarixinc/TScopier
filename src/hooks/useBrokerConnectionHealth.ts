@@ -10,6 +10,7 @@ const FAILURES_BEFORE_DISCONNECT = 2
 /**
  * Periodically verify brokers marked "connected" can actually reach trading APIs.
  * Ignores auth/platform blips and requires consecutive failures before marking error.
+ * On disconnect, immediately attempts a silent reconnect.
  */
 export function useBrokerConnectionHealth(
   brokers: BrokerAccount[],
@@ -17,6 +18,7 @@ export function useBrokerConnectionHealth(
   baseIntervalMs = 20_000,
 ): void {
   const failCountsRef = useRef(new Map<string, number>())
+  const reconnectingRef = useRef(new Set<string>())
 
   const connectedIds = useMemo(
     () =>
@@ -33,6 +35,39 @@ export function useBrokerConnectionHealth(
 
     let cancelled = false
     const activeIds = new Set(connectedIds)
+
+    const attemptSilentReconnect = async (brokerId: string) => {
+      if (reconnectingRef.current.has(brokerId)) return
+      reconnectingRef.current.add(brokerId)
+      try {
+        const result = await metatraderApi.reconnect(brokerId)
+        if (cancelled) return
+        if (result.connection_status === 'connected') {
+          failCountsRef.current.delete(brokerId)
+          setBrokers(prev =>
+            prev.map(b => {
+              if (b.id !== brokerId) return b
+              return {
+                ...b,
+                connection_status: 'connected' as const,
+                last_synced_at: new Date().toISOString(),
+                ...(result.summary
+                  ? {
+                      last_balance: result.summary.balance ?? b.last_balance,
+                      last_equity: result.summary.equity ?? b.last_equity,
+                      last_currency: result.summary.currency ?? b.last_currency,
+                    }
+                  : {}),
+              }
+            }),
+          )
+        }
+      } catch {
+        // Silent — periodic reconnect loop will handle subsequent retries
+      } finally {
+        reconnectingRef.current.delete(brokerId)
+      }
+    }
 
     const verifyAll = async () => {
       if (cancelled || document.visibilityState !== 'visible') return
@@ -54,6 +89,7 @@ export function useBrokerConnectionHealth(
           setBrokers(prev =>
             prev.map(b => (b.id === id ? { ...b, connection_status: 'error' as const } : b)),
           )
+          void attemptSilentReconnect(id)
         }
         await new Promise(r => setTimeout(r, 800))
       }

@@ -1,12 +1,18 @@
-import { useEffect, type Dispatch, type SetStateAction } from 'react'
+import { useEffect, useRef, type Dispatch, type SetStateAction } from 'react'
 import { supabase } from '../lib/supabase'
 import type { BrokerAccount } from '../types/database'
+import { metatraderApi } from '../lib/metatraderapi'
+import { isMtSessionUuid } from '../lib/brokerLink'
+
+const RECONNECT_DEBOUNCE_MS = 3_000
 
 /** Keep broker list in sync when the worker or edge function updates connection_status. */
 export function useBrokerAccountsRealtime(
   userId: string | undefined,
   setBrokers: Dispatch<SetStateAction<BrokerAccount[]>>,
 ): void {
+  const reconnectTimeouts = useRef(new Map<string, ReturnType<typeof setTimeout>>())
+
   useEffect(() => {
     if (!userId) return
 
@@ -32,10 +38,45 @@ export function useBrokerAccountsRealtime(
               }
               return [...prev, row]
             }
-            // UPDATE — do not re-add rows the user just removed locally.
             if (idx < 0) return prev
             return prev.map(b => (b.id === row.id ? { ...b, ...row } : b))
           })
+
+          if (
+            row.connection_status === 'error'
+            && row.is_active
+            && isMtSessionUuid(row.metaapi_account_id)
+            && !reconnectTimeouts.current.has(row.id)
+          ) {
+            const timeout = setTimeout(async () => {
+              reconnectTimeouts.current.delete(row.id)
+              try {
+                const result = await metatraderApi.reconnect(row.id)
+                if (result.connection_status === 'connected') {
+                  setBrokers(prev =>
+                    prev.map(b => {
+                      if (b.id !== row.id) return b
+                      return {
+                        ...b,
+                        connection_status: 'connected' as const,
+                        last_synced_at: new Date().toISOString(),
+                        ...(result.summary
+                          ? {
+                              last_balance: result.summary.balance ?? b.last_balance,
+                              last_equity: result.summary.equity ?? b.last_equity,
+                              last_currency: result.summary.currency ?? b.last_currency,
+                            }
+                          : {}),
+                      }
+                    }),
+                  )
+                }
+              } catch {
+                // Silent — periodic loop will continue retrying
+              }
+            }, RECONNECT_DEBOUNCE_MS)
+            reconnectTimeouts.current.set(row.id, timeout)
+          }
         },
       )
       .subscribe(status => {
@@ -46,6 +87,8 @@ export function useBrokerAccountsRealtime(
 
     return () => {
       void supabase.removeChannel(channel)
+      for (const t of reconnectTimeouts.current.values()) clearTimeout(t)
+      reconnectTimeouts.current.clear()
     }
   }, [userId, setBrokers])
 }

@@ -54,7 +54,25 @@ export async function sessionHeartbeatTick(ctx: TradeExecutorContext, ): Promise
       const api = ctx.apiFor(row)
       if (!api) continue
       const alive = await api.keepSessionAlive(uuid!)
-      if (alive) ctx.sessionPingAt.set(uuid!, Date.now())
+      if (alive) {
+        ctx.sessionPingAt.set(uuid!, Date.now())
+        if (row.connection_status === 'error') {
+          row.connection_status = 'connected'
+          await writeBrokerConnectionStatus(ctx.supabase, row.id, 'connected')
+        }
+      } else {
+        await new Promise(r => setTimeout(r, 2000))
+        const retryAlive = await api.keepSessionAlive(uuid!)
+        if (retryAlive) {
+          ctx.sessionPingAt.set(uuid!, Date.now())
+          if (row.connection_status === 'error') {
+            row.connection_status = 'connected'
+            await writeBrokerConnectionStatus(ctx.supabase, row.id, 'connected')
+          }
+        } else {
+          await ctx.markBrokerSessionDown(row, uuid!, 'heartbeat keepSessionAlive failed')
+        }
+      }
     }
   }
 
@@ -98,17 +116,26 @@ export async function symbolCacheKeepaliveTick(ctx: TradeExecutorContext, ): Pro
   }
 
 export async function reconnectCachedBrokers(ctx: TradeExecutorContext, ) {
+    ctx.sessionOrderBlocked.clear()
     for (const row of ctx.brokersById.values()) {
       const uuid = row.metaapi_account_id
       if (!uuid || uuid.includes('|')) continue
       const api = ctx.apiFor(row)
       if (!api) continue
-      const ready = await api.verifyTradingReady(uuid)
-      if (!ready) {
-        console.warn(`[tradeExecutor] session not trading-ready for broker=${row.id}`)
+      const alive = await api.keepSessionAlive(uuid)
+      if (alive) {
+        ctx.sessionPingAt.set(uuid, Date.now())
+        if (row.connection_status !== 'connected') {
+          console.log(`[tradeExecutor] broker=${row.id} recovered on startup`)
+          row.connection_status = 'connected'
+          await writeBrokerConnectionStatus(ctx.supabase, row.id, 'connected')
+        }
+      } else {
+        console.warn(`[tradeExecutor] session not alive for broker=${row.id} on startup`)
         row.connection_status = 'error'
         await writeBrokerConnectionStatus(ctx.supabase, row.id, 'error')
       }
+      await new Promise(r => setTimeout(r, 500))
     }
   }
 

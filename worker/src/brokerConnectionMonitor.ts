@@ -24,9 +24,22 @@ interface BrokerRow {
   connection_status: string | null
 }
 
+interface BackoffEntry {
+  fails: number
+  lastAttemptAt: number
+  nextEligibleAt: number
+}
+
+const BACKOFF_BASE_MS = 60_000
+const BACKOFF_MAX_MS = 600_000
+
+function nextBackoffMs(fails: number): number {
+  return Math.min(BACKOFF_BASE_MS * Math.pow(2, Math.min(fails - 1, 8)), BACKOFF_MAX_MS)
+}
+
 /**
  * Keeps MetatraderAPI sessions alive with lightweight CheckConnect pings.
- * Only calls ConnectByToken when the session is down; avoids flipping status on transient blips.
+ * Actively reconnects downed sessions via ConnectByToken with exponential backoff.
  */
 const RECONNECT_ACTIVE_MS = monitorActiveIntervalMs(
   'BROKER_RECONNECT_INTERVAL_MS',
@@ -36,13 +49,11 @@ const RECONNECT_IDLE_MS = monitorIdleIntervalMs('BROKER_RECONNECT_IDLE_MS', 300_
 
 export class BrokerConnectionMonitor {
   private reconnectLoop: MonitorLoopHandle | null = null
-  private readonly failStreak = new Map<string, number>()
+  private readonly backoff = new Map<string, BackoffEntry>()
 
   constructor(private readonly supabase: SupabaseClient) {}
 
   start() {
-    // Keepalive pings run in TradeExecutor.sessionHeartbeatTick (in-memory broker cache).
-    // This monitor only handles reconnect sweeps and connection_status updates.
     if (!this.reconnectLoop) {
       this.reconnectLoop = startMonitorLoop({
         name: 'brokerConnectionReconnect',
@@ -65,6 +76,10 @@ export class BrokerConnectionMonitor {
     return [this.reconnectLoop].filter(Boolean) as MonitorLoopHandle[]
   }
 
+  resetBackoff(brokerId: string): void {
+    this.backoff.delete(brokerId)
+  }
+
   private clientFor(platform: string) {
     return getMetatraderApi(mtPlatformFrom(platform))
   }
@@ -85,29 +100,50 @@ export class BrokerConnectionMonitor {
       return
     }
     const rows = (data ?? []) as BrokerRow[]
+    const now = Date.now()
     let ok = 0
-    let failed = 0
+    let reconnected = 0
+    let skipped = 0
+
     for (const row of rows) {
       const uuid = row.metaapi_account_id?.trim()
       if (!isMtUuid(uuid)) continue
       const api = this.clientFor(row.platform)
       if (!api) continue
-      const ready = await api.verifyTradingReady(uuid!)
-      if (ready) {
-        this.failStreak.delete(row.id)
+
+      const entry = this.backoff.get(row.id)
+      if (entry && now < entry.nextEligibleAt) {
+        skipped++
+        continue
+      }
+
+      const alive = await api.keepSessionAlive(uuid!)
+      if (alive) {
+        if (this.backoff.has(row.id)) {
+          console.log(`[brokerConnection] broker=${row.id} recovered after backoff`)
+        }
+        this.backoff.delete(row.id)
         ok++
+        if (row.connection_status !== 'connected') {
+          await writeBrokerConnectionStatus(this.supabase, row.id, 'connected')
+        }
       } else {
-        const streak = (this.failStreak.get(row.id) ?? 0) + 1
-        this.failStreak.set(row.id, streak)
-        failed++
-        if (streak >= 2 && row.connection_status !== 'error') {
-          console.warn(`[brokerConnection] session down broker=${row.id} (streak=${streak})`)
+        const prev = this.backoff.get(row.id)
+        const fails = (prev?.fails ?? 0) + 1
+        const delay = nextBackoffMs(fails)
+        this.backoff.set(row.id, { fails, lastAttemptAt: now, nextEligibleAt: now + delay })
+
+        if (fails >= 2 && row.connection_status !== 'error') {
           await writeBrokerConnectionStatus(this.supabase, row.id, 'error')
         }
+        if (fails <= 3 || fails % 10 === 0) {
+          console.warn(`[brokerConnection] broker=${row.id} down (fails=${fails}, next retry in ${Math.round(delay / 1000)}s)`)
+        }
+        reconnected++
       }
     }
-    if (ok > 0 || failed > 0) {
-      console.log(`[brokerConnection] tick: ${ok} alive, ${failed} down`)
+    if (ok > 0 || reconnected > 0 || skipped > 0) {
+      console.log(`[brokerConnection] tick: ${ok} alive, ${reconnected} failed, ${skipped} in backoff`)
     }
   }
 }
