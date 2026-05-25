@@ -8,6 +8,7 @@ exports.parsedHasReEnterIntent = parsedHasReEnterIntent;
 exports.classifyPricesByDirection = classifyPricesByDirection;
 exports.extractUnlabeledPrices = extractUnlabeledPrices;
 exports.entryReferenceFromParsed = entryReferenceFromParsed;
+const signalPriceFormat_1 = require("./signalPriceFormat");
 /** True when the channel explicitly asks to add a new trade (not modify existing). */
 function detectReEnterIntent(message) {
     return /\bre[-\s]?enter\b/i.test(String(message ?? ''));
@@ -73,8 +74,8 @@ function collectLabeledSpans(message) {
     const spans = [];
     const addMatches = (rx) => {
         for (const m of text.matchAll(rx)) {
-            const value = Number(m[1]);
-            if (!Number.isFinite(value) || value <= 0)
+            const value = (0, signalPriceFormat_1.parseSignalPriceToken)(m[1]);
+            if (value == null)
                 continue;
             spans.push({
                 start: m.index ?? 0,
@@ -83,27 +84,25 @@ function collectLabeledSpans(message) {
             });
         }
     };
-    addMatches(/\b(?:sl|stop\s*loss)\s*[:=]?\s*(\d+(?:\.\d+)?)/gi);
-    addMatches(/\b(?:sl|stop\s*loss)\s+to\s+(\d+(?:\.\d+)?)/gi);
-    addMatches(/\b(?:tp|take\s*profit|target)\s*#\s*\d+\s*[:=\-]\s*(\d+(?:\.\d+)?)/gi);
-    addMatches(/\b(?:tp|take\s*profit|target)\s+\d+\s*[:=\-]\s*(\d+(?:\.\d+)?)/gi);
-    addMatches(/\b(?:tp|take\s*profit|target)\s*\d+\s+(\d+(?:\.\d+)?)/gi);
-    addMatches(/\b(?:tp|take\s*profit|target)\s*[:=]?\s*(\d+(?:\.\d+)?)/gi);
-    addMatches(/\bentry\s*(?:price)?\s*[:=]\s*(\d+(?:\.\d+)?)/gi);
-    addMatches(/@\s*(\d+(?:\.\d+)?)/g);
-    addMatches(/\b(?:buy|sell)\s+at\s+(\d+(?:\.\d+)?)/gi);
-    addMatches(/\bentry\s+(\d+(?:\.\d+)?)/gi);
+    addMatches(new RegExp(`\\b(?:sl|stop\\s*loss)\\s*[:=]?\\s*(${signalPriceFormat_1.SIGNAL_PRICE_NUM})`, 'gi'));
+    addMatches(new RegExp(`\\b(?:sl|stop\\s*loss)\\s+to\\s+(${signalPriceFormat_1.SIGNAL_PRICE_NUM})`, 'gi'));
+    addMatches(new RegExp(`\\b(?:tp|take\\s*profit|target(?:\\s+level)?)\\s*#\\s*\\d+\\s*[:=\\-]\\s*(${signalPriceFormat_1.SIGNAL_PRICE_NUM})`, 'gi'));
+    addMatches(new RegExp(`\\b(?:tp|take\\s*profit|target(?:\\s+level)?)\\s+\\d+\\s*[:=\\-]\\s*(${signalPriceFormat_1.SIGNAL_PRICE_NUM})`, 'gi'));
+    addMatches(new RegExp(`\\b(?:tp|take\\s*profit|target(?:\\s+level)?)\\s*\\d+\\s+(${signalPriceFormat_1.SIGNAL_PRICE_NUM})`, 'gi'));
+    addMatches(new RegExp(`\\b(?:tp|take\\s*profit|target(?:\\s+level)?)\\s*[:=]?\\s*(${signalPriceFormat_1.SIGNAL_PRICE_NUM})`, 'gi'));
+    addMatches(new RegExp(`\\bentry\\s*(?:price|level)?\\s*[:=]\\s*(${signalPriceFormat_1.SIGNAL_PRICE_NUM})`, 'gi'));
+    addMatches(new RegExp(`\\bentry\\s+level\\s*[:=]?\\s*(${signalPriceFormat_1.SIGNAL_PRICE_NUM})`, 'gi'));
+    addMatches(new RegExp(`@\\s*(${signalPriceFormat_1.SIGNAL_PRICE_NUM})`, 'g'));
+    addMatches(new RegExp(`\\b(?:buy|sell)\\s+at\\s+(${signalPriceFormat_1.SIGNAL_PRICE_NUM})`, 'gi'));
+    addMatches(new RegExp(`\\bentry\\s+(${signalPriceFormat_1.SIGNAL_PRICE_NUM})`, 'gi'));
     // TP: 4557 / 4527 — each slash-separated value is labeled
-    for (const m of text.matchAll(/\b(?:tp|take\s*profit|target)\s*[:=]?\s*((?:\d+(?:\.\d+)?(?:\s*(?:\/|,|and|\|)\s*)?)+\d+(?:\.\d+)?)/gi)) {
+    for (const m of text.matchAll(/\b(?:tp|take\s*profit|target(?:\s+level)?)\s*[:=]?\s*((?:\d+(?:\.\d+)?(?:\s*(?:\/|\band\b|\|)\s*)+)+\d+(?:\.\d+)?)/gi)) {
         const block = m[1] ?? '';
         const base = m.index ?? 0;
         const offset = m[0].indexOf(block);
-        for (const part of block.split(/\s*(?:\/|,|\band\b|\|)\s*/i)) {
-            const value = Number(part.trim());
-            if (!Number.isFinite(value) || value <= 0)
-                continue;
-            const partStart = base + offset + block.indexOf(part);
-            spans.push({ start: partStart, end: partStart + part.length, value });
+        for (const value of (0, signalPriceFormat_1.parseSignalPriceListBlock)(block.replace(/,/g, ''))) {
+            const partStart = base + offset;
+            spans.push({ start: partStart, end: partStart + block.length, value });
         }
     }
     return spans;
@@ -124,7 +123,7 @@ function extractUnlabeledPrices(message) {
     const labeled = collectLabeledSpans(text);
     const out = [];
     const seen = new Set();
-    for (const m of text.matchAll(/\d+(?:\.\d+)?/g)) {
+    for (const m of text.matchAll((0, signalPriceFormat_1.signalPriceTokenRegex)())) {
         const raw = m[0];
         const index = m.index ?? 0;
         if (isInsideSpan(index, raw.length, labeled))
@@ -137,12 +136,12 @@ function extractUnlabeledPrices(message) {
             const close = after.indexOf(')');
             if (close > 0) {
                 const inner = after.slice(1, close).trim();
-                if (/^\d+(?:\.\d+)?$/.test(inner))
+                if (new RegExp(`^${signalPriceFormat_1.SIGNAL_PRICE_NUM}$`).test(inner))
                     continue;
             }
         }
-        const value = Number(raw);
-        if (!Number.isFinite(value) || value <= 0 || seen.has(value))
+        const value = (0, signalPriceFormat_1.parseSignalPriceToken)(raw);
+        if (value == null || seen.has(value))
             continue;
         seen.add(value);
         out.push(value);

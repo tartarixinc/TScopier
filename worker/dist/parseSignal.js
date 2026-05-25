@@ -8,6 +8,7 @@ exports.parseChannelMessageSync = parseChannelMessageSync;
 exports.parseRawChannelMessage = parseRawChannelMessage;
 const signalPriceInference_1 = require("./signalPriceInference");
 const signalManagementIntent_1 = require("./signalManagementIntent");
+const signalPriceFormat_1 = require("./signalPriceFormat");
 const tradableSymbol_1 = require("./tradableSymbol");
 exports.DEFAULT_CHANNEL_KEYWORDS = {
     signal: {
@@ -134,38 +135,40 @@ function parseSideFromKeywords(text, words) {
     return hasAnyKeyword(text, words);
 }
 function buildTpRegex(extraLabels = []) {
-    const base = ["tp", "take\\s*profit", "target"];
+    const base = ["tp", "take\\s*profit", "target(?:\\s+level)?"];
     const custom = extraLabels.map((x) => escapeRegExp(x.trim())).filter(Boolean);
-    return new RegExp(`\\b(?:${[...base, ...custom].join("|")})\\s*\\d*\\s*[:=\\-]?\\s*(\\d+(?:\\.\\d+)?)`, "gi");
+    return new RegExp(`\\b(?:${[...base, ...custom].join("|")})\\s*\\d*\\s*[:=\\-]?\\s*(${signalPriceFormat_1.SIGNAL_PRICE_NUM})`, "gi");
 }
 function extractTpLevels(message, extraLabels = []) {
     const text = String(message ?? "");
     const hits = [];
     const collect = (rx) => {
         for (const m of text.matchAll(rx)) {
-            const value = Number(m[1]);
-            if (!Number.isFinite(value))
+            const value = (0, signalPriceFormat_1.parseSignalPriceToken)(m[1]);
+            if (value == null)
                 continue;
             hits.push({ index: m.index ?? 0, value });
         }
     };
     collect(buildTpRegex(extraLabels));
-    // TP #1: 4564 / TP#2: 4527 (hash-numbered tiers — common in signal channels)
-    collect(/\b(?:tp|take\s*profit|target)\s*#\s*\d+\s*[:=\-]\s*(\d+(?:\.\d+)?)/gi);
+    // TP #1: 4564 / TP#2: 4,527 (hash-numbered tiers — common in signal channels)
+    collect(new RegExp(`\\b(?:tp|take\\s*profit|target(?:\\s+level)?)\\s*#\\s*\\d+\\s*[:=\\-]\\s*(${signalPriceFormat_1.SIGNAL_PRICE_NUM})`, 'gi'));
     // TP 1: 4564 (numbered without hash)
-    collect(/\b(?:tp|take\s*profit|target)\s+\d+\s*[:=\-]\s*(\d+(?:\.\d+)?)/gi);
+    collect(new RegExp(`\\b(?:tp|take\\s*profit|target(?:\\s+level)?)\\s+\\d+\\s*[:=\\-]\\s*(${signalPriceFormat_1.SIGNAL_PRICE_NUM})`, 'gi'));
     // TP1 4564 (space-separated tier number)
-    collect(/\b(?:tp|target)\s*\d+\s+(\d+(?:\.\d+)?)/gi);
-    // TP: 4557 / 4527 (slash- or comma-separated tiers on one label)
-    for (const m of text.matchAll(/\b(?:tp|take\s*profit|target)\s*[:=]?\s*((?:\d+(?:\.\d+)?(?:\s*(?:\/|,|and|\|)\s*)?)+\d+(?:\.\d+)?)/gi)) {
+    collect(new RegExp(`\\b(?:tp|target(?:\\s+level)?)\\s*\\d+\\s+(${signalPriceFormat_1.SIGNAL_PRICE_NUM})`, 'gi'));
+    // TP: 4557 / 4527 (slash-separated tiers on one label — not thousands commas)
+    for (const m of text.matchAll(/\b(?:tp|take\s*profit|target(?:\s+level)?)\s*[:=]?\s*((?:\d+(?:\.\d+)?(?:\s*(?:\/|\band\b|\|)\s*)+)+\d+(?:\.\d+)?)/gi)) {
         const block = m[1] ?? '';
         const base = m.index ?? 0;
         const offset = m[0].indexOf(block);
-        for (const part of block.split(/\s*(?:\/|,|\band\b|\|)\s*/i)) {
-            const value = Number(part.trim());
-            if (!Number.isFinite(value) || value <= 0)
+        const normalized = block.replace(/,/g, '');
+        for (const part of normalized.split(/\s*(?:\/|\band\b|\|)\s*/i)) {
+            const value = (0, signalPriceFormat_1.parseSignalPriceToken)(part.trim());
+            if (value == null)
                 continue;
-            hits.push({ index: base + offset + block.indexOf(part), value });
+            const partStart = base + offset + normalized.indexOf(part);
+            hits.push({ index: partStart, value });
         }
     }
     if (!hits.length)
@@ -194,11 +197,11 @@ function extractPriceByLabels(message, labels) {
         const k = String(label ?? "").trim();
         if (!k)
             continue;
-        const rx = new RegExp(`${escapeRegExp(k).replace(/\s+/g, "\\s*")}\\s*[:=\\-]?\\s*(\\d+(?:\\.\\d+)?)`, "i");
+        const rx = new RegExp(`${escapeRegExp(k).replace(/\s+/g, "\\s*")}\\s*[:=\\-]?\\s*(${signalPriceFormat_1.SIGNAL_PRICE_NUM})`, "i");
         const m = message.match(rx);
         if (m?.[1]) {
-            const n = Number(m[1]);
-            if (Number.isFinite(n))
+            const n = (0, signalPriceFormat_1.parseSignalPriceToken)(m[1]);
+            if (n != null)
                 return n;
         }
     }
@@ -274,6 +277,15 @@ function wantsExplicitFullClose(message, kwClose) {
     if ((0, signalManagementIntent_1.looksLikeExplicitFullCloseCommand)(message))
         return true;
     return hasAnyKeyword(message, kwClose);
+}
+function parseSlFromText(text) {
+    const slMatchStandard = text.match(new RegExp(`\\b(?:sl|stop\\s*loss)\\s*[:=]?\\s*(${signalPriceFormat_1.SIGNAL_PRICE_NUM})`, 'i'));
+    if (slMatchStandard?.[1])
+        return (0, signalPriceFormat_1.parseSignalPriceToken)(slMatchStandard[1]);
+    const slMatchTo = text.match(new RegExp(`\\b(?:sl|stop\\s*loss)\\s+to\\s+(${signalPriceFormat_1.SIGNAL_PRICE_NUM})`, 'i'));
+    if (slMatchTo?.[1])
+        return (0, signalPriceFormat_1.parseSignalPriceToken)(slMatchTo[1]);
+    return null;
 }
 function parseDeterministicManagement(message, lexicon, channelKeywords) {
     const t = message.replace(/\s+/g, " ").trim();
@@ -380,19 +392,13 @@ function parseDeterministicManagement(message, lexicon, channelKeywords) {
         ...splitKeywordAliases(channelKeywords.update.set_sl, delim),
         ...splitKeywordAliases(channelKeywords.update.adjust_sl, delim),
     ];
-    const slMatchStandard = t.match(/\b(?:sl|stop\s*loss)\s*[:=]?\s*(\d+(?:\.\d+)?)/i);
-    const slMatchTo = t.match(/\b(?:sl|stop\s*loss)\s+to\s+(\d+(?:\.\d+)?)/i);
+    const slMatchStandard = t.match(new RegExp(`\\b(?:sl|stop\\s*loss)\\s*[:=]?\\s*(${signalPriceFormat_1.SIGNAL_PRICE_NUM})`, 'i'));
+    const slMatchTo = t.match(new RegExp(`\\b(?:sl|stop\\s*loss)\\s+to\\s+(${signalPriceFormat_1.SIGNAL_PRICE_NUM})`, 'i'));
     let sl = null;
-    if (slMatchStandard?.[1]) {
-        const n = Number(slMatchStandard[1]);
-        if (Number.isFinite(n))
-            sl = n;
-    }
-    if (sl == null && slMatchTo?.[1]) {
-        const n = Number(slMatchTo[1]);
-        if (Number.isFinite(n))
-            sl = n;
-    }
+    if (slMatchStandard?.[1])
+        sl = (0, signalPriceFormat_1.parseSignalPriceToken)(slMatchStandard[1]);
+    if (sl == null && slMatchTo?.[1])
+        sl = (0, signalPriceFormat_1.parseSignalPriceToken)(slMatchTo[1]);
     if (sl == null)
         sl = extractPriceByLabels(t, slPriceLabels);
     const extraTp = [
@@ -425,48 +431,39 @@ function parseDeterministicManagement(message, lexicon, channelKeywords) {
 function extractOptionalEntryAnchor(message, channelKeywords) {
     const text = message.replace(/\s+/g, " ").trim();
     const delim = channelKeywords.additional.delimiters;
-    const zone = text.match(/\b(?:between|from)\s+(\d+(?:\.\d+)?)\s+(?:and|to|-|–)\s+(\d+(?:\.\d+)?)\b/i);
+    const zone = text.match(new RegExp(`\\b(?:between|from)\\s+(${signalPriceFormat_1.SIGNAL_PRICE_NUM})\\s+(?:and|to|-|–)\\s+(${signalPriceFormat_1.SIGNAL_PRICE_NUM})\\b`, 'i'));
     let entry_zone_low = null;
     let entry_zone_high = null;
     let entry_price = null;
     if (zone?.[1] && zone?.[2]) {
-        const a = Number(zone[1]);
-        const b = Number(zone[2]);
-        if (Number.isFinite(a) && Number.isFinite(b)) {
+        const a = (0, signalPriceFormat_1.parseSignalPriceToken)(zone[1]);
+        const b = (0, signalPriceFormat_1.parseSignalPriceToken)(zone[2]);
+        if (a != null && b != null) {
             entry_zone_low = Math.min(a, b);
             entry_zone_high = Math.max(a, b);
         }
     }
     else {
-        const entryLabel = text.match(/\bentry\s*(?:price)?\s*[:=]\s*(\d+(?:\.\d+)?)\b/i);
-        if (entryLabel?.[1]) {
-            const n = Number(entryLabel[1]);
-            if (Number.isFinite(n) && n > 0)
-                entry_price = n;
+        const entryLevel = text.match(new RegExp(`\\bentry\\s+level\\s*[:=]?\\s*(${signalPriceFormat_1.SIGNAL_PRICE_NUM})\\b`, 'i'));
+        if (entryLevel?.[1])
+            entry_price = (0, signalPriceFormat_1.parseSignalPriceToken)(entryLevel[1]);
+        const entryLabel = text.match(new RegExp(`\\bentry\\s*(?:price|level)?\\s*[:=]\\s*(${signalPriceFormat_1.SIGNAL_PRICE_NUM})\\b`, 'i'));
+        if (entry_price == null && entryLabel?.[1])
+            entry_price = (0, signalPriceFormat_1.parseSignalPriceToken)(entryLabel[1]);
+        if (entry_price == null) {
+            const atPx = text.match(new RegExp(`@\\s*(${signalPriceFormat_1.SIGNAL_PRICE_NUM})\\b`));
+            if (atPx?.[1])
+                entry_price = (0, signalPriceFormat_1.parseSignalPriceToken)(atPx[1]);
         }
         if (entry_price == null) {
-            const atPx = text.match(/@\s*(\d+(?:\.\d+)?)\b/);
-            if (atPx?.[1]) {
-                const n = Number(atPx[1]);
-                if (Number.isFinite(n) && n > 0)
-                    entry_price = n;
-            }
+            const buySellAt = text.match(new RegExp(`\\b(?:buy|sell)\\s+at\\s+(${signalPriceFormat_1.SIGNAL_PRICE_NUM})\\b`, 'i'));
+            if (buySellAt?.[1])
+                entry_price = (0, signalPriceFormat_1.parseSignalPriceToken)(buySellAt[1]);
         }
         if (entry_price == null) {
-            const buySellAt = text.match(/\b(?:buy|sell)\s+at\s+(\d+(?:\.\d+)?)\b/i);
-            if (buySellAt?.[1]) {
-                const n = Number(buySellAt[1]);
-                if (Number.isFinite(n) && n > 0)
-                    entry_price = n;
-            }
-        }
-        if (entry_price == null) {
-            const entryWord = text.match(/\bentry\s+(\d+(?:\.\d+)?)\b/i);
-            if (entryWord?.[1]) {
-                const n = Number(entryWord[1]);
-                if (Number.isFinite(n) && n > 0)
-                    entry_price = n;
-            }
+            const entryWord = text.match(new RegExp(`\\bentry\\s+(${signalPriceFormat_1.SIGNAL_PRICE_NUM})\\b`, 'i'));
+            if (entryWord?.[1])
+                entry_price = (0, signalPriceFormat_1.parseSignalPriceToken)(entryWord[1]);
         }
         if (entry_price == null) {
             const entryLabels = splitKeywordAliases(channelKeywords.signal.entry_point, delim);
@@ -479,20 +476,14 @@ function extractOptionalEntryAnchor(message, channelKeywords) {
         //   "BUY XAUUSD NOW 2650", "BUY GOLD 2645.5 MARKET", "SELL BTCUSD 98000 NOW",
         //   "BUY XAUUSD 2650" / "SELL GOLD 2645.5" (market word optional — same anchor as with NOW).
         if (entry_price == null && entry_zone_low == null) {
-            const symPriceOptionalMarket = text.match(/\b(?:xauusd|xagusd|gold|silver|btcusd|btcusdt|ethusd|ethusdt|eurusd|gbpusd|usdjpy|us30|nas100)\s+(\d{3,}(?:\.\d+)?)(?:\s+(?:now|instant|market|mkt))?\b/i);
-            if (symPriceOptionalMarket?.[1]) {
-                const n = Number(symPriceOptionalMarket[1]);
-                if (Number.isFinite(n) && n > 0)
-                    entry_price = n;
-            }
+            const symPriceOptionalMarket = text.match(new RegExp(`\\b(?:xauusd|xagusd|gold|silver|btcusd|btcusdt|ethusd|ethusdt|eurusd|gbpusd|usdjpy|us30|nas100)\\s+(${signalPriceFormat_1.SIGNAL_PRICE_NUM})(?:\\s+(?:now|instant|market|mkt))?\\b`, 'i'));
+            if (symPriceOptionalMarket?.[1])
+                entry_price = (0, signalPriceFormat_1.parseSignalPriceToken)(symPriceOptionalMarket[1]);
         }
         if (entry_price == null && entry_zone_low == null) {
-            const marketThenPrice = text.match(/\b(?:now|instant|market|mkt)\s+(\d{3,}(?:\.\d+)?)\b/i);
-            if (marketThenPrice?.[1]) {
-                const n = Number(marketThenPrice[1]);
-                if (Number.isFinite(n) && n > 0)
-                    entry_price = n;
-            }
+            const marketThenPrice = text.match(new RegExp(`\\b(?:now|instant|market|mkt)\\s+(${signalPriceFormat_1.SIGNAL_PRICE_NUM})\\b`, 'i'));
+            if (marketThenPrice?.[1])
+                entry_price = (0, signalPriceFormat_1.parseSignalPriceToken)(marketThenPrice[1]);
         }
     }
     return { entry_price, entry_zone_low, entry_zone_high };
@@ -505,20 +496,12 @@ function extractSlFromMessage(message, channelKeywords) {
         ...splitKeywordAliases(channelKeywords.update.set_sl, delim),
         ...splitKeywordAliases(channelKeywords.update.adjust_sl, delim),
     ];
-    const slMatchStandard = text.match(/\b(?:sl|stop\s*loss)\s*[:=]?\s*(\d+(?:\.\d+)?)/i);
-    if (slMatchStandard?.[1]) {
-        const n = Number(slMatchStandard[1]);
-        if (Number.isFinite(n) && n > 0)
-            return n;
+    let sl = parseSlFromText(text);
+    if (sl == null) {
+        const fromLabel = extractPriceByLabels(text, slPriceLabels);
+        sl = fromLabel != null && fromLabel > 0 ? fromLabel : null;
     }
-    const slMatchTo = text.match(/\b(?:sl|stop\s*loss)\s+to\s+(\d+(?:\.\d+)?)/i);
-    if (slMatchTo?.[1]) {
-        const n = Number(slMatchTo[1]);
-        if (Number.isFinite(n) && n > 0)
-            return n;
-    }
-    const fromLabel = extractPriceByLabels(text, slPriceLabels);
-    return fromLabel != null && Number.isFinite(fromLabel) && fromLabel > 0 ? fromLabel : null;
+    return sl;
 }
 function buildExtraTpLabels(lexicon, channelKeywords) {
     const delim = channelKeywords.additional.delimiters;
@@ -541,7 +524,7 @@ function hasParameterEvidence(message, channelKeywords) {
         return true;
     if (/\bentry\s*(?:price)?\s*[:=]\s*\d/i.test(text))
         return true;
-    if (/@\s*\d+(?:\.\d+)?/.test(text))
+    if (new RegExp(`@\\s*${signalPriceFormat_1.SIGNAL_PRICE_NUM}`).test(text))
         return true;
     if (hasAnyKeyword(message, splitKeywordAliases(channelKeywords.signal.entry_point, delim)))
         return true;
@@ -679,8 +662,7 @@ function parseSimpleSignal(message, lexicon, channelKeywords) {
         /\b(us30|nas100|ger40|uk100|ustec|spx500)\b/i.test(text);
     if (!hasInstrumentContext)
         return null;
-    const slMatch = text.match(/\b(?:sl|stop\s*loss)\s*[:=]?\s*(\d+(?:\.\d+)?)/i);
-    const sl = slMatch ? Number(slMatch[1]) : extractPriceByLabels(message, splitKeywordAliases(channelKeywords.signal.sl, delim));
+    const sl = parseSlFromText(text) ?? extractPriceByLabels(message, splitKeywordAliases(channelKeywords.signal.sl, delim));
     const extraTp = [
         ...(lexicon?.tp_aliases ?? []),
         ...(lexicon?.target_aliases ?? []),
@@ -742,8 +724,7 @@ function parseEntryFromKeywords(message, lexicon, channelKeywords) {
         ...splitKeywordAliases(channelKeywords.signal.sl, delim),
         ...splitKeywordAliases(channelKeywords.update.set_sl, delim),
     ];
-    const slMatchStandard = text.match(/\b(?:sl|stop\s*loss)\s*[:=]?\s*(\d+(?:\.\d+)?)/i);
-    let sl = slMatchStandard?.[1] ? Number(slMatchStandard[1]) : null;
+    let sl = parseSlFromText(text);
     if (sl == null || !Number.isFinite(sl))
         sl = extractPriceByLabels(text, slPriceLabels);
     const extraTp = [
@@ -759,7 +740,7 @@ function parseEntryFromKeywords(message, lexicon, channelKeywords) {
         (sl != null && Number.isFinite(sl)) ||
         tp.length > 0 ||
         /\b(limit|pending|@)\b/i.test(text) ||
-        /\d{3,}(?:\.\d+)?/.test(text);
+        new RegExp(signalPriceFormat_1.SIGNAL_PRICE_NUM).test(text);
     if (!hasPriceEvidence)
         return null;
     const { entry_price, entry_zone_low, entry_zone_high } = extractOptionalEntryAnchor(message, channelKeywords);

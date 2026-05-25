@@ -2,6 +2,8 @@
  * Directional TP/SL inference from bare prices and re-enter intent detection.
  */
 
+import { SIGNAL_PRICE_NUM, parseSignalPriceListBlock, parseSignalPriceToken, signalPriceTokenRegex } from './signalPriceFormat.ts'
+
 export type TradeDirection = 'buy' | 'sell'
 
 export type ClassifiedStops = {
@@ -88,8 +90,8 @@ function collectLabeledSpans(message: string): LabeledPriceSpan[] {
 
   const addMatches = (rx: RegExp) => {
     for (const m of text.matchAll(rx)) {
-      const value = Number(m[1])
-      if (!Number.isFinite(value) || value <= 0) continue
+      const value = parseSignalPriceToken(m[1])
+      if (value == null) continue
       spans.push({
         start: m.index ?? 0,
         end: (m.index ?? 0) + m[0].length,
@@ -98,28 +100,27 @@ function collectLabeledSpans(message: string): LabeledPriceSpan[] {
     }
   }
 
-  addMatches(/\b(?:sl|stop\s*loss)\s*[:=]?\s*(\d+(?:\.\d+)?)/gi)
-  addMatches(/\b(?:sl|stop\s*loss)\s+to\s+(\d+(?:\.\d+)?)/gi)
-  addMatches(/\b(?:tp|take\s*profit|target)\s*#\s*\d+\s*[:=\-]\s*(\d+(?:\.\d+)?)/gi)
-  addMatches(/\b(?:tp|take\s*profit|target)\s+\d+\s*[:=\-]\s*(\d+(?:\.\d+)?)/gi)
-  addMatches(/\b(?:tp|take\s*profit|target)\s*\d+\s+(\d+(?:\.\d+)?)/gi)
-  addMatches(/\b(?:tp|take\s*profit|target)\s*[:=]?\s*(\d+(?:\.\d+)?)/gi)
-  addMatches(/\bentry\s*(?:price)?\s*[:=]\s*(\d+(?:\.\d+)?)/gi)
-  addMatches(/@\s*(\d+(?:\.\d+)?)/g)
-  addMatches(/\b(?:buy|sell)\s+at\s+(\d+(?:\.\d+)?)/gi)
-  addMatches(/\bentry\s+(\d+(?:\.\d+)?)/gi)
+  addMatches(new RegExp(`\\b(?:sl|stop\\s*loss)\\s*[:=]?\\s*(${SIGNAL_PRICE_NUM})`, 'gi'))
+  addMatches(new RegExp(`\\b(?:sl|stop\\s*loss)\\s+to\\s+(${SIGNAL_PRICE_NUM})`, 'gi'))
+  addMatches(new RegExp(`\\b(?:tp|take\\s*profit|target(?:\\s+level)?)\\s*#\\s*\\d+\\s*[:=\\-]\\s*(${SIGNAL_PRICE_NUM})`, 'gi'))
+  addMatches(new RegExp(`\\b(?:tp|take\\s*profit|target(?:\\s+level)?)\\s+\\d+\\s*[:=\\-]\\s*(${SIGNAL_PRICE_NUM})`, 'gi'))
+  addMatches(new RegExp(`\\b(?:tp|take\\s*profit|target(?:\\s+level)?)\\s*\\d+\\s+(${SIGNAL_PRICE_NUM})`, 'gi'))
+  addMatches(new RegExp(`\\b(?:tp|take\\s*profit|target(?:\\s+level)?)\\s*[:=]?\\s*(${SIGNAL_PRICE_NUM})`, 'gi'))
+  addMatches(new RegExp(`\\bentry\\s*(?:price|level)?\\s*[:=]\\s*(${SIGNAL_PRICE_NUM})`, 'gi'))
+  addMatches(new RegExp(`\\bentry\\s+level\\s*[:=]?\\s*(${SIGNAL_PRICE_NUM})`, 'gi'))
+  addMatches(new RegExp(`@\\s*(${SIGNAL_PRICE_NUM})`, 'g'))
+  addMatches(new RegExp(`\\b(?:buy|sell)\\s+at\\s+(${SIGNAL_PRICE_NUM})`, 'gi'))
+  addMatches(new RegExp(`\\bentry\\s+(${SIGNAL_PRICE_NUM})`, 'gi'))
 
   for (const m of text.matchAll(
-    /\b(?:tp|take\s*profit|target)\s*[:=]?\s*((?:\d+(?:\.\d+)?(?:\s*(?:\/|,|and|\|)\s*)?)+\d+(?:\.\d+)?)/gi,
+    /\b(?:tp|take\s*profit|target(?:\s+level)?)\s*[:=]?\s*((?:\d+(?:\.\d+)?(?:\s*(?:\/|\band\b|\|)\s*)+)+\d+(?:\.\d+)?)/gi,
   )) {
     const block = m[1] ?? ''
     const base = m.index ?? 0
     const offset = m[0].indexOf(block)
-    for (const part of block.split(/\s*(?:\/|,|\band\b|\|)\s*/i)) {
-      const value = Number(part.trim())
-      if (!Number.isFinite(value) || value <= 0) continue
-      const partStart = base + offset + block.indexOf(part)
-      spans.push({ start: partStart, end: partStart + part.length, value })
+    for (const value of parseSignalPriceListBlock(block.replace(/,/g, ''))) {
+      const partStart = base + offset
+      spans.push({ start: partStart, end: partStart + block.length, value })
     }
   }
 
@@ -145,7 +146,7 @@ export function extractUnlabeledPrices(message: string): number[] {
   const out: number[] = []
   const seen = new Set<number>()
 
-  for (const m of text.matchAll(/\d+(?:\.\d+)?/g)) {
+  for (const m of text.matchAll(signalPriceTokenRegex())) {
     const raw = m[0]
     const index = m.index ?? 0
     if (isInsideSpan(index, raw.length, labeled)) continue
@@ -156,12 +157,12 @@ export function extractUnlabeledPrices(message: string): number[] {
       const close = after.indexOf(')')
       if (close > 0) {
         const inner = after.slice(1, close).trim()
-        if (/^\d+(?:\.\d+)?$/.test(inner)) continue
+        if (new RegExp(`^${SIGNAL_PRICE_NUM}$`).test(inner)) continue
       }
     }
 
-    const value = Number(raw)
-    if (!Number.isFinite(value) || value <= 0 || seen.has(value)) continue
+    const value = parseSignalPriceToken(raw)
+    if (value == null || seen.has(value)) continue
     seen.add(value)
     out.push(value)
   }

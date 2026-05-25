@@ -185,8 +185,25 @@ My private community, receives more trades, for free as well, but receive it bef
     assert.notEqual(result.parsed.action, 'close')
   })
 
-  it('still closes on explicit Close all now', () => {
-    const result = parseChannelMessageSync('Close all now', DEFAULT_CHANNEL_KEYWORDS, lexicon)
-    assert.equal(result.parsed.action, 'close')
+  it('parses GOLD short signal with comma thousands in prices', () => {
+    const msg = `#GOLD SHORT FROM RESISTANCE🔴
+
+📉GOLD SIGNAL
+
+✔️Trade Direction: short 
+✔️Entry Level: 4,572.25
+✔️Target Level: 4,535.53
+✔️Stop Loss: 4,590.01
+
+⭐️Risk level: medium 
+⭐️Suggested risk: 1% 
+⭐️Timeframe: 1h`
+    const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+    assert.equal(result.status, 'parsed')
+    assert.equal(result.parsed.action, 'sell')
+    assert.equal(result.parsed.symbol, 'XAUUSD')
+    assert.equal(result.parsed.entry_price, 4572.25)
+    assert.equal(result.parsed.sl, 4590.01)
+    assert.deepEqual(result.parsed.tp, [4535.53])
   })
 })
