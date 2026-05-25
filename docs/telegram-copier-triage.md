@@ -103,7 +103,9 @@ MESSAGE='BUY XAUUSD NOW SL 2650 TP 2700' \
 
 Listener logs to grep: `heuristic_rejected`, `duplicate_message_skipped`, `parse_http_failed`, `image_only_message` in `listener_events` (query #12).
 
-**Cross-channel message id collisions:** Telegram message ids are only unique per chat. If multiple channels stop ingesting while others work, run query **#13** and apply migration `20260525160000_signals_per_channel_message_unique.sql` (dedupe key is `user_id + channel_id + telegram_message_id`, not `user_id + telegram_message_id` alone).
+**Cross-channel message id collisions:** Telegram message ids are only unique per chat. If multiple channels stop ingesting while others work, run query **#13** and apply migration `20260525160000_signals_per_channel_message_unique.sql` (dedupe key is `user_id + channel_id + telegram_message_id`, not `user_id + telegram_message_id` alone). **Redeploy the Telethon listener** after the migration — the old listener still drops messages when another channel already used the same numeric message id.
+
+**SIGNALS 2 missing but query #13 shows Signal Tester:** run query **#14** (ingest health) and **#15** (duplicate channel rows). Deactivate stale duplicates with [`prune_duplicate_telegram_channels.sql`](../scripts/diagnostics/prune_duplicate_telegram_channels.sql), then redeploy Telethon. Check query **#12** for `duplicate_message_skipped` or `signal_persist_failed` on the SIGNALS 2 `channel_row_id`.
 
 ## 8. Incident note template
 

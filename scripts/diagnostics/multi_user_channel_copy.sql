@@ -112,7 +112,12 @@ where created_at > now() - interval '2 hours'
     'heuristic_rejected',
     'duplicate_message_skipped',
     'parse_http_failed',
-    'image_only_message'
+    'image_only_message',
+    'signal_persist_failed',
+    'channel_row_ambiguous',
+    'unmapped_channel',
+    'poll_peer_resolve_failed',
+    'poll_error'
   )
 order by created_at desc
 limit 100;
@@ -132,3 +137,46 @@ group by s.telegram_message_id
 having count(distinct s.channel_id) > 1
 order by latest_at desc
 limit 50;
+
+-- 14) Per-channel ingest health (find channels with live activity but no signals)
+select tc.display_name,
+       tc.id as channel_row_id,
+       tc.channel_id as tg_chat_id,
+       tc.channel_username,
+       tc.last_live_at,
+       tc.last_seen_at,
+       ls.last_signal_at,
+       ls.last_status,
+       ls.last_skip_reason,
+       coalesce(ev.events_2h, 0) as listener_events_2h
+from telegram_channels tc
+left join lateral (
+  select s.created_at as last_signal_at,
+         s.status as last_status,
+         s.skip_reason as last_skip_reason
+  from signals s
+  where s.channel_id = tc.id
+  order by s.created_at desc
+  limit 1
+) ls on true
+left join lateral (
+  select count(*)::int as events_2h
+  from listener_events le
+  where le.channel_row_id = tc.id
+    and le.created_at > now() - interval '2 hours'
+) ev on true
+where tc.is_active
+order by tc.display_name;
+
+-- 15) Duplicate active channel rows (same display name or same tg chat id)
+select user_id,
+       lower(trim(display_name)) as title,
+       count(*) as row_count,
+       array_agg(id::text order by coalesce(last_seen_at, created_at) desc nulls last) as channel_row_ids,
+       array_agg(channel_id order by coalesce(last_seen_at, created_at) desc nulls last) as tg_chat_ids,
+       array_agg(coalesce(last_seen_at::text, 'never') order by coalesce(last_seen_at, created_at) desc nulls last) as last_seen
+from telegram_channels
+where is_active
+group by user_id, lower(trim(display_name))
+having count(*) > 1
+order by row_count desc;

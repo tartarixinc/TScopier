@@ -266,11 +266,32 @@ class UserListener:
 
     def _resolve_channel_row(self, variants: list[str], username: str) -> ChannelRow | None:
         variant_set = set(variants)
+        matches: list[ChannelRow] = []
         for row in self.channel_rows:
             stored = str(row.channel_id or "").strip()
             if stored and is_numeric_chat_id(stored):
                 if any(v in variant_set for v in channel_id_variants(stored)):
+                    matches.append(row)
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            # Prefer exact chat id match over variant overlap (legacy mis-stored ids).
+            for row in matches:
+                stored = str(row.channel_id or "").strip()
+                if stored in variant_set:
+                    persist_listener_event(
+                        self.supabase,
+                        user_id=self.user_id,
+                        event_type="channel_row_ambiguous",
+                        channel_row_id=row.id,
+                        detail={
+                            "chat_variants": list(variant_set)[:8],
+                            "matched_rows": [r.id for r in matches],
+                            "picked": row.id,
+                        },
+                    )
                     return row
+            return matches[0]
         if username:
             for row in self.channel_rows:
                 if normalize_username(row.channel_username) == username:
@@ -330,7 +351,11 @@ class UserListener:
                 event_type="duplicate_message_skipped",
                 channel_row_id=row.id,
                 telegram_message_id=message_id,
-                detail={"source": source, "preview": raw[:160]},
+                detail={
+                    "source": source,
+                    "preview": raw[:160],
+                    "scope": "user_id+channel_id+telegram_message_id",
+                },
             )
             return
 
@@ -340,7 +365,10 @@ class UserListener:
                 channel_row_id=row.id, raw_message=raw, user_id=self.user_id
             )
         except Exception as exc:
-            print(f"[user_listener] parse failed signal={signal_id}: {exc}")
+            print(
+                f"[user_listener] parse failed user={self.user_id} channel={row.id}"
+                f" signal={signal_id}: {exc}",
+            )
             persist_listener_event(
                 self.supabase,
                 user_id=self.user_id,
@@ -421,9 +449,24 @@ class UserListener:
             payload["parsed_data"] = parsed_data
         if skip_reason:
             payload["skip_reason"] = skip_reason
-        self.supabase.table("signals").upsert(
-            payload, on_conflict="user_id,channel_id,telegram_message_id"
-        ).execute()
+        try:
+            self.supabase.table("signals").upsert(
+                payload, on_conflict="user_id,channel_id,telegram_message_id"
+            ).execute()
+        except Exception as exc:
+            persist_listener_event(
+                self.supabase,
+                user_id=self.user_id,
+                event_type="signal_persist_failed",
+                channel_row_id=row.id,
+                telegram_message_id=message_id,
+                detail={"error": str(exc)[:400], "signal_id": signal_id, "status": status},
+            )
+            print(
+                f"[user_listener] signal persist failed user={self.user_id} channel={row.id}"
+                f" msg={message_id}: {exc}",
+            )
+            return
         await self._bump_last_seen(row.id, message_id)
 
     async def _bump_last_seen(self, channel_row_id: str, message_id: str) -> None:
