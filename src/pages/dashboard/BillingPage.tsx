@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { CreditCard, ExternalLink, Plus, Minus } from 'lucide-react'
 import { useT } from '../../context/LocaleContext'
 import { useAuth } from '../../context/AuthContext'
@@ -13,8 +12,7 @@ export function BillingPage() {
   const t = useT()
   const bt = t.pricing.billing
   const { session } = useAuth()
-  const { subscription, hasActiveSubscription, refresh } = useSubscription()
-  const navigate = useNavigate()
+  const { subscription, hasActiveSubscription, refresh, openPricingModal } = useSubscription()
   const [portalLoading, setPortalLoading] = useState(false)
   const [extraCount, setExtraCount] = useState<number | null>(null)
   const [savingExtras, setSavingExtras] = useState(false)
@@ -214,7 +212,7 @@ export function BillingPage() {
               <p className="mt-4 text-sm text-neutral-500 dark:text-neutral-400">
                 {bt.noPlan}
               </p>
-              <Button className="mt-4" onClick={() => navigate('/pricing')}>
+              <Button className="mt-4" onClick={openPricingModal}>
                 {bt.choosePlan}
               </Button>
             </div>

@@ -7,7 +7,7 @@ import { AuthLayout } from './components/layout/AuthLayout'
 import { AppShell } from './components/layout/AppShell'
 import { ProtectedRoute } from './components/layout/ProtectedRoute'
 import { SubscriptionGuard } from './components/layout/SubscriptionGuard'
-import { PricingPage } from './pages/pricing/PricingPage'
+import { PricingPageRedirect } from './pages/pricing/PricingPageRedirect'
 import { DashboardPage } from './pages/dashboard/DashboardPage'
 import { AccountConfigPage } from './pages/dashboard/AccountConfigPage'
 import { CopierEnginePage } from './pages/dashboard/CopierEnginePage'
@@ -45,12 +45,12 @@ export default function App() {
           <Route path="/forgot-password" element={<AuthLayout />} />
           <Route path="/reset-password" element={<AuthLayout />} />
 
-          {/* Pricing wall - requires auth but not subscription */}
+          {/* Legacy pricing URL — opens plan modal on dashboard */}
           <Route
             path="/pricing"
             element={
               <ProtectedRoute>
-                <PricingPage />
+                <PricingPageRedirect />
               </ProtectedRoute>
             }
           />
