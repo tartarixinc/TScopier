@@ -326,7 +326,7 @@ export const es: Translations = {
     accountGrowthTitle: 'Crecimiento de cuenta (7 días)',
     accountGrowthSubtitle:
       'Saldo de la cuenta en los últimos 7 días (saldo actual con P/L de operaciones cerradas día a día)',
-    accountGrowthEmpty: 'Sin operaciones cerradas en los últimos 7 días',
+    accountGrowthEmpty: 'Conecta una cuenta de trading para ver el crecimiento del saldo',
     channelWorker: 'Worker de canales',
     noChannelWorkerLogs: 'Aún no hay registros del worker de canales.',
     noData: 'Sin datos',

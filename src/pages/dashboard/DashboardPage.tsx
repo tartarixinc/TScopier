@@ -47,7 +47,7 @@ import {
   netPnlFromTradeOutcomeDay,
   summarizeTodayFromChartTrades,
   resolveDashboardChartTrades,
-  DASHBOARD_MT_HISTORY_DAYS,
+  DASHBOARD_CHART_MT_HISTORY_DAYS,
   sumClosedDealProfitByBroker,
   type DashboardChartTrade,
 } from '../../lib/dashboardCharts'
@@ -515,6 +515,15 @@ export function DashboardPage() {
   /** Ignore stale responses when a newer *fresh* loadDashboard run started. */
   const loadGenerationRef = useRef(0)
   const dashboardReadyRef = useRef(Boolean(bootCache?.stats))
+  const bootHasMtBroker = bootCache?.linkedAccounts?.some(b => {
+    const uuid = (b.metaapi_account_id ?? '').trim()
+    return b.is_active && uuid.length > 0 && !uuid.includes('|')
+  })
+  const [dashboardChartsReady, setDashboardChartsReady] = useState(() => {
+    if (!bootCache) return false
+    if ((bootCache.chartTrades?.length ?? 0) > 0 || (bootCache.mtTrades?.length ?? 0) > 0) return true
+    return !bootHasMtBroker
+  })
   const linkedBalancesRef = useRef<Record<string, BrokerBalanceSnapshot>>(bootCache?.linkedAccountBalances ?? {})
   const refreshQuietRef = useRef<() => void>(() => {})
   /** Last successful MT trades response, kept across renders so stats survive throttled refresh windows. */
@@ -662,7 +671,7 @@ export function DashboardPage() {
     [linkedAccounts, chartTrades, balanceByAccountId],
   )
 
-  const tradeOutcomeEmpty = tradeVolume7Day.every(d => d.profit === 0 && d.loss === 0)
+  const accountGrowthEmpty = accountGrowth.series.length === 0
 
   const linkedAccountPerformance = useMemo(() => {
     const tradesByAccountId: Record<string, TradeStatsRow[]> = {}
@@ -1073,6 +1082,7 @@ export function DashboardPage() {
     } finally {
       if (fresh && generation === loadGenerationRef.current) {
         dashboardReadyRef.current = true
+        setDashboardChartsReady(true)
       }
     }
   }
@@ -1169,7 +1179,7 @@ export function DashboardPage() {
 
     const { tomorrowStart: dayEnd } = getLocalCalendarDayBounds()
     const historyFrom = new Date()
-    historyFrom.setDate(historyFrom.getDate() - DASHBOARD_MT_HISTORY_DAYS)
+    historyFrom.setDate(historyFrom.getDate() - DASHBOARD_CHART_MT_HISTORY_DAYS)
     let trades: MtTrade[]
     try {
       const res = await metatraderApi.trades({
@@ -1469,6 +1479,11 @@ export function DashboardPage() {
   }
 
   const chartsEmpty = chartTrades.length === 0 && linkedAccounts.length === 0
+  const hasMtLinkedBroker = linkedAccounts.some(b => {
+    const uuid = (b.metaapi_account_id ?? '').trim()
+    return b.is_active && uuid.length > 0 && !uuid.includes('|')
+  })
+  const chartsLoading = !dashboardChartsReady && (chartsEmpty || hasMtLinkedBroker)
 
   return (
     <PageShell maxWidth="xl" spacing="none" className="space-y-6">
@@ -1569,12 +1584,12 @@ export function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <TradeVolumeChart data={tradeVolume7Day} loading={chartsEmpty} />
+        <TradeVolumeChart data={tradeVolume7Day} loading={chartsLoading && chartTrades.length === 0} />
         <AccountGrowthChart
           data={accountGrowth.data}
           series={accountGrowth.series}
-          loading={chartsEmpty}
-          isEmpty={tradeOutcomeEmpty}
+          loading={chartsLoading && accountGrowth.series.length === 0}
+          isEmpty={accountGrowthEmpty}
         />
       </div>
 

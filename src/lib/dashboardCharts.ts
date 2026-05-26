@@ -28,8 +28,14 @@ export interface AccountGrowthSeries {
   color: string
 }
 
-/** How far back to pull MT closed history for charts and linked-account total P/L. */
-export const DASHBOARD_MT_HISTORY_DAYS = 365 * 10
+/** MT closed-order history for dashboard 7-day charts (+ buffer for timezone edges). */
+export const DASHBOARD_CHART_MT_HISTORY_DAYS = 31
+
+/** MT closed-order history for performance page (max UI period + buffer). */
+export const PERFORMANCE_MT_HISTORY_DAYS = 400
+
+/** @deprecated Use {@link DASHBOARD_CHART_MT_HISTORY_DAYS} or {@link PERFORMANCE_MT_HISTORY_DAYS}. */
+export const DASHBOARD_MT_HISTORY_DAYS = DASHBOARD_CHART_MT_HISTORY_DAYS
 
 export const ACCOUNT_CHART_COLORS = [
   '#0d9488',
@@ -299,11 +305,11 @@ function resolveAccountAnchorBalance(
   balanceByAccountId: Record<string, number | undefined>,
 ): number | null {
   const live = balanceByAccountId[account.id]
-  if (live != null && Number.isFinite(live) && live > 0) return live
+  if (live != null && Number.isFinite(live) && live >= 0) return live
   const fallback =
     account.performance_baseline_balance ?? account.last_equity ?? account.last_balance
   const n = Number(fallback)
-  return Number.isFinite(n) && n > 0 ? n : null
+  return Number.isFinite(n) && n >= 0 ? n : null
 }
 
 /**

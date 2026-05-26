@@ -48,7 +48,20 @@ test('sumNetPnlFromTradeVolumeDays matches per-deal sum in window', () => {
   assert.equal(sumNetPnlFromTradeVolumeDays(buckets), 30)
 })
 
-test('buildAccountGrowthSeries: balance = opening + cumulative closed P/L', () => {
+test('buildAccountGrowthSeries: flat balance line when no closed trades in window', () => {
+  const now = new Date(2026, 4, 18, 12, 0, 0)
+  const accounts = [
+    { id: 'acc-1', is_active: true, broker_name: 'Demo' },
+  ] as Parameters<typeof buildAccountGrowthSeries>[0]
+  const balances = { 'acc-1': 5000 }
+  const { data, series } = buildAccountGrowthSeries(accounts, [], balances, 7, now)
+  assert.equal(series.length, 1)
+  assert.equal(data.length, 7)
+  for (const row of data) {
+    assert.equal(row.acc_acc1, 5000)
+  }
+})
+
   const now = new Date(2026, 4, 18, 12, 0, 0)
   const trades: DashboardChartTrade[] = [
     {

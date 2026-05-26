@@ -86,7 +86,7 @@ export function PerformancePage() {
   )
 
   const tradeOutcomeEmpty = volumeData.every(d => d.profit === 0 && d.loss === 0)
-  const growthEmpty = tradeOutcomeEmpty || accountGrowth.series.length === 0
+  const growthEmpty = accountGrowth.series.length === 0
 
   const periodLabels: Record<PerformancePeriod, string> = {
     '7d': p.period7d,

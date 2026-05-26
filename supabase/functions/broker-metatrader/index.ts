@@ -645,6 +645,11 @@ Deno.serve(async (req: Request) => {
         cap.setDate(cap.getDate() - 7)
         const capStr = formatMtDt(cap)
         if (effectiveHistoryFrom < capStr) effectiveHistoryFrom = capStr
+      } else if (historyProfile === "dashboard") {
+        const cap = new Date()
+        cap.setDate(cap.getDate() - 120)
+        const capStr = formatMtDt(cap)
+        if (effectiveHistoryFrom < capStr) effectiveHistoryFrom = capStr
       }
       const brokerTradesTimeoutMs = limit > 0 ? 18_000 : 45_000
       type RawOrder = Record<string, unknown>
@@ -827,7 +832,7 @@ Deno.serve(async (req: Request) => {
         try { await bClient.keepSessionAlive(uuid) } catch { /* best-effort */ }
         const closedHistory = limit > 0
           ? bClient.closedOrdersHistoryLite(uuid, effectiveHistoryFrom, historyTo, historyProfile, 2, 200)
-          : bClient.closedOrdersHistory(uuid, historyFrom, historyTo, historyProfile)
+          : bClient.closedOrdersHistory(uuid, effectiveHistoryFrom, historyTo, historyProfile)
         const [openedRes, closedRes] = await Promise.allSettled([
           wantOpen ? bClient.openedOrders(uuid) : Promise.resolve([] as unknown[]),
           wantClosed ? closedHistory : Promise.resolve([] as unknown[]),

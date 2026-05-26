@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { DASHBOARD_MT_HISTORY_DAYS, resolveDashboardChartTrades } from '../lib/dashboardCharts'
+import { DASHBOARD_CHART_MT_HISTORY_DAYS, PERFORMANCE_MT_HISTORY_DAYS, resolveDashboardChartTrades } from '../lib/dashboardCharts'
 import {
   computeLinkedAccountPerformanceMap,
   getLocalCalendarDayBounds,
@@ -45,7 +45,7 @@ async function fetchPerformancePayload(userId: string): Promise<PerformanceCache
   if (mtBrokers.length > 0) {
     const { tomorrowStart: historyTo } = getLocalCalendarDayBounds()
     const historyFrom = new Date()
-    historyFrom.setDate(historyFrom.getDate() - DASHBOARD_MT_HISTORY_DAYS)
+    historyFrom.setDate(historyFrom.getDate() - PERFORMANCE_MT_HISTORY_DAYS)
     const tradesRes = await metatraderApi.trades({
       historyProfile: 'dashboard',
       scope: 'all',
