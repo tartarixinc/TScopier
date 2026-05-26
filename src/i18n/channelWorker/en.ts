@@ -146,5 +146,7 @@ export const channelWorkerEn: ChannelWorkerTranslations = {
   errorSymbolNotFound: 'Symbol not found: {symbol}',
   errorBrokerNotConnected:
     'Broker not connected — in Account Configuration, use Reconnect and enter your MT password for this account',
+  errorBridgeGlitch:
+    'Temporary broker trade-server glitch — layered entries will retry automatically. Use Reconnect if this keeps happening.',
   errorStopsAlreadySet: 'Stop loss and take profit were already set on the broker (no change needed).',
 }

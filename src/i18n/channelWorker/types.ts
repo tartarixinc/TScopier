@@ -128,5 +128,6 @@ export interface ChannelWorkerTranslations {
   errorTicketNotFound: string
   errorSymbolNotFound: string
   errorBrokerNotConnected: string
+  errorBridgeGlitch: string
   errorStopsAlreadySet: string
 }

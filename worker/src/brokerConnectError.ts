@@ -31,6 +31,11 @@ export function isMtBridgeGlitchMessage(message: string | null | undefined): boo
   return BRIDGE_GLITCH.test(String(message ?? '').trim())
 }
 
+export function isMtBridgeGlitchError(err: unknown): boolean {
+  if (err instanceof Error) return isMtBridgeGlitchMessage(err.message)
+  return isMtBridgeGlitchMessage(String(err))
+}
+
 export function isSessionDropMessage(message: string | null | undefined): boolean {
   const m = String(message ?? '').trim()
   if (!m) return false

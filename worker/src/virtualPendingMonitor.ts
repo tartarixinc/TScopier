@@ -18,6 +18,7 @@ import {
   type MonitorLoopHandle,
 } from './monitorIdleGate'
 import { reconcileStaleClaimedLegs, shouldBlockVirtualLegFire } from './rangePendingFireGuard'
+import { isMtBridgeGlitchMessage } from './brokerConnectError'
 import {
   deleteRangePendingLegsForBasket,
   reconcileBasketFlatFromBroker,
@@ -608,6 +609,21 @@ export class VirtualPendingMonitor {
       console.error(
         `[virtualPendingMonitor] fire failed leg=${leg.id} signal=${leg.signal_id} stepIdx=${leg.step_idx}: ${msg}`,
       )
+      if (isMtBridgeGlitchMessage(msg)) {
+        await this.supabase
+          .from('range_pending_legs')
+          .update({
+            status: 'pending',
+            claimed_at: null,
+            claimed_by: null,
+            error_message: null,
+          })
+          .eq('id', leg.id)
+        console.warn(
+          `[virtualPendingMonitor] bridge glitch leg=${leg.id} — released back to pending for retry`,
+        )
+        return false
+      }
       await this.supabase
         .from('range_pending_legs')
         .update({ status: 'failed', error_message: msg, fired_at: new Date().toISOString() })
@@ -816,12 +832,14 @@ export class VirtualPendingMonitor {
       const msg = err instanceof Error ? err.message : String(err)
       const isInvalidStops = /invalid\s+stops/i.test(msg)
       const hasStops = (Number(args.stoploss) || 0) > 0 || (Number(args.takeprofit) || 0) > 0
-      if (!isInvalidStops || !hasStops) throw err
-      console.warn(
-        `[virtualPendingMonitor] retry without stops leg=${leg.id} signal=${leg.signal_id} stepIdx=${leg.step_idx} reason="${msg}" (sl=${args.stoploss} tp=${args.takeprofit})`,
-      )
-      const fallback: OrderSendArgs = { ...args, stoploss: 0, takeprofit: 0 }
-      return await api.orderSend(leg.metaapi_account_id, fallback)
+      if (isInvalidStops && hasStops) {
+        console.warn(
+          `[virtualPendingMonitor] retry without stops leg=${leg.id} signal=${leg.signal_id} stepIdx=${leg.step_idx} reason="${msg}" (sl=${args.stoploss} tp=${args.takeprofit})`,
+        )
+        const fallback: OrderSendArgs = { ...args, stoploss: 0, takeprofit: 0 }
+        return await api.orderSend(leg.metaapi_account_id, fallback)
+      }
+      throw err
     }
   }
 }

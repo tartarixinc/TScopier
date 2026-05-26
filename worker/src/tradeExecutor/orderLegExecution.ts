@@ -3,6 +3,7 @@ import {
   MetatraderApiClient,
   MtOperation,
 } from '../metatraderapi'
+import { isMtBridgeGlitchMessage } from '../brokerConnectError'
 import type { ChannelKeywords, ManualSettings, PlannerResult, VirtualPendingLeg } from '../manualPlanner'
 import { autoManagementTradeSnapshot } from '../autoManagement'
 import { stripInvalidStopsForSide } from '../channelActiveTradeParams'
@@ -236,7 +237,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
       return true
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      if (isBrokerDisconnectedMessage(msg)) {
+      if (isBrokerDisconnectedMessage(msg) && !isMtBridgeGlitchMessage(msg)) {
         await ctx.markBrokerSessionDown(broker, uuid, msg)
       }
       console.error(

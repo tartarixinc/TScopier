@@ -2,6 +2,7 @@
 /** Mirror of supabase/functions/_shared/brokerConnectError.ts for worker DB writes. */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.isMtBridgeGlitchMessage = isMtBridgeGlitchMessage;
+exports.isMtBridgeGlitchError = isMtBridgeGlitchError;
 exports.isSessionDropMessage = isSessionDropMessage;
 exports.classifyBrokerConnectError = classifyBrokerConnectError;
 exports.friendlyBrokerConnectError = friendlyBrokerConnectError;
@@ -13,6 +14,11 @@ const SESSION_EXPIRED = /session expired|client with id|client not found|unknown
 const BRIDGE_GLITCH = /object reference not set|nullreferenceexception|null reference|unexpected error|internal server error|an error occurred while handling|sequence contains no elements/i;
 function isMtBridgeGlitchMessage(message) {
     return BRIDGE_GLITCH.test(String(message ?? '').trim());
+}
+function isMtBridgeGlitchError(err) {
+    if (err instanceof Error)
+        return isMtBridgeGlitchMessage(err.message);
+    return isMtBridgeGlitchMessage(String(err));
 }
 function isSessionDropMessage(message) {
     const m = String(message ?? '').trim();

@@ -13,7 +13,7 @@ import {
   stripBrokerSecretFields,
 } from "../_shared/brokerSession.ts"
 import { encryptMtPassword } from "../_shared/brokerCredentialsCrypto.ts"
-import { friendlyBrokerConnectError, isSessionDropMessage } from "../_shared/brokerConnectError.ts"
+import { friendlyBrokerConnectError, isMtBridgeGlitchMessage, isSessionDropMessage } from "../_shared/brokerConnectError.ts"
 import { withMtServerSessionLock } from "../_shared/mtServerSessionLock.ts"
 import {
   isMtApiAuthConfigured,
@@ -97,7 +97,57 @@ function friendlyMtApiError(e: MetatraderApiError): MetatraderApiError {
  * register / delete / refresh balance / check connection calls, plus the trades read
  * for the Trades page.
  */
-const BUILD_TAG = "broker-metatrader@same-server-lock-v1"
+const BUILD_TAG = "broker-metatrader@summary-stale-v2"
+
+type SummaryBrokerRow = {
+  last_balance?: number | null
+  last_equity?: number | null
+  last_currency?: string | null
+  performance_baseline_balance?: number | null
+  day_start_balance?: number | null
+  day_start_balance_on?: string | null
+  last_synced_at?: string | null
+  connection_status?: string | null
+}
+
+function staleSummaryResponse(
+  broker: SummaryBrokerRow,
+  calendarDay: string,
+  msg: string,
+): Response {
+  const friendly = friendlyBrokerConnectError(msg)
+  return Response.json(
+    {
+      ok: false,
+      stale: true,
+      summary: {
+        balance: broker.last_balance ?? undefined,
+        equity: broker.last_equity ?? undefined,
+        currency: broker.last_currency ?? undefined,
+      },
+      open_positions: null,
+      performance_baseline_balance: broker.performance_baseline_balance ?? null,
+      day_start_balance: broker.day_start_balance ?? null,
+      day_start_balance_on: broker.day_start_balance_on ?? null,
+      todays_profit_from_balance: null,
+      connection_status: broker.connection_status ?? "connected",
+      message: friendly,
+    },
+    { status: 200, headers: corsHeaders },
+  )
+}
+
+function shouldReturnStaleSummary(msg: string): boolean {
+  return isSessionDropMessage(msg)
+    || isMtBridgeGlitchMessage(msg)
+    || /accountsummary returned no data/i.test(msg)
+}
+
+function shouldMarkSummaryConnectionError(msg: string): boolean {
+  if (isMtBridgeGlitchMessage(msg)) return false
+  return isSessionDropMessage(msg)
+    || /not connected|session expired|broker session/i.test(msg)
+}
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders })
 
@@ -301,6 +351,7 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === "summary") {
+      ensureMtApiConfigured(Deno.env)
       const brokerId = String((body as Record<string, unknown>).broker_id ?? "")
       if (!brokerId) return bad(400, "broker_id required")
       const calendarDay =
@@ -330,9 +381,9 @@ Deno.serve(async (req: Request) => {
       const client = mtClient(Deno.env, String(broker.platform ?? "MT5"))
 
       try {
-        const ready = await client.verifyTradingReady(uuid)
-        if (!ready) {
-          throw new MetatraderApiError("Broker session is not connected", 502)
+        const alive = await keepBrokerSessionAlive(client, uuid)
+        if (!alive) {
+          return staleSummaryResponse(broker, calendarDay, "Broker session is not connected")
         }
         let summary: Awaited<ReturnType<typeof client.accountSummary>> | null = null
         let lastErr: unknown = null
@@ -347,8 +398,16 @@ Deno.serve(async (req: Request) => {
           await new Promise(r => setTimeout(r, 400 + i * 400))
         }
         if (!summary) {
+          const failMsg = lastErr instanceof Error
+            ? lastErr.message
+            : lastErr instanceof MetatraderApiError
+              ? lastErr.message
+              : "AccountSummary returned no data"
+          if (shouldReturnStaleSummary(failMsg)) {
+            return staleSummaryResponse(broker, calendarDay, failMsg)
+          }
           if (lastErr instanceof MetatraderApiError) throw lastErr
-          throw new Error("AccountSummary returned no data")
+          throw new Error(failMsg)
         }
         let openPositions: number | null = null
         try {
@@ -428,34 +487,17 @@ Deno.serve(async (req: Request) => {
         )
       } catch (e) {
         const msg = e instanceof Error ? e.message : "AccountSummary failed"
-        const sessionNotReady =
-          /not connected|session expired|broker session/i.test(msg)
-        if (!sessionNotReady) {
+        if (shouldMarkSummaryConnectionError(msg)) {
           await markBrokerConnectionError(supabase, { id: brokerId, user_id: userId }, msg)
         }
-        const status = e instanceof MetatraderApiError ? e.status : 502
-        if (sessionNotReady && broker) {
-          return Response.json(
-            {
-              ok: false,
-              stale: true,
-              summary: {
-                balance: broker.last_balance ?? undefined,
-                equity: broker.last_equity ?? undefined,
-                currency: broker.last_currency ?? undefined,
-              },
-              open_positions: null,
-              performance_baseline_balance: broker.performance_baseline_balance ?? null,
-              day_start_balance: broker.day_start_balance ?? null,
-              day_start_balance_on: broker.day_start_balance_on ?? null,
-              todays_profit_from_balance: null,
-              connection_status: broker.connection_status ?? "connected",
-              message: msg,
-            },
-            { status: 200, headers: corsHeaders },
-          )
+        if (shouldReturnStaleSummary(msg)) {
+          return staleSummaryResponse(broker, calendarDay, msg)
         }
-        return bad(status >= 400 && status < 600 ? status : 502, msg)
+        const status = e instanceof MetatraderApiError ? e.status : 502
+        return bad(
+          status >= 400 && status < 600 ? status : 502,
+          friendlyBrokerConnectError(msg),
+        )
       }
     }
 
@@ -552,12 +594,26 @@ Deno.serve(async (req: Request) => {
         const msg = e instanceof Error ? e.message : "CheckConnect failed"
         if (isSessionDropMessage(msg)) {
           return Response.json(
-            { ok: false, result: "disconnected", message: msg },
+            {
+              ok: false,
+              result: "disconnected",
+              message: friendlyBrokerConnectError(msg),
+            },
             { status: 200, headers: corsHeaders },
           )
         }
         const status = e instanceof MetatraderApiError ? e.status : 502
-        return bad(status >= 400 && status < 600 ? status : 502, msg)
+        if (status === 502 || status === 503 || status === 504) {
+          return Response.json(
+            {
+              ok: false,
+              result: "disconnected",
+              message: friendlyBrokerConnectError(msg),
+            },
+            { status: 200, headers: corsHeaders },
+          )
+        }
+        return bad(status >= 400 && status < 600 ? status : 502, friendlyBrokerConnectError(msg))
       }
     }
 

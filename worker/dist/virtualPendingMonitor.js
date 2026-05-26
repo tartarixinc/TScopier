@@ -13,6 +13,7 @@ const basketModFollowUp_1 = require("./basketModFollowUp");
 const rangePendingLadderSync_1 = require("./rangePendingLadderSync");
 const monitorIdleGate_1 = require("./monitorIdleGate");
 const rangePendingFireGuard_1 = require("./rangePendingFireGuard");
+const brokerConnectError_1 = require("./brokerConnectError");
 const rangePendingBasketCleanup_1 = require("./rangePendingBasketCleanup");
 const SYMBOL_TTL_MS = 10 * 60000;
 const ACTIVE_MS = (0, monitorIdleGate_1.monitorActiveIntervalMs)('VIRTUAL_PENDING_TICK_MS', 1500);
@@ -461,6 +462,19 @@ class VirtualPendingMonitor {
         catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             console.error(`[virtualPendingMonitor] fire failed leg=${leg.id} signal=${leg.signal_id} stepIdx=${leg.step_idx}: ${msg}`);
+            if ((0, brokerConnectError_1.isMtBridgeGlitchMessage)(msg)) {
+                await this.supabase
+                    .from('range_pending_legs')
+                    .update({
+                    status: 'pending',
+                    claimed_at: null,
+                    claimed_by: null,
+                    error_message: null,
+                })
+                    .eq('id', leg.id);
+                console.warn(`[virtualPendingMonitor] bridge glitch leg=${leg.id} — released back to pending for retry`);
+                return false;
+            }
             await this.supabase
                 .from('range_pending_legs')
                 .update({ status: 'failed', error_message: msg, fired_at: new Date().toISOString() })
@@ -657,11 +671,12 @@ class VirtualPendingMonitor {
             const msg = err instanceof Error ? err.message : String(err);
             const isInvalidStops = /invalid\s+stops/i.test(msg);
             const hasStops = (Number(args.stoploss) || 0) > 0 || (Number(args.takeprofit) || 0) > 0;
-            if (!isInvalidStops || !hasStops)
-                throw err;
-            console.warn(`[virtualPendingMonitor] retry without stops leg=${leg.id} signal=${leg.signal_id} stepIdx=${leg.step_idx} reason="${msg}" (sl=${args.stoploss} tp=${args.takeprofit})`);
-            const fallback = { ...args, stoploss: 0, takeprofit: 0 };
-            return await api.orderSend(leg.metaapi_account_id, fallback);
+            if (isInvalidStops && hasStops) {
+                console.warn(`[virtualPendingMonitor] retry without stops leg=${leg.id} signal=${leg.signal_id} stepIdx=${leg.step_idx} reason="${msg}" (sl=${args.stoploss} tp=${args.takeprofit})`);
+                const fallback = { ...args, stoploss: 0, takeprofit: 0 };
+                return await api.orderSend(leg.metaapi_account_id, fallback);
+            }
+            throw err;
         }
     }
 }

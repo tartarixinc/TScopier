@@ -134,6 +134,9 @@ function translateBrokerError(message: string, cw: ChannelWorkerTranslations): s
   if (/not connected/i.test(message) || /broker session is not connected/i.test(message)) {
     return cw.errorBrokerNotConnected
   }
+  if (/object reference not set|nullreferenceexception|an error occurred while handling/i.test(message)) {
+    return cw.errorBridgeGlitch
+  }
   if (/already\s+have\s+(this\s+)?parameters/i.test(message)) {
     return cw.errorStopsAlreadySet
   }
