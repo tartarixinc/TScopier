@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Settings, History, Send, LayoutTemplate, ScrollText, Newspaper, Calendar, ChartBar as BarChart2, Circle as CircleHelp, ChevronDown, ChartNoAxesColumn, PanelLeftClose, PanelLeftOpen, Menu, X } from 'lucide-react'
+import { LayoutDashboard, Settings, History, Send, LayoutTemplate, ScrollText, Newspaper, Calendar, ChartBar as BarChart2, CircleHelp, ChevronDown, ChartNoAxesColumn, PanelLeftClose, PanelLeftOpen, Menu, X } from 'lucide-react'
 import clsx from 'clsx'
 import { TscopierLogo } from '../ui/TscopierLogo'
 import { AppSearchDesktop, AppSearchMobileTrigger, AppSearchProvider } from './AppSearch'
