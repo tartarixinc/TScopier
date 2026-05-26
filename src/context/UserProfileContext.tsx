@@ -22,6 +22,8 @@ type ProfileFields = Omit<UserProfile, 'user_id' | 'created_at' | 'updated_at'>
 interface UserProfileContextValue {
   loading: boolean
   profile: ProfileFields
+  isAdmin: boolean
+  subscriptionStatus: string | null
   baseCurrency: string
   timezone: string
   patchProfile: (patch: Partial<ProfileFields>) => void
@@ -44,11 +46,15 @@ function sanitizeProfile(row: Partial<ProfileFields> | null | undefined): Profil
 export function UserProfileProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
   const [profile, setProfile] = useState<ProfileFields>(EMPTY_USER_PROFILE)
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   const refreshProfile = useCallback(async () => {
     if (!user) {
       setProfile(EMPTY_USER_PROFILE)
+      setIsAdmin(false)
+      setSubscriptionStatus(null)
       setLoading(false)
       return
     }
@@ -56,6 +62,8 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
     try {
       const row = await loadUserProfile(user.id)
       if (row) {
+        setIsAdmin(row.is_admin === true)
+        setSubscriptionStatus(row.subscription_status ?? null)
         setProfile(
           sanitizeProfile({
             display_name: row.display_name ?? '',
@@ -71,6 +79,8 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
           }),
         )
       } else {
+        setIsAdmin(false)
+        setSubscriptionStatus(null)
         const meta = user.user_metadata as Record<string, unknown> | undefined
         const full = String(meta?.full_name ?? meta?.name ?? '').trim()
         const parts = full.split(/\s+/)
@@ -118,13 +128,15 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
     (): UserProfileContextValue => ({
       loading,
       profile,
+      isAdmin,
+      subscriptionStatus,
       baseCurrency: profile.base_currency,
       timezone: profile.timezone,
       patchProfile,
       refreshProfile,
       persistProfile,
     }),
-    [loading, profile, patchProfile, refreshProfile, persistProfile],
+    [loading, profile, isAdmin, subscriptionStatus, patchProfile, refreshProfile, persistProfile],
   )
 
   return <UserProfileContext.Provider value={value}>{children}</UserProfileContext.Provider>

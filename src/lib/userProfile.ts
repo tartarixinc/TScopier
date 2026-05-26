@@ -12,6 +12,8 @@ export interface UserProfile {
   address: string
   base_currency: string
   timezone: string
+  is_admin?: boolean
+  subscription_status?: string | null
   created_at?: string
   updated_at?: string
 }
@@ -45,9 +47,10 @@ export async function saveUserProfile(
   userId: string,
   patch: Omit<UserProfile, 'user_id' | 'created_at' | 'updated_at'>,
 ): Promise<void> {
+  const { is_admin: _isAdmin, subscription_status: _subscriptionStatus, ...safePatch } = patch
   const { error } = await supabase
     .from('user_profiles')
-    .upsert({ user_id: userId, ...patch }, { onConflict: 'user_id' })
+    .upsert({ user_id: userId, ...safePatch }, { onConflict: 'user_id' })
   if (error) throw new Error(error.message)
 }
 

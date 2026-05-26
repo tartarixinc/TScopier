@@ -28,6 +28,18 @@ export async function loadUserSubscription(
   return data as UserSubscriptionRow;
 }
 
+export async function loadUserIsAdmin(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<boolean> {
+  const { data } = await supabase
+    .from("user_profiles")
+    .select("is_admin")
+    .eq("user_id", userId)
+    .maybeSingle();
+  return data?.is_admin === true;
+}
+
 export function subscriptionAccessDenied(
   message: string,
   code: string,
@@ -44,6 +56,8 @@ export async function assertBrokerAccountLimit(
   userId: string,
   sub: UserSubscriptionRow | null,
 ): Promise<Response | null> {
+  if (await loadUserIsAdmin(supabase, userId)) return null;
+
   const plan = effectivePlan(sub?.plan, sub?.status);
   if (!plan) {
     return subscriptionAccessDenied(
@@ -73,6 +87,8 @@ export async function assertBacktestMonthlyLimit(
   userId: string,
   sub: UserSubscriptionRow | null,
 ): Promise<Response | null> {
+  if (await loadUserIsAdmin(supabase, userId)) return null;
+
   const plan = effectivePlan(sub?.plan, sub?.status);
   if (!plan) {
     return subscriptionAccessDenied(
@@ -105,6 +121,8 @@ export async function assertTelegramChannelLimit(
   userId: string,
   sub: UserSubscriptionRow | null,
 ): Promise<Response | null> {
+  if (await loadUserIsAdmin(supabase, userId)) return null;
+
   const plan = effectivePlan(sub?.plan, sub?.status);
   if (!plan) {
     return subscriptionAccessDenied(

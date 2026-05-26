@@ -31,6 +31,7 @@ import type { ChannelKeywords } from '../manualPlanner'
 import { MESSAGE_EDIT_DISPATCH_SOURCE } from '../telegramMessageEdit'
 import {
   loadCachedUserSubscription,
+  loadCachedUserIsAdmin,
   subscriptionBlocksSignalExecution,
   isSubscriptionActive,
 } from '../subscriptionAccess'
@@ -313,8 +314,11 @@ export async function handleSignal(ctx: TradeExecutorContext,
         }
       }
 
-      const userSub = await loadCachedUserSubscription(ctx.supabase, row.user_id)
-      if (!userSub || !isSubscriptionActive(userSub.status)) {
+      const [userSub, isAdmin] = await Promise.all([
+        loadCachedUserSubscription(ctx.supabase, row.user_id),
+        loadCachedUserIsAdmin(ctx.supabase, row.user_id),
+      ])
+      if (!isAdmin && (!userSub || !isSubscriptionActive(userSub.status))) {
         await ctx.logDispatchSkipped(row, 'subscription_inactive')
         return
       }
@@ -379,6 +383,7 @@ export async function handleSignal(ctx: TradeExecutorContext,
         const blockReason = subscriptionBlocksSignalExecution(
           userSub,
           (broker.manual_settings ?? null) as Record<string, unknown> | null,
+          isAdmin,
         )
         if (blockReason === 'plan_advanced_feature_required') {
           await ctx.logDispatchSkipped(row, blockReason)

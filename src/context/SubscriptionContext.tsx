@@ -9,6 +9,7 @@ import {
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './AuthContext'
+import { useUserProfile } from './UserProfileContext'
 import {
   canUseFeature,
   effectivePlan,
@@ -43,6 +44,7 @@ export interface SubscriptionUsage {
 interface SubscriptionContextValue {
   subscription: Subscription | null
   loading: boolean
+  isAdmin: boolean
   usage: SubscriptionUsage
   usageLoading: boolean
   hasActiveSubscription: boolean
@@ -68,6 +70,7 @@ const emptyUsage: SubscriptionUsage = {
 const SubscriptionContext = createContext<SubscriptionContextValue>({
   subscription: null,
   loading: true,
+  isAdmin: false,
   usage: emptyUsage,
   usageLoading: true,
   hasActiveSubscription: false,
@@ -98,6 +101,7 @@ function monthStartUtcIso(): string {
 
 export function SubscriptionProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth()
+  const { isAdmin, loading: profileLoading } = useUserProfile()
   const navigate = useNavigate()
   const userId = user?.id ?? null
   const [subscription, setSubscription] = useState<Subscription | null>(null)
@@ -169,20 +173,27 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     window.history.replaceState({}, '', next)
   }, [fetchSubscription])
 
-  const hasActiveSubscription = isSubscriptionActive(subscription?.status)
-  const isPastDue = subscription?.status === 'past_due'
-  const activePlan = effectivePlan(subscription?.plan, subscription?.status)
+  const hasActiveSubscription = isAdmin || isSubscriptionActive(subscription?.status)
+  const isPastDue = !isAdmin && subscription?.status === 'past_due'
+  const activePlan: SubscriptionPlan | null = isAdmin
+    ? 'advanced'
+    : effectivePlan(subscription?.plan, subscription?.status)
 
   const limits = useMemo(
-    () => planLimitsSnapshot(subscription?.plan, subscription?.status, subscription?.extra_accounts ?? 0),
-    [subscription],
+    () =>
+      isAdmin
+        ? planLimitsSnapshot('advanced', 'active', 95)
+        : planLimitsSnapshot(subscription?.plan, subscription?.status, subscription?.extra_accounts ?? 0),
+    [subscription, isAdmin],
   )
 
-  const planName = subscription
-    ? subscription.plan === 'advanced'
-      ? 'Advanced'
-      : 'Basic'
-    : ''
+  const planName = isAdmin
+    ? 'Admin'
+    : subscription
+      ? subscription.plan === 'advanced'
+        ? 'Advanced'
+        : 'Basic'
+      : ''
 
   const requireSubscription = useCallback(() => {
     if (hasActiveSubscription) return true
@@ -198,35 +209,40 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   )
 
   const canUseFeatureFn = useCallback(
-    (feature: PlanFeatureKey) => canUseFeature(subscription?.plan, subscription?.status, feature),
-    [subscription],
+    (feature: PlanFeatureKey) =>
+      isAdmin || canUseFeature(subscription?.plan, subscription?.status, feature),
+    [isAdmin, subscription],
   )
 
   const canAddBroker = useCallback(() => {
+    if (isAdmin) return true
     if (!activePlan) return false
     const limit = maxBrokerAccounts(activePlan, subscription?.extra_accounts ?? 0)
     return usage.brokerAccounts < limit
-  }, [activePlan, subscription?.extra_accounts, usage.brokerAccounts])
+  }, [isAdmin, activePlan, subscription?.extra_accounts, usage.brokerAccounts])
 
   const canAddChannel = useCallback(() => {
+    if (isAdmin) return true
     if (!activePlan) return false
     const limit = maxTelegramChannels(activePlan)
     if (limit == null) return true
     return usage.telegramChannels < limit
-  }, [activePlan, usage.telegramChannels])
+  }, [isAdmin, activePlan, usage.telegramChannels])
 
   const canRunBacktest = useCallback(() => {
+    if (isAdmin) return true
     if (!activePlan) return false
     const limit = maxBacktestsPerMonth(activePlan)
     if (limit == null) return true
     return usage.backtestsThisMonth < limit
-  }, [activePlan, usage.backtestsThisMonth])
+  }, [isAdmin, activePlan, usage.backtestsThisMonth])
 
   return (
     <SubscriptionContext.Provider
       value={{
         subscription,
-        loading,
+        loading: loading || profileLoading,
+        isAdmin,
         usage,
         usageLoading,
         hasActiveSubscription,

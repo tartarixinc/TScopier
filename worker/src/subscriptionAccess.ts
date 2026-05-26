@@ -15,6 +15,7 @@ export interface UserSubscriptionRow {
 
 const CACHE_TTL_MS = 60_000
 const cache = new Map<string, { expiresAt: number; row: UserSubscriptionRow | null }>()
+const adminCache = new Map<string, { expiresAt: number; isAdmin: boolean }>()
 
 export async function loadCachedUserSubscription(
   supabase: SupabaseClient,
@@ -34,6 +35,24 @@ export async function loadCachedUserSubscription(
   return row
 }
 
+export async function loadCachedUserIsAdmin(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<boolean> {
+  const hit = adminCache.get(userId)
+  if (hit && hit.expiresAt > Date.now()) return hit.isAdmin
+
+  const { data } = await supabase
+    .from('user_profiles')
+    .select('is_admin')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  const isAdmin = data?.is_admin === true
+  adminCache.set(userId, { isAdmin, expiresAt: Date.now() + CACHE_TTL_MS })
+  return isAdmin
+}
+
 export function brokerManualSettingsUseAdvancedFeatures(
   manualSettings: Record<string, unknown> | null | undefined,
 ): boolean {
@@ -44,7 +63,9 @@ export function brokerManualSettingsUseAdvancedFeatures(
 export function subscriptionBlocksSignalExecution(
   sub: UserSubscriptionRow | null,
   manualSettings: Record<string, unknown> | null | undefined,
+  isAdmin = false,
 ): string | null {
+  if (isAdmin) return null
   if (!isSubscriptionActive(sub?.status)) return 'subscription_inactive'
   const plan = effectivePlan(sub?.plan, sub?.status)
   if (plan === 'basic' && brokerManualSettingsUseAdvancedFeatures(manualSettings)) {

@@ -59,6 +59,8 @@ export interface UserProfileRow {
   address: string
   base_currency: string
   timezone: string
+  is_admin: boolean
+  subscription_status: string | null
   created_at: string
   updated_at: string
 }

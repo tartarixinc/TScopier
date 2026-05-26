@@ -45,6 +45,23 @@ Idempotency table: `stripe_events`.
 
 Apply migrations including `20260527120000_subscriptions_user_id_unique.sql` before relying on webhook upserts.
 
+### Admin access (`user_profiles`)
+
+Migration `20260527140000_user_profiles_admin_subscription_status.sql` adds:
+
+- `is_admin` (boolean, default `false`) — full app access without Stripe subscription
+- `subscription_status` (text, nullable) — mirror of `subscriptions.status`, synced by trigger
+
+Users cannot self-promote to admin; a DB trigger resets `is_admin` and `subscription_status` on client updates. Set admin only via SQL Editor or service role:
+
+```sql
+UPDATE public.user_profiles
+SET is_admin = true
+WHERE user_id = '<uuid>';
+```
+
+Admin bypass applies in the UI (`SubscriptionContext`), edge functions (`subscriptionAccess.ts`), and the trade worker.
+
 ## Customer portal
 
 Edge function: `customer-portal` (JWT required).
