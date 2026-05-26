@@ -33,6 +33,9 @@ import {
 } from '../../lib/brokerConnectError'
 import { BROKER_ACCOUNT_CLIENT_SELECT } from '../../lib/brokerAccountSelect'
 import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
+import { useSubscription } from '../../context/SubscriptionContext'
+import { normalizeManualSettingsForPlan } from '../../lib/planLimits'
+import { UpgradePrompt } from '../../components/billing/UpgradePrompt'
 import {
   inferBrokerLabelFromServer,
   resolveLinkedAccountType,
@@ -455,6 +458,14 @@ export function AccountConfigPage() {
     setReconnectErrorHandler,
     clearStoredCredentials,
   } = useBrokerAccounts()
+  const {
+    subscription,
+    hasActiveSubscription,
+    canAddBroker,
+    canUseFeature: canUsePlanFeature,
+    limits,
+  } = useSubscription()
+  const pw = t.pricing.paywall
   const connectErrorLabels = useMemo(() => brokerConnectErrorLabelsFromI18n(bl), [bl])
   const reconnectBannerText = useMemo(
     () => brokerReconnectBannerText(brokersNeedingReconnect, {
@@ -935,6 +946,7 @@ export function AccountConfigPage() {
   const addTpLotRow = () => {
     patchSelectedChannel(current => {
       const rows = cloneTpLots(current.manualSettings.tp_lots, DEFAULT_MANUAL_TP_LOTS)
+      if (limits.maxTpRows != null && rows.length >= limits.maxTpRows) return current
       rows.push({ label: `TP${rows.length + 1}`, lot: 0.01, percent: 0, enabled: true })
       return { ...current, manualSettings: { ...current.manualSettings, tp_lots: sanitizeTpLots(rows) } }
     })
@@ -997,7 +1009,9 @@ export function AccountConfigPage() {
     setConfigSaving(true)
     const channelMessageFilters: ChannelMessageFiltersMap = {}
     for (const id of channelIds) {
-      channelMessageFilters[id] = configDraft.channelConfigs[id]?.channelFilters ?? { ...DEFAULT_CHANNEL_FILTERS }
+      channelMessageFilters[id] = canUsePlanFeature('channel_keyword_filters')
+        ? configDraft.channelConfigs[id]?.channelFilters ?? { ...DEFAULT_CHANNEL_FILTERS }
+        : { ...DEFAULT_CHANNEL_FILTERS }
     }
     const channelTradingConfigs = buildChannelTradingConfigsFromDraft(
       channelIds,
@@ -1006,13 +1020,27 @@ export function AccountConfigPage() {
           id,
           {
             mode: configDraft.channelConfigs[id]?.mode ?? 'manual',
-            manualSettings: configDraft.channelConfigs[id]?.manualSettings ?? DEFAULT_MANUAL_SETTINGS,
+            manualSettings: normalizeManualSettingsForPlan(
+              subscription?.plan,
+              subscription?.status,
+              (configDraft.channelConfigs[id]?.manualSettings ?? DEFAULT_MANUAL_SETTINGS) as Record<string, unknown>,
+            ) as ManualSettings,
           },
         ]),
       ),
     )
     const firstId = channelIds[0]
     const firstConfig = firstId ? configDraft.channelConfigs[firstId] : null
+    const normalizedFirstManual = firstConfig
+      ? normalizeManualSettingsForPlan(
+          subscription?.plan,
+          subscription?.status,
+          {
+            ...firstConfig.manualSettings,
+            allow_high_impact_news: firstConfig.manualSettings.news_trading_enabled === true,
+          } as Record<string, unknown>,
+        )
+      : {}
     const { data, error: upErr } = await supabase
       .from('broker_accounts')
       .update({
@@ -1021,10 +1049,7 @@ export function AccountConfigPage() {
         enforce_signal_channel_filter: restrictChannels,
         channel_trading_configs: channelTradingConfigs,
         manual_settings: firstConfig
-          ? {
-              ...firstConfig.manualSettings,
-              allow_high_impact_news: firstConfig.manualSettings.news_trading_enabled === true,
-            }
+          ? normalizedFirstManual
           : {},
         channel_message_filters: channelMessageFilters,
       })
@@ -1069,6 +1094,14 @@ export function AccountConfigPage() {
   const addBroker = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    if (!hasActiveSubscription) {
+      setError(pw.subscriptionRequired)
+      return
+    }
+    if (!canAddBroker()) {
+      setError(interpolate(pw.brokerLimit, { limit: String(limits.maxBrokerAccounts) }))
+      return
+    }
     if (!form.account_number.trim() || !form.broker_server.trim() || !form.account_password) {
       setError(t.accountConfig.connectForm.validationRequired)
       return
@@ -1740,6 +1773,7 @@ export function AccountConfigPage() {
                       <div className="space-y-4">
                         {activeManualSubTab === 'channel_instructions' && (
                           selectedChannelOption && configDraft.selectedChannelId ? (
+                            canUsePlanFeature('channel_keyword_filters') ? (
                             <section className="space-y-3">
                               <div className="flex items-center justify-between">
                                 <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{cm.channels.keywordFilters}</p>
@@ -1770,6 +1804,9 @@ export function AccountConfigPage() {
                                 defaultOpen
                               />
                             </section>
+                            ) : (
+                              <UpgradePrompt reason={pw.advancedFeature} />
+                            )
                           ) : (
                             <p className="text-sm text-neutral-500 dark:text-neutral-400">{cm.channels.selectChannelFirst}</p>
                           )
@@ -1846,6 +1883,7 @@ export function AccountConfigPage() {
                                 value={channelManualSettings.trade_style ?? 'single'}
                                 onChange={e => {
                                   const v = e.target.value as ManualSettings['trade_style']
+                                  if (v === 'multi' && !canUsePlanFeature('multi_trade_style')) return
                                   if (v === 'multi') {
                                     setManual({ trade_style: v, use_signal_entry_price: false })
                                   } else {
@@ -1854,9 +1892,14 @@ export function AccountConfigPage() {
                                 }}
                                 options={[
                                   { value: 'single', label: cm.risk.singleTrade },
-                                  { value: 'multi', label: cm.risk.multiTrades },
+                                  ...(canUsePlanFeature('multi_trade_style')
+                                    ? [{ value: 'multi', label: cm.risk.multiTrades }]
+                                    : []),
                                 ]}
                               />
+                              {!canUsePlanFeature('multi_trade_style') ? (
+                                <UpgradePrompt variant="compact" reason={pw.advancedFeature} />
+                              ) : null}
                             </div>
 
                             {channelManualSettings.trade_style !== 'multi' && (
@@ -2140,8 +2183,22 @@ export function AccountConfigPage() {
                             <section className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3 space-y-3">
                               <div className="flex items-center justify-between">
                                 <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{cm.stops.tpDistributionTitle}</p>
-                                <Button variant="ghost" size="sm" onClick={addTpLotRow}>{cm.stops.addTp}</Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={addTpLotRow}
+                                  disabled={
+                                    limits.maxTpRows != null
+                                    && (channelManualSettings.tp_lots ?? DEFAULT_MANUAL_TP_LOTS).length >= limits.maxTpRows
+                                  }
+                                >
+                                  {cm.stops.addTp}
+                                </Button>
                               </div>
+                              {limits.maxTpRows != null
+                                && (channelManualSettings.tp_lots ?? DEFAULT_MANUAL_TP_LOTS).length >= limits.maxTpRows ? (
+                                  <UpgradePrompt variant="compact" reason={pw.advancedFeature} />
+                              ) : null}
                               <p className="text-xs text-neutral-600 dark:text-neutral-400">
                                 {cm.stops.tpDistributionIntro}
                               </p>

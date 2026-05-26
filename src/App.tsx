@@ -23,7 +23,6 @@ import {
   ContactSupportPage,
   FeatureRequestPage,
   PartnerWithUsPage,
-  SubscriptionsPage,
 } from './pages/dashboard/SupportMembershipPages'
 import { PortfolioPage } from './pages/dashboard/PortfolioPage'
 import { AnalysisHubPage } from './pages/dashboard/AnalysisHubPage'
@@ -35,8 +34,8 @@ export default function App() {
     <AuthProvider>
       <LocaleProvider>
       <UserProfileProvider>
-      <SubscriptionProvider>
       <BrowserRouter>
+      <SubscriptionProvider>
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
@@ -81,7 +80,7 @@ export default function App() {
             <Route path="/partner-with-us" element={<PartnerWithUsPage />} />
             <Route path="/affiliate-program" element={<AffiliateProgramPage />} />
             <Route path="/billing" element={<BillingPage />} />
-            <Route path="/subscriptions" element={<SubscriptionsPage />} />
+            <Route path="/subscriptions" element={<Navigate to="/billing" replace />} />
             <Route path="/performance" element={<PerformancePage />} />
             <Route path="/portfolio" element={<PortfolioPage />} />
             <Route path="/analysis-hub" element={<AnalysisHubPage />} />
@@ -94,8 +93,8 @@ export default function App() {
             <Route path="/sentiments" element={<Navigate to="/market-news" replace />} />
           </Route>
         </Routes>
-      </BrowserRouter>
       </SubscriptionProvider>
+      </BrowserRouter>
       </UserProfileProvider>
       </LocaleProvider>
     </AuthProvider>

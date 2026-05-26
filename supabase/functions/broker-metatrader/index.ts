@@ -27,6 +27,10 @@ import {
   resolveMtLots,
   type MtHistoryProfile,
 } from "../_shared/mtTradeFields.ts"
+import {
+  assertBrokerAccountLimit,
+  loadUserSubscription,
+} from "../_shared/subscriptionAccess.ts"
 
 function mtClient(env: { get(name: string): string | undefined }, platform: string): ReturnType<typeof makeClientFromEnv> {
   const p: MtPlatform = platform === "MT4" ? "MT4" : "MT5"
@@ -140,6 +144,13 @@ Deno.serve(async (req: Request) => {
           409,
           `This MT login is already linked as "${duplicateLogin.label}". Remove that account first or use Reconnect — linking the same login twice causes session conflicts.`,
         )
+      }
+
+      const sub = await loadUserSubscription(supabase, userId)
+      const denied = await assertBrokerAccountLimit(supabase, userId, sub)
+      if (denied) {
+        const payload = await denied.json() as { error?: string }
+        return bad(denied.status, String(payload.error ?? "Forbidden"))
       }
 
       const brokerName = inferBrokerLabel(server)

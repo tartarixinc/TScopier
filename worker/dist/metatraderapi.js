@@ -605,16 +605,30 @@ class MetatraderApiClient {
         }
         return [...byKey.values()];
     }
-    /** Recent closed history — bounded pagination for Trades page (avoids edge timeouts). */
+    /** Recent closed history — last pagination page(s) + session closed orders. */
     async closedOrdersHistoryLite(id, from, to, profile = 'dashboard', maxPages = 2, ordersPerPage = 200) {
         const byKey = new Map();
         const ingest = (rows) => (0, mtTradeFields_1.ingestMtHistoryRows)(byKey, rows, profile);
         try {
-            for (let page = 0; page < maxPages; page++) {
-                const { orders } = await this.orderHistoryPage(id, from, to, page, ordersPerPage);
-                ingest(orders);
-                if (orders.length === 0)
-                    break;
+            ingest(await this.closedOrders(id));
+        }
+        catch {
+            /* optional */
+        }
+        try {
+            const probe = await this.orderHistoryPage(id, from, to, 0, ordersPerPage);
+            const pagesCount = Math.max(1, probe.pagesCount);
+            if (pagesCount === 1) {
+                ingest(probe.orders);
+            }
+            else {
+                const startPage = Math.max(0, pagesCount - maxPages);
+                for (let page = startPage; page < pagesCount; page++) {
+                    const { orders } = page === 0
+                        ? probe
+                        : await this.orderHistoryPage(id, from, to, page, ordersPerPage);
+                    ingest(orders);
+                }
             }
             if (byKey.size > 0)
                 return [...byKey.values()];

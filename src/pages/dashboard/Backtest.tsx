@@ -37,6 +37,8 @@ import { PageHeader } from '../../components/layout/PageHeader'
 import { PageShell } from '../../components/layout/PageShell'
 import { Button } from '../../components/ui/Button'
 import { Alert } from '../../components/ui/Alert'
+import { useSubscription } from '../../context/SubscriptionContext'
+import { UpgradePrompt } from '../../components/billing/UpgradePrompt'
 
 interface ChannelOption {
   id: string
@@ -76,7 +78,14 @@ function buildConfig(
 export function Backtest() {
   const t = useT()
   const bt = t.backtest
+  const pw = t.pricing.paywall
   const { user } = useAuth()
+  const {
+    hasActiveSubscription,
+    canRunBacktest,
+    limits,
+    refresh: refreshSubscription,
+  } = useSubscription()
   const defaultDates = useMemo(() => defaultDateRange(), [])
   const [channels, setChannels] = useState<ChannelOption[]>([])
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null)
@@ -263,6 +272,14 @@ export function Backtest() {
       setError(!hasValidProfile ? bt.profileFirstError : bt.selectSymbolError)
       return
     }
+    if (!hasActiveSubscription) {
+      setError(pw.subscriptionRequired)
+      return
+    }
+    if (!canRunBacktest()) {
+      setError(interpolate(pw.backtestLimit, { limit: String(limits.maxBacktestsPerMonth ?? 5) }))
+      return
+    }
     setError('')
     setRunning(true)
     clearResults()
@@ -277,6 +294,7 @@ export function Backtest() {
       } else if (run.status === 'failed') {
         setRunning(false)
       }
+      void refreshSubscription()
     } catch (e) {
       setError(userError(e))
       setRunning(false)
@@ -285,7 +303,7 @@ export function Backtest() {
 
   const totalPipsTone = totalPips == null ? 'neutral' : totalPips >= 0 ? 'good' : 'bad'
   const canProfile = Boolean(selectedChannelId) && !isBusy
-  const canBacktest = hasValidProfile && Boolean(selectedSymbol) && !isBusy
+  const canBacktest = hasValidProfile && Boolean(selectedSymbol) && !isBusy && hasActiveSubscription && canRunBacktest()
 
   const openHistoryRun = async (row: BacktestHistoryRow) => {
     setHistoryOpen(false)
@@ -320,6 +338,16 @@ export function Backtest() {
 
   return (
     <PageShell maxWidth="lg" spacing="none" className="space-y-6">
+      {!hasActiveSubscription || !canRunBacktest() ? (
+        <UpgradePrompt
+          variant="banner"
+          reason={
+            !hasActiveSubscription
+              ? pw.subscriptionRequired
+              : interpolate(pw.backtestLimit, { limit: String(limits.maxBacktestsPerMonth ?? 5) })
+          }
+        />
+      ) : null}
       <PageHeader
         title={bt.title}
         subtitle={bt.subtitle}

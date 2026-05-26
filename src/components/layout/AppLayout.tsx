@@ -28,7 +28,7 @@ export function AppLayout() {
   const helpMenuCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const userMenuCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { profile } = useUserProfile()
-  const { planName } = useSubscription()
+  const { planName, hasActiveSubscription, effectivePlan, openUpgrade } = useSubscription()
 
   const openHelpMenu = () => {
     if (helpMenuCloseTimerRef.current) {
@@ -313,6 +313,15 @@ export function AppLayout() {
           <div className="flex-1 min-w-0 lg:hidden" />
 
           <div className="relative z-40 flex shrink-0 items-center gap-1 sm:gap-2 lg:ml-auto">
+            {!hasActiveSubscription || effectivePlan === 'basic' ? (
+              <button
+                type="button"
+                onClick={() => openUpgrade('advanced')}
+                className="hidden sm:inline-flex items-center rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-700 transition-colors hover:bg-teal-100 dark:border-teal-800 dark:bg-teal-950/40 dark:text-teal-300 dark:hover:bg-teal-950/60"
+              >
+                {!hasActiveSubscription ? t.pricing.paywall.upgradeCta : t.pricing.advanced.name}
+              </button>
+            ) : null}
             <AppSearchMobileTrigger />
             <LanguageSwitcher />
             <ThemeToggle />

@@ -8,6 +8,10 @@ import {
 import { executeBacktestRun } from "../_shared/backtest/runner.ts"
 import { syncBacktestSignalsViaWorker } from "../_shared/backtest/workerSync.ts"
 import {
+  assertBacktestMonthlyLimit,
+  loadUserSubscription,
+} from "../_shared/subscriptionAccess.ts"
+import {
   MassiveApiError,
   MassiveClient,
   sanitizeMarketDataErrorMessage,
@@ -181,6 +185,13 @@ Deno.serve(async (req: Request) => {
     if (action === "backtest_tpsl" || action === "run") {
       const simple = parseSimpleConfig((body.config ?? {}) as Record<string, unknown>)
       if (simple.channelIds.length === 0) return bad(400, "At least one channel required")
+
+      const sub = await loadUserSubscription(supabase, userId)
+      const denied = await assertBacktestMonthlyLimit(supabase, userId, sub)
+      if (denied) {
+        const payload = await denied.json() as { error?: string }
+        return bad(denied.status, String(payload.error ?? "Forbidden"))
+      }
 
       return await startBacktestRun(supabase, userId, simple, "tpsl", { forceSync: false })
     }

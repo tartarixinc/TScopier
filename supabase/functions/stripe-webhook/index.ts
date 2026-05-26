@@ -1,6 +1,11 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import Stripe from "npm:stripe@17";
+import {
+  stripePriceIdsFromEnv,
+  subscriptionRowFromStripe,
+  mapStripeSubscriptionStatus,
+} from "../_shared/stripeSubscriptionSync.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -8,6 +13,36 @@ const corsHeaders = {
   "Access-Control-Allow-Headers":
     "Content-Type, Authorization, X-Client-Info, Apikey",
 };
+
+async function resolveUserIdFromSubscription(
+  stripe: Stripe,
+  subscription: Stripe.Subscription,
+  supabase: ReturnType<typeof createClient>,
+): Promise<string | null> {
+  const metaUserId = subscription.metadata?.supabase_user_id;
+  if (metaUserId) return metaUserId;
+
+  const customerId =
+    typeof subscription.customer === "string"
+      ? subscription.customer
+      : subscription.customer?.id ?? null;
+  if (!customerId) return null;
+
+  const customer =
+    typeof subscription.customer === "object" && subscription.customer
+      ? subscription.customer
+      : await stripe.customers.retrieve(customerId);
+  if (!customer.deleted && customer.metadata?.supabase_user_id) {
+    return customer.metadata.supabase_user_id;
+  }
+
+  const { data } = await supabase
+    .from("subscriptions")
+    .select("user_id")
+    .eq("stripe_subscription_id", subscription.id)
+    .maybeSingle();
+  return data?.user_id ?? null;
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -22,6 +57,7 @@ Deno.serve(async (req: Request) => {
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2024-12-18.acacia" });
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const priceIds = stripePriceIdsFromEnv(Deno.env);
 
     const body = await req.text();
     const signature = req.headers.get("stripe-signature");
@@ -43,7 +79,6 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Idempotency check
     const { data: existingEvent } = await supabase
       .from("stripe_events")
       .select("event_id")
@@ -57,7 +92,6 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Record event
     await supabase
       .from("stripe_events")
       .insert({ event_id: event.id, event_type: event.type });
@@ -66,33 +100,20 @@ Deno.serve(async (req: Request) => {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
         const userId = session.metadata?.supabase_user_id;
-        const plan = session.metadata?.plan || "basic";
-        const extraAccounts = Number(session.metadata?.extra_accounts || 0);
+        const customerId =
+          typeof session.customer === "string" ? session.customer : session.customer?.id ?? null;
 
-        if (userId && session.subscription) {
+        if (userId && session.subscription && customerId) {
           const subscription = await stripe.subscriptions.retrieve(
-            session.subscription as string
+            session.subscription as string,
+            { expand: ["items.data.price"] },
           );
 
           await supabase
             .from("subscriptions")
             .upsert(
-              {
-                user_id: userId,
-                stripe_customer_id: session.customer as string,
-                stripe_subscription_id: subscription.id,
-                plan,
-                status: subscription.status === "trialing" ? "trialing" : "active",
-                extra_accounts: extraAccounts,
-                trial_ends_at: subscription.trial_end
-                  ? new Date(subscription.trial_end * 1000).toISOString()
-                  : null,
-                current_period_end: new Date(
-                  subscription.current_period_end * 1000
-                ).toISOString(),
-                updated_at: new Date().toISOString(),
-              },
-              { onConflict: "user_id", ignoreDuplicates: false }
+              subscriptionRowFromStripe(subscription, userId, customerId, priceIds),
+              { onConflict: "user_id", ignoreDuplicates: false },
             );
         }
         break;
@@ -100,26 +121,26 @@ Deno.serve(async (req: Request) => {
 
       case "customer.subscription.updated": {
         const subscription = event.data.object as Stripe.Subscription;
-        const userId = subscription.metadata?.supabase_user_id;
+        const userId = await resolveUserIdFromSubscription(stripe, subscription, supabase);
+        const customerId =
+          typeof subscription.customer === "string"
+            ? subscription.customer
+            : subscription.customer?.id ?? null;
 
-        if (userId) {
-          const statusMap: Record<string, string> = {
-            active: "active",
-            trialing: "trialing",
-            canceled: "canceled",
-            past_due: "past_due",
-            incomplete: "incomplete",
-            incomplete_expired: "canceled",
-            unpaid: "past_due",
-            paused: "canceled",
-          };
-
+        if (userId && customerId) {
+          await supabase
+            .from("subscriptions")
+            .upsert(
+              subscriptionRowFromStripe(subscription, userId, customerId, priceIds),
+              { onConflict: "user_id", ignoreDuplicates: false },
+            );
+        } else if (userId) {
           await supabase
             .from("subscriptions")
             .update({
-              status: statusMap[subscription.status] || "incomplete",
+              status: mapStripeSubscriptionStatus(subscription.status),
               current_period_end: new Date(
-                subscription.current_period_end * 1000
+                subscription.current_period_end * 1000,
               ).toISOString(),
               trial_ends_at: subscription.trial_end
                 ? new Date(subscription.trial_end * 1000).toISOString()
@@ -133,7 +154,7 @@ Deno.serve(async (req: Request) => {
 
       case "customer.subscription.deleted": {
         const subscription = event.data.object as Stripe.Subscription;
-        const userId = subscription.metadata?.supabase_user_id;
+        const userId = await resolveUserIdFromSubscription(stripe, subscription, supabase);
 
         if (userId) {
           await supabase

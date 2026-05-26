@@ -29,6 +29,7 @@ const tradeComment_1 = require("../tradeComment");
 const helpers_1 = require("./helpers");
 const types_1 = require("./types");
 const telegramMessageEdit_1 = require("../telegramMessageEdit");
+const subscriptionAccess_1 = require("../subscriptionAccess");
 function shouldUseEntryFastPath(ctx, row) {
     const mode = workerConfig_1.workerConfig.tradeExecutorMode;
     if (mode !== 'entry' && mode !== 'all')
@@ -273,6 +274,11 @@ async function handleSignal(ctx, row, opts) {
                 return;
             }
         }
+        const userSub = await (0, subscriptionAccess_1.loadCachedUserSubscription)(ctx.supabase, row.user_id);
+        if (!userSub || !(0, subscriptionAccess_1.isSubscriptionActive)(userSub.status)) {
+            await ctx.logDispatchSkipped(row, 'subscription_inactive');
+            return;
+        }
         const pipelineT0 = Date.now();
         const parsed = row.parsed_data;
         if (!parsed || !parsed.action)
@@ -321,6 +327,13 @@ async function handleSignal(ctx, row, opts) {
             console.warn(`[tradeExecutor] skip signal ${row.id}: no active broker matches channel=${row.channel_id ?? 'none'} (check Configure Trading channel selection)`);
             await ctx.logDispatchSkipped(row, 'no_broker_channel_match');
             return;
+        }
+        for (const broker of brokers) {
+            const blockReason = (0, subscriptionAccess_1.subscriptionBlocksSignalExecution)(userSub, (broker.manual_settings ?? null));
+            if (blockReason === 'plan_advanced_feature_required') {
+                await ctx.logDispatchSkipped(row, blockReason);
+                return;
+            }
         }
         // Pre-fetch channel keywords + comment slug once per signal.
         const { keywords: channelKeywords, commentSlug } = await ctx.getChannelMeta(row.channel_id);

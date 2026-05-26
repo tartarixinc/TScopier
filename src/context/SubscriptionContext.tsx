@@ -1,67 +1,161 @@
-import { createContext, useContext, useEffect, useState, useCallback } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './AuthContext'
+import {
+  canUseFeature,
+  effectivePlan,
+  isSubscriptionActive,
+  maxBacktestsPerMonth,
+  maxBrokerAccounts,
+  maxTelegramChannels,
+  planLimitsSnapshot,
+  type PlanFeatureKey,
+  type PlanLimitsSnapshot,
+  type SubscriptionPlan,
+} from '../lib/planLimits'
 
 export interface Subscription {
   id: string
   user_id: string
   stripe_customer_id: string
   stripe_subscription_id: string | null
-  plan: 'basic' | 'advanced'
+  plan: SubscriptionPlan
   status: 'active' | 'trialing' | 'canceled' | 'past_due' | 'incomplete'
   extra_accounts: number
   trial_ends_at: string | null
   current_period_end: string | null
 }
 
+export interface SubscriptionUsage {
+  brokerAccounts: number
+  telegramChannels: number
+  backtestsThisMonth: number
+}
+
 interface SubscriptionContextValue {
   subscription: Subscription | null
   loading: boolean
+  usage: SubscriptionUsage
+  usageLoading: boolean
   hasActiveSubscription: boolean
+  isPastDue: boolean
+  effectivePlan: SubscriptionPlan | null
+  limits: PlanLimitsSnapshot
   planName: string
   refresh: () => Promise<void>
   requireSubscription: () => boolean
+  openUpgrade: (target?: 'advanced') => void
+  canUseFeature: (feature: PlanFeatureKey) => boolean
+  canAddBroker: () => boolean
+  canAddChannel: () => boolean
+  canRunBacktest: () => boolean
+}
+
+const emptyUsage: SubscriptionUsage = {
+  brokerAccounts: 0,
+  telegramChannels: 0,
+  backtestsThisMonth: 0,
 }
 
 const SubscriptionContext = createContext<SubscriptionContextValue>({
   subscription: null,
   loading: true,
+  usage: emptyUsage,
+  usageLoading: true,
   hasActiveSubscription: false,
+  isPastDue: false,
+  effectivePlan: null,
+  limits: {
+    maxBrokerAccounts: 0,
+    maxTelegramChannels: 0,
+    maxBacktestsPerMonth: 0,
+    maxTpRows: 3,
+  },
   planName: '',
   refresh: async () => {},
   requireSubscription: () => false,
+  openUpgrade: () => {},
+  canUseFeature: () => false,
+  canAddBroker: () => false,
+  canAddChannel: () => false,
+  canRunBacktest: () => false,
 })
+
+function monthStartUtcIso(): string {
+  const monthStart = new Date()
+  monthStart.setUTCDate(1)
+  monthStart.setUTCHours(0, 0, 0, 0)
+  return monthStart.toISOString()
+}
 
 export function SubscriptionProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const userId = user?.id ?? null
   const [subscription, setSubscription] = useState<Subscription | null>(null)
   const [loading, setLoading] = useState(true)
+  const [usage, setUsage] = useState<SubscriptionUsage>(emptyUsage)
+  const [usageLoading, setUsageLoading] = useState(true)
 
   const fetchSubscription = useCallback(async () => {
     if (!userId) {
       setSubscription(null)
       setLoading(false)
+      setUsage(emptyUsage)
+      setUsageLoading(false)
       return
     }
 
-    const { data } = await supabase
-      .from('subscriptions')
-      .select('*')
-      .eq('user_id', userId)
-      .maybeSingle()
+    setLoading(true)
+    setUsageLoading(true)
+    const monthStart = monthStartUtcIso()
+
+    const [{ data }, usageResults] = await Promise.all([
+      supabase.from('subscriptions').select('*').eq('user_id', userId).maybeSingle(),
+      Promise.all([
+        supabase
+          .from('broker_accounts')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', userId)
+          .eq('is_active', true),
+        supabase
+          .from('telegram_channels')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', userId),
+        supabase
+          .from('backtest_runs')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', userId)
+          .gte('created_at', monthStart),
+      ]),
+    ])
 
     setSubscription(data as Subscription | null)
+    setUsage({
+      brokerAccounts: usageResults[0].count ?? 0,
+      telegramChannels: usageResults[1].count ?? 0,
+      backtestsThisMonth: usageResults[2].count ?? 0,
+    })
     setLoading(false)
+    setUsageLoading(false)
   }, [userId])
 
   useEffect(() => {
     if (!userId) {
       setSubscription(null)
       setLoading(false)
+      setUsage(emptyUsage)
+      setUsageLoading(false)
       return
     }
-    setLoading(true)
     void fetchSubscription()
   }, [userId, fetchSubscription])
 
@@ -75,22 +169,79 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     window.history.replaceState({}, '', next)
   }, [fetchSubscription])
 
-  const hasActiveSubscription =
-    subscription?.status === 'active' || subscription?.status === 'trialing'
+  const hasActiveSubscription = isSubscriptionActive(subscription?.status)
+  const isPastDue = subscription?.status === 'past_due'
+  const activePlan = effectivePlan(subscription?.plan, subscription?.status)
+
+  const limits = useMemo(
+    () => planLimitsSnapshot(subscription?.plan, subscription?.status, subscription?.extra_accounts ?? 0),
+    [subscription],
+  )
 
   const planName = subscription
-    ? subscription.plan === 'advanced' ? 'Advanced' : 'Basic'
+    ? subscription.plan === 'advanced'
+      ? 'Advanced'
+      : 'Basic'
     : ''
 
   const requireSubscription = useCallback(() => {
     if (hasActiveSubscription) return true
-    window.location.href = '/pricing'
+    navigate('/pricing')
     return false
-  }, [hasActiveSubscription])
+  }, [hasActiveSubscription, navigate])
+
+  const openUpgrade = useCallback(
+    (_target?: 'advanced') => {
+      navigate('/pricing')
+    },
+    [navigate],
+  )
+
+  const canUseFeatureFn = useCallback(
+    (feature: PlanFeatureKey) => canUseFeature(subscription?.plan, subscription?.status, feature),
+    [subscription],
+  )
+
+  const canAddBroker = useCallback(() => {
+    if (!activePlan) return false
+    const limit = maxBrokerAccounts(activePlan, subscription?.extra_accounts ?? 0)
+    return usage.brokerAccounts < limit
+  }, [activePlan, subscription?.extra_accounts, usage.brokerAccounts])
+
+  const canAddChannel = useCallback(() => {
+    if (!activePlan) return false
+    const limit = maxTelegramChannels(activePlan)
+    if (limit == null) return true
+    return usage.telegramChannels < limit
+  }, [activePlan, usage.telegramChannels])
+
+  const canRunBacktest = useCallback(() => {
+    if (!activePlan) return false
+    const limit = maxBacktestsPerMonth(activePlan)
+    if (limit == null) return true
+    return usage.backtestsThisMonth < limit
+  }, [activePlan, usage.backtestsThisMonth])
 
   return (
     <SubscriptionContext.Provider
-      value={{ subscription, loading, hasActiveSubscription, planName, refresh: fetchSubscription, requireSubscription }}
+      value={{
+        subscription,
+        loading,
+        usage,
+        usageLoading,
+        hasActiveSubscription,
+        isPastDue,
+        effectivePlan: activePlan,
+        limits,
+        planName,
+        refresh: fetchSubscription,
+        requireSubscription,
+        openUpgrade,
+        canUseFeature: canUseFeatureFn,
+        canAddBroker,
+        canAddChannel,
+        canRunBacktest,
+      }}
     >
       {children}
     </SubscriptionContext.Provider>

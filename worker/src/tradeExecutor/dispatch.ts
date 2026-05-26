@@ -29,6 +29,11 @@ import {
 } from './types'
 import type { ChannelKeywords } from '../manualPlanner'
 import { MESSAGE_EDIT_DISPATCH_SOURCE } from '../telegramMessageEdit'
+import {
+  loadCachedUserSubscription,
+  subscriptionBlocksSignalExecution,
+  isSubscriptionActive,
+} from '../subscriptionAccess'
 
 export function shouldUseEntryFastPath(ctx: TradeExecutorContext, row: SignalRow): boolean {
     const mode = workerConfig.tradeExecutorMode
@@ -307,6 +312,13 @@ export async function handleSignal(ctx: TradeExecutorContext,
           return
         }
       }
+
+      const userSub = await loadCachedUserSubscription(ctx.supabase, row.user_id)
+      if (!userSub || !isSubscriptionActive(userSub.status)) {
+        await ctx.logDispatchSkipped(row, 'subscription_inactive')
+        return
+      }
+
       const pipelineT0 = Date.now()
       const parsed = row.parsed_data
       if (!parsed || !parsed.action) return
@@ -361,6 +373,17 @@ export async function handleSignal(ctx: TradeExecutorContext,
         )
         await ctx.logDispatchSkipped(row, 'no_broker_channel_match')
         return
+      }
+
+      for (const broker of brokers) {
+        const blockReason = subscriptionBlocksSignalExecution(
+          userSub,
+          (broker.manual_settings ?? null) as Record<string, unknown> | null,
+        )
+        if (blockReason === 'plan_advanced_feature_required') {
+          await ctx.logDispatchSkipped(row, blockReason)
+          return
+        }
       }
 
       // Pre-fetch channel keywords + comment slug once per signal.

@@ -69,6 +69,7 @@ import { useLocale, useT } from '../../context/LocaleContext'
 import { useFormatMoney } from '../../hooks/useFormatMoney'
 import { formatMoneyWithCode } from '../../lib/currency'
 import { interpolate } from '../../i18n/interpolate'
+import { SubscriptionBanner } from '../../components/billing/SubscriptionBanner'
 
 /** Shared column template for dashboard Copier Logs header + rows. */
 const DASHBOARD_COPIER_LOG_GRID =
@@ -1472,6 +1473,7 @@ export function DashboardPage() {
   return (
     <PageShell maxWidth="xl" spacing="none" className="space-y-6">
       <PageHeader title={t.dashboard.title} />
+      <SubscriptionBanner />
 
       {/* Stats bar */}
       <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 mb-6">

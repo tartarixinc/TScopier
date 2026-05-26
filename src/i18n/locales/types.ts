@@ -752,6 +752,21 @@ export interface PricingTranslations {
     choosePlan: string
   }
   checkoutFailed: string
+  paywall: {
+    noPlanTitle: string
+    noPlanReason: string
+    upgradeTitle: string
+    upgradeCta: string
+    manageBilling: string
+    updatePaymentTitle: string
+    updatePaymentReason: string
+    updatePayment: string
+    brokerLimit: string
+    channelLimit: string
+    backtestLimit: string
+    subscriptionRequired: string
+    advancedFeature: string
+  }
 }
 
 export interface Translations {

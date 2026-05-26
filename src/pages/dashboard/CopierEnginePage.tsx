@@ -29,6 +29,8 @@ import {
   removeStaleDuplicateChannels,
 } from '../../lib/telegramChannelReconcile'
 import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
+import { useSubscription } from '../../context/SubscriptionContext'
+import { UpgradePrompt } from '../../components/billing/UpgradePrompt'
 import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
 import { Toggle } from '../../components/ui/Toggle'
@@ -89,6 +91,13 @@ export function CopierEnginePage() {
   const initialTgCache = user?.id ? getCachedTgChannels(user.id) : null
   const initialTgSession = user?.id ? getCachedTgSession(user.id) : null
   const { brokers, replaceBroker, setBrokers, refreshBrokers } = useBrokerAccounts()
+  const {
+    hasActiveSubscription,
+    canAddChannel,
+    limits,
+    refresh: refreshSubscription,
+  } = useSubscription()
+  const pw = t.pricing.paywall
   const [channels, setChannels] = useState<TelegramChannel[]>([])
   const [connectMenuChannelId, setConnectMenuChannelId] = useState<string | null>(null)
   const [connectingBrokerId, setConnectingBrokerId] = useState<string | null>(null)
@@ -402,6 +411,15 @@ export function CopierEnginePage() {
 
   const addFromTg = async (ch: { id: string; title: string; username: string }) => {
     setError('')
+    const alreadyLinked = channels.some(row => row.channel_id === ch.id)
+    if (!hasActiveSubscription) {
+      setError(pw.subscriptionRequired)
+      return
+    }
+    if (!alreadyLinked && !canAddChannel()) {
+      setError(interpolate(pw.channelLimit, { limit: String(limits.maxTelegramChannels ?? 5) }))
+      return
+    }
     await removeStaleDuplicateChannels(supabase, user!.id, { id: ch.id, title: ch.title })
     const { data, error: dbErr } = await supabase
       .from('telegram_channels')
@@ -433,6 +451,7 @@ export function CopierEnginePage() {
           : [upserted, ...withoutStale]
       })
       await autoLinkChannelToBrokers(upserted.id)
+      void refreshSubscription()
     }
   }
 
@@ -536,6 +555,18 @@ export function CopierEnginePage() {
           ) : undefined
         }
       />
+
+      {!hasActiveSubscription || !canAddChannel() ? (
+        <UpgradePrompt
+          variant="banner"
+          reason={
+            !hasActiveSubscription
+              ? pw.subscriptionRequired
+              : interpolate(pw.channelLimit, { limit: String(limits.maxTelegramChannels ?? 5) })
+          }
+          className="mb-4"
+        />
+      ) : null}
 
       {/* Status row */}
       {/* {brokers.length === 0 && (
