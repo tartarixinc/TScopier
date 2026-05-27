@@ -570,10 +570,17 @@ export function DashboardPage() {
       const balances = cached.linkedAccountBalances ?? {}
       linkedBalancesRef.current = balances
       setLinkedAccountBalances(balances)
-      if (cached.chartTrades?.length) setChartTrades(cached.chartTrades)
+      if (cached.chartTrades?.length) {
+        setChartTrades(cached.chartTrades)
+      } else if (cached.mtTrades?.length) {
+        setChartTrades(resolveDashboardChartTrades(cached.mtTrades, []))
+      }
       if (cached.aiExpertLogs?.length) setAiExpertLogs(cached.aiExpertLogs)
       if (cached.mtTrades?.length) mtTradesRef.current = cached.mtTrades
       seedLiveBrokerStateFromBalances(balances, liveBrokerStateRef.current, cached.linkedAccounts)
+      if ((cached.chartTrades?.length ?? 0) > 0 || (cached.mtTrades?.length ?? 0) > 0) {
+        setDashboardChartsReady(true)
+      }
     } else {
       setStats(DEFAULT_DASHBOARD_STATS)
       setCopierLogs([])
@@ -585,47 +592,60 @@ export function DashboardPage() {
     }
     dashboardReadyRef.current = Boolean(cached?.stats)
   }, [user?.id])
+
+  /** Keep last chart snapshot visible while a refresh briefly returns empty data. */
+  const effectiveChartTrades = useMemo(() => {
+    if (chartTrades.length > 0) return chartTrades
+    const sticky = chartTradesRef.current
+    return sticky.length > 0 ? sticky : chartTrades
+  }, [chartTrades])
+
   const tradeVolume7Day = useMemo(
-    () => buildTradeVolume7Day(chartTrades),
-    [chartTrades],
+    () => buildTradeVolume7Day(effectiveChartTrades),
+    [effectiveChartTrades],
   )
 
   const todayOutcomeDay = useMemo(
-    () => findTodayTradeOutcomeDay(chartTrades),
-    [chartTrades],
+    () => findTodayTradeOutcomeDay(effectiveChartTrades),
+    [effectiveChartTrades],
   )
 
   const yesterdayOutcomeDay = useMemo(
-    () => findYesterdayTradeOutcomeDay(chartTrades),
-    [chartTrades],
+    () => findYesterdayTradeOutcomeDay(effectiveChartTrades),
+    [effectiveChartTrades],
   )
 
   const todayChartStats = useMemo(
-    () => summarizeTodayFromChartTrades(chartTrades),
-    [chartTrades],
+    () => summarizeTodayFromChartTrades(effectiveChartTrades),
+    [effectiveChartTrades],
   )
 
   const closedProfitByAccountId = useMemo(
-    () => sumClosedDealProfitByBroker(chartTrades),
-    [chartTrades],
+    () => sumClosedDealProfitByBroker(effectiveChartTrades),
+    [effectiveChartTrades],
   )
 
-  const hasMtTradeHistory = chartTrades.length > 0
+  const hasMtTradeHistory = effectiveChartTrades.length > 0
 
   /** Headline stats: today/yesterday P/L match Trade Outcome bars (profit − loss). */
   const headlineStats = useMemo(() => {
-    const todayProfit = netPnlFromTradeOutcomeDay(todayOutcomeDay)
-    const yesterdayProfit = netPnlFromTradeOutcomeDay(yesterdayOutcomeDay)
+    const chartHasToday = todayChartStats.hasData
+    const todayProfit = chartHasToday
+      ? netPnlFromTradeOutcomeDay(todayOutcomeDay)
+      : stats.todayProfit
+    const yesterdayProfit = chartHasToday || effectiveChartTrades.length > 0
+      ? netPnlFromTradeOutcomeDay(yesterdayOutcomeDay)
+      : stats.yesterdayProfit
     return {
       ...stats,
       todayProfit,
       yesterdayProfit,
-      tradesTaken: todayChartStats.taken,
-      tradesWon: todayChartStats.won,
-      tradesLost: todayChartStats.lost,
-      tradesBreakeven: todayChartStats.breakeven,
+      tradesTaken: chartHasToday ? todayChartStats.taken : stats.tradesTaken,
+      tradesWon: chartHasToday ? todayChartStats.won : stats.tradesWon,
+      tradesLost: chartHasToday ? todayChartStats.lost : stats.tradesLost,
+      tradesBreakeven: chartHasToday ? todayChartStats.breakeven : stats.tradesBreakeven,
     }
-  }, [stats, todayChartStats, todayOutcomeDay, yesterdayOutcomeDay])
+  }, [stats, todayChartStats, todayOutcomeDay, yesterdayOutcomeDay, effectiveChartTrades.length])
 
   const openPnlSub = useMemo(() => {
     let accountCount = countAccountsWithOpenPositions(
@@ -635,14 +655,14 @@ export function DashboardPage() {
     )
     if (accountCount === 0 && stats.openTrades > 0) {
       const brokers = new Set(
-        chartTrades.filter(t => t.status === 'open').map(t => t.brokerAccountId),
+        effectiveChartTrades.filter(t => t.status === 'open').map(t => t.brokerAccountId),
       )
       accountCount = brokers.size
     }
     if (accountCount === 0) return t.dashboard.openPnlNoOpen
     if (accountCount === 1) return t.dashboard.openPnlAcrossOneAccount
     return interpolate(t.dashboard.openPnlAcrossAccounts, { count: String(accountCount) })
-  }, [linkedAccounts, linkedAccountBalances, chartTrades, stats.openTrades, t])
+  }, [linkedAccounts, linkedAccountBalances, effectiveChartTrades, stats.openTrades, t])
 
   const equityByAccountId = useMemo(() => {
     const out: Record<string, number> = {}
@@ -669,8 +689,8 @@ export function DashboardPage() {
   }, [linkedAccounts, linkedAccountBalances])
 
   const accountGrowth = useMemo(
-    () => buildAccountGrowthSeries(linkedAccounts, chartTrades, balanceByAccountId, 7),
-    [linkedAccounts, chartTrades, balanceByAccountId],
+    () => buildAccountGrowthSeries(linkedAccounts, effectiveChartTrades, balanceByAccountId, 7),
+    [linkedAccounts, effectiveChartTrades, balanceByAccountId],
   )
 
   const accountGrowthEmpty = accountGrowth.series.length === 0
@@ -696,7 +716,7 @@ export function DashboardPage() {
         tradesByAccountId[t.broker_id] = list
       }
     } else {
-      for (const t of chartTrades) {
+      for (const t of effectiveChartTrades) {
         if (t.status !== 'closed' || !t.closedAt) continue
         const row: TradeStatsRow = {
           status: 'closed',
@@ -712,7 +732,7 @@ export function DashboardPage() {
       }
     }
     return computeLinkedAccountPerformanceMap(linkedAccounts, tradesByAccountId, equityByAccountId)
-  }, [linkedAccounts, chartTrades, equityByAccountId])
+  }, [linkedAccounts, effectiveChartTrades, equityByAccountId])
 
   const formatVsYesterdayMoney = (yesterdayValue: number | null | undefined) => {
     if (yesterdayValue == null || !Number.isFinite(yesterdayValue)) return ''
@@ -722,9 +742,6 @@ export function DashboardPage() {
   const loadDashboard = async (opts: { fresh?: boolean; syncLive?: boolean } = {}) => {
     const { fresh = false, syncLive = fresh } = opts
     const generation = fresh ? ++loadGenerationRef.current : loadGenerationRef.current
-    if (fresh) {
-      liveBrokerStateRef.current = {}
-    }
     try {
     const { todayStart, tomorrowStart, yesterdayStart } = getLocalCalendarDayBounds()
 
@@ -940,7 +957,7 @@ export function DashboardPage() {
               resolveMtServerCandidate(account, account.broker_server ?? undefined),
             ),
             open_pnl: liveOk ? (sticky?.open_pnl ?? cachedOpenPnl) : 0,
-            open_trades: liveOk && !fresh ? sticky?.open_trades : liveOk ? undefined : 0,
+            open_trades: liveOk ? sticky?.open_trades : 0,
           },
         ]
       }),
@@ -1082,7 +1099,7 @@ export function DashboardPage() {
     }
     if (fresh && generation !== loadGenerationRef.current) return
     } finally {
-      if (fresh && generation === loadGenerationRef.current) {
+      if (!fresh || generation === loadGenerationRef.current) {
         dashboardReadyRef.current = true
         setDashboardChartsReady(true)
       }
@@ -1148,7 +1165,7 @@ export function DashboardPage() {
       if (document.visibilityState === 'visible') {
         lastBrokerRefreshRef.current = 0
         lastMtTradesRefreshRef.current = 0
-        void loadDashboard({ fresh: false, syncLive: true })
+        void syncLiveMt()
       }
     }
     document.addEventListener('visibilitychange', onVisible)
@@ -1194,8 +1211,13 @@ export function DashboardPage() {
     } catch {
       return
     }
-    mtTradesRef.current = trades
-    const chartNext = resolveDashboardChartTrades(trades, [])
+    if (trades.length > 0) {
+      mtTradesRef.current = trades
+    }
+    const chartNext = resolveDashboardChartTrades(
+      trades.length > 0 ? trades : mtTradesRef.current ?? [],
+      [],
+    )
     setChartTrades(prev => preferChartTrades(prev, chartNext))
     if (trades.length === 0) return
 
@@ -1352,12 +1374,6 @@ export function DashboardPage() {
     for (const r of results) {
       const broker = sourceAccounts.find(b => b.id === r.id)
       if (r.error || !r.summary || r.stale) {
-        delete liveBrokerStateRef.current[r.id]
-        nextBalances[r.id] = {
-          ...(nextBalances[r.id] ?? {}),
-          open_pnl: 0,
-          open_trades: 0,
-        }
         if (broker && (r.error || r.stale || !r.summary)) {
           patchBroker(r.id, { connection_status: 'error' })
         }
@@ -1446,16 +1462,18 @@ export function DashboardPage() {
           live?.equity ?? live?.balance ?? account.last_equity ?? account.last_balance ?? Number.NaN,
         )
       })
+      const chartTodayProfit = netPnlFromTradeOutcomeDay(findTodayTradeOutcomeDay(chartTradesRef.current))
       const next = {
         ...prev,
         portfolioValue,
         totalEquity,
         openPnl: sawLivePnl ? openPnl : prev.openPnl,
         totalProfitLoss,
-        todayProfit: netPnlFromTradeOutcomeDay(findTodayTradeOutcomeDay(chartTradesRef.current)),
-        ...(sawOpenPosCount
-          ? { openPositions: mtOpenTotal, openTrades: mtOpenTotal }
-          : { openPositions: 0, openTrades: 0 }),
+        todayProfit:
+          chartTradesRef.current.length > 0 || chartTodayProfit !== 0
+            ? chartTodayProfit
+            : prev.todayProfit,
+        ...(sawOpenPosCount ? { openPositions: mtOpenTotal, openTrades: mtOpenTotal } : {}),
       }
       statsRef.current = next
       return next
@@ -1480,12 +1498,11 @@ export function DashboardPage() {
     if (upErr) applyActiveStats(snapshot)
   }
 
-  const chartsEmpty = chartTrades.length === 0 && linkedAccounts.length === 0
-  const hasMtLinkedBroker = linkedAccounts.some(b => {
-    const uuid = (b.metaapi_account_id ?? '').trim()
-    return b.is_active && uuid.length > 0 && !uuid.includes('|')
-  })
-  const chartsLoading = !dashboardChartsReady && (chartsEmpty || hasMtLinkedBroker)
+  const chartsEmpty = effectiveChartTrades.length === 0 && linkedAccounts.length === 0
+  const chartsLoading =
+    !dashboardChartsReady &&
+    effectiveChartTrades.length === 0 &&
+    accountGrowth.series.length === 0
 
   return (
     <PageShell maxWidth="xl" spacing="none" className="space-y-6">
@@ -1586,12 +1603,12 @@ export function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <TradeVolumeChart data={tradeVolume7Day} loading={chartsLoading && chartTrades.length === 0} />
+        <TradeVolumeChart data={tradeVolume7Day} loading={chartsLoading} />
         <AccountGrowthChart
           data={accountGrowth.data}
           series={accountGrowth.series}
-          loading={chartsLoading && accountGrowth.series.length === 0}
-          isEmpty={accountGrowthEmpty}
+          loading={chartsLoading}
+          isEmpty={accountGrowthEmpty && effectiveChartTrades.length === 0}
         />
       </div>
 

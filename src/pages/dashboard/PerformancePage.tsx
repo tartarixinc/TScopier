@@ -85,7 +85,6 @@ export function PerformancePage() {
     [accounts, chartTrades, balanceByAccountId, periodDays],
   )
 
-  const tradeOutcomeEmpty = volumeData.every(d => d.profit === 0 && d.loss === 0)
   const growthEmpty = accountGrowth.series.length === 0
 
   const periodLabels: Record<PerformancePeriod, string> = {

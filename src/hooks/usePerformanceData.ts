@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { DASHBOARD_CHART_MT_HISTORY_DAYS, PERFORMANCE_MT_HISTORY_DAYS, resolveDashboardChartTrades } from '../lib/dashboardCharts'
+import { PERFORMANCE_MT_HISTORY_DAYS, resolveDashboardChartTrades } from '../lib/dashboardCharts'
 import {
   computeLinkedAccountPerformanceMap,
   getLocalCalendarDayBounds,
