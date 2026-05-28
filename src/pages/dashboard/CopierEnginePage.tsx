@@ -16,10 +16,6 @@ import {
   pruneStaleBrokerChannelIds,
 } from '../../lib/brokerChannelLink'
 import {
-  channelListenerHealthLabel,
-  getChannelListenerHealth,
-} from '../../lib/channelListenerHealth'
-import {
   hasValidTelegramChannelIdentity,
   isNumericTelegramChatId,
   normalizeTelegramUsername,
@@ -803,13 +799,6 @@ function ChannelRow({
   )
   const hasAnyBrokers = brokers.some(b => b.is_active)
   const identityValid = hasValidTelegramChannelIdentity(channel)
-  const listenerHealth = getChannelListenerHealth(channel)
-  const healthLabel = channelListenerHealthLabel(ce, listenerHealth)
-  const lastHeardLabel = channel.last_seen_at
-    ? interpolate(ce.channelLastHeard, {
-        time: new Date(channel.last_seen_at).toLocaleString(),
-      })
-    : ce.channelNeverHeard
 
   useEffect(() => {
     if (!connectMenuOpen) return
@@ -833,14 +822,6 @@ function ChannelRow({
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{channel.display_name}</h3>
             {!channel.is_active && <Badge variant="neutral" size="sm">{ce.statusPaused}</Badge>}
-            {channel.is_active && (
-              <Badge
-                variant={listenerHealth === 'listening' ? 'success' : listenerHealth === 'poll_only' ? 'warning' : 'neutral'}
-                size="sm"
-              >
-                {healthLabel}
-              </Badge>
-            )}
           </div>
           {!identityValid && (
             <p className="mt-1 text-xs text-warning-800 dark:text-amber-200">{ce.invalidChannelIdentity}</p>
@@ -851,7 +832,6 @@ function ChannelRow({
               {interpolate(ce.channelTelegramId, { id: channel.channel_id })}
             </p>
           )}
-          <p className="mt-0.5 text-xs text-neutral-400 dark:text-neutral-500">{lastHeardLabel}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Toggle checked={channel.is_active} onChange={onToggle} />

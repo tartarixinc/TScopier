@@ -568,11 +568,6 @@ export interface CopierEnginePageTranslations {
   noBrokersYet: string
   connectBrokerInConfig: string
   channelTelegramId: string
-  channelLastHeard: string
-  channelNeverHeard: string
-  channelHealthListening: string
-  channelHealthPollOnly: string
-  channelHealthStale: string
   invalidChannelIdentity: string
   manualIdentityRequired: string
   invalidChannelIdFormat: string

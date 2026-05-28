@@ -509,11 +509,6 @@ export const en: Translations = {
     noBrokersYet: 'No broker accounts yet',
     connectBrokerInConfig: 'Add a broker in Account Configuration first',
     channelTelegramId: 'Telegram ID: {id}',
-    channelLastHeard: 'Last heard: {time}',
-    channelNeverHeard: 'Never heard from Telegram',
-    channelHealthListening: 'Listening',
-    channelHealthPollOnly: 'Poll-only (live events stale)',
-    channelHealthStale: 'Stale — no recent Telegram activity',
     invalidChannelIdentity:
       'Invalid Telegram ID — remove this channel and re-add it from the Telegram picker above.',
     manualIdentityRequired: 'Enter a numeric Telegram channel ID or @username.',
