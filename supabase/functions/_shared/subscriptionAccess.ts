@@ -28,16 +28,48 @@ export async function loadUserSubscription(
   return data as UserSubscriptionRow;
 }
 
+function adminUserIdsFromEnv(): Set<string> {
+  const raw = Deno.env.get("TSCOPIER_ADMIN_USER_IDS") ?? "";
+  return new Set(
+    raw.split(/[,;\s]+/).map((s) => s.trim()).filter((s) => s.length > 0),
+  );
+}
+
+/** True when user bypasses subscription limits (DB flag, env list, or Auth app_metadata). */
 export async function loadUserIsAdmin(
   supabase: SupabaseClient,
   userId: string,
 ): Promise<boolean> {
-  const { data } = await supabase
+  if (adminUserIdsFromEnv().has(userId)) return true;
+
+  const { data, error } = await supabase
     .from("user_profiles")
     .select("is_admin")
     .eq("user_id", userId)
     .maybeSingle();
-  return data?.is_admin === true;
+
+  if (error) {
+    console.warn(
+      `[subscriptionAccess] user_profiles.is_admin lookup failed for ${userId}: ${error.message}`,
+    );
+  } else if (data?.is_admin === true) {
+    return true;
+  }
+
+  try {
+    const { data: authData, error: authErr } = await supabase.auth.admin.getUserById(
+      userId,
+    );
+    if (!authErr && authData?.user) {
+      const meta = authData.user.app_metadata ?? {};
+      if (meta.is_admin === true || meta.role === "admin") return true;
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn(`[subscriptionAccess] auth admin lookup failed for ${userId}: ${msg}`);
+  }
+
+  return false;
 }
 
 export function subscriptionAccessDenied(

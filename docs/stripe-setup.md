@@ -62,6 +62,14 @@ WHERE user_id = '<uuid>';
 
 Admin bypass applies in the UI (`SubscriptionContext`), edge functions (`subscriptionAccess.ts`), and the trade worker.
 
+Optional env on edge functions / worker: `TSCOPIER_ADMIN_USER_IDS` (comma-separated user UUIDs) for admin bypass without a DB row.
+
+After changing `subscriptionAccess.ts`, redeploy affected edge functions (at minimum `backtest-run`):
+
+```bash
+supabase functions deploy backtest-run
+```
+
 ## Customer portal
 
 Edge function: `customer-portal` (JWT required).

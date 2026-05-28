@@ -35,6 +35,11 @@ export async function loadCachedUserSubscription(
   return row
 }
 
+function adminUserIdsFromEnv(): Set<string> {
+  const raw = process.env.TSCOPIER_ADMIN_USER_IDS ?? ''
+  return new Set(raw.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean))
+}
+
 export async function loadCachedUserIsAdmin(
   supabase: SupabaseClient,
   userId: string,
@@ -42,13 +47,29 @@ export async function loadCachedUserIsAdmin(
   const hit = adminCache.get(userId)
   if (hit && hit.expiresAt > Date.now()) return hit.isAdmin
 
-  const { data } = await supabase
-    .from('user_profiles')
-    .select('is_admin')
-    .eq('user_id', userId)
-    .maybeSingle()
+  let isAdmin = adminUserIdsFromEnv().has(userId)
 
-  const isAdmin = data?.is_admin === true
+  if (!isAdmin) {
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .select('is_admin')
+      .eq('user_id', userId)
+      .maybeSingle()
+    if (!error && data?.is_admin === true) isAdmin = true
+  }
+
+  if (!isAdmin) {
+    try {
+      const { data: authData, error: authErr } = await supabase.auth.admin.getUserById(userId)
+      if (!authErr && authData?.user) {
+        const meta = authData.user.app_metadata ?? {}
+        if (meta.is_admin === true || meta.role === 'admin') isAdmin = true
+      }
+    } catch {
+      /* best-effort */
+    }
+  }
+
   adminCache.set(userId, { isAdmin, expiresAt: Date.now() + CACHE_TTL_MS })
   return isAdmin
 }
