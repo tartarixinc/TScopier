@@ -3,6 +3,8 @@ export interface ChannelWorkerTranslations {
   onOpenTrade: string
   onSymbol: string
   forSymbol: string
+  /** Appended when a log row is tied to a Telegram channel, e.g. " from Mo VIP Channel". */
+  fromChannel: string
   errSuffix: string
   symbolExempted: string
   several: string

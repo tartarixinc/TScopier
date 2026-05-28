@@ -13,11 +13,45 @@ export type ChannelWorkerLogRow = {
   response_payload: Record<string, unknown> | null
   error_message: string | null
   signals?: {
+    channel_id?: string | null
     parsed_data?: Record<string, unknown> | null
     raw_message?: string | null
     status?: string | null
     skip_reason?: string | null
   } | null
+}
+
+export function resolveChannelNameFromLog(
+  row: ChannelWorkerLogRow,
+  channelDisplayNames?: Record<string, string>,
+): string | null {
+  const payload = row.request_payload ?? {}
+  const fromPayloadName =
+    typeof payload.channel_name === 'string' ? payload.channel_name.trim() : ''
+  if (fromPayloadName) return fromPayloadName
+
+  const channelId =
+    (typeof payload.channel_id === 'string' ? payload.channel_id : null) ??
+    row.signals?.channel_id ??
+    null
+  if (!channelId || !channelDisplayNames) return null
+  const label = channelDisplayNames[channelId]?.trim()
+  return label || null
+}
+
+function shouldOmitChannelSuffix(logAction: string): boolean {
+  return logAction === 'pipeline_parse_dispatch'
+}
+
+function withFromChannel(
+  message: string,
+  channel: string | null,
+  cw: ChannelWorkerTranslations,
+): string {
+  if (!channel) return message
+  const suffix = interpolate(cw.fromChannel, { channel })
+  if (message.endsWith('.')) return `${message.slice(0, -1)}${suffix}.`
+  return `${message}${suffix}`
 }
 
 function cleanSymbolLabel(v: unknown): string | null {
@@ -290,7 +324,19 @@ function ignoredChannelWorkerReason(row: ChannelWorkerLogRow, cw: ChannelWorkerT
 }
 
 /** Localized line for the dashboard Channel Worker feed. */
-export function channelWorkerLogMessage(row: ChannelWorkerLogRow, cw: ChannelWorkerTranslations): string {
+export function channelWorkerLogMessage(
+  row: ChannelWorkerLogRow,
+  cw: ChannelWorkerTranslations,
+  channelDisplayNames?: Record<string, string>,
+): string {
+  const logAction = row.action.toLowerCase()
+  const message = buildChannelWorkerLogMessage(row, cw)
+  const channel = resolveChannelNameFromLog(row, channelDisplayNames)
+  if (!channel || shouldOmitChannelSuffix(logAction)) return message
+  return withFromChannel(message, channel, cw)
+}
+
+function buildChannelWorkerLogMessage(row: ChannelWorkerLogRow, cw: ChannelWorkerTranslations): string {
   const instr = resolveInstrumentSymbol(row)
   const logAction = row.action.toLowerCase()
   const status = row.status.toLowerCase()

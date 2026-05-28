@@ -4,6 +4,7 @@ export const channelWorkerFr: ChannelWorkerTranslations = {
   onOpenTrade: 'sur votre position ouverte',
   onSymbol: 'sur {symbol}',
   forSymbol: ' pour {symbol}',
+  fromChannel: ' depuis {channel}',
   errSuffix: ' : {detail}',
   symbolExempted: 'Symbole exempté du trading',
   several: 'plusieurs',

@@ -2323,6 +2323,91 @@ export function AccountConfigPage() {
                           const predefSummary = describePredefinedStopsOverrideI18n(ms, cm.stops)
                           return (
                           <div className="space-y-6">
+                            <section className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3 space-y-3">
+                              <div className="flex items-center justify-between">
+                                <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{cm.stops.tpDistributionTitle}</p>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={addTpLotRow}
+                                  disabled={
+                                    limits.maxTpRows != null
+                                    && (channelManualSettings.tp_lots ?? DEFAULT_MANUAL_TP_LOTS).length >= limits.maxTpRows
+                                  }
+                                >
+                                  {cm.stops.addTp}
+                                </Button>
+                              </div>
+                              {limits.maxTpRows != null
+                                && (channelManualSettings.tp_lots ?? DEFAULT_MANUAL_TP_LOTS).length >= limits.maxTpRows ? (
+                                  <UpgradePrompt variant="compact" reason={pw.advancedFeature} />
+                              ) : null}
+                              <p className="text-xs text-neutral-600 dark:text-neutral-400">
+                                {cm.stops.tpDistributionIntro}
+                              </p>
+                              <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                                {cm.stops.multiTradeNote}
+                                <br />
+                                {cm.stops.singleTradeNote}
+                              </p>
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-neutral-600 dark:text-neutral-400">
+                                  {cm.stops.enabledTotal}{' '}
+                                  <strong className={clsx('font-semibold', tpLegPercentTotal === 100 ? 'text-emerald-600' : 'text-amber-600')}>
+                                    {tpLegPercentTotal}%
+                                  </strong>{' '}
+                                  / 100%
+                                </span>
+                                {tpLegPercentTotal !== 100 && (
+                                  <span className="text-amber-600">
+                                    {tpLegPercentTotal < 100
+                                      ? interpolate(cm.stops.unallocated, { pct: String(100 - tpLegPercentTotal) })
+                                      : cm.stops.overCap}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="space-y-2">
+                                {(channelManualSettings.tp_lots ?? DEFAULT_MANUAL_TP_LOTS).map((row, idx) => {
+                                  const tpRows = channelManualSettings.tp_lots ?? DEFAULT_MANUAL_TP_LOTS
+                                  const othersSum = tpRows.reduce(
+                                    (s, r, i) => (i !== idx && r.enabled ? s + (Number(r.percent) || 0) : s),
+                                    0,
+                                  )
+                                  const rowBudget = Math.max(0, 100 - othersSum)
+                                  return (
+                                    <div key={`${row.label}-${idx}`} className="grid grid-cols-12 gap-2 items-center">
+                                      <input
+                                        className="col-span-4 rounded-md border border-neutral-200 dark:border-neutral-800 px-2 py-1.5 text-sm"
+                                        value={row.label}
+                                        onChange={e => updateTpLotRow(idx, { label: e.target.value })}
+                                      />
+                                      <input
+                                        className="col-span-3 rounded-md border border-neutral-200 dark:border-neutral-800 px-2 py-1.5 text-sm disabled:bg-neutral-100 dark:bg-neutral-800 disabled:text-neutral-400"
+                                        type="number"
+                                        min={0}
+                                        max={rowBudget}
+                                        step={1}
+                                        disabled={!row.enabled}
+                                        title={row.enabled ? interpolate(cm.stops.maxRowTitle, { budget: String(rowBudget) }) : cm.stops.enableRowTitle}
+                                        value={String(row.percent ?? 0)}
+                                        onChange={e => setTpDistributionPercent(idx, e.target.value)}
+                                      />
+                                      <span className="col-span-1 text-xs text-neutral-500 dark:text-neutral-400 text-center">%</span>
+                                      <label className="col-span-2 text-xs text-neutral-700 dark:text-neutral-300 flex items-center gap-2">
+                                        <input
+                                          type="checkbox"
+                                          checked={row.enabled}
+                                          onChange={e => setTpRowEnabled(idx, e.target.checked)}
+                                        />
+                                        {cm.stops.enabled}
+                                      </label>
+                                      <Button className="col-span-2" variant="ghost" size="sm" onClick={() => removeTpLotRow(idx)}>{cm.stops.remove}</Button>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </section>
+
                             <section className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-4 space-y-3">
                               <div>
                                 <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{cm.stops.predefinedTitle}</p>
@@ -2411,91 +2496,6 @@ export function AccountConfigPage() {
                                     </div>
                                   )}
                                 </div>
-                              </div>
-                            </section>
-
-                            <section className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3 space-y-3">
-                              <div className="flex items-center justify-between">
-                                <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{cm.stops.tpDistributionTitle}</p>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={addTpLotRow}
-                                  disabled={
-                                    limits.maxTpRows != null
-                                    && (channelManualSettings.tp_lots ?? DEFAULT_MANUAL_TP_LOTS).length >= limits.maxTpRows
-                                  }
-                                >
-                                  {cm.stops.addTp}
-                                </Button>
-                              </div>
-                              {limits.maxTpRows != null
-                                && (channelManualSettings.tp_lots ?? DEFAULT_MANUAL_TP_LOTS).length >= limits.maxTpRows ? (
-                                  <UpgradePrompt variant="compact" reason={pw.advancedFeature} />
-                              ) : null}
-                              <p className="text-xs text-neutral-600 dark:text-neutral-400">
-                                {cm.stops.tpDistributionIntro}
-                              </p>
-                              <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                                {cm.stops.multiTradeNote}
-                                <br />
-                                {cm.stops.singleTradeNote}
-                              </p>
-                              <div className="flex items-center justify-between text-xs">
-                                <span className="text-neutral-600 dark:text-neutral-400">
-                                  {cm.stops.enabledTotal}{' '}
-                                  <strong className={clsx('font-semibold', tpLegPercentTotal === 100 ? 'text-emerald-600' : 'text-amber-600')}>
-                                    {tpLegPercentTotal}%
-                                  </strong>{' '}
-                                  / 100%
-                                </span>
-                                {tpLegPercentTotal !== 100 && (
-                                  <span className="text-amber-600">
-                                    {tpLegPercentTotal < 100
-                                      ? interpolate(cm.stops.unallocated, { pct: String(100 - tpLegPercentTotal) })
-                                      : cm.stops.overCap}
-                                  </span>
-                                )}
-                              </div>
-                              <div className="space-y-2">
-                                {(channelManualSettings.tp_lots ?? DEFAULT_MANUAL_TP_LOTS).map((row, idx) => {
-                                  const tpRows = channelManualSettings.tp_lots ?? DEFAULT_MANUAL_TP_LOTS
-                                  const othersSum = tpRows.reduce(
-                                    (s, r, i) => (i !== idx && r.enabled ? s + (Number(r.percent) || 0) : s),
-                                    0,
-                                  )
-                                  const rowBudget = Math.max(0, 100 - othersSum)
-                                  return (
-                                    <div key={`${row.label}-${idx}`} className="grid grid-cols-12 gap-2 items-center">
-                                      <input
-                                        className="col-span-4 rounded-md border border-neutral-200 dark:border-neutral-800 px-2 py-1.5 text-sm"
-                                        value={row.label}
-                                        onChange={e => updateTpLotRow(idx, { label: e.target.value })}
-                                      />
-                                      <input
-                                        className="col-span-3 rounded-md border border-neutral-200 dark:border-neutral-800 px-2 py-1.5 text-sm disabled:bg-neutral-100 dark:bg-neutral-800 disabled:text-neutral-400"
-                                        type="number"
-                                        min={0}
-                                        max={rowBudget}
-                                        step={1}
-                                        disabled={!row.enabled}
-                                        title={row.enabled ? interpolate(cm.stops.maxRowTitle, { budget: String(rowBudget) }) : cm.stops.enableRowTitle}
-                                        value={String(row.percent ?? 0)}
-                                        onChange={e => setTpDistributionPercent(idx, e.target.value)}
-                                      />
-                                      <span className="col-span-1 text-xs text-neutral-500 dark:text-neutral-400 text-center">%</span>
-                                      <label className="col-span-2 text-xs text-neutral-700 dark:text-neutral-300 flex items-center gap-2">
-                                        <input
-                                          type="checkbox"
-                                          checked={row.enabled}
-                                          onChange={e => setTpRowEnabled(idx, e.target.checked)}
-                                        />
-                                        {cm.stops.enabled}
-                                      </label>
-                                      <Button className="col-span-2" variant="ghost" size="sm" onClick={() => removeTpLotRow(idx)}>{cm.stops.remove}</Button>
-                                    </div>
-                                  )
-                                })}
                               </div>
                             </section>
 

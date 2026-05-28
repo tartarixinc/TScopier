@@ -123,6 +123,7 @@ interface AiExpertLogRow {
   signal_id?: string | null
   /** FK embed from trade_execution_logs → signals */
   signals?: {
+    channel_id?: string | null
     parsed_data?: Record<string, unknown> | null
     raw_message?: string | null
     status?: string | null
@@ -216,6 +217,22 @@ type BrokerBalanceSnapshot = {
 
 function isBrokerLiveConnected(account: Pick<BrokerAccount, 'connection_status'>): boolean {
   return isBrokerSessionConnected(account)
+}
+
+/** Floating P/L on open positions for one linked account (live broker feed). */
+function resolveAccountOpenPnl(
+  account: BrokerAccount,
+  accountSummary?: { balance?: number; equity?: number; open_pnl?: number },
+): number | null {
+  const fromSummary = accountSummary?.open_pnl
+  if (fromSummary != null && Number.isFinite(fromSummary)) return fromSummary
+  if (!isBrokerLiveConnected(account)) return null
+  const balance = accountSummary?.balance ?? account.last_balance
+  const equity = accountSummary?.equity ?? account.last_equity
+  if (balance != null && equity != null && Number.isFinite(balance) && Number.isFinite(equity)) {
+    return equity - balance
+  }
+  return null
 }
 
 /** Sum open positions only from brokers with a live connected session. */
@@ -766,7 +783,7 @@ export function DashboardPage() {
           response_payload,
           error_message,
           signal_id,
-          signals ( raw_message, parsed_data, status, skip_reason )
+          signals ( channel_id, raw_message, parsed_data, status, skip_reason )
         `,
         )
         .eq('user_id', user!.id)
@@ -1646,7 +1663,9 @@ export function DashboardPage() {
             <div className="px-5 py-10 text-sm text-neutral-400">{t.dashboard.noChannelWorkerLogs}</div>
           ) : (
             <div className="divide-y divide-neutral-100 dark:divide-neutral-800 max-h-96 overflow-y-auto">
-              {aiExpertLogs.map(row => <AiExpertLogItem key={row.id} row={row} />)}
+              {aiExpertLogs.map(row => (
+                <AiExpertLogItem key={row.id} row={row} channelDisplayNames={channelDisplayNames} />
+              ))}
             </div>
           )}
         </div>
@@ -1760,7 +1779,7 @@ export function DashboardPage() {
           <span>{la.colAccountType}</span>
           <span>{la.colBalance}</span>
           <span title={la.colPnlHint}>{la.colPnl}</span>
-          <span>{la.colRoi}</span>
+          <span title={la.colOpenPnlHint}>{la.colOpenPnl}</span>
           <span>{la.colWinRate}</span>
           <span>{la.colDd}</span>
           <span className="text-right">{la.colStatus}</span>
@@ -1876,9 +1895,15 @@ function OverviewStat({
   )
 }
 
-function AiExpertLogItem({ row }: { row: AiExpertLogRow }) {
+function AiExpertLogItem({
+  row,
+  channelDisplayNames,
+}: {
+  row: AiExpertLogRow
+  channelDisplayNames: Record<string, string>
+}) {
   const t = useT()
-  const message = channelWorkerLogMessage(row, t.channelWorker)
+  const message = channelWorkerLogMessage(row, t.channelWorker, channelDisplayNames)
 
   return (
     <div className="px-5 py-3">
@@ -1940,12 +1965,6 @@ function formatPerformancePct(value: number | null | undefined, digits = 1): str
   return `${value.toFixed(digits)}%`
 }
 
-function formatRoiPct(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value)) return '—'
-  const sign = value > 0 ? '+' : ''
-  return `${sign}${value.toFixed(1)}%`
-}
-
 function LinkedAccountRow({
   account,
   accountSummary,
@@ -1979,16 +1998,25 @@ function LinkedAccountRow({
       ? 'text-teal-700 border-teal-200 bg-teal-50 dark:text-teal-300 dark:border-teal-800 dark:bg-teal-950/50'
       : 'text-neutral-600 border-neutral-200 bg-neutral-100 dark:text-neutral-400 dark:border-neutral-700 dark:bg-neutral-800/80'
   const balance = accountSummary?.balance ?? account.last_balance ?? null
-  const equity = accountSummary?.equity ?? account.last_equity ?? null
   const accountCurrency = (accountSummary?.currency ?? account.last_currency ?? '').trim() || undefined
   const balanceText = formatMoneyWithCode(balance, accountCurrency, { locale: intlLocale })
-  const hasBoth = balance != null && equity != null
-  const pnl =
-    closedHistoryPnl != null
-      ? closedHistoryPnl
-      : accountSummary?.open_pnl ?? (hasBoth ? equity! - balance! : 0)
+  const pnl = closedHistoryPnl != null ? closedHistoryPnl : 0
   const pnlColor = pnl >= 0 ? 'text-teal-600' : 'text-error-600'
   const pnlFormatted = formatMoneyWithCode(Math.abs(pnl), accountCurrency, { locale: intlLocale, nullAsDash: false })
+  const openPnl = resolveAccountOpenPnl(account, accountSummary)
+  const openPnlColor =
+    openPnl == null
+      ? 'text-neutral-900 dark:text-neutral-50'
+      : openPnl > 0
+        ? 'text-teal-600'
+        : openPnl < 0
+          ? 'text-error-600'
+          : 'text-neutral-600 dark:text-neutral-400'
+  const openPnlFormatted = formatMoneyWithCode(
+    openPnl == null ? null : Math.abs(openPnl),
+    accountCurrency,
+    { locale: intlLocale, nullAsDash: false },
+  )
   const apiRaw = (accountSummary?.broker ?? '').trim()
   const fromApi = inferBrokerLabelFromServer(apiRaw) || apiRaw
   const server = resolveMtServerCandidate(account, accountSummary?.mt_server_hint)
@@ -2018,11 +2046,8 @@ function LinkedAccountRow({
       : accountType === 'Demo'
         ? la.accountTypeDemo
         : accountType
-  const roi = performance?.roi ?? null
   const winRate = performance?.winRate ?? null
   const maxDd = performance?.maxDrawdownPct ?? null
-  const roiColor =
-    roi == null ? 'text-neutral-900 dark:text-neutral-50' : roi > 0 ? 'text-teal-600' : roi < 0 ? 'text-error-600' : 'text-neutral-600 dark:text-neutral-400'
   const winRateColor =
     winRate == null ? 'text-neutral-900 dark:text-neutral-50' : winRate >= 50 ? 'text-teal-600' : 'text-neutral-900 dark:text-neutral-50'
   const ddColor =
@@ -2038,10 +2063,21 @@ function LinkedAccountRow({
       <span className={`text-sm font-semibold ${accountTypeClass}`}>{accountTypeLabel}</span>
       <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{balanceText}</span>
       <span className={`text-sm font-semibold ${pnlColor}`}>
-        {pnl >= 0 ? '+' : '-'}
-        {pnlFormatted}
+        {closedHistoryPnl == null ? '—' : (
+          <>
+            {pnl >= 0 ? '+' : '-'}
+            {pnlFormatted}
+          </>
+        )}
       </span>
-      <span className={`text-sm font-semibold tabular-nums ${roiColor}`}>{formatRoiPct(roi)}</span>
+      <span className={`text-sm font-semibold tabular-nums ${openPnlColor}`}>
+        {openPnl == null ? '—' : (
+          <>
+            {openPnl >= 0 ? '+' : '-'}
+            {openPnlFormatted}
+          </>
+        )}
+      </span>
       <span className={`text-sm font-semibold tabular-nums ${winRateColor}`}>{formatPerformancePct(winRate, 0)}</span>
       <span className={`text-sm font-semibold tabular-nums ${ddColor}`}>{formatPerformancePct(maxDd)}</span>
       <div className="flex justify-end items-center gap-2">
