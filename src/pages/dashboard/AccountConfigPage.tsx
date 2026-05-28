@@ -4,6 +4,7 @@ import {
   Plus, Trash2, Server, Activity, GitBranch, Eye, DollarSign, RefreshCw,
   SlidersHorizontal, Radio, Target, Filter, Wallet, Link2,
   ArrowLeftRight, ChevronDown, ChevronLeft, ChevronRight, Search, Settings2, Bookmark, Pencil, ScrollText, AlertTriangle,
+  Infinity,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { supabase } from '../../lib/supabase'
@@ -497,6 +498,9 @@ export function AccountConfigPage() {
     canAddBroker,
     canUseFeature: canUsePlanFeature,
     limits,
+    isAdmin,
+    usage,
+    usageLoading,
   } = useSubscription()
   const pw = t.pricing.paywall
   const connectErrorLabels = useMemo(() => brokerConnectErrorLabelsFromI18n(bl), [bl])
@@ -580,10 +584,12 @@ export function AccountConfigPage() {
   const brokerRangeStart = filteredBrokers.length === 0 ? 0 : (safeBrokerPage - 1) * BROKER_PAGE_SIZE + 1
   const brokerRangeEnd = Math.min(safeBrokerPage * BROKER_PAGE_SIZE, filteredBrokers.length)
 
-  const connectedAccountsLabel = useMemo(() => {
-    if (brokers.length === 1) return bl.connectedAccountsTotalOne
-    return interpolate(bl.connectedAccountsTotal, { count: String(brokers.length) })
-  }, [brokers.length, bl.connectedAccountsTotal, bl.connectedAccountsTotalOne])
+  const linkedBrokerCount = useMemo(
+    () => brokers.filter(b => b.is_active).length,
+    [brokers],
+  )
+  const connectedAccountCount = usageLoading ? linkedBrokerCount : usage.brokerAccounts
+  const connectedAccountLimit = limits.maxBrokerAccounts
 
   useEffect(() => {
     setBrokerPage(1)
@@ -1531,6 +1537,25 @@ export function AccountConfigPage() {
           </Alert>
         )}
 
+        <p className="mb-3 text-sm font-medium text-neutral-700 dark:text-neutral-300 flex flex-wrap items-center gap-x-1.5">
+          <span>{bl.connectedAccountsHeading}</span>
+          <span className="text-neutral-400 font-normal" aria-hidden>
+            –
+          </span>
+          <span className="tabular-nums inline-flex items-center gap-0.5 font-semibold">
+            {connectedAccountCount}
+            <span className="text-neutral-400 font-normal">/</span>
+            {isAdmin ? (
+              <Infinity
+                className="w-4 h-4 text-teal-600 dark:text-teal-400"
+                aria-label={bl.connectedAccountsUnlimited}
+              />
+            ) : (
+              connectedAccountLimit
+            )}
+          </span>
+        </p>
+
         {brokers.length === 0 ? (
           <div className="bg-white dark:bg-neutral-900 rounded-xl border border-dashed border-neutral-200 dark:border-neutral-800 py-8 text-center">
             <Server className="w-8 h-8 mx-auto mb-2 text-neutral-300 dark:text-neutral-600" />
@@ -1540,9 +1565,6 @@ export function AccountConfigPage() {
         ) : (
           <>
             <div className="mb-3 flex flex-col gap-3">
-              <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300 tabular-nums">
-                {connectedAccountsLabel}
-              </p>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                 <div className="flex-1">
                   <label className="text-sm font-medium text-neutral-700 dark:text-neutral-300">

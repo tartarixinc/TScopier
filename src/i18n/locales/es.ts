@@ -293,8 +293,8 @@ export const es: Translations = {
       deleteBody:
         'Esto desconecta {label} de MetatraderAPI y del copiador. No se puede deshacer.',
       deleteConfirm: 'Desconectar',
-      connectedAccountsTotal: '{count} cuentas conectadas',
-      connectedAccountsTotalOne: '1 cuenta conectada',
+      connectedAccountsHeading: 'Cuentas conectadas',
+      connectedAccountsUnlimited: 'Ilimitado',
       brokerFilterLabel: 'Broker',
       brokerFilterAll: 'Todos los brokers',
       brokerFilterNoMatch: 'Ninguna cuenta coincide con este broker.',

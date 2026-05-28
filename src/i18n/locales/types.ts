@@ -281,8 +281,8 @@ export interface AccountConfigBrokerListTranslations {
   deleteTitle: string
   deleteBody: string
   deleteConfirm: string
-  connectedAccountsTotal: string
-  connectedAccountsTotalOne: string
+  connectedAccountsHeading: string
+  connectedAccountsUnlimited: string
   brokerFilterLabel: string
   brokerFilterAll: string
   brokerFilterNoMatch: string
