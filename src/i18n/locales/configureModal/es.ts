@@ -38,12 +38,28 @@ export const configureModalEs: ConfigureModalTranslations = {
     channels: 'Canales',
   },
   manualSubTabs: {
+    symbols: 'Símbolos',
     channelInstructions: 'Instrucciones',
-    symbolRouting: 'Enrutamiento de símbolos',
     risk: 'Riesgo',
     stops: 'Objetivos',
     management: 'Gestión',
     filters: 'Filtros',
+  },
+  channelSymbols: {
+    title: 'Símbolos a operar',
+    intro:
+      'Detectamos instrumentos a partir de las señales recientes del canal. Elige cuáles debe copiar este broker. Si todos están seleccionados, se operan todos los detectados.',
+    refresh: 'Actualizar análisis',
+    refreshing: 'Analizando…',
+    loading: 'Cargando símbolos de señales recientes…',
+    empty:
+      'Aún no hay símbolos detectados. Conecta Telegram, espera señales en este canal y actualiza.',
+    selectAll: 'Seleccionar todos',
+    clearAll: 'Quitar todos',
+    selectedCount: '{count} de {total} seleccionados',
+    tradeAllHint: 'Se copiarán todos los símbolos detectados.',
+    staleSymbolNote: 'Guardados pero no vistos en señales recientes: {symbols}',
+    signalsCount: 'Basado en {count} mensajes recientes',
   },
   ai: {
     title: 'Configuración de IA',
@@ -58,19 +74,6 @@ export const configureModalEs: ConfigureModalTranslations = {
     tradeBody: 'Admite parciales, break-even y órdenes del canal como cerrar/asegurar beneficios.',
     modificationTitle: 'Detección de modificaciones',
     modificationBody: 'Distingue nuevas entradas de instrucciones de seguimiento.',
-  },
-  symbolRouting: {
-    title: 'Enrutamiento de símbolos',
-    mappingLabel: 'Mapeo de símbolos (uno por línea: DE=A)',
-    mappingPlaceholder: 'GOLD=XAUUSD\nUSOIL=WTIOIL\nBTC=BTCUSD',
-    examples: 'Ejemplos: GOLD=XAUUSD, USOIL=WTIOIL',
-    prefix: 'Prefijo de símbolo',
-    suffix: 'Sufijo de símbolo',
-    symbolsToTrade: 'Símbolos a operar',
-    symbolsToTradePlaceholder: 'Dejar vacío para todos. Uno = sustitución. Varios = lista blanca.',
-    symbolsToTradeHint:
-      'Vacío = operar cada señal. Un símbolo (p. ej. XAUUSD) = forzar todas las señales a ese instrumento. Varios (p. ej. XAUUSD, BTCUSD) = solo señales que coincidan con uno de estos símbolos.',
-    symbolsExclude: 'Símbolos a excluir (separados por coma)',
   },
   risk: {
     riskMode: 'Modo de riesgo',

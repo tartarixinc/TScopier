@@ -38,12 +38,28 @@ export const configureModalFr: ConfigureModalTranslations = {
     channels: 'Canaux',
   },
   manualSubTabs: {
+    symbols: 'Symboles',
     channelInstructions: 'Consignes',
-    symbolRouting: 'Routage des symboles',
     risk: 'Risque',
     stops: 'Objectifs',
     management: 'Gestion',
     filters: 'Filtres',
+  },
+  channelSymbols: {
+    title: 'Symboles à trader',
+    intro:
+      'Nous détectons les instruments à partir des signaux récents du canal. Choisissez ceux que ce broker doit copier. Si tout est sélectionné, tous les symboles détectés sont tradés.',
+    refresh: 'Actualiser l’analyse',
+    refreshing: 'Analyse en cours…',
+    loading: 'Chargement des symboles des signaux récents…',
+    empty:
+      'Aucun symbole détecté pour l’instant. Connectez Telegram, attendez des signaux sur ce canal, puis actualisez.',
+    selectAll: 'Tout sélectionner',
+    clearAll: 'Tout désélectionner',
+    selectedCount: '{count} sur {total} sélectionnés',
+    tradeAllHint: 'Tous les symboles détectés seront copiés.',
+    staleSymbolNote: 'Enregistrés mais absents des signaux récents : {symbols}',
+    signalsCount: 'Basé sur {count} messages récents',
   },
   ai: {
     title: 'Configuration IA',
@@ -58,19 +74,6 @@ export const configureModalFr: ConfigureModalTranslations = {
     tradeBody: 'Prend en charge les partiels, le break-even et les ordres du canal comme fermer/sécuriser les gains.',
     modificationTitle: 'Détection des modifications',
     modificationBody: 'Distingue les nouvelles entrées des consignes de suivi.',
-  },
-  symbolRouting: {
-    title: 'Routage des symboles',
-    mappingLabel: 'Correspondance des symboles (une par ligne : DE=VERS)',
-    mappingPlaceholder: 'GOLD=XAUUSD\nUSOIL=WTIOIL\nBTC=BTCUSD',
-    examples: 'Exemples : GOLD=XAUUSD, USOIL=WTIOIL',
-    prefix: 'Préfixe de symbole',
-    suffix: 'Suffixe de symbole',
-    symbolsToTrade: 'Symboles à trader',
-    symbolsToTradePlaceholder: 'Laisser vide pour tous. Un seul = remplacement. Plusieurs = liste blanche.',
-    symbolsToTradeHint:
-      'Vide = trader chaque signal. Un symbole (ex. XAUUSD) = forcer chaque signal sur cet instrument. Plusieurs (ex. XAUUSD, BTCUSD) = uniquement les signaux correspondant à l’un de ces symboles.',
-    symbolsExclude: 'Symboles à exclure (séparés par des virgules)',
   },
   risk: {
     riskMode: 'Mode de risque',

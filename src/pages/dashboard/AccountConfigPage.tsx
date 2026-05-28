@@ -3,8 +3,8 @@ import { Link, useNavigate } from 'react-router-dom'
 import {
   Plus, Trash2, Server, Activity, GitBranch, Eye, DollarSign, RefreshCw,
   SlidersHorizontal, Radio, Target, Filter, Wallet, Link2,
-  ArrowLeftRight, ChevronDown, ChevronLeft, ChevronRight, Search, Settings2, Bookmark, Pencil, ScrollText, AlertTriangle,
-  Infinity,
+  ChevronLeft, ChevronRight, Search, Settings2, Bookmark, Pencil, ScrollText, AlertTriangle,
+  Infinity, Coins,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { supabase } from '../../lib/supabase'
@@ -33,6 +33,18 @@ import {
   type BrokerConnectErrorKind,
 } from '../../lib/brokerConnectError'
 import { BROKER_ACCOUNT_CLIENT_SELECT } from '../../lib/brokerAccountSelect'
+import {
+  analyzeChannelProfile,
+  detectedSymbolsFromProfileResponse,
+} from '../../lib/analyzeChannelProfile'
+import {
+  detectChannelSymbols,
+  parseSymbolToTradeList,
+  selectedSymbolsFromWhitelist,
+  staleWhitelistSymbols,
+  symbolToTradeFromSelection,
+  type DetectedChannelSymbol,
+} from '../../lib/channelSymbolDetection'
 import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
 import { useSubscription } from '../../context/SubscriptionContext'
 import { normalizeManualSettingsForPlan } from '../../lib/planLimits'
@@ -378,7 +390,7 @@ function AccountDetailCell({
   )
 }
 
-type ManualSubTabId = 'channel_instructions' | 'symbol_routing' | 'risk' | 'stops' | 'management' | 'filters'
+type ManualSubTabId = 'symbols' | 'channel_instructions' | 'risk' | 'stops' | 'management' | 'filters'
 
 interface ManualSubTabDef {
   id: ManualSubTabId
@@ -452,16 +464,16 @@ export function AccountConfigPage() {
 
   const manualSubTabs = useMemo<ManualSubTabDef[]>(
     () => [
+      { id: 'symbols', label: cm.manualSubTabs.symbols, icon: Coins },
       { id: 'channel_instructions', label: cm.manualSubTabs.channelInstructions, icon: ScrollText },
-      { id: 'symbol_routing', label: cm.manualSubTabs.symbolRouting, icon: ArrowLeftRight },
       { id: 'risk', label: cm.manualSubTabs.risk, icon: Wallet },
       { id: 'stops', label: cm.manualSubTabs.stops, icon: Target },
       { id: 'management', label: cm.manualSubTabs.management, icon: Settings2 },
       { id: 'filters', label: cm.manualSubTabs.filters, icon: Filter },
     ],
     [
+      cm.manualSubTabs.symbols,
       cm.manualSubTabs.channelInstructions,
-      cm.manualSubTabs.symbolRouting,
       cm.manualSubTabs.risk,
       cm.manualSubTabs.stops,
       cm.manualSubTabs.management,
@@ -521,8 +533,11 @@ export function AccountConfigPage() {
     selectedChannelId: null,
     channelConfigs: {},
   })
-  const [activeManualSubTab, setActiveManualSubTab] = useState<ManualSubTabId>('channel_instructions')
-  const [symbolMappingText, setSymbolMappingText] = useState('')
+  const [activeManualSubTab, setActiveManualSubTab] = useState<ManualSubTabId>('symbols')
+  const [detectedSymbols, setDetectedSymbols] = useState<DetectedChannelSymbol[]>([])
+  const [channelSymbolsLoading, setChannelSymbolsLoading] = useState(false)
+  const [channelSymbolsRefreshing, setChannelSymbolsRefreshing] = useState(false)
+  const [channelSignalSampleCount, setChannelSignalSampleCount] = useState(0)
   const [configSaving, setConfigSaving] = useState(false)
   const [channelConnecting, setChannelConnecting] = useState(false)
   const [configSavedAt, setConfigSavedAt] = useState<number | null>(null)
@@ -763,17 +778,47 @@ export function AccountConfigPage() {
     return () => clearTimeout(t)
   }, [presetSavedAt])
 
-  const syncSymbolMappingFromChannel = (channelId: string | null, configs: AccountConfigDraft['channelConfigs']) => {
-    if (!channelId) {
-      setSymbolMappingText('')
-      return
+  const CHANNEL_SYMBOL_LOOKBACK_DAYS = 30
+
+  const loadChannelSymbols = async (channelId: string, opts?: { runAnalysis?: boolean }) => {
+    if (!userId) return
+    const runAnalysis = opts?.runAnalysis === true
+    if (runAnalysis) setChannelSymbolsRefreshing(true)
+    else setChannelSymbolsLoading(true)
+    try {
+      const since = new Date(Date.now() - CHANNEL_SYMBOL_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString()
+      const { data: signals, error: sigErr } = await supabase
+        .from('signals')
+        .select('raw_message, parsed_data')
+        .eq('channel_id', channelId)
+        .eq('user_id', userId)
+        .gte('created_at', since)
+        .order('created_at', { ascending: false })
+        .limit(500)
+      if (sigErr) throw new Error(sigErr.message)
+
+      const rows = signals ?? []
+      setChannelSignalSampleCount(rows.length)
+
+      let detected = detectChannelSymbols(rows)
+      if (runAnalysis) {
+        try {
+          const result = await analyzeChannelProfile(channelId, CHANNEL_SYMBOL_LOOKBACK_DAYS)
+          detected = detectedSymbolsFromProfileResponse(rows, result)
+        } catch (analysisErr) {
+          const msg = analysisErr instanceof Error ? analysisErr.message : String(analysisErr)
+          setError(msg)
+        }
+      }
+      setDetectedSymbols(detected)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load channel symbols')
+      setDetectedSymbols([])
+      setChannelSignalSampleCount(0)
+    } finally {
+      setChannelSymbolsLoading(false)
+      setChannelSymbolsRefreshing(false)
     }
-    const ms = configs[channelId]?.manualSettings
-    setSymbolMappingText(
-      Object.entries(ms?.symbol_mapping ?? {})
-        .map(([k, v]) => `${k}=${v}`)
-        .join('\n'),
-    )
   }
 
   const refreshTradingPresets = async (uid: string) => {
@@ -831,20 +876,22 @@ export function AccountConfigPage() {
       channelOptions.some(c => c.id === id),
     )
     setConfigAccount(fresh)
-    setActiveManualSubTab('channel_instructions')
+    setActiveManualSubTab('symbols')
     const draft = buildChannelConfigDraftFromBroker(fresh, channelIds)
     setConfigDraft({
       ...draft,
       selectedChannelId: draft.selectedChannelId ?? channelOptions[0]?.id ?? null,
     })
     setChannelLinkEditMode(false)
-    syncSymbolMappingFromChannel(draft.selectedChannelId, draft.channelConfigs)
+    setDetectedSymbols([])
+    setChannelSignalSampleCount(0)
+    if (draft.selectedChannelId && userId) void loadChannelSymbols(draft.selectedChannelId)
     if (userId) void refreshTradingPresets(userId)
   }
 
   const selectConfigureChannel = (channelId: string) => {
     setConfigDraft(prev => ({ ...prev, selectedChannelId: channelId }))
-    setActiveManualSubTab('channel_instructions')
+    setActiveManualSubTab('symbols')
   }
 
   const connectSelectedChannelToBroker = async () => {
@@ -884,24 +931,48 @@ export function AccountConfigPage() {
           selectedChannelId: channelId,
         }
       })
-      syncSymbolMappingFromChannel(channelId, {
-        ...configDraft.channelConfigs,
-        [channelId]: configDraft.channelConfigs[channelId] ?? defaultChannelConfigDraft(),
-      })
+      void loadChannelSymbols(channelId)
     } finally {
       setChannelConnecting(false)
     }
   }
 
   useEffect(() => {
-    if (!configDraft.selectedChannelId) return
-    syncSymbolMappingFromChannel(configDraft.selectedChannelId, configDraft.channelConfigs)
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- sync textarea when switching channels only
-  }, [configDraft.selectedChannelId])
+    if (!configAccount || !configDraft.selectedChannelId || !userId) return
+    void loadChannelSymbols(configDraft.selectedChannelId)
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- reload symbols when switching channels in modal
+  }, [configDraft.selectedChannelId, configAccount?.id, userId])
+
+  const channelSymbolSelection = useMemo(() => {
+    return selectedSymbolsFromWhitelist(channelManualSettings.symbol_to_trade, detectedSymbols)
+  }, [channelManualSettings.symbol_to_trade, detectedSymbols])
+
+  const staleSavedSymbols = useMemo(() => {
+    return staleWhitelistSymbols(
+      parseSymbolToTradeList(channelManualSettings.symbol_to_trade),
+      detectedSymbols,
+    )
+  }, [channelManualSettings.symbol_to_trade, detectedSymbols])
+
+  const toggleChannelSymbol = (symbol: string, checked: boolean) => {
+    const next = new Set(channelSymbolSelection)
+    if (checked) next.add(symbol)
+    else next.delete(symbol)
+    setManual({ symbol_to_trade: symbolToTradeFromSelection(next, detectedSymbols) })
+  }
+
+  const selectAllChannelSymbols = () => {
+    setManual({ symbol_to_trade: null })
+  }
+
+  const clearAllChannelSymbols = () => {
+    setManual({ symbol_to_trade: '' })
+  }
 
   const closeConfigureModal = () => {
     setConfigAccount(null)
-    setSymbolMappingText('')
+    setDetectedSymbols([])
+    setChannelSignalSampleCount(0)
     setShowPresetNameModal(false)
     setPresetNameDraft('')
     setPendingApplyPreset(null)
@@ -989,14 +1060,9 @@ export function AccountConfigPage() {
       manualSettings: payload.manualSettings,
       channelFilters: payload.channelFilters,
     }))
-    syncSymbolMappingFromChannel(configDraft.selectedChannelId, {
-      ...configDraft.channelConfigs,
-      [configDraft.selectedChannelId]: {
-        mode: payload.mode,
-        manualSettings: payload.manualSettings,
-        channelFilters: payload.channelFilters,
-      },
-    })
+    if (configDraft.selectedChannelId) {
+      void loadChannelSymbols(configDraft.selectedChannelId)
+    }
     setPendingApplyPreset(null)
   }
 
@@ -2027,6 +2093,123 @@ export function AccountConfigPage() {
                       </div>
                     ) : (
                       <div className="space-y-4">
+                        {activeManualSubTab === 'symbols' && (
+                          selectedChannelOption && configDraft.selectedChannelId ? (
+                            <section className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-4 space-y-3">
+                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                <div>
+                                  <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
+                                    {cm.channelSymbols.title}
+                                  </p>
+                                  <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5 max-w-xl">
+                                    {cm.channelSymbols.intro}
+                                  </p>
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  size="sm"
+                                  className="shrink-0"
+                                  loading={channelSymbolsRefreshing}
+                                  disabled={channelSymbolsLoading || configSaving || presetSaving}
+                                  onClick={() => {
+                                    if (!configDraft.selectedChannelId) return
+                                    void loadChannelSymbols(configDraft.selectedChannelId, { runAnalysis: true })
+                                  }}
+                                >
+                                  <RefreshCw className="w-3.5 h-3.5" />
+                                  {channelSymbolsRefreshing ? cm.channelSymbols.refreshing : cm.channelSymbols.refresh}
+                                </Button>
+                              </div>
+                              {channelSymbolsLoading ? (
+                                <p className="text-xs text-neutral-500 dark:text-neutral-400">{cm.channelSymbols.loading}</p>
+                              ) : detectedSymbols.length === 0 ? (
+                                <p className="text-xs text-neutral-500 dark:text-neutral-400">{cm.channelSymbols.empty}</p>
+                              ) : (
+                                <>
+                                  {channelSignalSampleCount > 0 ? (
+                                    <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                                      {interpolate(cm.channelSymbols.signalsCount, {
+                                        count: String(channelSignalSampleCount),
+                                      })}
+                                    </p>
+                                  ) : null}
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <Button type="button" variant="ghost" size="sm" onClick={selectAllChannelSymbols}>
+                                      {cm.channelSymbols.selectAll}
+                                    </Button>
+                                    <Button type="button" variant="ghost" size="sm" onClick={clearAllChannelSymbols}>
+                                      {cm.channelSymbols.clearAll}
+                                    </Button>
+                                    <span className="text-xs text-neutral-500 dark:text-neutral-400 tabular-nums">
+                                      {interpolate(cm.channelSymbols.selectedCount, {
+                                        count: String(channelSymbolSelection.size),
+                                        total: String(detectedSymbols.length),
+                                      })}
+                                    </span>
+                                  </div>
+                                  <div className="flex flex-wrap gap-2">
+                                    {detectedSymbols.map(({ symbol, count }) => {
+                                      const checked = channelSymbolSelection.has(symbol)
+                                      return (
+                                        <label
+                                          key={symbol}
+                                          className={clsx(
+                                            'inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm cursor-pointer transition-colors',
+                                            checked
+                                              ? 'border-teal-500 bg-teal-50 text-teal-900 dark:border-teal-600 dark:bg-teal-950/40 dark:text-teal-100'
+                                              : 'border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300',
+                                          )}
+                                        >
+                                          <input
+                                            type="checkbox"
+                                            className="h-4 w-4 rounded border-neutral-300 text-teal-600 focus:ring-teal-500"
+                                            checked={checked}
+                                            onChange={e => toggleChannelSymbol(symbol, e.target.checked)}
+                                          />
+                                          <span className="font-medium">{symbol}</span>
+                                          <span className="text-xs text-neutral-500 dark:text-neutral-400 tabular-nums">
+                                            {count}
+                                          </span>
+                                        </label>
+                                      )
+                                    })}
+                                    {staleSavedSymbols.map(symbol => (
+                                      <label
+                                        key={`stale-${symbol}`}
+                                        className="inline-flex items-center gap-2 rounded-lg border border-dashed border-amber-300 bg-amber-50 px-3 py-2 text-sm dark:border-amber-800 dark:bg-amber-950/30"
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          className="h-4 w-4 rounded border-neutral-300 text-teal-600 focus:ring-teal-500"
+                                          checked={channelSymbolSelection.has(symbol)}
+                                          onChange={e => toggleChannelSymbol(symbol, e.target.checked)}
+                                        />
+                                        <span className="font-medium text-amber-900 dark:text-amber-100">{symbol}</span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                  {!parseSymbolToTradeList(channelManualSettings.symbol_to_trade).length
+                                  || channelSymbolSelection.size === detectedSymbols.length ? (
+                                    <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                                      {cm.channelSymbols.tradeAllHint}
+                                    </p>
+                                  ) : null}
+                                  {staleSavedSymbols.length > 0 ? (
+                                    <p className="text-xs text-amber-700 dark:text-amber-300">
+                                      {interpolate(cm.channelSymbols.staleSymbolNote, {
+                                        symbols: staleSavedSymbols.join(', '),
+                                      })}
+                                    </p>
+                                  ) : null}
+                                </>
+                              )}
+                            </section>
+                          ) : (
+                            <p className="text-sm text-neutral-500 dark:text-neutral-400">{cm.channels.selectChannelFirst}</p>
+                          )
+                        )}
+
                         {activeManualSubTab === 'channel_instructions' && (
                           selectedChannelOption && configDraft.selectedChannelId ? (
                             canUsePlanFeature('channel_keyword_filters') ? (
@@ -2049,7 +2232,6 @@ export function AccountConfigPage() {
                               </div>
                               <p className="text-xs text-neutral-500 dark:text-neutral-400">{cm.channels.filtersIntro}</p>
                               <ChannelFiltersCard
-                                channel={selectedChannelOption}
                                 filters={normalizeChannelFilters(
                                   configDraft.channelConfigs[configDraft.selectedChannelId]?.channelFilters ?? DEFAULT_CHANNEL_FILTERS,
                                 )}
@@ -2057,7 +2239,6 @@ export function AccountConfigPage() {
                                 labels={cm.channelFilters}
                                 onChange={(key, value) => setChannelFilter(configDraft.selectedChannelId!, key, value)}
                                 onReset={() => resetChannelFilters(configDraft.selectedChannelId!)}
-                                defaultOpen
                               />
                             </section>
                             ) : (
@@ -2066,55 +2247,6 @@ export function AccountConfigPage() {
                           ) : (
                             <p className="text-sm text-neutral-500 dark:text-neutral-400">{cm.channels.selectChannelFirst}</p>
                           )
-                        )}
-
-                        {activeManualSubTab === 'symbol_routing' && (
-                          <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-4 space-y-4">
-                            <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{cm.symbolRouting.title}</p>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                              <div>
-                                <p className="text-xs text-neutral-600 dark:text-neutral-400 mb-1">{cm.symbolRouting.mappingLabel}</p>
-                                <textarea
-                                  className="w-full min-h-[90px] rounded-md border border-neutral-200 dark:border-neutral-800 px-3 py-2 text-sm"
-                                  placeholder={cm.symbolRouting.mappingPlaceholder}
-                                  value={symbolMappingText}
-                                  onChange={(e) => {
-                                    const raw = e.target.value
-                                    setSymbolMappingText(raw)
-                                    const next: Record<string, string> = {}
-                                    for (const line of raw.split('\n')) {
-                                      const [a, b] = line.split('=').map(s => s.trim())
-                                      if (a && b) next[a.toUpperCase()] = b.toUpperCase()
-                                    }
-                                    setManual({ symbol_mapping: next })
-                                  }}
-                                />
-                                <p className="mt-1 text-[11px] text-neutral-500 dark:text-neutral-400">
-                                  {cm.symbolRouting.examples}
-                                </p>
-                              </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                <Input label={cm.symbolRouting.prefix} value={channelManualSettings.symbol_prefix ?? ''} onChange={e => setManual({ symbol_prefix: e.target.value })} />
-                                <Input label={cm.symbolRouting.suffix} value={channelManualSettings.symbol_suffix ?? ''} onChange={e => setManual({ symbol_suffix: e.target.value })} />
-                                <div className="col-span-2">
-                                  <Input
-                                    label={cm.symbolRouting.symbolsToTrade}
-                                    placeholder={cm.symbolRouting.symbolsToTradePlaceholder}
-                                    value={channelManualSettings.symbol_to_trade ?? ''}
-                                    onChange={e => setManual({ symbol_to_trade: e.target.value })}
-                                  />
-                                  <p className="text-xs text-slate-500 mt-1">
-                                    {cm.symbolRouting.symbolsToTradeHint}
-                                  </p>
-                                </div>
-                                <Input
-                                  label={cm.symbolRouting.symbolsExclude}
-                                  value={(channelManualSettings.symbols_exclude ?? []).join(',')}
-                                  onChange={e => setManual({ symbols_exclude: e.target.value.split(',').map(x => x.trim().toUpperCase()).filter(Boolean) })}
-                                />
-                              </div>
-                            </div>
-                          </div>
                         )}
 
                         {activeManualSubTab === 'risk' && (
@@ -3247,87 +3379,52 @@ function FeatureBullet({ icon: Icon, title, body }: { icon: typeof DollarSign; t
   )
 }
 
-/**
- * Collapsible filter card for a single Telegram channel. Header always shows
- * the channel name, optional `@username`, and a badge indicating how many of
- * the nine categories are currently set to "ignore". Body reveals the full
- * Allow / Ignore grid.
- */
+/** Allow / Ignore grid for channel instruction categories (selected channel is shown in the sidebar). */
 function ChannelFiltersCard({
-  channel,
   filters,
   categories,
   labels,
   onChange,
   onReset,
-  defaultOpen = false,
 }: {
-  channel: ChannelOption
   filters: ChannelFilters
   categories: ReturnType<typeof getChannelFilterCategories>
   labels: ConfigureModalTranslations['channelFilters']
   onChange: (key: ChannelFilterKey, value: ChannelFilterDecision) => void
   onReset: () => void
-  defaultOpen?: boolean
 }) {
-  const [open, setOpen] = useState(defaultOpen)
   const ignoredCount = categories.reduce(
     (n, c) => n + (filters[c.key] === 'ignore' ? 1 : 0),
     0,
   )
   return (
-    <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
-      <button
-        type="button"
-        className="w-full flex items-center justify-between p-3 text-left"
-        onClick={() => setOpen(o => !o)}
-        aria-expanded={open}
-      >
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50 truncate">{channel.display_name || labels.unnamedChannel}</p>
-          {channel.channel_username && (
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate">@{channel.channel_username}</p>
-          )}
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {ignoredCount > 0 && (
-            <span className="text-[10px] font-medium uppercase tracking-wide rounded-full px-2 py-0.5 bg-amber-50 text-amber-700">
-              {interpolate(labels.ignoredBadge, { count: String(ignoredCount) })}
-            </span>
-          )}
-          <ChevronDown className={clsx('w-4 h-4 text-neutral-500 dark:text-neutral-400 transition-transform', open && 'rotate-180')} />
-        </div>
-      </button>
-      {open && (
-        <div className="p-3 border-t border-neutral-100 dark:border-neutral-800 space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {categories.map(cat => (
-              <CategoryRow
-                key={cat.key}
-                label={cat.label}
-                example={cat.example}
-                allowLabel={labels.allow}
-                ignoreLabel={labels.ignore}
-                value={filters[cat.key] ?? 'allow'}
-                onChange={v => onChange(cat.key, v)}
-              />
-            ))}
-          </div>
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-            <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
-              {labels.footer}
-            </p>
-            <button
-              type="button"
-              className="text-xs text-primary-600 hover:text-primary-700 hover:underline shrink-0 self-start sm:self-auto"
-              onClick={onReset}
-              disabled={ignoredCount === 0}
-            >
-              {labels.resetDefaults}
-            </button>
-          </div>
-        </div>
-      )}
+    <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-3 space-y-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {categories.map(cat => (
+          <CategoryRow
+            key={cat.key}
+            label={cat.label}
+            example={cat.example}
+            allowLabel={labels.allow}
+            ignoreLabel={labels.ignore}
+            value={filters[cat.key] ?? 'allow'}
+            onChange={v => onChange(cat.key, v)}
+          />
+        ))}
+      </div>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
+          {labels.footer}
+        </p>
+        <button
+          type="button"
+          className="text-xs text-primary-600 hover:text-primary-700 hover:underline shrink-0 self-start sm:self-auto"
+          onClick={onReset}
+          disabled={ignoredCount === 0}
+        >
+          {labels.resetDefaults}
+        </button>
+      </div>
     </div>
   )
 }

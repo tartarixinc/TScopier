@@ -41,12 +41,26 @@ export interface ConfigureModalTranslations {
     channels: string
   }
   manualSubTabs: {
+    symbols: string
     channelInstructions: string
-    symbolRouting: string
     risk: string
     stops: string
     management: string
     filters: string
+  }
+  channelSymbols: {
+    title: string
+    intro: string
+    refresh: string
+    refreshing: string
+    loading: string
+    empty: string
+    selectAll: string
+    clearAll: string
+    selectedCount: string
+    tradeAllHint: string
+    staleSymbolNote: string
+    signalsCount: string
   }
   ai: {
     title: string
@@ -59,18 +73,6 @@ export interface ConfigureModalTranslations {
     tradeBody: string
     modificationTitle: string
     modificationBody: string
-  }
-  symbolRouting: {
-    title: string
-    mappingLabel: string
-    mappingPlaceholder: string
-    examples: string
-    prefix: string
-    suffix: string
-    symbolsToTrade: string
-    symbolsToTradePlaceholder: string
-    symbolsToTradeHint: string
-    symbolsExclude: string
   }
   risk: {
     riskMode: string

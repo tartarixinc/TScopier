@@ -38,12 +38,28 @@ export const configureModalEn: ConfigureModalTranslations = {
     channels: 'Channels',
   },
   manualSubTabs: {
+    symbols: 'Symbols',
     channelInstructions: 'Instructions',
-    symbolRouting: 'Symbol Routing',
     risk: 'Risk',
     stops: 'Targets',
     management: 'Management',
     filters: 'Filters',
+  },
+  channelSymbols: {
+    title: 'Symbols to trade',
+    intro:
+      'We detect instruments from this channel’s recent signals. Choose which ones this broker should copy. When all are selected, every detected symbol is traded.',
+    refresh: 'Refresh analysis',
+    refreshing: 'Analyzing…',
+    loading: 'Loading symbols from recent signals…',
+    empty:
+      'No symbols detected yet. Connect Telegram, wait for signals on this channel, then refresh.',
+    selectAll: 'Select all',
+    clearAll: 'Clear all',
+    selectedCount: '{count} of {total} selected',
+    tradeAllHint: 'All detected symbols will be copied.',
+    staleSymbolNote: 'Saved but not seen in recent signals: {symbols}',
+    signalsCount: 'Based on {count} recent messages',
   },
   ai: {
     title: 'AI configuration',
@@ -58,19 +74,6 @@ export const configureModalEn: ConfigureModalTranslations = {
     tradeBody: 'Supports partials, break-even, and channel commands like close/secure profits.',
     modificationTitle: 'Modification detection',
     modificationBody: 'Distinguishes new entries from follow-up modification instructions.',
-  },
-  symbolRouting: {
-    title: 'Symbol routing',
-    mappingLabel: 'Symbol Mapping (one per line: FROM=TO)',
-    mappingPlaceholder: 'GOLD=XAUUSD\nUSOIL=WTIOIL\nBTC=BTCUSD',
-    examples: 'Examples: GOLD=XAUUSD, USOIL=WTIOIL',
-    prefix: 'Symbol Prefix',
-    suffix: 'Symbol Suffix',
-    symbolsToTrade: 'Symbols to Trade',
-    symbolsToTradePlaceholder: 'Leave empty for all. Single = override. Multiple = whitelist.',
-    symbolsToTradeHint:
-      'Empty = trade every signal. One symbol (e.g. XAUUSD) = force every signal to that instrument. Multiple (e.g. XAUUSD, BTCUSD) = only trade signals matching one of these symbols.',
-    symbolsExclude: 'Symbols to Exclude (comma)',
   },
   risk: {
     riskMode: 'Risk Mode',

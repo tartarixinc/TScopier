@@ -456,7 +456,20 @@ Deno.serve(async (req: Request) => {
         updated_at: new Date().toISOString(),
       }, { onConflict: "channel_id" })
 
-    return Response.json({ ok: true, profile: upserted }, { headers: corsHeaders })
+    const symbolCounts =
+      finalProfile.meta && typeof finalProfile.meta === "object" && finalProfile.meta.symbol_counts
+        && typeof finalProfile.meta.symbol_counts === "object"
+        ? finalProfile.meta.symbol_counts as Record<string, number>
+        : {}
+    const detected_symbols = Object.keys(symbolCounts)
+      .map((k) => normalizeAssetSymbol(k) ?? k.toUpperCase().replace(/[^A-Z0-9]/g, ""))
+      .filter((s) => s.length > 0)
+      .sort((a, b) => (symbolCounts[b] ?? 0) - (symbolCounts[a] ?? 0) || a.localeCompare(b))
+
+    return Response.json(
+      { ok: true, profile: upserted, detected_symbols },
+      { headers: corsHeaders },
+    )
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Internal server error"
     return Response.json({ error: msg }, { status: 500, headers: corsHeaders })
