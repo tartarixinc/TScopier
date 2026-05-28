@@ -41,6 +41,7 @@ import { PageShell } from '../../components/layout/PageShell'
 import { Button } from '../../components/ui/Button'
 import { Alert } from '../../components/ui/Alert'
 import { useSubscription } from '../../context/SubscriptionContext'
+import { PaywallErrorAlert } from '../../components/billing/PaywallErrorAlert'
 import { UpgradePrompt } from '../../components/billing/UpgradePrompt'
 
 interface ChannelOption {
@@ -397,7 +398,7 @@ export function Backtest() {
         )}
       />
 
-      {error ? <Alert variant="error">{error}</Alert> : null}
+      {error ? <PaywallErrorAlert message={error} variant="error" /> : null}
       {activeRun?.status === 'failed' && activeRun.error_message ? (
         <Alert variant="error">{sanitizeBacktestUserError(activeRun.error_message, bt.errors.rateLimit)}</Alert>
       ) : null}

@@ -26,6 +26,7 @@ import {
 } from '../../lib/telegramChannelReconcile'
 import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
 import { useSubscription } from '../../context/SubscriptionContext'
+import { isSubscriptionRequiredError, PaywallErrorAlert } from '../../components/billing/PaywallErrorAlert'
 import { UpgradePrompt } from '../../components/billing/UpgradePrompt'
 import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
@@ -658,19 +659,25 @@ export function CopierEnginePage() {
               ))}
             </div>
           ) : error ? (
-            <div className="px-4 py-8 text-center">
-              <AlertCircle className="w-8 h-8 mx-auto mb-2 text-error-300" />
-              <p className="text-sm text-neutral-700 dark:text-neutral-300 font-medium">{error}</p>
-              <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-                <Button size="sm" variant="secondary" onClick={() => void fetchTgChannels({ force: true })} loading={loadingTg}>
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  {t.common.refresh}
-                </Button>
-                <Button size="sm" onClick={() => void reconnectTelegram()}>
-                  {ce.reconnectTelegram}
-                </Button>
+            isSubscriptionRequiredError(error, pw.subscriptionRequired) ? (
+              <div className="px-4 py-4">
+                <PaywallErrorAlert message={error} />
               </div>
-            </div>
+            ) : (
+              <div className="px-4 py-8 text-center">
+                <AlertCircle className="w-8 h-8 mx-auto mb-2 text-error-300" />
+                <p className="text-sm text-neutral-700 dark:text-neutral-300 font-medium">{error}</p>
+                <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => void fetchTgChannels({ force: true })} loading={loadingTg}>
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    {t.common.refresh}
+                  </Button>
+                  <Button size="sm" onClick={() => void reconnectTelegram()}>
+                    {ce.reconnectTelegram}
+                  </Button>
+                </div>
+              </div>
+            )
           ) : tgChannels.length === 0 ? (
             <div className="px-4 py-8 text-center">
               <Radio className="w-8 h-8 mx-auto mb-2 text-neutral-200" />

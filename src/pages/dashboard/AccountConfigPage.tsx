@@ -52,6 +52,7 @@ import {
   planContextForManualSettings,
 } from '../../lib/planLimits'
 import type { SubscriptionPlan } from '../../lib/planLimits'
+import { PaywallErrorAlert } from '../../components/billing/PaywallErrorAlert'
 import { UpgradePrompt } from '../../components/billing/UpgradePrompt'
 import {
   inferBrokerLabelFromServer,
@@ -1566,7 +1567,7 @@ export function AccountConfigPage() {
             <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 mb-4">
               {interpolate(t.accountConfig.connectForm.title, { platform: form.platform })}
             </h3>
-            {error && <Alert className="mb-3">{error}</Alert>}
+            {error && <PaywallErrorAlert message={error} className="mb-3" />}
             <form onSubmit={addBroker} className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <Input
@@ -1934,7 +1935,7 @@ export function AccountConfigPage() {
                 {interpolate(bl.deleteBody, { label: brokerPendingDelete.label })}
               </p>
             </div>
-            {error && <Alert className="mx-5 mt-3">{error}</Alert>}
+            {error && <PaywallErrorAlert message={error} className="mx-5 mt-3" />}
             <div className="px-5 py-4 flex justify-end gap-2">
               <Button
                 type="button"
@@ -2104,7 +2105,7 @@ export function AccountConfigPage() {
                 ) : null}
 
                 <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 sm:px-6 py-4 sm:py-5 min-h-0 overscroll-y-contain">
-                {error && <Alert className="mb-4">{error}</Alert>}
+                {error && <PaywallErrorAlert message={error} className="mb-4" />}
 
                 {!configDraft.selectedChannelId ? (
                   <div className="py-12 text-center">
