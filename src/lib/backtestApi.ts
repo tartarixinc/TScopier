@@ -7,6 +7,38 @@ import type {
   SimpleBacktestConfig,
 } from './backtestTypes'
 
+/** Load run + trades via RLS (reliable while edge run is in progress or after completion). */
+export async function loadBacktestRunFromDb(
+  runId: string,
+  userId: string,
+): Promise<{
+  run: BacktestRunRow
+  trades: BacktestTradeRow[]
+  equity: BacktestEquityRow[]
+}> {
+  const { data: run, error: runErr } = await supabase
+    .from('backtest_runs')
+    .select('*')
+    .eq('id', runId)
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (runErr) throw new Error(runErr.message)
+  if (!run) throw new Error('Run not found')
+
+  const [{ data: trades, error: tradesErr }, { data: equity, error: eqErr }] = await Promise.all([
+    supabase.from('backtest_trades').select('*').eq('run_id', runId).order('signal_at'),
+    supabase.from('backtest_equity_points').select('*').eq('run_id', runId).order('ts'),
+  ])
+  if (tradesErr) throw new Error(tradesErr.message)
+  if (eqErr) throw new Error(eqErr.message)
+
+  return {
+    run: run as BacktestRunRow,
+    trades: (trades ?? []) as BacktestTradeRow[],
+    equity: (equity ?? []) as BacktestEquityRow[],
+  }
+}
+
 async function call<T>(body: Record<string, unknown>): Promise<T> {
   const session = (await supabase.auth.getSession()).data.session
   const token = session?.access_token

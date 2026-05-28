@@ -13,6 +13,7 @@ import { normalizeCurrencyCode } from '../lib/currency'
 import {
   EMPTY_USER_PROFILE,
   loadUserProfile,
+  resolveUserIsAdmin,
   saveUserProfile,
   type UserProfile,
 } from '../lib/userProfile'
@@ -61,8 +62,8 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
     setLoading(true)
     try {
       const row = await loadUserProfile(user.id)
+      setIsAdmin(resolveUserIsAdmin(row, user.app_metadata as Record<string, unknown> | undefined))
       if (row) {
-        setIsAdmin(row.is_admin === true)
         setSubscriptionStatus(row.subscription_status ?? null)
         setProfile(
           sanitizeProfile({
@@ -79,7 +80,6 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
           }),
         )
       } else {
-        setIsAdmin(false)
         setSubscriptionStatus(null)
         const meta = user.user_metadata as Record<string, unknown> | undefined
         const full = String(meta?.full_name ?? meta?.name ?? '').trim()

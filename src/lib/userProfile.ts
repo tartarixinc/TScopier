@@ -33,6 +33,17 @@ export const EMPTY_USER_PROFILE: Omit<UserProfile, 'user_id'> = {
     : 'UTC',
 }
 
+/** Admin bypass: DB flag or Supabase Auth app_metadata (matches edge subscriptionAccess). */
+export function resolveUserIsAdmin(
+  profile: Pick<UserProfile, 'is_admin'> | null | undefined,
+  appMetadata: Record<string, unknown> | undefined,
+): boolean {
+  if (profile?.is_admin === true) return true
+  const meta = appMetadata ?? {}
+  if (meta.is_admin === true || meta.role === 'admin') return true
+  return false
+}
+
 export async function loadUserProfile(userId: string): Promise<UserProfile | null> {
   const { data, error } = await supabase
     .from('user_profiles')

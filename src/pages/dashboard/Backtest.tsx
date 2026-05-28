@@ -13,7 +13,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { interpolate } from '../../i18n/interpolate'
 import { useT } from '../../context/LocaleContext'
-import { backtestApi } from '../../lib/backtestApi'
+import { backtestApi, loadBacktestRunFromDb } from '../../lib/backtestApi'
 import type {
   BacktestRunRow,
   BacktestTradeRow,
@@ -160,12 +160,23 @@ export function Backtest() {
     return (data ?? []) as StoredBacktestSignal[]
   }, [user])
 
-  const loadRun = useCallback(async (runId: string) => {
-    const { run, trades: loaded } = await backtestApi.getRun(runId)
+  const applyRunResult = useCallback((run: BacktestRunRow, loaded: BacktestTradeRow[]) => {
     setActiveRun(run)
     setTrades(loaded)
+    if (run.status === 'completed' || run.status === 'failed' || run.status === 'cancelled') {
+      setRunning(false)
+    }
+    if (run.status === 'completed') {
+      setStep('results')
+    }
     return run
   }, [])
+
+  const loadRun = useCallback(async (runId: string) => {
+    if (!user?.id) throw new Error('Not signed in')
+    const { run, trades: loaded } = await loadBacktestRunFromDb(runId, user.id)
+    return applyRunResult(run, loaded)
+  }, [user?.id, applyRunResult])
 
   const clearResults = useCallback(() => {
     setActiveRun(null)
@@ -201,24 +212,38 @@ export function Backtest() {
     })()
   }, [user, bt.channelFallback])
 
-  const userError = (e: unknown) =>
-    sanitizeBacktestUserError(e instanceof Error ? e.message : String(e), bt.errors.rateLimit)
+  const userError = useCallback((e: unknown) => {
+    const raw = e instanceof Error ? e.message : String(e)
+    if (/active subscription is required/i.test(raw)) {
+      return pw.subscriptionRequired
+    }
+    return sanitizeBacktestUserError(raw, bt.errors.rateLimit)
+  }, [pw.subscriptionRequired, bt.errors.rateLimit])
+
+  const handleRunFinished = useCallback((run: BacktestRunRow) => {
+    if (run.status === 'completed') {
+      setStep('results')
+      setRunning(false)
+    } else if (run.status === 'failed' || run.status === 'cancelled') {
+      setRunning(false)
+    }
+  }, [])
 
   useEffect(() => {
     if (!activeRun?.id) return
     if (!isBacktestActive && activeRun.status !== 'running' && activeRun.status !== 'pending') return
     const runId = activeRun.id
     const poll = setInterval(() => {
-      void loadRun(runId).then(async run => {
-        if (run.status === 'completed' || run.status === 'failed') {
-          if (run.status === 'completed') await loadRun(runId)
-          setRunning(false)
-          if (run.status === 'completed') setStep('results')
-        }
-      }).catch(() => {})
+      void loadRun(runId)
+        .then(run => {
+          if (run.status === 'completed' || run.status === 'failed' || run.status === 'cancelled') {
+            handleRunFinished(run)
+          }
+        })
+        .catch(err => setError(userError(err)))
     }, 2000)
     return () => clearInterval(poll)
-  }, [activeRun?.id, activeRun?.status, isBacktestActive, loadRun])
+  }, [activeRun?.id, activeRun?.status, isBacktestActive, loadRun, handleRunFinished, userError])
 
   useEffect(() => {
     if (!activeRun?.id || !isBacktestActive) return
@@ -227,11 +252,15 @@ export function Backtest() {
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'backtest_runs', filter: `id=eq.${activeRun.id}` },
-        () => { void loadRun(activeRun.id) },
+        () => {
+          void loadRun(activeRun.id)
+            .then(handleRunFinished)
+            .catch(err => setError(userError(err)))
+        },
       )
       .subscribe()
     return () => { void supabase.removeChannel(ch) }
-  }, [activeRun?.id, isBacktestActive, loadRun])
+  }, [activeRun?.id, isBacktestActive, loadRun, handleRunFinished, userError])
 
   const profileSignals = async () => {
     if (!selectedChannelId) {
@@ -292,14 +321,8 @@ export function Backtest() {
     try {
       const config = buildConfig(selectedChannelId, dateFrom, dateTo, [selectedSymbol])
       const { run_id } = await backtestApi.backtestTpsl(config)
-      let run = await loadRun(run_id)
-      if (run.status === 'completed') run = await loadRun(run_id)
-      if (run.status === 'completed') {
-        setStep('results')
-        setRunning(false)
-      } else if (run.status === 'failed') {
-        setRunning(false)
-      }
+      const run = await loadRun(run_id)
+      handleRunFinished(run)
       void refreshSubscription()
     } catch (e) {
       setError(userError(e))
