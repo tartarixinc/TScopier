@@ -44,8 +44,8 @@ export function AccountGrowthChart({ data, series, loading, stale, isEmpty }: Ac
           {t.dashboard.accountGrowthEmpty}
         </div>
       ) : (
-        <div className={clsx('h-64 w-full', stale && 'opacity-60 transition-opacity duration-300')}>
-          <ResponsiveContainer width="100%" height="100%">
+        <div className={clsx('h-64 w-full min-w-0', stale && 'opacity-60 transition-opacity duration-300')}>
+          <ResponsiveContainer width="100%" height={256}>
             <LineChart data={data} margin={{ top: 8, right: 8, left: 2, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} vertical={false} />
               <XAxis

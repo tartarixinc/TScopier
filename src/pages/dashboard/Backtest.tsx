@@ -186,6 +186,8 @@ export function Backtest() {
   }, [])
 
   const prevSelectionKey = useRef(selectionKey)
+  const runningRef = useRef(false)
+  runningRef.current = running
   useEffect(() => {
     if (prevSelectionKey.current === selectionKey) return
     prevSelectionKey.current = selectionKey
@@ -194,7 +196,9 @@ export function Backtest() {
     setProfileNote('')
     setProfileKey('')
     clearResults()
-    setStep('configure')
+    if (!runningRef.current) {
+      setStep('configure')
+    }
   }, [selectionKey, clearResults])
 
   useEffect(() => {
@@ -314,7 +318,6 @@ export function Backtest() {
 
       setActiveRun(run)
       setTrades(finishedTrades)
-      setRunning(false)
 
       if (run.status === 'completed') {
         setStep('results')
@@ -322,12 +325,19 @@ export function Backtest() {
         setError(
           sanitizeBacktestUserError(run.error_message ?? 'Backtest failed.', bt.errors.rateLimit),
         )
+        if (finishedTrades.length > 0) {
+          setStep('results')
+        }
       }
+
       void refreshSubscription()
     } catch (e) {
       if (runToken !== activeRunTokenRef.current) return
       setError(userError(e))
-      setRunning(false)
+    } finally {
+      if (runToken === activeRunTokenRef.current) {
+        setRunning(false)
+      }
     }
   }
 

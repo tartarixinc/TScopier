@@ -41,8 +41,8 @@ export function TradeVolumeChart({ data, loading, stale }: TradeVolumeChartProps
           {t.dashboard.tradeOutcomeEmpty}
         </div>
       ) : (
-        <div className={clsx('h-64 w-full', stale && 'opacity-60 transition-opacity duration-300')}>
-          <ResponsiveContainer width="100%" height="100%">
+        <div className={clsx('h-64 w-full min-w-0', stale && 'opacity-60 transition-opacity duration-300')}>
+          <ResponsiveContainer width="100%" height={256}>
             <BarChart data={data} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} vertical={false} />
               <XAxis

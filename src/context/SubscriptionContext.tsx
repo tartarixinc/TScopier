@@ -115,7 +115,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   const [usageLoading, setUsageLoading] = useState(true)
   const [pricingModalOpen, setPricingModalOpen] = useState(false)
 
-  const fetchSubscription = useCallback(async () => {
+  const fetchSubscription = useCallback(async (options?: { background?: boolean }) => {
     if (!userId) {
       setSubscription(null)
       setLoading(false)
@@ -124,8 +124,11 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       return
     }
 
-    setLoading(true)
-    setUsageLoading(true)
+    const background = options?.background ?? false
+    if (!background) {
+      setLoading(true)
+      setUsageLoading(true)
+    }
     const monthStart = monthStartUtcIso()
 
     const [{ data }, usageResults] = await Promise.all([
@@ -172,7 +175,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     if (params.get('checkout') === 'success') {
-      void fetchSubscription()
+      void fetchSubscription({ background: true })
       params.delete('checkout')
     }
     if (params.get('pricing') != null) {
@@ -268,7 +271,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         effectivePlan: activePlan,
         limits,
         planName,
-        refresh: fetchSubscription,
+        refresh: () => fetchSubscription({ background: true }),
         requireSubscription,
         openUpgrade,
         pricingModalOpen,
