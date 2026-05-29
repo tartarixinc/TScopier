@@ -13,7 +13,7 @@ export function PerformanceStatCard({ label, value, sub, icon: Icon, tone = 'def
     tone === 'positive'
       ? 'text-teal-600 dark:text-teal-400'
       : tone === 'negative'
-        ? 'text-rose-600 dark:text-rose-400'
+        ? 'text-neutral-600 dark:text-neutral-400'
         : 'text-neutral-900 dark:text-neutral-50'
 
   return (

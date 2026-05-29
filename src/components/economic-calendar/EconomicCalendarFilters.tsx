@@ -96,7 +96,7 @@ export function ImpactBadge({ impact, label }: { impact: 'low' | 'medium' | 'hig
     <span
       className={clsx(
         'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide',
-        impact === 'high' && 'bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300',
+        impact === 'high' && 'bg-neutral-100 text-neutral-800 dark:bg-neutral-800/60 dark:text-neutral-300',
         impact === 'medium' && 'bg-amber-100 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200',
         impact === 'low' && 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400',
       )}

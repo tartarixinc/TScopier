@@ -84,7 +84,7 @@ export function AccountPerformanceTable({
                 <td className="px-4 py-3 text-right tabular-nums">{formatMoney(equity)}</td>
                 <td
                   className={`px-4 py-3 text-right font-semibold tabular-nums ${
-                    roi == null ? '' : roi > 0 ? 'text-teal-600' : roi < 0 ? 'text-rose-600' : ''
+                    roi == null ? '' : roi > 0 ? 'text-teal-600' : roi < 0 ? 'text-neutral-600 dark:text-neutral-400' : ''
                   }`}
                 >
                   {formatRoi(roi)}
@@ -92,7 +92,7 @@ export function AccountPerformanceTable({
                 <td className="px-4 py-3 text-right tabular-nums">{formatPct(winRate, 0)}</td>
                 <td
                   className={`px-4 py-3 text-right tabular-nums ${
-                    maxDd != null && maxDd > 0 ? 'text-rose-600' : ''
+                    maxDd != null && maxDd > 0 ? 'text-neutral-600 dark:text-neutral-400' : ''
                   }`}
                 >
                   {formatPct(maxDd)}

@@ -24,7 +24,7 @@ interface PerformanceDistributionChartProps {
   stale?: boolean
   /** Bar value: realized P/L or trade count. */
   metric?: 'pnl' | 'count'
-  /** When metric is pnl, bars are colored by sign (positive teal, negative rose). */
+  /** When metric is pnl, bars are colored by sign (positive teal, negative grey). */
   colorBySign?: boolean
 }
 
@@ -109,8 +109,8 @@ export function PerformanceDistributionChart({
                         ? '#6366f1'
                         : colorBySign
                           ? entry.pnl >= 0
-                            ? '#0d9488'
-                            : '#ef4444'
+                            ? colors.signedPnl.profit
+                            : colors.signedPnl.loss
                           : '#6366f1'
                     }
                   />

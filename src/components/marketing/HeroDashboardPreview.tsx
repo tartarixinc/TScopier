@@ -23,6 +23,8 @@ import { LanguageSwitcher } from '../auth/LanguageSwitcher'
 import { ThemeToggle } from '../ui/ThemeToggle'
 import { TscopierLogo } from '../ui/TscopierLogo'
 import { useT } from '../../context/LocaleContext'
+import { useTheme } from '../../context/ThemeContext'
+import { chartThemeColors } from '../../lib/chartTheme'
 import { formatHeroLiveMoney, useLiveMoneyTicker } from './useLiveMoneyTicker'
 import type {
   LandingBacktestPipsTone,
@@ -51,18 +53,30 @@ const TRADE_OUTCOME_MAX = Math.max(
   ...TRADE_OUTCOME_DAYS.flatMap(d => [d.profit, d.loss]),
 )
 
-/** Balances for hero growth line (~$51.8k–$54.2k), one per weekday. */
-const GROWTH_BALANCES = [51800, 52200, 52000, 52800, 52600, 53400, 54200] as const
+const CHANNEL_PROFIT_ROWS = [
+  { label: 'Gold Signals Pro', pnl: 842 },
+  { label: 'FX Scalper VIP', pnl: 418 },
+  { label: 'Forex Daily', pnl: 215 },
+  { label: 'Indices Daily', pnl: -126 },
+] as const
 
-const GROWTH_DAY_COUNT = GROWTH_BALANCES.length
-
-function growthPointX(index: number, plotWidth: number): number {
-  return ((index + 0.5) / GROWTH_DAY_COUNT) * plotWidth
-}
+const CHANNEL_PROFIT_MIN = Math.min(...CHANNEL_PROFIT_ROWS.map(r => r.pnl))
+const CHANNEL_PROFIT_MAX = Math.max(...CHANNEL_PROFIT_ROWS.map(r => r.pnl))
+const CHANNEL_PROFIT_SPAN = CHANNEL_PROFIT_MAX - CHANNEL_PROFIT_MIN || 1
 
 function formatHeroAxisMoney(value: number): string {
-  if (value >= 1000) return `$${(value / 1000).toFixed(1)}k`
+  const abs = Math.abs(value)
+  if (abs >= 1000) return `$${(value / 1000).toFixed(1)}k`
   return `$${Math.round(value)}`
+}
+
+function channelBarGeometry(pnl: number, plotWidth: number): { x: number; width: number } {
+  const zeroX = ((0 - CHANNEL_PROFIT_MIN) / CHANNEL_PROFIT_SPAN) * plotWidth
+  const width = (Math.abs(pnl) / CHANNEL_PROFIT_SPAN) * plotWidth
+  return {
+    x: pnl >= 0 ? zeroX : zeroX - width,
+    width,
+  }
 }
 
 function barHeightPx(value: number, maxPx: number): number {
@@ -71,7 +85,7 @@ function barHeightPx(value: number, maxPx: number): number {
 
 function valueToneClass(tone: LandingBacktestPipsTone): string {
   if (tone === 'good') return 'text-teal-600 dark:text-teal-400'
-  if (tone === 'bad') return 'text-error-600 dark:text-error-400'
+  if (tone === 'bad') return 'text-neutral-600 dark:text-neutral-400'
   return 'text-neutral-900 dark:text-neutral-50'
 }
 
@@ -160,6 +174,8 @@ function HeroOverviewStat({
 
 function HeroTradeOutcomeChart() {
   const t = useT()
+  const { theme } = useTheme()
+  const colors = chartThemeColors(theme)
   return (
     <div className="min-w-0 rounded-2xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
       <div className="mb-4">
@@ -193,8 +209,11 @@ function HeroTradeOutcomeChart() {
                   style={{ height: barHeightPx(day.profit, 136) }}
                 />
                 <div
-                  className="w-[46%] min-w-[5px] rounded-t bg-error-500"
-                  style={{ height: barHeightPx(day.loss, 136) }}
+                  className="w-[46%] min-w-[5px] rounded-t"
+                  style={{
+                    height: barHeightPx(day.loss, 136),
+                    backgroundColor: colors.barActive.loss,
+                  }}
                 />
               </div>
               <span className="mt-1 text-[10px] text-neutral-400">{day.label}</span>
@@ -208,7 +227,10 @@ function HeroTradeOutcomeChart() {
           {t.dashboard.chartProfit}
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-sm bg-error-500" />
+          <span
+            className="h-2 w-2 rounded-sm"
+            style={{ backgroundColor: colors.barActive.loss }}
+          />
           {t.dashboard.chartLoss}
         </span>
       </div>
@@ -216,88 +238,98 @@ function HeroTradeOutcomeChart() {
   )
 }
 
-function HeroAccountGrowthChart() {
+function HeroChannelProfitChart() {
   const t = useT()
-  const max = Math.max(...GROWTH_BALANCES)
-  const min = Math.min(...GROWTH_BALANCES)
-  const span = max - min || 1
+  const { theme } = useTheme()
+  const colors = chartThemeColors(theme)
   const plotH = 168
   const plotW = 256
+  const rowCount = CHANNEL_PROFIT_ROWS.length
+  const rowGap = plotH / rowCount
+  const barHeight = 14
+  const labelWidth = 84
 
-  const yTicks = [0, 1, 2, 3, 4].map(i => max - (span * i) / 4)
-
-  const points = GROWTH_BALANCES.map((balance, i) => {
-    const x = growthPointX(i, plotW)
-    const y = plotH - ((balance - min) / span) * plotH
-    return `${x},${y}`
-  }).join(' ')
-
-  const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const
+  const xTicks = [0, 1, 2, 3, 4].map(
+    i => CHANNEL_PROFIT_MIN + (CHANNEL_PROFIT_SPAN * i) / 4,
+  )
+  const zeroX = ((0 - CHANNEL_PROFIT_MIN) / CHANNEL_PROFIT_SPAN) * plotW
 
   return (
     <div className="min-w-0 rounded-2xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
       <div className="mb-4">
         <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
-          {t.dashboard.accountGrowthTitle}
+          {t.dashboard.channelProfitTitle}
         </h2>
         <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
-          {t.dashboard.accountGrowthSubtitle}
+          {t.dashboard.channelProfitSubtitle}
         </p>
       </div>
       <div className="flex h-52 min-h-[13rem] flex-col">
-        <div className="flex min-h-0 flex-1 gap-1">
-          <div className="flex h-full w-11 shrink-0 flex-col justify-between py-0.5 pr-0.5 text-right text-[9px] leading-none tabular-nums text-neutral-400 dark:text-neutral-500">
-            {yTicks.map(tick => (
-              <span key={tick} className="block">
-                {formatHeroAxisMoney(tick)}
-              </span>
+        <div
+          className="grid min-h-0 flex-1 gap-x-1"
+          style={{ gridTemplateColumns: `${labelWidth}px 1fr`, gridTemplateRows: '1fr auto' }}
+        >
+          <div className="col-start-1 row-start-1 flex min-h-0 flex-col">
+            {CHANNEL_PROFIT_ROWS.map(row => (
+              <div
+                key={row.label}
+                className="flex min-h-0 flex-1 items-center justify-end pr-1"
+              >
+                <span className="block max-w-full truncate text-right text-[9px] leading-none text-neutral-400 dark:text-neutral-500">
+                  {row.label}
+                </span>
+              </div>
             ))}
           </div>
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-            <svg
-              viewBox={`0 0 ${plotW} ${plotH}`}
-              className="min-h-0 w-full flex-1"
-              preserveAspectRatio="none"
-              aria-hidden
-            >
-              {[0, 1, 2, 3, 4].map(i => {
-                const y = (plotH * i) / 4
-                return (
-                  <line
-                    key={i}
-                    x1={0}
-                    x2={plotW}
-                    y1={y}
-                    y2={y}
-                    stroke="currentColor"
-                    className="text-neutral-100 dark:text-neutral-800"
-                    strokeDasharray="4 4"
-                  />
-                )
-              })}
-              <line
-                x1={0}
-                x2={0}
-                y1={0}
-                y2={plotH}
-                stroke="currentColor"
-                className="text-neutral-200 dark:text-neutral-700"
-              />
-              <polyline
-                fill="none"
-                stroke="#0d9488"
-                strokeWidth="2"
-                vectorEffect="non-scaling-stroke"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                points={points}
-              />
-            </svg>
-            <div className="grid shrink-0 grid-cols-7 pt-1.5 text-center text-[10px] text-neutral-400">
-              {dayLabels.map(label => (
-                <span key={label}>{label}</span>
-              ))}
-            </div>
+          <svg
+            viewBox={`0 0 ${plotW} ${plotH}`}
+            className="col-start-2 row-start-1 min-h-0 h-full w-full"
+            preserveAspectRatio="none"
+            aria-hidden
+          >
+            {[0, 1, 2, 3, 4].map(i => {
+              const x = (plotW * i) / 4
+              return (
+                <line
+                  key={i}
+                  x1={x}
+                  x2={x}
+                  y1={0}
+                  y2={plotH}
+                  stroke="currentColor"
+                  className="text-neutral-100 dark:text-neutral-800"
+                  strokeDasharray="4 4"
+                />
+              )
+            })}
+            <line
+              x1={zeroX}
+              x2={zeroX}
+              y1={0}
+              y2={plotH}
+              stroke="currentColor"
+              className="text-neutral-200 dark:text-neutral-700"
+            />
+            {CHANNEL_PROFIT_ROWS.map((row, i) => {
+              const { x, width } = channelBarGeometry(row.pnl, plotW)
+              const y = rowGap * i + (rowGap - barHeight) / 2
+              return (
+                <rect
+                  key={row.label}
+                  x={x}
+                  y={y}
+                  width={Math.max(width, 2)}
+                  height={barHeight}
+                  rx={4}
+                  fill={row.pnl >= 0 ? colors.signedPnl.profit : colors.signedPnl.loss}
+                />
+              )
+            })}
+          </svg>
+          <div className="col-start-2 row-start-2 grid grid-cols-5 pt-1.5 text-center text-[10px] tabular-nums text-neutral-400">
+            {xTicks.map(tick => (
+              <span key={tick}>{formatHeroAxisMoney(tick)}</span>
+            ))}
           </div>
         </div>
       </div>
@@ -314,7 +346,7 @@ function copierStatusClass(status: LandingHeroCopierLogRow['status']): string {
     case 'skipped':
       return 'text-warning-800 bg-warning-50 dark:!text-amber-100 dark:!bg-amber-900'
     case 'failed':
-      return 'text-error-800 bg-error-50 dark:text-error-300 dark:bg-error-950/70'
+      return 'text-neutral-700 bg-neutral-100 dark:text-neutral-300 dark:bg-neutral-800/70'
     default:
       return 'text-neutral-600 bg-neutral-100 dark:text-neutral-300 dark:bg-neutral-800'
   }
@@ -499,7 +531,7 @@ export function HeroDashboardPreview() {
 
                 <div className="grid grid-cols-2 gap-6">
                   <HeroTradeOutcomeChart />
-                  <HeroAccountGrowthChart />
+                  <HeroChannelProfitChart />
                 </div>
 
                 <div className="grid grid-cols-2 gap-6">
@@ -573,7 +605,7 @@ export function HeroDashboardPreview() {
                           <span
                             className={clsx(
                               'min-w-0 truncate text-xs font-medium uppercase',
-                              row.side === 'buy' ? 'text-primary-600' : 'text-error-600',
+                              row.side === 'buy' ? 'text-primary-600' : 'text-neutral-600 dark:text-neutral-400',
                             )}
                           >
                             {row.type}

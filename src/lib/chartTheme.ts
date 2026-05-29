@@ -16,6 +16,11 @@ export interface ChartThemeColors {
     loss: string
     volume: string
   }
+  /** Horizontal / signed P/L bars (e.g. profit by channel). */
+  signedPnl: {
+    profit: string
+    loss: string
+  }
 }
 
 export function chartThemeColors(theme: Theme): ChartThemeColors {
@@ -31,8 +36,12 @@ export function chartThemeColors(theme: Theme): ChartThemeColors {
       tooltipShadow: '0 4px 12px rgba(0, 0, 0, 0.45)',
       barActive: {
         profit: '#2dd4bf',
-        loss: '#f87171',
+        loss: '#737373',
         volume: '#94a3b8',
+      },
+      signedPnl: {
+        profit: '#0d9488',
+        loss: '#737373',
       },
     }
   }
@@ -47,8 +56,12 @@ export function chartThemeColors(theme: Theme): ChartThemeColors {
     tooltipShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
     barActive: {
       profit: '#14b8a6',
-      loss: '#ef4444',
+      loss: '#737373',
       volume: '#737373',
+    },
+    signedPnl: {
+      profit: '#0d9488',
+      loss: '#737373',
     },
   }
 }

@@ -79,7 +79,10 @@ export function ChannelProfitChart({ data, loading, stale }: ChannelProfitChartP
               />
               <Bar dataKey="pnl" name={t.dashboard.chartProfit} radius={[0, 4, 4, 0]} maxBarSize={20}>
                 {chartData.map(entry => (
-                  <Cell key={entry.key} fill={entry.pnl >= 0 ? '#0d9488' : '#ef4444'} />
+                  <Cell
+                    key={entry.key}
+                    fill={entry.pnl >= 0 ? colors.signedPnl.profit : colors.signedPnl.loss}
+                  />
                 ))}
               </Bar>
             </BarChart>

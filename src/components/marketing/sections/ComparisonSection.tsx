@@ -150,7 +150,7 @@ function ComparisonCell({
       ) : null}
       {negative ? (
         <X
-          className="mt-0.5 h-4 w-4 shrink-0 text-red-500/80 dark:text-red-400/90"
+          className="mt-0.5 h-4 w-4 shrink-0 text-neutral-500/80 dark:text-neutral-400/90"
           strokeWidth={2.5}
           aria-hidden
         />

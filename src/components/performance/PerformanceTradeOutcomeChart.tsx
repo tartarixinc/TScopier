@@ -86,7 +86,7 @@ export function PerformanceTradeOutcomeChart({
               <Bar
                 dataKey="loss"
                 name={lossLabel}
-                fill="#ef4444"
+                fill={colors.barActive.loss}
                 activeBar={{ fill: colors.barActive.loss, stroke: colors.barActive.loss }}
                 radius={[4, 4, 0, 0]}
                 maxBarSize={28}

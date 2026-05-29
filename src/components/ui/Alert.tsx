@@ -11,7 +11,7 @@ interface AlertProps {
 
 const variantClass: Record<AlertVariant, string> = {
   error:
-    'bg-error-50 border-error-200 text-error-800 dark:!bg-error-950 dark:!border-error-800 dark:!text-red-200',
+    'bg-error-50 border-error-200 text-error-800 dark:!bg-error-950 dark:!border-error-800 dark:!text-error-200',
   warning:
     'bg-warning-50 border-warning-200 text-warning-800 dark:!bg-amber-900 dark:!border-amber-800 dark:!text-amber-100',
   success:

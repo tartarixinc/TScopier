@@ -19,7 +19,7 @@ function impactLabel(
 
 function actualClass(tone: LandingCalendarActualTone): string {
   if (tone === 'good') return 'text-emerald-600 dark:text-emerald-400'
-  if (tone === 'bad') return 'text-red-600 dark:text-red-400'
+  if (tone === 'bad') return 'text-neutral-600 dark:text-neutral-400'
   return 'text-neutral-700 dark:text-neutral-300'
 }
 
