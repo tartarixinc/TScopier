@@ -311,6 +311,35 @@ export interface TradesTranslations {
   emptySubtitleConnect: string
   emptySubtitleOpen: string
   emptySubtitleClosed: string
+  modalTitle: string
+  close: string
+  tradeSummary: string
+  signalChannel: string
+  telegramMessage: string
+  parsedInstruction: string
+  signalTime: string
+  noLinkedSignal: string
+  imageSignal: string
+  loadingSignal: string
+  loadSignalError: string
+  viewDetails: string
+  statusOpen: string
+  statusClosed: string
+  colBroker: string
+  colEntry: string
+  colSl: string
+  colTp: string
+  colLots: string
+  colPnl: string
+  colTime: string
+  instructionAction: string
+  instructionSymbol: string
+  instructionEntry: string
+  instructionEntryZone: string
+  instructionSl: string
+  instructionTp: string
+  instructionLotSize: string
+  instructionMessage: string
 }
 
 export interface EconomicCalendarTranslations {

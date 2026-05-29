@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowUpRight, ArrowDownRight, ChevronLeft, ChevronRight, Minus, RefreshCw, TrendingUp, TrendingDown } from 'lucide-react'
+import { ArrowUpRight, ArrowDownRight, ChevronLeft, ChevronRight, ChevronRight as ChevronRightIcon, Minus, RefreshCw, TrendingUp, TrendingDown } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useT } from '../../context/LocaleContext'
 import { interpolate } from '../../i18n/interpolate'
@@ -9,8 +9,13 @@ import { PageShell } from '../../components/layout/PageShell'
 import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
 import { Alert } from '../../components/ui/Alert'
+import { TradeDetailModal } from '../../components/trades/TradeDetailModal'
 import type { MtTrade } from '../../lib/metatraderapi'
-import { directionDisplayLabel, resolveTradeDisplayDirection } from '../../lib/tradeDirection'
+import {
+  formatTradeLots,
+  formatTradePrice,
+  getTradeDisplayMeta,
+} from '../../lib/tradeDisplay'
 
 type Filter = 'all' | 'open' | 'closed'
 
@@ -24,6 +29,7 @@ export function TradesPage() {
   const [filter, setFilter] = useState<Filter>('all')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState<PageSizeOption>(10)
+  const [selectedTrade, setSelectedTrade] = useState<MtTrade | null>(null)
 
   const filters: { value: Filter; label: string; count: number }[] = useMemo(
     () => [
@@ -156,7 +162,7 @@ export function TradesPage() {
           <>
             <div className="md:hidden divide-y divide-neutral-100 dark:divide-neutral-800">
               {paginatedTrades.map(trade => (
-                <TradeCard key={trade.id} trade={trade} />
+                <TradeCard key={trade.id} trade={trade} onSelect={() => setSelectedTrade(trade)} />
               ))}
             </div>
             <div className="hidden md:block overflow-x-auto">
@@ -176,7 +182,9 @@ export function TradesPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
-                  {paginatedTrades.map(trade => <TradeRow key={trade.id} trade={trade} />)}
+                  {paginatedTrades.map(trade => (
+                    <TradeRow key={trade.id} trade={trade} onSelect={() => setSelectedTrade(trade)} />
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -195,6 +203,12 @@ export function TradesPage() {
           </>
         )}
       </Card>
+
+      <TradeDetailModal
+        trade={selectedTrade}
+        userId={user?.id}
+        onClose={() => setSelectedTrade(null)}
+      />
     </PageShell>
   )
 }
@@ -315,53 +329,19 @@ function PageButton({ n, active, onClick }: { n: number; active: boolean; onClic
   )
 }
 
-function formatLots(lotSize: number): string {
-  if (!Number.isFinite(lotSize)) return '—'
-  return lotSize.toFixed(2)
-}
-
-/** Prefer deal profit; if API returned 0 with swap/commission, show net realized P/L. */
-function displayProfit(trade: MtTrade): number | null {
-  const p = trade.profit
-  if (p == null || !Number.isFinite(p)) return null
-  if (p !== 0 || trade.status !== 'closed') return p
-  const swap = typeof trade.swap === 'number' && Number.isFinite(trade.swap) ? trade.swap : 0
-  const commission = typeof trade.commission === 'number' && Number.isFinite(trade.commission) ? trade.commission : 0
-  const net = p + swap + commission
-  return net !== 0 ? net : p
-}
-
-function useTradeDisplay(trade: MtTrade) {
-  const displayDirection = resolveTradeDisplayDirection(trade)
-  const isBuy = displayDirection === 'buy'
-  const isSell = displayDirection === 'sell'
-  const profit = displayProfit(trade)
-  const statusConfig: Record<string, { variant: 'success' | 'warning' | 'error' | 'neutral' | 'primary'; label: string }> = {
-    open: { variant: 'primary', label: 'Open' },
-    closed: { variant: 'neutral', label: 'Closed' },
-  }
-  const status = statusConfig[trade.status] ?? { variant: 'neutral' as const, label: trade.status }
-  const timeIso = trade.status === 'closed' ? (trade.closed_at ?? trade.opened_at) : trade.opened_at
-  const broker = trade.broker_name || trade.broker_label || '—'
-  const directionLabel = directionDisplayLabel(displayDirection)
-  const timeLabel = timeIso
-    ? new Date(timeIso).toLocaleString([], {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      })
-    : '—'
-
-  return { isBuy, isSell, profit, status, broker, directionLabel, timeLabel }
-}
-
-function TradeCard({ trade }: { trade: MtTrade }) {
-  const { isBuy, isSell, profit, status, broker, directionLabel, timeLabel } = useTradeDisplay(trade)
+function TradeCard({ trade, onSelect }: { trade: MtTrade; onSelect: () => void }) {
+  const t = useT()
+  const tr = t.trades
+  const { isBuy, isSell, profit, status, broker, directionLabel, timeLabel } = getTradeDisplayMeta(trade)
+  const statusLabel =
+    trade.status === 'open' ? tr.statusOpen : trade.status === 'closed' ? tr.statusClosed : status.label
 
   return (
-    <article className="px-4 py-4 hover:bg-neutral-50 dark:hover:bg-neutral-800/40 transition-colors">
+    <button
+      type="button"
+      onClick={onSelect}
+      className="w-full text-left px-4 py-4 hover:bg-neutral-50 dark:hover:bg-neutral-800/40 transition-colors group"
+    >
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="min-w-0">
           <p className="text-base font-semibold text-neutral-900 dark:text-neutral-50 truncate">
@@ -370,7 +350,7 @@ function TradeCard({ trade }: { trade: MtTrade }) {
           <p className="text-[11px] text-neutral-400 tabular-nums mt-0.5">#{trade.ticket}</p>
         </div>
         <div className="flex flex-col items-end gap-1.5 shrink-0">
-          <Badge variant={status.variant} size="sm">{status.label}</Badge>
+          <Badge variant={status.variant} size="sm">{statusLabel}</Badge>
           <span className={`text-sm font-semibold tabular-nums ${
             profit === null ? 'text-neutral-400' :
             profit > 0 ? 'text-success-600' :
@@ -390,41 +370,61 @@ function TradeCard({ trade }: { trade: MtTrade }) {
 
       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
         <div>
-          <dt className="text-neutral-400 uppercase tracking-wide">Broker</dt>
+          <dt className="text-neutral-400 uppercase tracking-wide">{tr.colBroker}</dt>
           <dd className="text-neutral-700 dark:text-neutral-300 truncate mt-0.5" title={broker}>{broker}</dd>
         </div>
         <div>
-          <dt className="text-neutral-400 uppercase tracking-wide">Lots</dt>
+          <dt className="text-neutral-400 uppercase tracking-wide">{tr.colLots}</dt>
           <dd className="text-neutral-700 dark:text-neutral-300 tabular-nums mt-0.5">
-            {formatLots(trade.lot_size)}
+            {formatTradeLots(trade.lot_size)}
           </dd>
         </div>
         <div>
-          <dt className="text-neutral-400 uppercase tracking-wide">Entry</dt>
-          <dd className="text-neutral-700 dark:text-neutral-300 tabular-nums mt-0.5">{formatPrice(trade.entry_price)}</dd>
+          <dt className="text-neutral-400 uppercase tracking-wide">{tr.colEntry}</dt>
+          <dd className="text-neutral-700 dark:text-neutral-300 tabular-nums mt-0.5">{formatTradePrice(trade.entry_price)}</dd>
         </div>
         <div>
-          <dt className="text-neutral-400 uppercase tracking-wide">Time</dt>
+          <dt className="text-neutral-400 uppercase tracking-wide">{tr.colTime}</dt>
           <dd className="text-neutral-600 dark:text-neutral-400 mt-0.5">{timeLabel}</dd>
         </div>
         <div>
-          <dt className="text-neutral-400 uppercase tracking-wide">SL</dt>
-          <dd className="text-neutral-700 dark:text-neutral-300 tabular-nums mt-0.5">{formatPrice(trade.sl)}</dd>
+          <dt className="text-neutral-400 uppercase tracking-wide">{tr.colSl}</dt>
+          <dd className="text-neutral-700 dark:text-neutral-300 tabular-nums mt-0.5">{formatTradePrice(trade.sl)}</dd>
         </div>
         <div>
-          <dt className="text-neutral-400 uppercase tracking-wide">TP</dt>
-          <dd className="text-neutral-700 dark:text-neutral-300 tabular-nums mt-0.5">{formatPrice(trade.tp)}</dd>
+          <dt className="text-neutral-400 uppercase tracking-wide">{tr.colTp}</dt>
+          <dd className="text-neutral-700 dark:text-neutral-300 tabular-nums mt-0.5">{formatTradePrice(trade.tp)}</dd>
         </div>
       </dl>
-    </article>
+      <p className="mt-3 flex items-center justify-end gap-1 text-xs font-medium text-teal-600 dark:text-teal-400 opacity-0 group-hover:opacity-100 transition-opacity">
+        {tr.viewDetails}
+        <ChevronRightIcon className="w-3.5 h-3.5" />
+      </p>
+    </button>
   )
 }
 
-function TradeRow({ trade }: { trade: MtTrade }) {
-  const { isBuy, isSell, profit, status, broker, directionLabel, timeLabel } = useTradeDisplay(trade)
+function TradeRow({ trade, onSelect }: { trade: MtTrade; onSelect: () => void }) {
+  const t = useT()
+  const tr = t.trades
+  const { isBuy, isSell, profit, status, broker, directionLabel, timeLabel } = getTradeDisplayMeta(trade)
+  const statusLabel =
+    trade.status === 'open' ? tr.statusOpen : trade.status === 'closed' ? tr.statusClosed : status.label
 
   return (
-    <tr className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors">
+    <tr
+      className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors cursor-pointer group"
+      onClick={onSelect}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onSelect()
+        }
+      }}
+      tabIndex={0}
+      role="button"
+      aria-label={`${tr.viewDetails}: ${trade.symbol ?? 'trade'} #${trade.ticket}`}
+    >
       <td className="px-4 py-3.5 text-sm font-semibold text-neutral-900 dark:text-neutral-50 text-center">
         <div>{trade.symbol || '—'}</div>
         <div className="text-[10px] text-neutral-400 font-normal tabular-nums mt-0.5">#{trade.ticket}</div>
@@ -438,10 +438,10 @@ function TradeRow({ trade }: { trade: MtTrade }) {
         </span>
       </td>
       <td className="px-2 py-3.5 text-xs text-neutral-600 dark:text-neutral-400 text-center truncate" title={broker}>{broker}</td>
-      <td className="px-2 py-3.5 text-sm text-neutral-700 dark:text-neutral-300 text-center tabular-nums">{formatPrice(trade.entry_price)}</td>
-      <td className="px-2 py-3.5 text-sm text-neutral-700 dark:text-neutral-300 text-center tabular-nums">{formatPrice(trade.sl)}</td>
-      <td className="px-2 py-3.5 text-sm text-neutral-700 dark:text-neutral-300 text-center tabular-nums">{formatPrice(trade.tp)}</td>
-      <td className="px-2 py-3.5 text-sm text-neutral-700 dark:text-neutral-300 text-center tabular-nums">{formatLots(trade.lot_size)}</td>
+      <td className="px-2 py-3.5 text-sm text-neutral-700 dark:text-neutral-300 text-center tabular-nums">{formatTradePrice(trade.entry_price)}</td>
+      <td className="px-2 py-3.5 text-sm text-neutral-700 dark:text-neutral-300 text-center tabular-nums">{formatTradePrice(trade.sl)}</td>
+      <td className="px-2 py-3.5 text-sm text-neutral-700 dark:text-neutral-300 text-center tabular-nums">{formatTradePrice(trade.tp)}</td>
+      <td className="px-2 py-3.5 text-sm text-neutral-700 dark:text-neutral-300 text-center tabular-nums">{formatTradeLots(trade.lot_size)}</td>
       <td className={`px-2 py-3.5 text-sm font-medium text-center tabular-nums ${
         profit === null ? 'text-neutral-400' :
         profit > 0 ? 'text-success-600' :
@@ -458,18 +458,13 @@ function TradeRow({ trade }: { trade: MtTrade }) {
         {timeLabel}
       </td>
       <td className="px-4 py-3.5 text-center">
-        <span className="inline-flex justify-center w-full">
-          <Badge variant={status.variant} size="sm">{status.label}</Badge>
+        <span className="inline-flex justify-center items-center gap-1 w-full">
+          <Badge variant={status.variant} size="sm">{statusLabel}</Badge>
+          <ChevronRightIcon className="w-3.5 h-3.5 text-neutral-300 opacity-0 group-hover:opacity-100 transition-opacity" aria-hidden />
         </span>
       </td>
     </tr>
   )
-}
-
-function formatPrice(value: number | null): string {
-  if (value === null || value === undefined) return '—'
-  if (!Number.isFinite(value) || value === 0) return '—'
-  return value.toFixed(5)
 }
 
 function formatRelative(ts: number): string {
