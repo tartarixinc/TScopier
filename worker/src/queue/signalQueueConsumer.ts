@@ -117,6 +117,7 @@ export class SignalQueueConsumer {
 
   private async readLoop(): Promise<void> {
     const cfg = signalQueueConfig()
+    const blockMs = this.lane === 'mgmt' ? cfg.mgmtConsumerBlockMs : cfg.consumerBlockMs
     const streamKey = streamKeyForLane(this.lane, workerConfig.shardId)
     const group = consumerGroupForLane(this.lane, workerConfig.shardId)
     const consumer = this.consumerName()
@@ -128,7 +129,7 @@ export class SignalQueueConsumer {
           consumer,
           streamKey,
           cfg.readCount,
-          cfg.consumerBlockMs,
+          blockMs,
         )
         this.lastReadAt = Date.now()
         if (messages.length === 0) continue
@@ -141,7 +142,7 @@ export class SignalQueueConsumer {
         this.lastError = err instanceof Error ? err.message : String(err)
         incMetric('queue_consumer_read_errors')
         console.warn(`[signalQueue] read error lane=${this.lane}: ${this.lastError}`)
-        await sleep(Math.min(5_000, cfg.consumerBlockMs))
+        await sleep(Math.min(5_000, blockMs))
       }
     }
   }

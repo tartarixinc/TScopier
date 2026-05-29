@@ -149,7 +149,9 @@ async function pushParsedSignalToTradeWorkerInner(row, opts) {
             + ' — set TRADE_WORKER_URL / TRADE_MGMT_WORKER_URL on listener');
         return false;
     }
-    const timeoutMs = Math.max(500, Math.min(10000, Number(process.env.TRADE_SIGNAL_PUSH_TIMEOUT_MS ?? 4000)));
+    const isMgmt = (0, tradeSignalActions_1.isManagementAction)(action ?? '');
+    const defaultTimeoutMs = isMgmt ? 2000 : 4000;
+    const timeoutMs = Math.max(500, Math.min(10000, Number(process.env.TRADE_SIGNAL_PUSH_TIMEOUT_MS ?? defaultTimeoutMs)));
     const dispatchSource = opts?.source ?? row.dispatch_source ?? 'listener_push';
     const url = `${baseUrl}/internal/dispatch-signal`;
     const priority = (0, tradeSignalActions_1.dispatchPriorityForAction)(action);

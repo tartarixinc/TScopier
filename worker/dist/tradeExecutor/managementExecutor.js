@@ -15,6 +15,47 @@ const channelActiveTradeParams_1 = require("../channelActiveTradeParams");
 const managementPendingLegs_1 = require("../managementPendingLegs");
 const orderModifyBenign_1 = require("../orderModifyBenign");
 const helpers_1 = require("./helpers");
+async function closeWithVerification(api, uuid, ticket, opts = {}) {
+    const maxAttempts = opts.maxAttempts ?? 2;
+    const slippageStep = opts.slippageEscalation ?? 50;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        const slippage = 20 + (attempt - 1) * slippageStep;
+        const result = await api.orderClose(uuid, { ticket, slippage });
+        if (result.state && /^(rejected|cancelled|expired)/i.test(result.state)) {
+            if (attempt >= maxAttempts) {
+                return { confirmed: false, reason: `orderClose state=${result.state}`, attempts: attempt };
+            }
+            await new Promise(r => setTimeout(r, 300));
+            continue;
+        }
+        await new Promise(r => setTimeout(r, 400));
+        let stillOpen = false;
+        try {
+            const openOrders = await api.openedOrders(uuid);
+            for (const raw of openOrders ?? []) {
+                if (!raw || typeof raw !== 'object')
+                    continue;
+                const o = raw;
+                const t = Number(o.ticket ?? o.Ticket ?? o.orderId ?? o.OrderID ?? 0);
+                if (t === ticket) {
+                    stillOpen = true;
+                    break;
+                }
+            }
+        }
+        catch {
+            return { confirmed: true, attempts: attempt };
+        }
+        if (!stillOpen) {
+            return { confirmed: true, attempts: attempt };
+        }
+        if (attempt >= maxAttempts) {
+            return { confirmed: false, reason: 'ticket still open after orderClose + verification', attempts: attempt };
+        }
+        await new Promise(r => setTimeout(r, 300));
+    }
+    return { confirmed: false, reason: 'exhausted attempts', attempts: maxAttempts };
+}
 async function logSendSkipped(ctx, signal, broker, reason, extra) {
     if (reason === 'broker_session_not_connected') {
         const uuid = broker.metaapi_account_id;
@@ -254,7 +295,10 @@ async function applyManagement(ctx, signal, parsed, brokers) {
             && parsedTpLevels.length >= 2;
         try {
             if (action === 'close') {
-                await api.orderClose(uuid, { ticket });
+                const closeResult = await closeWithVerification(api, uuid, ticket, { maxAttempts: 2, slippageEscalation: 50 });
+                if (!closeResult.confirmed) {
+                    throw new Error(closeResult.reason ?? 'orderClose succeeded but ticket still open on broker');
+                }
                 await ctx.supabase.from('trades').update({ status: 'closed', closed_at: new Date().toISOString() }).eq('id', trade.id);
                 cancelledPendingScopes.add(JSON.stringify({
                     signalId: trade.signal_id,
@@ -521,7 +565,10 @@ async function applyCloseWorseEntriesInstruction(ctx, signal, parsed, rows, byBr
             if (!Number.isFinite(ticket) || ticket <= 0)
                 continue;
             try {
-                await api.orderClose(uuid, { ticket, lots: trade.lot_size });
+                const closeResult = await closeWithVerification(api, uuid, ticket, { maxAttempts: 2, slippageEscalation: 50 });
+                if (!closeResult.confirmed) {
+                    throw new Error(closeResult.reason ?? 'cwe orderClose: ticket still open');
+                }
                 await ctx.supabase
                     .from('trades')
                     .update({

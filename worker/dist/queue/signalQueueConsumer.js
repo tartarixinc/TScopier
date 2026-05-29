@@ -81,12 +81,13 @@ class SignalQueueConsumer {
     }
     async readLoop() {
         const cfg = (0, signalQueueConfig_1.signalQueueConfig)();
+        const blockMs = this.lane === 'mgmt' ? cfg.mgmtConsumerBlockMs : cfg.consumerBlockMs;
         const streamKey = (0, signalQueueConfig_1.streamKeyForLane)(this.lane, workerConfig_1.workerConfig.shardId);
         const group = (0, signalQueueConfig_1.consumerGroupForLane)(this.lane, workerConfig_1.workerConfig.shardId);
         const consumer = this.consumerName();
         while (!this.stopped) {
             try {
-                const messages = await (0, redisStreamsClient_1.xreadgroup)(group, consumer, streamKey, cfg.readCount, cfg.consumerBlockMs);
+                const messages = await (0, redisStreamsClient_1.xreadgroup)(group, consumer, streamKey, cfg.readCount, blockMs);
                 this.lastReadAt = Date.now();
                 if (messages.length === 0)
                     continue;
@@ -96,7 +97,7 @@ class SignalQueueConsumer {
                 this.lastError = err instanceof Error ? err.message : String(err);
                 (0, workerMetrics_1.incMetric)('queue_consumer_read_errors');
                 console.warn(`[signalQueue] read error lane=${this.lane}: ${this.lastError}`);
-                await sleep(Math.min(5000, cfg.consumerBlockMs));
+                await sleep(Math.min(5000, blockMs));
             }
         }
     }

@@ -13,10 +13,19 @@ const PENDING_TTL_MS = 10 * 60 * 1000;
 const CLEANUP_INTERVAL_MS = 60 * 1000;
 /** DB row outlives Telegram code validity slightly so retries still recover across replicas. */
 const PENDING_DB_TTL_MS = 12 * 60 * 1000;
+function normalizePhoneNumber(raw) {
+    const compact = String(raw ?? '')
+        .trim()
+        .replace(/[\s\-()]/g, '');
+    if (compact.startsWith('00'))
+        return `+${compact.slice(2)}`;
+    return compact;
+}
 function phonesMatch(a, b) {
-    const x = a.trim().replace(/\s+/g, '');
-    const y = b.trim().replace(/\s+/g, '');
-    return x === y;
+    return normalizePhoneNumber(a) === normalizePhoneNumber(b);
+}
+function normalizeVerificationCode(raw) {
+    return String(raw ?? '').replace(/\D/g, '');
 }
 /**
  * Owns the MTProto connection during the send_code -> verify_code window.
@@ -116,6 +125,10 @@ class AuthService {
         await (0, telegramClient_1.tgInvoke)(client, new tl_1.Api.auth.CheckPassword({ password: srpCheck }));
     }
     async sendCode(userId, phone) {
+        const normalizedPhone = normalizePhoneNumber(phone);
+        if (!normalizedPhone || !normalizedPhone.startsWith('+')) {
+            throw new Error('Use full phone with country code, e.g. +44...');
+        }
         // Stop the live listener before touching telegram_auth_pending — clearing that row
         // triggers onAuthPendingCleared on other replicas, which must not reopen MTProto.
         await this.sessionManager.pauseForAuth(userId);
@@ -132,7 +145,7 @@ class AuthService {
         await client.connect();
         try {
             const result = await (0, telegramClient_1.tgInvoke)(client, new tl_1.Api.auth.SendCode({
-                phoneNumber: phone,
+                phoneNumber: normalizedPhone,
                 apiId: telegramClient_1.API_ID,
                 apiHash: telegramClient_1.API_HASH,
                 settings: new tl_1.Api.CodeSettings({
@@ -143,14 +156,14 @@ class AuthService {
             }));
             this.pending.set(userId, {
                 client,
-                phone,
+                phone: normalizedPhone,
                 phoneCodeHash: result.phoneCodeHash,
                 createdAt: Date.now(),
             });
             const expiresAt = new Date(Date.now() + PENDING_DB_TTL_MS).toISOString();
             const { error: dbErr } = await this.supabase.from('telegram_auth_pending').upsert({
                 user_id: userId,
-                phone,
+                phone: normalizedPhone,
                 phone_code_hash: result.phoneCodeHash,
                 expires_at: expiresAt,
             }, { onConflict: 'user_id' });
@@ -168,11 +181,16 @@ class AuthService {
         }
     }
     async verifyCode(userId, phone, code, password) {
+        const normalizedPhone = normalizePhoneNumber(phone);
+        const normalizedCode = normalizeVerificationCode(code);
+        if (!normalizedCode) {
+            throw new Error('Verification code is required');
+        }
         // Other replicas may still hold the listener until telegram_auth_pending realtime fires.
         await this.sessionManager.pauseForAuth(userId, { releaseDelay: false });
         let pending = this.pending.get(userId);
         if (!pending) {
-            const restored = await this.restorePendingFromDatabase(userId, phone);
+            const restored = await this.restorePendingFromDatabase(userId, normalizedPhone);
             if (restored) {
                 pending = restored;
                 this.pending.set(userId, restored);
@@ -195,7 +213,7 @@ class AuthService {
                     await (0, telegramClient_1.tgInvoke)(client, new tl_1.Api.auth.SignIn({
                         phoneNumber: pendingPhone,
                         phoneCodeHash,
-                        phoneCode: code,
+                        phoneCode: normalizedCode,
                     }));
                 }
                 catch (signInErr) {
@@ -212,7 +230,7 @@ class AuthService {
                     await (0, telegramClient_1.tgInvoke)(client, new tl_1.Api.auth.SignIn({
                         phoneNumber: pendingPhone,
                         phoneCodeHash,
-                        phoneCode: code,
+                        phoneCode: normalizedCode,
                     }));
                 }
                 catch (err) {

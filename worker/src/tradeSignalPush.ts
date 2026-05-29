@@ -194,9 +194,11 @@ async function pushParsedSignalToTradeWorkerInner(
     return false
   }
 
+  const isMgmt = isManagementAction(action ?? '')
+  const defaultTimeoutMs = isMgmt ? 2_000 : 4_000
   const timeoutMs = Math.max(
     500,
-    Math.min(10_000, Number(process.env.TRADE_SIGNAL_PUSH_TIMEOUT_MS ?? 4_000)),
+    Math.min(10_000, Number(process.env.TRADE_SIGNAL_PUSH_TIMEOUT_MS ?? defaultTimeoutMs)),
   )
   const dispatchSource = opts?.source ?? row.dispatch_source ?? 'listener_push'
   const url = `${baseUrl}/internal/dispatch-signal`

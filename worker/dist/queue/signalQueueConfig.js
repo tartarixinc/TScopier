@@ -48,6 +48,7 @@ function loadSignalQueueConfig() {
         entryStreamBase: String(process.env.TRADE_SIGNAL_QUEUE_ENTRY_STREAM ?? 'signals:entry').trim(),
         mgmtStreamBase: String(process.env.TRADE_SIGNAL_QUEUE_MGMT_STREAM ?? 'signals:mgmt').trim(),
         consumerBlockMs: Math.max(100, Math.min(30000, Number(process.env.TRADE_SIGNAL_QUEUE_CONSUMER_BLOCK_MS ?? 2000))),
+        mgmtConsumerBlockMs: Math.max(100, Math.min(5000, Number(process.env.TRADE_SIGNAL_QUEUE_MGMT_CONSUMER_BLOCK_MS ?? 500))),
         claimIdleMs: Math.max(5000, Math.min(600000, Number(process.env.TRADE_SIGNAL_QUEUE_CLAIM_IDLE_MS ?? 60000))),
         maxAttempts: Math.max(1, Math.min(20, Number(process.env.TRADE_SIGNAL_QUEUE_MAX_ATTEMPTS ?? 5))),
         readCount: Math.max(1, Math.min(100, Number(process.env.TRADE_SIGNAL_QUEUE_READ_COUNT ?? 10))),
