@@ -64,18 +64,18 @@ export function TradeVolumeChart({ data, loading, stale }: TradeVolumeChartProps
               />
               <Legend wrapperStyle={{ fontSize: 12, color: colors.tick }} />
               <Bar
-                dataKey="profit"
-                name={t.dashboard.chartProfit}
-                fill="#0d9488"
-                activeBar={{ fill: colors.barActive.profit, stroke: colors.barActive.profit }}
-                radius={[4, 4, 0, 0]}
-                maxBarSize={28}
-              />
-              <Bar
                 dataKey="loss"
                 name={t.dashboard.chartLoss}
                 fill={colors.barActive.loss}
                 activeBar={{ fill: colors.barActive.loss, stroke: colors.barActive.loss }}
+                radius={[4, 4, 0, 0]}
+                maxBarSize={28}
+              />
+              <Bar
+                dataKey="profit"
+                name={t.dashboard.chartProfit}
+                fill="#0d9488"
+                activeBar={{ fill: colors.barActive.profit, stroke: colors.barActive.profit }}
                 radius={[4, 4, 0, 0]}
                 maxBarSize={28}
               />

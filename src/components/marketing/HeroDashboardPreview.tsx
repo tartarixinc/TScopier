@@ -205,15 +205,15 @@ function HeroTradeOutcomeChart() {
             <div key={day.label} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end">
               <div className="flex h-[8.5rem] w-full max-w-[26px] items-end justify-center gap-0.5">
                 <div
-                  className="w-[46%] min-w-[5px] rounded-t bg-teal-600"
-                  style={{ height: barHeightPx(day.profit, 136) }}
-                />
-                <div
                   className="w-[46%] min-w-[5px] rounded-t"
                   style={{
                     height: barHeightPx(day.loss, 136),
                     backgroundColor: colors.barActive.loss,
                   }}
+                />
+                <div
+                  className="w-[46%] min-w-[5px] rounded-t bg-teal-600"
+                  style={{ height: barHeightPx(day.profit, 136) }}
                 />
               </div>
               <span className="mt-1 text-[10px] text-neutral-400">{day.label}</span>
@@ -223,15 +223,15 @@ function HeroTradeOutcomeChart() {
       </div>
       <div className="mt-3 flex justify-center gap-6 text-xs text-neutral-500">
         <span className="inline-flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-sm bg-teal-600" />
-          {t.dashboard.chartProfit}
-        </span>
-        <span className="inline-flex items-center gap-1.5">
           <span
             className="h-2 w-2 rounded-sm"
             style={{ backgroundColor: colors.barActive.loss }}
           />
           {t.dashboard.chartLoss}
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-sm bg-teal-600" />
+          {t.dashboard.chartProfit}
         </span>
       </div>
     </div>
