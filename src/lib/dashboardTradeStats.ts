@@ -167,27 +167,24 @@ function parseCloseMs(iso: string | null): number {
   return Number.isFinite(t) ? t : 0
 }
 
-/** Per-account ROI, win rate, and max drawdown from closed trade history + live equity. */
+/** Per-account ROI, win rate, and max drawdown from closed trade history (deposits excluded). */
 export function computeLinkedAccountPerformance(
   account: {
     performance_baseline_balance?: number | null
     last_balance?: number | null
   },
   trades: TradeStatsRow[],
-  liveEquity?: number | null,
+  _liveEquity?: number | null,
 ): LinkedAccountPerformance {
   const baseline = Number(account.performance_baseline_balance ?? account.last_balance)
-  const equity =
-    liveEquity != null && Number.isFinite(liveEquity)
-      ? liveEquity
-      : null
+  const closed = trades.filter(isMtClosedDealForOutcome)
 
   let roi: number | null = null
-  if (Number.isFinite(baseline) && baseline > 0 && equity != null) {
-    roi = ((equity - baseline) / baseline) * 100
+  if (Number.isFinite(baseline) && baseline > 0 && closed.length > 0) {
+    const realizedPnl = closed.reduce((sum, t) => sum + (closedDealProfit(t) ?? 0), 0)
+    roi = (realizedPnl / baseline) * 100
   }
 
-  const closed = trades.filter(isMtClosedDealForOutcome)
   let winRate: number | null = null
   if (closed.length > 0) {
     const wins = closed.filter(t => (closedDealProfit(t) ?? 0) > CLOSED_TRADE_OUTCOME_EPSILON).length
@@ -208,17 +205,32 @@ export function computeLinkedAccountPerformance(
         if (dd > maxDd) maxDd = dd
       }
     }
-    if (equity != null) {
-      if (equity > peak) peak = equity
-      if (peak > 0) {
-        const dd = ((peak - equity) / peak) * 100
-        if (dd > maxDd) maxDd = dd
-      }
-    }
     maxDrawdownPct = maxDd
   }
 
   return { roi, winRate, maxDrawdownPct }
+}
+
+export function sumRealizedClosedDealProfit(rows: TradeStatsRow[]): number {
+  return rows
+    .filter(isMtClosedDealForOutcome)
+    .reduce((sum, t) => sum + (closedDealProfit(t) ?? 0), 0)
+}
+
+export function aggregateRealizedProfitFromTrades(
+  accounts: Array<{ id: string }>,
+  tradesByAccountId: Record<string, TradeStatsRow[]>,
+): number | null {
+  let sum = 0
+  let hasAny = false
+  for (const account of accounts) {
+    const pnl = sumRealizedClosedDealProfit(tradesByAccountId[account.id] ?? [])
+    if ((tradesByAccountId[account.id] ?? []).some(isMtClosedDealForOutcome)) {
+      sum += pnl
+      hasAny = true
+    }
+  }
+  return hasAny ? sum : null
 }
 
 export function computeLinkedAccountPerformanceMap(

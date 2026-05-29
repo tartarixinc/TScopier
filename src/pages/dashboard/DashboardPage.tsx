@@ -36,6 +36,7 @@ import {
 } from '../../lib/dayStartBalance'
 import { formatLocalMtApiDateTime, isMtTimestampInRange } from '../../lib/mtApiDateTime'
 import {
+  aggregateRealizedProfitFromTrades,
   computeLinkedAccountPerformanceMap,
   countChartTradesOpenedInRange,
   countClosedTradeOutcomesInRange,
@@ -115,7 +116,7 @@ interface DashboardStats {
   totalVolume: number
   yesterdayTotalVolume: number
   /** Sum of `profit` across all trades (open floating + closed realized) — account-level P/L from the trade list. */
-  /** Sum of (equity − performance_baseline_balance) across linked brokers with a baseline; null if none. */
+  /** Sum of realized closed-deal profit across linked accounts (deposits excluded). */
   totalProfitLoss: number | null
   /** Unused for Total P/L (lifetime-style metric has no single yesterday twin); keep null so the UI hides the sub. */
   yesterdayTotalProfitLoss: number | null
@@ -194,24 +195,35 @@ function dedupePipelineParseAttempts(logs: AiExpertLogRow[]): AiExpertLogRow[] {
   })
 }
 
-/** Sum of (current equity − performance baseline) per linked broker that has a baseline set. */
-function aggregateTotalProfitFromBaselines(
-  accounts: BrokerAccount[],
-  equityResolver: (account: BrokerAccount) => number,
-): number | null {
-  let sum = 0
-  let n = 0
-  for (const a of accounts) {
-    const raw = a.performance_baseline_balance
-    if (raw == null) continue
-    const base = Number(raw)
-    if (!Number.isFinite(base)) continue
-    const eq = equityResolver(a)
-    if (!Number.isFinite(eq)) continue
-    sum += eq - base
-    n++
+function mtTradesToStatsByAccount(trades: MtTrade[]): Record<string, TradeStatsRow[]> {
+  const out: Record<string, TradeStatsRow[]> = {}
+  for (const t of trades) {
+    const accountId = String(t.broker_id ?? '').trim()
+    if (!accountId) continue
+    const row: TradeStatsRow = {
+      status: t.status,
+      profit: t.profit,
+      closed_at: t.closed_at,
+      symbol: t.symbol,
+      lot_size: t.lot_size,
+      direction: t.direction,
+      type: t.type,
+      swap: t.swap,
+      commission: t.commission,
+    }
+    const list = out[accountId] ?? []
+    list.push(row)
+    out[accountId] = list
   }
-  return n > 0 ? sum : null
+  return out
+}
+
+function aggregateTotalProfitFromMtTrades(
+  accounts: BrokerAccount[],
+  mtTrades: MtTrade[] | null | undefined,
+): number | null {
+  if (!mtTrades?.length) return null
+  return aggregateRealizedProfitFromTrades(accounts, mtTradesToStatsByAccount(mtTrades))
 }
 
 function formatMtApiDateTime(d: Date): string {
@@ -1094,12 +1106,12 @@ export function DashboardPage() {
       todayStart,
       tomorrowStart,
     )
-    /** Lifetime-style total vs baseline balance at link (sum of equity − baseline per account). */
+    /** Lifetime realized P/L from closed MT deals (not balance/equity deltas). */
     const yesterdayTotalProfitLoss: number | null = null
-    const totalProfitLoss = aggregateTotalProfitFromBaselines(brokerAccounts, (account) => {
-      const m = mergedBalances[account.id]
-      return Number(m?.equity ?? m?.balance ?? account.last_equity ?? account.last_balance ?? Number.NaN)
-    })
+    const totalProfitLoss = aggregateTotalProfitFromMtTrades(
+      brokerAccounts,
+      useMtTrades && mtTrades ? mtTrades : null,
+    )
     const totalPortfolioValue = brokerAccounts.reduce((sum, account) => {
       const acct = mergedBalances[account.id]
       return sum + (acct?.balance ?? 0)
@@ -1642,13 +1654,10 @@ export function DashboardPage() {
           performance_baseline_balance: fromLive ?? a.performance_baseline_balance ?? null,
         }
       })
-      const totalProfitLoss = aggregateTotalProfitFromBaselines(accountsForTotal, account => {
-        const row = successes.find(s => s.id === account.id)
-        const live = row?.summary
-        return Number(
-          live?.equity ?? live?.balance ?? account.last_equity ?? account.last_balance ?? Number.NaN,
-        )
-      })
+      const totalProfitLoss = aggregateTotalProfitFromMtTrades(
+        accountsForTotal,
+        mtTradesRef.current,
+      )
       const chartTodayProfit = resolveDashboardTodayProfit(
         chartTradesRef.current,
         sourceAccounts,

@@ -1,6 +1,7 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 import {
+  computeLinkedAccountPerformance,
   countClosedTradeOutcomesInRange,
   isTimestampInRange,
   netClosedLegProfit,
@@ -98,4 +99,22 @@ test('isTimestampInRange: half-open interval', () => {
   const end = new Date('2026-05-17T00:00:00.000Z')
   assert.equal(isTimestampInRange('2026-05-16T23:59:59.000Z', start, end), true)
   assert.equal(isTimestampInRange('2026-05-17T00:00:00.000Z', start, end), false)
+})
+
+test('computeLinkedAccountPerformance: ROI from realized trades ignores deposit-inflated equity', () => {
+  const perf = computeLinkedAccountPerformance(
+    { performance_baseline_balance: 10_000 },
+    [
+      {
+        status: 'closed',
+        symbol: 'XAUUSD',
+        lot_size: 0.1,
+        direction: 'buy',
+        profit: 200,
+        closed_at: '2026-05-16T12:00:00.000Z',
+      },
+    ],
+    50_000,
+  )
+  assert.equal(perf.roi, 2)
 })

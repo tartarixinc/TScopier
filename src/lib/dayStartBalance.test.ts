@@ -14,7 +14,7 @@ test('resolveDisplayedTodayProfit: chart wins when balance delta is zeroed', () 
   )
 })
 
-test('resolveDisplayedTodayProfit: uses balance when non-zero', () => {
+test('resolveDisplayedTodayProfit: uses chart net when trade data exists', () => {
   assert.equal(
     resolveDisplayedTodayProfit({
       balanceDelta: 9000,
@@ -22,7 +22,31 @@ test('resolveDisplayedTodayProfit: uses balance when non-zero', () => {
       chartNetPnl: 8420.5,
       chartHasData: true,
     }),
-    9000,
+    8420.5,
+  )
+})
+
+test('resolveDisplayedTodayProfit: ignores balance-only deposit inflation', () => {
+  assert.equal(
+    resolveDisplayedTodayProfit({
+      balanceDelta: 50_000,
+      balanceDayReady: true,
+      chartNetPnl: 120,
+      chartHasData: true,
+    }),
+    120,
+  )
+})
+
+test('resolveDisplayedTodayProfit: zero when no closed trades today', () => {
+  assert.equal(
+    resolveDisplayedTodayProfit({
+      balanceDelta: 10_000,
+      balanceDayReady: true,
+      chartNetPnl: 0,
+      chartHasData: false,
+    }),
+    0,
   )
 })
 

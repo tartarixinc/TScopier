@@ -2,7 +2,7 @@ import type { BrokerAccount } from '../types/database'
 import { inferBrokerLabelFromServer } from './brokerFromServer'
 import { coerceMtTimestamp, parseMtHistoryTimestamp, isMtTimestampInRange } from './mtApiDateTime'
 import type { MtTrade } from './metatraderapi'
-import { getLocalCalendarDayBounds } from './dashboardTradeStats'
+import { getLocalCalendarDayBounds, isTradeableClosedRow } from './dashboardTradeStats'
 import { displayTradeProfit } from './tradeDisplay'
 import { resolveTradeDisplayDirection } from './tradeDirection'
 
@@ -95,6 +95,18 @@ export function chartTradeDayKey(t: DashboardChartTrade): string | null {
 export function mtTradeToChartRow(t: MtTrade): DashboardChartTrade | null {
   const brokerAccountId = String(t.broker_id ?? '').trim()
   if (!brokerAccountId) return null
+  if (
+    t.status === 'closed' &&
+    !isTradeableClosedRow({
+      status: t.status,
+      symbol: t.symbol,
+      lot_size: t.lot_size,
+      direction: t.direction,
+      type: t.type,
+    })
+  ) {
+    return null
+  }
   const direction = resolveTradeDisplayDirection(t)
   const hasLots = (Number(t.lot_size) || 0) > 0
   const hasSymbol = Boolean(String(t.symbol ?? '').trim())
@@ -299,6 +311,17 @@ export function summarizeTodayFromMtTrades(
 
   for (const t of trades) {
     if (t.status !== 'closed') continue
+    if (
+      !isTradeableClosedRow({
+        status: t.status,
+        symbol: t.symbol,
+        lot_size: t.lot_size,
+        direction: t.direction,
+        type: t.type,
+      })
+    ) {
+      continue
+    }
     const closeIso = t.closed_at ?? t.opened_at
     if (!closeIso || !isMtTimestampInRange(closeIso, todayStart, tomorrowStart)) continue
     const p = displayTradeProfit(t)

@@ -85,8 +85,8 @@ export function accountTodaysProfitFromBalance(
 }
 
 /**
- * Stable headline today P/L: prefer closed-deal chart net when balance delta was zeroed
- * (common after intraday day-start reset or open-position summary polls).
+ * Stable headline today P/L from realized closed deals only.
+ * Balance delta (current − day start) includes deposits/withdrawals and must not be used when trade data exists.
  */
 export function resolveDisplayedTodayProfit(opts: {
   balanceDelta: number | null
@@ -94,22 +94,14 @@ export function resolveDisplayedTodayProfit(opts: {
   chartNetPnl: number | null
   chartHasData: boolean
 }): number {
-  const chart =
-    opts.chartHasData && opts.chartNetPnl != null && Number.isFinite(opts.chartNetPnl)
-      ? opts.chartNetPnl
-      : null
-  const balance =
-    opts.balanceDayReady && opts.balanceDelta != null && Number.isFinite(opts.balanceDelta)
-      ? opts.balanceDelta
-      : null
-
-  if (chart != null) {
-    if (balance != null && Math.abs(balance) < 0.01 && Math.abs(chart) >= 0.01) return chart
-    if (balance == null) return chart
-    if (Math.abs(balance) >= 0.01) return balance
-    return chart
+  if (
+    opts.chartHasData &&
+    opts.chartNetPnl != null &&
+    Number.isFinite(opts.chartNetPnl)
+  ) {
+    return opts.chartNetPnl
   }
-  return balance ?? 0
+  return 0
 }
 
 function normalizeDayKey(value: string | null | undefined): string {
