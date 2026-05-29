@@ -14,6 +14,12 @@ interface Props {
 
 const EDGE_FN = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/telegram-auth`
 
+function normalizeTelegramPhoneInput(raw: string): string {
+  const compact = String(raw ?? '').trim().replace(/[\s\-()]/g, '')
+  if (compact.startsWith('00')) return `+${compact.slice(2)}`
+  return compact
+}
+
 export function TelegramLinkStep({ onDone }: Props) {
   const { session } = useAuth()
   const [stage, setStage] = useState<Stage>('phone')
@@ -37,10 +43,11 @@ export function TelegramLinkStep({ onDone }: Props) {
     setLoading(true)
 
     try {
+      const normalizedPhone = normalizeTelegramPhoneInput(phone)
       const res = await fetch(EDGE_FN, {
         method: 'POST',
         headers: authHeaders,
-        body: JSON.stringify({ action: 'send_code', phone }),
+        body: JSON.stringify({ action: 'send_code', phone: normalizedPhone }),
       })
       const data = await res.json()
 
@@ -49,6 +56,7 @@ export function TelegramLinkStep({ onDone }: Props) {
         return
       }
 
+      setPhone(normalizedPhone)
       setStage('code')
     } catch {
       setError('Network error. Please try again.')
@@ -63,12 +71,13 @@ export function TelegramLinkStep({ onDone }: Props) {
     setLoading(true)
 
     try {
+      const normalizedPhone = normalizeTelegramPhoneInput(phone)
       const res = await fetch(EDGE_FN, {
         method: 'POST',
         headers: authHeaders,
         body: JSON.stringify({
           action: 'verify_code',
-          phone,
+          phone: normalizedPhone,
           code,
           password: requiresPassword ? password : undefined,
         }),
@@ -87,6 +96,7 @@ export function TelegramLinkStep({ onDone }: Props) {
       }
 
       // Worker persisted the session row; we just hold the id for handoff.
+      setPhone(normalizedPhone)
       setSessionRowId(data.session_id ?? null)
       setStage('confirm_2fa')
     } catch {

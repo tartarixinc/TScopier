@@ -54,6 +54,12 @@ function getTelegramAvatarUrl(username?: string): string | null {
   return `https://t.me/i/userpic/320/${username}.jpg`
 }
 
+function normalizeTelegramPhoneInput(raw: string): string {
+  const compact = String(raw ?? '').trim().replace(/[\s\-()]/g, '')
+  if (compact.startsWith('00')) return `+${compact.slice(2)}`
+  return compact
+}
+
 function TgChannelAvatar({ title, username }: { title: string; username?: string }) {
   const [imageFailed, setImageFailed] = useState(false)
   const avatarUrl = getTelegramAvatarUrl(username)
@@ -468,19 +474,22 @@ export function CopierEnginePage() {
     setTgError('')
     setTgLoading(true)
     try {
+      const phone = normalizeTelegramPhoneInput(tgPhone)
       const res = await fetch(EDGE_FN, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${session?.access_token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ action: 'send_code', phone: tgPhone }),
+        body: JSON.stringify({ action: 'send_code', phone }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok || data.error) {
-        setTgError(ce.failedSendCode)
+        const msg = typeof data.error === 'string' ? data.error : ce.failedSendCode
+        setTgError(msg)
         return
       }
+      setTgPhone(phone)
       setTgStage('code')
     } catch {
       setTgError(ce.networkError)
@@ -494,6 +503,7 @@ export function CopierEnginePage() {
     setTgError('')
     setTgLoading(true)
     try {
+      const phone = normalizeTelegramPhoneInput(tgPhone)
       const res = await fetch(EDGE_FN, {
         method: 'POST',
         headers: {
@@ -502,13 +512,14 @@ export function CopierEnginePage() {
         },
         body: JSON.stringify({
           action: 'verify_code',
-          phone: tgPhone,
+          phone,
           code: tgCode,
           password: tgStage === 'twoFa' ? tgPassword : undefined,
         }),
       })
       const data = await res.json().catch(() => ({}))
       if (data.requires_password) {
+        setTgPhone(phone)
         setTgStage('twoFa')
         setTgError('')
         return
@@ -518,6 +529,7 @@ export function CopierEnginePage() {
         setTgError(msg)
         return
       }
+      setTgPhone(phone)
       setTgStage('linked')
       if (Array.isArray(data.channels)) {
         const list = data.channels as TgChannelListItem[]

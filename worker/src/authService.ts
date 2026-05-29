@@ -25,10 +25,16 @@ const CLEANUP_INTERVAL_MS = 60 * 1000
 /** DB row outlives Telegram code validity slightly so retries still recover across replicas. */
 const PENDING_DB_TTL_MS = 12 * 60 * 1000
 
+function normalizePhoneNumber(raw: string): string {
+  const compact = String(raw ?? '')
+    .trim()
+    .replace(/[\s\-()]/g, '')
+  if (compact.startsWith('00')) return `+${compact.slice(2)}`
+  return compact
+}
+
 function phonesMatch(a: string, b: string): boolean {
-  const x = a.trim().replace(/\s+/g, '')
-  const y = b.trim().replace(/\s+/g, '')
-  return x === y
+  return normalizePhoneNumber(a) === normalizePhoneNumber(b)
 }
 
 export type VerifyResult =
@@ -144,6 +150,10 @@ export class AuthService {
   }
 
   async sendCode(userId: string, phone: string): Promise<{ phone_code_hash: string }> {
+    const normalizedPhone = normalizePhoneNumber(phone)
+    if (!normalizedPhone || !normalizedPhone.startsWith('+')) {
+      throw new Error('Use full phone with country code, e.g. +44...')
+    }
     // Stop the live listener before touching telegram_auth_pending — clearing that row
     // triggers onAuthPendingCleared on other replicas, which must not reopen MTProto.
     await this.sessionManager.pauseForAuth(userId)
@@ -162,7 +172,7 @@ export class AuthService {
       const result = await tgInvoke<Api.auth.SentCode>(
         client,
         new Api.auth.SendCode({
-          phoneNumber: phone,
+          phoneNumber: normalizedPhone,
           apiId: API_ID,
           apiHash: API_HASH,
           settings: new Api.CodeSettings({
@@ -175,7 +185,7 @@ export class AuthService {
 
       this.pending.set(userId, {
         client,
-        phone,
+        phone: normalizedPhone,
         phoneCodeHash: result.phoneCodeHash,
         createdAt: Date.now(),
       })
@@ -184,7 +194,7 @@ export class AuthService {
       const { error: dbErr } = await this.supabase.from('telegram_auth_pending').upsert(
         {
           user_id: userId,
-          phone,
+          phone: normalizedPhone,
           phone_code_hash: result.phoneCodeHash,
           expires_at: expiresAt,
         },
@@ -202,12 +212,13 @@ export class AuthService {
   }
 
   async verifyCode(userId: string, phone: string, code: string, password?: string): Promise<VerifyResult> {
+    const normalizedPhone = normalizePhoneNumber(phone)
     // Other replicas may still hold the listener until telegram_auth_pending realtime fires.
     await this.sessionManager.pauseForAuth(userId, { releaseDelay: false })
 
     let pending: PendingAuth | undefined = this.pending.get(userId)
     if (!pending) {
-      const restored = await this.restorePendingFromDatabase(userId, phone)
+      const restored = await this.restorePendingFromDatabase(userId, normalizedPhone)
       if (restored) {
         pending = restored
         this.pending.set(userId, restored)
