@@ -16,12 +16,6 @@ import { PageShell } from '../../components/layout/PageShell'
 import { AddAccountModal } from '../../components/ui/AddAccountModal'
 import { Toggle } from '../../components/ui/Toggle'
 import { Button } from '../../components/ui/Button'
-import { readSessionCache } from '../../lib/sessionDataCache'
-import {
-  TRADES_CACHE_TTL_MS,
-  tradesCacheKey,
-  type TradesCachePayload,
-} from '../../lib/tradesSessionCache'
 import { metatraderApi, type MtTrade } from '../../lib/metatraderapi'
 import {
   aggregateTodaysProfitFromDayStart,
@@ -681,12 +675,6 @@ export function DashboardPage() {
       }
       if (cached.aiExpertLogs?.length) setAiExpertLogs(cached.aiExpertLogs)
       if (cached.mtTrades?.length) mtTradesRef.current = cached.mtTrades
-      const tradesSession = readSessionCache<TradesCachePayload>(tradesCacheKey(user.id), TRADES_CACHE_TTL_MS)
-      if (tradesSession?.data.trades.length) {
-        mtTradesRef.current = tradesSession.data.trades
-        setChartTrades(resolveDashboardChartTrades(tradesSession.data.trades, []))
-        setDashboardChartsReady(true)
-      }
       seedLiveBrokerStateFromBalances(balances, liveBrokerStateRef.current, cached.linkedAccounts)
       if ((cached.chartTrades?.length ?? 0) > 0 || (cached.mtTrades?.length ?? 0) > 0) {
         setDashboardChartsReady(true)
@@ -699,12 +687,6 @@ export function DashboardPage() {
       setLinkedAccountBalances({})
       setChartTrades([])
       setAiExpertLogs([])
-      const tradesSession = readSessionCache<TradesCachePayload>(tradesCacheKey(user.id), TRADES_CACHE_TTL_MS)
-      if (tradesSession?.data.trades.length) {
-        mtTradesRef.current = tradesSession.data.trades
-        setChartTrades(resolveDashboardChartTrades(tradesSession.data.trades, []))
-        setDashboardChartsReady(true)
-      }
     }
     dashboardReadyRef.current = Boolean(cached?.stats)
   }, [user?.id])
