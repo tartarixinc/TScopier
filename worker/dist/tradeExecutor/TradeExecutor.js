@@ -65,6 +65,8 @@ class TradeExecutor {
         this.brokersByUser = new Map();
         this.brokersById = new Map();
         this.inflight = new Set();
+        /** Prevents overlapping sendOrder for the same signal+broker (live-fast race). */
+        this.entryBrokerInflight = new Set();
         this.queuedIds = new Set();
         this.highPriorityQueue = [];
         this.normalPriorityQueue = [];
@@ -710,12 +712,23 @@ class TradeExecutor {
         return await brokerSymbolCache.prewarmBrokersForLiveEntry(this, brokers, signalSymbol);
     }
     async sendOrder(signal, parsed, op, broker, channelKeywords, pipelineT0, sendOpts) {
-        const isManual = (broker.copier_mode ?? 'ai') === 'manual';
-        const manual = (broker.manual_settings ?? {});
-        if (isManual && manual.trade_style === 'multi') {
-            return (0, entryRouter_1.runRangeEntry)(this, { signal, parsed, op, broker, channelKeywords, pipelineT0, sendOpts });
+        const entryKey = `${signal.id}:${broker.id}`;
+        if (this.entryBrokerInflight.has(entryKey)) {
+            console.warn(`[tradeExecutor] skip duplicate in-flight sendOrder signal=${signal.id} broker=${broker.id}`);
+            return { openedOrMerged: true };
         }
-        return (0, entryRouter_1.runSingleEntry)(this, { signal, parsed, op, broker, channelKeywords, pipelineT0, sendOpts });
+        this.entryBrokerInflight.add(entryKey);
+        try {
+            const isManual = (broker.copier_mode ?? 'ai') === 'manual';
+            const manual = (broker.manual_settings ?? {});
+            if (isManual && manual.trade_style === 'multi') {
+                return await (0, entryRouter_1.runRangeEntry)(this, { signal, parsed, op, broker, channelKeywords, pipelineT0, sendOpts });
+            }
+            return await (0, entryRouter_1.runSingleEntry)(this, { signal, parsed, op, broker, channelKeywords, pipelineT0, sendOpts });
+        }
+        finally {
+            this.entryBrokerInflight.delete(entryKey);
+        }
     }
     async logSendSkipped(signal, broker, reason, extra) {
         return await managementExecutor.logSendSkipped(this, signal, broker, reason, extra);

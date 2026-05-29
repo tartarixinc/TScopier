@@ -260,7 +260,7 @@ async function handleSignal(ctx, row, opts) {
                 queue_wait_ms: queueWaitMs,
             });
         }
-        if (!opts?.lightIdempotency && !isMessageEdit && await ctx.signalAlreadyHandled(row.id)) {
+        if (!isMessageEdit && await ctx.signalAlreadyHandled(row.id)) {
             await ctx.markSignalExecuted(row.id);
             return;
         }

@@ -192,6 +192,8 @@ export class TradeExecutor {
   brokersByUser = new Map<string, BrokerRow[]>()
   brokersById = new Map<string, BrokerRow>()
   inflight = new Set<string>()
+  /** Prevents overlapping sendOrder for the same signal+broker (live-fast race). */
+  private entryBrokerInflight = new Set<string>()
   queuedIds = new Set<string>()
   highPriorityQueue: SignalRow[] = []
   normalPriorityQueue: SignalRow[] = []
@@ -1026,12 +1028,24 @@ export class TradeExecutor {
     pipelineT0?: number,
     sendOpts?: { liveEntryFast?: boolean; commentPrefix?: string; messageEditOnly?: boolean },
   ): Promise<SendOrderOutcome>  {
-    const isManual = (broker.copier_mode ?? 'ai') === 'manual'
-    const manual = (broker.manual_settings ?? {}) as ManualSettings
-    if (isManual && manual.trade_style === 'multi') {
-      return runRangeEntry(this, { signal, parsed, op, broker, channelKeywords, pipelineT0, sendOpts })
+    const entryKey = `${signal.id}:${broker.id}`
+    if (this.entryBrokerInflight.has(entryKey)) {
+      console.warn(
+        `[tradeExecutor] skip duplicate in-flight sendOrder signal=${signal.id} broker=${broker.id}`,
+      )
+      return { openedOrMerged: true }
     }
-    return runSingleEntry(this, { signal, parsed, op, broker, channelKeywords, pipelineT0, sendOpts })
+    this.entryBrokerInflight.add(entryKey)
+    try {
+      const isManual = (broker.copier_mode ?? 'ai') === 'manual'
+      const manual = (broker.manual_settings ?? {}) as ManualSettings
+      if (isManual && manual.trade_style === 'multi') {
+        return await runRangeEntry(this, { signal, parsed, op, broker, channelKeywords, pipelineT0, sendOpts })
+      }
+      return await runSingleEntry(this, { signal, parsed, op, broker, channelKeywords, pipelineT0, sendOpts })
+    } finally {
+      this.entryBrokerInflight.delete(entryKey)
+    }
   }
 
   async logSendSkipped(signal: SignalRow,

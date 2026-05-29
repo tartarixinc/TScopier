@@ -375,12 +375,10 @@ async function prepareEntryExecution(ctx, args) {
         const channelParams = await (0, channelActiveTradeParams_1.loadChannelActiveTradeParamsForSymbol)(ctx.supabase, signal.user_id, signal.channel_id, symbol);
         virtualPendings = (0, channelActiveTradeParams_1.applyChannelParamsToVirtualPendingList)(virtualPendings, channelParams, capped.length, manual.tp_lots, totalPlannedLegCount);
     }
-    if (isManual && !liveEntryFast) {
-        const already = await ctx.manualDispatchAlreadyMaterialized(signal.id, broker.id);
-        if (already) {
-            console.warn(`[tradeExecutor] skip duplicate manual dispatch signal=${signal.id} broker=${broker.id}`);
-            return { ok: false, outcome: { openedOrMerged: true } };
-        }
+    const already = await ctx.manualDispatchAlreadyMaterialized(signal.id, broker.id);
+    if (already) {
+        console.warn(`[tradeExecutor] skip duplicate entry dispatch signal=${signal.id} broker=${broker.id}`);
+        return { ok: false, outcome: { openedOrMerged: true } };
     }
     // ── Strict signal entry (post-delay live quote) ───────────────────────
     // Buy: immediate market only when ask ≤ entry; else one virtual pending at entry.
@@ -421,6 +419,11 @@ async function prepareEntryExecution(ctx, args) {
         idx,
         ...(idx === 0 && plan.partialTps?.length ? { partialTps: plan.partialTps } : {}),
     }));
+    // Single trade style: one broker order only (partials ride on partial_tp_legs).
+    if (isManual && manual.trade_style !== 'multi' && legs.length > 1) {
+        console.warn(`[tradeExecutor] single trade_style capping legs ${legs.length}→1 signal=${signal.id} broker=${broker.id}`);
+        legs = legs.slice(0, 1);
+    }
     // ── Anchor resolution ────────────────────────────────────────────────
     // Priority: parsed signal entry → live /Quote (Ask for buy, Bid for sell).
     // Needed whenever we have virtual pendings to persist (so we can compute

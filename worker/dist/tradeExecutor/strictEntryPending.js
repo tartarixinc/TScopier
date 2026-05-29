@@ -28,12 +28,8 @@ async function placeStrictSignalEntryPending(ctx, prep, singleTpOverride) {
     const vol = (0, helpers_1.roundLot)(capped.length === 1 ? Number(first.volume) || 0 : aggVol, params);
     const baseComment = first.comment ?? commentPrefix;
     const comment = capped.length === 1 ? `${baseComment}:strictEntry` : `${baseComment}:strictEntryAgg`;
-    let takeprofitPx = first.takeprofit ?? 0;
-    if (singleTpOverride) {
-        const lastParsed = (0, manualPlanner_1.lastPositiveParsedTpPrice)(parsed);
-        if (lastParsed != null && lastParsed > 0)
-            takeprofitPx = lastParsed;
-    }
+    // planSingleManualOrders already sets broker TP to the last enabled bucket target.
+    const takeprofitPx = first.takeprofit ?? 0;
     const takeprofitRounded = Number.isFinite(takeprofitPx) && takeprofitPx > 0
         ? Number(takeprofitPx.toFixed(digits))
         : 0;

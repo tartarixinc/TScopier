@@ -512,14 +512,12 @@ export async function prepareEntryExecution(
     )
   }
 
-  if (isManual && !liveEntryFast) {
-    const already = await ctx.manualDispatchAlreadyMaterialized(signal.id, broker.id)
-    if (already) {
-      console.warn(
-        `[tradeExecutor] skip duplicate manual dispatch signal=${signal.id} broker=${broker.id}`,
-      )
-      return { ok: false, outcome: { openedOrMerged: true } }
-    }
+  const already = await ctx.manualDispatchAlreadyMaterialized(signal.id, broker.id)
+  if (already) {
+    console.warn(
+      `[tradeExecutor] skip duplicate entry dispatch signal=${signal.id} broker=${broker.id}`,
+    )
+    return { ok: false, outcome: { openedOrMerged: true } }
   }
 
   // ── Strict signal entry (post-delay live quote) ───────────────────────
@@ -566,6 +564,14 @@ export async function prepareEntryExecution(
     idx,
     ...(idx === 0 && plan.partialTps?.length ? { partialTps: plan.partialTps } : {}),
   }))
+
+  // Single trade style: one broker order only (partials ride on partial_tp_legs).
+  if (isManual && manual.trade_style !== 'multi' && legs.length > 1) {
+    console.warn(
+      `[tradeExecutor] single trade_style capping legs ${legs.length}→1 signal=${signal.id} broker=${broker.id}`,
+    )
+    legs = legs.slice(0, 1)
+  }
 
   // ── Anchor resolution ────────────────────────────────────────────────
   // Priority: parsed signal entry → live /Quote (Ask for buy, Bid for sell).

@@ -1,8 +1,5 @@
 import { MtOperation, OrderSendArgs } from '../metatraderapi'
-import {
-  clampPendingExpiryHours,
-  lastPositiveParsedTpPrice,
-} from '../manualPlanner'
+import { clampPendingExpiryHours } from '../manualPlanner'
 import { autoManagementTradeSnapshot } from '../autoManagement'
 import type { TradeExecutorContext } from './context'
 import { clampOrderStops, roundLot } from './helpers'
@@ -39,11 +36,8 @@ export async function placeStrictSignalEntryPending(
   const baseComment = first.comment ?? commentPrefix
   const comment = capped.length === 1 ? `${baseComment}:strictEntry` : `${baseComment}:strictEntryAgg`
 
-  let takeprofitPx = first.takeprofit ?? 0
-  if (singleTpOverride) {
-    const lastParsed = lastPositiveParsedTpPrice(parsed)
-    if (lastParsed != null && lastParsed > 0) takeprofitPx = lastParsed
-  }
+  // planSingleManualOrders already sets broker TP to the last enabled bucket target.
+  const takeprofitPx = first.takeprofit ?? 0
   const takeprofitRounded = Number.isFinite(takeprofitPx) && takeprofitPx > 0
     ? Number(takeprofitPx.toFixed(digits))
     : 0

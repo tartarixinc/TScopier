@@ -298,7 +298,7 @@ export async function handleSignal(ctx: TradeExecutorContext,
         })
       }
 
-      if (!opts?.lightIdempotency && !isMessageEdit && await ctx.signalAlreadyHandled(row.id)) {
+      if (!isMessageEdit && await ctx.signalAlreadyHandled(row.id)) {
         await ctx.markSignalExecuted(row.id)
         return
       }

@@ -175,7 +175,7 @@ async function resolveBasketAnchorSignalIdForOpenTrades(ctx, args) {
     return null;
 }
 async function manualDispatchAlreadyMaterialized(ctx, signalId, brokerAccountId) {
-    const [{ count: rc, error: re }, { count: sc, error: se }] = await Promise.all([
+    const [{ count: rc, error: re }, { count: sc, error: se }, { count: tc, error: te }, { count: lc, error: le },] = await Promise.all([
         ctx.supabase
             .from('range_pending_legs')
             .select('id', { count: 'exact', head: true })
@@ -187,6 +187,18 @@ async function manualDispatchAlreadyMaterialized(ctx, signalId, brokerAccountId)
             .eq('signal_id', signalId)
             .eq('broker_account_id', brokerAccountId)
             .eq('status', 'broker_pending'),
+        ctx.supabase
+            .from('trades')
+            .select('id', { count: 'exact', head: true })
+            .eq('signal_id', signalId)
+            .eq('broker_account_id', brokerAccountId),
+        ctx.supabase
+            .from('trade_execution_logs')
+            .select('id', { count: 'exact', head: true })
+            .eq('signal_id', signalId)
+            .eq('broker_account_id', brokerAccountId)
+            .eq('status', 'success')
+            .eq('action', 'order_send'),
     ]);
     if (re) {
         console.warn(`[tradeExecutor] range_pending idempotency count failed signal=${signalId} broker=${brokerAccountId}: ${re.message}`);
@@ -194,7 +206,13 @@ async function manualDispatchAlreadyMaterialized(ctx, signalId, brokerAccountId)
     if (se) {
         console.warn(`[tradeExecutor] signal_entry_pending idempotency count failed signal=${signalId} broker=${brokerAccountId}: ${se.message}`);
     }
-    return ((rc ?? 0) > 0 || (sc ?? 0) > 0);
+    if (te) {
+        console.warn(`[tradeExecutor] trades idempotency count failed signal=${signalId} broker=${brokerAccountId}: ${te.message}`);
+    }
+    if (le) {
+        console.warn(`[tradeExecutor] order_send log idempotency count failed signal=${signalId} broker=${brokerAccountId}: ${le.message}`);
+    }
+    return ((rc ?? 0) > 0 || (sc ?? 0) > 0 || (tc ?? 0) > 0 || (lc ?? 0) > 0);
 }
 async function persistRangePendingLegRows(ctx, rows, context) {
     if (!rows.length)
