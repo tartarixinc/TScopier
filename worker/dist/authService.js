@@ -30,6 +30,7 @@ class AuthService {
         this.supabase = supabase;
         this.sessionManager = sessionManager;
         this.pending = new Map();
+        this.sessionManager.setAuthGuard(userId => this.pending.has(userId));
         this.cleanupTimer = setInterval(() => this.cleanup(), CLEANUP_INTERVAL_MS);
         if (typeof this.cleanupTimer.unref === 'function')
             this.cleanupTimer.unref();
@@ -115,6 +116,9 @@ class AuthService {
         await (0, telegramClient_1.tgInvoke)(client, new tl_1.Api.auth.CheckPassword({ password: srpCheck }));
     }
     async sendCode(userId, phone) {
+        // Stop the live listener before touching telegram_auth_pending — clearing that row
+        // triggers onAuthPendingCleared on other replicas, which must not reopen MTProto.
+        await this.sessionManager.pauseForAuth(userId);
         const existing = this.pending.get(userId);
         if (existing) {
             try {
@@ -164,6 +168,8 @@ class AuthService {
         }
     }
     async verifyCode(userId, phone, code, password) {
+        // Other replicas may still hold the listener until telegram_auth_pending realtime fires.
+        await this.sessionManager.pauseForAuth(userId, { releaseDelay: false });
         let pending = this.pending.get(userId);
         if (!pending) {
             const restored = await this.restorePendingFromDatabase(userId, phone);
@@ -258,7 +264,7 @@ class AuthService {
         try {
             await this.sessionManager.adoptClient(userId, client, sessionString);
             try {
-                channels = await this.sessionManager.listChannels(userId, { skipColdDelay: true });
+                channels = await this.sessionManager.listChannelsForAdoptedUser(userId, { skipColdDelay: true });
             }
             catch (listErr) {
                 console.warn(`[authService] listChannels after verify failed for ${userId}:`, listErr);
@@ -272,7 +278,6 @@ class AuthService {
             catch {
                 /* ignore */
             }
-            // Session is persisted; ensureListener can start a single fresh client on list_channels.
         }
         return { ok: true, session_id: row.id, channels };
     }

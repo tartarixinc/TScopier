@@ -35,14 +35,66 @@ function shouldRunGramjsForSession(session: { listener_engine?: string | null })
   return engine !== 'telethon'
 }
 
+/** Wait after disconnect so Telegram releases the auth key before a new connect. */
+function authKeyReleaseDelayMs(): number {
+  return Math.max(500, Math.min(120_000, Number(process.env.TELEGRAM_RECONNECT_COOLDOWN_MS ?? 3500)))
+}
+
 export class UserSessionManager {
   private listeners = new Map<string, UserListener>()
   private supabase: SupabaseClient
   private channelChannel: RealtimeChannel | null = null
+  private authPendingChannel: RealtimeChannel | null = null
   private tradeExecutor: TradeExecutor | null = null
+  /** Serializes start/stop/adopt for one user — prevents AUTH_KEY_DUPLICATED races. */
+  private userConnectionLocks = new Map<string, Promise<void>>()
+  /** True while adoptClient is handing off the auth-time MTProto socket. */
+  private adoptingUsers = new Set<string>()
+  private authGuard: ((userId: string) => boolean) | null = null
 
   constructor(supabase: SupabaseClient) {
     this.supabase = supabase
+  }
+
+  /** In-memory pending auth check (send_code → verify_code window on this process). */
+  setAuthGuard(fn: (userId: string) => boolean): void {
+    this.authGuard = fn
+  }
+
+  private async withConnectionLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.userConnectionLocks.get(userId) ?? Promise.resolve()
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const chain = prev.then(() => gate)
+    this.userConnectionLocks.set(userId, chain)
+    try {
+      await prev
+      return await fn()
+    } finally {
+      release()
+      if (this.userConnectionLocks.get(userId) === chain) {
+        this.userConnectionLocks.delete(userId)
+      }
+    }
+  }
+
+  private isAuthBlocked(userId: string): boolean {
+    return this.adoptingUsers.has(userId) || Boolean(this.authGuard?.(userId))
+  }
+
+  private async hasActivePendingAuthInDb(userId: string): Promise<boolean> {
+    const { data } = await this.supabase
+      .from('telegram_auth_pending')
+      .select('user_id')
+      .eq('user_id', userId)
+      .gt('expires_at', new Date().toISOString())
+      .maybeSingle()
+    return Boolean(data)
+  }
+
+  private async shouldSkipListenerStart(userId: string): Promise<boolean> {
+    if (this.isAuthBlocked(userId)) return true
+    return this.hasActivePendingAuthInDb(userId)
   }
 
   getSupabase(): SupabaseClient {
@@ -97,6 +149,7 @@ export class UserSessionManager {
     }
 
     this.subscribeToChannelChanges()
+    this.subscribeToAuthPendingChanges()
   }
 
   async renewAllLeases(): Promise<void> {
@@ -143,6 +196,70 @@ export class UserSessionManager {
       })
   }
 
+  private subscribeToAuthPendingChanges() {
+    if (this.authPendingChannel) return
+
+    this.authPendingChannel = this.supabase
+      .channel('telegram_auth_pending_changes')
+      .on(
+        'postgres_changes' as never,
+        { event: '*', schema: 'public', table: 'telegram_auth_pending' } as never,
+        (payload: { eventType?: string; new?: Record<string, unknown>; old?: Record<string, unknown> }) => {
+          const userId = (payload.new?.user_id ?? payload.old?.user_id) as string | undefined
+          if (!userId || !userBelongsToShard(userId)) return
+          if (payload.eventType === 'DELETE') {
+            void this.onAuthPendingCleared(userId)
+            return
+          }
+          void this.stopListenerForPendingAuth(userId)
+        },
+      )
+      .subscribe(status => {
+        if (status === 'SUBSCRIBED') {
+          console.log('[sessionManager] Realtime telegram_auth_pending subscription active')
+        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+          console.warn(`[sessionManager] telegram_auth_pending subscription status: ${status}`)
+        }
+      })
+  }
+
+  /** Stop the live listener before send_code so the auth key slot is free on this host. */
+  async pauseForAuth(userId: string, opts?: { releaseDelay?: boolean }): Promise<void> {
+    if (!workerConfig.runsListener) return
+    await this.withConnectionLock(userId, async () => {
+      await this.disconnectListener(userId)
+      if (opts?.releaseDelay === false) return
+      const delay = authKeyReleaseDelayMs()
+      if (delay > 0) await new Promise(r => setTimeout(r, delay))
+    })
+  }
+
+  private async stopListenerForPendingAuth(userId: string): Promise<void> {
+    if (!this.listeners.has(userId)) return
+    console.log(`[sessionManager] stopping listener for ${userId} — telegram auth in progress`)
+    await this.withConnectionLock(userId, async () => {
+      await this.disconnectListener(userId)
+    })
+  }
+
+  private async onAuthPendingCleared(userId: string): Promise<void> {
+    // Debounce: send_code clears pending before inserting the new row.
+    await new Promise(r => setTimeout(r, 2500))
+    if (this.listeners.has(userId) || this.isAuthBlocked(userId)) return
+    if (await this.hasActivePendingAuthInDb(userId)) return
+    const { data: sess } = await this.supabase
+      .from('telegram_sessions')
+      .select('session_string, is_active, listener_engine')
+      .eq('user_id', userId)
+      .maybeSingle()
+    if (!sess?.session_string || !sess.is_active || !shouldRunGramjsForSession(sess)) return
+    try {
+      await this.startListener(userId, sess.session_string)
+    } catch (err) {
+      console.warn(`[sessionManager] restart after auth cleared failed for ${userId}:`, err)
+    }
+  }
+
   async syncSessions() {
     if (!workerConfig.runsListener) return
 
@@ -155,19 +272,19 @@ export class UserSessionManager {
     )
     const activeSessions = new Set(activeOnShard.map(s => s.user_id))
 
-    for (const session of activeOnShard) {
-      if (!this.listeners.has(session.user_id)) {
-        try {
-          await this.startListener(session.user_id, session.session_string)
-        } catch (err) {
-          console.error(`[sessionManager] Failed to start listener for ${session.user_id}:`, err)
-        }
+    for (const [userId] of this.listeners) {
+      if (!activeSessions.has(userId) || await this.hasActivePendingAuthInDb(userId)) {
+        await this.stopListener(userId)
       }
     }
 
-    for (const [userId] of this.listeners) {
-      if (!activeSessions.has(userId)) {
-        await this.stopListener(userId)
+    for (const session of activeOnShard) {
+      if (this.listeners.has(session.user_id)) continue
+      if (await this.shouldSkipListenerStart(session.user_id)) continue
+      try {
+        await this.startListener(session.user_id, session.session_string)
+      } catch (err) {
+        console.error(`[sessionManager] Failed to start listener for ${session.user_id}:`, err)
       }
     }
   }
@@ -243,15 +360,43 @@ export class UserSessionManager {
     if (!workerConfig.runsListener) {
       throw new Error('Telegram listener not enabled on this worker (WORKER_ROLE)')
     }
-    await this.stopListener(userId)
-    const listener = new UserListener(userId, sessionString, this.supabase, client)
-    if (this.tradeExecutor) {
-      listener.setOnSignalParsed(row => listenerInProcessDispatch(this.tradeExecutor!, row))
-    }
-    await listener.start({ alreadyConnected: true })
-    this.listeners.set(userId, listener)
-    await acquireSessionLease(this.supabase, userId)
-    console.log(`[sessionManager] Adopted live client for user ${userId}`)
+
+    return this.withConnectionLock(userId, async () => {
+      this.adoptingUsers.add(userId)
+      try {
+        await this.disconnectListener(userId)
+
+        const lease = await acquireSessionLease(this.supabase, userId)
+        if (!lease.ok) {
+          throw new Error(`Cannot adopt Telegram client: ${lease.reason}`)
+        }
+
+        const listener = new UserListener(userId, sessionString, this.supabase, client)
+        if (this.tradeExecutor) {
+          listener.setOnSignalParsed(row => listenerInProcessDispatch(this.tradeExecutor!, row))
+        }
+        try {
+          await listener.start({ alreadyConnected: true })
+        } catch (err) {
+          await releaseSessionLease(this.supabase, userId)
+          throw err
+        }
+        this.listeners.set(userId, listener)
+        console.log(`[sessionManager] Adopted live client for user ${userId}`)
+      } catch (err) {
+        try { await client.disconnect() } catch { /* ignore */ }
+        throw err
+      } finally {
+        this.adoptingUsers.delete(userId)
+      }
+    })
+  }
+
+  /** List channels on the listener adoptClient just registered — never opens a second MTProto socket. */
+  async listChannelsForAdoptedUser(userId: string, opts?: { skipColdDelay?: boolean }): Promise<ChannelInfo[]> {
+    const listener = this.listeners.get(userId)
+    if (!listener) throw new Error('No listener after Telegram auth')
+    return listener.listChannels(opts)
   }
 
   /**
@@ -275,11 +420,15 @@ export class UserSessionManager {
   }
 
   private async ensureListener(userId: string): Promise<UserListener> {
-    let listener = this.listeners.get(userId)
-    if (listener) return listener
+    const existing = this.listeners.get(userId)
+    if (existing) return existing
 
     if (!workerConfig.runsListener) {
       throw new Error('Live Telegram listener not available on this worker')
+    }
+
+    if (await this.shouldSkipListenerStart(userId)) {
+      throw new Error('Telegram auth is in progress. Finish linking, then try again.')
     }
 
     const { data: sess, error } = await this.supabase
@@ -293,7 +442,7 @@ export class UserSessionManager {
     if (!sess.is_active) throw new Error('Telegram session is paused')
 
     await this.startListener(userId, sess.session_string)
-    listener = this.listeners.get(userId)
+    const listener = this.listeners.get(userId)
     if (!listener) throw new Error('Failed to start listener for user')
     return listener
   }
@@ -398,31 +547,40 @@ export class UserSessionManager {
   private async startListener(userId: string, sessionString: string): Promise<void> {
     if (this.listeners.has(userId)) return
     if (!userBelongsToShard(userId)) return
-
-    const lease = await acquireSessionLease(this.supabase, userId)
-    if (!lease.ok) {
-      console.warn(`[sessionManager] skip listener for ${userId}: ${lease.reason}`)
+    if (await this.shouldSkipListenerStart(userId)) {
+      console.log(`[sessionManager] skip listener for ${userId}: auth in progress`)
       return
     }
 
-    const listener = new UserListener(userId, sessionString, this.supabase)
-    if (this.tradeExecutor) {
-      listener.setOnSignalParsed(row => listenerInProcessDispatch(this.tradeExecutor!, row))
-    }
-    try {
-      await listener.start()
-    } catch (err) {
-      await releaseSessionLease(this.supabase, userId)
-      if (err instanceof TelegramSessionInvalidError) {
-        await this.invalidateTelegramSession(userId)
+    await this.withConnectionLock(userId, async () => {
+      if (this.listeners.has(userId)) return
+      if (await this.shouldSkipListenerStart(userId)) return
+
+      const lease = await acquireSessionLease(this.supabase, userId)
+      if (!lease.ok) {
+        console.warn(`[sessionManager] skip listener for ${userId}: ${lease.reason}`)
+        return
       }
-      throw err
-    }
-    this.listeners.set(userId, listener)
-    console.log(`[sessionManager] Started listener for user ${userId}`)
+
+      const listener = new UserListener(userId, sessionString, this.supabase)
+      if (this.tradeExecutor) {
+        listener.setOnSignalParsed(row => listenerInProcessDispatch(this.tradeExecutor!, row))
+      }
+      try {
+        await listener.start()
+      } catch (err) {
+        await releaseSessionLease(this.supabase, userId)
+        if (err instanceof TelegramSessionInvalidError) {
+          await this.invalidateTelegramSession(userId)
+        }
+        throw err
+      }
+      this.listeners.set(userId, listener)
+      console.log(`[sessionManager] Started listener for user ${userId}`)
+    })
   }
 
-  private async stopListener(userId: string) {
+  private async disconnectListener(userId: string): Promise<void> {
     const listener = this.listeners.get(userId)
     if (!listener) return
     await listener.stop()
@@ -431,10 +589,20 @@ export class UserSessionManager {
     console.log(`[sessionManager] Stopped listener for user ${userId}`)
   }
 
+  private async stopListener(userId: string) {
+    await this.withConnectionLock(userId, async () => {
+      await this.disconnectListener(userId)
+    })
+  }
+
   async disconnectAll() {
     if (this.channelChannel) {
       try { await this.supabase.removeChannel(this.channelChannel) } catch { /* noop */ }
       this.channelChannel = null
+    }
+    if (this.authPendingChannel) {
+      try { await this.supabase.removeChannel(this.authPendingChannel) } catch { /* noop */ }
+      this.authPendingChannel = null
     }
     for (const [userId, listener] of this.listeners) {
       await listener.stop()

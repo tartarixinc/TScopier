@@ -50,6 +50,7 @@ export class AuthService {
     private supabase: SupabaseClient,
     private sessionManager: UserSessionManager,
   ) {
+    this.sessionManager.setAuthGuard(userId => this.pending.has(userId))
     this.cleanupTimer = setInterval(() => this.cleanup(), CLEANUP_INTERVAL_MS)
     if (typeof this.cleanupTimer.unref === 'function') this.cleanupTimer.unref()
   }
@@ -143,6 +144,10 @@ export class AuthService {
   }
 
   async sendCode(userId: string, phone: string): Promise<{ phone_code_hash: string }> {
+    // Stop the live listener before touching telegram_auth_pending — clearing that row
+    // triggers onAuthPendingCleared on other replicas, which must not reopen MTProto.
+    await this.sessionManager.pauseForAuth(userId)
+
     const existing = this.pending.get(userId)
     if (existing) {
       try { await existing.client.disconnect() } catch { /* ignore */ }
@@ -197,6 +202,9 @@ export class AuthService {
   }
 
   async verifyCode(userId: string, phone: string, code: string, password?: string): Promise<VerifyResult> {
+    // Other replicas may still hold the listener until telegram_auth_pending realtime fires.
+    await this.sessionManager.pauseForAuth(userId, { releaseDelay: false })
+
     let pending: PendingAuth | undefined = this.pending.get(userId)
     if (!pending) {
       const restored = await this.restorePendingFromDatabase(userId, phone)
@@ -285,7 +293,7 @@ export class AuthService {
     try {
       await this.sessionManager.adoptClient(userId, client, sessionString)
       try {
-        channels = await this.sessionManager.listChannels(userId, { skipColdDelay: true })
+        channels = await this.sessionManager.listChannelsForAdoptedUser(userId, { skipColdDelay: true })
       } catch (listErr) {
         console.warn(`[authService] listChannels after verify failed for ${userId}:`, listErr)
       }
@@ -296,7 +304,6 @@ export class AuthService {
       } catch {
         /* ignore */
       }
-      // Session is persisted; ensureListener can start a single fresh client on list_channels.
     }
 
     return { ok: true, session_id: row.id as string, channels }
