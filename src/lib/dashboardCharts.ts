@@ -1,7 +1,10 @@
 import type { BrokerAccount } from '../types/database'
 import { inferBrokerLabelFromServer } from './brokerFromServer'
-import { coerceMtTimestamp, parseMtHistoryTimestamp } from './mtApiDateTime'
+import { coerceMtTimestamp, parseMtHistoryTimestamp, isMtTimestampInRange } from './mtApiDateTime'
 import type { MtTrade } from './metatraderapi'
+import { getLocalCalendarDayBounds } from './dashboardTradeStats'
+import { displayTradeProfit } from './tradeDisplay'
+import { resolveTradeDisplayDirection } from './tradeDirection'
 
 /** Normalized trade row for dashboard charts (MT or DB). */
 export interface DashboardChartTrade {
@@ -92,11 +95,17 @@ export function chartTradeDayKey(t: DashboardChartTrade): string | null {
 export function mtTradeToChartRow(t: MtTrade): DashboardChartTrade | null {
   const brokerAccountId = String(t.broker_id ?? '').trim()
   if (!brokerAccountId) return null
-  if (t.direction !== 'buy' && t.direction !== 'sell') return null
+  const direction = resolveTradeDisplayDirection(t)
+  const hasLots = (Number(t.lot_size) || 0) > 0
+  const hasSymbol = Boolean(String(t.symbol ?? '').trim())
+  if (direction !== 'buy' && direction !== 'sell') {
+    if (!(hasSymbol && hasLots && (t.status === 'closed' || t.status === 'open'))) return null
+  }
+  const profit = displayTradeProfit(t)
   return {
     brokerAccountId,
     lotSize: Number(t.lot_size) || 0,
-    profit: typeof t.profit === 'number' && Number.isFinite(t.profit) ? t.profit : null,
+    profit: profit != null && Number.isFinite(profit) ? profit : null,
     status: t.status,
     closedAt: coerceMtTimestamp(t.closed_at),
     openedAt: coerceMtTimestamp(t.opened_at),
@@ -251,6 +260,48 @@ export function summarizeTodayFromChartTrades(
     const key = chartTradeDayKey(t)
     if (key !== todayKey) continue
     const p = t.profit
+    if (p == null || !Number.isFinite(p)) continue
+    taken++
+    netPnl += p
+    if (p > OUTCOME_EPSILON) won++
+    else if (p < -OUTCOME_EPSILON) lost++
+    else breakeven++
+  }
+
+  return {
+    hasData: taken > 0,
+    taken,
+    won,
+    lost,
+    breakeven,
+    netPnl,
+  }
+}
+
+/** Today’s closed-deal stats from live MT rows (same close-time rules as the Trades page). */
+export function summarizeTodayFromMtTrades(
+  trades: MtTrade[],
+  now = new Date(),
+): {
+  hasData: boolean
+  taken: number
+  won: number
+  lost: number
+  breakeven: number
+  netPnl: number
+} {
+  const { todayStart, tomorrowStart } = getLocalCalendarDayBounds(now)
+  let taken = 0
+  let won = 0
+  let lost = 0
+  let breakeven = 0
+  let netPnl = 0
+
+  for (const t of trades) {
+    if (t.status !== 'closed') continue
+    const closeIso = t.closed_at ?? t.opened_at
+    if (!closeIso || !isMtTimestampInRange(closeIso, todayStart, tomorrowStart)) continue
+    const p = displayTradeProfit(t)
     if (p == null || !Number.isFinite(p)) continue
     taken++
     netPnl += p

@@ -1,3 +1,5 @@
+import { isMtTimestampInRange } from './mtApiDateTime'
+
 /** Shared filters for dashboard closed-trade P/L and win/loss counts. */
 
 export type TradeStatsRow = {
@@ -94,6 +96,15 @@ export function sumClosedWinningProfitInRange(
 }
 
 /** Local calendar midnight → next midnight (browser timezone). */
+/** Count chart/MT rows whose open time falls in [start, end). */
+export function countChartTradesOpenedInRange(
+  trades: Array<{ openedAt: string | null; closedAt?: string | null }>,
+  start: Date,
+  end: Date,
+): number {
+  return trades.filter(t => isMtTimestampInRange(t.openedAt ?? t.closedAt ?? null, start, end)).length
+}
+
 export function getLocalCalendarDayBounds(ref = new Date()): {
   todayStart: Date
   tomorrowStart: Date

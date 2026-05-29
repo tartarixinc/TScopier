@@ -16,11 +16,28 @@ import { PageShell } from '../../components/layout/PageShell'
 import { AddAccountModal } from '../../components/ui/AddAccountModal'
 import { Toggle } from '../../components/ui/Toggle'
 import { Button } from '../../components/ui/Button'
+import {
+  TRADES_PAGE_HISTORY_DAYS,
+  TRADES_PAGE_MAX_RESULTS,
+} from '../../hooks/useTradesData'
+import { readSessionCache, writeSessionCache } from '../../lib/sessionDataCache'
+import {
+  TRADES_CACHE_TTL_MS,
+  tradesCacheKey,
+  tradesListFingerprint,
+  type TradesCachePayload,
+} from '../../lib/tradesSessionCache'
 import { metatraderApi, type MtTrade } from '../../lib/metatraderapi'
-import { formatLocalCalendarDay } from '../../lib/dayStartBalance'
+import {
+  aggregateTodaysProfitFromDayStart,
+  formatLocalCalendarDay,
+  hasBalanceDayStartForToday,
+  resolveDisplayedTodayProfit,
+} from '../../lib/dayStartBalance'
 import { formatLocalMtApiDateTime, isMtTimestampInRange } from '../../lib/mtApiDateTime'
 import {
   computeLinkedAccountPerformanceMap,
+  countChartTradesOpenedInRange,
   countClosedTradeOutcomesInRange,
   getLocalCalendarDayBounds,
   isTradeableClosedRow,
@@ -46,8 +63,8 @@ import {
   findYesterdayTradeOutcomeDay,
   netPnlFromTradeOutcomeDay,
   summarizeTodayFromChartTrades,
+  summarizeTodayFromMtTrades,
   resolveDashboardChartTrades,
-  DASHBOARD_CHART_MT_HISTORY_DAYS,
   sumClosedDealProfitByBroker,
   type DashboardChartTrade,
 } from '../../lib/dashboardCharts'
@@ -446,6 +463,35 @@ function preferChartTrades(prev: DashboardChartTrade[], next: DashboardChartTrad
   return next.length > 0 ? next : prev
 }
 
+function resolveDashboardTodayProfit(
+  chartTrades: DashboardChartTrade[],
+  linkedAccounts: BrokerAccount[],
+  balanceByAccountId: Record<string, number | undefined>,
+  live?: { balanceDelta: number | null; balanceDayReady: boolean },
+): number {
+  const calendarDay = formatLocalCalendarDay()
+  const chartStats = summarizeTodayFromChartTrades(chartTrades)
+  const chartNet = netPnlFromTradeOutcomeDay(findTodayTradeOutcomeDay(chartTrades))
+  const balanceLookup = Object.fromEntries(
+    Object.entries(balanceByAccountId).map(([id, balance]) => [id, { balance }]),
+  )
+  const storedDelta = aggregateTodaysProfitFromDayStart(
+    linkedAccounts,
+    balanceLookup,
+    calendarDay,
+    { connectedOnly: true },
+  )
+  const balanceDelta = live?.balanceDelta !== undefined ? live.balanceDelta : storedDelta
+  const balanceDayReady =
+    live?.balanceDayReady ?? hasBalanceDayStartForToday(linkedAccounts, calendarDay)
+  return resolveDisplayedTodayProfit({
+    balanceDelta,
+    balanceDayReady,
+    chartNetPnl: chartNet,
+    chartHasData: chartStats.hasData,
+  })
+}
+
 function writeDashboardCache(userId: string, payload: DashboardCachePayload) {
   sessionStorage.setItem(DASHBOARD_ACTIVE_USER_KEY, userId)
   sessionStorage.setItem(`${DASHBOARD_CACHE_VERSION}:${userId}`, JSON.stringify(payload))
@@ -521,6 +567,10 @@ export function DashboardPage() {
   const [chartTrades, setChartTrades] = useState<DashboardChartTrade[]>(() => bootCache?.chartTrades ?? [])
   const chartTradesRef = useRef(chartTrades)
   chartTradesRef.current = chartTrades
+  const [liveTodayBalanceProfit, setLiveTodayBalanceProfit] = useState<{
+    delta: number | null
+    ready: boolean
+  }>({ delta: null, ready: false })
   const [showPlatformModal, setShowPlatformModal] = useState(false)
   const [togglingBrokerId, setTogglingBrokerId] = useState<string | null>(null)
   const [brokerReconnectError, setBrokerReconnectError] = useState('')
@@ -594,6 +644,12 @@ export function DashboardPage() {
       }
       if (cached.aiExpertLogs?.length) setAiExpertLogs(cached.aiExpertLogs)
       if (cached.mtTrades?.length) mtTradesRef.current = cached.mtTrades
+      const tradesSession = readSessionCache<TradesCachePayload>(tradesCacheKey(user.id), TRADES_CACHE_TTL_MS)
+      if (tradesSession?.data.trades.length) {
+        mtTradesRef.current = tradesSession.data.trades
+        setChartTrades(resolveDashboardChartTrades(tradesSession.data.trades, []))
+        setDashboardChartsReady(true)
+      }
       seedLiveBrokerStateFromBalances(balances, liveBrokerStateRef.current, cached.linkedAccounts)
       if ((cached.chartTrades?.length ?? 0) > 0 || (cached.mtTrades?.length ?? 0) > 0) {
         setDashboardChartsReady(true)
@@ -606,6 +662,12 @@ export function DashboardPage() {
       setLinkedAccountBalances({})
       setChartTrades([])
       setAiExpertLogs([])
+      const tradesSession = readSessionCache<TradesCachePayload>(tradesCacheKey(user.id), TRADES_CACHE_TTL_MS)
+      if (tradesSession?.data.trades.length) {
+        mtTradesRef.current = tradesSession.data.trades
+        setChartTrades(resolveDashboardChartTrades(tradesSession.data.trades, []))
+        setDashboardChartsReady(true)
+      }
     }
     dashboardReadyRef.current = Boolean(cached?.stats)
   }, [user?.id])
@@ -622,21 +684,6 @@ export function DashboardPage() {
     [effectiveChartTrades],
   )
 
-  const todayOutcomeDay = useMemo(
-    () => findTodayTradeOutcomeDay(effectiveChartTrades),
-    [effectiveChartTrades],
-  )
-
-  const yesterdayOutcomeDay = useMemo(
-    () => findYesterdayTradeOutcomeDay(effectiveChartTrades),
-    [effectiveChartTrades],
-  )
-
-  const todayChartStats = useMemo(
-    () => summarizeTodayFromChartTrades(effectiveChartTrades),
-    [effectiveChartTrades],
-  )
-
   const closedProfitByAccountId = useMemo(
     () => sumClosedDealProfitByBroker(effectiveChartTrades),
     [effectiveChartTrades],
@@ -644,25 +691,68 @@ export function DashboardPage() {
 
   const hasMtTradeHistory = effectiveChartTrades.length > 0
 
+  const balanceByAccountId = useMemo(() => {
+    const out: Record<string, number> = {}
+    for (const account of linkedAccounts) {
+      const live = linkedAccountBalances[account.id]
+      const bal = live?.balance ?? account.last_balance ?? live?.equity ?? account.last_equity
+      if (bal != null && Number.isFinite(Number(bal))) {
+        out[account.id] = Number(bal)
+      }
+    }
+    return out
+  }, [linkedAccounts, linkedAccountBalances])
+
   /** Headline stats: today/yesterday P/L match Trade Outcome bars (profit − loss). */
   const headlineStats = useMemo(() => {
-    const chartHasToday = todayChartStats.hasData
-    const todayProfit = chartHasToday
-      ? netPnlFromTradeOutcomeDay(todayOutcomeDay)
-      : stats.todayProfit
-    const yesterdayProfit = chartHasToday || effectiveChartTrades.length > 0
-      ? netPnlFromTradeOutcomeDay(yesterdayOutcomeDay)
+    const mtRaw = mtTradesRef.current ?? []
+    const mtTodayStats = summarizeTodayFromMtTrades(mtRaw)
+    const chartTradesForHeadline =
+      mtRaw.length > 0 ? resolveDashboardChartTrades(mtRaw, []) : effectiveChartTrades
+    const chartTodayFromMt = summarizeTodayFromChartTrades(chartTradesForHeadline)
+    const closedTaken = Math.max(chartTodayFromMt.taken, mtTodayStats.taken, stats.tradesTaken)
+    const chartNet = netPnlFromTradeOutcomeDay(findTodayTradeOutcomeDay(chartTradesForHeadline))
+    const chartHasToday = chartTodayFromMt.hasData || mtTodayStats.hasData
+    const chartNetForProfit =
+      mtTodayStats.hasData && Math.abs(chartNet) < 0.01 ? mtTodayStats.netPnl : chartNet
+    const todayProfit = resolveDashboardTodayProfit(
+      chartTradesForHeadline,
+      linkedAccounts,
+      balanceByAccountId,
+      liveTodayBalanceProfit.ready
+        ? {
+            balanceDelta: liveTodayBalanceProfit.delta,
+            balanceDayReady: liveTodayBalanceProfit.ready,
+          }
+        : undefined,
+    )
+    const todayProfitFinal =
+      chartHasToday && Math.abs(todayProfit) < 0.01 && Math.abs(chartNetForProfit) >= 0.01
+        ? chartNetForProfit
+        : todayProfit
+    const yesterdayProfit = chartHasToday || chartTradesForHeadline.length > 0
+      ? netPnlFromTradeOutcomeDay(findYesterdayTradeOutcomeDay(chartTradesForHeadline))
       : stats.yesterdayProfit
+    const tradesWon = Math.max(chartTodayFromMt.won, mtTodayStats.won)
+    const tradesLost = Math.max(chartTodayFromMt.lost, mtTodayStats.lost)
+    const tradesBreakeven = Math.max(chartTodayFromMt.breakeven, mtTodayStats.breakeven)
     return {
       ...stats,
-      todayProfit,
+      todayProfit: todayProfitFinal,
       yesterdayProfit,
-      tradesTaken: chartHasToday ? todayChartStats.taken : stats.tradesTaken,
-      tradesWon: chartHasToday ? todayChartStats.won : stats.tradesWon,
-      tradesLost: chartHasToday ? todayChartStats.lost : stats.tradesLost,
-      tradesBreakeven: chartHasToday ? todayChartStats.breakeven : stats.tradesBreakeven,
+      tradesTaken: closedTaken,
+      tradesWon,
+      tradesLost,
+      tradesBreakeven,
     }
-  }, [stats, todayChartStats, todayOutcomeDay, yesterdayOutcomeDay, effectiveChartTrades.length])
+  }, [
+    stats,
+    chartTrades,
+    effectiveChartTrades,
+    linkedAccounts,
+    balanceByAccountId,
+    liveTodayBalanceProfit,
+  ])
 
   const openPnlSub = useMemo(() => {
     let accountCount = countAccountsWithOpenPositions(
@@ -688,18 +778,6 @@ export function DashboardPage() {
       const eq = live?.equity ?? live?.balance ?? account.last_equity ?? account.last_balance
       if (eq != null && Number.isFinite(Number(eq))) {
         out[account.id] = Number(eq)
-      }
-    }
-    return out
-  }, [linkedAccounts, linkedAccountBalances])
-
-  const balanceByAccountId = useMemo(() => {
-    const out: Record<string, number> = {}
-    for (const account of linkedAccounts) {
-      const live = linkedAccountBalances[account.id]
-      const bal = live?.balance ?? account.last_balance ?? live?.equity ?? account.last_equity
-      if (bal != null && Number.isFinite(Number(bal))) {
-        out[account.id] = Number(bal)
       }
     }
     return out
@@ -985,14 +1063,25 @@ export function DashboardPage() {
       liveBrokerStateRef.current,
       brokerAccounts,
     )
-    const chartTradesForLoad =
-      useMtTrades && mtTrades ? resolveDashboardChartTrades(mtTrades, []) : chartTradesRef.current
-    const todayProfit = mtBrokerConnected && !useMtTrades
-      ? statsRef.current.todayProfit
-      : netPnlFromTradeOutcomeDay(findTodayTradeOutcomeDay(chartTradesForLoad))
-    const yesterdayProfit = mtBrokerConnected && !useMtTrades
-      ? statsRef.current.yesterdayProfit
-      : netPnlFromTradeOutcomeDay(findYesterdayTradeOutcomeDay(chartTradesForLoad))
+    const chartTradesForLoad = useMtTrades && mtTrades
+      ? resolveDashboardChartTrades(mtTrades, [])
+      : resolveDashboardChartTrades(null, allTrades)
+    const todayProfit = resolveDashboardTodayProfit(
+      chartTradesForLoad,
+      brokerAccounts,
+      Object.fromEntries(
+        brokerAccounts.map(account => [
+          account.id,
+          mergedBalances[account.id]?.balance ?? account.last_balance ?? undefined,
+        ]),
+      ),
+    )
+    const yesterdayProfit = netPnlFromTradeOutcomeDay(findYesterdayTradeOutcomeDay(chartTradesForLoad))
+    const openedTodayCount = countChartTradesOpenedInRange(
+      chartTradesForLoad,
+      todayStart,
+      tomorrowStart,
+    )
     /** Lifetime-style total vs baseline balance at link (sum of equity − baseline per account). */
     const yesterdayTotalProfitLoss: number | null = null
     const totalProfitLoss = aggregateTotalProfitFromBaselines(brokerAccounts, (account) => {
@@ -1027,7 +1116,7 @@ export function DashboardPage() {
       accounts: activeBrokerCount,
       portfolioValue: totalPortfolioValue,
       totalEquity: totalEquityValue,
-      tradesTaken: closedOutcomesToday.taken,
+      tradesTaken: Math.max(closedOutcomesToday.taken, openedTodayCount),
       tradesWon: closedOutcomesToday.won,
       tradesLost: closedOutcomesToday.lost,
       tradesBreakeven: closedOutcomesToday.breakeven,
@@ -1215,14 +1304,15 @@ export function DashboardPage() {
 
     const { tomorrowStart: dayEnd } = getLocalCalendarDayBounds()
     const historyFrom = new Date()
-    historyFrom.setDate(historyFrom.getDate() - DASHBOARD_CHART_MT_HISTORY_DAYS)
+    historyFrom.setDate(historyFrom.getDate() - TRADES_PAGE_HISTORY_DAYS)
     let trades: MtTrade[]
     try {
       const res = await metatraderApi.trades({
         scope: 'all',
-        historyProfile: 'dashboard',
+        historyProfile: 'trades',
         historyFrom: formatMtApiDateTime(historyFrom),
         historyTo: formatMtApiDateTime(dayEnd),
+        limit: TRADES_PAGE_MAX_RESULTS,
       })
       trades = res.trades ?? []
     } catch {
@@ -1230,6 +1320,12 @@ export function DashboardPage() {
     }
     if (trades.length > 0) {
       mtTradesRef.current = trades
+      if (user) {
+        writeSessionCache(tradesCacheKey(user.id), {
+          trades,
+          fingerprint: tradesListFingerprint(trades),
+        })
+      }
     }
     const chartNext = resolveDashboardChartTrades(
       trades.length > 0 ? trades : mtTradesRef.current ?? [],
@@ -1245,6 +1341,7 @@ export function DashboardPage() {
 
     const today = trades.filter(t => inRange(t.opened_at, today0, tomorrow0))
     const yesterday = trades.filter(t => inRange(t.opened_at, yesterday0, today0))
+    const openedTodayCount = countChartTradesOpenedInRange(chartNext, today0, tomorrow0)
     const topSymbol = (rows: typeof trades): string => {
       const counts = new Map<string, number>()
       for (const r of rows) if (r.symbol) counts.set(r.symbol, (counts.get(r.symbol) ?? 0) + 1)
@@ -1267,7 +1364,8 @@ export function DashboardPage() {
       swap: t.swap,
       commission: t.commission,
     }))
-    const chartToday = summarizeTodayFromChartTrades(chartNext)
+    const chartToday = summarizeTodayFromMtTrades(trades)
+    const chartTodayFromRows = summarizeTodayFromChartTrades(chartNext)
     const closedOutcomesToday = chartToday.hasData
       ? {
           taken: chartToday.taken,
@@ -1275,7 +1373,14 @@ export function DashboardPage() {
           lost: chartToday.lost,
           breakeven: chartToday.breakeven,
         }
-      : countClosedTradeOutcomesInRange(tradeRows, closedTodayForStats)
+      : chartTodayFromRows.hasData
+        ? {
+            taken: chartTodayFromRows.taken,
+            won: chartTodayFromRows.won,
+            lost: chartTodayFromRows.lost,
+            breakeven: chartTodayFromRows.breakeven,
+          }
+        : countClosedTradeOutcomesInRange(tradeRows, closedTodayForStats)
     const closedTradeableToday = tradeRows.filter(
       t => isTradeableClosedRow(t) && closedTodayForStats(t.closed_at),
     )
@@ -1289,11 +1394,26 @@ export function DashboardPage() {
     const negYestLeg = legPnls(closedTradeableYesterday).filter(p => p < 0)
     const mtStatsPatch: DashboardStats = {
       ...statsRef.current,
-      tradesTaken: closedOutcomesToday.taken,
+      tradesTaken: Math.max(closedOutcomesToday.taken, openedTodayCount),
       tradesWon: closedOutcomesToday.won,
       tradesLost: closedOutcomesToday.lost,
       tradesBreakeven: closedOutcomesToday.breakeven,
-      todayProfit: netPnlFromTradeOutcomeDay(findTodayTradeOutcomeDay(chartNext)),
+      todayProfit: resolveDashboardTodayProfit(
+        chartNext,
+        linkedAccounts,
+        Object.fromEntries(
+          linkedAccounts.map(account => [
+            account.id,
+            linkedBalancesRef.current[account.id]?.balance ?? account.last_balance ?? undefined,
+          ]),
+        ),
+        liveTodayBalanceProfit.ready
+          ? {
+              balanceDelta: liveTodayBalanceProfit.delta,
+              balanceDayReady: liveTodayBalanceProfit.ready,
+            }
+          : undefined,
+      ),
       totalVolume: today.reduce((sum, t) => sum + (t.lot_size ?? 0), 0),
       yesterdayTotalVolume: yesterday.reduce((sum, t) => sum + (t.lot_size ?? 0), 0),
       bestTradeProfit: posTodayLeg.length ? Math.max(...posTodayLeg) : 0,
@@ -1388,6 +1508,8 @@ export function DashboardPage() {
     const prevBalances = balanceSeed ?? linkedAccountBalances
     const nextBalances = { ...prevBalances }
     const successes: typeof results = []
+    let balanceTodaySum = 0
+    let balanceTodayCount = 0
     for (const r of results) {
       const broker = sourceAccounts.find(b => b.id === r.id)
       if (r.error || !r.summary || r.stale) {
@@ -1397,6 +1519,19 @@ export function DashboardPage() {
         continue
       }
       successes.push(r)
+      if (r.todays_profit_from_balance != null && Number.isFinite(r.todays_profit_from_balance)) {
+        balanceTodaySum += r.todays_profit_from_balance
+        balanceTodayCount++
+      }
+      if (
+        r.day_start_balance != null ||
+        r.day_start_balance_on != null
+      ) {
+        patchBroker(r.id, {
+          day_start_balance: r.day_start_balance,
+          day_start_balance_on: r.day_start_balance_on,
+        })
+      }
       const s = r.summary
       const server = broker
         ? resolveMtServerCandidate(broker, nextBalances[r.id]?.mt_server_hint ?? broker.broker_server)
@@ -1436,6 +1571,12 @@ export function DashboardPage() {
     )
     linkedBalancesRef.current = mergedForDisplay
     setLinkedAccountBalances(mergedForDisplay)
+
+    const liveBalanceProfit = {
+      delta: balanceTodayCount > 0 ? balanceTodaySum : null,
+      ready: balanceTodayCount > 0,
+    }
+    setLiveTodayBalanceProfit(liveBalanceProfit)
 
     const sawOpenPosCount = successes.length > 0
     const mtOpenTotal = sumConnectedOpenTrades(sourceAccounts, mergedForDisplay)
@@ -1479,17 +1620,27 @@ export function DashboardPage() {
           live?.equity ?? live?.balance ?? account.last_equity ?? account.last_balance ?? Number.NaN,
         )
       })
-      const chartTodayProfit = netPnlFromTradeOutcomeDay(findTodayTradeOutcomeDay(chartTradesRef.current))
+      const chartTodayProfit = resolveDashboardTodayProfit(
+        chartTradesRef.current,
+        sourceAccounts,
+        Object.fromEntries(
+          sourceAccounts.map(account => [
+            account.id,
+            mergedForDisplay[account.id]?.balance ?? account.last_balance ?? undefined,
+          ]),
+        ),
+        {
+          balanceDelta: liveBalanceProfit.delta,
+          balanceDayReady: liveBalanceProfit.ready,
+        },
+      )
       const next = {
         ...prev,
         portfolioValue,
         totalEquity,
         openPnl: sawLivePnl ? openPnl : prev.openPnl,
         totalProfitLoss,
-        todayProfit:
-          chartTradesRef.current.length > 0 || chartTodayProfit !== 0
-            ? chartTodayProfit
-            : prev.todayProfit,
+        todayProfit: chartTodayProfit,
         ...(sawOpenPosCount ? { openPositions: mtOpenTotal, openTrades: mtOpenTotal } : {}),
       }
       statsRef.current = next
