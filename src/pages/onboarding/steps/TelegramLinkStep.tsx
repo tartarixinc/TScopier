@@ -20,6 +20,10 @@ function normalizeTelegramPhoneInput(raw: string): string {
   return compact
 }
 
+function normalizeTelegramCodeInput(raw: string): string {
+  return String(raw ?? '').replace(/\D/g, '')
+}
+
 export function TelegramLinkStep({ onDone }: Props) {
   const { session } = useAuth()
   const [stage, setStage] = useState<Stage>('phone')
@@ -72,13 +76,14 @@ export function TelegramLinkStep({ onDone }: Props) {
 
     try {
       const normalizedPhone = normalizeTelegramPhoneInput(phone)
+      const normalizedCode = normalizeTelegramCodeInput(code)
       const res = await fetch(EDGE_FN, {
         method: 'POST',
         headers: authHeaders,
         body: JSON.stringify({
           action: 'verify_code',
           phone: normalizedPhone,
-          code,
+          code: normalizedCode,
           password: requiresPassword ? password : undefined,
         }),
       })
@@ -97,6 +102,7 @@ export function TelegramLinkStep({ onDone }: Props) {
 
       // Worker persisted the session row; we just hold the id for handoff.
       setPhone(normalizedPhone)
+      setCode(normalizedCode)
       setSessionRowId(data.session_id ?? null)
       setStage('confirm_2fa')
     } catch {

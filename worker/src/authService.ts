@@ -37,6 +37,10 @@ function phonesMatch(a: string, b: string): boolean {
   return normalizePhoneNumber(a) === normalizePhoneNumber(b)
 }
 
+function normalizeVerificationCode(raw: string): string {
+  return String(raw ?? '').replace(/\D/g, '')
+}
+
 export type VerifyResult =
   | { ok: true; session_id: string; channels?: ChannelInfo[] }
   | { requires_password: true }
@@ -213,6 +217,10 @@ export class AuthService {
 
   async verifyCode(userId: string, phone: string, code: string, password?: string): Promise<VerifyResult> {
     const normalizedPhone = normalizePhoneNumber(phone)
+    const normalizedCode = normalizeVerificationCode(code)
+    if (!normalizedCode) {
+      throw new Error('Verification code is required')
+    }
     // Other replicas may still hold the listener until telegram_auth_pending realtime fires.
     await this.sessionManager.pauseForAuth(userId, { releaseDelay: false })
 
@@ -242,7 +250,7 @@ export class AuthService {
           await tgInvoke(client, new Api.auth.SignIn({
             phoneNumber: pendingPhone,
             phoneCodeHash,
-            phoneCode: code,
+            phoneCode: normalizedCode,
           }))
         } catch (signInErr: unknown) {
           const msg = signInErr instanceof Error ? signInErr.message : String(signInErr)
@@ -256,7 +264,7 @@ export class AuthService {
           await tgInvoke(client, new Api.auth.SignIn({
             phoneNumber: pendingPhone,
             phoneCodeHash,
-            phoneCode: code,
+            phoneCode: normalizedCode,
           }))
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : String(err)

@@ -60,6 +60,10 @@ function normalizeTelegramPhoneInput(raw: string): string {
   return compact
 }
 
+function normalizeTelegramCodeInput(raw: string): string {
+  return String(raw ?? '').replace(/\D/g, '')
+}
+
 function TgChannelAvatar({ title, username }: { title: string; username?: string }) {
   const [imageFailed, setImageFailed] = useState(false)
   const avatarUrl = getTelegramAvatarUrl(username)
@@ -504,6 +508,7 @@ export function CopierEnginePage() {
     setTgLoading(true)
     try {
       const phone = normalizeTelegramPhoneInput(tgPhone)
+      const code = normalizeTelegramCodeInput(tgCode)
       const res = await fetch(EDGE_FN, {
         method: 'POST',
         headers: {
@@ -513,13 +518,14 @@ export function CopierEnginePage() {
         body: JSON.stringify({
           action: 'verify_code',
           phone,
-          code: tgCode,
+          code,
           password: tgStage === 'twoFa' ? tgPassword : undefined,
         }),
       })
       const data = await res.json().catch(() => ({}))
       if (data.requires_password) {
         setTgPhone(phone)
+        setTgCode(code)
         setTgStage('twoFa')
         setTgError('')
         return
@@ -530,6 +536,7 @@ export function CopierEnginePage() {
         return
       }
       setTgPhone(phone)
+      setTgCode(code)
       setTgStage('linked')
       if (Array.isArray(data.channels)) {
         const list = data.channels as TgChannelListItem[]
