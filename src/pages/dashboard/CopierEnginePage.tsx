@@ -166,7 +166,13 @@ export function CopierEnginePage() {
     const hasSession = !!sessionRes.data
     setHasTgSession(hasSession)
     if (user?.id) setCachedTgSession(user.id, hasSession)
-    setTgStage(hasSession ? 'linked' : 'idle')
+    setTgStage(prev =>
+      prev === 'phone' || prev === 'code' || prev === 'twoFa'
+        ? prev
+        : hasSession
+          ? 'linked'
+          : 'idle',
+    )
     setLoading(false)
     if (hasSession && !opts?.skipTgFetch) {
       const cached = user?.id ? getCachedTgChannels(user.id) : null
@@ -200,12 +206,17 @@ export function CopierEnginePage() {
   }, [user])
 
   /** Open phone → code flow without removing configured channels. */
-  const reconnectTelegram = useCallback(async () => {
+  const reconnectTelegram = useCallback(() => {
+    setError('')
     setTgError('')
     setTgCode('')
     setTgPassword('')
     setTgStage('phone')
   }, [])
+
+  const isTgReconnectFlow =
+    tgStage === 'phone' || tgStage === 'code' || tgStage === 'twoFa'
+  const showTelegramConnectFlow = !hasTgSession || isTgReconnectFlow
 
   /** Session revoked server-side — show reconnect UI; never wipe configured channels. */
   const handleTelegramSessionInvalid = useCallback(async () => {
@@ -507,6 +518,7 @@ export function CopierEnginePage() {
         setTgError(msg)
         return
       }
+      setTgStage('linked')
       if (Array.isArray(data.channels)) {
         const list = data.channels as TgChannelListItem[]
         setTgChannels(list)
@@ -527,7 +539,11 @@ export function CopierEnginePage() {
   }
 
   const handleTgStageChange = (stage: TelegramConnectStage) => {
-    setTgStage(stage)
+    if (stage === 'idle' && hasTgSession) {
+      setTgStage('linked')
+    } else {
+      setTgStage(stage)
+    }
     setTgError('')
     if (stage === 'phone') {
       setTgCode('')
@@ -572,7 +588,7 @@ export function CopierEnginePage() {
           <a href="/account-configuration" className="underline text-warning-800">Connect one in Account Configuration.</a>
         </div>
       )} */}
-      {!loading && !hasTgSession && (
+      {!loading && showTelegramConnectFlow && (
         <TelegramConnectFlow
           stage={tgStage === 'linked' ? 'idle' : tgStage}
           onStageChange={handleTgStageChange}
@@ -599,7 +615,7 @@ export function CopierEnginePage() {
       )}
 
       {/* Telegram channels panel */}
-      {hasTgSession && (
+      {hasTgSession && !isTgReconnectFlow && (
         <Card className="mb-3" padding="none">
           <div className="px-4 py-2.5 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between gap-2 bg-gradient-to-r from-[#229ED9]/8 to-transparent dark:from-[#229ED9]/15">
             <div className="flex items-center gap-2.5 min-w-0">
