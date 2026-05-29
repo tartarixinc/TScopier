@@ -11,10 +11,12 @@ exports.mergePlanImmediateOrders = mergePlanImmediateOrders;
 exports.buildPerLegStopTargets = buildPerLegStopTargets;
 exports.legacyMergeLinkingEnabled = legacyMergeLinkingEnabled;
 exports.resolveLatestOpenBasketAnchor = resolveLatestOpenBasketAnchor;
+exports.resolveOpenBasketAnchorForParameterFollowUp = resolveOpenBasketAnchorForParameterFollowUp;
 exports.isBareEntryFollowUp = isBareEntryFollowUp;
 const manualPlanner_1 = require("./manualPlanner");
 const signalPriceInference_1 = require("./signalPriceInference");
 const tpBucketDistribution_1 = require("./manualPlanning/tpBucketDistribution");
+const signalMergeLink_1 = require("./signalMergeLink");
 const basketModFollowUp_1 = require("./basketModFollowUp");
 /** True when the parsed message includes SL and/or TP price levels. */
 function parsedHasSlOrTp(parsed) {
@@ -157,6 +159,65 @@ async function resolveLatestOpenBasketAnchor(supabase, args) {
         }
     }
     return best;
+}
+const PARAMETER_FOLLOW_UP_ANCHOR_RETRY_MS = 3000;
+const PARAMETER_FOLLOW_UP_ANCHOR_POLL_MS = 150;
+/** Wait briefly for the entry leg to land in DB before opening a duplicate trade. */
+async function resolveOpenBasketAnchorForParameterFollowUp(supabase, args, opts) {
+    const retryMs = opts?.retryMs ?? PARAMETER_FOLLOW_UP_ANCHOR_RETRY_MS;
+    const deadline = Date.now() + retryMs;
+    while (Date.now() < deadline) {
+        const anchor = await resolveLatestOpenBasketAnchor(supabase, args);
+        if (anchor)
+            return anchor;
+        await new Promise(resolve => setTimeout(resolve, PARAMETER_FOLLOW_UP_ANCHOR_POLL_MS));
+    }
+    return resolveRecentEntrySignalAnchor(supabase, args, opts);
+}
+async function resolveRecentEntrySignalAnchor(supabase, args, opts) {
+    if (!args.channelId)
+        return null;
+    const followUpMs = opts?.currentSignalCreatedAt
+        ? new Date(opts.currentSignalCreatedAt).getTime()
+        : Date.now();
+    if (!Number.isFinite(followUpMs))
+        return null;
+    const { data: rows, error } = await supabase
+        .from('signals')
+        .select('id, channel_id, created_at, parsed_data, status')
+        .eq('user_id', args.userId)
+        .eq('channel_id', args.channelId)
+        .order('created_at', { ascending: false })
+        .limit(10);
+    if (error || !rows?.length)
+        return null;
+    for (const row of rows) {
+        if (row.id === opts?.currentSignalId)
+            continue;
+        const parsed = row.parsed_data ?? {};
+        const act = String(parsed.action ?? '').toLowerCase();
+        if (act !== args.direction)
+            continue;
+        if (shouldRouteAsBasketParameterRefresh(parsed))
+            continue;
+        const createdMs = new Date(row.created_at).getTime();
+        const dtMs = followUpMs - createdMs;
+        if (!Number.isFinite(createdMs) || dtMs < 0 || dtMs > signalMergeLink_1.MERGE_IMPLICIT_CHANNEL_BUNDLE_MS)
+            continue;
+        const sym = parsed.symbol ?? null;
+        if (sym
+            && args.signalSymbol
+            && !(0, basketModFollowUp_1.symbolsCompatibleForBasket)(sym, args.signalSymbol)
+            && !(0, basketModFollowUp_1.symbolsCompatibleForBasket)(sym, args.brokerSymbol)) {
+            continue;
+        }
+        return {
+            anchorSignalId: row.id,
+            channelId: row.channel_id,
+            newestOpenedAt: row.created_at,
+        };
+    }
+    return null;
 }
 /** Entry-shaped follow-up without SL/TP is not a parameter refresh. */
 function isBareEntryFollowUp(parsed) {

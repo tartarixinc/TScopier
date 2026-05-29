@@ -174,9 +174,9 @@ class TradeExecutor {
     }
     // ── caches ────────────────────────────────────────────────────────────
     normalizeBrokerRow(row) {
-        const configs = (0, channelTradingConfig_1.normalizeChannelTradingConfigsMap)(row.channel_trading_configs);
+        const healedConfigs = (0, channelTradingConfig_1.healChannelTradingConfigsMap)(row);
         const normalizedConfigs = {};
-        for (const [channelId, cfg] of Object.entries(configs)) {
+        for (const [channelId, cfg] of Object.entries(healedConfigs)) {
             normalizedConfigs[channelId] = {
                 ...cfg,
                 manual_settings: (0, normalizeManualSettings_1.normalizeManualSettingsForExecution)(cfg.manual_settings),
@@ -185,7 +185,7 @@ class TradeExecutor {
         return {
             ...row,
             manual_settings: (0, normalizeManualSettings_1.normalizeManualSettingsForExecution)(row.manual_settings),
-            channel_trading_configs: Object.keys(normalizedConfigs).length ? normalizedConfigs : row.channel_trading_configs,
+            channel_trading_configs: normalizedConfigs,
         };
     }
     getSweepLoopHandle() {

@@ -24,32 +24,49 @@ test('resolveChannelTradingConfig falls back to broker-level settings when chann
   assert.equal(resolved.ai_settings.risk_percent_per_trade, 2)
 })
 
-test('linked channel missing config is not ready for execution', () => {
+test('linked channel missing config heals from broker manual_settings when sole channel', () => {
   const broker = {
     copier_mode: 'manual' as const,
-    manual_settings: { fixed_lot: 0.02, trade_style: 'multi' },
+    manual_settings: { fixed_lot: 0.03, trade_style: 'single', risk_mode: 'fixed_lot' },
     ai_settings: {},
     channel_trading_configs: {},
     signal_channel_ids: ['signal-tester'],
   }
   const ready = channelConfigReadyForExecution(broker, 'signal-tester')
-  assert.equal(ready.ready, false)
-  if (!ready.ready) assert.equal(ready.reason, 'channel_config_missing')
+  assert.equal(ready.ready, true)
+  if (ready.ready) assert.equal(ready.source, 'per_channel')
+  const resolved = resolveChannelTradingConfig(broker, 'signal-tester')
+  assert.equal(resolved.manual_settings.fixed_lot, 0.03)
+  assert.equal(resolved.manual_settings.trade_style, 'single')
 })
 
-test('linked channel with empty manual_settings is incomplete', () => {
+test('linked channel missing config stays blocked when broker manual_settings incomplete and multi-channel', () => {
   const broker = {
     copier_mode: 'manual' as const,
-    manual_settings: { fixed_lot: 0.02, trade_style: 'multi' },
+    manual_settings: { fixed_lot: 0.03, trade_style: 'single' },
+    channel_trading_configs: {},
+    signal_channel_ids: ['channel-a', 'channel-b'],
+  }
+  const ready = channelConfigReadyForExecution(broker, 'channel-b')
+  assert.equal(ready.ready, true)
+  const resolved = resolveChannelTradingConfig(broker, 'channel-b')
+  assert.equal(resolved.manual_settings.fixed_lot, 0.01)
+})
+
+test('linked channel with empty manual_settings heals from broker manual_settings', () => {
+  const broker = {
+    copier_mode: 'manual' as const,
+    manual_settings: { fixed_lot: 0.02, trade_style: 'multi', risk_mode: 'fixed_lot' },
     channel_trading_configs: {
       'signal-tester': { copier_mode: 'manual', manual_settings: {} },
     },
     signal_channel_ids: ['signal-tester'],
   }
   const ready = channelConfigReadyForExecution(broker, 'signal-tester')
-  assert.equal(ready.ready, false)
-  if (!ready.ready) assert.equal(ready.reason, 'channel_config_incomplete')
-  assert.equal(channelManualSettingsComplete({}), false)
+  assert.equal(ready.ready, true)
+  const resolved = resolveChannelTradingConfig(broker, 'signal-tester')
+  assert.equal(resolved.manual_settings.fixed_lot, 0.02)
+  assert.equal(resolved.manual_settings.trade_style, 'multi')
 })
 
 test('resolveChannelTradingConfig uses per-channel override', () => {

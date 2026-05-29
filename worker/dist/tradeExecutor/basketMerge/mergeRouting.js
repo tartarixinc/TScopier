@@ -42,13 +42,16 @@ async function tryParameterFollowUpMergeModifyOnly(ctx, args) {
     if (a !== 'buy' && a !== 'sell')
         return { handled: false };
     const direction = a === 'buy' ? 'buy' : 'sell';
-    const anchor = await (0, multiTradeMerge_1.resolveLatestOpenBasketAnchor)(ctx.supabase, {
+    const anchor = await (0, multiTradeMerge_1.resolveOpenBasketAnchorForParameterFollowUp)(ctx.supabase, {
         userId: signal.user_id,
         brokerAccountId: broker.id,
         brokerSymbol: symbol,
         signalSymbol: parsed.symbol,
         direction,
         channelId: signal.channel_id,
+    }, {
+        currentSignalId: signal.id,
+        currentSignalCreatedAt: signal.created_at ?? null,
     });
     if (!anchor) {
         // Fire-and-forget: this is a diagnostic-only log on the live-entry hot
@@ -69,6 +72,20 @@ async function tryParameterFollowUpMergeModifyOnly(ctx, args) {
         }).then(() => undefined, () => undefined);
         return { handled: false };
     }
+    const openLegDeadline = Date.now() + 3000;
+    while (Date.now() < openLegDeadline) {
+        const { count } = await ctx.supabase
+            .from('trades')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', signal.user_id)
+            .eq('broker_account_id', broker.id)
+            .eq('signal_id', anchor.anchorSignalId)
+            .eq('status', 'open')
+            .eq('direction', direction);
+        if ((count ?? 0) > 0)
+            break;
+        await new Promise(resolve => setTimeout(resolve, 150));
+    }
     const mergeSignal = await (0, helpers_1.loadMergeSignalForLinking)(ctx, signal);
     const link = await (0, helpers_1.resolveBasketMergeLinkContext)(ctx, {
         mergeSignal,
@@ -81,7 +98,8 @@ async function tryParameterFollowUpMergeModifyOnly(ctx, args) {
     // a same-direction signal carrying explicit stops should refresh that live slot.
     const manual = (broker.manual_settings ?? {});
     const allowUnlinkedRefresh = (manual.add_new_trades_to_existing === false && (0, channelActiveTradeParams_1.parsedSignalHasExplicitStops)(parsed))
-        || link.parameterRefreshSameChannel;
+        || link.parameterRefreshSameChannel
+        || (link.implicitBundleWithinTightWindow && link.implicitSameChannelBundle && (0, channelActiveTradeParams_1.parsedSignalHasExplicitStops)(parsed));
     if (!link.replyOk && !link.threadLinksAnchor && !link.parentLinksAnchor && !allowUnlinkedRefresh) {
         void ctx.supabase.from('trade_execution_logs').insert({
             user_id: signal.user_id,

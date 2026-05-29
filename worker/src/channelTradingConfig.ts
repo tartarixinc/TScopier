@@ -24,14 +24,20 @@ export type ChannelConfigReadyResult =
   | { ready: true; source: ChannelConfigSource }
   | { ready: false; reason: 'channel_config_missing' | 'channel_config_incomplete'; channelId: string }
 
+export function normalizeChannelUuid(id: string | null | undefined): string | null {
+  const s = String(id ?? '').trim()
+  return s ? s.toLowerCase() : null
+}
+
 export function normalizeChannelTradingConfigsMap(raw: unknown): ChannelTradingConfigsMap {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
   const out: ChannelTradingConfigsMap = {}
   for (const [channelId, value] of Object.entries(raw as Record<string, unknown>)) {
-    if (!channelId.trim() || !value || typeof value !== 'object' || Array.isArray(value)) continue
+    const key = normalizeChannelUuid(channelId)
+    if (!key || !value || typeof value !== 'object' || Array.isArray(value)) continue
     const row = value as Record<string, unknown>
     const mode = row.copier_mode
-    out[channelId] = {
+    out[key] = {
       copier_mode: mode === 'ai' || mode === 'manual' ? mode : undefined,
       manual_settings: row.manual_settings && typeof row.manual_settings === 'object'
         ? (row.manual_settings as Record<string, unknown>)
@@ -42,6 +48,65 @@ export function normalizeChannelTradingConfigsMap(raw: unknown): ChannelTradingC
     }
   }
   return out
+}
+
+export function resolveChannelConfigEntry(
+  configs: ChannelTradingConfigsMap,
+  channelId: string | null | undefined,
+): ChannelTradingConfig | undefined {
+  const key = normalizeChannelUuid(channelId)
+  if (!key) return undefined
+  if (configs[key]) return configs[key]
+  for (const [k, v] of Object.entries(configs)) {
+    if (k.toLowerCase() === key) return v
+  }
+  return undefined
+}
+
+export function healChannelTradingConfigsMap(
+  broker: BrokerChannelTradingFields,
+): ChannelTradingConfigsMap {
+  const configs = { ...normalizeChannelTradingConfigsMap(broker.channel_trading_configs) }
+  const linkedIds = normalizeSignalChannelIds(broker.signal_channel_ids)
+  const fallbackManual = normalizeManualSettingsForExecution(broker.manual_settings) as Record<string, unknown>
+  const defaultManual = normalizeManualSettingsForExecution(
+    buildDefaultChannelTradingConfig().manual_settings,
+  ) as Record<string, unknown>
+  const fallbackMode = (broker.copier_mode ?? 'manual') as 'ai' | 'manual'
+
+  for (const channelId of linkedIds) {
+    const key = normalizeChannelUuid(channelId)
+    if (!key) continue
+    if (storedPerChannelConfigComplete(configs, key)) continue
+
+    const existing = resolveChannelConfigEntry(configs, key)
+    let manual: Record<string, unknown>
+    if (channelManualSettingsComplete(existing?.manual_settings)) {
+      manual = normalizeManualSettingsForExecution(existing?.manual_settings) as Record<string, unknown>
+    } else if (
+      channelManualSettingsComplete(fallbackManual)
+      && (linkedIds.length === 1 || normalizeChannelUuid(linkedIds[0]) === key)
+    ) {
+      manual = fallbackManual
+      console.warn(
+        `[channelTradingConfig] healed missing per-channel config for ${key}`
+        + ' from broker manual_settings — re-save Account Configuration for this channel',
+      )
+    } else {
+      manual = defaultManual
+      console.warn(
+        `[channelTradingConfig] healed missing per-channel config for ${key}`
+        + ' with defaults — open Account Configuration, set lot + Single/Multi, Save',
+      )
+    }
+
+    configs[key] = {
+      copier_mode: existing?.copier_mode ?? fallbackMode,
+      manual_settings: manual,
+      ai_settings: (existing?.ai_settings ?? broker.ai_settings ?? {}) as Record<string, unknown>,
+    }
+  }
+  return configs
 }
 
 export function buildDefaultChannelTradingConfig(): ChannelTradingConfig {
@@ -69,7 +134,7 @@ export function storedPerChannelConfigComplete(
   configs: ChannelTradingConfigsMap,
   channelId: string,
 ): boolean {
-  const entry = configs[channelId]
+  const entry = resolveChannelConfigEntry(configs, channelId)
   if (!entry) return false
   return channelManualSettingsComplete(entry.manual_settings)
 }
@@ -78,20 +143,22 @@ export function channelConfigReadyForExecution(
   broker: BrokerChannelTradingFields,
   channelId: string | null | undefined,
 ): ChannelConfigReadyResult {
-  if (!channelId) {
+  const normalizedChannelId = normalizeChannelUuid(channelId)
+  if (!normalizedChannelId) {
     return { ready: true, source: 'unlinked' }
   }
   const linked = normalizeSignalChannelIds(broker.signal_channel_ids)
-  if (!linked.includes(channelId)) {
+  const linkedNormalized = linked.map(id => normalizeChannelUuid(id)).filter(Boolean) as string[]
+  if (!linkedNormalized.includes(normalizedChannelId)) {
     return { ready: true, source: 'unlinked' }
   }
-  const configs = normalizeChannelTradingConfigsMap(broker.channel_trading_configs)
-  const entry = configs[channelId]
+  const healed = healChannelTradingConfigsMap(broker)
+  const entry = resolveChannelConfigEntry(healed, normalizedChannelId)
   if (!entry) {
-    return { ready: false, reason: 'channel_config_missing', channelId }
+    return { ready: false, reason: 'channel_config_missing', channelId: normalizedChannelId }
   }
   if (!channelManualSettingsComplete(entry.manual_settings)) {
-    return { ready: false, reason: 'channel_config_incomplete', channelId }
+    return { ready: false, reason: 'channel_config_incomplete', channelId: normalizedChannelId }
   }
   return { ready: true, source: 'per_channel' }
 }
@@ -118,8 +185,8 @@ export function resolveChannelTradingConfig(
     }
   }
 
-  const configs = normalizeChannelTradingConfigsMap(broker.channel_trading_configs)
-  const channelConfig = configs[channelId]
+  const configs = healChannelTradingConfigsMap(broker)
+  const channelConfig = resolveChannelConfigEntry(configs, channelId)
   const ready = channelConfigReadyForExecution(broker, channelId)
 
   if (ready.ready && ready.source === 'per_channel' && channelConfig) {

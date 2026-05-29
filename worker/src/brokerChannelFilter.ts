@@ -6,7 +6,7 @@ export type BrokerChannelFilterFields = {
 
 export function normalizeSignalChannelIds(raw: string[] | null | undefined): string[] {
   if (!raw?.length) return []
-  return raw.map(String).filter(Boolean)
+  return raw.map(id => String(id).trim().toLowerCase()).filter(Boolean)
 }
 
 /**
@@ -19,5 +19,6 @@ export function channelMatchesBrokerSignal(
 ): boolean {
   const ids = normalizeSignalChannelIds(broker.signal_channel_ids)
   if (!ids.length || !channelId) return false
-  return ids.includes(channelId)
+  const normalized = String(channelId).trim().toLowerCase()
+  return ids.includes(normalized)
 }

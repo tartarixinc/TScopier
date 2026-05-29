@@ -19,7 +19,7 @@ export type BrokerChannelFilterFields = {
 
 export function normalizeSignalChannelIds(raw: string[] | null | undefined): string[] {
   if (!raw?.length) return []
-  return raw.map(String).filter(Boolean)
+  return raw.map(id => String(id).trim().toLowerCase()).filter(Boolean)
 }
 
 /** Mirrors worker/src/brokerChannelFilter.ts */

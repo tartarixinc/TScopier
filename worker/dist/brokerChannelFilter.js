@@ -5,7 +5,7 @@ exports.channelMatchesBrokerSignal = channelMatchesBrokerSignal;
 function normalizeSignalChannelIds(raw) {
     if (!raw?.length)
         return [];
-    return raw.map(String).filter(Boolean);
+    return raw.map(id => String(id).trim().toLowerCase()).filter(Boolean);
 }
 /**
  * True when this broker should copy signals from `channelId`.
@@ -15,5 +15,6 @@ function channelMatchesBrokerSignal(broker, channelId) {
     const ids = normalizeSignalChannelIds(broker.signal_channel_ids);
     if (!ids.length || !channelId)
         return false;
-    return ids.includes(channelId);
+    const normalized = String(channelId).trim().toLowerCase();
+    return ids.includes(normalized);
 }

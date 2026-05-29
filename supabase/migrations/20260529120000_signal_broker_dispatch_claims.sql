@@ -26,10 +26,10 @@ begin
     select id, signal_channel_ids, channel_trading_configs, manual_settings, copier_mode
     from public.broker_accounts
     where signal_channel_ids is not null
-      and jsonb_array_length(signal_channel_ids) > 0
+      and cardinality(signal_channel_ids) > 0
   loop
     configs := coalesce(rec.channel_trading_configs, '{}'::jsonb);
-    ids := array(select jsonb_array_elements_text(rec.signal_channel_ids));
+    ids := array(select unnest(rec.signal_channel_ids)::text);
     first_id := ids[1];
     legacy := coalesce(rec.manual_settings, '{}'::jsonb);
 

@@ -29,7 +29,7 @@ import {
   type VirtualPendingLeg,
 } from '../manualPlanner'
 import { normalizeManualSettingsForExecution } from '../manualPlanning/normalizeManualSettings'
-import { normalizeChannelTradingConfigsMap, withChannelTradingConfig, channelConfigReadyForExecution, resolveChannelTradingConfig } from '../channelTradingConfig'
+import { normalizeChannelTradingConfigsMap, withChannelTradingConfig, channelConfigReadyForExecution, resolveChannelTradingConfig, healChannelTradingConfigsMap } from '../channelTradingConfig'
 import { manualDispatchAlreadyMaterialized } from './basketMerge/helpers'
 import { claimSignalBrokerDispatch } from './signalBrokerDispatchClaim'
 import { findActiveNewsBlackout } from '../newsTrading/blackout'
@@ -312,9 +312,9 @@ export class TradeExecutor {
   // ── caches ────────────────────────────────────────────────────────────
 
   private normalizeBrokerRow(row: BrokerRow): BrokerRow {
-    const configs = normalizeChannelTradingConfigsMap(row.channel_trading_configs)
+    const healedConfigs = healChannelTradingConfigsMap(row)
     const normalizedConfigs: Record<string, unknown> = {}
-    for (const [channelId, cfg] of Object.entries(configs)) {
+    for (const [channelId, cfg] of Object.entries(healedConfigs)) {
       normalizedConfigs[channelId] = {
         ...cfg,
         manual_settings: normalizeManualSettingsForExecution(cfg.manual_settings) as Record<string, unknown>,
@@ -323,7 +323,7 @@ export class TradeExecutor {
     return {
       ...row,
       manual_settings: normalizeManualSettingsForExecution(row.manual_settings) as Record<string, unknown>,
-      channel_trading_configs: Object.keys(normalizedConfigs).length ? normalizedConfigs : row.channel_trading_configs,
+      channel_trading_configs: normalizedConfigs,
     }
   }
 
