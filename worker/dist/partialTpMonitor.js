@@ -273,6 +273,11 @@ class PartialTpMonitor {
             if (benign) {
                 console.log(`[partialTpMonitor] parent gone signal=${partial.signal_id} ticket=${ticketNum}: ${msg}`);
                 await this.supabase
+                    .from('trades')
+                    .update({ status: 'closed', closed_at: new Date().toISOString() })
+                    .eq('id', partial.trade_id)
+                    .eq('status', 'open');
+                await this.supabase
                     .from('partial_tp_legs')
                     .update({ status: 'cancelled', fired_at: new Date().toISOString(), error_message: msg })
                     .eq('id', partial.id);

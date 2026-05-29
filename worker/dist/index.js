@@ -19,6 +19,7 @@ const trailingStopMonitor_1 = require("./trailingStopMonitor");
 const basketSlTpReconcileMonitor_1 = require("./basketSlTpReconcileMonitor");
 const newsTradingMonitor_1 = require("./newsTradingMonitor");
 const brokerConnectionMonitor_1 = require("./brokerConnectionMonitor");
+const openTradeReconcileMonitor_1 = require("./openTradeReconcileMonitor");
 const workerConfig_1 = require("./workerConfig");
 const tradeSignalPush_1 = require("./tradeSignalPush");
 const signalQueueConsumer_1 = require("./queue/signalQueueConsumer");
@@ -56,14 +57,17 @@ function startTradeMonitors() {
         const cweCloseMonitor = new cweCloseMonitor_1.CweCloseMonitor(supabase);
         const partialTpMonitor = new partialTpMonitor_1.PartialTpMonitor(supabase);
         const signalEntryPendingMonitor = new signalEntryPendingMonitor_1.SignalEntryPendingMonitor(supabase);
+        const openTradeReconcileMonitor = new openTradeReconcileMonitor_1.OpenTradeReconcileMonitor(supabase);
         virtualPendingMonitor.start();
         cweCloseMonitor.start();
         partialTpMonitor.start();
         signalEntryPendingMonitor.start();
+        openTradeReconcileMonitor.start();
         trackMonitor(virtualPendingMonitor);
         trackMonitor(cweCloseMonitor);
         trackMonitor(partialTpMonitor);
         trackMonitor(signalEntryPendingMonitor);
+        trackMonitor(openTradeReconcileMonitor);
     }
     if (workerConfig_1.workerConfig.runsTrade) {
         const brokerConnectionMonitor = new brokerConnectionMonitor_1.BrokerConnectionMonitor(supabase);

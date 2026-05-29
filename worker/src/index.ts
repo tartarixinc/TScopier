@@ -14,6 +14,7 @@ import { TrailingStopMonitor } from './trailingStopMonitor'
 import { BasketSlTpReconcileMonitor } from './basketSlTpReconcileMonitor'
 import { NewsTradingMonitor } from './newsTradingMonitor'
 import { BrokerConnectionMonitor } from './brokerConnectionMonitor'
+import { OpenTradeReconcileMonitor } from './openTradeReconcileMonitor'
 import { workerConfig } from './workerConfig'
 import { validateListenerTradeShardConfig, validateListenerQueueConfig } from './tradeSignalPush'
 import { SignalQueueConsumerManager } from './queue/signalQueueConsumer'
@@ -61,14 +62,17 @@ function startTradeMonitors() {
     const cweCloseMonitor = new CweCloseMonitor(supabase)
     const partialTpMonitor = new PartialTpMonitor(supabase)
     const signalEntryPendingMonitor = new SignalEntryPendingMonitor(supabase)
+    const openTradeReconcileMonitor = new OpenTradeReconcileMonitor(supabase)
     virtualPendingMonitor.start()
     cweCloseMonitor.start()
     partialTpMonitor.start()
     signalEntryPendingMonitor.start()
+    openTradeReconcileMonitor.start()
     trackMonitor(virtualPendingMonitor)
     trackMonitor(cweCloseMonitor)
     trackMonitor(partialTpMonitor)
     trackMonitor(signalEntryPendingMonitor)
+    trackMonitor(openTradeReconcileMonitor)
   }
 
   if (workerConfig.runsTrade) {
