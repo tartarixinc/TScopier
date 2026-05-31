@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 700" role="img" aria-label="Billing page summary">
+  <rect width="1200" height="700" fill="#0f172a" />
+  <rect x="30" y="30" width="1140" height="640" rx="18" fill="#111827" stroke="#334155" />
+  <rect x="70" y="80" width="510" height="180" rx="12" fill="#0b1220" stroke="#1f2937" />
+  <rect x="620" y="80" width="510" height="180" rx="12" fill="#0b1220" stroke="#1f2937" />
+  <rect x="70" y="290" width="1060" height="330" rx="12" fill="#0b1220" stroke="#1f2937" />
+  <text x="94" y="125" font-family="Inter, Arial, sans-serif" font-size="28" fill="#14b8a6">Subscription and Billing</text>
+  <text x="94" y="170" font-family="Inter, Arial, sans-serif" font-size="20" fill="#cbd5e1">Current Plan</text>
+  <text x="640" y="170" font-family="Inter, Arial, sans-serif" font-size="20" fill="#cbd5e1">Next Renewal</text>
+  <text x="94" y="338" font-family="Inter, Arial, sans-serif" font-size="22" fill="#f8fafc">Invoices</text>
+  <text x="94" y="378" font-family="Inter, Arial, sans-serif" font-size="18" fill="#94a3b8">Download invoice PDFs and review billing periods.</text>
+</svg>

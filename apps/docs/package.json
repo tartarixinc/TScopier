@@ -1,0 +1,12 @@
+{
+  "name": "tscopier-docs",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "dev": "mintlify dev",
+    "build": "mintlify build"
+  },
+  "devDependencies": {
+    "mintlify": "^4.0.0"
+  }
+}

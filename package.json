@@ -8,6 +8,8 @@
     "build": "tsc -b && vite build",
     "dev:backoffice": "npm --prefix apps/backoffice run dev",
     "build:backoffice": "npm --prefix apps/backoffice run build",
+    "dev:docs": "npm --prefix apps/docs run dev",
+    "build:docs": "npm --prefix apps/docs run build",
     "lint": "eslint .",
     "preview": "vite preview",
     "test:worker": "npm --prefix worker test"

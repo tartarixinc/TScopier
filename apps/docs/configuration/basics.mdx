@@ -1,0 +1,42 @@
+---
+title: "Configuration basics"
+description: "Understand the main tabs in Account Configuration and where to set core copier behavior."
+---
+
+# Configuration basics
+
+Account Configuration controls how each broker account responds to channel signals.
+
+![Account configuration tabs](/images/account-config-tabs.svg)
+
+## Main tabs
+
+- **Symbols**: symbol mapping and instrument behavior
+- **Risk**: lot sizing mode and exposure choices
+- **Stops**: TP/SL behavior and target handling
+- **Management**: post-entry management actions
+- **Filters**: allow/ignore channel instruction categories
+
+## Recommended first setup
+
+1. Set conservative lot size in **Risk**
+2. Define TP split in **Stops**
+3. Keep only essential instruction categories enabled in **Filters**
+4. Save and test with one channel
+
+## Common mistakes
+
+- Copying starts before lot size is reviewed
+- Too many advanced options enabled on first setup
+- Multiple channels share one account without validating conflict behavior
+
+## Related pages
+
+- [Lot size and TPs](/configuration/lot-size-and-tps)
+- [Add channels](/telegram/channels)
+- [Copier not copying](/troubleshooting/copier-not-copying)
+
+## Need help?
+
+- [Help & Support (in app)](https://app.tscopier.ai/contact-support)
+- [System status](https://status.tscopier.ai)

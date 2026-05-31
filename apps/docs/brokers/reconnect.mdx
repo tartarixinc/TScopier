@@ -1,0 +1,38 @@
+---
+title: "Reconnect broker issues"
+description: "Fix common account connection problems before they block copying."
+---
+
+# Reconnect broker issues
+
+If channels are active but trades are not executing, a broker connection issue is often the cause.
+
+## Symptoms
+
+- Account appears disconnected/inactive
+- Copier logs show parsing but no order execution
+- Reconnect banner appears in account list
+
+## Recovery steps
+
+1. Open **Account & Configuration**
+2. Find the affected broker account
+3. Use reconnect action and re-enter credentials if requested
+4. Confirm status returns to active
+5. Send a low-risk test signal and check Copier Logs
+
+## If it still fails
+
+- Verify you selected the correct broker server
+- Verify account password is current
+- Verify account permissions allow trading
+
+## Related pages
+
+- [Connect MT4/MT5](/brokers/connect-mt4-mt5)
+- [Copier not copying](/troubleshooting/copier-not-copying)
+
+## Need help?
+
+- [Help & Support (in app)](https://app.tscopier.ai/contact-support)
+- [System status](https://status.tscopier.ai)
