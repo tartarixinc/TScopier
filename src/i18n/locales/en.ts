@@ -963,6 +963,7 @@ export const en: Translations = {
     payoutWalletAddress: 'USDT TRC20 wallet address',
     payoutWalletHint: 'Payout method is USDT TRC20 only. Enter your wallet address.',
     saveWalletAddress: 'Save wallet address',
+    walletAddressSaveFailed: 'Could not save wallet address.',
     customCodeLabel: 'Custom referral code',
     customCodePlaceholder: 'your-name-123',
     customCodeHint: 'You can use letters, numbers, or symbols (no spaces), 3 to 32 characters.',

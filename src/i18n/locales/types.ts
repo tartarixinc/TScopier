@@ -929,6 +929,7 @@ export interface AffiliateTranslations {
   payoutWalletAddress: string
   payoutWalletHint: string
   saveWalletAddress: string
+  walletAddressSaveFailed: string
   customCodeLabel: string
   customCodePlaceholder: string
   customCodeHint: string

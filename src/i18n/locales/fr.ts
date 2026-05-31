@@ -963,6 +963,7 @@ export const fr: Translations = {
     payoutWalletAddress: 'Adresse wallet USDT TRC20',
     payoutWalletHint: 'Le mode de paiement est uniquement USDT TRC20. Saisissez votre adresse wallet.',
     saveWalletAddress: 'Enregistrer l’adresse',
+    walletAddressSaveFailed: 'Impossible d’enregistrer l’adresse wallet.',
     customCodeLabel: 'Code de parrainage personnalisé',
     customCodePlaceholder: 'votre-nom-123',
     customCodeHint: 'Vous pouvez utiliser des lettres, chiffres ou symboles (sans espaces), 3 à 32 caractères.',
