@@ -161,10 +161,9 @@ export const configureModalFr: ConfigureModalTranslations = {
     summaryTps: 'TP à {list}',
     summaryJoin: ' ; ',
     summaryPrefix: 'Les SL/TP du canal sont ignorés pour les côtés activés — le copieur utilise {parts}.',
+    basicPlanMoreTpsLimit: 'Davantage de TP sont disponibles avec le plan Advanced.',
   },
   management: {
-    monitorIntroSingle:
-      'Le worker surveille les positions ouvertes toutes les quelques secondes. Les règles s’appliquent par jambe ouverte en mode Position unique.',
     monitorIntroMulti:
       'Le worker surveille les positions ouvertes toutes les quelques secondes. Les règles s’appliquent par jambe ouverte (chaque jambe en Positions multiples est suivie séparément).',
     moveSlTitle: 'Déplacer le SL après mouvement',

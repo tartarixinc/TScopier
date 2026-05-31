@@ -143,9 +143,9 @@ export interface ConfigureModalTranslations {
     summaryTps: string
     summaryJoin: string
     summaryPrefix: string
+    basicPlanMoreTpsLimit: string
   }
   management: {
-    monitorIntroSingle: string
     monitorIntroMulti: string
     moveSlTitle: string
     moveSlSubtitle: string

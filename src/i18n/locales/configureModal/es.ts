@@ -161,10 +161,9 @@ export const configureModalEs: ConfigureModalTranslations = {
     summaryTps: 'TP en {list}',
     summaryJoin: '; ',
     summaryPrefix: 'Se ignoran SL/TP del canal en los lados activados — el copiador usa {parts}.',
+    basicPlanMoreTpsLimit: 'Hay más TPs disponibles en el plan Advanced.',
   },
   management: {
-    monitorIntroSingle:
-      'El worker supervisa las operaciones abiertas cada pocos segundos. Las reglas se aplican por pierna abierta en modo Operación única.',
     monitorIntroMulti:
       'El worker supervisa las operaciones abiertas cada pocos segundos. Las reglas se aplican por pierna abierta (cada pierna en Operaciones múltiples se rastrea por separado).',
     moveSlTitle: 'Mover SL tras el movimiento',

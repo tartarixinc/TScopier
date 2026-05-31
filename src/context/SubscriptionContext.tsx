@@ -33,6 +33,7 @@ export interface Subscription {
   extra_accounts: number
   trial_ends_at: string | null
   current_period_end: string | null
+  created_at: string
 }
 
 export interface SubscriptionUsage {

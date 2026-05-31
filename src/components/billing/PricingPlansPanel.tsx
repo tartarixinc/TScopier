@@ -3,6 +3,7 @@ import { Check, Zap } from 'lucide-react'
 import clsx from 'clsx'
 import { useT } from '../../context/LocaleContext'
 import { useAuth } from '../../context/AuthContext'
+import { useSubscription } from '../../context/SubscriptionContext'
 import { Button } from '../ui/Button'
 import { interpolate } from '../../i18n/interpolate'
 import {
@@ -13,12 +14,15 @@ import {
 interface PricingPlansPanelProps {
   onDismiss?: () => void
   showSkip?: boolean
+  /** Hide centered intro subtitle (e.g. when embedded on Billing page). */
+  showIntro?: boolean
 }
 
-export function PricingPlansPanel({ onDismiss, showSkip = true }: PricingPlansPanelProps) {
+export function PricingPlansPanel({ onDismiss, showSkip = true, showIntro = true }: PricingPlansPanelProps) {
   const t = useT()
   const pt = t.pricing
   const { session } = useAuth()
+  const { effectivePlan } = useSubscription()
   const [interval, setInterval] = useState<'monthly' | 'annual'>('monthly')
   const [extraAccounts, setExtraAccounts] = useState(0)
   const [checkoutLoading, setCheckoutLoading] = useState<'basic' | 'advanced' | null>(null)
@@ -29,7 +33,7 @@ export function PricingPlansPanel({ onDismiss, showSkip = true }: PricingPlansPa
   const formatMoney = (amount: number) => `$${amount.toFixed(2)}`
 
   const startCheckout = async (plan: 'basic' | 'advanced') => {
-    if (!session?.access_token) return
+    if (!session?.access_token || effectivePlan === plan) return
     setCheckoutError('')
     setCheckoutLoading(plan)
     try {
@@ -62,7 +66,9 @@ export function PricingPlansPanel({ onDismiss, showSkip = true }: PricingPlansPa
   return (
     <div>
       <div className="text-center">
-        <p className="text-base text-neutral-500 dark:text-neutral-400">{pt.subtitle}</p>
+        {showIntro ? (
+          <p className="text-base text-neutral-500 dark:text-neutral-400">{pt.subtitle}</p>
+        ) : null}
 
         {checkoutError ? (
           <div
@@ -140,10 +146,10 @@ export function PricingPlansPanel({ onDismiss, showSkip = true }: PricingPlansPa
             size="lg"
             className="w-full"
             loading={checkoutLoading === 'basic'}
-            disabled={checkoutLoading !== null}
+            disabled={checkoutLoading !== null || effectivePlan === 'basic'}
             onClick={() => void startCheckout('basic')}
           >
-            {pt.subscribe}
+            {effectivePlan === 'basic' ? pt.billing.currentPlan : pt.subscribe}
           </Button>
 
           <div className="mt-8">
@@ -242,10 +248,10 @@ export function PricingPlansPanel({ onDismiss, showSkip = true }: PricingPlansPa
             size="lg"
             className="w-full"
             loading={checkoutLoading === 'advanced'}
-            disabled={checkoutLoading !== null}
+            disabled={checkoutLoading !== null || effectivePlan === 'advanced'}
             onClick={() => void startCheckout('advanced')}
           >
-            {pt.startTrial}
+            {effectivePlan === 'advanced' ? pt.billing.currentPlan : pt.startTrial}
           </Button>
           <p className="mt-2 text-center text-xs text-neutral-400 dark:text-neutral-500">{pt.trialDays}</p>
 

@@ -2738,7 +2738,7 @@ export function AccountConfigPage() {
                               </div>
                               {limits.maxTpRows != null
                                 && (channelManualSettings.tp_lots ?? DEFAULT_MANUAL_TP_LOTS).length >= limits.maxTpRows ? (
-                                  <UpgradePrompt variant="compact" reason={pw.advancedFeature} />
+                                  <UpgradePrompt variant="compact" reason={cm.stops.basicPlanMoreTpsLimit} />
                               ) : null}
                               <p className="text-xs text-neutral-600 dark:text-neutral-400">
                                 {cm.stops.tpDistributionIntro}
@@ -2928,9 +2928,11 @@ export function AccountConfigPage() {
 
                           return (
                           <div className="space-y-6">
-                            <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                              {isSingleTrade ? cm.management.monitorIntroSingle : cm.management.monitorIntroMulti}
-                            </p>
+                            {!isSingleTrade ? (
+                              <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                                {cm.management.monitorIntroMulti}
+                              </p>
+                            ) : null}
 
                             <section className="rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
                               <div className="flex items-center justify-between gap-3 bg-white dark:bg-neutral-900 px-4 py-3">

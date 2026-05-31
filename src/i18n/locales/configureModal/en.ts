@@ -161,9 +161,9 @@ export const configureModalEn: ConfigureModalTranslations = {
     summaryTps: 'TPs at {list}',
     summaryJoin: '; ',
     summaryPrefix: 'Channel SL/TP are ignored for enabled sides — copier uses {parts}.',
+    basicPlanMoreTpsLimit: 'More TPs are available on the Advanced plan.',
   },
   management: {
-    monitorIntroSingle: 'The worker monitors open trades every few seconds. Rules apply per open leg in Single Trade mode.',
     monitorIntroMulti:
       'The worker monitors open trades every few seconds. Rules apply per open leg (each Multi Trade leg is tracked separately).',
     moveSlTitle: 'Move SL after movement',

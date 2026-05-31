@@ -838,10 +838,41 @@ export interface PricingTranslations {
   billing: {
     title: string
     subtitle: string
+    customerId: string
+    credit: string
+    purchaseSubscription: string
+    memberSince: string
+    nextRenewal: string
     currentPlan: string
+    billed: string
+    noActiveSubscription: string
+    freePlan: string
+    freePlanSummary: string
+    basicPlanSummary: string
+    advancedPlanSummary: string
+    statusLine: string
+    invoices: string
+    invoicesHint: string
+    invoiceNumber: string
+    period: string
+    date: string
+    amount: string
     status: string
+    downloadInvoice: string
+    invoiceStatusPaid: string
+    invoiceStatusDraft: string
+    invoiceStatusOpen: string
+    invoiceStatusVoid: string
+    invoiceStatusUncollectible: string
+    noInvoices: string
+    loadInvoicesFailed: string
+    subscriptionPlans: string
+    subscriptionPlansIntro: string
+    back: string
+    next: string
     nextBilling: string
     extraAccounts: string
+    extraAccountsSummary: string
     manageBilling: string
     noPlan: string
     statusActive: string
