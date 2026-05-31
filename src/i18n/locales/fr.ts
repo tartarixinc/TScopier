@@ -962,6 +962,8 @@ export const fr: Translations = {
     copyLink: 'Copier le lien',
     payoutWalletAddress: 'Adresse wallet USDT TRC20',
     payoutWalletHint: 'Le mode de paiement est uniquement USDT TRC20. Saisissez votre adresse wallet.',
+    editWalletAddress: 'Modifier l’adresse wallet',
+    cancelEditWalletAddress: 'Annuler',
     saveWalletAddress: 'Enregistrer l’adresse',
     walletAddressSaveFailed: 'Impossible d’enregistrer l’adresse wallet.',
     customCodeLabel: 'Code de parrainage personnalisé',

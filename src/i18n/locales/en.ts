@@ -962,6 +962,8 @@ export const en: Translations = {
     copyLink: 'Copy link',
     payoutWalletAddress: 'USDT TRC20 wallet address',
     payoutWalletHint: 'Payout method is USDT TRC20 only. Enter your wallet address.',
+    editWalletAddress: 'Edit wallet address',
+    cancelEditWalletAddress: 'Cancel',
     saveWalletAddress: 'Save wallet address',
     walletAddressSaveFailed: 'Could not save wallet address.',
     customCodeLabel: 'Custom referral code',

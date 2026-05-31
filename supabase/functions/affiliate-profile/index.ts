@@ -155,7 +155,9 @@ Deno.serve(async (req: Request) => {
       namesByUser.set(row.user_id, name);
     }
 
-    const appBase = Deno.env.get("APP_URL") || req.headers.get("origin") || "https://app.tscopier.ai";
+    const appBase = Deno.env.get("MARKETING_URL")
+      || Deno.env.get("PUBLIC_SITE_URL")
+      || "https://tscopier.ai";
     return Response.json({
       profile: latestProfile,
       referral_link: `${appBase.replace(/\/+$/, "")}/${encodeURIComponent(latestProfile.referral_code)}`,

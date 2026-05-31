@@ -40,6 +40,7 @@ export function AffiliateProgramPage() {
   const [walletAddress, setWalletAddress] = useState('')
   const [customCode, setCustomCode] = useState('')
   const [isEditingCode, setIsEditingCode] = useState(false)
+  const [isEditingWallet, setIsEditingWallet] = useState(false)
 
   const locale = typeof navigator !== 'undefined' ? navigator.language : 'en-US'
   const currency = 'USD'
@@ -99,8 +100,9 @@ export function AffiliateProgramPage() {
     setError('')
     try {
       await updateAffiliateProfileSettings(session.access_token, {
-        payout_email: walletAddress,
+        payout_email: walletAddress.trim(),
       })
+      setIsEditingWallet(false)
       await refresh()
     } catch (e) {
       setError(e instanceof Error ? e.message : at.walletAddressSaveFailed)
@@ -130,6 +132,16 @@ export function AffiliateProgramPage() {
       setCodeSaving(false)
     }
   }
+
+  const maskWalletAddress = (value: string): string => {
+    const trimmed = value.trim()
+    if (!trimmed) return '—'
+    if (trimmed.length <= 10) return trimmed
+    return `${trimmed.slice(0, 6)}...${trimmed.slice(-4)}`
+  }
+
+  const savedWalletAddress = (data?.profile.payout_email ?? '').trim()
+  const hasSavedWalletAddress = savedWalletAddress.length > 0
 
   return (
     <PageShell>
@@ -241,19 +253,59 @@ export function AffiliateProgramPage() {
           </div>
 
           <div className="rounded-xl border border-neutral-200 p-4 dark:border-neutral-800">
-            <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{at.payoutWalletAddress}</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Input
-                label=""
-                type="text"
-                value={walletAddress}
-                onChange={(e) => setWalletAddress(e.target.value.trim())}
-                placeholder="T...."
-                className="min-w-[18rem] flex-1"
-              />
-              <Button onClick={() => void saveWalletAddress()} loading={saving}>{at.saveWalletAddress}</Button>
+            <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+              {at.payoutWalletAddress}
+              {hasSavedWalletAddress ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setWalletAddress(savedWalletAddress)
+                    setIsEditingWallet(prev => !prev)
+                  }}
+                  className="inline-flex items-center justify-center rounded p-1 text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+                  aria-label={at.editWalletAddress}
+                  title={at.editWalletAddress}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
             </div>
-            <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">{at.payoutWalletHint}</p>
+            {!hasSavedWalletAddress || isEditingWallet ? (
+              <div className="space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  <Input
+                    label=""
+                    type="text"
+                    value={walletAddress}
+                    onChange={(e) => setWalletAddress(e.target.value)}
+                    placeholder="T...."
+                    className="min-w-[18rem] flex-1"
+                  />
+                  <Button onClick={() => void saveWalletAddress()} loading={saving}>
+                    {at.saveWalletAddress}
+                  </Button>
+                  {hasSavedWalletAddress ? (
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        setWalletAddress(savedWalletAddress)
+                        setIsEditingWallet(false)
+                      }}
+                    >
+                      {at.cancelEditWalletAddress}
+                    </Button>
+                  ) : null}
+                </div>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">{at.payoutWalletHint}</p>
+              </div>
+            ) : (
+              <>
+                <p className="text-base font-semibold tracking-wide text-neutral-900 dark:text-neutral-50">
+                  {maskWalletAddress(savedWalletAddress)}
+                </p>
+                <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">{at.payoutWalletHint}</p>
+              </>
+            )}
           </div>
         </Card>
 

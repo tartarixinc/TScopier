@@ -962,6 +962,8 @@ export const es: Translations = {
     copyLink: 'Copiar enlace',
     payoutWalletAddress: 'Dirección de billetera USDT TRC20',
     payoutWalletHint: 'El método de pago es solo USDT TRC20. Ingresa tu dirección de billetera.',
+    editWalletAddress: 'Editar dirección de billetera',
+    cancelEditWalletAddress: 'Cancelar',
     saveWalletAddress: 'Guardar dirección',
     walletAddressSaveFailed: 'No se pudo guardar la dirección de billetera.',
     customCodeLabel: 'Código de referido personalizado',

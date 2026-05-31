@@ -928,6 +928,8 @@ export interface AffiliateTranslations {
   copyLink: string
   payoutWalletAddress: string
   payoutWalletHint: string
+  editWalletAddress: string
+  cancelEditWalletAddress: string
   saveWalletAddress: string
   walletAddressSaveFailed: string
   customCodeLabel: string
