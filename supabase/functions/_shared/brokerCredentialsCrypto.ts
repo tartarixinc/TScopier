@@ -5,6 +5,14 @@ function trimEnv(env: { get(name: string): string | undefined }, key: string): s
   return String(env.get(key) ?? "").trim()
 }
 
+function resolveEncryptionKeyRaw(env: { get(name: string): string | undefined }): string {
+  return (
+    trimEnv(env, "BROKER_CREDENTIALS_ENCRYPTION_KEY")
+    || trimEnv(env, "BROKER_CREDENTIALS_KEY")
+    || trimEnv(env, "MT_PASSWORD_ENCRYPTION_KEY")
+  )
+}
+
 async function decodeKeyMaterial(raw: string): Promise<Uint8Array | null> {
   const trimmed = raw.trim()
   if (!trimmed) return null
@@ -50,7 +58,7 @@ function fromB64(value: string): Uint8Array | null {
 }
 
 async function importAesKey(env: { get(name: string): string | undefined }): Promise<CryptoKey | null> {
-  const raw = trimEnv(env, "BROKER_CREDENTIALS_ENCRYPTION_KEY")
+  const raw = resolveEncryptionKeyRaw(env)
   if (!raw) return null
   const keyBytes = await decodeKeyMaterial(raw)
   if (!keyBytes || keyBytes.length !== 32) return null
@@ -63,7 +71,7 @@ async function importAesKey(env: { get(name: string): string | undefined }): Pro
 export function isBrokerCredentialsCryptoConfigured(
   env: { get(name: string): string | undefined },
 ): boolean {
-  return Boolean(trimEnv(env, "BROKER_CREDENTIALS_ENCRYPTION_KEY"))
+  return Boolean(resolveEncryptionKeyRaw(env))
 }
 
 export async function encryptMtPassword(

@@ -7,6 +7,14 @@ function trimEnv(key: string): string {
   return String(process.env[key] ?? '').trim()
 }
 
+function resolveEncryptionKeyRaw(): string {
+  return (
+    trimEnv('BROKER_CREDENTIALS_ENCRYPTION_KEY')
+    || trimEnv('BROKER_CREDENTIALS_KEY')
+    || trimEnv('MT_PASSWORD_ENCRYPTION_KEY')
+  )
+}
+
 function decodeKeyMaterial(raw: string): Buffer | null {
   const trimmed = raw.trim()
   if (!trimmed) return null
@@ -26,14 +34,14 @@ function decodeKeyMaterial(raw: string): Buffer | null {
 }
 
 export function isBrokerCredentialsCryptoConfigured(): boolean {
-  return Boolean(trimEnv('BROKER_CREDENTIALS_ENCRYPTION_KEY'))
+  return Boolean(resolveEncryptionKeyRaw())
 }
 
 export function encryptMtPassword(plaintext: string): string | null {
   const password = plaintext.trim()
   if (!password) return null
 
-  const keyRaw = trimEnv('BROKER_CREDENTIALS_ENCRYPTION_KEY')
+  const keyRaw = resolveEncryptionKeyRaw()
   if (!keyRaw) return null
   const key = decodeKeyMaterial(keyRaw)
   if (!key || key.length !== 32) return null
@@ -53,7 +61,7 @@ export function decryptMtPassword(stored: string | null | undefined): string | n
   const parts = value.split(':')
   if (parts.length !== 3 || parts[0] !== PREFIX) return null
 
-  const keyRaw = trimEnv('BROKER_CREDENTIALS_ENCRYPTION_KEY')
+  const keyRaw = resolveEncryptionKeyRaw()
   if (!keyRaw) return null
   const key = decodeKeyMaterial(keyRaw)
   if (!key || key.length !== 32) return null

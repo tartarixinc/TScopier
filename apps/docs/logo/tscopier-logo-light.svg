@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 90" role="img" aria-label="TSCopier">
-  <rect width="420" height="90" fill="#ffffff" />
-  <g transform="translate(18,18)">
-    <rect width="54" height="54" rx="12" fill="#0d9488" />
-    <path d="M16 28h22M27 17v22" stroke="#ffffff" stroke-width="4" stroke-linecap="round" />
-  </g>
-  <text x="90" y="58" font-family="Inter, Arial, sans-serif" font-size="40" fill="#0f172a">TSCopier</text>
-</svg>

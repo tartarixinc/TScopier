@@ -6,6 +6,7 @@ import {
 import {
   decryptMtPassword,
   encryptMtPassword,
+  isBrokerCredentialsCryptoConfigured,
 } from "./brokerCredentialsCrypto.ts"
 import {
   makeClientFromEnv,
@@ -62,7 +63,7 @@ export async function persistMtPasswordIfRequested(
   password: string | undefined,
   remember: boolean | undefined,
   env: { get(name: string): string | undefined },
-): Promise<void> {
+): Promise<"saved" | "cleared" | "skipped" | "missing_key" | "encrypt_failed"> {
   if (remember === false) {
     await supabase
       .from("broker_accounts")
@@ -73,11 +74,12 @@ export async function persistMtPasswordIfRequested(
       })
       .eq("id", brokerId)
       .eq("user_id", userId)
-    return
+    return "cleared"
   }
-  if (!remember || !password?.trim()) return
+  if (!remember || !password?.trim()) return "skipped"
+  if (!isBrokerCredentialsCryptoConfigured(env)) return "missing_key"
   const enc = await encryptMtPassword(password.trim(), env)
-  if (!enc) return
+  if (!enc) return "encrypt_failed"
   await supabase
     .from("broker_accounts")
     .update({
@@ -87,6 +89,7 @@ export async function persistMtPasswordIfRequested(
     })
     .eq("id", brokerId)
     .eq("user_id", userId)
+  return "saved"
 }
 
 export async function clearStoredMtPassword(
@@ -257,8 +260,9 @@ export async function reconnectBrokerSession(
       .eq("id", broker.id)
       .eq("user_id", broker.user_id)
 
+    let passwordPersistStatus: Awaited<ReturnType<typeof persistMtPasswordIfRequested>> = "skipped"
     if (password && opts?.remember_password !== undefined) {
-      await persistMtPasswordIfRequested(
+      passwordPersistStatus = await persistMtPasswordIfRequested(
         supabase,
         broker.id,
         broker.user_id,
@@ -268,7 +272,27 @@ export async function reconnectBrokerSession(
       )
     } else if (password && broker.auto_reconnect_enabled && opts?.remember_password === undefined) {
       // Refresh ciphertext when auto-reconnect already enabled and user supplied a new password.
-      await persistMtPasswordIfRequested(supabase, broker.id, broker.user_id, password, true, env)
+      passwordPersistStatus = await persistMtPasswordIfRequested(
+        supabase,
+        broker.id,
+        broker.user_id,
+        password,
+        true,
+        env,
+      )
+    }
+
+    if (
+      opts?.remember_password === true &&
+      passwordPersistStatus !== "saved"
+    ) {
+      return {
+        ok: true,
+        connection_status: "connected",
+        summary,
+        message:
+          "Connected, but the password could not be saved for automatic reconnect. Please verify BROKER_CREDENTIALS_ENCRYPTION_KEY (or legacy key alias) is configured in Edge Function secrets, then reconnect again.",
+      }
     }
 
     return { ok: true, connection_status: "connected", summary }

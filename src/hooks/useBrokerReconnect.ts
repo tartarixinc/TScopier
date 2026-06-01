@@ -97,7 +97,6 @@ export function useBrokerReconnect(opts: UseBrokerReconnectOptions) {
   const applyReconnectResult = useCallback((
     brokerId: string,
     result: ReconnectResult,
-    rememberPassword?: boolean,
   ) => {
     opts.setBrokers(prev =>
       prev.map(b => {
@@ -121,17 +120,6 @@ export function useBrokerReconnect(opts: UseBrokerReconnectOptions) {
           connection_error_kind: null,
           connection_error_message: null,
           last_synced_at: new Date().toISOString(),
-          ...(rememberPassword === true
-            ? {
-                auto_reconnect_enabled: true,
-                password_updated_at: new Date().toISOString(),
-              }
-            : rememberPassword === false
-              ? {
-                  auto_reconnect_enabled: false,
-                  password_updated_at: null,
-                }
-              : {}),
           ...(result.summary
             ? {
                 last_balance: result.summary.balance ?? b.last_balance,
@@ -144,7 +132,8 @@ export function useBrokerReconnect(opts: UseBrokerReconnectOptions) {
     )
     if (result.connection_status === 'connected' && result.summary) {
       opts.onReconnectSuccess?.(brokerId)
-    } else if (result.message) {
+    }
+    if (result.message) {
       opts.onError?.(result.message)
     }
   }, [opts])
@@ -157,13 +146,13 @@ export function useBrokerReconnect(opts: UseBrokerReconnectOptions) {
     setReconnectingBrokerIds(prev => new Set(prev).add(brokerId))
     opts.onClearError?.()
     try {
-      const { result, rememberPassword } = await reconnectWithOptionalPassword(brokerId, {
+      const { result } = await reconnectWithOptionalPassword(brokerId, {
         allowPasswordPrompt,
         requestPassword: opts.requestPassword,
         reconnectFailedLabel: opts.reconnectFailedLabel,
         onError: opts.onError,
       })
-      applyReconnectResult(brokerId, result, rememberPassword)
+      applyReconnectResult(brokerId, result)
       return result
     } finally {
       setReconnectingBrokerIds(prev => {
