@@ -35,7 +35,7 @@ function isMtLinkedBroker(account: BrokerAccount): boolean {
 }
 
 async function fetchPerformancePayload(userId: string): Promise<PerformanceCachePayload> {
-  const [brokerRes, channelsRes, dbTradesRes, signalsRes] = await Promise.all([
+  const [brokerRes, channelsRes, dbTradesRes, attributionRes, signalsRes] = await Promise.all([
     supabase
       .from('broker_accounts')
       .select(BROKER_ACCOUNT_CLIENT_SELECT)
@@ -50,6 +50,10 @@ async function fetchPerformancePayload(userId: string): Promise<PerformanceCache
       .select('broker_account_id, metaapi_order_id, signal_id')
       .eq('user_id', userId)
       .not('signal_id', 'is', null),
+    supabase
+      .from('trade_channel_attributions')
+      .select('broker_account_id, metaapi_order_id, signal_id, channel_id, channel_label')
+      .eq('user_id', userId),
     supabase.from('signals').select('id, channel_id').eq('user_id', userId),
   ])
   if (brokerRes.error) throw brokerRes.error
@@ -83,6 +87,13 @@ async function fetchPerformancePayload(userId: string): Promise<PerformanceCache
       signal_id: string | null
     }>,
     (signalsRes.data ?? []) as Array<{ id: string; channel_id: string | null }>,
+    (attributionRes.data ?? []) as Array<{
+      broker_account_id: string | null
+      metaapi_order_id: string | null
+      signal_id: string | null
+      channel_id: string | null
+      channel_label: string | null
+    }>,
   )
 
   const calendarDay = formatLocalCalendarDay()

@@ -872,7 +872,7 @@ export function DashboardPage() {
     try {
     const { todayStart, tomorrowStart, yesterdayStart } = getLocalCalendarDayBounds()
 
-    const [brokerRes, channelsRes, tradesRes, todaySignalsRes, yesterdaySignalsRes, logsRes, allSignalsRes, channelsMetaRes, aiLogsRes] = await Promise.all([
+    const [brokerRes, channelsRes, tradesRes, todaySignalsRes, yesterdaySignalsRes, logsRes, allSignalsRes, channelsMetaRes, attributionRes, aiLogsRes] = await Promise.all([
       supabase.from('broker_accounts').select(BROKER_ACCOUNT_CLIENT_SELECT).eq('user_id', user!.id),
       supabase.from('telegram_channels').select('id').eq('user_id', user!.id).eq('is_active', true),
       supabase.from('trades').select('*').eq('user_id', user!.id),
@@ -887,6 +887,10 @@ export function DashboardPage() {
         .limit(10),
       supabase.from('signals').select('id,channel_id').eq('user_id', user!.id),
       supabase.from('telegram_channels').select('id,display_name,channel_username').eq('user_id', user!.id),
+      supabase
+        .from('trade_channel_attributions')
+        .select('broker_account_id,metaapi_order_id,signal_id,channel_id,channel_label')
+        .eq('user_id', user!.id),
       supabase
         .from('trade_execution_logs')
         .select(
@@ -1162,6 +1166,13 @@ export function DashboardPage() {
             signal_id: t.signal_id,
           })),
         (allSignalsRes.data ?? []) as Array<{ id: string; channel_id: string | null }>,
+        (attributionRes.data ?? []) as Array<{
+          broker_account_id: string | null
+          metaapi_order_id: string | null
+          signal_id: string | null
+          channel_id: string | null
+          channel_label: string | null
+        }>,
       ),
     )
     const logs = ((logsRes.data ?? []) as Signal[]).filter(s => !isNonTradeSkipReason(s.skip_reason))

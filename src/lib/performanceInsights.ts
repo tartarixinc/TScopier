@@ -18,6 +18,14 @@ export interface PerformanceChannelLinkMaps {
   channelNames: Record<string, string>
 }
 
+export interface TradeChannelAttributionRow {
+  broker_account_id: string | null
+  metaapi_order_id: string | null
+  signal_id: string | null
+  channel_id: string | null
+  channel_label?: string | null
+}
+
 export interface PerformanceDayHighlight {
   label: string
   pnl: number
@@ -252,6 +260,7 @@ export function buildPerformanceChannelLinkMaps(
     signal_id: string | null
   }>,
   signals: Array<{ id: string; channel_id: string | null }>,
+  attributions: TradeChannelAttributionRow[] = [],
 ): PerformanceChannelLinkMaps {
   const channelNames: Record<string, string> = {}
   for (const ch of channels) {
@@ -272,12 +281,27 @@ export function buildPerformanceChannelLinkMaps(
     }
   }
 
+  for (const a of attributions) {
+    if (a.channel_id && a.channel_label?.trim() && !channelNames[a.channel_id]) {
+      channelNames[a.channel_id] = a.channel_label.trim()
+    }
+    if (a.signal_id && a.channel_id && !signalToChannel[a.signal_id]) {
+      signalToChannel[a.signal_id] = a.channel_id
+    }
+  }
+
   const ticketToChannelId: Record<string, string> = {}
+  for (const a of attributions) {
+    if (!a.broker_account_id || !a.metaapi_order_id || !a.channel_id) continue
+    ticketToChannelId[`${a.broker_account_id}:${a.metaapi_order_id}`] = a.channel_id
+  }
   for (const t of dbTrades) {
     if (!t.broker_account_id || !t.metaapi_order_id || !t.signal_id) continue
+    const key = `${t.broker_account_id}:${t.metaapi_order_id}`
+    if (ticketToChannelId[key]) continue
     const channelId = signalToChannel[t.signal_id]
     if (!channelId) continue
-    ticketToChannelId[`${t.broker_account_id}:${t.metaapi_order_id}`] = channelId
+    ticketToChannelId[key] = channelId
   }
 
   return { ticketToChannelId, signalPrefixToChannelId, channelNames }
