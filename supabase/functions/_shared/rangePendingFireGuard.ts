@@ -13,6 +13,67 @@ export type RangeLegBasketScope = {
   stepIdx: number
 }
 
+export type RangePendingTpLockScope = {
+  signalId: string
+  brokerAccountId: string
+  symbol: string
+}
+
+export async function hasTpTouchedLock(
+  supabase: SupabaseLike,
+  scope: RangePendingTpLockScope,
+): Promise<boolean> {
+  const { count, error } = await supabase
+    .from("range_pending_tp_locks")
+    .select("id", { count: "exact", head: true })
+    .eq("signal_id", scope.signalId)
+    .eq("broker_account_id", scope.brokerAccountId)
+    .eq("symbol", scope.symbol)
+  if (error) return false
+  return (count ?? 0) > 0
+}
+
+export async function setTpTouchedLock(
+  supabase: SupabaseLike,
+  scope: RangePendingTpLockScope & {
+    userId: string
+    lockReason?: string
+    triggerPrice?: number | null
+    triggerSide?: "bid" | "ask" | null
+  },
+): Promise<void> {
+  await supabase
+    .from("range_pending_tp_locks")
+    .upsert({
+      signal_id: scope.signalId,
+      user_id: scope.userId,
+      broker_account_id: scope.brokerAccountId,
+      symbol: scope.symbol,
+      lock_reason: scope.lockReason ?? "tp_touched",
+      trigger_price: scope.triggerPrice ?? null,
+      trigger_side: scope.triggerSide ?? null,
+      touched_at: new Date().toISOString(),
+    }, {
+      onConflict: "signal_id,broker_account_id,symbol",
+    })
+}
+
+export async function expireActiveRangeLegsForTpLock(
+  supabase: SupabaseLike,
+  scope: RangePendingTpLockScope,
+  reason = "tp_touched_lock",
+): Promise<number> {
+  const { data } = await supabase
+    .from("range_pending_legs")
+    .update({ status: "expired", error_message: reason })
+    .eq("signal_id", scope.signalId)
+    .eq("broker_account_id", scope.brokerAccountId)
+    .eq("symbol", scope.symbol)
+    .in("status", ["pending", "claimed"])
+    .select("id")
+  return (data ?? []).length
+}
+
 export async function rangeStepAlreadyFired(
   supabase: SupabaseLike,
   scope: RangeLegBasketScope,
@@ -50,6 +111,20 @@ export async function shouldBlockVirtualLegFire(
   supabase: SupabaseLike,
   leg: { id: string; signal_id: string; broker_account_id: string; symbol: string; step_idx: number },
 ): Promise<{ block: boolean; reason?: string }> {
+  const tpLockScope: RangePendingTpLockScope = {
+    signalId: leg.signal_id,
+    brokerAccountId: leg.broker_account_id,
+    symbol: leg.symbol,
+  }
+  if (await hasTpTouchedLock(supabase, tpLockScope)) {
+    await supabase
+      .from("range_pending_legs")
+      .update({ status: "expired", error_message: "tp_touched_lock" })
+      .eq("id", leg.id)
+      .in("status", ["pending", "claimed"])
+    return { block: true, reason: "tp_touched_lock" }
+  }
+
   const scope: RangeLegBasketScope = {
     signalId: leg.signal_id,
     brokerAccountId: leg.broker_account_id,

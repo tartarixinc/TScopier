@@ -12,6 +12,84 @@ export type RangeLegBasketScope = {
   stepIdx: number
 }
 
+export type RangePendingTpLockScope = {
+  signalId: string
+  brokerAccountId: string
+  symbol: string
+}
+
+export async function hasTpTouchedLock(
+  supabase: SupabaseClient,
+  scope: RangePendingTpLockScope,
+): Promise<boolean> {
+  const { count, error } = await supabase
+    .from('range_pending_tp_locks')
+    .select('id', { count: 'exact', head: true })
+    .eq('signal_id', scope.signalId)
+    .eq('broker_account_id', scope.brokerAccountId)
+    .eq('symbol', scope.symbol)
+  if (error) {
+    console.warn(
+      `[rangePendingFireGuard] tp-lock lookup failed signal=${scope.signalId} broker=${scope.brokerAccountId}: ${error.message}`,
+    )
+    return false
+  }
+  return (count ?? 0) > 0
+}
+
+export async function setTpTouchedLock(
+  supabase: SupabaseClient,
+  scope: RangePendingTpLockScope & {
+    userId: string
+    lockReason?: string
+    triggerPrice?: number | null
+    triggerSide?: 'bid' | 'ask' | null
+  },
+): Promise<void> {
+  const nowIso = new Date().toISOString()
+  const { error } = await supabase
+    .from('range_pending_tp_locks')
+    .upsert({
+      signal_id: scope.signalId,
+      user_id: scope.userId,
+      broker_account_id: scope.brokerAccountId,
+      symbol: scope.symbol,
+      lock_reason: scope.lockReason ?? 'tp_touched',
+      trigger_price: scope.triggerPrice ?? null,
+      trigger_side: scope.triggerSide ?? null,
+      touched_at: nowIso,
+    }, {
+      onConflict: 'signal_id,broker_account_id,symbol',
+    })
+  if (error) {
+    console.warn(
+      `[rangePendingFireGuard] tp-lock upsert failed signal=${scope.signalId} broker=${scope.brokerAccountId}: ${error.message}`,
+    )
+  }
+}
+
+export async function expireActiveRangeLegsForTpLock(
+  supabase: SupabaseClient,
+  scope: RangePendingTpLockScope,
+  reason = 'tp_touched_lock',
+): Promise<number> {
+  const { data, error } = await supabase
+    .from('range_pending_legs')
+    .update({ status: 'expired', error_message: reason })
+    .eq('signal_id', scope.signalId)
+    .eq('broker_account_id', scope.brokerAccountId)
+    .eq('symbol', scope.symbol)
+    .in('status', ['pending', 'claimed'])
+    .select('id')
+  if (error) {
+    console.warn(
+      `[rangePendingFireGuard] tp-lock expiry failed signal=${scope.signalId} broker=${scope.brokerAccountId}: ${error.message}`,
+    )
+    return 0
+  }
+  return (data ?? []).length
+}
+
 /** True when this ladder rung already fired (broker market order was sent). */
 export async function rangeStepAlreadyFired(
   supabase: SupabaseClient,
@@ -127,6 +205,20 @@ export async function shouldBlockVirtualLegFire(
   supabase: SupabaseClient,
   leg: { id: string; signal_id: string; broker_account_id: string; symbol: string; step_idx: number },
 ): Promise<{ block: boolean; reason?: string }> {
+  const tpLockScope: RangePendingTpLockScope = {
+    signalId: leg.signal_id,
+    brokerAccountId: leg.broker_account_id,
+    symbol: leg.symbol,
+  }
+  if (await hasTpTouchedLock(supabase, tpLockScope)) {
+    await supabase
+      .from('range_pending_legs')
+      .update({ status: 'expired', error_message: 'tp_touched_lock' })
+      .eq('id', leg.id)
+      .in('status', ['pending', 'claimed'])
+    return { block: true, reason: 'tp_touched_lock' }
+  }
+
   const scope: RangeLegBasketScope = {
     signalId: leg.signal_id,
     brokerAccountId: leg.broker_account_id,
@@ -172,6 +264,23 @@ export async function reconcileStaleClaimedLegs(
     step_idx: number
     ticket: string | null
   }>) {
+    const tpLockScope: RangePendingTpLockScope = {
+      signalId: row.signal_id,
+      brokerAccountId: row.broker_account_id,
+      symbol: row.symbol,
+    }
+    if (await hasTpTouchedLock(supabase, tpLockScope)) {
+      const { data: expired } = await supabase
+        .from('range_pending_legs')
+        .update({ status: 'expired', error_message: 'tp_touched_lock' })
+        .eq('id', row.id)
+        .eq('status', 'claimed')
+        .select('id')
+        .maybeSingle()
+      if (expired) stats.cancelled += 1
+      continue
+    }
+
     const scope: RangeLegBasketScope = {
       signalId: row.signal_id,
       brokerAccountId: row.broker_account_id,

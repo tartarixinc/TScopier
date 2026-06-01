@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
-import { isTriggered } from './virtualPendingMonitor'
+import { evaluateTpTouch, isTriggered } from './virtualPendingMonitor'
 
 // Buy ladder = averaging DOWN: trigger fires when bid drops to / below trigger_price.
 test('isTriggered: buy fires when bid <= trigger', () => {
@@ -38,4 +38,40 @@ test('isTriggered: realistic XAUUSD buy ladder fires correctly', () => {
   assert.equal(trigger, 1847)
   assert.equal(isTriggered(true, trigger, 1846.95, 1847.05), true)
   assert.equal(isTriggered(true, trigger, 1847.05, 1847.15), false)
+})
+
+test('evaluateTpTouch: buy basket locks at nearest TP touch', () => {
+  const out = evaluateTpTouch({
+    direction: 'buy',
+    tps: [4510, 4530, 4550],
+    bid: 4510,
+    ask: 4510.2,
+  })
+  assert.equal(out.touched, true)
+  assert.equal(out.triggerPrice, 4510)
+  assert.equal(out.triggerSide, 'bid')
+})
+
+test('evaluateTpTouch: sell basket locks at nearest TP touch', () => {
+  const out = evaluateTpTouch({
+    direction: 'sell',
+    tps: [4500, 4480, 4460],
+    bid: 4500.2,
+    ask: 4500,
+  })
+  assert.equal(out.touched, true)
+  assert.equal(out.triggerPrice, 4500)
+  assert.equal(out.triggerSide, 'ask')
+})
+
+test('evaluateTpTouch: ignores invalid TP direction/noise', () => {
+  const out = evaluateTpTouch({
+    direction: 'unknown',
+    tps: [4500, 0, Number.NaN],
+    bid: 4600,
+    ask: 4600.5,
+  })
+  assert.equal(out.touched, false)
+  assert.equal(out.triggerPrice, null)
+  assert.equal(out.triggerSide, null)
 })

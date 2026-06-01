@@ -29,6 +29,25 @@ export type RangeLadderScope = {
   symbol: string
 }
 
+async function hasRangePendingTpTouchLock(
+  supabase: SupabaseClient,
+  scope: RangeLadderScope,
+): Promise<boolean> {
+  const { count, error } = await supabase
+    .from('range_pending_tp_locks')
+    .select('id', { count: 'exact', head: true })
+    .eq('signal_id', scope.signalId)
+    .eq('broker_account_id', scope.brokerAccountId)
+    .eq('symbol', scope.symbol)
+  if (error) {
+    console.warn(
+      `[rangePendingLadderSync] tp-lock lookup failed signal=${scope.signalId} broker=${scope.brokerAccountId}: ${error.message}`,
+    )
+    return false
+  }
+  return (count ?? 0) > 0
+}
+
 export async function loadRangeLegRows(
   supabase: SupabaseClient,
   scope: RangeLadderScope,
@@ -140,6 +159,12 @@ export async function syncRangePendingLadderOnBasketRefresh(args: {
       .eq('id', row.id)
       .in('status', ['pending', 'claimed'])
     if (!error) stats.updated += 1
+  }
+
+  if (await hasRangePendingTpTouchLock(supabase, scope)) {
+    // Once TP touch lock is set, no new ladder rows should be inserted.
+    stats.skippedCap += virtualPendings.length
+    return stats
   }
 
   const insertRows: Record<string, unknown>[] = []

@@ -14,6 +14,19 @@ exports.markRangeLegFired = markRangeLegFired;
 exports.markRangeLegsExpired = markRangeLegsExpired;
 const channelActiveTradeParams_1 = require("./channelActiveTradeParams");
 exports.TERMINAL_RANGE_LEG_STATUSES = ['fired', 'expired', 'cancelled', 'failed'];
+async function hasRangePendingTpTouchLock(supabase, scope) {
+    const { count, error } = await supabase
+        .from('range_pending_tp_locks')
+        .select('id', { count: 'exact', head: true })
+        .eq('signal_id', scope.signalId)
+        .eq('broker_account_id', scope.brokerAccountId)
+        .eq('symbol', scope.symbol);
+    if (error) {
+        console.warn(`[rangePendingLadderSync] tp-lock lookup failed signal=${scope.signalId} broker=${scope.brokerAccountId}: ${error.message}`);
+        return false;
+    }
+    return (count ?? 0) > 0;
+}
 async function loadRangeLegRows(supabase, scope) {
     const { data, error } = await supabase
         .from('range_pending_legs')
@@ -87,6 +100,11 @@ async function syncRangePendingLadderOnBasketRefresh(args) {
             .in('status', ['pending', 'claimed']);
         if (!error)
             stats.updated += 1;
+    }
+    if (await hasRangePendingTpTouchLock(supabase, scope)) {
+        // Once TP touch lock is set, no new ladder rows should be inserted.
+        stats.skippedCap += virtualPendings.length;
+        return stats;
     }
     const insertRows = [];
     for (const v of virtualPendings) {

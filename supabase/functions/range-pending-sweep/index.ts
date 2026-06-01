@@ -26,7 +26,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4"
 // @ts-ignore - Deno-only import
 import { makeClientFromEnv, MetatraderApiClient, type MtPlatform } from "../_shared/metatraderapi.ts"
 import { tryApplyBasketFollowUpToNewFill } from "../_shared/basketModFollowUp.ts"
-import { shouldBlockVirtualLegFire } from "../_shared/rangePendingFireGuard.ts"
+import {
+  expireActiveRangeLegsForTpLock,
+  setTpTouchedLock,
+  shouldBlockVirtualLegFire,
+} from "../_shared/rangePendingFireGuard.ts"
 
 function mtClient(env: { get(name: string): string | undefined }, platform: string): MetatraderApiClient {
   const p: MtPlatform = platform === "MT4" ? "MT4" : "MT5"
@@ -61,6 +65,14 @@ interface PendingRow {
   expert_id: number | null
 }
 
+interface BasketOpenTpRow {
+  signal_id: string
+  broker_account_id: string
+  user_id: string
+  direction: string
+  tp: number | null
+}
+
 function isTriggeredSweep(leg: PendingRow, bid: number, ask: number): boolean {
   const t = leg.trigger_price
   if (!Number.isFinite(t) || t <= 0) return false
@@ -79,6 +91,109 @@ function isBlockedByShallowerSweep(
     if (s < leg.step_idx) return true
   }
   return false
+}
+
+async function detectAndLockTpTouchedBasketsSweep(
+  // deno-lint-ignore no-explicit-any
+  sb: any,
+  legs: PendingRow[],
+  bid: number,
+  ask: number,
+): Promise<Set<string>> {
+  const touched = new Set<string>()
+  if (!legs.length) return touched
+
+  const signalIds = [...new Set(legs.map(l => l.signal_id))]
+  const brokerIds = [...new Set(legs.map(l => l.broker_account_id))]
+  const symbol = legs[0]?.symbol ?? null
+  if (!symbol) return touched
+
+  const { data, error } = await sb
+    .from("trades")
+    .select("signal_id,broker_account_id,user_id,direction,tp")
+    .in("signal_id", signalIds)
+    .in("broker_account_id", brokerIds)
+    .eq("symbol", symbol)
+    .eq("status", "open")
+    .not("tp", "is", null)
+  if (error) {
+    console.warn(`[range-pending-sweep] tp-touch scan failed: ${error.message}`)
+    return touched
+  }
+
+  const byBasket = new Map<string, BasketOpenTpRow[]>()
+  for (const row of (data ?? []) as BasketOpenTpRow[]) {
+    const tp = Number(row.tp)
+    if (!Number.isFinite(tp) || tp <= 0) continue
+    const basketKey = `${row.signal_id}|${row.broker_account_id}`
+    const arr = byBasket.get(basketKey) ?? []
+    arr.push({ ...row, tp })
+    byBasket.set(basketKey, arr)
+  }
+
+  for (const [basketKey, rows] of byBasket) {
+    const direction = String(rows[0]?.direction ?? "").toLowerCase()
+    const tps = rows
+      .map(r => Number(r.tp))
+      .filter(tp => Number.isFinite(tp) && tp > 0)
+    if (!tps.length) continue
+
+    let touchedNow = false
+    let triggerPrice: number | null = null
+    let triggerSide: "bid" | "ask" | null = null
+    if (direction === "buy") {
+      triggerPrice = Math.min(...tps)
+      touchedNow = bid >= triggerPrice
+      triggerSide = "bid"
+    } else if (direction === "sell") {
+      triggerPrice = Math.max(...tps)
+      touchedNow = ask <= triggerPrice
+      triggerSide = "ask"
+    }
+    if (!touchedNow) continue
+
+    const [signalId, brokerAccountId] = basketKey.split("|")
+    if (!signalId || !brokerAccountId) continue
+    const userId = rows[0]?.user_id
+    if (!userId) continue
+
+    await setTpTouchedLock(sb, {
+      signalId,
+      brokerAccountId,
+      symbol,
+      userId,
+      triggerPrice,
+      triggerSide,
+    })
+    const expiredRows = await expireActiveRangeLegsForTpLock(
+      sb,
+      { signalId, brokerAccountId, symbol },
+    )
+    touched.add(basketKey)
+    try {
+      await sb.from("trade_execution_logs").insert({
+        user_id: userId,
+        signal_id: signalId,
+        broker_account_id: brokerAccountId,
+        action: "virtual_pending_tp_lock",
+        status: "info",
+        request_payload: {
+          symbol,
+          direction,
+          trigger_price: triggerPrice,
+          trigger_side: triggerSide,
+          bid,
+          ask,
+          expired_rows: expiredRows,
+          claimed_by: CLAIMED_BY,
+        },
+      })
+    } catch {
+      /* best-effort */
+    }
+  }
+
+  return touched
 }
 
 async function fetchShallowActiveStepsSweep(
@@ -184,8 +299,11 @@ Deno.serve(async (_req: Request) => {
       console.warn(`[range-pending-sweep] /Quote failed for ${symbol}: ${(err as Error).message}`)
       continue
     }
+    const tpTouchedBaskets = await detectAndLockTpTouchedBasketsSweep(sb, legs, q.bid, q.ask)
     const triggeredInGroup: PendingRow[] = []
     for (const leg of legs) {
+      const basketKey = `${leg.signal_id}|${leg.broker_account_id}`
+      if (tpTouchedBaskets.has(basketKey)) continue
       if (isTriggeredSweep(leg, q.bid, q.ask)) triggeredInGroup.push(leg)
     }
 

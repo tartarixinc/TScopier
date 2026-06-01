@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.VirtualPendingMonitor = void 0;
 exports.isTriggered = isTriggered;
 exports.isBlockedByShallowerStep = isBlockedByShallowerStep;
+exports.evaluateTpTouch = evaluateTpTouch;
 const node_os_1 = __importDefault(require("node:os"));
 const metatraderapi_1 = require("./metatraderapi");
 const mtApiByAccount_1 = require("./mtApiByAccount");
@@ -54,6 +55,21 @@ function isBlockedByShallowerStep(leg, activeStepsByBasket) {
             return true;
     }
     return false;
+}
+function evaluateTpTouch(args) {
+    const { direction, tps, bid, ask } = args;
+    const cleanTps = tps.filter(tp => Number.isFinite(tp) && tp > 0);
+    if (!cleanTps.length)
+        return { touched: false, triggerPrice: null, triggerSide: null };
+    if (direction === 'buy') {
+        const triggerPrice = Math.min(...cleanTps);
+        return { touched: bid >= triggerPrice, triggerPrice, triggerSide: 'bid' };
+    }
+    if (direction === 'sell') {
+        const triggerPrice = Math.max(...cleanTps);
+        return { touched: ask <= triggerPrice, triggerPrice, triggerSide: 'ask' };
+    }
+    return { touched: false, triggerPrice: null, triggerSide: null };
 }
 class VirtualPendingMonitor {
     constructor(supabase) {
@@ -200,10 +216,14 @@ class VirtualPendingMonitor {
                 console.warn(`[virtualPendingMonitor] /Quote failed for ${symbol} (account=${uuid}): ${msg}`);
                 return;
             }
+            const tpTouchedBaskets = await this.detectAndLockTpTouchedBaskets(legs, q.bid, q.ask);
             // How far is the nearest trigger? Useful diagnostic when nothing fires.
             let nearestGap = Number.POSITIVE_INFINITY;
             const triggeredInGroup = [];
             for (const leg of legs) {
+                const basketKey = `${leg.signal_id}|${leg.broker_account_id}`;
+                if (tpTouchedBaskets.has(basketKey))
+                    continue;
                 const ref = leg.is_buy ? q.bid : q.ask;
                 const gap = leg.is_buy ? ref - leg.trigger_price : leg.trigger_price - ref;
                 if (Number.isFinite(gap) && gap < nearestGap)
@@ -295,6 +315,85 @@ class VirtualPendingMonitor {
                 console.log(`[virtualPendingMonitor] heartbeat rows=${rows.length} groups=${groups.size} no triggers crossed yet — ${summary}`);
             }
         }
+    }
+    async detectAndLockTpTouchedBaskets(legs, bid, ask) {
+        const touched = new Set();
+        if (!legs.length)
+            return touched;
+        const signalIds = [...new Set(legs.map(l => l.signal_id))];
+        const brokerIds = [...new Set(legs.map(l => l.broker_account_id))];
+        const symbol = legs[0]?.symbol ?? null;
+        if (!symbol)
+            return touched;
+        const { data, error } = await this.supabase
+            .from('trades')
+            .select('signal_id,broker_account_id,user_id,direction,tp')
+            .in('signal_id', signalIds)
+            .in('broker_account_id', brokerIds)
+            .eq('symbol', symbol)
+            .eq('status', 'open')
+            .not('tp', 'is', null);
+        if (error) {
+            console.warn(`[virtualPendingMonitor] tp-touch scan failed: ${error.message}`);
+            return touched;
+        }
+        const byBasket = new Map();
+        for (const row of (data ?? [])) {
+            const tp = Number(row.tp);
+            if (!Number.isFinite(tp) || tp <= 0)
+                continue;
+            const basketKey = `${row.signal_id}|${row.broker_account_id}`;
+            const arr = byBasket.get(basketKey) ?? [];
+            arr.push({ ...row, tp });
+            byBasket.set(basketKey, arr);
+        }
+        for (const [basketKey, rows] of byBasket) {
+            const direction = String(rows[0]?.direction ?? '').toLowerCase();
+            const tps = rows
+                .map(r => Number(r.tp))
+                .filter(tp => Number.isFinite(tp) && tp > 0);
+            const touch = evaluateTpTouch({ direction, tps, bid, ask });
+            if (!touch.touched)
+                continue;
+            const [signalId, brokerAccountId] = basketKey.split('|');
+            if (!signalId || !brokerAccountId)
+                continue;
+            const userId = rows[0]?.user_id;
+            if (!userId)
+                continue;
+            await (0, rangePendingFireGuard_1.setTpTouchedLock)(this.supabase, {
+                signalId,
+                brokerAccountId,
+                symbol,
+                userId,
+                triggerPrice: touch.triggerPrice,
+                triggerSide: touch.triggerSide,
+            });
+            const expiredRows = await (0, rangePendingFireGuard_1.expireActiveRangeLegsForTpLock)(this.supabase, { signalId, brokerAccountId, symbol });
+            touched.add(basketKey);
+            try {
+                await this.supabase.from('trade_execution_logs').insert({
+                    user_id: userId,
+                    signal_id: signalId,
+                    broker_account_id: brokerAccountId,
+                    action: 'virtual_pending_tp_lock',
+                    status: 'info',
+                    request_payload: {
+                        symbol,
+                        direction,
+                        trigger_price: touch.triggerPrice,
+                        trigger_side: touch.triggerSide,
+                        bid,
+                        ask,
+                        expired_rows: expiredRows,
+                    },
+                });
+            }
+            catch {
+                /* best-effort */
+            }
+        }
+        return touched;
     }
     async markLegFiredWithRetry(legId, ticket) {
         let lastErr;

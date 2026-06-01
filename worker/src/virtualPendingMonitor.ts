@@ -17,7 +17,12 @@ import {
   startMonitorLoop,
   type MonitorLoopHandle,
 } from './monitorIdleGate'
-import { reconcileStaleClaimedLegs, shouldBlockVirtualLegFire } from './rangePendingFireGuard'
+import {
+  expireActiveRangeLegsForTpLock,
+  reconcileStaleClaimedLegs,
+  setTpTouchedLock,
+  shouldBlockVirtualLegFire,
+} from './rangePendingFireGuard'
 import { isMtBridgeGlitchMessage } from './brokerConnectError'
 import {
   deleteRangePendingLegsForBasket,
@@ -92,6 +97,14 @@ interface PendingRow {
   cwe_close_price: number | null
 }
 
+interface BasketOpenTpRow {
+  signal_id: string
+  broker_account_id: string
+  user_id: string
+  direction: string
+  tp: number | null
+}
+
 interface SymbolCacheEntry {
   digits: number
   point: number
@@ -156,6 +169,26 @@ export function isBlockedByShallowerStep(
     if (s < leg.step_idx) return true
   }
   return false
+}
+
+export function evaluateTpTouch(args: {
+  direction: string
+  tps: number[]
+  bid: number
+  ask: number
+}): { touched: boolean; triggerPrice: number | null; triggerSide: 'bid' | 'ask' | null } {
+  const { direction, tps, bid, ask } = args
+  const cleanTps = tps.filter(tp => Number.isFinite(tp) && tp > 0)
+  if (!cleanTps.length) return { touched: false, triggerPrice: null, triggerSide: null }
+  if (direction === 'buy') {
+    const triggerPrice = Math.min(...cleanTps)
+    return { touched: bid >= triggerPrice, triggerPrice, triggerSide: 'bid' }
+  }
+  if (direction === 'sell') {
+    const triggerPrice = Math.max(...cleanTps)
+    return { touched: ask <= triggerPrice, triggerPrice, triggerSide: 'ask' }
+  }
+  return { touched: false, triggerPrice: null, triggerSide: null }
 }
 
 export class VirtualPendingMonitor {
@@ -320,10 +353,13 @@ export class VirtualPendingMonitor {
         console.warn(`[virtualPendingMonitor] /Quote failed for ${symbol} (account=${uuid}): ${msg}`)
         return
       }
+      const tpTouchedBaskets = await this.detectAndLockTpTouchedBaskets(legs, q.bid, q.ask)
       // How far is the nearest trigger? Useful diagnostic when nothing fires.
       let nearestGap = Number.POSITIVE_INFINITY
       const triggeredInGroup: PendingRow[] = []
       for (const leg of legs) {
+        const basketKey = `${leg.signal_id}|${leg.broker_account_id}`
+        if (tpTouchedBaskets.has(basketKey)) continue
         const ref = leg.is_buy ? q.bid : q.ask
         const gap = leg.is_buy ? ref - leg.trigger_price : leg.trigger_price - ref
         if (Number.isFinite(gap) && gap < nearestGap) nearestGap = gap
@@ -418,6 +454,95 @@ export class VirtualPendingMonitor {
         )
       }
     }
+  }
+
+  private async detectAndLockTpTouchedBaskets(
+    legs: PendingRow[],
+    bid: number,
+    ask: number,
+  ): Promise<Set<string>> {
+    const touched = new Set<string>()
+    if (!legs.length) return touched
+
+    const signalIds = [...new Set(legs.map(l => l.signal_id))]
+    const brokerIds = [...new Set(legs.map(l => l.broker_account_id))]
+    const symbol = legs[0]?.symbol ?? null
+    if (!symbol) return touched
+
+    const { data, error } = await this.supabase
+      .from('trades')
+      .select('signal_id,broker_account_id,user_id,direction,tp')
+      .in('signal_id', signalIds)
+      .in('broker_account_id', brokerIds)
+      .eq('symbol', symbol)
+      .eq('status', 'open')
+      .not('tp', 'is', null)
+
+    if (error) {
+      console.warn(`[virtualPendingMonitor] tp-touch scan failed: ${error.message}`)
+      return touched
+    }
+
+    const byBasket = new Map<string, BasketOpenTpRow[]>()
+    for (const row of (data ?? []) as BasketOpenTpRow[]) {
+      const tp = Number(row.tp)
+      if (!Number.isFinite(tp) || tp <= 0) continue
+      const basketKey = `${row.signal_id}|${row.broker_account_id}`
+      const arr = byBasket.get(basketKey) ?? []
+      arr.push({ ...row, tp })
+      byBasket.set(basketKey, arr)
+    }
+
+    for (const [basketKey, rows] of byBasket) {
+      const direction = String(rows[0]?.direction ?? '').toLowerCase()
+      const tps = rows
+        .map(r => Number(r.tp))
+        .filter(tp => Number.isFinite(tp) && tp > 0)
+      const touch = evaluateTpTouch({ direction, tps, bid, ask })
+      if (!touch.touched) continue
+
+      const [signalId, brokerAccountId] = basketKey.split('|')
+      if (!signalId || !brokerAccountId) continue
+      const userId = rows[0]?.user_id
+      if (!userId) continue
+
+      await setTpTouchedLock(this.supabase, {
+        signalId,
+        brokerAccountId,
+        symbol,
+        userId,
+        triggerPrice: touch.triggerPrice,
+        triggerSide: touch.triggerSide,
+      })
+      const expiredRows = await expireActiveRangeLegsForTpLock(
+        this.supabase,
+        { signalId, brokerAccountId, symbol },
+      )
+      touched.add(basketKey)
+
+      try {
+        await this.supabase.from('trade_execution_logs').insert({
+          user_id: userId,
+          signal_id: signalId,
+          broker_account_id: brokerAccountId,
+          action: 'virtual_pending_tp_lock',
+          status: 'info',
+          request_payload: {
+            symbol,
+            direction,
+            trigger_price: touch.triggerPrice,
+            trigger_side: touch.triggerSide,
+            bid,
+            ask,
+            expired_rows: expiredRows,
+          } as unknown as Record<string, unknown>,
+        })
+      } catch {
+        /* best-effort */
+      }
+    }
+
+    return touched
   }
 
   private async markLegFiredWithRetry(
