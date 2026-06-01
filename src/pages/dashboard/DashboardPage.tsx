@@ -89,6 +89,14 @@ const DASHBOARD_HISTORY_DAYS = 7
 const DASHBOARD_COPIER_LOG_GRID =
   'grid grid-cols-[5.75rem_minmax(0,1fr)_minmax(4rem,0.85fr)_minmax(4.75rem,auto)_minmax(6.75rem,auto)] gap-x-3 items-center'
 
+function isNonTradeSkipReason(value: string | null | undefined): boolean {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_')
+  return normalized === 'non_trade_message'
+}
+
 interface DashboardStats {
   accounts: number
   portfolioValue: number
@@ -870,7 +878,13 @@ export function DashboardPage() {
       supabase.from('trades').select('*').eq('user_id', user!.id),
       supabase.from('signals').select('status').eq('user_id', user!.id).gte('created_at', todayStart.toISOString()).lt('created_at', tomorrowStart.toISOString()),
       supabase.from('signals').select('status').eq('user_id', user!.id).gte('created_at', yesterdayStart.toISOString()).lt('created_at', todayStart.toISOString()),
-      supabase.from('signals').select('*').eq('user_id', user!.id).order('created_at', { ascending: false }).limit(10),
+      supabase
+        .from('signals')
+        .select('*')
+        .eq('user_id', user!.id)
+        .or('skip_reason.is.null,skip_reason.neq.non_trade_message')
+        .order('created_at', { ascending: false })
+        .limit(10),
       supabase.from('signals').select('id,channel_id').eq('user_id', user!.id),
       supabase.from('telegram_channels').select('id,display_name,channel_username').eq('user_id', user!.id),
       supabase
@@ -1150,7 +1164,7 @@ export function DashboardPage() {
         (allSignalsRes.data ?? []) as Array<{ id: string; channel_id: string | null }>,
       ),
     )
-    const logs = (logsRes.data ?? []) as Signal[]
+    const logs = ((logsRes.data ?? []) as Signal[]).filter(s => !isNonTradeSkipReason(s.skip_reason))
     const symbolLookup = await buildSignalSymbolLookup(supabase, user!.id, logs)
     const logSymbols = buildCopierLogSymbolLabels(logs, symbolLookup)
     const nextStats: DashboardStats = {

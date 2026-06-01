@@ -21,6 +21,14 @@ export type ChannelWorkerLogRow = {
   } | null
 }
 
+function isNonTradeSkipReason(value: unknown): boolean {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_')
+  return normalized === 'non_trade_message'
+}
+
 export function resolveChannelNameFromLog(
   row: ChannelWorkerLogRow,
   channelDisplayNames?: Record<string, string>,
@@ -332,6 +340,9 @@ export function channelWorkerLogMessage(
   cw: ChannelWorkerTranslations,
   channelDisplayNames?: Record<string, string>,
 ): string | null {
+  const skipReason = row.signals?.skip_reason ?? row.request_payload?.skip_reason ?? row.error_message
+  if (isNonTradeSkipReason(skipReason)) return null
+  if (String(getSignalParsedFromLog(row).action ?? '').toLowerCase() === 'ignore') return null
   const logAction = row.action.toLowerCase()
   const message = buildChannelWorkerLogMessage(row, cw)
   if (!message.trim()) return null

@@ -25,6 +25,14 @@ type ChannelNameRow = { id: string; display_name: string; channel_username?: str
 
 type StatusVariant = 'success' | 'warning' | 'error' | 'neutral' | 'primary'
 
+function isNonTradeSkipReason(value: string | null | undefined): boolean {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_')
+  return normalized === 'non_trade_message'
+}
+
 function buildChannelDisplayNames(channels: ChannelNameRow[]): Record<string, string> {
   const out: Record<string, string> = {}
   for (const c of channels) {
@@ -200,6 +208,7 @@ export function CopierLogsPage() {
       .from('signals')
       .select('*', { count: 'exact' })
       .eq('user_id', user.id)
+      .or('skip_reason.is.null,skip_reason.neq.non_trade_message')
       .order('created_at', { ascending: false })
       .range(from, to)
 
@@ -213,7 +222,7 @@ export function CopierLogsPage() {
       query,
     ])
 
-    const loaded = (signalsRes.data ?? []) as Signal[]
+    const loaded = ((signalsRes.data ?? []) as Signal[]).filter(s => !isNonTradeSkipReason(s.skip_reason))
     setTotalCount(signalsRes.count ?? loaded.length)
     setChannelDisplayNames(buildChannelDisplayNames((channelsRes.data ?? []) as ChannelNameRow[]))
     setSymbolLookup(await buildSignalSymbolLookup(supabase, user.id, loaded))

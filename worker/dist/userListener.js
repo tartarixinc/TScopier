@@ -1268,45 +1268,11 @@ class UserListener {
     persistNonSignalSkip(args) {
         const { channelRow, rawMessage, messageId, parentSignalId, replyToMessageId, isReply } = args;
         void (async () => {
-            const { count: dupCount } = await this.supabase
-                .from('signals')
-                .select('id', { count: 'exact', head: true })
-                .eq('user_id', this.userId)
-                .eq('channel_id', channelRow.id)
-                .eq('telegram_message_id', messageId);
-            if ((dupCount ?? 0) > 0)
-                return;
-            const signalId = (0, node_crypto_1.randomUUID)();
-            const { error: insertErr } = await this.supabase.from('signals').upsert({
-                id: signalId,
-                user_id: this.userId,
-                channel_id: channelRow.id,
-                raw_message: rawMessage,
-                raw_image_url: null,
-                status: 'skipped',
-                parsed_data: {
-                    action: 'ignore',
-                    symbol: null,
-                    entry_price: null,
-                    entry_zone_low: null,
-                    entry_zone_high: null,
-                    sl: null,
-                    tp: [],
-                    lot_size: null,
-                    confidence: 0,
-                    raw_instruction: rawMessage,
-                    open_tp: false,
-                },
-                skip_reason: 'non_trade_message',
-                telegram_message_id: messageId,
-                is_modification: isReply,
-                parent_signal_id: parentSignalId,
-                reply_to_message_id: replyToMessageId,
-            }, { onConflict: 'user_id,channel_id,telegram_message_id', ignoreDuplicates: true });
-            if (insertErr) {
-                console.error(`[userListener] non-signal upsert failed signalId=${signalId}:`, insertErr.message);
-                return;
-            }
+            void rawMessage;
+            void parentSignalId;
+            void replyToMessageId;
+            void isReply;
+            // Non-trade chatter should not be persisted as skipped signal rows.
             await this.bumpLastSeen(channelRow.id, messageId);
         })().catch(err => {
             console.error('[userListener] persistNonSignalSkip failed:', err);

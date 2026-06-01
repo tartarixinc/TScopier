@@ -540,16 +540,8 @@ class UserListener:
         return True
 
     async def _persist_skip(self, row: ChannelRow, message_id: str, raw: str, is_reply: bool) -> None:
-        await self._persist_row(
-            str(uuid.uuid4()),
-            row,
-            message_id,
-            raw,
-            is_reply,
-            status="skipped",
-            skip_reason="non_trade_message",
-            parsed_data={"action": "ignore"},
-        )
+        # Ignore chatter/non-trade text without inserting skipped signal rows.
+        await self._bump_last_seen(row.id, message_id)
 
     async def _persist_row(
         self,

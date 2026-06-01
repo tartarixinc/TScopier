@@ -627,7 +627,7 @@ export const landingEn: LandingTranslations = {
   },
   cookieConsent: {
     message:
-      'We use cookies to improve affiliate attribution and understand landing-page engagement. By continuing, you agree to our tracking cookies.',
+      'We use cookies to improve user experience.',
     accept: 'Accept cookies',
     dismiss: 'Dismiss',
   },
