@@ -285,6 +285,17 @@ function parseSlFromText(text) {
     const slMatchTo = text.match(new RegExp(`\\b(?:sl|stop\\s*loss)\\s+to\\s+(${signalPriceFormat_1.SIGNAL_PRICE_NUM})`, 'i'));
     if (slMatchTo?.[1])
         return (0, signalPriceFormat_1.parseSignalPriceToken)(slMatchTo[1]);
+    // Handles verbose updates like "Adjust SL + 20 pips for now to 4505".
+    const slClause = text.match(/\b(?:sl|stop\s*loss)\b([^\n\r]{0,96})/i)?.[1] ?? '';
+    if (slClause) {
+        const slClauseTo = slClause.match(new RegExp(`\\bto\\s*(${signalPriceFormat_1.SIGNAL_PRICE_NUM})\\b`, 'i'));
+        if (slClauseTo?.[1])
+            return (0, signalPriceFormat_1.parseSignalPriceToken)(slClauseTo[1]);
+        const candidates = (0, signalManagementIntent_1.bareTradePricesExcludingPips)(slClause, (0, signalPriceInference_1.extractUnlabeledPrices)(slClause));
+        const tail = candidates.length > 0 ? candidates[candidates.length - 1] : null;
+        if (tail != null && Number.isFinite(tail) && tail > 0)
+            return tail;
+    }
     return null;
 }
 function parseDeterministicManagement(message, lexicon, channelKeywords) {
@@ -392,13 +403,7 @@ function parseDeterministicManagement(message, lexicon, channelKeywords) {
         ...splitKeywordAliases(channelKeywords.update.set_sl, delim),
         ...splitKeywordAliases(channelKeywords.update.adjust_sl, delim),
     ];
-    const slMatchStandard = t.match(new RegExp(`\\b(?:sl|stop\\s*loss)\\s*[:=]?\\s*(${signalPriceFormat_1.SIGNAL_PRICE_NUM})`, 'i'));
-    const slMatchTo = t.match(new RegExp(`\\b(?:sl|stop\\s*loss)\\s+to\\s+(${signalPriceFormat_1.SIGNAL_PRICE_NUM})`, 'i'));
-    let sl = null;
-    if (slMatchStandard?.[1])
-        sl = (0, signalPriceFormat_1.parseSignalPriceToken)(slMatchStandard[1]);
-    if (sl == null && slMatchTo?.[1])
-        sl = (0, signalPriceFormat_1.parseSignalPriceToken)(slMatchTo[1]);
+    let sl = parseSlFromText(t);
     if (sl == null)
         sl = extractPriceByLabels(t, slPriceLabels);
     const extraTp = [

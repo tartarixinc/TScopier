@@ -187,6 +187,14 @@ Make sure to secure 30% profits by closing partial lotsize`
     assert.equal(result.parsed.action, 'breakeven')
   })
 
+  it('parses adjust SL with pip note and explicit target', () => {
+    const msg = 'Adjust SL + 20 pips for now to 4505.'
+    const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+    assert.equal(result.status, 'parsed')
+    assert.equal(result.parsed.action, 'modify')
+    assert.equal(result.parsed.sl, 4505)
+  })
+
   it('does not close on prose "close to our entry"', () => {
     const msg = `Beforehand? Yes... beforehand.
 You receive signals in here once a day, for free, randomly timed.
