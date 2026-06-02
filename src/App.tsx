@@ -30,6 +30,7 @@ import { SignalHistoryPage } from './pages/dashboard/SignalHistoryPage'
 import { SettingsPage } from './pages/dashboard/SettingsPage'
 import { WelcomePage } from './pages/onboarding/WelcomePage'
 import { ReferralCodeRedirect } from './pages/auth/ReferralCodeRedirect'
+import { GoogleAnalyticsRouteTracker } from './components/analytics/GoogleAnalyticsRouteTracker'
 
 export default function App() {
   return (
@@ -37,6 +38,7 @@ export default function App() {
       <LocaleProvider>
       <UserProfileProvider>
       <BrowserRouter>
+      <GoogleAnalyticsRouteTracker />
       <SubscriptionProvider>
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />

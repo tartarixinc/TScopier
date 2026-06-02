@@ -1,5 +1,6 @@
 import { getCookie, setCookie } from './cookies'
 import { loadStoredReferralCode } from './referralCapture'
+import { trackGaEvent } from './googleAnalytics'
 
 const ANALYTICS_ID_KEY = 'tsc_analytics_id'
 const ANALYTICS_SESSION_KEY = 'tsc_analytics_session'
@@ -7,12 +8,6 @@ const ONE_YEAR_SECONDS = 365 * 24 * 60 * 60
 const SIX_HOURS_MS = 6 * 60 * 60 * 1000
 
 type EventPayload = Record<string, unknown>
-
-declare global {
-  interface Window {
-    dataLayer?: Array<Record<string, unknown>>
-  }
-}
 
 function randomId(prefix: string): string {
   return `${prefix}_${crypto.randomUUID()}`
@@ -58,7 +53,14 @@ export function trackMarketingEvent(eventName: string, payload: EventPayload = {
   }
 
   window.dataLayer = window.dataLayer ?? []
-  window.dataLayer.push(event)
+  window.dataLayer.push(event as Record<string, unknown>)
+  trackGaEvent(eventName, {
+    analytics_id: event.analytics_id,
+    session_id: event.session_id,
+    referral_code: event.referral_code,
+    path: event.path,
+    ...payload,
+  })
 
   // Keep a small local session buffer for debug/QA.
   try {
