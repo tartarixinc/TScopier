@@ -300,15 +300,6 @@ async function handleSignal(ctx, row, opts) {
                 await ctx.logDispatchSkipped(row, 'message_edit_no_sl_tp');
                 return;
             }
-            const { count: openTradeCount } = await ctx.supabase
-                .from('trades')
-                .select('id', { count: 'exact', head: true })
-                .eq('signal_id', row.id)
-                .eq('status', 'open');
-            if ((openTradeCount ?? 0) === 0) {
-                await ctx.logDispatchSkipped(row, 'message_edit_no_open_trades');
-                return;
-            }
             if (!(0, multiTradeMerge_1.shouldRouteAsBasketParameterRefresh)(parsed) && !(0, tradeSignalActions_1.isManagementAction)(action)) {
                 await ctx.logDispatchSkipped(row, 'message_edit_not_parameter_refresh');
                 return;

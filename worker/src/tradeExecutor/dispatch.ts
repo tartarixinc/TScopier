@@ -52,6 +52,17 @@ export function shouldUseEntryFastPath(ctx: TradeExecutorContext, row: SignalRow
     return isEntryAction(parsedAction(parsed))
   }
 
+export function messageEditSkipReason(
+  parsed: Record<string, unknown> | null | undefined,
+  action: string,
+): 'message_edit_no_sl_tp' | 'message_edit_not_parameter_refresh' | null {
+  if (!parsed || !parsedHasSlOrTp(parsed)) return 'message_edit_no_sl_tp'
+  if (!shouldRouteAsBasketParameterRefresh(parsed) && !isManagementAction(action)) {
+    return 'message_edit_not_parameter_refresh'
+  }
+  return null
+}
+
 export function enqueueSignal(ctx: TradeExecutorContext, 
     row: SignalRow,
     opts?: {
@@ -341,21 +352,9 @@ export async function handleSignal(ctx: TradeExecutorContext,
       }
 
       if (isMessageEdit) {
-        if (!parsedHasSlOrTp(parsed)) {
-          await ctx.logDispatchSkipped(row, 'message_edit_no_sl_tp')
-          return
-        }
-        const { count: openTradeCount } = await ctx.supabase
-          .from('trades')
-          .select('id', { count: 'exact', head: true })
-          .eq('signal_id', row.id)
-          .eq('status', 'open')
-        if ((openTradeCount ?? 0) === 0) {
-          await ctx.logDispatchSkipped(row, 'message_edit_no_open_trades')
-          return
-        }
-        if (!shouldRouteAsBasketParameterRefresh(parsed) && !isManagementAction(action)) {
-          await ctx.logDispatchSkipped(row, 'message_edit_not_parameter_refresh')
+        const reason = messageEditSkipReason(parsed as Record<string, unknown> | null, action)
+        if (reason) {
+          await ctx.logDispatchSkipped(row, reason)
           return
         }
       }
