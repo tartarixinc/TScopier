@@ -84,6 +84,8 @@ export interface ConfigureModalTranslations {
       no: string
     }
     commaSeparatedHint: string
+    autoTrainingInProgress: string
+    autoTrainingDone: string
   }
   channelSymbols: {
     title: string

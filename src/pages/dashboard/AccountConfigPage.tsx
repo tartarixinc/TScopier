@@ -609,22 +609,22 @@ export function AccountConfigPage() {
 
   const manualSubTabs = useMemo<ManualSubTabDef[]>(
     () => [
+      { id: 'ai_training', label: cm.manualSubTabs.aiTraining, icon: Activity },
       { id: 'symbols', label: cm.manualSubTabs.symbols, icon: Coins },
       { id: 'channel_instructions', label: cm.manualSubTabs.channelInstructions, icon: ScrollText },
       { id: 'risk', label: cm.manualSubTabs.risk, icon: Wallet },
       { id: 'stops', label: cm.manualSubTabs.stops, icon: Target },
       { id: 'management', label: cm.manualSubTabs.management, icon: Settings2 },
       { id: 'filters', label: cm.manualSubTabs.filters, icon: Filter },
-      { id: 'ai_training', label: cm.manualSubTabs.aiTraining, icon: Activity },
     ],
     [
+      cm.manualSubTabs.aiTraining,
       cm.manualSubTabs.symbols,
       cm.manualSubTabs.channelInstructions,
       cm.manualSubTabs.risk,
       cm.manualSubTabs.stops,
       cm.manualSubTabs.management,
       cm.manualSubTabs.filters,
-      cm.manualSubTabs.aiTraining,
     ],
   )
 
@@ -693,8 +693,9 @@ export function AccountConfigPage() {
   const [channelSignalSampleCount, setChannelSignalSampleCount] = useState(0)
   const [trainingByChannel, setTrainingByChannel] = useState<Record<string, SignalTrainingSchema>>({})
   const [trainingLoading, setTrainingLoading] = useState(false)
-  const [trainingRunning, setTrainingRunning] = useState(false)
-  const [trainingSaving, setTrainingSaving] = useState(false)
+  const [trainingRunningByChannel, setTrainingRunningByChannel] = useState<Record<string, boolean>>({})
+  const [trainingSavingByChannel, setTrainingSavingByChannel] = useState<Record<string, boolean>>({})
+  const [trainingProgressByChannel, setTrainingProgressByChannel] = useState<Record<string, number>>({})
   const [configSaving, setConfigSaving] = useState(false)
   const [channelConnecting, setChannelConnecting] = useState(false)
   const [configSavedAt, setConfigSavedAt] = useState<number | null>(null)
@@ -844,6 +845,15 @@ export function AccountConfigPage() {
     if (!channelId) return defaultSignalTrainingSchema()
     return trainingByChannel[channelId] ?? defaultSignalTrainingSchema()
   }, [configDraft.selectedChannelId, trainingByChannel])
+  const activeChannelTrainingRunning = configDraft.selectedChannelId
+    ? trainingRunningByChannel[configDraft.selectedChannelId] === true
+    : false
+  const activeChannelTrainingSaving = configDraft.selectedChannelId
+    ? trainingSavingByChannel[configDraft.selectedChannelId] === true
+    : false
+  const activeChannelTrainingProgress = configDraft.selectedChannelId
+    ? Math.max(0, Math.min(100, Math.round(trainingProgressByChannel[configDraft.selectedChannelId] ?? 0)))
+    : 0
 
   const multiTradePreview = useMemo(() => {
     const ms = channelManualSettings
@@ -1087,8 +1097,12 @@ export function AccountConfigPage() {
     }
   }
 
-  const runAiTraining = async (channelId: string) => {
-    setTrainingRunning(true)
+  const runAiTraining = async (
+    channelId: string,
+    opts?: { autoSave?: boolean; silent?: boolean },
+  ) => {
+    setTrainingRunningByChannel(prev => ({ ...prev, [channelId]: true }))
+    setTrainingProgressByChannel(prev => ({ ...prev, [channelId]: Math.max(5, prev[channelId] ?? 0) }))
     setError('')
     try {
       const result = await trainChannelSignals(channelId, CHANNEL_SYMBOL_LOOKBACK_DAYS)
@@ -1096,26 +1110,37 @@ export function AccountConfigPage() {
         throw new Error(result.error || 'AI training failed')
       }
       setTrainingByChannel(prev => ({ ...prev, [channelId]: result.training_schema! }))
+      setTrainingProgressByChannel(prev => ({ ...prev, [channelId]: Math.max(94, prev[channelId] ?? 0) }))
+      if (opts?.autoSave) {
+        await saveAiTrainingDraft(channelId, {
+          schemaOverride: result.training_schema!,
+          silent: opts?.silent,
+        })
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'AI training failed')
+      if (!opts?.silent) setError(err instanceof Error ? err.message : 'AI training failed')
     } finally {
-      setTrainingRunning(false)
+      setTrainingRunningByChannel(prev => ({ ...prev, [channelId]: false }))
     }
   }
 
-  const saveAiTrainingDraft = async (channelId: string) => {
-    const schema = trainingByChannel[channelId]
+  const saveAiTrainingDraft = async (
+    channelId: string,
+    opts?: { schemaOverride?: SignalTrainingSchema; silent?: boolean },
+  ) => {
+    const schema = opts?.schemaOverride ?? trainingByChannel[channelId]
     if (!schema) return
-    setTrainingSaving(true)
+    setTrainingSavingByChannel(prev => ({ ...prev, [channelId]: true }))
     setError('')
     try {
       const result = await saveChannelTraining(channelId, schema)
       if (!result.ok) throw new Error(result.error || 'Failed to save AI training')
+      setTrainingProgressByChannel(prev => ({ ...prev, [channelId]: 100 }))
       setConfigSavedAt(Date.now())
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save AI training')
+      if (!opts?.silent) setError(err instanceof Error ? err.message : 'Failed to save AI training')
     } finally {
-      setTrainingSaving(false)
+      setTrainingSavingByChannel(prev => ({ ...prev, [channelId]: false }))
     }
   }
 
@@ -1245,6 +1270,8 @@ export function AccountConfigPage() {
         console.warn('[account-config] channel backfill failed:', syncErr)
       }
       void loadChannelSymbols(channelId, { runAnalysis: true })
+      // Auto-start training immediately after channel link and save in background.
+      void runAiTraining(channelId, { autoSave: true, silent: true })
     } finally {
       setChannelConnecting(false)
     }
@@ -1261,6 +1288,24 @@ export function AccountConfigPage() {
     void loadChannelTrainingDraft(configDraft.selectedChannelId)
   // eslint-disable-next-line react-hooks/exhaustive-deps -- reload training when switching channels in modal
   }, [configDraft.selectedChannelId, configAccount?.id, userId])
+
+  useEffect(() => {
+    const channelId = configDraft.selectedChannelId
+    if (!channelId) return
+    if (!trainingRunningByChannel[channelId] && !trainingSavingByChannel[channelId]) return
+    const timer = setInterval(() => {
+      setTrainingProgressByChannel(prev => {
+        const current = prev[channelId] ?? 0
+        if (trainingSavingByChannel[channelId]) {
+          const next = Math.min(98, current + 2)
+          return next === current ? prev : { ...prev, [channelId]: next }
+        }
+        const next = Math.min(92, current + 3)
+        return next === current ? prev : { ...prev, [channelId]: next }
+      })
+    }, 450)
+    return () => clearInterval(timer)
+  }, [configDraft.selectedChannelId, trainingRunningByChannel, trainingSavingByChannel])
 
   const channelSymbolSelection = useMemo(() => {
     return selectedSymbolsFromWhitelist(channelManualSettings.symbol_to_trade, detectedSymbols)
@@ -2419,6 +2464,25 @@ export function AccountConfigPage() {
                       : cm.channelConfigUnsavedChanges}
                   </Alert>
                 ) : null}
+                {selectedChannelLinked && (activeChannelTrainingRunning || activeChannelTrainingSaving || activeChannelTrainingProgress > 0) ? (
+                  <div className="mb-4 rounded-lg border border-primary-200 dark:border-primary-900 bg-primary-50 dark:bg-primary-950/30 p-3">
+                    <p className="text-xs font-medium text-primary-800 dark:text-primary-200">
+                      {activeChannelTrainingProgress >= 100
+                        ? cm.aiTraining.autoTrainingDone
+                        : interpolate(cm.aiTraining.autoTrainingInProgress, {
+                            progress: String(activeChannelTrainingProgress),
+                          })}
+                    </p>
+                    {activeChannelTrainingProgress < 100 ? (
+                      <div className="mt-2 h-2 rounded-full bg-primary-100 dark:bg-primary-900 overflow-hidden">
+                        <div
+                          className="h-full bg-primary-600 transition-[width] duration-500 ease-out"
+                          style={{ width: `${activeChannelTrainingProgress}%` }}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
 
                 {!configDraft.selectedChannelId ? (
                   <div className="py-12 text-center">
@@ -2669,18 +2733,18 @@ export function AccountConfigPage() {
                                     type="button"
                                     variant="secondary"
                                     size="sm"
-                                    loading={trainingRunning}
-                                    disabled={trainingSaving || configSaving || presetSaving}
+                                    loading={activeChannelTrainingRunning}
+                                    disabled={activeChannelTrainingSaving || configSaving || presetSaving}
                                     onClick={() => void runAiTraining(configDraft.selectedChannelId!)}
                                   >
                                     <RefreshCw className="w-3.5 h-3.5" />
-                                    {trainingRunning ? cm.aiTraining.training : cm.aiTraining.trainButton}
+                                    {activeChannelTrainingRunning ? cm.aiTraining.training : cm.aiTraining.trainButton}
                                   </Button>
                                   <Button
                                     type="button"
                                     size="sm"
-                                    loading={trainingSaving}
-                                    disabled={trainingRunning || configSaving || presetSaving}
+                                    loading={activeChannelTrainingSaving}
+                                    disabled={activeChannelTrainingRunning || configSaving || presetSaving}
                                     onClick={() => void saveAiTrainingDraft(configDraft.selectedChannelId!)}
                                   >
                                     {cm.aiTraining.saveButton}

@@ -83,6 +83,8 @@ export const configureModalEs: ConfigureModalTranslations = {
       no: 'No',
     },
     commaSeparatedHint: 'Valores separados por comas',
+    autoTrainingInProgress: 'Entrenamiento en progreso... {progress}%',
+    autoTrainingDone: 'Entrenamiento completado y guardado.',
   },
   channelSymbols: {
     title: 'Símbolos a operar',

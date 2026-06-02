@@ -83,6 +83,8 @@ export const configureModalFr: ConfigureModalTranslations = {
       no: 'Non',
     },
     commaSeparatedHint: 'Valeurs séparées par des virgules',
+    autoTrainingInProgress: 'Entraînement en cours... {progress}%',
+    autoTrainingDone: 'Entraînement terminé et enregistré.',
   },
   channelSymbols: {
     title: 'Symboles à trader',
