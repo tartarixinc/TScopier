@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   Plus, Trash2, Server, Activity, GitBranch, Eye, DollarSign, RefreshCw,
@@ -800,6 +801,15 @@ export function AccountConfigPage() {
   useEffect(() => {
     if (brokerPage > brokerTotalPages) setBrokerPage(brokerTotalPages)
   }, [brokerPage, brokerTotalPages])
+
+  useEffect(() => {
+    if (!configAccount) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [configAccount])
 
   useEffect(() => {
     if (brokers.length > 0) void syncBrokerAccountTypes(brokers)
@@ -2387,13 +2397,14 @@ export function AccountConfigPage() {
         </div>
       )}
 
-      {configAccount && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
+      {configAccount && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 pb-[env(safe-area-inset-bottom)]">
+          <div className="fixed inset-0 bg-black/40" aria-hidden />
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="configure-trading-title"
-            className="w-full max-w-5xl h-[100dvh] sm:h-[88vh] max-h-[100dvh] sm:max-h-[88vh] flex flex-col relative rounded-none sm:rounded-2xl bg-white dark:bg-neutral-900 shadow-xl border-0 sm:border border-neutral-200 dark:border-neutral-800 overflow-hidden"
+            className="relative z-[1] w-full max-w-5xl h-[100dvh] sm:h-[88vh] max-h-[100dvh] sm:max-h-[88vh] flex flex-col rounded-none sm:rounded-2xl bg-white dark:bg-neutral-900 shadow-xl border-0 sm:border border-neutral-200 dark:border-neutral-800 overflow-hidden"
           >
             <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-neutral-100 dark:border-neutral-800 flex items-start justify-between gap-3 shrink-0">
               <div className="min-w-0 flex-1">
@@ -4101,7 +4112,8 @@ export function AccountConfigPage() {
         </div>
             ) : null}
     </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </PageShell>
   )
