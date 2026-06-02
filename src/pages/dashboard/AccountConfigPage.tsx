@@ -696,6 +696,7 @@ export function AccountConfigPage() {
   const [trainingRunningByChannel, setTrainingRunningByChannel] = useState<Record<string, boolean>>({})
   const [trainingSavingByChannel, setTrainingSavingByChannel] = useState<Record<string, boolean>>({})
   const [trainingProgressByChannel, setTrainingProgressByChannel] = useState<Record<string, number>>({})
+  const [trainingExistsByChannel, setTrainingExistsByChannel] = useState<Record<string, boolean>>({})
   const [configSaving, setConfigSaving] = useState(false)
   const [channelConnecting, setChannelConnecting] = useState(false)
   const [configSavedAt, setConfigSavedAt] = useState<number | null>(null)
@@ -1071,6 +1072,7 @@ export function AccountConfigPage() {
         ? data.meta as Record<string, unknown>
         : {}
       const raw = meta.ai_training_schema
+      setTrainingExistsByChannel(prev => ({ ...prev, [channelId]: Boolean(raw && typeof raw === 'object') }))
       const base = defaultSignalTrainingSchema()
       const training = raw && typeof raw === 'object'
         ? {
@@ -1103,7 +1105,7 @@ export function AccountConfigPage() {
   ) => {
     setTrainingRunningByChannel(prev => ({ ...prev, [channelId]: true }))
     setTrainingProgressByChannel(prev => ({ ...prev, [channelId]: Math.max(5, prev[channelId] ?? 0) }))
-    setError('')
+    if (!opts?.silent) setError('')
     try {
       const result = await trainChannelSignals(channelId, CHANNEL_SYMBOL_LOOKBACK_DAYS)
       if (!result.ok || !result.training_schema) {
@@ -1131,16 +1133,24 @@ export function AccountConfigPage() {
     const schema = opts?.schemaOverride ?? trainingByChannel[channelId]
     if (!schema) return
     setTrainingSavingByChannel(prev => ({ ...prev, [channelId]: true }))
-    setError('')
+    if (!opts?.silent) setError('')
     try {
       const result = await saveChannelTraining(channelId, schema)
       if (!result.ok) throw new Error(result.error || 'Failed to save AI training')
+      setTrainingExistsByChannel(prev => ({ ...prev, [channelId]: true }))
       setTrainingProgressByChannel(prev => ({ ...prev, [channelId]: 100 }))
       setConfigSavedAt(Date.now())
     } catch (err) {
       if (!opts?.silent) setError(err instanceof Error ? err.message : 'Failed to save AI training')
     } finally {
       setTrainingSavingByChannel(prev => ({ ...prev, [channelId]: false }))
+      // Auto-dismiss completion state quickly after reaching 100%.
+      setTimeout(() => {
+        setTrainingProgressByChannel(prev => {
+          if ((prev[channelId] ?? 0) < 100) return prev
+          return { ...prev, [channelId]: 0 }
+        })
+      }, 400)
     }
   }
 
@@ -1270,8 +1280,11 @@ export function AccountConfigPage() {
         console.warn('[account-config] channel backfill failed:', syncErr)
       }
       void loadChannelSymbols(channelId, { runAnalysis: true })
-      // Auto-start training immediately after channel link and save in background.
-      void runAiTraining(channelId, { autoSave: true, silent: true })
+      // Auto-start training only once per channel (skip if training already exists).
+      const alreadyTrained = trainingExistsByChannel[channelId] === true
+      if (!alreadyTrained) {
+        void runAiTraining(channelId, { autoSave: true, silent: true })
+      }
     } finally {
       setChannelConnecting(false)
     }
@@ -1664,6 +1677,12 @@ export function AccountConfigPage() {
     setConfigSaving(false)
 
     if (upErr) { setError(upErr.message); return }
+
+    // Save any edited AI training drafts as part of the modal's main Save action.
+    const trainingChannelIds = channelIds.filter(id => Boolean(trainingByChannel[id]))
+    for (const channelId of trainingChannelIds) {
+      await saveAiTrainingDraft(channelId, { silent: true })
+    }
 
     let persistedDraft = configDraft
     if (data) {
@@ -2464,23 +2483,19 @@ export function AccountConfigPage() {
                       : cm.channelConfigUnsavedChanges}
                   </Alert>
                 ) : null}
-                {selectedChannelLinked && (activeChannelTrainingRunning || activeChannelTrainingSaving || activeChannelTrainingProgress > 0) ? (
+                {selectedChannelLinked && (activeChannelTrainingRunning || activeChannelTrainingSaving) ? (
                   <div className="mb-4 rounded-lg border border-primary-200 dark:border-primary-900 bg-primary-50 dark:bg-primary-950/30 p-3">
                     <p className="text-xs font-medium text-primary-800 dark:text-primary-200">
-                      {activeChannelTrainingProgress >= 100
-                        ? cm.aiTraining.autoTrainingDone
-                        : interpolate(cm.aiTraining.autoTrainingInProgress, {
-                            progress: String(activeChannelTrainingProgress),
-                          })}
+                      {interpolate(cm.aiTraining.autoTrainingInProgress, {
+                        progress: String(activeChannelTrainingProgress),
+                      })}
                     </p>
-                    {activeChannelTrainingProgress < 100 ? (
-                      <div className="mt-2 h-2 rounded-full bg-primary-100 dark:bg-primary-900 overflow-hidden">
-                        <div
-                          className="h-full bg-primary-600 transition-[width] duration-500 ease-out"
-                          style={{ width: `${activeChannelTrainingProgress}%` }}
-                        />
-                      </div>
-                    ) : null}
+                    <div className="mt-2 h-2 rounded-full bg-primary-100 dark:bg-primary-900 overflow-hidden">
+                      <div
+                        className="h-full bg-primary-600 transition-[width] duration-500 ease-out"
+                        style={{ width: `${activeChannelTrainingProgress}%` }}
+                      />
+                    </div>
                   </div>
                 ) : null}
 
@@ -2739,15 +2754,6 @@ export function AccountConfigPage() {
                                   >
                                     <RefreshCw className="w-3.5 h-3.5" />
                                     {activeChannelTrainingRunning ? cm.aiTraining.training : cm.aiTraining.trainButton}
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    loading={activeChannelTrainingSaving}
-                                    disabled={activeChannelTrainingRunning || configSaving || presetSaving}
-                                    onClick={() => void saveAiTrainingDraft(configDraft.selectedChannelId!)}
-                                  >
-                                    {cm.aiTraining.saveButton}
                                   </Button>
                                 </div>
                               </div>
