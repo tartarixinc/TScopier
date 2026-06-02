@@ -47,9 +47,8 @@ async function fetchPerformancePayload(userId: string): Promise<PerformanceCache
       .eq('user_id', userId),
     supabase
       .from('trades')
-      .select('broker_account_id, metaapi_order_id, signal_id')
-      .eq('user_id', userId)
-      .not('signal_id', 'is', null),
+      .select('broker_account_id, metaapi_order_id, signal_id, telegram_channel_id')
+      .eq('user_id', userId),
     supabase
       .from('trade_channel_attributions')
       .select('broker_account_id, metaapi_order_id, signal_id, channel_id, channel_label')
@@ -85,6 +84,7 @@ async function fetchPerformancePayload(userId: string): Promise<PerformanceCache
       broker_account_id: string | null
       metaapi_order_id: string | null
       signal_id: string | null
+      telegram_channel_id: string | null
     }>,
     (signalsRes.data ?? []) as Array<{ id: string; channel_id: string | null }>,
     (attributionRes.data ?? []) as Array<{
@@ -155,6 +155,7 @@ export function usePerformanceData(userId: string | undefined) {
   const [channelLinkMaps, setChannelLinkMaps] = useState<PerformanceChannelLinkMaps>({
     ticketToChannelId: {},
     signalPrefixToChannelId: {},
+    channelSlugToChannelId: {},
     channelNames: {},
   })
   const [loading, setLoading] = useState(true)
@@ -175,6 +176,7 @@ export function usePerformanceData(userId: string | undefined) {
       payload.channelLinkMaps ?? {
         ticketToChannelId: {},
         signalPrefixToChannelId: {},
+        channelSlugToChannelId: {},
         channelNames: {},
       },
     )

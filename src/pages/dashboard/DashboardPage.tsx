@@ -607,6 +607,7 @@ export function DashboardPage() {
   const [channelLinkMaps, setChannelLinkMaps] = useState<PerformanceChannelLinkMaps>({
     ticketToChannelId: {},
     signalPrefixToChannelId: {},
+    channelSlugToChannelId: {},
     channelNames: {},
   })
   const [showPlatformModal, setShowPlatformModal] = useState(false)
@@ -1159,11 +1160,12 @@ export function DashboardPage() {
           channel_username?: string | null
         }>,
         allTrades
-          .filter(t => t.signal_id)
+          .filter(t => t.metaapi_order_id && t.broker_account_id)
           .map(t => ({
             broker_account_id: t.broker_account_id,
             metaapi_order_id: t.metaapi_order_id,
             signal_id: t.signal_id,
+            telegram_channel_id: t.telegram_channel_id,
           })),
         (allSignalsRes.data ?? []) as Array<{ id: string; channel_id: string | null }>,
         (attributionRes.data ?? []) as Array<{
