@@ -39,7 +39,7 @@ async function applyReferralCode(accessToken: string, referralCode: string, sour
 export function WelcomePage() {
   const navigate = useNavigate()
   const { user, session } = useAuth()
-  const { profile, hasProfileRow, refreshProfile } = useUserProfile()
+  const { profile, refreshProfile } = useUserProfile()
   const [referralCode, setReferralCode] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')

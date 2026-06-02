@@ -548,6 +548,11 @@ function buildChannelConfigDraftFromBroker(
   const persistedFilters = normalizeChannelMessageFiltersMap(broker.channel_message_filters)
   const channelConfigs: Record<string, ChannelConfigDraft> = {}
   const legacyMode = AI_CONFIGURATION_ENABLED && broker.copier_mode !== 'manual' ? 'ai' : 'manual'
+  const fallbackManual = normalizeManualSettings(
+    broker.manual_settings && typeof broker.manual_settings === 'object'
+      ? (broker.manual_settings as Record<string, unknown>)
+      : buildDefaultChannelTradingConfig().manual_settings,
+  )
   const defaultManual = normalizeManualSettings(buildDefaultChannelTradingConfig().manual_settings)
 
   for (const id of channelIds) {
@@ -556,7 +561,7 @@ function buildChannelConfigDraftFromBroker(
       mode: stored?.copier_mode === 'ai' ? 'ai' : stored?.copier_mode === 'manual' ? 'manual' : legacyMode,
       manualSettings: stored?.manual_settings && channelManualSettingsComplete(stored.manual_settings)
         ? normalizeManualSettings(stored.manual_settings)
-        : defaultManual,
+        : fallbackManual ?? defaultManual,
       channelFilters: keywordFiltersEnabled
         ? normalizeChannelFilters(persistedFilters[id] ?? DEFAULT_CHANNEL_FILTERS)
         : normalizeChannelFilters(BASIC_PLAN_CHANNEL_FILTERS),
@@ -1665,28 +1670,31 @@ export function AccountConfigPage() {
         channelTradingConfigs[id] = existingConfigs[id]
       }
     }
-    const firstId = channelIds[0]
-    const firstConfig = firstId ? configDraft.channelConfigs[firstId] : null
-    const normalizedFirstManual = firstConfig
+    const selectedId = configDraft.selectedChannelId && channelIds.includes(configDraft.selectedChannelId)
+      ? configDraft.selectedChannelId
+      : null
+    const fallbackManualChannelId = selectedId ?? channelIds[0] ?? null
+    const fallbackManualConfig = fallbackManualChannelId
+      ? configDraft.channelConfigs[fallbackManualChannelId]
+      : null
+    const normalizedFallbackManual = fallbackManualConfig
       ? normalizeManualSettingsForPlan(
           savePlanCtx.plan,
           savePlanCtx.status,
           {
-            ...firstConfig.manualSettings,
-            allow_high_impact_news: firstConfig.manualSettings.news_trading_enabled === true,
+            ...fallbackManualConfig.manualSettings,
+            allow_high_impact_news: fallbackManualConfig.manualSettings.news_trading_enabled === true,
           } as Record<string, unknown>,
         )
-      : {}
+      : (configAccount.manual_settings ?? {})
     const { data, error: upErr } = await supabase
       .from('broker_accounts')
       .update({
-        copier_mode: AI_CONFIGURATION_ENABLED && firstConfig?.mode === 'ai' ? 'ai' : 'manual',
+        copier_mode: AI_CONFIGURATION_ENABLED && fallbackManualConfig?.mode === 'ai' ? 'ai' : 'manual',
         signal_channel_ids: channelIds,
         enforce_signal_channel_filter: restrictChannels,
         channel_trading_configs: channelTradingConfigs,
-        manual_settings: firstConfig
-          ? normalizedFirstManual
-          : {},
+        manual_settings: normalizedFallbackManual,
         channel_message_filters: channelMessageFilters,
       })
       .eq('id', configAccount.id)
