@@ -626,10 +626,4 @@ export const landingEs: LandingTranslations = {
     disclaimer:
       'Operar implica riesgo. TScopier es una herramienta de copia — no asesoramiento financiero.',
   },
-  cookieConsent: {
-    message:
-      'Usamos cookies para mejorar la atribución de afiliados y entender la interacción en la landing. Al continuar, aceptas nuestras cookies de seguimiento.',
-    accept: 'Aceptar cookies',
-    dismiss: 'Cerrar',
-  },
 }

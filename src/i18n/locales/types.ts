@@ -90,6 +90,11 @@ export interface CommonTranslations {
   noResults: string
   show: string
   results: string
+  cookieConsent: {
+    message: string
+    accept: string
+    dismiss: string
+  }
 }
 
 export interface PageMeta {

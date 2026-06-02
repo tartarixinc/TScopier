@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react'
 import { MarketingHeader } from './MarketingHeader'
 import { MarketingFooter } from './MarketingFooter'
-import { CookieConsentBanner } from './CookieConsentBanner'
 
 interface MarketingLayoutProps {
   children: ReactNode
@@ -16,7 +15,6 @@ export function MarketingLayout({ children }: MarketingLayoutProps) {
       <main className="relative z-10 flex-1 pt-[4.75rem] sm:pt-20">{children}</main>
 
       <MarketingFooter />
-      <CookieConsentBanner />
     </div>
   )
 }

@@ -31,6 +31,7 @@ import { SettingsPage } from './pages/dashboard/SettingsPage'
 import { WelcomePage } from './pages/onboarding/WelcomePage'
 import { ReferralCodeRedirect } from './pages/auth/ReferralCodeRedirect'
 import { GoogleAnalyticsRouteTracker } from './components/analytics/GoogleAnalyticsRouteTracker'
+import { CookieConsentBanner } from './components/marketing/CookieConsentBanner'
 
 export default function App() {
   return (
@@ -39,6 +40,7 @@ export default function App() {
       <UserProfileProvider>
       <BrowserRouter>
       <GoogleAnalyticsRouteTracker />
+      <CookieConsentBanner />
       <SubscriptionProvider>
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />

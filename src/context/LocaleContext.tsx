@@ -14,6 +14,13 @@ import {
   type Locale,
 } from '../i18n/types'
 
+function detectBrowserLocale(): Locale | null {
+  if (typeof navigator === 'undefined') return null
+  const lang = navigator.language.split('-')[0]?.toLowerCase()
+  if (lang === 'en' || lang === 'es' || lang === 'fr') return lang
+  return null
+}
+
 function readStoredLocale(): Locale {
   try {
     const raw = localStorage.getItem(LOCALE_STORAGE_KEY)
@@ -21,7 +28,7 @@ function readStoredLocale(): Locale {
   } catch {
     /* private mode */
   }
-  return DEFAULT_LOCALE
+  return detectBrowserLocale() ?? DEFAULT_LOCALE
 }
 
 interface LocaleContextValue {

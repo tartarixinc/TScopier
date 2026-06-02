@@ -224,6 +224,11 @@ export const en: Translations = {
     noResults: 'No results',
     show: 'Show',
     results: 'results',
+    cookieConsent: {
+      message: 'We use cookies to improve user experience.',
+      accept: 'Accept cookies',
+      dismiss: 'Dismiss',
+    },
   },
   accountConfig: {
     brokersEmptyTitle: 'No accounts connected yet',

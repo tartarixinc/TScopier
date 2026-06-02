@@ -5,6 +5,7 @@ import { LandingPage } from './pages/marketing/LandingPage'
 import { ReferralLandingRedirect } from './pages/marketing/ReferralLandingRedirect'
 import { appUrl } from './lib/site'
 import { GoogleAnalyticsRouteTracker } from './components/analytics/GoogleAnalyticsRouteTracker'
+import { CookieConsentBanner } from './components/marketing/CookieConsentBanner'
 
 function MarketingCatchAll() {
   if (typeof window !== 'undefined') {
@@ -19,6 +20,7 @@ export default function MarketingApp() {
       <LocaleProvider>
         <BrowserRouter>
           <GoogleAnalyticsRouteTracker />
+          <CookieConsentBanner />
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/:referralCode" element={<ReferralLandingRedirect />} />

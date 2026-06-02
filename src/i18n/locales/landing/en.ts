@@ -625,10 +625,4 @@ export const landingEn: LandingTranslations = {
     disclaimer:
       'Trading involves risk. TScopier is a copy tool — not financial advice.',
   },
-  cookieConsent: {
-    message:
-      'We use cookies to improve user experience.',
-    accept: 'Accept cookies',
-    dismiss: 'Dismiss',
-  },
 }

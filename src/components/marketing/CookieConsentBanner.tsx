@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useT } from '../../context/LocaleContext'
+import { useLocale } from '../../context/LocaleContext'
 import {
   markTrackingConsentAccepted,
   markTrackingConsentDismissed,
@@ -7,15 +7,16 @@ import {
 } from '../../lib/trackingConsent'
 
 export function CookieConsentBanner() {
+  const { locale, t } = useLocale()
   const [visible, setVisible] = useState(() => shouldShowTrackingBanner())
-  const c = useT().landing.cookieConsent
+  const c = t.common.cookieConsent
 
   if (!visible) return null
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-50 px-3 pb-3 sm:px-6 sm:pb-6">
       <div className="mx-auto max-w-5xl rounded-xl border border-neutral-200 bg-white/95 p-4 shadow-lg backdrop-blur dark:border-neutral-700 dark:bg-neutral-900/95">
-        <p className="text-sm text-neutral-700 dark:text-neutral-200">{c.message}</p>
+        <p key={locale} className="text-sm text-neutral-700 dark:text-neutral-200">{c.message}</p>
         <div className="mt-3 flex flex-wrap gap-2">
           <button
             type="button"
