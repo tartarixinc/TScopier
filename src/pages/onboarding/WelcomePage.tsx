@@ -63,12 +63,10 @@ export function WelcomePage() {
     setError('')
     setSaving(true)
     try {
-      if (hasProfileRow) {
-        await saveUserProfile(user.id, {
-          ...profile,
-          onboarding_completed_at: new Date().toISOString(),
-        })
-      }
+      await saveUserProfile(user.id, {
+        ...profile,
+        onboarding_completed_at: new Date().toISOString(),
+      })
       if (session?.access_token && canApplyCode) {
         const source = window.location.search.includes('ref=') ? 'signup_url' : 'onboarding'
         await applyReferralCode(session.access_token, normalizedCode, source)
