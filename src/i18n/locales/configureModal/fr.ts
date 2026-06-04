@@ -87,20 +87,22 @@ export const configureModalFr: ConfigureModalTranslations = {
     autoTrainingDone: 'Entraînement terminé et enregistré.',
   },
   channelSymbols: {
-    title: 'Symboles à trader',
+    title: 'Mapping des symboles',
     intro:
-      'Nous détectons les instruments à partir des signaux récents du canal. Choisissez ceux que ce broker doit copier. Si tout est sélectionné, tous les symboles détectés sont tradés.',
-    refresh: 'Actualiser l’analyse',
-    refreshing: 'Analyse en cours…',
-    loading: 'Chargement des symboles des signaux récents…',
-    empty:
-      'Aucun symbole détecté pour l’instant. Connectez Telegram, attendez des signaux sur ce canal, puis actualisez.',
-    selectAll: 'Tout sélectionner',
-    clearAll: 'Tout désélectionner',
-    selectedCount: '{count} sur {total} sélectionnés',
-    tradeAllHint: 'Tous les symboles détectés seront copiés.',
-    staleSymbolNote: 'Enregistrés mais absents des signaux récents : {symbols}',
-    signalsCount: 'Basé sur {count} messages récents',
+      'Faites correspondre les symboles du signal aux noms d’instruments de votre broker. Ajoutez un préfixe ou un suffixe si les codes diffèrent (ex. XAUUSD+). Les symboles non mappés utilisent toujours la correspondance automatique du broker.',
+    prefixLabel: 'Préfixe de symbole',
+    prefixHint: 'Ajouté avant chaque symbole du signal (ex. # pour #XAUUSD).',
+    suffixLabel: 'Suffixe de symbole',
+    suffixHint: 'Ajouté après chaque symbole (ex. + pour XAUUSD+). Laissez vide si les noms correspondent au signal.',
+    example: 'Exemple : XAUUSD avec suffixe + → ordres sur XAUUSD+',
+    tradeOnlyLabel: 'Symboles à trader',
+    tradeOnlyHint:
+      'Laissez vide pour copier tous les symboles du canal. Si renseigné, seuls les symboles listés sont copiés (séparés par des virgules, ex. XAUUSD, EURUSD).',
+    tradeOnlyPlaceholder: 'XAUUSD, EURUSD',
+    avoidLabel: 'Symboles à éviter',
+    avoidHint:
+      'Laissez vide pour autoriser tous les symboles (sous réserve de Symboles à trader). Les symboles listés ne sont jamais copiés depuis ce canal.',
+    avoidPlaceholder: 'BTCUSD, US30',
   },
   ai: {
     title: 'Configuration IA',

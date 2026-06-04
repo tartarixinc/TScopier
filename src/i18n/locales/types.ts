@@ -304,6 +304,8 @@ export interface AccountConfigBrokerListTranslations {
   deleteFailed: string
   deleteSessionExpired: string
   duplicateMtLogin: string
+  platformServerMismatchMt4: string
+  platformServerMismatchMt5: string
   deleteTitle: string
   deleteBody: string
   deleteConfirm: string

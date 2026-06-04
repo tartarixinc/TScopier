@@ -31,5 +31,12 @@ export function apiForMetaapiAccount(
   platformById: PlatformByMetaapiId,
   metaapiAccountId: string,
 ): MetatraderApiClient | null {
-  return getMetatraderApi(platformById.get(metaapiAccountId) ?? 'MT5')
+  const platform = platformById.get(metaapiAccountId)
+  if (!platform) {
+    console.error(
+      `[mtApi] missing platform for metaapi_account_id=${metaapiAccountId} — refusing MT5 fallback`,
+    )
+    return null
+  }
+  return getMetatraderApi(platform)
 }

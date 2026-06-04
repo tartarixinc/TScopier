@@ -36,7 +36,7 @@ import {
 } from '../channelActiveTradeParams'
 import { buildTscopierCommentPrefix } from '../tradeComment'
 import type { TradeExecutorContext } from './context'
-import { applySymbolMapping, computeCweTp, computeLot, isExcluded, roundLot, type Leg } from './helpers'
+import { applySymbolMapping, computeCweTp, computeLot, isExcluded, isMt5OnlyOperation, roundLot, type Leg } from './helpers'
 import type {
   BrokerRow,
   ParsedSignal,
@@ -172,7 +172,21 @@ export async function prepareEntryExecution(
   const api = ctx.apiFor(broker)
   if (!api) return { ok: false, outcome: {} }
   const uuid = broker.metaapi_account_id!
+  const signalSymbol = (parsed.symbol ?? '').trim()
+  if (isExcluded(signalSymbol, broker)) {
+    await ctx.logSendSkipped(signal, broker, 'symbol_exempted_from_trading', {
+      signal_symbol: parsed.symbol ?? null,
+      reason: 'symbols_exclude',
+    })
+    return { ok: false, outcome: {} }
+  }
+
   const mapping = applySymbolMapping(parsed.symbol!, broker)
+
+  if (broker.platform === 'MT4' && isMt5OnlyOperation(op)) {
+    await ctx.logSendSkipped(signal, broker, 'mt4_unsupported_operation', { operation: op })
+    return { ok: false, outcome: { finalizeSkipReason: 'mt4_unsupported_operation' } }
+  }
 
   // Whitelist mode: when the user listed multiple symbols, only let signals
   // matching one of them through. Skip the signal otherwise.
@@ -188,14 +202,6 @@ export async function prepareEntryExecution(
   }
 
   const requestedSymbol = mapping.symbol
-  if (isExcluded(requestedSymbol, broker)) {
-    await ctx.logSendSkipped(signal, broker, 'symbol_exempted_from_trading', {
-      signal_symbol: parsed.symbol ?? null,
-      trade_symbol: requestedSymbol,
-      reason: 'symbols_exclude',
-    })
-    return { ok: false, outcome: {} }
-  }
 
   const isManual = (broker.copier_mode ?? 'ai') === 'manual'
   const manual = (broker.manual_settings ?? {}) as ManualSettings
@@ -216,26 +222,24 @@ export async function prepareEntryExecution(
     }
     return r
   })
+  const resolveOpts = { userDecorated: mapping.userDecorated }
   const symbolPromise = (liveEntryFast
-    ? ctx.resolveBrokerSymbolForLiveEntry(uuid, requestedSymbol)
-    : ctx.resolveBrokerSymbol(uuid, requestedSymbol)
+    ? ctx.resolveBrokerSymbolForLiveEntry(uuid, requestedSymbol, resolveOpts)
+    : ctx.resolveBrokerSymbol(uuid, requestedSymbol, resolveOpts)
   ).then(r => {
     if (stampOnResolve && signal.pipeline_ts && signal.pipeline_ts.t_symbol_resolved == null) {
       signal.pipeline_ts.t_symbol_resolved = Date.now()
     }
     return r
   })
-  const paramsPromise = ctx.getSymbolParams(uuid, requestedSymbol).catch(() => null).then(r => {
-    if (stampOnResolve && signal.pipeline_ts && signal.pipeline_ts.t_params_resolved == null) {
-      signal.pipeline_ts.t_params_resolved = Date.now()
-    }
-    return r
-  })
-  const [sessionOk, symbol, paramsFromRequested] = await Promise.all([
+  const [sessionOk, symbol] = await Promise.all([
     sessionPromise,
     symbolPromise,
-    paramsPromise,
   ])
+  let params = await ctx.getSymbolParams(uuid, symbol).catch(() => null)
+  if (stampOnResolve && signal.pipeline_ts && signal.pipeline_ts.t_params_resolved == null) {
+    signal.pipeline_ts.t_params_resolved = Date.now()
+  }
   if (liveEntryFast && signal.pipeline_ts && signal.pipeline_ts.t_send_caches_resolved == null) {
     signal.pipeline_ts.t_send_caches_resolved = Date.now()
   }
@@ -249,9 +253,11 @@ export async function prepareEntryExecution(
   }
   if (symbol.toUpperCase() !== requestedSymbol.toUpperCase()) {
     console.log(`[tradeExecutor] symbol resolved broker=${broker.id} ${requestedSymbol} → ${symbol}`)
+  } else if (mapping.userDecorated && !params) {
+    console.warn(
+      `[tradeExecutor] user-decorated symbol params missing broker=${broker.id} symbol=${symbol}`,
+    )
   }
-
-  let params = paramsFromRequested ?? await ctx.getSymbolParams(uuid, symbol).catch(() => null)
   const baseLot = roundLot(computeLot(broker, parsed), params)
 
   let strictEntryPrefetch: { bid: number; ask: number } | null = null

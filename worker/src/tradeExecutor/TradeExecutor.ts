@@ -246,7 +246,8 @@ export class TradeExecutor {
     for (const b of this.brokersById.values()) {
       if (b.metaapi_account_id === uuid) return this.apiFor(b)
     }
-    return getMetatraderApi('MT5')
+    console.error(`[tradeExecutor] apiForUuid: unknown broker uuid=${uuid}`)
+    return null
   }
 
   async start() {
@@ -1222,13 +1223,20 @@ export class TradeExecutor {
     return await brokerSymbolCache.fetchSymbolList(this, uuid)
   }
 
-  resolveBrokerSymbolFromInventory(inventory: SymbolListCacheEntry,
-    requested: string,): string {
-    return brokerSymbolCache.resolveBrokerSymbolFromInventory(this, inventory, requested)
+  resolveBrokerSymbolFromInventory(
+    inventory: SymbolListCacheEntry,
+    requested: string,
+    opts?: { userDecorated?: boolean },
+  ): string {
+    return brokerSymbolCache.resolveBrokerSymbolFromInventory(this, inventory, requested, opts)
   }
 
-  async resolveBrokerSymbolForLiveEntry(uuid: string, requested: string): Promise<string> {
-    return await brokerSymbolCache.resolveBrokerSymbolForLiveEntry(this, uuid, requested)
+  async resolveBrokerSymbolForLiveEntry(
+    uuid: string,
+    requested: string,
+    opts?: { userDecorated?: boolean },
+  ): Promise<string> {
+    return await brokerSymbolCache.resolveBrokerSymbolForLiveEntry(this, uuid, requested, opts)
   }
 
   async deferredVirtualPendingMaterialize(args: {
@@ -1323,7 +1331,11 @@ export class TradeExecutor {
    *   2. Fall back to fuzzy matching against `/Symbols` using common broker suffixes
    *      and prefix/suffix substitution. Picks the shortest match (closest variant).
    */
-  async resolveBrokerSymbol(uuid: string, requested: string): Promise<string> {
-    return await brokerSymbolCache.resolveBrokerSymbol(this, uuid, requested)
+  async resolveBrokerSymbol(
+    uuid: string,
+    requested: string,
+    opts?: { userDecorated?: boolean },
+  ): Promise<string> {
+    return await brokerSymbolCache.resolveBrokerSymbol(this, uuid, requested, opts)
   }
 }

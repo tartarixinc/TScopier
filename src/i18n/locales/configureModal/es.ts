@@ -87,20 +87,22 @@ export const configureModalEs: ConfigureModalTranslations = {
     autoTrainingDone: 'Entrenamiento completado y guardado.',
   },
   channelSymbols: {
-    title: 'Símbolos a operar',
+    title: 'Mapeo de símbolos',
     intro:
-      'Detectamos instrumentos a partir de las señales recientes del canal. Elige cuáles debe copiar este broker. Si todos están seleccionados, se operan todos los detectados.',
-    refresh: 'Actualizar análisis',
-    refreshing: 'Analizando…',
-    loading: 'Cargando símbolos de señales recientes…',
-    empty:
-      'Aún no hay símbolos detectados. Conecta Telegram, espera señales en este canal y actualiza.',
-    selectAll: 'Seleccionar todos',
-    clearAll: 'Quitar todos',
-    selectedCount: '{count} de {total} seleccionados',
-    tradeAllHint: 'Se copiarán todos los símbolos detectados.',
-    staleSymbolNote: 'Guardados pero no vistos en señales recientes: {symbols}',
-    signalsCount: 'Basado en {count} mensajes recientes',
+      'Haz coincidir los símbolos de la señal con los nombres de instrumentos de tu broker. Añade un prefijo o sufijo si los códigos difieren (p. ej. XAUUSD+). Los símbolos sin mapear siguen usando la coincidencia automática del broker.',
+    prefixLabel: 'Prefijo de símbolo',
+    prefixHint: 'Se antepone a cada símbolo de la señal (p. ej. # para #XAUUSD).',
+    suffixLabel: 'Sufijo de símbolo',
+    suffixHint: 'Se añade después de cada símbolo (p. ej. + para XAUUSD+). Déjalo vacío si los nombres coinciden con la señal.',
+    example: 'Ejemplo: XAUUSD con sufijo + → órdenes en XAUUSD+',
+    tradeOnlyLabel: 'Símbolos a operar',
+    tradeOnlyHint:
+      'Déjalo vacío para copiar todos los símbolos del canal. Si indicas una lista, solo se copian esas señales (separadas por comas, p. ej. XAUUSD, EURUSD).',
+    tradeOnlyPlaceholder: 'XAUUSD, EURUSD',
+    avoidLabel: 'Símbolos a evitar',
+    avoidHint:
+      'Déjalo vacío para permitir todos los símbolos (según Símbolos a operar). Los listados nunca se copian desde este canal.',
+    avoidPlaceholder: 'BTCUSD, US30',
   },
   ai: {
     title: 'Configuración de IA',

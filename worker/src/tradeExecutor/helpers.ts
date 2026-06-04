@@ -32,25 +32,34 @@ export function applySymbolMapping(raw: string, broker: BrokerRow): SymbolMappin
     symbol_to_trade?: string | null
   }
   const upper = raw.toUpperCase()
-  const mapped = (m.symbol_mapping?.[upper] ?? upper).toUpperCase()
+  const explicitMap = m.symbol_mapping?.[upper]
+  const hasExplicitMap = explicitMap != null && String(explicitMap).trim() !== ''
+  const mapped = (hasExplicitMap ? String(explicitMap) : upper).toUpperCase()
   const prefix = (m.symbol_prefix ?? '').toUpperCase()
   const suffix = (m.symbol_suffix ?? '').toUpperCase()
+  const userDecorated = hasExplicitMap || prefix.length > 0 || suffix.length > 0
 
   const allowed = parseSymbolToTradeList(m.symbol_to_trade)
-  if (allowed.length === 1) {
-    return { symbol: allowed[0], whitelist: [] }
-  }
 
   return {
     symbol: `${prefix}${mapped}${suffix}`,
     whitelist: allowed,
+    userDecorated,
   }
 }
 
+const MT5_ONLY_OPERATIONS = new Set(['BuyStopLimit', 'SellStopLimit'])
+
+export function isMt5OnlyOperation(op: string): boolean {
+  return MT5_ONLY_OPERATIONS.has(op)
+}
+
 export function isExcluded(symbol: string, broker: BrokerRow): boolean {
+  const upper = symbol.trim().toUpperCase()
+  if (!upper) return false
   const m = (broker.manual_settings ?? {}) as { symbols_exclude?: string[] }
   const list = (m.symbols_exclude ?? []).map(s => String(s).toUpperCase())
-  return list.includes(symbol.toUpperCase())
+  return list.includes(upper)
 }
 
 export function operationFor(action: string, signal: ParsedSignal): import('../metatraderapi').MtOperation | null {

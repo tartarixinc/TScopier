@@ -336,6 +336,10 @@ export const fr: Translations = {
         'Votre session a expiré. Actualisez la page ou reconnectez-vous, puis réessayez.',
       duplicateMtLogin:
         'Ce login MT est déjà lié à un autre compte ici. Supprimez-le d’abord ou utilisez Reconnect — le même login ne peut pas être connecté deux fois.',
+      platformServerMismatchMt4:
+        'Ce nom de serveur ressemble à MT4, mais vous avez choisi MT5. La copie et la gestion des trades peuvent échouer. Connecter en MT4 ?',
+      platformServerMismatchMt5:
+        'Ce nom de serveur ressemble à MT5, mais vous avez choisi MT4. La copie et la gestion des trades peuvent échouer. Connecter en MT5 ?',
       deleteTitle: 'Supprimer le compte de trading ?',
       deleteBody:
         'Cela déconnecte {label} de MetatraderAPI et du copieur. Cette action est irréversible.',

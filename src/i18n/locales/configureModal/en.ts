@@ -87,20 +87,22 @@ export const configureModalEn: ConfigureModalTranslations = {
     autoTrainingDone: 'Training completed and saved.',
   },
   channelSymbols: {
-    title: 'Symbols to trade',
+    title: 'Symbol mapping',
     intro:
-      'We detect instruments from this channel’s recent signals. Choose which ones this broker should copy. When all are selected, every detected symbol is traded.',
-    refresh: 'Refresh analysis',
-    refreshing: 'Analyzing…',
-    loading: 'Loading symbols from recent signals…',
-    empty:
-      'No symbols detected yet. Connect Telegram, wait for signals on this channel, then refresh.',
-    selectAll: 'Select all',
-    clearAll: 'Clear all',
-    selectedCount: '{count} of {total} selected',
-    tradeAllHint: 'All detected symbols will be copied.',
-    staleSymbolNote: 'Saved but not seen in recent signals: {symbols}',
-    signalsCount: 'Based on {count} recent messages',
+      'Match signal symbols to your broker’s instrument names. Add a prefix or suffix if your broker uses different codes (e.g. XAUUSD+). Unmapped symbols still use automatic broker matching.',
+    prefixLabel: 'Symbol prefix',
+    prefixHint: 'Prepended to every signal symbol before placing orders (e.g. # for #XAUUSD).',
+    suffixLabel: 'Symbol suffix',
+    suffixHint: 'Appended to every signal symbol (e.g. + for XAUUSD+). Leave blank if names match the signal.',
+    example: 'Example: XAUUSD with suffix + → orders on XAUUSD+',
+    tradeOnlyLabel: 'Symbols to trade',
+    tradeOnlyHint:
+      'Leave empty to copy every symbol from this channel. When listed, only signals matching these symbols are copied (comma-separated, e.g. XAUUSD, EURUSD).',
+    tradeOnlyPlaceholder: 'XAUUSD, EURUSD',
+    avoidLabel: 'Symbols to avoid',
+    avoidHint:
+      'Leave empty to allow all symbols (subject to Symbols to trade). Listed symbols are never copied from this channel.',
+    avoidPlaceholder: 'BTCUSD, US30',
   },
   ai: {
     title: 'AI configuration',

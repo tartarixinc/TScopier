@@ -118,6 +118,8 @@ export interface SymbolListCacheEntry {
 export interface SymbolMappingResult {
   symbol: string
   whitelist: string[]
+  /** True when prefix/suffix or explicit symbol_mapping was applied — broker resolve must not downgrade. */
+  userDecorated: boolean
 }
 
 export interface Leg {

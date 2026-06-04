@@ -467,8 +467,20 @@ export async function fetchSymbolList(ctx: TradeExecutorContext, uuid: string): 
 export function resolveBrokerSymbolFromInventory(ctx: TradeExecutorContext, 
     inventory: SymbolListCacheEntry,
     requested: string,
+    opts?: { userDecorated?: boolean },
   ): string {
     const target = requested.toUpperCase()
+    if (opts?.userDecorated === true) {
+      if (inventory.set.has(target)) {
+        const exact = inventory.list.find(s => s.toUpperCase() === target)
+        return exact ?? requested
+      }
+      console.warn(
+        `[tradeExecutor] user-decorated symbol not in broker /Symbols list: ${requested}`,
+      )
+      return requested
+    }
+
     if (inventory.set.has(target)) {
       const exact = inventory.list.find(s => s.toUpperCase() === target)
       return exact ?? requested
@@ -498,18 +510,28 @@ export function resolveBrokerSymbolFromInventory(ctx: TradeExecutorContext,
     return requested
   }
 
-export async function resolveBrokerSymbolForLiveEntry(ctx: TradeExecutorContext, uuid: string, requested: string): Promise<string> {
+export async function resolveBrokerSymbolForLiveEntry(
+    ctx: TradeExecutorContext,
+    uuid: string,
+    requested: string,
+    opts?: { userDecorated?: boolean },
+  ): Promise<string> {
     const cached = ctx.symbolListCache.get(uuid)
     if (cached && (Date.now() - cached.loadedAt) < SYMBOL_LIST_TTL_MS) {
-      return ctx.resolveBrokerSymbolFromInventory(cached, requested)
+      return ctx.resolveBrokerSymbolFromInventory(cached, requested, opts)
     }
     const inventory = await ctx.getSymbolList(uuid)
     if (!inventory) return requested
-    return ctx.resolveBrokerSymbolFromInventory(inventory, requested)
+    return ctx.resolveBrokerSymbolFromInventory(inventory, requested, opts)
   }
 
-export async function resolveBrokerSymbol(ctx: TradeExecutorContext, uuid: string, requested: string): Promise<string> {
+export async function resolveBrokerSymbol(
+    ctx: TradeExecutorContext,
+    uuid: string,
+    requested: string,
+    opts?: { userDecorated?: boolean },
+  ): Promise<string> {
     const inventory = await ctx.getSymbolList(uuid)
     if (!inventory) return requested
-    return ctx.resolveBrokerSymbolFromInventory(inventory, requested)
+    return ctx.resolveBrokerSymbolFromInventory(inventory, requested, opts)
   }

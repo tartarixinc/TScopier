@@ -90,16 +90,17 @@ export interface ConfigureModalTranslations {
   channelSymbols: {
     title: string
     intro: string
-    refresh: string
-    refreshing: string
-    loading: string
-    empty: string
-    selectAll: string
-    clearAll: string
-    selectedCount: string
-    tradeAllHint: string
-    staleSymbolNote: string
-    signalsCount: string
+    prefixLabel: string
+    prefixHint: string
+    suffixLabel: string
+    suffixHint: string
+    example: string
+    tradeOnlyLabel: string
+    tradeOnlyHint: string
+    tradeOnlyPlaceholder: string
+    avoidLabel: string
+    avoidHint: string
+    avoidPlaceholder: string
   }
   ai: {
     title: string
