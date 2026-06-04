@@ -148,12 +148,13 @@ export const configureModalFr: ConfigureModalTranslations = {
     previewFallbackSingle: '1 (répartition impossible avec aperçu min. 0,01 / pas 0,01)',
     previewInstantPending: '{total} ({immediate} instantanées + {pending} pour échelonnement)',
     previewFooter:
-      'Estimé à partir du lot fixe et du % par jambe. L’exécution en direct utilise le lot minimum et le pas du symbole (peut différer légèrement). Plafond de 500 ordres par signal. Les lots signalés par Telegram sur chaque signal ne redimensionnent pas les paniers Range Trading — ils divisent toujours votre lot fixe.',
+      'Nombre de trades que le copieur prévoit d’ouvrir pour un signal. Basé sur votre lot fixe et la taille par jambe. Le courtier peut en ouvrir moins si le marché n’a pas couvert la zone pendant l’échelonnement.',
     previewDynamicRisk:
-      ' Avec un risque dynamique (% du solde), le lot résolu à l’exécution peut différer du lot fixe.',
+      ' Avec le risque dynamique (% du solde), la taille suit votre solde de compte.',
     previewLadderSpan:
-      ' Portée de l’échelle = {pending} × {step}p = {distance}p (la distance configurée {configured}p est indicative).',
-    previewCweLegs: ' {count} jambe(s) instantanée(s) se ferment à +{pips}p de l’ancre.',
+      ' Échelonnement en range : {pending} ordres en attente, espacés de {step} pips (environ {distance} pips au total).',
+    previewCweLegs:
+      ' {count} trade(s) ouverts tout de suite, pouvant se fermer si le prix avance de {pips} pips en votre faveur.',
     rangeLayering: 'Échelonnement en range',
     rangeIntro:
       'Configurez une partie des opérations en ordres en attente virtuels espacés à intervalles depuis le prix de départ (moyenne à la baisse). S’il n’y a pas de prix d’entrée précis, utilisez le cours du marché en direct actuel (bid/ask) comme point de départ. Tous les ordres en attente reprennent les réglages de stop loss et de take-profit de vos opérations immédiates.',

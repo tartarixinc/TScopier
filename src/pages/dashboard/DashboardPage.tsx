@@ -741,10 +741,7 @@ export function DashboardPage() {
     const closedTaken = mtRaw.length > 0
       ? Math.max(chartTodayFromMt.taken, mtTodayStats.taken)
       : Math.max(chartTodayFromMt.taken, stats.tradesTaken)
-    const chartNet = netPnlFromTradeOutcomeDay(findTodayTradeOutcomeDay(chartTradesForHeadline))
     const chartHasToday = chartTodayFromMt.hasData || mtTodayStats.hasData
-    const chartNetForProfit =
-      mtTodayStats.hasData && Math.abs(chartNet) < 0.01 ? mtTodayStats.netPnl : chartNet
     const todayProfit = resolveDashboardTodayProfit(
       chartTradesForHeadline,
       linkedAccounts,
@@ -756,10 +753,16 @@ export function DashboardPage() {
           }
         : undefined,
     )
+    /** Prefer chart-bucket net when chart rows exist; MT-only fallback for close-time vs bucket edge cases (not balance ops). */
     const todayProfitFinal =
-      chartHasToday && Math.abs(todayProfit) < 0.01 && Math.abs(chartNetForProfit) >= 0.01
-        ? chartNetForProfit
-        : todayProfit
+      chartTodayFromMt.hasData && Math.abs(todayProfit) < 0.01 && Math.abs(chartTodayFromMt.netPnl) >= 0.01
+        ? chartTodayFromMt.netPnl
+        : !chartTodayFromMt.hasData &&
+            mtTodayStats.hasData &&
+            Math.abs(todayProfit) < 0.01 &&
+            Math.abs(mtTodayStats.netPnl) >= 0.01
+          ? mtTodayStats.netPnl
+          : todayProfit
     const yesterdayProfit = chartHasToday || chartTradesForHeadline.length > 0
       ? netPnlFromTradeOutcomeDay(findYesterdayTradeOutcomeDay(chartTradesForHeadline))
       : stats.yesterdayProfit

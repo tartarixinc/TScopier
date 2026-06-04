@@ -3,11 +3,83 @@ import { test } from 'node:test'
 import {
   computeLinkedAccountPerformance,
   countClosedTradeOutcomesInRange,
+  isTradeableClosedRow,
   isTimestampInRange,
   netClosedLegProfit,
   sumClosedWinningProfitInRange,
   sumTradeableClosedProfitInRange,
 } from './dashboardTradeStats'
+import { summarizeTodayFromMtTrades } from './dashboardCharts'
+import type { MtTrade } from './metatraderapi'
+
+test('isTradeableClosedRow: excludes balance/deposit and zero-lot buy mislabels', () => {
+  assert.equal(
+    isTradeableClosedRow({
+      status: 'closed',
+      symbol: 'XAUUSD',
+      lot_size: 0,
+      direction: 'buy',
+      type: 'Buy Stop Limit',
+    }),
+    false,
+  )
+  assert.equal(
+    isTradeableClosedRow({
+      status: 'closed',
+      symbol: '',
+      lot_size: 0,
+      direction: '',
+      type: 'Balance',
+    }),
+    false,
+  )
+  assert.equal(
+    isTradeableClosedRow({
+      status: 'closed',
+      symbol: 'XAUUSD',
+      lot_size: 0.1,
+      direction: 'buy',
+      type: 'Buy',
+    }),
+    true,
+  )
+})
+
+test('summarizeTodayFromMtTrades: ignores MT4 balance top-up rows', () => {
+  const now = new Date(2026, 5, 2, 12, 0, 0)
+  const trades: MtTrade[] = [
+    {
+      id: 'a:1',
+      broker_id: 'a',
+      ticket: 1,
+      symbol: 'XAUUSD',
+      direction: 'buy',
+      type: 'Buy Stop Limit',
+      lot_size: 0,
+      profit: 50_000,
+      status: 'closed',
+      closed_at: '2026-06-02T10:00:00',
+      opened_at: '2026-06-02T10:00:00',
+    },
+    {
+      id: 'a:2',
+      broker_id: 'a',
+      ticket: 2,
+      symbol: 'XAUUSD',
+      direction: 'buy',
+      type: 'Buy',
+      lot_size: 0.1,
+      profit: 120,
+      status: 'closed',
+      closed_at: '2026-06-02T11:00:00',
+      opened_at: '2026-06-02T09:00:00',
+    },
+  ]
+  const s = summarizeTodayFromMtTrades(trades, now)
+  assert.equal(s.hasData, true)
+  assert.equal(s.taken, 1)
+  assert.equal(s.netPnl, 120)
+})
 
 test('sumClosedWinningProfitInRange: sums only winning closed legs', () => {
   const rows = [

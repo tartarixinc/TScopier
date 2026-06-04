@@ -148,12 +148,13 @@ export const configureModalEn: ConfigureModalTranslations = {
     previewFallbackSingle: '1 (split not possible at 0.01 min / 0.01 step preview)',
     previewInstantPending: '{total} ({immediate} instant + {pending} for layering)',
     previewFooter:
-      'Estimated from Fixed Lot and per-leg %. Live execution uses the symbol\'s min lot and step (may differ slightly). Capped at 500 orders per signal. Telegram-reported lots on each signal do not resize range trading baskets—they always split your Fixed Lot.',
+      'How many trades the copier plans to open for one signal. Based on your Fixed Lot and per-leg size. Your broker may open fewer if the market did not cover the zone during layering.',
     previewDynamicRisk:
-      ' With Dynamic (% Balance) risk, the resolved lot at runtime can differ from Fixed Lot.',
+      ' With Dynamic (% Balance) risk, trade size follows your account balance.',
     previewLadderSpan:
-      ' Ladder span = {pending} × {step}p = {distance}p (configured distance {configured}p is advisory).',
-    previewCweLegs: ' {count} instant leg(s) close at +{pips}p from anchor.',
+      ' Range Layering: {pending} pending orders, {step} pips apart (about {distance} pips wide).',
+    previewCweLegs:
+      ' {count} trade(s) open right away and may close when price moves {pips} pips in your favor.',
     rangeLayering: 'Range Layering',
     rangeIntro:
       'Set some trades as virtual pending orders spaced at intervals from the starting price (averaging down). If there is no specific entry price given, use the current live market price (bid/ask) as the starting point. All pending orders copy the Stop-Loss and Take-Profit settings of your immediate trades.',

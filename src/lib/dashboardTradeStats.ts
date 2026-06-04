@@ -35,8 +35,8 @@ export function isTradeableClosedRow(row: {
     return false
   }
   const dir = (row.direction ?? '').toLowerCase()
-  if (dir === 'buy' || dir === 'sell') return true
-  return (row.lot_size ?? 0) > 0
+  if ((row.lot_size ?? 0) <= 0) return false
+  return dir === 'buy' || dir === 'sell'
 }
 
 /** Minimum |deal profit| to classify a close as won or lost (not breakeven). */

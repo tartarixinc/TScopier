@@ -148,12 +148,13 @@ export const configureModalEs: ConfigureModalTranslations = {
     previewFallbackSingle: '1 (división imposible con vista previa mín. 0,01 / paso 0,01)',
     previewInstantPending: '{total} ({immediate} instantáneas + {pending} para escalonado)',
     previewFooter:
-      'Estimado a partir del lote fijo y el % por pierna. La ejecución en vivo usa el lote mínimo y el paso del símbolo (puede variar ligeramente). Máximo 500 órdenes por señal. Los lotes reportados por Telegram en cada señal no redimensionan las cestas de Range Trading: siempre dividen su lote fijo.',
+      'Cuántas operaciones planea abrir el copiador por señal. Según su lote fijo y el tamaño por pierna. El broker puede abrir menos si el mercado no cubrió la zona durante el escalonado.',
     previewDynamicRisk:
-      ' Con riesgo dinámico (% del balance), el lote resuelto en tiempo de ejecución puede diferir del lote fijo.',
+      ' Con riesgo dinámico (% del balance), el tamaño sigue el saldo de su cuenta.',
     previewLadderSpan:
-      ' Alcance de escalera = {pending} × {step}p = {distance}p (la distancia configurada {configured}p es orientativa).',
-    previewCweLegs: ' {count} pierna(s) instantánea(s) cierran a +{pips}p del ancla.',
+      ' Escalonado en rango: {pending} órdenes pendientes, cada {step} pips (unos {distance} pips en total).',
+    previewCweLegs:
+      ' {count} operación(es) se abren de inmediato y pueden cerrarse si el precio avanza {pips} pips a su favor.',
     rangeLayering: 'Escalonado en rango',
     rangeIntro:
       'Defina algunas operaciones como órdenes pendientes virtuales espaciadas a intervalos desde el precio inicial (promedio a la baja). Si no se indica un precio de entrada concreto, utilice el precio de mercado en vivo actual (bid/ask) como punto de partida. Todas las órdenes pendientes copian los ajustes de stop loss y take-profit de sus operaciones inmediatas.',

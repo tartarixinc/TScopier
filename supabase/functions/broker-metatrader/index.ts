@@ -805,6 +805,10 @@ Deno.serve(async (req: Request) => {
               ? numericFromEx
               : undefined
         const codeMap = platform.toUpperCase() === "MT4" ? codeMapMt4 : codeMapMt5
+        const lotForCmd = resolveMtLots(order, historyProfile)
+        if (typeof candidate === "number" && candidate === 6 && lotForCmd <= 0) {
+          return { direction: "", type_label: "Balance" }
+        }
         if (typeof candidate === "number" && codeMap[candidate]) {
           const m = codeMap[candidate]
           return { direction: m.direction, type_label: m.label }
@@ -834,7 +838,7 @@ Deno.serve(async (req: Request) => {
       ) => {
         const row = historyProfile === "trades" ? flattenMtOrder(order, "trades") : order
         const ticket = Number(pick(row, "ticket", "Ticket") ?? 0)
-        const platform = String(broker.platform ?? "MT5")
+        const platform = String(broker.platform ?? "MT4")
         const resolved = resolveDirection(row, platform)
         const adjusted =
           status === "closed" && historyProfile === "trades"
