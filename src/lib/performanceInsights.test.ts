@@ -177,6 +177,28 @@ test('computeProfitByChannel: excludes MT4 balance top-up rows', () => {
   assert.equal(rows[0]!.count, 1)
 })
 
+test('computeProfitByChannel: omits unlinked manual trades from chart rows', () => {
+  const maps = buildPerformanceChannelLinkMaps(
+    [{ id: 'ch-1', display_name: 'VIP Gold Signals' }],
+    [],
+    [],
+    [],
+  )
+  const rows = computeProfitByChannel(
+    [mtTrade({
+      broker_id: 'broker-1',
+      ticket: 100,
+      profit: 999,
+      closed_at: TEST_CLOSED_AT,
+    })],
+    'all',
+    maps,
+    'Unlinked / manual',
+    TEST_NOW,
+  )
+  assert.equal(rows.length, 0)
+})
+
 test('computeProfitByChannel: uses durable attribution when ticket differs in formatting', () => {
   const maps = buildPerformanceChannelLinkMaps(
     [{ id: 'ch-1', display_name: 'Alpha' }],

@@ -321,6 +321,7 @@ export function computeProfitByChannel(
     const pnl = displayTradeProfit(trade)
     if (pnl == null || !Number.isFinite(pnl)) continue
     const channelId = resolveChannelIdForTrade(trade, maps)
+    if (channelId === UNLINKED_CHANNEL_KEY) continue
     const prev = byChannel.get(channelId) ?? { count: 0, pnl: 0 }
     byChannel.set(channelId, { count: prev.count + 1, pnl: prev.pnl + pnl })
   }
@@ -328,10 +329,7 @@ export function computeProfitByChannel(
   return [...byChannel.entries()]
     .map(([channelId, stats]) => ({
       key: channelId,
-      label:
-        channelId === UNLINKED_CHANNEL_KEY
-          ? unlinkedLabel
-          : maps.channelNames[channelId] ?? unlinkedLabel,
+      label: maps.channelNames[channelId] ?? unlinkedLabel,
       count: stats.count,
       pnl: stats.pnl,
     }))
