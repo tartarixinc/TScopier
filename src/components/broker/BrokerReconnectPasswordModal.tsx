@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { memo, useEffect, useRef, useState, type FormEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { AlertTriangle, RefreshCw, X } from 'lucide-react'
 import type { BrokerAccount } from '../../types/database'
 import { PasswordInput } from '../auth/PasswordInput'
@@ -33,7 +34,7 @@ interface BrokerReconnectPasswordModalProps {
   onCancel: () => void
 }
 
-export function BrokerReconnectPasswordModal({
+function BrokerReconnectPasswordModalInner({
   open,
   broker,
   copy,
@@ -44,6 +45,7 @@ export function BrokerReconnectPasswordModal({
   const [password, setPassword] = useState('')
   const [rememberPassword, setRememberPassword] = useState(defaultRememberPassword)
   const overlayRef = useRef<HTMLDivElement>(null)
+  const scrollLockRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (!open) {
@@ -65,8 +67,19 @@ export function BrokerReconnectPasswordModal({
   }, [open, onCancel, defaultRememberPassword])
 
   useEffect(() => {
-    document.body.style.overflow = open ? 'hidden' : ''
-    return () => { document.body.style.overflow = '' }
+    if (!open) {
+      if (scrollLockRef.current != null) {
+        document.body.style.overflow = scrollLockRef.current
+        scrollLockRef.current = null
+      }
+      return
+    }
+    scrollLockRef.current = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = scrollLockRef.current ?? ''
+      scrollLockRef.current = null
+    }
   }, [open])
 
   if (!open || !broker) return null
@@ -80,13 +93,13 @@ export function BrokerReconnectPasswordModal({
     onSubmit({ password: trimmed, rememberPassword })
   }
 
-  return (
+  const modal = (
     <div
       ref={overlayRef}
       className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-4 sm:p-6 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
       onClick={e => { if (e.target === overlayRef.current) onCancel() }}
     >
-      <div className="absolute inset-0 bg-neutral-950/45 backdrop-blur-[2px] animate-in" />
+      <div className="absolute inset-0 bg-neutral-950/50" aria-hidden />
 
       <div
         role="dialog"
@@ -125,7 +138,7 @@ export function BrokerReconnectPasswordModal({
           <div className="mb-4 flex items-center gap-3 rounded-xl border border-neutral-100 bg-neutral-50 px-3 py-3 dark:border-neutral-800 dark:bg-neutral-800/50">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white shadow-sm dark:bg-neutral-900">
               {logo ? (
-                <img src={logo} alt={broker.platform} className="h-8 w-8 object-contain" />
+                <img src={logo} alt={broker.platform} className="h-8 w-8 object-contain" decoding="async" />
               ) : (
                 <span className="text-xs font-semibold text-neutral-500">{broker.platform}</span>
               )}
@@ -188,4 +201,8 @@ export function BrokerReconnectPasswordModal({
       </div>
     </div>
   )
+
+  return createPortal(modal, document.body)
 }
+
+export const BrokerReconnectPasswordModal = memo(BrokerReconnectPasswordModalInner)

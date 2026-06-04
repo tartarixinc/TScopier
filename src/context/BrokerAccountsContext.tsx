@@ -61,11 +61,6 @@ export function BrokerAccountsProvider({ children }: { children: ReactNode }) {
   const [manualConnectivityPaused, setManualConnectivityPaused] = useState(false)
   const initialLoadDoneRef = useRef(false)
 
-  /** Pause heavy health polls on Account Config (manual reconnect in progress). Recovery stays on. */
-  const routePausesHealthChecks = pathname === '/account-configuration'
-  const healthChecksPaused = routePausesHealthChecks || manualConnectivityPaused
-  const recoveryPaused = manualConnectivityPaused
-
   const reconnectErrorHandlerRef = useRef<((message: string) => void) | null>(null)
   const reconnectSuccessHandlerRef = useRef<((brokerId: string) => void) | null>(null)
   const passwordRequestRef = useRef<{
@@ -73,6 +68,12 @@ export function BrokerAccountsProvider({ children }: { children: ReactNode }) {
     resolve: (result: BrokerPasswordPromptResult | null) => void
   } | null>(null)
   const [passwordModalBrokerId, setPasswordModalBrokerId] = useState<string | null>(null)
+
+  /** Pause health polls / auto-reconnect while the password modal is open (avoids UI jank). */
+  const routePausesHealthChecks = pathname === '/account-configuration'
+  const passwordModalOpen = passwordModalBrokerId != null
+  const healthChecksPaused = routePausesHealthChecks || manualConnectivityPaused || passwordModalOpen
+  const recoveryPaused = manualConnectivityPaused || passwordModalOpen
 
   const requestReconnectPassword = useCallback((brokerId: string): Promise<BrokerPasswordPromptResult | null> => {
     return new Promise(resolve => {
@@ -204,7 +205,39 @@ export function BrokerAccountsProvider({ children }: { children: ReactNode }) {
     }
   }, [bl.reconnectFailed, patchBroker])
 
-  const passwordModalBroker = brokers.find(b => b.id === passwordModalBrokerId) ?? null
+  const passwordModalBroker = useMemo(
+    () => (passwordModalBrokerId ? brokers.find(b => b.id === passwordModalBrokerId) ?? null : null),
+    [brokers, passwordModalBrokerId],
+  )
+
+  const passwordModalCopy = useMemo(
+    () => ({
+      title: bl.reconnectPasswordTitle,
+      body: bl.reconnectPasswordBody,
+      passwordLabel: bl.reconnectPasswordLabel,
+      passwordHint: bl.reconnectPasswordHint,
+      passwordPlaceholder: bl.reconnectPasswordPlaceholder,
+      rememberPasswordLabel: bl.rememberPasswordLabel,
+      rememberPasswordHint: bl.rememberPasswordHint,
+      detailLogin: bl.detailLogin,
+      detailServer: bl.detailServer,
+      reconnect: bl.reconnect,
+      cancel: t.common.cancel,
+    }),
+    [
+      bl.reconnectPasswordTitle,
+      bl.reconnectPasswordBody,
+      bl.reconnectPasswordLabel,
+      bl.reconnectPasswordHint,
+      bl.reconnectPasswordPlaceholder,
+      bl.rememberPasswordLabel,
+      bl.rememberPasswordHint,
+      bl.detailLogin,
+      bl.detailServer,
+      bl.reconnect,
+      t.common.cancel,
+    ],
+  )
 
   const value = useMemo(
     (): BrokerAccountsContextValue => ({
@@ -254,22 +287,10 @@ export function BrokerAccountsProvider({ children }: { children: ReactNode }) {
     <BrokerAccountsContext.Provider value={value}>
       {children}
       <BrokerReconnectPasswordModal
-        open={passwordModalBrokerId != null}
+        open={passwordModalOpen}
         broker={passwordModalBroker}
         defaultRememberPassword={passwordModalBroker?.auto_reconnect_enabled ?? false}
-        copy={{
-          title: bl.reconnectPasswordTitle,
-          body: bl.reconnectPasswordBody,
-          passwordLabel: bl.reconnectPasswordLabel,
-          passwordHint: bl.reconnectPasswordHint,
-          passwordPlaceholder: bl.reconnectPasswordPlaceholder,
-          rememberPasswordLabel: bl.rememberPasswordLabel,
-          rememberPasswordHint: bl.rememberPasswordHint,
-          detailLogin: bl.detailLogin,
-          detailServer: bl.detailServer,
-          reconnect: bl.reconnect,
-          cancel: t.common.cancel,
-        }}
+        copy={passwordModalCopy}
         onSubmit={handlePasswordModalSubmit}
         onCancel={handlePasswordModalCancel}
       />
