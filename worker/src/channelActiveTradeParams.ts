@@ -123,6 +123,131 @@ export function shouldMergeChannelParamsForEntry(parsed: ParsedSignal): boolean 
   return parsedSignalHasExplicitStops(parsed)
 }
 
+/** Open trades or active range pendings on this channel+broker for the symbol family. */
+export async function channelHasOpenActivityForSymbol(
+  supabase: SupabaseClient,
+  args: {
+    userId: string
+    channelId: string
+    brokerAccountId: string
+    symbolHint: string
+  },
+): Promise<boolean> {
+  const { data: sigs, error: sigErr } = await supabase
+    .from('signals')
+    .select('id')
+    .eq('user_id', args.userId)
+    .eq('channel_id', args.channelId)
+    .limit(2000)
+  if (sigErr || !sigs?.length) return false
+
+  const signalIds = sigs.map((r: { id: string }) => r.id)
+
+  const { data: trades } = await supabase
+    .from('trades')
+    .select('symbol')
+    .eq('user_id', args.userId)
+    .eq('broker_account_id', args.brokerAccountId)
+    .eq('status', 'open')
+    .in('signal_id', signalIds)
+    .limit(200)
+  if (
+    (trades ?? []).some((t: { symbol: string }) =>
+      symbolsCompatibleForBasket(args.symbolHint, t.symbol),
+    )
+  ) {
+    return true
+  }
+
+  const { data: pending } = await supabase
+    .from('range_pending_legs')
+    .select('symbol')
+    .eq('user_id', args.userId)
+    .eq('broker_account_id', args.brokerAccountId)
+    .in('signal_id', signalIds)
+    .in('status', ['pending', 'claimed'])
+    .limit(200)
+  return (pending ?? []).some((l: { symbol: string }) =>
+    symbolsCompatibleForBasket(args.symbolHint, l.symbol),
+  )
+}
+
+/**
+ * When a basket is already live, stale SL/TP copied from the provider template must not
+ * overwrite Adjust SL memory or seed new range legs.
+ */
+export function shouldSeedChannelParamsFromEntrySignal(hasActiveBasket: boolean): boolean {
+  return !hasActiveBasket
+}
+
+export type EntryChannelStopsResult = {
+  plannerParsed: ParsedSignal
+  mergedChannelParams: boolean
+  channelParams: ChannelActiveTradeParams | null
+}
+
+/** Resolve planner SL/TP for a new entry: prefer channel memory when basket is active. */
+export async function resolveEntryChannelStops(
+  supabase: SupabaseClient,
+  args: {
+    userId: string
+    channelId: string
+    brokerAccountId: string
+    symbol: string
+    plannerParsed: ParsedSignal
+  },
+): Promise<EntryChannelStopsResult> {
+  const channelParams = await loadChannelActiveTradeParamsForSymbol(
+    supabase,
+    args.userId,
+    args.channelId,
+    args.symbol,
+  )
+  const hasActiveBasket = await channelHasOpenActivityForSymbol(supabase, {
+    userId: args.userId,
+    channelId: args.channelId,
+    brokerAccountId: args.brokerAccountId,
+    symbolHint: args.symbol,
+  })
+
+  let plannerParsed = args.plannerParsed
+  let mergedChannelParams = false
+
+  if (hasActiveBasket && channelParams) {
+    plannerParsed = mergeParsedWithChannelParams(plannerParsed, channelParams, { overlay: true })
+    mergedChannelParams = true
+  } else if (parsedSignalHasExplicitStops(plannerParsed)) {
+    const refreshTpLevels = (plannerParsed.tp ?? []).filter(
+      (t): t is number => typeof t === 'number' && Number.isFinite(t) && t > 0,
+    )
+    await upsertChannelActiveTradeParams(supabase, {
+      userId: args.userId,
+      channelId: args.channelId,
+      symbols: [args.symbol],
+      stoploss: plannerParsed.sl,
+      tpLevels: refreshTpLevels,
+    })
+  } else if (channelParams) {
+    plannerParsed = mergeParsedWithChannelParams(plannerParsed, channelParams)
+    mergedChannelParams = true
+  }
+
+  const refreshedParams = mergedChannelParams
+    ? channelParams
+    : await loadChannelActiveTradeParamsForSymbol(
+        supabase,
+        args.userId,
+        args.channelId,
+        args.symbol,
+      )
+
+  return {
+    plannerParsed,
+    mergedChannelParams,
+    channelParams: refreshedParams,
+  }
+}
+
 /** Overlay channel SL/TP onto parsed signal before planning orders / virtual pendings. */
 export function mergeParsedWithChannelParams(
   parsed: ParsedSignal,

@@ -6,6 +6,7 @@ import {
   mergeParsedWithChannelParams,
   parsedSignalHasExplicitStops,
   shouldMergeChannelParamsForEntry,
+  shouldSeedChannelParamsFromEntrySignal,
   stripInvalidStopsForSide,
   symbolsForChannelParamsPersist,
 } from './channelActiveTradeParams'
@@ -144,6 +145,30 @@ describe('channelActiveTradeParams', () => {
     assert.equal(out.stoploss, 0)
     assert.equal(out.takeprofit, 3500)
     assert.equal(out.stripped.length, 1)
+  })
+
+  test('shouldSeedChannelParamsFromEntrySignal blocks overwrite when basket is active', () => {
+    assert.equal(shouldSeedChannelParamsFromEntrySignal(true), false)
+    assert.equal(shouldSeedChannelParamsFromEntrySignal(false), true)
+  })
+
+  test('overlay keeps Adjust SL when a follow-up entry still carries template stops', () => {
+    const out = mergeParsedWithChannelParams(
+      {
+        action: 'buy',
+        symbol: 'XAUUSD',
+        entry_price: 2500,
+        entry_zone_low: null,
+        entry_zone_high: null,
+        sl: 2400,
+        tp: [2600],
+        lot_size: null,
+      },
+      { symbol: 'XAUUSD', stoploss: 2470, tpLevels: [2550, 2580] },
+      { overlay: true },
+    )
+    assert.equal(out.sl, 2470)
+    assert.deepEqual(out.tp, [2550, 2580])
   })
 
   test('symbolsForChannelParamsPersist dedupes hints and trade symbols', () => {

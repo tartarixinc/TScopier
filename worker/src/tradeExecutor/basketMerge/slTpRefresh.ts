@@ -213,7 +213,7 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
     const newest = familyTrades[familyTrades.length - 1]!
     const rpe0 = resolvedParsedEntryPrice(parsed)
     const rzo0 = resolvedParsedEntryZone(parsed)
-    const plannerParsed: PlannerParsedSignal = {
+    let plannerParsed: PlannerParsedSignal = {
       action: parsed.action,
       symbol: parsed.symbol,
       entry_price: messageEditOnly ? null : rpe0,
@@ -225,6 +225,25 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
       open_tp: parsed.open_tp,
       partial_close_fraction: parsed.partial_close_fraction,
       raw_instruction: parsed.raw_instruction,
+    }
+    let channelParamsForLadder: ChannelActiveTradeParams | null = null
+    if (signal.channel_id) {
+      channelParamsForLadder = await loadChannelActiveTradeParamsForSymbol(
+        ctx.supabase,
+        signal.user_id,
+        signal.channel_id,
+        symbol,
+      )
+      if (logAction === 'signal_merge_into_open_trade' && channelParamsForLadder) {
+        plannerParsed = mergeParsedWithChannelParams(plannerParsed, channelParamsForLadder, {
+          overlay: true,
+        })
+      }
+    }
+    const effectiveParsed: ParsedSignal = {
+      ...parsed,
+      sl: plannerParsed.sl,
+      tp: plannerParsed.tp,
     }
     if (!parsedHasExplicitEntryAnchor(plannerParsed)) {
       const ep = Number(newest.entry_price)
@@ -288,17 +307,27 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
       }
     }
 
-    const refreshTpLevels = (parsed.tp ?? []).filter(
+    const refreshTpLevels = (effectiveParsed.tp ?? []).filter(
       (t): t is number => typeof t === 'number' && Number.isFinite(t) && t > 0,
     )
-    if (signal.channel_id && (typeof parsed.sl === 'number' && parsed.sl > 0 || refreshTpLevels.length > 0)) {
+    if (
+      logAction === 'merge_routed_modify_only'
+      && signal.channel_id
+      && (typeof effectiveParsed.sl === 'number' && effectiveParsed.sl > 0 || refreshTpLevels.length > 0)
+    ) {
       await upsertChannelActiveTradeParams(ctx.supabase, {
         userId: signal.user_id,
         channelId: signal.channel_id,
         symbols: [symbol],
-        stoploss: parsed.sl,
+        stoploss: effectiveParsed.sl,
         tpLevels: refreshTpLevels,
       })
+      channelParamsForLadder = await loadChannelActiveTradeParamsForSymbol(
+        ctx.supabase,
+        signal.user_id,
+        signal.channel_id,
+        symbol,
+      )
     }
 
     if (plan.delay_ms > 0) {
@@ -323,15 +352,16 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
       }),
       familyTrades.length + virtualPendings.length,
     )
-    let channelParamsForLadder: ChannelActiveTradeParams | null = null
-    if (signal.channel_id) {
-      channelParamsForLadder = await loadChannelActiveTradeParamsForSymbol(
-        ctx.supabase,
-        signal.user_id,
-        signal.channel_id,
-        symbol,
-      )
-      if (virtualPendings.length > 0 && channelParamsForLadder) {
+    if (signal.channel_id && virtualPendings.length > 0) {
+      if (!channelParamsForLadder) {
+        channelParamsForLadder = await loadChannelActiveTradeParamsForSymbol(
+          ctx.supabase,
+          signal.user_id,
+          signal.channel_id,
+          symbol,
+        )
+      }
+      if (channelParamsForLadder) {
         const firedPendingApprox = Math.max(0, maxPendingStepIdx - activePendingCount)
         const immediateEstimate = Math.max(0, familyTrades.length - firedPendingApprox)
         virtualPendings = applyChannelParamsToVirtualPendingList(
@@ -349,7 +379,7 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
           mergePlanImmediateOrders(plan).length,
           Math.max(0, familyTrades.length - Math.max(0, maxPendingStepIdx - activePendingCount)),
         )
-    const parsedTpLevels = (parsed.tp ?? []).filter(
+    const parsedTpLevels = (effectiveParsed.tp ?? []).filter(
       (t): t is number => typeof t === 'number' && Number.isFinite(t) && t > 0,
     )
     const singlePartialPlan = manual.trade_style !== 'multi' && parsedTpLevels.length > 0
@@ -365,7 +395,7 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
       : null
     let perLegTargets = buildPerLegStopTargets({
       plan,
-      parsed,
+      parsed: effectiveParsed,
       openLegCount: familyTrades.length,
       totalPlannedLegCount: basketTotalPlannedLegs,
       immediateLegCount: refreshImmediateLegCount,
@@ -436,7 +466,7 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
         summary.openLegs = familyTrades.length
         const refreshedTargets = buildPerLegStopTargets({
           plan,
-          parsed,
+          parsed: effectiveParsed,
           openLegCount: familyTrades.length,
           totalPlannedLegCount: basketTotalPlannedLegs,
           immediateLegCount: refreshImmediateLegCount,
@@ -479,7 +509,7 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
         brokerAccountId: broker.id,
         familyTrades,
         perLegTargets,
-        signalTps: (parsed.tp ?? []).filter(
+        signalTps: (effectiveParsed.tp ?? []).filter(
           (t): t is number => typeof t === 'number' && Number.isFinite(t) && t > 0,
         ),
         tpLots: manual.tp_lots,
@@ -642,7 +672,7 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
         direction,
         perLegTargets,
         familyTrades,
-        signalTps: (parsed.tp ?? []).filter(
+        signalTps: (effectiveParsed.tp ?? []).filter(
           (t): t is number => typeof t === 'number' && Number.isFinite(t) && t > 0,
         ),
         tpLots: manual.tp_lots,

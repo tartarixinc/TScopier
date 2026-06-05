@@ -29,10 +29,9 @@ import { shouldRouteAsBasketParameterRefresh } from '../multiTradeMerge'
 import { parsedHasReEnterIntent } from '../signalPriceInference'
 import {
   applyChannelParamsToVirtualPendingList,
-  loadChannelActiveTradeParamsForSymbol,
-  mergeParsedWithChannelParams,
   parsedSignalHasExplicitStops,
-  upsertChannelActiveTradeParams,
+  resolveEntryChannelStops,
+  type ChannelActiveTradeParams,
 } from '../channelActiveTradeParams'
 import { buildTscopierCommentPrefix } from '../tradeComment'
 import type { TradeExecutorContext } from './context'
@@ -370,6 +369,7 @@ export async function prepareEntryExecution(
   // manual mode delegates to the planner so filters / multi-TP / pip-derived
   // SL & TP / pending expiry / reverse all apply consistently.
   let mergedChannelParams = false
+  let entryChannelParams: ChannelActiveTradeParams | null = null
   let plan: PlannerResult
   if (isManual) {
     const rpe = resolvedParsedEntryPrice(parsed)
@@ -388,29 +388,16 @@ export async function prepareEntryExecution(
       raw_instruction: parsed.raw_instruction,
     }
     if (!liveEntryFast && signal.channel_id) {
-      if (parsedSignalHasExplicitStops(plannerParsed)) {
-        const refreshTpLevels = (plannerParsed.tp ?? []).filter(
-          (t): t is number => typeof t === 'number' && Number.isFinite(t) && t > 0,
-        )
-        await upsertChannelActiveTradeParams(ctx.supabase, {
-          userId: signal.user_id,
-          channelId: signal.channel_id,
-          symbols: [symbol],
-          stoploss: plannerParsed.sl,
-          tpLevels: refreshTpLevels,
-        })
-      } else {
-        const channelParams = await loadChannelActiveTradeParamsForSymbol(
-          ctx.supabase,
-          signal.user_id,
-          signal.channel_id,
-          symbol,
-        )
-        if (channelParams) {
-          plannerParsed = mergeParsedWithChannelParams(plannerParsed, channelParams)
-          mergedChannelParams = true
-        }
-      }
+      const resolved = await resolveEntryChannelStops(ctx.supabase, {
+        userId: signal.user_id,
+        channelId: signal.channel_id,
+        brokerAccountId: broker.id,
+        symbol,
+        plannerParsed,
+      })
+      plannerParsed = resolved.plannerParsed
+      mergedChannelParams = resolved.mergedChannelParams
+      entryChannelParams = resolved.channelParams
     }
     plan = planManualOrders({
       parsed: plannerParsed,
@@ -511,16 +498,10 @@ export async function prepareEntryExecution(
   }
   let virtualPendings = (plan.virtualPendings ?? []).slice(0, 500)
   const totalPlannedLegCount = capped.length + virtualPendings.length
-  if (!liveEntryFast && virtualPendings.length > 0 && signal.channel_id && mergedChannelParams) {
-    const channelParams = await loadChannelActiveTradeParamsForSymbol(
-      ctx.supabase,
-      signal.user_id,
-      signal.channel_id,
-      symbol,
-    )
+  if (!liveEntryFast && virtualPendings.length > 0 && signal.channel_id && entryChannelParams) {
     virtualPendings = applyChannelParamsToVirtualPendingList(
       virtualPendings,
-      channelParams,
+      entryChannelParams,
       capped.length,
       manual.tp_lots,
       totalPlannedLegCount,
