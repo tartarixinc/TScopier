@@ -167,7 +167,7 @@ export const configureModalFr: ConfigureModalTranslations = {
       'La distance du range fournie par votre fournisseur de signaux. Elle détermine jusqu’où la position est échelonnée.',
     layerTillClose: 'Échelonner jusqu’à la clôture',
     layerTillCloseBody:
-      'Activé : les ordres en attente virtuels continuent de se déclencher tant qu’au moins une jambe est ouverte, même après un TP ou une fermeture CWE et un retour du prix. Désactivé : les ordres en attente sont supprimés au premier TP touché ou à la première jambe fermée, sans nouvel échelon sur un retournement.',
+      'Activé : les ordres en attente du range continuent tant que la position n’est pas entièrement fermée, même si le prix repart après un take-profit ou une fermeture CWE. Désactivé : les ordres en attente sont annulés au premier take-profit ou à la première fermeture, donc aucun ordre plus profond ne s’ouvre en cas de retournement.',
     closeWorseEntries: 'Fermer les entrées défavorables',
     closeWorseBody:
       'Lorsque le prix évolue de +X pips en votre faveur depuis l’entrée initiale, le système ferme automatiquement vos opérations immédiates. Lorsqu’un message « Fermer les entrées défavorables » est activé et déclenché, le système ferme toute opération ouverte située à moins de X pips du cours du marché actuel. Les opérations concernées par « Fermer les entrées défavorables » n’ont pas de take-profit (TP) défini côté courtier. Seul le stop loss (SL) est envoyé au courtier.',

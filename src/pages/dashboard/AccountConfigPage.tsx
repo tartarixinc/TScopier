@@ -3091,32 +3091,32 @@ export function AccountConfigPage() {
                                         onChange={v => setManual({ range_layer_till_close: v })}
                                       />
                                     </div>
-
-                                    <div className="rounded-md border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/50 p-3 space-y-3">
-                                      <div className="flex items-center justify-between">
-                                        <ConfigToggleLabel info={cm.risk.closeWorseBody}>{cm.risk.closeWorseEntries}</ConfigToggleLabel>
-                                        <Toggle
-                                          checked={channelManualSettings.close_worse_entries === true}
-                                          onChange={v => setManual({ close_worse_entries: v })}
-                                        />
-                                      </div>
-                                      {channelManualSettings.close_worse_entries && (
-                                          <ConfigureInput
-                                          label={cm.risk.closeWorsePips}
-                                            type="number"
-                                            min={1}
-                                            step={1}
-                                            placeholder="30"
-                                            hint={
-                                            formatPipHint(Number(channelManualSettings.close_worse_entries_pips ?? 30) || 0)
-                                            ?? cm.risk.closeWorsePipsFallback
-                                            }
-                                          value={String(channelManualSettings.close_worse_entries_pips ?? 30)}
-                                            onChange={e => setManual({ close_worse_entries_pips: Math.max(1, Number(e.target.value) || 1) })}
-                                          />
-                                      )}
-                                    </div>
                                   </>
+                                )}
+                              </div>
+
+                              <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3 space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <ConfigToggleLabel info={cm.risk.closeWorseBody}>{cm.risk.closeWorseEntries}</ConfigToggleLabel>
+                                  <Toggle
+                                    checked={channelManualSettings.close_worse_entries === true}
+                                    onChange={v => setManual({ close_worse_entries: v })}
+                                  />
+                                </div>
+                                {channelManualSettings.close_worse_entries && (
+                                  <ConfigureInput
+                                    label={cm.risk.closeWorsePips}
+                                    type="number"
+                                    min={1}
+                                    step={1}
+                                    placeholder="30"
+                                    hint={
+                                      formatPipHint(Number(channelManualSettings.close_worse_entries_pips ?? 30) || 0)
+                                      ?? cm.risk.closeWorsePipsFallback
+                                    }
+                                    value={String(channelManualSettings.close_worse_entries_pips ?? 30)}
+                                    onChange={e => setManual({ close_worse_entries_pips: Math.max(1, Number(e.target.value) || 1) })}
+                                  />
                                 )}
                               </div>
                                 </div>
