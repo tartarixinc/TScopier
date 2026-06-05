@@ -157,6 +157,62 @@ export interface ConfigureModalTranslations {
     closeWorsePips: string
     closeWorsePipsFallback: string
     basicPlanTradeStyleLimit: string
+    openLotCalculator: string
+    lotCalculator: {
+      title: string
+      intro: string
+      accountBalance: string
+      symbol: string
+      symbolHint: string
+      slPips: string
+      tpLevelsTitle: string
+      tpLevelsHint: string
+      tpPipsCol: string
+      tpPercentCol: string
+      tpLabel: string
+      tpPercentTotal: string
+      tpUnallocated: string
+      tpOverCap: string
+      addTp: string
+      remove: string
+      tradeStyle: string
+      singleTrade: string
+      multiTrades: string
+      perLegSize: string
+      rangeLayering: string
+      rangePercent: string
+      rangeStep: string
+      rangeDistance: string
+      fixedLot: string
+      targetRiskPct: string
+      targetRiskHint: string
+      useSuggestedLot: string
+      enabled: string
+      advanced: string
+      winRate: string
+      winRateHint: string
+      resultsTitle: string
+      riskFull: string
+      riskImmediate: string
+      riskPct: string
+      rewardTotal: string
+      rewardRiskRatio: string
+      legSummary: string
+      legSummarySingle: string
+      legSummaryMulti: string
+      legSummaryRange: string
+      lossesToRuin: string
+      riskOfRuin: string
+      perTpReward: string
+      brokerPreviewNote: string
+      fallbackSingleNote: string
+      riskWarningModerate: string
+      riskWarningHigh: string
+      riskWarningExtreme: string
+      apply: string
+      cancel: string
+      close: string
+    }
   }
   stops: {
     predefinedTitle: string

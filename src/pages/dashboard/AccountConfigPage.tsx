@@ -23,6 +23,7 @@ import { Button } from '../../components/ui/Button'
 import { Badge } from '../../components/ui/Badge'
 import { Alert } from '../../components/ui/Alert'
 import { AddAccountModal } from '../../components/ui/AddAccountModal'
+import { RiskLotCalculatorModal } from '../../components/configure/RiskLotCalculatorModal'
 import { ConfigTitle, ConfigToggleLabel, ConfigureInput, ConfigureSelect, InfoTooltip } from '../../components/ui/InfoTooltip'
 import { MtCompanyServerPicker } from '../../components/ui/MtCompanyServerPicker'
 import { formatLocalCalendarDay } from '../../lib/dayStartBalance'
@@ -777,6 +778,7 @@ export function AccountConfigPage() {
   const [brokerSearchQuery, setBrokerSearchQuery] = useState('')
   const [brokerPage, setBrokerPage] = useState(1)
   const [fixedLotDraft, setFixedLotDraft] = useState<string | null>(null)
+  const [riskCalcOpen, setRiskCalcOpen] = useState(false)
   const [brokerAccountTypes, setBrokerAccountTypes] = useState<Record<string, LinkedAccountType>>({})
   const brokerAccountTypeKey = useMemo(
     () => brokers.map(b => `${b.id}:${b.broker_server ?? ''}`).join('|'),
@@ -1053,6 +1055,13 @@ export function AccountConfigPage() {
       })
     }
   }, [cm.pipHint, livePipQuote, channelManualSettings.fixed_lot, channelManualSettings.symbol_to_trade])
+
+  const resolvedSingleSymbol = useMemo(() => {
+    const raw = (channelManualSettings.symbol_to_trade ?? '').trim()
+    if (!raw) return ''
+    const parts = raw.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean)
+    return parts.length === 1 ? parts[0]!.toUpperCase() : ''
+  }, [channelManualSettings.symbol_to_trade])
 
   useEffect(() => {
     if (!userId) return
@@ -2341,6 +2350,22 @@ export function AccountConfigPage() {
         }}
       />
 
+      <RiskLotCalculatorModal
+        open={riskCalcOpen && configAccount != null}
+        onClose={() => setRiskCalcOpen(false)}
+        onApply={patch => {
+          setManual(patch)
+          setFixedLotDraft(null)
+        }}
+        manualSettings={channelManualSettings}
+        initialBalance={configAccount?.last_balance ?? null}
+        currency={configAccount?.last_currency}
+        pipQuote={livePipQuote}
+        symbol={resolvedSingleSymbol}
+        copy={cm.risk.lotCalculator}
+        cancelLabel={cm.cancel}
+      />
+
       {brokerPendingDelete && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
           <div
@@ -2861,31 +2886,40 @@ export function AccountConfigPage() {
                               {channelManualSettings.risk_mode === 'dynamic_balance_percent' ? (
                                 <ConfigureInput label={cm.risk.dynamicBalance} type="number" value={String(channelManualSettings.dynamic_balance_percent ?? 1)} onChange={e => setManual({ dynamic_balance_percent: Number(e.target.value) })} />
                               ) : (
-                                <ConfigureInput
-                                  label={cm.risk.fixedLot}
-                                  type="text"
-                                  inputMode="decimal"
-                                  value={numberFieldDisplay(
-                                    channelManualSettings.fixed_lot,
-                                    fixedLotDraft,
-                                    DEFAULT_MANUAL_SETTINGS.fixed_lot ?? 0.01,
-                                  )}
-                                  onChange={e => setFixedLotDraft(e.target.value)}
-                                  onBlur={() => {
-                                    const raw = fixedLotDraft ?? numberFieldDisplay(
+                                <div className="space-y-1">
+                                  <ConfigureInput
+                                    label={cm.risk.fixedLot}
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={numberFieldDisplay(
                                       channelManualSettings.fixed_lot,
-                                      null,
+                                      fixedLotDraft,
                                       DEFAULT_MANUAL_SETTINGS.fixed_lot ?? 0.01,
-                                    )
-                                    setFixedLotDraft(null)
-                                    setManual({
-                                      fixed_lot: commitPositiveNumber(
-                                        raw,
+                                    )}
+                                    onChange={e => setFixedLotDraft(e.target.value)}
+                                    onBlur={() => {
+                                      const raw = fixedLotDraft ?? numberFieldDisplay(
+                                        channelManualSettings.fixed_lot,
+                                        null,
                                         DEFAULT_MANUAL_SETTINGS.fixed_lot ?? 0.01,
-                                      ),
-                                    })
-                                  }}
-                                />
+                                      )
+                                      setFixedLotDraft(null)
+                                      setManual({
+                                        fixed_lot: commitPositiveNumber(
+                                          raw,
+                                          DEFAULT_MANUAL_SETTINGS.fixed_lot ?? 0.01,
+                                        ),
+                                      })
+                                    }}
+                                  />
+                                  <button
+                                    type="button"
+                                    className="text-sm text-teal-600 hover:text-teal-700 hover:underline dark:text-teal-400 dark:hover:text-teal-300"
+                                    onClick={() => setRiskCalcOpen(true)}
+                                  >
+                                    {cm.risk.openLotCalculator}
+                                  </button>
+                                </div>
                               )}
                               <ConfigureSelect
                                 label={cm.risk.tradeStyle}
