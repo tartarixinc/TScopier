@@ -37,6 +37,26 @@ export async function hasTpTouchedLock(
   return (count ?? 0) > 0
 }
 
+export async function clearTpTouchedLock(
+  supabase: SupabaseClient,
+  scope: { signalId: string; brokerAccountId: string; symbol?: string },
+): Promise<void> {
+  let q = supabase
+    .from('range_pending_tp_locks')
+    .delete()
+    .eq('signal_id', scope.signalId)
+    .eq('broker_account_id', scope.brokerAccountId)
+  if (scope.symbol) {
+    q = q.eq('symbol', scope.symbol)
+  }
+  const { error } = await q
+  if (error) {
+    console.warn(
+      `[rangePendingFireGuard] clear tp-lock failed signal=${scope.signalId} broker=${scope.brokerAccountId}: ${error.message}`,
+    )
+  }
+}
+
 export async function setTpTouchedLock(
   supabase: SupabaseClient,
   scope: RangePendingTpLockScope & {
@@ -204,13 +224,14 @@ export async function countOpenTradesForBasket(
 export async function shouldBlockVirtualLegFire(
   supabase: SupabaseClient,
   leg: { id: string; signal_id: string; broker_account_id: string; symbol: string; step_idx: number },
+  opts?: { layerTillClose?: boolean },
 ): Promise<{ block: boolean; reason?: string }> {
   const tpLockScope: RangePendingTpLockScope = {
     signalId: leg.signal_id,
     brokerAccountId: leg.broker_account_id,
     symbol: leg.symbol,
   }
-  if (await hasTpTouchedLock(supabase, tpLockScope)) {
+  if (!opts?.layerTillClose && await hasTpTouchedLock(supabase, tpLockScope)) {
     await supabase
       .from('range_pending_legs')
       .update({ status: 'expired', error_message: 'tp_touched_lock' })

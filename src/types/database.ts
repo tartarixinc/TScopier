@@ -228,6 +228,8 @@ export interface ManualSettings {
   range_step_pips?: number
   /** Total pip distance the range spans from entry. Caps the pending count to floor(distance / step). */
   range_distance_pips?: number
+  /** When true, virtual range pendings stay active until the whole basket is flat (not after first TP/CWE close). */
+  range_layer_till_close?: boolean
   /** When true, immediate multi-trade legs are closed at anchor + `close_worse_entries_pips` via the worker. */
   close_worse_entries?: boolean
   /** Pips from signal entry (anchor) at which instant legs auto-close. Default 30. */

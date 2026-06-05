@@ -150,6 +150,8 @@ export interface ConfigureModalTranslations {
     stepPipsFallback: string
     rangeDistance: string
     rangeDistanceFallback: string
+    layerTillClose: string
+    layerTillCloseBody: string
     closeWorseEntries: string
     closeWorseBody: string
     closeWorsePips: string

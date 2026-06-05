@@ -18,9 +18,11 @@ import {
   type MonitorLoopHandle,
 } from './monitorIdleGate'
 import {
-  expireActiveRangeLegsForTpLock,
+  loadRangeLayerTillCloseForSignal,
+  stopRangeLayeringUnlessEnabled,
+} from './rangeLayerTillClose'
+import {
   reconcileStaleClaimedLegs,
-  setTpTouchedLock,
   shouldBlockVirtualLegFire,
 } from './rangePendingFireGuard'
 import { isMtBridgeGlitchMessage } from './brokerConnectError'
@@ -506,18 +508,19 @@ export class VirtualPendingMonitor {
       const userId = rows[0]?.user_id
       if (!userId) continue
 
-      await setTpTouchedLock(this.supabase, {
+      const layerTillClose = await loadRangeLayerTillCloseForSignal(
+        this.supabase,
         signalId,
         brokerAccountId,
-        symbol,
-        userId,
-        triggerPrice: touch.triggerPrice,
-        triggerSide: touch.triggerSide,
-      })
-      const expiredRows = await expireActiveRangeLegsForTpLock(
-        this.supabase,
-        { signalId, brokerAccountId, symbol },
       )
+      if (layerTillClose) continue
+
+      const { stopped, deleted } = await stopRangeLayeringUnlessEnabled(
+        this.supabase,
+        { signalId, brokerAccountId, symbol, userId },
+        'tp_touched',
+      )
+      if (!stopped) continue
       touched.add(basketKey)
 
       try {
@@ -534,7 +537,8 @@ export class VirtualPendingMonitor {
             trigger_side: touch.triggerSide,
             bid,
             ask,
-            expired_rows: expiredRows,
+            deleted_rows: deleted,
+            lock_reason: 'layering_stopped',
           } as unknown as Record<string, unknown>,
         })
       } catch {
@@ -566,7 +570,12 @@ export class VirtualPendingMonitor {
     const api = apiForMetaapiAccount(this.platformByUuid, leg.metaapi_account_id)
     if (!api) return false
 
-    const block = await shouldBlockVirtualLegFire(this.supabase, leg)
+    const layerTillClose = await loadRangeLayerTillCloseForSignal(
+      this.supabase,
+      leg.signal_id,
+      leg.broker_account_id,
+    )
+    const block = await shouldBlockVirtualLegFire(this.supabase, leg, { layerTillClose })
     if (block.block) {
       if (block.reason) {
         console.log(

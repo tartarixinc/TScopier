@@ -9,6 +9,7 @@ import {
   startMonitorLoop,
   type MonitorLoopHandle,
 } from './monitorIdleGate'
+import { stopRangeLayeringUnlessEnabled } from './rangeLayerTillClose'
 
 /**
  * Worker-side monitor that closes "Close-Worse-Entries" positions once the
@@ -331,6 +332,18 @@ export class CweCloseMonitor {
         } as unknown as Record<string, unknown>,
         response_payload: { ticket: result.ticket, latency_ms: latencyMs },
       })
+      if (trade.signal_id && trade.broker_account_id) {
+        await stopRangeLayeringUnlessEnabled(
+          this.supabase,
+          {
+            signalId: trade.signal_id,
+            brokerAccountId: trade.broker_account_id,
+            symbol: trade.symbol,
+            userId: trade.user_id,
+          },
+          'cwe_close',
+        )
+      }
       return true
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -346,6 +359,18 @@ export class CweCloseMonitor {
           .from('trades')
           .update({ status: 'closed', closed_at: new Date().toISOString() })
           .eq('id', trade.id)
+        if (trade.signal_id && trade.broker_account_id) {
+          await stopRangeLayeringUnlessEnabled(
+            this.supabase,
+            {
+              signalId: trade.signal_id,
+              brokerAccountId: trade.broker_account_id,
+              symbol: trade.symbol,
+              userId: trade.user_id,
+            },
+            'cwe_close_benign',
+          )
+        }
         return true
       }
       console.error(

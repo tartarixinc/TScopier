@@ -165,6 +165,9 @@ export const configureModalEn: ConfigureModalTranslations = {
     rangeDistance: 'Range distance (pips)',
     rangeDistanceFallback:
       'The distance of the range provided by your signal provider. This determines how far the trade is layered.',
+    layerTillClose: 'Layer till close',
+    layerTillCloseBody:
+      'When on, virtual range pendings keep firing while any leg is still open — even if price retraces after a TP or close-worse-entries. When off, pending legs are removed after the first TP touch or any leg closes, so no deeper rungs fire on a reversal.',
     closeWorseEntries: 'Close worse entries',
     closeWorseBody:
       'When the price moves +X pips in your favor from the starting entry, the system automatically closes your immediate trades. When a "Close worse entries" message is enabled and triggered, the system closes any open trade that is within X pips of the current market price. Trades affected by "Close worse entries" do not have a Take-Profit (TP) set on the broker\'s side. Only the Stop-Loss (SL) is sent to the broker.',

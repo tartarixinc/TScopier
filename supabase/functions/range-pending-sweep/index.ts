@@ -26,11 +26,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4"
 // @ts-ignore - Deno-only import
 import { makeClientFromEnv, MetatraderApiClient, type MtPlatform } from "../_shared/metatraderapi.ts"
 import { tryApplyBasketFollowUpToNewFill } from "../_shared/basketModFollowUp.ts"
+import { shouldBlockVirtualLegFire } from "../_shared/rangePendingFireGuard.ts"
 import {
-  expireActiveRangeLegsForTpLock,
-  setTpTouchedLock,
-  shouldBlockVirtualLegFire,
-} from "../_shared/rangePendingFireGuard.ts"
+  loadRangeLayerTillCloseForSignal,
+  stopRangeLayeringUnlessEnabled,
+} from "../_shared/rangeLayerTillClose.ts"
 
 function mtClient(env: { get(name: string): string | undefined }, platform: string): MetatraderApiClient {
   const p: MtPlatform = platform === "MT4" ? "MT4" : "MT5"
@@ -157,18 +157,15 @@ async function detectAndLockTpTouchedBasketsSweep(
     const userId = rows[0]?.user_id
     if (!userId) continue
 
-    await setTpTouchedLock(sb, {
-      signalId,
-      brokerAccountId,
-      symbol,
-      userId,
-      triggerPrice,
-      triggerSide,
-    })
-    const expiredRows = await expireActiveRangeLegsForTpLock(
+    const layerTillClose = await loadRangeLayerTillCloseForSignal(sb, signalId, brokerAccountId)
+    if (layerTillClose) continue
+
+    const { stopped, deleted } = await stopRangeLayeringUnlessEnabled(
       sb,
-      { signalId, brokerAccountId, symbol },
+      { signalId, brokerAccountId, symbol, userId },
+      "tp_touched",
     )
+    if (!stopped) continue
     touched.add(basketKey)
     try {
       await sb.from("trade_execution_logs").insert({
@@ -184,7 +181,8 @@ async function detectAndLockTpTouchedBasketsSweep(
           trigger_side: triggerSide,
           bid,
           ask,
-          expired_rows: expiredRows,
+          deleted_rows: deleted,
+          lock_reason: "layering_stopped",
           claimed_by: CLAIMED_BY,
         },
       })
@@ -381,7 +379,12 @@ async function fireLeg(
   bid: number,
   ask: number,
 ): Promise<boolean> {
-  const block = await shouldBlockVirtualLegFire(sb, leg)
+  const layerTillClose = await loadRangeLayerTillCloseForSignal(
+    sb,
+    leg.signal_id,
+    leg.broker_account_id,
+  )
+  const block = await shouldBlockVirtualLegFire(sb, leg, { layerTillClose })
   if (block.block) {
     console.log(
       `[range-pending-sweep] skip fire leg=${leg.id} signal=${leg.signal_id} step=${leg.step_idx}: ${block.reason ?? "blocked"}`,

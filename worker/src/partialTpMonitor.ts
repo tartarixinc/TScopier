@@ -10,6 +10,7 @@ import {
   type MonitorLoopHandle,
 } from './monitorIdleGate'
 import { apiForMetaapiAccount, loadPlatformByMetaapiId, type PlatformByMetaapiId } from './mtApiByAccount'
+import { stopRangeLayeringUnlessEnabled } from './rangeLayerTillClose'
 
 /**
  * Worker-side monitor that fires partial /OrderClose calls for single-mode
@@ -333,6 +334,18 @@ export class PartialTpMonitor {
         } as unknown as Record<string, unknown>,
         response_payload: { ticket: result.ticket, latency_ms: latencyMs, claimed_by: this.hostId },
       })
+      if (partial.signal_id && partial.broker_account_id) {
+        await stopRangeLayeringUnlessEnabled(
+          this.supabase,
+          {
+            signalId: partial.signal_id,
+            brokerAccountId: partial.broker_account_id,
+            symbol: partial.symbol,
+            userId: partial.user_id,
+          },
+          'partial_tp_close',
+        )
+      }
       return true
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -353,6 +366,18 @@ export class PartialTpMonitor {
           .from('partial_tp_legs')
           .update({ status: 'cancelled', fired_at: new Date().toISOString(), error_message: msg })
           .eq('id', partial.id)
+        if (partial.signal_id && partial.broker_account_id) {
+          await stopRangeLayeringUnlessEnabled(
+            this.supabase,
+            {
+              signalId: partial.signal_id,
+              brokerAccountId: partial.broker_account_id,
+              symbol: partial.symbol,
+              userId: partial.user_id,
+            },
+            'partial_tp_parent_gone',
+          )
+        }
         return true
       }
       console.error(

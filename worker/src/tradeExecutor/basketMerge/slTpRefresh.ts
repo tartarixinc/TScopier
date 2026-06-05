@@ -31,6 +31,7 @@ import {
   type VirtualPendingLeg,
 } from '../../manualPlanner'
 import { normalizeManualSettingsForExecution } from '../../manualPlanning/normalizeManualSettings'
+import { isRangeLayerTillCloseEnabled } from '../../rangeLayerTillClose'
 import { findActiveNewsBlackout } from '../../newsTrading/blackout'
 import { getCalendarEventsCached } from '../../newsTrading/calendarProvider'
 import { isNewsTradingEnabled } from '../../newsTrading/settings'
@@ -620,6 +621,7 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
         },
         persistRows: (rows, persistCtx) => persistRangePendingLegRows(ctx, rows, persistCtx),
         context: `basket_refresh signal=${signal.id} anchor=${anchorSignalId}`,
+        layerTillClose: isRangeLayerTillCloseEnabled(manual),
       })
       if (ladderSync.skippedConsumed > 0 || ladderSync.skippedCap > 0) {
         console.log(

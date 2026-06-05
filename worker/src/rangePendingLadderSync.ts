@@ -102,6 +102,7 @@ export async function syncRangePendingLadderOnBasketRefresh(args: {
   buildInsertRow: (leg: VirtualPendingLeg) => Record<string, unknown> | null
   persistRows: (rows: Record<string, unknown>[], context: string) => Promise<{ ok: boolean }>
   context: string
+  layerTillClose?: boolean
 }): Promise<{ updated: number; inserted: number; skippedConsumed: number; skippedCap: number }> {
   const {
     supabase,
@@ -115,6 +116,7 @@ export async function syncRangePendingLadderOnBasketRefresh(args: {
     buildInsertRow,
     persistRows,
     context,
+    layerTillClose = false,
   } = args
 
   const stats = { updated: 0, inserted: 0, skippedConsumed: 0, skippedCap: 0 }
@@ -161,8 +163,8 @@ export async function syncRangePendingLadderOnBasketRefresh(args: {
     if (!error) stats.updated += 1
   }
 
-  if (await hasRangePendingTpTouchLock(supabase, scope)) {
-    // Once TP touch lock is set, no new ladder rows should be inserted.
+  if (!layerTillClose && await hasRangePendingTpTouchLock(supabase, scope)) {
+    // Layering frozen (TP touch or partial close with layer-till-close off).
     stats.skippedCap += virtualPendings.length
     return stats
   }

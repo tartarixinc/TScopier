@@ -41,6 +41,7 @@ export interface ManualSettings {
   range_percent?: number
   range_step_pips?: number
   range_distance_pips?: number
+  range_layer_till_close?: boolean
   close_worse_entries?: boolean
   close_worse_entries_pips?: number
   /** @deprecated Replaced by `range_percent`. */

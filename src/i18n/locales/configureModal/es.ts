@@ -165,6 +165,9 @@ export const configureModalEs: ConfigureModalTranslations = {
     rangeDistance: 'Distancia de rango (pips)',
     rangeDistanceFallback:
       'La distancia del rango indicada por su proveedor de señales. Determina hasta dónde se escalona la operación.',
+    layerTillClose: 'Escalonar hasta el cierre',
+    layerTillCloseBody:
+      'Activado: las órdenes pendientes virtuales siguen disparándose mientras quede alguna pierna abierta, incluso si el precio retrocede tras un TP o un cierre CWE. Desactivado: se eliminan las pendientes al primer TP tocado o al cerrar cualquier pierna, sin nuevos escalones en una reversión.',
     closeWorseEntries: 'Cerrar entradas peores',
     closeWorseBody:
       'Cuando el precio avanza +X pips a su favor desde la entrada inicial, el sistema cierra automáticamente sus operaciones inmediatas. Cuando la opción « Cerrar entradas peores » está activada y se dispara, el sistema cierra cualquier operación abierta que esté a X pips del precio de mercado actual. Las operaciones afectadas por « Cerrar entradas peores » no tienen take-profit (TP) establecido en el broker. Solo se envía el stop loss (SL) al broker.',

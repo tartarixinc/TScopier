@@ -365,6 +365,7 @@ function normalizeManualSettings(raw: unknown): ManualSettings {
   const rangePercent = Math.max(0, Math.min(100, readNumber('range_percent', DEFAULT_MANUAL_SETTINGS.range_percent ?? 50)))
   const rangeStepPips = Math.max(0, readNumber('range_step_pips', DEFAULT_MANUAL_SETTINGS.range_step_pips ?? 3))
   const rangeDistancePips = Math.max(0, readNumber('range_distance_pips', DEFAULT_MANUAL_SETTINGS.range_distance_pips ?? 30))
+  const rangeLayerTillClose = (j as Record<string, unknown>).range_layer_till_close === true
   const closeWorseEntries = (j as Record<string, unknown>).close_worse_entries === true
   const closeWorseEntriesPips = Math.max(0, readNumber('close_worse_entries_pips', DEFAULT_MANUAL_SETTINGS.close_worse_entries_pips ?? 30))
   const singleTpTargetRaw = String((j as Record<string, unknown>).single_tp_target ?? 'farthest').toLowerCase()
@@ -396,6 +397,7 @@ function normalizeManualSettings(raw: unknown): ManualSettings {
     range_percent: rangePercent,
     range_step_pips: rangeStepPips,
     range_distance_pips: rangeDistancePips,
+    range_layer_till_close: rangeLayerTillClose,
     close_worse_entries: closeWorseEntries,
     close_worse_entries_pips: closeWorseEntriesPips,
     single_tp_target: singleTpTarget,
@@ -3043,6 +3045,14 @@ export function AccountConfigPage() {
                                         }
                                         value={String(channelManualSettings.range_distance_pips ?? DEFAULT_MANUAL_SETTINGS.range_distance_pips)}
                                         onChange={e => setManual({ range_distance_pips: Math.max(1, Number(e.target.value) || 1) })}
+                                      />
+                                    </div>
+
+                                    <div className="flex items-center justify-between">
+                                      <ConfigToggleLabel info={cm.risk.layerTillCloseBody}>{cm.risk.layerTillClose}</ConfigToggleLabel>
+                                      <Toggle
+                                        checked={channelManualSettings.range_layer_till_close === true}
+                                        onChange={v => setManual({ range_layer_till_close: v })}
                                       />
                                     </div>
 

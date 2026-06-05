@@ -24,6 +24,7 @@ export const DEFAULT_MANUAL_SETTINGS: ManualSettings = {
   range_percent: 50,
   range_step_pips: 3,
   range_distance_pips: 30,
+  range_layer_till_close: false,
   close_worse_entries: false,
   close_worse_entries_pips: 30,
   reverse_signal: false,
