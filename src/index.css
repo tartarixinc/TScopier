@@ -56,6 +56,12 @@ body {
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
+@layer base {
+  input[type='checkbox'] {
+    @apply accent-teal-600;
+  }
+}
+
 /* iOS Safari zooms focused inputs when font-size < 16px */
 @media screen and (max-width: 767px) {
   input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='hidden']):not([type='file']),
