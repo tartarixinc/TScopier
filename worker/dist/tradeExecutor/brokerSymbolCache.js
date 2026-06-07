@@ -458,8 +458,16 @@ async function fetchSymbolList(ctx, uuid) {
         return null;
     }
 }
-function resolveBrokerSymbolFromInventory(ctx, inventory, requested) {
+function resolveBrokerSymbolFromInventory(ctx, inventory, requested, opts) {
     const target = requested.toUpperCase();
+    if (opts?.userDecorated === true) {
+        if (inventory.set.has(target)) {
+            const exact = inventory.list.find(s => s.toUpperCase() === target);
+            return exact ?? requested;
+        }
+        console.warn(`[tradeExecutor] user-decorated symbol not in broker /Symbols list: ${requested}`);
+        return requested;
+    }
     if (inventory.set.has(target)) {
         const exact = inventory.list.find(s => s.toUpperCase() === target);
         return exact ?? requested;
@@ -488,19 +496,19 @@ function resolveBrokerSymbolFromInventory(ctx, inventory, requested) {
     }
     return requested;
 }
-async function resolveBrokerSymbolForLiveEntry(ctx, uuid, requested) {
+async function resolveBrokerSymbolForLiveEntry(ctx, uuid, requested, opts) {
     const cached = ctx.symbolListCache.get(uuid);
     if (cached && (Date.now() - cached.loadedAt) < types_1.SYMBOL_LIST_TTL_MS) {
-        return ctx.resolveBrokerSymbolFromInventory(cached, requested);
+        return ctx.resolveBrokerSymbolFromInventory(cached, requested, opts);
     }
     const inventory = await ctx.getSymbolList(uuid);
     if (!inventory)
         return requested;
-    return ctx.resolveBrokerSymbolFromInventory(inventory, requested);
+    return ctx.resolveBrokerSymbolFromInventory(inventory, requested, opts);
 }
-async function resolveBrokerSymbol(ctx, uuid, requested) {
+async function resolveBrokerSymbol(ctx, uuid, requested, opts) {
     const inventory = await ctx.getSymbolList(uuid);
     if (!inventory)
         return requested;
-    return ctx.resolveBrokerSymbolFromInventory(inventory, requested);
+    return ctx.resolveBrokerSymbolFromInventory(inventory, requested, opts);
 }

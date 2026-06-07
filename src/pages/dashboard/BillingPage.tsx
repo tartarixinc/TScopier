@@ -14,6 +14,7 @@ import {
 import { useT, useLocale } from '../../context/LocaleContext'
 import { useAuth } from '../../context/AuthContext'
 import { useSubscription } from '../../context/SubscriptionContext'
+import { useUserProfile } from '../../context/UserProfileContext'
 import { getSubscribeCtaLabel } from '../../lib/subscriptionCta'
 import { interpolate } from '../../i18n/interpolate'
 import { Button } from '../../components/ui/Button'
@@ -96,6 +97,7 @@ export function BillingPage() {
   const { locale } = useLocale()
   const bt = t.pricing.billing
   const { user, session } = useAuth()
+  const { isAdmin, adminUntil } = useUserProfile()
   const {
     subscription,
     hasActiveSubscription,
@@ -103,7 +105,6 @@ export function BillingPage() {
     loading: subscriptionLoading,
     refresh,
     openPricingModal,
-    isAdmin,
     isPastDue,
     hasTrialExpired,
   } = useSubscription()
@@ -146,7 +147,12 @@ export function BillingPage() {
 
   const planDisplay = useMemo(() => {
     if (isAdmin) {
-      return { name: 'Admin', summary: bt.adminPlanSummary }
+      const summary = adminUntil
+        ? interpolate(bt.adminPlanSummaryUntil, {
+            date: formatShortDate(adminUntil, localeTag),
+          })
+        : bt.adminPlanSummary
+      return { name: 'Admin', summary }
     }
     if (!hasActiveSubscription || !effectivePlan) {
       return { name: bt.freePlan, summary: bt.freePlanSummary }
@@ -155,7 +161,7 @@ export function BillingPage() {
       return { name: t.pricing.advanced.name, summary: bt.advancedPlanSummary }
     }
     return { name: t.pricing.basic.name, summary: bt.basicPlanSummary }
-  }, [isAdmin, hasActiveSubscription, effectivePlan, bt, t.pricing.advanced.name, t.pricing.basic.name])
+  }, [isAdmin, adminUntil, hasActiveSubscription, effectivePlan, bt, t.pricing.advanced.name, t.pricing.basic.name, localeTag])
 
   const nextRenewalDisplay = useMemo(() => {
     if (!hasActiveSubscription || !subscription) return { value: '—', hint: bt.noActiveSubscription }

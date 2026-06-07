@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteRangePendingLegsForBasket = deleteRangePendingLegsForBasket;
 exports.purgeRangePendingLegsIfBasketFlat = purgeRangePendingLegsIfBasketFlat;
 exports.purgeRangePendingLegsForBaskets = purgeRangePendingLegsForBaskets;
+const rangePendingFireGuard_1 = require("./rangePendingFireGuard");
 /** Delete all active virtual ladder rows for a basket (any symbol spelling). */
 async function deleteRangePendingLegsForBasket(supabase, scope, reason) {
     const { data, error } = await supabase
@@ -39,7 +40,11 @@ async function purgeRangePendingLegsIfBasketFlat(supabase, scope, reason) {
     }
     if ((count ?? 0) > 0)
         return 0;
-    return deleteRangePendingLegsForBasket(supabase, scope, reason);
+    const deleted = await deleteRangePendingLegsForBasket(supabase, scope, reason);
+    if (deleted > 0) {
+        await (0, rangePendingFireGuard_1.clearTpTouchedLock)(supabase, scope);
+    }
+    return deleted;
 }
 async function purgeRangePendingLegsForBaskets(supabase, scopes, reason) {
     const uniq = new Map();

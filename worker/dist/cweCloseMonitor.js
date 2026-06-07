@@ -5,6 +5,7 @@ exports.isCweTriggered = isCweTriggered;
 const metatraderapi_1 = require("./metatraderapi");
 const mtApiByAccount_1 = require("./mtApiByAccount");
 const monitorIdleGate_1 = require("./monitorIdleGate");
+const rangeLayerTillClose_1 = require("./rangeLayerTillClose");
 const ACTIVE_MS = (0, monitorIdleGate_1.monitorActiveIntervalMs)('CWE_CLOSE_TICK_MS', 1500);
 const IDLE_MS = (0, monitorIdleGate_1.monitorIdleIntervalMs)('CWE_CLOSE_IDLE_MS', 60000);
 /**
@@ -258,6 +259,14 @@ class CweCloseMonitor {
                 },
                 response_payload: { ticket: result.ticket, latency_ms: latencyMs },
             });
+            if (trade.signal_id && trade.broker_account_id) {
+                await (0, rangeLayerTillClose_1.stopRangeLayeringUnlessEnabled)(this.supabase, {
+                    signalId: trade.signal_id,
+                    brokerAccountId: trade.broker_account_id,
+                    symbol: trade.symbol,
+                    userId: trade.user_id,
+                }, 'cwe_close');
+            }
             return true;
         }
         catch (err) {
@@ -272,6 +281,14 @@ class CweCloseMonitor {
                     .from('trades')
                     .update({ status: 'closed', closed_at: new Date().toISOString() })
                     .eq('id', trade.id);
+                if (trade.signal_id && trade.broker_account_id) {
+                    await (0, rangeLayerTillClose_1.stopRangeLayeringUnlessEnabled)(this.supabase, {
+                        signalId: trade.signal_id,
+                        brokerAccountId: trade.broker_account_id,
+                        symbol: trade.symbol,
+                        userId: trade.user_id,
+                    }, 'cwe_close_benign');
+                }
                 return true;
             }
             console.error(`[cweCloseMonitor] close failed signal=${trade.signal_id ?? 'n/a'} ticket=${ticketNum}: ${msg}`);

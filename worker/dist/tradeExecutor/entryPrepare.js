@@ -83,7 +83,19 @@ async function prepareEntryExecution(ctx, args) {
     if (!api)
         return { ok: false, outcome: {} };
     const uuid = broker.metaapi_account_id;
+    const signalSymbol = (parsed.symbol ?? '').trim();
+    if ((0, helpers_1.isExcluded)(signalSymbol, broker)) {
+        await ctx.logSendSkipped(signal, broker, 'symbol_exempted_from_trading', {
+            signal_symbol: parsed.symbol ?? null,
+            reason: 'symbols_exclude',
+        });
+        return { ok: false, outcome: {} };
+    }
     const mapping = (0, helpers_1.applySymbolMapping)(parsed.symbol, broker);
+    if (broker.platform === 'MT4' && (0, helpers_1.isMt5OnlyOperation)(op)) {
+        await ctx.logSendSkipped(signal, broker, 'mt4_unsupported_operation', { operation: op });
+        return { ok: false, outcome: { finalizeSkipReason: 'mt4_unsupported_operation' } };
+    }
     // Whitelist mode: when the user listed multiple symbols, only let signals
     // matching one of them through. Skip the signal otherwise.
     if (mapping.whitelist.length > 0) {
@@ -97,14 +109,6 @@ async function prepareEntryExecution(ctx, args) {
         }
     }
     const requestedSymbol = mapping.symbol;
-    if ((0, helpers_1.isExcluded)(requestedSymbol, broker)) {
-        await ctx.logSendSkipped(signal, broker, 'symbol_exempted_from_trading', {
-            signal_symbol: parsed.symbol ?? null,
-            trade_symbol: requestedSymbol,
-            reason: 'symbols_exclude',
-        });
-        return { ok: false, outcome: {} };
-    }
     const isManual = (broker.copier_mode ?? 'ai') === 'manual';
     const manual = (broker.manual_settings ?? {});
     const needsQuotePrefetch = !liveEntryFast
@@ -120,25 +124,23 @@ async function prepareEntryExecution(ctx, args) {
         }
         return r;
     });
+    const resolveOpts = { userDecorated: mapping.userDecorated };
     const symbolPromise = (liveEntryFast
-        ? ctx.resolveBrokerSymbolForLiveEntry(uuid, requestedSymbol)
-        : ctx.resolveBrokerSymbol(uuid, requestedSymbol)).then(r => {
+        ? ctx.resolveBrokerSymbolForLiveEntry(uuid, requestedSymbol, resolveOpts)
+        : ctx.resolveBrokerSymbol(uuid, requestedSymbol, resolveOpts)).then(r => {
         if (stampOnResolve && signal.pipeline_ts && signal.pipeline_ts.t_symbol_resolved == null) {
             signal.pipeline_ts.t_symbol_resolved = Date.now();
         }
         return r;
     });
-    const paramsPromise = ctx.getSymbolParams(uuid, requestedSymbol).catch(() => null).then(r => {
-        if (stampOnResolve && signal.pipeline_ts && signal.pipeline_ts.t_params_resolved == null) {
-            signal.pipeline_ts.t_params_resolved = Date.now();
-        }
-        return r;
-    });
-    const [sessionOk, symbol, paramsFromRequested] = await Promise.all([
+    const [sessionOk, symbol] = await Promise.all([
         sessionPromise,
         symbolPromise,
-        paramsPromise,
     ]);
+    let params = await ctx.getSymbolParams(uuid, symbol).catch(() => null);
+    if (stampOnResolve && signal.pipeline_ts && signal.pipeline_ts.t_params_resolved == null) {
+        signal.pipeline_ts.t_params_resolved = Date.now();
+    }
     if (liveEntryFast && signal.pipeline_ts && signal.pipeline_ts.t_send_caches_resolved == null) {
         signal.pipeline_ts.t_send_caches_resolved = Date.now();
     }
@@ -153,7 +155,9 @@ async function prepareEntryExecution(ctx, args) {
     if (symbol.toUpperCase() !== requestedSymbol.toUpperCase()) {
         console.log(`[tradeExecutor] symbol resolved broker=${broker.id} ${requestedSymbol} → ${symbol}`);
     }
-    let params = paramsFromRequested ?? await ctx.getSymbolParams(uuid, symbol).catch(() => null);
+    else if (mapping.userDecorated && !params) {
+        console.warn(`[tradeExecutor] user-decorated symbol params missing broker=${broker.id} symbol=${symbol}`);
+    }
     const baseLot = (0, helpers_1.roundLot)((0, helpers_1.computeLot)(broker, parsed), params);
     let strictEntryPrefetch = null;
     if (needsQuotePrefetch) {
@@ -253,6 +257,7 @@ async function prepareEntryExecution(ctx, args) {
     // manual mode delegates to the planner so filters / multi-TP / pip-derived
     // SL & TP / pending expiry / reverse all apply consistently.
     let mergedChannelParams = false;
+    let entryChannelParams = null;
     let plan;
     if (isManual) {
         const rpe = (0, manualPlanner_1.resolvedParsedEntryPrice)(parsed);
@@ -271,23 +276,16 @@ async function prepareEntryExecution(ctx, args) {
             raw_instruction: parsed.raw_instruction,
         };
         if (!liveEntryFast && signal.channel_id) {
-            if ((0, channelActiveTradeParams_1.parsedSignalHasExplicitStops)(plannerParsed)) {
-                const refreshTpLevels = (plannerParsed.tp ?? []).filter((t) => typeof t === 'number' && Number.isFinite(t) && t > 0);
-                await (0, channelActiveTradeParams_1.upsertChannelActiveTradeParams)(ctx.supabase, {
-                    userId: signal.user_id,
-                    channelId: signal.channel_id,
-                    symbols: [symbol],
-                    stoploss: plannerParsed.sl,
-                    tpLevels: refreshTpLevels,
-                });
-            }
-            else {
-                const channelParams = await (0, channelActiveTradeParams_1.loadChannelActiveTradeParamsForSymbol)(ctx.supabase, signal.user_id, signal.channel_id, symbol);
-                if (channelParams) {
-                    plannerParsed = (0, channelActiveTradeParams_1.mergeParsedWithChannelParams)(plannerParsed, channelParams);
-                    mergedChannelParams = true;
-                }
-            }
+            const resolved = await (0, channelActiveTradeParams_1.resolveEntryChannelStops)(ctx.supabase, {
+                userId: signal.user_id,
+                channelId: signal.channel_id,
+                brokerAccountId: broker.id,
+                symbol,
+                plannerParsed,
+            });
+            plannerParsed = resolved.plannerParsed;
+            mergedChannelParams = resolved.mergedChannelParams;
+            entryChannelParams = resolved.channelParams;
         }
         plan = (0, manualPlanner_1.planManualOrders)({
             parsed: plannerParsed,
@@ -380,9 +378,8 @@ async function prepareEntryExecution(ctx, args) {
     }
     let virtualPendings = (plan.virtualPendings ?? []).slice(0, 500);
     const totalPlannedLegCount = capped.length + virtualPendings.length;
-    if (!liveEntryFast && virtualPendings.length > 0 && signal.channel_id && mergedChannelParams) {
-        const channelParams = await (0, channelActiveTradeParams_1.loadChannelActiveTradeParamsForSymbol)(ctx.supabase, signal.user_id, signal.channel_id, symbol);
-        virtualPendings = (0, channelActiveTradeParams_1.applyChannelParamsToVirtualPendingList)(virtualPendings, channelParams, capped.length, manual.tp_lots, totalPlannedLegCount);
+    if (!liveEntryFast && virtualPendings.length > 0 && signal.channel_id && entryChannelParams) {
+        virtualPendings = (0, channelActiveTradeParams_1.applyChannelParamsToVirtualPendingList)(virtualPendings, entryChannelParams, capped.length, manual.tp_lots, totalPlannedLegCount);
     }
     const already = await ctx.manualDispatchAlreadyMaterialized(signal.id, broker.id);
     if (already) {

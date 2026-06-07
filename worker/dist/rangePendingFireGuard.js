@@ -5,6 +5,7 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.hasTpTouchedLock = hasTpTouchedLock;
+exports.clearTpTouchedLock = clearTpTouchedLock;
 exports.setTpTouchedLock = setTpTouchedLock;
 exports.expireActiveRangeLegsForTpLock = expireActiveRangeLegsForTpLock;
 exports.rangeStepAlreadyFired = rangeStepAlreadyFired;
@@ -26,6 +27,20 @@ async function hasTpTouchedLock(supabase, scope) {
         return false;
     }
     return (count ?? 0) > 0;
+}
+async function clearTpTouchedLock(supabase, scope) {
+    let q = supabase
+        .from('range_pending_tp_locks')
+        .delete()
+        .eq('signal_id', scope.signalId)
+        .eq('broker_account_id', scope.brokerAccountId);
+    if (scope.symbol) {
+        q = q.eq('symbol', scope.symbol);
+    }
+    const { error } = await q;
+    if (error) {
+        console.warn(`[rangePendingFireGuard] clear tp-lock failed signal=${scope.signalId} broker=${scope.brokerAccountId}: ${error.message}`);
+    }
 }
 async function setTpTouchedLock(supabase, scope) {
     const nowIso = new Date().toISOString();
@@ -146,13 +161,13 @@ async function countOpenTradesForBasket(supabase, signalId, brokerAccountId) {
     return count ?? 0;
 }
 /** True if this leg should not fire (already consumed or basket at cap). */
-async function shouldBlockVirtualLegFire(supabase, leg) {
+async function shouldBlockVirtualLegFire(supabase, leg, opts) {
     const tpLockScope = {
         signalId: leg.signal_id,
         brokerAccountId: leg.broker_account_id,
         symbol: leg.symbol,
     };
-    if (await hasTpTouchedLock(supabase, tpLockScope)) {
+    if (!opts?.layerTillClose && await hasTpTouchedLock(supabase, tpLockScope)) {
         await supabase
             .from('range_pending_legs')
             .update({ status: 'expired', error_message: 'tp_touched_lock' })

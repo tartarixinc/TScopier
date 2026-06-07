@@ -25,6 +25,7 @@ interface UserProfileContextValue {
   profile: ProfileFields
   hasProfileRow: boolean
   isAdmin: boolean
+  adminUntil: string | null
   subscriptionStatus: string | null
   onboardingCompletedAt: string | null
   baseCurrency: string
@@ -52,6 +53,7 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<ProfileFields>(EMPTY_USER_PROFILE)
   const [hasProfileRow, setHasProfileRow] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
+  const [adminUntil, setAdminUntil] = useState<string | null>(null)
   const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null)
   const [onboardingCompletedAt, setOnboardingCompletedAt] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -61,6 +63,7 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
       setProfile(EMPTY_USER_PROFILE)
       setHasProfileRow(false)
       setIsAdmin(false)
+      setAdminUntil(null)
       setSubscriptionStatus(null)
       setOnboardingCompletedAt(null)
       setLoading(false)
@@ -72,6 +75,7 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
       setIsAdmin(resolveUserIsAdmin(row, user.app_metadata as Record<string, unknown> | undefined))
       if (row) {
         setHasProfileRow(true)
+        setAdminUntil(row.admin_until ?? null)
         setSubscriptionStatus(row.subscription_status ?? null)
         setOnboardingCompletedAt(row.onboarding_completed_at ?? null)
         setProfile(
@@ -91,6 +95,7 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
         )
       } else {
         setHasProfileRow(false)
+        setAdminUntil(null)
         setSubscriptionStatus(null)
         setOnboardingCompletedAt(null)
         const meta = user.user_metadata as Record<string, unknown> | undefined
@@ -142,6 +147,7 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
       profile,
       hasProfileRow,
       isAdmin,
+      adminUntil,
       subscriptionStatus,
       onboardingCompletedAt,
       baseCurrency: profile.base_currency,
@@ -155,6 +161,7 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
       profile,
       hasProfileRow,
       isAdmin,
+      adminUntil,
       subscriptionStatus,
       onboardingCompletedAt,
       patchProfile,

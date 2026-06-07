@@ -80,6 +80,7 @@ export interface UserProfileRow {
   base_currency: string
   timezone: string
   is_admin: boolean
+  admin_until: string | null
   subscription_status: string | null
   onboarding_completed_at: string | null
   referred_by_user_id: string | null

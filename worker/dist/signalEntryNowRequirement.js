@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ENTRY_REQUIRES_NOW_REASON = void 0;
 exports.parsedHasSlOrTp = parsedHasSlOrTp;
 exports.messageHasMarketNowIntent = messageHasMarketNowIntent;
+exports.messageHasExplicitSlTpLabels = messageHasExplicitSlTpLabels;
 exports.entryMissingSlTpRequiresNow = entryMissingSlTpRequiresNow;
 exports.ENTRY_REQUIRES_NOW_REASON = 'entry_requires_now_without_sl_tp';
 function positivePrice(v) {
@@ -38,12 +39,32 @@ function messageHasMarketNowIntent(message, channelKeywords) {
         : [];
     return [...defaults, ...custom].some(token => token && keywordRegex(token).test(raw));
 }
-/** Buy/sell without SL or TP must include a market-now cue. */
+/** True when SL/TP appear as labeled parameters in the message (not inferred from prose). */
+function messageHasExplicitSlTpLabels(message) {
+    const text = String(message ?? '');
+    if (/\b(?:sl|stop\s*loss)\s*[:=\-]?\s*\d/i.test(text))
+        return true;
+    if (/\b(?:sl|stop\s*loss)\s+to\s+\d/i.test(text))
+        return true;
+    if (/\b(?:tp|take\s*profit|target(?:\s+level)?)\s*#?\s*\d+\s*[:=\-]\s*\d/i.test(text))
+        return true;
+    if (/\b(?:tp|take\s*profit|target(?:\s+level)?)\s*[:=\-]\s*\d/i.test(text))
+        return true;
+    if (/\btp\s*\d+\s*[:=\-]\s*\d/i.test(text))
+        return true;
+    return false;
+}
+/**
+ * Buy/sell entries need NOW (or MARKET) unless the message includes explicit SL/TP labels.
+ * Inferred SL/TP from bare numbers (e.g. £1110 profit) do not count as parameters.
+ */
 function entryMissingSlTpRequiresNow(parsed, rawMessage, channelKeywords) {
     const action = String(parsed.action ?? '').toLowerCase();
     if (action !== 'buy' && action !== 'sell')
         return false;
-    if (parsedHasSlOrTp(parsed))
+    if (messageHasMarketNowIntent(rawMessage, channelKeywords))
         return false;
-    return !messageHasMarketNowIntent(rawMessage, channelKeywords);
+    if (messageHasExplicitSlTpLabels(rawMessage))
+        return false;
+    return true;
 }

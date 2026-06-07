@@ -914,6 +914,7 @@ export interface PricingTranslations {
     basicPlanSummary: string
     advancedPlanSummary: string
     adminPlanSummary: string
+    adminPlanSummaryUntil: string
     statusLine: string
     invoices: string
     invoicesHint: string

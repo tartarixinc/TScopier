@@ -156,6 +156,7 @@ export const en: Translations = {
       basicPlanSummary: '1 broker · 5 channels · 3 TPs · Single trade mode',
       advancedPlanSummary: '5+ accounts · Unlimited channels · Advanced copier tools',
       adminPlanSummary: 'Unlimited accounts · Unlimited channels · Advanced copier tools',
+      adminPlanSummaryUntil: 'Admin access until {date} · Unlimited accounts · Unlimited channels · Advanced copier tools',
       statusLine: 'Status: {status}',
       invoices: 'Invoices',
       invoicesHint: 'Download PDF copies of your past invoices.',

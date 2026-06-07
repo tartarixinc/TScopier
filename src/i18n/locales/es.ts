@@ -156,6 +156,7 @@ export const es: Translations = {
       basicPlanSummary: '1 broker · 5 canales · 3 TPs · Modo operación única',
       advancedPlanSummary: '5+ cuentas · Canales ilimitados · Herramientas avanzadas',
       adminPlanSummary: 'Cuentas ilimitadas · Canales ilimitados · Herramientas avanzadas',
+      adminPlanSummaryUntil: 'Acceso admin hasta {date} · Cuentas ilimitadas · Canales ilimitados · Herramientas avanzadas',
       statusLine: 'Estado: {status}',
       invoices: 'Facturas',
       invoicesHint: 'Descarga copias PDF de tus facturas anteriores.',

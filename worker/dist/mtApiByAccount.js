@@ -26,5 +26,10 @@ async function loadPlatformByMetaapiId(supabase, metaapiIds) {
     return out;
 }
 function apiForMetaapiAccount(platformById, metaapiAccountId) {
-    return (0, metatraderapi_1.getMetatraderApi)(platformById.get(metaapiAccountId) ?? 'MT5');
+    const platform = platformById.get(metaapiAccountId);
+    if (!platform) {
+        console.error(`[mtApi] missing platform for metaapi_account_id=${metaapiAccountId} — refusing MT5 fallback`);
+        return null;
+    }
+    return (0, metatraderapi_1.getMetatraderApi)(platform);
 }

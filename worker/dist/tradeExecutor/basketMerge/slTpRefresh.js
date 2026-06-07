@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.applyBasketSlTpRefresh = applyBasketSlTpRefresh;
 const manualPlanner_1 = require("../../manualPlanner");
+const rangeLayerTillClose_1 = require("../../rangeLayerTillClose");
 const multiTradeMerge_1 = require("../../multiTradeMerge");
 const basketModFollowUp_1 = require("../../basketModFollowUp");
 const basketSlTpReconcile_1 = require("../../basketSlTpReconcile");
@@ -47,7 +48,7 @@ async function applyBasketSlTpRefresh(ctx, args) {
     const newest = familyTrades[familyTrades.length - 1];
     const rpe0 = (0, manualPlanner_1.resolvedParsedEntryPrice)(parsed);
     const rzo0 = (0, manualPlanner_1.resolvedParsedEntryZone)(parsed);
-    const plannerParsed = {
+    let plannerParsed = {
         action: parsed.action,
         symbol: parsed.symbol,
         entry_price: messageEditOnly ? null : rpe0,
@@ -59,6 +60,20 @@ async function applyBasketSlTpRefresh(ctx, args) {
         open_tp: parsed.open_tp,
         partial_close_fraction: parsed.partial_close_fraction,
         raw_instruction: parsed.raw_instruction,
+    };
+    let channelParamsForLadder = null;
+    if (signal.channel_id) {
+        channelParamsForLadder = await (0, channelActiveTradeParams_1.loadChannelActiveTradeParamsForSymbol)(ctx.supabase, signal.user_id, signal.channel_id, symbol);
+        if (logAction === 'signal_merge_into_open_trade' && channelParamsForLadder) {
+            plannerParsed = (0, channelActiveTradeParams_1.mergeParsedWithChannelParams)(plannerParsed, channelParamsForLadder, {
+                overlay: true,
+            });
+        }
+    }
+    const effectiveParsed = {
+        ...parsed,
+        sl: plannerParsed.sl,
+        tp: plannerParsed.tp,
     };
     if (!(0, manualPlanner_1.parsedHasExplicitEntryAnchor)(plannerParsed)) {
         const ep = Number(newest.entry_price);
@@ -121,15 +136,18 @@ async function applyBasketSlTpRefresh(ctx, args) {
             },
         };
     }
-    const refreshTpLevels = (parsed.tp ?? []).filter((t) => typeof t === 'number' && Number.isFinite(t) && t > 0);
-    if (signal.channel_id && (typeof parsed.sl === 'number' && parsed.sl > 0 || refreshTpLevels.length > 0)) {
+    const refreshTpLevels = (effectiveParsed.tp ?? []).filter((t) => typeof t === 'number' && Number.isFinite(t) && t > 0);
+    if (logAction === 'merge_routed_modify_only'
+        && signal.channel_id
+        && (typeof effectiveParsed.sl === 'number' && effectiveParsed.sl > 0 || refreshTpLevels.length > 0)) {
         await (0, channelActiveTradeParams_1.upsertChannelActiveTradeParams)(ctx.supabase, {
             userId: signal.user_id,
             channelId: signal.channel_id,
             symbols: [symbol],
-            stoploss: parsed.sl,
+            stoploss: effectiveParsed.sl,
             tpLevels: refreshTpLevels,
         });
+        channelParamsForLadder = await (0, channelActiveTradeParams_1.loadChannelActiveTradeParamsForSymbol)(ctx.supabase, signal.user_id, signal.channel_id, symbol);
     }
     if (plan.delay_ms > 0) {
         await new Promise(resolve => setTimeout(resolve, Math.min(plan.delay_ms, 30000)));
@@ -149,10 +167,11 @@ async function applyBasketSlTpRefresh(ctx, args) {
         activePendingCount,
         maxPendingStepIdx,
     }), familyTrades.length + virtualPendings.length);
-    let channelParamsForLadder = null;
-    if (signal.channel_id) {
-        channelParamsForLadder = await (0, channelActiveTradeParams_1.loadChannelActiveTradeParamsForSymbol)(ctx.supabase, signal.user_id, signal.channel_id, symbol);
-        if (virtualPendings.length > 0 && channelParamsForLadder) {
+    if (signal.channel_id && virtualPendings.length > 0) {
+        if (!channelParamsForLadder) {
+            channelParamsForLadder = await (0, channelActiveTradeParams_1.loadChannelActiveTradeParamsForSymbol)(ctx.supabase, signal.user_id, signal.channel_id, symbol);
+        }
+        if (channelParamsForLadder) {
             const firedPendingApprox = Math.max(0, maxPendingStepIdx - activePendingCount);
             const immediateEstimate = Math.max(0, familyTrades.length - firedPendingApprox);
             virtualPendings = (0, channelActiveTradeParams_1.applyChannelParamsToVirtualPendingList)(virtualPendings, channelParamsForLadder, immediateEstimate, manual.tp_lots, basketTotalPlannedLegs);
@@ -161,7 +180,7 @@ async function applyBasketSlTpRefresh(ctx, args) {
     const refreshImmediateLegCount = messageEditOnly
         ? familyTrades.length
         : Math.max((0, multiTradeMerge_1.mergePlanImmediateOrders)(plan).length, Math.max(0, familyTrades.length - Math.max(0, maxPendingStepIdx - activePendingCount)));
-    const parsedTpLevels = (parsed.tp ?? []).filter((t) => typeof t === 'number' && Number.isFinite(t) && t > 0);
+    const parsedTpLevels = (effectiveParsed.tp ?? []).filter((t) => typeof t === 'number' && Number.isFinite(t) && t > 0);
     const singlePartialPlan = manual.trade_style !== 'multi' && parsedTpLevels.length > 0
         ? (0, manualPlanner_1.planSinglePartialTps)({
             manualLot: baseLot,
@@ -175,7 +194,7 @@ async function applyBasketSlTpRefresh(ctx, args) {
         : null;
     let perLegTargets = (0, multiTradeMerge_1.buildPerLegStopTargets)({
         plan,
-        parsed,
+        parsed: effectiveParsed,
         openLegCount: familyTrades.length,
         totalPlannedLegCount: basketTotalPlannedLegs,
         immediateLegCount: refreshImmediateLegCount,
@@ -241,7 +260,7 @@ async function applyBasketSlTpRefresh(ctx, args) {
             summary.openLegs = familyTrades.length;
             const refreshedTargets = (0, multiTradeMerge_1.buildPerLegStopTargets)({
                 plan,
-                parsed,
+                parsed: effectiveParsed,
                 openLegCount: familyTrades.length,
                 totalPlannedLegCount: basketTotalPlannedLegs,
                 immediateLegCount: refreshImmediateLegCount,
@@ -285,7 +304,7 @@ async function applyBasketSlTpRefresh(ctx, args) {
             brokerAccountId: broker.id,
             familyTrades,
             perLegTargets,
-            signalTps: (parsed.tp ?? []).filter((t) => typeof t === 'number' && Number.isFinite(t) && t > 0),
+            signalTps: (effectiveParsed.tp ?? []).filter((t) => typeof t === 'number' && Number.isFinite(t) && t > 0),
             tpLots: manual.tp_lots,
             nImmCwe,
             overrideTp,
@@ -386,6 +405,7 @@ async function applyBasketSlTpRefresh(ctx, args) {
             },
             persistRows: (rows, persistCtx) => (0, helpers_2.persistRangePendingLegRows)(ctx, rows, persistCtx),
             context: `basket_refresh signal=${signal.id} anchor=${anchorSignalId}`,
+            layerTillClose: (0, rangeLayerTillClose_1.isRangeLayerTillCloseEnabled)(manual),
         });
         if (ladderSync.skippedConsumed > 0 || ladderSync.skippedCap > 0) {
             console.log(`[tradeExecutor] basket_refresh ladder sync signal=${signal.id} anchor=${anchorSignalId}`
@@ -426,7 +446,7 @@ async function applyBasketSlTpRefresh(ctx, args) {
             direction,
             perLegTargets,
             familyTrades,
-            signalTps: (parsed.tp ?? []).filter((t) => typeof t === 'number' && Number.isFinite(t) && t > 0),
+            signalTps: (effectiveParsed.tp ?? []).filter((t) => typeof t === 'number' && Number.isFinite(t) && t > 0),
             tpLots: manual.tp_lots,
             virtualPendingsSnapshot: virtualPendings.length > 0 ? virtualPendings : null,
             nImmCwe,

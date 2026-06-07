@@ -299,7 +299,7 @@ async function handleSignal(ctx, row, opts) {
         const action = String(parsed.action).toLowerCase();
         if (action === 'ignore')
             return;
-        const executionEligibility = (0, signalExecutionEligibility_1.evaluateParsedSignalExecutionEligibility)(parsed);
+        const executionEligibility = (0, signalExecutionEligibility_1.evaluateParsedSignalExecutionEligibility)(parsed, String(row.raw_message ?? parsed.raw_instruction ?? ''));
         if (!executionEligibility.eligible) {
             await ctx.logDispatchSkipped(row, executionEligibility.skipReason ?? 'entry_not_execution_eligible');
             return;

@@ -29,8 +29,12 @@ function evaluateParsedSignalExecutionEligibility(parsed, rawMessage) {
             return { eligible: false, skipReason: exports.COMMENTARY_NOT_SIGNAL_REASON };
         }
     }
-    if ((0, backtestSignal_1.tradeableFromParsed)(parsed))
+    if ((0, backtestSignal_1.tradeableFromParsed)(parsed)) {
+        if ((0, signalEntryNowRequirement_1.entryMissingSlTpRequiresNow)(parsed, raw)) {
+            return { eligible: false, skipReason: signalEntryNowRequirement_1.ENTRY_REQUIRES_NOW_REASON };
+        }
         return { eligible: true };
+    }
     const symbol = (0, tradableSymbol_1.sanitizeParsedSymbol)(typeof parsed.symbol === 'string' ? parsed.symbol : null);
     const minQuote = (0, tradableSymbol_1.minPlausibleQuotePrice)(symbol);
     if (minQuote != null && symbol) {
@@ -44,6 +48,9 @@ function evaluateParsedSignalExecutionEligibility(parsed, rawMessage) {
         return { eligible: false, skipReason: exports.ENTRY_MISSING_STRUCTURE_REASON };
     }
     if (symbol && (0, signalEntryNowRequirement_1.messageHasMarketNowIntent)(raw)) {
+        return { eligible: true };
+    }
+    if (symbol && (0, signalEntryNowRequirement_1.messageHasExplicitSlTpLabels)(raw) && (0, signalEntryNowRequirement_1.parsedHasSlOrTp)(parsed)) {
         return { eligible: true };
     }
     if (symbol && (parsed.action === 'buy' || parsed.action === 'sell')) {

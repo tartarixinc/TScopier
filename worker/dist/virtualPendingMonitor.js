@@ -13,6 +13,7 @@ const mtApiByAccount_1 = require("./mtApiByAccount");
 const basketModFollowUp_1 = require("./basketModFollowUp");
 const rangePendingLadderSync_1 = require("./rangePendingLadderSync");
 const monitorIdleGate_1 = require("./monitorIdleGate");
+const rangeLayerTillClose_1 = require("./rangeLayerTillClose");
 const rangePendingFireGuard_1 = require("./rangePendingFireGuard");
 const brokerConnectError_1 = require("./brokerConnectError");
 const rangePendingBasketCleanup_1 = require("./rangePendingBasketCleanup");
@@ -361,15 +362,12 @@ class VirtualPendingMonitor {
             const userId = rows[0]?.user_id;
             if (!userId)
                 continue;
-            await (0, rangePendingFireGuard_1.setTpTouchedLock)(this.supabase, {
-                signalId,
-                brokerAccountId,
-                symbol,
-                userId,
-                triggerPrice: touch.triggerPrice,
-                triggerSide: touch.triggerSide,
-            });
-            const expiredRows = await (0, rangePendingFireGuard_1.expireActiveRangeLegsForTpLock)(this.supabase, { signalId, brokerAccountId, symbol });
+            const layerTillClose = await (0, rangeLayerTillClose_1.loadRangeLayerTillCloseForSignal)(this.supabase, signalId, brokerAccountId);
+            if (layerTillClose)
+                continue;
+            const { stopped, deleted } = await (0, rangeLayerTillClose_1.stopRangeLayeringUnlessEnabled)(this.supabase, { signalId, brokerAccountId, symbol, userId }, 'tp_touched');
+            if (!stopped)
+                continue;
             touched.add(basketKey);
             try {
                 await this.supabase.from('trade_execution_logs').insert({
@@ -385,7 +383,8 @@ class VirtualPendingMonitor {
                         trigger_side: touch.triggerSide,
                         bid,
                         ask,
-                        expired_rows: expiredRows,
+                        deleted_rows: deleted,
+                        lock_reason: 'layering_stopped',
                     },
                 });
             }
@@ -413,7 +412,8 @@ class VirtualPendingMonitor {
         const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(this.platformByUuid, leg.metaapi_account_id);
         if (!api)
             return false;
-        const block = await (0, rangePendingFireGuard_1.shouldBlockVirtualLegFire)(this.supabase, leg);
+        const layerTillClose = await (0, rangeLayerTillClose_1.loadRangeLayerTillCloseForSignal)(this.supabase, leg.signal_id, leg.broker_account_id);
+        const block = await (0, rangePendingFireGuard_1.shouldBlockVirtualLegFire)(this.supabase, leg, { layerTillClose });
         if (block.block) {
             if (block.reason) {
                 console.log(`[virtualPendingMonitor] skip fire leg=${leg.id} signal=${leg.signal_id} step=${leg.step_idx}: ${block.reason}`);

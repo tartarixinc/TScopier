@@ -134,6 +134,14 @@ function extractUnlabeledPrices(message) {
             continue;
         if ((0, signalCommentaryGuard_1.isPercentagePriceAt)(text, index, raw.length))
             continue;
+        const prefix = text.slice(Math.max(0, index - 3), index);
+        if (/[£$€]\s*$/.test(prefix))
+            continue;
+        const contextBefore = text.slice(Math.max(0, index - 28), index);
+        if (/\b(?:profit|made|earned|gains?)\b/i.test(contextBefore)
+            && !/\b(?:sl|tp|stop|take)\b/i.test(contextBefore)) {
+            continue;
+        }
         // Skip parenthetical duplicates: 4577 (4577.10)
         const after = text.slice(index + raw.length).trimStart();
         if (after.startsWith('(')) {

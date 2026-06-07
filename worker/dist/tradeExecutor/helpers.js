@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.isMtUuid = isMtUuid;
 exports.parseSymbolToTradeList = parseSymbolToTradeList;
 exports.applySymbolMapping = applySymbolMapping;
+exports.isMt5OnlyOperation = isMt5OnlyOperation;
 exports.isExcluded = isExcluded;
 exports.operationFor = operationFor;
 exports.computeLot = computeLot;
@@ -32,22 +33,30 @@ function parseSymbolToTradeList(value) {
 function applySymbolMapping(raw, broker) {
     const m = (broker.manual_settings ?? {});
     const upper = raw.toUpperCase();
-    const mapped = (m.symbol_mapping?.[upper] ?? upper).toUpperCase();
+    const explicitMap = m.symbol_mapping?.[upper];
+    const hasExplicitMap = explicitMap != null && String(explicitMap).trim() !== '';
+    const mapped = (hasExplicitMap ? String(explicitMap) : upper).toUpperCase();
     const prefix = (m.symbol_prefix ?? '').toUpperCase();
     const suffix = (m.symbol_suffix ?? '').toUpperCase();
+    const userDecorated = hasExplicitMap || prefix.length > 0 || suffix.length > 0;
     const allowed = parseSymbolToTradeList(m.symbol_to_trade);
-    if (allowed.length === 1) {
-        return { symbol: allowed[0], whitelist: [] };
-    }
     return {
         symbol: `${prefix}${mapped}${suffix}`,
         whitelist: allowed,
+        userDecorated,
     };
 }
+const MT5_ONLY_OPERATIONS = new Set(['BuyStopLimit', 'SellStopLimit']);
+function isMt5OnlyOperation(op) {
+    return MT5_ONLY_OPERATIONS.has(op);
+}
 function isExcluded(symbol, broker) {
+    const upper = symbol.trim().toUpperCase();
+    if (!upper)
+        return false;
     const m = (broker.manual_settings ?? {});
     const list = (m.symbols_exclude ?? []).map(s => String(s).toUpperCase());
-    return list.includes(symbol.toUpperCase());
+    return list.includes(upper);
 }
 function operationFor(action, signal) {
     const a = action.toLowerCase();
