@@ -2254,7 +2254,7 @@ export function AccountConfigPage() {
                             <Radio className={clsx('w-4 h-4 shrink-0', selected ? 'text-primary-600' : linked ? 'text-neutral-400' : 'text-neutral-300')} />
                             <span className="truncate flex-1">{channel.display_name}</span>
                             {!channelLinkEditMode ? (
-                              <Badge variant={linked ? 'success' : 'neutral'}>
+                              <Badge variant={linked ? 'primary' : 'neutral'}>
                                 {linked ? cm.channelLinkedBadge : cm.channelNotLinkedBadge}
                               </Badge>
                             ) : null}

@@ -18,7 +18,7 @@ export function StepConfigureVisual() {
               <p className="text-[10px] text-neutral-500 dark:text-neutral-400">{v.login}</p>
             </div>
           </div>
-          <Badge variant="success" size="sm">
+          <Badge variant="primary" size="sm">
             {t.accountConfig.brokerList.statusConnected}
           </Badge>
         </div>

@@ -639,7 +639,7 @@ export function CopierEnginePage() {
                 <p className="text-xs text-neutral-500 dark:text-neutral-400">{ce.telegramConnectedHint}</p>
               </div>
               <span className="flex-shrink-0 hidden sm:inline-flex">
-                <Badge variant="success" size="sm">{ce.connected}</Badge>
+                <Badge variant="primary" size="sm">{ce.connected}</Badge>
               </span>
             </div>
             <div className="flex items-center gap-2">

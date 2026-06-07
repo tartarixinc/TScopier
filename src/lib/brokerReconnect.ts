@@ -33,8 +33,8 @@ export function brokerConnectionStatusLabel(
 /** Badge variant for broker list connection state. */
 export function brokerConnectionBadgeVariant(
   account: Pick<BrokerAccount, 'is_active' | 'connection_status'>,
-): 'success' | 'neutral' | 'error' {
+): 'primary' | 'neutral' | 'error' {
   if (!account.is_active) return 'neutral'
-  if (isBrokerSessionConnected(account)) return 'success'
+  if (isBrokerSessionConnected(account)) return 'primary'
   return 'error'
 }
