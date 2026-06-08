@@ -272,6 +272,7 @@ export async function prepareEntryExecution(
   }
 
   // Basket SL/TP refresh — always before OrderSend (not deferred to post-fill).
+  let basketRefreshSucceeded = false
   if (isManual && shouldRouteAsBasketParameterRefresh(parsed)) {
     const messageEditOnly = sendOpts?.messageEditOnly === true
     const paramOutcome = await ctx.tryParameterFollowUpMergeModifyOnly({
@@ -296,6 +297,7 @@ export async function prepareEntryExecution(
       }
     }
     if (paramOutcome.handled && paramOutcome.success) {
+      basketRefreshSucceeded = true
       return { ok: false, outcome: { openedOrMerged: true } }
     }
     if (paramOutcome.handled) {
@@ -307,7 +309,7 @@ export async function prepareEntryExecution(
   if (
     isManual
     && manual.add_new_trades_to_existing === true
-    && !shouldRouteAsBasketParameterRefresh(parsed)
+    && !basketRefreshSucceeded
   ) {
     const mergeOutcome = await ctx.tryMergeSignalIntoExistingOpenTrade({
       signal,

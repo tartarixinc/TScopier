@@ -420,7 +420,6 @@ export async function tryMergeSignalIntoExistingOpenTrade(ctx: TradeExecutorCont
     if (parsedHasReEnterIntent(parsed)) return { handled: false }
     const manual = (broker.manual_settings ?? {}) as ManualSettings
     if (manual.add_new_trades_to_existing !== true) return { handled: false }
-    if (shouldRouteAsBasketParameterRefresh(parsed)) return { handled: false }
     if (signalEntryPriceStrictEnabled(manual) && !parsedHasExplicitEntryAnchor(parsed)) {
       return { handled: false }
     }

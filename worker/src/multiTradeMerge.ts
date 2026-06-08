@@ -7,7 +7,6 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { OrderSendArgs } from './metatraderapi'
 import type { PlannerResult } from './manualPlanner'
 import { parsedHasExplicitEntryAnchor } from './manualPlanner'
-import { isFullEntrySignalWithStops } from './channelActiveTradeParams'
 import { parsedHasReEnterIntent } from './signalPriceInference'
 import { takeProfitForSplitBasketLeg } from './manualPlanning/tpBucketDistribution'
 import type { ManualTpLot } from './manualPlanning/types'
@@ -71,9 +70,6 @@ export function shouldRouteAsBasketParameterRefresh(parsed: ParsedSignalLike): b
   if (act === 'modify') return true
   if (act === 'buy' || act === 'sell') {
     if (isBareEntryFollowUp(parsed)) return false
-    if (isFullEntrySignalWithStops(parsed as Parameters<typeof isFullEntrySignalWithStops>[0])) {
-      return false
-    }
     return true
   }
   return false
