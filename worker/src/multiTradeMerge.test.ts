@@ -27,7 +27,7 @@ test('parsedHasSlOrTp aliases isParameterFollowUpSignal', () => {
   assert.equal(parsedHasSlOrTp({ action: 'buy', sl: null, tp: null }), false)
 })
 
-test('shouldRouteAsBasketParameterRefresh: priced entry + SL/TP is parameter refresh', () => {
+test('shouldRouteAsBasketParameterRefresh: priced entry + SL/TP is a new entry, not parameter refresh', () => {
   assert.equal(
     shouldRouteAsBasketParameterRefresh({
       action: 'sell',
@@ -35,7 +35,7 @@ test('shouldRouteAsBasketParameterRefresh: priced entry + SL/TP is parameter ref
       sl: 4570,
       tp: [4530, 4510, 4490],
     }),
-    true,
+    false,
   )
 })
 
@@ -68,6 +68,20 @@ test('shouldRouteAsBasketParameterRefresh: SL/TP without entry is follow-up cand
       tp: [4530, 4510],
     }),
     true,
+  )
+})
+
+test('shouldRouteAsBasketParameterRefresh: full entry with zone and stops is not parameter refresh', () => {
+  assert.equal(
+    shouldRouteAsBasketParameterRefresh({
+      action: 'sell',
+      symbol: 'XAUUSD',
+      entry_zone_low: 4292,
+      entry_zone_high: 4295,
+      sl: 4299,
+      tp: [4290, 4288, 4286],
+    }),
+    false,
   )
 })
 

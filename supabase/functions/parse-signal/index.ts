@@ -295,6 +295,7 @@ function extractTpLevels(message: string, extraLabels: string[] = []): number[] 
 function detectOpenTp(message: string): boolean {
   const t = String(message ?? "")
   return /\b(open\s*tp|without\s*tp|no\s*tp|runner|let\s+it\s+run|leave\s+runner)\b/i.test(t)
+    || /\b(?:tp|take\s*profit)\s*[:=]?\s*open\b/i.test(t)
 }
 
 function extractPriceByLabels(message: string, labels: string[]): number | null {
@@ -573,6 +574,17 @@ function extractOptionalEntryAnchor(
       entry_zone_high = Math.max(a, b)
     }
   } else {
+    const nowZone = text.match(
+      new RegExp(`\\b(?:now|instant|market|mkt)\\s+(${SIGNAL_PRICE_NUM})\\s*(?:-|–|to)\\s*(${SIGNAL_PRICE_NUM})\\b`, 'i'),
+    )
+    if (nowZone?.[1] && nowZone?.[2]) {
+      const a = parseSignalPriceToken(nowZone[1])
+      const b = parseSignalPriceToken(nowZone[2])
+      if (a != null && b != null) {
+        entry_zone_low = Math.min(a, b)
+        entry_zone_high = Math.max(a, b)
+      }
+    } else {
     const entryLevel = text.match(new RegExp(`\\bentry\\s+level\\s*[:=]?\\s*(${SIGNAL_PRICE_NUM})\\b`, 'i'))
     if (entryLevel?.[1]) entry_price = parseSignalPriceToken(entryLevel[1])
     const entryLabel = text.match(new RegExp(`\\bentry\\s*(?:price|level)?\\s*[:=]\\s*(${SIGNAL_PRICE_NUM})\\b`, 'i'))
@@ -608,6 +620,7 @@ function extractOptionalEntryAnchor(
     if (entry_price == null && entry_zone_low == null) {
       const marketThenPrice = text.match(new RegExp(`\\b(?:now|instant|market|mkt)\\s+(${SIGNAL_PRICE_NUM})\\b`, 'i'))
       if (marketThenPrice?.[1]) entry_price = parseSignalPriceToken(marketThenPrice[1])
+    }
     }
   }
   return { entry_price, entry_zone_low, entry_zone_high }

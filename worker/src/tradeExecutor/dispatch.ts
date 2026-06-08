@@ -21,6 +21,9 @@ import {
   normalizeChannelMessageFiltersMap,
 } from '../channelMessageFilters'
 import { shouldRouteAsBasketParameterRefresh, parsedHasSlOrTp } from '../multiTradeMerge'
+import { isFullEntrySignalWithStops } from '../channelActiveTradeParams'
+import type { ParsedSignal } from '../manualPlanner'
+import { parsedHasReEnterIntent } from '../signalPriceInference'
 import { SKIP_REASON_SIGNAL_ENTRY_REQUIRED } from '../manualPlanner'
 import { parsePipelineTimestamps, pipelineSummaryPayload } from '../pipelineTimestamps'
 import { buildTscopierCommentPrefix, resolveChannelLabelForComment, sanitizeChannelCommentSlug } from '../tradeComment'
@@ -57,10 +60,12 @@ export function messageEditSkipReason(
   action: string,
 ): 'message_edit_no_sl_tp' | 'message_edit_not_parameter_refresh' | null {
   if (!parsed || !parsedHasSlOrTp(parsed)) return 'message_edit_no_sl_tp'
-  if (!shouldRouteAsBasketParameterRefresh(parsed) && !isManagementAction(action)) {
-    return 'message_edit_not_parameter_refresh'
-  }
-  return null
+  if (isManagementAction(action)) return null
+  if (parsedHasReEnterIntent(parsed)) return 'message_edit_not_parameter_refresh'
+  if (shouldRouteAsBasketParameterRefresh(parsed)) return null
+  // Edited full-entry messages (zone + SL/TP) are SL/TP corrections — not new OrderSend.
+  if (isFullEntrySignalWithStops(parsed as unknown as ParsedSignal)) return null
+  return 'message_edit_not_parameter_refresh'
 }
 
 export function enqueueSignal(ctx: TradeExecutorContext, 

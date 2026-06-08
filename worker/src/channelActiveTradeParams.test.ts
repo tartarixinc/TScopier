@@ -3,6 +3,7 @@ import { describe, test } from 'node:test'
 import {
   applyChannelParamsToVirtualLeg,
   estimateBasketTotalPlannedLegs,
+  isFullEntrySignalWithStops,
   mergeParsedWithChannelParams,
   parsedSignalHasExplicitStops,
   shouldMergeChannelParamsForEntry,
@@ -150,6 +151,43 @@ describe('channelActiveTradeParams', () => {
   test('shouldSeedChannelParamsFromEntrySignal blocks overwrite when basket is active', () => {
     assert.equal(shouldSeedChannelParamsFromEntrySignal(true), false)
     assert.equal(shouldSeedChannelParamsFromEntrySignal(false), true)
+  })
+
+  test('isFullEntrySignalWithStops: gold sell now zone with explicit SL and TPs', () => {
+    assert.equal(
+      isFullEntrySignalWithStops({
+        action: 'sell',
+        symbol: 'XAUUSD',
+        entry_price: null,
+        entry_zone_low: 4292,
+        entry_zone_high: 4295,
+        sl: 4299,
+        tp: [4290, 4288, 4286],
+        lot_size: null,
+      }),
+      true,
+    )
+  })
+
+  test('full entry must not use stale channel SL from an older signal', () => {
+    const newEntry = {
+      action: 'sell' as const,
+      symbol: 'XAUUSD',
+      entry_price: null,
+      entry_zone_low: 4292,
+      entry_zone_high: 4295,
+      sl: 4299,
+      tp: [4290, 4288, 4286],
+      lot_size: null,
+    }
+    const staleChannel = { symbol: 'XAUUSD', stoploss: 4458, tpLevels: [4467, 4469, 4471] }
+    assert.equal(isFullEntrySignalWithStops(newEntry), true)
+    const gapFillOnly = mergeParsedWithChannelParams(newEntry, staleChannel)
+    assert.equal(gapFillOnly.sl, 4299)
+    assert.deepEqual(gapFillOnly.tp, [4290, 4288, 4286])
+    const wouldStaleOverlay = mergeParsedWithChannelParams(newEntry, staleChannel, { overlay: true })
+    assert.equal(wouldStaleOverlay.sl, 4458)
+    assert.notEqual(wouldStaleOverlay.sl, newEntry.sl)
   })
 
   test('overlay keeps Adjust SL when a follow-up entry still carries template stops', () => {

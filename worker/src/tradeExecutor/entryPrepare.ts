@@ -394,6 +394,7 @@ export async function prepareEntryExecution(
         brokerAccountId: broker.id,
         symbol,
         plannerParsed,
+        signalId: signal.id,
       })
       plannerParsed = resolved.plannerParsed
       mergedChannelParams = resolved.mergedChannelParams

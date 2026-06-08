@@ -69,3 +69,12 @@ test('extractUnlabeledPrices skips percentage values', () => {
   const msg = 'GOLD watches price rise of 5% from Monday'
   assert.deepEqual(extractUnlabeledPrices(msg), [])
 })
+
+test('extractUnlabeledPrices skips entry zone prices on sell now range', () => {
+  const msg = `Gold sell now 4292 - 4295
+SL: 4299
+TP: 4290
+TP: 4288`
+  const bare = extractUnlabeledPrices(msg)
+  assert.deepEqual(bare, [])
+})

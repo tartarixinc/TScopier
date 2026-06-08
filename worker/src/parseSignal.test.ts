@@ -197,6 +197,46 @@ SL: 4577`
     assert.deepEqual(result.parsed.tp, [4564, 4527])
   })
 
+  it('parses gold sell now entry zone with SL, TPs, and TP open runner', () => {
+    const msg = `Gold sell now 4292 - 4295
+
+SL: 4299
+
+TP: 4290
+TP: 4288
+TP: 4286
+TP: open`
+    const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+    assert.equal(result.status, 'parsed')
+    assert.equal(result.parsed.action, 'sell')
+    assert.equal(result.parsed.symbol, 'XAUUSD')
+    assert.equal(result.parsed.entry_zone_low, 4292)
+    assert.equal(result.parsed.entry_zone_high, 4295)
+    assert.equal(result.parsed.entry_price, null)
+    assert.equal(result.parsed.sl, 4299)
+    assert.deepEqual(result.parsed.tp, [4290, 4288, 4286])
+    assert.equal(result.parsed.open_tp, true)
+  })
+
+  it('parses gold buy now entry zone with decimal prices (GTMO VIP format)', () => {
+    const msg = `Gold buy now 4465.2 - 4462
+
+SL: 4458
+
+TP: 4467
+TP: 4469
+TP: 4471
+TP: open`
+    const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+    assert.equal(result.status, 'parsed')
+    assert.equal(result.parsed.action, 'buy')
+    assert.equal(result.parsed.entry_zone_low, 4462)
+    assert.equal(result.parsed.entry_zone_high, 4465.2)
+    assert.equal(result.parsed.sl, 4458)
+    assert.deepEqual(result.parsed.tp, [4467, 4469, 4471])
+    assert.equal(result.parsed.open_tp, true)
+  })
+
   it('parses Trading Central partial close (secure 30% profits)', () => {
     const msg = `First take profit target is hit , which gives us +30 pips
 Make sure to secure 30% profits by closing partial lotsize`
