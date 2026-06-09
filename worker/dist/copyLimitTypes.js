@@ -95,7 +95,10 @@ function normalizeCopyLimitState(raw) {
             };
         }
     }
-    return { paused_period_keys: paused, periods };
+    const flattened = Array.isArray(j.flattened_pause_keys)
+        ? j.flattened_pause_keys.map(k => String(k)).filter(Boolean)
+        : [];
+    return { paused_period_keys: paused, flattened_pause_keys: flattened, periods };
 }
 function pauseKey(kind, period, periodKey, ruleId) {
     if (period === 'overall') {

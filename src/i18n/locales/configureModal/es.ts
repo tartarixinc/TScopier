@@ -274,11 +274,11 @@ export const configureModalEs: ConfigureModalTranslations = {
     basicPlanMoreTpsLimit: 'Hay más TPs disponibles en el plan Advanced.',
     profitTargetsTitle: 'Objetivos de beneficio',
     profitTargetsIntro:
-      'Cuando está activo, se dejan de copiar nuevas entradas en este canal al alcanzar un objetivo. Las señales de gestión (cerrar, modificar, break-even) siguen activas. Solo cuenta el P/L atribuido a este canal.',
+      'Cuando está activo, al alcanzar un objetivo se cierran automáticamente todas las operaciones del canal y el copiador deja de procesar instrucciones hasta el siguiente periodo. Solo cuenta el P/L atribuido a este canal.',
     profitTargetsToggle: 'Activar objetivos de beneficio',
     maxRiskTitle: 'Pérdida máxima',
     maxRiskIntro:
-      'Dejar de copiar nuevas entradas cuando la pérdida o el drawdown del canal alcance el límite. No se cierran operaciones abiertas automáticamente.',
+      'Cuando la pérdida o el drawdown del canal alcance el límite, se cierran automáticamente todas las operaciones del canal y el copiador deja de procesar instrucciones hasta el siguiente periodo.',
     maxRiskToggle: 'Activar pérdida máxima',
     addTarget: 'Añadir objetivo',
     addRiskRule: 'Añadir límite de pérdida',
@@ -296,9 +296,9 @@ export const configureModalEs: ConfigureModalTranslations = {
     timezoneProfile: 'Usar la zona horaria de mi perfil ({tz})',
     timezoneCustom: 'Zona horaria personalizada',
     timezoneHint: 'Los límites diarios, semanales y mensuales se reinician a medianoche en esta zona horaria.',
-    pausedProfitBanner: 'Objetivo de beneficio alcanzado — las nuevas entradas están en pausa hasta el siguiente periodo.',
-    pausedRiskBanner: 'Pérdida máxima alcanzada — las nuevas entradas están en pausa hasta el siguiente periodo.',
-    pausedOverallBanner: 'Límite alcanzado — las nuevas entradas permanecen en pausa hasta que cambie o desactive la regla.',
+    pausedProfitBanner: 'Objetivo de beneficio alcanzado — las operaciones del canal se cerraron y la copia está en pausa hasta el siguiente periodo.',
+    pausedRiskBanner: 'Pérdida máxima alcanzada — las operaciones del canal se cerraron y la copia está en pausa hasta el siguiente periodo.',
+    pausedOverallBanner: 'Límite alcanzado — las operaciones del canal se cerraron y la copia permanece en pausa hasta que cambie o desactive la regla.',
   },
   management: {
     monitorIntroMulti:

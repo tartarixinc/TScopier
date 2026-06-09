@@ -117,7 +117,8 @@ function updatePeriodSnapshots(args) {
         }
     }
     const paused_period_keys = (0, copyLimitPeriods_1.pruneExpiredPauseKeys)(args.state.paused_period_keys, args.timeZone, at);
-    return { paused_period_keys, periods };
+    const flattened_pause_keys = (0, copyLimitPeriods_1.pruneExpiredPauseKeys)(args.state.flattened_pause_keys ?? [], args.timeZone, at);
+    return { paused_period_keys, flattened_pause_keys, periods };
 }
 function mergeBreachesIntoState(state, breaches) {
     const set = new Set(state.paused_period_keys);

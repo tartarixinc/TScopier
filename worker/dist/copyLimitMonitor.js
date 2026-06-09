@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CopyLimitMonitor = void 0;
 const copyLimitEvaluate_1 = require("./copyLimitEvaluate");
 const copyLimitMetrics_1 = require("./copyLimitMetrics");
+const copyLimitFlatten_1 = require("./copyLimitFlatten");
 const copyLimitTypes_1 = require("./copyLimitTypes");
 const channelTradingConfig_1 = require("./channelTradingConfig");
 const TICK_MS = 60000;
@@ -141,9 +142,35 @@ class CopyLimitMonitor {
                 }));
             }
             if (breaches.length) {
+                const prevPaused = new Set(state.paused_period_keys);
+                const flattened = new Set(state.flattened_pause_keys ?? []);
+                const newlyPaused = breaches.filter(b => !prevPaused.has(b.pauseKey));
                 state = (0, copyLimitEvaluate_1.mergeBreachesIntoState)(state, breaches);
+                const shouldFlatten = newlyPaused.some(b => !flattened.has(b.pauseKey));
+                if (shouldFlatten) {
+                    const flattenReason = newlyPaused[0].reason;
+                    await (0, copyLimitFlatten_1.flattenChannelTradesForCopyLimit)({
+                        supabase: this.supabase,
+                        userId: broker.user_id,
+                        brokerAccountId: broker.id,
+                        metaapiAccountId: broker.metaapi_account_id,
+                        platform: broker.platform,
+                        channelId,
+                        reason: flattenReason,
+                    });
+                    state = {
+                        ...state,
+                        flattened_pause_keys: [
+                            ...new Set([
+                                ...(state.flattened_pause_keys ?? []),
+                                ...newlyPaused.map(b => b.pauseKey),
+                            ]),
+                        ],
+                    };
+                }
                 console.log(`[copyLimitMonitor] limit hit broker=${broker.id} channel=${channelId}`
-                    + ` breaches=${breaches.map(b => b.pauseKey).join(',')}`);
+                    + ` breaches=${breaches.map(b => b.pauseKey).join(',')}`
+                    + ` flattened=${shouldFlatten}`);
             }
             const { error: updErr } = await this.supabase
                 .from('broker_channel_trading_configs')

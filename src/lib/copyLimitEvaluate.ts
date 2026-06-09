@@ -158,8 +158,9 @@ export function updatePeriodSnapshots(args: {
   }
 
   const paused_period_keys = pruneExpiredPauseKeys(args.state.paused_period_keys, args.timeZone, at)
+  const flattened_pause_keys = pruneExpiredPauseKeys(args.state.flattened_pause_keys ?? [], args.timeZone, at)
 
-  return { paused_period_keys, periods }
+  return { paused_period_keys, flattened_pause_keys, periods }
 }
 
 export function mergeBreachesIntoState(

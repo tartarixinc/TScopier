@@ -246,6 +246,7 @@ export interface CopyLimitPeriodSnapshot {
 
 export interface CopyLimitState {
   paused_period_keys: string[]
+  flattened_pause_keys?: string[]
   periods: Record<string, CopyLimitPeriodSnapshot>
 }
 

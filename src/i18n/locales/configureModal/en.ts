@@ -274,11 +274,11 @@ export const configureModalEn: ConfigureModalTranslations = {
     basicPlanMoreTpsLimit: 'More TPs are available on the Advanced plan.',
     profitTargetsTitle: 'Profit targets',
     profitTargetsIntro:
-      'When enabled, new entry copies stop for this channel once a target is reached. Management signals (close, modify, breakeven) still run. Limits use trades attributed to this channel only.',
+      'When enabled, reaching a target closes all open channel trades automatically and stops the copier from processing further instructions until the period resets. Limits use trades attributed to this channel only.',
     profitTargetsToggle: 'Enable profit targets',
     maxRiskTitle: 'Maximum Loss',
     maxRiskIntro:
-      'Stop copying new entries when channel loss or drawdown hits your limit. Open trades and management signals are not closed automatically.',
+      'When channel loss or drawdown hits your limit, all open channel trades are closed automatically and the copier stops processing further instructions until the period resets.',
     maxRiskToggle: 'Enable maximum loss',
     addTarget: 'Add target',
     addRiskRule: 'Add loss limit',
@@ -296,9 +296,9 @@ export const configureModalEn: ConfigureModalTranslations = {
     timezoneProfile: 'Use my profile timezone ({tz})',
     timezoneCustom: 'Custom timezone',
     timezoneHint: 'Daily, weekly, and monthly limits reset at midnight in this timezone.',
-    pausedProfitBanner: 'Profit target reached — new entry copies are paused until the period resets.',
-    pausedRiskBanner: 'Maximum loss reached — new entry copies are paused until the period resets.',
-    pausedOverallBanner: 'Limit reached — new entry copies stay paused until you change or disable this rule.',
+    pausedProfitBanner: 'Profit target reached — channel trades were closed and copying is paused until the period resets.',
+    pausedRiskBanner: 'Maximum loss reached — channel trades were closed and copying is paused until the period resets.',
+    pausedOverallBanner: 'Limit reached — channel trades were closed and copying stays paused until you change or disable this rule.',
   },
   management: {
     monitorIntroMulti:

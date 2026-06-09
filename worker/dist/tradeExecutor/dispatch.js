@@ -333,7 +333,7 @@ async function handleSignal(ctx, row, opts) {
             return [(0, channelTradingConfig_1.withChannelTradingConfig)(b, row.channel_id)];
         });
         let brokers = allMatchingBrokers.filter(b => ctx.brokerEligibleForSignal(b, row));
-        if ((0, tradeSignalActions_1.isEntryAction)(action) && brokers.length > 0 && row.channel_id) {
+        if (brokers.length > 0 && row.channel_id) {
             const profileTz = ctx.userTimezoneById.get(row.user_id);
             const allowed = [];
             for (const broker of brokers) {

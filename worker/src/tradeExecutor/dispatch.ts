@@ -385,7 +385,7 @@ export async function handleSignal(ctx: TradeExecutorContext,
         return [withChannelTradingConfig(b, row.channel_id)]
       })
       let brokers = allMatchingBrokers.filter(b => ctx.brokerEligibleForSignal(b, row))
-      if (isEntryAction(action) && brokers.length > 0 && row.channel_id) {
+      if (brokers.length > 0 && row.channel_id) {
         const profileTz = ctx.userTimezoneById.get(row.user_id)
         const allowed: BrokerRow[] = []
         for (const broker of brokers) {

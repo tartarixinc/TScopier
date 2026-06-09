@@ -9,6 +9,7 @@ import {
 } from './copyLimitEvaluate'
 import { buildChannelPnlSnapshot, resolveReferenceEquity } from './copyLimitMetrics'
 import type { CopyLimitPeriod } from './copyLimitTypes'
+import { flattenChannelTradesForCopyLimit } from './copyLimitFlatten'
 import { normalizeCopyLimitState, normalizeCopyLimits } from './copyLimitTypes'
 import { normalizeChannelUuid } from './channelTradingConfig'
 
@@ -177,10 +178,38 @@ export class CopyLimitMonitor {
       }
 
       if (breaches.length) {
+        const prevPaused = new Set(state.paused_period_keys)
+        const flattened = new Set(state.flattened_pause_keys ?? [])
+        const newlyPaused = breaches.filter(b => !prevPaused.has(b.pauseKey))
         state = mergeBreachesIntoState(state, breaches)
+
+        const shouldFlatten = newlyPaused.some(b => !flattened.has(b.pauseKey))
+        if (shouldFlatten) {
+          const flattenReason = newlyPaused[0]!.reason
+          await flattenChannelTradesForCopyLimit({
+            supabase: this.supabase,
+            userId: broker.user_id,
+            brokerAccountId: broker.id,
+            metaapiAccountId: broker.metaapi_account_id,
+            platform: broker.platform,
+            channelId,
+            reason: flattenReason,
+          })
+          state = {
+            ...state,
+            flattened_pause_keys: [
+              ...new Set([
+                ...(state.flattened_pause_keys ?? []),
+                ...newlyPaused.map(b => b.pauseKey),
+              ]),
+            ],
+          }
+        }
+
         console.log(
           `[copyLimitMonitor] limit hit broker=${broker.id} channel=${channelId}`
-          + ` breaches=${breaches.map(b => b.pauseKey).join(',')}`,
+          + ` breaches=${breaches.map(b => b.pauseKey).join(',')}`
+          + ` flattened=${shouldFlatten}`,
         )
       }
 

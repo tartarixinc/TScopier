@@ -36,6 +36,8 @@ export interface CopyLimitPeriodSnapshot {
 
 export interface CopyLimitState {
   paused_period_keys: string[]
+  /** Pause keys that already triggered an automatic channel flatten. */
+  flattened_pause_keys?: string[]
   periods: Record<string, CopyLimitPeriodSnapshot>
 }
 
@@ -136,7 +138,10 @@ export function normalizeCopyLimitState(raw: unknown): CopyLimitState {
       }
     }
   }
-  return { paused_period_keys: paused, periods }
+  const flattened = Array.isArray(j.flattened_pause_keys)
+    ? j.flattened_pause_keys.map(k => String(k)).filter(Boolean)
+    : []
+  return { paused_period_keys: paused, flattened_pause_keys: flattened, periods }
 }
 
 export function pauseKey(kind: 'profit' | 'risk', period: CopyLimitPeriod, periodKey: string, ruleId?: string): string {

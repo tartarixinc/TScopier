@@ -274,11 +274,11 @@ export const configureModalFr: ConfigureModalTranslations = {
     basicPlanMoreTpsLimit: 'Davantage de TP sont disponibles avec le plan Advanced.',
     profitTargetsTitle: 'Objectifs de profit',
     profitTargetsIntro:
-      'Lorsque cette option est activée, les nouvelles entrées ne sont plus copiées sur ce canal une fois l\'objectif atteint. Les signaux de gestion (clôture, modification, break-even) continuent. Seul le P/L attribué à ce canal est pris en compte.',
+      'Lorsque cette option est activée, l\'objectif atteint entraîne la clôture automatique de toutes les positions du canal et l\'arrêt du copieur jusqu\'au prochaine période. Seul le P/L attribué à ce canal est pris en compte.',
     profitTargetsToggle: 'Activer les objectifs de profit',
     maxRiskTitle: 'Perte maximale',
     maxRiskIntro:
-      'Arrêter de copier les nouvelles entrées lorsque la perte ou le drawdown du canal atteint la limite. Les positions ouvertes ne sont pas fermées automatiquement.',
+      'Lorsque la perte ou le drawdown du canal atteint la limite, toutes les positions du canal sont fermées automatiquement et le copieur cesse de traiter les instructions jusqu\'au prochaine période.',
     maxRiskToggle: 'Activer la perte maximale',
     addTarget: 'Ajouter un objectif',
     addRiskRule: 'Ajouter une limite de perte',
@@ -296,9 +296,9 @@ export const configureModalFr: ConfigureModalTranslations = {
     timezoneProfile: 'Utiliser le fuseau de mon profil ({tz})',
     timezoneCustom: 'Fuseau horaire personnalisé',
     timezoneHint: 'Les limites quotidiennes, hebdomadaires et mensuelles se réinitialisent à minuit dans ce fuseau.',
-    pausedProfitBanner: 'Objectif de profit atteint — les nouvelles entrées sont en pause jusqu\'au prochaine période.',
-    pausedRiskBanner: 'Perte maximale atteinte — les nouvelles entrées sont en pause jusqu\'au prochaine période.',
-    pausedOverallBanner: 'Limite atteinte — les nouvelles entrées restent en pause jusqu\'à modification ou désactivation de la règle.',
+    pausedProfitBanner: 'Objectif de profit atteint — les positions du canal ont été fermées et la copie est en pause jusqu\'au prochaine période.',
+    pausedRiskBanner: 'Perte maximale atteinte — les positions du canal ont été fermées et la copie est en pause jusqu\'au prochaine période.',
+    pausedOverallBanner: 'Limite atteinte — les positions du canal ont été fermées et la copie reste en pause jusqu\'à modification ou désactivation de la règle.',
   },
   management: {
     monitorIntroMulti:
