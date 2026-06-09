@@ -353,7 +353,8 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
         symbols: [symbol],
         stoploss: effectiveParsed.sl,
         tpLevels: refreshTpLevels,
-        replace: shouldPreferSignalStopsOverChannelMemory(plannerParsed),
+        replace: shouldPreferSignalStopsOverChannelMemory(plannerParsed)
+          || logAction === 'merge_routed_modify_only',
       })
       channelParamsForLadder = await loadChannelActiveTradeParamsForSymbol(
         ctx.supabase,
@@ -678,7 +679,26 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
         )
       }
       let pendingPatched = 0
-      if (
+      const explicitPendingChannelParams: ChannelActiveTradeParams | null =
+        refreshedSl != null || refreshTpLevels.length > 0
+          ? {
+              symbol,
+              stoploss: refreshedSl ?? channelParamsForLadder?.stoploss ?? null,
+              tpLevels: refreshTpLevels.length > 0
+                ? refreshTpLevels
+                : (channelParamsForLadder?.tpLevels ?? []),
+            }
+          : channelParamsForLadder
+      if (refreshedSl != null || refreshTpLevels.length > 0) {
+        pendingPatched = await patchActiveRangePendingLegStops({
+          supabase: ctx.supabase,
+          scope: { signalId: anchorSignalId, brokerAccountId: broker.id, symbol },
+          stoploss: refreshedSl,
+          channelParams: explicitPendingChannelParams,
+          tpLots: manual.tp_lots,
+          plannedRangeLegs: virtualPendings.length,
+        })
+      } else if (
         signal.channel_id
         && channelParamsForLadder
         && (channelParamsForLadder.stoploss != null || channelParamsForLadder.tpLevels.length > 0)
@@ -697,15 +717,7 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
           signalIds: [anchorSignalId],
           tpLotsByBroker: new Map([[broker.id, manual.tp_lots]]),
           openLegCountByBasket,
-        })
-      } else if (refreshedSl != null) {
-        pendingPatched = await patchActiveRangePendingLegStops({
-          supabase: ctx.supabase,
-          scope: { signalId: anchorSignalId, brokerAccountId: broker.id, symbol },
-          stoploss: refreshedSl,
-          channelParams: channelParamsForLadder,
-          tpLots: manual.tp_lots,
-          plannedRangeLegs: virtualPendings.length,
+          paramsOverride: channelParamsForLadder,
         })
       }
       if (pendingPatched > 0) {

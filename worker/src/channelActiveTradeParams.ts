@@ -480,8 +480,10 @@ export async function reapplyChannelParamsToPendingLegs(args: {
   signalIds?: string[] | null
   tpLotsByBroker: Map<string, ManualTpLot[] | null | undefined>
   openLegCountByBasket: Map<string, number>
+  /** When set, use these stops instead of loading channel memory from DB. */
+  paramsOverride?: ChannelActiveTradeParams | null
 }): Promise<number> {
-  const params = await loadChannelActiveTradeParamsForSymbol(
+  const params = args.paramsOverride ?? await loadChannelActiveTradeParamsForSymbol(
     args.supabase,
     args.userId,
     args.channelId,

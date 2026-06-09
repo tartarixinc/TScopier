@@ -356,7 +356,7 @@ function applyChannelParamsToVirtualLeg(leg, params, args) {
     return { stoploss, takeprofit };
 }
 async function reapplyChannelParamsToPendingLegs(args) {
-    const params = await loadChannelActiveTradeParamsForSymbol(args.supabase, args.userId, args.channelId, args.symbolHint);
+    const params = args.paramsOverride ?? await loadChannelActiveTradeParamsForSymbol(args.supabase, args.userId, args.channelId, args.symbolHint);
     if (!params || (params.stoploss == null && params.tpLevels.length === 0))
         return 0;
     let signalIds = args.signalIds ?? null;

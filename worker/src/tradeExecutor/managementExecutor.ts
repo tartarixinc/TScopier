@@ -96,7 +96,7 @@ import {
   type BasketOpenLeg,
   type BasketSymbolParams,
 } from '../basketSlTpReconcile'
-import { syncRangePendingLadderOnBasketRefresh } from '../rangePendingLadderSync'
+import { patchActiveRangePendingLegStops, syncRangePendingLadderOnBasketRefresh } from '../rangePendingLadderSync'
 import { loadExistingRangeStepIndices } from '../rangePendingFireGuard'
 import { channelMatchesBrokerSignal } from '../brokerChannelFilter'
 import { takeProfitForLegIndex } from '../manualPlanning/tpBucketDistribution'
@@ -113,7 +113,6 @@ import {
   estimateBasketTotalPlannedLegs,
   loadChannelActiveTradeParamsForSymbol,
   mergeParsedWithChannelParams,
-  reapplyChannelParamsToPendingLegs,
   parsedSignalHasExplicitStops,
   shouldMergeChannelParamsForEntry,
   stripInvalidStopsForSide,
@@ -676,30 +675,41 @@ export async function applyManagement(ctx: TradeExecutorContext, signal: SignalR
         symbols,
         stoploss: hasNewSl ? (parsed.sl as number) : null,
         tpLevels: hasNewTp ? parsedTpLevels : undefined,
+        replace: true,
       })
-      const openLegCountByBasket = new Map<string, number>()
-      for (const tr of rows) {
-        const key = `${tr.signal_id}|${tr.broker_account_id}`
-        openLegCountByBasket.set(key, (openLegCountByBasket.get(key) ?? 0) + 1)
-      }
-      const tpLotsByBroker = new Map(
-        brokers.map(b => [b.id, ((b.manual_settings ?? {}) as ManualSettings).tp_lots]),
-      )
-      const mgmtSignalIds = replyScoped && basketAnchorId ? [basketAnchorId] : null
-      for (const sym of symbols) {
-        const n = await reapplyChannelParamsToPendingLegs({
-          supabase: ctx.supabase,
-          userId: signal.user_id,
-          channelId: signal.channel_id,
-          brokerAccountIds,
-          symbolHint: sym,
-          signalIds: mgmtSignalIds,
-          tpLotsByBroker,
-          openLegCountByBasket,
-        })
-        if (n > 0) {
+      if (pendingLegs.length > 0) {
+        const tpLotsByBroker = new Map(
+          brokers.map(b => [b.id, ((b.manual_settings ?? {}) as ManualSettings).tp_lots]),
+        )
+        const mgmtChannelParams: ChannelActiveTradeParams = {
+          symbol: symbols[0] ?? symbolFromText ?? pendingLegs[0]!.symbol,
+          stoploss: hasNewSl ? (parsed.sl as number) : null,
+          tpLevels: hasNewTp ? parsedTpLevels : [],
+        }
+        const scopes = new Map<string, { signalId: string; brokerAccountId: string; symbol: string }>()
+        for (const leg of pendingLegs) {
+          scopes.set(`${leg.signal_id}|${leg.broker_account_id}|${leg.symbol}`, {
+            signalId: leg.signal_id,
+            brokerAccountId: leg.broker_account_id,
+            symbol: leg.symbol,
+          })
+        }
+        let pendingPatched = 0
+        for (const scope of scopes.values()) {
+          pendingPatched += await patchActiveRangePendingLegStops({
+            supabase: ctx.supabase,
+            scope,
+            stoploss: hasNewSl ? (parsed.sl as number) : null,
+            channelParams: mgmtChannelParams,
+            tpLots: tpLotsByBroker.get(scope.brokerAccountId),
+            plannedRangeLegs: pendingLegs.filter(
+              l => l.signal_id === scope.signalId && l.broker_account_id === scope.brokerAccountId,
+            ).length,
+          })
+        }
+        if (pendingPatched > 0) {
           console.log(
-            `[tradeExecutor] channel params reapplied to ${n} range_pending_legs signal=${signal.id} symbol=${sym}`,
+            `[tradeExecutor] mgmt patched ${pendingPatched} range_pending_legs from adjust signal=${signal.id}`,
           )
         }
       }

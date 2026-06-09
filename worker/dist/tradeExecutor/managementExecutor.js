@@ -9,6 +9,7 @@ const closeWorseEntries_1 = require("../closeWorseEntries");
 const channelMessageFilters_1 = require("../channelMessageFilters");
 const signalPip_1 = require("../signalPip");
 const multiTradeMerge_1 = require("../multiTradeMerge");
+const rangePendingLadderSync_1 = require("../rangePendingLadderSync");
 const tpBucketDistribution_1 = require("../manualPlanning/tpBucketDistribution");
 const managementScope_1 = require("../managementScope");
 const managementBrokerClose_1 = require("../managementBrokerClose");
@@ -499,27 +500,36 @@ async function applyManagement(ctx, signal, parsed, brokers) {
             symbols,
             stoploss: hasNewSl ? parsed.sl : null,
             tpLevels: hasNewTp ? parsedTpLevels : undefined,
+            replace: true,
         });
-        const openLegCountByBasket = new Map();
-        for (const tr of rows) {
-            const key = `${tr.signal_id}|${tr.broker_account_id}`;
-            openLegCountByBasket.set(key, (openLegCountByBasket.get(key) ?? 0) + 1);
-        }
-        const tpLotsByBroker = new Map(brokers.map(b => [b.id, (b.manual_settings ?? {}).tp_lots]));
-        const mgmtSignalIds = replyScoped && basketAnchorId ? [basketAnchorId] : null;
-        for (const sym of symbols) {
-            const n = await (0, channelActiveTradeParams_1.reapplyChannelParamsToPendingLegs)({
-                supabase: ctx.supabase,
-                userId: signal.user_id,
-                channelId: signal.channel_id,
-                brokerAccountIds,
-                symbolHint: sym,
-                signalIds: mgmtSignalIds,
-                tpLotsByBroker,
-                openLegCountByBasket,
-            });
-            if (n > 0) {
-                console.log(`[tradeExecutor] channel params reapplied to ${n} range_pending_legs signal=${signal.id} symbol=${sym}`);
+        if (pendingLegs.length > 0) {
+            const tpLotsByBroker = new Map(brokers.map(b => [b.id, (b.manual_settings ?? {}).tp_lots]));
+            const mgmtChannelParams = {
+                symbol: symbols[0] ?? symbolFromText ?? pendingLegs[0].symbol,
+                stoploss: hasNewSl ? parsed.sl : null,
+                tpLevels: hasNewTp ? parsedTpLevels : [],
+            };
+            const scopes = new Map();
+            for (const leg of pendingLegs) {
+                scopes.set(`${leg.signal_id}|${leg.broker_account_id}|${leg.symbol}`, {
+                    signalId: leg.signal_id,
+                    brokerAccountId: leg.broker_account_id,
+                    symbol: leg.symbol,
+                });
+            }
+            let pendingPatched = 0;
+            for (const scope of scopes.values()) {
+                pendingPatched += await (0, rangePendingLadderSync_1.patchActiveRangePendingLegStops)({
+                    supabase: ctx.supabase,
+                    scope,
+                    stoploss: hasNewSl ? parsed.sl : null,
+                    channelParams: mgmtChannelParams,
+                    tpLots: tpLotsByBroker.get(scope.brokerAccountId),
+                    plannedRangeLegs: pendingLegs.filter(l => l.signal_id === scope.signalId && l.broker_account_id === scope.brokerAccountId).length,
+                });
+            }
+            if (pendingPatched > 0) {
+                console.log(`[tradeExecutor] mgmt patched ${pendingPatched} range_pending_legs from adjust signal=${signal.id}`);
             }
         }
     }
