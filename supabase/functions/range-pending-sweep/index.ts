@@ -26,6 +26,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4"
 // @ts-ignore - Deno-only import
 import { makeClientFromEnv, MetatraderApiClient, type MtPlatform } from "../_shared/metatraderapi.ts"
 import { tryApplyBasketFollowUpToNewFill } from "../_shared/basketModFollowUp.ts"
+import { autoManagementTradeSnapshot, manualSettingsForChannel } from "../_shared/autoManagement.ts"
 import { shouldBlockVirtualLegFire } from "../_shared/rangePendingFireGuard.ts"
 import {
   loadRangeLayerTillCloseForSignal,
@@ -457,19 +458,48 @@ async function fireLeg(
       })
       .eq("id", leg.id)
     const entryPx = result.openPrice ?? refPrice ?? null
+    const openSl = result.stopLoss ?? sl ?? null
+
+    let channelId: string | null = null
+    let autoBeCols: Record<string, string | number | null> = {}
+    try {
+      const { data: sigMeta } = await sb
+        .from("signals")
+        .select("channel_id")
+        .eq("id", leg.signal_id)
+        .maybeSingle()
+      channelId = (sigMeta as { channel_id?: string } | null)?.channel_id ?? null
+      const { data: brokerRow } = await sb
+        .from("broker_accounts")
+        .select("manual_settings,channel_trading_configs")
+        .eq("id", leg.broker_account_id)
+        .maybeSingle()
+      if (brokerRow) {
+        const manual = manualSettingsForChannel(
+          brokerRow as { manual_settings?: unknown; channel_trading_configs?: unknown },
+          channelId,
+        )
+        autoBeCols = autoManagementTradeSnapshot(manual, entryPx, openSl)
+      }
+    } catch {
+      /* best-effort — trade still opens without auto_be snapshot */
+    }
+
     const { data: insTrade, error: insErr } = await sb.from("trades").insert({
       user_id: leg.user_id,
       signal_id: leg.signal_id,
+      telegram_channel_id: channelId,
       broker_account_id: leg.broker_account_id,
       metaapi_order_id: result.ticket != null ? String(result.ticket) : null,
       symbol: leg.symbol,
       direction: leg.is_buy ? "buy" : "sell",
       entry_price: entryPx,
-      sl: result.stopLoss ?? sl,
+      sl: openSl,
       tp: result.takeProfit ?? tp,
       lot_size: result.lots ?? leg.volume,
       status: "open",
       opened_at: new Date().toISOString(),
+      ...autoBeCols,
     }).select("id").maybeSingle()
     if (insErr) {
       console.warn(`[range-pending-sweep] trades insert failed leg=${leg.id}: ${insErr.message}`)

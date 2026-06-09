@@ -199,8 +199,26 @@ class AutoManagementMonitor {
             : (trade.sl != null && Number.isFinite(Number(trade.sl)) ? Number(trade.sl) : null);
         const beSl = (0, autoManagement_1.computeBreakevenStopLoss)(isBuy, entry, offsetPips, signalPip, symEntry.digits);
         const currentSl = trade.sl != null && Number.isFinite(Number(trade.sl)) ? Number(trade.sl) : null;
-        if ((0, autoManagement_1.isSlAtOrBeyondBreakeven)(isBuy, currentSl, beSl, signalPip)) {
-            await this.markApplied(trade.id, { sl: currentSl ?? beSl });
+        let brokerSl = null;
+        try {
+            const orders = await api.openedOrders(uuid);
+            for (const raw of orders ?? []) {
+                const o = raw;
+                const t = Number(o.ticket ?? o.Ticket ?? o.order ?? o.Order ?? 0);
+                if (t !== ticketNum)
+                    continue;
+                const sl = Number(o.stopLoss ?? o.StopLoss ?? o.sl ?? o.SL ?? 0);
+                if (Number.isFinite(sl) && sl > 0)
+                    brokerSl = sl;
+                break;
+            }
+        }
+        catch {
+            /* fall back to DB SL */
+        }
+        const effectiveSl = (0, autoManagement_1.resolveSlForBreakevenCheck)(currentSl, brokerSl);
+        if ((0, autoManagement_1.isSlAtOrBeyondBreakeven)(isBuy, effectiveSl, beSl, signalPip)) {
+            await this.markApplied(trade.id, { sl: effectiveSl ?? beSl });
             return null;
         }
         if (!(0, autoManagement_1.isAutoBeTriggerMet)({
@@ -221,11 +239,24 @@ class AutoManagementMonitor {
             return null;
         }
         const tpSanitize = brokerTp ?? 0;
+        const refPrice = isBuy ? bid : ask;
+        const clamped = (0, autoManagement_1.clampBreakevenModifyStops)({
+            isBuy,
+            stoploss: beSl,
+            takeprofit: tpSanitize,
+            referencePrice: refPrice,
+            point: symEntry.point,
+            digits: symEntry.digits,
+            stopsLevel: symEntry.stopsLevel,
+            freezeLevel: symEntry.freezeLevel,
+        });
+        const modifySl = clamped.stoploss;
+        const modifyTp = clamped.takeprofit;
         try {
             await api.orderModify(uuid, {
                 ticket: ticketNum,
-                stoploss: beSl,
-                takeprofit: tpSanitize,
+                stoploss: modifySl,
+                takeprofit: modifyTp,
             });
             let remainingLots = lots;
             if (beType === 'sl_and_close_half' && lots > 0.0001) {
@@ -242,7 +273,7 @@ class AutoManagementMonitor {
                 }
             }
             const patch = {
-                sl: beSl,
+                sl: modifySl,
                 auto_be_applied_at: new Date().toISOString(),
             };
             if (remainingLots < 0.0001) {
@@ -266,12 +297,12 @@ class AutoManagementMonitor {
                     direction: trade.direction,
                     mode,
                     trigger_value: triggerValue,
-                    new_sl: beSl,
+                    new_sl: modifySl,
                     be_type: beType,
                     half_close: beType === 'sl_and_close_half',
                 },
             });
-            console.log(`[autoManagementMonitor] applied trade=${trade.id} symbol=${trade.symbol} mode=${mode} sl→${beSl}`);
+            console.log(`[autoManagementMonitor] applied trade=${trade.id} symbol=${trade.symbol} mode=${mode} sl→${modifySl}`);
             return true;
         }
         catch (err) {
@@ -295,7 +326,7 @@ class AutoManagementMonitor {
                 broker_account_id: trade.broker_account_id,
                 action: 'auto_be',
                 status: 'failed',
-                request_payload: { ticket: ticketNum, symbol: trade.symbol, attempted_sl: beSl, mode },
+                request_payload: { ticket: ticketNum, symbol: trade.symbol, attempted_sl: modifySl, mode },
                 error_message: msg,
             });
             return false;
@@ -327,6 +358,8 @@ class AutoManagementMonitor {
                 digits: n.digits ?? 5,
                 point: n.point ?? 0.00001,
                 contractSize: Number.isFinite(n.contractSize) && (n.contractSize ?? 0) > 0 ? Number(n.contractSize) : null,
+                stopsLevel: Math.max(0, n.stopsLevel ?? 0),
+                freezeLevel: Math.max(0, n.freezeLevel ?? 0),
                 loadedAt: Date.now(),
             };
             this.symbolCache.set(key, entry);

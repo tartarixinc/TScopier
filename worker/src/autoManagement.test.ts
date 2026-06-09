@@ -2,10 +2,12 @@ import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 import {
   autoManagementTradeSnapshot,
+  clampBreakevenModifyStops,
   computeBreakevenStopLoss,
   isAutoBeTriggerMet,
   isAutoManagementEnabled,
   isSlAtOrBeyondBreakeven,
+  resolveSlForBreakevenCheck,
 } from './autoManagement'
 
 test('isAutoManagementEnabled: off when mode is none', () => {
@@ -103,4 +105,55 @@ test('computeBreakevenStopLoss and isSlAtOrBeyondBreakeven', () => {
   assert.equal(be, 2001)
   assert.equal(isSlAtOrBeyondBreakeven(true, 2001, be, 0.1), true)
   assert.equal(isSlAtOrBeyondBreakeven(true, 1995, be, 0.1), false)
+})
+
+test('resolveSlForBreakevenCheck prefers live broker SL over shared basket DB SL', () => {
+  const dbSl = 2005
+  const brokerSl = 1985
+  const beSl = 2000
+  const effective = resolveSlForBreakevenCheck(dbSl, brokerSl)
+  assert.equal(effective, brokerSl)
+  assert.equal(isSlAtOrBeyondBreakeven(true, effective, beSl, 0.1), false)
+  assert.equal(isSlAtOrBeyondBreakeven(true, dbSl, beSl, 0.1), true)
+})
+
+test('autoManagementTradeSnapshot empty when entry missing', () => {
+  assert.deepEqual(
+    autoManagementTradeSnapshot({ move_sl_to_entry_after_mode: 'pips' }, null, 1990),
+    {},
+  )
+})
+
+test('clampBreakevenModifyStops nudges SL to broker min distance', () => {
+  const out = clampBreakevenModifyStops({
+    isBuy: true,
+    stoploss: 2004.95,
+    takeprofit: 2010,
+    referencePrice: 2005,
+    point: 0.01,
+    digits: 2,
+    stopsLevel: 10,
+    freezeLevel: 0,
+  })
+  assert.equal(out.stoploss, 2004.88)
+})
+
+test('range leg trade payload includes auto_be when enabled', () => {
+  const manual = {
+    move_sl_to_entry_after_mode: 'pips',
+    move_sl_to_entry_after_value: 15,
+    breakeven_offset_pips: 5,
+  }
+  const autoBeCols = autoManagementTradeSnapshot(manual, 1990, 1980)
+  const payload: Record<string, unknown> = {
+    user_id: 'user-1',
+    signal_id: 'sig-1',
+    entry_price: 1990,
+    sl: 1980,
+    status: 'open',
+    ...autoBeCols,
+  }
+  assert.equal(payload.auto_be_mode, 'pips')
+  assert.equal(payload.auto_be_trigger_value, 15)
+  assert.equal(payload.auto_be_risk_sl, 1980)
 })

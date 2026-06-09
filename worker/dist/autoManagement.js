@@ -4,7 +4,9 @@ exports.isAutoManagementEnabled = isAutoManagementEnabled;
 exports.normalizeAutoBeConfig = normalizeAutoBeConfig;
 exports.autoManagementTradeSnapshot = autoManagementTradeSnapshot;
 exports.computeBreakevenStopLoss = computeBreakevenStopLoss;
+exports.resolveSlForBreakevenCheck = resolveSlForBreakevenCheck;
 exports.isSlAtOrBeyondBreakeven = isSlAtOrBeyondBreakeven;
+exports.clampBreakevenModifyStops = clampBreakevenModifyStops;
 exports.profitPips = profitPips;
 exports.isAutoBeTriggerMet = isAutoBeTriggerMet;
 const partialTpMonitor_1 = require("./partialTpMonitor");
@@ -65,6 +67,15 @@ function computeBreakevenStopLoss(isBuy, entryPrice, offsetPips, pipPrice, digit
     const raw = isBuy ? entryPrice + offset : entryPrice - offset;
     return roundPrice(raw, digits);
 }
+/** Prefer live broker SL over shared basket SL stored on the trades row. */
+function resolveSlForBreakevenCheck(dbSl, brokerSl) {
+    const live = brokerSl != null ? Number(brokerSl) : NaN;
+    if (Number.isFinite(live) && live > 0)
+        return live;
+    if (dbSl != null && Number.isFinite(dbSl) && dbSl > 0)
+        return dbSl;
+    return null;
+}
 /** Skip when SL is already at or beyond the breakeven level. */
 function isSlAtOrBeyondBreakeven(isBuy, currentSl, beSl, pipPrice) {
     if (currentSl == null || !Number.isFinite(currentSl) || currentSl <= 0)
@@ -73,6 +84,33 @@ function isSlAtOrBeyondBreakeven(isBuy, currentSl, beSl, pipPrice) {
     if (isBuy)
         return currentSl >= beSl - tol;
     return currentSl <= beSl + tol;
+}
+/** Clamp breakeven SL/TP to broker min distance from the live quote. */
+function clampBreakevenModifyStops(args) {
+    const { isBuy, referencePrice: ref, point, digits, stopsLevel, freezeLevel } = args;
+    if (!Number.isFinite(ref) || ref <= 0 || point <= 0) {
+        return { stoploss: args.stoploss, takeprofit: args.takeprofit };
+    }
+    const minLevel = Math.max(stopsLevel, freezeLevel);
+    const minDist = (minLevel + 2) * point;
+    if (minDist <= 0)
+        return { stoploss: args.stoploss, takeprofit: args.takeprofit };
+    const round = (v) => Number(v.toFixed(Math.max(0, Math.min(8, digits))));
+    let stoploss = args.stoploss;
+    let takeprofit = args.takeprofit;
+    if (isBuy) {
+        if (stoploss > 0 && ref - stoploss < minDist)
+            stoploss = round(ref - minDist);
+        if (takeprofit > 0 && takeprofit - ref < minDist)
+            takeprofit = round(ref + minDist);
+    }
+    else {
+        if (stoploss > 0 && stoploss - ref < minDist)
+            stoploss = round(ref + minDist);
+        if (takeprofit > 0 && ref - takeprofit < minDist)
+            takeprofit = round(ref - minDist);
+    }
+    return { stoploss, takeprofit };
 }
 function profitPips(isBuy, entryPrice, favorable, pipPrice) {
     if (!Number.isFinite(pipPrice) || pipPrice <= 0)

@@ -7,8 +7,10 @@ import {
   SymbolParams,
 } from './metatraderapi'
 import { apiForMetaapiAccount, loadPlatformByMetaapiId, type PlatformByMetaapiId } from './mtApiByAccount'
+import { autoManagementTradeSnapshot } from './autoManagement'
 import { tryApplyBasketFollowUpToNewFill } from './basketModFollowUp'
 import { loadChannelActiveTradeParamsForSymbol } from './channelActiveTradeParams'
+import { resolveChannelTradingConfig } from './channelTradingConfig'
 import { markRangeLegFired, markRangeLegsExpired } from './rangePendingLadderSync'
 import {
   hasWorkOnShard,
@@ -125,6 +127,11 @@ interface SymbolCacheEntry {
   loadedAt: number
 }
 
+type BrokerConfigCacheEntry = {
+  manual: Record<string, unknown>
+  loadedAt: number
+}
+
 const SYMBOL_TTL_MS = 10 * 60_000
 const ACTIVE_MS = monitorActiveIntervalMs('VIRTUAL_PENDING_TICK_MS', 1_500)
 const IDLE_MS = monitorIdleIntervalMs('VIRTUAL_PENDING_IDLE_MS', 60_000)
@@ -198,6 +205,7 @@ export class VirtualPendingMonitor {
   private loop: MonitorLoopHandle | null = null
   private platformByUuid: PlatformByMetaapiId = new Map()
   private symbolCache = new Map<string, SymbolCacheEntry>()
+  private brokerConfigCache = new Map<string, BrokerConfigCacheEntry>()
   private hostId: string
   private ticking = false
   /** Heartbeat counter: when there ARE pending rows but none triggered, we
@@ -711,6 +719,9 @@ export class VirtualPendingMonitor {
         `[virtualPendingMonitor] virtual leg fired signal=${leg.signal_id} stepIdx=${leg.step_idx} trigger=${leg.trigger_price} ref=${refPrice} ticket=${result.ticket} latency=${latencyMs}ms`,
       )
       const entryPx = result.openPrice ?? refPrice ?? null
+      const openSl = result.stopLoss ?? args.stoploss ?? null
+      const manual = await this.loadManualSettingsForLeg(leg.broker_account_id, channelIdForTrade)
+      const autoBeCols = autoManagementTradeSnapshot(manual, entryPx, openSl)
       const { data: insTrade, error: insErr } = await this.supabase.from('trades').insert({
         user_id: leg.user_id,
         signal_id: leg.signal_id,
@@ -720,7 +731,7 @@ export class VirtualPendingMonitor {
         symbol: leg.symbol,
         direction: leg.is_buy ? 'buy' : 'sell',
         entry_price: entryPx,
-        sl: result.stopLoss ?? args.stoploss ?? null,
+        sl: openSl,
         tp: result.takeProfit ?? args.takeprofit ?? null,
         lot_size: result.lots ?? args.volume,
         status: 'open',
@@ -729,6 +740,7 @@ export class VirtualPendingMonitor {
         // newly-filled leg alongside its sibling immediates. Null for
         // non-CWE pendings.
         cwe_close_price: leg.cwe_close_price,
+        ...autoBeCols,
       }).select('id').maybeSingle()
       if (insErr) {
         console.warn(`[virtualPendingMonitor] trades insert failed leg=${leg.id}: ${insErr.message}`)
@@ -889,6 +901,37 @@ export class VirtualPendingMonitor {
     } catch {
       // Logging failure is non-fatal.
     }
+  }
+
+  private async loadManualSettingsForLeg(
+    brokerAccountId: string,
+    channelId: string | null,
+  ): Promise<Record<string, unknown>> {
+    const cacheKey = `${brokerAccountId}|${channelId ?? ''}`
+    const cached = this.brokerConfigCache.get(cacheKey)
+    if (cached && Date.now() - cached.loadedAt < SYMBOL_TTL_MS) {
+      return cached.manual
+    }
+    const { data, error } = await this.supabase
+      .from('broker_accounts')
+      .select('manual_settings,channel_trading_configs,copier_mode,signal_channel_ids')
+      .eq('id', brokerAccountId)
+      .maybeSingle()
+    if (error || !data) return {}
+    const resolved = resolveChannelTradingConfig(
+      data as {
+        manual_settings?: Record<string, unknown> | null
+        channel_trading_configs?: unknown
+        copier_mode?: string | null
+        signal_channel_ids?: string[] | null
+      },
+      channelId,
+    )
+    this.brokerConfigCache.set(cacheKey, {
+      manual: resolved.manual_settings,
+      loadedAt: Date.now(),
+    })
+    return resolved.manual_settings
   }
 
   private async getSymbolParams(uuid: string, symbol: string): Promise<SymbolCacheEntry | null> {

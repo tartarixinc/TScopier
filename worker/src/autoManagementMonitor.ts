@@ -1,8 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
+  clampBreakevenModifyStops,
   computeBreakevenStopLoss,
   isAutoBeTriggerMet,
   isSlAtOrBeyondBreakeven,
+  resolveSlForBreakevenCheck,
   type AutoBeMode,
   type AutoBeType,
 } from './autoManagement'
@@ -66,6 +68,8 @@ type SymbolCacheEntry = {
   digits: number
   point: number
   contractSize: number | null
+  stopsLevel: number
+  freezeLevel: number
   loadedAt: number
 }
 
@@ -293,8 +297,24 @@ export class AutoManagementMonitor {
     const beSl = computeBreakevenStopLoss(isBuy, entry, offsetPips, signalPip, symEntry.digits)
     const currentSl = trade.sl != null && Number.isFinite(Number(trade.sl)) ? Number(trade.sl) : null
 
-    if (isSlAtOrBeyondBreakeven(isBuy, currentSl, beSl, signalPip)) {
-      await this.markApplied(trade.id, { sl: currentSl ?? beSl })
+    let brokerSl: number | null = null
+    try {
+      const orders = await api.openedOrders(uuid)
+      for (const raw of orders ?? []) {
+        const o = raw as Record<string, unknown>
+        const t = Number(o.ticket ?? o.Ticket ?? o.order ?? o.Order ?? 0)
+        if (t !== ticketNum) continue
+        const sl = Number(o.stopLoss ?? o.StopLoss ?? o.sl ?? o.SL ?? 0)
+        if (Number.isFinite(sl) && sl > 0) brokerSl = sl
+        break
+      }
+    } catch {
+      /* fall back to DB SL */
+    }
+
+    const effectiveSl = resolveSlForBreakevenCheck(currentSl, brokerSl)
+    if (isSlAtOrBeyondBreakeven(isBuy, effectiveSl, beSl, signalPip)) {
+      await this.markApplied(trade.id, { sl: effectiveSl ?? beSl })
       return null
     }
 
@@ -317,12 +337,25 @@ export class AutoManagementMonitor {
     }
 
     const tpSanitize = brokerTp ?? 0
+    const refPrice = isBuy ? bid : ask
+    const clamped = clampBreakevenModifyStops({
+      isBuy,
+      stoploss: beSl,
+      takeprofit: tpSanitize,
+      referencePrice: refPrice,
+      point: symEntry.point,
+      digits: symEntry.digits,
+      stopsLevel: symEntry.stopsLevel,
+      freezeLevel: symEntry.freezeLevel,
+    })
+    const modifySl = clamped.stoploss
+    const modifyTp = clamped.takeprofit
 
     try {
       await api.orderModify(uuid, {
         ticket: ticketNum,
-        stoploss: beSl,
-        takeprofit: tpSanitize,
+        stoploss: modifySl,
+        takeprofit: modifyTp,
       })
 
       let remainingLots = lots
@@ -342,7 +375,7 @@ export class AutoManagementMonitor {
       }
 
       const patch: Record<string, unknown> = {
-        sl: beSl,
+        sl: modifySl,
         auto_be_applied_at: new Date().toISOString(),
       }
       if (remainingLots < 0.0001) {
@@ -367,14 +400,14 @@ export class AutoManagementMonitor {
           direction: trade.direction,
           mode,
           trigger_value: triggerValue,
-          new_sl: beSl,
+          new_sl: modifySl,
           be_type: beType,
           half_close: beType === 'sl_and_close_half',
         } as unknown as Record<string, unknown>,
       })
 
       console.log(
-        `[autoManagementMonitor] applied trade=${trade.id} symbol=${trade.symbol} mode=${mode} sl→${beSl}`,
+        `[autoManagementMonitor] applied trade=${trade.id} symbol=${trade.symbol} mode=${mode} sl→${modifySl}`,
       )
       return true
     } catch (err) {
@@ -398,7 +431,7 @@ export class AutoManagementMonitor {
         broker_account_id: trade.broker_account_id,
         action: 'auto_be',
         status: 'failed',
-        request_payload: { ticket: ticketNum, symbol: trade.symbol, attempted_sl: beSl, mode },
+        request_payload: { ticket: ticketNum, symbol: trade.symbol, attempted_sl: modifySl, mode },
         error_message: msg,
       })
       return false
@@ -432,6 +465,8 @@ export class AutoManagementMonitor {
         digits: n.digits ?? 5,
         point: n.point ?? 0.00001,
         contractSize: Number.isFinite(n.contractSize) && (n.contractSize ?? 0) > 0 ? Number(n.contractSize) : null,
+        stopsLevel: Math.max(0, n.stopsLevel ?? 0),
+        freezeLevel: Math.max(0, n.freezeLevel ?? 0),
         loadedAt: Date.now(),
       }
       this.symbolCache.set(key, entry)
