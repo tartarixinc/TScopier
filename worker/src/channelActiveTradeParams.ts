@@ -137,10 +137,21 @@ export function isFullEntrySignalWithStops(parsed: ParsedSignal): boolean {
 
 /**
  * Full entries with explicit SL/TP must win over stale `channel_active_trade_params`.
- * Use this before overlaying or gap-filling from channel memory on entry paths.
+ * Use before overlaying channel memory during basket merge / refresh (not raw entry dispatch).
  */
 export function shouldPreferSignalStopsOverChannelMemory(parsed: ParsedSignal): boolean {
   return isFullEntrySignalWithStops(parsed)
+}
+
+/**
+ * Entry dispatch: any buy/sell that includes SL/TP in the parsed message must win over
+ * channel memory. Unlike {@link shouldPreferSignalStopsOverChannelMemory}, does not
+ * require an entry price/zone — "buy now" + SL must not inherit a prior Adjust SL.
+ */
+export function shouldPreferParsedStopsOnEntry(parsed: ParsedSignal): boolean {
+  const act = String(parsed.action ?? '').toLowerCase()
+  if (act !== 'buy' && act !== 'sell') return false
+  return parsedSignalHasExplicitStops(parsed)
 }
 
 /**
@@ -175,7 +186,7 @@ export async function refreshChannelParamsFromSignal(
     symbols: [args.symbol],
     stoploss: args.plannerParsed.sl,
     tpLevels: refreshTpLevels,
-    replace: args.replace ?? shouldPreferSignalStopsOverChannelMemory(args.plannerParsed),
+    replace: args.replace ?? shouldPreferParsedStopsOnEntry(args.plannerParsed),
   })
   return loadChannelActiveTradeParamsForSymbol(
     supabase,
@@ -390,12 +401,6 @@ export async function resolveEntryChannelStops(
     signalId?: string | null
   },
 ): Promise<EntryChannelStopsResult> {
-  const channelParams = await loadChannelActiveTradeParamsForSymbol(
-    supabase,
-    args.userId,
-    args.channelId,
-    args.symbol,
-  )
   const hasActiveBasket = await channelHasOpenActivityForSymbol(supabase, {
     userId: args.userId,
     channelId: args.channelId,
@@ -403,9 +408,24 @@ export async function resolveEntryChannelStops(
     symbolHint: args.symbol,
   })
 
+  if (!hasActiveBasket) {
+    await clearChannelActiveTradeParamsWhenFlat(supabase, {
+      userId: args.userId,
+      channelId: args.channelId,
+      symbolHint: args.symbol,
+    })
+  }
+
+  const channelParams = await loadChannelActiveTradeParamsForSymbol(
+    supabase,
+    args.userId,
+    args.channelId,
+    args.symbol,
+  )
+
   let plannerParsed = args.plannerParsed
   let mergedChannelParams = false
-  const preferSignalStops = shouldPreferSignalStopsOverChannelMemory(plannerParsed)
+  const preferSignalStops = shouldPreferParsedStopsOnEntry(plannerParsed)
   const applyOverlay = hasActiveBasket && channelParams != null && !preferSignalStops
 
   if (applyOverlay) {

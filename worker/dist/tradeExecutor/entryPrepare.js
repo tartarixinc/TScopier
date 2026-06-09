@@ -397,7 +397,7 @@ async function prepareEntryExecution(ctx, args) {
         && signal.channel_id
         && entryChannelParams
         && (channelParamsRefreshedFromSignal
-            || !(0, channelActiveTradeParams_1.shouldPreferSignalStopsOverChannelMemory)(parsed))) {
+            || !(0, channelActiveTradeParams_1.shouldPreferParsedStopsOnEntry)(parsed))) {
         virtualPendings = (0, channelActiveTradeParams_1.applyChannelParamsToVirtualPendingList)(virtualPendings, entryChannelParams, capped.length, manual.tp_lots, totalPlannedLegCount);
     }
     const already = await ctx.manualDispatchAlreadyMaterialized(signal.id, broker.id);

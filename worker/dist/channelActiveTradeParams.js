@@ -9,6 +9,7 @@ exports.upsertChannelActiveTradeParams = upsertChannelActiveTradeParams;
 exports.parsedSignalHasExplicitStops = parsedSignalHasExplicitStops;
 exports.isFullEntrySignalWithStops = isFullEntrySignalWithStops;
 exports.shouldPreferSignalStopsOverChannelMemory = shouldPreferSignalStopsOverChannelMemory;
+exports.shouldPreferParsedStopsOnEntry = shouldPreferParsedStopsOnEntry;
 exports.shouldOverlayChannelParamsOnBasketRefresh = shouldOverlayChannelParamsOnBasketRefresh;
 exports.refreshChannelParamsFromSignal = refreshChannelParamsFromSignal;
 exports.shouldMergeChannelParamsForEntry = shouldMergeChannelParamsForEntry;
@@ -126,10 +127,21 @@ function isFullEntrySignalWithStops(parsed) {
 }
 /**
  * Full entries with explicit SL/TP must win over stale `channel_active_trade_params`.
- * Use this before overlaying or gap-filling from channel memory on entry paths.
+ * Use before overlaying channel memory during basket merge / refresh (not raw entry dispatch).
  */
 function shouldPreferSignalStopsOverChannelMemory(parsed) {
     return isFullEntrySignalWithStops(parsed);
+}
+/**
+ * Entry dispatch: any buy/sell that includes SL/TP in the parsed message must win over
+ * channel memory. Unlike {@link shouldPreferSignalStopsOverChannelMemory}, does not
+ * require an entry price/zone — "buy now" + SL must not inherit a prior Adjust SL.
+ */
+function shouldPreferParsedStopsOnEntry(parsed) {
+    const act = String(parsed.action ?? '').toLowerCase();
+    if (act !== 'buy' && act !== 'sell')
+        return false;
+    return parsedSignalHasExplicitStops(parsed);
 }
 /**
  * True when basket merge / refresh may overlay channel memory onto parsed stops.
@@ -150,7 +162,7 @@ async function refreshChannelParamsFromSignal(supabase, args) {
         symbols: [args.symbol],
         stoploss: args.plannerParsed.sl,
         tpLevels: refreshTpLevels,
-        replace: args.replace ?? shouldPreferSignalStopsOverChannelMemory(args.plannerParsed),
+        replace: args.replace ?? shouldPreferParsedStopsOnEntry(args.plannerParsed),
     });
     return loadChannelActiveTradeParamsForSymbol(supabase, args.userId, args.channelId, args.symbol);
 }
@@ -282,16 +294,23 @@ function shouldSeedChannelParamsFromEntrySignal(hasActiveBasket) {
 }
 /** Resolve planner SL/TP for a new entry: prefer channel memory when basket is active. */
 async function resolveEntryChannelStops(supabase, args) {
-    const channelParams = await loadChannelActiveTradeParamsForSymbol(supabase, args.userId, args.channelId, args.symbol);
     const hasActiveBasket = await channelHasOpenActivityForSymbol(supabase, {
         userId: args.userId,
         channelId: args.channelId,
         brokerAccountId: args.brokerAccountId,
         symbolHint: args.symbol,
     });
+    if (!hasActiveBasket) {
+        await clearChannelActiveTradeParamsWhenFlat(supabase, {
+            userId: args.userId,
+            channelId: args.channelId,
+            symbolHint: args.symbol,
+        });
+    }
+    const channelParams = await loadChannelActiveTradeParamsForSymbol(supabase, args.userId, args.channelId, args.symbol);
     let plannerParsed = args.plannerParsed;
     let mergedChannelParams = false;
-    const preferSignalStops = shouldPreferSignalStopsOverChannelMemory(plannerParsed);
+    const preferSignalStops = shouldPreferParsedStopsOnEntry(plannerParsed);
     const applyOverlay = hasActiveBasket && channelParams != null && !preferSignalStops;
     if (applyOverlay) {
         console.log(`[channelActiveTradeParams] overlay applied signal=${args.signalId ?? 'n/a'}`

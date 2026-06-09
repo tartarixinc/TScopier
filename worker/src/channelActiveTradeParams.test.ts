@@ -10,6 +10,7 @@ import {
   resolveEntryChannelStops,
   shouldMergeChannelParamsForEntry,
   shouldOverlayChannelParamsOnBasketRefresh,
+  shouldPreferParsedStopsOnEntry,
   shouldPreferSignalStopsOverChannelMemory,
   shouldSeedChannelParamsFromEntrySignal,
   stripInvalidStopsForSide,
@@ -230,6 +231,32 @@ describe('channelActiveTradeParams', () => {
     )
   })
 
+  test('shouldPreferParsedStopsOnEntry: buy now with SL does not require entry anchor', () => {
+    assert.equal(
+      shouldPreferParsedStopsOnEntry({
+        action: 'buy',
+        symbol: 'XAUUSD',
+        entry_price: null,
+        entry_zone_low: null,
+        entry_zone_high: null,
+        sl: 4299,
+        tp: [4310],
+        lot_size: null,
+      }),
+      true,
+    )
+    assert.equal(shouldPreferSignalStopsOverChannelMemory({
+      action: 'buy',
+      symbol: 'XAUUSD',
+      entry_price: null,
+      entry_zone_low: null,
+      entry_zone_high: null,
+      sl: 4299,
+      tp: [4310],
+      lot_size: null,
+    }), false)
+  })
+
   test('full entry must not use stale channel SL from an older signal', () => {
     const newEntry = {
       action: 'sell' as const,
@@ -438,12 +465,82 @@ describe('channelActiveTradeParams', () => {
     assert.ok(result.deletedSymbols.includes('XAUUSDm'))
   })
 
-  test('resolveEntryChannelStops does not gap-fill stale channel memory when basket is flat', async () => {
+  test('resolveEntryChannelStops keeps new SL when basket active but signal includes stops', async () => {
     const staleParams = [{ symbol: 'XAUUSD', stoploss: 4458, tp_levels: [4467, 4469] }]
+    const upserted: Record<string, unknown>[] = []
     const mock = {
       from: (table: string) => {
         if (table === 'channel_active_trade_params') {
-          return { select: () => chainQuery(staleParams) }
+          return {
+            select: () => chainQuery(staleParams),
+            upsert: (row: Record<string, unknown>) => {
+              upserted.push(row)
+              return Promise.resolve({ error: null })
+            },
+            delete: () => ({
+              eq: () => ({
+                eq: () => ({
+                  eq: () => Promise.resolve({ error: null }),
+                }),
+              }),
+            }),
+          }
+        }
+        if (table === 'signals') {
+          return { select: () => chainQuery([{ id: 'sig-old' }]) }
+        }
+        if (table === 'trades') {
+          return { select: () => chainQuery([{ symbol: 'XAUUSD' }]) }
+        }
+        if (table === 'range_pending_legs') {
+          return { select: () => chainQuery([]) }
+        }
+        throw new Error(`unexpected table ${table}`)
+      },
+    }
+    const resolved = await resolveEntryChannelStops(mock as never, {
+      userId: 'user-1',
+      channelId: 'channel-1',
+      brokerAccountId: 'broker-1',
+      symbol: 'XAUUSD',
+      plannerParsed: {
+        action: 'sell',
+        symbol: 'XAUUSD',
+        entry_price: null,
+        entry_zone_low: null,
+        entry_zone_high: null,
+        sl: 4299,
+        tp: [4290, 4288],
+        lot_size: null,
+      },
+      signalId: 'sig-new',
+    })
+    assert.equal(resolved.plannerParsed.sl, 4299)
+    assert.deepEqual(resolved.plannerParsed.tp, [4290, 4288])
+    assert.equal(resolved.mergedChannelParams, false)
+    assert.equal(upserted.length, 1)
+    assert.equal(upserted[0]!.stoploss, 4299)
+  })
+
+  test('resolveEntryChannelStops does not gap-fill stale channel memory when basket is flat', async () => {
+    const staleParams = [{ symbol: 'XAUUSD', stoploss: 4458, tp_levels: [4467, 4469] }]
+    const deleted: string[] = []
+    const mock = {
+      from: (table: string) => {
+        if (table === 'channel_active_trade_params') {
+          return {
+            select: () => chainQuery(staleParams),
+            delete: () => ({
+              eq: () => ({
+                eq: () => ({
+                  eq: (col: string, sym: string) => {
+                    if (col === 'symbol') deleted.push(sym)
+                    return Promise.resolve({ error: null })
+                  },
+                }),
+              }),
+            }),
+          }
         }
         if (table === 'signals') {
           return { select: () => chainQuery([{ id: 'sig-1' }]) }
@@ -452,6 +549,9 @@ describe('channelActiveTradeParams', () => {
           return { select: () => chainQuery([]) }
         }
         if (table === 'range_pending_legs') {
+          return { select: () => chainQuery([]) }
+        }
+        if (table === 'signal_entry_pending_orders') {
           return { select: () => chainQuery([]) }
         }
         throw new Error(`unexpected table ${table}`)
@@ -476,5 +576,6 @@ describe('channelActiveTradeParams', () => {
     assert.equal(resolved.plannerParsed.sl, null)
     assert.equal(resolved.plannerParsed.tp, null)
     assert.equal(resolved.mergedChannelParams, false)
+    assert.ok(deleted.includes('XAUUSD'))
   })
 })

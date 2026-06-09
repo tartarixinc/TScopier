@@ -32,7 +32,7 @@ import {
   parsedSignalHasExplicitStops,
   refreshChannelParamsFromSignal,
   resolveEntryChannelStops,
-  shouldPreferSignalStopsOverChannelMemory,
+  shouldPreferParsedStopsOnEntry,
   type ChannelActiveTradeParams,
 } from '../channelActiveTradeParams'
 import { buildTscopierCommentPrefix } from '../tradeComment'
@@ -520,7 +520,7 @@ export async function prepareEntryExecution(
     && entryChannelParams
     && (
       channelParamsRefreshedFromSignal
-      || !shouldPreferSignalStopsOverChannelMemory(parsed)
+      || !shouldPreferParsedStopsOnEntry(parsed)
     )
   ) {
     virtualPendings = applyChannelParamsToVirtualPendingList(
