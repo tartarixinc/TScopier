@@ -58,6 +58,7 @@ import {
   type LinkedAccountType,
 } from '../../lib/brokerFromServer'
 import { estimateMultiTradeOrderCount } from '../../lib/estimateMultiTradeOrders'
+import { resolvePreviewManualLot } from '../../lib/manualLotSizing'
 import { pipCalculator, pipValueForLots, type PipQuote } from '../../lib/pipCalculator'
 import { classifySymbol } from '../../lib/pipMath'
 import { pipsToPriceOffset, signalPipPrice } from '../../lib/signalPip'
@@ -937,7 +938,10 @@ export function AccountConfigPage() {
 
   const multiTradePreview = useMemo(() => {
     const ms = channelManualSettings
-    const manualLot = Number(ms.fixed_lot ?? 0.01) || 0.01
+    const manualLot = resolvePreviewManualLot({
+      manualSettings: ms,
+      accountBalance: configAccount?.last_balance,
+    })
     const legPct = Number(ms.multi_trade_leg_percent ?? 5) || 5
     const range = ms.range_trading
       ? {
@@ -950,11 +954,14 @@ export function AccountConfigPage() {
     return estimateMultiTradeOrderCount({ manualLot, legPercent: legPct, range })
   }, [
     channelManualSettings.fixed_lot,
+    channelManualSettings.risk_mode,
+    channelManualSettings.dynamic_balance_percent,
     channelManualSettings.multi_trade_leg_percent,
     channelManualSettings.range_trading,
     channelManualSettings.range_percent,
     channelManualSettings.range_step_pips,
     channelManualSettings.range_distance_pips,
+    configAccount?.last_balance,
   ])
 
   const multiTradePreviewTooltip = useMemo(() => {
