@@ -99,7 +99,6 @@ import {
 import { patchActiveRangePendingLegStops, syncRangePendingLadderOnBasketRefresh } from '../rangePendingLadderSync'
 import { loadExistingRangeStepIndices } from '../rangePendingFireGuard'
 import { channelMatchesBrokerSignal } from '../brokerChannelFilter'
-import { takeProfitForLegIndex } from '../manualPlanning/tpBucketDistribution'
 import {
   explicitMgmtSymbol,
   isReplyScopedManagement,
@@ -125,6 +124,7 @@ import {
   pendingLegsToCancelScopes,
   updateRangePendingLegsForManagement,
 } from '../managementPendingLegs'
+import { applyMgmtModifyToBasketGroups } from '../managementModifyBaskets'
 import { parsePipelineTimestamps, pipelineSummaryPayload, type PipelineTimestamps } from '../pipelineTimestamps'
 import {
   buildTscopierCommentPrefix,
@@ -524,14 +524,6 @@ export async function applyManagement(ctx: TradeExecutorContext, signal: SignalR
       if (!Number.isFinite(ticket) || ticket <= 0) return
       const api = ctx.apiFor(broker)
       if (!api) return
-      const basketKey = `${trade.broker_account_id}|${trade.signal_id}`
-      const brokerRows = rowsByBrokerSignal.get(basketKey) ?? [trade]
-      const legIndex = brokerRows.findIndex(r => r.id === trade.id)
-      const manual = (broker.manual_settings ?? {}) as ManualSettings
-      const multiBasket =
-        manual.trade_style === 'multi'
-        && brokerRows.length > 1
-        && parsedTpLevels.length >= 2
 
       try {
         if (action === 'close') {
@@ -574,28 +566,7 @@ export async function applyManagement(ctx: TradeExecutorContext, signal: SignalR
             await ctx.supabase.from('trades').update({ sl: entry }).eq('id', trade.id)
           }
         } else if (action === 'modify') {
-          const newSl = hasNewSl ? (parsed.sl as number) : sanitizeLevel(trade.sl)
-          let newTp = hasNewTp ? parsedTpLevels[0]! : sanitizeLevel(trade.tp)
-          if (hasNewTp && multiBasket && legIndex >= 0) {
-            const distributed = takeProfitForLegIndex({
-              legIndex,
-              openLegCount: brokerRows.length,
-              finalTps: parsedTpLevels,
-              tpLots: manual.tp_lots,
-            })
-            if (distributed > 0) newTp = distributed
-          }
-          await api.orderModify(uuid, {
-            ticket,
-            stoploss: newSl,
-            takeprofit: newTp,
-          })
-          const dbPatch: Record<string, number | null> = {}
-          if (hasNewSl) dbPatch.sl = parsed.sl as number
-          if (hasNewTp) dbPatch.tp = newTp
-          if (Object.keys(dbPatch).length > 0) {
-            await ctx.supabase.from('trades').update(dbPatch).eq('id', trade.id)
-          }
+          return
         }
         await ctx.supabase.from('trade_execution_logs').insert({
           user_id: signal.user_id,
@@ -632,6 +603,24 @@ export async function applyManagement(ctx: TradeExecutorContext, signal: SignalR
         })
       }
     }))
+
+    if (action === 'modify' && (hasNewSl || hasNewTp)) {
+      await applyMgmtModifyToBasketGroups({
+        supabase: ctx.supabase,
+        apiFor: broker => ctx.apiFor(broker as BrokerRow),
+        signal: {
+          id: signal.id,
+          user_id: signal.user_id,
+          channel_id: signal.channel_id,
+        },
+        parsed,
+        rowsByBrokerSignal,
+        brokersById: byBroker,
+        hasNewSl,
+        hasNewTp,
+        parsedTpLevels,
+      })
+    }
 
     if (
       (action === 'modify' || action === 'breakeven' || action === 'partial_breakeven')

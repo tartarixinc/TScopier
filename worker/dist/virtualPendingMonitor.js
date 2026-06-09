@@ -453,15 +453,16 @@ class VirtualPendingMonitor {
             // best-effort — fire with stops from the tick snapshot
         }
         // Channel memory may hold a newer SL than the leg row (e.g. symbol-less Adjust SL).
+        let channelIdForTrade = null;
         try {
             const { data: sigMeta } = await this.supabase
                 .from('signals')
                 .select('channel_id')
                 .eq('id', leg.signal_id)
                 .maybeSingle();
-            const channelId = sigMeta?.channel_id;
-            if (channelId) {
-                const channelParams = await (0, channelActiveTradeParams_1.loadChannelActiveTradeParamsForSymbol)(this.supabase, leg.user_id, channelId, leg.symbol);
+            channelIdForTrade = sigMeta?.channel_id ?? null;
+            if (channelIdForTrade) {
+                const channelParams = await (0, channelActiveTradeParams_1.loadChannelActiveTradeParamsForSymbol)(this.supabase, leg.user_id, channelIdForTrade, leg.symbol);
                 if (channelParams?.stoploss != null && channelParams.stoploss > 0) {
                     leg.stoploss = channelParams.stoploss;
                 }
@@ -530,6 +531,7 @@ class VirtualPendingMonitor {
             const { data: insTrade, error: insErr } = await this.supabase.from('trades').insert({
                 user_id: leg.user_id,
                 signal_id: leg.signal_id,
+                telegram_channel_id: channelIdForTrade,
                 broker_account_id: leg.broker_account_id,
                 metaapi_order_id: result.ticket != null ? String(result.ticket) : null,
                 symbol: leg.symbol,

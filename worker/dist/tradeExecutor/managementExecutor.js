@@ -10,11 +10,11 @@ const channelMessageFilters_1 = require("../channelMessageFilters");
 const signalPip_1 = require("../signalPip");
 const multiTradeMerge_1 = require("../multiTradeMerge");
 const rangePendingLadderSync_1 = require("../rangePendingLadderSync");
-const tpBucketDistribution_1 = require("../manualPlanning/tpBucketDistribution");
 const managementScope_1 = require("../managementScope");
 const managementBrokerClose_1 = require("../managementBrokerClose");
 const channelActiveTradeParams_1 = require("../channelActiveTradeParams");
 const managementPendingLegs_1 = require("../managementPendingLegs");
+const managementModifyBaskets_1 = require("../managementModifyBaskets");
 const orderModifyBenign_1 = require("../orderModifyBenign");
 const helpers_1 = require("./helpers");
 async function closeWithVerification(api, uuid, ticket, opts = {}) {
@@ -355,13 +355,6 @@ async function applyManagement(ctx, signal, parsed, brokers) {
         const api = ctx.apiFor(broker);
         if (!api)
             return;
-        const basketKey = `${trade.broker_account_id}|${trade.signal_id}`;
-        const brokerRows = rowsByBrokerSignal.get(basketKey) ?? [trade];
-        const legIndex = brokerRows.findIndex(r => r.id === trade.id);
-        const manual = (broker.manual_settings ?? {});
-        const multiBasket = manual.trade_style === 'multi'
-            && brokerRows.length > 1
-            && parsedTpLevels.length >= 2;
         try {
             if (action === 'close') {
                 const closeResult = await closeWithVerification(api, uuid, ticket, { maxAttempts: 2, slippageEscalation: 50 });
@@ -405,31 +398,7 @@ async function applyManagement(ctx, signal, parsed, brokers) {
                 }
             }
             else if (action === 'modify') {
-                const newSl = hasNewSl ? parsed.sl : sanitizeLevel(trade.sl);
-                let newTp = hasNewTp ? parsedTpLevels[0] : sanitizeLevel(trade.tp);
-                if (hasNewTp && multiBasket && legIndex >= 0) {
-                    const distributed = (0, tpBucketDistribution_1.takeProfitForLegIndex)({
-                        legIndex,
-                        openLegCount: brokerRows.length,
-                        finalTps: parsedTpLevels,
-                        tpLots: manual.tp_lots,
-                    });
-                    if (distributed > 0)
-                        newTp = distributed;
-                }
-                await api.orderModify(uuid, {
-                    ticket,
-                    stoploss: newSl,
-                    takeprofit: newTp,
-                });
-                const dbPatch = {};
-                if (hasNewSl)
-                    dbPatch.sl = parsed.sl;
-                if (hasNewTp)
-                    dbPatch.tp = newTp;
-                if (Object.keys(dbPatch).length > 0) {
-                    await ctx.supabase.from('trades').update(dbPatch).eq('id', trade.id);
-                }
+                return;
             }
             await ctx.supabase.from('trade_execution_logs').insert({
                 user_id: signal.user_id,
@@ -467,6 +436,23 @@ async function applyManagement(ctx, signal, parsed, brokers) {
             });
         }
     }));
+    if (action === 'modify' && (hasNewSl || hasNewTp)) {
+        await (0, managementModifyBaskets_1.applyMgmtModifyToBasketGroups)({
+            supabase: ctx.supabase,
+            apiFor: broker => ctx.apiFor(broker),
+            signal: {
+                id: signal.id,
+                user_id: signal.user_id,
+                channel_id: signal.channel_id,
+            },
+            parsed,
+            rowsByBrokerSignal,
+            brokersById: byBroker,
+            hasNewSl,
+            hasNewTp,
+            parsedTpLevels,
+        });
+    }
     if ((action === 'modify' || action === 'breakeven' || action === 'partial_breakeven')
         && pendingLegs.length
         && (hasNewSl || hasNewTp || action === 'breakeven' || action === 'partial_breakeven')) {

@@ -207,10 +207,16 @@ async function loadOpenTradesForManagement(supabase, args) {
     rows = filterTradesBySymbolFilter(rows, args.symbolFilter);
     return rows;
 }
-/** Channel-wide modify without explicit symbol: plausibility first, then newest symbol. */
+/**
+ * Channel-wide modify without explicit symbol: scope to the newest open symbol first,
+ * then plausibility within that basket. Avoids applying a gold SL to stale/other symbols.
+ */
 function resolveChannelModifyTargets(trades, parsed) {
-    const plausible = filterTradesByPlausibleMgmtLevels(trades, parsed);
+    const scoped = resolveNewestOpenSymbolTrades(trades);
+    if (!scoped.length)
+        return [];
+    const plausible = filterTradesByPlausibleMgmtLevels(scoped, parsed);
     if (plausible.length)
         return plausible;
-    return resolveNewestOpenSymbolTrades(trades);
+    return scoped;
 }
