@@ -7,9 +7,12 @@ import {
   mergeParsedWithChannelParams,
   parsedSignalHasExplicitStops,
   shouldMergeChannelParamsForEntry,
+  shouldOverlayChannelParamsOnBasketRefresh,
+  shouldPreferSignalStopsOverChannelMemory,
   shouldSeedChannelParamsFromEntrySignal,
   stripInvalidStopsForSide,
   symbolsForChannelParamsPersist,
+  upsertChannelActiveTradeParams,
 } from './channelActiveTradeParams'
 
 describe('channelActiveTradeParams', () => {
@@ -218,5 +221,115 @@ describe('channelActiveTradeParams', () => {
     assert.ok(syms.includes('GOLD'))
     assert.ok(syms.includes('XAUUSD'))
     assert.ok(syms.includes('XAUUSDm'))
+  })
+
+  test('June 9 full sell @ 4309 prefers signal stops over June 5 channel memory', () => {
+    const june9Entry = {
+      action: 'sell' as const,
+      symbol: 'XAUUSD',
+      entry_price: 4309,
+      entry_zone_low: null,
+      entry_zone_high: null,
+      sl: 4312,
+      tp: [4303, 4301, 4299],
+      lot_size: null,
+    }
+    const june5Channel = {
+      symbol: 'XAUUSD',
+      stoploss: 4315,
+      tpLevels: [4306, 4304, 4300],
+    }
+    assert.equal(shouldPreferSignalStopsOverChannelMemory(june9Entry), true)
+    assert.equal(isFullEntrySignalWithStops(june9Entry), true)
+    const gapFill = mergeParsedWithChannelParams(june9Entry, june5Channel)
+    assert.equal(gapFill.sl, 4312)
+    assert.deepEqual(gapFill.tp, [4303, 4301, 4299])
+    assert.equal(
+      shouldOverlayChannelParamsOnBasketRefresh(june9Entry, 'signal_merge_into_open_trade'),
+      false,
+    )
+  })
+
+  test('shouldOverlayChannelParamsOnBasketRefresh allows overlay for parameter follow-ups', () => {
+    const slTpOnly = {
+      action: 'sell' as const,
+      symbol: 'XAUUSD',
+      entry_price: null,
+      entry_zone_low: null,
+      entry_zone_high: null,
+      sl: 4312,
+      tp: [4303, 4301, 4299],
+      lot_size: null,
+    }
+    assert.equal(shouldPreferSignalStopsOverChannelMemory(slTpOnly), false)
+    assert.equal(
+      shouldOverlayChannelParamsOnBasketRefresh(slTpOnly, 'signal_merge_into_open_trade'),
+      true,
+    )
+    assert.equal(
+      shouldOverlayChannelParamsOnBasketRefresh(slTpOnly, 'merge_routed_modify_only'),
+      false,
+    )
+  })
+
+  test('upsertChannelActiveTradeParams replace overwrites stale June 5 row', async () => {
+    const upserted: Record<string, unknown>[] = []
+    const chain = {
+      eq: () => chain,
+      limit: () => Promise.resolve({
+        data: [{ symbol: 'XAUUSD', stoploss: 4315, tp_levels: [4306, 4304, 4300] }],
+        error: null,
+      }),
+    }
+    const mockSupabase = {
+      from: () => ({
+        select: () => chain,
+        upsert: (row: Record<string, unknown>) => {
+          upserted.push(row)
+          return Promise.resolve({ error: null })
+        },
+      }),
+    }
+    await upsertChannelActiveTradeParams(mockSupabase as never, {
+      userId: 'user-1',
+      channelId: 'channel-1',
+      symbols: ['XAUUSD'],
+      stoploss: 4312,
+      tpLevels: [4303, 4301, 4299],
+      replace: true,
+    })
+    assert.equal(upserted.length, 1)
+    assert.equal(upserted[0]!.stoploss, 4312)
+    assert.deepEqual(upserted[0]!.tp_levels, [4303, 4301, 4299])
+  })
+
+  test('upsertChannelActiveTradeParams without replace merges partial updates', async () => {
+    const upserted: Record<string, unknown>[] = []
+    const chain = {
+      eq: () => chain,
+      limit: () => Promise.resolve({
+        data: [{ symbol: 'XAUUSD', stoploss: 4315, tp_levels: [4306, 4304, 4300] }],
+        error: null,
+      }),
+    }
+    const mockSupabase = {
+      from: () => ({
+        select: () => chain,
+        upsert: (row: Record<string, unknown>) => {
+          upserted.push(row)
+          return Promise.resolve({ error: null })
+        },
+      }),
+    }
+    await upsertChannelActiveTradeParams(mockSupabase as never, {
+      userId: 'user-1',
+      channelId: 'channel-1',
+      symbols: ['XAUUSD'],
+      stoploss: 4312,
+      tpLevels: [],
+      replace: false,
+    })
+    assert.equal(upserted[0]!.stoploss, 4312)
+    assert.deepEqual(upserted[0]!.tp_levels, [4306, 4304, 4300])
   })
 })

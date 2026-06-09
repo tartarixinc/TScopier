@@ -119,6 +119,8 @@ import {
   reapplyChannelParamsToPendingLegs,
   parsedSignalHasExplicitStops,
   shouldMergeChannelParamsForEntry,
+  shouldOverlayChannelParamsOnBasketRefresh,
+  shouldPreferSignalStopsOverChannelMemory,
   stripInvalidStopsForSide,
   symbolsForChannelParamsPersist,
   upsertChannelActiveTradeParams,
@@ -237,10 +239,34 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
         signal.channel_id,
         symbol,
       )
-      if (logAction === 'signal_merge_into_open_trade' && channelParamsForLadder) {
+      if (
+        channelParamsForLadder
+        && shouldOverlayChannelParamsOnBasketRefresh(plannerParsed, logAction)
+      ) {
         plannerParsed = mergeParsedWithChannelParams(plannerParsed, channelParamsForLadder, {
           overlay: true,
         })
+      } else if (
+        shouldPreferSignalStopsOverChannelMemory(plannerParsed)
+        && parsedSignalHasExplicitStops(plannerParsed)
+      ) {
+        const refreshTpLevels = (plannerParsed.tp ?? []).filter(
+          (t): t is number => typeof t === 'number' && Number.isFinite(t) && t > 0,
+        )
+        await upsertChannelActiveTradeParams(ctx.supabase, {
+          userId: signal.user_id,
+          channelId: signal.channel_id,
+          symbols: [symbol],
+          stoploss: plannerParsed.sl,
+          tpLevels: refreshTpLevels,
+          replace: true,
+        })
+        channelParamsForLadder = await loadChannelActiveTradeParamsForSymbol(
+          ctx.supabase,
+          signal.user_id,
+          signal.channel_id,
+          symbol,
+        )
       }
     }
     const effectiveParsed: ParsedSignal = {
@@ -314,9 +340,12 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
       (t): t is number => typeof t === 'number' && Number.isFinite(t) && t > 0,
     )
     if (
-      logAction === 'merge_routed_modify_only'
-      && signal.channel_id
+      signal.channel_id
       && (typeof effectiveParsed.sl === 'number' && effectiveParsed.sl > 0 || refreshTpLevels.length > 0)
+      && (
+        logAction === 'merge_routed_modify_only'
+        || shouldPreferSignalStopsOverChannelMemory(plannerParsed)
+      )
     ) {
       await upsertChannelActiveTradeParams(ctx.supabase, {
         userId: signal.user_id,
@@ -324,6 +353,7 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
         symbols: [symbol],
         stoploss: effectiveParsed.sl,
         tpLevels: refreshTpLevels,
+        replace: shouldPreferSignalStopsOverChannelMemory(plannerParsed),
       })
       channelParamsForLadder = await loadChannelActiveTradeParamsForSymbol(
         ctx.supabase,

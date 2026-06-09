@@ -63,10 +63,24 @@ async function applyBasketSlTpRefresh(ctx, args) {
     let channelParamsForLadder = null;
     if (signal.channel_id) {
         channelParamsForLadder = await (0, channelActiveTradeParams_1.loadChannelActiveTradeParamsForSymbol)(ctx.supabase, signal.user_id, signal.channel_id, symbol);
-        if (logAction === 'signal_merge_into_open_trade' && channelParamsForLadder) {
+        if (channelParamsForLadder
+            && (0, channelActiveTradeParams_1.shouldOverlayChannelParamsOnBasketRefresh)(plannerParsed, logAction)) {
             plannerParsed = (0, channelActiveTradeParams_1.mergeParsedWithChannelParams)(plannerParsed, channelParamsForLadder, {
                 overlay: true,
             });
+        }
+        else if ((0, channelActiveTradeParams_1.shouldPreferSignalStopsOverChannelMemory)(plannerParsed)
+            && (0, channelActiveTradeParams_1.parsedSignalHasExplicitStops)(plannerParsed)) {
+            const refreshTpLevels = (plannerParsed.tp ?? []).filter((t) => typeof t === 'number' && Number.isFinite(t) && t > 0);
+            await (0, channelActiveTradeParams_1.upsertChannelActiveTradeParams)(ctx.supabase, {
+                userId: signal.user_id,
+                channelId: signal.channel_id,
+                symbols: [symbol],
+                stoploss: plannerParsed.sl,
+                tpLevels: refreshTpLevels,
+                replace: true,
+            });
+            channelParamsForLadder = await (0, channelActiveTradeParams_1.loadChannelActiveTradeParamsForSymbol)(ctx.supabase, signal.user_id, signal.channel_id, symbol);
         }
     }
     const effectiveParsed = {
@@ -136,15 +150,17 @@ async function applyBasketSlTpRefresh(ctx, args) {
         };
     }
     const refreshTpLevels = (effectiveParsed.tp ?? []).filter((t) => typeof t === 'number' && Number.isFinite(t) && t > 0);
-    if (logAction === 'merge_routed_modify_only'
-        && signal.channel_id
-        && (typeof effectiveParsed.sl === 'number' && effectiveParsed.sl > 0 || refreshTpLevels.length > 0)) {
+    if (signal.channel_id
+        && (typeof effectiveParsed.sl === 'number' && effectiveParsed.sl > 0 || refreshTpLevels.length > 0)
+        && (logAction === 'merge_routed_modify_only'
+            || (0, channelActiveTradeParams_1.shouldPreferSignalStopsOverChannelMemory)(plannerParsed))) {
         await (0, channelActiveTradeParams_1.upsertChannelActiveTradeParams)(ctx.supabase, {
             userId: signal.user_id,
             channelId: signal.channel_id,
             symbols: [symbol],
             stoploss: effectiveParsed.sl,
             tpLevels: refreshTpLevels,
+            replace: (0, channelActiveTradeParams_1.shouldPreferSignalStopsOverChannelMemory)(plannerParsed),
         });
         channelParamsForLadder = await (0, channelActiveTradeParams_1.loadChannelActiveTradeParamsForSymbol)(ctx.supabase, signal.user_id, signal.channel_id, symbol);
     }

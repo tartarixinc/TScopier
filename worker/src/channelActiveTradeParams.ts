@@ -78,9 +78,11 @@ export async function upsertChannelActiveTradeParams(
     symbols: string[]
     stoploss?: number | null
     tpLevels?: number[]
+    /** When true, write supplied SL/TP directly — do not fall back to existing row values. */
+    replace?: boolean
   },
 ): Promise<void> {
-  const { userId, channelId, symbols, stoploss, tpLevels } = args
+  const { userId, channelId, symbols, stoploss, tpLevels, replace = false } = args
   const sl = stoploss != null ? positiveLevel(stoploss) : null
   const tps = tpLevels != null ? normalizeTpLevels(tpLevels) : null
   if (sl == null && (tps == null || tps.length === 0)) return
@@ -92,12 +94,18 @@ export async function upsertChannelActiveTradeParams(
     if (!key) continue
 
     const existing = await loadChannelActiveTradeParamsForSymbol(supabase, userId, channelId, key)
+    const hasExplicitSl = sl != null
+    const hasExplicitTps = tps != null && tps.length > 0
     const row = {
       user_id: userId,
       channel_id: channelId,
       symbol: existing?.symbol ?? key.toUpperCase(),
-      stoploss: sl ?? existing?.stoploss ?? null,
-      tp_levels: tps != null && tps.length > 0 ? tps : (existing?.tpLevels ?? []),
+      stoploss: replace && hasExplicitSl
+        ? sl
+        : (sl ?? existing?.stoploss ?? null),
+      tp_levels: replace && hasExplicitTps
+        ? tps!
+        : (tps != null && tps.length > 0 ? tps : (existing?.tpLevels ?? [])),
       updated_at: now,
     }
     const { error } = await supabase
@@ -125,6 +133,56 @@ export function isFullEntrySignalWithStops(parsed: ParsedSignal): boolean {
   if (act !== 'buy' && act !== 'sell') return false
   if (!parsedHasExplicitEntryAnchor(parsed)) return false
   return parsedSignalHasExplicitStops(parsed)
+}
+
+/**
+ * Full entries with explicit SL/TP must win over stale `channel_active_trade_params`.
+ * Use this before overlaying or gap-filling from channel memory on entry paths.
+ */
+export function shouldPreferSignalStopsOverChannelMemory(parsed: ParsedSignal): boolean {
+  return isFullEntrySignalWithStops(parsed)
+}
+
+/**
+ * True when basket merge / refresh may overlay channel memory onto parsed stops.
+ */
+export function shouldOverlayChannelParamsOnBasketRefresh(
+  parsed: ParsedSignal,
+  logAction: 'merge_routed_modify_only' | 'signal_merge_into_open_trade',
+): boolean {
+  if (logAction !== 'signal_merge_into_open_trade') return false
+  return !shouldPreferSignalStopsOverChannelMemory(parsed)
+}
+
+/** Upsert channel memory from signal stops (no overlay). For live-entry fast path. */
+export async function refreshChannelParamsFromSignal(
+  supabase: SupabaseClient,
+  args: {
+    userId: string
+    channelId: string
+    symbol: string
+    plannerParsed: ParsedSignal
+    replace?: boolean
+  },
+): Promise<ChannelActiveTradeParams | null> {
+  if (!parsedSignalHasExplicitStops(args.plannerParsed)) return null
+  const refreshTpLevels = (args.plannerParsed.tp ?? []).filter(
+    (t): t is number => typeof t === 'number' && Number.isFinite(t) && t > 0,
+  )
+  await upsertChannelActiveTradeParams(supabase, {
+    userId: args.userId,
+    channelId: args.channelId,
+    symbols: [args.symbol],
+    stoploss: args.plannerParsed.sl,
+    tpLevels: refreshTpLevels,
+    replace: args.replace ?? shouldPreferSignalStopsOverChannelMemory(args.plannerParsed),
+  })
+  return loadChannelActiveTradeParamsForSymbol(
+    supabase,
+    args.userId,
+    args.channelId,
+    args.symbol,
+  )
 }
 
 /**
@@ -225,8 +283,8 @@ export async function resolveEntryChannelStops(
 
   let plannerParsed = args.plannerParsed
   let mergedChannelParams = false
-  const isFullEntry = isFullEntrySignalWithStops(plannerParsed)
-  const applyOverlay = hasActiveBasket && channelParams != null && !isFullEntry
+  const preferSignalStops = shouldPreferSignalStopsOverChannelMemory(plannerParsed)
+  const applyOverlay = hasActiveBasket && channelParams != null && !preferSignalStops
 
   if (applyOverlay) {
     console.log(
@@ -236,7 +294,7 @@ export async function resolveEntryChannelStops(
     )
     plannerParsed = mergeParsedWithChannelParams(plannerParsed, channelParams, { overlay: true })
     mergedChannelParams = true
-  } else if (hasActiveBasket && channelParams && isFullEntry) {
+  } else if (hasActiveBasket && channelParams && preferSignalStops) {
     console.log(
       `[channelActiveTradeParams] overlay skipped full entry signal=${args.signalId ?? 'n/a'}`
       + ` broker=${args.brokerAccountId} channel=${args.channelId}`
@@ -254,20 +312,19 @@ export async function resolveEntryChannelStops(
       symbols: [args.symbol],
       stoploss: plannerParsed.sl,
       tpLevels: refreshTpLevels,
+      replace: preferSignalStops,
     })
   } else if (channelParams && !applyOverlay) {
     plannerParsed = mergeParsedWithChannelParams(plannerParsed, channelParams)
     mergedChannelParams = true
   }
 
-  const refreshedParams = mergedChannelParams
-    ? channelParams
-    : await loadChannelActiveTradeParamsForSymbol(
-        supabase,
-        args.userId,
-        args.channelId,
-        args.symbol,
-      )
+  const refreshedParams = await loadChannelActiveTradeParamsForSymbol(
+    supabase,
+    args.userId,
+    args.channelId,
+    args.symbol,
+  )
 
   return {
     plannerParsed,

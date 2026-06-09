@@ -30,7 +30,9 @@ import { parsedHasReEnterIntent } from '../signalPriceInference'
 import {
   applyChannelParamsToVirtualPendingList,
   parsedSignalHasExplicitStops,
+  refreshChannelParamsFromSignal,
   resolveEntryChannelStops,
+  shouldPreferSignalStopsOverChannelMemory,
   type ChannelActiveTradeParams,
 } from '../channelActiveTradeParams'
 import { buildTscopierCommentPrefix } from '../tradeComment'
@@ -371,6 +373,7 @@ export async function prepareEntryExecution(
   // SL & TP / pending expiry / reverse all apply consistently.
   let mergedChannelParams = false
   let entryChannelParams: ChannelActiveTradeParams | null = null
+  let channelParamsRefreshedFromSignal = false
   let plan: PlannerResult
   if (isManual) {
     const rpe = resolvedParsedEntryPrice(parsed)
@@ -388,18 +391,29 @@ export async function prepareEntryExecution(
       partial_close_fraction: parsed.partial_close_fraction,
       raw_instruction: parsed.raw_instruction,
     }
-    if (!liveEntryFast && signal.channel_id) {
-      const resolved = await resolveEntryChannelStops(ctx.supabase, {
-        userId: signal.user_id,
-        channelId: signal.channel_id,
-        brokerAccountId: broker.id,
-        symbol,
-        plannerParsed,
-        signalId: signal.id,
-      })
-      plannerParsed = resolved.plannerParsed
-      mergedChannelParams = resolved.mergedChannelParams
-      entryChannelParams = resolved.channelParams
+    if (signal.channel_id) {
+      if (!liveEntryFast) {
+        const resolved = await resolveEntryChannelStops(ctx.supabase, {
+          userId: signal.user_id,
+          channelId: signal.channel_id,
+          brokerAccountId: broker.id,
+          symbol,
+          plannerParsed,
+          signalId: signal.id,
+        })
+        plannerParsed = resolved.plannerParsed
+        mergedChannelParams = resolved.mergedChannelParams
+        entryChannelParams = resolved.channelParams
+        channelParamsRefreshedFromSignal = parsedSignalHasExplicitStops(plannerParsed)
+      } else if (parsedSignalHasExplicitStops(plannerParsed)) {
+        entryChannelParams = await refreshChannelParamsFromSignal(ctx.supabase, {
+          userId: signal.user_id,
+          channelId: signal.channel_id,
+          symbol,
+          plannerParsed,
+        })
+        channelParamsRefreshedFromSignal = entryChannelParams != null
+      }
     }
     plan = planManualOrders({
       parsed: plannerParsed,
@@ -500,7 +514,15 @@ export async function prepareEntryExecution(
   }
   let virtualPendings = (plan.virtualPendings ?? []).slice(0, 500)
   const totalPlannedLegCount = capped.length + virtualPendings.length
-  if (!liveEntryFast && virtualPendings.length > 0 && signal.channel_id && entryChannelParams) {
+  if (
+    virtualPendings.length > 0
+    && signal.channel_id
+    && entryChannelParams
+    && (
+      channelParamsRefreshedFromSignal
+      || !shouldPreferSignalStopsOverChannelMemory(parsed)
+    )
+  ) {
     virtualPendings = applyChannelParamsToVirtualPendingList(
       virtualPendings,
       entryChannelParams,

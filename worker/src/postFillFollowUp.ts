@@ -9,6 +9,7 @@ import {
   loadChannelActiveTradeParamsForSymbol,
   mergeParsedWithChannelParams,
   shouldMergeChannelParamsForEntry,
+  shouldPreferSignalStopsOverChannelMemory,
   stripInvalidStopsForSide,
 } from './channelActiveTradeParams'
 import { findActiveNewsBlackout } from './newsTrading/blackout'
@@ -116,7 +117,11 @@ async function applyPipAndChannelStops(args: ApplyPostFillFollowUpArgs): Promise
     if (!Number.isFinite(leg.ticket) || leg.ticket <= 0) continue
 
     let plannerParsed: ParsedSignal = { ...parsed }
-    if (signal.channel_id && shouldMergeChannelParamsForEntry(plannerParsed)) {
+    if (
+      signal.channel_id
+      && shouldMergeChannelParamsForEntry(plannerParsed)
+      && !shouldPreferSignalStopsOverChannelMemory(plannerParsed)
+    ) {
       const channelParams = await loadChannelActiveTradeParamsForSymbol(
         args.supabase,
         signal.user_id,

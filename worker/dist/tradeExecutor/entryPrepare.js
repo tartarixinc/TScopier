@@ -259,6 +259,7 @@ async function prepareEntryExecution(ctx, args) {
     // SL & TP / pending expiry / reverse all apply consistently.
     let mergedChannelParams = false;
     let entryChannelParams = null;
+    let channelParamsRefreshedFromSignal = false;
     let plan;
     if (isManual) {
         const rpe = (0, manualPlanner_1.resolvedParsedEntryPrice)(parsed);
@@ -276,18 +277,30 @@ async function prepareEntryExecution(ctx, args) {
             partial_close_fraction: parsed.partial_close_fraction,
             raw_instruction: parsed.raw_instruction,
         };
-        if (!liveEntryFast && signal.channel_id) {
-            const resolved = await (0, channelActiveTradeParams_1.resolveEntryChannelStops)(ctx.supabase, {
-                userId: signal.user_id,
-                channelId: signal.channel_id,
-                brokerAccountId: broker.id,
-                symbol,
-                plannerParsed,
-                signalId: signal.id,
-            });
-            plannerParsed = resolved.plannerParsed;
-            mergedChannelParams = resolved.mergedChannelParams;
-            entryChannelParams = resolved.channelParams;
+        if (signal.channel_id) {
+            if (!liveEntryFast) {
+                const resolved = await (0, channelActiveTradeParams_1.resolveEntryChannelStops)(ctx.supabase, {
+                    userId: signal.user_id,
+                    channelId: signal.channel_id,
+                    brokerAccountId: broker.id,
+                    symbol,
+                    plannerParsed,
+                    signalId: signal.id,
+                });
+                plannerParsed = resolved.plannerParsed;
+                mergedChannelParams = resolved.mergedChannelParams;
+                entryChannelParams = resolved.channelParams;
+                channelParamsRefreshedFromSignal = (0, channelActiveTradeParams_1.parsedSignalHasExplicitStops)(plannerParsed);
+            }
+            else if ((0, channelActiveTradeParams_1.parsedSignalHasExplicitStops)(plannerParsed)) {
+                entryChannelParams = await (0, channelActiveTradeParams_1.refreshChannelParamsFromSignal)(ctx.supabase, {
+                    userId: signal.user_id,
+                    channelId: signal.channel_id,
+                    symbol,
+                    plannerParsed,
+                });
+                channelParamsRefreshedFromSignal = entryChannelParams != null;
+            }
         }
         plan = (0, manualPlanner_1.planManualOrders)({
             parsed: plannerParsed,
@@ -380,7 +393,11 @@ async function prepareEntryExecution(ctx, args) {
     }
     let virtualPendings = (plan.virtualPendings ?? []).slice(0, 500);
     const totalPlannedLegCount = capped.length + virtualPendings.length;
-    if (!liveEntryFast && virtualPendings.length > 0 && signal.channel_id && entryChannelParams) {
+    if (virtualPendings.length > 0
+        && signal.channel_id
+        && entryChannelParams
+        && (channelParamsRefreshedFromSignal
+            || !(0, channelActiveTradeParams_1.shouldPreferSignalStopsOverChannelMemory)(parsed))) {
         virtualPendings = (0, channelActiveTradeParams_1.applyChannelParamsToVirtualPendingList)(virtualPendings, entryChannelParams, capped.length, manual.tp_lots, totalPlannedLegCount);
     }
     const already = await ctx.manualDispatchAlreadyMaterialized(signal.id, broker.id);

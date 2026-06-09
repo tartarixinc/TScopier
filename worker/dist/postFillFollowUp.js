@@ -30,7 +30,9 @@ async function applyPipAndChannelStops(args) {
         if (!Number.isFinite(leg.ticket) || leg.ticket <= 0)
             continue;
         let plannerParsed = { ...parsed };
-        if (signal.channel_id && (0, channelActiveTradeParams_1.shouldMergeChannelParamsForEntry)(plannerParsed)) {
+        if (signal.channel_id
+            && (0, channelActiveTradeParams_1.shouldMergeChannelParamsForEntry)(plannerParsed)
+            && !(0, channelActiveTradeParams_1.shouldPreferSignalStopsOverChannelMemory)(plannerParsed)) {
             const channelParams = await (0, channelActiveTradeParams_1.loadChannelActiveTradeParamsForSymbol)(args.supabase, signal.user_id, signal.channel_id, symbol);
             if (channelParams) {
                 plannerParsed = (0, channelActiveTradeParams_1.mergeParsedWithChannelParams)(plannerParsed, channelParams);

@@ -39,6 +39,19 @@ test('shouldRouteAsBasketParameterRefresh: priced entry + SL/TP opens trade (not
   )
 })
 
+test('shouldRouteAsBasketParameterRefresh: repeat entry @ 4309 opens trade (not refresh)', () => {
+  assert.equal(
+    shouldRouteAsBasketParameterRefresh({
+      action: 'sell',
+      symbol: 'XAUUSD',
+      entry_price: 4309,
+      sl: 4312,
+      tp: [4303, 4301, 4299],
+    }),
+    false,
+  )
+})
+
 test('shouldRouteAsBasketParameterRefresh: re-enter bypasses parameter refresh', () => {
   assert.equal(
     shouldRouteAsBasketParameterRefresh({
