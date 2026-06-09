@@ -3,6 +3,9 @@ import { channelWorkerFr } from '../channelWorker/fr'
 import { tradeNotificationsFr } from '../tradeNotifications/fr'
 import { contactSupportFr } from '../contactSupport/fr'
 import { riskDisclaimerFr } from '../riskDisclaimer/fr'
+import { termsOfServiceFr } from '../legal/termsFr'
+import { privacyPolicyFr } from '../legal/privacyFr'
+import { cookiePolicyFr } from '../legal/cookiePolicyFr'
 import { landingFr } from './landing/fr'
 import type { Translations } from './types'
 import { configureModalFr } from './configureModal/fr'
@@ -13,6 +16,9 @@ export const fr: Translations = {
   tradeNotifications: tradeNotificationsFr,
   contactSupportPage: contactSupportFr,
   riskDisclaimerPage: riskDisclaimerFr,
+  termsOfServicePage: termsOfServiceFr,
+  privacyPolicyPage: privacyPolicyFr,
+  cookiePolicyPage: cookiePolicyFr,
   nav: {
     sections: {
       general: 'GÉNÉRAL',
@@ -264,6 +270,7 @@ export const fr: Translations = {
     results: 'résultats',
     cookieConsent: {
       message: 'Nous utilisons des cookies pour améliorer votre expérience.',
+      policyLink: 'Politique de cookies',
       accept: 'Accepter les cookies',
       dismiss: 'Fermer',
     },
@@ -1092,6 +1099,18 @@ export const fr: Translations = {
     riskDisclaimer: {
       title: 'Avertissement sur les risques',
       description: 'Risques importants de la copie de signaux et de l’exécution automatique.',
+    },
+    termsOfService: {
+      title: 'Conditions d’utilisation',
+      description: 'Conditions régissant votre utilisation de TSCopier.',
+    },
+    privacyPolicy: {
+      title: 'Politique de confidentialité',
+      description: 'Comment nous collectons, utilisons et protégeons vos informations.',
+    },
+    cookiePolicy: {
+      title: 'Politique de cookies',
+      description: 'Comment TSCopier utilise les cookies et technologies similaires.',
     },
     featureRequest: {
       title: 'Demande de fonctionnalité',

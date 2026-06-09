@@ -2,6 +2,7 @@ import type { AuthTranslations } from '../auth/types'
 import type { ChannelWorkerTranslations } from '../channelWorker/types'
 import type { ContactSupportPageTranslations } from '../contactSupport/types'
 import type { RiskDisclaimerPageTranslations } from '../riskDisclaimer/types'
+import type { LegalDocumentPageTranslations } from '../legal/types'
 import type { TradeNotificationsTranslations } from '../tradeNotifications/types'
 import type { ConfigureModalTranslations } from './configureModal/types'
 import type { LandingTranslations } from './landing/types'
@@ -111,6 +112,7 @@ export interface CommonTranslations {
   results: string
   cookieConsent: {
     message: string
+    policyLink: string
     accept: string
     dismiss: string
   }
@@ -1055,6 +1057,9 @@ export interface Translations {
   economicCalendar: EconomicCalendarTranslations
   contactSupportPage: ContactSupportPageTranslations
   riskDisclaimerPage: RiskDisclaimerPageTranslations
+  termsOfServicePage: LegalDocumentPageTranslations
+  privacyPolicyPage: LegalDocumentPageTranslations
+  cookiePolicyPage: LegalDocumentPageTranslations
   performance: PerformanceTranslations
   settings: SettingsTranslations
   affiliate: AffiliateTranslations
@@ -1062,6 +1067,9 @@ export interface Translations {
     accountConfiguration: PageMeta
     contactSupport: PageMeta
     riskDisclaimer: PageMeta
+    termsOfService: PageMeta
+    privacyPolicy: PageMeta
+    cookiePolicy: PageMeta
     featureRequest: PageMeta
     partnerWithUs: PageMeta
     affiliateProgram: PageMeta

@@ -70,7 +70,12 @@ export interface AuthTranslations {
     passwordTooShort: string
     passwordMismatch: string
     submit: string
-    terms: string
+    terms: {
+      prefix: string
+      termsOfService: string
+      conjunction: string
+      privacyPolicy: string
+    }
   }
   verify: {
     heading: string

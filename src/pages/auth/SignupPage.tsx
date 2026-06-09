@@ -17,6 +17,7 @@ import {
   referralCodeLooksValid,
 } from '../../lib/referralCapture'
 import { isEmailVerified } from '../../lib/emailVerification'
+import { marketingUrl } from '../../lib/site'
 
 function GoogleIcon({ className }: { className?: string }) {
   return (
@@ -279,7 +280,24 @@ export function SignupPage() {
       </form>
 
       <p className="mt-4 text-center text-xs leading-relaxed text-neutral-400 dark:text-neutral-500">
-        {signupT.terms}
+        {signupT.terms.prefix}{' '}
+        <a
+          href={marketingUrl('/terms')}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-teal-600 hover:underline dark:text-teal-400"
+        >
+          {signupT.terms.termsOfService}
+        </a>
+        {signupT.terms.conjunction}
+        <a
+          href={marketingUrl('/privacy')}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-teal-600 hover:underline dark:text-teal-400"
+        >
+          {signupT.terms.privacyPolicy}
+        </a>
       </p>
     </div>
   )

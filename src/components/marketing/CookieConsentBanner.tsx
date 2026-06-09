@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useLocale } from '../../context/LocaleContext'
+import { marketingUrl } from '../../lib/site'
 import {
   markTrackingConsentAccepted,
   markTrackingConsentDismissed,
@@ -16,7 +17,17 @@ export function CookieConsentBanner() {
   return (
     <div className="fixed inset-x-0 bottom-0 z-50 px-3 pb-3 sm:px-6 sm:pb-6">
       <div className="mx-auto max-w-5xl rounded-xl border border-neutral-200 bg-white/95 p-4 shadow-lg backdrop-blur dark:border-neutral-700 dark:bg-neutral-900/95">
-        <p key={locale} className="text-sm text-neutral-700 dark:text-neutral-200">{c.message}</p>
+        <p key={locale} className="text-sm text-neutral-700 dark:text-neutral-200">
+          {c.message}{' '}
+          <a
+            href={marketingUrl('/cookie-policy')}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium text-teal-600 hover:underline dark:text-teal-400"
+          >
+            {c.policyLink}
+          </a>
+        </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <button
             type="button"

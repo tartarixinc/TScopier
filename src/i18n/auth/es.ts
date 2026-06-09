@@ -75,8 +75,12 @@ export const authEs: AuthTranslations = {
     passwordTooShort: 'La contraseña debe tener al menos 6 caracteres',
     passwordMismatch: 'Las contraseñas no coinciden',
     submit: 'Crear cuenta',
-    terms:
-      'Al crear una cuenta, aceptas usar TScopier de forma responsable y cumplir los términos de tu broker.',
+    terms: {
+      prefix: 'Al registrarte, aceptas nuestros',
+      termsOfService: 'Términos de servicio',
+      conjunction: ' y la ',
+      privacyPolicy: 'Política de privacidad',
+    },
   },
   verify: {
     heading: 'Revisa tu correo',

@@ -402,6 +402,9 @@ export interface LandingTranslations {
       status: string
       telegram: string
       riskDisclaimer: string
+      termsOfService: string
+      privacyPolicy: string
+      cookiePolicy: string
       signIn: string
       signUp: string
       openApp: string
