@@ -16,7 +16,6 @@ export function getChannelFilterCategories(cm: ConfigureModalTranslations) {
       'close_all',
       'close_worse_entries',
       'delete_pendings',
-      'reverse',
     ] as const
   ).map(key => ({
     key: key as ChannelFilterKey,

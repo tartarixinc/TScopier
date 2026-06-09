@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import clsx from 'clsx'
-import { ArrowDownRight, ArrowUpRight, CircleCheck, Layers, Loader2, Pencil, X } from 'lucide-react'
+import { ArrowUpRight, Check, CircleCheck, Layers, Loader2, Pencil, X } from 'lucide-react'
 import { useNotifications } from '../../context/NotificationsContext'
 import { useLocale, useT } from '../../context/LocaleContext'
 import { formatRelative } from '../../lib/formatRelative'
@@ -13,19 +13,21 @@ interface NotificationDropdownProps {
   onClose: () => void
 }
 
+const HEADLINE_ICON_CLASS = 'text-neutral-700 bg-neutral-100 dark:text-neutral-300 dark:bg-neutral-800'
+
 function headlineMeta(headline: TradeNotificationHeadline): {
   icon: typeof CircleCheck
   className: string
 } {
   switch (headline) {
     case 'execution_completed':
-      return { icon: ArrowUpRight, className: 'text-teal-600 bg-teal-50 dark:text-teal-400 dark:bg-teal-950/50' }
+      return { icon: ArrowUpRight, className: HEADLINE_ICON_CLASS }
     case 'modification_completed':
-      return { icon: Pencil, className: 'text-amber-700 bg-amber-50 dark:text-amber-300 dark:bg-amber-950/40' }
+      return { icon: Pencil, className: HEADLINE_ICON_CLASS }
     case 'layering_completed':
-      return { icon: Layers, className: 'text-violet-700 bg-violet-50 dark:text-violet-300 dark:bg-violet-950/40' }
+      return { icon: Layers, className: HEADLINE_ICON_CLASS }
     case 'trades_closed':
-      return { icon: ArrowDownRight, className: 'text-neutral-700 bg-neutral-100 dark:text-neutral-300 dark:bg-neutral-800' }
+      return { icon: Check, className: HEADLINE_ICON_CLASS }
   }
 }
 
