@@ -221,6 +221,8 @@ export interface ProfitTargetRule {
 }
 
 export interface MaxRiskRule {
+  id: string
+  enabled: boolean
   period: CopyLimitPeriod
   value_type: CopyLimitValueType
   value: number
@@ -230,7 +232,7 @@ export interface CopyLimitsConfig {
   profit_targets_enabled: boolean
   profit_targets: ProfitTargetRule[]
   max_risk_enabled: boolean
-  max_risk?: MaxRiskRule
+  max_risks: MaxRiskRule[]
   timezone_mode: CopyLimitTimezoneMode
   timezone?: string
 }

@@ -252,6 +252,8 @@ export interface ConfigureModalTranslations {
     maxRiskIntro: string
     maxRiskToggle: string
     addTarget: string
+    addRiskRule: string
+    riskValue: string
     periodDaily: string
     periodWeekly: string
     periodMonthly: string

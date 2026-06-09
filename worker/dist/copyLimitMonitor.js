@@ -105,7 +105,7 @@ class CopyLimitMonitor {
                 return pnlByPeriod.get(key);
             };
             const primaryPeriod = config.profit_targets.find(t => t.enabled)?.period
-                ?? config.max_risk?.period
+                ?? config.max_risks.find(r => r.enabled)?.period
                 ?? 'daily';
             const primaryPnl = await loadPnl(primaryPeriod);
             state = (0, copyLimitEvaluate_1.updatePeriodSnapshots)({
@@ -118,15 +118,18 @@ class CopyLimitMonitor {
             const breaches = [];
             for (const period of new Set([
                 ...config.profit_targets.filter(t => t.enabled).map(t => t.period),
-                ...(config.max_risk_enabled && config.max_risk ? [config.max_risk.period] : []),
+                ...(config.max_risk_enabled
+                    ? config.max_risks.filter(r => r.enabled).map(r => r.period)
+                    : []),
             ])) {
                 const pnl = await loadPnl(period);
                 const peak = Math.max((0, copyLimitEvaluate_1.peakChannelPnlForPeriod)(state, period, timeZone), pnl.totalPnl);
+                const periodMaxRisks = config.max_risks.filter(r => r.enabled && r.period === period);
                 const subset = {
                     ...config,
                     profit_targets: config.profit_targets.filter(t => t.enabled && t.period === period),
-                    max_risk_enabled: config.max_risk_enabled && config.max_risk?.period === period,
-                    max_risk: config.max_risk?.period === period ? config.max_risk : undefined,
+                    max_risk_enabled: config.max_risk_enabled && periodMaxRisks.length > 0,
+                    max_risks: periodMaxRisks,
                 };
                 breaches.push(...(0, copyLimitEvaluate_1.evaluateCopyLimitBreaches)({
                     config: subset,

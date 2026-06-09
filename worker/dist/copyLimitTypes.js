@@ -8,6 +8,7 @@ exports.DEFAULT_COPY_LIMITS = {
     profit_targets_enabled: false,
     profit_targets: [],
     max_risk_enabled: false,
+    max_risks: [],
     timezone_mode: 'profile',
 };
 exports.DEFAULT_COPY_LIMIT_STATE = {
@@ -37,28 +38,38 @@ function normalizeCopyLimits(raw) {
         })
             .filter(r => r.value > 0)
         : [];
-    let maxRisk;
-    if (j.max_risk && typeof j.max_risk === 'object') {
-        const mr = j.max_risk;
-        const value = Number(mr.value);
-        const period = String(mr.period ?? 'daily');
-        const valueType = String(mr.value_type ?? 'amount');
-        if (Number.isFinite(value) && value > 0) {
-            maxRisk = {
-                period: ['daily', 'weekly', 'monthly', 'overall'].includes(period)
-                    ? period
-                    : 'daily',
-                value_type: valueType === 'percent' ? 'percent' : 'amount',
-                value,
-            };
+    const parseMaxRiskRow = (row, idx) => {
+        const r = row && typeof row === 'object' ? row : {};
+        const value = Number(r.value);
+        const period = String(r.period ?? 'daily');
+        const valueType = String(r.value_type ?? 'amount');
+        const validPeriod = ['daily', 'weekly', 'monthly', 'overall'].includes(period)
+            ? period
+            : 'daily';
+        const validType = valueType === 'percent' ? 'percent' : 'amount';
+        return {
+            id: String(r.id ?? `mr-${idx}`),
+            enabled: r.enabled !== false,
+            period: validPeriod,
+            value_type: validType,
+            value: Number.isFinite(value) && value > 0 ? value : 0,
+        };
+    };
+    let maxRisks = Array.isArray(j.max_risks)
+        ? j.max_risks.map((row, idx) => parseMaxRiskRow(row, idx)).filter(r => r.value > 0)
+        : [];
+    if (!maxRisks.length && j.max_risk && typeof j.max_risk === 'object') {
+        const legacy = parseMaxRiskRow(j.max_risk, 0);
+        if (legacy.value > 0) {
+            maxRisks = [{ ...legacy, id: legacy.id === 'mr-0' ? 'mr-legacy' : legacy.id }];
         }
     }
     const tzMode = String(j.timezone_mode ?? 'profile');
     return {
         profit_targets_enabled: j.profit_targets_enabled === true,
         profit_targets: profitTargets,
-        max_risk_enabled: j.max_risk_enabled === true && maxRisk != null,
-        max_risk: maxRisk,
+        max_risk_enabled: j.max_risk_enabled === true && maxRisks.length > 0,
+        max_risks: maxRisks,
         timezone_mode: tzMode === 'custom' ? 'custom' : 'profile',
         timezone: typeof j.timezone === 'string' && j.timezone.trim() ? j.timezone.trim() : undefined,
     };

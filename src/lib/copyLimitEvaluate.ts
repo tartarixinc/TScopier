@@ -35,7 +35,8 @@ export function copyLimitsActive(config: CopyLimitsConfig | null | undefined): b
   if (!config) return false
   const profitOn = config.profit_targets_enabled
     && config.profit_targets.some(t => t.enabled && t.value > 0)
-  const riskOn = config.max_risk_enabled && (config.max_risk?.value ?? 0) > 0
+  const riskOn = config.max_risk_enabled
+    && config.max_risks.some(t => t.enabled && t.value > 0)
   return profitOn || riskOn
 }
 
@@ -58,7 +59,7 @@ function maxRiskHit(
   referenceEquity: number,
   peakChannelPnl: number,
 ): boolean {
-  if (rule.value <= 0) return false
+  if (!rule.enabled || rule.value <= 0) return false
   if (rule.value_type === 'amount') {
     return pnl.totalPnl <= -rule.value
   }
@@ -92,14 +93,15 @@ export function evaluateCopyLimitBreaches(args: {
     }
   }
 
-  const maxRisk = args.config.max_risk
-  if (args.config.max_risk_enabled && maxRisk) {
-    if (maxRiskHit(maxRisk, args.pnl, args.referenceEquity, args.peakChannelPnl)) {
-      const pk = periodKeyFor(maxRisk.period, args.timeZone, at)
+  if (args.config.max_risk_enabled) {
+    for (const rule of args.config.max_risks) {
+      if (!maxRiskHit(rule, args.pnl, args.referenceEquity, args.peakChannelPnl)) continue
+      const pk = periodKeyFor(rule.period, args.timeZone, at)
       breaches.push({
         kind: 'risk',
         reason: 'channel_max_risk_hit',
-        pauseKey: pauseKey('risk', maxRisk.period, pk),
+        pauseKey: pauseKey('risk', rule.period, pk, rule.id),
+        ruleId: rule.id,
       })
     }
   }
@@ -139,8 +141,10 @@ export function updatePeriodSnapshots(args: {
       if (rule.enabled) touchPeriod(rule.period)
     }
   }
-  if (args.config.max_risk_enabled && args.config.max_risk) {
-    touchPeriod(args.config.max_risk.period)
+  if (args.config.max_risk_enabled) {
+    for (const rule of args.config.max_risks) {
+      if (rule.enabled) touchPeriod(rule.period)
+    }
   }
 
   for (const period of periodKinds) {

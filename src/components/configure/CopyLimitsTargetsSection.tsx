@@ -12,6 +12,7 @@ import {
   type CopyLimitsConfig,
   type CopyLimitState,
   type CopyLimitValueType,
+  type MaxRiskRule,
   type ProfitTargetRule,
 } from '../../lib/copyLimitTypes'
 import { isChannelCopyLimitPaused, resolveCopyLimitTimezone } from '../../lib/copyLimitEvaluate'
@@ -28,6 +29,10 @@ const PERIOD_OPTIONS: Array<{ value: CopyLimitPeriod; labelKey: keyof StopsCopy 
 
 function newTargetId(): string {
   return `pt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+}
+
+function newRiskId(): string {
+  return `mr-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 }
 
 export function CopyLimitsTargetsSection(props: {
@@ -70,6 +75,11 @@ export function CopyLimitsTargetsSection(props: {
   const updateTarget = (idx: number, patch: Partial<ProfitTargetRule>) => {
     const next = limits.profit_targets.map((row, i) => (i === idx ? { ...row, ...patch } : row))
     patchLimits({ profit_targets: next })
+  }
+
+  const updateRisk = (idx: number, patch: Partial<MaxRiskRule>) => {
+    const next = limits.max_risks.map((row, i) => (i === idx ? { ...row, ...patch } : row))
+    patchLimits({ max_risks: next })
   }
 
   return (
@@ -221,54 +231,97 @@ export function CopyLimitsTargetsSection(props: {
           <ConfigTitle info={props.labels.maxRiskIntro}>{props.labels.maxRiskTitle}</ConfigTitle>
           <Toggle
             checked={limits.max_risk_enabled}
-            onChange={v => patchLimits({
-              max_risk_enabled: v,
-              max_risk: limits.max_risk ?? {
-                period: 'daily',
-                value_type: 'amount',
-                value: 100,
-              },
-            })}
+            onChange={v => {
+              if (v && limits.max_risks.length === 0) {
+                patchLimits({
+                  max_risk_enabled: true,
+                  max_risks: [{
+                    id: newRiskId(),
+                    enabled: true,
+                    period: 'daily',
+                    value_type: 'amount',
+                    value: 100,
+                  }],
+                })
+                return
+              }
+              patchLimits({ max_risk_enabled: v })
+            }}
           />
         </div>
         <ConfigToggleLabel>{props.labels.maxRiskToggle}</ConfigToggleLabel>
-        {limits.max_risk_enabled && limits.max_risk ? (
-          <div className="grid grid-cols-12 gap-2 items-end">
-            <div className="col-span-12 sm:col-span-4">
-              <ConfigureSelect
-                label={props.labels.periodLabel}
-                value={limits.max_risk.period}
-                onChange={e => patchLimits({
-                  max_risk: { ...limits.max_risk!, period: e.target.value as CopyLimitPeriod },
+        {limits.max_risk_enabled ? (
+          <div className="space-y-2">
+            <div className="flex justify-end">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => patchLimits({
+                  max_risks: [
+                    ...limits.max_risks,
+                    {
+                      id: newRiskId(),
+                      enabled: true,
+                      period: 'daily',
+                      value_type: 'amount',
+                      value: 100,
+                    },
+                  ],
                 })}
-                options={periodSelectOptions}
-              />
+              >
+                {props.labels.addRiskRule}
+              </Button>
             </div>
-            <div className="col-span-12 sm:col-span-4">
-              <ConfigureSelect
-                label={props.labels.typeLabel}
-                value={limits.max_risk.value_type}
-                onChange={e => patchLimits({
-                  max_risk: { ...limits.max_risk!, value_type: e.target.value as CopyLimitValueType },
-                })}
-                options={valueTypeOptions}
-              />
-            </div>
-            <div className="col-span-12 sm:col-span-4">
-              <ConfigureInput
-                label={props.labels.targetValue}
-                type="number"
-                min={0.01}
-                step={limits.max_risk.value_type === 'percent' ? 0.1 : 1}
-                value={String(limits.max_risk.value)}
-                onChange={e => patchLimits({
-                  max_risk: {
-                    ...limits.max_risk!,
-                    value: Math.max(0, Number(e.target.value) || 0),
-                  },
-                })}
-              />
-            </div>
+            {limits.max_risks.map((row, idx) => (
+              <div key={row.id} className="grid grid-cols-12 gap-2 items-end border border-neutral-100 dark:border-neutral-800 rounded-md p-2">
+                <div className="col-span-12 sm:col-span-2">
+                  <label className="text-xs flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={row.enabled}
+                      onChange={e => updateRisk(idx, { enabled: e.target.checked })}
+                    />
+                    {props.labels.enabled}
+                  </label>
+                </div>
+                <div className="col-span-6 sm:col-span-3">
+                  <ConfigureSelect
+                    label={props.labels.periodLabel}
+                    value={row.period}
+                    onChange={e => updateRisk(idx, { period: e.target.value as CopyLimitPeriod })}
+                    options={periodSelectOptions}
+                  />
+                </div>
+                <div className="col-span-6 sm:col-span-3">
+                  <ConfigureSelect
+                    label={props.labels.typeLabel}
+                    value={row.value_type}
+                    onChange={e => updateRisk(idx, { value_type: e.target.value as CopyLimitValueType })}
+                    options={valueTypeOptions}
+                  />
+                </div>
+                <div className="col-span-10 sm:col-span-3">
+                  <ConfigureInput
+                    label={props.labels.riskValue}
+                    type="number"
+                    min={0.01}
+                    step={row.value_type === 'percent' ? 0.1 : 1}
+                    value={String(row.value)}
+                    onChange={e => updateRisk(idx, { value: Math.max(0, Number(e.target.value) || 0) })}
+                  />
+                </div>
+                <Button
+                  className="col-span-2"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => patchLimits({
+                    max_risks: limits.max_risks.filter((_, i) => i !== idx),
+                  })}
+                >
+                  {props.labels.remove}
+                </Button>
+              </div>
+            ))}
           </div>
         ) : null}
       </section>

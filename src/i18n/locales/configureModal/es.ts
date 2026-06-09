@@ -276,11 +276,13 @@ export const configureModalEs: ConfigureModalTranslations = {
     profitTargetsIntro:
       'Cuando está activo, se dejan de copiar nuevas entradas en este canal al alcanzar un objetivo. Las señales de gestión (cerrar, modificar, break-even) siguen activas. Solo cuenta el P/L atribuido a este canal.',
     profitTargetsToggle: 'Activar objetivos de beneficio',
-    maxRiskTitle: 'Riesgo máximo',
+    maxRiskTitle: 'Pérdida máxima',
     maxRiskIntro:
       'Dejar de copiar nuevas entradas cuando la pérdida o el drawdown del canal alcance el límite. No se cierran operaciones abiertas automáticamente.',
-    maxRiskToggle: 'Activar riesgo máximo',
+    maxRiskToggle: 'Activar pérdida máxima',
     addTarget: 'Añadir objetivo',
+    addRiskRule: 'Añadir límite de pérdida',
+    riskValue: 'Límite de pérdida',
     periodDaily: 'Diario',
     periodWeekly: 'Semanal',
     periodMonthly: 'Mensual',
@@ -295,7 +297,7 @@ export const configureModalEs: ConfigureModalTranslations = {
     timezoneCustom: 'Zona horaria personalizada',
     timezoneHint: 'Los límites diarios, semanales y mensuales se reinician a medianoche en esta zona horaria.',
     pausedProfitBanner: 'Objetivo de beneficio alcanzado — las nuevas entradas están en pausa hasta el siguiente periodo.',
-    pausedRiskBanner: 'Riesgo máximo alcanzado — las nuevas entradas están en pausa hasta el siguiente periodo.',
+    pausedRiskBanner: 'Pérdida máxima alcanzada — las nuevas entradas están en pausa hasta el siguiente periodo.',
     pausedOverallBanner: 'Límite alcanzado — las nuevas entradas permanecen en pausa hasta que cambie o desactive la regla.',
   },
   management: {

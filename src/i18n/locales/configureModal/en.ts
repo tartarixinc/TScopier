@@ -276,11 +276,13 @@ export const configureModalEn: ConfigureModalTranslations = {
     profitTargetsIntro:
       'When enabled, new entry copies stop for this channel once a target is reached. Management signals (close, modify, breakeven) still run. Limits use trades attributed to this channel only.',
     profitTargetsToggle: 'Enable profit targets',
-    maxRiskTitle: 'Max risk',
+    maxRiskTitle: 'Maximum Loss',
     maxRiskIntro:
       'Stop copying new entries when channel loss or drawdown hits your limit. Open trades and management signals are not closed automatically.',
-    maxRiskToggle: 'Enable max risk',
+    maxRiskToggle: 'Enable maximum loss',
     addTarget: 'Add target',
+    addRiskRule: 'Add loss limit',
+    riskValue: 'Loss limit',
     periodDaily: 'Daily',
     periodWeekly: 'Weekly',
     periodMonthly: 'Monthly',
@@ -295,7 +297,7 @@ export const configureModalEn: ConfigureModalTranslations = {
     timezoneCustom: 'Custom timezone',
     timezoneHint: 'Daily, weekly, and monthly limits reset at midnight in this timezone.',
     pausedProfitBanner: 'Profit target reached — new entry copies are paused until the period resets.',
-    pausedRiskBanner: 'Max risk reached — new entry copies are paused until the period resets.',
+    pausedRiskBanner: 'Maximum loss reached — new entry copies are paused until the period resets.',
     pausedOverallBanner: 'Limit reached — new entry copies stay paused until you change or disable this rule.',
   },
   management: {

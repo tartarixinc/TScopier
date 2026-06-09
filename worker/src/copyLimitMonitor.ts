@@ -8,6 +8,7 @@ import {
   updatePeriodSnapshots,
 } from './copyLimitEvaluate'
 import { buildChannelPnlSnapshot, resolveReferenceEquity } from './copyLimitMetrics'
+import type { CopyLimitPeriod } from './copyLimitTypes'
 import { normalizeCopyLimitState, normalizeCopyLimits } from './copyLimitTypes'
 import { normalizeChannelUuid } from './channelTradingConfig'
 
@@ -121,7 +122,7 @@ export class CopyLimitMonitor {
       let state = normalizeCopyLimitState(row.copy_limit_state)
       const pnlByPeriod = new Map<string, Awaited<ReturnType<typeof buildChannelPnlSnapshot>>>()
 
-      const loadPnl = async (period: typeof config.max_risk extends undefined ? never : NonNullable<typeof config.max_risk>['period']) => {
+      const loadPnl = async (period: CopyLimitPeriod) => {
         const key = period
         if (!pnlByPeriod.has(key)) {
           pnlByPeriod.set(key, await buildChannelPnlSnapshot({
@@ -138,7 +139,7 @@ export class CopyLimitMonitor {
       }
 
       const primaryPeriod = config.profit_targets.find(t => t.enabled)?.period
-        ?? config.max_risk?.period
+        ?? config.max_risks.find(r => r.enabled)?.period
         ?? 'daily'
       const primaryPnl = await loadPnl(primaryPeriod)
       state = updatePeriodSnapshots({
@@ -152,15 +153,18 @@ export class CopyLimitMonitor {
       const breaches = []
       for (const period of new Set([
         ...config.profit_targets.filter(t => t.enabled).map(t => t.period),
-        ...(config.max_risk_enabled && config.max_risk ? [config.max_risk.period] : []),
+        ...(config.max_risk_enabled
+          ? config.max_risks.filter(r => r.enabled).map(r => r.period)
+          : []),
       ])) {
         const pnl = await loadPnl(period)
         const peak = Math.max(peakChannelPnlForPeriod(state, period, timeZone), pnl.totalPnl)
+        const periodMaxRisks = config.max_risks.filter(r => r.enabled && r.period === period)
         const subset = {
           ...config,
           profit_targets: config.profit_targets.filter(t => t.enabled && t.period === period),
-          max_risk_enabled: config.max_risk_enabled && config.max_risk?.period === period,
-          max_risk: config.max_risk?.period === period ? config.max_risk : undefined,
+          max_risk_enabled: config.max_risk_enabled && periodMaxRisks.length > 0,
+          max_risks: periodMaxRisks,
         }
         breaches.push(...evaluateCopyLimitBreaches({
           config: subset,

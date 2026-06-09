@@ -20,7 +20,8 @@ function copyLimitsActive(config) {
         return false;
     const profitOn = config.profit_targets_enabled
         && config.profit_targets.some(t => t.enabled && t.value > 0);
-    const riskOn = config.max_risk_enabled && (config.max_risk?.value ?? 0) > 0;
+    const riskOn = config.max_risk_enabled
+        && config.max_risks.some(t => t.enabled && t.value > 0);
     return profitOn || riskOn;
 }
 function profitTargetHit(rule, pnl, referenceEquity) {
@@ -34,7 +35,7 @@ function profitTargetHit(rule, pnl, referenceEquity) {
     return (pnl.totalPnl / referenceEquity) * 100 >= rule.value;
 }
 function maxRiskHit(rule, pnl, referenceEquity, peakChannelPnl) {
-    if (rule.value <= 0)
+    if (!rule.enabled || rule.value <= 0)
         return false;
     if (rule.value_type === 'amount') {
         return pnl.totalPnl <= -rule.value;
@@ -60,14 +61,16 @@ function evaluateCopyLimitBreaches(args) {
             });
         }
     }
-    const maxRisk = args.config.max_risk;
-    if (args.config.max_risk_enabled && maxRisk) {
-        if (maxRiskHit(maxRisk, args.pnl, args.referenceEquity, args.peakChannelPnl)) {
-            const pk = (0, copyLimitPeriods_1.periodKeyFor)(maxRisk.period, args.timeZone, at);
+    if (args.config.max_risk_enabled) {
+        for (const rule of args.config.max_risks) {
+            if (!maxRiskHit(rule, args.pnl, args.referenceEquity, args.peakChannelPnl))
+                continue;
+            const pk = (0, copyLimitPeriods_1.periodKeyFor)(rule.period, args.timeZone, at);
             breaches.push({
                 kind: 'risk',
                 reason: 'channel_max_risk_hit',
-                pauseKey: (0, copyLimitTypes_1.pauseKey)('risk', maxRisk.period, pk),
+                pauseKey: (0, copyLimitTypes_1.pauseKey)('risk', rule.period, pk, rule.id),
+                ruleId: rule.id,
             });
         }
     }
@@ -97,8 +100,11 @@ function updatePeriodSnapshots(args) {
                 touchPeriod(rule.period);
         }
     }
-    if (args.config.max_risk_enabled && args.config.max_risk) {
-        touchPeriod(args.config.max_risk.period);
+    if (args.config.max_risk_enabled) {
+        for (const rule of args.config.max_risks) {
+            if (rule.enabled)
+                touchPeriod(rule.period);
+        }
     }
     for (const period of periodKinds) {
         const pk = (0, copyLimitPeriods_1.periodKeyFor)(period, args.timeZone, at);

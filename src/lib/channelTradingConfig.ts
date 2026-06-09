@@ -1,5 +1,5 @@
 import type { Json, ManualSettings } from '../types/database'
-import { normalizeCopyLimitState } from './copyLimitTypes'
+import { normalizeCopyLimitState, type CopyLimitState } from './copyLimitTypes'
 import { DEFAULT_MANUAL_SETTINGS, ensurePersistedManualSettings } from './defaultManualSettings'
 import { normalizeSignalChannelIds } from './brokerChannelLink'
 export interface ChannelTradingConfig {
