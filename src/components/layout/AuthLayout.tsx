@@ -27,7 +27,7 @@ export function AuthLayout() {
         <header
           className={clsx(
             'z-20 flex shrink-0 touch-none items-center justify-between bg-white px-5 dark:bg-neutral-950 sm:px-8',
-            'fixed inset-x-0 top-0 h-[calc(4rem+env(safe-area-inset-top,0px))] pt-[env(safe-area-inset-top,0px)]',
+            'fixed inset-x-0 top-[var(--app-banner-h,0px)] h-[calc(4rem+env(safe-area-inset-top,0px))] pt-[env(safe-area-inset-top,0px)]',
             'lg:static lg:z-auto lg:h-auto lg:px-10 lg:py-4 lg:touch-auto',
           )}
         >
@@ -43,7 +43,7 @@ export function AuthLayout() {
         <div
           className={clsx(
             'flex flex-1 flex-col px-5 pb-[env(safe-area-inset-bottom,0px)] sm:px-8 lg:px-10',
-            'pt-[calc(4rem+env(safe-area-inset-top,0px))] lg:pt-0',
+            'pt-[calc(4rem+env(safe-area-inset-top,0px)+var(--app-banner-h,0px))] lg:pt-0',
           )}
         >
           <div className="mx-auto flex w-full max-w-[420px] flex-col py-6 lg:flex-1 lg:justify-center lg:py-8">

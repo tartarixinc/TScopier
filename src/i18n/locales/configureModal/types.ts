@@ -13,6 +13,7 @@ export interface ConfigureModalTranslations {
   addChannel: string
   editLinkedChannels: string
   doneEditingLinkedChannels: string
+  removeLinkedChannel: string
   selectChannelToConfigure: string
   selectChannelPrompt: string
   connectChannelPrompt: string

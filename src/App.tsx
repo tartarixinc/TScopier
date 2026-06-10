@@ -33,6 +33,8 @@ import { WelcomePage } from './pages/onboarding/WelcomePage'
 import { ReferralCodeRedirect } from './pages/auth/ReferralCodeRedirect'
 import { GoogleAnalyticsRouteTracker } from './components/analytics/GoogleAnalyticsRouteTracker'
 import { CookieConsentBanner } from './components/marketing/CookieConsentBanner'
+import { AppBannerProvider } from './context/AppBannerContext'
+import { AppBanner } from './components/layout/AppBanner'
 
 export default function App() {
   return (
@@ -40,6 +42,10 @@ export default function App() {
       <LocaleProvider>
       <UserProfileProvider>
       <BrowserRouter>
+      <AppBannerProvider>
+      <div className="flex h-[100dvh] min-h-0 flex-col overflow-hidden overscroll-none">
+        <AppBanner />
+        <div className="min-h-0 flex-1 overflow-hidden overscroll-none">
       <GoogleAnalyticsRouteTracker />
       <CookieConsentBanner />
       <SubscriptionProvider>
@@ -97,6 +103,9 @@ export default function App() {
           </Route>
         </Routes>
       </SubscriptionProvider>
+        </div>
+      </div>
+      </AppBannerProvider>
       </BrowserRouter>
       </UserProfileProvider>
       </LocaleProvider>

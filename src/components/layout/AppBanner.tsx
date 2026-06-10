@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { TriangleAlert } from 'lucide-react'
-import { useAppBanner } from '../../hooks/useAppBanner'
+import { useAppBanner } from '../../context/AppBannerContext'
 
 /**
- * App-wide information banner driven by the `app_settings` table
- * (key = 'banner_message'). Renders nothing while disabled.
+ * Global information banner — enabled flag and message come from
+ * `app_settings.banner_message` via {@link AppBannerProvider}.
  *
  * Sits above the sidebar and header. The mobile header is fixed to the
  * viewport top, so the banner publishes its height as `--app-banner-h`
@@ -36,9 +36,9 @@ export function AppBanner() {
     <div
       ref={setEl}
       role="status"
-      className="relative z-50 flex shrink-0 items-start gap-2 border-b border-amber-200 bg-amber-50 px-3 py-2.5 pt-[calc(0.625rem+env(safe-area-inset-top,0px))] text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200 sm:items-center sm:px-6"
+      className="relative z-50 flex shrink-0 items-center justify-center gap-2 border-b border-amber-200 bg-amber-50 px-3 py-2.5 pt-[calc(0.625rem+env(safe-area-inset-top,0px))] text-center text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200 sm:px-6"
     >
-      <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400 sm:mt-0" aria-hidden />
+      <TriangleAlert className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
       <p className="min-w-0 font-medium leading-snug">{message}</p>
     </div>
   )

@@ -6,6 +6,7 @@ import { AppLayout } from './AppLayout'
 /** Authenticated app shell: shared broker state + dashboard layout. */
 export function AppShell() {
   return (
+    <div className="flex h-full min-h-0 flex-col">
     <BrokerAccountsProvider>
       <NotificationsProvider>
         <AddTradingAccountProvider>
@@ -13,5 +14,6 @@ export function AppShell() {
         </AddTradingAccountProvider>
       </NotificationsProvider>
     </BrokerAccountsProvider>
+    </div>
   )
 }

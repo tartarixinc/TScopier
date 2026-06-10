@@ -5,7 +5,7 @@ import {
   Plus, Trash2, Server, Activity, GitBranch, Eye, DollarSign, RefreshCw,
   SlidersHorizontal, Radio, Target, Filter, Wallet, Link2,
   ChevronLeft, ChevronRight, Search, Settings2, Bookmark, Pencil, ScrollText, AlertTriangle,
-  Infinity, Coins,
+  Infinity, Coins, X,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { supabase } from '../../lib/supabase'
@@ -2419,6 +2419,16 @@ export function AccountConfigPage() {
                               </Badge>
                             ) : null}
                     </button>
+                          {linked && !channelLinkEditMode ? (
+                            <button
+                              type="button"
+                              onClick={() => toggleDraftChannel(channel.id)}
+                              className="shrink-0 rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-neutral-800 dark:hover:text-neutral-300"
+                              aria-label={interpolate(cm.removeLinkedChannel, { channel: channel.display_name })}
+                            >
+                              <X className="h-3.5 w-3.5" aria-hidden />
+                            </button>
+                          ) : null}
                         </div>
                       )
                     })}

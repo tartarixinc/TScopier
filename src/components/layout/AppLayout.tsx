@@ -9,7 +9,6 @@ import { useT } from '../../context/LocaleContext'
 import { getSubscribeCtaLabel } from '../../lib/subscriptionCta'
 import { ThemeToggle } from '../ui/ThemeToggle'
 import { LanguageSwitcher } from '../auth/LanguageSwitcher'
-import { AppBanner } from './AppBanner'
 import { HelpSidebarNav } from './HelpSidebarNav'
 import { NotificationBell } from './NotificationBell'
 import { UserMenuDropdown } from './UserMenuDropdown'
@@ -247,9 +246,7 @@ export function AppLayout() {
   )
 
   return (
-    <div className="flex h-[100dvh] min-h-0 w-full flex-col overflow-hidden overscroll-none bg-neutral-50 dark:bg-neutral-950">
-      <AppBanner />
-      <div className="flex min-h-0 w-full flex-1 overflow-hidden overscroll-none">
+    <div className="flex h-full min-h-0 w-full overflow-hidden overscroll-none bg-neutral-50 dark:bg-neutral-950">
       {mobileNavOpen && (
         <button
           type="button"
@@ -434,7 +431,6 @@ export function AppLayout() {
         >
           <Outlet />
         </main>
-      </div>
       </div>
     </div>
   )

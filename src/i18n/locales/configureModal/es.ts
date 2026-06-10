@@ -10,6 +10,7 @@ export const configureModalEs: ConfigureModalTranslations = {
   addChannel: 'Añadir canal',
   editLinkedChannels: 'Editar canales vinculados',
   doneEditingLinkedChannels: 'Listo',
+  removeLinkedChannel: 'Quitar {channel}',
   selectChannelToConfigure: 'Selecciona o vincula un canal para configurar su trading.',
   selectChannelPrompt: 'Selecciona un canal de la lista para configurarlo o vincularlo a este broker.',
   connectChannelPrompt: 'Vincula {channel} a {broker} para copiar sus señales y ajustar el trading.',
