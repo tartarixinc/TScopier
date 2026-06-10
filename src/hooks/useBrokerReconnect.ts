@@ -26,10 +26,32 @@ export interface UseBrokerReconnectOptions {
   onReconnectSuccess?: (brokerId: string) => void
 }
 
+/** Stored password exists but the broker rejected it — user must type a new one. */
+const STORED_PASSWORD_REJECTED_KINDS = new Set([
+  'wrong_password',
+  'credentials_rejected',
+  'investor_password',
+])
+
+function shouldPromptForPassword(args: {
+  hasStoredPassword: boolean
+  message: string | undefined
+  kind?: string | null
+}): boolean {
+  if (args.hasStoredPassword) {
+    // Auto-reconnect already retried with the saved password. Only ask the
+    // user again when that password was rejected, not on transient drops.
+    const kind = args.kind ?? classifyBrokerConnectError(args.message)
+    return STORED_PASSWORD_REJECTED_KINDS.has(kind)
+  }
+  return brokerNeedsPasswordForReconnect(args.message)
+}
+
 async function reconnectWithOptionalPassword(
   brokerId: string,
   options: {
     allowPasswordPrompt: boolean
+    hasStoredPassword: boolean
     requestPassword?: (brokerId: string) => Promise<BrokerPasswordPromptResult | null>
     reconnectFailedLabel: string
     onError?: (message: string) => void
@@ -40,7 +62,11 @@ async function reconnectWithOptionalPassword(
     const needsPassword =
       options.allowPasswordPrompt
       && result.connection_status !== 'connected'
-      && brokerNeedsPasswordForReconnect(result.message)
+      && shouldPromptForPassword({
+        hasStoredPassword: options.hasStoredPassword,
+        message: result.message,
+        kind: result.connection_error_kind,
+      })
     if (needsPassword && options.requestPassword) {
       const entered = await options.requestPassword(brokerId)
       if (!entered?.password.trim()) {
@@ -58,7 +84,7 @@ async function reconnectWithOptionalPassword(
     const msg = e instanceof Error ? e.message : options.reconnectFailedLabel
     if (
       options.allowPasswordPrompt
-      && brokerNeedsPasswordForReconnect(msg)
+      && shouldPromptForPassword({ hasStoredPassword: options.hasStoredPassword, message: msg })
       && options.requestPassword
     ) {
       const entered = await options.requestPassword(brokerId)
@@ -143,11 +169,14 @@ export function useBrokerReconnect(opts: UseBrokerReconnectOptions) {
     options?: { allowPasswordPrompt?: boolean },
   ) => {
     const allowPasswordPrompt = options?.allowPasswordPrompt !== false
+    const hasStoredPassword =
+      opts.brokers.find(b => b.id === brokerId)?.auto_reconnect_enabled === true
     setReconnectingBrokerIds(prev => new Set(prev).add(brokerId))
     opts.onClearError?.()
     try {
       const { result } = await reconnectWithOptionalPassword(brokerId, {
         allowPasswordPrompt,
+        hasStoredPassword,
         requestPassword: opts.requestPassword,
         reconnectFailedLabel: opts.reconnectFailedLabel,
         onError: opts.onError,

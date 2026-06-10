@@ -348,6 +348,7 @@ export interface AccountConfigBrokerListTranslations {
   connectErrorWrongServer: string
   connectErrorInvestorPassword: string
   connectErrorAccountDisabled: string
+  connectErrorCredentialsRejected: string
   connectErrorSessionExpired: string
   connectErrorUnknown: string
   reconnectFailed: string

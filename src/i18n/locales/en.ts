@@ -351,19 +351,21 @@ export const en: Translations = {
   reconnectDroppedMany:
     '{count} accounts lost their broker connection and are shown as Disconnected. Use Reconnect on each account.',
   connectErrorWrongPassword:
-    'The MT account password is incorrect. Check the password in your MetaTrader terminal, then use Reconnect.',
+    'The MT account password is incorrect. Check the password in your MetaTrader terminal, then try again.',
   connectErrorWrongLogin:
-    'The MT login number does not match this linked account. Verify the account number or remove and link the account again.',
+    'The MT login number does not match this broker server. Verify the account number from MetaTrader.',
   connectErrorWrongServer:
     'The broker server name is incorrect or does not match this login. Check the exact server name from MetaTrader.',
   connectErrorInvestorPassword:
     'An investor (read-only) password was used. Connect with the main trading password from MetaTrader.',
   connectErrorAccountDisabled:
     'This MT account is disabled or blocked at the broker. Contact your broker or log in via MetaTrader first.',
+  connectErrorCredentialsRejected:
+    'Could not log in with these MT details. Verify your account number, trading password, and exact server name from MetaTrader.',
   connectErrorSessionExpired:
-    'Broker session dropped on the trade server. Use Reconnect — this is usually temporary, not a wrong password.',
+    'Trading session expired on the trade server. Use Reconnect and enter your current MT password.',
   connectErrorUnknown:
-    'Broker connection dropped unexpectedly. Use Reconnect — this is usually a temporary session issue, not wrong login details.',
+    'Broker connection failed. Check your MT login details or use Reconnect if this account was linked before.',
   reconnectFailed: 'Could not reconnect broker',
       reconnectPasswordTitle: 'Broker session expired',
       reconnectPasswordBody:

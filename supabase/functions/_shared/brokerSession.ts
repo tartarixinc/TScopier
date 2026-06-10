@@ -2,6 +2,7 @@ import type { SupabaseClient } from "npm:@supabase/supabase-js@2"
 import {
   classifyBrokerConnectError,
   friendlyBrokerConnectError,
+  type BrokerConnectErrorOptions,
 } from "./brokerConnectError.ts"
 import {
   decryptMtPassword,
@@ -108,17 +109,70 @@ export async function clearStoredMtPassword(
     .eq("user_id", userId)
 }
 
-function connectionErrorFromRaw(raw: string): { kind: string; message: string } {
-  const kind = classifyBrokerConnectError(raw)
-  return { kind, message: friendlyBrokerConnectError(raw) }
+function connectionErrorFromRaw(
+  raw: string,
+  opts?: BrokerConnectErrorOptions,
+): { kind: string; message: string } {
+  const kind = classifyBrokerConnectError(raw, opts)
+  return { kind, message: friendlyBrokerConnectError(raw, opts) }
+}
+
+export async function verifyBrokerCredentialConnect(
+  client: MetatraderApiClient,
+  uuid: string,
+): Promise<
+  | { ok: true; summary: Awaited<ReturnType<MetatraderApiClient["accountSummary"]>> }
+  | { ok: false; raw: string }
+> {
+  let lastErr = ""
+  try {
+    await client.checkConnect(uuid)
+  } catch (e) {
+    lastErr = e instanceof MetatraderApiError
+      ? e.message
+      : e instanceof Error
+      ? e.message
+      : "Broker session is not connected"
+    return { ok: false, raw: lastErr }
+  }
+
+  const ready = await client.verifyTradingReady(uuid)
+  if (!ready) {
+    try {
+      await client.accountSummary(uuid)
+    } catch (e) {
+      lastErr = e instanceof MetatraderApiError
+        ? e.message
+        : e instanceof Error
+        ? e.message
+        : "Could not verify broker login"
+    }
+    return { ok: false, raw: lastErr || "Could not verify broker login" }
+  }
+
+  try {
+    const summary = await client.accountSummary(uuid)
+    if (summary && (summary.balance != null || summary.equity != null || summary.currency)) {
+      return { ok: true, summary }
+    }
+    return { ok: false, raw: "AccountSummary returned no data" }
+  } catch (e) {
+    lastErr = e instanceof MetatraderApiError
+      ? e.message
+      : e instanceof Error
+      ? e.message
+      : "AccountSummary returned no data"
+    return { ok: false, raw: lastErr }
+  }
 }
 
 export async function markBrokerConnectionError(
   supabase: SupabaseClient,
   broker: { id: string; user_id: string },
   rawMessage: string,
+  opts?: BrokerConnectErrorOptions,
 ): Promise<{ kind: string; message: string }> {
-  const { kind, message } = connectionErrorFromRaw(rawMessage)
+  const { kind, message } = connectionErrorFromRaw(rawMessage, opts)
   await supabase
     .from("broker_accounts")
     .update({
@@ -131,13 +185,16 @@ export async function markBrokerConnectionError(
   return { kind, message }
 }
 
-export function brokerConnectionFailure(rawMessage: string): {
+export function brokerConnectionFailure(
+  rawMessage: string,
+  opts?: BrokerConnectErrorOptions,
+): {
   ok: false
   connection_status: "error"
   message: string
   connection_error_kind: string
 } {
-  const { kind, message } = connectionErrorFromRaw(rawMessage)
+  const { kind, message } = connectionErrorFromRaw(rawMessage, opts)
   return { ok: false, connection_status: "error", message, connection_error_kind: kind }
 }
 
@@ -184,6 +241,12 @@ export async function reconnectBrokerSession(
   try {
     let alive = await keepBrokerSessionAlive(client, uuid)
     const password = await resolveStoredMtPassword(broker, opts ?? {}, env)
+    // Only treat ambiguous errors as credential problems when the user just
+    // typed the password. Stored-password retries can fail transiently and
+    // must not be reported as "your login details are wrong".
+    const credentialOpts: BrokerConnectErrorOptions | undefined = opts?.password?.trim()
+      ? { credentialConnect: true }
+      : undefined
     if (!alive && password) {
       const login = String(broker.account_login ?? "").trim()
       const server = String(broker.broker_server ?? "").trim()
@@ -197,10 +260,15 @@ export async function reconnectBrokerSession(
               password,
             })
           )
-          alive = await keepBrokerSessionAlive(client, uuid)
+          const verified = await verifyBrokerCredentialConnect(client, uuid)
+          if (!verified.ok) {
+            const failure = await markBrokerConnectionError(supabase, broker, verified.raw, credentialOpts)
+            return failure
+          }
+          alive = true
         } catch (e) {
           const raw = e instanceof MetatraderApiError ? e.message : e instanceof Error ? e.message : "Connect failed"
-          const failure = await markBrokerConnectionError(supabase, broker, raw)
+          const failure = await markBrokerConnectionError(supabase, broker, raw, credentialOpts)
           return failure
         }
       }

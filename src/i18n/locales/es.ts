@@ -351,19 +351,21 @@ export const es: Translations = {
       reconnectDroppedMany:
         '{count} cuentas perdieron la conexión con el broker. Usa Reconectar en cada una.',
       connectErrorWrongPassword:
-        'La contraseña de la cuenta MT es incorrecta. Compruébala en MetaTrader y usa Reconectar.',
+        'La contraseña de la cuenta MT es incorrecta. Compruébala en MetaTrader e inténtalo de nuevo.',
       connectErrorWrongLogin:
-        'El número de login MT no coincide con esta cuenta vinculada. Verifica el número o elimina y vuelve a vincular la cuenta.',
+        'El número de login MT no coincide con este servidor del broker. Verifica el número de cuenta en MetaTrader.',
       connectErrorWrongServer:
         'El nombre del servidor del broker es incorrecto o no coincide con este login. Comprueba el servidor exacto en MetaTrader.',
       connectErrorInvestorPassword:
         'Se usó una contraseña de inversor (solo lectura). Conecta con la contraseña principal de trading de MetaTrader.',
       connectErrorAccountDisabled:
         'Esta cuenta MT está deshabilitada o bloqueada en el broker. Contacta con tu broker o inicia sesión primero en MetaTrader.',
+      connectErrorCredentialsRejected:
+        'No se pudo iniciar sesión con estos datos MT. Verifica el número de cuenta, la contraseña de trading y el nombre exacto del servidor en MetaTrader.',
       connectErrorSessionExpired:
-        'La sesión del broker se interrumpió en el servidor. Usa Reconectar — suele ser temporal, no una contraseña incorrecta.',
+        'La sesión de trading expiró en el servidor. Usa Reconectar e introduce tu contraseña MT actual.',
       connectErrorUnknown:
-        'La conexión con el broker se interrumpió. Usa Reconectar — suele ser un problema temporal de sesión, no login incorrecto.',
+        'La conexión con el broker falló. Comprueba tus datos MT o usa Reconectar si la cuenta ya estaba vinculada.',
       reconnectFailed: 'No se pudo reconectar el broker',
       reconnectPasswordTitle: 'Sesión del broker expirada',
       reconnectPasswordBody:

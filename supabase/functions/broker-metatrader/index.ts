@@ -11,6 +11,7 @@ import {
   parseBrokerSessionId,
   reconnectBrokerSession,
   stripBrokerSecretFields,
+  verifyBrokerCredentialConnect,
 } from "../_shared/brokerSession.ts"
 import { encryptMtPassword } from "../_shared/brokerCredentialsCrypto.ts"
 import { friendlyBrokerConnectError, isMtBridgeGlitchMessage, isSessionDropMessage } from "../_shared/brokerConnectError.ts"
@@ -250,27 +251,16 @@ Deno.serve(async (req: Request) => {
         )
       } catch (e) {
         const raw = e instanceof MetatraderApiError ? e.message : e instanceof Error ? e.message : "Connect failed"
-        return bad(400, friendlyBrokerConnectError(raw))
+        return bad(400, friendlyBrokerConnectError(raw, { credentialConnect: true }))
       }
       if (!uuid) return bad(502, "MetatraderAPI did not return a session id")
 
-      // After ConnectEx the session needs a moment to authenticate
-      // before /AccountSummary returns real numbers. CheckConnect both
-      // waits for the connection and triggers a reconnect if needed, and
-      // we retry the summary a few times with backoff in case the first
-      // call lands before the broker server replies with account state.
-      let summary: Awaited<ReturnType<typeof client.accountSummary>> | null = null
-      try { await client.checkConnect(uuid) } catch { /* swallow */ }
-      for (let i = 0; i < 5; i++) {
-        try {
-          const s = await client.accountSummary(uuid)
-          if (s && (s.balance != null || s.equity != null || s.currency)) {
-            summary = s
-            break
-          }
-        } catch { /* swallow and retry */ }
-        await new Promise(r => setTimeout(r, 600 + i * 400))
+      const verified = await verifyBrokerCredentialConnect(client, uuid)
+      if (!verified.ok) {
+        try { await client.deleteAccount(uuid) } catch { /* swallow */ }
+        return bad(400, friendlyBrokerConnectError(verified.raw, { credentialConnect: true }))
       }
+      const summary = verified.summary
 
       const insertPayload: Record<string, unknown> = {
         user_id: userId,

@@ -351,19 +351,21 @@ export const fr: Translations = {
       reconnectDroppedMany:
         '{count} comptes ont perdu leur connexion broker. Utilisez Reconnecter sur chaque compte.',
       connectErrorWrongPassword:
-        'Le mot de passe du compte MT est incorrect. Vérifiez-le dans MetaTrader, puis utilisez Reconnecter.',
+        'Le mot de passe du compte MT est incorrect. Vérifiez-le dans MetaTrader, puis réessayez.',
       connectErrorWrongLogin:
-        'Le numéro de login MT ne correspond pas à ce compte lié. Vérifiez le numéro ou supprimez et reliez le compte.',
+        'Le numéro de login MT ne correspond pas à ce serveur broker. Vérifiez le numéro de compte dans MetaTrader.',
       connectErrorWrongServer:
         'Le nom du serveur broker est incorrect ou ne correspond pas à ce login. Vérifiez le serveur exact dans MetaTrader.',
       connectErrorInvestorPassword:
         'Un mot de passe investisseur (lecture seule) a été utilisé. Connectez-vous avec le mot de passe de trading principal de MetaTrader.',
       connectErrorAccountDisabled:
         'Ce compte MT est désactivé ou bloqué chez le broker. Contactez votre broker ou connectez-vous d’abord via MetaTrader.',
+      connectErrorCredentialsRejected:
+        'Connexion impossible avec ces identifiants MT. Vérifiez le numéro de compte, le mot de passe de trading et le nom exact du serveur dans MetaTrader.',
       connectErrorSessionExpired:
-        'La session broker a été interrompue sur le serveur. Utilisez Reconnecter — c’est en général temporaire, pas un mauvais mot de passe.',
+        'La session de trading a expiré sur le serveur. Utilisez Reconnecter et entrez votre mot de passe MT actuel.',
       connectErrorUnknown:
-        'La connexion au broker a été interrompue. Utilisez Reconnecter — il s’agit en général d’un problème de session temporaire, pas d’un mauvais login.',
+        'La connexion au broker a échoué. Vérifiez vos identifiants MT ou utilisez Reconnecter si le compte était déjà lié.',
       reconnectFailed: 'Impossible de reconnecter le broker',
       reconnectPasswordTitle: 'Session broker expirée',
       reconnectPasswordBody:
