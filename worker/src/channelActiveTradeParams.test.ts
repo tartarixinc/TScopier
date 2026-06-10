@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import {
   applyChannelParamsToVirtualLeg,
+  channelParamsPredateBasket,
   clearChannelActiveTradeParamsWhenFlat,
   estimateBasketTotalPlannedLegs,
   isFullEntrySignalWithStops,
@@ -577,5 +578,34 @@ describe('channelActiveTradeParams', () => {
     assert.equal(resolved.plannerParsed.tp, null)
     assert.equal(resolved.mergedChannelParams, false)
     assert.ok(deleted.includes('XAUUSD'))
+  })
+})
+
+describe('channelParamsPredateBasket', () => {
+  const params = (updatedAt: string | null) => ({
+    symbol: 'XAUUSD',
+    stoploss: 4517,
+    tpLevels: [4504, 4501, 4497],
+    updatedAt,
+  })
+
+  test('memory older than the basket anchor is stale', () => {
+    assert.equal(
+      channelParamsPredateBasket(params('2026-06-04T14:45:00Z'), '2026-06-10T04:15:00Z'),
+      true,
+    )
+  })
+
+  test('memory written during the basket lifetime is fresh', () => {
+    assert.equal(
+      channelParamsPredateBasket(params('2026-06-10T04:20:00Z'), '2026-06-10T04:15:00Z'),
+      false,
+    )
+  })
+
+  test('missing timestamps are treated as fresh (no false positives)', () => {
+    assert.equal(channelParamsPredateBasket(params(null), '2026-06-10T04:15:00Z'), false)
+    assert.equal(channelParamsPredateBasket(params('2026-06-04T14:45:00Z'), null), false)
+    assert.equal(channelParamsPredateBasket(null, '2026-06-10T04:15:00Z'), false)
   })
 })

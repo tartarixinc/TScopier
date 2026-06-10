@@ -9,7 +9,7 @@ import {
 import { apiForMetaapiAccount, loadPlatformByMetaapiId, type PlatformByMetaapiId } from './mtApiByAccount'
 import { autoManagementTradeSnapshot } from './autoManagement'
 import { tryApplyBasketFollowUpToNewFill } from './basketModFollowUp'
-import { loadChannelActiveTradeParamsForSymbol } from './channelActiveTradeParams'
+import { channelParamsPredateBasket, loadChannelActiveTradeParamsForSymbol } from './channelActiveTradeParams'
 import { resolveChannelTradingConfig } from './channelTradingConfig'
 import { markRangeLegFired, markRangeLegsExpired } from './rangePendingLadderSync'
 import {
@@ -626,14 +626,17 @@ export class VirtualPendingMonitor {
     }
 
     // Channel memory may hold a newer SL than the leg row (e.g. symbol-less Adjust SL).
+    // Only when the memory was written during this basket's lifetime — older
+    // memory belongs to a previous signal and produces wrong-side stops.
     let channelIdForTrade: string | null = null
     try {
       const { data: sigMeta } = await this.supabase
         .from('signals')
-        .select('channel_id')
+        .select('channel_id,created_at')
         .eq('id', leg.signal_id)
         .maybeSingle()
       channelIdForTrade = (sigMeta as { channel_id?: string } | null)?.channel_id ?? null
+      const basketCreatedAt = (sigMeta as { created_at?: string } | null)?.created_at ?? null
       if (channelIdForTrade) {
         const channelParams = await loadChannelActiveTradeParamsForSymbol(
           this.supabase,
@@ -641,7 +644,11 @@ export class VirtualPendingMonitor {
           channelIdForTrade,
           leg.symbol,
         )
-        if (channelParams?.stoploss != null && channelParams.stoploss > 0) {
+        if (
+          channelParams?.stoploss != null
+          && channelParams.stoploss > 0
+          && !channelParamsPredateBasket(channelParams, basketCreatedAt)
+        ) {
           leg.stoploss = channelParams.stoploss
         }
       }
@@ -766,6 +773,7 @@ export class VirtualPendingMonitor {
             entryPrice: entryPx,
             existingSl: result.stopLoss ?? args.stoploss ?? null,
             existingTp: result.takeProfit ?? args.takeprofit ?? null,
+            isBuy: leg.is_buy,
           })
         } catch (hookErr) {
           console.warn(

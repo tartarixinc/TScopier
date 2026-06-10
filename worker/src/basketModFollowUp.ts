@@ -4,8 +4,10 @@ import type { ManualTpLot } from './manualPlanning/types'
 import { normalizeManualSettingsForExecution } from './manualPlanning/normalizeManualSettings'
 import { resolveChannelTradingConfig } from './channelTradingConfig'
 import {
+  channelParamsPredateBasket,
   estimateBasketTotalPlannedLegs,
   loadChannelActiveTradeParamsForSymbol,
+  stripInvalidStopsForSide,
 } from './channelActiveTradeParams'
 import { takeProfitForSplitBasketLeg } from './manualPlanning/tpBucketDistribution'
 import { isBenignOrderModifyError } from './orderModifyBenign'
@@ -193,6 +195,8 @@ export async function tryApplyBasketFollowUpToNewFill(
     existingSl: number | null
     existingTp: number | null
     tpLots?: ManualTpLot[] | null
+    /** Direction of the filled leg — enables wrong-side stop validation. */
+    isBuy?: boolean | null
   },
 ): Promise<void> {
   const { data: basket } = await supabase
@@ -268,25 +272,62 @@ export async function tryApplyBasketFollowUpToNewFill(
     channelId,
     args.symbol,
   )
-  if (channelParams) {
+  if (channelParams && channelParamsPredateBasket(channelParams, createdAt)) {
+    // Memory left over from an older signal cycle (clearing was blocked, e.g.
+    // by ghost open rows). Applying it gives wrong-side "Invalid stops".
+    console.log(
+      `[basketModFollowUp] skip stale channel memory basket=${args.basketSignalId}`
+      + ` symbol=${args.symbol} memory_updated=${channelParams.updatedAt}`
+      + ` basket_created=${createdAt}`,
+    )
+  } else if (channelParams) {
     const channelStops = computeFollowUpStops(legCtx, {
       action: 'modify',
       sl: channelParams.stoploss,
       tpLevels: channelParams.tpLevels,
     })
     if (channelStops) {
-      const applied = await executeFollowUpModify(supabase, api, {
-        userId: args.userId,
-        brokerAccountId: args.brokerAccountId,
-        metaUuid: args.metaUuid,
-        ticket: args.ticket,
-        tradeRowId: args.tradeRowId,
-        basketSignalId: args.basketSignalId,
-        sourceSignalId: args.basketSignalId,
-        legIndex,
-        ...channelStops,
-      })
-      if (applied) return
+      let stops = channelStops
+      const entryRef = sanitizeLevel(args.entryPrice)
+      if (entryRef > 0 && args.isBuy != null) {
+        const stripped = stripInvalidStopsForSide({
+          stoploss: channelStops.stoploss,
+          takeprofit: channelStops.takeprofit,
+          referencePrice: entryRef,
+          isBuy: args.isBuy,
+        })
+        if (stripped.stripped.length) {
+          console.warn(
+            `[basketModFollowUp] channel memory stops on wrong side basket=${args.basketSignalId}`
+            + ` ticket=${args.ticket} dropped: ${stripped.stripped.join(', ')}`,
+          )
+          const dbPatch = { ...channelStops.dbPatch }
+          if (stripped.stoploss <= 0) delete dbPatch.sl
+          if (stripped.takeprofit <= 0) delete dbPatch.tp
+          stops = {
+            stoploss: stripped.stoploss > 0 ? stripped.stoploss : sanitizeLevel(legCtx.existingSl),
+            takeprofit: stripped.takeprofit > 0 ? stripped.takeprofit : sanitizeLevel(legCtx.existingTp),
+            dbPatch,
+          }
+        }
+      }
+      const changesAnything =
+        stops.stoploss !== sanitizeLevel(legCtx.existingSl)
+        || stops.takeprofit !== sanitizeLevel(legCtx.existingTp)
+      if (changesAnything) {
+        const applied = await executeFollowUpModify(supabase, api, {
+          userId: args.userId,
+          brokerAccountId: args.brokerAccountId,
+          metaUuid: args.metaUuid,
+          ticket: args.ticket,
+          tradeRowId: args.tradeRowId,
+          basketSignalId: args.basketSignalId,
+          sourceSignalId: args.basketSignalId,
+          legIndex,
+          ...stops,
+        })
+        if (applied) return
+      }
     }
   }
 

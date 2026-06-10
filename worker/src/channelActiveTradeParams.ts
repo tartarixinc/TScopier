@@ -12,6 +12,24 @@ export type ChannelActiveTradeParams = {
   symbol: string
   stoploss: number | null
   tpLevels: number[]
+  /** Last write time — used to detect memory left over from an older trade cycle. */
+  updatedAt?: string | null
+}
+
+/**
+ * Channel memory written before the basket's anchor signal belongs to an older
+ * trade cycle (e.g. SL/TP from last week's signal). Applying it to a fresh
+ * basket produces wrong-side stops the broker rejects as "Invalid stops".
+ */
+export function channelParamsPredateBasket(
+  params: ChannelActiveTradeParams | null | undefined,
+  basketCreatedAt: string | null | undefined,
+): boolean {
+  if (!params?.updatedAt || !basketCreatedAt) return false
+  const updated = Date.parse(params.updatedAt)
+  const anchor = Date.parse(basketCreatedAt)
+  if (!Number.isFinite(updated) || !Number.isFinite(anchor)) return false
+  return updated < anchor
 }
 
 export type VirtualLegStops = {
@@ -52,7 +70,7 @@ export async function loadChannelActiveTradeParamsForSymbol(
 ): Promise<ChannelActiveTradeParams | null> {
   const { data, error } = await supabase
     .from('channel_active_trade_params')
-    .select('symbol,stoploss,tp_levels')
+    .select('symbol,stoploss,tp_levels,updated_at')
     .eq('user_id', userId)
     .eq('channel_id', channelId)
     .limit(200)
@@ -60,13 +78,19 @@ export async function loadChannelActiveTradeParamsForSymbol(
     console.warn(`[channelActiveTradeParams] load failed: ${error.message}`)
     return null
   }
-  const rows = (data ?? []) as { symbol: string; stoploss: number | null; tp_levels: number[] }[]
+  const rows = (data ?? []) as {
+    symbol: string
+    stoploss: number | null
+    tp_levels: number[]
+    updated_at: string | null
+  }[]
   const match = rows.find(r => symbolsCompatibleForBasket(symbolHint, r.symbol))
   if (!match) return null
   return {
     symbol: match.symbol,
     stoploss: positiveLevel(match.stoploss),
     tpLevels: normalizeTpLevels(match.tp_levels),
+    updatedAt: match.updated_at ?? null,
   }
 }
 
