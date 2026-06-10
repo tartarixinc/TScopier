@@ -78,3 +78,8 @@ TP: 4288`
   const bare = extractUnlabeledPrices(msg)
   assert.deepEqual(bare, [])
 })
+
+test('extractUnlabeledPrices skips bare calendar years in news prose', () => {
+  const msg = 'Headline CPI highest level since April 2023 in May 2026 report'
+  assert.deepEqual(extractUnlabeledPrices(msg), [])
+})

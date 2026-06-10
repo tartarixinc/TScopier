@@ -232,6 +232,46 @@ function hasAnyKeyword(text: string, words: string[]): boolean {
   return words.some((w) => w && keywordRegex(w).test(text))
 }
 
+function isProseLongMatch(text: string): boolean {
+  return /(?:^|\b)(?:too|so|as|how)\s+long(?:\b|$)/i.test(text)
+}
+
+function isProseShortMatch(text: string): boolean {
+  return (
+    /\bshort\s+of\b/i.test(text)
+    || /\bin\s+short\b/i.test(text)
+    || /\bshort\s+term\b/i.test(text)
+  )
+}
+
+function parseBuySideFromKeywords(text: string, words: string[]): boolean {
+  for (const w of words) {
+    if (!w) continue
+    const lower = w.toLowerCase().trim()
+    if (lower === 'long') {
+      if (isProseLongMatch(text)) continue
+      if (keywordRegex('long').test(text)) return true
+      continue
+    }
+    if (keywordRegex(w).test(text)) return true
+  }
+  return false
+}
+
+function parseSellSideFromKeywords(text: string, words: string[]): boolean {
+  for (const w of words) {
+    if (!w) continue
+    const lower = w.toLowerCase().trim()
+    if (lower === 'short') {
+      if (isProseShortMatch(text)) continue
+      if (keywordRegex('short').test(text)) return true
+      continue
+    }
+    if (keywordRegex(w).test(text)) return true
+  }
+  return false
+}
+
 function parseSideFromKeywords(text: string, words: string[]): boolean {
   return hasAnyKeyword(text, words)
 }
@@ -714,7 +754,7 @@ function messageHasSideKeywords(message: string, channelKeywords: ChannelKeyword
   const delim = channelKeywords.additional.delimiters
   const buyAliases = Array.from(new Set(['buy', 'long', ...splitKeywordAliases(channelKeywords.signal.buy, delim)]))
   const sellAliases = Array.from(new Set(['sell', 'short', ...splitKeywordAliases(channelKeywords.signal.sell, delim)]))
-  return parseSideFromKeywords(message, buyAliases) !== parseSideFromKeywords(message, sellAliases)
+  return parseBuySideFromKeywords(message, buyAliases) !== parseSellSideFromKeywords(message, sellAliases)
 }
 
 /** Symbol-less SL/TP/entry parameter posts (typical channel follow-up without repeating instrument). */
@@ -737,8 +777,8 @@ function parseChannelParameterFollowUp(
     const delim = channelKeywords.additional.delimiters
     const buyAliases = Array.from(new Set(['buy', 'long', ...splitKeywordAliases(channelKeywords.signal.buy, delim)]))
     const sellAliases = Array.from(new Set(['sell', 'short', ...splitKeywordAliases(channelKeywords.signal.sell, delim)]))
-    const isBuy = parseSideFromKeywords(message, buyAliases)
-    const isSell = parseSideFromKeywords(message, sellAliases)
+    const isBuy = parseBuySideFromKeywords(message, buyAliases)
+    const isSell = parseSellSideFromKeywords(message, sellAliases)
     if (isBuy === isSell) return null
     return {
       action: isBuy ? 'buy' : 'sell',
@@ -848,8 +888,8 @@ function parseSimpleSignal(
     return null
   }
 
-  const isBuy = parseSideFromKeywords(message, buyAliases)
-  const isSell = parseSideFromKeywords(message, sellAliases)
+  const isBuy = parseBuySideFromKeywords(message, buyAliases)
+  const isSell = parseSellSideFromKeywords(message, sellAliases)
   const isNow = parseSideFromKeywords(message, marketAliases)
   const atMarketLike = /\b(at\s+market|@\s*market)\b/i.test(message)
 
@@ -931,8 +971,8 @@ function parseEntryFromKeywords(
   ]
   if (hasAnyKeyword(message, mgmtAliases)) return null
 
-  const isBuy = parseSideFromKeywords(message, buyAliases)
-  const isSell = parseSideFromKeywords(message, sellAliases)
+  const isBuy = parseBuySideFromKeywords(message, buyAliases)
+  const isSell = parseSellSideFromKeywords(message, sellAliases)
   if (!isBuy && isSell && /\bshort\s+of\b/i.test(text)) return null
   if (isBuy === isSell) return null
 

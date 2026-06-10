@@ -348,6 +348,32 @@ Have a great weekend.`
     assert.equal(result.parsed.action, 'ignore')
   })
 
+  it('skips FX Culture-style market news update with gold and CPI prose', () => {
+    const msg = `📰 Market News Update: Gold Plummets 3% Toward as In-Line CPI Fails to Alter Fed's Hiking Path
+
+📊 Gold Plunge & Key Tech Levels
+
+- Gold (XAU/USD) collapsed over 3.0% on Wednesday, crashing to around $4,125 and carving out fresh 11-week lows.
+
+- The Bureau of Labor Statistics reported that headline CPI accelerated to 4.2% YoY in May, marking its highest level since April 2023.
+
+- President Donald Trump warned that Iran had "taken too long to negotiate a deal" and would now "have to pay the price."
+
+- This pushed the US Dollar Index (DXY) right back to its cyclical highs over the bullion market.
+
+🚀 Stay sharp, traders!`
+    const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+    assert.equal(result.status, 'skipped')
+    assert.equal(result.parsed.action, 'ignore')
+  })
+
+  it('does not parse too long to negotiate as buy side without trade structure', () => {
+    const msg = 'Gold discussion: Iran had taken too long to negotiate a deal over the bullion market.'
+    const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+    assert.equal(result.status, 'skipped')
+    assert.equal(result.parsed.action, 'ignore')
+  })
+
   it('parses trained non-English cues via channel keywords and lexicon aliases', () => {
     const trainedKeywords = {
       ...DEFAULT_CHANNEL_KEYWORDS,

@@ -1,7 +1,63 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { looksLikeCasualNonTradeMessage, looksLikeProfitResultCommentary } from './signalCommentaryGuard'
-import { entryMissingSlTpRequiresNow, messageHasExplicitSlTpLabels } from './signalEntryNowRequirement'
+import {
+  looksLikeCasualNonTradeMessage,
+  looksLikeMarketNewsOrCommentary,
+  looksLikeProfitResultCommentary,
+} from './signalCommentaryGuard'
+import {
+  entryMissingSlTpRequiresNow,
+  messageHasExplicitSlTpLabels,
+  messageHasMarketNowIntent,
+} from './signalEntryNowRequirement'
+
+const FX_CULTURE_NEWS_FIXTURE = `📰 Market News Update: Gold Plummets 3% Toward as In-Line CPI Fails to Alter Fed's Hiking Path
+
+📊 Gold Plunge & Key Tech Levels
+
+- Gold (XAU/USD) collapsed over 3.0% on Wednesday, crashing to around $4,125 and carving out fresh 11-week lows.
+
+🇺🇸 Inflation Acceleration vs. Monthly Easing
+
+- The Bureau of Labor Statistics reported that headline CPI accelerated to 4.2% YoY in May (up from 3.8% in April), marking its highest level since April 2023.
+
+- Core CPI edged higher to 2.9% YoY (vs. 2.8% previously), proving that underlying price stickiness is deeply entrenched.
+
+🦅 CME FedWatch: Rate Hike Odds Solidify
+
+- President Donald Trump warned via Truth Social that Iran had "taken too long to negotiate a deal" and would now "have to pay the price."
+
+- This cocktail of permanent war premiums pushed the US Dollar Index (DXY) right back to its cyclical highs, forming an unbreakable ceiling over the bullion market.
+
+🚀 Stay sharp, traders!`
+
+describe('looksLikeMarketNewsOrCommentary', () => {
+  it('detects FX Culture-style market news update with gold and CPI', () => {
+    assert.equal(looksLikeMarketNewsOrCommentary(FX_CULTURE_NEWS_FIXTURE), true)
+    assert.equal(looksLikeCasualNonTradeMessage(FX_CULTURE_NEWS_FIXTURE), true)
+  })
+
+  it('does not flag structured trade signals', () => {
+    const signal = `#GOLD SHORT FROM RESISTANCE
+✔️Trade Direction: short
+✔️Entry Level: 4,572.25
+✔️Target Level: 4,535.53
+✔️Stop Loss: 4,590.01`
+    assert.equal(looksLikeMarketNewsOrCommentary(signal), false)
+  })
+
+  it('does not flag Gold buy now', () => {
+    assert.equal(looksLikeMarketNewsOrCommentary('Gold buy now'), false)
+  })
+})
+
+describe('messageHasMarketNowIntent', () => {
+  it('does not treat market news headline as market order intent', () => {
+    assert.equal(messageHasMarketNowIntent('Market News Update: Gold Plummets'), false)
+    assert.equal(messageHasMarketNowIntent('Gold buy now'), true)
+    assert.equal(messageHasMarketNowIntent('Buy gold at market'), true)
+  })
+})
 
 describe('looksLikeProfitResultCommentary', () => {
   const msg = `**INSANE RESULT** 🔥

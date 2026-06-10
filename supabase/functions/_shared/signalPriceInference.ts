@@ -189,6 +189,11 @@ export function extractUnlabeledPrices(message: string): number[] {
 
     const value = parseSignalPriceToken(raw)
     if (value == null || seen.has(value)) continue
+    const digitsOnly = raw.replace(/,/g, '')
+    if (/^\d{4}$/.test(digitsOnly)) {
+      const year = Number(digitsOnly)
+      if (year >= 1900 && year <= 2100) continue
+    }
     seen.add(value)
     out.push(value)
   }

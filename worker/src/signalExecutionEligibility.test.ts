@@ -90,4 +90,20 @@ describe('evaluateParsedSignalExecutionEligibility', () => {
     assert.equal(eligibility.eligible, false)
     assert.equal(eligibility.skipReason, COMMENTARY_NOT_SIGNAL_REASON)
   })
+
+  it('rejects FX Culture-style market news commentary', () => {
+    const msg = `📰 Market News Update: Gold Plummets 3% as CPI Fails to Alter Fed Path
+
+- Gold (XAU/USD) collapsed to around $4,125.
+- Headline CPI accelerated to 4.2% YoY in May, highest since April 2023.
+- Iran had taken too long to negotiate a deal over the bullion market.`
+    const eligibility = evaluateParsedSignalExecutionEligibility({
+      action: 'buy',
+      symbol: 'XAUUSD',
+      sl: 2023,
+      tp: [],
+    }, msg)
+    assert.equal(eligibility.eligible, false)
+    assert.equal(eligibility.skipReason, COMMENTARY_NOT_SIGNAL_REASON)
+  })
 })

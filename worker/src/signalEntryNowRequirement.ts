@@ -32,6 +32,13 @@ function splitKeywordAliases(raw: string, delim: string): string[] {
   return String(raw ?? '').split(delim).map(s => s.trim()).filter(Boolean)
 }
 
+/** "Market" in news/analysis prose — not immediate market-order intent. */
+function isNonTradingMarketPhrase(message: string): boolean {
+  return /\b(?:market\s+(?:news|update|analysis|recap|commentary|outlook|report)|stock\s+market|bullion\s+market|labor\s+market|equity\s+market|job\s+market|housing\s+market|energy\s+market|cyclical\s+highs)\b/i.test(
+    message,
+  )
+}
+
 /** True when the message declares an immediate / market entry (NOW, MARKET, etc.). */
 export function messageHasMarketNowIntent(
   message: string,
@@ -39,12 +46,24 @@ export function messageHasMarketNowIntent(
 ): boolean {
   const raw = String(message ?? '')
   if (/\b(at\s+market|@\s*market)\b/i.test(raw)) return true
-  const defaults = ['now', 'instant', 'market', 'mkt']
+  if (/\b(?:market\s+order|buy\s+market|sell\s+market|market\s+buy|market\s+sell)\b/i.test(raw)) {
+    return true
+  }
+
+  const nowLike = ['now', 'instant', 'mkt']
   const delim = channelKeywords?.additional?.delimiters ?? '|'
   const custom = channelKeywords?.signal?.market_order
     ? splitKeywordAliases(channelKeywords.signal.market_order, delim)
     : []
-  return [...defaults, ...custom].some(token => token && keywordRegex(token).test(raw))
+  for (const token of [...nowLike, ...custom.filter(t => t.toLowerCase() !== 'market')]) {
+    if (token && keywordRegex(token).test(raw)) return true
+  }
+
+  if (keywordRegex('market').test(raw) && !isNonTradingMarketPhrase(raw)) {
+    return true
+  }
+
+  return false
 }
 
 /** True when SL/TP appear as labeled parameters in the message (not inferred from prose). */
