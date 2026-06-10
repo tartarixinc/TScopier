@@ -13,7 +13,7 @@ import { hasTradableInstrumentInText } from './tradableSymbol'
 import type { SignalRow } from './tradeExecutor'
 import { enqueueParsedSignal } from './queue/signalQueuePublisher'
 import { signalQueueConfig } from './queue/signalQueueConfig'
-import { pushParsedSignalToTradeWorkerAwait } from './tradeSignalPush'
+import { pushParsedSignalToTradeWorker } from './tradeSignalPush'
 import { persistListenerEvent } from './listenerEvents'
 import { getChannelParseContext, invalidateChannelParseCache } from './channelKeywordsCache'
 import { parseChannelMessageSync, parseRawChannelMessage, looksLikeChannelManagementUpdate, looksLikeExplicitFullCloseCommand } from './parseSignal'
@@ -261,6 +261,8 @@ export class UserListener {
   private consecutiveProbeFailures = 0
   private lastSavedSession: string
   private onSignalParsed: ((row: SignalRow) => boolean) | null = null
+  /** Recent live message ids — avoids a Supabase round-trip on hot-path dedup. */
+  private liveMessageDedup = new Map<string, number>()
 
   constructor(
     userId: string,
@@ -1268,6 +1270,12 @@ export class UserListener {
       return false
     }
 
+    const dedupKey = `${channelRow.id}:${messageId}`
+    const dedupAt = this.liveMessageDedup.get(dedupKey)
+    if (dedupAt != null && Date.now() - dedupAt < 120_000) {
+      return false
+    }
+
     const { count: dupCount } = await this.supabase
       .from('signals')
       .select('id', { count: 'exact', head: true })
@@ -1367,18 +1375,6 @@ export class UserListener {
       return true
     }
 
-    const persisted = await this.persistSignalSync({
-      signalId,
-      channelRow,
-      rawMessage,
-      messageId,
-      parentSignalId,
-      replyToMessageId,
-      isReply,
-      parseResult: effectiveParseResult,
-    })
-    if (!persisted) return false
-
     pipelineTs.t_dispatch_sent = Date.now()
     const dispatchRow: SignalRow = {
       id: signalId,
@@ -1397,49 +1393,60 @@ export class UserListener {
       `[userListener] dispatch signal user=${this.userId} signalId=${signalId} channelRow=${channelRow.id} messageId=${messageId}`,
     )
 
-    const dispatchedInProcess = this.onSignalParsed ? this.onSignalParsed(dispatchRow) === true : false
-    const shouldPush = workerConfig.runsListener && (!workerConfig.runsTrade || !dispatchedInProcess)
+    this.liveMessageDedup.set(dedupKey, Date.now())
 
-    let queueResult: Awaited<ReturnType<typeof enqueueParsedSignal>> | null = null
-    if (shouldPush) {
-      queueResult = await enqueueParsedSignal(this.supabase, dispatchRow)
-    }
-    const queueCfg = signalQueueConfig()
-    const queueSucceeded = queueResult?.ok === true
-    const pushFallback = queueCfg.pushFallbackOnQueueFail
-    const shouldHttpPush = shouldPush && (
-      !queueSucceeded
-      && (pushFallback || !queueResult || queueResult.skipped)
-    )
-    void this.supabase.from('trade_execution_logs').insert({
-      user_id: this.userId,
-      signal_id: signalId,
-      action: 'dispatch_route_decision',
-      status: 'success',
-      request_payload: {
-        dispatched_in_process: dispatchedInProcess,
-        should_push: shouldPush,
-        queue_enabled: queueCfg.enabled,
-        queue_enqueued: queueSucceeded,
-        queue_skipped_reason: queueResult?.skipped ? queueResult.reason : null,
-        queue_error: queueResult?.error ?? null,
-        http_push_fallback: shouldHttpPush,
-        runs_trade: workerConfig.runsTrade,
-        runs_listener: workerConfig.runsListener,
-        persist_before_dispatch: true,
-      },
+    const dispatchedInProcess = this.onSignalParsed ? this.onSignalParsed(dispatchRow) === true : false
+    this.routeDispatchToTradeWorker(dispatchRow, dispatchedInProcess)
+
+    void this.persistSignalBackground({
+      signalId,
+      channelRow,
+      rawMessage,
+      messageId,
+      parentSignalId,
+      replyToMessageId,
+      isReply,
+      parseResult: effectiveParseResult,
     })
-    if (shouldHttpPush) {
-      const pushed = await pushParsedSignalToTradeWorkerAwait(dispatchRow)
-      if (!pushed) {
-        incMetric('dispatch_push_exhausted')
-      }
-    }
 
     return true
   }
 
-  /** Persist signal row before trade dispatch (durable handoff). */
+  /** Fire-and-forget handoff to trade worker (in-process, queue, or HTTP push). */
+  private routeDispatchToTradeWorker(dispatchRow: SignalRow, dispatchedInProcess: boolean): void {
+    const shouldPush = workerConfig.runsListener && (!workerConfig.runsTrade || !dispatchedInProcess)
+    if (!shouldPush) return
+
+    void enqueueParsedSignal(this.supabase, dispatchRow).then(queueResult => {
+      const queueCfg = signalQueueConfig()
+      const queueSucceeded = queueResult?.ok === true
+      const shouldHttpPush = !queueSucceeded
+        && (queueCfg.pushFallbackOnQueueFail || !queueResult || queueResult.skipped)
+      if (shouldHttpPush) {
+        pushParsedSignalToTradeWorker(dispatchRow)
+      }
+      void this.supabase.from('trade_execution_logs').insert({
+        user_id: this.userId,
+        signal_id: dispatchRow.id,
+        action: 'dispatch_route_decision',
+        status: 'success',
+        request_payload: {
+          dispatched_in_process: dispatchedInProcess,
+          should_push: shouldPush,
+          queue_enabled: queueCfg.enabled,
+          queue_enqueued: queueSucceeded,
+          queue_skipped_reason: queueResult?.skipped ? queueResult.reason : null,
+          queue_error: queueResult?.error ?? null,
+          http_push_fallback: shouldHttpPush,
+          runs_trade: workerConfig.runsTrade,
+          runs_listener: workerConfig.runsListener,
+          persist_before_dispatch: false,
+        },
+      })
+    })
+  }
+
+  /** @deprecated Use persistSignalBackground after dispatch-first handoff. */
   private async persistSignalSync(args: {
     signalId: string
     channelRow: ChannelRow

@@ -299,7 +299,7 @@ export async function handleSignal(ctx: TradeExecutorContext,
         })
       }
 
-      if (!isMessageEdit && await ctx.signalAlreadyHandled(row.id)) {
+      if (!isMessageEdit && !liveFast && await ctx.signalAlreadyHandled(row.id)) {
         await ctx.markSignalExecuted(row.id)
         return
       }
@@ -366,26 +366,28 @@ export async function handleSignal(ctx: TradeExecutorContext,
       let brokers = allMatchingBrokers.filter(b => ctx.brokerEligibleForSignal(b, row))
       if (brokers.length > 0 && row.channel_id) {
         const profileTz = ctx.userTimezoneById.get(row.user_id)
-        const allowed: BrokerRow[] = []
-        for (const broker of brokers) {
-          const state = await ctx.fetchCopyLimitState(broker.id, row.channel_id)
-          const pause = evaluateChannelCopyLimitPauseForBroker(
-            broker,
-            row.channel_id,
-            profileTz,
-            state,
-          )
-          if (pause.paused && pause.reason) {
-            await ctx.logDispatchSkipped(row, pause.reason, {
-              broker_id: broker.id,
-              channel_id: row.channel_id,
-              pause_key: pause.pauseKey ?? null,
-            })
-            continue
-          }
-          allowed.push(broker)
-        }
-        brokers = allowed
+        const channelId = row.channel_id
+        const pauseResults = await Promise.all(
+          brokers.map(async broker => {
+            const state = await ctx.fetchCopyLimitState(broker.id, channelId)
+            const pause = evaluateChannelCopyLimitPauseForBroker(
+              broker,
+              channelId,
+              profileTz,
+              state,
+            )
+            if (pause.paused && pause.reason) {
+              await ctx.logDispatchSkipped(row, pause.reason, {
+                broker_id: broker.id,
+                channel_id: channelId,
+                pause_key: pause.pauseKey ?? null,
+              })
+              return null
+            }
+            return broker
+          }),
+        )
+        brokers = pauseResults.filter((b): b is typeof brokers[number] => b != null)
       }
       if (!brokers.length) {
         if (configSkipReasons.length > 0 && rawMatchingBrokers.length > 0) {
@@ -465,20 +467,17 @@ export async function handleSignal(ctx: TradeExecutorContext,
       const op = operationFor(action, parsed)
       if (!op || !parsed.symbol) return
 
-      if (liveFast && !isMessageEdit && await ctx.signalLiveDispatchAlreadyHandled(row.id)) {
-        await ctx.markSignalExecuted(row.id)
-        return
-      }
-
-      for (const b of brokers) {
-        const resolved = resolveChannelTradingConfig(b, row.channel_id)
-        const ms = resolved.manual_settings
-        console.log(
-          `[tradeExecutor] channel config signal=${row.id} channel=${row.channel_id ?? 'none'}`
-          + ` broker=${b.id} source=${resolved.config_source}`
-          + ` style=${String(ms.trade_style ?? 'single')}`
-          + ` fixed_lot=${String(ms.fixed_lot ?? 'missing')}`,
-        )
+      if (!liveFast) {
+        for (const b of brokers) {
+          const resolved = resolveChannelTradingConfig(b, row.channel_id)
+          const ms = resolved.manual_settings
+          console.log(
+            `[tradeExecutor] channel config signal=${row.id} channel=${row.channel_id ?? 'none'}`
+            + ` broker=${b.id} source=${resolved.config_source}`
+            + ` style=${String(ms.trade_style ?? 'single')}`
+            + ` fixed_lot=${String(ms.fixed_lot ?? 'missing')}`,
+          )
+        }
       }
 
       if (liveFast) {

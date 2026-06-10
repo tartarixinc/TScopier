@@ -219,7 +219,7 @@ async function pushParsedSignalToTradeWorkerInner(
     pipeline_ts: row.pipeline_ts,
   }
 
-  await logPushAttemptToDb(row, 'success', {
+  void logPushAttemptToDb(row, 'success', {
     run_id: 'latency-v3',
     phase: 'start',
     action,
@@ -241,7 +241,7 @@ async function pushParsedSignalToTradeWorkerInner(
       opts?.awaitExecution === true,
       dispatchSource,
     )
-    await logPushAttemptToDb(row, result.ok ? 'success' : 'failed', {
+    void logPushAttemptToDb(row, result.ok ? 'success' : 'failed', {
       run_id: 'latency-v3',
       phase: 'attempt',
       action,
@@ -269,7 +269,18 @@ async function pushParsedSignalToTradeWorkerInner(
   return false
 }
 
-/** Awaitable push — used after signals row is persisted (durable handoff). */
+/** Fire-and-forget push — listener must not block on trade completion. */
+export function pushParsedSignalToTradeWorker(
+  row: TradeSignalPushPayload,
+  opts?: { source?: string },
+): void {
+  void pushParsedSignalToTradeWorkerInner(row, {
+    awaitExecution: false,
+    source: opts?.source ?? row.dispatch_source,
+  })
+}
+
+/** Awaitable push — used when caller needs confirmation of HTTP accept (not full execution). */
 export async function pushParsedSignalToTradeWorkerAwait(
   row: TradeSignalPushPayload,
   opts?: { source?: string },
