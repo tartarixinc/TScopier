@@ -62,6 +62,7 @@ test('buildAccountGrowthSeries: flat balance line when no closed trades in windo
   }
 })
 
+test('buildAccountGrowthSeries: reconstructs per-account balance from closed deals', () => {
   const now = new Date(2026, 4, 18, 12, 0, 0)
   const trades: DashboardChartTrade[] = [
     {

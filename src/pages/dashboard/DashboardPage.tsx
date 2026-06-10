@@ -18,12 +18,7 @@ import { Toggle } from '../../components/ui/Toggle'
 import { Button } from '../../components/ui/Button'
 import { InfoTooltip } from '../../components/ui/InfoTooltip'
 import { metatraderApi, type MtTrade } from '../../lib/metatraderapi'
-import {
-  aggregateTodaysProfitFromDayStart,
-  formatLocalCalendarDay,
-  hasBalanceDayStartForToday,
-  resolveDisplayedTodayProfit,
-} from '../../lib/dayStartBalance'
+import { formatLocalCalendarDay } from '../../lib/dayStartBalance'
 import { formatLocalMtApiDateTime, isMtTimestampInRange } from '../../lib/mtApiDateTime'
 import {
   aggregateRealizedProfitFromTrades,
@@ -50,10 +45,7 @@ import {
 import { brokerStatsPreviewFromAccount } from '../../lib/brokerStatsNavigation'
 import { syncPerformanceCacheFromDashboard } from '../../lib/performanceCacheBridge'
 import {
-  buildTradeVolume7Day,
-  findTodayTradeOutcomeDay,
-  findYesterdayTradeOutcomeDay,
-  netPnlFromTradeOutcomeDay,
+  DASHBOARD_CHART_MT_HISTORY_DAYS,
   summarizeTodayFromChartTrades,
   summarizeTodayFromMtTrades,
   resolveDashboardChartTrades,
@@ -61,8 +53,12 @@ import {
   type DashboardChartTrade,
 } from '../../lib/dashboardCharts'
 import {
+  deriveDashboardAnalytics,
+  preferAuthoritativeChartTrades,
+  resolveAnalyticsChartTrades,
+} from '../../lib/dashboardAnalytics'
+import {
   buildPerformanceChannelLinkMaps,
-  computeProfitByChannel,
   type PerformanceChannelLinkMaps,
 } from '../../lib/performanceInsights'
 import { ChannelProfitChart } from '../../components/dashboard/ChannelProfitChart'
@@ -94,7 +90,6 @@ import {
 } from '../../lib/linkedAccountSort'
 
 const DASHBOARD_MT_HISTORY_LIMIT = 5000
-const DASHBOARD_HISTORY_DAYS = 7
 
 /** Shared column template for dashboard Copier Logs header + rows. */
 const DASHBOARD_COPIER_LOG_GRID =
@@ -432,6 +427,7 @@ function mergeDashboardStats(
     mtHasClosedTrades?: boolean
     trustOpenTrades?: boolean
     preserveMtTradeCounts?: boolean
+    preserveMtPnl?: boolean
   },
 ): DashboardStats {
   if (authoritative) {
@@ -458,6 +454,10 @@ function mergeDashboardStats(
   const keepOpenCount = (p: number, n: number) =>
     opts?.trustOpenTrades ? (Number.isFinite(n) ? n : p) : (Number.isFinite(n) ? n : p)
   const keepStr = (p: string, n: string) => (n === '—' && p !== '—' ? p : n)
+  const keepPnl = (p: number, n: number) =>
+    opts?.preserveMtPnl ? p : acceptFresh(p, n)
+  const keepTradeCount = (p: number, n: number) =>
+    opts?.preserveMtTradeCounts ? p : acceptFresh(p, n)
   return {
     ...next,
     totalEquity: keepBalance(prev.totalEquity, next.totalEquity),
@@ -465,12 +465,12 @@ function mergeDashboardStats(
     openPnl: keepBalance(prev.openPnl, next.openPnl),
     openPositions: keepOpenCount(prev.openPositions, next.openPositions),
     openTrades: keepOpenCount(prev.openTrades, next.openTrades),
-    todayProfit: acceptFresh(prev.todayProfit, next.todayProfit),
-    yesterdayProfit: acceptFresh(prev.yesterdayProfit, next.yesterdayProfit),
-    tradesTaken: acceptFresh(prev.tradesTaken, next.tradesTaken),
-    tradesWon: acceptFresh(prev.tradesWon, next.tradesWon),
-    tradesLost: acceptFresh(prev.tradesLost, next.tradesLost),
-    tradesBreakeven: acceptFresh(prev.tradesBreakeven, next.tradesBreakeven),
+    todayProfit: keepPnl(prev.todayProfit, next.todayProfit),
+    yesterdayProfit: keepPnl(prev.yesterdayProfit, next.yesterdayProfit),
+    tradesTaken: keepTradeCount(prev.tradesTaken, next.tradesTaken),
+    tradesWon: keepTradeCount(prev.tradesWon, next.tradesWon),
+    tradesLost: keepTradeCount(prev.tradesLost, next.tradesLost),
+    tradesBreakeven: keepTradeCount(prev.tradesBreakeven, next.tradesBreakeven),
     totalVolume: acceptFresh(prev.totalVolume, next.totalVolume),
     yesterdayTotalVolume: acceptFresh(prev.yesterdayTotalVolume, next.yesterdayTotalVolume),
     bestTradeProfit: acceptFresh(prev.bestTradeProfit, next.bestTradeProfit),
@@ -487,37 +487,12 @@ function mergeDashboardStats(
   }
 }
 
-function preferChartTrades(prev: DashboardChartTrade[], next: DashboardChartTrade[]): DashboardChartTrade[] {
-  return next.length > 0 ? next : prev
-}
-
-function resolveDashboardTodayProfit(
-  chartTrades: DashboardChartTrade[],
-  linkedAccounts: BrokerAccount[],
-  balanceByAccountId: Record<string, number | undefined>,
-  live?: { balanceDelta: number | null; balanceDayReady: boolean },
-): number {
-  const calendarDay = formatLocalCalendarDay()
-  const chartStats = summarizeTodayFromChartTrades(chartTrades)
-  const chartNet = netPnlFromTradeOutcomeDay(findTodayTradeOutcomeDay(chartTrades))
-  const balanceLookup = Object.fromEntries(
-    Object.entries(balanceByAccountId).map(([id, balance]) => [id, { balance }]),
-  )
-  const storedDelta = aggregateTodaysProfitFromDayStart(
-    linkedAccounts,
-    balanceLookup,
-    calendarDay,
-    { connectedOnly: true },
-  )
-  const balanceDelta = live?.balanceDelta !== undefined ? live.balanceDelta : storedDelta
-  const balanceDayReady =
-    live?.balanceDayReady ?? hasBalanceDayStartForToday(linkedAccounts, calendarDay)
-  return resolveDisplayedTodayProfit({
-    balanceDelta,
-    balanceDayReady,
-    chartNetPnl: chartNet,
-    chartHasData: chartStats.hasData,
-  })
+function applyAuthoritativeChartTrades(
+  prev: DashboardChartTrade[],
+  next: DashboardChartTrade[],
+  hasMtBroker: boolean,
+): DashboardChartTrade[] {
+  return preferAuthoritativeChartTrades(prev, next, { hasMtBroker })
 }
 
 function writeDashboardCache(userId: string, payload: DashboardCachePayload) {
@@ -614,10 +589,7 @@ export function DashboardPage() {
   const [chartTrades, setChartTrades] = useState<DashboardChartTrade[]>(() => bootCache?.chartTrades ?? [])
   const chartTradesRef = useRef(chartTrades)
   chartTradesRef.current = chartTrades
-  const [liveTodayBalanceProfit, setLiveTodayBalanceProfit] = useState<{
-    delta: number | null
-    ready: boolean
-  }>({ delta: null, ready: false })
+  const [mtTrades, setMtTrades] = useState<MtTrade[]>(() => bootCache?.mtTrades ?? [])
   const [channelLinkMaps, setChannelLinkMaps] = useState<PerformanceChannelLinkMaps>({
     ticketToChannelId: {},
     signalPrefixToChannelId: {},
@@ -652,6 +624,9 @@ export function DashboardPage() {
   const refreshQuietRef = useRef<() => void>(() => {})
   /** Last successful MT trades response, kept across renders so stats survive throttled refresh windows. */
   const mtTradesRef = useRef<MtTrade[] | null>(bootCache?.mtTrades ?? null)
+  useEffect(() => {
+    mtTradesRef.current = mtTrades
+  }, [mtTrades])
   /**
    * Last known MT live values per broker id, kept across `loadDashboard` calls so
    * the auto-refresh tick (15s) doesn't bounce stats back to DB defaults while
@@ -698,7 +673,10 @@ export function DashboardPage() {
         setChartTrades(resolveDashboardChartTrades(cached.mtTrades, []))
       }
       if (cached.aiExpertLogs?.length) setAiExpertLogs(cached.aiExpertLogs)
-      if (cached.mtTrades?.length) mtTradesRef.current = cached.mtTrades
+      if (cached.mtTrades?.length) {
+        setMtTrades(cached.mtTrades)
+        mtTradesRef.current = cached.mtTrades
+      }
       if (cached.channelLinkMaps) setChannelLinkMaps(cached.channelLinkMaps)
       syncPerformanceCacheFromDashboard(user.id)
       seedLiveBrokerStateFromBalances(balances, liveBrokerStateRef.current, cached.linkedAccounts)
@@ -712,6 +690,7 @@ export function DashboardPage() {
       setChannelDisplayNames({})
       setLinkedAccountBalances({})
       setChartTrades([])
+      setMtTrades([])
       setAiExpertLogs([])
     }
     dashboardReadyRef.current = Boolean(cached?.stats)
@@ -724,10 +703,38 @@ export function DashboardPage() {
     return sticky.length > 0 ? sticky : chartTrades
   }, [chartTrades])
 
-  const tradeVolume7Day = useMemo(
-    () => buildTradeVolume7Day(effectiveChartTrades),
-    [effectiveChartTrades],
+  const dashboardAnalytics = useMemo(
+    () => deriveDashboardAnalytics({
+      chartTrades: effectiveChartTrades,
+      mtTrades,
+      channelLinkMaps,
+      unlinkedLabel: t.performance.unlinkedChannel,
+    }),
+    [effectiveChartTrades, mtTrades, channelLinkMaps, t.performance.unlinkedChannel],
   )
+
+  /** Headline stats: P/L from analytics snapshot; trade counts from MT history (not sticky chart rows). */
+  const headlineStats = useMemo(() => {
+    const profitFields = {
+      todayProfit: dashboardAnalytics.todayProfit,
+      yesterdayProfit: dashboardAnalytics.yesterdayProfit,
+    }
+    if (mtTrades.length > 0) {
+      const closed = summarizeTodayFromMtTrades(mtTrades)
+      const { todayStart, tomorrowStart } = getLocalCalendarDayBounds()
+      const mtChartRows = resolveDashboardChartTrades(mtTrades, [])
+      const openedToday = countChartTradesOpenedInRange(mtChartRows, todayStart, tomorrowStart)
+      return {
+        ...stats,
+        ...profitFields,
+        tradesTaken: Math.max(closed.taken, openedToday),
+        tradesWon: closed.won,
+        tradesLost: closed.lost,
+        tradesBreakeven: closed.breakeven,
+      }
+    }
+    return { ...stats, ...profitFields }
+  }, [stats, mtTrades, dashboardAnalytics.todayProfit, dashboardAnalytics.yesterdayProfit])
 
   const closedProfitByAccountId = useMemo(
     () => sumClosedDealProfitByBroker(effectiveChartTrades),
@@ -736,79 +743,11 @@ export function DashboardPage() {
 
   const hasMtTradeHistory = effectiveChartTrades.length > 0
 
-  const balanceByAccountId = useMemo(() => {
-    const out: Record<string, number> = {}
-    for (const account of linkedAccounts) {
-      const live = linkedAccountBalances[account.id]
-      const bal = live?.balance ?? account.last_balance ?? live?.equity ?? account.last_equity
-      if (bal != null && Number.isFinite(Number(bal))) {
-        out[account.id] = Number(bal)
-      }
-    }
-    return out
-  }, [linkedAccounts, linkedAccountBalances])
-
-  /** Headline stats: today/yesterday P/L match Trade Outcome bars (profit − loss). */
-  const headlineStats = useMemo(() => {
-    const mtRaw = mtTradesRef.current ?? []
-    const mtTodayStats = summarizeTodayFromMtTrades(mtRaw)
-    const chartTradesForHeadline =
-      mtRaw.length > 0 ? resolveDashboardChartTrades(mtRaw, []) : effectiveChartTrades
-    const chartTodayFromMt = summarizeTodayFromChartTrades(chartTradesForHeadline)
-    const closedTaken = mtRaw.length > 0
-      ? Math.max(chartTodayFromMt.taken, mtTodayStats.taken)
-      : Math.max(chartTodayFromMt.taken, stats.tradesTaken)
-    const chartHasToday = chartTodayFromMt.hasData || mtTodayStats.hasData
-    const todayProfit = resolveDashboardTodayProfit(
-      chartTradesForHeadline,
-      linkedAccounts,
-      balanceByAccountId,
-      liveTodayBalanceProfit.ready
-        ? {
-            balanceDelta: liveTodayBalanceProfit.delta,
-            balanceDayReady: liveTodayBalanceProfit.ready,
-          }
-        : undefined,
-    )
-    /** Prefer chart-bucket net when chart rows exist; MT-only fallback for close-time vs bucket edge cases (not balance ops). */
-    const todayProfitFinal =
-      chartTodayFromMt.hasData && Math.abs(todayProfit) < 0.01 && Math.abs(chartTodayFromMt.netPnl) >= 0.01
-        ? chartTodayFromMt.netPnl
-        : !chartTodayFromMt.hasData &&
-            mtTodayStats.hasData &&
-            Math.abs(todayProfit) < 0.01 &&
-            Math.abs(mtTodayStats.netPnl) >= 0.01
-          ? mtTodayStats.netPnl
-          : todayProfit
-    const yesterdayProfit = chartHasToday || chartTradesForHeadline.length > 0
-      ? netPnlFromTradeOutcomeDay(findYesterdayTradeOutcomeDay(chartTradesForHeadline))
-      : stats.yesterdayProfit
-    const tradesWon = Math.max(chartTodayFromMt.won, mtTodayStats.won)
-    const tradesLost = Math.max(chartTodayFromMt.lost, mtTodayStats.lost)
-    const tradesBreakeven = Math.max(chartTodayFromMt.breakeven, mtTodayStats.breakeven)
-    return {
-      ...stats,
-      todayProfit: todayProfitFinal,
-      yesterdayProfit,
-      tradesTaken: closedTaken,
-      tradesWon,
-      tradesLost,
-      tradesBreakeven,
-    }
-  }, [
-    stats,
-    chartTrades,
-    effectiveChartTrades,
-    linkedAccounts,
-    balanceByAccountId,
-    liveTodayBalanceProfit,
-  ])
-
   const openPnlSub = useMemo(() => {
     let accountCount = countAccountsWithOpenPositions(
       linkedAccounts,
       linkedAccountBalances,
-      mtTradesRef.current,
+      mtTrades,
     )
     if (accountCount === 0 && stats.openTrades > 0) {
       const brokers = new Set(
@@ -819,7 +758,7 @@ export function DashboardPage() {
     if (accountCount === 0) return t.dashboard.openPnlNoOpen
     if (accountCount === 1) return t.dashboard.openPnlAcrossOneAccount
     return interpolate(t.dashboard.openPnlAcrossAccounts, { count: String(accountCount) })
-  }, [linkedAccounts, linkedAccountBalances, effectiveChartTrades, stats.openTrades, t])
+  }, [linkedAccounts, linkedAccountBalances, effectiveChartTrades, stats.openTrades, mtTrades, t])
 
   const equityByAccountId = useMemo(() => {
     const out: Record<string, number> = {}
@@ -832,16 +771,6 @@ export function DashboardPage() {
     }
     return out
   }, [linkedAccounts, linkedAccountBalances])
-
-  const channelProfit7d = useMemo(() => {
-    const raw = mtTradesRef.current ?? []
-    return computeProfitByChannel(
-      raw,
-      '7d',
-      channelLinkMaps,
-      t.performance.unlinkedChannel,
-    )
-  }, [chartTrades, channelLinkMaps, t.performance.unlinkedChannel])
 
   const visibleChannelWorkerLogs = useMemo(
     () => aiExpertLogs.filter(
@@ -865,8 +794,7 @@ export function DashboardPage() {
 
   const linkedAccountPerformance = useMemo(() => {
     const tradesByAccountId: Record<string, TradeStatsRow[]> = {}
-    const mtTrades = mtTradesRef.current
-    if (mtTrades && mtTrades.length > 0) {
+    if (mtTrades.length > 0) {
       for (const t of mtTrades) {
         const row: TradeStatsRow = {
           status: t.status,
@@ -900,7 +828,7 @@ export function DashboardPage() {
       }
     }
     return computeLinkedAccountPerformanceMap(linkedAccounts, tradesByAccountId, equityByAccountId)
-  }, [linkedAccounts, effectiveChartTrades, equityByAccountId])
+  }, [linkedAccounts, effectiveChartTrades, equityByAccountId, mtTrades])
 
   const displayedLinkedAccounts = useMemo(() => {
     if (!linkedAccountSortKey) return linkedAccounts
@@ -1164,20 +1092,24 @@ export function DashboardPage() {
       liveBrokerStateRef.current,
       brokerAccounts,
     )
-    const chartTradesForLoad = useMtTrades && mtTrades
-      ? resolveDashboardChartTrades(mtTrades, [])
-      : resolveDashboardChartTrades(null, allTrades)
-    const todayProfit = resolveDashboardTodayProfit(
-      chartTradesForLoad,
-      brokerAccounts,
-      Object.fromEntries(
-        brokerAccounts.map(account => [
-          account.id,
-          mergedBalances[account.id]?.balance ?? account.last_balance ?? undefined,
-        ]),
-      ),
+    const chartTradesForLoad = resolveAnalyticsChartTrades(
+      useMtTrades ? mtTradesRef.current : null,
+      allTrades,
+      mtBrokerConnected,
     )
-    const yesterdayProfit = netPnlFromTradeOutcomeDay(findYesterdayTradeOutcomeDay(chartTradesForLoad))
+    const analyticsForLoad = deriveDashboardAnalytics({
+      chartTrades: chartTradesForLoad,
+      mtTrades: useMtTrades ? (mtTradesRef.current ?? []) : [],
+      channelLinkMaps: {
+        ticketToChannelId: {},
+        signalPrefixToChannelId: {},
+        channelSlugToChannelId: {},
+        channelNames: {},
+      },
+      unlinkedLabel: '',
+    })
+    const todayProfit = analyticsForLoad.todayProfit
+    const yesterdayProfit = analyticsForLoad.yesterdayProfit
     const openedTodayCount = countChartTradesOpenedInRange(
       chartTradesForLoad,
       todayStart,
@@ -1271,11 +1203,16 @@ export function DashboardPage() {
     if (fresh && generation !== loadGenerationRef.current) return
 
     const aiLogs = dedupePipelineParseAttempts((aiLogsRes.data ?? []) as AiExpertLogRow[])
-    const chartFromDb = resolveDashboardChartTrades(hasMtCache ? mtTradesRef.current : null, allTrades)
+    const chartFromDb = resolveAnalyticsChartTrades(
+      hasMtCache ? mtTradesRef.current : null,
+      allTrades,
+      mtBrokerConnected,
+    )
 
     const mergedAfterDb = mergeDashboardStats(statsRef.current, nextStats, useMtTrades, {
       trustOpenTrades: hasAnyBrokerOpenTradesFromSummary,
       preserveMtTradeCounts: mtBrokerConnected,
+      preserveMtPnl: mtBrokerConnected && !useMtTrades,
       mtHasClosedTrades: useMtTrades
         ? sourceTrades.some(t => t.status === 'closed')
         : undefined,
@@ -1290,10 +1227,9 @@ export function DashboardPage() {
     linkedBalancesRef.current = mergedBalances
     setLinkedAccountBalances(mergedBalances)
     setAiExpertLogs(aiLogs)
-    setChartTrades(prev => {
-      const next = preferChartTrades(prev, chartFromDb)
-      return next
-    })
+    if (!mtBrokerConnected) {
+      setChartTrades(prev => applyAuthoritativeChartTrades(prev, chartFromDb, false))
+    }
 
     if (syncLive) {
       await Promise.allSettled([
@@ -1301,8 +1237,7 @@ export function DashboardPage() {
         refreshMtTrades(brokerAccounts, { force: true }),
       ])
       if (fresh && generation !== loadGenerationRef.current) return
-      const chartFromMt = resolveDashboardChartTrades(mtTradesRef.current, allTrades)
-      setChartTrades(prev => preferChartTrades(prev, chartFromMt))
+      const chartFromMt = resolveAnalyticsChartTrades(mtTradesRef.current, allTrades, mtBrokerConnected)
       if (user) {
         writeDashboardCache(user.id, {
           stats: statsRef.current,
@@ -1311,7 +1246,7 @@ export function DashboardPage() {
           channelDisplayNames: channelNames,
           linkedAccounts: sortedBrokerAccounts,
           linkedAccountBalances: linkedBalancesRef.current,
-          chartTrades: chartFromMt.length > 0 ? chartFromMt : chartFromDb,
+          chartTrades: chartFromMt.length > 0 ? chartFromMt : chartTradesRef.current,
           aiExpertLogs: aiLogs,
           mtTrades: mtTradesRef.current ?? undefined,
           channelLinkMaps: channelMaps,
@@ -1325,7 +1260,9 @@ export function DashboardPage() {
         channelDisplayNames: channelNames,
         linkedAccounts: sortedBrokerAccounts,
         linkedAccountBalances: mergedBalances,
-        chartTrades: chartFromDb,
+        chartTrades: mtBrokerConnected
+          ? (chartTradesRef.current.length > 0 ? chartTradesRef.current : chartFromDb)
+          : chartFromDb,
         aiExpertLogs: aiLogs,
         mtTrades: mtTradesRef.current ?? undefined,
         channelLinkMaps: channelMaps,
@@ -1488,7 +1425,7 @@ export function DashboardPage() {
 
     const { tomorrowStart: dayEnd } = getLocalCalendarDayBounds()
     const historyFrom = new Date()
-    historyFrom.setDate(historyFrom.getDate() - DASHBOARD_HISTORY_DAYS)
+    historyFrom.setDate(historyFrom.getDate() - DASHBOARD_CHART_MT_HISTORY_DAYS)
     let trades: MtTrade[]
     try {
       const res = await metatraderApi.trades({
@@ -1502,14 +1439,16 @@ export function DashboardPage() {
     } catch {
       return
     }
+
+    const resolvedTrades = trades.length > 0 ? trades : (mtTradesRef.current ?? [])
     if (trades.length > 0) {
       mtTradesRef.current = trades
+      setMtTrades(trades)
     }
-    const chartNext = resolveDashboardChartTrades(
-      trades.length > 0 ? trades : mtTradesRef.current ?? [],
-      [],
-    )
-    setChartTrades(prev => preferChartTrades(prev, chartNext))
+    const chartNext = resolveAnalyticsChartTrades(resolvedTrades, [], true)
+    setChartTrades(prev => applyAuthoritativeChartTrades(prev, chartNext, true))
+    setDashboardChartsReady(true)
+
     if (trades.length === 0) return
 
     const { todayStart: today0, tomorrowStart: tomorrow0, yesterdayStart: yesterday0 } =
@@ -1570,35 +1509,26 @@ export function DashboardPage() {
     const negTodayLeg = legPnls(closedTradeableToday).filter(p => p < 0)
     const posYestLeg = legPnls(closedTradeableYesterday).filter(p => p > 0)
     const negYestLeg = legPnls(closedTradeableYesterday).filter(p => p < 0)
+    const analyticsPatch = deriveDashboardAnalytics({
+      chartTrades: chartNext,
+      mtTrades: trades,
+      channelLinkMaps: channelLinkMapsRef.current,
+      unlinkedLabel: t.performance.unlinkedChannel,
+    })
     const mtStatsPatch: DashboardStats = {
       ...statsRef.current,
       tradesTaken: Math.max(closedOutcomesToday.taken, openedTodayCount),
       tradesWon: closedOutcomesToday.won,
       tradesLost: closedOutcomesToday.lost,
       tradesBreakeven: closedOutcomesToday.breakeven,
-      todayProfit: resolveDashboardTodayProfit(
-        chartNext,
-        linkedAccounts,
-        Object.fromEntries(
-          linkedAccounts.map(account => [
-            account.id,
-            linkedBalancesRef.current[account.id]?.balance ?? account.last_balance ?? undefined,
-          ]),
-        ),
-        liveTodayBalanceProfit.ready
-          ? {
-              balanceDelta: liveTodayBalanceProfit.delta,
-              balanceDayReady: liveTodayBalanceProfit.ready,
-            }
-          : undefined,
-      ),
+      todayProfit: analyticsPatch.todayProfit,
+      yesterdayProfit: analyticsPatch.yesterdayProfit,
       totalVolume: today.reduce((sum, t) => sum + (t.lot_size ?? 0), 0),
       yesterdayTotalVolume: yesterday.reduce((sum, t) => sum + (t.lot_size ?? 0), 0),
       bestTradeProfit: posTodayLeg.length ? Math.max(...posTodayLeg) : 0,
       yesterdayBestTradeProfit: posYestLeg.length ? Math.max(...posYestLeg) : 0,
       worstTradeProfit: negTodayLeg.length ? Math.min(...negTodayLeg) : 0,
       yesterdayWorstTradeProfit: negYestLeg.length ? Math.min(...negYestLeg) : 0,
-      yesterdayProfit: netPnlFromTradeOutcomeDay(findYesterdayTradeOutcomeDay(chartNext)),
       mostTradedAsset: topSymbol(today),
       yesterdayMostTradedAsset: topSymbol(yesterday),
     }
@@ -1612,7 +1542,7 @@ export function DashboardPage() {
         channelDisplayNames,
         linkedAccounts,
         linkedAccountBalances: linkedBalancesRef.current,
-        chartTrades: chartNext.length > 0 ? chartNext : chartTrades,
+        chartTrades: chartNext.length > 0 ? chartNext : chartTradesRef.current,
         aiExpertLogs,
         mtTrades: trades,
       })
@@ -1689,8 +1619,6 @@ export function DashboardPage() {
     const prevBalances = balanceSeed ?? linkedAccountBalances
     const nextBalances = { ...prevBalances }
     const successes: typeof results = []
-    let balanceTodaySum = 0
-    let balanceTodayCount = 0
     for (const r of results) {
       const broker = sourceAccounts.find(b => b.id === r.id)
       if (r.error || !r.summary || r.stale) {
@@ -1700,10 +1628,6 @@ export function DashboardPage() {
         continue
       }
       successes.push(r)
-      if (r.todays_profit_from_balance != null && Number.isFinite(r.todays_profit_from_balance)) {
-        balanceTodaySum += r.todays_profit_from_balance
-        balanceTodayCount++
-      }
       if (
         r.day_start_balance != null ||
         r.day_start_balance_on != null
@@ -1753,17 +1677,11 @@ export function DashboardPage() {
     linkedBalancesRef.current = mergedForDisplay
     setLinkedAccountBalances(mergedForDisplay)
 
-    const liveBalanceProfit = {
-      delta: balanceTodayCount > 0 ? balanceTodaySum : null,
-      ready: balanceTodayCount > 0,
-    }
-    setLiveTodayBalanceProfit(liveBalanceProfit)
-
     const sawOpenPosCount = successes.length > 0
     const mtOpenTotal = sumConnectedOpenTrades(sourceAccounts, mergedForDisplay)
     const reconciledTotal = results.reduce((sum, r) => sum + (r.reconciled_closed ?? 0), 0)
     if (reconciledTotal > 0) {
-      void loadDashboard({ syncLive: false })
+      void refreshMtTrades(sourceAccounts, { force: true })
     }
 
     // Recompute portfolio value (pure balance), equity, and open PnL from the freshest snapshot.
@@ -1802,27 +1720,12 @@ export function DashboardPage() {
         accountsForTotal,
         mtTradesRef.current,
       )
-      const chartTodayProfit = resolveDashboardTodayProfit(
-        chartTradesRef.current,
-        sourceAccounts,
-        Object.fromEntries(
-          sourceAccounts.map(account => [
-            account.id,
-            mergedForDisplay[account.id]?.balance ?? account.last_balance ?? undefined,
-          ]),
-        ),
-        {
-          balanceDelta: liveBalanceProfit.delta,
-          balanceDayReady: liveBalanceProfit.ready,
-        },
-      )
       const next = {
         ...prev,
         portfolioValue,
         totalEquity,
         openPnl: sawLivePnl ? openPnl : prev.openPnl,
         totalProfitLoss,
-        todayProfit: chartTodayProfit,
         ...(sawOpenPosCount ? { openPositions: mtOpenTotal, openTrades: mtOpenTotal } : {}),
       }
       statsRef.current = next
@@ -1851,7 +1754,8 @@ export function DashboardPage() {
   const chartsEmpty = effectiveChartTrades.length === 0 && linkedAccounts.length === 0
   const chartsLoading =
     !dashboardChartsReady &&
-    effectiveChartTrades.length === 0
+    effectiveChartTrades.length === 0 &&
+    (!hasActiveMtBroker(linkedAccounts) || mtTrades.length === 0)
 
   return (
     <PageShell maxWidth="xl" spacing="none" className="space-y-6">
@@ -1952,9 +1856,9 @@ export function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <TradeVolumeChart data={tradeVolume7Day} loading={chartsLoading} />
+        <TradeVolumeChart data={dashboardAnalytics.tradeVolume7Day} loading={chartsLoading} />
         <ChannelProfitChart
-          data={channelProfit7d}
+          data={dashboardAnalytics.channelProfit7d}
           loading={chartsLoading}
         />
       </div>
