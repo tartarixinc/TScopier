@@ -55,6 +55,19 @@ const DIALOG_MAX_SCAN = 500
 const WATCHDOG_INTERVAL_MS = 30_000
 const WATCHDOG_FAILURE_THRESHOLD = 2
 const SAFETY_POLL_INTERVAL_MS = 30_000
+/**
+ * Fast poll for channels Telegram is NOT pushing live updates for (last_live_at
+ * stale/null). Telegram silently stops pushing updates for broadcast channels it
+ * considers inactive on a session; without this, those signals are only picked
+ * up by the 30s safety poll (avg ~15s extra latency).
+ */
+const FAST_POLL_INTERVAL_MS = Math.max(
+  1_000, Math.min(15_000, Number(process.env.TELEGRAM_FAST_POLL_MS ?? 3_000)),
+)
+/** A channel counts as live-dead when no live push has been seen for this long. */
+const FAST_POLL_LIVE_STALE_MS = Math.max(
+  60_000, Number(process.env.TELEGRAM_FAST_POLL_LIVE_STALE_MS ?? 10 * 60_000),
+)
 const SESSION_PERSIST_INTERVAL_MS = 30 * 60_000
 const CATCHUP_BACKPRESSURE_MS = 250
 const CATCHUP_PER_CHANNEL_CAP = 200
@@ -247,6 +260,12 @@ export class UserListener {
   private dialogsCache: ChannelInfo[] | null = null
   private dialogsCacheAt = 0
   private safetyPollTimer: NodeJS.Timeout | null = null
+  private fastPollTimer: NodeJS.Timeout | null = null
+  private fastPollRows: ChannelRow[] = []
+  private fastPollRowsAt = 0
+  private fastPollInFlight = false
+  /** In-memory live-push freshness per channel row (DB last_live_at can lag). */
+  private lastLiveByRow = new Map<string, number>()
   private watchdogTimer: NodeJS.Timeout | null = null
   private sessionPersistTimer: NodeJS.Timeout | null = null
   private replyChainSweepTimer: NodeJS.Timeout | null = null
@@ -319,6 +338,7 @@ export class UserListener {
 
     this.startWatchdog()
     this.startSafetyPoll()
+    this.startFastPoll()
     void this.pollMonitoredChannelsForMessages().catch(err =>
       console.warn(`[userListener] initial channel poll failed for ${this.userId}:`, err),
     )
@@ -331,6 +351,7 @@ export class UserListener {
     try {
       this.stopTimer('watchdogTimer')
       this.stopTimer('safetyPollTimer')
+      this.stopTimer('fastPollTimer')
       this.stopTimer('sessionPersistTimer')
       this.stopTimer('replyChainSweepTimer')
       this.stopTimer('entityWarmupTimer')
@@ -350,7 +371,7 @@ export class UserListener {
     this.dialogsCacheAt = 0
   }
 
-  private stopTimer(field: 'watchdogTimer' | 'safetyPollTimer' | 'sessionPersistTimer' | 'replyChainSweepTimer' | 'entityWarmupTimer') {
+  private stopTimer(field: 'watchdogTimer' | 'safetyPollTimer' | 'fastPollTimer' | 'sessionPersistTimer' | 'replyChainSweepTimer' | 'entityWarmupTimer') {
     const t = this[field]
     if (t) {
       clearInterval(t)
@@ -1719,6 +1740,7 @@ export class UserListener {
   }
 
   private async bumpLastLive(channelRowId: string) {
+    this.lastLiveByRow.set(channelRowId, Date.now())
     await this.supabase
       .from('telegram_channels')
       .update({ last_live_at: new Date().toISOString() })
@@ -1906,6 +1928,7 @@ export class UserListener {
         }
       }
       await this.bumpLastSeen(row.id, String(latestId))
+      row.last_seen_message_id = latestId
       console.log(
         `[userListener] poll seeded channel=${row.id} username=${row.channel_username || '-'} lastMsg=${latestId}`,
       )
@@ -1918,6 +1941,9 @@ export class UserListener {
     for (const m of toProcess) {
       await this.logSignal(row, m, { source: 'catchup' })
     }
+    // Advance the caller's row in place so cached rows (fast poll) don't
+    // refetch the same batch on the next tick while the DB bump lags.
+    row.last_seen_message_id = latestId
   }
 
   private async catchUpChannelRecent(row: ChannelRow): Promise<void> {
@@ -2336,6 +2362,57 @@ export class UserListener {
       )
     }, SAFETY_POLL_INTERVAL_MS)
     this.safetyPollTimer.unref?.()
+  }
+
+  // ── fast poll (channels with no live push from Telegram) ──────────────
+
+  private startFastPoll() {
+    if (this.fastPollTimer) return
+    this.fastPollTimer = setInterval(() => {
+      this.runFastPoll().catch(err =>
+        console.error(`[userListener] fast poll error for ${this.userId}:`, err),
+      )
+    }, FAST_POLL_INTERVAL_MS)
+    this.fastPollTimer.unref?.()
+    console.log(
+      `[userListener] fast poll started user=${this.userId}`
+      + ` intervalMs=${FAST_POLL_INTERVAL_MS} liveStaleMs=${FAST_POLL_LIVE_STALE_MS}`,
+    )
+  }
+
+  /**
+   * Poll only the channels Telegram is not delivering live NewMessage updates
+   * for (last_live_at null or stale). Channels with healthy live push are left
+   * to the event handler + 30s safety poll. The channel list is cached and
+   * refreshed every SAFETY_POLL_INTERVAL_MS to keep DB load flat.
+   */
+  private async runFastPoll(): Promise<void> {
+    if (!this.isConnected || this.fastPollInFlight) return
+    this.fastPollInFlight = true
+    try {
+      const now = Date.now()
+      if (now - this.fastPollRowsAt > SAFETY_POLL_INTERVAL_MS) {
+        const { data } = await this.supabase
+          .from('telegram_channels')
+          .select('id, channel_id, channel_username, last_seen_message_id, last_seen_at, last_live_at')
+          .eq('user_id', this.userId)
+          .eq('is_active', true)
+        this.fastPollRows = (data ?? []) as ChannelRow[]
+        this.fastPollRowsAt = now
+      }
+
+      for (const row of this.fastPollRows) {
+        const liveDb = row.last_live_at ? new Date(row.last_live_at).getTime() : 0
+        const liveMem = this.lastLiveByRow.get(row.id) ?? 0
+        const lastLive = Math.max(liveDb, liveMem)
+        if (lastLive > 0 && now - lastLive < FAST_POLL_LIVE_STALE_MS) continue
+        await this.pollChannelNewMessages(row).catch(err =>
+          console.warn(`[userListener] fast poll failed channel=${row.id}:`, err),
+        )
+      }
+    } finally {
+      this.fastPollInFlight = false
+    }
   }
 
   // ── entity cache warmup ────────────────────────────────────────────────
