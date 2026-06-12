@@ -367,6 +367,7 @@ function normalizeManualSettings(raw: unknown): ManualSettings {
   })
   const legPctRaw = Number(j.multi_trade_leg_percent)
   const legPct = Number.isFinite(legPctRaw) && legPctRaw > 0 ? Math.min(100, legPctRaw) : DEFAULT_MANUAL_SETTINGS.multi_trade_leg_percent
+  const legacyMaxLegsRaw = Number(j.multi_trade_max_legs)
 
   const merged = { ...DEFAULT_MANUAL_SETTINGS, ...(j as ManualSettings) }
   // Drop legacy keys if they sneak in from older DB rows.
@@ -407,9 +408,36 @@ function normalizeManualSettings(raw: unknown): ManualSettings {
     }
   }
 
+  const multiTradeMaxOrders = (() => {
+    const explicit = Number(j.multi_trade_max_orders)
+    if (Number.isFinite(explicit) && explicit > 0) {
+      return Math.max(1, Math.min(500, Math.floor(explicit)))
+    }
+    if (Number.isFinite(legacyMaxLegsRaw) && legacyMaxLegsRaw > 0) {
+      return Math.max(1, Math.min(500, Math.floor(legacyMaxLegsRaw)))
+    }
+    if (merged.trade_style !== 'multi') return undefined
+    const fixedLot = Number(merged.fixed_lot)
+    if (!Number.isFinite(fixedLot) || fixedLot <= 0) return undefined
+    const preview = estimateMultiTradeOrderCount({
+      manualLot: fixedLot,
+      legPercent: legPct,
+      range: merged.range_trading
+        ? {
+            enabled: true,
+            percent: rangePercent,
+            stepPips: rangeStepPips,
+            distancePips: rangeDistancePips,
+          }
+        : undefined,
+    })
+    return preview.totalOrders > 0 ? preview.totalOrders : undefined
+  })()
+
   return {
     ...merged,
     multi_trade_leg_percent: legPct,
+    ...(multiTradeMaxOrders != null ? { multi_trade_max_orders: multiTradeMaxOrders } : {}),
     range_percent: rangePercent,
     range_step_pips: rangeStepPips,
     range_distance_pips: rangeDistancePips,

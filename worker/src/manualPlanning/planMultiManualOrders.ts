@@ -157,6 +157,12 @@ export function planMultiManualOrders(args: PlanMultiManualOrdersArgs): PlannerR
   const burstCap = Number.isFinite(burstCapRaw) && burstCapRaw > 0
     ? Math.max(1, Math.min(ABS_MAX_LEGS, Math.floor(burstCapRaw)))
     : ABS_MAX_LEGS
+  if (burstCap < immediateLegs) {
+    console.log(
+      `[planMulti] burst cap ${burstCap} consolidates ${immediateLegs} immediate legs`
+      + ` (leg%=${legPct} manualLot=${manualLot})`,
+    )
+  }
 
   type BurstGroup = { tpPrice: number | null; legCount: number }
   const burstGroups: BurstGroup[] = []

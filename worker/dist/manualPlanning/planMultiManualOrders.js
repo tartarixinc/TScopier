@@ -102,6 +102,10 @@ function planMultiManualOrders(args) {
     const burstCap = Number.isFinite(burstCapRaw) && burstCapRaw > 0
         ? Math.max(1, Math.min(ABS_MAX_LEGS, Math.floor(burstCapRaw)))
         : ABS_MAX_LEGS;
+    if (burstCap < immediateLegs) {
+        console.log(`[planMulti] burst cap ${burstCap} consolidates ${immediateLegs} immediate legs`
+            + ` (leg%=${legPct} manualLot=${manualLot})`);
+    }
     const burstGroups = [];
     for (let i = 0; i < immediateLegs; i++) {
         const tpPrice = tpForImmediateIndex(i);

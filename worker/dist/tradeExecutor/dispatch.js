@@ -191,7 +191,7 @@ async function markSignalExecuted(ctx, signalId) {
     }
 }
 async function signalDispatchAlreadyHandled(ctx, signalId) {
-    const [trades, range, entry, logs] = await Promise.all([
+    const [trades, range, entry, logs, claims] = await Promise.all([
         ctx.supabase
             .from('trades')
             .select('id', { count: 'exact', head: true })
@@ -210,11 +210,16 @@ async function signalDispatchAlreadyHandled(ctx, signalId) {
             .eq('signal_id', signalId)
             .eq('status', 'success')
             .in('action', [...types_1.EXECUTION_LOG_ACTIONS_HANDLED]),
+        ctx.supabase
+            .from('signal_broker_dispatch_claims')
+            .select('id', { count: 'exact', head: true })
+            .eq('signal_id', signalId),
     ]);
     return ((trades.count ?? 0) > 0
         || (range.count ?? 0) > 0
         || (entry.count ?? 0) > 0
-        || (logs.count ?? 0) > 0);
+        || (logs.count ?? 0) > 0
+        || (claims.count ?? 0) > 0);
 }
 async function signalLiveDispatchAlreadyHandled(ctx, signalId) {
     return signalDispatchAlreadyHandled(ctx, signalId);

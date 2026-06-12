@@ -1,0 +1,37 @@
+import { strict as assert } from 'node:assert'
+import { test } from 'node:test'
+import { computeMultiTradeOrderCount } from './computeMultiTradeOrderCount'
+import { normalizeManualSettingsForExecution } from './normalizeManualSettings'
+
+test('computeMultiTradeOrderCount: 5 lot @ 7% → 15 orders', () => {
+  assert.equal(
+    computeMultiTradeOrderCount({ manualLot: 5, legPercent: 7 }),
+    15,
+  )
+})
+
+test('computeMultiTradeOrderCount: 5 lot @ 2% → 50 orders', () => {
+  assert.equal(
+    computeMultiTradeOrderCount({ manualLot: 5, legPercent: 2 }),
+    50,
+  )
+})
+
+test('normalizeManualSettingsForExecution seeds multi_trade_max_orders from leg%', () => {
+  const ms = normalizeManualSettingsForExecution({
+    trade_style: 'multi',
+    fixed_lot: 5,
+    multi_trade_leg_percent: 7,
+  })
+  assert.equal(ms.multi_trade_max_orders, 15)
+})
+
+test('normalizeManualSettingsForExecution honors legacy multi_trade_max_legs', () => {
+  const ms = normalizeManualSettingsForExecution({
+    trade_style: 'multi',
+    fixed_lot: 5,
+    multi_trade_leg_percent: 2,
+    multi_trade_max_legs: 15,
+  })
+  assert.equal(ms.multi_trade_max_orders, 15)
+})

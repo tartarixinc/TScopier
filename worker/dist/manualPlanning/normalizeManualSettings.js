@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.DEFAULT_MANUAL_TP_LOTS = void 0;
 exports.sanitizeTpLots = sanitizeTpLots;
 exports.normalizeManualSettingsForExecution = normalizeManualSettingsForExecution;
+const computeMultiTradeOrderCount_1 = require("./computeMultiTradeOrderCount");
 /** Default Targets % rows — keep aligned with AccountConfigPage `DEFAULT_MANUAL_TP_LOTS`. */
 exports.DEFAULT_MANUAL_TP_LOTS = [
     { label: 'TP1', lot: 0.01, percent: 50, enabled: true },
@@ -47,9 +48,30 @@ function normalizeManualSettingsForExecution(raw) {
     const legPctRaw = Number(j.multi_trade_leg_percent);
     const legPct = Number.isFinite(legPctRaw) && legPctRaw > 0 ? Math.min(100, legPctRaw) : 5;
     const maxOrdersRaw = Number(j.multi_trade_max_orders);
-    const maxOrders = Number.isFinite(maxOrdersRaw) && maxOrdersRaw > 0
-        ? Math.max(1, Math.min(500, Math.floor(maxOrdersRaw)))
-        : 500;
+    const legacyMaxLegsRaw = Number(j.multi_trade_max_legs);
+    const tradeStyle = j.trade_style === 'multi' ? 'multi' : 'single';
+    let maxOrders;
+    if (Number.isFinite(maxOrdersRaw) && maxOrdersRaw > 0) {
+        maxOrders = Math.max(1, Math.min(500, Math.floor(maxOrdersRaw)));
+    }
+    else if (Number.isFinite(legacyMaxLegsRaw) && legacyMaxLegsRaw > 0) {
+        maxOrders = Math.max(1, Math.min(500, Math.floor(legacyMaxLegsRaw)));
+    }
+    else if (tradeStyle === 'multi') {
+        const fixedLot = Number(j.fixed_lot);
+        if (Number.isFinite(fixedLot) && fixedLot > 0) {
+            const preview = (0, computeMultiTradeOrderCount_1.computeMultiTradeOrderCount)({
+                manualLot: fixedLot,
+                legPercent: legPct,
+                rangeTrading: j.range_trading === true,
+                rangePercent: Number(j.range_percent),
+                rangeStepPips: Number(j.range_step_pips),
+                rangeDistancePips: Number(j.range_distance_pips),
+            });
+            if (preview > 0)
+                maxOrders = preview;
+        }
+    }
     const readNumber = (key, fallback) => {
         const v = Number(j[key]);
         return Number.isFinite(v) ? v : fallback;
@@ -81,7 +103,7 @@ function normalizeManualSettingsForExecution(raw) {
     return {
         ...j,
         multi_trade_leg_percent: legPct,
-        multi_trade_max_orders: maxOrders,
+        ...(maxOrders != null ? { multi_trade_max_orders: maxOrders } : {}),
         range_percent: rangePercent,
         range_step_pips: rangeStepPips,
         range_distance_pips: rangeDistancePips,
