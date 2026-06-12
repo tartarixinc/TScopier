@@ -19,7 +19,7 @@ describe('evaluateParsedSignalExecutionEligibility', () => {
     assert.equal(eligibility.skipReason, COMMENTARY_NOT_SIGNAL_REASON)
   })
 
-  it('accepts minimal market entry with symbol and side intent', () => {
+  it('allows bare Gold buy now market entry', () => {
     const eligibility = evaluateParsedSignalExecutionEligibility({
       action: 'buy',
       symbol: 'XAUUSD',

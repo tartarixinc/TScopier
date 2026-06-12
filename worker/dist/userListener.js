@@ -1700,8 +1700,10 @@ class UserListener {
             return;
         }
         this.lastSuccessfulPollAt = Date.now();
-        if (!batch.length)
+        if (!batch.length) {
+            await this.runMessageEditSweep('edit_poll_hook', row);
             return;
+        }
         const sorted = [...batch].sort((a, b) => Number(a.id) - Number(b.id));
         const latestId = Number(sorted[sorted.length - 1]?.id);
         if (!Number.isFinite(latestId))
@@ -1734,6 +1736,7 @@ class UserListener {
         // Advance the caller's row in place so cached rows (fast poll) don't
         // refetch the same batch on the next tick while the DB bump lags.
         row.last_seen_message_id = latestId;
+        await this.runMessageEditSweep('edit_poll_hook', row);
     }
     async catchUpChannelRecent(row) {
         let peer;

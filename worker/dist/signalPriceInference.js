@@ -12,7 +12,7 @@ const signalPriceFormat_1 = require("./signalPriceFormat");
 const signalCommentaryGuard_1 = require("./signalCommentaryGuard");
 /** True when the channel explicitly asks to add a new trade (not modify existing). */
 function detectReEnterIntent(message) {
-    return /\bre[-\s]?enter\b/i.test(String(message ?? ''));
+    return /\b(?:re[-\s]?(?:entry|enter)|reenter)\b/i.test(String(message ?? ''));
 }
 function parsedHasReEnterIntent(parsed) {
     if (!parsed)

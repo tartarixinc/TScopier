@@ -2,6 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   DEFAULT_CHANNEL_KEYWORDS,
+  normalizeChannelKeywords,
   parseChannelMessageSync,
   type ChannelLexiconRow,
 } from './parseSignal'
@@ -215,6 +216,36 @@ TP: open`
     assert.equal(result.parsed.entry_price, null)
     assert.equal(result.parsed.sl, 4299)
     assert.deepEqual(result.parsed.tp, [4290, 4288, 4286])
+    assert.equal(result.parsed.open_tp, true)
+  })
+
+  it('parses GTMO VIP re-entry with custom channel keywords (tp: open must not flip sell)', () => {
+    const gtmoKeywords = normalizeChannelKeywords({
+      signal: {
+        sl: 'sl: 4180',
+        tp: 'tp: open|tp: 4467',
+        buy: 'gold buy now',
+        sell: 'gold sell now|tp: open|all tp‘s doneeeee',
+        entry_point: 'gold buy now|gold sell now',
+      },
+      additional: { delimiters: '|', ai_signal_requires_price: true },
+    })
+    const msg = `Gold buy now re-entry 4213 - 4210
+
+SL: 4207
+
+TP: 4215
+TP: 4217
+TP: 4219
+TP: open`
+    const result = parseChannelMessageSync(msg, gtmoKeywords, lexicon)
+    assert.equal(result.status, 'parsed')
+    assert.equal(result.parsed.action, 'buy')
+    assert.equal(result.parsed.re_enter, true)
+    assert.equal(result.parsed.entry_zone_low, 4210)
+    assert.equal(result.parsed.entry_zone_high, 4213)
+    assert.equal(result.parsed.sl, 4207)
+    assert.deepEqual(result.parsed.tp, [4215, 4217, 4219])
     assert.equal(result.parsed.open_tp, true)
   })
 

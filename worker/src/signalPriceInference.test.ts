@@ -9,6 +9,7 @@ import {
 
 test('detectReEnterIntent matches common spellings', () => {
   assert.equal(detectReEnterIntent('Gold re-enter sell now'), true)
+  assert.equal(detectReEnterIntent('Gold buy now re-entry 4213 - 4210'), true)
   assert.equal(detectReEnterIntent('RE ENTER @ 4567'), true)
   assert.equal(detectReEnterIntent('reenter gold sell'), true)
   assert.equal(detectReEnterIntent('Gold sell now'), false)
@@ -17,6 +18,7 @@ test('detectReEnterIntent matches common spellings', () => {
 test('parsedHasReEnterIntent reads flag and raw text', () => {
   assert.equal(parsedHasReEnterIntent({ re_enter: true }), true)
   assert.equal(parsedHasReEnterIntent({ raw_instruction: 're-enter sell' }), true)
+  assert.equal(parsedHasReEnterIntent({ raw_instruction: 'Gold buy now re-entry 4213' }), true)
   assert.equal(parsedHasReEnterIntent({ raw_instruction: 'sell now' }), false)
 })
 

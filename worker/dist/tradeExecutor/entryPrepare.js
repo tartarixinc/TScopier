@@ -8,6 +8,7 @@ const calendarProvider_1 = require("../newsTrading/calendarProvider");
 const settings_1 = require("../newsTrading/settings");
 const multiTradeMerge_1 = require("../multiTradeMerge");
 const signalPriceInference_1 = require("../signalPriceInference");
+const signalEntryZoneSanity_1 = require("../signalEntryZoneSanity");
 const channelActiveTradeParams_1 = require("../channelActiveTradeParams");
 const tradeComment_1 = require("../tradeComment");
 const helpers_1 = require("./helpers");
@@ -173,10 +174,42 @@ async function prepareEntryExecution(ctx, args) {
             console.warn(`[tradeExecutor] /Quote prefetch failed ${symbol} signal=${signal.id} broker=${broker.id}: ${msg}`);
         }
     }
+    const entryDirection = String(parsed.action ?? '').toLowerCase();
+    const hasEntryZone = parsed.entry_zone_low != null
+        || parsed.entry_zone_high != null;
+    if (isManual
+        && hasEntryZone
+        && (entryDirection === 'buy' || entryDirection === 'sell')
+        && sendOpts?.messageEditOnly !== true) {
+        try {
+            const q = strictEntryPrefetch ?? await api.quote(uuid, symbol);
+            if ((0, signalEntryZoneSanity_1.entryZoneFarFromQuote)({
+                parsed,
+                quoteBid: q.bid,
+                quoteAsk: q.ask,
+                direction: entryDirection,
+            })) {
+                await ctx.logSendSkipped(signal, broker, signalEntryZoneSanity_1.ENTRY_ZONE_FAR_FROM_MARKET_REASON, {
+                    symbol,
+                    quote_bid: q.bid,
+                    quote_ask: q.ask,
+                    entry_zone_low: parsed.entry_zone_low ?? null,
+                    entry_zone_high: parsed.entry_zone_high ?? null,
+                });
+                return {
+                    ok: false,
+                    outcome: { finalizeSkipReason: signalEntryZoneSanity_1.ENTRY_ZONE_FAR_FROM_MARKET_REASON },
+                };
+            }
+        }
+        catch {
+            // Best-effort guard — proceed when quote is unavailable.
+        }
+    }
     // Basket SL/TP refresh — always before OrderSend (not deferred to post-fill).
     let basketRefreshSucceeded = false;
-    if (isManual && (0, multiTradeMerge_1.shouldRouteAsBasketParameterRefresh)(parsed)) {
-        const messageEditOnly = sendOpts?.messageEditOnly === true;
+    const messageEditOnly = sendOpts?.messageEditOnly === true;
+    if (isManual && ((0, multiTradeMerge_1.shouldRouteAsBasketParameterRefresh)(parsed) || messageEditOnly)) {
         const paramOutcome = await ctx.tryParameterFollowUpMergeModifyOnly({
             signal,
             parsed,

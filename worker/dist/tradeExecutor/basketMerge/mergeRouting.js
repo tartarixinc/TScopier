@@ -18,8 +18,9 @@ async function tryParameterFollowUpMergeModifyOnly(ctx, args) {
         return { handled: false };
     if ((0, signalPriceInference_1.parsedHasReEnterIntent)(parsed))
         return { handled: false };
-    if (!(0, multiTradeMerge_1.shouldRouteAsBasketParameterRefresh)(parsed))
+    if (!(0, multiTradeMerge_1.shouldRouteAsBasketParameterRefresh)(parsed) && args.messageEditOnly !== true) {
         return { handled: false };
+    }
     const api = ctx.apiFor(broker);
     if (!api)
         return { handled: false };

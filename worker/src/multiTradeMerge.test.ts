@@ -96,6 +96,21 @@ test('shouldRouteAsBasketParameterRefresh: SL/TP without entry is follow-up cand
   )
 })
 
+test('shouldRouteAsBasketParameterRefresh: full entry with zone is not parameter refresh (message edits bypass via messageEditOnly)', () => {
+  assert.equal(
+    shouldRouteAsBasketParameterRefresh({
+      action: 'buy',
+      symbol: 'XAUUSD',
+      entry_zone_low: 4213,
+      entry_zone_high: 4216,
+      sl: 4209,
+      tp: [4218, 4220],
+      raw_instruction: 'Gold buy now 4216 - 4213 SL: 4209 TP: 4218',
+    }),
+    false,
+  )
+})
+
 test('shouldRouteAsBasketParameterRefresh: full entry with zone and stops opens trade', () => {
   assert.equal(
     shouldRouteAsBasketParameterRefresh({

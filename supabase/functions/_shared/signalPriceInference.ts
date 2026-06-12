@@ -14,7 +14,7 @@ export type ClassifiedStops = {
 
 /** True when the channel explicitly asks to add a new trade (not modify existing). */
 export function detectReEnterIntent(message: string): boolean {
-  return /\bre[-\s]?enter\b/i.test(String(message ?? ''))
+  return /\b(?:re[-\s]?(?:entry|enter)|reenter)\b/i.test(String(message ?? ''))
 }
 
 export function parsedHasReEnterIntent(parsed: {

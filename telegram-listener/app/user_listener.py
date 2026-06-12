@@ -824,6 +824,7 @@ class UserListener:
             return
         for m in new_msgs:
             await self.process_message(row, m, source="catchup")
+        await self.run_message_edit_sweep("edit_poll_hook", row)
 
     async def _poll_loop(self) -> None:
         interval = self.cfg.safety_poll_interval_ms / 1000

@@ -106,21 +106,32 @@ def load_signals_for_edit_sweep(
         if r.get("signal_id")
     }
 
-    query = (
-        supabase.table("signals")
-        .select(
-            "id,channel_id,telegram_message_id,raw_message,telegram_message_edit_date,created_at"
-        )
-        .eq("user_id", user_id)
-        .not_.is_("telegram_message_id", "null")
-        .in_("status", list(EDIT_SWEEP_STATUSES))
-        .gte("created_at", since)
-        .order("created_at", desc=True)
-        .limit(min(cap * 3, 240))
+    select_with_edit = (
+        "id,channel_id,telegram_message_id,raw_message,telegram_message_edit_date,created_at"
     )
-    if channel_row_id:
-        query = query.eq("channel_id", channel_row_id)
-    result = query.execute()
+    select_without_edit = "id,channel_id,telegram_message_id,raw_message,created_at"
+
+    def _run_query(select: str):
+        q = (
+            supabase.table("signals")
+            .select(select)
+            .eq("user_id", user_id)
+            .not_.is_("telegram_message_id", "null")
+            .in_("status", list(EDIT_SWEEP_STATUSES))
+            .gte("created_at", since)
+            .order("created_at", desc=True)
+            .limit(min(cap * 3, 240))
+        )
+        if channel_row_id:
+            q = q.eq("channel_id", channel_row_id)
+        return q.execute()
+
+    try:
+        result = _run_query(select_with_edit)
+    except Exception as exc:
+        if "telegram_message_edit_date" not in str(exc):
+            raise
+        result = _run_query(select_without_edit)
     rows = [r for r in (result.data or []) if r.get("channel_id") and r.get("telegram_message_id")]
 
     prioritized = [r for r in rows if str(r.get("id")) in open_signal_ids]

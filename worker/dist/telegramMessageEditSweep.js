@@ -113,19 +113,28 @@ async function loadSignalsForEditSweep(supabase, args) {
             .map(r => r.signal_id)
             .filter((id) => typeof id === 'string' && id.length > 0));
     }
-    let query = supabase
-        .from('signals')
-        .select('id,channel_id,telegram_message_id,raw_message,telegram_message_edit_date,created_at')
-        .eq('user_id', args.userId)
-        .not('telegram_message_id', 'is', null)
-        .in('status', [...EDIT_SWEEP_STATUSES])
-        .gte('created_at', since)
-        .order('created_at', { ascending: false })
-        .limit(Math.min(maxSignals * 3, 240));
-    if (args.channelRowId) {
-        query = query.eq('channel_id', args.channelRowId);
+    const selectWithEditDate = 'id,channel_id,telegram_message_id,raw_message,telegram_message_edit_date,created_at';
+    const selectWithoutEditDate = 'id,channel_id,telegram_message_id,raw_message,created_at';
+    const runQuery = async (select) => {
+        let query = supabase
+            .from('signals')
+            .select(select)
+            .eq('user_id', args.userId)
+            .not('telegram_message_id', 'is', null)
+            .in('status', [...EDIT_SWEEP_STATUSES])
+            .gte('created_at', since)
+            .order('created_at', { ascending: false })
+            .limit(Math.min(maxSignals * 3, 240));
+        if (args.channelRowId) {
+            query = query.eq('channel_id', args.channelRowId);
+        }
+        return query;
+    };
+    let { data, error } = await runQuery(selectWithEditDate);
+    if (error && /telegram_message_edit_date/i.test(String(error.message ?? ''))) {
+        ;
+        ({ data, error } = await runQuery(selectWithoutEditDate));
     }
-    const { data, error } = await query;
     if (error || !data?.length)
         return [];
     const rows = data

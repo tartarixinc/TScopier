@@ -48,7 +48,9 @@ export async function tryParameterFollowUpMergeModifyOnly(ctx: TradeExecutorCont
     } = args
     if (!hasMetatraderApiConfigured()) return { handled: false }
     if (parsedHasReEnterIntent(parsed)) return { handled: false }
-    if (!shouldRouteAsBasketParameterRefresh(parsed)) return { handled: false }
+    if (!shouldRouteAsBasketParameterRefresh(parsed) && args.messageEditOnly !== true) {
+      return { handled: false }
+    }
     const api = ctx.apiFor(broker)
     if (!api) return { handled: false }
 

@@ -28,6 +28,10 @@ import { isNewsTradingEnabled } from '../newsTrading/settings'
 import { shouldRouteAsBasketParameterRefresh } from '../multiTradeMerge'
 import { parsedHasReEnterIntent } from '../signalPriceInference'
 import {
+  ENTRY_ZONE_FAR_FROM_MARKET_REASON,
+  entryZoneFarFromQuote,
+} from '../signalEntryZoneSanity'
+import {
   applyChannelParamsToVirtualPendingList,
   parsedSignalHasExplicitStops,
   refreshChannelParamsFromSignal,
@@ -277,10 +281,47 @@ export async function prepareEntryExecution(
     }
   }
 
+  const entryDirection = String(parsed.action ?? '').toLowerCase()
+  const hasEntryZone =
+    parsed.entry_zone_low != null
+    || parsed.entry_zone_high != null
+  if (
+    isManual
+    && hasEntryZone
+    && (entryDirection === 'buy' || entryDirection === 'sell')
+    && sendOpts?.messageEditOnly !== true
+  ) {
+    try {
+      const q = strictEntryPrefetch ?? await api.quote(uuid, symbol)
+      if (
+        entryZoneFarFromQuote({
+          parsed,
+          quoteBid: q.bid,
+          quoteAsk: q.ask,
+          direction: entryDirection,
+        })
+      ) {
+        await ctx.logSendSkipped(signal, broker, ENTRY_ZONE_FAR_FROM_MARKET_REASON, {
+          symbol,
+          quote_bid: q.bid,
+          quote_ask: q.ask,
+          entry_zone_low: parsed.entry_zone_low ?? null,
+          entry_zone_high: parsed.entry_zone_high ?? null,
+        })
+        return {
+          ok: false,
+          outcome: { finalizeSkipReason: ENTRY_ZONE_FAR_FROM_MARKET_REASON },
+        }
+      }
+    } catch {
+      // Best-effort guard — proceed when quote is unavailable.
+    }
+  }
+
   // Basket SL/TP refresh — always before OrderSend (not deferred to post-fill).
   let basketRefreshSucceeded = false
-  if (isManual && shouldRouteAsBasketParameterRefresh(parsed)) {
-    const messageEditOnly = sendOpts?.messageEditOnly === true
+  const messageEditOnly = sendOpts?.messageEditOnly === true
+  if (isManual && (shouldRouteAsBasketParameterRefresh(parsed) || messageEditOnly)) {
     const paramOutcome = await ctx.tryParameterFollowUpMergeModifyOnly({
       signal,
       parsed,
