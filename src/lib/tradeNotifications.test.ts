@@ -153,6 +153,56 @@ describe('aggregateTradeNotificationEvents', () => {
 })
 
 describe('formatHolisticNotification', () => {
+  it('formats TP levels from parsed signal on merge_modify_summary', () => {
+    const rows = [
+      baseRow({
+        id: 'summary',
+        action: 'merge_modify_summary',
+        request_payload: { modified: 7, symbol: 'XAUUSD' },
+        signals: {
+          channel_id: CHANNEL_ID,
+          parsed_data: { action: 'buy', symbol: 'XAUUSD', tp: [4220, 4230, 4240, 4245] },
+        },
+      }),
+    ]
+    const notification = tradeNotificationsFromLogs(rows, tradeNotificationsEn, ctx)[0]
+    assert.equal(notification.title, 'TRADE MODIFICATION COMPLETED')
+    assert.match(notification.body, /TPs were updated to 4220, 4230, 4240, 4245/)
+  })
+
+  it('formats SL and TP together when both are in parsed signal', () => {
+    const rows = [
+      baseRow({
+        id: 'summary',
+        action: 'merge_modify_summary',
+        request_payload: { modified: 3, symbol: 'XAUUSD' },
+        signals: {
+          channel_id: CHANNEL_ID,
+          parsed_data: { action: 'buy', symbol: 'XAUUSD', sl: 4175, tp: [4220, 4230] },
+        },
+      }),
+    ]
+    const notification = tradeNotificationsFromLogs(rows, tradeNotificationsEn, ctx)[0]
+    assert.match(notification.body, /SL was updated to 4175/)
+    assert.match(notification.body, /TPs to 4220, 4230/)
+  })
+
+  it('formats single TP from basket_leg_modify target_tp', () => {
+    const rows = [
+      baseRow({
+        id: 'leg-1',
+        action: 'basket_leg_modify',
+        request_payload: { target_tp: 4220, operation: 'buy' },
+        signals: {
+          channel_id: CHANNEL_ID,
+          parsed_data: { action: 'buy', symbol: 'XAUUSD' },
+        },
+      }),
+    ]
+    const notification = tradeNotificationsFromLogs(rows, tradeNotificationsEn, ctx)[0]
+    assert.match(notification.body, /TP was updated to 4220/)
+  })
+
   it('formats SL from/to when payload includes old_sl and new_sl', () => {
     const event = aggregateTradeNotificationEvents([
       baseRow({

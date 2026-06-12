@@ -30,6 +30,8 @@ export interface TradeNotificationEvent {
   side: 'buy' | 'sell' | null
   oldSl: number | null
   newSl: number | null
+  newTp: number | null
+  newTpLevels: number[]
   closeReason: string | null
 }
 
@@ -124,15 +126,48 @@ export function extractSide(row: TradeExecutionLogRow): 'buy' | 'sell' | null {
   return null
 }
 
+function parsedTpLevels(parsed: Record<string, unknown> | null | undefined): number[] {
+  if (!parsed || !Array.isArray(parsed.tp)) return []
+  return (parsed.tp as unknown[])
+    .map(v => num(v))
+    .filter((v): v is number => v != null && v > 0)
+}
+
 function extractSlValues(row: TradeExecutionLogRow): { oldSl: number | null; newSl: number | null } {
   const payload = row.request_payload ?? {}
   const parsed = row.signals?.parsed_data as Record<string, unknown> | null | undefined
   const oldSl = num(payload.old_sl)
   const newSl =
     num(payload.new_sl) ??
+    num(payload.target_sl) ??
     num(payload.sl) ??
     (parsed ? num(parsed.sl) : null)
   return { oldSl, newSl }
+}
+
+function extractTpValues(row: TradeExecutionLogRow): { newTp: number | null; newTpLevels: number[] } {
+  const payload = row.request_payload ?? {}
+  const parsed = row.signals?.parsed_data as Record<string, unknown> | null | undefined
+  const parsedLevels = parsedTpLevels(parsed)
+  const targetTp = num(payload.target_tp)
+  const singleTp = num(payload.new_tp) ?? num(payload.takeprofit)
+  let levels = parsedLevels
+  if (!levels.length && targetTp != null && targetTp > 0) levels = [targetTp]
+  if (!levels.length && singleTp != null && singleTp > 0) levels = [singleTp]
+  if (!levels.length && Array.isArray(payload.tp)) {
+    levels = (payload.tp as unknown[])
+      .map(v => num(v))
+      .filter((v): v is number => v != null && v > 0)
+  }
+  return {
+    newTp: levels[0] ?? targetTp ?? singleTp,
+    newTpLevels: levels,
+  }
+}
+
+function mergeTpLevels(existing: number[], incoming: number[]): number[] {
+  if (incoming.length > 0) return incoming
+  return existing
 }
 
 function resolveChannelId(row: TradeExecutionLogRow): string | null {
@@ -173,7 +208,9 @@ function mergeEvent(existing: TradeNotificationEvent, row: TradeExecutionLogRow)
   const existingMs = Date.parse(existing.createdAt)
   const useRow = Number.isFinite(rowMs) && (!Number.isFinite(existingMs) || rowMs >= existingMs)
   const { oldSl, newSl } = extractSlValues(row)
+  const { newTp, newTpLevels } = extractTpValues(row)
   const side = extractSide(row) ?? existing.side
+  const mergedTpLevels = mergeTpLevels(existing.newTpLevels, newTpLevels)
   return {
     ...existing,
     id: useRow ? row.id : existing.id,
@@ -184,11 +221,14 @@ function mergeEvent(existing: TradeNotificationEvent, row: TradeExecutionLogRow)
     side: side ?? existing.side,
     oldSl: oldSl ?? existing.oldSl,
     newSl: newSl ?? existing.newSl,
+    newTp: newTp ?? existing.newTp ?? mergedTpLevels[0] ?? null,
+    newTpLevels: mergedTpLevels,
   }
 }
 
 function createEvent(row: TradeExecutionLogRow, headline: TradeNotificationHeadline, count = 1): TradeNotificationEvent {
   const { oldSl, newSl } = extractSlValues(row)
+  const { newTp, newTpLevels } = extractTpValues(row)
   const payload = row.request_payload ?? {}
   let closeReason: string | null = null
   if (row.action.toLowerCase() === 'partial_tp_fired') {
@@ -208,6 +248,8 @@ function createEvent(row: TradeExecutionLogRow, headline: TradeNotificationHeadl
     side: extractSide(row),
     oldSl,
     newSl,
+    newTp,
+    newTpLevels,
     closeReason,
   }
 }
@@ -356,9 +398,25 @@ export function formatHolisticNotification(
           ? interpolate(t.bodies.executionBatch, { count, side, broker, channel })
           : interpolate(t.bodies.executionSingle, { side, broker, channel })
       break
-    case 'modification_completed':
+    case 'modification_completed': {
       title = t.headlines.modificationCompleted
-      if (event.oldSl != null && event.newSl != null) {
+      const hasSl = event.newSl != null
+      const tpLevels = event.newTpLevels.length
+        ? event.newTpLevels
+        : event.newTp != null
+          ? [event.newTp]
+          : []
+      const hasTp = tpLevels.length > 0
+      const tpList = tpLevels.map(formatPrice).join(', ')
+      if (hasSl && hasTp) {
+        body = interpolate(t.bodies.slAndTpsModifiedTo, {
+          newSl: formatPrice(event.newSl),
+          tpList,
+          side,
+          broker,
+          channel,
+        })
+      } else if (event.oldSl != null && hasSl) {
         body = interpolate(t.bodies.slModifiedFromTo, {
           oldSl: formatPrice(event.oldSl),
           newSl: formatPrice(event.newSl),
@@ -366,17 +424,29 @@ export function formatHolisticNotification(
           broker,
           channel,
         })
-      } else if (event.newSl != null) {
+      } else if (hasSl) {
         body = interpolate(t.bodies.slModifiedTo, {
           newSl: formatPrice(event.newSl),
           side,
           broker,
           channel,
         })
-      } else {
+      } else if (hasTp && tpLevels.length > 1) {
+        body = interpolate(t.bodies.tpsModifiedTo, { tpList, side, broker, channel })
+      } else if (hasTp) {
+        body = interpolate(t.bodies.tpModifiedTo, {
+          newTp: formatPrice(tpLevels[0]!),
+          side,
+          broker,
+          channel,
+        })
+      } else if (count > 1) {
         body = interpolate(t.bodies.modificationBatch, { count, broker, channel })
+      } else {
+        body = interpolate(t.bodies.modificationBatch, { count: Math.max(1, count), broker, channel })
       }
       break
+    }
     case 'layering_completed':
       title = t.headlines.layeringCompleted
       body =

@@ -10,7 +10,11 @@ export interface TradeNotificationsTranslations {
     executionSingle: string
     slModifiedFromTo: string
     slModifiedTo: string
+    tpModifiedTo: string
+    tpsModifiedTo: string
+    slAndTpsModifiedTo: string
     modificationBatch: string
+    tpsModificationBatch: string
     layeringBatch: string
     layeringSingle: string
     tradesClosedTp: string

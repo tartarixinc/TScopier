@@ -13,7 +13,12 @@ export const tradeNotificationsFr: TradeNotificationsTranslations = {
     slModifiedFromTo:
       'Le SL est passé de {oldSl} à {newSl} sur votre trade {side} sur {broker} via {channel}.',
     slModifiedTo: 'Le SL a été mis à jour à {newSl} sur votre trade {side} sur {broker} via {channel}.',
+    tpModifiedTo: 'Le TP a été mis à jour à {newTp} sur votre trade {side} sur {broker} via {channel}.',
+    tpsModifiedTo: 'Les TPs ont été mis à jour à {tpList} sur votre trade {side} sur {broker} via {channel}.',
+    slAndTpsModifiedTo:
+      'Le SL a été mis à jour à {newSl} et les TPs à {tpList} sur votre trade {side} sur {broker} via {channel}.',
     modificationBatch: '{count} trades ont été mis à jour sur {broker} via {channel}.',
+    tpsModificationBatch: 'Les TPs ont été mis à jour sur {count} trades {side} sur {broker} via {channel}.',
     layeringBatch: '{count} ordres en layering ont été exécutés sur {broker} via {channel}.',
     layeringSingle: 'Un ordre en layering a été exécuté sur {broker} via {channel}.',
     tradesClosedTp: '{count} trades ont été clôturés sur {broker} en raison de {reason} via {channel}.',
