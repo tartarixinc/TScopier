@@ -180,7 +180,7 @@ async function prepareEntryExecution(ctx, args) {
     if (isManual
         && hasEntryZone
         && (entryDirection === 'buy' || entryDirection === 'sell')
-        && sendOpts?.messageEditOnly !== true) {
+        && sendOpts?.sameSignalRefresh !== true) {
         try {
             const q = strictEntryPrefetch ?? await api.quote(uuid, symbol);
             if ((0, signalEntryZoneSanity_1.entryZoneFarFromQuote)({
@@ -208,8 +208,8 @@ async function prepareEntryExecution(ctx, args) {
     }
     // Basket SL/TP refresh — always before OrderSend (not deferred to post-fill).
     let basketRefreshSucceeded = false;
-    const messageEditOnly = sendOpts?.messageEditOnly === true;
-    if (isManual && ((0, multiTradeMerge_1.shouldRouteAsBasketParameterRefresh)(parsed) || messageEditOnly)) {
+    const sameSignalRefresh = sendOpts?.sameSignalRefresh === true;
+    if (isManual && ((0, multiTradeMerge_1.shouldRouteAsBasketParameterRefresh)(parsed) || sameSignalRefresh)) {
         const paramOutcome = await ctx.tryParameterFollowUpMergeModifyOnly({
             signal,
             parsed,
@@ -221,9 +221,9 @@ async function prepareEntryExecution(ctx, args) {
             uuid,
             strictEntryPrefetch,
             commentPrefix,
-            messageEditOnly,
+            sameSignalRefresh,
         });
-        if (messageEditOnly) {
+        if (sameSignalRefresh) {
             return {
                 ok: false,
                 outcome: {
@@ -237,6 +237,26 @@ async function prepareEntryExecution(ctx, args) {
         }
         if (paramOutcome.handled) {
             return { ok: false, outcome: { openedOrMerged: false } };
+        }
+    }
+    if (isManual && !sameSignalRefresh && !basketRefreshSucceeded) {
+        const teaserOutcome = await ctx.tryTeaserCompletionMerge({
+            signal,
+            parsed,
+            broker,
+            channelKeywords,
+            baseLot,
+            params,
+            symbol,
+            uuid,
+            strictEntryPrefetch,
+            commentPrefix,
+        });
+        if (teaserOutcome.handled) {
+            return {
+                ok: false,
+                outcome: { openedOrMerged: teaserOutcome.success === true },
+            };
         }
     }
     // Stack-into-basket — before OrderSend on every path (not post-fill only).

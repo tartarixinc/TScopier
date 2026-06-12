@@ -1,7 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.shouldUseEntryFastPath = shouldUseEntryFastPath;
-exports.messageEditSkipReason = messageEditSkipReason;
 exports.enqueueSignal = enqueueSignal;
 exports.scheduleQueueDrain = scheduleQueueDrain;
 exports.dequeueQueuedSignal = dequeueQueuedSignal;
@@ -14,6 +13,7 @@ exports.signalLiveDispatchAlreadyHandled = signalLiveDispatchAlreadyHandled;
 exports.signalAlreadyHandled = signalAlreadyHandled;
 exports.signalTooOldForReplay = signalTooOldForReplay;
 exports.claimSignalExecution = claimSignalExecution;
+exports.waitForSignalInflightClear = waitForSignalInflightClear;
 exports.handleSignal = handleSignal;
 exports.getChannelMeta = getChannelMeta;
 exports.brokerEligibleForSignal = brokerEligibleForSignal;
@@ -24,15 +24,13 @@ const brokerChannelFilter_1 = require("../brokerChannelFilter");
 const channelTradingConfig_1 = require("../channelTradingConfig");
 const channelMessageFilters_1 = require("../channelMessageFilters");
 const multiTradeMerge_1 = require("../multiTradeMerge");
-const channelActiveTradeParams_1 = require("../channelActiveTradeParams");
-const signalPriceInference_1 = require("../signalPriceInference");
 const manualPlanner_1 = require("../manualPlanner");
 const pipelineTimestamps_1 = require("../pipelineTimestamps");
 const tradeComment_1 = require("../tradeComment");
 const helpers_1 = require("./helpers");
 const types_1 = require("./types");
-const telegramMessageEdit_1 = require("../telegramMessageEdit");
-const messageEditDirectionFlipClose_1 = require("./messageEditDirectionFlipClose");
+const signalRevision_1 = require("../signalRevision");
+const messageRevisionDirectionFlipClose_1 = require("./messageRevisionDirectionFlipClose");
 const subscriptionAccess_1 = require("../subscriptionAccess");
 const signalExecutionEligibility_1 = require("../signalExecutionEligibility");
 const copyLimitDispatch_1 = require("../copyLimitDispatch");
@@ -47,20 +45,6 @@ function shouldUseEntryFastPath(ctx, row) {
     if ((0, multiTradeMerge_1.shouldRouteAsBasketParameterRefresh)(parsed))
         return false;
     return (0, tradeSignalActions_1.isEntryAction)((0, tradeSignalActions_1.parsedAction)(parsed));
-}
-function messageEditSkipReason(parsed, action) {
-    if (!parsed || !(0, multiTradeMerge_1.parsedHasSlOrTp)(parsed))
-        return 'message_edit_no_sl_tp';
-    if ((0, tradeSignalActions_1.isManagementAction)(action))
-        return null;
-    if ((0, signalPriceInference_1.parsedHasReEnterIntent)(parsed))
-        return 'message_edit_not_parameter_refresh';
-    if ((0, multiTradeMerge_1.shouldRouteAsBasketParameterRefresh)(parsed))
-        return null;
-    // Edited full-entry messages (zone + SL/TP) are SL/TP corrections — not new OrderSend.
-    if ((0, channelActiveTradeParams_1.isFullEntrySignalWithStops)(parsed))
-        return null;
-    return 'message_edit_not_parameter_refresh';
 }
 function enqueueSignal(ctx, row, opts) {
     if (!types_1.PARSED_STATUSES.has(row.status))
@@ -250,9 +234,21 @@ function claimSignalExecution(ctx, signalId) {
     ctx.inflight.add(signalId);
     return true;
 }
+/** Wait for an in-flight entry on the same signal row (teaser merge + revision overlap). */
+async function waitForSignalInflightClear(ctx, signalId, timeoutMs = 60000) {
+    const deadline = Date.now() + timeoutMs;
+    while (ctx.inflight.has(signalId) && Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    return !ctx.inflight.has(signalId);
+}
 async function handleSignal(ctx, row, opts) {
     if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
         return;
+    const isMessageRevisionEarly = opts?.dispatchSource === signalRevision_1.MESSAGE_REVISION_DISPATCH_SOURCE;
+    if (isMessageRevisionEarly) {
+        await waitForSignalInflightClear(ctx, row.id);
+    }
     if (!ctx.claimSignalExecution(row.id))
         return;
     const handleStartMs = Date.now();
@@ -264,9 +260,9 @@ async function handleSignal(ctx, row, opts) {
         ? Math.max(0, handleStartMs - opts.dispatchReceivedAt)
         : null;
     let pipelineOutcome = { live_fast: liveFast };
-    const isMessageEdit = opts?.dispatchSource === telegramMessageEdit_1.MESSAGE_EDIT_DISPATCH_SOURCE;
+    const isMessageRevision = opts?.dispatchSource === signalRevision_1.MESSAGE_REVISION_DISPATCH_SOURCE;
     try {
-        if (!opts?.liveDispatch && !isMessageEdit && ctx.signalTooOldForReplay(row))
+        if (!opts?.liveDispatch && !isMessageRevision && ctx.signalTooOldForReplay(row))
             return;
         if (!liveFast) {
             void ctx.logPipelineStage(row, 'handle_start', {
@@ -275,7 +271,7 @@ async function handleSignal(ctx, row, opts) {
                 queue_wait_ms: queueWaitMs,
             });
         }
-        if (!isMessageEdit && !liveFast && await ctx.signalAlreadyHandled(row.id)) {
+        if (!isMessageRevision && !liveFast && await ctx.signalAlreadyHandled(row.id)) {
             await ctx.markSignalExecuted(row.id);
             return;
         }
@@ -330,13 +326,6 @@ async function handleSignal(ctx, row, opts) {
         if (!executionEligibility.eligible) {
             await ctx.logDispatchSkipped(row, executionEligibility.skipReason ?? 'entry_not_execution_eligible');
             return;
-        }
-        if (isMessageEdit) {
-            const reason = messageEditSkipReason(parsed, action);
-            if (reason) {
-                await ctx.logDispatchSkipped(row, reason);
-                return;
-            }
         }
         const rawMatchingBrokers = (ctx.brokersByUser.get(row.user_id) ?? []).filter(b => b.is_active && (0, helpers_1.isMtUuid)(b.metaapi_account_id) && (0, brokerChannelFilter_1.channelMatchesBrokerSignal)(b, row.channel_id));
         const configSkipReasons = [];
@@ -411,17 +400,17 @@ async function handleSignal(ctx, row, opts) {
                 return;
             }
         }
-        if (isMessageEdit
-            && row.message_edit_prior_action
-            && (0, telegramMessageEdit_1.messageEditDirectionFlippedFromActions)(row.message_edit_prior_action, action)) {
-            const flipClose = await (0, messageEditDirectionFlipClose_1.closeBasketForMessageEditDirectionFlip)(ctx, row, brokers);
-            await (0, messageEditDirectionFlipClose_1.waitForSignalBasketFlat)(ctx, row, brokers);
+        if (isMessageRevision
+            && row.revision_prior_action
+            && (0, signalRevision_1.revisionDirectionFlippedFromActions)(row.revision_prior_action, action)) {
+            const flipClose = await (0, messageRevisionDirectionFlipClose_1.closeBasketForRevisionDirectionFlip)(ctx, row, brokers);
+            await (0, messageRevisionDirectionFlipClose_1.waitForSignalBasketFlat)(ctx, row, brokers);
             if (flipClose.closed === 0 && flipClose.failed > 0) {
-                await ctx.logDispatchSkipped(row, 'message_edit_direction_flip_close_failed');
+                await ctx.logDispatchSkipped(row, 'message_revision_direction_flip_close_failed');
                 return;
             }
             if (!(0, multiTradeMerge_1.parsedHasSlOrTp)(parsed)) {
-                await ctx.logDispatchSkipped(row, 'message_edit_direction_flip_closed');
+                await ctx.logDispatchSkipped(row, 'message_revision_direction_flip_closed');
                 await ctx.markSignalExecuted(row.id);
                 return;
             }
@@ -468,7 +457,7 @@ async function handleSignal(ctx, row, opts) {
         const outcomes = await Promise.all(brokers.map(b => ctx.sendOrder(row, parsed, op, b, channelKeywords, pipelineT0, {
             liveEntryFast: liveFast,
             commentPrefix,
-            messageEditOnly: isMessageEdit,
+            sameSignalRefresh: isMessageRevision,
         })));
         if (liveFast && row.pipeline_ts) {
             row.pipeline_ts.t_order_send_done = Date.now();
@@ -528,8 +517,25 @@ async function handleSignal(ctx, row, opts) {
         else if (anyOpened) {
             await ctx.markSignalExecuted(row.id);
         }
-        else if (isMessageEdit) {
-            await ctx.markSignalExecuted(row.id);
+        else if (isMessageRevision) {
+            const revisionApplied = outcomes.some(o => o.openedOrMerged === true);
+            if (revisionApplied) {
+                await ctx.markSignalExecuted(row.id);
+            }
+            else {
+                try {
+                    const { error: sigErr } = await ctx.supabase
+                        .from('signals')
+                        .update({ status: 'parsed', skip_reason: 'basket_modify_failed' })
+                        .eq('id', row.id);
+                    if (sigErr) {
+                        console.warn(`[tradeExecutor] revision modify failed finalize id=${row.id}: ${sigErr.message}`);
+                    }
+                }
+                catch {
+                    // best-effort
+                }
+            }
         }
     }
     finally {

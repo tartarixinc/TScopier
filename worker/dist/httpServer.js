@@ -7,6 +7,7 @@ const telegramClient_1 = require("./telegramClient");
 const workerConfig_1 = require("./workerConfig");
 const queueHealth_1 = require("./queue/queueHealth");
 const parseSignal_1 = require("./parseSignal");
+const aiParseModification_1 = require("./aiParseModification");
 const INTERNAL_TOKEN = process.env.WORKER_INTERNAL_TOKEN ?? '';
 const PORT = parseInt(process.env.WORKER_PORT ?? '8080', 10);
 function isTelegramSessionInvalid(err) {
@@ -129,6 +130,26 @@ function startHttpServer(authService, sessionManager) {
                     return handleTelegramRpcError(res, body.user_id, sessionManager, err, 'Failed to sync backtest signals');
                 }
             }
+            if (url === '/internal/reconcile-signals') {
+                const body = (await readJson(req));
+                if (body.user_id) {
+                    if (!(0, workerConfig_1.userBelongsToShard)(body.user_id)) {
+                        return sendJson(res, 200, { ok: false, reason: 'wrong_shard' });
+                    }
+                    try {
+                        const result = await sessionManager.reconcileUserSignals(body.user_id, {
+                            channelRowId: body.channel_row_id,
+                        });
+                        return sendJson(res, 200, result);
+                    }
+                    catch (err) {
+                        const msg = err instanceof Error ? err.message : 'reconcile failed';
+                        return sendJson(res, 500, { error: msg });
+                    }
+                }
+                const result = await sessionManager.reconcileAllListenersOnShard();
+                return sendJson(res, 200, { ok: true, ...result });
+            }
             return sendJson(res, 404, { error: 'Unknown route' });
         }
         catch (err) {
@@ -182,6 +203,52 @@ function startTradeHttpServer(sessionManager, tradeExecutor) {
                 }
                 catch (err) {
                     const msg = err instanceof Error ? err.message : 'parse failed';
+                    return sendJson(res, 500, { error: msg });
+                }
+            }
+            if (url === '/internal/parse-modification' && req.method === 'POST') {
+                if (!INTERNAL_TOKEN) {
+                    return sendJson(res, 503, { error: 'WORKER_INTERNAL_TOKEN not configured' });
+                }
+                const token = req.headers['x-internal-token'];
+                if (token !== INTERNAL_TOKEN) {
+                    return sendJson(res, 401, { error: 'Unauthorized' });
+                }
+                const body = (await readJson(req));
+                if (!body.channel_row_id || typeof body.raw_message !== 'string' || !body.user_id) {
+                    return sendJson(res, 400, { error: 'channel_row_id, raw_message, and user_id required' });
+                }
+                if (!(0, workerConfig_1.userBelongsToShard)(body.user_id)) {
+                    return sendJson(res, 200, { parsed: null, status: 'skipped', reason: 'wrong_shard' });
+                }
+                try {
+                    const aiResult = await (0, aiParseModification_1.aiParseModification)(sessionManager.getSupabase(), {
+                        userId: body.user_id,
+                        channelRowId: body.channel_row_id,
+                        rawMessage: body.raw_message,
+                        isReply: body.is_reply === true,
+                        parentSignalId: body.parent_signal_id ?? null,
+                        revision: body.revision?.prior_raw_message
+                            ? {
+                                prior_raw_message: body.revision.prior_raw_message,
+                                prior_parsed_data: body.revision.prior_parsed_data ?? null,
+                            }
+                            : undefined,
+                        forceAi: body.force_ai === true,
+                    });
+                    const parseResult = (0, aiParseModification_1.aiResultToParseResult)(aiResult);
+                    return sendJson(res, 200, {
+                        parsed: parseResult.parsed,
+                        status: parseResult.status,
+                        skip_reason: parseResult.skip_reason,
+                        intent: aiResult.intent,
+                        typo_corrected: aiResult.typo_corrected,
+                        confidence: aiResult.confidence,
+                        source: aiResult.source,
+                    });
+                }
+                catch (err) {
+                    const msg = err instanceof Error ? err.message : 'parse modification failed';
                     return sendJson(res, 500, { error: msg });
                 }
             }

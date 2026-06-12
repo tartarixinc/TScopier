@@ -165,6 +165,9 @@ function shouldPreferParsedStopsOnEntry(parsed) {
 function shouldOverlayChannelParamsOnBasketRefresh(parsed, logAction) {
     if (logAction !== 'signal_merge_into_open_trade')
         return false;
+    // "Gold buy now" + SL/TP must not inherit stale Adjust SL from channel memory.
+    if (shouldPreferParsedStopsOnEntry(parsed))
+        return false;
     return !shouldPreferSignalStopsOverChannelMemory(parsed);
 }
 /** Upsert channel memory from signal stops (no overlay). For live-entry fast path. */

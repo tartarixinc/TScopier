@@ -270,6 +270,19 @@ export function claimSignalExecution(ctx: TradeExecutorContext, signalId: string
     return true
   }
 
+/** Wait for an in-flight entry on the same signal row (teaser merge + revision overlap). */
+export async function waitForSignalInflightClear(
+  ctx: TradeExecutorContext,
+  signalId: string,
+  timeoutMs = 60_000,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (ctx.inflight.has(signalId) && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 100))
+  }
+  return !ctx.inflight.has(signalId)
+}
+
 export async function handleSignal(ctx: TradeExecutorContext, 
     row: SignalRow,
     opts?: {
@@ -280,6 +293,10 @@ export async function handleSignal(ctx: TradeExecutorContext,
     },
   ) {
     if (!hasMetatraderApiConfigured()) return
+    const isMessageRevisionEarly = opts?.dispatchSource === MESSAGE_REVISION_DISPATCH_SOURCE
+    if (isMessageRevisionEarly) {
+      await waitForSignalInflightClear(ctx, row.id)
+    }
     if (!ctx.claimSignalExecution(row.id)) return
 
     const handleStartMs = Date.now()

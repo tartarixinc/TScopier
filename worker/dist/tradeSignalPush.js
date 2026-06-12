@@ -167,7 +167,7 @@ async function pushParsedSignalToTradeWorkerInner(row, opts) {
         reply_to_message_id: row.reply_to_message_id ?? null,
         created_at: row.created_at,
         pipeline_ts: row.pipeline_ts,
-        message_edit_prior_action: row.message_edit_prior_action ?? null,
+        revision_prior_action: row.revision_prior_action ?? null,
     };
     void logPushAttemptToDb(row, 'success', {
         run_id: 'latency-v3',

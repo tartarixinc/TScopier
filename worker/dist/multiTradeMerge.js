@@ -11,7 +11,7 @@ exports.buildPerLegStopTargets = buildPerLegStopTargets;
 exports.legacyMergeLinkingEnabled = legacyMergeLinkingEnabled;
 exports.filterSignalIdsByChannel = filterSignalIdsByChannel;
 exports.resolveLatestOpenBasketAnchor = resolveLatestOpenBasketAnchor;
-exports.resolveOpenBasketAnchorForMessageEdit = resolveOpenBasketAnchorForMessageEdit;
+exports.resolveOpenBasketAnchorForSameSignal = resolveOpenBasketAnchorForSameSignal;
 exports.resolveOpenBasketAnchorForParameterFollowUp = resolveOpenBasketAnchorForParameterFollowUp;
 const manualPlanner_1 = require("./manualPlanner");
 const signalPriceInference_1 = require("./signalPriceInference");
@@ -185,10 +185,10 @@ async function resolveLatestOpenBasketAnchor(supabase, args) {
 const PARAMETER_FOLLOW_UP_ANCHOR_RETRY_MS = 3000;
 const PARAMETER_FOLLOW_UP_ANCHOR_POLL_MS = 150;
 /**
- * Telegram message edits re-parse the same `signals` row — anchor SL/TP refresh
+ * Same-signal revision re-parses the existing `signals` row — anchor SL/TP refresh
  * on that signal's open legs, not the newest unrelated basket on the channel.
  */
-async function resolveOpenBasketAnchorForMessageEdit(supabase, args) {
+async function resolveOpenBasketAnchorForSameSignal(supabase, args) {
     const { data: rows, error } = await supabase
         .from('trades')
         .select('opened_at,symbol')
@@ -200,7 +200,7 @@ async function resolveOpenBasketAnchorForMessageEdit(supabase, args) {
         .order('opened_at', { ascending: false })
         .limit(500);
     if (error) {
-        console.warn(`[multiTradeMerge] message-edit anchor load failed signal=${args.signalId}: ${error.message}`);
+        console.warn(`[multiTradeMerge] same-signal anchor load failed signal=${args.signalId}: ${error.message}`);
         return null;
     }
     const symHint = args.signalSymbol ?? args.brokerSymbol;

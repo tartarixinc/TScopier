@@ -535,6 +535,41 @@ class UserSessionManager {
             await this.disconnectListener(userId);
         });
     }
+    async reconcileUserSignals(userId, opts) {
+        if (!(0, workerConfig_1.userBelongsToShard)(userId)) {
+            return { ok: false, reason: 'wrong_shard' };
+        }
+        const listener = this.listeners.get(userId);
+        if (!listener) {
+            return { ok: false, reason: 'listener_not_running' };
+        }
+        let channelRow;
+        if (opts?.channelRowId) {
+            const { data } = await this.supabase
+                .from('telegram_channels')
+                .select('id, channel_id, channel_username, last_seen_message_id, last_seen_at, last_live_at')
+                .eq('id', opts.channelRowId)
+                .eq('user_id', userId)
+                .maybeSingle();
+            if (data)
+                channelRow = data;
+        }
+        const stats = await listener.runSignalTelegramReconcile('cron', channelRow);
+        return { ok: true, stats };
+    }
+    async reconcileAllListenersOnShard() {
+        const totals = { checked: 0, mismatches: 0, revised: 0, errors: 0 };
+        let users = 0;
+        for (const [, listener] of this.listeners) {
+            users += 1;
+            const stats = await listener.runSignalTelegramReconcile('cron');
+            totals.checked += stats.checked;
+            totals.mismatches += stats.mismatches;
+            totals.revised += stats.revised;
+            totals.errors += stats.errors;
+        }
+        return { users, stats: totals };
+    }
     async disconnectAll() {
         if (this.channelChannel) {
             try {

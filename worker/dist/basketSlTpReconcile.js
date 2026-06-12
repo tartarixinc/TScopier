@@ -54,6 +54,7 @@ exports.loadOpenBasketLegs = loadOpenBasketLegs;
 exports.parsePerLegTargets = parsePerLegTargets;
 const tpBucketDistribution_1 = require("./manualPlanning/tpBucketDistribution");
 const basketModFollowUp_1 = require("./basketModFollowUp");
+const channelActiveTradeParams_1 = require("./channelActiveTradeParams");
 const orderModifyBenign_1 = require("./orderModifyBenign");
 function isBuySideOp(op) {
     return op === 'Buy' || op === 'BuyLimit' || op === 'BuyStop' || op === 'BuyStopLimit';
@@ -326,13 +327,53 @@ async function runBasketLegModifies(args) {
                 continue;
             }
         }
+        let stoploss = target.stoploss;
+        let takeprofit = cweIdx < nImmCwe ? 0 : target.takeprofit;
+        const stripped = (0, channelActiveTradeParams_1.stripInvalidStopsForSide)({
+            stoploss,
+            takeprofit,
+            referencePrice: ref,
+            isBuy: direction === 'buy',
+        });
+        if (stripped.stripped.length) {
+            stoploss = stripped.stoploss;
+            takeprofit = stripped.takeprofit;
+            if (stoploss <= 0 && takeprofit <= 0) {
+                summary.failed += 1;
+                const err = {
+                    trade_id: tr.id,
+                    ticket,
+                    leg_index: i + 1,
+                    broker_symbol: tr.symbol,
+                    target_sl: target.stoploss,
+                    target_tp: target.takeprofit,
+                    error: 'wrong_side_sl',
+                    skip_reason: 'wrong_side_sl',
+                };
+                legErrors.push(err);
+                await logBasketLegModify(supabase, {
+                    userId,
+                    signalId,
+                    brokerAccountId,
+                    status: 'skipped',
+                    tradeId: tr.id,
+                    ticket,
+                    legIndex: i + 1,
+                    brokerSymbol: tr.symbol,
+                    targetSl: target.stoploss,
+                    targetTp: target.takeprofit,
+                    skipReason: 'wrong_side_sl',
+                });
+                continue;
+            }
+        }
         const sendShape = {
             symbol,
             operation: direction === 'buy' ? 'Buy' : 'Sell',
             volume: roundBasketLot(Number(tr.lot_size) || baseLot, params),
             price: ref,
-            stoploss: target.stoploss,
-            takeprofit: cweIdx < nImmCwe ? 0 : target.takeprofit,
+            stoploss,
+            takeprofit,
             slippage: 20,
             comment: `TSCopier:${signalId.slice(0, 8)}:refresh`,
             expertID: 909090,

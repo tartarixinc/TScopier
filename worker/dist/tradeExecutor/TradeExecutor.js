@@ -41,6 +41,7 @@ const channelTradingConfig_1 = require("../channelTradingConfig");
 const brokerChannelTradingConfigs_1 = require("../brokerChannelTradingConfigs");
 const helpers_1 = require("./basketMerge/helpers");
 const signalBrokerDispatchClaim_1 = require("./signalBrokerDispatchClaim");
+const signalRevision_1 = require("../signalRevision");
 const tradeSignalActions_1 = require("../tradeSignalActions");
 const workerConfig_1 = require("../workerConfig");
 const monitorIdleGate_1 = require("../monitorIdleGate");
@@ -552,8 +553,14 @@ class TradeExecutor {
         if (!entryFast) {
             await this.logPipelineStage(rowWithTs, 'dispatch_received', { source, priority: opts?.priority ?? null });
         }
-        if (this.inflight.has(row.id))
-            return true;
+        if (this.inflight.has(row.id)) {
+            if (source === signalRevision_1.MESSAGE_REVISION_DISPATCH_SOURCE) {
+                await dispatch.waitForSignalInflightClear(this, row.id);
+            }
+            else {
+                return true;
+            }
+        }
         await this.handleSignal(rowWithTs, {
             liveDispatch: true,
             dispatchSource: source,
@@ -686,6 +693,9 @@ class TradeExecutor {
      */
     async tryParameterFollowUpMergeModifyOnly(args) {
         return await basketMerge.tryParameterFollowUpMergeModifyOnly(this, args);
+    }
+    async tryTeaserCompletionMerge(args) {
+        return await basketMerge.tryTeaserCompletionMerge(this, args);
     }
     /**
      * After parallel multi immediates, re-apply per-leg TPs (Targets %) in case the
@@ -835,22 +845,33 @@ class TradeExecutor {
                 return { openedOrMerged: true };
             }
         }
+        const isRevisionRefresh = sendOpts?.sameSignalRefresh === true;
         if (this.entryBrokerInflight.has(entryKey)) {
-            const materialized = liveFast
-                ? true
-                : await (0, helpers_1.manualDispatchAlreadyMaterialized)(this, signal.id, effectiveBroker.id);
-            console.warn(`[tradeExecutor] skip duplicate in-flight sendOrder signal=${signal.id} broker=${effectiveBroker.id}`
-                + ` materialized=${materialized}`);
-            return { openedOrMerged: materialized };
+            if (isRevisionRefresh) {
+                const deadline = Date.now() + 60000;
+                while (this.entryBrokerInflight.has(entryKey) && Date.now() < deadline) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+            }
+            else {
+                const materialized = liveFast
+                    ? true
+                    : await (0, helpers_1.manualDispatchAlreadyMaterialized)(this, signal.id, effectiveBroker.id);
+                console.warn(`[tradeExecutor] skip duplicate in-flight sendOrder signal=${signal.id} broker=${effectiveBroker.id}`
+                    + ` materialized=${materialized}`);
+                return { openedOrMerged: materialized };
+            }
         }
         this.entryBrokerInflight.add(entryKey);
         try {
-            const claimed = await (0, signalBrokerDispatchClaim_1.claimSignalBrokerDispatch)(this.supabase, signal.id, effectiveBroker.id);
-            if (!claimed) {
-                const materialized = await (0, helpers_1.manualDispatchAlreadyMaterialized)(this, signal.id, effectiveBroker.id);
-                console.warn(`[tradeExecutor] skip duplicate dispatch claim signal=${signal.id} broker=${effectiveBroker.id}`
-                    + ` materialized=${materialized}`);
-                return { openedOrMerged: materialized };
+            if (!isRevisionRefresh) {
+                const claimed = await (0, signalBrokerDispatchClaim_1.claimSignalBrokerDispatch)(this.supabase, signal.id, effectiveBroker.id);
+                if (!claimed) {
+                    const materialized = await (0, helpers_1.manualDispatchAlreadyMaterialized)(this, signal.id, effectiveBroker.id);
+                    console.warn(`[tradeExecutor] skip duplicate dispatch claim signal=${signal.id} broker=${effectiveBroker.id}`
+                        + ` materialized=${materialized}`);
+                    return { openedOrMerged: materialized };
+                }
             }
             const ms = resolved.manual_settings;
             console.log(`[tradeExecutor] sendOrder signal=${signal.id} broker=${effectiveBroker.id}`

@@ -4,6 +4,8 @@ exports.looksLikeExplicitFullCloseCommand = exports.looksLikeChannelManagementUp
 exports.normalizeChannelKeywords = normalizeChannelKeywords;
 exports.loadChannelLexicon = loadChannelLexicon;
 exports.loadChannelKeywords = loadChannelKeywords;
+exports.parseModificationDeterministic = parseModificationDeterministic;
+exports.normalizeAiParsedOutput = normalizeAiParsedOutput;
 exports.parseChannelMessageSync = parseChannelMessageSync;
 exports.parseRawChannelMessage = parseRawChannelMessage;
 const signalPriceInference_1 = require("./signalPriceInference");
@@ -984,6 +986,57 @@ async function loadChannelKeywords(supabase, channelId) {
 var signalManagementIntent_2 = require("./signalManagementIntent");
 Object.defineProperty(exports, "looksLikeChannelManagementUpdate", { enumerable: true, get: function () { return signalManagementIntent_2.looksLikeChannelManagementUpdate; } });
 Object.defineProperty(exports, "looksLikeExplicitFullCloseCommand", { enumerable: true, get: function () { return signalManagementIntent_2.looksLikeExplicitFullCloseCommand; } });
+function enrichParsedKeywordMatch(keywordMatch, rawMessage) {
+    const enriched = applyReEnterFlag(applyDirectionalPriceInference(normalizeParsedFromModel(keywordMatch, rawMessage), rawMessage), rawMessage);
+    const repaired = applyRawSymbolRepair(enriched, rawMessage);
+    return dropInvalidTradeSymbol(repaired);
+}
+/** Deterministic management / SL-TP follow-up parse only (no entry parsers). */
+function parseModificationDeterministic(rawMessage, channelKeywords, lexicon) {
+    const ignoreAliases = [
+        ...splitKeywordAliases(channelKeywords.additional.ignore_keyword, channelKeywords.additional.delimiters),
+        ...splitKeywordAliases(channelKeywords.additional.skip_keyword, channelKeywords.additional.delimiters),
+    ];
+    const explicitIgnore = hasAnyKeyword(rawMessage, ignoreAliases);
+    const keywordMatch = parseDeterministicManagement(rawMessage, lexicon, channelKeywords) ??
+        parseChannelParameterFollowUp(rawMessage, lexicon, channelKeywords);
+    if (explicitIgnore) {
+        return {
+            parsed: ignorePayload(rawMessage),
+            status: 'skipped',
+            skip_reason: 'Non-trade message',
+        };
+    }
+    if (!keywordMatch) {
+        return {
+            parsed: {
+                action: 'ignore',
+                symbol: null,
+                entry_price: null,
+                entry_zone_low: null,
+                entry_zone_high: null,
+                sl: null,
+                tp: [],
+                lot_size: null,
+                confidence: 0,
+                raw_instruction: rawMessage,
+                open_tp: false,
+            },
+            status: 'skipped',
+            skip_reason: 'No matching management or parameter follow-up pattern',
+        };
+    }
+    const parsed = enrichParsedKeywordMatch(keywordMatch, rawMessage);
+    const status = parsed.action === 'ignore' ? 'skipped' : 'parsed';
+    const skip_reason = parsed.action === 'ignore'
+        ? 'No matching management or parameter follow-up pattern'
+        : null;
+    return { parsed, status, skip_reason };
+}
+/** Normalize OpenAI JSON output into a channel parsed signal. */
+function normalizeAiParsedOutput(raw, fallbackText) {
+    return enrichParsedKeywordMatch(normalizeParsedFromModel(raw, fallbackText), fallbackText);
+}
 /** Synchronous parse when keywords/lexicon are already loaded (hot path). */
 function parseChannelMessageSync(rawMessage, channelKeywords, lexicon) {
     const ignoreAliases = [
@@ -1010,9 +1063,7 @@ function parseChannelMessageSync(rawMessage, channelKeywords, lexicon) {
             raw_instruction: rawMessage,
             open_tp: false,
         };
-    const enriched = applyReEnterFlag(applyDirectionalPriceInference(normalizeParsedFromModel(rawParsed, rawMessage), rawMessage), rawMessage);
-    const repaired = applyRawSymbolRepair(enriched, rawMessage);
-    const dropped = dropInvalidTradeSymbol(repaired);
+    const dropped = enrichParsedKeywordMatch(rawParsed, rawMessage);
     if ((0, signalEntryNowRequirement_1.entryMissingSlTpRequiresNow)(dropped, rawMessage, channelKeywords)) {
         return {
             parsed: {

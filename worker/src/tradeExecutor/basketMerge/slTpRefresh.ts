@@ -147,6 +147,12 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
         symbol,
       )
       if (
+        sameSignalRefresh
+        && shouldPreferParsedStopsOnEntry(plannerParsed)
+      ) {
+        channelParamsForLadder = null
+      }
+      if (
         channelParamsForLadder
         && channelParamsPredateBasket(channelParamsForLadder, anchorCreatedAt)
       ) {

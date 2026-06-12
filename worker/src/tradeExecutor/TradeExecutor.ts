@@ -36,6 +36,7 @@ import {
 } from '../brokerChannelTradingConfigs'
 import { manualDispatchAlreadyMaterialized } from './basketMerge/helpers'
 import { claimSignalBrokerDispatch } from './signalBrokerDispatchClaim'
+import { MESSAGE_REVISION_DISPATCH_SOURCE } from '../signalRevision'
 import { findActiveNewsBlackout } from '../newsTrading/blackout'
 import { getCalendarEventsCached } from '../newsTrading/calendarProvider'
 import { isNewsTradingEnabled } from '../newsTrading/settings'
@@ -734,7 +735,13 @@ export class TradeExecutor {
       await this.logPipelineStage(rowWithTs, 'dispatch_received', { source, priority: opts?.priority ?? null })
     }
 
-    if (this.inflight.has(row.id)) return true
+    if (this.inflight.has(row.id)) {
+      if (source === MESSAGE_REVISION_DISPATCH_SOURCE) {
+        await dispatch.waitForSignalInflightClear(this, row.id)
+      } else {
+        return true
+      }
+    }
 
     await this.handleSignal(rowWithTs, {
       liveDispatch: true,
@@ -1188,26 +1195,36 @@ export class TradeExecutor {
       }
     }
 
+    const isRevisionRefresh = sendOpts?.sameSignalRefresh === true
     if (this.entryBrokerInflight.has(entryKey)) {
-      const materialized = liveFast
-        ? true
-        : await manualDispatchAlreadyMaterialized(this, signal.id, effectiveBroker.id)
-      console.warn(
-        `[tradeExecutor] skip duplicate in-flight sendOrder signal=${signal.id} broker=${effectiveBroker.id}`
-        + ` materialized=${materialized}`,
-      )
-      return { openedOrMerged: materialized }
-    }
-    this.entryBrokerInflight.add(entryKey)
-    try {
-      const claimed = await claimSignalBrokerDispatch(this.supabase, signal.id, effectiveBroker.id)
-      if (!claimed) {
-        const materialized = await manualDispatchAlreadyMaterialized(this, signal.id, effectiveBroker.id)
+      if (isRevisionRefresh) {
+        const deadline = Date.now() + 60_000
+        while (this.entryBrokerInflight.has(entryKey) && Date.now() < deadline) {
+          await new Promise(resolve => setTimeout(resolve, 100))
+        }
+      } else {
+        const materialized = liveFast
+          ? true
+          : await manualDispatchAlreadyMaterialized(this, signal.id, effectiveBroker.id)
         console.warn(
-          `[tradeExecutor] skip duplicate dispatch claim signal=${signal.id} broker=${effectiveBroker.id}`
+          `[tradeExecutor] skip duplicate in-flight sendOrder signal=${signal.id} broker=${effectiveBroker.id}`
           + ` materialized=${materialized}`,
         )
         return { openedOrMerged: materialized }
+      }
+    }
+    this.entryBrokerInflight.add(entryKey)
+    try {
+      if (!isRevisionRefresh) {
+        const claimed = await claimSignalBrokerDispatch(this.supabase, signal.id, effectiveBroker.id)
+        if (!claimed) {
+          const materialized = await manualDispatchAlreadyMaterialized(this, signal.id, effectiveBroker.id)
+          console.warn(
+            `[tradeExecutor] skip duplicate dispatch claim signal=${signal.id} broker=${effectiveBroker.id}`
+            + ` materialized=${materialized}`,
+          )
+          return { openedOrMerged: materialized }
+        }
       }
 
       const ms = resolved.manual_settings as Record<string, unknown>

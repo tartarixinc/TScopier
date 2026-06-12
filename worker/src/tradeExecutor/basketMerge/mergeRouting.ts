@@ -16,7 +16,7 @@ import {
   resolveOpenBasketAnchorForParameterFollowUp,
   shouldRouteAsBasketParameterRefresh
 } from '../../multiTradeMerge'
-import { MERGE_IMPLICIT_CHANNEL_BUNDLE_MS } from '../../signalMergeLink'
+import { MERGE_IMPLICIT_CHANNEL_BUNDLE_MS, messageRevisionBypassesMergeLinking } from '../../signalMergeLink'
 import { messageHasMarketNowIntent } from '../../signalEntryNowRequirement'
 import { entryDispatchLooksSettleable } from '../../signalRevision'
 import { parsedHasReEnterIntent } from '../../signalPriceInference'
@@ -152,12 +152,17 @@ export async function tryParameterFollowUpMergeModifyOnly(ctx: TradeExecutorCont
     const manual = (broker.manual_settings ?? {}) as ManualSettings
     const sameSignalRevision =
       sameSignalRefresh && anchor.anchorSignalId === signal.id
+    const revisionBypassLinking = messageRevisionBypassesMergeLinking({
+      sameSignalRefresh,
+      hasExplicitStops: parsedSignalHasExplicitStops(parsed),
+    })
     const allowUnlinkedRefresh =
       sameSignalRevision
+      || revisionBypassLinking
       || (manual.add_new_trades_to_existing === false && parsedSignalHasExplicitStops(parsed))
       || link.parameterRefreshSameChannel
       || (link.implicitBundleWithinTightWindow && link.implicitSameChannelBundle && parsedSignalHasExplicitStops(parsed))
-    if (!sameSignalRevision) {
+    if (!sameSignalRevision && !revisionBypassLinking) {
       if (!link.replyOk && !link.threadLinksAnchor && !link.parentLinksAnchor && !allowUnlinkedRefresh) {
         void ctx.supabase.from('trade_execution_logs').insert({
           user_id: signal.user_id,

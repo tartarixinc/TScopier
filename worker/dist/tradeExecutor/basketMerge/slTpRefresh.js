@@ -11,7 +11,7 @@ const rangePendingLadderSync_1 = require("../../rangePendingLadderSync");
 const helpers_1 = require("../helpers");
 const helpers_2 = require("./helpers");
 async function applyBasketSlTpRefresh(ctx, args) {
-    const { signal, parsed, broker, channelKeywords, baseLot, params, symbol, uuid, strictEntryPrefetch, commentPrefix, anchorSignalId, direction, logAction, mergeLinkMeta, messageEditOnly, } = args;
+    const { signal, parsed, broker, channelKeywords, baseLot, params, symbol, uuid, strictEntryPrefetch, commentPrefix, anchorSignalId, direction, logAction, mergeLinkMeta, sameSignalRefresh, } = args;
     const api = ctx.apiFor(broker);
     if (!api) {
         return {
@@ -50,9 +50,9 @@ async function applyBasketSlTpRefresh(ctx, args) {
     let plannerParsed = {
         action: parsed.action,
         symbol: parsed.symbol,
-        entry_price: messageEditOnly ? null : rpe0,
-        entry_zone_low: messageEditOnly ? null : (rzo0?.lo ?? parsed.entry_zone_low),
-        entry_zone_high: messageEditOnly ? null : (rzo0?.hi ?? parsed.entry_zone_high),
+        entry_price: sameSignalRefresh ? null : rpe0,
+        entry_zone_low: sameSignalRefresh ? null : (rzo0?.lo ?? parsed.entry_zone_low),
+        entry_zone_high: sameSignalRefresh ? null : (rzo0?.hi ?? parsed.entry_zone_high),
         sl: parsed.sl,
         tp: parsed.tp,
         lot_size: parsed.lot_size,
@@ -61,16 +61,34 @@ async function applyBasketSlTpRefresh(ctx, args) {
         raw_instruction: parsed.raw_instruction,
     };
     let channelParamsForLadder = null;
+    let anchorCreatedAt = null;
+    if (anchorSignalId) {
+        const { data: anchorRow } = await ctx.supabase
+            .from('signals')
+            .select('created_at')
+            .eq('id', anchorSignalId)
+            .maybeSingle();
+        anchorCreatedAt = anchorRow?.created_at ?? null;
+    }
     if (signal.channel_id) {
         channelParamsForLadder = await (0, channelActiveTradeParams_1.loadChannelActiveTradeParamsForSymbol)(ctx.supabase, signal.user_id, signal.channel_id, symbol);
+        if (sameSignalRefresh
+            && (0, channelActiveTradeParams_1.shouldPreferParsedStopsOnEntry)(plannerParsed)) {
+            channelParamsForLadder = null;
+        }
+        if (channelParamsForLadder
+            && (0, channelActiveTradeParams_1.channelParamsPredateBasket)(channelParamsForLadder, anchorCreatedAt)) {
+            console.log(`[tradeExecutor] skip stale channel memory on basket refresh signal=${signal.id}`
+                + ` anchor=${anchorSignalId} memory_updated=${channelParamsForLadder.updatedAt}`);
+            channelParamsForLadder = null;
+        }
         if (channelParamsForLadder
             && (0, channelActiveTradeParams_1.shouldOverlayChannelParamsOnBasketRefresh)(plannerParsed, logAction)) {
             plannerParsed = (0, channelActiveTradeParams_1.mergeParsedWithChannelParams)(plannerParsed, channelParamsForLadder, {
                 overlay: true,
             });
         }
-        else if ((0, channelActiveTradeParams_1.shouldPreferSignalStopsOverChannelMemory)(plannerParsed)
-            && (0, channelActiveTradeParams_1.parsedSignalHasExplicitStops)(plannerParsed)) {
+        else if ((0, channelActiveTradeParams_1.shouldPreferParsedStopsOnEntry)(plannerParsed)) {
             const refreshTpLevels = (plannerParsed.tp ?? []).filter((t) => typeof t === 'number' && Number.isFinite(t) && t > 0);
             await (0, channelActiveTradeParams_1.upsertChannelActiveTradeParams)(ctx.supabase, {
                 userId: signal.user_id,
@@ -153,6 +171,7 @@ async function applyBasketSlTpRefresh(ctx, args) {
     if (signal.channel_id
         && (typeof effectiveParsed.sl === 'number' && effectiveParsed.sl > 0 || refreshTpLevels.length > 0)
         && (logAction === 'merge_routed_modify_only'
+            || (0, channelActiveTradeParams_1.shouldPreferParsedStopsOnEntry)(plannerParsed)
             || (0, channelActiveTradeParams_1.shouldPreferSignalStopsOverChannelMemory)(plannerParsed))) {
         await (0, channelActiveTradeParams_1.upsertChannelActiveTradeParams)(ctx.supabase, {
             userId: signal.user_id,
@@ -160,7 +179,8 @@ async function applyBasketSlTpRefresh(ctx, args) {
             symbols: [symbol],
             stoploss: effectiveParsed.sl,
             tpLevels: refreshTpLevels,
-            replace: (0, channelActiveTradeParams_1.shouldPreferSignalStopsOverChannelMemory)(plannerParsed)
+            replace: (0, channelActiveTradeParams_1.shouldPreferParsedStopsOnEntry)(plannerParsed)
+                || (0, channelActiveTradeParams_1.shouldPreferSignalStopsOverChannelMemory)(plannerParsed)
                 || logAction === 'merge_routed_modify_only',
         });
         channelParamsForLadder = await (0, channelActiveTradeParams_1.loadChannelActiveTradeParamsForSymbol)(ctx.supabase, signal.user_id, signal.channel_id, symbol);
@@ -193,7 +213,7 @@ async function applyBasketSlTpRefresh(ctx, args) {
             virtualPendings = (0, channelActiveTradeParams_1.applyChannelParamsToVirtualPendingList)(virtualPendings, channelParamsForLadder, immediateEstimate, manual.tp_lots, basketTotalPlannedLegs);
         }
     }
-    const refreshImmediateLegCount = messageEditOnly
+    const refreshImmediateLegCount = sameSignalRefresh
         ? familyTrades.length
         : Math.max((0, multiTradeMerge_1.mergePlanImmediateOrders)(plan).length, Math.max(0, familyTrades.length - Math.max(0, maxPendingStepIdx - activePendingCount)));
     // Single-mode partial schedule comes from planManualOrders (uses derived finalTps,

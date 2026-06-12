@@ -8,6 +8,7 @@ import {
 } from './channelActiveTradeParams'
 import { shouldRouteAsBasketParameterRefresh } from './multiTradeMerge'
 import { entryDispatchLooksSettleable } from './signalRevision'
+import { messageRevisionBypassesMergeLinking } from './signalMergeLink'
 import { signalLooksLikeTeaserBasket } from './signalTelegramReconcile'
 
 const SIGNALS_PRO_TEASER = 'Gold buy now'
@@ -43,6 +44,24 @@ describe('SIGNALS PRO edit flow', () => {
     const full = parseChannelMessageSync(SIGNALS_PRO_FULL, DEFAULT_CHANNEL_KEYWORDS, null)
     assert.equal(shouldRouteAsBasketParameterRefresh(full.parsed), false)
     assert.equal(shouldPreferParsedStopsOnEntry(full.parsed), true)
+  })
+
+  it('message revision bypasses merge linking for cross-anchor SL/TP refresh', () => {
+    const full = parseChannelMessageSync(SIGNALS_PRO_FULL, DEFAULT_CHANNEL_KEYWORDS, null)
+    assert.equal(
+      messageRevisionBypassesMergeLinking({
+        sameSignalRefresh: true,
+        hasExplicitStops: shouldPreferParsedStopsOnEntry(full.parsed),
+      }),
+      true,
+    )
+    assert.equal(
+      messageRevisionBypassesMergeLinking({
+        sameSignalRefresh: false,
+        hasExplicitStops: true,
+      }),
+      false,
+    )
   })
 
   it('channel overlay blocked when message carries SL/TP on merge', () => {
