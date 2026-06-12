@@ -69,7 +69,7 @@ def _looks_like_explicit_full_close_command(text: str) -> bool:
     )
 
 
-def _looks_like_channel_management_update(text: str) -> bool:
+def looks_like_channel_management_update(text: str) -> bool:
     t = re.sub(r"\s+", " ", (text or "").strip())
     if not t:
         return False
@@ -122,7 +122,7 @@ def looks_like_trading_signal(text: str, is_reply: bool = False) -> bool:
     )):
         return True
 
-    if _looks_like_channel_management_update(text):
+    if looks_like_channel_management_update(text):
         return True
 
     score = sum(

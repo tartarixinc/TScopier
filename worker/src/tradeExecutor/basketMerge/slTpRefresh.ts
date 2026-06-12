@@ -64,13 +64,13 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
     anchorSignalId: string
     direction: 'buy' | 'sell'
     logAction: 'merge_routed_modify_only' | 'signal_merge_into_open_trade'
-    messageEditOnly?: boolean
+    sameSignalRefresh?: boolean
     mergeLinkMeta?: Record<string, unknown>
   }): Promise<{ success: boolean; summary: MergeModifySummary }> {
     const {
       signal, parsed, broker, channelKeywords, baseLot, params, symbol, uuid,
       strictEntryPrefetch, commentPrefix, anchorSignalId, direction, logAction, mergeLinkMeta,
-      messageEditOnly,
+      sameSignalRefresh,
     } = args
     const api = ctx.apiFor(broker)
     if (!api) {
@@ -117,9 +117,9 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
     let plannerParsed: PlannerParsedSignal = {
       action: parsed.action,
       symbol: parsed.symbol,
-      entry_price: messageEditOnly ? null : rpe0,
-      entry_zone_low: messageEditOnly ? null : (rzo0?.lo ?? parsed.entry_zone_low),
-      entry_zone_high: messageEditOnly ? null : (rzo0?.hi ?? parsed.entry_zone_high),
+      entry_price: sameSignalRefresh ? null : rpe0,
+      entry_zone_low: sameSignalRefresh ? null : (rzo0?.lo ?? parsed.entry_zone_low),
+      entry_zone_high: sameSignalRefresh ? null : (rzo0?.hi ?? parsed.entry_zone_high),
       sl: parsed.sl,
       tp: parsed.tp,
       lot_size: parsed.lot_size,
@@ -303,7 +303,7 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
         )
       }
     }
-    const refreshImmediateLegCount = messageEditOnly
+    const refreshImmediateLegCount = sameSignalRefresh
       ? familyTrades.length
       : Math.max(
           mergePlanImmediateOrders(plan).length,

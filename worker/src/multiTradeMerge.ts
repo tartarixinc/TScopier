@@ -252,10 +252,10 @@ const PARAMETER_FOLLOW_UP_ANCHOR_RETRY_MS = 3_000
 const PARAMETER_FOLLOW_UP_ANCHOR_POLL_MS = 150
 
 /**
- * Telegram message edits re-parse the same `signals` row — anchor SL/TP refresh
+ * Same-signal revision re-parses the existing `signals` row — anchor SL/TP refresh
  * on that signal's open legs, not the newest unrelated basket on the channel.
  */
-export async function resolveOpenBasketAnchorForMessageEdit(
+export async function resolveOpenBasketAnchorForSameSignal(
   supabase: SupabaseClient,
   args: {
     userId: string
@@ -280,7 +280,7 @@ export async function resolveOpenBasketAnchorForMessageEdit(
 
   if (error) {
     console.warn(
-      `[multiTradeMerge] message-edit anchor load failed signal=${args.signalId}: ${error.message}`,
+      `[multiTradeMerge] same-signal anchor load failed signal=${args.signalId}: ${error.message}`,
     )
     return null
   }

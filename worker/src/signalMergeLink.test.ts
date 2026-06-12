@@ -143,7 +143,7 @@ test('isMergeFollowUpLinked: same-signal message edit with SL/TP', () => {
       implicitBundleWithinTightWindow: false,
       implicitSameChannelBundle: false,
       parameterRefreshSameChannel: false,
-      messageEditSameSignal: true,
+      sameSignalRefresh: true,
     }),
     true,
   )
@@ -165,7 +165,7 @@ test('computeBasketMergeLinkContext: same signal id edit refresh', () => {
     hasTp: true,
     ancestorChainContainsAnchor: false,
   })
-  assert.equal(ctx.messageEditSameSignal, true)
+  assert.equal(ctx.sameSignalRefresh, true)
   assert.equal(ctx.isLinked, true)
 })
 

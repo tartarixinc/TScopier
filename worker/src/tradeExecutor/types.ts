@@ -39,8 +39,8 @@ export interface SignalRow {
   pipeline_ts?: PipelineTimestamps
   /** In-memory dispatch hint (not persisted on signals row). */
   dispatch_source?: string
-  /** Prior parsed action before a Telegram message edit (in-memory only). */
-  message_edit_prior_action?: string | null
+  /** Prior parsed action before a same-message revision (in-memory only). */
+  revision_prior_action?: string | null
 }
 
 /** In-process priority-queue entry: signal plus the dispatch flags it arrived with. */

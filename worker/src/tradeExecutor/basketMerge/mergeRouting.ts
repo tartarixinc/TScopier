@@ -12,7 +12,7 @@ import { hasMetatraderApiConfigured, MtOperation } from '../../metatraderapi'
 import {
   legacyMergeLinkingEnabled,
   filterSignalIdsByChannel,
-  resolveOpenBasketAnchorForMessageEdit,
+  resolveOpenBasketAnchorForSameSignal,
   resolveOpenBasketAnchorForParameterFollowUp,
   shouldRouteAsBasketParameterRefresh
 } from '../../multiTradeMerge'
@@ -40,7 +40,7 @@ export async function tryParameterFollowUpMergeModifyOnly(ctx: TradeExecutorCont
     uuid: string
     strictEntryPrefetch: { bid: number; ask: number } | null
     commentPrefix: string
-    messageEditOnly?: boolean
+    sameSignalRefresh?: boolean
   }): Promise<MergeOutcome> {
     const {
       signal, parsed, broker, channelKeywords, baseLot, params, symbol, uuid,
@@ -48,7 +48,7 @@ export async function tryParameterFollowUpMergeModifyOnly(ctx: TradeExecutorCont
     } = args
     if (!hasMetatraderApiConfigured()) return { handled: false }
     if (parsedHasReEnterIntent(parsed)) return { handled: false }
-    if (!shouldRouteAsBasketParameterRefresh(parsed) && args.messageEditOnly !== true) {
+    if (!shouldRouteAsBasketParameterRefresh(parsed) && args.sameSignalRefresh !== true) {
       return { handled: false }
     }
     const api = ctx.apiFor(broker)
@@ -77,10 +77,10 @@ export async function tryParameterFollowUpMergeModifyOnly(ctx: TradeExecutorCont
     const a = String(parsed.action ?? '').toLowerCase()
     if (a !== 'buy' && a !== 'sell') return { handled: false }
     const direction = a === 'buy' ? 'buy' : 'sell'
-    const messageEditOnly = args.messageEditOnly === true
+    const sameSignalRefresh = args.sameSignalRefresh === true
 
-    let anchor = messageEditOnly
-      ? await resolveOpenBasketAnchorForMessageEdit(ctx.supabase, {
+    let anchor = sameSignalRefresh
+      ? await resolveOpenBasketAnchorForSameSignal(ctx.supabase, {
           userId: signal.user_id,
           brokerAccountId: broker.id,
           signalId: signal.id,
@@ -148,14 +148,14 @@ export async function tryParameterFollowUpMergeModifyOnly(ctx: TradeExecutorCont
     // Exception: when add_new_trades_to_existing=false, the strategy is "single slot";
     // a same-direction signal carrying explicit stops should refresh that live slot.
     const manual = (broker.manual_settings ?? {}) as ManualSettings
-    const sameSignalMessageEdit =
-      messageEditOnly && anchor.anchorSignalId === signal.id
+    const sameSignalRevision =
+      sameSignalRefresh && anchor.anchorSignalId === signal.id
     const allowUnlinkedRefresh =
-      sameSignalMessageEdit
+      sameSignalRevision
       || (manual.add_new_trades_to_existing === false && parsedSignalHasExplicitStops(parsed))
       || link.parameterRefreshSameChannel
       || (link.implicitBundleWithinTightWindow && link.implicitSameChannelBundle && parsedSignalHasExplicitStops(parsed))
-    if (!sameSignalMessageEdit) {
+    if (!sameSignalRevision) {
       if (!link.replyOk && !link.threadLinksAnchor && !link.parentLinksAnchor && !allowUnlinkedRefresh) {
         void ctx.supabase.from('trade_execution_logs').insert({
           user_id: signal.user_id,
@@ -254,7 +254,7 @@ export async function tryParameterFollowUpMergeModifyOnly(ctx: TradeExecutorCont
       anchorSignalId: anchor.anchorSignalId,
       direction,
       logAction: 'merge_routed_modify_only',
-      messageEditOnly: args.messageEditOnly === true,
+      sameSignalRefresh: args.sameSignalRefresh === true,
       mergeLinkMeta: {
         reply_chain: link.replyOk,
         within_time_window: link.withinWindow,
@@ -263,7 +263,7 @@ export async function tryParameterFollowUpMergeModifyOnly(ctx: TradeExecutorCont
         implicit_bundle_within_tight_window: link.implicitBundleWithinTightWindow,
         implicit_same_channel_bundle: link.implicitSameChannelBundle,
         parameter_refresh_same_channel: link.parameterRefreshSameChannel,
-        message_edit_same_signal: sameSignalMessageEdit,
+        same_signal_refresh: sameSignalRevision,
         implicit_bundle_dt_ms: link.dtMs,
         merge_implicit_tight_window_ms: MERGE_IMPLICIT_CHANNEL_BUNDLE_MS,
         legacy_merge_linking: legacyMergeLinkingEnabled(),

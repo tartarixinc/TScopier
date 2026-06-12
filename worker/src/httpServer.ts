@@ -6,6 +6,7 @@ import { UserSessionManager } from './sessionManager'
 import { userBelongsToShard } from './workerConfig'
 import { getQueueHealthMetrics } from './queue/queueHealth'
 import { parseRawChannelMessage } from './parseSignal'
+import { aiParseModification, aiResultToParseResult } from './aiParseModification'
 
 const INTERNAL_TOKEN = process.env.WORKER_INTERNAL_TOKEN ?? ''
 const PORT = parseInt(process.env.WORKER_PORT ?? '8080', 10)
@@ -246,6 +247,63 @@ export function startTradeHttpServer(
           })
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : 'parse failed'
+          return sendJson(res, 500, { error: msg })
+        }
+      }
+
+      if (url === '/internal/parse-modification' && req.method === 'POST') {
+        if (!INTERNAL_TOKEN) {
+          return sendJson(res, 503, { error: 'WORKER_INTERNAL_TOKEN not configured' })
+        }
+        const token = req.headers['x-internal-token']
+        if (token !== INTERNAL_TOKEN) {
+          return sendJson(res, 401, { error: 'Unauthorized' })
+        }
+        const body = (await readJson(req)) as {
+          channel_row_id?: string
+          raw_message?: string
+          user_id?: string
+          is_reply?: boolean
+          parent_signal_id?: string | null
+          revision?: {
+            prior_raw_message?: string
+            prior_parsed_data?: Record<string, unknown> | null
+          }
+          force_ai?: boolean
+        }
+        if (!body.channel_row_id || typeof body.raw_message !== 'string' || !body.user_id) {
+          return sendJson(res, 400, { error: 'channel_row_id, raw_message, and user_id required' })
+        }
+        if (!userBelongsToShard(body.user_id)) {
+          return sendJson(res, 200, { parsed: null, status: 'skipped', reason: 'wrong_shard' })
+        }
+        try {
+          const aiResult = await aiParseModification(sessionManager.getSupabase(), {
+            userId: body.user_id,
+            channelRowId: body.channel_row_id,
+            rawMessage: body.raw_message,
+            isReply: body.is_reply === true,
+            parentSignalId: body.parent_signal_id ?? null,
+            revision: body.revision?.prior_raw_message
+              ? {
+                  prior_raw_message: body.revision.prior_raw_message,
+                  prior_parsed_data: body.revision.prior_parsed_data ?? null,
+                }
+              : undefined,
+            forceAi: body.force_ai === true,
+          })
+          const parseResult = aiResultToParseResult(aiResult)
+          return sendJson(res, 200, {
+            parsed: parseResult.parsed,
+            status: parseResult.status,
+            skip_reason: parseResult.skip_reason,
+            intent: aiResult.intent,
+            typo_corrected: aiResult.typo_corrected,
+            confidence: aiResult.confidence,
+            source: aiResult.source,
+          })
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : 'parse modification failed'
           return sendJson(res, 500, { error: msg })
         }
       }

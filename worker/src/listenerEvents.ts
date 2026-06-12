@@ -7,12 +7,10 @@ export type ListenerEventType =
   | 'peer_resolve_failed'
   | 'poll_peer_resolve_failed'
   | 'catchup_get_messages_failed'
-  | 'message_edit_parse_failed'
-  | 'message_edit_no_sl_tp'
-  | 'message_edit_applied'
-  | 'message_edit_sweep_detected'
-  | 'message_edit_sweep_no_change'
-  | 'message_edit_sweep_error'
+  | 'ai_modification_parsed'
+  | 'ai_modification_skipped'
+  | 'ai_modification_failed'
+  | 'message_revision_applied'
 
 export async function persistListenerEvent(
   supabase: SupabaseClient,

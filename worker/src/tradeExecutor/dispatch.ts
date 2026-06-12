@@ -21,9 +21,7 @@ import {
   normalizeChannelMessageFiltersMap,
 } from '../channelMessageFilters'
 import { shouldRouteAsBasketParameterRefresh, parsedHasSlOrTp } from '../multiTradeMerge'
-import { isFullEntrySignalWithStops } from '../channelActiveTradeParams'
 import type { ParsedSignal } from '../manualPlanner'
-import { parsedHasReEnterIntent } from '../signalPriceInference'
 import { SKIP_REASON_SIGNAL_ENTRY_REQUIRED } from '../manualPlanner'
 import { parsePipelineTimestamps, pipelineSummaryPayload } from '../pipelineTimestamps'
 import { buildTscopierCommentPrefix, resolveChannelLabelForComment, sanitizeChannelCommentSlug } from '../tradeComment'
@@ -36,14 +34,11 @@ import {
   telegramLiveTradeGateEnabled,
 } from './types'
 import type { ChannelKeywords } from '../manualPlanner'
+import { MESSAGE_REVISION_DISPATCH_SOURCE, revisionDirectionFlippedFromActions } from '../signalRevision'
 import {
-  MESSAGE_EDIT_DISPATCH_SOURCE,
-  messageEditDirectionFlippedFromActions,
-} from '../telegramMessageEdit'
-import {
-  closeBasketForMessageEditDirectionFlip,
+  closeBasketForRevisionDirectionFlip,
   waitForSignalBasketFlat,
-} from './messageEditDirectionFlipClose'
+} from './messageRevisionDirectionFlipClose'
 import {
   loadCachedUserSubscription,
   loadCachedUserIsAdmin,
@@ -62,19 +57,6 @@ export function shouldUseEntryFastPath(ctx: TradeExecutorContext, row: SignalRow
     if (shouldRouteAsBasketParameterRefresh(parsed)) return false
     return isEntryAction(parsedAction(parsed))
   }
-
-export function messageEditSkipReason(
-  parsed: Record<string, unknown> | null | undefined,
-  action: string,
-): 'message_edit_no_sl_tp' | 'message_edit_not_parameter_refresh' | null {
-  if (!parsed || !parsedHasSlOrTp(parsed)) return 'message_edit_no_sl_tp'
-  if (isManagementAction(action)) return null
-  if (parsedHasReEnterIntent(parsed)) return 'message_edit_not_parameter_refresh'
-  if (shouldRouteAsBasketParameterRefresh(parsed)) return null
-  // Edited full-entry messages (zone + SL/TP) are SL/TP corrections — not new OrderSend.
-  if (isFullEntrySignalWithStops(parsed as unknown as ParsedSignal)) return null
-  return 'message_edit_not_parameter_refresh'
-}
 
 export function enqueueSignal(ctx: TradeExecutorContext, 
     row: SignalRow,
@@ -309,9 +291,9 @@ export async function handleSignal(ctx: TradeExecutorContext,
       ? Math.max(0, handleStartMs - (opts.dispatchReceivedAt as number))
       : null
     let pipelineOutcome: Record<string, unknown> = { live_fast: liveFast }
-    const isMessageEdit = opts?.dispatchSource === MESSAGE_EDIT_DISPATCH_SOURCE
+    const isMessageRevision = opts?.dispatchSource === MESSAGE_REVISION_DISPATCH_SOURCE
     try {
-      if (!opts?.liveDispatch && !isMessageEdit && ctx.signalTooOldForReplay(row)) return
+      if (!opts?.liveDispatch && !isMessageRevision && ctx.signalTooOldForReplay(row)) return
 
       if (!liveFast) {
         void ctx.logPipelineStage(row, 'handle_start', {
@@ -321,7 +303,7 @@ export async function handleSignal(ctx: TradeExecutorContext,
         })
       }
 
-      if (!isMessageEdit && !liveFast && await ctx.signalAlreadyHandled(row.id)) {
+      if (!isMessageRevision && !liveFast && await ctx.signalAlreadyHandled(row.id)) {
         await ctx.markSignalExecuted(row.id)
         return
       }
@@ -382,14 +364,6 @@ export async function handleSignal(ctx: TradeExecutorContext,
       if (!executionEligibility.eligible) {
         await ctx.logDispatchSkipped(row, executionEligibility.skipReason ?? 'entry_not_execution_eligible')
         return
-      }
-
-      if (isMessageEdit) {
-        const reason = messageEditSkipReason(parsed as unknown as Record<string, unknown> | null, action)
-        if (reason) {
-          await ctx.logDispatchSkipped(row, reason)
-          return
-        }
       }
 
       const rawMatchingBrokers = (ctx.brokersByUser.get(row.user_id) ?? []).filter(b =>
@@ -485,18 +459,18 @@ export async function handleSignal(ctx: TradeExecutorContext,
       }
 
       if (
-        isMessageEdit
-        && row.message_edit_prior_action
-        && messageEditDirectionFlippedFromActions(row.message_edit_prior_action, action)
+        isMessageRevision
+        && row.revision_prior_action
+        && revisionDirectionFlippedFromActions(row.revision_prior_action, action)
       ) {
-        const flipClose = await closeBasketForMessageEditDirectionFlip(ctx, row, brokers)
+        const flipClose = await closeBasketForRevisionDirectionFlip(ctx, row, brokers)
         await waitForSignalBasketFlat(ctx, row, brokers)
         if (flipClose.closed === 0 && flipClose.failed > 0) {
-          await ctx.logDispatchSkipped(row, 'message_edit_direction_flip_close_failed')
+          await ctx.logDispatchSkipped(row, 'message_revision_direction_flip_close_failed')
           return
         }
         if (!parsedHasSlOrTp(parsed as unknown as Record<string, unknown>)) {
-          await ctx.logDispatchSkipped(row, 'message_edit_direction_flip_closed')
+          await ctx.logDispatchSkipped(row, 'message_revision_direction_flip_closed')
           await ctx.markSignalExecuted(row.id)
           return
         }
@@ -557,7 +531,7 @@ export async function handleSignal(ctx: TradeExecutorContext,
         brokers.map(b => ctx.sendOrder(row, parsed, op, b, channelKeywords, pipelineT0, {
           liveEntryFast: liveFast,
           commentPrefix,
-          messageEditOnly: isMessageEdit,
+          sameSignalRefresh: isMessageRevision,
         })),
       )
       if (liveFast && row.pipeline_ts) {
@@ -615,7 +589,7 @@ export async function handleSignal(ctx: TradeExecutorContext,
         }
       } else if (anyOpened) {
         await ctx.markSignalExecuted(row.id)
-      } else if (isMessageEdit) {
+      } else if (isMessageRevision) {
         await ctx.markSignalExecuted(row.id)
       }
     } finally {

@@ -43,7 +43,7 @@ async function closeWithVerification(
   return { confirmed: false, reason: 'max_attempts' }
 }
 
-export async function closeBasketForMessageEditDirectionFlip(
+export async function closeBasketForRevisionDirectionFlip(
   ctx: TradeExecutorContext,
   row: SignalRow,
   brokers: BrokerRow[],
@@ -90,7 +90,7 @@ export async function closeBasketForMessageEditDirectionFlip(
             user_id: row.user_id,
             signal_id: row.id,
             broker_account_id: broker.id,
-            action: 'message_edit_direction_flip_close',
+            action: 'message_revision_direction_flip_close',
             status: 'failed',
             request_payload: {
               trade_id: trade.id,
@@ -111,7 +111,7 @@ export async function closeBasketForMessageEditDirectionFlip(
           user_id: row.user_id,
           signal_id: row.id,
           broker_account_id: broker.id,
-          action: 'message_edit_direction_flip_close',
+          action: 'message_revision_direction_flip_close',
           status: 'success',
           request_payload: {
             trade_id: trade.id,
@@ -126,7 +126,7 @@ export async function closeBasketForMessageEditDirectionFlip(
           user_id: row.user_id,
           signal_id: row.id,
           broker_account_id: broker.id,
-          action: 'message_edit_direction_flip_close',
+          action: 'message_revision_direction_flip_close',
           status: 'failed',
           request_payload: {
             trade_id: trade.id,
@@ -150,7 +150,7 @@ export async function closeBasketForMessageEditDirectionFlip(
         signalId: s.signalId,
         brokerAccountId: s.brokerAccountId,
       })),
-      'message_edit_direction_flip',
+      'message_revision_direction_flip',
     )
   }
 

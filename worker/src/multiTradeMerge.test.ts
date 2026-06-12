@@ -96,7 +96,7 @@ test('shouldRouteAsBasketParameterRefresh: SL/TP without entry is follow-up cand
   )
 })
 
-test('shouldRouteAsBasketParameterRefresh: full entry with zone is not parameter refresh (message edits bypass via messageEditOnly)', () => {
+test('shouldRouteAsBasketParameterRefresh: full entry with zone is not parameter refresh (sameSignalRefresh bypass)', () => {
   assert.equal(
     shouldRouteAsBasketParameterRefresh({
       action: 'buy',

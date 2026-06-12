@@ -58,7 +58,7 @@ export type EntryArgs = {
   broker: BrokerRow
   channelKeywords: ChannelKeywords | null
   pipelineT0?: number
-  sendOpts?: { liveEntryFast?: boolean; commentPrefix?: string; messageEditOnly?: boolean }
+  sendOpts?: { liveEntryFast?: boolean; commentPrefix?: string; sameSignalRefresh?: boolean }
 }
 
 export type PreparedEntry = {
@@ -289,7 +289,7 @@ export async function prepareEntryExecution(
     isManual
     && hasEntryZone
     && (entryDirection === 'buy' || entryDirection === 'sell')
-    && sendOpts?.messageEditOnly !== true
+    && sendOpts?.sameSignalRefresh !== true
   ) {
     try {
       const q = strictEntryPrefetch ?? await api.quote(uuid, symbol)
@@ -320,8 +320,8 @@ export async function prepareEntryExecution(
 
   // Basket SL/TP refresh — always before OrderSend (not deferred to post-fill).
   let basketRefreshSucceeded = false
-  const messageEditOnly = sendOpts?.messageEditOnly === true
-  if (isManual && (shouldRouteAsBasketParameterRefresh(parsed) || messageEditOnly)) {
+  const sameSignalRefresh = sendOpts?.sameSignalRefresh === true
+  if (isManual && (shouldRouteAsBasketParameterRefresh(parsed) || sameSignalRefresh)) {
     const paramOutcome = await ctx.tryParameterFollowUpMergeModifyOnly({
       signal,
       parsed,
@@ -333,9 +333,9 @@ export async function prepareEntryExecution(
       uuid,
       strictEntryPrefetch,
       commentPrefix,
-      messageEditOnly,
+      sameSignalRefresh,
     })
-    if (messageEditOnly) {
+    if (sameSignalRefresh) {
       return {
         ok: false,
         outcome: {

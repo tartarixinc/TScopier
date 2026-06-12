@@ -955,7 +955,7 @@ export class TradeExecutor {
     uuid: string
     strictEntryPrefetch: { bid: number; ask: number } | null
     commentPrefix: string
-    messageEditOnly?: boolean
+    sameSignalRefresh?: boolean
   }): Promise<MergeOutcome> {
     return await basketMerge.tryParameterFollowUpMergeModifyOnly(this, args)
   }
@@ -995,7 +995,7 @@ export class TradeExecutor {
     anchorSignalId: string
     direction: 'buy' | 'sell'
     logAction: 'merge_routed_modify_only' | 'signal_merge_into_open_trade'
-    messageEditOnly?: boolean
+    sameSignalRefresh?: boolean
     mergeLinkMeta?: Record<string, unknown>
   }): Promise<{ success: boolean; summary: MergeModifySummary }> {
     return await basketMerge.applyBasketSlTpRefresh(this, args)
@@ -1145,7 +1145,7 @@ export class TradeExecutor {
     broker: BrokerRow,
     channelKeywords: ChannelKeywords | null,
     pipelineT0?: number,
-    sendOpts?: { liveEntryFast?: boolean; commentPrefix?: string; messageEditOnly?: boolean },
+    sendOpts?: { liveEntryFast?: boolean; commentPrefix?: string; sameSignalRefresh?: boolean },
   ): Promise<SendOrderOutcome>  {
     const configReady = channelConfigReadyForExecution(broker, signal.channel_id)
     if (!configReady.ready) {

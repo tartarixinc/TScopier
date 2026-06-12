@@ -21,7 +21,7 @@ export type TradeSignalPushPayload = {
   created_at?: string
   pipeline_ts?: PipelineTimestamps
   dispatch_source?: string
-  message_edit_prior_action?: string | null
+  revision_prior_action?: string | null
 }
 
 const PUSH_MAX_ATTEMPTS = Math.max(1, Math.min(5, Number(process.env.TRADE_SIGNAL_PUSH_MAX_ATTEMPTS ?? 3)))
@@ -218,7 +218,7 @@ async function pushParsedSignalToTradeWorkerInner(
     reply_to_message_id: row.reply_to_message_id ?? null,
     created_at: row.created_at,
     pipeline_ts: row.pipeline_ts,
-    message_edit_prior_action: row.message_edit_prior_action ?? null,
+    revision_prior_action: row.revision_prior_action ?? null,
   }
 
   void logPushAttemptToDb(row, 'success', {

@@ -4,8 +4,6 @@ import { TelegramClient } from 'telegram'
 import { utils } from 'telegram'
 import { NewMessage } from 'telegram/events'
 import type { NewMessageEvent } from 'telegram/events/NewMessage'
-import { EditedMessage } from 'telegram/events/EditedMessage'
-import type { EditedMessageEvent } from 'telegram/events/EditedMessage'
 import { Api } from 'telegram/tl'
 import { buildClient, isAuthKeyUnregistered, rethrowIfSessionInvalid, TelegramSessionInvalidError, tgInvoke } from './telegramClient'
 import { tradeableFromParsed } from './backtestSignal'
@@ -21,25 +19,13 @@ import type { PipelineTimestamps } from './pipelineTimestamps'
 import { incMetric } from './workerMetrics'
 import { workerConfig } from './workerConfig'
 import {
-  MESSAGE_EDIT_DISPATCH_SOURCE,
-  buildMessageEditDispatchRow,
+  MESSAGE_REVISION_DISPATCH_SOURCE,
+  buildRevisionDispatchRow,
   loadSignalByTelegramMessage,
-  messageEditParseEligible,
   storedMessageDiffersFromTelegram,
-  updateSignalAfterTelegramEdit,
-} from './telegramMessageEdit'
-import {
-  EDIT_POLL_HOOK_MAX_SIGNALS,
-  EDIT_POLL_HOOK_WINDOW_MS,
-  EDIT_SWEEP_INTERVAL_MS,
-  chunkTelegramMessageIds,
-  findEditedSignals,
-  groupSignalsByChannel,
-  loadSignalsForEditSweep,
-  snapshotsFromTelegramMessages,
-  telegramEditDateSec,
-} from './telegramMessageEditSweep'
-import { parsedHasSlOrTp } from './multiTradeMerge'
+  updateSignalAfterRevision,
+} from './signalRevision'
+import { aiParseModification, aiResultToParseResult } from './aiParseModification'
 import { evaluateParsedSignalExecutionEligibility } from './signalExecutionEligibility'
 import { looksLikeCasualNonTradeMessage } from './signalCommentaryGuard'
 
@@ -158,15 +144,12 @@ interface ChannelRow {
 }
 
 type Handler = (event: NewMessageEvent) => void
-type EditHandler = (event: EditedMessageEvent) => void
 
 interface MessageLike {
   id: number | bigint
   text?: string | null
   message?: string | null
   replyTo?: unknown
-  editDate?: number | Date | null
-  edit_date?: number | Date | null
 }
 
 interface ChatIdentity {
@@ -266,8 +249,6 @@ export class UserListener {
   private monitoredChannels = new Set<string>()
   private currentHandler: Handler | null = null
   private currentEventBuilder: NewMessage | null = null
-  private currentEditHandler: EditHandler | null = null
-  private currentEditEventBuilder: EditedMessage | null = null
   private startedAt = 0
   /** Set when start() reuses the auth-time client (no second connect). */
   private startedWithLiveClient = false
@@ -283,8 +264,6 @@ export class UserListener {
   private watchdogTimer: NodeJS.Timeout | null = null
   private sessionPersistTimer: NodeJS.Timeout | null = null
   private replyChainSweepTimer: NodeJS.Timeout | null = null
-  private messageEditSweepTimer: NodeJS.Timeout | null = null
-  private messageEditSweepInFlight = false
   private entityWarmupTimer: NodeJS.Timeout | null = null
   private catchUpInFlight = false
   private catchUpParseActive = 0
@@ -360,7 +339,6 @@ export class UserListener {
     )
     this.startSessionPersist()
     this.startReplyChainSweep()
-    this.startMessageEditSweep()
     this.startEntityWarmup()
   }
 
@@ -371,7 +349,6 @@ export class UserListener {
       this.stopTimer('fastPollTimer')
       this.stopTimer('sessionPersistTimer')
       this.stopTimer('replyChainSweepTimer')
-      this.stopTimer('messageEditSweepTimer')
       this.stopTimer('entityWarmupTimer')
       this.removeCurrentHandler()
       await this.persistSessionIfChanged()
@@ -389,7 +366,7 @@ export class UserListener {
     this.dialogsCacheAt = 0
   }
 
-  private stopTimer(field: 'watchdogTimer' | 'safetyPollTimer' | 'fastPollTimer' | 'sessionPersistTimer' | 'replyChainSweepTimer' | 'messageEditSweepTimer' | 'entityWarmupTimer') {
+  private stopTimer(field: 'watchdogTimer' | 'safetyPollTimer' | 'fastPollTimer' | 'sessionPersistTimer' | 'replyChainSweepTimer' | 'entityWarmupTimer') {
     const t = this[field]
     if (t) {
       clearInterval(t)
@@ -525,11 +502,6 @@ export class UserListener {
         console.error(`[userListener] handleMessage error for ${this.userId}:`, err)
       })
     }
-    const editHandler: EditHandler = (event: EditedMessageEvent) => {
-      this.handleEditedMessage(event).catch(err => {
-        console.error(`[userListener] handleEditedMessage error for ${this.userId}:`, err)
-      })
-    }
     // NOTE:
     // Passing `chats:` here depends on Telegram/gramjs resolving each chat
     // identifier exactly as expected. In practice, channel ids can vary in
@@ -539,13 +511,9 @@ export class UserListener {
     // Important: do not use `incoming: true` here — channel posts are not
     // always classified as "incoming", which can cause silent drops.
     const builder = new NewMessage({})
-    const editBuilder = new EditedMessage({})
     this.client.addEventHandler(handler, builder)
-    this.client.addEventHandler(editHandler, editBuilder)
     this.currentHandler = handler
     this.currentEventBuilder = builder
-    this.currentEditHandler = editHandler
-    this.currentEditEventBuilder = editBuilder
   }
 
   private removeCurrentHandler() {
@@ -556,17 +524,8 @@ export class UserListener {
         // ignore
       }
     }
-    if (this.currentEditHandler && this.currentEditEventBuilder) {
-      try {
-        this.client.removeEventHandler(this.currentEditHandler, this.currentEditEventBuilder)
-      } catch {
-        // ignore
-      }
-    }
     this.currentHandler = null
     this.currentEventBuilder = null
-    this.currentEditHandler = null
-    this.currentEditEventBuilder = null
   }
 
   private setsEqual(a: Set<string>, b: Set<string>) {
@@ -1024,64 +983,13 @@ export class UserListener {
     void this.bumpLastLive(channelRow.id)
   }
 
-  private async handleEditedMessage(event: EditedMessageEvent) {
-    this.lastEventAt = Date.now()
-    incMetric('telegram_edit_events')
-
-    const message = event.message
-    if (!message) return
-
-    const { chatId, chatIdVariants, chatUsername } = await this.resolveChatIdentity(event)
-    if (!chatId && !chatUsername) return
-
-    const isMonitored =
-      chatIdVariants.some(v => this.monitoredChannels.has(v)) ||
-      (!!chatUsername && this.monitoredChannels.has(chatUsername))
-    if (!isMonitored) return
-
-    const channelRow = await this.resolveChannelRowForChat(chatIdVariants, chatUsername)
-    if (!channelRow) return
-
-    const rawMessage = (message.text ?? message.message ?? '') as string
-    if (!rawMessage.trim()) return
-
-    console.log(
-      `[userListener] message edit user=${this.userId} channelRow=${channelRow.id} msgId=${String(message.id)}`,
-    )
-
-    await this.tryApplyTelegramMessageEdit({
-      channelRow,
-      messageId: String(message.id),
-      rawMessage,
-      source: 'live_edit',
-      telegramMessageEditDate: telegramEditDateSec(message),
-    })
-    void this.bumpLastLive(channelRow.id)
-  }
-
-  private async parseMessageForChannel(
-    channelRowId: string,
-    rawMessage: string,
-    signalId: string,
-  ): Promise<Awaited<ReturnType<typeof parseChannelMessageSync>>> {
-    if (listenerInlineParseEnabled()) {
-      const { keywords, lexicon } = await getChannelParseContext(this.supabase, channelRowId)
-      return parseChannelMessageSync(rawMessage, keywords, lexicon)
-    }
-    if (PARSE_SIGNAL_URL) {
-      return this.parseViaEdgeFunction(signalId, rawMessage, channelRowId)
-    }
-    return parseRawChannelMessage(this.supabase, channelRowId, rawMessage)
-  }
-
-  private async tryApplyTelegramMessageEdit(args: {
+  private async tryApplyMessageRevision(args: {
     channelRow: ChannelRow
     messageId: string
     rawMessage: string
     source: string
-    telegramMessageEditDate?: number | null
   }): Promise<boolean> {
-    const { channelRow, messageId, rawMessage, source, telegramMessageEditDate } = args
+    const { channelRow, messageId, rawMessage, source } = args
     const existing = await loadSignalByTelegramMessage(this.supabase, {
       userId: this.userId,
       channelRowId: channelRow.id,
@@ -1090,87 +998,99 @@ export class UserListener {
     if (!existing) return false
     if (!storedMessageDiffersFromTelegram(existing.raw_message, rawMessage)) return false
 
-    let parseResult: Awaited<ReturnType<typeof parseChannelMessageSync>>
+    let aiResult: Awaited<ReturnType<typeof aiParseModification>>
     try {
-      parseResult = await this.parseMessageForChannel(channelRow.id, rawMessage, existing.id)
+      aiResult = await aiParseModification(this.supabase, {
+        userId: this.userId,
+        channelRowId: channelRow.id,
+        rawMessage,
+        forceAi: true,
+        revision: {
+          prior_raw_message: existing.raw_message,
+          prior_parsed_data: (existing.parsed_data ?? null) as Record<string, unknown> | null,
+        },
+      })
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err)
       console.error(
-        `[userListener] message edit parse failed user=${this.userId} signalId=${existing.id}:`,
+        `[userListener] message revision AI parse failed user=${this.userId} signalId=${existing.id}:`,
         errMsg,
       )
       void persistListenerEvent(this.supabase, {
         userId: this.userId,
-        eventType: 'message_edit_parse_failed',
+        eventType: 'ai_modification_failed',
         channelRowId: channelRow.id,
         telegramMessageId: messageId,
-        detail: { error: errMsg.slice(0, 300), signal_id: existing.id, source },
+        detail: { error: errMsg.slice(0, 300), signal_id: existing.id, source, revision: true },
       })
       return false
     }
 
-    if (!messageEditParseEligible(parseResult)) {
+    const parseResult = aiResultToParseResult(aiResult)
+    if (parseResult.status !== 'parsed') {
       void persistListenerEvent(this.supabase, {
         userId: this.userId,
-        eventType: 'message_edit_no_sl_tp',
+        eventType: 'ai_modification_skipped',
         channelRowId: channelRow.id,
         telegramMessageId: messageId,
         detail: {
           signal_id: existing.id,
           source,
-          has_sl_tp: parsedHasSlOrTp(parseResult.parsed),
-          parse_status: parseResult.status,
+          revision: true,
+          skip_reason: parseResult.skip_reason,
+          intent: aiResult.intent,
         },
       })
       return false
     }
 
-    const updated = await updateSignalAfterTelegramEdit(this.supabase, {
+    const updated = await updateSignalAfterRevision(this.supabase, {
       signalId: existing.id,
       rawMessage,
       parseResult,
-      telegramMessageEditDate,
     })
     if (!updated) {
       console.error(
-        `[userListener] message edit update failed user=${this.userId} signalId=${existing.id}`,
+        `[userListener] message revision update failed user=${this.userId} signalId=${existing.id}`,
       )
       return false
     }
 
-    const tEditReceived = Date.now()
-    const dispatchRow = buildMessageEditDispatchRow(existing, parseResult, rawMessage, {
-      t_message_edit_received: tEditReceived,
-      t_dispatch_sent: tEditReceived,
+    const tRevision = Date.now()
+    const dispatchRow = buildRevisionDispatchRow(existing, parseResult, {
+      t_ai_parse_done: tRevision,
+      t_dispatch_sent: tRevision,
     })
-    dispatchRow.dispatch_source = MESSAGE_EDIT_DISPATCH_SOURCE
+    dispatchRow.dispatch_source = MESSAGE_REVISION_DISPATCH_SOURCE
     if (existing.parsed_data?.action) {
-      dispatchRow.message_edit_prior_action = String(existing.parsed_data.action)
+      dispatchRow.revision_prior_action = String(existing.parsed_data.action)
     }
 
     console.log(
-      `[userListener] message edit dispatch user=${this.userId} signalId=${existing.id}`
+      `[userListener] message revision dispatch user=${this.userId} signalId=${existing.id}`
       + ` channelRow=${channelRow.id} messageId=${messageId} source=${source}`,
     )
 
     void persistListenerEvent(this.supabase, {
       userId: this.userId,
-      eventType: 'message_edit_applied',
+      eventType: 'message_revision_applied',
       channelRowId: channelRow.id,
       telegramMessageId: messageId,
       detail: {
         signal_id: existing.id,
         source,
+        intent: aiResult.intent,
+        ai_source: aiResult.source,
         sl: parseResult.parsed.sl ?? null,
         tp: parseResult.parsed.tp ?? [],
       },
     })
 
-    await this.dispatchMessageEditSignal(dispatchRow)
+    await this.dispatchRevisionSignal(dispatchRow)
     return true
   }
 
-  private async dispatchMessageEditSignal(dispatchRow: SignalRow): Promise<void> {
+  private async dispatchRevisionSignal(dispatchRow: SignalRow): Promise<void> {
     const dispatchedInProcess = this.onSignalParsed
       ? this.onSignalParsed(dispatchRow) === true
       : false
@@ -1180,11 +1100,52 @@ export class UserListener {
       const pushed = await pushParsedSignalToTradeWorkerAwait(
         {
           ...dispatchRow,
-          dispatch_source: MESSAGE_EDIT_DISPATCH_SOURCE,
+          dispatch_source: MESSAGE_REVISION_DISPATCH_SOURCE,
         },
-        { source: MESSAGE_EDIT_DISPATCH_SOURCE },
+        { source: MESSAGE_REVISION_DISPATCH_SOURCE },
       )
       if (!pushed) incMetric('dispatch_push_exhausted')
+    }
+  }
+
+  private isModificationClassMessage(rawMessage: string, isReply: boolean): boolean {
+    return isReply || looksLikeChannelManagementUpdate(rawMessage)
+  }
+
+  private async parseSignalForListener(args: {
+    channelRowId: string
+    rawMessage: string
+    signalId: string
+    isReply: boolean
+    parentSignalId: string | null
+  }): Promise<{
+    parseResult: Awaited<ReturnType<typeof parseChannelMessageSync>>
+    aiMeta?: { intent: string; source: string }
+  }> {
+    if (this.isModificationClassMessage(args.rawMessage, args.isReply)) {
+      const aiResult = await aiParseModification(this.supabase, {
+        userId: this.userId,
+        channelRowId: args.channelRowId,
+        rawMessage: args.rawMessage,
+        isReply: args.isReply,
+        parentSignalId: args.parentSignalId,
+      })
+      return {
+        parseResult: aiResultToParseResult(aiResult),
+        aiMeta: { intent: aiResult.intent, source: aiResult.source },
+      }
+    }
+    if (listenerInlineParseEnabled()) {
+      const { keywords, lexicon } = await getChannelParseContext(this.supabase, args.channelRowId)
+      return { parseResult: parseChannelMessageSync(args.rawMessage, keywords, lexicon) }
+    }
+    if (PARSE_SIGNAL_URL) {
+      return {
+        parseResult: await this.parseViaEdgeFunction(args.signalId, args.rawMessage, args.channelRowId),
+      }
+    }
+    return {
+      parseResult: await parseRawChannelMessage(this.supabase, args.channelRowId, args.rawMessage),
     }
   }
 
@@ -1328,14 +1289,13 @@ export class UserListener {
       .eq('channel_id', channelRow.id)
       .eq('telegram_message_id', messageId)
     if ((dupCount ?? 0) > 0) {
-      const edited = await this.tryApplyTelegramMessageEdit({
+      const revised = await this.tryApplyMessageRevision({
         channelRow,
         messageId,
         rawMessage,
         source: opts?.source === 'catchup' ? 'catchup' : 'duplicate_fallback',
-        telegramMessageEditDate: telegramEditDateSec(message),
       })
-      if (edited) return true
+      if (revised) return true
       console.log(
         `[userListener] duplicate message ignored user=${this.userId} channelRow=${channelRow.id} messageId=${messageId}`,
       )
@@ -1349,15 +1309,17 @@ export class UserListener {
     }
 
     let parseResult: Awaited<ReturnType<typeof parseChannelMessageSync>>
+    let aiMeta: { intent: string; source: string } | undefined
     try {
-      if (listenerInlineParseEnabled()) {
-        const { keywords, lexicon } = await getChannelParseContext(this.supabase, channelRow.id)
-        parseResult = parseChannelMessageSync(rawMessage, keywords, lexicon)
-      } else if (PARSE_SIGNAL_URL) {
-        parseResult = await this.parseViaEdgeFunction(signalId, rawMessage, channelRow.id)
-      } else {
-        parseResult = await parseRawChannelMessage(this.supabase, channelRow.id, rawMessage)
-      }
+      const parsed = await this.parseSignalForListener({
+        channelRowId: channelRow.id,
+        rawMessage,
+        signalId,
+        isReply,
+        parentSignalId,
+      })
+      parseResult = parsed.parseResult
+      aiMeta = parsed.aiMeta
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err)
       console.error(`[userListener] parse failed user=${this.userId} signalId=${signalId}:`, errMsg)
@@ -1390,6 +1352,33 @@ export class UserListener {
       return false
     }
     pipelineTs.t_parse_done = Date.now()
+    if (aiMeta) pipelineTs.t_ai_parse_done = pipelineTs.t_parse_done
+
+    if (aiMeta && parseResult.status === 'parsed') {
+      void persistListenerEvent(this.supabase, {
+        userId: this.userId,
+        eventType: 'ai_modification_parsed',
+        channelRowId: channelRow.id,
+        telegramMessageId: messageId,
+        detail: {
+          signal_id: signalId,
+          intent: aiMeta.intent,
+          ai_source: aiMeta.source,
+        },
+      })
+    } else if (aiMeta && parseResult.status !== 'parsed') {
+      void persistListenerEvent(this.supabase, {
+        userId: this.userId,
+        eventType: 'ai_modification_skipped',
+        channelRowId: channelRow.id,
+        telegramMessageId: messageId,
+        detail: {
+          signal_id: signalId,
+          intent: aiMeta.intent,
+          skip_reason: parseResult.skip_reason,
+        },
+      })
+    }
 
     const executionEligibility = evaluateParsedSignalExecutionEligibility(parseResult.parsed, rawMessage)
     const effectiveParseResult = (
@@ -1453,7 +1442,6 @@ export class UserListener {
       replyToMessageId,
       isReply,
       parseResult: effectiveParseResult,
-      telegramMessageEditDate: telegramEditDateSec(message),
     })
 
     return true
@@ -1634,7 +1622,6 @@ export class UserListener {
     replyToMessageId: string | null
     isReply: boolean
     parseResult: Awaited<ReturnType<typeof parseChannelMessageSync>>
-    telegramMessageEditDate?: number | null
   }): void {
     const {
       signalId,
@@ -1645,7 +1632,6 @@ export class UserListener {
       replyToMessageId,
       isReply,
       parseResult,
-      telegramMessageEditDate,
     } = args
     void (async () => {
       const rowPatch: Record<string, unknown> = {
@@ -1661,9 +1647,6 @@ export class UserListener {
         is_modification: isReply,
         parent_signal_id: parentSignalId,
         reply_to_message_id: replyToMessageId,
-      }
-      if (telegramMessageEditDate != null && telegramMessageEditDate > 0) {
-        rowPatch.telegram_message_edit_date = Math.floor(telegramMessageEditDate)
       }
       const { error: insertErr } = await this.supabase.from('signals').upsert(
         rowPatch,
@@ -1728,130 +1711,6 @@ export class UserListener {
       )
     }, REPLY_CHAIN_SWEEP_MS)
     this.replyChainSweepTimer.unref?.()
-  }
-
-  private startMessageEditSweep() {
-    if (this.messageEditSweepTimer) return
-    this.messageEditSweepTimer = setInterval(() => {
-      this.runMessageEditSweep('edit_sweep').catch(err =>
-        console.error(`[userListener] message-edit sweep error for ${this.userId}:`, err),
-      )
-    }, EDIT_SWEEP_INTERVAL_MS)
-    this.messageEditSweepTimer.unref?.()
-    console.log(
-      `[userListener] message-edit sweep started user=${this.userId} intervalMs=${EDIT_SWEEP_INTERVAL_MS}`,
-    )
-  }
-
-  private async runMessageEditSweep(source: 'edit_sweep' | 'edit_poll_hook', channelRow?: ChannelRow) {
-    if (this.messageEditSweepInFlight) return
-    this.messageEditSweepInFlight = true
-    try {
-      const windowMs = source === 'edit_poll_hook' ? EDIT_POLL_HOOK_WINDOW_MS : undefined
-      const maxSignals = source === 'edit_poll_hook' ? EDIT_POLL_HOOK_MAX_SIGNALS : undefined
-      const signals = await loadSignalsForEditSweep(this.supabase, {
-        userId: this.userId,
-        windowMs,
-        maxSignals,
-        channelRowId: channelRow?.id,
-      })
-      if (!signals.length) return
-
-      const grouped = groupSignalsByChannel(signals)
-      for (const [channelRowId, rows] of grouped) {
-        const row = channelRow?.id === channelRowId
-          ? channelRow
-          : this.fastPollRows.find(r => r.id === channelRowId)
-            ?? (await this.supabase
-              .from('telegram_channels')
-              .select('id, channel_id, channel_username, last_seen_message_id, last_seen_at, last_live_at')
-              .eq('id', channelRowId)
-              .maybeSingle()).data as ChannelRow | null
-        if (!row) continue
-        await this.runEditSweepForChannel(row, rows, source)
-      }
-    } finally {
-      this.messageEditSweepInFlight = false
-    }
-  }
-
-  private async runEditSweepForChannel(
-    channelRow: ChannelRow,
-    signals: Awaited<ReturnType<typeof loadSignalsForEditSweep>>,
-    source: 'edit_sweep' | 'edit_poll_hook',
-  ) {
-    let peer: unknown
-    try {
-      peer = await this.resolveChannelPeer(channelRow)
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      void persistListenerEvent(this.supabase, {
-        userId: this.userId,
-        eventType: 'message_edit_sweep_error',
-        channelRowId: channelRow.id,
-        detail: { source, error: msg.slice(0, 300), phase: 'peer_resolve' },
-      })
-      return
-    }
-
-    const ids = signals.map(s => s.telegram_message_id)
-    const snapshots = new Map<string, { text: string; editDateSec: number | null }>()
-    for (const chunk of chunkTelegramMessageIds(ids)) {
-      const numericIds = chunk
-        .map(id => Number(id))
-        .filter(n => Number.isFinite(n) && n > 0)
-      if (!numericIds.length) continue
-      try {
-        const batch = (await this.client.getMessages(peer as never, {
-          ids: numericIds,
-        })) as unknown[]
-        for (const [id, snap] of snapshotsFromTelegramMessages(batch ?? [])) {
-          snapshots.set(id, snap)
-        }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        incMetric('message_edit_sweep_get_messages_failed')
-        void persistListenerEvent(this.supabase, {
-          userId: this.userId,
-          eventType: 'message_edit_sweep_error',
-          channelRowId: channelRow.id,
-          detail: {
-            source,
-            error: msg.slice(0, 300),
-            phase: 'get_messages',
-            ids: chunk.slice(0, 10),
-          },
-        })
-      }
-    }
-
-    const edited = findEditedSignals(signals, snapshots)
-    if (!edited.length) {
-      incMetric('message_edit_sweep_no_change')
-      return
-    }
-
-    for (const candidate of edited) {
-      incMetric('message_edit_sweep_detected')
-      void persistListenerEvent(this.supabase, {
-        userId: this.userId,
-        eventType: 'message_edit_sweep_detected',
-        channelRowId: channelRow.id,
-        telegramMessageId: candidate.signal.telegram_message_id,
-        detail: {
-          source,
-          signal_id: candidate.signal.id,
-          edit_date_sec: candidate.editDateSec,
-        },
-      })
-      await this.tryApplyTelegramMessageEdit({
-        channelRow,
-        messageId: candidate.signal.telegram_message_id,
-        rawMessage: candidate.rawMessage,
-        source,
-        telegramMessageEditDate: candidate.editDateSec,
-      })
-    }
   }
 
   /** Re-resolve `parent_signal_id` for recent replies (parent may have arrived later). */
@@ -2067,7 +1926,6 @@ export class UserListener {
     this.lastSuccessfulPollAt = Date.now()
 
     if (!batch.length) {
-      await this.runMessageEditSweep('edit_poll_hook', row)
       return
     }
 
@@ -2096,7 +1954,6 @@ export class UserListener {
 
     const toProcess = sorted.filter(m => Number(m.id) > minId)
     if (!toProcess.length) {
-      await this.runMessageEditSweep('edit_poll_hook', row)
       return
     }
 
@@ -2106,7 +1963,6 @@ export class UserListener {
     // Advance the caller's row in place so cached rows (fast poll) don't
     // refetch the same batch on the next tick while the DB bump lags.
     row.last_seen_message_id = latestId
-    await this.runMessageEditSweep('edit_poll_hook', row)
   }
 
   private async catchUpChannelRecent(row: ChannelRow): Promise<void> {

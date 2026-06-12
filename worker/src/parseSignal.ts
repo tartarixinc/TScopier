@@ -1172,6 +1172,76 @@ export type ParseChannelMessageResult = {
 
 export { looksLikeChannelManagementUpdate, looksLikeExplicitFullCloseCommand } from './signalManagementIntent'
 
+function enrichParsedKeywordMatch(
+  keywordMatch: ChannelParsedSignal,
+  rawMessage: string,
+): ChannelParsedSignal {
+  const enriched = applyReEnterFlag(
+    applyDirectionalPriceInference(
+      normalizeParsedFromModel(keywordMatch, rawMessage),
+      rawMessage,
+    ),
+    rawMessage,
+  )
+  const repaired = applyRawSymbolRepair(enriched, rawMessage)
+  return dropInvalidTradeSymbol(repaired)
+}
+
+/** Deterministic management / SL-TP follow-up parse only (no entry parsers). */
+export function parseModificationDeterministic(
+  rawMessage: string,
+  channelKeywords: ChannelKeywords,
+  lexicon: ChannelLexiconRow | null,
+): ParseChannelMessageResult {
+  const ignoreAliases = [
+    ...splitKeywordAliases(channelKeywords.additional.ignore_keyword, channelKeywords.additional.delimiters),
+    ...splitKeywordAliases(channelKeywords.additional.skip_keyword, channelKeywords.additional.delimiters),
+  ]
+  const explicitIgnore = hasAnyKeyword(rawMessage, ignoreAliases)
+  const keywordMatch =
+    parseDeterministicManagement(rawMessage, lexicon, channelKeywords) ??
+    parseChannelParameterFollowUp(rawMessage, lexicon, channelKeywords)
+
+  if (explicitIgnore) {
+    return {
+      parsed: ignorePayload(rawMessage),
+      status: 'skipped',
+      skip_reason: 'Non-trade message',
+    }
+  }
+  if (!keywordMatch) {
+    return {
+      parsed: {
+        action: 'ignore',
+        symbol: null,
+        entry_price: null,
+        entry_zone_low: null,
+        entry_zone_high: null,
+        sl: null,
+        tp: [],
+        lot_size: null,
+        confidence: 0,
+        raw_instruction: rawMessage,
+        open_tp: false,
+      },
+      status: 'skipped',
+      skip_reason: 'No matching management or parameter follow-up pattern',
+    }
+  }
+
+  const parsed = enrichParsedKeywordMatch(keywordMatch, rawMessage)
+  const status = parsed.action === 'ignore' ? 'skipped' : 'parsed'
+  const skip_reason = parsed.action === 'ignore'
+    ? 'No matching management or parameter follow-up pattern'
+    : null
+  return { parsed, status, skip_reason }
+}
+
+/** Normalize OpenAI JSON output into a channel parsed signal. */
+export function normalizeAiParsedOutput(raw: unknown, fallbackText: string): ChannelParsedSignal {
+  return enrichParsedKeywordMatch(normalizeParsedFromModel(raw, fallbackText), fallbackText)
+}
+
 /** Synchronous parse when keywords/lexicon are already loaded (hot path). */
 export function parseChannelMessageSync(
   rawMessage: string,
@@ -1206,16 +1276,7 @@ export function parseChannelMessageSync(
       open_tp: false,
     }
 
-  const enriched = applyReEnterFlag(
-    applyDirectionalPriceInference(
-      normalizeParsedFromModel(rawParsed, rawMessage),
-      rawMessage,
-    ),
-    rawMessage,
-  )
-
-  const repaired = applyRawSymbolRepair(enriched, rawMessage)
-  const dropped = dropInvalidTradeSymbol(repaired)
+  const dropped = enrichParsedKeywordMatch(rawParsed, rawMessage)
   if (entryMissingSlTpRequiresNow(dropped, rawMessage, channelKeywords)) {
     return {
       parsed: {

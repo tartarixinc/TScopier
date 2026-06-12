@@ -1,15 +1,13 @@
 /**
- * Telegram message edit → re-parse existing signal → SL/TP refresh dispatch.
+ * Same-telegram-message revision (duplicate message_id + changed text).
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { parsedHasSlOrTp } from './multiTradeMerge'
 import type { ParseChannelMessageResult } from './parseSignal'
 import type { PipelineTimestamps } from './pipelineTimestamps'
 import type { SignalRow } from './tradeExecutor'
-import { messageTextChanged } from './telegramMessageEditSweep'
 
-export const MESSAGE_EDIT_DISPATCH_SOURCE = 'message_edit'
+export const MESSAGE_REVISION_DISPATCH_SOURCE = 'message_revision'
 
 export type ExistingSignalRow = {
   id: string
@@ -23,6 +21,10 @@ export type ExistingSignalRow = {
   telegram_message_id: string | null
   reply_to_message_id: string | null
   created_at: string
+}
+
+export function messageTextChanged(stored: string, fetched: string): boolean {
+  return stored.trim() !== fetched.trim()
 }
 
 export async function loadSignalByTelegramMessage(
@@ -42,10 +44,9 @@ export async function loadSignalByTelegramMessage(
   return data as ExistingSignalRow
 }
 
-export function buildMessageEditDispatchRow(
+export function buildRevisionDispatchRow(
   existing: ExistingSignalRow,
   parseResult: ParseChannelMessageResult,
-  rawMessage: string,
   pipelineTs?: PipelineTimestamps,
 ): SignalRow {
   return {
@@ -63,29 +64,22 @@ export function buildMessageEditDispatchRow(
   }
 }
 
-export async function updateSignalAfterTelegramEdit(
+export async function updateSignalAfterRevision(
   supabase: SupabaseClient,
   args: {
     signalId: string
     rawMessage: string
     parseResult: ParseChannelMessageResult
-    telegramMessageEditDate?: number | null
   },
 ): Promise<boolean> {
-  const editedAt = new Date().toISOString()
-  const patch: Record<string, unknown> = {
-    raw_message: args.rawMessage,
-    parsed_data: args.parseResult.parsed,
-    status: 'parsed',
-    skip_reason: null,
-    telegram_message_edited_at: editedAt,
-  }
-  if (args.telegramMessageEditDate != null && args.telegramMessageEditDate > 0) {
-    patch.telegram_message_edit_date = Math.floor(args.telegramMessageEditDate)
-  }
   const { error } = await supabase
     .from('signals')
-    .update(patch)
+    .update({
+      raw_message: args.rawMessage,
+      parsed_data: args.parseResult.parsed,
+      status: 'parsed',
+      skip_reason: null,
+    })
     .eq('id', args.signalId)
   return !error
 }
@@ -96,17 +90,7 @@ export function normalizedTradeAction(action: unknown): 'buy' | 'sell' | null {
   return null
 }
 
-export function messageEditDirectionFlipped(
-  existing: ExistingSignalRow,
-  parseResult: ParseChannelMessageResult,
-): boolean {
-  return messageEditDirectionFlippedFromActions(
-    existing.parsed_data?.action,
-    parseResult.parsed?.action,
-  )
-}
-
-export function messageEditDirectionFlippedFromActions(
+export function revisionDirectionFlippedFromActions(
   priorAction: unknown,
   nextAction: unknown,
 ): boolean {
@@ -118,9 +102,4 @@ export function messageEditDirectionFlippedFromActions(
 
 export function storedMessageDiffersFromTelegram(stored: string, fetched: string): boolean {
   return messageTextChanged(stored, fetched)
-}
-
-export function messageEditParseEligible(parseResult: ParseChannelMessageResult): boolean {
-  if (parseResult.status !== 'parsed') return false
-  return parsedHasSlOrTp(parseResult.parsed)
 }
