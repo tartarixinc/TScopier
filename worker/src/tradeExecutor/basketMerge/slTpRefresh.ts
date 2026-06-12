@@ -12,6 +12,7 @@ import {
 } from '../../basketSlTpReconcile'
 import {
   applyChannelParamsToVirtualPendingList,
+  channelParamsPredateBasket,
   estimateBasketTotalPlannedLegs,
   loadChannelActiveTradeParamsForSymbol,
   mergeParsedWithChannelParams,
@@ -129,6 +130,15 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
       raw_instruction: parsed.raw_instruction,
     }
     let channelParamsForLadder: ChannelActiveTradeParams | null = null
+    let anchorCreatedAt: string | null = null
+    if (anchorSignalId) {
+      const { data: anchorRow } = await ctx.supabase
+        .from('signals')
+        .select('created_at')
+        .eq('id', anchorSignalId)
+        .maybeSingle()
+      anchorCreatedAt = (anchorRow as { created_at?: string } | null)?.created_at ?? null
+    }
     if (signal.channel_id) {
       channelParamsForLadder = await loadChannelActiveTradeParamsForSymbol(
         ctx.supabase,
@@ -136,6 +146,16 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
         signal.channel_id,
         symbol,
       )
+      if (
+        channelParamsForLadder
+        && channelParamsPredateBasket(channelParamsForLadder, anchorCreatedAt)
+      ) {
+        console.log(
+          `[tradeExecutor] skip stale channel memory on basket refresh signal=${signal.id}`
+          + ` anchor=${anchorSignalId} memory_updated=${channelParamsForLadder.updatedAt}`,
+        )
+        channelParamsForLadder = null
+      }
       if (
         channelParamsForLadder
         && shouldOverlayChannelParamsOnBasketRefresh(plannerParsed, logAction)

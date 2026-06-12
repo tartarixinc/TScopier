@@ -385,11 +385,21 @@ export async function aiParseModification(
     isReply?: boolean
     parentSignalId?: string | null
     revision?: AiModificationContext['revision']
-    /** When true, skip deterministic fast-path (revisions always use AI). */
+    /** When true, skip all deterministic paths and use OpenAI only. */
     forceAi?: boolean
   },
 ): Promise<AiModificationResult> {
   const { keywords, lexicon } = await getChannelParseContext(supabase, args.channelRowId)
+
+  if (args.revision && !args.forceAi) {
+    const revised = revisionDeterministicParse(
+      args.rawMessage,
+      keywords,
+      lexicon,
+      args.revision.prior_parsed_data,
+    )
+    if (revised) return revised
+  }
 
   if (!args.forceAi) {
     const det = parseModificationDeterministic(args.rawMessage, keywords, lexicon)

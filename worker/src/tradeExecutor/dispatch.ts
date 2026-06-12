@@ -590,7 +590,24 @@ export async function handleSignal(ctx: TradeExecutorContext,
       } else if (anyOpened) {
         await ctx.markSignalExecuted(row.id)
       } else if (isMessageRevision) {
-        await ctx.markSignalExecuted(row.id)
+        const revisionApplied = outcomes.some(o => o.openedOrMerged === true)
+        if (revisionApplied) {
+          await ctx.markSignalExecuted(row.id)
+        } else {
+          try {
+            const { error: sigErr } = await ctx.supabase
+              .from('signals')
+              .update({ status: 'parsed', skip_reason: 'basket_modify_failed' })
+              .eq('id', row.id)
+            if (sigErr) {
+              console.warn(
+                `[tradeExecutor] revision modify failed finalize id=${row.id}: ${sigErr.message}`,
+              )
+            }
+          } catch {
+            // best-effort
+          }
+        }
       }
     } finally {
       const handleMs = Date.now() - handleStartMs

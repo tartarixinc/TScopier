@@ -36,6 +36,19 @@ export type ReconcileSignalRow = {
   raw_message: string
   telegram_edit_date_seen: number | null
   created_at: string
+  parsed_data?: Record<string, unknown> | null
+}
+
+/** Executed teaser entries (open legs, no SL in parsed_data) need reconcile most. */
+export function signalLooksLikeTeaserBasket(parsed: Record<string, unknown> | null | undefined): boolean {
+  if (!parsed) return false
+  const action = String(parsed.action ?? '').toLowerCase()
+  if (action !== 'buy' && action !== 'sell') return false
+  const sl = parsed.sl
+  if (sl != null && Number(sl) > 0) return false
+  const tps = Array.isArray(parsed.tp) ? parsed.tp : []
+  if (tps.some(t => Number(t) > 0)) return false
+  return true
 }
 
 export type TelegramMessageSnapshot = {
@@ -181,7 +194,7 @@ export async function loadSignalsForReconcile(
 
   let query = supabase
     .from('signals')
-    .select('id,channel_id,telegram_message_id,raw_message,telegram_edit_date_seen,created_at')
+    .select('id,channel_id,telegram_message_id,raw_message,telegram_edit_date_seen,created_at,parsed_data')
     .eq('user_id', args.userId)
     .not('telegram_message_id', 'is', null)
     .in('status', [...RECONCILE_STATUSES])
@@ -202,7 +215,14 @@ export async function loadSignalsForReconcile(
 
   const prioritized = openSignalIds
     ? [
-        ...rows.filter(r => openSignalIds!.has(r.id)),
+        ...rows.filter(r =>
+          openSignalIds!.has(r.id)
+          && signalLooksLikeTeaserBasket((r as { parsed_data?: Record<string, unknown> }).parsed_data),
+        ),
+        ...rows.filter(r =>
+          openSignalIds!.has(r.id)
+          && !signalLooksLikeTeaserBasket((r as { parsed_data?: Record<string, unknown> }).parsed_data),
+        ),
         ...rows.filter(r => !openSignalIds!.has(r.id)),
       ]
     : rows
@@ -222,6 +242,7 @@ export async function loadSignalsForReconcile(
           ? Number(row.telegram_edit_date_seen)
           : null,
       created_at: String(row.created_at ?? ''),
+      parsed_data: (row as { parsed_data?: Record<string, unknown> }).parsed_data ?? null,
     })
     if (out.length >= maxSignals) break
   }

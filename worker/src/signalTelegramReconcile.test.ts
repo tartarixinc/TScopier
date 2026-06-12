@@ -4,6 +4,7 @@ import {
   findSignalsNeedingReconcile,
   shouldReconcileSignal,
   chunkTelegramMessageIds,
+  signalLooksLikeTeaserBasket,
 } from './signalTelegramReconcile'
 
 describe('signalTelegramReconcile', () => {
@@ -46,5 +47,10 @@ describe('signalTelegramReconcile', () => {
     const chunks = chunkTelegramMessageIds(['1', '1', '2'])
     assert.equal(chunks.length, 1)
     assert.deepEqual(chunks[0], ['1', '2'])
+  })
+
+  it('signalLooksLikeTeaserBasket detects bare buy teaser', () => {
+    assert.equal(signalLooksLikeTeaserBasket({ action: 'buy', sl: null, tp: [] }), true)
+    assert.equal(signalLooksLikeTeaserBasket({ action: 'buy', sl: 4190, tp: [4210] }), false)
   })
 })

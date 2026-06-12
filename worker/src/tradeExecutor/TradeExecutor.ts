@@ -960,6 +960,21 @@ export class TradeExecutor {
     return await basketMerge.tryParameterFollowUpMergeModifyOnly(this, args)
   }
 
+  async tryTeaserCompletionMerge(args: {
+    signal: SignalRow
+    parsed: ParsedSignal
+    broker: BrokerRow
+    channelKeywords: ChannelKeywords | null
+    baseLot: number
+    params: SymbolCacheEntry | null
+    symbol: string
+    uuid: string
+    strictEntryPrefetch: { bid: number; ask: number } | null
+    commentPrefix: string
+  }): Promise<MergeOutcome> {
+    return await basketMerge.tryTeaserCompletionMerge(this, args)
+  }
+
   /**
    * After parallel multi immediates, re-apply per-leg TPs (Targets %) in case the
    * broker accepted orders but normalized every leg to the same TP.

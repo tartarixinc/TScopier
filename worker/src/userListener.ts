@@ -92,6 +92,22 @@ const ENTRY_MESSAGE_SETTLE_MS = Math.max(
   3_000,
   Math.min(30_000, Number(process.env.ENTRY_MESSAGE_SETTLE_MS ?? 10_000)),
 )
+
+function entryMessageSettleDelaysMs(): number[] {
+  const raw = String(process.env.ENTRY_MESSAGE_SETTLE_DELAYS_MS ?? '').trim()
+  if (raw) {
+    const parsed = raw
+      .split(',')
+      .map(s => Number(s.trim()))
+      .filter(n => Number.isFinite(n) && n >= 3_000)
+      .map(n => Math.min(30_000, Math.floor(n)))
+    if (parsed.length) return [...new Set(parsed)]
+  }
+  const second = Math.min(30_000, ENTRY_MESSAGE_SETTLE_MS * 3)
+  return second > ENTRY_MESSAGE_SETTLE_MS
+    ? [ENTRY_MESSAGE_SETTLE_MS, second]
+    : [ENTRY_MESSAGE_SETTLE_MS]
+}
 const ENTITY_WARMUP_INTERVAL_MS = Math.max(
   60_000,
   Math.min(30 * 60_000, Number(process.env.TELEGRAM_ENTITY_WARMUP_INTERVAL_MS ?? 10 * 60_000)),
@@ -1089,7 +1105,6 @@ export class UserListener {
         userId: this.userId,
         channelRowId: channelRow.id,
         rawMessage,
-        forceAi: true,
         revision: {
           prior_raw_message: existing.raw_message,
           prior_parsed_data: (existing.parsed_data ?? null) as Record<string, unknown> | null,
@@ -1177,17 +1192,23 @@ export class UserListener {
   }
 
   private scheduleEntryMessageSettlePoll(channelRow: ChannelRow, messageId: string) {
-    setTimeout(() => {
-      this.pollEntryMessageRevision(channelRow, messageId).catch(err => {
-        console.error(
-          `[userListener] entry settle poll failed user=${this.userId} messageId=${messageId}:`,
-          err instanceof Error ? err.message : err,
-        )
-      })
-    }, ENTRY_MESSAGE_SETTLE_MS)
+    for (const delayMs of entryMessageSettleDelaysMs()) {
+      setTimeout(() => {
+        this.pollEntryMessageRevision(channelRow, messageId, delayMs).catch(err => {
+          console.error(
+            `[userListener] entry settle poll failed user=${this.userId} messageId=${messageId}:`,
+            err instanceof Error ? err.message : err,
+          )
+        })
+      }, delayMs)
+    }
   }
 
-  private async pollEntryMessageRevision(channelRow: ChannelRow, messageId: string) {
+  private async pollEntryMessageRevision(
+    channelRow: ChannelRow,
+    messageId: string,
+    delayMs?: number,
+  ) {
     const existing = await loadSignalByTelegramMessage(this.supabase, {
       userId: this.userId,
       channelRowId: channelRow.id,
@@ -1213,13 +1234,35 @@ export class UserListener {
     if (!rawMessage.trim()) return
     if (!storedMessageDiffersFromTelegram(existing.raw_message, rawMessage)) return
 
-    await this.tryApplyMessageRevision({
+    void persistListenerEvent(this.supabase, {
+      userId: this.userId,
+      eventType: 'entry_settle_poll_mismatch',
+      channelRowId: channelRow.id,
+      telegramMessageId: messageId,
+      detail: {
+        signal_id: existing.id,
+        delay_ms: delayMs ?? null,
+        stored_len: existing.raw_message.length,
+        fetched_len: rawMessage.length,
+      },
+    })
+
+    const revised = await this.tryApplyMessageRevision({
       channelRow,
       messageId,
       rawMessage,
       source: 'entry_settle_poll',
       telegramEditDateSeen: telegramEditDateSec(message),
     })
+    if (revised) {
+      void persistListenerEvent(this.supabase, {
+        userId: this.userId,
+        eventType: 'entry_settle_poll_applied',
+        channelRowId: channelRow.id,
+        telegramMessageId: messageId,
+        detail: { signal_id: existing.id, delay_ms: delayMs ?? null },
+      })
+    }
   }
 
   private async dispatchRevisionSignal(dispatchRow: SignalRow): Promise<void> {
@@ -1409,10 +1452,6 @@ export class UserListener {
     }
 
     const dedupKey = `${channelRow.id}:${messageId}`
-    const dedupAt = this.liveMessageDedup.get(dedupKey)
-    if (dedupAt != null && Date.now() - dedupAt < 120_000) {
-      return false
-    }
 
     const { count: dupCount } = await this.supabase
       .from('signals')
@@ -1431,6 +1470,11 @@ export class UserListener {
       console.log(
         `[userListener] duplicate message ignored user=${this.userId} channelRow=${channelRow.id} messageId=${messageId}`,
       )
+      return false
+    }
+
+    const dedupAt = this.liveMessageDedup.get(dedupKey)
+    if (dedupAt != null && Date.now() - dedupAt < 120_000) {
       return false
     }
 

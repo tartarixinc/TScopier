@@ -352,6 +352,27 @@ export async function prepareEntryExecution(
     }
   }
 
+  if (isManual && !sameSignalRefresh && !basketRefreshSucceeded) {
+    const teaserOutcome = await ctx.tryTeaserCompletionMerge({
+      signal,
+      parsed,
+      broker,
+      channelKeywords,
+      baseLot,
+      params,
+      symbol,
+      uuid,
+      strictEntryPrefetch,
+      commentPrefix,
+    })
+    if (teaserOutcome.handled) {
+      return {
+        ok: false,
+        outcome: { openedOrMerged: teaserOutcome.success === true },
+      }
+    }
+  }
+
   // Stack-into-basket — before OrderSend on every path (not post-fill only).
   if (
     isManual
