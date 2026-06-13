@@ -145,7 +145,12 @@ async function skipMgmtSignalWithLog(
 }
 
 export async function applyManagement(ctx: TradeExecutorContext, signal: SignalRow, parsed: ParsedSignal, brokers: BrokerRow[]): Promise<void> {
-    if (!hasMetatraderApiConfigured()) return
+    if (!hasMetatraderApiConfigured()) {
+      await skipMgmtSignalWithLog(ctx, signal, 'broker_api_not_configured', {
+        action: String(parsed.action ?? '').toLowerCase(),
+      })
+      return
+    }
 
     const brokerAccountIds = brokers.map(b => b.id)
     const replyScoped = isReplyScopedManagement(signal)
@@ -711,12 +716,12 @@ export async function applyCloseWorseEntriesInstruction(ctx: TradeExecutorContex
       groups.set(key, list)
     }
 
-    await Promise.allSettled(Array.from(groups.entries()).map(async ([key, groupTrades]) => {
+    const groupOutcomes = await Promise.allSettled(Array.from(groups.entries()).map(async ([key, groupTrades]): Promise<{ closed: number; eligible: number }> => {
       const parsedKey = parseCweInstructionGroupKey(key)
-      if (!parsedKey) return
+      if (!parsedKey) return { closed: 0, eligible: 0 }
       const { brokerId, symbol } = parsedKey
       const broker = byBroker.get(brokerId)
-      if (!broker || !isMtUuid(broker.metaapi_account_id)) return
+      if (!broker || !isMtUuid(broker.metaapi_account_id)) return { closed: 0, eligible: 0 }
 
       const manual = (broker.manual_settings ?? {}) as ManualSettings
       if (manual.trade_style !== 'multi') {
@@ -731,7 +736,7 @@ export async function applyCloseWorseEntriesInstruction(ctx: TradeExecutorContex
             trade_style: manual.trade_style ?? 'single',
           },
         })
-        return
+        return { closed: 0, eligible: 0 }
       }
 
       const uuid = broker.metaapi_account_id!
@@ -745,7 +750,7 @@ export async function applyCloseWorseEntriesInstruction(ctx: TradeExecutorContex
           status: 'skipped',
           request_payload: { reason: 'cwe_broker_api_unavailable', symbol },
         })
-        return
+        return { closed: 0, eligible: 0 }
       }
 
       const signalIds = [
@@ -761,6 +766,7 @@ export async function applyCloseWorseEntriesInstruction(ctx: TradeExecutorContex
         symbol,
       })
       const toClose = selectImmediateLegsForCweInstruction(groupTrades, layeringTickets)
+      let groupClosed = 0
 
       console.log(
         `[tradeExecutor] cwe instruction signal=${signal.id} broker=${broker.id} symbol=${symbol}`
@@ -783,7 +789,7 @@ export async function applyCloseWorseEntriesInstruction(ctx: TradeExecutorContex
             symbol,
           },
         })
-        return
+        return { closed: 0, eligible: 0 }
       }
 
       for (const trade of toClose) {
@@ -824,6 +830,7 @@ export async function applyCloseWorseEntriesInstruction(ctx: TradeExecutorContex
               layering_tickets_excluded: layeringTickets.size,
             },
           })
+          groupClosed += 1
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
           const benign = /not\s+found|already\s+closed|invalid\s+ticket|no\s+such\s+order/i.test(msg)
@@ -843,6 +850,7 @@ export async function applyCloseWorseEntriesInstruction(ctx: TradeExecutorContex
                 symbolHint: trade.symbol,
               })
             }
+            groupClosed += 1
           } else {
             await ctx.supabase.from('trade_execution_logs').insert({
               user_id: signal.user_id,
@@ -861,18 +869,39 @@ export async function applyCloseWorseEntriesInstruction(ctx: TradeExecutorContex
           }
         }
       }
+      return { closed: groupClosed, eligible: toClose.length }
     }))
 
-    try {
-      const { error: sigErr } = await ctx.supabase
-        .from('signals')
-        .update({ status: 'executed' })
-        .eq('id', signal.id)
-        .eq('status', 'parsed')
-      if (sigErr) {
-        console.warn(`[tradeExecutor] cwe instruction finalize failed id=${signal.id}: ${sigErr.message}`)
-      }
-    } catch {
-      // best-effort
+    let closedCount = 0
+    let eligibleCloseCount = 0
+    for (const outcome of groupOutcomes) {
+      if (outcome.status !== 'fulfilled') continue
+      closedCount += outcome.value.closed
+      eligibleCloseCount += outcome.value.eligible
     }
+
+    if (closedCount > 0) {
+      try {
+        const { error: sigErr } = await ctx.supabase
+          .from('signals')
+          .update({ status: 'executed' })
+          .eq('id', signal.id)
+          .eq('status', 'parsed')
+        if (sigErr) {
+          console.warn(`[tradeExecutor] cwe instruction finalize failed id=${signal.id}: ${sigErr.message}`)
+        }
+      } catch {
+        // best-effort
+      }
+      return
+    }
+
+    const skipReason = eligibleCloseCount > 0
+      ? 'cwe_close_failed'
+      : 'cwe_no_open_immediates'
+    await skipMgmtSignalWithLog(ctx, signal, skipReason, {
+      action: 'close_worse_entries',
+      open_legs: openRows.length,
+      eligible_close_legs: eligibleCloseCount,
+    })
   }

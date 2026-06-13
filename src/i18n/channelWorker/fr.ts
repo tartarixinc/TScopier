@@ -143,6 +143,8 @@ export const channelWorkerFr: ChannelWorkerTranslations = {
     mgmt_ambiguous_modify: 'aucune position ouverte correspondante',
     cwe_no_open_trades: 'aucune jambe ouverte à fermer',
     cwe_no_eligible_broker_trades: 'les jambes ouvertes ne sont pas liées à un compte broker actif',
+    cwe_no_open_immediates: 'toutes les jambes ouvertes sont des entrées de couche (conservées ouvertes)',
+    cwe_close_failed: 'le broker n\'a pas pu fermer les jambes sélectionnées',
     copier_paused: 'le copieur est en pause',
     close_worse_entries_disabled: 'fermer les entrées défavorables est désactivé dans les paramètres',
     not_placed: 'non placé',

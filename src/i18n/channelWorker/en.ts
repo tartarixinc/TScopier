@@ -143,6 +143,8 @@ export const channelWorkerEn: ChannelWorkerTranslations = {
     mgmt_ambiguous_modify: 'no matching open trade',
     cwe_no_open_trades: 'no open legs to close',
     cwe_no_eligible_broker_trades: 'open legs are not linked to an active broker account',
+    cwe_no_open_immediates: 'all open legs are layering entries (kept open)',
+    cwe_close_failed: 'broker could not close the selected legs',
     copier_paused: 'copier is paused',
     close_worse_entries_disabled: 'close worse entries is disabled in settings',
     not_placed: 'not placed',

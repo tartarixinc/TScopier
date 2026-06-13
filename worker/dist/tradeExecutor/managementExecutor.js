@@ -103,8 +103,12 @@ async function skipMgmtSignalWithLog(ctx, signal, reason, extra) {
     catch { /* best-effort */ }
 }
 async function applyManagement(ctx, signal, parsed, brokers) {
-    if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
+    if (!(0, metatraderapi_1.hasMetatraderApiConfigured)()) {
+        await skipMgmtSignalWithLog(ctx, signal, 'broker_api_not_configured', {
+            action: String(parsed.action ?? '').toLowerCase(),
+        });
         return;
+    }
     const brokerAccountIds = brokers.map(b => b.id);
     const replyScoped = (0, managementScope_1.isReplyScopedManagement)(signal);
     const symbolFromText = (0, managementScope_1.explicitMgmtSymbol)(parsed);
@@ -605,14 +609,14 @@ async function applyCloseWorseEntriesInstruction(ctx, signal, parsed, rows, byBr
         list.push(t);
         groups.set(key, list);
     }
-    await Promise.allSettled(Array.from(groups.entries()).map(async ([key, groupTrades]) => {
+    const groupOutcomes = await Promise.allSettled(Array.from(groups.entries()).map(async ([key, groupTrades]) => {
         const parsedKey = (0, closeWorseEntries_1.parseCweInstructionGroupKey)(key);
         if (!parsedKey)
-            return;
+            return { closed: 0, eligible: 0 };
         const { brokerId, symbol } = parsedKey;
         const broker = byBroker.get(brokerId);
         if (!broker || !(0, helpers_1.isMtUuid)(broker.metaapi_account_id))
-            return;
+            return { closed: 0, eligible: 0 };
         const manual = (broker.manual_settings ?? {});
         if (manual.trade_style !== 'multi') {
             await ctx.supabase.from('trade_execution_logs').insert({
@@ -626,7 +630,7 @@ async function applyCloseWorseEntriesInstruction(ctx, signal, parsed, rows, byBr
                     trade_style: manual.trade_style ?? 'single',
                 },
             });
-            return;
+            return { closed: 0, eligible: 0 };
         }
         const uuid = broker.metaapi_account_id;
         const api = ctx.apiFor(broker);
@@ -639,7 +643,7 @@ async function applyCloseWorseEntriesInstruction(ctx, signal, parsed, rows, byBr
                 status: 'skipped',
                 request_payload: { reason: 'cwe_broker_api_unavailable', symbol },
             });
-            return;
+            return { closed: 0, eligible: 0 };
         }
         const signalIds = [
             ...new Set(groupTrades
@@ -652,6 +656,7 @@ async function applyCloseWorseEntriesInstruction(ctx, signal, parsed, rows, byBr
             symbol,
         });
         const toClose = (0, closeWorseEntries_1.selectImmediateLegsForCweInstruction)(groupTrades, layeringTickets);
+        let groupClosed = 0;
         console.log(`[tradeExecutor] cwe instruction signal=${signal.id} broker=${broker.id} symbol=${symbol}`
             + ` mode=instruction_immediate_only matched=${toClose.length}/${groupTrades.length}`
             + ` layering_tickets=${layeringTickets.size}`);
@@ -670,7 +675,7 @@ async function applyCloseWorseEntriesInstruction(ctx, signal, parsed, rows, byBr
                     symbol,
                 },
             });
-            return;
+            return { closed: 0, eligible: 0 };
         }
         for (const trade of toClose) {
             const ticket = Number(trade.metaapi_order_id);
@@ -711,6 +716,7 @@ async function applyCloseWorseEntriesInstruction(ctx, signal, parsed, rows, byBr
                         layering_tickets_excluded: layeringTickets.size,
                     },
                 });
+                groupClosed += 1;
             }
             catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);
@@ -731,6 +737,7 @@ async function applyCloseWorseEntriesInstruction(ctx, signal, parsed, rows, byBr
                             symbolHint: trade.symbol,
                         });
                     }
+                    groupClosed += 1;
                 }
                 else {
                     await ctx.supabase.from('trade_execution_logs').insert({
@@ -750,18 +757,38 @@ async function applyCloseWorseEntriesInstruction(ctx, signal, parsed, rows, byBr
                 }
             }
         }
+        return { closed: groupClosed, eligible: toClose.length };
     }));
-    try {
-        const { error: sigErr } = await ctx.supabase
-            .from('signals')
-            .update({ status: 'executed' })
-            .eq('id', signal.id)
-            .eq('status', 'parsed');
-        if (sigErr) {
-            console.warn(`[tradeExecutor] cwe instruction finalize failed id=${signal.id}: ${sigErr.message}`);
+    let closedCount = 0;
+    let eligibleCloseCount = 0;
+    for (const outcome of groupOutcomes) {
+        if (outcome.status !== 'fulfilled')
+            continue;
+        closedCount += outcome.value.closed;
+        eligibleCloseCount += outcome.value.eligible;
+    }
+    if (closedCount > 0) {
+        try {
+            const { error: sigErr } = await ctx.supabase
+                .from('signals')
+                .update({ status: 'executed' })
+                .eq('id', signal.id)
+                .eq('status', 'parsed');
+            if (sigErr) {
+                console.warn(`[tradeExecutor] cwe instruction finalize failed id=${signal.id}: ${sigErr.message}`);
+            }
         }
+        catch {
+            // best-effort
+        }
+        return;
     }
-    catch {
-        // best-effort
-    }
+    const skipReason = eligibleCloseCount > 0
+        ? 'cwe_close_failed'
+        : 'cwe_no_open_immediates';
+    await skipMgmtSignalWithLog(ctx, signal, skipReason, {
+        action: 'close_worse_entries',
+        open_legs: openRows.length,
+        eligible_close_legs: eligibleCloseCount,
+    });
 }

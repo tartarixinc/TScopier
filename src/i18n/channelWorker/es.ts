@@ -143,6 +143,8 @@ export const channelWorkerEs: ChannelWorkerTranslations = {
     mgmt_ambiguous_modify: 'sin operación abierta coincidente',
     cwe_no_open_trades: 'no hay piernas abiertas para cerrar',
     cwe_no_eligible_broker_trades: 'las piernas abiertas no están vinculadas a un broker activo',
+    cwe_no_open_immediates: 'todas las piernas abiertas son entradas de capas (se mantienen abiertas)',
+    cwe_close_failed: 'el broker no pudo cerrar las piernas seleccionadas',
     copier_paused: 'el copiador está en pausa',
     close_worse_entries_disabled: 'cerrar entradas peores está desactivado en la configuración',
     not_placed: 'no colocada',
