@@ -17,6 +17,7 @@ const channelKeywordsCache_1 = require("./channelKeywordsCache");
 const parseSignal_1 = require("./parseSignal");
 const workerMetrics_1 = require("./workerMetrics");
 const workerConfig_1 = require("./workerConfig");
+const copierPause_1 = require("./copierPause");
 const signalRevision_1 = require("./signalRevision");
 const aiParseModification_1 = require("./aiParseModification");
 const signalTelegramReconcile_1 = require("./signalTelegramReconcile");
@@ -210,6 +211,7 @@ class UserListener {
         this.onSignalParsed = null;
         /** Recent live message ids — avoids a Supabase round-trip on hot-path dedup. */
         this.liveMessageDedup = new Map();
+        this.userProfilesCopierPauseChannel = null;
         this.userId = userId;
         this.supabase = supabase;
         this.client = adoptedClient ?? (0, telegramClient_1.buildClient)(sessionString);
@@ -265,9 +267,14 @@ class UserListener {
         this.startReplyChainSweep();
         this.startSignalReconcileSweep();
         this.startEntityWarmup();
+        this.subscribeCopierPauseState();
     }
     async stop() {
         try {
+            if (this.userProfilesCopierPauseChannel) {
+                await this.supabase.removeChannel(this.userProfilesCopierPauseChannel);
+                this.userProfilesCopierPauseChannel = null;
+            }
             this.stopTimer('watchdogTimer');
             this.stopTimer('safetyPollTimer');
             this.stopTimer('fastPollTimer');
@@ -883,6 +890,8 @@ class UserListener {
     }
     async tryApplyMessageRevision(args) {
         const { channelRow, messageId, rawMessage, source } = args;
+        if (await (0, copierPause_1.loadCachedUserCopierPaused)(this.supabase, this.userId))
+            return false;
         const existing = await (0, signalRevision_1.loadSignalByTelegramMessage)(this.supabase, {
             userId: this.userId,
             channelRowId: channelRow.id,
@@ -1037,6 +1046,8 @@ class UserListener {
         }
     }
     async dispatchRevisionSignal(dispatchRow) {
+        if (await (0, copierPause_1.loadCachedUserCopierPaused)(this.supabase, this.userId))
+            return;
         const dispatchedInProcess = this.onSignalParsed
             ? this.onSignalParsed(dispatchRow) === true
             : false;
@@ -1157,6 +1168,8 @@ class UserListener {
         }
     }
     async logSignalInner(channelRow, message, opts) {
+        if (await this.skipMessageWhileCopierPaused(channelRow, String(message.id)))
+            return false;
         const messageId = String(message.id);
         const rawMessage = (message.text ?? message.message ?? '');
         const isReply = !!message.replyTo;
@@ -1734,6 +1747,60 @@ class UserListener {
             }
         }
     }
+    async skipMessageWhileCopierPaused(channelRow, messageId) {
+        if (!(await (0, copierPause_1.loadCachedUserCopierPaused)(this.supabase, this.userId)))
+            return false;
+        await this.bumpLastSeen(channelRow.id, messageId);
+        return true;
+    }
+    subscribeCopierPauseState() {
+        if (this.userProfilesCopierPauseChannel)
+            return;
+        this.userProfilesCopierPauseChannel = this.supabase
+            .channel(`user_listener_copier_pause_${this.userId}`)
+            .on('postgres_changes', {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'user_profiles',
+            filter: `user_id=eq.${this.userId}`,
+        }, (payload) => {
+            const row = payload.new;
+            if (!row)
+                return;
+            const copierPaused = row.copier_paused === true;
+            const previousPaused = payload.old?.copier_paused === true;
+            const transition = (0, copierPause_1.applyCopierPauseProfileUpdate)(this.userId, copierPaused, previousPaused);
+            if (transition === 'resumed') {
+                void this.advanceAllChannelsLastSeenToLatest();
+            }
+        })
+            .subscribe();
+    }
+    async advanceChannelLastSeenToLatest(row, peer) {
+        try {
+            const resolvedPeer = peer ?? await this.resolveChannelPeer(row);
+            const latest = await this.client.getMessages(resolvedPeer, { limit: 1 });
+            const latestId = Number(latest[0]?.id);
+            if (!Number.isFinite(latestId))
+                return;
+            await this.bumpLastSeen(row.id, String(latestId));
+            row.last_seen_message_id = latestId;
+        }
+        catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.warn(`[userListener] advance last_seen failed user=${this.userId} channel=${row.id}:`, msg);
+        }
+    }
+    async advanceAllChannelsLastSeenToLatest() {
+        const { data: rows } = await this.supabase
+            .from('telegram_channels')
+            .select('id, channel_id, channel_username, last_seen_message_id')
+            .eq('user_id', this.userId)
+            .eq('is_active', true);
+        for (const row of (rows ?? [])) {
+            await this.advanceChannelLastSeenToLatest(row);
+        }
+    }
     async bumpLastSeen(channelRowId, messageId) {
         const num = Number(messageId);
         if (!Number.isFinite(num))
@@ -1900,6 +1967,11 @@ class UserListener {
         const latestId = Number(sorted[sorted.length - 1]?.id);
         if (!Number.isFinite(latestId))
             return;
+        if (await (0, copierPause_1.loadCachedUserCopierPaused)(this.supabase, this.userId)) {
+            await this.bumpLastSeen(row.id, String(latestId));
+            row.last_seen_message_id = latestId;
+            return;
+        }
         if (minId === 0) {
             const now = Date.now();
             const recentWindowMs = 15 * 60000;
@@ -1954,6 +2026,15 @@ class UserListener {
         }
         if (!batch.length)
             return;
+        if (await (0, copierPause_1.loadCachedUserCopierPaused)(this.supabase, this.userId)) {
+            const sorted = [...batch].sort((a, b) => Number(a.id) - Number(b.id));
+            const latestId = Number(sorted[sorted.length - 1]?.id);
+            if (Number.isFinite(latestId) && latestId > minId) {
+                await this.bumpLastSeen(row.id, String(latestId));
+                row.last_seen_message_id = latestId;
+            }
+            return;
+        }
         const now = Date.now();
         const maxAgeMs = 60000;
         const recent = batch
@@ -2025,6 +2106,10 @@ class UserListener {
         }
         catch (err) {
             console.warn(`[userListener] resolveChannelPeer miss for channel ${row.id}; skipping catch-up this round`, err);
+            return;
+        }
+        if (await (0, copierPause_1.loadCachedUserCopierPaused)(this.supabase, this.userId)) {
+            await this.advanceChannelLastSeenToLatest(row, peer);
             return;
         }
         const minIdRaw = row.last_seen_message_id;

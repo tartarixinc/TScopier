@@ -10,6 +10,7 @@ const metatraderapi_1 = require("./metatraderapi");
 const monitorIdleGate_1 = require("./monitorIdleGate");
 const mtApiByAccount_1 = require("./mtApiByAccount");
 const rangeLayerTillClose_1 = require("./rangeLayerTillClose");
+const copierPause_1 = require("./copierPause");
 const ACTIVE_MS = (0, monitorIdleGate_1.monitorActiveIntervalMs)('PARTIAL_TP_TICK_MS', 1500);
 const IDLE_MS = (0, monitorIdleGate_1.monitorIdleIntervalMs)('PARTIAL_TP_IDLE_MS', 60000);
 const STALE_CLAIM_AFTER_MS = 30000;
@@ -108,7 +109,8 @@ class PartialTpMonitor {
             console.error('[partialTpMonitor] select failed:', error.message);
             return;
         }
-        const rows = (data ?? []);
+        const rows = (data ?? [])
+            .filter(r => !(0, copierPause_1.isUserCopierPausedCached)(r.user_id));
         if (!this.firstTickLogged) {
             this.firstTickLogged = true;
             console.log(`[partialTpMonitor] first tick ok pending_rows=${rows.length}`);

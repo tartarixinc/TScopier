@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.clearBrokerSessionBlock = clearBrokerSessionBlock;
 exports.replayParsedSignalsForBroker = replayParsedSignalsForBroker;
 const brokerChannelFilter_1 = require("./brokerChannelFilter");
+const copierPause_1 = require("./copierPause");
 const dispatch_1 = require("./tradeExecutor/dispatch");
 const types_1 = require("./tradeExecutor/types");
 const REPLAY_BATCH_LIMIT = 40;
@@ -18,6 +19,8 @@ function clearBrokerSessionBlock(ctx, broker) {
  */
 async function replayParsedSignalsForBroker(ctx, broker) {
     if (!broker.is_active)
+        return 0;
+    if (await (0, copierPause_1.loadCachedUserCopierPaused)(ctx.supabase, broker.user_id))
         return 0;
     const since = new Date(Date.now() - types_1.EXECUTOR_REPLAY_MAX_AGE_MS).toISOString();
     const { data, error } = await ctx.supabase

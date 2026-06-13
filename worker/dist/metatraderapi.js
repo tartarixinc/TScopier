@@ -753,6 +753,34 @@ class MetatraderApiClient {
         return out;
     }
     async orderModify(id, args) {
+        const MAX_ATTEMPTS = Math.max(1, Number(process.env.MT_ORDERMODIFY_MAX_ATTEMPTS ?? 3) || 3);
+        let lastErr;
+        for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+            try {
+                return await this.orderModifyOnce(id, args);
+            }
+            catch (err) {
+                lastErr = err;
+                if (isBrokerDisconnectedMessage(err instanceof Error ? err.message : String(err)))
+                    throw err;
+                if (isMtSessionGoneError(err))
+                    throw err;
+                const msg = err instanceof Error ? err.message : String(err);
+                const retryable = (0, brokerConnectError_1.isMtBridgeGlitchMessage)(msg) || isTransientMtApiError(err);
+                if (!retryable || attempt >= MAX_ATTEMPTS - 1)
+                    throw err;
+                if ((0, brokerConnectError_1.isMtBridgeGlitchMessage)(msg)) {
+                    await this.keepSessionAlive(id).catch(() => { });
+                }
+                const jitterMs = 600 + Math.random() * 900 + attempt * 400;
+                console.warn(`[metatraderapi] OrderModify retry id=${id} ticket=${args.ticket}`
+                    + ` attempt=${attempt + 1}/${MAX_ATTEMPTS}: ${msg}`);
+                await new Promise(r => setTimeout(r, jitterMs));
+            }
+        }
+        throw lastErr instanceof Error ? lastErr : new MetatraderApiError(String(lastErr), 502);
+    }
+    async orderModifyOnce(id, args) {
         const raw = await this.get(this.paths.orderModify, {
             id,
             ticket: args.ticket,

@@ -8,6 +8,7 @@ const monitorIdleGate_1 = require("./monitorIdleGate");
 const normalizeManualSettings_1 = require("./manualPlanning/normalizeManualSettings");
 const channelTradingConfig_1 = require("./channelTradingConfig");
 const metatraderapi_2 = require("./metatraderapi");
+const copierPause_1 = require("./copierPause");
 const ACTIVE_MS = (0, monitorIdleGate_1.monitorActiveIntervalMs)('BASKET_RECONCILE_TICK_MS', 15000);
 const IDLE_MS = (0, monitorIdleGate_1.monitorIdleIntervalMs)('BASKET_RECONCILE_IDLE_MS', 120000);
 const BATCH_LIMIT = 20;
@@ -105,6 +106,10 @@ class BasketSlTpReconcileMonitor {
             .maybeSingle();
         if (!broker?.metaapi_account_id) {
             await this.releaseJob(row.id, 'broker not found', row.attempts);
+            return;
+        }
+        if ((0, copierPause_1.isUserCopierPausedCached)(String(broker.user_id ?? ''))) {
+            await this.releaseJob(row.id, 'copier paused', row.attempts);
             return;
         }
         const uuid = broker.metaapi_account_id;

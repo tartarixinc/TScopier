@@ -2,6 +2,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 const CACHE_TTL_MS = 60_000
 const cache = new Map<string, { expiresAt: number; paused: boolean }>()
+/** Signals with created_at before this timestamp are ignored after a resume (pause-window backlog). */
+const resumedAtByUser = new Map<string, number>()
 
 export function isUserCopierPausedCached(userId: string): boolean {
   const hit = cache.get(userId)
@@ -48,4 +50,52 @@ export function primeCopierPauseCache(
     if (!uid) continue
     setUserCopierPausedCached(uid, p.copier_paused === true)
   }
+}
+
+export function noteCopierPaused(userId: string): void {
+  resumedAtByUser.delete(userId)
+  setUserCopierPausedCached(userId, true)
+}
+
+export function noteCopierResumed(userId: string): void {
+  resumedAtByUser.set(userId, Date.now())
+  setUserCopierPausedCached(userId, false)
+}
+
+export function getCopierResumedAt(userId: string): number | null {
+  return resumedAtByUser.get(userId) ?? null
+}
+
+export function signalPredatesCopierResume(
+  userId: string,
+  createdAt: string | null | undefined,
+): boolean {
+  const resumedAt = getCopierResumedAt(userId)
+  if (resumedAt == null) return false
+  const createdMs = Date.parse(String(createdAt ?? ''))
+  if (!Number.isFinite(createdMs)) return false
+  return createdMs < resumedAt
+}
+
+/** Apply a user_profiles copier_paused transition to in-memory worker state. */
+export function applyCopierPauseProfileUpdate(
+  userId: string,
+  copierPaused: boolean,
+  previousPaused?: boolean,
+): 'paused' | 'resumed' | 'unchanged' {
+  invalidateCopierPauseCache(userId)
+  if (copierPaused) {
+    if (previousPaused === true) {
+      setUserCopierPausedCached(userId, true)
+      return 'unchanged'
+    }
+    noteCopierPaused(userId)
+    return 'paused'
+  }
+  if (previousPaused === true) {
+    noteCopierResumed(userId)
+    return 'resumed'
+  }
+  setUserCopierPausedCached(userId, false)
+  return 'unchanged'
 }

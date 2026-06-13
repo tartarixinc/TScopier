@@ -7,6 +7,7 @@ const signalPip_1 = require("./signalPip");
 const metatraderapi_1 = require("./metatraderapi");
 const mtApiByAccount_1 = require("./mtApiByAccount");
 const monitorIdleGate_1 = require("./monitorIdleGate");
+const copierPause_1 = require("./copierPause");
 const ACTIVE_MS = (0, monitorIdleGate_1.monitorActiveIntervalMs)('AUTO_MANAGEMENT_TICK_MS', 1500);
 const IDLE_MS = (0, monitorIdleGate_1.monitorIdleIntervalMs)('AUTO_MANAGEMENT_IDLE_MS', 60000);
 const SYMBOL_CACHE_TTL_MS = 5 * 60000;
@@ -73,7 +74,8 @@ class AutoManagementMonitor {
             console.error('[autoManagementMonitor] select failed:', error.message);
             return;
         }
-        const rows = (data ?? []);
+        const rows = (data ?? [])
+            .filter(r => !(0, copierPause_1.isUserCopierPausedCached)(r.user_id));
         if (!this.firstTickLogged) {
             this.firstTickLogged = true;
             console.log(`[autoManagementMonitor] first tick ok auto_be_rows=${rows.length}`);

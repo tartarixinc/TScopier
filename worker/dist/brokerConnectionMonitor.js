@@ -24,9 +24,9 @@ function nextBackoffMs(fails) {
  * Keeps MetatraderAPI sessions alive with lightweight CheckConnect pings.
  * Actively reconnects downed sessions via ConnectByToken with exponential backoff.
  */
-const RECONNECT_ACTIVE_MS = (0, monitorIdleGate_1.monitorActiveIntervalMs)('BROKER_RECONNECT_INTERVAL_MS', Math.max(60000, Number(process.env.BROKER_RECONNECT_INTERVAL_MS ?? 120000) || 120000));
-const RECONNECT_IDLE_MS = (0, monitorIdleGate_1.monitorIdleIntervalMs)('BROKER_RECONNECT_IDLE_MS', 180000);
-const HARD_RECONNECT_SWEEP_MS = Math.max(60000, Math.min(6 * 60 * 60000, Number(process.env.BROKER_HARD_RECONNECT_SWEEP_MS ?? 15 * 60000) || 15 * 60000));
+const RECONNECT_ACTIVE_MS = (0, monitorIdleGate_1.monitorActiveIntervalMs)('BROKER_RECONNECT_INTERVAL_MS', Math.max(30000, Number(process.env.BROKER_RECONNECT_INTERVAL_MS ?? 60000) || 60000));
+const RECONNECT_IDLE_MS = (0, monitorIdleGate_1.monitorIdleIntervalMs)('BROKER_RECONNECT_IDLE_MS', 120000);
+const HARD_RECONNECT_SWEEP_MS = Math.max(60000, Math.min(6 * 60 * 60000, Number(process.env.BROKER_HARD_RECONNECT_SWEEP_MS ?? 5 * 60000) || 5 * 60000));
 class BrokerConnectionMonitor {
     constructor(supabase) {
         this.supabase = supabase;
@@ -159,7 +159,16 @@ class BrokerConnectionMonitor {
         const fails = (prev?.fails ?? 0) + 1;
         const delay = nextBackoffMs(fails);
         this.backoff.set(row.id, { fails, lastAttemptAt: now, nextEligibleAt: now + delay });
-        if (fails >= 4 && row.connection_status !== 'error') {
+        const hasCreds = Boolean(row.auto_reconnect_enabled
+            && row.mt_password_encrypted
+            && row.account_login
+            && row.broker_server);
+        if (hasCreds) {
+            if (row.connection_status !== 'recovering' && row.connection_status !== 'error') {
+                void (0, brokerConnectionStatus_1.writeBrokerConnectionStatus)(this.supabase, row.id, 'recovering');
+            }
+        }
+        else if (fails >= 4 && row.connection_status !== 'error') {
             void (0, brokerConnectionStatus_1.writeBrokerConnectionStatus)(this.supabase, row.id, 'error', {
                 rawError: 'keepSessionAlive failed during reconnect sweep',
             });
@@ -179,7 +188,7 @@ class BrokerConnectionMonitor {
                 .from('broker_accounts')
                 .select('id,platform,metaapi_account_id,connection_status,account_login,broker_server,auto_reconnect_enabled,mt_password_encrypted')
                 .not('metaapi_account_id', 'is', null)
-                .eq('connection_status', 'error')
+                .in('connection_status', ['error', 'recovering'])
                 .eq('auto_reconnect_enabled', true)
                 .not('mt_password_encrypted', 'is', null));
             if (!brokersQ)

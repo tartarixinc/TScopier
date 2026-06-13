@@ -19,6 +19,7 @@ const channelTradingConfig_1 = require("./channelTradingConfig");
 const rangePendingLadderSync_1 = require("./rangePendingLadderSync");
 const monitorIdleGate_1 = require("./monitorIdleGate");
 const rangeLayerTillClose_1 = require("./rangeLayerTillClose");
+const copierPause_1 = require("./copierPause");
 const rangePendingFireGuard_1 = require("./rangePendingFireGuard");
 const brokerConnectError_1 = require("./brokerConnectError");
 const rangePendingBasketCleanup_1 = require("./rangePendingBasketCleanup");
@@ -198,6 +199,8 @@ class VirtualPendingMonitor {
             .select('id,signal_id,user_id,broker_account_id,symbol,step_idx');
         if (expired && expired.length) {
             for (const r of expired) {
+                if ((0, copierPause_1.isUserCopierPausedCached)(r.user_id))
+                    continue;
                 try {
                     await this.supabase.from('trade_execution_logs').insert({
                         user_id: r.user_id,
@@ -226,7 +229,8 @@ class VirtualPendingMonitor {
             console.error('[virtualPendingMonitor] select failed:', error.message);
             return;
         }
-        const rows = (data ?? []);
+        const rows = (data ?? [])
+            .filter(r => !(0, copierPause_1.isUserCopierPausedCached)(r.user_id));
         if (!this.firstTickLogged) {
             this.firstTickLogged = true;
             console.log(`[virtualPendingMonitor] first tick ok pending_rows=${rows.length}`);

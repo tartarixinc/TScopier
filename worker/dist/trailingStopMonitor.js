@@ -7,6 +7,7 @@ const metatraderapi_1 = require("./metatraderapi");
 const mtApiByAccount_1 = require("./mtApiByAccount");
 const orderModifyBenign_1 = require("./orderModifyBenign");
 const monitorIdleGate_1 = require("./monitorIdleGate");
+const copierPause_1 = require("./copierPause");
 const ACTIVE_MS = (0, monitorIdleGate_1.monitorActiveIntervalMs)('TRAILING_STOP_TICK_MS', 1500);
 const IDLE_MS = (0, monitorIdleGate_1.monitorIdleIntervalMs)('TRAILING_STOP_IDLE_MS', 60000);
 const SYMBOL_CACHE_TTL_MS = 5 * 60000;
@@ -72,7 +73,8 @@ class TrailingStopMonitor {
             console.error('[trailingStopMonitor] select failed:', error.message);
             return;
         }
-        const rows = (data ?? []);
+        const rows = (data ?? [])
+            .filter(r => !(0, copierPause_1.isUserCopierPausedCached)(r.user_id));
         if (!this.firstTickLogged) {
             this.firstTickLogged = true;
             console.log(`[trailingStopMonitor] first tick ok trail_rows=${rows.length}`);

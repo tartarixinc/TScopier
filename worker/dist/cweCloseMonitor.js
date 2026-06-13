@@ -6,6 +6,7 @@ const metatraderapi_1 = require("./metatraderapi");
 const mtApiByAccount_1 = require("./mtApiByAccount");
 const monitorIdleGate_1 = require("./monitorIdleGate");
 const rangeLayerTillClose_1 = require("./rangeLayerTillClose");
+const copierPause_1 = require("./copierPause");
 const ACTIVE_MS = (0, monitorIdleGate_1.monitorActiveIntervalMs)('CWE_CLOSE_TICK_MS', 1500);
 const IDLE_MS = (0, monitorIdleGate_1.monitorIdleIntervalMs)('CWE_CLOSE_IDLE_MS', 60000);
 /**
@@ -91,7 +92,8 @@ class CweCloseMonitor {
             console.error('[cweCloseMonitor] select failed:', error.message);
             return;
         }
-        const rows = (data ?? []);
+        const rows = (data ?? [])
+            .filter(r => !(0, copierPause_1.isUserCopierPausedCached)(r.user_id));
         if (!this.firstTickLogged) {
             this.firstTickLogged = true;
             console.log(`[cweCloseMonitor] first tick ok watched_rows=${rows.length}`);

@@ -19,6 +19,8 @@ const trailingStopMonitor_1 = require("./trailingStopMonitor");
 const basketSlTpReconcileMonitor_1 = require("./basketSlTpReconcileMonitor");
 const newsTradingMonitor_1 = require("./newsTradingMonitor");
 const brokerConnectionMonitor_1 = require("./brokerConnectionMonitor");
+const brokerConnectionKeeper_1 = require("./brokerConnectionKeeper");
+const brokerCredentialsCrypto_1 = require("./brokerCredentialsCrypto");
 const openTradeReconcileMonitor_1 = require("./openTradeReconcileMonitor");
 const copyLimitMonitor_1 = require("./copyLimitMonitor");
 const workerConfig_1 = require("./workerConfig");
@@ -71,10 +73,17 @@ function startTradeMonitors() {
         trackMonitor(openTradeReconcileMonitor);
     }
     if (workerConfig_1.workerConfig.runsTrade) {
+        const brokerConnectionKeeper = new brokerConnectionKeeper_1.BrokerConnectionKeeper(supabase);
         const brokerConnectionMonitor = new brokerConnectionMonitor_1.BrokerConnectionMonitor(supabase);
         const copyLimitMonitor = new copyLimitMonitor_1.CopyLimitMonitor(supabase);
+        if (!(0, brokerCredentialsCrypto_1.isBrokerCredentialsCryptoConfigured)()) {
+            console.warn('[worker] BROKER_CREDENTIALS_ENCRYPTION_KEY not set — stored-password auto reconnect disabled;'
+                + ' set the same key in Supabase Edge secrets');
+        }
+        brokerConnectionKeeper.start();
         brokerConnectionMonitor.start();
         copyLimitMonitor.start();
+        trackMonitor(brokerConnectionKeeper);
         trackMonitor(brokerConnectionMonitor);
         trackMonitor(copyLimitMonitor);
     }

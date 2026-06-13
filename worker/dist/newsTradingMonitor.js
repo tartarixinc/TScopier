@@ -7,6 +7,7 @@ const settings_1 = require("./newsTrading/settings");
 const metatraderapi_1 = require("./metatraderapi");
 const mtApiByAccount_1 = require("./mtApiByAccount");
 const channelTradingConfig_1 = require("./channelTradingConfig");
+const copierPause_1 = require("./copierPause");
 const TICK_MS = 60000;
 class NewsTradingMonitor {
     constructor(supabase) {
@@ -61,6 +62,8 @@ class NewsTradingMonitor {
         const now = new Date();
         this.pruneClosedMap(now);
         for (const broker of brokers) {
+            if ((0, copierPause_1.isUserCopierPausedCached)(broker.user_id))
+                continue;
             const uuid = broker.metaapi_account_id;
             const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(platformByUuid, uuid);
             if (!api)

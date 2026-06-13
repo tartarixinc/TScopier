@@ -59,6 +59,7 @@ const basketMerge = __importStar(require("./basketMerge"));
 const managementExecutor = __importStar(require("./managementExecutor"));
 const singleEntryExecutor_1 = require("./singleEntryExecutor");
 const rangeTradeExecutor_1 = require("./rangeTradeExecutor");
+const copierPause_1 = require("../copierPause");
 class TradeExecutor {
     constructor(supabase, sessionManager) {
         this.supabase = supabase;
@@ -72,7 +73,9 @@ class TradeExecutor {
         this.symbolCacheKeepaliveTimer = null;
         this.signalsChannel = null;
         this.brokersChannel = null;
+        this.channelTradingConfigsChannel = null;
         this.channelsChannel = null;
+        this.userProfilesChannel = null;
         this.brokersByUser = new Map();
         this.brokersById = new Map();
         this.inflight = new Set();
@@ -126,7 +129,9 @@ class TradeExecutor {
         await this.loadBrokers();
         this.subscribeSignals();
         this.subscribeBrokers();
+        this.subscribeChannelTradingConfigs();
         this.subscribeChannelKeywords();
+        this.subscribeUserProfilesCopierPause();
         const replaySince = () => new Date(Date.now() - types_1.EXECUTOR_REPLAY_MAX_AGE_MS).toISOString();
         this.sweepLoop = (0, monitorIdleGate_1.startMonitorLoop)({
             name: 'tradeExecutorSweep',
@@ -179,9 +184,17 @@ class TradeExecutor {
             void this.supabase.removeChannel(this.brokersChannel);
             this.brokersChannel = null;
         }
+        if (this.channelTradingConfigsChannel) {
+            void this.supabase.removeChannel(this.channelTradingConfigsChannel);
+            this.channelTradingConfigsChannel = null;
+        }
         if (this.channelsChannel) {
             void this.supabase.removeChannel(this.channelsChannel);
             this.channelsChannel = null;
+        }
+        if (this.userProfilesChannel) {
+            void this.supabase.removeChannel(this.userProfilesChannel);
+            this.userProfilesChannel = null;
         }
     }
     // ── caches ────────────────────────────────────────────────────────────
@@ -232,8 +245,9 @@ class TradeExecutor {
         if (userIds.length) {
             const { data: profiles } = await this.supabase
                 .from('user_profiles')
-                .select('user_id,timezone')
+                .select('user_id,timezone,copier_paused')
                 .in('user_id', userIds);
+            (0, copierPause_1.primeCopierPauseCache)(profiles ?? []);
             for (const p of profiles ?? []) {
                 const uid = String(p.user_id ?? '');
                 const tz = String(p.timezone ?? 'UTC').trim() || 'UTC';
@@ -433,6 +447,55 @@ class TradeExecutor {
             if (row.is_active) {
                 void this.pingBrokerSession(row);
             }
+        })
+            .subscribe();
+    }
+    subscribeUserProfilesCopierPause() {
+        if (this.userProfilesChannel)
+            return;
+        this.userProfilesChannel = this.supabase
+            .channel('trade_executor_user_profiles_copier_pause')
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'user_profiles' }, (payload) => {
+            const row = payload.new;
+            if (!row)
+                return;
+            const userId = String(row.user_id ?? '');
+            if (!userId || !(0, workerConfig_1.userBelongsToShard)(userId))
+                return;
+            const copierPaused = row.copier_paused === true;
+            const previousPaused = payload.old?.copier_paused === true;
+            (0, copierPause_1.applyCopierPauseProfileUpdate)(userId, copierPaused, previousPaused);
+        })
+            .subscribe();
+    }
+    subscribeChannelTradingConfigs() {
+        if (this.channelTradingConfigsChannel)
+            return;
+        this.channelTradingConfigsChannel = this.supabase
+            .channel('trade_executor_broker_channel_configs')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'broker_channel_trading_configs' }, (payload) => {
+            const evt = payload.eventType;
+            if (evt === 'DELETE') {
+                const brokerId = String(payload.old?.broker_account_id ?? '');
+                if (!brokerId)
+                    return;
+                const cached = this.brokersById.get(brokerId);
+                if (!cached)
+                    return;
+                void this.mergeBrokerRowWithTableConfigs(cached)
+                    .then(merged => this.applyBrokerCacheRow(merged))
+                    .catch(err => {
+                    console.error('[tradeExecutor] channel config delete refresh failed:', err);
+                });
+                return;
+            }
+            const row = payload.new;
+            if (!row?.broker_account_id)
+                return;
+            const cached = this.brokersById.get(row.broker_account_id);
+            if (!cached)
+                return;
+            this.applyBrokerCacheRow((0, brokerChannelTradingConfigs_1.applyBrokerChannelTradingConfigRow)(cached, row));
         })
             .subscribe();
     }
@@ -835,8 +898,16 @@ class TradeExecutor {
             });
             return { openedOrMerged: false, finalizeSkipReason: configReady.reason };
         }
-        const effectiveBroker = (0, channelTradingConfig_1.withChannelTradingConfig)(broker, signal.channel_id);
-        const resolved = (0, channelTradingConfig_1.resolveChannelTradingConfig)(broker, signal.channel_id);
+        let executionBroker = broker;
+        if (signal.channel_id) {
+            const fresh = await (0, brokerChannelTradingConfigs_1.fetchFreshBrokerForChannel)(this.supabase, broker, signal.channel_id);
+            if (fresh.channel_trading_configs !== broker.channel_trading_configs) {
+                this.applyBrokerCacheRow(fresh);
+                executionBroker = this.brokersById.get(broker.id) ?? fresh;
+            }
+        }
+        const effectiveBroker = (0, channelTradingConfig_1.withChannelTradingConfig)(executionBroker, signal.channel_id);
+        const resolved = (0, channelTradingConfig_1.resolveChannelTradingConfig)(executionBroker, signal.channel_id);
         const entryKey = `${signal.id}:${effectiveBroker.id}`;
         const liveFast = sendOpts?.liveEntryFast === true;
         if (!liveFast) {
@@ -876,7 +947,8 @@ class TradeExecutor {
             const ms = resolved.manual_settings;
             console.log(`[tradeExecutor] sendOrder signal=${signal.id} broker=${effectiveBroker.id}`
                 + ` channel=${signal.channel_id ?? 'none'} source=${resolved.config_source}`
-                + ` style=${String(ms.trade_style ?? 'single')} fixed_lot=${String(ms.fixed_lot ?? 'missing')}`);
+                + ` style=${String(ms.trade_style ?? 'single')} fixed_lot=${String(ms.fixed_lot ?? 'missing')}`
+                + ` range_trading=${ms.range_trading === true}`);
             const isManual = (effectiveBroker.copier_mode ?? 'ai') === 'manual';
             const manual = (effectiveBroker.manual_settings ?? {});
             if (isManual && manual.trade_style === 'multi') {

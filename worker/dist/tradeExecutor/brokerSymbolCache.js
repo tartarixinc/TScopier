@@ -76,10 +76,10 @@ async function sessionHeartbeatTick(ctx) {
         const markRecovered = async () => {
             heartbeatFailCounts.delete(row.id);
             ctx.sessionPingAt.set(uuid, Date.now());
-            const wasDown = row.connection_status === 'error' || ctx.sessionOrderBlocked.has(row.id);
+            const wasDown = row.connection_status === 'error' || row.connection_status === 'recovering' || ctx.sessionOrderBlocked.has(row.id);
             (0, brokerSignalReplay_1.clearBrokerSessionBlock)(ctx, row);
             if (wasDown) {
-                if (row.connection_status === 'error')
+                if (row.connection_status === 'error' || row.connection_status === 'recovering')
                     row.connection_status = 'connected';
                 await (0, brokerConnectionStatus_1.writeBrokerConnectionStatus)(ctx.supabase, row.id, 'connected');
                 void (0, brokerSignalReplay_1.replayParsedSignalsForBroker)(ctx, row);
@@ -115,6 +115,9 @@ async function sessionHeartbeatTick(ctx) {
                 await markRecovered();
                 continue;
             }
+            await (0, brokerConnectionStatus_1.writeBrokerConnectionStatus)(ctx.supabase, row.id, 'recovering');
+            console.warn(`[tradeExecutor] broker ${row.id} heartbeat miss — keeper will retry hard reconnect`);
+            continue;
         }
         const fails = (heartbeatFailCounts.get(row.id) ?? 0) + 1;
         heartbeatFailCounts.set(row.id, fails);

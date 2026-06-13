@@ -20,7 +20,7 @@ import { parseChannelMessageSync, parseRawChannelMessage, looksLikeChannelManage
 import type { PipelineTimestamps } from './pipelineTimestamps'
 import { incMetric } from './workerMetrics'
 import { workerConfig } from './workerConfig'
-import { loadCachedUserCopierPaused } from './copierPause'
+import { applyCopierPauseProfileUpdate, loadCachedUserCopierPaused } from './copierPause'
 import {
   MESSAGE_REVISION_DISPATCH_SOURCE,
   buildRevisionDispatchRow,
@@ -327,6 +327,7 @@ export class UserListener {
   private onSignalParsed: ((row: SignalRow) => boolean) | null = null
   /** Recent live message ids — avoids a Supabase round-trip on hot-path dedup. */
   private liveMessageDedup = new Map<string, number>()
+  private userProfilesCopierPauseChannel: ReturnType<SupabaseClient['channel']> | null = null
 
   constructor(
     userId: string,
@@ -391,10 +392,15 @@ export class UserListener {
     this.startReplyChainSweep()
     this.startSignalReconcileSweep()
     this.startEntityWarmup()
+    this.subscribeCopierPauseState()
   }
 
   async stop() {
     try {
+      if (this.userProfilesCopierPauseChannel) {
+        await this.supabase.removeChannel(this.userProfilesCopierPauseChannel)
+        this.userProfilesCopierPauseChannel = null
+      }
       this.stopTimer('watchdogTimer')
       this.stopTimer('safetyPollTimer')
       this.stopTimer('fastPollTimer')
@@ -1416,7 +1422,7 @@ export class UserListener {
     message: MessageLike & { date?: number | Date | string },
     opts?: { source?: 'live' | 'catchup' },
   ): Promise<boolean> {
-    if (await loadCachedUserCopierPaused(this.supabase, this.userId)) return false
+    if (await this.skipMessageWhileCopierPaused(channelRow, String(message.id))) return false
 
     const messageId = String(message.id)
     const rawMessage = (message.text ?? message.message ?? '') as string
@@ -2105,6 +2111,67 @@ export class UserListener {
     }
   }
 
+  private async skipMessageWhileCopierPaused(channelRow: ChannelRow, messageId: string): Promise<boolean> {
+    if (!(await loadCachedUserCopierPaused(this.supabase, this.userId))) return false
+    await this.bumpLastSeen(channelRow.id, messageId)
+    return true
+  }
+
+  private subscribeCopierPauseState(): void {
+    if (this.userProfilesCopierPauseChannel) return
+    this.userProfilesCopierPauseChannel = this.supabase
+      .channel(`user_listener_copier_pause_${this.userId}`)
+      .on(
+        'postgres_changes' as never,
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'user_profiles',
+          filter: `user_id=eq.${this.userId}`,
+        } as never,
+        (payload: { new?: Record<string, unknown>; old?: Record<string, unknown> }) => {
+          const row = payload.new
+          if (!row) return
+          const copierPaused = row.copier_paused === true
+          const previousPaused = payload.old?.copier_paused === true
+          const transition = applyCopierPauseProfileUpdate(this.userId, copierPaused, previousPaused)
+          if (transition === 'resumed') {
+            void this.advanceAllChannelsLastSeenToLatest()
+          }
+        },
+      )
+      .subscribe()
+  }
+
+  private async advanceChannelLastSeenToLatest(row: ChannelRow, peer?: unknown): Promise<void> {
+    try {
+      const resolvedPeer = peer ?? await this.resolveChannelPeer(row)
+      const latest = await this.client.getMessages(resolvedPeer as never, { limit: 1 })
+      const latestId = Number(latest[0]?.id)
+      if (!Number.isFinite(latestId)) return
+      await this.bumpLastSeen(row.id, String(latestId))
+      row.last_seen_message_id = latestId
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.warn(
+        `[userListener] advance last_seen failed user=${this.userId} channel=${row.id}:`,
+        msg,
+      )
+    }
+  }
+
+  private async advanceAllChannelsLastSeenToLatest(): Promise<void> {
+    const { data: rows } = await this.supabase
+      .from('telegram_channels')
+      .select('id, channel_id, channel_username, last_seen_message_id')
+      .eq('user_id', this.userId)
+      .eq('is_active', true)
+
+    for (const row of (rows ?? []) as ChannelRow[]) {
+      await this.advanceChannelLastSeenToLatest(row)
+    }
+  }
+
   private async bumpLastSeen(channelRowId: string, messageId: string) {
     const num = Number(messageId)
     if (!Number.isFinite(num)) return
@@ -2300,6 +2367,12 @@ export class UserListener {
     const latestId = Number(sorted[sorted.length - 1]?.id)
     if (!Number.isFinite(latestId)) return
 
+    if (await loadCachedUserCopierPaused(this.supabase, this.userId)) {
+      await this.bumpLastSeen(row.id, String(latestId))
+      row.last_seen_message_id = latestId
+      return
+    }
+
     if (minId === 0) {
       const now = Date.now()
       const recentWindowMs = 15 * 60_000
@@ -2357,6 +2430,16 @@ export class UserListener {
     }
 
     if (!batch.length) return
+
+    if (await loadCachedUserCopierPaused(this.supabase, this.userId)) {
+      const sorted = [...batch].sort((a, b) => Number(a.id) - Number(b.id))
+      const latestId = Number(sorted[sorted.length - 1]?.id)
+      if (Number.isFinite(latestId) && latestId > minId) {
+        await this.bumpLastSeen(row.id, String(latestId))
+        row.last_seen_message_id = latestId
+      }
+      return
+    }
 
     const now = Date.now()
     const maxAgeMs = 60_000
@@ -2429,6 +2512,11 @@ export class UserListener {
       peer = await this.resolveChannelPeer(row)
     } catch (err) {
       console.warn(`[userListener] resolveChannelPeer miss for channel ${row.id}; skipping catch-up this round`, err)
+      return
+    }
+
+    if (await loadCachedUserCopierPaused(this.supabase, this.userId)) {
+      await this.advanceChannelLastSeenToLatest(row, peer)
       return
     }
 

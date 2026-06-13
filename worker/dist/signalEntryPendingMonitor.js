@@ -5,6 +5,7 @@ const metatraderapi_1 = require("./metatraderapi");
 const mtApiByAccount_1 = require("./mtApiByAccount");
 const monitorIdleGate_1 = require("./monitorIdleGate");
 const signalEntryPendingHelpers_1 = require("./signalEntryPendingHelpers");
+const copierPause_1 = require("./copierPause");
 const ACTIVE_MS = (0, monitorIdleGate_1.monitorActiveIntervalMs)('SIGNAL_ENTRY_PENDING_TICK_MS', 2000);
 const IDLE_MS = (0, monitorIdleGate_1.monitorIdleIntervalMs)('SIGNAL_ENTRY_PENDING_IDLE_MS', 60000);
 const MISSING_BEFORE_ASSUME_GONE = 6;
@@ -101,7 +102,8 @@ class SignalEntryPendingMonitor {
             console.error('[signalEntryPendingMonitor] select failed:', error.message);
             return;
         }
-        const rows = (data ?? []);
+        const rows = (data ?? [])
+            .filter(r => !(0, copierPause_1.isUserCopierPausedCached)(r.user_id));
         if (!rows.length) {
             this.missingStreak.clear();
             return;

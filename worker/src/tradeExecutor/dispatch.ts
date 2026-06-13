@@ -10,7 +10,7 @@ import {
 } from '../tradeSignalActions'
 import { workerConfig } from '../workerConfig'
 import { channelMatchesBrokerSignal } from '../brokerChannelFilter'
-import { loadCachedUserCopierPaused } from '../copierPause'
+import { loadCachedUserCopierPaused, signalPredatesCopierResume } from '../copierPause'
 import {
   channelConfigReadyForExecution,
   resolveChannelTradingConfig,
@@ -306,6 +306,12 @@ export async function handleSignal(ctx: TradeExecutorContext,
     if (!ctx.claimSignalExecution(row.id)) return
 
     if (await loadCachedUserCopierPaused(ctx.supabase, row.user_id)) {
+      ctx.inflight.delete(row.id)
+      ctx.queuedIds.delete(row.id)
+      return
+    }
+
+    if (signalPredatesCopierResume(row.user_id, row.created_at)) {
       ctx.inflight.delete(row.id)
       ctx.queuedIds.delete(row.id)
       return

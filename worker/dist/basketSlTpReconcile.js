@@ -242,7 +242,11 @@ async function runBasketLegModifies(args) {
     const legErrors = [];
     const modifiedTradeIds = [];
     const usePreflight = openedTickets != null && openedTickets.size >= 0;
+    const legModifyGapMs = Math.max(0, Number(process.env.BASKET_LEG_MODIFY_GAP_MS ?? 50) || 0);
     for (let i = 0; i < familyTrades.length; i++) {
+        if (i > 0 && legModifyGapMs > 0) {
+            await new Promise(resolve => setTimeout(resolve, legModifyGapMs));
+        }
         const tr = familyTrades[i];
         if (alreadyModified?.has(tr.id)) {
             modifiedTradeIds.push(tr.id);
@@ -379,14 +383,55 @@ async function runBasketLegModifies(args) {
             expertID: 909090,
         };
         const clamped = clampBasketOrderStops(sendShape, params);
+        let modSl = clamped.args.stoploss ?? 0;
+        let modTp = clamped.args.takeprofit ?? 0;
+        // MT5 OrderModifySafe can null-ref when TP=0 is sent on a position that
+        // already carries TP — keep the open leg's stops for unchanged fields.
+        if (modTp <= 0 && nImmCwe === 0) {
+            const curTp = Number(tr.tp);
+            if (Number.isFinite(curTp) && curTp > 0)
+                modTp = curTp;
+        }
+        if (modSl <= 0) {
+            const curSl = Number(tr.sl);
+            if (Number.isFinite(curSl) && curSl > 0)
+                modSl = curSl;
+        }
+        if (modSl <= 0 && modTp <= 0) {
+            summary.failed += 1;
+            legErrors.push({
+                trade_id: tr.id,
+                ticket,
+                leg_index: i + 1,
+                broker_symbol: tr.symbol,
+                target_sl: target.stoploss,
+                target_tp: target.takeprofit,
+                error: 'no_stops_to_apply',
+                skip_reason: 'no_stops_to_apply',
+            });
+            await logBasketLegModify(supabase, {
+                userId,
+                signalId,
+                brokerAccountId,
+                status: 'skipped',
+                tradeId: tr.id,
+                ticket,
+                legIndex: i + 1,
+                brokerSymbol: tr.symbol,
+                targetSl: target.stoploss,
+                targetTp: target.takeprofit,
+                skipReason: 'no_stops_to_apply',
+            });
+            continue;
+        }
         try {
             const modRes = await api.orderModify(uuid, {
                 ticket,
-                stoploss: clamped.args.stoploss ?? 0,
-                takeprofit: clamped.args.takeprofit ?? 0,
+                stoploss: modSl,
+                takeprofit: modTp,
             });
-            const newSl = modRes.stopLoss ?? clamped.args.stoploss ?? null;
-            const newTp = modRes.takeProfit ?? clamped.args.takeprofit ?? null;
+            const newSl = modRes.stopLoss ?? modSl ?? null;
+            const newTp = modRes.takeProfit ?? modTp ?? null;
             const cweClose = cweIdx < nImmCwe ? args.overrideTp : null;
             await supabase.from('trades').update({
                 sl: typeof newSl === 'number' && newSl > 0 ? newSl : null,
@@ -404,8 +449,8 @@ async function runBasketLegModifies(args) {
                 ticket,
                 legIndex: i + 1,
                 brokerSymbol: tr.symbol,
-                targetSl: clamped.args.stoploss ?? 0,
-                targetTp: clamped.args.takeprofit ?? 0,
+                targetSl: modSl,
+                targetTp: modTp,
             });
         }
         catch (err) {
@@ -422,8 +467,8 @@ async function runBasketLegModifies(args) {
                     ticket,
                     legIndex: i + 1,
                     brokerSymbol: tr.symbol,
-                    targetSl: clamped.args.stoploss ?? 0,
-                    targetTp: clamped.args.takeprofit ?? 0,
+                    targetSl: modSl,
+                    targetTp: modTp,
                     skipReason: 'already_synced_on_broker',
                 });
                 continue;
@@ -434,8 +479,8 @@ async function runBasketLegModifies(args) {
                 ticket,
                 leg_index: i + 1,
                 broker_symbol: tr.symbol,
-                target_sl: clamped.args.stoploss ?? 0,
-                target_tp: clamped.args.takeprofit ?? 0,
+                target_sl: modSl,
+                target_tp: modTp,
                 error: msg,
             });
             console.warn(`[basketSlTpReconcile] OrderModify failed leg=${i + 1}/${familyTrades.length} trade=${tr.id}: ${msg}`);
@@ -448,8 +493,8 @@ async function runBasketLegModifies(args) {
                 ticket,
                 legIndex: i + 1,
                 brokerSymbol: tr.symbol,
-                targetSl: clamped.args.stoploss ?? 0,
-                targetTp: clamped.args.takeprofit ?? 0,
+                targetSl: modSl,
+                targetTp: modTp,
                 errorMessage: msg,
             });
         }

@@ -6,6 +6,7 @@ const copyLimitMetrics_1 = require("./copyLimitMetrics");
 const copyLimitFlatten_1 = require("./copyLimitFlatten");
 const copyLimitTypes_1 = require("./copyLimitTypes");
 const channelTradingConfig_1 = require("./channelTradingConfig");
+const copierPause_1 = require("./copierPause");
 const TICK_MS = 30000;
 class CopyLimitMonitor {
     constructor(supabase) {
@@ -78,6 +79,8 @@ class CopyLimitMonitor {
         for (const row of activeRows) {
             const broker = brokerById.get(row.broker_account_id);
             if (!broker?.metaapi_account_id)
+                continue;
+            if ((0, copierPause_1.isUserCopierPausedCached)(broker.user_id))
                 continue;
             const channelId = (0, channelTradingConfig_1.normalizeChannelUuid)(row.channel_id);
             if (!channelId)

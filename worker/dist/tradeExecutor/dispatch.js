@@ -21,6 +21,7 @@ const metatraderapi_1 = require("../metatraderapi");
 const tradeSignalActions_1 = require("../tradeSignalActions");
 const workerConfig_1 = require("../workerConfig");
 const brokerChannelFilter_1 = require("../brokerChannelFilter");
+const copierPause_1 = require("../copierPause");
 const channelTradingConfig_1 = require("../channelTradingConfig");
 const channelMessageFilters_1 = require("../channelMessageFilters");
 const multiTradeMerge_1 = require("../multiTradeMerge");
@@ -256,6 +257,16 @@ async function handleSignal(ctx, row, opts) {
     }
     if (!ctx.claimSignalExecution(row.id))
         return;
+    if (await (0, copierPause_1.loadCachedUserCopierPaused)(ctx.supabase, row.user_id)) {
+        ctx.inflight.delete(row.id);
+        ctx.queuedIds.delete(row.id);
+        return;
+    }
+    if ((0, copierPause_1.signalPredatesCopierResume)(row.user_id, row.created_at)) {
+        ctx.inflight.delete(row.id);
+        ctx.queuedIds.delete(row.id);
+        return;
+    }
     const handleStartMs = Date.now();
     const liveFast = opts?.liveDispatch === true && opts?.lightIdempotency === true;
     const channelMetaPromise = liveFast && row.channel_id

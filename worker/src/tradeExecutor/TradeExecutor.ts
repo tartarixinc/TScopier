@@ -193,9 +193,8 @@ import * as managementExecutor from './managementExecutor'
 import { runSingleEntry } from './singleEntryExecutor'
 import { runRangeEntry } from './rangeTradeExecutor'
 import {
-  invalidateCopierPauseCache,
+  applyCopierPauseProfileUpdate,
   primeCopierPauseCache,
-  setUserCopierPausedCached,
 } from '../copierPause'
 
 export type { SignalRow } from './types'
@@ -629,13 +628,14 @@ export class TradeExecutor {
       .on(
         'postgres_changes' as never,
         { event: 'UPDATE', schema: 'public', table: 'user_profiles' } as never,
-        (payload: { new?: Record<string, unknown> }) => {
+        (payload: { new?: Record<string, unknown>; old?: Record<string, unknown> }) => {
           const row = payload.new
           if (!row) return
           const userId = String(row.user_id ?? '')
           if (!userId || !userBelongsToShard(userId)) return
-          invalidateCopierPauseCache(userId)
-          setUserCopierPausedCached(userId, row.copier_paused === true)
+          const copierPaused = row.copier_paused === true
+          const previousPaused = payload.old?.copier_paused === true
+          applyCopierPauseProfileUpdate(userId, copierPaused, previousPaused)
         },
       )
       .subscribe()

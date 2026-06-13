@@ -5,6 +5,7 @@ const basketModFollowUp_1 = require("../../basketModFollowUp");
 const basketSlTpReconcile_1 = require("../../basketSlTpReconcile");
 const channelActiveTradeParams_1 = require("../../channelActiveTradeParams");
 const manualPlanner_1 = require("../../manualPlanner");
+const brokerConnectError_1 = require("../../brokerConnectError");
 const multiTradeMerge_1 = require("../../multiTradeMerge");
 const rangeLayerTillClose_1 = require("../../rangeLayerTillClose");
 const rangePendingLadderSync_1 = require("../../rangePendingLadderSync");
@@ -213,7 +214,11 @@ async function applyBasketSlTpRefresh(ctx, args) {
             virtualPendings = (0, channelActiveTradeParams_1.applyChannelParamsToVirtualPendingList)(virtualPendings, channelParamsForLadder, immediateEstimate, manual.tp_lots, basketTotalPlannedLegs);
         }
     }
-    const refreshImmediateLegCount = sameSignalRefresh
+    // Modify-only refreshes (message edits on an existing basket) must spread TPs
+    // across every open leg. Using the entry-plan instant/range split after extra
+    // range legs have fired leaves trailing legs with takeprofit=0 and can crash
+    // the MT bridge when OrderModify sends TP=0 on a ticket that already has TP.
+    const refreshImmediateLegCount = sameSignalRefresh || logAction === 'merge_routed_modify_only'
         ? familyTrades.length
         : Math.max((0, multiTradeMerge_1.mergePlanImmediateOrders)(plan).length, Math.max(0, familyTrades.length - Math.max(0, maxPendingStepIdx - activePendingCount)));
     // Single-mode partial schedule comes from planManualOrders (uses derived finalTps,
@@ -350,6 +355,7 @@ async function applyBasketSlTpRefresh(ctx, args) {
             strictEntryPrefetch,
             openedTickets,
             alreadyModified: modifiedTradeIds,
+            skipAlreadySynced: true,
         });
         for (const id of pass.modifiedTradeIds)
             modifiedTradeIds.add(id);
@@ -357,6 +363,14 @@ async function applyBasketSlTpRefresh(ctx, args) {
         legErrors = pass.legErrors.map(e => ({ error: e.error, leg_index: e.leg_index }));
         if (modifiedTradeIds.size >= familyTrades.length)
             break;
+        const pendingErrors = pass.legErrors.filter(e => e.error && !e.skip_reason);
+        if (pendingErrors.length > 0
+            && pendingErrors.every(e => (0, brokerConnectError_1.isMtBridgeGlitchMessage)(e.error))
+            && modifiedTradeIds.size === 0) {
+            console.warn(`[tradeExecutor] basket refresh bridge glitch — deferring straggler rounds`
+                + ` signal=${signal.id} broker=${broker.id} legs=${familyTrades.length}`);
+            break;
+        }
     }
     const stillMissingTicket = familyTrades.filter(tr => {
         const t = Number(tr.metaapi_order_id);
@@ -569,50 +583,37 @@ async function applyBasketSlTpRefresh(ctx, args) {
             await (0, basketSlTpReconcile_1.markBasketReconcileDone)(ctx.supabase, existingJob.id);
         }
     }
+    const alreadySyncedNoBrokerWork = !mergeFailed
+        && summary.openLegs > 0
+        && summary.modified >= summary.openLegs
+        && summary.attempted === 0;
     console.log(`[tradeExecutor] merge_modify_summary signal=${signal.id} broker=${broker.id} anchor=${anchorSignalId}`
         + ` open=${summary.openLegs} attempted=${summary.attempted} modified=${summary.modified}`
-        + ` failed=${summary.failed} no_ticket=${summary.skippedNoTicket}`);
-    try {
-        await ctx.supabase.from('trade_execution_logs').insert({
-            user_id: signal.user_id,
-            signal_id: signal.id,
-            broker_account_id: broker.id,
-            action: 'merge_modify_summary',
-            status: mergeFailed ? 'failed' : 'success',
-            error_message: partialMsg,
-            request_payload: {
-                parent_signal_id: anchorSignalId,
-                symbol,
-                user_message: partialMsg,
-                ...summary,
-                virtual_pendings: virtualPendings.length,
-                leg_errors: legErrors.slice(0, 10),
-                ...(mergeLinkMeta ?? {}),
-            },
-        });
+        + ` failed=${summary.failed} no_ticket=${summary.skippedNoTicket}`
+        + `${alreadySyncedNoBrokerWork ? ' already_synced' : ''}`);
+    if (!alreadySyncedNoBrokerWork) {
+        try {
+            await ctx.supabase.from('trade_execution_logs').insert({
+                user_id: signal.user_id,
+                signal_id: signal.id,
+                broker_account_id: broker.id,
+                action: 'merge_modify_summary',
+                status: mergeFailed ? 'failed' : 'success',
+                error_message: partialMsg,
+                request_payload: {
+                    parent_signal_id: anchorSignalId,
+                    symbol,
+                    modify_only: logAction === 'merge_routed_modify_only',
+                    user_message: partialMsg,
+                    ...summary,
+                    virtual_pendings: virtualPendings.length,
+                    leg_errors: legErrors.slice(0, 10),
+                    ...(mergeLinkMeta ?? {}),
+                },
+            });
+        }
+        catch { /* best-effort */ }
     }
-    catch { /* best-effort */ }
-    try {
-        await ctx.supabase.from('trade_execution_logs').insert({
-            user_id: signal.user_id,
-            signal_id: signal.id,
-            broker_account_id: broker.id,
-            action: logAction,
-            status: mergeFailed ? 'failed' : 'success',
-            error_message: partialMsg,
-            request_payload: {
-                parent_signal_id: anchorSignalId,
-                symbol,
-                modify_only: true,
-                user_message: partialMsg,
-                ...summary,
-                virtual_pendings: virtualPendings.length,
-                leg_errors: legErrors.slice(0, 10),
-                ...(mergeLinkMeta ?? {}),
-            },
-        });
-    }
-    catch { /* best-effort */ }
     if (!mergeFailed) {
         try {
             await ctx.supabase
