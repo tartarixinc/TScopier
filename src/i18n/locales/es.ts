@@ -64,6 +64,8 @@ export const es: Translations = {
       pausedHint: 'La copia de señales está en pausa',
       statusRunning: 'Copiador activo',
       statusStopped: 'Reanudar copiador',
+      confirmTitle: '¿Pausar el copiador?',
+      confirmBody: 'La copia de señales, la ejecución de trades y los registros del copiador se detendrán hasta que reanudes.',
     },
     notifications: {
       title: 'Notificaciones',

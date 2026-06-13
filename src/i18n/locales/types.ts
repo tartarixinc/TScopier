@@ -61,6 +61,8 @@ export interface NavTranslations {
     pausedHint: string
     statusRunning: string
     statusStopped: string
+    confirmTitle: string
+    confirmBody: string
   }
   notifications: {
     title: string
