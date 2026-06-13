@@ -192,6 +192,11 @@ import * as basketMerge from './basketMerge'
 import * as managementExecutor from './managementExecutor'
 import { runSingleEntry } from './singleEntryExecutor'
 import { runRangeEntry } from './rangeTradeExecutor'
+import {
+  invalidateCopierPauseCache,
+  primeCopierPauseCache,
+  setUserCopierPausedCached,
+} from '../copierPause'
 
 export type { SignalRow } from './types'
 
@@ -207,6 +212,7 @@ export class TradeExecutor {
   private brokersChannel: RealtimeChannel | null = null
   private channelTradingConfigsChannel: RealtimeChannel | null = null
   private channelsChannel: RealtimeChannel | null = null
+  private userProfilesChannel: RealtimeChannel | null = null
   brokersByUser = new Map<string, BrokerRow[]>()
   brokersById = new Map<string, BrokerRow>()
   inflight = new Set<string>()
@@ -272,6 +278,7 @@ export class TradeExecutor {
     this.subscribeBrokers()
     this.subscribeChannelTradingConfigs()
     this.subscribeChannelKeywords()
+    this.subscribeUserProfilesCopierPause()
     const replaySince = () =>
       new Date(Date.now() - EXECUTOR_REPLAY_MAX_AGE_MS).toISOString()
     this.sweepLoop = startMonitorLoop({
@@ -331,6 +338,10 @@ export class TradeExecutor {
       this.channelTradingConfigsChannel = null
     }
     if (this.channelsChannel) { void this.supabase.removeChannel(this.channelsChannel); this.channelsChannel = null }
+    if (this.userProfilesChannel) {
+      void this.supabase.removeChannel(this.userProfilesChannel)
+      this.userProfilesChannel = null
+    }
   }
 
   // ── caches ────────────────────────────────────────────────────────────
@@ -387,8 +398,9 @@ export class TradeExecutor {
     if (userIds.length) {
       const { data: profiles } = await this.supabase
         .from('user_profiles')
-        .select('user_id,timezone')
+        .select('user_id,timezone,copier_paused')
         .in('user_id', userIds)
+      primeCopierPauseCache(profiles ?? [])
       for (const p of profiles ?? []) {
         const uid = String((p as { user_id?: string }).user_id ?? '')
         const tz = String((p as { timezone?: string }).timezone ?? 'UTC').trim() || 'UTC'
@@ -605,6 +617,25 @@ export class TradeExecutor {
           if (row.is_active) {
             void this.pingBrokerSession(row)
           }
+        },
+      )
+      .subscribe()
+  }
+
+  private subscribeUserProfilesCopierPause() {
+    if (this.userProfilesChannel) return
+    this.userProfilesChannel = this.supabase
+      .channel('trade_executor_user_profiles_copier_pause')
+      .on(
+        'postgres_changes' as never,
+        { event: 'UPDATE', schema: 'public', table: 'user_profiles' } as never,
+        (payload: { new?: Record<string, unknown> }) => {
+          const row = payload.new
+          if (!row) return
+          const userId = String(row.user_id ?? '')
+          if (!userId || !userBelongsToShard(userId)) return
+          invalidateCopierPauseCache(userId)
+          setUserCopierPausedCached(userId, row.copier_paused === true)
         },
       )
       .subscribe()

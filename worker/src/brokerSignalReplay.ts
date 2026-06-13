@@ -3,6 +3,7 @@
  */
 
 import { channelMatchesBrokerSignal } from './brokerChannelFilter'
+import { loadCachedUserCopierPaused } from './copierPause'
 import { brokerEligibleForSignal, enqueueSignal } from './tradeExecutor/dispatch'
 import type { TradeExecutorContext } from './tradeExecutor/context'
 import type { BrokerRow, SignalRow } from './tradeExecutor/types'
@@ -23,6 +24,7 @@ export async function replayParsedSignalsForBroker(
   broker: BrokerRow,
 ): Promise<number> {
   if (!broker.is_active) return 0
+  if (await loadCachedUserCopierPaused(ctx.supabase, broker.user_id)) return 0
 
   const since = new Date(Date.now() - EXECUTOR_REPLAY_MAX_AGE_MS).toISOString()
   const { data, error } = await ctx.supabase

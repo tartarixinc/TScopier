@@ -10,6 +10,7 @@ import {
   type MonitorLoopHandle,
 } from './monitorIdleGate'
 import { stopRangeLayeringUnlessEnabled } from './rangeLayerTillClose'
+import { isUserCopierPausedCached } from './copierPause'
 
 /**
  * Worker-side monitor that closes "Close-Worse-Entries" positions once the
@@ -150,7 +151,8 @@ export class CweCloseMonitor {
       console.error('[cweCloseMonitor] select failed:', error.message)
       return
     }
-    const rows = (data ?? []) as CweTradeRow[]
+    const rows = ((data ?? []) as CweTradeRow[])
+      .filter(r => !isUserCopierPausedCached(r.user_id))
     if (!this.firstTickLogged) {
       this.firstTickLogged = true
       console.log(`[cweCloseMonitor] first tick ok watched_rows=${rows.length}`)

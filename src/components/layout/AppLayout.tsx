@@ -11,6 +11,7 @@ import { ThemeToggle } from '../ui/ThemeToggle'
 import { LanguageSwitcher } from '../auth/LanguageSwitcher'
 import { HelpSidebarNav } from './HelpSidebarNav'
 import { NotificationBell } from './NotificationBell'
+import { CopierPauseToggle } from './CopierPauseToggle'
 import { UserMenuDropdown } from './UserMenuDropdown'
 import { useUserProfile } from '../../context/UserProfileContext'
 import { useSubscription } from '../../context/SubscriptionContext'
@@ -370,6 +371,7 @@ export function AppLayout() {
                 {subscribeCta}
               </button>
             ) : null}
+            <CopierPauseToggle />
             <AppSearchMobileTrigger />
             <LanguageSwitcher />
             <ThemeToggle />

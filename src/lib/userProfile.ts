@@ -19,6 +19,7 @@ export interface UserProfile {
   onboarding_completed_at?: string | null
   referred_by_user_id?: string | null
   notification_sound_enabled?: boolean
+  copier_paused?: boolean
   created_at?: string
   updated_at?: string
 }
@@ -37,6 +38,7 @@ export const EMPTY_USER_PROFILE: Omit<UserProfile, 'user_id'> = {
     ? Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
     : 'UTC',
   notification_sound_enabled: true,
+  copier_paused: false,
 }
 
 /** Admin bypass: DB flag (with timed expiry) or Supabase Auth app_metadata (matches edge subscriptionAccess). */

@@ -55,6 +55,11 @@ export interface NavTranslations {
   planFree: string
   settings: string
   help: string
+  copierPause: {
+    pauseLabel: string
+    resumeLabel: string
+    pausedHint: string
+  }
   notifications: {
     title: string
     close: string

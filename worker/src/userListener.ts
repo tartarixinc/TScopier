@@ -20,6 +20,7 @@ import { parseChannelMessageSync, parseRawChannelMessage, looksLikeChannelManage
 import type { PipelineTimestamps } from './pipelineTimestamps'
 import { incMetric } from './workerMetrics'
 import { workerConfig } from './workerConfig'
+import { loadCachedUserCopierPaused } from './copierPause'
 import {
   MESSAGE_REVISION_DISPATCH_SOURCE,
   buildRevisionDispatchRow,
@@ -1089,8 +1090,10 @@ export class UserListener {
     rawMessage: string
     source: string
     telegramEditDateSeen?: number | null
-  }): Promise<boolean> {
+  }  ): Promise<boolean> {
     const { channelRow, messageId, rawMessage, source } = args
+    if (await loadCachedUserCopierPaused(this.supabase, this.userId)) return false
+
     const existing = await loadSignalByTelegramMessage(this.supabase, {
       userId: this.userId,
       channelRowId: channelRow.id,
@@ -1266,6 +1269,8 @@ export class UserListener {
   }
 
   private async dispatchRevisionSignal(dispatchRow: SignalRow): Promise<void> {
+    if (await loadCachedUserCopierPaused(this.supabase, this.userId)) return
+
     const dispatchedInProcess = this.onSignalParsed
       ? this.onSignalParsed(dispatchRow) === true
       : false
@@ -1411,6 +1416,8 @@ export class UserListener {
     message: MessageLike & { date?: number | Date | string },
     opts?: { source?: 'live' | 'catchup' },
   ): Promise<boolean> {
+    if (await loadCachedUserCopierPaused(this.supabase, this.userId)) return false
+
     const messageId = String(message.id)
     const rawMessage = (message.text ?? message.message ?? '') as string
     const isReply = !!message.replyTo

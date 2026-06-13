@@ -10,6 +10,7 @@ import {
 } from '../tradeSignalActions'
 import { workerConfig } from '../workerConfig'
 import { channelMatchesBrokerSignal } from '../brokerChannelFilter'
+import { loadCachedUserCopierPaused } from '../copierPause'
 import {
   channelConfigReadyForExecution,
   resolveChannelTradingConfig,
@@ -303,6 +304,12 @@ export async function handleSignal(ctx: TradeExecutorContext,
       await waitForSignalInflightClear(ctx, row.id)
     }
     if (!ctx.claimSignalExecution(row.id)) return
+
+    if (await loadCachedUserCopierPaused(ctx.supabase, row.user_id)) {
+      ctx.inflight.delete(row.id)
+      ctx.queuedIds.delete(row.id)
+      return
+    }
 
     const handleStartMs = Date.now()
     const liveFast = opts?.liveDispatch === true && opts?.lightIdempotency === true

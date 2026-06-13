@@ -21,6 +21,7 @@ import {
   startMonitorLoop,
   type MonitorLoopHandle,
 } from './monitorIdleGate'
+import { isUserCopierPausedCached } from './copierPause'
 
 interface TrailTradeRow {
   id: string
@@ -126,7 +127,8 @@ export class TrailingStopMonitor {
       console.error('[trailingStopMonitor] select failed:', error.message)
       return
     }
-    const rows = (data ?? []) as unknown as TrailTradeRow[]
+    const rows = ((data ?? []) as unknown as TrailTradeRow[])
+      .filter(r => !isUserCopierPausedCached(r.user_id))
     if (!this.firstTickLogged) {
       this.firstTickLogged = true
       console.log(`[trailingStopMonitor] first tick ok trail_rows=${rows.length}`)

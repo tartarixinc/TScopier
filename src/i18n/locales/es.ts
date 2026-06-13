@@ -58,6 +58,11 @@ export const es: Translations = {
     planFree: 'Gratis',
     settings: 'Ajustes',
     help: 'Ayuda',
+    copierPause: {
+      pauseLabel: 'Pausar copia',
+      resumeLabel: 'Reanudar copia',
+      pausedHint: 'La copia de señales está en pausa',
+    },
     notifications: {
       title: 'Notificaciones',
       close: 'Cerrar notificaciones',

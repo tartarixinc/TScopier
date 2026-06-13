@@ -11,6 +11,7 @@ import {
 } from './monitorIdleGate'
 import { apiForMetaapiAccount, loadPlatformByMetaapiId, type PlatformByMetaapiId } from './mtApiByAccount'
 import { stopRangeLayeringUnlessEnabled } from './rangeLayerTillClose'
+import { isUserCopierPausedCached } from './copierPause'
 
 /**
  * Worker-side monitor that fires partial /OrderClose calls for single-mode
@@ -165,7 +166,8 @@ export class PartialTpMonitor {
       console.error('[partialTpMonitor] select failed:', error.message)
       return
     }
-    const rows = (data ?? []) as PartialRow[]
+    const rows = ((data ?? []) as PartialRow[])
+      .filter(r => !isUserCopierPausedCached(r.user_id))
     if (!this.firstTickLogged) {
       this.firstTickLogged = true
       console.log(`[partialTpMonitor] first tick ok pending_rows=${rows.length}`)

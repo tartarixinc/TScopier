@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { clearBrokerSessionBlock, replayParsedSignalsForBroker } from './brokerSignalReplay'
+import { invalidateCopierPauseCache, setUserCopierPausedCached } from './copierPause'
 import type { TradeExecutorContext } from './tradeExecutor/context'
 import type { BrokerRow, QueuedSignal, SignalRow } from './tradeExecutor/types'
 
@@ -46,19 +47,30 @@ function mockExecutor(overrides?: Partial<TradeExecutorContext>): TradeExecutorC
 
   const ctx = {
     supabase: {
-      from: () => ({
-        select: () => ({
-          eq: () => ({
+      from: (table: string) => {
+        if (table === 'user_profiles') {
+          return {
+            select: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({ data: { copier_paused: false }, error: null }),
+              }),
+            }),
+          }
+        }
+        return {
+          select: () => ({
             eq: () => ({
-              gte: () => ({
-                order: () => ({
-                  limit: async () => ({ data: signals, error: null }),
+              eq: () => ({
+                gte: () => ({
+                  order: () => ({
+                    limit: async () => ({ data: signals, error: null }),
+                  }),
                 }),
               }),
             }),
           }),
-        }),
-      }),
+        }
+      },
     },
     brokersById: new Map([[broker.id, broker]]),
     brokersByUser: new Map([[broker.user_id, [broker]]]),
@@ -85,6 +97,8 @@ describe('brokerSignalReplay', () => {
   })
 
   it('replays parsed signals for linked channels only', async () => {
+    invalidateCopierPauseCache()
+    setUserCopierPausedCached('user-1', false)
     const ctx = mockExecutor()
     const enqueued = await replayParsedSignalsForBroker(ctx, {
       id: 'broker-1',

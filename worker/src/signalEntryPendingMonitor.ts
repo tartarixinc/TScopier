@@ -20,6 +20,7 @@ import {
   rawOrderTicket,
   type SignalEntryPendingRow,
 } from './signalEntryPendingHelpers'
+import { isUserCopierPausedCached } from './copierPause'
 
 const ACTIVE_MS = monitorActiveIntervalMs('SIGNAL_ENTRY_PENDING_TICK_MS', 2_000)
 const IDLE_MS = monitorIdleIntervalMs('SIGNAL_ENTRY_PENDING_IDLE_MS', 60_000)
@@ -130,7 +131,8 @@ export class SignalEntryPendingMonitor {
       console.error('[signalEntryPendingMonitor] select failed:', error.message)
       return
     }
-    const rows = (data ?? []) as MonitorRow[]
+    const rows = ((data ?? []) as MonitorRow[])
+      .filter(r => !isUserCopierPausedCached(r.user_id))
     if (!rows.length) {
       this.missingStreak.clear()
       return

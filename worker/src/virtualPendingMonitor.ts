@@ -24,6 +24,7 @@ import {
   loadRangeLayerTillCloseForSignal,
   stopRangeLayeringUnlessEnabled,
 } from './rangeLayerTillClose'
+import { isUserCopierPausedCached } from './copierPause'
 import {
   reconcileStaleClaimedLegs,
   shouldBlockVirtualLegFire,
@@ -350,6 +351,7 @@ export class VirtualPendingMonitor {
       .select('id,signal_id,user_id,broker_account_id,symbol,step_idx')
     if (expired && expired.length) {
       for (const r of expired as Array<{ id: string; signal_id: string; user_id: string; broker_account_id: string; symbol: string; step_idx: number }>) {
+        if (isUserCopierPausedCached(r.user_id)) continue
         try {
           await this.supabase.from('trade_execution_logs').insert({
             user_id: r.user_id,
@@ -380,7 +382,8 @@ export class VirtualPendingMonitor {
       console.error('[virtualPendingMonitor] select failed:', error.message)
       return
     }
-    const rows = (data ?? []) as PendingRow[]
+    const rows = ((data ?? []) as PendingRow[])
+      .filter(r => !isUserCopierPausedCached(r.user_id))
     if (!this.firstTickLogged) {
       this.firstTickLogged = true
       console.log(`[virtualPendingMonitor] first tick ok pending_rows=${rows.length}`)

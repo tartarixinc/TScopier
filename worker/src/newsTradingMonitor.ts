@@ -5,6 +5,7 @@ import { isNewsTradingEnabled, type ScheduleFilterSettings } from './newsTrading
 import { hasMetatraderApiConfigured } from './metatraderapi'
 import { apiForMetaapiAccount, loadPlatformByMetaapiId } from './mtApiByAccount'
 import { resolveChannelTradingConfig } from './channelTradingConfig'
+import { isUserCopierPausedCached } from './copierPause'
 
 interface BrokerRow {
   id: string
@@ -88,6 +89,8 @@ export class NewsTradingMonitor {
     this.pruneClosedMap(now)
 
     for (const broker of brokers) {
+      if (isUserCopierPausedCached(broker.user_id)) continue
+
       const uuid = broker.metaapi_account_id
       const api = apiForMetaapiAccount(platformByUuid, uuid)
       if (!api) continue

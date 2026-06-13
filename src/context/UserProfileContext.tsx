@@ -10,6 +10,8 @@ import {
 import { useAuth } from './AuthContext'
 import { BASE_CURRENCY_CODES } from '../lib/baseCurrencies'
 import { normalizeCurrencyCode } from '../lib/currency'
+import { supabase } from '../lib/supabase'
+import { whenRealtimeReady } from '../lib/whenRealtimeReady'
 import {
   EMPTY_USER_PROFILE,
   loadUserProfile,
@@ -30,6 +32,7 @@ interface UserProfileContextValue {
   onboardingCompletedAt: string | null
   baseCurrency: string
   timezone: string
+  copierPaused: boolean
   patchProfile: (patch: Partial<ProfileFields>) => void
   refreshProfile: () => Promise<void>
   persistProfile: (patch?: Partial<ProfileFields>) => Promise<void>
@@ -45,6 +48,7 @@ function sanitizeProfile(row: Partial<ProfileFields> | null | undefined): Profil
     base_currency: BASE_CURRENCY_CODES.has(currency) ? currency : 'USD',
     timezone: base.timezone?.trim() || EMPTY_USER_PROFILE.timezone,
     notification_sound_enabled: base.notification_sound_enabled !== false,
+    copier_paused: base.copier_paused === true,
   }
 }
 
@@ -91,6 +95,7 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
             base_currency: row.base_currency,
             timezone: row.timezone,
             notification_sound_enabled: row.notification_sound_enabled ?? true,
+            copier_paused: row.copier_paused ?? false,
           }),
         )
       } else {
@@ -123,6 +128,40 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
     setProfile(prev => sanitizeProfile({ ...prev, ...patch }))
   }, [])
 
+  useEffect(() => {
+    if (!user) return
+
+    let cancelled = false
+    let channel: ReturnType<typeof supabase.channel> | null = null
+
+    void whenRealtimeReady().then(() => {
+      if (cancelled) return
+      channel = supabase
+        .channel(`user_profile_copier_pause_${user.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'user_profiles',
+            filter: `user_id=eq.${user.id}`,
+          },
+          payload => {
+            const next = payload.new as { copier_paused?: boolean } | undefined
+            if (typeof next?.copier_paused === 'boolean') {
+              patchProfile({ copier_paused: next.copier_paused })
+            }
+          },
+        )
+        .subscribe()
+    })
+
+    return () => {
+      cancelled = true
+      if (channel) void supabase.removeChannel(channel)
+    }
+  }, [user, patchProfile])
+
   const persistProfile = useCallback(
     async (patch?: Partial<ProfileFields>) => {
       if (!user) return
@@ -152,6 +191,7 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
       onboardingCompletedAt,
       baseCurrency: profile.base_currency,
       timezone: profile.timezone,
+      copierPaused: profile.copier_paused === true,
       patchProfile,
       refreshProfile,
       persistProfile,

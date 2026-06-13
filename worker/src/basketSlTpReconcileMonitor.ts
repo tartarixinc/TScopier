@@ -22,6 +22,7 @@ import {
 import { normalizeManualSettingsForExecution } from './manualPlanning/normalizeManualSettings'
 import { resolveChannelTradingConfig } from './channelTradingConfig'
 import { normalizeSymbolParams } from './metatraderapi'
+import { isUserCopierPausedCached } from './copierPause'
 
 const ACTIVE_MS = monitorActiveIntervalMs('BASKET_RECONCILE_TICK_MS', 15_000)
 const IDLE_MS = monitorIdleIntervalMs('BASKET_RECONCILE_IDLE_MS', 120_000)
@@ -129,6 +130,11 @@ export class BasketSlTpReconcileMonitor {
 
     if (!broker?.metaapi_account_id) {
       await this.releaseJob(row.id, 'broker not found', row.attempts)
+      return
+    }
+
+    if (isUserCopierPausedCached(String(broker.user_id ?? ''))) {
+      await this.releaseJob(row.id, 'copier paused', row.attempts)
       return
     }
 

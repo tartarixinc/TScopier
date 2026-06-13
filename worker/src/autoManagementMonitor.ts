@@ -25,6 +25,7 @@ import {
   startMonitorLoop,
   type MonitorLoopHandle,
 } from './monitorIdleGate'
+import { isUserCopierPausedCached } from './copierPause'
 
 interface AutoBeTradeRow {
   id: string
@@ -143,7 +144,8 @@ export class AutoManagementMonitor {
       console.error('[autoManagementMonitor] select failed:', error.message)
       return
     }
-    const rows = (data ?? []) as unknown as AutoBeTradeRow[]
+    const rows = ((data ?? []) as unknown as AutoBeTradeRow[])
+      .filter(r => !isUserCopierPausedCached(r.user_id))
     if (!this.firstTickLogged) {
       this.firstTickLogged = true
       console.log(`[autoManagementMonitor] first tick ok auto_be_rows=${rows.length}`)

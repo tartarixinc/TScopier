@@ -85,6 +85,7 @@ export interface UserProfileRow {
   onboarding_completed_at: string | null
   referred_by_user_id: string | null
   notification_sound_enabled: boolean
+  copier_paused: boolean
   created_at: string
   updated_at: string
 }

@@ -17,6 +17,7 @@ import type { CopyLimitPeriod } from './copyLimitTypes'
 import { flattenChannelTradesForCopyLimit } from './copyLimitFlatten'
 import { normalizeCopyLimitState, normalizeCopyLimits } from './copyLimitTypes'
 import { normalizeChannelUuid } from './channelTradingConfig'
+import { isUserCopierPausedCached } from './copierPause'
 
 const TICK_MS = 30_000
 
@@ -115,6 +116,7 @@ export class CopyLimitMonitor {
     for (const row of activeRows) {
       const broker = brokerById.get(row.broker_account_id)
       if (!broker?.metaapi_account_id) continue
+      if (isUserCopierPausedCached(broker.user_id)) continue
 
       const channelId = normalizeChannelUuid(row.channel_id)
       if (!channelId) continue
