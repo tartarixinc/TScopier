@@ -20,6 +20,7 @@ import {
   Settings,
 } from 'lucide-react'
 import { LanguageSwitcher } from '../auth/LanguageSwitcher'
+import { CopierActiveIndicator } from '../layout/CopierActiveIndicator'
 import { ThemeToggle } from '../ui/ThemeToggle'
 import { TscopierLogo } from '../ui/TscopierLogo'
 import { useT } from '../../context/LocaleContext'
@@ -480,6 +481,13 @@ export function HeroDashboardPreview() {
                 </span>
               </div>
               <div className="ml-auto flex items-center gap-2">
+                <span
+                  className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-neutral-600 dark:text-neutral-300 sm:gap-2 sm:px-2.5 sm:text-sm"
+                  aria-hidden
+                >
+                  <CopierActiveIndicator />
+                  <span className="whitespace-nowrap">{t.nav.copierPause.statusRunning}</span>
+                </span>
                 <LanguageSwitcher />
                 <ThemeToggle />
                 <button
