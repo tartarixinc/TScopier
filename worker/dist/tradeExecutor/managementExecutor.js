@@ -199,12 +199,19 @@ async function applyManagement(ctx, signal, parsed, brokers) {
             return;
         }
         const actionPre = String(parsed.action ?? '').toLowerCase();
-        let channelRows = await (0, managementScope_1.loadOpenTradesForManagement)(ctx.supabase, {
-            userId: signal.user_id,
-            channelId: signal.channel_id,
-            brokerAccountIds,
-            symbolFilter: symbolFromText,
-        });
+        let channelRows = actionPre === 'close_worse_entries'
+            ? await (0, managementScope_1.loadOpenTradesForChannelWideCwe)(ctx.supabase, {
+                userId: signal.user_id,
+                channelId: signal.channel_id,
+                brokerAccountIds,
+                symbolFilter: symbolFromText,
+            })
+            : await (0, managementScope_1.loadOpenTradesForManagement)(ctx.supabase, {
+                userId: signal.user_id,
+                channelId: signal.channel_id,
+                brokerAccountIds,
+                symbolFilter: symbolFromText,
+            });
         if (actionPre === 'modify'
             && !symbolFromText
             && channelRows.length > 0) {
@@ -218,7 +225,7 @@ async function applyManagement(ctx, signal, parsed, brokers) {
     if (action === 'close_worse_entries'
         && !rows.length
         && signal.channel_id) {
-        rows = await (0, managementScope_1.loadOpenTradesForManagement)(ctx.supabase, {
+        rows = await (0, managementScope_1.loadOpenTradesForChannelWideCwe)(ctx.supabase, {
             userId: signal.user_id,
             channelId: signal.channel_id,
             brokerAccountIds,

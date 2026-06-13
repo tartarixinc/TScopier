@@ -17,6 +17,7 @@ import { loadRangePendingLegsInMgmtScope, pendingLegsToCancelScopes, updateRange
 import {
   explicitMgmtSymbol,
   isReplyScopedManagement,
+  loadOpenTradesForChannelWideCwe,
   loadOpenTradesForManagement,
   resolveChannelModifyTargets,
   type MgmtTradeRow
@@ -239,12 +240,19 @@ export async function applyManagement(ctx: TradeExecutorContext, signal: SignalR
         return
       }
       const actionPre = String(parsed.action ?? '').toLowerCase()
-      let channelRows = await loadOpenTradesForManagement(ctx.supabase, {
-        userId: signal.user_id,
-        channelId: signal.channel_id,
-        brokerAccountIds,
-        symbolFilter: symbolFromText,
-      })
+      let channelRows = actionPre === 'close_worse_entries'
+        ? await loadOpenTradesForChannelWideCwe(ctx.supabase, {
+          userId: signal.user_id,
+          channelId: signal.channel_id,
+          brokerAccountIds,
+          symbolFilter: symbolFromText,
+        })
+        : await loadOpenTradesForManagement(ctx.supabase, {
+          userId: signal.user_id,
+          channelId: signal.channel_id,
+          brokerAccountIds,
+          symbolFilter: symbolFromText,
+        })
       if (
         actionPre === 'modify'
         && !symbolFromText
@@ -264,7 +272,7 @@ export async function applyManagement(ctx: TradeExecutorContext, signal: SignalR
       && !rows.length
       && signal.channel_id
     ) {
-      rows = await loadOpenTradesForManagement(ctx.supabase, {
+      rows = await loadOpenTradesForChannelWideCwe(ctx.supabase, {
         userId: signal.user_id,
         channelId: signal.channel_id,
         brokerAccountIds,

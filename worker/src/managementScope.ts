@@ -259,6 +259,115 @@ export async function loadOpenTradesForManagement(
   return rows
 }
 
+/** Channel-wide CWE without explicit symbol: active basket = newest open symbol bucket. */
+export function resolveChannelCweTargets(
+  trades: MgmtTradeRow[],
+  symbolFilter: string | null | undefined,
+): MgmtTradeRow[] {
+  const filtered = filterTradesBySymbolFilter(trades, symbolFilter)
+  if (symbolFilter?.trim()) return filtered
+  return resolveNewestOpenSymbolTrades(filtered)
+}
+
+async function loadTradesForBasketAnchor(
+  supabase: SupabaseClient,
+  args: {
+    userId: string
+    brokerAccountIds: string[]
+    anchorSignalId: string
+  },
+): Promise<MgmtTradeRow[]> {
+  const { data } = await supabase
+    .from('trades')
+    .select(MGMT_TRADE_SELECT)
+    .eq('user_id', args.userId)
+    .eq('signal_id', args.anchorSignalId)
+    .in('broker_account_id', args.brokerAccountIds)
+    .in('status', ['open', 'pending'])
+    .order('opened_at', { ascending: true })
+    .limit(500)
+  return (data ?? []) as MgmtTradeRow[]
+}
+
+/**
+ * Channel-wide close-worse-entries: load open legs for the active basket on the channel.
+ * Uses the standard channel trade loader first, then falls back to newest basket anchor
+ * by signal_id (same resolution reply-scoped CWE uses, without requiring a parent signal).
+ */
+export async function loadOpenTradesForChannelWideCwe(
+  supabase: SupabaseClient,
+  args: {
+    userId: string
+    channelId: string
+    brokerAccountIds: string[]
+    symbolFilter?: string | null
+  },
+): Promise<MgmtTradeRow[]> {
+  const scoped = resolveChannelCweTargets(
+    await loadOpenTradesForManagement(supabase, args),
+    args.symbolFilter,
+  )
+  if (scoped.length) return scoped
+
+  const { data: openRows } = await supabase
+    .from('trades')
+    .select(`${MGMT_TRADE_SELECT},telegram_channel_id`)
+    .eq('user_id', args.userId)
+    .in('broker_account_id', args.brokerAccountIds)
+    .in('status', ['open', 'pending'])
+    .order('opened_at', { ascending: false })
+    .limit(300)
+
+  const candidates = (openRows ?? []) as (MgmtTradeRow & { telegram_channel_id?: string | null })[]
+  if (!candidates.length) return []
+
+  const signalIds = [...new Set(candidates.map(t => t.signal_id).filter(Boolean))]
+  const channelSignalIds = new Set<string>()
+  if (signalIds.length) {
+    const { data: sigRows } = await supabase
+      .from('signals')
+      .select('id, channel_id')
+      .in('id', signalIds)
+    for (const s of sigRows ?? []) {
+      if ((s as { channel_id?: string | null }).channel_id === args.channelId) {
+        channelSignalIds.add((s as { id: string }).id)
+      }
+    }
+  }
+
+  const { data: attribRows } = await supabase
+    .from('trade_channel_attributions')
+    .select('trade_id')
+    .eq('user_id', args.userId)
+    .eq('channel_id', args.channelId)
+    .in('broker_account_id', args.brokerAccountIds)
+    .limit(500)
+  const attribTradeIds = new Set(
+    (attribRows ?? []).map((r: { trade_id: string }) => r.trade_id).filter(Boolean),
+  )
+
+  const onChannel = candidates.filter(t =>
+    t.telegram_channel_id === args.channelId
+    || channelSignalIds.has(t.signal_id)
+    || attribTradeIds.has(t.id),
+  )
+  if (!onChannel.length) return []
+
+  const symFilter = args.symbolFilter?.trim()
+  const filtered = symFilter
+    ? onChannel.filter(t => tradeMatchesSymbolFilter(t, symFilter))
+    : onChannel
+  if (!filtered.length) return []
+
+  const anchorSignalId = filtered[0]!.signal_id
+  const basketRows = await loadTradesForBasketAnchor(supabase, {
+    userId: args.userId,
+    brokerAccountIds: args.brokerAccountIds,
+    anchorSignalId,
+  })
+  return resolveChannelCweTargets(basketRows, args.symbolFilter)
+}
+
 /**
  * Channel-wide modify without explicit symbol: scope to the newest open symbol first,
  * then plausibility within that basket. Avoids applying a gold SL to stale/other symbols.
