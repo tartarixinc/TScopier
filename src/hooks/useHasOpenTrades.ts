@@ -1,10 +1,22 @@
 import { useCallback, useEffect, useState } from 'react'
+import { metatraderApi } from '../lib/metatraderapi'
 import { supabase } from '../lib/supabase'
+import { hasOpenTradesInCache } from '../lib/tradesSessionCache'
 import { whenRealtimeReady } from '../lib/whenRealtimeReady'
 
 const REFRESH_MS = 60_000
 const REALTIME_DEBOUNCE_MS = 450
 
+async function fetchHasOpenFromBroker(): Promise<boolean> {
+  const res = await metatraderApi.trades({
+    scope: 'open',
+    historyProfile: 'trades',
+    limit: 1,
+  })
+  return (res.trades ?? []).some(t => t.status === 'open')
+}
+
+/** Sidebar indicator — broker truth (same source as Account Trades page), not stale DB rows. */
 export function useHasOpenTrades(userId: string | undefined): boolean {
   const [hasOpen, setHasOpen] = useState(false)
 
@@ -13,17 +25,17 @@ export function useHasOpenTrades(userId: string | undefined): boolean {
       setHasOpen(false)
       return
     }
-    const { count, error } = await supabase
-      .from('trades')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('status', 'open')
 
-    if (error) {
-      console.warn('[openTrades] count failed', error.message)
-      return
+    const cached = hasOpenTradesInCache(userId)
+    if (cached != null) setHasOpen(cached)
+
+    try {
+      setHasOpen(await fetchHasOpenFromBroker())
+    } catch (e) {
+      console.warn('[openTrades] broker check failed', e instanceof Error ? e.message : e)
+      if (cached != null) setHasOpen(cached)
+      else setHasOpen(false)
     }
-    setHasOpen((count ?? 0) > 0)
   }, [userId])
 
   useEffect(() => {
