@@ -79,9 +79,6 @@ export function CopierPauseToggle({ className }: CopierPauseToggleProps) {
     }
   }, [confirmOpen])
 
-  const actionLabel = copierPaused ? cp.resumeLabel : cp.pauseLabel
-  const statusLabel = copierPaused ? cp.statusStopped : cp.statusRunning
-
   const confirmModal = confirmOpen ? (
     <div
       ref={overlayRef}
@@ -148,10 +145,10 @@ export function CopierPauseToggle({ className }: CopierPauseToggleProps) {
         onClick={handleButtonClick}
         disabled={saving}
         aria-pressed={copierPaused}
-        aria-label={`${statusLabel}. ${actionLabel}`}
-        title={copierPaused ? cp.pausedHint : actionLabel}
+        aria-label={copierPaused ? `${cp.statusStopped}. ${cp.resumeLabel}` : `${cp.statusRunning}. ${cp.stopCopier}`}
+        title={copierPaused ? cp.pausedHint : cp.stopCopier}
         className={clsx(
-          'flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 sm:gap-2 sm:px-2.5 sm:text-sm',
+          'group flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 sm:gap-2 sm:px-2.5 sm:text-sm',
           copierPaused
             ? 'text-teal-700 bg-teal-50 hover:bg-teal-100 dark:text-teal-300 dark:bg-teal-950/40 dark:hover:bg-teal-950/60'
             : 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:text-neutral-50 dark:hover:bg-neutral-800',
@@ -159,11 +156,23 @@ export function CopierPauseToggle({ className }: CopierPauseToggleProps) {
         )}
       >
         {copierPaused ? (
-          <Play className="h-4 w-4 shrink-0 sm:h-[1.125rem] sm:w-[1.125rem]" aria-hidden />
+          <>
+            <Play className="h-4 w-4 shrink-0 sm:h-[1.125rem] sm:w-[1.125rem]" aria-hidden />
+            <span className="whitespace-nowrap">{cp.statusStopped}</span>
+          </>
         ) : (
-          <CopierActiveIndicator />
+          <>
+            <span className="shrink-0 group-hover:hidden">
+              <CopierActiveIndicator />
+            </span>
+            <Pause
+              className="hidden h-4 w-4 shrink-0 group-hover:block sm:h-[1.125rem] sm:w-[1.125rem]"
+              aria-hidden
+            />
+            <span className="whitespace-nowrap group-hover:hidden">{cp.statusRunning}</span>
+            <span className="hidden whitespace-nowrap group-hover:inline">{cp.stopCopier}</span>
+          </>
         )}
-        <span className="whitespace-nowrap">{statusLabel}</span>
       </button>
 
       {confirmModal ? createPortal(confirmModal, document.body) : null}

@@ -64,7 +64,8 @@ export const en: Translations = {
       pausedHint: 'Signal copying is paused',
       statusRunning: 'Copier Running',
       statusStopped: 'Resume Copier',
-      confirmTitle: 'Pause copier?',
+      stopCopier: 'Pause Copier',
+      confirmTitle: 'Pause copier',
       confirmBody: 'Signal copying, trade execution, and copier logs will stop until you resume.',
     },
     notifications: {

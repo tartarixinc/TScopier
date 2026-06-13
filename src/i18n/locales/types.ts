@@ -60,7 +60,7 @@ export interface NavTranslations {
     resumeLabel: string
     pausedHint: string
     statusRunning: string
-    statusStopped: string
+    stopCopier: string
     confirmTitle: string
     confirmBody: string
   }
