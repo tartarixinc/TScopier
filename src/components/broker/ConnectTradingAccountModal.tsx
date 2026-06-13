@@ -16,6 +16,7 @@ import { Input } from '../ui/Input'
 import { Select } from '../ui/Select'
 import { Button } from '../ui/Button'
 import { MtCompanyServerPicker } from '../ui/MtCompanyServerPicker'
+import { useOverlayDismiss } from '../../hooks/useOverlayDismiss'
 
 type ConnectTradingAccountModalProps = {
   open: boolean
@@ -29,6 +30,7 @@ export function ConnectTradingAccountModal({ open, onClose }: ConnectTradingAcco
   const { brokers, upsertBroker, patchBroker } = useBrokerAccounts()
   const { hasActiveSubscription, canAddBroker, limits } = useSubscription()
   const overlayRef = useRef<HTMLDivElement>(null)
+  const backdropRef = useRef<HTMLDivElement>(null)
 
   const [form, setForm] = useState<ConnectTradingAccountForm>(emptyConnectTradingAccountForm)
   const [error, setError] = useState('')
@@ -44,6 +46,8 @@ export function ConnectTradingAccountModal({ open, onClose }: ConnectTradingAcco
     reset()
     onClose()
   }, [onClose, reset])
+
+  const { onOverlayMouseDown, onOverlayClick } = useOverlayDismiss(overlayRef, backdropRef, handleClose)
 
   useEffect(() => {
     if (!open) return
@@ -144,11 +148,10 @@ export function ConnectTradingAccountModal({ open, onClose }: ConnectTradingAcco
     <div
       ref={overlayRef}
       className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-8"
-      onClick={event => {
-        if (event.target === overlayRef.current) handleClose()
-      }}
+      onMouseDown={onOverlayMouseDown}
+      onClick={onOverlayClick}
     >
-      <div className="absolute inset-0 bg-neutral-950/40 backdrop-blur-sm animate-in" />
+      <div ref={backdropRef} className="absolute inset-0 bg-neutral-950/40 backdrop-blur-sm animate-in" />
 
       <div
         role="dialog"

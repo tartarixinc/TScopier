@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import { ArrowLeft, Check, ChevronRight, Search, X } from 'lucide-react'
 import { useT } from '../../context/LocaleContext'
+import { useOverlayDismiss } from '../../hooks/useOverlayDismiss'
 import {
   metatraderApi,
   type BrokerSearchCompany,
@@ -59,6 +60,7 @@ export function MtCompanyServerPicker({
   const [manualServer, setManualServer] = useState('')
 
   const overlayRef = useRef<HTMLDivElement>(null)
+  const backdropRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const searchSeqRef = useRef(0)
   const prevPlatformRef = useRef(platform)
@@ -77,10 +79,12 @@ export function MtCompanyServerPicker({
     setModalOpen(true)
   }
 
-  const closeModal = () => {
+  const closeModal = useCallback(() => {
     setModalOpen(false)
     resetModal()
-  }
+  }, [resetModal])
+
+  const { onOverlayMouseDown, onOverlayClick } = useOverlayDismiss(overlayRef, backdropRef, closeModal)
 
   useEffect(() => {
     if (prevPlatformRef.current !== platform) {
@@ -248,9 +252,10 @@ export function MtCompanyServerPicker({
         <div
           ref={overlayRef}
           className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-6"
-          onClick={e => { if (e.target === overlayRef.current) closeModal() }}
+          onMouseDown={onOverlayMouseDown}
+          onClick={onOverlayClick}
         >
-          <div className="absolute inset-0 bg-neutral-950/40 backdrop-blur-sm" />
+          <div ref={backdropRef} className="absolute inset-0 bg-neutral-950/40 backdrop-blur-sm" />
 
           <div className="relative bg-white dark:bg-neutral-900 rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-md max-h-[85vh] flex flex-col overflow-hidden">
             <div className="flex items-center gap-3 px-4 py-4 border-b border-neutral-100 dark:border-neutral-800">
