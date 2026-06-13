@@ -25,6 +25,7 @@ import {
   MESSAGE_REVISION_DISPATCH_SOURCE,
   buildRevisionDispatchRow,
   entryDispatchLooksSettleable,
+  isIncomingRevisionStale,
   loadSignalByTelegramMessage,
   storedMessageDiffersFromTelegram,
   updateSignalAfterRevision,
@@ -328,6 +329,8 @@ export class UserListener {
   /** Recent live message ids — avoids a Supabase round-trip on hot-path dedup. */
   private liveMessageDedup = new Map<string, number>()
   private userProfilesCopierPauseChannel: ReturnType<SupabaseClient['channel']> | null = null
+  /** Serializes message revision apply per channel row + telegram message id. */
+  private revisionChains = new Map<string, Promise<boolean>>()
 
   constructor(
     userId: string,
@@ -1090,7 +1093,37 @@ export class UserListener {
     void this.bumpLastLive(channelRow.id)
   }
 
+  private revisionLockKey(channelRowId: string, messageId: string): string {
+    return `${channelRowId}:${messageId}`
+  }
+
+  private runRevisionExclusive(
+    key: string,
+    fn: () => Promise<boolean>,
+  ): Promise<boolean> {
+    const prev = this.revisionChains.get(key) ?? Promise.resolve(false)
+    const next = prev.catch(() => false).then(fn)
+    this.revisionChains.set(key, next.catch(() => false))
+    void next.finally(() => {
+      if (this.revisionChains.get(key) === next) {
+        this.revisionChains.delete(key)
+      }
+    })
+    return next
+  }
+
   private async tryApplyMessageRevision(args: {
+    channelRow: ChannelRow
+    messageId: string
+    rawMessage: string
+    source: string
+    telegramEditDateSeen?: number | null
+  }): Promise<boolean> {
+    const key = this.revisionLockKey(args.channelRow.id, args.messageId)
+    return this.runRevisionExclusive(key, () => this.tryApplyMessageRevisionInner(args))
+  }
+
+  private async tryApplyMessageRevisionInner(args: {
     channelRow: ChannelRow
     messageId: string
     rawMessage: string
@@ -1106,6 +1139,21 @@ export class UserListener {
       telegramMessageId: messageId,
     })
     if (!existing) return false
+    if (isIncomingRevisionStale(existing.telegram_edit_date_seen, args.telegramEditDateSeen)) {
+      void persistListenerEvent(this.supabase, {
+        userId: this.userId,
+        eventType: 'message_revision_stale_skipped',
+        channelRowId: channelRow.id,
+        telegramMessageId: messageId,
+        detail: {
+          signal_id: existing.id,
+          source,
+          stored_edit_date: existing.telegram_edit_date_seen,
+          incoming_edit_date: args.telegramEditDateSeen ?? null,
+        },
+      })
+      return false
+    }
     if (!storedMessageDiffersFromTelegram(existing.raw_message, rawMessage)) return false
 
     let aiResult: Awaited<ReturnType<typeof aiParseModification>>
@@ -1153,31 +1201,75 @@ export class UserListener {
       return false
     }
 
+    const fresh = await loadSignalByTelegramMessage(this.supabase, {
+      userId: this.userId,
+      channelRowId: channelRow.id,
+      telegramMessageId: messageId,
+    })
+    if (!fresh) return false
+    if (isIncomingRevisionStale(fresh.telegram_edit_date_seen, args.telegramEditDateSeen)) {
+      void persistListenerEvent(this.supabase, {
+        userId: this.userId,
+        eventType: 'message_revision_stale_skipped',
+        channelRowId: channelRow.id,
+        telegramMessageId: messageId,
+        detail: {
+          signal_id: fresh.id,
+          source,
+          phase: 'pre_update',
+          stored_edit_date: fresh.telegram_edit_date_seen,
+          incoming_edit_date: args.telegramEditDateSeen ?? null,
+        },
+      })
+      return false
+    }
+    if (!storedMessageDiffersFromTelegram(fresh.raw_message, rawMessage)) return false
+
     const updated = await updateSignalAfterRevision(this.supabase, {
-      signalId: existing.id,
+      signalId: fresh.id,
       rawMessage,
       parseResult,
       telegramEditDateSeen: args.telegramEditDateSeen,
     })
     if (!updated) {
-      console.error(
-        `[userListener] message revision update failed user=${this.userId} signalId=${existing.id}`,
-      )
+      if (
+        args.telegramEditDateSeen != null
+        && args.telegramEditDateSeen > 0
+        && isIncomingRevisionStale(fresh.telegram_edit_date_seen, args.telegramEditDateSeen)
+      ) {
+        void persistListenerEvent(this.supabase, {
+          userId: this.userId,
+          eventType: 'message_revision_stale_skipped',
+          channelRowId: channelRow.id,
+          telegramMessageId: messageId,
+          detail: {
+            signal_id: fresh.id,
+            source,
+            phase: 'update_rejected',
+            stored_edit_date: fresh.telegram_edit_date_seen,
+            incoming_edit_date: args.telegramEditDateSeen,
+          },
+        })
+      } else {
+        console.error(
+          `[userListener] message revision update failed user=${this.userId} signalId=${fresh.id}`,
+        )
+      }
       return false
     }
 
     const tRevision = Date.now()
-    const dispatchRow = buildRevisionDispatchRow(existing, parseResult, {
+    const dispatchRow = buildRevisionDispatchRow(fresh, parseResult, {
       t_ai_parse_done: tRevision,
       t_dispatch_sent: tRevision,
     })
     dispatchRow.dispatch_source = MESSAGE_REVISION_DISPATCH_SOURCE
-    if (existing.parsed_data?.action) {
-      dispatchRow.revision_prior_action = String(existing.parsed_data.action)
+    if (fresh.parsed_data?.action) {
+      dispatchRow.revision_prior_action = String(fresh.parsed_data.action)
     }
 
     console.log(
-      `[userListener] message revision dispatch user=${this.userId} signalId=${existing.id}`
+      `[userListener] message revision dispatch user=${this.userId} signalId=${fresh.id}`
       + ` channelRow=${channelRow.id} messageId=${messageId} source=${source}`,
     )
 
@@ -1187,7 +1279,7 @@ export class UserListener {
       channelRowId: channelRow.id,
       telegramMessageId: messageId,
       detail: {
-        signal_id: existing.id,
+        signal_id: fresh.id,
         source,
         intent: aiResult.intent,
         ai_source: aiResult.source,
@@ -1478,6 +1570,7 @@ export class UserListener {
         messageId,
         rawMessage,
         source: opts?.source === 'catchup' ? 'catchup' : 'duplicate_fallback',
+        telegramEditDateSeen: telegramEditDateSec(message),
       })
       if (revised) return true
       console.log(

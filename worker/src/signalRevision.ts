@@ -21,10 +21,28 @@ export type ExistingSignalRow = {
   telegram_message_id: string | null
   reply_to_message_id: string | null
   created_at: string
+  telegram_edit_date_seen: number | null
 }
 
 export function messageTextChanged(stored: string, fetched: string): boolean {
   return stored.trim() !== fetched.trim()
+}
+
+/** True when incoming Telegram edit_date is strictly older than what we already stored. */
+export function isIncomingRevisionStale(
+  storedEditDateSeen: number | null | undefined,
+  incomingEditDateSeen: number | null | undefined,
+): boolean {
+  const stored =
+    storedEditDateSeen != null && Number(storedEditDateSeen) > 0
+      ? Math.floor(Number(storedEditDateSeen))
+      : null
+  const incoming =
+    incomingEditDateSeen != null && Number(incomingEditDateSeen) > 0
+      ? Math.floor(Number(incomingEditDateSeen))
+      : null
+  if (stored == null || incoming == null) return false
+  return incoming < stored
 }
 
 export async function loadSignalByTelegramMessage(
@@ -34,14 +52,39 @@ export async function loadSignalByTelegramMessage(
   const { data, error } = await supabase
     .from('signals')
     .select(
-      'id,user_id,channel_id,raw_message,parsed_data,status,parent_signal_id,is_modification,telegram_message_id,reply_to_message_id,created_at',
+      'id,user_id,channel_id,raw_message,parsed_data,status,parent_signal_id,is_modification,telegram_message_id,reply_to_message_id,created_at,telegram_edit_date_seen',
     )
     .eq('user_id', args.userId)
     .eq('channel_id', args.channelRowId)
     .eq('telegram_message_id', args.telegramMessageId)
     .maybeSingle()
   if (error || !data) return null
-  return data as ExistingSignalRow
+  const row = data as ExistingSignalRow
+  row.telegram_edit_date_seen =
+    row.telegram_edit_date_seen != null && Number.isFinite(Number(row.telegram_edit_date_seen))
+      ? Number(row.telegram_edit_date_seen)
+      : null
+  return row
+}
+
+export async function loadSignalById(
+  supabase: SupabaseClient,
+  signalId: string,
+): Promise<ExistingSignalRow | null> {
+  const { data, error } = await supabase
+    .from('signals')
+    .select(
+      'id,user_id,channel_id,raw_message,parsed_data,status,parent_signal_id,is_modification,telegram_message_id,reply_to_message_id,created_at,telegram_edit_date_seen',
+    )
+    .eq('id', signalId)
+    .maybeSingle()
+  if (error || !data) return null
+  const row = data as ExistingSignalRow
+  row.telegram_edit_date_seen =
+    row.telegram_edit_date_seen != null && Number.isFinite(Number(row.telegram_edit_date_seen))
+      ? Number(row.telegram_edit_date_seen)
+      : null
+  return row
 }
 
 export function buildRevisionDispatchRow(
@@ -83,11 +126,16 @@ export async function updateSignalAfterRevision(
   if (args.telegramEditDateSeen != null && args.telegramEditDateSeen > 0) {
     patch.telegram_edit_date_seen = Math.floor(args.telegramEditDateSeen)
   }
-  const { error } = await supabase
+  let query = supabase
     .from('signals')
     .update(patch)
     .eq('id', args.signalId)
-  return !error
+  if (args.telegramEditDateSeen != null && args.telegramEditDateSeen > 0) {
+    const newEdit = Math.floor(args.telegramEditDateSeen)
+    query = query.or(`telegram_edit_date_seen.is.null,telegram_edit_date_seen.lte.${newEdit}`)
+  }
+  const { data, error } = await query.select('id').maybeSingle()
+  return !error && data != null
 }
 
 export function normalizedTradeAction(action: unknown): 'buy' | 'sell' | null {

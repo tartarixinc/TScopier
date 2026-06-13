@@ -61,6 +61,9 @@ function telegramMessageText(message) {
 function shouldReconcileSignal(stored, fetched) {
     const storedEdit = stored.telegram_edit_date_seen;
     const fetchedEdit = fetched.editDateSec;
+    if ((0, signalRevision_1.isIncomingRevisionStale)(storedEdit, fetchedEdit)) {
+        return false;
+    }
     if (storedEdit != null
         && storedEdit > 0
         && fetchedEdit != null

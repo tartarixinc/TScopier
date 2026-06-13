@@ -28,6 +28,26 @@ describe('signalTelegramReconcile', () => {
     )
   })
 
+  it('shouldReconcileSignal rejects stale fetch with older edit_date even when text differs', () => {
+    assert.equal(
+      shouldReconcileSignal(
+        { raw_message: 'Gold buy SL 2650', telegram_edit_date_seen: 101 },
+        { text: 'Gold buy', editDateSec: 100 },
+      ),
+      false,
+    )
+  })
+
+  it('shouldReconcileSignal accepts newer edit_date when text differs', () => {
+    assert.equal(
+      shouldReconcileSignal(
+        { raw_message: 'Gold buy', telegram_edit_date_seen: 100 },
+        { text: 'Gold buy SL 2650', editDateSec: 101 },
+      ),
+      true,
+    )
+  })
+
   it('findSignalsNeedingReconcile returns mismatches only', () => {
     const signals = [{
       id: 's1',

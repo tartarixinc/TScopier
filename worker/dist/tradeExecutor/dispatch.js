@@ -331,6 +331,12 @@ async function handleSignal(ctx, row, opts) {
             await ctx.logDispatchSkipped(row, 'subscription_inactive');
             return;
         }
+        if (isMessageRevision) {
+            const fresh = await (0, signalRevision_1.loadSignalById)(ctx.supabase, row.id);
+            if (!fresh?.parsed_data?.action)
+                return;
+            row.parsed_data = fresh.parsed_data;
+        }
         const pipelineT0 = Date.now();
         const parsed = row.parsed_data;
         if (!parsed || !parsed.action)

@@ -5,7 +5,9 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MESSAGE_REVISION_DISPATCH_SOURCE = void 0;
 exports.messageTextChanged = messageTextChanged;
+exports.isIncomingRevisionStale = isIncomingRevisionStale;
 exports.loadSignalByTelegramMessage = loadSignalByTelegramMessage;
+exports.loadSignalById = loadSignalById;
 exports.buildRevisionDispatchRow = buildRevisionDispatchRow;
 exports.updateSignalAfterRevision = updateSignalAfterRevision;
 exports.normalizedTradeAction = normalizedTradeAction;
@@ -16,17 +18,49 @@ exports.MESSAGE_REVISION_DISPATCH_SOURCE = 'message_revision';
 function messageTextChanged(stored, fetched) {
     return stored.trim() !== fetched.trim();
 }
+/** True when incoming Telegram edit_date is strictly older than what we already stored. */
+function isIncomingRevisionStale(storedEditDateSeen, incomingEditDateSeen) {
+    const stored = storedEditDateSeen != null && Number(storedEditDateSeen) > 0
+        ? Math.floor(Number(storedEditDateSeen))
+        : null;
+    const incoming = incomingEditDateSeen != null && Number(incomingEditDateSeen) > 0
+        ? Math.floor(Number(incomingEditDateSeen))
+        : null;
+    if (stored == null || incoming == null)
+        return false;
+    return incoming < stored;
+}
 async function loadSignalByTelegramMessage(supabase, args) {
     const { data, error } = await supabase
         .from('signals')
-        .select('id,user_id,channel_id,raw_message,parsed_data,status,parent_signal_id,is_modification,telegram_message_id,reply_to_message_id,created_at')
+        .select('id,user_id,channel_id,raw_message,parsed_data,status,parent_signal_id,is_modification,telegram_message_id,reply_to_message_id,created_at,telegram_edit_date_seen')
         .eq('user_id', args.userId)
         .eq('channel_id', args.channelRowId)
         .eq('telegram_message_id', args.telegramMessageId)
         .maybeSingle();
     if (error || !data)
         return null;
-    return data;
+    const row = data;
+    row.telegram_edit_date_seen =
+        row.telegram_edit_date_seen != null && Number.isFinite(Number(row.telegram_edit_date_seen))
+            ? Number(row.telegram_edit_date_seen)
+            : null;
+    return row;
+}
+async function loadSignalById(supabase, signalId) {
+    const { data, error } = await supabase
+        .from('signals')
+        .select('id,user_id,channel_id,raw_message,parsed_data,status,parent_signal_id,is_modification,telegram_message_id,reply_to_message_id,created_at,telegram_edit_date_seen')
+        .eq('id', signalId)
+        .maybeSingle();
+    if (error || !data)
+        return null;
+    const row = data;
+    row.telegram_edit_date_seen =
+        row.telegram_edit_date_seen != null && Number.isFinite(Number(row.telegram_edit_date_seen))
+            ? Number(row.telegram_edit_date_seen)
+            : null;
+    return row;
 }
 function buildRevisionDispatchRow(existing, parseResult, pipelineTs) {
     return {
@@ -54,11 +88,16 @@ async function updateSignalAfterRevision(supabase, args) {
     if (args.telegramEditDateSeen != null && args.telegramEditDateSeen > 0) {
         patch.telegram_edit_date_seen = Math.floor(args.telegramEditDateSeen);
     }
-    const { error } = await supabase
+    let query = supabase
         .from('signals')
         .update(patch)
         .eq('id', args.signalId);
-    return !error;
+    if (args.telegramEditDateSeen != null && args.telegramEditDateSeen > 0) {
+        const newEdit = Math.floor(args.telegramEditDateSeen);
+        query = query.or(`telegram_edit_date_seen.is.null,telegram_edit_date_seen.lte.${newEdit}`);
+    }
+    const { data, error } = await query.select('id').maybeSingle();
+    return !error && data != null;
 }
 function normalizedTradeAction(action) {
     const a = String(action ?? '').toLowerCase();

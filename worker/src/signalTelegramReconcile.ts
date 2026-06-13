@@ -3,7 +3,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { messageTextChanged } from './signalRevision'
+import { isIncomingRevisionStale, messageTextChanged } from './signalRevision'
 
 export const RECONCILE_SWEEP_WINDOW_MS = Math.max(
   60_000,
@@ -88,6 +88,9 @@ export function shouldReconcileSignal(
 ): boolean {
   const storedEdit = stored.telegram_edit_date_seen
   const fetchedEdit = fetched.editDateSec
+  if (isIncomingRevisionStale(storedEdit, fetchedEdit)) {
+    return false
+  }
   if (
     storedEdit != null
     && storedEdit > 0

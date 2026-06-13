@@ -35,7 +35,7 @@ import {
   telegramLiveTradeGateEnabled,
 } from './types'
 import type { ChannelKeywords } from '../manualPlanner'
-import { MESSAGE_REVISION_DISPATCH_SOURCE, revisionDirectionFlippedFromActions } from '../signalRevision'
+import { loadSignalById, MESSAGE_REVISION_DISPATCH_SOURCE, revisionDirectionFlippedFromActions } from '../signalRevision'
 import {
   closeBasketForRevisionDirectionFlip,
   waitForSignalBasketFlat,
@@ -385,6 +385,12 @@ export async function handleSignal(ctx: TradeExecutorContext,
       if (!isAdmin && (!userSub || !isSubscriptionActive(userSub.status))) {
         await ctx.logDispatchSkipped(row, 'subscription_inactive')
         return
+      }
+
+      if (isMessageRevision) {
+        const fresh = await loadSignalById(ctx.supabase, row.id)
+        if (!fresh?.parsed_data?.action) return
+        row.parsed_data = fresh.parsed_data as SignalRow['parsed_data']
       }
 
       const pipelineT0 = Date.now()

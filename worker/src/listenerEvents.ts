@@ -11,6 +11,7 @@ export type ListenerEventType =
   | 'ai_modification_skipped'
   | 'ai_modification_failed'
   | 'message_revision_applied'
+  | 'message_revision_stale_skipped'
   | 'entry_settle_poll_mismatch'
   | 'entry_settle_poll_applied'
   | 'teaser_completion_merge_applied'
