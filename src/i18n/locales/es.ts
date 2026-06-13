@@ -63,7 +63,7 @@ export const es: Translations = {
       resumeLabel: 'Reanudar copia',
       pausedHint: 'La copia de señales está en pausa',
       statusRunning: 'Copiador activo',
-      statusStopped: 'Copiador detenido.',
+      statusStopped: 'Reanudar copiador',
     },
     notifications: {
       title: 'Notificaciones',

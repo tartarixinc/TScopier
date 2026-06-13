@@ -63,7 +63,7 @@ export const fr: Translations = {
       resumeLabel: 'Reprendre la copie',
       pausedHint: 'La copie des signaux est en pause',
       statusRunning: 'Copieur actif',
-      statusStopped: 'Copieur arrêté.',
+      statusStopped: 'Reprendre le copieur',
     },
     notifications: {
       title: 'Notifications',

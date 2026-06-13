@@ -63,7 +63,7 @@ export const en: Translations = {
       resumeLabel: 'Resume copying',
       pausedHint: 'Signal copying is paused',
       statusRunning: 'Copier Running',
-      statusStopped: 'Copier Stopped.',
+      statusStopped: 'Resume Copier',
     },
     notifications: {
       title: 'Notifications',
