@@ -12,6 +12,10 @@ import {
 } from "../_shared/performanceBaseline.ts"
 import { fetchFxsocketBrokerTrades, BROKER_FULL_HISTORY_FROM_DATE } from "../_shared/fxsocketTrades.ts"
 import type { MtHistoryProfile } from "../_shared/mtTradeFields.ts"
+import {
+  assertBrokerAccountLimit,
+  loadUserSubscription,
+} from "../_shared/subscriptionAccess.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -121,6 +125,15 @@ Deno.serve(async (req: Request) => {
     const fx = makeFxsocketClientFromEnv(Deno.env)
 
     if (action === "connect") {
+      const sub = await loadUserSubscription(supabase, userId)
+      const limitDenied = await assertBrokerAccountLimit(supabase, userId, sub)
+      if (limitDenied) {
+        const payload = await limitDenied.json().catch(() => ({ error: "Broker account limit reached" })) as {
+          error?: string
+        }
+        return bad(limitDenied.status, payload.error ?? "Broker account limit reached")
+      }
+
       const login = String(body.login ?? "").trim()
       const password = String(body.password ?? "")
       const server = String(body.server ?? "").trim()

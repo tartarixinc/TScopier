@@ -10,8 +10,10 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import type { BrokerAccount } from '../types/database'
 import { ConnectTradingAccountModal } from '../components/broker/ConnectTradingAccountModal'
 import { BrokerConnectedSuccessModal } from '../components/broker/BrokerConnectedSuccessModal'
+import { BrokerBulkConnectSummaryModal } from '../components/broker/BrokerBulkConnectSummaryModal'
 import { useBrokerAccounts } from './BrokerAccountsContext'
 import { useT } from './LocaleContext'
+import type { BulkConnectResult } from '../lib/bulkConnectBrokers'
 
 type AddTradingAccountContextValue = {
   openAddTradingAccount: () => void
@@ -28,10 +30,12 @@ export function AddTradingAccountProvider({ children }: { children: ReactNode })
   const { pathname } = useLocation()
   const { brokers } = useBrokerAccounts()
   const sc = t.accountConfig.brokerConnectedSuccess
+  const bc = t.accountConfig.bulkConnect
   const bl = t.accountConfig.brokerList
 
   const [open, setOpen] = useState(false)
   const [connectedBroker, setConnectedBroker] = useState<BrokerAccount | null>(null)
+  const [batchResult, setBatchResult] = useState<BulkConnectResult | null>(null)
   const [pendingConfigureBrokerId, setPendingConfigureBrokerId] = useState<string | null>(null)
 
   const openAddTradingAccount = useCallback(() => {
@@ -57,8 +61,26 @@ export function AddTradingAccountProvider({ children }: { children: ReactNode })
     setConnectedBroker(broker)
   }, [])
 
+  const handleBatchSuccess = useCallback((result: BulkConnectResult) => {
+    setOpen(false)
+    if (result.linkedCount === 1 && result.failedCount === 0 && result.skippedCount === 0) {
+      const linked = result.rows.find(row => row.status === 'linked' && row.account)
+      if (linked?.account) {
+        setConnectedBroker(linked.account)
+        return
+      }
+    }
+    if (result.linkedCount > 0 || result.failedCount > 0) {
+      setBatchResult(result)
+    }
+  }, [])
+
   const dismissSuccess = useCallback(() => {
     setConnectedBroker(null)
+  }, [])
+
+  const dismissBatchSummary = useCallback(() => {
+    setBatchResult(null)
   }, [])
 
   const handleAddChannel = useCallback(() => {
@@ -72,6 +94,13 @@ export function AddTradingAccountProvider({ children }: { children: ReactNode })
     setConnectedBroker(null)
     requestConfigureBroker(brokerId)
   }, [connectedBroker, requestConfigureBroker])
+
+  const handleViewBrokers = useCallback(() => {
+    setBatchResult(null)
+    if (pathname !== '/brokers') {
+      navigate('/brokers')
+    }
+  }, [navigate, pathname])
 
   const value = useMemo(
     () => ({
@@ -103,6 +132,7 @@ export function AddTradingAccountProvider({ children }: { children: ReactNode })
         open={open}
         onClose={handleClose}
         onSuccess={handleConnectSuccess}
+        onBatchSuccess={handleBatchSuccess}
       />
       <BrokerConnectedSuccessModal
         open={successBroker != null}
@@ -121,6 +151,13 @@ export function AddTradingAccountProvider({ children }: { children: ReactNode })
         onAddChannel={handleAddChannel}
         onConfigure={handleConfigure}
         onDismiss={dismissSuccess}
+      />
+      <BrokerBulkConnectSummaryModal
+        open={batchResult != null}
+        result={batchResult}
+        copy={bc}
+        onDismiss={dismissBatchSummary}
+        onViewBrokers={handleViewBrokers}
       />
     </AddTradingAccountContext.Provider>
   )

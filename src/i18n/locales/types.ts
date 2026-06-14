@@ -329,6 +329,41 @@ export interface AccountConfigConnectFormTranslations {
   connectingStepSlow: string
   validationRequired: string
   connectFailed: string
+  addMoreButton: string
+  removeRowAria: string
+  connectMultipleButton: string
+  uploadAccountsButton: string
+  accountRowTitle: string
+}
+
+export interface AccountConfigBulkConnectTranslations {
+  title: string
+  securityNote: string
+  downloadTemplate: string
+  uploadCsv: string
+  uploadHint: string
+  previewTitle: string
+  colLabel: string
+  colServer: string
+  colLogin: string
+  colPassword: string
+  colStatus: string
+  parseErrorLine: string
+  noValidRows: string
+  connectCount: string
+  connectingTitle: string
+  statusQueued: string
+  statusLinking: string
+  statusLinked: string
+  statusFailed: string
+  statusSkippedDuplicate: string
+  statusSkippedLimit: string
+  statusSkippedInvalid: string
+  summaryTitle: string
+  summaryBody: string
+  summaryFailedTitle: string
+  dismiss: string
+  viewBrokers: string
 }
 
 export interface AccountConfigBrokerListTranslations {
@@ -412,6 +447,7 @@ export interface AccountConfigTranslations {
   brokerList: AccountConfigBrokerListTranslations
   configureModal: ConfigureModalTranslations
   brokerConnectedSuccess: AccountConfigBrokerConnectedSuccessTranslations
+  bulkConnect: AccountConfigBulkConnectTranslations
 }
 
 export interface TradesTranslations {
