@@ -49,6 +49,7 @@ export async function fetchBrokerMtTrades(opts: {
 } = {}): Promise<MtTrade[]> {
   const scope = opts.scope ?? 'dashboard'
   const historyDays = opts.historyDays ?? DEFAULT_HISTORY_DAYS[scope]
+  const historyProfile = opts.historyProfile ?? (scope === 'dashboard' ? 'dashboard' : 'trades')
   const { tomorrowStart: historyTo } = getLocalCalendarDayBounds()
   const historyFrom = scope === 'dashboard' && opts.accounts?.length
     ? resolveDashboardMtHistoryFrom(opts.accounts, historyDays)
@@ -61,7 +62,7 @@ export async function fetchBrokerMtTrades(opts: {
   const res = await fxsocketBroker.trades({
     brokerId: opts.brokerId,
     scope: 'all',
-    historyProfile: opts.historyProfile ?? 'trades',
+    historyProfile,
     historyFrom: formatLocalMtApiDateTime(historyFrom),
     historyTo: formatLocalMtApiDateTime(historyTo),
     ...(opts.limit != null && opts.limit > 0 ? { limit: opts.limit } : {}),

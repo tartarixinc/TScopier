@@ -71,7 +71,10 @@ export class FxsocketStreamManager {
         apiKey: this.apiKey,
         baseUrl: this.baseUrl,
         onConnectionChange: (connected) => {
-          if (!connected && stream && stream.handlers.size === 0) {
+          if (connected) return
+          if (!this.streams.has(id)) return
+          const current = this.streams.get(id)
+          if (current && current.handlers.size === 0) {
             this.teardownAccount(id)
           }
         },
@@ -195,8 +198,8 @@ export class FxsocketStreamManager {
   private teardownAccount(accountId: string): void {
     const stream = this.streams.get(accountId)
     if (!stream) return
-    stream.client.close()
     this.streams.delete(accountId)
+    stream.client.close()
   }
 }
 

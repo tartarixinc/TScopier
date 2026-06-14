@@ -142,7 +142,6 @@ export class FxsocketWsClient {
       try { this.ws.close() } catch { /* ignore */ }
       this.ws = null
     }
-    this.onConnectionChange?.(false)
   }
 
   subscribe(frame: Omit<FxsocketWsSubscribeFrame, 'action'>): void {

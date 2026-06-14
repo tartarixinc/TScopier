@@ -88,7 +88,7 @@ export function preferAuthoritativeChartTrades(
   const nextScore = chartTradesQualityScore(next)
 
   if (opts.hasMtBroker) {
-    if (nextScore === 0) return prev
+    if (nextScore === 0) return prev.length === 0 && next.length > 0 ? next : prev
     if (prevScore > nextScore) return prev
   } else if (prevScore > nextScore) {
     return prev

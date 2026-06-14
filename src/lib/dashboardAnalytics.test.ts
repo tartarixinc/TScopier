@@ -30,6 +30,13 @@ test('chartTradesQualityScore counts only closed rows with finite profit', () =>
   assert.equal(chartTradesQualityScore([mtClosed, dbClosedNullProfit, { ...mtClosed, status: 'open' }]), 1)
 })
 
+test('preferAuthoritativeChartTrades: MT broker accepts DB seed when prev empty', () => {
+  const prev: DashboardChartTrade[] = []
+  const next = [dbClosedNullProfit, dbClosedNullProfit]
+  const out = preferAuthoritativeChartTrades(prev, next, { hasMtBroker: true })
+  assert.equal(out, next)
+})
+
 test('preferAuthoritativeChartTrades: MT broker keeps prev when DB flash has null profits', () => {
   const prev = [mtClosed, { ...mtClosed, profit: 50 }]
   const next = [dbClosedNullProfit, dbClosedNullProfit, dbClosedNullProfit]
@@ -54,18 +61,6 @@ test('resolveAnalyticsChartTrades: MT broker falls back to DB when MT snapshot e
     opened_at: '2026-06-10T09:00:00',
   }]
   assert.equal(resolveAnalyticsChartTrades([], db, true).length, 1)
-})
-
-test('resolveAnalyticsChartTrades: MT broker ignores DB rows', () => {
-  const db = [{
-    broker_account_id: 'b1',
-    lot_size: 0.1,
-    profit: 999,
-    status: 'closed',
-    closed_at: '2026-06-10T10:00:00',
-    opened_at: '2026-06-10T09:00:00',
-  }]
-  assert.equal(resolveAnalyticsChartTrades([], db, true).length, 0)
 })
 
 test('deriveDashboardAnalytics: today profit matches trade outcome bucket', () => {

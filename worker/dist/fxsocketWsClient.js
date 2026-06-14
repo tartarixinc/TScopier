@@ -108,7 +108,6 @@ class FxsocketWsClient {
             catch { /* ignore */ }
             this.ws = null;
         }
-        this.onConnectionChange?.(false);
     }
     subscribe(frame) {
         const full = { action: 'subscribe', ...frame };

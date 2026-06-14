@@ -1,5 +1,5 @@
-export const DASHBOARD_CACHE_VERSION = 'dashboard_cache_v16'
-export const DASHBOARD_CACHE_LEGACY_KEYS = ['dashboard_cache_v15', 'dashboard_cache_v11', 'dashboard_cache_v10', 'dashboard_cache_v9', 'dashboard_cache_v8', 'dashboard_cache_v7'] as const
+export const DASHBOARD_CACHE_VERSION = 'dashboard_cache_v18'
+export const DASHBOARD_CACHE_LEGACY_KEYS = ['dashboard_cache_v17', 'dashboard_cache_v16', 'dashboard_cache_v15', 'dashboard_cache_v11', 'dashboard_cache_v10', 'dashboard_cache_v9', 'dashboard_cache_v8', 'dashboard_cache_v7'] as const
 export const DASHBOARD_ACTIVE_USER_KEY = 'dashboard_cache_active_user_id'
 
 export type DashboardCacheTimestamps = {

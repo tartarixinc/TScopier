@@ -114,6 +114,8 @@ import {
 } from '../../lib/linkedAccountSort'
 
 const DASHBOARD_MT_HISTORY_LIMIT = 5000
+/** Keep spinner visible briefly after load completes so charts/metrics can paint. */
+const DASHBOARD_METRICS_LOADER_DISMISS_MS = 5_000
 
 /** Shared column template for dashboard Copier Logs header + rows. */
 const DASHBOARD_COPIER_LOG_GRID =
@@ -575,7 +577,7 @@ function DashboardMetricsLoader({ message }: { message: string }) {
 
 function hasDashboardAnalyticsData(analytics: DashboardAnalytics | null | undefined): boolean {
   if (!analytics) return false
-  return analytics.tradeVolume7Day.some(d => d.profit !== 0 || d.loss !== 0)
+  return analytics.tradeVolume7Day.some(d => d.profit !== 0 || d.loss !== 0 || d.volume > 0)
     || analytics.channelProfit7d.length > 0
     || analytics.tradesTaken > 0
     || analytics.todayProfit !== 0
@@ -901,6 +903,10 @@ export function DashboardPage() {
   }
   const bootCache = bootSnapshotRef.current
   const hadBootCacheRef = useRef(Boolean(bootCache?.stats))
+  /** True when this tab already loaded dashboard data earlier (SPA revisit, not hard refresh). */
+  const tabSessionWarmRef = useRef(
+    Boolean(user?.id && isDashboardSessionLoaded(user.id)),
+  )
   const [stats, setStats] = useState<DashboardStats>(() => statsFromDashboardCache(bootCache))
   const [copierLogs, setCopierLogs] = useState<Signal[]>(() => bootCache?.copierLogs ?? [])
   const [copierLogSymbols, setCopierLogSymbols] = useState<Record<string, string>>(
@@ -932,9 +938,10 @@ export function DashboardPage() {
   const lastMtTradesRefreshRef = useRef<number>(0)
   /** Ignore stale responses when a newer *fresh* loadDashboard run started. */
   const loadGenerationRef = useRef(0)
+  const dashboardMetricsDismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const dashboardReadyRef = useRef(Boolean(bootCache?.stats))
   const [dashboardMetricsLoading, setDashboardMetricsLoading] = useState(
-    () => !isDashboardBootReady(bootCache),
+    () => !(tabSessionWarmRef.current && isDashboardBootReady(bootCache)),
   )
   const [dashboardChartsReady, setDashboardChartsReady] = useState(() => bootDashboardChartsReady(bootCache))
   const linkedBalancesRef = useRef<Record<string, BrokerBalanceSnapshot>>(bootCache?.linkedAccountBalances ?? {})
@@ -965,6 +972,28 @@ export function DashboardPage() {
   useEffect(() => {
     statsRef.current = stats
   }, [stats])
+
+  const scheduleDismissDashboardMetricsLoader = () => {
+    if (dashboardMetricsDismissTimerRef.current) {
+      clearTimeout(dashboardMetricsDismissTimerRef.current)
+    }
+    dashboardMetricsDismissTimerRef.current = window.setTimeout(() => {
+      dashboardMetricsDismissTimerRef.current = null
+      setDashboardMetricsLoading(false)
+    }, DASHBOARD_METRICS_LOADER_DISMISS_MS)
+  }
+
+  const cancelDismissDashboardMetricsLoader = () => {
+    if (dashboardMetricsDismissTimerRef.current) {
+      clearTimeout(dashboardMetricsDismissTimerRef.current)
+      dashboardMetricsDismissTimerRef.current = null
+    }
+  }
+
+  const showDashboardMetricsLoader = () => {
+    cancelDismissDashboardMetricsLoader()
+    setDashboardMetricsLoading(true)
+  }
 
   useLayoutEffect(() => {
     if (!user?.id) return
@@ -1000,7 +1029,12 @@ export function DashboardPage() {
       }, { resetLiveRefs: isUserSwitch })
       markDashboardSessionLoaded(user.id)
       dashboardReadyRef.current = isDashboardBootReady(cached)
-      setDashboardMetricsLoading(!isDashboardBootReady(cached))
+      if (tabSessionWarmRef.current && isDashboardBootReady(cached)) {
+        cancelDismissDashboardMetricsLoader()
+        setDashboardMetricsLoading(false)
+      } else if (!isDashboardBootReady(cached)) {
+        showDashboardMetricsLoader()
+      }
       return
     }
 
@@ -1019,10 +1053,13 @@ export function DashboardPage() {
       setChannelLinkMaps(EMPTY_CHANNEL_LINK_MAPS)
       setCachedAnalytics(null)
       setDashboardChartsReady(false)
-      setDashboardMetricsLoading(true)
+      showDashboardMetricsLoader()
       hadBootCacheRef.current = false
     }
     dashboardReadyRef.current = false
+    return () => {
+      cancelDismissDashboardMetricsLoader()
+    }
   }, [user?.id])
 
   /** Keep last chart snapshot visible while a refresh briefly returns empty data. */
@@ -1044,9 +1081,28 @@ export function DashboardPage() {
   )
 
   const displayAnalytics = useMemo(() => {
-    if (hasDashboardAnalyticsData(dashboardAnalytics)) return dashboardAnalytics
-    if (hasDashboardAnalyticsData(cachedAnalytics)) return cachedAnalytics!
-    return dashboardAnalytics
+    const live = dashboardAnalytics
+    if (hasDashboardAnalyticsData(live)) return live
+    if (cachedAnalytics && hasDashboardAnalyticsData(cachedAnalytics)) return cachedAnalytics
+    if (!cachedAnalytics) return live
+    return {
+      ...live,
+      todayProfit: live.todayProfit !== 0 ? live.todayProfit : cachedAnalytics.todayProfit,
+      yesterdayProfit: live.yesterdayProfit !== 0 ? live.yesterdayProfit : cachedAnalytics.yesterdayProfit,
+      tradeVolume7Day: live.tradeVolume7Day.some(d => d.volume > 0 || d.profit !== 0 || d.loss !== 0)
+        ? live.tradeVolume7Day
+        : cachedAnalytics.tradeVolume7Day,
+      channelProfit7d: live.channelProfit7d.length > 0
+        ? live.channelProfit7d
+        : cachedAnalytics.channelProfit7d,
+      tradesTaken: live.tradesTaken > 0 ? live.tradesTaken : cachedAnalytics.tradesTaken,
+      tradesTakenYesterday: live.tradesTakenYesterday > 0
+        ? live.tradesTakenYesterday
+        : cachedAnalytics.tradesTakenYesterday,
+      tradesWon: live.tradesWon > 0 ? live.tradesWon : cachedAnalytics.tradesWon,
+      tradesLost: live.tradesLost > 0 ? live.tradesLost : cachedAnalytics.tradesLost,
+      tradesBreakeven: live.tradesBreakeven > 0 ? live.tradesBreakeven : cachedAnalytics.tradesBreakeven,
+    }
   }, [dashboardAnalytics, cachedAnalytics])
 
   /** Headline stats: prefer display analytics (live or cached) when available. */
@@ -1264,7 +1320,7 @@ export function DashboardPage() {
       isMtTimestampInRange(dateString, start, end)
 
     // Prefer live MT trades when we have a cached snapshot; otherwise use the
-    // local `trades` table. The live snapshot is refreshed in the background.
+    // local `trades` table until the broker history refresh lands.
     const mtTrades = mtTradesRef.current
     const hasMtCache = Array.isArray(mtTrades) && mtTrades.length > 0
     const useMtTrades = hasMtCache
@@ -1588,78 +1644,45 @@ export function DashboardPage() {
     linkedBalancesRef.current = mergedBalances
     setLinkedAccountBalances(mergedBalances)
     setAiExpertLogs(aiLogs)
-    if (!mtBrokerConnected) {
-      setChartTrades(prev => applyAuthoritativeChartTrades(prev, chartFromDb, false))
+
+    if (mtBrokerConnected && (syncLive || fresh)) {
+      await refreshMtTrades(brokerAccounts, { force: true, preloadedTrades: prefetchedMtTrades })
+      if (fresh && generation !== loadGenerationRef.current) return
     }
 
-    if (syncLive || mtBrokerConnected) {
-      // Live balance/equity/positions come from useFxsocketStream; apply broker history for stats/charts.
-      await Promise.allSettled([
-        refreshMtTrades(brokerAccounts, { force: true, preloadedTrades: prefetchedMtTrades }),
-      ])
-      if (fresh && generation !== loadGenerationRef.current) return
-      const chartFromMt = resolveAnalyticsChartTrades(mtTradesRef.current, allTrades, mtBrokerConnected)
-      const chartForState = chartFromMt.length > 0 ? chartFromMt : chartTradesRef.current
-      setChartTrades(prev => applyAuthoritativeChartTrades(prev, chartForState, mtBrokerConnected))
-      const analytics = computeDashboardAnalyticsSnapshot(
-        chartForState,
-        mtTradesRef.current ?? [],
-        channelMaps,
-        t.performance.unlinkedChannel,
-        sortedBrokerAccounts,
-      )
-      setCachedAnalytics(analytics)
-      if (user) {
-        const logSymbolsForCache = buildCopierLogSymbolLabels(logs, await symbolLookupPromise)
-        writeDashboardCache(user.id, {
-          stats: statsRef.current,
-          copierLogs: logs,
-          copierLogSymbols: logSymbolsForCache,
-          channelDisplayNames: channelNames,
-          linkedAccounts: sortedBrokerAccounts,
-          linkedAccountBalances: linkedBalancesRef.current,
-          chartTrades: chartForState,
-          aiExpertLogs: aiLogs,
-          mtTrades: mtTradesRef.current ?? undefined,
-          channelLinkMaps: channelMaps,
-          cachedAnalytics: analytics,
-        })
-        setCopierLogs(logs)
-        setCopierLogSymbols(logSymbolsForCache)
-      }
-    } else if (user) {
-      const chartForCache = mtBrokerConnected
-        ? (chartTradesRef.current.length > 0 ? chartTradesRef.current : chartFromDb)
-        : chartFromDb
-      const analytics = computeDashboardAnalyticsSnapshot(
-        chartForCache,
-        mtTradesRef.current ?? [],
-        channelMaps,
-        t.performance.unlinkedChannel,
-        sortedBrokerAccounts,
-      )
-      setCachedAnalytics(analytics)
-      const logSymbolsForCache = buildCopierLogSymbolLabels(logs, await symbolLookupPromise)
+    const chartForState = resolveAnalyticsChartTrades(mtTradesRef.current, allTrades, mtBrokerConnected)
+    const chartToApply = chartForState.length > 0 ? chartForState : chartFromDb
+    setChartTrades(prev => applyAuthoritativeChartTrades(prev, chartToApply, mtBrokerConnected))
+
+    const analytics = computeDashboardAnalyticsSnapshot(
+      chartToApply,
+      mtTradesRef.current ?? [],
+      channelMaps,
+      t.performance.unlinkedChannel,
+      sortedBrokerAccounts,
+    )
+    setCachedAnalytics(analytics)
+
+    const logSymbols = buildCopierLogSymbolLabels(logs, await symbolLookupPromise)
+    setCopierLogs(logs)
+    setCopierLogSymbols(logSymbols)
+
+    if (user) {
       writeDashboardCache(user.id, {
-        stats: mergedAfterDb,
+        stats: statsRef.current,
         copierLogs: logs,
-        copierLogSymbols: logSymbolsForCache,
+        copierLogSymbols: logSymbols,
         channelDisplayNames: channelNames,
         linkedAccounts: sortedBrokerAccounts,
-        linkedAccountBalances: mergedBalances,
-        chartTrades: chartForCache,
+        linkedAccountBalances: linkedBalancesRef.current,
+        chartTrades: chartToApply,
         aiExpertLogs: aiLogs,
         mtTrades: mtTradesRef.current ?? undefined,
         channelLinkMaps: channelMaps,
         cachedAnalytics: analytics,
       })
-      setCopierLogs(logs)
-      setCopierLogSymbols(logSymbolsForCache)
-    } else {
-      const logSymbols = buildCopierLogSymbolLabels(logs, await symbolLookupPromise)
-      setCopierLogs(logs)
-      setCopierLogSymbols(logSymbols)
     }
+
     if (fresh && generation !== loadGenerationRef.current) return
     } finally {
       if (!fresh || generation === loadGenerationRef.current) {
@@ -1871,24 +1894,33 @@ export function DashboardPage() {
     if (isDashboardBootReady(cached)) {
       dashboardReadyRef.current = true
       setDashboardChartsReady(true)
-      setDashboardMetricsLoading(false)
+      if (tabSessionWarmRef.current) {
+        cancelDismissDashboardMetricsLoader()
+        setDashboardMetricsLoading(false)
+      } else {
+        scheduleDismissDashboardMetricsLoader()
+      }
+      if (cached?.linkedAccounts?.some(isFxsocketLinkedBroker)) {
+        void loadDashboard({ fresh: false, syncLive: true })
+      }
       return
     }
 
     let cancelled = false
     void (async () => {
-      setDashboardMetricsLoading(true)
+      showDashboardMetricsLoader()
       try {
         await loadDashboard({ fresh: true, syncLive: true })
       } finally {
         if (!cancelled) {
-          setDashboardMetricsLoading(false)
+          scheduleDismissDashboardMetricsLoader()
         }
       }
     })()
 
     return () => {
       cancelled = true
+      cancelDismissDashboardMetricsLoader()
     }
   }, [user, brokersLoading])
 
@@ -2112,7 +2144,7 @@ export function DashboardPage() {
     mtTrades.length === 0 &&
     (hasActiveMtBroker(linkedAccounts) || Boolean(bootCache?.linkedAccounts?.some(isFxsocketLinkedBroker)))
 
-  const showDashboardLoader = brokersLoading || dashboardMetricsLoading
+  const showDashboardLoader = dashboardMetricsLoading
 
   return (
     <PageShell maxWidth="xl" spacing="none" className="space-y-6">
