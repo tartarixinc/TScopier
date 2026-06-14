@@ -2,7 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { getLocalCalendarDayBounds } from '../lib/dashboardTradeStats'
 import { formatLocalMtApiDateTime } from '../lib/mtApiDateTime'
 import { fxsocketBroker, type MtTrade } from '../lib/fxsocketBroker'
-import { enrichMtTradesTimestamps } from '../lib/mtTradeTimestamps'
+import { TRADES_PAGE_HISTORY_DAYS, TRADES_PAGE_MAX_RESULTS } from '../lib/tradesConstants'
+import {
+  enrichMtTradesTimestamps,
+  hydrateMtTradesTimesFromBrokers,
+  mtTradeMissingDisplayTime,
+} from '../lib/mtTradeTimestamps'
 import { readSessionCache, writeSessionCache } from '../lib/sessionDataCache'
 import {
   TRADES_CACHE_TTL_MS,
@@ -15,9 +20,7 @@ import { useDashboardRealtime } from './useDashboardRealtime'
 const AUTO_REFRESH_MS = 15_000
 const VISIBILITY_STALE_MS = 30_000
 /** Max rows returned for the Account Trades page (newest first). */
-export const TRADES_PAGE_MAX_RESULTS = 2000
-/** History window for trades list — enough for recent activity without pulling years of deals. */
-export const TRADES_PAGE_HISTORY_DAYS = 7
+export { TRADES_PAGE_MAX_RESULTS, TRADES_PAGE_HISTORY_DAYS } from '../lib/tradesConstants'
 
 async function fetchTradesFromMt(): Promise<MtTrade[]> {
   const { tomorrowStart: historyTo } = getLocalCalendarDayBounds()
@@ -30,9 +33,10 @@ async function fetchTradesFromMt(): Promise<MtTrade[]> {
     historyTo: formatLocalMtApiDateTime(historyTo),
     limit: TRADES_PAGE_MAX_RESULTS,
   })
-  return enrichMtTradesTimestamps(
+  const normalized = enrichMtTradesTimestamps(
     (res.trades ?? []).slice(0, TRADES_PAGE_MAX_RESULTS),
   )
+  return hydrateMtTradesTimesFromBrokers(normalized)
 }
 
 export function useTradesData(userId: string | undefined) {
@@ -64,7 +68,8 @@ export function useTradesData(userId: string | undefined) {
       if (cached && !opts?.force) {
         applyPayload(cached.data, cached.fetchedAt)
         if (!opts?.background) setLoading(false)
-        if (Date.now() - cached.fetchedAt < TRADES_CACHE_TTL_MS) return
+        const staleMissingTimes = cached.data.trades.some(mtTradeMissingDisplayTime)
+        if (!staleMissingTimes && Date.now() - cached.fetchedAt < TRADES_CACHE_TTL_MS) return
       }
 
       inflightRef.current = true
@@ -112,7 +117,8 @@ export function useTradesData(userId: string | undefined) {
       if (cached) {
         applyPayload(cached.data, cached.fetchedAt)
         setLoading(false)
-        if (Date.now() - cached.fetchedAt < TRADES_CACHE_TTL_MS) return
+        const staleMissingTimes = cached.data.trades.some(mtTradeMissingDisplayTime)
+        if (!staleMissingTimes && Date.now() - cached.fetchedAt < TRADES_CACHE_TTL_MS) return
         void load({ background: true })
         return
       }

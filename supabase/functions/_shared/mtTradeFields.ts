@@ -127,16 +127,37 @@ function epochMsFromUnknown(v: unknown): number | null {
   if (typeof v === "number" && Number.isFinite(v) && v > 0) {
     return v < 1e12 ? v * 1000 : v
   }
-  if (typeof v === "string") {
-    const trimmed = v.trim()
-    if (!trimmed) return null
-    if (/^\d{10,13}$/.test(trimmed)) {
-      const n = Number(trimmed)
-      if (Number.isFinite(n) && n > 0) return n < 1e12 ? n * 1000 : n
-    }
-    const parsed = Date.parse(trimmed)
+  if (typeof v !== "string") return null
+
+  const trimmed = v.trim()
+  if (!trimmed) return null
+
+  if (/^\d{10,13}$/.test(trimmed)) {
+    const n = Number(trimmed)
+    if (Number.isFinite(n) && n > 0) return n < 1e12 ? n * 1000 : n
+  }
+
+  const mtBroker = trimmed.match(
+    /^(\d{4})[.\-/](\d{2})[.\-/](\d{2})(?:[ T](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?)?$/,
+  )
+  if (mtBroker) {
+    const [, y, mo, d, h = "00", mi = "00", s = "00", ms] = mtBroker
+    const iso = `${y}-${mo}-${d}T${h}:${mi}:${s}${ms ? `.${ms.padEnd(3, "0").slice(0, 3)}` : ""}`
+    const parsed = Date.parse(iso)
     if (Number.isFinite(parsed)) return parsed
   }
+
+  const normalized = trimmed.includes("T")
+    ? trimmed.replace(/\./g, "-")
+    : trimmed.replace(/\./g, "-").replace(" ", "T")
+  let parsed = Date.parse(normalized)
+  if (Number.isFinite(parsed)) return parsed
+
+  if (!/[zZ]|[+-]\d{2}/.test(trimmed)) {
+    parsed = Date.parse(`${normalized}Z`)
+    if (Number.isFinite(parsed)) return parsed
+  }
+
   return null
 }
 
@@ -154,13 +175,16 @@ function timestampIsoFromFields(
 
 const MT_OPEN_TIME_KEYS = [
   "openTime", "OpenTime", "open_time", "timeOpen", "TimeOpen",
-  "timeSetup", "TimeSetup", "setupTime", "SetupTime",
+  "timeSetup", "TimeSetup", "time_setup", "Time_Setup", "setupTime", "SetupTime",
+  "brokerTime", "BrokerTime",
   "created", "Created",
 ] as const
 
 const MT_CLOSE_TIME_KEYS = [
   "closeTime", "CloseTime", "close_time", "timeClose", "TimeClose",
-  "doneTime", "DoneTime", "historyTime", "HistoryTime",
+  "doneTime", "DoneTime", "time_done", "Time_Done", "timeDone", "TimeDone",
+  "doneBrokerTime", "DoneBrokerTime",
+  "historyTime", "HistoryTime",
 ] as const
 
 /** Opening / setup time for a deal or open order. */

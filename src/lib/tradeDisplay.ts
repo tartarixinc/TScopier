@@ -1,6 +1,6 @@
 import type { MtTrade } from './fxsocketBroker'
-import { parseMtHistoryTimestamp } from './mtApiDateTime'
 import { directionDisplayLabel, resolveTradeDisplayDirection } from './tradeDirection'
+import { formatTradeTimeLabel, resolveTradeDisplayTimeRaw } from './mtTradeTimestamps'
 
 export function formatTradePrice(value: number | null | undefined): string {
   if (value === null || value === undefined) return '—'
@@ -35,25 +35,6 @@ export function tradeOpenLegProfit(trade: MtTrade): number | null {
   return Math.round((profit + swap + commission) * 100) / 100
 }
 
-export function formatTradeTimeLabel(iso: string | number | null | undefined): string {
-  const ms = parseMtHistoryTimestamp(iso)
-  if (ms == null) return '—'
-  return new Date(ms).toLocaleString([], {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
-export function resolveTradeDisplayTimeIso(trade: MtTrade): string | number | null {
-  if (trade.status === 'closed') {
-    return trade.closed_at ?? trade.opened_at
-  }
-  return trade.opened_at
-}
-
 export function getTradeDisplayMeta(trade: MtTrade) {
   const displayDirection = resolveTradeDisplayDirection(trade)
   const isBuy = displayDirection === 'buy'
@@ -67,7 +48,7 @@ export function getTradeDisplayMeta(trade: MtTrade) {
     closed: { variant: 'neutral', label: 'Closed' },
   }
   const status = statusConfig[trade.status] ?? { variant: 'neutral' as const, label: trade.status }
-  const timeLabel = formatTradeTimeLabel(resolveTradeDisplayTimeIso(trade))
+  const timeLabel = formatTradeTimeLabel(resolveTradeDisplayTimeRaw(trade))
   const broker = trade.broker_name || trade.broker_label || '—'
   const directionLabel = directionDisplayLabel(displayDirection)
 
