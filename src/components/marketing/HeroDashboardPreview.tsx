@@ -17,7 +17,7 @@ import {
   ScrollText,
   Search,
   Send,
-  Settings,
+  Landmark,
 } from 'lucide-react'
 import { LanguageSwitcher } from '../auth/LanguageSwitcher'
 import { CopierActiveIndicator } from '../layout/CopierActiveIndicator'
@@ -379,7 +379,7 @@ export function HeroDashboardPreview() {
       label: t.nav.sections.general,
       items: [
         { icon: LayoutDashboard, label: t.nav.items.dashboard, active: true },
-        { icon: Settings, label: t.nav.items.brokers, active: false },
+        { icon: Landmark, label: t.nav.items.brokers, active: false },
         { icon: History, label: t.nav.items.trades, active: false },
       ],
     },

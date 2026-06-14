@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Settings, History, Send, LayoutTemplate, ScrollText, Newspaper, Calendar, ChartBar as BarChart2, ChevronDown, ChartNoAxesColumn, PanelLeftClose, PanelLeftOpen, Menu, X, CreditCard, Share2 } from 'lucide-react'
+import { LayoutDashboard, Settings, History, Send, LayoutTemplate, ScrollText, Newspaper, Calendar, ChartBar as BarChart2, ChevronDown, ChartNoAxesColumn, PanelLeftClose, PanelLeftOpen, Menu, X, CreditCard, Share2, Landmark } from 'lucide-react'
 import clsx from 'clsx'
 import { TscopierLogo } from '../ui/TscopierLogo'
 import { AppSearchDesktop, AppSearchMobileTrigger, AppSearchProvider } from './AppSearch'
@@ -101,7 +101,7 @@ export function AppLayout() {
         label: t.nav.sections.general,
         items: [
           { to: '/dashboard', icon: LayoutDashboard, label: t.nav.items.dashboard },
-          { to: '/brokers', icon: Settings, label: t.nav.items.brokers },
+          { to: '/brokers', icon: Landmark, label: t.nav.items.brokers },
           { to: '/account-trades', icon: History, label: t.nav.items.trades, showOpenTradesIndicator: true },
         ],
       },

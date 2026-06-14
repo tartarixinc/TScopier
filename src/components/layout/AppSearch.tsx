@@ -23,6 +23,7 @@ import {
   Calendar,
   ChartBar as BarChart2,
   ChartNoAxesColumn,
+  Landmark,
   LifeBuoy,
   Lightbulb,
   Handshake,
@@ -46,7 +47,7 @@ import {
 
 const PAGE_ICONS: Record<string, typeof LayoutDashboard> = {
   '/dashboard': LayoutDashboard,
-  '/brokers': Settings,
+  '/brokers': Landmark,
   '/account-trades': History,
   '/settings': Settings,
   '/channels': Send,
