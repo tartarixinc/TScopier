@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { getLocalCalendarDayBounds } from '../lib/dashboardTradeStats'
 import { formatBrokerHistoryDate } from '../lib/mtApiDateTime'
 import { fxsocketBroker, type MtTrade } from '../lib/fxsocketBroker'
-import { TRADES_PAGE_HISTORY_DAYS, TRADES_PAGE_MAX_RESULTS } from '../lib/tradesConstants'
+import { BROKER_FULL_HISTORY_FROM } from '../lib/tradesConstants'
 import { enrichMtTradesTimestamps, hydrateMtTradesTimesFromBrokers, mtTradeMissingDisplayTime } from '../lib/mtTradeTimestamps'
 import { readSessionCache, writeSessionCache } from '../lib/sessionDataCache'
 import {
@@ -15,23 +15,16 @@ import { useDashboardRealtime } from './useDashboardRealtime'
 
 const AUTO_REFRESH_MS = 15_000
 const VISIBILITY_STALE_MS = 30_000
-/** Max rows returned for the Account Trades page (newest first). */
-export { TRADES_PAGE_MAX_RESULTS, TRADES_PAGE_HISTORY_DAYS } from '../lib/tradesConstants'
 
 async function fetchTradesFromMt(): Promise<MtTrade[]> {
   const { tomorrowStart: historyTo } = getLocalCalendarDayBounds()
-  const historyFrom = new Date()
-  historyFrom.setDate(historyFrom.getDate() - TRADES_PAGE_HISTORY_DAYS)
   const res = await fxsocketBroker.trades({
     scope: 'all',
     historyProfile: 'trades',
-    historyFrom: formatBrokerHistoryDate(historyFrom),
+    historyFrom: BROKER_FULL_HISTORY_FROM,
     historyTo: formatBrokerHistoryDate(historyTo),
-    limit: TRADES_PAGE_MAX_RESULTS,
   })
-  let normalized = enrichMtTradesTimestamps(
-    (res.trades ?? []).slice(0, TRADES_PAGE_MAX_RESULTS),
-  )
+  let normalized = enrichMtTradesTimestamps(res.trades ?? [])
   if (normalized.some(mtTradeMissingDisplayTime)) {
     const { trades: hydrated, stats } = await hydrateMtTradesTimesFromBrokers(normalized)
     normalized = hydrated

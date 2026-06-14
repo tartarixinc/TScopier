@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from 'react'
 import { Link, Outlet, useNavigate } from 'react-router-dom'
 import { ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, Clock, Plus, RefreshCw } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
@@ -58,6 +58,10 @@ import {
   DASHBOARD_CACHE_LEGACY_KEYS,
   DASHBOARD_CACHE_VERSION,
   clearDashboardSessionCache,
+  getDashboardActiveUserId,
+  isDashboardSessionLoaded,
+  markDashboardSessionLoaded,
+  setDashboardActiveUserId,
 } from '../../lib/dashboardSessionCache'
 import { brokerStatsPreviewFromAccount } from '../../lib/brokerStatsNavigation'
 import { syncPerformanceCacheFromDashboard } from '../../lib/performanceCacheBridge'
@@ -475,6 +479,7 @@ type DashboardCachePayload = {
   mtTrades?: MtTrade[]
   channelLinkMaps?: PerformanceChannelLinkMaps
   cachedDay?: string
+  cachedAt?: number
 }
 
 const DEFAULT_DASHBOARD_STATS: DashboardStats = {
@@ -620,8 +625,10 @@ function writeDashboardCache(userId: string, payload: DashboardCachePayload) {
   sessionStorage.setItem(`${DASHBOARD_CACHE_VERSION}:${userId}`, JSON.stringify({
     ...payload,
     cachedDay: formatLocalCalendarDay(),
+    cachedAt: Date.now(),
   }))
   syncPerformanceCacheFromDashboard(userId)
+  markDashboardSessionLoaded(userId)
 }
 
 function readDashboardCache(userId: string): DashboardCachePayload | null {
@@ -673,6 +680,60 @@ function seedLiveBrokerStateFromBalances(
       open_pnl: typeof v.open_pnl === 'number' ? v.open_pnl : target[id]?.open_pnl,
       open_trades: typeof v.open_trades === 'number' ? v.open_trades : target[id]?.open_trades,
     }
+  }
+}
+
+type DashboardCacheApplyHandlers = {
+  setStats: (stats: DashboardStats) => void
+  setCopierLogs: (logs: Signal[]) => void
+  setCopierLogSymbols: (symbols: Record<string, string>) => void
+  setChannelDisplayNames: (names: Record<string, string>) => void
+  setLinkedAccountBalances: (balances: Record<string, BrokerBalanceSnapshot>) => void
+  setChartTrades: (trades: DashboardChartTrade[]) => void
+  setMtTrades: (trades: MtTrade[]) => void
+  setAiExpertLogs: (logs: AiExpertLogRow[]) => void
+  setChannelLinkMaps: (maps: PerformanceChannelLinkMaps) => void
+  setDashboardChartsReady: (ready: boolean) => void
+  liveBrokerStateRef: MutableRefObject<Record<string, { open_pnl?: number; open_trades?: number }>>
+  mtTradesRef: MutableRefObject<MtTrade[] | null>
+  linkedBalancesRef: MutableRefObject<Record<string, BrokerBalanceSnapshot>>
+}
+
+function applyDashboardCacheSnapshot(
+  userId: string,
+  cached: DashboardCachePayload,
+  handlers: DashboardCacheApplyHandlers,
+  opts: { resetLiveRefs?: boolean } = {},
+) {
+  const { resetLiveRefs = false } = opts
+  if (resetLiveRefs) {
+    handlers.liveBrokerStateRef.current = {}
+    handlers.mtTradesRef.current = null
+    handlers.linkedBalancesRef.current = {}
+  }
+
+  handlers.setStats(statsFromDashboardCache(cached))
+  handlers.setCopierLogs(cached.copierLogs ?? [])
+  handlers.setCopierLogSymbols(cached.copierLogSymbols ?? {})
+  handlers.setChannelDisplayNames(cached.channelDisplayNames ?? {})
+  const balances = cached.linkedAccountBalances ?? {}
+  handlers.linkedBalancesRef.current = balances
+  handlers.setLinkedAccountBalances(balances)
+  if (cached.chartTrades?.length) {
+    handlers.setChartTrades(cached.chartTrades)
+  } else if (cached.mtTrades?.length) {
+    handlers.setChartTrades(resolveDashboardChartTrades(cached.mtTrades, []))
+  }
+  if (cached.aiExpertLogs?.length) handlers.setAiExpertLogs(cached.aiExpertLogs)
+  if (cached.mtTrades?.length) {
+    handlers.setMtTrades(cached.mtTrades)
+    handlers.mtTradesRef.current = cached.mtTrades
+  }
+  if (cached.channelLinkMaps) handlers.setChannelLinkMaps(cached.channelLinkMaps)
+  syncPerformanceCacheFromDashboard(userId)
+  seedLiveBrokerStateFromBalances(balances, handlers.liveBrokerStateRef.current, cached.linkedAccounts)
+  if ((cached.chartTrades?.length ?? 0) > 0 || (cached.mtTrades?.length ?? 0) > 0) {
+    handlers.setDashboardChartsReady(true)
   }
 }
 
@@ -761,7 +822,6 @@ export function DashboardPage() {
       bootCache.linkedAccounts,
     )
   }
-  const hydratedUserRef = useRef<string | null>(null)
   const statsRef = useRef(stats)
   useEffect(() => {
     statsRef.current = stats
@@ -769,41 +829,40 @@ export function DashboardPage() {
 
   useEffect(() => {
     if (!user?.id) return
-    if (hydratedUserRef.current === user.id) return
-    const previousUser = hydratedUserRef.current
-    hydratedUserRef.current = user.id
-    if (previousUser && previousUser !== user.id) {
+
+    const previousUser = getDashboardActiveUserId()
+    const isUserSwitch = previousUser != null && previousUser !== user.id
+    if (isUserSwitch) {
       clearDashboardSessionCache(previousUser)
     }
-    liveBrokerStateRef.current = {}
-    mtTradesRef.current = null
-    linkedBalancesRef.current = {}
+    setDashboardActiveUserId(user.id)
+
     const cached = readDashboardCache(user.id)
     if (cached?.stats) {
-      setStats(statsFromDashboardCache(cached))
-      setCopierLogs(cached.copierLogs ?? [])
-      setCopierLogSymbols(cached.copierLogSymbols ?? {})
-      setChannelDisplayNames(cached.channelDisplayNames ?? {})
-      const balances = cached.linkedAccountBalances ?? {}
-      linkedBalancesRef.current = balances
-      setLinkedAccountBalances(balances)
-      if (cached.chartTrades?.length) {
-        setChartTrades(cached.chartTrades)
-      } else if (cached.mtTrades?.length) {
-        setChartTrades(resolveDashboardChartTrades(cached.mtTrades, []))
-      }
-      if (cached.aiExpertLogs?.length) setAiExpertLogs(cached.aiExpertLogs)
-      if (cached.mtTrades?.length) {
-        setMtTrades(cached.mtTrades)
-        mtTradesRef.current = cached.mtTrades
-      }
-      if (cached.channelLinkMaps) setChannelLinkMaps(cached.channelLinkMaps)
-      syncPerformanceCacheFromDashboard(user.id)
-      seedLiveBrokerStateFromBalances(balances, liveBrokerStateRef.current, cached.linkedAccounts)
-      if ((cached.chartTrades?.length ?? 0) > 0 || (cached.mtTrades?.length ?? 0) > 0) {
-        setDashboardChartsReady(true)
-      }
-    } else {
+      applyDashboardCacheSnapshot(user.id, cached, {
+        setStats,
+        setCopierLogs,
+        setCopierLogSymbols,
+        setChannelDisplayNames,
+        setLinkedAccountBalances,
+        setChartTrades,
+        setMtTrades,
+        setAiExpertLogs,
+        setChannelLinkMaps,
+        setDashboardChartsReady,
+        liveBrokerStateRef,
+        mtTradesRef,
+        linkedBalancesRef,
+      }, { resetLiveRefs: isUserSwitch })
+      markDashboardSessionLoaded(user.id)
+      dashboardReadyRef.current = true
+      return
+    }
+
+    if (isUserSwitch || !isDashboardSessionLoaded(user.id)) {
+      liveBrokerStateRef.current = {}
+      mtTradesRef.current = null
+      linkedBalancesRef.current = {}
       setStats(DEFAULT_DASHBOARD_STATS)
       setCopierLogs([])
       setCopierLogSymbols({})
@@ -813,7 +872,7 @@ export function DashboardPage() {
       setMtTrades([])
       setAiExpertLogs([])
     }
-    dashboardReadyRef.current = Boolean(cached?.stats)
+    dashboardReadyRef.current = false
   }, [user?.id])
 
   /** Keep last chart snapshot visible while a refresh briefly returns empty data. */
@@ -989,14 +1048,6 @@ export function DashboardPage() {
     return interpolate(t.common.vsYesterday, {
       amount: formatSignedMoney(delta === 0 && showWhenFlat ? 0 : delta),
     })
-  }
-
-  const formatTradesVsYesterday = (todayCount: number, yesterdayCount: number) => {
-    if (!Number.isFinite(todayCount) || !Number.isFinite(yesterdayCount)) return ''
-    const delta = todayCount - yesterdayCount
-    if (delta === 0 && todayCount === 0 && yesterdayCount === 0) return ''
-    const amount = delta > 0 ? `+${delta}` : String(delta)
-    return interpolate(t.common.vsYesterday, { amount })
   }
 
   const loadDashboard = async (opts: { fresh?: boolean; syncLive?: boolean } = {}) => {
@@ -1446,7 +1497,7 @@ export function DashboardPage() {
   }
 
   refreshQuietRef.current = () => {
-    if (!dashboardReadyRef.current) return
+    if (!dashboardReadyRef.current || !user?.id) return
     void loadDashboard({ fresh: false, syncLive: false })
   }
 
@@ -1642,6 +1693,16 @@ export function DashboardPage() {
 
   useEffect(() => {
     if (!user || brokersLoading) return
+
+    const cached = readBootstrapDashboardCache(user.id)
+    if (cached?.stats || isDashboardSessionLoaded(user.id)) {
+      dashboardReadyRef.current = true
+      if ((cached?.chartTrades?.length ?? 0) > 0 || (cached?.mtTrades?.length ?? 0) > 0) {
+        setDashboardChartsReady(true)
+      }
+      return
+    }
+
     void loadDashboard({ fresh: true, syncLive: false })
     const deferLive = window.setTimeout(() => {
       void loadDashboard({ fresh: false, syncLive: true })
@@ -1887,28 +1948,21 @@ export function DashboardPage() {
               headlineStats.tradesTaken === 0 ? (
                 t.dashboard.noClosedTradesToday
               ) : (
-                <span className="inline-flex flex-col gap-0.5">
-                  <span className="inline-flex flex-wrap items-center gap-x-1 gap-y-0.5">
-                    <span className="text-teal-600 dark:text-teal-500">
-                      {interpolate(t.common.won, { count: headlineStats.tradesWon })}
-                    </span>
-                    <span className="text-neutral-300 dark:text-neutral-600">•</span>
-                    <span className="text-error-500">
-                      {interpolate(t.common.lost, { count: headlineStats.tradesLost })}
-                    </span>
-                    {headlineStats.tradesBreakeven > 0 ? (
-                      <>
-                        <span className="text-neutral-300 dark:text-neutral-600">•</span>
-                        <span className="text-neutral-500 dark:text-neutral-400">
-                          {interpolate(t.common.breakeven, { count: headlineStats.tradesBreakeven })}
-                        </span>
-                      </>
-                    ) : null}
+                <span className="inline-flex flex-wrap items-center gap-x-1 gap-y-0.5">
+                  <span className="text-teal-600 dark:text-teal-500">
+                    {interpolate(t.common.won, { count: headlineStats.tradesWon })}
                   </span>
-                  {formatTradesVsYesterday(headlineStats.tradesTaken, headlineStats.tradesTakenYesterday) ? (
-                    <span className="text-neutral-400">
-                      {formatTradesVsYesterday(headlineStats.tradesTaken, headlineStats.tradesTakenYesterday)}
-                    </span>
+                  <span className="text-neutral-300 dark:text-neutral-600">•</span>
+                  <span className="text-error-500">
+                    {interpolate(t.common.lost, { count: headlineStats.tradesLost })}
+                  </span>
+                  {headlineStats.tradesBreakeven > 0 ? (
+                    <>
+                      <span className="text-neutral-300 dark:text-neutral-600">•</span>
+                      <span className="text-neutral-500 dark:text-neutral-400">
+                        {interpolate(t.common.breakeven, { count: headlineStats.tradesBreakeven })}
+                      </span>
+                    </>
                   ) : null}
                 </span>
               )

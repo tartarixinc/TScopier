@@ -2,7 +2,7 @@ import type { MtTrade } from './fxsocketBroker'
 import { fxsocketBroker } from './fxsocketBroker'
 import { getLocalCalendarDayBounds } from './dashboardTradeStats'
 import { formatBrokerHistoryDate, parseMtHistoryTimestamp } from './mtApiDateTime'
-import { TRADES_PAGE_HISTORY_DAYS } from './tradesConstants'
+import { BROKER_FULL_HISTORY_FROM } from './tradesConstants'
 import {
   flattenMtOrder,
   pickMtField,
@@ -201,10 +201,8 @@ export function applyCloseTimesToTrades(
 
 function tradesHistoryRange(): { from: string; to: string } {
   const { tomorrowStart: historyTo } = getLocalCalendarDayBounds()
-  const historyFrom = new Date()
-  historyFrom.setDate(historyFrom.getDate() - TRADES_PAGE_HISTORY_DAYS)
   return {
-    from: formatBrokerHistoryDate(historyFrom),
+    from: BROKER_FULL_HISTORY_FROM,
     to: formatBrokerHistoryDate(historyTo),
   }
 }

@@ -3,6 +3,8 @@ import type { BrokerAccount } from '../types/database'
 import type { FxsocketStreamSubscribeFrame } from './fxsocketStreamTypes'
 
 const FXSOCKET_EDGE_TIMEOUT_MS = 120_000
+/** Full-account PositionHistory can require many chunked broker calls. */
+const FXSOCKET_TRADES_TIMEOUT_MS = 180_000
 const FXSOCKET_CONNECT_TIMEOUT_MS = 120_000
 const FXSOCKET_WAIT_CONNECTED_MS = 180_000
 const FXSOCKET_WAIT_CONNECTED_INTERVAL_MS = 1_000
@@ -382,7 +384,7 @@ export const fxsocketBroker = {
         ...(args.historyTo ? { history_to: args.historyTo } : {}),
         ...(args.limit != null && args.limit > 0 ? { limit: args.limit } : {}),
       },
-      timeoutMs: FXSOCKET_EDGE_TIMEOUT_MS,
+      timeoutMs: FXSOCKET_TRADES_TIMEOUT_MS,
       expect: (b) => b as { trades: MtTrade[] },
     })
   },

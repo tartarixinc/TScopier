@@ -11,7 +11,7 @@ import {
   PERFORMANCE_BASELINE_HISTORY_DAYS,
   resolvePerformanceBaselineBalance,
 } from "../_shared/performanceBaseline.ts"
-import { fetchFxsocketBrokerTrades, fetchClosedHistoryForBaseline } from "../_shared/fxsocketTrades.ts"
+import { fetchFxsocketBrokerTrades, fetchClosedHistoryForBaseline, BROKER_FULL_HISTORY_FROM_DATE } from "../_shared/fxsocketTrades.ts"
 import type { MtHistoryProfile } from "../_shared/mtTradeFields.ts"
 
 const corsHeaders = {
@@ -411,15 +411,17 @@ Deno.serve(async (req: Request) => {
         : formatMtDt(new Date())
       const defaultHistoryFrom = new Date()
       defaultHistoryFrom.setDate(defaultHistoryFrom.getDate() - 90)
-      const historyFrom = typeof body.history_from === "string" && body.history_from.trim()
-        ? String(body.history_from).trim()
-        : formatMtDt(defaultHistoryFrom)
       const historyProfile: MtHistoryProfile =
         body.history_profile === "trades" ? "trades" : "dashboard"
+      const historyFrom = typeof body.history_from === "string" && body.history_from.trim()
+        ? String(body.history_from).trim()
+        : historyProfile === "trades"
+          ? BROKER_FULL_HISTORY_FROM_DATE
+          : formatMtDt(defaultHistoryFrom)
       const limitRaw = Number(body.limit ?? 0)
       const limit =
         Number.isFinite(limitRaw) && limitRaw > 0
-          ? Math.min(Math.floor(limitRaw), 2000)
+          ? Math.floor(limitRaw)
           : 0
 
       let brokers: Array<{ id: string; label: string; broker_name: string | null; fxsocket_account_id: string }> = []

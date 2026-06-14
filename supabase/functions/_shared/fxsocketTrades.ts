@@ -221,6 +221,10 @@ export async function fetchFxsocketBrokerTrades(
 }
 
 const BASELINE_HISTORY_CHUNK_DAYS = 45
+/** PositionHistory date-range chunk size (one API call per chunk). */
+const POSITION_HISTORY_CHUNK_DAYS = 365
+
+export const BROKER_FULL_HISTORY_FROM_DATE = "2000-01-01"
 
 function parseHistoryIso(iso: string): Date {
   const d = new Date(iso)
@@ -252,6 +256,34 @@ function buildHistoryChunks(fromIso: string, toIso: string): Array<{ from: strin
     cursor.setDate(cursor.getDate() + 1)
   }
   return chunks.length > 0 ? chunks : [{ from: fromIso, to: toIso }]
+}
+
+function buildPositionHistoryDateChunks(fromIso: string, toIso: string): Array<{ from: string; to: string }> {
+  const start = parseHistoryIso(fromIso)
+  const end = parseHistoryIso(toIso)
+  if (end.getTime() <= start.getTime()) {
+    return [{
+      from: toBrokerHistoryDateParam(fromIso),
+      to: toBrokerHistoryDateParam(toIso),
+    }]
+  }
+
+  const chunks: Array<{ from: string; to: string }> = []
+  let cursor = new Date(start)
+  while (cursor.getTime() < end.getTime()) {
+    const chunkEnd = new Date(cursor)
+    chunkEnd.setDate(chunkEnd.getDate() + POSITION_HISTORY_CHUNK_DAYS)
+    const boundedEnd = chunkEnd.getTime() > end.getTime() ? end : chunkEnd
+    chunks.push({
+      from: toBrokerHistoryDateParam(formatHistoryChunk(cursor)),
+      to: toBrokerHistoryDateParam(formatHistoryChunk(boundedEnd)),
+    })
+    cursor = new Date(boundedEnd)
+    cursor.setDate(cursor.getDate() + 1)
+  }
+  return chunks.length > 0
+    ? chunks
+    : [{ from: toBrokerHistoryDateParam(fromIso), to: toBrokerHistoryDateParam(toIso) }]
 }
 
 function rowCloseMs(row: Pick<FxsocketBrokerTradeRow, "closed_at" | "opened_at">): number {
@@ -393,25 +425,23 @@ export async function fetchTradesListFromPositionHistory(
   const sessionId = String(broker.fxsocket_account_id ?? "").trim()
   if (!sessionId) return []
 
-  const from = toBrokerHistoryDateParam(opts.historyFrom)
-  const to = toBrokerHistoryDateParam(opts.historyTo)
-
-  let rows: unknown[] = []
-  try {
-    rows = await fx.positionHistory(sessionId, from, to)
-  } catch {
-    return []
-  }
+  const chunks = buildPositionHistoryDateChunks(opts.historyFrom, opts.historyTo)
+  const settled = await Promise.allSettled(
+    chunks.map(chunk => fx.positionHistory(sessionId, chunk.from, chunk.to)),
+  )
 
   const seen = new Set<number>()
   const out: FxsocketBrokerTradeRow[] = []
-  for (const row of rows) {
-    if (!row || typeof row !== "object") continue
-    const trade = mapPositionHistoryRow(row as RawOrder, broker)
-    if (!trade) continue
-    if (seen.has(trade.ticket)) continue
-    seen.add(trade.ticket)
-    out.push(trade)
+  for (const result of settled) {
+    if (result.status !== "fulfilled") continue
+    for (const row of result.value) {
+      if (!row || typeof row !== "object") continue
+      const trade = mapPositionHistoryRow(row as RawOrder, broker)
+      if (!trade) continue
+      if (seen.has(trade.ticket)) continue
+      seen.add(trade.ticket)
+      out.push(trade)
+    }
   }
 
   return out.sort((a, b) => rowCloseMs(b) - rowCloseMs(a))
