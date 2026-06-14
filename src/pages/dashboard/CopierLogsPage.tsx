@@ -13,7 +13,7 @@ import type { Signal } from '../../types/database'
 import {
   buildSignalSymbolLookup,
   symbolForCopierLog,
-  type SignalSymbolLookupRow,
+  type CopierSymbolContext,
 } from '../../lib/copierLogDisplay'
 
 type Filter = 'all' | 'executed' | 'skipped' | 'failed' | 'pending'
@@ -51,12 +51,13 @@ function channelLabel(channelId: string | null | undefined, names: Record<string
 function useCopierLogDisplay(
   signal: Signal,
   channelDisplayNames: Record<string, string>,
-  symbolLookup: Map<string, SignalSymbolLookupRow>,
+  symbolContext: CopierSymbolContext,
+  batchSignals: Signal[],
   statusConfig: Record<string, { variant: StatusVariant; label: string }>,
 ) {
   const parsed = signal.parsed_data as Record<string, unknown> | null
   const action = parsed?.action as string | undefined
-  const symbol = symbolForCopierLog(signal, symbolLookup)
+  const symbol = symbolForCopierLog(signal, symbolContext, batchSignals)
   const status = statusConfig[signal.status] ?? { variant: 'neutral' as const, label: signal.status }
   const channelName = channelLabel(signal.channel_id, channelDisplayNames)
   const reason = signal.skip_reason?.trim() || '—'
@@ -79,20 +80,23 @@ function useCopierLogDisplay(
 function CopierLogCard({
   signal,
   channelDisplayNames,
-  symbolLookup,
+  symbolContext,
+  batchSignals,
   statusConfig,
   labels,
 }: {
   signal: Signal
   channelDisplayNames: Record<string, string>
-  symbolLookup: Map<string, SignalSymbolLookupRow>
+  symbolContext: CopierSymbolContext
+  batchSignals: Signal[]
   statusConfig: Record<string, { variant: StatusVariant; label: string }>
   labels: { colReason: string }
 }) {
   const { action, symbol, status, channelName, reason, messagePreview, timeLabel } = useCopierLogDisplay(
     signal,
     channelDisplayNames,
-    symbolLookup,
+    symbolContext,
+    batchSignals,
     statusConfig,
   )
 
@@ -137,18 +141,21 @@ function CopierLogCard({
 function CopierLogRow({
   signal,
   channelDisplayNames,
-  symbolLookup,
+  symbolContext,
+  batchSignals,
   statusConfig,
 }: {
   signal: Signal
   channelDisplayNames: Record<string, string>
-  symbolLookup: Map<string, SignalSymbolLookupRow>
+  symbolContext: CopierSymbolContext
+  batchSignals: Signal[]
   statusConfig: Record<string, { variant: StatusVariant; label: string }>
 }) {
   const { action, symbol, status, channelName, reasonShort, messagePreview, timeLabel } = useCopierLogDisplay(
     signal,
     channelDisplayNames,
-    symbolLookup,
+    symbolContext,
+    batchSignals,
     statusConfig,
   )
 
@@ -181,7 +188,10 @@ export function CopierLogsPage() {
   const { user } = useAuth()
   const [signals, setSignals] = useState<Signal[]>([])
   const [channelDisplayNames, setChannelDisplayNames] = useState<Record<string, string>>({})
-  const [symbolLookup, setSymbolLookup] = useState<Map<string, SignalSymbolLookupRow>>(() => new Map())
+  const [symbolContext, setSymbolContext] = useState<CopierSymbolContext>(() => ({
+    lookup: new Map(),
+    replyParentBySignalId: new Map(),
+  }))
   const [filter, setFilter] = useState<Filter>('all')
   const [loading, setLoading] = useState(true)
   const [totalCount, setTotalCount] = useState(0)
@@ -225,7 +235,7 @@ export function CopierLogsPage() {
     const loaded = ((signalsRes.data ?? []) as Signal[]).filter(s => !isNonTradeSkipReason(s.skip_reason))
     setTotalCount(signalsRes.count ?? loaded.length)
     setChannelDisplayNames(buildChannelDisplayNames((channelsRes.data ?? []) as ChannelNameRow[]))
-    setSymbolLookup(await buildSignalSymbolLookup(supabase, user.id, loaded))
+    setSymbolContext(await buildSignalSymbolLookup(supabase, user.id, loaded))
     setSignals(loaded)
     setLoading(false)
   }, [user, filter, page, pageSize])
@@ -330,7 +340,8 @@ export function CopierLogsPage() {
                   key={signal.id}
                   signal={signal}
                   channelDisplayNames={channelDisplayNames}
-                  symbolLookup={symbolLookup}
+                  symbolContext={symbolContext}
+                  batchSignals={signals}
                   statusConfig={statusConfig}
                   labels={cardLabels}
                 />
@@ -352,7 +363,8 @@ export function CopierLogsPage() {
                     key={signal.id}
                     signal={signal}
                     channelDisplayNames={channelDisplayNames}
-                    symbolLookup={symbolLookup}
+                    symbolContext={symbolContext}
+                  batchSignals={signals}
                     statusConfig={statusConfig}
                   />
                 ))}
