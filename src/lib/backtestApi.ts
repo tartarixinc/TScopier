@@ -140,10 +140,54 @@ export async function waitForBacktestRunComplete(
   throw new Error('Backtest is taking longer than expected. Open History to view the run when it completes.')
 }
 
-export const backtestApi = {
-  sync(config: SimpleBacktestConfig): Promise<BacktestSyncResult> {
-    return call({ action: 'sync', config })
+function parseSyncSummary(raw: unknown): BacktestSyncResult {
+  const o = (raw && typeof raw === 'object') ? raw as Record<string, unknown> : {}
+  return {
+    messages_scanned: Number(o.messages_scanned ?? 0),
+    candidates: Number(o.candidates ?? 0),
+    imported: Number(o.imported ?? 0),
+    errors: Array.isArray(o.errors) ? o.errors.map(String).filter(Boolean) : [],
+  }
+}
+
+/** Poll DB until signal sync finishes (sync action returns before worker completes). */
+export async function waitForSignalSyncComplete(
+  syncRunId: string,
+  userId: string,
+  options?: {
+    intervalMs?: number
+    timeoutMs?: number
+    onTick?: (run: BacktestRunRow) => void
   },
+): Promise<BacktestSyncResult> {
+  const intervalMs = options?.intervalMs ?? 800
+  const timeoutMs = options?.timeoutMs ?? 600_000
+  const started = Date.now()
+
+  while (Date.now() - started < timeoutMs) {
+    const { run } = await loadBacktestRunFromDb(syncRunId, userId)
+    options?.onTick?.(run)
+    if (run.status === 'completed') {
+      return parseSyncSummary(run.summary)
+    }
+    if (run.status === 'failed' || run.status === 'cancelled') {
+      throw new Error(run.error_message ?? run.progress_message ?? 'Signal sync failed')
+    }
+    await new Promise(r => setTimeout(r, intervalMs))
+  }
+
+  throw new Error('Signal sync is taking longer than expected. Try again in a moment.')
+}
+
+export const backtestApi = {
+  async sync(config: SimpleBacktestConfig): Promise<{ sync_run_id: string }> {
+    const data = await call<{ sync_run_id?: string }>({ action: 'sync', config })
+    const syncRunId = data?.sync_run_id
+    if (!syncRunId) throw new Error('Signal sync started but no sync run id was returned.')
+    return { sync_run_id: syncRunId }
+  },
+
+  waitForSignalSyncComplete,
 
   async backtestTpsl(config: SimpleBacktestConfig): Promise<{ run_id: string; run_mode: BacktestRunMode }> {
     const data = await call<{ ok?: boolean; run_id?: string; run_mode?: BacktestRunMode }>({

@@ -175,17 +175,79 @@ Deno.serve(async (req: Request) => {
       const simple = parseSimpleConfig((body.config ?? {}) as Record<string, unknown>)
       if (simple.channelIds.length === 0) return bad(400, "At least one channel required")
 
-      const sync = await syncBacktestSignalsViaWorker(
-        Deno.env,
-        userId,
-        simple.channelIds,
-        simple.dateFrom,
-        simple.dateTo,
-      )
+      const { data: run, error: insErr } = await supabase
+        .from("backtest_runs")
+        .insert({
+          user_id: userId,
+          name: `Signal sync ${simple.dateFrom} → ${simple.dateTo}`,
+          status: "running",
+          progress_pct: 0,
+          progress_message: "Pulling signals from Telegram…",
+          config: { ...simple, syncOnly: true },
+          started_at: new Date().toISOString(),
+        })
+        .select("id")
+        .single()
+      if (insErr) return bad(500, insErr.message)
+
+      const runId = run.id as string
+
+      const syncPromise = (async () => {
+        try {
+          const sync = await syncBacktestSignalsViaWorker(
+            Deno.env,
+            userId,
+            simple.channelIds,
+            simple.dateFrom,
+            simple.dateTo,
+            {
+              runId,
+              onChannelStart: async (index) => {
+                const pct = simple.channelIds.length > 0
+                  ? Math.max(1, Math.floor((index / simple.channelIds.length) * 4))
+                  : 1
+                await supabase.from("backtest_runs").update({
+                  progress_pct: pct,
+                  progress_message: `Pulling signals from Telegram (channel ${index + 1}/${simple.channelIds.length})…`,
+                  updated_at: new Date().toISOString(),
+                }).eq("id", runId).eq("user_id", userId)
+              },
+            },
+          )
+          const progressMsg = sync.imported > 0
+            ? `Imported ${sync.imported} signal(s) from ${sync.messages_scanned} messages`
+            : `Scanned ${sync.messages_scanned} message(s)`
+          await supabase.from("backtest_runs").update({
+            status: "completed",
+            progress_pct: 100,
+            progress_message: progressMsg,
+            summary: sync,
+            completed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }).eq("id", runId)
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e)
+          await supabase.from("backtest_runs").update({
+            status: "failed",
+            error_message: msg,
+            progress_pct: 100,
+            progress_message: msg,
+            completed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }).eq("id", runId)
+        }
+      })()
+
+      // @ts-ignore EdgeRuntime.waitUntil
+      if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
+        EdgeRuntime.waitUntil(syncPromise)
+      } else {
+        await syncPromise
+      }
 
       return Response.json({
         ok: true,
-        ...sync,
+        sync_run_id: runId,
         table: "backtest_channel_signals",
       }, { headers: corsHeaders })
     }

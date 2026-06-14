@@ -14,7 +14,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { interpolate } from '../../i18n/interpolate'
 import { useT } from '../../context/LocaleContext'
-import { backtestApi, loadBacktestRunFromDb, waitForBacktestRunComplete } from '../../lib/backtestApi'
+import { backtestApi, loadBacktestRunFromDb, waitForBacktestRunComplete, waitForSignalSyncComplete } from '../../lib/backtestApi'
 import type {
   BacktestRunRow,
   BacktestTradeRow,
@@ -103,6 +103,7 @@ export function Backtest() {
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null)
   const [profileNote, setProfileNote] = useState('')
   const [profiling, setProfiling] = useState(false)
+  const [profileProgress, setProfileProgress] = useState({ pct: 0, message: '' })
   const [profileKey, setProfileKey] = useState('')
   const [step, setStep] = useState<FlowStep>('configure')
   const [activeRun, setActiveRun] = useState<BacktestRunRow | null>(null)
@@ -229,6 +230,7 @@ export function Backtest() {
   const showResults = useCallback(() => setStep('results'), [])
 
   const profileSignals = async () => {
+    if (!user?.id) return
     if (!selectedChannelId) {
       setError(bt.selectChannelError)
       return
@@ -240,9 +242,18 @@ export function Backtest() {
     setProfileKey('')
     clearResults()
     setProfiling(true)
+    setProfileProgress({ pct: 0, message: bt.pullingSignals })
     try {
       const config = buildConfig(selectedChannelId, dateFrom, dateTo)
-      const result = await backtestApi.sync(config)
+      const { sync_run_id } = await backtestApi.sync(config)
+      const result = await waitForSignalSyncComplete(sync_run_id, user.id, {
+        onTick: (run) => {
+          setProfileProgress({
+            pct: Number(run.progress_pct ?? 0),
+            message: run.progress_message ?? bt.pullingSignals,
+          })
+        },
+      })
       let signals = await loadStoredSignals(selectedChannelId, dateFrom, dateTo)
       if (signals.length === 0 && result.imported > 0) {
         for (let attempt = 0; attempt < 3; attempt++) {
@@ -277,6 +288,7 @@ export function Backtest() {
       setError(userError(e))
     } finally {
       setProfiling(false)
+      setProfileProgress({ pct: 0, message: '' })
     }
   }
 
@@ -478,7 +490,7 @@ export function Backtest() {
             {profiling ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                {bt.pullingSignals}
+                {profileProgress.message || bt.pullingSignals}
               </>
             ) : (
               <>
@@ -488,6 +500,17 @@ export function Backtest() {
               </>
             )}
           </Button>
+
+          {profiling ? (
+            <div className="space-y-2">
+              <div className="h-2 rounded-full bg-teal-100 dark:bg-teal-900 overflow-hidden">
+                <div
+                  className="h-full bg-teal-500 transition-all duration-500"
+                  style={{ width: `${Math.min(100, Math.max(profileProgress.pct, 4))}%` }}
+                />
+              </div>
+            </div>
+          ) : null}
         </section>
       ) : null}
 

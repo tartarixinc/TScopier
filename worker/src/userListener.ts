@@ -834,6 +834,15 @@ export class UserListener {
     if (error) throw new Error(error.message)
     if (!row) throw new Error('Channel not found')
 
+    const runId = opts?.runId
+    if (runId) {
+      await this.supabase.from('backtest_runs').update({
+        progress_pct: 1,
+        progress_message: 'Fetching messages from Telegram…',
+        updated_at: new Date().toISOString(),
+      }).eq('id', runId).eq('user_id', this.userId)
+    }
+
     const collected = await this.fetchMessagesBetweenForBacktest(row as ChannelRow, fromMs, toMs)
     const errors: string[] = []
     const rangeFromIso = new Date(fromMs).toISOString()
@@ -871,14 +880,23 @@ export class UserListener {
     let imported = 0
     const parseConcurrency = Math.max(1, Math.min(8, Number(process.env.BACKTEST_PARSE_CONCURRENCY ?? 4)))
     const parseDelayMs = Math.max(0, Number(process.env.BACKTEST_PARSE_DELAY_MS ?? 0))
-    const runId = opts?.runId
 
     const reportSyncProgress = async (parsed: number, total: number) => {
       if (!runId) return
-      const pct = total > 0 ? 2 + Math.floor((parsed / total) * 12) : 2
+      const pct = total > 0 ? 5 + Math.floor((parsed / total) * 90) : 5
       await this.supabase.from('backtest_runs').update({
         progress_pct: pct,
-        progress_message: `Syncing Telegram: parsing ${parsed}/${total} candidate message(s)…`,
+        progress_message: `Parsing signals ${parsed}/${total}…`,
+        updated_at: new Date().toISOString(),
+      }).eq('id', runId).eq('user_id', this.userId)
+    }
+
+    if (runId) {
+      await this.supabase.from('backtest_runs').update({
+        progress_pct: 5,
+        progress_message: candidates.length > 0
+          ? `Found ${candidates.length} candidate message(s) — parsing…`
+          : 'No trade-like messages in range',
         updated_at: new Date().toISOString(),
       }).eq('id', runId).eq('user_id', this.userId)
     }
