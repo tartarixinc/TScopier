@@ -68,14 +68,14 @@ Deno.test("resolvePerformanceBaselineBalance matches MT5 deposit (profit + swap)
   assertEquals(baseline, 210_000)
 })
 
-Deno.test("resolvePerformanceBaselineBalance corrects stale baseline missing swap", () => {
+Deno.test("resolvePerformanceBaselineBalance keeps stored baseline when no deposit row", () => {
   const trades = [trade({ ticket: 1, profit: -45_378.67, swap: 111.66 })]
   const baseline = resolvePerformanceBaselineBalance(
     210_111.66,
     { balance: 164_732.99, equity: 164_732.99 },
     trades,
   )
-  assertEquals(baseline, 210_000)
+  assertEquals(baseline, null)
 })
 
 Deno.test("resolvePerformanceBaselineBalance corrects understated baseline from spurious cash-flow row", () => {

@@ -11,7 +11,6 @@ import {
 import { displayTradeProfit, tradeOpenLegProfit } from './tradeDisplay'
 import type { MtTrade } from './fxsocketBroker'
 import { normalizeSignalChannelIds } from './brokerChannelLink'
-import { resolveDisplayInitialBalance } from './performanceBaseline'
 import {
   canonicalChannelId,
   computeProfitByChannel,
@@ -326,6 +325,7 @@ export function findActiveAttributedSignalTrades(
 
 export function computeBrokerStatsSnapshot(opts: {
   brokerId: string
+  /** Balance captured when this broker was first connected (`performance_baseline_balance`). */
   initialBalance: number | null | undefined
   currentBalance: number | null | undefined
   currentEquity: number | null | undefined
@@ -337,12 +337,6 @@ export function computeBrokerStatsSnapshot(opts: {
   now?: Date
 }): BrokerStatsSnapshot {
   const brokerMt = mtTradesForBroker(opts.mtTrades, opts.brokerId)
-  const initialBalance = resolveDisplayInitialBalance(
-    opts.initialBalance,
-    opts.currentBalance,
-    opts.mtTrades,
-    opts.brokerId,
-  )
   const profitByChannel = computeBrokerProfitByChannel({
     brokerId: opts.brokerId,
     connectedChannelIds: opts.connectedChannelIds,
@@ -364,9 +358,9 @@ export function computeBrokerStatsSnapshot(opts: {
       displayTradeProfit(t) != null,
   ).length
 
-  const initial =
-    initialBalance != null && Number.isFinite(Number(initialBalance))
-      ? Number(initialBalance)
+  const initialBalance =
+    opts.initialBalance != null && Number.isFinite(Number(opts.initialBalance)) && Number(opts.initialBalance) > 0
+      ? Number(opts.initialBalance)
       : null
   const balance =
     opts.currentBalance != null && Number.isFinite(Number(opts.currentBalance))
@@ -377,11 +371,11 @@ export function computeBrokerStatsSnapshot(opts: {
       ? Number(opts.currentEquity)
       : null
 
-  const balanceProfit = computeBrokerBalanceProfit(initial, balance, opts.mtTrades, opts.brokerId)
+  const balanceProfit = computeBrokerBalanceProfit(initialBalance, balance, opts.mtTrades, opts.brokerId)
   const dealProfit = computeBrokerTotalProfit(opts.brokerId, opts.mtTrades, opts.chartTrades)
 
   return {
-    initialBalance: initial,
+    initialBalance,
     currentBalance: balance,
     currentEquity: equity,
     totalProfit: balanceProfit ?? dealProfit,
@@ -395,11 +389,24 @@ export function computeBrokerStatsSnapshot(opts: {
       opts.channelLinkMaps,
       opts.connectedChannelIds,
     ),
-    lastSignalTrade: findLastAttributedSignalTrade(
-      opts.brokerId,
-      opts.mtTrades,
-      opts.channelLinkMaps,
-      opts.connectedChannelIds,
+    lastSignalTrade: enrichLastSignalTradeWithChannelTotal(
+      findLastAttributedSignalTrade(
+        opts.brokerId,
+        opts.mtTrades,
+        opts.channelLinkMaps,
+        opts.connectedChannelIds,
+      ),
+      profitByChannel,
     ),
   }
+}
+
+function enrichLastSignalTradeWithChannelTotal(
+  lastTrade: BrokerLastSignalTrade | null,
+  profitByChannel: PerformanceDistributionRow[],
+): BrokerLastSignalTrade | null {
+  if (!lastTrade) return null
+  const channelRow = profitByChannel.find(row => row.key === lastTrade.channelId)
+  if (channelRow == null) return lastTrade
+  return { ...lastTrade, pnl: channelRow.pnl }
 }

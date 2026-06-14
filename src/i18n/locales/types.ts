@@ -167,6 +167,7 @@ export interface DashboardBrokerStatsTranslations {
   noLastSignalTrade: string
   channel: string
   symbol: string
+  lastSignalChannelProfit: string
   profit: string
   closedAt: string
 }

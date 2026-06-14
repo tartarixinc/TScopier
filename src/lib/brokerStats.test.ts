@@ -390,7 +390,57 @@ test('computeBrokerStatsSnapshot includes initial balance and channel rows', () 
   assert.equal(snapshot.connectedChannelCount, 1)
   assert.equal(snapshot.profitByChannel[0]?.label, 'VIP')
   assert.equal(snapshot.lastSignalTrade?.channelLabel, 'VIP')
+  assert.equal(snapshot.lastSignalTrade?.pnl, 120)
   assert.deepEqual(snapshot.activeSignalTrades, [])
+})
+
+test('computeBrokerStatsSnapshot last signal trade shows channel total profit', () => {
+  const maps = buildPerformanceChannelLinkMaps(
+    [{ id: 'ch-1', display_name: 'Alpha' }, { id: 'ch-2', display_name: 'Beta' }],
+    [
+      {
+        broker_account_id: 'broker-1',
+        metaapi_order_id: '10',
+        signal_id: 'sig-a',
+        telegram_channel_id: 'ch-1',
+      },
+      {
+        broker_account_id: 'broker-1',
+        metaapi_order_id: '20',
+        signal_id: 'sig-b',
+        telegram_channel_id: 'ch-2',
+      },
+      {
+        broker_account_id: 'broker-1',
+        metaapi_order_id: '21',
+        signal_id: 'sig-b',
+        telegram_channel_id: 'ch-2',
+      },
+    ],
+    [
+      { id: 'sig-a', channel_id: 'ch-1' },
+      { id: 'sig-b', channel_id: 'ch-2' },
+    ],
+    [],
+  )
+  const snapshot = computeBrokerStatsSnapshot({
+    brokerId: 'broker-1',
+    initialBalance: 10_000,
+    currentBalance: 10_120,
+    currentEquity: 10_150,
+    mtTrades: [
+      mtTrade({ broker_id: 'broker-1', ticket: 10, profit: 5, closed_at: '2026-06-01T08:00:00' }),
+      mtTrade({ broker_id: 'broker-1', ticket: 20, profit: 15, closed_at: '2026-06-02T09:00:00' }),
+      mtTrade({ broker_id: 'broker-1', ticket: 21, profit: 25, closed_at: '2026-06-03T09:00:00' }),
+    ],
+    chartTrades: [],
+    channelLinkMaps: maps,
+    connectedChannelIds: ['ch-1', 'ch-2'],
+    unlinkedChannelLabel: 'Unlinked',
+    now: TEST_NOW,
+  })
+  assert.equal(snapshot.lastSignalTrade?.channelLabel, 'Beta')
+  assert.equal(snapshot.lastSignalTrade?.pnl, 40)
 })
 
 test('computeBrokerStatsSnapshot includes active open attributed trades', () => {

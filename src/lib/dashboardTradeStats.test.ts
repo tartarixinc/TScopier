@@ -69,7 +69,7 @@ test('isBalanceCashFlowRow: detects deposits and ignores tradeable closes', () =
       type: '',
       profit: 855.94,
     }),
-    false,
+    true,
   )
   assert.equal(
     isBalanceCashFlowRow({

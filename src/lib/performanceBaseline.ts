@@ -46,7 +46,10 @@ function isBalanceCashFlowRow(row: TradeStatsLike): boolean {
   if (isTradeableClosedRow(row)) return false
   const profit = row.profit
   if (typeof profit !== 'number' || !Number.isFinite(profit) || profit === 0) return false
-  return isBalanceOpType(row.type ?? '')
+  if (isBalanceOpType(row.type ?? '')) return true
+  return !(row.symbol ?? '').trim()
+    && (row.lot_size ?? 0) <= 0
+    && !(row.direction ?? '').trim()
 }
 
 function closedDealProfit(row: TradeStatsLike): number | null {
@@ -113,6 +116,47 @@ export function splitBalanceCashFlows(trades: MtTrade[]): {
   return { initialDeposit, subsequentCashFlow }
 }
 
+/** Sum of all positive deposit/credit balance operations in MT history. */
+export function sumTotalDeposits(trades: MtTrade[]): number | null {
+  let total = 0
+  let found = false
+  for (const row of trades) {
+    if (!isBalanceCashFlowRow(row)) continue
+    const profit = row.profit ?? 0
+    if (profit > 0) {
+      total += profit
+      found = true
+    }
+  }
+  return found ? Math.round(total * 100) / 100 : null
+}
+
+/** Net withdrawals/corrections (negative cash-flow rows only). */
+export function sumSignedWithdrawals(trades: MtTrade[]): number {
+  return trades
+    .filter(isBalanceCashFlowRow)
+    .reduce((sum, row) => {
+      const profit = row.profit ?? 0
+      return profit < 0 ? sum + profit : sum
+    }, 0)
+}
+
+/** Lifetime trading P/L: current balance minus deposits and signed withdrawals. */
+export function computeTradingPnlFromBalanceAndCashFlows(
+  currentBalance: number | null | undefined,
+  trades: MtTrade[],
+): number | null {
+  const balance =
+    currentBalance != null && Number.isFinite(Number(currentBalance))
+      ? Number(currentBalance)
+      : null
+  if (balance == null) return null
+  const deposits = sumTotalDeposits(trades)
+  if (deposits == null) return null
+  const withdrawals = sumSignedWithdrawals(trades)
+  return Math.round((balance - deposits - withdrawals) * 100) / 100
+}
+
 export function inferPerformanceBaselineFromHistory(
   currentBalance: number,
   trades: MtTrade[],
@@ -143,7 +187,10 @@ export function computePerformanceBaselineBalance(
   return inferPerformanceBaselineFromHistory(balance, trades)
 }
 
-/** Best initial balance for display — corrects stale DB baselines using live balance + MT history. */
+/**
+ * Best initial balance for display.
+ * Prefer the link-time stored baseline; only override when MT deposit history reconciles.
+ */
 export function resolveDisplayInitialBalance(
   storedBaseline: number | null | undefined,
   currentBalance: number | null | undefined,
@@ -160,8 +207,6 @@ export function resolveDisplayInitialBalance(
       : null
 
   const brokerTrades = trades.filter(t => t.broker_id === brokerId)
-  const computed = computePerformanceBaselineBalance(balance, brokerTrades)
-  if (computed == null) return stored
 
   if (balance != null && brokerTrades.some(isMtClosedDealForOutcome)) {
     const netPnl = sumRealizedClosedNetProfit(brokerTrades)
@@ -172,17 +217,15 @@ export function resolveDisplayInitialBalance(
       if (depositResidual <= BASELINE_EPSILON) {
         return Math.round(initialDeposit * 100) / 100
       }
-      // Recorded MT5 deposit deal overrides a stale inferred baseline.
+      // Recorded MT5 deposit deal overrides a stale stored baseline.
       if (stored == null || initialDeposit > stored + BASELINE_EPSILON) {
         return Math.round(initialDeposit * 100) / 100
       }
     }
-
-    if (computed != null && stored != null && Math.abs(stored - computed) > BASELINE_EPSILON) {
-      return computed
-    }
   }
 
-  if (stored == null) return computed
-  return Math.abs(stored - computed) <= BASELINE_EPSILON ? stored : computed
+  // Link-time baseline is authoritative — do not replace with balance − P/L inference.
+  if (stored != null) return stored
+
+  return computePerformanceBaselineBalance(balance, brokerTrades)
 }

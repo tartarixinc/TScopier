@@ -531,10 +531,12 @@ export const fr: Translations = {
       direction: 'Direction',
       lots: 'Lots',
       lastSignalTrade: 'Dernier trade signal',
-      lastSignalTradeHint: 'Dernier trade clôturé lié à un canal Telegram.',
+      lastSignalTradeHint:
+        'Dernier trade clôturé lié à un canal Telegram, avec le P/L cumulé de ce canal.',
       noLastSignalTrade: 'Aucun trade attribué à un canal dans l’historique.',
       channel: 'Canal',
       symbol: 'Symbole',
+      lastSignalChannelProfit: 'P/L total du canal',
       profit: 'Profit',
       closedAt: 'Clôture',
     },

@@ -183,8 +183,8 @@ export function computePerformanceBaselineBalance(
 
 /**
  * Returns the baseline balance to persist, or null when no update is needed / possible.
- * New links capture current balance; accounts with history reconstruct the MT5 deposit.
- * Corrects a stored baseline when history math differs (e.g. after formula fixes).
+ * New links capture inferred/deposit baseline; existing link-time baselines are kept
+ * unless MT deposit history reconciles a better figure.
  */
 export function resolvePerformanceBaselineBalance(
   existing: number | null | undefined,
@@ -196,10 +196,26 @@ export function resolvePerformanceBaselineBalance(
 
   if (!hasPerformanceBaseline(existing)) return computed
 
-  const canInferFromHistory = Boolean(trades?.length && trades.some(isMtClosedDealForOutcome))
-  if (!canInferFromHistory) return null
+  if (!trades?.length || !trades.some(isMtClosedDealForOutcome)) return null
 
+  const balanceRaw = summary.balance ?? summary.equity
+  if (balanceRaw == null || !Number.isFinite(Number(balanceRaw))) return null
+  const balance = Number(balanceRaw)
+
+  const { initialDeposit, subsequentCashFlow } = splitBalanceCashFlows(trades)
+  if (initialDeposit <= 0) return null
+
+  const netPnl = sumRealizedClosedNetProfit(trades)
+  const depositResidual = Math.abs(balance - initialDeposit - netPnl - subsequentCashFlow)
+  const depositRounded = Math.round(initialDeposit * 100) / 100
   const stored = Number(existing)
-  if (Math.abs(stored - computed) <= BASELINE_EPSILON) return null
-  return computed
+
+  if (depositResidual <= BASELINE_EPSILON) {
+    if (Math.abs(stored - depositRounded) <= BASELINE_EPSILON) return null
+    return depositRounded
+  }
+
+  if (initialDeposit > stored + BASELINE_EPSILON) return depositRounded
+
+  return null
 }

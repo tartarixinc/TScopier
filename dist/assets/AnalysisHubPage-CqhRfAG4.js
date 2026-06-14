@@ -1,0 +1,1 @@
+import{p as e}from"./vendor-W77evrBX.js";import{r as t}from"./LocaleContext-BmA9Q9Ij.js";import{t as n}from"./PlaceholderPage-1RzDTJyA.js";var r=e();function i(){let e=t();return(0,r.jsx)(n,{title:e.pages.analysisHub.title,description:e.pages.analysisHub.description})}export{i as AnalysisHubPage};

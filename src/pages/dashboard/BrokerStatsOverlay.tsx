@@ -486,7 +486,7 @@ export function BrokerStatsOverlay() {
                       <p className="font-medium text-neutral-900 dark:text-neutral-50">{stats.lastSignalTrade.symbol}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-neutral-400">{bs.profit}</p>
+                      <p className="text-xs text-neutral-400">{bs.lastSignalChannelProfit}</p>
                       <p className={clsx('font-semibold tabular-nums', pnlColor(stats.lastSignalTrade.pnl))}>
                         {formatSignedMoney(stats.lastSignalTrade.pnl)}
                       </p>

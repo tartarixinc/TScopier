@@ -108,6 +108,14 @@ function isNonTradeEntry(direction: string, typeLabel: string, lotSize: number):
   return direction === "" && lotSize <= 0
 }
 
+function isBalanceCashFlowTrade(trade: FxsocketBrokerTradeRow): boolean {
+  if (trade.status !== "closed") return false
+  const profit = trade.profit
+  if (profit == null || !Number.isFinite(profit) || profit === 0) return false
+  if (isBalanceOpType(trade.type)) return true
+  return !trade.symbol.trim() && trade.lot_size <= 0 && trade.direction === ""
+}
+
 function normalizeOrder(
   order: RawOrder,
   broker: BrokerRow,
@@ -189,9 +197,23 @@ export async function fetchFxsocketBrokerTrades(
     wantOpen ? fx.openedOrders(sessionId) : Promise.resolve([] as unknown[]),
     wantClosed
       ? opts.historyProfile === "trades"
-        ? fetchTradesListFromPositionHistory(fx, broker, {
-          historyFrom: opts.historyFrom,
-          historyTo: opts.historyTo,
+        ? Promise.all([
+          fetchTradesListFromPositionHistory(fx, broker, {
+            historyFrom: opts.historyFrom,
+            historyTo: opts.historyTo,
+          }),
+          fetchBalanceCashFlowFromOrderHistory(fx, broker, {
+            historyFrom: opts.historyFrom,
+            historyTo: opts.historyTo,
+            historyProfile: opts.historyProfile,
+          }),
+        ]).then(([positions, cashFlows]) => {
+          const tickets = new Set(positions.map(row => row.ticket))
+          const merged = [...positions]
+          for (const row of cashFlows) {
+            if (!tickets.has(row.ticket)) merged.push(row)
+          }
+          return merged
         })
         : fetchClosedHistoryForBaseline(fx, broker, {
           historyFrom: opts.historyFrom,
@@ -321,6 +343,10 @@ export async function fetchClosedHistoryForBaseline(
   for (const row of merged.values()) {
     const trade = normalizeOrder(row, broker, "closed", opts.historyProfile)
     if (opts.historyProfile === "trades") {
+      if (isBalanceCashFlowTrade(trade)) {
+        out.push(trade)
+        continue
+      }
       if (trade.lot_size <= 0 && !trade.symbol.trim()) continue
       if (isNonTradeEntry(trade.direction, trade.type, trade.lot_size)) continue
     }
@@ -332,6 +358,40 @@ export async function fetchClosedHistoryForBaseline(
     const bv = rowCloseMs(b)
     return bv - av
   })
+}
+
+/** Deposit / withdrawal rows from OrderHistory — not present in PositionHistory. */
+export async function fetchBalanceCashFlowFromOrderHistory(
+  fx: FxsocketClient,
+  broker: BrokerRow & { fxsocket_account_id: string },
+  opts: {
+    historyFrom: string
+    historyTo: string
+    historyProfile: MtHistoryProfile
+  },
+): Promise<FxsocketBrokerTradeRow[]> {
+  const sessionId = String(broker.fxsocket_account_id ?? "").trim()
+  if (!sessionId) return []
+
+  const merged = new Map<string, RawMtOrder>()
+  const chunks = buildHistoryChunks(opts.historyFrom, opts.historyTo)
+  const orderSettled = await Promise.allSettled(
+    chunks.map(chunk => fx.orderHistory(sessionId, chunk.from, chunk.to)),
+  )
+
+  for (const result of orderSettled) {
+    if (result.status !== "fulfilled") continue
+    ingestMtHistoryRows(merged, result.value, opts.historyProfile)
+  }
+
+  const out: FxsocketBrokerTradeRow[] = []
+  for (const row of merged.values()) {
+    const trade = normalizeOrder(row, broker, "closed", opts.historyProfile)
+    if (!isBalanceCashFlowTrade(trade)) continue
+    out.push(trade)
+  }
+
+  return out.sort((a, b) => rowCloseMs(b) - rowCloseMs(a))
 }
 
 function readScalar(row: RawOrder, ...keys: string[]): unknown {

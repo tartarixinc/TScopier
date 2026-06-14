@@ -530,10 +530,12 @@ export const es: Translations = {
       direction: 'Dirección',
       lots: 'Lotes',
       lastSignalTrade: 'Última operación por señal',
-      lastSignalTradeHint: 'Operación cerrada más reciente vinculada a un canal de Telegram.',
+      lastSignalTradeHint:
+        'Operación cerrada más reciente vinculada a un canal de Telegram, con el P/L acumulado de ese canal.',
       noLastSignalTrade: 'No hay operaciones atribuidas a canales en el historial.',
       channel: 'Canal',
       symbol: 'Símbolo',
+      lastSignalChannelProfit: 'P/L total del canal',
       profit: 'Beneficio',
       closedAt: 'Cierre',
     },

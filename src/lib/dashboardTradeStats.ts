@@ -74,14 +74,19 @@ export function isBalanceCashFlowRow(row: {
   if (typeof profit !== 'number' || !Number.isFinite(profit) || profit === 0) return false
 
   const type = (row.type ?? '').toLowerCase()
-  return (
+  if (
     type.includes('balance') ||
     type.includes('credit') ||
     type.includes('deposit') ||
     type.includes('withdraw') ||
     type.includes('correction') ||
     type.includes('transfer')
-  )
+  ) {
+    return true
+  }
+  return !(row.symbol ?? '').trim()
+    && (row.lot_size ?? 0) <= 0
+    && !(row.direction ?? '').trim()
 }
 
 export function sumBalanceCashFlow(rows: TradeStatsRow[]): number {
