@@ -313,7 +313,7 @@ export const fr: Translations = {
       mtLoginPlaceholder: 'Numéro de compte de trading',
       passwordLabel: 'Mot de passe',
       passwordPlaceholder: 'Mot de passe du compte de trading',
-      passwordHint: 'Envoyé aux serveurs MT uniquement. Non stocké sauf si vous l’activez ci-dessous.',
+      passwordHint: '',
       rememberPasswordLabel: 'Mémoriser le mot de passe pour reconnexion automatique',
       rememberPasswordHint:
         'Chiffre votre mot de passe MT sur nos serveurs pour rétablir la session sans nouvelle saisie. Vous pouvez le supprimer à tout moment.',

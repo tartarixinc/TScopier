@@ -312,7 +312,7 @@ export const en: Translations = {
       mtLoginPlaceholder: 'Trading account number',
       passwordLabel: 'Password',
       passwordPlaceholder: 'Trading account password',
-      passwordHint: 'Sent to MT servers only. Not stored unless you opt in below.',
+      passwordHint: '',
       rememberPasswordLabel: 'Remember password for automatic reconnect',
       rememberPasswordHint:
         'Encrypts your MT password on our servers so TSCopier can restore the session without prompting you. You can remove it anytime.',
