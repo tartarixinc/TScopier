@@ -31,6 +31,10 @@ import type { BrokerAccount } from '../types/database'
 
 import { isFxsocketLinkedBroker } from '../lib/brokerLink'
 
+function hasStaleEmptyBrokerHistory(payload: PerformanceCachePayload): boolean {
+  return payload.mtTrades.length === 0 && payload.accounts.some(isFxsocketLinkedBroker)
+}
+
 async function fetchPerformancePayload(userId: string): Promise<PerformanceCachePayload> {
   const [brokerRes, channelsRes, dbTradesRes, attributionRes, signalsRes] = await Promise.all([
     supabase
@@ -175,18 +179,19 @@ export function usePerformanceData(userId: string | undefined) {
         applyPayload(cached.data)
         setLastUpdated(new Date(cached.fetchedAt))
         setError(null)
-        if (!opts?.background) setLoading(false)
-        const staleEmptyBrokerHistory =
-          cached.data.mtTrades.length === 0
-          && cached.data.accounts.some(isFxsocketLinkedBroker)
+        const staleEmptyBrokerHistory = hasStaleEmptyBrokerHistory(cached.data)
         if (!staleEmptyBrokerHistory && Date.now() - cached.fetchedAt < PERFORMANCE_CACHE_TTL_MS) {
+          if (!opts?.background) setLoading(false)
           return
         }
+        if (!opts?.background && !staleEmptyBrokerHistory) setLoading(false)
       }
 
       inflightRef.current = true
       if (opts?.background) {
-        /* Keep cached UI visible; no header spinner. */
+        if (payloadRef.current && hasStaleEmptyBrokerHistory(payloadRef.current)) {
+          setRefreshing(true)
+        }
       } else if (opts?.force || cached) {
         setRefreshing(true)
       } else {
@@ -234,14 +239,18 @@ export function usePerformanceData(userId: string | undefined) {
       if (cached) {
         applyPayload(cached.data)
         setLastUpdated(new Date(cached.fetchedAt))
-        setLoading(false)
         setError(null)
-        const staleEmptyBrokerHistory =
-          cached.data.mtTrades.length === 0
-          && cached.data.accounts.some(isFxsocketLinkedBroker)
+        const staleEmptyBrokerHistory = hasStaleEmptyBrokerHistory(cached.data)
         if (!staleEmptyBrokerHistory && Date.now() - cached.fetchedAt < PERFORMANCE_CACHE_TTL_MS) {
+          setLoading(false)
           return
         }
+        if (staleEmptyBrokerHistory) {
+          setLoading(true)
+          void load()
+          return
+        }
+        setLoading(false)
         void load({ background: true })
         return
       }

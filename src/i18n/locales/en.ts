@@ -422,7 +422,7 @@ export const en: Translations = {
     title: 'Dashboard',
     totalBalance: 'Total Balance',
     acrossAccounts: 'Across {count} connected account(s)',
-    todaysProfit: 'Profit from Trades',
+    todaysProfit: "Today's Profit",
     todaysProfitHint:
       'Realized P/L from copier-attributed trades closed today, since your broker connected.',
     tradesTakenToday: 'Trades Taken Today',

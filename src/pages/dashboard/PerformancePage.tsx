@@ -168,7 +168,7 @@ export function PerformancePage() {
       {!loading && !error && accounts.length > 0 && !hasMtBrokers ? (
         <Alert>{p.noMtBroker}</Alert>
       ) : null}
-      {!loading && !error && hasMtBrokers && !hasMtHistory ? (
+      {!loading && !refreshing && !error && hasMtBrokers && !hasMtHistory ? (
         <Alert>{p.noTradeHistory}</Alert>
       ) : null}
 

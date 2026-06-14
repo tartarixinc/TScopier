@@ -422,7 +422,7 @@ export const es: Translations = {
     title: 'Panel',
     totalBalance: 'Balance total',
     acrossAccounts: 'En {count} cuenta(s) conectada(s)',
-    todaysProfit: 'Beneficio de trades',
+    todaysProfit: 'Beneficio de hoy',
     todaysProfitHint:
       'P/L realizado de trades del copiador cerrados hoy, desde que conectaste el bróker.',
     tradesTakenToday: 'Operaciones hoy',

@@ -423,7 +423,7 @@ export const fr: Translations = {
     title: 'Tableau de bord',
     totalBalance: 'Solde total',
     acrossAccounts: 'Sur {count} compte(s) connecté(s)',
-    todaysProfit: 'Profit des trades',
+    todaysProfit: 'Profit du jour',
     todaysProfitHint:
       'P/L réalisé des trades copieur clôturés aujourd’hui, depuis la connexion du broker.',
     tradesTakenToday: "Trades aujourd'hui",

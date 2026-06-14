@@ -101,7 +101,7 @@ export type DashboardAnalytics = {
   tradesBreakeven: number
 }
 
-/** Single derived snapshot for Profit from Trades, Trade Outcome 7d, and channel P/L 7d. */
+/** Single derived snapshot for Today's Profit, Trade Outcome 7d, and channel P/L 7d. */
 export function deriveDashboardAnalytics(args: {
   chartTrades: DashboardChartTrade[]
   mtTrades: MtTrade[]
