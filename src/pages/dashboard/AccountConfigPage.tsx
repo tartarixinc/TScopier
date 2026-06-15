@@ -134,13 +134,13 @@ const BROKER_PAGE_SIZE = 10
 
 function symbolWhitelistToInput(value: string | null | undefined): string {
   if (value == null || !String(value).trim()) return ''
-  return parseSymbolToTradeList(value).join(', ')
+  return String(value)
 }
 
 function symbolWhitelistFromInput(raw: string): string | null {
   const list = parseSymbolToTradeList(raw)
   if (!list.length) return null
-  return list.join(',')
+  return list.join(', ')
 }
 
 function symbolsExcludeToInput(value: string[] | null | undefined): string {
@@ -288,24 +288,40 @@ function commitPositiveNumber(raw: string, fallback: number): number {
 function applyPendingConfigureDraftFields(
   draft: AccountConfigDraft,
   fixedLotDraft: string | null,
+  symbolsExcludeDraft: string | null = null,
 ): AccountConfigDraft {
-  if (fixedLotDraft === null) return draft
   const id = draft.selectedChannelId
   if (!id || !draft.channelConfigs[id]) return draft
-  const entry = draft.channelConfigs[id]
-  const fixedLot = commitPositiveNumber(
-    fixedLotDraft,
-    entry.manualSettings.fixed_lot ?? DEFAULT_MANUAL_SETTINGS.fixed_lot ?? 0.01,
-  )
-  if (fixedLot === entry.manualSettings.fixed_lot) return draft
+
+  let entry = draft.channelConfigs[id]
+  let changed = false
+
+  if (fixedLotDraft !== null) {
+    const fixedLot = commitPositiveNumber(
+      fixedLotDraft,
+      entry.manualSettings.fixed_lot ?? DEFAULT_MANUAL_SETTINGS.fixed_lot ?? 0.01,
+    )
+    if (fixedLot !== entry.manualSettings.fixed_lot) {
+      entry = { ...entry, manualSettings: { ...entry.manualSettings, fixed_lot: fixedLot } }
+      changed = true
+    }
+  }
+
+  if (symbolsExcludeDraft !== null) {
+    const list = symbolsExcludeFromInput(symbolsExcludeDraft)
+    const prev = entry.manualSettings.symbols_exclude ?? []
+    if (JSON.stringify(prev) !== JSON.stringify(list)) {
+      entry = { ...entry, manualSettings: { ...entry.manualSettings, symbols_exclude: list } }
+      changed = true
+    }
+  }
+
+  if (!changed) return draft
   return {
     ...draft,
     channelConfigs: {
       ...draft.channelConfigs,
-      [id]: {
-        ...entry,
-        manualSettings: { ...entry.manualSettings, fixed_lot: fixedLot },
-      },
+      [id]: entry,
     },
   }
 }
@@ -835,6 +851,7 @@ export function AccountConfigPage() {
   const [brokerSearchQuery, setBrokerSearchQuery] = useState('')
   const [brokerPage, setBrokerPage] = useState(1)
   const [fixedLotDraft, setFixedLotDraft] = useState<string | null>(null)
+  const [symbolsExcludeDraft, setSymbolsExcludeDraft] = useState<string | null>(null)
   const [riskCalcOpen, setRiskCalcOpen] = useState(false)
   const [brokerAccountTypes, setBrokerAccountTypes] = useState<Record<string, LinkedAccountType>>({})
   const brokerAccountTypeKey = useMemo(
@@ -905,6 +922,7 @@ export function AccountConfigPage() {
 
   useEffect(() => {
     setFixedLotDraft(null)
+    setSymbolsExcludeDraft(null)
   }, [configDraft.selectedChannelId])
 
   const channelMode = useMemo(() => {
@@ -934,7 +952,7 @@ export function AccountConfigPage() {
 
   const configureModalDirty = useMemo(() => {
     if (!configAccount) return false
-    const draftForSignature = applyPendingConfigureDraftFields(configDraft, fixedLotDraft)
+    const draftForSignature = applyPendingConfigureDraftFields(configDraft, fixedLotDraft, symbolsExcludeDraft)
     const current = accountConfigDraftPersistSignature(
       draftForSignature,
       manualSettingsPlanCtx.plan,
@@ -946,6 +964,7 @@ export function AccountConfigPage() {
     configAccount,
     configDraft,
     fixedLotDraft,
+    symbolsExcludeDraft,
     configSavedSignature,
     manualSettingsPlanCtx.plan,
     manualSettingsPlanCtx.status,
@@ -962,7 +981,7 @@ export function AccountConfigPage() {
   const canSaveConfigureModal = configureModalDirty || selectedChannelNeedsPersistedSave
 
   const multiTradeSplitSaveBlocked = useMemo(() => {
-    const draftForCheck = applyPendingConfigureDraftFields(configDraft, fixedLotDraft)
+    const draftForCheck = applyPendingConfigureDraftFields(configDraft, fixedLotDraft, symbolsExcludeDraft)
     return hasBlockedMultiTradeSplit(
       draftForCheck.channelIds,
       draftForCheck.channelConfigs,
@@ -1775,12 +1794,15 @@ export function AccountConfigPage() {
   const saveConfigureModal = async () => {
     if (!configAccount || !user) return
     setError('')
-    const committedDraft = applyPendingConfigureDraftFields(configDraft, fixedLotDraft)
+    const committedDraft = applyPendingConfigureDraftFields(configDraft, fixedLotDraft, symbolsExcludeDraft)
     if (committedDraft !== configDraft) {
       setConfigDraft(committedDraft)
     }
     if (fixedLotDraft !== null) {
       setFixedLotDraft(null)
+    }
+    if (symbolsExcludeDraft !== null) {
+      setSymbolsExcludeDraft(null)
     }
     const channelIds = committedDraft.channelIds
     const restrictChannels = channelIds.length > 0
@@ -2654,14 +2676,28 @@ export function AccountConfigPage() {
                                 hint={cm.channelSymbols.tradeOnlyHint}
                                 placeholder={cm.channelSymbols.tradeOnlyPlaceholder}
                                 value={symbolWhitelistToInput(channelManualSettings.symbol_to_trade)}
-                                onChange={e => setManual({ symbol_to_trade: symbolWhitelistFromInput(e.target.value) })}
+                                onChange={e => {
+                                  const raw = e.target.value
+                                  setManual({ symbol_to_trade: raw.trim() === '' ? null : raw })
+                                }}
+                                onBlur={e => setManual({
+                                  symbol_to_trade: symbolWhitelistFromInput(e.target.value),
+                                })}
                               />
                               <ConfigureInput
                                 label={cm.channelSymbols.avoidLabel}
                                 hint={cm.channelSymbols.avoidHint}
                                 placeholder={cm.channelSymbols.avoidPlaceholder}
-                                value={symbolsExcludeToInput(channelManualSettings.symbols_exclude)}
-                                onChange={e => setManual({ symbols_exclude: symbolsExcludeFromInput(e.target.value) })}
+                                value={
+                                  symbolsExcludeDraft
+                                  ?? symbolsExcludeToInput(channelManualSettings.symbols_exclude)
+                                }
+                                onChange={e => setSymbolsExcludeDraft(e.target.value)}
+                                onBlur={() => {
+                                  if (symbolsExcludeDraft === null) return
+                                  setManual({ symbols_exclude: symbolsExcludeFromInput(symbolsExcludeDraft) })
+                                  setSymbolsExcludeDraft(null)
+                                }}
                               />
                             </section>
                           ) : (
