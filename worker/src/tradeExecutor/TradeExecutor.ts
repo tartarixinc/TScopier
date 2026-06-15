@@ -349,18 +349,23 @@ export class TradeExecutor {
 
   private normalizeBrokerRow(row: BrokerRow): BrokerRow {
     const healedConfigs = healChannelTradingConfigsMap(row)
+    const accountBalance = Number(row.last_balance ?? row.last_equity ?? 0) || null
     const normalizedConfigs: Record<string, unknown> = {}
     for (const [channelId, cfg] of Object.entries(healedConfigs)) {
       normalizedConfigs[channelId] = {
         ...cfg,
-        manual_settings: normalizeManualSettingsForExecution(cfg.manual_settings) as Record<string, unknown>,
+        manual_settings: normalizeManualSettingsForExecution(cfg.manual_settings, {
+          accountBalance,
+        }) as Record<string, unknown>,
       }
     }
     const sessionId = brokerSessionUuid(row)
     return {
       ...row,
       metaapi_account_id: sessionId ?? row.metaapi_account_id,
-      manual_settings: normalizeManualSettingsForExecution(row.manual_settings) as Record<string, unknown>,
+      manual_settings: normalizeManualSettingsForExecution(row.manual_settings, {
+        accountBalance,
+      }) as Record<string, unknown>,
       channel_trading_configs: normalizedConfigs,
     }
   }

@@ -243,6 +243,62 @@ test('planMultiManualOrders: clamps per-leg to min lot when dynamic total is sma
   assert.ok(plan.orders.every(o => Number(o.volume) === 0.01))
 })
 
+test('planMultiManualOrders: dynamic range trading opens multiple immediates when burst cap matches preview', () => {
+  const manual: ManualSettings = {
+    ...baseManual,
+    risk_mode: 'dynamic_balance_percent',
+    dynamic_balance_percent: 11,
+    multi_trade_leg_percent: 3,
+    multi_trade_max_orders: 34,
+    range_trading: true,
+    range_percent: 50,
+    range_step_pips: 3,
+    range_distance_pips: 30,
+    tp_lots: [{ label: 'TP1', lot: 0, percent: 100, enabled: true }],
+  }
+  const plan = planManualOrders({
+    parsed: { ...baseParsed, tp: [1900] },
+    resolvedSymbol: 'XAUUSD',
+    baseOperation: 'Buy',
+    manual,
+    channelKeywords: null,
+    manualLot: 3.42,
+    ctx: baseCtx,
+    commentPrefix: 'TSCopier:abc',
+  })
+  assert.equal(plan.orders.length, 17)
+  assert.equal(plan.virtualPendings?.length, 10)
+  const totalVolume = plan.orders.reduce((s, o) => s + Number(o.volume), 0)
+  assert.ok(Math.abs(totalVolume - 1.7) < 1e-6)
+})
+
+test('planMultiManualOrders: stale burst cap of 1 consolidates dynamic range into one order (regression)', () => {
+  const manual: ManualSettings = {
+    ...baseManual,
+    risk_mode: 'dynamic_balance_percent',
+    dynamic_balance_percent: 11,
+    multi_trade_leg_percent: 3,
+    multi_trade_max_orders: 1,
+    range_trading: true,
+    range_percent: 50,
+    range_step_pips: 3,
+    range_distance_pips: 30,
+    tp_lots: [{ label: 'TP1', lot: 0, percent: 100, enabled: true }],
+  }
+  const plan = planManualOrders({
+    parsed: { ...baseParsed, tp: [1900] },
+    resolvedSymbol: 'XAUUSD',
+    baseOperation: 'Buy',
+    manual,
+    channelKeywords: null,
+    manualLot: 3.42,
+    ctx: baseCtx,
+    commentPrefix: 'TSCopier:abc',
+  })
+  assert.equal(plan.orders.length, 1)
+  assert.ok(Math.abs(Number(plan.orders[0]?.volume) - 1.7) < 1e-6)
+})
+
 test('planMultiManualOrders: explicit cap consolidates legs, volume + TP split preserved', () => {
   const manual: ManualSettings = {
     ...baseManual,

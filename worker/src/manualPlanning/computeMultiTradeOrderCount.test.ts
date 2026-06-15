@@ -35,3 +35,19 @@ test('normalizeManualSettingsForExecution honors legacy multi_trade_max_legs', (
   })
   assert.equal(ms.multi_trade_max_orders, 15)
 })
+
+test('normalizeManualSettingsForExecution recomputes burst cap for dynamic balance', () => {
+  const ms = normalizeManualSettingsForExecution({
+    trade_style: 'multi',
+    risk_mode: 'dynamic_balance_percent',
+    dynamic_balance_percent: 11,
+    fixed_lot: 0.01,
+    multi_trade_leg_percent: 3,
+    multi_trade_max_orders: 1,
+    range_trading: true,
+    range_percent: 50,
+    range_step_pips: 3,
+    range_distance_pips: 30,
+  }, { accountBalance: 31_054.79 })
+  assert.equal(ms.multi_trade_max_orders, 34)
+})

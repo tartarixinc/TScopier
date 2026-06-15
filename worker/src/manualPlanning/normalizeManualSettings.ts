@@ -1,4 +1,5 @@
 import { computeMultiTradeOrderCount } from './computeMultiTradeOrderCount'
+import { resolveManualLotForSettings } from './resolveManualLot'
 import type { ManualSettings, ManualTpLot } from './types'
 
 /** Default Targets % rows — keep aligned with AccountConfigPage `DEFAULT_MANUAL_TP_LOTS`. */
@@ -32,7 +33,10 @@ export function sanitizeTpLots(rows: ManualTpLot[]): ManualTpLot[] {
  * Normalize `manual_settings` from DB for execution (Targets %, leg %, range).
  * Mirrors `normalizeManualSettings` in AccountConfigPage — without UI-only fields.
  */
-export function normalizeManualSettingsForExecution(raw: unknown): ManualSettings {
+export function normalizeManualSettingsForExecution(
+  raw: unknown,
+  opts?: { accountBalance?: number | null },
+): ManualSettings {
   const j = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
   const tpLotsRaw = Array.isArray(j.tp_lots) ? j.tp_lots : DEFAULT_MANUAL_TP_LOTS
   const tpLots = tpLotsRaw.map((x, i) => {
@@ -52,24 +56,32 @@ export function normalizeManualSettingsForExecution(raw: unknown): ManualSetting
   const maxOrdersRaw = Number(j.multi_trade_max_orders)
   const legacyMaxLegsRaw = Number(j.multi_trade_max_legs)
   const tradeStyle = j.trade_style === 'multi' ? 'multi' : 'single'
+  const riskMode = String(j.risk_mode ?? 'fixed_lot')
+  const accountBalance = opts?.accountBalance
   let maxOrders: number | undefined
-  if (Number.isFinite(maxOrdersRaw) && maxOrdersRaw > 0) {
+
+  const seedMaxOrdersFromLot = (manualLot: number): void => {
+    if (!Number.isFinite(manualLot) || manualLot <= 0) return
+    const preview = computeMultiTradeOrderCount({
+      manualLot,
+      legPercent: legPct,
+      rangeTrading: j.range_trading === true,
+      rangePercent: Number(j.range_percent),
+      rangeStepPips: Number(j.range_step_pips),
+      rangeDistancePips: Number(j.range_distance_pips),
+    })
+    if (preview > 0) maxOrders = preview
+  }
+
+  if (tradeStyle === 'multi' && riskMode === 'dynamic_balance_percent' && Number(accountBalance) > 0) {
+    // Recompute from live balance — stored cap goes stale when balance or % changes.
+    seedMaxOrdersFromLot(resolveManualLotForSettings(j as ManualSettings, accountBalance))
+  } else if (Number.isFinite(maxOrdersRaw) && maxOrdersRaw > 0) {
     maxOrders = Math.max(1, Math.min(500, Math.floor(maxOrdersRaw)))
   } else if (Number.isFinite(legacyMaxLegsRaw) && legacyMaxLegsRaw > 0) {
     maxOrders = Math.max(1, Math.min(500, Math.floor(legacyMaxLegsRaw)))
   } else if (tradeStyle === 'multi') {
-    const fixedLot = Number(j.fixed_lot)
-    if (Number.isFinite(fixedLot) && fixedLot > 0) {
-      const preview = computeMultiTradeOrderCount({
-        manualLot: fixedLot,
-        legPercent: legPct,
-        rangeTrading: j.range_trading === true,
-        rangePercent: Number(j.range_percent),
-        rangeStepPips: Number(j.range_step_pips),
-        rangeDistancePips: Number(j.range_distance_pips),
-      })
-      if (preview > 0) maxOrders = preview
-    }
+    seedMaxOrdersFromLot(resolveManualLotForSettings(j as ManualSettings, accountBalance))
   }
 
   const readNumber = (key: string, fallback: number): number => {

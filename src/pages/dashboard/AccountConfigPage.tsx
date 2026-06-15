@@ -349,7 +349,10 @@ function sanitizeTpLots(rows: ManualTpLot[]): ManualTpLot[] {
   }))
 }
 
-function normalizeManualSettings(raw: unknown): ManualSettings {
+function normalizeManualSettings(
+  raw: unknown,
+  opts?: { accountBalance?: number | null },
+): ManualSettings {
   const j = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {}
   const map = j.symbol_mapping && typeof j.symbol_mapping === 'object' ? j.symbol_mapping as Record<string, unknown> : {}
   const tpLotsRaw = Array.isArray(j.tp_lots) ? j.tp_lots : DEFAULT_MANUAL_TP_LOTS
@@ -409,6 +412,34 @@ function normalizeManualSettings(raw: unknown): ManualSettings {
   }
 
   const multiTradeMaxOrders = (() => {
+    if (merged.trade_style !== 'multi') return undefined
+
+    const manualLot = resolvePreviewManualLot({
+      manualSettings: merged,
+      accountBalance: opts?.accountBalance,
+    })
+
+    const recomputeFromLot = (): number | undefined => {
+      if (!Number.isFinite(manualLot) || manualLot <= 0) return undefined
+      const preview = estimateMultiTradeOrderCount({
+        manualLot,
+        legPercent: legPct,
+        range: merged.range_trading
+          ? {
+              enabled: true,
+              percent: rangePercent,
+              stepPips: rangeStepPips,
+              distancePips: rangeDistancePips,
+            }
+          : undefined,
+      })
+      return preview.totalOrders > 0 ? preview.totalOrders : undefined
+    }
+
+    if (merged.risk_mode === 'dynamic_balance_percent' && Number(opts?.accountBalance) > 0) {
+      return recomputeFromLot()
+    }
+
     const explicit = Number(j.multi_trade_max_orders)
     if (Number.isFinite(explicit) && explicit > 0) {
       return Math.max(1, Math.min(500, Math.floor(explicit)))
@@ -416,22 +447,7 @@ function normalizeManualSettings(raw: unknown): ManualSettings {
     if (Number.isFinite(legacyMaxLegsRaw) && legacyMaxLegsRaw > 0) {
       return Math.max(1, Math.min(500, Math.floor(legacyMaxLegsRaw)))
     }
-    if (merged.trade_style !== 'multi') return undefined
-    const fixedLot = Number(merged.fixed_lot)
-    if (!Number.isFinite(fixedLot) || fixedLot <= 0) return undefined
-    const preview = estimateMultiTradeOrderCount({
-      manualLot: fixedLot,
-      legPercent: legPct,
-      range: merged.range_trading
-        ? {
-            enabled: true,
-            percent: rangePercent,
-            stepPips: rangeStepPips,
-            distancePips: rangeDistancePips,
-          }
-        : undefined,
-    })
-    return preview.totalOrders > 0 ? preview.totalOrders : undefined
+    return recomputeFromLot()
   })()
 
   return {
@@ -626,6 +642,7 @@ function buildChannelConfigDraftFromBroker(
     broker.manual_settings && typeof broker.manual_settings === 'object'
       ? (broker.manual_settings as Record<string, unknown>)
       : buildDefaultChannelTradingConfig().manual_settings,
+    { accountBalance: broker.last_balance },
   )
   const defaultManual = normalizeManualSettings(buildDefaultChannelTradingConfig().manual_settings)
 
@@ -634,7 +651,7 @@ function buildChannelConfigDraftFromBroker(
     channelConfigs[id] = {
       mode: stored?.copier_mode === 'ai' ? 'ai' : stored?.copier_mode === 'manual' ? 'manual' : legacyMode,
       manualSettings: stored?.manual_settings && storedPerChannelConfigComplete(storedConfigs, id)
-        ? normalizeManualSettings(stored.manual_settings)
+        ? normalizeManualSettings(stored.manual_settings, { accountBalance: broker.last_balance })
         : fallbackManual ?? defaultManual,
       channelFilters: keywordFiltersEnabled
         ? normalizeChannelFilters(persistedFilters[id] ?? DEFAULT_CHANNEL_FILTERS)
@@ -1792,11 +1809,14 @@ export function AccountConfigPage() {
           id,
           {
             mode: committedDraft.channelConfigs[id]?.mode ?? 'manual',
-            manualSettings: normalizeManualSettingsForPlan(
-              savePlanCtx.plan,
-              savePlanCtx.status,
-              (committedDraft.channelConfigs[id]?.manualSettings ?? DEFAULT_MANUAL_SETTINGS) as Record<string, unknown>,
-            ) as ManualSettings,
+            manualSettings: normalizeManualSettings(
+              normalizeManualSettingsForPlan(
+                savePlanCtx.plan,
+                savePlanCtx.status,
+                (committedDraft.channelConfigs[id]?.manualSettings ?? DEFAULT_MANUAL_SETTINGS) as Record<string, unknown>,
+              ) as ManualSettings,
+              { accountBalance: configAccount?.last_balance },
+            ),
           },
         ]),
       ),
@@ -1822,13 +1842,16 @@ export function AccountConfigPage() {
       ? committedDraft.channelConfigs[fallbackManualChannelId]
       : null
     const normalizedFallbackManual = fallbackManualConfig
-      ? normalizeManualSettingsForPlan(
-          savePlanCtx.plan,
-          savePlanCtx.status,
-          {
-            ...fallbackManualConfig.manualSettings,
-            allow_high_impact_news: fallbackManualConfig.manualSettings.news_trading_enabled === true,
-          } as Record<string, unknown>,
+      ? normalizeManualSettings(
+          normalizeManualSettingsForPlan(
+            savePlanCtx.plan,
+            savePlanCtx.status,
+            {
+              ...fallbackManualConfig.manualSettings,
+              allow_high_impact_news: fallbackManualConfig.manualSettings.news_trading_enabled === true,
+            } as Record<string, unknown>,
+          ) as ManualSettings,
+          { accountBalance: configAccount?.last_balance },
         )
       : (configAccount.manual_settings ?? {})
     const { error: tableErr } = await upsertBrokerChannelTradingConfigs(
