@@ -9,7 +9,7 @@ export function multiTradeUnitsToLot(units: number, lotStep: number): number {
   return Number((units * lotStep).toFixed(8))
 }
 
-/** Per-leg lot units for multi-trade bursts; clamps to broker min when leg% would be too small. */
+/** Per-leg lot units for multi-trade bursts (no clamp — callers fall back to single trade when below min). */
 export function resolveMultiTradeTargetUnits(args: {
   manualLot: number
   legPercent: number
@@ -19,18 +19,54 @@ export function resolveMultiTradeTargetUnits(args: {
   manualUnits: number
   targetUnits: number
   minUnits: number
-  clampedToMinLeg: boolean
 } {
   const minLot = args.minLot ?? 0.01
   const lotStep = args.lotStep ?? 0.01
   const legPct = Math.max(0.1, Math.min(100, Number(args.legPercent ?? 5)))
   const manualUnits = multiTradeToUnits(args.manualLot, lotStep)
   const minUnits = Math.max(1, Math.round(minLot / lotStep))
-  let targetUnits = multiTradeToUnits(args.manualLot * (legPct / 100), lotStep)
-  let clampedToMinLeg = false
-  if (targetUnits < minUnits && manualUnits >= minUnits) {
-    targetUnits = minUnits
-    clampedToMinLeg = true
+  const targetUnits = multiTradeToUnits(args.manualLot * (legPct / 100), lotStep)
+  return { manualUnits, targetUnits, minUnits }
+}
+
+/** Smallest leg % so each leg is at least minLot after lot-step rounding. */
+export function computeMinMultiTradeLegPercent(
+  manualLot: number,
+  minLot = 0.01,
+  lotStep = 0.01,
+): number {
+  if (!Number.isFinite(manualLot) || manualLot <= 0) return 100
+  const manualUnits = multiTradeToUnits(manualLot, lotStep)
+  const minUnits = Math.max(1, Math.round(minLot / lotStep))
+  if (manualUnits < minUnits) return 100
+
+  let pct = Math.max(0.1, (minUnits * lotStep / manualLot) * 100)
+  for (let i = 0; i < 1000; i++) {
+    if (multiTradeToUnits(manualLot * (pct / 100), lotStep) >= minUnits) {
+      return Math.min(100, Math.ceil(pct * 10) / 10)
+    }
+    pct += 0.1
   }
-  return { manualUnits, targetUnits, minUnits, clampedToMinLeg }
+  return 100
+}
+
+/** Lot size for each leg in a multi-trade burst (full lot when split is not possible). */
+export function resolveMultiTradePerLegLot(args: {
+  manualLot: number
+  legPercent: number
+  minLot?: number
+  lotStep?: number
+}): number | null {
+  const manualLot = Number(args.manualLot)
+  if (!Number.isFinite(manualLot) || manualLot <= 0) return null
+  const minLot = args.minLot ?? 0.01
+  const lotStep = args.lotStep ?? 0.01
+  const { targetUnits, minUnits } = resolveMultiTradeTargetUnits({
+    manualLot,
+    legPercent: args.legPercent,
+    minLot,
+    lotStep,
+  })
+  if (targetUnits < minUnits) return manualLot
+  return multiTradeUnitsToLot(targetUnits, lotStep)
 }

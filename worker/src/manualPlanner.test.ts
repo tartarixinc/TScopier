@@ -220,7 +220,7 @@ test('planMultiManualOrders: default sends one order per granular leg (no consol
   assert.ok(Math.abs(totalVolume - 1.0) < 1e-9)
 })
 
-test('planMultiManualOrders: clamps per-leg to min lot when dynamic total is small', () => {
+test('planMultiManualOrders: falls back to single trade when per-leg % is below broker min', () => {
   const manual: ManualSettings = {
     ...baseManual,
     multi_trade_leg_percent: 5,
@@ -237,10 +237,8 @@ test('planMultiManualOrders: clamps per-leg to min lot when dynamic total is sma
     ctx: baseCtx,
     commentPrefix: 'TSCopier:abc',
   })
-  assert.equal(plan.orders.length, 10)
-  const totalVolume = plan.orders.reduce((s, o) => s + Number(o.volume), 0)
-  assert.ok(Math.abs(totalVolume - 0.1) < 1e-9)
-  assert.ok(plan.orders.every(o => Number(o.volume) === 0.01))
+  assert.equal(plan.orders.length, 1)
+  assert.equal(Number(plan.orders[0]?.volume), 0.1)
 })
 
 test('planMultiManualOrders: dynamic range trading opens multiple immediates when burst cap matches preview', () => {
@@ -602,11 +600,11 @@ test('planManualOrders: multi + range applies Targets % separately to instant an
   assert.equal(plan.orders.filter(o => o.takeprofit === 4530).length, 3)
   assert.equal(plan.orders.filter(o => o.takeprofit === 4510).length, 2)
   assert.equal(plan.orders.filter(o => o.takeprofit === 4490).length, 0)
-  // Range pool (5 legs): same split independently
+  // Range pool (5 legs): same % split on the remaining TP ladder
   const rangeTps = (plan.virtualPendings ?? []).map(v => v.takeprofit)
-  assert.equal(rangeTps.filter(tp => tp === 4530).length, 3)
-  assert.equal(rangeTps.filter(tp => tp === 4510).length, 2)
-  assert.equal(rangeTps.filter(tp => tp === 4490).length, 0)
+  assert.equal(rangeTps.filter(tp => tp === 4510).length, 3)
+  assert.equal(rangeTps.filter(tp => tp === 4490).length, 2)
+  assert.equal(rangeTps.filter(tp => tp === 4530).length, 0)
 })
 
 test('planManualOrders: multi + BuyLimit → market immediates (price 0; avoids MT invalid pending price)', () => {

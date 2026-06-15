@@ -149,10 +149,11 @@ export const configureModalEn: ConfigureModalTranslations = {
       'Range Trading splits your fixed lot into many smaller orders (e.g. 1.0 lot @ 5%/leg = 20 trades of 0.05). Legs are distributed across the signal\'s TPs using the percent rows below. If the per-leg size falls below the broker\'s symbol minimum, the planner falls back to a single full-size trade and logs the reason.',
     perLegSize: 'Per-leg size (% of fixed lot)',
     totalOpenTrades: 'Total Open Trades',
-    previewFallbackSingle: '1 (split not possible at 0.01 min / 0.01 step preview)',
+    previewFallbackSingle: '{lot} lots x 1 trade (split not possible at 0.01 min / 0.01 step preview)',
     multiTradeSplitSaveBlocked:
       'Cannot save: split not possible at 0.01 min / 0.01 step preview. Increase lot size or per-leg %.',
-    previewInstantPending: '{total} ({immediate} instant + {pending} for layering)',
+    previewLotsXTrades: '{lot} lots x {total} trades',
+    previewLotsXTradesLayered: '{lot} lots x {total} trades ({immediate} instant + {pending} for layering)',
     previewFooter:
       'How many trades the copier plans to open for one signal. Based on your configured lot size and per-leg size. Your broker may open fewer if the market did not cover the zone during layering.',
     previewDynamicRisk:

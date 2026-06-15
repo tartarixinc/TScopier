@@ -58,7 +58,8 @@ import {
   resolveMtServerCandidate,
   type LinkedAccountType,
 } from '../../lib/brokerFromServer'
-import { estimateMultiTradeOrderCount } from '../../lib/estimateMultiTradeOrders'
+import { estimateMultiTradeOrderCount, formatMultiTradeTotalOpenTradesPreview } from '../../lib/estimateMultiTradeOrders'
+import { computeMinMultiTradeLegPercent, resolveMultiTradePerLegLot } from '../../lib/multiTradeLegUnits'
 import { formatPreviewLotSize, resolvePreviewManualLot } from '../../lib/manualLotSizing'
 import { pipCalculator, pipValueForLots, type PipQuote } from '../../lib/pipCalculator'
 import { classifySymbol } from '../../lib/pipMath'
@@ -458,10 +459,6 @@ function normalizeManualSettings(
       return recomputeFromLot()
     }
 
-    const explicit = Number(j.multi_trade_max_orders)
-    if (Number.isFinite(explicit) && explicit > 0) {
-      return Math.max(1, Math.min(500, Math.floor(explicit)))
-    }
     if (Number.isFinite(legacyMaxLegsRaw) && legacyMaxLegsRaw > 0) {
       return Math.max(1, Math.min(500, Math.floor(legacyMaxLegsRaw)))
     }
@@ -1044,12 +1041,28 @@ export function AccountConfigPage() {
     cm.risk.dynamicBalanceLotSizeFallback,
   ])
 
-  const multiTradePreview = useMemo(() => {
+  const previewManualLot = useMemo(() => {
     const ms = channelManualSettings
-    const manualLot = resolvePreviewManualLot({
-      manualSettings: ms,
+    const fixedLot = fixedLotDraft !== null && ms.risk_mode !== 'dynamic_balance_percent'
+      ? commitPositiveNumber(fixedLotDraft, ms.fixed_lot ?? DEFAULT_MANUAL_SETTINGS.fixed_lot ?? 0.01)
+      : ms.fixed_lot
+    return resolvePreviewManualLot({
+      manualSettings: { ...ms, fixed_lot: fixedLot },
       accountBalance: configAccount?.last_balance,
     })
+  }, [
+    channelManualSettings,
+    fixedLotDraft,
+    configAccount?.last_balance,
+  ])
+
+  const multiTradeMinLegPercent = useMemo(
+    () => computeMinMultiTradeLegPercent(previewManualLot),
+    [previewManualLot],
+  )
+
+  const multiTradePreview = useMemo(() => {
+    const ms = channelManualSettings
     const legPct = Number(ms.multi_trade_leg_percent ?? 5) || 5
     const range = ms.range_trading
       ? {
@@ -1059,17 +1072,31 @@ export function AccountConfigPage() {
           distancePips: Number(ms.range_distance_pips ?? DEFAULT_MANUAL_SETTINGS.range_distance_pips) || 0,
         }
       : undefined
-    return estimateMultiTradeOrderCount({ manualLot, legPercent: legPct, range })
+    return estimateMultiTradeOrderCount({ manualLot: previewManualLot, legPercent: legPct, range })
   }, [
-    channelManualSettings.fixed_lot,
-    channelManualSettings.risk_mode,
-    channelManualSettings.dynamic_balance_percent,
+    previewManualLot,
     channelManualSettings.multi_trade_leg_percent,
     channelManualSettings.range_trading,
     channelManualSettings.range_percent,
     channelManualSettings.range_step_pips,
     channelManualSettings.range_distance_pips,
-    configAccount?.last_balance,
+  ])
+
+  const multiTradeTotalOpenTradesLabel = useMemo(() => {
+    const legPct = Number(channelManualSettings.multi_trade_leg_percent ?? 5) || 5
+    const perLeg = resolveMultiTradePerLegLot({ manualLot: previewManualLot, legPercent: legPct })
+    return formatMultiTradeTotalOpenTradesPreview(perLeg, multiTradePreview, {
+      fallbackSingle: cm.risk.previewFallbackSingle,
+      lotsXTrades: cm.risk.previewLotsXTrades,
+      lotsXTradesLayered: cm.risk.previewLotsXTradesLayered,
+    }, formatPreviewLotSize)
+  }, [
+    previewManualLot,
+    channelManualSettings.multi_trade_leg_percent,
+    multiTradePreview,
+    cm.risk.previewFallbackSingle,
+    cm.risk.previewLotsXTrades,
+    cm.risk.previewLotsXTradesLayered,
   ])
 
   const multiTradePreviewTooltip = useMemo(() => {
@@ -3061,24 +3088,22 @@ export function AccountConfigPage() {
                                   <ConfigureInput
                                     label={cm.risk.perLegSize}
                                     type="number"
-                                    min={0.1}
+                                    min={multiTradeMinLegPercent}
                                     max={100}
                                     step={0.5}
                                     value={String(channelManualSettings.multi_trade_leg_percent ?? 5)}
-                                    onChange={e => setManual({ multi_trade_leg_percent: Number(e.target.value) })}
+                                    onChange={e => {
+                                      const raw = Number(e.target.value)
+                                      const next = Number.isFinite(raw)
+                                        ? Math.max(multiTradeMinLegPercent, Math.min(100, raw))
+                                        : multiTradeMinLegPercent
+                                      setManual({ multi_trade_leg_percent: next })
+                                    }}
                                   />
                                   <div>
                                     <ConfigTitle className="mb-1" info={multiTradePreviewTooltip}>{cm.risk.totalOpenTrades}</ConfigTitle>
                                     <div className="rounded-md border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/50 px-3 py-2 text-sm font-mono text-neutral-900 dark:text-neutral-50">
-                                      {multiTradePreview.fallsBackSingle
-                                        ? cm.risk.previewFallbackSingle
-                                        : multiTradePreview.immediate != null && multiTradePreview.pending != null
-                                          ? interpolate(cm.risk.previewInstantPending, {
-                                              total: String(multiTradePreview.totalOrders),
-                                              immediate: String(multiTradePreview.immediate),
-                                              pending: String(multiTradePreview.pending),
-                                            })
-                                          : multiTradePreview.totalOrders}
+                                      {multiTradeTotalOpenTradesLabel}
                                     </div>
                                   </div>
                                 </div>

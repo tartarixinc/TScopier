@@ -149,10 +149,11 @@ export const configureModalEs: ConfigureModalTranslations = {
       'Range Trading divide su lote fijo en muchas órdenes más pequeñas (p. ej. 1,0 lote al 5 %/pierna = 20 operaciones de 0,05). Las piernas se reparten entre los TP de la señal según los porcentajes de abajo. Si el tamaño por pierna queda por debajo del mínimo del símbolo en el broker, el planificador recurre a una sola operación a tamaño completo y registra el motivo.',
     perLegSize: 'Tamaño por pierna (% del lote fijo)',
     totalOpenTrades: 'Total de operaciones abiertas',
-    previewFallbackSingle: '1 (división imposible con vista previa mín. 0,01 / paso 0,01)',
+    previewFallbackSingle: '{lot} lots x 1 trade (división imposible con vista previa mín. 0,01 / paso 0,01)',
     multiTradeSplitSaveBlocked:
       'No se puede guardar: división imposible con vista previa mín. 0,01 / paso 0,01. Aumente el tamaño del lote o el % por tramo.',
-    previewInstantPending: '{total} ({immediate} instantáneas + {pending} para escalonado)',
+    previewLotsXTrades: '{lot} lots x {total} trades',
+    previewLotsXTradesLayered: '{lot} lots x {total} trades ({immediate} instantáneas + {pending} para escalonado)',
     previewFooter:
       'Cuántas operaciones planea abrir el copiador por señal. Según su tamaño de lote configurado y el tamaño por pierna. El broker puede abrir menos si el mercado no cubrió la zona durante el escalonado.',
     previewDynamicRisk:

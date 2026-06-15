@@ -107,3 +107,33 @@ export function estimateMultiTradeOrderCount(args: {
   const totalOrders = Math.min(MULTI_TRADE_ABS_MAX_LEGS, baseLegs + (extraRemainderLeg ? 1 : 0))
   return { baseLegs, extraRemainderLeg, totalOrders, fallsBackSingle: false }
 }
+
+export type MultiTradeTotalOpenTradesLabels = {
+  fallbackSingle: string
+  lotsXTrades: string
+  lotsXTradesLayered: string
+}
+
+/** User-facing Total Open Trades line, e.g. `0.05 lots x 20 trades (10 instant + 10 for layering)`. */
+export function formatMultiTradeTotalOpenTradesPreview(
+  perLegLot: number | null,
+  preview: EstimateMultiTradeOrderResult,
+  labels: MultiTradeTotalOpenTradesLabels,
+  formatLot: (lot: number) => string = n => (Number.isFinite(n) && n > 0 ? n.toFixed(2) : '—'),
+): string {
+  const lot = perLegLot != null && perLegLot > 0 ? formatLot(perLegLot) : '—'
+  if (preview.fallsBackSingle || preview.totalOrders <= 0) {
+    return labels.fallbackSingle.replace(/\{lot\}/g, lot)
+  }
+  const total = String(preview.totalOrders)
+  if (preview.immediate != null && preview.pending != null) {
+    return labels.lotsXTradesLayered
+      .replace(/\{lot\}/g, lot)
+      .replace(/\{total\}/g, total)
+      .replace(/\{immediate\}/g, String(preview.immediate))
+      .replace(/\{pending\}/g, String(preview.pending))
+  }
+  return labels.lotsXTrades
+    .replace(/\{lot\}/g, lot)
+    .replace(/\{total\}/g, total)
+}

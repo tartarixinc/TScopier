@@ -17,6 +17,20 @@ test('computeMultiTradeOrderCount: 5 lot @ 2% → 50 orders', () => {
   )
 })
 
+test('computeMultiTradeOrderCount: 0.2 lot @ 2% → single trade when leg below min', () => {
+  assert.equal(
+    computeMultiTradeOrderCount({ manualLot: 0.2, legPercent: 2 }),
+    1,
+  )
+})
+
+test('computeMultiTradeOrderCount: 0.2 lot @ 5% → 20 orders', () => {
+  assert.equal(
+    computeMultiTradeOrderCount({ manualLot: 0.2, legPercent: 5 }),
+    20,
+  )
+})
+
 test('normalizeManualSettingsForExecution seeds multi_trade_max_orders from leg%', () => {
   const ms = normalizeManualSettingsForExecution({
     trade_style: 'multi',

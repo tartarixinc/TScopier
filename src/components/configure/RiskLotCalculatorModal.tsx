@@ -17,6 +17,7 @@ import {
   roundLots2,
   type RiskLotCalculatorFormState,
 } from '../../lib/riskLotCalculator'
+import { computeMinMultiTradeLegPercent } from '../../lib/multiTradeLegUnits'
 import type { ManualSettings } from '../../types/database'
 
 function sumEnabledTpPercents(rows: { enabled?: boolean; percent?: number }[]): number {
@@ -121,6 +122,10 @@ function RiskLotCalculatorModalInner({
   const quote = useMemo(
     () => externalPipQuote ?? pipQuoteForSymbol(effectiveSymbol),
     [externalPipQuote, effectiveSymbol],
+  )
+  const minLegPercent = useMemo(
+    () => computeMinMultiTradeLegPercent(form.fixedLot),
+    [form.fixedLot],
   )
 
   const result = useMemo(
@@ -346,11 +351,17 @@ function RiskLotCalculatorModalInner({
                   <ConfigureInput
                     label={copy.perLegSize}
                     type="number"
-                    min={0.1}
+                    min={minLegPercent}
                     max={100}
                     step={0.5}
                     value={String(form.legPercent)}
-                    onChange={e => patchForm({ legPercent: Number(e.target.value) || 5 })}
+                    onChange={e => {
+                      const raw = Number(e.target.value)
+                      const next = Number.isFinite(raw)
+                        ? Math.max(minLegPercent, Math.min(100, raw))
+                        : minLegPercent
+                      patchForm({ legPercent: next })
+                    }}
                   />
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-sm text-neutral-800 dark:text-neutral-100">{copy.rangeLayering}</span>

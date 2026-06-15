@@ -53,7 +53,6 @@ export function normalizeManualSettingsForExecution(
   const legPctRaw = Number(j.multi_trade_leg_percent)
   const legPct = Number.isFinite(legPctRaw) && legPctRaw > 0 ? Math.min(100, legPctRaw) : 5
 
-  const maxOrdersRaw = Number(j.multi_trade_max_orders)
   const legacyMaxLegsRaw = Number(j.multi_trade_max_legs)
   const tradeStyle = j.trade_style === 'multi' ? 'multi' : 'single'
   const riskMode = String(j.risk_mode ?? 'fixed_lot')
@@ -76,9 +75,7 @@ export function normalizeManualSettingsForExecution(
   if (tradeStyle === 'multi' && riskMode === 'dynamic_balance_percent' && Number(accountBalance) > 0) {
     // Recompute from live balance — stored cap goes stale when balance or % changes.
     seedMaxOrdersFromLot(resolveManualLotForSettings(j as ManualSettings, accountBalance))
-  } else if (Number.isFinite(maxOrdersRaw) && maxOrdersRaw > 0) {
-    maxOrders = Math.max(1, Math.min(500, Math.floor(maxOrdersRaw)))
-  } else if (Number.isFinite(legacyMaxLegsRaw) && legacyMaxLegsRaw > 0) {
+  } else if (tradeStyle === 'multi' && Number.isFinite(legacyMaxLegsRaw) && legacyMaxLegsRaw > 0) {
     maxOrders = Math.max(1, Math.min(500, Math.floor(legacyMaxLegsRaw)))
   } else if (tradeStyle === 'multi') {
     seedMaxOrdersFromLot(resolveManualLotForSettings(j as ManualSettings, accountBalance))

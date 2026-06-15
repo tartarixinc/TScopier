@@ -142,7 +142,8 @@ export interface ConfigureModalTranslations {
     totalOpenTrades: string
     previewFallbackSingle: string
     multiTradeSplitSaveBlocked: string
-    previewInstantPending: string
+    previewLotsXTrades: string
+    previewLotsXTradesLayered: string
     previewFooter: string
     previewDynamicRisk: string
     previewLadderSpan: string

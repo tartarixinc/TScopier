@@ -149,10 +149,11 @@ export const configureModalFr: ConfigureModalTranslations = {
       'Range Trading divise votre lot fixe en de nombreux ordres plus petits (ex. 1,0 lot à 5 %/jambe = 20 trades de 0,05). Les jambes sont réparties sur les TP du signal selon les pourcentages ci-dessous. Si la taille par jambe est inférieure au minimum du symbole chez le courtier, le planificateur revient à une seule position pleine taille et enregistre la raison.',
     perLegSize: 'Taille par jambe (% du lot fixe)',
     totalOpenTrades: 'Total des positions ouvertes',
-    previewFallbackSingle: '1 (répartition impossible avec aperçu min. 0,01 / pas 0,01)',
+    previewFallbackSingle: '{lot} lots x 1 trade (répartition impossible avec aperçu min. 0,01 / pas 0,01)',
     multiTradeSplitSaveBlocked:
       'Enregistrement impossible : répartition impossible avec aperçu min. 0,01 / pas 0,01. Augmentez la taille de lot ou le % par jambe.',
-    previewInstantPending: '{total} ({immediate} instantanées + {pending} pour échelonnement)',
+    previewLotsXTrades: '{lot} lots x {total} trades',
+    previewLotsXTradesLayered: '{lot} lots x {total} trades ({immediate} instantanées + {pending} pour échelonnement)',
     previewFooter:
       'Nombre de trades que le copieur prévoit d’ouvrir pour un signal. Basé sur votre taille de lot configurée et la taille par jambe. Le courtier peut en ouvrir moins si le marché n’a pas couvert la zone pendant l’échelonnement.',
     previewDynamicRisk:
