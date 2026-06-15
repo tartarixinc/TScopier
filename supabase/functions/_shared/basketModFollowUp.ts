@@ -7,6 +7,10 @@ type OrderModifyApi = {
   orderModify(metaUuid: string, payload: Record<string, unknown>): Promise<unknown>
 }
 import {
+  breakevenStopLossForSymbol,
+  manualSettingsForChannel,
+} from "./autoManagement.ts"
+import {
   takeProfitForLegIndex,
   type ManualTpLotLike,
 } from "./tpBucketDistribution.ts"
@@ -111,6 +115,9 @@ type FollowUpLegContext = {
   existingSl: number | null
   existingTp: number | null
   entryPrice: number | null
+  symbol: string
+  isBuy: boolean
+  manual: { breakeven_offset_pips?: number }
 }
 
 function computeFollowUpStops(
@@ -125,10 +132,16 @@ function computeFollowUpStops(
   if (act === "breakeven") {
     const entry = sanitizeLevel(ctx.entryPrice)
     if (entry <= 0) return null
+    const beSl = breakevenStopLossForSymbol({
+      isBuy: ctx.isBuy,
+      entryPrice: entry,
+      manual: ctx.manual,
+      symbol: ctx.symbol,
+    })
     return {
-      stoploss: entry,
+      stoploss: beSl,
       takeprofit: sanitizeLevel(ctx.existingTp),
-      dbPatch: { sl: entry },
+      dbPatch: { sl: beSl },
     }
   }
 
@@ -235,6 +248,7 @@ export async function tryApplyBasketFollowUpToNewFill(
     existingSl: number | null
     existingTp: number | null
     tpLots?: ManualTpLotLike[] | null
+    isBuy?: boolean | null
   },
 ): Promise<void> {
   const { data: basket } = await supabase
@@ -249,13 +263,17 @@ export async function tryApplyBasketFollowUpToNewFill(
   if (!channelId || !createdAt) return
 
   let tpLots = args.tpLots
+  const { data: br } = await supabase
+    .from("broker_accounts")
+    .select("manual_settings, channel_trading_configs")
+    .eq("id", args.brokerAccountId)
+    .maybeSingle()
+  const channelManual = manualSettingsForChannel(
+    (br ?? {}) as { manual_settings?: unknown; channel_trading_configs?: unknown },
+    channelId,
+  )
   if (tpLots === undefined) {
-    const { data: br } = await supabase
-      .from("broker_accounts")
-      .select("manual_settings")
-      .eq("id", args.brokerAccountId)
-      .maybeSingle()
-    tpLots = ((br?.manual_settings ?? {}) as { tp_lots?: ManualTpLotLike[] | null }).tp_lots
+    tpLots = (channelManual.tp_lots ?? null) as ManualTpLotLike[] | null | undefined
   }
 
   const { data: openLegs } = await supabase
@@ -297,6 +315,9 @@ export async function tryApplyBasketFollowUpToNewFill(
     existingSl: args.existingSl,
     existingTp: args.existingTp,
     entryPrice: args.entryPrice,
+    symbol: args.symbol,
+    isBuy: args.isBuy ?? true,
+    manual: channelManual,
   }
 
   const channelParams = await loadChannelActiveTradeParamsForSymbol(

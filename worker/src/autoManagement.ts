@@ -1,6 +1,9 @@
 import { isPartialTpTriggered } from './partialTpMonitor'
+import { signalPipPrice } from './signalPip'
 
 /** Keep snapshot helpers in sync with supabase/functions/_shared/autoManagement.ts */
+
+export const BREAKEVEN_OFFSET_PIPS_DEFAULT = 5
 
 export type AutoBeMode = 'pips' | 'rr' | 'money' | 'tp_hit'
 export type AutoBeType = 'sl_only' | 'sl_and_close_half'
@@ -39,6 +42,40 @@ function positiveNum(v: number, fallback: number): number {
   return Number.isFinite(n) && n >= 0 ? n : fallback
 }
 
+/** Pips beyond entry when channel or auto breakeven moves SL (default 5). */
+export function resolveBreakevenOffsetPips(manual: {
+  breakeven_offset_pips?: number
+}): number {
+  const raw = manual.breakeven_offset_pips
+  if (raw === undefined || raw === null) return BREAKEVEN_OFFSET_PIPS_DEFAULT
+  return positiveNum(raw, BREAKEVEN_OFFSET_PIPS_DEFAULT)
+}
+
+function defaultDigitsForPip(pip: number): number {
+  if (pip >= 0.01) return 2
+  if (pip >= 0.001) return 3
+  return 5
+}
+
+/** Channel breakeven SL from entry + configured offset for a symbol. */
+export function breakevenStopLossForSymbol(args: {
+  isBuy: boolean
+  entryPrice: number
+  manual: { breakeven_offset_pips?: number }
+  symbol: string
+  digits?: number
+}): number {
+  const pip = signalPipPrice(args.symbol)
+  const digits = args.digits ?? defaultDigitsForPip(pip)
+  return computeBreakevenStopLoss(
+    args.isBuy,
+    args.entryPrice,
+    resolveBreakevenOffsetPips(args.manual),
+    pip,
+    digits,
+  )
+}
+
 /** True when manual settings enable auto move-SL-to-breakeven. */
 export function isAutoManagementEnabled(manual: {
   move_sl_to_entry_after_mode?: string
@@ -67,7 +104,7 @@ export function normalizeAutoBeConfig(manual: {
     triggerValue: positiveNum(manual.move_sl_to_entry_after_value ?? 0, mode === 'rr' ? 1 : 10),
     tpIndex: Math.max(1, Math.floor(Number(manual.move_sl_to_entry_tp_index ?? 1) || 1)),
     beType,
-    offsetPips: positiveNum(manual.breakeven_offset_pips ?? 0, 10),
+    offsetPips: resolveBreakevenOffsetPips(manual),
   }
 }
 

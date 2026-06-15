@@ -59,7 +59,7 @@ export const DEFAULT_MANUAL_SETTINGS: ManualSettings = {
   move_sl_to_entry_after_value: 10,
   move_sl_to_entry_tp_index: 1,
   move_sl_to_entry_type: 'sl_only',
-  breakeven_offset_pips: 10,
+  breakeven_offset_pips: 5,
   partial_close_percent: 25,
   half_close_percent: 50,
   trailing_enabled: false,

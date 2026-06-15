@@ -3461,7 +3461,7 @@ export function AccountConfigPage() {
                                       min={0}
                                       step={1}
                                       hint={cm.management.breakevenOffsetHint}
-                                      value={String(ms.breakeven_offset_pips ?? 10)}
+                                      value={String(ms.breakeven_offset_pips ?? 5)}
                                       onChange={e => setManual({
                                         breakeven_offset_pips: Math.max(0, Number(e.target.value) || 0),
                                       })}

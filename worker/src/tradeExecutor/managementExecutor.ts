@@ -4,6 +4,11 @@ import {
   upsertChannelActiveTradeParams,
   type ChannelActiveTradeParams
 } from '../channelActiveTradeParams'
+import { resolveChannelTradingConfig } from '../channelTradingConfig'
+import {
+  breakevenStopLossForSymbol,
+  clampBreakevenModifyStops,
+} from '../autoManagement'
 import { isChannelManagementBlocked, isPendingCancelBlocked, normalizeChannelMessageFiltersMap } from '../channelMessageFilters'
 import {
   cweInstructionGroupKey,
@@ -499,12 +504,42 @@ export async function applyManagement(
         } else if (action === 'breakeven') {
           const entry = sanitizeLevel(trade.entry_price)
           if (entry > 0) {
+            const manual = resolveChannelTradingConfig(broker, signal.channel_id).manual_settings
+            const isBuy = String(trade.direction).toLowerCase() === 'buy'
+            const symEntry = await ctx.getSymbolParams(uuid, trade.symbol)
+            const digits = symEntry?.digits
+            let beSl = breakevenStopLossForSymbol({
+              isBuy,
+              entryPrice: entry,
+              manual,
+              symbol: trade.symbol,
+              digits,
+            })
+            let modifyTp = sanitizeLevel(trade.tp)
+            try {
+              const q = await api.quote(uuid, trade.symbol)
+              const refPrice = isBuy ? q.bid : q.ask
+              const clamped = clampBreakevenModifyStops({
+                isBuy,
+                stoploss: beSl,
+                takeprofit: modifyTp,
+                referencePrice: refPrice,
+                point: symEntry?.point ?? 0,
+                digits: digits ?? 5,
+                stopsLevel: symEntry?.stopsLevel ?? 0,
+                freezeLevel: symEntry?.freezeLevel ?? 0,
+              })
+              beSl = clamped.stoploss
+              modifyTp = clamped.takeprofit
+            } catch {
+              /* quote optional; use computed breakeven SL */
+            }
             await api.orderModify(uuid, {
               ticket,
-              stoploss: entry,
-              takeprofit: sanitizeLevel(trade.tp),
+              stoploss: beSl,
+              takeprofit: modifyTp,
             })
-            await ctx.supabase.from('trades').update({ sl: entry }).eq('id', trade.id)
+            await ctx.supabase.from('trades').update({ sl: beSl }).eq('id', trade.id)
           }
         } else if (action === 'modify') {
           return
@@ -586,12 +621,19 @@ export async function applyManagement(
       const tpLotsByBroker = new Map(
         brokers.map(b => [b.id, ((b.manual_settings ?? {}) as ManualSettings).tp_lots]),
       )
+      const breakevenManualByBroker = new Map(
+        brokers.map(b => [
+          b.id,
+          resolveChannelTradingConfig(b, signal.channel_id).manual_settings as ManualSettings,
+        ]),
+      )
       const pendingUpdated = await updateRangePendingLegsForManagement({
         supabase: ctx.supabase,
         parsed,
         pendingLegs,
         openTrades: rows,
         tpLotsByBroker,
+        breakevenManualByBroker,
         action,
         hasNewSl,
         hasNewTp,

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { FxsocketBrokerClient } from './fxsocketClient'
+import { breakevenStopLossForSymbol } from './autoManagement'
 import type { ManualTpLot } from './manualPlanning/types'
 import { normalizeManualSettingsForExecution } from './manualPlanning/normalizeManualSettings'
 import { resolveChannelTradingConfig } from './channelTradingConfig'
@@ -62,9 +63,12 @@ type FollowUpLegContext = {
   existingSl: number | null
   existingTp: number | null
   entryPrice: number | null
+  symbol: string
+  isBuy: boolean
+  manual: { breakeven_offset_pips?: number }
 }
 
-function computeFollowUpStops(
+export function computeFollowUpStops(
   ctx: FollowUpLegContext,
   source: {
     sl?: number | null
@@ -76,10 +80,16 @@ function computeFollowUpStops(
   if (act === 'breakeven') {
     const entry = sanitizeLevel(ctx.entryPrice)
     if (entry <= 0) return null
+    const beSl = breakevenStopLossForSymbol({
+      isBuy: ctx.isBuy,
+      entryPrice: entry,
+      manual: ctx.manual,
+      symbol: ctx.symbol,
+    })
     return {
-      stoploss: entry,
+      stoploss: beSl,
       takeprofit: sanitizeLevel(ctx.existingTp),
-      dbPatch: { sl: entry },
+      dbPatch: { sl: beSl },
     }
   }
 
@@ -211,18 +221,21 @@ export async function tryApplyBasketFollowUpToNewFill(
   if (!channelId || !createdAt) return
 
   let tpLots = args.tpLots
+  let channelManual: { breakeven_offset_pips?: number } = {}
+  const { data: br } = await supabase
+    .from('broker_accounts')
+    .select('manual_settings, channel_trading_configs, copier_mode, ai_settings')
+    .eq('id', args.brokerAccountId)
+    .maybeSingle()
+  const resolvedManual = normalizeManualSettingsForExecution(
+    resolveChannelTradingConfig(
+      (br ?? {}) as Parameters<typeof resolveChannelTradingConfig>[0],
+      channelId,
+    ).manual_settings,
+  )
+  channelManual = resolvedManual
   if (tpLots === undefined) {
-    const { data: br } = await supabase
-      .from('broker_accounts')
-      .select('manual_settings, channel_trading_configs, copier_mode, ai_settings')
-      .eq('id', args.brokerAccountId)
-      .maybeSingle()
-    tpLots = normalizeManualSettingsForExecution(
-      resolveChannelTradingConfig(
-        (br ?? {}) as Parameters<typeof resolveChannelTradingConfig>[0],
-        channelId,
-      ).manual_settings,
-    ).tp_lots
+    tpLots = resolvedManual.tp_lots
   }
 
   const { data: openLegs } = await supabase
@@ -264,6 +277,9 @@ export async function tryApplyBasketFollowUpToNewFill(
     existingSl: args.existingSl,
     existingTp: args.existingTp,
     entryPrice: args.entryPrice,
+    symbol: args.symbol,
+    isBuy: args.isBuy ?? true,
+    manual: channelManual,
   }
 
   const channelParams = await loadChannelActiveTradeParamsForSymbol(

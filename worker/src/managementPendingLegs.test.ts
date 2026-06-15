@@ -91,6 +91,7 @@ describe('updateRangePendingLegsForManagement', () => {
       pendingLegs,
       openTrades: [],
       tpLotsByBroker: new Map(),
+      breakevenManualByBroker: new Map(),
       action: 'modify',
       hasNewSl: true,
       hasNewTp: false,
@@ -101,5 +102,50 @@ describe('updateRangePendingLegsForManagement', () => {
     for (const u of updates) {
       assert.equal(u.patch.stoploss, 4303)
     }
+  })
+
+  it('breakeven sets stoploss entry + offset pips', async () => {
+    const updates: Array<{ id: string; patch: Record<string, unknown> }> = []
+    const pendingLegs: RangePendingMgmtRow[] = [
+      {
+        id: 'leg-1',
+        signal_id: 'sig-a',
+        broker_account_id: 'b1',
+        symbol: 'XAUUSD',
+        step_idx: 1,
+        is_buy: true,
+        anchor_price: 4330,
+        stoploss: 4320,
+        takeprofit: 4350,
+        cwe_close_price: null,
+        status: 'pending',
+      },
+    ]
+    const mockSupabase = {
+      from: () => ({
+        update: (patch: Record<string, unknown>) => ({
+          eq: () => ({
+            in: () => {
+              updates.push({ id: 'leg-1', patch })
+              return Promise.resolve({ error: null })
+            },
+          }),
+        }),
+      }),
+    }
+    const n = await updateRangePendingLegsForManagement({
+      supabase: mockSupabase as never,
+      parsed: {},
+      pendingLegs,
+      openTrades: [],
+      tpLotsByBroker: new Map(),
+      breakevenManualByBroker: new Map([['b1', { breakeven_offset_pips: 5 }]]),
+      action: 'breakeven',
+      hasNewSl: false,
+      hasNewTp: false,
+      parsedTpLevels: [],
+    })
+    assert.equal(n, 1)
+    assert.equal(updates[0]!.patch.stoploss, 4330.5)
   })
 })

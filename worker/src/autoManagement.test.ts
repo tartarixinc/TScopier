@@ -2,13 +2,32 @@ import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 import {
   autoManagementTradeSnapshot,
+  breakevenStopLossForSymbol,
   clampBreakevenModifyStops,
   computeBreakevenStopLoss,
   isAutoBeTriggerMet,
   isAutoManagementEnabled,
   isSlAtOrBeyondBreakeven,
+  resolveBreakevenOffsetPips,
   resolveSlForBreakevenCheck,
 } from './autoManagement'
+
+test('resolveBreakevenOffsetPips defaults to 5 when unset', () => {
+  assert.equal(resolveBreakevenOffsetPips({}), 5)
+  assert.equal(resolveBreakevenOffsetPips({ breakeven_offset_pips: 8 }), 8)
+})
+
+test('breakevenStopLossForSymbol: buy XAUUSD entry + 5 pips', () => {
+  assert.equal(
+    breakevenStopLossForSymbol({
+      isBuy: true,
+      entryPrice: 4330,
+      manual: { breakeven_offset_pips: 5 },
+      symbol: 'XAUUSD',
+    }),
+    4330.5,
+  )
+})
 
 test('isAutoManagementEnabled: off when mode is none', () => {
   assert.equal(isAutoManagementEnabled({ move_sl_to_entry_after_mode: 'none' }), false)

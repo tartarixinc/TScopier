@@ -3,6 +3,10 @@
  * Keep in sync with worker/src/autoManagement.ts.
  */
 
+import { signalPipPrice } from "./signalPip.ts"
+
+export const BREAKEVEN_OFFSET_PIPS_DEFAULT = 5
+
 export type AutoBeMode = "pips" | "rr" | "money" | "tp_hit"
 export type AutoBeType = "sl_only" | "sl_and_close_half"
 
@@ -17,6 +21,57 @@ export type AutoBeConfig = {
 function positiveNum(v: number, fallback: number): number {
   const n = Number(v)
   return Number.isFinite(n) && n >= 0 ? n : fallback
+}
+
+function roundPrice(v: number, digits: number): number {
+  if (!Number.isFinite(v)) return v
+  return Number(v.toFixed(digits))
+}
+
+/** Pips beyond entry when channel or auto breakeven moves SL (default 5). */
+export function resolveBreakevenOffsetPips(manual: {
+  breakeven_offset_pips?: number
+}): number {
+  const raw = manual.breakeven_offset_pips
+  if (raw === undefined || raw === null) return BREAKEVEN_OFFSET_PIPS_DEFAULT
+  return positiveNum(raw, BREAKEVEN_OFFSET_PIPS_DEFAULT)
+}
+
+export function computeBreakevenStopLoss(
+  isBuy: boolean,
+  entryPrice: number,
+  offsetPips: number,
+  pipPrice: number,
+  digits: number,
+): number {
+  const offset = offsetPips * pipPrice
+  const raw = isBuy ? entryPrice + offset : entryPrice - offset
+  return roundPrice(raw, digits)
+}
+
+function defaultDigitsForPip(pip: number): number {
+  if (pip >= 0.01) return 2
+  if (pip >= 0.001) return 3
+  return 5
+}
+
+/** Channel breakeven SL from entry + configured offset for a symbol. */
+export function breakevenStopLossForSymbol(args: {
+  isBuy: boolean
+  entryPrice: number
+  manual: { breakeven_offset_pips?: number }
+  symbol: string
+  digits?: number
+}): number {
+  const pip = signalPipPrice(args.symbol)
+  const digits = args.digits ?? defaultDigitsForPip(pip)
+  return computeBreakevenStopLoss(
+    args.isBuy,
+    args.entryPrice,
+    resolveBreakevenOffsetPips(args.manual),
+    pip,
+    digits,
+  )
 }
 
 export function isAutoManagementEnabled(manual: {
@@ -46,7 +101,7 @@ export function normalizeAutoBeConfig(manual: {
     triggerValue: positiveNum(manual.move_sl_to_entry_after_value ?? 0, mode === "rr" ? 1 : 10),
     tpIndex: Math.max(1, Math.floor(Number(manual.move_sl_to_entry_tp_index ?? 1) || 1)),
     beType,
-    offsetPips: positiveNum(manual.breakeven_offset_pips ?? 0, 10),
+    offsetPips: resolveBreakevenOffsetPips(manual),
   }
 }
 
