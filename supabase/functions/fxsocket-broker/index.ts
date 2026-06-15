@@ -16,6 +16,7 @@ import {
   assertBrokerAccountLimit,
   loadUserSubscription,
 } from "../_shared/subscriptionAccess.ts"
+import { effectiveAccountSummaryBalance } from "../_shared/effectiveBrokerBalance.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -38,7 +39,7 @@ function ensureFxsocketConfigured(): void {
 
 function summaryToRowPatch(summary: FxsocketAccountSummary) {
   return {
-    last_balance: summary.balance ?? null,
+    last_balance: effectiveAccountSummaryBalance(summary),
     last_equity: summary.equity ?? null,
     last_currency: summary.currency ?? null,
     last_synced_at: new Date().toISOString(),

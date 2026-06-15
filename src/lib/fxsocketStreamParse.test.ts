@@ -34,6 +34,29 @@ describe('parseFxsocketAccountStreamData', () => {
     expect(snap.openPnl).toBe(-25)
   })
 
+  it('adds broker credit to balance', () => {
+    const snap = parseFxsocketAccountStreamData({
+      balance: 10_000,
+      credit: 5_000,
+      equity: 15_050.5,
+      profit: 50.5,
+    })
+    expect(snap.balance).toBe(15_000)
+    expect(snap.equity).toBe(15_050.5)
+    expect(snap.openPnl).toBe(50.5)
+  })
+
+  it('derives floating P/L from equity minus balance+credit when profit is absent', () => {
+    const snap = parseFxsocketAccountStreamData({
+      balance: 1000,
+      credit: 500,
+      equity: 1512.34,
+    })
+    expect(snap.balance).toBe(1500)
+    expect(snap.openPnl).toBeCloseTo(12.34)
+    expect(snap.openPnlSource).toBe('derived')
+  })
+
   it('derives floating P/L from equity minus balance when profit is absent', () => {
     const snap = parseFxsocketAccountStreamData({
       balance: 1000,

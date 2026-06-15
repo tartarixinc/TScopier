@@ -11,6 +11,7 @@ import {
 import { performancePayloadFromDashboardCache } from '../lib/performanceCacheBridge'
 import { readSessionCache, writeSessionCache } from '../lib/sessionDataCache'
 import { fxsocketBroker, type MtTrade } from '../lib/fxsocketBroker'
+import { effectiveAccountSummaryBalance } from '../lib/effectiveBrokerBalance'
 import {
   aggregateAccountPerformance,
   chartTradesToStatsRows,
@@ -104,8 +105,8 @@ async function fetchPerformancePayload(userId: string): Promise<PerformanceCache
       }
       try {
         const { account: refreshed, summary } = await fxsocketBroker.refreshSummary(account.id)
-        const eq = summary?.equity ?? refreshed.last_equity ?? summary?.balance ?? refreshed.last_balance
-        const bal = summary?.balance ?? refreshed.last_balance ?? summary?.equity ?? refreshed.last_equity
+        const eq = summary?.equity ?? refreshed.last_equity ?? effectiveAccountSummaryBalance(summary) ?? refreshed.last_balance
+        const bal = refreshed.last_balance ?? effectiveAccountSummaryBalance(summary) ?? refreshed.last_equity ?? summary?.equity
         if (eq != null && Number.isFinite(Number(eq))) equity[account.id] = Number(eq)
         if (bal != null && Number.isFinite(Number(bal))) balance[account.id] = Number(bal)
         const storedBaseline = refreshed.performance_baseline_balance ?? account.performance_baseline_balance
@@ -324,8 +325,8 @@ export function usePerformanceData(userId: string | undefined) {
         ])
 
         const { account: refreshed, summary } = summaryRes
-        const eq = summary?.equity ?? refreshed.last_equity ?? summary?.balance
-        const bal = summary?.balance ?? refreshed.last_balance ?? summary?.equity
+        const eq = summary?.equity ?? refreshed.last_equity ?? effectiveAccountSummaryBalance(summary)
+        const bal = refreshed.last_balance ?? effectiveAccountSummaryBalance(summary) ?? summary?.equity
         const basePayload = payloadRef.current
         const priorTrades = basePayload?.mtTrades ?? mtTradesRef.current
         const nextAccounts = (basePayload?.accounts ?? []).map(a => {

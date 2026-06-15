@@ -1,5 +1,6 @@
 import type { FxsocketAccountSummary } from "./fxsocketClient.ts"
 import type { FxsocketBrokerTradeRow } from "./fxsocketTrades.ts"
+import { effectiveAccountSummaryBalance } from "./effectiveBrokerBalance.ts"
 
 /** Match frontend PERFORMANCE_MT_HISTORY_DAYS for cash-flow / deal-profit backfill. */
 export const PERFORMANCE_BASELINE_HISTORY_DAYS = 400
@@ -168,15 +169,13 @@ export function hasPerformanceBaseline(value: number | null | undefined): boolea
 }
 
 /**
- * Balance at first successful FxSocket connect (raw AccountSummary balance).
+ * Balance at first successful FxSocket connect (balance + credit).
  * Never inferred from MT deposit history — immutable once stored.
  */
 export function snapshotLinkTimeBalance(summary: FxsocketAccountSummary): number | null {
-  const balanceRaw = summary.balance ?? summary.equity
-  if (balanceRaw == null || !Number.isFinite(Number(balanceRaw))) return null
-  const balance = Number(balanceRaw)
-  if (balance <= 0) return null
-  return Math.round(balance * 100) / 100
+  const balance = effectiveAccountSummaryBalance(summary)
+  if (balance == null || balance <= 0) return null
+  return balance
 }
 
 export function computePerformanceBaselineBalance(

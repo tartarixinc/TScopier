@@ -1,4 +1,6 @@
 /** Parse FxSocket WebSocket `account` topic payloads (camelCase or PascalCase). */
+import { effectiveBrokerBalance } from './effectiveBrokerBalance'
+
 export interface FxsocketAccountStreamSnapshot {
   balance?: number
   equity?: number
@@ -36,7 +38,9 @@ function readProfitField(o: Record<string, unknown>): number | undefined {
 }
 
 export function parseFxsocketAccountStreamData(raw: Record<string, unknown>): FxsocketAccountStreamSnapshot {
-  const balance = readNum(raw.balance ?? raw.Balance)
+  const rawBalance = readNum(raw.balance ?? raw.Balance)
+  const credit = readNum(raw.credit ?? raw.Credit)
+  const balance = effectiveBrokerBalance(rawBalance, credit) ?? undefined
   const equity = readNum(raw.equity ?? raw.Equity)
   const explicitProfit = readProfitField(raw)
   let openPnl: number | undefined

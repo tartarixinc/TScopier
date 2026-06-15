@@ -43,6 +43,10 @@ Deno.test("snapshotLinkTimeBalance uses live AccountSummary balance", () => {
   assertEquals(snapshotLinkTimeBalance({ balance: null, equity: 10_050 }), 10_050)
 })
 
+Deno.test("snapshotLinkTimeBalance includes broker credit", () => {
+  assertEquals(snapshotLinkTimeBalance({ balance: 10_000, credit: 5_000, equity: 15_050 }), 15_000)
+})
+
 Deno.test("resolvePerformanceBaselineBalance captures balance on first link", () => {
   const baseline = resolvePerformanceBaselineBalance(null, { balance: 10_000, equity: 10_000 })
   assertEquals(baseline, 10_000)
