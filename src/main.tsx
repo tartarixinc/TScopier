@@ -1,8 +1,11 @@
-import { StrictMode, lazy, Suspense } from 'react'
+import { StrictMode, lazy, Suspense, useEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import { applyThemeToDocument, readStoredTheme, ThemeProvider } from './context/ThemeContext.tsx'
 import { isAppHost } from './lib/site.ts'
+import { clearChunkReloadGuard, registerChunkLoadRecovery } from './lib/chunkLoadRecovery.ts'
+
+registerChunkLoadRecovery()
 
 applyThemeToDocument(readStoredTheme())
 
@@ -11,9 +14,17 @@ const MarketingApp = lazy(() => import('./MarketingApp.tsx'))
 
 const RootComponent = isAppHost() ? App : MarketingApp
 
+function BootGuardClear() {
+  useEffect(() => {
+    clearChunkReloadGuard()
+  }, [])
+  return null
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ThemeProvider>
+      <BootGuardClear />
       <Suspense
         fallback={
           <div className="flex min-h-screen items-center justify-center">

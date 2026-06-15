@@ -26,7 +26,7 @@ export function DashboardKeepAlive() {
     <div className={onDashboard ? 'min-h-full' : 'hidden'} aria-hidden={!onDashboard}>
       <Suspense fallback={onDashboard ? <PageLoader /> : null}>
         <Routes>
-          <Route path="/dashboard" element={<DashboardPage />}>
+          <Route path="/dashboard/*" element={<DashboardPage />}>
             <Route path="broker/:brokerId" element={<BrokerStatsOverlay />} />
           </Route>
         </Routes>
