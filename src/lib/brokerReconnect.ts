@@ -47,18 +47,9 @@ export function brokerConnectionStatusLabel(
   account: Pick<BrokerAccount, 'is_active' | 'fxsocket_status' | 'connection_status'>,
   labels: BrokerConnectionStatusLabels,
 ): string {
+  if (!account.is_active) return labels.statusPaused
+
   const phase = brokerConnectionDisplayPhase(account)
-  if (!account.is_active) {
-    if (phase === 'connected' || phase === 'connecting' || phase === 'recovering') {
-      const base = phase === 'connecting'
-        ? labels.statusConnecting
-        : phase === 'recovering'
-          ? labels.statusRecovering
-          : labels.statusConnected
-      return `${labels.statusPaused} · ${base}`
-    }
-    return labels.statusPaused
-  }
   if (phase === 'connected') return labels.statusConnected
   if (phase === 'connecting') return labels.statusConnecting
   if (phase === 'recovering') return labels.statusRecovering
