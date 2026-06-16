@@ -1148,6 +1148,7 @@ class UserListener {
             return {
                 parseResult: (0, aiParseModification_1.aiResultToParseResult)(aiResult),
                 aiMeta: { intent: aiResult.intent, source: aiResult.source },
+                channelKeywords: keywords,
             };
         }
         if (listenerInlineParseEnabled()) {
@@ -1155,7 +1156,7 @@ class UserListener {
             const detEntryParsed = det.status === 'parsed'
                 && (det.parsed.action === 'buy' || det.parsed.action === 'sell');
             if (detEntryParsed) {
-                return { parseResult: det };
+                return { parseResult: det, channelKeywords: keywords };
             }
             if (!this.isModificationClassMessage(args.rawMessage, args.isReply, keywords)) {
                 const aiEntry = await (0, aiParseEntry_1.aiParseEntry)(this.supabase, {
@@ -1172,6 +1173,7 @@ class UserListener {
                     return {
                         parseResult: (0, aiParseEntry_1.aiEntryResultToParseResult)(aiEntry),
                         aiMeta,
+                        channelKeywords: keywords,
                     };
                 }
                 if ((0, aiParseEntry_1.isAiEntryParseEnabled)()) {
@@ -1183,18 +1185,21 @@ class UserListener {
                             skip_reason: aiEntry.skip_reason ?? det.skip_reason,
                         },
                         aiMeta,
+                        channelKeywords: keywords,
                     };
                 }
             }
-            return { parseResult: det };
+            return { parseResult: det, channelKeywords: keywords };
         }
         if (PARSE_SIGNAL_URL) {
             return {
                 parseResult: await this.parseViaEdgeFunction(args.signalId, args.rawMessage, args.channelRowId),
+                channelKeywords: keywords,
             };
         }
         return {
             parseResult: await (0, parseSignal_1.parseRawChannelMessage)(this.supabase, args.channelRowId, args.rawMessage),
+            channelKeywords: keywords,
         };
     }
     /**
@@ -1341,6 +1346,7 @@ class UserListener {
         };
         let parseResult;
         let aiMeta;
+        let channelKeywords;
         try {
             const parsed = await this.parseSignalForListener({
                 channelRowId: channelRow.id,
@@ -1351,6 +1357,7 @@ class UserListener {
             });
             parseResult = parsed.parseResult;
             aiMeta = parsed.aiMeta;
+            channelKeywords = parsed.channelKeywords;
         }
         catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err);
@@ -1414,7 +1421,7 @@ class UserListener {
                 },
             });
         }
-        const executionEligibility = (0, signalExecutionEligibility_1.evaluateParsedSignalExecutionEligibility)(parseResult.parsed, rawMessage);
+        const executionEligibility = (0, signalExecutionEligibility_1.evaluateParsedSignalExecutionEligibility)(parseResult.parsed, rawMessage, channelKeywords);
         const effectiveParseResult = (parseResult.status === 'parsed' && !executionEligibility.eligible)
             ? {
                 ...parseResult,

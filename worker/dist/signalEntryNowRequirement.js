@@ -5,6 +5,7 @@ exports.parsedHasSlOrTp = parsedHasSlOrTp;
 exports.messageHasMarketNowIntent = messageHasMarketNowIntent;
 exports.messageHasExplicitSlTpLabels = messageHasExplicitSlTpLabels;
 exports.entryMissingSlTpRequiresNow = entryMissingSlTpRequiresNow;
+const multilingualSignalTerms_1 = require("./multilingualSignalTerms");
 exports.ENTRY_REQUIRES_NOW_REASON = 'entry_requires_now_without_sl_tp';
 function positivePrice(v) {
     const n = Number(v);
@@ -45,12 +46,14 @@ function messageHasMarketNowIntent(message, channelKeywords) {
         ? splitKeywordAliases(channelKeywords.signal.market_order, delim)
         : [];
     for (const token of [...nowLike, ...custom.filter(t => t.toLowerCase() !== 'market')]) {
-        if (token && keywordRegex(token).test(raw))
+        if (token && (0, multilingualSignalTerms_1.messageContainsKeyword)(raw, token))
             return true;
     }
     if (keywordRegex('market').test(raw) && !isNonTradingMarketPhrase(raw)) {
         return true;
     }
+    if ((0, multilingualSignalTerms_1.textHasCommonMarketNowIntent)(raw))
+        return true;
     return false;
 }
 /** True when SL/TP appear as labeled parameters in the message (not inferred from prose). */

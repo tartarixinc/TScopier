@@ -8,6 +8,7 @@ import {
   looksLikeChannelManagementUpdate,
   looksLikeExplicitFullCloseCommand,
 } from './signalManagementIntent'
+import { MULTILINGUAL_DIRECTION_RE, textHasCommonMarketNowIntent } from './multilingualSignalTerms'
 import { hasTradableInstrumentInText } from './tradableSymbol'
 import { normalizeTelegramMessageText } from './normalizeTelegramMessageText'
 
@@ -123,12 +124,14 @@ export function looksLikeTradingSignal(
 
   const hasDirectionOrAction =
     ENGLISH_DIRECTION.test(normalized)
+    || MULTILINGUAL_DIRECTION_RE.test(text)
     || looksLikeExplicitFullCloseCommand(normalized)
     || hasChannelKeyword
 
   const hasPriceContext =
     hasNumericPriceContext(normalized)
     || ENGLISH_PRICE_CTX.test(normalized)
+    || textHasCommonMarketNowIntent(text)
 
   const hasTradeStructure =
     ENGLISH_TRADE_STRUCTURE.test(normalized)

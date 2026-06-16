@@ -26,6 +26,12 @@ import {
 import { looksLikeCasualNonTradeMessage } from './signalCommentaryGuard'
 import { normalizeTelegramMessageText } from './normalizeTelegramMessageText'
 import { entryMissingSlTpRequiresNow } from './signalEntryNowRequirement'
+import {
+  COMMON_BUY_TERMS,
+  COMMON_MARKET_NOW_TERMS,
+  COMMON_SELL_TERMS,
+  foldAccents,
+} from './multilingualSignalTerms'
 
 /** Structured instruction from Telegram text + per-channel keywords. */
 export interface ChannelParsedSignal {
@@ -230,7 +236,11 @@ function keywordRegex(phrase: string): RegExp {
 }
 
 function hasAnyKeyword(text: string, words: string[]): boolean {
-  return words.some((w) => w && keywordRegex(w).test(text))
+  const folded = foldAccents(text)
+  return words.some((w) => {
+    if (!w) return false
+    return keywordRegex(w).test(text) || keywordRegex(foldAccents(w)).test(folded)
+  })
 }
 
 function lexiconActionAliases(lexicon: ChannelLexiconRow | null, key: string): string[] {
@@ -246,6 +256,7 @@ function buyAliasesForChannel(
   const delim = channelKeywords.additional.delimiters
   return Array.from(new Set([
     'buy', 'long',
+    ...COMMON_BUY_TERMS,
     ...splitKeywordAliases(channelKeywords.signal.buy, delim),
     ...lexiconActionAliases(lexicon, 'buy'),
   ]))
@@ -259,6 +270,7 @@ function sellAliasesForChannel(
   const delim = channelKeywords.additional.delimiters
   return Array.from(new Set([
     'sell', 'short',
+    ...COMMON_SELL_TERMS,
     ...splitKeywordAliases(channelKeywords.signal.sell, delim),
     ...lexiconActionAliases(lexicon, 'sell'),
   ])).filter(alias => {
@@ -952,7 +964,11 @@ function parseSimpleSignal(
   const buyAliases = buyAliasesForChannel(channelKeywords, lexicon)
   const sellAliases = sellAliasesForChannel(channelKeywords, lexicon)
   const marketAliases = Array.from(
-    new Set(["now", "instant", "market", "mkt", ...splitKeywordAliases(channelKeywords.signal.market_order, delim)]),
+    new Set([
+      'now', 'instant', 'market', 'mkt',
+      ...COMMON_MARKET_NOW_TERMS,
+      ...splitKeywordAliases(channelKeywords.signal.market_order, delim),
+    ]),
   )
   const mgmtAliases = [
     ...splitKeywordAliases(channelKeywords.update.close_full, delim),

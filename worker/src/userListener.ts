@@ -1391,6 +1391,7 @@ export class UserListener {
   }): Promise<{
     parseResult: Awaited<ReturnType<typeof parseChannelMessageSync>>
     aiMeta?: { intent: string; source: string }
+    channelKeywords: Awaited<ReturnType<typeof getChannelParseContext>>['keywords']
   }> {
     const { keywords, lexicon } = await getChannelParseContext(this.supabase, args.channelRowId)
     if (this.isModificationClassMessage(args.rawMessage, args.isReply, keywords)) {
@@ -1404,6 +1405,7 @@ export class UserListener {
       return {
         parseResult: aiResultToParseResult(aiResult),
         aiMeta: { intent: aiResult.intent, source: aiResult.source },
+        channelKeywords: keywords,
       }
     }
     if (listenerInlineParseEnabled()) {
@@ -1412,7 +1414,7 @@ export class UserListener {
         det.status === 'parsed'
         && (det.parsed.action === 'buy' || det.parsed.action === 'sell')
       if (detEntryParsed) {
-        return { parseResult: det }
+        return { parseResult: det, channelKeywords: keywords }
       }
       if (!this.isModificationClassMessage(args.rawMessage, args.isReply, keywords)) {
         const aiEntry = await aiParseEntry(this.supabase, {
@@ -1431,6 +1433,7 @@ export class UserListener {
           return {
             parseResult: aiEntryResultToParseResult(aiEntry),
             aiMeta,
+            channelKeywords: keywords,
           }
         }
         if (isAiEntryParseEnabled()) {
@@ -1444,18 +1447,21 @@ export class UserListener {
               skip_reason: aiEntry.skip_reason ?? det.skip_reason,
             },
             aiMeta,
+            channelKeywords: keywords,
           }
         }
       }
-      return { parseResult: det }
+      return { parseResult: det, channelKeywords: keywords }
     }
     if (PARSE_SIGNAL_URL) {
       return {
         parseResult: await this.parseViaEdgeFunction(args.signalId, args.rawMessage, args.channelRowId),
+        channelKeywords: keywords,
       }
     }
     return {
       parseResult: await parseRawChannelMessage(this.supabase, args.channelRowId, args.rawMessage),
+      channelKeywords: keywords,
     }
   }
 
@@ -1625,6 +1631,7 @@ export class UserListener {
 
     let parseResult: Awaited<ReturnType<typeof parseChannelMessageSync>>
     let aiMeta: { intent: string; source: string } | undefined
+    let channelKeywords: Awaited<ReturnType<typeof getChannelParseContext>>['keywords'] | undefined
     try {
       const parsed = await this.parseSignalForListener({
         channelRowId: channelRow.id,
@@ -1635,6 +1642,7 @@ export class UserListener {
       })
       parseResult = parsed.parseResult
       aiMeta = parsed.aiMeta
+      channelKeywords = parsed.channelKeywords
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err)
       console.error(`[userListener] parse failed user=${this.userId} signalId=${signalId}:`, errMsg)
@@ -1697,7 +1705,11 @@ export class UserListener {
       })
     }
 
-    const executionEligibility = evaluateParsedSignalExecutionEligibility(parseResult.parsed, rawMessage)
+    const executionEligibility = evaluateParsedSignalExecutionEligibility(
+      parseResult.parsed,
+      rawMessage,
+      channelKeywords,
+    )
     const effectiveParseResult = (
       parseResult.status === 'parsed' && !executionEligibility.eligible
     )

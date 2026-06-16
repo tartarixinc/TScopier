@@ -24,6 +24,18 @@ _ENGLISH_DIRECTION = re.compile(
     re.I,
 )
 _ENGLISH_PRICE_CTX = re.compile(r"\b(entry|zone|between|above|below|now)\b", re.I)
+_MULTILINGUAL_MARKET_NOW = re.compile(
+    r"\b("
+    r"now|instant|immediately|immediate|maintenant|imm[eé]diat|immediat|"
+    r"ahora|inmediato|teraz|natychmiast|jetzt|sofort|"
+    r"nu|omedelbart|onmiddellijk|"
+    r"сейчас|немедленно|"
+    r"agora|imediato|ora|"
+    r"今すぐ|即時|成行|ナウ|"
+    r"الآن|فوراً|فورا"
+    r")\b",
+    re.I,
+)
 _ENGLISH_TRADE_STRUCTURE = re.compile(r"\b(tp\s*\d*|sl|entry|signal|setup)\b", re.I)
 _ENGLISH_REPLY_MGMT = re.compile(
     r"\b(move|set|update|adjust|tp|sl|breakeven|be|close)\b",
@@ -164,6 +176,7 @@ def looks_like_trading_signal(
     has_price_context = bool(
         _NUMERIC_PRICE.search(normalized)
         or _ENGLISH_PRICE_CTX.search(normalized)
+        or _MULTILINGUAL_MARKET_NOW.search(text)
     )
     has_trade_structure = bool(
         _ENGLISH_TRADE_STRUCTURE.search(normalized)

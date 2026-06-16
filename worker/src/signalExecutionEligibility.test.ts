@@ -106,4 +106,15 @@ describe('evaluateParsedSignalExecutionEligibility', () => {
     assert.equal(eligibility.eligible, false)
     assert.equal(eligibility.skipReason, COMMENTARY_NOT_SIGNAL_REASON)
   })
+
+  it('allows French ACHAT IMMÉDIAT bare gold market entry', () => {
+    const msg = '📈 SIGNAL OR (XAU/USD) – ACHAT IMMÉDIAT'
+    const eligibility = evaluateParsedSignalExecutionEligibility({
+      action: 'buy',
+      symbol: 'XAUUSD',
+      sl: null,
+      tp: [],
+    }, msg)
+    assert.equal(eligibility.eligible, true)
+  })
 })

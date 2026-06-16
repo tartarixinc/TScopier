@@ -8,6 +8,7 @@ import {
 } from "../_shared/tradableSymbol.ts"
 import { looksLikeCasualNonTradeMessage } from "../_shared/signalCommentaryGuard.ts"
 import { entryMissingSlTpRequiresNow } from "../_shared/signalEntryNowRequirement.ts"
+import { COMMON_MARKET_NOW_TERMS } from "../_shared/multilingualSignalTerms.ts"
 import {
   classifyPricesByDirection,
   detectReEnterIntent,
@@ -937,7 +938,11 @@ function parseSimpleSignal(
   const buyAliases = buyAliasesForChannel(channelKeywords, lexicon)
   const sellAliases = sellAliasesForChannel(channelKeywords, lexicon)
   const marketAliases = Array.from(
-    new Set(["now", "instant", "market", "mkt", ...splitKeywordAliases(channelKeywords.signal.market_order, delim)]),
+    new Set([
+      "now", "instant", "market", "mkt",
+      ...COMMON_MARKET_NOW_TERMS,
+      ...splitKeywordAliases(channelKeywords.signal.market_order, delim),
+    ]),
   )
   const mgmtAliases = [
     ...splitKeywordAliases(channelKeywords.update.close_full, delim),

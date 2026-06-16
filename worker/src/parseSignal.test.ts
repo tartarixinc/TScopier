@@ -522,4 +522,14 @@ TP2 4345`
     assert.equal(result.parsed.action, 'buy')
     assert.equal(result.parsed.symbol, 'XAUUSD')
   })
+
+  it('parses French ACHAT IMMÉDIAT gold teaser without channel training', () => {
+    const msg = '📈 SIGNAL OR (XAU/USD) – ACHAT IMMÉDIAT'
+    const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+    assert.equal(result.status, 'parsed')
+    assert.equal(result.parsed.action, 'buy')
+    assert.equal(result.parsed.symbol, 'XAUUSD')
+    assert.equal(result.parsed.sl, null)
+    assert.deepEqual(result.parsed.tp, [])
+  })
 })

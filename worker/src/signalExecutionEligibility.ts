@@ -6,6 +6,7 @@ import {
   messageHasMarketNowIntent,
   messageHasExplicitSlTpLabels,
   parsedHasSlOrTp,
+  type MarketNowKeywordFields,
 } from './signalEntryNowRequirement'
 import { looksLikeChannelManagementUpdate } from './signalManagementIntent'
 import { minPlausibleQuotePrice, sanitizeParsedSymbol } from './tradableSymbol'
@@ -27,6 +28,7 @@ export function evaluateParsedSignalExecutionEligibility(
     lot_size?: unknown
   } | null | undefined,
   rawMessage?: string | null,
+  channelKeywords?: MarketNowKeywordFields | null,
 ): { eligible: boolean; skipReason?: string } {
   if (!parsed) return { eligible: false, skipReason: 'parsed_data_missing' }
   const action = String(parsed.action ?? '').toLowerCase()
@@ -47,7 +49,7 @@ export function evaluateParsedSignalExecutionEligibility(
   }
 
   if (tradeableFromParsed(parsed)) {
-    if (entryMissingSlTpRequiresNow(parsed, raw)) {
+    if (entryMissingSlTpRequiresNow(parsed, raw, channelKeywords)) {
       return { eligible: false, skipReason: ENTRY_REQUIRES_NOW_REASON }
     }
     return { eligible: true }
@@ -69,7 +71,7 @@ export function evaluateParsedSignalExecutionEligibility(
     return { eligible: false, skipReason: ENTRY_MISSING_STRUCTURE_REASON }
   }
 
-  if (symbol && messageHasMarketNowIntent(raw)) {
+  if (symbol && messageHasMarketNowIntent(raw, channelKeywords)) {
     return { eligible: true }
   }
 

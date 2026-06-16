@@ -5,6 +5,7 @@ exports.looksLikeTrainingCandidate = looksLikeTrainingCandidate;
 exports.looksLikeTradingSignal = looksLikeTradingSignal;
 const signalCommentaryGuard_1 = require("./signalCommentaryGuard");
 const signalManagementIntent_1 = require("./signalManagementIntent");
+const multilingualSignalTerms_1 = require("./multilingualSignalTerms");
 const tradableSymbol_1 = require("./tradableSymbol");
 const normalizeTelegramMessageText_1 = require("./normalizeTelegramMessageText");
 function escapeRegExp(s) {
@@ -95,10 +96,12 @@ function looksLikeTradingSignal(text, isReply, ctx) {
     const hasChannelKeyword = channelAliases.length > 0 && hasAnyKeyword(text, channelAliases);
     const hasInstrument = (0, tradableSymbol_1.hasTradableInstrumentInText)(normalized);
     const hasDirectionOrAction = ENGLISH_DIRECTION.test(normalized)
+        || multilingualSignalTerms_1.MULTILINGUAL_DIRECTION_RE.test(text)
         || (0, signalManagementIntent_1.looksLikeExplicitFullCloseCommand)(normalized)
         || hasChannelKeyword;
     const hasPriceContext = hasNumericPriceContext(normalized)
-        || ENGLISH_PRICE_CTX.test(normalized);
+        || ENGLISH_PRICE_CTX.test(normalized)
+        || (0, multilingualSignalTerms_1.textHasCommonMarketNowIntent)(text);
     const hasTradeStructure = ENGLISH_TRADE_STRUCTURE.test(normalized)
         || (channelAliases.length > 0 && hasChannelKeyword);
     if (isReply && (ENGLISH_REPLY_MGMT.test(normalized) || hasChannelKeyword)) {

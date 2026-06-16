@@ -218,7 +218,12 @@ function defaultTrainingSchemaFromRows(rows: Array<{ raw_message: string }>): Si
     "sell", "short", "venta", "vender", "vendre", "vente", "sprzedać", "sprzedaz",
     "продать", "продажа", "sälj", "verkopen", "売り", "بيع",
   ])
-  const entry = new Set<string>(["entry", "@", "at", "price", "now", "entrada", "entree", "wejście", "вход"])
+  const entry = new Set<string>([
+    "entry", "@", "at", "price", "now", "entrada", "entree", "wejście", "вход",
+    "maintenant", "immédiat", "immediat", "ahora", "inmediato", "teraz", "natychmiast",
+    "jetzt", "sofort", "nu", "omedelbart", "onmiddellijk", "сейчас", "немедленно",
+    "今すぐ", "即時", "成行", "الآن",
+  ])
   const sl = new Set<string>([
     "sl", "stop loss", "stoploss", "stop", "стоп", "stopa", "stopp", "損切り",
   ])

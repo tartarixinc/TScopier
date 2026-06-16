@@ -11,7 +11,7 @@ var signalEntryNowRequirement_2 = require("./signalEntryNowRequirement");
 Object.defineProperty(exports, "ENTRY_REQUIRES_NOW_REASON", { enumerable: true, get: function () { return signalEntryNowRequirement_2.ENTRY_REQUIRES_NOW_REASON; } });
 exports.COMMENTARY_NOT_SIGNAL_REASON = 'commentary_not_trade_signal';
 exports.ENTRY_MISSING_STRUCTURE_REASON = 'entry_missing_sl_tp_structure';
-function evaluateParsedSignalExecutionEligibility(parsed, rawMessage) {
+function evaluateParsedSignalExecutionEligibility(parsed, rawMessage, channelKeywords) {
     if (!parsed)
         return { eligible: false, skipReason: 'parsed_data_missing' };
     const action = String(parsed.action ?? '').toLowerCase();
@@ -31,7 +31,7 @@ function evaluateParsedSignalExecutionEligibility(parsed, rawMessage) {
         }
     }
     if ((0, backtestSignal_1.tradeableFromParsed)(parsed)) {
-        if ((0, signalEntryNowRequirement_1.entryMissingSlTpRequiresNow)(parsed, raw)) {
+        if ((0, signalEntryNowRequirement_1.entryMissingSlTpRequiresNow)(parsed, raw, channelKeywords)) {
             return { eligible: false, skipReason: signalEntryNowRequirement_1.ENTRY_REQUIRES_NOW_REASON };
         }
         return { eligible: true };
@@ -48,7 +48,7 @@ function evaluateParsedSignalExecutionEligibility(parsed, rawMessage) {
     if (symbol && (0, signalEntryNowRequirement_1.parsedHasSlOrTp)(parsed)) {
         return { eligible: false, skipReason: exports.ENTRY_MISSING_STRUCTURE_REASON };
     }
-    if (symbol && (0, signalEntryNowRequirement_1.messageHasMarketNowIntent)(raw)) {
+    if (symbol && (0, signalEntryNowRequirement_1.messageHasMarketNowIntent)(raw, channelKeywords)) {
         return { eligible: true };
     }
     if (symbol && (0, signalEntryNowRequirement_1.messageHasExplicitSlTpLabels)(raw) && (0, signalEntryNowRequirement_1.parsedHasSlOrTp)(parsed)) {

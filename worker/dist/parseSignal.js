@@ -15,6 +15,7 @@ const tradableSymbol_1 = require("./tradableSymbol");
 const signalCommentaryGuard_1 = require("./signalCommentaryGuard");
 const normalizeTelegramMessageText_1 = require("./normalizeTelegramMessageText");
 const signalEntryNowRequirement_1 = require("./signalEntryNowRequirement");
+const multilingualSignalTerms_1 = require("./multilingualSignalTerms");
 exports.DEFAULT_CHANNEL_KEYWORDS = {
     signal: {
         entry_point: "ENTRY",
@@ -137,7 +138,12 @@ function keywordRegex(phrase) {
     return new RegExp(`(?<![\\p{L}\\p{N}])${p}(?![\\p{L}\\p{N}])`, 'iu');
 }
 function hasAnyKeyword(text, words) {
-    return words.some((w) => w && keywordRegex(w).test(text));
+    const folded = (0, multilingualSignalTerms_1.foldAccents)(text);
+    return words.some((w) => {
+        if (!w)
+            return false;
+        return keywordRegex(w).test(text) || keywordRegex((0, multilingualSignalTerms_1.foldAccents)(w)).test(folded);
+    });
 }
 function lexiconActionAliases(lexicon, key) {
     const raw = lexicon?.action_aliases?.[key];
@@ -149,6 +155,7 @@ function buyAliasesForChannel(channelKeywords, lexicon = null) {
     const delim = channelKeywords.additional.delimiters;
     return Array.from(new Set([
         'buy', 'long',
+        ...multilingualSignalTerms_1.COMMON_BUY_TERMS,
         ...splitKeywordAliases(channelKeywords.signal.buy, delim),
         ...lexiconActionAliases(lexicon, 'buy'),
     ]));
@@ -158,6 +165,7 @@ function sellAliasesForChannel(channelKeywords, lexicon = null) {
     const delim = channelKeywords.additional.delimiters;
     return Array.from(new Set([
         'sell', 'short',
+        ...multilingualSignalTerms_1.COMMON_SELL_TERMS,
         ...splitKeywordAliases(channelKeywords.signal.sell, delim),
         ...lexiconActionAliases(lexicon, 'sell'),
     ])).filter(alias => {
@@ -781,7 +789,11 @@ function parseSimpleSignal(message, lexicon, channelKeywords) {
     const delim = channelKeywords.additional.delimiters;
     const buyAliases = buyAliasesForChannel(channelKeywords, lexicon);
     const sellAliases = sellAliasesForChannel(channelKeywords, lexicon);
-    const marketAliases = Array.from(new Set(["now", "instant", "market", "mkt", ...splitKeywordAliases(channelKeywords.signal.market_order, delim)]));
+    const marketAliases = Array.from(new Set([
+        'now', 'instant', 'market', 'mkt',
+        ...multilingualSignalTerms_1.COMMON_MARKET_NOW_TERMS,
+        ...splitKeywordAliases(channelKeywords.signal.market_order, delim),
+    ]));
     const mgmtAliases = [
         ...splitKeywordAliases(channelKeywords.update.close_full, delim),
         ...splitKeywordAliases(channelKeywords.update.close_half, delim),

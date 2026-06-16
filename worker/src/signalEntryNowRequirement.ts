@@ -1,4 +1,4 @@
-/** Channel keyword shape needed to detect trained market-order aliases. */
+import { textHasCommonMarketNowIntent, messageContainsKeyword } from './multilingualSignalTerms'
 export type MarketNowKeywordFields = {
   signal?: { market_order?: string }
   additional?: { delimiters?: string }
@@ -56,12 +56,14 @@ export function messageHasMarketNowIntent(
     ? splitKeywordAliases(channelKeywords.signal.market_order, delim)
     : []
   for (const token of [...nowLike, ...custom.filter(t => t.toLowerCase() !== 'market')]) {
-    if (token && keywordRegex(token).test(raw)) return true
+    if (token && messageContainsKeyword(raw, token)) return true
   }
 
   if (keywordRegex('market').test(raw) && !isNonTradingMarketPhrase(raw)) {
     return true
   }
+
+  if (textHasCommonMarketNowIntent(raw)) return true
 
   return false
 }
