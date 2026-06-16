@@ -862,7 +862,7 @@ class VirtualPendingMonitor {
         if (!api)
             return;
         const params = await this.getSymbolParams(leg.metaapi_account_id, leg.symbol);
-        const parsed = (signalRow?.parsed_data ?? {});
+        const parsed = (0, rangeBasketTpSync_1.toRangeBasketParsedSlice)((signalRow?.parsed_data ?? null));
         await (0, rangeBasketTpSync_1.syncRangeBasketTakeProfits)({
             supabase: this.supabase,
             api,

@@ -19,6 +19,7 @@ exports.brokerOrderOpenMs = brokerOrderOpenMs;
 const manualPlanner_1 = require("../manualPlanner");
 const signalEntryRange_1 = require("../manualPlanning/signalEntryRange");
 const mtApiByAccount_1 = require("../mtApiByAccount");
+const effectiveBrokerBalance_1 = require("../effectiveBrokerBalance");
 function isMtUuid(s) {
     if (!s)
         return false;
@@ -86,7 +87,7 @@ function computeLot(broker, signal) {
         const m = (broker.manual_settings ?? {});
         if (m.risk_mode === 'dynamic_balance_percent') {
             const pct = Number(m.dynamic_balance_percent ?? 1);
-            const bal = Number(broker.last_balance ?? broker.last_equity ?? 0);
+            const bal = (0, effectiveBrokerBalance_1.resolveBrokerTotalBalance)(broker) ?? 0;
             if (bal > 0 && pct > 0) {
                 return Math.max(0.01, +(bal * (pct / 100) / 1000).toFixed(2));
             }
@@ -97,7 +98,7 @@ function computeLot(broker, signal) {
     }
     const ai = (broker.ai_settings ?? {});
     const ref = Number(ai.reference_equity ?? 1000);
-    const bal = Number(broker.last_balance ?? broker.last_equity ?? ref);
+    const bal = (0, effectiveBrokerBalance_1.resolveBrokerTotalBalance)(broker) ?? ref;
     const base = Number(ai.fallback_lot ?? broker.default_lot_size ?? 0.01);
     const scaled = ref > 0 ? base * (bal / ref) : base;
     const min = Number(ai.min_lot ?? 0.01);

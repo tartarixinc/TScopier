@@ -13,7 +13,7 @@ import { channelParamsPredateBasket, loadChannelActiveTradeParamsForSymbol } fro
 import { resolveChannelTradingConfig } from './channelTradingConfig'
 import { markRangeLegFired, markRangeLegsExpired } from './rangePendingLadderSync'
 import { normalizeManualSettingsForExecution } from './manualPlanning/normalizeManualSettings'
-import { syncRangeBasketTakeProfits } from './rangeBasketTpSync'
+import { syncRangeBasketTakeProfits, toRangeBasketParsedSlice } from './rangeBasketTpSync'
 import {
   hasWorkOnShard,
   monitorActiveIntervalMs,
@@ -1110,7 +1110,9 @@ export class VirtualPendingMonitor {
     if (!api) return
 
     const params = await this.getSymbolParams(leg.metaapi_account_id, leg.symbol)
-    const parsed = (signalRow?.parsed_data ?? {}) as { sl?: unknown; tp?: unknown }
+    const parsed = toRangeBasketParsedSlice(
+      (signalRow?.parsed_data ?? null) as { sl?: unknown; tp?: unknown } | null,
+    )
 
     await syncRangeBasketTakeProfits({
       supabase: this.supabase,

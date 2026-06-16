@@ -99,7 +99,8 @@ function startHttpServer(authService, sessionManager) {
                     return sendJson(res, 400, { error: 'user_id and channel_row_id are required' });
                 }
                 try {
-                    const result = await sessionManager.backfillChannelHistory(body.user_id, body.channel_row_id, Number(body.days ?? 30));
+                    const forTraining = body.for_training === true || body.for_training === 'true';
+                    const result = await sessionManager.backfillChannelHistory(body.user_id, body.channel_row_id, Number(body.days ?? 30), { forTraining });
                     return sendJson(res, 200, result);
                 }
                 catch (err) {

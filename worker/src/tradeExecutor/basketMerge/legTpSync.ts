@@ -2,7 +2,7 @@ import {
   type BasketSymbolParams
 } from '../../basketSlTpReconcile'
 import { type ManualSettings, type PlannerResult } from '../../manualPlanner'
-import { syncRangeBasketTakeProfits } from '../../rangeBasketTpSync'
+import { syncRangeBasketTakeProfits, toRangeBasketParsedSlice } from '../../rangeBasketTpSync'
 import { buildPerLegStopTargets, mergePlanImmediateOrders } from '../../multiTradeMerge'
 import { type TradeExecutorContext } from '../context'
 import {
@@ -58,7 +58,7 @@ export async function syncMultiBasketLegTakeProfits(ctx: TradeExecutorContext, a
         userId: signal.user_id,
         brokerAccountId: broker.id,
         manual,
-        parsed,
+        parsed: toRangeBasketParsedSlice(parsed),
         plan,
       })
       return

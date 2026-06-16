@@ -7,9 +7,11 @@ exports.applyCloseWorseEntriesInstruction = applyCloseWorseEntriesInstruction;
 const channelActiveTradeParams_1 = require("../channelActiveTradeParams");
 const channelTradingConfig_1 = require("../channelTradingConfig");
 const autoManagement_1 = require("../autoManagement");
+const signalPip_1 = require("../signalPip");
 const channelMessageFilters_1 = require("../channelMessageFilters");
 const closeWorseEntries_1 = require("../closeWorseEntries");
 const managementBrokerClose_1 = require("../managementBrokerClose");
+const managementBrokerClose_2 = require("../managementBrokerClose");
 const managementClose_1 = require("../managementClose");
 const managementModifyBaskets_1 = require("../managementModifyBaskets");
 const managementPendingLegs_1 = require("../managementPendingLegs");
@@ -19,12 +21,107 @@ const multiTradeMerge_1 = require("../multiTradeMerge");
 const orderModifyBenign_1 = require("../orderModifyBenign");
 const parallelPool_1 = require("../parallelPool");
 const rangePendingLadderSync_1 = require("../rangePendingLadderSync");
+const basketModFollowUp_1 = require("../basketModFollowUp");
 const helpers_1 = require("./helpers");
 function mgmtCloseOpts(liveMgmtFast) {
     return { maxAttempts: 2, slippageEscalation: 50, liveFast: liveMgmtFast };
 }
 function emptyMgmtResult(parallelism = 1) {
     return { legsTotal: 0, legsParallelism: parallelism };
+}
+function isUnknownTicketError(message) {
+    const m = message.toLowerCase();
+    return (/\bunknown ticket\b/.test(m)
+        || /\binvalid ticket\b/.test(m)
+        || /\bticket\b.*\bnot found\b/.test(m)
+        || /\bno such order\b/.test(m));
+}
+function isRetryableBreakevenError(message) {
+    const m = message.toLowerCase();
+    return (/order rejected/.test(m)
+        || /trade context busy/.test(m)
+        || /off quotes/.test(m)
+        || /requote/.test(m)
+        || /timeout/.test(m)
+        || /temporary/.test(m)
+        || /too many requests/.test(m)
+        || /verify failed/.test(m));
+}
+async function sleepMs(ms) {
+    await new Promise(resolve => setTimeout(resolve, ms));
+}
+function readOrderStopLoss(raw) {
+    if (!raw || typeof raw !== 'object')
+        return null;
+    const o = raw;
+    for (const key of ['stoploss', 'StopLoss', 'sl', 'SL', 'stop_loss', 'Stoploss']) {
+        const v = o[key];
+        const n = typeof v === 'number' ? v : Number(v);
+        if (Number.isFinite(n) && n > 0)
+            return n;
+    }
+    return null;
+}
+function findRawOrderByTicket(rawOrders, ticket) {
+    for (const raw of rawOrders) {
+        if (!raw || typeof raw !== 'object')
+            continue;
+        const o = raw;
+        const t = Number(o.ticket ?? o.Ticket ?? o.orderId ?? o.OrderID ?? 0);
+        if (Number.isFinite(t) && t === ticket)
+            return raw;
+    }
+    return null;
+}
+async function verifyBreakevenApplied(args) {
+    const { api, uuid, ticket, expectedSl, isBuy, pipPrice } = args;
+    const rawOrders = await api.openedOrders(uuid);
+    const order = findRawOrderByTicket(rawOrders ?? [], ticket);
+    if (!order)
+        return { ok: false, reason: 'verify failed: ticket missing from opened orders' };
+    const sl = readOrderStopLoss(order);
+    if (sl == null)
+        return { ok: false, reason: 'verify failed: broker did not return stop loss' };
+    if ((0, autoManagement_1.isSlAtOrBeyondBreakeven)(isBuy, sl, expectedSl, pipPrice))
+        return { ok: true };
+    return { ok: false, reason: `verify failed: broker SL=${sl} expected BE=${expectedSl}` };
+}
+function resolveReconciledTicketForTrade(trade, rawOrders, excludeTickets = new Set()) {
+    const storedTicket = Number(trade.metaapi_order_id);
+    const expectedDir = String(trade.direction).toLowerCase() === 'buy';
+    const expectedLots = Number.isFinite(Number(trade.lot_size)) ? Number(trade.lot_size) : null;
+    const expectedEntry = Number.isFinite(Number(trade.entry_price)) ? Number(trade.entry_price) : null;
+    const candidates = rawOrders
+        .map(managementBrokerClose_2.extractOpenOrderFromBrokerRaw)
+        .filter((o) => o != null)
+        .filter(o => (0, basketModFollowUp_1.symbolsCompatibleForBasket)(trade.symbol, o.symbol))
+        .filter(o => o.isBuy === expectedDir)
+        .filter(o => !excludeTickets.has(o.ticket));
+    if (!candidates.length)
+        return null;
+    if (Number.isFinite(storedTicket) && storedTicket > 0 && !excludeTickets.has(storedTicket)) {
+        const storedMatch = candidates.find(o => o.ticket === storedTicket);
+        if (storedMatch)
+            return storedTicket;
+    }
+    candidates.sort((a, b) => {
+        const lotScoreA = expectedLots == null ? 0 : Math.abs((a.lots || 0) - expectedLots);
+        const lotScoreB = expectedLots == null ? 0 : Math.abs((b.lots || 0) - expectedLots);
+        if (lotScoreA !== lotScoreB)
+            return lotScoreA - lotScoreB;
+        const entryA = Number.isFinite(Number(a.openPrice))
+            ? Number(a.openPrice)
+            : null;
+        const entryB = Number.isFinite(Number(b.openPrice))
+            ? Number(b.openPrice)
+            : null;
+        const entryScoreA = expectedEntry != null && entryA != null ? Math.abs(entryA - expectedEntry) : 0;
+        const entryScoreB = expectedEntry != null && entryB != null ? Math.abs(entryB - expectedEntry) : 0;
+        if (entryScoreA !== entryScoreB)
+            return entryScoreA - entryScoreB;
+        return b.ticket - a.ticket;
+    });
+    return candidates[0]?.ticket ?? null;
 }
 async function logSendSkipped(ctx, signal, broker, reason, extra) {
     if (reason === 'broker_session_not_connected') {
@@ -362,6 +459,7 @@ async function applyManagement(ctx, signal, parsed, brokers, mgmtOpts) {
     if (action === 'close' || action === 'breakeven' || action === 'partial_profit' || action === 'partial_breakeven') {
         legsTotal += eligibleTrades.length;
     }
+    const usedBreakevenTicketsByUuid = new Map();
     const processTrade = async (trade) => {
         const broker = byBroker.get(trade.broker_account_id);
         if (!broker || !(0, helpers_1.isMtUuid)(broker.metaapi_account_id))
@@ -373,6 +471,8 @@ async function applyManagement(ctx, signal, parsed, brokers, mgmtOpts) {
         const ticket = Number(trade.metaapi_order_id);
         if (!Number.isFinite(ticket) || ticket <= 0)
             return;
+        let effectiveTicket = ticket;
+        let ticketReconciledFrom = null;
         const api = ctx.apiFor(broker);
         if (!api)
             return;
@@ -423,45 +523,117 @@ async function applyManagement(ctx, signal, parsed, brokers, mgmtOpts) {
             }
             else if (action === 'breakeven') {
                 const entry = sanitizeLevel(trade.entry_price);
-                if (entry > 0) {
-                    const manual = (0, channelTradingConfig_1.resolveChannelTradingConfig)(broker, signal.channel_id).manual_settings;
-                    const isBuy = String(trade.direction).toLowerCase() === 'buy';
-                    const symEntry = await ctx.getSymbolParams(uuid, trade.symbol);
-                    const digits = symEntry?.digits;
-                    let beSl = (0, autoManagement_1.breakevenStopLossForSymbol)({
+                if (entry <= 0) {
+                    throw new Error('breakeven skipped: missing entry price on trade row');
+                }
+                const manual = (0, channelTradingConfig_1.resolveChannelTradingConfig)(broker, signal.channel_id).manual_settings;
+                const isBuy = String(trade.direction).toLowerCase() === 'buy';
+                const brokerSymbol = await ctx.resolveBrokerSymbolForLiveEntry(uuid, trade.symbol).catch(() => trade.symbol);
+                const symEntry = (await ctx.getSymbolParams(uuid, brokerSymbol).catch(() => null))
+                    ?? (brokerSymbol.toUpperCase() !== trade.symbol.toUpperCase()
+                        ? await ctx.getSymbolParams(uuid, trade.symbol).catch(() => null)
+                        : null);
+                const digits = symEntry?.digits;
+                const pipPrice = (0, signalPip_1.signalPipPrice)(brokerSymbol);
+                let beSl = (0, autoManagement_1.breakevenStopLossForSymbol)({
+                    isBuy,
+                    entryPrice: entry,
+                    manual,
+                    symbol: brokerSymbol,
+                    digits,
+                });
+                let modifyTp = sanitizeLevel(trade.tp);
+                try {
+                    const q = await api.quote(uuid, brokerSymbol);
+                    const refPrice = isBuy ? q.bid : q.ask;
+                    const clamped = (0, autoManagement_1.clampBreakevenModifyStops)({
                         isBuy,
-                        entryPrice: entry,
-                        manual,
-                        symbol: trade.symbol,
-                        digits,
-                    });
-                    let modifyTp = sanitizeLevel(trade.tp);
-                    try {
-                        const q = await api.quote(uuid, trade.symbol);
-                        const refPrice = isBuy ? q.bid : q.ask;
-                        const clamped = (0, autoManagement_1.clampBreakevenModifyStops)({
-                            isBuy,
-                            stoploss: beSl,
-                            takeprofit: modifyTp,
-                            referencePrice: refPrice,
-                            point: symEntry?.point ?? 0,
-                            digits: digits ?? 5,
-                            stopsLevel: symEntry?.stopsLevel ?? 0,
-                            freezeLevel: symEntry?.freezeLevel ?? 0,
-                        });
-                        beSl = clamped.stoploss;
-                        modifyTp = clamped.takeprofit;
-                    }
-                    catch {
-                        /* quote optional; use computed breakeven SL */
-                    }
-                    await api.orderModify(uuid, {
-                        ticket,
                         stoploss: beSl,
                         takeprofit: modifyTp,
+                        referencePrice: refPrice,
+                        point: symEntry?.point ?? 0,
+                        digits: digits ?? 5,
+                        stopsLevel: symEntry?.stopsLevel ?? 0,
+                        freezeLevel: symEntry?.freezeLevel ?? 0,
                     });
-                    await ctx.supabase.from('trades').update({ sl: beSl }).eq('id', trade.id);
+                    beSl = clamped.stoploss;
+                    modifyTp = clamped.takeprofit;
                 }
+                catch {
+                    /* quote optional; use computed breakeven SL */
+                }
+                const usedTickets = usedBreakevenTicketsByUuid.get(uuid) ?? new Set();
+                const maxAttempts = 3;
+                let lastErr = null;
+                for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+                    try {
+                        const preVerify = await verifyBreakevenApplied({
+                            api,
+                            uuid,
+                            ticket: effectiveTicket,
+                            expectedSl: beSl,
+                            isBuy,
+                            pipPrice,
+                        });
+                        if (preVerify.ok) {
+                            lastErr = null;
+                            break;
+                        }
+                        await api.orderModify(uuid, {
+                            ticket: effectiveTicket,
+                            stoploss: beSl,
+                            takeprofit: modifyTp,
+                        });
+                        const verify = await verifyBreakevenApplied({
+                            api,
+                            uuid,
+                            ticket: effectiveTicket,
+                            expectedSl: beSl,
+                            isBuy,
+                            pipPrice,
+                        });
+                        if (!verify.ok)
+                            throw new Error(verify.reason ?? 'verify failed');
+                        lastErr = null;
+                        break;
+                    }
+                    catch (err) {
+                        lastErr = err;
+                        const msg = err instanceof Error ? err.message : String(err);
+                        const excludeTickets = usedBreakevenTicketsByUuid.get(uuid) ?? new Set();
+                        if (isUnknownTicketError(msg)) {
+                            const rawOrders = await api.openedOrders(uuid);
+                            const reconciledTicket = resolveReconciledTicketForTrade(trade, rawOrders ?? [], excludeTickets);
+                            if (reconciledTicket && reconciledTicket !== effectiveTicket) {
+                                ticketReconciledFrom = effectiveTicket;
+                                effectiveTicket = reconciledTicket;
+                                continue;
+                            }
+                        }
+                        if (attempt < maxAttempts && isRetryableBreakevenError(msg)) {
+                            await sleepMs(250 * attempt);
+                            const rawOrders = await api.openedOrders(uuid).catch(() => []);
+                            const reconciledTicket = resolveReconciledTicketForTrade(trade, rawOrders ?? [], excludeTickets);
+                            if (reconciledTicket && reconciledTicket !== effectiveTicket) {
+                                ticketReconciledFrom = effectiveTicket;
+                                effectiveTicket = reconciledTicket;
+                            }
+                            continue;
+                        }
+                        break;
+                    }
+                }
+                if (lastErr)
+                    throw lastErr;
+                usedTickets.add(effectiveTicket);
+                usedBreakevenTicketsByUuid.set(uuid, usedTickets);
+                await ctx.supabase
+                    .from('trades')
+                    .update({
+                    sl: beSl,
+                    ...(ticketReconciledFrom != null ? { metaapi_order_id: String(effectiveTicket) } : {}),
+                })
+                    .eq('id', trade.id);
             }
             else if (action === 'modify') {
                 return;
@@ -473,17 +645,46 @@ async function applyManagement(ctx, signal, parsed, brokers, mgmtOpts) {
                 action: `mgmt_${action}`,
                 status: 'success',
                 request_payload: {
-                    ticket,
+                    ticket: effectiveTicket,
                     action,
                     basket_anchor_signal_id: trade.signal_id,
                     mgmt_scope: replyScoped ? 'reply_basket' : 'channel',
                     mgmt_parent_signal_id: signal.parent_signal_id,
+                    ticket_reconciled_from: ticketReconciledFrom ?? undefined,
                 },
             });
         }
         catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
-            const benign = (0, orderModifyBenign_1.isBenignOrderModifyError)(msg);
+            let benign = (0, orderModifyBenign_1.isBenignOrderModifyError)(msg);
+            if (benign && action === 'breakeven') {
+                const entry = sanitizeLevel(trade.entry_price);
+                if (entry > 0) {
+                    const manual = (0, channelTradingConfig_1.resolveChannelTradingConfig)(broker, signal.channel_id).manual_settings;
+                    const isBuy = String(trade.direction).toLowerCase() === 'buy';
+                    const brokerSymbol = await ctx.resolveBrokerSymbolForLiveEntry(uuid, trade.symbol).catch(() => trade.symbol);
+                    const digits = (await ctx.getSymbolParams(uuid, brokerSymbol).catch(() => null))?.digits;
+                    const beSl = (0, autoManagement_1.breakevenStopLossForSymbol)({
+                        isBuy,
+                        entryPrice: entry,
+                        manual,
+                        symbol: brokerSymbol,
+                        digits,
+                    });
+                    const verify = await verifyBreakevenApplied({
+                        api,
+                        uuid,
+                        ticket: effectiveTicket,
+                        expectedSl: beSl,
+                        isBuy,
+                        pipPrice: (0, signalPip_1.signalPipPrice)(brokerSymbol),
+                    }).catch(() => ({ ok: false }));
+                    benign = verify.ok;
+                }
+                else {
+                    benign = false;
+                }
+            }
             await ctx.supabase.from('trade_execution_logs').insert({
                 user_id: signal.user_id,
                 signal_id: signal.id,
@@ -491,18 +692,24 @@ async function applyManagement(ctx, signal, parsed, brokers, mgmtOpts) {
                 action: `mgmt_${action}`,
                 status: benign ? 'success' : 'failed',
                 request_payload: {
-                    ticket,
+                    ticket: effectiveTicket,
                     action,
                     basket_anchor_signal_id: trade.signal_id,
                     mgmt_scope: replyScoped ? 'reply_basket' : 'channel',
                     mgmt_parent_signal_id: signal.parent_signal_id,
                     already_synced: benign || undefined,
+                    ticket_reconciled_from: ticketReconciledFrom ?? undefined,
                 },
                 error_message: benign ? null : msg,
             });
         }
     };
-    if (liveMgmtFast && eligibleTrades.length > 1) {
+    if (action === 'breakeven') {
+        for (const trade of eligibleTrades) {
+            await processTrade(trade);
+        }
+    }
+    else if (liveMgmtFast && eligibleTrades.length > 1) {
         await Promise.allSettled(await (0, parallelPool_1.parallelMap)(eligibleTrades, legConcurrency, trade => processTrade(trade)));
     }
     else {

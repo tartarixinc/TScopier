@@ -34,7 +34,7 @@ async function syncMultiBasketLegTakeProfits(ctx, args) {
             userId: signal.user_id,
             brokerAccountId: broker.id,
             manual,
-            parsed,
+            parsed: (0, rangeBasketTpSync_1.toRangeBasketParsedSlice)(parsed),
             plan,
         });
         return;

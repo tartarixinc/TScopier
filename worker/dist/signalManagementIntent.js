@@ -1,7 +1,4 @@
 "use strict";
-/**
- * Shared detection for channel management updates (breakeven, partial close, etc.).
- */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.looksLikeExplicitFullCloseCommand = looksLikeExplicitFullCloseCommand;
 exports.looksLikeChannelManagementUpdate = looksLikeChannelManagementUpdate;
@@ -24,11 +21,53 @@ function looksLikeExplicitFullCloseCommand(message) {
         || /\b(?:flatten|kill\s+zones?)\b/i.test(t)
         || /\bexit\s+(?:trade|trades|position|positions|long|short|now)\b/i.test(t));
 }
+function escapeRegExp(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+function splitKeywordAliases(raw, delimiters = '') {
+    const extra = String(delimiters ?? '').replace(/\s+/g, '');
+    const chars = [',', ';', '\n', '|', ...extra.split('')].filter(Boolean).map(c => escapeRegExp(c));
+    const splitter = new RegExp(`[${chars.join('')}]+`);
+    return String(raw ?? '')
+        .split(splitter)
+        .map(x => x.trim())
+        .filter(Boolean);
+}
+function keywordRegex(phrase) {
+    const p = escapeRegExp(phrase.trim()).replace(/\s+/g, '\\s+');
+    return new RegExp(`(?<![\\p{L}\\p{N}])${p}(?![\\p{L}\\p{N}])`, 'iu');
+}
+function hasAnyKeyword(text, words) {
+    return words.some(w => w && keywordRegex(w).test(text));
+}
+function managementAliasesFromKeywords(keywords) {
+    if (!keywords)
+        return [];
+    const delim = keywords.additional.delimiters;
+    return Array.from(new Set([
+        ...splitKeywordAliases(keywords.update.break_even, delim),
+        ...splitKeywordAliases(keywords.update.close_full, delim),
+        ...splitKeywordAliases(keywords.update.close_half, delim),
+        ...splitKeywordAliases(keywords.update.close_partial, delim),
+        ...splitKeywordAliases(keywords.update.close_tp1, delim),
+        ...splitKeywordAliases(keywords.update.close_tp2, delim),
+        ...splitKeywordAliases(keywords.update.close_tp3, delim),
+        ...splitKeywordAliases(keywords.update.close_tp4, delim),
+        ...splitKeywordAliases(keywords.update.set_sl, delim),
+        ...splitKeywordAliases(keywords.update.adjust_sl, delim),
+        ...splitKeywordAliases(keywords.update.set_tp, delim),
+        ...splitKeywordAliases(keywords.update.adjust_tp, delim),
+        ...splitKeywordAliases(keywords.additional.close_all, delim),
+    ].map(a => a.trim()).filter(Boolean)));
+}
 /** True when text looks like a trade-management instruction (not a fresh entry). */
-function looksLikeChannelManagementUpdate(text) {
+function looksLikeChannelManagementUpdate(text, channelKeywords) {
     const t = String(text ?? '').replace(/\s+/g, ' ').trim();
     if (!t)
         return false;
+    const configured = managementAliasesFromKeywords(channelKeywords);
+    if (configured.length > 0 && hasAnyKeyword(t, configured))
+        return true;
     return (/\b(move\s+stop|move\s+sl|move\s+risk|stop\s+to\s+breakeven|breakeven|break\s*even)\b/i.test(t)
         || /\b(?:adjust|move|set|change|update)\s+(?:sl|stop\s*loss|stoploss|risk)\b/i.test(t)
         || /\b(?:sl|stop\s*loss|stoploss|risk)\s+to\s+\d/i.test(t)

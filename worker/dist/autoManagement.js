@@ -15,7 +15,7 @@ exports.isAutoBeTriggerMet = isAutoBeTriggerMet;
 const partialTpMonitor_1 = require("./partialTpMonitor");
 const signalPip_1 = require("./signalPip");
 /** Keep snapshot helpers in sync with supabase/functions/_shared/autoManagement.ts */
-exports.BREAKEVEN_OFFSET_PIPS_DEFAULT = 5;
+exports.BREAKEVEN_OFFSET_PIPS_DEFAULT = 3;
 function roundPrice(v, digits) {
     if (!Number.isFinite(v))
         return v;
@@ -25,7 +25,7 @@ function positiveNum(v, fallback) {
     const n = Number(v);
     return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
-/** Pips beyond entry when channel or auto breakeven moves SL (default 5). */
+/** Pips beyond entry when channel or auto breakeven moves SL (default 3). */
 function resolveBreakevenOffsetPips(manual) {
     const raw = manual.breakeven_offset_pips;
     if (raw === undefined || raw === null)

@@ -21,6 +21,29 @@ import {
 import type { PlannerResult } from './manualPlanner'
 import { mergePlanImmediateOrders } from './multiTradeMerge'
 
+export type RangeBasketParsedSlice = {
+  sl?: number | null
+  tp?: number[] | null
+}
+
+export function toRangeBasketParsedSlice(
+  raw: { sl?: unknown; tp?: unknown } | null | undefined,
+): RangeBasketParsedSlice {
+  if (!raw) return {}
+  const sl =
+    typeof raw.sl === 'number' && Number.isFinite(raw.sl)
+      ? raw.sl
+      : raw.sl === null
+        ? null
+        : undefined
+  const tpLevels = coercePositiveTpLevels(raw.tp)
+  const out: RangeBasketParsedSlice = {}
+  if (sl !== undefined) out.sl = sl
+  if (tpLevels.length > 0) out.tp = tpLevels
+  else if (Array.isArray(raw.tp)) out.tp = []
+  return out
+}
+
 export type RangeBasketTpSyncArgs = {
   supabase: SupabaseClient
   api: FxsocketBrokerClient
@@ -33,7 +56,7 @@ export type RangeBasketTpSyncArgs = {
   userId: string
   brokerAccountId: string
   manual: { range_trading?: boolean; tp_lots?: ManualTpLot[] | null }
-  parsed: { sl?: unknown; tp?: unknown }
+  parsed: RangeBasketParsedSlice
   plan?: PlannerResult | null
   /** When set, force phase B (range layer just fired). */
   forceLayeringRebalance?: boolean
@@ -351,13 +374,15 @@ async function loadScopedChannelTpLevels(
 async function reloadSignalParsed(
   supabase: SupabaseClient,
   signalId: string,
-): Promise<{ sl?: number | null; tp?: unknown } | null> {
+): Promise<RangeBasketParsedSlice | null> {
   const { data } = await supabase
     .from('signals')
     .select('parsed_data')
     .eq('id', signalId)
     .maybeSingle()
-  return (data?.parsed_data ?? null) as { sl?: number | null; tp?: unknown } | null
+  const raw = data?.parsed_data
+  if (!raw || typeof raw !== 'object') return null
+  return toRangeBasketParsedSlice(raw as { sl?: unknown; tp?: unknown })
 }
 
 /** Sync SL/TP on all open legs for a range-layering basket (phase-aware). */
@@ -388,7 +413,7 @@ export async function syncRangeBasketTakeProfits(args: RangeBasketTpSyncArgs): P
     symbol: args.symbol,
   })
 
-  let parsed = args.parsed
+  let parsed: RangeBasketParsedSlice = { ...args.parsed }
   let finalTps = resolveRangeBasketFinalTps({
     parsed,
     plan: args.plan,

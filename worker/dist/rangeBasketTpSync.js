@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.toRangeBasketParsedSlice = toRangeBasketParsedSlice;
 exports.coercePositiveTpLevels = coercePositiveTpLevels;
 exports.resolveRangeBasketFinalTps = resolveRangeBasketFinalTps;
 exports.estimatePlanImmediateLegCount = estimatePlanImmediateLegCount;
@@ -11,6 +12,24 @@ const basketSlTpReconcile_1 = require("./basketSlTpReconcile");
 const channelActiveTradeParams_1 = require("./channelActiveTradeParams");
 const tpBucketDistribution_1 = require("./manualPlanning/tpBucketDistribution");
 const multiTradeMerge_1 = require("./multiTradeMerge");
+function toRangeBasketParsedSlice(raw) {
+    if (!raw)
+        return {};
+    const sl = typeof raw.sl === 'number' && Number.isFinite(raw.sl)
+        ? raw.sl
+        : raw.sl === null
+            ? null
+            : undefined;
+    const tpLevels = coercePositiveTpLevels(raw.tp);
+    const out = {};
+    if (sl !== undefined)
+        out.sl = sl;
+    if (tpLevels.length > 0)
+        out.tp = tpLevels;
+    else if (Array.isArray(raw.tp))
+        out.tp = [];
+    return out;
+}
 /** Coerce signal / JSON TP ladder values (numbers or numeric strings). */
 function coercePositiveTpLevels(tp) {
     if (!Array.isArray(tp))
@@ -238,7 +257,10 @@ async function reloadSignalParsed(supabase, signalId) {
         .select('parsed_data')
         .eq('id', signalId)
         .maybeSingle();
-    return (data?.parsed_data ?? null);
+    const raw = data?.parsed_data;
+    if (!raw || typeof raw !== 'object')
+        return null;
+    return toRangeBasketParsedSlice(raw);
 }
 /** Sync SL/TP on all open legs for a range-layering basket (phase-aware). */
 async function syncRangeBasketTakeProfits(args) {
@@ -262,7 +284,7 @@ async function syncRangeBasketTakeProfits(args) {
         basketCreatedAt: args.basketCreatedAt,
         symbol: args.symbol,
     });
-    let parsed = args.parsed;
+    let parsed = { ...args.parsed };
     let finalTps = resolveRangeBasketFinalTps({
         parsed,
         plan: args.plan,

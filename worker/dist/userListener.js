@@ -8,22 +8,22 @@ const EditedMessage_1 = require("telegram/events/EditedMessage");
 const tl_1 = require("telegram/tl");
 const telegramClient_1 = require("./telegramClient");
 const backtestSignal_1 = require("./backtestSignal");
-const tradableSymbol_1 = require("./tradableSymbol");
 const signalQueuePublisher_1 = require("./queue/signalQueuePublisher");
 const signalQueueConfig_1 = require("./queue/signalQueueConfig");
 const tradeSignalPush_1 = require("./tradeSignalPush");
 const listenerEvents_1 = require("./listenerEvents");
 const channelKeywordsCache_1 = require("./channelKeywordsCache");
 const parseSignal_1 = require("./parseSignal");
+const signalTradingHeuristic_1 = require("./signalTradingHeuristic");
+const signalManagementIntent_1 = require("./signalManagementIntent");
 const workerMetrics_1 = require("./workerMetrics");
 const workerConfig_1 = require("./workerConfig");
 const copierPause_1 = require("./copierPause");
 const signalRevision_1 = require("./signalRevision");
 const aiParseModification_1 = require("./aiParseModification");
+const aiParseEntry_1 = require("./aiParseEntry");
 const signalTelegramReconcile_1 = require("./signalTelegramReconcile");
-const normalizeTelegramMessageText_1 = require("./normalizeTelegramMessageText");
 const signalExecutionEligibility_1 = require("./signalExecutionEligibility");
-const signalCommentaryGuard_1 = require("./signalCommentaryGuard");
 const SUPABASE_URL = process.env.SUPABASE_URL ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
 const PARSE_SIGNAL_URL = process.env.PARSE_SIGNAL_URL ?? (SUPABASE_URL ? `${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/parse-signal` : '');
@@ -114,32 +114,6 @@ function extractReplyToMsgId(replyTo) {
         return null;
     const s = String(v).trim();
     return s ? s : null;
-}
-function looksLikeTradingSignal(text, isReply) {
-    const normalized = (0, normalizeTelegramMessageText_1.normalizeTelegramMessageText)(text)
-        .toLowerCase()
-        .replace(/\s+/g, ' ')
-        .trim();
-    if (!normalized)
-        return false;
-    if ((0, signalCommentaryGuard_1.looksLikeCasualNonTradeMessage)(normalized))
-        return false;
-    const hasInstrument = (0, tradableSymbol_1.hasTradableInstrumentInText)(normalized);
-    const hasDirectionOrAction = /\b(buy|sell|long|short|tp|take profit|sl|stop loss|breakeven|be)\b/.test(normalized)
-        || (0, parseSignal_1.looksLikeExplicitFullCloseCommand)(normalized);
-    const hasPriceContext = /\b\d{1,5}(?:\.\d{1,5})\b/.test(normalized) ||
-        /\b(entry|zone|between|above|below|now)\b/.test(normalized);
-    const hasTradeStructure = /\b(tp\s*\d*|sl|entry|signal|setup)\b/.test(normalized);
-    // Reply updates like "move SL to ..." are often signal modifications.
-    if (isReply && /\b(move|set|update|adjust|tp|sl|breakeven|be|close)\b/.test(normalized)) {
-        return true;
-    }
-    // Breakeven / partial-close / TP-hit updates often lack symbol or explicit SL/TP labels.
-    if ((0, parseSignal_1.looksLikeChannelManagementUpdate)(normalized))
-        return true;
-    // Require stronger evidence than a single keyword to reduce false positives.
-    const score = Number(hasDirectionOrAction) + Number(hasInstrument) + Number(hasPriceContext) + Number(hasTradeStructure);
-    return score >= 2;
 }
 function normalizeChannelUsername(raw) {
     return (raw ?? '').trim().replace(/^@/, '').toLowerCase();
@@ -585,7 +559,7 @@ class UserListener {
      * Fetches and stores matching messages for the last N days even when
      * last_seen_message_id is still empty (seed-only mode).
      */
-    async backfillChannelHistory(channelRowId, days) {
+    async backfillChannelHistory(channelRowId, days, opts) {
         const lookbackDays = Math.max(1, Math.min(90, Number(days || 30)));
         const { data: row, error } = await this.supabase
             .from('telegram_channels')
@@ -598,7 +572,7 @@ class UserListener {
             throw new Error(error.message);
         if (!row)
             throw new Error('Channel not found');
-        const messages = await this.backfillChannelFromDate(row, lookbackDays);
+        const messages = await this.backfillChannelFromDate(row, lookbackDays, opts);
         return { imported: messages.length, messages };
     }
     /**
@@ -673,6 +647,7 @@ class UserListener {
         }
         const collected = await this.fetchMessagesBetweenForBacktest(row, fromMs, toMs);
         const errors = [];
+        const heuristicCtx = await (0, channelKeywordsCache_1.getChannelParseContext)(this.supabase, channelRowId);
         const rangeFromIso = new Date(fromMs).toISOString();
         const rangeToIso = new Date(toMs).toISOString();
         const { error: delErr } = await this.supabase
@@ -691,7 +666,7 @@ class UserListener {
             if (!raw)
                 continue;
             const isReply = !!m.replyTo;
-            if (!looksLikeTradingSignal(raw, isReply))
+            if (!(0, signalTradingHeuristic_1.looksLikeTradingSignal)(raw, isReply, heuristicCtx))
                 continue;
             const epoch = this.messageEpochSec(m);
             candidates.push({
@@ -1157,11 +1132,12 @@ class UserListener {
                 (0, workerMetrics_1.incMetric)('dispatch_push_exhausted');
         }
     }
-    isModificationClassMessage(rawMessage, isReply) {
-        return isReply || (0, parseSignal_1.looksLikeChannelManagementUpdate)(rawMessage);
+    isModificationClassMessage(rawMessage, isReply, channelKeywords) {
+        return isReply || (0, signalManagementIntent_1.looksLikeChannelManagementUpdate)(rawMessage, channelKeywords);
     }
     async parseSignalForListener(args) {
-        if (this.isModificationClassMessage(args.rawMessage, args.isReply)) {
+        const { keywords, lexicon } = await (0, channelKeywordsCache_1.getChannelParseContext)(this.supabase, args.channelRowId);
+        if (this.isModificationClassMessage(args.rawMessage, args.isReply, keywords)) {
             const aiResult = await (0, aiParseModification_1.aiParseModification)(this.supabase, {
                 userId: this.userId,
                 channelRowId: args.channelRowId,
@@ -1175,8 +1151,24 @@ class UserListener {
             };
         }
         if (listenerInlineParseEnabled()) {
-            const { keywords, lexicon } = await (0, channelKeywordsCache_1.getChannelParseContext)(this.supabase, args.channelRowId);
-            return { parseResult: (0, parseSignal_1.parseChannelMessageSync)(args.rawMessage, keywords, lexicon) };
+            const det = (0, parseSignal_1.parseChannelMessageSync)(args.rawMessage, keywords, lexicon);
+            if (det.status === 'parsed' || det.parsed.action !== 'ignore') {
+                return { parseResult: det };
+            }
+            const aiEntry = await (0, aiParseEntry_1.aiParseEntry)(this.supabase, {
+                userId: this.userId,
+                channelRowId: args.channelRowId,
+                rawMessage: args.rawMessage,
+                isReply: args.isReply,
+                parentSignalId: args.parentSignalId,
+            });
+            if (aiEntry.status === 'parsed') {
+                return {
+                    parseResult: (0, aiParseEntry_1.aiEntryResultToParseResult)(aiEntry),
+                    aiMeta: { intent: 'entry', source: aiEntry.source },
+                };
+            }
+            return { parseResult: det };
         }
         if (PARSE_SIGNAL_URL) {
             return {
@@ -1287,7 +1279,8 @@ class UserListener {
         if (replyToMessageId) {
             parentSignalId = await this.resolveParentSignalIdForReply(channelRow.id, replyToMessageId);
         }
-        if (!looksLikeTradingSignal(rawMessage, isReply)) {
+        const heuristicCtx = await (0, channelKeywordsCache_1.getChannelParseContext)(this.supabase, channelRow.id);
+        if (!(0, signalTradingHeuristic_1.looksLikeTradingSignal)(rawMessage, isReply, heuristicCtx)) {
             console.log(`[userListener] skipped non-signal user=${this.userId} channelRow=${channelRow.id} messageId=${messageId}`);
             void this.persistNonSignalSkip({
                 channelRow,
@@ -2296,6 +2289,7 @@ class UserListener {
         const collected = [];
         let offsetId = 0;
         const batchSize = 100;
+        const heuristicCtx = await (0, channelKeywordsCache_1.getChannelParseContext)(this.supabase, row.id);
         while (collected.length < BACKFILL_PER_CHANNEL_CAP) {
             let batch;
             try {
@@ -2325,11 +2319,11 @@ class UserListener {
                 const isReply = !!m.replyTo;
                 const fetchAllForBacktest = process.env.BACKTEST_FETCH_ALL_MESSAGES === 'true';
                 if (!opts?.forBacktest) {
-                    if (!looksLikeTradingSignal(raw, isReply))
+                    if (!(0, signalTradingHeuristic_1.looksLikeTradingSignal)(raw, isReply, heuristicCtx))
                         continue;
                 }
                 else if (!fetchAllForBacktest) {
-                    if (!looksLikeTradingSignal(raw, isReply))
+                    if (!(0, signalTradingHeuristic_1.looksLikeTradingSignal)(raw, isReply, heuristicCtx))
                         continue;
                 }
                 collected.push(m);
@@ -2342,7 +2336,7 @@ class UserListener {
         collected.sort((a, b) => Number(a.id) - Number(b.id));
         return collected;
     }
-    async backfillChannelFromDate(row, days) {
+    async backfillChannelFromDate(row, days, opts) {
         let peer;
         try {
             peer = await this.resolveChannelPeer(row);
@@ -2354,6 +2348,9 @@ class UserListener {
         const collected = [];
         let offsetId = 0;
         const batchSize = 100;
+        const heuristicCtx = opts?.forTraining
+            ? null
+            : await (0, channelKeywordsCache_1.getChannelParseContext)(this.supabase, row.id);
         while (collected.length < BACKFILL_PER_CHANNEL_CAP) {
             let batch;
             try {
@@ -2414,7 +2411,10 @@ class UserListener {
             if (!raw)
                 continue;
             const isReply = !!m.replyTo;
-            if (!looksLikeTradingSignal(raw, isReply))
+            const passes = opts?.forTraining
+                ? (0, signalTradingHeuristic_1.looksLikeTrainingCandidate)(raw)
+                : (0, signalTradingHeuristic_1.looksLikeTradingSignal)(raw, isReply, heuristicCtx);
+            if (!passes)
                 continue;
             out.push(raw);
             if (out.length >= 300)

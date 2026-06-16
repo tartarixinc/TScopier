@@ -18,6 +18,7 @@ interface Body {
   password?: string
   channel_row_id?: string
   days?: number
+  for_training?: boolean | string
   from?: string
   to?: string
   run_id?: string

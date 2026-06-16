@@ -133,11 +133,43 @@ function escapeRegExp(s) {
     return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 function keywordRegex(phrase) {
-    const p = escapeRegExp(phrase.trim()).replace(/\s+/g, "\\s+");
-    return new RegExp(`(?:^|\\b)${p}(?:\\b|$)`, "i");
+    const p = escapeRegExp(phrase.trim()).replace(/\s+/g, '\\s+');
+    return new RegExp(`(?<![\\p{L}\\p{N}])${p}(?![\\p{L}\\p{N}])`, 'iu');
 }
 function hasAnyKeyword(text, words) {
     return words.some((w) => w && keywordRegex(w).test(text));
+}
+function lexiconActionAliases(lexicon, key) {
+    const raw = lexicon?.action_aliases?.[key];
+    if (!Array.isArray(raw))
+        return [];
+    return raw.map((a) => String(a).trim()).filter(Boolean);
+}
+function buyAliasesForChannel(channelKeywords, lexicon = null) {
+    const delim = channelKeywords.additional.delimiters;
+    return Array.from(new Set([
+        'buy', 'long',
+        ...splitKeywordAliases(channelKeywords.signal.buy, delim),
+        ...lexiconActionAliases(lexicon, 'buy'),
+    ]));
+}
+/** Sell aliases like "tp: open" must not count as sell direction on buy + TP posts. */
+function sellAliasesForChannel(channelKeywords, lexicon = null) {
+    const delim = channelKeywords.additional.delimiters;
+    return Array.from(new Set([
+        'sell', 'short',
+        ...splitKeywordAliases(channelKeywords.signal.sell, delim),
+        ...lexiconActionAliases(lexicon, 'sell'),
+    ])).filter(alias => {
+        const t = alias.trim().toLowerCase();
+        if (!t)
+            return false;
+        if (/^tp\s*:/i.test(t) && !/\b(sell|short)\b/i.test(t))
+            return false;
+        if (/^all\s+tp/i.test(t) && !/\b(sell|short)\b/i.test(t))
+            return false;
+        return true;
+    });
 }
 function isProseLongMatch(text) {
     return /(?:^|\b)(?:too|so|as|how)\s+long(?:\b|$)/i.test(text);
@@ -185,21 +217,10 @@ function parseSideFromKeywords(text, words) {
     return hasAnyKeyword(text, words);
 }
 /** Sell aliases like "tp: open" must not count as sell direction on buy + TP posts. */
-function sellAliasesForSideDetection(channelKeywords) {
-    const delim = channelKeywords.additional.delimiters;
-    return Array.from(new Set(['sell', 'short', ...splitKeywordAliases(channelKeywords.signal.sell, delim)]))
-        .filter(alias => {
-        const t = alias.trim().toLowerCase();
-        if (!t)
-            return false;
-        if (/^tp\s*:/i.test(t) && !/\b(sell|short)\b/i.test(t))
-            return false;
-        if (/^all\s+tp/i.test(t) && !/\b(sell|short)\b/i.test(t))
-            return false;
-        return true;
-    });
+function sellAliasesForSideDetection(channelKeywords, lexicon = null) {
+    return sellAliasesForChannel(channelKeywords, lexicon);
 }
-function resolveTradeSideFromMessage(message, channelKeywords) {
+function resolveTradeSideFromMessage(message, channelKeywords, lexicon = null) {
     const text = message.replace(/\s+/g, ' ').trim();
     const goldBuy = /\bgold\s+buy\b|\bbuy\s+gold\b/i.test(text);
     const goldSell = /\bgold\s+sell\b|\bsell\s+gold\b/i.test(text);
@@ -207,9 +228,8 @@ function resolveTradeSideFromMessage(message, channelKeywords) {
         return 'buy';
     if (goldSell && !goldBuy)
         return 'sell';
-    const delim = channelKeywords.additional.delimiters;
-    const buyAliases = Array.from(new Set(['buy', 'long', ...splitKeywordAliases(channelKeywords.signal.buy, delim)]));
-    const sellAliases = sellAliasesForSideDetection(channelKeywords);
+    const buyAliases = buyAliasesForChannel(channelKeywords, lexicon);
+    const sellAliases = sellAliasesForSideDetection(channelKeywords, lexicon);
     const isBuy = parseBuySideFromKeywords(message, buyAliases);
     const isSell = parseSellSideFromKeywords(message, sellAliases);
     if (isBuy && !isSell)
@@ -676,10 +696,9 @@ function hasParameterEvidence(message, channelKeywords) {
     const bare = (0, signalManagementIntent_1.bareTradePricesExcludingPips)(message, (0, signalPriceInference_1.extractUnlabeledPrices)(message));
     return bare.length > 0;
 }
-function messageHasSideKeywords(message, channelKeywords) {
-    const delim = channelKeywords.additional.delimiters;
-    const buyAliases = Array.from(new Set(['buy', 'long', ...splitKeywordAliases(channelKeywords.signal.buy, delim)]));
-    const sellAliases = Array.from(new Set(['sell', 'short', ...splitKeywordAliases(channelKeywords.signal.sell, delim)]));
+function messageHasSideKeywords(message, channelKeywords, lexicon = null) {
+    const buyAliases = buyAliasesForChannel(channelKeywords, lexicon);
+    const sellAliases = sellAliasesForChannel(channelKeywords, lexicon);
     return parseBuySideFromKeywords(message, buyAliases) !== parseSellSideFromKeywords(message, sellAliases);
 }
 /** Symbol-less SL/TP/entry parameter posts (typical channel follow-up without repeating instrument). */
@@ -688,7 +707,7 @@ function parseChannelParameterFollowUp(message, lexicon, channelKeywords) {
         return null;
     if ((0, tradableSymbol_1.extractTradableSymbolFromMessage)(message) && !(0, signalPriceInference_1.detectReEnterIntent)(message))
         return null;
-    if (messageHasSideKeywords(message, channelKeywords) && !(0, signalPriceInference_1.detectReEnterIntent)(message))
+    if (messageHasSideKeywords(message, channelKeywords, lexicon) && !(0, signalPriceInference_1.detectReEnterIntent)(message))
         return null;
     const extraTp = buildExtraTpLabels(lexicon, channelKeywords);
     const sl = extractSlFromMessage(message, channelKeywords);
@@ -696,7 +715,7 @@ function parseChannelParameterFollowUp(message, lexicon, channelKeywords) {
     const { entry_price, entry_zone_low, entry_zone_high } = extractOptionalEntryAnchor(message, channelKeywords);
     const reEnter = (0, signalPriceInference_1.detectReEnterIntent)(message);
     if (reEnter) {
-        const side = resolveTradeSideFromMessage(message, channelKeywords);
+        const side = resolveTradeSideFromMessage(message, channelKeywords, lexicon);
         if (!side)
             return null;
         return {
@@ -760,8 +779,8 @@ function parseSimpleSignal(message, lexicon, channelKeywords) {
     if (!text)
         return null;
     const delim = channelKeywords.additional.delimiters;
-    const buyAliases = Array.from(new Set(["buy", "long", ...splitKeywordAliases(channelKeywords.signal.buy, delim)]));
-    const sellAliases = Array.from(new Set(["sell", "short", ...splitKeywordAliases(channelKeywords.signal.sell, delim)]));
+    const buyAliases = buyAliasesForChannel(channelKeywords, lexicon);
+    const sellAliases = sellAliasesForChannel(channelKeywords, lexicon);
     const marketAliases = Array.from(new Set(["now", "instant", "market", "mkt", ...splitKeywordAliases(channelKeywords.signal.market_order, delim)]));
     const mgmtAliases = [
         ...splitKeywordAliases(channelKeywords.update.close_full, delim),
@@ -786,7 +805,7 @@ function parseSimpleSignal(message, lexicon, channelKeywords) {
         || hasAnyKeyword(message, mgmtAliases)) {
         return null;
     }
-    const side = resolveTradeSideFromMessage(message, channelKeywords);
+    const side = resolveTradeSideFromMessage(message, channelKeywords, lexicon);
     if (!side)
         return null;
     const isNow = parseSideFromKeywords(message, marketAliases);
@@ -837,8 +856,8 @@ function parseEntryFromKeywords(message, lexicon, channelKeywords) {
     if (!text)
         return null;
     const delim = channelKeywords.additional.delimiters;
-    const buyAliases = Array.from(new Set(["buy", "long", ...splitKeywordAliases(channelKeywords.signal.buy, delim)]));
-    const sellAliases = Array.from(new Set(["sell", "short", ...splitKeywordAliases(channelKeywords.signal.sell, delim)]));
+    const buyAliases = buyAliasesForChannel(channelKeywords, lexicon);
+    const sellAliases = sellAliasesForChannel(channelKeywords, lexicon);
     const mgmtAliases = [
         ...splitKeywordAliases(channelKeywords.update.close_full, delim),
         ...splitKeywordAliases(channelKeywords.update.close_half, delim),

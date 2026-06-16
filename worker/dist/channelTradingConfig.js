@@ -14,8 +14,9 @@ exports.withChannelTradingConfig = withChannelTradingConfig;
 const normalizeManualSettings_1 = require("./manualPlanning/normalizeManualSettings");
 const brokerChannelFilter_1 = require("./brokerChannelFilter");
 const copyLimitTypes_1 = require("./copyLimitTypes");
+const effectiveBrokerBalance_1 = require("./effectiveBrokerBalance");
 function brokerAccountBalance(broker) {
-    const bal = Number(broker.last_balance ?? broker.last_equity ?? 0);
+    const bal = (0, effectiveBrokerBalance_1.resolveBrokerTotalBalance)(broker) ?? 0;
     return bal > 0 ? bal : null;
 }
 function normalizeChannelUuid(id) {

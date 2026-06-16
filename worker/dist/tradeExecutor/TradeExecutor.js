@@ -37,6 +37,7 @@ exports.TradeExecutor = void 0;
 const fxsocketClient_1 = require("../fxsocketClient");
 const manualPlanner_1 = require("../manualPlanner");
 const normalizeManualSettings_1 = require("../manualPlanning/normalizeManualSettings");
+const effectiveBrokerBalance_1 = require("../effectiveBrokerBalance");
 const channelTradingConfig_1 = require("../channelTradingConfig");
 const brokerChannelTradingConfigs_1 = require("../brokerChannelTradingConfigs");
 const helpers_1 = require("./basketMerge/helpers");
@@ -200,7 +201,7 @@ class TradeExecutor {
     // ── caches ────────────────────────────────────────────────────────────
     normalizeBrokerRow(row) {
         const healedConfigs = (0, channelTradingConfig_1.healChannelTradingConfigsMap)(row);
-        const accountBalance = Number(row.last_balance ?? row.last_equity ?? 0) || null;
+        const accountBalance = (0, effectiveBrokerBalance_1.resolveBrokerTotalBalance)(row) || null;
         const normalizedConfigs = {};
         for (const [channelId, cfg] of Object.entries(healedConfigs)) {
             normalizedConfigs[channelId] = {
