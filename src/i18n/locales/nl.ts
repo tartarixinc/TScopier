@@ -9,6 +9,8 @@ import { chromeNl } from './chrome/nl'
 import { copierEngineNl } from './copierEngine/nl'
 import { dashboardNl } from './dashboard/nl'
 import { en } from './en'
+import { legalNl } from './legalBundle/nl'
+import { landingNl } from './landing/nl'
 import { logsNl } from './logs/nl'
 import { mergeLocaleBundle } from './merge'
 import { pricingNl } from './pricing/nl'
@@ -27,7 +29,9 @@ export const nl: Translations = mergeLocaleBundle(en, {
   ...pricingNl,
   ...toolsNl,
   ...tradingNl,
+  ...legalNl,
   ...copierEngineNl,
+  landing: landingNl,
   auth: authNl,
   channelWorker: channelWorkerNl,
   contactSupportPage: contactSupportNl,

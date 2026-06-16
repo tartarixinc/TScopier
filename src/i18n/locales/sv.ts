@@ -9,6 +9,8 @@ import { chromeSv } from './chrome/sv'
 import { copierEngineSv } from './copierEngine/sv'
 import { dashboardSv } from './dashboard/sv'
 import { en } from './en'
+import { landingSv } from './landing/sv'
+import { legalSv } from './legalBundle/sv'
 import { logsSv } from './logs/sv'
 import { mergeLocaleBundle } from './merge'
 import { pricingSv } from './pricing/sv'
@@ -27,6 +29,8 @@ export const sv: Translations = mergeLocaleBundle(en, {
   ...pricingSv,
   ...toolsSv,
   ...tradingSv,
+  landing: landingSv,
+  ...legalSv,
   ...copierEngineSv,
   auth: authSv,
   channelWorker: channelWorkerSv,

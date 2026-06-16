@@ -9,6 +9,8 @@ import { chromePl } from './chrome/pl'
 import { copierEnginePl } from './copierEngine/pl'
 import { dashboardPl } from './dashboard/pl'
 import { en } from './en'
+import { landingPl } from './landing/pl'
+import { legalPl } from './legalBundle/pl'
 import { logsPl } from './logs/pl'
 import { mergeLocaleBundle } from './merge'
 import { pricingPl } from './pricing/pl'
@@ -27,6 +29,8 @@ export const pl: Translations = mergeLocaleBundle(en, {
   ...pricingPl,
   ...toolsPl,
   ...tradingPl,
+  landing: landingPl,
+  ...legalPl,
   ...copierEnginePl,
   auth: authPl,
   channelWorker: channelWorkerPl,

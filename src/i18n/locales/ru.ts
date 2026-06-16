@@ -9,6 +9,8 @@ import { chromeRu } from './chrome/ru'
 import { copierEngineRu } from './copierEngine/ru'
 import { dashboardRu } from './dashboard/ru'
 import { en } from './en'
+import { landingRu } from './landing/ru'
+import { legalRu } from './legalBundle/ru'
 import { logsRu } from './logs/ru'
 import { mergeLocaleBundle } from './merge'
 import { pricingRu } from './pricing/ru'
@@ -27,6 +29,8 @@ export const ru: Translations = mergeLocaleBundle(en, {
   ...pricingRu,
   ...toolsRu,
   ...tradingRu,
+  landing: landingRu,
+  ...legalRu,
   ...copierEngineRu,
   auth: authRu,
   channelWorker: channelWorkerRu,

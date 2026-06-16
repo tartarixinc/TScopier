@@ -9,6 +9,8 @@ import { chromeJa } from './chrome/ja'
 import { copierEngineJa } from './copierEngine/ja'
 import { dashboardJa } from './dashboard/ja'
 import { en } from './en'
+import { legalJa } from './legalBundle/ja'
+import { landingJa } from './landing/ja'
 import { logsJa } from './logs/ja'
 import { mergeLocaleBundle } from './merge'
 import { pricingJa } from './pricing/ja'
@@ -27,7 +29,9 @@ export const ja: Translations = mergeLocaleBundle(en, {
   ...pricingJa,
   ...toolsJa,
   ...tradingJa,
+  ...legalJa,
   ...copierEngineJa,
+  landing: landingJa,
   auth: authJa,
   channelWorker: channelWorkerJa,
   contactSupportPage: contactSupportJa,
