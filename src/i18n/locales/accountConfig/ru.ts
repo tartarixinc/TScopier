@@ -1,0 +1,183 @@
+import { configureModalEn } from '../configureModal/en'
+import type { AccountConfigBundleTranslations } from './types'
+
+export const accountConfigRu: AccountConfigBundleTranslations = {
+  accountConfig: {
+    brokersEmptyTitle: 'Пока нет подключенных счетов',
+    brokersEmptySubtitle: 'Добавьте торговый счет, чтобы начать',
+    addAccount: {
+      title: 'Добавить торговый счет',
+      subtitle: 'Выберите предпочитаемую торговую платформу, чтобы начать',
+      footerHint: 'Скоро появятся новые платформы',
+      comingSoonBadge: 'Скоро',
+      comingSoonPlatform: 'Интеграция с {platform} скоро появится. Пока выберите MT4 или MT5.',
+    },
+    connectForm: {
+      addAccountButton: 'Добавить счет',
+      title: 'Подключить новый счет {platform}',
+      accountLabel: 'Название счета (необязательно)',
+      accountLabelPlaceholder: 'например, Live {platform}',
+      platformLabel: 'Платформа',
+      platformMt5: 'MetaTrader 5 (MT5)',
+      platformMt4: 'MetaTrader 4 (MT4)',
+      brokerServerLabel: 'Сервер брокера',
+      brokerServerHint:
+        'Вставьте точное название сервера из терминала MetaTrader (Файл → Подключиться к торговому счету).',
+      brokerServerPlaceholder: 'например, ICMarketsSC-MT5',
+      brokerCompanySearchPlaceholder: 'Введите название компании (например, Vantage)',
+      brokerCompanySearchEmpty: 'Используйте поиск, чтобы найти компанию',
+      brokerCompanySearchMinChars: 'Введите минимум 4 символа для поиска',
+      brokerCompanySearchNoResults: 'Компании не найдены. Попробуйте другое написание.',
+      brokerCompanySearchLoading: 'Поиск брокеров…',
+      brokerCompanySearchError: 'Не удалось выполнить поиск брокеров. Попробуйте снова или введите сервер вручную.',
+      brokerServerPickerTitle: 'Сервер',
+      brokerServerSelectPrompt: 'Найдите компанию вашего брокера',
+      brokerServerManualToggle: 'Не можете найти брокера? Введите сервер вручную',
+      brokerServerManualLabel: 'Название сервера',
+      brokerServerManualHint: 'Используйте точное название сервера из терминала MT.',
+      mtLoginLabel: 'Логин MT',
+      mtLoginPlaceholder: 'Номер торгового счета',
+      passwordLabel: 'Пароль',
+      passwordPlaceholder: 'Пароль торгового счета',
+      passwordHint: '',
+      rememberPasswordLabel: 'Запомнить пароль для автоматического переподключения',
+      rememberPasswordHint:
+        'Шифрует ваш пароль MT на наших серверах, чтобы TSCopier мог восстановить сессию без повторного запроса. Вы можете удалить его в любой момент.',
+      connectButton: 'Подключить счет',
+      connectingTitle: 'Подключаем вашего брокера',
+      connectingStepLinking: 'Связываем ваш счет MT5…',
+      connectingStepTerminal: 'Запускаем ваш терминал MT5 — обычно это занимает 10–30 секунд.',
+      connectingStepSlow: 'Все еще выполняется… первая настройка может занять несколько минут.',
+      validationRequired: 'Номер счета, пароль и сервер обязательны',
+      connectFailed: 'Не удалось подключить счет',
+      addMoreButton: 'Добавить еще',
+      removeRowAria: 'Удалить строку счета',
+      connectMultipleButton: 'Подключить {count} счетов',
+      uploadAccountsButton: 'Загрузить счета',
+      accountRowTitle: 'Счет {index}',
+    },
+    bulkConnect: {
+      title: 'Загрузить счета MT5',
+      securityNote:
+        'Ваш CSV содержит торговые пароли. Он обрабатывается только в вашем браузере и никогда не загружается как файл.',
+      downloadTemplate: 'Скачать шаблон CSV',
+      uploadCsv: 'Загрузить CSV',
+      uploadHint: 'Перетащите CSV сюда или нажмите для выбора файла',
+      previewTitle: 'Предпросмотр',
+      colLabel: 'Название',
+      colServer: 'Сервер',
+      colLogin: 'Логин',
+      colPassword: 'Пароль',
+      colStatus: 'Статус',
+      parseErrorLine: 'Строка {line}: {message}',
+      noValidRows: 'В CSV не найдено ни одного корректного счета.',
+      connectCount: 'Подключить {count} счетов',
+      connectingTitle: 'Связываем счета…',
+      statusQueued: 'В очереди',
+      statusLinking: 'Подключение…',
+      statusLinked: 'Подключено',
+      statusFailed: 'Ошибка',
+      statusSkippedDuplicate: 'Дубликат',
+      statusSkippedLimit: 'Достигнут лимит',
+      statusSkippedInvalid: 'Некорректно',
+      summaryTitle: 'Счета подключены',
+      summaryBody: '{linked} подключено, {failed} с ошибкой, {skipped} пропущено.',
+      summaryFailedTitle: 'Счета с ошибкой',
+      dismiss: 'Закрыть',
+      viewBrokers: 'Список брокеров',
+    },
+    brokerList: {
+      statusPaused: 'На паузе',
+      statusConnected: 'Подключен',
+      statusConnecting: 'Подключение',
+      statusRecovering: 'Переподключение',
+      statusError: 'Ошибка',
+      statusDisconnected: 'Отключен',
+      copyTrades: 'Копировать сделки',
+      reconnect: 'Переподключить',
+      reconnectAll: 'Переподключить все',
+      configure: 'Настроить',
+      removeAria: 'Удалить {label}',
+      detailLogin: 'Логин',
+      detailAccountType: 'Тип счета',
+      accountTypeDemo: 'Демо',
+      accountTypeLive: 'Реальный',
+      detailServer: 'Сервер',
+      detailSignalChannels: 'Сигнальные каналы',
+      detailBalance: 'Баланс',
+      detailEquity: 'Средства',
+      channelsNoneSelected: 'Ничего не выбрано',
+      channelsEmptySaveWarning:
+        'Не выбрано ни одного сигнального канала — этот брокер не будет копировать сигналы Telegram. Все равно сохранить?',
+      channelsSignalChannel: 'Сигнальный канал',
+      channelsAll: 'Все сигнальные каналы',
+      relinkOne:
+        'Этот счет использует старый формат привязки. Удалите его и подключите снова с логином и паролем MT.',
+      relinkMany:
+        '{count} счетов используют старый формат привязки. Удалите каждый и подключите снова с логином и паролем MT.',
+      reconnectDroppedOne:
+        'Торговая сессия истекла на торговом сервере. Нажмите «Переподключить» и введите текущий пароль MT.',
+      reconnectDroppedMany:
+        '{count} счетов потеряли соединение с брокером и отображаются как «Отключен». Используйте «Переподключить» для каждого счета.',
+      connectErrorWrongPassword:
+        'Неверный пароль счета MT. Проверьте пароль в терминале MetaTrader и попробуйте снова.',
+      connectErrorWrongLogin:
+        'Номер логина MT не соответствует серверу брокера. Проверьте номер счета в MetaTrader.',
+      connectErrorWrongServer:
+        'Название сервера брокера неверно или не соответствует этому логину. Проверьте точное название сервера в MetaTrader.',
+      connectErrorInvestorPassword:
+        'Использован инвесторский пароль (только чтение). Подключайтесь с основным торговым паролем из MetaTrader.',
+      connectErrorAccountDisabled:
+        'Этот счет MT отключен или заблокирован у брокера. Свяжитесь с брокером или сначала войдите через MetaTrader.',
+      connectErrorCredentialsRejected:
+        'Не удалось войти с этими данными MT. Проверьте номер счета, торговый пароль и точное название сервера в MetaTrader.',
+      connectErrorSessionExpired:
+        'Торговая сессия истекла на торговом сервере. Нажмите «Переподключить» и введите текущий пароль MT.',
+      connectErrorUnknown:
+        'Не удалось подключиться к брокеру. Проверьте данные MT или используйте «Переподключить», если счет уже был привязан.',
+      reconnectFailed: 'Не удалось переподключить брокера',
+      reconnectPasswordTitle: 'Сессия брокера истекла',
+      reconnectPasswordBody:
+        'Сессия брокера истекла на торговом сервере. Введите пароль счета MT для переподключения.',
+      reconnectPasswordLabel: 'Пароль счета MT',
+      reconnectPasswordHint:
+        'Передается только на серверы MT. Включите запоминание ниже, чтобы сохранить пароль в зашифрованном виде для автоподключения.',
+      reconnectPasswordPlaceholder: 'Пароль торгового счета',
+      rememberPasswordLabel: 'Запомнить пароль для автоматического переподключения',
+      rememberPasswordHint:
+        'Сохраняет зашифрованную копию, чтобы TSCopier мог переподключаться без запроса пароля. Вы можете очистить ее в конфигурации счета.',
+      clearStoredCredentials: 'Забыть сохраненный пароль',
+      storedCredentialsActive: 'Автопереподключение включено',
+      deleteFailed: 'Не удалось удалить брокера',
+      deleteSessionExpired:
+        'Срок действия вашей сессии истек. Обновите страницу и попробуйте снова или выйдите и войдите заново.',
+      duplicateMtLogin:
+        'Этот логин MT уже привязан к другому счету здесь. Сначала удалите его или используйте «Переподключить» — один и тот же логин нельзя подключить дважды.',
+      platformServerMismatchMt4:
+        'Название этого сервера похоже на MT4, но вы выбрали MT5. Копирование и управление сделками могут работать некорректно. Подключить как MT4?',
+      platformServerMismatchMt5:
+        'Название этого сервера похоже на MT5, но вы выбрали MT4. Копирование и управление сделками могут работать некорректно. Подключить как MT5?',
+      deleteTitle: 'Удалить торговый счет?',
+      deleteBody: 'Это отключит {label} от брокера и копировщика. Отменить это действие нельзя.',
+      deleteConfirm: 'Отключить',
+      connectedAccountsHeading: 'Подключенные счета',
+      connectedAccountsUnlimited: 'Без ограничений',
+      brokerFilterLabel: 'Брокер',
+      brokerFilterAll: 'Все брокеры',
+      brokerFilterNoMatch: 'Нет счетов, соответствующих этому брокеру.',
+      accountSearchLabel: 'Поиск счетов',
+      accountSearchPlaceholder: 'Название, логин, сервер, брокер…',
+      accountSearchNoMatch: 'Нет счетов, соответствующих вашему запросу.',
+    },
+    brokerConnectedSuccess: {
+      title: 'Брокер подключен',
+      titlePending: 'Брокер привязан',
+      body: '{account} подключен и готов копировать сигналы.',
+      bodyPending:
+        '{account} привязан. Ваш терминал MT5 запускается — вы можете настроить каналы, пока идет подключение.',
+      addChannel: 'Добавить канал',
+      configure: 'Настроить',
+    },
+    configureModal: configureModalEn,
+  },
+}
