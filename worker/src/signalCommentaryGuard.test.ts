@@ -105,6 +105,16 @@ describe('entryMissingSlTpRequiresNow', () => {
       false,
     )
   })
+
+  it('does not require NOW when parser extracted SL/TP from a multi-price signal (e.g. AI entry)', () => {
+    assert.equal(
+      entryMissingSlTpRequiresNow(
+        { action: 'buy', sl: 2640, tp: [2670] },
+        'COMPRA XAUUSD @ 2650 SL 2640 TP 2670',
+      ),
+      false,
+    )
+  })
 })
 
 describe('messageHasExplicitSlTpLabels', () => {

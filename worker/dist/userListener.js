@@ -1152,21 +1152,39 @@ class UserListener {
         }
         if (listenerInlineParseEnabled()) {
             const det = (0, parseSignal_1.parseChannelMessageSync)(args.rawMessage, keywords, lexicon);
-            if (det.status === 'parsed' || det.parsed.action !== 'ignore') {
+            const detEntryParsed = det.status === 'parsed'
+                && (det.parsed.action === 'buy' || det.parsed.action === 'sell');
+            if (detEntryParsed) {
                 return { parseResult: det };
             }
-            const aiEntry = await (0, aiParseEntry_1.aiParseEntry)(this.supabase, {
-                userId: this.userId,
-                channelRowId: args.channelRowId,
-                rawMessage: args.rawMessage,
-                isReply: args.isReply,
-                parentSignalId: args.parentSignalId,
-            });
-            if (aiEntry.status === 'parsed') {
-                return {
-                    parseResult: (0, aiParseEntry_1.aiEntryResultToParseResult)(aiEntry),
-                    aiMeta: { intent: 'entry', source: aiEntry.source },
-                };
+            if (!this.isModificationClassMessage(args.rawMessage, args.isReply, keywords)) {
+                const aiEntry = await (0, aiParseEntry_1.aiParseEntry)(this.supabase, {
+                    userId: this.userId,
+                    channelRowId: args.channelRowId,
+                    rawMessage: args.rawMessage,
+                    isReply: args.isReply,
+                    parentSignalId: args.parentSignalId,
+                });
+                const aiMeta = { intent: 'entry', source: aiEntry.source };
+                if (aiEntry.status === 'parsed') {
+                    console.log(`[userListener] ai entry parsed user=${this.userId} channelRow=${args.channelRowId}`
+                        + ` action=${aiEntry.parsed.action} symbol=${aiEntry.parsed.symbol ?? 'null'}`);
+                    return {
+                        parseResult: (0, aiParseEntry_1.aiEntryResultToParseResult)(aiEntry),
+                        aiMeta,
+                    };
+                }
+                if ((0, aiParseEntry_1.isAiEntryParseEnabled)()) {
+                    console.warn(`[userListener] ai entry skipped user=${this.userId} channelRow=${args.channelRowId}:`
+                        + ` ${aiEntry.skip_reason ?? 'unknown'}`);
+                    return {
+                        parseResult: {
+                            ...det,
+                            skip_reason: aiEntry.skip_reason ?? det.skip_reason,
+                        },
+                        aiMeta,
+                    };
+                }
             }
             return { parseResult: det };
         }
@@ -1369,9 +1387,10 @@ class UserListener {
         if (aiMeta)
             pipelineTs.t_ai_parse_done = pipelineTs.t_parse_done;
         if (aiMeta && parseResult.status === 'parsed') {
+            const eventType = aiMeta.intent === 'entry' ? 'ai_entry_parsed' : 'ai_modification_parsed';
             void (0, listenerEvents_1.persistListenerEvent)(this.supabase, {
                 userId: this.userId,
-                eventType: 'ai_modification_parsed',
+                eventType,
                 channelRowId: channelRow.id,
                 telegramMessageId: messageId,
                 detail: {
@@ -1382,9 +1401,10 @@ class UserListener {
             });
         }
         else if (aiMeta && parseResult.status !== 'parsed') {
+            const eventType = aiMeta.intent === 'entry' ? 'ai_entry_skipped' : 'ai_modification_skipped';
             void (0, listenerEvents_1.persistListenerEvent)(this.supabase, {
                 userId: this.userId,
-                eventType: 'ai_modification_skipped',
+                eventType,
                 channelRowId: channelRow.id,
                 telegramMessageId: messageId,
                 detail: {

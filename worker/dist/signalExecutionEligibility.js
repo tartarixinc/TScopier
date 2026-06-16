@@ -25,7 +25,8 @@ function evaluateParsedSignalExecutionEligibility(parsed, rawMessage) {
         if (/\b\d+(?:\.\d+)?\s*pips?\s+short\s+of\s+tp\d*\b/i.test(raw)) {
             return { eligible: false, skipReason: exports.COMMENTARY_NOT_SIGNAL_REASON };
         }
-        if ((0, signalManagementIntent_1.looksLikeChannelManagementUpdate)(raw) && !/\b(buy|sell|long|short)\b/i.test(raw)) {
+        if ((0, signalManagementIntent_1.looksLikeChannelManagementUpdate)(raw) && action !== 'buy' && action !== 'sell'
+            && !/\b(buy|sell|long|short)\b/i.test(raw)) {
             return { eligible: false, skipReason: exports.COMMENTARY_NOT_SIGNAL_REASON };
         }
     }

@@ -1,14 +1,22 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.isAiEntryParseEnabled = isAiEntryParseEnabled;
 exports.aiEntryResultToParseResult = aiEntryResultToParseResult;
 exports.aiParseEntry = aiParseEntry;
 const parseSignal_1 = require("./parseSignal");
 const channelKeywordsCache_1 = require("./channelKeywordsCache");
 const aiParseModification_1 = require("./aiParseModification");
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? '';
-function aiEntryParseEnabled() {
-    const v = String(process.env.AI_ENTRY_PARSE_ENABLED ?? 'false').toLowerCase();
+function parseEnvBool(name, defaultValue = false) {
+    const raw = String(process.env[name] ?? (defaultValue ? 'true' : 'false')).trim();
+    const v = raw.replace(/^["']|["']$/g, '').toLowerCase();
     return v === '1' || v === 'true' || v === 'yes';
+}
+function isAiEntryParseEnabled() {
+    return parseEnvBool('AI_ENTRY_PARSE_ENABLED', false);
+}
+function aiEntryParseEnabled() {
+    return isAiEntryParseEnabled();
 }
 function aiModel() {
     return String(process.env.AI_ENTRY_PARSE_MODEL ?? process.env.AI_MODIFICATION_PARSE_MODEL ?? 'gpt-4o-mini').trim()
@@ -57,8 +65,9 @@ function aiEntryResultToParseResult(result) {
     return toParseResult(result.parsed, result.status === 'parsed' ? 'parsed' : 'skipped', result.skip_reason ?? null);
 }
 async function callOpenAiEntry(context) {
-    if (!OPENAI_API_KEY)
-        return null;
+    if (!OPENAI_API_KEY) {
+        return { raw: null, error: 'OPENAI_API_KEY not set on listener worker' };
+    }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), aiTimeoutMs());
     try {
@@ -80,16 +89,22 @@ async function callOpenAiEntry(context) {
             }),
             signal: controller.signal,
         });
-        if (!res.ok)
-            return null;
+        if (!res.ok) {
+            const body = await res.text().catch(() => '');
+            return {
+                raw: null,
+                error: `OpenAI HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ''}`,
+            };
+        }
         const data = await res.json();
         const content = data?.choices?.[0]?.message?.content ?? '';
         if (!content)
-            return null;
-        return JSON.parse(content);
+            return { raw: null, error: 'OpenAI returned empty content' };
+        return { raw: JSON.parse(content), error: null };
     }
-    catch {
-        return null;
+    catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { raw: null, error: msg.includes('abort') ? `OpenAI timeout after ${aiTimeoutMs()}ms` : msg };
     }
     finally {
         clearTimeout(timer);
@@ -97,6 +112,10 @@ async function callOpenAiEntry(context) {
 }
 async function aiParseEntry(supabase, args) {
     if (!aiEntryParseEnabled() || !OPENAI_API_KEY) {
+        const skipReason = !aiEntryParseEnabled()
+            ? 'AI entry parse disabled (AI_ENTRY_PARSE_ENABLED)'
+            : 'OPENAI_API_KEY not set on listener worker';
+        console.warn(`[aiParseEntry] skip channel=${args.channelRowId}: ${skipReason}`);
         return {
             parsed: {
                 action: 'ignore',
@@ -110,7 +129,7 @@ async function aiParseEntry(supabase, args) {
                 raw_instruction: args.rawMessage,
             },
             status: 'skipped',
-            skip_reason: 'AI entry parse disabled or unavailable',
+            skip_reason: skipReason,
             confidence: 0,
             source: 'openai',
         };
@@ -123,12 +142,13 @@ async function aiParseEntry(supabase, args) {
         isReply: args.isReply,
         parentSignalId: args.parentSignalId,
     });
-    const aiRaw = await callOpenAiEntry({
+    const { raw: aiRaw, error: aiError } = await callOpenAiEntry({
         ...baseContext,
         channel_keywords_summary: keywordsSummary(keywords),
         parse_mode: 'entry',
     });
     if (!aiRaw) {
+        console.warn(`[aiParseEntry] failed channel=${args.channelRowId}:`, aiError ?? 'unknown error');
         return {
             parsed: {
                 action: 'ignore',
@@ -142,7 +162,7 @@ async function aiParseEntry(supabase, args) {
                 raw_instruction: args.rawMessage,
             },
             status: 'skipped',
-            skip_reason: 'AI entry parse failed',
+            skip_reason: aiError ?? 'AI entry parse failed',
             confidence: 0,
             source: 'openai',
         };

@@ -71,9 +71,14 @@ function messageHasExplicitSlTpLabels(message) {
         return true;
     return false;
 }
+/** Multiple numeric prices usually means a real signal (entry/SL/TP), not profit commentary. */
+function messageHasStructuredPriceEvidence(message) {
+    const prices = String(message ?? '').match(/\b\d{1,5}(?:\.\d{1,5})?\b/g) ?? [];
+    return prices.length >= 2;
+}
 /**
- * Buy/sell entries need NOW (or MARKET) unless the message includes explicit SL/TP labels.
- * Inferred SL/TP from bare numbers (e.g. £1110 profit) do not count as parameters.
+ * Buy/sell entries need NOW (or MARKET) unless the message includes explicit SL/TP labels
+ * or the parser extracted SL/TP from a multi-price signal (e.g. AI / foreign-language parse).
  */
 function entryMissingSlTpRequiresNow(parsed, rawMessage, channelKeywords) {
     const action = String(parsed.action ?? '').toLowerCase();
@@ -82,6 +87,8 @@ function entryMissingSlTpRequiresNow(parsed, rawMessage, channelKeywords) {
     if (messageHasMarketNowIntent(rawMessage, channelKeywords))
         return false;
     if (messageHasExplicitSlTpLabels(rawMessage))
+        return false;
+    if (parsedHasSlOrTp(parsed) && messageHasStructuredPriceEvidence(rawMessage))
         return false;
     return true;
 }

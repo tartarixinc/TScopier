@@ -10,6 +10,8 @@ export type ListenerEventType =
   | 'ai_modification_parsed'
   | 'ai_modification_skipped'
   | 'ai_modification_failed'
+  | 'ai_entry_parsed'
+  | 'ai_entry_skipped'
   | 'message_revision_applied'
   | 'message_revision_stale_skipped'
   | 'entry_settle_poll_mismatch'

@@ -40,7 +40,8 @@ export function evaluateParsedSignalExecutionEligibility(
     if (/\b\d+(?:\.\d+)?\s*pips?\s+short\s+of\s+tp\d*\b/i.test(raw)) {
       return { eligible: false, skipReason: COMMENTARY_NOT_SIGNAL_REASON }
     }
-    if (looksLikeChannelManagementUpdate(raw) && !/\b(buy|sell|long|short)\b/i.test(raw)) {
+    if (looksLikeChannelManagementUpdate(raw) && action !== 'buy' && action !== 'sell'
+      && !/\b(buy|sell|long|short)\b/i.test(raw)) {
       return { eligible: false, skipReason: COMMENTARY_NOT_SIGNAL_REASON }
     }
   }

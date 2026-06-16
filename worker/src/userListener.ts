@@ -32,7 +32,7 @@ import {
   updateSignalAfterRevision,
 } from './signalRevision'
 import { aiParseModification, aiResultToParseResult } from './aiParseModification'
-import { aiParseEntry, aiEntryResultToParseResult } from './aiParseEntry'
+import { aiParseEntry, aiEntryResultToParseResult, isAiEntryParseEnabled } from './aiParseEntry'
 import {
   RECONCILE_POLL_HOOK_MAX_SIGNALS,
   RECONCILE_POLL_HOOK_WINDOW_MS,
@@ -1408,20 +1408,43 @@ export class UserListener {
     }
     if (listenerInlineParseEnabled()) {
       const det = parseChannelMessageSync(args.rawMessage, keywords, lexicon)
-      if (det.status === 'parsed' || det.parsed.action !== 'ignore') {
+      const detEntryParsed =
+        det.status === 'parsed'
+        && (det.parsed.action === 'buy' || det.parsed.action === 'sell')
+      if (detEntryParsed) {
         return { parseResult: det }
       }
-      const aiEntry = await aiParseEntry(this.supabase, {
-        userId: this.userId,
-        channelRowId: args.channelRowId,
-        rawMessage: args.rawMessage,
-        isReply: args.isReply,
-        parentSignalId: args.parentSignalId,
-      })
-      if (aiEntry.status === 'parsed') {
-        return {
-          parseResult: aiEntryResultToParseResult(aiEntry),
-          aiMeta: { intent: 'entry', source: aiEntry.source },
+      if (!this.isModificationClassMessage(args.rawMessage, args.isReply, keywords)) {
+        const aiEntry = await aiParseEntry(this.supabase, {
+          userId: this.userId,
+          channelRowId: args.channelRowId,
+          rawMessage: args.rawMessage,
+          isReply: args.isReply,
+          parentSignalId: args.parentSignalId,
+        })
+        const aiMeta = { intent: 'entry', source: aiEntry.source }
+        if (aiEntry.status === 'parsed') {
+          console.log(
+            `[userListener] ai entry parsed user=${this.userId} channelRow=${args.channelRowId}`
+            + ` action=${aiEntry.parsed.action} symbol=${aiEntry.parsed.symbol ?? 'null'}`,
+          )
+          return {
+            parseResult: aiEntryResultToParseResult(aiEntry),
+            aiMeta,
+          }
+        }
+        if (isAiEntryParseEnabled()) {
+          console.warn(
+            `[userListener] ai entry skipped user=${this.userId} channelRow=${args.channelRowId}:`
+            + ` ${aiEntry.skip_reason ?? 'unknown'}`,
+          )
+          return {
+            parseResult: {
+              ...det,
+              skip_reason: aiEntry.skip_reason ?? det.skip_reason,
+            },
+            aiMeta,
+          }
         }
       }
       return { parseResult: det }
@@ -1647,9 +1670,10 @@ export class UserListener {
     if (aiMeta) pipelineTs.t_ai_parse_done = pipelineTs.t_parse_done
 
     if (aiMeta && parseResult.status === 'parsed') {
+      const eventType = aiMeta.intent === 'entry' ? 'ai_entry_parsed' : 'ai_modification_parsed'
       void persistListenerEvent(this.supabase, {
         userId: this.userId,
-        eventType: 'ai_modification_parsed',
+        eventType,
         channelRowId: channelRow.id,
         telegramMessageId: messageId,
         detail: {
@@ -1659,9 +1683,10 @@ export class UserListener {
         },
       })
     } else if (aiMeta && parseResult.status !== 'parsed') {
+      const eventType = aiMeta.intent === 'entry' ? 'ai_entry_skipped' : 'ai_modification_skipped'
       void persistListenerEvent(this.supabase, {
         userId: this.userId,
-        eventType: 'ai_modification_skipped',
+        eventType,
         channelRowId: channelRow.id,
         telegramMessageId: messageId,
         detail: {
