@@ -1132,12 +1132,12 @@ class UserListener {
                 (0, workerMetrics_1.incMetric)('dispatch_push_exhausted');
         }
     }
-    isModificationClassMessage(rawMessage, isReply, channelKeywords) {
-        return isReply || (0, signalManagementIntent_1.looksLikeChannelManagementUpdate)(rawMessage, channelKeywords);
+    isModificationClassMessage(rawMessage, isReply, channelKeywords, lexicon) {
+        return isReply || (0, signalManagementIntent_1.looksLikeChannelManagementUpdate)(rawMessage, channelKeywords, lexicon);
     }
     async parseSignalForListener(args) {
         const { keywords, lexicon } = await (0, channelKeywordsCache_1.getChannelParseContext)(this.supabase, args.channelRowId);
-        if (this.isModificationClassMessage(args.rawMessage, args.isReply, keywords)) {
+        if (this.isModificationClassMessage(args.rawMessage, args.isReply, keywords, lexicon)) {
             const aiResult = await (0, aiParseModification_1.aiParseModification)(this.supabase, {
                 userId: this.userId,
                 channelRowId: args.channelRowId,
@@ -1158,7 +1158,7 @@ class UserListener {
             if (detEntryParsed) {
                 return { parseResult: det, channelKeywords: keywords };
             }
-            if (!this.isModificationClassMessage(args.rawMessage, args.isReply, keywords)) {
+            if (!this.isModificationClassMessage(args.rawMessage, args.isReply, keywords, lexicon)) {
                 const aiEntry = await (0, aiParseEntry_1.aiParseEntry)(this.supabase, {
                     userId: this.userId,
                     channelRowId: args.channelRowId,

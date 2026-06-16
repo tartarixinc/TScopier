@@ -11,6 +11,9 @@ test('looksLikeExplicitFullCloseCommand: accepts two-word close phrases', () => 
   assert.equal(looksLikeExplicitFullCloseCommand('close trade now'), true)
   assert.equal(looksLikeExplicitFullCloseCommand('close gold'), true)
   assert.equal(looksLikeExplicitFullCloseCommand('close XAUUSD'), true)
+  assert.equal(looksLikeExplicitFullCloseCommand('FERMEZ TOUT MAINTENANT'), true)
+  assert.equal(looksLikeExplicitFullCloseCommand('CERRAR TODO AHORA'), true)
+  assert.equal(looksLikeExplicitFullCloseCommand('ZAMKNIJ WSZYSTKO TERAZ'), true)
 })
 
 test('looksLikeExplicitFullCloseCommand: rejects prose close to', () => {
@@ -30,6 +33,10 @@ test('looksLikeChannelManagementUpdate: move stop to breakeven', () => {
     looksLikeChannelManagementUpdate('+50 pips running, you can move stop to breakeven.'),
     true,
   )
+})
+
+test('looksLikeChannelManagementUpdate: French close all now', () => {
+  assert.equal(looksLikeChannelManagementUpdate('FERMEZ TOUT MAINTENANT'), true)
 })
 
 test('partialCloseFractionFromMessage: secure 30% profits', () => {

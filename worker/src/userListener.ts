@@ -1378,8 +1378,9 @@ export class UserListener {
     rawMessage: string,
     isReply: boolean,
     channelKeywords?: import('./parseSignal').ChannelKeywords | null,
+    lexicon?: import('./parseSignal').ChannelLexiconRow | null,
   ): boolean {
-    return isReply || looksLikeChannelManagementUpdate(rawMessage, channelKeywords)
+    return isReply || looksLikeChannelManagementUpdate(rawMessage, channelKeywords, lexicon)
   }
 
   private async parseSignalForListener(args: {
@@ -1394,7 +1395,7 @@ export class UserListener {
     channelKeywords: Awaited<ReturnType<typeof getChannelParseContext>>['keywords']
   }> {
     const { keywords, lexicon } = await getChannelParseContext(this.supabase, args.channelRowId)
-    if (this.isModificationClassMessage(args.rawMessage, args.isReply, keywords)) {
+    if (this.isModificationClassMessage(args.rawMessage, args.isReply, keywords, lexicon)) {
       const aiResult = await aiParseModification(this.supabase, {
         userId: this.userId,
         channelRowId: args.channelRowId,
@@ -1416,7 +1417,7 @@ export class UserListener {
       if (detEntryParsed) {
         return { parseResult: det, channelKeywords: keywords }
       }
-      if (!this.isModificationClassMessage(args.rawMessage, args.isReply, keywords)) {
+      if (!this.isModificationClassMessage(args.rawMessage, args.isReply, keywords, lexicon)) {
         const aiEntry = await aiParseEntry(this.supabase, {
           userId: this.userId,
           channelRowId: args.channelRowId,

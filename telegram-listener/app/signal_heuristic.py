@@ -24,6 +24,17 @@ _ENGLISH_DIRECTION = re.compile(
     re.I,
 )
 _ENGLISH_PRICE_CTX = re.compile(r"\b(entry|zone|between|above|below|now)\b", re.I)
+_MULTILINGUAL_CLOSE_ALL = re.compile(
+    r"\b("
+    r"fermez\s+tout|fermer\s+tout|tout\s+fermer|"
+    r"cerrar\s+todo|cierra\s+todo|cierre\s+todo|"
+    r"zamknij\s+wszystko|"
+    r"закрой\s+все|закрыть\s+все|"
+    r"stäng\s+allt|stang\s+allt|sluit\s+alles|"
+    r"fechar\s+tudo|chiudi\s+tutto"
+    r")\b",
+    re.I,
+)
 _MULTILINGUAL_MARKET_NOW = re.compile(
     r"\b("
     r"now|instant|immediately|immediate|maintenant|imm[eé]diat|immediat|"
@@ -171,6 +182,7 @@ def looks_like_trading_signal(
     has_direction_or_action = bool(
         _ENGLISH_DIRECTION.search(normalized)
         or _looks_like_explicit_full_close_command(normalized)
+        or _MULTILINGUAL_CLOSE_ALL.search(text)
         or has_channel_keyword
     )
     has_price_context = bool(
@@ -187,6 +199,9 @@ def looks_like_trading_signal(
         return True
 
     if looks_like_channel_management_update(normalized, aliases or None):
+        return True
+
+    if _MULTILINGUAL_CLOSE_ALL.search(text):
         return True
 
     if (

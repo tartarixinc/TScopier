@@ -97,7 +97,7 @@ function looksLikeTradingSignal(text, isReply, ctx) {
     const hasInstrument = (0, tradableSymbol_1.hasTradableInstrumentInText)(normalized);
     const hasDirectionOrAction = ENGLISH_DIRECTION.test(normalized)
         || multilingualSignalTerms_1.MULTILINGUAL_DIRECTION_RE.test(text)
-        || (0, signalManagementIntent_1.looksLikeExplicitFullCloseCommand)(normalized)
+        || (0, signalManagementIntent_1.looksLikeExplicitFullCloseCommand)(normalized, { channelKeywords: ctx?.keywords ?? null, lexicon: ctx?.lexicon ?? null })
         || hasChannelKeyword;
     const hasPriceContext = hasNumericPriceContext(normalized)
         || ENGLISH_PRICE_CTX.test(normalized)
@@ -107,7 +107,7 @@ function looksLikeTradingSignal(text, isReply, ctx) {
     if (isReply && (ENGLISH_REPLY_MGMT.test(normalized) || hasChannelKeyword)) {
         return true;
     }
-    if ((0, signalManagementIntent_1.looksLikeChannelManagementUpdate)(normalized, ctx?.keywords ?? null))
+    if ((0, signalManagementIntent_1.looksLikeChannelManagementUpdate)(normalized, ctx?.keywords ?? null, ctx?.lexicon ?? null))
         return true;
     // Language-neutral: tradable symbol + at least one price is enough for trained/untrained channels.
     if (hasInstrument && hasNumericPriceContext(normalized) && (hasChannelKeyword || hasDirectionOrAction)) {

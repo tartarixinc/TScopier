@@ -25,13 +25,19 @@ import {
 } from './tradableSymbol'
 import { looksLikeCasualNonTradeMessage } from './signalCommentaryGuard'
 import { normalizeTelegramMessageText } from './normalizeTelegramMessageText'
-import { entryMissingSlTpRequiresNow } from './signalEntryNowRequirement'
+import {
+  COMMON_BREAKEVEN_PHRASES,
+  COMMON_PARTIAL_CLOSE_PHRASES,
+} from './multilingualManagementTerms'
+import { resolveManagementGroups } from './trainingManagementKeywords'
 import {
   COMMON_BUY_TERMS,
   COMMON_MARKET_NOW_TERMS,
   COMMON_SELL_TERMS,
   foldAccents,
+  messageContainsKeyword,
 } from './multilingualSignalTerms'
+import { entryMissingSlTpRequiresNow } from './signalEntryNowRequirement'
 
 /** Structured instruction from Telegram text + per-channel keywords. */
 export interface ChannelParsedSignal {
@@ -514,8 +520,13 @@ function normalizeParsedFromModel(raw: unknown, fallbackText: string): ChannelPa
 
 const ENTRY_KW = /\b(buy|sell|long|short)\b/i
 
-function wantsExplicitFullClose(message: string, kwClose: string[]): boolean {
-  if (looksLikeExplicitFullCloseCommand(message)) return true
+function wantsExplicitFullClose(
+  message: string,
+  kwClose: string[],
+  channelKeywords: ChannelKeywords,
+  lexicon: ChannelLexiconRow | null,
+): boolean {
+  if (looksLikeExplicitFullCloseCommand(message, { channelKeywords, lexicon })) return true
   return hasAnyKeyword(message, kwClose)
 }
 
@@ -582,9 +593,13 @@ function parseDeterministicManagement(
   let partial_close_fraction: number | undefined
   let confidence = 0.92
   const delim = channelKeywords.additional.delimiters
+  const legacyMgmt = resolveManagementGroups({
+    management_cues: lexicon?.action_aliases?.modify ?? [],
+  })
   const kwClose = [
     ...splitKeywordAliases(channelKeywords.update.close_full, delim),
     ...splitKeywordAliases(channelKeywords.additional.close_all, delim),
+    ...legacyMgmt.close_all,
   ]
   const kwCloseHalf = splitKeywordAliases(channelKeywords.update.close_half, delim)
   const kwClosePartialOnly = splitKeywordAliases(channelKeywords.update.close_partial, delim)
@@ -595,7 +610,10 @@ function parseDeterministicManagement(
     ...splitKeywordAliases(channelKeywords.update.close_tp4, delim),
   ]
   const kwPartial = [...kwCloseHalf, ...kwClosePartialOnly, ...kwCloseTpTiers]
-  const kwBreakeven = splitKeywordAliases(channelKeywords.update.break_even, delim)
+  const kwBreakeven = [
+    ...splitKeywordAliases(channelKeywords.update.break_even, delim),
+    ...legacyMgmt.break_even,
+  ]
   const kwCloseWorse = splitKeywordAliases(channelKeywords.update.close_worse_entries, delim)
   const kwModify = [
     ...splitKeywordAliases(channelKeywords.update.set_sl, delim),
@@ -620,6 +638,7 @@ function parseDeterministicManagement(
     hitCloseHalfKw ||
     hitClosePartialKw ||
     hitCloseTpTierKw ||
+    COMMON_PARTIAL_CLOSE_PHRASES.some(p => messageContainsKeyword(t, p)) ||
     /\b(close\s+partials?|close\s+half|close\s+50%|take\s+partials?|take\s+half|take\s+50%|c\s+half|half\s+of\s+(the\s+)?(position|trade))\b/i.test(t) ||
     /\b(closing\s+partial|close\s+partial\s+(?:lot|lots|lotsize|position|trade))\b/i.test(t) ||
     /\bsecure\s+\d+\s*%\s*profit/i.test(t) ||
@@ -628,6 +647,7 @@ function parseDeterministicManagement(
     /\b(25|quarter|30|40|75)\s*%?\s*(of\s+)?(the\s+)?(position|trade|lot|profit)\b/i.test(tl) ||
     hasAnyKeyword(t, kwPartial)
   const wantsBreakeven =
+    COMMON_BREAKEVEN_PHRASES.some(p => messageContainsKeyword(t, p)) ||
     /\bbreakeven|break\s*even\b/i.test(t) ||
     /\bmove\s+stop\s+to\s+breakeven\b/i.test(t) ||
     /\bmoved?\s+(sl\s+)?to\s+(be|entry|entr(y)?\s?price)|\b(be|bk)\s*now\b/i.test(t) ||
@@ -665,7 +685,7 @@ function parseDeterministicManagement(
       if (pct != null) partial_close_fraction = pct
     }
   } else if (wantsBreakeven) action = "breakeven"
-  else if (wantsExplicitFullClose(t, kwClose)) action = "close"
+  else if (wantsExplicitFullClose(t, kwClose, channelKeywords, lexicon)) action = "close"
   else if (looksLikeStopOrTpAdjustCommand(t) || hasAnyKeyword(t, kwModify)) {
     action = "modify"
     confidence = 0.95

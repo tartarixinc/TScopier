@@ -14,8 +14,10 @@ const signalPriceFormat_1 = require("./signalPriceFormat");
 const tradableSymbol_1 = require("./tradableSymbol");
 const signalCommentaryGuard_1 = require("./signalCommentaryGuard");
 const normalizeTelegramMessageText_1 = require("./normalizeTelegramMessageText");
-const signalEntryNowRequirement_1 = require("./signalEntryNowRequirement");
+const multilingualManagementTerms_1 = require("./multilingualManagementTerms");
+const trainingManagementKeywords_1 = require("./trainingManagementKeywords");
 const multilingualSignalTerms_1 = require("./multilingualSignalTerms");
+const signalEntryNowRequirement_1 = require("./signalEntryNowRequirement");
 exports.DEFAULT_CHANNEL_KEYWORDS = {
     signal: {
         entry_point: "ENTRY",
@@ -390,8 +392,8 @@ function normalizeParsedFromModel(raw, fallbackText) {
     };
 }
 const ENTRY_KW = /\b(buy|sell|long|short)\b/i;
-function wantsExplicitFullClose(message, kwClose) {
-    if ((0, signalManagementIntent_1.looksLikeExplicitFullCloseCommand)(message))
+function wantsExplicitFullClose(message, kwClose, channelKeywords, lexicon) {
+    if ((0, signalManagementIntent_1.looksLikeExplicitFullCloseCommand)(message, { channelKeywords, lexicon }))
         return true;
     return hasAnyKeyword(message, kwClose);
 }
@@ -449,9 +451,13 @@ function parseDeterministicManagement(message, lexicon, channelKeywords) {
     let partial_close_fraction;
     let confidence = 0.92;
     const delim = channelKeywords.additional.delimiters;
+    const legacyMgmt = (0, trainingManagementKeywords_1.resolveManagementGroups)({
+        management_cues: lexicon?.action_aliases?.modify ?? [],
+    });
     const kwClose = [
         ...splitKeywordAliases(channelKeywords.update.close_full, delim),
         ...splitKeywordAliases(channelKeywords.additional.close_all, delim),
+        ...legacyMgmt.close_all,
     ];
     const kwCloseHalf = splitKeywordAliases(channelKeywords.update.close_half, delim);
     const kwClosePartialOnly = splitKeywordAliases(channelKeywords.update.close_partial, delim);
@@ -462,7 +468,10 @@ function parseDeterministicManagement(message, lexicon, channelKeywords) {
         ...splitKeywordAliases(channelKeywords.update.close_tp4, delim),
     ];
     const kwPartial = [...kwCloseHalf, ...kwClosePartialOnly, ...kwCloseTpTiers];
-    const kwBreakeven = splitKeywordAliases(channelKeywords.update.break_even, delim);
+    const kwBreakeven = [
+        ...splitKeywordAliases(channelKeywords.update.break_even, delim),
+        ...legacyMgmt.break_even,
+    ];
     const kwCloseWorse = splitKeywordAliases(channelKeywords.update.close_worse_entries, delim);
     const kwModify = [
         ...splitKeywordAliases(channelKeywords.update.set_sl, delim),
@@ -484,6 +493,7 @@ function parseDeterministicManagement(message, lexicon, channelKeywords) {
     const wantsPartialHalf = hitCloseHalfKw ||
         hitClosePartialKw ||
         hitCloseTpTierKw ||
+        multilingualManagementTerms_1.COMMON_PARTIAL_CLOSE_PHRASES.some(p => (0, multilingualSignalTerms_1.messageContainsKeyword)(t, p)) ||
         /\b(close\s+partials?|close\s+half|close\s+50%|take\s+partials?|take\s+half|take\s+50%|c\s+half|half\s+of\s+(the\s+)?(position|trade))\b/i.test(t) ||
         /\b(closing\s+partial|close\s+partial\s+(?:lot|lots|lotsize|position|trade))\b/i.test(t) ||
         /\bsecure\s+\d+\s*%\s*profit/i.test(t) ||
@@ -491,7 +501,8 @@ function parseDeterministicManagement(message, lexicon, channelKeywords) {
         /\b(50|half)\s*%?\s*(of\s+)?(the\s+)?(position|trade|lot|profit)\b/i.test(t) ||
         /\b(25|quarter|30|40|75)\s*%?\s*(of\s+)?(the\s+)?(position|trade|lot|profit)\b/i.test(tl) ||
         hasAnyKeyword(t, kwPartial);
-    const wantsBreakeven = /\bbreakeven|break\s*even\b/i.test(t) ||
+    const wantsBreakeven = multilingualManagementTerms_1.COMMON_BREAKEVEN_PHRASES.some(p => (0, multilingualSignalTerms_1.messageContainsKeyword)(t, p)) ||
+        /\bbreakeven|break\s*even\b/i.test(t) ||
         /\bmove\s+stop\s+to\s+breakeven\b/i.test(t) ||
         /\bmoved?\s+(sl\s+)?to\s+(be|entry|entr(y)?\s?price)|\b(be|bk)\s*now\b/i.test(t) ||
         /\bstop\s*loss\s+to\s+(be|entry|breakeven|break\s*even)\b/i.test(t) ||
@@ -527,7 +538,7 @@ function parseDeterministicManagement(message, lexicon, channelKeywords) {
     }
     else if (wantsBreakeven)
         action = "breakeven";
-    else if (wantsExplicitFullClose(t, kwClose))
+    else if (wantsExplicitFullClose(t, kwClose, channelKeywords, lexicon))
         action = "close";
     else if (looksLikeStopOrTpAdjustCommand(t) || hasAnyKeyword(t, kwModify)) {
         action = "modify";

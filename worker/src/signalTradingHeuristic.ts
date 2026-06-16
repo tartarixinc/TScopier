@@ -125,7 +125,7 @@ export function looksLikeTradingSignal(
   const hasDirectionOrAction =
     ENGLISH_DIRECTION.test(normalized)
     || MULTILINGUAL_DIRECTION_RE.test(text)
-    || looksLikeExplicitFullCloseCommand(normalized)
+    || looksLikeExplicitFullCloseCommand(normalized, { channelKeywords: ctx?.keywords ?? null, lexicon: ctx?.lexicon ?? null })
     || hasChannelKeyword
 
   const hasPriceContext =
@@ -141,7 +141,7 @@ export function looksLikeTradingSignal(
     return true
   }
 
-  if (looksLikeChannelManagementUpdate(normalized, ctx?.keywords ?? null)) return true
+  if (looksLikeChannelManagementUpdate(normalized, ctx?.keywords ?? null, ctx?.lexicon ?? null)) return true
 
   // Language-neutral: tradable symbol + at least one price is enough for trained/untrained channels.
   if (hasInstrument && hasNumericPriceContext(normalized) && (hasChannelKeyword || hasDirectionOrAction)) {

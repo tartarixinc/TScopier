@@ -1,18 +1,69 @@
 /**
  * Shared detection for channel management updates (breakeven, partial close, etc.).
  */
-import type { ChannelKeywords } from './parseSignal'
+import type { ChannelKeywords, ChannelLexiconRow } from './parseSignal'
+import {
+  textLooksLikeMultilingualFullClose,
+  textLooksLikeMultilingualManagement,
+} from './multilingualManagementTerms'
+import {
+  flattenManagementGroups,
+  resolveManagementGroups,
+} from './trainingManagementKeywords'
 
 const EXPLICIT_CLOSE_SYMBOL =
   'gold|xauusd|xau|silver|xagusd|btc|bitcoin|btcusd|ethusd|eurusd|gbpusd|us30|nas100'
 
+/** All trained management aliases from channel keywords + lexicon buckets. */
+export function trainedManagementAliases(
+  channelKeywords?: ChannelKeywords | null,
+  lexicon?: ChannelLexiconRow | null,
+): string[] {
+  const fromKeywords = managementAliasesFromKeywords(channelKeywords)
+  const legacyGroups = resolveManagementGroups({
+    management_cues: lexicon?.action_aliases?.modify ?? [],
+  })
+  return Array.from(new Set([
+    ...fromKeywords,
+    ...flattenManagementGroups(legacyGroups),
+    ...(lexicon?.action_aliases?.modify ?? []),
+  ].map(a => String(a).trim()).filter(Boolean)))
+}
+
+export function channelHasTrainedManagement(
+  channelKeywords?: ChannelKeywords | null,
+  lexicon?: ChannelLexiconRow | null,
+): boolean {
+  const modify = lexicon?.action_aliases?.modify ?? []
+  if (modify.length > 0) return true
+  const additional = channelKeywords?.additional as { ai_management_keyword_groups?: unknown } | undefined
+  return Boolean(additional?.ai_management_keyword_groups)
+}
+
 /**
  * True for intentional full-close commands (two-word minimum), not prose like "close to our entry".
  */
-export function looksLikeExplicitFullCloseCommand(message: string): boolean {
+export function looksLikeExplicitFullCloseCommand(
+  message: string,
+  ctx?: { channelKeywords?: ChannelKeywords | null; lexicon?: ChannelLexiconRow | null },
+): boolean {
   const t = String(message ?? '').replace(/\s+/g, ' ').trim()
   if (!t) return false
   if (/\bclose\s+to\b/i.test(t)) return false
+
+  const legacyGroups = resolveManagementGroups({
+    management_cues: ctx?.lexicon?.action_aliases?.modify ?? [],
+  })
+  const closeAliases = Array.from(new Set([
+    ...legacyGroups.close_all,
+    ...splitKeywordAliases(ctx?.channelKeywords?.additional?.close_all ?? '', ctx?.channelKeywords?.additional?.delimiters ?? '|'),
+    ...splitKeywordAliases(ctx?.channelKeywords?.update?.close_full ?? '', ctx?.channelKeywords?.additional?.delimiters ?? '|'),
+  ].filter(Boolean)))
+  if (closeAliases.length > 0 && hasAnyKeyword(t, closeAliases)) return true
+
+  if (!channelHasTrainedManagement(ctx?.channelKeywords, ctx?.lexicon)) {
+    if (textLooksLikeMultilingualFullClose(t)) return true
+  }
 
   return (
     /\bclose\s+(?:now|all|full|trade|trades|position|positions|everything|every\s+thing)\b/i.test(t)
@@ -70,12 +121,17 @@ function managementAliasesFromKeywords(keywords: ChannelKeywords | null | undefi
 export function looksLikeChannelManagementUpdate(
   text: string,
   channelKeywords?: ChannelKeywords | null,
+  lexicon?: ChannelLexiconRow | null,
 ): boolean {
   const t = String(text ?? '').replace(/\s+/g, ' ').trim()
   if (!t) return false
 
-  const configured = managementAliasesFromKeywords(channelKeywords)
-  if (configured.length > 0 && hasAnyKeyword(t, configured)) return true
+  const trained = trainedManagementAliases(channelKeywords, lexicon)
+  if (trained.length > 0 && hasAnyKeyword(t, trained)) return true
+
+  if (!channelHasTrainedManagement(channelKeywords, lexicon)) {
+    if (textLooksLikeMultilingualManagement(t)) return true
+  }
 
   return (
     /\b(move\s+stop|move\s+sl|move\s+risk|stop\s+to\s+breakeven|breakeven|break\s*even)\b/i.test(t)

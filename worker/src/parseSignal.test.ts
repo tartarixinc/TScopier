@@ -532,4 +532,37 @@ TP2 4345`
     assert.equal(result.parsed.sl, null)
     assert.deepEqual(result.parsed.tp, [])
   })
+
+  it('parses French FERMEZ TOUT MAINTENANT as close all', () => {
+    const msg = 'FERMEZ TOUT MAINTENANT'
+    const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+    assert.equal(result.status, 'parsed')
+    assert.equal(result.parsed.action, 'close')
+  })
+
+  it('parses FERMEZ TOUT when trained on channel close_all keywords', () => {
+    const keywords = {
+      ...DEFAULT_CHANNEL_KEYWORDS,
+      additional: {
+        ...DEFAULT_CHANNEL_KEYWORDS.additional,
+        close_all: 'FERMEZ TOUT|FERMER TOUT',
+        ai_management_keyword_groups: {
+          close_all: ['FERMEZ TOUT', 'FERMER TOUT'],
+          close_partial: [],
+          close_half: [],
+          break_even: [],
+          modify_sl: [],
+          modify_tp: [],
+          close_worse_entries: [],
+        },
+      },
+      update: {
+        ...DEFAULT_CHANNEL_KEYWORDS.update,
+        close_full: 'FERMEZ TOUT|FERMER TOUT',
+      },
+    }
+    const result = parseChannelMessageSync('FERMEZ TOUT MAINTENANT', keywords, lexicon)
+    assert.equal(result.status, 'parsed')
+    assert.equal(result.parsed.action, 'close')
+  })
 })
