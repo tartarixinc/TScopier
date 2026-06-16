@@ -323,7 +323,6 @@ export interface LandingTranslations {
     headline: string
     headlineAccent: string
     subheadline: string
-    propFirmNote: string
     primaryCta: string
     secondaryCta: string
     imageAlt: string

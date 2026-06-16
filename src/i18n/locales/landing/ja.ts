@@ -21,8 +21,6 @@ export const landingJa: LandingTranslations = {
     headlineAccent: '100%自動化。',
     subheadline:
       'シグナル配信者の指示をMT4/MT5へ2分以内でコピー。複雑な設定・EA・VPSは不要です。',
-    propFirmNote:
-      'EA取引の可否に関わらず、すべてのプロップファームで利用できます。',
     primaryCta: '無料で試す',
     secondaryCta: 'ログイン',
     imageAlt: '残高、当日損益、取引結果、口座成長チャートを表示したTScopierダッシュボード',

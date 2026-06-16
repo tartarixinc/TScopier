@@ -21,8 +21,6 @@ export const landingSv: LandingTranslations = {
     headlineAccent: '100 % på autopilot.',
     subheadline:
       'Kopiera handelsinstruktioner från dina signalleverantörer till din MT4/MT5 på mindre än 2 minuter - Inga komplicerade inställningar, ingen EA och ingen VPS krävs.',
-    propFirmNote:
-      'Fungerar med alla prop firms—oavsett om de tillåter EA-handel eller inte.',
     primaryCta: 'Prova det gratis',
     secondaryCta: 'Logga in',
     imageAlt:

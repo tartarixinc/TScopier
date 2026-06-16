@@ -21,8 +21,6 @@ export const landingNl: LandingTranslations = {
     headlineAccent: '100% op autopilot.',
     subheadline:
       'Kopieer trading-instructies van je signaalaanbieders naar MT4/MT5 in minder dan 2 minuten - geen complexe setup, geen EA en geen VPS nodig.',
-    propFirmNote:
-      'Werkt met elke prop firm—of ze nu EA-handel toestaan of niet.',
     primaryCta: 'Probeer gratis',
     secondaryCta: 'Inloggen',
     imageAlt:

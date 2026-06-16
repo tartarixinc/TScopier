@@ -21,8 +21,6 @@ export const landingPl: LandingTranslations = {
     headlineAccent: '100% na autopilocie.',
     subheadline:
       'Skopiuj instrukcje handlowe od dostawców sygnału do swojego MT4/MT5 w mniej niż 2 minuty - bez skomplikowanych konfiguracji, bez EA i bez VPS. ',
-    propFirmNote:
-      'Działa z każdą firmą prop—niezależnie od tego, czy zezwala na handel EA, czy nie.',
     primaryCta: 'Wypróbuj za darmo',
     secondaryCta: 'Zaloguj się',
     imageAlt:

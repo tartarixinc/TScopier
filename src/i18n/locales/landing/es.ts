@@ -21,8 +21,6 @@ export const landingEs: LandingTranslations = {
     headlineAccent: '100 % en piloto automático.',
     subheadline:
       'Conecta tu cuenta MT4/MT5, elige canales de señales y deja que TSCopier ejecute entradas, capas y gestión — con control total del riesgo y filtros.',
-    propFirmNote:
-      'Funciona con todas las firmas prop, permitan o no el trading con EA.',
     primaryCta: 'Pruébalo gratis',
     secondaryCta: 'Iniciar sesión',
     imageAlt:

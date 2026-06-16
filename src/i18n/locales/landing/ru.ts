@@ -21,8 +21,6 @@ export const landingRu: LandingTranslations = {
     headlineAccent: '100% на автопилоте.',
     subheadline:
       'Скопируйте торговые инструкции от поставщиков сигналов на свой MT4/MT5 менее чем за 2 минуты. Никаких сложных настроек, советников и VPS не требуется.',
-    propFirmNote:
-      'Работает с любой проп-фирмой — разрешают ли они торговлю через EA или нет.',
     primaryCta: 'Попробуйте бесплатно',
     secondaryCta: 'Войти',
     imageAlt:

@@ -31,9 +31,6 @@ export function HeroSection() {
           <p className="mt-5 text-base leading-relaxed text-neutral-600 dark:text-neutral-400 sm:text-xl">
             {l.hero.subheadline}
           </p>
-          <p className="mt-3 text-base font-medium leading-relaxed text-teal-700 dark:text-teal-300 sm:text-lg">
-            {l.hero.propFirmNote}
-          </p>
 
           <div className="mt-10 flex flex-col items-center">
             <MarketingAuthCta variant="hero" />
