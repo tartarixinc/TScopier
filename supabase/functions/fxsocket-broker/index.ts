@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
-import { searchBrokerCompanies, searchMt5BrokerCompanies } from "../_shared/fxsocketBsaClient.ts"
+import { searchMt5BrokerCompanies } from "../_shared/fxsocketBsaClient.ts"
 import {
   FxsocketApiError,
   isFxsocketConfigured,
@@ -113,19 +113,10 @@ Deno.serve(async (req: Request) => {
 
     if (action === "search_brokers") {
       const company = String(body.company ?? "").trim()
-      const platform = String(body.platform ?? "MT5").trim()
       if (company.length < 4) {
         return Response.json({ ok: true, companies: [] }, { headers: corsHeaders })
       }
-      const companies = platform.toUpperCase() === "MT4"
-        ? await (async () => {
-          ensureFxsocketConfigured()
-          return searchBrokerCompanies(Deno.env, {
-            company,
-            code: "mt4",
-          })
-        })()
-        : await searchMt5BrokerCompanies(Deno.env, { company })
+      const companies = await searchMt5BrokerCompanies(Deno.env, { company })
       return Response.json({ ok: true, companies }, { headers: corsHeaders })
     }
 
@@ -146,6 +137,8 @@ Deno.serve(async (req: Request) => {
       const password = String(body.password ?? "")
       const server = String(body.server ?? "").trim()
       const label = String(body.label ?? "").trim()
+      const platformRaw = String(body.platform ?? "MT5").trim().toUpperCase()
+      const platform = platformRaw === "MT4" ? "MT4" : "MT5"
       const existingUuid = String(body.fxsocket_account_id ?? "").trim()
       const linkingExisting = /^[0-9a-f-]{36}$/i.test(existingUuid)
 
@@ -156,7 +149,7 @@ Deno.serve(async (req: Request) => {
       }
 
       const displayLabel = label
-        || (login ? `MT5 • ${login}` : linkingExisting ? `MT5 • ${existingUuid.slice(0, 8)}` : "MT5")
+        || (login ? `${platform} • ${login}` : linkingExisting ? `${platform} • ${existingUuid.slice(0, 8)}` : platform)
 
       const { data: dup } = await supabase
         .from("broker_accounts")
@@ -184,7 +177,13 @@ Deno.serve(async (req: Request) => {
       let accountId = linkingExisting ? existingUuid : ""
       if (!accountId) {
         try {
-          const connected = await fx.connectAccount({ login, password, server, label: displayLabel })
+          const connected = await fx.connectAccount({
+            login,
+            password,
+            server,
+            label: displayLabel,
+            platform,
+          })
           accountId = connected.accountId
         } catch (e) {
           const msg = e instanceof FxsocketApiError ? e.message : e instanceof Error ? e.message : "Connect failed"
@@ -195,7 +194,7 @@ Deno.serve(async (req: Request) => {
       const insertBase: Record<string, unknown> = {
         user_id: userId,
         label: displayLabel,
-        platform: "MT5",
+        platform,
         metaapi_account_id: "",
         fxsocket_account_id: accountId,
         account_login: login || null,

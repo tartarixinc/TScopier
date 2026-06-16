@@ -261,6 +261,7 @@ export function BulkUploadAccountsModal({ open, onClose, onBatchComplete }: Bulk
                     <thead className="bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500 dark:bg-neutral-800/60 dark:text-neutral-400">
                       <tr>
                         <th className="px-3 py-2">{bc.colLabel}</th>
+                        <th className="px-3 py-2">{bc.colPlatform}</th>
                         <th className="px-3 py-2">{bc.colServer}</th>
                         <th className="px-3 py-2">{bc.colLogin}</th>
                         <th className="px-3 py-2">{bc.colPassword}</th>
@@ -268,8 +269,9 @@ export function BulkUploadAccountsModal({ open, onClose, onBatchComplete }: Bulk
                     </thead>
                     <tbody>
                       {previewRows.map((row, index) => (
-                        <tr key={`${row.account_number}-${row.broker_server}-${index}`} className="border-t border-neutral-100 dark:border-neutral-800">
+                        <tr key={`${row.platform}-${row.account_number}-${row.broker_server}-${index}`} className="border-t border-neutral-100 dark:border-neutral-800">
                           <td className="px-3 py-2">{row.label || '—'}</td>
+                          <td className="px-3 py-2">{row.platform}</td>
                           <td className="px-3 py-2">{row.broker_server}</td>
                           <td className="px-3 py-2">{row.account_number}</td>
                           <td className="px-3 py-2 font-mono text-xs">{'•'.repeat(Math.min(8, row.account_password.length || 4))}</td>

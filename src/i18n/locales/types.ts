@@ -355,6 +355,7 @@ export interface AccountConfigBulkConnectTranslations {
   uploadHint: string
   previewTitle: string
   colLabel: string
+  colPlatform: string
   colServer: string
   colLogin: string
   colPassword: string

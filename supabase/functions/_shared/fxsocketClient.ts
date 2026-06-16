@@ -227,16 +227,24 @@ export type FxsocketLinkReadiness =
   | { ready: false; pending: true; v1: FxsocketV1Account }
   | { ready: false; pending: false; error: string; v1: FxsocketV1Account }
 
+function normalizeV1Platform(platform?: string): "mt4" | "mt5" | undefined {
+  const p = String(platform ?? "").trim().toUpperCase()
+  if (p === "MT4") return "mt4"
+  if (p === "MT5") return "mt5"
+  return undefined
+}
+
 /** Build POST /v1/accounts body per OpenAPI schema V1CreateAccount. */
 export function buildV1CreateAccountBody(args: {
   login: string | number
   password: string
   server: string
   nickname?: string
+  platform?: string
 }): Record<string, unknown> {
   const loginNum = Number(String(args.login).trim())
   if (!Number.isFinite(loginNum) || loginNum < 1) {
-    throw new FxsocketApiError("Invalid MT5 login number", 400)
+    throw new FxsocketApiError("Invalid MT login number", 400)
   }
   const body: Record<string, unknown> = {
     login: loginNum,
@@ -245,6 +253,8 @@ export function buildV1CreateAccountBody(args: {
   }
   const nickname = args.nickname?.trim()
   if (nickname) body.nickname = nickname
+  const platform = normalizeV1Platform(args.platform)
+  if (platform) body.platform = platform
   return body
 }
 
@@ -416,18 +426,20 @@ export class FxsocketClient {
     return body
   }
 
-  /** Link MT5 account via POST /v1/accounts (API key only). */
+  /** Link MT4/MT5 account via POST /v1/accounts (API key only). */
   async connectAccount(args: {
     login: string | number
     password: string
     server: string
     label?: string
+    platform?: string
   }): Promise<{ accountId: string; raw: unknown; v1Account: FxsocketV1Account }> {
     const payload = buildV1CreateAccountBody({
       login: args.login,
       password: args.password,
       server: args.server,
       nickname: args.label,
+      platform: args.platform,
     })
     const raw = await this.request(`${this.v1BaseUrl}/accounts`, {
       method: "POST",

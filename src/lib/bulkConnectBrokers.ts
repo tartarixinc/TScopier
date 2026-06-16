@@ -4,9 +4,11 @@ import {
   emptyConnectTradingAccountForm,
   type ConnectTradingAccountForm,
 } from './connectTradingAccountForm'
+import { type TradingPlatform } from './tradingPlatform'
 
-export const CONNECT_ACCOUNTS_CSV_TEMPLATE = `label,broker_server,login,password
-Live Main,ICMarketsSC-MT5,12345678,your_password
+export const CONNECT_ACCOUNTS_CSV_TEMPLATE = `label,platform,broker_server,login,password
+Live MT5,MT5,ICMarketsSC-MT5,12345678,your_password
+Live MT4,MT4,ICMarketsSC-MT4,87654321,your_password
 `
 
 export type BulkConnectRowStatus =
@@ -44,6 +46,7 @@ export interface CsvParseResult {
 }
 
 const LABEL_KEYS = new Set(['label', 'account_label', 'name'])
+const PLATFORM_KEYS = new Set(['platform', 'mt_platform'])
 const SERVER_KEYS = new Set(['broker_server', 'server', 'broker'])
 const LOGIN_KEYS = new Set(['login', 'mt_login', 'account_number', 'account'])
 const PASSWORD_KEYS = new Set(['password', 'account_password', 'pass'])
@@ -116,24 +119,41 @@ function mapCsvHeaders(headers: string[]): Map<string, number> | null {
   if (serverIdx == null || loginIdx == null || passwordIdx == null) return null
 
   const labelIdx = resolve(LABEL_KEYS)
+  const platformIdx = resolve(PLATFORM_KEYS)
   const out = new Map<string, number>()
   out.set('server', serverIdx)
   out.set('login', loginIdx)
   out.set('password', passwordIdx)
   if (labelIdx != null) out.set('label', labelIdx)
+  if (platformIdx != null) out.set('platform', platformIdx)
   return out
+}
+
+function parseCsvPlatform(raw: string, hasPlatformColumn: boolean): TradingPlatform | string {
+  const trimmed = raw.trim()
+  if (!trimmed) return 'MT5'
+  const upper = trimmed.toUpperCase()
+  if (upper === 'MT4' || upper === 'MT5') return upper
+  if (hasPlatformColumn) return `Invalid platform "${trimmed}". Use MT4 or MT5.`
+  return 'MT5'
 }
 
 function rowFromCsvCells(
   cells: string[],
   columnMap: Map<string, number>,
-): ConnectTradingAccountForm {
+  hasPlatformColumn: boolean,
+): ConnectTradingAccountForm | { error: string } {
   const get = (key: string) => {
     const idx = columnMap.get(key)
     return idx == null ? '' : (cells[idx] ?? '').trim()
   }
+  const platform = parseCsvPlatform(get('platform'), hasPlatformColumn)
+  if (typeof platform === 'string' && platform.startsWith('Invalid platform')) {
+    return { error: platform }
+  }
   return {
     label: get('label'),
+    platform: platform as TradingPlatform,
     broker_server: get('server'),
     account_number: get('login'),
     account_password: get('password'),
@@ -179,12 +199,19 @@ export function parseConnectAccountsCsv(text: string): CsvParseResult {
     }
   }
 
+  const hasPlatformColumn = columnMap.has('platform')
+
   const rows: ConnectTradingAccountForm[] = []
   const errors: CsvParseRowError[] = []
 
   for (let i = 1; i < parsed.length; i++) {
     const line = i + 1
-    const row = rowFromCsvCells(parsed[i] ?? [], columnMap)
+    const parsedRow = rowFromCsvCells(parsed[i] ?? [], columnMap, hasPlatformColumn)
+    if ('error' in parsedRow) {
+      errors.push({ line, message: parsedRow.error })
+      continue
+    }
+    const row = parsedRow
     const allEmpty = !row.label && !row.broker_server && !row.account_number && !row.account_password
     if (allEmpty) continue
 
@@ -199,7 +226,7 @@ export function parseConnectAccountsCsv(text: string): CsvParseResult {
   return { rows, errors }
 }
 
-export function downloadConnectAccountsTemplate(filename = 'tscopier-mt5-accounts-template.csv'): void {
+export function downloadConnectAccountsTemplate(filename = 'tscopier-mt-accounts-template.csv'): void {
   const blob = new Blob([CONNECT_ACCOUNTS_CSV_TEMPLATE], { type: 'text/csv;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
@@ -222,6 +249,7 @@ export type ConnectAccountsBatchArgs = {
     password?: string
     server?: string
     label?: string
+    platform?: TradingPlatform
   }) => Promise<{ account: BrokerAccount; pending?: boolean }>
   /** Known brokers accumulated during the batch (for timeout recovery). */
   getKnownBrokers?: () => BrokerAccount[]
@@ -348,6 +376,7 @@ export async function connectAccountsBatch(args: ConnectAccountsBatchArgs): Prom
         password: entry.row.account_password,
         server,
         label: entry.row.label.trim() || undefined,
+        platform: entry.row.platform,
       })
       entry.status = 'linked'
       entry.account = account

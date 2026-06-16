@@ -67,7 +67,7 @@ export function ConnectAccountsBatchProgress({
                   {entry.row.label.trim() || login}
                 </p>
                 <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">
-                  {login}{server ? ` · ${server}` : ''}
+                  {entry.row.platform} · {login}{server ? ` · ${server}` : ''}
                 </p>
                 {entry.error ? (
                   <p className="mt-1 text-xs text-error-600 dark:text-error-400">{entry.error}</p>

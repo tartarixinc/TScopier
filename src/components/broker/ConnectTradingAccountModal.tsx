@@ -11,6 +11,10 @@ import {
   type ConnectTradingAccountForm,
 } from '../../lib/connectTradingAccountForm'
 import {
+  inferServerPlatform,
+  type TradingPlatform,
+} from '../../lib/tradingPlatform'
+import {
   connectAccountsBatch,
   emptyConnectRows,
   resolveActiveBrokerCount,
@@ -125,7 +129,10 @@ export function ConnectTradingAccountModal({
   }, [])
 
   const addRow = useCallback(() => {
-    setRows(prev => [...prev, { ...emptyConnectTradingAccountForm }])
+    setRows(prev => [...prev, {
+      ...emptyConnectTradingAccountForm,
+      platform: prev[0]?.platform ?? 'MT5',
+    }])
   }, [])
 
   const removeRow = useCallback((index: number) => {
@@ -134,13 +141,19 @@ export function ConnectTradingAccountModal({
 
   const activeBrokerCount = resolveActiveBrokerCount(brokers, usage.brokerAccounts)
 
+  const setPlatform = useCallback((platform: TradingPlatform) => {
+    setRows(prev => prev.map(row => ({ ...row, platform })))
+  }, [])
+
   const connectSingle = async (row: ConnectTradingAccountForm) => {
     const login = row.account_number.trim()
     const server = row.broker_server.trim()
+    const platform = row.platform
     const { account } = await fxsocketBroker.connect({
       login,
       password: row.account_password,
       server,
+      platform,
       label: row.label.trim() || undefined,
     })
     upsertBroker(account)
@@ -226,14 +239,21 @@ export function ConnectTradingAccountModal({
 
   if (!open) return null
 
-  const title = interpolate(cf.title, { platform: 'MT5' })
+  const selectedPlatform = rows[0]?.platform ?? 'MT5'
+  const title = interpolate(cf.title, { platform: selectedPlatform })
   const validCount = countValidRows(rows)
   const isMulti = rows.length > 1 || validCount > 1
+  const serverPlatformMismatch = rows
+    .map(row => {
+      const inferred = inferServerPlatform(row.broker_server)
+      return inferred && inferred !== row.platform ? inferred : null
+    })
+    .find(Boolean) ?? null
   const connectStepMessage = connectStep === 2
     ? cf.connectingStepSlow
     : connectStep === 1
-      ? cf.connectingStepTerminal
-      : cf.connectingStepLinking
+      ? interpolate(cf.connectingStepTerminal, { platform: selectedPlatform })
+      : interpolate(cf.connectingStepLinking, { platform: selectedPlatform })
   const submitLabel = isMulti
     ? interpolate(cf.connectMultipleButton, { count: String(validCount) })
     : cf.connectButton
@@ -293,6 +313,47 @@ export function ConnectTradingAccountModal({
             {error ? <PaywallErrorAlert message={error} className="mb-4" /> : null}
 
             <form onSubmit={handleSubmit} className={clsx('space-y-4', saving && 'pointer-events-none opacity-60')}>
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                  {cf.platformLabel}
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['MT5', 'MT4'] as const).map(option => (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => setPlatform(option)}
+                      aria-pressed={selectedPlatform === option}
+                      className={clsx(
+                        'rounded-xl border px-3 py-2.5 text-left text-sm transition-colors',
+                        selectedPlatform === option
+                          ? 'border-teal-500 bg-teal-50 text-teal-900 dark:border-teal-400 dark:bg-teal-950/40 dark:text-teal-100'
+                          : 'border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:border-neutral-700',
+                      )}
+                    >
+                      {option === 'MT5' ? cf.platformMt5 : cf.platformMt4}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {serverPlatformMismatch ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+                  <p>
+                    {serverPlatformMismatch === 'MT4'
+                      ? t.accountConfig.brokerList.platformServerMismatchMt4
+                      : t.accountConfig.brokerList.platformServerMismatchMt5}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setPlatform(serverPlatformMismatch)}
+                    className="mt-2 font-medium text-teal-700 underline underline-offset-2 hover:text-teal-800 dark:text-teal-300 dark:hover:text-teal-200"
+                  >
+                    {serverPlatformMismatch === 'MT4' ? cf.platformMt4 : cf.platformMt5}
+                  </button>
+                </div>
+              ) : null}
+
               {rows.map((row, index) => (
                 <div
                   key={index}
@@ -316,7 +377,7 @@ export function ConnectTradingAccountModal({
 
                   <Input
                     label={cf.accountLabel}
-                    placeholder={interpolate(cf.accountLabelPlaceholder, { platform: 'MT5' })}
+                    placeholder={interpolate(cf.accountLabelPlaceholder, { platform: selectedPlatform })}
                     value={row.label}
                     onChange={event => setRowField(index, 'label', event.target.value)}
                   />
@@ -324,6 +385,7 @@ export function ConnectTradingAccountModal({
                   <MtCompanyServerPicker
                     value={row.broker_server}
                     onChange={next => setRowField(index, 'broker_server', next)}
+                    platform={selectedPlatform}
                     hint={index === 0 ? cf.brokerServerHint : undefined}
                     required
                   />

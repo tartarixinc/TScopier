@@ -47,6 +47,34 @@ Live Main,ICMarketsSC-MT5,12345678,secret123
     assert.equal(rows[1]?.label, '')
   })
 
+  it('parseConnectAccountsCsv parses platform column', () => {
+    const csv = `label,platform,broker_server,login,password
+Live MT4,MT4,Broker-MT4,111,pass
+Live MT5,MT5,Broker-MT5,222,pass`
+    const { rows, errors } = parseConnectAccountsCsv(csv)
+    assert.equal(errors.length, 0)
+    assert.equal(rows.length, 2)
+    assert.equal(rows[0]?.platform, 'MT4')
+    assert.equal(rows[1]?.platform, 'MT5')
+  })
+
+  it('parseConnectAccountsCsv defaults platform to MT5 when column omitted', () => {
+    const csv = `label,broker_server,login,password
+Demo,Broker-Demo,111,pass`
+    const { rows, errors } = parseConnectAccountsCsv(csv)
+    assert.equal(errors.length, 0)
+    assert.equal(rows[0]?.platform, 'MT5')
+  })
+
+  it('parseConnectAccountsCsv rejects invalid platform values', () => {
+    const csv = `label,platform,broker_server,login,password
+Bad,MT3,Broker,111,pass`
+    const { rows, errors } = parseConnectAccountsCsv(csv)
+    assert.equal(rows.length, 0)
+    assert.equal(errors.length, 1)
+    assert.match(errors[0]?.message ?? '', /Invalid platform/i)
+  })
+
   it('parseConnectAccountsCsv accepts column aliases', () => {
     const csv = `account_label,server,mt_login,account_password
 Demo,Broker-Demo,111,pass`
@@ -66,12 +94,14 @@ Demo,Broker-Demo,111,pass`
   it('validateConnectRow requires server, login, and password', () => {
     assert.ok(validateConnectRow({
       label: '',
+      platform: 'MT5',
       broker_server: '',
       account_number: '1',
       account_password: 'x',
     }))
     assert.equal(validateConnectRow({
       label: '',
+      platform: 'MT5',
       broker_server: 'S',
       account_number: '',
       account_password: 'x',
@@ -95,23 +125,24 @@ Demo,Broker-Demo,111,pass`
     assert.equal(canLinkAnotherBrokerInBatch(0, 2, null), true)
   })
 
-  it('connectAccountsBatch links sequentially and stops at limit', async () => {
-    const calls: string[] = []
+  it('connectAccountsBatch links sequentially and passes platform', async () => {
+    const calls: Array<{ login?: string; platform?: string }> = []
 
     const result = await connectAccountsBatch({
       rows: [
-        { label: 'A', broker_server: 'S1', account_number: '1', account_password: 'p1' },
-        { label: 'B', broker_server: 'S2', account_number: '2', account_password: 'p2' },
+        { label: 'A', platform: 'MT4', broker_server: 'S1', account_number: '1', account_password: 'p1' },
+        { label: 'B', platform: 'MT5', broker_server: 'S2', account_number: '2', account_password: 'p2' },
       ],
       existingBrokers: [],
       activeBrokerCountAtStart: 4,
       maxBrokerAccounts: 5,
       onProgress: () => {},
       connect: async args => {
-        calls.push(String(args.login))
+        calls.push({ login: String(args.login), platform: args.platform })
         return {
           account: broker({
             id: `id-${args.login}`,
+            platform: args.platform ?? 'MT5',
             account_login: String(args.login),
             broker_server: String(args.server),
           }),
@@ -119,7 +150,7 @@ Demo,Broker-Demo,111,pass`
       },
     })
 
-    assert.deepEqual(calls, ['1'])
+    assert.deepEqual(calls, [{ login: '1', platform: 'MT4' }])
     assert.equal(result.linkedCount, 1)
     assert.equal(result.skippedCount, 1)
     assert.equal(result.rows[1]?.status, 'skipped_limit')
@@ -128,7 +159,7 @@ Demo,Broker-Demo,111,pass`
   it('connectAccountsBatch recovers linked account after timeout', async () => {
     const result = await connectAccountsBatch({
       rows: [
-        { label: '', broker_server: 'S', account_number: '1', account_password: 'p' },
+        { label: '', platform: 'MT5', broker_server: 'S', account_number: '1', account_password: 'p' },
       ],
       existingBrokers: [],
       activeBrokerCountAtStart: 0,
@@ -163,8 +194,8 @@ Demo,Broker-Demo,111,pass`
   it('connectAccountsBatch skips duplicates within batch and existing brokers', async () => {
     const result = await connectAccountsBatch({
       rows: [
-        { label: '', broker_server: 'S', account_number: '1', account_password: 'p' },
-        { label: '', broker_server: 'S', account_number: '1', account_password: 'p' },
+        { label: '', platform: 'MT5', broker_server: 'S', account_number: '1', account_password: 'p' },
+        { label: '', platform: 'MT5', broker_server: 'S', account_number: '1', account_password: 'p' },
       ],
       existingBrokers: [broker({ id: 'existing', account_login: '9', broker_server: 'Other' })],
       activeBrokerCountAtStart: 1,

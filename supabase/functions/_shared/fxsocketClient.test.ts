@@ -66,11 +66,21 @@ Deno.test("buildV1CreateAccountBody matches v1 OpenAPI schema", () => {
   assertEquals(body.nickname, "Demo")
 })
 
+Deno.test("buildV1CreateAccountBody includes platform when provided", () => {
+  const body = buildV1CreateAccountBody({
+    login: "12345678",
+    password: "secret",
+    server: "ICMarkets-Demo",
+    platform: "MT4",
+  })
+  assertEquals(body.platform, "mt4")
+})
+
 Deno.test("buildV1CreateAccountBody rejects invalid login", () => {
   assertThrows(
     () => buildV1CreateAccountBody({ login: "abc", password: "x", server: "S" }),
     Error,
-    "Invalid MT5 login number",
+    "Invalid MT login number",
   )
 })
 

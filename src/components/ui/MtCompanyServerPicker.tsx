@@ -8,6 +8,7 @@ import { fxsocketBroker, type BrokerSearchCompany } from '../../lib/fxsocketBrok
 interface MtCompanyServerPickerProps {
   value: string
   onChange: (value: string) => void
+  platform?: 'MT4' | 'MT5'
   label?: string
   hint?: string
   required?: boolean
@@ -36,6 +37,7 @@ function companyKey(company: BrokerSearchCompany, index: number): string {
 export function MtCompanyServerPicker({
   value,
   onChange,
+  platform = 'MT5',
   label,
   hint,
   required,
@@ -121,7 +123,7 @@ export function MtCompanyServerPicker({
 
     const timer = window.setTimeout(() => {
       void fxsocketBroker
-        .searchBrokers({ company: q, platform: 'MT5' })
+        .searchBrokers({ company: q, platform })
         .then(({ companies: next }) => {
           if (seq !== searchSeqRef.current) return
           setCompanies(next)
@@ -138,7 +140,7 @@ export function MtCompanyServerPicker({
     }, 300)
 
     return () => window.clearTimeout(timer)
-  }, [modalOpen, step, searchQuery, cf.brokerCompanySearchError])
+  }, [modalOpen, step, searchQuery, cf.brokerCompanySearchError, platform])
 
   const handleCompanySelect = (company: BrokerSearchCompany) => {
     setSelectedCompany(company)

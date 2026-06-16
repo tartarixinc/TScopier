@@ -189,6 +189,7 @@ export const fxsocketBroker = {
     login?: string
     password?: string
     server?: string
+    platform?: 'MT4' | 'MT5'
     fxsocketAccountId?: string
     timeoutMs?: number
   }): Promise<{ account: BrokerAccount; pending?: boolean }> {
@@ -199,6 +200,7 @@ export const fxsocketBroker = {
         login: args.login,
         password: args.password,
         server: args.server,
+        platform: args.platform ?? 'MT5',
         fxsocket_account_id: args.fxsocketAccountId,
       },
       timeoutMs: args.timeoutMs ?? FXSOCKET_CONNECT_TIMEOUT_MS,
