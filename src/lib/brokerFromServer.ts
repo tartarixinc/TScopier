@@ -81,6 +81,7 @@ export function inferBrokerLabelFromServer(server: string | null | undefined): s
     ['blackbull', 'BlackBull'],
     ['blueberry', 'Blueberry'],
     ['dukascopy', 'Dukascopy'],
+    ['upcomers', 'Upcomers'],
   ]
 
   for (const [needle, label] of rules) {
@@ -169,6 +170,15 @@ const PROP_FIRM_HINT_NEEDLES: readonly string[] = [
   'sabiotrade',
   'rebelsfunding',
   'rebels funding',
+  'upcomers',
+  'upcomerscapital',
+  'my funded',
+  'myfundedfx',
+  'bespoke',
+  'nova funding',
+  'novafunding',
+  'matchtrader',
+  'darwinex zero',
 ]
 
 /** True when server or broker label looks like a prop-firm environment. */
@@ -206,6 +216,30 @@ export function inferAccountTypeFromServer(server?: string | null): LinkedAccoun
   return undefined
 }
 
+/** Collect server + stored/inferred broker labels used for account-type detection. */
+export function brokerAccountTypeHints(
+  account: Pick<BrokerAccount, 'broker_name' | 'broker_server' | 'metaapi_account_id'>,
+  serverHint?: string | null,
+): { server: string | null; hints: string[] } {
+  const server = resolveMtServerCandidate(account as BrokerAccount, serverHint)
+  const hints: string[] = []
+  const seen = new Set<string>()
+  const push = (value?: string | null) => {
+    const v = (value ?? '').trim()
+    if (!v) return
+    const key = v.toLowerCase()
+    if (seen.has(key)) return
+    seen.add(key)
+    hints.push(v)
+  }
+  push(account.broker_name)
+  if (server) {
+    push(inferBrokerLabelFromServer(server))
+    push(server)
+  }
+  return { server, hints }
+}
+
 /**
  * Prefer prop-firm heuristics, then broker-reported trade mode, then server name demo/live hints.
  */
@@ -213,9 +247,21 @@ export function resolveLinkedAccountType(
   mtSummaryType?: string | number | null,
   server?: string | null,
   brokerHint?: string | null,
+  ...extraHints: Array<string | null | undefined>
 ): LinkedAccountType | undefined {
-  if (inferPropFirmAccount(server, brokerHint)) return 'PropFirm'
+  if (inferPropFirmAccount(server, brokerHint, ...extraHints)) return 'PropFirm'
   return parseMtAccountTradeMode(mtSummaryType) ?? inferAccountTypeFromServer(server)
+}
+
+/** Resolve account type for a linked broker row (server + stored/inferred broker labels). */
+export function resolveLinkedAccountTypeForBroker(
+  account: Pick<BrokerAccount, 'broker_name' | 'broker_server' | 'metaapi_account_id'>,
+  mtSummaryType?: string | number | null,
+  serverHint?: string | null,
+): LinkedAccountType | undefined {
+  const { server, hints } = brokerAccountTypeHints(account, serverHint)
+  const [primary, ...rest] = hints
+  return resolveLinkedAccountType(mtSummaryType, server, primary, ...rest)
 }
 
 export function formatLinkedAccountTypeLabel(
@@ -232,6 +278,6 @@ export function formatLinkedAccountTypeLabel(
 export function linkedAccountTypeValueClass(type: LinkedAccountType | undefined): string {
   if (type === 'Demo') return 'font-semibold text-amber-700 dark:text-amber-300'
   if (type === 'Live') return 'font-semibold text-teal-700 dark:text-teal-300'
-  if (type === 'PropFirm') return 'font-semibold text-violet-700 dark:text-violet-300'
+  if (type === 'PropFirm') return 'font-semibold text-neutral-600 dark:text-neutral-400'
   return 'text-neutral-900 dark:text-neutral-50'
 }

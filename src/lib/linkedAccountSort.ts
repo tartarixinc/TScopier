@@ -3,7 +3,7 @@ import type { BrokerAccount } from '../types/database'
 import {
   inferBrokerLabelFromServer,
   resolveAccountLogin,
-  resolveLinkedAccountType,
+  resolveLinkedAccountTypeForBroker,
   resolveMtServerCandidate,
   type LinkedAccountType,
 } from './brokerFromServer'
@@ -82,11 +82,7 @@ function accountTypeRank(
 ): number {
   const type =
     summary?.account_type
-    ?? resolveLinkedAccountType(
-      undefined,
-      resolveMtServerCandidate(account, summary?.mt_server_hint),
-      summary?.broker ?? account.broker_name,
-    )
+    ?? resolveLinkedAccountTypeForBroker(account, undefined, summary?.mt_server_hint)
   if (type === 'Demo') return 1
   if (type === 'PropFirm') return 2
   if (type === 'Live') return 3

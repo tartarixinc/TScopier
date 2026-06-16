@@ -16,7 +16,7 @@ import {
 import {
   inferBrokerLabelFromServer,
   resolveAccountLogin,
-  resolveLinkedAccountType,
+  resolveLinkedAccountTypeForBroker,
   resolveMtServerCandidate,
   formatLinkedAccountTypeLabel,
 } from '../../lib/brokerFromServer'
@@ -268,11 +268,7 @@ export function BrokerStatsOverlay() {
   const login = account ? resolveAccountLogin(account) : ''
   const platformLine = login ? `${platform} • ${login}` : platform
   const accountType = account
-    ? resolveLinkedAccountType(
-      undefined,
-      resolveMtServerCandidate(account, account.broker_server),
-      account.broker_name,
-    ) ?? '—'
+    ? resolveLinkedAccountTypeForBroker(account) ?? '—'
     : '—'
   const accountTypeLabel =
     accountType === '—'

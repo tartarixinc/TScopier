@@ -57,7 +57,7 @@ import { PaywallErrorAlert } from '../../components/billing/PaywallErrorAlert'
 import { UpgradePrompt } from '../../components/billing/UpgradePrompt'
 import {
   inferBrokerLabelFromServer,
-  resolveLinkedAccountType,
+  resolveLinkedAccountTypeForBroker,
   resolveMtServerCandidate,
   formatLinkedAccountTypeLabel,
   linkedAccountTypeValueClass,
@@ -983,11 +983,7 @@ export function AccountConfigPage() {
     if (!configAccount) return undefined
     return (
       brokerAccountTypes[configAccount.id]
-      ?? resolveLinkedAccountType(
-        undefined,
-        resolveMtServerCandidate(configAccount, configAccount.broker_server),
-        configAccount.broker_name,
-      )
+      ?? resolveLinkedAccountTypeForBroker(configAccount)
     )
   }, [configAccount, brokerAccountTypes])
 
@@ -1456,14 +1452,10 @@ export function AccountConfigPage() {
 
     const fromServer: Record<string, LinkedAccountType> = {}
     for (const b of linked) {
-      const inferred = resolveLinkedAccountType(
-        undefined,
-        resolveMtServerCandidate(b, b.broker_server),
-        b.broker_name,
-      )
+      const inferred = resolveLinkedAccountTypeForBroker(b)
       if (inferred) fromServer[b.id] = inferred
     }
-    setBrokerAccountTypes(prev => ({ ...fromServer, ...prev }))
+    setBrokerAccountTypes(prev => ({ ...prev, ...fromServer }))
 
     const needSummary = linked.filter(b => !fromServer[b.id])
     if (needSummary.length === 0) return
@@ -1472,11 +1464,7 @@ export function AccountConfigPage() {
       needSummary.map(async b => {
         try {
           const { summary } = await fxsocketBroker.refreshSummary(b.id)
-          const accountType = resolveLinkedAccountType(
-            summary?.type,
-            resolveMtServerCandidate(b, b.broker_server),
-            b.broker_name,
-          )
+          const accountType = resolveLinkedAccountTypeForBroker(b, summary?.type)
           return accountType ? { id: b.id, accountType } as const : null
         } catch {
           return null
@@ -2300,11 +2288,7 @@ export function AccountConfigPage() {
               const channelsLabel = getBrokerSignalChannelsLabel(broker.id)
               const accountType =
                 brokerAccountTypes[broker.id]
-                ?? resolveLinkedAccountType(
-                  undefined,
-                  resolveMtServerCandidate(broker, broker.broker_server),
-                  broker.broker_name,
-                )
+                ?? resolveLinkedAccountTypeForBroker(broker)
               return (
                 <Card key={broker.id} padding="none" className="overflow-hidden">
                   <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">

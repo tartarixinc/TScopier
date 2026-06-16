@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 import {
   inferPropFirmAccount,
   resolveLinkedAccountType,
+  resolveLinkedAccountTypeForBroker,
 } from './brokerFromServer'
 
 describe('resolveLinkedAccountType', () => {
@@ -10,6 +11,11 @@ describe('resolveLinkedAccountType', () => {
     assert.equal(resolveLinkedAccountType(undefined, 'FTMO-Server'), 'PropFirm')
     assert.equal(resolveLinkedAccountType(undefined, 'FundedNext-Server'), 'PropFirm')
     assert.equal(resolveLinkedAccountType('2', 'FTMO-Server'), 'PropFirm')
+    assert.equal(resolveLinkedAccountTypeForBroker({
+      broker_name: null,
+      broker_server: 'Upcomers-Server',
+      metaapi_account_id: 'uuid',
+    }), 'PropFirm')
   })
 
   it('detects prop firms from broker label hint', () => {
@@ -32,6 +38,7 @@ describe('inferPropFirmAccount', () => {
     assert.equal(inferPropFirmAccount('FivePercentOnline-Real'), true)
     assert.equal(inferPropFirmAccount('E8Markets-Live'), true)
     assert.equal(inferPropFirmAccount('FundingPips-Server'), true)
+    assert.equal(inferPropFirmAccount('Upcomers-Server'), true)
   })
 
   it('does not match retail brokers', () => {

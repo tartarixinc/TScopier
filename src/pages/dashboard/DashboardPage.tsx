@@ -7,7 +7,7 @@ import type { BrokerAccount, Signal, Trade } from '../../types/database'
 import {
   inferBrokerLabelFromServer,
   resolveAccountLogin,
-  resolveLinkedAccountType,
+  resolveLinkedAccountTypeForBroker,
   resolveMtServerCandidate,
   formatLinkedAccountTypeLabel,
   linkedAccountTypeValueClass,
@@ -1523,11 +1523,7 @@ export function DashboardPage() {
             currency: account.last_currency ?? undefined,
             broker: account.broker_name ?? undefined,
             mt_server_hint: account.broker_server ?? undefined,
-            account_type: resolveLinkedAccountType(
-              undefined,
-              resolveMtServerCandidate(account, account.broker_server ?? undefined),
-              account.broker_name,
-            ),
+            account_type: resolveLinkedAccountTypeForBroker(account),
             open_pnl: liveOk ? (sticky?.open_pnl ?? cachedOpenPnl) : 0,
             open_trades: liveOk ? sticky?.open_trades : 0,
           },
@@ -2768,11 +2764,7 @@ function LinkedAccountRow({
   const brokerText = fromApi || fromServer || '—'
   const accountType: LinkedAccountType | '—' =
     accountSummary?.account_type
-    ?? resolveLinkedAccountType(
-      undefined,
-      resolveMtServerCandidate(account, accountSummary?.mt_server_hint),
-      accountSummary?.broker ?? account.broker_name,
-    )
+    ?? resolveLinkedAccountTypeForBroker(account, undefined, accountSummary?.mt_server_hint)
     ?? '—'
   const accountTypeClass = linkedAccountTypeValueClass(accountType === '—' ? undefined : accountType)
 
