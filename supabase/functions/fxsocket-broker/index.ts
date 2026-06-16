@@ -117,7 +117,9 @@ Deno.serve(async (req: Request) => {
       if (query.length < 4) {
         return Response.json({ ok: true, companies: [] }, { headers: corsHeaders })
       }
-      const companies = await searchBrokerDirectory(Deno.env, { query })
+      const platformRaw = String(body.platform ?? "MT5").trim().toUpperCase()
+      const platform = platformRaw === "MT4" ? "MT4" : "MT5"
+      const companies = await searchBrokerDirectory(Deno.env, { query, platform })
       return Response.json({ ok: true, companies }, { headers: corsHeaders })
     }
 

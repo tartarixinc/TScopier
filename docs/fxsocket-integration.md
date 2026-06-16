@@ -44,7 +44,7 @@ VITE_WORKER_URL=https://your-worker.up.railway.app
 | action | Description |
 |--------|-------------|
 | `connect` | Link MT5 via `POST /v1/accounts` (login/password/server) |
-| `search_brokers` | MT5 company/server lookup via [BSA `/searchMt5`](https://bsa.fxsocket.com/docs#/default/search_mt5_searchMt5_get) (`company` ≥4 chars); MT4 uses legacy `/search` |
+| `search_brokers` | MT4/MT5 company/server lookup via [BSA `/searchMt4`](https://bsa.fxsocket.com/docs#/default/search_mt4_searchMt4_get) or [`/searchMt5`](https://bsa.fxsocket.com/docs#/default/search_mt5_searchMt5_get) (`company` ≥4 chars, `platform` MT4 or MT5) |
 | `delete` | Unlink account |
 | `list` | User's `broker_accounts` with FxSocket IDs |
 | `refresh_summary` | Live balance/equity |

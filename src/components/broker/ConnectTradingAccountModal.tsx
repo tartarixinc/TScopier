@@ -389,14 +389,6 @@ export function ConnectTradingAccountModal({
                     onChange={event => setRowField(index, 'label', event.target.value)}
                   />
 
-                  <MtCompanyServerPicker
-                    value={row.broker_server}
-                    onChange={next => setRowField(index, 'broker_server', next)}
-                    platform={selectedPlatform}
-                    hint={index === 0 ? cf.brokerServerHint : undefined}
-                    required
-                  />
-
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <Input
                       label={cf.mtLoginLabel}
@@ -414,6 +406,14 @@ export function ConnectTradingAccountModal({
                       required
                     />
                   </div>
+
+                  <MtCompanyServerPicker
+                    value={row.broker_server}
+                    onChange={next => setRowField(index, 'broker_server', next)}
+                    platform={selectedPlatform}
+                    hint={index === 0 ? cf.brokerServerHint : undefined}
+                    required
+                  />
                 </div>
               ))}
 

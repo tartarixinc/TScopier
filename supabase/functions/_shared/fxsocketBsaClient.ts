@@ -64,7 +64,7 @@ export function normalizeBsaSearchResponse(raw: BsaSearchResponse): BrokerSearch
   }))
 }
 
-/** Response shape from GET /searchMt5 — `[{ "Company Name": ["Server-A", "Server-B"] }]`. */
+/** Response shape from GET /searchMt5 and GET /searchMt4 — `[{ "Company Name": ["Server-A", "Server-B"] }]`. */
 export type BsaSearchMt5Response = Array<Record<string, string[]>>
 
 export function normalizeBsaSearchMt5Response(raw: BsaSearchMt5Response): BrokerSearchCompany[] {
@@ -124,19 +124,22 @@ export async function searchBrokerCompanies(
 }
 
 /**
- * MT5 broker + server search (public BSA endpoint).
+ * MT4/MT5 broker + server search (public BSA endpoints).
+ * Docs: https://bsa.fxsocket.com/docs#/default/search_mt4_searchMt4_get
  * Docs: https://bsa.fxsocket.com/docs#/default/search_mt5_searchMt5_get
  */
-export async function searchMt5BrokerCompanies(
+export async function searchPlatformBrokerCompanies(
   env: EnvGetter,
-  args: { company: string },
+  args: { company: string; platform?: BsaPlatformCode },
 ): Promise<BrokerSearchCompany[]> {
   const company = args.company.trim()
   if (company.length < 4) {
     throw new FxsocketApiError("company must be at least 4 characters", 400)
   }
 
-  const url = new URL(`${getBsaBaseUrl(env)}/searchMt5`)
+  const platform = args.platform ?? "mt5"
+  const path = platform === "mt4" ? "searchMt4" : "searchMt5"
+  const url = new URL(`${getBsaBaseUrl(env)}/${path}`)
   url.searchParams.set("company", company)
 
   const res = await fetch(url.toString(), { method: "GET" })
@@ -165,24 +168,42 @@ export async function searchMt5BrokerCompanies(
   return normalizeBsaSearchMt5Response(body as BsaSearchMt5Response)
 }
 
+/** @deprecated Use searchPlatformBrokerCompanies with platform mt5 */
+export async function searchMt5BrokerCompanies(
+  env: EnvGetter,
+  args: { company: string },
+): Promise<BrokerSearchCompany[]> {
+  return searchPlatformBrokerCompanies(env, { company: args.company, platform: "mt5" })
+}
+
+export async function searchMt4BrokerCompanies(
+  env: EnvGetter,
+  args: { company: string },
+): Promise<BrokerSearchCompany[]> {
+  return searchPlatformBrokerCompanies(env, { company: args.company, platform: "mt4" })
+}
+
 /**
  * Search by company or server name — runs multiple BSA fragments and merges results.
- * The public /searchMt5 endpoint only accepts company-name fragments, so server-style
- * queries (e.g. "VantageMarkets-Demo 2") are expanded into shorter variants first.
+ * The public /searchMt4 and /searchMt5 endpoints only accept company-name fragments, so
+ * server-style queries (e.g. "VantageMarkets-Demo 2") are expanded into shorter variants first.
  */
 export async function searchBrokerDirectory(
   env: EnvGetter,
-  args: { query: string },
+  args: { query: string; platform?: string },
 ): Promise<BrokerSearchCompany[]> {
   const query = args.query.trim()
   if (query.length < 4) {
     throw new FxsocketApiError("query must be at least 4 characters", 400)
   }
 
+  const platform = platformToBsaCode(args.platform ?? "MT5")
   const variants = deriveBrokerSearchVariants(query)
   const batches = await Promise.all(
     variants.map((variant) =>
-      searchMt5BrokerCompanies(env, { company: variant }).catch(() => [] as BrokerSearchCompany[])
+      searchPlatformBrokerCompanies(env, { company: variant, platform }).catch(
+        () => [] as BrokerSearchCompany[],
+      )
     ),
   )
 

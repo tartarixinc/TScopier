@@ -4,6 +4,7 @@ import {
   normalizeBsaSearchResponse,
   platformToBsaCode,
   searchBrokerCompanies,
+  searchPlatformBrokerCompanies,
 } from "./fxsocketBsaClient.ts"
 
 Deno.test("platformToBsaCode maps MT4/MT5 to BSA codes", () => {
@@ -61,4 +62,50 @@ Deno.test("searchBrokerCompanies rejects short company fragments", async () => {
     Error,
     "company must be at least 4 characters",
   )
+})
+
+Deno.test("searchPlatformBrokerCompanies uses /searchMt4 for MT4", async () => {
+  const originalFetch = globalThis.fetch
+  const seen: string[] = []
+  globalThis.fetch = (input: string | URL | Request) => {
+    seen.push(String(input))
+    return Promise.resolve(
+      new Response(JSON.stringify([{ "IC Markets": ["ICMarketsSC-MT4"] }]), { status: 200 }),
+    )
+  }
+  try {
+    const env = { get: () => undefined }
+    const companies = await searchPlatformBrokerCompanies(env, {
+      company: "IC Markets",
+      platform: "mt4",
+    })
+    assertEquals(seen.length, 1)
+    assertEquals(seen[0]?.includes("/searchMt4?"), true)
+    assertEquals(companies[0].results?.[0]?.name, "ICMarketsSC-MT4")
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+Deno.test("searchPlatformBrokerCompanies uses /searchMt5 for MT5", async () => {
+  const originalFetch = globalThis.fetch
+  const seen: string[] = []
+  globalThis.fetch = (input: string | URL | Request) => {
+    seen.push(String(input))
+    return Promise.resolve(
+      new Response(JSON.stringify([{ "IC Markets": ["ICMarketsSC-MT5"] }]), { status: 200 }),
+    )
+  }
+  try {
+    const env = { get: () => undefined }
+    const companies = await searchPlatformBrokerCompanies(env, {
+      company: "IC Markets",
+      platform: "mt5",
+    })
+    assertEquals(seen.length, 1)
+    assertEquals(seen[0]?.includes("/searchMt5?"), true)
+    assertEquals(companies[0].results?.[0]?.name, "ICMarketsSC-MT5")
+  } finally {
+    globalThis.fetch = originalFetch
+  }
 })
