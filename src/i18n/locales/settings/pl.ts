@@ -1,0 +1,61 @@
+import type { SettingsBundleTranslations } from './types'
+
+export const settingsPl: SettingsBundleTranslations = {
+  settings: {
+    title: 'Ustawienia',
+    subtitle: 'Zarządzaj profilem, preferencjami i bezpieczeństwem konta.',
+    loadError: 'Nie udało się wczytać ustawień.',
+    saveError: 'Nie udało się zapisać zmian.',
+    saved: 'Zmiany zapisane.',
+    emailHint: 'Adres e-mail jest zarządzany przez dostawcę logowania i nie można go tutaj zmienić.',
+    passwordHint: 'Co najmniej 8 znaków.',
+    passwordTooShort: 'Hasło musi mieć co najmniej 8 znaków.',
+    passwordMismatch: 'Hasła nie są zgodne.',
+    passwordUpdated: 'Hasło zostało pomyślnie zaktualizowane.',
+    passwordError: 'Nie udało się zaktualizować hasła.',
+    sections: {
+      personal: 'Dane osobowe',
+      general: 'Ustawienia ogólne',
+      security: 'Bezpieczeństwo',
+    },
+    personal: {
+      title: 'Dane osobowe',
+      description: 'Twoje dane kontaktowe i sposób, w jaki wyświetlasz się w TSCopier.',
+    },
+    general: {
+      title: 'Ustawienia ogólne',
+      description: 'Domyślne ustawienia używane dla sald, raportów i znaczników czasu.',
+    },
+    security: {
+      title: 'Bezpieczeństwo',
+      description: 'Zaktualizuj hasło, aby zabezpieczyć konto.',
+      updatePassword: 'Zaktualizuj hasło',
+    },
+    fields: {
+      firstName: 'Imię',
+      lastName: 'Nazwisko',
+      username: 'Nazwa użytkownika',
+      email: 'E-mail',
+      country: 'Kraj',
+      city: 'Miasto',
+      mobile: 'Numer telefonu',
+      address: 'Adres',
+      baseCurrency: 'Waluta bazowa',
+      timezone: 'Strefa czasowa',
+      newPassword: 'Nowe hasło',
+      confirmPassword: 'Potwierdź hasło',
+      notificationSound: 'Dźwięk powiadomień o transakcjach',
+      notificationSoundDescription: 'Odtwórz dźwięk, gdy transakcja zostanie wykonana, zmodyfikowana lub zamknięta.',
+    },
+    placeholders: {
+      address: 'Ulica, numer budynku, kod pocztowy…',
+      selectCountry: 'Wybierz kraj',
+      selectTimezone: 'Wybierz strefę czasową',
+      selectCurrency: 'Wybierz walutę',
+      searchCountry: 'Szukaj krajów…',
+      searchTimezone: 'Szukaj stref czasowych…',
+      searchCurrency: 'Szukaj walut…',
+      noMatches: 'Brak dopasowań',
+    },
+  },
+}

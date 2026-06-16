@@ -1,0 +1,61 @@
+import type { SettingsBundleTranslations } from './types'
+
+export const settingsJa: SettingsBundleTranslations = {
+  settings: {
+    title: '設定',
+    subtitle: 'プロフィール、各種設定、アカウントのセキュリティを管理します。',
+    loadError: '設定を読み込めませんでした。',
+    saveError: '変更を保存できませんでした。',
+    saved: '変更を保存しました。',
+    emailHint: 'メールアドレスはサインインプロバイダーで管理されているため、ここでは変更できません。',
+    passwordHint: '8文字以上で入力してください。',
+    passwordTooShort: 'パスワードは8文字以上である必要があります。',
+    passwordMismatch: 'パスワードが一致しません。',
+    passwordUpdated: 'パスワードを更新しました。',
+    passwordError: 'パスワードを更新できませんでした。',
+    sections: {
+      personal: '個人情報',
+      general: '一般設定',
+      security: 'セキュリティ',
+    },
+    personal: {
+      title: '個人情報',
+      description: '連絡先情報と、TSCopier上での表示内容を管理します。',
+    },
+    general: {
+      title: '一般設定',
+      description: '残高、レポート、タイムスタンプに使用する既定値です。',
+    },
+    security: {
+      title: 'セキュリティ',
+      description: 'アカウントを保護するためにパスワードを更新します。',
+      updatePassword: 'パスワードを更新',
+    },
+    fields: {
+      firstName: '名',
+      lastName: '姓',
+      username: 'ユーザー名',
+      email: 'メールアドレス',
+      country: '国',
+      city: '市区町村',
+      mobile: '携帯電話番号',
+      address: '住所',
+      baseCurrency: '基準通貨',
+      timezone: 'タイムゾーン',
+      newPassword: '新しいパスワード',
+      confirmPassword: 'パスワードを確認',
+      notificationSound: '取引通知音',
+      notificationSoundDescription: '取引が実行・変更・決済されたときに音を再生します。',
+    },
+    placeholders: {
+      address: '番地・建物名・郵便番号…',
+      selectCountry: '国を選択',
+      selectTimezone: 'タイムゾーンを選択',
+      selectCurrency: '通貨を選択',
+      searchCountry: '国を検索…',
+      searchTimezone: 'タイムゾーンを検索…',
+      searchCurrency: '通貨を検索…',
+      noMatches: '一致する項目がありません',
+    },
+  },
+}

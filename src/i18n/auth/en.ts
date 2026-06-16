@@ -97,6 +97,8 @@ export const authEn: AuthTranslations = {
   language: {
     label: 'Language',
     choose: 'Choose language',
+    searchPlaceholder: 'Search languages…',
+    noResults: 'No languages found',
   },
   theme: {
     light: 'Light mode',

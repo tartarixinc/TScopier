@@ -98,6 +98,8 @@ export const authEs: AuthTranslations = {
   language: {
     label: 'Idioma',
     choose: 'Elegir idioma',
+    searchPlaceholder: 'Buscar idiomas…',
+    noResults: 'No se encontraron idiomas',
   },
   theme: {
     light: 'Modo claro',

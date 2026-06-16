@@ -10,6 +10,7 @@ import { getTranslations, loadTranslations } from '../i18n/locales'
 import {
   DEFAULT_LOCALE,
   LOCALE_STORAGE_KEY,
+  isLocale,
   type Locale,
 } from '../i18n/types'
 import { LocaleContext } from './localeContextInstance'
@@ -17,14 +18,13 @@ import { LocaleContext } from './localeContextInstance'
 function detectBrowserLocale(): Locale | null {
   if (typeof navigator === 'undefined') return null
   const lang = navigator.language.split('-')[0]?.toLowerCase()
-  if (lang === 'en' || lang === 'es' || lang === 'fr') return lang
-  return null
+  return isLocale(lang) ? lang : null
 }
 
 function readStoredLocale(): Locale {
   try {
     const raw = localStorage.getItem(LOCALE_STORAGE_KEY)
-    if (raw === 'en' || raw === 'es' || raw === 'fr') return raw
+    if (isLocale(raw)) return raw
   } catch {
     /* private mode */
   }

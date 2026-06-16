@@ -98,6 +98,8 @@ export const authFr: AuthTranslations = {
   language: {
     label: 'Langue',
     choose: 'Choisir la langue',
+    searchPlaceholder: 'Rechercher une langue…',
+    noResults: 'Aucune langue trouvée',
   },
   theme: {
     light: 'Mode clair',

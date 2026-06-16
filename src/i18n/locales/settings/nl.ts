@@ -1,0 +1,61 @@
+import type { SettingsBundleTranslations } from './types'
+
+export const settingsNl: SettingsBundleTranslations = {
+  settings: {
+    title: 'Instellingen',
+    subtitle: 'Beheer je profiel, voorkeuren en accountbeveiliging.',
+    loadError: 'Instellingen konden niet worden geladen.',
+    saveError: 'Wijzigingen konden niet worden opgeslagen.',
+    saved: 'Wijzigingen opgeslagen.',
+    emailHint: 'E-mail wordt beheerd door je inlogprovider en kan hier niet worden gewijzigd.',
+    passwordHint: 'Minimaal 8 tekens.',
+    passwordTooShort: 'Wachtwoord moet minimaal 8 tekens bevatten.',
+    passwordMismatch: 'Wachtwoorden komen niet overeen.',
+    passwordUpdated: 'Wachtwoord succesvol bijgewerkt.',
+    passwordError: 'Wachtwoord kon niet worden bijgewerkt.',
+    sections: {
+      personal: 'Persoonlijke informatie',
+      general: 'Algemene instellingen',
+      security: 'Beveiliging',
+    },
+    personal: {
+      title: 'Persoonlijke informatie',
+      description: 'Je contactgegevens en hoe je in TSCopier wordt weergegeven.',
+    },
+    general: {
+      title: 'Algemene instellingen',
+      description: 'Standaardwaarden voor saldi, rapporten en tijdstempels.',
+    },
+    security: {
+      title: 'Beveiliging',
+      description: 'Werk je wachtwoord bij om je account te beveiligen.',
+      updatePassword: 'Wachtwoord bijwerken',
+    },
+    fields: {
+      firstName: 'Voornaam',
+      lastName: 'Achternaam',
+      username: 'Gebruikersnaam',
+      email: 'E-mail',
+      country: 'Land',
+      city: 'Stad',
+      mobile: 'Mobiel nummer',
+      address: 'Adres',
+      baseCurrency: 'Basisvaluta',
+      timezone: 'Tijdzone',
+      newPassword: 'Nieuw wachtwoord',
+      confirmPassword: 'Bevestig wachtwoord',
+      notificationSound: 'Geluid voor handelsmeldingen',
+      notificationSoundDescription: 'Speel een geluid af wanneer een trade wordt uitgevoerd, gewijzigd of gesloten.',
+    },
+    placeholders: {
+      address: 'Straat, huisnummer, postcode…',
+      selectCountry: 'Selecteer land',
+      selectTimezone: 'Selecteer tijdzone',
+      selectCurrency: 'Selecteer valuta',
+      searchCountry: 'Zoek landen…',
+      searchTimezone: 'Zoek tijdzones…',
+      searchCurrency: 'Zoek valuta…',
+      noMatches: 'Geen overeenkomsten',
+    },
+  },
+}

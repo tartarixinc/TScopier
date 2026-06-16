@@ -5,7 +5,7 @@ import { Menu, X } from 'lucide-react'
 import { TscopierLogo } from '../ui/TscopierLogo'
 import { ThemeToggle } from '../ui/ThemeToggle'
 import { LanguageSwitcher } from '../auth/LanguageSwitcher'
-import { useT } from '../../context/LocaleContext'
+import { useLocale, useT } from '../../context/LocaleContext'
 import { HELP_LINKS } from '../../lib/helpLinks'
 import { MarketingAuthCta } from './MarketingAuthCta'
 
@@ -70,6 +70,7 @@ function MarketingNavLink({
 
 export function MarketingHeader() {
   const l = useT().landing.nav
+  const { auth } = useLocale()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
   const [visible, setVisible] = useState(true)
@@ -191,6 +192,12 @@ export function MarketingHeader() {
                 onClick={closeMobile}
               />
             ))}
+            <div className="flex items-center justify-between gap-2 border-t border-neutral-200/80 px-2 py-2 dark:border-neutral-700/80">
+              <span className="text-xs font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+                {auth.language.label}
+              </span>
+              <LanguageSwitcher />
+            </div>
             <MarketingAuthCta variant="headerMobile" onNavigate={closeMobile} />
           </nav>
         )}

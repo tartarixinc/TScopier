@@ -93,6 +93,8 @@ export interface AuthTranslations {
   language: {
     label: string
     choose: string
+    searchPlaceholder: string
+    noResults: string
   }
   theme: {
     light: string
