@@ -8,7 +8,9 @@ import { resolveChannelTradingConfig } from '../channelTradingConfig'
 import {
   breakevenStopLossForSymbol,
   clampBreakevenModifyStops,
+  isSlAtOrBeyondBreakeven,
 } from '../autoManagement'
+import { signalPipPrice } from '../signalPip'
 import { isChannelManagementBlocked, isPendingCancelBlocked, normalizeChannelMessageFiltersMap } from '../channelMessageFilters'
 import {
   cweInstructionGroupKey,
@@ -108,23 +110,25 @@ async function verifyBreakevenApplied(args: {
   uuid: string
   ticket: number
   expectedSl: number
-  point: number
+  isBuy: boolean
+  pipPrice: number
 }): Promise<{ ok: boolean; reason?: string }> {
-  const { api, uuid, ticket, expectedSl, point } = args
+  const { api, uuid, ticket, expectedSl, isBuy, pipPrice } = args
   const rawOrders = await api.openedOrders(uuid)
   const order = findRawOrderByTicket(rawOrders ?? [], ticket)
   if (!order) return { ok: false, reason: 'verify failed: ticket missing from opened orders' }
   const sl = readOrderStopLoss(order)
   if (sl == null) return { ok: false, reason: 'verify failed: broker did not return stop loss' }
-  const eps = Math.max(point > 0 ? point * 3 : 0, 1e-5)
-  if (Math.abs(sl - expectedSl) <= eps) return { ok: true }
-  return { ok: false, reason: `verify failed: broker SL=${sl} expected=${expectedSl}` }
+  if (isSlAtOrBeyondBreakeven(isBuy, sl, expectedSl, pipPrice)) return { ok: true }
+  return { ok: false, reason: `verify failed: broker SL=${sl} expected BE=${expectedSl}` }
 }
 
 function resolveReconciledTicketForTrade(
   trade: MgmtTradeRow,
   rawOrders: unknown[],
+  excludeTickets: ReadonlySet<number> = new Set(),
 ): number | null {
+  const storedTicket = Number(trade.metaapi_order_id)
   const expectedDir = String(trade.direction).toLowerCase() === 'buy'
   const expectedLots = Number.isFinite(Number(trade.lot_size)) ? Number(trade.lot_size) : null
   const expectedEntry = Number.isFinite(Number(trade.entry_price)) ? Number(trade.entry_price) : null
@@ -133,8 +137,14 @@ function resolveReconciledTicketForTrade(
     .filter((o): o is NonNullable<ReturnType<typeof extractOpenOrderFromBrokerRaw>> => o != null)
     .filter(o => symbolsCompatibleForBasket(trade.symbol, o.symbol))
     .filter(o => o.isBuy === expectedDir)
+    .filter(o => !excludeTickets.has(o.ticket))
 
   if (!candidates.length) return null
+
+  if (Number.isFinite(storedTicket) && storedTicket > 0 && !excludeTickets.has(storedTicket)) {
+    const storedMatch = candidates.find(o => o.ticket === storedTicket)
+    if (storedMatch) return storedTicket
+  }
 
   candidates.sort((a, b) => {
     const lotScoreA = expectedLots == null ? 0 : Math.abs((a.lots || 0) - expectedLots)
@@ -542,6 +552,8 @@ export async function applyManagement(
       legsTotal += eligibleTrades.length
     }
 
+    const usedBreakevenTicketsByUuid = new Map<string, Set<number>>()
+
     const processTrade = async (trade: MgmtTradeRow): Promise<void> => {
       const broker = byBroker.get(trade.broker_account_id)
       if (!broker || !isMtUuid(broker.metaapi_account_id)) return
@@ -607,90 +619,113 @@ export async function applyManagement(
           }
         } else if (action === 'breakeven') {
           const entry = sanitizeLevel(trade.entry_price)
-          if (entry > 0) {
-            const manual = resolveChannelTradingConfig(broker, signal.channel_id).manual_settings
-            const isBuy = String(trade.direction).toLowerCase() === 'buy'
-            const symEntry = await ctx.getSymbolParams(uuid, trade.symbol)
-            const digits = symEntry?.digits
-            let beSl = breakevenStopLossForSymbol({
+          if (entry <= 0) {
+            throw new Error('breakeven skipped: missing entry price on trade row')
+          }
+          const manual = resolveChannelTradingConfig(broker, signal.channel_id).manual_settings
+          const isBuy = String(trade.direction).toLowerCase() === 'buy'
+          const brokerSymbol = await ctx.resolveBrokerSymbolForLiveEntry(uuid, trade.symbol).catch(() => trade.symbol)
+          const symEntry = (await ctx.getSymbolParams(uuid, brokerSymbol).catch(() => null))
+            ?? (brokerSymbol.toUpperCase() !== trade.symbol.toUpperCase()
+              ? await ctx.getSymbolParams(uuid, trade.symbol).catch(() => null)
+              : null)
+          const digits = symEntry?.digits
+          const pipPrice = signalPipPrice(brokerSymbol)
+          let beSl = breakevenStopLossForSymbol({
+            isBuy,
+            entryPrice: entry,
+            manual,
+            symbol: brokerSymbol,
+            digits,
+          })
+          let modifyTp = sanitizeLevel(trade.tp)
+          try {
+            const q = await api.quote(uuid, brokerSymbol)
+            const refPrice = isBuy ? q.bid : q.ask
+            const clamped = clampBreakevenModifyStops({
               isBuy,
-              entryPrice: entry,
-              manual,
-              symbol: trade.symbol,
-              digits,
+              stoploss: beSl,
+              takeprofit: modifyTp,
+              referencePrice: refPrice,
+              point: symEntry?.point ?? 0,
+              digits: digits ?? 5,
+              stopsLevel: symEntry?.stopsLevel ?? 0,
+              freezeLevel: symEntry?.freezeLevel ?? 0,
             })
-            let modifyTp = sanitizeLevel(trade.tp)
+            beSl = clamped.stoploss
+            modifyTp = clamped.takeprofit
+          } catch {
+            /* quote optional; use computed breakeven SL */
+          }
+          const usedTickets = usedBreakevenTicketsByUuid.get(uuid) ?? new Set<number>()
+          const maxAttempts = 3
+          let lastErr: unknown = null
+          for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
             try {
-              const q = await api.quote(uuid, trade.symbol)
-              const refPrice = isBuy ? q.bid : q.ask
-              const clamped = clampBreakevenModifyStops({
+              const preVerify = await verifyBreakevenApplied({
+                api,
+                uuid,
+                ticket: effectiveTicket,
+                expectedSl: beSl,
                 isBuy,
-                stoploss: beSl,
-                takeprofit: modifyTp,
-                referencePrice: refPrice,
-                point: symEntry?.point ?? 0,
-                digits: digits ?? 5,
-                stopsLevel: symEntry?.stopsLevel ?? 0,
-                freezeLevel: symEntry?.freezeLevel ?? 0,
+                pipPrice,
               })
-              beSl = clamped.stoploss
-              modifyTp = clamped.takeprofit
-            } catch {
-              /* quote optional; use computed breakeven SL */
-            }
-            const maxAttempts = 3
-            let lastErr: unknown = null
-            for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-              try {
-                await api.orderModify(uuid, {
-                  ticket: effectiveTicket,
-                  stoploss: beSl,
-                  takeprofit: modifyTp,
-                })
-                const verify = await verifyBreakevenApplied({
-                  api,
-                  uuid,
-                  ticket: effectiveTicket,
-                  expectedSl: beSl,
-                  point: symEntry?.point ?? 0,
-                })
-                if (!verify.ok) throw new Error(verify.reason ?? 'verify failed')
+              if (preVerify.ok) {
                 lastErr = null
                 break
-              } catch (err) {
-                lastErr = err
-                const msg = err instanceof Error ? err.message : String(err)
-                if (isUnknownTicketError(msg)) {
-                  const rawOrders = await api.openedOrders(uuid)
-                  const reconciledTicket = resolveReconciledTicketForTrade(trade, rawOrders ?? [])
-                  if (reconciledTicket && reconciledTicket !== effectiveTicket) {
-                    ticketReconciledFrom = effectiveTicket
-                    effectiveTicket = reconciledTicket
-                    continue
-                  }
-                }
-                if (attempt < maxAttempts && isRetryableBreakevenError(msg)) {
-                  await sleepMs(250 * attempt)
-                  const rawOrders = await api.openedOrders(uuid).catch(() => [])
-                  const reconciledTicket = resolveReconciledTicketForTrade(trade, rawOrders ?? [])
-                  if (reconciledTicket && reconciledTicket !== effectiveTicket) {
-                    ticketReconciledFrom = effectiveTicket
-                    effectiveTicket = reconciledTicket
-                  }
+              }
+              await api.orderModify(uuid, {
+                ticket: effectiveTicket,
+                stoploss: beSl,
+                takeprofit: modifyTp,
+              })
+              const verify = await verifyBreakevenApplied({
+                api,
+                uuid,
+                ticket: effectiveTicket,
+                expectedSl: beSl,
+                isBuy,
+                pipPrice,
+              })
+              if (!verify.ok) throw new Error(verify.reason ?? 'verify failed')
+              lastErr = null
+              break
+            } catch (err) {
+              lastErr = err
+              const msg = err instanceof Error ? err.message : String(err)
+              const excludeTickets = usedBreakevenTicketsByUuid.get(uuid) ?? new Set<number>()
+              if (isUnknownTicketError(msg)) {
+                const rawOrders = await api.openedOrders(uuid)
+                const reconciledTicket = resolveReconciledTicketForTrade(trade, rawOrders ?? [], excludeTickets)
+                if (reconciledTicket && reconciledTicket !== effectiveTicket) {
+                  ticketReconciledFrom = effectiveTicket
+                  effectiveTicket = reconciledTicket
                   continue
                 }
-                break
               }
+              if (attempt < maxAttempts && isRetryableBreakevenError(msg)) {
+                await sleepMs(250 * attempt)
+                const rawOrders = await api.openedOrders(uuid).catch(() => [])
+                const reconciledTicket = resolveReconciledTicketForTrade(trade, rawOrders ?? [], excludeTickets)
+                if (reconciledTicket && reconciledTicket !== effectiveTicket) {
+                  ticketReconciledFrom = effectiveTicket
+                  effectiveTicket = reconciledTicket
+                }
+                continue
+              }
+              break
             }
-            if (lastErr) throw lastErr
-            await ctx.supabase
-              .from('trades')
-              .update({
-                sl: beSl,
-                ...(ticketReconciledFrom != null ? { metaapi_order_id: String(effectiveTicket) } : {}),
-              })
-              .eq('id', trade.id)
           }
+          if (lastErr) throw lastErr
+          usedTickets.add(effectiveTicket)
+          usedBreakevenTicketsByUuid.set(uuid, usedTickets)
+          await ctx.supabase
+            .from('trades')
+            .update({
+              sl: beSl,
+              ...(ticketReconciledFrom != null ? { metaapi_order_id: String(effectiveTicket) } : {}),
+            })
+            .eq('id', trade.id)
         } else if (action === 'modify') {
           return
         }
@@ -711,7 +746,34 @@ export async function applyManagement(
         })
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
-        const benign = isBenignOrderModifyError(msg)
+        let benign = isBenignOrderModifyError(msg)
+        if (benign && action === 'breakeven') {
+          const entry = sanitizeLevel(trade.entry_price)
+          if (entry > 0) {
+            const manual = resolveChannelTradingConfig(broker, signal.channel_id).manual_settings
+            const isBuy = String(trade.direction).toLowerCase() === 'buy'
+            const brokerSymbol = await ctx.resolveBrokerSymbolForLiveEntry(uuid, trade.symbol).catch(() => trade.symbol)
+            const digits = (await ctx.getSymbolParams(uuid, brokerSymbol).catch(() => null))?.digits
+            const beSl = breakevenStopLossForSymbol({
+              isBuy,
+              entryPrice: entry,
+              manual,
+              symbol: brokerSymbol,
+              digits,
+            })
+            const verify = await verifyBreakevenApplied({
+              api,
+              uuid,
+              ticket: effectiveTicket,
+              expectedSl: beSl,
+              isBuy,
+              pipPrice: signalPipPrice(brokerSymbol),
+            }).catch(() => ({ ok: false as const }))
+            benign = verify.ok
+          } else {
+            benign = false
+          }
+        }
         await ctx.supabase.from('trade_execution_logs').insert({
           user_id: signal.user_id,
           signal_id: signal.id,
@@ -732,7 +794,11 @@ export async function applyManagement(
       }
     }
 
-    if (liveMgmtFast && eligibleTrades.length > 1) {
+    if (action === 'breakeven') {
+      for (const trade of eligibleTrades) {
+        await processTrade(trade)
+      }
+    } else if (liveMgmtFast && eligibleTrades.length > 1) {
       await Promise.allSettled(
         await parallelMap(eligibleTrades, legConcurrency, trade => processTrade(trade)),
       )
