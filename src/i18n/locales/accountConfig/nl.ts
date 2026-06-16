@@ -1,4 +1,4 @@
-import { configureModalEn } from '../configureModal/en'
+import { configureModalNl } from '../configureModal/nl'
 import type { AccountConfigBundleTranslations } from './types'
 
 export const accountConfigNl: AccountConfigBundleTranslations = {
@@ -178,6 +178,6 @@ export const accountConfigNl: AccountConfigBundleTranslations = {
       addChannel: 'Kanaal toevoegen',
       configure: 'Configureren',
     },
-    configureModal: configureModalEn,
+    configureModal: configureModalNl,
   },
 }
