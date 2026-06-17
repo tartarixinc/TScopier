@@ -20,9 +20,10 @@ import {
   selectImmediateLegsForCweInstruction,
   selectWorseImmediateLegsForCweInstruction,
 } from '../closeWorseEntries'
-import { tryBrokerFallbackClose } from '../managementBrokerClose'
+import { tryBrokerFallbackClose, cancelChannelBrokerPendingOrders } from '../managementBrokerClose'
 import { extractOpenOrderFromBrokerRaw } from '../managementBrokerClose'
 import { closeWithVerification } from '../managementClose'
+import { findOpenedRowByTicket } from '../signalEntryPendingHelpers'
 import { applyMgmtModifyToBasketGroups } from '../managementModifyBaskets'
 import type { MgmtExecOptions, MgmtExecResult } from '../mgmtExecOptions'
 import { loadRangePendingLegsInMgmtScope, pendingLegsToCancelScopes, updateRangePendingLegsForManagement } from '../managementPendingLegs'
@@ -99,13 +100,7 @@ function readOrderStopLoss(raw: unknown): number | null {
 }
 
 function findRawOrderByTicket(rawOrders: unknown[], ticket: number): unknown | null {
-  for (const raw of rawOrders) {
-    if (!raw || typeof raw !== 'object') continue
-    const o = raw as Record<string, unknown>
-    const t = Number(o.ticket ?? o.Ticket ?? o.orderId ?? o.OrderID ?? 0)
-    if (Number.isFinite(t) && t === ticket) return raw
-  }
-  return null
+  return findOpenedRowByTicket(rawOrders, ticket)
 }
 
 async function verifyBreakevenApplied(args: {
@@ -362,6 +357,17 @@ export async function applyManagement(
     }
 
     if (
+      (action === 'close' || action === 'breakeven' || action === 'partial_profit' || action === 'partial_breakeven')
+      && rows.length > 0
+    ) {
+      rows = await expandMgmtRowsToFullBaskets(ctx.supabase, {
+        userId: signal.user_id,
+        rows,
+      })
+      basketAnchorId = rows[0]?.signal_id ?? basketAnchorId
+    }
+
+    if (
       action === 'close_worse_entries'
       && !rows.length
       && signal.channel_id
@@ -586,13 +592,48 @@ export async function applyManagement(
 
       try {
         if (action === 'close') {
-          const closeResult = await closeWithVerification(api, uuid, ticket, mgmtCloseOpts(liveMgmtFast))
-          if (!closeResult.confirmed) {
+          const maxAttempts = 3
+          let closeConfirmed = false
+          let lastCloseReason: string | undefined
+          for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+            const closeResult = await closeWithVerification(
+              api,
+              uuid,
+              effectiveTicket,
+              mgmtCloseOpts(liveMgmtFast),
+            )
+            if (closeResult.confirmed) {
+              closeConfirmed = true
+              break
+            }
+            lastCloseReason = closeResult.reason
+            const rawOrders = await api.openedOrders(uuid).catch(() => [])
+            const reconciledTicket = resolveReconciledTicketForTrade(
+              trade,
+              rawOrders ?? [],
+              new Set(),
+            )
+            if (reconciledTicket && reconciledTicket !== effectiveTicket) {
+              ticketReconciledFrom = ticketReconciledFrom ?? effectiveTicket
+              effectiveTicket = reconciledTicket
+              continue
+            }
+            if (attempt < maxAttempts && isUnknownTicketError(lastCloseReason ?? '')) {
+              await sleepMs(250 * attempt)
+              continue
+            }
+            break
+          }
+          if (!closeConfirmed) {
             throw new Error(
-              closeResult.reason ?? 'orderClose succeeded but ticket still open on broker',
+              lastCloseReason ?? 'orderClose succeeded but ticket still open on broker',
             )
           }
-          await ctx.supabase.from('trades').update({ status: 'closed', closed_at: new Date().toISOString() }).eq('id', trade.id)
+          await ctx.supabase.from('trades').update({
+            status: 'closed',
+            closed_at: new Date().toISOString(),
+            ...(ticketReconciledFrom != null ? { metaapi_order_id: String(effectiveTicket) } : {}),
+          }).eq('id', trade.id)
           if (signal.channel_id) {
             await clearChannelActiveTradeParamsWhenFlat(ctx.supabase, {
               userId: signal.user_id,
@@ -944,6 +985,54 @@ export async function applyManagement(
         })
       if (scopes.length > 0) {
         await ctx.cancelRangePendingLegsForScopes(signal.user_id, signal.id, scopes, 'signal_closed')
+      }
+    }
+
+    if (action === 'close' && signal.channel_id) {
+      const pendingCancelled = await cancelChannelBrokerPendingOrders({
+        supabase: ctx.supabase,
+        userId: signal.user_id,
+        channelId: signal.channel_id,
+        brokerAccountIds,
+        apiFor: uuid => {
+          for (const broker of brokers) {
+            if (broker.metaapi_account_id === uuid) return ctx.apiFor(broker)
+          }
+          return null
+        },
+        reason: 'signal_closed',
+      })
+      if (pendingCancelled > 0) {
+        legsTotal += pendingCancelled
+        console.log(
+          `[tradeExecutor] mgmt cancelled ${pendingCancelled} broker pendings signal=${signal.id}`,
+        )
+      }
+
+      const channelMeta = await ctx.getChannelMeta(signal.channel_id)
+      let brokerClosed = 0
+      await Promise.allSettled(brokers.map(async broker => {
+        const api = ctx.apiFor(broker)
+        const uuid = broker.metaapi_account_id
+        if (!api || !uuid || uuid.includes('|')) return
+        const one = await tryBrokerFallbackClose({
+          supabase: ctx.supabase,
+          api,
+          signal,
+          parsed,
+          brokers: [broker],
+          channelDisplayName: channelMeta.commentSlug,
+          channelUsername: null,
+          closeWithVerification: (a, u, ticket) =>
+            closeWithVerification(a, u, ticket, mgmtCloseOpts(liveMgmtFast)),
+        })
+        brokerClosed += one.closed
+      }))
+      if (brokerClosed > 0) {
+        legsTotal += brokerClosed
+        console.log(
+          `[tradeExecutor] mgmt broker sweep closed ${brokerClosed} stragglers signal=${signal.id}`,
+        )
       }
     }
 

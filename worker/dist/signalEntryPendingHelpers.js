@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.rawOrderTicket = rawOrderTicket;
 exports.rawOrderOperation = rawOrderOperation;
+exports.rawNumericOrderKind = rawNumericOrderKind;
 exports.isPendingEntryRow = isPendingEntryRow;
 exports.isLikelyMarketPositionRow = isLikelyMarketPositionRow;
 exports.findOpenedRowByTicket = findOpenedRowByTicket;
@@ -10,7 +11,15 @@ exports.cancelSignalEntryRowAtBroker = cancelSignalEntryRowAtBroker;
 exports.markSignalEntryFilled = markSignalEntryFilled;
 exports.markSignalEntryGoneFromBroker = markSignalEntryGoneFromBroker;
 function rawOrderTicket(o) {
-    const t = Number(o.ticket ?? o.Ticket ?? o.orderId ?? o.OrderID ?? o.deal ?? o.Deal ?? 0);
+    const t = Number(o.ticket
+        ?? o.Ticket
+        ?? o.order
+        ?? o.Order
+        ?? o.orderId
+        ?? o.OrderID
+        ?? o.deal
+        ?? o.Deal
+        ?? 0);
     return Number.isFinite(t) ? t : 0;
 }
 function rawOrderOperation(o) {

@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.closeOrderFast = closeOrderFast;
 exports.closeWithVerification = closeWithVerification;
+const signalEntryPendingHelpers_1 = require("./signalEntryPendingHelpers");
 function mgmtCloseVerifySleepMs(liveFast) {
     if (liveFast) {
         const raw = Number(process.env.MGMT_CLOSE_VERIFY_MS ?? 0);
@@ -51,16 +52,7 @@ async function closeWithVerification(api, uuid, ticket, opts = {}) {
         let stillOpen = false;
         try {
             const openOrders = await api.openedOrders(uuid);
-            for (const raw of openOrders ?? []) {
-                if (!raw || typeof raw !== 'object')
-                    continue;
-                const o = raw;
-                const t = Number(o.ticket ?? o.Ticket ?? o.orderId ?? o.OrderID ?? 0);
-                if (t === ticket) {
-                    stillOpen = true;
-                    break;
-                }
-            }
+            stillOpen = (0, signalEntryPendingHelpers_1.findOpenedRowByTicket)(openOrders ?? [], ticket) != null;
         }
         catch {
             return { confirmed: true, attempts: attempt };

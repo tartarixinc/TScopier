@@ -14,7 +14,17 @@ export type SignalEntryPendingRow = {
 }
 
 export function rawOrderTicket(o: Record<string, unknown>): number {
-  const t = Number(o.ticket ?? o.Ticket ?? o.orderId ?? o.OrderID ?? o.deal ?? o.Deal ?? 0)
+  const t = Number(
+    o.ticket
+    ?? o.Ticket
+    ?? o.order
+    ?? o.Order
+    ?? o.orderId
+    ?? o.OrderID
+    ?? o.deal
+    ?? o.Deal
+    ?? 0,
+  )
   return Number.isFinite(t) ? t : 0
 }
 
@@ -22,7 +32,7 @@ export function rawOrderOperation(o: Record<string, unknown>): string {
   return String(o.operation ?? o.Operation ?? '').toLowerCase()
 }
 
-function rawNumericOrderKind(o: Record<string, unknown>): number | undefined {
+export function rawNumericOrderKind(o: Record<string, unknown>): number | undefined {
   const pick = (v: unknown): number | undefined => {
     if (typeof v === 'number' && Number.isFinite(v)) return v
     if (typeof v === 'string' && v.trim()) {

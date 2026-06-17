@@ -1,4 +1,5 @@
 import type { FxsocketBrokerClient } from './fxsocketClient'
+import { findOpenedRowByTicket } from './signalEntryPendingHelpers'
 
 export interface CloseVerificationResult {
   confirmed: boolean
@@ -70,12 +71,7 @@ export async function closeWithVerification(
     let stillOpen = false
     try {
       const openOrders = await api.openedOrders(uuid)
-      for (const raw of openOrders ?? []) {
-        if (!raw || typeof raw !== 'object') continue
-        const o = raw as Record<string, unknown>
-        const t = Number(o.ticket ?? o.Ticket ?? o.orderId ?? o.OrderID ?? 0)
-        if (t === ticket) { stillOpen = true; break }
-      }
+      stillOpen = findOpenedRowByTicket(openOrders ?? [], ticket) != null
     } catch {
       return { confirmed: true, attempts: attempt }
     }

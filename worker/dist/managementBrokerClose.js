@@ -6,24 +6,42 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.extractOpenOrderFromBrokerRaw = extractOpenOrderFromBrokerRaw;
 exports.filterTscopierOrdersForChannelClose = filterTscopierOrdersForChannelClose;
 exports.tryBrokerFallbackClose = tryBrokerFallbackClose;
+exports.cancelChannelBrokerPendingOrders = cancelChannelBrokerPendingOrders;
 const basketModFollowUp_1 = require("./basketModFollowUp");
 const channelActiveTradeParams_1 = require("./channelActiveTradeParams");
 const tscopierComment_1 = require("./tscopierComment");
+const signalEntryPendingHelpers_1 = require("./signalEntryPendingHelpers");
 const tradeComment_1 = require("./tradeComment");
 function extractOpenOrderFromBrokerRaw(raw) {
     if (!raw || typeof raw !== 'object')
         return null;
     const o = raw;
-    const ticket = Number(o.ticket ?? o.Ticket ?? o.orderId ?? o.OrderID ?? 0);
-    if (!Number.isFinite(ticket) || ticket <= 0)
+    const ticket = (0, signalEntryPendingHelpers_1.rawOrderTicket)(o);
+    if (!ticket)
         return null;
     const symbol = String(o.symbol ?? o.Symbol ?? '').trim();
     if (!symbol)
         return null;
     const comment = String(o.comment ?? o.Comment ?? '').trim();
     const lots = Number(o.lots ?? o.Lots ?? o.volume ?? o.Volume ?? 0);
-    const op = String(o.operation ?? o.Operation ?? o.type ?? o.Type ?? '').toLowerCase();
-    const isBuy = op.includes('buy') || op === '0' || op === 'buy';
+    const op = (0, signalEntryPendingHelpers_1.rawOrderOperation)(o);
+    const numericKind = (0, signalEntryPendingHelpers_1.rawNumericOrderKind)(o);
+    let isBuy = false;
+    if (op.includes('buy')) {
+        isBuy = true;
+    }
+    else if (op.includes('sell')) {
+        isBuy = false;
+    }
+    else if (numericKind === 0 || op === '0') {
+        isBuy = true;
+    }
+    else if (numericKind === 1 || op === '1') {
+        isBuy = false;
+    }
+    else if (numericKind != null && numericKind >= 2 && numericKind <= 5) {
+        isBuy = numericKind === 2 || numericKind === 4;
+    }
     return { ticket, symbol, comment, lots: Number.isFinite(lots) ? lots : 0, isBuy };
 }
 function filterTscopierOrdersForChannelClose(args) {
@@ -131,4 +149,37 @@ async function tryBrokerFallbackClose(args) {
         }
     }));
     return { closed, failed };
+}
+/** Cancel all broker strict-entry pendings for a channel (mirrors copyLimitFlatten). */
+async function cancelChannelBrokerPendingOrders(args) {
+    const { supabase, userId, channelId, brokerAccountIds, apiFor, reason } = args;
+    if (!channelId || !brokerAccountIds.length)
+        return 0;
+    const { data: channelSignals } = await supabase
+        .from('signals')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('channel_id', channelId)
+        .limit(5000);
+    const signalIds = (channelSignals ?? []).map((r) => r.id);
+    if (!signalIds.length)
+        return 0;
+    let cancelled = 0;
+    for (const brokerAccountId of brokerAccountIds) {
+        const { data: seRows } = await supabase
+            .from('signal_entry_pending_orders')
+            .select('id,signal_id,user_id,broker_account_id,metaapi_account_id,symbol,trade_id,broker_ticket,is_buy')
+            .in('signal_id', signalIds)
+            .eq('broker_account_id', brokerAccountId)
+            .eq('status', 'broker_pending');
+        for (const row of (seRows ?? [])) {
+            const api = apiFor(row.metaapi_account_id);
+            if (!api)
+                continue;
+            const result = await (0, signalEntryPendingHelpers_1.cancelSignalEntryRowAtBroker)(supabase, api, row, reason);
+            if (result.ok)
+                cancelled += 1;
+        }
+    }
+    return cancelled;
 }

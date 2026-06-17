@@ -23,6 +23,55 @@ describe('extractOpenOrderFromBrokerRaw', () => {
       isBuy: false,
     })
   })
+
+  it('parses MT4-style position rows (numeric type + order field)', () => {
+    const buy = extractOpenOrderFromBrokerRaw({
+      order: 555001,
+      symbol: 'EURUSD',
+      comment: 'TSCopier:Ch:abc12345',
+      volume: 0.2,
+      type: 0,
+      kind: 'position',
+    })
+    assert.deepEqual(buy, {
+      ticket: 555001,
+      symbol: 'EURUSD',
+      comment: 'TSCopier:Ch:abc12345',
+      lots: 0.2,
+      isBuy: true,
+    })
+
+    const sell = extractOpenOrderFromBrokerRaw({
+      Ticket: 555002,
+      Symbol: 'GBPUSD',
+      Comment: 'TSCopier:Ch:def67890',
+      Lots: 0.15,
+      cmd: 1,
+    })
+    assert.equal(sell?.ticket, 555002)
+    assert.equal(sell?.isBuy, false)
+  })
+
+  it('parses MT4 pending rows (type 2–5)', () => {
+    const buyLimit = extractOpenOrderFromBrokerRaw({
+      ticket: 777,
+      symbol: 'XAUUSD',
+      comment: 'TSCopier:Ch:abc12345',
+      volume: 0.1,
+      type: 2,
+      kind: 'pending',
+    })
+    assert.equal(buyLimit?.isBuy, true)
+
+    const sellStop = extractOpenOrderFromBrokerRaw({
+      ticket: 778,
+      symbol: 'XAUUSD',
+      comment: 'TSCopier:Ch:abc12345',
+      volume: 0.1,
+      cmd: 5,
+    })
+    assert.equal(sellStop?.isBuy, false)
+  })
 })
 
 describe('filterTscopierOrdersForChannelClose', () => {
