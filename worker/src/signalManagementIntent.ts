@@ -3,6 +3,7 @@
  */
 import type { ChannelKeywords, ChannelLexiconRow } from './parseSignal'
 import {
+  textLooksLikeConditionalClose,
   textLooksLikeMultilingualFullClose,
   textLooksLikeMultilingualManagement,
 } from './multilingualManagementTerms'
@@ -72,6 +73,26 @@ export function looksLikeExplicitFullCloseCommand(
     || /\b(?:flatten|kill\s+zones?)\b/i.test(t)
     || /\bexit\s+(?:trade|trades|position|positions|long|short|now)\b/i.test(t)
   )
+}
+
+/** Optional/advisory close language; should not auto-execute a full close. */
+export function looksLikeConditionalCloseSuggestion(message: string): boolean {
+  const t = String(message ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+  if (!t) return false
+  if (!/\b(close|cerrar|fermer|fermez|zamknij|закрой|закрыть|stang|stäng|sluit|exit)\b/.test(t)) {
+    return false
+  }
+  if (/\b(close|cerrar|fermer|fermez)\s+(all|everything|todo|tout|все|всё)\b/.test(t)) {
+    return false
+  }
+  if (textLooksLikeConditionalClose(t)) return true
+  if (/\b(if|si|если)\b/.test(t)) return true
+  return /\b(if you want|up to you|your choice|if preferred|if needed)\b/.test(t)
 }
 
 function escapeRegExp(s: string): string {

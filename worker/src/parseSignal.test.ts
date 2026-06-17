@@ -35,6 +35,20 @@ describe('parseChannelMessageSync', () => {
     assert.equal(result.parsed.action, 'close')
   })
 
+  it('skips conditional close suggestion (if happy close now)', () => {
+    const msg = 'If you are happy, close now'
+    const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+    assert.equal(result.status, 'skipped')
+    assert.equal(result.parsed.action, 'ignore')
+  })
+
+  it('skips conditional close suggestion (close if satisfied)', () => {
+    const msg = 'Close if you are satisfied'
+    const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+    assert.equal(result.status, 'skipped')
+    assert.equal(result.parsed.action, 'ignore')
+  })
+
   it('parses standard market entry (SIGNALS PRO / SIGNALS 2 style)', () => {
     const msg = 'BUY XAUUSD NOW SL 2650 TP 2700 TP 2750'
     const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)

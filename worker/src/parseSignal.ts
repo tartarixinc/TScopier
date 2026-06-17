@@ -13,6 +13,7 @@ import {
 import {
   bareTradePricesExcludingPips,
   looksLikeChannelManagementUpdate,
+  looksLikeConditionalCloseSuggestion,
   looksLikeExplicitFullCloseCommand,
   partialCloseFractionFromMessage,
 } from './signalManagementIntent'
@@ -685,7 +686,10 @@ function parseDeterministicManagement(
       if (pct != null) partial_close_fraction = pct
     }
   } else if (wantsBreakeven) action = "breakeven"
-  else if (wantsExplicitFullClose(t, kwClose, channelKeywords, lexicon)) action = "close"
+  else if (wantsExplicitFullClose(t, kwClose, channelKeywords, lexicon)) {
+    if (looksLikeConditionalCloseSuggestion(t)) return null
+    action = "close"
+  }
   else if (looksLikeStopOrTpAdjustCommand(t) || hasAnyKeyword(t, kwModify)) {
     action = "modify"
     confidence = 0.95

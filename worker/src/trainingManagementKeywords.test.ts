@@ -13,6 +13,14 @@ describe('trainingManagementKeywords', () => {
     assert.ok(groups.break_even.includes('BREAK EVEN'))
   })
 
+  it('does not bucket conditional close cues into close_all', () => {
+    const groups = bucketFlatManagementCues([
+      'If you are happy, close now',
+      'Close if you are satisfied',
+    ])
+    assert.equal(groups.close_all.length, 0)
+  })
+
   it('maps management groups to channel_keywords close fields', () => {
     const groups = resolveManagementGroups({
       management_keyword_groups: {

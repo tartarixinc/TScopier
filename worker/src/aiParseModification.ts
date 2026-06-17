@@ -14,6 +14,7 @@ import {
   type ParseChannelMessageResult,
 } from './parseSignal'
 import { getChannelParseContext } from './channelKeywordsCache'
+import { looksLikeConditionalCloseSuggestion } from './signalManagementIntent'
 import { messageHasMarketNowIntent } from './signalEntryNowRequirement'
 import { parsedHasReEnterIntent } from './signalPriceInference'
 
@@ -158,6 +159,11 @@ export function coerceMgmtSlTpFollowUpAction(
   return parsed
 }
 
+export function shouldSkipConditionalCloseForAi(parsed: ParsedSignal, rawMessage: string): boolean {
+  return String(parsed.action ?? '').toLowerCase() === 'close'
+    && looksLikeConditionalCloseSuggestion(rawMessage)
+}
+
 async function loadParentSignal(
   supabase: SupabaseClient,
   parentSignalId: string | null | undefined,
@@ -217,6 +223,7 @@ Rules:
 - Correct obvious typos in labels/prices (mov sl, 265O) but never invent prices not implied by the message.
 - parameter_refresh: same trade SL/TP update — use buy/sell matching parent direction with sl/tp only (no new entry).
 - commentary/TP-hit announcements without actionable instruction → action ignore, intent commentary.
+- Conditional/advisory closes (e.g. "if you are happy, close now") are commentary, not executable close.
 - re_enter true only when message clearly opens a new trade.
 - confidence 0-1.`
 
@@ -297,6 +304,18 @@ function buildAiResult(
   const confidence = typeof raw.confidence === 'number' && Number.isFinite(raw.confidence)
     ? Math.min(1, Math.max(0, raw.confidence))
     : 0.85
+
+  if (shouldSkipConditionalCloseForAi(parsed, corrected)) {
+    return {
+      parsed: { ...parsed, action: 'ignore' },
+      status: 'skipped',
+      skip_reason: 'Conditional close instruction requires user discretion',
+      intent: 'commentary',
+      typo_corrected: raw.typo_corrected === true,
+      confidence,
+      source: 'openai',
+    }
+  }
 
   if (parsed.action === 'ignore' || intent === 'commentary' || intent === 'ignore') {
     return {

@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { parseModificationDeterministic, parseChannelMessageSync, DEFAULT_CHANNEL_KEYWORDS } from './parseSignal'
-import { coerceMgmtSlTpFollowUpAction } from './aiParseModification'
+import { coerceMgmtSlTpFollowUpAction, shouldSkipConditionalCloseForAi } from './aiParseModification'
 
 function mapActionToIntent(action: string) {
   const a = String(action ?? '').toLowerCase()
@@ -107,6 +107,21 @@ describe('ai modification intent mapping', () => {
       raw_instruction: 'BUY XAUUSD 2650 SL 2640 TP 2670',
     }, 'parameter_refresh')
     assert.equal(kept.action, 'buy')
+  })
+
+  it('marks conditional close wording as non-actionable', () => {
+    const shouldSkip = shouldSkipConditionalCloseForAi({
+      action: 'close',
+      symbol: null,
+      entry_price: null,
+      entry_zone_low: null,
+      entry_zone_high: null,
+      sl: null,
+      tp: [],
+      lot_size: null,
+      raw_instruction: 'If you are happy, close now',
+    }, 'If you are happy, close now')
+    assert.equal(shouldSkip, true)
   })
 })
 
