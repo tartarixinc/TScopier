@@ -400,6 +400,7 @@ async function syncRangeBasketTakeProfits(args) {
         openedTickets,
         skipAlreadySynced: true,
         internalRebalance,
+        orderCommentsEnabled: args.manual.order_comments_enabled !== false,
     });
     try {
         modifyResult = await runModifyPass(familyTrades, perLegTargets);

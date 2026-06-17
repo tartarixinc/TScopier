@@ -77,7 +77,6 @@ async function prepareEntryExecution(ctx, args) {
         return { ok: false, outcome: {} };
     }
     const liveEntryFast = sendOpts?.liveEntryFast === true;
-    const commentPrefix = sendOpts?.commentPrefix ?? (0, tradeComment_1.buildTscopierCommentPrefix)(signal.id);
     if (!(0, fxsocketClient_1.hasFxsocketConfigured)())
         return { ok: false, outcome: {} };
     const api = ctx.apiFor(broker);
@@ -112,6 +111,7 @@ async function prepareEntryExecution(ctx, args) {
     const requestedSymbol = mapping.symbol;
     const isManual = (broker.copier_mode ?? 'ai') === 'manual';
     const manual = (broker.manual_settings ?? {});
+    const commentPrefix = (0, tradeComment_1.resolveTscopierCommentPrefix)(signal.id, sendOpts?.commentSlug, manual, sendOpts?.commentPrefix);
     const needsQuotePrefetch = isManual
         && (0, manualPlanner_1.signalEntryPriceStrictEnabled)(manual)
         && (0, manualPlanner_1.parsedHasExplicitEntryAnchor)(parsed);

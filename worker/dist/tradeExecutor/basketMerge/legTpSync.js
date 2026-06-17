@@ -99,6 +99,7 @@ async function syncMultiBasketLegTakeProfits(ctx, args) {
             strictEntryPrefetch: null,
             openedTickets,
             skipAlreadySynced: true,
+            orderCommentsEnabled: manual.order_comments_enabled !== false,
         });
     }
     catch (err) {

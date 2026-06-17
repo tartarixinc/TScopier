@@ -57,6 +57,7 @@ const basketModFollowUp_1 = require("./basketModFollowUp");
 const channelActiveTradeParams_1 = require("./channelActiveTradeParams");
 const orderModifyBenign_1 = require("./orderModifyBenign");
 const parallelPool_1 = require("./parallelPool");
+const tradeComment_1 = require("./tradeComment");
 function isBuySideOp(op) {
     return op === 'Buy' || op === 'BuyLimit' || op === 'BuyStop' || op === 'BuyStopLimit';
 }
@@ -223,7 +224,7 @@ async function logBasketLegModify(supabase, args) {
     catch { /* best-effort */ }
 }
 async function runBasketLegModifies(args) {
-    const { supabase, api, uuid, symbol, direction, baseLot, params, signalId, userId, brokerAccountId, familyTrades, perLegTargets: rawTargets, signalTps, tpLots, nImmCwe, strictEntryPrefetch, openedTickets, skipAlreadySynced, alreadyModified, liveMgmtFast, internalRebalance, } = args;
+    const { supabase, api, uuid, symbol, direction, baseLot, params, signalId, userId, brokerAccountId, familyTrades, perLegTargets: rawTargets, signalTps, tpLots, nImmCwe, strictEntryPrefetch, openedTickets, skipAlreadySynced, alreadyModified, liveMgmtFast, internalRebalance, orderCommentsEnabled, } = args;
     const parsedTps = (signalTps ?? []).filter(t => typeof t === 'number' && Number.isFinite(t) && t > 0);
     const perLegTargets = (0, tpBucketDistribution_1.expandPerLegTargetsToCount)({
         targets: rawTargets,
@@ -383,7 +384,7 @@ async function runBasketLegModifies(args) {
             stoploss,
             takeprofit,
             slippage: 20,
-            comment: `TSCopier:${signalId.slice(0, 8)}:refresh`,
+            comment: (0, tradeComment_1.buildBasketRefreshComment)(signalId, { order_comments_enabled: orderCommentsEnabled }),
             expertID: 909090,
         };
         const clamped = clampBasketOrderStops(sendShape, params);

@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.isAiEntryParseEnabled = isAiEntryParseEnabled;
 exports.aiEntryResultToParseResult = aiEntryResultToParseResult;
+exports.coerceAiEntrySignal = coerceAiEntrySignal;
 exports.aiParseEntry = aiParseEntry;
 const parseSignal_1 = require("./parseSignal");
 const channelKeywordsCache_1 = require("./channelKeywordsCache");
@@ -62,7 +63,21 @@ function toParseResult(parsed, status, skip_reason) {
     return { parsed: parsed, status, skip_reason };
 }
 function aiEntryResultToParseResult(result) {
-    return toParseResult(result.parsed, result.status === 'parsed' ? 'parsed' : 'skipped', result.skip_reason ?? null);
+    const parsed = coerceAiEntrySignal(result.parsed);
+    return toParseResult(parsed, result.status === 'parsed' ? 'parsed' : 'skipped', result.skip_reason ?? null);
+}
+/**
+ * AI entry parser is only used on the entry fallback path, so parsed buy/sell
+ * should always express explicit "open new trade" intent. This prevents them
+ * from being routed as basket parameter refresh (modify-only).
+ */
+function coerceAiEntrySignal(parsed) {
+    const action = String(parsed.action ?? '').toLowerCase();
+    if (action !== 'buy' && action !== 'sell')
+        return parsed;
+    if (parsed.re_enter === true)
+        return parsed;
+    return { ...parsed, re_enter: true };
 }
 async function callOpenAiEntry(context) {
     if (!OPENAI_API_KEY) {
@@ -170,7 +185,7 @@ async function aiParseEntry(supabase, args) {
     const corrected = typeof aiRaw.corrected_message === 'string' && aiRaw.corrected_message.trim()
         ? aiRaw.corrected_message.trim()
         : args.rawMessage;
-    const parsed = (0, parseSignal_1.normalizeAiParsedOutput)({
+    const parsed = coerceAiEntrySignal((0, parseSignal_1.normalizeAiParsedOutput)({
         action: aiRaw.action,
         symbol: aiRaw.symbol,
         entry_price: aiRaw.entry_price,
@@ -183,7 +198,7 @@ async function aiParseEntry(supabase, args) {
         re_enter: aiRaw.re_enter,
         confidence: aiRaw.confidence,
         raw_instruction: corrected,
-    }, corrected);
+    }, corrected));
     const confidence = typeof aiRaw.confidence === 'number' && Number.isFinite(aiRaw.confidence)
         ? Math.min(1, Math.max(0, aiRaw.confidence))
         : 0.85;

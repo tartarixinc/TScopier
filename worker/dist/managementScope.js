@@ -11,8 +11,10 @@ exports.resolveNewestOpenSymbolTrades = resolveNewestOpenSymbolTrades;
 exports.isMgmtEligibleTradeStatus = isMgmtEligibleTradeStatus;
 exports.loadOpenTradesForManagement = loadOpenTradesForManagement;
 exports.resolveChannelCweTargets = resolveChannelCweTargets;
+exports.loadTradesForBasketAnchor = loadTradesForBasketAnchor;
 exports.loadOpenTradesForChannelWideCwe = loadOpenTradesForChannelWideCwe;
 exports.resolveChannelModifyTargets = resolveChannelModifyTargets;
+exports.expandMgmtRowsToFullBaskets = expandMgmtRowsToFullBaskets;
 const basketModFollowUp_1 = require("./basketModFollowUp");
 const signalPip_1 = require("./signalPip");
 const tradableSymbol_1 = require("./tradableSymbol");
@@ -299,4 +301,36 @@ function resolveChannelModifyTargets(trades, parsed) {
     if (plausible.length)
         return plausible;
     return scoped;
+}
+/**
+ * Ensure every open leg on each touched basket anchor is included — channel-wide
+ * loaders can return a subset when symbol filters or attribution lag behind fills.
+ */
+async function expandMgmtRowsToFullBaskets(supabase, args) {
+    if (!args.rows.length)
+        return [];
+    const merged = new Map();
+    for (const tr of args.rows)
+        merged.set(tr.id, tr);
+    const anchors = new Map();
+    for (const tr of args.rows) {
+        anchors.set(`${tr.broker_account_id}|${tr.signal_id}`, {
+            brokerAccountId: tr.broker_account_id,
+            anchorSignalId: tr.signal_id,
+        });
+    }
+    await Promise.all([...anchors.values()].map(async ({ brokerAccountId, anchorSignalId }) => {
+        const basketRows = await loadTradesForBasketAnchor(supabase, {
+            userId: args.userId,
+            brokerAccountIds: [brokerAccountId],
+            anchorSignalId,
+        });
+        for (const tr of basketRows)
+            merged.set(tr.id, tr);
+    }));
+    return [...merged.values()].sort((a, b) => {
+        const ta = a.opened_at ? new Date(a.opened_at).getTime() : 0;
+        const tb = b.opened_at ? new Date(b.opened_at).getTime() : 0;
+        return ta - tb;
+    });
 }

@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.planMultiManualOrders = planMultiManualOrders;
 const manualSettings_1 = require("./manualSettings");
+const tradeComment_1 = require("../tradeComment");
 const rangeSplit_1 = require("./rangeSplit");
 const tpBucketDistribution_1 = require("./tpBucketDistribution");
 const multiTradeLegUnits_1 = require("./multiTradeLegUnits");
@@ -186,7 +187,7 @@ function planMultiManualOrders(args) {
                     stoploss: roundPrice(finalSl),
                     takeprofit: roundPrice(g.tpPrice),
                     ...expirationFields,
-                    comment: `${commentPrefix}:tp${orderNo}`,
+                    comment: (0, tradeComment_1.appendOrderCommentSuffix)(commentPrefix, `:tp${orderNo}`),
                 });
             }
         }
@@ -206,7 +207,7 @@ function planMultiManualOrders(args) {
                 stoploss: finalSl,
                 takeprofit: tpPrice,
                 slippage: slippage ?? 20,
-                comment: `${commentPrefix}:rg${stepIdx}.tp`,
+                comment: (0, tradeComment_1.appendOrderCommentSuffix)(commentPrefix, `:rg${stepIdx}.tp`),
                 expertID: expertId,
                 expiryHours,
             });
@@ -224,7 +225,7 @@ function planMultiManualOrders(args) {
                 stoploss: roundPrice(finalSl),
                 takeprofit: roundPrice(tpPrice),
                 ...expirationFields,
-                comment: `${commentPrefix}:tp.rem`,
+                comment: (0, tradeComment_1.appendOrderCommentSuffix)(commentPrefix, ':tp.rem'),
             });
         }
     }

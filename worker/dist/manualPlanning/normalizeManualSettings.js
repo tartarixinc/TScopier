@@ -125,6 +125,7 @@ function normalizeManualSettingsForExecution(raw, opts) {
         use_predefined_sl_pips: j.use_predefined_sl_pips === true,
         use_predefined_tp_pips: j.use_predefined_tp_pips === true,
         add_new_trades_to_existing: j.add_new_trades_to_existing !== false,
+        order_comments_enabled: j.order_comments_enabled !== false,
         copy_limits: j.copy_limits && typeof j.copy_limits === 'object'
             ? j.copy_limits
             : undefined,

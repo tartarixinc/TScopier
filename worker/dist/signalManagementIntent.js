@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.trainedManagementAliases = trainedManagementAliases;
 exports.channelHasTrainedManagement = channelHasTrainedManagement;
 exports.looksLikeExplicitFullCloseCommand = looksLikeExplicitFullCloseCommand;
+exports.looksLikeConditionalCloseSuggestion = looksLikeConditionalCloseSuggestion;
 exports.looksLikeChannelManagementUpdate = looksLikeChannelManagementUpdate;
 exports.partialCloseFractionFromMessage = partialCloseFractionFromMessage;
 exports.isPipCountInMessage = isPipCountInMessage;
@@ -57,6 +58,28 @@ function looksLikeExplicitFullCloseCommand(message, ctx) {
         || new RegExp(`\\bclose\\s+(?:${EXPLICIT_CLOSE_SYMBOL}|[a-z]{6})\\b`, 'i').test(t)
         || /\b(?:flatten|kill\s+zones?)\b/i.test(t)
         || /\bexit\s+(?:trade|trades|position|positions|long|short|now)\b/i.test(t));
+}
+/** Optional/advisory close language; should not auto-execute a full close. */
+function looksLikeConditionalCloseSuggestion(message) {
+    const t = String(message ?? '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .normalize('NFD')
+        .replace(/\p{M}/gu, '')
+        .toLowerCase();
+    if (!t)
+        return false;
+    if (!/\b(close|cerrar|fermer|fermez|zamknij|закрой|закрыть|stang|stäng|sluit|exit)\b/.test(t)) {
+        return false;
+    }
+    if (/\b(close|cerrar|fermer|fermez)\s+(all|everything|todo|tout|все|всё)\b/.test(t)) {
+        return false;
+    }
+    if ((0, multilingualManagementTerms_1.textLooksLikeConditionalClose)(t))
+        return true;
+    if (/\b(if|si|если)\b/.test(t))
+        return true;
+    return /\b(if you want|up to you|your choice|if preferred|if needed)\b/.test(t);
 }
 function escapeRegExp(s) {
     return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

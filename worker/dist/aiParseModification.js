@@ -3,11 +3,17 @@
  * OpenAI-powered parse for modification / management Telegram messages.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.coerceMgmtSlTpFollowUpAction = coerceMgmtSlTpFollowUpAction;
+exports.shouldSkipConditionalCloseForAi = shouldSkipConditionalCloseForAi;
 exports.buildAiModificationContext = buildAiModificationContext;
 exports.aiParseModification = aiParseModification;
 exports.aiResultToParseResult = aiResultToParseResult;
+const parsedEntry_1 = require("./manualPlanning/parsedEntry");
 const parseSignal_1 = require("./parseSignal");
 const channelKeywordsCache_1 = require("./channelKeywordsCache");
+const signalManagementIntent_1 = require("./signalManagementIntent");
+const signalEntryNowRequirement_1 = require("./signalEntryNowRequirement");
+const signalPriceInference_1 = require("./signalPriceInference");
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? '';
 function aiModificationParseEnabled() {
     const v = String(process.env.AI_MODIFICATION_PARSE_ENABLED ?? 'true').toLowerCase();
@@ -49,8 +55,9 @@ function resultFromDeterministic(det) {
         return null;
     if (deterministicFastPathConfidence(det.parsed) < 0.9)
         return null;
+    const coerced = coerceMgmtSlTpFollowUpAction(det.parsed);
     return {
-        parsed: det.parsed,
+        parsed: coerced,
         status: 'parsed',
         skip_reason: null,
         intent: mapActionToIntent(det.parsed.action),
@@ -74,6 +81,33 @@ function mapActionToIntent(action) {
     if (a === 'ignore')
         return 'ignore';
     return 'commentary';
+}
+/** SL/TP-only follow-ups must use `modify` so dispatch hits the full-basket mgmt path. */
+function coerceMgmtSlTpFollowUpAction(parsed, intent = mapActionToIntent(parsed.action)) {
+    const action = String(parsed.action ?? '').toLowerCase();
+    if (action === 'modify')
+        return parsed;
+    const hasSl = typeof parsed.sl === 'number' && Number.isFinite(parsed.sl) && parsed.sl > 0;
+    const hasTp = (parsed.tp ?? []).some(t => typeof t === 'number' && Number.isFinite(t) && t > 0);
+    if (!hasSl && !hasTp)
+        return parsed;
+    if ((0, signalPriceInference_1.parsedHasReEnterIntent)(parsed))
+        return parsed;
+    if ((0, parsedEntry_1.parsedHasExplicitEntryAnchor)(parsed))
+        return parsed;
+    if ((0, signalEntryNowRequirement_1.messageHasMarketNowIntent)(parsed.raw_instruction ?? ''))
+        return parsed;
+    const slTpFollowUpIntent = intent === 'modify'
+        || intent === 'parameter_refresh'
+        || (action === 'buy' || action === 'sell');
+    if (slTpFollowUpIntent && (action === 'buy' || action === 'sell')) {
+        return { ...parsed, action: 'modify' };
+    }
+    return parsed;
+}
+function shouldSkipConditionalCloseForAi(parsed, rawMessage) {
+    return String(parsed.action ?? '').toLowerCase() === 'close'
+        && (0, signalManagementIntent_1.looksLikeConditionalCloseSuggestion)(rawMessage);
 }
 async function loadParentSignal(supabase, parentSignalId) {
     if (!parentSignalId)
@@ -128,6 +162,7 @@ Rules:
 - Correct obvious typos in labels/prices (mov sl, 265O) but never invent prices not implied by the message.
 - parameter_refresh: same trade SL/TP update — use buy/sell matching parent direction with sl/tp only (no new entry).
 - commentary/TP-hit announcements without actionable instruction → action ignore, intent commentary.
+- Conditional/advisory closes (e.g. "if you are happy, close now") are commentary, not executable close.
 - re_enter true only when message clearly opens a new trade.
 - confidence 0-1.`;
 async function callOpenAiModification(context) {
@@ -173,7 +208,8 @@ function buildAiResult(raw, rawMessage) {
     const corrected = typeof raw.corrected_message === 'string' && raw.corrected_message.trim()
         ? raw.corrected_message.trim()
         : rawMessage;
-    const parsed = (0, parseSignal_1.normalizeAiParsedOutput)({
+    const intentHint = String(raw.intent ?? mapActionToIntent(String(raw.action ?? '')));
+    const parsed = coerceMgmtSlTpFollowUpAction((0, parseSignal_1.normalizeAiParsedOutput)({
         action: raw.action,
         symbol: raw.symbol,
         entry_price: raw.entry_price,
@@ -186,7 +222,10 @@ function buildAiResult(raw, rawMessage) {
         re_enter: raw.re_enter,
         confidence: raw.confidence,
         raw_instruction: corrected,
-    }, corrected);
+    }, corrected), ['modify', 'close', 'breakeven', 'partial_profit', 'parameter_refresh', 'ignore', 'commentary']
+        .includes(intentHint)
+        ? intentHint
+        : mapActionToIntent(String(raw.action ?? '')));
     const intentRaw = String(raw.intent ?? mapActionToIntent(parsed.action));
     const intent = ['modify', 'close', 'breakeven', 'partial_profit', 'parameter_refresh', 'ignore', 'commentary'].includes(intentRaw)
         ? intentRaw
@@ -194,6 +233,17 @@ function buildAiResult(raw, rawMessage) {
     const confidence = typeof raw.confidence === 'number' && Number.isFinite(raw.confidence)
         ? Math.min(1, Math.max(0, raw.confidence))
         : 0.85;
+    if (shouldSkipConditionalCloseForAi(parsed, corrected)) {
+        return {
+            parsed: { ...parsed, action: 'ignore' },
+            status: 'skipped',
+            skip_reason: 'Conditional close instruction requires user discretion',
+            intent: 'commentary',
+            typo_corrected: raw.typo_corrected === true,
+            confidence,
+            source: 'openai',
+        };
+    }
     if (parsed.action === 'ignore' || intent === 'commentary' || intent === 'ignore') {
         return {
             parsed,
@@ -227,7 +277,7 @@ function revisionDeterministicParse(rawMessage, keywords, lexicon, priorParsed) 
             ? 'parameter_refresh'
             : mapActionToIntent(action);
         return {
-            parsed: entry.parsed,
+            parsed: coerceMgmtSlTpFollowUpAction(entry.parsed, intent),
             status: 'parsed',
             skip_reason: null,
             intent,
@@ -239,7 +289,7 @@ function revisionDeterministicParse(rawMessage, keywords, lexicon, priorParsed) 
     const mod = (0, parseSignal_1.parseModificationDeterministic)(rawMessage, keywords, lexicon);
     if (mod.status === 'parsed' && mod.parsed.action !== 'ignore') {
         return {
-            parsed: mod.parsed,
+            parsed: coerceMgmtSlTpFollowUpAction(mod.parsed),
             status: 'parsed',
             skip_reason: null,
             intent: mapActionToIntent(mod.parsed.action),
@@ -350,5 +400,6 @@ async function aiParseModification(supabase, args) {
 }
 /** Convert AI result to parse result shape used by listener dispatch. */
 function aiResultToParseResult(result) {
-    return toParseResult(result.parsed, result.status === 'parsed' ? 'parsed' : 'skipped', result.skip_reason ?? null);
+    const parsed = coerceMgmtSlTpFollowUpAction(result.parsed, result.intent);
+    return toParseResult(parsed, result.status === 'parsed' ? 'parsed' : 'skipped', result.skip_reason ?? null);
 }

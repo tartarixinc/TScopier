@@ -192,6 +192,7 @@ class BasketSlTpReconcileMonitor {
             strictEntryPrefetch: null,
             openedTickets,
             skipAlreadySynced: true,
+            orderCommentsEnabled: manual.order_comments_enabled !== false,
         });
         const mergeFailed = summary.modified < summary.openLegs;
         const partialMsg = mergeFailed

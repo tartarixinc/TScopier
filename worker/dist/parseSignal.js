@@ -538,8 +538,11 @@ function parseDeterministicManagement(message, lexicon, channelKeywords) {
     }
     else if (wantsBreakeven)
         action = "breakeven";
-    else if (wantsExplicitFullClose(t, kwClose, channelKeywords, lexicon))
+    else if (wantsExplicitFullClose(t, kwClose, channelKeywords, lexicon)) {
+        if ((0, signalManagementIntent_1.looksLikeConditionalCloseSuggestion)(t))
+            return null;
         action = "close";
+    }
     else if (looksLikeStopOrTpAdjustCommand(t) || hasAnyKeyword(t, kwModify)) {
         action = "modify";
         confidence = 0.95;

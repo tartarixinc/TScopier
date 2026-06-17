@@ -19,7 +19,7 @@ const mtTradeFields_1 = require("./mtTradeFields");
  * FxSocket MT5 REST client for the worker.
  *
  * - Account linking: POST/GET/DELETE https://api.fxsocket.com/v1/accounts
- * - Trading: https://api.fxsocket.com/mt5/{accountId}/…
+ * - Trading: https://api.fxsocket.com/mt4/{accountId}/… or …/mt5/{accountId}/…
  * - Auth: X-API-Key header (FXSOCKET_API_KEY)
  */
 const DEFAULT_BASE_URL = 'https://api.fxsocket.com';
@@ -370,20 +370,24 @@ function symbolInfoToParams(info, symbol) {
         ...info,
     };
 }
-function mtPlatformFrom(_s) {
-    return 'MT5';
+function mtPlatformFrom(value) {
+    return String(value ?? '').trim().toUpperCase() === 'MT4' ? 'MT4' : 'MT5';
+}
+function accountApiPathSegment(platform) {
+    return platform === 'MT4' ? 'mt4' : 'mt5';
 }
 function normalizeV1Account(raw) {
     const o = (raw && typeof raw === 'object') ? raw : {};
     return {
         id: o.id != null ? String(o.id) : '',
+        platform: o.platform != null ? String(o.platform) : '',
         status: o.status != null ? String(o.status) : '',
         error: o.error != null ? String(o.error) : '',
     };
 }
 class FxsocketBrokerClient {
     constructor(_platform = 'MT5', apiKey, baseUrl, timeoutMs = 30000) {
-        this.platform = 'MT5';
+        this.platformCache = new Map();
         const key = (apiKey ?? resolveApiKey()).trim();
         if (!key)
             throw new Error('FxsocketBrokerClient: FXSOCKET_API_KEY required');
@@ -392,11 +396,42 @@ class FxsocketBrokerClient {
         this.v1BaseUrl = `${this.baseUrl}/v1`;
         this.timeoutMs = timeoutMs;
     }
-    accountBase(accountId) {
+    /** Seed platform from broker_accounts so REST calls use /mt4/ or /mt5/ without a v1 round-trip. */
+    seedPlatformCache(id, platform) {
+        const trimmed = String(id ?? '').trim();
+        if (!trimmed)
+            return;
+        this.platformCache.set(trimmed, mtPlatformFrom(platform));
+    }
+    async resolvePlatform(id, hint) {
+        if (hint) {
+            this.platformCache.set(id, hint);
+            return hint;
+        }
+        const cached = this.platformCache.get(id);
+        if (cached)
+            return cached;
+        try {
+            const v1 = await this.getV1Account(id);
+            const platform = mtPlatformFrom(v1.platform);
+            this.platformCache.set(id, platform);
+            return platform;
+        }
+        catch {
+            return 'MT5';
+        }
+    }
+    async accountBase(accountId, platformHint) {
         const id = String(accountId ?? '').trim();
         if (!id)
             throw new FxsocketApiError('account id required', 400);
-        return `${this.baseUrl}/mt5/${encodeURIComponent(id)}`;
+        const platform = await this.resolvePlatform(id, platformHint);
+        return `${this.baseUrl}/${accountApiPathSegment(platform)}/${encodeURIComponent(id)}`;
+    }
+    async getV1Account(id) {
+        const raw = await this.get(`${this.v1BaseUrl}/accounts/${encodeURIComponent(id)}`);
+        assertNoApiError(raw);
+        return normalizeV1Account(raw);
     }
     async http(method, url, opts) {
         const t = opts?.timeoutMs ?? this.timeoutMs;
@@ -430,7 +465,7 @@ class FxsocketBrokerClient {
         const status = res.statusCode;
         if (status < 200 || status >= 300) {
             const err = parseErrorEnvelope(parsed);
-            if (status === 404 && url.includes('/mt5/')) {
+            if (status === 404 && (url.includes('/mt5/') || url.includes('/mt4/'))) {
                 throw new FxsocketApiError('FxSocket account or endpoint not found. Check the account UUID and that the terminal is running.', 404, err.code, err.commandId);
             }
             throw new FxsocketApiError(err.message || text || `HTTP ${status}`, status, err.code, err.commandId);
@@ -537,7 +572,7 @@ class FxsocketBrokerClient {
         }
     }
     async openedOrders(id) {
-        const raw = await this.get(`${this.accountBase(id)}/OpenedOrders`);
+        const raw = await this.get(`${await this.accountBase(id)}/OpenedOrders`);
         assertNoApiError(raw);
         return unwrapOrderList(raw);
     }
@@ -554,7 +589,7 @@ class FxsocketBrokerClient {
         }
     }
     async orderHistory(id, from, to) {
-        const raw = await this.get(`${this.accountBase(id)}/OrderHistory`, { from, to });
+        const raw = await this.get(`${await this.accountBase(id)}/OrderHistory`, { from, to });
         assertNoApiError(raw);
         return unwrapOrderList(raw);
     }
@@ -657,7 +692,7 @@ class FxsocketBrokerClient {
         return [...byKey.values()];
     }
     async accountSummary(id) {
-        const raw = await this.get(`${this.accountBase(id)}/AccountSummary`);
+        const raw = await this.get(`${await this.accountBase(id)}/AccountSummary`);
         assertNoApiError(raw);
         return normalizeAccountSummary(raw);
     }
@@ -666,6 +701,7 @@ class FxsocketBrokerClient {
         const raw = await this.get(`${this.v1BaseUrl}/accounts/${encodeURIComponent(id)}`, undefined, checkTimeoutMs);
         assertNoApiError(raw);
         const acct = normalizeV1Account(raw);
+        this.platformCache.set(id, mtPlatformFrom(acct.platform));
         if (acct.status === 'error') {
             throw new FxsocketApiError(acct.error || 'Broker session is not connected', 502);
         }
@@ -677,15 +713,15 @@ class FxsocketBrokerClient {
         }
     }
     async symbolParams(id, symbol) {
-        const raw = await this.get(`${this.accountBase(id)}/SymbolInfo`, { symbol });
+        const raw = await this.get(`${await this.accountBase(id)}/SymbolInfo`, { symbol });
         return symbolInfoToParams(raw ?? {}, symbol);
     }
     async symbols(id) {
-        const raw = await this.get(`${this.accountBase(id)}/symbols`);
+        const raw = await this.get(`${await this.accountBase(id)}/symbols`);
         return Array.isArray(raw) ? raw : unwrapOrderList(raw);
     }
     async quote(id, symbol) {
-        const raw = await this.get(`${this.accountBase(id)}/getQuote`, { symbol });
+        const raw = await this.get(`${await this.accountBase(id)}/getQuote`, { symbol });
         assertNoApiError(raw);
         const root = (raw && typeof raw === 'object') ? raw : {};
         const r = (root.result && typeof root.result === 'object') ? root.result : root;
@@ -751,7 +787,7 @@ class FxsocketBrokerClient {
             payload.takeProfit = args.takeprofit;
         if (args.expiration)
             payload.expiration = args.expiration;
-        const raw = await this.post(`${this.accountBase(id)}/OrderSend`, payload, 90000);
+        const raw = await this.post(`${await this.accountBase(id)}/OrderSend`, payload, 90000);
         assertNoApiError(raw);
         const out = normalizeOrderResponse(raw);
         if (!Number.isFinite(out.ticket) || out.ticket <= 0) {
@@ -798,7 +834,7 @@ class FxsocketBrokerClient {
             payload.price = args.price;
         if (args.expiration)
             payload.expiration = args.expiration;
-        const raw = await this.post(`${this.accountBase(id)}/OrderModify`, payload, 90000);
+        const raw = await this.post(`${await this.accountBase(id)}/OrderModify`, payload, 90000);
         assertNoApiError(raw);
         return normalizeOrderResponse(raw);
     }
@@ -811,7 +847,7 @@ class FxsocketBrokerClient {
             payload.volume = args.lots;
         if (args.price != null && args.price > 0)
             payload.price = args.price;
-        const raw = await this.post(`${this.accountBase(id)}/OrderClose`, payload, 90000);
+        const raw = await this.post(`${await this.accountBase(id)}/OrderClose`, payload, 90000);
         assertNoApiError(raw);
         return normalizeOrderResponse(raw);
     }

@@ -44,7 +44,8 @@ class FxsocketWsClient {
             throw new Error('FxsocketWsClient: apiKey required');
         this.accountId = id;
         this.apiKey = key;
-        this.wsUrl = `${wsBaseUrl(base)}/mt5/${encodeURIComponent(id)}/ws?api_key=${encodeURIComponent(key)}`;
+        const segment = opts.platform === 'MT4' ? 'mt4' : 'mt5';
+        this.wsUrl = `${wsBaseUrl(base)}/${segment}/${encodeURIComponent(id)}/ws?api_key=${encodeURIComponent(key)}`;
         this.reconnect = opts.reconnect !== false;
         this.reconnectDelayMs = Math.max(500, opts.reconnectDelayMs ?? 2000);
         this.maxReconnectDelayMs = Math.max(this.reconnectDelayMs, opts.maxReconnectDelayMs ?? 60000);
@@ -167,7 +168,8 @@ class FxsocketWsClient {
     }
 }
 exports.FxsocketWsClient = FxsocketWsClient;
-function buildFxsocketWsUrl(accountId, apiKey, baseUrl) {
+function buildFxsocketWsUrl(accountId, apiKey, baseUrl, platform = 'MT5') {
     const base = trimEnv(baseUrl) || trimEnv(process.env.FXSOCKET_BASE_URL) || DEFAULT_BASE_URL;
-    return `${wsBaseUrl(base)}/mt5/${encodeURIComponent(accountId)}/ws?api_key=${encodeURIComponent(apiKey)}`;
+    const segment = platform === 'MT4' ? 'mt4' : 'mt5';
+    return `${wsBaseUrl(base)}/${segment}/${encodeURIComponent(accountId)}/ws?api_key=${encodeURIComponent(apiKey)}`;
 }

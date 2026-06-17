@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.attachBrokerStreamProxy = attachBrokerStreamProxy;
 const ws_1 = require("ws");
 const mtApiByAccount_1 = require("./mtApiByAccount");
+const fxsocketClient_1 = require("./fxsocketClient");
 const DEFAULT_SUBSCRIPTIONS = [
     { topic: 'account' },
     { topic: 'positions' },
@@ -24,7 +25,7 @@ async function verifyUserToken(supabase, token) {
 async function loadOwnedBroker(supabase, userId, brokerAccountId) {
     const { data, error } = await supabase
         .from('broker_accounts')
-        .select('fxsocket_account_id,metaapi_account_id')
+        .select('fxsocket_account_id,metaapi_account_id,platform')
         .eq('id', brokerAccountId)
         .eq('user_id', userId)
         .maybeSingle();
@@ -70,8 +71,9 @@ function attachBrokerStreamProxy(server, supabase, streamManager) {
                     return;
                 }
                 const sessionId = (0, mtApiByAccount_1.brokerSessionId)(broker);
+                const platform = (0, fxsocketClient_1.mtPlatformFrom)(broker.platform);
                 wss.handleUpgrade(req, socket, head, (clientWs) => {
-                    void handleClientConnection(clientWs, sessionId, streamManager);
+                    void handleClientConnection(clientWs, sessionId, streamManager, platform);
                 });
             }
             catch (err) {
@@ -82,7 +84,7 @@ function attachBrokerStreamProxy(server, supabase, streamManager) {
         })();
     });
 }
-function handleClientConnection(clientWs, sessionId, streamManager) {
+function handleClientConnection(clientWs, sessionId, streamManager, platform) {
     const relay = (msg) => {
         if (clientWs.readyState !== ws_1.WebSocket.OPEN)
             return;
@@ -93,7 +95,7 @@ function handleClientConnection(clientWs, sessionId, streamManager) {
             /* ignore */
         }
     };
-    const unsub = streamManager.subscribe(sessionId, relay, DEFAULT_SUBSCRIPTIONS);
+    const unsub = streamManager.subscribe(sessionId, relay, DEFAULT_SUBSCRIPTIONS, platform);
     clientWs.on('message', (raw) => {
         try {
             const frame = JSON.parse(String(raw));

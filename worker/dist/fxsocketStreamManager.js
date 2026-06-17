@@ -36,7 +36,7 @@ class FxsocketStreamManager {
      * Subscribe to stream messages for an account. Returns an unsubscribe function.
      * Pass `subscriptions` to auto-subscribe upstream topics (reference-counted).
      */
-    subscribe(accountId, handler, subscriptions = []) {
+    subscribe(accountId, handler, subscriptions = [], platform = 'MT5') {
         const id = String(accountId ?? '').trim();
         if (!id)
             throw new Error('FxsocketStreamManager.subscribe: accountId required');
@@ -46,6 +46,7 @@ class FxsocketStreamManager {
                 accountId: id,
                 apiKey: this.apiKey,
                 baseUrl: this.baseUrl,
+                platform,
                 onConnectionChange: (connected) => {
                     if (connected)
                         return;

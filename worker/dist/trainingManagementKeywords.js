@@ -50,12 +50,24 @@ function hasTrainedManagementGroups(groups) {
 function fold(s) {
     return s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
 }
+function looksConditionalCloseCue(raw) {
+    const f = fold(raw);
+    if (!/\b(close|cerrar|fermer|fermez|zamknij|закрой|закрыть|stang|stäng|sluit|exit)\b/.test(f))
+        return false;
+    if (/\b(close|cerrar|fermer|fermez)\s+(all|everything|todo|tout|все|всё)\b/.test(f))
+        return false;
+    return (/\b(if|si|если)\b/.test(f)
+        || /\b(if you want|up to you|your choice|if preferred|if needed)\b/.test(f)
+        || /\b(if you are happy|if you are satisfied|if satisfied)\b/.test(f));
+}
 /** Best-effort bucket when only a flat management_cues list exists (legacy training). */
 function bucketFlatManagementCues(cues) {
     const groups = emptyManagementGroups();
     for (const raw of cues) {
         const cue = String(raw ?? '').trim();
         if (!cue)
+            continue;
+        if (looksConditionalCloseCue(cue))
             continue;
         const f = fold(cue);
         if (/\b(close\s+all|close\s+everything|flatten|exit\s+all)\b/.test(f)

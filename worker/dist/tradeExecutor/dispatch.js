@@ -513,7 +513,6 @@ async function handleSignal(ctx, row, opts) {
         const { keywords: channelKeywords, commentSlug } = channelMetaPromise
             ? await channelMetaPromise
             : await ctx.getChannelMeta(row.channel_id);
-        const commentPrefix = (0, tradeComment_1.buildTscopierCommentPrefix)(row.id, commentSlug);
         const rawText = String(parsed.raw_instruction ?? '').toLowerCase();
         const ignoreKw = channelKeywords?.additional?.ignore_keyword?.trim().toLowerCase();
         const skipKw = channelKeywords?.additional?.skip_keyword?.trim().toLowerCase();
@@ -559,7 +558,7 @@ async function handleSignal(ctx, row, opts) {
         const outcomes = await Promise.all(brokers.map(b => ctx.sendOrder(row, parsed, op, b, channelKeywords, pipelineT0, {
             liveEntryFast: liveFast,
             liveMgmtFast,
-            commentPrefix,
+            commentSlug,
             sameSignalRefresh: isMessageRevision,
         })));
         if (liveFast && row.pipeline_ts) {
@@ -683,8 +682,6 @@ async function getChannelMeta(ctx, channelId) {
     }
 }
 function brokerEligibleForSignal(ctx, broker, signal) {
-    if (String(broker.platform ?? '').toUpperCase() === 'MT4')
-        return false;
     if (!broker.is_active)
         return false;
     const activatedAt = ctx.brokerActivatedAt.get(broker.id);

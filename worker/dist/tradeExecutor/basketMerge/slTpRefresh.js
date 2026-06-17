@@ -365,6 +365,7 @@ async function applyBasketSlTpRefresh(ctx, args) {
             alreadyModified: modifiedTradeIds,
             skipAlreadySynced: true,
             liveMgmtFast,
+            orderCommentsEnabled: manual.order_comments_enabled !== false,
         });
         for (const id of pass.modifiedTradeIds)
             modifiedTradeIds.add(id);

@@ -528,6 +528,13 @@ export class FxsocketBrokerClient {
     this.timeoutMs = timeoutMs
   }
 
+  /** Seed platform from broker_accounts so REST calls use /mt4/ or /mt5/ without a v1 round-trip. */
+  seedPlatformCache(id: string, platform: MtPlatform | string | null | undefined): void {
+    const trimmed = String(id ?? '').trim()
+    if (!trimmed) return
+    this.platformCache.set(trimmed, mtPlatformFrom(platform))
+  }
+
   private async resolvePlatform(id: string, hint?: MtPlatform): Promise<MtPlatform> {
     if (hint) {
       this.platformCache.set(id, hint)

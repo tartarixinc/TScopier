@@ -789,7 +789,6 @@ export async function getChannelMeta(ctx: TradeExecutorContext, channelId: strin
   }
 
 export function brokerEligibleForSignal(ctx: TradeExecutorContext, broker: BrokerRow, signal: SignalRow): boolean {
-    if (String(broker.platform ?? '').toUpperCase() === 'MT4') return false
     if (!broker.is_active) return false
     const activatedAt = ctx.brokerActivatedAt.get(broker.id)
     if (activatedAt == null) return true

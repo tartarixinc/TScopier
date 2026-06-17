@@ -16,6 +16,7 @@ exports.filterTradesWithinPipsOfReference = filterTradesWithinPipsOfReference;
 exports.selectTradesForCweInstruction = selectTradesForCweInstruction;
 exports.loadFiredRangeLayeringTickets = loadFiredRangeLayeringTickets;
 exports.selectImmediateLegsForCweInstruction = selectImmediateLegsForCweInstruction;
+exports.selectWorseImmediateLegsForCweInstruction = selectWorseImmediateLegsForCweInstruction;
 const basketModFollowUp_1 = require("./basketModFollowUp");
 function isEntryWithinPipsOfReference(entryPrice, referencePrice, pips, pipSize) {
     if (!Number.isFinite(entryPrice) || entryPrice <= 0)
@@ -110,5 +111,19 @@ function selectImmediateLegsForCweInstruction(trades, layeringTickets) {
         if (!ticket)
             return false;
         return !layeringTickets.has(ticket);
+    });
+}
+/**
+ * Instruction CWE: immediate legs whose entry is within `pips` of the live quote
+ * (worse/near-market fills). Range layering tickets stay open; better fills farther
+ * from the quote are kept.
+ */
+function selectWorseImmediateLegsForCweInstruction(args) {
+    const immediates = selectImmediateLegsForCweInstruction(args.trades, args.layeringTickets);
+    return filterTradesWithinPipsOfReference({
+        trades: immediates,
+        referencePrice: args.referencePrice,
+        pips: args.pips,
+        pipSize: args.pipSize,
     });
 }

@@ -5,6 +5,7 @@ import {
   isBrokerDisconnectedMessage,
   MT_SESSION_EXPIRED_HINT,
   FxsocketBrokerClient,
+  mtPlatformFrom,
   MtOperation,
   normalizeSymbolParams,
   OrderSendArgs,
@@ -438,6 +439,13 @@ export class TradeExecutor {
         this.trackBrokerActivation(normalized)
       }
     }
+    const api = getFxsocketClient()
+    if (api) {
+      for (const broker of this.brokersById.values()) {
+        const sessionId = brokerSessionUuid(broker)
+        if (sessionId) api.seedPlatformCache(sessionId, mtPlatformFrom(broker.platform))
+      }
+    }
     console.log(`[tradeExecutor] cached ${this.brokersById.size} broker accounts across ${this.brokersByUser.size} users`)
     const pingOnStart = String(process.env.BROKER_PING_ON_WORKER_START ?? 'true').toLowerCase()
     if (pingOnStart !== 'false' && pingOnStart !== '0') {
@@ -492,6 +500,8 @@ export class TradeExecutor {
 
   private applyBrokerCacheRow(row: BrokerRow) {
     const normalized = this.normalizeBrokerRow(row)
+    const sessionId = brokerSessionUuid(normalized)
+    if (sessionId) getFxsocketClient()?.seedPlatformCache(sessionId, mtPlatformFrom(normalized.platform))
     const previous = this.brokersById.get(row.id)
     const wasSessionDown = Boolean(
       previous

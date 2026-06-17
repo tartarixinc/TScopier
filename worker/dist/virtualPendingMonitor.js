@@ -641,7 +641,7 @@ class VirtualPendingMonitor {
             slippage: leg.slippage ?? 20,
             stoploss: leg.stoploss ?? 0,
             takeprofit: leg.cwe_close_price != null ? 0 : (leg.takeprofit ?? 0),
-            comment: leg.comment ?? `TSCopier:rg${leg.step_idx}`,
+            comment: leg.comment ?? '',
             expertID: leg.expert_id ?? 909090,
         };
         // Last-second SL/TP clamp using the fire-time quote as the reference.

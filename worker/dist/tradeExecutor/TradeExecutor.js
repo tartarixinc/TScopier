@@ -282,6 +282,14 @@ class TradeExecutor {
                 this.trackBrokerActivation(normalized);
             }
         }
+        const api = (0, fxsocketClient_1.getFxsocketClient)();
+        if (api) {
+            for (const broker of this.brokersById.values()) {
+                const sessionId = (0, helpers_2.brokerSessionUuid)(broker);
+                if (sessionId)
+                    api.seedPlatformCache(sessionId, (0, fxsocketClient_1.mtPlatformFrom)(broker.platform));
+            }
+        }
         console.log(`[tradeExecutor] cached ${this.brokersById.size} broker accounts across ${this.brokersByUser.size} users`);
         const pingOnStart = String(process.env.BROKER_PING_ON_WORKER_START ?? 'true').toLowerCase();
         if (pingOnStart !== 'false' && pingOnStart !== '0') {
@@ -328,6 +336,9 @@ class TradeExecutor {
     }
     applyBrokerCacheRow(row) {
         const normalized = this.normalizeBrokerRow(row);
+        const sessionId = (0, helpers_2.brokerSessionUuid)(normalized);
+        if (sessionId)
+            (0, fxsocketClient_1.getFxsocketClient)()?.seedPlatformCache(sessionId, (0, fxsocketClient_1.mtPlatformFrom)(normalized.platform));
         const previous = this.brokersById.get(row.id);
         const wasSessionDown = Boolean(previous
             && (previous.connection_status === 'error'

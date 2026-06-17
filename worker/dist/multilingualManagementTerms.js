@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.COMMON_PARTIAL_CLOSE_PHRASES = exports.SUPPORTED_PARTIAL_CLOSE_BY_LOCALE = exports.COMMON_BREAKEVEN_PHRASES = exports.SUPPORTED_BREAKEVEN_BY_LOCALE = exports.COMMON_CLOSE_ALL_PHRASES = exports.SUPPORTED_CLOSE_ALL_BY_LOCALE = void 0;
+exports.CONDITIONAL_CLOSE_PHRASES = exports.COMMON_PARTIAL_CLOSE_PHRASES = exports.SUPPORTED_PARTIAL_CLOSE_BY_LOCALE = exports.COMMON_BREAKEVEN_PHRASES = exports.SUPPORTED_BREAKEVEN_BY_LOCALE = exports.COMMON_CLOSE_ALL_PHRASES = exports.SUPPORTED_CLOSE_ALL_BY_LOCALE = void 0;
+exports.textLooksLikeConditionalClose = textLooksLikeConditionalClose;
 exports.textLooksLikeMultilingualFullClose = textLooksLikeMultilingualFullClose;
 exports.textLooksLikeMultilingualManagement = textLooksLikeMultilingualManagement;
 /**
@@ -112,6 +113,35 @@ exports.SUPPORTED_PARTIAL_CLOSE_BY_LOCALE = {
     it: ['chiudi metà', 'chiusura parziale'],
 };
 exports.COMMON_PARTIAL_CLOSE_PHRASES = Object.freeze(Array.from(new Set(Object.values(exports.SUPPORTED_PARTIAL_CLOSE_BY_LOCALE).flat())));
+/** Optional/discretionary close wording; should not trigger auto-close. */
+exports.CONDITIONAL_CLOSE_PHRASES = [
+    'if you are happy',
+    'if you are satisfied',
+    'if satisfied',
+    'if in profit',
+    'if you want',
+    'up to you',
+    'your choice',
+    'si vous etes satisfait',
+    'si vous êtes satisfait',
+    'si estas satisfecho',
+    'si estás satisfecho',
+    'если вы довольны',
+    'если довольны',
+    'если в прибыли',
+];
+function textLooksLikeConditionalClose(message) {
+    const raw = String(message ?? '').trim();
+    if (!raw)
+        return false;
+    for (const phrase of exports.CONDITIONAL_CLOSE_PHRASES) {
+        if ((0, multilingualSignalTerms_1.messageContainsKeyword)(raw, phrase))
+            return true;
+    }
+    const folded = (0, multilingualSignalTerms_1.foldAccents)(raw);
+    return (/\b(if|si|если)\b/i.test(folded)
+        && /\b(close|cerrar|fermer|fermez|закрой|закрыть|exit)\b/i.test(folded));
+}
 const SL_TP_ADJUST_RE = new RegExp('\\b('
     + [
         'move stop', 'move sl', 'move risk', 'adjust sl', 'adjust stop loss', 'adjust stoploss',

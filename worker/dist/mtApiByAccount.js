@@ -32,7 +32,7 @@ async function loadPlatformByFxsocketId(supabase, sessionIds) {
         const id = brokerSessionId(row);
         if (!id)
             continue;
-        out.set(id, 'MT5');
+        out.set(id, (0, fxsocketClient_1.mtPlatformFrom)(row.platform));
     }
     return out;
 }
