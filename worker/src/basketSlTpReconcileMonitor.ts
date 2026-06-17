@@ -23,6 +23,7 @@ import { normalizeManualSettingsForExecution } from './manualPlanning/normalizeM
 import { resolveChannelTradingConfig } from './channelTradingConfig'
 import { normalizeSymbolParams } from './fxsocketClient'
 import { isUserCopierPausedCached } from './copierPause'
+import { brokerSessionUuid } from './tradeExecutor/helpers'
 
 const ACTIVE_MS = monitorActiveIntervalMs('BASKET_RECONCILE_TICK_MS', 15_000)
 const IDLE_MS = monitorIdleIntervalMs('BASKET_RECONCILE_IDLE_MS', 120_000)
@@ -124,23 +125,18 @@ export class BasketSlTpReconcileMonitor {
     const row = claimed as BasketReconcileJobRow
     const { data: broker } = await this.supabase
       .from('broker_accounts')
-      .select('id,user_id,metaapi_account_id,platform,default_lot_size,manual_settings,channel_trading_configs,copier_mode,ai_settings')
+      .select('id,user_id,fxsocket_account_id,metaapi_account_id,platform,default_lot_size,manual_settings,channel_trading_configs,copier_mode,ai_settings')
       .eq('id', row.broker_account_id)
       .maybeSingle()
 
-    if (!broker?.metaapi_account_id) {
+    const uuid = broker ? brokerSessionUuid(broker as { fxsocket_account_id?: string; metaapi_account_id?: string }) : null
+    if (!broker || !uuid) {
       await this.releaseJob(row.id, 'broker not found', row.attempts)
       return
     }
 
     if (isUserCopierPausedCached(String(broker.user_id ?? ''))) {
       await this.releaseJob(row.id, 'copier paused', row.attempts)
-      return
-    }
-
-    const uuid = broker.metaapi_account_id as string
-    if (uuid.includes('|')) {
-      await this.releaseJob(row.id, 'invalid metaapi uuid', row.attempts)
       return
     }
 

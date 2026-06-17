@@ -9,6 +9,7 @@ const normalizeManualSettings_1 = require("./manualPlanning/normalizeManualSetti
 const channelTradingConfig_1 = require("./channelTradingConfig");
 const fxsocketClient_2 = require("./fxsocketClient");
 const copierPause_1 = require("./copierPause");
+const helpers_1 = require("./tradeExecutor/helpers");
 const ACTIVE_MS = (0, monitorIdleGate_1.monitorActiveIntervalMs)('BASKET_RECONCILE_TICK_MS', 15000);
 const IDLE_MS = (0, monitorIdleGate_1.monitorIdleIntervalMs)('BASKET_RECONCILE_IDLE_MS', 120000);
 const BATCH_LIMIT = 20;
@@ -101,20 +102,16 @@ class BasketSlTpReconcileMonitor {
         const row = claimed;
         const { data: broker } = await this.supabase
             .from('broker_accounts')
-            .select('id,user_id,metaapi_account_id,platform,default_lot_size,manual_settings,channel_trading_configs,copier_mode,ai_settings')
+            .select('id,user_id,fxsocket_account_id,metaapi_account_id,platform,default_lot_size,manual_settings,channel_trading_configs,copier_mode,ai_settings')
             .eq('id', row.broker_account_id)
             .maybeSingle();
-        if (!broker?.metaapi_account_id) {
+        const uuid = broker ? (0, helpers_1.brokerSessionUuid)(broker) : null;
+        if (!broker || !uuid) {
             await this.releaseJob(row.id, 'broker not found', row.attempts);
             return;
         }
         if ((0, copierPause_1.isUserCopierPausedCached)(String(broker.user_id ?? ''))) {
             await this.releaseJob(row.id, 'copier paused', row.attempts);
-            return;
-        }
-        const uuid = broker.metaapi_account_id;
-        if (uuid.includes('|')) {
-            await this.releaseJob(row.id, 'invalid metaapi uuid', row.attempts);
             return;
         }
         this.platformByUuid = await (0, mtApiByAccount_1.loadPlatformByMetaapiId)(this.supabase, [uuid]);
