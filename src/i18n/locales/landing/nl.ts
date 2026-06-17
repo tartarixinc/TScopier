@@ -175,10 +175,10 @@ export const landingNl: LandingTranslations = {
         icon: 'chart',
       },
       {
-        label: 'Telegram',
-        metric: 'Onbeperkt',
+        label: 'Meertalige',
+        metric: 'Signalen',
         metricVariant: 'teal',
-        description: 'Onbeperkte Telegram-kanalen en groepen - alleen bronnen die jij vertrouwt.',
+        description: 'Parse koop, verkoop, SL en TP uit kanalen in het Engels, Spaans, Russisch, Pools en meer.',
         layout: 'tall',
         icon: 'messages',
       },
@@ -204,6 +204,13 @@ export const landingNl: LandingTranslations = {
         description:
           'Spiegel betrouwbare kanalen naar je brokeraccounts. TScopier parseert entries, take-profits, range-legs en management-instructies en voert uit met jouw lot-regels, multi-trade split en range-layering op elk gekoppeld account.',
         visual: 'copier',
+      },
+      {
+        eyebrow: 'Meertalige signalen',
+        title: 'Ondersteunt signalen in meerdere talen',
+        description:
+          'Kopieer kanalen die posten in het Engels, Spaans, Frans, Russisch, Pools, Japans en meer. TScopier herkent koop/verkoop, SL, TP en managementzinnen in elke taal, plus per-kanaal training voor de exacte woordkeuze van je provider.',
+        visual: 'multilingual',
       },
       {
         eyebrow: 'Kanaalcontrole',
@@ -283,6 +290,49 @@ export const landingNl: LandingTranslations = {
             label: 'Pending orders annuleren',
             example: 'bijv. "cancel limit", "delete pending"',
             decision: 'allow',
+          },
+        ],
+      },
+      multilingual: {
+        languagesBadge: '10+ talen',
+        moreLanguages: 'Duits, Arabisch, Portugees, Italiaans en meer',
+        parsedLabel: 'Geparsed',
+        ribbonFlags: ['us', 'gb', 'es', 'fr', 'pl', 'ru', 'se', 'nl', 'jp'],
+        signals: [
+          {
+            flagId: 'us',
+            language: 'English',
+            message: 'BUY XAUUSD now · SL 2640 · TP 2670',
+            parsedAction: 'BUY XAUUSD',
+            side: 'buy',
+          },
+          {
+            flagId: 'es',
+            language: 'Español',
+            message: 'COMPRA XAUUSD ahora · SL 2640 · TP 2670',
+            parsedAction: 'BUY XAUUSD',
+            side: 'buy',
+          },
+          {
+            flagId: 'fr',
+            language: 'Français',
+            message: 'ACHAT XAUUSD immédiat · SL 2640 · TP 2670',
+            parsedAction: 'BUY XAUUSD',
+            side: 'buy',
+          },
+          {
+            flagId: 'ru',
+            language: 'Русский',
+            message: 'ПОКУПКА XAUUSD сейчас · SL 2640 · TP 2670',
+            parsedAction: 'BUY XAUUSD',
+            side: 'buy',
+          },
+          {
+            flagId: 'ja',
+            language: '日本語',
+            message: 'XAUUSD 買い 成行 · SL 2640 · TP 2670',
+            parsedAction: 'BUY XAUUSD',
+            side: 'buy',
           },
         ],
       },

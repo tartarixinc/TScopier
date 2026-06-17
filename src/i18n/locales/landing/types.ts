@@ -5,6 +5,7 @@ export interface LandingFeatureTranslation {
 
 export type LandingFeatureVisualId =
   | 'copier'
+  | 'multilingual'
   | 'filters'
   | 'signalEdit'
   | 'backtest'
@@ -94,6 +95,22 @@ export interface LandingBacktestVisualCopy {
   signals: LandingBacktestSignalVisual[]
 }
 
+export interface LandingMultilingualSignalCardVisual {
+  flagId: string
+  language: string
+  message: string
+  parsedAction: string
+  side: 'buy' | 'sell'
+}
+
+export interface LandingMultilingualVisualCopy {
+  languagesBadge: string
+  moreLanguages: string
+  parsedLabel: string
+  ribbonFlags: string[]
+  signals: LandingMultilingualSignalCardVisual[]
+}
+
 export interface LandingSignalEditVisualCopy {
   channelName: string
   channelMeta: string
@@ -129,6 +146,7 @@ export interface LandingFeatureVisualsCopy {
     ignoreLabel: string
     rules: LandingFilterRuleVisual[]
   }
+  multilingual: LandingMultilingualVisualCopy
   signalEdit: LandingSignalEditVisualCopy
   backtest: LandingBacktestVisualCopy
   logs: LandingCopierLogsVisualCopy
