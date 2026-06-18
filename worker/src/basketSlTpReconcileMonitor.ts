@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { hasFxsocketConfigured } from './fxsocketClient'
-import { apiForMetaapiAccount, loadPlatformByMetaapiId, type PlatformByMetaapiId } from './mtApiByAccount'
+import { apiForFxsocketAccount, loadPlatformByFxsocketId, type PlatformByFxsocketId } from './mtApiByAccount'
 import {
   fetchOpenBrokerTickets,
   loadOpenBasketLegs,
@@ -37,7 +37,7 @@ const SWEEP_INTERVAL_MS = Math.min(
 export class BasketSlTpReconcileMonitor {
   private loop: MonitorLoopHandle | null = null
   private ticking = false
-  private platformByUuid: PlatformByMetaapiId = new Map()
+  private platformByUuid: PlatformByFxsocketId = new Map()
   private lastSweepAt = 0
 
   constructor(private readonly supabase: SupabaseClient) {}
@@ -157,8 +157,8 @@ export class BasketSlTpReconcileMonitor {
       return
     }
 
-    this.platformByUuid = await loadPlatformByMetaapiId(this.supabase, [uuid])
-    const api = apiForMetaapiAccount(this.platformByUuid, uuid)
+    this.platformByUuid = await loadPlatformByFxsocketId(this.supabase, [uuid])
+    const api = apiForFxsocketAccount(this.platformByUuid, uuid)
     if (!api) {
       await this.releaseJob(row.id, 'MT API not configured', row.attempts)
       return

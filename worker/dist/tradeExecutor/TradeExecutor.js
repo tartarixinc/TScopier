@@ -905,7 +905,7 @@ class TradeExecutor {
         const signalSymbol = parsed?.symbol?.trim();
         if (!signalSymbol)
             return;
-        const warmBrokers = (this.brokersByUser.get(row.user_id) ?? []).filter(b => b.is_active && (0, helpers_2.isMtUuid)(b.metaapi_account_id) && (0, brokerChannelFilter_1.channelMatchesBrokerSignal)(b, row.channel_id));
+        const warmBrokers = (this.brokersByUser.get(row.user_id) ?? []).filter(b => b.is_active && (0, helpers_2.brokerHasLinkedSession)(b) && (0, brokerChannelFilter_1.channelMatchesBrokerSignal)(b, row.channel_id));
         if (warmBrokers.length > 0) {
             void this.prewarmBrokersForLiveEntry(warmBrokers, signalSymbol);
         }

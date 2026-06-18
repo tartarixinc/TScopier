@@ -9,7 +9,7 @@ import {
   startMonitorLoop,
   type MonitorLoopHandle,
 } from './monitorIdleGate'
-import { apiForMetaapiAccount, loadPlatformByMetaapiId, type PlatformByMetaapiId } from './mtApiByAccount'
+import { apiForFxsocketAccount, loadPlatformByFxsocketId, type PlatformByFxsocketId } from './mtApiByAccount'
 import { stopRangeLayeringUnlessEnabled } from './rangeLayerTillClose'
 import { isUserCopierPausedCached } from './copierPause'
 
@@ -85,7 +85,7 @@ export function isPartialTpTriggered(isBuy: boolean, triggerPrice: number, bid: 
 
 export class PartialTpMonitor {
   private loop: MonitorLoopHandle | null = null
-  private platformByUuid: PlatformByMetaapiId = new Map()
+  private platformByUuid: PlatformByFxsocketId = new Map()
   private hostId: string
   private ticking = false
   private firstTickLogged = false
@@ -177,7 +177,7 @@ export class PartialTpMonitor {
       return
     }
 
-    this.platformByUuid = await loadPlatformByMetaapiId(
+    this.platformByUuid = await loadPlatformByFxsocketId(
       this.supabase,
       rows.map(r => r.metaapi_account_id),
     )
@@ -200,7 +200,7 @@ export class PartialTpMonitor {
     await Promise.all(Array.from(groups.entries()).map(async ([key, partials]) => {
       const [uuid, symbol] = key.split('|')
       if (!uuid || !symbol) return
-      const api = apiForMetaapiAccount(this.platformByUuid, uuid)
+      const api = apiForFxsocketAccount(this.platformByUuid, uuid)
       if (!api) return
       let q
       try {

@@ -26,7 +26,7 @@ import {
   sanitizeParsedSymbol,
 } from './tradableSymbol'
 import { looksLikeCasualNonTradeMessage } from './signalCommentaryGuard'
-import { normalizeTelegramMessageText } from './normalizeTelegramMessageText'
+import { normalizeTelegramMessageText, normalizeSignalMessageForParse } from './normalizeTelegramMessageText'
 import {
   COMMON_BREAKEVEN_PHRASES,
   COMMON_PARTIAL_CLOSE_PHRASES,
@@ -1298,18 +1298,20 @@ export function parseModificationDeterministic(
   channelKeywords: ChannelKeywords,
   lexicon: ChannelLexiconRow | null,
 ): ParseChannelMessageResult {
+  const message = normalizeSignalMessageForParse(rawMessage)
+  const displayMessage = normalizeTelegramMessageText(rawMessage)
   const ignoreAliases = [
     ...splitKeywordAliases(channelKeywords.additional.ignore_keyword, channelKeywords.additional.delimiters),
     ...splitKeywordAliases(channelKeywords.additional.skip_keyword, channelKeywords.additional.delimiters),
   ]
-  const explicitIgnore = hasAnyKeyword(rawMessage, ignoreAliases)
+  const explicitIgnore = hasAnyKeyword(message, ignoreAliases)
   const keywordMatch =
-    parseDeterministicManagement(rawMessage, lexicon, channelKeywords) ??
-    parseChannelParameterFollowUp(rawMessage, lexicon, channelKeywords)
+    parseDeterministicManagement(message, lexicon, channelKeywords) ??
+    parseChannelParameterFollowUp(message, lexicon, channelKeywords)
 
   if (explicitIgnore) {
     return {
-      parsed: ignorePayload(rawMessage),
+      parsed: ignorePayload(displayMessage),
       status: 'skipped',
       skip_reason: 'Non-trade message',
     }
@@ -1326,7 +1328,7 @@ export function parseModificationDeterministic(
         tp: [],
         lot_size: null,
         confidence: 0,
-        raw_instruction: rawMessage,
+        raw_instruction: displayMessage,
         open_tp: false,
       },
       status: 'skipped',
@@ -1334,7 +1336,7 @@ export function parseModificationDeterministic(
     }
   }
 
-  const parsed = enrichParsedKeywordMatch(keywordMatch, rawMessage)
+  const parsed = enrichParsedKeywordMatch(keywordMatch, message)
   const status = parsed.action === 'ignore' ? 'skipped' : 'parsed'
   const skip_reason = parsed.action === 'ignore'
     ? 'No matching management or parameter follow-up pattern'
@@ -1353,7 +1355,8 @@ export function parseChannelMessageSync(
   channelKeywords: ChannelKeywords,
   lexicon: ChannelLexiconRow | null,
 ): ParseChannelMessageResult {
-  const message = normalizeTelegramMessageText(rawMessage)
+  const message = normalizeSignalMessageForParse(rawMessage)
+  const displayMessage = normalizeTelegramMessageText(rawMessage)
   const ignoreAliases = [
     ...splitKeywordAliases(channelKeywords.additional.ignore_keyword, channelKeywords.additional.delimiters),
     ...splitKeywordAliases(channelKeywords.additional.skip_keyword, channelKeywords.additional.delimiters),
@@ -1367,7 +1370,7 @@ export function parseChannelMessageSync(
     parseEntryFromKeywords(message, lexicon, channelKeywords)
 
   const rawParsed = explicitIgnore
-    ? ignorePayload(message)
+    ? ignorePayload(displayMessage)
     : keywordMatch ?? {
       action: "ignore",
       symbol: null,
@@ -1378,7 +1381,7 @@ export function parseChannelMessageSync(
       tp: [],
       lot_size: null,
       confidence: 0,
-      raw_instruction: message,
+      raw_instruction: displayMessage,
       open_tp: false,
     }
 

@@ -19,7 +19,7 @@ export function isMtUuid(s: string | null | undefined): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
 }
 
-/** FxSocket terminal UUID (prefers fxsocket_account_id over legacy metaapi_account_id). */
+/** FxSocket terminal UUID from broker_accounts (fxsocket_account_id). */
 export function brokerSessionUuid(broker: {
   fxsocket_account_id?: string | null
   metaapi_account_id?: string | null

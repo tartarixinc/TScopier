@@ -16,7 +16,7 @@ import {
   type FxsocketBrokerClient,
   type SymbolParams,
 } from './fxsocketClient'
-import { apiForMetaapiAccount, loadPlatformByMetaapiId, type PlatformByMetaapiId } from './mtApiByAccount'
+import { apiForFxsocketAccount, brokerSessionId, loadPlatformByFxsocketId, type PlatformByFxsocketId } from './mtApiByAccount'
 import {
   applyShardToQuery,
   hasWorkOnShard,
@@ -56,7 +56,8 @@ interface PartialLegRow {
 
 interface BrokerRow {
   id: string
-  metaapi_account_id: string
+  fxsocket_account_id: string | null
+  metaapi_account_id: string | null
   platform: string
   manual_settings: Record<string, unknown> | null
 }
@@ -76,7 +77,7 @@ type SymbolCacheEntry = {
 
 export class AutoManagementMonitor {
   private loop: MonitorLoopHandle | null = null
-  private platformByUuid: PlatformByMetaapiId = new Map()
+  private platformByUuid: PlatformByFxsocketId = new Map()
   private ticking = false
   private firstTickLogged = false
   private quietTicks = 0
@@ -158,23 +159,24 @@ export class AutoManagementMonitor {
     const brokerIds = [...new Set(rows.map(r => r.broker_account_id).filter(Boolean))] as string[]
     const { data: brokers, error: brokerErr } = await this.supabase
       .from('broker_accounts')
-      .select('id,metaapi_account_id,platform,manual_settings')
+      .select('id,fxsocket_account_id,metaapi_account_id,platform,manual_settings')
       .in('id', brokerIds)
     if (brokerErr) {
       console.error('[autoManagementMonitor] broker lookup failed:', brokerErr.message)
       return
     }
     const brokerById = new Map((brokers ?? []).map(b => [b.id, b as BrokerRow]))
-    this.platformByUuid = await loadPlatformByMetaapiId(
+    this.platformByUuid = await loadPlatformByFxsocketId(
       this.supabase,
-      (brokers ?? []).map(b => String((b as BrokerRow).metaapi_account_id ?? '')),
+      (brokers ?? []).map(b => brokerSessionId(b as BrokerRow)),
     )
 
     const groups = new Map<string, AutoBeTradeRow[]>()
     for (const row of rows) {
       const b = brokerById.get(row.broker_account_id ?? '')
-      if (!b?.metaapi_account_id) continue
-      const key = `${b.metaapi_account_id}:${row.symbol.toUpperCase()}`
+      const sessionId = b ? brokerSessionId(b) : ''
+      if (!sessionId) continue
+      const key = `${sessionId}:${row.symbol.toUpperCase()}`
       const list = groups.get(key) ?? []
       list.push(row)
       groups.set(key, list)
@@ -187,7 +189,7 @@ export class AutoManagementMonitor {
       const symbol = group[0]?.symbol ?? ''
       let bid = NaN
       let ask = NaN
-      const api = apiForMetaapiAccount(this.platformByUuid, uuid)
+      const api = apiForFxsocketAccount(this.platformByUuid, uuid)
       if (!api) continue
       try {
         const q = await api.quote(uuid, symbol)
@@ -458,7 +460,7 @@ export class AutoManagementMonitor {
     const key = `${uuid}:${symbol.toUpperCase()}`
     const cached = this.symbolCache.get(key)
     if (cached && Date.now() - cached.loadedAt < SYMBOL_CACHE_TTL_MS) return cached
-    const api = apiForMetaapiAccount(this.platformByUuid, uuid)
+    const api = apiForFxsocketAccount(this.platformByUuid, uuid)
     if (!api) return null
     try {
       const p: SymbolParams = await api.symbolParams(uuid, symbol)

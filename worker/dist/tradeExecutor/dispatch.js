@@ -421,7 +421,7 @@ async function handleSignal(ctx, row, opts) {
             await ctx.logDispatchSkipped(row, executionEligibility.skipReason ?? 'entry_not_execution_eligible');
             return;
         }
-        const rawMatchingBrokers = (ctx.brokersByUser.get(row.user_id) ?? []).filter(b => b.is_active && (0, helpers_1.isMtUuid)(b.metaapi_account_id) && (0, brokerChannelFilter_1.channelMatchesBrokerSignal)(b, row.channel_id));
+        const rawMatchingBrokers = (ctx.brokersByUser.get(row.user_id) ?? []).filter(b => b.is_active && (0, helpers_1.brokerHasLinkedSession)(b) && (0, brokerChannelFilter_1.channelMatchesBrokerSignal)(b, row.channel_id));
         const configSkipReasons = [];
         const allMatchingBrokers = rawMatchingBrokers.flatMap(b => {
             const ready = (0, channelTradingConfig_1.channelConfigReadyForExecution)(b, row.channel_id);

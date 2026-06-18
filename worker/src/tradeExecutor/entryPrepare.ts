@@ -41,7 +41,7 @@ import {
 } from '../channelActiveTradeParams'
 import { resolveTscopierCommentPrefix } from '../tradeComment'
 import type { TradeExecutorContext } from './context'
-import { applySymbolMapping, computeLot, isExcluded, isMt5OnlyOperation, roundLot, triggerPriceFor, type Leg } from './helpers'
+import { applySymbolMapping, computeLot, isExcluded, isMt5OnlyOperation, roundLot, triggerPriceFor, brokerSessionUuid, type Leg } from './helpers'
 import type {
   BrokerRow,
   ParsedSignal,
@@ -175,7 +175,7 @@ export async function prepareEntryExecution(
   if (!hasFxsocketConfigured()) return { ok: false, outcome: {} }
   const api = ctx.apiFor(broker)
   if (!api) return { ok: false, outcome: {} }
-  const uuid = broker.metaapi_account_id!
+  const uuid = brokerSessionUuid(broker)!
   const signalSymbol = (parsed.symbol ?? '').trim()
   if (isExcluded(signalSymbol, broker)) {
     await ctx.logSendSkipped(signal, broker, 'symbol_exempted_from_trading', {

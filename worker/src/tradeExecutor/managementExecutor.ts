@@ -44,7 +44,7 @@ import { mgmtLegConcurrency, parallelMap } from '../parallelPool'
 import { patchActiveRangePendingLegStops } from '../rangePendingLadderSync'
 import { symbolsCompatibleForBasket } from '../basketModFollowUp'
 import { type TradeExecutorContext } from './context'
-import { isMtUuid } from './helpers'
+import { brokerHasLinkedSession, brokerSessionUuid, isMtUuid } from './helpers'
 import {
   type BrokerRow,
   type ParsedSignal,
@@ -97,6 +97,33 @@ function readOrderStopLoss(raw: unknown): number | null {
     if (Number.isFinite(n) && n > 0) return n
   }
   return null
+}
+
+function readOrderOpenPrice(raw: unknown): number | null {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  for (const key of ['openPrice', 'OpenPrice', 'price', 'Price', 'priceOpen', 'PriceOpen']) {
+    const v = o[key]
+    const n = typeof v === 'number' ? v : Number(v)
+    if (Number.isFinite(n) && n > 0) return n
+  }
+  return null
+}
+
+async function resolveMgmtEntryPrice(args: {
+  trade: MgmtTradeRow
+  api: ReturnType<TradeExecutorContext['apiFor']>
+  uuid: string
+  ticket: number
+}): Promise<number> {
+  const fromDb = Number(args.trade.entry_price) || 0
+  if (fromDb > 0) return fromDb
+  if (!args.api) throw new Error('breakeven skipped: missing entry price on trade row')
+  const rawOrders = await args.api.openedOrders(args.uuid).catch(() => [])
+  const order = findRawOrderByTicket(rawOrders ?? [], args.ticket)
+  const fromBroker = order ? readOrderOpenPrice(order) : null
+  if (fromBroker != null && fromBroker > 0) return fromBroker
+  throw new Error('breakeven skipped: missing entry price on trade row')
 }
 
 function findRawOrderByTicket(rawOrders: unknown[], ticket: number): unknown | null {
@@ -169,7 +196,7 @@ export async function logSendSkipped(ctx: TradeExecutorContext,
     extra: Record<string, unknown>,
   ): Promise<void> {
     if (reason === 'broker_session_not_connected') {
-      const uuid = broker.metaapi_account_id
+      const uuid = brokerSessionUuid(broker)
       if (uuid) {
         await ctx.markBrokerSessionDown(broker, uuid, 'broker_session_not_connected')
       }
@@ -464,7 +491,7 @@ export async function applyManagement(
         let brokerClosed = 0
         await Promise.allSettled(brokers.map(async broker => {
           const api = ctx.apiFor(broker)
-          const uuid = broker.metaapi_account_id
+          const uuid = brokerSessionUuid(broker)
           if (!api || !uuid || uuid.includes('|')) return
           const one = await tryBrokerFallbackClose({
             supabase: ctx.supabase,
@@ -553,7 +580,7 @@ export async function applyManagement(
 
     const eligibleTrades = rows.filter(tr => {
       const broker = byBroker.get(tr.broker_account_id)
-      if (!broker || !isMtUuid(broker.metaapi_account_id)) return false
+      if (!broker || !brokerHasLinkedSession(broker)) return false
       if (isChannelManagementBlocked(
         normalizeChannelMessageFiltersMap(broker.channel_message_filters),
         signal.channel_id,
@@ -573,7 +600,7 @@ export async function applyManagement(
 
     const processTrade = async (trade: MgmtTradeRow): Promise<void> => {
       const broker = byBroker.get(trade.broker_account_id)
-      if (!broker || !isMtUuid(broker.metaapi_account_id)) return
+      if (!broker || !brokerHasLinkedSession(broker)) return
       if (isChannelManagementBlocked(
         normalizeChannelMessageFiltersMap(broker.channel_message_filters),
         signal.channel_id,
@@ -582,7 +609,7 @@ export async function applyManagement(
       )) {
         return
       }
-      const uuid = broker.metaapi_account_id!
+      const uuid = brokerSessionUuid(broker)!
       const ticket = Number(trade.metaapi_order_id)
       if (!Number.isFinite(ticket) || ticket <= 0) return
       let effectiveTicket = ticket
@@ -670,7 +697,29 @@ export async function applyManagement(
             await ctx.supabase.from('trades').update({ lot_size: remaining }).eq('id', trade.id)
           }
         } else if (action === 'breakeven') {
-          const entry = sanitizeLevel(trade.entry_price)
+          const excludeTickets = usedBreakevenTicketsByUuid.get(uuid) ?? new Set<number>()
+          const rawOrdersForReconcile = await api.openedOrders(uuid).catch(() => [])
+          const upfrontTicket = resolveReconciledTicketForTrade(
+            trade,
+            rawOrdersForReconcile ?? [],
+            excludeTickets,
+          )
+          if (upfrontTicket && upfrontTicket !== effectiveTicket) {
+            ticketReconciledFrom = effectiveTicket
+            effectiveTicket = upfrontTicket
+          }
+          let entry = sanitizeLevel(trade.entry_price)
+          if (entry <= 0) {
+            entry = sanitizeLevel(await resolveMgmtEntryPrice({
+              trade,
+              api,
+              uuid,
+              ticket: effectiveTicket,
+            }))
+            if (entry > 0) {
+              await ctx.supabase.from('trades').update({ entry_price: entry }).eq('id', trade.id)
+            }
+          }
           if (entry <= 0) {
             throw new Error('breakeven skipped: missing entry price on trade row')
           }
@@ -800,7 +849,19 @@ export async function applyManagement(
         const msg = err instanceof Error ? err.message : String(err)
         let benign = isBenignOrderModifyError(msg)
         if (benign && action === 'breakeven') {
-          const entry = sanitizeLevel(trade.entry_price)
+          let entry = sanitizeLevel(trade.entry_price)
+          if (entry <= 0) {
+            try {
+              entry = sanitizeLevel(await resolveMgmtEntryPrice({
+                trade,
+                api,
+                uuid,
+                ticket: effectiveTicket,
+              }))
+            } catch {
+              entry = 0
+            }
+          }
           if (entry > 0) {
             const manual = resolveChannelTradingConfig(broker, signal.channel_id).manual_settings
             const isBuy = String(trade.direction).toLowerCase() === 'buy'
@@ -847,8 +908,14 @@ export async function applyManagement(
     }
 
     if (action === 'breakeven') {
-      for (const trade of eligibleTrades) {
-        await processTrade(trade)
+      if (liveMgmtFast && eligibleTrades.length > 1) {
+        await Promise.allSettled(
+          await parallelMap(eligibleTrades, legConcurrency, trade => processTrade(trade)),
+        )
+      } else {
+        for (const trade of eligibleTrades) {
+          await processTrade(trade)
+        }
       }
     } else if (liveMgmtFast && eligibleTrades.length > 1) {
       await Promise.allSettled(
@@ -996,7 +1063,7 @@ export async function applyManagement(
         brokerAccountIds,
         apiFor: uuid => {
           for (const broker of brokers) {
-            if (broker.metaapi_account_id === uuid) return ctx.apiFor(broker)
+            if (brokerSessionUuid(broker) === uuid) return ctx.apiFor(broker)
           }
           return null
         },
@@ -1013,7 +1080,7 @@ export async function applyManagement(
       let brokerClosed = 0
       await Promise.allSettled(brokers.map(async broker => {
         const api = ctx.apiFor(broker)
-        const uuid = broker.metaapi_account_id
+        const uuid = brokerSessionUuid(broker)
         if (!api || !uuid || uuid.includes('|')) return
         const one = await tryBrokerFallbackClose({
           supabase: ctx.supabase,
@@ -1101,7 +1168,7 @@ export async function applyCloseWorseEntriesInstruction(ctx: TradeExecutorContex
       if (!parsedKey) return { closed: 0, eligible: 0 }
       const { brokerId, symbol } = parsedKey
       const broker = byBroker.get(brokerId)
-      if (!broker || !isMtUuid(broker.metaapi_account_id)) return { closed: 0, eligible: 0 }
+      if (!broker || !brokerHasLinkedSession(broker)) return { closed: 0, eligible: 0 }
 
       const manual = (broker.manual_settings ?? {}) as ManualSettings
       if (manual.trade_style !== 'multi') {
@@ -1119,7 +1186,7 @@ export async function applyCloseWorseEntriesInstruction(ctx: TradeExecutorContex
         return { closed: 0, eligible: 0 }
       }
 
-      const uuid = broker.metaapi_account_id!
+      const uuid = brokerSessionUuid(broker)!
       const api = ctx.apiFor(broker)
       if (!api) {
         await ctx.supabase.from('trade_execution_logs').insert({

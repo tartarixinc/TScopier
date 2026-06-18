@@ -1,7 +1,7 @@
 import { purgeRangePendingLegsForBaskets } from '../rangePendingLegDelete'
 import { channelMatchesBrokerSignal } from '../brokerChannelFilter'
 import { hasFxsocketConfigured, type FxsocketBrokerClient } from '../fxsocketClient'
-import { isMtUuid } from './helpers'
+import { brokerHasLinkedSession, brokerSessionUuid } from './helpers'
 import type { TradeExecutorContext } from './context'
 import type { BrokerRow, SignalRow } from './types'
 
@@ -55,9 +55,9 @@ export async function closeBasketForRevisionDirectionFlip(
   const purgeScopes: Array<{ signalId: string; brokerAccountId: string }> = []
 
   for (const broker of brokers) {
-    if (!broker.is_active || !isMtUuid(broker.metaapi_account_id)) continue
+    if (!broker.is_active || !brokerHasLinkedSession(broker)) continue
     if (!channelMatchesBrokerSignal(broker, row.channel_id)) continue
-    const uuid = broker.metaapi_account_id!
+    const uuid = brokerSessionUuid(broker)!
     const api = ctx.apiFor(broker)
     if (!api) continue
 

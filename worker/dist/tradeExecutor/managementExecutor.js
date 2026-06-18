@@ -118,7 +118,7 @@ function resolveReconciledTicketForTrade(trade, rawOrders, excludeTickets = new 
 }
 async function logSendSkipped(ctx, signal, broker, reason, extra) {
     if (reason === 'broker_session_not_connected') {
-        const uuid = broker.metaapi_account_id;
+        const uuid = (0, helpers_1.brokerSessionUuid)(broker);
         if (uuid) {
             await ctx.markBrokerSessionDown(broker, uuid, 'broker_session_not_connected');
         }
@@ -370,7 +370,7 @@ async function applyManagement(ctx, signal, parsed, brokers, mgmtOpts) {
             let brokerClosed = 0;
             await Promise.allSettled(brokers.map(async (broker) => {
                 const api = ctx.apiFor(broker);
-                const uuid = broker.metaapi_account_id;
+                const uuid = (0, helpers_1.brokerSessionUuid)(broker);
                 if (!api || !uuid || uuid.includes('|'))
                     return;
                 const one = await (0, managementBrokerClose_1.tryBrokerFallbackClose)({
@@ -456,7 +456,7 @@ async function applyManagement(ctx, signal, parsed, brokers, mgmtOpts) {
     }
     const eligibleTrades = rows.filter(tr => {
         const broker = byBroker.get(tr.broker_account_id);
-        if (!broker || !(0, helpers_1.isMtUuid)(broker.metaapi_account_id))
+        if (!broker || !(0, helpers_1.brokerHasLinkedSession)(broker))
             return false;
         if ((0, channelMessageFilters_1.isChannelManagementBlocked)((0, channelMessageFilters_1.normalizeChannelMessageFiltersMap)(broker.channel_message_filters), signal.channel_id, action, mgmtCtx)) {
             return false;
@@ -470,12 +470,12 @@ async function applyManagement(ctx, signal, parsed, brokers, mgmtOpts) {
     const usedBreakevenTicketsByUuid = new Map();
     const processTrade = async (trade) => {
         const broker = byBroker.get(trade.broker_account_id);
-        if (!broker || !(0, helpers_1.isMtUuid)(broker.metaapi_account_id))
+        if (!broker || !(0, helpers_1.brokerHasLinkedSession)(broker))
             return;
         if ((0, channelMessageFilters_1.isChannelManagementBlocked)((0, channelMessageFilters_1.normalizeChannelMessageFiltersMap)(broker.channel_message_filters), signal.channel_id, action, mgmtCtx)) {
             return;
         }
-        const uuid = broker.metaapi_account_id;
+        const uuid = (0, helpers_1.brokerSessionUuid)(broker);
         const ticket = Number(trade.metaapi_order_id);
         if (!Number.isFinite(ticket) || ticket <= 0)
             return;
@@ -865,7 +865,7 @@ async function applyManagement(ctx, signal, parsed, brokers, mgmtOpts) {
             brokerAccountIds,
             apiFor: uuid => {
                 for (const broker of brokers) {
-                    if (broker.metaapi_account_id === uuid)
+                    if ((0, helpers_1.brokerSessionUuid)(broker) === uuid)
                         return ctx.apiFor(broker);
                 }
                 return null;
@@ -880,7 +880,7 @@ async function applyManagement(ctx, signal, parsed, brokers, mgmtOpts) {
         let brokerClosed = 0;
         await Promise.allSettled(brokers.map(async (broker) => {
             const api = ctx.apiFor(broker);
-            const uuid = broker.metaapi_account_id;
+            const uuid = (0, helpers_1.brokerSessionUuid)(broker);
             if (!api || !uuid || uuid.includes('|'))
                 return;
             const one = await (0, managementBrokerClose_1.tryBrokerFallbackClose)({
@@ -945,7 +945,7 @@ async function applyCloseWorseEntriesInstruction(ctx, signal, parsed, rows, byBr
             return { closed: 0, eligible: 0 };
         const { brokerId, symbol } = parsedKey;
         const broker = byBroker.get(brokerId);
-        if (!broker || !(0, helpers_1.isMtUuid)(broker.metaapi_account_id))
+        if (!broker || !(0, helpers_1.brokerHasLinkedSession)(broker))
             return { closed: 0, eligible: 0 };
         const manual = (broker.manual_settings ?? {});
         if (manual.trade_style !== 'multi') {
@@ -962,7 +962,7 @@ async function applyCloseWorseEntriesInstruction(ctx, signal, parsed, rows, byBr
             });
             return { closed: 0, eligible: 0 };
         }
-        const uuid = broker.metaapi_account_id;
+        const uuid = (0, helpers_1.brokerSessionUuid)(broker);
         const api = ctx.apiFor(broker);
         if (!api) {
             await ctx.supabase.from('trade_execution_logs').insert({

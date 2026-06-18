@@ -8,6 +8,7 @@ import {
   type RangePendingCancelScope,
   type SignalRow
 } from '../types'
+import { brokerSessionUuid } from '../helpers'
 import { cancelRangePendingLegsForScopes } from './pendingCancel'
 
 export async function closeOppositeDirectionTrades(ctx: TradeExecutorContext, 
@@ -27,7 +28,7 @@ export async function closeOppositeDirectionTrades(ctx: TradeExecutorContext,
     if (a !== 'buy' && a !== 'sell') return
     const channelBuy = a === 'buy'
     const oppDir = channelBuy ? 'sell' : 'buy'
-    const uuid = broker.metaapi_account_id!
+    const uuid = brokerSessionUuid(broker)!
     const api = ctx.apiFor(broker)
     if (!api) return
     const { data: opposites } = await ctx.supabase

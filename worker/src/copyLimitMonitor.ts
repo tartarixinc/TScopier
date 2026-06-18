@@ -18,13 +18,15 @@ import { flattenChannelTradesForCopyLimit } from './copyLimitFlatten'
 import { normalizeCopyLimitState, normalizeCopyLimits } from './copyLimitTypes'
 import { normalizeChannelUuid } from './channelTradingConfig'
 import { isUserCopierPausedCached } from './copierPause'
+import { brokerSessionId } from './mtApiByAccount'
 
 const TICK_MS = 30_000
 
 interface BrokerAccountRow {
   id: string
   user_id: string
-  metaapi_account_id: string
+  fxsocket_account_id: string | null
+  metaapi_account_id: string | null
   platform: string
   last_balance: number | null
   last_equity: number | null
@@ -100,7 +102,7 @@ export class CopyLimitMonitor {
     const brokerIds = [...new Set(activeRows.map(r => r.broker_account_id))]
     const { data: brokers, error: brokerErr } = await this.supabase
       .from('broker_accounts')
-      .select('id,user_id,metaapi_account_id,platform,last_balance,last_equity,is_active')
+      .select('id,user_id,fxsocket_account_id,metaapi_account_id,platform,last_balance,last_equity,is_active')
       .in('id', brokerIds)
       .eq('is_active', true)
 
@@ -115,7 +117,8 @@ export class CopyLimitMonitor {
 
     for (const row of activeRows) {
       const broker = brokerById.get(row.broker_account_id)
-      if (!broker?.metaapi_account_id) continue
+      const sessionId = broker ? brokerSessionId(broker) : ''
+      if (!sessionId) continue
       if (isUserCopierPausedCached(broker.user_id)) continue
 
       const channelId = normalizeChannelUuid(row.channel_id)
@@ -128,7 +131,7 @@ export class CopyLimitMonitor {
       if (fallbackEquity <= 0) continue
 
       const currentEquity = await fetchLiveAccountEquity(
-        broker.metaapi_account_id,
+        sessionId,
         broker.platform,
         fallbackEquity,
         { lastBalance: broker.last_balance },
@@ -164,7 +167,7 @@ export class CopyLimitMonitor {
           supabase: this.supabase,
           brokerAccountId: broker.id,
           channelId,
-          metaapiAccountId: broker.metaapi_account_id,
+          metaapiAccountId: sessionId,
           platform: broker.platform,
           period,
           timeZone,
@@ -200,7 +203,7 @@ export class CopyLimitMonitor {
             supabase: this.supabase,
             userId: broker.user_id,
             brokerAccountId: broker.id,
-            metaapiAccountId: broker.metaapi_account_id,
+            metaapiAccountId: sessionId,
             platform: broker.platform,
             channelId,
             reason: flattenReason,

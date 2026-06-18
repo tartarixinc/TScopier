@@ -1,10 +1,12 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.normalizeTelegramMessageText = normalizeTelegramMessageText;
+exports.normalizeSignalMessageForParse = normalizeSignalMessageForParse;
 /**
  * Strip Telegram / Markdown / HTML formatting so signal parsers see plain trade text.
  * Channels often post signals in italic (_text_ or <i>text</i>), which breaks word-boundary regexes.
  */
+const collapseCasualSignalTypos_1 = require("./collapseCasualSignalTypos");
 function normalizeTelegramMessageText(raw) {
     let text = String(raw ?? '');
     // Preserve line breaks from HTML; collapse other tags.
@@ -29,4 +31,8 @@ function normalizeTelegramMessageText(raw) {
         .replace(/&lt;/gi, '<')
         .replace(/&gt;/gi, '>');
     return text.trim();
+}
+/** Telegram format strip + casual management typo collapse for parsers. */
+function normalizeSignalMessageForParse(raw) {
+    return (0, collapseCasualSignalTypos_1.collapseCasualSignalTypos)(normalizeTelegramMessageText(raw));
 }

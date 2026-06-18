@@ -23,6 +23,7 @@ import {
   normalizeChannelMessageFiltersMap,
 } from './channelMessageFilters'
 import type { PerLegStopTarget, MergeModifySummary } from './multiTradeMerge'
+import { brokerSessionUuid } from './tradeExecutor/helpers'
 
 function sanitizeLevel(v: number | null | undefined): number {
   const n = typeof v === 'number' ? v : Number(v ?? 0)
@@ -89,7 +90,7 @@ function buildMgmtModifyTargets(args: {
 
 export async function applyMgmtModifyToBasketGroups(args: {
   supabase: SupabaseClient
-  apiFor: (broker: { id: string; metaapi_account_id?: string | null }) => FxsocketBrokerClient | null
+  apiFor: (broker: { id: string; metaapi_account_id?: string | null; fxsocket_account_id?: string | null }) => FxsocketBrokerClient | null
   signal: {
     id: string
     user_id: string
@@ -100,6 +101,7 @@ export async function applyMgmtModifyToBasketGroups(args: {
   brokersById: Map<string, {
     id: string
     metaapi_account_id?: string | null
+    fxsocket_account_id?: string | null
     manual_settings?: unknown
     channel_message_filters?: unknown
     default_lot_size?: number | null
@@ -127,7 +129,9 @@ export async function applyMgmtModifyToBasketGroups(args: {
 
   for (const [basketKey, brokerRows] of rowsByBrokerSignal) {
     const broker = brokersById.get(basketKey.split('|')[0]!)
-    if (!broker?.metaapi_account_id || broker.metaapi_account_id.includes('|')) continue
+    if (!broker) continue
+    const uuid = brokerSessionUuid(broker)
+    if (!uuid || uuid.includes('|')) continue
     if (isChannelManagementBlocked(
       normalizeChannelMessageFiltersMap(broker.channel_message_filters),
       signal.channel_id,
@@ -139,8 +143,6 @@ export async function applyMgmtModifyToBasketGroups(args: {
 
     const api = apiFor(broker)
     if (!api) continue
-
-    const uuid = broker.metaapi_account_id
     const familyTrades = brokerRows
       .filter(r => {
         const ticket = Number(r.metaapi_order_id)

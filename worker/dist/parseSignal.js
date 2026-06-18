@@ -1061,16 +1061,18 @@ function enrichParsedKeywordMatch(keywordMatch, rawMessage) {
 }
 /** Deterministic management / SL-TP follow-up parse only (no entry parsers). */
 function parseModificationDeterministic(rawMessage, channelKeywords, lexicon) {
+    const message = (0, normalizeTelegramMessageText_1.normalizeSignalMessageForParse)(rawMessage);
+    const displayMessage = (0, normalizeTelegramMessageText_1.normalizeTelegramMessageText)(rawMessage);
     const ignoreAliases = [
         ...splitKeywordAliases(channelKeywords.additional.ignore_keyword, channelKeywords.additional.delimiters),
         ...splitKeywordAliases(channelKeywords.additional.skip_keyword, channelKeywords.additional.delimiters),
     ];
-    const explicitIgnore = hasAnyKeyword(rawMessage, ignoreAliases);
-    const keywordMatch = parseDeterministicManagement(rawMessage, lexicon, channelKeywords) ??
-        parseChannelParameterFollowUp(rawMessage, lexicon, channelKeywords);
+    const explicitIgnore = hasAnyKeyword(message, ignoreAliases);
+    const keywordMatch = parseDeterministicManagement(message, lexicon, channelKeywords) ??
+        parseChannelParameterFollowUp(message, lexicon, channelKeywords);
     if (explicitIgnore) {
         return {
-            parsed: ignorePayload(rawMessage),
+            parsed: ignorePayload(displayMessage),
             status: 'skipped',
             skip_reason: 'Non-trade message',
         };
@@ -1087,14 +1089,14 @@ function parseModificationDeterministic(rawMessage, channelKeywords, lexicon) {
                 tp: [],
                 lot_size: null,
                 confidence: 0,
-                raw_instruction: rawMessage,
+                raw_instruction: displayMessage,
                 open_tp: false,
             },
             status: 'skipped',
             skip_reason: 'No matching management or parameter follow-up pattern',
         };
     }
-    const parsed = enrichParsedKeywordMatch(keywordMatch, rawMessage);
+    const parsed = enrichParsedKeywordMatch(keywordMatch, message);
     const status = parsed.action === 'ignore' ? 'skipped' : 'parsed';
     const skip_reason = parsed.action === 'ignore'
         ? 'No matching management or parameter follow-up pattern'
@@ -1107,7 +1109,8 @@ function normalizeAiParsedOutput(raw, fallbackText) {
 }
 /** Synchronous parse when keywords/lexicon are already loaded (hot path). */
 function parseChannelMessageSync(rawMessage, channelKeywords, lexicon) {
-    const message = (0, normalizeTelegramMessageText_1.normalizeTelegramMessageText)(rawMessage);
+    const message = (0, normalizeTelegramMessageText_1.normalizeSignalMessageForParse)(rawMessage);
+    const displayMessage = (0, normalizeTelegramMessageText_1.normalizeTelegramMessageText)(rawMessage);
     const ignoreAliases = [
         ...splitKeywordAliases(channelKeywords.additional.ignore_keyword, channelKeywords.additional.delimiters),
         ...splitKeywordAliases(channelKeywords.additional.skip_keyword, channelKeywords.additional.delimiters),
@@ -1118,7 +1121,7 @@ function parseChannelMessageSync(rawMessage, channelKeywords, lexicon) {
         parseSimpleSignal(message, lexicon, channelKeywords) ??
         parseEntryFromKeywords(message, lexicon, channelKeywords);
     const rawParsed = explicitIgnore
-        ? ignorePayload(message)
+        ? ignorePayload(displayMessage)
         : keywordMatch ?? {
             action: "ignore",
             symbol: null,
@@ -1129,7 +1132,7 @@ function parseChannelMessageSync(rawMessage, channelKeywords, lexicon) {
             tp: [],
             lot_size: null,
             confidence: 0,
-            raw_instruction: message,
+            raw_instruction: displayMessage,
             open_tp: false,
         };
     const dropped = enrichParsedKeywordMatch(rawParsed, message);

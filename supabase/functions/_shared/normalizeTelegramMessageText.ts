@@ -1,6 +1,8 @@
 /**
  * Strip Telegram / Markdown / HTML formatting so signal parsers see plain trade text.
  */
+import { collapseCasualSignalTypos } from "./collapseCasualSignalTypos.ts"
+
 export function normalizeTelegramMessageText(raw: string): string {
   let text = String(raw ?? "")
 
@@ -24,4 +26,9 @@ export function normalizeTelegramMessageText(raw: string): string {
     .replace(/&gt;/gi, ">")
 
   return text.trim()
+}
+
+/** Telegram format strip + casual management typo collapse for parsers. */
+export function normalizeSignalMessageForParse(raw: string): string {
+  return collapseCasualSignalTypos(normalizeTelegramMessageText(raw))
 }

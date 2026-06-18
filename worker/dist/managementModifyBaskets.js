@@ -9,6 +9,7 @@ const fxsocketClient_1 = require("./fxsocketClient");
 const basketSlTpReconcile_1 = require("./basketSlTpReconcile");
 const tpBucketDistribution_1 = require("./manualPlanning/tpBucketDistribution");
 const channelMessageFilters_1 = require("./channelMessageFilters");
+const helpers_1 = require("./tradeExecutor/helpers");
 function sanitizeLevel(v) {
     const n = typeof v === 'number' ? v : Number(v ?? 0);
     return Number.isFinite(n) && n > 0 ? n : 0;
@@ -61,7 +62,10 @@ async function applyMgmtModifyToBasketGroups(args) {
     const newSl = hasNewSl ? parsed.sl : 0;
     for (const [basketKey, brokerRows] of rowsByBrokerSignal) {
         const broker = brokersById.get(basketKey.split('|')[0]);
-        if (!broker?.metaapi_account_id || broker.metaapi_account_id.includes('|'))
+        if (!broker)
+            continue;
+        const uuid = (0, helpers_1.brokerSessionUuid)(broker);
+        if (!uuid || uuid.includes('|'))
             continue;
         if ((0, channelMessageFilters_1.isChannelManagementBlocked)((0, channelMessageFilters_1.normalizeChannelMessageFiltersMap)(broker.channel_message_filters), signal.channel_id, 'modify', { hasNewSl, hasNewTp })) {
             continue;
@@ -69,7 +73,6 @@ async function applyMgmtModifyToBasketGroups(args) {
         const api = apiFor(broker);
         if (!api)
             continue;
-        const uuid = broker.metaapi_account_id;
         const familyTrades = brokerRows
             .filter(r => {
             const ticket = Number(r.metaapi_order_id);

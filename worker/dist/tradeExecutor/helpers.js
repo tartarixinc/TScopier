@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.isMtUuid = isMtUuid;
 exports.brokerSessionUuid = brokerSessionUuid;
 exports.brokerHasLinkedSession = brokerHasLinkedSession;
+exports.isFxsocketOnlyBroker = isFxsocketOnlyBroker;
 exports.parseSymbolToTradeList = parseSymbolToTradeList;
 exports.applySymbolMapping = applySymbolMapping;
 exports.isMt5OnlyOperation = isMt5OnlyOperation;
@@ -35,6 +36,12 @@ function brokerSessionUuid(broker) {
 }
 function brokerHasLinkedSession(broker) {
     return brokerSessionUuid(broker) != null;
+}
+/** Linked via fxsocket_account_id with no legacy metaapi_account_id UUID. */
+function isFxsocketOnlyBroker(broker) {
+    const fx = String(broker.fxsocket_account_id ?? '').trim();
+    const legacy = String(broker.metaapi_account_id ?? '').trim();
+    return isMtUuid(fx) && !isMtUuid(legacy);
 }
 function parseSymbolToTradeList(value) {
     if (!value || !value.trim())

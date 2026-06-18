@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { hasFxsocketConfigured, type FxsocketBrokerClient } from './fxsocketClient'
-import { apiForMetaapiAccount, loadPlatformByMetaapiId } from './mtApiByAccount'
+import { apiForFxsocketAccount, brokerSessionId, loadPlatformByFxsocketId } from './mtApiByAccount'
 import {
   applyShardToQuery,
   hasWorkOnShard,
@@ -57,7 +57,8 @@ interface CweTradeRow {
 
 interface BrokerRow {
   id: string
-  metaapi_account_id: string
+  fxsocket_account_id: string | null
+  metaapi_account_id: string | null
   platform: string
 }
 
@@ -163,29 +164,30 @@ export class CweCloseMonitor {
     }
 
     // Resolve each broker_account_id once so we can call /Quote and
-    // /OrderClose by metaapi_account_id (the platform's UUID). Trades that
-    // reference a deleted broker silently skip.
+    // /OrderClose by FxSocket terminal UUID. Trades that reference a deleted
+    // broker silently skip.
     const brokerIds = Array.from(new Set(rows.map(r => r.broker_account_id).filter((x): x is string => !!x)))
-    const brokerMap = new Map<string, string>() // broker_account_id -> metaapi_account_id
+    const brokerMap = new Map<string, string>() // broker_account_id -> fxsocket session id
     if (brokerIds.length > 0) {
       const { data: brokers, error: brokerErr } = await this.supabase
         .from('broker_accounts')
-        .select('id,metaapi_account_id,platform')
+        .select('id,fxsocket_account_id,metaapi_account_id,platform')
         .in('id', brokerIds)
       if (brokerErr) {
         console.error('[cweCloseMonitor] broker lookup failed:', brokerErr.message)
         return
       }
       for (const b of (brokers ?? []) as BrokerRow[]) {
-        if (b.metaapi_account_id) brokerMap.set(b.id, b.metaapi_account_id)
+        const sessionId = brokerSessionId(b)
+        if (sessionId) brokerMap.set(b.id, sessionId)
       }
     }
-    const platformByUuid = await loadPlatformByMetaapiId(
+    const platformByUuid = await loadPlatformByFxsocketId(
       this.supabase,
       Array.from(brokerMap.values()),
     )
 
-    // Group by (metaapi_account_id, symbol) so we issue at most ONE /Quote per
+    // Group by (fxsocket session id, symbol) so we issue at most ONE /Quote per
     // group per tick. Same shape as virtualPendingMonitor for consistency.
     const groups = new Map<string, CweTradeRow[]>()
     for (const r of rows) {
@@ -207,7 +209,7 @@ export class CweCloseMonitor {
     await Promise.all(Array.from(groups.entries()).map(async ([key, trades]) => {
       const [uuid, symbol] = key.split('|')
       if (!uuid || !symbol) return
-      const api = apiForMetaapiAccount(platformByUuid, uuid)
+      const api = apiForFxsocketAccount(platformByUuid, uuid)
       if (!api) return
       let q
       try {

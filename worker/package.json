@@ -10,8 +10,12 @@
     "test": "node --require ts-node/register --test $(find src -name '*.test.ts' | sort)",
     "replay-parse": "node -r dotenv/config dist/diagnostics/replayChannelParse.js",
     "push-signal-stops": "node -r dotenv/config dist/diagnostics/pushSignalStopsToBroker.js",
+    "push-gtmo-vip-sl": "node -r dotenv/config dist/diagnostics/pushGtmoVipSl.js",
+    "push-gtmo-vip-sl-fxsocket": "FXSOCKET_ONLY=true ALL_GTMO_USERS=true node -r dotenv/config dist/diagnostics/pushGtmoVipSl.js",
     "rebalance-open-baskets": "node -r dotenv/config dist/diagnostics/rebalanceOpenBaskets.js",
     "push-signal-stops:dev": "ts-node -r dotenv/config src/diagnostics/pushSignalStopsToBroker.ts",
+    "push-gtmo-vip-sl:dev": "ts-node -r dotenv/config src/diagnostics/pushGtmoVipSl.ts",
+    "push-gtmo-vip-sl-fxsocket:dev": "FXSOCKET_ONLY=true ALL_GTMO_USERS=true ts-node -r dotenv/config src/diagnostics/pushGtmoVipSl.ts",
     "rebalance-open-baskets:dev": "ts-node -r dotenv/config src/diagnostics/rebalanceOpenBaskets.ts"
   },
   "dependencies": {

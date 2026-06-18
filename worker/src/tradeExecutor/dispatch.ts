@@ -26,7 +26,7 @@ import type { ParsedSignal } from '../manualPlanner'
 import { SKIP_REASON_SIGNAL_ENTRY_REQUIRED } from '../manualPlanner'
 import { parsePipelineTimestamps, pipelineSummaryPayload } from '../pipelineTimestamps'
 import { resolveChannelLabelForComment, sanitizeChannelCommentSlug } from '../tradeComment'
-import { isMtUuid, operationFor } from './helpers'
+import { isMtUuid, operationFor, brokerHasLinkedSession, brokerSessionUuid } from './helpers'
 import {
   EXECUTION_LOG_ACTIONS_HANDLED,
   EXECUTOR_MAX_CONCURRENT_SIGNALS,
@@ -491,7 +491,7 @@ export async function handleSignal(ctx: TradeExecutorContext,
       }
 
       const rawMatchingBrokers = (ctx.brokersByUser.get(row.user_id) ?? []).filter(b =>
-        b.is_active && isMtUuid(b.metaapi_account_id) && channelMatchesBrokerSignal(b, row.channel_id),
+        b.is_active && brokerHasLinkedSession(b) && channelMatchesBrokerSignal(b, row.channel_id),
       )
       const configSkipReasons: string[] = []
       const allMatchingBrokers = rawMatchingBrokers.flatMap(b => {

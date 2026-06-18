@@ -6,7 +6,7 @@ import {
   OrderSendArgs,
   SymbolParams,
 } from './fxsocketClient'
-import { apiForMetaapiAccount, loadPlatformByMetaapiId, type PlatformByMetaapiId } from './mtApiByAccount'
+import { apiForFxsocketAccount, loadPlatformByFxsocketId, type PlatformByFxsocketId } from './mtApiByAccount'
 import { autoManagementTradeSnapshot } from './autoManagement'
 import { tryApplyBasketFollowUpToNewFill } from './basketModFollowUp'
 import { channelParamsPredateBasket, loadChannelActiveTradeParamsForSymbol } from './channelActiveTradeParams'
@@ -270,7 +270,7 @@ export function shouldLockBasketLayering(args: {
 
 export class VirtualPendingMonitor {
   private loop: MonitorLoopHandle | null = null
-  private platformByUuid: PlatformByMetaapiId = new Map()
+  private platformByUuid: PlatformByFxsocketId = new Map()
   private symbolCache = new Map<string, SymbolCacheEntry>()
   private brokerConfigCache = new Map<string, BrokerConfigCacheEntry>()
   private hostId: string
@@ -412,7 +412,7 @@ export class VirtualPendingMonitor {
       return
     }
 
-    this.platformByUuid = await loadPlatformByMetaapiId(
+    this.platformByUuid = await loadPlatformByFxsocketId(
       this.supabase,
       rows.map(r => r.metaapi_account_id),
     )
@@ -421,7 +421,7 @@ export class VirtualPendingMonitor {
     await reconcilePendingLegBasketsFromBroker(
       this.supabase,
       rows,
-      uuid => apiForMetaapiAccount(this.platformByUuid, uuid),
+      uuid => apiForFxsocketAccount(this.platformByUuid, uuid),
     )
 
     // Group by (account, symbol) so we issue at most ONE /Quote per group.
@@ -443,7 +443,7 @@ export class VirtualPendingMonitor {
     await Promise.all(Array.from(groups.entries()).map(async ([key, legs]) => {
       const [uuid, symbol] = key.split('|')
       if (!uuid || !symbol) return
-      const api = apiForMetaapiAccount(this.platformByUuid, uuid)
+      const api = apiForFxsocketAccount(this.platformByUuid, uuid)
       if (!api) return
       let q
       try {
@@ -689,7 +689,7 @@ export class VirtualPendingMonitor {
   }
 
   private async fireLeg(leg: PendingRow, bid: number, ask: number): Promise<boolean> {
-    const api = apiForMetaapiAccount(this.platformByUuid, leg.metaapi_account_id)
+    const api = apiForFxsocketAccount(this.platformByUuid, leg.metaapi_account_id)
     if (!api) return false
 
     const layerTillClose = await loadRangeLayerTillCloseForSignal(
@@ -1052,7 +1052,7 @@ export class VirtualPendingMonitor {
 
   private async getStaleLegReason(
     leg: PendingRow,
-    api: ReturnType<typeof apiForMetaapiAccount> | null,
+    api: ReturnType<typeof apiForFxsocketAccount> | null,
     metaapiAccountId: string,
   ): Promise<string | null> {
     return reconcileBasketFlatFromBroker(
@@ -1112,7 +1112,7 @@ export class VirtualPendingMonitor {
     const manual = normalizeManualSettingsForExecution(rawManual)
     if (manual.range_trading !== true) return
 
-    const api = apiForMetaapiAccount(this.platformByUuid, leg.metaapi_account_id)
+    const api = apiForFxsocketAccount(this.platformByUuid, leg.metaapi_account_id)
     if (!api) return
 
     const params = await this.getSymbolParams(leg.metaapi_account_id, leg.symbol)
@@ -1182,7 +1182,7 @@ export class VirtualPendingMonitor {
   }
 
   private async getSymbolParams(uuid: string, symbol: string): Promise<SymbolCacheEntry | null> {
-    const api = apiForMetaapiAccount(this.platformByUuid, uuid)
+    const api = apiForFxsocketAccount(this.platformByUuid, uuid)
     if (!api) return null
     const key = `${uuid}:${symbol.toUpperCase()}`
     const cached = this.symbolCache.get(key)
@@ -1291,7 +1291,7 @@ export class VirtualPendingMonitor {
     leg: PendingRow,
     args: OrderSendArgs,
   ): Promise<{ ticket?: number; openPrice?: number; lots?: number; stopLoss?: number; takeProfit?: number }> {
-    const api = apiForMetaapiAccount(this.platformByUuid, leg.metaapi_account_id)
+    const api = apiForFxsocketAccount(this.platformByUuid, leg.metaapi_account_id)
     if (!api) throw new Error('api unavailable')
     try {
       return await api.orderSend(leg.metaapi_account_id, args)

@@ -10,7 +10,7 @@ import type { ManualSettings } from '../manualPlanner'
 import { writeBrokerConnectionStatus } from '../brokerConnectionStatus'
 import { brokerSessionId } from '../mtApiByAccount'
 import { clearBrokerSessionBlock, replayParsedSignalsForBroker } from '../brokerSignalReplay'
-import { applySymbolMapping, isMtUuid, parseSymbolToTradeList } from './helpers'
+import { applySymbolMapping, brokerSessionUuid, isMtUuid, parseSymbolToTradeList } from './helpers'
 import {
   SESSION_PING_MIN_INTERVAL_MS,
   SYMBOL_CACHE_STALE_MS,
@@ -36,9 +36,9 @@ export function prewarmSymbolsEnabled(ctx: TradeExecutorContext, ): boolean {
 export async function prewarmBrokerCaches(ctx: TradeExecutorContext, ): Promise<void> {
     if (!ctx.prewarmSymbolsEnabled() || !hasFxsocketConfigured()) return
     for (const row of ctx.brokersById.values()) {
-      const uuid = row.metaapi_account_id
-      if (!isMtUuid(uuid)) continue
-      void ctx.getSymbolList(uuid!)
+      const uuid = brokerSessionUuid(row)
+      if (!uuid) continue
+      void ctx.getSymbolList(uuid)
       const manual = (row.manual_settings ?? {}) as { symbol_to_trade?: string | null }
       const symbols = parseSymbolToTradeList(manual.symbol_to_trade)
       for (const sym of symbols.length > 0 ? symbols : ['XAUUSD', 'EURUSD']) {
@@ -46,9 +46,9 @@ export async function prewarmBrokerCaches(ctx: TradeExecutorContext, ): Promise<
         // variant (e.g. XAUUSD → XAUUSDm). Otherwise the live path looks up
         // the mapped key and misses every time.
         const mapping = applySymbolMapping(sym, row)
-        void ctx.getSymbolParams(uuid!, mapping.symbol).catch(() => null)
+        void ctx.getSymbolParams(uuid, mapping.symbol).catch(() => null)
         if (mapping.symbol.toUpperCase() !== sym.toUpperCase()) {
-          void ctx.getSymbolParams(uuid!, sym).catch(() => null)
+          void ctx.getSymbolParams(uuid, sym).catch(() => null)
         }
       }
     }
@@ -182,12 +182,12 @@ export function brokersWarmForLiveEntry(ctx: TradeExecutorContext, brokers: Brok
     if (!brokers.length) return true
     const now = Date.now()
     for (const broker of brokers) {
-      const uuid = broker.metaapi_account_id
-      if (!isMtUuid(uuid)) continue
+      const uuid = brokerSessionUuid(broker)
+      if (!uuid) continue
       if (ctx.sessionOrderBlocked.has(broker.id)) return false
-      const lastPing = ctx.sessionPingAt.get(uuid!) ?? 0
+      const lastPing = ctx.sessionPingAt.get(uuid) ?? 0
       if (now - lastPing >= SESSION_PING_MIN_INTERVAL_MS) return false
-      const symbolList = ctx.symbolListCache.get(uuid!)
+      const symbolList = ctx.symbolListCache.get(uuid)
       if (!symbolList || now - symbolList.loadedAt >= SYMBOL_LIST_TTL_MS) return false
       const mapping = applySymbolMapping(signalSymbol, broker)
       const requested = mapping.symbol
@@ -206,30 +206,30 @@ export function prewarmForDispatch(ctx: TradeExecutorContext, row: SignalRow): v
     const brokers = ctx.brokersByUser.get(row.user_id) ?? []
     if (!brokers.length) return
     for (const broker of brokers) {
-      const uuid = broker.metaapi_account_id
-      if (!isMtUuid(uuid)) continue
+      const uuid = brokerSessionUuid(broker)
+      if (!uuid) continue
       const api = ctx.apiFor(broker)
       if (!api) continue
       const mapping = applySymbolMapping(signalSymbol, broker)
       const requested = mapping.symbol
-      void ctx.ensureBrokerSessionLiveFast(api, uuid!, broker)
-      void ctx.getSymbolList(uuid!).catch(() => null)
-      void ctx.getSymbolParams(uuid!, requested).catch(() => null)
+      void ctx.ensureBrokerSessionLiveFast(api, uuid, broker)
+      void ctx.getSymbolList(uuid).catch(() => null)
+      void ctx.getSymbolParams(uuid, requested).catch(() => null)
     }
   }
 
 export async function prewarmBrokersForLiveEntry(ctx: TradeExecutorContext, brokers: BrokerRow[], signalSymbol: string): Promise<void> {
     await Promise.all(brokers.map(async broker => {
-      const uuid = broker.metaapi_account_id
-      if (!isMtUuid(uuid)) return
+      const uuid = brokerSessionUuid(broker)
+      if (!uuid) return
       const api = ctx.apiFor(broker)
       if (!api) return
       const mapping = applySymbolMapping(signalSymbol, broker)
       const requested = mapping.symbol
       await Promise.all([
-        ctx.ensureBrokerSessionLiveFast(api, uuid!, broker),
-        ctx.getSymbolList(uuid!).catch(() => null),
-        ctx.getSymbolParams(uuid!, requested).catch(() => null),
+        ctx.ensureBrokerSessionLiveFast(api, uuid, broker),
+        ctx.getSymbolList(uuid).catch(() => null),
+        ctx.getSymbolParams(uuid, requested).catch(() => null),
       ])
     }))
   }

@@ -16,6 +16,7 @@ const channelKeywordsCache_1 = require("./channelKeywordsCache");
 const parseSignal_1 = require("./parseSignal");
 const signalTradingHeuristic_1 = require("./signalTradingHeuristic");
 const signalManagementIntent_1 = require("./signalManagementIntent");
+const normalizeTelegramMessageText_1 = require("./normalizeTelegramMessageText");
 const workerMetrics_1 = require("./workerMetrics");
 const workerConfig_1 = require("./workerConfig");
 const copierPause_1 = require("./copierPause");
@@ -1133,7 +1134,8 @@ class UserListener {
         }
     }
     isModificationClassMessage(rawMessage, isReply, channelKeywords, lexicon) {
-        return isReply || (0, signalManagementIntent_1.looksLikeChannelManagementUpdate)(rawMessage, channelKeywords, lexicon);
+        const message = (0, normalizeTelegramMessageText_1.normalizeSignalMessageForParse)(rawMessage);
+        return isReply || (0, signalManagementIntent_1.looksLikeChannelManagementUpdate)(message, channelKeywords, lexicon);
     }
     async parseSignalForListener(args) {
         const { keywords, lexicon } = await (0, channelKeywordsCache_1.getChannelParseContext)(this.supabase, args.channelRowId);

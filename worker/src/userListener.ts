@@ -18,6 +18,7 @@ import { getChannelParseContext, invalidateChannelParseCache } from './channelKe
 import { parseChannelMessageSync, parseRawChannelMessage } from './parseSignal'
 import { looksLikeTradingSignal, looksLikeTrainingCandidate } from './signalTradingHeuristic'
 import { looksLikeChannelManagementUpdate } from './signalManagementIntent'
+import { normalizeSignalMessageForParse } from './normalizeTelegramMessageText'
 import type { PipelineTimestamps } from './pipelineTimestamps'
 import { incMetric } from './workerMetrics'
 import { workerConfig } from './workerConfig'
@@ -1380,7 +1381,8 @@ export class UserListener {
     channelKeywords?: import('./parseSignal').ChannelKeywords | null,
     lexicon?: import('./parseSignal').ChannelLexiconRow | null,
   ): boolean {
-    return isReply || looksLikeChannelManagementUpdate(rawMessage, channelKeywords, lexicon)
+    const message = normalizeSignalMessageForParse(rawMessage)
+    return isReply || looksLikeChannelManagementUpdate(message, channelKeywords, lexicon)
   }
 
   private async parseSignalForListener(args: {

@@ -5,6 +5,7 @@ import {
   looksLikeExplicitFullCloseCommand,
   partialCloseFractionFromMessage,
 } from './signalManagementIntent'
+import { normalizeSignalMessageForParse } from './normalizeTelegramMessageText'
 
 test('looksLikeExplicitFullCloseCommand: accepts two-word close phrases', () => {
   assert.equal(looksLikeExplicitFullCloseCommand('Close all now'), true)
@@ -31,6 +32,13 @@ test('looksLikeChannelManagementUpdate: partial lotsize close', () => {
 test('looksLikeChannelManagementUpdate: move stop to breakeven', () => {
   assert.equal(
     looksLikeChannelManagementUpdate('+50 pips running, you can move stop to breakeven.'),
+    true,
+  )
+})
+
+test('looksLikeChannelManagementUpdate: stretched breakevennnn', () => {
+  assert.equal(
+    looksLikeChannelManagementUpdate(normalizeSignalMessageForParse('Set breakevennnnnnnn')),
     true,
   )
 })

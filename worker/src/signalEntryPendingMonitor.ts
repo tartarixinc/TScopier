@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { hasFxsocketConfigured } from './fxsocketClient'
-import { apiForMetaapiAccount, loadPlatformByMetaapiId, type PlatformByMetaapiId } from './mtApiByAccount'
+import { apiForFxsocketAccount, loadPlatformByFxsocketId, type PlatformByFxsocketId } from './mtApiByAccount'
 import {
   applyShardToQuery,
   hasWorkOnShard,
@@ -67,7 +67,7 @@ function extractOpenPrice(raw: Record<string, unknown>): number | null {
  */
 export class SignalEntryPendingMonitor {
   private loop: MonitorLoopHandle | null = null
-  private platformByUuid: PlatformByMetaapiId = new Map()
+  private platformByUuid: PlatformByFxsocketId = new Map()
   private ticking = false
   /** row id → consecutive ticks where ticket was absent from /OpenedOrders */
   private missingStreak = new Map<string, number>()
@@ -138,7 +138,7 @@ export class SignalEntryPendingMonitor {
       return
     }
 
-    this.platformByUuid = await loadPlatformByMetaapiId(
+    this.platformByUuid = await loadPlatformByFxsocketId(
       this.supabase,
       rows.map(r => r.metaapi_account_id),
     )
@@ -155,12 +155,12 @@ export class SignalEntryPendingMonitor {
 
     for (const row of rows) {
       if (!expiredIds.has(row.id)) continue
-      const api = apiForMetaapiAccount(this.platformByUuid, row.metaapi_account_id)
+      const api = apiForFxsocketAccount(this.platformByUuid, row.metaapi_account_id)
       if (api) await cancelSignalEntryRowAtBroker(this.supabase, api, row, 'expired')
     }
 
     for (const row of cancelRows) {
-      const api = apiForMetaapiAccount(this.platformByUuid, row.metaapi_account_id)
+      const api = apiForFxsocketAccount(this.platformByUuid, row.metaapi_account_id)
       if (api) await cancelSignalEntryRowAtBroker(this.supabase, api, row, 'cancel_requested')
     }
 
@@ -173,7 +173,7 @@ export class SignalEntryPendingMonitor {
     }
 
     for (const [uuid, group] of byAccount) {
-      const api = apiForMetaapiAccount(this.platformByUuid, uuid)
+      const api = apiForFxsocketAccount(this.platformByUuid, uuid)
       if (!api) continue
       let opened: unknown[] = []
       try {

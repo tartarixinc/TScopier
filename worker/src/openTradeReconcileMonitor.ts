@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { hasFxsocketConfigured } from './fxsocketClient'
-import { apiForMetaapiAccount, loadPlatformByMetaapiId, type PlatformByMetaapiId } from './mtApiByAccount'
+import { apiForFxsocketAccount, brokerSessionId, loadPlatformByFxsocketId, type PlatformByFxsocketId } from './mtApiByAccount'
 import {
   applyShardToQuery,
   hasWorkOnShard,
@@ -13,7 +13,8 @@ import { reconcileOpenTradesForBroker, type OpenTradeReconcileRow } from './open
 
 interface BrokerRow {
   id: string
-  metaapi_account_id: string
+  fxsocket_account_id: string | null
+  metaapi_account_id: string | null
 }
 
 const ACTIVE_MS = monitorActiveIntervalMs('OPEN_TRADE_RECONCILE_TICK_MS', 30_000)
@@ -23,7 +24,7 @@ const BATCH_LIMIT = 500
 export class OpenTradeReconcileMonitor {
   private loop: MonitorLoopHandle | null = null
   private ticking = false
-  private platformByUuid: PlatformByMetaapiId = new Map()
+  private platformByUuid: PlatformByFxsocketId = new Map()
 
   constructor(private readonly supabase: SupabaseClient) {}
 
@@ -96,7 +97,7 @@ export class OpenTradeReconcileMonitor {
     const brokerIds = [...byBroker.keys()]
     const { data: brokers, error: brokerErr } = await this.supabase
       .from('broker_accounts')
-      .select('id,metaapi_account_id')
+      .select('id,fxsocket_account_id,metaapi_account_id')
       .in('id', brokerIds)
 
     if (brokerErr) {
@@ -105,15 +106,15 @@ export class OpenTradeReconcileMonitor {
     }
 
     const uuids = ((brokers ?? []) as BrokerRow[])
-      .map(b => String(b.metaapi_account_id ?? '').trim())
-      .filter(uuid => uuid.length > 0 && !uuid.includes('|'))
-    this.platformByUuid = await loadPlatformByMetaapiId(this.supabase, uuids)
+      .map(b => brokerSessionId(b))
+      .filter(uuid => uuid.length > 0)
+    this.platformByUuid = await loadPlatformByFxsocketId(this.supabase, uuids)
 
     let totalClosed = 0
     for (const broker of (brokers ?? []) as BrokerRow[]) {
-      const uuid = String(broker.metaapi_account_id ?? '').trim()
-      if (!uuid || uuid.includes('|')) continue
-      const api = apiForMetaapiAccount(this.platformByUuid, uuid)
+      const uuid = brokerSessionId(broker)
+      if (!uuid) continue
+      const api = apiForFxsocketAccount(this.platformByUuid, uuid)
       if (!api) continue
 
       const openForBroker = byBroker.get(broker.id) ?? []

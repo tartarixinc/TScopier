@@ -1,5 +1,5 @@
-import { describe, it } from 'node:test'
-import assert from 'node:assert/strict'
+import { strict as assert } from 'node:assert'
+import { test, describe, it } from 'node:test'
 import { parseModificationDeterministic, parseChannelMessageSync, DEFAULT_CHANNEL_KEYWORDS } from './parseSignal'
 import { coerceMgmtSlTpFollowUpAction, shouldSkipConditionalCloseForAi } from './aiParseModification'
 
@@ -69,6 +69,17 @@ describe('parseModificationDeterministic', () => {
     )
     assert.equal(result.status, 'skipped')
     assert.equal(result.parsed.action, 'ignore')
+  })
+
+  it('parses stretched breakeven via parseModificationDeterministic', () => {
+    const result = parseModificationDeterministic(
+      'breakevennn noowwwww',
+      DEFAULT_CHANNEL_KEYWORDS,
+      null,
+    )
+    assert.equal(result.status, 'parsed')
+    assert.equal(result.parsed.action, 'breakeven')
+    assert.ok((result.parsed.confidence ?? 0) >= 0.9)
   })
 })
 

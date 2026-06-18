@@ -96,6 +96,26 @@ describe('parseChannelMessageSync', () => {
     assert.equal(result.parsed.symbol, 'XAUUSD')
   })
 
+  it('parses stretched breakeven hype text', () => {
+    const result = parseChannelMessageSync(
+      'Set breakevennnnnnnn',
+      DEFAULT_CHANNEL_KEYWORDS,
+      lexicon,
+    )
+    assert.equal(result.status, 'parsed')
+    assert.equal(result.parsed.action, 'breakeven')
+  })
+
+  it('parses breakevennn noowwwww as breakeven', () => {
+    const result = parseChannelMessageSync(
+      'breakevennn noowwwww',
+      DEFAULT_CHANNEL_KEYWORDS,
+      lexicon,
+    )
+    assert.equal(result.status, 'parsed')
+    assert.equal(result.parsed.action, 'breakeven')
+  })
+
   it('skips buy/sell without SL, TP, or NOW', () => {
     const msg = 'BUY XAUUSD @ 4500'
     const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)

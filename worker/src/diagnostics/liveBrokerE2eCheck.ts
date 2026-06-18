@@ -11,7 +11,7 @@ import {
   hasFxsocketConfigured,
   type FxsocketBrokerClient,
 } from '../fxsocketClient'
-import { apiForMetaapiAccount, loadPlatformByMetaapiId } from '../mtApiByAccount'
+import { apiForFxsocketAccount, brokerSessionId, loadPlatformByFxsocketId } from '../mtApiByAccount'
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -25,7 +25,7 @@ async function main() {
 
   const { data: brokers, error: bErr } = await supabase
     .from('broker_accounts')
-    .select('id,user_id,platform,is_active,connection_status,copier_mode,metaapi_account_id,manual_settings,channel_trading_configs')
+    .select('id,user_id,platform,is_active,connection_status,copier_mode,fxsocket_account_id,metaapi_account_id,manual_settings,channel_trading_configs')
     .eq('is_active', true)
     .eq('connection_status', 'connected')
   if (bErr) throw bErr
@@ -76,14 +76,14 @@ async function main() {
   }
 
   const brokerById = new Map((brokers ?? []).map(b => [b.id, b]))
-  const uuids = [...new Set((brokers ?? []).map(b => String(b.metaapi_account_id ?? '')).filter(Boolean))]
-  const platformByUuid = await loadPlatformByMetaapiId(supabase, uuids)
+  const uuids = [...new Set((brokers ?? []).map(b => brokerSessionId(b)).filter(Boolean))]
+  const platformByUuid = await loadPlatformByFxsocketId(supabase, uuids)
 
   for (const trade of autoTrades ?? []) {
     const broker = brokerById.get(trade.broker_account_id ?? '')
-    if (!broker?.metaapi_account_id) continue
-    const uuid = String(broker.metaapi_account_id)
-    const api: FxsocketBrokerClient | null = apiForMetaapiAccount(platformByUuid, uuid)
+    const uuid = broker ? brokerSessionId(broker) : ''
+    if (!uuid) continue
+    const api: FxsocketBrokerClient | null = apiForFxsocketAccount(platformByUuid, uuid)
     if (!api) {
       console.log(`  ${trade.symbol} ${trade.direction}: no API client for ${uuid.slice(0, 8)}`)
       continue

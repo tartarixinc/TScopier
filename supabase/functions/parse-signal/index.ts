@@ -24,7 +24,7 @@ import {
   partialCloseFractionFromMessage,
 } from "../_shared/signalManagementIntent.ts"
 import { SIGNAL_PRICE_NUM, parseSignalPriceListBlock, parseSignalPriceToken } from "../_shared/signalPriceFormat.ts"
-import { normalizeTelegramMessageText } from "../_shared/normalizeTelegramMessageText.ts"
+import { normalizeTelegramMessageText, normalizeSignalMessageForParse } from "../_shared/normalizeTelegramMessageText.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1224,7 +1224,8 @@ async function parseRawChannelMessage(
   channelId: string | null,
   rawMessage: string,
 ): Promise<{ parsed: ParsedSignal; status: string; skip_reason: string | null }> {
-  const message = normalizeTelegramMessageText(rawMessage)
+  const message = normalizeSignalMessageForParse(rawMessage)
+  const displayMessage = normalizeTelegramMessageText(rawMessage)
   const lexicon = await loadChannelLexicon(supabase, channelId)
   const channelKeywords = await loadChannelKeywords(supabase, channelId)
 
@@ -1241,7 +1242,7 @@ async function parseRawChannelMessage(
     parseEntryFromKeywords(message, lexicon, channelKeywords)
 
   const rawParsed = explicitIgnore
-    ? ignorePayload(message)
+    ? ignorePayload(displayMessage)
     : keywordMatch ?? {
       action: "ignore",
       symbol: null,
@@ -1252,7 +1253,7 @@ async function parseRawChannelMessage(
       tp: [],
       lot_size: null,
       confidence: 0,
-      raw_instruction: message,
+      raw_instruction: displayMessage,
       open_tp: false,
     }
 

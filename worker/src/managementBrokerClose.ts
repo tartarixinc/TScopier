@@ -16,6 +16,7 @@ import {
 } from './signalEntryPendingHelpers'
 import { sanitizeChannelCommentSlug } from './tradeComment'
 import type { BrokerRow } from './tradeExecutor/types'
+import { brokerSessionUuid } from './tradeExecutor/helpers'
 
 export type BrokerOpenOrderLike = {
   ticket: number
@@ -118,8 +119,8 @@ export async function tryBrokerFallbackClose(args: {
   let failed = 0
 
   await Promise.allSettled(brokers.map(async broker => {
-    const uuid = broker.metaapi_account_id
-    if (!uuid || uuid.includes('|')) return
+    const uuid = brokerSessionUuid(broker)
+    if (!uuid) return
     let rawOrders: unknown[] = []
     try {
       rawOrders = await api.openedOrders(uuid) ?? []
