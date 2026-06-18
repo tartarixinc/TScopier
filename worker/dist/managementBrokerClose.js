@@ -12,6 +12,7 @@ const channelActiveTradeParams_1 = require("./channelActiveTradeParams");
 const tscopierComment_1 = require("./tscopierComment");
 const signalEntryPendingHelpers_1 = require("./signalEntryPendingHelpers");
 const tradeComment_1 = require("./tradeComment");
+const helpers_1 = require("./tradeExecutor/helpers");
 function extractOpenOrderFromBrokerRaw(raw) {
     if (!raw || typeof raw !== 'object')
         return null;
@@ -88,8 +89,8 @@ async function tryBrokerFallbackClose(args) {
     let closed = 0;
     let failed = 0;
     await Promise.allSettled(brokers.map(async (broker) => {
-        const uuid = broker.metaapi_account_id;
-        if (!uuid || uuid.includes('|'))
+        const uuid = (0, helpers_1.brokerSessionUuid)(broker);
+        if (!uuid)
             return;
         let rawOrders = [];
         try {

@@ -119,7 +119,7 @@ class PartialTpMonitor {
             this.quietTicks = 0;
             return;
         }
-        this.platformByUuid = await (0, mtApiByAccount_1.loadPlatformByMetaapiId)(this.supabase, rows.map(r => r.metaapi_account_id));
+        this.platformByUuid = await (0, mtApiByAccount_1.loadPlatformByFxsocketId)(this.supabase, rows.map(r => r.metaapi_account_id));
         // Group by (metaapi_account_id, symbol) → at most ONE /Quote per group
         // per tick. Same shape as the other monitors for consistency.
         const groups = new Map();
@@ -137,7 +137,7 @@ class PartialTpMonitor {
             const [uuid, symbol] = key.split('|');
             if (!uuid || !symbol)
                 return;
-            const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(this.platformByUuid, uuid);
+            const api = (0, mtApiByAccount_1.apiForFxsocketAccount)(this.platformByUuid, uuid);
             if (!api)
                 return;
             let q;

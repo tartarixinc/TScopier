@@ -18,7 +18,7 @@ async function main() {
     console.log('Supabase:', process.env.SUPABASE_URL?.replace(/https?:\/\//, '').split('/')[0]);
     const { data: brokers, error: bErr } = await supabase
         .from('broker_accounts')
-        .select('id,user_id,platform,is_active,connection_status,copier_mode,metaapi_account_id,manual_settings,channel_trading_configs')
+        .select('id,user_id,platform,is_active,connection_status,copier_mode,fxsocket_account_id,metaapi_account_id,manual_settings,channel_trading_configs')
         .eq('is_active', true)
         .eq('connection_status', 'connected');
     if (bErr)
@@ -67,14 +67,14 @@ async function main() {
         return;
     }
     const brokerById = new Map((brokers ?? []).map(b => [b.id, b]));
-    const uuids = [...new Set((brokers ?? []).map(b => String(b.metaapi_account_id ?? '')).filter(Boolean))];
-    const platformByUuid = await (0, mtApiByAccount_1.loadPlatformByMetaapiId)(supabase, uuids);
+    const uuids = [...new Set((brokers ?? []).map(b => (0, mtApiByAccount_1.brokerSessionId)(b)).filter(Boolean))];
+    const platformByUuid = await (0, mtApiByAccount_1.loadPlatformByFxsocketId)(supabase, uuids);
     for (const trade of autoTrades ?? []) {
         const broker = brokerById.get(trade.broker_account_id ?? '');
-        if (!broker?.metaapi_account_id)
+        const uuid = broker ? (0, mtApiByAccount_1.brokerSessionId)(broker) : '';
+        if (!uuid)
             continue;
-        const uuid = String(broker.metaapi_account_id);
-        const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(platformByUuid, uuid);
+        const api = (0, mtApiByAccount_1.apiForFxsocketAccount)(platformByUuid, uuid);
         if (!api) {
             console.log(`  ${trade.symbol} ${trade.direction}: no API client for ${uuid.slice(0, 8)}`);
             continue;

@@ -84,20 +84,21 @@ class TrailingStopMonitor {
         const brokerIds = [...new Set(rows.map(r => r.broker_account_id).filter(Boolean))];
         const { data: brokers, error: brokerErr } = await this.supabase
             .from('broker_accounts')
-            .select('id,metaapi_account_id,platform')
+            .select('id,fxsocket_account_id,metaapi_account_id,platform')
             .in('id', brokerIds);
         if (brokerErr) {
             console.error('[trailingStopMonitor] broker lookup failed:', brokerErr.message);
             return;
         }
         const brokerById = new Map((brokers ?? []).map(b => [b.id, b]));
-        this.platformByUuid = await (0, mtApiByAccount_1.loadPlatformByMetaapiId)(this.supabase, (brokers ?? []).map(b => String(b.metaapi_account_id ?? '')));
+        this.platformByUuid = await (0, mtApiByAccount_1.loadPlatformByFxsocketId)(this.supabase, (brokers ?? []).map(b => (0, mtApiByAccount_1.brokerSessionId)(b)));
         const groups = new Map();
         for (const row of rows) {
             const b = brokerById.get(row.broker_account_id ?? '');
-            if (!b?.metaapi_account_id)
+            const sessionId = b ? (0, mtApiByAccount_1.brokerSessionId)(b) : '';
+            if (!sessionId)
                 continue;
-            const key = `${b.metaapi_account_id}:${row.symbol.toUpperCase()}`;
+            const key = `${sessionId}:${row.symbol.toUpperCase()}`;
             const list = groups.get(key) ?? [];
             list.push(row);
             groups.set(key, list);
@@ -109,7 +110,7 @@ class TrailingStopMonitor {
             const symbol = group[0]?.symbol ?? '';
             let bid = NaN;
             let ask = NaN;
-            const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(this.platformByUuid, uuid);
+            const api = (0, mtApiByAccount_1.apiForFxsocketAccount)(this.platformByUuid, uuid);
             if (!api)
                 continue;
             try {
@@ -242,7 +243,7 @@ class TrailingStopMonitor {
         const cached = this.symbolCache.get(key);
         if (cached && Date.now() - cached.loadedAt < SYMBOL_CACHE_TTL_MS)
             return cached;
-        const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(this.platformByUuid, uuid);
+        const api = (0, mtApiByAccount_1.apiForFxsocketAccount)(this.platformByUuid, uuid);
         if (!api)
             return null;
         try {

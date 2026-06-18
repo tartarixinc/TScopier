@@ -117,7 +117,8 @@ export class CopyLimitMonitor {
 
     for (const row of activeRows) {
       const broker = brokerById.get(row.broker_account_id)
-      const sessionId = broker ? brokerSessionId(broker) : ''
+      if (!broker) continue
+      const sessionId = brokerSessionId(broker)
       if (!sessionId) continue
       if (isUserCopierPausedCached(broker.user_id)) continue
 

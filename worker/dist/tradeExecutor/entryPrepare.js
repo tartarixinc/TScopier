@@ -82,7 +82,7 @@ async function prepareEntryExecution(ctx, args) {
     const api = ctx.apiFor(broker);
     if (!api)
         return { ok: false, outcome: {} };
-    const uuid = broker.metaapi_account_id;
+    const uuid = (0, helpers_1.brokerSessionUuid)(broker);
     const signalSymbol = (parsed.symbol ?? '').trim();
     if ((0, helpers_1.isExcluded)(signalSymbol, broker)) {
         await ctx.logSendSkipped(signal, broker, 'symbol_exempted_from_trading', {

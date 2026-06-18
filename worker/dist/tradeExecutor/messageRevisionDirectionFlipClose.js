@@ -44,11 +44,11 @@ async function closeBasketForRevisionDirectionFlip(ctx, row, brokers) {
     let failed = 0;
     const purgeScopes = [];
     for (const broker of brokers) {
-        if (!broker.is_active || !(0, helpers_1.isMtUuid)(broker.metaapi_account_id))
+        if (!broker.is_active || !(0, helpers_1.brokerHasLinkedSession)(broker))
             continue;
         if (!(0, brokerChannelFilter_1.channelMatchesBrokerSignal)(broker, row.channel_id))
             continue;
-        const uuid = broker.metaapi_account_id;
+        const uuid = (0, helpers_1.brokerSessionUuid)(broker);
         const api = ctx.apiFor(broker);
         if (!api)
             continue;

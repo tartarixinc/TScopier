@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.closeOppositeDirectionTrades = closeOppositeDirectionTrades;
 const channelMessageFilters_1 = require("../../channelMessageFilters");
 const fxsocketClient_1 = require("../../fxsocketClient");
+const helpers_1 = require("../helpers");
 const pendingCancel_1 = require("./pendingCancel");
 async function closeOppositeDirectionTrades(ctx, signal, parsed, broker, symbol) {
     if (!(0, fxsocketClient_1.hasFxsocketConfigured)())
@@ -17,7 +18,7 @@ async function closeOppositeDirectionTrades(ctx, signal, parsed, broker, symbol)
         return;
     const channelBuy = a === 'buy';
     const oppDir = channelBuy ? 'sell' : 'buy';
-    const uuid = broker.metaapi_account_id;
+    const uuid = (0, helpers_1.brokerSessionUuid)(broker);
     const api = ctx.apiFor(broker);
     if (!api)
         return;

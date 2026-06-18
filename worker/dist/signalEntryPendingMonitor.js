@@ -108,7 +108,7 @@ class SignalEntryPendingMonitor {
             this.missingStreak.clear();
             return;
         }
-        this.platformByUuid = await (0, mtApiByAccount_1.loadPlatformByMetaapiId)(this.supabase, rows.map(r => r.metaapi_account_id));
+        this.platformByUuid = await (0, mtApiByAccount_1.loadPlatformByFxsocketId)(this.supabase, rows.map(r => r.metaapi_account_id));
         const nowMs = Date.now();
         const expiredIds = new Set();
         for (const r of rows) {
@@ -123,12 +123,12 @@ class SignalEntryPendingMonitor {
         for (const row of rows) {
             if (!expiredIds.has(row.id))
                 continue;
-            const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(this.platformByUuid, row.metaapi_account_id);
+            const api = (0, mtApiByAccount_1.apiForFxsocketAccount)(this.platformByUuid, row.metaapi_account_id);
             if (api)
                 await (0, signalEntryPendingHelpers_1.cancelSignalEntryRowAtBroker)(this.supabase, api, row, 'expired');
         }
         for (const row of cancelRows) {
-            const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(this.platformByUuid, row.metaapi_account_id);
+            const api = (0, mtApiByAccount_1.apiForFxsocketAccount)(this.platformByUuid, row.metaapi_account_id);
             if (api)
                 await (0, signalEntryPendingHelpers_1.cancelSignalEntryRowAtBroker)(this.supabase, api, row, 'cancel_requested');
         }
@@ -140,7 +140,7 @@ class SignalEntryPendingMonitor {
             byAccount.set(k, list);
         }
         for (const [uuid, group] of byAccount) {
-            const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(this.platformByUuid, uuid);
+            const api = (0, mtApiByAccount_1.apiForFxsocketAccount)(this.platformByUuid, uuid);
             if (!api)
                 continue;
             let opened = [];

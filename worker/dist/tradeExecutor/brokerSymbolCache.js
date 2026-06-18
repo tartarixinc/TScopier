@@ -34,8 +34,8 @@ async function prewarmBrokerCaches(ctx) {
     if (!ctx.prewarmSymbolsEnabled() || !(0, fxsocketClient_1.hasFxsocketConfigured)())
         return;
     for (const row of ctx.brokersById.values()) {
-        const uuid = row.metaapi_account_id;
-        if (!(0, helpers_1.isMtUuid)(uuid))
+        const uuid = (0, helpers_1.brokerSessionUuid)(row);
+        if (!uuid)
             continue;
         void ctx.getSymbolList(uuid);
         const manual = (row.manual_settings ?? {});
@@ -167,8 +167,8 @@ function brokersWarmForLiveEntry(ctx, brokers, signalSymbol) {
         return true;
     const now = Date.now();
     for (const broker of brokers) {
-        const uuid = broker.metaapi_account_id;
-        if (!(0, helpers_1.isMtUuid)(uuid))
+        const uuid = (0, helpers_1.brokerSessionUuid)(broker);
+        if (!uuid)
             continue;
         if (ctx.sessionOrderBlocked.has(broker.id))
             return false;
@@ -198,8 +198,8 @@ function prewarmForDispatch(ctx, row) {
     if (!brokers.length)
         return;
     for (const broker of brokers) {
-        const uuid = broker.metaapi_account_id;
-        if (!(0, helpers_1.isMtUuid)(uuid))
+        const uuid = (0, helpers_1.brokerSessionUuid)(broker);
+        if (!uuid)
             continue;
         const api = ctx.apiFor(broker);
         if (!api)
@@ -213,8 +213,8 @@ function prewarmForDispatch(ctx, row) {
 }
 async function prewarmBrokersForLiveEntry(ctx, brokers, signalSymbol) {
     await Promise.all(brokers.map(async (broker) => {
-        const uuid = broker.metaapi_account_id;
-        if (!(0, helpers_1.isMtUuid)(uuid))
+        const uuid = (0, helpers_1.brokerSessionUuid)(broker);
+        if (!uuid)
             return;
         const api = ctx.apiFor(broker);
         if (!api)

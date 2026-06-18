@@ -120,7 +120,8 @@ class TradeExecutor {
     }
     apiForUuid(uuid) {
         for (const b of this.brokersById.values()) {
-            if (b.metaapi_account_id === uuid)
+            const sessionId = (0, helpers_2.brokerSessionUuid)(b);
+            if (sessionId === uuid)
                 return this.apiFor(b);
         }
         console.error(`[tradeExecutor] apiForUuid: unknown broker uuid=${uuid}`);
@@ -813,7 +814,7 @@ class TradeExecutor {
             return;
         if (String(process.env.WORKER_BROKER_PENDING_EXPIRY_SWEEP ?? '').toLowerCase() !== 'true')
             return;
-        const brokers = Array.from(this.brokersById.values()).filter(b => b.is_active && (0, helpers_2.isMtUuid)(b.metaapi_account_id) && (b.copier_mode ?? 'ai') === 'manual');
+        const brokers = Array.from(this.brokersById.values()).filter(b => b.is_active && (0, helpers_2.brokerHasLinkedSession)(b) && (b.copier_mode ?? 'ai') === 'manual');
         if (!brokers.length)
             return;
         const now = Date.now();
@@ -822,7 +823,7 @@ class TradeExecutor {
             const ttlH = (0, manualPlanner_1.clampPendingExpiryHours)(manual.pending_expiry_hours);
             if (ttlH <= 0)
                 continue;
-            const uuid = broker.metaapi_account_id;
+            const uuid = (0, helpers_2.brokerSessionUuid)(broker);
             const api = this.apiFor(broker);
             if (!api)
                 continue;
@@ -1013,14 +1014,14 @@ class TradeExecutor {
     async cleanupLegacyBrokerPendings() {
         if (!(0, fxsocketClient_1.hasFxsocketConfigured)())
             return;
-        const brokers = Array.from(this.brokersById.values()).filter(b => b.is_active && (0, helpers_2.isMtUuid)(b.metaapi_account_id));
+        const brokers = Array.from(this.brokersById.values()).filter(b => b.is_active && (0, helpers_2.brokerHasLinkedSession)(b));
         if (!brokers.length)
             return;
         console.log(`[tradeExecutor] legacy pending cleanup: scanning ${brokers.length} brokers...`);
         let totalClosed = 0;
         let totalFailed = 0;
         for (const broker of brokers) {
-            const uuid = broker.metaapi_account_id;
+            const uuid = (0, helpers_2.brokerSessionUuid)(broker);
             const api = this.apiFor(broker);
             if (!api)
                 continue;

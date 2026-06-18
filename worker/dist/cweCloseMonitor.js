@@ -103,26 +103,27 @@ class CweCloseMonitor {
             return;
         }
         // Resolve each broker_account_id once so we can call /Quote and
-        // /OrderClose by metaapi_account_id (the platform's UUID). Trades that
-        // reference a deleted broker silently skip.
+        // /OrderClose by FxSocket terminal UUID. Trades that reference a deleted
+        // broker silently skip.
         const brokerIds = Array.from(new Set(rows.map(r => r.broker_account_id).filter((x) => !!x)));
-        const brokerMap = new Map(); // broker_account_id -> metaapi_account_id
+        const brokerMap = new Map(); // broker_account_id -> fxsocket session id
         if (brokerIds.length > 0) {
             const { data: brokers, error: brokerErr } = await this.supabase
                 .from('broker_accounts')
-                .select('id,metaapi_account_id,platform')
+                .select('id,fxsocket_account_id,metaapi_account_id,platform')
                 .in('id', brokerIds);
             if (brokerErr) {
                 console.error('[cweCloseMonitor] broker lookup failed:', brokerErr.message);
                 return;
             }
             for (const b of (brokers ?? [])) {
-                if (b.metaapi_account_id)
-                    brokerMap.set(b.id, b.metaapi_account_id);
+                const sessionId = (0, mtApiByAccount_1.brokerSessionId)(b);
+                if (sessionId)
+                    brokerMap.set(b.id, sessionId);
             }
         }
-        const platformByUuid = await (0, mtApiByAccount_1.loadPlatformByMetaapiId)(this.supabase, Array.from(brokerMap.values()));
-        // Group by (metaapi_account_id, symbol) so we issue at most ONE /Quote per
+        const platformByUuid = await (0, mtApiByAccount_1.loadPlatformByFxsocketId)(this.supabase, Array.from(brokerMap.values()));
+        // Group by (fxsocket session id, symbol) so we issue at most ONE /Quote per
         // group per tick. Same shape as virtualPendingMonitor for consistency.
         const groups = new Map();
         for (const r of rows) {
@@ -144,7 +145,7 @@ class CweCloseMonitor {
             const [uuid, symbol] = key.split('|');
             if (!uuid || !symbol)
                 return;
-            const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(platformByUuid, uuid);
+            const api = (0, mtApiByAccount_1.apiForFxsocketAccount)(platformByUuid, uuid);
             if (!api)
                 return;
             let q;

@@ -130,8 +130,8 @@ class BasketSlTpReconcileMonitor {
             await this.releaseJob(row.id, 'copier paused', row.attempts);
             return;
         }
-        this.platformByUuid = await (0, mtApiByAccount_1.loadPlatformByMetaapiId)(this.supabase, [uuid]);
-        const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(this.platformByUuid, uuid);
+        this.platformByUuid = await (0, mtApiByAccount_1.loadPlatformByFxsocketId)(this.supabase, [uuid]);
+        const api = (0, mtApiByAccount_1.apiForFxsocketAccount)(this.platformByUuid, uuid);
         if (!api) {
             await this.releaseJob(row.id, 'MT API not configured', row.attempts);
             return;

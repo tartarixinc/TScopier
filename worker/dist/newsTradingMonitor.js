@@ -48,9 +48,9 @@ class NewsTradingMonitor {
             return;
         const { data, error } = await this.supabase
             .from('broker_accounts')
-            .select('id,user_id,metaapi_account_id,platform,manual_settings,channel_trading_configs,copier_mode,ai_settings,is_active')
+            .select('id,user_id,fxsocket_account_id,metaapi_account_id,platform,manual_settings,channel_trading_configs,copier_mode,ai_settings,is_active')
             .eq('is_active', true)
-            .not('metaapi_account_id', 'is', null);
+            .not('fxsocket_account_id', 'is', null);
         if (error) {
             console.error('[newsTradingMonitor] broker select failed:', error.message);
             return;
@@ -58,14 +58,16 @@ class NewsTradingMonitor {
         const brokers = (data ?? []);
         if (!brokers.length)
             return;
-        const platformByUuid = await (0, mtApiByAccount_1.loadPlatformByMetaapiId)(this.supabase, brokers.map(b => String(b.metaapi_account_id ?? '')));
+        const platformByUuid = await (0, mtApiByAccount_1.loadPlatformByFxsocketId)(this.supabase, brokers.map(b => (0, mtApiByAccount_1.brokerSessionId)(b)));
         const now = new Date();
         this.pruneClosedMap(now);
         for (const broker of brokers) {
             if ((0, copierPause_1.isUserCopierPausedCached)(broker.user_id))
                 continue;
-            const uuid = broker.metaapi_account_id;
-            const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(platformByUuid, uuid);
+            const uuid = (0, mtApiByAccount_1.brokerSessionId)(broker);
+            if (!uuid)
+                continue;
+            const api = (0, mtApiByAccount_1.apiForFxsocketAccount)(platformByUuid, uuid);
             if (!api)
                 continue;
             const { data: trades, error: tradeErr } = await this.supabase

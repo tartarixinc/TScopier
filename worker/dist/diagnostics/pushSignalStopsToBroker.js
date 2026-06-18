@@ -189,7 +189,7 @@ async function runPushSignalStops(config) {
                 skipped += rows.filter(r => r.broker_account_id === brokerId).length;
                 continue;
             }
-            if (fxsocketOnly && !(0, helpers_1.isFxsocketOnlyBroker)(broker)) {
+            if (fxsocketOnly && !(0, helpers_1.brokerHasLinkedSession)(broker)) {
                 const legCount = rows.filter(r => r.broker_account_id === brokerId).length;
                 console.log(`SKIP ${broker.label ?? brokerId}: not FxSocket-only (${legCount} leg(s))`);
                 skipped += legCount;

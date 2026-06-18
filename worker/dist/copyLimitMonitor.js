@@ -7,6 +7,7 @@ const copyLimitFlatten_1 = require("./copyLimitFlatten");
 const copyLimitTypes_1 = require("./copyLimitTypes");
 const channelTradingConfig_1 = require("./channelTradingConfig");
 const copierPause_1 = require("./copierPause");
+const mtApiByAccount_1 = require("./mtApiByAccount");
 const TICK_MS = 30000;
 class CopyLimitMonitor {
     constructor(supabase) {
@@ -68,7 +69,7 @@ class CopyLimitMonitor {
         const brokerIds = [...new Set(activeRows.map(r => r.broker_account_id))];
         const { data: brokers, error: brokerErr } = await this.supabase
             .from('broker_accounts')
-            .select('id,user_id,metaapi_account_id,platform,last_balance,last_equity,is_active')
+            .select('id,user_id,fxsocket_account_id,metaapi_account_id,platform,last_balance,last_equity,is_active')
             .in('id', brokerIds)
             .eq('is_active', true);
         if (brokerErr) {
@@ -78,7 +79,10 @@ class CopyLimitMonitor {
         const brokerById = new Map((brokers ?? []).map(b => [b.id, b]));
         for (const row of activeRows) {
             const broker = brokerById.get(row.broker_account_id);
-            if (!broker?.metaapi_account_id)
+            if (!broker)
+                continue;
+            const sessionId = (0, mtApiByAccount_1.brokerSessionId)(broker);
+            if (!sessionId)
                 continue;
             if ((0, copierPause_1.isUserCopierPausedCached)(broker.user_id))
                 continue;
@@ -91,7 +95,7 @@ class CopyLimitMonitor {
             const fallbackEquity = (0, copyLimitMetrics_1.resolveReferenceEquity)(broker.last_equity, broker.last_balance);
             if (fallbackEquity <= 0)
                 continue;
-            const currentEquity = await (0, copyLimitMetrics_1.fetchLiveAccountEquity)(broker.metaapi_account_id, broker.platform, fallbackEquity, { lastBalance: broker.last_balance });
+            const currentEquity = await (0, copyLimitMetrics_1.fetchLiveAccountEquity)(sessionId, broker.platform, fallbackEquity, { lastBalance: broker.last_balance });
             if (currentEquity <= 0)
                 continue;
             let state = (0, copyLimitTypes_1.normalizeCopyLimitState)(row.copy_limit_state);
@@ -122,7 +126,7 @@ class CopyLimitMonitor {
                     supabase: this.supabase,
                     brokerAccountId: broker.id,
                     channelId,
-                    metaapiAccountId: broker.metaapi_account_id,
+                    metaapiAccountId: sessionId,
                     platform: broker.platform,
                     period,
                     timeZone,
@@ -151,7 +155,7 @@ class CopyLimitMonitor {
                         supabase: this.supabase,
                         userId: broker.user_id,
                         brokerAccountId: broker.id,
-                        metaapiAccountId: broker.metaapi_account_id,
+                        metaapiAccountId: sessionId,
                         platform: broker.platform,
                         channelId,
                         reason: flattenReason,

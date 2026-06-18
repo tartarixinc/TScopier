@@ -257,9 +257,9 @@ class VirtualPendingMonitor {
             this.quietTicks = 0;
             return;
         }
-        this.platformByUuid = await (0, mtApiByAccount_1.loadPlatformByMetaapiId)(this.supabase, rows.map(r => r.metaapi_account_id));
+        this.platformByUuid = await (0, mtApiByAccount_1.loadPlatformByFxsocketId)(this.supabase, rows.map(r => r.metaapi_account_id));
         // SL/TP/manual broker closes leave DB trades "open" — reconcile before triggers.
-        await (0, rangePendingBasketCleanup_1.reconcilePendingLegBasketsFromBroker)(this.supabase, rows, uuid => (0, mtApiByAccount_1.apiForMetaapiAccount)(this.platformByUuid, uuid));
+        await (0, rangePendingBasketCleanup_1.reconcilePendingLegBasketsFromBroker)(this.supabase, rows, uuid => (0, mtApiByAccount_1.apiForFxsocketAccount)(this.platformByUuid, uuid));
         // Group by (account, symbol) so we issue at most ONE /Quote per group.
         const groups = new Map();
         for (const r of rows) {
@@ -278,7 +278,7 @@ class VirtualPendingMonitor {
             const [uuid, symbol] = key.split('|');
             if (!uuid || !symbol)
                 return;
-            const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(this.platformByUuid, uuid);
+            const api = (0, mtApiByAccount_1.apiForFxsocketAccount)(this.platformByUuid, uuid);
             if (!api)
                 return;
             let q;
@@ -504,7 +504,7 @@ class VirtualPendingMonitor {
         throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
     }
     async fireLeg(leg, bid, ask) {
-        const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(this.platformByUuid, leg.metaapi_account_id);
+        const api = (0, mtApiByAccount_1.apiForFxsocketAccount)(this.platformByUuid, leg.metaapi_account_id);
         if (!api)
             return false;
         const layerTillClose = await (0, rangeLayerTillClose_1.loadRangeLayerTillCloseForSignal)(this.supabase, leg.signal_id, leg.broker_account_id);
@@ -862,7 +862,7 @@ class VirtualPendingMonitor {
         const manual = (0, normalizeManualSettings_1.normalizeManualSettingsForExecution)(rawManual);
         if (manual.range_trading !== true)
             return;
-        const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(this.platformByUuid, leg.metaapi_account_id);
+        const api = (0, mtApiByAccount_1.apiForFxsocketAccount)(this.platformByUuid, leg.metaapi_account_id);
         if (!api)
             return;
         const params = await this.getSymbolParams(leg.metaapi_account_id, leg.symbol);
@@ -917,7 +917,7 @@ class VirtualPendingMonitor {
         return resolved.manual_settings;
     }
     async getSymbolParams(uuid, symbol) {
-        const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(this.platformByUuid, uuid);
+        const api = (0, mtApiByAccount_1.apiForFxsocketAccount)(this.platformByUuid, uuid);
         if (!api)
             return null;
         const key = `${uuid}:${symbol.toUpperCase()}`;
@@ -1031,7 +1031,7 @@ class VirtualPendingMonitor {
      * flow once the position is on the books.
      */
     async sendWithStopsFallback(leg, args) {
-        const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(this.platformByUuid, leg.metaapi_account_id);
+        const api = (0, mtApiByAccount_1.apiForFxsocketAccount)(this.platformByUuid, leg.metaapi_account_id);
         if (!api)
             throw new Error('api unavailable');
         try {

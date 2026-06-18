@@ -3,7 +3,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.isMtUuid = isMtUuid;
 exports.brokerSessionUuid = brokerSessionUuid;
 exports.brokerHasLinkedSession = brokerHasLinkedSession;
-exports.isFxsocketOnlyBroker = isFxsocketOnlyBroker;
 exports.parseSymbolToTradeList = parseSymbolToTradeList;
 exports.applySymbolMapping = applySymbolMapping;
 exports.isMt5OnlyOperation = isMt5OnlyOperation;
@@ -29,19 +28,13 @@ function isMtUuid(s) {
         return false;
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 }
-/** FxSocket terminal UUID (prefers fxsocket_account_id over legacy metaapi_account_id). */
+/** FxSocket terminal UUID from broker_accounts (fxsocket_account_id). */
 function brokerSessionUuid(broker) {
     const id = (0, mtApiByAccount_1.brokerSessionId)(broker);
     return isMtUuid(id) ? id : null;
 }
 function brokerHasLinkedSession(broker) {
     return brokerSessionUuid(broker) != null;
-}
-/** Linked via fxsocket_account_id with no legacy metaapi_account_id UUID. */
-function isFxsocketOnlyBroker(broker) {
-    const fx = String(broker.fxsocket_account_id ?? '').trim();
-    const legacy = String(broker.metaapi_account_id ?? '').trim();
-    return isMtUuid(fx) && !isMtUuid(legacy);
 }
 function parseSymbolToTradeList(value) {
     if (!value || !value.trim())
