@@ -358,7 +358,10 @@ export function SignalHistoryPage() {
           <div className="divide-y divide-neutral-100 dark:divide-neutral-800 max-h-[560px] overflow-y-auto">
             {filteredSignals.map(signal => {
               const displaySignal = signalForDisplay(signal)
-              const openStatus = resolveSignalOpenStatus(signal.id, openSignalIds)
+              const openStatus = resolveSignalOpenStatus(signal, openSignalIds, {
+                batchSignals: tradeSignals,
+                replyParentBySignalId: symbolContext.replyParentBySignalId,
+              })
               const canEdit = openStatus === 'open' && isEditableEntrySignal(signal)
               return (
                 <SignalRow

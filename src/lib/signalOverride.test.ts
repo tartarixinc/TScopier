@@ -43,8 +43,53 @@ test('isEditableEntrySignal accepts buy/sell with channel', () => {
 
 test('resolveSignalOpenStatus uses open trade anchor set', () => {
   const openIds = buildOpenSignalIdSet([{ signal_id: 'sig-a' }, { signal_id: 'sig-b' }])
-  assert.equal(resolveSignalOpenStatus('sig-a', openIds), 'open')
-  assert.equal(resolveSignalOpenStatus('sig-c', openIds), 'closed')
+  assert.equal(resolveSignalOpenStatus({ id: 'sig-a', channel_id: 'ch1', created_at: '2026-06-19T18:00:00.000Z', parsed_data: { action: 'sell' }, parent_signal_id: null, raw_message: '' }, openIds), 'open')
+  assert.equal(resolveSignalOpenStatus({ id: 'sig-c', channel_id: 'ch1', created_at: '2026-06-19T18:00:00.000Z', parsed_data: { action: 'sell' }, parent_signal_id: null, raw_message: '' }, openIds), 'closed')
+})
+
+test('resolveSignalOpenStatus: modify follows open entry on same channel', () => {
+  const openIds = buildOpenSignalIdSet([{ signal_id: 'entry-sell' }])
+  const batch = [
+    {
+      id: 'entry-sell',
+      channel_id: 'ch1',
+      created_at: '2026-06-19T18:27:00.000Z',
+      parsed_data: { action: 'sell', symbol: 'BTCUSD' },
+      parent_signal_id: null,
+      raw_message: '',
+    },
+    {
+      id: 'modify-1',
+      channel_id: 'ch1',
+      created_at: '2026-06-19T18:29:00.000Z',
+      parsed_data: { action: 'modify', symbol: 'BTCUSD' },
+      parent_signal_id: null,
+      raw_message: '',
+    },
+  ] as const
+  assert.equal(
+    resolveSignalOpenStatus(batch[1], openIds, { batchSignals: [...batch] }),
+    'open',
+  )
+})
+
+test('resolveSignalOpenStatus: modify via parent_signal_id chain', () => {
+  const openIds = buildOpenSignalIdSet([{ signal_id: 'entry-sell' }])
+  assert.equal(
+    resolveSignalOpenStatus(
+      {
+        id: 'modify-1',
+        channel_id: 'ch1',
+        created_at: '2026-06-19T18:29:00.000Z',
+        parsed_data: { action: 'modify' },
+        parent_signal_id: 'entry-sell',
+        raw_message: '',
+      },
+      openIds,
+      { batchSignals: [{ id: 'modify-1', channel_id: 'ch1', created_at: '2026-06-19T18:29:00.000Z', parsed_data: { action: 'modify' }, parent_signal_id: 'entry-sell', raw_message: '' }] },
+    ),
+    'open',
+  )
 })
 
 test('validateOverrideLevels requires positive sl or tp', () => {

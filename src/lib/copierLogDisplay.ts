@@ -283,6 +283,32 @@ export function resolveRecentChannelEntrySymbol(
   return best?.symbol ?? null
 }
 
+/** Same as resolveRecentChannelEntrySymbol but returns the anchor entry signal id. */
+export function resolveRecentChannelEntrySignalId(
+  signal: Pick<Signal, 'id' | 'channel_id' | 'created_at' | 'parsed_data' | 'raw_message'>,
+  batchSignals: Array<Pick<Signal, 'id' | 'channel_id' | 'created_at' | 'parsed_data' | 'raw_message'>>,
+): string | null {
+  const channelId = signal.channel_id
+  if (!channelId) return null
+  const signalMs = Date.parse(signal.created_at)
+  let best: { ms: number; id: string } | null = null
+
+  for (const row of batchSignals) {
+    if (row.id === signal.id || row.channel_id !== channelId) continue
+    const rowMs = Date.parse(row.created_at)
+    if (Number.isFinite(signalMs) && Number.isFinite(rowMs) && rowMs > signalMs) continue
+
+    const action = String((row.parsed_data as Record<string, unknown> | null)?.action ?? '').toLowerCase()
+    if (!ENTRY_COPIER_ACTIONS.has(action)) continue
+
+    const symbol = entrySymbolFromSignal(row)
+    if (!symbol) continue
+    if (!best || rowMs > best.ms) best = { ms: rowMs, id: row.id }
+  }
+
+  return best?.id ?? null
+}
+
 function normalizeSymbolContext(
   context: CopierSymbolContext | Map<string, SignalSymbolLookupRow>,
 ): CopierSymbolContext {

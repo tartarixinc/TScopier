@@ -1,5 +1,9 @@
-import type { Json } from '../types/database'
-import { parsedSignalAction } from './copierLogDisplay'
+import type { Json, Signal } from '../types/database'
+import {
+  MANAGEMENT_COPIER_ACTIONS,
+  parsedSignalAction,
+  resolveRecentChannelEntrySignalId,
+} from './copierLogDisplay'
 
 export type SignalUserOverride = {
   sl?: number | null
@@ -83,13 +87,6 @@ export function isEditableEntrySignal(
   return ENTRY_ACTIONS.has(action)
 }
 
-export function resolveSignalOpenStatus(
-  signalId: string,
-  openSignalIds: ReadonlySet<string>,
-): 'open' | 'closed' {
-  return openSignalIds.has(signalId) ? 'open' : 'closed'
-}
-
 export function buildOpenSignalIdSet(
   rows: ReadonlyArray<{ signal_id?: string | null }>,
 ): Set<string> {
@@ -99,6 +96,59 @@ export function buildOpenSignalIdSet(
     if (id) out.add(id)
   }
   return out
+}
+
+export type SignalOpenStatusContext = {
+  batchSignals?: ReadonlyArray<
+    Pick<Signal, 'id' | 'channel_id' | 'created_at' | 'parsed_data' | 'parent_signal_id' | 'raw_message'>
+  >
+  replyParentBySignalId?: ReadonlyMap<string, string>
+}
+
+function buildParentSignalIdMap(
+  ctx?: SignalOpenStatusContext,
+): Map<string, string | null> {
+  const map = new Map<string, string | null>()
+  for (const row of ctx?.batchSignals ?? []) {
+    map.set(row.id, row.parent_signal_id ?? null)
+  }
+  return map
+}
+
+function isOpenViaParentChain(
+  signal: Pick<Signal, 'id' | 'parent_signal_id'>,
+  openSignalIds: ReadonlySet<string>,
+  ctx?: SignalOpenStatusContext,
+): boolean {
+  const parentMap = buildParentSignalIdMap(ctx)
+  let current = signal.parent_signal_id?.trim()
+    ?? ctx?.replyParentBySignalId?.get(signal.id)?.trim()
+    ?? null
+  for (let depth = 0; current && depth < 24; depth++) {
+    if (openSignalIds.has(current)) return true
+    current = parentMap.get(current)?.trim() ?? null
+  }
+  return false
+}
+
+export function resolveSignalOpenStatus(
+  signal: Pick<
+    Signal,
+    'id' | 'channel_id' | 'created_at' | 'parsed_data' | 'parent_signal_id' | 'raw_message'
+  >,
+  openSignalIds: ReadonlySet<string>,
+  ctx?: SignalOpenStatusContext,
+): 'open' | 'closed' {
+  if (openSignalIds.has(signal.id)) return 'open'
+  if (isOpenViaParentChain(signal, openSignalIds, ctx)) return 'open'
+
+  const action = parsedSignalAction(signal.parsed_data)
+  if (MANAGEMENT_COPIER_ACTIONS.has(action) && ctx?.batchSignals?.length) {
+    const entryId = resolveRecentChannelEntrySignalId(signal, [...ctx.batchSignals])
+    if (entryId && openSignalIds.has(entryId)) return 'open'
+  }
+
+  return 'closed'
 }
 
 export function validateOverrideLevels(args: {
