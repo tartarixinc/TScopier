@@ -23,7 +23,7 @@ import {
 import { tryBrokerFallbackClose, cancelChannelBrokerPendingOrders } from '../managementBrokerClose'
 import { extractOpenOrderFromBrokerRaw } from '../managementBrokerClose'
 import { closeWithVerification } from '../managementClose'
-import { findOpenedRowByTicket } from '../signalEntryPendingHelpers'
+import { findOpenedRowByTicket, readBrokerOrderStopLoss } from '../signalEntryPendingHelpers'
 import { applyMgmtModifyToBasketGroups } from '../managementModifyBaskets'
 import type { MgmtExecOptions, MgmtExecResult } from '../mgmtExecOptions'
 import { loadRangePendingLegsInMgmtScope, pendingLegsToCancelScopes, updateRangePendingLegsForManagement } from '../managementPendingLegs'
@@ -88,17 +88,6 @@ async function sleepMs(ms: number): Promise<void> {
   await new Promise(resolve => setTimeout(resolve, ms))
 }
 
-function readOrderStopLoss(raw: unknown): number | null {
-  if (!raw || typeof raw !== 'object') return null
-  const o = raw as Record<string, unknown>
-  for (const key of ['stoploss', 'StopLoss', 'sl', 'SL', 'stop_loss', 'Stoploss']) {
-    const v = o[key]
-    const n = typeof v === 'number' ? v : Number(v)
-    if (Number.isFinite(n) && n > 0) return n
-  }
-  return null
-}
-
 function readOrderOpenPrice(raw: unknown): number | null {
   if (!raw || typeof raw !== 'object') return null
   const o = raw as Record<string, unknown>
@@ -137,12 +126,15 @@ async function verifyBreakevenApplied(args: {
   expectedSl: number
   isBuy: boolean
   pipPrice: number
+  /** When /OpenedOrders omits SL, trust OrderModify response if present. */
+  confirmSl?: number | null
 }): Promise<{ ok: boolean; reason?: string }> {
-  const { api, uuid, ticket, expectedSl, isBuy, pipPrice } = args
+  const { api, uuid, ticket, expectedSl, isBuy, pipPrice, confirmSl } = args
   const rawOrders = await api.openedOrders(uuid)
   const order = findRawOrderByTicket(rawOrders ?? [], ticket)
   if (!order) return { ok: false, reason: 'verify failed: ticket missing from opened orders' }
-  const sl = readOrderStopLoss(order)
+  const sl = readBrokerOrderStopLoss(order)
+    ?? (confirmSl != null && Number.isFinite(confirmSl) && confirmSl > 0 ? confirmSl : null)
   if (sl == null) return { ok: false, reason: 'verify failed: broker did not return stop loss' }
   if (isSlAtOrBeyondBreakeven(isBuy, sl, expectedSl, pipPrice)) return { ok: true }
   return { ok: false, reason: `verify failed: broker SL=${sl} expected BE=${expectedSl}` }
@@ -777,7 +769,7 @@ export async function applyManagement(
                 lastErr = null
                 break
               }
-              await api.orderModify(uuid, {
+              const modRes = await api.orderModify(uuid, {
                 ticket: effectiveTicket,
                 stoploss: beSl,
                 takeprofit: modifyTp,
@@ -789,6 +781,7 @@ export async function applyManagement(
                 expectedSl: beSl,
                 isBuy,
                 pipPrice,
+                confirmSl: modRes.stopLoss ?? beSl,
               })
               if (!verify.ok) throw new Error(verify.reason ?? 'verify failed')
               lastErr = null

@@ -89,6 +89,27 @@ export function findOpenedRowByTicket(orders: unknown[], ticket: number): Record
   return null
 }
 
+/** Read SL from /OpenedOrders rows (FxSocket often uses camelCase `stopLoss`). */
+export function readBrokerOrderStopLoss(raw: unknown): number | null {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  for (const key of [
+    'stopLoss',
+    'StopLoss',
+    'stoploss',
+    'Stoploss',
+    'sl',
+    'SL',
+    'stop_loss',
+  ]) {
+    const v = o[key]
+    if (v === null || v === undefined || v === '') continue
+    const n = typeof v === 'number' ? v : Number(v)
+    if (Number.isFinite(n) && n > 0) return n
+  }
+  return null
+}
+
 /**
  * Best-effort fill lookup in /ClosedOrders for a pending ticket that disappeared
  * from /OpenedOrders (limit filled or cancelled).

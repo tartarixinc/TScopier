@@ -51,18 +51,6 @@ function isRetryableBreakevenError(message) {
 async function sleepMs(ms) {
     await new Promise(resolve => setTimeout(resolve, ms));
 }
-function readOrderStopLoss(raw) {
-    if (!raw || typeof raw !== 'object')
-        return null;
-    const o = raw;
-    for (const key of ['stoploss', 'StopLoss', 'sl', 'SL', 'stop_loss', 'Stoploss']) {
-        const v = o[key];
-        const n = typeof v === 'number' ? v : Number(v);
-        if (Number.isFinite(n) && n > 0)
-            return n;
-    }
-    return null;
-}
 function readOrderOpenPrice(raw) {
     if (!raw || typeof raw !== 'object')
         return null;
@@ -92,12 +80,13 @@ function findRawOrderByTicket(rawOrders, ticket) {
     return (0, signalEntryPendingHelpers_1.findOpenedRowByTicket)(rawOrders, ticket);
 }
 async function verifyBreakevenApplied(args) {
-    const { api, uuid, ticket, expectedSl, isBuy, pipPrice } = args;
+    const { api, uuid, ticket, expectedSl, isBuy, pipPrice, confirmSl } = args;
     const rawOrders = await api.openedOrders(uuid);
     const order = findRawOrderByTicket(rawOrders ?? [], ticket);
     if (!order)
         return { ok: false, reason: 'verify failed: ticket missing from opened orders' };
-    const sl = readOrderStopLoss(order);
+    const sl = (0, signalEntryPendingHelpers_1.readBrokerOrderStopLoss)(order)
+        ?? (confirmSl != null && Number.isFinite(confirmSl) && confirmSl > 0 ? confirmSl : null);
     if (sl == null)
         return { ok: false, reason: 'verify failed: broker did not return stop loss' };
     if ((0, autoManagement_1.isSlAtOrBeyondBreakeven)(isBuy, sl, expectedSl, pipPrice))
@@ -658,7 +647,7 @@ async function applyManagement(ctx, signal, parsed, brokers, mgmtOpts) {
                             lastErr = null;
                             break;
                         }
-                        await api.orderModify(uuid, {
+                        const modRes = await api.orderModify(uuid, {
                             ticket: effectiveTicket,
                             stoploss: beSl,
                             takeprofit: modifyTp,
@@ -670,6 +659,7 @@ async function applyManagement(ctx, signal, parsed, brokers, mgmtOpts) {
                             expectedSl: beSl,
                             isBuy,
                             pipPrice,
+                            confirmSl: modRes.stopLoss ?? beSl,
                         });
                         if (!verify.ok)
                             throw new Error(verify.reason ?? 'verify failed');

@@ -5,6 +5,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.applySignalOverride = applySignalOverride;
 const channelActiveTradeParams_1 = require("./channelActiveTradeParams");
+const basketSlTpReconcile_1 = require("./basketSlTpReconcile");
 const fxsocketClient_1 = require("./fxsocketClient");
 const tpBucketDistribution_1 = require("./manualPlanning/tpBucketDistribution");
 const orderModifyBenign_1 = require("./orderModifyBenign");
@@ -93,6 +94,36 @@ async function applySignalOverride(supabase, args) {
                 tpLots: tpLots ?? null,
             })
             : new Map();
+        let quoteRef = null;
+        let symbolParams = null;
+        const quoteSymbol = legs[0]?.symbol?.trim();
+        if (client && quoteSymbol && !dryRun) {
+            try {
+                const q = await client.quote(uuid, quoteSymbol);
+                const marketRef = isBuy ? q.bid : q.ask;
+                if (Number.isFinite(marketRef) && marketRef > 0)
+                    quoteRef = marketRef;
+            }
+            catch {
+                /* optional — fall back to entry for side checks */
+            }
+            try {
+                const sp = await client.symbolParams(uuid, quoteSymbol);
+                const n = (0, fxsocketClient_1.normalizeSymbolParams)(sp);
+                symbolParams = {
+                    digits: n.digits ?? 5,
+                    point: n.point ?? 0.00001,
+                    minLot: n.minLot ?? 0.01,
+                    lotStep: n.lotStep ?? 0.01,
+                    contractSize: n.contractSize ?? null,
+                    stopsLevel: n.stopsLevel ?? 0,
+                    freezeLevel: n.freezeLevel ?? 0,
+                };
+            }
+            catch {
+                /* optional — modify without broker min-distance clamp */
+            }
+        }
         for (let i = 0; i < legs.length; i++) {
             const tr = legs[i];
             const ticket = Number(tr.metaapi_order_id);
@@ -104,16 +135,36 @@ async function applySignalOverride(supabase, args) {
             const keepSl = num(tr.sl);
             let targetTp = targetTps.length > 0 ? (tpMap.get(tr.id) ?? keepTp) : keepTp;
             let targetSlForLeg = targetSl ?? keepSl;
-            const ref = num(tr.entry_price);
-            if (ref != null && targetSlForLeg != null && targetTp != null) {
+            const ref = (quoteRef != null && quoteRef > 0) ? quoteRef : num(tr.entry_price);
+            if (ref != null && ref > 0 && (targetSlForLeg != null || targetTp != null)) {
                 const stripped = (0, channelActiveTradeParams_1.stripInvalidStopsForSide)({
-                    stoploss: targetSlForLeg,
-                    takeprofit: targetTp,
+                    stoploss: targetSlForLeg ?? 0,
+                    takeprofit: targetTp ?? 0,
                     referencePrice: ref,
                     isBuy,
                 });
-                targetSlForLeg = stripped.stoploss > 0 ? stripped.stoploss : null;
-                targetTp = stripped.takeprofit > 0 ? stripped.takeprofit : null;
+                if (targetSlForLeg != null) {
+                    targetSlForLeg = stripped.stoploss > 0 ? stripped.stoploss : null;
+                }
+                if (targetTp != null) {
+                    targetTp = stripped.takeprofit > 0 ? stripped.takeprofit : null;
+                }
+            }
+            if (ref != null && ref > 0 && symbolParams && (targetSlForLeg != null || targetTp != null)) {
+                const clamped = (0, basketSlTpReconcile_1.clampBasketOrderStops)({
+                    symbol: quoteSymbol ?? tr.symbol,
+                    operation: isBuy ? 'Buy' : 'Sell',
+                    volume: 0.01,
+                    price: ref,
+                    stoploss: targetSlForLeg ?? 0,
+                    takeprofit: targetTp ?? 0,
+                }, symbolParams);
+                if (targetSlForLeg != null && clamped.args.stoploss && clamped.args.stoploss > 0) {
+                    targetSlForLeg = clamped.args.stoploss;
+                }
+                if (targetTp != null && clamped.args.takeprofit && clamped.args.takeprofit > 0) {
+                    targetTp = clamped.args.takeprofit;
+                }
             }
             if (targetSlForLeg == null && targetTp == null) {
                 skippedLegs++;

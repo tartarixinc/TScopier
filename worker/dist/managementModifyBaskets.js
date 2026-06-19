@@ -180,6 +180,7 @@ async function applyMgmtModifyToBasketGroups(args) {
                 alreadyModified: modifiedTradeIds,
                 liveMgmtFast,
                 orderCommentsEnabled: manual.order_comments_enabled !== false,
+                explicitChannelTargets: true,
             });
             for (const id of pass.modifiedTradeIds)
                 modifiedTradeIds.add(id);

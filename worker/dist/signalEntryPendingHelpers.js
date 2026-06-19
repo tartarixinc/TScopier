@@ -6,6 +6,7 @@ exports.rawNumericOrderKind = rawNumericOrderKind;
 exports.isPendingEntryRow = isPendingEntryRow;
 exports.isLikelyMarketPositionRow = isLikelyMarketPositionRow;
 exports.findOpenedRowByTicket = findOpenedRowByTicket;
+exports.readBrokerOrderStopLoss = readBrokerOrderStopLoss;
 exports.findClosedRowForTicket = findClosedRowForTicket;
 exports.cancelSignalEntryRowAtBroker = cancelSignalEntryRowAtBroker;
 exports.markSignalEntryFilled = markSignalEntryFilled;
@@ -89,6 +90,29 @@ function findOpenedRowByTicket(orders, ticket) {
         const o = raw;
         if (rawOrderTicket(o) === ticket)
             return o;
+    }
+    return null;
+}
+/** Read SL from /OpenedOrders rows (FxSocket often uses camelCase `stopLoss`). */
+function readBrokerOrderStopLoss(raw) {
+    if (!raw || typeof raw !== 'object')
+        return null;
+    const o = raw;
+    for (const key of [
+        'stopLoss',
+        'StopLoss',
+        'stoploss',
+        'Stoploss',
+        'sl',
+        'SL',
+        'stop_loss',
+    ]) {
+        const v = o[key];
+        if (v === null || v === undefined || v === '')
+            continue;
+        const n = typeof v === 'number' ? v : Number(v);
+        if (Number.isFinite(n) && n > 0)
+            return n;
     }
     return null;
 }
