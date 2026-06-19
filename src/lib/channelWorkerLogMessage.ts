@@ -452,7 +452,27 @@ function ignoredChannelWorkerReason(row: ChannelWorkerLogRow, cw: ChannelWorkerT
 const CHANNEL_WORKER_HIDDEN_LOG_ACTIONS = new Set([
   'merge_routed_modify_only',
   'merge_anchor_selected',
+  'dispatch_route_decision',
+  'dispatch_enqueue_attempt',
+  'dispatch_enqueue_failed',
+  'queue_consume_start',
+  'queue_consume_ack',
+  'queue_consume_retry',
+  'queue_dead_letter',
+  'basket_reconcile_tick',
+  'virtual_pending_tp_lock',
+  'signal_entry_pending_sync',
+  'news_pre_close',
 ])
+
+function isEntryOpenLogAction(logAction: string): boolean {
+  return logAction === 'order_send'
+    || logAction === 'virtual_pending_fired'
+    || logAction === 'virtual_pending_inserted'
+    || logAction === 'signal_entry_pending_placed'
+    || logAction === 'signal_entry_pending_filled'
+    || logAction === 'signal_merge_into_open_trade'
+}
 
 export type ChannelWorkerDisplayLogRow = ChannelWorkerLogRow & {
   id: string
@@ -893,7 +913,19 @@ function buildChannelWorkerLogMessage(row: ChannelWorkerLogRow, cw: ChannelWorke
     || logAction === 'pipeline_summary'
     || logAction === 'multi_range_plan'
     || logAction === 'stale_basket_reconciled'
+    || CHANNEL_WORKER_HIDDEN_LOG_ACTIONS.has(logAction)
   ) {
+    return ''
+  }
+
+  // Unknown success rows must not read as a filled entry — real opens use order_send / pending paths.
+  if (
+    status === 'success'
+    && (signalAction === 'buy' || signalAction === 'sell')
+    && !isEntryOpenLogAction(logAction)
+  ) {
+    const signalStatus = String(row.signals?.status ?? '').toLowerCase()
+    if (signalStatus !== 'executed') return ''
     return ''
   }
 

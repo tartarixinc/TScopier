@@ -139,6 +139,46 @@ test('channelWorkerLogMessage: unknown success action remaps sell when signal sk
   assert.match(message!, /broker not connected/i)
 })
 
+test('channelWorkerLogMessage: dispatch_route_decision does not show false Completed sell', () => {
+  const message = channelWorkerLogMessage(
+    {
+      action: 'dispatch_route_decision',
+      status: 'success',
+      request_payload: { queue_enqueued: true },
+      response_payload: null,
+      error_message: null,
+      signals: {
+        channel_id: 'ch-1',
+        parsed_data: { action: 'sell', symbol: 'XAUUSD' },
+        status: 'parsed',
+      },
+    },
+    channelWorkerEn,
+    { 'ch-1': 'SIGNALS 2' },
+  )
+  assert.equal(message, null)
+})
+
+test('channelWorkerLogMessage: unknown success does not show Completed sell while signal still parsed', () => {
+  const message = channelWorkerLogMessage(
+    {
+      action: 'queue_consume_ack',
+      status: 'success',
+      request_payload: null,
+      response_payload: null,
+      error_message: null,
+      signals: {
+        channel_id: 'ch-1',
+        parsed_data: { action: 'sell', symbol: 'XAUUSD' },
+        status: 'parsed',
+      },
+    },
+    channelWorkerEn,
+    { 'ch-1': 'SIGNALS 2' },
+  )
+  assert.equal(message, null)
+})
+
 test('channelWorkerLogMessage: pipeline_summary does not show false Completed sell', () => {
   const message = channelWorkerLogMessage(
     {

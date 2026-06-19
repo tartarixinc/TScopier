@@ -617,6 +617,7 @@ export async function handleSignal(ctx: TradeExecutorContext,
       if ((ignoreKw && rawText.includes(ignoreKw)) || (skipKw && rawText.includes(skipKw))) {
         // Channel-level ignore — parse-signal usually already short-circuits this,
         // but we double-check here so a stale parse can't slip through.
+        await ctx.logDispatchSkipped(row, 'channel_filter_ignored')
         return
       }
 
