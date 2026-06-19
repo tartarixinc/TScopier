@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useState, type KeyboardEvent } from 'react'
 import clsx from 'clsx'
+import { Pencil } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useT } from '../../context/LocaleContext'
@@ -41,7 +42,9 @@ const DESKTOP_TH =
   'px-4 py-3 text-left text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide border-b border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900'
 
 const OPEN_ROW_BG = 'bg-teal-50 dark:bg-teal-950/40'
-const OPEN_ROW_HOVER = 'hover:bg-teal-100/50 dark:hover:bg-teal-950/50'
+const OPEN_ROW_HOVER = 'group-hover:bg-teal-100 dark:group-hover:bg-teal-900/50'
+const OPEN_ROW_CELL = 'transition-colors duration-150'
+const EDIT_PEN_ICON = 'w-4 h-4 shrink-0 text-teal-600 dark:text-teal-400 opacity-0 group-hover:opacity-100 transition-opacity duration-150'
 
 const selectClass =
   'px-3 py-2.5 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-sm text-neutral-700 dark:text-neutral-300 focus:outline-none focus:ring-2 focus:ring-primary-500 w-full'
@@ -588,8 +591,6 @@ const SignalRow = memo(function SignalRow({
 
   const isOpen = openStatus === 'open'
 
-  const activeRowBg = isOpen ? OPEN_ROW_BG : undefined
-
   const actionTone =
     action === 'buy'
       ? 'text-primary-600 dark:text-primary-400'
@@ -597,11 +598,9 @@ const SignalRow = memo(function SignalRow({
         ? 'text-error-600 dark:text-error-400'
         : 'text-neutral-600 dark:text-neutral-300'
 
-  const rowInteractiveClass = clsx(
-    isOpen && 'cursor-pointer transition-colors',
-    isOpen && OPEN_ROW_HOVER,
-    activeRowBg,
-  )
+  const openRowCellClass = isOpen
+    ? clsx(OPEN_ROW_BG, OPEN_ROW_HOVER, OPEN_ROW_CELL)
+    : undefined
 
   const handleKeyDown = (e: KeyboardEvent) => {
     if (!onClick) return
@@ -633,11 +632,25 @@ const SignalRow = memo(function SignalRow({
     </span>
   )
 
+  const signalContent = (
+    <>
+      <p className={clsx('text-xs font-semibold uppercase mb-1', actionTone)}>{actionLabel}</p>
+      <p className="text-sm text-neutral-800 dark:text-neutral-100 truncate" title={summary}>{summary}</p>
+    </>
+  )
+
+  const signalContentMobile = (
+    <>
+      <p className={clsx('text-xs font-semibold uppercase mb-1.5', actionTone)}>{actionLabel}</p>
+      <p className="text-sm text-neutral-700 dark:text-neutral-200 leading-relaxed">{summary}</p>
+    </>
+  )
+
   if (mobileOnly) {
     return (
       <article
         {...rowProps}
-        className={clsx('px-4 py-4', rowInteractiveClass)}
+        className={clsx('px-4 py-4', isOpen && 'group cursor-pointer', openRowCellClass)}
       >
         <div className="flex items-start justify-between gap-3 mb-2">
           <div className="min-w-0">
@@ -649,29 +662,38 @@ const SignalRow = memo(function SignalRow({
             <span className="text-xs text-neutral-400 whitespace-nowrap">{formattedTime}</span>
           </div>
         </div>
-        <p className={clsx('text-xs font-semibold uppercase mb-1.5', actionTone)}>{actionLabel}</p>
-        <p className="text-sm text-neutral-700 dark:text-neutral-200 leading-relaxed">{summary}</p>
+        {isOpen ? (
+          <div className="flex items-start gap-2 min-w-0">
+            <div className="min-w-0 flex-1">{signalContentMobile}</div>
+            <Pencil className={clsx(EDIT_PEN_ICON, 'mt-0.5')} aria-hidden />
+          </div>
+        ) : (
+          signalContentMobile
+        )}
       </article>
     )
   }
 
   return (
-    <tr
-      {...rowProps}
-      className={rowInteractiveClass}
-    >
-      <td className={clsx(DESKTOP_TD, activeRowBg)}>
+    <tr {...rowProps} className={isOpen ? 'group cursor-pointer' : undefined}>
+      <td className={clsx(DESKTOP_TD, openRowCellClass)}>
         <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50 truncate">{channelName}</p>
         {symbol !== '—' ? (
           <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">{symbol}</p>
         ) : null}
       </td>
-      <td className={clsx(DESKTOP_TD, activeRowBg)}>
-        <p className={clsx('text-xs font-semibold uppercase mb-1', actionTone)}>{actionLabel}</p>
-        <p className="text-sm text-neutral-800 dark:text-neutral-100 truncate" title={summary}>{summary}</p>
+      <td className={clsx(DESKTOP_TD, openRowCellClass)}>
+        {isOpen ? (
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="min-w-0 flex-1">{signalContent}</div>
+            <Pencil className={EDIT_PEN_ICON} aria-hidden />
+          </div>
+        ) : (
+          signalContent
+        )}
       </td>
-      <td className={clsx(DESKTOP_TD, 'text-center', activeRowBg)}>{statusBadge}</td>
-      <td className={clsx(DESKTOP_TD, 'text-right text-xs text-neutral-500 dark:text-neutral-400 whitespace-nowrap', activeRowBg)}>
+      <td className={clsx(DESKTOP_TD, 'text-center', openRowCellClass)}>{statusBadge}</td>
+      <td className={clsx(DESKTOP_TD, 'text-right text-xs text-neutral-500 dark:text-neutral-400 whitespace-nowrap', openRowCellClass)}>
         {formattedTime}
       </td>
     </tr>
