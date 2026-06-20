@@ -23,7 +23,7 @@ export function HeroSection() {
             <HeroPlatformFlow />
           </div>
 
-          <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl xl:text-[4.5rem] xl:leading-[1.08]">
+          <h1 className="text-4xl font-bold tracking-tighter sm:text-5xl xl:text-[3.75rem] xl:leading-[1.08]">
             <span className="block text-neutral-900 dark:text-neutral-50">{l.hero.headline}</span>
             <span className="mt-1 block text-teal-600 dark:text-teal-400">{l.hero.headlineAccent}</span>
           </h1>

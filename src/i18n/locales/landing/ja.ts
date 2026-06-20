@@ -17,11 +17,11 @@ export const landingJa: LandingTranslations = {
   hero: {
     trustedBy: '156か国・30,000人以上のトレーダーが利用中',
     avatarAlts: ['TScopierトレーダー', 'TScopierトレーダー', 'TScopierトレーダー'],
-    headline: 'Telegramシグナルをライブ取引へ、',
-    headlineAccent: '100%自動化。',
+    headline: '取引シグナル提供者をコピー',
+    headlineAccent: '24時間365日、完全自動。',
     subheadline:
-      'シグナル配信者の指示をMT4/MT5へ2分以内でコピー。複雑な設定・EA・VPSは不要です。',
-    primaryCta: '無料で試す',
+      'Telegramを接続し、2分以内にMT4/MT5口座へ直接シグナルをコピー。複雑な設定、EA、VPSは不要です。',
+    primaryCta: '10日間の無料トライアルを始める',
     secondaryCta: 'ログイン',
     imageAlt: '残高、当日損益、取引結果、口座成長チャートを表示したTScopierダッシュボード',
     previewUrl: 'app.tscopier.ai/dashboard',
@@ -813,7 +813,7 @@ export const landingJa: LandingTranslations = {
     cta: {
       title: '手動作業なしでシグナルコピーを始めませんか？',
       subtitle: 'Telegramを接続し、MT4またはMT5を紐づけるだけ。数分でコピー運用を開始できます。',
-      primary: '無料で試す',
+      primary: '10日間の無料トライアルを始める',
       secondary: 'ログイン',
     },
     tagline: 'MetaTrader口座向けの超高速Telegramシグナルcopier。',

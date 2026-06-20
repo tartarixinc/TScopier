@@ -17,11 +17,11 @@ export const landingEs: LandingTranslations = {
   hero: {
     trustedBy: 'Más de 30.000 traders de 156 países ya se han unido',
     avatarAlts: ['Avatar de trader', 'Avatar de trader', 'Avatar de trader'],
-    headline: 'Convierte las señales de Telegram en operaciones en vivo,',
-    headlineAccent: '100 % en piloto automático.',
+    headline: 'Copia a tus proveedores de señales de trading',
+    headlineAccent: '24/7 en piloto automático.',
     subheadline:
-      'Conecta tu cuenta MT4/MT5, elige canales de señales y deja que TScopier ejecute entradas, capas y gestión — con control total del riesgo y filtros.',
-    primaryCta: 'Pruébalo gratis',
+      'Conecta Telegram y copia señales directamente a tus cuentas MT4/MT5 en menos de 2 minutos: sin configuraciones complicadas, sin EA y sin VPS.',
+    primaryCta: 'Empieza tu prueba gratuita de 10 días',
     secondaryCta: 'Iniciar sesión',
     imageAlt:
       'Panel de TScopier con saldo, beneficio diario, resultados de operaciones y gráficos de crecimiento',
@@ -823,7 +823,7 @@ export const landingEs: LandingTranslations = {
       title: '¿Listo para copiar señales sin trabajo manual?',
       subtitle:
         'Conecta Telegram, enlaza MT4 o MT5 y empieza a copiar en minutos — sin VPS ni instalación.',
-      primary: 'Pruébalo gratis',
+      primary: 'Empieza tu prueba gratuita de 10 días',
       secondary: 'Iniciar sesión',
     },
     tagline: 'Copiador de señales de Telegram ultrarrápido para cuentas MetaTrader.',

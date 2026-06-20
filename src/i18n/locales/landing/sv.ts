@@ -17,11 +17,11 @@ export const landingSv: LandingTranslations = {
   hero: {
     trustedBy: '30 000+ handlare från 156 länder har redan gått med',
     avatarAlts: ['TScopier handlare', 'TScopier handlare', 'TScopier handlare'],
-    headline: 'Förvandla Telegram-signaler till liveaffärer,',
-    headlineAccent: '100 % på autopilot.',
+    headline: 'Kopiera dina signalleverantörer',
+    headlineAccent: '24/7 på autopilot.',
     subheadline:
-      'Kopiera handelsinstruktioner från dina signalleverantörer till din MT4/MT5 på mindre än 2 minuter - Inga komplicerade inställningar, ingen EA och ingen VPS krävs.',
-    primaryCta: 'Prova det gratis',
+      'Anslut Telegram och kopiera handelssignaler direkt till dina MT4/MT5-konton på under 2 minuter — inga komplicerade inställningar, ingen EA och ingen VPS krävs.',
+    primaryCta: 'Starta din 10-dagars gratis provperiod',
     secondaryCta: 'Logga in',
     imageAlt:
       'TScopier instrumentpanel med balans, daglig vinst, handelsresultat och kontotillväxtdiagram',
@@ -821,7 +821,7 @@ export const landingSv: LandingTranslations = {
       title: 'Är du redo att kopiera signaler utan manuellt arbete?',
       subtitle:
         'Länka Telegram, anslut MT4 eller MT5 och börja kopiera på några minuter â ingen VPS, ingen installation.',
-      primary: 'Prova det gratis',
+      primary: 'Starta din 10-dagars gratis provperiod',
       secondary: 'Logga in',
     },
     tagline: 'Ultrasnabb Telegram signalkopiator för MetaTrader-konton.',

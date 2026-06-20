@@ -17,11 +17,11 @@ export const landingNl: LandingTranslations = {
   hero: {
     trustedBy: 'Al 30.000+ traders uit 156 landen zijn aangesloten',
     avatarAlts: ['TScopier-trader', 'TScopier-trader', 'TScopier-trader'],
-    headline: 'Zet Telegram-signalen om in live trades,',
-    headlineAccent: '100% op autopilot.',
+    headline: 'Kopieer je trading signaalleveranciers',
+    headlineAccent: '24/7 op autopilot.',
     subheadline:
-      'Kopieer trading-instructies van je signaalaanbieders naar MT4/MT5 in minder dan 2 minuten - geen complexe setup, geen EA en geen VPS nodig.',
-    primaryCta: 'Probeer gratis',
+      'Koppel Telegram en kopieer handelssignalen direct naar je MT4/MT5-accounts in minder dan 2 minuten — geen complexe setup, geen EA en geen VPS nodig.',
+    primaryCta: 'Start je gratis proefperiode van 10 dagen',
     secondaryCta: 'Inloggen',
     imageAlt:
       'TScopier-dashboard met saldo, dagwinst, trade-resultaten en groeigrafieken van accounts',
@@ -820,7 +820,7 @@ export const landingNl: LandingTranslations = {
       title: 'Klaar om signalen te kopieren zonder handmatig werk?',
       subtitle:
         'Koppel Telegram, verbind MT4 of MT5 en begin binnen enkele minuten met kopieren - zonder VPS of installatie.',
-      primary: 'Probeer gratis',
+      primary: 'Start je gratis proefperiode van 10 dagen',
       secondary: 'Inloggen',
     },
     tagline: 'Supersnelle Telegram-signaalcopier voor MetaTrader-accounts.',
