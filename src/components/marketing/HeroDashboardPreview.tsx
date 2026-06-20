@@ -118,7 +118,7 @@ function HeroLiveMoneyValue({
 
   return (
     <p
-      className={clsx('mb-1.5 text-2xl font-semibold tabular-nums', valueToneClass(tone))}
+      className={clsx('mb-1.5 text-3xl font-bold', valueToneClass(tone))}
       aria-live="polite"
       aria-atomic="true"
     >
@@ -137,7 +137,7 @@ function HeroStatBlock({ stat, label }: { stat: LandingHeroHeadlineStat; label: 
       {stat.live ? (
         <HeroLiveMoneyValue live={stat.live} tone={stat.valueTone} />
       ) : (
-        <p className={clsx('mb-1.5 text-2xl font-semibold tabular-nums', valueToneClass(stat.valueTone))}>
+        <p className={clsx('mb-1.5 text-3xl font-bold', valueToneClass(stat.valueTone))}>
           {stat.value}
         </p>
       )}
@@ -196,7 +196,7 @@ function HeroTradeOutcomeChart() {
             <div key={i} className="border-t border-dashed border-neutral-100 dark:border-neutral-800" />
           ))}
         </div>
-        <div className="absolute left-0 top-0 flex h-[calc(100%-1.25rem)] w-9 flex-col justify-between py-1 text-[9px] tabular-nums text-neutral-400">
+        <div className="absolute left-0 top-0 flex h-[calc(100%-1.25rem)] w-9 flex-col justify-between py-1 text-xs text-neutral-400">
           {['$900', '$600', '$300', '$0'].map(tick => (
             <span key={tick}>{tick}</span>
           ))}
@@ -327,7 +327,7 @@ function HeroChannelProfitChart() {
               )
             })}
           </svg>
-          <div className="col-start-2 row-start-2 grid grid-cols-5 pt-1.5 text-center text-[10px] tabular-nums text-neutral-400">
+          <div className="col-start-2 row-start-2 grid grid-cols-5 pt-1.5 text-center text-[10px] text-neutral-400">
             {xTicks.map(tick => (
               <span key={tick}>{formatHeroAxisMoney(tick)}</span>
             ))}
@@ -618,7 +618,7 @@ export function HeroDashboardPreview() {
                           >
                             {row.type}
                           </span>
-                          <span className="text-right text-xs tabular-nums text-neutral-400">{row.time}</span>
+                          <span className="text-right text-xs text-neutral-400">{row.time}</span>
                         </div>
                       ))}
                     </div>

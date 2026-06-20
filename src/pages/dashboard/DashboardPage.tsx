@@ -2523,7 +2523,7 @@ function StatBlock({ label, labelHint, value, sub, subColor, valueColor = 'text-
         {label}
         {labelHint ? <InfoTooltip text={labelHint} /> : null}
       </p>
-      <p className={clsx('text-xl sm:text-2xl font-semibold mb-1 sm:mb-1.5', valueColor)}>{value}</p>
+      <p className={clsx('text-xl sm:text-3xl font-bold mb-1 sm:mb-1.5', valueColor)}>{value}</p>
       {sub === '' ? null : typeof sub === 'string' ? (
         <p className={`text-xs ${subColor}`}>{sub}</p>
       ) : (
