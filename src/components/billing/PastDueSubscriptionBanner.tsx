@@ -8,7 +8,7 @@ interface PastDueSubscriptionBannerProps {
   className?: string
 }
 
-/** Dashboard warning when Stripe reports a failed subscription payment. */
+/** Dashboard alert when Stripe reports a failed subscription payment. */
 export function PastDueSubscriptionBanner({ className }: PastDueSubscriptionBannerProps) {
   const t = useT()
   const d = t.dashboard
@@ -23,25 +23,26 @@ export function PastDueSubscriptionBanner({ className }: PastDueSubscriptionBann
 
   return (
     <div
+      role="alert"
       className={clsx(
-        'rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-900/60 dark:bg-amber-950/30',
+        'rounded-xl border border-error-200 bg-error-50 px-4 py-3 dark:border-error-800 dark:bg-error-950/40',
         className,
       )}
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex gap-3">
           <CreditCard
-            className="mt-0.5 h-5 w-5 shrink-0 text-amber-700 dark:text-amber-300"
+            className="mt-0.5 h-5 w-5 shrink-0 text-error-600 dark:text-error-400"
             aria-hidden
           />
           <div>
-            <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">{title}</p>
-            <p className="mt-0.5 text-sm text-amber-800/90 dark:text-amber-200/80">{body}</p>
+            <p className="text-sm font-semibold text-error-900 dark:text-error-100">{title}</p>
+            <p className="mt-0.5 text-sm text-error-800/90 dark:text-error-200/80">{body}</p>
           </div>
         </div>
         <Link
           to="/billing"
-          className="inline-flex shrink-0 items-center justify-center rounded-lg bg-teal-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-all hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 focus:ring-offset-amber-50 dark:focus:ring-offset-amber-950"
+          className="inline-flex shrink-0 items-center justify-center rounded-lg bg-error-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-all hover:bg-error-700 focus:outline-none focus:ring-2 focus:ring-error-500 focus:ring-offset-2 focus:ring-offset-error-50 dark:focus:ring-offset-error-950"
         >
           {cta}
         </Link>
