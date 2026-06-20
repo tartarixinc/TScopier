@@ -6,6 +6,7 @@ import {
   resolveChannelIdForTrade,
 } from './performanceInsights'
 import {
+  buildPortfolioActiveSignalGroups,
   computeBrokerBalanceProfit,
   computeConnectPnlByAccountId,
   computeBrokerProfitByChannel,
@@ -267,6 +268,87 @@ test('findActiveAttributedSignalTrades aggregates open positions per signal chan
   assert.equal(active[1]?.pnl, 20)
   assert.ok(Math.abs((active[1]?.totalLots ?? 0) - 0.15) < 1e-9)
   assert.equal(active[1]?.positionCount, 2)
+})
+
+test('buildPortfolioActiveSignalGroups aggregates per broker with signal channels only', () => {
+  const maps = buildPerformanceChannelLinkMaps(
+    [{ id: 'ch-1', display_name: 'Alpha' }, { id: 'ch-2', display_name: 'Beta' }],
+    [
+      {
+        broker_account_id: 'broker-1',
+        metaapi_order_id: '101',
+        signal_id: 'sig-a',
+        telegram_channel_id: 'ch-1',
+      },
+      {
+        broker_account_id: 'broker-2',
+        metaapi_order_id: '201',
+        signal_id: 'sig-b',
+        telegram_channel_id: 'ch-2',
+      },
+    ],
+    [
+      { id: 'sig-a', channel_id: 'ch-1' },
+      { id: 'sig-b', channel_id: 'ch-2' },
+    ],
+    [],
+  )
+  const groups = buildPortfolioActiveSignalGroups({
+    accounts: [
+      {
+        id: 'broker-1',
+        label: 'Main',
+        platform: 'MT5',
+        account_login: '111',
+        broker_name: 'IC Markets',
+        broker_server: '',
+        signal_channel_ids: ['ch-1'],
+        fxsocket_status: 'connected',
+        connection_status: 'connected',
+      } as never,
+      {
+        id: 'broker-2',
+        label: 'Demo',
+        platform: 'MT4',
+        account_login: '222',
+        broker_name: 'Pepperstone',
+        broker_server: '',
+        signal_channel_ids: ['ch-2'],
+        fxsocket_status: 'connected',
+        connection_status: 'connected',
+      } as never,
+    ],
+    mtTrades: [
+      mtTrade({
+        broker_id: 'broker-1',
+        ticket: 101,
+        status: 'open',
+        lot_size: 0.1,
+        profit: 15,
+        opened_at: '2026-06-01T08:00:00',
+        closed_at: null,
+      }),
+      mtTrade({
+        broker_id: 'broker-2',
+        ticket: 201,
+        status: 'open',
+        lot_size: 0.2,
+        profit: 30,
+        opened_at: '2026-06-02T09:00:00',
+        closed_at: null,
+      }),
+    ],
+    channelLinkMaps: maps,
+    balances: {
+      'broker-1': { open_pnl: 15 },
+      'broker-2': { open_pnl: 30 },
+    },
+  })
+  assert.equal(groups.length, 2)
+  assert.equal(groups[0]?.brokerId, 'broker-2')
+  assert.equal(groups[0]?.activeSignalTrades[0]?.channelLabel, 'Beta')
+  assert.equal(groups[1]?.brokerId, 'broker-1')
+  assert.equal(groups[1]?.activeSignalTrades[0]?.channelLabel, 'Alpha')
 })
 
 test('findActiveAttributedSignalTrades uses swap/commission when profit is null', () => {

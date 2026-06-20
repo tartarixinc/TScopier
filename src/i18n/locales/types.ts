@@ -178,6 +178,19 @@ export interface DashboardBrokerStatsTranslations {
   closeAllChannels: string
   closeChannelConfirm: string
   closeAllConfirm: string
+  closeConfirmTitleChannel: string
+  closeConfirmTitleBroker: string
+  closeConfirmTitleAllAccounts: string
+  closeConfirmBodyChannel: string
+  closeConfirmBodyBroker: string
+  closeConfirmBodyAllAccounts: string
+  closeConfirmAction: string
+  closeConfirmWarning: string
+  closeConfirmAccount: string
+  closeConfirmPositionsLabel: string
+  closeConfirmPositions: string
+  closeConfirmLots: string
+  closeConfirmChannelCount: string
   closing: string
   closeSuccess: string
   closePartial: string
@@ -228,6 +241,11 @@ export interface DashboardTranslations {
   openPnlNoOpen: string
   openPnlAcrossOneAccount: string
   openPnlAcrossAccounts: string
+  openPnlModalTitle: string
+  openPnlModalSubtitle: string
+  openPnlModalEmpty: string
+  closeAllAccounts: string
+  closeAllAccountsConfirm: string
   activeSignalChannels: string
   connectedTelegramChannels: string
   manageChannels: string

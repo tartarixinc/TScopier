@@ -1,1 +1,0 @@
-import{p as e}from"./vendor-W77evrBX.js";import{r as t}from"./LocaleContext-CUkWkXp7.js";import{t as n}from"./PlaceholderPage-BIUup3VH.js";var r=e();function i(){let e=t();return(0,r.jsx)(n,{title:e.pages.portfolio.title,description:e.pages.portfolio.description})}export{i as PortfolioPage};

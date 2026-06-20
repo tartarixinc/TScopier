@@ -13,6 +13,11 @@ import type { MtTrade } from './fxsocketBroker'
 import type { BrokerAccount } from '../types/database'
 import { normalizeSignalChannelIds } from './brokerChannelLink'
 import {
+  inferBrokerLabelFromServer,
+  resolveAccountLogin,
+} from './brokerFromServer'
+import { isBrokerSessionConnected } from './brokerReconnect'
+import {
   canonicalChannelId,
   computeProfitByChannel,
   resolveChannelIdForTrade,
@@ -393,6 +398,64 @@ export function findActiveAttributedSignalTrades(
       totalLots: Math.round(row.totalLots * 100) / 100,
       pnl: Math.round(row.pnl * 100) / 100,
     }))
+}
+
+export type PortfolioBrokerActiveSignals = {
+  brokerId: string
+  accountLabel: string
+  platformLine: string
+  brokerLabel: string
+  connected: boolean
+  brokerOpenPnl: number | null
+  activeSignalTrades: BrokerActiveSignalTrade[]
+}
+
+export function buildPortfolioActiveSignalGroups(opts: {
+  accounts: BrokerAccount[]
+  mtTrades: MtTrade[]
+  channelLinkMaps: PerformanceChannelLinkMaps
+  balances?: Record<string, { open_pnl?: number }>
+  unnamedAccountLabel?: string
+}): PortfolioBrokerActiveSignals[] {
+  const groups: PortfolioBrokerActiveSignals[] = []
+  const fallbackLabel = opts.unnamedAccountLabel?.trim() || '—'
+
+  for (const account of opts.accounts) {
+    const activeSignalTrades = findActiveAttributedSignalTrades(
+      account.id,
+      opts.mtTrades,
+      opts.channelLinkMaps,
+      account.signal_channel_ids,
+    )
+    if (activeSignalTrades.length === 0) continue
+
+    const platform = (account.platform ?? '').trim().toUpperCase() || '—'
+    const login = resolveAccountLogin(account)
+    const platformLine = login ? `${platform} • ${login}` : platform
+    const brokerLabel =
+      account.broker_name?.trim()
+      || inferBrokerLabelFromServer(account.broker_server ?? '')
+      || '—'
+    const rawOpenPnl = opts.balances?.[account.id]?.open_pnl
+    const brokerOpenPnl =
+      rawOpenPnl != null && Number.isFinite(Number(rawOpenPnl)) ? Number(rawOpenPnl) : null
+
+    groups.push({
+      brokerId: account.id,
+      accountLabel: account.label?.trim() || fallbackLabel,
+      platformLine,
+      brokerLabel,
+      connected: isBrokerSessionConnected(account),
+      brokerOpenPnl,
+      activeSignalTrades,
+    })
+  }
+
+  return groups.sort((a, b) => {
+    const pnlA = a.activeSignalTrades.reduce((sum, row) => sum + row.pnl, 0)
+    const pnlB = b.activeSignalTrades.reduce((sum, row) => sum + row.pnl, 0)
+    return pnlB - pnlA || a.accountLabel.localeCompare(b.accountLabel)
+  })
 }
 
 export function computeBrokerStatsSnapshot(opts: {

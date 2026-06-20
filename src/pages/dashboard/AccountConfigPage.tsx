@@ -58,7 +58,6 @@ import { UpgradePrompt } from '../../components/billing/UpgradePrompt'
 import {
   inferBrokerLabelFromServer,
   resolveLinkedAccountTypeForBroker,
-  resolveMtServerCandidate,
   formatLinkedAccountTypeLabel,
   linkedAccountTypeValueClass,
   type LinkedAccountType,

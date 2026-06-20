@@ -71,7 +71,8 @@ import {
   writeDashboardMemoryCache,
 } from '../../lib/dashboardSessionCache'
 import { brokerStatsPreviewFromAccount } from '../../lib/brokerStatsNavigation'
-import { computeConnectPnlByAccountId } from '../../lib/brokerStats'
+import { buildPortfolioActiveSignalGroups, computeConnectPnlByAccountId } from '../../lib/brokerStats'
+import { OpenPnlAccountsModal } from '../../components/dashboard/OpenPnlAccountsModal'
 import { syncPerformanceCacheFromDashboard } from '../../lib/performanceCacheBridge'
 import { fetchBrokerMtTrades } from '../../lib/brokerTradeHistory'
 import {
@@ -1085,7 +1086,7 @@ export function DashboardPage() {
     [linkedAccounts, linkedAccountBalances, mtTrades],
   )
 
-  const openPnlSub = useMemo(() => {
+  const openPnlAccountCount = useMemo(() => {
     let accountCount = countAccountsWithOpenPositions(
       linkedAccounts,
       linkedAccountBalances,
@@ -1097,10 +1098,27 @@ export function DashboardPage() {
       )
       accountCount = brokers.size
     }
-    if (accountCount === 0) return t.dashboard.openPnlNoOpen
-    if (accountCount === 1) return t.dashboard.openPnlAcrossOneAccount
-    return interpolate(t.dashboard.openPnlAcrossAccounts, { count: String(accountCount) })
-  }, [linkedAccounts, linkedAccountBalances, effectiveChartTrades, stats.openTrades, mtTrades, t])
+    return accountCount
+  }, [linkedAccounts, linkedAccountBalances, effectiveChartTrades, stats.openTrades, mtTrades])
+
+  const openPnlSub = useMemo(() => {
+    if (openPnlAccountCount === 0) return t.dashboard.openPnlNoOpen
+    if (openPnlAccountCount === 1) return t.dashboard.openPnlAcrossOneAccount
+    return interpolate(t.dashboard.openPnlAcrossAccounts, { count: String(openPnlAccountCount) })
+  }, [openPnlAccountCount, t])
+
+  const portfolioActiveSignalGroups = useMemo(
+    () => buildPortfolioActiveSignalGroups({
+      accounts: linkedAccounts,
+      mtTrades,
+      channelLinkMaps,
+      balances: linkedAccountBalances,
+      unnamedAccountLabel: la.unnamedAccount,
+    }),
+    [linkedAccounts, mtTrades, channelLinkMaps, linkedAccountBalances, la.unnamedAccount],
+  )
+
+  const [openPnlModalOpen, setOpenPnlModalOpen] = useState(false)
 
   const equityByAccountId = useMemo(() => {
     const out: Record<string, number> = {}
@@ -2167,7 +2185,19 @@ export function DashboardPage() {
           <StatBlock
             label={t.dashboard.openPnl}
             value={formatSignedMoney(stats.openPnl)}
-            sub={openPnlSub}
+            sub={
+              openPnlAccountCount > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setOpenPnlModalOpen(true)}
+                  className="text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300 underline-offset-2 hover:underline font-medium"
+                >
+                  {openPnlSub}
+                </button>
+              ) : (
+                openPnlSub
+              )
+            }
             valueColor={
               stats.openPnl > 0
                 ? 'text-teal-600'
@@ -2472,6 +2502,15 @@ export function DashboardPage() {
       )}
 
       <Outlet />
+
+      <OpenPnlAccountsModal
+        open={openPnlModalOpen}
+        groups={portfolioActiveSignalGroups}
+        totalOpenPnl={stats.openPnl}
+        accountCount={openPnlAccountCount}
+        onClose={() => setOpenPnlModalOpen(false)}
+        onRefresh={() => loadDashboardLiveRef.current()}
+      />
     </PageShell>
   )
 }
@@ -2651,7 +2690,7 @@ function LinkedAccountRow({
   onOpenStats,
 }: {
   account: BrokerAccount
-  accountSummary?: { balance?: number; equity?: number; currency?: string; broker?: string; mt_server_hint?: string; account_type?: 'Live' | 'Demo'; open_pnl?: number }
+  accountSummary?: { balance?: number; equity?: number; currency?: string; broker?: string; mt_server_hint?: string; account_type?: LinkedAccountType; open_pnl?: number }
   performance?: LinkedAccountPerformance
   /** Balance P/L since first connect; null when baseline or balance is unavailable. */
   connectPnl?: number | null
