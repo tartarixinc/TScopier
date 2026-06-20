@@ -13,6 +13,7 @@ import { HelpSidebarNav } from './HelpSidebarNav'
 import { NotificationBell } from './NotificationBell'
 import { CopierPauseToggle } from './CopierPauseToggle'
 import { UserMenuDropdown } from './UserMenuDropdown'
+import { UserAvatar } from './UserAvatar'
 import { DashboardKeepAlive } from './DashboardKeepAlive'
 import { useUserProfile } from '../../context/UserProfileContext'
 import { useSubscription } from '../../context/SubscriptionContext'
@@ -171,13 +172,6 @@ export function AppLayout() {
     navigate('/login')
   }
 
-  const initials = (() => {
-    const first = profile.first_name?.trim()
-    const last = profile.last_name?.trim()
-    if (first && last) return `${first[0]}${last[0]}`.toUpperCase()
-    if (first) return first.slice(0, 2).toUpperCase()
-    return user?.email?.slice(0, 2).toUpperCase() ?? 'U'
-  })()
   const displayName =
     [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim() ||
     profile.display_name?.trim() ||
@@ -487,9 +481,7 @@ export function AppLayout() {
                     : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/60',
                 )}
               >
-              <div className="w-8 h-8 rounded-full bg-teal-600 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">
-                {initials}
-              </div>
+              <UserAvatar user={user} profile={profile} email={user?.email} size="sm" />
               <div className="hidden md:block text-left">
                 <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 leading-tight truncate max-w-[8rem]">
                   {displayName}

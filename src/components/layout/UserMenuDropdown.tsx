@@ -13,6 +13,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useT } from '../../context/LocaleContext'
 import { useUserProfile } from '../../context/UserProfileContext'
 import { useSubscription } from '../../context/SubscriptionContext'
+import { UserAvatar } from './UserAvatar'
 
 export interface UserMenuDropdownProps {
   open: boolean
@@ -35,17 +36,6 @@ type MenuItem =
       icon: LucideIcon
       destructive?: boolean
     }
-
-function userInitials(
-  profile: { first_name?: string; last_name?: string },
-  email?: string | null,
-): string {
-  const first = profile.first_name?.trim()
-  const last = profile.last_name?.trim()
-  if (first && last) return `${first[0]}${last[0]}`.toUpperCase()
-  if (first) return first.slice(0, 2).toUpperCase()
-  return email?.slice(0, 2).toUpperCase() ?? 'U'
-}
 
 export function UserMenuDropdown({ open, onClose, onSignOut }: UserMenuDropdownProps) {
   const t = useT()
@@ -90,8 +80,6 @@ export function UserMenuDropdown({ open, onClose, onSignOut }: UserMenuDropdownP
     user?.email?.split('@')[0] ||
     'User'
 
-  const initials = userInitials(profile, user?.email)
-
   return (
     <div
       ref={panelRef}
@@ -105,9 +93,7 @@ export function UserMenuDropdown({ open, onClose, onSignOut }: UserMenuDropdownP
     >
       <div className="border-b border-neutral-100 px-3 py-3 dark:border-neutral-800">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-teal-600 text-sm font-semibold text-white">
-            {initials}
-          </div>
+          <UserAvatar user={user} profile={profile} email={user?.email} size="md" />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">{headerName}</p>
             <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">{user?.email}</p>
