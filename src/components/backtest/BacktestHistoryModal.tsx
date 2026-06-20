@@ -61,7 +61,7 @@ export function BacktestHistoryModal({
       case 'failed':
         return {
           label: bt.statusFailed,
-          className: 'bg-error-100 text-[#E16C6C] dark:bg-error-950 dark:text-[#E16C6C]',
+          className: 'bg-error-100 text-[#737373] dark:bg-error-950 dark:text-[#737373]',
         }
       case 'running':
       case 'pending':

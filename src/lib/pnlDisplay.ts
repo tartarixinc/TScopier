@@ -1,18 +1,18 @@
-/** Brand loss red (#E16C6C). */
-export const LOSS_COLOR = '#E16C6C'
+/** Brand loss red (#737373). */
+export const LOSS_COLOR = '#737373'
 
 /** Negative P/L and loss counts. */
-export const lossTextClass = 'text-[#E16C6C]'
+export const lossTextClass = 'text-[#737373]'
 
-export const lossBarClass = 'bg-[#E16C6C]'
+export const lossBarClass = 'bg-[#737373]'
 
 export const lossBannerClass =
-  'bg-error-50 border-error-200 text-[#E16C6C] dark:bg-error-950/40 dark:border-error-800'
+  'bg-error-50 border-error-200 text-[#737373] dark:bg-error-950/40 dark:border-error-800'
 
 export const lossBadgeOutlineClass =
-  'border-error-200 text-[#E16C6C] dark:border-error-800'
+  'border-error-200 text-[#737373] dark:border-error-800'
 
-export const lossIconWrapClass = 'bg-error-50 text-[#E16C6C] dark:bg-error-950/40'
+export const lossIconWrapClass = 'bg-error-50 text-[#737373] dark:bg-error-950/40'
 
 export const profitTextClass = 'text-teal-600 dark:text-teal-400'
 

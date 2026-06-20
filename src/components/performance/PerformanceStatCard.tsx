@@ -41,7 +41,7 @@ export function PerformanceStatCard({
 
   const iconWrapClass =
     signedTone === 'negative' || isLossPnl(amount ?? NaN)
-      ? 'bg-error-50 text-[#E16C6C] dark:bg-error-950/40'
+      ? 'bg-error-50 text-[#737373] dark:bg-error-950/40'
       : 'bg-teal-50 text-teal-600 dark:bg-teal-950/50 dark:text-teal-400'
 
   return (

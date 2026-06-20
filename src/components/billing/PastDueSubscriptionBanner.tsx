@@ -41,7 +41,7 @@ export function PastDueSubscriptionBanner({ className }: PastDueSubscriptionBann
         <Link
           to="/billing"
           className={clsx(
-            'inline-flex shrink-0 items-center justify-center rounded-lg px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-all hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[#E16C6C] focus:ring-offset-2',
+            'inline-flex shrink-0 items-center justify-center rounded-lg px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-all hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[#737373] focus:ring-offset-2',
             lossBarClass,
           )}
         >

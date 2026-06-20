@@ -26,7 +26,7 @@ function lineStyle(kind: PriceLevelLine['kind']): { line: string; text: string }
       }
     case 'sl':
       return {
-        line: 'border-[#E16C6C] border-dashed',
+        line: 'border-[#737373] border-dashed',
         text: lossTextClass,
       }
     case 'be':

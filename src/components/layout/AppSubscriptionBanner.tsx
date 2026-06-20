@@ -32,7 +32,7 @@ export function AppSubscriptionBanner() {
   return (
     <div
       role="status"
-      className="flex shrink-0 items-center justify-center gap-2 border-b border-error-200 bg-error-50 px-3 py-2.5 text-center text-sm text-[#E16C6C] dark:border-error-900/60 dark:bg-error-950/40 sm:px-6"
+      className="flex shrink-0 items-center justify-center gap-2 border-b border-error-200 bg-error-50 px-3 py-2.5 text-center text-sm text-[#737373] dark:border-error-900/60 dark:bg-error-950/40 sm:px-6"
     >
       <CreditCard className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
       <p className="min-w-0 font-medium leading-snug">
