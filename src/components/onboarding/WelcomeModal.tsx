@@ -131,6 +131,7 @@ export function WelcomeModal() {
           <Button
             className="mt-8 w-full"
             size="lg"
+            variant="primary"
             loading={saving}
             onClick={() => void startFreeTrial()}
           >

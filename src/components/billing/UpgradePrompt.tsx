@@ -53,7 +53,7 @@ export function UpgradePrompt({
                 {pw.manageBilling}
               </Link>
             ) : null}
-            <Button size="sm" variant="danger" onClick={() => openUpgrade('advanced')}>
+            <Button size="sm" variant="primary" onClick={() => openUpgrade('advanced')}>
               {upgradeCta}
             </Button>
           </div>

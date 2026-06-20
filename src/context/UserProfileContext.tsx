@@ -19,6 +19,7 @@ import {
   saveUserProfile,
   type UserProfile,
 } from '../lib/userProfile'
+import { isOAuthUser } from '../lib/emailVerification'
 
 type ProfileFields = Omit<UserProfile, 'user_id' | 'created_at' | 'updated_at'>
 
@@ -62,6 +63,7 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
   const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null)
   const [onboardingCompletedAt, setOnboardingCompletedAt] = useState<string | null>(null)
   const [emailVerifiedAt, setEmailVerifiedAt] = useState<string | null>(null)
+  const [profileLoadedForUserId, setProfileLoadedForUserId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   const refreshProfile = useCallback(async () => {
@@ -73,6 +75,7 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
       setSubscriptionStatus(null)
       setOnboardingCompletedAt(null)
       setEmailVerifiedAt(null)
+      setProfileLoadedForUserId(null)
       setLoading(false)
       return
     }
@@ -120,6 +123,7 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
           }),
         )
       }
+      setProfileLoadedForUserId(user.id)
     } finally {
       setLoading(false)
     }
@@ -185,9 +189,12 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
     [user, profile],
   )
 
-  const value = useMemo(
-    (): UserProfileContextValue => ({
-      loading,
+  const value = useMemo((): UserProfileContextValue => {
+    const awaitingEmailProfile = Boolean(
+      user?.id && !isOAuthUser(user) && profileLoadedForUserId !== user.id,
+    )
+    return {
+      loading: loading || awaitingEmailProfile,
       profile,
       hasProfileRow,
       isAdmin,
@@ -201,21 +208,22 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
       patchProfile,
       refreshProfile,
       persistProfile,
-    }),
-    [
-      loading,
-      profile,
-      hasProfileRow,
-      isAdmin,
-      adminUntil,
-      subscriptionStatus,
-      onboardingCompletedAt,
-      emailVerifiedAt,
-      patchProfile,
-      refreshProfile,
-      persistProfile,
-    ],
-  )
+    }
+  }, [
+    loading,
+    user,
+    profileLoadedForUserId,
+    profile,
+    hasProfileRow,
+    isAdmin,
+    adminUntil,
+    subscriptionStatus,
+    onboardingCompletedAt,
+    emailVerifiedAt,
+    patchProfile,
+    refreshProfile,
+    persistProfile,
+  ])
 
   return <UserProfileContext.Provider value={value}>{children}</UserProfileContext.Provider>
 }

@@ -9,6 +9,7 @@ import { useCopierStartBlocked } from '../../hooks/useCopierStartBlocked'
 import { useOverlayDismiss } from '../../hooks/useOverlayDismiss'
 import { Button } from '../ui/Button'
 import { CopierActiveIndicator } from './CopierActiveIndicator'
+import { CopierStoppedIndicator } from './CopierStoppedIndicator'
 
 interface CopierPauseToggleProps {
   className?: string
@@ -170,7 +171,7 @@ export function CopierPauseToggle({ className }: CopierPauseToggleProps) {
         className={clsx(
           'group flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 sm:gap-2 sm:px-2.5 sm:text-sm',
           lockedStopped
-            ? 'cursor-not-allowed text-neutral-500 bg-neutral-100 dark:text-neutral-400 dark:bg-neutral-800/80'
+            ? 'cursor-not-allowed text-red-700 bg-red-50 dark:text-red-300 dark:bg-red-950/40'
             : showStopped
               ? 'text-teal-700 bg-teal-50 hover:bg-teal-100 dark:text-teal-300 dark:bg-teal-950/40 dark:hover:bg-teal-950/60'
               : 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:text-neutral-50 dark:hover:bg-neutral-800',
@@ -180,7 +181,7 @@ export function CopierPauseToggle({ className }: CopierPauseToggleProps) {
         {showStopped ? (
           <>
             {lockedStopped ? (
-              <Pause className="h-4 w-4 shrink-0 sm:h-[1.125rem] sm:w-[1.125rem]" aria-hidden />
+              <CopierStoppedIndicator />
             ) : (
               <Play className="h-4 w-4 shrink-0 sm:h-[1.125rem] sm:w-[1.125rem]" aria-hidden />
             )}
