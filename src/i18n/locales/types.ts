@@ -64,6 +64,9 @@ export interface NavTranslations {
     statusRunning: string
     statusStopped: string
     statusPaused?: string
+    statusCopierStopped?: string
+    stoppedHintSubscription?: string
+    stoppedHintSetup?: string
     stopCopier: string
     confirmTitle: string
     confirmBody: string

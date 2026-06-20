@@ -4,6 +4,7 @@ import { Pause, Play } from 'lucide-react'
 import clsx from 'clsx'
 import { useT } from '../../context/LocaleContext'
 import { useUserProfile } from '../../context/UserProfileContext'
+import { useCopierStartBlocked } from '../../hooks/useCopierStartBlocked'
 import { useOverlayDismiss } from '../../hooks/useOverlayDismiss'
 import { Button } from '../ui/Button'
 import { CopierActiveIndicator } from './CopierActiveIndicator'
@@ -16,6 +17,8 @@ export function CopierPauseToggle({ className }: CopierPauseToggleProps) {
   const t = useT()
   const cp = t.nav.copierPause
   const { copierPaused, patchProfile, persistProfile, refreshProfile } = useUserProfile()
+  const { copierStartBlocked, copierStartBlockedReason, resolving: startBlockedResolving } =
+    useCopierStartBlocked()
   const [saving, setSaving] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const overlayRef = useRef<HTMLDivElement>(null)
@@ -26,8 +29,16 @@ export function CopierPauseToggle({ className }: CopierPauseToggleProps) {
     () => { if (!saving) setConfirmOpen(false) },
   )
 
+  const lockedStopped = copierStartBlocked && !startBlockedResolving
+  const showStopped = lockedStopped || copierPaused
+  const stoppedHint = lockedStopped
+    ? (copierStartBlockedReason === 'subscription'
+      ? (cp.stoppedHintSubscription ?? cp.statusCopierStopped ?? 'Copier Stopped')
+      : (cp.stoppedHintSetup ?? cp.statusCopierStopped ?? 'Copier Stopped'))
+    : cp.pausedHint
+
   const setPaused = useCallback(async (next: boolean) => {
-    if (saving) return
+    if (saving || lockedStopped) return
     setSaving(true)
     patchProfile({ copier_paused: next })
     try {
@@ -37,7 +48,7 @@ export function CopierPauseToggle({ className }: CopierPauseToggleProps) {
     } finally {
       setSaving(false)
     }
-  }, [patchProfile, persistProfile, refreshProfile, saving])
+  }, [lockedStopped, patchProfile, persistProfile, refreshProfile, saving])
 
   const confirmPause = useCallback(async () => {
     await setPaused(true)
@@ -45,13 +56,13 @@ export function CopierPauseToggle({ className }: CopierPauseToggleProps) {
   }, [setPaused])
 
   const handleButtonClick = useCallback(() => {
-    if (saving) return
+    if (saving || lockedStopped) return
     if (copierPaused) {
       void setPaused(false)
       return
     }
     setConfirmOpen(true)
-  }, [copierPaused, saving, setPaused])
+  }, [copierPaused, lockedStopped, saving, setPaused])
 
   useEffect(() => {
     if (!confirmOpen) return
@@ -70,6 +81,10 @@ export function CopierPauseToggle({ className }: CopierPauseToggleProps) {
       document.body.style.overflow = previous
     }
   }, [confirmOpen])
+
+  const stoppedLabel = lockedStopped
+    ? (cp.statusCopierStopped ?? 'Copier Stopped')
+    : (cp.statusPaused ?? cp.statusStopped)
 
   const confirmModal = confirmOpen ? (
     <div
@@ -135,22 +150,35 @@ export function CopierPauseToggle({ className }: CopierPauseToggleProps) {
       <button
         type="button"
         onClick={handleButtonClick}
-        disabled={saving}
-        aria-pressed={copierPaused}
-        aria-label={copierPaused ? `${cp.statusStopped}. ${cp.resumeLabel}` : `${cp.statusRunning}. ${cp.stopCopier}`}
-        title={copierPaused ? cp.pausedHint : cp.stopCopier}
+        disabled={saving || lockedStopped}
+        aria-pressed={showStopped}
+        aria-disabled={lockedStopped || undefined}
+        aria-label={
+          lockedStopped
+            ? `${cp.statusCopierStopped ?? 'Copier Stopped'}. ${stoppedHint}`
+            : showStopped
+              ? `${stoppedLabel}. ${cp.resumeLabel}`
+              : `${cp.statusRunning}. ${cp.stopCopier}`
+        }
+        title={showStopped ? stoppedHint : cp.stopCopier}
         className={clsx(
           'group flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 sm:gap-2 sm:px-2.5 sm:text-sm',
-          copierPaused
-            ? 'text-teal-700 bg-teal-50 hover:bg-teal-100 dark:text-teal-300 dark:bg-teal-950/40 dark:hover:bg-teal-950/60'
-            : 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:text-neutral-50 dark:hover:bg-neutral-800',
+          lockedStopped
+            ? 'cursor-not-allowed text-neutral-500 bg-neutral-100 dark:text-neutral-400 dark:bg-neutral-800/80'
+            : showStopped
+              ? 'text-teal-700 bg-teal-50 hover:bg-teal-100 dark:text-teal-300 dark:bg-teal-950/40 dark:hover:bg-teal-950/60'
+              : 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:text-neutral-50 dark:hover:bg-neutral-800',
           className,
         )}
       >
-        {copierPaused ? (
+        {showStopped ? (
           <>
-            <Play className="h-4 w-4 shrink-0 sm:h-[1.125rem] sm:w-[1.125rem]" aria-hidden />
-            <span className="whitespace-nowrap">{cp.statusStopped}</span>
+            {lockedStopped ? (
+              <Pause className="h-4 w-4 shrink-0 sm:h-[1.125rem] sm:w-[1.125rem]" aria-hidden />
+            ) : (
+              <Play className="h-4 w-4 shrink-0 sm:h-[1.125rem] sm:w-[1.125rem]" aria-hidden />
+            )}
+            <span className="whitespace-nowrap">{stoppedLabel}</span>
           </>
         ) : (
           <>
