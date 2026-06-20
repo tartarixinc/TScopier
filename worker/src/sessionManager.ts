@@ -533,24 +533,56 @@ export class UserSessionManager {
       && (workerConfig.role === 'all' || process.env.BACKTEST_PAUSE_LIVE_LISTENER !== 'false')
 
     let sessionString: string | null = null
-    if (pauseLive && this.listeners.has(userId)) {
+    let hadLiveListener = false
+    if (pauseLive) {
       sessionString = (await this.supabase
         .from('telegram_sessions')
         .select('session_string')
         .eq('user_id', userId)
         .maybeSingle()).data?.session_string ?? null
-      console.log(`[sessionManager] pausing live listener for backtest user=${userId}`)
-      await this.stopListener(userId)
-      await new Promise(r => setTimeout(r, 2000))
+      hadLiveListener = this.listeners.has(userId)
+      if (hadLiveListener) {
+        console.log(`[sessionManager] pausing live listener for backtest user=${userId}`)
+        await this.stopListener(userId)
+      }
+      if (sessionString) {
+        await new Promise(r => setTimeout(r, authKeyReleaseDelayMs()))
+      }
     }
 
     try {
       return await fn()
     } finally {
-      if (pauseLive && sessionString) {
-        await this.startListener(userId, sessionString)
+      if (pauseLive && sessionString && hadLiveListener) {
+        await this.restartListenerAfterBacktest(userId, sessionString)
       }
     }
+  }
+
+  /** Backtest pauses the copier listener; retry MTProto restart so Telegram does not stay offline. */
+  private async restartListenerAfterBacktest(userId: string, sessionString: string): Promise<void> {
+    const retryDelaysMs = [0, 3_000, 5_000, 10_000]
+    for (let attempt = 0; attempt < retryDelaysMs.length; attempt++) {
+      const delay = retryDelaysMs[attempt] ?? 0
+      if (delay > 0) await new Promise(r => setTimeout(r, delay))
+      if (this.listeners.has(userId)) {
+        console.log(`[sessionManager] listener restored after backtest user=${userId}`)
+        return
+      }
+      try {
+        await this.startListener(userId, sessionString)
+      } catch (err) {
+        console.warn(
+          `[sessionManager] restart listener after backtest attempt ${attempt + 1} for ${userId}:`,
+          err instanceof Error ? err.message : err,
+        )
+      }
+      if (this.listeners.has(userId)) return
+    }
+    console.error(
+      `[sessionManager] failed to restart listener after backtest user=${userId}`
+      + ' — open Copier Engine and use Reconnect Telegram',
+    )
   }
 
   private async startListener(userId: string, sessionString: string): Promise<void> {

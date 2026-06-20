@@ -43,6 +43,7 @@ export const copierEnginePl: CopierEngineBundleTranslations = {
     verificationFailed: 'Weryfikacja nie powiodła się',
     failedLoadTgChannels: 'Nie udało się wczytać kanałów Telegrama',
     telegramSessionExpired: 'Twoja sesja Telegram wygasła. Połącz ponownie — skonfigurowane kanały zostaną zachowane.',
+    telegramConnectionBusy: 'Telegram is reconnecting after a backtest or another task. Wait 30 seconds, then press Refresh — or use Reconnect Telegram.',
     reconnectTelegram: 'Połącz Telegram ponownie',
     channelSearchPlaceholder: 'Szukaj kanałów…',
     noChannelSearchResults: 'Brak kanałów pasujących do wyszukiwania',

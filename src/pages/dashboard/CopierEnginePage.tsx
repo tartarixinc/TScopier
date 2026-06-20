@@ -296,10 +296,15 @@ export function CopierEnginePage() {
             return
           }
           if (!res.ok || data.error) {
+            const errText = typeof data.error === 'string' ? data.error : ''
+            const isBusy = /temporarily busy|AUTH_KEY_DUPLICATED|still closing|reconnecting/i.test(errText)
+            if (isBusy) {
+              if (!opts?.background) setError(ce.telegramConnectionBusy)
+              return
+            }
             if (attempt < maxAttempts - 1) continue
             if (!opts?.background) {
-              const msg = typeof data.error === 'string' ? data.error : ce.failedLoadTgChannels
-              setError(msg)
+              setError(errText || ce.failedLoadTgChannels)
             }
             return
           }

@@ -837,6 +837,7 @@ export const fr: Translations = {
     verificationFailed: 'Échec de la vérification',
     failedLoadTgChannels: 'Impossible de charger les canaux Telegram',
     telegramSessionExpired: 'Votre session Telegram a expiré. Reconnectez-vous — vos canaux configurés sont conservés.',
+    telegramConnectionBusy: 'Telegram se reconnecte après un backtest ou une autre tâche. Attendez 30 secondes, puis actualisez — ou utilisez Reconnecter Telegram.',
     reconnectTelegram: 'Reconnecter Telegram',
     channelSearchPlaceholder: 'Rechercher des canaux…',
     noChannelSearchResults: 'Aucun canal ne correspond à votre recherche',

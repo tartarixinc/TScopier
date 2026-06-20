@@ -43,6 +43,7 @@ export const copierEngineSv: CopierEngineBundleTranslations = {
     verificationFailed: 'Verifiering misslyckades',
     failedLoadTgChannels: 'Det gick inte att ladda Telegram-kanaler',
     telegramSessionExpired: 'Din Telegram-session har gått ut. Anslut igen — dina konfigurerade kanaler behålls.',
+    telegramConnectionBusy: 'Telegram is reconnecting after a backtest or another task. Wait 30 seconds, then press Refresh — or use Reconnect Telegram.',
     reconnectTelegram: 'Anslut Telegram igen',
     channelSearchPlaceholder: 'Sök kanaler…',
     noChannelSearchResults: 'Inga kanaler matchar din sökning',

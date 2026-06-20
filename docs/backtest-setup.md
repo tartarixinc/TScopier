@@ -39,6 +39,10 @@ The worker must be running with:
 - `PARSE_SIGNAL_URL` (or `SUPABASE_URL` + `/functions/v1/parse-signal`)
 - `SUPABASE_SERVICE_ROLE_KEY` for parse auth and RPC upsert
 
+**Telegram and backtest on the same worker:** Backtest signal sync briefly pauses the live copier listener (MTProto allows only one connection per session). The worker restarts the listener when sync finishes. If Telegram looks disconnected after a backtest, wait ~30s and refresh Copier Engine, or use **Reconnect Telegram**.
+
+**Recommended:** Set Supabase edge secret `BACKTEST_WORKER_URL` to a dedicated `WORKER_ROLE=backtest` service so backtests never pause the live listener on your copier worker.
+
 Optional env on worker:
 - `BACKTEST_PARSE_CONCURRENCY` (default `4`) — parallel parse-signal calls
 - `BACKTEST_PARSE_DELAY_MS` (default `0`) — pause between parses (raise if parse-signal rate-limits)

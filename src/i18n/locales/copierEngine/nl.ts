@@ -44,6 +44,7 @@ export const copierEngineNl: CopierEngineBundleTranslations = {
     verificationFailed: 'Verificatie mislukt',
     failedLoadTgChannels: 'Telegram-kanalen laden mislukt',
     telegramSessionExpired: 'Je Telegram-sessie is verlopen. Verbind opnieuw — je geconfigureerde kanalen blijven behouden.',
+    telegramConnectionBusy: 'Telegram is reconnecting after a backtest or another task. Wait 30 seconds, then press Refresh — or use Reconnect Telegram.',
     reconnectTelegram: 'Telegram opnieuw verbinden',
     channelSearchPlaceholder: 'Kanalen zoeken…',
     noChannelSearchResults: 'Geen kanalen komen overeen met je zoekopdracht',

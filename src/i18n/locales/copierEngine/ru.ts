@@ -43,6 +43,7 @@ export const copierEngineRu: CopierEngineBundleTranslations = {
     verificationFailed: 'Проверка не удалась',
     failedLoadTgChannels: 'Не удалось загрузить каналы Telegram',
     telegramSessionExpired: 'Сессия Telegram истекла. Подключите снова — настроенные каналы сохранятся.',
+    telegramConnectionBusy: 'Telegram is reconnecting after a backtest or another task. Wait 30 seconds, then press Refresh — or use Reconnect Telegram.',
     reconnectTelegram: 'Переподключить Telegram',
     channelSearchPlaceholder: 'Поиск каналов…',
     noChannelSearchResults: 'Нет каналов, соответствующих вашему запросу',

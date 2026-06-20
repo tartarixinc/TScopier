@@ -915,6 +915,7 @@ export interface CopierEnginePageTranslations {
   verificationFailed: string
   failedLoadTgChannels: string
   telegramSessionExpired: string
+  telegramConnectionBusy: string
   reconnectTelegram: string
   channelSearchPlaceholder: string
   noChannelSearchResults: string

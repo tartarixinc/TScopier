@@ -43,6 +43,7 @@ export const copierEngineJa: CopierEngineBundleTranslations = {
     verificationFailed: '認証に失敗しました',
     failedLoadTgChannels: 'Telegramチャンネルの読み込みに失敗しました',
     telegramSessionExpired: 'Telegramセッションの有効期限が切れました。再接続してください — 設定済みチャンネルは保持されます。',
+    telegramConnectionBusy: 'Telegram is reconnecting after a backtest or another task. Wait 30 seconds, then press Refresh — or use Reconnect Telegram.',
     reconnectTelegram: 'Telegramを再接続',
     channelSearchPlaceholder: 'チャンネルを検索…',
     noChannelSearchResults: '検索条件に一致するチャンネルはありません',

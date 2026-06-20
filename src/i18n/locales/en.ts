@@ -836,6 +836,7 @@ export const en: Translations = {
     verificationFailed: 'Verification failed',
     failedLoadTgChannels: 'Failed to load Telegram channels',
     telegramSessionExpired: 'Your Telegram session expired. Reconnect to resume — your configured channels are kept.',
+    telegramConnectionBusy: 'Telegram is reconnecting after a backtest or another task. Wait 30 seconds, then press Refresh — or use Reconnect Telegram.',
     reconnectTelegram: 'Reconnect Telegram',
     channelSearchPlaceholder: 'Search channels…',
     noChannelSearchResults: 'No channels match your search',
