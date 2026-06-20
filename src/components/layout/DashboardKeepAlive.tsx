@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { Route, Routes, useLocation } from 'react-router-dom'
 import { PageLoader } from './PageLoader'
+import { useNeedsWelcome } from '../../hooks/useNeedsWelcome'
 
 const DashboardPage = lazy(() =>
   import('../../pages/dashboard/DashboardPage').then(m => ({ default: m.DashboardPage })),
@@ -12,6 +13,7 @@ const BrokerStatsOverlay = lazy(() =>
 /** Keep Dashboard mounted after first visit so stats/charts do not reset on navigation. */
 export function DashboardKeepAlive() {
   const location = useLocation()
+  const { deferAppBootstrap } = useNeedsWelcome()
   const onDashboard = location.pathname === '/dashboard'
     || location.pathname.startsWith('/dashboard/broker/')
   const [mounted, setMounted] = useState(onDashboard)
@@ -20,7 +22,7 @@ export function DashboardKeepAlive() {
     if (onDashboard) setMounted(true)
   }, [onDashboard])
 
-  if (!mounted) return null
+  if (deferAppBootstrap || !mounted) return null
 
   return (
     <div className={onDashboard ? 'min-h-full' : 'hidden'} aria-hidden={!onDashboard}>

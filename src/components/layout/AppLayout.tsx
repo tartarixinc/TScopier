@@ -18,6 +18,7 @@ import { useUserProfile } from '../../context/UserProfileContext'
 import { useSubscription } from '../../context/SubscriptionContext'
 import { useHasOpenTrades } from '../../hooks/useHasOpenTrades'
 import { useHasHighImpactNewsToday } from '../../hooks/useHasHighImpactNewsToday'
+import { useNeedsWelcome } from '../../hooks/useNeedsWelcome'
 
 type NavItem = {
   to: string
@@ -49,8 +50,10 @@ export function AppLayout() {
     effectivePlan,
     hasTrialExpired,
   })
+  const { deferAppBootstrap } = useNeedsWelcome()
   const [calendarCheckEnabled, setCalendarCheckEnabled] = useState(false)
   useEffect(() => {
+    if (deferAppBootstrap) return
     const enable = () => setCalendarCheckEnabled(true)
     if (typeof requestIdleCallback !== 'undefined') {
       const idleId = requestIdleCallback(enable, { timeout: 5000 })
@@ -58,9 +61,11 @@ export function AppLayout() {
     }
     const timer = window.setTimeout(enable, 3000)
     return () => window.clearTimeout(timer)
-  }, [])
-  const hasOpenTrades = useHasOpenTrades(user?.id)
-  const hasHighImpactNewsToday = useHasHighImpactNewsToday(calendarCheckEnabled)
+  }, [deferAppBootstrap])
+  const hasOpenTrades = useHasOpenTrades(deferAppBootstrap ? undefined : user?.id)
+  const hasHighImpactNewsToday = useHasHighImpactNewsToday(
+    deferAppBootstrap ? false : calendarCheckEnabled,
+  )
 
   const openUserMenu = () => {
     if (userMenuCloseTimerRef.current) {
@@ -446,7 +451,7 @@ export function AppLayout() {
           )}
         >
           <DashboardKeepAlive />
-          {!onDashboardRoute && <Outlet />}
+          {!deferAppBootstrap && !onDashboardRoute && <Outlet />}
         </main>
       </div>
     </div>

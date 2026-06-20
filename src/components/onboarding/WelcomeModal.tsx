@@ -4,7 +4,6 @@ import { CheckCircle2 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useUserProfile } from '../../context/UserProfileContext'
 import { useSubscription } from '../../context/SubscriptionContext'
-import { isEmailVerified } from '../../lib/emailVerification'
 import { saveUserProfile } from '../../lib/userProfile'
 import { startPlanCheckout } from '../../lib/planCheckout'
 import { useLocale, useT } from '../../context/LocaleContext'
@@ -16,30 +15,21 @@ export function WelcomeModal() {
   const t = useT()
   const { auth } = useLocale()
   const welcomeT = auth.welcome
-  const { user, session, loading: authLoading } = useAuth()
-  const { profile, refreshProfile, onboardingCompletedAt, emailVerifiedAt, loading: profileLoading } =
-    useUserProfile()
+  const { user, session } = useAuth()
+  const { profile, refreshProfile } = useUserProfile()
   const { openPricingModal, isPastDue, effectivePlan, hasTrialExpired, hasActiveSubscription } = useSubscription()
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  const open =
-    Boolean(user)
-    && !authLoading
-    && !profileLoading
-    && isEmailVerified(user, emailVerifiedAt)
-    && !onboardingCompletedAt
-
   const trialCta = getSubscribeCtaLabel(t, { isPastDue, effectivePlan, hasTrialExpired })
 
   useEffect(() => {
-    if (!open) return
     const previous = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => {
       document.body.style.overflow = previous
     }
-  }, [open])
+  }, [])
 
   const completeOnboarding = async () => {
     if (!user) return
@@ -99,14 +89,12 @@ export function WelcomeModal() {
     }
   }
 
-  if (!open) return null
-
   const modal = (
     <div
       className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-4 sm:p-6 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
       aria-hidden={false}
     >
-      <div className="absolute inset-0 bg-neutral-950/60 backdrop-blur-[2px]" aria-hidden />
+      <div className="absolute inset-0 bg-neutral-950/55" aria-hidden />
 
       <div
         role="dialog"

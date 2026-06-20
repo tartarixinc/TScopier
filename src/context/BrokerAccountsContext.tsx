@@ -43,7 +43,14 @@ interface BrokerAccountsContextValue {
 
 const BrokerAccountsContext = createContext<BrokerAccountsContextValue | null>(null)
 
-export function BrokerAccountsProvider({ children }: { children: ReactNode }) {
+export function BrokerAccountsProvider({
+  children,
+  enabled = true,
+}: {
+  children: ReactNode
+  /** When false, skip broker fetch/realtime (e.g. welcome modal showing). */
+  enabled?: boolean
+}) {
   const { user } = useAuth()
 
   const [brokers, setBrokers] = useState<BrokerAccount[]>([])
@@ -79,9 +86,13 @@ export function BrokerAccountsProvider({ children }: { children: ReactNode }) {
   }, [user?.id])
 
   useEffect(() => {
+    if (!enabled) {
+      setLoading(false)
+      return
+    }
     if (!user?.id) initialLoadDoneRef.current = false
     void refreshBrokers()
-  }, [refreshBrokers, user?.id])
+  }, [enabled, refreshBrokers, user?.id])
 
   const replaceBroker = useCallback((broker: BrokerAccount) => {
     setBrokers(prev => prev.map(b => (b.id === broker.id ? broker : b)))
@@ -118,7 +129,7 @@ export function BrokerAccountsProvider({ children }: { children: ReactNode }) {
     return { error: null }
   }, [user])
 
-  useBrokerAccountsRealtime(user?.id, setBrokers)
+  useBrokerAccountsRealtime(enabled ? user?.id : undefined, setBrokers)
 
   const emptySet = useMemo(() => new Set<string>(), [])
   const noopAsync = useCallback(async () => {}, [])

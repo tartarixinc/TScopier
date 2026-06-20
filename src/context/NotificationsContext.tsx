@@ -64,7 +64,13 @@ interface NotificationsContextValue {
 
 const NotificationsContext = createContext<NotificationsContextValue | null>(null)
 
-export function NotificationsProvider({ children }: { children: ReactNode }) {
+export function NotificationsProvider({
+  children,
+  enabled = true,
+}: {
+  children: ReactNode
+  enabled?: boolean
+}) {
   const { user } = useAuth()
   const { profile } = useUserProfile()
   const t = useT()
@@ -146,11 +152,15 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   }, [user?.id, applyRows])
 
   useEffect(() => {
+    if (!enabled) {
+      setLoading(false)
+      return
+    }
     void refresh()
-  }, [refresh])
+  }, [enabled, refresh])
 
   useEffect(() => {
-    if (!user?.id) return
+    if (!enabled || !user?.id) return
 
     let debounceTimer: ReturnType<typeof setTimeout> | null = null
     let pendingSound = false
@@ -205,7 +215,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       if (debounceTimer) clearTimeout(debounceTimer)
       if (channel) void supabase.removeChannel(channel)
     }
-  }, [user?.id, refresh, soundEnabled, applyRows])
+  }, [enabled, user?.id, refresh, soundEnabled, applyRows])
 
   const markAllRead = useCallback(() => {
     if (!user?.id) return
