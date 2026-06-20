@@ -23,6 +23,10 @@ export interface ChartThemeColors {
   }
 }
 
+import { LOSS_COLOR } from './pnlDisplay'
+
+export const LOSS_CHART_COLOR = LOSS_COLOR
+
 export function chartThemeColors(theme: Theme): ChartThemeColors {
   if (theme === 'dark') {
     return {
@@ -36,12 +40,12 @@ export function chartThemeColors(theme: Theme): ChartThemeColors {
       tooltipShadow: '0 4px 12px rgba(0, 0, 0, 0.45)',
       barActive: {
         profit: '#2dd4bf',
-        loss: '#737373',
+        loss: LOSS_CHART_COLOR,
         volume: '#94a3b8',
       },
       signedPnl: {
         profit: '#0d9488',
-        loss: '#737373',
+        loss: LOSS_CHART_COLOR,
       },
     }
   }
@@ -56,12 +60,12 @@ export function chartThemeColors(theme: Theme): ChartThemeColors {
     tooltipShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
     barActive: {
       profit: '#14b8a6',
-      loss: '#737373',
+      loss: LOSS_CHART_COLOR,
       volume: '#737373',
     },
     signedPnl: {
       profit: '#0d9488',
-      loss: '#737373',
+      loss: LOSS_CHART_COLOR,
     },
   }
 }

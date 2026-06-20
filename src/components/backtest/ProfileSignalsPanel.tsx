@@ -1,6 +1,7 @@
 import clsx from 'clsx'
 import type { StoredBacktestSignal } from '../../lib/backtestTypes'
 import { formatEntryPrice } from '../../lib/backtestDisplay'
+import { lossTextClass, profitTextClass } from '../../lib/pnlDisplay'
 
 export interface SymbolProfileRow {
   symbol: string
@@ -108,7 +109,7 @@ export function ProfileSignalsPanel({
                 <td
                   className={clsx(
                     'py-1.5 pr-2 uppercase',
-                    row.direction === 'buy' ? 'text-teal-600' : 'text-error-600',
+                    row.direction === 'buy' ? profitTextClass : lossTextClass,
                   )}
                 >
                   {row.direction}

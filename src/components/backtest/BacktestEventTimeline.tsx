@@ -1,4 +1,5 @@
 import clsx from 'clsx'
+import { lossBarClass, lossTextClass } from '../../lib/pnlDisplay'
 import { useT } from '../../context/LocaleContext'
 import type { BacktestTradeRow } from '../../lib/backtestTypes'
 import {
@@ -42,13 +43,13 @@ export function BacktestEventTimeline({ trade, labels: labelsProp }: BacktestEve
               <span
                 className={clsx(
                   'absolute -left-[7px] mt-1.5 h-3 w-3 rounded-full ring-4 ring-white dark:ring-neutral-900',
-                  isSl ? 'bg-error-500' : isBe ? 'bg-amber-500' : 'bg-teal-500',
+                  isSl ? lossBarClass : isBe ? 'bg-amber-500' : 'bg-teal-500',
                 )}
               />
               <p
                 className={clsx(
                   'text-sm font-semibold',
-                  isSl ? 'text-error-700 dark:text-error-400' : isBe ? 'text-amber-700' : 'text-teal-700 dark:text-teal-400',
+                  isSl ? lossTextClass : isBe ? 'text-amber-700' : 'text-teal-700 dark:text-teal-400',
                 )}
               >
                 {ev.label} → {formatEntryPrice(ev.price)}

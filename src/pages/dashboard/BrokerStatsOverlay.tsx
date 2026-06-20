@@ -13,6 +13,7 @@ import { computeBrokerStatsSnapshot } from '../../lib/brokerStats'
 import {
   type BrokerStatsRouteState,
 } from '../../lib/brokerStatsNavigation'
+import { pnlSignTextClass } from '../../lib/pnlDisplay'
 import {
   inferBrokerLabelFromServer,
   resolveAccountLogin,
@@ -298,8 +299,7 @@ export function BrokerStatsOverlay() {
           propFirm: la.accountTypePropFirm,
         })
 
-  const pnlColor = (n: number) =>
-    n > 0 ? 'text-teal-600' : n < 0 ? 'text-error-600' : 'text-neutral-900 dark:text-neutral-50'
+  const pnlColor = pnlSignTextClass
 
   const needsLiveBrokerHistory = account != null && isFxsocketLinkedBroker(account)
   const showBodySkeleton = !stats && (loading || (needsLiveBrokerHistory && !brokerMetricsReady))

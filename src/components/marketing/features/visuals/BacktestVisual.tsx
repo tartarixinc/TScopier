@@ -1,22 +1,26 @@
 import clsx from 'clsx'
 import { ArrowLeft, ChevronRight } from 'lucide-react'
 import { useT } from '../../../../context/LocaleContext'
+import { lossBarClass, lossTextClass, profitTextClass } from '../../../../lib/pnlDisplay'
 import type { LandingBacktestPipsTone } from '../../../../i18n/locales/landing/types'
 
 function pipsClass(tone: LandingBacktestPipsTone): string {
-  if (tone === 'good') return 'text-teal-600 dark:text-teal-400'
-  if (tone === 'bad') return 'text-error-600 dark:text-error-400'
+  if (tone === 'good') return profitTextClass
+  if (tone === 'bad') return lossTextClass
   return 'text-neutral-600 dark:text-neutral-400'
 }
 
 function toneBarClass(tone: LandingBacktestPipsTone): string {
   if (tone === 'good') return 'bg-teal-500'
-  if (tone === 'bad') return 'bg-error-500'
+  if (tone === 'bad') return lossBarClass
   return 'bg-neutral-300 dark:bg-neutral-600'
 }
 
 export function BacktestVisual() {
   const v = useT().landing.features.visuals.backtest
+  const winLossParts = v.winLoss.split('/')
+  const winLossWins = winLossParts[0]?.trim() ?? v.winLoss
+  const winLossLosses = winLossParts[1]?.trim() ?? ''
 
   return (
     <div className="flex h-full min-h-[260px] items-center justify-center p-3 sm:p-4">
@@ -49,8 +53,16 @@ export function BacktestVisual() {
           </div>
           <div className="rounded-xl border border-neutral-200 p-2.5 dark:border-neutral-800">
             <p className="text-[9px] font-medium uppercase tracking-wide text-neutral-400">{v.winLossLabel}</p>
-            <p className="mt-0.5 text-lg font-bold tabular-nums text-neutral-900 dark:text-neutral-50 sm:text-xl">
-              {v.winLoss}
+            <p className="mt-0.5 text-lg font-bold tabular-nums sm:text-xl">
+              {winLossLosses ? (
+                <>
+                  <span className={profitTextClass}>{winLossWins}</span>
+                  <span className="text-neutral-300 dark:text-neutral-600">/</span>
+                  <span className={lossTextClass}>{winLossLosses}</span>
+                </>
+              ) : (
+                v.winLoss
+              )}
             </p>
           </div>
           <div className="rounded-xl border border-neutral-200 p-2.5 dark:border-neutral-800">
@@ -84,7 +96,7 @@ export function BacktestVisual() {
                     <span
                       className={clsx(
                         'ml-2 text-[10px] font-semibold uppercase',
-                        signal.side === 'buy' ? 'text-teal-600' : 'text-error-600',
+                        signal.side === 'buy' ? profitTextClass : lossTextClass,
                       )}
                     >
                       {signal.side === 'buy' ? 'Buy' : 'Sell'}

@@ -86,7 +86,7 @@ function barHeightPx(value: number, maxPx: number): number {
 
 function valueToneClass(tone: LandingBacktestPipsTone): string {
   if (tone === 'good') return 'text-teal-600 dark:text-teal-400'
-  if (tone === 'bad') return 'text-neutral-600 dark:text-neutral-400'
+  if (tone === 'bad') return 'text-error-600 dark:text-error-400'
   return 'text-neutral-900 dark:text-neutral-50'
 }
 
@@ -613,7 +613,7 @@ export function HeroDashboardPreview() {
                           <span
                             className={clsx(
                               'min-w-0 truncate text-xs font-medium uppercase',
-                              row.side === 'buy' ? 'text-primary-600' : 'text-neutral-600 dark:text-neutral-400',
+                              row.side === 'buy' ? 'text-primary-600' : 'text-error-600 dark:text-error-400',
                             )}
                           >
                             {row.type}

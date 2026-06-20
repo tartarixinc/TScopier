@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, TrendingDown, TrendingUp } from 'lucide-react'
 import clsx from 'clsx'
+import { backtestToneTextClass, lossBadgeOutlineClass, lossIconWrapClass, lossTextClass, profitTextClass } from '../../lib/pnlDisplay'
 import type { BacktestTradeRow } from '../../lib/backtestTypes'
 import {
   displayOutcomeLabel,
@@ -115,7 +116,7 @@ export function BacktestSignalBreakdown({ trades, channelNames }: BacktestSignal
       {groups.map(group => {
         const open = isMonthExpanded(group.key)
         const totalLabel = formatPipValue(group.totalPips)
-        const totalTone = group.totalPips >= 0 ? 'text-teal-600 dark:text-teal-400' : 'text-error-600 dark:text-error-400'
+        const totalTone = group.totalPips >= 0 ? profitTextClass : lossTextClass
 
         return (
           <section key={group.key}>
@@ -137,7 +138,9 @@ export function BacktestSignalBreakdown({ trades, channelNames }: BacktestSignal
               </div>
               <div className="flex shrink-0 items-center gap-3 text-xs tabular-nums">
                 <span className="text-neutral-500 dark:text-neutral-400">
-                  {group.wins}W / {group.losses}L
+                  <span className={profitTextClass}>{group.wins}W</span>
+                  {' / '}
+                  <span className={lossTextClass}>{group.losses}L</span>
                 </span>
                 <span className={clsx('font-semibold', totalTone)}>{totalLabel}</span>
               </div>
@@ -190,18 +193,13 @@ function SignalRow({
     ? trade.details!.tpEvents!
     : []
 
-  const pipClass =
-    tone === 'good'
-      ? 'text-teal-600 dark:text-teal-400'
-      : tone === 'bad'
-        ? 'text-error-600 dark:text-error-400'
-        : 'text-neutral-500 dark:text-neutral-400'
+  const pipClass = backtestToneTextClass(tone)
 
   const badgeClass =
     tone === 'good'
       ? 'border-teal-200 text-teal-700 dark:border-teal-800 dark:text-teal-300'
       : tone === 'bad'
-        ? 'border-error-200 text-error-700 dark:border-error-900 dark:text-error-300'
+        ? lossBadgeOutlineClass
         : 'border-neutral-200 text-neutral-600 dark:border-neutral-700 dark:text-neutral-400'
 
   return (
@@ -216,7 +214,7 @@ function SignalRow({
             'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
             isBuy
               ? 'bg-teal-50 text-teal-600 dark:bg-teal-950/50 dark:text-teal-400'
-              : 'bg-error-50 text-error-600 dark:bg-error-950/40 dark:text-error-400',
+              : lossIconWrapClass,
           )}
         >
           {isBuy ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
@@ -230,7 +228,7 @@ function SignalRow({
             <span
               className={clsx(
                 'font-semibold uppercase',
-                isBuy ? 'text-teal-600 dark:text-teal-400' : 'text-error-600 dark:text-error-400',
+                isBuy ? profitTextClass : lossTextClass,
               )}
             >
               {isBuy ? 'BUY' : 'SELL'}

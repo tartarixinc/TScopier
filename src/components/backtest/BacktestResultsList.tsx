@@ -14,6 +14,12 @@ import {
   tradeDurationMs,
   tradePipPnl,
 } from '../../lib/backtestDisplay'
+import {
+  backtestToneBarClass,
+  backtestToneTextClass,
+  lossTextClass,
+  profitTextClass,
+} from '../../lib/pnlDisplay'
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50] as const
 type PageSizeOption = (typeof PAGE_SIZE_OPTIONS)[number]
@@ -126,9 +132,7 @@ export function BacktestResultsList({ trades, onSelect }: BacktestResultsListPro
                 <div
                   className={clsx(
                     'w-1 self-stretch rounded-full shrink-0 min-h-[3rem]',
-                    tone === 'good' && 'bg-teal-500',
-                    tone === 'bad' && 'bg-error-500',
-                    tone === 'neutral' && 'bg-neutral-300 dark:bg-neutral-600',
+                    backtestToneBarClass(tone),
                   )}
                 />
                 <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-1 sm:gap-4 sm:items-center">
@@ -138,7 +142,7 @@ export function BacktestResultsList({ trades, onSelect }: BacktestResultsListPro
                       <span
                         className={clsx(
                           'ml-2 text-xs uppercase font-semibold',
-                          isBuy ? 'text-teal-600' : 'text-error-600',
+                          isBuy ? profitTextClass : lossTextClass,
                         )}
                       >
                         {isBuy ? 'Buy' : 'Sell'}
@@ -151,12 +155,7 @@ export function BacktestResultsList({ trades, onSelect }: BacktestResultsListPro
                     </p>
                   </div>
                   <p
-                    className={clsx(
-                      'text-lg font-bold tabular-nums sm:text-right',
-                      tone === 'good' && 'text-teal-600 dark:text-teal-400',
-                      tone === 'bad' && 'text-error-600 dark:text-error-400',
-                      tone === 'neutral' && 'text-neutral-600',
-                    )}
+                    className={clsx('text-lg font-bold tabular-nums sm:text-right', backtestToneTextClass(tone))}
                   >
                     {formatPipValue(pips)}
                   </p>

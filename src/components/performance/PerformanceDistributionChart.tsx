@@ -24,7 +24,7 @@ interface PerformanceDistributionChartProps {
   stale?: boolean
   /** Bar value: realized P/L or trade count. */
   metric?: 'pnl' | 'count'
-  /** When metric is pnl, bars are colored by sign (positive teal, negative grey). */
+  /** When metric is pnl, bars are colored by sign (positive teal, negative red). */
   colorBySign?: boolean
 }
 

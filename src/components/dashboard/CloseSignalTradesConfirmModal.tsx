@@ -4,6 +4,7 @@ import { AlertTriangle } from 'lucide-react'
 import { useT } from '../../context/LocaleContext'
 import { interpolate } from '../../i18n/interpolate'
 import { useOverlayDismiss } from '../../hooks/useOverlayDismiss'
+import { pnlSignTextClass } from '../../lib/pnlDisplay'
 import { Button } from '../ui/Button'
 import type { ForceCloseConfirmRequest } from '../../hooks/useForceCloseSignalTrades'
 
@@ -50,8 +51,7 @@ export function CloseSignalTradesConfirmModal({
         ? bs.closeConfirmBodyBroker
         : interpolate(bs.closeConfirmBodyAllAccounts, { count: String(request.accountCount) })
 
-  const pnlColor = (n: number) =>
-    n > 0 ? 'text-teal-600' : n < 0 ? 'text-error-600' : 'text-neutral-900 dark:text-neutral-50'
+  const pnlColor = pnlSignTextClass
 
   const detailRows: { label: string; value: string; valueClass?: string }[] = []
 

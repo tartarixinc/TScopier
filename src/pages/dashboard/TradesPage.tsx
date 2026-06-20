@@ -10,6 +10,7 @@ import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
 import { Alert } from '../../components/ui/Alert'
 import { TradeDetailModal } from '../../components/trades/TradeDetailModal'
+import { lossTextClass } from '../../lib/pnlDisplay'
 import type { MtTrade } from '../../lib/fxsocketBroker'
 import {
   formatTradeLots,
@@ -354,7 +355,7 @@ function TradeCard({ trade, onSelect }: { trade: MtTrade; onSelect: () => void }
           <span className={`text-sm font-semibold tabular-nums ${
             profit === null ? 'text-neutral-400' :
             profit > 0 ? 'text-success-600' :
-            profit < 0 ? 'text-error-600' : 'text-neutral-500 dark:text-neutral-400'
+            profit < 0 ? lossTextClass : 'text-neutral-500 dark:text-neutral-400'
           }`}>
             {profit === null ? '—' : `${profit > 0 ? '+' : ''}${profit.toFixed(2)}`}
           </span>
@@ -445,7 +446,7 @@ function TradeRow({ trade, onSelect }: { trade: MtTrade; onSelect: () => void })
       <td className={`px-2 py-3.5 text-sm font-medium text-center tabular-nums ${
         profit === null ? 'text-neutral-400' :
         profit > 0 ? 'text-success-600' :
-        profit < 0 ? 'text-error-600' : 'text-neutral-500 dark:text-neutral-400'
+        profit < 0 ? lossTextClass : 'text-neutral-500 dark:text-neutral-400'
       }`}>
         {profit === null ? '—' : (
           <span className="inline-flex items-center justify-center gap-1 w-full">

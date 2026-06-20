@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { TrendingDown, TrendingUp } from 'lucide-react'
 import clsx from 'clsx'
+import { lossTextClass } from '../../lib/pnlDisplay'
 import { useT } from '../../context/LocaleContext'
 import type { BacktestTradeRow } from '../../lib/backtestTypes'
 import {
@@ -25,8 +26,8 @@ function lineStyle(kind: PriceLevelLine['kind']): { line: string; text: string }
       }
     case 'sl':
       return {
-        line: 'border-error-400 border-dashed',
-        text: 'text-error-600 dark:text-error-400',
+        line: 'border-[#E16C6C] border-dashed',
+        text: lossTextClass,
       }
     case 'be':
       return {
@@ -66,12 +67,12 @@ export function BacktestPriceLadder({ trade, labels: labelsProp }: BacktestPrice
         {isBuy ? (
           <TrendingUp className="w-4 h-4 text-teal-600" />
         ) : (
-          <TrendingDown className="w-4 h-4 text-error-600" />
+          <TrendingDown className={clsx('w-4 h-4', lossTextClass)} />
         )}
         <span
           className={clsx(
             'text-sm font-semibold uppercase tracking-wide',
-            isBuy ? 'text-teal-700 dark:text-teal-400' : 'text-error-700 dark:text-error-400',
+            isBuy ? 'text-teal-700 dark:text-teal-400' : lossTextClass,
           )}
         >
           {isBuy ? bt.buy : bt.sell}

@@ -18,7 +18,7 @@ function formatValue(n: number | null, unit: string): string {
 function valueTone(actual: number | null, forecast: number | null): string {
   if (actual == null || forecast == null) return 'text-neutral-700 dark:text-neutral-300'
   if (actual > forecast) return 'text-emerald-600 dark:text-emerald-400'
-  if (actual < forecast) return 'text-neutral-600 dark:text-neutral-400'
+  if (actual < forecast) return 'text-error-600 dark:text-error-400'
   return 'text-neutral-700 dark:text-neutral-300'
 }
 

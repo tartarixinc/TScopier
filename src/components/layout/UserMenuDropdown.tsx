@@ -129,7 +129,7 @@ export function UserMenuDropdown({ open, onClose, onSignOut }: UserMenuDropdownP
                 className={clsx(
                   'flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm font-medium transition-colors',
                   isDestructive
-                    ? 'text-neutral-600 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800/40'
+                    ? 'text-error-600 hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-950/40'
                     : 'text-neutral-800 hover:bg-neutral-50 dark:text-neutral-100 dark:hover:bg-neutral-800/80',
                 )}
               >
@@ -137,7 +137,7 @@ export function UserMenuDropdown({ open, onClose, onSignOut }: UserMenuDropdownP
                   className={clsx(
                     'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
                     isDestructive
-                      ? 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800/50 dark:text-neutral-400'
+                      ? 'bg-error-50 text-error-600 dark:bg-error-950/40 dark:text-error-400'
                       : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300',
                   )}
                 >

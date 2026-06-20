@@ -9,6 +9,7 @@ import type { ConfigureModalTranslations } from '../../i18n/locales/configureMod
 import { interpolate } from '../../i18n/interpolate'
 import { pipCalculator, type PipQuote } from '../../lib/pipCalculator'
 import { classifySymbol } from '../../lib/pipMath'
+import { lossTextClass } from '../../lib/pnlDisplay'
 import { formatMoneyWithCode } from '../../lib/currency'
 import {
   computeRiskLotCalculator,
@@ -48,7 +49,7 @@ function pipQuoteForSymbol(symbol: string): PipQuote {
 }
 
 function riskPctTone(pct: number): string {
-  if (pct > 5) return 'border-red-200 bg-red-50 text-red-900 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200'
+  if (pct > 5) return 'border-error-200 bg-error-50 text-error-900 dark:border-error-800/50 dark:bg-error-950/40 dark:text-error-200'
   if (pct > 2) return 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200'
   if (pct > 1) return 'border-yellow-200 bg-yellow-50 text-yellow-900 dark:border-yellow-900/40 dark:bg-yellow-950/30 dark:text-yellow-200'
   return 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-200'
@@ -624,7 +625,7 @@ function RiskLotCalculatorModalInner({
               {result.lossesToRuin != null && (
                 <div className="rounded-lg border border-neutral-200 bg-white px-3 py-2.5 dark:border-neutral-700 dark:bg-neutral-900">
                   <p className="text-xs text-neutral-500 dark:text-neutral-400">{copy.lossesToRuin}</p>
-                  <p className="text-lg font-semibold tabular-nums">{result.lossesToRuin}</p>
+                  <p className={clsx('text-lg font-semibold tabular-nums', lossTextClass)}>{result.lossesToRuin}</p>
                 </div>
               )}
 

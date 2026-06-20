@@ -9,6 +9,7 @@ import { CloseSignalTradesConfirmModal } from './CloseSignalTradesConfirmModal'
 import type { PortfolioBrokerActiveSignals } from '../../lib/brokerStats'
 import { ActiveSignalTradesSection } from './ActiveSignalTradesSection'
 import { Button } from '../ui/Button'
+import { pnlSignTextClass } from '../../lib/pnlDisplay'
 
 type OpenPnlAccountsModalProps = {
   open: boolean
@@ -61,8 +62,7 @@ export function OpenPnlAccountsModal({
 
   if (!open) return null
 
-  const pnlColor = (n: number) =>
-    n > 0 ? 'text-teal-600' : n < 0 ? 'text-error-600' : 'text-neutral-900 dark:text-neutral-50'
+  const pnlColor = pnlSignTextClass
 
   const connectedBrokerIds = groups.filter(g => g.connected).map(g => g.brokerId)
   const canCloseAny = connectedBrokerIds.length > 0

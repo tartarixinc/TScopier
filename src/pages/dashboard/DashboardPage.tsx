@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from 'react'
 import { Link, Outlet, useNavigate } from 'react-router-dom'
 import { ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, Clock, Loader2, Plus, RefreshCw } from 'lucide-react'
+import clsx from 'clsx'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import type { BrokerAccount, Signal, Trade } from '../../types/database'
@@ -109,6 +110,7 @@ import {
 } from '../../lib/brokerConnectError'
 import { useLocale, useT } from '../../context/LocaleContext'
 import { useFormatMoney } from '../../hooks/useFormatMoney'
+import { lossTextClass, pnlSignTextClass } from '../../lib/pnlDisplay'
 import { formatMoneyWithCode } from '../../lib/currency'
 import { interpolate } from '../../i18n/interpolate'
 import { SubscriptionBanner } from '../../components/billing/SubscriptionBanner'
@@ -2147,14 +2149,12 @@ export function DashboardPage() {
               headlineStats.yesterdayProfit,
               hasLinkedBroker,
             )}
-            valueColor={
-              headlineStats.todayProfit > 0
-                ? 'text-teal-600'
-                : headlineStats.todayProfit < 0
-                  ? 'text-error-600'
-                  : 'text-neutral-900 dark:text-neutral-50'
+            valueColor={pnlSignTextClass(headlineStats.todayProfit)}
+            subColor={
+              headlineStats.todayProfit - headlineStats.yesterdayProfit < 0
+                ? lossTextClass
+                : 'text-neutral-400'
             }
-            subColor={headlineStats.todayProfit >= 0 ? 'text-neutral-400' : 'text-error-500'}
           />
           <StatBlock
             label={t.dashboard.tradesTakenToday}
@@ -2168,7 +2168,7 @@ export function DashboardPage() {
                     {interpolate(t.common.won, { count: headlineStats.tradesWon })}
                   </span>
                   <span className="text-neutral-300 dark:text-neutral-600">•</span>
-                  <span className="text-error-500">
+                  <span className={lossTextClass}>
                     {interpolate(t.common.lost, { count: headlineStats.tradesLost })}
                   </span>
                   {headlineStats.tradesBreakeven > 0 ? (
@@ -2200,13 +2200,7 @@ export function DashboardPage() {
                 openPnlSub
               )
             }
-            valueColor={
-              stats.openPnl > 0
-                ? 'text-teal-600'
-                : stats.openPnl < 0
-                  ? 'text-error-600'
-                  : 'text-neutral-900 dark:text-neutral-50'
-            }
+            valueColor={pnlSignTextClass(stats.openPnl)}
             subColor="text-neutral-500"
           />
         </div>
@@ -2531,7 +2525,7 @@ function StatBlock({ label, labelHint, value, sub, subColor, valueColor = 'text-
         {label}
         {labelHint ? <InfoTooltip text={labelHint} /> : null}
       </p>
-      <p className={`text-xl sm:text-2xl font-semibold mb-1 sm:mb-1.5 ${valueColor}`}>{value}</p>
+      <p className={clsx('text-xl sm:text-2xl font-semibold mb-1 sm:mb-1.5', valueColor)}>{value}</p>
       {sub === '' ? null : typeof sub === 'string' ? (
         <p className={`text-xs ${subColor}`}>{sub}</p>
       ) : (
@@ -2717,15 +2711,13 @@ function LinkedAccountRow({
   const accountCurrency = (accountSummary?.currency ?? account.last_currency ?? '').trim() || undefined
   const balanceText = formatMoneyWithCode(balance, accountCurrency, { locale: intlLocale })
   const pnl = connectPnl ?? 0
-  const pnlColor = pnl >= 0 ? 'text-teal-600' : 'text-neutral-600 dark:text-neutral-400'
+  const pnlColor = pnlSignTextClass
   const pnlFormatted = formatMoneyWithCode(Math.abs(pnl), accountCurrency, { locale: intlLocale, nullAsDash: false })
   const openPnl = resolveAccountOpenPnl(account, accountSummary)
   const openPnlColor =
     openPnl == null
       ? 'text-neutral-900 dark:text-neutral-50'
-      : openPnl > 0
-        ? 'text-teal-600'
-        : 'text-neutral-600 dark:text-neutral-400'
+      : pnlSignTextClass(openPnl)
   const openPnlFormatted = formatMoneyWithCode(
     openPnl == null ? null : Math.abs(openPnl),
     accountCurrency,
@@ -2759,7 +2751,7 @@ function LinkedAccountRow({
   const winRateColor =
     winRate == null ? 'text-neutral-900 dark:text-neutral-50' : winRate >= 50 ? 'text-teal-600' : 'text-neutral-900 dark:text-neutral-50'
   const ddColor =
-    maxDd == null ? 'text-neutral-900 dark:text-neutral-50' : 'text-neutral-600 dark:text-neutral-400'
+    maxDd == null ? 'text-neutral-900 dark:text-neutral-50' : lossTextClass
 
   return (
     <div

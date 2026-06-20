@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import type { BrokerAccount } from '../../types/database'
 import type { LinkedAccountPerformance } from '../../lib/dashboardTradeStats'
 import { inferBrokerLabelFromServer } from '../../lib/brokerFromServer'
+import { lossTextClass, profitTextClass } from '../../lib/pnlDisplay'
 import { useFormatMoney } from '../../hooks/useFormatMoney'
 
 interface AccountPerformanceTableProps {
@@ -84,7 +85,7 @@ export function AccountPerformanceTable({
                 <td className="px-4 py-3 text-right tabular-nums">{formatMoney(equity)}</td>
                 <td
                   className={`px-4 py-3 text-right font-semibold tabular-nums ${
-                    roi == null ? '' : roi > 0 ? 'text-teal-600' : roi < 0 ? 'text-neutral-600 dark:text-neutral-400' : ''
+                    roi == null ? '' : roi > 0 ? profitTextClass : roi < 0 ? lossTextClass : ''
                   }`}
                 >
                   {formatRoi(roi)}
@@ -92,7 +93,7 @@ export function AccountPerformanceTable({
                 <td className="px-4 py-3 text-right tabular-nums">{formatPct(winRate, 0)}</td>
                 <td
                   className={`px-4 py-3 text-right tabular-nums ${
-                    maxDd != null && maxDd > 0 ? 'text-neutral-600 dark:text-neutral-400' : ''
+                    maxDd != null && maxDd > 0 ? lossTextClass : ''
                   }`}
                 >
                   {formatPct(maxDd)}

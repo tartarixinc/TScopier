@@ -2,6 +2,11 @@ import { useMemo } from 'react'
 import clsx from 'clsx'
 import type { BacktestTradeRow } from '../../lib/backtestTypes'
 import {
+  backtestToneTextClass,
+  lossTextClass,
+  profitTextClass,
+} from '../../lib/pnlDisplay'
+import {
   displayOutcomeLabel,
   formatDurationMs,
   formatEntryPrice,
@@ -69,12 +74,7 @@ export function BacktestResultsTable({ trades }: BacktestResultsTableProps) {
             const outcomeLabel = displayOutcomeLabel(trade.outcome, trade.tps_hit, tpCount)
             const durationMs = tradeDurationMs(trade.signal_at, trade.closed_at)
             const isBuy = trade.direction === 'buy'
-            const pipClass =
-              tone === 'good'
-                ? 'text-teal-600 dark:text-teal-400'
-                : tone === 'bad'
-                  ? 'text-error-600 dark:text-error-400'
-                  : 'text-neutral-600 dark:text-neutral-400'
+            const pipClass = backtestToneTextClass(tone)
 
             return (
               <tr
@@ -90,7 +90,7 @@ export function BacktestResultsTable({ trades }: BacktestResultsTableProps) {
                 <td
                   className={clsx(
                     'py-2.5 px-2 uppercase font-medium',
-                    isBuy ? 'text-teal-600 dark:text-teal-400' : 'text-error-600 dark:text-error-400',
+                    isBuy ? profitTextClass : lossTextClass,
                   )}
                 >
                   {isBuy ? 'Buy' : 'Sell'}

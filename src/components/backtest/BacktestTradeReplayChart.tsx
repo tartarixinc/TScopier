@@ -17,6 +17,7 @@ import { useT } from '../../context/LocaleContext'
 import { backtestApi } from '../../lib/backtestApi'
 import type { BacktestTradeReplayResponse, BacktestTradeRow } from '../../lib/backtestTypes'
 import { backtestDisplayLabels, formatDurationMs, formatEntryPrice } from '../../lib/backtestDisplay'
+import { LOSS_COLOR } from '../../lib/pnlDisplay'
 
 interface BacktestTradeReplayChartProps {
   trade: BacktestTradeRow
@@ -168,7 +169,7 @@ export function BacktestTradeReplayChart({ trade }: BacktestTradeReplayChartProp
     if (markers.sl != null) {
       series.createPriceLine({
         price: markers.sl,
-        color: dark ? '#f87171' : '#dc2626',
+        color: LOSS_COLOR,
         lineWidth: 1,
         lineStyle: LineStyle.Dashed,
         axisLabelVisible: true,

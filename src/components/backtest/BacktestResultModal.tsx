@@ -17,6 +17,10 @@ import {
   tradeDurationMs,
   tradePipPnl,
 } from '../../lib/backtestDisplay'
+import {
+  lossBannerClass,
+  pipValueTextClass,
+} from '../../lib/pnlDisplay'
 import { BacktestEditSignalModal } from './BacktestEditSignalModal'
 import { BacktestTradeReplayChart } from './BacktestTradeReplayChart'
 import { BacktestEventTimeline } from './BacktestEventTimeline'
@@ -90,14 +94,11 @@ export function BacktestResultModal({
     displayTrade.tp_levels.length,
     btLabels.outcomes,
   )
-  const pipsPositive = pips != null && pips > 0
-  const pipsNegative = pips != null && pips < 0
-
   const bannerClass =
     bannerTone === 'success'
       ? 'bg-teal-50 border-teal-200 text-teal-800 dark:bg-teal-950/40 dark:border-teal-800 dark:text-teal-200'
       : bannerTone === 'danger'
-        ? 'bg-error-50 border-error-200 text-error-800 dark:bg-error-950/40 dark:border-error-800 dark:text-error-200'
+        ? lossBannerClass
         : bannerTone === 'warning'
           ? 'bg-amber-50 border-amber-200 text-amber-900 dark:bg-amber-950/40 dark:border-amber-800 dark:text-amber-200'
           : 'bg-neutral-50 border-neutral-200 text-neutral-700 dark:bg-neutral-800/50 dark:border-neutral-700'
@@ -197,14 +198,7 @@ export function BacktestResultModal({
             <div className="grid grid-cols-3 gap-3">
               <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-3 text-center">
                 <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">{bt.pips}</p>
-                <p
-                  className={clsx(
-                    'text-xl font-bold tabular-nums mt-1',
-                    pipsPositive && 'text-teal-600 dark:text-teal-400',
-                    pipsNegative && 'text-error-600 dark:text-error-400',
-                    !pipsPositive && !pipsNegative && 'text-neutral-900 dark:text-neutral-50',
-                  )}
-                >
+                <p className={clsx('text-xl font-bold tabular-nums mt-1', pipValueTextClass(pips))}>
                   {formatPipValue(pips).replace(/p$/, '')}
                 </p>
               </div>
