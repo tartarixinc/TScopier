@@ -5,7 +5,7 @@ export const termsOfServiceSv: LegalDocumentPageTranslations = {
   title: 'Användarvillkor',
   lastUpdated: 'Senast uppdaterad: 8 juni 2026',
   intro:
-    'Dessa Användarvillkor ("Villkor") reglerar din åtkomst till och användning av TSCopiers webbplatser, applikationer och relaterade tjänster (gemensamt "Tjänsten"), som drivs av Tartarix, Inc. ("Tartarix", "vi", "oss" eller "vår"). Genom att skapa ett konto eller använda Tjänsten godkänner du dessa Villkor. Om du inte godkänner dem ska du inte använda Tjänsten.',
+    'Dessa Användarvillkor ("Villkor") reglerar din åtkomst till och användning av TScopiers webbplatser, applikationer och relaterade tjänster (gemensamt "Tjänsten"), som drivs av Tartarix, Inc. ("Tartarix", "vi", "oss" eller "vår"). Genom att skapa ett konto eller använda Tjänsten godkänner du dessa Villkor. Om du inte godkänner dem ska du inte använda Tjänsten.',
   sections: [
     {
       title: '1. Behörighet och konto',
@@ -17,7 +17,7 @@ export const termsOfServiceSv: LegalDocumentPageTranslations = {
     {
       title: '2. Tjänsten',
       paragraphs: [
-        'TSCopier är ett programvaruverktyg som hjälper användare att ansluta MetaTrader-konton till Telegram-signalkanaler och automatisera arbetsflöden för kopieringshandel enligt användarens konfiguration. Vi är inte en mäklare, börs, förvaringsinstitut, investeringsrådgivare eller portföljförvaltare.',
+        'TScopier är ett programvaruverktyg som hjälper användare att ansluta MetaTrader-konton till Telegram-signalkanaler och automatisera arbetsflöden för kopieringshandel enligt användarens konfiguration. Vi är inte en mäklare, börs, förvaringsinstitut, investeringsrådgivare eller portföljförvaltare.',
         'Vi utför inte affärer i eget namn för din räkning, innehar inte dina medel och tillhandahåller inte personligt anpassad finansiell rådgivning. All handel sker på tredjeparts mäklarplattformar enligt deras villkor.',
       ],
     },

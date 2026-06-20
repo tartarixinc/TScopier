@@ -383,7 +383,7 @@ test('findActiveAttributedSignalTrades uses swap/commission when profit is null'
   assert.equal(active[0]?.pnl, -2)
 })
 
-test('computeBrokerProfitByChannel attributes open legs via TSCopier comment slug', () => {
+test('computeBrokerProfitByChannel attributes open legs via TScopier comment slug', () => {
   const channelId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
   const maps = buildPerformanceChannelLinkMaps([], [], [], [])
   maps.channelNames[channelId] = 'Test Signal Channel'
@@ -395,7 +395,7 @@ test('computeBrokerProfitByChannel attributes open legs via TSCopier comment slu
         broker_id: 'broker-1',
         ticket: 1705377546,
         status: 'open',
-        comment: 'TSCopier:TestSignalCh:4a6c0a6b:',
+        comment: 'TScopier:TestSignalCh:4a6c0a6b:',
         profit: -417,
         opened_at: '2026-06-14T16:53:23.000Z',
         closed_at: null,

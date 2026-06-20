@@ -1,4 +1,5 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { BrokerAccountsProvider } from '../../context/BrokerAccountsContext'
 import { NotificationsProvider } from '../../context/NotificationsContext'
 import { AddTradingAccountProvider } from '../../context/AddTradingAccountContext'
@@ -12,7 +13,17 @@ const WelcomeModal = lazy(() =>
 
 /** Authenticated app shell: shared broker state + dashboard layout. */
 export function AppShell() {
+  const navigate = useNavigate()
+  const location = useLocation()
   const { needsWelcome, deferAppBootstrap } = useNeedsWelcome()
+  const onDashboardRoute = location.pathname === '/dashboard'
+    || location.pathname.startsWith('/dashboard/broker/')
+
+  useEffect(() => {
+    if (needsWelcome && !onDashboardRoute) {
+      navigate('/dashboard', { replace: true })
+    }
+  }, [needsWelcome, onDashboardRoute, navigate])
 
   return (
     <BrokerAccountsProvider enabled={!deferAppBootstrap}>

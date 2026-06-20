@@ -148,7 +148,7 @@ export function MarketingFooter() {
         <div className="mx-auto max-w-6xl px-5 py-12 sm:px-8 sm:py-14">
           <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-[1.4fr_repeat(3,minmax(0,1fr))] lg:gap-8">
             <div className="sm:col-span-2 lg:col-span-1">
-              <Link to="/" className="inline-flex" aria-label="TSCopier home">
+              <Link to="/" className="inline-flex" aria-label="TScopier home">
                 <TscopierLogo className="h-7 w-auto" />
               </Link>
               <p className="mt-4 max-w-xs text-sm leading-relaxed text-neutral-600 dark:text-neutral-400">

@@ -22,8 +22,8 @@ test('sanitizeChannelCommentSlug strips non-alphanumeric', () => {
 
 test('buildTscopierCommentPrefix embeds channel slug', () => {
   const id = '28785f02-000b-4860-a3dd-58d74f890a5d'
-  assert.equal(buildTscopierCommentPrefix(id, 'GoldSignals'), 'TSCopier:GoldSignals:28785f02')
-  assert.equal(buildTscopierCommentPrefix(id, null), 'TSCopier:28785f02')
+  assert.equal(buildTscopierCommentPrefix(id, 'GoldSignals'), 'TScopier:GoldSignals:28785f02')
+  assert.equal(buildTscopierCommentPrefix(id, null), 'TScopier:28785f02')
 })
 
 test('areOrderCommentsEnabled defaults on unless explicitly false', () => {
@@ -36,16 +36,16 @@ test('areOrderCommentsEnabled defaults on unless explicitly false', () => {
 test('resolveTscopierCommentPrefix respects order_comments_enabled', () => {
   const id = '28785f02-000b-4860-a3dd-58d74f890a5d'
   assert.equal(resolveTscopierCommentPrefix(id, 'Gold', { order_comments_enabled: false }), '')
-  assert.equal(resolveTscopierCommentPrefix(id, 'Gold', {}), 'TSCopier:Gold:28785f02')
+  assert.equal(resolveTscopierCommentPrefix(id, 'Gold', {}), 'TScopier:Gold:28785f02')
 })
 
 test('appendOrderCommentSuffix returns empty when prefix is empty', () => {
   assert.equal(appendOrderCommentSuffix('', ':tp1'), '')
-  assert.equal(appendOrderCommentSuffix('TSCopier:abc', ':tp1'), 'TSCopier:abc:tp1')
+  assert.equal(appendOrderCommentSuffix('TScopier:abc', ':tp1'), 'TScopier:abc:tp1')
 })
 
 test('buildBasketRefreshComment empty when comments disabled', () => {
   const id = '28785f02-000b-4860-a3dd-58d74f890a5d'
   assert.equal(buildBasketRefreshComment(id, { order_comments_enabled: false }), '')
-  assert.equal(buildBasketRefreshComment(id, {}), 'TSCopier:28785f02:refresh')
+  assert.equal(buildBasketRefreshComment(id, {}), 'TScopier:28785f02:refresh')
 })

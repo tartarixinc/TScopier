@@ -436,7 +436,7 @@ export const es: Translations = {
       reconnectPasswordPlaceholder: 'Contraseña de la cuenta de trading',
       rememberPasswordLabel: 'Recordar contraseña para reconexión automática',
       rememberPasswordHint:
-        'Guarda una copia cifrada para que TSCopier reconecte sin volver a pedirla. Puedes borrarla en Configuración de cuenta.',
+        'Guarda una copia cifrada para que TScopier reconecte sin volver a pedirla. Puedes borrarla en Configuración de cuenta.',
       clearStoredCredentials: 'Olvidar contraseña guardada',
       storedCredentialsActive: 'Reconexión automática activa',
       deleteFailed: 'No se pudo eliminar la cuenta',
@@ -561,7 +561,7 @@ export const es: Translations = {
       refresh: 'Actualizar',
       notFound: 'Cuenta de broker no encontrada.',
       initialBalance: 'Saldo inicial',
-      initialBalanceHint: 'Saldo de la cuenta capturado cuando este bróker se conectó por primera vez a TSCopier.',
+      initialBalanceHint: 'Saldo de la cuenta capturado cuando este bróker se conectó por primera vez a TScopier.',
       connectedAt: 'Conectado',
       connectedAtHint: 'Fecha y hora en que esta cuenta de bróker se vinculó por primera vez y quedó lista para operar.',
       currentBalance: 'Saldo actual',
@@ -753,7 +753,7 @@ export const es: Translations = {
     telegramMessage: 'Mensaje de Telegram',
     parsedInstruction: 'Instrucción analizada',
     signalTime: 'Señal recibida',
-    noLinkedSignal: 'No hay señal TSCopier vinculada a esta operación.',
+    noLinkedSignal: 'No hay señal TScopier vinculada a esta operación.',
     imageSignal: '(señal con imagen)',
     loadingSignal: 'Cargando señal…',
     loadSignalError: 'No se pudieron cargar los detalles de la señal.',
@@ -1132,7 +1132,7 @@ export const es: Translations = {
     },
     loadError: 'No se pudieron cargar las cuentas MT5 vinculadas.',
     connectError: 'Error al conectar.',
-    deleteConfirm: '¿Eliminar esta cuenta MT5 de TSCopier?',
+    deleteConfirm: '¿Eliminar esta cuenta MT5 de TScopier?',
     selectFxAccount: 'Seleccionar cuenta MT5 en la nube',
     selectLegacyBroker: 'Seleccionar broker legacy',
     docsUrl: 'https://fxsocket.com/docs#request-builder',
@@ -1264,7 +1264,7 @@ export const es: Translations = {
     },
     personal: {
       title: 'Información personal',
-      description: 'Tus datos de contacto y cómo apareces en TSCopier.',
+      description: 'Tus datos de contacto y cómo apareces en TScopier.',
     },
     general: {
       title: 'Ajustes generales',
@@ -1369,7 +1369,7 @@ export const es: Translations = {
     },
     termsOfService: {
       title: 'Términos de servicio',
-      description: 'Términos que rigen el uso de TSCopier.',
+      description: 'Términos que rigen el uso de TScopier.',
     },
     privacyPolicy: {
       title: 'Política de privacidad',
@@ -1377,7 +1377,7 @@ export const es: Translations = {
     },
     cookiePolicy: {
       title: 'Política de cookies',
-      description: 'Cómo TSCopier utiliza cookies y tecnologías similares.',
+      description: 'Cómo TScopier utiliza cookies y tecnologías similares.',
     },
     featureRequest: {
       title: 'Solicitar función',

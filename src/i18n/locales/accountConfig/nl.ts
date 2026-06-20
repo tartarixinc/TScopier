@@ -45,7 +45,7 @@ export const accountConfigNl: AccountConfigBundleTranslations = {
       passwordHint: '',
       rememberPasswordLabel: 'Wachtwoord onthouden voor automatisch opnieuw verbinden',
       rememberPasswordHint:
-        'Versleutelt je MT-wachtwoord op onze servers zodat TSCopier de sessie kan herstellen zonder opnieuw te vragen. Je kunt het op elk moment verwijderen.',
+        'Versleutelt je MT-wachtwoord op onze servers zodat TScopier de sessie kan herstellen zonder opnieuw te vragen. Je kunt het op elk moment verwijderen.',
       connectButton: 'Account koppelen',
       connectingTitle: 'Je broker koppelen',
       connectingStepLinking: 'Je {platform}-account wordt gekoppeld…',
@@ -152,7 +152,7 @@ export const accountConfigNl: AccountConfigBundleTranslations = {
       reconnectPasswordPlaceholder: 'Wachtwoord van tradingaccount',
       rememberPasswordLabel: 'Wachtwoord onthouden voor automatisch opnieuw verbinden',
       rememberPasswordHint:
-        'Slaat een versleutelde kopie op zodat TSCopier opnieuw kan verbinden zonder opnieuw te vragen. Je kunt dit wissen in Accountconfiguratie.',
+        'Slaat een versleutelde kopie op zodat TScopier opnieuw kan verbinden zonder opnieuw te vragen. Je kunt dit wissen in Accountconfiguratie.',
       clearStoredCredentials: 'Opgeslagen wachtwoord vergeten',
       storedCredentialsActive: 'Automatisch opnieuw verbinden ingeschakeld',
       deleteFailed: 'Broker verwijderen mislukt',

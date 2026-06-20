@@ -5,7 +5,7 @@ export const cookiePolicyEn: LegalDocumentPageTranslations = {
   title: 'Cookie Policy',
   lastUpdated: 'Last updated: June 8, 2026',
   intro:
-    'This Cookie Policy explains how Tartarix, Inc. ("we," "us," or "our") uses cookies and similar technologies on TSCopier websites and applications. It should be read together with our Privacy Policy.',
+    'This Cookie Policy explains how Tartarix, Inc. ("we," "us," or "our") uses cookies and similar technologies on TScopier websites and applications. It should be read together with our Privacy Policy.',
   sections: [
     {
       title: '1. What are cookies?',

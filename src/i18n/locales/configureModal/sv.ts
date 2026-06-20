@@ -334,7 +334,7 @@ export const configureModalSv: ConfigureModalTranslations = {
     ruleTriggerTpHit: 'när TP{index} nås',
     orderCommentsTitle: 'Orderkommentarer',
     orderCommentsSubtitle:
-      'Av: TSCopier lämnar mäklarens kommentarsfält tomt för affärer den öppnar eller uppdaterar.',
+      'Av: TScopier lämnar mäklarens kommentarsfält tomt för affärer den öppnar eller uppdaterar.',
   },
   filters: {
     timeTitle: 'Tidsfilter',

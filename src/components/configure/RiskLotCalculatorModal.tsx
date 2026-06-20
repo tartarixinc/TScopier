@@ -237,7 +237,7 @@ function RiskLotCalculatorModalInner({
       className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-3 sm:p-6 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
       onClick={e => { if (e.target === overlayRef.current) onClose() }}
     >
-      <div className="absolute inset-0 bg-neutral-950/50" aria-hidden />
+      <div className="absolute inset-0 bg-neutral-950/55" aria-hidden />
 
       <div
         role="dialog"

@@ -1,6 +1,6 @@
 # FxSocket integration
 
-TSCopier uses [FxSocket](https://fxsocket.com/docs) for all MT5 broker connectivity. Legacy mt4api.dev (ConnectEx sessions, keepalive, reconnect) has been removed.
+TScopier uses [FxSocket](https://fxsocket.com/docs) for all MT5 broker connectivity. Legacy mt4api.dev (ConnectEx sessions, keepalive, reconnect) has been removed.
 
 ## Architecture
 

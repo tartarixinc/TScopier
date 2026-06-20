@@ -234,7 +234,7 @@ export async function markBasketReconcileDoneForAnchor(
 }
 
 export const GHOST_BASKET_CLOSED_USER_MESSAGE =
-  'Open basket existed only in TSCopier (not on the broker); stale legs were closed. Send a new entry to open on MT.'
+  'Open basket existed only in TScopier (not on the broker); stale legs were closed. Send a new entry to open on MT.'
 
 function stopsAlreadyMatch(
   tr: BasketOpenLeg,

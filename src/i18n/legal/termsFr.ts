@@ -5,7 +5,7 @@ export const termsOfServiceFr: LegalDocumentPageTranslations = {
   title: 'Conditions d\'utilisation',
   lastUpdated: 'Dernière mise à jour : 8 juin 2026',
   intro:
-    'Les présentes Conditions d\'utilisation (« Conditions ») régissent votre accès et votre utilisation des sites web, applications et services associés de TSCopier (collectivement, le « Service ») exploités par Tartarix, Inc. (« Tartarix », « nous » ou « notre »). En créant un compte ou en utilisant le Service, vous acceptez ces Conditions. Si vous n\'êtes pas d\'accord, n\'utilisez pas le Service.',
+    'Les présentes Conditions d\'utilisation (« Conditions ») régissent votre accès et votre utilisation des sites web, applications et services associés de TScopier (collectivement, le « Service ») exploités par Tartarix, Inc. (« Tartarix », « nous » ou « notre »). En créant un compte ou en utilisant le Service, vous acceptez ces Conditions. Si vous n\'êtes pas d\'accord, n\'utilisez pas le Service.',
   sections: [
     {
       title: '1. Éligibilité et compte',
@@ -17,7 +17,7 @@ export const termsOfServiceFr: LegalDocumentPageTranslations = {
     {
       title: '2. Le Service',
       paragraphs: [
-        'TSCopier est un outil logiciel qui aide les utilisateurs à connecter des comptes MetaTrader à des canaux de signaux Telegram et à automatiser les flux de copie de trades selon la configuration de l\'utilisateur. Nous ne sommes pas un courtier, une bourse, un dépositaire, un conseiller en investissement ni un gestionnaire de portefeuille.',
+        'TScopier est un outil logiciel qui aide les utilisateurs à connecter des comptes MetaTrader à des canaux de signaux Telegram et à automatiser les flux de copie de trades selon la configuration de l\'utilisateur. Nous ne sommes pas un courtier, une bourse, un dépositaire, un conseiller en investissement ni un gestionnaire de portefeuille.',
         'Nous n\'exécutons pas de trades en notre propre nom pour vous, ne détenons pas vos fonds et ne fournissons pas de conseils financiers personnalisés. Toutes les opérations de trading ont lieu sur des plateformes de courtiers tiers soumises à leurs propres conditions.',
       ],
     },

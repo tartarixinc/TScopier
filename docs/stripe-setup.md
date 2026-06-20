@@ -1,6 +1,6 @@
 # Stripe subscription setup
 
-This document covers TSCopier Stripe billing, webhook sync, and soft paywall enforcement.
+This document covers TScopier Stripe billing, webhook sync, and soft paywall enforcement.
 
 ## Products and prices
 

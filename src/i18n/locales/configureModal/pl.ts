@@ -334,7 +334,7 @@ export const configureModalPl: ConfigureModalTranslations = {
     ruleTriggerTpHit: 'po osiągnięciu TP{index}',
     orderCommentsTitle: 'Komentarze zleceń',
     orderCommentsSubtitle:
-      'Wyłączone: TSCopier pozostawia pole komentarza brokera puste dla otwieranych lub odświeżanych transakcji.',
+      'Wyłączone: TScopier pozostawia pole komentarza brokera puste dla otwieranych lub odświeżanych transakcji.',
   },
   filters: {
     timeTitle: 'Filtr czasu',

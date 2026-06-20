@@ -11,14 +11,14 @@ describe('extractOpenOrderFromBrokerRaw', () => {
     const o = extractOpenOrderFromBrokerRaw({
       ticket: 12345,
       symbol: 'XAUUSD',
-      comment: 'TSCopier:SignalsPRO:abc12345',
+      comment: 'TScopier:SignalsPRO:abc12345',
       lots: 0.1,
       operation: 'Sell',
     })
     assert.deepEqual(o, {
       ticket: 12345,
       symbol: 'XAUUSD',
-      comment: 'TSCopier:SignalsPRO:abc12345',
+      comment: 'TScopier:SignalsPRO:abc12345',
       lots: 0.1,
       isBuy: false,
     })
@@ -28,7 +28,7 @@ describe('extractOpenOrderFromBrokerRaw', () => {
     const buy = extractOpenOrderFromBrokerRaw({
       order: 555001,
       symbol: 'EURUSD',
-      comment: 'TSCopier:Ch:abc12345',
+      comment: 'TScopier:Ch:abc12345',
       volume: 0.2,
       type: 0,
       kind: 'position',
@@ -36,7 +36,7 @@ describe('extractOpenOrderFromBrokerRaw', () => {
     assert.deepEqual(buy, {
       ticket: 555001,
       symbol: 'EURUSD',
-      comment: 'TSCopier:Ch:abc12345',
+      comment: 'TScopier:Ch:abc12345',
       lots: 0.2,
       isBuy: true,
     })
@@ -44,7 +44,7 @@ describe('extractOpenOrderFromBrokerRaw', () => {
     const sell = extractOpenOrderFromBrokerRaw({
       Ticket: 555002,
       Symbol: 'GBPUSD',
-      Comment: 'TSCopier:Ch:def67890',
+      Comment: 'TScopier:Ch:def67890',
       Lots: 0.15,
       cmd: 1,
     })
@@ -56,7 +56,7 @@ describe('extractOpenOrderFromBrokerRaw', () => {
     const buyLimit = extractOpenOrderFromBrokerRaw({
       ticket: 777,
       symbol: 'XAUUSD',
-      comment: 'TSCopier:Ch:abc12345',
+      comment: 'TScopier:Ch:abc12345',
       volume: 0.1,
       type: 2,
       kind: 'pending',
@@ -66,7 +66,7 @@ describe('extractOpenOrderFromBrokerRaw', () => {
     const sellStop = extractOpenOrderFromBrokerRaw({
       ticket: 778,
       symbol: 'XAUUSD',
-      comment: 'TSCopier:Ch:abc12345',
+      comment: 'TScopier:Ch:abc12345',
       volume: 0.1,
       cmd: 5,
     })
@@ -79,14 +79,14 @@ describe('filterTscopierOrdersForChannelClose', () => {
     {
       ticket: 1,
       symbol: 'XAUUSD',
-      comment: 'TSCopier:SignalsPRO:abc12345',
+      comment: 'TScopier:SignalsPRO:abc12345',
       lots: 0.1,
       isBuy: false,
     },
     {
       ticket: 2,
       symbol: 'EURUSD',
-      comment: 'TSCopier:OtherCh:deadbeef',
+      comment: 'TScopier:OtherCh:deadbeef',
       lots: 0.1,
       isBuy: true,
     },
@@ -99,7 +99,7 @@ describe('filterTscopierOrdersForChannelClose', () => {
     },
   ]
 
-  it('filters by channel slug and TSCopier prefix', () => {
+  it('filters by channel slug and TScopier prefix', () => {
     const out = filterTscopierOrdersForChannelClose({
       orders,
       channelSlug: 'SignalsPRO',
@@ -113,7 +113,7 @@ describe('filterTscopierOrdersForChannelClose', () => {
     const withSuffix: BrokerOpenOrderLike[] = [{
       ticket: 4,
       symbol: 'XAUUSDm',
-      comment: 'TSCopier:SignalsPRO:abc12345',
+      comment: 'TScopier:SignalsPRO:abc12345',
       lots: 0.1,
       isBuy: false,
     }]

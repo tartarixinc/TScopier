@@ -30,7 +30,7 @@ function buildEmailHtml(firstName: string, confirmUrl: string): string {
                 Hello ${firstName}
               </p>
               <p style="margin:0 0 32px 0;font-size:15px;line-height:1.6;color:#404040;">
-                Thank you for signing up for TSCopier. To confirm your account, please click the button below.
+                Thank you for signing up for TScopier. To confirm your account, please click the button below.
               </p>
             </td>
           </tr>
@@ -89,7 +89,7 @@ Deno.serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
-    const resendFrom = "TSCopier <verification@tscopier.ai>";
+    const resendFrom = "TScopier <verification@tscopier.ai>";
 
     if (!resendApiKey) {
       return json(
@@ -180,7 +180,7 @@ Deno.serve(async (req: Request) => {
       body: JSON.stringify({
         from: resendFrom,
         to: [targetEmail],
-        subject: "Confirm your TSCopier account",
+        subject: "Confirm your TScopier account",
         html,
       }),
     });

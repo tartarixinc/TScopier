@@ -1,5 +1,5 @@
 /*
-  # TSCopier - schedule broker-session-keepalive edge function
+  # TScopier - schedule broker-session-keepalive edge function
 
   Backup to the Railway Connection Keeper. Runs every 2 minutes when worker
   is down or overloaded.

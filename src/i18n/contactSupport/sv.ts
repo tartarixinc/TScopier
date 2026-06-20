@@ -2,7 +2,7 @@ import type { ContactSupportPageTranslations } from './types'
 
 export const contactSupportSv: ContactSupportPageTranslations = {
   channelsTitle: 'Hur kan vi hjälpa dig?',
-  channelsSubtitle: 'Kontakta TSCopier-teamet via e-post, läs dokumentationen eller starta en livechatt.',
+  channelsSubtitle: 'Kontakta TScopier-teamet via e-post, läs dokumentationen eller starta en livechatt.',
   email: {
     title: 'Support via e-post',
     description: 'Skicka frågor om konto, fakturering eller copier - vi svarar vanligtvis inom en arbetsdag.',
@@ -40,7 +40,7 @@ export const contactSupportSv: ContactSupportPageTranslations = {
       {
         question: 'Vad gör nyhetshandel / blackout i ekonomisk kalender?',
         answer:
-          'När nyhetshandel är inaktiverad på ett konto kan TSCopier pausa nya positioner och valfritt stänga öppna affärer runt kalenderhändelser med hög påverkan. Använd sidan Ekonomisk kalender för att se kommande publiceringar och konfigurera regler under Kontokonfiguration.',
+          'När nyhetshandel är inaktiverad på ett konto kan TScopier pausa nya positioner och valfritt stänga öppna affärer runt kalenderhändelser med hög påverkan. Använd sidan Ekonomisk kalender för att se kommande publiceringar och konfigurera regler under Kontokonfiguration.',
       },
       {
         question: 'Behövs en betald prenumeration för att kopiera affärer?',

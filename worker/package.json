@@ -1,7 +1,7 @@
 {
   "name": "tscopier-worker",
   "version": "1.0.0",
-  "description": "TSCopier AI - 24/7 Telegram MTProto listener worker",
+  "description": "TScopier AI - 24/7 Telegram MTProto listener worker",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",

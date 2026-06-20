@@ -133,7 +133,7 @@ export const chromePl: AppChromeTranslations = {
     },
     contactSupport: {
       title: 'Kontakt z pomocą',
-      description: 'Uzyskaj pomoc zespołu TSCopier dotyczącą konta, konfiguracji kopiatora lub problemów technicznych.',
+      description: 'Uzyskaj pomoc zespołu TScopier dotyczącą konta, konfiguracji kopiatora lub problemów technicznych.',
     },
     riskDisclaimer: {
       title: 'Zastrzeżenie ryzyka',
@@ -141,7 +141,7 @@ export const chromePl: AppChromeTranslations = {
     },
     termsOfService: {
       title: 'Warunki korzystania z usługi',
-      description: 'Warunki regulujące korzystanie z TSCopier.',
+      description: 'Warunki regulujące korzystanie z TScopier.',
     },
     privacyPolicy: {
       title: 'Polityka prywatności',
@@ -149,7 +149,7 @@ export const chromePl: AppChromeTranslations = {
     },
     cookiePolicy: {
       title: 'Polityka plików cookie',
-      description: 'Jak TSCopier wykorzystuje pliki cookie i podobne technologie.',
+      description: 'Jak TScopier wykorzystuje pliki cookie i podobne technologie.',
     },
     featureRequest: {
       title: 'Prośba o funkcję',

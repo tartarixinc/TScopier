@@ -6,7 +6,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { FxsocketBrokerClient } from './fxsocketClient'
 import { symbolsCompatibleForBasket } from './basketModFollowUp'
 import { clearChannelActiveTradeParamsWhenFlat } from './channelActiveTradeParams'
-import { parseTscopierComment, tscopierCommentMatchesChannelSlug } from './tscopierComment'
+import { parseTscopierComment, tscopierCommentMatchesChannelSlug, isTscopierComment } from './tscopierComment'
 import {
   cancelSignalEntryRowAtBroker,
   rawNumericOrderKind,
@@ -60,7 +60,7 @@ export function filterTscopierOrdersForChannelClose(args: {
 }): BrokerOpenOrderLike[] {
   const { orders, channelSlug, symbolFilter, channelSignalIdPrefixes } = args
   return orders.filter(o => {
-    if (!o.comment.startsWith('TSCopier:')) return false
+    if (!isTscopierComment(o.comment)) return false
     const parsed = parseTscopierComment(o.comment)
     if (!parsed) return false
     if (!tscopierCommentMatchesChannelSlug(o.comment, channelSlug)) return false

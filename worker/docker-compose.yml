@@ -1,4 +1,4 @@
-# Single-instance supervisor for the TSCopier Telegram worker.
+# Single-instance supervisor for the TScopier Telegram worker.
 #
 # IMPORTANT: only run ONE replica per Telegram session. If two workers run
 # with the same telegram_sessions.session_string, Telegram will log one of

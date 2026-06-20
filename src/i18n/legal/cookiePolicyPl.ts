@@ -5,7 +5,7 @@ export const cookiePolicyPl: LegalDocumentPageTranslations = {
   title: 'Polityka plików cookie',
   lastUpdated: 'Ostatnia aktualizacja: 8 czerwca 2026 r.',
   intro:
-    'Niniejsza Polityka plików cookie wyjaśnia, w jaki sposób Tartarix, Inc. („my”, „nas” lub „nasze”) używa plików cookie i podobnych technologii na stronach internetowych i w aplikacjach TSCopier. Należy ją czytać łącznie z naszą Polityką prywatności.',
+    'Niniejsza Polityka plików cookie wyjaśnia, w jaki sposób Tartarix, Inc. („my”, „nas” lub „nasze”) używa plików cookie i podobnych technologii na stronach internetowych i w aplikacjach TScopier. Należy ją czytać łącznie z naszą Polityką prywatności.',
   sections: [
     {
       title: '1. Czym są pliki cookie?',

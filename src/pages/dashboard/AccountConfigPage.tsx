@@ -2206,12 +2206,13 @@ export function AccountConfigPage() {
       />
 
       {brokerPendingDelete && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center px-4">
+          <div className="absolute inset-0 bg-neutral-950/55" aria-hidden />
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="delete-broker-title"
-            className="w-full max-w-md rounded-2xl bg-white dark:bg-neutral-900 shadow-xl border border-neutral-200 dark:border-neutral-800"
+            className="relative w-full max-w-md rounded-2xl bg-white dark:bg-neutral-900 shadow-xl border border-neutral-200 dark:border-neutral-800"
           >
             <div className="px-5 py-4 border-b border-neutral-100 dark:border-neutral-800">
               <h3 id="delete-broker-title" className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
@@ -2246,7 +2247,7 @@ export function AccountConfigPage() {
 
       {configAccount && createPortal(
         <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 pb-[env(safe-area-inset-bottom)]">
-          <div className="fixed inset-0 bg-black/40" aria-hidden />
+          <div className="fixed inset-0 bg-neutral-950/55" aria-hidden />
           <div
             role="dialog"
             aria-modal="true"
@@ -3658,7 +3659,7 @@ export function AccountConfigPage() {
             </p>
 
             {pendingApplyPreset ? (
-              <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 p-4">
+              <div className="absolute inset-0 z-20 flex items-center justify-center bg-neutral-950/55 p-4">
                 <div
                   role="dialog"
                   aria-modal="true"
@@ -3721,7 +3722,7 @@ export function AccountConfigPage() {
             ) : null}
 
             {showPresetNameModal ? (
-              <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/30 p-4">
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-neutral-950/55 p-4">
                 <div
                   role="dialog"
                   aria-modal="true"

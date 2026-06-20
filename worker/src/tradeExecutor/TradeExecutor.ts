@@ -80,6 +80,7 @@ import { signalPipPrice } from '../signalPip'
 import { trailingTradeRowSnapshot } from '../trailingStop'
 import { isPostgresDuplicateKeyError } from '../rangePendingLegPersist'
 import { cancelSignalEntryRowAtBroker, type SignalEntryPendingRow } from '../signalEntryPendingHelpers'
+import { isTscopierComment } from '../tscopierComment'
 import {
   computeBasketMergeLinkContext,
   type BasketMergeLinkContext,
@@ -205,7 +206,7 @@ export type { SignalRow } from './types'
 
 export class TradeExecutor {
   private sweepLoop: MonitorLoopHandle | null = null
-  /** Cancels TSCopier broker pendings past `pending_expiry_hours` (1–24) when env enabled. */
+  /** Cancels TScopier broker pendings past `pending_expiry_hours` (1–24) when env enabled. */
   private brokerPendingSweepTimer: NodeJS.Timeout | null = null
   private sessionHeartbeatTimer: NodeJS.Timeout | null = null
   private sessionHeartbeatInFlight = false
@@ -1187,7 +1188,7 @@ export class TradeExecutor {
         const comment = String(o.comment ?? o.Comment ?? '')
         const ticket = Number(o.ticket ?? o.Ticket ?? o.orderId ?? o.OrderID ?? 0)
         if (!operation.includes('Limit') && !operation.includes('Stop')) continue
-        if (!comment.startsWith('TSCopier:')) continue
+        if (!isTscopierComment(comment)) continue
         if (!Number.isFinite(ticket) || ticket <= 0) continue
         const openMs = brokerOrderOpenMs(o)
         if (openMs == null || openMs > cutoff) continue
@@ -1410,7 +1411,7 @@ export class TradeExecutor {
 
   /**
    * One-time cleanup of broker-side BuyLimit/SellLimit orders left over from
-   * the pre-virtual-pendings era. Filters by our `TSCopier:` comment prefix so
+   * the pre-virtual-pendings era. Filters by our `TScopier:` comment prefix so
    * we never touch orders placed by the user manually or other systems.
    *
    * Gated by env flag `WORKER_LEGACY_PENDING_CLEANUP=true`. Safe to leave on
@@ -1443,7 +1444,7 @@ export class TradeExecutor {
         const comment = String(o.comment ?? o.Comment ?? '')
         const ticket = Number(o.ticket ?? o.Ticket ?? o.orderId ?? o.OrderID ?? 0)
         if (!operation.includes('Limit') && !operation.includes('Stop')) continue
-        if (!comment.startsWith('TSCopier:')) continue
+        if (!isTscopierComment(comment)) continue
         if (!Number.isFinite(ticket) || ticket <= 0) continue
         try {
           await api.orderClose(uuid, { ticket })

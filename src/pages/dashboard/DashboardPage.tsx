@@ -346,7 +346,7 @@ function sumConnectedOpenTrades(
 
 /**
  * Open-trade headline count: FxSocket-linked accounts use live broker feeds only
- * (WebSocket positions or REST bootstrap). Never stale TSCopier DB leg rows.
+ * (WebSocket positions or REST bootstrap). Never stale TScopier DB leg rows.
  */
 function resolveDashboardOpenTradesCount(
   accounts: BrokerAccount[],

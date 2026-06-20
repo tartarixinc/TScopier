@@ -28,7 +28,7 @@ export type DashboardConnectAccount = BrokerConnectAnchor & {
   signal_channel_ids?: string[] | null
 }
 
-/** Closed MT legs attributed to a TSCopier signal channel (excludes manual/unlinked broker trades). */
+/** Closed MT legs attributed to a TScopier signal channel (excludes manual/unlinked broker trades). */
 export function filterCopierAttributedMtTrades(
   trades: MtTrade[],
   maps: PerformanceChannelLinkMaps,
@@ -128,7 +128,7 @@ export function deriveDashboardAnalytics(args: {
   mtTrades: MtTrade[]
   channelLinkMaps: PerformanceChannelLinkMaps
   unlinkedLabel: string
-  /** When set, exclude trades before each broker's first TSCopier connect. */
+  /** When set, exclude trades before each broker's first TScopier connect. */
   accounts?: readonly DashboardConnectAccount[]
   now?: Date
 }): DashboardAnalytics {

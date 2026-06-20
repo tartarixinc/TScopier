@@ -5,7 +5,7 @@ export const cookiePolicySv: LegalDocumentPageTranslations = {
   title: 'Cookiepolicy',
   lastUpdated: 'Senast uppdaterad: 8 juni 2026',
   intro:
-    'Denna Cookiepolicy förklarar hur Tartarix, Inc. ("vi", "oss" eller "vår") använder cookies och liknande tekniker på TSCopiers webbplatser och applikationer. Den ska läsas tillsammans med vår Integritetspolicy.',
+    'Denna Cookiepolicy förklarar hur Tartarix, Inc. ("vi", "oss" eller "vår") använder cookies och liknande tekniker på TScopiers webbplatser och applikationer. Den ska läsas tillsammans med vår Integritetspolicy.',
   sections: [
     {
       title: '1. Vad är cookies?',

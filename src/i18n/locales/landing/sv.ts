@@ -580,7 +580,7 @@ export const landingSv: LandingTranslations = {
       {
         question: 'Läser TScopier mina privata Telegram-meddelanden?',
         answer:
-          'TSCopier läser inte dina personliga chattar. Att ansluta Telegram ger endast åtkomst till kanaler och grupper du är medlem i så att kopiatorn kan ta emot signalmeddelanden från källor du lägger till.',
+          'TScopier läser inte dina personliga chattar. Att ansluta Telegram ger endast åtkomst till kanaler och grupper du är medlem i så att kopiatorn kan ta emot signalmeddelanden från källor du lägger till.',
       },
       {
         question: 'Kan jag testa en kanal innan jag går live?',

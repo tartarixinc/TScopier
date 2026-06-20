@@ -143,7 +143,7 @@ export function BacktestHistoryModal({
     >
       <button
         type="button"
-        className="absolute inset-0 bg-neutral-900/50 backdrop-blur-sm"
+        className="absolute inset-0 bg-neutral-950/55"
         aria-label={bt.close}
         onClick={onClose}
       />

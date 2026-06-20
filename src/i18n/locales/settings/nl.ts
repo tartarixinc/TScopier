@@ -20,7 +20,7 @@ export const settingsNl: SettingsBundleTranslations = {
     },
     personal: {
       title: 'Persoonlijke informatie',
-      description: 'Je contactgegevens en hoe je in TSCopier wordt weergegeven.',
+      description: 'Je contactgegevens en hoe je in TScopier wordt weergegeven.',
     },
     general: {
       title: 'Algemene instellingen',

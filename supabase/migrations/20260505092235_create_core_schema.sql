@@ -1,8 +1,8 @@
 /*
-  # TSCopier AI - Core Schema
+  # TScopier AI - Core Schema
 
   ## Overview
-  Creates the foundational tables for TSCopier AI, an automated trade copier that
+  Creates the foundational tables for TScopier AI, an automated trade copier that
   reads Telegram signals and executes trades via MetaAPI.
 
   ## New Tables

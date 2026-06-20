@@ -210,7 +210,7 @@ export async function resolveTradeSignalContext(
     return { signal: attributed.signal, channel, linkMethod: 'attribution' }
   }
 
-  // Fallback: parse TSCopier comment prefix
+  // Fallback: parse TScopier comment prefix
   const parsed = parseTscopierComment(trade.comment)
   if (!parsed) return null
 

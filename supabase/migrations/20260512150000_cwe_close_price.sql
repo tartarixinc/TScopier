@@ -1,5 +1,5 @@
 /*
-  # TSCopier - Close Worse Entries (worker-managed close)
+  # TScopier - Close Worse Entries (worker-managed close)
 
   ## Overview
   Close-Worse-Entries used to inject a static `takeprofit` price on every

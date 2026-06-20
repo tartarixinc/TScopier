@@ -75,7 +75,7 @@ describe('classifyGhostBasketLegs', () => {
   })
 
   it('exports user message for stale basket close', () => {
-    assert.ok(GHOST_BASKET_CLOSED_USER_MESSAGE.includes('TSCopier'))
+    assert.ok(GHOST_BASKET_CLOSED_USER_MESSAGE.includes('TScopier'))
   })
 })
 

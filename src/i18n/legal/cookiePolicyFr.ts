@@ -5,7 +5,7 @@ export const cookiePolicyFr: LegalDocumentPageTranslations = {
   title: 'Politique relative aux cookies',
   lastUpdated: 'Dernière mise à jour : 8 juin 2026',
   intro:
-    'La présente Politique relative aux cookies explique comment Tartarix, Inc. (« nous » ou « notre ») utilise les cookies et technologies similaires sur les sites web et applications TSCopier. Elle doit être lue conjointement avec notre Politique de confidentialité.',
+    'La présente Politique relative aux cookies explique comment Tartarix, Inc. (« nous » ou « notre ») utilise les cookies et technologies similaires sur les sites web et applications TScopier. Elle doit être lue conjointement avec notre Politique de confidentialité.',
   sections: [
     {
       title: '1. Que sont les cookies ?',

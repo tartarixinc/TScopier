@@ -580,7 +580,7 @@ export const landingPl: LandingTranslations = {
       {
         question: 'Czy TScopier czyta moje prywatne wiadomości Telegram?',
         answer:
-          'TSCopier nie czyta Twoich osobistych czatów. Podłączenie Telegram zapewnia dostęp tylko do kanałów i grup, których jesteś członkiem, dzięki czemu kopiarka może odbierać komunikaty sygnałowe z dodanych przez Ciebie źródeł.',
+          'TScopier nie czyta Twoich osobistych czatów. Podłączenie Telegram zapewnia dostęp tylko do kanałów i grup, których jesteś członkiem, dzięki czemu kopiarka może odbierać komunikaty sygnałowe z dodanych przez Ciebie źródeł.',
       },
       {
         question: 'Czy mogę przetestować kanał przed rozpoczęciem transmisji na żywo?',

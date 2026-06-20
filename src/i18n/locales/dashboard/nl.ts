@@ -90,7 +90,7 @@ export const dashboardNl: DashboardBundleTranslations = {
       refresh: 'Vernieuwen',
       notFound: 'Brokeraccount niet gevonden.',
       initialBalance: 'Beginsaldo',
-      initialBalanceHint: 'Accountsaldo vastgelegd toen deze broker voor het eerst met TSCopier werd gekoppeld.',
+      initialBalanceHint: 'Accountsaldo vastgelegd toen deze broker voor het eerst met TScopier werd gekoppeld.',
       connectedAt: 'Gekoppeld',
       connectedAtHint: 'Datum en tijd waarop dit brokeraccount voor het eerst is gekoppeld en klaar was om te traden.',
       currentBalance: 'Huidig saldo',

@@ -5,7 +5,7 @@ export const privacyPolicySv: LegalDocumentPageTranslations = {
   title: 'Integritetspolicy',
   lastUpdated: 'Senast uppdaterad: 8 juni 2026',
   intro:
-    'Tartarix, Inc. ("Tartarix", "vi", "oss" eller "vår") respekterar din integritet. Denna Integritetspolicy förklarar hur vi samlar in, använder, lämnar ut och skyddar information när du använder TSCopiers webbplatser och applikationer ("Tjänsten").',
+    'Tartarix, Inc. ("Tartarix", "vi", "oss" eller "vår") respekterar din integritet. Denna Integritetspolicy förklarar hur vi samlar in, använder, lämnar ut och skyddar information när du använder TScopiers webbplatser och applikationer ("Tjänsten").',
   sections: [
     {
       title: '1. Information vi samlar in',

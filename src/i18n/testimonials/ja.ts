@@ -3,7 +3,7 @@ import type { Testimonial } from './types'
 export const testimonialsJa: Testimonial[] = [
   {
     quote:
-      '以前は2つのTelegramグループのXAUUSDを手作業でコピーしていました。TSCopierを使い始めて3週間、ほとんどの約定がメッセージを読み終える前にIC MarketsのMT5へ反映されます。',
+      '以前は2つのTelegramグループのXAUUSDを手作業でコピーしていました。TScopierを使い始めて3週間、ほとんどの約定がメッセージを読み終える前にIC MarketsのMT5へ反映されます。',
     author: 'Marcus T.',
     role: '兼業トレーダー ・ 英国',
   },

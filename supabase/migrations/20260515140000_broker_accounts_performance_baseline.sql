@@ -6,7 +6,7 @@
 
   The baseline is set when the account is first registered (first AccountSummary
   balance) or on the first successful summary after this column exists, so it
-  approximates "original balance" at the start of tracking in TSCopier.
+  approximates "original balance" at the start of tracking in TScopier.
 */
 
 alter table public.broker_accounts

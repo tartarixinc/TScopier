@@ -91,7 +91,7 @@ export const authFr: AuthTranslations = {
     confirmLinkExpired: 'Ce lien de confirmation a expiré ou a déjà été utilisé. Connectez-vous ou demandez un nouvel e-mail.',
   },
   welcome: {
-    title: 'Bienvenue sur TSCopier',
+    title: 'Bienvenue sur TScopier',
     subtitle: 'Votre compte est prêt. Commencez votre essai gratuit pour copier les signaux Telegram vers votre broker.',
     steps: [
       'Connectez Telegram et choisissez vos canaux de signaux',

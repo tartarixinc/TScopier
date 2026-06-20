@@ -1,5 +1,5 @@
 /*
-  # TSCopier - Single-trade partial TP closes
+  # TScopier - Single-trade partial TP closes
 
   ## Overview
   When `trade_style = 'single'` the planner emits ONE broker order with the

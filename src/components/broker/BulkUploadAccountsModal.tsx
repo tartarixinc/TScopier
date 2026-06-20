@@ -171,7 +171,7 @@ export function BulkUploadAccountsModal({ open, onClose, onBatchComplete }: Bulk
       onMouseDown={onOverlayMouseDown}
       onClick={onOverlayClick}
     >
-      <div ref={backdropRef} className="absolute inset-0 bg-neutral-950/40 backdrop-blur-sm animate-in" />
+      <div ref={backdropRef} className="absolute inset-0 bg-neutral-950/55 animate-in" aria-hidden />
 
       <div
         role="dialog"

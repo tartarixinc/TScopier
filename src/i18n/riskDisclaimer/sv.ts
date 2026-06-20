@@ -3,13 +3,13 @@ import type { RiskDisclaimerPageTranslations } from './types'
 export const riskDisclaimerSv: RiskDisclaimerPageTranslations = {
   title: 'Riskvarning',
   intro:
-    'Handel med valuta, CFD:er och andra belånade produkter innebär en betydande risk för förlust. TSCopier är ett verktyg för kopiering av affärer — inte en mäklare, investeringsrådgivare eller finansiell planerare. Ingenting på denna sida utgör finansiell rådgivning. Du är ensam ansvarig för dina handelsbeslut och eventuella förluster.',
+    'Handel med valuta, CFD:er och andra belånade produkter innebär en betydande risk för förlust. TScopier är ett verktyg för kopiering av affärer — inte en mäklare, investeringsrådgivare eller finansiell planerare. Ingenting på denna sida utgör finansiell rådgivning. Du är ensam ansvarig för dina handelsbeslut och eventuella förluster.',
   sections: [
     {
       title: 'Allmän handelsrisk',
       paragraphs: [
         'Du kan förlora delar av eller hela ditt insatta kapital. Hävstång förstorar både vinster och förluster. Tidigare resultat för en signalleverantör, ett backtest eller din egen historik garanterar inte framtida resultat.',
-        'Marknader kan gappa, stoppas eller röra sig kraftigt vid nyhetshändelser. TSCopier garanterar inte att signaler tas emot, tolkas eller exekveras till ett visst pris eller vid en viss tidpunkt.',
+        'Marknader kan gappa, stoppas eller röra sig kraftigt vid nyhetshändelser. TScopier garanterar inte att signaler tas emot, tolkas eller exekveras till ett visst pris eller vid en viss tidpunkt.',
       ],
     },
     {
@@ -29,7 +29,7 @@ export const riskDisclaimerSv: RiskDisclaimerPageTranslations = {
     {
       title: 'Begränsningar i tolkning och exekvering',
       paragraphs: [
-        'Signaler tolkas automatiskt från text. Skrivfel i stop loss (SL) eller take profit (TP) — fel siffror, saknade decimaler, tvetydiga symboler eller blandade enheter — kan ge ogiltiga priser. TSCopier kan hoppa över signalen, ignorera ogiltiga nivåer eller använda standardvärden från din konfiguration i stället för leverantörens avsikt.',
+        'Signaler tolkas automatiskt från text. Skrivfel i stop loss (SL) eller take profit (TP) — fel siffror, saknade decimaler, tvetydiga symboler eller blandade enheter — kan ge ogiltiga priser. TScopier kan hoppa över signalen, ignorera ogiltiga nivåer eller använda standardvärden från din konfiguration i stället för leverantörens avsikt.',
         'Exekveringen kan skilja sig från leverantörens ingång: slippage, requotes, partiella fyllningar, regler om minsta avstånd och avbrutna brokersessioner påverkar utfallet. Strict entry, range pending och multi-leg-stilar ökar komplexiteten ytterligare. Kontrollera alltid öppna positioner hos din mäklare.',
       ],
     },
@@ -37,7 +37,7 @@ export const riskDisclaimerSv: RiskDisclaimerPageTranslations = {
       title: 'Operativa risker och konfigurationsrisker',
       paragraphs: [
         'Nyhetsblackouts, kanalfilter, vinstmål, maxförlustgränser, prenumerationsstatus och inställningar per kanal kan blockera eller ändra kopieringen. Felkonfigurerad lotstorlek, symbolmappning eller ej länkade kanaler är vanliga orsaker till att affärer inte kopieras som förväntat.',
-        'Automatisk stängning när gränser uppnås stänger kanalattribuerade affärer på TSCopiers sida, men kan inte återställa en marknadsförlust som redan uppstått. Konfigurationsändringar gäller efter att de sparats — osparade utkast skyddar inte ditt konto.',
+        'Automatisk stängning när gränser uppnås stänger kanalattribuerade affärer på TScopiers sida, men kan inte återställa en marknadsförlust som redan uppstått. Konfigurationsändringar gäller efter att de sparats — osparade utkast skyddar inte ditt konto.',
       ],
     },
     {
@@ -56,5 +56,5 @@ export const riskDisclaimerSv: RiskDisclaimerPageTranslations = {
     },
   ],
   closing:
-    'Genom att använda TSCopier bekräftar du att handel är riskfylld, att signalleverantörer kan vara opålitliga eller vilseledande, och att du accepterar fullt ansvar för alla affärer som placeras på dina länkade konton.',
+    'Genom att använda TScopier bekräftar du att handel är riskfylld, att signalleverantörer kan vara opålitliga eller vilseledande, och att du accepterar fullt ansvar för alla affärer som placeras på dina länkade konton.',
 }

@@ -5,7 +5,7 @@ export const termsOfServiceEn: LegalDocumentPageTranslations = {
   title: 'Terms of Service',
   lastUpdated: 'Last updated: June 8, 2026',
   intro:
-    'These Terms of Service ("Terms") govern your access to and use of TSCopier websites, applications, and related services (collectively, the "Service") operated by Tartarix, Inc. ("Tartarix," "we," "us," or "our"). By creating an account or using the Service, you agree to these Terms. If you do not agree, do not use the Service.',
+    'These Terms of Service ("Terms") govern your access to and use of TScopier websites, applications, and related services (collectively, the "Service") operated by Tartarix, Inc. ("Tartarix," "we," "us," or "our"). By creating an account or using the Service, you agree to these Terms. If you do not agree, do not use the Service.',
   sections: [
     {
       title: '1. Eligibility and account',
@@ -17,7 +17,7 @@ export const termsOfServiceEn: LegalDocumentPageTranslations = {
     {
       title: '2. The Service',
       paragraphs: [
-        'TSCopier is a software tool that helps users connect MetaTrader accounts to Telegram signal channels and automate trade-copying workflows according to user configuration. We are not a broker, exchange, custodian, investment adviser, or portfolio manager.',
+        'TScopier is a software tool that helps users connect MetaTrader accounts to Telegram signal channels and automate trade-copying workflows according to user configuration. We are not a broker, exchange, custodian, investment adviser, or portfolio manager.',
         'We do not execute trades on our own behalf for you, hold your funds, or provide personalized financial advice. All trading occurs on third-party broker platforms subject to their terms.',
       ],
     },

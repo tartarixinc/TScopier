@@ -93,7 +93,7 @@ export function AppShell() {
             <Shield className="h-4 w-4" />
           </div>
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">TSCopier</p>
+            <p className="truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">TScopier</p>
             <p className="truncate text-[11px] text-neutral-500 dark:text-neutral-400">Backoffice</p>
           </div>
         </div>
@@ -158,7 +158,7 @@ export function AppShell() {
             {mobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
           <Link to="/" className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
-            TSCopier Backoffice
+            TScopier Backoffice
           </Link>
         </header>
 

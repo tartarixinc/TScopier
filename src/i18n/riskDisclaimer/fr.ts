@@ -3,13 +3,13 @@ import type { RiskDisclaimerPageTranslations } from './types'
 export const riskDisclaimerFr: RiskDisclaimerPageTranslations = {
   title: 'Avertissement sur les risques',
   intro:
-    'Le trading de devises, CFD et autres produits à effet de levier comporte un risque important de perte. TSCopier est un outil de copie de trades — pas un courtier, conseiller en investissement ni planificateur financier. Rien sur cette page ne constitue un conseil financier. Vous êtes seul responsable de vos décisions de trading et de toute perte.',
+    'Le trading de devises, CFD et autres produits à effet de levier comporte un risque important de perte. TScopier est un outil de copie de trades — pas un courtier, conseiller en investissement ni planificateur financier. Rien sur cette page ne constitue un conseil financier. Vous êtes seul responsable de vos décisions de trading et de toute perte.',
   sections: [
     {
       title: 'Risque général du trading',
       paragraphs: [
         'Vous pouvez perdre une partie ou la totalité de votre capital déposé. L’effet de levier amplifie gains et pertes. Les performances passées d’un fournisseur de signaux, d’un backtest ou de votre propre historique ne garantissent pas les résultats futurs.',
-        'Les marchés peuvent gapper, s’arrêter ou bouger violemment lors des annonces. TSCopier ne garantit pas que les signaux seront reçus, interprétés ou exécutés à un prix ou moment donné.',
+        'Les marchés peuvent gapper, s’arrêter ou bouger violemment lors des annonces. TScopier ne garantit pas que les signaux seront reçus, interprétés ou exécutés à un prix ou moment donné.',
       ],
     },
     {
@@ -29,7 +29,7 @@ export const riskDisclaimerFr: RiskDisclaimerPageTranslations = {
     {
       title: 'Limites d’interprétation et d’exécution',
       paragraphs: [
-        'Les signaux sont interprétés automatiquement à partir du texte. Fautes de frappe sur stop loss (SL) ou take profit (TP) — mauvais chiffres, décimales manquantes, symboles ambigus ou unités mélangées — peuvent produire des prix invalides. TSCopier peut ignorer le signal, rejeter des niveaux invalides ou appliquer vos paramètres par défaut au lieu de l’intention du fournisseur.',
+        'Les signaux sont interprétés automatiquement à partir du texte. Fautes de frappe sur stop loss (SL) ou take profit (TP) — mauvais chiffres, décimales manquantes, symboles ambigus ou unités mélangées — peuvent produire des prix invalides. TScopier peut ignorer le signal, rejeter des niveaux invalides ou appliquer vos paramètres par défaut au lieu de l’intention du fournisseur.',
         'L’exécution peut différer de l’entrée du fournisseur : slippage, requotes, exécutions partielles, distances minimales et déconnexions de session courtier influencent les résultats. Entrée stricte, pendings de range et styles multi-jambes ajoutent de la complexité. Vérifiez toujours les positions ouvertes chez votre courtier.',
       ],
     },
@@ -37,7 +37,7 @@ export const riskDisclaimerFr: RiskDisclaimerPageTranslations = {
       title: 'Risques opérationnels et de configuration',
       paragraphs: [
         'Blackouts news, filtres de canal, objectifs de profit, perte maximale, abonnement et réglages par canal peuvent bloquer ou modifier la copie. Taille de lot, mapping de symboles ou canaux non liés mal configurés expliquent souvent pourquoi les trades ne se copient pas comme prévu.',
-        'La clôture automatique lors des limites ferme les trades attribués au canal côté TSCopier mais ne annule pas les pertes de marché déjà subies. Les changements de configuration prennent effet après enregistrement — les brouillons non sauvegardés ne protègent pas votre compte.',
+        'La clôture automatique lors des limites ferme les trades attribués au canal côté TScopier mais ne annule pas les pertes de marché déjà subies. Les changements de configuration prennent effet après enregistrement — les brouillons non sauvegardés ne protègent pas votre compte.',
       ],
     },
     {
@@ -56,5 +56,5 @@ export const riskDisclaimerFr: RiskDisclaimerPageTranslations = {
     },
   ],
   closing:
-    'En utilisant TSCopier, vous reconnaissez que le trading est risqué, que les fournisseurs de signaux peuvent être peu fiables ou trompeurs, et que vous acceptez l’entière responsabilité de tous les trades sur vos comptes liés.',
+    'En utilisant TScopier, vous reconnaissez que le trading est risqué, que les fournisseurs de signaux peuvent être peu fiables ou trompeurs, et que vous acceptez l’entière responsabilité de tous les trades sur vos comptes liés.',
 }

@@ -89,7 +89,7 @@ export const authSv: AuthTranslations = {
     backToLogin: 'Tillbaka till inloggning',
   },
   welcome: {
-    title: 'Welcome to TSCopier',
+    title: 'Welcome to TScopier',
     subtitle: 'Your account is ready. Start your free trial to copy Telegram signals to your broker.',
     steps: [
       'Connect Telegram and choose signal channels',

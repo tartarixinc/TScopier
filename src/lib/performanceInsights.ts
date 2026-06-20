@@ -8,7 +8,7 @@ import {
 import { isTradeableClosedRow } from './dashboardTradeStats'
 import { displayTradeProfit } from './tradeDisplay'
 import { normalizeSignalChannelIds } from './brokerChannelLink'
-import { parseTscopierComment, sanitizeChannelCommentSlug } from './tscopierComment'
+import { parseTscopierComment, sanitizeChannelCommentSlug, isTscopierComment } from './tscopierComment'
 import type { MtTrade } from './fxsocketBroker'
 import { periodRange, periodToDays, type PerformancePeriod } from './performanceAnalytics'
 
@@ -435,7 +435,7 @@ export function resolveChannelIdForTrade(
       const fromConnected = resolveSlugOnConnectedChannels(parsed.channelSlug, connected, maps)
       if (fromConnected) return fromConnected
     }
-    if (trade.comment?.trim().startsWith('TSCopier:') && connected.length === 1) {
+    if (isTscopierComment(trade.comment) && connected.length === 1) {
       return connected[0]!
     }
   }

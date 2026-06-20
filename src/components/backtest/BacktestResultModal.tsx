@@ -132,7 +132,7 @@ export function BacktestResultModal({
       >
         <button
           type="button"
-          className="absolute inset-0 bg-neutral-900/50 backdrop-blur-sm"
+          className="absolute inset-0 bg-neutral-950/55"
           aria-label={bt.close}
           onClick={onClose}
           disabled={busy}
@@ -141,7 +141,7 @@ export function BacktestResultModal({
           ref={panelRef}
           className="relative w-full sm:max-w-2xl max-h-[92vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-2xl"
         >
-          <div className="sticky top-0 z-10 flex items-center justify-between gap-3 px-5 py-4 border-b border-neutral-100 dark:border-neutral-800 bg-white/95 dark:bg-neutral-900/95 backdrop-blur">
+          <div className="sticky top-0 z-10 flex items-center justify-between gap-3 px-5 py-4 border-b border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900">
             <h2 id="backtest-result-title" className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">
               {bt.resultModalTitle}
             </h2>

@@ -9,6 +9,6 @@ export const LEGAL_COMPANY = {
     legal: 'legal@tscopier.ai',
     disputes: 'disputes@tscopier.ai',
   },
-  productName: 'TSCopier',
+  productName: 'TScopier',
   website: 'https://tscopier.ai',
 } as const

@@ -330,7 +330,7 @@ export const en: Translations = {
       passwordHint: '',
       rememberPasswordLabel: 'Remember password for automatic reconnect',
       rememberPasswordHint:
-        'Encrypts your MT password on our servers so TSCopier can restore the session without prompting you. You can remove it anytime.',
+        'Encrypts your MT password on our servers so TScopier can restore the session without prompting you. You can remove it anytime.',
       connectButton: 'Connect account',
       connectingTitle: 'Connecting your broker',
       connectingStepLinking: 'Linking your {platform} account…',
@@ -436,7 +436,7 @@ export const en: Translations = {
       reconnectPasswordPlaceholder: 'Trading account password',
       rememberPasswordLabel: 'Remember password for automatic reconnect',
       rememberPasswordHint:
-        'Stores an encrypted copy so TSCopier can reconnect without asking again. You can clear it from Account Configuration.',
+        'Stores an encrypted copy so TScopier can reconnect without asking again. You can clear it from Account Configuration.',
       clearStoredCredentials: 'Forget saved password',
       storedCredentialsActive: 'Auto-reconnect enabled',
       deleteFailed: 'Failed to delete broker',
@@ -561,7 +561,7 @@ export const en: Translations = {
       refresh: 'Refresh',
       notFound: 'Broker account not found.',
       initialBalance: 'Initial balance',
-      initialBalanceHint: 'Account balance snapshotted when this broker first connected to TSCopier.',
+      initialBalanceHint: 'Account balance snapshotted when this broker first connected to TScopier.',
       connectedAt: 'Connected',
       connectedAtHint: 'Date and time this broker account was first linked and ready to trade.',
       currentBalance: 'Current balance',
@@ -753,7 +753,7 @@ export const en: Translations = {
     telegramMessage: 'Telegram message',
     parsedInstruction: 'Parsed instruction',
     signalTime: 'Signal received',
-    noLinkedSignal: 'No linked TSCopier signal for this trade.',
+    noLinkedSignal: 'No linked TScopier signal for this trade.',
     imageSignal: '(image signal)',
     loadingSignal: 'Loading signal…',
     loadSignalError: 'Could not load signal details.',
@@ -1132,7 +1132,7 @@ export const en: Translations = {
     },
     loadError: 'Could not load linked MT5 accounts.',
     connectError: 'Connect failed.',
-    deleteConfirm: 'Remove this MT5 account from TSCopier?',
+    deleteConfirm: 'Remove this MT5 account from TScopier?',
     selectFxAccount: 'Select cloud MT5 account',
     selectLegacyBroker: 'Select legacy broker',
     docsUrl: 'https://fxsocket.com/docs#request-builder',
@@ -1264,7 +1264,7 @@ export const en: Translations = {
     },
     personal: {
       title: 'Personal information',
-      description: 'Your contact details and how you appear in TSCopier.',
+      description: 'Your contact details and how you appear in TScopier.',
     },
     general: {
       title: 'General settings',
@@ -1361,7 +1361,7 @@ export const en: Translations = {
     },
     contactSupport: {
       title: 'Contact Support',
-      description: 'Get help from the TSCopier team with your account, copier setup, or technical issues.',
+      description: 'Get help from the TScopier team with your account, copier setup, or technical issues.',
     },
     riskDisclaimer: {
       title: 'Risk disclaimer',
@@ -1369,7 +1369,7 @@ export const en: Translations = {
     },
     termsOfService: {
       title: 'Terms of Service',
-      description: 'Terms governing your use of TSCopier.',
+      description: 'Terms governing your use of TScopier.',
     },
     privacyPolicy: {
       title: 'Privacy Policy',
@@ -1377,7 +1377,7 @@ export const en: Translations = {
     },
     cookiePolicy: {
       title: 'Cookie Policy',
-      description: 'How TSCopier uses cookies and similar technologies.',
+      description: 'How TScopier uses cookies and similar technologies.',
     },
     featureRequest: {
       title: 'Feature Request',

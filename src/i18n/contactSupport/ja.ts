@@ -2,7 +2,7 @@ import type { ContactSupportPageTranslations } from './types'
 
 export const contactSupportJa: ContactSupportPageTranslations = {
   channelsTitle: 'どのようにお手伝いできますか？',
-  channelsSubtitle: 'TSCopierチームへのメール連絡、ドキュメントの閲覧、またはライブチャットをご利用いただけます。',
+  channelsSubtitle: 'TScopierチームへのメール連絡、ドキュメントの閲覧、またはライブチャットをご利用いただけます。',
   email: {
     title: 'メールサポート',
     description: 'アカウント、請求、またはコピー機能に関するご質問をお送りください。通常1営業日以内に返信します。',
@@ -40,7 +40,7 @@ export const contactSupportJa: ContactSupportPageTranslations = {
       {
         question: 'ニュース取引 / 経済カレンダーのブラックアウト機能とは何ですか？',
         answer:
-          '口座でニュース取引を無効にしている場合、TSCopierは重要度の高い経済指標イベントの前後で新規エントリーを一時停止し、必要に応じて保有中の取引を決済できます。経済カレンダーページで今後の発表を確認し、口座設定でルールを調整してください。',
+          '口座でニュース取引を無効にしている場合、TScopierは重要度の高い経済指標イベントの前後で新規エントリーを一時停止し、必要に応じて保有中の取引を決済できます。経済カレンダーページで今後の発表を確認し、口座設定でルールを調整してください。',
       },
       {
         question: '取引をコピーするには有料プランが必要ですか？',

@@ -5,7 +5,7 @@ export const cookiePolicyNl: LegalDocumentPageTranslations = {
   title: 'Cookiebeleid',
   lastUpdated: 'Laatst bijgewerkt: 8 juni 2026',
   intro:
-    'Dit Cookiebeleid legt uit hoe Tartarix, Inc. ("wij", "ons" of "onze") cookies en vergelijkbare technologieën gebruikt op de websites en applicaties van TSCopier. Dit beleid moet samen met ons Privacybeleid worden gelezen.',
+    'Dit Cookiebeleid legt uit hoe Tartarix, Inc. ("wij", "ons" of "onze") cookies en vergelijkbare technologieën gebruikt op de websites en applicaties van TScopier. Dit beleid moet samen met ons Privacybeleid worden gelezen.',
   sections: [
     {
       title: '1. Wat zijn cookies?',

@@ -86,7 +86,7 @@ export function VerifyEmailPage() {
 
       <p className="mt-3 text-sm text-neutral-500 dark:text-neutral-400">{subtitle}</p>
       <p className="mt-2 text-sm text-neutral-500 dark:text-neutral-400">
-        {verifyT.instructions ?? 'Open the link in that email to activate your account. You cannot use TSCopier until verification is complete.'}
+        {verifyT.instructions ?? 'Open the link in that email to activate your account. You cannot use TScopier until verification is complete.'}
       </p>
 
       {error ? <Alert variant="error" className="mt-5 py-2.5 text-left">{error}</Alert> : null}

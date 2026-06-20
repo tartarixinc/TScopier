@@ -99,7 +99,7 @@ test('computeProfitByChannel: maps closed MT trade via DB ticket attribution', (
   assert.equal(rows[0]!.pnl, 42)
 })
 
-test('computeProfitByChannel: maps via TSCopier comment signal prefix', () => {
+test('computeProfitByChannel: maps via TScopier comment signal prefix', () => {
   const signalId = '28785f02-000b-4860-a3dd-58d74f890a5d'
   const maps = buildPerformanceChannelLinkMaps(
     [{ id: 'ch-1', display_name: 'VIP Gold Signals' }],
@@ -111,7 +111,7 @@ test('computeProfitByChannel: maps via TSCopier comment signal prefix', () => {
     [mtTrade({
       broker_id: 'broker-1',
       ticket: 555,
-      comment: 'TSCopier:VIPGoldSigna:28785f02',
+      comment: 'TScopier:VIPGoldSigna:28785f02',
       profit: 10,
       closed_at: TEST_CLOSED_AT,
     })],
@@ -134,7 +134,7 @@ test('computeProfitByChannel: maps via comment channel slug not display name sub
     [mtTrade({
       broker_id: 'broker-1',
       ticket: 777,
-      comment: 'TSCopier:vipgold:deadbeef',
+      comment: 'TScopier:vipgold:deadbeef',
       profit: 5,
       closed_at: TEST_CLOSED_AT,
     })],
@@ -300,7 +300,7 @@ test('computeProfitByChannel: uses durable attribution when ticket differs in fo
   assert.equal(rows[0]!.key, 'ch-1')
 })
 
-test('resolveChannelIdForTrade: attributes via TSCopier slug on connected channel only', () => {
+test('resolveChannelIdForTrade: attributes via TScopier slug on connected channel only', () => {
   const channelId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
   const maps = buildPerformanceChannelLinkMaps([], [], [], [])
   maps.channelNames[channelId] = 'Test Signal Channel'
@@ -309,7 +309,7 @@ test('resolveChannelIdForTrade: attributes via TSCopier slug on connected channe
       broker_id: 'broker-1',
       ticket: 1705377546,
       status: 'open',
-      comment: 'TSCopier:TestSignalCh:4a6c0a6b:',
+      comment: 'TScopier:TestSignalCh:4a6c0a6b:',
       profit: -7.86,
       opened_at: '2026-06-14T16:53:23.000Z',
       closed_at: null,
@@ -320,7 +320,7 @@ test('resolveChannelIdForTrade: attributes via TSCopier slug on connected channe
   assert.equal(resolved, channelId)
 })
 
-test('resolveChannelIdForTrade: single connected channel TSCopier fallback', () => {
+test('resolveChannelIdForTrade: single connected channel TScopier fallback', () => {
   const channelId = 'ch-only'
   const maps = buildPerformanceChannelLinkMaps([], [], [], [])
   maps.channelNames[channelId] = 'VIP'
@@ -329,7 +329,7 @@ test('resolveChannelIdForTrade: single connected channel TSCopier fallback', () 
       broker_id: 'broker-1',
       ticket: 1,
       status: 'open',
-      comment: 'TSCopier:UnknownSlug:deadbeef',
+      comment: 'TScopier:UnknownSlug:deadbeef',
       profit: 5,
       opened_at: '2026-06-14T16:53:23.000Z',
       closed_at: null,

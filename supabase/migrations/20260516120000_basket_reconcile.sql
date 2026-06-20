@@ -1,5 +1,5 @@
 /*
-  # TSCopier - Basket SL/TP reconcile jobs
+  # TScopier - Basket SL/TP reconcile jobs
 
   Persists desired per-leg SL/TP when merge modify fails or is partial.
   Worker BasketSlTpReconcileMonitor (15s) and edge basket-sl-tp-sweep (60s cron)

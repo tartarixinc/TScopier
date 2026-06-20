@@ -20,7 +20,7 @@ export const tradingJa: TradingPagesBundleTranslations = {
     telegramMessage: 'Telegramメッセージ',
     parsedInstruction: '解析された指示',
     signalTime: 'シグナル受信時刻',
-    noLinkedSignal: 'この取引に紐づくTSCopierシグナルはありません。',
+    noLinkedSignal: 'この取引に紐づくTScopierシグナルはありません。',
     imageSignal: '（画像シグナル）',
     loadingSignal: 'シグナルを読み込み中…',
     loadSignalError: 'シグナル詳細を読み込めませんでした。',

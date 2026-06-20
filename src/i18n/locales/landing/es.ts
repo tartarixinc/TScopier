@@ -20,11 +20,11 @@ export const landingEs: LandingTranslations = {
     headline: 'Convierte las señales de Telegram en operaciones en vivo,',
     headlineAccent: '100 % en piloto automático.',
     subheadline:
-      'Conecta tu cuenta MT4/MT5, elige canales de señales y deja que TSCopier ejecute entradas, capas y gestión — con control total del riesgo y filtros.',
+      'Conecta tu cuenta MT4/MT5, elige canales de señales y deja que TScopier ejecute entradas, capas y gestión — con control total del riesgo y filtros.',
     primaryCta: 'Pruébalo gratis',
     secondaryCta: 'Iniciar sesión',
     imageAlt:
-      'Panel de TSCopier con saldo, beneficio diario, resultados de operaciones y gráficos de crecimiento',
+      'Panel de TScopier con saldo, beneficio diario, resultados de operaciones y gráficos de crecimiento',
     previewUrl: 'app.tscopier.ai/dashboard',
     dashboard: {
       headlineStats: [
@@ -203,14 +203,14 @@ export const landingEs: LandingTranslations = {
         eyebrow: 'Copiador de señales',
         title: 'Copia señales de Telegram a MT4 y MT5 con precisión',
         description:
-          'Refleja canales de confianza en tus cuentas de broker. TSCopier analiza entradas, TPs, capas de rango e instrucciones de gestión, y ejecuta con tus reglas de lote, multi-trade y capas en cada cuenta conectada.',
+          'Refleja canales de confianza en tus cuentas de broker. TScopier analiza entradas, TPs, capas de rango e instrucciones de gestión, y ejecuta con tus reglas de lote, multi-trade y capas en cada cuenta conectada.',
         visual: 'copier',
       },
       {
         eyebrow: 'Señales multilingües',
         title: 'Compatible con señales en varios idiomas',
         description:
-          'Copia canales que publican en inglés, español, francés, ruso, polaco, japonés y más. TSCopier reconoce compra/venta, SL, TP y frases de gestión en cada idioma, además del entrenamiento por canal para el vocabulario exacto de tu proveedor.',
+          'Copia canales que publican en inglés, español, francés, ruso, polaco, japonés y más. TScopier reconoce compra/venta, SL, TP y frases de gestión en cada idioma, además del entrenamiento por canal para el vocabulario exacto de tu proveedor.',
         visual: 'multilingual',
       },
       {
@@ -224,7 +224,7 @@ export const landingEs: LandingTranslations = {
         eyebrow: 'Ediciones de mensaje',
         title: 'Modificación de señal desde mensajes editados',
         description:
-          'Cuando un proveedor edita un mensaje de Telegram para cambiar el stop loss o los take-profits, TSCopier detecta la revisión y actualiza tu cesta abierta en el broker — sin nuevas entradas, solo SL/TP sincronizados en cada pierna.',
+          'Cuando un proveedor edita un mensaje de Telegram para cambiar el stop loss o los take-profits, TScopier detecta la revisión y actualiza tu cesta abierta en el broker — sin nuevas entradas, solo SL/TP sincronizados en cada pierna.',
         visual: 'signalEdit',
       },
       {
@@ -550,7 +550,7 @@ export const landingEs: LandingTranslations = {
   faq: {
     eyebrow: 'Preguntas frecuentes',
     title: 'Preguntas frecuentes',
-    subtitle: 'Respuestas rápidas sobre configuración, copia y qué hace diferente a TSCopier.',
+    subtitle: 'Respuestas rápidas sobre configuración, copia y qué hace diferente a TScopier.',
     items: [
       {
         question: '¿Necesito descargar un EA o un VPS?',

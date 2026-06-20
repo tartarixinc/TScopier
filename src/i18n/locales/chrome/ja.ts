@@ -132,7 +132,7 @@ export const chromeJa: AppChromeTranslations = {
     },
     contactSupport: {
       title: 'サポートに連絡',
-      description: 'アカウント、コピー設定、技術的な問題について TSCopier チームがサポートします。',
+      description: 'アカウント、コピー設定、技術的な問題について TScopier チームがサポートします。',
     },
     riskDisclaimer: {
       title: 'リスクに関する免責事項',
@@ -140,7 +140,7 @@ export const chromeJa: AppChromeTranslations = {
     },
     termsOfService: {
       title: '利用規約',
-      description: 'TSCopier の利用に関する規約。',
+      description: 'TScopier の利用に関する規約。',
     },
     privacyPolicy: {
       title: 'プライバシーポリシー',
@@ -148,7 +148,7 @@ export const chromeJa: AppChromeTranslations = {
     },
     cookiePolicy: {
       title: 'Cookieポリシー',
-      description: 'TSCopier における Cookie および類似技術の利用方法。',
+      description: 'TScopier における Cookie および類似技術の利用方法。',
     },
     featureRequest: {
       title: '機能リクエスト',

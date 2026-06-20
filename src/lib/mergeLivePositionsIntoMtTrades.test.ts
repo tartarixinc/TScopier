@@ -48,12 +48,12 @@ describe('mergeLivePositionsIntoMtTrades', () => {
         kind: 'position',
         lots: 0.25,
         profit: -7.86,
-        comment: 'TSCopier:TestSignalCh:4a6c0a6b:',
+        comment: 'TScopier:TestSignalCh:4a6c0a6b:',
       }],
     )
     expect(merged).toHaveLength(1)
     expect(merged[0]?.profit).toBe(-7.86)
-    expect(merged[0]?.comment).toBe('TSCopier:TestSignalCh:4a6c0a6b:')
+    expect(merged[0]?.comment).toBe('TScopier:TestSignalCh:4a6c0a6b:')
   })
 
   it('adds synthetic open legs missing from REST history', () => {
@@ -67,7 +67,7 @@ describe('mergeLivePositionsIntoMtTrades', () => {
         kind: 'position',
         lots: 0.25,
         profit: -7.86,
-        comment: 'TSCopier:TestSignalCh:4a6c0a6b:',
+        comment: 'TScopier:TestSignalCh:4a6c0a6b:',
         openTime: '2026-06-14T16:53:23.000Z',
       }],
     )

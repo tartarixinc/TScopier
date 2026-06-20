@@ -20,7 +20,7 @@ export const settingsSv: SettingsBundleTranslations = {
     },
     personal: {
       title: 'Personuppgifter',
-      description: 'Dina kontaktuppgifter och hur du visas i TSCopier.',
+      description: 'Dina kontaktuppgifter och hur du visas i TScopier.',
     },
     general: {
       title: 'Allmänna inställningar',

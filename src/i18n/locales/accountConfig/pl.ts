@@ -45,7 +45,7 @@ export const accountConfigPl: AccountConfigBundleTranslations = {
       passwordHint: '',
       rememberPasswordLabel: 'Zapamiętaj hasło do automatycznego ponownego połączenia',
       rememberPasswordHint:
-        'Szyfruje Twoje hasło MT na naszych serwerach, aby TSCopier mógł przywrócić sesję bez ponownego pytania. Możesz je usunąć w dowolnym momencie.',
+        'Szyfruje Twoje hasło MT na naszych serwerach, aby TScopier mógł przywrócić sesję bez ponownego pytania. Możesz je usunąć w dowolnym momencie.',
       connectButton: 'Połącz konto',
       connectingTitle: 'Łączenie brokera',
       connectingStepLinking: 'Łączenie Twojego konta {platform}…',
@@ -152,7 +152,7 @@ export const accountConfigPl: AccountConfigBundleTranslations = {
       reconnectPasswordPlaceholder: 'Hasło do konta tradingowego',
       rememberPasswordLabel: 'Zapamiętaj hasło do automatycznego ponownego połączenia',
       rememberPasswordHint:
-        'Przechowuje zaszyfrowaną kopię, aby TSCopier mógł łączyć ponownie bez ponownego pytania. Możesz ją usunąć w Konfiguracji konta.',
+        'Przechowuje zaszyfrowaną kopię, aby TScopier mógł łączyć ponownie bez ponownego pytania. Możesz ją usunąć w Konfiguracji konta.',
       clearStoredCredentials: 'Usuń zapisane hasło',
       storedCredentialsActive: 'Automatyczne ponowne łączenie włączone',
       deleteFailed: 'Nie udało się usunąć brokera',

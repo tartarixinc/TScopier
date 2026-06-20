@@ -20,7 +20,7 @@ export const tradingSv: TradingPagesBundleTranslations = {
     telegramMessage: 'Telegram-meddelande',
     parsedInstruction: 'Tolkad instruktion',
     signalTime: 'Signal mottagen',
-    noLinkedSignal: 'Ingen länkad TSCopier-signal för den här affären.',
+    noLinkedSignal: 'Ingen länkad TScopier-signal för den här affären.',
     imageSignal: '(bildsignal)',
     loadingSignal: 'Laddar signal…',
     loadSignalError: 'Kunde inte ladda signaldetaljer.',

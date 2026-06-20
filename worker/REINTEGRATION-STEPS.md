@@ -156,7 +156,7 @@ Swarm) the container will be recreated on three consecutive failures.
 ```ini
 # /etc/systemd/system/tscopier-worker.service
 [Unit]
-Description=TSCopier Telegram worker
+Description=TScopier Telegram worker
 After=network-online.target
 Wants=network-online.target
 

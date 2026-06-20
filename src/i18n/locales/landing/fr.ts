@@ -20,11 +20,11 @@ export const landingFr: LandingTranslations = {
     headline: 'Transformez les signaux Telegram en trades en direct,',
     headlineAccent: '100 % en autopilote.',
     subheadline:
-      'Connectez votre compte MT4/MT5, choisissez vos canaux de signaux et laissez TSCopier exécuter entrées, couches et gestion — avec un contrôle total du risque et des filtres.',
+      'Connectez votre compte MT4/MT5, choisissez vos canaux de signaux et laissez TScopier exécuter entrées, couches et gestion — avec un contrôle total du risque et des filtres.',
     primaryCta: 'Essayez gratuitement',
     secondaryCta: 'Se connecter',
     imageAlt:
-      'Tableau de bord TSCopier avec solde, profit du jour, résultats des trades et graphiques de croissance',
+      'Tableau de bord TScopier avec solde, profit du jour, résultats des trades et graphiques de croissance',
     previewUrl: 'app.tscopier.ai/dashboard',
     dashboard: {
       headlineStats: [
@@ -203,14 +203,14 @@ export const landingFr: LandingTranslations = {
         eyebrow: 'Copieur de signaux',
         title: 'Copiez les signaux Telegram vers MT4 et MT5 avec précision',
         description:
-          'Reproduisez vos canaux de confiance sur vos comptes broker. TSCopier analyse entrées, TPs, couches de range et instructions de gestion, puis exécute avec vos règles de lot, multi-trade et couches sur chaque compte connecté.',
+          'Reproduisez vos canaux de confiance sur vos comptes broker. TScopier analyse entrées, TPs, couches de range et instructions de gestion, puis exécute avec vos règles de lot, multi-trade et couches sur chaque compte connecté.',
         visual: 'copier',
       },
       {
         eyebrow: 'Signaux multilingues',
         title: 'Prend en charge les signaux en plusieurs langues',
         description:
-          'Copiez des canaux en anglais, espagnol, français, russe, polonais, japonais et plus encore. TSCopier reconnaît achat/vente, SL, TP et les consignes de gestion dans chaque langue, avec entraînement par canal pour le vocabulaire exact de votre fournisseur.',
+          'Copiez des canaux en anglais, espagnol, français, russe, polonais, japonais et plus encore. TScopier reconnaît achat/vente, SL, TP et les consignes de gestion dans chaque langue, avec entraînement par canal pour le vocabulaire exact de votre fournisseur.',
         visual: 'multilingual',
       },
       {
@@ -224,7 +224,7 @@ export const landingFr: LandingTranslations = {
         eyebrow: 'Messages modifiés',
         title: 'Modification de signal depuis les messages édités',
         description:
-          'Quand un fournisseur modifie un message Telegram pour changer le stop ou les take-profits, TSCopier détecte la révision et met à jour votre panier ouvert chez le broker — pas de nouvelles entrées, seulement des SL/TP synchronisés sur chaque jambe.',
+          'Quand un fournisseur modifie un message Telegram pour changer le stop ou les take-profits, TScopier détecte la révision et met à jour votre panier ouvert chez le broker — pas de nouvelles entrées, seulement des SL/TP synchronisés sur chaque jambe.',
         visual: 'signalEdit',
       },
       {
@@ -254,7 +254,7 @@ export const landingFr: LandingTranslations = {
         telegramLabel: 'Canal de signaux',
         channelName: 'Gold Signals Pro',
         channelMeta: '3 nouveaux signaux · à l’instant',
-        hubLabel: 'TSCopier',
+        hubLabel: 'TScopier',
         mt4Label: 'Compte MT4',
         mt4Meta: 'Copie · règles 0.10 lot',
         mt5Label: 'Compte MT5',
@@ -590,7 +590,7 @@ export const landingFr: LandingTranslations = {
       {
         question: 'Prenez-vous en charge le range, le layering et la gestion ?',
         answer:
-          'Oui. TSCopier gère entrées single et range, répartition multi-TP, layering, clôture des pires entrées, break-even, profits partiels et plus, avec filtres autoriser/ignorer par canal.',
+          'Oui. TScopier gère entrées single et range, répartition multi-TP, layering, clôture des pires entrées, break-even, profits partiels et plus, avec filtres autoriser/ignorer par canal.',
       },
       {
         question: 'Que comprend Basic vs Advanced ?',

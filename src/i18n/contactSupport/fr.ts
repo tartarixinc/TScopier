@@ -2,7 +2,7 @@ import type { ContactSupportPageTranslations } from './types'
 
 export const contactSupportFr: ContactSupportPageTranslations = {
   channelsTitle: 'Comment pouvons-nous vous aider ?',
-  channelsSubtitle: 'Contactez l’équipe TSCopier par e-mail, consultez la documentation ou démarrez un chat en direct.',
+  channelsSubtitle: 'Contactez l’équipe TScopier par e-mail, consultez la documentation ou démarrez un chat en direct.',
   email: {
     title: 'Support par e-mail',
     description: 'Questions compte, facturation ou copieur — réponse généralement sous un jour ouvré.',
@@ -40,7 +40,7 @@ export const contactSupportFr: ContactSupportPageTranslations = {
       {
         question: 'À quoi sert le blackout news / calendrier économique ?',
         answer:
-          'Si le trading news est désactivé, TSCopier peut suspendre les nouvelles entrées et éventuellement fermer des trades autour des événements à fort impact. Consultez le Calendrier économique et configurez les règles dans Configuration.',
+          'Si le trading news est désactivé, TScopier peut suspendre les nouvelles entrées et éventuellement fermer des trades autour des événements à fort impact. Consultez le Calendrier économique et configurez les règles dans Configuration.',
       },
       {
         question: 'Faut-il un abonnement payant pour copier ?',

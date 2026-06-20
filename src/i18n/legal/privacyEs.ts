@@ -5,7 +5,7 @@ export const privacyPolicyEs: LegalDocumentPageTranslations = {
   title: 'Política de privacidad',
   lastUpdated: 'Última actualización: 8 de junio de 2026',
   intro:
-    'Tartarix, Inc. («Tartarix», «nosotros» o «nuestro») respeta su privacidad. Esta Política de privacidad explica cómo recopilamos, utilizamos, divulgamos y protegemos la información cuando usted utiliza los sitios web y aplicaciones de TSCopier (el «Servicio»).',
+    'Tartarix, Inc. («Tartarix», «nosotros» o «nuestro») respeta su privacidad. Esta Política de privacidad explica cómo recopilamos, utilizamos, divulgamos y protegemos la información cuando usted utiliza los sitios web y aplicaciones de TScopier (el «Servicio»).',
   sections: [
     {
       title: '1. Información que recopilamos',

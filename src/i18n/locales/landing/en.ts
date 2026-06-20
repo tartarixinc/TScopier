@@ -580,7 +580,7 @@ export const landingEn: LandingTranslations = {
       {
         question: 'Does TScopier read my private Telegram messages?',
         answer:
-          'TSCopier does not read your personal chats. Connecting Telegram only grants access to channels and groups you are a member of so the copier can receive signal messages from sources you add.',
+          'TScopier does not read your personal chats. Connecting Telegram only grants access to channels and groups you are a member of so the copier can receive signal messages from sources you add.',
       },
       {
         question: 'Can I test a channel before going live?',

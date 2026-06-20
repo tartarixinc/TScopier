@@ -5,7 +5,7 @@ export const termsOfServiceEs: LegalDocumentPageTranslations = {
   title: 'Términos de servicio',
   lastUpdated: 'Última actualización: 8 de junio de 2026',
   intro:
-    'Estos Términos de servicio («Términos») rigen su acceso y uso de los sitios web, aplicaciones y servicios relacionados de TSCopier (en conjunto, el «Servicio») operados por Tartarix, Inc. («Tartarix», «nosotros» o «nuestro»). Al crear una cuenta o utilizar el Servicio, usted acepta estos Términos. Si no está de acuerdo, no utilice el Servicio.',
+    'Estos Términos de servicio («Términos») rigen su acceso y uso de los sitios web, aplicaciones y servicios relacionados de TScopier (en conjunto, el «Servicio») operados por Tartarix, Inc. («Tartarix», «nosotros» o «nuestro»). Al crear una cuenta o utilizar el Servicio, usted acepta estos Términos. Si no está de acuerdo, no utilice el Servicio.',
   sections: [
     {
       title: '1. Elegibilidad y cuenta',
@@ -17,7 +17,7 @@ export const termsOfServiceEs: LegalDocumentPageTranslations = {
     {
       title: '2. El Servicio',
       paragraphs: [
-        'TSCopier es una herramienta de software que ayuda a los usuarios a conectar cuentas de MetaTrader con canales de señales de Telegram y a automatizar flujos de copia de operaciones según la configuración del usuario. No somos un bróker, bolsa, custodio, asesor de inversiones ni gestor de carteras.',
+        'TScopier es una herramienta de software que ayuda a los usuarios a conectar cuentas de MetaTrader con canales de señales de Telegram y a automatizar flujos de copia de operaciones según la configuración del usuario. No somos un bróker, bolsa, custodio, asesor de inversiones ni gestor de carteras.',
         'No ejecutamos operaciones en nuestro propio nombre por usted, no custodiamos sus fondos ni ofrecemos asesoramiento financiero personalizado. Todas las operaciones se realizan en plataformas de brókers de terceros sujetas a sus propios términos.',
       ],
     },

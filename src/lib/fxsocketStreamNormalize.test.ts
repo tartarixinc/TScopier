@@ -16,7 +16,7 @@ describe('normalizeFxsocketStreamMessage', () => {
       swap: 0,
       profit: -7.86,
       magic: 909090,
-      comment: 'TSCopier:TestSignalCh:4a6c0a6b:',
+      comment: 'TScopier:TestSignalCh:4a6c0a6b:',
       openTime: '2026-06-14T16:53:23.000Z',
     })
     expect(msg).toEqual({

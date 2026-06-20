@@ -78,7 +78,7 @@ export function BrokerConnectedSuccessModal({
       onMouseDown={onOverlayMouseDown}
       onClick={onOverlayClick}
     >
-      <div ref={backdropRef} className="absolute inset-0 bg-neutral-950/50" aria-hidden />
+      <div ref={backdropRef} className="absolute inset-0 bg-neutral-950/55" aria-hidden />
 
       <div
         role="dialog"

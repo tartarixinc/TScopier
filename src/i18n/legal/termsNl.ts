@@ -5,7 +5,7 @@ export const termsOfServiceNl: LegalDocumentPageTranslations = {
   title: 'Gebruiksvoorwaarden',
   lastUpdated: 'Laatst bijgewerkt: 8 juni 2026',
   intro:
-    'Deze Gebruiksvoorwaarden ("Voorwaarden") regelen uw toegang tot en gebruik van de websites, applicaties en gerelateerde diensten van TSCopier (gezamenlijk de "Dienst"), beheerd door Tartarix, Inc. ("Tartarix", "wij", "ons" of "onze"). Door een account aan te maken of de Dienst te gebruiken, gaat u akkoord met deze Voorwaarden. Als u niet akkoord gaat, gebruik de Dienst dan niet.',
+    'Deze Gebruiksvoorwaarden ("Voorwaarden") regelen uw toegang tot en gebruik van de websites, applicaties en gerelateerde diensten van TScopier (gezamenlijk de "Dienst"), beheerd door Tartarix, Inc. ("Tartarix", "wij", "ons" of "onze"). Door een account aan te maken of de Dienst te gebruiken, gaat u akkoord met deze Voorwaarden. Als u niet akkoord gaat, gebruik de Dienst dan niet.',
   sections: [
     {
       title: '1. Geschiktheid en account',
@@ -17,7 +17,7 @@ export const termsOfServiceNl: LegalDocumentPageTranslations = {
     {
       title: '2. De Dienst',
       paragraphs: [
-        'TSCopier is een softwaretool die gebruikers helpt MetaTrader-accounts te koppelen aan Telegram-signaalkanalen en workflows voor het kopiëren van transacties te automatiseren volgens de gebruikersconfiguratie. Wij zijn geen broker, beurs, bewaarder, beleggingsadviseur of portefeuillebeheerder.',
+        'TScopier is een softwaretool die gebruikers helpt MetaTrader-accounts te koppelen aan Telegram-signaalkanalen en workflows voor het kopiëren van transacties te automatiseren volgens de gebruikersconfiguratie. Wij zijn geen broker, beurs, bewaarder, beleggingsadviseur of portefeuillebeheerder.',
         'Wij voeren geen transacties uit in eigen naam namens u, houden uw gelden niet aan en geven geen gepersonaliseerd financieel advies. Alle handel vindt plaats op brokerplatformen van derden, onder hun eigen voorwaarden.',
       ],
     },

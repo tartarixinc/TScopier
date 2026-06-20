@@ -21,7 +21,7 @@ const swaggerPositionRow = {
   commission: 0,
   netProfit: -4.01,
   magic: 1780386957639,
-  comment: "TSCopier:SIGNALSPRO:146acbf8",
+  comment: "TScopier:SIGNALSPRO:146acbf8",
 }
 
 Deno.test("mapPositionHistoryRow: Swagger fixture maps timestamps and lot size", () => {

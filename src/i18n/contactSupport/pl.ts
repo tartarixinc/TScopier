@@ -2,7 +2,7 @@ import type { ContactSupportPageTranslations } from './types'
 
 export const contactSupportPl: ContactSupportPageTranslations = {
   channelsTitle: 'Jak możemy pomóc?',
-  channelsSubtitle: 'Skontaktuj się z zespołem TSCopier przez e-mail, przejrzyj dokumentację lub rozpocznij czat na żywo.',
+  channelsSubtitle: 'Skontaktuj się z zespołem TScopier przez e-mail, przejrzyj dokumentację lub rozpocznij czat na żywo.',
   email: {
     title: 'Wsparcie e-mail',
     description: 'Wyślij pytania dotyczące konta, rozliczeń lub kopiowania - zazwyczaj odpowiadamy w ciągu jednego dnia roboczego.',
@@ -40,7 +40,7 @@ export const contactSupportPl: ContactSupportPageTranslations = {
       {
         question: 'Co robi blokada handlu podczas newsów / kalendarza ekonomicznego?',
         answer:
-          'Gdy handel podczas newsów jest wyłączony na koncie, TSCopier może wstrzymać nowe wejścia i opcjonalnie zamknąć otwarte transakcje wokół wydarzeń o wysokim znaczeniu. Użyj strony Kalendarz ekonomiczny, aby sprawdzić nadchodzące publikacje i skonfigurować zasady w Konfiguracji konta.',
+          'Gdy handel podczas newsów jest wyłączony na koncie, TScopier może wstrzymać nowe wejścia i opcjonalnie zamknąć otwarte transakcje wokół wydarzeń o wysokim znaczeniu. Użyj strony Kalendarz ekonomiczny, aby sprawdzić nadchodzące publikacje i skonfigurować zasady w Konfiguracji konta.',
       },
       {
         question: 'Czy do kopiowania transakcji potrzebna jest płatna subskrypcja?',

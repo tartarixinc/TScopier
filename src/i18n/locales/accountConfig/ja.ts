@@ -45,7 +45,7 @@ export const accountConfigJa: AccountConfigBundleTranslations = {
       passwordHint: '',
       rememberPasswordLabel: '自動再接続のためにパスワードを記憶',
       rememberPasswordHint:
-        'MT パスワードを当社サーバー上で暗号化し、TSCopier が再入力なしでセッションを復元できるようにします。いつでも削除できます。',
+        'MT パスワードを当社サーバー上で暗号化し、TScopier が再入力なしでセッションを復元できるようにします。いつでも削除できます。',
       connectButton: '口座を接続',
       connectingTitle: 'ブローカーを接続中',
       connectingStepLinking: '{platform} 口座をリンク中…',
@@ -152,7 +152,7 @@ export const accountConfigJa: AccountConfigBundleTranslations = {
       reconnectPasswordPlaceholder: '取引口座のパスワード',
       rememberPasswordLabel: '自動再接続のためにパスワードを記憶',
       rememberPasswordHint:
-        '暗号化されたコピーを保存し、TSCopier が再入力なしで再接続できるようにします。口座設定から削除できます。',
+        '暗号化されたコピーを保存し、TScopier が再入力なしで再接続できるようにします。口座設定から削除できます。',
       clearStoredCredentials: '保存したパスワードを削除',
       storedCredentialsActive: '自動再接続が有効です',
       deleteFailed: 'ブローカーの削除に失敗しました',

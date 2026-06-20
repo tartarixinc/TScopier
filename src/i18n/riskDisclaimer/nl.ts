@@ -3,13 +3,13 @@ import type { RiskDisclaimerPageTranslations } from './types'
 export const riskDisclaimerNl: RiskDisclaimerPageTranslations = {
   title: 'Risicowaarschuwing',
   intro:
-    'Handelen in forex, CFD\'s en andere producten met hefboomwerking brengt een aanzienlijk risico op verlies met zich mee. TSCopier is een tool voor het kopieren van transacties — geen broker, beleggingsadviseur of financieel planner. Niets op deze pagina is financieel advies. U bent zelf volledig verantwoordelijk voor uw handelsbeslissingen en eventuele verliezen.',
+    'Handelen in forex, CFD\'s en andere producten met hefboomwerking brengt een aanzienlijk risico op verlies met zich mee. TScopier is een tool voor het kopieren van transacties — geen broker, beleggingsadviseur of financieel planner. Niets op deze pagina is financieel advies. U bent zelf volledig verantwoordelijk voor uw handelsbeslissingen en eventuele verliezen.',
   sections: [
     {
       title: 'Algemeen handelsrisico',
       paragraphs: [
         'U kunt een deel of al uw ingelegde kapitaal verliezen. Hefboomwerking vergroot zowel winsten als verliezen. Eerdere prestaties van een signaalaanbieder, backtest of uw eigen historie bieden geen garantie voor toekomstige resultaten.',
-        'Markten kunnen met gaps openen, stilvallen of extreem bewegen tijdens nieuwsgebeurtenissen. TSCopier garandeert niet dat signalen op een bepaald moment of tegen een bepaalde prijs worden ontvangen, geparseerd of uitgevoerd.',
+        'Markten kunnen met gaps openen, stilvallen of extreem bewegen tijdens nieuwsgebeurtenissen. TScopier garandeert niet dat signalen op een bepaald moment of tegen een bepaalde prijs worden ontvangen, geparseerd of uitgevoerd.',
       ],
     },
     {
@@ -29,7 +29,7 @@ export const riskDisclaimerNl: RiskDisclaimerPageTranslations = {
     {
       title: 'Beperkingen in parsing en uitvoering',
       paragraphs: [
-        'Signalen worden automatisch uit tekst geinterpreteerd. Typefouten in stop loss (SL) of take profit (TP) — verkeerde cijfers, ontbrekende decimalen, dubbelzinnige symbolen of gemengde eenheden — kunnen ongeldige prijzen veroorzaken. TSCopier kan het signaal overslaan, ongeldige niveaus negeren of standaardwaarden uit uw configuratie toepassen in plaats van de bedoeling van de aanbieder.',
+        'Signalen worden automatisch uit tekst geinterpreteerd. Typefouten in stop loss (SL) of take profit (TP) — verkeerde cijfers, ontbrekende decimalen, dubbelzinnige symbolen of gemengde eenheden — kunnen ongeldige prijzen veroorzaken. TScopier kan het signaal overslaan, ongeldige niveaus negeren of standaardwaarden uit uw configuratie toepassen in plaats van de bedoeling van de aanbieder.',
         'De uitvoering kan afwijken van de entry van de aanbieder: slippage, requotes, gedeeltelijke fills, regels voor minimale afstand en verbroken brokersessies beinvloeden de uitkomst. Strict entry-, range pending- en multi-leg-stijlen voegen extra complexiteit toe. Controleer open posities altijd bij uw broker.',
       ],
     },
@@ -37,7 +37,7 @@ export const riskDisclaimerNl: RiskDisclaimerPageTranslations = {
       title: 'Operationele en configuratierisico\'s',
       paragraphs: [
         'Nieuwsblack-outs, kanaalfilters, winstdoelen, limieten voor maximaal verlies, abonnementsstatus en instellingen per kanaal kunnen kopieren blokkeren of wijzigen. Verkeerd ingestelde lotgrootte, symboolmapping of niet-gekoppelde kanalen zijn veelvoorkomende redenen waarom trades niet worden gekopieerd zoals verwacht.',
-        'Automatisch sluiten wanneer limieten worden geraakt, sluit kanaaltoegeschreven trades aan de TSCopier-kant, maar kan reeds geleden marktverlies niet ongedaan maken. Configuratiewijzigingen worden pas actief na opslaan — niet-opgeslagen concepten beschermen uw account niet.',
+        'Automatisch sluiten wanneer limieten worden geraakt, sluit kanaaltoegeschreven trades aan de TScopier-kant, maar kan reeds geleden marktverlies niet ongedaan maken. Configuratiewijzigingen worden pas actief na opslaan — niet-opgeslagen concepten beschermen uw account niet.',
       ],
     },
     {
@@ -56,5 +56,5 @@ export const riskDisclaimerNl: RiskDisclaimerPageTranslations = {
     },
   ],
   closing:
-    'Door TSCopier te gebruiken erkent u dat handelen risicovol is, dat signaalaanbieders onbetrouwbaar of misleidend kunnen zijn, en dat u de volledige verantwoordelijkheid aanvaardt voor alle trades die op uw gekoppelde accounts worden geplaatst.',
+    'Door TScopier te gebruiken erkent u dat handelen risicovol is, dat signaalaanbieders onbetrouwbaar of misleidend kunnen zijn, en dat u de volledige verantwoordelijkheid aanvaardt voor alle trades die op uw gekoppelde accounts worden geplaatst.',
 }

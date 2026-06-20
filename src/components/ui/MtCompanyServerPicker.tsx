@@ -203,7 +203,7 @@ const BrokerServerPickerModal = memo(function BrokerServerPickerModal({
       onMouseDown={onOverlayMouseDown}
       onClick={onOverlayClick}
     >
-      <div ref={backdropRef} className="absolute inset-0 bg-neutral-950/50" aria-hidden />
+      <div ref={backdropRef} className="absolute inset-0 bg-neutral-950/55" aria-hidden />
 
       <div className="relative flex max-h-[85vh] w-full flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:max-w-md sm:rounded-3xl dark:bg-neutral-900">
         <div className="flex items-center gap-3 border-b border-neutral-100 px-4 py-4 dark:border-neutral-800">

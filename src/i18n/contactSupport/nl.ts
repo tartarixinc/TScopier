@@ -2,7 +2,7 @@ import type { ContactSupportPageTranslations } from './types'
 
 export const contactSupportNl: ContactSupportPageTranslations = {
   channelsTitle: 'Hoe kunnen we je helpen?',
-  channelsSubtitle: 'Neem contact op met het TSCopier-team via e-mail, bekijk de documentatie of start een livechat.',
+  channelsSubtitle: 'Neem contact op met het TScopier-team via e-mail, bekijk de documentatie of start een livechat.',
   email: {
     title: 'E-mailondersteuning',
     description: 'Stuur vragen over account, facturatie of copier - we reageren meestal binnen een werkdag.',
@@ -40,7 +40,7 @@ export const contactSupportNl: ContactSupportPageTranslations = {
       {
         question: 'Wat doet nieuwshandel / economische-kalender-blackout?',
         answer:
-          'Wanneer nieuwshandel op een account is uitgeschakeld, kan TSCopier nieuwe posities pauzeren en optioneel open transacties sluiten rond kalendergebeurtenissen met hoge impact. Gebruik de pagina Economische kalender om komende publicaties te zien en regels in te stellen onder Accountconfiguratie.',
+          'Wanneer nieuwshandel op een account is uitgeschakeld, kan TScopier nieuwe posities pauzeren en optioneel open transacties sluiten rond kalendergebeurtenissen met hoge impact. Gebruik de pagina Economische kalender om komende publicaties te zien en regels in te stellen onder Accountconfiguratie.',
       },
       {
         question: 'Heb ik een betaald abonnement nodig om transacties te kopiëren?',

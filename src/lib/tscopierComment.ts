@@ -5,12 +5,34 @@ export interface ParsedTscopierComment {
   signalIdPrefix: string
 }
 
-const TSCOPIER_PREFIX = 'TSCopier:'
+export const TSCOPIER_COMMENT_PREFIX = 'TScopier:'
+/** Legacy MT comments written before brand casing was standardized. */
+export const LEGACY_TSCOPIER_COMMENT_PREFIX = 'TSCopier:'
 
 /** Max length of the channel slug segment in MT order comments (matches worker tradeComment). */
 export const CHANNEL_COMMENT_SLUG_MAX = 12
 
-/** Strip to broker-safe alphanumeric slug used in TSCopier order comments. */
+/** True when comment uses the current or legacy TScopier order prefix. */
+export function isTscopierComment(comment: string | null | undefined): boolean {
+  if (!comment?.trim()) return false
+  const trimmed = comment.trim()
+  return (
+    trimmed.startsWith(TSCOPIER_COMMENT_PREFIX)
+    || trimmed.startsWith(LEGACY_TSCOPIER_COMMENT_PREFIX)
+  )
+}
+
+function stripTscopierCommentPrefix(trimmed: string): string | null {
+  if (trimmed.startsWith(TSCOPIER_COMMENT_PREFIX)) {
+    return trimmed.slice(TSCOPIER_COMMENT_PREFIX.length)
+  }
+  if (trimmed.startsWith(LEGACY_TSCOPIER_COMMENT_PREFIX)) {
+    return trimmed.slice(LEGACY_TSCOPIER_COMMENT_PREFIX.length)
+  }
+  return null
+}
+
+/** Strip to broker-safe alphanumeric slug used in TScopier order comments. */
 export function sanitizeChannelCommentSlug(raw: string): string {
   const trimmed = raw.trim().replace(/^@/, '')
   if (!trimmed) return ''
@@ -27,13 +49,13 @@ export function signalIdMatchesPrefix(signalId: string, prefix: string): boolean
   return signalId.toLowerCase().startsWith(norm)
 }
 
-/** Parse `TSCopier:ChannelSlug:abc12345` or `TSCopier:abc12345` from MT order comment. */
+/** Parse `TScopier:ChannelSlug:abc12345` or `TScopier:abc12345` from MT order comment. */
 export function parseTscopierComment(comment: string | null | undefined): ParsedTscopierComment | null {
   if (!comment?.trim()) return null
   const trimmed = comment.trim()
-  if (!trimmed.startsWith(TSCOPIER_PREFIX)) return null
+  const body = stripTscopierCommentPrefix(trimmed)
+  if (body === null) return null
 
-  const body = trimmed.slice(TSCOPIER_PREFIX.length)
   const segments = body.split(':').map(s => s.trim()).filter(Boolean)
   if (segments.length === 0) return null
 

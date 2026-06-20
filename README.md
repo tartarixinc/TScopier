@@ -72,7 +72,7 @@ export default defineConfig([
 ])
 ```
 
-## TSCopier domains
+## TScopier domains
 
 - **Marketing**: `tscopier.ai` — landing page
 - **App**: `app.tscopier.ai` — dashboard, auth, pricing

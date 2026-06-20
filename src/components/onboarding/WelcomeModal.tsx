@@ -10,7 +10,7 @@ import { useLocale, useT } from '../../context/LocaleContext'
 import { getSubscribeCtaLabel } from '../../lib/subscriptionCta'
 import { Button } from '../ui/Button'
 
-/** Blocks the app until the user starts a trial or explores the dashboard. */
+/** Onboarding overlay; dashboard renders behind for a live preview. */
 export function WelcomeModal() {
   const t = useT()
   const { auth } = useLocale()
@@ -94,7 +94,7 @@ export function WelcomeModal() {
       className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-4 sm:p-6 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
       aria-hidden={false}
     >
-      <div className="absolute inset-0 bg-neutral-950/55" aria-hidden />
+      <div className="absolute inset-0 bg-neutral-950/40" aria-hidden />
 
       <div
         role="dialog"

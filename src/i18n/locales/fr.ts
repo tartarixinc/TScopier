@@ -437,7 +437,7 @@ export const fr: Translations = {
       reconnectPasswordPlaceholder: 'Mot de passe du compte de trading',
       rememberPasswordLabel: 'Mémoriser le mot de passe pour reconnexion automatique',
       rememberPasswordHint:
-        'Conserve une copie chiffrée pour que TSCopier se reconnecte sans redemander. Supprimable dans Configuration du compte.',
+        'Conserve une copie chiffrée pour que TScopier se reconnecte sans redemander. Supprimable dans Configuration du compte.',
       clearStoredCredentials: 'Oublier le mot de passe enregistré',
       storedCredentialsActive: 'Reconnexion auto activée',
       deleteFailed: 'Échec de la suppression du compte',
@@ -562,7 +562,7 @@ export const fr: Translations = {
       refresh: 'Actualiser',
       notFound: 'Compte broker introuvable.',
       initialBalance: 'Solde initial',
-      initialBalanceHint: 'Solde du compte capturé lors de la première connexion du courtier à TSCopier.',
+      initialBalanceHint: 'Solde du compte capturé lors de la première connexion du courtier à TScopier.',
       connectedAt: 'Connecté',
       connectedAtHint: 'Date et heure de la première liaison du compte courtier, prêt à trader.',
       currentBalance: 'Solde actuel',
@@ -754,7 +754,7 @@ export const fr: Translations = {
     telegramMessage: 'Message Telegram',
     parsedInstruction: 'Instruction analysée',
     signalTime: 'Signal reçu',
-    noLinkedSignal: 'Aucun signal TSCopier lié à ce trade.',
+    noLinkedSignal: 'Aucun signal TScopier lié à ce trade.',
     imageSignal: '(signal image)',
     loadingSignal: 'Chargement du signal…',
     loadSignalError: 'Impossible de charger les détails du signal.',
@@ -1133,7 +1133,7 @@ export const fr: Translations = {
     },
     loadError: 'Impossible de charger les comptes MT5 liés.',
     connectError: 'Échec de connexion.',
-    deleteConfirm: 'Retirer ce compte MT5 de TSCopier ?',
+    deleteConfirm: 'Retirer ce compte MT5 de TScopier ?',
     selectFxAccount: 'Choisir compte MT5 cloud',
     selectLegacyBroker: 'Choisir broker legacy',
     docsUrl: 'https://fxsocket.com/docs#request-builder',
@@ -1265,7 +1265,7 @@ export const fr: Translations = {
     },
     personal: {
       title: 'Informations personnelles',
-      description: 'Vos coordonnées et votre affichage dans TSCopier.',
+      description: 'Vos coordonnées et votre affichage dans TScopier.',
     },
     general: {
       title: 'Paramètres généraux',
@@ -1370,7 +1370,7 @@ export const fr: Translations = {
     },
     termsOfService: {
       title: 'Conditions d’utilisation',
-      description: 'Conditions régissant votre utilisation de TSCopier.',
+      description: 'Conditions régissant votre utilisation de TScopier.',
     },
     privacyPolicy: {
       title: 'Politique de confidentialité',
@@ -1378,7 +1378,7 @@ export const fr: Translations = {
     },
     cookiePolicy: {
       title: 'Politique de cookies',
-      description: 'Comment TSCopier utilise les cookies et technologies similaires.',
+      description: 'Comment TScopier utilise les cookies et technologies similaires.',
     },
     featureRequest: {
       title: 'Demande de fonctionnalité',

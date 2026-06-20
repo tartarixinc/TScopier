@@ -85,7 +85,7 @@ export const authEn: AuthTranslations = {
     heading: 'Check your email',
     subtitle: 'We just sent a verification link to {email}.',
     instructions:
-      'Open the link in that email to activate your account. You cannot use TSCopier until verification is complete.',
+      'Open the link in that email to activate your account. You cannot use TScopier until verification is complete.',
     resend: 'Resend email',
     resent: 'Email sent!',
     backToLogin: 'Back to login',
@@ -95,7 +95,7 @@ export const authEn: AuthTranslations = {
     confirmLinkExpired: 'This confirmation link expired or was already used. Sign in or request a new email.',
   },
   welcome: {
-    title: 'Welcome to TSCopier',
+    title: 'Welcome to TScopier',
     subtitle: 'Your account is ready. Start your free trial to copy Telegram signals to your broker.',
     steps: [
       'Connect Telegram and choose signal channels',

@@ -132,7 +132,7 @@ export const chromeNl: AppChromeTranslations = {
     },
     contactSupport: {
       title: 'Contact opnemen met support',
-      description: 'Krijg hulp van het TSCopier-team met je account, copier-instellingen of technische problemen.',
+      description: 'Krijg hulp van het TScopier-team met je account, copier-instellingen of technische problemen.',
     },
     riskDisclaimer: {
       title: 'Risicodisclaimer',
@@ -140,7 +140,7 @@ export const chromeNl: AppChromeTranslations = {
     },
     termsOfService: {
       title: 'Servicevoorwaarden',
-      description: 'Voorwaarden voor het gebruik van TSCopier.',
+      description: 'Voorwaarden voor het gebruik van TScopier.',
     },
     privacyPolicy: {
       title: 'Privacybeleid',
@@ -148,7 +148,7 @@ export const chromeNl: AppChromeTranslations = {
     },
     cookiePolicy: {
       title: 'Cookiebeleid',
-      description: 'Hoe TSCopier cookies en vergelijkbare technologieën gebruikt.',
+      description: 'Hoe TScopier cookies en vergelijkbare technologieën gebruikt.',
     },
     featureRequest: {
       title: 'Functieaanvraag',

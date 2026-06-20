@@ -3,7 +3,7 @@ import type { Testimonial } from './types'
 export const testimonialsFr: Testimonial[] = [
   {
     quote:
-      'Je copiais le XAUUSD à la main depuis deux groupes Telegram. Trois semaines sur TSCopier et la plupart des fills arrivent sur mon MT5 IC Markets avant que j’aie fini de lire le message.',
+      'Je copiais le XAUUSD à la main depuis deux groupes Telegram. Trois semaines sur TScopier et la plupart des fills arrivent sur mon MT5 IC Markets avant que j’aie fini de lire le message.',
     author: 'Marcus T.',
     role: 'Trader à temps partiel · Royaume-Uni',
   },

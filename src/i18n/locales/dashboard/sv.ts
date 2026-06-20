@@ -90,7 +90,7 @@ export const dashboardSv: DashboardBundleTranslations = {
       refresh: 'Uppdatera',
       notFound: 'Mäklarkonto hittades inte.',
       initialBalance: 'Initialt saldo',
-      initialBalanceHint: 'Kontosaldo som togs när denna mäklare först anslöts till TSCopier.',
+      initialBalanceHint: 'Kontosaldo som togs när denna mäklare först anslöts till TScopier.',
       connectedAt: 'Ansluten',
       connectedAtHint: 'Datum och tid då detta mäklarkonto först länkades och var redo att handla.',
       currentBalance: 'Aktuellt saldo',

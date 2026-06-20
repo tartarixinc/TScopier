@@ -20,7 +20,7 @@ export const tradingPl: TradingPagesBundleTranslations = {
     telegramMessage: 'Wiadomość Telegram',
     parsedInstruction: 'Przetworzona instrukcja',
     signalTime: 'Sygnał odebrany',
-    noLinkedSignal: 'Brak powiązanego sygnału TSCopier dla tej transakcji.',
+    noLinkedSignal: 'Brak powiązanego sygnału TScopier dla tej transakcji.',
     imageSignal: '(sygnał obrazkowy)',
     loadingSignal: 'Ładowanie sygnału…',
     loadSignalError: 'Nie udało się wczytać szczegółów sygnału.',

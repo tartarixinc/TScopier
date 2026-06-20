@@ -88,7 +88,7 @@ export const dashboardJa: DashboardBundleTranslations = {
       refresh: '更新',
       notFound: 'ブローカー口座が見つかりません。',
       initialBalance: '初期残高',
-      initialBalanceHint: 'このブローカーが TSCopier に初回接続された時点の口座残高。',
+      initialBalanceHint: 'このブローカーが TScopier に初回接続された時点の口座残高。',
       connectedAt: '接続日時',
       connectedAtHint: 'このブローカー口座が初めて連携され、取引可能になった日時。',
       currentBalance: '現在残高',

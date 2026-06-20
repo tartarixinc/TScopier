@@ -375,7 +375,7 @@ export const configureModalFr: ConfigureModalTranslations = {
     ruleTriggerTpHit: 'lorsque TP{index} est atteint',
     orderCommentsTitle: 'Commentaires d\'ordre',
     orderCommentsSubtitle:
-      'Désactivé : TSCopier laisse le champ commentaire du courtier vide pour les trades qu\'il ouvre ou actualise.',
+      'Désactivé : TScopier laisse le champ commentaire du courtier vide pour les trades qu\'il ouvre ou actualise.',
   },
   filters: {
     timeTitle: 'Filtre horaire',

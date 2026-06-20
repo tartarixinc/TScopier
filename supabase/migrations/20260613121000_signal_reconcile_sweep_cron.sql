@@ -1,5 +1,5 @@
 /*
-  # TSCopier - schedule signal-reconcile-sweep edge function
+  # TScopier - schedule signal-reconcile-sweep edge function
 
   Backup to worker per-user signal reconcile sweep (60s). Edge triggers
   listener HTTP reconcile for users with open trades.

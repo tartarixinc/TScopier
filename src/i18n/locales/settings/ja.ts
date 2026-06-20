@@ -20,7 +20,7 @@ export const settingsJa: SettingsBundleTranslations = {
     },
     personal: {
       title: '個人情報',
-      description: '連絡先情報と、TSCopier上での表示内容を管理します。',
+      description: '連絡先情報と、TScopier上での表示内容を管理します。',
     },
     general: {
       title: '一般設定',

@@ -5,7 +5,7 @@ export const termsOfServicePl: LegalDocumentPageTranslations = {
   title: 'Warunki świadczenia usług',
   lastUpdated: 'Ostatnia aktualizacja: 8 czerwca 2026 r.',
   intro:
-    'Niniejsze Warunki świadczenia usług („Warunki”) regulują dostęp do stron internetowych, aplikacji i powiązanych usług TSCopier (łącznie „Usługa”) oraz korzystanie z nich, świadczonych przez Tartarix, Inc. („Tartarix”, „my”, „nas” lub „nasze”). Tworząc konto lub korzystając z Usługi, akceptujesz niniejsze Warunki. Jeżeli ich nie akceptujesz, nie korzystaj z Usługi.',
+    'Niniejsze Warunki świadczenia usług („Warunki”) regulują dostęp do stron internetowych, aplikacji i powiązanych usług TScopier (łącznie „Usługa”) oraz korzystanie z nich, świadczonych przez Tartarix, Inc. („Tartarix”, „my”, „nas” lub „nasze”). Tworząc konto lub korzystając z Usługi, akceptujesz niniejsze Warunki. Jeżeli ich nie akceptujesz, nie korzystaj z Usługi.',
   sections: [
     {
       title: '1. Uprawnienia i konto',
@@ -17,7 +17,7 @@ export const termsOfServicePl: LegalDocumentPageTranslations = {
     {
       title: '2. Usługa',
       paragraphs: [
-        'TSCopier to narzędzie programowe, które pomaga użytkownikom łączyć konta MetaTrader z kanałami sygnałowymi Telegram i automatyzować proces kopiowania transakcji zgodnie z konfiguracją użytkownika. Nie jesteśmy brokerem, giełdą, depozytariuszem, doradcą inwestycyjnym ani zarządzającym portfelem.',
+        'TScopier to narzędzie programowe, które pomaga użytkownikom łączyć konta MetaTrader z kanałami sygnałowymi Telegram i automatyzować proces kopiowania transakcji zgodnie z konfiguracją użytkownika. Nie jesteśmy brokerem, giełdą, depozytariuszem, doradcą inwestycyjnym ani zarządzającym portfelem.',
         'Nie realizujemy transakcji we własnym imieniu na Twoją rzecz, nie przechowujemy Twoich środków i nie udzielamy spersonalizowanych porad finansowych. Wszystkie transakcje odbywają się na platformach brokerów zewnętrznych, zgodnie z ich warunkami.',
       ],
     },

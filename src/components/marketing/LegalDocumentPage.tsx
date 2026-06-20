@@ -5,7 +5,7 @@ import type { LegalDocumentPageTranslations } from '../../i18n/legal/types'
 
 export function LegalDocumentPage({ page }: { page: LegalDocumentPageTranslations }) {
   useEffect(() => {
-    document.title = `${page.title} · TSCopier`
+    document.title = `${page.title} · TScopier`
   }, [page.title])
 
   const c = page.contact

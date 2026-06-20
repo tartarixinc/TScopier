@@ -45,7 +45,7 @@ export const accountConfigSv: AccountConfigBundleTranslations = {
       passwordHint: '',
       rememberPasswordLabel: 'Kom ihåg lösenord för automatisk återanslutning',
       rememberPasswordHint:
-        'Krypterar ditt MT-lösenord på våra servrar så att TSCopier kan återställa sessionen utan att fråga igen. Du kan ta bort det när som helst.',
+        'Krypterar ditt MT-lösenord på våra servrar så att TScopier kan återställa sessionen utan att fråga igen. Du kan ta bort det när som helst.',
       connectButton: 'Anslut konto',
       connectingTitle: 'Ansluter din mäklare',
       connectingStepLinking: 'Länkar ditt {platform}-konto…',
@@ -152,7 +152,7 @@ export const accountConfigSv: AccountConfigBundleTranslations = {
       reconnectPasswordPlaceholder: 'Lösenord för handelskonto',
       rememberPasswordLabel: 'Kom ihåg lösenord för automatisk återanslutning',
       rememberPasswordHint:
-        'Lagrar en krypterad kopia så att TSCopier kan återansluta utan att fråga igen. Du kan rensa den i Kontokonfiguration.',
+        'Lagrar en krypterad kopia så att TScopier kan återansluta utan att fråga igen. Du kan rensa den i Kontokonfiguration.',
       clearStoredCredentials: 'Glöm sparat lösenord',
       storedCredentialsActive: 'Automatisk återanslutning aktiverad',
       deleteFailed: 'Det gick inte att ta bort mäklaren',

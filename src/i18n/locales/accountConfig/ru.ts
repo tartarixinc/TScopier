@@ -45,7 +45,7 @@ export const accountConfigRu: AccountConfigBundleTranslations = {
       passwordHint: '',
       rememberPasswordLabel: 'Запомнить пароль для автоматического переподключения',
       rememberPasswordHint:
-        'Шифрует ваш пароль MT на наших серверах, чтобы TSCopier мог восстановить сессию без повторного запроса. Вы можете удалить его в любой момент.',
+        'Шифрует ваш пароль MT на наших серверах, чтобы TScopier мог восстановить сессию без повторного запроса. Вы можете удалить его в любой момент.',
       connectButton: 'Подключить счет',
       connectingTitle: 'Подключаем вашего брокера',
       connectingStepLinking: 'Связываем ваш счет {platform}…',
@@ -152,7 +152,7 @@ export const accountConfigRu: AccountConfigBundleTranslations = {
       reconnectPasswordPlaceholder: 'Пароль торгового счета',
       rememberPasswordLabel: 'Запомнить пароль для автоматического переподключения',
       rememberPasswordHint:
-        'Сохраняет зашифрованную копию, чтобы TSCopier мог переподключаться без запроса пароля. Вы можете очистить ее в конфигурации счета.',
+        'Сохраняет зашифрованную копию, чтобы TScopier мог переподключаться без запроса пароля. Вы можете очистить ее в конфигурации счета.',
       clearStoredCredentials: 'Забыть сохраненный пароль',
       storedCredentialsActive: 'Автопереподключение включено',
       deleteFailed: 'Не удалось удалить брокера',
