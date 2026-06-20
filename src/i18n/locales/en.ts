@@ -247,9 +247,10 @@ export const en: Translations = {
       upgradeCta: 'Upgrade to Advanced',
       purchaseSubscriptionCta: 'Purchase Subscription',
       manageBilling: 'Manage billing',
-      updatePaymentTitle: 'Update your payment method',
-      updatePaymentReason: 'Your subscription is past due. Update billing to restore full access.',
-      updatePayment: 'Update payment',
+      updatePaymentTitle: 'Payment did not go through',
+      updatePaymentReason:
+        'Please pay your invoices to avoid service disruptions. We will stop the copier if payment is not received.',
+      updatePayment: 'Pay invoices',
       brokerLimit: 'Your plan allows {limit} broker account(s). Upgrade to connect more.',
       channelLimit: 'Basic plan includes {limit} Telegram channels. Upgrade for unlimited channels.',
       backtestLimit: 'Basic plan includes {limit} backtests per month. Upgrade for unlimited backtests.',
@@ -533,6 +534,10 @@ export const en: Translations = {
     telegramNotConnectedTitle: 'Telegram not connected',
     telegramNotConnectedBody: 'Connect your Telegram account to start copying signals from your channels.',
     connectTelegram: 'Connect Telegram',
+    pastDuePaymentTitle: 'Payment did not go through',
+    pastDuePaymentBody:
+      'Please pay your invoices to avoid service disruptions. We will stop the copier if payment is not received.',
+    payInvoices: 'Pay invoices',
     linkedAccounts: {
       title: 'Linked Accounts',
       subtitle: 'Connected broker accounts used by the copier',

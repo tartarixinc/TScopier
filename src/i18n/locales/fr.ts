@@ -247,9 +247,10 @@ export const fr: Translations = {
       upgradeCta: 'Passer à Advanced',
       purchaseSubscriptionCta: 'Acheter abonnement',
       manageBilling: 'Gérer la facturation',
-      updatePaymentTitle: 'Mettez à jour votre moyen de paiement',
-      updatePaymentReason: 'Votre abonnement est en retard. Mettez à jour la facturation pour rétablir l\'accès.',
-      updatePayment: 'Mettre à jour le paiement',
+      updatePaymentTitle: 'Le paiement n\'a pas abouti',
+      updatePaymentReason:
+        'Veuillez régler vos factures pour éviter une interruption de service. Le copieur sera arrêté si le paiement n\'est pas reçu.',
+      updatePayment: 'Payer les factures',
       brokerLimit: 'Votre plan autorise {limit} compte(s) broker. Passez à un plan supérieur pour en connecter plus.',
       channelLimit: 'Le plan Basic inclut {limit} canaux Telegram. Passez à Advanced pour des canaux illimités.',
       backtestLimit: 'Le plan Basic inclut {limit} backtests par mois. Passez à Advanced pour des backtests illimités.',
@@ -533,6 +534,10 @@ export const fr: Translations = {
     telegramNotConnectedTitle: 'Telegram non connecté',
     telegramNotConnectedBody: 'Connectez votre compte Telegram pour commencer à copier les signaux de vos canaux.',
     connectTelegram: 'Connecter Telegram',
+    pastDuePaymentTitle: 'Le paiement n\'a pas abouti',
+    pastDuePaymentBody:
+      'Veuillez régler vos factures pour éviter une interruption de service. Le copieur sera arrêté si le paiement n\'est pas reçu.',
+    payInvoices: 'Payer les factures',
     linkedAccounts: {
       title: 'Comptes liés',
       subtitle: 'Comptes broker connectés utilisés par le copieur',

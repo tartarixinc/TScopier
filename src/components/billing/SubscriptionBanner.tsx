@@ -1,6 +1,7 @@
 import { useSubscription } from '../../context/SubscriptionContext'
 import { useT } from '../../context/LocaleContext'
 import { UpgradePrompt } from './UpgradePrompt'
+import { PastDueSubscriptionBanner } from './PastDueSubscriptionBanner'
 
 /** Top-of-dashboard banner when the user has no active subscription or is past due. */
 export function SubscriptionBanner() {
@@ -8,14 +9,15 @@ export function SubscriptionBanner() {
   const pw = t.pricing.paywall
   const { loading, hasActiveSubscription, isPastDue } = useSubscription()
 
-  if (loading || (hasActiveSubscription && !isPastDue)) return null
+  if (loading) return null
+  if (isPastDue) return <PastDueSubscriptionBanner className="mb-6" />
+  if (hasActiveSubscription) return null
 
   return (
     <UpgradePrompt
       variant="banner"
-      title={isPastDue ? pw.updatePaymentTitle : pw.noPlanTitle}
-      reason={isPastDue ? pw.updatePaymentReason : pw.noPlanReason}
-      showManageBilling={isPastDue}
+      title={pw.noPlanTitle}
+      reason={pw.noPlanReason}
       className="mb-6"
     />
   )

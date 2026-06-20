@@ -284,6 +284,9 @@ export interface DashboardTranslations {
   telegramNotConnectedTitle: string
   telegramNotConnectedBody: string
   connectTelegram: string
+  pastDuePaymentTitle?: string
+  pastDuePaymentBody?: string
+  payInvoices?: string
   linkedAccounts: DashboardLinkedAccountsTranslations
   brokerStats: DashboardBrokerStatsTranslations
 }

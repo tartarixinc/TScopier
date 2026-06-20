@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { Pause, Play } from 'lucide-react'
 import clsx from 'clsx'
 import { useT } from '../../context/LocaleContext'
+import { useSubscription } from '../../context/SubscriptionContext'
 import { useUserProfile } from '../../context/UserProfileContext'
 import { useCopierStartBlocked } from '../../hooks/useCopierStartBlocked'
 import { useOverlayDismiss } from '../../hooks/useOverlayDismiss'
@@ -17,6 +18,9 @@ export function CopierPauseToggle({ className }: CopierPauseToggleProps) {
   const t = useT()
   const cp = t.nav.copierPause
   const { copierPaused, patchProfile, persistProfile, refreshProfile } = useUserProfile()
+  const { isPastDue } = useSubscription()
+  const pw = t.pricing.paywall
+  const d = t.dashboard
   const { copierStartBlocked, copierStartBlockedReason, resolving: startBlockedResolving } =
     useCopierStartBlocked()
   const [saving, setSaving] = useState(false)
@@ -33,7 +37,9 @@ export function CopierPauseToggle({ className }: CopierPauseToggleProps) {
   const showStopped = lockedStopped || copierPaused
   const stoppedHint = lockedStopped
     ? (copierStartBlockedReason === 'subscription'
-      ? (cp.stoppedHintSubscription ?? cp.statusCopierStopped ?? 'Copier Stopped')
+      ? (isPastDue
+        ? (d.pastDuePaymentBody ?? pw.updatePaymentReason)
+        : (cp.stoppedHintSubscription ?? cp.statusCopierStopped ?? 'Copier Stopped'))
       : (cp.stoppedHintSetup ?? cp.statusCopierStopped ?? 'Copier Stopped'))
     : cp.pausedHint
 
