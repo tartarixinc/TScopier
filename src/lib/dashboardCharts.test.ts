@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert'
-import { test } from 'node:test'
+import { test } from 'vitest'
 import {
   buildTradeVolume7Day,
   findTodayTradeOutcomeDay,
@@ -62,6 +62,7 @@ test('buildAccountGrowthSeries: flat balance line when no closed trades in windo
   }
 })
 
+test('buildAccountGrowthSeries: backfills balance from closed trades in window', () => {
   const now = new Date(2026, 4, 18, 12, 0, 0)
   const trades: DashboardChartTrade[] = [
     {

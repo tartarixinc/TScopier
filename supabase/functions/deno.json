@@ -1,0 +1,9 @@
+{
+  "tasks": {
+    "test": "deno test --allow-read"
+  },
+  "compilerOptions": {
+    "strict": true,
+    "lib": ["deno.window", "deno.ns"]
+  }
+}

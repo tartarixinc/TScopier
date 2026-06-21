@@ -7,7 +7,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
-    "test": "node --require ts-node/register --test $(find src -name '*.test.ts' | sort)",
+    "test": "node scripts/run-tests.cjs",
     "replay-parse": "ts-node -r dotenv/config src/diagnostics/replayChannelParse.ts"
   },
   "dependencies": {

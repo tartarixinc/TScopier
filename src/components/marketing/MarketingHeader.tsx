@@ -54,6 +54,7 @@ export function MarketingHeader() {
 
   return (
     <header
+      role="banner"
       className={clsx(
         'marketing-nav-header pointer-events-none fixed inset-x-0 top-0 z-50 px-4 sm:px-6',
         scrolled ? 'pt-2' : 'pt-4',

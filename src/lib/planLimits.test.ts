@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert'
-import { test } from 'node:test'
-import { normalizeManualSettingsForPlan } from './planLimits.ts'
+import { test } from 'vitest'
+import { normalizeManualSettingsForPlan } from './planLimits'
 
 test('basic plan normalization forces single trade style', () => {
   const normalized = normalizeManualSettingsForPlan('basic', 'active', {

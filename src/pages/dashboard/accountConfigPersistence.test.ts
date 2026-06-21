@@ -1,10 +1,10 @@
 import { strict as assert } from 'node:assert'
-import { test } from 'node:test'
+import { test } from 'vitest'
 import {
   choosePersistedSelectedChannelId,
   hasRequestedMultiTradeStyle,
   shouldBlockMultiTradeSave,
-} from './accountConfigPersistence.ts'
+} from './accountConfigPersistence'
 
 test('hasRequestedMultiTradeStyle detects any selected multi style', () => {
   const channelIds = ['a', 'b']

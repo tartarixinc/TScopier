@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert'
-import { test } from 'node:test'
+import { test } from 'vitest'
 import { channelWorkerEn } from '../i18n/channelWorker/en'
 import { channelWorkerLogMessage } from './channelWorkerLogMessage'
 

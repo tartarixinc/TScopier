@@ -8,7 +8,9 @@ import { isAppHost } from './lib/site.ts'
 
 applyThemeToDocument(readStoredTheme())
 
-const Root = isAppHost() ? App : MarketingApp
+function Root() {
+  return isAppHost() ? <App /> : <MarketingApp />
+}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

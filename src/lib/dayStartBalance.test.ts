@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert'
-import { test } from 'node:test'
+import { test } from 'vitest'
 import { resolveDisplayedTodayProfit, resolveDayStartBalance } from './dayStartBalance'
 
 test('resolveDisplayedTodayProfit: chart wins when balance delta is zeroed', () => {
