@@ -159,7 +159,7 @@ export const configureModalSv: ConfigureModalTranslations = {
     rangeDistanceFallback: 'Avståndet för räckvidden som tillhandahålls av din signalleverantör. Detta avgör hur långt handeln är skiktad.',
     layerTillClose: 'Varva tills nära',
     layerTillCloseBody: 'På: intervall väntande order fortsätter att öppna tills hela handeln är stängd, även om priset drar sig tillbaka efter en take-profit eller nära-värre-poster. Av: väntande beställningar avbryts efter den första vinsten eller när någon beställning stänger, så inga djupare beställningar öppnas vid en återföring.',
-    useSignalRange: 'Använd signalområdet',
+    useSignalRange: 'Endast handla signalrange',
     useSignalRangeBody:
       'När på måste signalen innehålla ett analyserat ingångspris eller -zon (t.ex. 4505, 4505/4500, @ 4505). Rena „köp nu” utan pris hoppas över och visas som väntar på range. Till skillnad från signal ingångspris placeras ingen mäklarpending — copiern väntar virtuellt och öppnar när livepriset är var som helst inom signalens ingångszon, med piptolerans något utanför båda gränserna.',
     useSignalRangePipTolerance: 'Piptolerans',
@@ -167,7 +167,7 @@ export const configureModalSv: ConfigureModalTranslations = {
       'Extra pips utanför zongränserna (båda sidor) inom vilka entry fortfarande kan triggas. Enstaka pris: tolerans ovan (köp) eller under (sälj) ingångsnivån.',
     useSignalRangeDistanceDisabledHint: 'Djupet tas från signalingångszonen när signalen inkluderar en.',
     previewSignalRangeFootnote:
-      ' Med signalrange på väntar entry tills priset är inom zonen (± tolerans på båda gränser); avståndsdjup tas från ingångszonen när den finns.',
+      ' Med Endast handla signalrange väntar entry tills priset är inom zonen (± tolerans på båda gränser).',
     closeWorseEntries: 'Stäng sämre poster',
     closeWorseBody: 'När priset rör sig +X pips till din fördel från startposten stänger systemet automatiskt dina omedelbara affärer. När ett "Stäng värre poster"-meddelande är aktiverat och utlöst, stänger systemet alla öppna handel som ligger inom X pips av det aktuella marknadspriset. Avslut som påverkas av "Stäng värre poster" har inte en Take-Profit (TP) inställd på mäklarens sida. Endast Stop-Loss (SL) skickas till mäklaren.',
     closeWorsePips: 'Stäng vinster från sämre inträde (pips)',

@@ -159,7 +159,7 @@ export const configureModalNl: ConfigureModalTranslations = {
     rangeDistanceFallback: 'De afstand van het bereik dat door uw signaalaanbieder wordt geleverd. Dit bepaalt hoe ver de handel gelaagd is.',
     layerTillClose: 'Laag tot dichtbij',
     layerTillCloseBody: 'Aan: lopende orders in het bereik blijven open totdat de hele transactie is gesloten, zelfs als de prijs zich terugtrekt na een take-profit of close-slechter-inschrijvingen. Uit: openstaande orders worden geannuleerd na de eerste take-profit of wanneer een order wordt gesloten, dus er worden geen diepere orders geopend bij een omkering.',
-    useSignalRange: 'Gebruik signaalbereik',
+    useSignalRange: 'Alleen signaalrange traden',
     useSignalRangeBody:
       'Indien ingeschakeld moet het signaal een geparseerde instapprijs of -zone bevatten (bijv. 4505, 4505/4500, @ 4505). Kale „koop nu”-berichten zonder prijs worden overgeslagen en getoond als wachten op range. In tegenstelling tot signaal instapprijs wordt geen broker pending geplaatst — de copier wacht virtueel en opent wanneer de live prijs ergens binnen de signaal-invoerzone is, met piptolerantie iets voorbij beide grenzen.',
     useSignalRangePipTolerance: 'Piptolerantie',
@@ -167,7 +167,7 @@ export const configureModalNl: ConfigureModalTranslations = {
       'Extra pips voorbij de zonegrenzen (beide kanten) waarbinnen entry nog mag triggeren. Enkele prijs: tolerantie boven (koop) of onder (verkoop) het instapniveau.',
     useSignalRangeDistanceDisabledHint: 'De diepte wordt uit de signaalinvoerzone gehaald als het signaal er één bevat.',
     previewSignalRangeFootnote:
-      ' Met signaalrange aan wacht entry tot de prijs in de zone zit (± tolerantie aan beide grenzen); bereikdiepte komt uit de invoerzone wanneer die er is.',
+      ' Met Alleen signaalrange traden wacht entry tot de prijs in de zone zit (± tolerantie aan beide grenzen).',
     closeWorseEntries: 'Sluit slechtere inzendingen',
     closeWorseBody: 'Wanneer de prijs +X pips in uw voordeel beweegt vanaf het begin, sluit het systeem automatisch uw onmiddellijke transacties. Wanneer het bericht \'Sluit slechtere items sluiten\' wordt ingeschakeld en geactiveerd, sluit het systeem elke open transactie die binnen X pips van de huidige marktprijs ligt. Transacties die getroffen zijn door "Sluit slechtere inzendingen" hebben geen Take-Profit (TP) ingesteld aan de kant van de makelaar. Alleen de Stop-Loss (SL) wordt naar de makelaar gestuurd.',
     closeWorsePips: 'Sluit winst na slechtere instap (pips)',

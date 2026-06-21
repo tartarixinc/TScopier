@@ -277,7 +277,7 @@ export interface ManualSettings {
   range_distance_pips?: number
   /** When true, virtual range pendings stay active until the whole basket is flat (not after first TP/CWE close). */
   range_layer_till_close?: boolean
-  /** When true with range_trading, gate entry on parsed price/zone ± pip tolerance (virtual wait, no broker pending). */
+  /** When true with multi trade, gate entry on parsed price/zone ± pip tolerance (virtual wait, no broker pending). Independent of range_trading layering. */
   use_signal_entry_range?: boolean
   /** When true, immediate multi-trade legs are closed at anchor + `close_worse_entries_pips` via the worker. */
   close_worse_entries?: boolean
