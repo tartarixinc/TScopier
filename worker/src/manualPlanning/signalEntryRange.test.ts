@@ -162,18 +162,18 @@ test('signalRangeEntryQuoteAllowsImmediate: buy zone 4500-4505 full band matrix'
     isBuy: true,
   })!
   const pipSize = 0.1 // 10 pips → 1.0 tolerance
-  // Above hi + tol (4506) → no trade
-  assert.equal(signalRangeEntryQuoteAllowsImmediate({ wait, bid: 4500, ask: 4506.01, pipSize }), false)
+  // Above hi + tol (4506) — bid entirely above band
+  assert.equal(signalRangeEntryQuoteAllowsImmediate({ wait, bid: 4507, ask: 4510, pipSize }), false)
   // At hi + tol (4506) → trade
   assert.equal(signalRangeEntryQuoteAllowsImmediate({ wait, bid: 4500, ask: 4506, pipSize }), true)
   // Inside zone → trade
   assert.equal(signalRangeEntryQuoteAllowsImmediate({ wait, bid: 4498, ask: 4502, pipSize }), true)
   // At zone lo (4500) → trade
   assert.equal(signalRangeEntryQuoteAllowsImmediate({ wait, bid: 4498, ask: 4500, pipSize }), true)
-  // Below lo - tol (4499) → no trade
+  // Below lo - tol — spread entirely under band (ask must clear lo - tol)
   assert.equal(signalRangeEntryQuoteAllowsImmediate({ wait, bid: 4498, ask: 4498.99, pipSize }), false)
-  // At lo - tol (4499) → trade
-  assert.equal(signalRangeEntryQuoteAllowsImmediate({ wait, bid: 4498, ask: 4499, pipSize }), true)
+  // At lo - tol (4499) → trade (ask touches band bottom)
+  assert.equal(signalRangeEntryQuoteAllowsImmediate({ wait, bid: 4496, ask: 4499, pipSize }), true)
 })
 
 test('signalRangeEntryQuoteAllowsImmediate: buy zone band hi and lo bounds', () => {
@@ -188,7 +188,7 @@ test('signalRangeEntryQuoteAllowsImmediate: buy zone band hi and lo bounds', () 
     true,
   )
   assert.equal(
-    signalRangeEntryQuoteAllowsImmediate({ wait, bid: 4320, ask: 4336.5, pipSize }),
+    signalRangeEntryQuoteAllowsImmediate({ wait, bid: 4337, ask: 4340, pipSize }),
     false,
   )
   // Mid-zone without touching either edge
@@ -210,7 +210,7 @@ test('signalRangeEntryQuoteAllowsImmediate: sell zone band lo and hi bounds', ()
     true,
   )
   assert.equal(
-    signalRangeEntryQuoteAllowsImmediate({ wait, bid: 4323.5, ask: 4340, pipSize }),
+    signalRangeEntryQuoteAllowsImmediate({ wait, bid: 4320, ask: 4323.5, pipSize }),
     false,
   )
   // Mid-zone
@@ -246,9 +246,9 @@ test('signalRangeEntryQuoteAllowsImmediate: sell BTC zone 64203-64459 full band 
     signalRangeEntryQuoteAllowsImmediate({ wait, bid: 64202, ask: 64220, pipSize }),
     true,
   )
-  // Below lo - tol
+  // Below lo - tol — ask still under band bottom
   assert.equal(
-    signalRangeEntryQuoteAllowsImmediate({ wait, bid: 64201.5, ask: 64220, pipSize }),
+    signalRangeEntryQuoteAllowsImmediate({ wait, bid: 64200, ask: 64201.5, pipSize }),
     false,
   )
   // At hi + tol (64460)
@@ -256,10 +256,41 @@ test('signalRangeEntryQuoteAllowsImmediate: sell BTC zone 64203-64459 full band 
     signalRangeEntryQuoteAllowsImmediate({ wait, bid: 64460, ask: 64500, pipSize }),
     true,
   )
-  // Above hi + tol
+  // Above hi + tol — bid past band top
   assert.equal(
-    signalRangeEntryQuoteAllowsImmediate({ wait, bid: 64460.01, ask: 64500, pipSize }),
+    signalRangeEntryQuoteAllowsImmediate({ wait, bid: 64461, ask: 64500, pipSize }),
     false,
+  )
+})
+
+test('signalRangeEntryQuoteAllowsImmediate: sell BTC zone fires when ask touches lo (spread overlap)', () => {
+  const wait = buildRangeEntryWait({
+    manual: { use_signal_entry_range: true, trade_style: 'multi', signal_entry_pip_tolerance: 0 },
+    parsed: {
+      action: 'sell',
+      symbol: 'BTCUSD',
+      entry_price: null,
+      entry_zone_low: 64224,
+      entry_zone_high: 64459,
+      sl: 64659,
+      tp: [64100],
+      lot_size: null,
+    },
+    isBuy: false,
+  })!
+  const pipSize = 0.1
+  // Chart shows 64224 (ask) while bid is 3 pts below — must enter, not wait for bid=64227
+  assert.equal(
+    signalRangeEntryQuoteAllowsImmediate({ wait, bid: 64221, ask: 64224, pipSize }),
+    true,
+  )
+  assert.equal(
+    signalRangeEntryQuoteAllowsImmediate({ wait, bid: 64220, ask: 64223, pipSize }),
+    false,
+  )
+  assert.equal(
+    signalRangeEntryQuoteAllowsImmediate({ wait, bid: 64224, ask: 64227, pipSize }),
+    true,
   )
 })
 
@@ -278,13 +309,18 @@ test('signalRangeEntryQuoteAllowsImmediate: pip tolerance requires pipSize', () 
     },
     isBuy: false,
   })!
-  // At zone low 64259, bid 64258.5 is within 10 pips (point=1) when pipSize is set.
+  // At zone low 64259 with pip tolerance when pipSize is set.
   assert.equal(
     signalRangeEntryQuoteAllowsImmediate({ wait, bid: 64258.5, ask: 64300, pipSize: 1 }),
     true,
   )
+  // Without pipSize, tolerance pips are ignored — ask must reach zone lo
   assert.equal(
-    signalRangeEntryQuoteAllowsImmediate({ wait, bid: 64258.5, ask: 64300 }),
+    signalRangeEntryQuoteAllowsImmediate({ wait, bid: 64250, ask: 64258, pipSize: undefined }),
     false,
+  )
+  assert.equal(
+    signalRangeEntryQuoteAllowsImmediate({ wait, bid: 64250, ask: 64259, pipSize: undefined }),
+    true,
   )
 })
