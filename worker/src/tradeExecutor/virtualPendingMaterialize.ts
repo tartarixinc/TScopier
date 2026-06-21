@@ -1,5 +1,5 @@
 import type { TradeExecutorContext } from './context'
-import { roundLot, triggerPriceFor } from './helpers'
+import { roundLot, triggerPriceFor, virtualPendingTriggerAllowed } from './helpers'
 import type { PreparedEntry } from './entryPrepare'
 
 /**
@@ -12,7 +12,7 @@ export async function materializeVirtualPendingLegs(
 ): Promise<boolean> {
   const {
     signal, broker, uuid, symbol, virtualPendings, deferVirtualAnchor, anchor, anchorSource,
-    params, liveEntryFast, strictDeferred,
+    params, plan, liveEntryFast, strictDeferred,
   } = prep
 
   const insertRows: Record<string, unknown>[] = []
@@ -26,14 +26,34 @@ export async function materializeVirtualPendingLegs(
       const safe = Math.max(Number(params?.stopsLevel) || 0, Number(params?.freezeLevel) || 0)
       const zoneHi = safe > 0 ? anchor + (safe + 2) * (params?.point ?? 0) : null
       const zoneLo = safe > 0 ? anchor - (safe + 2) * (params?.point ?? 0) : null
+      const signalRangeBoundary = plan.rangeLayering?.signalRangeBoundary ?? null
+      const signalZoneLo = plan.rangeLayering?.signalZoneLo ?? null
+      const signalZoneHi = plan.rangeLayering?.signalZoneHi ?? null
+      const useSignalEntryRange = plan.rangeLayering?.useSignalEntryRange === true
       const nowMs = Date.now()
       for (const v of virtualPendings) {
         const triggerPrice = triggerPriceFor(v, anchor, digits)
-        if (zoneHi != null && zoneLo != null && triggerPrice > zoneLo && triggerPrice < zoneHi) {
-          console.warn(
-            `[tradeExecutor] dropped virtual pending stepIdx=${v.stepIdx} signal=${signal.id}`
-            + ` trigger=${triggerPrice} inside stops_zone=[${zoneLo}, ${zoneHi}]`,
-          )
+        if (!virtualPendingTriggerAllowed({
+          triggerPrice,
+          signalRangeBoundary,
+          isBuy: v.isBuy,
+          stopsZoneLo: zoneLo,
+          stopsZoneHi: zoneHi,
+          signalZoneLo,
+          signalZoneHi,
+          useSignalEntryRange,
+        })) {
+          if (signalRangeBoundary != null && triggerPrice !== anchor) {
+            console.warn(
+              `[tradeExecutor] dropped virtual pending stepIdx=${v.stepIdx} signal=${signal.id}`
+              + ` trigger=${triggerPrice} past signal_range_boundary=${signalRangeBoundary}`,
+            )
+          } else if (zoneHi != null && zoneLo != null) {
+            console.warn(
+              `[tradeExecutor] dropped virtual pending stepIdx=${v.stepIdx} signal=${signal.id}`
+              + ` trigger=${triggerPrice} inside stops_zone=[${zoneLo}, ${zoneHi}]`,
+            )
+          }
           continue
         }
         const expiresAt = v.expiryHours && v.expiryHours > 0
@@ -113,6 +133,7 @@ export async function materializeVirtualPendingLegs(
         symbol,
         stepIdxs: insertRows.map(r => r.step_idx),
         triggers: insertRows.map(r => r.trigger_price),
+        range_layering: plan.rangeLayering ?? null,
         strict_deferred: strictDeferred,
         strict_broker_pending: strictBrokerPlaced,
       } as unknown as Record<string, unknown>,

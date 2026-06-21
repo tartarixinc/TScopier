@@ -29,6 +29,28 @@ function isNonTradeSkipReason(value: unknown): boolean {
   return normalized === 'non_trade_message'
 }
 
+function normalizeSkipReasonKey(value: unknown): string {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_')
+}
+
+/** Expected setup gaps — hidden from the Channel Worker feed to reduce noise. */
+const SILENCED_CHANNEL_WORKER_SKIP_REASONS = new Set([
+  'no_broker_channel_match',
+])
+
+export function isSilencedChannelWorkerSkipReason(value: unknown): boolean {
+  return SILENCED_CHANNEL_WORKER_SKIP_REASONS.has(normalizeSkipReasonKey(value))
+}
+
+function resolveLogSkipReason(row: ChannelWorkerLogRow): string {
+  return String(
+    row.signals?.skip_reason ?? row.request_payload?.skip_reason ?? row.error_message ?? '',
+  ).trim()
+}
+
 export function resolveChannelNameFromLog(
   row: ChannelWorkerLogRow,
   channelDisplayNames?: Record<string, string>,
@@ -174,12 +196,18 @@ function signalActionFromLog(row: ChannelWorkerLogRow): string {
 }
 
 function translateBrokerError(message: string, cw: ChannelWorkerTranslations): string {
+  if (/uuid\s*~~\*|operator does not exist.*uuid/i.test(message)) {
+    return cw.errorSignalLinkFailed ?? 'Could not link this trade to its signal.'
+  }
   const ticket = message.match(/Ticket\s+(\d+)\s+not found/i)
   if (ticket) return interpolate(cw.errorTicketNotFound, { ticket: ticket[1] })
   const sym = message.match(/symbol not found:\s*([A-Z0-9._#+]+)/i)
   if (sym) return interpolate(cw.errorSymbolNotFound, { symbol: sym[1]!.toUpperCase() })
   if (/not connected/i.test(message) || /broker session is not connected/i.test(message)) {
     return cw.errorBrokerNotConnected
+  }
+  if (/order rejected|invalid stops?|invalid stop/i.test(message)) {
+    return cw.errorInvalidStops
   }
   if (/object reference not set|nullreferenceexception|an error occurred while handling/i.test(message)) {
     return cw.errorBridgeGlitch
@@ -312,6 +340,95 @@ export function orderSendOutcomeSuffix(
   return interpolate(cw.errSuffix, { detail: translateBrokerError(err, cw) })
 }
 
+function signalWasSkipped(row: ChannelWorkerLogRow): boolean {
+  return String(row.signals?.status ?? '').toLowerCase() === 'skipped'
+}
+
+function skipReasonForSignal(row: ChannelWorkerLogRow, cw: ChannelWorkerTranslations): string {
+  const raw = String(
+    row.signals?.skip_reason ?? row.request_payload?.skip_reason ?? row.error_message ?? '',
+  ).trim()
+  return raw ? translateSkipReason(raw, cw) : cw.notPlaced
+}
+
+function isMgmtNoOpenSkipReason(row: ChannelWorkerLogRow): boolean {
+  const skip = String(row.signals?.skip_reason ?? row.request_payload?.skip_reason ?? '').toLowerCase()
+  return skip === 'mgmt_no_open_trades'
+    || skip.startsWith('mgmt_no_open_trades_')
+    || skip === 'mgmt_ambiguous_modify'
+}
+
+function isMgmtPipelineNoiseLogAction(logAction: string): boolean {
+  return logAction === 'pipeline_parse_dispatch'
+    || logAction === 'keyword_parse'
+    || logAction === 'handle_start'
+    || logAction === 'handle_end'
+    || logAction === 'dispatch_received'
+}
+
+/** Remap success-style execution logs when the linked signal was ultimately skipped. */
+function applySkippedSignalOverride(
+  row: ChannelWorkerLogRow,
+  cw: ChannelWorkerTranslations,
+  message: string,
+): string {
+  if (!message.trim()) return message
+  if (!signalWasSkipped(row) || row.status.toLowerCase() !== 'success') return message
+
+  const logAction = row.action.toLowerCase()
+  if (isMgmtNoOpenSkipReason(row) && isMgmtPipelineNoiseLogAction(logAction)) {
+    return message
+  }
+
+  if (logAction === 'dispatch_skipped') return message
+  if (isMgmtPipelineNoiseLogAction(logAction)) {
+    return message
+  }
+
+  const reason = skipReasonForSignal(row, cw)
+  const instr = resolveInstrumentSymbol(row)
+  const signalAction = signalActionFromLog(row)
+
+  if (logAction.startsWith('mgmt_') || MANAGEMENT_COPIER_ACTIONS.has(signalAction)) {
+    const mgmt = logAction.startsWith('mgmt_') ? logAction.slice(5) : signalAction
+    return interpolate(cw.mgmtSkippedReason, {
+      phrase: mgmtSkippedPhrase(mgmt, instr, cw),
+      reason,
+    })
+  }
+
+  if (
+    logAction === 'virtual_pending_fired'
+    || logAction === 'virtual_pending_inserted'
+    || logAction === 'order_send'
+    || logAction === 'signal_entry_pending_placed'
+    || logAction === 'signal_entry_pending_filled'
+  ) {
+    return interpolate(cw.orderDidNotPlaceSkipped, { on: onInstrument(instr, cw), reason })
+  }
+
+  if (
+    logAction === 'merge_routed_modify_only'
+    || logAction === 'merge_modify_summary'
+    || logAction === 'signal_merge_into_open_trade'
+    || logAction === 'merge_anchor_selected'
+  ) {
+    return interpolate(cw.mgmtSkippedReason, {
+      phrase: mgmtSkippedPhrase('modify', instr, cw),
+      reason,
+    })
+  }
+
+  if (
+    (signalAction === 'buy' || signalAction === 'sell' || signalAction === 'close')
+    && !isMgmtNoOpenSkipReason(row)
+  ) {
+    return interpolate(cw.dispatchSkipped, { reason })
+  }
+
+  return interpolate(cw.dispatchSkipped, { reason })
+}
+
 function signalMarkedIgnored(row: ChannelWorkerLogRow): boolean {
   const sig = row.signals
   const parsed = getSignalParsedFromLog(row)
@@ -334,6 +451,67 @@ function ignoredChannelWorkerReason(row: ChannelWorkerLogRow, cw: ChannelWorkerT
   return translateSkipReason('channel_filter_ignored', cw)
 }
 
+/** Internal modify pipeline rows — hidden from the Channel Worker feed (see merge_modify_summary). */
+const CHANNEL_WORKER_HIDDEN_LOG_ACTIONS = new Set([
+  'merge_routed_modify_only',
+  'merge_anchor_selected',
+  'dispatch_route_decision',
+  'dispatch_enqueue_attempt',
+  'dispatch_enqueue_failed',
+  'queue_consume_start',
+  'queue_consume_ack',
+  'queue_consume_retry',
+  'queue_dead_letter',
+  'basket_reconcile_tick',
+  'virtual_pending_tp_lock',
+  'signal_entry_pending_sync',
+  'news_pre_close',
+])
+
+function isEntryOpenLogAction(logAction: string): boolean {
+  return logAction === 'order_send'
+    || logAction === 'virtual_pending_fired'
+    || logAction === 'virtual_pending_inserted'
+    || logAction === 'signal_entry_pending_placed'
+    || logAction === 'signal_entry_pending_filled'
+    || logAction === 'signal_merge_into_open_trade'
+}
+
+export type ChannelWorkerDisplayLogRow = ChannelWorkerLogRow & {
+  id: string
+  created_at: string
+  signal_id?: string | null
+  broker_account_id?: string | null
+}
+
+/**
+ * Drop duplicate / internal rows before rendering the Channel Worker feed.
+ * Newest-first input is preserved.
+ */
+export function filterChannelWorkerDisplayLogs<T extends ChannelWorkerDisplayLogRow>(rows: T[]): T[] {
+  const sorted = [...rows].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
+  const recentMergeOk = new Map<string, number>()
+
+  return sorted.filter(row => {
+    const action = row.action.toLowerCase()
+    if (CHANNEL_WORKER_HIDDEN_LOG_ACTIONS.has(action)) return false
+    if (isSilencedChannelWorkerSkipReason(resolveLogSkipReason(row))) return false
+
+    if (action === 'merge_modify_summary' && row.status.toLowerCase() === 'success') {
+      const payload = row.request_payload ?? {}
+      const anchor = String(payload.parent_signal_id ?? row.signal_id ?? '')
+      const broker = String(row.broker_account_id ?? '')
+      const rowMs = Date.parse(row.created_at)
+      if (!anchor || !Number.isFinite(rowMs)) return true
+      const key = `${anchor}|${broker}`
+      const lastMs = recentMergeOk.get(key)
+      if (lastMs != null && Math.abs(rowMs - lastMs) <= 30_000) return false
+      recentMergeOk.set(key, rowMs)
+    }
+    return true
+  })
+}
+
 function isTradeUpdateAction(logAction: string, signalAction: string): boolean {
   if (logAction === 'merge_routed_modify_only' || logAction === 'merge_modify_summary') return true
   if (logAction === 'trailing_stop' || logAction === 'auto_be' || logAction === 'cwe_close') return true
@@ -349,11 +527,23 @@ export function channelWorkerLogMessage(
   cw: ChannelWorkerTranslations,
   channelDisplayNames?: Record<string, string>,
 ): string | null {
-  const skipReason = row.signals?.skip_reason ?? row.request_payload?.skip_reason ?? row.error_message
+  const skipReason = resolveLogSkipReason(row)
   if (isNonTradeSkipReason(skipReason)) return null
+  if (isSilencedChannelWorkerSkipReason(skipReason)) return null
   const logAction = row.action.toLowerCase()
   const signalAction = signalActionFromLog(row)
+  if (CHANNEL_WORKER_HIDDEN_LOG_ACTIONS.has(logAction)) return null
   if (signalAction === 'ignore') return null
+
+  if (
+    signalWasSkipped(row)
+    && isMgmtNoOpenSkipReason(row)
+    && isMgmtPipelineNoiseLogAction(logAction)
+    && row.status.toLowerCase() === 'success'
+  ) {
+    return null
+  }
+
   const signalStatus = String(row.signals?.status ?? '').toLowerCase()
   const logStatus = row.status.toLowerCase()
   // Show skipped/failed management and SL/TP updates; only suppress in-flight rows for
@@ -367,7 +557,7 @@ export function channelWorkerLogMessage(
   ) {
     return null
   }
-  const message = buildChannelWorkerLogMessage(row, cw)
+  const message = applySkippedSignalOverride(row, cw, buildChannelWorkerLogMessage(row, cw))
   if (!message.trim()) return null
   const channel = resolveChannelNameFromLog(row, channelDisplayNames)
   if (!channel || shouldOmitChannelSuffix(logAction)) return message
@@ -383,6 +573,18 @@ function buildChannelWorkerLogMessage(row: ChannelWorkerLogRow, cw: ChannelWorke
   const parsed = getSignalParsedFromLog(row)
   const forInstr = forInstrument(instr, cw)
   const err = errSuffix(row, cw)
+
+  if (logAction === 'mgmt_skip') {
+    const reason = translateSkipReason(
+      String(payload.skip_reason ?? row.error_message ?? cw.noMatchingOpenTrade),
+      cw,
+    )
+    const mgmt = signalAction === 'close' ? 'close' : signalAction || 'modify'
+    return interpolate(cw.mgmtSkippedReason, {
+      phrase: mgmtSkippedPhrase(mgmt, instr, cw),
+      reason,
+    })
+  }
 
   if (logAction === 'dispatch_skipped') {
     const reason = translateSkipReason(
@@ -473,10 +675,13 @@ function buildChannelWorkerLogMessage(row: ChannelWorkerLogRow, cw: ChannelWorke
 
   if (logAction.startsWith('mgmt_') || MANAGEMENT_COPIER_ACTIONS.has(signalAction)) {
     const mgmt = logAction.startsWith('mgmt_') ? logAction.slice(5) : signalAction
-    if (signalMarkedIgnored(row) && status === 'success') {
+    if ((signalMarkedIgnored(row) || signalWasSkipped(row)) && status === 'success') {
+      const reason = signalWasSkipped(row)
+        ? skipReasonForSignal(row, cw)
+        : ignoredChannelWorkerReason(row, cw)
       return interpolate(cw.mgmtSkippedReason, {
         phrase: mgmtSkippedPhrase(mgmt, instr, cw),
-        reason: ignoredChannelWorkerReason(row, cw),
+        reason,
       })
     }
     if (status === 'failed' && isBenignStopsAlreadySetMessage(row.error_message)) {
@@ -508,6 +713,12 @@ function buildChannelWorkerLogMessage(row: ChannelWorkerLogRow, cw: ChannelWorke
   if (logAction === 'virtual_pending_fired') {
     return interpolate(cw.virtualFired, { on: onInstrument(instr, cw) })
   }
+  if (logAction === 'basket_leg_modify' && payload.internal_rebalance === true) {
+    return ''
+  }
+  if (logAction === 'range_basket_tp_rebalance') {
+    return ''
+  }
   if (logAction === 'virtual_pending_cancelled') {
     return interpolate(cw.virtualCancelled, { on: onInstrument(instr, cw) })
   }
@@ -533,6 +744,71 @@ function buildChannelWorkerLogMessage(row: ChannelWorkerLogRow, cw: ChannelWorke
   }
   if (logAction === 'signal_entry_pending_failed') {
     return interpolate(cw.entryFailed, { on: onInstrument(instr, cw), err })
+  }
+
+  if (logAction === 'signal_range_entry_no_price') {
+    const dir = String(payload.direction ?? signalAction ?? 'buy').toLowerCase()
+    const side = dir === 'sell' ? cw.sideSell : cw.sideBuy
+    const sideLabel = side.charAt(0).toUpperCase() + side.slice(1)
+    return interpolate(cw.rangeEntryWaitingNoPrice, { side: sideLabel })
+  }
+  if (logAction === 'signal_range_entry_waiting') {
+    const dir = String(payload.direction ?? signalAction ?? 'buy').toLowerCase()
+    const side = dir === 'sell' ? cw.sideSell : cw.sideBuy
+    const sideLabel = side.charAt(0).toUpperCase() + side.slice(1)
+    const ep = payload.entry_price
+    const lo = payload.zone_lo
+    const hi = payload.zone_hi
+    if (lo != null && hi != null && String(lo) !== '' && String(hi) !== '') {
+      return interpolate(cw.rangeEntryWaitingZone, { side: sideLabel, lo: String(lo), hi: String(hi) })
+    }
+    const price = ep != null && String(ep) !== '' ? String(ep) : '—'
+    return interpolate(cw.rangeEntryWaitingAtPrice, { side: sideLabel, price })
+  }
+  if (logAction === 'signal_range_entry_fired') {
+    const dir = String(payload.direction ?? signalAction ?? 'buy').toLowerCase()
+    const side = dir === 'sell' ? cw.sideSell : cw.sideBuy
+    const sideLabel = side.charAt(0).toUpperCase() + side.slice(1)
+    return interpolate(cw.rangeEntryFired, { side: sideLabel, on: onInstrument(instr, cw) })
+  }
+  if (logAction === 'signal_range_entry_expired') {
+    const dir = String(payload.direction ?? signalAction ?? 'buy').toLowerCase()
+    const side = dir === 'sell' ? cw.sideSell : cw.sideBuy
+    const sideLabel = side.charAt(0).toUpperCase() + side.slice(1)
+    return interpolate(cw.rangeEntryExpired, { side: sideLabel })
+  }
+  if (logAction === 'signal_range_entry_tp_before_entry') {
+    const dir = String(payload.direction ?? signalAction ?? 'buy').toLowerCase()
+    const side = dir === 'sell' ? cw.sideSell : cw.sideBuy
+    const sideLabel = side.charAt(0).toUpperCase() + side.slice(1)
+    return interpolate(cw.rangeEntryTpBeforeEntry, { side: sideLabel })
+  }
+  if (logAction === 'signal_range_entry_sl_before_entry') {
+    const dir = String(payload.direction ?? signalAction ?? 'buy').toLowerCase()
+    const side = dir === 'sell' ? cw.sideSell : cw.sideBuy
+    const sideLabel = side.charAt(0).toUpperCase() + side.slice(1)
+    return interpolate(cw.rangeEntrySlBeforeEntry, { side: sideLabel })
+  }
+  if (logAction === 'signal_range_entry_updated') {
+    const dir = String(payload.direction ?? signalAction ?? 'buy').toLowerCase()
+    const side = dir === 'sell' ? cw.sideSell : cw.sideBuy
+    const sideLabel = side.charAt(0).toUpperCase() + side.slice(1)
+    const lo = payload.zone_lo != null ? String(payload.zone_lo) : '—'
+    const hi = payload.zone_hi != null ? String(payload.zone_hi) : '—'
+    return interpolate(cw.rangeEntryUpdated, { side: sideLabel, lo, hi })
+  }
+  if (logAction === 'signal_range_entry_cancelled') {
+    const dir = String(payload.direction ?? signalAction ?? 'buy').toLowerCase()
+    const side = dir === 'sell' ? cw.sideSell : cw.sideBuy
+    const sideLabel = side.charAt(0).toUpperCase() + side.slice(1)
+    const reason = String(payload.reason ?? 'cancelled')
+    return interpolate(cw.rangeEntryCancelled, { side: sideLabel, reason })
+  }
+  if (logAction === 'signal_range_entry_wake_retry') {
+    const dir = String(payload.direction ?? signalAction ?? 'buy').toLowerCase()
+    const side = dir === 'sell' ? cw.sideSell : cw.sideBuy
+    const sideLabel = side.charAt(0).toUpperCase() + side.slice(1)
+    return interpolate(cw.rangeEntryWakeRetry, { side: sideLabel })
   }
 
   if (logAction === 'signal_merge_into_open_trade') {
@@ -702,7 +978,22 @@ function buildChannelWorkerLogMessage(row: ChannelWorkerLogRow, cw: ChannelWorke
     logAction === 'handle_start'
     || logAction === 'handle_end'
     || logAction === 'dispatch_received'
+    || logAction === 'pipeline_summary'
+    || logAction === 'multi_range_plan'
+    || logAction === 'stale_basket_reconciled'
+    || CHANNEL_WORKER_HIDDEN_LOG_ACTIONS.has(logAction)
   ) {
+    return ''
+  }
+
+  // Unknown success rows must not read as a filled entry — real opens use order_send / pending paths.
+  if (
+    status === 'success'
+    && (signalAction === 'buy' || signalAction === 'sell')
+    && !isEntryOpenLogAction(logAction)
+  ) {
+    const signalStatus = String(row.signals?.status ?? '').toLowerCase()
+    if (signalStatus !== 'executed') return ''
     return ''
   }
 
@@ -733,6 +1024,12 @@ function messageForSignalAction(
         instr,
         s => interpolate(cw.signalCloseNamed, { prefix, symbol: s }),
         () => interpolate(cw.signalCloseGeneric, { prefix }),
+      )
+    case 'close_worse_entries':
+      return namedOrGeneric(
+        instr,
+        s => interpolate(cw.signalCloseWorseNamed, { prefix, symbol: s }),
+        () => interpolate(cw.signalCloseWorseGeneric, { prefix }),
       )
     case 'breakeven':
       return tense === 'understood'
@@ -768,6 +1065,12 @@ function mgmtSuccessPhrase(
         s => interpolate(cw.mgmtCloseSuccessNamed, { symbol: s }),
         () => cw.mgmtCloseSuccessGeneric,
       )
+    case 'close_worse_entries':
+      return namedOrGeneric(
+        instr,
+        s => interpolate(cw.mgmtCloseWorseSuccessNamed, { symbol: s }),
+        () => cw.mgmtCloseWorseSuccessGeneric,
+      )
     case 'breakeven':
       return interpolate(cw.mgmtBreakevenSuccess, { on })
     case 'partial_profit': {
@@ -795,6 +1098,12 @@ function mgmtFailurePhrase(action: string, instr: string | null, cw: ChannelWork
         instr,
         s => interpolate(cw.mgmtCloseFailNamed, { symbol: s }),
         () => cw.mgmtCloseFailGeneric,
+      )
+    case 'close_worse_entries':
+      return namedOrGeneric(
+        instr,
+        s => interpolate(cw.mgmtCloseWorseFailNamed, { symbol: s }),
+        () => cw.mgmtCloseWorseFailGeneric,
       )
     case 'breakeven':
       return namedOrGeneric(
@@ -824,6 +1133,12 @@ function mgmtSkippedPhrase(action: string, instr: string | null, cw: ChannelWork
         instr,
         s => interpolate(cw.mgmtCloseSkippedNamed, { symbol: s }),
         () => cw.mgmtCloseSkippedGeneric,
+      )
+    case 'close_worse_entries':
+      return namedOrGeneric(
+        instr,
+        s => interpolate(cw.mgmtCloseWorseSkippedNamed, { symbol: s }),
+        () => cw.mgmtCloseWorseSkippedGeneric,
       )
     default:
       return namedOrGeneric(

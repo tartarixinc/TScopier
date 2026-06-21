@@ -9,7 +9,3 @@ export function incMetric(name: string, delta = 1): void {
 export function getMetricsSnapshot(): Record<string, number> {
   return Object.fromEntries(counters.entries())
 }
-
-export function resetMetrics(): void {
-  counters.clear()
-}

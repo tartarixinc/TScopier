@@ -6,6 +6,8 @@ export const landingFr: LandingTranslations = {
     product: 'Produit',
     features: 'Fonctionnalités',
     pricing: 'Tarifs',
+    faq: 'FAQ',
+    docs: 'Docs',
     signIn: 'Se connecter',
     getStarted: 'Commencer',
     dashboard: 'Tableau de bord',
@@ -15,14 +17,14 @@ export const landingFr: LandingTranslations = {
   hero: {
     trustedBy: 'Plus de 30 000 traders de 156 pays ont déjà rejoint',
     avatarAlts: ['Avatar de trader', 'Avatar de trader', 'Avatar de trader'],
-    headline: 'Transformez les signaux Telegram en trades en direct,',
-    headlineAccent: '100 % en autopilote.',
+    headline: 'Copiez vos fournisseurs de signaux de trading',
+    headlineAccent: '24 h/24 en autopilote.',
     subheadline:
-      'Connectez votre compte MT4/MT5, choisissez vos canaux de signaux et laissez TSCopier exécuter entrées, couches et gestion — avec un contrôle total du risque et des filtres.',
-    primaryCta: 'Essayez gratuitement',
+      'Connectez Telegram et copiez les signaux directement sur vos comptes MT4/MT5 en moins de 2 minutes — sans configuration complexe, sans EA et sans VPS.',
+    primaryCta: 'Commencez votre essai gratuit de 10 jours',
     secondaryCta: 'Se connecter',
     imageAlt:
-      'Tableau de bord TSCopier avec solde, profit du jour, résultats des trades et graphiques de croissance',
+      'Tableau de bord TScopier avec solde, profit du jour, résultats des trades et graphiques de croissance',
     previewUrl: 'app.tscopier.ai/dashboard',
     dashboard: {
       headlineStats: [
@@ -120,7 +122,7 @@ export const landingFr: LandingTranslations = {
         metric: '100%',
         metricVariant: 'teal',
         description:
-          '100 % cloud : pas de téléchargement, pas d’EA ni de VPS. Tout depuis le navigateur.',
+          '100 % cloud : pas de téléchargement, pas d’EA sur votre terminal ni de VPS. Compatible avec toutes les prop firms, EA autorisés ou non.',
         layout: 'short',
         icon: 'cloud',
       },
@@ -174,10 +176,10 @@ export const landingFr: LandingTranslations = {
         icon: 'chart',
       },
       {
-        label: 'Telegram',
-        metric: 'Illimité',
+        label: 'Multilingue',
+        metric: 'Signaux',
         metricVariant: 'teal',
-        description: 'Canaux et groupes Telegram illimités.',
+        description: 'Analyse achat, vente, SL et TP sur des canaux en anglais, espagnol, russe, polonais et plus.',
         layout: 'tall',
         icon: 'messages',
       },
@@ -201,8 +203,15 @@ export const landingFr: LandingTranslations = {
         eyebrow: 'Copieur de signaux',
         title: 'Copiez les signaux Telegram vers MT4 et MT5 avec précision',
         description:
-          'Reproduisez vos canaux de confiance sur vos comptes broker. TSCopier analyse entrées, TPs, couches de range et instructions de gestion, puis exécute avec vos règles de lot, multi-trade et couches sur chaque compte connecté.',
+          'Reproduisez vos canaux de confiance sur vos comptes broker. TScopier analyse entrées, TPs, couches de range et instructions de gestion, puis exécute avec vos règles de lot, multi-trade et couches sur chaque compte connecté.',
         visual: 'copier',
+      },
+      {
+        eyebrow: 'Signaux multilingues',
+        title: 'Prend en charge les signaux en plusieurs langues',
+        description:
+          'Copiez des canaux en anglais, espagnol, français, russe, polonais, japonais et plus encore. TScopier reconnaît achat/vente, SL, TP et les consignes de gestion dans chaque langue, avec entraînement par canal pour le vocabulaire exact de votre fournisseur.',
+        visual: 'multilingual',
       },
       {
         eyebrow: 'Contrôle par canal',
@@ -210,6 +219,13 @@ export const landingFr: LandingTranslations = {
         description:
           'Autorisez ou bloquez les types d’instructions par canal — clôtures, break-even, ajustements SL/TP, etc. Seuls les signaux voulus atteignent le broker.',
         visual: 'filters',
+      },
+      {
+        eyebrow: 'Messages modifiés',
+        title: 'Modification de signal depuis les messages édités',
+        description:
+          'Quand un fournisseur modifie un message Telegram pour changer le stop ou les take-profits, TScopier détecte la révision et met à jour votre panier ouvert chez le broker — pas de nouvelles entrées, seulement des SL/TP synchronisés sur chaque jambe.',
+        visual: 'signalEdit',
       },
       {
         eyebrow: 'Backtest',
@@ -238,7 +254,7 @@ export const landingFr: LandingTranslations = {
         telegramLabel: 'Canal de signaux',
         channelName: 'Gold Signals Pro',
         channelMeta: '3 nouveaux signaux · à l’instant',
-        hubLabel: 'TSCopier',
+        hubLabel: 'TScopier',
         mt4Label: 'Compte MT4',
         mt4Meta: 'Copie · règles 0.10 lot',
         mt5Label: 'Compte MT5',
@@ -277,6 +293,64 @@ export const landingFr: LandingTranslations = {
             decision: 'allow',
           },
         ],
+      },
+      multilingual: {
+        languagesBadge: '10+ langues',
+        moreLanguages: 'Allemand, arabe, portugais, italien et plus',
+        parsedLabel: 'Analysé',
+        ribbonFlags: ['us', 'gb', 'es', 'fr', 'pl', 'ru', 'se', 'nl', 'jp'],
+        signals: [
+          {
+            flagId: 'us',
+            language: 'English',
+            message: 'BUY XAUUSD now · SL 2640 · TP 2670',
+            parsedAction: 'BUY XAUUSD',
+            side: 'buy',
+          },
+          {
+            flagId: 'es',
+            language: 'Español',
+            message: 'COMPRA XAUUSD ahora · SL 2640 · TP 2670',
+            parsedAction: 'BUY XAUUSD',
+            side: 'buy',
+          },
+          {
+            flagId: 'fr',
+            language: 'Français',
+            message: 'ACHAT XAUUSD immédiat · SL 2640 · TP 2670',
+            parsedAction: 'BUY XAUUSD',
+            side: 'buy',
+          },
+          {
+            flagId: 'ru',
+            language: 'Русский',
+            message: 'ПОКУПКА XAUUSD сейчас · SL 2640 · TP 2670',
+            parsedAction: 'BUY XAUUSD',
+            side: 'buy',
+          },
+          {
+            flagId: 'ja',
+            language: '日本語',
+            message: 'XAUUSD 買い 成行 · SL 2640 · TP 2670',
+            parsedAction: 'BUY XAUUSD',
+            side: 'buy',
+          },
+        ],
+      },
+      signalEdit: {
+        channelName: 'Gold Signals Pro',
+        channelMeta: 'Telegram · message modifié',
+        editedLabel: 'Modifié',
+        messageBuy: 'ACHAT XAUUSD',
+        beforeLabel: 'Avant',
+        beforeSl: 'SL 4190',
+        beforeTp: 'TP1 4220',
+        afterLabel: 'Mis à jour',
+        afterSl: 'SL 4175',
+        afterTp: 'TP1 4230 · TP2 4240',
+        workerTitle: 'Channel worker',
+        workerMessage: 'SL/TP mis à jour sur 7 jambes XAUUSD ouvertes (aucun nouveau trade)',
+        workerTime: 'À l’instant',
       },
       backtest: {
         resultsTitle: 'Résultats du backtest',
@@ -484,6 +558,11 @@ export const landingFr: LandingTranslations = {
           'Non. TScopier est entièrement cloud. Vous vous connectez dans le navigateur, liez Telegram et vos comptes MT4/MT5, et le copieur tourne sur notre infrastructure—sans EA ni VPS à maintenir.',
       },
       {
+        question: 'TScopier fonctionne-t-il avec les prop firms qui interdisent les EA ?',
+        answer:
+          'Oui. TScopier tourne entièrement dans le cloud—rien n’est installé sur votre terminal MT4/MT5. Vous pouvez copier des signaux sur tout compte prop firm, qu’elle autorise ou non les Expert Advisors.',
+      },
+      {
         question: 'Quelles plateformes TScopier prend-il en charge ?',
         answer:
           'Vous connectez des canaux de signaux Telegram et copiez vers MetaTrader 4 et 5. Liez plusieurs courtiers et routez chaque canal vers les comptes de votre choix.',
@@ -511,7 +590,7 @@ export const landingFr: LandingTranslations = {
       {
         question: 'Prenez-vous en charge le range, le layering et la gestion ?',
         answer:
-          'Oui. TSCopier gère entrées single et range, répartition multi-TP, layering, clôture des pires entrées, break-even, profits partiels et plus, avec filtres autoriser/ignorer par canal.',
+          'Oui. TScopier gère entrées single et range, répartition multi-TP, layering, clôture des pires entrées, break-even, profits partiels et plus, avec filtres autoriser/ignorer par canal.',
       },
       {
         question: 'Que comprend Basic vs Advanced ?',
@@ -555,6 +634,13 @@ export const landingFr: LandingTranslations = {
         tscopier: '100 % cloud : pas de téléchargement, pas d’EA ni de VPS à maintenir.',
       },
       {
+        aspect: 'Prop firms',
+        other:
+          'Beaucoup de copieurs reposent sur des Expert Advisors sur votre terminal—bloqués quand une prop firm interdit le trading automatisé.',
+        tscopier:
+          'Exécution cloud sans EA sur votre compte—compatible avec toutes les prop firms, EA autorisés ou non.',
+      },
+      {
         aspect: 'Exécution',
         other: 'Exécution lente après réception du signal sur Telegram.',
         tscopier: 'Pipeline sous 150 ms du parsing à l’envoi courtier.',
@@ -580,6 +666,20 @@ export const landingFr: LandingTranslations = {
         tscopier: 'Copieur, backtest, journaux, actualités et calendrier dans un abonnement.',
       },
       {
+        aspect: 'Fusion de trades',
+        other:
+          '« Gold buy now » ouvre des positions, puis « Gold buy now » avec SL/TP en ouvre d’autres — doublons ou corrections manuelles.',
+        tscopier:
+          '« Gold buy now » ouvre le trade. Quand le SL et le TP arrivent dans le message suivant, nous mettons à jour ces positions — nous n’ouvrons pas Gold une deuxième fois.',
+      },
+      {
+        aspect: 'Messages modifiés',
+        other:
+          'Les messages Telegram modifiés sont ignorés — vous ratez les mises à jour SL/TP ou corrigez à la main.',
+        tscopier:
+          'Modification de signal depuis les messages édités : SL et TPs synchronisés sur le panier ouvert, sans nouvelles entrées.',
+      },
+      {
         aspect: 'Backtest',
         other: 'Peu ou pas de replay réel de l’historique du canal avec vos règles.',
         tscopier: 'Backtest des signaux passés avec vos réglages réels avant le live.',
@@ -590,6 +690,130 @@ export const landingFr: LandingTranslations = {
     title: 'Choisissez votre plan',
     subtitle: 'Commencez à copier des signaux vers vos comptes de trading aujourd\'hui.',
   },
+  planComparison: {
+    eyebrow: 'Comparer les plans',
+    title: 'Trouvez le bon plan',
+    subtitle: 'Comparaison côte à côte de ce que chaque plan inclut.',
+    basicColumn: 'Basic',
+    advancedColumn: 'Advanced',
+    customColumn: 'Sur mesure',
+    rows: [
+      {
+        feature: 'Comptes broker',
+        basic: '1',
+        advanced: '5 (jusqu\'à 100)',
+        custom: 'Sur mesure',
+      },
+      {
+        feature: 'Backtests de signaux',
+        basic: '5 / mois',
+        advanced: 'Illimités',
+        custom: 'Sur mesure',
+      },
+      {
+        feature: 'Canaux Telegram',
+        basic: '5',
+        advanced: 'Illimités',
+        custom: 'Sur mesure',
+      },
+      {
+        feature: 'Niveaux de take profit',
+        basic: '3 TPs',
+        advanced: 'TPs/SLs illimités',
+        custom: 'Sur mesure',
+      },
+      {
+        feature: 'Trading range et layering',
+        basic: 'no',
+        advanced: 'yes',
+        custom: 'yes',
+      },
+      {
+        feature: 'Breakeven et gestion auto',
+        basic: 'no',
+        advanced: 'yes',
+        custom: 'yes',
+      },
+      {
+        feature: 'Suivi par mots-clés',
+        basic: 'no',
+        advanced: 'yes',
+        custom: 'yes',
+      },
+      {
+        feature: 'Support prioritaire',
+        basic: 'no',
+        advanced: 'no',
+        custom: 'yes',
+      },
+      {
+        feature: 'Onboarding dédié',
+        basic: 'no',
+        advanced: 'no',
+        custom: 'yes',
+      },
+      {
+        feature: 'Essai gratuit',
+        basic: 'no',
+        advanced: '10 jours',
+        custom: 'Sur mesure',
+      },
+      {
+        feature: 'Prix de départ',
+        basic: '9,99 $ / mois',
+        advanced: '39,99 $ / mois',
+        custom: 'Contactez-nous',
+      },
+    ],
+  },
+  pricingFaq: {
+    eyebrow: 'FAQ tarifs',
+    title: 'Questions sur les tarifs',
+    subtitle: 'Facturation, essais et changements de plan expliqués.',
+    items: [
+      {
+        question: 'Y a-t-il un essai gratuit ?',
+        answer:
+          'Advanced inclut un essai gratuit de 10 jours à l\'abonnement. Basic est facturé dès le premier jour à 9,99 $/mois (ou 95,90 $/an en facturation annuelle). Vous pouvez explorer le tableau de bord avant de vous abonner, mais la copie live nécessite un plan actif.',
+      },
+      {
+        question: 'Quelle est la différence entre facturation mensuelle et annuelle ?',
+        answer:
+          'La facturation annuelle économise 20 % par rapport au paiement mensuel sur une année. Basic passe de 9,99 $/mois à 7,99 $/mois effectif (95,90 $/an). Advanced passe de 39,99 $/mois à 31,99 $/mois effectif (383,90 $/an). Les comptes supplémentaires sur Advanced sont aussi remisés en annuel.',
+      },
+      {
+        question: 'Comment fonctionnent les comptes supplémentaires sur Advanced ?',
+        answer:
+          'Advanced inclut 5 comptes demo/live. Vous pouvez en ajouter jusqu\'à 95 de plus à 10 $/compte/mois (ou 96 $/compte/an en annuel), pour un maximum de 100 comptes connectés par utilisateur.',
+      },
+      {
+        question: 'Puis-je changer de plan plus tard ?',
+        answer:
+          'Oui. Passez à un plan supérieur ou inférieur à tout moment depuis Facturation dans votre tableau de bord. Les changements s\'appliquent selon votre cycle de facturation et Stripe gère le prorata entre les plans.',
+      },
+      {
+        question: 'Quels moyens de paiement acceptez-vous ?',
+        answer:
+          'Nous acceptons les principales cartes de crédit et débit via Stripe. Factures et historique de paiement sont disponibles sur votre page Facturation.',
+      },
+      {
+        question: 'Quand choisir Sur mesure ?',
+        answer:
+          'Sur mesure est pour les prop firms, équipes de trading ou opérateurs à fort volume qui ont besoin de limites, facturation ou onboarding adaptés. Contactez les ventes et nous établirons un plan sur mesure.',
+      },
+      {
+        question: 'Puis-je annuler à tout moment ?',
+        answer:
+          'Oui. Annulez depuis Facturation ou le portail client Stripe. Vous conservez l\'accès jusqu\'à la fin de votre période de facturation en cours. Pas de contrat long terme sur Basic ou Advanced.',
+      },
+    ],
+  },
+  pricingSocialProof: {
+    banner: '{count} traders ont acheté aujourd\'hui',
+    purchaseToast: 'Un trader de {country} vient de souscrire à l\'abonnement {plan}.',
+    timeAgoJustNow: 'À l\'instant',
+    timeAgoOneMinute: 'Il y a 1 minute',
+  },
   pricingSnippet: {
     basic: 'Basic — 9,99 $/mois',
     advanced: 'Advanced — 10 jours gratuits, puis 39,99 $/mois',
@@ -599,7 +823,7 @@ export const landingFr: LandingTranslations = {
       title: 'Prêt à copier des signaux sans le travail manuel ?',
       subtitle:
         'Reliez Telegram, connectez MT4 ou MT5 et commencez à copier en quelques minutes — sans VPS ni installation.',
-      primary: 'Essayez gratuitement',
+      primary: 'Commencez votre essai gratuit de 10 jours',
       secondary: 'Se connecter',
     },
     tagline: 'Copieur de signaux Telegram ultra-rapide pour comptes MetaTrader.',
@@ -617,6 +841,10 @@ export const landingFr: LandingTranslations = {
       docs: 'Documentation',
       status: 'État du système',
       telegram: 'Support Telegram',
+      riskDisclaimer: 'Avertissement sur les risques',
+      termsOfService: 'Conditions d’utilisation',
+      privacyPolicy: 'Politique de confidentialité',
+      cookiePolicy: 'Politique de cookies',
       signIn: 'Se connecter',
       signUp: 'Créer un compte',
       openApp: 'Ouvrir le tableau de bord',
@@ -625,11 +853,5 @@ export const landingFr: LandingTranslations = {
     copyright: '© {year} Tartarix Inc. Tous droits réservés.',
     disclaimer:
       'Le trading comporte des risques. TScopier est un outil de copie — pas un conseil financier.',
-  },
-  cookieConsent: {
-    message:
-      'Nous utilisons des cookies pour renforcer l’attribution affilié et comprendre l’engagement sur la landing page. En continuant, vous acceptez nos cookies de suivi.',
-    accept: 'Accepter les cookies',
-    dismiss: 'Fermer',
   },
 }

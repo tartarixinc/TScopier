@@ -211,11 +211,11 @@ const modules = {
 const moduleImports = {
   brokerSymbolCache: `import type { TradeExecutorContext } from './context'
 import {
-  hasMetatraderApiConfigured,
-  MetatraderApiClient,
+  hasFxsocketConfigured,
+  FxsocketBrokerClient,
   normalizeSymbolParams,
   type SymbolParams,
-} from '../metatraderapi'
+} from '../fxsocketClient'
 import type { ManualSettings } from '../manualPlanner'
 import { writeBrokerConnectionStatus } from '../brokerConnectionStatus'
 import { applySymbolMapping, isMtUuid, parseSymbolToTradeList } from './helpers'

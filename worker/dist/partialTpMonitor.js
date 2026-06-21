@@ -6,11 +6,13 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PartialTpMonitor = void 0;
 exports.isPartialTpTriggered = isPartialTpTriggered;
 const node_os_1 = __importDefault(require("node:os"));
-const metatraderapi_1 = require("./metatraderapi");
+const fxsocketClient_1 = require("./fxsocketClient");
 const monitorIdleGate_1 = require("./monitorIdleGate");
 const mtApiByAccount_1 = require("./mtApiByAccount");
-const ACTIVE_MS = (0, monitorIdleGate_1.monitorActiveIntervalMs)('PARTIAL_TP_TICK_MS', 1500);
-const IDLE_MS = (0, monitorIdleGate_1.monitorIdleIntervalMs)('PARTIAL_TP_IDLE_MS', 60000);
+const rangeLayerTillClose_1 = require("./rangeLayerTillClose");
+const copierPause_1 = require("./copierPause");
+const ACTIVE_MS = (0, monitorIdleGate_1.monitorActiveIntervalMs)('PARTIAL_TP_TICK_MS', 400);
+const IDLE_MS = (0, monitorIdleGate_1.monitorIdleIntervalMs)('PARTIAL_TP_IDLE_MS', 15000);
 const STALE_CLAIM_AFTER_MS = 30000;
 /**
  * Pure trigger check. Same direction-aware comparison as virtualPendingMonitor's
@@ -46,7 +48,7 @@ class PartialTpMonitor {
     start() {
         if (this.loop)
             return;
-        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)()) {
+        if (!(0, fxsocketClient_1.hasFxsocketConfigured)()) {
             console.warn('[partialTpMonitor] MT4API_BASIC_USER/PASSWORD missing — partial TP monitor disabled');
             return;
         }
@@ -85,7 +87,7 @@ class PartialTpMonitor {
         }
     }
     async tick() {
-        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
+        if (!(0, fxsocketClient_1.hasFxsocketConfigured)())
             return;
         // Re-claim stuck rows so a crashed worker can't strand a partial. Same
         // 30s threshold as virtualPendingMonitor.
@@ -107,7 +109,8 @@ class PartialTpMonitor {
             console.error('[partialTpMonitor] select failed:', error.message);
             return;
         }
-        const rows = (data ?? []);
+        const rows = (data ?? [])
+            .filter(r => !(0, copierPause_1.isUserCopierPausedCached)(r.user_id));
         if (!this.firstTickLogged) {
             this.firstTickLogged = true;
             console.log(`[partialTpMonitor] first tick ok pending_rows=${rows.length}`);
@@ -116,7 +119,7 @@ class PartialTpMonitor {
             this.quietTicks = 0;
             return;
         }
-        this.platformByUuid = await (0, mtApiByAccount_1.loadPlatformByMetaapiId)(this.supabase, rows.map(r => r.metaapi_account_id));
+        this.platformByUuid = await (0, mtApiByAccount_1.loadPlatformByFxsocketId)(this.supabase, rows.map(r => r.metaapi_account_id));
         // Group by (metaapi_account_id, symbol) → at most ONE /Quote per group
         // per tick. Same shape as the other monitors for consistency.
         const groups = new Map();
@@ -134,7 +137,7 @@ class PartialTpMonitor {
             const [uuid, symbol] = key.split('|');
             if (!uuid || !symbol)
                 return;
-            const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(this.platformByUuid, uuid);
+            const api = (0, mtApiByAccount_1.apiForFxsocketAccount)(this.platformByUuid, uuid);
             if (!api)
                 return;
             let q;
@@ -262,6 +265,14 @@ class PartialTpMonitor {
                 },
                 response_payload: { ticket: result.ticket, latency_ms: latencyMs, claimed_by: this.hostId },
             });
+            if (partial.signal_id && partial.broker_account_id) {
+                await (0, rangeLayerTillClose_1.stopRangeLayeringUnlessEnabled)(this.supabase, {
+                    signalId: partial.signal_id,
+                    brokerAccountId: partial.broker_account_id,
+                    symbol: partial.symbol,
+                    userId: partial.user_id,
+                }, 'partial_tp_close');
+            }
             return true;
         }
         catch (err) {
@@ -281,6 +292,14 @@ class PartialTpMonitor {
                     .from('partial_tp_legs')
                     .update({ status: 'cancelled', fired_at: new Date().toISOString(), error_message: msg })
                     .eq('id', partial.id);
+                if (partial.signal_id && partial.broker_account_id) {
+                    await (0, rangeLayerTillClose_1.stopRangeLayeringUnlessEnabled)(this.supabase, {
+                        signalId: partial.signal_id,
+                        brokerAccountId: partial.broker_account_id,
+                        symbol: partial.symbol,
+                        userId: partial.user_id,
+                    }, 'partial_tp_parent_gone');
+                }
                 return true;
             }
             console.error(`[partialTpMonitor] fire failed partial=${partial.id} ticket=${ticketNum}: ${msg}`);

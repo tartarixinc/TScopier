@@ -184,15 +184,3 @@ export async function enqueueParsedSignal(
     return { ok: false, streamKey, lane, shardId, error: msg }
   }
 }
-
-export function describeQueuePublisherStatus(): Record<string, unknown> {
-  const cfg = signalQueueConfig()
-  return {
-    enabled: cfg.enabled,
-    canary_shards: cfg.canaryShardIds ? [...cfg.canaryShardIds] : null,
-    shard_count: cfg.shardCount,
-    entry_stream_base: cfg.entryStreamBase,
-    mgmt_stream_base: cfg.mgmtStreamBase,
-    redis_configured: Boolean(cfg.redisRestUrl && cfg.redisRestToken),
-  }
-}

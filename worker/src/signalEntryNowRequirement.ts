@@ -1,4 +1,4 @@
-/** Channel keyword shape needed to detect trained market-order aliases. */
+import { textHasCommonMarketNowIntent, messageContainsKeyword } from './multilingualSignalTerms'
 export type MarketNowKeywordFields = {
   signal?: { market_order?: string }
   additional?: { delimiters?: string }
@@ -32,6 +32,13 @@ function splitKeywordAliases(raw: string, delim: string): string[] {
   return String(raw ?? '').split(delim).map(s => s.trim()).filter(Boolean)
 }
 
+/** "Market" in news/analysis prose — not immediate market-order intent. */
+function isNonTradingMarketPhrase(message: string): boolean {
+  return /\b(?:market\s+(?:news|update|analysis|recap|commentary|outlook|report)|stock\s+market|bullion\s+market|labor\s+market|equity\s+market|job\s+market|housing\s+market|energy\s+market|cyclical\s+highs)\b/i.test(
+    message,
+  )
+}
+
 /** True when the message declares an immediate / market entry (NOW, MARKET, etc.). */
 export function messageHasMarketNowIntent(
   message: string,
@@ -39,15 +46,51 @@ export function messageHasMarketNowIntent(
 ): boolean {
   const raw = String(message ?? '')
   if (/\b(at\s+market|@\s*market)\b/i.test(raw)) return true
-  const defaults = ['now', 'instant', 'market', 'mkt']
+  if (/\b(?:market\s+order|buy\s+market|sell\s+market|market\s+buy|market\s+sell)\b/i.test(raw)) {
+    return true
+  }
+
+  const nowLike = ['now', 'instant', 'mkt']
   const delim = channelKeywords?.additional?.delimiters ?? '|'
   const custom = channelKeywords?.signal?.market_order
     ? splitKeywordAliases(channelKeywords.signal.market_order, delim)
     : []
-  return [...defaults, ...custom].some(token => token && keywordRegex(token).test(raw))
+  for (const token of [...nowLike, ...custom.filter(t => t.toLowerCase() !== 'market')]) {
+    if (token && messageContainsKeyword(raw, token)) return true
+  }
+
+  if (keywordRegex('market').test(raw) && !isNonTradingMarketPhrase(raw)) {
+    return true
+  }
+
+  if (textHasCommonMarketNowIntent(raw)) return true
+
+  return false
 }
 
-/** Buy/sell without SL or TP must include a market-now cue. */
+/** True when SL/TP appear as labeled parameters in the message (not inferred from prose). */
+export function messageHasExplicitSlTpLabels(message: string): boolean {
+  const text = String(message ?? '')
+  if (/\b(?:sl|stop\s*loss)\s*[:=\-]?\s*\d/i.test(text)) return true
+  if (/\b(?:sl|stop\s*loss)\s+to\s+\d/i.test(text)) return true
+  if (/\b(?:tp|take\s*profit|target(?:\s+level)?)\s*#?\s*\d+\s*[:=\-]\s*\d/i.test(text)) return true
+  // TP1 4340 (numbered tier, space-separated — no colon)
+  if (/\b(?:tp|take\s*profit|target(?:\s+level)?)\s*#?\s*\d+\s+\d/i.test(text)) return true
+  if (/\b(?:tp|take\s*profit|target(?:\s+level)?)\s*[:=\-]\s*\d/i.test(text)) return true
+  if (/\btp\s*\d+\s*[:=\-]\s*\d/i.test(text)) return true
+  return false
+}
+
+/** Multiple numeric prices usually means a real signal (entry/SL/TP), not profit commentary. */
+function messageHasStructuredPriceEvidence(message: string): boolean {
+  const prices = String(message ?? '').match(/\b\d{1,5}(?:\.\d{1,5})?\b/g) ?? []
+  return prices.length >= 2
+}
+
+/**
+ * Buy/sell entries need NOW (or MARKET) unless the message includes explicit SL/TP labels
+ * or the parser extracted SL/TP from a multi-price signal (e.g. AI / foreign-language parse).
+ */
 export function entryMissingSlTpRequiresNow(
   parsed: { action?: unknown; sl?: unknown; tp?: unknown },
   rawMessage: string,
@@ -55,6 +98,8 @@ export function entryMissingSlTpRequiresNow(
 ): boolean {
   const action = String(parsed.action ?? '').toLowerCase()
   if (action !== 'buy' && action !== 'sell') return false
-  if (parsedHasSlOrTp(parsed)) return false
-  return !messageHasMarketNowIntent(rawMessage, channelKeywords)
+  if (messageHasMarketNowIntent(rawMessage, channelKeywords)) return false
+  if (messageHasExplicitSlTpLabels(rawMessage)) return false
+  if (parsedHasSlOrTp(parsed) && messageHasStructuredPriceEvidence(rawMessage)) return false
+  return true
 }

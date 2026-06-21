@@ -26,7 +26,7 @@ export function describeAutoBeTrigger(ms: ManualSettings): string {
 }
 
 export function describeAutoBeAction(ms: ManualSettings): string {
-  const offset = ms.breakeven_offset_pips ?? 0
+  const offset = ms.breakeven_offset_pips ?? 3
   const offsetPart =
     offset > 0 ? `entry + ${offset} pip${offset === 1 ? '' : 's'}` : 'entry (true breakeven)'
   const type = ms.move_sl_to_entry_type ?? 'sl_only'

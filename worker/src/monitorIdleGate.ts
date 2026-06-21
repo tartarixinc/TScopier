@@ -116,37 +116,6 @@ type FilterChain = {
   gte: (col: string, val: string) => FilterChain
 }
 
-/** Cheap existence check via HEAD count. */
-export async function tableHasRows(
-  supabase: SupabaseClient,
-  table: string,
-  build: (q: FilterChain) => FilterChain,
-): Promise<boolean> {
-  let q = supabase.from(table).select('id', { count: 'exact', head: true }) as unknown as FilterChain
-  q = build(q)
-  const { count, error } = await (q as unknown as PromiseLike<{ count: number | null; error: { message: string } | null }>)
-  if (error) {
-    console.warn(`[monitorIdleGate] tableHasRows ${table}:`, error.message)
-    return true
-  }
-  return (count ?? 0) > 0
-}
-
-/** Apply shard user_id filter when sharding is enabled. */
-export function applyShardUserFilter<T extends { in: (col: string, vals: string[]) => T }>(
-  q: T,
-  userIds: string[] | null,
-): T | null {
-  if (userIds === null) return q
-  if (userIds.length === 0) return null
-  return q.in('user_id', userIds)
-}
-
-export function invalidateShardUserCache(): void {
-  cachedShardUserIds = null
-  cachedShardUserIdsAt = 0
-}
-
 /** Existence check with optional shard user_id filter. */
 export async function hasWorkOnShard(
   supabase: SupabaseClient,

@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.sendImmediateLegs = sendImmediateLegs;
-const metatraderapi_1 = require("../metatraderapi");
+const fxsocketClient_1 = require("../fxsocketClient");
 const brokerConnectError_1 = require("../brokerConnectError");
 const autoManagement_1 = require("../autoManagement");
 const channelActiveTradeParams_1 = require("../channelActiveTradeParams");
@@ -176,7 +176,7 @@ async function sendImmediateLegs(input) {
         }
         catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
-            if ((0, metatraderapi_1.isBrokerDisconnectedMessage)(msg) && !(0, brokerConnectError_1.isMtBridgeGlitchMessage)(msg)) {
+            if ((0, fxsocketClient_1.isBrokerDisconnectedMessage)(msg) && !(0, brokerConnectError_1.isMtBridgeGlitchMessage)(msg)) {
                 await ctx.markBrokerSessionDown(broker, uuid, msg);
             }
             console.error(`[tradeExecutor] OrderSend failed signal=${signal.id} broker=${broker.id} leg=${leg.idx + 1}/${totalCount} op=${args.operation} price=${args.price ?? 0}:`, msg);
@@ -251,6 +251,8 @@ async function sendImmediateLegs(input) {
             baseLot,
             params: plannerCtx,
             filledLegs,
+            plannedBrokerTp: plan.orders[0]?.takeprofit ?? null,
+            hasPartialTpSchedule: (plan.partialTps?.length ?? 0) > 0,
             hooks: {
                 closeOppositeDirectionTrades: (s, p, _b, sym) => ctx.closeOppositeDirectionTrades(s, p, broker, sym),
                 tryParameterFollowUpMergeModifyOnly: async () => ({ handled: false }),

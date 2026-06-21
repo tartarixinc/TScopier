@@ -23,9 +23,15 @@ function flipOperation(op) {
  */
 function strictSignalEntryQuoteAllowsImmediate(args) {
     const { isBuy, entryPrice, bid, ask } = args;
-    if (!Number.isFinite(entryPrice) || entryPrice <= 0 || !Number.isFinite(bid) || !Number.isFinite(ask))
+    if (!Number.isFinite(entryPrice) || entryPrice <= 0 || !Number.isFinite(bid) || !Number.isFinite(ask)) {
         return false;
-    return isBuy ? ask <= entryPrice : bid >= entryPrice;
+    }
+    const tolPips = Math.max(0, Number(args.tolerancePips ?? 0));
+    const pip = Number(args.pipSize ?? 0);
+    const tolPx = tolPips > 0 && pip > 0 ? tolPips * pip : 0;
+    return isBuy
+        ? ask <= entryPrice + tolPx
+        : bid >= entryPrice - tolPx;
 }
 /**
  * Owns the decision table for `opSplit` → `opExec`, `orderPrice`, `strictEntry`, and pending `expiration`.
@@ -47,13 +53,9 @@ function resolveOpExecAndStrict(args) {
     const roundedEntry = entryAnchor != null && Number.isFinite(entryAnchor) && entryAnchor > 0
         ? roundPrice(entryAnchor)
         : 0;
-    let orderPrice = 0;
-    if (!isMarketExec) {
-        orderPrice = roundedEntry;
-    }
-    else if (manualStrict && roundedEntry > 0) {
-        orderPrice = roundedEntry;
-    }
+    // Market immediates use price=0 (live fill). Signal entry is carried in strictEntry
+    // for defer / broker-pending placement — not as a market order price.
+    const orderPrice = isMarketExec ? 0 : roundedEntry;
     const orderBase = {
         symbol: resolvedSymbol,
         operation: opExec,

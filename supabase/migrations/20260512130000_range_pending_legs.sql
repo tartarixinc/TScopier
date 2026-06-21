@@ -1,5 +1,5 @@
 /*
-  # TSCopier - Virtual Range Pendings
+  # TScopier - Virtual Range Pendings
 
   ## Overview
   Persists "virtual" averaging-down legs for Range Trading. Broker-side

@@ -1,29 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
-  Calendar,
-  ChartBar as BarChart2,
-  ChartNoAxesColumn,
   ChevronRight,
   CircleHelp,
   Clock,
-  History,
   Info,
-  LayoutDashboard,
-  LayoutTemplate,
-  Newspaper,
   PanelLeftClose,
   Plus,
-  ScrollText,
   Search,
-  Send,
-  Settings,
 } from 'lucide-react'
 import { LanguageSwitcher } from '../auth/LanguageSwitcher'
+import { CopierActiveIndicator } from '../layout/CopierActiveIndicator'
 import { ThemeToggle } from '../ui/ThemeToggle'
 import { TscopierLogo } from '../ui/TscopierLogo'
 import { useT } from '../../context/LocaleContext'
 import { useTheme } from '../../context/ThemeContext'
+import { getAppRouteIcon } from '../../lib/appNavIcons'
 import { chartThemeColors } from '../../lib/chartTheme'
 import { formatHeroLiveMoney, useLiveMoneyTicker } from './useLiveMoneyTicker'
 import type {
@@ -85,7 +77,7 @@ function barHeightPx(value: number, maxPx: number): number {
 
 function valueToneClass(tone: LandingBacktestPipsTone): string {
   if (tone === 'good') return 'text-teal-600 dark:text-teal-400'
-  if (tone === 'bad') return 'text-neutral-600 dark:text-neutral-400'
+  if (tone === 'bad') return 'text-error-600 dark:text-error-400'
   return 'text-neutral-900 dark:text-neutral-50'
 }
 
@@ -117,7 +109,7 @@ function HeroLiveMoneyValue({
 
   return (
     <p
-      className={clsx('mb-1.5 text-2xl font-semibold tabular-nums', valueToneClass(tone))}
+      className={clsx('mb-1.5 text-2xl font-semibold', valueToneClass(tone))}
       aria-live="polite"
       aria-atomic="true"
     >
@@ -136,7 +128,7 @@ function HeroStatBlock({ stat, label }: { stat: LandingHeroHeadlineStat; label: 
       {stat.live ? (
         <HeroLiveMoneyValue live={stat.live} tone={stat.valueTone} />
       ) : (
-        <p className={clsx('mb-1.5 text-2xl font-semibold tabular-nums', valueToneClass(stat.valueTone))}>
+        <p className={clsx('mb-1.5 text-2xl font-semibold', valueToneClass(stat.valueTone))}>
           {stat.value}
         </p>
       )}
@@ -195,7 +187,7 @@ function HeroTradeOutcomeChart() {
             <div key={i} className="border-t border-dashed border-neutral-100 dark:border-neutral-800" />
           ))}
         </div>
-        <div className="absolute left-0 top-0 flex h-[calc(100%-1.25rem)] w-9 flex-col justify-between py-1 text-[9px] tabular-nums text-neutral-400">
+        <div className="absolute left-0 top-0 flex h-[calc(100%-1.25rem)] w-9 flex-col justify-between py-1 text-xs text-neutral-400">
           {['$900', '$600', '$300', '$0'].map(tick => (
             <span key={tick}>{tick}</span>
           ))}
@@ -326,7 +318,7 @@ function HeroChannelProfitChart() {
               )
             })}
           </svg>
-          <div className="col-start-2 row-start-2 grid grid-cols-5 pt-1.5 text-center text-[10px] tabular-nums text-neutral-400">
+          <div className="col-start-2 row-start-2 grid grid-cols-5 pt-1.5 text-center text-[10px] text-neutral-400">
             {xTicks.map(tick => (
               <span key={tick}>{formatHeroAxisMoney(tick)}</span>
             ))}
@@ -377,26 +369,27 @@ export function HeroDashboardPreview() {
     {
       label: t.nav.sections.general,
       items: [
-        { icon: LayoutDashboard, label: t.nav.items.dashboard, active: true },
-        { icon: Settings, label: t.nav.items.configuration, active: false },
-        { icon: History, label: t.nav.items.trades, active: false },
+        { to: '/dashboard', label: t.nav.items.dashboard, active: true },
+        { to: '/brokers', label: t.nav.items.brokers, active: false },
+        { to: '/account-trades', label: t.nav.items.trades, active: false },
+        { to: '/activities', label: t.nav.items.management, active: false },
       ],
     },
     {
       label: t.nav.sections.signals,
       items: [
-        { icon: Send, label: t.nav.items.channels, active: false },
-        { icon: LayoutTemplate, label: t.nav.items.backtest, active: false },
-        { icon: ScrollText, label: t.nav.items.copierLogs, active: false },
-        { icon: ChartNoAxesColumn, label: t.nav.items.signalHistory, active: false },
-        { icon: BarChart2, label: t.nav.items.performance, active: false },
+        { to: '/channels', label: t.nav.items.channels, active: false },
+        { to: '/backtest', label: t.nav.items.backtest, active: false },
+        { to: '/copier-logs', label: t.nav.items.copierLogs, active: false },
+        { to: '/manage-signals', label: t.nav.items.signalHistory, active: false },
+        { to: '/performance', label: t.nav.items.performance, active: false },
       ],
     },
     {
       label: t.nav.sections.tradingTools,
       items: [
-        { icon: Newspaper, label: t.nav.items.marketNews, active: false },
-        { icon: Calendar, label: t.nav.items.economicCalendar, active: false },
+        { to: '/market-news', label: t.nav.items.marketNews, active: false },
+        { to: '/economic-calendar', label: t.nav.items.economicCalendar, active: false },
       ],
     },
   ]
@@ -444,7 +437,9 @@ export function HeroDashboardPreview() {
                     {section.label}
                   </p>
                   <div className="space-y-0.5">
-                    {section.items.map(item => (
+                    {section.items.map(item => {
+                      const Icon = getAppRouteIcon(item.to)
+                      return (
                       <div
                         key={item.label}
                         className={clsx(
@@ -454,7 +449,7 @@ export function HeroDashboardPreview() {
                             : 'text-neutral-600 dark:text-neutral-400',
                         )}
                       >
-                        <item.icon
+                        <Icon
                           className={clsx(
                             'h-4 w-4 shrink-0',
                             item.active && 'text-teal-600 dark:text-teal-400',
@@ -462,7 +457,8 @@ export function HeroDashboardPreview() {
                         />
                         <span>{item.label}</span>
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 </div>
               ))}
@@ -480,6 +476,13 @@ export function HeroDashboardPreview() {
                 </span>
               </div>
               <div className="ml-auto flex items-center gap-2">
+                <span
+                  className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-neutral-600 dark:text-neutral-300 sm:gap-2 sm:px-2.5 sm:text-sm"
+                  aria-hidden
+                >
+                  <CopierActiveIndicator />
+                  <span className="whitespace-nowrap">{t.nav.copierPause.statusRunning}</span>
+                </span>
                 <LanguageSwitcher />
                 <ThemeToggle />
                 <button
@@ -540,7 +543,7 @@ export function HeroDashboardPreview() {
                       <div className="flex items-center gap-2">
                         <Clock className="h-4 w-4 text-teal-500" aria-hidden />
                         <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
-                          {t.dashboard.channelWorker}
+                          {t.dashboard.tradeActivities}
                         </span>
                         <Info className="h-3.5 w-3.5 text-neutral-300 dark:text-neutral-400" aria-hidden />
                       </div>
@@ -605,12 +608,12 @@ export function HeroDashboardPreview() {
                           <span
                             className={clsx(
                               'min-w-0 truncate text-xs font-medium uppercase',
-                              row.side === 'buy' ? 'text-primary-600' : 'text-neutral-600 dark:text-neutral-400',
+                              row.side === 'buy' ? 'text-primary-600' : 'text-error-600 dark:text-error-400',
                             )}
                           >
                             {row.type}
                           </span>
-                          <span className="text-right text-xs tabular-nums text-neutral-400">{row.time}</span>
+                          <span className="text-right text-xs text-neutral-400">{row.time}</span>
                         </div>
                       ))}
                     </div>

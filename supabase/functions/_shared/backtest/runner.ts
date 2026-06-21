@@ -1,8 +1,9 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2"
-import { MassiveClient } from "../massiveApi.ts"
+import { FxsocketClient } from "../fxsocketClient.ts"
 import { loadBacktestSignals } from "./loadSignals.ts"
 import { preloadMarketData } from "./marketData.ts"
 import { runPortfolioSimulation } from "./portfolio.ts"
+import { resolveBacktestBroker } from "./resolveBacktestBroker.ts"
 import { simulateTradeOnSeries, sliceSeriesForSignal } from "./simulator.ts"
 import type { BacktestRunMode } from "./config.ts"
 import type { BacktestRunConfig, BacktestSummary, SimulatedTradeResult } from "./types.ts"
@@ -15,7 +16,7 @@ export interface BacktestRunContext {
 
 export async function executeBacktestRun(
   supabase: SupabaseClient,
-  massive: MassiveClient,
+  fx: FxsocketClient,
   runId: string,
   userId: string,
   config: BacktestRunConfig,
@@ -111,6 +112,7 @@ export async function executeBacktestRun(
         message: hint,
         signalSource: "backtest_channel_signals",
         rawParsedCount: loaded.rawParsedCount,
+        marketDataApiCalls: 0,
         massiveApiCalls: 0,
         importWarnings,
       },
@@ -122,36 +124,44 @@ export async function executeBacktestRun(
 
   await updateProgress(
     10,
-    `Loaded ${signals.length} tradeable signal(s) — fetching Massive market data…`,
+    `Loaded ${signals.length} tradeable signal(s) — fetching FXsocket market data…`,
   )
 
   const fromMs = new Date(config.dateFrom).getTime()
   const toMs = new Date(config.dateTo + "T23:59:59.999Z").getTime()
   const symbolsNeeded = [...new Set(signals.map((s) => s.symbol))]
 
-  const callsPerMinute = massive.callsPerMinute
-  const estMinutes = Math.max(1, Math.ceil(symbolsNeeded.length / Math.max(1, callsPerMinute)))
+  const primarySymbol = config.symbols[0] ?? symbolsNeeded[0] ?? ""
+  const symbolsCache = new Map<string, string[]>()
+  const brokerCtx = await resolveBacktestBroker(supabase, fx, userId, primarySymbol, symbolsCache)
+
   await updateProgress(
     12,
-    `Massive (${config.timeframe} bars): ~${symbolsNeeded.length} symbol(s), ~${estMinutes} min at ${callsPerMinute}/min…`,
+    `FXsocket (${config.timeframe} bars via ${brokerCtx.brokerLabel}): ${symbolsNeeded.length} symbol(s)…`,
   )
 
-  const { seriesBySymbol, apiCalls, fetchLog, rateLimitHits } = await preloadMarketData(
-    massive,
+  const { seriesBySymbol, apiCalls, fetchLog, fetchFailures } = await preloadMarketData(
+    fx,
+    brokerCtx,
     symbolsNeeded,
     signals,
     config,
     fromMs,
     toMs,
-    callsPerMinute,
   )
 
-  console.log("[backtest-run] Massive preload:", { apiCalls, fetchLog, rateLimitHits })
+  console.log("[backtest-run] FXsocket preload:", {
+    apiCalls,
+    fetchLog,
+    fetchFailures,
+    broker: brokerCtx.brokerLabel,
+    fxsocketAccountId: brokerCtx.fxsocketAccountId,
+  })
 
-  const massiveProgress = rateLimitHits > 0
-    ? `Massive: ${apiCalls} request(s) · ${rateLimitHits} symbol(s) skipped (rate limit)`
-    : `Massive: ${apiCalls} API request(s) · ${symbolsNeeded.length} symbol(s)`
-  await updateProgress(20, massiveProgress)
+  const mdProgress = fetchFailures > 0
+    ? `FXsocket: ${apiCalls} request(s) · ${fetchFailures} symbol(s) had fetch issues`
+    : `FXsocket: ${apiCalls} request(s) · ${symbolsNeeded.length} symbol(s) via ${brokerCtx.brokerLabel}`
+  await updateProgress(20, mdProgress)
 
   const results: SimulatedTradeResult[] = []
   const maxAfterMs = 5 * 86_400_000
@@ -190,7 +200,10 @@ export async function executeBacktestRun(
     summary = buildTpslSummary(config, results, channelNames)
   }
 
+  summary.marketDataApiCalls = apiCalls
   summary.massiveApiCalls = apiCalls
+  summary.brokerAccountId = brokerCtx.brokerAccountId
+  summary.brokerLabel = brokerCtx.brokerLabel
   summary.importWarnings = importWarnings.length ? importWarnings : undefined
   summary.signalSource = "backtest_channel_signals"
   summary.rawParsedCount = loaded.rawParsedCount
@@ -201,7 +214,6 @@ export async function executeBacktestRun(
   if (results.length > 0) {
     const tradeRows = results.map((r) => ({
       run_id: runId,
-      // FK references signals(id); Telegram imports use backtest_channel_signals.id only
       signal_id: r.copierSignalId,
       channel_id: r.channelId,
       symbol: r.symbol,
@@ -249,8 +261,8 @@ export async function executeBacktestRun(
 
   const noDataCount = results.filter((r) => r.outcome === "no_data").length
   const progressMsg = noDataCount > 0
-    ? `Complete · ${noDataCount} signal(s) had no market data${rateLimitHits > 0 ? " (some symbols hit rate limit)" : ""}`
-    : `Complete · Massive ${apiCalls} request(s)`
+    ? `Complete · ${noDataCount} signal(s) had no market data${fetchFailures > 0 ? " (some symbol fetches failed)" : ""}`
+    : `Complete · FXsocket ${apiCalls} request(s) via ${brokerCtx.brokerLabel}`
 
   await supabase.from("backtest_runs").update({
     status: "completed",

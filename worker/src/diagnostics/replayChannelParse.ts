@@ -13,7 +13,7 @@ import {
   loadChannelLexicon,
   parseChannelMessageSync,
 } from '../parseSignal'
-import { hasTradableInstrumentInText } from '../tradableSymbol'
+import { looksLikeTradingSignal } from '../signalTradingHeuristic'
 
 function parseArgs(argv: string[]): { channelId: string; message: string; telethonHeuristic: boolean } {
   let channelId = ''
@@ -42,31 +42,6 @@ function parseArgs(argv: string[]): { channelId: string; message: string; teleth
   return { channelId, message, telethonHeuristic }
 }
 
-/** Mirrors telegram-listener/app/signal_heuristic.py (TS-aligned scoring). */
-function looksLikeTradingSignalTs(text: string, isReply = false): boolean {
-  const normalized = text.toLowerCase().replace(/\s+/g, ' ').trim()
-  if (!normalized) return false
-
-  const hasInstrument = hasTradableInstrumentInText(text)
-  const hasDirectionOrAction =
-    /\b(buy|sell|long|short|close|tp|take profit|sl|stop loss|breakeven|be)\b/.test(normalized)
-  const hasPriceContext =
-    /\b\d{1,5}(?:\.\d{1,5})\b/.test(normalized) ||
-    /\b(entry|zone|between|above|below|now)\b/.test(normalized)
-  const hasTradeStructure = /\b(tp\s*\d*|sl|entry|signal|setup)\b/.test(normalized)
-
-  if (isReply && /\b(move|set|update|adjust|tp|sl|breakeven|be|close)\b/.test(normalized)) {
-    return true
-  }
-
-  const score =
-    Number(hasDirectionOrAction) +
-    Number(hasInstrument) +
-    Number(hasPriceContext) +
-    Number(hasTradeStructure)
-  return score >= 2
-}
-
 async function main() {
   const { channelId, message, telethonHeuristic } = parseArgs(process.argv)
   const url = String(process.env.SUPABASE_URL ?? '').trim()
@@ -93,7 +68,7 @@ async function main() {
     channel_id: channelId,
     channel_name: channelRow?.display_name ?? null,
     message_preview: message.length > 120 ? `${message.slice(0, 120)}…` : message,
-    heuristic_ts: looksLikeTradingSignalTs(message),
+    heuristic_ts: looksLikeTradingSignal(message, false, { keywords, lexicon }),
     parse: result,
   }
 

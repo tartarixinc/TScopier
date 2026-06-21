@@ -1,21 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.PLAN_LIMITS = void 0;
 exports.isSubscriptionActive = isSubscriptionActive;
 exports.effectivePlan = effectivePlan;
 exports.manualSettingsUseAdvancedFeatures = manualSettingsUseAdvancedFeatures;
-exports.PLAN_LIMITS = {
-    basic: {
-        maxBrokerAccounts: 1,
-        maxTelegramChannels: 5,
-        maxBacktestsPerMonth: 5,
-        maxTpRows: 3,
-    },
-    advanced: {
-        maxBrokerAccountsBase: 5,
-        maxBrokerAccountsExtra: 95,
-    },
-};
 function isSubscriptionActive(status) {
     return status === 'active' || status === 'trialing';
 }

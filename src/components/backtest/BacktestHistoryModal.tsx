@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Clock, Loader2, X } from 'lucide-react'
 import clsx from 'clsx'
+import { pipValueTextClass } from '../../lib/pnlDisplay'
 import { interpolate } from '../../i18n/interpolate'
 import { useT } from '../../context/LocaleContext'
 import { supabase } from '../../lib/supabase'
@@ -60,7 +61,7 @@ export function BacktestHistoryModal({
       case 'failed':
         return {
           label: bt.statusFailed,
-          className: 'bg-error-100 text-error-800 dark:bg-error-950 dark:text-error-300',
+          className: 'bg-error-100 text-[#737373] dark:bg-error-950 dark:text-[#737373]',
         }
       case 'running':
       case 'pending':
@@ -143,7 +144,7 @@ export function BacktestHistoryModal({
     >
       <button
         type="button"
-        className="absolute inset-0 bg-neutral-900/50 backdrop-blur-sm"
+        className="absolute inset-0 bg-neutral-950/55"
         aria-label={bt.close}
         onClick={onClose}
       />
@@ -217,7 +218,7 @@ export function BacktestHistoryModal({
                             <span
                               className={clsx(
                                 'text-sm font-bold tabular-nums',
-                                pips >= 0 ? 'text-teal-600' : 'text-error-600',
+                                pipValueTextClass(pips),
                               )}
                             >
                               {formatPipValue(pips)}

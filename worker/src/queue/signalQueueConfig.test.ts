@@ -8,6 +8,7 @@ import {
   resetSignalQueueConfigCache,
   shouldConsumeQueueLane,
   shouldEnqueueForUser,
+  signalQueueConfig,
   streamKeyForLane,
   tradeShardForUser,
 } from './signalQueueConfig'
@@ -42,6 +43,24 @@ test('buildIdempotencyKey is deterministic', () => {
     actionClass: 'buy',
   })
   assert.equal(key, 'sig-1:user-1:_:buy')
+})
+
+test('queue auto-enables when Redis credentials are present', () => {
+  restoreEnv()
+  delete process.env.TRADE_SIGNAL_QUEUE_ENABLED
+  process.env.UPSTASH_REDIS_REST_URL = 'https://example.upstash.io'
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'token'
+  resetSignalQueueConfigCache()
+  assert.equal(signalQueueConfig().enabled, true)
+})
+
+test('queue disabled when explicitly set false even with Redis', () => {
+  restoreEnv()
+  process.env.TRADE_SIGNAL_QUEUE_ENABLED = 'false'
+  process.env.UPSTASH_REDIS_REST_URL = 'https://example.upstash.io'
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'token'
+  resetSignalQueueConfigCache()
+  assert.equal(signalQueueConfig().enabled, false)
 })
 
 test('canary shards gate enqueue', () => {

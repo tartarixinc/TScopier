@@ -3,14 +3,10 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.incMetric = incMetric;
 exports.getMetricsSnapshot = getMetricsSnapshot;
-exports.resetMetrics = resetMetrics;
 const counters = new Map();
 function incMetric(name, delta = 1) {
     counters.set(name, (counters.get(name) ?? 0) + delta);
 }
 function getMetricsSnapshot() {
     return Object.fromEntries(counters.entries());
-}
-function resetMetrics() {
-    counters.clear();
 }

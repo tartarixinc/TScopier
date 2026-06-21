@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { supabase } from '../lib/supabase'
 import { getLocalCalendarDayBounds } from '../lib/dashboardTradeStats'
-import { formatLocalMtApiDateTime } from '../lib/mtApiDateTime'
-import { metatraderApi, type MtTrade } from '../lib/metatraderapi'
+import { formatBrokerHistoryDate } from '../lib/mtApiDateTime'
+import { fxsocketBroker, type MtTrade } from '../lib/fxsocketBroker'
+import { BROKER_ACCOUNT_CLIENT_SELECT } from '../lib/brokerAccountSelect'
+import { filterMtTradesSinceConnect } from '../lib/tradesSinceConnect'
+import type { BrokerAccount } from '../types/database'
+import { BROKER_FULL_HISTORY_FROM } from '../lib/tradesConstants'
+import { enrichMtTradesTimestamps, hydrateMtTradesTimesFromBrokers, mtTradeMissingDisplayTime } from '../lib/mtTradeTimestamps'
 import { readSessionCache, writeSessionCache } from '../lib/sessionDataCache'
 import {
   TRADES_CACHE_TTL_MS,
@@ -13,23 +19,43 @@ import { useDashboardRealtime } from './useDashboardRealtime'
 
 const AUTO_REFRESH_MS = 15_000
 const VISIBILITY_STALE_MS = 30_000
-/** Max rows returned for the Account Trades page (newest first). */
-export const TRADES_PAGE_MAX_RESULTS = 2000
-/** History window for trades list — enough for recent activity without pulling years of deals. */
-export const TRADES_PAGE_HISTORY_DAYS = 7
 
-async function fetchTradesFromMt(): Promise<MtTrade[]> {
+async function fetchTradesFromMt(userId: string): Promise<MtTrade[]> {
   const { tomorrowStart: historyTo } = getLocalCalendarDayBounds()
-  const historyFrom = new Date()
-  historyFrom.setDate(historyFrom.getDate() - TRADES_PAGE_HISTORY_DAYS)
-  const res = await metatraderApi.trades({
-    scope: 'all',
-    historyProfile: 'trades',
-    historyFrom: formatLocalMtApiDateTime(historyFrom),
-    historyTo: formatLocalMtApiDateTime(historyTo),
-    limit: TRADES_PAGE_MAX_RESULTS,
-  })
-  return (res.trades ?? []).slice(0, TRADES_PAGE_MAX_RESULTS)
+  const [tradesRes, brokerRes] = await Promise.all([
+    fxsocketBroker.trades({
+      scope: 'all',
+      historyProfile: 'trades',
+      historyFrom: BROKER_FULL_HISTORY_FROM,
+      historyTo: formatBrokerHistoryDate(historyTo),
+    }),
+    supabase
+      .from('broker_accounts')
+      .select(BROKER_ACCOUNT_CLIENT_SELECT)
+      .eq('user_id', userId),
+  ])
+  if (brokerRes.error) throw brokerRes.error
+
+  let normalized = enrichMtTradesTimestamps(tradesRes.trades ?? [])
+  if (normalized.some(mtTradeMissingDisplayTime)) {
+    const { trades: hydrated, stats } = await hydrateMtTradesTimesFromBrokers(normalized)
+    normalized = hydrated
+    if (import.meta.env.DEV && (stats.missingBefore > 0 || stats.historyErrors.length > 0)) {
+      console.debug('[trades] time hydration fallback', stats)
+    }
+  }
+  if (import.meta.env.DEV) {
+    const missingFromEdge = normalized.filter(mtTradeMissingDisplayTime).length
+    if (missingFromEdge > 0) {
+      console.debug('[trades] missing times after fetch', {
+        missing: missingFromEdge,
+        total: normalized.length,
+        sample: normalized.find(mtTradeMissingDisplayTime),
+      })
+    }
+  }
+  const accounts = (brokerRes.data ?? []) as unknown as BrokerAccount[]
+  return filterMtTradesSinceConnect(normalized, accounts)
 }
 
 export function useTradesData(userId: string | undefined) {
@@ -61,7 +87,8 @@ export function useTradesData(userId: string | undefined) {
       if (cached && !opts?.force) {
         applyPayload(cached.data, cached.fetchedAt)
         if (!opts?.background) setLoading(false)
-        if (Date.now() - cached.fetchedAt < TRADES_CACHE_TTL_MS) return
+        const staleMissingTimes = cached.data.trades.some(mtTradeMissingDisplayTime)
+        if (!staleMissingTimes && Date.now() - cached.fetchedAt < TRADES_CACHE_TTL_MS) return
       }
 
       inflightRef.current = true
@@ -69,18 +96,13 @@ export function useTradesData(userId: string | undefined) {
       else setLoading(true)
 
       try {
-        const list = await fetchTradesFromMt()
+        const list = await fetchTradesFromMt(userId)
         const fingerprint = tradesListFingerprint(list)
         const fetchedAt = Date.now()
 
         const payload: TradesCachePayload = { trades: list, fingerprint }
-        if (fingerprint !== fingerprintRef.current) {
-          writeSessionCache(key, payload)
-          applyPayload(payload, fetchedAt)
-        } else {
-          writeSessionCache(key, payload)
-          setLastSyncedAt(fetchedAt)
-        }
+        writeSessionCache(key, payload)
+        applyPayload(payload, fetchedAt)
       } catch (e) {
         if (!cached) {
           setTrades([])
@@ -109,7 +131,8 @@ export function useTradesData(userId: string | undefined) {
       if (cached) {
         applyPayload(cached.data, cached.fetchedAt)
         setLoading(false)
-        if (Date.now() - cached.fetchedAt < TRADES_CACHE_TTL_MS) return
+        const staleMissingTimes = cached.data.trades.some(mtTradeMissingDisplayTime)
+        if (!staleMissingTimes && Date.now() - cached.fetchedAt < TRADES_CACHE_TTL_MS) return
         void load({ background: true })
         return
       }

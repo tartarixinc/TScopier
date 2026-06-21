@@ -1,12 +1,13 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SignalEntryPendingMonitor = void 0;
-const metatraderapi_1 = require("./metatraderapi");
+const fxsocketClient_1 = require("./fxsocketClient");
 const mtApiByAccount_1 = require("./mtApiByAccount");
 const monitorIdleGate_1 = require("./monitorIdleGate");
 const signalEntryPendingHelpers_1 = require("./signalEntryPendingHelpers");
+const copierPause_1 = require("./copierPause");
 const ACTIVE_MS = (0, monitorIdleGate_1.monitorActiveIntervalMs)('SIGNAL_ENTRY_PENDING_TICK_MS', 2000);
-const IDLE_MS = (0, monitorIdleGate_1.monitorIdleIntervalMs)('SIGNAL_ENTRY_PENDING_IDLE_MS', 60000);
+const IDLE_MS = (0, monitorIdleGate_1.monitorIdleIntervalMs)('SIGNAL_ENTRY_PENDING_IDLE_MS', 15000);
 const MISSING_BEFORE_ASSUME_GONE = 6;
 function parsePartialTpPlan(raw) {
     if (!Array.isArray(raw))
@@ -54,7 +55,7 @@ class SignalEntryPendingMonitor {
     start() {
         if (this.loop)
             return;
-        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)()) {
+        if (!(0, fxsocketClient_1.hasFxsocketConfigured)()) {
             console.warn('[signalEntryPendingMonitor] MT4API_BASIC_USER/PASSWORD missing — signal entry pending monitor disabled');
             return;
         }
@@ -87,7 +88,7 @@ class SignalEntryPendingMonitor {
         }
     }
     async tick() {
-        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
+        if (!(0, fxsocketClient_1.hasFxsocketConfigured)())
             return;
         const rowsQ = await (0, monitorIdleGate_1.applyShardToQuery)(this.supabase, this.supabase
             .from('signal_entry_pending_orders')
@@ -101,12 +102,13 @@ class SignalEntryPendingMonitor {
             console.error('[signalEntryPendingMonitor] select failed:', error.message);
             return;
         }
-        const rows = (data ?? []);
+        const rows = (data ?? [])
+            .filter(r => !(0, copierPause_1.isUserCopierPausedCached)(r.user_id));
         if (!rows.length) {
             this.missingStreak.clear();
             return;
         }
-        this.platformByUuid = await (0, mtApiByAccount_1.loadPlatformByMetaapiId)(this.supabase, rows.map(r => r.metaapi_account_id));
+        this.platformByUuid = await (0, mtApiByAccount_1.loadPlatformByFxsocketId)(this.supabase, rows.map(r => r.metaapi_account_id));
         const nowMs = Date.now();
         const expiredIds = new Set();
         for (const r of rows) {
@@ -121,12 +123,12 @@ class SignalEntryPendingMonitor {
         for (const row of rows) {
             if (!expiredIds.has(row.id))
                 continue;
-            const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(this.platformByUuid, row.metaapi_account_id);
+            const api = (0, mtApiByAccount_1.apiForFxsocketAccount)(this.platformByUuid, row.metaapi_account_id);
             if (api)
                 await (0, signalEntryPendingHelpers_1.cancelSignalEntryRowAtBroker)(this.supabase, api, row, 'expired');
         }
         for (const row of cancelRows) {
-            const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(this.platformByUuid, row.metaapi_account_id);
+            const api = (0, mtApiByAccount_1.apiForFxsocketAccount)(this.platformByUuid, row.metaapi_account_id);
             if (api)
                 await (0, signalEntryPendingHelpers_1.cancelSignalEntryRowAtBroker)(this.supabase, api, row, 'cancel_requested');
         }
@@ -138,7 +140,7 @@ class SignalEntryPendingMonitor {
             byAccount.set(k, list);
         }
         for (const [uuid, group] of byAccount) {
-            const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(this.platformByUuid, uuid);
+            const api = (0, mtApiByAccount_1.apiForFxsocketAccount)(this.platformByUuid, uuid);
             if (!api)
                 continue;
             let opened = [];

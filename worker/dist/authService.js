@@ -4,6 +4,7 @@ exports.AuthService = void 0;
 const tl_1 = require("telegram/tl");
 const Password_1 = require("telegram/Password");
 const telegramClient_1 = require("./telegramClient");
+const telegramAccountClaims_1 = require("./telegramAccountClaims");
 /**
  * Maximum age of a pending auth (between send_code and verify_code)
  * before we drop the in-memory client. Telegram codes expire in a few minutes;
@@ -14,12 +15,7 @@ const CLEANUP_INTERVAL_MS = 60 * 1000;
 /** DB row outlives Telegram code validity slightly so retries still recover across replicas. */
 const PENDING_DB_TTL_MS = 12 * 60 * 1000;
 function normalizePhoneNumber(raw) {
-    const compact = String(raw ?? '')
-        .trim()
-        .replace(/[\s\-()]/g, '');
-    if (compact.startsWith('00'))
-        return `+${compact.slice(2)}`;
-    return compact;
+    return (0, telegramAccountClaims_1.normalizeTelegramPhoneNumber)(raw);
 }
 function phonesMatch(a, b) {
     return normalizePhoneNumber(a) === normalizePhoneNumber(b);
@@ -129,6 +125,7 @@ class AuthService {
         if (!normalizedPhone || !normalizedPhone.startsWith('+')) {
             throw new Error('Use full phone with country code, e.g. +44...');
         }
+        await (0, telegramAccountClaims_1.assertTelegramAccountAvailable)(this.supabase, userId, { phone: normalizedPhone });
         // Stop the live listener before touching telegram_auth_pending — clearing that row
         // triggers onAuthPendingCleared on other replicas, which must not reopen MTProto.
         await this.sessionManager.pauseForAuth(userId);
@@ -254,6 +251,12 @@ class AuthService {
             throw err;
         }
         const sessionString = client.session.save();
+        const me = await client.getMe();
+        const telegramUserId = me.id?.toString?.() ?? String(me.id);
+        await (0, telegramAccountClaims_1.assertTelegramAccountAvailable)(this.supabase, userId, {
+            phone: pendingPhone,
+            telegramUserId,
+        });
         const { data: row, error: dbErr } = await this.supabase
             .from('telegram_sessions')
             .upsert({
@@ -273,6 +276,22 @@ class AuthService {
             this.pending.delete(userId);
             await this.clearPendingRow(userId);
             throw new Error(dbErr?.message ?? 'Failed to persist Telegram session');
+        }
+        try {
+            await (0, telegramAccountClaims_1.upsertTelegramAccountClaim)(this.supabase, userId, {
+                phone: pendingPhone,
+                telegramUserId,
+            });
+        }
+        catch (claimErr) {
+            await this.supabase.from('telegram_sessions').delete().eq('user_id', userId);
+            try {
+                await client.disconnect();
+            }
+            catch { /* ignore */ }
+            this.pending.delete(userId);
+            await this.clearPendingRow(userId);
+            throw claimErr;
         }
         // Hand the *live* authenticated client to the session manager so it
         // becomes the long-running listener — no second connect from this host.

@@ -8,6 +8,11 @@ exports.expandPerLegTargetsToCount = expandPerLegTargetsToCount;
 exports.takeProfitForPoolLegIndex = takeProfitForPoolLegIndex;
 exports.takeProfitForSplitBasketLeg = takeProfitForSplitBasketLeg;
 exports.takeProfitForLegIndex = takeProfitForLegIndex;
+exports.resolveRangeBasketTpPhase = resolveRangeBasketTpPhase;
+exports.compareEntryQualityLegs = compareEntryQualityLegs;
+exports.buildEntryQualityTakeProfitMap = buildEntryQualityTakeProfitMap;
+exports.buildRangeBasketPerLegStopTargets = buildRangeBasketPerLegStopTargets;
+exports.takeProfitForEntryQualityLeg = takeProfitForEntryQualityLeg;
 /** Treat legacy rows without `enabled` as on (matches AccountConfig sanitize). */
 function isTpLotRowEnabled(row) {
     if (!row)
@@ -156,4 +161,91 @@ function takeProfitForLegIndex(args) {
         finalTps: args.finalTps,
         tpLots: args.tpLots,
     });
+}
+/** Phase A until the first range layer has fired; then unified entry-quality rebalance. */
+function resolveRangeBasketTpPhase(args) {
+    const { openLegCount, immediateLegCount, firedRangeLegCount } = args;
+    if (firedRangeLegCount > 0)
+        return 'layering_rebalance';
+    if (openLegCount > immediateLegCount)
+        return 'layering_rebalance';
+    return 'instant_only';
+}
+function compareEntryQualityLegs(a, b, isBuy) {
+    const aEntry = Number(a.entryPrice);
+    const bEntry = Number(b.entryPrice);
+    const aFinite = Number.isFinite(aEntry);
+    const bFinite = Number.isFinite(bEntry);
+    if (aFinite && bFinite && aEntry !== bEntry) {
+        return isBuy ? bEntry - aEntry : aEntry - bEntry;
+    }
+    if (aFinite !== bFinite)
+        return aFinite ? -1 : 1;
+    return a.openedAt.localeCompare(b.openedAt);
+}
+/**
+ * Assign Targets % TP prices to legs sorted by entry quality (worst/earliest first → nearest TP).
+ * `slotLegCount` is typically `legs.length` (current open count in phase B).
+ */
+function buildEntryQualityTakeProfitMap(args) {
+    const { legs, isBuy, slotLegCount, finalTps, tpLots } = args;
+    const out = new Map();
+    if (!legs.length || slotLegCount <= 0)
+        return out;
+    const tps = finalTps.filter(t => typeof t === 'number' && Number.isFinite(t) && t > 0);
+    if (!tps.length)
+        return out;
+    const slots = buildDistributedPerLegTakeProfits({
+        openLegCount: slotLegCount,
+        finalTps: tps,
+        tpLots,
+    });
+    const sorted = [...legs].sort((a, b) => compareEntryQualityLegs(a, b, isBuy));
+    for (let i = 0; i < sorted.length && i < slots.length; i++) {
+        const tp = slots[i];
+        if (tp > 0)
+            out.set(sorted[i].id, tp);
+    }
+    return out;
+}
+/** Build per-leg SL/TP targets aligned to `openLegs` opened_at order for broker modify. */
+function buildRangeBasketPerLegStopTargets(args) {
+    const { phase, openLegs, immediateLegCount, isBuy, stoploss, finalTps, tpLots } = args;
+    if (!openLegs.length)
+        return [];
+    const tps = finalTps.filter(t => typeof t === 'number' && Number.isFinite(t) && t > 0);
+    if (phase === 'layering_rebalance') {
+        const tpMap = buildEntryQualityTakeProfitMap({
+            legs: openLegs,
+            isBuy,
+            slotLegCount: openLegs.length,
+            finalTps: tps,
+            tpLots,
+        });
+        return openLegs.map(leg => ({
+            stoploss,
+            takeprofit: tpMap.get(leg.id) ?? 0,
+        }));
+    }
+    const instantPoolCount = Math.max(1, immediateLegCount);
+    const instantTpPrices = buildDistributedPerLegTakeProfits({
+        openLegCount: instantPoolCount,
+        finalTps: tps,
+        tpLots,
+    });
+    return openLegs.map((leg, i) => ({
+        stoploss,
+        takeprofit: instantTpPrices[i] ?? instantTpPrices[instantTpPrices.length - 1] ?? 0,
+    }));
+}
+/** TP for one leg in phase B from the current open basket (entry-quality slot). */
+function takeProfitForEntryQualityLeg(args) {
+    const tpMap = buildEntryQualityTakeProfitMap({
+        legs: args.openLegs,
+        isBuy: args.isBuy,
+        slotLegCount: args.openLegs.length,
+        finalTps: args.finalTps,
+        tpLots: args.tpLots,
+    });
+    return tpMap.get(args.legId) ?? 0;
 }

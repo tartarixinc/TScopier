@@ -5,21 +5,32 @@ import {
   toBacktestRunConfig,
   type BacktestRunMode,
 } from "../_shared/backtest/config.ts"
+import { sanitizeMarketDataErrorMessage } from "../_shared/backtest/fxsocketMarketData.ts"
 import { executeBacktestRun } from "../_shared/backtest/runner.ts"
 import {
   deleteBacktestTrade,
   resimulateBacktestTrade,
 } from "../_shared/backtest/resimulateTrade.ts"
+import {
+  fetchTradeReplayData,
+  TradeReplayNoDataError,
+  TradeReplayNotFoundError,
+} from "../_shared/backtest/tradeReplayData.ts"
+import {
+  BacktestBrokerNotFoundError,
+  BacktestSymbolNotFoundError,
+  resolveBacktestBroker,
+} from "../_shared/backtest/resolveBacktestBroker.ts"
 import { syncBacktestSignalsViaWorker } from "../_shared/backtest/workerSync.ts"
 import {
   assertBacktestMonthlyLimit,
   loadUserSubscription,
 } from "../_shared/subscriptionAccess.ts"
 import {
-  MassiveApiError,
-  MassiveClient,
-  sanitizeMarketDataErrorMessage,
-} from "../_shared/massiveApi.ts"
+  FxsocketApiError,
+  FxsocketClient,
+  isFxsocketConfigured,
+} from "../_shared/fxsocketClient.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -36,11 +47,34 @@ async function startBacktestRun(
   userId: string,
   simple: ReturnType<typeof parseSimpleConfig>,
   mode: BacktestRunMode,
-  opts: { forceSync?: boolean },
+  _opts: { forceSync?: boolean },
 ): Promise<Response> {
   const cfg = toBacktestRunConfig(simple, mode)
   const runLabel = mode === "tpsl" ? "TP/SL backtest" : "Trade simulation"
   const name = `${runLabel} ${cfg.dateFrom} → ${cfg.dateTo}`
+
+  const symbolFilter = cfg.symbols ?? []
+  if (symbolFilter.length === 0) {
+    return bad(400, "Select a symbol to backtest (profile signals first).")
+  }
+
+  if (!isFxsocketConfigured(Deno.env)) {
+    return bad(503, "FXSOCKET_API_KEY not configured")
+  }
+
+  const fx = new FxsocketClient(Deno.env)
+
+  try {
+    await resolveBacktestBroker(supabase, fx, userId, symbolFilter[0]!)
+  } catch (e) {
+    if (e instanceof BacktestBrokerNotFoundError) {
+      return bad(400, e.message)
+    }
+    if (e instanceof BacktestSymbolNotFoundError) {
+      return bad(400, e.message)
+    }
+    throw e
+  }
 
   const { data: run, error: insErr } = await supabase
     .from("backtest_runs")
@@ -59,29 +93,8 @@ async function startBacktestRun(
     simple.channelIds.map((channel_id) => ({ run_id: runId, channel_id })),
   )
 
-  const massiveKey = Deno.env.get("MASSIVE_API_KEY") ?? Deno.env.get("POLYGON_API_KEY") ?? ""
-  if (!massiveKey.trim()) {
-    await supabase.from("backtest_runs").update({
-      status: "failed",
-      error_message: "MASSIVE_API_KEY not configured on server",
-    }).eq("id", runId)
-    return bad(503, "MASSIVE_API_KEY not configured")
-  }
-
-  const massive = MassiveClient.fromEnv(Deno.env)
-
   const runPromise = (async () => {
     const importWarnings: string[] = []
-    const symbolFilter = cfg.symbols ?? []
-
-    if (symbolFilter.length === 0) {
-      await supabase.from("backtest_runs").update({
-        status: "failed",
-        error_message: "Select a symbol to backtest (profile signals first).",
-        completed_at: new Date().toISOString(),
-      }).eq("id", runId)
-      return
-    }
 
     await supabase.from("backtest_runs").update({
       status: "running",
@@ -92,7 +105,7 @@ async function startBacktestRun(
 
     await executeBacktestRun(
       supabase,
-      massive,
+      fx,
       runId,
       userId,
       cfg,
@@ -167,17 +180,80 @@ Deno.serve(async (req: Request) => {
       const simple = parseSimpleConfig((body.config ?? {}) as Record<string, unknown>)
       if (simple.channelIds.length === 0) return bad(400, "At least one channel required")
 
-      const sync = await syncBacktestSignalsViaWorker(
-        Deno.env,
-        userId,
-        simple.channelIds,
-        simple.dateFrom,
-        simple.dateTo,
-      )
+      const { data: run, error: insErr } = await supabase
+        .from("backtest_runs")
+        .insert({
+          user_id: userId,
+          name: `Signal sync ${simple.dateFrom} → ${simple.dateTo}`,
+          status: "running",
+          progress_pct: 0,
+          progress_message: "Pulling signals from Telegram…",
+          config: { ...simple, syncOnly: true },
+          started_at: new Date().toISOString(),
+        })
+        .select("id")
+        .single()
+      if (insErr) return bad(500, insErr.message)
+
+      const runId = run.id as string
+
+      const syncPromise = (async () => {
+        try {
+          const sync = await syncBacktestSignalsViaWorker(
+            Deno.env,
+            userId,
+            simple.channelIds,
+            simple.dateFrom,
+            simple.dateTo,
+            {
+              runId,
+              onChannelStart: async (index) => {
+                const pct = simple.channelIds.length > 0
+                  ? Math.max(1, Math.floor((index / simple.channelIds.length) * 4))
+                  : 1
+                await supabase.from("backtest_runs").update({
+                  progress_pct: pct,
+                  progress_message: `Pulling signals from Telegram (channel ${index + 1}/${simple.channelIds.length})…`,
+                  updated_at: new Date().toISOString(),
+                }).eq("id", runId).eq("user_id", userId)
+              },
+            },
+          )
+          const progressMsg = sync.imported > 0
+            ? `Imported ${sync.imported} signal(s) from ${sync.messages_scanned} messages`
+            : `Scanned ${sync.messages_scanned} message(s)`
+          await supabase.from("backtest_runs").update({
+            status: "completed",
+            progress_pct: 100,
+            progress_message: progressMsg,
+            summary: sync,
+            completed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }).eq("id", runId)
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e)
+          await supabase.from("backtest_runs").update({
+            status: "failed",
+            error_message: msg,
+            progress_pct: 100,
+            progress_message: msg,
+            completed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }).eq("id", runId)
+        }
+      })()
+
+      // @ts-ignore EdgeRuntime.waitUntil
+      if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
+        EdgeRuntime.waitUntil(syncPromise)
+      } else {
+        await syncPromise
+      }
 
       return Response.json({
         ok: true,
-        ...sync,
+        sync_run_id: runId,
+        run_id: runId,
         table: "backtest_channel_signals",
       }, { headers: corsHeaders })
     }
@@ -214,11 +290,12 @@ Deno.serve(async (req: Request) => {
         return bad(400, "sl must be a positive number or empty")
       }
 
-      const massiveKey = Deno.env.get("MASSIVE_API_KEY") ?? Deno.env.get("POLYGON_API_KEY") ?? ""
-      if (!massiveKey.trim()) return bad(503, "MASSIVE_API_KEY not configured")
-      const massive = MassiveClient.fromEnv(Deno.env)
+      if (!isFxsocketConfigured(Deno.env)) {
+        return bad(503, "FXSOCKET_API_KEY not configured")
+      }
+      const fx = new FxsocketClient(Deno.env)
 
-      const trade = await resimulateBacktestTrade(supabase, massive, userId, tradeId, {
+      const trade = await resimulateBacktestTrade(supabase, fx, userId, tradeId, {
         direction,
         entry_price,
         sl,
@@ -233,6 +310,25 @@ Deno.serve(async (req: Request) => {
         .maybeSingle()
 
       return Response.json({ ok: true, trade, run }, { headers: corsHeaders })
+    }
+
+    if (action === "trade_replay") {
+      const tradeId = String(body.trade_id ?? "")
+      if (!tradeId) return bad(400, "trade_id required")
+
+      if (!isFxsocketConfigured(Deno.env)) {
+        return bad(503, "FXSOCKET_API_KEY not configured")
+      }
+      const fx = new FxsocketClient(Deno.env)
+
+      try {
+        const replay = await fetchTradeReplayData(supabase, fx, userId, tradeId)
+        return Response.json(replay, { headers: corsHeaders })
+      } catch (e) {
+        if (e instanceof TradeReplayNotFoundError) return bad(404, e.message)
+        if (e instanceof TradeReplayNoDataError) return bad(404, e.message)
+        throw e
+      }
     }
 
     if (action === "delete_trade") {
@@ -266,7 +362,10 @@ Deno.serve(async (req: Request) => {
 
     return bad(400, `Unknown action: ${action}`)
   } catch (e) {
-    const status = e instanceof MassiveApiError ? e.status : 500
+    const status = e instanceof FxsocketApiError ? e.status
+      : e instanceof BacktestBrokerNotFoundError || e instanceof BacktestSymbolNotFoundError
+        || e instanceof TradeReplayNotFoundError || e instanceof TradeReplayNoDataError ? 400
+      : 500
     const msg = sanitizeMarketDataErrorMessage(
       e instanceof Error ? e.message : "Internal error",
     )

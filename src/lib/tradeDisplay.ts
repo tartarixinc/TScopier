@@ -1,5 +1,6 @@
-import type { MtTrade } from './metatraderapi'
+import type { MtTrade } from './fxsocketBroker'
 import { directionDisplayLabel, resolveTradeDisplayDirection } from './tradeDirection'
+import { formatTradeCloseTimeLabel } from './mtTradeTimestamps'
 
 export function formatTradePrice(value: number | null | undefined): string {
   if (value === null || value === undefined) return '—'
@@ -24,6 +25,16 @@ export function displayTradeProfit(trade: MtTrade): number | null {
   return net !== 0 ? net : p
 }
 
+/** Floating P/L for open legs (profit + swap + commission); tolerates missing profit from REST. */
+export function tradeOpenLegProfit(trade: MtTrade): number | null {
+  if (trade.status !== 'open') return displayTradeProfit(trade)
+  const profit = typeof trade.profit === 'number' && Number.isFinite(trade.profit) ? trade.profit : 0
+  const swap = typeof trade.swap === 'number' && Number.isFinite(trade.swap) ? trade.swap : 0
+  const commission =
+    typeof trade.commission === 'number' && Number.isFinite(trade.commission) ? trade.commission : 0
+  return Math.round((profit + swap + commission) * 100) / 100
+}
+
 export function getTradeDisplayMeta(trade: MtTrade) {
   const displayDirection = resolveTradeDisplayDirection(trade)
   const isBuy = displayDirection === 'buy'
@@ -37,18 +48,9 @@ export function getTradeDisplayMeta(trade: MtTrade) {
     closed: { variant: 'neutral', label: 'Closed' },
   }
   const status = statusConfig[trade.status] ?? { variant: 'neutral' as const, label: trade.status }
-  const timeIso = trade.status === 'closed' ? (trade.closed_at ?? trade.opened_at) : trade.opened_at
+  const timeLabel = formatTradeCloseTimeLabel(trade)
   const broker = trade.broker_name || trade.broker_label || '—'
   const directionLabel = directionDisplayLabel(displayDirection)
-  const timeLabel = timeIso
-    ? new Date(timeIso).toLocaleString([], {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      })
-    : '—'
 
   return { isBuy, isSell, profit, status, broker, directionLabel, timeLabel, displayDirection }
 }

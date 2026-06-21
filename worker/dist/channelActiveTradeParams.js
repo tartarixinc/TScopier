@@ -3,11 +3,22 @@
  * Persist and apply channel-level SL/TP from management / parameter refresh.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.channelParamsPredateBasket = channelParamsPredateBasket;
 exports.symbolsForChannelParamsPersist = symbolsForChannelParamsPersist;
 exports.loadChannelActiveTradeParamsForSymbol = loadChannelActiveTradeParamsForSymbol;
 exports.upsertChannelActiveTradeParams = upsertChannelActiveTradeParams;
 exports.parsedSignalHasExplicitStops = parsedSignalHasExplicitStops;
+exports.isFullEntrySignalWithStops = isFullEntrySignalWithStops;
+exports.shouldPreferSignalStopsOverChannelMemory = shouldPreferSignalStopsOverChannelMemory;
+exports.shouldPreferParsedStopsOnEntry = shouldPreferParsedStopsOnEntry;
+exports.shouldOverlayChannelParamsOnBasketRefresh = shouldOverlayChannelParamsOnBasketRefresh;
+exports.refreshChannelParamsFromSignal = refreshChannelParamsFromSignal;
 exports.shouldMergeChannelParamsForEntry = shouldMergeChannelParamsForEntry;
+exports.channelHasOpenActivityForSymbol = channelHasOpenActivityForSymbol;
+exports.channelHasOpenActivityForChannelSymbol = channelHasOpenActivityForChannelSymbol;
+exports.clearChannelActiveTradeParamsWhenFlat = clearChannelActiveTradeParamsWhenFlat;
+exports.shouldSeedChannelParamsFromEntrySignal = shouldSeedChannelParamsFromEntrySignal;
+exports.resolveEntryChannelStops = resolveEntryChannelStops;
 exports.mergeParsedWithChannelParams = mergeParsedWithChannelParams;
 exports.stripInvalidStopsForSide = stripInvalidStopsForSide;
 exports.estimateBasketTotalPlannedLegs = estimateBasketTotalPlannedLegs;
@@ -18,6 +29,21 @@ exports.applyChannelParamsToVirtualLeg = applyChannelParamsToVirtualLeg;
 exports.reapplyChannelParamsToPendingLegs = reapplyChannelParamsToPendingLegs;
 const basketModFollowUp_1 = require("./basketModFollowUp");
 const tpBucketDistribution_1 = require("./manualPlanning/tpBucketDistribution");
+const parsedEntry_1 = require("./manualPlanning/parsedEntry");
+/**
+ * Channel memory written before the basket's anchor signal belongs to an older
+ * trade cycle (e.g. SL/TP from last week's signal). Applying it to a fresh
+ * basket produces wrong-side stops the broker rejects as "Invalid stops".
+ */
+function channelParamsPredateBasket(params, basketCreatedAt) {
+    if (!params?.updatedAt || !basketCreatedAt)
+        return false;
+    const updated = Date.parse(params.updatedAt);
+    const anchor = Date.parse(basketCreatedAt);
+    if (!Number.isFinite(updated) || !Number.isFinite(anchor))
+        return false;
+    return updated < anchor;
+}
 function positiveLevel(v) {
     const n = typeof v === 'number' ? v : Number(v ?? 0);
     return Number.isFinite(n) && n > 0 ? n : null;
@@ -42,7 +68,7 @@ function symbolsForChannelParamsPersist(args) {
 async function loadChannelActiveTradeParamsForSymbol(supabase, userId, channelId, symbolHint) {
     const { data, error } = await supabase
         .from('channel_active_trade_params')
-        .select('symbol,stoploss,tp_levels')
+        .select('symbol,stoploss,tp_levels,updated_at')
         .eq('user_id', userId)
         .eq('channel_id', channelId)
         .limit(200);
@@ -58,10 +84,11 @@ async function loadChannelActiveTradeParamsForSymbol(supabase, userId, channelId
         symbol: match.symbol,
         stoploss: positiveLevel(match.stoploss),
         tpLevels: normalizeTpLevels(match.tp_levels),
+        updatedAt: match.updated_at ?? null,
     };
 }
 async function upsertChannelActiveTradeParams(supabase, args) {
-    const { userId, channelId, symbols, stoploss, tpLevels } = args;
+    const { userId, channelId, symbols, stoploss, tpLevels, replace = false } = args;
     const sl = stoploss != null ? positiveLevel(stoploss) : null;
     const tps = tpLevels != null ? normalizeTpLevels(tpLevels) : null;
     if (sl == null && (tps == null || tps.length === 0))
@@ -74,12 +101,18 @@ async function upsertChannelActiveTradeParams(supabase, args) {
         if (!key)
             continue;
         const existing = await loadChannelActiveTradeParamsForSymbol(supabase, userId, channelId, key);
+        const hasExplicitSl = sl != null;
+        const hasExplicitTps = tps != null && tps.length > 0;
         const row = {
             user_id: userId,
             channel_id: channelId,
             symbol: existing?.symbol ?? key.toUpperCase(),
-            stoploss: sl ?? existing?.stoploss ?? null,
-            tp_levels: tps != null && tps.length > 0 ? tps : (existing?.tpLevels ?? []),
+            stoploss: replace && hasExplicitSl
+                ? sl
+                : (sl ?? existing?.stoploss ?? null),
+            tp_levels: replace && hasExplicitTps
+                ? tps
+                : (tps != null && tps.length > 0 ? tps : (existing?.tpLevels ?? [])),
             updated_at: now,
         };
         const { error } = await supabase
@@ -97,11 +130,240 @@ function parsedSignalHasExplicitStops(parsed) {
     return hasSl || hasTp;
 }
 /**
+ * True for a buy/sell that carries its own entry anchor and SL/TP — a full new entry,
+ * not an SL/TP-only parameter follow-up. Stale channel memory must not overlay these.
+ */
+function isFullEntrySignalWithStops(parsed) {
+    const act = String(parsed.action ?? '').toLowerCase();
+    if (act !== 'buy' && act !== 'sell')
+        return false;
+    if (!(0, parsedEntry_1.parsedHasExplicitEntryAnchor)(parsed))
+        return false;
+    return parsedSignalHasExplicitStops(parsed);
+}
+/**
+ * Full entries with explicit SL/TP must win over stale `channel_active_trade_params`.
+ * Use before overlaying channel memory during basket merge / refresh (not raw entry dispatch).
+ */
+function shouldPreferSignalStopsOverChannelMemory(parsed) {
+    return isFullEntrySignalWithStops(parsed);
+}
+/**
+ * Entry dispatch: any buy/sell that includes SL/TP in the parsed message must win over
+ * channel memory. Unlike {@link shouldPreferSignalStopsOverChannelMemory}, does not
+ * require an entry price/zone — "buy now" + SL must not inherit a prior Adjust SL.
+ */
+function shouldPreferParsedStopsOnEntry(parsed) {
+    const act = String(parsed.action ?? '').toLowerCase();
+    if (act !== 'buy' && act !== 'sell')
+        return false;
+    return parsedSignalHasExplicitStops(parsed);
+}
+/**
+ * True when basket merge / refresh may overlay channel memory onto parsed stops.
+ */
+function shouldOverlayChannelParamsOnBasketRefresh(parsed, logAction) {
+    if (logAction !== 'signal_merge_into_open_trade')
+        return false;
+    // "Gold buy now" + SL/TP must not inherit stale Adjust SL from channel memory.
+    if (shouldPreferParsedStopsOnEntry(parsed))
+        return false;
+    return !shouldPreferSignalStopsOverChannelMemory(parsed);
+}
+/** Upsert channel memory from signal stops (no overlay). For live-entry fast path. */
+async function refreshChannelParamsFromSignal(supabase, args) {
+    if (!parsedSignalHasExplicitStops(args.plannerParsed))
+        return null;
+    const refreshTpLevels = (args.plannerParsed.tp ?? []).filter((t) => typeof t === 'number' && Number.isFinite(t) && t > 0);
+    await upsertChannelActiveTradeParams(supabase, {
+        userId: args.userId,
+        channelId: args.channelId,
+        symbols: [args.symbol],
+        stoploss: args.plannerParsed.sl,
+        tpLevels: refreshTpLevels,
+        replace: args.replace ?? shouldPreferParsedStopsOnEntry(args.plannerParsed),
+    });
+    return loadChannelActiveTradeParamsForSymbol(supabase, args.userId, args.channelId, args.symbol);
+}
+/**
  * Channel memory from Adjust SL applies to management + pending ladder refresh,
  * not naked "buy/sell" posts — otherwise stale levels cause "Invalid stops".
  */
 function shouldMergeChannelParamsForEntry(parsed) {
     return parsedSignalHasExplicitStops(parsed);
+}
+/** Open trades or active range pendings on this channel+broker for the symbol family. */
+async function channelHasOpenActivityForSymbol(supabase, args) {
+    const { data: sigs, error: sigErr } = await supabase
+        .from('signals')
+        .select('id')
+        .eq('user_id', args.userId)
+        .eq('channel_id', args.channelId)
+        .limit(2000);
+    if (sigErr || !sigs?.length)
+        return false;
+    const signalIds = sigs.map((r) => r.id);
+    const { data: trades } = await supabase
+        .from('trades')
+        .select('symbol')
+        .eq('user_id', args.userId)
+        .eq('broker_account_id', args.brokerAccountId)
+        .eq('status', 'open')
+        .in('signal_id', signalIds)
+        .limit(200);
+    if ((trades ?? []).some((t) => (0, basketModFollowUp_1.symbolsCompatibleForBasket)(args.symbolHint, t.symbol))) {
+        return true;
+    }
+    const { data: pending } = await supabase
+        .from('range_pending_legs')
+        .select('symbol')
+        .eq('user_id', args.userId)
+        .eq('broker_account_id', args.brokerAccountId)
+        .in('signal_id', signalIds)
+        .in('status', ['pending', 'claimed'])
+        .limit(200);
+    return (pending ?? []).some((l) => (0, basketModFollowUp_1.symbolsCompatibleForBasket)(args.symbolHint, l.symbol));
+}
+/** Open trades or pendings on this channel+symbol across all broker accounts. */
+async function channelHasOpenActivityForChannelSymbol(supabase, args) {
+    const { data: sigs, error: sigErr } = await supabase
+        .from('signals')
+        .select('id')
+        .eq('user_id', args.userId)
+        .eq('channel_id', args.channelId)
+        .limit(2000);
+    if (sigErr || !sigs?.length)
+        return false;
+    const signalIds = sigs.map((r) => r.id);
+    const { data: trades } = await supabase
+        .from('trades')
+        .select('symbol')
+        .eq('user_id', args.userId)
+        .in('status', ['open', 'pending'])
+        .in('signal_id', signalIds)
+        .limit(500);
+    if ((trades ?? []).some((t) => (0, basketModFollowUp_1.symbolsCompatibleForBasket)(args.symbolHint, t.symbol))) {
+        return true;
+    }
+    const { data: pending } = await supabase
+        .from('range_pending_legs')
+        .select('symbol')
+        .eq('user_id', args.userId)
+        .in('signal_id', signalIds)
+        .in('status', ['pending', 'claimed'])
+        .limit(500);
+    if ((pending ?? []).some((l) => (0, basketModFollowUp_1.symbolsCompatibleForBasket)(args.symbolHint, l.symbol))) {
+        return true;
+    }
+    const { data: entryPending } = await supabase
+        .from('signal_entry_pending_orders')
+        .select('symbol')
+        .in('signal_id', signalIds)
+        .eq('status', 'broker_pending')
+        .limit(500);
+    return (entryPending ?? []).some((r) => (0, basketModFollowUp_1.symbolsCompatibleForBasket)(args.symbolHint, r.symbol));
+}
+/** Delete channel SL/TP memory when no open activity remains for the symbol family. */
+async function clearChannelActiveTradeParamsWhenFlat(supabase, args) {
+    const hasActivity = await channelHasOpenActivityForChannelSymbol(supabase, args);
+    if (hasActivity) {
+        return { cleared: false, deletedSymbols: [] };
+    }
+    const { data: rows, error } = await supabase
+        .from('channel_active_trade_params')
+        .select('symbol')
+        .eq('user_id', args.userId)
+        .eq('channel_id', args.channelId);
+    if (error) {
+        console.warn(`[channelActiveTradeParams] clear load failed: ${error.message}`);
+        return { cleared: false, deletedSymbols: [] };
+    }
+    const toDelete = (rows ?? []).filter((r) => (0, basketModFollowUp_1.symbolsCompatibleForBasket)(args.symbolHint, r.symbol));
+    if (!toDelete.length) {
+        return { cleared: false, deletedSymbols: [] };
+    }
+    const deletedSymbols = [];
+    for (const row of toDelete) {
+        const sym = row.symbol;
+        const { error: delErr } = await supabase
+            .from('channel_active_trade_params')
+            .delete()
+            .eq('user_id', args.userId)
+            .eq('channel_id', args.channelId)
+            .eq('symbol', sym);
+        if (!delErr) {
+            deletedSymbols.push(sym);
+        }
+        else {
+            console.warn(`[channelActiveTradeParams] delete ${sym} failed: ${delErr.message}`);
+        }
+    }
+    if (deletedSymbols.length) {
+        console.log(`[channelActiveTradeParams] cleared channel=${args.channelId}`
+            + ` symbol_hint=${args.symbolHint} deleted=${deletedSymbols.join(',')}`);
+    }
+    return { cleared: deletedSymbols.length > 0, deletedSymbols };
+}
+/**
+ * When a basket is already live, stale SL/TP copied from the provider template must not
+ * overwrite Adjust SL memory or seed new range legs.
+ */
+function shouldSeedChannelParamsFromEntrySignal(hasActiveBasket) {
+    return !hasActiveBasket;
+}
+/** Resolve planner SL/TP for a new entry: prefer channel memory when basket is active. */
+async function resolveEntryChannelStops(supabase, args) {
+    const hasActiveBasket = await channelHasOpenActivityForSymbol(supabase, {
+        userId: args.userId,
+        channelId: args.channelId,
+        brokerAccountId: args.brokerAccountId,
+        symbolHint: args.symbol,
+    });
+    if (!hasActiveBasket) {
+        await clearChannelActiveTradeParamsWhenFlat(supabase, {
+            userId: args.userId,
+            channelId: args.channelId,
+            symbolHint: args.symbol,
+        });
+    }
+    const channelParams = await loadChannelActiveTradeParamsForSymbol(supabase, args.userId, args.channelId, args.symbol);
+    let plannerParsed = args.plannerParsed;
+    let mergedChannelParams = false;
+    const preferSignalStops = shouldPreferParsedStopsOnEntry(plannerParsed);
+    const applyOverlay = hasActiveBasket && channelParams != null && !preferSignalStops;
+    if (applyOverlay) {
+        console.log(`[channelActiveTradeParams] overlay applied signal=${args.signalId ?? 'n/a'}`
+            + ` broker=${args.brokerAccountId} channel=${args.channelId}`
+            + ` signal_sl=${plannerParsed.sl ?? 'n/a'} channel_sl=${channelParams.stoploss ?? 'n/a'}`);
+        plannerParsed = mergeParsedWithChannelParams(plannerParsed, channelParams, { overlay: true });
+        mergedChannelParams = true;
+    }
+    else if (hasActiveBasket && channelParams && preferSignalStops) {
+        console.log(`[channelActiveTradeParams] overlay skipped full entry signal=${args.signalId ?? 'n/a'}`
+            + ` broker=${args.brokerAccountId} channel=${args.channelId}`
+            + ` signal_sl=${plannerParsed.sl ?? 'n/a'} channel_sl=${channelParams.stoploss ?? 'n/a'}`);
+    }
+    if (parsedSignalHasExplicitStops(plannerParsed)) {
+        const refreshTpLevels = (plannerParsed.tp ?? []).filter((t) => typeof t === 'number' && Number.isFinite(t) && t > 0);
+        await upsertChannelActiveTradeParams(supabase, {
+            userId: args.userId,
+            channelId: args.channelId,
+            symbols: [args.symbol],
+            stoploss: plannerParsed.sl,
+            tpLevels: refreshTpLevels,
+            replace: preferSignalStops,
+        });
+    }
+    else if (channelParams && hasActiveBasket && !applyOverlay) {
+        plannerParsed = mergeParsedWithChannelParams(plannerParsed, channelParams);
+        mergedChannelParams = true;
+    }
+    const refreshedParams = await loadChannelActiveTradeParamsForSymbol(supabase, args.userId, args.channelId, args.symbol);
+    return {
+        plannerParsed,
+        mergedChannelParams,
+        channelParams: refreshedParams,
+    };
 }
 /** Overlay channel SL/TP onto parsed signal before planning orders / virtual pendings. */
 function mergeParsedWithChannelParams(parsed, params, opts) {
@@ -214,7 +476,7 @@ function applyChannelParamsToVirtualLeg(leg, params, args) {
     return { stoploss, takeprofit };
 }
 async function reapplyChannelParamsToPendingLegs(args) {
-    const params = await loadChannelActiveTradeParamsForSymbol(args.supabase, args.userId, args.channelId, args.symbolHint);
+    const params = args.paramsOverride ?? await loadChannelActiveTradeParamsForSymbol(args.supabase, args.userId, args.channelId, args.symbolHint);
     if (!params || (params.stoploss == null && params.tpLevels.length === 0))
         return 0;
     let signalIds = args.signalIds ?? null;

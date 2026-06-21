@@ -1,10 +1,7 @@
 import { PlaceholderPage } from './PlaceholderPage'
 import { useT } from '../../context/LocaleContext'
 
-export function ContactSupportPage() {
-  const t = useT()
-  return <PlaceholderPage title={t.pages.contactSupport.title} description={t.pages.contactSupport.description} />
-}
+export { ContactSupportPage } from './ContactSupportPage'
 
 export function FeatureRequestPage() {
   const t = useT()

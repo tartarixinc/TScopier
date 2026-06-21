@@ -1,28 +1,33 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.BasketSlTpReconcileMonitor = void 0;
-const metatraderapi_1 = require("./metatraderapi");
+const fxsocketClient_1 = require("./fxsocketClient");
 const mtApiByAccount_1 = require("./mtApiByAccount");
 const basketSlTpReconcile_1 = require("./basketSlTpReconcile");
+const basketReconcileTargets_1 = require("./basketReconcileTargets");
 const monitorIdleGate_1 = require("./monitorIdleGate");
 const normalizeManualSettings_1 = require("./manualPlanning/normalizeManualSettings");
 const channelTradingConfig_1 = require("./channelTradingConfig");
-const metatraderapi_2 = require("./metatraderapi");
+const fxsocketClient_2 = require("./fxsocketClient");
+const copierPause_1 = require("./copierPause");
+const helpers_1 = require("./tradeExecutor/helpers");
 const ACTIVE_MS = (0, monitorIdleGate_1.monitorActiveIntervalMs)('BASKET_RECONCILE_TICK_MS', 15000);
 const IDLE_MS = (0, monitorIdleGate_1.monitorIdleIntervalMs)('BASKET_RECONCILE_IDLE_MS', 120000);
 const BATCH_LIMIT = 20;
 const HOST_ID = `worker-${process.pid}`;
+const SWEEP_INTERVAL_MS = Math.min(600000, Math.max(60000, Number(process.env.BASKET_RECONCILE_SWEEP_MS ?? 180000)));
 class BasketSlTpReconcileMonitor {
     constructor(supabase) {
         this.supabase = supabase;
         this.loop = null;
         this.ticking = false;
         this.platformByUuid = new Map();
+        this.lastSweepAt = 0;
     }
     start() {
         if (this.loop)
             return;
-        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)()) {
+        if (!(0, fxsocketClient_1.hasFxsocketConfigured)()) {
             console.warn('[basketSlTpReconcileMonitor] MT4API_BASIC_USER/PASSWORD missing — disabled');
             return;
         }
@@ -31,13 +36,16 @@ class BasketSlTpReconcileMonitor {
             supabase: this.supabase,
             activeIntervalMs: ACTIVE_MS,
             idleIntervalMs: IDLE_MS,
-            hasWork: (sb) => {
-                const now = new Date().toISOString();
-                return (0, monitorIdleGate_1.hasWorkOnShard)(sb, 'basket_reconcile_jobs', q => q.eq('status', 'pending').lte('next_run_at', now));
+            hasWork: async (sb) => {
+                const now = Date.now();
+                if (now - this.lastSweepAt >= SWEEP_INTERVAL_MS)
+                    return true;
+                const ts = new Date().toISOString();
+                return (0, monitorIdleGate_1.hasWorkOnShard)(sb, 'basket_reconcile_jobs', q => q.eq('status', 'pending').lte('next_run_at', ts));
             },
             tick: () => this.runTick(),
         });
-        console.log(`[basketSlTpReconcileMonitor] started active=${ACTIVE_MS}ms idle=${IDLE_MS}ms`);
+        console.log(`[basketSlTpReconcileMonitor] started active=${ACTIVE_MS}ms idle=${IDLE_MS}ms sweep=${SWEEP_INTERVAL_MS}ms`);
     }
     stop() {
         this.loop?.stop();
@@ -68,17 +76,27 @@ class BasketSlTpReconcileMonitor {
             .limit(BATCH_LIMIT);
         if (error) {
             console.warn(`[basketSlTpReconcileMonitor] select failed: ${error.message}`);
-            return;
         }
-        for (const raw of (jobs ?? [])) {
-            if (raw.attempts >= raw.max_attempts) {
-                await this.supabase
-                    .from('basket_reconcile_jobs')
-                    .update({ status: 'failed', updated_at: new Date().toISOString() })
-                    .eq('id', raw.id);
-                continue;
+        else {
+            for (const raw of (jobs ?? [])) {
+                if (raw.attempts >= raw.max_attempts) {
+                    await this.supabase
+                        .from('basket_reconcile_jobs')
+                        .update({ status: 'failed', updated_at: new Date().toISOString() })
+                        .eq('id', raw.id);
+                    continue;
+                }
+                await this.processJob(raw);
             }
-            await this.processJob(raw);
+        }
+        if (Date.now() - this.lastSweepAt >= SWEEP_INTERVAL_MS) {
+            this.lastSweepAt = Date.now();
+            try {
+                await (0, basketReconcileTargets_1.sweepOpenBasketsForReconcileDrift)(this.supabase);
+            }
+            catch (err) {
+                console.warn(`[basketSlTpReconcileMonitor] drift sweep failed: ${err instanceof Error ? err.message : String(err)}`);
+            }
         }
     }
     async processJob(job) {
@@ -100,20 +118,20 @@ class BasketSlTpReconcileMonitor {
         const row = claimed;
         const { data: broker } = await this.supabase
             .from('broker_accounts')
-            .select('id,user_id,metaapi_account_id,platform,default_lot_size,manual_settings,channel_trading_configs,copier_mode,ai_settings')
+            .select('id,user_id,fxsocket_account_id,metaapi_account_id,platform,default_lot_size,manual_settings,channel_trading_configs,copier_mode,ai_settings')
             .eq('id', row.broker_account_id)
             .maybeSingle();
-        if (!broker?.metaapi_account_id) {
+        const uuid = broker ? (0, helpers_1.brokerSessionUuid)(broker) : null;
+        if (!broker || !uuid) {
             await this.releaseJob(row.id, 'broker not found', row.attempts);
             return;
         }
-        const uuid = broker.metaapi_account_id;
-        if (uuid.includes('|')) {
-            await this.releaseJob(row.id, 'invalid metaapi uuid', row.attempts);
+        if ((0, copierPause_1.isUserCopierPausedCached)(String(broker.user_id ?? ''))) {
+            await this.releaseJob(row.id, 'copier paused', row.attempts);
             return;
         }
-        this.platformByUuid = await (0, mtApiByAccount_1.loadPlatformByMetaapiId)(this.supabase, [uuid]);
-        const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(this.platformByUuid, uuid);
+        this.platformByUuid = await (0, mtApiByAccount_1.loadPlatformByFxsocketId)(this.supabase, [uuid]);
+        const api = (0, mtApiByAccount_1.apiForFxsocketAccount)(this.platformByUuid, uuid);
         if (!api) {
             await this.releaseJob(row.id, 'MT API not configured', row.attempts);
             return;
@@ -134,15 +152,30 @@ class BasketSlTpReconcileMonitor {
             await (0, basketSlTpReconcile_1.markBasketReconcileDone)(this.supabase, row.id);
             return;
         }
-        const perLegTargets = (0, basketSlTpReconcile_1.parsePerLegTargets)(row.per_leg_targets);
-        if (!perLegTargets.length) {
+        const { data: anchorSig } = await this.supabase
+            .from('signals')
+            .select('parsed_data, channel_id')
+            .eq('id', row.anchor_signal_id)
+            .maybeSingle();
+        const anchorParsed = anchorSig?.parsed_data;
+        const anchorChannelId = anchorSig?.channel_id ?? row.channel_id;
+        const manual = (0, normalizeManualSettings_1.normalizeManualSettingsForExecution)((0, channelTradingConfig_1.resolveChannelTradingConfig)(broker, anchorChannelId).manual_settings);
+        const storedTargets = (0, basketSlTpReconcile_1.parsePerLegTargets)(row.per_leg_targets);
+        const { perLegTargets: freshTargets, signalTps: freshSignalTps, effectiveStoploss, } = await (0, basketReconcileTargets_1.resolveFreshTargetsForJob)(this.supabase, row, familyTrades, manual);
+        const effectiveTargets = freshTargets.length ? freshTargets : storedTargets;
+        if (!effectiveTargets.length) {
             await this.releaseJob(row.id, 'empty per_leg_targets', row.attempts);
             return;
         }
+        const effectiveSignalTps = freshSignalTps.length
+            ? freshSignalTps
+            : (Array.isArray(anchorParsed?.tp)
+                ? anchorParsed.tp.filter((t) => typeof t === 'number' && Number.isFinite(t) && t > 0)
+                : []);
         let params = null;
         try {
             const sp = await api.symbolParams(uuid, row.symbol);
-            const n = (0, metatraderapi_2.normalizeSymbolParams)(sp);
+            const n = (0, fxsocketClient_2.normalizeSymbolParams)(sp);
             params = {
                 digits: n.digits ?? 5,
                 point: n.point ?? 0.00001,
@@ -156,17 +189,6 @@ class BasketSlTpReconcileMonitor {
         catch { /* optional */ }
         const openedTickets = await (0, basketSlTpReconcile_1.fetchOpenBrokerTickets)(api, uuid);
         const baseLot = Number(broker.default_lot_size ?? 0.01);
-        const { data: anchorSig } = await this.supabase
-            .from('signals')
-            .select('parsed_data, channel_id')
-            .eq('id', row.anchor_signal_id)
-            .maybeSingle();
-        const anchorParsed = anchorSig?.parsed_data;
-        const anchorChannelId = anchorSig?.channel_id ?? null;
-        const manual = (0, normalizeManualSettings_1.normalizeManualSettingsForExecution)((0, channelTradingConfig_1.resolveChannelTradingConfig)(broker, anchorChannelId).manual_settings);
-        const signalTps = Array.isArray(anchorParsed?.tp)
-            ? anchorParsed.tp.filter((t) => typeof t === 'number' && Number.isFinite(t) && t > 0)
-            : [];
         const { summary, legErrors } = await (0, basketSlTpReconcile_1.runBasketLegModifies)({
             supabase: this.supabase,
             api,
@@ -179,14 +201,17 @@ class BasketSlTpReconcileMonitor {
             userId: row.user_id,
             brokerAccountId: row.broker_account_id,
             familyTrades,
-            perLegTargets,
-            signalTps,
+            perLegTargets: effectiveTargets,
+            signalTps: effectiveSignalTps,
             tpLots: manual.tp_lots,
             nImmCwe: row.n_imm_cwe ?? 0,
             overrideTp: row.override_tp,
             strictEntryPrefetch: null,
             openedTickets,
             skipAlreadySynced: true,
+            internalRebalance: manual.range_trading === true,
+            effectiveStoploss: effectiveStoploss > 0 ? effectiveStoploss : undefined,
+            orderCommentsEnabled: manual.order_comments_enabled !== false,
         });
         const mergeFailed = summary.modified < summary.openLegs;
         const partialMsg = mergeFailed

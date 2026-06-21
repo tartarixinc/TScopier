@@ -1,3 +1,5 @@
+import { computeMultiTradeOrderCount } from './computeMultiTradeOrderCount'
+import { resolveManualLotForSettings } from './resolveManualLot'
 import type { ManualSettings, ManualTpLot } from './types'
 
 /** Default Targets % rows — keep aligned with AccountConfigPage `DEFAULT_MANUAL_TP_LOTS`. */
@@ -31,7 +33,10 @@ export function sanitizeTpLots(rows: ManualTpLot[]): ManualTpLot[] {
  * Normalize `manual_settings` from DB for execution (Targets %, leg %, range).
  * Mirrors `normalizeManualSettings` in AccountConfigPage — without UI-only fields.
  */
-export function normalizeManualSettingsForExecution(raw: unknown): ManualSettings {
+export function normalizeManualSettingsForExecution(
+  raw: unknown,
+  opts?: { accountBalance?: number | null },
+): ManualSettings {
   const j = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
   const tpLotsRaw = Array.isArray(j.tp_lots) ? j.tp_lots : DEFAULT_MANUAL_TP_LOTS
   const tpLots = tpLotsRaw.map((x, i) => {
@@ -47,6 +52,34 @@ export function normalizeManualSettingsForExecution(raw: unknown): ManualSetting
 
   const legPctRaw = Number(j.multi_trade_leg_percent)
   const legPct = Number.isFinite(legPctRaw) && legPctRaw > 0 ? Math.min(100, legPctRaw) : 5
+
+  const legacyMaxLegsRaw = Number(j.multi_trade_max_legs)
+  const tradeStyle = j.trade_style === 'multi' ? 'multi' : 'single'
+  const riskMode = String(j.risk_mode ?? 'fixed_lot')
+  const accountBalance = opts?.accountBalance
+  let maxOrders: number | undefined
+
+  const seedMaxOrdersFromLot = (manualLot: number): void => {
+    if (!Number.isFinite(manualLot) || manualLot <= 0) return
+    const preview = computeMultiTradeOrderCount({
+      manualLot,
+      legPercent: legPct,
+      rangeTrading: j.range_trading === true,
+      rangePercent: Number(j.range_percent),
+      rangeStepPips: Number(j.range_step_pips),
+      rangeDistancePips: Number(j.range_distance_pips),
+    })
+    if (preview > 0) maxOrders = preview
+  }
+
+  if (tradeStyle === 'multi' && riskMode === 'dynamic_balance_percent' && Number(accountBalance) > 0) {
+    // Recompute from live balance — stored cap goes stale when balance or % changes.
+    seedMaxOrdersFromLot(resolveManualLotForSettings(j as ManualSettings, accountBalance))
+  } else if (tradeStyle === 'multi' && Number.isFinite(legacyMaxLegsRaw) && legacyMaxLegsRaw > 0) {
+    maxOrders = Math.max(1, Math.min(500, Math.floor(legacyMaxLegsRaw)))
+  } else if (tradeStyle === 'multi') {
+    seedMaxOrdersFromLot(resolveManualLotForSettings(j as ManualSettings, accountBalance))
+  }
 
   const readNumber = (key: string, fallback: number): number => {
     const v = Number(j[key])
@@ -86,6 +119,7 @@ export function normalizeManualSettingsForExecution(raw: unknown): ManualSetting
   return {
     ...(j as ManualSettings),
     multi_trade_leg_percent: legPct,
+    ...(maxOrders != null ? { multi_trade_max_orders: maxOrders } : {}),
     range_percent: rangePercent,
     range_step_pips: rangeStepPips,
     range_distance_pips: rangeDistancePips,
@@ -95,10 +129,16 @@ export function normalizeManualSettingsForExecution(raw: unknown): ManualSetting
     use_signal_entry_price: j.use_signal_entry_price === true,
     trade_style: j.trade_style === 'multi' ? 'multi' : 'single',
     range_trading: j.range_trading === true,
+    range_layer_till_close: j.range_layer_till_close === true,
+    use_signal_entry_range: j.use_signal_entry_range === true,
     close_worse_entries: j.close_worse_entries === true,
     close_worse_entries_pips: Math.max(0, readNumber('close_worse_entries_pips', 30)),
     use_predefined_sl_pips: j.use_predefined_sl_pips === true,
     use_predefined_tp_pips: j.use_predefined_tp_pips === true,
     add_new_trades_to_existing: j.add_new_trades_to_existing !== false,
+    order_comments_enabled: j.order_comments_enabled !== false,
+    copy_limits: j.copy_limits && typeof j.copy_limits === 'object'
+      ? (j.copy_limits as Record<string, unknown>)
+      : undefined,
   }
 }

@@ -44,7 +44,7 @@ async def lifespan(app: FastAPI):
     await session_manager.disconnect_all()
 
 
-app = FastAPI(title="TSCopier Telethon Listener", lifespan=lifespan)
+app = FastAPI(title="TScopier Telethon Listener", lifespan=lifespan)
 
 
 def _check_token(token: str | None) -> None:

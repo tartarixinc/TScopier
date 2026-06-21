@@ -6,7 +6,10 @@ import {
   type PlannerResult,
   type VirtualPendingLeg,
 } from '../manualPlanner'
-import type { OrderSendArgs } from '../metatraderapi'
+import { virtualLegTriggerAllowed } from '../manualPlanning/signalEntryRange'
+import { brokerSessionId } from '../mtApiByAccount'
+import { resolveBrokerTotalBalance } from '../effectiveBrokerBalance'
+import type { OrderSendArgs } from '../fxsocketClient'
 import type { BrokerRow, Leg, ParsedSignal, SymbolCacheEntry, SymbolMappingResult } from './types'
 
 export function isMtUuid(s: string | null | undefined): boolean {
@@ -14,6 +17,22 @@ export function isMtUuid(s: string | null | undefined): boolean {
   const v = s.trim()
   if (!v || v.includes('|')) return false
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
+}
+
+/** FxSocket terminal UUID from broker_accounts (fxsocket_account_id). */
+export function brokerSessionUuid(broker: {
+  fxsocket_account_id?: string | null
+  metaapi_account_id?: string | null
+}): string | null {
+  const id = brokerSessionId(broker)
+  return isMtUuid(id) ? id : null
+}
+
+export function brokerHasLinkedSession(broker: {
+  fxsocket_account_id?: string | null
+  metaapi_account_id?: string | null
+}): boolean {
+  return brokerSessionUuid(broker) != null
 }
 
 export function parseSymbolToTradeList(value: string | null | undefined): string[] {
@@ -32,28 +51,37 @@ export function applySymbolMapping(raw: string, broker: BrokerRow): SymbolMappin
     symbol_to_trade?: string | null
   }
   const upper = raw.toUpperCase()
-  const mapped = (m.symbol_mapping?.[upper] ?? upper).toUpperCase()
+  const explicitMap = m.symbol_mapping?.[upper]
+  const hasExplicitMap = explicitMap != null && String(explicitMap).trim() !== ''
+  const mapped = (hasExplicitMap ? String(explicitMap) : upper).toUpperCase()
   const prefix = (m.symbol_prefix ?? '').toUpperCase()
   const suffix = (m.symbol_suffix ?? '').toUpperCase()
+  const userDecorated = hasExplicitMap || prefix.length > 0 || suffix.length > 0
 
   const allowed = parseSymbolToTradeList(m.symbol_to_trade)
-  if (allowed.length === 1) {
-    return { symbol: allowed[0], whitelist: [] }
-  }
 
   return {
     symbol: `${prefix}${mapped}${suffix}`,
     whitelist: allowed,
+    userDecorated,
   }
 }
 
-export function isExcluded(symbol: string, broker: BrokerRow): boolean {
-  const m = (broker.manual_settings ?? {}) as { symbols_exclude?: string[] }
-  const list = (m.symbols_exclude ?? []).map(s => String(s).toUpperCase())
-  return list.includes(symbol.toUpperCase())
+const MT5_ONLY_OPERATIONS = new Set(['BuyStopLimit', 'SellStopLimit'])
+
+export function isMt5OnlyOperation(op: string): boolean {
+  return MT5_ONLY_OPERATIONS.has(op)
 }
 
-export function operationFor(action: string, signal: ParsedSignal): import('../metatraderapi').MtOperation | null {
+export function isExcluded(symbol: string, broker: BrokerRow): boolean {
+  const upper = symbol.trim().toUpperCase()
+  if (!upper) return false
+  const m = (broker.manual_settings ?? {}) as { symbols_exclude?: string[] }
+  const list = (m.symbols_exclude ?? []).map(s => String(s).toUpperCase())
+  return list.includes(upper)
+}
+
+export function operationFor(action: string, signal: ParsedSignal): import('../fxsocketClient').MtOperation | null {
   const a = action.toLowerCase()
   const hasEntry = parsedHasExplicitEntryAnchor(signal)
   if (a === 'buy') return hasEntry ? 'BuyLimit' : 'Buy'
@@ -67,7 +95,7 @@ export function computeLot(broker: BrokerRow, signal: ParsedSignal): number {
     const m = (broker.manual_settings ?? {}) as ManualSettings
     if (m.risk_mode === 'dynamic_balance_percent') {
       const pct = Number(m.dynamic_balance_percent ?? 1)
-      const bal = Number(broker.last_balance ?? 0)
+      const bal = resolveBrokerTotalBalance(broker) ?? 0
       if (bal > 0 && pct > 0) {
         return Math.max(0.01, +(bal * (pct / 100) / 1000).toFixed(2))
       }
@@ -84,7 +112,7 @@ export function computeLot(broker: BrokerRow, signal: ParsedSignal): number {
     fallback_lot?: number | null
   }
   const ref = Number(ai.reference_equity ?? 1000)
-  const bal = Number(broker.last_balance ?? broker.last_equity ?? ref)
+  const bal = resolveBrokerTotalBalance(broker) ?? ref
   const base = Number(ai.fallback_lot ?? broker.default_lot_size ?? 0.01)
   const scaled = ref > 0 ? base * (bal / ref) : base
   const min = Number(ai.min_lot ?? 0.01)
@@ -172,6 +200,43 @@ export function triggerPriceFor(leg: VirtualPendingLeg, anchor: number, digits: 
   const px = anchor + dir * leg.stepIdx * leg.stepPriceOffset
   const d = Math.max(0, Math.min(8, Math.floor(digits)))
   return Number(px.toFixed(d))
+}
+
+/** Whether a virtual range leg should be persisted (broker stops zone + signal entry zone). */
+export function virtualPendingTriggerAllowed(args: {
+  triggerPrice: number
+  signalRangeBoundary: number | null | undefined
+  isBuy: boolean
+  stopsZoneLo: number | null
+  stopsZoneHi: number | null
+  signalZoneLo?: number | null
+  signalZoneHi?: number | null
+  useSignalEntryRange?: boolean
+}): boolean {
+  if (args.useSignalEntryRange && args.signalZoneLo != null && args.signalZoneHi != null) {
+    if (!virtualLegTriggerAllowed({
+      trigger: args.triggerPrice,
+      boundary: args.signalRangeBoundary ?? null,
+      isBuy: args.isBuy,
+      zoneLo: args.signalZoneLo,
+      zoneHi: args.signalZoneHi,
+      useFullZone: true,
+    })) {
+      return false
+    }
+  } else if (args.signalRangeBoundary != null
+    && !virtualLegTriggerAllowed({
+      trigger: args.triggerPrice,
+      boundary: args.signalRangeBoundary,
+      isBuy: args.isBuy,
+    })) {
+    return false
+  }
+  if (args.stopsZoneLo != null && args.stopsZoneHi != null
+    && args.triggerPrice > args.stopsZoneLo && args.triggerPrice < args.stopsZoneHi) {
+    return false
+  }
+  return true
 }
 
 export function brokerOrderOpenMs(o: Record<string, unknown>): number | null {

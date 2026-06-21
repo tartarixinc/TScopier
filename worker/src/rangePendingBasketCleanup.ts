@@ -4,7 +4,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { MetatraderApiClient } from './metatraderapi'
+import type { FxsocketBrokerClient } from './fxsocketClient'
 import {
   classifyGhostBasketLegs,
   closeStaleOpenTrades,
@@ -35,7 +35,7 @@ export {
  */
 export async function reconcileBasketFlatFromBroker(
   supabase: SupabaseClient,
-  api: MetatraderApiClient | null,
+  api: FxsocketBrokerClient | null,
   metaapiAccountId: string,
   scope: BasketScope,
 ): Promise<string | null> {
@@ -99,7 +99,7 @@ export async function reconcileBasketFlatFromBroker(
 export async function reconcilePendingLegBasketsFromBroker(
   supabase: SupabaseClient,
   legs: Array<{ signal_id: string; broker_account_id: string; metaapi_account_id: string }>,
-  apiForAccount: (metaapiAccountId: string) => MetatraderApiClient | null,
+  apiForAccount: (metaapiAccountId: string) => FxsocketBrokerClient | null,
 ): Promise<number> {
   const baskets = new Map<string, BasketScope & { metaapiAccountId: string }>()
   for (const leg of legs) {

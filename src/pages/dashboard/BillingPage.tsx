@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
 import {
   CreditCard,
@@ -14,12 +15,13 @@ import {
 import { useT, useLocale } from '../../context/LocaleContext'
 import { useAuth } from '../../context/AuthContext'
 import { useSubscription } from '../../context/SubscriptionContext'
+import { useUserProfile } from '../../context/UserProfileContext'
+import { getSubscribeCtaLabel } from '../../lib/subscriptionCta'
 import { interpolate } from '../../i18n/interpolate'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { PageShell } from '../../components/layout/PageShell'
 import { PageHeader } from '../../components/layout/PageHeader'
-import { BillingPricingTable } from '../../components/billing/BillingPricingTable'
 import {
   customerRefFromUserId,
   fetchBillingHistory,
@@ -91,19 +93,23 @@ function SummaryCard({
 }
 
 export function BillingPage() {
+  const navigate = useNavigate()
   const t = useT()
   const { locale } = useLocale()
   const bt = t.pricing.billing
   const { user, session } = useAuth()
+  const { isAdmin, adminUntil } = useUserProfile()
   const {
     subscription,
     hasActiveSubscription,
     effectivePlan,
     loading: subscriptionLoading,
     refresh,
-    openPricingModal,
-    isAdmin,
+    isPastDue,
+    hasTrialExpired,
   } = useSubscription()
+
+  const subscribeCta = getSubscribeCtaLabel(t, { isPastDue, effectivePlan, hasTrialExpired })
 
   const [portalLoading, setPortalLoading] = useState(false)
   const [extraCount, setExtraCount] = useState<number | null>(null)
@@ -141,7 +147,12 @@ export function BillingPage() {
 
   const planDisplay = useMemo(() => {
     if (isAdmin) {
-      return { name: 'Admin', summary: bt.adminPlanSummary }
+      const summary = adminUntil
+        ? interpolate(bt.adminPlanSummaryUntil, {
+            date: formatShortDate(adminUntil, localeTag),
+          })
+        : bt.adminPlanSummary
+      return { name: 'Admin', summary }
     }
     if (!hasActiveSubscription || !effectivePlan) {
       return { name: bt.freePlan, summary: bt.freePlanSummary }
@@ -150,7 +161,7 @@ export function BillingPage() {
       return { name: t.pricing.advanced.name, summary: bt.advancedPlanSummary }
     }
     return { name: t.pricing.basic.name, summary: bt.basicPlanSummary }
-  }, [isAdmin, hasActiveSubscription, effectivePlan, bt, t.pricing.advanced.name, t.pricing.basic.name])
+  }, [isAdmin, adminUntil, hasActiveSubscription, effectivePlan, bt, t.pricing.advanced.name, t.pricing.basic.name, localeTag])
 
   const nextRenewalDisplay = useMemo(() => {
     if (!hasActiveSubscription || !subscription) return { value: '—', hint: bt.noActiveSubscription }
@@ -302,9 +313,9 @@ export function BillingPage() {
                 <span className="font-semibold text-neutral-900 dark:text-neutral-100">{customerRef}</span>
               </div>
             </div>
-            <Button onClick={openPricingModal} className="gap-2">
+            <Button className="gap-2" onClick={() => navigate('/pricing')}>
               <Zap className="h-4 w-4" />
-              {bt.purchaseSubscription}
+              {subscribeCta}
             </Button>
           </div>
         }
@@ -530,29 +541,28 @@ export function BillingPage() {
             <div className="flex flex-col items-center py-6 text-center">
               <CreditCard className="h-10 w-10 text-neutral-300 dark:text-neutral-600" />
               <p className="mt-4 text-sm text-neutral-500 dark:text-neutral-400">{bt.noPlan}</p>
-              <Button className="mt-4" onClick={openPricingModal}>
+              <Button className="mt-4" onClick={() => navigate('/pricing')}>
                 {bt.choosePlan}
               </Button>
             </div>
           </Card>
-        ) : null}
-
-        <section>
-          <div className="mb-6 flex items-start gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-teal-50 dark:bg-teal-950/40">
-              <CreditCard className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+        ) : (
+          <Card padding="lg">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">
+                  {bt.subscriptionPlans}
+                </h2>
+                <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+                  {bt.subscriptionPlansIntro}
+                </p>
+              </div>
+              <Button variant="secondary" onClick={() => navigate('/pricing')}>
+                {bt.choosePlan}
+              </Button>
             </div>
-            <div>
-              <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">
-                {bt.subscriptionPlans}
-              </h2>
-              <p className="mt-0.5 text-sm text-neutral-500 dark:text-neutral-400">
-                {bt.subscriptionPlansIntro}
-              </p>
-            </div>
-          </div>
-          <BillingPricingTable />
-        </section>
+          </Card>
+        )}
       </div>
     </PageShell>
   )

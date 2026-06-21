@@ -1,11 +1,12 @@
 import type { Json, ManualSettings } from '../types/database'
-import { DEFAULT_MANUAL_SETTINGS } from './defaultManualSettings'
+import { normalizeCopyLimitState, type CopyLimitState } from './copyLimitTypes'
+import { DEFAULT_MANUAL_SETTINGS, ensurePersistedManualSettings } from './defaultManualSettings'
 import { normalizeSignalChannelIds } from './brokerChannelLink'
-
 export interface ChannelTradingConfig {
   copier_mode?: 'ai' | 'manual'
   manual_settings?: ManualSettings | null
   ai_settings?: Json | null
+  copy_limit_state?: CopyLimitState
 }
 
 export type ChannelTradingConfigsMap = Record<string, ChannelTradingConfig>
@@ -29,6 +30,31 @@ export function normalizeChannelUuid(id: string | null | undefined): string | nu
   return s ? s.toLowerCase() : null
 }
 
+export type ChannelOptionLike = { id: string }
+
+export function activeChannelIdSet(channelOptions: readonly ChannelOptionLike[]): Set<string> {
+  return new Set(
+    channelOptions.map(c => normalizeChannelUuid(c.id)).filter(Boolean) as string[],
+  )
+}
+
+/** Keep linked channel ids that still exist in the user's active telegram_channels list. */
+export function filterChannelIdsToActiveOptions(
+  channelIds: readonly string[],
+  channelOptions: readonly ChannelOptionLike[],
+): string[] {
+  const valid = activeChannelIdSet(channelOptions)
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const raw of channelIds) {
+    const id = normalizeChannelUuid(raw)
+    if (!id || !valid.has(id) || seen.has(id)) continue
+    seen.add(id)
+    out.push(id)
+  }
+  return out
+}
+
 export function normalizeChannelTradingConfigsMap(raw: unknown): ChannelTradingConfigsMap {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
   const out: ChannelTradingConfigsMap = {}
@@ -43,6 +69,9 @@ export function normalizeChannelTradingConfigsMap(raw: unknown): ChannelTradingC
         ? (row.manual_settings as ManualSettings)
         : undefined,
       ai_settings: (row.ai_settings ?? undefined) as Json | undefined,
+      copy_limit_state: row.copy_limit_state && typeof row.copy_limit_state === 'object'
+        ? normalizeCopyLimitState(row.copy_limit_state)
+        : undefined,
     }
   }
   return out
@@ -80,11 +109,13 @@ export function healChannelTradingConfigsMap(
 ): ChannelTradingConfigsMap {
   const configs = { ...normalizeChannelTradingConfigsMap(broker.channel_trading_configs) }
   const linkedIds = normalizeSignalChannelIds(broker.signal_channel_ids)
-  const fallbackManual = (broker.manual_settings && typeof broker.manual_settings === 'object'
+  const multiChannel = linkedIds.length > 1
+  const brokerFallbackManual = (broker.manual_settings && typeof broker.manual_settings === 'object'
     ? broker.manual_settings
     : DEFAULT_MANUAL_SETTINGS) as ManualSettings
   const defaultManual = buildDefaultChannelTradingConfig().manual_settings as ManualSettings
   const fallbackMode = (broker.copier_mode ?? 'manual') as 'ai' | 'manual'
+  const healBrokerFallback = multiChannel ? defaultManual : brokerFallbackManual
 
   for (const channelId of linkedIds) {
     const key = normalizeChannelUuid(channelId)
@@ -94,13 +125,14 @@ export function healChannelTradingConfigsMap(
     const existing = resolveChannelConfigEntry(configs, key)
     const manual = mergeHealedChannelManualSettings(
       existing?.manual_settings,
-      fallbackManual,
+      healBrokerFallback,
       defaultManual,
     )
     configs[key] = {
       copier_mode: existing?.copier_mode ?? fallbackMode,
       manual_settings: manual,
       ai_settings: (existing?.ai_settings ?? broker.ai_settings ?? {}) as Json,
+      copy_limit_state: existing?.copy_limit_state,
     }
   }
   return configs
@@ -127,6 +159,7 @@ export function isMinimalSeedManualSettings(raw: unknown): boolean {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return true
   const row = raw as Record<string, unknown>
   if ('schema_version' in row) return false
+  if (row.copy_limits != null && typeof row.copy_limits === 'object') return false
   if (!channelManualSettingsComplete(row)) return true
   const keys = Object.keys(row).filter(k => row[k] !== undefined && row[k] !== null)
   if (keys.length > 4) return false
@@ -244,6 +277,24 @@ export function removeChannelTradingConfigKey(
   return next
 }
 
+/** Keep only configs for the given linked channel ids (drops stale JSONB keys). */
+export function restrictChannelTradingConfigsMap(
+  configs: ChannelTradingConfigsMap,
+  channelIds: readonly string[],
+): ChannelTradingConfigsMap {
+  const allowed = new Set(
+    channelIds.map(id => normalizeChannelUuid(id)).filter(Boolean) as string[],
+  )
+  const out: ChannelTradingConfigsMap = {}
+  for (const [key, value] of Object.entries(configs)) {
+    const normalizedKey = normalizeChannelUuid(key)
+    if (normalizedKey && allowed.has(normalizedKey)) {
+      out[normalizedKey] = value
+    }
+  }
+  return out
+}
+
 export function buildChannelTradingConfigsFromDraft(
   channelIds: string[],
   draftConfigs: Record<string, { mode: 'ai' | 'manual'; manualSettings: ManualSettings }>,
@@ -256,10 +307,10 @@ export function buildChannelTradingConfigsFromDraft(
     if (!draft) continue
     out[key] = {
       copier_mode: draft.mode,
-      manual_settings: {
+      manual_settings: ensurePersistedManualSettings({
         ...draft.manualSettings,
         allow_high_impact_news: draft.manualSettings.news_trading_enabled === true,
-      },
+      }),
       ai_settings: {} as Json,
     }
   }

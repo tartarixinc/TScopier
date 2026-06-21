@@ -74,15 +74,38 @@ export const authEn: AuthTranslations = {
     passwordTooShort: 'Password must be at least 6 characters',
     passwordMismatch: 'Passwords do not match',
     submit: 'Create account',
-    terms:
-      "By creating an account, you agree to use TScopier responsibly and comply with your broker's terms.",
+    terms: {
+      prefix: 'By signing up, you agree to our',
+      termsOfService: 'Terms of Service',
+      conjunction: ' & ',
+      privacyPolicy: 'Privacy Policy',
+    },
   },
   verify: {
     heading: 'Check your email',
     subtitle: 'We just sent a verification link to {email}.',
+    instructions:
+      'Open the link in that email to activate your account. You cannot use TScopier until verification is complete.',
     resend: 'Resend email',
     resent: 'Email sent!',
     backToLogin: 'Back to login',
+    confirming: 'Confirming your email…',
+    confirmingHint: 'You will be redirected in a moment.',
+    confirmPending: 'Verification is still processing. Check your email for the latest link.',
+    confirmLinkExpired: 'This confirmation link expired or was already used. Sign in or request a new email.',
+  },
+  welcome: {
+    title: 'Welcome to TScopier',
+    subtitle: 'Your account is ready. Start your free trial to copy Telegram signals to your broker.',
+    steps: [
+      'Connect Telegram and choose signal channels',
+      'Link your MT4/MT5 broker account',
+      'Copy trades automatically with your risk settings',
+    ],
+    exploreDashboard: 'Explore the dashboard first',
+    seePricing: 'See Pricing',
+    errorFallback: 'Could not continue. Please try again.',
+    checkoutFailed: 'Could not start checkout. Please try again.',
   },
   marketing: {
     headline: 'One Seamless Copier for every Telegram Signal',
@@ -93,6 +116,8 @@ export const authEn: AuthTranslations = {
   language: {
     label: 'Language',
     choose: 'Choose language',
+    searchPlaceholder: 'Search languages…',
+    noResults: 'No languages found',
   },
   theme: {
     light: 'Light mode',

@@ -1,5 +1,5 @@
 /*
-  # TSCopier - schedule range-pending-sweep edge function
+  # TScopier - schedule range-pending-sweep edge function
 
   Runs the `range-pending-sweep` Edge Function every minute as a backup to the
   worker's virtualPendingMonitor (1.5s tick). The edge function only touches

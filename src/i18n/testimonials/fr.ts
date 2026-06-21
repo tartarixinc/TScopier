@@ -2,51 +2,59 @@ import type { Testimonial } from './types'
 
 export const testimonialsFr: Testimonial[] = [
   {
+    headline: 'Expérience au top',
     quote:
-      'Je copiais le XAUUSD à la main depuis deux groupes Telegram. Trois semaines sur TSCopier et la plupart des fills arrivent sur mon MT5 IC Markets avant que j’aie fini de lire le message.',
+      'Expérience au top ! TScopier fonctionne parfaitement — rapide, fiable et très simple à configurer. Ce qui m\'a le plus marqué, c\'est le range trading : il m\'aide à gérer mon fournisseur de signaux en range.',
     author: 'Marcus T.',
-    role: 'Trader à temps partiel · Royaume-Uni',
+    role: 'Trader à temps partiel',
   },
   {
+    headline: 'Outil très complet et support réactif',
     quote:
-      'Backtest d’un mois sur mon canal principal avant le live. Il a repris une entrée range à trois TPs que mon ancien copieur gérait mal.',
+      'Un outil très complet pour tout trader. Range trading, édition de signaux, backtest, logs en temps réel — tout y est. Le support a répondu vite quand j\'avais une question de config.',
     author: 'Priya K.',
-    role: 'Suiveuse de signaux · Dubaï',
+    role: 'Suiveuse de signaux',
   },
   {
+    headline: 'Installé en quelques minutes',
     quote:
-      'Compte prop firm sur un login, MT5 perso sur l’autre—même tableau de bord. Le layering en range correspond enfin à la façon dont le fournisseur scale.',
-    author: 'James O.',
-    role: 'Trader financé · Toronto',
+      'J\'ai connecté Telegram et mon MT5 en une dizaine de minutes. Pas de VPS, pas d\'EA à installer. Les signaux copiaient le jour même. Exactement ce qu\'il me fallait.',
+    author: 'James L.',
+    role: 'Trader MT5',
   },
   {
+    headline: 'Les signaux range enfin bien gérés',
     quote:
-      'Courtier coupé à 2 h du matin pendant la NFP. Les journaux copieur montraient quel compte avait raté la modif—reconnecté le matin sans deviner.',
-    author: 'Daniel R.',
-    role: 'Forex & indices · Chicago',
+      'Mon ancien copieur ratait les entrées en range. TScopier répartit les legs et les TP comme le canal les envoie. Une vraie différence sur mon canal gold.',
+    author: 'Elena R.',
+    role: 'Trader XAUUSD',
   },
   {
+    headline: 'Backtest avant le live',
     quote:
-      'Un EA sur un VPS cheap qui tombait chaque week-end. Inscrit sur un laptop à midi, copie en démo l’après-midi—pas d’install, pas de RDP.',
-    author: 'Sofia M.',
-    role: 'Ex-utilisatrice VPS · Madrid',
+      'J\'ai backtesté mon canal principal plusieurs semaines avant le live. Voir comment les trades se seraient passés m\'a donné confiance. Malin avant de risquer de l\'argent réel.',
+    author: 'Tom H.',
+    role: 'Trader · UK',
   },
   {
+    headline: 'Les logs disent tout',
     quote:
-      'Fermer les pires entrées semblait du jargon jusqu’à une semaine de range sur l’or. Comportement conforme à ce que l’admin du canal décrivait.',
-    author: 'Tomás V.',
-    role: 'Focus XAUUSD · São Paulo',
+      'Quand un trade ne s\'est pas exécuté, j\'ai ouvert les logs copieur et j\'ai vu pourquoi tout de suite. Pas de devinettes. Ça me fait gagner des heures.',
+    author: 'Sara M.',
+    role: 'Utilisatrice Telegram copier',
   },
   {
+    headline: 'Deux comptes, un seul tableau de bord',
     quote:
-      'Six canaux, six jeux de règles. Les filtres par canal évitent que chaque message « déplace le SL » passe si je ne l’autorise pas.',
-    author: 'Hannah L.',
-    role: 'Multi-canaux · Amsterdam',
+      'Je fais tourner un compte prop firm et mon MT5 perso au même endroit. Chaque canal a ses propres règles. Interface simple et ça marche.',
+    author: 'Chris P.',
+    role: 'Trader financé',
   },
   {
+    headline: 'Fini les galères VPS',
     quote:
-      'Je venais d’un outil limité à trois comptes. Huit connexions MT pour la famille maintenant—le prix était cohérent une fois calculé.',
-    author: 'Rob F.',
-    role: 'Gestion de comptes · Sydney',
+      'J\'en avais marre des EA qui plantaient sur un VPS cheap chaque week-end. TScopier tourne dans le cloud — je me connecte et tout tourne encore. Quel soulagement.',
+    author: 'Nina K.',
+    role: 'Ex-utilisatrice VPS',
   },
 ]

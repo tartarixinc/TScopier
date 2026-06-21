@@ -1,6 +1,6 @@
 import type { TradeExecutorContext } from './context'
-import { hasMetatraderApiConfigured } from '../metatraderapi'
-import type { BrokerRow, SignalRow } from './types'
+import { hasFxsocketConfigured } from '../fxsocketClient'
+import type { BrokerRow, QueuedSignal, SignalRow } from './types'
 import {
   dispatchPriorityForAction,
   isEntryAction,
@@ -10,6 +10,7 @@ import {
 } from '../tradeSignalActions'
 import { workerConfig } from '../workerConfig'
 import { channelMatchesBrokerSignal } from '../brokerChannelFilter'
+import { loadCachedUserCopierPaused, signalPredatesCopierResume } from '../copierPause'
 import {
   channelConfigReadyForExecution,
   resolveChannelTradingConfig,
@@ -21,10 +22,11 @@ import {
   normalizeChannelMessageFiltersMap,
 } from '../channelMessageFilters'
 import { shouldRouteAsBasketParameterRefresh, parsedHasSlOrTp } from '../multiTradeMerge'
-import { SKIP_REASON_SIGNAL_ENTRY_REQUIRED } from '../manualPlanner'
+import type { ParsedSignal } from '../manualPlanner'
+import { SKIP_REASON_SIGNAL_ENTRY_REQUIRED, SKIP_REASON_SIGNAL_ENTRY_RANGE_REQUIRED, SKIP_REASON_SIGNAL_ENTRY_RANGE_EXPIRED } from '../manualPlanner'
 import { parsePipelineTimestamps, pipelineSummaryPayload } from '../pipelineTimestamps'
-import { buildTscopierCommentPrefix, resolveChannelLabelForComment, sanitizeChannelCommentSlug } from '../tradeComment'
-import { isMtUuid, operationFor } from './helpers'
+import { resolveChannelLabelForComment, sanitizeChannelCommentSlug } from '../tradeComment'
+import { isMtUuid, operationFor, brokerHasLinkedSession, brokerSessionUuid } from './helpers'
 import {
   EXECUTION_LOG_ACTIONS_HANDLED,
   EXECUTOR_MAX_CONCURRENT_SIGNALS,
@@ -33,7 +35,16 @@ import {
   telegramLiveTradeGateEnabled,
 } from './types'
 import type { ChannelKeywords } from '../manualPlanner'
-import { MESSAGE_EDIT_DISPATCH_SOURCE } from '../telegramMessageEdit'
+import { ACTIVITY_RETRY_DISPATCH_SOURCE } from '../retryActivity'
+import { loadSignalById, MESSAGE_REVISION_DISPATCH_SOURCE, revisionDirectionFlippedFromActions } from '../signalRevision'
+import { hasActiveSignalRangeEntryWait, SIGNAL_RANGE_WAKE_DISPATCH_SOURCE } from '../signalRangeEntryHelpers'
+import { finalizeSignalIfAllWaitsTerminal, syncWaitRow } from '../signalRangeEntryService'
+import { signalEntryRangeStrictEnabled } from '../manualPlanning/manualSettings'
+import { applyUserOverrideToSignalRow } from '../signalOverride'
+import {
+  closeBasketForRevisionDirectionFlip,
+  waitForSignalBasketFlat,
+} from './messageRevisionDirectionFlipClose'
 import {
   loadCachedUserSubscription,
   loadCachedUserIsAdmin,
@@ -41,6 +52,8 @@ import {
   isSubscriptionActive,
 } from '../subscriptionAccess'
 import { evaluateParsedSignalExecutionEligibility } from '../signalExecutionEligibility'
+import { evaluateChannelCopyLimitPauseForBroker } from '../copyLimitDispatch'
+import type { MgmtExecOptions } from '../mgmtExecOptions'
 
 export function shouldUseEntryFastPath(ctx: TradeExecutorContext, row: SignalRow): boolean {
     const mode = workerConfig.tradeExecutorMode
@@ -52,15 +65,74 @@ export function shouldUseEntryFastPath(ctx: TradeExecutorContext, row: SignalRow
     return isEntryAction(parsedAction(parsed))
   }
 
-export function messageEditSkipReason(
-  parsed: Record<string, unknown> | null | undefined,
-  action: string,
-): 'message_edit_no_sl_tp' | 'message_edit_not_parameter_refresh' | null {
-  if (!parsed || !parsedHasSlOrTp(parsed)) return 'message_edit_no_sl_tp'
-  if (!shouldRouteAsBasketParameterRefresh(parsed) && !isManagementAction(action)) {
-    return 'message_edit_not_parameter_refresh'
+function revisionDirectionFlip(row: SignalRow): boolean {
+  if (!row.revision_prior_action) return false
+  const action = parsedAction(row.parsed_data)
+  return revisionDirectionFlippedFromActions(row.revision_prior_action, action)
+}
+
+/** Live management bypasses in-process queue + heavy idempotency (mirror entry fast path). */
+export function shouldUseMgmtFastPath(row: SignalRow, source?: string): boolean {
+  const mode = workerConfig.tradeExecutorMode
+  if (mode !== 'mgmt' && mode !== 'all') return false
+  const parsed = row.parsed_data
+  if (!parsed) return false
+  if (source === MESSAGE_REVISION_DISPATCH_SOURCE && revisionDirectionFlip(row)) {
+    return false
   }
-  return null
+  const action = parsedAction(parsed)
+  if (isManagementAction(action)) return true
+  if (
+    source === MESSAGE_REVISION_DISPATCH_SOURCE
+    && shouldRouteAsBasketParameterRefresh(parsed)
+  ) {
+    return true
+  }
+  return false
+}
+
+export function isLiveMgmtFast(
+  opts?: {
+    liveDispatch?: boolean
+    lightIdempotency?: boolean
+    dispatchSource?: string
+  },
+  parsed?: { action?: string } | null,
+  row?: SignalRow,
+): boolean {
+  if (opts?.liveDispatch !== true || opts?.lightIdempotency !== true) return false
+  if (
+    opts.dispatchSource === MESSAGE_REVISION_DISPATCH_SOURCE
+    && row?.revision_prior_action
+    && revisionDirectionFlippedFromActions(row.revision_prior_action, parsedAction(parsed))
+  ) {
+    return false
+  }
+  const action = parsedAction(parsed)
+  if (isManagementAction(action)) return true
+  if (
+    opts.dispatchSource === MESSAGE_REVISION_DISPATCH_SOURCE
+    && parsed
+    && shouldRouteAsBasketParameterRefresh(parsed as ParsedSignal)
+  ) {
+    return true
+  }
+  return false
+}
+
+export function revisionInflightWaitMs(row: SignalRow, dispatchSource?: string): number {
+  if (dispatchSource !== MESSAGE_REVISION_DISPATCH_SOURCE) return 60_000
+  const parsed = row.parsed_data
+  if (!parsed) return 60_000
+  const action = parsedAction(parsed)
+  if (isManagementAction(action)) return 10_000
+  if (shouldRouteAsBasketParameterRefresh(parsed as ParsedSignal) && !isEntryAction(action)) {
+    return 10_000
+  }
+  if (shouldRouteAsBasketParameterRefresh(parsed as ParsedSignal)) {
+    return 10_000
+  }
+  return 60_000
 }
 
 export function enqueueSignal(ctx: TradeExecutorContext, 
@@ -80,10 +152,16 @@ export function enqueueSignal(ctx: TradeExecutorContext,
     const high = (opts?.priority ?? dispatchPriorityForAction(action)) === 'high'
 
     ctx.queuedIds.add(row.id)
+    const item: QueuedSignal = {
+      row,
+      liveDispatch: opts?.liveDispatch,
+      source: opts?.source,
+      dispatchReceivedAt: opts?.dispatchReceivedAt,
+    }
     if (high) {
-      ctx.highPriorityQueue.push(row)
+      ctx.highPriorityQueue.push(item)
     } else {
-      ctx.normalPriorityQueue.push(row)
+      ctx.normalPriorityQueue.push(item)
     }
     ctx.scheduleQueueDrain()
   }
@@ -97,7 +175,7 @@ export function scheduleQueueDrain(ctx: TradeExecutorContext, ): void {
     })
   }
 
-export function dequeueQueuedSignal(ctx: TradeExecutorContext, ): SignalRow | null {
+export function dequeueQueuedSignal(ctx: TradeExecutorContext, ): QueuedSignal | null {
     return ctx.highPriorityQueue.shift() ?? ctx.normalPriorityQueue.shift() ?? null
   }
 
@@ -111,10 +189,19 @@ export async function drainSignalQueues(ctx: TradeExecutorContext, ): Promise<vo
           inFlight.size < EXECUTOR_MAX_CONCURRENT_SIGNALS
           && (ctx.highPriorityQueue.length > 0 || ctx.normalPriorityQueue.length > 0)
         ) {
-          const row = ctx.dequeueQueuedSignal()
-          if (!row) break
+          const item = ctx.dequeueQueuedSignal()
+          if (!item) break
+          const row = item.row
           ctx.queuedIds.delete(row.id)
-          const job = ctx.handleSignal(row, { liveDispatch: false, lightIdempotency: false })
+          const entryFast = ctx.shouldUseEntryFastPath(row)
+          const mgmtFast = shouldUseMgmtFastPath(row, item.source)
+          const useFastPath = entryFast || mgmtFast
+          const job = ctx.handleSignal(row, {
+            liveDispatch: useFastPath || item.liveDispatch === true,
+            lightIdempotency: useFastPath,
+            dispatchSource: item.source,
+            dispatchReceivedAt: item.dispatchReceivedAt,
+          })
             .catch(err => console.error(`[tradeExecutor] handleSignal failed for ${row.id}:`, err))
           inFlight.add(job)
           void job.finally(() => {
@@ -186,6 +273,27 @@ export function logPipelineSummaryBackground(ctx: TradeExecutorContext,
     extra?: Record<string, unknown>,
   ): void {
     const ts = signal.pipeline_ts ?? {}
+    const listenerToDispatchMs = ts.t_dispatch_received != null && ts.t_listener_received != null
+      ? ts.t_dispatch_received - ts.t_listener_received
+      : null
+    const handleMs = typeof extra?.handle_ms === 'number' ? extra.handle_ms : null
+    const mgmtFast = extra?.mgmt_fast_path === true
+    const dispatchSource = extra?.dispatch_source ?? null
+    const action = parsedAction(signal.parsed_data)
+    if (isManagementAction(action)) {
+      if (!mgmtFast) {
+        console.warn(
+          `[tradeExecutor] mgmt slow path signal=${signal.id} source=${String(dispatchSource ?? 'unknown')}`
+          + `${listenerToDispatchMs != null ? ` listener_to_dispatch_ms=${listenerToDispatchMs}` : ''}`,
+        )
+      }
+      if (handleMs != null && handleMs > 2_000) {
+        console.warn(
+          `[tradeExecutor] slow mgmt handle signal=${signal.id} ms=${handleMs}`
+          + ` fast=${mgmtFast} source=${String(dispatchSource ?? 'unknown')}`,
+        )
+      }
+    }
     void ctx.supabase
       .from('trade_execution_logs')
       .insert({
@@ -193,7 +301,10 @@ export function logPipelineSummaryBackground(ctx: TradeExecutorContext,
         signal_id: signal.id,
         action: 'pipeline_summary',
         status: 'success',
-        request_payload: pipelineSummaryPayload(ts, extra) as unknown as Record<string, unknown>,
+        request_payload: pipelineSummaryPayload(ts, {
+          ...extra,
+          listener_to_dispatch_ms: listenerToDispatchMs,
+        }) as unknown as Record<string, unknown>,
       })
       .then(({ error }) => {
         if (error) {
@@ -214,7 +325,7 @@ export async function markSignalExecuted(ctx: TradeExecutorContext, signalId: st
     }
   }
 
-export async function signalLiveDispatchAlreadyHandled(ctx: TradeExecutorContext, signalId: string): Promise<boolean> {
+async function signalDispatchAlreadyHandled(ctx: TradeExecutorContext, signalId: string): Promise<boolean> {
     const [trades, range, entry, logs] = await Promise.all([
       ctx.supabase
         .from('trades')
@@ -243,33 +354,12 @@ export async function signalLiveDispatchAlreadyHandled(ctx: TradeExecutorContext
     )
   }
 
+export async function signalLiveDispatchAlreadyHandled(ctx: TradeExecutorContext, signalId: string): Promise<boolean> {
+    return signalDispatchAlreadyHandled(ctx, signalId)
+  }
+
 export async function signalAlreadyHandled(ctx: TradeExecutorContext, signalId: string): Promise<boolean> {
-    const [trades, range, entry, logs] = await Promise.all([
-      ctx.supabase
-        .from('trades')
-        .select('id', { count: 'exact', head: true })
-        .eq('signal_id', signalId),
-      ctx.supabase
-        .from('range_pending_legs')
-        .select('id', { count: 'exact', head: true })
-        .eq('signal_id', signalId),
-      ctx.supabase
-        .from('signal_entry_pending_orders')
-        .select('id', { count: 'exact', head: true })
-        .eq('signal_id', signalId),
-      ctx.supabase
-        .from('trade_execution_logs')
-        .select('id', { count: 'exact', head: true })
-        .eq('signal_id', signalId)
-        .eq('status', 'success')
-        .in('action', [...EXECUTION_LOG_ACTIONS_HANDLED]),
-    ])
-    return (
-      (trades.count ?? 0) > 0
-      || (range.count ?? 0) > 0
-      || (entry.count ?? 0) > 0
-      || (logs.count ?? 0) > 0
-    )
+    return signalDispatchAlreadyHandled(ctx, signalId)
   }
 
 export function signalTooOldForReplay(ctx: TradeExecutorContext, row: SignalRow): boolean {
@@ -284,6 +374,19 @@ export function claimSignalExecution(ctx: TradeExecutorContext, signalId: string
     return true
   }
 
+/** Wait for an in-flight entry on the same signal row (teaser merge + revision overlap). */
+export async function waitForSignalInflightClear(
+  ctx: TradeExecutorContext,
+  signalId: string,
+  timeoutMs = 60_000,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (ctx.inflight.has(signalId) && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 100))
+  }
+  return !ctx.inflight.has(signalId)
+}
+
 export async function handleSignal(ctx: TradeExecutorContext, 
     row: SignalRow,
     opts?: {
@@ -291,22 +394,58 @@ export async function handleSignal(ctx: TradeExecutorContext,
       lightIdempotency?: boolean
       dispatchSource?: string
       dispatchReceivedAt?: number
+      wakeBrokerAccountId?: string
     },
   ) {
-    if (!hasMetatraderApiConfigured()) return
+    if (!hasFxsocketConfigured()) return
+    const isMessageRevisionEarly = opts?.dispatchSource === MESSAGE_REVISION_DISPATCH_SOURCE
+    if (isMessageRevisionEarly) {
+      await waitForSignalInflightClear(
+        ctx,
+        row.id,
+        revisionInflightWaitMs(row, opts?.dispatchSource),
+      )
+    }
     if (!ctx.claimSignalExecution(row.id)) return
 
+    if (await loadCachedUserCopierPaused(ctx.supabase, row.user_id)) {
+      ctx.inflight.delete(row.id)
+      ctx.queuedIds.delete(row.id)
+      const action = parsedAction(row.parsed_data)
+      if (isManagementAction(action)) {
+        await ctx.logDispatchSkipped(row, 'copier_paused')
+      }
+      return
+    }
+
+    if (signalPredatesCopierResume(row.user_id, row.created_at)) {
+      ctx.inflight.delete(row.id)
+      ctx.queuedIds.delete(row.id)
+      return
+    }
+
     const handleStartMs = Date.now()
-    const liveFast = opts?.liveDispatch === true && opts?.lightIdempotency === true
+    const isRangeWake = opts?.dispatchSource === SIGNAL_RANGE_WAKE_DISPATCH_SOURCE
+    const liveFast = isRangeWake
+      || (opts?.liveDispatch === true && opts?.lightIdempotency === true)
+    const liveMgmtFast = isLiveMgmtFast(opts, row.parsed_data, row)
+    const channelMetaPromise = (liveFast || liveMgmtFast) && row.channel_id
+      ? ctx.getChannelMeta(row.channel_id)
+      : null
     const queueWaitMs = opts?.dispatchReceivedAt != null
       ? Math.max(0, handleStartMs - (opts.dispatchReceivedAt as number))
       : null
-    let pipelineOutcome: Record<string, unknown> = { live_fast: liveFast }
-    const isMessageEdit = opts?.dispatchSource === MESSAGE_EDIT_DISPATCH_SOURCE
+    let pipelineOutcome: Record<string, unknown> = {
+      live_fast: liveFast,
+      mgmt_fast_path: liveMgmtFast,
+      dispatch_source: opts?.dispatchSource ?? null,
+    }
+    const isMessageRevision = opts?.dispatchSource === MESSAGE_REVISION_DISPATCH_SOURCE
+    const isActivityRetry = opts?.dispatchSource === ACTIVITY_RETRY_DISPATCH_SOURCE
     try {
-      if (!opts?.liveDispatch && !isMessageEdit && ctx.signalTooOldForReplay(row)) return
+      if (!opts?.liveDispatch && !isMessageRevision && !isActivityRetry && ctx.signalTooOldForReplay(row)) return
 
-      if (!liveFast) {
+      if (!liveFast && !liveMgmtFast) {
         void ctx.logPipelineStage(row, 'handle_start', {
           live_dispatch: opts?.liveDispatch === true,
           source: opts?.dispatchSource ?? null,
@@ -314,30 +453,95 @@ export async function handleSignal(ctx: TradeExecutorContext,
         })
       }
 
-      if (!isMessageEdit && await ctx.signalAlreadyHandled(row.id)) {
+      if (!isMessageRevision && !isActivityRetry && !isRangeWake && !liveFast && !liveMgmtFast && await ctx.signalAlreadyHandled(row.id)) {
         await ctx.markSignalExecuted(row.id)
         return
       }
-      if (telegramLiveTradeGateEnabled() && row.channel_id) {
-        const live = ctx.sessionManager
-          ? await ctx.sessionManager.canExecuteTelegramCopierTradesAsync(row.user_id)
-          : false
-        if (!live) {
+      let userSub: Awaited<ReturnType<typeof loadCachedUserSubscription>>
+      let isAdmin: boolean
+      if (
+        (liveFast || liveMgmtFast)
+        && telegramLiveTradeGateEnabled()
+        && row.channel_id
+        && ctx.sessionManager
+      ) {
+        const [teleLive, sub, admin] = await Promise.all([
+          ctx.sessionManager.canExecuteTelegramCopierTradesAsync(row.user_id),
+          loadCachedUserSubscription(ctx.supabase, row.user_id),
+          loadCachedUserIsAdmin(ctx.supabase, row.user_id),
+        ])
+        if (!teleLive) {
           console.warn(
             `[tradeExecutor] skip signal ${row.id} (user ${row.user_id}): telegram listener not live for channel-backed copier`,
           )
           await ctx.logDispatchSkipped(row, 'telegram_listener_not_live')
           return
         }
+        userSub = sub
+        isAdmin = admin
+      } else {
+        if (telegramLiveTradeGateEnabled() && row.channel_id) {
+          const live = ctx.sessionManager
+            ? await ctx.sessionManager.canExecuteTelegramCopierTradesAsync(row.user_id)
+            : false
+          if (!live) {
+            console.warn(
+              `[tradeExecutor] skip signal ${row.id} (user ${row.user_id}): telegram listener not live for channel-backed copier`,
+            )
+            await ctx.logDispatchSkipped(row, 'telegram_listener_not_live')
+            return
+          }
+        }
+        ;[userSub, isAdmin] = await Promise.all([
+          loadCachedUserSubscription(ctx.supabase, row.user_id),
+          loadCachedUserIsAdmin(ctx.supabase, row.user_id),
+        ])
       }
-
-      const [userSub, isAdmin] = await Promise.all([
-        loadCachedUserSubscription(ctx.supabase, row.user_id),
-        loadCachedUserIsAdmin(ctx.supabase, row.user_id),
-      ])
       if (!isAdmin && (!userSub || !isSubscriptionActive(userSub.status))) {
         await ctx.logDispatchSkipped(row, 'subscription_inactive')
         return
+      }
+
+      if (isMessageRevision) {
+        const fresh = await loadSignalById(ctx.supabase, row.id)
+        if (!fresh?.parsed_data?.action) return
+        row = applyUserOverrideToSignalRow({
+          ...row,
+          parsed_data: fresh.parsed_data,
+          user_override: fresh.user_override,
+        })
+        const { data: activeWaits } = await ctx.supabase
+          .from('signal_range_entry_waits')
+          .select('id, broker_account_id, metaapi_account_id, symbol')
+          .eq('signal_id', row.id)
+          .eq('status', 'waiting')
+        if (activeWaits?.length && row.parsed_data) {
+          for (const waitRow of activeWaits) {
+            const broker = ctx.brokersById.get(waitRow.broker_account_id)
+            if (!broker) continue
+            const manual = resolveChannelTradingConfig(broker, row.channel_id).manual_settings
+            if (!signalEntryRangeStrictEnabled(manual)) {
+              await ctx.supabase
+                .from('signal_range_entry_waits')
+                .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+                .eq('id', waitRow.id)
+                .eq('status', 'waiting')
+              continue
+            }
+            await syncWaitRow(ctx.supabase, {
+              signal: row,
+              broker,
+              uuid: waitRow.metaapi_account_id,
+              symbol: waitRow.symbol,
+              parsed: row.parsed_data,
+              manual,
+              preserveExpiresAt: true,
+              logUpdates: true,
+            })
+          }
+        }
+      } else {
+        row = applyUserOverrideToSignalRow(row)
       }
 
       const pipelineT0 = Date.now()
@@ -345,22 +549,17 @@ export async function handleSignal(ctx: TradeExecutorContext,
       if (!parsed || !parsed.action) return
       const action = String(parsed.action).toLowerCase()
       if (action === 'ignore') return
-      const executionEligibility = evaluateParsedSignalExecutionEligibility(parsed)
+      const executionEligibility = evaluateParsedSignalExecutionEligibility(
+        parsed,
+        String((row as { raw_message?: string | null }).raw_message ?? parsed.raw_instruction ?? ''),
+      )
       if (!executionEligibility.eligible) {
         await ctx.logDispatchSkipped(row, executionEligibility.skipReason ?? 'entry_not_execution_eligible')
         return
       }
 
-      if (isMessageEdit) {
-        const reason = messageEditSkipReason(parsed as Record<string, unknown> | null, action)
-        if (reason) {
-          await ctx.logDispatchSkipped(row, reason)
-          return
-        }
-      }
-
       const rawMatchingBrokers = (ctx.brokersByUser.get(row.user_id) ?? []).filter(b =>
-        b.is_active && isMtUuid(b.metaapi_account_id) && channelMatchesBrokerSignal(b, row.channel_id),
+        b.is_active && brokerHasLinkedSession(b) && channelMatchesBrokerSignal(b, row.channel_id),
       )
       const configSkipReasons: string[] = []
       const allMatchingBrokers = rawMatchingBrokers.flatMap(b => {
@@ -375,7 +574,48 @@ export async function handleSignal(ctx: TradeExecutorContext,
         }
         return [withChannelTradingConfig(b, row.channel_id)]
       })
-      const brokers = allMatchingBrokers.filter(b => ctx.brokerEligibleForSignal(b, row))
+      let brokers = allMatchingBrokers.filter(b => ctx.brokerEligibleForSignal(b, row))
+      const wakeBrokerId = opts?.wakeBrokerAccountId ?? row.wake_broker_account_id
+      if (isRangeWake && wakeBrokerId) {
+        brokers = brokers.filter(b => b.id === wakeBrokerId)
+      }
+      const signalSymbolForWarm = parsed.symbol?.trim() ?? ''
+      if (liveFast && signalSymbolForWarm && brokers.length > 0) {
+        pipelineOutcome.brokers_warm_at_dispatch = ctx.brokersWarmForLiveEntry(
+          brokers,
+          signalSymbolForWarm,
+        )
+      }
+      if (brokers.length > 0 && row.channel_id && !(liveMgmtFast && isManagementAction(action))) {
+        const profileTz = ctx.userTimezoneById.get(row.user_id)
+        const channelId = row.channel_id
+        if (liveFast && parsed.symbol) {
+          void ctx.prewarmBrokersForLiveEntry(brokers, parsed.symbol)
+        }
+        const pauseResults = await Promise.all(
+          brokers.map(async broker => {
+            const state = await ctx.fetchCopyLimitState(broker.id, channelId)
+            const pause = evaluateChannelCopyLimitPauseForBroker(
+              broker,
+              channelId,
+              profileTz,
+              state,
+            )
+            if (pause.paused && pause.reason) {
+              const skipLog = ctx.logDispatchSkipped(row, pause.reason, {
+                broker_id: broker.id,
+                channel_id: channelId,
+                pause_key: pause.pauseKey ?? null,
+              })
+              if (liveFast) void skipLog
+              else await skipLog
+              return null
+            }
+            return broker
+          }),
+        )
+        brokers = pauseResults.filter((b): b is typeof brokers[number] => b != null)
+      }
       if (!brokers.length) {
         if (configSkipReasons.length > 0 && rawMatchingBrokers.length > 0) {
           await ctx.logDispatchSkipped(row, configSkipReasons[0] ?? 'channel_config_missing', {
@@ -421,15 +661,35 @@ export async function handleSignal(ctx: TradeExecutorContext,
         }
       }
 
+      if (
+        isMessageRevision
+        && row.revision_prior_action
+        && revisionDirectionFlippedFromActions(row.revision_prior_action, action)
+      ) {
+        const flipClose = await closeBasketForRevisionDirectionFlip(ctx, row, brokers)
+        await waitForSignalBasketFlat(ctx, row, brokers)
+        if (flipClose.closed === 0 && flipClose.failed > 0) {
+          await ctx.logDispatchSkipped(row, 'message_revision_direction_flip_close_failed')
+          return
+        }
+        if (!parsedHasSlOrTp(parsed as unknown as Record<string, unknown>)) {
+          await ctx.logDispatchSkipped(row, 'message_revision_direction_flip_closed')
+          await ctx.markSignalExecuted(row.id)
+          return
+        }
+      }
+
       // Pre-fetch channel keywords + comment slug once per signal.
-      const { keywords: channelKeywords, commentSlug } = await ctx.getChannelMeta(row.channel_id)
-      const commentPrefix = buildTscopierCommentPrefix(row.id, commentSlug)
+      const { keywords: channelKeywords, commentSlug } = channelMetaPromise
+        ? await channelMetaPromise
+        : await ctx.getChannelMeta(row.channel_id)
       const rawText = String(parsed.raw_instruction ?? '').toLowerCase()
       const ignoreKw = channelKeywords?.additional?.ignore_keyword?.trim().toLowerCase()
       const skipKw = channelKeywords?.additional?.skip_keyword?.trim().toLowerCase()
       if ((ignoreKw && rawText.includes(ignoreKw)) || (skipKw && rawText.includes(skipKw))) {
         // Channel-level ignore — parse-signal usually already short-circuits this,
         // but we double-check here so a stale parse can't slip through.
+        await ctx.logDispatchSkipped(row, 'channel_filter_ignored')
         return
       }
 
@@ -447,48 +707,43 @@ export async function handleSignal(ctx: TradeExecutorContext,
           await ctx.logDispatchSkipped(row, 'channel_filter_ignored')
           return
         }
-        await ctx.applyManagement(row, parsed, mgmtBrokers)
+        const mgmtWallStart = Date.now()
+        const mgmtResult = await ctx.applyManagement(row, parsed, mgmtBrokers, { liveMgmtFast })
+        pipelineOutcome = {
+          ...pipelineOutcome,
+          mgmt_wall_ms: Date.now() - mgmtWallStart,
+          mgmt_legs_total: mgmtResult.legsTotal,
+          mgmt_legs_parallelism: mgmtResult.legsParallelism,
+          mgmt_action: action,
+        }
         return
       }
 
       const op = operationFor(action, parsed)
       if (!op || !parsed.symbol) return
 
-      if (liveFast && !isMessageEdit && await ctx.signalLiveDispatchAlreadyHandled(row.id)) {
-        await ctx.markSignalExecuted(row.id)
-        return
-      }
-
-      for (const b of brokers) {
-        const resolved = resolveChannelTradingConfig(b, row.channel_id)
-        const ms = resolved.manual_settings
-        console.log(
-          `[tradeExecutor] channel config signal=${row.id} channel=${row.channel_id ?? 'none'}`
-          + ` broker=${b.id} source=${resolved.config_source}`
-          + ` style=${String(ms.trade_style ?? 'single')}`
-          + ` fixed_lot=${String(ms.fixed_lot ?? 'missing')}`,
-        )
-      }
-
-      if (liveFast) {
-        // Hot-path skip: when session is freshly pinged AND symbol caches are
-        // warm, sendOrder will hit cached values inline (sub-ms). Skipping
-        // prewarm entirely keeps prep_ms ~0 instead of paying for a needless
-        // round-trip. When cold, kick prewarm off in the background so
-        // sendOrder's internal Promise.all (deduped via inflight maps) does
-        // the awaiting — we no longer double-block before t_order_send_start.
-        if (!ctx.brokersWarmForLiveEntry(brokers, parsed.symbol ?? '')) {
-          void ctx.prewarmBrokersForLiveEntry(brokers, parsed.symbol ?? '')
+      if (!liveFast) {
+        for (const b of brokers) {
+          const resolved = resolveChannelTradingConfig(b, row.channel_id)
+          const ms = resolved.manual_settings
+          console.log(
+            `[tradeExecutor] channel config signal=${row.id} channel=${row.channel_id ?? 'none'}`
+            + ` broker=${b.id} source=${resolved.config_source}`
+            + ` style=${String(ms.trade_style ?? 'single')}`
+            + ` fixed_lot=${String(ms.fixed_lot ?? 'missing')}`,
+          )
         }
       }
+
       if (liveFast && row.pipeline_ts) {
         row.pipeline_ts.t_order_send_start = Date.now()
       }
       const outcomes = await Promise.all(
         brokers.map(b => ctx.sendOrder(row, parsed, op, b, channelKeywords, pipelineT0, {
           liveEntryFast: liveFast,
-          commentPrefix,
-          messageEditOnly: isMessageEdit,
+          liveMgmtFast,
+          commentSlug,
+          sameSignalRefresh: isMessageRevision,
         })),
       )
       if (liveFast && row.pipeline_ts) {
@@ -514,6 +769,8 @@ export async function handleSignal(ctx: TradeExecutorContext,
         )
       }
       const strictSkips = outcomes.filter(o => o.signalEntryRequiredSkip === true).length
+      const rangeRequiredSkips = outcomes.filter(o => o.signalRangeEntryRequiredSkip === true).length
+      const rangeDeferred = outcomes.some(o => o.signalRangeEntryDeferred === true)
       const finalizeSkipReasons = outcomes
         .map(o => o.finalizeSkipReason)
         .filter((r): r is string => typeof r === 'string' && r.length > 0)
@@ -526,6 +783,32 @@ export async function handleSignal(ctx: TradeExecutorContext,
             .eq('status', 'parsed')
           if (sigErr) {
             console.warn(`[tradeExecutor] signal skip finalize failed id=${row.id}: ${sigErr.message}`)
+          }
+        } catch {
+          // best-effort
+        }
+      } else if (!anyOpened && rangeRequiredSkips === brokers.length && rangeRequiredSkips > 0) {
+        try {
+          const { error: sigErr } = await ctx.supabase
+            .from('signals')
+            .update({ status: 'skipped', skip_reason: SKIP_REASON_SIGNAL_ENTRY_RANGE_REQUIRED })
+            .eq('id', row.id)
+            .eq('status', 'parsed')
+          if (sigErr) {
+            console.warn(`[tradeExecutor] signal skip finalize failed id=${row.id}: ${sigErr.message}`)
+          }
+        } catch {
+          // best-effort
+        }
+      } else if (rangeDeferred) {
+        try {
+          const { error: sigErr } = await ctx.supabase
+            .from('signals')
+            .update({ status: 'parsed', skip_reason: null })
+            .eq('id', row.id)
+            .eq('status', 'parsed')
+          if (sigErr) {
+            console.warn(`[tradeExecutor] signal range wait finalize failed id=${row.id}: ${sigErr.message}`)
           }
         } catch {
           // best-effort
@@ -545,18 +828,104 @@ export async function handleSignal(ctx: TradeExecutorContext,
           // best-effort
         }
       } else if (anyOpened) {
-        await ctx.markSignalExecuted(row.id)
-      } else if (isMessageEdit) {
-        await ctx.markSignalExecuted(row.id)
+        const { count: waitingWaits } = await ctx.supabase
+          .from('signal_range_entry_waits')
+          .select('id', { count: 'exact', head: true })
+          .eq('signal_id', row.id)
+          .eq('status', 'waiting')
+        if ((waitingWaits ?? 0) === 0) {
+          await ctx.markSignalExecuted(row.id)
+        }
+      } else if (!anyOpened && isRangeWake) {
+        await finalizeSignalIfAllWaitsTerminal(ctx.supabase, row.id)
+      } else if (!anyOpened && !rangeDeferred) {
+        const { count: waitingWaits } = await ctx.supabase
+          .from('signal_range_entry_waits')
+          .select('id', { count: 'exact', head: true })
+          .eq('signal_id', row.id)
+          .eq('status', 'waiting')
+        if ((waitingWaits ?? 0) === 0) {
+          const { count: expiredWaits } = await ctx.supabase
+            .from('signal_range_entry_waits')
+            .select('id', { count: 'exact', head: true })
+            .eq('signal_id', row.id)
+            .eq('status', 'expired')
+          if ((expiredWaits ?? 0) > 0) {
+            try {
+              await ctx.supabase
+                .from('signals')
+                .update({ status: 'skipped', skip_reason: SKIP_REASON_SIGNAL_ENTRY_RANGE_EXPIRED })
+                .eq('id', row.id)
+                .eq('status', 'parsed')
+            } catch {
+              // best-effort
+            }
+          }
+        }
+      } else if (isMessageRevision) {
+        const revisionApplied = outcomes.some(o => o.openedOrMerged === true)
+        if (revisionApplied) {
+          await ctx.markSignalExecuted(row.id)
+        } else if (rangeDeferred) {
+          try {
+            await ctx.supabase
+              .from('signals')
+              .update({ status: 'parsed', skip_reason: null })
+              .eq('id', row.id)
+          } catch {
+            // best-effort
+          }
+        } else {
+          const { count: activeWaits } = await ctx.supabase
+            .from('signal_range_entry_waits')
+            .select('id', { count: 'exact', head: true })
+            .eq('signal_id', row.id)
+            .eq('status', 'waiting')
+          if ((activeWaits ?? 0) > 0) {
+            try {
+              await ctx.supabase
+                .from('signals')
+                .update({ status: 'parsed', skip_reason: null })
+                .eq('id', row.id)
+            } catch {
+              // best-effort
+            }
+          } else {
+          try {
+            const { error: sigErr } = await ctx.supabase
+              .from('signals')
+              .update({ status: 'parsed', skip_reason: 'basket_modify_failed' })
+              .eq('id', row.id)
+            if (sigErr) {
+              console.warn(
+                `[tradeExecutor] revision modify failed finalize id=${row.id}: ${sigErr.message}`,
+              )
+            }
+          } catch {
+            // best-effort
+          }
+          }
+        }
       }
     } finally {
       const handleMs = Date.now() - handleStartMs
-      if (liveFast) {
-        ctx.logPipelineSummaryBackground(row, { handle_ms: handleMs, ...pipelineOutcome })
+      const listenerTs = parsePipelineTimestamps(row.pipeline_ts)
+      const listenerToDispatchMs = listenerTs?.t_dispatch_received != null
+        && listenerTs?.t_listener_received != null
+        ? listenerTs.t_dispatch_received - listenerTs.t_listener_received
+        : null
+      const summaryExtra = {
+        handle_ms: handleMs,
+        listener_to_dispatch_ms: listenerToDispatchMs,
+        ...pipelineOutcome,
+      }
+      if (liveFast || liveMgmtFast) {
+        ctx.logPipelineSummaryBackground(row, summaryExtra)
       } else {
         void ctx.logPipelineStage(row, 'handle_end', {
           handle_ms: handleMs,
           source: opts?.dispatchSource ?? null,
+          ...pipelineOutcome,
         })
       }
       ctx.inflight.delete(row.id)
@@ -596,6 +965,7 @@ export async function getChannelMeta(ctx: TradeExecutorContext, channelId: strin
   }
 
 export function brokerEligibleForSignal(ctx: TradeExecutorContext, broker: BrokerRow, signal: SignalRow): boolean {
+    if (!broker.is_active) return false
     const activatedAt = ctx.brokerActivatedAt.get(broker.id)
     if (activatedAt == null) return true
     const createdAtRaw = (signal as { created_at?: string | number | null }).created_at

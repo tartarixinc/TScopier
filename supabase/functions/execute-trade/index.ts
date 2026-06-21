@@ -18,7 +18,7 @@ function authorize(req: Request): boolean {
 
 /**
  * DEPRECATED — superseded by the worker's TradeExecutor, which calls
- * MetatraderAPI directly with HTTP keep-alive for the lowest latency.
+ * FxSocket directly with HTTP keep-alive for the lowest latency.
  *
  * Kept only as a fallback HTTP endpoint for callers that still post
  * here. It logs an `execute_trade_stub` entry and exits without trading.

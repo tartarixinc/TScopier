@@ -1,8 +1,9 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2"
-import type { MassiveClient } from "../massiveApi.ts"
+import type { FxsocketClient } from "../fxsocketClient.ts"
 import type { BacktestRunConfig, ParsedSignalForBacktest } from "./types.ts"
 import { preloadMarketData } from "./marketData.ts"
 import { recalculateRunSummary } from "./recalculateRunSummary.ts"
+import { resolveBacktestBroker } from "./resolveBacktestBroker.ts"
 import { simulateTradeOnSeries, sliceSeriesForSignal } from "./simulator.ts"
 import {
   dbTradeToSimulated,
@@ -44,7 +45,7 @@ function applyOverrides(row: DbBacktestTradeRow, overrides: TradeOverrides) {
 
 export async function resimulateBacktestTrade(
   supabase: SupabaseClient,
-  massive: MassiveClient,
+  fx: FxsocketClient,
   userId: string,
   tradeId: string,
   overrides: TradeOverrides,
@@ -89,14 +90,15 @@ export async function resimulateBacktestTrade(
 
   const fromMs = new Date(config.dateFrom).getTime()
   const toMs = new Date(config.dateTo + "T23:59:59.999Z").getTime()
+  const brokerCtx = await resolveBacktestBroker(supabase, fx, userId, signal.symbol)
   const { seriesBySymbol } = await preloadMarketData(
-    massive,
+    fx,
+    brokerCtx,
     [signal.symbol],
     [signal],
     config,
     fromMs,
     toMs,
-    massive.callsPerMinute,
   )
 
   const fullSeries = seriesBySymbol.get(signal.symbol) ?? []

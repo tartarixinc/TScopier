@@ -5,6 +5,7 @@ const manualStops_1 = require("./manualStops");
 const executionShape_1 = require("./executionShape");
 const manualSettings_1 = require("./manualSettings");
 const parsedEntry_1 = require("./parsedEntry");
+const signalEntryRange_1 = require("./signalEntryRange");
 const planMultiManualOrders_1 = require("./planMultiManualOrders");
 const planSingleManualOrders_1 = require("./planSingleManualOrders");
 function withinTimeWindow(start, end, now) {
@@ -45,6 +46,9 @@ function planManualOrders(args) {
     }
     if ((0, manualSettings_1.signalEntryPriceStrictEnabled)(manual) && !(0, parsedEntry_1.parsedHasExplicitEntryAnchor)(parsed)) {
         return { orders: [], skip_reason: parsedEntry_1.SKIP_REASON_SIGNAL_ENTRY_REQUIRED, delay_ms };
+    }
+    if ((0, manualSettings_1.signalEntryRangeStrictEnabled)(manual) && !(0, parsedEntry_1.parsedHasExplicitEntryAnchor)(parsed)) {
+        return { orders: [], skip_reason: parsedEntry_1.SKIP_REASON_SIGNAL_ENTRY_RANGE_REQUIRED, delay_ms };
     }
     let entry = (0, parsedEntry_1.resolvedParsedEntryPrice)(parsed);
     if (entry == null) {
@@ -111,15 +115,19 @@ function planManualOrders(args) {
         pipQuote,
         roundPrice,
     };
+    const rangeEntryWait = (0, signalEntryRange_1.buildRangeEntryWait)({ manual, parsed, isBuy });
     if (tradeStyle !== 'multi') {
-        return (0, planSingleManualOrders_1.planSingleManualOrders)(singleShared);
+        const result = (0, planSingleManualOrders_1.planSingleManualOrders)(singleShared);
+        return rangeEntryWait ? { ...result, rangeEntryWait } : result;
     }
-    return (0, planMultiManualOrders_1.planMultiManualOrders)({
+    const result = (0, planMultiManualOrders_1.planMultiManualOrders)({
         ...singleShared,
+        parsed,
         commentPrefix,
         expertId,
         slippage,
         minStopDist,
         buildSingleOrder: planSingleManualOrders_1.planSingleManualOrders,
     });
+    return rangeEntryWait ? { ...result, rangeEntryWait } : result;
 }

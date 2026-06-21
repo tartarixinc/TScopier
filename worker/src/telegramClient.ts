@@ -62,6 +62,12 @@ export function isAuthKeyUnregistered(err: unknown): boolean {
   return m.includes('AUTH_KEY_UNREGISTERED')
 }
 
+/** Telegram returns this when the same auth key is online twice (deploy overlap, double connect). */
+export function isAuthKeyDuplicated(err: unknown): boolean {
+  const m = err instanceof Error ? err.message : String(err)
+  return m.includes('AUTH_KEY_DUPLICATED')
+}
+
 export function rethrowIfSessionInvalid(err: unknown): never {
   if (isAuthKeyUnregistered(err)) {
     throw new TelegramSessionInvalidError()

@@ -1,21 +1,11 @@
-import type { ChannelKeywords } from '../manualPlanner'
-import type { MtOperation } from '../metatraderapi'
 import type { TradeExecutorContext } from './context'
-import type { BrokerRow, ParsedSignal, SendOrderOutcome, SignalRow } from './types'
-import { prepareEntryExecution, type PreparedEntry } from './entryPrepare'
+import type { SendOrderOutcome } from './types'
+import { prepareEntryExecution, type EntryArgs, type PreparedEntry } from './entryPrepare'
 import { placeStrictSignalEntryPending } from './strictEntryPending'
 import { materializeVirtualPendingLegs } from './virtualPendingMaterialize'
 import { sendImmediateLegs } from './orderLegExecution'
 
-export type EntryArgs = {
-  signal: SignalRow
-  parsed: ParsedSignal
-  op: MtOperation
-  broker: BrokerRow
-  channelKeywords: ChannelKeywords | null
-  pipelineT0?: number
-  sendOpts?: { liveEntryFast?: boolean; commentPrefix?: string; messageEditOnly?: boolean }
-}
+export type { EntryArgs } from './entryPrepare'
 
 export type EntryMode = 'single' | 'range'
 

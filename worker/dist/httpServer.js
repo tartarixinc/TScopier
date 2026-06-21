@@ -2,12 +2,15 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.startHttpServer = startHttpServer;
 exports.startTradeHttpServer = startTradeHttpServer;
-exports.startHealthOnlyServer = startHealthOnlyServer;
 const http_1 = require("http");
 const telegramClient_1 = require("./telegramClient");
 const workerConfig_1 = require("./workerConfig");
 const queueHealth_1 = require("./queue/queueHealth");
 const parseSignal_1 = require("./parseSignal");
+const aiParseModification_1 = require("./aiParseModification");
+const applySignalOverride_1 = require("./applySignalOverride");
+const forceCloseSignalTrades_1 = require("./forceCloseSignalTrades");
+const retryActivity_1 = require("./retryActivity");
 const INTERNAL_TOKEN = process.env.WORKER_INTERNAL_TOKEN ?? '';
 const PORT = parseInt(process.env.WORKER_PORT ?? '8080', 10);
 function isTelegramSessionInvalid(err) {
@@ -31,7 +34,11 @@ function sendSessionInvalid(res) {
 /** Strip gramjs "(caused by …)" tails from messages shown to users. */
 function sanitizeClientError(msg) {
     const idx = msg.indexOf('(caused by');
-    return (idx > 0 ? msg.slice(0, idx) : msg).trim() || 'Request failed';
+    const cleaned = (idx > 0 ? msg.slice(0, idx) : msg).trim() || 'Request failed';
+    if ((0, telegramClient_1.isAuthKeyDuplicated)(cleaned)) {
+        return 'Telegram connection is temporarily busy (another copy is still closing). Wait 30 seconds, press Refresh, or use Reconnect Telegram if it persists.';
+    }
+    return cleaned;
 }
 /**
  * Authenticated HTTP API consumed only by the supabase telegram-auth
@@ -61,8 +68,14 @@ function startHttpServer(authService, sessionManager) {
                 if (!body.user_id || !body.phone) {
                     return sendJson(res, 400, { error: 'user_id and phone are required' });
                 }
-                const r = await authService.sendCode(body.user_id, body.phone);
-                return sendJson(res, 200, r);
+                try {
+                    const r = await authService.sendCode(body.user_id, body.phone);
+                    return sendJson(res, 200, r);
+                }
+                catch (err) {
+                    const msg = err instanceof Error ? err.message : 'Failed to send code';
+                    return sendJson(res, 400, { error: sanitizeClientError(msg) });
+                }
             }
             if (url === '/auth/verify_code') {
                 if (!body.user_id || !body.phone || !body.code) {
@@ -99,7 +112,8 @@ function startHttpServer(authService, sessionManager) {
                     return sendJson(res, 400, { error: 'user_id and channel_row_id are required' });
                 }
                 try {
-                    const result = await sessionManager.backfillChannelHistory(body.user_id, body.channel_row_id, Number(body.days ?? 30));
+                    const forTraining = body.for_training === true || body.for_training === 'true';
+                    const result = await sessionManager.backfillChannelHistory(body.user_id, body.channel_row_id, Number(body.days ?? 30), { forTraining });
                     return sendJson(res, 200, result);
                 }
                 catch (err) {
@@ -129,6 +143,26 @@ function startHttpServer(authService, sessionManager) {
                 catch (err) {
                     return handleTelegramRpcError(res, body.user_id, sessionManager, err, 'Failed to sync backtest signals');
                 }
+            }
+            if (url === '/internal/reconcile-signals') {
+                const body = (await readJson(req));
+                if (body.user_id) {
+                    if (!(0, workerConfig_1.userBelongsToShard)(body.user_id)) {
+                        return sendJson(res, 200, { ok: false, reason: 'wrong_shard' });
+                    }
+                    try {
+                        const result = await sessionManager.reconcileUserSignals(body.user_id, {
+                            channelRowId: body.channel_row_id,
+                        });
+                        return sendJson(res, 200, result);
+                    }
+                    catch (err) {
+                        const msg = err instanceof Error ? err.message : 'reconcile failed';
+                        return sendJson(res, 500, { error: msg });
+                    }
+                }
+                const result = await sessionManager.reconcileAllListenersOnShard();
+                return sendJson(res, 200, { ok: true, ...result });
             }
             return sendJson(res, 404, { error: 'Unknown route' });
         }
@@ -186,6 +220,52 @@ function startTradeHttpServer(sessionManager, tradeExecutor) {
                     return sendJson(res, 500, { error: msg });
                 }
             }
+            if (url === '/internal/parse-modification' && req.method === 'POST') {
+                if (!INTERNAL_TOKEN) {
+                    return sendJson(res, 503, { error: 'WORKER_INTERNAL_TOKEN not configured' });
+                }
+                const token = req.headers['x-internal-token'];
+                if (token !== INTERNAL_TOKEN) {
+                    return sendJson(res, 401, { error: 'Unauthorized' });
+                }
+                const body = (await readJson(req));
+                if (!body.channel_row_id || typeof body.raw_message !== 'string' || !body.user_id) {
+                    return sendJson(res, 400, { error: 'channel_row_id, raw_message, and user_id required' });
+                }
+                if (!(0, workerConfig_1.userBelongsToShard)(body.user_id)) {
+                    return sendJson(res, 200, { parsed: null, status: 'skipped', reason: 'wrong_shard' });
+                }
+                try {
+                    const aiResult = await (0, aiParseModification_1.aiParseModification)(sessionManager.getSupabase(), {
+                        userId: body.user_id,
+                        channelRowId: body.channel_row_id,
+                        rawMessage: body.raw_message,
+                        isReply: body.is_reply === true,
+                        parentSignalId: body.parent_signal_id ?? null,
+                        revision: body.revision?.prior_raw_message
+                            ? {
+                                prior_raw_message: body.revision.prior_raw_message,
+                                prior_parsed_data: body.revision.prior_parsed_data ?? null,
+                            }
+                            : undefined,
+                        forceAi: body.force_ai === true,
+                    });
+                    const parseResult = (0, aiParseModification_1.aiResultToParseResult)(aiResult);
+                    return sendJson(res, 200, {
+                        parsed: parseResult.parsed,
+                        status: parseResult.status,
+                        skip_reason: parseResult.skip_reason,
+                        intent: aiResult.intent,
+                        typo_corrected: aiResult.typo_corrected,
+                        confidence: aiResult.confidence,
+                        source: aiResult.source,
+                    });
+                }
+                catch (err) {
+                    const msg = err instanceof Error ? err.message : 'parse modification failed';
+                    return sendJson(res, 500, { error: msg });
+                }
+            }
             if (url === '/internal/dispatch-signal' && req.method === 'POST') {
                 if (!INTERNAL_TOKEN) {
                     return sendJson(res, 503, { error: 'WORKER_INTERNAL_TOKEN not configured' });
@@ -213,13 +293,112 @@ function startTradeHttpServer(sessionManager, tradeExecutor) {
                     priority: body.priority,
                     source: body.source ?? 'listener_push',
                 };
+                const awaitByDefault = String(process.env.TRADE_DISPATCH_AWAIT_DEFAULT ?? 'false').toLowerCase() === 'true';
                 const shouldAwait = body.await === true
-                    || body.source === 'listener_push'
-                    || String(process.env.TRADE_DISPATCH_AWAIT_DEFAULT ?? 'true').toLowerCase() !== 'false';
+                    || (body.await !== false && awaitByDefault);
                 const accepted = shouldAwait
                     ? await tradeExecutor.acceptDispatchSignalAwait(signalRow, dispatchOpts)
                     : tradeExecutor.acceptDispatchSignal(signalRow, dispatchOpts);
                 return sendJson(res, 200, { accepted, awaited: shouldAwait });
+            }
+            if (url === '/internal/retry-activity' && req.method === 'POST') {
+                if (!INTERNAL_TOKEN) {
+                    return sendJson(res, 503, { error: 'WORKER_INTERNAL_TOKEN not configured' });
+                }
+                const token = req.headers['x-internal-token'];
+                if (token !== INTERNAL_TOKEN) {
+                    return sendJson(res, 401, { error: 'Unauthorized' });
+                }
+                if (!tradeExecutor) {
+                    return sendJson(res, 503, { error: 'trade_executor_not_running' });
+                }
+                const body = (await readJson(req));
+                const userId = body.user_id?.trim();
+                const logId = body.log_id?.trim();
+                if (!userId || !logId) {
+                    return sendJson(res, 400, { error: 'user_id and log_id required' });
+                }
+                if (!(0, workerConfig_1.userBelongsToShard)(userId)) {
+                    return sendJson(res, 200, { ok: false, reason: 'wrong_shard' });
+                }
+                try {
+                    const result = await (0, retryActivity_1.retryTradeActivity)(tradeExecutor, { userId, logId });
+                    return sendJson(res, 200, result);
+                }
+                catch (err) {
+                    const msg = err instanceof Error ? err.message : 'retry failed';
+                    return sendJson(res, 500, { error: msg });
+                }
+            }
+            if (url === '/internal/apply-signal-override' && req.method === 'POST') {
+                if (!INTERNAL_TOKEN) {
+                    return sendJson(res, 503, { error: 'WORKER_INTERNAL_TOKEN not configured' });
+                }
+                const token = req.headers['x-internal-token'];
+                if (token !== INTERNAL_TOKEN) {
+                    return sendJson(res, 401, { error: 'Unauthorized' });
+                }
+                if (!tradeExecutor) {
+                    return sendJson(res, 503, { error: 'trade_executor_not_running' });
+                }
+                const body = (await readJson(req));
+                const userId = body.user_id?.trim();
+                const signalId = body.signal_id?.trim();
+                if (!userId || !signalId) {
+                    return sendJson(res, 400, { error: 'user_id and signal_id required' });
+                }
+                if (!(0, workerConfig_1.userBelongsToShard)(userId)) {
+                    return sendJson(res, 200, { applied_legs: 0, skipped_legs: 0, failed_legs: 0, reason: 'wrong_shard' });
+                }
+                try {
+                    const result = await (0, applySignalOverride_1.applySignalOverride)(tradeExecutor.supabase, { userId, signalId });
+                    return sendJson(res, 200, result);
+                }
+                catch (err) {
+                    const msg = err instanceof Error ? err.message : 'apply failed';
+                    return sendJson(res, 500, { error: msg });
+                }
+            }
+            if (url === '/internal/force-close-trades' && req.method === 'POST') {
+                if (!INTERNAL_TOKEN) {
+                    return sendJson(res, 503, { error: 'WORKER_INTERNAL_TOKEN not configured' });
+                }
+                const token = req.headers['x-internal-token'];
+                if (token !== INTERNAL_TOKEN) {
+                    return sendJson(res, 401, { error: 'Unauthorized' });
+                }
+                if (!tradeExecutor) {
+                    return sendJson(res, 503, { error: 'trade_executor_not_running' });
+                }
+                const body = (await readJson(req));
+                const userId = body.user_id?.trim();
+                const brokerAccountId = body.broker_account_id?.trim();
+                if (!userId || !brokerAccountId) {
+                    return sendJson(res, 400, { error: 'user_id and broker_account_id required' });
+                }
+                if (!(0, workerConfig_1.userBelongsToShard)(userId)) {
+                    return sendJson(res, 200, {
+                        ok: false,
+                        closed: 0,
+                        failed: 0,
+                        pending_cancelled: 0,
+                        virtual_legs_deleted: 0,
+                        channels_processed: 0,
+                        reason: 'wrong_shard',
+                    });
+                }
+                try {
+                    const result = await (0, forceCloseSignalTrades_1.forceCloseSignalTrades)(tradeExecutor.supabase, {
+                        userId,
+                        brokerAccountId,
+                        channelId: body.channel_id?.trim() || null,
+                    });
+                    return sendJson(res, 200, result);
+                }
+                catch (err) {
+                    const msg = err instanceof Error ? err.message : 'force close failed';
+                    return sendJson(res, 500, { error: msg });
+                }
             }
             return sendJson(res, 404, { error: 'Not found' });
         }
@@ -233,10 +412,6 @@ function startTradeHttpServer(sessionManager, tradeExecutor) {
         console.log(`[httpServer] trade API listening on :${PORT}`);
     });
     return server;
-}
-/** @deprecated Use startTradeHttpServer */
-function startHealthOnlyServer(sessionManager, tradeExecutor) {
-    return startTradeHttpServer(sessionManager, tradeExecutor ?? null);
 }
 async function readJson(req) {
     const chunks = [];

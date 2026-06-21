@@ -9,16 +9,16 @@ const supabase_js_1 = require("@supabase/supabase-js");
 const autoManagement_1 = require("../autoManagement");
 const manualStops_1 = require("../manualPlanning/manualStops");
 const signalPip_1 = require("../signalPip");
-const metatraderapi_1 = require("../metatraderapi");
+const fxsocketClient_1 = require("../fxsocketClient");
 const mtApiByAccount_1 = require("../mtApiByAccount");
 const supabase = (0, supabase_js_1.createClient)(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 async function main() {
     console.log('=== Live broker E2E check ===\n');
-    console.log('MT API configured:', (0, metatraderapi_1.hasMetatraderApiConfigured)());
+    console.log('MT API configured:', (0, fxsocketClient_1.hasFxsocketConfigured)());
     console.log('Supabase:', process.env.SUPABASE_URL?.replace(/https?:\/\//, '').split('/')[0]);
     const { data: brokers, error: bErr } = await supabase
         .from('broker_accounts')
-        .select('id,user_id,platform,is_active,connection_status,copier_mode,metaapi_account_id,manual_settings,channel_trading_configs')
+        .select('id,user_id,platform,is_active,connection_status,copier_mode,fxsocket_account_id,metaapi_account_id,manual_settings,channel_trading_configs')
         .eq('is_active', true)
         .eq('connection_status', 'connected');
     if (bErr)
@@ -61,20 +61,20 @@ async function main() {
         .order('opened_at', { ascending: false })
         .limit(10);
     console.log('\nOpen trades awaiting auto-BE:', autoTrades?.length ?? 0);
-    if (!(0, metatraderapi_1.hasMetatraderApiConfigured)()) {
+    if (!(0, fxsocketClient_1.hasFxsocketConfigured)()) {
         console.log('\nSKIP MT quote / trigger dry-run — MT4API_BASIC_USER/PASSWORD not set locally.');
         console.log('Deploy trade_mgmt worker with MT API creds to apply auto-BE on open trades.');
         return;
     }
     const brokerById = new Map((brokers ?? []).map(b => [b.id, b]));
-    const uuids = [...new Set((brokers ?? []).map(b => String(b.metaapi_account_id ?? '')).filter(Boolean))];
-    const platformByUuid = await (0, mtApiByAccount_1.loadPlatformByMetaapiId)(supabase, uuids);
+    const uuids = [...new Set((brokers ?? []).map(b => (0, mtApiByAccount_1.brokerSessionId)(b)).filter(Boolean))];
+    const platformByUuid = await (0, mtApiByAccount_1.loadPlatformByFxsocketId)(supabase, uuids);
     for (const trade of autoTrades ?? []) {
         const broker = brokerById.get(trade.broker_account_id ?? '');
-        if (!broker?.metaapi_account_id)
+        const uuid = broker ? (0, mtApiByAccount_1.brokerSessionId)(broker) : '';
+        if (!uuid)
             continue;
-        const uuid = String(broker.metaapi_account_id);
-        const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(platformByUuid, uuid);
+        const api = (0, mtApiByAccount_1.apiForFxsocketAccount)(platformByUuid, uuid);
         if (!api) {
             console.log(`  ${trade.symbol} ${trade.direction}: no API client for ${uuid.slice(0, 8)}`);
             continue;

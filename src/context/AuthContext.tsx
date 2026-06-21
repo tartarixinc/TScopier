@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState } from 'react'
 import type { User, Session } from '@supabase/supabase-js'
 import { clearAuthPresenceCookie, setAuthPresenceCookie } from '../lib/authPresenceCookie'
 import { supabase } from '../lib/supabase'
+import { invalidateRealtimeReadyCache } from '../lib/whenRealtimeReady'
 import { clearDashboardSessionCache } from '../lib/dashboardSessionCache'
 import { clearPerformanceSessionCache } from '../lib/performanceSessionCache'
 import { clearTradesSessionCache } from '../lib/tradesSessionCache'
@@ -45,6 +46,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       applySession(session)
+      if (event === 'SIGNED_OUT' || event === 'SIGNED_IN') {
+        invalidateRealtimeReadyCache()
+      }
       if (event === 'SIGNED_OUT') clearAuthPresenceCookie()
       setLoading(false)
     })

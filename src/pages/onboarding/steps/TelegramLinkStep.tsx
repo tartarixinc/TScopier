@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { useAuth } from '../../../context/AuthContext'
+import { useT } from '../../../context/LocaleContext'
+import { resolveTelegramAuthError } from '../../../lib/telegramAuthError'
 import { Card } from '../../../components/ui/Card'
 import { Input } from '../../../components/ui/Input'
 import { Button } from '../../../components/ui/Button'
@@ -26,6 +28,8 @@ function normalizeTelegramCodeInput(raw: string): string {
 
 export function TelegramLinkStep({ onDone }: Props) {
   const { session } = useAuth()
+  const t = useT()
+  const ce = t.copierEnginePage
   const [stage, setStage] = useState<Stage>('phone')
   const [phone, setPhone] = useState('')
   const [code, setCode] = useState('')
@@ -56,7 +60,7 @@ export function TelegramLinkStep({ onDone }: Props) {
       const data = await res.json()
 
       if (!res.ok || data.error) {
-        setError(data.error || 'Failed to send code')
+        setError(resolveTelegramAuthError(data.error, ce.failedSendCode, ce))
         return
       }
 
@@ -89,14 +93,15 @@ export function TelegramLinkStep({ onDone }: Props) {
       })
       const data = await res.json()
 
+      if (data.requires_password) {
+        setRequiresPassword(true)
+        setError('Two-step verification is enabled. Enter your Telegram password below.')
+        setLoading(false)
+        return
+      }
+
       if (!res.ok || data.error) {
-        if (data.requires_password) {
-          setRequiresPassword(true)
-          setError('Two-step verification is enabled. Enter your Telegram password below.')
-          setLoading(false)
-          return
-        }
-        setError(data.error || 'Verification failed')
+        setError(resolveTelegramAuthError(data.error, ce.verificationFailed, ce))
         return
       }
 

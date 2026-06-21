@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.TelegramSessionInvalidError = exports.TELEGRAM_SESSION_INVALID_CODE = exports.API_HASH = exports.API_ID = void 0;
 exports.buildClient = buildClient;
 exports.isAuthKeyUnregistered = isAuthKeyUnregistered;
+exports.isAuthKeyDuplicated = isAuthKeyDuplicated;
 exports.rethrowIfSessionInvalid = rethrowIfSessionInvalid;
 exports.tgInvoke = tgInvoke;
 const telegram_1 = require("telegram");
@@ -57,6 +58,11 @@ exports.TelegramSessionInvalidError = TelegramSessionInvalidError;
 function isAuthKeyUnregistered(err) {
     const m = err instanceof Error ? err.message : String(err);
     return m.includes('AUTH_KEY_UNREGISTERED');
+}
+/** Telegram returns this when the same auth key is online twice (deploy overlap, double connect). */
+function isAuthKeyDuplicated(err) {
+    const m = err instanceof Error ? err.message : String(err);
+    return m.includes('AUTH_KEY_DUPLICATED');
 }
 function rethrowIfSessionInvalid(err) {
     if (isAuthKeyUnregistered(err)) {

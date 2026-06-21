@@ -4,6 +4,7 @@ import { Quote } from 'lucide-react'
 import { TrustpilotBadge, TrustpilotStars } from './TrustpilotStars'
 
 export interface AuthReview {
+  headline?: string
   quote: string
   author: string
   role?: string
@@ -68,7 +69,19 @@ export function AuthTrustpilotSlider({ reviews, trustpilotLabel }: AuthTrustpilo
               className="w-full shrink-0 px-1"
               aria-hidden={index !== active}
             >
-              <p className="text-base font-semibold leading-relaxed tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-lg">
+              {item.headline ? (
+                <p className="text-base font-semibold leading-snug tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-lg">
+                  {item.headline}
+                </p>
+              ) : null}
+              <p
+                className={clsx(
+                  'leading-relaxed text-neutral-700 dark:text-neutral-300',
+                  item.headline
+                    ? 'mt-3 text-sm font-normal sm:text-base'
+                    : 'text-base font-semibold tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-lg',
+                )}
+              >
                 &ldquo;{item.quote}&rdquo;
               </p>
               <footer className="mt-5">

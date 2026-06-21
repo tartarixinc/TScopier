@@ -1,35 +1,54 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { getMetatraderApi, mtPlatformFrom, type MetatraderApiClient, type MtPlatform } from './metatraderapi'
+import { getFxsocketClient, type FxsocketBrokerClient, mtPlatformFrom, type MtPlatform } from './fxsocketClient'
 
-export type PlatformByMetaapiId = Map<string, MtPlatform>
+export type PlatformByFxsocketId = Map<string, MtPlatform>
 
-/** Resolve MT4/MT5 host per stored session id (metaapi_account_id). */
-export async function loadPlatformByMetaapiId(
+/** Resolve broker session id (FxSocket terminal UUID). */
+export function brokerSessionId(row: {
+  fxsocket_account_id?: string | null
+  metaapi_account_id?: string | null
+}): string {
+  const fx = String(row.fxsocket_account_id ?? '').trim()
+  if (fx && !fx.includes('|')) return fx
+  const legacy = String(row.metaapi_account_id ?? '').trim()
+  if (legacy && !legacy.includes('|')) return legacy
+  return ''
+}
+
+export async function loadPlatformByFxsocketId(
   supabase: SupabaseClient,
-  metaapiIds: string[],
-): Promise<PlatformByMetaapiId> {
+  sessionIds: string[],
+): Promise<PlatformByFxsocketId> {
   const out = new Map<string, MtPlatform>()
-  const ids = [...new Set(metaapiIds.filter(id => id && !id.includes('|')))]
+  const ids = [...new Set(sessionIds.filter(id => id && !id.includes('|')))]
   if (!ids.length) return out
   const { data, error } = await supabase
     .from('broker_accounts')
-    .select('metaapi_account_id,platform')
-    .in('metaapi_account_id', ids)
+    .select('fxsocket_account_id,metaapi_account_id,platform')
+    .or(`fxsocket_account_id.in.(${ids.join(',')}),metaapi_account_id.in.(${ids.join(',')})`)
   if (error) {
-    console.warn(`[mtApi] broker platform lookup failed: ${error.message}`)
+    console.warn(`[fxApi] broker platform lookup failed: ${error.message}`)
     return out
   }
   for (const row of data ?? []) {
-    const id = String((row as { metaapi_account_id?: string }).metaapi_account_id ?? '').trim()
+    const id = brokerSessionId(row as { fxsocket_account_id?: string; metaapi_account_id?: string })
     if (!id) continue
-    out.set(id, mtPlatformFrom((row as { platform?: string }).platform))
+    out.set(id, mtPlatformFrom((row as { platform?: string | null }).platform))
   }
   return out
 }
 
-export function apiForMetaapiAccount(
-  platformById: PlatformByMetaapiId,
-  metaapiAccountId: string,
-): MetatraderApiClient | null {
-  return getMetatraderApi(platformById.get(metaapiAccountId) ?? 'MT5')
+/** @deprecated use loadPlatformByFxsocketId */
+export const loadPlatformByMetaapiId = loadPlatformByFxsocketId
+export type PlatformByMetaapiId = PlatformByFxsocketId
+
+export function apiForFxsocketAccount(
+  _platformById: PlatformByFxsocketId,
+  sessionId: string,
+): FxsocketBrokerClient | null {
+  if (!sessionId || sessionId.includes('|')) return null
+  return getFxsocketClient()
 }
+
+/** @deprecated use apiForFxsocketAccount */
+export const apiForMetaapiAccount = apiForFxsocketAccount

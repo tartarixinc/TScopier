@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.OpenTradeReconcileMonitor = void 0;
-const metatraderapi_1 = require("./metatraderapi");
+const fxsocketClient_1 = require("./fxsocketClient");
 const mtApiByAccount_1 = require("./mtApiByAccount");
 const monitorIdleGate_1 = require("./monitorIdleGate");
 const openTradeReconcile_1 = require("./openTradeReconcile");
@@ -18,7 +18,7 @@ class OpenTradeReconcileMonitor {
     start() {
         if (this.loop)
             return;
-        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)()) {
+        if (!(0, fxsocketClient_1.hasFxsocketConfigured)()) {
             console.warn('[openTradeReconcileMonitor] MT4API_BASIC_USER/PASSWORD missing — disabled');
             return;
         }
@@ -79,36 +79,28 @@ class OpenTradeReconcileMonitor {
         const brokerIds = [...byBroker.keys()];
         const { data: brokers, error: brokerErr } = await this.supabase
             .from('broker_accounts')
-            .select('id,metaapi_account_id')
+            .select('id,fxsocket_account_id,metaapi_account_id')
             .in('id', brokerIds);
         if (brokerErr) {
             console.warn(`[openTradeReconcileMonitor] broker load failed: ${brokerErr.message}`);
             return;
         }
         const uuids = (brokers ?? [])
-            .map(b => String(b.metaapi_account_id ?? '').trim())
-            .filter(uuid => uuid.length > 0 && !uuid.includes('|'));
-        this.platformByUuid = await (0, mtApiByAccount_1.loadPlatformByMetaapiId)(this.supabase, uuids);
+            .map(b => (0, mtApiByAccount_1.brokerSessionId)(b))
+            .filter(uuid => uuid.length > 0);
+        this.platformByUuid = await (0, mtApiByAccount_1.loadPlatformByFxsocketId)(this.supabase, uuids);
         let totalClosed = 0;
         for (const broker of (brokers ?? [])) {
-            const uuid = String(broker.metaapi_account_id ?? '').trim();
-            if (!uuid || uuid.includes('|'))
+            const uuid = (0, mtApiByAccount_1.brokerSessionId)(broker);
+            if (!uuid)
                 continue;
-            const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(this.platformByUuid, uuid);
+            const api = (0, mtApiByAccount_1.apiForFxsocketAccount)(this.platformByUuid, uuid);
             if (!api)
                 continue;
             const openForBroker = byBroker.get(broker.id) ?? [];
             if (!openForBroker.length)
                 continue;
             try {
-                try {
-                    const alive = await api.keepSessionAlive(uuid);
-                    if (!alive)
-                        continue;
-                }
-                catch {
-                    continue;
-                }
                 const closed = await (0, openTradeReconcile_1.reconcileOpenTradesForBroker)(this.supabase, api, uuid, openForBroker);
                 if (closed > 0) {
                     totalClosed += closed;

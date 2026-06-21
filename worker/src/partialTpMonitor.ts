@@ -1,6 +1,6 @@
 import os from 'node:os'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { hasMetatraderApiConfigured, type MetatraderApiClient } from './metatraderapi'
+import { hasFxsocketConfigured, type FxsocketBrokerClient } from './fxsocketClient'
 import {
   applyShardToQuery,
   hasWorkOnShard,
@@ -9,7 +9,9 @@ import {
   startMonitorLoop,
   type MonitorLoopHandle,
 } from './monitorIdleGate'
-import { apiForMetaapiAccount, loadPlatformByMetaapiId, type PlatformByMetaapiId } from './mtApiByAccount'
+import { apiForFxsocketAccount, loadPlatformByFxsocketId, type PlatformByFxsocketId } from './mtApiByAccount'
+import { stopRangeLayeringUnlessEnabled } from './rangeLayerTillClose'
+import { isUserCopierPausedCached } from './copierPause'
 
 /**
  * Worker-side monitor that fires partial /OrderClose calls for single-mode
@@ -59,8 +61,8 @@ interface ParentTradeRow {
   status: string
 }
 
-const ACTIVE_MS = monitorActiveIntervalMs('PARTIAL_TP_TICK_MS', 1_500)
-const IDLE_MS = monitorIdleIntervalMs('PARTIAL_TP_IDLE_MS', 60_000)
+const ACTIVE_MS = monitorActiveIntervalMs('PARTIAL_TP_TICK_MS', 400)
+const IDLE_MS = monitorIdleIntervalMs('PARTIAL_TP_IDLE_MS', 15_000)
 const STALE_CLAIM_AFTER_MS = 30_000
 
 /**
@@ -83,7 +85,7 @@ export function isPartialTpTriggered(isBuy: boolean, triggerPrice: number, bid: 
 
 export class PartialTpMonitor {
   private loop: MonitorLoopHandle | null = null
-  private platformByUuid: PlatformByMetaapiId = new Map()
+  private platformByUuid: PlatformByFxsocketId = new Map()
   private hostId: string
   private ticking = false
   private firstTickLogged = false
@@ -97,7 +99,7 @@ export class PartialTpMonitor {
 
   start() {
     if (this.loop) return
-    if (!hasMetatraderApiConfigured()) {
+    if (!hasFxsocketConfigured()) {
       console.warn('[partialTpMonitor] MT4API_BASIC_USER/PASSWORD missing — partial TP monitor disabled')
       return
     }
@@ -139,7 +141,7 @@ export class PartialTpMonitor {
   }
 
   private async tick(): Promise<void> {
-    if (!hasMetatraderApiConfigured()) return
+    if (!hasFxsocketConfigured()) return
 
     // Re-claim stuck rows so a crashed worker can't strand a partial. Same
     // 30s threshold as virtualPendingMonitor.
@@ -164,7 +166,8 @@ export class PartialTpMonitor {
       console.error('[partialTpMonitor] select failed:', error.message)
       return
     }
-    const rows = (data ?? []) as PartialRow[]
+    const rows = ((data ?? []) as PartialRow[])
+      .filter(r => !isUserCopierPausedCached(r.user_id))
     if (!this.firstTickLogged) {
       this.firstTickLogged = true
       console.log(`[partialTpMonitor] first tick ok pending_rows=${rows.length}`)
@@ -174,7 +177,7 @@ export class PartialTpMonitor {
       return
     }
 
-    this.platformByUuid = await loadPlatformByMetaapiId(
+    this.platformByUuid = await loadPlatformByFxsocketId(
       this.supabase,
       rows.map(r => r.metaapi_account_id),
     )
@@ -197,7 +200,7 @@ export class PartialTpMonitor {
     await Promise.all(Array.from(groups.entries()).map(async ([key, partials]) => {
       const [uuid, symbol] = key.split('|')
       if (!uuid || !symbol) return
-      const api = apiForMetaapiAccount(this.platformByUuid, uuid)
+      const api = apiForFxsocketAccount(this.platformByUuid, uuid)
       if (!api) return
       let q
       try {
@@ -256,7 +259,7 @@ export class PartialTpMonitor {
    */
   private async firePartial(
     partial: PartialRow,
-    api: MetatraderApiClient,
+    api: FxsocketBrokerClient,
     bid: number,
     ask: number,
   ): Promise<boolean> {
@@ -333,6 +336,18 @@ export class PartialTpMonitor {
         } as unknown as Record<string, unknown>,
         response_payload: { ticket: result.ticket, latency_ms: latencyMs, claimed_by: this.hostId },
       })
+      if (partial.signal_id && partial.broker_account_id) {
+        await stopRangeLayeringUnlessEnabled(
+          this.supabase,
+          {
+            signalId: partial.signal_id,
+            brokerAccountId: partial.broker_account_id,
+            symbol: partial.symbol,
+            userId: partial.user_id,
+          },
+          'partial_tp_close',
+        )
+      }
       return true
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -353,6 +368,18 @@ export class PartialTpMonitor {
           .from('partial_tp_legs')
           .update({ status: 'cancelled', fired_at: new Date().toISOString(), error_message: msg })
           .eq('id', partial.id)
+        if (partial.signal_id && partial.broker_account_id) {
+          await stopRangeLayeringUnlessEnabled(
+            this.supabase,
+            {
+              signalId: partial.signal_id,
+              brokerAccountId: partial.broker_account_id,
+              symbol: partial.symbol,
+              userId: partial.user_id,
+            },
+            'partial_tp_parent_gone',
+          )
+        }
         return true
       }
       console.error(

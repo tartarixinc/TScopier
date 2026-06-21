@@ -1,14 +1,22 @@
 {
   "name": "tscopier-worker",
   "version": "1.0.0",
-  "description": "TSCopier AI - 24/7 Telegram MTProto listener worker",
+  "description": "TScopier AI - 24/7 Telegram MTProto listener worker",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
     "test": "node scripts/run-tests.cjs",
-    "replay-parse": "ts-node -r dotenv/config src/diagnostics/replayChannelParse.ts"
+    "replay-parse": "ts-node -r dotenv/config src/diagnostics/replayChannelParse.ts",
+    "push-signal-stops": "node -r dotenv/config dist/diagnostics/pushSignalStopsToBroker.js",
+    "push-gtmo-vip-sl": "node -r dotenv/config dist/diagnostics/pushGtmoVipSl.js",
+    "push-gtmo-vip-sl-fxsocket": "FXSOCKET_ONLY=true ALL_GTMO_USERS=true node -r dotenv/config dist/diagnostics/pushGtmoVipSl.js",
+    "rebalance-open-baskets": "node -r dotenv/config dist/diagnostics/rebalanceOpenBaskets.js",
+    "push-signal-stops:dev": "ts-node -r dotenv/config src/diagnostics/pushSignalStopsToBroker.ts",
+    "push-gtmo-vip-sl:dev": "ts-node -r dotenv/config src/diagnostics/pushGtmoVipSl.ts",
+    "push-gtmo-vip-sl-fxsocket:dev": "FXSOCKET_ONLY=true ALL_GTMO_USERS=true ts-node -r dotenv/config src/diagnostics/pushGtmoVipSl.ts",
+    "rebalance-open-baskets:dev": "ts-node -r dotenv/config src/diagnostics/rebalanceOpenBaskets.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

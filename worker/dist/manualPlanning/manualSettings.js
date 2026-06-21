@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.manualUseSignalEntryPriceOn = manualUseSignalEntryPriceOn;
 exports.signalEntryPriceStrictEnabled = signalEntryPriceStrictEnabled;
+exports.signalEntryRangeStrictEnabled = signalEntryRangeStrictEnabled;
 exports.clampPendingExpiryHours = clampPendingExpiryHours;
 /** True when `manual_settings.use_signal_entry_price` is enabled (tolerates string/number from JSON). */
 function manualUseSignalEntryPriceOn(manual) {
@@ -19,6 +20,11 @@ function manualUseSignalEntryPriceOn(manual) {
 /** True when planner/executor should apply strict signal-entry routing (single trade only). */
 function signalEntryPriceStrictEnabled(manual) {
     return manualUseSignalEntryPriceOn(manual) && manual.trade_style !== 'multi';
+}
+/** True when entry should gate on parsed price/zone + pip tolerance (virtual wait, no broker pending). */
+function signalEntryRangeStrictEnabled(manual) {
+    return manual.use_signal_entry_range === true
+        && manual.trade_style === 'multi';
 }
 /**
  * Pending expiry for broker Limit/Stop sends and virtual range legs.

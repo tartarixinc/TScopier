@@ -16,6 +16,8 @@ import {
   normalizeReferralCode,
   referralCodeLooksValid,
 } from '../../lib/referralCapture'
+import { isEmailVerified } from '../../lib/emailVerification'
+import { marketingUrl } from '../../lib/site'
 
 function GoogleIcon({ className }: { className?: string }) {
   return (
@@ -66,7 +68,7 @@ export function SignupPage() {
     setError('')
     setGoogleLoading(true)
     const normalizedRef = normalizeReferralCode(referralCode)
-    const redirectUrl = new URL(`${window.location.origin}/welcome`)
+    const redirectUrl = new URL(`${window.location.origin}/dashboard`)
     if (referralCodeLooksValid(normalizedRef)) {
       redirectUrl.searchParams.set('ref', normalizedRef)
     }
@@ -100,7 +102,7 @@ export function SignupPage() {
     const trimmedFirst = firstName.trim()
     const trimmedLast = lastName.trim()
     const normalizedRef = normalizeReferralCode(referralCode)
-    const redirectUrl = new URL(`${window.location.origin}/welcome`)
+    const redirectUrl = new URL(`${window.location.origin}/auth/confirmed`)
     if (referralCodeLooksValid(normalizedRef)) {
       redirectUrl.searchParams.set('ref', normalizedRef)
     }
@@ -158,6 +160,10 @@ export function SignupPage() {
           return
         }
       }
+    }
+
+    if (data.user && !isEmailVerified(data.user, null)) {
+      await supabase.auth.signOut()
     }
 
     navigate(`/verify-email?email=${encodeURIComponent(email)}`)
@@ -274,7 +280,24 @@ export function SignupPage() {
       </form>
 
       <p className="mt-4 text-center text-xs leading-relaxed text-neutral-400 dark:text-neutral-500">
-        {signupT.terms}
+        {signupT.terms.prefix}{' '}
+        <a
+          href={marketingUrl('/terms')}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-teal-600 hover:underline dark:text-teal-400"
+        >
+          {signupT.terms.termsOfService}
+        </a>
+        {signupT.terms.conjunction}
+        <a
+          href={marketingUrl('/privacy')}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-teal-600 hover:underline dark:text-teal-400"
+        >
+          {signupT.terms.privacyPolicy}
+        </a>
       </p>
     </div>
   )

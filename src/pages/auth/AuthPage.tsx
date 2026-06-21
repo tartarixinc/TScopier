@@ -13,6 +13,12 @@ import {
   loadStoredReferralCode,
   referralCodeLooksValid,
 } from '../../lib/referralCapture'
+import {
+  isEmailVerified,
+  isUnconfirmedEmailAuthError,
+  verifyEmailPath,
+} from '../../lib/emailVerification'
+import { loadUserProfile } from '../../lib/userProfile'
 
 function GoogleIcon({ className }: { className?: string }) {
   return (
@@ -60,7 +66,7 @@ export function AuthPage() {
   const handleGoogleSignIn = async () => {
     setError('')
     setGoogleLoading(true)
-    const redirectTo = new URL(`${window.location.origin}/welcome`)
+    const redirectTo = new URL(`${window.location.origin}/dashboard`)
     if (storedReferralCode && referralCodeLooksValid(storedReferralCode)) {
       redirectTo.searchParams.set('ref', storedReferralCode)
     }
@@ -81,9 +87,22 @@ export function AuthPage() {
     setError('')
     setLoading(true)
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+    const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password })
     if (signInError) {
+      if (isUnconfirmedEmailAuthError(signInError)) {
+        navigate(verifyEmailPath(email))
+        setLoading(false)
+        return
+      }
       setError(signInError.message)
+      setLoading(false)
+      return
+    }
+
+    const profile = data.user ? await loadUserProfile(data.user.id) : null
+    if (data.user && !isEmailVerified(data.user, profile?.email_verified_at)) {
+      await supabase.auth.signOut()
+      navigate(verifyEmailPath(email))
       setLoading(false)
       return
     }

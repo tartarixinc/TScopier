@@ -1,11 +1,12 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.closeOppositeDirectionTrades = closeOppositeDirectionTrades;
-const metatraderapi_1 = require("../../metatraderapi");
 const channelMessageFilters_1 = require("../../channelMessageFilters");
+const fxsocketClient_1 = require("../../fxsocketClient");
+const helpers_1 = require("../helpers");
 const pendingCancel_1 = require("./pendingCancel");
 async function closeOppositeDirectionTrades(ctx, signal, parsed, broker, symbol) {
-    if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
+    if (!(0, fxsocketClient_1.hasFxsocketConfigured)())
         return;
     const manual = (broker.manual_settings ?? {});
     if (manual.close_on_opposite_signal !== true)
@@ -17,7 +18,7 @@ async function closeOppositeDirectionTrades(ctx, signal, parsed, broker, symbol)
         return;
     const channelBuy = a === 'buy';
     const oppDir = channelBuy ? 'sell' : 'buy';
-    const uuid = broker.metaapi_account_id;
+    const uuid = (0, helpers_1.brokerSessionUuid)(broker);
     const api = ctx.apiFor(broker);
     if (!api)
         return;

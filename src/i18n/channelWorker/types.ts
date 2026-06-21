@@ -60,6 +60,17 @@ export interface ChannelWorkerTranslations {
   entryCancelled: string
   entryFailed: string
 
+  rangeEntryWaitingNoPrice: string
+  rangeEntryWaitingAtPrice: string
+  rangeEntryWaitingZone: string
+  rangeEntryFired: string
+  rangeEntryExpired: string
+  rangeEntryTpBeforeEntry: string
+  rangeEntrySlBeforeEntry: string
+  rangeEntryUpdated: string
+  rangeEntryCancelled: string
+  rangeEntryWakeRetry: string
+
   mergeAddedNamed: string
   mergeAddedGeneric: string
   mergeSlTpSuccessNamed: string
@@ -91,6 +102,8 @@ export interface ChannelWorkerTranslations {
   signalSellGeneric: string
   signalCloseNamed: string
   signalCloseGeneric: string
+  signalCloseWorseNamed: string
+  signalCloseWorseGeneric: string
   signalBreakevenUnderstood: string
   signalBreakevenCompleted: string
   signalPartialProfit: string
@@ -101,6 +114,8 @@ export interface ChannelWorkerTranslations {
 
   mgmtCloseSuccessNamed: string
   mgmtCloseSuccessGeneric: string
+  mgmtCloseWorseSuccessNamed: string
+  mgmtCloseWorseSuccessGeneric: string
   mgmtBreakevenSuccess: string
   mgmtPartialProfit: string
   mgmtPartialBreakeven: string
@@ -110,6 +125,8 @@ export interface ChannelWorkerTranslations {
 
   mgmtCloseFailNamed: string
   mgmtCloseFailGeneric: string
+  mgmtCloseWorseFailNamed: string
+  mgmtCloseWorseFailGeneric: string
   mgmtBreakevenFailNamed: string
   mgmtBreakevenFailGeneric: string
   mgmtPartialProfitFail: string
@@ -120,6 +137,8 @@ export interface ChannelWorkerTranslations {
 
   mgmtCloseSkippedNamed: string
   mgmtCloseSkippedGeneric: string
+  mgmtCloseWorseSkippedNamed: string
+  mgmtCloseWorseSkippedGeneric: string
   mgmtSkippedNamed: string
   mgmtSkippedGeneric: string
   mgmtSkippedReason: string
@@ -130,6 +149,8 @@ export interface ChannelWorkerTranslations {
   errorTicketNotFound: string
   errorSymbolNotFound: string
   errorBrokerNotConnected: string
+  errorInvalidStops: string
   errorBridgeGlitch: string
   errorStopsAlreadySet: string
+  errorSignalLinkFailed: string
 }

@@ -70,7 +70,7 @@ Deno.serve(async (req: Request) => {
     // Find or create Stripe customer
     const { data: existingSub } = await supabase
       .from("subscriptions")
-      .select("stripe_customer_id")
+      .select("stripe_customer_id, trial_ends_at")
       .eq("user_id", user.id)
       .maybeSingle();
 
@@ -130,8 +130,8 @@ Deno.serve(async (req: Request) => {
       },
     };
 
-    // Advanced plan gets a 10-day free trial
-    if (plan === "advanced") {
+    // Advanced plan gets a 10-day free trial for first-time subscribers only
+    if (plan === "advanced" && !existingSub?.trial_ends_at) {
       sessionParams.subscription_data!.trial_period_days = 10;
     }
 

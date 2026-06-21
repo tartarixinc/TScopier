@@ -10,6 +10,7 @@ export const configureModalEs: ConfigureModalTranslations = {
   addChannel: 'Añadir canal',
   editLinkedChannels: 'Editar canales vinculados',
   doneEditingLinkedChannels: 'Listo',
+  removeLinkedChannel: 'Quitar {channel}',
   selectChannelToConfigure: 'Selecciona o vincula un canal para configurar su trading.',
   selectChannelPrompt: 'Selecciona un canal de la lista para configurarlo o vincularlo a este broker.',
   connectChannelPrompt: 'Vincula {channel} a {broker} para copiar sus señales y ajustar el trading.',
@@ -85,22 +86,27 @@ export const configureModalEs: ConfigureModalTranslations = {
     commaSeparatedHint: 'Valores separados por comas',
     autoTrainingInProgress: 'Entrenamiento en progreso... {progress}%',
     autoTrainingDone: 'Entrenamiento completado y guardado.',
+    trainingLearnedFrom: 'Palabras clave aprendidas de {count} mensajes de muestra.',
+    multilingualRetrainHint:
+      '¿Canal en otro idioma? Ejecuta Entrenar canal tras vincularlo. Si los registros muestran señales omitidas, vuelve a entrenar aquí.',
   },
   channelSymbols: {
-    title: 'Símbolos a operar',
+    title: 'Mapeo de símbolos',
     intro:
-      'Detectamos instrumentos a partir de las señales recientes del canal. Elige cuáles debe copiar este broker. Si todos están seleccionados, se operan todos los detectados.',
-    refresh: 'Actualizar análisis',
-    refreshing: 'Analizando…',
-    loading: 'Cargando símbolos de señales recientes…',
-    empty:
-      'Aún no hay símbolos detectados. Conecta Telegram, espera señales en este canal y actualiza.',
-    selectAll: 'Seleccionar todos',
-    clearAll: 'Quitar todos',
-    selectedCount: '{count} de {total} seleccionados',
-    tradeAllHint: 'Se copiarán todos los símbolos detectados.',
-    staleSymbolNote: 'Guardados pero no vistos en señales recientes: {symbols}',
-    signalsCount: 'Basado en {count} mensajes recientes',
+      'Haz coincidir los símbolos de la señal con los nombres de instrumentos de tu broker. Añade un prefijo o sufijo si los códigos difieren (p. ej. XAUUSD+). Los símbolos sin mapear siguen usando la coincidencia automática del broker.',
+    prefixLabel: 'Prefijo de símbolo',
+    prefixHint: 'Se antepone a cada símbolo de la señal (p. ej. # para #XAUUSD).',
+    suffixLabel: 'Sufijo de símbolo',
+    suffixHint: 'Se añade después de cada símbolo (p. ej. + para XAUUSD+). Déjalo vacío si los nombres coinciden con la señal.',
+    example: 'Ejemplo: XAUUSD con sufijo + → órdenes en XAUUSD+',
+    tradeOnlyLabel: 'Símbolos a operar',
+    tradeOnlyHint:
+      'Déjalo vacío para copiar todos los símbolos del canal. Si indicas una lista, solo se copian esas señales (separadas por comas, p. ej. XAUUSD, EURUSD).',
+    tradeOnlyPlaceholder: 'p. ej. XAUUSD, EURUSD',
+    avoidLabel: 'Símbolos a evitar',
+    avoidHint:
+      'Déjalo vacío para permitir todos los símbolos (según Símbolos a operar). Los listados nunca se copian desde este canal.',
+    avoidPlaceholder: 'p. ej. BTCUSD, US30',
   },
   ai: {
     title: 'Configuración de IA',
@@ -120,9 +126,14 @@ export const configureModalEs: ConfigureModalTranslations = {
     riskMode: 'Modo de riesgo',
     fixedLot: 'Lote fijo',
     dynamicBalance: 'Dinámico (% del balance)',
+    dynamicBalanceLotSize: 'Tamaño de lote por señal',
+    dynamicBalanceLotSizeHint: '{lot} lotes con {percent}% de un balance de {balance}',
+    dynamicBalanceLotSizeFallback: '{lot} lotes (respaldo de lote fijo — balance de cuenta no cargado)',
     tradeStyle: 'Estilo de operación',
-    singleTrade: 'Operación única',
-    multiTrades: 'Operaciones múltiples',
+    tradeStyleHint:
+      'Entrada única: una orden con su lote configurado completo. Range Trading: divide ese lote en varias órdenes más pequeñas entre los take-profit de la señal.',
+    singleTrade: 'Entrada única',
+    multiTrades: 'Range Trading',
     singleTpTarget: 'Objetivo TP en modo único',
     singleTpTargetHint:
       'Elige qué TP debe usar la orden del broker en Operación única. Los TP anteriores aún pueden ejecutar cierres parciales según tu distribución %.',
@@ -138,35 +149,117 @@ export const configureModalEs: ConfigureModalTranslations = {
     pipToleranceHint:
       'Sin uso en el enrutamiento de entrada estricta; se conserva por compatibilidad con ajustes guardados.',
     multiIntro:
-      'Operaciones múltiples divide su lote fijo en muchas órdenes más pequeñas (p. ej. 1,0 lote al 5 %/pierna = 20 operaciones de 0,05). Las piernas se reparten entre los TP de la señal según los porcentajes de abajo. Si el tamaño por pierna queda por debajo del mínimo del símbolo en el broker, el planificador recurre a una sola operación a tamaño completo y registra el motivo.',
+      'Range Trading divide su lote fijo en muchas órdenes más pequeñas (p. ej. 1,0 lote al 5 %/pierna = 20 operaciones de 0,05). Las piernas se reparten entre los TP de la señal según los porcentajes de abajo. Si el tamaño por pierna queda por debajo del mínimo del símbolo en el broker, el planificador recurre a una sola operación a tamaño completo y registra el motivo.',
     perLegSize: 'Tamaño por pierna (% del lote fijo)',
     totalOpenTrades: 'Total de operaciones abiertas',
-    previewFallbackSingle: '1 (división imposible con vista previa mín. 0,01 / paso 0,01)',
-    previewInstantPending: '{total} ({immediate} instantáneas + {pending} para escalonado)',
+    previewFallbackSingle: '{lot} lots x 1 trade (división imposible con vista previa mín. 0,01 / paso 0,01)',
+    multiTradeSplitSaveBlocked:
+      'No se puede guardar: división imposible con vista previa mín. 0,01 / paso 0,01. Aumente el tamaño del lote o el % por tramo.',
+    previewLotsXTrades: '{lot} lots x {total} trades',
+    previewLotsXTradesLayered: '{lot} lots x {total} trades ({immediate} instantáneas + {pending} para escalonado)',
     previewFooter:
-      'Estimado a partir del lote fijo y el % por pierna. La ejecución en vivo usa el lote mínimo y el paso del símbolo (puede variar ligeramente). Máximo 500 órdenes por señal. Los lotes reportados por Telegram en cada señal no redimensionan las cestas multi-operación: siempre dividen su lote fijo.',
+      'Cuántas operaciones planea abrir el copiador por señal. Según su tamaño de lote configurado y el tamaño por pierna. El broker puede abrir menos si el mercado no cubrió la zona durante el escalonado.',
     previewDynamicRisk:
-      ' Con riesgo dinámico (% del balance), el lote resuelto en tiempo de ejecución puede diferir del lote fijo.',
+      ' El tamaño de lote se calcula desde el balance de la cuenta y el porcentaje dinámico (% del balance).',
     previewLadderSpan:
-      ' Alcance de escalera = {pending} × {step}p = {distance}p (la distancia configurada {configured}p es orientativa).',
-    previewCweLegs: ' {count} pierna(s) instantánea(s) cierran a +{pips}p del ancla.',
+      ' Escalonado en rango: {active} orden(es) cada {step} pips (escalera hasta {distance} pips desde la entrada).',
+    previewLadderDistanceCap:
+      ' La distancia de rango limita el escalonado a {active} de {pending} órdenes reservadas por %.',
+    previewCweLegs:
+      ' {count} operación(es) se abren de inmediato y pueden cerrarse si el precio avanza {pips} pips a su favor.',
     rangeLayering: 'Escalonado en rango',
     rangeIntro:
-      'Reserva una parte de las piernas planificadas como órdenes Limit pendientes escalonadas desde el ancla en vivo por un intervalo fijo en pips (promedio a la baja). Si la señal no trae precio de entrada, el worker obtiene bid/ask en vivo vía /Quote y ancla la escalera ahí. El stop-loss y la distribución de TP replican las piernas inmediatas. Si distancia ÷ paso limita el recuento, se reduce el total efectivo de pendientes.',
+      'Defina algunas operaciones como órdenes pendientes virtuales espaciadas a intervalos desde el precio inicial (promedio a la baja). Si no se indica un precio de entrada concreto, utilice el precio de mercado en vivo actual (bid/ask) como punto de partida. Todas las órdenes pendientes copian los ajustes de stop loss y take-profit de sus operaciones inmediatas.',
     reservedLot: 'Lote reservado (% del total)',
     reservedLotHint: 'Porción de piernas totales reservadas como pendientes.',
     stepPips: 'Paso (pips por escalón)',
     stepPipsFallback: 'Pips entre pendientes.',
-    rangeDistance: 'Distancia de rango (pips desde la entrada)',
+    rangeDistance: 'Distancia de rango (pips)',
     rangeDistanceFallback:
-      'Alcance objetivo orientativo. Alcance real de la escalera = número de pendientes × paso (el total de operaciones abiertas no queda limitado por esto).',
+      'La distancia del rango indicada por su proveedor de señales. Determina hasta dónde se escalona la operación.',
+    layerTillClose: 'Escalonar hasta el cierre',
+    layerTillCloseBody:
+      'Activado: las órdenes pendientes del rango siguen abriéndose hasta que toda la operación esté cerrada, aunque el precio retroceda tras un take-profit o un cierre CWE. Desactivado: las pendientes se cancelan en el primer take-profit o al cerrar cualquier orden, así que no se abren órdenes más profundas si el precio revierte.',
+    useSignalRange: 'Operar solo el rango de la señal',
+    useSignalRangeBody:
+      'Activado: la señal debe incluir un precio o zona de entrada analizada (p. ej. 4505, 4505/4500, @ 4505). Los mensajes «comprar ahora» sin precio se omiten y se muestran en espera de rango. A diferencia de «Usar precio de entrada de la señal», no se coloca una orden pendiente en el broker — el copiador espera virtualmente y abre cuando el precio está en cualquier punto dentro de la zona de entrada de la señal, con tolerancia en pips ligeramente más allá de ambos límites.',
+    useSignalRangePipTolerance: 'Tolerancia (pips)',
+    useSignalRangePipToleranceHint:
+      'Pips extra más allá de los límites de la zona (ambos lados) dentro de los cuales la entrada aún puede activarse. Señales con un solo precio: tolerancia por encima (compra) o por debajo (venta) del nivel de entrada.',
+    useSignalRangeDistanceDisabledHint:
+      'La profundidad se toma de la zona de entrada de la señal cuando está presente.',
+    previewSignalRangeFootnote:
+      ' Con « Operar solo el rango de la señal », la entrada espera hasta que el precio esté dentro de la zona (± tolerancia en ambos límites).',
     closeWorseEntries: 'Cerrar entradas peores',
     closeWorseBody:
-      'Cuando el precio alcanza +X pips desde la entrada de la señal (ancla), el worker cierra automáticamente las piernas instantáneas vía /OrderClose. Un mensaje del canal como «Cerrar entradas peores» cierra cada pierna abierta cuya entrada esté a X pips del precio en vivo en ese momento (p. ej. fills instantáneos cerca de la señal, no capas profundas). En piernas CWE no hay TP en el broker: solo el SL permanece en el broker.',
+      'Cuando el precio avanza +X pips a su favor desde la entrada inicial, el sistema cierra automáticamente sus operaciones inmediatas. Cuando la opción « Cerrar entradas peores » está activada y se dispara, el sistema cierra cualquier operación abierta que esté a X pips del precio de mercado actual. Las operaciones afectadas por « Cerrar entradas peores » no tienen take-profit (TP) establecido en el broker. Solo se envía el stop loss (SL) al broker.',
     closeWorsePips: 'Cerrar beneficios desde entrada peor (pips)',
     closeWorsePipsFallback: 'Distancia desde precio en vivo (instrucción) o ancla + X pips (automático).',
     basicPlanTradeStyleLimit:
       'Solo se permite el modo Single Trade. Multi-Trade y Range Layering están disponibles en el plan Advanced.',
+    openLotCalculator: 'Calcular riesgo / tamaño de lote',
+    lotCalculator: {
+      title: 'Calculadora de riesgo y tamaño de lote',
+      intro:
+        'Estime cuánto arriesga por señal y qué podría ganar en sus take-profits. Ajuste hasta que el riesgo encaje con su cuenta y aplique al canal.',
+      accountBalance: 'Saldo inicial',
+      symbol: 'Símbolo',
+      symbolHint: 'Para estimar el valor del pip. Por defecto desde Símbolo a operar si está definido.',
+      slPips: 'Stop loss (pips)',
+      usePredefinedSl: 'Usar como SL predefinido',
+      usePredefinedTp: 'Usar como TP predefinido',
+      tpLevelsTitle: 'Niveles de take-profit',
+      tpLevelsHint:
+        'Pips = distancia desde la entrada por TP. % objetivo = parte del volumen (single) o piernas (multi) cerrada en ese TP.',
+      tpPipsCol: 'Pips',
+      tpPercentCol: '% objetivo',
+      tpLabel: 'TP{index}',
+      tpPercentTotal: 'Total activo',
+      tpUnallocated: '{pct}% sin asignar',
+      tpOverCap: 'Total supera el 100 %',
+      addTp: 'Añadir TP',
+      remove: 'Eliminar',
+      tradeStyle: 'Estilo de operación',
+      singleTrade: 'Entrada única',
+      multiTrades: 'Range trading (multi)',
+      perLegSize: 'Tamaño por pierna (% del lote fijo)',
+      rangeLayering: 'Escalonado de rango',
+      rangePercent: 'Lote reservado (% de piernas)',
+      rangeStep: 'Paso (pips)',
+      rangeDistance: 'Distancia del rango (pips)',
+      fixedLot: 'Lote fijo',
+      targetRiskPct: 'Riesgo objetivo (% del saldo)',
+      targetRiskHint: 'Opcional — sugiere un lote cercano a este riesgo por señal (peor caso).',
+      useSuggestedLot: 'Usar lote sugerido',
+      enabled: 'Activo',
+      advanced: 'Avanzado',
+      winRate: 'Tasa de acierto supuesta (%)',
+      winRateHint:
+        'Opcional. Estima probabilidad de ruina con su R:R calculado y riesgo fijo por señal. Sin garantía.',
+      resultsTitle: 'Resultados',
+      riskFull: 'Riesgo si toca SL (cesta completa)',
+      riskImmediate: 'Riesgo si toca SL (solo piernas inmediatas)',
+      riskPct: 'Riesgo % del saldo',
+      rewardTotal: 'Recompensa máxima (todos los TP)',
+      rewardRiskRatio: 'Recompensa : riesgo',
+      legSummary: 'Desglose de piernas',
+      legSummarySingle: '1 orden a {lot} lotes',
+      legSummaryMulti: '{total} órdenes × {lot} lotes ({immediate} inmediatas + {pending} pendientes)',
+      legSummaryRange: 'Alcance ~{distance} pips ({pending} pendientes × {step} pips)',
+      lossesToRuin: 'SL completos seguidos para vaciar la cuenta',
+      riskOfRuin: 'Riesgo de ruina estimado',
+      perTpReward: 'Recompensa por TP (pips × % objetivo)',
+      brokerPreviewNote:
+        'Las piernas usan mínimo 0,01 / paso 0,01. Los ajustes reales del símbolo en el broker pueden variar.',
+      fallbackSingleNote:
+        'El tamaño por pierna está bajo el mínimo del broker — el copiador abriría una sola operación a tamaño completo.',
+      riskWarningModerate: 'Más del 1 % de riesgo por señal — considere reducir el lote.',
+      riskWarningHigh: 'Más del 2 % de riesgo por señal — alto riesgo de drawdown.',
+      riskWarningExtreme: 'Más del 5 % de riesgo por señal — peligroso para la mayoría de cuentas.',
+      apply: 'Aplicar ajustes',
+      cancel: 'Cancelar',
+      close: 'Cerrar',
+    },
   },
   stops: {
     predefinedTitle: 'SL y TP predefinidos',
@@ -184,7 +277,7 @@ export const configureModalEs: ConfigureModalTranslations = {
     tpDistributionIntro:
       'Defina manualmente la cuota de cada TP activo. El total de filas activas no puede superar el 100 %; cualquier valor se limita al presupuesto restante. Las filas desactivadas quedan en 0 %.',
     multiTradeNote:
-      'Multi-operación: reparte las piernas planificadas entre TP según estos porcentajes (p. ej. 50/30/20 de 20 piernas → 10/6/4 en TP1/TP2/TP3).',
+      'Range Trading: reparte las piernas planificadas entre TP según estos porcentajes (p. ej. 50/30/20 de 20 piernas → 10/6/4 en TP1/TP2/TP3).',
     singleTradeNote:
       'Operación única: la orden llega al último TP activo en el broker; el worker cierra parcialmente el porcentaje configurado en cada TP anterior (p. ej. 50/30/20 en 1,0 lote → cierra 0,50 en TP1, 0,30 en TP2 y el 0,20 restante en TP3 vía el broker).',
     enabledTotal: 'Total activado:',
@@ -198,6 +291,33 @@ export const configureModalEs: ConfigureModalTranslations = {
     summaryJoin: '; ',
     summaryPrefix: 'Se ignoran SL/TP del canal en los lados activados — el copiador usa {parts}.',
     basicPlanMoreTpsLimit: 'Hay más TPs disponibles en el plan Advanced.',
+    profitTargetsTitle: 'Objetivos de beneficio',
+    profitTargetsIntro:
+      'Cuando está activo, al alcanzar un objetivo se cierran automáticamente todas las operaciones del canal y el copiador deja de procesar instrucciones hasta el siguiente periodo. Los importes usan el cambio de equity de la cuenta desde el inicio del periodo (p. ej. $1.000 cierra cuando el equity sube $1.000).',
+    profitTargetsToggle: 'Activar objetivos de beneficio',
+    maxRiskTitle: 'Pérdida máxima',
+    maxRiskIntro:
+      'Cuando el equity de la cuenta caiga por el límite de pérdida desde el inicio del periodo (o el drawdown desde el pico del periodo en reglas porcentuales), se cierran automáticamente todas las operaciones del canal y el copiador deja de procesar instrucciones hasta el siguiente periodo.',
+    maxRiskToggle: 'Activar pérdida máxima',
+    addTarget: 'Añadir objetivo',
+    addRiskRule: 'Añadir límite de pérdida',
+    riskValue: 'Límite de pérdida',
+    periodDaily: 'Diario',
+    periodWeekly: 'Semanal',
+    periodMonthly: 'Mensual',
+    periodOverall: 'Global',
+    valueTypeAmount: 'Importe ($)',
+    valueTypePercent: 'Porcentaje (%)',
+    targetValue: 'Valor objetivo',
+    periodLabel: 'Periodo',
+    typeLabel: 'Tipo',
+    timezoneTitle: 'Zona horaria del periodo',
+    timezoneProfile: 'Usar la zona horaria de mi perfil ({tz})',
+    timezoneCustom: 'Zona horaria personalizada',
+    timezoneHint: 'Los límites diarios, semanales y mensuales se reinician a medianoche en esta zona horaria.',
+    pausedProfitBanner: 'Objetivo de beneficio alcanzado — las operaciones del canal se cerraron y la copia está en pausa hasta el siguiente periodo.',
+    pausedRiskBanner: 'Pérdida máxima alcanzada — las operaciones del canal se cerraron y la copia está en pausa hasta el siguiente periodo.',
+    pausedOverallBanner: 'Límite alcanzado — las operaciones del canal se cerraron y la copia permanece en pausa hasta que cambie o desactive la regla.',
   },
   management: {
     monitorIntroMulti:
@@ -256,6 +376,9 @@ export const configureModalEs: ConfigureModalTranslations = {
     ruleBreakevenOffset: 'entrada + {offset} pip(s)',
     ruleBreakevenTrue: 'entrada (break-even real)',
     ruleTriggerTpHit: 'cuando se alcanza TP{index}',
+    orderCommentsTitle: 'Comentarios de orden',
+    orderCommentsSubtitle:
+      'Desactivado: TScopier deja vacío el campo de comentario del bróker en las operaciones que abre o actualiza.',
   },
   filters: {
     timeTitle: 'Filtro horario',
@@ -396,5 +519,9 @@ export const configureModalEs: ConfigureModalTranslations = {
   common: {
     yes: 'Sí',
     no: 'No',
+  },
+  riskDisclaimer: {
+    warning: '¡Advertencia! Su capital está en riesgo. Copie solo proveedores de señales en los que confíe.',
+    fullLink: 'Ver aviso de riesgo completo',
   },
 }

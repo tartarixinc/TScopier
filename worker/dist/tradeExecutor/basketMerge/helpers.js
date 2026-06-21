@@ -8,10 +8,11 @@ exports.manualDispatchAlreadyMaterialized = manualDispatchAlreadyMaterialized;
 exports.persistRangePendingLegRows = persistRangePendingLegRows;
 exports.loadMergeSignalForLinking = loadMergeSignalForLinking;
 exports.resolveBasketMergeLinkContext = resolveBasketMergeLinkContext;
-const rangePendingLegPersist_1 = require("../../rangePendingLegPersist");
-const signalMergeLink_1 = require("../../signalMergeLink");
 const basketSlTpReconcile_1 = require("../../basketSlTpReconcile");
 const rangePendingFireGuard_1 = require("../../rangePendingFireGuard");
+const rangePendingLegPersist_1 = require("../../rangePendingLegPersist");
+const signalMergeLink_1 = require("../../signalMergeLink");
+const basketModFollowUp_1 = require("../../basketModFollowUp");
 async function hasOpenTradeForSymbol(ctx, brokerId, symbol) {
     try {
         const { count } = await ctx.supabase
@@ -155,7 +156,7 @@ async function resolveBasketAnchorSignalIdForOpenTrades(ctx, args) {
         .limit(200);
     let cand = (openRows ?? []);
     if (symUp)
-        cand = cand.filter(t => String(t.symbol ?? '').toUpperCase() === symUp);
+        cand = cand.filter(t => (0, basketModFollowUp_1.symbolsCompatibleForBasket)(symUp, t.symbol));
     const candSigIds = [...new Set(cand.map(t => t.signal_id))];
     if (!candSigIds.length)
         return null;

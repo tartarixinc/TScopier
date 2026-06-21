@@ -28,7 +28,6 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.classifySymbol = classifySymbol;
-exports.smartPipSize = smartPipSize;
 /** Common ISO-4217 currency codes seen in retail FX brokers. */
 const FX_CURRENCY_CODES = new Set([
     'USD', 'EUR', 'GBP', 'JPY', 'CHF', 'AUD', 'NZD', 'CAD',
@@ -110,41 +109,4 @@ function classifySymbol(symbol) {
         }
     }
     return 'other';
-}
-/**
- * Trader-conventional pip size for a symbol (price units).
- *
- * @deprecated Use `pipCalculator(symbol, point, digits, contractSize?)` from
- *   `./pipCalculator` instead. The new calculator returns the same
- *   `pipPrice` and additionally exposes the dollar pip value per std/mini/
- *   micro lot — needed for risk hints and (future) auto-sizing. This
- *   wrapper is kept so existing call sites compile while we migrate.
- *
- *   The pipPrice math below is intentionally identical to
- *   `pipCalculator(...).pipPrice` so both functions stay in lockstep; we
- *   inline it here to avoid a top-level cycle between `pipMath` and
- *   `pipCalculator` (the calculator imports `classifySymbol` from this
- *   file).
- *
- * @param symbol Broker symbol (with or without prefix/suffix decoration).
- * @param point  Broker `point` (smallest price increment) from /SymbolParams.
- * @param digits Broker `digits` (decimal places) from /SymbolParams.
- */
-function smartPipSize(symbol, point, digits) {
-    if (!Number.isFinite(point) || point <= 0)
-        return 0.0001;
-    const d = Number.isFinite(digits) ? Math.max(0, Math.floor(digits)) : 5;
-    const klass = classifySymbol(symbol);
-    if (klass === 'fx_major' || klass === 'fx_jpy') {
-        return d === 3 || d === 5 ? point * 10 : point;
-    }
-    if (klass === 'metal') {
-        const cleaned = (symbol || '').toUpperCase();
-        const floor = cleaned.includes('XAG') ? 0.01 : 0.10;
-        return Math.max(point * 10, floor);
-    }
-    if (klass === 'index') {
-        return Math.max(point * 10, 1);
-    }
-    return point * 10;
 }

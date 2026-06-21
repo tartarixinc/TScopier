@@ -1,8 +1,8 @@
 import {
   isBrokerDisconnectedMessage,
-  MetatraderApiClient,
+  FxsocketBrokerClient,
   MtOperation,
-} from '../metatraderapi'
+} from '../fxsocketClient'
 import { isMtBridgeGlitchMessage } from '../brokerConnectError'
 import type { ChannelKeywords, ManualSettings, PlannerResult, VirtualPendingLeg } from '../manualPlanner'
 import { autoManagementTradeSnapshot } from '../autoManagement'
@@ -19,7 +19,7 @@ export type SendImmediateLegsInput = {
   parsed: ParsedSignal
   broker: BrokerRow
   manual: ManualSettings
-  api: MetatraderApiClient
+  api: FxsocketBrokerClient
   uuid: string
   symbol: string
   requestedSymbol: string
@@ -321,6 +321,8 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
       baseLot,
       params: plannerCtx,
       filledLegs,
+      plannedBrokerTp: plan.orders[0]?.takeprofit ?? null,
+      hasPartialTpSchedule: (plan.partialTps?.length ?? 0) > 0,
       hooks: {
         closeOppositeDirectionTrades: (s, p, _b, sym) =>
           ctx.closeOppositeDirectionTrades(s, p, broker, sym),

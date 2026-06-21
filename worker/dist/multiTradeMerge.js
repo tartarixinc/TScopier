@@ -5,16 +5,17 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.parsedHasSlOrTp = parsedHasSlOrTp;
-exports.isParameterFollowUpSignal = isParameterFollowUpSignal;
 exports.shouldRouteAsBasketParameterRefresh = shouldRouteAsBasketParameterRefresh;
 exports.mergePlanImmediateOrders = mergePlanImmediateOrders;
 exports.buildPerLegStopTargets = buildPerLegStopTargets;
 exports.legacyMergeLinkingEnabled = legacyMergeLinkingEnabled;
+exports.filterSignalIdsByChannel = filterSignalIdsByChannel;
 exports.resolveLatestOpenBasketAnchor = resolveLatestOpenBasketAnchor;
+exports.resolveOpenBasketAnchorForSameSignal = resolveOpenBasketAnchorForSameSignal;
 exports.resolveOpenBasketAnchorForParameterFollowUp = resolveOpenBasketAnchorForParameterFollowUp;
-exports.isBareEntryFollowUp = isBareEntryFollowUp;
 const manualPlanner_1 = require("./manualPlanner");
 const signalPriceInference_1 = require("./signalPriceInference");
+const signalEntryNowRequirement_1 = require("./signalEntryNowRequirement");
 const tpBucketDistribution_1 = require("./manualPlanning/tpBucketDistribution");
 const signalMergeLink_1 = require("./signalMergeLink");
 const basketModFollowUp_1 = require("./basketModFollowUp");
@@ -24,10 +25,6 @@ function parsedHasSlOrTp(parsed) {
     const hasTp = Array.isArray(parsed.tp)
         && parsed.tp.some(t => typeof t === 'number' && Number.isFinite(t) && t > 0);
     return hasSl || hasTp;
-}
-/** @alias {@link parsedHasSlOrTp} */
-function isParameterFollowUpSignal(parsed) {
-    return parsedHasSlOrTp(parsed);
 }
 /**
  * True when this signal should refresh SL/TP on an existing basket (modify-only),
@@ -43,6 +40,19 @@ function shouldRouteAsBasketParameterRefresh(parsed) {
         return true;
     if (act === 'buy' || act === 'sell') {
         if (isBareEntryFollowUp(parsed))
+            return false;
+        if (isOneShotChannelTradeAlert(parsed))
+            return false;
+        // Entry zone + market-now + SL/TP completes a teaser basket (modify-only), not a new entry.
+        if ((0, manualPlanner_1.parsedHasExplicitEntryAnchor)(parsed)) {
+            if ((0, signalEntryNowRequirement_1.messageHasMarketNowIntent)(parsed.raw_instruction ?? '') && parsedHasSlOrTp(parsed)) {
+                return true;
+            }
+            return false;
+        }
+        // "BUY NOW + SL/TP" (no priced entry) is an explicit market entry, not a
+        // follow-up refresh — must open a trade and stay on the entry fast path.
+        if ((0, signalEntryNowRequirement_1.messageHasMarketNowIntent)(parsed.raw_instruction ?? ''))
             return false;
         return true;
     }
@@ -103,6 +113,23 @@ function legacyMergeLinkingEnabled() {
  * Latest open basket for broker + symbol + direction, optionally scoped to channel.
  * When multiple signal_ids have open legs, picks the one with the newest `opened_at`.
  */
+/** Keep basket merge / anchor selection scoped to one Telegram channel. */
+async function filterSignalIdsByChannel(supabase, userId, channelId, signalIds) {
+    const unique = [...new Set(signalIds.filter(Boolean))];
+    if (!unique.length)
+        return new Set();
+    const { data, error } = await supabase
+        .from('signals')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('channel_id', channelId)
+        .in('id', unique);
+    if (error) {
+        console.warn(`[multiTradeMerge] channel signal filter failed: ${error.message}`);
+        return new Set();
+    }
+    return new Set((data ?? []).map((r) => r.id));
+}
 async function resolveLatestOpenBasketAnchor(supabase, args) {
     const { data: openTrades, error } = await supabase
         .from('trades')
@@ -162,6 +189,49 @@ async function resolveLatestOpenBasketAnchor(supabase, args) {
 }
 const PARAMETER_FOLLOW_UP_ANCHOR_RETRY_MS = 3000;
 const PARAMETER_FOLLOW_UP_ANCHOR_POLL_MS = 150;
+/**
+ * Same-signal revision re-parses the existing `signals` row — anchor SL/TP refresh
+ * on that signal's open legs, not the newest unrelated basket on the channel.
+ */
+async function resolveOpenBasketAnchorForSameSignal(supabase, args) {
+    const { data: rows, error } = await supabase
+        .from('trades')
+        .select('opened_at,symbol')
+        .eq('user_id', args.userId)
+        .eq('broker_account_id', args.brokerAccountId)
+        .eq('signal_id', args.signalId)
+        .eq('status', 'open')
+        .eq('direction', args.direction)
+        .order('opened_at', { ascending: false })
+        .limit(500);
+    if (error) {
+        console.warn(`[multiTradeMerge] same-signal anchor load failed signal=${args.signalId}: ${error.message}`);
+        return null;
+    }
+    const symHint = args.signalSymbol ?? args.brokerSymbol;
+    let newestOpenedAt = null;
+    for (const row of rows ?? []) {
+        const trSym = String(row.symbol ?? '');
+        if (trSym
+            && !(0, basketModFollowUp_1.symbolsCompatibleForBasket)(symHint, trSym)
+            && !(0, basketModFollowUp_1.symbolsCompatibleForBasket)(args.brokerSymbol, trSym)) {
+            continue;
+        }
+        const openedAt = String(row.opened_at ?? '');
+        if (!openedAt)
+            continue;
+        if (!newestOpenedAt || new Date(openedAt).getTime() > new Date(newestOpenedAt).getTime()) {
+            newestOpenedAt = openedAt;
+        }
+    }
+    if (!newestOpenedAt)
+        return null;
+    return {
+        anchorSignalId: args.signalId,
+        channelId: args.channelId ?? null,
+        newestOpenedAt,
+    };
+}
 /** Wait briefly for the entry leg to land in DB before opening a duplicate trade. */
 async function resolveOpenBasketAnchorForParameterFollowUp(supabase, args, opts) {
     const retryMs = opts?.retryMs ?? PARAMETER_FOLLOW_UP_ANCHOR_RETRY_MS;
@@ -194,6 +264,8 @@ async function resolveRecentEntrySignalAnchor(supabase, args, opts) {
     for (const row of rows) {
         if (row.id === opts?.currentSignalId)
             continue;
+        if (row.status === 'skipped')
+            continue;
         const parsed = row.parsed_data ?? {};
         const act = String(parsed.action ?? '').toLowerCase();
         if (act !== args.direction)
@@ -223,4 +295,13 @@ async function resolveRecentEntrySignalAnchor(supabase, args, opts) {
 function isBareEntryFollowUp(parsed) {
     return (!parsedHasSlOrTp(parsed)
         && !(0, manualPlanner_1.parsedHasExplicitEntryAnchor)(parsed));
+}
+/** One-shot channel entry (e.g. FX Culture "BUY TRADE XAU/USD" + zone + SL/TP) — always opens. */
+function isOneShotChannelTradeAlert(parsed) {
+    const act = String(parsed.action ?? '').toLowerCase();
+    if (act !== 'buy' && act !== 'sell')
+        return false;
+    if (!parsed.symbol || !parsedHasSlOrTp(parsed))
+        return false;
+    return /\b(?:buy|sell)\s+trade\b/i.test(String(parsed.raw_instruction ?? ''));
 }

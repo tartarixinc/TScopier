@@ -1,6 +1,9 @@
 import type { ChannelMessageFiltersMap } from '../channelMessageFilters'
+import type { ParsedSignal } from '../manualPlanning/types'
 import { monitorActiveIntervalMs, monitorIdleIntervalMs } from '../monitorIdleGate'
 import type { PipelineTimestamps } from '../pipelineTimestamps'
+
+export type { ParsedSignal }
 
 /** When true (default), channel-attached signals only execute if MTProto is connected in this process. */
 export function telegramLiveTradeGateEnabled(): boolean {
@@ -12,6 +15,8 @@ export function telegramLiveTradeGateEnabled(): boolean {
 export type SendOrderOutcome = {
   openedOrMerged?: boolean
   signalEntryRequiredSkip?: boolean
+  signalRangeEntryRequiredSkip?: boolean
+  signalRangeEntryDeferred?: boolean
   /** Deterministic no-op where retrying the same parsed signal won't change outcome. */
   finalizeSkipReason?: string
   /** Channel `delay_msec` from Copier Engine (skipped on live fast path). */
@@ -21,26 +26,12 @@ export type SendOrderOutcome = {
 
 export const PARSED_STATUSES = new Set(['parsed'])
 
-export type ParsedSignal = {
-  action: string
-  symbol: string | null
-  entry_price: number | null
-  entry_zone_low: number | null
-  entry_zone_high: number | null
-  sl: number | null
-  tp: number[] | null
-  lot_size: number | null
-  open_tp?: boolean
-  partial_close_fraction?: number | null
-  raw_instruction?: string
-  re_enter?: boolean
-}
-
 export interface SignalRow {
   id: string
   user_id: string
   channel_id: string | null
   parsed_data: ParsedSignal | null
+  user_override?: Record<string, unknown> | null
   status: string
   parent_signal_id: string | null
   is_modification: boolean
@@ -51,6 +42,18 @@ export interface SignalRow {
   pipeline_ts?: PipelineTimestamps
   /** In-memory dispatch hint (not persisted on signals row). */
   dispatch_source?: string
+  /** Range wake: execute only this broker account. */
+  wake_broker_account_id?: string
+  /** Prior parsed action before a same-message revision (in-memory only). */
+  revision_prior_action?: string | null
+}
+
+/** In-process priority-queue entry: signal plus the dispatch flags it arrived with. */
+export interface QueuedSignal {
+  row: SignalRow
+  liveDispatch?: boolean
+  source?: string
+  dispatchReceivedAt?: number
 }
 
 export interface RangePendingCancelScope {
@@ -67,9 +70,11 @@ export type MergeOutcome =
 export interface BrokerRow {
   id: string
   user_id: string
+  /** Copy-trades toggle — when false, broker stays linked but does not receive new signals. */
   is_active: boolean
   platform: string
   connection_status?: string | null
+  fxsocket_account_id?: string | null
   metaapi_account_id: string | null
   account_login: string | null
   broker_server: string | null
@@ -118,10 +123,12 @@ export interface SymbolListCacheEntry {
 export interface SymbolMappingResult {
   symbol: string
   whitelist: string[]
+  /** True when prefix/suffix or explicit symbol_mapping was applied — broker resolve must not downgrade. */
+  userDecorated: boolean
 }
 
 export interface Leg {
-  args: import('../metatraderapi').OrderSendArgs
+  args: import('../fxsocketClient').OrderSendArgs
   idx: number
   cweClosePrice?: number | null
   partialTps?: import('../manualPlanner').PlannerPartialTp[]
@@ -143,15 +150,15 @@ export const SYMBOL_CACHE_KEEPALIVE_MS = Math.max(
   Math.min(SYMBOL_CACHE_TTL_MS, Number(process.env.SYMBOL_CACHE_KEEPALIVE_MS ?? 5 * 60_000)),
 )
 export const BROKER_SESSION_HEARTBEAT_MS = Math.max(
-  5_000,
-  Math.min(60_000, Number(process.env.BROKER_SESSION_HEARTBEAT_MS ?? 15_000)),
+  10_000,
+  Math.min(120_000, Number(process.env.BROKER_SESSION_HEARTBEAT_MS ?? 30_000)),
 )
 export const SESSION_PING_MIN_INTERVAL_MS = Math.max(
-  5_000,
-  Math.min(120_000, Number(process.env.BROKER_SESSION_PING_MIN_INTERVAL_MS ?? BROKER_SESSION_HEARTBEAT_MS)),
+  10_000,
+  Math.min(120_000, Number(process.env.BROKER_SESSION_PING_MIN_INTERVAL_MS ?? 25_000)),
 )
-export const EXECUTOR_PARSED_SWEEP_MS = monitorActiveIntervalMs('EXECUTOR_PARSED_SWEEP_MS', 3_000)
-export const EXECUTOR_SWEEP_IDLE_MS = monitorIdleIntervalMs('EXECUTOR_SWEEP_IDLE_MS', 60_000)
+export const EXECUTOR_PARSED_SWEEP_MS = monitorActiveIntervalMs('EXECUTOR_PARSED_SWEEP_MS', 1_000)
+export const EXECUTOR_SWEEP_IDLE_MS = monitorIdleIntervalMs('EXECUTOR_SWEEP_IDLE_MS', 15_000)
 export const EXECUTOR_REPLAY_MAX_AGE_MS = Math.max(
   60_000,
   Math.min(30 * 60_000, Number(process.env.EXECUTOR_REPLAY_MAX_AGE_MS ?? 5 * 60_000)),

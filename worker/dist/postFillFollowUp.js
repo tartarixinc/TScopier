@@ -14,7 +14,7 @@ function newsBlackoutPreFillEnabled() {
     return v === '1' || v === 'true' || v === 'yes';
 }
 async function applyPipAndChannelStops(args) {
-    const { api, uuid, signal, parsed, broker, channelKeywords, symbol, params, filledLegs } = args;
+    const { api, uuid, signal, parsed, broker, channelKeywords, symbol, params, filledLegs, plannedBrokerTp, hasPartialTpSchedule, } = args;
     const manual = (broker.manual_settings ?? {});
     const isSingleTradeStyle = (manual.trade_style ?? 'single') !== 'multi';
     if (!isSingleTradeStyle) {
@@ -30,7 +30,9 @@ async function applyPipAndChannelStops(args) {
         if (!Number.isFinite(leg.ticket) || leg.ticket <= 0)
             continue;
         let plannerParsed = { ...parsed };
-        if (signal.channel_id && (0, channelActiveTradeParams_1.shouldMergeChannelParamsForEntry)(plannerParsed)) {
+        if (signal.channel_id
+            && (0, channelActiveTradeParams_1.shouldMergeChannelParamsForEntry)(plannerParsed)
+            && !(0, channelActiveTradeParams_1.shouldPreferParsedStopsOnEntry)(plannerParsed)) {
             const channelParams = await (0, channelActiveTradeParams_1.loadChannelActiveTradeParamsForSymbol)(args.supabase, signal.user_id, signal.channel_id, symbol);
             if (channelParams) {
                 plannerParsed = (0, channelActiveTradeParams_1.mergeParsedWithChannelParams)(plannerParsed, channelParams);
@@ -49,7 +51,10 @@ async function applyPipAndChannelStops(args) {
         };
         let targetSl = leg.openSl;
         let targetTp = leg.openTp;
-        if ((0, manualStops_2.usesPredefinedStops)(manual)) {
+        if (hasPartialTpSchedule && plannedBrokerTp != null && plannedBrokerTp > 0) {
+            targetTp = plannedBrokerTp;
+        }
+        else if ((0, manualStops_2.usesPredefinedStops)(manual)) {
             const derived = (0, manualStops_1.deriveManualStopsWithClamp)({
                 parsed: plannerParsed,
                 manual,

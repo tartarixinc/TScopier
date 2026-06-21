@@ -3,6 +3,7 @@ import type {
   BacktestEquityRow,
   BacktestRunMode,
   BacktestRunRow,
+  BacktestTradeReplayResponse,
   BacktestTradeRow,
   SimpleBacktestConfig,
 } from './backtestTypes'
@@ -140,10 +141,96 @@ export async function waitForBacktestRunComplete(
   throw new Error('Backtest is taking longer than expected. Open History to view the run when it completes.')
 }
 
-export const backtestApi = {
-  sync(config: SimpleBacktestConfig): Promise<BacktestSyncResult> {
-    return call({ action: 'sync', config })
+function parseSyncSummary(raw: unknown): BacktestSyncResult {
+  const o = (raw && typeof raw === 'object') ? raw as Record<string, unknown> : {}
+  return {
+    messages_scanned: Number(o.messages_scanned ?? 0),
+    candidates: Number(o.candidates ?? 0),
+    imported: Number(o.imported ?? 0),
+    errors: Array.isArray(o.errors) ? o.errors.map(String).filter(Boolean) : [],
+  }
+}
+
+function resolveSyncRunId(data: Record<string, unknown> | null | undefined): string | null {
+  if (!data) return null
+  const syncRunId = data.sync_run_id ?? data.run_id
+  return typeof syncRunId === 'string' && syncRunId.trim() ? syncRunId.trim() : null
+}
+
+function isLegacySyncResponse(data: Record<string, unknown>): boolean {
+  return (
+    data.ok === true
+    || typeof data.messages_scanned === 'number'
+    || typeof data.imported === 'number'
+    || typeof data.candidates === 'number'
+    || Array.isArray(data.errors)
+  )
+}
+
+/** Poll DB until signal sync finishes (sync action returns before worker completes). */
+export async function waitForSignalSyncComplete(
+  syncRunId: string,
+  userId: string,
+  options?: {
+    intervalMs?: number
+    timeoutMs?: number
+    onTick?: (run: BacktestRunRow) => void
   },
+): Promise<BacktestSyncResult> {
+  const intervalMs = options?.intervalMs ?? 800
+  const timeoutMs = options?.timeoutMs ?? 600_000
+  const started = Date.now()
+
+  while (Date.now() - started < timeoutMs) {
+    const { run } = await loadBacktestRunFromDb(syncRunId, userId)
+    options?.onTick?.(run)
+    if (run.status === 'completed') {
+      return parseSyncSummary(run.summary)
+    }
+    if (run.status === 'failed' || run.status === 'cancelled') {
+      throw new Error(run.error_message ?? run.progress_message ?? 'Signal sync failed')
+    }
+    await new Promise(r => setTimeout(r, intervalMs))
+  }
+
+  throw new Error('Signal sync is taking longer than expected. Try again in a moment.')
+}
+
+const tradeReplayCache = new Map<string, BacktestTradeReplayResponse>()
+
+export const backtestApi = {
+  async sync(config: SimpleBacktestConfig): Promise<
+    | { mode: 'async'; sync_run_id: string }
+    | { mode: 'legacy'; result: BacktestSyncResult }
+  > {
+    const data = await call<Record<string, unknown>>({ action: 'sync', config })
+    const syncRunId = resolveSyncRunId(data)
+    if (syncRunId) {
+      return { mode: 'async', sync_run_id: syncRunId }
+    }
+    if (data && isLegacySyncResponse(data)) {
+      return { mode: 'legacy', result: parseSyncSummary(data) }
+    }
+    throw new Error(
+      'Signal sync started but no sync run id was returned. Redeploy the backtest-run edge function (see docs/backtest-setup.md).',
+    )
+  },
+
+  async syncAndWait(
+    config: SimpleBacktestConfig,
+    userId: string,
+    options?: {
+      intervalMs?: number
+      timeoutMs?: number
+      onTick?: (run: BacktestRunRow) => void
+    },
+  ): Promise<BacktestSyncResult> {
+    const started = await backtestApi.sync(config)
+    if (started.mode === 'legacy') return started.result
+    return waitForSignalSyncComplete(started.sync_run_id, userId, options)
+  },
+
+  waitForSignalSyncComplete,
 
   async backtestTpsl(config: SimpleBacktestConfig): Promise<{ run_id: string; run_mode: BacktestRunMode }> {
     const data = await call<{ ok?: boolean; run_id?: string; run_mode?: BacktestRunMode }>({
@@ -186,5 +273,21 @@ export const backtestApi = {
       trade_id: tradeId,
     })
     return { run_id: data.run_id, run: data.run ?? null }
+  },
+
+  async getTradeReplay(tradeId: string): Promise<BacktestTradeReplayResponse> {
+    const cached = tradeReplayCache.get(tradeId)
+    if (cached) return cached
+    const data = await call<BacktestTradeReplayResponse>({
+      action: 'trade_replay',
+      trade_id: tradeId,
+    })
+    tradeReplayCache.set(tradeId, data)
+    return data
+  },
+
+  clearTradeReplayCache(tradeId?: string) {
+    if (tradeId) tradeReplayCache.delete(tradeId)
+    else tradeReplayCache.clear()
   },
 }

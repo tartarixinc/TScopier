@@ -5,11 +5,11 @@ import type { PlanRangeSplitArgs, PlanRangeSplitResult } from './types'
  * Pure function so the split can be unit-tested and reused by the UI estimator
  * down the line.
  *
- * **Step does NOT shrink the pending count.** Pending count is purely
- * `round(totalLegs × rangePct / 100)`. The `step` is the pip spacing the
- * planner uses to place each pending. `distPips` is an advisory target span
- * the user expects the ladder to reach — it's validated as > 0 so the user
- * has to set SOMETHING in range mode, but it no longer caps the count.
+ * **Step does NOT shrink the reserved pending count** (range_percent drives that
+ * for Total Open Trades preview stability). The `step` is the pip spacing between
+ * consecutive ladder rungs. `distPips` caps how deep the ladder may go:
+ * `maxStepIdx = floor(distPips / effectiveStepPips)`; only stepIdx 1..maxStepIdx
+ * are materialized as virtual pendings.
  */
 export function planRangeSplit(args: PlanRangeSplitArgs): PlanRangeSplitResult {
   const { totalLegs, baseIsPendingSignal, rangeOn, rangePct, stepPips, distPips, pip, minStepPriceUnits, hasSignalAnchor } = args
@@ -17,6 +17,8 @@ export function planRangeSplit(args: PlanRangeSplitArgs): PlanRangeSplitResult {
   const baseResult: PlanRangeSplitResult = {
     immediateLegs: totalLegs,
     pendingLegs: 0,
+    activePendingLegs: 0,
+    maxStepIdx: 0,
     effectiveStepPips: stepPips,
     stepPriceOffset: 0,
   }
@@ -33,18 +35,31 @@ export function planRangeSplit(args: PlanRangeSplitArgs): PlanRangeSplitResult {
     fallbackReason = 'range_trading_step_auto_expanded'
   }
   const stepPriceOffset = effectiveStepPips * pip
+  const maxStepIdx = Math.max(0, Math.floor(distPips / effectiveStepPips))
 
   const reservedLegs = Math.max(0, Math.round((totalLegs * rangePct) / 100))
   if (reservedLegs <= 0) {
-    return { ...baseResult, effectiveStepPips, stepPriceOffset, fallbackReason }
+    return { ...baseResult, effectiveStepPips, stepPriceOffset, maxStepIdx, fallbackReason }
+  }
+
+  const activePendingLegs = Math.min(reservedLegs, maxStepIdx)
+  if (activePendingLegs <= 0 && reservedLegs > 0) {
+    fallbackReason = fallbackReason ?? 'range_trading_distance_capped'
+  } else if (activePendingLegs < reservedLegs) {
+    fallbackReason = fallbackReason ?? 'range_trading_distance_capped'
   }
 
   const immediateLegs = Math.max(0, totalLegs - reservedLegs)
+  if (!hasSignalAnchor && immediateLegs === 0) {
+    fallbackReason = 'range_trading_anchor_runtime_only'
+  }
   return {
     immediateLegs,
     pendingLegs: reservedLegs,
+    activePendingLegs,
+    maxStepIdx,
     effectiveStepPips,
     stepPriceOffset,
-    fallbackReason: fallbackReason ?? (!hasSignalAnchor && immediateLegs === 0 ? 'range_trading_anchor_runtime_only' : undefined),
+    fallbackReason,
   }
 }

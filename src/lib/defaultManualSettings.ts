@@ -1,10 +1,24 @@
 import type { ManualSettings, ManualTpLot } from '../types/database'
+import { DEFAULT_COPY_LIMITS } from './copyLimitTypes'
 
 export const DEFAULT_MANUAL_TP_LOTS: ManualTpLot[] = [
   { label: 'TP1', lot: 0.01, percent: 50, enabled: true },
   { label: 'TP2', lot: 0.01, percent: 30, enabled: true },
   { label: 'TP3', lot: 0.01, percent: 20, enabled: true },
 ]
+
+/** Stamp configs saved from the UI so migration seeds are not mistaken for user settings. */
+export function ensurePersistedManualSettings(
+  settings: ManualSettings | Record<string, unknown>,
+): ManualSettings {
+  const schemaVersion = Number(
+    (settings as ManualSettings).schema_version ?? DEFAULT_MANUAL_SETTINGS.schema_version ?? 1,
+  )
+  return {
+    ...(settings as ManualSettings),
+    schema_version: Number.isFinite(schemaVersion) && schemaVersion > 0 ? schemaVersion : 1,
+  }
+}
 
 export const DEFAULT_MANUAL_SETTINGS: ManualSettings = {
   schema_version: 1,
@@ -24,6 +38,8 @@ export const DEFAULT_MANUAL_SETTINGS: ManualSettings = {
   range_percent: 50,
   range_step_pips: 3,
   range_distance_pips: 30,
+  range_layer_till_close: false,
+  use_signal_entry_range: false,
   close_worse_entries: false,
   close_worse_entries_pips: 30,
   reverse_signal: false,
@@ -43,7 +59,7 @@ export const DEFAULT_MANUAL_SETTINGS: ManualSettings = {
   move_sl_to_entry_after_value: 10,
   move_sl_to_entry_tp_index: 1,
   move_sl_to_entry_type: 'sl_only',
-  breakeven_offset_pips: 10,
+  breakeven_offset_pips: 3,
   partial_close_percent: 25,
   half_close_percent: 50,
   trailing_enabled: false,
@@ -51,6 +67,7 @@ export const DEFAULT_MANUAL_SETTINGS: ManualSettings = {
   trailing_step_pips: 5,
   trailing_distance_pips: 10,
   close_on_opposite_signal: false,
+  order_comments_enabled: true,
   time_filter_enabled: false,
   trade_start_time: '00:00',
   trade_end_time: '23:59',
@@ -61,4 +78,5 @@ export const DEFAULT_MANUAL_SETTINGS: ManualSettings = {
   allow_high_impact_news: true,
   close_before_news_minutes: 30,
   resume_after_news_minutes: 15,
+  copy_limits: DEFAULT_COPY_LIMITS,
 }

@@ -1,5 +1,12 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
+import {
+  applyManagementGroupsToChannelKeywords,
+  flattenManagementGroups,
+  joinKeywordPipe,
+  normalizeManagementGroups,
+  resolveManagementGroups,
+} from "../_shared/trainingManagementKeywords.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -33,6 +40,16 @@ type ChannelProfile = {
   meta: Record<string, unknown>
 }
 
+type ManagementKeywordGroups = {
+  close_all: string[]
+  close_partial: string[]
+  close_half: string[]
+  break_even: string[]
+  modify_sl: string[]
+  modify_tp: string[]
+  close_worse_entries: string[]
+}
+
 type SignalTrainingSchema = {
   entry_cues: string[]
   buy_cues: string[]
@@ -41,6 +58,8 @@ type SignalTrainingSchema = {
   take_profit_cues: string[]
   take_profit_tier_cues: string[]
   management_cues: string[]
+  management_keyword_groups: ManagementKeywordGroups
+  market_order_cues: string[]
   signal_order_pattern: "signal_then_price" | "price_then_signal" | "mixed" | "unknown"
   signal_requires_price: boolean | null
   language_hints: string[]
@@ -193,6 +212,12 @@ function normalizeTrainingSchema(raw: unknown): SignalTrainingSchema {
   const signal_requires_price = typeof src.signal_requires_price === "boolean"
     ? src.signal_requires_price
     : null
+  const management_keyword_groups = normalizeManagementGroups(src.management_keyword_groups)
+  const flatMgmt = cleanTokens(src.management_cues)
+  const management_cues = flatMgmt.length
+    ? flatMgmt
+    : flattenManagementGroups(management_keyword_groups)
+  const resolvedGroups = resolveManagementGroups({ management_keyword_groups, management_cues })
   return {
     entry_cues: cleanTokens(src.entry_cues),
     buy_cues: cleanTokens(src.buy_cues),
@@ -200,7 +225,9 @@ function normalizeTrainingSchema(raw: unknown): SignalTrainingSchema {
     stop_loss_cues: cleanTokens(src.stop_loss_cues),
     take_profit_cues: cleanTokens(src.take_profit_cues),
     take_profit_tier_cues: cleanTokens(src.take_profit_tier_cues),
-    management_cues: cleanTokens(src.management_cues),
+    management_cues: management_cues.length ? management_cues : flattenManagementGroups(resolvedGroups),
+    management_keyword_groups: resolvedGroups,
+    market_order_cues: cleanTokens(src.market_order_cues),
     signal_order_pattern,
     signal_requires_price,
     language_hints: cleanLanguageHints(src.language_hints),
@@ -210,13 +237,32 @@ function normalizeTrainingSchema(raw: unknown): SignalTrainingSchema {
 }
 
 function defaultTrainingSchemaFromRows(rows: Array<{ raw_message: string }>): SignalTrainingSchema {
-  const buy = new Set<string>(["buy", "long"])
-  const sell = new Set<string>(["sell", "short"])
-  const entry = new Set<string>(["entry", "@", "at", "price", "now"])
-  const sl = new Set<string>(["sl", "stop loss"])
-  const tp = new Set<string>(["tp", "take profit", "target"])
-  const tpTier = new Set<string>(["tp1", "tp2", "tp3"])
-  const management = new Set<string>(["breakeven", "partial", "close"])
+  const buy = new Set<string>([
+    "buy", "long", "comprar", "compra", "acheter", "achat", "kupić", "kupno", "kupic",
+    "купить", "покупка", "köp", "kopen", "買い", "شراء",
+  ])
+  const sell = new Set<string>([
+    "sell", "short", "venta", "vender", "vendre", "vente", "sprzedać", "sprzedaz",
+    "продать", "продажа", "sälj", "verkopen", "売り", "بيع",
+  ])
+  const entry = new Set<string>([
+    "entry", "@", "at", "price", "now", "entrada", "entree", "wejście", "вход",
+    "maintenant", "immédiat", "immediat", "ahora", "inmediato", "teraz", "natychmiast",
+    "jetzt", "sofort", "nu", "omedelbart", "onmiddellijk", "сейчас", "немедленно",
+    "今すぐ", "即時", "成行", "الآن",
+  ])
+  const sl = new Set<string>([
+    "sl", "stop loss", "stoploss", "stop", "стоп", "stopa", "stopp", "損切り",
+  ])
+  const tp = new Set<string>([
+    "tp", "take profit", "target", "objetivo", "objectif", "cel", "цель", "mål", "doel",
+  ])
+  const tpTier = new Set<string>(["tp1", "tp2", "tp3", "objetivo 1", "target 1"])
+  const management = new Set<string>([
+    "breakeven", "break even", "partial", "close", "cerrar", "fermer", "fermez",
+    "zamknij", "закрыть", "stäng", "sluit", "chiudi", "fechar",
+    "fermez tout", "fermer tout", "cerrar todo", "zamknij wszystko",
+  ])
   const languageHints = new Set<string>()
   const sampleSignalExamples: string[] = []
   let signalThenPrice = 0
@@ -227,9 +273,17 @@ function defaultTrainingSchemaFromRows(rows: Array<{ raw_message: string }>): Si
     if (!msg) continue
     const low = msg.toLowerCase()
     if (/[a-z]/.test(low)) languageHints.add("latin")
+    if (/\b(comprar|venta|acheter|vendre|kupić|kupno|sprzedać|купить|продать|köp|sälj|kopen|verkopen)\b/.test(low)) {
+      languageHints.add("multilingual")
+    }
     if (/\b(comprar|venta|acheter|vendre)\b/.test(low)) languageHints.add("romance")
-    if (/\bкупить|продать\b/.test(low)) languageHints.add("cyrillic")
-    if (sampleSignalExamples.length < 6 && /\b(buy|sell|long|short|tp|sl|entry)\b/i.test(msg)) {
+    if (/\b(купить|продать)\b/.test(low)) languageHints.add("cyrillic")
+    if (/[\u3040-\u30ff\u4e00-\u9fff]/.test(msg)) languageHints.add("japanese")
+    if (/[\u0600-\u06ff]/.test(msg)) languageHints.add("arabic")
+    if (sampleSignalExamples.length < 6 && (
+      /\b(buy|sell|long|short|tp|sl|entry|comprar|venta|acheter|vendre|kupić|sprzedać|купить|продать)\b/i.test(msg)
+      || /\b\d{1,5}(?:\.\d{1,5})\b/.test(msg)
+    )) {
       sampleSignalExamples.push(msg.slice(0, 200))
     }
     if (/\b(tp\d+|target\s*\d+)\b/i.test(msg)) tpTier.add("tp1")
@@ -257,6 +311,11 @@ function defaultTrainingSchemaFromRows(rows: Array<{ raw_message: string }>): Si
     take_profit_cues: Array.from(tp),
     take_profit_tier_cues: Array.from(tpTier),
     management_cues: Array.from(management),
+    management_keyword_groups: resolveManagementGroups({ management_cues: Array.from(management) }),
+    market_order_cues: [
+      "now", "maintenant", "immédiat", "immediat", "ahora", "inmediato", "teraz", "natychmiast",
+      "jetzt", "nu", "omedelbart", "onmiddellijk", "сейчас", "немедленно", "今すぐ", "即時", "成行",
+    ],
     signal_order_pattern,
     signal_requires_price: null,
     language_hints: Array.from(languageHints),
@@ -508,6 +567,16 @@ Return strict JSON only with keys:
   "take_profit_cues": string[],
   "take_profit_tier_cues": string[],
   "management_cues": string[],
+  "management_keyword_groups": {
+    "close_all": string[],
+    "close_partial": string[],
+    "close_half": string[],
+    "break_even": string[],
+    "modify_sl": string[],
+    "modify_tp": string[],
+    "close_worse_entries": string[]
+  },
+  "market_order_cues": string[],
   "signal_order_pattern": "signal_then_price" | "price_then_signal" | "mixed" | "unknown",
   "signal_requires_price": boolean | null,
   "language_hints": string[],
@@ -515,7 +584,10 @@ Return strict JSON only with keys:
   "notes": string
 }
 Rules:
-- Include channel-native words/synonyms from any language.
+- Include channel-native words/synonyms from any language (use exact phrases from the samples).
+- management_keyword_groups: classify management/update instructions seen in the channel (close all, partial, breakeven, SL/TP adjust). Use full phrases like "FERMEZ TOUT", not single generic words when the channel uses them.
+- management_cues: optional flat union of all management_keyword_groups (may be omitted).
+- market_order_cues: immediate / market-entry words (NOW, IMMÉDIAT, AHORA, etc.) used by this channel.
 - For "language_hints", include only real languages/scripts (example: "english", "arabic", "latin", "cyrillic").
 - Do not include market-domain words (example: "forex", "crypto", "gold") in "language_hints".
 - No prose outside JSON.
@@ -529,7 +601,7 @@ Rules:
     body: JSON.stringify({
       model: "gpt-4o-mini",
       temperature: 0,
-      max_tokens: 800,
+      max_tokens: 1200,
       messages: [
         { role: "system", content: prompt },
         { role: "user", content: JSON.stringify({ sample_messages: sample }) },
@@ -565,24 +637,39 @@ async function persistTrainingSchema(args: {
   const signal = currentKeywords.signal && typeof currentKeywords.signal === "object"
     ? currentKeywords.signal as Record<string, unknown>
     : {}
-  const updateSignal = {
-    ...signal,
-    entry_point: training.entry_cues.join("|") || String(signal.entry_point ?? "ENTRY"),
-    buy: training.buy_cues.join("|") || String(signal.buy ?? "BUY"),
-    sell: training.sell_cues.join("|") || String(signal.sell ?? "SELL"),
-    sl: training.stop_loss_cues.join("|") || String(signal.sl ?? "SL"),
-    tp: training.take_profit_cues.join("|") || String(signal.tp ?? "TP"),
-  }
+  const updateBlock = currentKeywords.update && typeof currentKeywords.update === "object"
+    ? currentKeywords.update as Record<string, unknown>
+    : {}
   const additional = currentKeywords.additional && typeof currentKeywords.additional === "object"
     ? currentKeywords.additional as Record<string, unknown>
     : {}
+  const mgmtGroups = resolveManagementGroups(training)
+  const mgmtApplied = applyManagementGroupsToChannelKeywords(
+    { update: updateBlock, additional },
+    mgmtGroups,
+    { replace: true },
+  )
+  const marketOrder = training.market_order_cues.length
+    ? joinKeywordPipe(training.market_order_cues)
+    : String(signal.market_order ?? "MARKET")
+  const updateSignal = {
+    ...signal,
+    entry_point: joinKeywordPipe(training.entry_cues) || String(signal.entry_point ?? "ENTRY"),
+    buy: joinKeywordPipe(training.buy_cues) || String(signal.buy ?? "BUY"),
+    sell: joinKeywordPipe(training.sell_cues) || String(signal.sell ?? "SELL"),
+    sl: joinKeywordPipe(training.stop_loss_cues) || String(signal.sl ?? "SL"),
+    tp: joinKeywordPipe(training.take_profit_cues) || String(signal.tp ?? "TP"),
+    market_order: marketOrder,
+  }
   const updatedKeywords = {
     ...currentKeywords,
     signal: updateSignal,
+    update: mgmtApplied.update,
     additional: {
-      ...additional,
+      ...mgmtApplied.additional,
       ai_signal_order_pattern: training.signal_order_pattern,
       ai_signal_requires_price: training.signal_requires_price,
+      ai_management_keyword_groups: training.management_keyword_groups,
     },
   }
   await supabase

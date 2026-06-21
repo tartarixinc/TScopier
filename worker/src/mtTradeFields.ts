@@ -1,6 +1,6 @@
 /** MT order field helpers (mirrors supabase/functions/_shared/mtTradeFields.ts). */
 
-export type RawMtOrder = Record<string, unknown>
+type RawMtOrder = Record<string, unknown>
 export type MtHistoryProfile = 'dashboard' | 'trades'
 
 const MT_DEAL_NESTED_OBJECTS = [
@@ -39,7 +39,7 @@ function shallowUnwrapResult(row: RawMtOrder): RawMtOrder {
   return flat
 }
 
-export function flattenMtOrder(row: unknown, profile: MtHistoryProfile = 'trades'): RawMtOrder {
+function flattenMtOrder(row: unknown, profile: MtHistoryProfile = 'trades'): RawMtOrder {
   if (!isPlainObject(row)) return {}
   if (profile === 'dashboard') return shallowUnwrapResult(row)
 
@@ -75,7 +75,7 @@ export function flattenMtOrder(row: unknown, profile: MtHistoryProfile = 'trades
   return flat
 }
 
-export function pickMtField(order: RawMtOrder, profile: MtHistoryProfile, ...keys: string[]): unknown {
+function pickMtField(order: RawMtOrder, profile: MtHistoryProfile, ...keys: string[]): unknown {
   if (profile === 'trades') {
     const flat = flattenMtOrder(order, 'trades')
     for (const k of keys) {
@@ -103,7 +103,7 @@ function numMtField(order: RawMtOrder, profile: MtHistoryProfile, ...keys: strin
   return Number.isFinite(n) ? n : null
 }
 
-export function resolveMtLots(order: RawMtOrder, profile: MtHistoryProfile): number {
+function resolveMtLots(order: RawMtOrder, profile: MtHistoryProfile): number {
   const keys =
     profile === 'trades'
       ? ['lots', 'Lots', 'lot', 'Lot', 'volumeLots', 'VolumeLots', 'closeLots', 'CloseLots', 'requestLots', 'RequestLots']
@@ -137,7 +137,7 @@ export function resolveMtLots(order: RawMtOrder, profile: MtHistoryProfile): num
   return vol
 }
 
-export function resolveMtDealProfit(order: RawMtOrder, profile: MtHistoryProfile): number | null {
+function resolveMtDealProfit(order: RawMtOrder, profile: MtHistoryProfile): number | null {
   const p = numMtField(
     order,
     profile,
@@ -163,7 +163,7 @@ export function resolveMtDealProfit(order: RawMtOrder, profile: MtHistoryProfile
   return p
 }
 
-export function resolveMtTicket(order: RawMtOrder, profile: MtHistoryProfile): number {
+function resolveMtTicket(order: RawMtOrder, profile: MtHistoryProfile): number {
   const ticket = Number(pickMtField(order, profile, 'ticket', 'Ticket', 'order', 'Order', 'deal', 'Deal') ?? 0)
   return Number.isFinite(ticket) && ticket > 0 ? ticket : 0
 }
@@ -185,7 +185,7 @@ function closeTimeKey(order: RawMtOrder, profile: MtHistoryProfile): string {
   return ct != null ? String(ct) : ''
 }
 
-export function historyRowKey(order: RawMtOrder, profile: MtHistoryProfile): string {
+function historyRowKey(order: RawMtOrder, profile: MtHistoryProfile): string {
   const ticket = resolveMtTicket(order, profile)
   if (ticket <= 0) return ''
   if (profile === 'dashboard') return String(ticket)
@@ -193,7 +193,7 @@ export function historyRowKey(order: RawMtOrder, profile: MtHistoryProfile): str
   return ct ? `${ticket}:${ct}` : String(ticket)
 }
 
-export function mergeMtHistoryRow(prev: RawMtOrder, next: RawMtOrder, profile: MtHistoryProfile): RawMtOrder {
+function mergeMtHistoryRow(prev: RawMtOrder, next: RawMtOrder, profile: MtHistoryProfile): RawMtOrder {
   const prevRow = profile === 'trades' ? flattenMtOrder(prev, 'trades') : prev
   const nextRow = profile === 'trades' ? flattenMtOrder(next, 'trades') : next
   const merged: RawMtOrder = { ...prevRow, ...nextRow }
@@ -215,142 +215,6 @@ export function mergeMtHistoryRow(prev: RawMtOrder, next: RawMtOrder, profile: M
   }
 
   return merged
-}
-
-type MtDirection = 'buy' | 'sell' | ''
-
-function invertMtDirection(direction: MtDirection): MtDirection {
-  if (direction === 'buy') return 'sell'
-  if (direction === 'sell') return 'buy'
-  return ''
-}
-
-function directionFromTypeString(raw: string): { direction: MtDirection; label: string } | null {
-  const cleaned = raw.replace(/^(OrderType_|DealType_|DEAL_TYPE_|ORDER_TYPE_)/i, '').trim()
-  if (!cleaned) return null
-  const lower = cleaned.toLowerCase()
-  const direction: MtDirection =
-    lower.startsWith('buy') ? 'buy' : lower.startsWith('sell') ? 'sell' : ''
-  const label = cleaned.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ').trim()
-  return { direction, label }
-}
-
-function directionFromOrderRow(order: RawMtOrder, profile: MtHistoryProfile): MtDirection {
-  const flat = profile === 'trades' ? flattenMtOrder(order, 'trades') : order
-  for (const key of [
-    'type', 'Type', 'orderType', 'OrderType', 'dealType', 'DealType', 'cmdString', 'action', 'Action',
-  ]) {
-    const v = pickMtField(flat, profile, key)
-    if (typeof v === 'string' && v.trim()) {
-      const parsed = directionFromTypeString(v)
-      if (parsed?.direction) return parsed.direction
-    }
-  }
-  return ''
-}
-
-function parseMtDealEntry(order: RawMtOrder, profile: MtHistoryProfile): 'in' | 'out' | 'unknown' {
-  const flat = profile === 'trades' ? flattenMtOrder(order, 'trades') : order
-  const v = pickMtField(
-    flat,
-    profile,
-    'entry',
-    'Entry',
-    'dealEntry',
-    'DealEntry',
-    'deal_entry',
-    'orderEntry',
-    'OrderEntry',
-  )
-  if (typeof v === 'string' && v.trim()) {
-    const lower = v.toLowerCase().replace(/^(deal_entry_|dealentry_)/i, '')
-    if (lower.includes('out_by') || lower === 'out' || lower.endsWith('_out') || lower.includes(' exit')) {
-      return 'out'
-    }
-    if (lower.includes('inout') || lower.includes('in_out')) return 'unknown'
-    if (lower.includes('in') || lower === 'in' || lower.endsWith('_in')) return 'in'
-  }
-  if (typeof v === 'number') {
-    if (v === 1 || v === 3) return 'out'
-    if (v === 0) return 'in'
-  }
-  return 'unknown'
-}
-
-function labelForPositionDirection(direction: MtDirection, typeLabel: string): string {
-  if (direction !== 'buy' && direction !== 'sell') return typeLabel
-  const wantsDealPrefix = /deal/i.test(typeLabel)
-  if (direction === 'buy') return wantsDealPrefix ? 'Deal Buy' : 'Buy'
-  return wantsDealPrefix ? 'Deal Sell' : 'Sell'
-}
-
-/** Position side from entry vs SL/TP geometry (buy: SL below, TP above entry). */
-export function inferDirectionFromStopPrices(
-  entry: number | null | undefined,
-  sl: number | null | undefined,
-  tp: number | null | undefined,
-): MtDirection {
-  if (entry == null || !Number.isFinite(entry) || entry <= 0) return ''
-  let buyVotes = 0
-  let sellVotes = 0
-  if (sl != null && Number.isFinite(sl) && sl > 0) {
-    if (sl < entry) buyVotes++
-    else if (sl > entry) sellVotes++
-  }
-  if (tp != null && Number.isFinite(tp) && tp > 0) {
-    if (tp > entry) buyVotes++
-    else if (tp < entry) sellVotes++
-  }
-  if (buyVotes > sellVotes) return 'buy'
-  if (sellVotes > buyVotes) return 'sell'
-  return ''
-}
-
-/** When deal type says sell but SL/TP imply buy (OUT deal on long), trust geometry. */
-export function reconcileTradeDirectionWithStops(
-  direction: MtDirection,
-  entry: number | null,
-  sl: number | null,
-  tp: number | null,
-): { direction: MtDirection; type_label: string } {
-  const inferred = inferDirectionFromStopPrices(entry, sl, tp)
-  let finalDir = direction
-  if (inferred && (!finalDir || finalDir !== inferred)) finalDir = inferred
-  if (finalDir === 'buy') return { direction: 'buy', type_label: 'Buy' }
-  if (finalDir === 'sell') return { direction: 'sell', type_label: 'Sell' }
-  return { direction: finalDir, type_label: direction ? labelForPositionDirection(direction, 'Buy') : '' }
-}
-
-export function adjustMtTradesPositionDirection(
-  order: RawMtOrder,
-  profile: MtHistoryProfile,
-  resolved: { direction: MtDirection; type_label: string },
-): { direction: MtDirection; type_label: string } {
-  if (profile !== 'trades') return resolved
-
-  const flat = flattenMtOrder(order, 'trades')
-
-  for (const key of ['dealInternalIn', 'DealInternalIn', 'position', 'Position'] as const) {
-    const nested = flat[key]
-    if (!isPlainObject(nested)) continue
-    const fromNested = directionFromOrderRow(nested as RawMtOrder, 'trades')
-    if (fromNested) {
-      return {
-        direction: fromNested,
-        type_label: labelForPositionDirection(fromNested, resolved.type_label),
-      }
-    }
-  }
-
-  let { direction, type_label } = resolved
-  const entry = parseMtDealEntry(order, profile)
-
-  if (entry === 'out' && (direction === 'buy' || direction === 'sell')) {
-    direction = invertMtDirection(direction)
-    type_label = labelForPositionDirection(direction, type_label)
-  }
-
-  return { direction, type_label }
 }
 
 export function ingestMtHistoryRows(

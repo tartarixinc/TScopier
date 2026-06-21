@@ -2,51 +2,59 @@ import type { Testimonial } from './types'
 
 export const testimonialsEn: Testimonial[] = [
   {
+    headline: 'Brilliant experience',
     quote:
-      'I used to copy XAUUSD by hand from two Telegram groups. Three weeks on TSCopier and most fills hit my IC Markets MT5 before I finish reading the message.',
+      'Brilliant experience! TScopier works flawlessly — fast, reliable, and very easy to set up. What impressed me most was the range trading — it helps me manage my range signal provider properly.',
     author: 'Marcus T.',
-    role: 'Part-time trader · UK',
+    role: 'Part-time trader',
   },
   {
+    headline: 'A very versatile tool and outstanding support',
     quote:
-      'Ran backtest on my main channel for a month before going live. It caught a range entry with three TPs that my old copier kept flattening wrong.',
+      'A very versatile tool for any trader. Range trading, signal editing, backtesting, real-time logs — you name it, they\'ve got it. Support replied quickly when I had a setup question.',
     author: 'Priya K.',
-    role: 'Signal follower · Dubai',
+    role: 'Signal follower',
   },
   {
+    headline: 'Set up in minutes',
     quote:
-      'Prop firm challenge on one login, personal MT5 on another—same dashboard. Range layering finally matches how the provider scales in, not one giant lot.',
-    author: 'James O.',
-    role: 'Funded trader · Toronto',
+      'I linked Telegram and my MT5 account in about ten minutes. No VPS, no EA to install. Signals were copying the same day. Exactly what I was looking for.',
+    author: 'James L.',
+    role: 'MT5 trader',
   },
   {
+    headline: 'Range signals finally work',
     quote:
-      'Broker dropped at 2 a.m. during NFP week. Copier logs showed which account missed the modify—reconnected in the morning without guessing what filled.',
-    author: 'Daniel R.',
-    role: 'Forex & indices · Chicago',
+      'My old copier kept getting range entries wrong. TScopier splits the legs and take-profits the way the channel sends them. Big difference for my gold channel.',
+    author: 'Elena R.',
+    role: 'XAUUSD trader',
   },
   {
+    headline: 'Backtest before going live',
     quote:
-      'I ran an EA on a cheap VPS that died every weekend. Signed up on a laptop at lunch, linked Telegram, and had a demo copying by coffee—no install, no RDP.',
-    author: 'Sofia M.',
-    role: 'Ex-VPS copier user · Madrid',
+      'I backtested my main channel for a few weeks before going live. Seeing how trades would have played out gave me real confidence. Smart move before risking real money.',
+    author: 'Tom H.',
+    role: 'UK trader',
   },
   {
+    headline: 'The logs tell you everything',
     quote:
-      'Close-worse-entries sounded like jargon until gold ranged for a week. It did what the channel admin described—closed the bad legs and left the runner.',
-    author: 'Tomás V.',
-    role: 'XAUUSD focus · São Paulo',
+      'When a trade did not fill, I opened the copier logs and saw exactly why. No guessing, no Telegram spam to the admin. That alone saves me hours.',
+    author: 'Sara M.',
+    role: 'Telegram copier user',
   },
   {
+    headline: 'Two accounts, one dashboard',
     quote:
-      'Six signal channels, six different rule sets. Per-channel filters mean I am not taking every random “move SL” message—only what I allow.',
-    author: 'Hannah L.',
-    role: 'Multi-channel setup · Amsterdam',
+      'I run a prop firm account and my personal MT5 from the same place. Each channel has its own rules. Simple layout and it just works.',
+    author: 'Chris P.',
+    role: 'Funded trader',
   },
   {
+    headline: 'No more VPS headaches',
     quote:
-      'Switched from a tool that capped me at three accounts. Eight MT connections now for family accounts—pricing actually made sense when I did the math.',
-    author: 'Rob F.',
-    role: 'Account manager · Sydney',
+      'I was tired of EAs crashing on a cheap VPS every weekend. TScopier runs in the cloud — I log in from my laptop and everything is still running. Huge relief.',
+    author: 'Nina K.',
+    role: 'Former VPS user',
   },
 ]

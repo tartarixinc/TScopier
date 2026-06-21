@@ -11,12 +11,14 @@ import {
   reverseSignalGateSatisfied,
   signalEntryPriceStrictEnabled,
   SKIP_REASON_SIGNAL_ENTRY_REQUIRED,
+  SKIP_REASON_SIGNAL_ENTRY_RANGE_REQUIRED,
   strictSignalEntryQuoteAllowsImmediate,
   type ManualSettings,
   type ParsedSignal,
-  type PlannerCloseWorseEntries,
   type PlannerContext,
 } from './manualPlanner'
+import type { PlannerCloseWorseEntries } from './manualPlanning/types'
+import { triggerPriceFor } from './tradeExecutor/helpers'
 import { pipCalculator } from './pipCalculator'
 import { signalPipPrice } from './signalPip'
 
@@ -55,34 +57,35 @@ test('planRangeSplit: 50% × 20 legs → 10 pendings @ 10 pip step', () => {
   const r = planRangeSplit(baseSplit)
   assert.equal(r.immediateLegs, 10)
   assert.equal(r.pendingLegs, 10)
+  assert.equal(r.activePendingLegs, 10)
+  assert.equal(r.maxStepIdx, 10)
   assert.equal(r.effectiveStepPips, 10)
   assert.ok(Math.abs(r.stepPriceOffset - 1.0) < 1e-9) // 10 × 0.1
   assert.equal(r.fallbackReason, undefined)
 })
 
-test('planRangeSplit: distance does NOT cap pending count (May-12 UX fix)', () => {
-  // Even when step × pending (10 × 10 = 100) overshoots the configured
-  // distance (30), the count stays at 10. The user explicitly asked that
-  // Total Open Trades remain stable when Step is adjusted; distance is
-  // now an advisory target, not a cap.
+test('planRangeSplit: distance caps active legs but reserved count stays stable', () => {
   const r = planRangeSplit({ ...baseSplit, distPips: 30 })
   assert.equal(r.pendingLegs, 10)
   assert.equal(r.immediateLegs, 10)
-  // And step itself is preserved (user controls placement spacing).
+  assert.equal(r.maxStepIdx, 3)
+  assert.equal(r.activePendingLegs, 3)
   assert.equal(r.effectiveStepPips, 10)
+  assert.equal(r.fallbackReason, 'range_trading_distance_capped')
 })
 
-test('planRangeSplit: step changes spacing but not count', () => {
-  // Same baseLegs=20, range_percent=50 → 10 pendings regardless of step.
+test('planRangeSplit: step changes spacing but not reserved count', () => {
   const small = planRangeSplit({ ...baseSplit, stepPips: 5 })
   const big = planRangeSplit({ ...baseSplit, stepPips: 25 })
   assert.equal(small.pendingLegs, 10)
   assert.equal(big.pendingLegs, 10)
   assert.equal(small.immediateLegs, 10)
   assert.equal(big.immediateLegs, 10)
-  // Spacing differs:
+  assert.equal(small.activePendingLegs, 10)
+  assert.equal(big.activePendingLegs, 4)
   assert.equal(small.effectiveStepPips, 5)
   assert.equal(big.effectiveStepPips, 25)
+  assert.equal(big.fallbackReason, 'range_trading_distance_capped')
 })
 
 test('planRangeSplit: auto-expands step when below broker minimum', () => {
@@ -179,6 +182,9 @@ const baseManual: ManualSettings = {
   fixed_lot: 1.0,
   trade_style: 'multi',
   multi_trade_leg_percent: 10,       // 10% per leg → 10 legs from 1.0 lot
+  // These tests verify range/leg geometry — disable burst consolidation so
+  // immediate order counts equal granular leg counts.
+  multi_trade_max_orders: 100,
   range_trading: true,
   range_percent: 50,                  // half immediates, half virtual pendings
   range_step_pips: 10,
@@ -186,6 +192,220 @@ const baseManual: ManualSettings = {
   tp_lots: [{ label: 'TP1', lot: 0, percent: 100, enabled: true }],
   pending_expiry_hours: 4,
 }
+
+// ── Burst consolidation (multi_trade_max_orders) ────────────────────────────
+
+test('planMultiManualOrders: default sends one order per granular leg (no consolidation)', () => {
+  const manual: ManualSettings = {
+    ...baseManual,
+    multi_trade_max_orders: undefined,
+    multi_trade_leg_percent: 5, // 5% per leg → 20 legs from 1.0 lot
+    range_trading: false,
+    tp_lots: [
+      { label: 'TP1', lot: 0, percent: 50, enabled: true },
+      { label: 'TP2', lot: 0, percent: 50, enabled: true },
+    ],
+  }
+  const plan = planManualOrders({
+    parsed: { ...baseParsed, tp: [1900, 1910] },
+    resolvedSymbol: 'XAUUSD',
+    baseOperation: 'Buy',
+    manual,
+    channelKeywords: null,
+    manualLot: 1.0,
+    ctx: baseCtx,
+    commentPrefix: 'TScopier:abc',
+  })
+  assert.equal(plan.orders.length, 20)
+  const totalVolume = plan.orders.reduce((s, o) => s + Number(o.volume), 0)
+  assert.ok(Math.abs(totalVolume - 1.0) < 1e-9)
+})
+
+test('planMultiManualOrders: falls back to single trade when per-leg % is below broker min', () => {
+  const manual: ManualSettings = {
+    ...baseManual,
+    multi_trade_leg_percent: 5,
+    range_trading: false,
+    tp_lots: [{ label: 'TP1', lot: 0, percent: 100, enabled: true }],
+  }
+  const plan = planManualOrders({
+    parsed: { ...baseParsed, tp: [1900] },
+    resolvedSymbol: 'XAUUSD',
+    baseOperation: 'Buy',
+    manual,
+    channelKeywords: null,
+    manualLot: 0.1,
+    ctx: baseCtx,
+    commentPrefix: 'TScopier:abc',
+  })
+  assert.equal(plan.orders.length, 1)
+  assert.equal(Number(plan.orders[0]?.volume), 0.1)
+})
+
+test('planMultiManualOrders: dynamic range trading opens multiple immediates when burst cap matches preview', () => {
+  const manual: ManualSettings = {
+    ...baseManual,
+    risk_mode: 'dynamic_balance_percent',
+    dynamic_balance_percent: 11,
+    multi_trade_leg_percent: 3,
+    multi_trade_max_orders: 34,
+    range_trading: true,
+    range_percent: 50,
+    range_step_pips: 3,
+    range_distance_pips: 30,
+    tp_lots: [{ label: 'TP1', lot: 0, percent: 100, enabled: true }],
+  }
+  const plan = planManualOrders({
+    parsed: { ...baseParsed, tp: [1900] },
+    resolvedSymbol: 'XAUUSD',
+    baseOperation: 'Buy',
+    manual,
+    channelKeywords: null,
+    manualLot: 3.42,
+    ctx: baseCtx,
+    commentPrefix: 'TScopier:abc',
+  })
+  assert.equal(plan.orders.length, 17)
+  assert.equal(plan.virtualPendings?.length, 10)
+  const totalVolume = plan.orders.reduce((s, o) => s + Number(o.volume), 0)
+  assert.ok(Math.abs(totalVolume - 1.7) < 1e-6)
+})
+
+test('planMultiManualOrders: stale burst cap of 1 consolidates dynamic range into one order (regression)', () => {
+  const manual: ManualSettings = {
+    ...baseManual,
+    risk_mode: 'dynamic_balance_percent',
+    dynamic_balance_percent: 11,
+    multi_trade_leg_percent: 3,
+    multi_trade_max_orders: 1,
+    range_trading: true,
+    range_percent: 50,
+    range_step_pips: 3,
+    range_distance_pips: 30,
+    tp_lots: [{ label: 'TP1', lot: 0, percent: 100, enabled: true }],
+  }
+  const plan = planManualOrders({
+    parsed: { ...baseParsed, tp: [1900] },
+    resolvedSymbol: 'XAUUSD',
+    baseOperation: 'Buy',
+    manual,
+    channelKeywords: null,
+    manualLot: 3.42,
+    ctx: baseCtx,
+    commentPrefix: 'TScopier:abc',
+  })
+  assert.equal(plan.orders.length, 1)
+  assert.ok(Math.abs(Number(plan.orders[0]?.volume) - 1.7) < 1e-6)
+})
+
+test('planMultiManualOrders: explicit cap consolidates legs, volume + TP split preserved', () => {
+  const manual: ManualSettings = {
+    ...baseManual,
+    multi_trade_max_orders: 8,
+    multi_trade_leg_percent: 5,
+    range_trading: false,
+    tp_lots: [
+      { label: 'TP1', lot: 0, percent: 50, enabled: true },
+      { label: 'TP2', lot: 0, percent: 50, enabled: true },
+    ],
+  }
+  const plan = planManualOrders({
+    parsed: { ...baseParsed, tp: [1900, 1910] },
+    resolvedSymbol: 'XAUUSD',
+    baseOperation: 'Buy',
+    manual,
+    channelKeywords: null,
+    manualLot: 1.0,
+    ctx: baseCtx,
+    commentPrefix: 'TScopier:abc',
+  })
+  assert.equal(plan.orders.length, 8)
+  const totalVolume = plan.orders.reduce((s, o) => s + Number(o.volume), 0)
+  assert.ok(Math.abs(totalVolume - 1.0) < 1e-9)
+  const byTp = new Map<number, number>()
+  for (const o of plan.orders) {
+    const tp = Number(o.takeprofit)
+    byTp.set(tp, (byTp.get(tp) ?? 0) + Number(o.volume))
+  }
+  assert.equal(byTp.size, 2)
+  assert.ok(Math.abs((byTp.get(1900) ?? 0) - 0.5) < 1e-9)
+  assert.ok(Math.abs((byTp.get(1910) ?? 0) - 0.5) < 1e-9)
+})
+
+test('planMultiManualOrders: cap of 2 emits one consolidated order per TP', () => {
+  const manual: ManualSettings = {
+    ...baseManual,
+    multi_trade_max_orders: 2,
+    multi_trade_leg_percent: 10, // 10 legs
+    range_trading: false,
+    tp_lots: [
+      { label: 'TP1', lot: 0, percent: 50, enabled: true },
+      { label: 'TP2', lot: 0, percent: 50, enabled: true },
+    ],
+  }
+  const plan = planManualOrders({
+    parsed: { ...baseParsed, tp: [1900, 1910] },
+    resolvedSymbol: 'XAUUSD',
+    baseOperation: 'Buy',
+    manual,
+    channelKeywords: null,
+    manualLot: 1.0,
+    ctx: baseCtx,
+    commentPrefix: 'TScopier:abc',
+  })
+  assert.equal(plan.orders.length, 2)
+  assert.ok(Math.abs(Number(plan.orders[0]!.volume) - 0.5) < 1e-9)
+  assert.ok(Math.abs(Number(plan.orders[1]!.volume) - 0.5) < 1e-9)
+  assert.equal(Number(plan.orders[0]!.takeprofit), 1900)
+  assert.equal(Number(plan.orders[1]!.takeprofit), 1910)
+})
+
+test('planMultiManualOrders: cap never drops below distinct TP count', () => {
+  const manual: ManualSettings = {
+    ...baseManual,
+    multi_trade_max_orders: 1, // fewer than distinct TPs — must still emit 2
+    multi_trade_leg_percent: 10,
+    range_trading: false,
+    tp_lots: [
+      { label: 'TP1', lot: 0, percent: 50, enabled: true },
+      { label: 'TP2', lot: 0, percent: 50, enabled: true },
+    ],
+  }
+  const plan = planManualOrders({
+    parsed: { ...baseParsed, tp: [1900, 1910] },
+    resolvedSymbol: 'XAUUSD',
+    baseOperation: 'Buy',
+    manual,
+    channelKeywords: null,
+    manualLot: 1.0,
+    ctx: baseCtx,
+    commentPrefix: 'TScopier:abc',
+  })
+  assert.equal(plan.orders.length, 2)
+})
+
+test('planMultiManualOrders: cap larger than leg count leaves granular legs untouched', () => {
+  const manual: ManualSettings = {
+    ...baseManual,
+    multi_trade_max_orders: 100,
+    multi_trade_leg_percent: 10,
+    range_trading: false,
+  }
+  const plan = planManualOrders({
+    parsed: { ...baseParsed, tp: [1900] },
+    resolvedSymbol: 'XAUUSD',
+    baseOperation: 'Buy',
+    manual,
+    channelKeywords: null,
+    manualLot: 1.0,
+    ctx: baseCtx,
+    commentPrefix: 'TScopier:abc',
+  })
+  assert.equal(plan.orders.length, 10)
+  for (const o of plan.orders) {
+    assert.ok(Math.abs(Number(o.volume) - 0.1) < 1e-9)
+  }
+})
 
 test('planManualOrders: range emits virtualPendings (not OrderSendArgs)', () => {
   const plan = planManualOrders({
@@ -196,11 +416,13 @@ test('planManualOrders: range emits virtualPendings (not OrderSendArgs)', () => 
     channelKeywords: null,
     manualLot: 1.0,
     ctx: baseCtx,
-    commentPrefix: 'TSCopier:abc',
+    commentPrefix: 'TScopier:abc',
   })
   // 10 legs total, 50% pendings → 5 immediates + 5 virtuals.
   assert.equal(plan.orders.length, 5)
   assert.equal(plan.virtualPendings?.length, 5)
+  assert.equal(plan.rangeLayering?.reservedPendingLegs, 5)
+  assert.equal(plan.rangeLayering?.activePendingLegs, 5)
   // No pending operations leaked into plan.orders.
   for (const o of plan.orders) {
     assert.ok(!String(o.operation).includes('Limit'))
@@ -217,6 +439,71 @@ test('planManualOrders: range emits virtualPendings (not OrderSendArgs)', () => 
   }
 })
 
+test('planManualOrders: XAUUSD range 30/3/50% spans 30 pips across 10 layering legs', () => {
+  const manual: ManualSettings = {
+    ...baseManual,
+    multi_trade_leg_percent: 5,
+    range_step_pips: 3,
+    range_distance_pips: 30,
+  }
+  const plan = planManualOrders({
+    parsed: { ...baseParsed, entry_price: 2650 },
+    resolvedSymbol: 'XAUUSD',
+    baseOperation: 'Buy',
+    manual,
+    channelKeywords: null,
+    manualLot: 1.0,
+    ctx: baseCtx,
+    commentPrefix: 'TScopier:abc',
+  })
+  assert.equal(plan.orders.length, 10)
+  assert.equal(plan.virtualPendings?.length, 10)
+  const rl = plan.rangeLayering
+  assert.ok(rl)
+  assert.equal(rl.rangeStepPips, 3)
+  assert.equal(rl.rangeDistancePips, 30)
+  assert.equal(rl.effectiveStepPips, 3)
+  assert.equal(rl.maxStepIdx, 10)
+  assert.equal(rl.reservedPendingLegs, 10)
+  assert.equal(rl.activePendingLegs, 10)
+  assert.ok(Math.abs(rl.stepPriceOffset - 0.3) < 1e-9)
+
+  const virtuals = plan.virtualPendings!
+  assert.equal(virtuals[0]!.stepIdx, 1)
+  assert.equal(virtuals[9]!.stepIdx, 10)
+  assert.ok(Math.abs(virtuals[0]!.stepPriceOffset - 0.3) < 1e-9)
+
+  const first = triggerPriceFor(virtuals[0]!, 2650, 2)
+  const last = triggerPriceFor(virtuals[9]!, 2650, 2)
+  assert.equal(first, 2649.7)
+  assert.equal(last, 2647)
+})
+
+test('planManualOrders: range distance caps layering when reserved exceeds floor(dist/step)', () => {
+  const manual: ManualSettings = {
+    ...baseManual,
+    multi_trade_leg_percent: 2.5,
+    range_percent: 50,
+    range_step_pips: 3,
+    range_distance_pips: 30,
+  }
+  const plan = planManualOrders({
+    parsed: { ...baseParsed, entry_price: 2650 },
+    resolvedSymbol: 'XAUUSD',
+    baseOperation: 'Buy',
+    manual,
+    channelKeywords: null,
+    manualLot: 4.0,
+    ctx: baseCtx,
+    commentPrefix: 'TScopier:abc',
+  })
+  // 4.0 lot @ 2.5% → 40 legs; 50% reserved → 20 pending; floor(30/3) → 10 active.
+  assert.equal(plan.rangeLayering?.reservedPendingLegs, 20)
+  assert.equal(plan.rangeLayering?.activePendingLegs, 10)
+  assert.equal(plan.virtualPendings?.length, 10)
+  assert.equal(plan.fallback_reason, 'range_trading_distance_capped')
+})
+
 test('planManualOrders: multi + BuyLimit + range uses market immediates but still emits virtual pendings', () => {
   const plan = planManualOrders({
     parsed: { ...baseParsed, entry_price: 1850 },
@@ -226,7 +513,7 @@ test('planManualOrders: multi + BuyLimit + range uses market immediates but stil
     channelKeywords: null,
     manualLot: 1.0,
     ctx: baseCtx,
-    commentPrefix: 'TSCopier:abc',
+    commentPrefix: 'TScopier:abc',
   })
   assert.equal(plan.orders.length, 5)
   assert.equal(plan.virtualPendings?.length, 5)
@@ -245,7 +532,7 @@ test('planManualOrders: range off → no virtualPendings', () => {
     channelKeywords: null,
     manualLot: 1.0,
     ctx: baseCtx,
-    commentPrefix: 'TSCopier:abc',
+    commentPrefix: 'TScopier:abc',
   })
   assert.equal(plan.virtualPendings, undefined)
   assert.equal(plan.orders.length, 10) // all 10 legs are immediates
@@ -274,7 +561,7 @@ test('planManualOrders: multi + 3 signal TPs uses Targets % on each leg', () => 
     channelKeywords: null,
     manualLot: 1.0,
     ctx: baseCtx,
-    commentPrefix: 'TSCopier:abc',
+    commentPrefix: 'TScopier:abc',
   })
   assert.equal(plan.orders.length, 10)
   assert.equal(plan.orders.filter(o => o.takeprofit === 4530).length, 5)
@@ -306,7 +593,7 @@ test('planManualOrders: multi + range applies Targets % separately to instant an
     channelKeywords: null,
     manualLot: 1.0,
     ctx: baseCtx,
-    commentPrefix: 'TSCopier:abc',
+    commentPrefix: 'TScopier:abc',
   })
   assert.equal(plan.orders.length, 5)
   assert.equal(plan.virtualPendings?.length, 5)
@@ -314,11 +601,11 @@ test('planManualOrders: multi + range applies Targets % separately to instant an
   assert.equal(plan.orders.filter(o => o.takeprofit === 4530).length, 3)
   assert.equal(plan.orders.filter(o => o.takeprofit === 4510).length, 2)
   assert.equal(plan.orders.filter(o => o.takeprofit === 4490).length, 0)
-  // Range pool (5 legs): same split independently
+  // Range pool (5 legs): same % split on the remaining TP ladder
   const rangeTps = (plan.virtualPendings ?? []).map(v => v.takeprofit)
-  assert.equal(rangeTps.filter(tp => tp === 4530).length, 3)
-  assert.equal(rangeTps.filter(tp => tp === 4510).length, 2)
-  assert.equal(rangeTps.filter(tp => tp === 4490).length, 0)
+  assert.equal(rangeTps.filter(tp => tp === 4510).length, 3)
+  assert.equal(rangeTps.filter(tp => tp === 4490).length, 2)
+  assert.equal(rangeTps.filter(tp => tp === 4530).length, 0)
 })
 
 test('planManualOrders: multi + BuyLimit → market immediates (price 0; avoids MT invalid pending price)', () => {
@@ -330,56 +617,13 @@ test('planManualOrders: multi + BuyLimit → market immediates (price 0; avoids 
     channelKeywords: null,
     manualLot: 1.0,
     ctx: baseCtx,
-    commentPrefix: 'TSCopier:abc',
+    commentPrefix: 'TScopier:abc',
   })
   assert.equal(plan.orders.length, 10)
   for (const o of plan.orders) {
     assert.equal(o.operation, 'Buy')
     assert.equal(o.price, 0)
   }
-})
-
-test('planManualOrders: CWE policy emitted for immediate legs', () => {
-  const plan = planManualOrders({
-    parsed: { ...baseParsed, entry_price: 1850 },
-    resolvedSymbol: 'XAUUSD',
-    baseOperation: 'Buy',
-    manual: {
-      ...baseManual,
-      close_worse_entries: true,
-      close_worse_entries_pips: 30,
-    },
-    channelKeywords: null,
-    manualLot: 1.0,
-    ctx: baseCtx,
-    commentPrefix: 'TSCopier:abc',
-  })
-  const cw = plan.closeWorseEntries
-  assert.ok(cw, 'CWE policy should be emitted when range + close_worse_entries are on')
-  assert.equal(cw!.pipsFromAnchor, 30)
-  assert.equal(cw!.immediates, 5)
-})
-
-test('planManualOrders: CWE policy emitted without range trading (immediates only)', () => {
-  const plan = planManualOrders({
-    parsed: { ...baseParsed, entry_price: 1850 },
-    resolvedSymbol: 'XAUUSD',
-    baseOperation: 'Buy',
-    manual: {
-      ...baseManual,
-      range_trading: false,
-      range_percent: 0,
-      close_worse_entries: true,
-      close_worse_entries_pips: 30,
-    },
-    channelKeywords: null,
-    manualLot: 1.0,
-    ctx: baseCtx,
-    commentPrefix: 'TSCopier:abc',
-  })
-  const cw = plan.closeWorseEntries
-  assert.ok(cw, 'CWE should apply to multi immediates even when range trading is off')
-  assert.ok(cw!.immediates > 0)
 })
 
 test('planManualOrders: sell ladder → virtualPendings carry isBuy=false', () => {
@@ -391,7 +635,7 @@ test('planManualOrders: sell ladder → virtualPendings carry isBuy=false', () =
     channelKeywords: null,
     manualLot: 1.0,
     ctx: baseCtx,
-    commentPrefix: 'TSCopier:abc',
+    commentPrefix: 'TScopier:abc',
   })
   const virtuals = plan.virtualPendings ?? []
   assert.ok(virtuals.length > 0)
@@ -418,6 +662,32 @@ test('strictSignalEntryQuoteAllowsImmediate: sell false when bid below entry', (
   assert.equal(strictSignalEntryQuoteAllowsImmediate({ isBuy: false, entryPrice: 4500, bid: 4499.99, ask: 4501 }), false)
 })
 
+test('strictSignalEntryQuoteAllowsImmediate: pip tolerance widens immediate window', () => {
+  const pip = 0.1
+  assert.equal(
+    strictSignalEntryQuoteAllowsImmediate({
+      isBuy: true,
+      entryPrice: 4500,
+      bid: 4499,
+      ask: 4500.5,
+      tolerancePips: 10,
+      pipSize: pip,
+    }),
+    true,
+  )
+  assert.equal(
+    strictSignalEntryQuoteAllowsImmediate({
+      isBuy: false,
+      entryPrice: 4500,
+      bid: 4499.5,
+      ask: 4501,
+      tolerancePips: 10,
+      pipSize: pip,
+    }),
+    true,
+  )
+})
+
 test('planManualOrders: use_signal_entry_price emits strictEntry + always Buy (executor gates quote)', () => {
   const plan = planManualOrders({
     parsed: { ...baseParsed, entry_price: 4500 },
@@ -433,10 +703,11 @@ test('planManualOrders: use_signal_entry_price emits strictEntry + always Buy (e
     channelKeywords: null,
     manualLot: 1.0,
     ctx: { ...baseCtx, liveBid: 4600, liveAsk: 4601 },
-    commentPrefix: 'TSCopier:abc',
+    commentPrefix: 'TScopier:abc',
   })
   assert.equal(plan.orders.length, 1)
   assert.equal(plan.orders[0]!.operation, 'Buy')
+  assert.equal(plan.orders[0]!.price, 0)
   assert.ok(plan.strictEntry)
   assert.equal(plan.strictEntry!.entryPrice, 4500)
   assert.equal(plan.strictEntry!.isBuy, true)
@@ -457,7 +728,7 @@ test('planManualOrders: use_signal_entry_price sell emits strictEntry + Sell', (
     channelKeywords: null,
     manualLot: 1.0,
     ctx: { ...baseCtx, liveBid: 4400, liveAsk: 4401 },
-    commentPrefix: 'TSCopier:abc',
+    commentPrefix: 'TScopier:abc',
   })
   assert.equal(plan.orders[0]!.operation, 'Sell')
   assert.ok(plan.strictEntry)
@@ -483,7 +754,7 @@ test('planManualOrders: strict entry + entry-shaped signal still skips range (op
     channelKeywords: null,
     manualLot: 1.0,
     ctx: { ...baseCtx, liveBid: maxBuy - 1, liveAsk: maxBuy - 0.5 },
-    commentPrefix: 'TSCopier:abc',
+    commentPrefix: 'TScopier:abc',
   })
   assert.equal(plan.orders[0]!.operation, 'Buy')
   assert.equal(plan.virtualPendings, undefined)
@@ -503,7 +774,7 @@ test('planManualOrders: single trade + use_signal_entry_price off uses Buy/Sell 
     channelKeywords: null,
     manualLot: 1.0,
     ctx: baseCtx,
-    commentPrefix: 'TSCopier:abc',
+    commentPrefix: 'TScopier:abc',
   })
   assert.equal(plan.orders.length, 1)
   assert.equal(plan.orders[0]!.operation, 'Buy')
@@ -528,11 +799,44 @@ test('planManualOrders: single+strict off+bare Buy stays Buy (no redundant op fl
     channelKeywords: null,
     manualLot: 1.0,
     ctx: baseCtx,
-    commentPrefix: 'TSCopier:abc',
+    commentPrefix: 'TScopier:abc',
   })
   assert.equal(plan.orders.length, 1)
   assert.equal(plan.orders[0]!.operation, 'Buy')
   assert.equal(plan.orders[0]!.price, 0)
+})
+
+test('planManualOrders: single trade + 3 TPs + 50/30/20 → partial_tp schedule on plan', () => {
+  const plan = planManualOrders({
+    parsed: {
+      ...baseParsed,
+      action: 'sell',
+      entry_price: 4292,
+      sl: 4299,
+      tp: [4290, 4288, 4286],
+    },
+    resolvedSymbol: 'XAUUSD',
+    baseOperation: 'Sell',
+    manual: {
+      ...baseManual,
+      trade_style: 'single',
+      range_trading: false,
+      tp_lots: [
+        { label: 'TP1', lot: 0.01, percent: 50, enabled: true },
+        { label: 'TP2', lot: 0.01, percent: 30, enabled: true },
+        { label: 'TP3', lot: 0.01, percent: 20, enabled: true },
+      ],
+    },
+    channelKeywords: null,
+    manualLot: 1.0,
+    ctx: baseCtx,
+    commentPrefix: 'TScopier:abc',
+  })
+  assert.equal(plan.orders.length, 1)
+  assert.equal(plan.orders[0]!.takeprofit, 4286)
+  assert.equal(plan.partialTps?.length, 2)
+  assert.equal(plan.partialTps![0]!.closeLots, 0.5)
+  assert.equal(plan.partialTps![1]!.closeLots, 0.3)
 })
 
 // ── planSinglePartialTps ───────────────────────────────────────────────────
@@ -735,10 +1039,54 @@ test('planManualOrders: use_signal_entry_price skips plan without explicit entry
     channelKeywords: null,
     manualLot: 1.0,
     ctx: { ...baseCtx, liveBid: undefined, liveAsk: undefined },
-    commentPrefix: 'TSCopier:abc',
+    commentPrefix: 'TScopier:abc',
   })
   assert.equal(plan.orders.length, 0)
   assert.equal(plan.skip_reason, 'signal_entry_price_requires_explicit_entry')
+})
+
+test('planManualOrders: use_signal_entry_range skips plan without explicit entry', () => {
+  const plan = planManualOrders({
+    parsed: { ...baseParsed, entry_price: null, entry_zone_low: null, entry_zone_high: null },
+    resolvedSymbol: 'XAUUSD',
+    baseOperation: 'Buy',
+    manual: {
+      ...baseManual,
+      trade_style: 'multi',
+      range_trading: true,
+      use_signal_entry_range: true,
+      signal_entry_pip_tolerance: 10,
+    },
+    channelKeywords: null,
+    manualLot: 1.0,
+    ctx: baseCtx,
+    commentPrefix: 'TScopier:abc',
+  })
+  assert.equal(plan.orders.length, 0)
+  assert.equal(plan.skip_reason, SKIP_REASON_SIGNAL_ENTRY_RANGE_REQUIRED)
+})
+
+test('planManualOrders: use_signal_entry_range emits rangeEntryWait when anchor present', () => {
+  const plan = planManualOrders({
+    parsed: { ...baseParsed, entry_price: 4505 },
+    resolvedSymbol: 'XAUUSD',
+    baseOperation: 'Buy',
+    manual: {
+      ...baseManual,
+      trade_style: 'multi',
+      range_trading: true,
+      use_signal_entry_range: true,
+      signal_entry_pip_tolerance: 10,
+    },
+    channelKeywords: null,
+    manualLot: 1.0,
+    ctx: baseCtx,
+    commentPrefix: 'TScopier:abc',
+  })
+  assert.ok(plan.orders.length > 0)
+  assert.ok(plan.rangeEntryWait)
+  assert.equal(plan.rangeEntryWait!.entryPrice, 4505)
+  assert.equal(plan.rangeEntryWait!.tolerancePips, 10)
 })
 
 test('planManualOrders: multi + use_signal_entry_price does not require explicit entry', () => {
@@ -755,7 +1103,7 @@ test('planManualOrders: multi + use_signal_entry_price does not require explicit
     channelKeywords: null,
     manualLot: 1.0,
     ctx: baseCtx,
-    commentPrefix: 'TSCopier:abc',
+    commentPrefix: 'TScopier:abc',
   })
   assert.notEqual(plan.skip_reason, SKIP_REASON_SIGNAL_ENTRY_REQUIRED)
   assert.equal(plan.strictEntry, undefined)
@@ -833,7 +1181,7 @@ test('planManualOrders: reverse_signal ignored when gate not satisfied', () => {
     channelKeywords: null,
     manualLot: 0.1,
     ctx: { ...baseCtx, point: 0.0001, digits: 5 },
-    commentPrefix: 'TSCopier:abc',
+    commentPrefix: 'TScopier:abc',
   })
   assert.equal(plan.isBuy, true)
   assert.ok(String(plan.orders[0]?.operation ?? '').startsWith('Buy'))
@@ -867,7 +1215,7 @@ test('planManualOrders: reverse_signal flips when predefined gate satisfied', ()
     channelKeywords: null,
     manualLot: 0.1,
     ctx: { ...baseCtx, point: 0.0001, digits: 5 },
-    commentPrefix: 'TSCopier:abc',
+    commentPrefix: 'TScopier:abc',
   })
   assert.equal(plan.isBuy, false)
   assert.ok(String(plan.orders[0]?.operation ?? '').startsWith('Sell'))
@@ -902,9 +1250,93 @@ test('planManualOrders: predefined SL wins over rr_for_sl when both apply', () =
     channelKeywords: null,
     manualLot: 0.1,
     ctx: { ...baseCtx, point: 0.0001, digits: 5 },
-    commentPrefix: 'TSCopier:abc',
+    commentPrefix: 'TScopier:abc',
   })
   const pip = signalPipPrice('EURUSD')
   const expectedSl = Number((entry - 50 * pip).toFixed(5))
   assert.equal(plan.orders[0]?.stoploss, expectedSl)
+})
+
+test('planManualOrders: use_signal_entry_range uses zone width for range layering', () => {
+  const manual: ManualSettings = {
+    ...baseManual,
+    range_step_pips: 3,
+    range_distance_pips: 30,
+    use_signal_entry_range: true,
+  }
+  const plan = planManualOrders({
+    parsed: {
+      ...baseParsed,
+      entry_zone_low: 4325,
+      entry_zone_high: 4335,
+    },
+    resolvedSymbol: 'XAUUSD',
+    baseOperation: 'Buy',
+    manual,
+    channelKeywords: null,
+    manualLot: 1.0,
+    ctx: baseCtx,
+    commentPrefix: 'TScopier:abc',
+  })
+  const rl = plan.rangeLayering
+  assert.ok(rl)
+  assert.equal(rl.useSignalEntryRange, true)
+  assert.equal(rl.signalRangeBoundary, 4325)
+  assert.equal(rl.effectiveDistancePips, 100) // 10 price units / 0.1 pip
+  assert.equal(rl.activePendingLegs, 5) // 50% of 10 legs reserved; zone width allows all 5
+})
+
+test('planManualOrders: use_signal_entry_range without zone falls back to range_distance_pips', () => {
+  const manual: ManualSettings = {
+    ...baseManual,
+    range_step_pips: 3,
+    range_distance_pips: 30,
+    use_signal_entry_range: true,
+  }
+  const plan = planManualOrders({
+    parsed: { ...baseParsed, entry_price: 4330 },
+    resolvedSymbol: 'XAUUSD',
+    baseOperation: 'Buy',
+    manual,
+    channelKeywords: null,
+    manualLot: 1.0,
+    ctx: baseCtx,
+    commentPrefix: 'TScopier:abc',
+  })
+  const rl = plan.rangeLayering
+  assert.ok(rl)
+  assert.equal(rl.effectiveDistancePips, 30)
+  assert.equal(rl.signalRangeBoundary, null)
+  assert.equal(rl.activePendingLegs, 5) // 30/3 = 10 max steps; 5 reserved pendings
+})
+
+test('planManualOrders: signal range buy virtual triggers do not go below zone low', () => {
+  const manual: ManualSettings = {
+    ...baseManual,
+    range_step_pips: 3,
+    range_distance_pips: 30,
+    use_signal_entry_range: true,
+  }
+  const plan = planManualOrders({
+    parsed: {
+      ...baseParsed,
+      entry_zone_low: 4325,
+      entry_zone_high: 4335,
+    },
+    resolvedSymbol: 'XAUUSD',
+    baseOperation: 'Buy',
+    manual,
+    channelKeywords: null,
+    manualLot: 1.0,
+    ctx: baseCtx,
+    commentPrefix: 'TScopier:abc',
+  })
+  const anchor = 4330
+  const boundary = plan.rangeLayering?.signalRangeBoundary ?? null
+  const virtuals = plan.virtualPendings ?? []
+  assert.ok(virtuals.length > 0)
+  for (const v of virtuals) {
+    const trigger = triggerPriceFor(v, anchor, 2)
+    assert.ok(trigger >= (boundary ?? 0), `step ${v.stepIdx} trigger ${trigger} below ${boundary}`)
+  }
 })

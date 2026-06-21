@@ -11,10 +11,14 @@ exports.storedPerChannelConfigComplete = storedPerChannelConfigComplete;
 exports.channelConfigReadyForExecution = channelConfigReadyForExecution;
 exports.resolveChannelTradingConfig = resolveChannelTradingConfig;
 exports.withChannelTradingConfig = withChannelTradingConfig;
-exports.cloneChannelTradingConfig = cloneChannelTradingConfig;
-exports.removeChannelTradingConfigKey = removeChannelTradingConfigKey;
 const normalizeManualSettings_1 = require("./manualPlanning/normalizeManualSettings");
 const brokerChannelFilter_1 = require("./brokerChannelFilter");
+const copyLimitTypes_1 = require("./copyLimitTypes");
+const effectiveBrokerBalance_1 = require("./effectiveBrokerBalance");
+function brokerAccountBalance(broker) {
+    const bal = (0, effectiveBrokerBalance_1.resolveBrokerTotalBalance)(broker) ?? 0;
+    return bal > 0 ? bal : null;
+}
 function normalizeChannelUuid(id) {
     const s = String(id ?? '').trim();
     return s ? s.toLowerCase() : null;
@@ -37,6 +41,9 @@ function normalizeChannelTradingConfigsMap(raw) {
             ai_settings: row.ai_settings && typeof row.ai_settings === 'object'
                 ? row.ai_settings
                 : undefined,
+            copy_limit_state: row.copy_limit_state && typeof row.copy_limit_state === 'object'
+                ? (0, copyLimitTypes_1.normalizeCopyLimitState)(row.copy_limit_state)
+                : undefined,
         };
     }
     return out;
@@ -53,7 +60,7 @@ function resolveChannelConfigEntry(configs, channelId) {
     }
     return undefined;
 }
-function mergeHealedChannelManualSettings(existing, brokerFallback, defaultManual) {
+function mergeHealedChannelManualSettings(existing, brokerFallback, defaultManual, accountBalance) {
     const base = channelManualSettingsComplete(brokerFallback) ? brokerFallback : defaultManual;
     const partial = existing && typeof existing === 'object' && !Array.isArray(existing)
         && !isMinimalSeedManualSettings(existing)
@@ -62,14 +69,19 @@ function mergeHealedChannelManualSettings(existing, brokerFallback, defaultManua
     return (0, normalizeManualSettings_1.normalizeManualSettingsForExecution)({
         ...base,
         ...partial,
-    });
+    }, { accountBalance });
 }
 function healChannelTradingConfigsMap(broker) {
     const configs = { ...normalizeChannelTradingConfigsMap(broker.channel_trading_configs) };
     const linkedIds = (0, brokerChannelFilter_1.normalizeSignalChannelIds)(broker.signal_channel_ids);
-    const fallbackManual = (0, normalizeManualSettings_1.normalizeManualSettingsForExecution)(broker.manual_settings);
+    const multiChannel = linkedIds.length > 1;
+    const balance = brokerAccountBalance(broker);
+    const brokerFallbackManual = (0, normalizeManualSettings_1.normalizeManualSettingsForExecution)(broker.manual_settings, { accountBalance: balance });
     const defaultManual = (0, normalizeManualSettings_1.normalizeManualSettingsForExecution)(buildDefaultChannelTradingConfig().manual_settings);
     const fallbackMode = (broker.copier_mode ?? 'manual');
+    // broker.manual_settings mirrors the last channel saved in Account Configuration —
+    // never use it to heal other linked channels or lot/style bleed across providers.
+    const healBrokerFallback = multiChannel ? defaultManual : brokerFallbackManual;
     for (const channelId of linkedIds) {
         const key = normalizeChannelUuid(channelId);
         if (!key)
@@ -77,19 +89,22 @@ function healChannelTradingConfigsMap(broker) {
         if (storedPerChannelConfigComplete(configs, key))
             continue;
         const existing = resolveChannelConfigEntry(configs, key);
-        const manual = mergeHealedChannelManualSettings(existing?.manual_settings, fallbackManual, defaultManual);
+        const manual = mergeHealedChannelManualSettings(existing?.manual_settings, healBrokerFallback, defaultManual, balance);
         if (!channelManualSettingsComplete(manual)) {
             console.warn(`[channelTradingConfig] healed incomplete per-channel config for ${key}`
                 + ' — open Account Configuration, set lot + Single/Multi, Save');
         }
         else if (!existing?.manual_settings || !channelManualSettingsComplete(existing.manual_settings)) {
             console.warn(`[channelTradingConfig] healed missing per-channel config for ${key}`
-                + ' from broker manual_settings / defaults — re-save Account Configuration for this channel');
+                + (multiChannel
+                    ? ' from defaults — re-save Account Configuration for this channel'
+                    : ' from broker manual_settings / defaults — re-save Account Configuration for this channel'));
         }
         configs[key] = {
             copier_mode: existing?.copier_mode ?? fallbackMode,
             manual_settings: manual,
             ai_settings: (existing?.ai_settings ?? broker.ai_settings ?? {}),
+            copy_limit_state: existing?.copy_limit_state,
         };
     }
     return configs;
@@ -124,6 +139,8 @@ function isMinimalSeedManualSettings(raw) {
         return true;
     const row = raw;
     if ('schema_version' in row)
+        return false;
+    if (row.copy_limits != null && typeof row.copy_limits === 'object')
         return false;
     if (!channelManualSettingsComplete(row))
         return true;
@@ -165,7 +182,8 @@ function channelConfigReadyForExecution(broker, channelId) {
 }
 function resolveChannelTradingConfig(broker, channelId) {
     const fallbackMode = (broker.copier_mode ?? 'manual');
-    const fallbackManual = (0, normalizeManualSettings_1.normalizeManualSettingsForExecution)(broker.manual_settings);
+    const balance = brokerAccountBalance(broker);
+    const fallbackManual = (0, normalizeManualSettings_1.normalizeManualSettingsForExecution)(broker.manual_settings, { accountBalance: balance });
     const fallbackAi = (broker.ai_settings ?? {});
     if (!channelId) {
         return {
@@ -181,7 +199,7 @@ function resolveChannelTradingConfig(broker, channelId) {
     if (ready.ready && ready.source === 'per_channel' && channelConfig) {
         return {
             copier_mode: channelConfig.copier_mode ?? fallbackMode,
-            manual_settings: (0, normalizeManualSettings_1.normalizeManualSettingsForExecution)(channelConfig.manual_settings),
+            manual_settings: (0, normalizeManualSettings_1.normalizeManualSettingsForExecution)(channelConfig.manual_settings, { accountBalance: balance }),
             ai_settings: (channelConfig.ai_settings ?? fallbackAi),
             config_source: 'per_channel',
         };
@@ -210,20 +228,4 @@ function withChannelTradingConfig(broker, channelId) {
         manual_settings: resolved.manual_settings,
         ai_settings: resolved.ai_settings,
     };
-}
-function cloneChannelTradingConfig(from) {
-    return {
-        copier_mode: from.copier_mode ?? 'manual',
-        manual_settings: from.manual_settings
-            ? JSON.parse(JSON.stringify(from.manual_settings))
-            : buildDefaultChannelTradingConfig().manual_settings,
-        ai_settings: from.ai_settings
-            ? JSON.parse(JSON.stringify(from.ai_settings))
-            : {},
-    };
-}
-function removeChannelTradingConfigKey(configs, channelId) {
-    const next = { ...configs };
-    delete next[channelId];
-    return next;
 }

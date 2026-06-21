@@ -21,6 +21,33 @@ interface FooterLink {
   highlight?: boolean
 }
 
+function FooterNavLink({ link }: { link: FooterLink }) {
+  const className = clsx(
+    'text-sm transition-colors',
+    link.highlight
+      ? 'font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300'
+      : 'text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100',
+  )
+
+  if (link.href.startsWith('/') && !link.external) {
+    return (
+      <Link to={link.href} className={className}>
+        {link.label}
+      </Link>
+    )
+  }
+
+  return (
+    <a
+      href={link.href}
+      className={className}
+      {...(link.external ? { target: '_blank', rel: 'noopener noreferrer' } : undefined)}
+    >
+      {link.label}
+    </a>
+  )
+}
+
 function FooterNavColumn({
   title,
   links,
@@ -36,20 +63,7 @@ function FooterNavColumn({
       <ul className="mt-4 space-y-2.5">
         {links.map((link) => (
           <li key={link.label}>
-            <a
-              href={link.href}
-              className={clsx(
-                'text-sm transition-colors',
-                link.highlight
-                  ? 'font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300'
-                  : 'text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100',
-              )}
-              {...(link.external
-                ? { target: '_blank', rel: 'noopener noreferrer' }
-                : undefined)}
-            >
-              {link.label}
-            </a>
+            <FooterNavLink link={link} />
           </li>
         ))}
       </ul>
@@ -67,12 +81,16 @@ export function MarketingFooter() {
   const productLinks: FooterLink[] = [
     { label: f.links.overview, href: '#product' },
     { label: f.links.features, href: '#features' },
-    { label: f.links.pricing, href: '#pricing' },
+    { label: f.links.pricing, href: '/pricing' },
     { label: f.links.howItWorks, href: '#how-it-works' },
     { label: f.links.faq, href: '#faq' },
   ]
 
   const resourceLinks: FooterLink[] = [
+    { label: f.links.termsOfService, href: '/terms' },
+    { label: f.links.privacyPolicy, href: '/privacy' },
+    { label: f.links.cookiePolicy, href: '/cookie-policy' },
+    { label: f.links.riskDisclaimer, href: '/risk-disclaimer' },
     { label: f.links.docs, href: HELP_LINKS.documentation, external: true },
     { label: f.links.status, href: HELP_LINKS.status, external: true },
     ...(HELP_LINKS.telegram
@@ -130,7 +148,7 @@ export function MarketingFooter() {
         <div className="mx-auto max-w-6xl px-5 py-12 sm:px-8 sm:py-14">
           <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-[1.4fr_repeat(3,minmax(0,1fr))] lg:gap-8">
             <div className="sm:col-span-2 lg:col-span-1">
-              <Link to="/" className="inline-flex" aria-label="TSCopier home">
+              <Link to="/" className="inline-flex" aria-label="TScopier home">
                 <TscopierLogo className="h-7 w-auto" />
               </Link>
               <p className="mt-4 max-w-xs text-sm leading-relaxed text-neutral-600 dark:text-neutral-400">

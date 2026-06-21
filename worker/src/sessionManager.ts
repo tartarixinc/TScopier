@@ -2,7 +2,7 @@ import { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js'
 import { TelegramClient } from 'telegram'
 import { runEphemeralBacktestSync, runWithEphemeralListener } from './backtestSync'
 import { TelegramSessionInvalidError } from './telegramClient'
-import { ChannelInfo, ListenerStatus, UserListener } from './userListener'
+import { ChannelInfo, ListenerStatus, UserListener, type SignalReconcileStats } from './userListener'
 import {
   acquireSessionLease,
   listActiveLeases,
@@ -415,6 +415,10 @@ export class UserSessionManager {
   }
 
   async listChannels(userId: string, opts?: { skipColdDelay?: boolean }): Promise<ChannelInfo[]> {
+    const local = this.listeners.get(userId)
+    if (local?.isTelegramConnected()) {
+      return local.listChannels(opts)
+    }
     const listener = await this.ensureListener(userId)
     return listener.listChannels(opts)
   }
@@ -447,7 +451,12 @@ export class UserSessionManager {
     return listener
   }
 
-  async backfillChannelHistory(userId: string, channelRowId: string, days: number) {
+  async backfillChannelHistory(
+    userId: string,
+    channelRowId: string,
+    days: number,
+    opts?: { forTraining?: boolean },
+  ) {
     // Prefer the live listener (listener-only deploys). Avoids a second MTProto
     // connection that would trigger AUTH_KEY_DUPLICATED.
     if (workerConfig.runsListener) {
@@ -460,7 +469,7 @@ export class UserSessionManager {
         }
       }
       if (listener?.isTelegramConnected()) {
-        return listener.backfillChannelHistory(channelRowId, days)
+        return listener.backfillChannelHistory(channelRowId, days, opts)
       }
     }
 
@@ -471,7 +480,7 @@ export class UserSessionManager {
     }
     return this.withEphemeralTelegram(userId, () =>
       runWithEphemeralListener(this.supabase, userId, listener =>
-        listener.backfillChannelHistory(channelRowId, days),
+        listener.backfillChannelHistory(channelRowId, days, opts),
       ),
     )
   }
@@ -524,24 +533,56 @@ export class UserSessionManager {
       && (workerConfig.role === 'all' || process.env.BACKTEST_PAUSE_LIVE_LISTENER !== 'false')
 
     let sessionString: string | null = null
-    if (pauseLive && this.listeners.has(userId)) {
+    let hadLiveListener = false
+    if (pauseLive) {
       sessionString = (await this.supabase
         .from('telegram_sessions')
         .select('session_string')
         .eq('user_id', userId)
         .maybeSingle()).data?.session_string ?? null
-      console.log(`[sessionManager] pausing live listener for backtest user=${userId}`)
-      await this.stopListener(userId)
-      await new Promise(r => setTimeout(r, 2000))
+      hadLiveListener = this.listeners.has(userId)
+      if (hadLiveListener) {
+        console.log(`[sessionManager] pausing live listener for backtest user=${userId}`)
+        await this.stopListener(userId)
+      }
+      if (sessionString) {
+        await new Promise(r => setTimeout(r, authKeyReleaseDelayMs()))
+      }
     }
 
     try {
       return await fn()
     } finally {
-      if (pauseLive && sessionString) {
-        await this.startListener(userId, sessionString)
+      if (pauseLive && sessionString && hadLiveListener) {
+        await this.restartListenerAfterBacktest(userId, sessionString)
       }
     }
+  }
+
+  /** Backtest pauses the copier listener; retry MTProto restart so Telegram does not stay offline. */
+  private async restartListenerAfterBacktest(userId: string, sessionString: string): Promise<void> {
+    const retryDelaysMs = [0, 3_000, 5_000, 10_000]
+    for (let attempt = 0; attempt < retryDelaysMs.length; attempt++) {
+      const delay = retryDelaysMs[attempt] ?? 0
+      if (delay > 0) await new Promise(r => setTimeout(r, delay))
+      if (this.listeners.has(userId)) {
+        console.log(`[sessionManager] listener restored after backtest user=${userId}`)
+        return
+      }
+      try {
+        await this.startListener(userId, sessionString)
+      } catch (err) {
+        console.warn(
+          `[sessionManager] restart listener after backtest attempt ${attempt + 1} for ${userId}:`,
+          err instanceof Error ? err.message : err,
+        )
+      }
+      if (this.listeners.has(userId)) return
+    }
+    console.error(
+      `[sessionManager] failed to restart listener after backtest user=${userId}`
+      + ' — open Copier Engine and use Reconnect Telegram',
+    )
   }
 
   private async startListener(userId: string, sessionString: string): Promise<void> {
@@ -593,6 +634,48 @@ export class UserSessionManager {
     await this.withConnectionLock(userId, async () => {
       await this.disconnectListener(userId)
     })
+  }
+
+  async reconcileUserSignals(
+    userId: string,
+    opts?: { channelRowId?: string },
+  ): Promise<{ ok: boolean; reason?: string; stats?: SignalReconcileStats }> {
+    if (!userBelongsToShard(userId)) {
+      return { ok: false, reason: 'wrong_shard' }
+    }
+    const listener = this.listeners.get(userId)
+    if (!listener) {
+      return { ok: false, reason: 'listener_not_running' }
+    }
+    let channelRow: { id: string; channel_id: string; channel_username: string } | undefined
+    if (opts?.channelRowId) {
+      const { data } = await this.supabase
+        .from('telegram_channels')
+        .select('id, channel_id, channel_username, last_seen_message_id, last_seen_at, last_live_at')
+        .eq('id', opts.channelRowId)
+        .eq('user_id', userId)
+        .maybeSingle()
+      if (data) channelRow = data as typeof channelRow
+    }
+    const stats = await listener.runSignalTelegramReconcile('cron', channelRow as never)
+    return { ok: true, stats }
+  }
+
+  async reconcileAllListenersOnShard(): Promise<{
+    users: number
+    stats: SignalReconcileStats
+  }> {
+    const totals: SignalReconcileStats = { checked: 0, mismatches: 0, revised: 0, errors: 0 }
+    let users = 0
+    for (const [, listener] of this.listeners) {
+      users += 1
+      const stats = await listener.runSignalTelegramReconcile('cron')
+      totals.checked += stats.checked
+      totals.mismatches += stats.mismatches
+      totals.revised += stats.revised
+      totals.errors += stats.errors
+    }
+    return { users, stats: totals }
   }
 
   async disconnectAll() {

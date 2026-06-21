@@ -2,11 +2,13 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CweCloseMonitor = void 0;
 exports.isCweTriggered = isCweTriggered;
-const metatraderapi_1 = require("./metatraderapi");
+const fxsocketClient_1 = require("./fxsocketClient");
 const mtApiByAccount_1 = require("./mtApiByAccount");
 const monitorIdleGate_1 = require("./monitorIdleGate");
-const ACTIVE_MS = (0, monitorIdleGate_1.monitorActiveIntervalMs)('CWE_CLOSE_TICK_MS', 1500);
-const IDLE_MS = (0, monitorIdleGate_1.monitorIdleIntervalMs)('CWE_CLOSE_IDLE_MS', 60000);
+const rangeLayerTillClose_1 = require("./rangeLayerTillClose");
+const copierPause_1 = require("./copierPause");
+const ACTIVE_MS = (0, monitorIdleGate_1.monitorActiveIntervalMs)('CWE_CLOSE_TICK_MS', 400);
+const IDLE_MS = (0, monitorIdleGate_1.monitorIdleIntervalMs)('CWE_CLOSE_IDLE_MS', 15000);
 /**
  * Pure trigger check. Exported so the unit test can lock the
  * direction-aware comparison without spinning up a Supabase client.
@@ -39,7 +41,7 @@ class CweCloseMonitor {
     start() {
         if (this.loop)
             return;
-        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)()) {
+        if (!(0, fxsocketClient_1.hasFxsocketConfigured)()) {
             console.warn('[cweCloseMonitor] MT4API_BASIC_USER/PASSWORD missing — close-worse-entries monitor disabled');
             return;
         }
@@ -72,7 +74,7 @@ class CweCloseMonitor {
         }
     }
     async tick() {
-        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
+        if (!(0, fxsocketClient_1.hasFxsocketConfigured)())
             return;
         // Pull every open trade that has a CWE close threshold pinned to it.
         // The partial index `trades_cwe_open_idx` makes this a constant-time
@@ -90,7 +92,8 @@ class CweCloseMonitor {
             console.error('[cweCloseMonitor] select failed:', error.message);
             return;
         }
-        const rows = (data ?? []);
+        const rows = (data ?? [])
+            .filter(r => !(0, copierPause_1.isUserCopierPausedCached)(r.user_id));
         if (!this.firstTickLogged) {
             this.firstTickLogged = true;
             console.log(`[cweCloseMonitor] first tick ok watched_rows=${rows.length}`);
@@ -100,26 +103,27 @@ class CweCloseMonitor {
             return;
         }
         // Resolve each broker_account_id once so we can call /Quote and
-        // /OrderClose by metaapi_account_id (the platform's UUID). Trades that
-        // reference a deleted broker silently skip.
+        // /OrderClose by FxSocket terminal UUID. Trades that reference a deleted
+        // broker silently skip.
         const brokerIds = Array.from(new Set(rows.map(r => r.broker_account_id).filter((x) => !!x)));
-        const brokerMap = new Map(); // broker_account_id -> metaapi_account_id
+        const brokerMap = new Map(); // broker_account_id -> fxsocket session id
         if (brokerIds.length > 0) {
             const { data: brokers, error: brokerErr } = await this.supabase
                 .from('broker_accounts')
-                .select('id,metaapi_account_id,platform')
+                .select('id,fxsocket_account_id,metaapi_account_id,platform')
                 .in('id', brokerIds);
             if (brokerErr) {
                 console.error('[cweCloseMonitor] broker lookup failed:', brokerErr.message);
                 return;
             }
             for (const b of (brokers ?? [])) {
-                if (b.metaapi_account_id)
-                    brokerMap.set(b.id, b.metaapi_account_id);
+                const sessionId = (0, mtApiByAccount_1.brokerSessionId)(b);
+                if (sessionId)
+                    brokerMap.set(b.id, sessionId);
             }
         }
-        const platformByUuid = await (0, mtApiByAccount_1.loadPlatformByMetaapiId)(this.supabase, Array.from(brokerMap.values()));
-        // Group by (metaapi_account_id, symbol) so we issue at most ONE /Quote per
+        const platformByUuid = await (0, mtApiByAccount_1.loadPlatformByFxsocketId)(this.supabase, Array.from(brokerMap.values()));
+        // Group by (fxsocket session id, symbol) so we issue at most ONE /Quote per
         // group per tick. Same shape as virtualPendingMonitor for consistency.
         const groups = new Map();
         for (const r of rows) {
@@ -141,7 +145,7 @@ class CweCloseMonitor {
             const [uuid, symbol] = key.split('|');
             if (!uuid || !symbol)
                 return;
-            const api = (0, mtApiByAccount_1.apiForMetaapiAccount)(platformByUuid, uuid);
+            const api = (0, mtApiByAccount_1.apiForFxsocketAccount)(platformByUuid, uuid);
             if (!api)
                 return;
             let q;
@@ -258,6 +262,14 @@ class CweCloseMonitor {
                 },
                 response_payload: { ticket: result.ticket, latency_ms: latencyMs },
             });
+            if (trade.signal_id && trade.broker_account_id) {
+                await (0, rangeLayerTillClose_1.stopRangeLayeringUnlessEnabled)(this.supabase, {
+                    signalId: trade.signal_id,
+                    brokerAccountId: trade.broker_account_id,
+                    symbol: trade.symbol,
+                    userId: trade.user_id,
+                }, 'cwe_close');
+            }
             return true;
         }
         catch (err) {
@@ -272,6 +284,14 @@ class CweCloseMonitor {
                     .from('trades')
                     .update({ status: 'closed', closed_at: new Date().toISOString() })
                     .eq('id', trade.id);
+                if (trade.signal_id && trade.broker_account_id) {
+                    await (0, rangeLayerTillClose_1.stopRangeLayeringUnlessEnabled)(this.supabase, {
+                        signalId: trade.signal_id,
+                        brokerAccountId: trade.broker_account_id,
+                        symbol: trade.symbol,
+                        userId: trade.user_id,
+                    }, 'cwe_close_benign');
+                }
                 return true;
             }
             console.error(`[cweCloseMonitor] close failed signal=${trade.signal_id ?? 'n/a'} ticket=${ticketNum}: ${msg}`);

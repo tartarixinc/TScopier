@@ -7,8 +7,13 @@ exports.MESSAGE_EDIT_DISPATCH_SOURCE = void 0;
 exports.loadSignalByTelegramMessage = loadSignalByTelegramMessage;
 exports.buildMessageEditDispatchRow = buildMessageEditDispatchRow;
 exports.updateSignalAfterTelegramEdit = updateSignalAfterTelegramEdit;
+exports.normalizedTradeAction = normalizedTradeAction;
+exports.messageEditDirectionFlipped = messageEditDirectionFlipped;
+exports.messageEditDirectionFlippedFromActions = messageEditDirectionFlippedFromActions;
+exports.storedMessageDiffersFromTelegram = storedMessageDiffersFromTelegram;
 exports.messageEditParseEligible = messageEditParseEligible;
 const multiTradeMerge_1 = require("./multiTradeMerge");
+const telegramMessageEditSweep_1 = require("./telegramMessageEditSweep");
 exports.MESSAGE_EDIT_DISPATCH_SOURCE = 'message_edit';
 async function loadSignalByTelegramMessage(supabase, args) {
     const { data, error } = await supabase
@@ -39,17 +44,40 @@ function buildMessageEditDispatchRow(existing, parseResult, rawMessage, pipeline
 }
 async function updateSignalAfterTelegramEdit(supabase, args) {
     const editedAt = new Date().toISOString();
-    const { error } = await supabase
-        .from('signals')
-        .update({
+    const patch = {
         raw_message: args.rawMessage,
         parsed_data: args.parseResult.parsed,
         status: 'parsed',
         skip_reason: null,
         telegram_message_edited_at: editedAt,
-    })
+    };
+    if (args.telegramMessageEditDate != null && args.telegramMessageEditDate > 0) {
+        patch.telegram_message_edit_date = Math.floor(args.telegramMessageEditDate);
+    }
+    const { error } = await supabase
+        .from('signals')
+        .update(patch)
         .eq('id', args.signalId);
     return !error;
+}
+function normalizedTradeAction(action) {
+    const a = String(action ?? '').toLowerCase();
+    if (a === 'buy' || a === 'sell')
+        return a;
+    return null;
+}
+function messageEditDirectionFlipped(existing, parseResult) {
+    return messageEditDirectionFlippedFromActions(existing.parsed_data?.action, parseResult.parsed?.action);
+}
+function messageEditDirectionFlippedFromActions(priorAction, nextAction) {
+    const oldA = normalizedTradeAction(priorAction);
+    const newA = normalizedTradeAction(nextAction);
+    if (!oldA || !newA)
+        return false;
+    return oldA !== newA;
+}
+function storedMessageDiffersFromTelegram(stored, fetched) {
+    return (0, telegramMessageEditSweep_1.messageTextChanged)(stored, fetched);
 }
 function messageEditParseEligible(parseResult) {
     if (parseResult.status !== 'parsed')

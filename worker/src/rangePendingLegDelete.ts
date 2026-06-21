@@ -3,6 +3,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { clearTpTouchedLock } from './rangePendingFireGuard'
 
 export type BasketScope = {
   signalId: string
@@ -54,7 +55,11 @@ export async function purgeRangePendingLegsIfBasketFlat(
     return 0
   }
   if ((count ?? 0) > 0) return 0
-  return deleteRangePendingLegsForBasket(supabase, scope, reason)
+  const deleted = await deleteRangePendingLegsForBasket(supabase, scope, reason)
+  if (deleted > 0) {
+    await clearTpTouchedLock(supabase, scope)
+  }
+  return deleted
 }
 
 export async function purgeRangePendingLegsForBaskets(

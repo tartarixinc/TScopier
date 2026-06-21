@@ -1,40 +1,66 @@
 import type { BrokerAccount } from '../types/database'
-import { isMtSessionUuid } from './brokerLink'
-import { brokerNeedsPasswordForReconnectMessage } from './brokerConnectError'
+import { hasFxsocketBrokerSession } from './brokerLink'
 
-/** True only when the DB session flag is explicitly connected. */
+export function isBrokerSessionHealthy(
+  account: Pick<BrokerAccount, 'fxsocket_status' | 'connection_status'>,
+): boolean {
+  const status = account.fxsocket_status ?? account.connection_status
+  return status === 'connected' || status === 'connecting' || status === 'recovering'
+}
+
 export function isBrokerSessionConnected(
-  account: Pick<BrokerAccount, 'connection_status'>,
+  account: Pick<BrokerAccount, 'fxsocket_status' | 'connection_status'>,
 ): boolean {
-  return account.connection_status === 'connected'
+  const status = account.fxsocket_status ?? account.connection_status
+  return status === 'connected'
 }
 
-/** Broker has a MetatraderAPI session that can be restored via reconnect. */
 export function brokerCanReconnect(
-  account: Pick<BrokerAccount, 'metaapi_account_id' | 'connection_status'>,
+  account: Pick<BrokerAccount, 'fxsocket_account_id' | 'fxsocket_status' | 'connection_status'>,
 ): boolean {
-  return isMtSessionUuid(account.metaapi_account_id) && !isBrokerSessionConnected(account)
+  const status = account.fxsocket_status ?? account.connection_status
+  return hasFxsocketBrokerSession(account) && status === 'error'
 }
 
-export function brokerNeedsPasswordForReconnect(message: string | undefined): boolean {
-  return brokerNeedsPasswordForReconnectMessage(message)
+type BrokerConnectionStatusLabels = {
+  statusPaused: string
+  statusConnected: string
+  statusConnecting: string
+  statusRecovering: string
+  statusDisconnected: string
 }
 
-/** User-facing connection label for broker list rows (active accounts only). */
+/** User-facing link state — pending first-time connect vs session recovery. */
+function brokerConnectionDisplayPhase(
+  account: Pick<BrokerAccount, 'fxsocket_status' | 'connection_status'>,
+): 'connected' | 'connecting' | 'recovering' | 'disconnected' {
+  if (account.connection_status === 'pending') return 'connecting'
+  if (account.connection_status === 'recovering') return 'recovering'
+
+  const status = account.fxsocket_status ?? account.connection_status
+  if (status === 'connected') return 'connected'
+  if (status === 'connecting') return 'recovering'
+  return 'disconnected'
+}
+
 export function brokerConnectionStatusLabel(
-  account: Pick<BrokerAccount, 'is_active' | 'connection_status'>,
-  labels: { statusPaused: string; statusConnected: string; statusDisconnected: string },
+  account: Pick<BrokerAccount, 'is_active' | 'fxsocket_status' | 'connection_status'>,
+  labels: BrokerConnectionStatusLabels,
 ): string {
   if (!account.is_active) return labels.statusPaused
-  if (isBrokerSessionConnected(account)) return labels.statusConnected
+
+  const phase = brokerConnectionDisplayPhase(account)
+  if (phase === 'connected') return labels.statusConnected
+  if (phase === 'connecting') return labels.statusConnecting
+  if (phase === 'recovering') return labels.statusRecovering
   return labels.statusDisconnected
 }
 
-/** Badge variant for broker list connection state. */
 export function brokerConnectionBadgeVariant(
-  account: Pick<BrokerAccount, 'is_active' | 'connection_status'>,
-): 'success' | 'neutral' | 'error' {
+  account: Pick<BrokerAccount, 'is_active' | 'fxsocket_status' | 'connection_status'>,
+): 'primary' | 'neutral' | 'error' {
   if (!account.is_active) return 'neutral'
-  if (isBrokerSessionConnected(account)) return 'success'
+  const status = account.fxsocket_status ?? account.connection_status
+  if (status === 'connected' || status === 'connecting' || status === 'recovering') return 'primary'
   return 'error'
 }

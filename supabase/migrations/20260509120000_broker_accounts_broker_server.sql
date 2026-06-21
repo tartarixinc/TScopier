@@ -1,4 +1,4 @@
--- Persist MT server string for display and broker-name inference (Metatraderapi uses opaque account ids).
+-- Persist MT server string for display and broker-name inference (FxSocket uses opaque account ids).
 alter table public.broker_accounts
   add column if not exists broker_server text;
 

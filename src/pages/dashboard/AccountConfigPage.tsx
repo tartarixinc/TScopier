@@ -1,10 +1,11 @@
-import { useEffect, useState, useMemo, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, useMemo, useRef, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   Plus, Trash2, Server, Activity, GitBranch, Eye, DollarSign, RefreshCw,
   SlidersHorizontal, Radio, Target, Filter, Wallet, Link2,
   ChevronLeft, ChevronRight, Search, Settings2, Bookmark, Pencil, ScrollText, AlertTriangle,
-  Infinity, Coins,
+  Infinity, Coins, X,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { supabase } from '../../lib/supabase'
@@ -12,8 +13,6 @@ import { useAuth } from '../../context/AuthContext'
 import { useT } from '../../context/LocaleContext'
 import { interpolate } from '../../i18n/interpolate'
 import { Card } from '../../components/ui/Card'
-import { PasswordInput } from '../../components/auth/PasswordInput'
-import { Input } from '../../components/ui/Input'
 import { Select } from '../../components/ui/Select'
 import { Toggle } from '../../components/ui/Toggle'
 import { PageHeader } from '../../components/layout/PageHeader'
@@ -21,34 +20,27 @@ import { PageShell } from '../../components/layout/PageShell'
 import { Button } from '../../components/ui/Button'
 import { Badge } from '../../components/ui/Badge'
 import { Alert } from '../../components/ui/Alert'
-import { AddAccountModal } from '../../components/ui/AddAccountModal'
-import { MtCompanyServerPicker } from '../../components/ui/MtCompanyServerPicker'
-import { formatLocalCalendarDay } from '../../lib/dayStartBalance'
-import { metatraderApi } from '../../lib/metatraderapi'
-import { isLegacyBrokerLink } from '../../lib/brokerLink'
+import { useAddTradingAccount } from '../../context/AddTradingAccountContext'
+import { RiskLotCalculatorModal } from '../../components/configure/RiskLotCalculatorModal'
+import { CopyLimitsTargetsSection } from '../../components/configure/CopyLimitsTargetsSection'
+import { useUserProfile } from '../../context/UserProfileContext'
+import { normalizeCopyLimitState, type CopyLimitState } from '../../lib/copyLimitTypes'
+import { ConfigTitle, ConfigToggleLabel, ConfigureInput, ConfigureSelect, InfoTooltip } from '../../components/ui/InfoTooltip'
+import { fxsocketBroker } from '../../lib/fxsocketBroker'
+import { isLegacyBrokerLink, countLinkedBrokerSessions, hasFxsocketBrokerSession } from '../../lib/brokerLink'
+import { resolveBrokerTotalBalance } from '../../lib/effectiveBrokerBalance'
 import { brokerCanReconnect, brokerConnectionBadgeVariant, brokerConnectionStatusLabel } from '../../lib/brokerReconnect'
 import {
   brokerConnectErrorLabelsFromI18n,
   brokerConnectErrorText,
   brokerReconnectBannerText,
-  type BrokerConnectErrorKind,
+  classifyBrokerConnectError,
 } from '../../lib/brokerConnectError'
-import { BROKER_ACCOUNT_CLIENT_SELECT } from '../../lib/brokerAccountSelect'
 import {
-  analyzeChannelProfile,
-  detectedSymbolsFromProfileResponse,
-  saveChannelTraining,
-  trainChannelSignals,
-  type SignalTrainingSchema,
-} from '../../lib/analyzeChannelProfile'
-import {
-  detectChannelSymbols,
-  parseSymbolToTradeList,
-  selectedSymbolsFromWhitelist,
-  staleWhitelistSymbols,
-  symbolToTradeFromSelection,
-  type DetectedChannelSymbol,
-} from '../../lib/channelSymbolDetection'
+  BROKER_ACCOUNT_CLIENT_SELECT,
+  sortBrokerAccountsNewestFirst,
+} from '../../lib/brokerAccountSelect'
+import { triggerBackgroundChannelAiTraining } from '../../lib/channelAiTrainingBackground'
 import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
 import { useSubscription } from '../../context/SubscriptionContext'
 import {
@@ -61,11 +53,15 @@ import { PaywallErrorAlert } from '../../components/billing/PaywallErrorAlert'
 import { UpgradePrompt } from '../../components/billing/UpgradePrompt'
 import {
   inferBrokerLabelFromServer,
-  resolveLinkedAccountType,
-  resolveMtServerCandidate,
+  resolveLinkedAccountTypeForBroker,
+  formatLinkedAccountTypeLabel,
+  linkedAccountTypeValueClass,
   type LinkedAccountType,
+  type LinkedAccountTypeLabels,
 } from '../../lib/brokerFromServer'
-import { estimateMultiTradeOrderCount } from '../../lib/estimateMultiTradeOrders'
+import { estimateMultiTradeOrderCount, formatMultiTradeTotalOpenTradesPreview } from '../../lib/estimateMultiTradeOrders'
+import { computeMinMultiTradeLegPercent, resolveMultiTradePerLegLot } from '../../lib/multiTradeLegUnits'
+import { formatPreviewLotSize, resolvePreviewManualLot } from '../../lib/manualLotSizing'
 import { pipCalculator, pipValueForLots, type PipQuote } from '../../lib/pipCalculator'
 import { classifySymbol } from '../../lib/pipMath'
 import { pipsToPriceOffset, signalPipPrice } from '../../lib/signalPip'
@@ -87,11 +83,21 @@ import {
   buildChannelTradingConfigsFromDraft,
   buildDefaultChannelTradingConfig,
   channelManualSettingsComplete,
+  filterChannelIdsToActiveOptions,
   healChannelTradingConfigsMap,
   normalizeChannelTradingConfigsMap,
+  normalizeChannelUuid,
   resolveChannelConfigEntry,
+  restrictChannelTradingConfigsMap,
   storedPerChannelConfigComplete,
 } from '../../lib/channelTradingConfig'
+import {
+  deleteBrokerChannelTradingConfigsExcept,
+  fetchBrokerChannelTradingConfigRows,
+  mergeBrokerWithChannelTradingConfigRows,
+  upsertBrokerChannelTradingConfigs,
+} from '../../lib/brokerChannelTradingConfigs'
+import { parseSymbolToTradeList } from '../../lib/channelSymbolDetection'
 import {
   listTradingPresets,
   presetToChannelConfigDraft,
@@ -103,8 +109,10 @@ import {
   getBrokerDisplayLabel,
 } from '../../lib/brokerChannelLink'
 import { DEFAULT_MANUAL_SETTINGS, DEFAULT_MANUAL_TP_LOTS } from '../../lib/defaultManualSettings'
+import { marketingUrl } from '../../lib/site'
 import {
   choosePersistedSelectedChannelId,
+  hasBlockedMultiTradeSplit,
   hasRequestedMultiTradeStyle,
   shouldBlockMultiTradeSave,
 } from './accountConfigPersistence'
@@ -127,25 +135,27 @@ interface ChannelOption {
 /** Survives route unmount so sidebar navigation does not flash the loading skeleton. */
 const channelOptionsCache = new Map<string, ChannelOption[]>()
 
-interface BrokerForm {
-  label: string
-  platform: 'MT4' | 'MT5'
-  account_number: string
-  account_password: string
-  broker_server: string
-  remember_password: boolean
-}
-
-const emptyForm: BrokerForm = {
-  label: '',
-  platform: 'MT5',
-  account_number: '',
-  account_password: '',
-  broker_server: '',
-  remember_password: false,
-}
-
 const BROKER_PAGE_SIZE = 10
+
+function symbolWhitelistToInput(value: string | null | undefined): string {
+  if (value == null || !String(value).trim()) return ''
+  return String(value)
+}
+
+function symbolWhitelistFromInput(raw: string): string | null {
+  const list = parseSymbolToTradeList(raw)
+  if (!list.length) return null
+  return list.join(', ')
+}
+
+function symbolsExcludeToInput(value: string[] | null | undefined): string {
+  if (!value?.length) return ''
+  return value.join(', ')
+}
+
+function symbolsExcludeFromInput(raw: string): string[] {
+  return parseSymbolToTradeList(raw)
+}
 
 function resolveBrokerFilterLabel(broker: BrokerAccount): string {
   return (
@@ -195,53 +205,6 @@ interface AccountConfigDraft {
   channelConfigs: Record<string, ChannelConfigDraft>
 }
 
-function defaultSignalTrainingSchema(): SignalTrainingSchema {
-  return {
-    entry_cues: ['entry', '@', 'at', 'price', 'now'],
-    buy_cues: ['buy', 'long'],
-    sell_cues: ['sell', 'short'],
-    stop_loss_cues: ['sl', 'stop loss'],
-    take_profit_cues: ['tp', 'take profit', 'target'],
-    take_profit_tier_cues: ['tp1', 'tp2', 'tp3'],
-    management_cues: ['breakeven', 'partial', 'close'],
-    signal_order_pattern: 'unknown',
-    signal_requires_price: null,
-    language_hints: [],
-    sample_signal_examples: [],
-    notes: '',
-  }
-}
-
-function csvToTokens(raw: string): string[] {
-  return raw
-    .split(',')
-    .map(v => v.trim())
-    .filter(Boolean)
-}
-
-function csvToUpperTokens(raw: string): string[] {
-  return csvToTokens(raw.toUpperCase())
-}
-
-function tokensToCsv(values: string[]): string {
-  return values.join(', ')
-}
-
-function linesToTokens(raw: string): string[] {
-  return raw
-    .split(/\r?\n/)
-    .map(v => v.trim())
-    .filter(Boolean)
-}
-
-function linesToUpperTokens(raw: string): string[] {
-  return linesToTokens(raw.toUpperCase())
-}
-
-function tokensToLines(values: string[]): string {
-  return values.join('\n')
-}
-
 /** Split `total` across `count` slots as non-negative integers that sum exactly to `total`. */
 function splitIntEqual(count: number, total: number): number[] {
   if (count <= 0) return []
@@ -277,6 +240,48 @@ function commitPositiveNumber(raw: string, fallback: number): number {
   const n = Number(trimmed)
   if (!Number.isFinite(n) || n <= 0) return fallback
   return n
+}
+
+/** Commit in-progress number inputs (e.g. fixed lot) before save or dirty checks. */
+function applyPendingConfigureDraftFields(
+  draft: AccountConfigDraft,
+  fixedLotDraft: string | null,
+  symbolsExcludeDraft: string | null = null,
+): AccountConfigDraft {
+  const id = draft.selectedChannelId
+  if (!id || !draft.channelConfigs[id]) return draft
+
+  let entry = draft.channelConfigs[id]
+  let changed = false
+
+  if (fixedLotDraft !== null) {
+    const fixedLot = commitPositiveNumber(
+      fixedLotDraft,
+      entry.manualSettings.fixed_lot ?? DEFAULT_MANUAL_SETTINGS.fixed_lot ?? 0.01,
+    )
+    if (fixedLot !== entry.manualSettings.fixed_lot) {
+      entry = { ...entry, manualSettings: { ...entry.manualSettings, fixed_lot: fixedLot } }
+      changed = true
+    }
+  }
+
+  if (symbolsExcludeDraft !== null) {
+    const list = symbolsExcludeFromInput(symbolsExcludeDraft)
+    const prev = entry.manualSettings.symbols_exclude ?? []
+    if (JSON.stringify(prev) !== JSON.stringify(list)) {
+      entry = { ...entry, manualSettings: { ...entry.manualSettings, symbols_exclude: list } }
+      changed = true
+    }
+  }
+
+  if (!changed) return draft
+  return {
+    ...draft,
+    channelConfigs: {
+      ...draft.channelConfigs,
+      [id]: entry,
+    },
+  }
 }
 
 /** Sum percent across enabled rows. Disabled rows always contribute 0. */
@@ -319,7 +324,10 @@ function sanitizeTpLots(rows: ManualTpLot[]): ManualTpLot[] {
   }))
 }
 
-function normalizeManualSettings(raw: unknown): ManualSettings {
+function normalizeManualSettings(
+  raw: unknown,
+  opts?: { accountBalance?: number | null },
+): ManualSettings {
   const j = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {}
   const map = j.symbol_mapping && typeof j.symbol_mapping === 'object' ? j.symbol_mapping as Record<string, unknown> : {}
   const tpLotsRaw = Array.isArray(j.tp_lots) ? j.tp_lots : DEFAULT_MANUAL_TP_LOTS
@@ -334,7 +342,10 @@ function normalizeManualSettings(raw: unknown): ManualSettings {
     } as ManualTpLot
   })
   const legPctRaw = Number(j.multi_trade_leg_percent)
-  const legPct = Number.isFinite(legPctRaw) && legPctRaw > 0 ? Math.min(100, legPctRaw) : DEFAULT_MANUAL_SETTINGS.multi_trade_leg_percent
+  const legPct = Number.isFinite(legPctRaw) && legPctRaw > 0
+    ? Math.min(100, legPctRaw)
+    : (DEFAULT_MANUAL_SETTINGS.multi_trade_leg_percent ?? 7)
+  const legacyMaxLegsRaw = Number(j.multi_trade_max_legs)
 
   const merged = { ...DEFAULT_MANUAL_SETTINGS, ...(j as ManualSettings) }
   // Drop legacy keys if they sneak in from older DB rows.
@@ -349,6 +360,8 @@ function normalizeManualSettings(raw: unknown): ManualSettings {
   const rangePercent = Math.max(0, Math.min(100, readNumber('range_percent', DEFAULT_MANUAL_SETTINGS.range_percent ?? 50)))
   const rangeStepPips = Math.max(0, readNumber('range_step_pips', DEFAULT_MANUAL_SETTINGS.range_step_pips ?? 3))
   const rangeDistancePips = Math.max(0, readNumber('range_distance_pips', DEFAULT_MANUAL_SETTINGS.range_distance_pips ?? 30))
+  const rangeLayerTillClose = (j as Record<string, unknown>).range_layer_till_close === true
+  const useSignalEntryRange = (j as Record<string, unknown>).use_signal_entry_range === true
   const closeWorseEntries = (j as Record<string, unknown>).close_worse_entries === true
   const closeWorseEntriesPips = Math.max(0, readNumber('close_worse_entries_pips', DEFAULT_MANUAL_SETTINGS.close_worse_entries_pips ?? 30))
   const singleTpTargetRaw = String((j as Record<string, unknown>).single_tp_target ?? 'farthest').toLowerCase()
@@ -374,19 +387,67 @@ function normalizeManualSettings(raw: unknown): ManualSettings {
     }
   }
 
+  const multiTradeMaxOrders = (() => {
+    if (merged.trade_style !== 'multi') return undefined
+
+    const manualLot = resolvePreviewManualLot({
+      manualSettings: merged,
+      accountBalance: opts?.accountBalance,
+    })
+
+    const recomputeFromLot = (): number | undefined => {
+      if (!Number.isFinite(manualLot) || manualLot <= 0) return undefined
+      const preview = estimateMultiTradeOrderCount({
+        manualLot,
+        legPercent: legPct,
+        range: merged.range_trading
+          ? {
+              enabled: true,
+              percent: rangePercent,
+              stepPips: rangeStepPips,
+              distancePips: rangeDistancePips,
+            }
+          : undefined,
+      })
+      return preview.totalOrders > 0 ? preview.totalOrders : undefined
+    }
+
+    if (merged.risk_mode === 'dynamic_balance_percent' && Number(opts?.accountBalance) > 0) {
+      return recomputeFromLot()
+    }
+
+    if (Number.isFinite(legacyMaxLegsRaw) && legacyMaxLegsRaw > 0) {
+      return Math.max(1, Math.min(500, Math.floor(legacyMaxLegsRaw)))
+    }
+    return recomputeFromLot()
+  })()
+
   return {
     ...merged,
     multi_trade_leg_percent: legPct,
+    ...(multiTradeMaxOrders != null ? { multi_trade_max_orders: multiTradeMaxOrders } : {}),
     range_percent: rangePercent,
     range_step_pips: rangeStepPips,
     range_distance_pips: rangeDistancePips,
+    range_layer_till_close: rangeLayerTillClose,
+    use_signal_entry_range: useSignalEntryRange,
     close_worse_entries: closeWorseEntries,
     close_worse_entries_pips: closeWorseEntriesPips,
     single_tp_target: singleTpTarget,
     use_signal_entry_price: (j as Record<string, unknown>).use_signal_entry_price === true,
     signal_entry_pip_tolerance: Math.max(0, readNumber('signal_entry_pip_tolerance', DEFAULT_MANUAL_SETTINGS.signal_entry_pip_tolerance ?? 10)),
     symbol_mapping: Object.fromEntries(Object.entries(map).map(([k, v]) => [String(k).toUpperCase(), String(v).toUpperCase()])),
-    symbols_exclude: Array.isArray(j.symbols_exclude) ? j.symbols_exclude.map(String).map(s => s.toUpperCase()) : [],
+    symbol_prefix: String(j.symbol_prefix ?? '').toUpperCase(),
+    symbol_suffix: String(j.symbol_suffix ?? '').toUpperCase(),
+    symbol_to_trade: (() => {
+      const raw = j.symbol_to_trade
+      if (raw == null || !String(raw).trim()) return null
+      const list = parseSymbolToTradeList(String(raw))
+      return list.length ? list.join(',') : null
+    })(),
+    symbols_exclude: Array.isArray(j.symbols_exclude)
+      ? j.symbols_exclude.map(String).map(s => s.toUpperCase()).filter(s => s.length > 0)
+      : parseSymbolToTradeList(typeof j.symbols_exclude === 'string' ? j.symbols_exclude : ''),
     tp_lots: tpFinal,
     predefined_tp_pips: Array.isArray(j.predefined_tp_pips) ? j.predefined_tp_pips.map(Number).filter(Number.isFinite) : DEFAULT_MANUAL_SETTINGS.predefined_tp_pips,
     rr_for_tps: Array.isArray(j.rr_for_tps) ? j.rr_for_tps.map(Number).filter(Number.isFinite) : DEFAULT_MANUAL_SETTINGS.rr_for_tps,
@@ -461,10 +522,16 @@ function formatBrokerMoney(value: number | null | undefined, currency?: string |
   return formatMoneyWithCode(value, currency?.trim() || undefined)
 }
 
-function accountTypeValueClass(type: LinkedAccountType | undefined): string {
-  if (type === 'Demo') return 'font-semibold text-amber-700 dark:text-amber-300'
-  if (type === 'Live') return 'font-semibold text-teal-700 dark:text-teal-300'
-  return 'text-neutral-900 dark:text-neutral-50'
+function accountTypeLabelsFromBrokerList(bl: {
+  accountTypeDemo: string
+  accountTypeLive: string
+  accountTypePropFirm: string
+}): LinkedAccountTypeLabels {
+  return {
+    demo: bl.accountTypeDemo,
+    live: bl.accountTypeLive,
+    propFirm: bl.accountTypePropFirm,
+  }
 }
 
 function AccountDetailCell({
@@ -486,7 +553,7 @@ function AccountDetailCell({
   )
 }
 
-type ManualSubTabId = 'symbols' | 'channel_instructions' | 'risk' | 'stops' | 'management' | 'filters' | 'ai_training'
+type ManualSubTabId = 'symbols' | 'channel_instructions' | 'risk' | 'stops' | 'management' | 'filters'
 
 interface ManualSubTabDef {
   id: ManualSubTabId
@@ -554,6 +621,7 @@ function buildChannelConfigDraftFromBroker(
     broker.manual_settings && typeof broker.manual_settings === 'object'
       ? (broker.manual_settings as Record<string, unknown>)
       : buildDefaultChannelTradingConfig().manual_settings,
+    { accountBalance: resolveBrokerTotalBalance(broker) },
   )
   const defaultManual = normalizeManualSettings(buildDefaultChannelTradingConfig().manual_settings)
 
@@ -562,7 +630,7 @@ function buildChannelConfigDraftFromBroker(
     channelConfigs[id] = {
       mode: stored?.copier_mode === 'ai' ? 'ai' : stored?.copier_mode === 'manual' ? 'manual' : legacyMode,
       manualSettings: stored?.manual_settings && storedPerChannelConfigComplete(storedConfigs, id)
-        ? normalizeManualSettings(stored.manual_settings)
+        ? normalizeManualSettings(stored.manual_settings, { accountBalance: resolveBrokerTotalBalance(broker) })
         : fallbackManual ?? defaultManual,
       channelFilters: keywordFiltersEnabled
         ? normalizeChannelFilters(persistedFilters[id] ?? DEFAULT_CHANNEL_FILTERS)
@@ -617,16 +685,6 @@ async function resolveLatestManualSettingsPlanContext(args: {
   }
 }
 
-function formatLinkedAccountTypeLabel(
-  type: LinkedAccountType | undefined,
-  labels: { demo: string; live: string },
-): string {
-  if (!type) return '—'
-  if (type === 'Demo') return labels.demo
-  if (type === 'Live') return labels.live
-  return type
-}
-
 export function AccountConfigPage() {
   const t = useT()
   const navigate = useNavigate()
@@ -635,7 +693,6 @@ export function AccountConfigPage() {
 
   const manualSubTabs = useMemo<ManualSubTabDef[]>(
     () => [
-      { id: 'ai_training', label: cm.manualSubTabs.aiTraining, icon: Activity },
       { id: 'symbols', label: cm.manualSubTabs.symbols, icon: Coins },
       { id: 'channel_instructions', label: cm.manualSubTabs.channelInstructions, icon: ScrollText },
       { id: 'risk', label: cm.manualSubTabs.risk, icon: Wallet },
@@ -644,7 +701,6 @@ export function AccountConfigPage() {
       { id: 'filters', label: cm.manualSubTabs.filters, icon: Filter },
     ],
     [
-      cm.manualSubTabs.aiTraining,
       cm.manualSubTabs.symbols,
       cm.manualSubTabs.channelInstructions,
       cm.manualSubTabs.risk,
@@ -659,15 +715,14 @@ export function AccountConfigPage() {
     [cm],
   )
   const { user } = useAuth()
+  const { profile } = useUserProfile()
   const userId = user?.id ?? null
   const {
     brokers,
     loading: brokersLoading,
     loadError: brokersLoadError,
-    upsertBroker,
     replaceBroker,
     removeBroker,
-    patchBroker,
     setBrokers,
     toggleBrokerActive: toggleBrokerActiveInStore,
     reconnectBroker,
@@ -675,14 +730,13 @@ export function AccountConfigPage() {
     brokersNeedingReconnect,
     isReconnecting: isBrokerReconnecting,
     setReconnectErrorHandler,
-    clearStoredCredentials,
   } = useBrokerAccounts()
+  const brokerBalanceRefreshStartedRef = useRef(false)
+  const { openAddTradingAccount, pendingConfigureBrokerId, clearPendingConfigureBroker } = useAddTradingAccount()
   const {
     subscription,
     effectivePlan,
     refresh: refreshSubscription,
-    hasActiveSubscription,
-    canAddBroker,
     canUseFeature: canUsePlanFeature,
     limits,
     isAdmin,
@@ -703,26 +757,63 @@ export function AccountConfigPage() {
     }),
     [brokersNeedingReconnect, connectErrorLabels, bl.reconnectDroppedOne, bl.reconnectDroppedMany],
   )
+
+  // Re-sync balance (cash + broker credit) when cached last_balance is stale cash-only.
+  useEffect(() => {
+    if (brokersLoading || brokerBalanceRefreshStartedRef.current) return
+    const connected = brokers.filter(
+      b => hasFxsocketBrokerSession(b) && b.connection_status === 'connected',
+    )
+    if (connected.length === 0) return
+
+    const stale = connected.filter(b => {
+      const bal = b.last_balance
+      const eq = b.last_equity
+      if (bal == null || eq == null) return true
+      if (eq > bal + 0.01 && bal < eq * 0.2) return true
+      const syncedAt = b.last_synced_at ? Date.parse(b.last_synced_at) : 0
+      return !syncedAt || Date.now() - syncedAt > 5 * 60_000
+    })
+    if (stale.length === 0) return
+
+    brokerBalanceRefreshStartedRef.current = true
+    let cancelled = false
+    void (async () => {
+      await Promise.all(
+        stale.map(async b => {
+          if (cancelled) return
+          try {
+            const { account } = await fxsocketBroker.refreshSummary(b.id)
+            if (!cancelled) replaceBroker(account)
+          } catch {
+            /* best-effort */
+          }
+        }),
+      )
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [brokers, brokersLoading, replaceBroker])
+
   const [channelOptions, setChannelOptions] = useState<ChannelOption[]>(() =>
     userId ? (channelOptionsCache.get(userId) ?? []) : [],
   )
   const [configAccount, setConfigAccount] = useState<BrokerAccount | null>(null)
+  const configAccountTotalBalance = useMemo(
+    () => (configAccount ? resolveBrokerTotalBalance(configAccount) : null),
+    [configAccount?.last_balance, configAccount?.last_equity],
+  )
+  const [channelCopyLimitState, setChannelCopyLimitState] = useState<Record<string, CopyLimitState>>({})
   const [configDraft, setConfigDraft] = useState<AccountConfigDraft>({
     channelIds: [],
     selectedChannelId: null,
     channelConfigs: {},
   })
-  const [activeManualSubTab, setActiveManualSubTab] = useState<ManualSubTabId>('ai_training')
-  const [detectedSymbols, setDetectedSymbols] = useState<DetectedChannelSymbol[]>([])
-  const [channelSymbolsLoading, setChannelSymbolsLoading] = useState(false)
-  const [channelSymbolsRefreshing, setChannelSymbolsRefreshing] = useState(false)
-  const [channelSignalSampleCount, setChannelSignalSampleCount] = useState(0)
-  const [trainingByChannel, setTrainingByChannel] = useState<Record<string, SignalTrainingSchema>>({})
-  const [trainingLoading, setTrainingLoading] = useState(false)
+  const [activeManualSubTab, setActiveManualSubTab] = useState<ManualSubTabId>('symbols')
   const [trainingRunningByChannel, setTrainingRunningByChannel] = useState<Record<string, boolean>>({})
   const [trainingSavingByChannel, setTrainingSavingByChannel] = useState<Record<string, boolean>>({})
   const [trainingProgressByChannel, setTrainingProgressByChannel] = useState<Record<string, number>>({})
-  const [trainingExistsByChannel, setTrainingExistsByChannel] = useState<Record<string, boolean>>({})
   const [configSaving, setConfigSaving] = useState(false)
   const [channelConnecting, setChannelConnecting] = useState(false)
   const [configSavedAt, setConfigSavedAt] = useState<number | null>(null)
@@ -735,10 +826,6 @@ export function AccountConfigPage() {
   const [presetNameDraft, setPresetNameDraft] = useState('')
   const [pendingApplyPreset, setPendingApplyPreset] = useState<ChannelTradingPreset | null>(null)
   const [channelLinkEditMode, setChannelLinkEditMode] = useState(false)
-  const [showPlatformModal, setShowPlatformModal] = useState(false)
-  const [showAddBroker, setShowAddBroker] = useState(false)
-  const [form, setForm] = useState<BrokerForm>(emptyForm)
-  const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [channelsLoading, setChannelsLoading] = useState(() =>
     !(userId && channelOptionsCache.has(userId)),
@@ -753,6 +840,8 @@ export function AccountConfigPage() {
   const [brokerSearchQuery, setBrokerSearchQuery] = useState('')
   const [brokerPage, setBrokerPage] = useState(1)
   const [fixedLotDraft, setFixedLotDraft] = useState<string | null>(null)
+  const [symbolsExcludeDraft, setSymbolsExcludeDraft] = useState<string | null>(null)
+  const [riskCalcOpen, setRiskCalcOpen] = useState(false)
   const [brokerAccountTypes, setBrokerAccountTypes] = useState<Record<string, LinkedAccountType>>({})
   const brokerAccountTypeKey = useMemo(
     () => brokers.map(b => `${b.id}:${b.broker_server ?? ''}`).join('|'),
@@ -787,7 +876,7 @@ export function AccountConfigPage() {
   const brokerRangeEnd = Math.min(safeBrokerPage * BROKER_PAGE_SIZE, filteredBrokers.length)
 
   const linkedBrokerCount = useMemo(
-    () => brokers.filter(b => b.is_active).length,
+    () => countLinkedBrokerSessions(brokers),
     [brokers],
   )
   const connectedAccountCount = usageLoading ? linkedBrokerCount : usage.brokerAccounts
@@ -802,6 +891,15 @@ export function AccountConfigPage() {
   }, [brokerPage, brokerTotalPages])
 
   useEffect(() => {
+    if (!configAccount) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [configAccount])
+
+  useEffect(() => {
     if (brokers.length > 0) void syncBrokerAccountTypes(brokers)
   }, [brokerAccountTypeKey])
 
@@ -813,6 +911,7 @@ export function AccountConfigPage() {
 
   useEffect(() => {
     setFixedLotDraft(null)
+    setSymbolsExcludeDraft(null)
   }, [configDraft.selectedChannelId])
 
   const channelMode = useMemo(() => {
@@ -826,13 +925,22 @@ export function AccountConfigPage() {
     [channelOptions, configDraft.selectedChannelId],
   )
 
+  const configureAccountType = useMemo((): LinkedAccountType | undefined => {
+    if (!configAccount) return undefined
+    return (
+      brokerAccountTypes[configAccount.id]
+      ?? resolveLinkedAccountTypeForBroker(configAccount)
+    )
+  }, [configAccount, brokerAccountTypes])
+
   const keywordFiltersEnabled = canUsePlanFeature('channel_keyword_filters')
   const multiTradeStyleEnabled = canUsePlanFeature('multi_trade_style')
 
   const configureModalDirty = useMemo(() => {
     if (!configAccount) return false
+    const draftForSignature = applyPendingConfigureDraftFields(configDraft, fixedLotDraft, symbolsExcludeDraft)
     const current = accountConfigDraftPersistSignature(
-      configDraft,
+      draftForSignature,
       manualSettingsPlanCtx.plan,
       manualSettingsPlanCtx.status,
       keywordFiltersEnabled,
@@ -841,6 +949,8 @@ export function AccountConfigPage() {
   }, [
     configAccount,
     configDraft,
+    fixedLotDraft,
+    symbolsExcludeDraft,
     configSavedSignature,
     manualSettingsPlanCtx.plan,
     manualSettingsPlanCtx.status,
@@ -853,6 +963,17 @@ export function AccountConfigPage() {
     const stored = healChannelTradingConfigsMap(configAccount)
     return !storedPerChannelConfigComplete(stored, id)
   }, [configDraft.selectedChannelId, configDraft.channelIds, configAccount])
+
+  const canSaveConfigureModal = configureModalDirty || selectedChannelNeedsPersistedSave
+
+  const multiTradeSplitSaveBlocked = useMemo(() => {
+    const draftForCheck = applyPendingConfigureDraftFields(configDraft, fixedLotDraft, symbolsExcludeDraft)
+    return hasBlockedMultiTradeSplit(
+      draftForCheck.channelIds,
+      draftForCheck.channelConfigs,
+      configAccountTotalBalance,
+    )
+  }, [configDraft, fixedLotDraft, configAccountTotalBalance])
 
   const selectedChannelEditedFromDefault = useMemo(() => {
     const id = configDraft.selectedChannelId
@@ -867,11 +988,6 @@ export function AccountConfigPage() {
     && configDraft.channelIds.includes(configDraft.selectedChannelId),
   )
 
-  const activeTrainingDraft = useMemo(() => {
-    const channelId = configDraft.selectedChannelId
-    if (!channelId) return defaultSignalTrainingSchema()
-    return trainingByChannel[channelId] ?? defaultSignalTrainingSchema()
-  }, [configDraft.selectedChannelId, trainingByChannel])
   const activeChannelTrainingRunning = configDraft.selectedChannelId
     ? trainingRunningByChannel[configDraft.selectedChannelId] === true
     : false
@@ -882,9 +998,55 @@ export function AccountConfigPage() {
     ? Math.max(0, Math.min(100, Math.round(trainingProgressByChannel[configDraft.selectedChannelId] ?? 0)))
     : 0
 
+  const dynamicBalanceLotPreview = useMemo(() => {
+    if (channelManualSettings.risk_mode !== 'dynamic_balance_percent') return null
+    const lot = resolvePreviewManualLot({
+      manualSettings: channelManualSettings,
+      accountBalance: configAccountTotalBalance,
+    })
+    const balance = Number(configAccountTotalBalance ?? 0)
+    const percent = Number(channelManualSettings.dynamic_balance_percent ?? 1) || 1
+    const lotLabel = formatPreviewLotSize(lot)
+    const hint = balance > 0
+      ? interpolate(cm.risk.dynamicBalanceLotSizeHint, {
+          lot: lotLabel,
+          percent: String(percent),
+          balance: formatBrokerMoney(balance, configAccount?.last_currency),
+        })
+      : interpolate(cm.risk.dynamicBalanceLotSizeFallback, { lot: lotLabel })
+    return { lot, lotLabel, hint }
+  }, [
+    channelManualSettings.risk_mode,
+    channelManualSettings.dynamic_balance_percent,
+    channelManualSettings.fixed_lot,
+    configAccountTotalBalance,
+    configAccount?.last_currency,
+    cm.risk.dynamicBalanceLotSizeHint,
+    cm.risk.dynamicBalanceLotSizeFallback,
+  ])
+
+  const previewManualLot = useMemo(() => {
+    const ms = channelManualSettings
+    const fixedLot = fixedLotDraft !== null && ms.risk_mode !== 'dynamic_balance_percent'
+      ? commitPositiveNumber(fixedLotDraft, ms.fixed_lot ?? DEFAULT_MANUAL_SETTINGS.fixed_lot ?? 0.01)
+      : ms.fixed_lot
+    return resolvePreviewManualLot({
+      manualSettings: { ...ms, fixed_lot: fixedLot },
+      accountBalance: configAccountTotalBalance,
+    })
+  }, [
+    channelManualSettings,
+    fixedLotDraft,
+    configAccountTotalBalance,
+  ])
+
+  const multiTradeMinLegPercent = useMemo(
+    () => computeMinMultiTradeLegPercent(previewManualLot),
+    [previewManualLot],
+  )
+
   const multiTradePreview = useMemo(() => {
     const ms = channelManualSettings
-    const manualLot = Number(ms.fixed_lot ?? 0.01) || 0.01
     const legPct = Number(ms.multi_trade_leg_percent ?? 5) || 5
     const range = ms.range_trading
       ? {
@@ -894,15 +1056,61 @@ export function AccountConfigPage() {
           distancePips: Number(ms.range_distance_pips ?? DEFAULT_MANUAL_SETTINGS.range_distance_pips) || 0,
         }
       : undefined
-    return estimateMultiTradeOrderCount({ manualLot, legPercent: legPct, range })
+    return estimateMultiTradeOrderCount({ manualLot: previewManualLot, legPercent: legPct, range })
   }, [
-    channelManualSettings.fixed_lot,
+    previewManualLot,
     channelManualSettings.multi_trade_leg_percent,
     channelManualSettings.range_trading,
     channelManualSettings.range_percent,
     channelManualSettings.range_step_pips,
     channelManualSettings.range_distance_pips,
   ])
+
+  const multiTradeTotalOpenTradesLabel = useMemo(() => {
+    const legPct = Number(channelManualSettings.multi_trade_leg_percent ?? 5) || 5
+    const perLeg = resolveMultiTradePerLegLot({ manualLot: previewManualLot, legPercent: legPct })
+    return formatMultiTradeTotalOpenTradesPreview(perLeg, multiTradePreview, {
+      fallbackSingle: cm.risk.previewFallbackSingle,
+      lotsXTrades: cm.risk.previewLotsXTrades,
+      lotsXTradesLayered: cm.risk.previewLotsXTradesLayered,
+    }, formatPreviewLotSize)
+  }, [
+    previewManualLot,
+    channelManualSettings.multi_trade_leg_percent,
+    multiTradePreview,
+    cm.risk.previewFallbackSingle,
+    cm.risk.previewLotsXTrades,
+    cm.risk.previewLotsXTradesLayered,
+  ])
+
+  const multiTradePreviewTooltip = useMemo(() => {
+    const ms = channelManualSettings
+    let text = cm.risk.previewFooter
+    if (ms.risk_mode === 'dynamic_balance_percent') text += cm.risk.previewDynamicRisk
+    const activePending = multiTradePreview.activePending ?? multiTradePreview.pending ?? 0
+    if (
+      ms.range_trading
+      && multiTradePreview.effectiveDistancePips != null
+      && activePending > 0
+    ) {
+      text += interpolate(cm.risk.previewLadderSpan, {
+        active: String(activePending),
+        step: String(Number(ms.range_step_pips ?? 0) || 0),
+        distance: String(multiTradePreview.effectiveDistancePips),
+      })
+      const reservedPending = multiTradePreview.pending ?? 0
+      if (activePending < reservedPending) {
+        text += interpolate(cm.risk.previewLadderDistanceCap, {
+          active: String(activePending),
+          pending: String(reservedPending),
+        })
+      }
+    }
+    if (ms.use_signal_entry_range === true) {
+      text += cm.risk.previewSignalRangeFootnote
+    }
+    return text
+  }, [channelManualSettings, cm.risk, multiTradePreview])
 
   const brokersNeedingRelink = useMemo(
     () => brokers.filter(b => isLegacyBrokerLink(b.metaapi_account_id)),
@@ -995,6 +1203,13 @@ export function AccountConfigPage() {
     }
   }, [cm.pipHint, livePipQuote, channelManualSettings.fixed_lot, channelManualSettings.symbol_to_trade])
 
+  const resolvedSingleSymbol = useMemo(() => {
+    const raw = (channelManualSettings.symbol_to_trade ?? '').trim()
+    if (!raw) return ''
+    const parts = raw.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean)
+    return parts.length === 1 ? parts[0]!.toUpperCase() : ''
+  }, [channelManualSettings.symbol_to_trade])
+
   useEffect(() => {
     if (!userId) return
     void loadData(userId)
@@ -1012,173 +1227,20 @@ export function AccountConfigPage() {
     return () => clearTimeout(t)
   }, [presetSavedAt])
 
-  const CHANNEL_SYMBOL_LOOKBACK_DAYS = 30
-  const TELEGRAM_AUTH_EDGE_FN = `${import.meta.env.VITE_SUPABASE_URL as string}/functions/v1/telegram-auth`
-
-  const backfillChannelSignals = async (channelId: string, lookbackDays: number) => {
-    const token = (await supabase.auth.getSession()).data.session?.access_token
-    if (!token) throw new Error('Not signed in')
-    const res = await fetch(TELEGRAM_AUTH_EDGE_FN, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
+  const startBackgroundAiTraining = useCallback((channelId: string) => {
+    if (!userId) return
+    void triggerBackgroundChannelAiTraining(channelId, {
+      userId,
+      progress: {
+        onRunningChange: running =>
+          setTrainingRunningByChannel(prev => ({ ...prev, [channelId]: running })),
+        onSavingChange: saving =>
+          setTrainingSavingByChannel(prev => ({ ...prev, [channelId]: saving })),
+        onProgressChange: progress =>
+          setTrainingProgressByChannel(prev => ({ ...prev, [channelId]: progress })),
       },
-      body: JSON.stringify({
-        action: 'backfill_channel_history',
-        channel_row_id: channelId,
-        days: lookbackDays,
-      }),
     })
-    const data = await res.json().catch(() => ({})) as { error?: unknown; message?: unknown }
-    if (!res.ok || data.error) {
-      const msg =
-        typeof data.error === 'string'
-          ? data.error
-          : typeof data.message === 'string'
-            ? data.message
-            : 'Failed to import Telegram channel history'
-      throw new Error(msg)
-    }
-  }
-
-  const loadChannelSymbols = async (channelId: string, opts?: { runAnalysis?: boolean }) => {
-    if (!userId) return
-    const runAnalysis = opts?.runAnalysis === true
-    if (runAnalysis) setChannelSymbolsRefreshing(true)
-    else setChannelSymbolsLoading(true)
-    try {
-      const since = new Date(Date.now() - CHANNEL_SYMBOL_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString()
-      const { data: signals, error: sigErr } = await supabase
-        .from('signals')
-        .select('raw_message, parsed_data')
-        .eq('channel_id', channelId)
-        .eq('user_id', userId)
-        .gte('created_at', since)
-        .order('created_at', { ascending: false })
-        .limit(500)
-      if (sigErr) throw new Error(sigErr.message)
-
-      const rows = signals ?? []
-      setChannelSignalSampleCount(rows.length)
-
-      let detected = detectChannelSymbols(rows)
-      if (runAnalysis) {
-        try {
-          const result = await analyzeChannelProfile(channelId, CHANNEL_SYMBOL_LOOKBACK_DAYS)
-          detected = detectedSymbolsFromProfileResponse(rows, result)
-        } catch (analysisErr) {
-          const msg = analysisErr instanceof Error ? analysisErr.message : String(analysisErr)
-          setError(msg)
-        }
-      }
-      setDetectedSymbols(detected)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load channel symbols')
-      setDetectedSymbols([])
-      setChannelSignalSampleCount(0)
-    } finally {
-      setChannelSymbolsLoading(false)
-      setChannelSymbolsRefreshing(false)
-    }
-  }
-
-  const loadChannelTrainingDraft = async (channelId: string) => {
-    if (!userId) return
-    setTrainingLoading(true)
-    try {
-      const { data, error: profileErr } = await supabase
-        .from('channel_signal_profiles')
-        .select('meta')
-        .eq('channel_id', channelId)
-        .eq('user_id', userId)
-        .maybeSingle()
-      if (profileErr) throw new Error(profileErr.message)
-      const meta = data?.meta && typeof data.meta === 'object'
-        ? data.meta as Record<string, unknown>
-        : {}
-      const raw = meta.ai_training_schema
-      setTrainingExistsByChannel(prev => ({ ...prev, [channelId]: Boolean(raw && typeof raw === 'object') }))
-      const base = defaultSignalTrainingSchema()
-      const training = raw && typeof raw === 'object'
-        ? {
-            ...base,
-            ...(raw as Partial<SignalTrainingSchema>),
-            entry_cues: Array.isArray((raw as Record<string, unknown>).entry_cues) ? (raw as Record<string, unknown>).entry_cues as string[] : base.entry_cues,
-            buy_cues: Array.isArray((raw as Record<string, unknown>).buy_cues) ? (raw as Record<string, unknown>).buy_cues as string[] : base.buy_cues,
-            sell_cues: Array.isArray((raw as Record<string, unknown>).sell_cues) ? (raw as Record<string, unknown>).sell_cues as string[] : base.sell_cues,
-            stop_loss_cues: Array.isArray((raw as Record<string, unknown>).stop_loss_cues) ? (raw as Record<string, unknown>).stop_loss_cues as string[] : base.stop_loss_cues,
-            take_profit_cues: Array.isArray((raw as Record<string, unknown>).take_profit_cues) ? (raw as Record<string, unknown>).take_profit_cues as string[] : base.take_profit_cues,
-            take_profit_tier_cues: Array.isArray((raw as Record<string, unknown>).take_profit_tier_cues) ? (raw as Record<string, unknown>).take_profit_tier_cues as string[] : base.take_profit_tier_cues,
-            management_cues: Array.isArray((raw as Record<string, unknown>).management_cues) ? (raw as Record<string, unknown>).management_cues as string[] : base.management_cues,
-            language_hints: Array.isArray((raw as Record<string, unknown>).language_hints) ? (raw as Record<string, unknown>).language_hints as string[] : base.language_hints,
-            sample_signal_examples: Array.isArray((raw as Record<string, unknown>).sample_signal_examples) ? (raw as Record<string, unknown>).sample_signal_examples as string[] : base.sample_signal_examples,
-            notes: String((raw as Record<string, unknown>).notes ?? ''),
-          }
-        : base
-      setTrainingByChannel(prev => ({ ...prev, [channelId]: training }))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load AI training')
-      setTrainingByChannel(prev => ({ ...prev, [channelId]: defaultSignalTrainingSchema() }))
-    } finally {
-      setTrainingLoading(false)
-    }
-  }
-
-  const runAiTraining = async (
-    channelId: string,
-    opts?: { autoSave?: boolean; silent?: boolean },
-  ) => {
-    setTrainingRunningByChannel(prev => ({ ...prev, [channelId]: true }))
-    setTrainingProgressByChannel(prev => ({ ...prev, [channelId]: Math.max(5, prev[channelId] ?? 0) }))
-    if (!opts?.silent) setError('')
-    try {
-      const result = await trainChannelSignals(channelId, CHANNEL_SYMBOL_LOOKBACK_DAYS)
-      if (!result.ok || !result.training_schema) {
-        throw new Error(result.error || 'AI training failed')
-      }
-      setTrainingByChannel(prev => ({ ...prev, [channelId]: result.training_schema! }))
-      setTrainingProgressByChannel(prev => ({ ...prev, [channelId]: Math.max(94, prev[channelId] ?? 0) }))
-      if (opts?.autoSave) {
-        await saveAiTrainingDraft(channelId, {
-          schemaOverride: result.training_schema!,
-          silent: opts?.silent,
-        })
-      }
-    } catch (err) {
-      if (!opts?.silent) setError(err instanceof Error ? err.message : 'AI training failed')
-    } finally {
-      setTrainingRunningByChannel(prev => ({ ...prev, [channelId]: false }))
-    }
-  }
-
-  const saveAiTrainingDraft = async (
-    channelId: string,
-    opts?: { schemaOverride?: SignalTrainingSchema; silent?: boolean },
-  ) => {
-    const schema = opts?.schemaOverride ?? trainingByChannel[channelId]
-    if (!schema) return
-    setTrainingSavingByChannel(prev => ({ ...prev, [channelId]: true }))
-    if (!opts?.silent) setError('')
-    try {
-      const result = await saveChannelTraining(channelId, schema)
-      if (!result.ok) throw new Error(result.error || 'Failed to save AI training')
-      setTrainingExistsByChannel(prev => ({ ...prev, [channelId]: true }))
-      setTrainingProgressByChannel(prev => ({ ...prev, [channelId]: 100 }))
-      setConfigSavedAt(Date.now())
-    } catch (err) {
-      if (!opts?.silent) setError(err instanceof Error ? err.message : 'Failed to save AI training')
-    } finally {
-      setTrainingSavingByChannel(prev => ({ ...prev, [channelId]: false }))
-      // Auto-dismiss completion state quickly after reaching 100%.
-      setTimeout(() => {
-        setTrainingProgressByChannel(prev => {
-          if ((prev[channelId] ?? 0) < 100) return prev
-          return { ...prev, [channelId]: 0 }
-        })
-      }, 400)
-    }
-  }
+  }, [userId])
 
   const refreshTradingPresets = async (uid: string) => {
     setPresetsLoading(true)
@@ -1193,18 +1255,15 @@ export function AccountConfigPage() {
   }
 
   const syncBrokerAccountTypes = async (list: BrokerAccount[]) => {
-    const linked = list.filter(b => {
-      const uuid = (b.metaapi_account_id ?? '').trim()
-      return uuid.length > 0 && !uuid.includes('|')
-    })
+    const linked = list.filter(b => hasFxsocketBrokerSession(b))
     if (linked.length === 0) return
 
     const fromServer: Record<string, LinkedAccountType> = {}
     for (const b of linked) {
-      const inferred = resolveLinkedAccountType(undefined, resolveMtServerCandidate(b, b.broker_server))
+      const inferred = resolveLinkedAccountTypeForBroker(b)
       if (inferred) fromServer[b.id] = inferred
     }
-    setBrokerAccountTypes(prev => ({ ...fromServer, ...prev }))
+    setBrokerAccountTypes(prev => ({ ...prev, ...fromServer }))
 
     const needSummary = linked.filter(b => !fromServer[b.id])
     if (needSummary.length === 0) return
@@ -1212,11 +1271,8 @@ export function AccountConfigPage() {
     const results = await Promise.all(
       needSummary.map(async b => {
         try {
-          const { summary } = await metatraderApi.summary(b.id)
-          const accountType = resolveLinkedAccountType(
-            summary?.type,
-            resolveMtServerCandidate(b, b.broker_server),
-          )
+          const { summary } = await fxsocketBroker.refreshSummary(b.id)
+          const accountType = resolveLinkedAccountTypeForBroker(b, summary?.type)
           return accountType ? { id: b.id, accountType } as const : null
         } catch {
           return null
@@ -1253,14 +1309,26 @@ export function AccountConfigPage() {
 
   // ── Configure modal ────────────────────────────────────────────────────
 
-  const openConfigureModal = (broker: BrokerAccount) => {
+  const openConfigureModal = async (broker: BrokerAccount) => {
     const fresh = brokers.find(b => b.id === broker.id) ?? broker
-    const channelIds = normalizeSignalChannelIds(fresh).filter(id =>
-      channelOptions.some(c => c.id === id),
+    const { rows, error: configLoadErr } = await fetchBrokerChannelTradingConfigRows(supabase, fresh.id)
+    if (configLoadErr) {
+      setError(configLoadErr)
+      return
+    }
+    const merged = mergeBrokerWithChannelTradingConfigRows(fresh, rows)
+    const channelIds = filterChannelIdsToActiveOptions(
+      normalizeSignalChannelIds(merged),
+      channelOptions,
     )
-    setConfigAccount(fresh)
-    setActiveManualSubTab('ai_training')
-    const draft = buildChannelConfigDraftFromBroker(fresh, channelIds, keywordFiltersEnabled)
+    setConfigAccount(merged)
+    const limitStateMap: Record<string, CopyLimitState> = {}
+    for (const row of rows) {
+      limitStateMap[row.channel_id] = normalizeCopyLimitState(row.copy_limit_state)
+    }
+    setChannelCopyLimitState(limitStateMap)
+    setActiveManualSubTab('symbols')
+    const draft = buildChannelConfigDraftFromBroker(merged, channelIds, keywordFiltersEnabled)
     const nextDraft = {
       ...draft,
       selectedChannelId: draft.selectedChannelId ?? channelOptions[0]?.id ?? null,
@@ -1275,15 +1343,34 @@ export function AccountConfigPage() {
       ),
     )
     setChannelLinkEditMode(false)
-    setDetectedSymbols([])
-    setChannelSignalSampleCount(0)
-    if (draft.selectedChannelId && userId) void loadChannelSymbols(draft.selectedChannelId)
     if (userId) void refreshTradingPresets(userId)
   }
 
+  useEffect(() => {
+    if (!pendingConfigureBrokerId || brokersLoading) return
+    const broker = brokers.find(b => b.id === pendingConfigureBrokerId)
+    if (!broker) return
+    if (configAccount?.id === pendingConfigureBrokerId) {
+      clearPendingConfigureBroker()
+      return
+    }
+    if (channelsLoading && channelOptions.length === 0) return
+    void openConfigureModal(broker)
+    clearPendingConfigureBroker()
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- open configure once when broker connect success requests it
+  }, [
+    pendingConfigureBrokerId,
+    brokers,
+    brokersLoading,
+    channelsLoading,
+    channelOptions.length,
+    configAccount?.id,
+    clearPendingConfigureBroker,
+  ])
+
   const selectConfigureChannel = (channelId: string) => {
     setConfigDraft(prev => ({ ...prev, selectedChannelId: channelId }))
-    setActiveManualSubTab('ai_training')
+    setActiveManualSubTab('symbols')
   }
 
   const connectSelectedChannelToBroker = async () => {
@@ -1309,8 +1396,9 @@ export function AccountConfigPage() {
 
       replaceBroker(updated)
       setConfigAccount(updated)
-      const linkedIds = normalizeSignalChannelIds(updated).filter(id =>
-        channelOptions.some(c => c.id === id),
+      const linkedIds = filterChannelIdsToActiveOptions(
+        normalizeSignalChannelIds(updated),
+        channelOptions,
       )
       setConfigDraft(prev => {
         const channelConfigs = { ...prev.channelConfigs }
@@ -1324,33 +1412,11 @@ export function AccountConfigPage() {
           selectedChannelId: channelId,
         }
       })
-      try {
-        await backfillChannelSignals(channelId, CHANNEL_SYMBOL_LOOKBACK_DAYS)
-      } catch (syncErr) {
-        console.warn('[account-config] channel backfill failed:', syncErr)
-      }
-      void loadChannelSymbols(channelId, { runAnalysis: true })
-      // Auto-start training only once per channel (skip if training already exists).
-      const alreadyTrained = trainingExistsByChannel[channelId] === true
-      if (!alreadyTrained) {
-        void runAiTraining(channelId, { autoSave: true, silent: true })
-      }
+      startBackgroundAiTraining(channelId)
     } finally {
       setChannelConnecting(false)
     }
   }
-
-  useEffect(() => {
-    if (!configAccount || !configDraft.selectedChannelId || !userId) return
-    void loadChannelSymbols(configDraft.selectedChannelId)
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- reload symbols when switching channels in modal
-  }, [configDraft.selectedChannelId, configAccount?.id, userId])
-
-  useEffect(() => {
-    if (!configAccount || !configDraft.selectedChannelId || !userId) return
-    void loadChannelTrainingDraft(configDraft.selectedChannelId)
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- reload training when switching channels in modal
-  }, [configDraft.selectedChannelId, configAccount?.id, userId])
 
   useEffect(() => {
     const channelId = configDraft.selectedChannelId
@@ -1370,37 +1436,9 @@ export function AccountConfigPage() {
     return () => clearInterval(timer)
   }, [configDraft.selectedChannelId, trainingRunningByChannel, trainingSavingByChannel])
 
-  const channelSymbolSelection = useMemo(() => {
-    return selectedSymbolsFromWhitelist(channelManualSettings.symbol_to_trade, detectedSymbols)
-  }, [channelManualSettings.symbol_to_trade, detectedSymbols])
-
-  const staleSavedSymbols = useMemo(() => {
-    return staleWhitelistSymbols(
-      parseSymbolToTradeList(channelManualSettings.symbol_to_trade),
-      detectedSymbols,
-    )
-  }, [channelManualSettings.symbol_to_trade, detectedSymbols])
-
-  const toggleChannelSymbol = (symbol: string, checked: boolean) => {
-    const next = new Set(channelSymbolSelection)
-    if (checked) next.add(symbol)
-    else next.delete(symbol)
-    setManual({ symbol_to_trade: symbolToTradeFromSelection(next, detectedSymbols) })
-  }
-
-  const selectAllChannelSymbols = () => {
-    setManual({ symbol_to_trade: null })
-  }
-
-  const clearAllChannelSymbols = () => {
-    setManual({ symbol_to_trade: '' })
-  }
-
   const closeConfigureModal = () => {
     setConfigAccount(null)
     setConfigSavedSignature('')
-    setDetectedSymbols([])
-    setChannelSignalSampleCount(0)
     setShowPresetNameModal(false)
     setPresetNameDraft('')
     setPendingApplyPreset(null)
@@ -1488,9 +1526,6 @@ export function AccountConfigPage() {
       manualSettings: payload.manualSettings,
       channelFilters: payload.channelFilters,
     }))
-    if (configDraft.selectedChannelId) {
-      void loadChannelSymbols(configDraft.selectedChannelId)
-    }
     setPendingApplyPreset(null)
   }
 
@@ -1537,16 +1572,6 @@ export function AccountConfigPage() {
     patchSelectedChannel(current => ({
       ...current,
       manualSettings: { ...current.manualSettings, ...patch },
-    }))
-  }
-
-  const setTrainingDraft = (channelId: string, patch: Partial<SignalTrainingSchema>) => {
-    setTrainingByChannel(prev => ({
-      ...prev,
-      [channelId]: {
-        ...(prev[channelId] ?? defaultSignalTrainingSchema()),
-        ...patch,
-      },
     }))
   }
 
@@ -1639,8 +1664,28 @@ export function AccountConfigPage() {
   const saveConfigureModal = async () => {
     if (!configAccount || !user) return
     setError('')
-    const channelIds = configDraft.channelIds
+    const committedDraft = applyPendingConfigureDraftFields(configDraft, fixedLotDraft, symbolsExcludeDraft)
+    if (committedDraft !== configDraft) {
+      setConfigDraft(committedDraft)
+    }
+    if (fixedLotDraft !== null) {
+      setFixedLotDraft(null)
+    }
+    if (symbolsExcludeDraft !== null) {
+      setSymbolsExcludeDraft(null)
+    }
+    const channelIds = filterChannelIdsToActiveOptions(committedDraft.channelIds, channelOptions)
+    const previouslyLinkedChannelIds = normalizeSignalChannelIds(configAccount)
     const restrictChannels = channelIds.length > 0
+
+    if (committedDraft.channelIds.length > 0 && channelIds.length === 0) {
+      setError(
+        channelOptions.length === 0 || channelsLoading
+          ? bl.channelsSaveChannelListNotReady
+          : bl.channelsSaveLinkedChannelsInvalid,
+      )
+      return
+    }
 
       if (channelIds.length === 0) {
       const proceed = window.confirm(bl.channelsEmptySaveWarning)
@@ -1648,11 +1693,16 @@ export function AccountConfigPage() {
     }
 
     for (const id of channelIds) {
-      const ms = configDraft.channelConfigs[id]?.manualSettings
+      const ms = committedDraft.channelConfigs[id]?.manualSettings
       if (!channelManualSettingsComplete(ms)) {
         setError(cm.channelConfigSaveIncomplete)
         return
       }
+    }
+
+    if (hasBlockedMultiTradeSplit(channelIds, committedDraft.channelConfigs, configAccountTotalBalance)) {
+      setError(cm.risk.multiTradeSplitSaveBlocked)
+      return
     }
 
     await refreshSubscription()
@@ -1661,7 +1711,7 @@ export function AccountConfigPage() {
       isAdmin,
       fallback: manualSettingsPlanCtx,
     })
-    const requestedMulti = hasRequestedMultiTradeStyle(channelIds, configDraft.channelConfigs)
+    const requestedMulti = hasRequestedMultiTradeStyle(channelIds, committedDraft.channelConfigs)
     if (shouldBlockMultiTradeSave({ requestedMulti, effectivePlan: savePlanCtx.effectivePlan })) {
       setError(`${cm.risk.basicPlanTradeStyleLimit} Subscription upgrade may still be syncing. Please wait a few seconds and save again.`)
       return
@@ -1671,7 +1721,7 @@ export function AccountConfigPage() {
     const channelMessageFilters: ChannelMessageFiltersMap = {}
     for (const id of channelIds) {
       channelMessageFilters[id] = canUsePlanFeature('channel_keyword_filters')
-        ? configDraft.channelConfigs[id]?.channelFilters ?? { ...DEFAULT_CHANNEL_FILTERS }
+        ? committedDraft.channelConfigs[id]?.channelFilters ?? { ...DEFAULT_CHANNEL_FILTERS }
         : { ...BASIC_PLAN_CHANNEL_FILTERS }
     }
     const channelTradingConfigs = buildChannelTradingConfigsFromDraft(
@@ -1680,53 +1730,76 @@ export function AccountConfigPage() {
         channelIds.map(id => [
           id,
           {
-            mode: configDraft.channelConfigs[id]?.mode ?? 'manual',
-            manualSettings: normalizeManualSettingsForPlan(
-              savePlanCtx.plan,
-              savePlanCtx.status,
-              (configDraft.channelConfigs[id]?.manualSettings ?? DEFAULT_MANUAL_SETTINGS) as Record<string, unknown>,
-            ) as ManualSettings,
+            mode: committedDraft.channelConfigs[id]?.mode ?? 'manual',
+            manualSettings: normalizeManualSettings(
+              normalizeManualSettingsForPlan(
+                savePlanCtx.plan,
+                savePlanCtx.status,
+                (committedDraft.channelConfigs[id]?.manualSettings ?? DEFAULT_MANUAL_SETTINGS) as Record<string, unknown>,
+              ) as ManualSettings,
+              { accountBalance: configAccountTotalBalance },
+            ),
           },
         ]),
       ),
     )
     const existingConfigs = normalizeChannelTradingConfigsMap(configAccount.channel_trading_configs)
     for (const id of channelIds) {
-      const key = id.toLowerCase()
+      const key = normalizeChannelUuid(id)
+      if (!key) continue
       if (!channelTradingConfigs[key] && resolveChannelConfigEntry(existingConfigs, id)) {
         channelTradingConfigs[key] = resolveChannelConfigEntry(existingConfigs, id)!
       }
     }
-    // Preserve configs for linked channels not currently shown in the modal draft.
-    for (const [storedKey, storedCfg] of Object.entries(existingConfigs)) {
-      if (!channelTradingConfigs[storedKey]) {
-        channelTradingConfigs[storedKey] = storedCfg
-      }
-    }
-    const selectedId = configDraft.selectedChannelId && channelIds.includes(configDraft.selectedChannelId)
-      ? configDraft.selectedChannelId
+    const configsToPersist = restrictChannelTradingConfigsMap(channelTradingConfigs, channelIds)
+    const selectedId = committedDraft.selectedChannelId && channelIds.includes(committedDraft.selectedChannelId)
+      ? committedDraft.selectedChannelId
       : null
     const fallbackManualChannelId = selectedId ?? channelIds[0] ?? null
     const fallbackManualConfig = fallbackManualChannelId
-      ? configDraft.channelConfigs[fallbackManualChannelId]
+      ? committedDraft.channelConfigs[fallbackManualChannelId]
       : null
     const normalizedFallbackManual = fallbackManualConfig
-      ? normalizeManualSettingsForPlan(
-          savePlanCtx.plan,
-          savePlanCtx.status,
-          {
-            ...fallbackManualConfig.manualSettings,
-            allow_high_impact_news: fallbackManualConfig.manualSettings.news_trading_enabled === true,
-          } as Record<string, unknown>,
+      ? normalizeManualSettings(
+          normalizeManualSettingsForPlan(
+            savePlanCtx.plan,
+            savePlanCtx.status,
+            {
+              ...fallbackManualConfig.manualSettings,
+              allow_high_impact_news: fallbackManualConfig.manualSettings.news_trading_enabled === true,
+            } as Record<string, unknown>,
+          ) as ManualSettings,
+          { accountBalance: configAccountTotalBalance },
         )
       : (configAccount.manual_settings ?? {})
+    const { error: tableErr } = await upsertBrokerChannelTradingConfigs(
+      supabase,
+      user.id,
+      configAccount.id,
+      configsToPersist,
+    )
+    if (tableErr) {
+      setConfigSaving(false)
+      setError(tableErr)
+      return
+    }
+    const { error: pruneErr } = await deleteBrokerChannelTradingConfigsExcept(
+      supabase,
+      configAccount.id,
+      channelIds,
+    )
+    if (pruneErr) {
+      setConfigSaving(false)
+      setError(pruneErr)
+      return
+    }
     const { data, error: upErr } = await supabase
       .from('broker_accounts')
       .update({
         copier_mode: AI_CONFIGURATION_ENABLED && fallbackManualConfig?.mode === 'ai' ? 'ai' : 'manual',
         signal_channel_ids: channelIds,
         enforce_signal_channel_filter: restrictChannels,
-        channel_trading_configs: channelTradingConfigs,
+        channel_trading_configs: configsToPersist,
         manual_settings: normalizedFallbackManual,
         channel_message_filters: channelMessageFilters,
       })
@@ -1738,23 +1811,25 @@ export function AccountConfigPage() {
 
     if (upErr) { setError(upErr.message); return }
 
-    // Save any edited AI training drafts as part of the modal's main Save action.
-    const trainingChannelIds = channelIds.filter(id => Boolean(trainingByChannel[id]))
-    for (const channelId of trainingChannelIds) {
-      await saveAiTrainingDraft(channelId, { silent: true })
+    for (const channelId of channelIds.filter(id => !previouslyLinkedChannelIds.includes(id))) {
+      startBackgroundAiTraining(channelId)
     }
 
-    let persistedDraft = configDraft
+    let persistedDraft = committedDraft
     if (data) {
-      const fresh = data as unknown as BrokerAccount
+      const fresh = mergeBrokerWithChannelTradingConfigRows(
+        data as unknown as BrokerAccount,
+        (await fetchBrokerChannelTradingConfigRows(supabase, configAccount.id)).rows,
+      )
       replaceBroker(fresh)
       setConfigAccount(fresh)
-      const persistedChannelIds = normalizeSignalChannelIds(fresh).filter(id =>
-        channelOptions.some(c => c.id === id),
+      const persistedChannelIds = filterChannelIdsToActiveOptions(
+        normalizeSignalChannelIds(fresh),
+        channelOptions,
       )
       const rebuilt = buildChannelConfigDraftFromBroker(fresh, persistedChannelIds, keywordFiltersEnabled)
       const selectedChannelId = choosePersistedSelectedChannelId({
-        preferredSelectedId: configDraft.selectedChannelId,
+        preferredSelectedId: committedDraft.selectedChannelId,
         persistedChannelIds,
         fallbackSelectedId: rebuilt.selectedChannelId ?? channelOptions[0]?.id ?? null,
       })
@@ -1795,110 +1870,7 @@ export function AccountConfigPage() {
     return bl.channelsNoneSelected
   }
 
-  // ── Add account flow ───────────────────────────────────────────────────
-
-  const set = (field: keyof BrokerForm, value: string | boolean) =>
-    setForm(prev => ({ ...prev, [field]: value }))
-
-  const addBroker = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
-    if (!hasActiveSubscription) {
-      setError(pw.subscriptionRequired)
-      return
-    }
-    if (!canAddBroker()) {
-      setError(interpolate(pw.brokerLimit, { limit: String(limits.maxBrokerAccounts) }))
-      return
-    }
-    if (!form.account_number.trim() || !form.broker_server.trim() || !form.account_password) {
-      setError(t.accountConfig.connectForm.validationRequired)
-      return
-    }
-
-    setSaving(true)
-    const login = form.account_number.trim()
-    const server = form.broker_server.trim()
-    const duplicate = brokers.find(
-      b => b.account_login === login && b.broker_server === server,
-    )
-    if (duplicate) {
-      setError(bl.duplicateMtLogin)
-      setSaving(false)
-      return
-    }
-
-    try {
-      const { broker, summary } = await metatraderApi.register({
-        platform: form.platform,
-        server,
-        login,
-        password: form.account_password,
-        label: form.label.trim() || undefined,
-        remember_password: form.remember_password,
-      })
-      upsertBroker(broker)
-      const registeredType = resolveLinkedAccountType(
-        summary?.type,
-        resolveMtServerCandidate(broker, broker.broker_server),
-      )
-      if (registeredType) {
-        setBrokerAccountTypes(prev => ({ ...prev, [broker.id]: registeredType }))
-      }
-      setForm(emptyForm)
-      setShowAddBroker(false)
-      // If the register endpoint couldn't pull a summary inside its short
-      // request window (MT5 sometimes needs a few extra seconds for the
-      // session to come up), keep tailing for it client-side so the card
-      // is populated without the user having to click Refresh.
-      if (broker?.id && (broker.last_balance == null && broker.last_equity == null)) {
-        void tailRefreshBrokerSummary(broker.id)
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t.accountConfig.connectForm.connectFailed)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  /** Poll AccountSummary for a freshly-registered broker until numbers arrive or we give up. */
-  const tailRefreshBrokerSummary = async (brokerId: string) => {
-    const delays = [1500, 2500, 4000, 6000, 8000]
-    for (const delay of delays) {
-      await new Promise(r => setTimeout(r, delay))
-      try {
-        const { summary, performance_baseline_balance } = await metatraderApi.summary(brokerId, {
-          calendarDay: formatLocalCalendarDay(),
-          timezoneOffsetMinutes: new Date().getTimezoneOffset(),
-        })
-        if (summary && (summary.balance != null || summary.equity != null || summary.currency)) {
-          const patch = {
-            last_balance: summary.balance ?? null,
-            last_equity: summary.equity ?? null,
-            last_currency: summary.currency ?? null,
-            last_synced_at: new Date().toISOString(),
-            connection_status: 'connected' as const,
-            ...(performance_baseline_balance != null && Number.isFinite(Number(performance_baseline_balance))
-              ? { performance_baseline_balance: Number(performance_baseline_balance) }
-              : {}),
-          }
-          const match = brokers.find(b => b.id === brokerId)
-          const accountType = resolveLinkedAccountType(
-            summary.type,
-            match ? resolveMtServerCandidate(match, match.broker_server) : null,
-          )
-          patchBroker(brokerId, patch)
-          if (accountType) {
-            setBrokerAccountTypes(types => ({ ...types, [brokerId]: accountType }))
-          }
-          setConfigAccount(prev => prev && prev.id === brokerId ? { ...prev, ...patch } : prev)
-          return
-        }
-      } catch {
-        // Keep trying — the MT5 server may still be authenticating.
-      }
-    }
-  }
+  // ── Delete broker ──────────────────────────────────────────────────────
 
   const confirmDeleteBroker = async () => {
     if (!brokerPendingDelete || !user) return
@@ -1917,7 +1889,7 @@ export function AccountConfigPage() {
     })
 
     try {
-      await metatraderApi.remove(id)
+      await fxsocketBroker.delete(id)
     } catch (err) {
       const msg = err instanceof Error ? err.message : bl.deleteFailed
 
@@ -1928,7 +1900,7 @@ export function AccountConfigPage() {
         .eq('user_id', user.id)
 
       if (!directDelErr) {
-        void metatraderApi.remove(id).catch(() => {})
+        void fxsocketBroker.delete(id).catch(() => {})
         return
       }
 
@@ -1942,9 +1914,7 @@ export function AccountConfigPage() {
       if (stillThere) {
         setBrokers(prev => {
           if (prev.some(b => b.id === id)) return prev
-          return [...prev, removed].sort(
-            (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-          )
+          return sortBrokerAccountsNewestFirst([...prev, removed])
         })
         setError(/unauthorized/i.test(msg) ? bl.deleteSessionExpired : msg)
       }
@@ -1976,7 +1946,7 @@ export function AccountConfigPage() {
         title={t.pages.accountConfiguration.title}
         subtitle={t.pages.accountConfiguration.description}
         actions={(
-          <Button size="sm" onClick={() => setShowPlatformModal(true)}>
+          <Button size="sm" onClick={openAddTradingAccount}>
             <Plus className="w-3.5 h-3.5" />
             {t.accountConfig.connectForm.addAccountButton}
           </Button>
@@ -1992,93 +1962,6 @@ export function AccountConfigPage() {
       {/* ── Broker Accounts ── */}
       <section>
 
-        {showAddBroker && (
-          <Card className="mb-3">
-            <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 mb-4">
-              {interpolate(t.accountConfig.connectForm.title, { platform: form.platform })}
-            </h3>
-            {error && <PaywallErrorAlert message={error} className="mb-3" />}
-            <form onSubmit={addBroker} className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <Input
-                  label={t.accountConfig.connectForm.accountLabel}
-                  placeholder={interpolate(t.accountConfig.connectForm.accountLabelPlaceholder, {
-                    platform: form.platform,
-                  })}
-                  value={form.label}
-                  onChange={e => set('label', e.target.value)}
-                />
-                <Select
-                  label={t.accountConfig.connectForm.platformLabel}
-                  value={form.platform}
-                  onChange={e => set('platform', e.target.value as 'MT4' | 'MT5')}
-                  options={[
-                    { value: 'MT5', label: t.accountConfig.connectForm.platformMt5 },
-                    { value: 'MT4', label: t.accountConfig.connectForm.platformMt4 },
-                  ]}
-                />
-              </div>
-
-              <MtCompanyServerPicker
-                platform={form.platform}
-                value={form.broker_server}
-                onChange={(v) => set('broker_server', v)}
-                hint={t.accountConfig.connectForm.brokerServerHint}
-                required
-              />
-
-              <div className="grid grid-cols-2 gap-3">
-                <Input
-                  label={t.accountConfig.connectForm.mtLoginLabel}
-                  placeholder={t.accountConfig.connectForm.mtLoginPlaceholder}
-                  value={form.account_number}
-                  onChange={e => set('account_number', e.target.value)}
-                  required
-                />
-                <PasswordInput
-                  label={t.accountConfig.connectForm.passwordLabel}
-                  placeholder={t.accountConfig.connectForm.passwordPlaceholder}
-                  value={form.account_password}
-                  onChange={e => set('account_password', e.target.value)}
-                  hint={t.accountConfig.connectForm.passwordHint}
-                  required
-                />
-              </div>
-
-              <label className="flex items-start gap-3 rounded-xl border border-neutral-100 bg-neutral-50 px-3 py-3 dark:border-neutral-800 dark:bg-neutral-800/40 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={form.remember_password}
-                  onChange={e => set('remember_password', e.target.checked)}
-                  className="mt-0.5 h-4 w-4 rounded border-neutral-300 text-teal-600 focus:ring-teal-500"
-                />
-                <span className="min-w-0">
-                  <span className="block text-sm font-medium text-neutral-800 dark:text-neutral-100">
-                    {t.accountConfig.connectForm.rememberPasswordLabel}
-                  </span>
-                  <span className="mt-0.5 block text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
-                    {t.accountConfig.connectForm.rememberPasswordHint}
-                  </span>
-                </span>
-              </label>
-
-              <div className="flex gap-2 pt-1">
-                <Button type="submit" loading={saving} size="sm">
-                  {t.accountConfig.connectForm.connectButton}
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => { setShowAddBroker(false); setForm(emptyForm); setError('') }}
-                >
-                  {t.common.cancel}
-                </Button>
-              </div>
-            </form>
-          </Card>
-        )}
-
         {brokersNeedingRelink.length > 0 && (
           <Alert variant="warning" className="mb-3">
             {brokersNeedingRelink.length === 1
@@ -2087,7 +1970,7 @@ export function AccountConfigPage() {
           </Alert>
         )}
 
-        {brokersNeedingReconnect.length > 0 && (
+        {false && brokersNeedingReconnect.length > 0 && (
           <Alert variant="warning" className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <span>{reconnectBannerText}</span>
             <Button
@@ -2096,9 +1979,9 @@ export function AccountConfigPage() {
               variant="secondary"
               className="shrink-0"
               loading={reconnectingBrokerIds.size > 0}
-              onClick={() => {
+              onClick={async () => {
                 for (const b of brokersNeedingReconnect) {
-                  void reconnectBroker(b.id)
+                  await reconnectBroker(b.id)
                 }
               }}
             >
@@ -2186,7 +2069,7 @@ export function AccountConfigPage() {
               const channelsLabel = getBrokerSignalChannelsLabel(broker.id)
               const accountType =
                 brokerAccountTypes[broker.id]
-                ?? resolveLinkedAccountType(undefined, resolveMtServerCandidate(broker, broker.broker_server))
+                ?? resolveLinkedAccountTypeForBroker(broker)
               return (
                 <Card key={broker.id} padding="none" className="overflow-hidden">
                   <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -2202,21 +2085,18 @@ export function AccountConfigPage() {
                         {brokerLabel && (
                           <Badge variant="neutral" size="sm">{brokerLabel}</Badge>
                         )}
-                          {broker.auto_reconnect_enabled ? (
-                            <Badge variant="success" size="sm">{bl.storedCredentialsActive}</Badge>
-                          ) : null}
                       </div>
                         {broker.broker_server && (
                           <p className="mt-0.5 truncate text-xs text-neutral-500 dark:text-neutral-400">{broker.broker_server}</p>
                         )}
-                        {(broker.connection_error_kind || broker.connection_error_message) && brokerCanReconnect(broker) ? (
+                        {broker.connection_error && brokerCanReconnect(broker) ? (
                           <p className="mt-1 text-xs text-error-600 dark:text-error-400 leading-relaxed">
                             {brokerConnectErrorText(
-                              broker.connection_error_kind as BrokerConnectErrorKind | null | undefined,
-                              broker.connection_error_message,
+                              classifyBrokerConnectError(broker.connection_error),
+                              broker.connection_error,
                               connectErrorLabels,
-                          )}
-                        </p>
+                            )}
+                          </p>
                         ) : null}
                     </div>
                     </div>
@@ -2243,16 +2123,6 @@ export function AccountConfigPage() {
                           {bl.reconnect}
                         </Button>
                       ) : null}
-                      {broker.auto_reconnect_enabled ? (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => { void clearStoredCredentials(broker.id).then(r => { if (r.error) setError(r.error) }) }}
-                        >
-                          {bl.clearStoredCredentials}
-                        </Button>
-                      ) : null}
                       <button
                         type="button"
                         onClick={() => openConfigureModal(broker)}
@@ -2275,11 +2145,8 @@ export function AccountConfigPage() {
                     <AccountDetailCell
                       label={bl.detailAccountType}
                       value={
-                        <span className={accountTypeValueClass(accountType)}>
-                          {formatLinkedAccountTypeLabel(accountType, {
-                            demo: bl.accountTypeDemo,
-                            live: bl.accountTypeLive,
-                          })}
+                        <span className={linkedAccountTypeValueClass(accountType)}>
+                          {formatLinkedAccountTypeLabel(accountType, accountTypeLabelsFromBrokerList(bl))}
                         </span>
                       }
                       className="border-l border-neutral-100 dark:border-neutral-800 max-lg:border-t-0"
@@ -2296,7 +2163,7 @@ export function AccountConfigPage() {
                     />
                     <AccountDetailCell
                       label={bl.detailBalance}
-                      value={formatBrokerMoney(broker.last_balance, broker.last_currency)}
+                      value={formatBrokerMoney(resolveBrokerTotalBalance(broker), broker.last_currency)}
                       className="border-t border-l border-neutral-100 dark:border-neutral-800 lg:border-t-0"
                     />
                     <AccountDetailCell
@@ -2333,28 +2200,30 @@ export function AccountConfigPage() {
         )}
       </section>
 
-      <AddAccountModal
-        open={showPlatformModal}
-        onClose={() => setShowPlatformModal(false)}
-        onSelect={(platform) => {
-          if (platform !== 'MT4' && platform !== 'MT5') {
-            setError(interpolate(t.accountConfig.addAccount.comingSoonPlatform, { platform }))
-            setShowPlatformModal(false)
-            return
-          }
-          setForm(prev => ({ ...prev, platform: platform as 'MT4' | 'MT5' }))
-          setShowPlatformModal(false)
-          setShowAddBroker(true)
+      <RiskLotCalculatorModal
+        open={riskCalcOpen && configAccount != null}
+        onClose={() => setRiskCalcOpen(false)}
+        onApply={patch => {
+          setManual(patch)
+          setFixedLotDraft(null)
         }}
+        manualSettings={channelManualSettings}
+        initialBalance={configAccountTotalBalance}
+        currency={configAccount?.last_currency}
+        pipQuote={livePipQuote}
+        symbol={resolvedSingleSymbol}
+        copy={cm.risk.lotCalculator}
+        cancelLabel={cm.cancel}
       />
 
       {brokerPendingDelete && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center px-4">
+          <div className="absolute inset-0 bg-neutral-950/55" aria-hidden />
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="delete-broker-title"
-            className="w-full max-w-md rounded-2xl bg-white dark:bg-neutral-900 shadow-xl border border-neutral-200 dark:border-neutral-800"
+            className="relative w-full max-w-md rounded-2xl bg-white dark:bg-neutral-900 shadow-xl border border-neutral-200 dark:border-neutral-800"
           >
             <div className="px-5 py-4 border-b border-neutral-100 dark:border-neutral-800">
               <h3 id="delete-broker-title" className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
@@ -2387,22 +2256,45 @@ export function AccountConfigPage() {
         </div>
       )}
 
-      {configAccount && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
+      {configAccount && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 pb-[env(safe-area-inset-bottom)]">
+          <div className="fixed inset-0 bg-neutral-950/55" aria-hidden />
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="configure-trading-title"
-            className="w-full max-w-5xl h-[100dvh] sm:h-[88vh] max-h-[100dvh] sm:max-h-[88vh] flex flex-col relative rounded-none sm:rounded-2xl bg-white dark:bg-neutral-900 shadow-xl border-0 sm:border border-neutral-200 dark:border-neutral-800 overflow-hidden"
+            className="relative z-[1] w-full max-w-5xl h-[100dvh] sm:h-[88vh] max-h-[100dvh] sm:max-h-[88vh] flex flex-col rounded-none sm:rounded-2xl bg-white dark:bg-neutral-900 shadow-xl border-0 sm:border border-neutral-200 dark:border-neutral-800 overflow-hidden"
           >
             <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-neutral-100 dark:border-neutral-800 flex items-start justify-between gap-3 shrink-0">
               <div className="min-w-0 flex-1">
                 <h3 id="configure-trading-title" className="text-base sm:text-lg font-semibold text-neutral-900 dark:text-neutral-50 truncate">
                   {cm.title}
                 </h3>
-                <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 mt-0.5 truncate">
-                  {configAccount.label} · {configAccount.platform}
-                  {selectedChannelOption ? ` · ${selectedChannelOption.display_name}` : ''}
+                <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 mt-0.5 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                  <span className="font-medium text-neutral-700 dark:text-neutral-300">
+                    {configAccount.label}
+                  </span>
+                  <span className="text-neutral-300 dark:text-neutral-600" aria-hidden>·</span>
+                  <span>
+                    {bl.detailLogin}: {configAccount.account_login || '—'}
+                  </span>
+                  <span className="text-neutral-300 dark:text-neutral-600" aria-hidden>·</span>
+                  <span>
+                    {bl.detailAccountType}:{' '}
+                    <span className={linkedAccountTypeValueClass(configureAccountType)}>
+                      {formatLinkedAccountTypeLabel(configureAccountType, accountTypeLabelsFromBrokerList(bl))}
+                    </span>
+                  </span>
+                  <span className="text-neutral-300 dark:text-neutral-600" aria-hidden>·</span>
+                  <span>
+                    {bl.detailBalance}: {formatBrokerMoney(resolveBrokerTotalBalance(configAccount), configAccount.last_currency)}
+                  </span>
+                  {selectedChannelOption ? (
+                    <>
+                      <span className="text-neutral-300 dark:text-neutral-600" aria-hidden>·</span>
+                      <span className="truncate">{selectedChannelOption.display_name}</span>
+                    </>
+                  ) : null}
                 </p>
               </div>
               <button
@@ -2487,11 +2379,21 @@ export function AccountConfigPage() {
                             <Radio className={clsx('w-4 h-4 shrink-0', selected ? 'text-primary-600' : linked ? 'text-neutral-400' : 'text-neutral-300')} />
                             <span className="truncate flex-1">{channel.display_name}</span>
                             {!channelLinkEditMode ? (
-                              <Badge variant={linked ? 'success' : 'neutral'}>
+                              <Badge variant={linked ? 'primary' : 'neutral'}>
                                 {linked ? cm.channelLinkedBadge : cm.channelNotLinkedBadge}
                               </Badge>
                             ) : null}
                     </button>
+                          {linked && !channelLinkEditMode ? (
+                            <button
+                              type="button"
+                              onClick={() => toggleDraftChannel(channel.id)}
+                              className="shrink-0 rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-neutral-800 dark:hover:text-neutral-300"
+                              aria-label={interpolate(cm.removeLinkedChannel, { channel: channel.display_name })}
+                            >
+                              <X className="h-3.5 w-3.5" aria-hidden />
+                            </button>
+                          ) : null}
                         </div>
                       )
                     })}
@@ -2567,13 +2469,13 @@ export function AccountConfigPage() {
                 ) : !selectedChannelLinked ? (
                   <div className="py-12 text-center max-w-md mx-auto px-2">
                     <Link2 className="w-10 h-10 mx-auto mb-3 text-primary-400 dark:text-primary-500" />
-                    <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100">
+                    <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100 inline-flex items-center justify-center gap-1.5 flex-wrap">
                       {interpolate(cm.connectChannelPrompt, {
                         channel: selectedChannelOption?.display_name ?? cm.channelFilters.unnamedChannel,
                         broker: configAccount ? getBrokerDisplayLabel(configAccount) : '—',
                       })}
+                      <InfoTooltip text={cm.connectChannelHint} />
                     </p>
-                    <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-2">{cm.connectChannelHint}</p>
                     <Button
                       className="mt-6 min-h-[44px]"
                       loading={channelConnecting}
@@ -2608,10 +2510,7 @@ export function AccountConfigPage() {
 
                     {AI_CONFIGURATION_ENABLED && channelMode === 'ai' ? (
                       <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-4 space-y-3">
-                        <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{cm.ai.title}</p>
-                        <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                          {cm.ai.intro}
-                        </p>
+                        <ConfigTitle variant="semibold" info={cm.ai.intro}>{cm.ai.title}</ConfigTitle>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           <FeatureBullet icon={DollarSign} title={cm.ai.moneyManagementTitle} body={cm.ai.moneyManagementBody} />
                           <FeatureBullet icon={Eye} title={cm.ai.signalTitle} body={cm.ai.signalBody} />
@@ -2623,115 +2522,57 @@ export function AccountConfigPage() {
                       <div className="space-y-4">
                         {activeManualSubTab === 'symbols' && (
                           selectedChannelOption && configDraft.selectedChannelId ? (
-                            <section className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-4 space-y-3">
-                              <div className="flex flex-wrap items-start justify-between gap-2">
-                              <div>
-                                  <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
-                                    {cm.channelSymbols.title}
-                                  </p>
-                                  <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5 max-w-xl">
-                                    {cm.channelSymbols.intro}
-                                </p>
+                            <section className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-4 space-y-4">
+                              <ConfigTitle variant="semibold" info={cm.channelSymbols.intro}>
+                                {cm.channelSymbols.title}
+                              </ConfigTitle>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <ConfigureInput
+                                  label={cm.channelSymbols.prefixLabel}
+                                  hint={cm.channelSymbols.prefixHint}
+                                  placeholder="#"
+                                  value={channelManualSettings.symbol_prefix ?? ''}
+                                  onChange={e => setManual({ symbol_prefix: e.target.value })}
+                                />
+                                <ConfigureInput
+                                  label={cm.channelSymbols.suffixLabel}
+                                  hint={cm.channelSymbols.suffixHint}
+                                  placeholder="+"
+                                  value={channelManualSettings.symbol_suffix ?? ''}
+                                  onChange={e => setManual({ symbol_suffix: e.target.value })}
+                                />
                               </div>
-                                <Button
-                                  type="button"
-                                  variant="secondary"
-                                  size="sm"
-                                  className="shrink-0"
-                                  loading={channelSymbolsRefreshing}
-                                  disabled={channelSymbolsLoading || configSaving || presetSaving}
-                                  onClick={() => {
-                                    if (!configDraft.selectedChannelId) return
-                                    void loadChannelSymbols(configDraft.selectedChannelId, { runAnalysis: true })
-                                  }}
-                                >
-                                  <RefreshCw className="w-3.5 h-3.5" />
-                                  {channelSymbolsRefreshing ? cm.channelSymbols.refreshing : cm.channelSymbols.refresh}
-                                </Button>
-                              </div>
-                              {channelSymbolsLoading ? (
-                                <p className="text-xs text-neutral-500 dark:text-neutral-400">{cm.channelSymbols.loading}</p>
-                              ) : detectedSymbols.length === 0 ? (
-                                <p className="text-xs text-neutral-500 dark:text-neutral-400">{cm.channelSymbols.empty}</p>
-                              ) : (
-                                <>
-                                  {channelSignalSampleCount > 0 ? (
-                                    <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                                      {interpolate(cm.channelSymbols.signalsCount, {
-                                        count: String(channelSignalSampleCount),
-                                      })}
-                                    </p>
-                                  ) : null}
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <Button type="button" variant="ghost" size="sm" onClick={selectAllChannelSymbols}>
-                                      {cm.channelSymbols.selectAll}
-                                    </Button>
-                                    <Button type="button" variant="ghost" size="sm" onClick={clearAllChannelSymbols}>
-                                      {cm.channelSymbols.clearAll}
-                                    </Button>
-                                    <span className="text-xs text-neutral-500 dark:text-neutral-400 tabular-nums">
-                                      {interpolate(cm.channelSymbols.selectedCount, {
-                                        count: String(channelSymbolSelection.size),
-                                        total: String(detectedSymbols.length),
-                                      })}
-                                    </span>
-                                </div>
-                                  <div className="flex flex-wrap gap-2">
-                                    {detectedSymbols.map(({ symbol, count }) => {
-                                      const checked = channelSymbolSelection.has(symbol)
-                                      return (
-                                        <label
-                                          key={symbol}
-                                          className={clsx(
-                                            'inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm cursor-pointer transition-colors',
-                                            checked
-                                              ? 'border-teal-500 bg-teal-50 text-teal-900 dark:border-teal-600 dark:bg-teal-950/40 dark:text-teal-100'
-                                              : 'border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300',
-                                          )}
-                                        >
-                                          <input
-                                            type="checkbox"
-                                            className="h-4 w-4 rounded border-neutral-300 text-teal-600 focus:ring-teal-500"
-                                            checked={checked}
-                                            onChange={e => toggleChannelSymbol(symbol, e.target.checked)}
-                                          />
-                                          <span className="font-medium">{symbol}</span>
-                                          <span className="text-xs text-neutral-500 dark:text-neutral-400 tabular-nums">
-                                            {count}
-                                          </span>
-                                        </label>
-                                      )
-                                    })}
-                                    {staleSavedSymbols.map(symbol => (
-                                      <label
-                                        key={`stale-${symbol}`}
-                                        className="inline-flex items-center gap-2 rounded-lg border border-dashed border-amber-300 bg-amber-50 px-3 py-2 text-sm dark:border-amber-800 dark:bg-amber-950/30"
-                                      >
-                                        <input
-                                          type="checkbox"
-                                          className="h-4 w-4 rounded border-neutral-300 text-teal-600 focus:ring-teal-500"
-                                          checked={channelSymbolSelection.has(symbol)}
-                                          onChange={e => toggleChannelSymbol(symbol, e.target.checked)}
-                                        />
-                                        <span className="font-medium text-amber-900 dark:text-amber-100">{symbol}</span>
-                                      </label>
-                                    ))}
-                              </div>
-                                  {!parseSymbolToTradeList(channelManualSettings.symbol_to_trade).length
-                                  || channelSymbolSelection.size === detectedSymbols.length ? (
-                                    <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                                      {cm.channelSymbols.tradeAllHint}
-                                    </p>
-                                  ) : null}
-                                  {staleSavedSymbols.length > 0 ? (
-                                    <p className="text-xs text-amber-700 dark:text-amber-300">
-                                      {interpolate(cm.channelSymbols.staleSymbolNote, {
-                                        symbols: staleSavedSymbols.join(', '),
-                                      })}
-                                    </p>
-                                  ) : null}
-                                </>
-                              )}
+                              <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                                {cm.channelSymbols.example}
+                              </p>
+                              <ConfigureInput
+                                label={cm.channelSymbols.tradeOnlyLabel}
+                                hint={cm.channelSymbols.tradeOnlyHint}
+                                placeholder={cm.channelSymbols.tradeOnlyPlaceholder}
+                                value={symbolWhitelistToInput(channelManualSettings.symbol_to_trade)}
+                                onChange={e => {
+                                  const raw = e.target.value
+                                  setManual({ symbol_to_trade: raw.trim() === '' ? null : raw })
+                                }}
+                                onBlur={e => setManual({
+                                  symbol_to_trade: symbolWhitelistFromInput(e.target.value),
+                                })}
+                              />
+                              <ConfigureInput
+                                label={cm.channelSymbols.avoidLabel}
+                                hint={cm.channelSymbols.avoidHint}
+                                placeholder={cm.channelSymbols.avoidPlaceholder}
+                                value={
+                                  symbolsExcludeDraft
+                                  ?? symbolsExcludeToInput(channelManualSettings.symbols_exclude)
+                                }
+                                onChange={e => setSymbolsExcludeDraft(e.target.value)}
+                                onBlur={() => {
+                                  if (symbolsExcludeDraft === null) return
+                                  setManual({ symbols_exclude: symbolsExcludeFromInput(symbolsExcludeDraft) })
+                                  setSymbolsExcludeDraft(null)
+                                }}
+                              />
                             </section>
                           ) : (
                             <p className="text-sm text-neutral-500 dark:text-neutral-400">{cm.channels.selectChannelFirst}</p>
@@ -2749,7 +2590,7 @@ export function AccountConfigPage() {
                                 aria-disabled={!keywordFiltersEnabled}
                               >
                                 <div className="flex items-center justify-between">
-                                  <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{cm.channels.keywordFilters}</p>
+                                  <ConfigTitle variant="semibold" info={`${cm.channels.filtersIntro}\n\n${cm.channelFilters.footer}`}>{cm.channels.keywordFilters}</ConfigTitle>
                                   <p className="text-xs text-neutral-500 dark:text-neutral-400">
                                     {(() => {
                                       const f = normalizeChannelFilters(
@@ -2765,7 +2606,7 @@ export function AccountConfigPage() {
                                     })()}
                                   </p>
                                 </div>
-                                <p className="text-xs text-neutral-500 dark:text-neutral-400">{cm.channels.filtersIntro}</p>
+                                
                                 <ChannelFiltersCard
                                   filters={normalizeChannelFilters(
                                     configDraft.channelConfigs[configDraft.selectedChannelId]?.channelFilters
@@ -2791,188 +2632,23 @@ export function AccountConfigPage() {
                           )
                         )}
 
-                        {activeManualSubTab === 'ai_training' && (
-                          selectedChannelOption && configDraft.selectedChannelId ? (
-                            <section className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-4 space-y-4">
-                              <div className="flex flex-wrap items-start justify-between gap-3">
-                                <div>
-                                  <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
-                                    {cm.aiTraining.title}
-                                  </p>
-                                  <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 max-w-2xl">
-                                    {cm.aiTraining.intro}
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <Button
-                                    type="button"
-                                    variant="secondary"
-                                    size="sm"
-                                    loading={activeChannelTrainingRunning}
-                                    disabled={activeChannelTrainingSaving || configSaving || presetSaving}
-                                    onClick={() => void runAiTraining(configDraft.selectedChannelId!)}
-                                  >
-                                    <RefreshCw className="w-3.5 h-3.5" />
-                                    {activeChannelTrainingRunning ? cm.aiTraining.training : cm.aiTraining.trainButton}
-                                  </Button>
-                                </div>
-                              </div>
-                              {trainingLoading ? (
-                                <p className="text-xs text-neutral-500 dark:text-neutral-400">{cm.aiTraining.loadingExisting}</p>
-                              ) : (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                  <Input
-                                    label={cm.aiTraining.entryCues}
-                                    value={tokensToCsv(activeTrainingDraft.entry_cues).toUpperCase()}
-                                    hint={cm.aiTraining.commaSeparatedHint}
-                                    onChange={e => setTrainingDraft(configDraft.selectedChannelId!, { entry_cues: csvToUpperTokens(e.target.value) })}
-                                  />
-                                  <Input
-                                    label={cm.aiTraining.buyCues}
-                                    value={tokensToCsv(activeTrainingDraft.buy_cues).toUpperCase()}
-                                    hint={cm.aiTraining.commaSeparatedHint}
-                                    onChange={e => setTrainingDraft(configDraft.selectedChannelId!, { buy_cues: csvToUpperTokens(e.target.value) })}
-                                  />
-                                  <Input
-                                    label={cm.aiTraining.sellCues}
-                                    value={tokensToCsv(activeTrainingDraft.sell_cues).toUpperCase()}
-                                    hint={cm.aiTraining.commaSeparatedHint}
-                                    onChange={e => setTrainingDraft(configDraft.selectedChannelId!, { sell_cues: csvToUpperTokens(e.target.value) })}
-                                  />
-                                  <Input
-                                    label={cm.aiTraining.stopLossCues}
-                                    value={tokensToCsv(activeTrainingDraft.stop_loss_cues).toUpperCase()}
-                                    hint={cm.aiTraining.commaSeparatedHint}
-                                    onChange={e => setTrainingDraft(configDraft.selectedChannelId!, { stop_loss_cues: csvToUpperTokens(e.target.value) })}
-                                  />
-                                  <Input
-                                    label={cm.aiTraining.takeProfitCues}
-                                    value={tokensToCsv(activeTrainingDraft.take_profit_cues).toUpperCase()}
-                                    hint={cm.aiTraining.commaSeparatedHint}
-                                    onChange={e => setTrainingDraft(configDraft.selectedChannelId!, { take_profit_cues: csvToUpperTokens(e.target.value) })}
-                                  />
-                                  <Input
-                                    label={cm.aiTraining.takeProfitTierCues}
-                                    value={tokensToCsv(activeTrainingDraft.take_profit_tier_cues).toUpperCase()}
-                                    hint={cm.aiTraining.commaSeparatedHint}
-                                    onChange={e => setTrainingDraft(configDraft.selectedChannelId!, { take_profit_tier_cues: csvToUpperTokens(e.target.value) })}
-                                  />
-                                  <Input
-                                    label={cm.aiTraining.managementCues}
-                                    value={tokensToCsv(activeTrainingDraft.management_cues).toUpperCase()}
-                                    hint={cm.aiTraining.commaSeparatedHint}
-                                    onChange={e => setTrainingDraft(configDraft.selectedChannelId!, { management_cues: csvToUpperTokens(e.target.value) })}
-                                  />
-                                  <Input
-                                    label={cm.aiTraining.languageHints}
-                                    value={tokensToCsv(activeTrainingDraft.language_hints).toUpperCase()}
-                                    hint={cm.aiTraining.commaSeparatedHint}
-                                    onChange={e => setTrainingDraft(configDraft.selectedChannelId!, { language_hints: csvToUpperTokens(e.target.value) })}
-                                  />
-                                  <Select
-                                    label={cm.aiTraining.signalOrderPattern}
-                                    value={activeTrainingDraft.signal_order_pattern}
-                                    onChange={e => setTrainingDraft(configDraft.selectedChannelId!, { signal_order_pattern: e.target.value as SignalTrainingSchema['signal_order_pattern'] })}
-                                    options={[
-                                      { value: 'signal_then_price', label: cm.aiTraining.signalOrderPatternOptions.signalThenPrice },
-                                      { value: 'price_then_signal', label: cm.aiTraining.signalOrderPatternOptions.priceThenSignal },
-                                      { value: 'mixed', label: cm.aiTraining.signalOrderPatternOptions.mixed },
-                                      { value: 'unknown', label: cm.aiTraining.signalOrderPatternOptions.unknown },
-                                    ]}
-                                  />
-                                  <Select
-                                    label={cm.aiTraining.signalRequiresPrice}
-                                    value={
-                                      activeTrainingDraft.signal_requires_price == null
-                                        ? 'unknown'
-                                        : activeTrainingDraft.signal_requires_price ? 'yes' : 'no'
-                                    }
-                                    onChange={e =>
-                                      setTrainingDraft(configDraft.selectedChannelId!, {
-                                        signal_requires_price: e.target.value === 'unknown' ? null : e.target.value === 'yes',
-                                      })
-                                    }
-                                    options={[
-                                      { value: 'unknown', label: cm.aiTraining.requiresPriceOptions.unknown },
-                                      { value: 'yes', label: cm.aiTraining.requiresPriceOptions.yes },
-                                      { value: 'no', label: cm.aiTraining.requiresPriceOptions.no },
-                                    ]}
-                                  />
-                                  <div className="flex flex-col gap-1.5 md:col-span-2">
-                                    <label className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                                      {cm.aiTraining.sampleExamples}
-                                    </label>
-                                    <textarea
-                                      value={tokensToLines(activeTrainingDraft.sample_signal_examples).toUpperCase()}
-                                      rows={5}
-                                      placeholder="One signal example per line"
-                                      className="w-full px-3 py-2 text-base md:text-sm rounded-lg border transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 hover:border-neutral-300 dark:hover:border-neutral-600"
-                                      onChange={e => setTrainingDraft(configDraft.selectedChannelId!, { sample_signal_examples: linesToUpperTokens(e.target.value) })}
-                                    />
-                                  </div>
-                                  <div className="flex flex-col gap-1.5 md:col-span-2">
-                                    <label className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                                      {cm.aiTraining.notes}
-                                    </label>
-                                    <textarea
-                                      value={activeTrainingDraft.notes.toUpperCase()}
-                                      rows={4}
-                                      className="w-full px-3 py-2 text-base md:text-sm rounded-lg border transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 hover:border-neutral-300 dark:hover:border-neutral-600"
-                                      onChange={e => setTrainingDraft(configDraft.selectedChannelId!, { notes: e.target.value.toUpperCase() })}
-                                    />
-                                  </div>
-                                </div>
-                              )}
-                              <p className="text-xs text-neutral-500 dark:text-neutral-400">{cm.aiTraining.trainHint}</p>
-                            </section>
-                          ) : (
-                            <p className="text-sm text-neutral-500 dark:text-neutral-400">{cm.channels.selectChannelFirst}</p>
-                          )
-                        )}
-
                         {activeManualSubTab === 'risk' && (
                           <div className="space-y-4">
+                            {channelManualSettings.risk_mode === 'fixed_lot' && (
+                              <div className="flex justify-end">
+                                <button
+                                  type="button"
+                                  className="text-sm text-teal-600 hover:text-teal-700 hover:underline dark:text-teal-400 dark:hover:text-teal-300"
+                                  onClick={() => setRiskCalcOpen(true)}
+                                >
+                                  {cm.risk.openLotCalculator}
+                                </button>
+                              </div>
+                            )}
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                              <Select
-                                label={cm.risk.riskMode}
-                                value={channelManualSettings.risk_mode ?? 'fixed_lot'}
-                                onChange={e => setManual({ risk_mode: e.target.value as ManualSettings['risk_mode'] })}
-                                options={[
-                                  { value: 'fixed_lot', label: cm.risk.fixedLot },
-                                  { value: 'dynamic_balance_percent', label: cm.risk.dynamicBalance },
-                                ]}
-                              />
-                              {channelManualSettings.risk_mode === 'dynamic_balance_percent' ? (
-                                <Input label={cm.risk.dynamicBalance} type="number" value={String(channelManualSettings.dynamic_balance_percent ?? 1)} onChange={e => setManual({ dynamic_balance_percent: Number(e.target.value) })} />
-                              ) : (
-                                <Input
-                                  label={cm.risk.fixedLot}
-                                  type="text"
-                                  inputMode="decimal"
-                                  value={numberFieldDisplay(
-                                    channelManualSettings.fixed_lot,
-                                    fixedLotDraft,
-                                    DEFAULT_MANUAL_SETTINGS.fixed_lot ?? 0.01,
-                                  )}
-                                  onChange={e => setFixedLotDraft(e.target.value)}
-                                  onBlur={() => {
-                                    const raw = fixedLotDraft ?? numberFieldDisplay(
-                                      channelManualSettings.fixed_lot,
-                                      null,
-                                      DEFAULT_MANUAL_SETTINGS.fixed_lot ?? 0.01,
-                                    )
-                                    setFixedLotDraft(null)
-                                    setManual({
-                                      fixed_lot: commitPositiveNumber(
-                                        raw,
-                                        DEFAULT_MANUAL_SETTINGS.fixed_lot ?? 0.01,
-                                      ),
-                                    })
-                                  }}
-                                />
-                              )}
-                              <Select
+                              <ConfigureSelect
                                 label={cm.risk.tradeStyle}
+                                hint={cm.risk.tradeStyleHint}
                                 value={channelManualSettings.trade_style ?? 'single'}
                                 disabled={!multiTradeStyleEnabled}
                                 onChange={e => {
@@ -2996,12 +2672,78 @@ export function AccountConfigPage() {
                                       { value: 'single', label: cm.risk.singleTrade },
                                     ]}
                               />
+                              <ConfigureSelect
+                                label={cm.risk.riskMode}
+                                value={channelManualSettings.risk_mode ?? 'fixed_lot'}
+                                onChange={e => setManual({ risk_mode: e.target.value as ManualSettings['risk_mode'] })}
+                                options={[
+                                  { value: 'fixed_lot', label: cm.risk.fixedLot },
+                                  { value: 'dynamic_balance_percent', label: cm.risk.dynamicBalance },
+                                ]}
+                              />
+                              {channelManualSettings.risk_mode === 'dynamic_balance_percent' ? (
+                                <>
+                                  <ConfigureInput
+                                    label={cm.risk.dynamicBalance}
+                                    type="number"
+                                    min={0.1}
+                                    step={0.1}
+                                    value={String(channelManualSettings.dynamic_balance_percent ?? 1)}
+                                    onChange={e => setManual({ dynamic_balance_percent: Number(e.target.value) })}
+                                  />
+                                  <div>
+                                    <ConfigTitle className="mb-1" info={dynamicBalanceLotPreview?.hint}>
+                                      {cm.risk.dynamicBalanceLotSize}
+                                    </ConfigTitle>
+                                    <div className="rounded-md border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/50 px-3 py-2 text-sm font-mono text-neutral-900 dark:text-neutral-50">
+                                      {dynamicBalanceLotPreview?.lotLabel ?? '—'}
+                                    </div>
+                                    {dynamicBalanceLotPreview?.hint ? (
+                                      <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                                        {dynamicBalanceLotPreview.hint}
+                                      </p>
+                                    ) : null}
+                                  </div>
+                                </>
+                              ) : (
+                                <ConfigureInput
+                                  label={cm.risk.fixedLot}
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={numberFieldDisplay(
+                                    channelManualSettings.fixed_lot,
+                                    fixedLotDraft,
+                                    DEFAULT_MANUAL_SETTINGS.fixed_lot ?? 0.01,
+                                  )}
+                                  onChange={e => setFixedLotDraft(e.target.value)}
+                                  onBlur={() => {
+                                    const raw = fixedLotDraft ?? numberFieldDisplay(
+                                      channelManualSettings.fixed_lot,
+                                      null,
+                                      DEFAULT_MANUAL_SETTINGS.fixed_lot ?? 0.01,
+                                    )
+                                    setFixedLotDraft(null)
+                                    setManual({
+                                      fixed_lot: commitPositiveNumber(
+                                        raw,
+                                        DEFAULT_MANUAL_SETTINGS.fixed_lot ?? 0.01,
+                                      ),
+                                    })
+                                  }}
+                                  onKeyDown={e => {
+                                    if (e.key !== 'Enter') return
+                                    e.preventDefault()
+                                    ;(e.target as HTMLInputElement).blur()
+                                  }}
+                                />
+                              )}
                             </div>
 
                             {channelManualSettings.trade_style !== 'multi' && (
                               <div className="space-y-4">
-                              <Select
+                              <ConfigureSelect
                                 label={cm.risk.singleTpTarget}
+                                hint={cm.risk.singleTpTargetHint}
                                 value={channelManualSettings.single_tp_target ?? 'farthest'}
                                 onChange={e => {
                                   const v = e.target.value as ManualSettings['single_tp_target']
@@ -3014,17 +2756,11 @@ export function AccountConfigPage() {
                                   { value: 'tp3', label: cm.risk.singleTpTargetTp3 },
                                 ]}
                               />
-                              <p className="text-xs text-neutral-500 dark:text-neutral-400 -mt-2">
-                                {cm.risk.singleTpTargetHint}
-                              </p>
                               <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3 space-y-3">
-                                <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{cm.risk.signalEntryTitle}</p>
-                                <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                                  {cm.risk.signalEntryBody}
-                                </p>
+                                <ConfigTitle info={cm.risk.signalEntryBody}>{cm.risk.signalEntryTitle}</ConfigTitle>
                                 <div className="rounded-md border border-neutral-200 dark:border-neutral-800 overflow-hidden">
                                   <div className="flex items-center justify-between gap-3 bg-white dark:bg-neutral-900 px-3 py-2.5">
-                                    <span className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{cm.risk.useSignalEntryPrice}</span>
+                                    <ConfigToggleLabel>{cm.risk.useSignalEntryPrice}</ConfigToggleLabel>
                                     <Toggle
                                       checked={channelManualSettings.use_signal_entry_price === true}
                                       onChange={v => setManual({ use_signal_entry_price: v })}
@@ -3032,7 +2768,7 @@ export function AccountConfigPage() {
                                   </div>
                                   {channelManualSettings.use_signal_entry_price && (
                                     <div className="border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/80 px-3 py-3 space-y-2">
-                                      <Input
+                                      <ConfigureInput
                                         label={cm.risk.pipToleranceLegacy}
                                         type="number"
                                         min={0}
@@ -3058,78 +2794,67 @@ export function AccountConfigPage() {
                                   aria-disabled={!multiTradeStyleEnabled}
                                 >
                               <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3 space-y-3">
-                                <p className="text-xs text-neutral-600 dark:text-neutral-400">
-                                  {cm.risk.multiIntro}
-                                </p>
+                                <ConfigTitle info={cm.risk.multiIntro}>{cm.risk.multiTrades}</ConfigTitle>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                  <Input
+                                  <ConfigureInput
                                     label={cm.risk.perLegSize}
                                     type="number"
-                                    min={0.1}
+                                    min={multiTradeMinLegPercent}
                                     max={100}
                                     step={0.5}
                                     value={String(channelManualSettings.multi_trade_leg_percent ?? 5)}
-                                    onChange={e => setManual({ multi_trade_leg_percent: Number(e.target.value) })}
+                                    onChange={e => {
+                                      const raw = Number(e.target.value)
+                                      const next = Number.isFinite(raw)
+                                        ? Math.max(multiTradeMinLegPercent, Math.min(100, raw))
+                                        : multiTradeMinLegPercent
+                                      setManual({ multi_trade_leg_percent: next })
+                                    }}
                                   />
                                   <div>
-                                    <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100 mb-1">{cm.risk.totalOpenTrades}</p>
+                                    <ConfigTitle className="mb-1" info={multiTradePreviewTooltip}>{cm.risk.totalOpenTrades}</ConfigTitle>
                                     <div className="rounded-md border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/50 px-3 py-2 text-sm font-mono text-neutral-900 dark:text-neutral-50">
-                                      {multiTradePreview.fallsBackSingle
-                                        ? cm.risk.previewFallbackSingle
-                                        : multiTradePreview.immediate != null && multiTradePreview.pending != null
-                                          ? interpolate(cm.risk.previewInstantPending, {
-                                              total: String(multiTradePreview.totalOrders),
-                                              immediate: String(multiTradePreview.immediate),
-                                              pending: String(multiTradePreview.pending),
-                                            })
-                                          : multiTradePreview.totalOrders}
+                                      {multiTradeTotalOpenTradesLabel}
                                     </div>
-                                    <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-                                      {cm.risk.previewFooter}
-                                      {channelManualSettings.risk_mode === 'dynamic_balance_percent' && (
-                                        <>{cm.risk.previewDynamicRisk}</>
-                                      )}
-                                      {channelManualSettings.range_trading
-                                        && multiTradePreview.effectiveDistancePips != null
-                                        && (multiTradePreview.pending ?? 0) > 0
-                                        && Math.abs(multiTradePreview.effectiveDistancePips - (Number(channelManualSettings.range_distance_pips ?? 0) || 0)) >= 1 && (
-                                        <>
-                                          {interpolate(cm.risk.previewLadderSpan, {
-                                            pending: String(multiTradePreview.pending),
-                                            step: String(Number(channelManualSettings.range_step_pips ?? 0) || 0),
-                                            distance: String(multiTradePreview.effectiveDistancePips),
-                                            configured: String(Number(channelManualSettings.range_distance_pips ?? 0) || 0),
-                                          })}
-                                        </>
-                                      )}
-                                      {channelManualSettings.close_worse_entries && (multiTradePreview.immediate ?? 0) > 0 && (
-                                        <>
-                                          {interpolate(cm.risk.previewCweLegs, {
-                                            count: String(multiTradePreview.immediate),
-                                            pips: String(Number(channelManualSettings.close_worse_entries_pips ?? 20) || 0),
-                                          })}
-                                        </>
-                                      )}
-                                    </p>
                                   </div>
                                 </div>
                               </div>
 
+                              <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
+                                <div className="flex items-center justify-between gap-3 bg-white dark:bg-neutral-900 px-3 py-2.5">
+                                  <ConfigToggleLabel info={cm.risk.useSignalRangeBody}>{cm.risk.useSignalRange}</ConfigToggleLabel>
+                                  <Toggle
+                                    checked={channelManualSettings.use_signal_entry_range === true}
+                                    onChange={v => setManual({ use_signal_entry_range: v })}
+                                  />
+                                </div>
+                                {channelManualSettings.use_signal_entry_range && (
+                                  <div className="border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/80 px-3 py-3 space-y-2">
+                                    <ConfigureInput
+                                      label={cm.risk.useSignalRangePipTolerance}
+                                      type="number"
+                                      min={0}
+                                      step={1}
+                                      hint={cm.risk.useSignalRangePipToleranceHint}
+                                      value={String(channelManualSettings.signal_entry_pip_tolerance ?? 10)}
+                                      onChange={e => setManual({ signal_entry_pip_tolerance: Math.max(0, Number(e.target.value) || 0) })}
+                                    />
+                                  </div>
+                                )}
+                              </div>
+
                               <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3 space-y-3">
                                 <div className="flex items-center justify-between">
-                                  <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{cm.risk.rangeLayering}</p>
+                                  <ConfigToggleLabel info={cm.risk.rangeIntro}>{cm.risk.rangeLayering}</ConfigToggleLabel>
                                   <Toggle
                                     checked={channelManualSettings.range_trading === true}
                                     onChange={v => setManual({ range_trading: v })}
                                   />
                                 </div>
-                                <p className="text-xs text-neutral-600 dark:text-neutral-400">
-                                  {cm.risk.rangeIntro}
-                                </p>
                                 {channelManualSettings.range_trading && (
                                   <>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                      <Input
+                                      <ConfigureInput
                                         label={cm.risk.reservedLot}
                                         type="number"
                                         min={0}
@@ -3140,7 +2865,7 @@ export function AccountConfigPage() {
                                         value={String(channelManualSettings.range_percent ?? 50)}
                                         onChange={e => setManual({ range_percent: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })}
                                       />
-                                      <Input
+                                      <ConfigureInput
                                         label={cm.risk.stepPips}
                                         type="number"
                                         min={1}
@@ -3153,47 +2878,32 @@ export function AccountConfigPage() {
                                         value={String(channelManualSettings.range_step_pips ?? DEFAULT_MANUAL_SETTINGS.range_step_pips)}
                                         onChange={e => setManual({ range_step_pips: Math.max(1, Number(e.target.value) || 1) })}
                                       />
-                                      <Input
+                                      <ConfigureInput
                                         label={cm.risk.rangeDistance}
                                         type="number"
                                         min={1}
                                         step={1}
                                         placeholder="100"
+                                        disabled={channelManualSettings.use_signal_entry_range === true}
                                         hint={
-                                          formatPipHint(Number(channelManualSettings.range_distance_pips ?? DEFAULT_MANUAL_SETTINGS.range_distance_pips) || 0)
-                                          ?? cm.risk.rangeDistanceFallback
+                                          channelManualSettings.use_signal_entry_range === true
+                                            ? cm.risk.useSignalRangeDistanceDisabledHint
+                                            : (
+                                              formatPipHint(Number(channelManualSettings.range_distance_pips ?? DEFAULT_MANUAL_SETTINGS.range_distance_pips) || 0)
+                                              ?? cm.risk.rangeDistanceFallback
+                                            )
                                         }
                                         value={String(channelManualSettings.range_distance_pips ?? DEFAULT_MANUAL_SETTINGS.range_distance_pips)}
                                         onChange={e => setManual({ range_distance_pips: Math.max(1, Number(e.target.value) || 1) })}
                                       />
                                     </div>
 
-                                    <div className="rounded-md border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/50 p-3 space-y-3">
-                                      <div className="flex items-center justify-between">
-                                        <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{cm.risk.closeWorseEntries}</p>
-                                        <Toggle
-                                          checked={channelManualSettings.close_worse_entries === true}
-                                          onChange={v => setManual({ close_worse_entries: v })}
-                                        />
-                                      </div>
-                                      <p className="text-xs text-neutral-600 dark:text-neutral-400">
-                                        {cm.risk.closeWorseBody}
-                                      </p>
-                                      {channelManualSettings.close_worse_entries && (
-                                          <Input
-                                          label={cm.risk.closeWorsePips}
-                                            type="number"
-                                            min={1}
-                                            step={1}
-                                            placeholder="30"
-                                            hint={
-                                            formatPipHint(Number(channelManualSettings.close_worse_entries_pips ?? 30) || 0)
-                                            ?? cm.risk.closeWorsePipsFallback
-                                            }
-                                          value={String(channelManualSettings.close_worse_entries_pips ?? 30)}
-                                            onChange={e => setManual({ close_worse_entries_pips: Math.max(1, Number(e.target.value) || 1) })}
-                                          />
-                                      )}
+                                    <div className="flex items-center justify-between">
+                                      <ConfigToggleLabel info={cm.risk.layerTillCloseBody}>{cm.risk.layerTillClose}</ConfigToggleLabel>
+                                      <Toggle
+                                        checked={channelManualSettings.range_layer_till_close === true}
+                                        onChange={v => setManual({ range_layer_till_close: v })}
+                                      />
                                     </div>
                                   </>
                                 )}
@@ -3219,7 +2929,7 @@ export function AccountConfigPage() {
                           <div className="space-y-6">
                             <section className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3 space-y-3">
                               <div className="flex items-center justify-between">
-                                <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{cm.stops.tpDistributionTitle}</p>
+                                <ConfigTitle info={`${cm.stops.tpDistributionIntro}\n\n${cm.stops.multiTradeNote}\n\n${cm.stops.singleTradeNote}`}>{cm.stops.tpDistributionTitle}</ConfigTitle>
                                 <Button
                                   variant="ghost"
                                   size="sm"
@@ -3236,14 +2946,6 @@ export function AccountConfigPage() {
                                 && (channelManualSettings.tp_lots ?? DEFAULT_MANUAL_TP_LOTS).length >= limits.maxTpRows ? (
                                   <UpgradePrompt variant="compact" reason={cm.stops.basicPlanMoreTpsLimit} />
                               ) : null}
-                              <p className="text-xs text-neutral-600 dark:text-neutral-400">
-                                {cm.stops.tpDistributionIntro}
-                              </p>
-                              <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                                {cm.stops.multiTradeNote}
-                                <br />
-                                {cm.stops.singleTradeNote}
-                              </p>
                               <div className="flex items-center justify-between text-xs">
                                 <span className="text-neutral-600 dark:text-neutral-400">
                                   {cm.stops.enabledTotal}{' '}
@@ -3302,13 +3004,20 @@ export function AccountConfigPage() {
                               </div>
                             </section>
 
+                            <CopyLimitsTargetsSection
+                              copyLimits={ms.copy_limits}
+                              copyLimitState={
+                                configDraft.selectedChannelId
+                                  ? channelCopyLimitState[configDraft.selectedChannelId]
+                                  : undefined
+                              }
+                              profileTimezone={profile.timezone || 'UTC'}
+                              labels={cm.stops}
+                              onChange={next => setManual({ copy_limits: next })}
+                            />
+
                             <section className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-4 space-y-3">
-                              <div>
-                                <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{cm.stops.predefinedTitle}</p>
-                                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-                                  {cm.stops.predefinedIntro}
-                                </p>
-                          </div>
+                              <ConfigTitle info={cm.stops.predefinedIntro}>{cm.stops.predefinedTitle}</ConfigTitle>
                               {predefSummary ? (
                                 <div className="rounded-lg border border-teal-200 bg-teal-50/80 px-3 py-2.5 text-sm text-teal-900 dark:border-teal-900/50 dark:bg-teal-950/40 dark:text-teal-200">
                                   {predefSummary}
@@ -3317,12 +3026,12 @@ export function AccountConfigPage() {
                               <div className="space-y-3">
                                 <div className="rounded-md border border-neutral-200 dark:border-neutral-800 overflow-hidden">
                                   <div className="flex items-center justify-between gap-3 bg-white dark:bg-neutral-900 px-3 py-2.5">
-                                    <span className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{cm.stops.overrideSl}</span>
+                                    <ConfigToggleLabel>{cm.stops.overrideSl}</ConfigToggleLabel>
                                     <Toggle checked={ms.use_predefined_sl_pips === true} onChange={v => setManual({ use_predefined_sl_pips: v })} />
                                   </div>
                                   {ms.use_predefined_sl_pips && (
                                     <div className="border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/80 px-3 py-3">
-                                      <Input
+                                      <ConfigureInput
                                         label={cm.stops.slPips}
                                         type="number"
                                         min={1}
@@ -3336,7 +3045,7 @@ export function AccountConfigPage() {
                             </div>
                                 <div className="rounded-md border border-neutral-200 dark:border-neutral-800 overflow-hidden">
                                   <div className="flex items-center justify-between gap-3 bg-white dark:bg-neutral-900 px-3 py-2.5">
-                                    <span className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{cm.stops.overrideTps}</span>
+                                    <ConfigToggleLabel info={cm.stops.tpRowsIntro}>{cm.stops.overrideTps}</ConfigToggleLabel>
                                     <Toggle
                                       checked={ms.use_predefined_tp_pips === true}
                                       onChange={v => {
@@ -3363,17 +3072,14 @@ export function AccountConfigPage() {
                                   </div>
                                   {ms.use_predefined_tp_pips && (
                                     <div className="border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/80 px-3 py-3 space-y-3">
-                                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                                        <p className="text-xs text-neutral-600 dark:text-neutral-400">
-                                          {cm.stops.tpRowsIntro}
-                                        </p>
+                                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
                                         <Button variant="ghost" size="sm" className="shrink-0 self-start sm:self-auto" onClick={addPredefinedTpPipRow}>{cm.stops.addTp}</Button>
                                       </div>
                                       <div className="space-y-2">
                                         {clonePredefinedTpPips(ms.predefined_tp_pips).map((pips, idx) => (
                                           <div key={`predef-tp-${idx}`} className="grid grid-cols-12 gap-2 items-end">
                                             <div className="col-span-10">
-                                              <Input
+                                              <ConfigureInput
                                                 label={interpolate(cm.stops.tpPipsLabel, { index: String(idx + 1) })}
                                                 type="number"
                                                 min={1}
@@ -3424,20 +3130,17 @@ export function AccountConfigPage() {
 
                           return (
                           <div className="space-y-6">
-                            {!isSingleTrade ? (
-                              <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                                {cm.management.monitorIntroMulti}
-                              </p>
-                            ) : null}
-
                             <section className="rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
                               <div className="flex items-center justify-between gap-3 bg-white dark:bg-neutral-900 px-4 py-3">
-                                <div>
-                                  <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{cm.management.moveSlTitle}</p>
-                                  <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-                                    {cm.management.moveSlSubtitle}
-                                  </p>
-                                </div>
+                                <ConfigTitle
+                                  info={
+                                    !isSingleTrade
+                                      ? `${cm.management.monitorIntroMulti}\n\n${cm.management.moveSlSubtitle}`
+                                      : cm.management.moveSlSubtitle
+                                  }
+                                >
+                                  {cm.management.moveSlTitle}
+                                </ConfigTitle>
                                 <Toggle
                                   checked={autoMgmtEnabled}
                                   onChange={v => {
@@ -3477,14 +3180,16 @@ export function AccountConfigPage() {
                                               : 'border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-700 dark:text-neutral-300',
                                           )}
                                         >
-                                          <span className="font-medium block">{m.label}</span>
-                                          <span className="text-[10px] opacity-75 block mt-0.5">{m.hint}</span>
+                                          <span className="font-medium inline-flex items-center gap-1">
+                                            {m.label}
+                                            <InfoTooltip text={m.hint} />
+                                          </span>
                                         </button>
                                       ))}
                                 </div>
 
                                     {triggerMode === 'pips' && (
-                                    <Input
+                                    <ConfigureInput
                                         label={cm.management.triggerPips}
                                       type="number"
                                       min={0}
@@ -3498,7 +3203,7 @@ export function AccountConfigPage() {
                                     )}
 
                                     {triggerMode === 'rr' && (
-                                      <Input
+                                      <ConfigureInput
                                         label={cm.management.triggerRrLabel}
                                         type="number"
                                         min={0}
@@ -3512,7 +3217,7 @@ export function AccountConfigPage() {
                                     )}
 
                                     {triggerMode === 'money' && (
-                                      <Input
+                                      <ConfigureInput
                                         label={cm.management.triggerMoney}
                                         type="number"
                                         min={0}
@@ -3526,28 +3231,24 @@ export function AccountConfigPage() {
                                     )}
 
                                     {triggerMode === 'tp_hit' && (
-                                      <div className="space-y-1.5">
-                                        <Select
+                                        <ConfigureSelect
                                           label={cm.management.takeProfit}
+                                          hint={cm.management.tpHitHint}
                                           value={String(ms.move_sl_to_entry_tp_index ?? 1)}
                                           onChange={e => setManual({
                                             move_sl_to_entry_tp_index: Math.max(1, Number(e.target.value) || 1),
                                           })}
                                           options={tpOptions}
                                         />
-                                        <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                                          {cm.management.tpHitHint}
-                                        </p>
-                                    </div>
-                                  )}
+                                    )}
 
-                                    <Input
+                                    <ConfigureInput
                                       label={cm.management.breakevenOffset}
                                       type="number"
                                       min={0}
                                       step={1}
                                       hint={cm.management.breakevenOffsetHint}
-                                      value={String(ms.breakeven_offset_pips ?? 10)}
+                                      value={String(ms.breakeven_offset_pips ?? 3)}
                                       onChange={e => setManual({
                                         breakeven_offset_pips: Math.max(0, Number(e.target.value) || 0),
                                       })}
@@ -3556,10 +3257,7 @@ export function AccountConfigPage() {
 
                                   <div className="rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 overflow-hidden">
                                     <div className="px-3 py-2.5 border-b border-neutral-200 dark:border-neutral-800">
-                                      <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{cm.management.breakevenTypeTitle}</p>
-                                      <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-                                        {cm.management.breakevenTypeSubtitle}
-                                      </p>
+                                      <ConfigTitle info={cm.management.breakevenTypeSubtitle}>{cm.management.breakevenTypeTitle}</ConfigTitle>
                                     </div>
                                     <div className="p-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
                                       <button
@@ -3572,9 +3270,9 @@ export function AccountConfigPage() {
                                             : 'border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-700 dark:text-neutral-300 hover:border-neutral-300 dark:hover:border-neutral-600',
                                         )}
                                       >
-                                        <span className="font-medium">{cm.management.moveOnly}</span>
-                                        <span className="block text-xs mt-0.5 opacity-80">
-                                          {cm.management.moveOnlyHint}
+                                        <span className="font-medium inline-flex items-center gap-1">
+                                          {cm.management.moveOnly}
+                                          <InfoTooltip text={cm.management.moveOnlyHint} />
                                         </span>
                                       </button>
                                       <button
@@ -3587,14 +3285,14 @@ export function AccountConfigPage() {
                                             : 'border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-700 dark:text-neutral-300 hover:border-neutral-300 dark:hover:border-neutral-600',
                                         )}
                                       >
-                                        <span className="font-medium">{cm.management.moveAndPartial}</span>
-                                        <span className="block text-xs mt-0.5 opacity-80">
-                                          {cm.management.moveAndPartialHint}
+                                        <span className="font-medium inline-flex items-center gap-1">
+                                          {cm.management.moveAndPartial}
+                                          <InfoTooltip text={cm.management.moveAndPartialHint} />
                                         </span>
                                       </button>
                                     </div>
                                     {beType === 'sl_and_close_half' && (
-                                      <Input
+                                      <ConfigureInput
                                         label={cm.management.partialClose}
                                         type="number"
                                         min={1}
@@ -3617,12 +3315,7 @@ export function AccountConfigPage() {
                             {isSingleTrade && (
                               <section className="rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
                                 <div className="flex items-center justify-between gap-3 bg-white dark:bg-neutral-900 px-4 py-3">
-                                  <div>
-                                    <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{cm.management.trailingTitle}</p>
-                                    <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-                                      {cm.management.trailingSubtitle}
-                                    </p>
-                                      </div>
+                                  <ConfigTitle info={cm.management.trailingSubtitle}>{cm.management.trailingTitle}</ConfigTitle>
                                   <Toggle
                                     checked={ms.trailing_enabled === true}
                                     onChange={v => setManual({ trailing_enabled: v })}
@@ -3631,7 +3324,7 @@ export function AccountConfigPage() {
                                 {ms.trailing_enabled && (
                                   <div className="border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/80 px-4 py-4">
                                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                              <Input
+                                              <ConfigureInput
                                         label={cm.management.trailStart}
                                                 type="number"
                                                 min={0}
@@ -3640,7 +3333,7 @@ export function AccountConfigPage() {
                                         value={String(ms.trailing_start_pips ?? 20)}
                                         onChange={e => setManual({ trailing_start_pips: Math.max(0, Number(e.target.value) || 0) })}
                                       />
-                                      <Input
+                                      <ConfigureInput
                                         label={cm.management.trailStep}
                                         type="number"
                                         min={0}
@@ -3649,7 +3342,7 @@ export function AccountConfigPage() {
                                         value={String(ms.trailing_step_pips ?? 5)}
                                         onChange={e => setManual({ trailing_step_pips: Math.max(0, Number(e.target.value) || 0) })}
                                       />
-                                      <Input
+                                      <ConfigureInput
                                         label={cm.management.trailDistance}
                                         type="number"
                                         min={0}
@@ -3671,10 +3364,11 @@ export function AccountConfigPage() {
                             )}
 
                             <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3 space-y-3">
-                              <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{cm.strategy.signalBehavior}</p>
+                              <ConfigTitle>{cm.strategy.signalBehavior}</ConfigTitle>
                               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                <Select
+                                <ConfigureSelect
                                   label={cm.strategy.reverseSignal}
+                                  hint={cm.strategy.reverseHint}
                                   value={ms.reverse_signal ? 'yes' : 'no'}
                                   onChange={e => {
                                     const v = e.target.value === 'yes'
@@ -3683,35 +3377,25 @@ export function AccountConfigPage() {
                                   }}
                                   options={[{ value: 'no', label: cm.common.no }, { value: 'yes', label: cm.common.yes }]}
                                 />
-                                <Select
+                                <ConfigureSelect
                                   label={cm.strategy.addToExisting}
+                                  hint={cm.strategy.addExistingHint}
                                   value={ms.add_new_trades_to_existing ? 'yes' : 'no'}
                                   onChange={e => setManual({ add_new_trades_to_existing: e.target.value === 'yes' })}
                                   options={[{ value: 'yes', label: cm.common.yes }, { value: 'no', label: cm.common.no }]}
                                 />
-                                <Select
+                                <ConfigureSelect
                                   label={cm.strategy.closeOpposite}
+                                  hint={cm.strategy.closeOppositeHint}
                                   value={ms.close_on_opposite_signal ? 'yes' : 'no'}
                                   onChange={e => setManual({ close_on_opposite_signal: e.target.value === 'yes' })}
                                   options={[{ value: 'no', label: cm.common.no }, { value: 'yes', label: cm.common.yes }]}
                                 />
                               </div>
-                              <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                                {cm.strategy.reverseHint}
-                              </p>
-                              <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                                {cm.strategy.closeOppositeHint}
-                              </p>
-                              <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                                {cm.strategy.addExistingHint}
-                              </p>
                                 </div>
 
                             <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3 space-y-3">
-                              <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{cm.strategy.rrFallbacksTitle}</p>
-                              <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                                {cm.strategy.rrFallbacksIntro}
-                              </p>
+                              <ConfigTitle info={cm.strategy.rrFallbacksIntro}>{cm.strategy.rrFallbacksTitle}</ConfigTitle>
                               <div className="space-y-3">
                                 <div className="rounded-md border border-neutral-200 dark:border-neutral-800 overflow-hidden">
                                   <div className="flex items-center justify-between gap-3 bg-white dark:bg-neutral-900 px-3 py-2.5">
@@ -3723,7 +3407,7 @@ export function AccountConfigPage() {
                                   </div>
                                   {ms.rr_for_sl_enabled && (
                                     <div className="border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/80 px-3 py-3 space-y-1">
-                                      <Input
+                                      <ConfigureInput
                                         label={cm.strategy.slRr}
                                         type="number"
                                         hint={cm.strategy.slRrHint}
@@ -3744,7 +3428,7 @@ export function AccountConfigPage() {
                                   </div>
                                   {ms.rr_for_tps_enabled && (
                                     <div className="border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/80 px-3 py-3 space-y-1">
-                                      <Input
+                                      <ConfigureInput
                                         label={cm.strategy.tpRrValues}
                                         hint={cm.strategy.tpRrHint}
                                         value={(ms.rr_for_tps ?? []).join(',')}
@@ -3757,12 +3441,9 @@ export function AccountConfigPage() {
                             </div>
 
                             <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3 space-y-3">
-                              <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{cm.strategy.pendingTitle}</p>
-                              <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                                {cm.strategy.pendingIntro}
-                              </p>
+                              <ConfigTitle info={cm.strategy.pendingIntro}>{cm.strategy.pendingTitle}</ConfigTitle>
                               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                <Input
+                                <ConfigureInput
                                   label={cm.strategy.pendingExpiry}
                                   type="number"
                                   min={1}
@@ -3778,6 +3459,18 @@ export function AccountConfigPage() {
                                 />
                               </div>
                             </div>
+
+                            <section className="rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
+                              <div className="flex items-center justify-between gap-3 bg-white dark:bg-neutral-900 px-4 py-3">
+                                <ConfigTitle info={cm.management.orderCommentsSubtitle}>
+                                  {cm.management.orderCommentsTitle}
+                                </ConfigTitle>
+                                <Toggle
+                                  checked={ms.order_comments_enabled !== false}
+                                  onChange={v => setManual({ order_comments_enabled: v })}
+                                />
+                              </div>
+                            </section>
                           </div>
                           )
                         })()}
@@ -3785,31 +3478,21 @@ export function AccountConfigPage() {
                         {activeManualSubTab === 'filters' && (
                           <div className="space-y-6">
                             <section className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-4 space-y-3">
-                              <div>
-                                <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{cm.filters.timeTitle}</p>
-                                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-                                  {cm.filters.timeSubtitle}
-                                </p>
-                              </div>
+                              <ConfigTitle info={cm.filters.timeSubtitle}>{cm.filters.timeTitle}</ConfigTitle>
                               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                              <Select label={cm.filters.timeFilter} value={channelManualSettings.time_filter_enabled ? 'yes' : 'no'} onChange={e => setManual({ time_filter_enabled: e.target.value === 'yes' })} options={[{ value: 'no', label: cm.filters.timeNo }, { value: 'yes', label: cm.filters.timeYes }]} />
+                              <ConfigureSelect label={cm.filters.timeFilter} value={channelManualSettings.time_filter_enabled ? 'yes' : 'no'} onChange={e => setManual({ time_filter_enabled: e.target.value === 'yes' })} options={[{ value: 'no', label: cm.filters.timeNo }, { value: 'yes', label: cm.filters.timeYes }]} />
                               {channelManualSettings.time_filter_enabled && (
-                                <Input label={cm.filters.startTime} type="time" value={channelManualSettings.trade_start_time ?? '00:00'} onChange={e => setManual({ trade_start_time: e.target.value })} />
+                                <ConfigureInput label={cm.filters.startTime} type="time" value={channelManualSettings.trade_start_time ?? '00:00'} onChange={e => setManual({ trade_start_time: e.target.value })} />
                               )}
                               {channelManualSettings.time_filter_enabled && (
-                                <Input label={cm.filters.endTime} type="time" value={channelManualSettings.trade_end_time ?? '23:59'} onChange={e => setManual({ trade_end_time: e.target.value })} />
+                                <ConfigureInput label={cm.filters.endTime} type="time" value={channelManualSettings.trade_end_time ?? '23:59'} onChange={e => setManual({ trade_end_time: e.target.value })} />
                               )}
                             </div>
                             </section>
 
                             <section className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-4 space-y-3">
-                              <div>
-                                <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{cm.filters.daysTitle}</p>
-                                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-                                  {cm.filters.daysSubtitle}
-                                </p>
-                              </div>
-                              <Select label={cm.filters.daysFilter} value={channelManualSettings.days_filter_enabled ? 'yes' : 'no'} onChange={e => setManual({ days_filter_enabled: e.target.value === 'yes' })} options={[{ value: 'no', label: cm.filters.daysNo }, { value: 'yes', label: cm.filters.daysYes }]} />
+                              <ConfigTitle info={cm.filters.daysSubtitle}>{cm.filters.daysTitle}</ConfigTitle>
+                              <ConfigureSelect label={cm.filters.daysFilter} value={channelManualSettings.days_filter_enabled ? 'yes' : 'no'} onChange={e => setManual({ days_filter_enabled: e.target.value === 'yes' })} options={[{ value: 'no', label: cm.filters.daysNo }, { value: 'yes', label: cm.filters.daysYes }]} />
                             {channelManualSettings.days_filter_enabled && (
                               <div>
                                 <p className="text-xs text-neutral-600 dark:text-neutral-400 mb-2">{cm.filters.tradingDays}</p>
@@ -3839,13 +3522,8 @@ export function AccountConfigPage() {
                             </section>
 
                             <section className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-4 space-y-3">
-                              <div>
-                                <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{cm.filters.newsTitle}</p>
-                                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-                                  {cm.filters.newsSubtitle}
-                                </p>
-                              </div>
-                                  <Select
+                              <ConfigTitle info={cm.filters.newsSubtitle}>{cm.filters.newsTitle}</ConfigTitle>
+                                  <ConfigureSelect
                                 label={cm.filters.newsTrading}
                                 value={channelManualSettings.news_trading_enabled !== false ? 'yes' : 'no'}
                                 onChange={e => {
@@ -3895,7 +3573,7 @@ export function AccountConfigPage() {
                                     ) : null}
                                   </div>
                                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                <Input
+                                <ConfigureInput
                                       label={cm.filters.closeBeforeNews}
                                   type="number"
                                       min={0}
@@ -3904,7 +3582,7 @@ export function AccountConfigPage() {
                                         setManual({ close_before_news_minutes: Math.max(0, Number(e.target.value) || 0) })
                                       }
                                 />
-                                <Input
+                                <ConfigureInput
                                       label={cm.filters.resumeAfterNews}
                                   type="number"
                                       min={0}
@@ -3985,7 +3663,8 @@ export function AccountConfigPage() {
                 <Button
                   className="w-full sm:w-auto min-h-[44px]"
                   loading={configSaving}
-                  disabled={!configureModalDirty || presetSaving || channelConnecting}
+                  disabled={!canSaveConfigureModal || presetSaving || channelConnecting || multiTradeSplitSaveBlocked}
+                  title={multiTradeSplitSaveBlocked ? cm.risk.multiTradeSplitSaveBlocked : undefined}
                   onClick={() => void saveConfigureModal()}
                 >
                   {cm.save}
@@ -3993,8 +3672,20 @@ export function AccountConfigPage() {
               ) : null}
             </div>
 
+            <p className="shrink-0 text-center px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">
+              {cm.riskDisclaimer.warning}{' '}
+              <a
+                href={marketingUrl('/risk-disclaimer')}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-teal-600 hover:underline dark:text-teal-400"
+              >
+                {cm.riskDisclaimer.fullLink}
+              </a>
+            </p>
+
             {pendingApplyPreset ? (
-              <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 p-4">
+              <div className="absolute inset-0 z-20 flex items-center justify-center bg-neutral-950/55 p-4">
                 <div
                   role="dialog"
                   aria-modal="true"
@@ -4057,7 +3748,7 @@ export function AccountConfigPage() {
             ) : null}
 
             {showPresetNameModal ? (
-              <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/30 p-4">
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-neutral-950/55 p-4">
                 <div
                   role="dialog"
                   aria-modal="true"
@@ -4067,7 +3758,7 @@ export function AccountConfigPage() {
                   <h4 id="save-preset-title" className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
                     {cm.saveAsPresetTitle}
                   </h4>
-                  <Input
+                  <ConfigureInput
                     label={cm.saveAsPresetNameLabel}
                     value={presetNameDraft}
                     placeholder={cm.saveAsPresetNamePlaceholder}
@@ -4101,7 +3792,8 @@ export function AccountConfigPage() {
         </div>
             ) : null}
     </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </PageShell>
   )
@@ -4112,11 +3804,11 @@ export function AccountConfigPage() {
 function FeatureBullet({ icon: Icon, title, body }: { icon: typeof DollarSign; title: string; body: string }) {
   return (
     <div className="rounded-lg bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-800 p-3">
-      <p className="text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1 flex items-center gap-1.5">
+      <p className="text-xs font-medium text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
         <Icon className="w-3.5 h-3.5 text-primary-600" />
         {title}
+        <InfoTooltip text={body} />
       </p>
-      <p className="text-xs text-neutral-500 dark:text-neutral-400">{body}</p>
     </div>
   )
 }
@@ -4157,10 +3849,7 @@ function ChannelFiltersCard({
               />
             ))}
           </div>
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-        <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
-          {labels.footer}
-            </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2">
             <button
               type="button"
           className="text-xs text-primary-600 hover:text-primary-700 hover:underline shrink-0 self-start sm:self-auto disabled:cursor-not-allowed disabled:opacity-50 disabled:no-underline"
@@ -4194,8 +3883,10 @@ function CategoryRow({
   return (
     <div className="flex items-center justify-between gap-3 rounded-md border border-neutral-200 dark:border-neutral-800 px-3 py-2">
       <div className="min-w-0">
-        <p className="text-sm text-neutral-800 dark:text-neutral-100 truncate">{label}</p>
-        <p className="text-[11px] text-neutral-500 dark:text-neutral-400 truncate">{example}</p>
+        <p className="text-sm text-neutral-800 dark:text-neutral-100 truncate inline-flex items-center gap-1">
+          {label}
+          <InfoTooltip text={example} />
+        </p>
       </div>
       <div className="inline-flex items-center rounded-md border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/50 p-0.5 shrink-0">
         <button

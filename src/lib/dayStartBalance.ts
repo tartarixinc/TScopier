@@ -137,7 +137,6 @@ export function aggregateTodaysProfitFromDayStart(
   let sum = 0
   let count = 0
   for (const account of accounts) {
-    if (account.is_active === false) continue
     if (opts?.connectedOnly && account.connection_status !== 'connected') continue
     const balance = balanceByAccountId[account.id]?.balance
     const profit = accountTodaysProfitFromBalance(

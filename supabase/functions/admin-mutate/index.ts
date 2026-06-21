@@ -45,10 +45,65 @@ Deno.serve(async (req: Request) => {
     "toggle_channel",
     "toggle_broker",
     "override_broker_config",
+    "set_admin_access",
   ]);
   const reason = requireReasonActions.has(action) ? requireReason(body) : String(body.reason ?? "").trim() || null;
   if (requireReasonActions.has(action) && !reason) {
     return bad(400, "reason is required for this mutation");
+  }
+
+  if (action === "set_admin_access") {
+    const userId = String(body.target_user_id ?? "").trim();
+    if (!userId) return bad(400, "target_user_id is required");
+    const grantAdmin = Boolean(body.is_admin);
+    const before = await snapshotById(supabase, "user_profiles", "user_id", userId);
+
+    let adminUntil: string | null = null;
+    if (grantAdmin) {
+      const rawUntil = body.admin_until;
+      if (rawUntil === null || rawUntil === undefined || rawUntil === "") {
+        adminUntil = null;
+      } else {
+        const parsed = new Date(String(rawUntil));
+        if (Number.isNaN(parsed.getTime())) {
+          return bad(400, "admin_until must be a valid ISO datetime");
+        }
+        if (parsed.getTime() <= Date.now()) {
+          return bad(400, "admin_until must be in the future when granting admin access");
+        }
+        adminUntil = parsed.toISOString();
+      }
+    }
+
+    const { data, error } = await supabase
+      .from("user_profiles")
+      .update({
+        is_admin: grantAdmin,
+        admin_until: grantAdmin ? adminUntil : null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", userId)
+      .select("*")
+      .maybeSingle();
+    if (error) return bad(400, error.message);
+    if (!data) return bad(404, "User profile not found");
+
+    await writeAdminAudit(supabase, {
+      actor_user_id: adminUser.id,
+      target_user_id: userId,
+      action,
+      entity_type: "user_profiles",
+      entity_id: userId,
+      reason,
+      request_payload: {
+        is_admin: grantAdmin,
+        admin_until: grantAdmin ? adminUntil : null,
+      },
+      before_state: before,
+      after_state: data as Record<string, unknown>,
+      correlation_id: correlationId,
+    });
+    return Response.json({ ok: true, profile: data }, { headers: corsHeaders });
   }
 
   if (action === "ban_user") {

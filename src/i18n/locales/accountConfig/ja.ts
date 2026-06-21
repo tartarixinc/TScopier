@@ -1,0 +1,194 @@
+import { configureModalJa } from '../configureModal/ja'
+import type { AccountConfigBundleTranslations } from './types'
+
+export const accountConfigJa: AccountConfigBundleTranslations = {
+  accountConfig: {
+    brokersEmptyTitle: 'まだ口座が接続されていません',
+    brokersEmptySubtitle: '開始するには取引口座を追加してください',
+    addAccount: {
+      title: '取引口座を追加',
+      subtitle: '開始するには希望する取引プラットフォームを選択してください',
+      footerHint: '対応プラットフォームは順次追加予定です',
+      comingSoonBadge: '近日対応',
+      comingSoonPlatform: '{platform} 連携は近日対応予定です。現時点では MT4 または MT5 を選択してください。',
+    },
+    connectForm: {
+      addAccountButton: '口座を追加',
+      title: '新しい {platform} 口座を接続',
+      accountLabel: '口座ラベル（任意）',
+      accountLabelPlaceholder: '例: Live {platform}',
+      platformLabel: 'プラットフォーム',
+      platformMt5: 'MetaTrader 5 (MT5)',
+      platformMt4: 'MetaTrader 4 (MT4)',
+      brokerServerLabel: 'ブローカーサーバー',
+      brokerServerHint:
+        'MetaTrader ターミナルの正確なサーバー名を貼り付けてください（ファイル → 取引口座にログイン）。',
+      brokerServerPlaceholder: '例: ICMarketsSC-MT5',
+      brokerCompanySearchPlaceholder: '会社名またはサーバー名で検索',
+      brokerCompanySearchServersHeading: 'サーバー',
+      brokerCompanySearchCompaniesHeading: 'ブローカー',
+      brokerCompanySearchEmpty: 'ブローカー会社名またはサーバー名を検索',
+      brokerCompanySearchMinChars: '検索するには 4 文字以上入力してください',
+      brokerCompanySearchNoResults: 'ブローカー一覧に一致する結果がありません。',
+      brokerCompanySearchUseQuery: '「{query}」をサーバー名として使用',
+      brokerCompanySearchLoading: 'ブローカーを検索中…',
+      brokerCompanySearchError: 'ブローカー検索に失敗しました。再試行するか、サーバー名を手動で入力してください。',
+      brokerServerPickerTitle: 'サーバー',
+      brokerServerSelectPrompt: 'ご利用ブローカーの会社名を検索',
+      brokerServerManualToggle: 'ブローカーが見つかりませんか？ サーバー名を手動入力',
+      brokerServerManualLabel: 'サーバー名',
+      brokerServerManualHint: 'MT ターミナルに表示される正確なサーバー名を使用してください。',
+      mtLoginLabel: 'MT ログイン',
+      mtLoginPlaceholder: '取引口座番号',
+      passwordLabel: 'パスワード',
+      passwordPlaceholder: '取引口座のパスワード',
+      passwordHint: '',
+      rememberPasswordLabel: '自動再接続のためにパスワードを記憶',
+      rememberPasswordHint:
+        'MT パスワードを当社サーバー上で暗号化し、TScopier が再入力なしでセッションを復元できるようにします。いつでも削除できます。',
+      connectButton: '口座を接続',
+      connectingTitle: 'ブローカーを接続中',
+      connectingStepLinking: '{platform} 口座をリンク中…',
+      connectingStepTerminal: '{platform} ターミナルを起動中 — 通常は 10〜30 秒かかります。',
+      connectingStepSlow: '処理を継続中… 初回設定では数分かかる場合があります。',
+      validationRequired: '口座番号、パスワード、サーバーは必須です',
+      connectFailed: '口座の接続に失敗しました',
+      addMoreButton: 'さらに追加',
+      removeRowAria: '口座行を削除',
+      connectMultipleButton: '{count} 件の口座を接続',
+      uploadAccountsButton: '口座をアップロード',
+      accountRowTitle: '口座 {index}',
+    },
+    bulkConnect: {
+      title: 'MT4/MT5 口座をアップロード',
+      securityNote:
+        'CSV には取引パスワードが含まれます。解析はブラウザ内のみで行われ、ファイルとしてアップロードされることはありません。',
+      downloadTemplate: 'テンプレート CSV をダウンロード',
+      uploadCsv: 'CSV をアップロード',
+      uploadHint: 'ここに CSV ファイルをドロップ、またはクリックして選択。各行に platform 列（MT4 または MT5）— 省略時は MT5。',
+      previewTitle: 'プレビュー',
+      colLabel: 'ラベル',
+      colPlatform: 'プラットフォーム',
+      colServer: 'サーバー',
+      colLogin: 'ログイン',
+      colPassword: 'パスワード',
+      colStatus: 'ステータス',
+      parseErrorLine: '行 {line}: {message}',
+      noValidRows: 'CSV 内に有効な口座が見つかりませんでした。',
+      connectCount: '{count} 件の口座を接続',
+      connectingTitle: '口座をリンク中…',
+      statusQueued: '待機中',
+      statusLinking: 'リンク中…',
+      statusLinked: 'リンク済み',
+      statusFailed: '失敗',
+      statusSkippedDuplicate: '重複',
+      statusSkippedLimit: '上限到達',
+      statusSkippedInvalid: '無効',
+      summaryTitle: '口座のリンク完了',
+      summaryBody: '{linked} 件リンク済み、{failed} 件失敗、{skipped} 件スキップ。',
+      summaryFailedTitle: '失敗した口座',
+      dismiss: '閉じる',
+      viewBrokers: 'ブローカーを表示',
+    },
+    brokerList: {
+      statusPaused: '一時停止',
+      statusConnected: '接続済み',
+      statusConnecting: '接続中',
+      statusRecovering: '再接続中',
+      statusError: 'エラー',
+      statusDisconnected: '未接続',
+      copyTrades: '取引をコピー',
+      reconnect: '再接続',
+      reconnectAll: 'すべて再接続',
+      configure: '設定',
+      removeAria: '{label} を削除',
+      detailLogin: 'ログイン',
+      detailAccountType: '口座タイプ',
+      accountTypeDemo: 'デモ',
+      accountTypeLive: 'ライブ',
+      accountTypePropFirm: 'プロップファーム',
+      detailServer: 'サーバー',
+      detailSignalChannels: 'シグナルチャンネル',
+      detailBalance: '残高',
+      detailEquity: '有効証拠金',
+      channelsNoneSelected: '未選択',
+      channelsEmptySaveWarning:
+        'シグナルチャンネルが選択されていません — このブローカーは Telegram シグナルをコピーしません。それでも保存しますか？',
+      channelsSaveChannelListNotReady:
+        'チャンネル一覧を読み込み中です。しばらく待ってから再度保存してください。',
+      channelsSaveLinkedChannelsInvalid:
+        'リンク済みチャンネルを保存できませんでした。ページを更新して再度お試しください。',
+      channelsSignalChannel: 'シグナルチャンネル',
+      channelsAll: 'すべてのシグナルチャンネル',
+      relinkOne:
+        'この口座は古いリンク形式を使用しています。削除してから、MT ログインとパスワードで再接続してください。',
+      relinkMany:
+        '{count} 件の口座が古いリンク形式を使用しています。各口座を削除し、MT ログインとパスワードで再接続してください。',
+      reconnectDroppedOne:
+        '取引サーバー上で取引セッションの有効期限が切れました。再接続を使い、現在の MT パスワードを入力してください。',
+      reconnectDroppedMany:
+        '{count} 件の口座でブローカー接続が失われ、未接続として表示されています。各口座で再接続を実行してください。',
+      connectErrorWrongPassword:
+        'MT 口座のパスワードが正しくありません。MetaTrader ターミナルで確認してから再試行してください。',
+      connectErrorWrongLogin:
+        'MT ログイン番号がこのブローカーサーバーと一致しません。MetaTrader の口座番号を確認してください。',
+      connectErrorWrongServer:
+        'ブローカーサーバー名が正しくないか、このログインに一致していません。MetaTrader の正確なサーバー名を確認してください。',
+      connectErrorInvestorPassword:
+        '投資家パスワード（閲覧専用）が使用されています。MetaTrader の取引用メインパスワードで接続してください。',
+      connectErrorAccountDisabled:
+        'この MT 口座はブローカー側で無効化またはブロックされています。ブローカーへ連絡するか、先に MetaTrader でログインしてください。',
+      connectErrorCredentialsRejected:
+        'この MT 情報ではログインできませんでした。MetaTrader の口座番号、取引パスワード、正確なサーバー名を確認してください。',
+      connectErrorTerminalNotReady:
+        'ブローカーから口座をまだ読み込めませんでした。接続したばかりの場合は 1 分ほど待ってから再試行してください。それでも失敗する場合は、MT のログイン、パスワード、サーバー名が MetaTrader と完全に一致しているか確認してください。',
+      connectErrorSessionExpired:
+        '取引サーバー上で取引セッションの有効期限が切れました。再接続を使い、現在の MT パスワードを入力してください。',
+      connectErrorUnknown:
+        'ブローカー接続に失敗しました。MT ログイン情報を確認するか、以前リンク済みの口座なら再接続を使用してください。',
+      reconnectFailed: 'ブローカーの再接続に失敗しました',
+      reconnectPasswordTitle: 'ブローカーセッションの期限切れ',
+      reconnectPasswordBody:
+        '取引サーバー上でブローカーセッションが期限切れになりました。再接続するには MT 口座のパスワードを入力してください。',
+      reconnectPasswordLabel: 'MT 口座パスワード',
+      reconnectPasswordHint:
+        'MT サーバーにのみ送信されます。下の「記憶する」を有効にすると、暗号化して保存し自動再接続できます。',
+      reconnectPasswordPlaceholder: '取引口座のパスワード',
+      rememberPasswordLabel: '自動再接続のためにパスワードを記憶',
+      rememberPasswordHint:
+        '暗号化されたコピーを保存し、TScopier が再入力なしで再接続できるようにします。口座設定から削除できます。',
+      clearStoredCredentials: '保存したパスワードを削除',
+      storedCredentialsActive: '自動再接続が有効です',
+      deleteFailed: 'ブローカーの削除に失敗しました',
+      deleteSessionExpired:
+        'ログインセッションの有効期限が切れました。ページを更新して再試行するか、ログアウトして再ログインしてください。',
+      duplicateMtLogin:
+        'この MT ログインは、ここで別の口座にすでにリンクされています。先に削除するか再接続を使用してください。同じログインは二重接続できません。',
+      platformServerMismatchMt4:
+        'このサーバー名は MT4 の可能性がありますが、MT5 が選択されています。コピーや取引管理が失敗する可能性があります。MT4 として接続しますか？',
+      platformServerMismatchMt5:
+        'このサーバー名は MT5 の可能性がありますが、MT4 が選択されています。コピーや取引管理が失敗する可能性があります。MT5 として接続しますか？',
+      deleteTitle: '取引口座を削除しますか？',
+      deleteBody: 'これにより {label} がブローカーとコピー機能から切断されます。この操作は元に戻せません。',
+      deleteConfirm: '切断',
+      connectedAccountsHeading: '接続済み口座',
+      connectedAccountsUnlimited: '無制限',
+      brokerFilterLabel: 'ブローカー',
+      brokerFilterAll: 'すべてのブローカー',
+      brokerFilterNoMatch: 'このブローカーに一致する口座はありません。',
+      accountSearchLabel: '口座を検索',
+      accountSearchPlaceholder: 'ラベル、ログイン、サーバー、ブローカー…',
+      accountSearchNoMatch: '検索条件に一致する口座はありません。',
+    },
+    brokerConnectedSuccess: {
+      title: 'ブローカー接続完了',
+      titlePending: 'ブローカーをリンクしました',
+      body: '{account} は接続済みで、シグナルコピーの準備ができています。',
+      bodyPending:
+        '{account} はリンク済みです。MT5 ターミナルを起動中のため、接続完了までの間にチャンネル設定が可能です。',
+      addChannel: 'チャンネルを追加',
+      configure: '設定',
+    },
+    configureModal: configureModalJa,
+  },
+}

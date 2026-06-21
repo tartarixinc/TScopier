@@ -13,6 +13,7 @@ export interface ConfigureModalTranslations {
   addChannel: string
   editLinkedChannels: string
   doneEditingLinkedChannels: string
+  removeLinkedChannel: string
   selectChannelToConfigure: string
   selectChannelPrompt: string
   connectChannelPrompt: string
@@ -86,20 +87,23 @@ export interface ConfigureModalTranslations {
     commaSeparatedHint: string
     autoTrainingInProgress: string
     autoTrainingDone: string
+    trainingLearnedFrom: string
+    multilingualRetrainHint: string
   }
   channelSymbols: {
     title: string
     intro: string
-    refresh: string
-    refreshing: string
-    loading: string
-    empty: string
-    selectAll: string
-    clearAll: string
-    selectedCount: string
-    tradeAllHint: string
-    staleSymbolNote: string
-    signalsCount: string
+    prefixLabel: string
+    prefixHint: string
+    suffixLabel: string
+    suffixHint: string
+    example: string
+    tradeOnlyLabel: string
+    tradeOnlyHint: string
+    tradeOnlyPlaceholder: string
+    avoidLabel: string
+    avoidHint: string
+    avoidPlaceholder: string
   }
   ai: {
     title: string
@@ -117,7 +121,11 @@ export interface ConfigureModalTranslations {
     riskMode: string
     fixedLot: string
     dynamicBalance: string
+    dynamicBalanceLotSize: string
+    dynamicBalanceLotSizeHint: string
+    dynamicBalanceLotSizeFallback: string
     tradeStyle: string
+    tradeStyleHint: string
     singleTrade: string
     multiTrades: string
     singleTpTarget: string
@@ -135,10 +143,13 @@ export interface ConfigureModalTranslations {
     perLegSize: string
     totalOpenTrades: string
     previewFallbackSingle: string
-    previewInstantPending: string
+    multiTradeSplitSaveBlocked: string
+    previewLotsXTrades: string
+    previewLotsXTradesLayered: string
     previewFooter: string
     previewDynamicRisk: string
     previewLadderSpan: string
+    previewLadderDistanceCap: string
     previewCweLegs: string
     rangeLayering: string
     rangeIntro: string
@@ -148,11 +159,77 @@ export interface ConfigureModalTranslations {
     stepPipsFallback: string
     rangeDistance: string
     rangeDistanceFallback: string
+    layerTillClose: string
+    layerTillCloseBody: string
+    useSignalRange: string
+    useSignalRangeBody: string
+    useSignalRangePipTolerance: string
+    useSignalRangePipToleranceHint: string
+    useSignalRangeDistanceDisabledHint: string
+    previewSignalRangeFootnote: string
     closeWorseEntries: string
     closeWorseBody: string
     closeWorsePips: string
     closeWorsePipsFallback: string
     basicPlanTradeStyleLimit: string
+    openLotCalculator: string
+    lotCalculator: {
+      title: string
+      intro: string
+      accountBalance: string
+      symbol: string
+      symbolHint: string
+      slPips: string
+      usePredefinedSl: string
+      usePredefinedTp: string
+      tpLevelsTitle: string
+      tpLevelsHint: string
+      tpPipsCol: string
+      tpPercentCol: string
+      tpLabel: string
+      tpPercentTotal: string
+      tpUnallocated: string
+      tpOverCap: string
+      addTp: string
+      remove: string
+      tradeStyle: string
+      singleTrade: string
+      multiTrades: string
+      perLegSize: string
+      rangeLayering: string
+      rangePercent: string
+      rangeStep: string
+      rangeDistance: string
+      fixedLot: string
+      targetRiskPct: string
+      targetRiskHint: string
+      useSuggestedLot: string
+      enabled: string
+      advanced: string
+      winRate: string
+      winRateHint: string
+      resultsTitle: string
+      riskFull: string
+      riskImmediate: string
+      riskPct: string
+      rewardTotal: string
+      rewardRiskRatio: string
+      legSummary: string
+      legSummarySingle: string
+      legSummaryMulti: string
+      legSummaryRange: string
+      lossesToRuin: string
+      riskOfRuin: string
+      perTpReward: string
+      brokerPreviewNote: string
+      fallbackSingleNote: string
+      riskWarningModerate: string
+      riskWarningHigh: string
+      riskWarningExtreme: string
+      apply: string
+      cancel: string
+      close: string
+    }
   }
   stops: {
     predefinedTitle: string
@@ -180,6 +257,31 @@ export interface ConfigureModalTranslations {
     summaryJoin: string
     summaryPrefix: string
     basicPlanMoreTpsLimit: string
+    profitTargetsTitle: string
+    profitTargetsIntro: string
+    profitTargetsToggle: string
+    maxRiskTitle: string
+    maxRiskIntro: string
+    maxRiskToggle: string
+    addTarget: string
+    addRiskRule: string
+    riskValue: string
+    periodDaily: string
+    periodWeekly: string
+    periodMonthly: string
+    periodOverall: string
+    valueTypeAmount: string
+    valueTypePercent: string
+    targetValue: string
+    periodLabel: string
+    typeLabel: string
+    timezoneTitle: string
+    timezoneProfile: string
+    timezoneCustom: string
+    timezoneHint: string
+    pausedProfitBanner: string
+    pausedRiskBanner: string
+    pausedOverallBanner: string
   }
   management: {
     monitorIntroMulti: string
@@ -234,6 +336,8 @@ export interface ConfigureModalTranslations {
     ruleTriggerTpHit: string
     ruleBreakevenOffset: string
     ruleBreakevenTrue: string
+    orderCommentsTitle: string
+    orderCommentsSubtitle: string
   }
   filters: {
     timeTitle: string
@@ -326,5 +430,9 @@ export interface ConfigureModalTranslations {
   common: {
     yes: string
     no: string
+  }
+  riskDisclaimer: {
+    warning: string
+    fullLink: string
   }
 }

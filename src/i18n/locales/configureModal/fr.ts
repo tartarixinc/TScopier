@@ -10,6 +10,7 @@ export const configureModalFr: ConfigureModalTranslations = {
   addChannel: 'Ajouter un canal',
   editLinkedChannels: 'Modifier les canaux liés',
   doneEditingLinkedChannels: 'Terminé',
+  removeLinkedChannel: 'Retirer {channel}',
   selectChannelToConfigure: 'Sélectionnez ou liez un canal pour configurer son trading.',
   selectChannelPrompt: 'Sélectionnez un canal dans la liste pour le configurer ou le lier à ce courtier.',
   connectChannelPrompt: 'Liez {channel} à {broker} pour copier ses signaux et ajuster le trading.',
@@ -85,22 +86,27 @@ export const configureModalFr: ConfigureModalTranslations = {
     commaSeparatedHint: 'Valeurs séparées par des virgules',
     autoTrainingInProgress: 'Entraînement en cours... {progress}%',
     autoTrainingDone: 'Entraînement terminé et enregistré.',
+    trainingLearnedFrom: 'Mots-clés appris à partir de {count} messages exemples.',
+    multilingualRetrainHint:
+      'Canal dans une autre langue ? Lancez Entraîner le canal après liaison. Si les journaux affichent des signaux ignorés, réentraînez ici.',
   },
   channelSymbols: {
-    title: 'Symboles à trader',
+    title: 'Mapping des symboles',
     intro:
-      'Nous détectons les instruments à partir des signaux récents du canal. Choisissez ceux que ce broker doit copier. Si tout est sélectionné, tous les symboles détectés sont tradés.',
-    refresh: 'Actualiser l’analyse',
-    refreshing: 'Analyse en cours…',
-    loading: 'Chargement des symboles des signaux récents…',
-    empty:
-      'Aucun symbole détecté pour l’instant. Connectez Telegram, attendez des signaux sur ce canal, puis actualisez.',
-    selectAll: 'Tout sélectionner',
-    clearAll: 'Tout désélectionner',
-    selectedCount: '{count} sur {total} sélectionnés',
-    tradeAllHint: 'Tous les symboles détectés seront copiés.',
-    staleSymbolNote: 'Enregistrés mais absents des signaux récents : {symbols}',
-    signalsCount: 'Basé sur {count} messages récents',
+      'Faites correspondre les symboles du signal aux noms d’instruments de votre broker. Ajoutez un préfixe ou un suffixe si les codes diffèrent (ex. XAUUSD+). Les symboles non mappés utilisent toujours la correspondance automatique du broker.',
+    prefixLabel: 'Préfixe de symbole',
+    prefixHint: 'Ajouté avant chaque symbole du signal (ex. # pour #XAUUSD).',
+    suffixLabel: 'Suffixe de symbole',
+    suffixHint: 'Ajouté après chaque symbole (ex. + pour XAUUSD+). Laissez vide si les noms correspondent au signal.',
+    example: 'Exemple : XAUUSD avec suffixe + → ordres sur XAUUSD+',
+    tradeOnlyLabel: 'Symboles à trader',
+    tradeOnlyHint:
+      'Laissez vide pour copier tous les symboles du canal. Si renseigné, seuls les symboles listés sont copiés (séparés par des virgules, ex. XAUUSD, EURUSD).',
+    tradeOnlyPlaceholder: 'ex. XAUUSD, EURUSD',
+    avoidLabel: 'Symboles à éviter',
+    avoidHint:
+      'Laissez vide pour autoriser tous les symboles (sous réserve de Symboles à trader). Les symboles listés ne sont jamais copiés depuis ce canal.',
+    avoidPlaceholder: 'ex. BTCUSD, US30',
   },
   ai: {
     title: 'Configuration IA',
@@ -120,9 +126,14 @@ export const configureModalFr: ConfigureModalTranslations = {
     riskMode: 'Mode de risque',
     fixedLot: 'Lot fixe',
     dynamicBalance: 'Dynamique (% du solde)',
+    dynamicBalanceLotSize: 'Taille de lot par signal',
+    dynamicBalanceLotSizeHint: '{lot} lots à {percent}% d\'un solde de {balance}',
+    dynamicBalanceLotSizeFallback: '{lot} lots (repli sur lot fixe — solde du compte non chargé)',
     tradeStyle: 'Style de trading',
-    singleTrade: 'Position unique',
-    multiTrades: 'Positions multiples',
+    tradeStyleHint:
+      'Entrée unique : un ordre à la taille de lot configurée. Range Trading : répartit ce lot en plusieurs ordres plus petits sur les take-profit du signal.',
+    singleTrade: 'Entrée unique',
+    multiTrades: 'Range Trading',
     singleTpTarget: 'Objectif TP en mode unique',
     singleTpTargetHint:
       'Choisissez quel TP la position broker doit viser en Position unique. Les TP précédents peuvent toujours déclencher des fermetures partielles selon votre répartition %.',
@@ -138,35 +149,117 @@ export const configureModalFr: ConfigureModalTranslations = {
     pipToleranceHint:
       'Non utilisée pour le routage d’entrée stricte ; conservée pour compatibilité avec les réglages enregistrés.',
     multiIntro:
-      'Positions multiples divise votre lot fixe en de nombreux ordres plus petits (ex. 1,0 lot à 5 %/jambe = 20 trades de 0,05). Les jambes sont réparties sur les TP du signal selon les pourcentages ci-dessous. Si la taille par jambe est inférieure au minimum du symbole chez le courtier, le planificateur revient à une seule position pleine taille et enregistre la raison.',
+      'Range Trading divise votre lot fixe en de nombreux ordres plus petits (ex. 1,0 lot à 5 %/jambe = 20 trades de 0,05). Les jambes sont réparties sur les TP du signal selon les pourcentages ci-dessous. Si la taille par jambe est inférieure au minimum du symbole chez le courtier, le planificateur revient à une seule position pleine taille et enregistre la raison.',
     perLegSize: 'Taille par jambe (% du lot fixe)',
     totalOpenTrades: 'Total des positions ouvertes',
-    previewFallbackSingle: '1 (répartition impossible avec aperçu min. 0,01 / pas 0,01)',
-    previewInstantPending: '{total} ({immediate} instantanées + {pending} pour échelonnement)',
+    previewFallbackSingle: '{lot} lots x 1 trade (répartition impossible avec aperçu min. 0,01 / pas 0,01)',
+    multiTradeSplitSaveBlocked:
+      'Enregistrement impossible : répartition impossible avec aperçu min. 0,01 / pas 0,01. Augmentez la taille de lot ou le % par jambe.',
+    previewLotsXTrades: '{lot} lots x {total} trades',
+    previewLotsXTradesLayered: '{lot} lots x {total} trades ({immediate} instantanées + {pending} pour échelonnement)',
     previewFooter:
-      'Estimé à partir du lot fixe et du % par jambe. L’exécution en direct utilise le lot minimum et le pas du symbole (peut différer légèrement). Plafond de 500 ordres par signal. Les lots signalés par Telegram sur chaque signal ne redimensionnent pas les paniers multi-positions — ils divisent toujours votre lot fixe.',
+      'Nombre de trades que le copieur prévoit d’ouvrir pour un signal. Basé sur votre taille de lot configurée et la taille par jambe. Le courtier peut en ouvrir moins si le marché n’a pas couvert la zone pendant l’échelonnement.',
     previewDynamicRisk:
-      ' Avec un risque dynamique (% du solde), le lot résolu à l’exécution peut différer du lot fixe.',
+      ' La taille de lot est calculée à partir du solde du compte et du pourcentage dynamique (% du solde).',
     previewLadderSpan:
-      ' Portée de l’échelle = {pending} × {step}p = {distance}p (la distance configurée {configured}p est indicative).',
-    previewCweLegs: ' {count} jambe(s) instantanée(s) se ferment à +{pips}p de l’ancre.',
+      ' Échelonnement en range : {active} ordre(s) par pas de {step} pips (échelle jusqu’à {distance} pips depuis l’entrée).',
+    previewLadderDistanceCap:
+      ' La distance de range limite l’échelonnement à {active} sur {pending} ordres réservés par %.',
+    previewCweLegs:
+      ' {count} trade(s) ouverts tout de suite, pouvant se fermer si le prix avance de {pips} pips en votre faveur.',
     rangeLayering: 'Échelonnement en range',
     rangeIntro:
-      'Réserve une part des jambes planifiées en ordres Limit en attente, espacés depuis l’ancre en direct par un intervalle fixe en pips (moyenne à la baisse). Si le signal n’a pas de prix d’entrée, le worker récupère le bid/ask en direct via /Quote et y ancre l’échelle. Le stop-loss et la distribution des TP reflètent les jambes immédiates. Si distance ÷ pas limite le nombre, le total effectif des ordres en attente est réduit.',
+      'Configurez une partie des opérations en ordres en attente virtuels espacés à intervalles depuis le prix de départ (moyenne à la baisse). S’il n’y a pas de prix d’entrée précis, utilisez le cours du marché en direct actuel (bid/ask) comme point de départ. Tous les ordres en attente reprennent les réglages de stop loss et de take-profit de vos opérations immédiates.',
     reservedLot: 'Lot réservé (% du total)',
     reservedLotHint: 'Part des jambes totales réservées en ordres en attente.',
     stepPips: 'Pas (pips par échelon)',
     stepPipsFallback: 'Pips entre les ordres en attente.',
-    rangeDistance: 'Distance de range (pips depuis l’entrée)',
+    rangeDistance: 'Distance de range (pips)',
     rangeDistanceFallback:
-      'Portée cible indicative. Portée réelle de l’échelle = nombre d’ordres en attente × pas (le total des positions ouvertes n’est pas plafonné par cela).',
+      'La distance du range fournie par votre fournisseur de signaux. Elle détermine jusqu’où la position est échelonnée.',
+    layerTillClose: 'Échelonner jusqu’à la clôture',
+    layerTillCloseBody:
+      'Activé : les ordres en attente du range continuent tant que la position n’est pas entièrement fermée, même si le prix repart après un take-profit ou une fermeture CWE. Désactivé : les ordres en attente sont annulés au premier take-profit ou à la première fermeture, donc aucun ordre plus profond ne s’ouvre en cas de retournement.',
+    useSignalRange: 'Trader uniquement le range du signal',
+    useSignalRangeBody:
+      'Activé : le signal doit inclure un prix ou une zone d’entrée analysée (ex. 4505, 4505/4500, @ 4505). Les messages « acheter maintenant » sans prix sont ignorés et affichés en attente de range. Contrairement à « Utiliser le prix d’entrée du signal », aucun ordre en attente n’est placé chez le courtier — le copieur attend virtuellement et ouvre lorsque le prix est n’importe où dans la zone d’entrée du signal, avec une tolérance en pips légèrement au-delà des deux bornes. La profondeur d’échelonnage vient toujours de la zone d’entrée lorsqu’elle est présente.',
+    useSignalRangePipTolerance: 'Tolérance (pips)',
+    useSignalRangePipToleranceHint:
+      'Pips supplémentaires au-delà des bornes de la zone (des deux côtés) dans lesquels l’entrée peut encore se déclencher. Pour un prix unique, tolérance au-dessus (achat) ou en dessous (vente) du niveau d’entrée.',
+    useSignalRangeDistanceDisabledHint:
+      'La profondeur est prise dans la zone d’entrée du signal lorsqu’elle est présente.',
+    previewSignalRangeFootnote:
+      ' Avec « Trader uniquement le range du signal », l’entrée attend que le prix soit dans la zone (± tolérance des deux côtés).',
     closeWorseEntries: 'Fermer les entrées défavorables',
     closeWorseBody:
-      'Lorsque le prix atteint +X pips depuis l’entrée du signal (ancre), le worker ferme automatiquement les jambes instantanées via /OrderClose. Un message du canal comme « Fermer les entrées défavorables » ferme chaque jambe ouverte dont l’entrée est à X pips du prix en direct à ce moment (ex. exécutions instantanées près du signal, pas les couches profondes). Aucun TP courtier sur les jambes CWE — seul le SL reste chez le courtier.',
+      'Lorsque le prix évolue de +X pips en votre faveur depuis l’entrée initiale, le système ferme automatiquement vos opérations immédiates. Lorsqu’un message « Fermer les entrées défavorables » est activé et déclenché, le système ferme toute opération ouverte située à moins de X pips du cours du marché actuel. Les opérations concernées par « Fermer les entrées défavorables » n’ont pas de take-profit (TP) défini côté courtier. Seul le stop loss (SL) est envoyé au courtier.',
     closeWorsePips: 'Fermer les profits depuis entrée défavorable (pips)',
     closeWorsePipsFallback: 'Distance depuis le prix en direct (instruction) ou ancre + X pips (auto).',
     basicPlanTradeStyleLimit:
       'Seul le mode Single Trade est autorisé. Multi-Trade et Range Layering sont disponibles avec le plan Advanced.',
+    openLotCalculator: 'Calculer risque / taille de lot',
+    lotCalculator: {
+      title: 'Calculateur risque et taille de lot',
+      intro:
+        'Estimez le risque par signal et le gain possible à vos niveaux de take-profit. Ajustez jusqu’à ce que le risque convienne à votre compte, puis appliquez au canal.',
+      accountBalance: 'Solde de départ',
+      symbol: 'Symbole',
+      symbolHint: 'Pour estimer la valeur du pip. Par défaut depuis Symbole à trader si défini.',
+      slPips: 'Stop loss (pips)',
+      usePredefinedSl: 'Utiliser comme SL prédéfini',
+      usePredefinedTp: 'Utiliser comme TP prédéfini',
+      tpLevelsTitle: 'Niveaux de take-profit',
+      tpLevelsHint:
+        'Pips = distance depuis l’entrée pour chaque TP. % cible = part du volume (single) ou des jambes (multi) fermée à ce TP.',
+      tpPipsCol: 'Pips',
+      tpPercentCol: '% cible',
+      tpLabel: 'TP{index}',
+      tpPercentTotal: 'Total activé',
+      tpUnallocated: '{pct}% non alloué',
+      tpOverCap: 'Total supérieur à 100 %',
+      addTp: 'Ajouter un TP',
+      remove: 'Supprimer',
+      tradeStyle: 'Style de trade',
+      singleTrade: 'Entrée unique',
+      multiTrades: 'Range trading (multi)',
+      perLegSize: 'Taille par jambe (% du lot fixe)',
+      rangeLayering: 'Échelonnage de range',
+      rangePercent: 'Lot réservé (% des jambes)',
+      rangeStep: 'Pas (pips)',
+      rangeDistance: 'Distance du range (pips)',
+      fixedLot: 'Lot fixe',
+      targetRiskPct: 'Risque cible (% du solde)',
+      targetRiskHint: 'Optionnel — suggère un lot proche de ce risque par signal (pire cas).',
+      useSuggestedLot: 'Utiliser le lot suggéré',
+      enabled: 'Actif',
+      advanced: 'Avancé',
+      winRate: 'Taux de gain supposé (%)',
+      winRateHint:
+        'Optionnel. Estime la probabilité de ruine avec votre R:R calculé et un risque fixe par signal. Sans garantie.',
+      resultsTitle: 'Résultats',
+      riskFull: 'Risque si SL touché (panier complet)',
+      riskImmediate: 'Risque si SL touché (jambes immédiates seulement)',
+      riskPct: 'Risque % du solde',
+      rewardTotal: 'Gain maximal (tous les TP)',
+      rewardRiskRatio: 'Gain : risque',
+      legSummary: 'Détail des jambes',
+      legSummarySingle: '1 ordre à {lot} lots',
+      legSummaryMulti: '{total} ordres × {lot} lots ({immediate} immédiats + {pending} en attente)',
+      legSummaryRange: 'Portée ~{distance} pips ({pending} en attente × {step} pips)',
+      lossesToRuin: 'SL complets consécutifs pour effacer le compte',
+      riskOfRuin: 'Risque de ruine estimé',
+      perTpReward: 'Gain par TP (pips × % cible)',
+      brokerPreviewNote:
+        'Les jambes utilisent min lot 0,01 / pas 0,01. Les paramètres réels du symbole chez le courtier peuvent différer.',
+      fallbackSingleNote:
+        'La taille par jambe est sous le minimum courtier — le copieur ouvrirait une seule opération pleine taille.',
+      riskWarningModerate: 'Plus de 1 % de risque par signal — envisagez de réduire le lot.',
+      riskWarningHigh: 'Plus de 2 % de risque par signal — risque de drawdown élevé.',
+      riskWarningExtreme: 'Plus de 5 % de risque par signal — dangereux pour la plupart des comptes.',
+      apply: 'Appliquer',
+      cancel: 'Annuler',
+      close: 'Fermer',
+    },
   },
   stops: {
     predefinedTitle: 'SL et TP prédéfinis',
@@ -184,7 +277,7 @@ export const configureModalFr: ConfigureModalTranslations = {
     tpDistributionIntro:
       'Définissez manuellement la part de chaque TP activé. Le total des lignes activées ne peut pas dépasser 100 % — toute saisie est plafonnée au budget restant. Les lignes désactivées restent à 0 %.',
     multiTradeNote:
-      'Multi-positions : répartit les jambes planifiées sur les TP selon ces pourcentages (ex. 50/30/20 sur 20 jambes → 10/6/4 sur TP1/TP2/TP3).',
+      'Range Trading : répartit les jambes planifiées sur les TP selon ces pourcentages (ex. 50/30/20 sur 20 jambes → 10/6/4 sur TP1/TP2/TP3).',
     singleTradeNote:
       'Position unique : l’ordre vise le dernier TP activé chez le courtier ; le worker ferme partiellement le pourcentage configuré à chaque TP antérieur (ex. 50/30/20 sur 1,0 lot → ferme 0,50 à TP1, 0,30 à TP2, le 0,20 restant à TP3 via le courtier).',
     enabledTotal: 'Total activé :',
@@ -198,6 +291,33 @@ export const configureModalFr: ConfigureModalTranslations = {
     summaryJoin: ' ; ',
     summaryPrefix: 'Les SL/TP du canal sont ignorés pour les côtés activés — le copieur utilise {parts}.',
     basicPlanMoreTpsLimit: 'Davantage de TP sont disponibles avec le plan Advanced.',
+    profitTargetsTitle: 'Objectifs de profit',
+    profitTargetsIntro:
+      'Lorsque cette option est activée, l\'objectif atteint entraîne la clôture automatique de toutes les positions du canal et l\'arrêt du copieur jusqu\'à la prochaine période. Les montants utilisent la variation d\'equity du compte depuis le début de la période (ex. 1 000 $ ferme quand l\'equity est en hausse de 1 000 $).',
+    profitTargetsToggle: 'Activer les objectifs de profit',
+    maxRiskTitle: 'Perte maximale',
+    maxRiskIntro:
+      'Lorsque l\'equity du compte baisse du montant de perte limite depuis le début de la période (ou le drawdown depuis le pic de la période pour les règles en %), toutes les positions du canal sont fermées automatiquement et le copieur cesse de traiter les instructions jusqu\'à la prochaine période.',
+    maxRiskToggle: 'Activer la perte maximale',
+    addTarget: 'Ajouter un objectif',
+    addRiskRule: 'Ajouter une limite de perte',
+    riskValue: 'Limite de perte',
+    periodDaily: 'Quotidien',
+    periodWeekly: 'Hebdomadaire',
+    periodMonthly: 'Mensuel',
+    periodOverall: 'Global',
+    valueTypeAmount: 'Montant ($)',
+    valueTypePercent: 'Pourcentage (%)',
+    targetValue: 'Valeur cible',
+    periodLabel: 'Période',
+    typeLabel: 'Type',
+    timezoneTitle: 'Fuseau horaire des périodes',
+    timezoneProfile: 'Utiliser le fuseau de mon profil ({tz})',
+    timezoneCustom: 'Fuseau horaire personnalisé',
+    timezoneHint: 'Les limites quotidiennes, hebdomadaires et mensuelles se réinitialisent à minuit dans ce fuseau.',
+    pausedProfitBanner: 'Objectif de profit atteint — les positions du canal ont été fermées et la copie est en pause jusqu\'au prochaine période.',
+    pausedRiskBanner: 'Perte maximale atteinte — les positions du canal ont été fermées et la copie est en pause jusqu\'au prochaine période.',
+    pausedOverallBanner: 'Limite atteinte — les positions du canal ont été fermées et la copie reste en pause jusqu\'à modification ou désactivation de la règle.',
   },
   management: {
     monitorIntroMulti:
@@ -256,6 +376,9 @@ export const configureModalFr: ConfigureModalTranslations = {
     ruleBreakevenOffset: 'entrée + {offset} pip(s)',
     ruleBreakevenTrue: 'entrée (break-even réel)',
     ruleTriggerTpHit: 'lorsque TP{index} est atteint',
+    orderCommentsTitle: 'Commentaires d\'ordre',
+    orderCommentsSubtitle:
+      'Désactivé : TScopier laisse le champ commentaire du courtier vide pour les trades qu\'il ouvre ou actualise.',
   },
   filters: {
     timeTitle: 'Filtre horaire',
@@ -396,5 +519,9 @@ export const configureModalFr: ConfigureModalTranslations = {
   common: {
     yes: 'Oui',
     no: 'Non',
+  },
+  riskDisclaimer: {
+    warning: 'Attention ! Votre capital est exposé au risque. Ne copiez que des fournisseurs de signaux en qui vous avez confiance.',
+    fullLink: 'Voir l’avertissement complet sur les risques',
   },
 }

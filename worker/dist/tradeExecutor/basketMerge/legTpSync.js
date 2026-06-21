@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.syncMultiBasketLegTakeProfits = syncMultiBasketLegTakeProfits;
+const rangeBasketTpSync_1 = require("../../rangeBasketTpSync");
 const multiTradeMerge_1 = require("../../multiTradeMerge");
 const basketSlTpReconcile_1 = require("../../basketSlTpReconcile");
 async function syncMultiBasketLegTakeProfits(ctx, args) {
@@ -9,6 +10,37 @@ async function syncMultiBasketLegTakeProfits(ctx, args) {
     if (!api)
         return;
     await new Promise(r => setTimeout(r, 250));
+    if (manual.range_trading === true) {
+        const basketParams = params
+            ? {
+                digits: params.digits,
+                point: params.point,
+                minLot: params.minLot,
+                lotStep: params.lotStep,
+                contractSize: params.contractSize,
+                stopsLevel: params.stopsLevel,
+                freezeLevel: params.freezeLevel,
+            }
+            : null;
+        await (0, rangeBasketTpSync_1.syncRangeBasketTakeProfits)({
+            supabase: ctx.supabase,
+            api,
+            uuid,
+            symbol,
+            direction,
+            baseLot: Number(broker.default_lot_size ?? 0.01),
+            params: basketParams,
+            signalId: signal.id,
+            userId: signal.user_id,
+            brokerAccountId: broker.id,
+            manual,
+            parsed: (0, rangeBasketTpSync_1.toRangeBasketParsedSlice)(parsed),
+            plan,
+            channelId: signal.channel_id,
+            basketCreatedAt: signal.created_at ?? null,
+        });
+        return;
+    }
     const { data: familyRows, error } = await ctx.supabase
         .from('trades')
         .select('id,signal_id,metaapi_order_id,opened_at,lot_size,sl,tp,entry_price,direction,symbol')
@@ -69,6 +101,7 @@ async function syncMultiBasketLegTakeProfits(ctx, args) {
             strictEntryPrefetch: null,
             openedTickets,
             skipAlreadySynced: true,
+            orderCommentsEnabled: manual.order_comments_enabled !== false,
         });
     }
     catch (err) {

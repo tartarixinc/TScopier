@@ -5,18 +5,46 @@ import {
   type DashboardChartTrade,
   type TradeVolumeDay,
 } from './dashboardCharts'
+import { isTradeableClosedRow } from './dashboardTradeStats'
 import { displayTradeProfit } from './tradeDisplay'
-import { parseTscopierComment, sanitizeChannelCommentSlug } from './tscopierComment'
-import type { MtTrade } from './metatraderapi'
+import { normalizeSignalChannelIds } from './brokerChannelLink'
+import { parseTscopierComment, sanitizeChannelCommentSlug, isTscopierComment } from './tscopierComment'
+import type { MtTrade } from './fxsocketBroker'
 import { periodRange, periodToDays, type PerformancePeriod } from './performanceAnalytics'
 
 export const UNLINKED_CHANNEL_KEY = '__unlinked__'
 
 export interface PerformanceChannelLinkMaps {
   ticketToChannelId: Record<string, string>
+  ticketToSignalId: Record<string, string>
   signalPrefixToChannelId: Record<string, string>
+  signalPrefixToSignalId: Record<string, string>
   channelSlugToChannelId: Record<string, string>
   channelNames: Record<string, string>
+}
+
+export const EMPTY_CHANNEL_LINK_MAPS: PerformanceChannelLinkMaps = {
+  ticketToChannelId: {},
+  ticketToSignalId: {},
+  signalPrefixToChannelId: {},
+  signalPrefixToSignalId: {},
+  channelSlugToChannelId: {},
+  channelNames: {},
+}
+
+/** Backfill fields missing from older session-cache payloads. */
+export function normalizeChannelLinkMaps(
+  maps?: Partial<PerformanceChannelLinkMaps> | null,
+): PerformanceChannelLinkMaps {
+  if (!maps) return { ...EMPTY_CHANNEL_LINK_MAPS }
+  return {
+    ticketToChannelId: maps.ticketToChannelId ?? {},
+    ticketToSignalId: maps.ticketToSignalId ?? {},
+    signalPrefixToChannelId: maps.signalPrefixToChannelId ?? {},
+    signalPrefixToSignalId: maps.signalPrefixToSignalId ?? {},
+    channelSlugToChannelId: maps.channelSlugToChannelId ?? {},
+    channelNames: maps.channelNames ?? {},
+  }
 }
 
 export interface TradeChannelAttributionRow {
@@ -55,6 +83,41 @@ function registerTicketChannel(
   for (const key of brokerTicketLookupKeys(brokerId, ticket)) {
     map[key] = channelId
   }
+}
+
+function registerTicketSignal(
+  map: Record<string, string>,
+  brokerId: string | null | undefined,
+  ticket: string | number | null | undefined,
+  signalId: string,
+): void {
+  for (const key of brokerTicketLookupKeys(brokerId, ticket)) {
+    map[key] = signalId
+  }
+}
+
+function buildSignalPrefixSignalMap(signals: Array<{ id: string }>): Record<string, string> {
+  const byPrefix = new Map<string, Map<string, number>>()
+  for (const s of signals) {
+    const prefix = s.id.slice(0, 8).toLowerCase()
+    if (!/^[a-f0-9]{8}$/.test(prefix)) continue
+    const counts = byPrefix.get(prefix) ?? new Map<string, number>()
+    counts.set(s.id, (counts.get(s.id) ?? 0) + 1)
+    byPrefix.set(prefix, counts)
+  }
+  const out: Record<string, string> = {}
+  for (const [prefix, counts] of byPrefix) {
+    let bestSignal = ''
+    let bestCount = 0
+    for (const [signalId, count] of counts) {
+      if (count > bestCount) {
+        bestCount = count
+        bestSignal = signalId
+      }
+    }
+    if (bestSignal) out[prefix] = bestSignal
+  }
+  return out
 }
 
 function buildSignalPrefixChannelMap(
@@ -140,6 +203,17 @@ function closedMtTradesInPeriod(trades: MtTrade[], period: PerformancePeriod, no
   const { inRange } = periodRange(period, now)
   return trades.filter(t => {
     if (t.status !== 'closed') return false
+    if (
+      !isTradeableClosedRow({
+        status: t.status,
+        symbol: t.symbol,
+        lot_size: t.lot_size,
+        direction: t.direction,
+        type: t.type,
+      })
+    ) {
+      return false
+    }
     const closeIso = t.closed_at ?? t.opened_at
     return closeIso != null && inRange(closeIso)
   })
@@ -272,11 +346,74 @@ export function computeSymbolDistribution(
   ]
 }
 
-function resolveChannelIdForTrade(
-  trade: MtTrade,
+function channelAttributionTicketKeys(trade: MtTrade): string[] {
+  const keys = new Set<string>()
+  for (const key of brokerTicketLookupKeys(trade.broker_id, trade.ticket)) {
+    keys.add(key)
+  }
+  const positionTicket = trade.position_ticket
+  if (positionTicket != null && positionTicket > 0) {
+    for (const key of brokerTicketLookupKeys(trade.broker_id, positionTicket)) {
+      keys.add(key)
+    }
+  }
+  return [...keys]
+}
+
+export type ResolveChannelIdOpts = {
+  connectedChannelIds?: string[] | null
+}
+
+export function canonicalChannelId(
+  channelId: string,
   maps: PerformanceChannelLinkMaps,
 ): string {
-  for (const key of brokerTicketLookupKeys(trade.broker_id, trade.ticket)) {
+  const lower = channelId.trim().toLowerCase()
+  if (!lower) return channelId
+  for (const key of Object.keys(maps.channelNames)) {
+    if (key.toLowerCase() === lower) return key
+  }
+  return channelId
+}
+
+function connectedChannelIds(
+  raw: string[] | null | undefined,
+  maps: PerformanceChannelLinkMaps,
+): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const id of normalizeSignalChannelIds(raw)) {
+    const canonical = canonicalChannelId(id, maps)
+    if (seen.has(canonical)) continue
+    seen.add(canonical)
+    out.push(canonical)
+  }
+  return out
+}
+
+function resolveSlugOnConnectedChannels(
+  slug: string,
+  connected: string[],
+  maps: PerformanceChannelLinkMaps,
+): string | null {
+  const norm = slug.trim().toLowerCase()
+  if (!norm) return null
+  for (const channelId of connected) {
+    const label = maps.channelNames[channelId] ?? ''
+    const candidates = [sanitizeChannelCommentSlug(label)].filter(Boolean)
+    for (const candidate of candidates) {
+      if (candidate.toLowerCase() === norm) return channelId
+    }
+  }
+  return null
+}
+
+export function resolveChannelIdForTrade(
+  trade: MtTrade,
+  maps: PerformanceChannelLinkMaps,
+  opts?: ResolveChannelIdOpts,
+): string {
+  for (const key of channelAttributionTicketKeys(trade)) {
     const fromTicket = maps.ticketToChannelId[key]
     if (fromTicket) return fromTicket
   }
@@ -292,7 +429,37 @@ function resolveChannelIdForTrade(
     if (fromSlug) return fromSlug
   }
 
+  const connected = connectedChannelIds(opts?.connectedChannelIds, maps)
+  if (parsed && connected.length > 0) {
+    if (parsed.channelSlug) {
+      const fromConnected = resolveSlugOnConnectedChannels(parsed.channelSlug, connected, maps)
+      if (fromConnected) return fromConnected
+    }
+    if (isTscopierComment(trade.comment) && connected.length === 1) {
+      return connected[0]!
+    }
+  }
+
   return UNLINKED_CHANNEL_KEY
+}
+
+export function resolveSignalIdForTrade(
+  trade: MtTrade,
+  maps: PerformanceChannelLinkMaps,
+): string | null {
+  const normalized = normalizeChannelLinkMaps(maps)
+  for (const key of channelAttributionTicketKeys(trade)) {
+    const fromTicket = normalized.ticketToSignalId[key]
+    if (fromTicket) return fromTicket
+  }
+
+  const parsed = parseTscopierComment(trade.comment)
+  if (parsed?.signalIdPrefix) {
+    const fromPrefix = normalized.signalPrefixToSignalId[parsed.signalIdPrefix.toLowerCase()]
+    if (fromPrefix) return fromPrefix
+  }
+
+  return null
 }
 
 export function computeProfitByChannel(
@@ -301,13 +468,17 @@ export function computeProfitByChannel(
   maps: PerformanceChannelLinkMaps,
   unlinkedLabel: string,
   now = new Date(),
+  connectedChannelIds?: string[] | null,
 ): PerformanceDistributionRow[] {
   const closed = closedMtTradesInPeriod(trades, period, now)
   const byChannel = new Map<string, { count: number; pnl: number }>()
+  const resolveOpts: ResolveChannelIdOpts = { connectedChannelIds }
 
   for (const trade of closed) {
-    const channelId = resolveChannelIdForTrade(trade, maps)
-    const pnl = displayTradeProfit(trade) ?? 0
+    const pnl = displayTradeProfit(trade)
+    if (pnl == null || !Number.isFinite(pnl)) continue
+    const channelId = resolveChannelIdForTrade(trade, maps, resolveOpts)
+    if (channelId === UNLINKED_CHANNEL_KEY) continue
     const prev = byChannel.get(channelId) ?? { count: 0, pnl: 0 }
     byChannel.set(channelId, { count: prev.count + 1, pnl: prev.pnl + pnl })
   }
@@ -315,10 +486,7 @@ export function computeProfitByChannel(
   return [...byChannel.entries()]
     .map(([channelId, stats]) => ({
       key: channelId,
-      label:
-        channelId === UNLINKED_CHANNEL_KEY
-          ? unlinkedLabel
-          : maps.channelNames[channelId] ?? unlinkedLabel,
+      label: maps.channelNames[channelId] ?? unlinkedLabel,
       count: stats.count,
       pnl: stats.pnl,
     }))
@@ -355,40 +523,70 @@ export function buildPerformanceChannelLinkMaps(
     }
   }
 
-  const signalPrefixToChannelId = buildSignalPrefixChannelMap(
-    [
-      ...signals,
-      ...attributions
-        .filter(a => a.signal_id && a.channel_id)
-        .map(a => ({ id: a.signal_id!, channel_id: a.channel_id! })),
-    ],
-  )
+  const signalRows = [
+    ...signals,
+    ...attributions
+      .filter(a => a.signal_id && a.channel_id)
+      .map(a => ({ id: a.signal_id!, channel_id: a.channel_id! })),
+  ]
+  const signalPrefixToChannelId = buildSignalPrefixChannelMap(signalRows)
+  const signalPrefixToSignalId = buildSignalPrefixSignalMap([
+    ...signals,
+    ...attributions.filter(a => a.signal_id).map(a => ({ id: a.signal_id! })),
+  ])
   const channelSlugToChannelId = buildChannelSlugMap(channels)
 
   const ticketToChannelId: Record<string, string> = {}
+  const ticketToSignalId: Record<string, string> = {}
   for (const a of attributions) {
-    if (!a.broker_account_id || !a.metaapi_order_id || !a.channel_id) continue
-    registerTicketChannel(
-      ticketToChannelId,
-      a.broker_account_id,
-      a.metaapi_order_id,
-      a.channel_id,
-    )
+    if (!a.broker_account_id || !a.metaapi_order_id) continue
+    if (a.channel_id) {
+      registerTicketChannel(
+        ticketToChannelId,
+        a.broker_account_id,
+        a.metaapi_order_id,
+        a.channel_id,
+      )
+    }
+    if (a.signal_id) {
+      registerTicketSignal(
+        ticketToSignalId,
+        a.broker_account_id,
+        a.metaapi_order_id,
+        a.signal_id,
+      )
+    }
   }
   for (const t of dbTrades) {
     const channelId =
       t.telegram_channel_id
       ?? (t.signal_id ? signalToChannel[t.signal_id] : undefined)
-    if (!channelId || !t.broker_account_id || !t.metaapi_order_id) continue
-    registerTicketChannel(
-      ticketToChannelId,
-      t.broker_account_id,
-      t.metaapi_order_id,
-      channelId,
-    )
+    if (channelId && t.broker_account_id && t.metaapi_order_id) {
+      registerTicketChannel(
+        ticketToChannelId,
+        t.broker_account_id,
+        t.metaapi_order_id,
+        channelId,
+      )
+    }
+    if (t.signal_id && t.broker_account_id && t.metaapi_order_id) {
+      registerTicketSignal(
+        ticketToSignalId,
+        t.broker_account_id,
+        t.metaapi_order_id,
+        t.signal_id,
+      )
+    }
   }
 
-  return { ticketToChannelId, signalPrefixToChannelId, channelSlugToChannelId, channelNames }
+  return {
+    ticketToChannelId,
+    ticketToSignalId,
+    signalPrefixToChannelId,
+    signalPrefixToSignalId,
+    channelSlugToChannelId,
+    channelNames,
+  }
 }
 
 export function computePerformanceInsights(opts: {

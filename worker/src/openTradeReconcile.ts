@@ -4,7 +4,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { MetatraderApiClient } from './metatraderapi'
+import type { FxsocketBrokerClient } from './fxsocketClient'
 import { closeStaleOpenTrades, fetchOpenBrokerTicketsStrict } from './basketSlTpReconcile'
 
 export type OpenTradeReconcileRow = {
@@ -29,7 +29,7 @@ export function findGhostOpenTradeIds(
 
 export async function reconcileOpenTradesForBroker(
   supabase: SupabaseClient,
-  api: MetatraderApiClient,
+  api: FxsocketBrokerClient,
   metaapiAccountId: string,
   openTrades: OpenTradeReconcileRow[],
 ): Promise<number> {

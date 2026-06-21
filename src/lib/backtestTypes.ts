@@ -37,7 +37,11 @@ export interface BacktestSummary {
   message?: string
   signalSource?: string
   rawParsedCount?: number
+  marketDataApiCalls?: number
+  /** @deprecated use marketDataApiCalls */
   massiveApiCalls?: number
+  brokerAccountId?: string
+  brokerLabel?: string
   importWarnings?: string[]
 }
 
@@ -90,6 +94,30 @@ export interface BacktestEquityRow {
   ts: string
   equity: number
   drawdown_pct: number
+}
+
+export interface BacktestReplayCandle {
+  time: number
+  open: number
+  high: number
+  low: number
+  close: number
+}
+
+export interface BacktestTradeReplayResponse {
+  ok: true
+  source: 'ticks' | 'bars'
+  intervalMs: number
+  candles: BacktestReplayCandle[]
+  markers: {
+    entry: { time: number; price: number }
+    sl: number | null
+    tps: number[]
+    tpEvents: BacktestTpEvent[]
+    exit: { time: number; price: number } | null
+  }
+  brokerLabel: string
+  tradeDurationMs: number
 }
 
 /** Rows in `backtest_channel_signals` for the selected channel(s) and date range. */

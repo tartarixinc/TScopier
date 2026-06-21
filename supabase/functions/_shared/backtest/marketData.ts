@@ -1,33 +1,24 @@
-import { MassiveClient, MassiveApiError, sanitizeMarketDataErrorMessage } from "../massiveApi.ts"
+import { FxsocketApiError, type FxsocketClient } from "../fxsocketClient.ts"
+import {
+  fxsocketBarsToMidPoints,
+  fxsocketTicksToMidPoints,
+  fxsocketMarketQueryRange,
+  resolveBrokerSymbol,
+  sanitizeMarketDataErrorMessage,
+  isRetriableMarketDataError,
+  toFxsocketTimeframe,
+} from "./fxsocketMarketData.ts"
+import type { BacktestBrokerContext } from "./resolveBacktestBroker.ts"
 import type { PricePoint } from "./simulator.ts"
-import { barsToMidPoints, quotesToMidPoints } from "./simulator.ts"
-import { mapSymbolToMassive, timeframeToAgg } from "./symbolMap.ts"
 import type { BacktestRunConfig, ParsedSignalForBacktest } from "./types.ts"
-
-/** Quotes API uses `C:EUR-USD`; aggregates use `C:EURUSD`. */
-export function toMassiveQuoteTicker(massiveTicker: string): string {
-  if (massiveTicker.startsWith("C:")) {
-    const pair = massiveTicker.slice(2)
-    if (pair.length === 6 && !pair.includes("-")) {
-      return `C:${pair.slice(0, 3)}-${pair.slice(3)}`
-    }
-  }
-  return massiveTicker
-}
 
 export interface PreloadedMarketData {
   seriesBySymbol: Map<string, PricePoint[]>
   apiCalls: number
   fetchLog: string[]
-  rateLimitHits: number
-}
-
-function maxPagesForAgg(multiplier: number, timespan: "minute" | "hour" | "day"): number {
-  if (timespan === "day") return 2
-  if (timespan === "hour") return 3
-  if (multiplier >= 15) return 3
-  if (multiplier >= 5) return 4
-  return 5
+  fetchFailures: number
+  brokerContext: BacktestBrokerContext
+  utcOffsetSeconds: number
 }
 
 function signalWindowForSymbol(
@@ -50,125 +41,223 @@ function signalWindowForSymbol(
   }
 }
 
-async function fetchBarsForSymbol(
-  massive: MassiveClient,
-  mapped: { massiveTicker: string; assetClass: string },
-  multiplier: number,
-  timespan: "minute" | "hour" | "day",
+export async function fetchUtcOffsetSeconds(fx: FxsocketClient, accountId: string): Promise<number> {
+  try {
+    const tz = await fx.serverTimezone(accountId)
+    const offset = Number(tz.utcOffsetSeconds ?? tz.utc_offset_seconds ?? 0)
+    return Number.isFinite(offset) ? offset : 0
+  } catch {
+    return 0
+  }
+}
+
+export async function fetchBarsForSymbol(
+  fx: FxsocketClient,
+  ctx: BacktestBrokerContext,
+  brokerSymbol: string,
+  timeframe: string,
   fromMs: number,
   toMs: number,
-): Promise<{ pts: PricePoint[]; apiCalls: number; log: string; rateLimited: boolean }> {
-  const rangeLabel = `${new Date(fromMs).toISOString().slice(0, 10)}→${new Date(toMs).toISOString().slice(0, 10)}`
+  utcOffsetSeconds: number,
+  retry = true,
+): Promise<{ pts: PricePoint[]; apiCalls: number; log: string; failed: boolean }> {
+  const query = fxsocketMarketQueryRange(fromMs, toMs, utcOffsetSeconds)
+  const rangeLabel = `${query.from}→${query.to}`
   try {
-    const bars = await massive.getAggregates(
-      mapped.massiveTicker,
-      multiplier,
-      timespan,
-      fromMs,
-      toMs,
-      { sort: "asc", maxPages: maxPagesForAgg(multiplier, timespan) },
-    )
-    const pts = barsToMidPoints(bars)
+    const bars = await fx.priceHistory(ctx.fxsocketAccountId, {
+      symbol: brokerSymbol,
+      timeframe,
+      from: query.from,
+      to: query.to,
+    })
+    const pts = fxsocketBarsToMidPoints(bars, utcOffsetSeconds)
     return {
       pts,
       apiCalls: 1,
-      log: `${pts.length} bars (${mapped.massiveTicker}, ${rangeLabel})`,
-      rateLimited: false,
+      log: `${pts.length} bars (${brokerSymbol}, ${timeframe}, ${rangeLabel})`,
+      failed: false,
     }
   } catch (e) {
-    const status = e instanceof MassiveApiError ? e.status : 0
-    const rateLimited = status === 429
-    const short = rateLimited
-      ? "rate limited — skipped (other symbols still run)"
-      : sanitizeMarketDataErrorMessage(e instanceof Error ? e.message : String(e))
+    const msg = e instanceof Error ? e.message : String(e)
+    if (retry && isRetriableMarketDataError(msg)) {
+      await new Promise((r) => setTimeout(r, 2_000))
+      return fetchBarsForSymbol(
+        fx, ctx, brokerSymbol, timeframe, fromMs, toMs, utcOffsetSeconds, false,
+      )
+    }
+    const short = sanitizeMarketDataErrorMessage(msg)
     return {
       pts: [],
-      apiCalls: rateLimited ? 0 : 1,
+      apiCalls: 1,
       log: `fetch failed: ${short}`,
-      rateLimited,
+      failed: true,
     }
   }
 }
 
+export async function fetchTicksForSymbol(
+  fx: FxsocketClient,
+  ctx: BacktestBrokerContext,
+  brokerSymbol: string,
+  fromMs: number,
+  toMs: number,
+  utcOffsetSeconds: number,
+  retry = true,
+): Promise<{ pts: PricePoint[]; apiCalls: number; log: string; failed: boolean }> {
+  const query = fxsocketMarketQueryRange(fromMs, toMs, utcOffsetSeconds)
+  const rangeLabel = `${query.from}→${query.to}`
+  try {
+    const ticks = await fx.quoteTicks(ctx.fxsocketAccountId, {
+      symbol: brokerSymbol,
+      from: query.from,
+      to: query.to,
+    })
+    const pts = fxsocketTicksToMidPoints(ticks, utcOffsetSeconds)
+    return {
+      pts,
+      apiCalls: 1,
+      log: `${pts.length} ticks (${brokerSymbol}, ${rangeLabel})`,
+      failed: false,
+    }
+  } catch (e) {
+    if (e instanceof FxsocketApiError && e.status === 404) {
+      return {
+        pts: [],
+        apiCalls: 0,
+        log: "QuoteTicks endpoint unavailable — using OHLC bars",
+        failed: false,
+      }
+    }
+    const msg = e instanceof Error ? e.message : String(e)
+    if (retry && isRetriableMarketDataError(msg)) {
+      await new Promise((r) => setTimeout(r, 2_000))
+      return fetchTicksForSymbol(
+        fx, ctx, brokerSymbol, fromMs, toMs, utcOffsetSeconds, false,
+      )
+    }
+    return {
+      pts: [],
+      apiCalls: 1,
+      log: `ticks fetch failed: ${sanitizeMarketDataErrorMessage(msg)}`,
+      failed: true,
+    }
+  }
+}
+
+const SYMBOL_FETCH_CONCURRENCY = 3
+
+async function fetchSymbolSeries(
+  fx: FxsocketClient,
+  ctx: BacktestBrokerContext,
+  symbol: string,
+  signals: ParsedSignalForBacktest[],
+  config: BacktestRunConfig,
+  configFromMs: number,
+  configToMs: number,
+  utcOffsetSeconds: number,
+): Promise<{ symbol: string; pts: PricePoint[]; apiCalls: number; logs: string[]; failed: boolean }> {
+  const brokerSymbol = resolveBrokerSymbol(symbol, ctx.brokerSymbols)
+  if (!brokerSymbol) {
+    return {
+      symbol,
+      pts: [],
+      apiCalls: 0,
+      logs: [`${symbol}: not listed on broker ${ctx.brokerLabel}`],
+      failed: true,
+    }
+  }
+
+  const { fromMs, toMs } = signalWindowForSymbol(symbol, signals, configFromMs, configToMs)
+  if (fromMs >= toMs) {
+    return {
+      symbol,
+      pts: [],
+      apiCalls: 0,
+      logs: [`${symbol}: invalid time window`],
+      failed: true,
+    }
+  }
+
+  const timeframe = toFxsocketTimeframe(config.timeframe)
+  const logs: string[] = []
+  let apiCalls = 0
+  let pts: PricePoint[] = []
+  let failed = false
+
+  if (config.executionMode === "tick_quotes") {
+    const tickResult = await fetchTicksForSymbol(
+      fx, ctx, brokerSymbol, fromMs, toMs, utcOffsetSeconds,
+    )
+    apiCalls += tickResult.apiCalls
+    logs.push(`${symbol}: ${tickResult.log}`)
+    pts = tickResult.pts
+    if (tickResult.failed) failed = true
+
+    if (pts.length === 0 && !tickResult.log.includes("unavailable")) {
+      const barResult = await fetchBarsForSymbol(
+        fx, ctx, brokerSymbol, timeframe, fromMs, toMs, utcOffsetSeconds,
+      )
+      apiCalls += barResult.apiCalls
+      pts = barResult.pts
+      if (barResult.failed) failed = true
+      logs.push(`${symbol}: ${barResult.log}`)
+    } else if (pts.length === 0 && tickResult.log.includes("unavailable")) {
+      const barResult = await fetchBarsForSymbol(
+        fx, ctx, brokerSymbol, timeframe, fromMs, toMs, utcOffsetSeconds,
+      )
+      apiCalls += barResult.apiCalls
+      pts = barResult.pts
+      if (barResult.failed) failed = true
+      logs.push(`${symbol}: ${barResult.log}`)
+    }
+  } else {
+    const barResult = await fetchBarsForSymbol(
+      fx, ctx, brokerSymbol, timeframe, fromMs, toMs, utcOffsetSeconds,
+    )
+    apiCalls += barResult.apiCalls
+    pts = barResult.pts
+    if (barResult.failed) failed = true
+    logs.push(`${symbol}: ${barResult.log}`)
+  }
+
+  return { symbol, pts, apiCalls, logs, failed }
+}
+
 /**
- * Fetch OHLC or forex quotes from Massive for every symbol before simulation.
- * Per-symbol failures (including rate limits) do not abort the whole run.
+ * Fetch OHLC bars (or quote ticks) from the user's linked FxSocket broker
+ * for every symbol before simulation. Per-symbol failures do not abort the run.
  */
 export async function preloadMarketData(
-  massive: MassiveClient,
+  fx: FxsocketClient,
+  ctx: BacktestBrokerContext,
   symbols: string[],
   signals: ParsedSignalForBacktest[],
   config: BacktestRunConfig,
   configFromMs: number,
   configToMs: number,
-  callsPerMinute = 5,
 ): Promise<PreloadedMarketData> {
-  const { multiplier, timespan } = timeframeToAgg(config.timeframe)
+  const utcOffsetSeconds = await fetchUtcOffsetSeconds(fx, ctx.fxsocketAccountId)
   const seriesBySymbol = new Map<string, PricePoint[]>()
   const fetchLog: string[] = []
   let apiCalls = 0
-  let rateLimitHits = 0
-  const lowRatePlan = callsPerMinute <= 5
+  let fetchFailures = 0
 
-  for (const symbol of symbols) {
-    const mapped = mapSymbolToMassive(symbol)
-    if (!mapped) {
-      fetchLog.push(`${symbol}: no Massive ticker mapping`)
-      seriesBySymbol.set(symbol, [])
-      continue
+  for (let i = 0; i < symbols.length; i += SYMBOL_FETCH_CONCURRENCY) {
+    const batch = symbols.slice(i, i + SYMBOL_FETCH_CONCURRENCY)
+    const results = await Promise.all(
+      batch.map((symbol) =>
+        fetchSymbolSeries(
+          fx, ctx, symbol, signals, config, configFromMs, configToMs, utcOffsetSeconds,
+        ),
+      ),
+    )
+    for (const r of results) {
+      seriesBySymbol.set(r.symbol, r.pts)
+      apiCalls += r.apiCalls
+      fetchLog.push(...r.logs)
+      if (r.failed) fetchFailures++
     }
-
-    const { fromMs, toMs } = signalWindowForSymbol(symbol, signals, configFromMs, configToMs)
-    if (fromMs >= toMs) {
-      fetchLog.push(`${symbol}: invalid time window`)
-      seriesBySymbol.set(symbol, [])
-      continue
-    }
-
-    let pts: PricePoint[] = []
-    const wantsQuotes = config.executionMode === "tick_quotes" && mapped.assetClass === "forex"
-    const useQuotes = wantsQuotes && !lowRatePlan
-
-    if (wantsQuotes && lowRatePlan) {
-      fetchLog.push(`${symbol}: tick quotes skipped (plan ≤${callsPerMinute}/min — using OHLC bars)`)
-    }
-
-    if (useQuotes) {
-      const quoteTicker = toMassiveQuoteTicker(mapped.massiveTicker)
-      try {
-        const quotes = await massive.getForexQuotes(
-          quoteTicker,
-          fromMs * 1_000_000,
-          toMs * 1_000_000,
-          { maxPages: 2 },
-        )
-        apiCalls += 1
-        pts = quotesToMidPoints(quotes)
-        fetchLog.push(`${symbol}: ${pts.length} quotes (${quoteTicker})`)
-        if (pts.length === 0) {
-          const fallback = await fetchBarsForSymbol(massive, mapped, multiplier, timespan, fromMs, toMs)
-          apiCalls += fallback.apiCalls
-          pts = fallback.pts
-          if (fallback.rateLimited) rateLimitHits++
-          fetchLog.push(`${symbol}: ${fallback.log}`)
-        }
-      } catch (e) {
-        const fallback = await fetchBarsForSymbol(massive, mapped, multiplier, timespan, fromMs, toMs)
-        apiCalls += fallback.apiCalls
-        pts = fallback.pts
-        if (fallback.rateLimited) rateLimitHits++
-        fetchLog.push(`${symbol}: quotes unavailable, ${fallback.log}`)
-      }
-    } else {
-      const result = await fetchBarsForSymbol(massive, mapped, multiplier, timespan, fromMs, toMs)
-      apiCalls += result.apiCalls
-      pts = result.pts
-      if (result.rateLimited) rateLimitHits++
-      fetchLog.push(`${symbol}: ${result.log}`)
-    }
-
-    seriesBySymbol.set(symbol, pts)
   }
 
-  return { seriesBySymbol, apiCalls, fetchLog, rateLimitHits }
+  return { seriesBySymbol, apiCalls, fetchLog, fetchFailures, brokerContext: ctx, utcOffsetSeconds }
 }

@@ -1,4 +1,5 @@
 import { isMtTimestampInRange } from './mtApiDateTime'
+import { filterTradeStatsRowsSinceConnect } from './tradesSinceConnect'
 
 /** Shared filters for dashboard closed-trade P/L and win/loss counts. */
 
@@ -6,6 +7,7 @@ export type TradeStatsRow = {
   status?: string
   profit: number | null
   closed_at: string | null
+  opened_at?: string | null
   symbol: string
   lot_size: number
   direction?: string
@@ -14,14 +16,12 @@ export type TradeStatsRow = {
   commission?: number | null
 }
 
-export function isTradeableClosedRow(row: {
-  status?: string
+function isTradeableMtRow(row: {
   symbol: string
   lot_size: number
   direction?: string
   type?: string
 }): boolean {
-  if ((row.status ?? 'closed') !== 'closed') return false
   if (!(row.symbol ?? '').trim()) return false
   const type = (row.type ?? '').toLowerCase()
   if (
@@ -35,8 +35,66 @@ export function isTradeableClosedRow(row: {
     return false
   }
   const dir = (row.direction ?? '').toLowerCase()
-  if (dir === 'buy' || dir === 'sell') return true
-  return (row.lot_size ?? 0) > 0
+  if ((row.lot_size ?? 0) <= 0) return false
+  return dir === 'buy' || dir === 'sell'
+}
+
+export function isTradeableClosedRow(row: {
+  status?: string
+  symbol: string
+  lot_size: number
+  direction?: string
+  type?: string
+}): boolean {
+  if ((row.status ?? 'closed') !== 'closed') return false
+  return isTradeableMtRow(row)
+}
+
+export function isTradeableOpenRow(row: {
+  status?: string
+  symbol: string
+  lot_size: number
+  direction?: string
+  type?: string
+}): boolean {
+  if ((row.status ?? 'open') !== 'open') return false
+  return isTradeableMtRow(row)
+}
+
+/** Closed MT row that moves account cash (deposit, withdrawal, balance op) — not trade P/L. */
+export function isBalanceCashFlowRow(row: {
+  status?: string
+  symbol: string
+  lot_size: number
+  direction?: string
+  type?: string
+  profit: number | null
+}): boolean {
+  if ((row.status ?? 'closed') !== 'closed') return false
+  if (isTradeableClosedRow(row)) return false
+  const profit = row.profit
+  if (typeof profit !== 'number' || !Number.isFinite(profit) || profit === 0) return false
+
+  const type = (row.type ?? '').toLowerCase()
+  if (
+    type.includes('balance') ||
+    type.includes('credit') ||
+    type.includes('deposit') ||
+    type.includes('withdraw') ||
+    type.includes('correction') ||
+    type.includes('transfer')
+  ) {
+    return true
+  }
+  return !(row.symbol ?? '').trim()
+    && (row.lot_size ?? 0) <= 0
+    && !(row.direction ?? '').trim()
+}
+
+export function sumBalanceCashFlow(rows: TradeStatsRow[]): number {
+  return rows
+    .filter(isBalanceCashFlowRow)
+    .reduce((sum, t) => sum + (t.profit ?? 0), 0)
 }
 
 /** Minimum |deal profit| to classify a close as won or lost (not breakeven). */
@@ -238,15 +296,18 @@ export function computeLinkedAccountPerformanceMap(
     id: string
     performance_baseline_balance?: number | null
     last_balance?: number | null
+    performance_baseline_captured_at?: string | null
+    created_at?: string | null
   }>,
   tradesByAccountId: Record<string, TradeStatsRow[]>,
   equityByAccountId: Record<string, number | undefined>,
 ): Record<string, LinkedAccountPerformance> {
   const out: Record<string, LinkedAccountPerformance> = {}
   for (const account of accounts) {
+    const scoped = filterTradeStatsRowsSinceConnect(tradesByAccountId[account.id] ?? [], account)
     out[account.id] = computeLinkedAccountPerformance(
       account,
-      tradesByAccountId[account.id] ?? [],
+      scoped,
       equityByAccountId[account.id],
     )
   }

@@ -1,4 +1,3 @@
-import type { MassiveBar, MassiveQuote } from "../massiveApi.ts"
 import { computePipsFromSignalOutcome } from "./pip.ts"
 import type {
   BacktestStrategyConfig,
@@ -6,6 +5,20 @@ import type {
   SimulatedTradeResult,
   TradeOutcome,
 } from "./types.ts"
+
+export interface OhlcBar {
+  t: number
+  o: number
+  h: number
+  l: number
+  c: number
+}
+
+export interface QuoteTick {
+  ts: number
+  bid: number
+  ask: number
+}
 
 export interface PricePoint {
   ts: number
@@ -15,7 +28,7 @@ export interface PricePoint {
 }
 
 /** OHLC bar → bid/ask envelope for conservative intrabar SL/TP checks. */
-export function barsToMidPoints(bars: MassiveBar[]): PricePoint[] {
+export function barsToMidPoints(bars: OhlcBar[]): PricePoint[] {
   return bars.map((b) => ({
     ts: b.t,
     bid: b.l,
@@ -40,14 +53,14 @@ export function sliceSeriesForSignal(
   return series.slice(i, j)
 }
 
-export function quotesToMidPoints(quotes: MassiveQuote[]): PricePoint[] {
+export function quotesToMidPoints(quotes: QuoteTick[]): PricePoint[] {
   return quotes
-    .filter((q) => Number.isFinite(q.bid_price) && Number.isFinite(q.ask_price))
+    .filter((q) => Number.isFinite(q.bid) && Number.isFinite(q.ask))
     .map((q) => ({
-      ts: Math.floor(q.participant_timestamp / 1_000_000),
-      bid: q.bid_price,
-      ask: q.ask_price,
-      mid: (q.bid_price + q.ask_price) / 2,
+      ts: q.ts,
+      bid: q.bid,
+      ask: q.ask,
+      mid: (q.bid + q.ask) / 2,
     }))
     .sort((a, b) => a.ts - b.ts)
 }

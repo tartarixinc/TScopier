@@ -5,7 +5,9 @@ export interface LandingFeatureTranslation {
 
 export type LandingFeatureVisualId =
   | 'copier'
+  | 'multilingual'
   | 'filters'
+  | 'signalEdit'
   | 'backtest'
   | 'logs'
   | 'news'
@@ -93,6 +95,38 @@ export interface LandingBacktestVisualCopy {
   signals: LandingBacktestSignalVisual[]
 }
 
+export interface LandingMultilingualSignalCardVisual {
+  flagId: string
+  language: string
+  message: string
+  parsedAction: string
+  side: 'buy' | 'sell'
+}
+
+export interface LandingMultilingualVisualCopy {
+  languagesBadge: string
+  moreLanguages: string
+  parsedLabel: string
+  ribbonFlags: string[]
+  signals: LandingMultilingualSignalCardVisual[]
+}
+
+export interface LandingSignalEditVisualCopy {
+  channelName: string
+  channelMeta: string
+  editedLabel: string
+  messageBuy: string
+  beforeLabel: string
+  beforeSl: string
+  beforeTp: string
+  afterLabel: string
+  afterSl: string
+  afterTp: string
+  workerTitle: string
+  workerMessage: string
+  workerTime: string
+}
+
 export interface LandingFeatureVisualsCopy {
   copier: {
     telegramLabel: string
@@ -112,6 +146,8 @@ export interface LandingFeatureVisualsCopy {
     ignoreLabel: string
     rules: LandingFilterRuleVisual[]
   }
+  multilingual: LandingMultilingualVisualCopy
+  signalEdit: LandingSignalEditVisualCopy
   backtest: LandingBacktestVisualCopy
   logs: LandingCopierLogsVisualCopy
   news: {
@@ -197,6 +233,7 @@ export interface LandingStepsVisualsCopy {
 }
 
 export interface LandingReviewTranslation {
+  headline?: string
   quote: string
   author: string
   role?: string
@@ -211,6 +248,15 @@ export interface LandingComparisonRow {
 export interface LandingFaqItem {
   question: string
   answer: string
+}
+
+export type LandingPlanComparisonValue = 'yes' | 'no' | 'partial' | string
+
+export interface LandingPlanComparisonRow {
+  feature: string
+  basic: LandingPlanComparisonValue
+  advanced: LandingPlanComparisonValue
+  custom: LandingPlanComparisonValue
 }
 
 export type LandingHeroStatTone = 'good' | 'bad' | 'neutral'
@@ -282,6 +328,8 @@ export interface LandingTranslations {
     product: string
     features: string
     pricing: string
+    faq: string
+    docs: string
     signIn: string
     getStarted: string
     dashboard: string
@@ -343,6 +391,27 @@ export interface LandingTranslations {
     title: string
     subtitle: string
   }
+  planComparison: {
+    eyebrow: string
+    title: string
+    subtitle: string
+    basicColumn: string
+    advancedColumn: string
+    customColumn: string
+    rows: LandingPlanComparisonRow[]
+  }
+  pricingFaq: {
+    eyebrow: string
+    title: string
+    subtitle: string
+    items: LandingFaqItem[]
+  }
+  pricingSocialProof: {
+    banner: string
+    purchaseToast: string
+    timeAgoJustNow: string
+    timeAgoOneMinute: string
+  }
   pricingSnippet: {
     basic: string
     advanced: string
@@ -369,6 +438,10 @@ export interface LandingTranslations {
       docs: string
       status: string
       telegram: string
+      riskDisclaimer: string
+      termsOfService: string
+      privacyPolicy: string
+      cookiePolicy: string
       signIn: string
       signUp: string
       openApp: string
@@ -376,10 +449,5 @@ export interface LandingTranslations {
     platforms: string
     copyright: string
     disclaimer: string
-  }
-  cookieConsent: {
-    message: string
-    accept: string
-    dismiss: string
   }
 }

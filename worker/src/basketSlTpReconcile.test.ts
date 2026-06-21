@@ -7,6 +7,7 @@ import {
   classifyGhostBasketLegs,
   GHOST_BASKET_CLOSED_USER_MESSAGE,
 } from './basketSlTpReconcile'
+import { isSlMoreProtective } from './basketEffectiveStops'
 import type { BasketOpenLeg } from './basketSlTpReconcile'
 
 describe('parsePerLegTargets', () => {
@@ -74,7 +75,7 @@ describe('classifyGhostBasketLegs', () => {
   })
 
   it('exports user message for stale basket close', () => {
-    assert.ok(GHOST_BASKET_CLOSED_USER_MESSAGE.includes('TSCopier'))
+    assert.ok(GHOST_BASKET_CLOSED_USER_MESSAGE.includes('TScopier'))
   })
 })
 
@@ -92,5 +93,12 @@ describe('clampBasketOrderStops', () => {
       { point: 0.00001, stopsLevel: 10, freezeLevel: 0, minLot: 0.01, lotStep: 0.01, contractSize: null, digits: 5 },
     )
     assert.ok(adjustments.length > 0 || args.stoploss! < 1.1)
+  })
+})
+
+describe('internal rebalance SL guard', () => {
+  it('isSlMoreProtective blocks loosening breakeven SL on buys', () => {
+    assert.equal(isSlMoreProtective(4258, 4245, true), true)
+    assert.equal(isSlMoreProtective(4245, 4258, true), false)
   })
 })

@@ -4,7 +4,15 @@ import {
   findClosedRowForTicket,
   isLikelyMarketPositionRow,
   isPendingEntryRow,
+  readBrokerOrderStopLoss,
 } from './signalEntryPendingHelpers'
+
+test('readBrokerOrderStopLoss reads FxSocket camelCase stopLoss', () => {
+  assert.equal(readBrokerOrderStopLoss({ stopLoss: 4123.5 }), 4123.5)
+  assert.equal(readBrokerOrderStopLoss({ StopLoss: '4010' }), 4010)
+  assert.equal(readBrokerOrderStopLoss({ sl: 0 }), null)
+  assert.equal(readBrokerOrderStopLoss({}), null)
+})
 
 test('isPendingEntryRow: operation strings', () => {
   assert.equal(isPendingEntryRow({ operation: 'BuyLimit' }), true)

@@ -4,12 +4,17 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { MetatraderApiClient, OrderSendArgs } from './metatraderapi'
+import type { FxsocketBrokerClient, OrderSendArgs } from './fxsocketClient'
 import type { MergeModifySummary, PerLegStopTarget } from './multiTradeMerge'
 import { expandPerLegTargetsToCount } from './manualPlanning/tpBucketDistribution'
 import type { ManualTpLot } from './manualPlanning/types'
 import { symbolsCompatibleForBasket } from './basketModFollowUp'
+import { stripInvalidStopsForSide } from './channelActiveTradeParams'
+import { isMtBridgeGlitchMessage } from './brokerConnectError'
 import { isBenignOrderModifyError, stopsAlreadyMatchDb } from './orderModifyBenign'
+import { isSlMoreProtective } from './basketEffectiveStops'
+import { mgmtLegConcurrency, parallelMap } from './parallelPool'
+import { buildBasketRefreshComment } from './tradeComment'
 
 export type BasketSymbolParams = {
   digits?: number
@@ -130,7 +135,7 @@ function ingestBrokerTickets(orders: unknown[]): Set<number> {
 
 /** Tickets currently open on the broker account (from /OpenedOrders). */
 export async function fetchOpenBrokerTickets(
-  api: MetatraderApiClient,
+  api: FxsocketBrokerClient,
   uuid: string,
 ): Promise<Set<number>> {
   try {
@@ -144,7 +149,7 @@ export async function fetchOpenBrokerTickets(
 
 /** Same as fetchOpenBrokerTickets but propagates API errors (for ghost-basket reconcile). */
 export async function fetchOpenBrokerTicketsStrict(
-  api: MetatraderApiClient,
+  api: FxsocketBrokerClient,
   uuid: string,
 ): Promise<Set<number>> {
   const orders = await api.openedOrders(uuid)
@@ -229,7 +234,7 @@ export async function markBasketReconcileDoneForAnchor(
 }
 
 export const GHOST_BASKET_CLOSED_USER_MESSAGE =
-  'Open basket existed only in TSCopier (not on the broker); stale legs were closed. Send a new entry to open on MT.'
+  'Open basket existed only in TScopier (not on the broker); stale legs were closed. Send a new entry to open on MT.'
 
 function stopsAlreadyMatch(
   tr: BasketOpenLeg,
@@ -255,6 +260,8 @@ export async function logBasketLegModify(
     targetTp: number
     errorMessage?: string | null
     skipReason?: string | null
+    /** Range-basket TP rebalance — suppress per-leg noise in channel worker UI. */
+    internalRebalance?: boolean
   },
 ): Promise<void> {
   try {
@@ -273,6 +280,7 @@ export async function logBasketLegModify(
         target_sl: args.targetSl,
         target_tp: args.targetTp,
         skip_reason: args.skipReason ?? null,
+        internal_rebalance: args.internalRebalance === true,
       } as unknown as Record<string, unknown>,
     })
   } catch { /* best-effort */ }
@@ -280,7 +288,7 @@ export async function logBasketLegModify(
 
 export async function runBasketLegModifies(args: {
   supabase: SupabaseClient
-  api: MetatraderApiClient
+  api: FxsocketBrokerClient
   uuid: string
   symbol: string
   direction: 'buy' | 'sell'
@@ -300,11 +308,23 @@ export async function runBasketLegModifies(args: {
   openedTickets: Set<number> | null
   skipAlreadySynced?: boolean
   alreadyModified?: Set<string>
+  /** Live Telegram mgmt: parallel leg modifies, no inter-leg gap. */
+  liveMgmtFast?: boolean
+  /** Range-basket TP rebalance — tag per-leg logs for UI suppression. */
+  internalRebalance?: boolean
+  /** When set, internal rebalance must not revert legs to anchor SL below this value. */
+  effectiveStoploss?: number
+  /** When false, refresh OrderSend comments are left empty. */
+  orderCommentsEnabled?: boolean
+  /** Channel/user explicit SL/TP — apply targets as given (allow tighten; use live quote for side checks). */
+  explicitChannelTargets?: boolean
 }): Promise<RunBasketLegModifyResult> {
   const {
     supabase, api, uuid, symbol, direction, baseLot, params,
     signalId, userId, brokerAccountId, familyTrades, perLegTargets: rawTargets,
     signalTps, tpLots, nImmCwe, strictEntryPrefetch, openedTickets, skipAlreadySynced, alreadyModified,
+    liveMgmtFast, internalRebalance, effectiveStoploss,
+    orderCommentsEnabled, explicitChannelTargets,
   } = args
 
   const parsedTps = (signalTps ?? []).filter(t => typeof t === 'number' && Number.isFinite(t) && t > 0)
@@ -328,34 +348,57 @@ export async function runBasketLegModifies(args: {
   const legErrors: LegModifyError[] = []
   const modifiedTradeIds: string[] = []
   const usePreflight = openedTickets != null && openedTickets.size >= 0
+  const liveFast = liveMgmtFast === true
+  const legModifyGapMs = liveFast
+    ? 0
+    : internalRebalance === true
+      ? Math.max(80, Number(process.env.RANGE_REBALANCE_LEG_GAP_MS ?? 120) || 120)
+      : Math.max(0, Number(process.env.BASKET_LEG_MODIFY_GAP_MS ?? 50) || 0)
+  const logLegModify = (
+    legArgs: Omit<Parameters<typeof logBasketLegModify>[1], 'internalRebalance'>,
+  ) => logBasketLegModify(supabase, {
+    ...legArgs,
+    internalRebalance: internalRebalance === true,
+  })
 
-  for (let i = 0; i < familyTrades.length; i++) {
+  type LegOutcome = {
+    modifiedId?: string
+    legError?: LegModifyError
+    attempted: number
+    modified: number
+    failed: number
+    skippedNoTicket: number
+    skippedNotOnBroker: number
+  }
+  const noopOutcome = (): LegOutcome => ({
+    attempted: 0,
+    modified: 0,
+    failed: 0,
+    skippedNoTicket: 0,
+    skippedNotOnBroker: 0,
+  })
+
+  const processLeg = async (i: number): Promise<LegOutcome> => {
     const tr = familyTrades[i]!
     if (alreadyModified?.has(tr.id)) {
-      modifiedTradeIds.push(tr.id)
-      summary.modified += 1
-      continue
+      return { ...noopOutcome(), modifiedId: tr.id, modified: 1 }
     }
     const target = perLegTargets[i]
-    if (!target) continue
+    if (!target) return noopOutcome()
 
     const legIdx = familyTrades.findIndex(t => t.id === tr.id)
     const cweIdx = legIdx >= 0 ? legIdx : i
 
     if (skipAlreadySynced && stopsAlreadyMatch(tr, target, nImmCwe, cweIdx)) {
-      modifiedTradeIds.push(tr.id)
-      summary.modified += 1
-      continue
+      return { ...noopOutcome(), modifiedId: tr.id, modified: 1 }
     }
 
     const ticket = Number(tr.metaapi_order_id)
     if (!Number.isFinite(ticket) || ticket <= 0) {
-      summary.skippedNoTicket += 1
-      continue
+      return { ...noopOutcome(), skippedNoTicket: 1 }
     }
 
     if (usePreflight && !openedTickets!.has(ticket)) {
-      summary.skippedNotOnBroker += 1
       const err: LegModifyError = {
         trade_id: tr.id,
         ticket,
@@ -366,8 +409,7 @@ export async function runBasketLegModifies(args: {
         error: 'ticket not in OpenedOrders',
         skip_reason: 'skipped_not_on_broker',
       }
-      legErrors.push(err)
-      await logBasketLegModify(supabase, {
+      await logLegModify({
         userId,
         signalId,
         brokerAccountId,
@@ -380,19 +422,26 @@ export async function runBasketLegModifies(args: {
         targetTp: cweIdx < nImmCwe ? 0 : target.takeprofit,
         skipReason: 'skipped_not_on_broker',
       })
-      continue
+      return { ...noopOutcome(), legError: err, skippedNotOnBroker: 1 }
     }
 
-    summary.attempted += 1
     let ref = Number(tr.entry_price) || 0
+    try {
+      const q = strictEntryPrefetch ?? await api.quote(uuid, symbol)
+      const marketRef = direction === 'buy' ? q.bid : q.ask
+      if (Number.isFinite(marketRef) && marketRef > 0) {
+        ref = explicitChannelTargets === true ? marketRef : (ref > 0 ? ref : marketRef)
+      }
+    } catch {
+      /* fall back to entry ref below */
+    }
     if (ref <= 0) {
       try {
         const q = strictEntryPrefetch ?? await api.quote(uuid, symbol)
         ref = direction === 'buy' ? q.ask : q.bid
       } catch (err) {
-        summary.failed += 1
         const msg = err instanceof Error ? err.message : String(err)
-        legErrors.push({
+        const legErr: LegModifyError = {
           trade_id: tr.id,
           ticket,
           leg_index: i + 1,
@@ -400,8 +449,8 @@ export async function runBasketLegModifies(args: {
           target_sl: target.stoploss,
           target_tp: target.takeprofit,
           error: msg,
-        })
-        await logBasketLegModify(supabase, {
+        }
+        await logLegModify({
           userId,
           signalId,
           brokerAccountId,
@@ -414,57 +463,33 @@ export async function runBasketLegModifies(args: {
           targetTp: target.takeprofit,
           errorMessage: msg,
         })
-        continue
+        return { ...noopOutcome(), legError: legErr, attempted: 1, failed: 1 }
       }
     }
 
-    const sendShape: OrderSendArgs = {
-      symbol,
-      operation: direction === 'buy' ? 'Buy' : 'Sell',
-      volume: roundBasketLot(Number(tr.lot_size) || baseLot, params),
-      price: ref,
-      stoploss: target.stoploss,
-      takeprofit: cweIdx < nImmCwe ? 0 : target.takeprofit,
-      slippage: 20,
-      comment: `TSCopier:${signalId.slice(0, 8)}:refresh`,
-      expertID: 909090,
-    }
-    const clamped = clampBasketOrderStops(sendShape, params)
-
-    try {
-      const modRes = await api.orderModify(uuid, {
-        ticket,
-        stoploss: clamped.args.stoploss ?? 0,
-        takeprofit: clamped.args.takeprofit ?? 0,
-      })
-      const newSl = modRes.stopLoss ?? clamped.args.stoploss ?? null
-      const newTp = modRes.takeProfit ?? clamped.args.takeprofit ?? null
-      const cweClose = cweIdx < nImmCwe ? args.overrideTp : null
-      await supabase.from('trades').update({
-        sl: typeof newSl === 'number' && newSl > 0 ? newSl : null,
-        tp: typeof newTp === 'number' && newTp > 0 ? newTp : null,
-        cwe_close_price: typeof cweClose === 'number' && cweClose > 0 ? cweClose : null,
-      }).eq('id', tr.id)
-      modifiedTradeIds.push(tr.id)
-      summary.modified += 1
-      await logBasketLegModify(supabase, {
-        userId,
-        signalId,
-        brokerAccountId,
-        status: 'success',
-        tradeId: tr.id,
-        ticket,
-        legIndex: i + 1,
-        brokerSymbol: tr.symbol,
-        targetSl: clamped.args.stoploss ?? 0,
-        targetTp: clamped.args.takeprofit ?? 0,
-      })
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      if (isBenignOrderModifyError(msg)) {
-        modifiedTradeIds.push(tr.id)
-        summary.modified += 1
-        await logBasketLegModify(supabase, {
+    let stoploss = target.stoploss
+    let takeprofit = cweIdx < nImmCwe ? 0 : target.takeprofit
+    const stripped = stripInvalidStopsForSide({
+      stoploss,
+      takeprofit,
+      referencePrice: ref,
+      isBuy: direction === 'buy',
+    })
+    if (stripped.stripped.length) {
+      stoploss = stripped.stoploss
+      takeprofit = stripped.takeprofit
+      if (stoploss <= 0 && takeprofit <= 0) {
+        const err: LegModifyError = {
+          trade_id: tr.id,
+          ticket,
+          leg_index: i + 1,
+          broker_symbol: tr.symbol,
+          target_sl: target.stoploss,
+          target_tp: target.takeprofit,
+          error: 'wrong_side_sl',
+          skip_reason: 'wrong_side_sl',
+        }
+        await logLegModify({
           userId,
           signalId,
           brokerAccountId,
@@ -473,26 +498,127 @@ export async function runBasketLegModifies(args: {
           ticket,
           legIndex: i + 1,
           brokerSymbol: tr.symbol,
-          targetSl: clamped.args.stoploss ?? 0,
-          targetTp: clamped.args.takeprofit ?? 0,
-          skipReason: 'already_synced_on_broker',
+          targetSl: target.stoploss,
+          targetTp: target.takeprofit,
+          skipReason: 'wrong_side_sl',
         })
-        continue
+        return { ...noopOutcome(), legError: err, attempted: 1, failed: 1 }
       }
-      summary.failed += 1
-      legErrors.push({
+    }
+
+    const sendShape: OrderSendArgs = {
+      symbol,
+      operation: direction === 'buy' ? 'Buy' : 'Sell',
+      volume: roundBasketLot(Number(tr.lot_size) || baseLot, params),
+      price: ref,
+      stoploss,
+      takeprofit,
+      slippage: 20,
+      comment: buildBasketRefreshComment(signalId, { order_comments_enabled: orderCommentsEnabled }),
+      expertID: 909090,
+    }
+    const clamped = clampBasketOrderStops(sendShape, params)
+    let modSl = clamped.args.stoploss ?? 0
+    let modTp = clamped.args.takeprofit ?? 0
+    if (modTp <= 0 && nImmCwe === 0) {
+      const curTp = Number(tr.tp)
+      if (Number.isFinite(curTp) && curTp > 0) modTp = curTp
+    }
+    if (modSl <= 0) {
+      const curSl = Number(tr.sl)
+      if (Number.isFinite(curSl) && curSl > 0) modSl = curSl
+    }
+    if (modSl > 0 && explicitChannelTargets !== true) {
+      const curSl = Number(tr.sl)
+      if (Number.isFinite(curSl) && curSl > 0 && isSlMoreProtective(curSl, modSl, direction === 'buy')) {
+        modSl = curSl
+      }
+    }
+    if (modSl <= 0 && modTp <= 0) {
+      const err: LegModifyError = {
         trade_id: tr.id,
         ticket,
         leg_index: i + 1,
         broker_symbol: tr.symbol,
-        target_sl: clamped.args.stoploss ?? 0,
-        target_tp: clamped.args.takeprofit ?? 0,
-        error: msg,
+        target_sl: target.stoploss,
+        target_tp: target.takeprofit,
+        error: 'no_stops_to_apply',
+        skip_reason: 'no_stops_to_apply',
+      }
+      await logLegModify({
+        userId,
+        signalId,
+        brokerAccountId,
+        status: 'skipped',
+        tradeId: tr.id,
+        ticket,
+        legIndex: i + 1,
+        brokerSymbol: tr.symbol,
+        targetSl: target.stoploss,
+        targetTp: target.takeprofit,
+        skipReason: 'no_stops_to_apply',
       })
+      return { ...noopOutcome(), legError: err, attempted: 1, failed: 1 }
+    }
+
+    try {
+      const modRes = await api.orderModify(uuid, {
+        ticket,
+        stoploss: modSl,
+        takeprofit: modTp,
+      })
+      const newSl = modRes.stopLoss ?? modSl ?? null
+      const newTp = modRes.takeProfit ?? modTp ?? null
+      const cweClose = cweIdx < nImmCwe ? args.overrideTp : null
+      await supabase.from('trades').update({
+        sl: typeof newSl === 'number' && newSl > 0 ? newSl : null,
+        tp: typeof newTp === 'number' && newTp > 0 ? newTp : null,
+        cwe_close_price: typeof cweClose === 'number' && cweClose > 0 ? cweClose : null,
+      }).eq('id', tr.id)
+      await logLegModify({
+        userId,
+        signalId,
+        brokerAccountId,
+        status: 'success',
+        tradeId: tr.id,
+        ticket,
+        legIndex: i + 1,
+        brokerSymbol: tr.symbol,
+        targetSl: modSl,
+        targetTp: modTp,
+      })
+      return { ...noopOutcome(), modifiedId: tr.id, attempted: 1, modified: 1 }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (isBenignOrderModifyError(msg)) {
+        await logLegModify({
+          userId,
+          signalId,
+          brokerAccountId,
+          status: 'skipped',
+          tradeId: tr.id,
+          ticket,
+          legIndex: i + 1,
+          brokerSymbol: tr.symbol,
+          targetSl: modSl,
+          targetTp: modTp,
+          skipReason: 'already_synced_on_broker',
+        })
+        return { ...noopOutcome(), modifiedId: tr.id, attempted: 1, modified: 1 }
+      }
+      const legErr: LegModifyError = {
+        trade_id: tr.id,
+        ticket,
+        leg_index: i + 1,
+        broker_symbol: tr.symbol,
+        target_sl: modSl,
+        target_tp: modTp,
+        error: msg,
+      }
       console.warn(
         `[basketSlTpReconcile] OrderModify failed leg=${i + 1}/${familyTrades.length} trade=${tr.id}: ${msg}`,
       )
-      await logBasketLegModify(supabase, {
+      await logLegModify({
         userId,
         signalId,
         brokerAccountId,
@@ -501,11 +627,36 @@ export async function runBasketLegModifies(args: {
         ticket,
         legIndex: i + 1,
         brokerSymbol: tr.symbol,
-        targetSl: clamped.args.stoploss ?? 0,
-        targetTp: clamped.args.takeprofit ?? 0,
+        targetSl: modSl,
+        targetTp: modTp,
         errorMessage: msg,
       })
+      return { ...noopOutcome(), legError: legErr, attempted: 1, failed: 1 }
     }
+  }
+
+  const legIndices = familyTrades.map((_, idx) => idx)
+  let legOutcomes: LegOutcome[]
+  if (liveFast && familyTrades.length > 1) {
+    legOutcomes = await parallelMap(legIndices, mgmtLegConcurrency(), idx => processLeg(idx))
+  } else {
+    legOutcomes = []
+    for (let i = 0; i < familyTrades.length; i++) {
+      if (i > 0 && legModifyGapMs > 0) {
+        await new Promise(resolve => setTimeout(resolve, legModifyGapMs))
+      }
+      legOutcomes.push(await processLeg(i))
+    }
+  }
+
+  for (const o of legOutcomes) {
+    summary.attempted += o.attempted
+    summary.modified += o.modified
+    summary.failed += o.failed
+    summary.skippedNoTicket += o.skippedNoTicket
+    summary.skippedNotOnBroker += o.skippedNotOnBroker
+    if (o.modifiedId) modifiedTradeIds.push(o.modifiedId)
+    if (o.legError) legErrors.push(o.legError)
   }
 
   const stillMissingTicket = familyTrades.filter(tr => {

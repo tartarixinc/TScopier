@@ -4,9 +4,6 @@ exports.monitorActiveIntervalMs = monitorActiveIntervalMs;
 exports.monitorIdleIntervalMs = monitorIdleIntervalMs;
 exports.startMonitorLoop = startMonitorLoop;
 exports.shardUserIds = shardUserIds;
-exports.tableHasRows = tableHasRows;
-exports.applyShardUserFilter = applyShardUserFilter;
-exports.invalidateShardUserCache = invalidateShardUserCache;
 exports.hasWorkOnShard = hasWorkOnShard;
 exports.applyShardToQuery = applyShardToQuery;
 const workerConfig_1 = require("./workerConfig");
@@ -103,29 +100,6 @@ async function shardUserIds(supabase) {
     cachedShardUserIds = ids;
     cachedShardUserIdsAt = now;
     return ids;
-}
-/** Cheap existence check via HEAD count. */
-async function tableHasRows(supabase, table, build) {
-    let q = supabase.from(table).select('id', { count: 'exact', head: true });
-    q = build(q);
-    const { count, error } = await q;
-    if (error) {
-        console.warn(`[monitorIdleGate] tableHasRows ${table}:`, error.message);
-        return true;
-    }
-    return (count ?? 0) > 0;
-}
-/** Apply shard user_id filter when sharding is enabled. */
-function applyShardUserFilter(q, userIds) {
-    if (userIds === null)
-        return q;
-    if (userIds.length === 0)
-        return null;
-    return q.in('user_id', userIds);
-}
-function invalidateShardUserCache() {
-    cachedShardUserIds = null;
-    cachedShardUserIdsAt = 0;
 }
 /** Existence check with optional shard user_id filter. */
 async function hasWorkOnShard(supabase, table, build) {

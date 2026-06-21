@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { hasMetatraderApiConfigured, type MetatraderApiClient } from './metatraderapi'
-import { apiForMetaapiAccount, loadPlatformByMetaapiId } from './mtApiByAccount'
+import { hasFxsocketConfigured, type FxsocketBrokerClient } from './fxsocketClient'
+import { apiForFxsocketAccount, brokerSessionId, loadPlatformByFxsocketId } from './mtApiByAccount'
 import {
   applyShardToQuery,
   hasWorkOnShard,
@@ -9,6 +9,8 @@ import {
   startMonitorLoop,
   type MonitorLoopHandle,
 } from './monitorIdleGate'
+import { stopRangeLayeringUnlessEnabled } from './rangeLayerTillClose'
+import { isUserCopierPausedCached } from './copierPause'
 
 /**
  * Worker-side monitor that closes "Close-Worse-Entries" positions once the
@@ -55,12 +57,13 @@ interface CweTradeRow {
 
 interface BrokerRow {
   id: string
-  metaapi_account_id: string
+  fxsocket_account_id: string | null
+  metaapi_account_id: string | null
   platform: string
 }
 
-const ACTIVE_MS = monitorActiveIntervalMs('CWE_CLOSE_TICK_MS', 1_500)
-const IDLE_MS = monitorIdleIntervalMs('CWE_CLOSE_IDLE_MS', 60_000)
+const ACTIVE_MS = monitorActiveIntervalMs('CWE_CLOSE_TICK_MS', 400)
+const IDLE_MS = monitorIdleIntervalMs('CWE_CLOSE_IDLE_MS', 15_000)
 
 /**
  * Pure trigger check. Exported so the unit test can lock the
@@ -92,7 +95,7 @@ export class CweCloseMonitor {
 
   start() {
     if (this.loop) return
-    if (!hasMetatraderApiConfigured()) {
+    if (!hasFxsocketConfigured()) {
       console.warn('[cweCloseMonitor] MT4API_BASIC_USER/PASSWORD missing — close-worse-entries monitor disabled')
       return
     }
@@ -129,7 +132,7 @@ export class CweCloseMonitor {
   }
 
   private async tick(): Promise<void> {
-    if (!hasMetatraderApiConfigured()) return
+    if (!hasFxsocketConfigured()) return
 
     // Pull every open trade that has a CWE close threshold pinned to it.
     // The partial index `trades_cwe_open_idx` makes this a constant-time
@@ -149,7 +152,8 @@ export class CweCloseMonitor {
       console.error('[cweCloseMonitor] select failed:', error.message)
       return
     }
-    const rows = (data ?? []) as CweTradeRow[]
+    const rows = ((data ?? []) as CweTradeRow[])
+      .filter(r => !isUserCopierPausedCached(r.user_id))
     if (!this.firstTickLogged) {
       this.firstTickLogged = true
       console.log(`[cweCloseMonitor] first tick ok watched_rows=${rows.length}`)
@@ -160,29 +164,30 @@ export class CweCloseMonitor {
     }
 
     // Resolve each broker_account_id once so we can call /Quote and
-    // /OrderClose by metaapi_account_id (the platform's UUID). Trades that
-    // reference a deleted broker silently skip.
+    // /OrderClose by FxSocket terminal UUID. Trades that reference a deleted
+    // broker silently skip.
     const brokerIds = Array.from(new Set(rows.map(r => r.broker_account_id).filter((x): x is string => !!x)))
-    const brokerMap = new Map<string, string>() // broker_account_id -> metaapi_account_id
+    const brokerMap = new Map<string, string>() // broker_account_id -> fxsocket session id
     if (brokerIds.length > 0) {
       const { data: brokers, error: brokerErr } = await this.supabase
         .from('broker_accounts')
-        .select('id,metaapi_account_id,platform')
+        .select('id,fxsocket_account_id,metaapi_account_id,platform')
         .in('id', brokerIds)
       if (brokerErr) {
         console.error('[cweCloseMonitor] broker lookup failed:', brokerErr.message)
         return
       }
       for (const b of (brokers ?? []) as BrokerRow[]) {
-        if (b.metaapi_account_id) brokerMap.set(b.id, b.metaapi_account_id)
+        const sessionId = brokerSessionId(b)
+        if (sessionId) brokerMap.set(b.id, sessionId)
       }
     }
-    const platformByUuid = await loadPlatformByMetaapiId(
+    const platformByUuid = await loadPlatformByFxsocketId(
       this.supabase,
       Array.from(brokerMap.values()),
     )
 
-    // Group by (metaapi_account_id, symbol) so we issue at most ONE /Quote per
+    // Group by (fxsocket session id, symbol) so we issue at most ONE /Quote per
     // group per tick. Same shape as virtualPendingMonitor for consistency.
     const groups = new Map<string, CweTradeRow[]>()
     for (const r of rows) {
@@ -204,7 +209,7 @@ export class CweCloseMonitor {
     await Promise.all(Array.from(groups.entries()).map(async ([key, trades]) => {
       const [uuid, symbol] = key.split('|')
       if (!uuid || !symbol) return
-      const api = apiForMetaapiAccount(platformByUuid, uuid)
+      const api = apiForFxsocketAccount(platformByUuid, uuid)
       if (!api) return
       let q
       try {
@@ -263,7 +268,7 @@ export class CweCloseMonitor {
   private async closeTrade(
     trade: CweTradeRow,
     uuid: string,
-    api: MetatraderApiClient,
+    api: FxsocketBrokerClient,
     bid: number,
     ask: number,
   ): Promise<boolean> {
@@ -331,6 +336,18 @@ export class CweCloseMonitor {
         } as unknown as Record<string, unknown>,
         response_payload: { ticket: result.ticket, latency_ms: latencyMs },
       })
+      if (trade.signal_id && trade.broker_account_id) {
+        await stopRangeLayeringUnlessEnabled(
+          this.supabase,
+          {
+            signalId: trade.signal_id,
+            brokerAccountId: trade.broker_account_id,
+            symbol: trade.symbol,
+            userId: trade.user_id,
+          },
+          'cwe_close',
+        )
+      }
       return true
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -346,6 +363,18 @@ export class CweCloseMonitor {
           .from('trades')
           .update({ status: 'closed', closed_at: new Date().toISOString() })
           .eq('id', trade.id)
+        if (trade.signal_id && trade.broker_account_id) {
+          await stopRangeLayeringUnlessEnabled(
+            this.supabase,
+            {
+              signalId: trade.signal_id,
+              brokerAccountId: trade.broker_account_id,
+              symbol: trade.symbol,
+              userId: trade.user_id,
+            },
+            'cwe_close_benign',
+          )
+        }
         return true
       }
       console.error(

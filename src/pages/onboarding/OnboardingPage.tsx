@@ -28,7 +28,7 @@ export function OnboardingPage() {
     <div className="min-h-screen bg-gradient-to-br from-primary-950 via-primary-900 to-primary-800 flex items-center justify-center p-4">
       <div className="w-full max-w-lg">
         <div className="text-center mb-8">
-          <h1 className="text-white font-semibold text-2xl">Set up TSCopier</h1>
+          <h1 className="text-white font-semibold text-2xl">Set up TScopier</h1>
           <p className="text-white/60 text-sm mt-1">
             Link Telegram and choose signal channels. Instructions are parsed with your channel keywords — no external broker API.
           </p>

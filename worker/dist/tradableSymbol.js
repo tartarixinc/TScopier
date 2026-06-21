@@ -5,7 +5,6 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.cleanInstrumentSymbol = cleanInstrumentSymbol;
-exports.classifyTradableInstrument = classifyTradableInstrument;
 exports.isTradableInstrumentSymbol = isTradableInstrumentSymbol;
 exports.hasTradableInstrumentInText = hasTradableInstrumentInText;
 exports.extractTradableSymbolFromMessage = extractTradableSymbolFromMessage;

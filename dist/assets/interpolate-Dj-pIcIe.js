@@ -1,0 +1,1 @@
+function e(e,t){return e.replace(/\{(\w+)\}/g,(e,n)=>{let r=t[n];return r===void 0?``:String(r)})}export{e as t};

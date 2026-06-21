@@ -8,19 +8,24 @@ const EditedMessage_1 = require("telegram/events/EditedMessage");
 const tl_1 = require("telegram/tl");
 const telegramClient_1 = require("./telegramClient");
 const backtestSignal_1 = require("./backtestSignal");
-const tradableSymbol_1 = require("./tradableSymbol");
 const signalQueuePublisher_1 = require("./queue/signalQueuePublisher");
 const signalQueueConfig_1 = require("./queue/signalQueueConfig");
 const tradeSignalPush_1 = require("./tradeSignalPush");
 const listenerEvents_1 = require("./listenerEvents");
 const channelKeywordsCache_1 = require("./channelKeywordsCache");
 const parseSignal_1 = require("./parseSignal");
+const signalTradingHeuristic_1 = require("./signalTradingHeuristic");
+const signalManagementIntent_1 = require("./signalManagementIntent");
+const normalizeTelegramMessageText_1 = require("./normalizeTelegramMessageText");
 const workerMetrics_1 = require("./workerMetrics");
 const workerConfig_1 = require("./workerConfig");
-const telegramMessageEdit_1 = require("./telegramMessageEdit");
-const multiTradeMerge_1 = require("./multiTradeMerge");
+const tradeSignalActions_1 = require("./tradeSignalActions");
+const copierPause_1 = require("./copierPause");
+const signalRevision_1 = require("./signalRevision");
+const aiParseModification_1 = require("./aiParseModification");
+const aiParseEntry_1 = require("./aiParseEntry");
+const signalTelegramReconcile_1 = require("./signalTelegramReconcile");
 const signalExecutionEligibility_1 = require("./signalExecutionEligibility");
-const signalCommentaryGuard_1 = require("./signalCommentaryGuard");
 const SUPABASE_URL = process.env.SUPABASE_URL ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
 const PARSE_SIGNAL_URL = process.env.PARSE_SIGNAL_URL ?? (SUPABASE_URL ? `${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/parse-signal` : '');
@@ -40,12 +45,39 @@ const DIALOG_CACHE_TTL_MS = 60000;
 const DIALOG_MAX_SCAN = 500;
 const WATCHDOG_INTERVAL_MS = 30000;
 const WATCHDOG_FAILURE_THRESHOLD = 2;
-const SAFETY_POLL_INTERVAL_MS = 30000;
+const SAFETY_POLL_INTERVAL_MS = Math.max(5000, Math.min(60000, Number(process.env.TELEGRAM_SAFETY_POLL_MS ?? 10000)));
+/**
+ * Fast poll for channels Telegram is NOT pushing live updates for (last_live_at
+ * stale/null). Telegram silently stops pushing updates for broadcast channels it
+ * considers inactive on a session; without this, those signals are only picked
+ * up by the safety poll (avg ~5s extra latency at 10s safety interval).
+ */
+const FAST_POLL_INTERVAL_MS = Math.max(1000, Math.min(15000, Number(process.env.TELEGRAM_FAST_POLL_MS ?? 3000)));
+/** A channel counts as live-dead when no live push has been seen for this long. */
+const FAST_POLL_LIVE_STALE_MS = Math.max(60000, Number(process.env.TELEGRAM_FAST_POLL_LIVE_STALE_MS ?? 2 * 60000));
 const SESSION_PERSIST_INTERVAL_MS = 30 * 60000;
 const CATCHUP_BACKPRESSURE_MS = 250;
 const CATCHUP_PER_CHANNEL_CAP = 200;
 const BACKFILL_PER_CHANNEL_CAP = 1000;
 const REPLY_CHAIN_SWEEP_MS = 60000;
+/** Re-fetch teaser entries (e.g. "Gold buy now") after channel adds SL/TP via edit. */
+const ENTRY_MESSAGE_SETTLE_MS = Math.max(3000, Math.min(30000, Number(process.env.ENTRY_MESSAGE_SETTLE_MS ?? 10000)));
+function entryMessageSettleDelaysMs() {
+    const raw = String(process.env.ENTRY_MESSAGE_SETTLE_DELAYS_MS ?? '').trim();
+    if (raw) {
+        const parsed = raw
+            .split(',')
+            .map(s => Number(s.trim()))
+            .filter(n => Number.isFinite(n) && n >= 3000)
+            .map(n => Math.min(30000, Math.floor(n)));
+        if (parsed.length)
+            return [...new Set(parsed)];
+    }
+    const second = Math.min(30000, ENTRY_MESSAGE_SETTLE_MS * 3);
+    return second > ENTRY_MESSAGE_SETTLE_MS
+        ? [ENTRY_MESSAGE_SETTLE_MS, second]
+        : [ENTRY_MESSAGE_SETTLE_MS];
+}
 const ENTITY_WARMUP_INTERVAL_MS = Math.max(60000, Math.min(30 * 60000, Number(process.env.TELEGRAM_ENTITY_WARMUP_INTERVAL_MS ?? 10 * 60000)));
 function catchUpOnStartEnabled() {
     const v = String(process.env.TELEGRAM_CATCHUP_ON_START ?? 'true').toLowerCase();
@@ -61,11 +93,6 @@ function catchUpParseConcurrency() {
 }
 function livePriorityPauseMs() {
     return Math.max(0, Math.min(30000, Number(process.env.TELEGRAM_LIVE_PRIORITY_PAUSE_MS ?? 3000)));
-}
-/** Telegram returns this when the same auth key is online twice (deploy overlap, double connect). */
-function isAuthKeyDuplicated(err) {
-    const m = err instanceof Error ? err.message : String(err);
-    return m.includes('AUTH_KEY_DUPLICATED');
 }
 function reconnectCooldownMs() {
     return Math.max(500, Math.min(120000, Number(process.env.TELEGRAM_RECONNECT_COOLDOWN_MS ?? 3500)));
@@ -84,32 +111,6 @@ function extractReplyToMsgId(replyTo) {
         return null;
     const s = String(v).trim();
     return s ? s : null;
-}
-function looksLikeTradingSignal(text, isReply) {
-    const normalized = text
-        .toLowerCase()
-        .replace(/\s+/g, ' ')
-        .trim();
-    if (!normalized)
-        return false;
-    if ((0, signalCommentaryGuard_1.looksLikeCasualNonTradeMessage)(text))
-        return false;
-    const hasInstrument = (0, tradableSymbol_1.hasTradableInstrumentInText)(text);
-    const hasDirectionOrAction = /\b(buy|sell|long|short|tp|take profit|sl|stop loss|breakeven|be)\b/.test(normalized)
-        || (0, parseSignal_1.looksLikeExplicitFullCloseCommand)(text);
-    const hasPriceContext = /\b\d{1,5}(?:\.\d{1,5})\b/.test(normalized) ||
-        /\b(entry|zone|between|above|below|now)\b/.test(normalized);
-    const hasTradeStructure = /\b(tp\s*\d*|sl|entry|signal|setup)\b/.test(normalized);
-    // Reply updates like "move SL to ..." are often signal modifications.
-    if (isReply && /\b(move|set|update|adjust|tp|sl|breakeven|be|close)\b/.test(normalized)) {
-        return true;
-    }
-    // Breakeven / partial-close / TP-hit updates often lack symbol or explicit SL/TP labels.
-    if ((0, parseSignal_1.looksLikeChannelManagementUpdate)(text))
-        return true;
-    // Require stronger evidence than a single keyword to reduce false positives.
-    const score = Number(hasDirectionOrAction) + Number(hasInstrument) + Number(hasPriceContext) + Number(hasTradeStructure);
-    return score >= 2;
 }
 function normalizeChannelUsername(raw) {
     return (raw ?? '').trim().replace(/^@/, '').toLowerCase();
@@ -159,9 +160,17 @@ class UserListener {
         this.dialogsCache = null;
         this.dialogsCacheAt = 0;
         this.safetyPollTimer = null;
+        this.fastPollTimer = null;
+        this.fastPollRows = [];
+        this.fastPollRowsAt = 0;
+        this.fastPollInFlight = false;
+        /** In-memory live-push freshness per channel row (DB last_live_at can lag). */
+        this.lastLiveByRow = new Map();
         this.watchdogTimer = null;
         this.sessionPersistTimer = null;
         this.replyChainSweepTimer = null;
+        this.signalReconcileSweepTimer = null;
+        this.signalReconcileInFlight = false;
         this.entityWarmupTimer = null;
         this.catchUpInFlight = false;
         this.catchUpParseActive = 0;
@@ -172,6 +181,11 @@ class UserListener {
         this.lastReconnectAt = 0;
         this.consecutiveProbeFailures = 0;
         this.onSignalParsed = null;
+        /** Recent live message ids — avoids a Supabase round-trip on hot-path dedup. */
+        this.liveMessageDedup = new Map();
+        this.userProfilesCopierPauseChannel = null;
+        /** Serializes message revision apply per channel row + telegram message id. */
+        this.revisionChains = new Map();
         this.userId = userId;
         this.supabase = supabase;
         this.client = adoptedClient ?? (0, telegramClient_1.buildClient)(sessionString);
@@ -196,7 +210,7 @@ class UserListener {
             catch (err) {
                 if ((0, telegramClient_1.isAuthKeyUnregistered)(err))
                     throw new telegramClient_1.TelegramSessionInvalidError();
-                if (isAuthKeyDuplicated(err)) {
+                if ((0, telegramClient_1.isAuthKeyDuplicated)(err)) {
                     console.warn(`[userListener] AUTH_KEY_DUPLICATED on initial connect for ${this.userId}`
                         + ` — old session still releasing; waiting ${AUTH_KEY_DUP_RECONNECT_DELAY_MS}ms then retrying`);
                     (0, workerMetrics_1.incMetric)('auth_key_duplicated');
@@ -221,17 +235,26 @@ class UserListener {
         this.scheduleCatchUpOnStart();
         this.startWatchdog();
         this.startSafetyPoll();
+        this.startFastPoll();
         void this.pollMonitoredChannelsForMessages().catch(err => console.warn(`[userListener] initial channel poll failed for ${this.userId}:`, err));
         this.startSessionPersist();
         this.startReplyChainSweep();
+        this.startSignalReconcileSweep();
         this.startEntityWarmup();
+        this.subscribeCopierPauseState();
     }
     async stop() {
         try {
+            if (this.userProfilesCopierPauseChannel) {
+                await this.supabase.removeChannel(this.userProfilesCopierPauseChannel);
+                this.userProfilesCopierPauseChannel = null;
+            }
             this.stopTimer('watchdogTimer');
             this.stopTimer('safetyPollTimer');
+            this.stopTimer('fastPollTimer');
             this.stopTimer('sessionPersistTimer');
             this.stopTimer('replyChainSweepTimer');
+            this.stopTimer('signalReconcileSweepTimer');
             this.stopTimer('entityWarmupTimer');
             this.removeCurrentHandler();
             await this.persistSessionIfChanged();
@@ -363,11 +386,6 @@ class UserListener {
                 console.error(`[userListener] handleMessage error for ${this.userId}:`, err);
             });
         };
-        const editHandler = (event) => {
-            this.handleEditedMessage(event).catch(err => {
-                console.error(`[userListener] handleEditedMessage error for ${this.userId}:`, err);
-            });
-        };
         // NOTE:
         // Passing `chats:` here depends on Telegram/gramjs resolving each chat
         // identifier exactly as expected. In practice, channel ids can vary in
@@ -376,6 +394,11 @@ class UserListener {
         // and apply strict user/channel filtering in handleMessage() instead.
         // Important: do not use `incoming: true` here — channel posts are not
         // always classified as "incoming", which can cause silent drops.
+        const editHandler = (event) => {
+            this.handleEditedMessage(event).catch(err => {
+                console.error(`[userListener] handleEditedMessage error for ${this.userId}:`, err);
+            });
+        };
         const builder = new events_1.NewMessage({});
         const editBuilder = new EditedMessage_1.EditedMessage({});
         this.client.addEventHandler(handler, builder);
@@ -480,7 +503,7 @@ class UserListener {
             dialogs = await this.fetchAllDialogs();
         }
         catch (err) {
-            if (isAuthKeyDuplicated(err)) {
+            if ((0, telegramClient_1.isAuthKeyDuplicated)(err)) {
                 dialogs = await this.reconnectAndRetryDialogs();
             }
             else {
@@ -511,15 +534,33 @@ class UserListener {
         console.warn(`[userListener] AUTH_KEY_DUPLICATED on getDialogs for ${this.userId}`
             + ' — disconnecting, waiting for old session to release, then reconnecting');
         (0, workerMetrics_1.incMetric)('auth_key_duplicated');
-        this.isConnected = false;
-        try {
-            await this.client.disconnect();
+        const delays = [
+            AUTH_KEY_DUP_RECONNECT_DELAY_MS,
+            15000,
+            15000,
+        ];
+        let lastErr;
+        for (let attempt = 0; attempt < delays.length; attempt++) {
+            this.isConnected = false;
+            try {
+                await this.client.disconnect();
+            }
+            catch { /* ignore */ }
+            await new Promise(r => setTimeout(r, delays[attempt]));
+            try {
+                await this.client.connect();
+                this.isConnected = true;
+                return await this.fetchAllDialogs();
+            }
+            catch (err) {
+                lastErr = err;
+                if (!(0, telegramClient_1.isAuthKeyDuplicated)(err))
+                    (0, telegramClient_1.rethrowIfSessionInvalid)(err);
+                console.warn(`[userListener] AUTH_KEY_DUPLICATED reconnect attempt ${attempt + 1}/${delays.length}`
+                    + ` for ${this.userId}`);
+            }
         }
-        catch { /* ignore */ }
-        await new Promise(r => setTimeout(r, AUTH_KEY_DUP_RECONNECT_DELAY_MS));
-        await this.client.connect();
-        this.isConnected = true;
-        return this.fetchAllDialogs();
+        throw lastErr;
     }
     /**
      * Load channel/group dialogs (capped). Uses gramjs built-in pagination, which
@@ -533,7 +574,7 @@ class UserListener {
      * Fetches and stores matching messages for the last N days even when
      * last_seen_message_id is still empty (seed-only mode).
      */
-    async backfillChannelHistory(channelRowId, days) {
+    async backfillChannelHistory(channelRowId, days, opts) {
         const lookbackDays = Math.max(1, Math.min(90, Number(days || 30)));
         const { data: row, error } = await this.supabase
             .from('telegram_channels')
@@ -546,7 +587,7 @@ class UserListener {
             throw new Error(error.message);
         if (!row)
             throw new Error('Channel not found');
-        const messages = await this.backfillChannelFromDate(row, lookbackDays);
+        const messages = await this.backfillChannelFromDate(row, lookbackDays, opts);
         return { imported: messages.length, messages };
     }
     /**
@@ -573,7 +614,7 @@ class UserListener {
         const collected = await this.fetchMessagesBetweenForBacktest(row, fromMs, toMs);
         const messages = [];
         for (const m of collected) {
-            const raw = String(m.text ?? m.message ?? '').trim();
+            const raw = (0, signalTelegramReconcile_1.telegramMessageText)(m);
             if (!raw)
                 continue;
             const epoch = this.messageEpochSec(m);
@@ -611,8 +652,17 @@ class UserListener {
             throw new Error(error.message);
         if (!row)
             throw new Error('Channel not found');
+        const runId = opts?.runId;
+        if (runId) {
+            await this.supabase.from('backtest_runs').update({
+                progress_pct: 1,
+                progress_message: 'Fetching messages from Telegram…',
+                updated_at: new Date().toISOString(),
+            }).eq('id', runId).eq('user_id', this.userId);
+        }
         const collected = await this.fetchMessagesBetweenForBacktest(row, fromMs, toMs);
         const errors = [];
+        const heuristicCtx = await (0, channelKeywordsCache_1.getChannelParseContext)(this.supabase, channelRowId);
         const rangeFromIso = new Date(fromMs).toISOString();
         const rangeToIso = new Date(toMs).toISOString();
         const { error: delErr } = await this.supabase
@@ -627,11 +677,11 @@ class UserListener {
             errors.push(`clear prior import: ${delErr.message}`);
         const candidates = [];
         for (const m of collected) {
-            const raw = String(m.text ?? m.message ?? '').trim();
+            const raw = (0, signalTelegramReconcile_1.telegramMessageText)(m);
             if (!raw)
                 continue;
             const isReply = !!m.replyTo;
-            if (!looksLikeTradingSignal(raw, isReply))
+            if (!(0, signalTradingHeuristic_1.looksLikeTradingSignal)(raw, isReply, heuristicCtx))
                 continue;
             const epoch = this.messageEpochSec(m);
             candidates.push({
@@ -643,17 +693,25 @@ class UserListener {
         let imported = 0;
         const parseConcurrency = Math.max(1, Math.min(8, Number(process.env.BACKTEST_PARSE_CONCURRENCY ?? 4)));
         const parseDelayMs = Math.max(0, Number(process.env.BACKTEST_PARSE_DELAY_MS ?? 0));
-        const runId = opts?.runId;
         const reportSyncProgress = async (parsed, total) => {
             if (!runId)
                 return;
-            const pct = total > 0 ? 2 + Math.floor((parsed / total) * 12) : 2;
+            const pct = total > 0 ? 5 + Math.floor((parsed / total) * 90) : 5;
             await this.supabase.from('backtest_runs').update({
                 progress_pct: pct,
-                progress_message: `Syncing Telegram: parsing ${parsed}/${total} candidate message(s)…`,
+                progress_message: `Parsing signals ${parsed}/${total}…`,
                 updated_at: new Date().toISOString(),
             }).eq('id', runId).eq('user_id', this.userId);
         };
+        if (runId) {
+            await this.supabase.from('backtest_runs').update({
+                progress_pct: 5,
+                progress_message: candidates.length > 0
+                    ? `Found ${candidates.length} candidate message(s) — parsing…`
+                    : 'No trade-like messages in range',
+                updated_at: new Date().toISOString(),
+            }).eq('id', runId).eq('user_id', this.userId);
+        }
         await reportSyncProgress(0, candidates.length);
         let parsedCount = 0;
         await this.mapWithConcurrency(candidates, parseConcurrency, async (c) => {
@@ -827,103 +885,255 @@ class UserListener {
         const channelRow = await this.resolveChannelRowForChat(chatIdVariants, chatUsername);
         if (!channelRow)
             return;
-        const rawMessage = (message.text ?? message.message ?? '');
+        const rawMessage = (0, signalTelegramReconcile_1.telegramMessageText)(message);
         if (!rawMessage.trim())
             return;
-        console.log(`[userListener] message edit user=${this.userId} channelRow=${channelRow.id} msgId=${String(message.id)}`);
-        await this.tryApplyTelegramMessageEdit({
+        await this.tryApplyMessageRevision({
             channelRow,
             messageId: String(message.id),
             rawMessage,
             source: 'live_edit',
+            telegramEditDateSeen: (0, signalTelegramReconcile_1.telegramEditDateSec)(message),
         });
         void this.bumpLastLive(channelRow.id);
     }
-    async parseMessageForChannel(channelRowId, rawMessage, signalId) {
-        if (listenerInlineParseEnabled()) {
-            const { keywords, lexicon } = await (0, channelKeywordsCache_1.getChannelParseContext)(this.supabase, channelRowId);
-            return (0, parseSignal_1.parseChannelMessageSync)(rawMessage, keywords, lexicon);
-        }
-        if (PARSE_SIGNAL_URL) {
-            return this.parseViaEdgeFunction(signalId, rawMessage, channelRowId);
-        }
-        return (0, parseSignal_1.parseRawChannelMessage)(this.supabase, channelRowId, rawMessage);
+    revisionLockKey(channelRowId, messageId) {
+        return `${channelRowId}:${messageId}`;
     }
-    async tryApplyTelegramMessageEdit(args) {
+    runRevisionExclusive(key, fn) {
+        const prev = this.revisionChains.get(key) ?? Promise.resolve(false);
+        const next = prev.catch(() => false).then(fn);
+        this.revisionChains.set(key, next.catch(() => false));
+        void next.finally(() => {
+            if (this.revisionChains.get(key) === next) {
+                this.revisionChains.delete(key);
+            }
+        });
+        return next;
+    }
+    async tryApplyMessageRevision(args) {
+        const key = this.revisionLockKey(args.channelRow.id, args.messageId);
+        return this.runRevisionExclusive(key, () => this.tryApplyMessageRevisionInner(args));
+    }
+    async tryApplyMessageRevisionInner(args) {
         const { channelRow, messageId, rawMessage, source } = args;
-        const existing = await (0, telegramMessageEdit_1.loadSignalByTelegramMessage)(this.supabase, {
+        if (await (0, copierPause_1.loadCachedUserCopierPaused)(this.supabase, this.userId))
+            return false;
+        const existing = await (0, signalRevision_1.loadSignalByTelegramMessage)(this.supabase, {
             userId: this.userId,
             channelRowId: channelRow.id,
             telegramMessageId: messageId,
         });
         if (!existing)
             return false;
-        if (existing.raw_message.trim() === rawMessage.trim())
-            return false;
-        let parseResult;
-        try {
-            parseResult = await this.parseMessageForChannel(channelRow.id, rawMessage, existing.id);
-        }
-        catch (err) {
-            const errMsg = err instanceof Error ? err.message : String(err);
-            console.error(`[userListener] message edit parse failed user=${this.userId} signalId=${existing.id}:`, errMsg);
+        if ((0, signalRevision_1.isIncomingRevisionStale)(existing.telegram_edit_date_seen, args.telegramEditDateSeen)) {
             void (0, listenerEvents_1.persistListenerEvent)(this.supabase, {
                 userId: this.userId,
-                eventType: 'message_edit_parse_failed',
-                channelRowId: channelRow.id,
-                telegramMessageId: messageId,
-                detail: { error: errMsg.slice(0, 300), signal_id: existing.id, source },
-            });
-            return false;
-        }
-        if (!(0, telegramMessageEdit_1.messageEditParseEligible)(parseResult)) {
-            void (0, listenerEvents_1.persistListenerEvent)(this.supabase, {
-                userId: this.userId,
-                eventType: 'message_edit_no_sl_tp',
+                eventType: 'message_revision_stale_skipped',
                 channelRowId: channelRow.id,
                 telegramMessageId: messageId,
                 detail: {
                     signal_id: existing.id,
                     source,
-                    has_sl_tp: (0, multiTradeMerge_1.parsedHasSlOrTp)(parseResult.parsed),
-                    parse_status: parseResult.status,
+                    stored_edit_date: existing.telegram_edit_date_seen,
+                    incoming_edit_date: args.telegramEditDateSeen ?? null,
                 },
             });
             return false;
         }
-        const updated = await (0, telegramMessageEdit_1.updateSignalAfterTelegramEdit)(this.supabase, {
-            signalId: existing.id,
-            rawMessage,
-            parseResult,
-        });
-        if (!updated) {
-            console.error(`[userListener] message edit update failed user=${this.userId} signalId=${existing.id}`);
+        if (!(0, signalRevision_1.storedMessageDiffersFromTelegram)(existing.raw_message, rawMessage))
+            return false;
+        let aiResult;
+        try {
+            aiResult = await (0, aiParseModification_1.aiParseModification)(this.supabase, {
+                userId: this.userId,
+                channelRowId: channelRow.id,
+                rawMessage,
+                revision: {
+                    prior_raw_message: existing.raw_message,
+                    prior_parsed_data: (existing.parsed_data ?? null),
+                },
+            });
+        }
+        catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            console.error(`[userListener] message revision AI parse failed user=${this.userId} signalId=${existing.id}:`, errMsg);
+            void (0, listenerEvents_1.persistListenerEvent)(this.supabase, {
+                userId: this.userId,
+                eventType: 'ai_modification_failed',
+                channelRowId: channelRow.id,
+                telegramMessageId: messageId,
+                detail: { error: errMsg.slice(0, 300), signal_id: existing.id, source, revision: true },
+            });
             return false;
         }
-        const tEditReceived = Date.now();
-        const dispatchRow = (0, telegramMessageEdit_1.buildMessageEditDispatchRow)(existing, parseResult, rawMessage, {
-            t_message_edit_received: tEditReceived,
-            t_dispatch_sent: tEditReceived,
+        const parseResult = (0, aiParseModification_1.aiResultToParseResult)(aiResult);
+        if (parseResult.status !== 'parsed') {
+            void (0, listenerEvents_1.persistListenerEvent)(this.supabase, {
+                userId: this.userId,
+                eventType: 'ai_modification_skipped',
+                channelRowId: channelRow.id,
+                telegramMessageId: messageId,
+                detail: {
+                    signal_id: existing.id,
+                    source,
+                    revision: true,
+                    skip_reason: parseResult.skip_reason,
+                    intent: aiResult.intent,
+                },
+            });
+            return false;
+        }
+        const fresh = await (0, signalRevision_1.loadSignalByTelegramMessage)(this.supabase, {
+            userId: this.userId,
+            channelRowId: channelRow.id,
+            telegramMessageId: messageId,
         });
-        dispatchRow.dispatch_source = telegramMessageEdit_1.MESSAGE_EDIT_DISPATCH_SOURCE;
-        console.log(`[userListener] message edit dispatch user=${this.userId} signalId=${existing.id}`
+        if (!fresh)
+            return false;
+        if ((0, signalRevision_1.isIncomingRevisionStale)(fresh.telegram_edit_date_seen, args.telegramEditDateSeen)) {
+            void (0, listenerEvents_1.persistListenerEvent)(this.supabase, {
+                userId: this.userId,
+                eventType: 'message_revision_stale_skipped',
+                channelRowId: channelRow.id,
+                telegramMessageId: messageId,
+                detail: {
+                    signal_id: fresh.id,
+                    source,
+                    phase: 'pre_update',
+                    stored_edit_date: fresh.telegram_edit_date_seen,
+                    incoming_edit_date: args.telegramEditDateSeen ?? null,
+                },
+            });
+            return false;
+        }
+        if (!(0, signalRevision_1.storedMessageDiffersFromTelegram)(fresh.raw_message, rawMessage))
+            return false;
+        const updated = await (0, signalRevision_1.updateSignalAfterRevision)(this.supabase, {
+            signalId: fresh.id,
+            rawMessage,
+            parseResult,
+            telegramEditDateSeen: args.telegramEditDateSeen,
+        });
+        if (!updated) {
+            if (args.telegramEditDateSeen != null
+                && args.telegramEditDateSeen > 0
+                && (0, signalRevision_1.isIncomingRevisionStale)(fresh.telegram_edit_date_seen, args.telegramEditDateSeen)) {
+                void (0, listenerEvents_1.persistListenerEvent)(this.supabase, {
+                    userId: this.userId,
+                    eventType: 'message_revision_stale_skipped',
+                    channelRowId: channelRow.id,
+                    telegramMessageId: messageId,
+                    detail: {
+                        signal_id: fresh.id,
+                        source,
+                        phase: 'update_rejected',
+                        stored_edit_date: fresh.telegram_edit_date_seen,
+                        incoming_edit_date: args.telegramEditDateSeen,
+                    },
+                });
+            }
+            else {
+                console.error(`[userListener] message revision update failed user=${this.userId} signalId=${fresh.id}`);
+            }
+            return false;
+        }
+        const tRevision = Date.now();
+        const dispatchRow = (0, signalRevision_1.buildRevisionDispatchRow)(fresh, parseResult, {
+            t_ai_parse_done: tRevision,
+            t_dispatch_sent: tRevision,
+        });
+        dispatchRow.dispatch_source = signalRevision_1.MESSAGE_REVISION_DISPATCH_SOURCE;
+        if (fresh.parsed_data?.action) {
+            dispatchRow.revision_prior_action = String(fresh.parsed_data.action);
+        }
+        console.log(`[userListener] message revision dispatch user=${this.userId} signalId=${fresh.id}`
             + ` channelRow=${channelRow.id} messageId=${messageId} source=${source}`);
         void (0, listenerEvents_1.persistListenerEvent)(this.supabase, {
             userId: this.userId,
-            eventType: 'message_edit_applied',
+            eventType: 'message_revision_applied',
             channelRowId: channelRow.id,
             telegramMessageId: messageId,
             detail: {
-                signal_id: existing.id,
+                signal_id: fresh.id,
                 source,
+                intent: aiResult.intent,
+                ai_source: aiResult.source,
                 sl: parseResult.parsed.sl ?? null,
                 tp: parseResult.parsed.tp ?? [],
             },
         });
-        await this.dispatchMessageEditSignal(dispatchRow);
+        await this.dispatchRevisionSignal(dispatchRow);
         return true;
     }
-    async dispatchMessageEditSignal(dispatchRow) {
+    scheduleEntryMessageSettlePoll(channelRow, messageId) {
+        for (const delayMs of entryMessageSettleDelaysMs()) {
+            setTimeout(() => {
+                this.pollEntryMessageRevision(channelRow, messageId, delayMs).catch(err => {
+                    console.error(`[userListener] entry settle poll failed user=${this.userId} messageId=${messageId}:`, err instanceof Error ? err.message : err);
+                });
+            }, delayMs);
+        }
+    }
+    async pollEntryMessageRevision(channelRow, messageId, delayMs) {
+        const existing = await (0, signalRevision_1.loadSignalByTelegramMessage)(this.supabase, {
+            userId: this.userId,
+            channelRowId: channelRow.id,
+            telegramMessageId: messageId,
+        });
+        if (!existing)
+            return;
+        let peer;
+        try {
+            peer = await this.resolveChannelPeer(channelRow);
+        }
+        catch {
+            return;
+        }
+        const numericId = Number(messageId);
+        if (!Number.isFinite(numericId) || numericId <= 0)
+            return;
+        const batch = (await this.client.getMessages(peer, {
+            ids: [numericId],
+        }));
+        const message = batch?.[0];
+        const rawMessage = (0, signalTelegramReconcile_1.telegramMessageText)(message);
+        if (!rawMessage.trim())
+            return;
+        if (!(0, signalRevision_1.storedMessageDiffersFromTelegram)(existing.raw_message, rawMessage))
+            return;
+        void (0, listenerEvents_1.persistListenerEvent)(this.supabase, {
+            userId: this.userId,
+            eventType: 'entry_settle_poll_mismatch',
+            channelRowId: channelRow.id,
+            telegramMessageId: messageId,
+            detail: {
+                signal_id: existing.id,
+                delay_ms: delayMs ?? null,
+                stored_len: existing.raw_message.length,
+                fetched_len: rawMessage.length,
+            },
+        });
+        const revised = await this.tryApplyMessageRevision({
+            channelRow,
+            messageId,
+            rawMessage,
+            source: 'entry_settle_poll',
+            telegramEditDateSeen: (0, signalTelegramReconcile_1.telegramEditDateSec)(message),
+        });
+        if (revised) {
+            void (0, listenerEvents_1.persistListenerEvent)(this.supabase, {
+                userId: this.userId,
+                eventType: 'entry_settle_poll_applied',
+                channelRowId: channelRow.id,
+                telegramMessageId: messageId,
+                detail: { signal_id: existing.id, delay_ms: delayMs ?? null },
+            });
+        }
+    }
+    async dispatchRevisionSignal(dispatchRow) {
+        if (await (0, copierPause_1.loadCachedUserCopierPaused)(this.supabase, this.userId))
+            return;
         const dispatchedInProcess = this.onSignalParsed
             ? this.onSignalParsed(dispatchRow) === true
             : false;
@@ -931,12 +1141,88 @@ class UserListener {
         if (shouldPush) {
             const pushed = await (0, tradeSignalPush_1.pushParsedSignalToTradeWorkerAwait)({
                 ...dispatchRow,
-                parsed_data: dispatchRow.parsed_data,
-                dispatch_source: telegramMessageEdit_1.MESSAGE_EDIT_DISPATCH_SOURCE,
-            }, { source: telegramMessageEdit_1.MESSAGE_EDIT_DISPATCH_SOURCE });
+                dispatch_source: signalRevision_1.MESSAGE_REVISION_DISPATCH_SOURCE,
+            }, { source: signalRevision_1.MESSAGE_REVISION_DISPATCH_SOURCE });
             if (!pushed)
                 (0, workerMetrics_1.incMetric)('dispatch_push_exhausted');
         }
+    }
+    isModificationClassMessage(rawMessage, isReply, channelKeywords, lexicon) {
+        const message = (0, normalizeTelegramMessageText_1.normalizeSignalMessageForParse)(rawMessage);
+        return isReply || (0, signalManagementIntent_1.looksLikeChannelManagementUpdate)(message, channelKeywords, lexicon);
+    }
+    async parseSignalForListener(args) {
+        const { keywords, lexicon } = await (0, channelKeywordsCache_1.getChannelParseContext)(this.supabase, args.channelRowId);
+        if (this.isModificationClassMessage(args.rawMessage, args.isReply, keywords, lexicon)) {
+            if (listenerInlineParseEnabled()) {
+                const detMod = (0, parseSignal_1.parseModificationDeterministic)(args.rawMessage, keywords, lexicon);
+                if (detMod.status === 'parsed' && detMod.parsed.action !== 'ignore') {
+                    return { parseResult: detMod, channelKeywords: keywords };
+                }
+            }
+            const aiResult = await (0, aiParseModification_1.aiParseModification)(this.supabase, {
+                userId: this.userId,
+                channelRowId: args.channelRowId,
+                rawMessage: args.rawMessage,
+                isReply: args.isReply,
+                parentSignalId: args.parentSignalId,
+            });
+            return {
+                parseResult: (0, aiParseModification_1.aiResultToParseResult)(aiResult),
+                aiMeta: { intent: aiResult.intent, source: aiResult.source },
+                channelKeywords: keywords,
+            };
+        }
+        if (listenerInlineParseEnabled()) {
+            const det = (0, parseSignal_1.parseChannelMessageSync)(args.rawMessage, keywords, lexicon);
+            const detEntryParsed = det.status === 'parsed'
+                && (det.parsed.action === 'buy' || det.parsed.action === 'sell');
+            if (detEntryParsed) {
+                return { parseResult: det, channelKeywords: keywords };
+            }
+            if (!this.isModificationClassMessage(args.rawMessage, args.isReply, keywords, lexicon)) {
+                const aiEntry = await (0, aiParseEntry_1.aiParseEntry)(this.supabase, {
+                    userId: this.userId,
+                    channelRowId: args.channelRowId,
+                    rawMessage: args.rawMessage,
+                    isReply: args.isReply,
+                    parentSignalId: args.parentSignalId,
+                });
+                const aiMeta = { intent: 'entry', source: aiEntry.source };
+                if (aiEntry.status === 'parsed') {
+                    console.log(`[userListener] ai entry parsed user=${this.userId} channelRow=${args.channelRowId}`
+                        + ` action=${aiEntry.parsed.action} symbol=${aiEntry.parsed.symbol ?? 'null'}`);
+                    return {
+                        parseResult: (0, aiParseEntry_1.aiEntryResultToParseResult)(aiEntry),
+                        aiMeta,
+                        channelKeywords: keywords,
+                    };
+                }
+                if ((0, aiParseEntry_1.isAiEntryParseEnabled)()) {
+                    console.warn(`[userListener] ai entry skipped user=${this.userId} channelRow=${args.channelRowId}:`
+                        + ` ${aiEntry.skip_reason ?? 'unknown'}`);
+                    return {
+                        parseResult: {
+                            ...det,
+                            skip_reason: aiEntry.skip_reason ?? det.skip_reason,
+                        },
+                        aiMeta,
+                        channelKeywords: keywords,
+                    };
+                }
+            }
+            return { parseResult: det, channelKeywords: keywords };
+        }
+        if (PARSE_SIGNAL_URL) {
+            return {
+                parseResult: await this.parseViaEdgeFunction(args.signalId, args.rawMessage, args.channelRowId),
+                channelKeywords: keywords,
+            };
+        }
+        return {
+            parseResult: await (0, parseSignal_1.parseRawChannelMessage)(this.supabase, args.channelRowId, args.rawMessage),
+            channelKeywords: keywords,
+        };
     }
     /**
      * Resolve chat identity for an update without depending solely on
@@ -1015,8 +1301,10 @@ class UserListener {
         }
     }
     async logSignalInner(channelRow, message, opts) {
+        if (await this.skipMessageWhileCopierPaused(channelRow, String(message.id)))
+            return false;
         const messageId = String(message.id);
-        const rawMessage = (message.text ?? message.message ?? '');
+        const rawMessage = (0, signalTelegramReconcile_1.telegramMessageText)(message);
         const isReply = !!message.replyTo;
         const messageEpochSec = this.messageEpochSec(message);
         // Stamp listener arrival as early as possible so telegram_to_listener_ms
@@ -1036,7 +1324,8 @@ class UserListener {
         if (replyToMessageId) {
             parentSignalId = await this.resolveParentSignalIdForReply(channelRow.id, replyToMessageId);
         }
-        if (!looksLikeTradingSignal(rawMessage, isReply)) {
+        const heuristicCtx = await (0, channelKeywordsCache_1.getChannelParseContext)(this.supabase, channelRow.id);
+        if (!(0, signalTradingHeuristic_1.looksLikeTradingSignal)(rawMessage, isReply, heuristicCtx)) {
             console.log(`[userListener] skipped non-signal user=${this.userId} channelRow=${channelRow.id} messageId=${messageId}`);
             void this.persistNonSignalSkip({
                 channelRow,
@@ -1048,6 +1337,7 @@ class UserListener {
             });
             return false;
         }
+        const dedupKey = `${channelRow.id}:${messageId}`;
         const { count: dupCount } = await this.supabase
             .from('signals')
             .select('id', { count: 'exact', head: true })
@@ -1055,15 +1345,20 @@ class UserListener {
             .eq('channel_id', channelRow.id)
             .eq('telegram_message_id', messageId);
         if ((dupCount ?? 0) > 0) {
-            const edited = await this.tryApplyTelegramMessageEdit({
+            const revised = await this.tryApplyMessageRevision({
                 channelRow,
                 messageId,
                 rawMessage,
                 source: opts?.source === 'catchup' ? 'catchup' : 'duplicate_fallback',
+                telegramEditDateSeen: (0, signalTelegramReconcile_1.telegramEditDateSec)(message),
             });
-            if (edited)
+            if (revised)
                 return true;
             console.log(`[userListener] duplicate message ignored user=${this.userId} channelRow=${channelRow.id} messageId=${messageId}`);
+            return false;
+        }
+        const dedupAt = this.liveMessageDedup.get(dedupKey);
+        if (dedupAt != null && Date.now() - dedupAt < 120000) {
             return false;
         }
         const signalId = (0, node_crypto_1.randomUUID)();
@@ -1072,17 +1367,19 @@ class UserListener {
             t_listener_received: tListenerReceived,
         };
         let parseResult;
+        let aiMeta;
+        let channelKeywords;
         try {
-            if (listenerInlineParseEnabled()) {
-                const { keywords, lexicon } = await (0, channelKeywordsCache_1.getChannelParseContext)(this.supabase, channelRow.id);
-                parseResult = (0, parseSignal_1.parseChannelMessageSync)(rawMessage, keywords, lexicon);
-            }
-            else if (PARSE_SIGNAL_URL) {
-                parseResult = await this.parseViaEdgeFunction(signalId, rawMessage, channelRow.id);
-            }
-            else {
-                parseResult = await (0, parseSignal_1.parseRawChannelMessage)(this.supabase, channelRow.id, rawMessage);
-            }
+            const parsed = await this.parseSignalForListener({
+                channelRowId: channelRow.id,
+                rawMessage,
+                signalId,
+                isReply,
+                parentSignalId,
+            });
+            parseResult = parsed.parseResult;
+            aiMeta = parsed.aiMeta;
+            channelKeywords = parsed.channelKeywords;
         }
         catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err);
@@ -1116,7 +1413,37 @@ class UserListener {
             return false;
         }
         pipelineTs.t_parse_done = Date.now();
-        const executionEligibility = (0, signalExecutionEligibility_1.evaluateParsedSignalExecutionEligibility)(parseResult.parsed, rawMessage);
+        if (aiMeta)
+            pipelineTs.t_ai_parse_done = pipelineTs.t_parse_done;
+        if (aiMeta && parseResult.status === 'parsed') {
+            const eventType = aiMeta.intent === 'entry' ? 'ai_entry_parsed' : 'ai_modification_parsed';
+            void (0, listenerEvents_1.persistListenerEvent)(this.supabase, {
+                userId: this.userId,
+                eventType,
+                channelRowId: channelRow.id,
+                telegramMessageId: messageId,
+                detail: {
+                    signal_id: signalId,
+                    intent: aiMeta.intent,
+                    ai_source: aiMeta.source,
+                },
+            });
+        }
+        else if (aiMeta && parseResult.status !== 'parsed') {
+            const eventType = aiMeta.intent === 'entry' ? 'ai_entry_skipped' : 'ai_modification_skipped';
+            void (0, listenerEvents_1.persistListenerEvent)(this.supabase, {
+                userId: this.userId,
+                eventType,
+                channelRowId: channelRow.id,
+                telegramMessageId: messageId,
+                detail: {
+                    signal_id: signalId,
+                    intent: aiMeta.intent,
+                    skip_reason: parseResult.skip_reason,
+                },
+            });
+        }
+        const executionEligibility = (0, signalExecutionEligibility_1.evaluateParsedSignalExecutionEligibility)(parseResult.parsed, rawMessage, channelKeywords);
         const effectiveParseResult = (parseResult.status === 'parsed' && !executionEligibility.eligible)
             ? {
                 ...parseResult,
@@ -1142,18 +1469,6 @@ class UserListener {
             });
             return true;
         }
-        const persisted = await this.persistSignalSync({
-            signalId,
-            channelRow,
-            rawMessage,
-            messageId,
-            parentSignalId,
-            replyToMessageId,
-            isReply,
-            parseResult: effectiveParseResult,
-        });
-        if (!persisted)
-            return false;
         pipelineTs.t_dispatch_sent = Date.now();
         const dispatchRow = {
             id: signalId,
@@ -1169,44 +1484,68 @@ class UserListener {
             pipeline_ts: pipelineTs,
         };
         console.log(`[userListener] dispatch signal user=${this.userId} signalId=${signalId} channelRow=${channelRow.id} messageId=${messageId}`);
+        this.liveMessageDedup.set(dedupKey, Date.now());
         const dispatchedInProcess = this.onSignalParsed ? this.onSignalParsed(dispatchRow) === true : false;
-        const shouldPush = workerConfig_1.workerConfig.runsListener && (!workerConfig_1.workerConfig.runsTrade || !dispatchedInProcess);
-        let queueResult = null;
-        if (shouldPush) {
-            queueResult = await (0, signalQueuePublisher_1.enqueueParsedSignal)(this.supabase, dispatchRow);
+        this.routeDispatchToTradeWorker(dispatchRow, dispatchedInProcess);
+        if ((0, signalRevision_1.entryDispatchLooksSettleable)(effectiveParseResult.parsed)) {
+            this.scheduleEntryMessageSettlePoll(channelRow, messageId);
         }
-        const queueCfg = (0, signalQueueConfig_1.signalQueueConfig)();
-        const queueSucceeded = queueResult?.ok === true;
-        const pushFallback = queueCfg.pushFallbackOnQueueFail;
-        const shouldHttpPush = shouldPush && (!queueSucceeded
-            && (pushFallback || !queueResult || queueResult.skipped));
-        void this.supabase.from('trade_execution_logs').insert({
-            user_id: this.userId,
-            signal_id: signalId,
-            action: 'dispatch_route_decision',
-            status: 'success',
-            request_payload: {
-                dispatched_in_process: dispatchedInProcess,
-                should_push: shouldPush,
-                queue_enabled: queueCfg.enabled,
-                queue_enqueued: queueSucceeded,
-                queue_skipped_reason: queueResult?.skipped ? queueResult.reason : null,
-                queue_error: queueResult?.error ?? null,
-                http_push_fallback: shouldHttpPush,
-                runs_trade: workerConfig_1.workerConfig.runsTrade,
-                runs_listener: workerConfig_1.workerConfig.runsListener,
-                persist_before_dispatch: true,
-            },
+        void this.persistSignalBackground({
+            signalId,
+            channelRow,
+            rawMessage,
+            messageId,
+            parentSignalId,
+            replyToMessageId,
+            isReply,
+            parseResult: effectiveParseResult,
         });
-        if (shouldHttpPush) {
-            const pushed = await (0, tradeSignalPush_1.pushParsedSignalToTradeWorkerAwait)(dispatchRow);
-            if (!pushed) {
-                (0, workerMetrics_1.incMetric)('dispatch_push_exhausted');
-            }
-        }
         return true;
     }
-    /** Persist signal row before trade dispatch (durable handoff). */
+    /** Fire-and-forget handoff to trade worker (in-process, queue, or HTTP push). */
+    routeDispatchToTradeWorker(dispatchRow, dispatchedInProcess) {
+        const shouldPush = workerConfig_1.workerConfig.runsListener && (!workerConfig_1.workerConfig.runsTrade || !dispatchedInProcess);
+        if (!shouldPush)
+            return;
+        void (0, signalQueuePublisher_1.enqueueParsedSignal)(this.supabase, dispatchRow).then(async (queueResult) => {
+            const queueCfg = (0, signalQueueConfig_1.signalQueueConfig)();
+            const queueSucceeded = queueResult?.ok === true;
+            const shouldHttpPush = !queueSucceeded
+                && (queueCfg.pushFallbackOnQueueFail || !queueResult || queueResult.skipped);
+            let httpPushOk = null;
+            if (shouldHttpPush) {
+                const action = (0, tradeSignalActions_1.parsedAction)(dispatchRow.parsed_data);
+                if ((0, tradeSignalActions_1.isManagementAction)(action)) {
+                    httpPushOk = await (0, tradeSignalPush_1.pushParsedSignalToTradeWorkerAccept)(dispatchRow);
+                }
+                else {
+                    (0, tradeSignalPush_1.pushParsedSignalToTradeWorker)(dispatchRow);
+                    httpPushOk = true;
+                }
+            }
+            void this.supabase.from('trade_execution_logs').insert({
+                user_id: this.userId,
+                signal_id: dispatchRow.id,
+                action: 'dispatch_route_decision',
+                status: 'success',
+                request_payload: {
+                    dispatched_in_process: dispatchedInProcess,
+                    should_push: shouldPush,
+                    queue_enabled: queueCfg.enabled,
+                    queue_enqueued: queueSucceeded,
+                    queue_skipped_reason: queueResult?.skipped ? queueResult.reason : null,
+                    queue_error: queueResult?.error ?? null,
+                    http_push_fallback: shouldHttpPush,
+                    http_push_ok: httpPushOk,
+                    mgmt_push_accept_only: (0, tradeSignalActions_1.isManagementAction)((0, tradeSignalActions_1.parsedAction)(dispatchRow.parsed_data)),
+                    runs_trade: workerConfig_1.workerConfig.runsTrade,
+                    runs_listener: workerConfig_1.workerConfig.runsListener,
+                    persist_before_dispatch: false,
+                },
+            });
+        });
+    }
+    /** @deprecated Use persistSignalBackground after dispatch-first handoff. */
     async persistSignalSync(args) {
         const { signalId, channelRow, rawMessage, messageId, parentSignalId, replyToMessageId, isReply, parseResult, } = args;
         const { error: insertErr } = await this.supabase.from('signals').upsert({
@@ -1298,7 +1637,7 @@ class UserListener {
     persistSignalBackground(args) {
         const { signalId, channelRow, rawMessage, messageId, parentSignalId, replyToMessageId, isReply, parseResult, } = args;
         void (async () => {
-            const { error: insertErr } = await this.supabase.from('signals').upsert({
+            const rowPatch = {
                 id: signalId,
                 user_id: this.userId,
                 channel_id: channelRow.id,
@@ -1311,7 +1650,8 @@ class UserListener {
                 is_modification: isReply,
                 parent_signal_id: parentSignalId,
                 reply_to_message_id: replyToMessageId,
-            }, { onConflict: 'user_id,channel_id,telegram_message_id', ignoreDuplicates: true });
+            };
+            const { error: insertErr } = await this.supabase.from('signals').upsert(rowPatch, { onConflict: 'user_id,channel_id,telegram_message_id', ignoreDuplicates: true });
             if (insertErr) {
                 console.error(`[userListener] signal upsert failed signalId=${signalId}:`, insertErr.message);
                 return;
@@ -1361,6 +1701,175 @@ class UserListener {
         }, REPLY_CHAIN_SWEEP_MS);
         this.replyChainSweepTimer.unref?.();
     }
+    startSignalReconcileSweep() {
+        if (this.signalReconcileSweepTimer)
+            return;
+        this.signalReconcileSweepTimer = setInterval(() => {
+            this.runSignalTelegramReconcile('reconcile_sweep').catch(err => console.error(`[userListener] signal reconcile sweep error for ${this.userId}:`, err));
+        }, signalTelegramReconcile_1.RECONCILE_SWEEP_INTERVAL_MS);
+        this.signalReconcileSweepTimer.unref?.();
+        console.log(`[userListener] signal reconcile sweep started user=${this.userId}`
+            + ` intervalMs=${signalTelegramReconcile_1.RECONCILE_SWEEP_INTERVAL_MS}`);
+    }
+    /**
+     * Fetch live Telegram text for recent signals and reconcile mismatches with AI revision.
+     */
+    async runSignalTelegramReconcile(source, channelRow) {
+        const stats = { checked: 0, mismatches: 0, revised: 0, errors: 0 };
+        if (this.signalReconcileInFlight)
+            return stats;
+        this.signalReconcileInFlight = true;
+        try {
+            const windowMs = source === 'reconcile_poll_hook' ? signalTelegramReconcile_1.RECONCILE_POLL_HOOK_WINDOW_MS : undefined;
+            const maxSignals = source === 'reconcile_poll_hook' ? signalTelegramReconcile_1.RECONCILE_POLL_HOOK_MAX_SIGNALS : undefined;
+            const signals = await (0, signalTelegramReconcile_1.loadSignalsForReconcile)(this.supabase, {
+                userId: this.userId,
+                windowMs,
+                maxSignals,
+                channelRowId: channelRow?.id,
+            });
+            if (!signals.length)
+                return stats;
+            const grouped = (0, signalTelegramReconcile_1.groupSignalsByChannel)(signals);
+            for (const [channelRowId, rows] of grouped) {
+                const row = channelRow?.id === channelRowId
+                    ? channelRow
+                    : this.fastPollRows.find(r => r.id === channelRowId)
+                        ?? (await this.supabase
+                            .from('telegram_channels')
+                            .select('id, channel_id, channel_username, last_seen_message_id, last_seen_at, last_live_at')
+                            .eq('id', channelRowId)
+                            .maybeSingle()).data;
+                if (!row)
+                    continue;
+                const channelStats = await this.runSignalReconcileForChannel(row, rows, source);
+                stats.checked += channelStats.checked;
+                stats.mismatches += channelStats.mismatches;
+                stats.revised += channelStats.revised;
+                stats.errors += channelStats.errors;
+            }
+            return stats;
+        }
+        finally {
+            this.signalReconcileInFlight = false;
+        }
+    }
+    async runSignalReconcileForChannel(channelRow, signals, source) {
+        const stats = { checked: 0, mismatches: 0, revised: 0, errors: 0 };
+        let peer;
+        try {
+            peer = await this.resolveChannelPeer(channelRow);
+        }
+        catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            stats.errors += 1;
+            void (0, listenerEvents_1.persistListenerEvent)(this.supabase, {
+                userId: this.userId,
+                eventType: 'signal_reconcile_sweep_error',
+                channelRowId: channelRow.id,
+                detail: { source, error: msg.slice(0, 300), phase: 'peer_resolve' },
+            });
+            return stats;
+        }
+        const snapshots = new Map();
+        const ids = signals.map(s => s.telegram_message_id);
+        for (const chunk of (0, signalTelegramReconcile_1.chunkTelegramMessageIds)(ids)) {
+            const numericIds = chunk
+                .map(id => Number(id))
+                .filter(n => Number.isFinite(n) && n > 0);
+            if (!numericIds.length)
+                continue;
+            try {
+                const batch = (await this.client.getMessages(peer, {
+                    ids: numericIds,
+                }));
+                for (const [id, snap] of (0, signalTelegramReconcile_1.snapshotsFromTelegramMessages)(batch ?? [])) {
+                    snapshots.set(id, snap);
+                }
+            }
+            catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                stats.errors += 1;
+                (0, workerMetrics_1.incMetric)('signal_reconcile_get_messages_failed');
+                void (0, listenerEvents_1.persistListenerEvent)(this.supabase, {
+                    userId: this.userId,
+                    eventType: 'signal_reconcile_sweep_error',
+                    channelRowId: channelRow.id,
+                    detail: {
+                        source,
+                        error: msg.slice(0, 300),
+                        phase: 'get_messages',
+                        ids: chunk.slice(0, 10),
+                    },
+                });
+            }
+        }
+        const checkedIds = [];
+        const editDateBySignalId = new Map();
+        for (const signal of signals) {
+            const mid = signal.telegram_message_id?.trim();
+            const snap = mid ? snapshots.get(mid) : undefined;
+            if (!snap)
+                continue;
+            checkedIds.push(signal.id);
+            editDateBySignalId.set(signal.id, snap.editDateSec);
+        }
+        stats.checked = checkedIds.length;
+        const mismatches = (0, signalTelegramReconcile_1.findSignalsNeedingReconcile)(signals, snapshots);
+        const mismatchIds = new Set(mismatches.map(m => m.signal.id));
+        const reconciledIds = checkedIds.filter(id => !mismatchIds.has(id));
+        if (reconciledIds.length) {
+            await (0, signalTelegramReconcile_1.markSignalsReconciled)(this.supabase, {
+                signalIds: reconciledIds,
+                editDateBySignalId,
+            });
+        }
+        if (!mismatches.length) {
+            if (stats.checked > 0) {
+                void (0, listenerEvents_1.persistListenerEvent)(this.supabase, {
+                    userId: this.userId,
+                    eventType: 'signal_reconcile_checked',
+                    channelRowId: channelRow.id,
+                    detail: { source, checked: stats.checked, mismatches: 0 },
+                });
+            }
+            return stats;
+        }
+        stats.mismatches = mismatches.length;
+        for (const candidate of mismatches) {
+            void (0, listenerEvents_1.persistListenerEvent)(this.supabase, {
+                userId: this.userId,
+                eventType: 'signal_reconcile_mismatch',
+                channelRowId: channelRow.id,
+                telegramMessageId: candidate.signal.telegram_message_id,
+                detail: {
+                    source,
+                    signal_id: candidate.signal.id,
+                    edit_date_sec: candidate.editDateSec,
+                },
+            });
+            try {
+                const revised = await this.tryApplyMessageRevision({
+                    channelRow,
+                    messageId: candidate.signal.telegram_message_id,
+                    rawMessage: candidate.rawMessage,
+                    source: `reconcile_${source}`,
+                    telegramEditDateSeen: candidate.editDateSec,
+                });
+                if (revised) {
+                    stats.revised += 1;
+                    await (0, signalTelegramReconcile_1.markSignalsReconciled)(this.supabase, {
+                        signalIds: [candidate.signal.id],
+                        editDateBySignalId,
+                    });
+                }
+            }
+            catch {
+                stats.errors += 1;
+            }
+        }
+        return stats;
+    }
     /** Re-resolve `parent_signal_id` for recent replies (parent may have arrived later). */
     async runReplyChainSweep() {
         const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -1387,6 +1896,60 @@ class UserListener {
             }
         }
     }
+    async skipMessageWhileCopierPaused(channelRow, messageId) {
+        if (!(await (0, copierPause_1.loadCachedUserCopierPaused)(this.supabase, this.userId)))
+            return false;
+        await this.bumpLastSeen(channelRow.id, messageId);
+        return true;
+    }
+    subscribeCopierPauseState() {
+        if (this.userProfilesCopierPauseChannel)
+            return;
+        this.userProfilesCopierPauseChannel = this.supabase
+            .channel(`user_listener_copier_pause_${this.userId}`)
+            .on('postgres_changes', {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'user_profiles',
+            filter: `user_id=eq.${this.userId}`,
+        }, (payload) => {
+            const row = payload.new;
+            if (!row)
+                return;
+            const copierPaused = row.copier_paused === true;
+            const previousPaused = payload.old?.copier_paused === true;
+            const transition = (0, copierPause_1.applyCopierPauseProfileUpdate)(this.userId, copierPaused, previousPaused);
+            if (transition === 'resumed') {
+                void this.advanceAllChannelsLastSeenToLatest();
+            }
+        })
+            .subscribe();
+    }
+    async advanceChannelLastSeenToLatest(row, peer) {
+        try {
+            const resolvedPeer = peer ?? await this.resolveChannelPeer(row);
+            const latest = await this.client.getMessages(resolvedPeer, { limit: 1 });
+            const latestId = Number(latest[0]?.id);
+            if (!Number.isFinite(latestId))
+                return;
+            await this.bumpLastSeen(row.id, String(latestId));
+            row.last_seen_message_id = latestId;
+        }
+        catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.warn(`[userListener] advance last_seen failed user=${this.userId} channel=${row.id}:`, msg);
+        }
+    }
+    async advanceAllChannelsLastSeenToLatest() {
+        const { data: rows } = await this.supabase
+            .from('telegram_channels')
+            .select('id, channel_id, channel_username, last_seen_message_id')
+            .eq('user_id', this.userId)
+            .eq('is_active', true);
+        for (const row of (rows ?? [])) {
+            await this.advanceChannelLastSeenToLatest(row);
+        }
+    }
     async bumpLastSeen(channelRowId, messageId) {
         const num = Number(messageId);
         if (!Number.isFinite(num))
@@ -1402,6 +1965,7 @@ class UserListener {
             .or(`last_seen_message_id.is.null,last_seen_message_id.lt.${num}`);
     }
     async bumpLastLive(channelRowId) {
+        this.lastLiveByRow.set(channelRowId, Date.now());
         await this.supabase
             .from('telegram_channels')
             .update({ last_live_at: new Date().toISOString() })
@@ -1544,12 +2108,19 @@ class UserListener {
             return;
         }
         this.lastSuccessfulPollAt = Date.now();
-        if (!batch.length)
+        if (!batch.length) {
+            await this.runSignalTelegramReconcile('reconcile_poll_hook', row);
             return;
+        }
         const sorted = [...batch].sort((a, b) => Number(a.id) - Number(b.id));
         const latestId = Number(sorted[sorted.length - 1]?.id);
         if (!Number.isFinite(latestId))
             return;
+        if (await (0, copierPause_1.loadCachedUserCopierPaused)(this.supabase, this.userId)) {
+            await this.bumpLastSeen(row.id, String(latestId));
+            row.last_seen_message_id = latestId;
+            return;
+        }
         if (minId === 0) {
             const now = Date.now();
             const recentWindowMs = 15 * 60000;
@@ -1563,15 +2134,22 @@ class UserListener {
                 }
             }
             await this.bumpLastSeen(row.id, String(latestId));
+            row.last_seen_message_id = latestId;
             console.log(`[userListener] poll seeded channel=${row.id} username=${row.channel_username || '-'} lastMsg=${latestId}`);
             return;
         }
         const toProcess = sorted.filter(m => Number(m.id) > minId);
-        if (!toProcess.length)
+        if (!toProcess.length) {
+            await this.runSignalTelegramReconcile('reconcile_poll_hook', row);
             return;
+        }
         for (const m of toProcess) {
             await this.logSignal(row, m, { source: 'catchup' });
         }
+        // Advance the caller's row in place so cached rows (fast poll) don't
+        // refetch the same batch on the next tick while the DB bump lags.
+        row.last_seen_message_id = latestId;
+        await this.runSignalTelegramReconcile('reconcile_poll_hook', row);
     }
     async catchUpChannelRecent(row) {
         let peer;
@@ -1597,6 +2175,15 @@ class UserListener {
         }
         if (!batch.length)
             return;
+        if (await (0, copierPause_1.loadCachedUserCopierPaused)(this.supabase, this.userId)) {
+            const sorted = [...batch].sort((a, b) => Number(a.id) - Number(b.id));
+            const latestId = Number(sorted[sorted.length - 1]?.id);
+            if (Number.isFinite(latestId) && latestId > minId) {
+                await this.bumpLastSeen(row.id, String(latestId));
+                row.last_seen_message_id = latestId;
+            }
+            return;
+        }
         const now = Date.now();
         const maxAgeMs = 60000;
         const recent = batch
@@ -1668,6 +2255,10 @@ class UserListener {
         }
         catch (err) {
             console.warn(`[userListener] resolveChannelPeer miss for channel ${row.id}; skipping catch-up this round`, err);
+            return;
+        }
+        if (await (0, copierPause_1.loadCachedUserCopierPaused)(this.supabase, this.userId)) {
+            await this.advanceChannelLastSeenToLatest(row, peer);
             return;
         }
         const minIdRaw = row.last_seen_message_id;
@@ -1757,6 +2348,7 @@ class UserListener {
         const collected = [];
         let offsetId = 0;
         const batchSize = 100;
+        const heuristicCtx = await (0, channelKeywordsCache_1.getChannelParseContext)(this.supabase, row.id);
         while (collected.length < BACKFILL_PER_CHANNEL_CAP) {
             let batch;
             try {
@@ -1780,17 +2372,17 @@ class UserListener {
                 if (msgEpochSec && msgEpochSec > toSec) {
                     continue;
                 }
-                const raw = String(m.text ?? m.message ?? '').trim();
+                const raw = (0, signalTelegramReconcile_1.telegramMessageText)(m);
                 if (!raw)
                     continue;
                 const isReply = !!m.replyTo;
                 const fetchAllForBacktest = process.env.BACKTEST_FETCH_ALL_MESSAGES === 'true';
                 if (!opts?.forBacktest) {
-                    if (!looksLikeTradingSignal(raw, isReply))
+                    if (!(0, signalTradingHeuristic_1.looksLikeTradingSignal)(raw, isReply, heuristicCtx))
                         continue;
                 }
                 else if (!fetchAllForBacktest) {
-                    if (!looksLikeTradingSignal(raw, isReply))
+                    if (!(0, signalTradingHeuristic_1.looksLikeTradingSignal)(raw, isReply, heuristicCtx))
                         continue;
                 }
                 collected.push(m);
@@ -1803,7 +2395,7 @@ class UserListener {
         collected.sort((a, b) => Number(a.id) - Number(b.id));
         return collected;
     }
-    async backfillChannelFromDate(row, days) {
+    async backfillChannelFromDate(row, days, opts) {
         let peer;
         try {
             peer = await this.resolveChannelPeer(row);
@@ -1815,6 +2407,9 @@ class UserListener {
         const collected = [];
         let offsetId = 0;
         const batchSize = 100;
+        const heuristicCtx = opts?.forTraining
+            ? null
+            : await (0, channelKeywordsCache_1.getChannelParseContext)(this.supabase, row.id);
         while (collected.length < BACKFILL_PER_CHANNEL_CAP) {
             let batch;
             try {
@@ -1871,11 +2466,14 @@ class UserListener {
         collected.sort((a, b) => Number(a.id) - Number(b.id));
         const out = [];
         for (const m of collected) {
-            const raw = String(m.text ?? m.message ?? '').trim();
+            const raw = (0, signalTelegramReconcile_1.telegramMessageText)(m);
             if (!raw)
                 continue;
             const isReply = !!m.replyTo;
-            if (!looksLikeTradingSignal(raw, isReply))
+            const passes = opts?.forTraining
+                ? (0, signalTradingHeuristic_1.looksLikeTrainingCandidate)(raw)
+                : (0, signalTradingHeuristic_1.looksLikeTradingSignal)(raw, isReply, heuristicCtx);
+            if (!passes)
                 continue;
             out.push(raw);
             if (out.length >= 300)
@@ -1930,7 +2528,7 @@ class UserListener {
         }
         catch (err) {
             console.error(`[userListener] reconnect failed for ${this.userId}:`, err);
-            if (!isAuthKeyDuplicated(err))
+            if (!(0, telegramClient_1.isAuthKeyDuplicated)(err))
                 return;
             (0, workerMetrics_1.incMetric)('auth_key_duplicated');
             console.warn(`[userListener] AUTH_KEY_DUPLICATED for ${this.userId} — waiting 15s then one retry`
@@ -1974,6 +2572,51 @@ class UserListener {
         }, SAFETY_POLL_INTERVAL_MS);
         this.safetyPollTimer.unref?.();
     }
+    // ── fast poll (channels with no live push from Telegram) ──────────────
+    startFastPoll() {
+        if (this.fastPollTimer)
+            return;
+        this.fastPollTimer = setInterval(() => {
+            this.runFastPoll().catch(err => console.error(`[userListener] fast poll error for ${this.userId}:`, err));
+        }, FAST_POLL_INTERVAL_MS);
+        this.fastPollTimer.unref?.();
+        console.log(`[userListener] fast poll started user=${this.userId}`
+            + ` intervalMs=${FAST_POLL_INTERVAL_MS} liveStaleMs=${FAST_POLL_LIVE_STALE_MS}`);
+    }
+    /**
+     * Poll only the channels Telegram is not delivering live NewMessage updates
+     * for (last_live_at null or stale). Channels with healthy live push are left
+     * to the event handler + 30s safety poll. The channel list is cached and
+     * refreshed every SAFETY_POLL_INTERVAL_MS to keep DB load flat.
+     */
+    async runFastPoll() {
+        if (!this.isConnected || this.fastPollInFlight)
+            return;
+        this.fastPollInFlight = true;
+        try {
+            const now = Date.now();
+            if (now - this.fastPollRowsAt > SAFETY_POLL_INTERVAL_MS) {
+                const { data } = await this.supabase
+                    .from('telegram_channels')
+                    .select('id, channel_id, channel_username, last_seen_message_id, last_seen_at, last_live_at')
+                    .eq('user_id', this.userId)
+                    .eq('is_active', true);
+                this.fastPollRows = (data ?? []);
+                this.fastPollRowsAt = now;
+            }
+            for (const row of this.fastPollRows) {
+                const liveDb = row.last_live_at ? new Date(row.last_live_at).getTime() : 0;
+                const liveMem = this.lastLiveByRow.get(row.id) ?? 0;
+                const lastLive = Math.max(liveDb, liveMem);
+                if (lastLive > 0 && now - lastLive < FAST_POLL_LIVE_STALE_MS)
+                    continue;
+                await this.pollChannelNewMessages(row).catch(err => console.warn(`[userListener] fast poll failed channel=${row.id}:`, err));
+            }
+        }
+        finally {
+            this.fastPollInFlight = false;
+        }
+    }
     // ── entity cache warmup ────────────────────────────────────────────────
     startEntityWarmup() {
         if (this.entityWarmupTimer)
@@ -1994,7 +2637,7 @@ class UserListener {
             await this.warmAllMonitoredChannelEntities();
         }
         catch (err) {
-            if (isAuthKeyDuplicated(err))
+            if ((0, telegramClient_1.isAuthKeyDuplicated)(err))
                 return;
             if ((0, telegramClient_1.isAuthKeyUnregistered)(err))
                 (0, telegramClient_1.rethrowIfSessionInvalid)(err);

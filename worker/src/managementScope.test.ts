@@ -5,6 +5,7 @@ import {
   filterTradesByPlausibleMgmtLevels,
   filterTradesBySymbolFilter,
   isReplyScopedManagement,
+  resolveChannelCweTargets,
   resolveChannelModifyTargets,
   resolveNewestOpenSymbolTrades,
   type MgmtTradeRow,
@@ -65,6 +66,29 @@ describe('filterTradesByPlausibleMgmtLevels', () => {
   })
 })
 
+describe('resolveChannelCweTargets', () => {
+  it('scopes symbol-less channel CWE to newest open symbol', () => {
+    const trades = [
+      row({ id: 'g', symbol: 'XAUUSD', direction: 'buy', opened_at: '2026-01-01T10:00:00Z' }),
+      row({ id: 'b1', symbol: 'BTCUSD', direction: 'sell', opened_at: '2026-01-01T12:00:00Z' }),
+      row({ id: 'b2', symbol: 'BTCUSD', direction: 'sell', opened_at: '2026-01-01T12:01:00Z' }),
+    ]
+    const out = resolveChannelCweTargets(trades, null)
+    assert.equal(out.length, 2)
+    assert.ok(out.every(t => t.symbol === 'BTCUSD'))
+  })
+
+  it('keeps explicit symbol filter', () => {
+    const trades = [
+      row({ id: 'g', symbol: 'XAUUSD', direction: 'buy' }),
+      row({ id: 'e', symbol: 'EURUSD', direction: 'buy' }),
+    ]
+    const out = resolveChannelCweTargets(trades, 'XAUUSD')
+    assert.equal(out.length, 1)
+    assert.equal(out[0]!.id, 'g')
+  })
+})
+
 describe('resolveNewestOpenSymbolTrades', () => {
   it('picks symbol of newest opened leg', () => {
     const trades = [
@@ -78,24 +102,27 @@ describe('resolveNewestOpenSymbolTrades', () => {
 })
 
 describe('resolveChannelModifyTargets', () => {
-  it('uses plausibility when possible', () => {
+  it('scopes symbol-less modify to newest symbol then plausibility', () => {
     const trades = [
-      row({ id: 'g', symbol: 'XAUUSD', direction: 'buy', entry_price: 4500 }),
-      row({ id: 'e', symbol: 'EURUSD', direction: 'buy', entry_price: 1.1 }),
-    ]
-    const out = resolveChannelModifyTargets(trades, { action: 'modify', sl: 4470, tp: [] })
-    assert.equal(out.length, 1)
-    assert.equal(out[0]!.id, 'g')
-  })
-
-  it('falls back to newest symbol when no level matches', () => {
-    const trades = [
-      row({ id: 'g', symbol: 'XAUUSD', direction: 'buy', entry_price: 4500, opened_at: '2026-01-01T12:00:00Z' }),
-      row({ id: 'e', symbol: 'EURUSD', direction: 'buy', entry_price: 1.1, opened_at: '2026-01-01T10:00:00Z' }),
+      row({ id: 'g', symbol: 'XAUUSD', direction: 'buy', entry_price: 4500, opened_at: '2026-01-01T10:00:00Z' }),
+      row({ id: 'e', symbol: 'EURUSD', direction: 'buy', entry_price: 1.1, opened_at: '2026-01-01T12:00:00Z' }),
     ]
     const out = resolveChannelModifyTargets(trades, { action: 'modify', sl: 1.05, tp: [] })
     assert.equal(out.length, 1)
-    assert.equal(out[0]!.id, 'g')
+    assert.equal(out[0]!.id, 'e')
+  })
+
+  it('applies plausible SL within newest symbol basket', () => {
+    const trades = [
+      row({ id: 'g1', symbol: 'XAUUSD', direction: 'buy', entry_price: 4500, opened_at: '2026-01-01T12:00:00Z' }),
+      row({ id: 'g2', symbol: 'XAUUSD', direction: 'buy', entry_price: 4510, opened_at: '2026-01-01T12:01:00Z' }),
+      row({ id: 'e', symbol: 'EURUSD', direction: 'buy', entry_price: 1.1, opened_at: '2026-01-01T10:00:00Z' }),
+    ]
+    const out = resolveChannelModifyTargets(trades, { action: 'modify', sl: 4470, tp: [] })
+    assert.equal(out.length, 2)
+    assert.ok(out.some(t => t.id === 'g1'))
+    assert.ok(out.some(t => t.id === 'g2'))
+    assert.equal(out.some(t => t.id === 'e'), false)
   })
 })
 

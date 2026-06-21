@@ -2,32 +2,19 @@ import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 import {
   buildPerLegStopTargets,
-  isBareEntryFollowUp,
-  isParameterFollowUpSignal,
   mergePlanImmediateOrders,
   parsedHasSlOrTp,
   shouldRouteAsBasketParameterRefresh,
 } from './multiTradeMerge'
 import type { PlannerResult } from './manualPlanner'
 
-test('isParameterFollowUpSignal: SL only', () => {
-  assert.equal(isParameterFollowUpSignal({ sl: 78100, tp: null }), true)
-})
-
-test('isParameterFollowUpSignal: TP only', () => {
-  assert.equal(isParameterFollowUpSignal({ sl: null, tp: [79300, 79600] }), true)
-})
-
-test('isParameterFollowUpSignal: bare buy now', () => {
-  assert.equal(isParameterFollowUpSignal({ action: 'buy', sl: null, tp: null }), false)
-})
-
-test('parsedHasSlOrTp aliases isParameterFollowUpSignal', () => {
+test('parsedHasSlOrTp: SL or TP levels', () => {
   assert.equal(parsedHasSlOrTp({ sl: 100, tp: null }), true)
+  assert.equal(parsedHasSlOrTp({ sl: null, tp: [79300, 79600] }), true)
   assert.equal(parsedHasSlOrTp({ action: 'buy', sl: null, tp: null }), false)
 })
 
-test('shouldRouteAsBasketParameterRefresh: priced entry + SL/TP is parameter refresh', () => {
+test('shouldRouteAsBasketParameterRefresh: priced entry + SL/TP opens trade (not refresh)', () => {
   assert.equal(
     shouldRouteAsBasketParameterRefresh({
       action: 'sell',
@@ -35,7 +22,20 @@ test('shouldRouteAsBasketParameterRefresh: priced entry + SL/TP is parameter ref
       sl: 4570,
       tp: [4530, 4510, 4490],
     }),
-    true,
+    false,
+  )
+})
+
+test('shouldRouteAsBasketParameterRefresh: repeat entry @ 4309 opens trade (not refresh)', () => {
+  assert.equal(
+    shouldRouteAsBasketParameterRefresh({
+      action: 'sell',
+      symbol: 'XAUUSD',
+      entry_price: 4309,
+      sl: 4312,
+      tp: [4303, 4301, 4299],
+    }),
+    false,
   )
 })
 
@@ -57,7 +57,32 @@ test('shouldRouteAsBasketParameterRefresh: bare NOW is not parameter refresh', (
     shouldRouteAsBasketParameterRefresh({ action: 'sell', sl: null, tp: null }),
     false,
   )
-  assert.equal(isBareEntryFollowUp({ action: 'sell', sl: null, tp: null }), true)
+})
+
+test('shouldRouteAsBasketParameterRefresh: BUY NOW with SL/TP opens trade (not refresh)', () => {
+  assert.equal(
+    shouldRouteAsBasketParameterRefresh({
+      action: 'buy',
+      symbol: 'XAUUSD',
+      sl: 4090,
+      tp: [4115],
+      raw_instruction: 'XAUUSD BUY NOW\nSL 4090\nTP 4115',
+    }),
+    false,
+  )
+})
+
+test('shouldRouteAsBasketParameterRefresh: sell at market with SL/TP opens trade (not refresh)', () => {
+  assert.equal(
+    shouldRouteAsBasketParameterRefresh({
+      action: 'sell',
+      symbol: 'XAUUSD',
+      sl: 4120,
+      tp: [4100],
+      raw_instruction: 'GOLD SELL AT MARKET, SL 4120 TP 4100',
+    }),
+    false,
+  )
 })
 
 test('shouldRouteAsBasketParameterRefresh: SL/TP without entry is follow-up candidate', () => {
@@ -68,6 +93,50 @@ test('shouldRouteAsBasketParameterRefresh: SL/TP without entry is follow-up cand
       tp: [4530, 4510],
     }),
     true,
+  )
+})
+
+test('shouldRouteAsBasketParameterRefresh: FX Culture one-shot BUY TRADE opens trade', () => {
+  assert.equal(
+    shouldRouteAsBasketParameterRefresh({
+      action: 'buy',
+      symbol: 'XAUUSD',
+      entry_zone_low: 4282,
+      entry_zone_high: 4287,
+      sl: 4265,
+      tp: [4365],
+      raw_instruction: 'BUY TRADE XAU/USD\n4282.0-4287.0\nStop Loss: 4265\nTarget: 4365.0',
+    }),
+    false,
+  )
+})
+
+test('shouldRouteAsBasketParameterRefresh: full entry with zone + market now + SL/TP is refresh', () => {
+  assert.equal(
+    shouldRouteAsBasketParameterRefresh({
+      action: 'buy',
+      symbol: 'XAUUSD',
+      entry_zone_low: 4213,
+      entry_zone_high: 4216,
+      sl: 4209,
+      tp: [4218, 4220],
+      raw_instruction: 'Gold buy now 4216 - 4213 SL: 4209 TP: 4218',
+    }),
+    true,
+  )
+})
+
+test('shouldRouteAsBasketParameterRefresh: full entry with zone without market now opens trade', () => {
+  assert.equal(
+    shouldRouteAsBasketParameterRefresh({
+      action: 'sell',
+      symbol: 'XAUUSD',
+      entry_zone_low: 4292,
+      entry_zone_high: 4295,
+      sl: 4299,
+      tp: [4290, 4288, 4286],
+    }),
+    false,
   )
 })
 
@@ -202,6 +271,46 @@ test('buildPerLegStopTargets: split pools keep instant vs range TP slots', () =>
   assert.equal(targets[0]!.takeprofit, 4530)
   assert.equal(targets[1]!.takeprofit, 4530)
   assert.equal(targets[2]!.takeprofit, 4510)
+})
+
+test('buildPerLegStopTargets: modify-only refresh spreads TPs across all open legs', () => {
+  const plan: PlannerResult = { orders: [], delay_ms: 0, virtualPendings: [] }
+  const targets = buildPerLegStopTargets({
+    plan,
+    parsed: { sl: 4185, tp: [4220, 4230, 4240, 4245] },
+    openLegCount: 13,
+    totalPlannedLegCount: 13,
+    immediateLegCount: 13,
+    tpLots: [
+      { label: 'TP1', lot: 0, percent: 40, enabled: true },
+      { label: 'TP2', lot: 0, percent: 30, enabled: true },
+      { label: 'TP3', lot: 0, percent: 20, enabled: true },
+      { label: 'TP4', lot: 0, percent: 10, enabled: true },
+    ],
+  })
+  assert.equal(targets.length, 13)
+  assert.equal(targets.every(t => t.takeprofit > 0), true)
+  assert.equal(targets[12]!.takeprofit, 4245)
+})
+
+test('buildPerLegStopTargets: message-edit refresh treats all open legs as immediate', () => {
+  const plan: PlannerResult = { orders: [], delay_ms: 0, virtualPendings: [] }
+  const targets = buildPerLegStopTargets({
+    plan,
+    parsed: { sl: 4524.3, tp: [4535, 4538] },
+    openLegCount: 2,
+    totalPlannedLegCount: 5,
+    immediateLegCount: 2,
+    tpLots: [
+      { label: 'TP1', lot: 0, percent: 50, enabled: true },
+      { label: 'TP2', lot: 0, percent: 50, enabled: true },
+    ],
+  })
+  assert.equal(targets.length, 2)
+  assert.equal(targets[0]!.stoploss, 4524.3)
+  assert.equal(targets[1]!.stoploss, 4524.3)
+  assert.equal(targets[0]!.takeprofit, 4535)
+  assert.equal(targets[1]!.takeprofit, 4538)
 })
 
 test('mergePlanImmediateOrders: includes limits', () => {

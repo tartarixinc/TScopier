@@ -1,6 +1,7 @@
 import clsx from 'clsx'
 import { useT } from '../../context/LocaleContext'
 import { useSubscription } from '../../context/SubscriptionContext'
+import { getSubscribeCtaLabel } from '../../lib/subscriptionCta'
 import { Alert } from '../ui/Alert'
 import { Button } from '../ui/Button'
 
@@ -31,8 +32,8 @@ interface PaywallErrorAlertProps {
 export function PaywallErrorAlert({ message, className, variant = 'error' }: PaywallErrorAlertProps) {
   const t = useT()
   const pw = t.pricing.paywall
-  const { openUpgrade, isPastDue } = useSubscription()
-  const upgradeLabel = isPastDue ? pw.updatePayment : pw.upgradeCta
+  const { openUpgrade, isPastDue, effectivePlan, hasTrialExpired } = useSubscription()
+  const upgradeLabel = getSubscribeCtaLabel(t, { isPastDue, effectivePlan, hasTrialExpired })
 
   if (!shouldShowPaywallUpgradeCta(message, pw.subscriptionRequired)) {
     return (

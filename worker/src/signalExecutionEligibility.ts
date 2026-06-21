@@ -2,8 +2,11 @@ import { tradeableFromParsed } from './backtestSignal'
 import { looksLikeCasualNonTradeMessage } from './signalCommentaryGuard'
 import {
   ENTRY_REQUIRES_NOW_REASON,
+  entryMissingSlTpRequiresNow,
   messageHasMarketNowIntent,
+  messageHasExplicitSlTpLabels,
   parsedHasSlOrTp,
+  type MarketNowKeywordFields,
 } from './signalEntryNowRequirement'
 import { looksLikeChannelManagementUpdate } from './signalManagementIntent'
 import { minPlausibleQuotePrice, sanitizeParsedSymbol } from './tradableSymbol'
@@ -25,6 +28,7 @@ export function evaluateParsedSignalExecutionEligibility(
     lot_size?: unknown
   } | null | undefined,
   rawMessage?: string | null,
+  channelKeywords?: MarketNowKeywordFields | null,
 ): { eligible: boolean; skipReason?: string } {
   if (!parsed) return { eligible: false, skipReason: 'parsed_data_missing' }
   const action = String(parsed.action ?? '').toLowerCase()
@@ -38,12 +42,18 @@ export function evaluateParsedSignalExecutionEligibility(
     if (/\b\d+(?:\.\d+)?\s*pips?\s+short\s+of\s+tp\d*\b/i.test(raw)) {
       return { eligible: false, skipReason: COMMENTARY_NOT_SIGNAL_REASON }
     }
-    if (looksLikeChannelManagementUpdate(raw) && !/\b(buy|sell|long|short)\b/i.test(raw)) {
+    if (looksLikeChannelManagementUpdate(raw) && action !== 'buy' && action !== 'sell'
+      && !/\b(buy|sell|long|short)\b/i.test(raw)) {
       return { eligible: false, skipReason: COMMENTARY_NOT_SIGNAL_REASON }
     }
   }
 
-  if (tradeableFromParsed(parsed)) return { eligible: true }
+  if (tradeableFromParsed(parsed)) {
+    if (entryMissingSlTpRequiresNow(parsed, raw, channelKeywords)) {
+      return { eligible: false, skipReason: ENTRY_REQUIRES_NOW_REASON }
+    }
+    return { eligible: true }
+  }
 
   const symbol = sanitizeParsedSymbol(
     typeof parsed.symbol === 'string' ? parsed.symbol : null,
@@ -61,7 +71,11 @@ export function evaluateParsedSignalExecutionEligibility(
     return { eligible: false, skipReason: ENTRY_MISSING_STRUCTURE_REASON }
   }
 
-  if (symbol && messageHasMarketNowIntent(raw)) {
+  if (symbol && messageHasMarketNowIntent(raw, channelKeywords)) {
+    return { eligible: true }
+  }
+
+  if (symbol && messageHasExplicitSlTpLabels(raw) && parsedHasSlOrTp(parsed)) {
     return { eligible: true }
   }
 

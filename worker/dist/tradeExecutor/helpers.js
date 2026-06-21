@@ -1,8 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.isMtUuid = isMtUuid;
+exports.brokerSessionUuid = brokerSessionUuid;
+exports.brokerHasLinkedSession = brokerHasLinkedSession;
 exports.parseSymbolToTradeList = parseSymbolToTradeList;
 exports.applySymbolMapping = applySymbolMapping;
+exports.isMt5OnlyOperation = isMt5OnlyOperation;
 exports.isExcluded = isExcluded;
 exports.operationFor = operationFor;
 exports.computeLot = computeLot;
@@ -11,8 +14,12 @@ exports.isBuySideOp = isBuySideOp;
 exports.clampOrderStops = clampOrderStops;
 exports.computeCweTp = computeCweTp;
 exports.triggerPriceFor = triggerPriceFor;
+exports.virtualPendingTriggerAllowed = virtualPendingTriggerAllowed;
 exports.brokerOrderOpenMs = brokerOrderOpenMs;
 const manualPlanner_1 = require("../manualPlanner");
+const signalEntryRange_1 = require("../manualPlanning/signalEntryRange");
+const mtApiByAccount_1 = require("../mtApiByAccount");
+const effectiveBrokerBalance_1 = require("../effectiveBrokerBalance");
 function isMtUuid(s) {
     if (!s)
         return false;
@@ -20,6 +27,14 @@ function isMtUuid(s) {
     if (!v || v.includes('|'))
         return false;
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+}
+/** FxSocket terminal UUID from broker_accounts (fxsocket_account_id). */
+function brokerSessionUuid(broker) {
+    const id = (0, mtApiByAccount_1.brokerSessionId)(broker);
+    return isMtUuid(id) ? id : null;
+}
+function brokerHasLinkedSession(broker) {
+    return brokerSessionUuid(broker) != null;
 }
 function parseSymbolToTradeList(value) {
     if (!value || !value.trim())
@@ -32,22 +47,30 @@ function parseSymbolToTradeList(value) {
 function applySymbolMapping(raw, broker) {
     const m = (broker.manual_settings ?? {});
     const upper = raw.toUpperCase();
-    const mapped = (m.symbol_mapping?.[upper] ?? upper).toUpperCase();
+    const explicitMap = m.symbol_mapping?.[upper];
+    const hasExplicitMap = explicitMap != null && String(explicitMap).trim() !== '';
+    const mapped = (hasExplicitMap ? String(explicitMap) : upper).toUpperCase();
     const prefix = (m.symbol_prefix ?? '').toUpperCase();
     const suffix = (m.symbol_suffix ?? '').toUpperCase();
+    const userDecorated = hasExplicitMap || prefix.length > 0 || suffix.length > 0;
     const allowed = parseSymbolToTradeList(m.symbol_to_trade);
-    if (allowed.length === 1) {
-        return { symbol: allowed[0], whitelist: [] };
-    }
     return {
         symbol: `${prefix}${mapped}${suffix}`,
         whitelist: allowed,
+        userDecorated,
     };
 }
+const MT5_ONLY_OPERATIONS = new Set(['BuyStopLimit', 'SellStopLimit']);
+function isMt5OnlyOperation(op) {
+    return MT5_ONLY_OPERATIONS.has(op);
+}
 function isExcluded(symbol, broker) {
+    const upper = symbol.trim().toUpperCase();
+    if (!upper)
+        return false;
     const m = (broker.manual_settings ?? {});
     const list = (m.symbols_exclude ?? []).map(s => String(s).toUpperCase());
-    return list.includes(symbol.toUpperCase());
+    return list.includes(upper);
 }
 function operationFor(action, signal) {
     const a = action.toLowerCase();
@@ -64,7 +87,7 @@ function computeLot(broker, signal) {
         const m = (broker.manual_settings ?? {});
         if (m.risk_mode === 'dynamic_balance_percent') {
             const pct = Number(m.dynamic_balance_percent ?? 1);
-            const bal = Number(broker.last_balance ?? 0);
+            const bal = (0, effectiveBrokerBalance_1.resolveBrokerTotalBalance)(broker) ?? 0;
             if (bal > 0 && pct > 0) {
                 return Math.max(0.01, +(bal * (pct / 100) / 1000).toFixed(2));
             }
@@ -75,7 +98,7 @@ function computeLot(broker, signal) {
     }
     const ai = (broker.ai_settings ?? {});
     const ref = Number(ai.reference_equity ?? 1000);
-    const bal = Number(broker.last_balance ?? broker.last_equity ?? ref);
+    const bal = (0, effectiveBrokerBalance_1.resolveBrokerTotalBalance)(broker) ?? ref;
     const base = Number(ai.fallback_lot ?? broker.default_lot_size ?? 0.01);
     const scaled = ref > 0 ? base * (bal / ref) : base;
     const min = Number(ai.min_lot ?? 0.01);
@@ -160,6 +183,34 @@ function triggerPriceFor(leg, anchor, digits) {
     const px = anchor + dir * leg.stepIdx * leg.stepPriceOffset;
     const d = Math.max(0, Math.min(8, Math.floor(digits)));
     return Number(px.toFixed(d));
+}
+/** Whether a virtual range leg should be persisted (broker stops zone + signal entry zone). */
+function virtualPendingTriggerAllowed(args) {
+    if (args.useSignalEntryRange && args.signalZoneLo != null && args.signalZoneHi != null) {
+        if (!(0, signalEntryRange_1.virtualLegTriggerAllowed)({
+            trigger: args.triggerPrice,
+            boundary: args.signalRangeBoundary ?? null,
+            isBuy: args.isBuy,
+            zoneLo: args.signalZoneLo,
+            zoneHi: args.signalZoneHi,
+            useFullZone: true,
+        })) {
+            return false;
+        }
+    }
+    else if (args.signalRangeBoundary != null
+        && !(0, signalEntryRange_1.virtualLegTriggerAllowed)({
+            trigger: args.triggerPrice,
+            boundary: args.signalRangeBoundary,
+            isBuy: args.isBuy,
+        })) {
+        return false;
+    }
+    if (args.stopsZoneLo != null && args.stopsZoneHi != null
+        && args.triggerPrice > args.stopsZoneLo && args.triggerPrice < args.stopsZoneHi) {
+        return false;
+    }
+    return true;
 }
 function brokerOrderOpenMs(o) {
     const candidates = [

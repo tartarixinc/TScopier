@@ -5,6 +5,11 @@ import { computeCheck } from 'telegram/Password'
 import { buildClient, tgInvoke, API_ID, API_HASH } from './telegramClient'
 import { UserSessionManager } from './sessionManager'
 import type { ChannelInfo } from './userListener'
+import {
+  assertTelegramAccountAvailable,
+  normalizeTelegramPhoneNumber,
+  upsertTelegramAccountClaim,
+} from './telegramAccountClaims'
 
 interface PendingAuth {
   client: TelegramClient
@@ -26,11 +31,7 @@ const CLEANUP_INTERVAL_MS = 60 * 1000
 const PENDING_DB_TTL_MS = 12 * 60 * 1000
 
 function normalizePhoneNumber(raw: string): string {
-  const compact = String(raw ?? '')
-    .trim()
-    .replace(/[\s\-()]/g, '')
-  if (compact.startsWith('00')) return `+${compact.slice(2)}`
-  return compact
+  return normalizeTelegramPhoneNumber(raw)
 }
 
 function phonesMatch(a: string, b: string): boolean {
@@ -41,7 +42,7 @@ function normalizeVerificationCode(raw: string): string {
   return String(raw ?? '').replace(/\D/g, '')
 }
 
-export type VerifyResult =
+type VerifyResult =
   | { ok: true; session_id: string; channels?: ChannelInfo[] }
   | { requires_password: true }
 
@@ -158,6 +159,7 @@ export class AuthService {
     if (!normalizedPhone || !normalizedPhone.startsWith('+')) {
       throw new Error('Use full phone with country code, e.g. +44...')
     }
+    await assertTelegramAccountAvailable(this.supabase, userId, { phone: normalizedPhone })
     // Stop the live listener before touching telegram_auth_pending — clearing that row
     // triggers onAuthPendingCleared on other replicas, which must not reopen MTProto.
     await this.sessionManager.pauseForAuth(userId)
@@ -285,6 +287,13 @@ export class AuthService {
 
     const sessionString = (client.session.save() as unknown) as string
 
+    const me = await client.getMe()
+    const telegramUserId = me.id?.toString?.() ?? String(me.id)
+    await assertTelegramAccountAvailable(this.supabase, userId, {
+      phone: pendingPhone,
+      telegramUserId,
+    })
+
     const { data: row, error: dbErr } = await this.supabase
       .from('telegram_sessions')
       .upsert({
@@ -302,6 +311,19 @@ export class AuthService {
       this.pending.delete(userId)
       await this.clearPendingRow(userId)
       throw new Error(dbErr?.message ?? 'Failed to persist Telegram session')
+    }
+
+    try {
+      await upsertTelegramAccountClaim(this.supabase, userId, {
+        phone: pendingPhone,
+        telegramUserId,
+      })
+    } catch (claimErr) {
+      await this.supabase.from('telegram_sessions').delete().eq('user_id', userId)
+      try { await client.disconnect() } catch { /* ignore */ }
+      this.pending.delete(userId)
+      await this.clearPendingRow(userId)
+      throw claimErr
     }
 
     // Hand the *live* authenticated client to the session manager so it

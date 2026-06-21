@@ -34,15 +34,24 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TradeExecutor = void 0;
-const metatraderapi_1 = require("../metatraderapi");
+const fxsocketClient_1 = require("../fxsocketClient");
 const manualPlanner_1 = require("../manualPlanner");
 const normalizeManualSettings_1 = require("../manualPlanning/normalizeManualSettings");
+const effectiveBrokerBalance_1 = require("../effectiveBrokerBalance");
 const channelTradingConfig_1 = require("../channelTradingConfig");
+const brokerChannelTradingConfigs_1 = require("../brokerChannelTradingConfigs");
 const helpers_1 = require("./basketMerge/helpers");
 const signalBrokerDispatchClaim_1 = require("./signalBrokerDispatchClaim");
+const signalRangeEntryHelpers_1 = require("../signalRangeEntryHelpers");
+const signalRevision_1 = require("../signalRevision");
 const tradeSignalActions_1 = require("../tradeSignalActions");
 const workerConfig_1 = require("../workerConfig");
 const monitorIdleGate_1 = require("../monitorIdleGate");
+const tscopierComment_1 = require("../tscopierComment");
+const brokerChannelFilter_1 = require("../brokerChannelFilter");
+const brokerSignalReplay_1 = require("../brokerSignalReplay");
+const channelTradingConfig_2 = require("../channelTradingConfig");
+const copyLimitTypes_1 = require("../copyLimitTypes");
 const pipelineTimestamps_1 = require("../pipelineTimestamps");
 const channelKeywordsCache_1 = require("../channelKeywordsCache");
 const helpers_2 = require("./helpers");
@@ -51,13 +60,15 @@ const brokerSymbolCache = __importStar(require("./brokerSymbolCache"));
 const dispatch = __importStar(require("./dispatch"));
 const basketMerge = __importStar(require("./basketMerge"));
 const managementExecutor = __importStar(require("./managementExecutor"));
-const entryRouter_1 = require("./entryRouter");
+const singleEntryExecutor_1 = require("./singleEntryExecutor");
+const rangeTradeExecutor_1 = require("./rangeTradeExecutor");
+const copierPause_1 = require("../copierPause");
 class TradeExecutor {
     constructor(supabase, sessionManager) {
         this.supabase = supabase;
         this.sessionManager = sessionManager;
         this.sweepLoop = null;
-        /** Cancels TSCopier broker pendings past `pending_expiry_hours` (1–24) when env enabled. */
+        /** Cancels TScopier broker pendings past `pending_expiry_hours` (1–24) when env enabled. */
         this.brokerPendingSweepTimer = null;
         this.sessionHeartbeatTimer = null;
         this.sessionHeartbeatInFlight = false;
@@ -65,7 +76,9 @@ class TradeExecutor {
         this.symbolCacheKeepaliveTimer = null;
         this.signalsChannel = null;
         this.brokersChannel = null;
+        this.channelTradingConfigsChannel = null;
         this.channelsChannel = null;
+        this.userProfilesChannel = null;
         this.brokersByUser = new Map();
         this.brokersById = new Map();
         this.inflight = new Set();
@@ -98,25 +111,31 @@ class TradeExecutor {
          * that piled up while the broker was disabled.
          */
         this.brokerActivatedAt = new Map();
-        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)()) {
+        this.userTimezoneById = new Map();
+        this.copyLimitStateCache = new Map();
+        if (!(0, fxsocketClient_1.hasFxsocketConfigured)()) {
             console.warn('[tradeExecutor] MT4API_BASIC_USER/PASSWORD missing — trade execution disabled.');
         }
     }
     apiFor(broker) {
-        return (0, metatraderapi_1.getMetatraderApi)((0, metatraderapi_1.mtPlatformFrom)(broker.platform));
+        return (0, fxsocketClient_1.getFxsocketClient)();
     }
     apiForUuid(uuid) {
         for (const b of this.brokersById.values()) {
-            if (b.metaapi_account_id === uuid)
+            const sessionId = (0, helpers_2.brokerSessionUuid)(b);
+            if (sessionId === uuid)
                 return this.apiFor(b);
         }
-        return (0, metatraderapi_1.getMetatraderApi)('MT5');
+        console.error(`[tradeExecutor] apiForUuid: unknown broker uuid=${uuid}`);
+        return null;
     }
     async start() {
         await this.loadBrokers();
         this.subscribeSignals();
         this.subscribeBrokers();
+        this.subscribeChannelTradingConfigs();
         this.subscribeChannelKeywords();
+        this.subscribeUserProfilesCopierPause();
         const replaySince = () => new Date(Date.now() - types_1.EXECUTOR_REPLAY_MAX_AGE_MS).toISOString();
         this.sweepLoop = (0, monitorIdleGate_1.startMonitorLoop)({
             name: 'tradeExecutorSweep',
@@ -136,10 +155,15 @@ class TradeExecutor {
             this.cleanupLegacyBrokerPendings().catch(err => console.error('[tradeExecutor] legacy pending cleanup failed:', err));
         }
         void this.prewarmBrokerCaches();
-        this.sessionHeartbeatTimer = setInterval(() => {
-            void this.runSessionHeartbeatTick();
-        }, types_1.BROKER_SESSION_HEARTBEAT_MS);
-        this.sessionHeartbeatTimer.unref?.();
+        if (workerConfig_1.workerConfig.runsBrokerSessionHeartbeat) {
+            this.sessionHeartbeatTimer = setInterval(() => {
+                void this.runSessionHeartbeatTick();
+            }, types_1.BROKER_SESSION_HEARTBEAT_MS);
+            this.sessionHeartbeatTimer.unref?.();
+        }
+        else {
+            console.log('[tradeExecutor] broker session heartbeat disabled on this role (trade_entry handles keepalive)');
+        }
         // Re-fetch every cached symbol list / params entry before its TTL expires
         // so the live-entry hot path always finds a warm cache. Without this,
         // signal symbols outside `symbol_to_trade` fall back to a cold broker
@@ -169,24 +193,39 @@ class TradeExecutor {
             void this.supabase.removeChannel(this.brokersChannel);
             this.brokersChannel = null;
         }
+        if (this.channelTradingConfigsChannel) {
+            void this.supabase.removeChannel(this.channelTradingConfigsChannel);
+            this.channelTradingConfigsChannel = null;
+        }
         if (this.channelsChannel) {
             void this.supabase.removeChannel(this.channelsChannel);
             this.channelsChannel = null;
+        }
+        if (this.userProfilesChannel) {
+            void this.supabase.removeChannel(this.userProfilesChannel);
+            this.userProfilesChannel = null;
         }
     }
     // ── caches ────────────────────────────────────────────────────────────
     normalizeBrokerRow(row) {
         const healedConfigs = (0, channelTradingConfig_1.healChannelTradingConfigsMap)(row);
+        const accountBalance = (0, effectiveBrokerBalance_1.resolveBrokerTotalBalance)(row) || null;
         const normalizedConfigs = {};
         for (const [channelId, cfg] of Object.entries(healedConfigs)) {
             normalizedConfigs[channelId] = {
                 ...cfg,
-                manual_settings: (0, normalizeManualSettings_1.normalizeManualSettingsForExecution)(cfg.manual_settings),
+                manual_settings: (0, normalizeManualSettings_1.normalizeManualSettingsForExecution)(cfg.manual_settings, {
+                    accountBalance,
+                }),
             };
         }
+        const sessionId = (0, helpers_2.brokerSessionUuid)(row);
         return {
             ...row,
-            manual_settings: (0, normalizeManualSettings_1.normalizeManualSettingsForExecution)(row.manual_settings),
+            metaapi_account_id: sessionId ?? row.metaapi_account_id,
+            manual_settings: (0, normalizeManualSettings_1.normalizeManualSettingsForExecution)(row.manual_settings, {
+                accountBalance,
+            }),
             channel_trading_configs: normalizedConfigs,
         };
     }
@@ -194,7 +233,7 @@ class TradeExecutor {
         return this.sweepLoop;
     }
     async loadBrokers() {
-        const brokersQ = await (0, monitorIdleGate_1.applyShardToQuery)(this.supabase, this.supabase.from('broker_accounts').select('*').eq('is_active', true));
+        const brokersQ = await (0, monitorIdleGate_1.applyShardToQuery)(this.supabase, this.supabase.from('broker_accounts').select('*').or('fxsocket_account_id.neq.,metaapi_account_id.neq.'));
         if (!brokersQ) {
             this.brokersByUser.clear();
             this.brokersById.clear();
@@ -205,16 +244,59 @@ class TradeExecutor {
             console.error('[tradeExecutor] loadBrokers failed:', error.message);
             return;
         }
+        const brokerRows = (data ?? []);
+        const brokerIds = brokerRows.map(row => row.id);
+        const tableConfigRows = await (0, brokerChannelTradingConfigs_1.fetchBrokerChannelTradingConfigRows)(this.supabase, brokerIds);
+        const configsByBroker = new Map();
+        for (const cfgRow of tableConfigRows) {
+            const list = configsByBroker.get(cfgRow.broker_account_id) ?? [];
+            list.push(cfgRow);
+            configsByBroker.set(cfgRow.broker_account_id, list);
+        }
         this.brokersByUser.clear();
         this.brokersById.clear();
         this.brokerActivatedAt.clear();
-        for (const row of (data ?? [])) {
-            const normalized = this.normalizeBrokerRow(row);
+        this.userTimezoneById.clear();
+        const userIds = [...new Set(brokerRows.map(r => r.user_id).filter(Boolean))];
+        if (userIds.length) {
+            const { data: profiles } = await this.supabase
+                .from('user_profiles')
+                .select('user_id,timezone,copier_paused')
+                .in('user_id', userIds);
+            (0, copierPause_1.primeCopierPauseCache)(profiles ?? []);
+            for (const p of profiles ?? []) {
+                const uid = String(p.user_id ?? '');
+                const tz = String(p.timezone ?? 'UTC').trim() || 'UTC';
+                if (uid)
+                    this.userTimezoneById.set(uid, tz);
+            }
+        }
+        for (const row of brokerRows) {
+            if (!(0, helpers_2.brokerHasLinkedSession)(row))
+                continue;
+            const tableRows = configsByBroker.get(row.id) ?? [];
+            const mergedRow = tableRows.length
+                ? {
+                    ...row,
+                    channel_trading_configs: (0, brokerChannelTradingConfigs_1.mergeChannelTradingConfigsFromTable)(row.channel_trading_configs, tableRows),
+                }
+                : row;
+            const normalized = this.normalizeBrokerRow(mergedRow);
             this.brokersById.set(row.id, normalized);
-            const arr = this.brokersByUser.get(row.user_id) ?? [];
-            arr.push(normalized);
-            this.brokersByUser.set(row.user_id, arr);
-            this.trackBrokerActivation(normalized);
+            if (normalized.is_active) {
+                const arr = this.brokersByUser.get(row.user_id) ?? [];
+                arr.push(normalized);
+                this.brokersByUser.set(row.user_id, arr);
+                this.trackBrokerActivation(normalized);
+            }
+        }
+        const api = (0, fxsocketClient_1.getFxsocketClient)();
+        if (api) {
+            for (const broker of this.brokersById.values()) {
+                const sessionId = (0, helpers_2.brokerSessionUuid)(broker);
+                if (sessionId)
+                    api.seedPlatformCache(sessionId, (0, fxsocketClient_1.mtPlatformFrom)(broker.platform));
+            }
         }
         console.log(`[tradeExecutor] cached ${this.brokersById.size} broker accounts across ${this.brokersByUser.size} users`);
         const pingOnStart = String(process.env.BROKER_PING_ON_WORKER_START ?? 'true').toLowerCase();
@@ -260,14 +342,21 @@ class TradeExecutor {
     async reconnectCachedBrokers() {
         return await brokerSymbolCache.reconnectCachedBrokers(this);
     }
-    upsertBrokerCache(row) {
-        if (!(0, workerConfig_1.userBelongsToShard)(row.user_id))
-            return;
+    applyBrokerCacheRow(row) {
         const normalized = this.normalizeBrokerRow(row);
+        const sessionId = (0, helpers_2.brokerSessionUuid)(normalized);
+        if (sessionId)
+            (0, fxsocketClient_1.getFxsocketClient)()?.seedPlatformCache(sessionId, (0, fxsocketClient_1.mtPlatformFrom)(normalized.platform));
         const previous = this.brokersById.get(row.id);
+        const wasSessionDown = Boolean(previous
+            && (previous.connection_status === 'error'
+                || this.sessionOrderBlocked.has(row.id)));
         this.brokersById.set(row.id, normalized);
         if (normalized.connection_status === 'connected') {
             this.sessionOrderBlocked.delete(row.id);
+            if (wasSessionDown) {
+                void (0, brokerSignalReplay_1.replayParsedSignalsForBroker)(this, normalized);
+            }
         }
         this.trackBrokerActivation(normalized, previous);
         const userId = row.user_id;
@@ -280,6 +369,25 @@ class TradeExecutor {
             this.brokersByUser.set(previous.user_id, prev);
         }
     }
+    async mergeBrokerRowWithTableConfigs(row) {
+        const tableRows = await (0, brokerChannelTradingConfigs_1.fetchBrokerChannelTradingConfigRows)(this.supabase, [row.id]);
+        if (!tableRows.length)
+            return row;
+        return {
+            ...row,
+            channel_trading_configs: (0, brokerChannelTradingConfigs_1.mergeChannelTradingConfigsFromTable)(row.channel_trading_configs, tableRows),
+        };
+    }
+    upsertBrokerCache(row) {
+        if (!(0, workerConfig_1.userBelongsToShard)(row.user_id))
+            return;
+        void this.mergeBrokerRowWithTableConfigs(row)
+            .then(merged => this.applyBrokerCacheRow(merged))
+            .catch(err => {
+            console.error('[tradeExecutor] upsertBrokerCache table config merge failed:', err);
+            this.applyBrokerCacheRow(row);
+        });
+    }
     removeBrokerCache(id) {
         const row = this.brokersById.get(id);
         if (!row)
@@ -288,6 +396,9 @@ class TradeExecutor {
         const list = (this.brokersByUser.get(row.user_id) ?? []).filter(b => b.id !== id);
         this.brokersByUser.set(row.user_id, list);
         this.brokerActivatedAt.delete(id);
+    }
+    lookupBroker(id) {
+        return this.brokersById.get(id);
     }
     /**
      * Maintain `brokerActivatedAt` so the executor can reject signals that
@@ -336,7 +447,7 @@ class TradeExecutor {
                 return;
             if (!types_1.PARSED_STATUSES.has(row.status))
                 return;
-            this.enqueueSignal(row, { source: 'realtime' });
+            this.acceptDispatchSignal(row, { source: 'realtime', priority: 'high' });
         })
             .subscribe();
     }
@@ -358,12 +469,63 @@ class TradeExecutor {
                 return;
             if (!(0, workerConfig_1.userBelongsToShard)(row.user_id))
                 return;
-            if (row.is_active === false)
+            if (!(0, helpers_2.brokerHasLinkedSession)(row)) {
                 this.removeBrokerCache(row.id);
-            else {
-                this.upsertBrokerCache(row);
+                return;
+            }
+            this.upsertBrokerCache(row);
+            if (row.is_active) {
                 void this.pingBrokerSession(row);
             }
+        })
+            .subscribe();
+    }
+    subscribeUserProfilesCopierPause() {
+        if (this.userProfilesChannel)
+            return;
+        this.userProfilesChannel = this.supabase
+            .channel('trade_executor_user_profiles_copier_pause')
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'user_profiles' }, (payload) => {
+            const row = payload.new;
+            if (!row)
+                return;
+            const userId = String(row.user_id ?? '');
+            if (!userId || !(0, workerConfig_1.userBelongsToShard)(userId))
+                return;
+            const copierPaused = row.copier_paused === true;
+            const previousPaused = payload.old?.copier_paused === true;
+            (0, copierPause_1.applyCopierPauseProfileUpdate)(userId, copierPaused, previousPaused);
+        })
+            .subscribe();
+    }
+    subscribeChannelTradingConfigs() {
+        if (this.channelTradingConfigsChannel)
+            return;
+        this.channelTradingConfigsChannel = this.supabase
+            .channel('trade_executor_broker_channel_configs')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'broker_channel_trading_configs' }, (payload) => {
+            const evt = payload.eventType;
+            if (evt === 'DELETE') {
+                const brokerId = String(payload.old?.broker_account_id ?? '');
+                if (!brokerId)
+                    return;
+                const cached = this.brokersById.get(brokerId);
+                if (!cached)
+                    return;
+                void this.mergeBrokerRowWithTableConfigs(cached)
+                    .then(merged => this.applyBrokerCacheRow(merged))
+                    .catch(err => {
+                    console.error('[tradeExecutor] channel config delete refresh failed:', err);
+                });
+                return;
+            }
+            const row = payload.new;
+            if (!row?.broker_account_id)
+                return;
+            const cached = this.brokersById.get(row.broker_account_id);
+            if (!cached)
+                return;
+            this.applyBrokerCacheRow((0, brokerChannelTradingConfigs_1.applyBrokerChannelTradingConfigRow)(cached, row));
         })
             .subscribe();
     }
@@ -396,11 +558,16 @@ class TradeExecutor {
         for (const row of (data ?? [])) {
             if (this.inflight.has(row.id))
                 continue;
+            if (await (0, signalRangeEntryHelpers_1.hasActiveSignalRangeEntryWait)(this.supabase, row.id))
+                continue;
             if (await this.signalAlreadyHandled(row.id)) {
                 await this.markSignalExecuted(row.id);
                 continue;
             }
-            this.enqueueSignal(row, { source: 'sweep' });
+            this.acceptDispatchSignal(row, {
+                source: 'sweep',
+                priority: (0, tradeSignalActions_1.dispatchPriorityForAction)((0, tradeSignalActions_1.parsedAction)(row.parsed_data)),
+            });
         }
     }
     /**
@@ -428,16 +595,20 @@ class TradeExecutor {
         // cache hit by the time it runs.
         this.prewarmForDispatch(rowWithTs);
         const entryFast = this.shouldUseEntryFastPath(rowWithTs);
+        const mgmtFast = dispatch.shouldUseMgmtFastPath(rowWithTs, source);
+        const useFastPath = entryFast || mgmtFast;
+        if (entryFast)
+            this.kickLiveEntryPrewarm(rowWithTs);
         const listenerTs = (0, pipelineTimestamps_1.parsePipelineTimestamps)(rowWithTs.pipeline_ts);
         if (source === 'listener_push'
             && !listenerTs?.t_listener_received) {
             console.warn(`[tradeExecutor] listener_push missing pipeline_ts listener stamps signal=${row.id}`
                 + ' — redeploy listener service (LISTENER_INLINE_PARSE + pipeline_ts on dispatch)');
         }
-        if (!entryFast) {
+        if (!useFastPath) {
             void this.logPipelineStage(rowWithTs, 'dispatch_received', { source, priority: opts?.priority ?? null });
         }
-        if (entryFast) {
+        if (useFastPath) {
             if (this.inflight.has(row.id) || this.queuedIds.has(row.id))
                 return true;
             void this.handleSignal(rowWithTs, {
@@ -467,6 +638,7 @@ class TradeExecutor {
             return false;
         }
         const source = opts?.source ?? 'queue';
+        const isRangeWake = source === signalRangeEntryHelpers_1.SIGNAL_RANGE_WAKE_DISPATCH_SOURCE;
         const receivedAt = Date.now();
         const rowWithTs = {
             ...row,
@@ -476,17 +648,31 @@ class TradeExecutor {
             },
         };
         this.prewarmForDispatch(rowWithTs);
-        const entryFast = this.shouldUseEntryFastPath(rowWithTs);
-        if (!entryFast) {
+        const entryFast = isRangeWake || this.shouldUseEntryFastPath(rowWithTs);
+        const mgmtFast = dispatch.shouldUseMgmtFastPath(rowWithTs, source);
+        const useFastPath = entryFast || mgmtFast;
+        if (entryFast)
+            this.kickLiveEntryPrewarm(rowWithTs);
+        if (!useFastPath) {
             await this.logPipelineStage(rowWithTs, 'dispatch_received', { source, priority: opts?.priority ?? null });
         }
-        if (this.inflight.has(row.id))
-            return true;
+        if (this.inflight.has(row.id)) {
+            if (source === signalRevision_1.MESSAGE_REVISION_DISPATCH_SOURCE) {
+                await dispatch.waitForSignalInflightClear(this, row.id, dispatch.revisionInflightWaitMs(rowWithTs, source));
+            }
+            else if (!isRangeWake) {
+                return true;
+            }
+            else {
+                await dispatch.waitForSignalInflightClear(this, row.id, 15000);
+            }
+        }
         await this.handleSignal(rowWithTs, {
             liveDispatch: true,
             dispatchSource: source,
             dispatchReceivedAt: receivedAt,
-            lightIdempotency: entryFast,
+            lightIdempotency: useFastPath || isRangeWake,
+            wakeBrokerAccountId: opts?.wakeBrokerAccountId ?? row.wake_broker_account_id,
         });
         return true;
     }
@@ -498,6 +684,9 @@ class TradeExecutor {
             priority: (0, tradeSignalActions_1.dispatchPriorityForAction)((0, tradeSignalActions_1.parsedAction)(row.parsed_data)),
             source: 'in_process',
         });
+    }
+    shouldUseMgmtFastPath(row, source) {
+        return dispatch.shouldUseMgmtFastPath(row, source);
     }
     shouldUseEntryFastPath(row) {
         return dispatch.shouldUseEntryFastPath(this, row);
@@ -615,6 +804,9 @@ class TradeExecutor {
     async tryParameterFollowUpMergeModifyOnly(args) {
         return await basketMerge.tryParameterFollowUpMergeModifyOnly(this, args);
     }
+    async tryTeaserCompletionMerge(args) {
+        return await basketMerge.tryTeaserCompletionMerge(this, args);
+    }
     /**
      * After parallel multi immediates, re-apply per-leg TPs (Targets %) in case the
      * broker accepted orders but normalized every leg to the same TP.
@@ -638,11 +830,11 @@ class TradeExecutor {
         return await basketMerge.tryMergeSignalIntoExistingOpenTrade(this, args);
     }
     async sweepExpiredTscopierBrokerPendings() {
-        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
+        if (!(0, fxsocketClient_1.hasFxsocketConfigured)())
             return;
         if (String(process.env.WORKER_BROKER_PENDING_EXPIRY_SWEEP ?? '').toLowerCase() !== 'true')
             return;
-        const brokers = Array.from(this.brokersById.values()).filter(b => b.is_active && (0, helpers_2.isMtUuid)(b.metaapi_account_id) && (b.copier_mode ?? 'ai') === 'manual');
+        const brokers = Array.from(this.brokersById.values()).filter(b => b.is_active && (0, helpers_2.brokerHasLinkedSession)(b) && (b.copier_mode ?? 'ai') === 'manual');
         if (!brokers.length)
             return;
         const now = Date.now();
@@ -651,7 +843,7 @@ class TradeExecutor {
             const ttlH = (0, manualPlanner_1.clampPendingExpiryHours)(manual.pending_expiry_hours);
             if (ttlH <= 0)
                 continue;
-            const uuid = broker.metaapi_account_id;
+            const uuid = (0, helpers_2.brokerSessionUuid)(broker);
             const api = this.apiFor(broker);
             if (!api)
                 continue;
@@ -673,7 +865,7 @@ class TradeExecutor {
                 const ticket = Number(o.ticket ?? o.Ticket ?? o.orderId ?? o.OrderID ?? 0);
                 if (!operation.includes('Limit') && !operation.includes('Stop'))
                     continue;
-                if (!comment.startsWith('TSCopier:'))
+                if (!(0, tscopierComment_1.isTscopierComment)(comment))
                     continue;
                 if (!Number.isFinite(ticket) || ticket <= 0)
                     continue;
@@ -728,6 +920,17 @@ class TradeExecutor {
     prewarmForDispatch(row) {
         return brokerSymbolCache.prewarmForDispatch(this, row);
     }
+    /** Session + symbol cache warmup for channel-matched brokers on the live fast path. */
+    kickLiveEntryPrewarm(row) {
+        const parsed = row.parsed_data;
+        const signalSymbol = parsed?.symbol?.trim();
+        if (!signalSymbol)
+            return;
+        const warmBrokers = (this.brokersByUser.get(row.user_id) ?? []).filter(b => b.is_active && (0, helpers_2.brokerHasLinkedSession)(b) && (0, brokerChannelFilter_1.channelMatchesBrokerSignal)(b, row.channel_id));
+        if (warmBrokers.length > 0) {
+            void this.prewarmBrokersForLiveEntry(warmBrokers, signalSymbol);
+        }
+    }
     /** Warm session + symbol caches once per live signal before OrderSend. */
     async prewarmBrokersForLiveEntry(brokers, signalSymbol) {
         return await brokerSymbolCache.prewarmBrokersForLiveEntry(this, brokers, signalSymbol);
@@ -742,34 +945,67 @@ class TradeExecutor {
             });
             return { openedOrMerged: false, finalizeSkipReason: configReady.reason };
         }
-        const effectiveBroker = (0, channelTradingConfig_1.withChannelTradingConfig)(broker, signal.channel_id);
-        const resolved = (0, channelTradingConfig_1.resolveChannelTradingConfig)(broker, signal.channel_id);
-        const entryKey = `${signal.id}:${effectiveBroker.id}`;
-        if (await (0, helpers_1.manualDispatchAlreadyMaterialized)(this, signal.id, effectiveBroker.id)) {
-            console.warn(`[tradeExecutor] skip already materialized signal=${signal.id} broker=${effectiveBroker.id}`);
-            return { openedOrMerged: true };
+        let executionBroker = broker;
+        if (signal.channel_id) {
+            const fresh = await (0, brokerChannelTradingConfigs_1.fetchFreshBrokerForChannel)(this.supabase, broker, signal.channel_id);
+            if (fresh.channel_trading_configs !== broker.channel_trading_configs) {
+                this.applyBrokerCacheRow(fresh);
+                executionBroker = this.brokersById.get(broker.id) ?? fresh;
+            }
         }
+        const effectiveBroker = (0, channelTradingConfig_1.withChannelTradingConfig)(executionBroker, signal.channel_id);
+        const resolved = (0, channelTradingConfig_1.resolveChannelTradingConfig)(executionBroker, signal.channel_id);
+        const entryKey = `${signal.id}:${effectiveBroker.id}`;
+        const liveFast = sendOpts?.liveEntryFast === true;
+        if (!liveFast) {
+            if (await (0, helpers_1.manualDispatchAlreadyMaterialized)(this, signal.id, effectiveBroker.id)) {
+                console.warn(`[tradeExecutor] skip already materialized signal=${signal.id} broker=${effectiveBroker.id}`);
+                return { openedOrMerged: true };
+            }
+        }
+        const isRevisionRefresh = sendOpts?.sameSignalRefresh === true;
+        const isRangeWake = signal.dispatch_source === signalRangeEntryHelpers_1.SIGNAL_RANGE_WAKE_DISPATCH_SOURCE;
         if (this.entryBrokerInflight.has(entryKey)) {
-            console.warn(`[tradeExecutor] skip duplicate in-flight sendOrder signal=${signal.id} broker=${effectiveBroker.id}`);
-            return { openedOrMerged: true };
+            if (isRevisionRefresh) {
+                const deadline = Date.now() + 60000;
+                while (this.entryBrokerInflight.has(entryKey) && Date.now() < deadline) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+            }
+            else {
+                const materialized = liveFast
+                    ? true
+                    : await (0, helpers_1.manualDispatchAlreadyMaterialized)(this, signal.id, effectiveBroker.id);
+                console.warn(`[tradeExecutor] skip duplicate in-flight sendOrder signal=${signal.id} broker=${effectiveBroker.id}`
+                    + ` materialized=${materialized}`);
+                return { openedOrMerged: materialized };
+            }
         }
         this.entryBrokerInflight.add(entryKey);
         try {
-            const claimed = await (0, signalBrokerDispatchClaim_1.claimSignalBrokerDispatch)(this.supabase, signal.id, effectiveBroker.id);
-            if (!claimed) {
-                console.warn(`[tradeExecutor] skip duplicate dispatch claim signal=${signal.id} broker=${effectiveBroker.id}`);
-                return { openedOrMerged: true };
+            if (!isRevisionRefresh) {
+                if (isRangeWake) {
+                    await (0, signalBrokerDispatchClaim_1.releaseSignalBrokerDispatchClaim)(this.supabase, signal.id, effectiveBroker.id);
+                }
+                const claimed = await (0, signalBrokerDispatchClaim_1.claimSignalBrokerDispatch)(this.supabase, signal.id, effectiveBroker.id);
+                if (!claimed) {
+                    const materialized = await (0, helpers_1.manualDispatchAlreadyMaterialized)(this, signal.id, effectiveBroker.id);
+                    console.warn(`[tradeExecutor] skip duplicate dispatch claim signal=${signal.id} broker=${effectiveBroker.id}`
+                        + ` materialized=${materialized}`);
+                    return { openedOrMerged: materialized };
+                }
             }
             const ms = resolved.manual_settings;
             console.log(`[tradeExecutor] sendOrder signal=${signal.id} broker=${effectiveBroker.id}`
                 + ` channel=${signal.channel_id ?? 'none'} source=${resolved.config_source}`
-                + ` style=${String(ms.trade_style ?? 'single')} fixed_lot=${String(ms.fixed_lot ?? 'missing')}`);
+                + ` style=${String(ms.trade_style ?? 'single')} fixed_lot=${String(ms.fixed_lot ?? 'missing')}`
+                + ` range_trading=${ms.range_trading === true}`);
             const isManual = (effectiveBroker.copier_mode ?? 'ai') === 'manual';
             const manual = (effectiveBroker.manual_settings ?? {});
             if (isManual && manual.trade_style === 'multi') {
-                return await (0, entryRouter_1.runRangeEntry)(this, { signal, parsed, op, broker: effectiveBroker, channelKeywords, pipelineT0, sendOpts });
+                return await (0, rangeTradeExecutor_1.runRangeEntry)(this, { signal, parsed, op, broker: effectiveBroker, channelKeywords, pipelineT0, sendOpts });
             }
-            return await (0, entryRouter_1.runSingleEntry)(this, { signal, parsed, op, broker: effectiveBroker, channelKeywords, pipelineT0, sendOpts });
+            return await (0, singleEntryExecutor_1.runSingleEntry)(this, { signal, parsed, op, broker: effectiveBroker, channelKeywords, pipelineT0, sendOpts });
         }
         finally {
             this.entryBrokerInflight.delete(entryKey);
@@ -781,35 +1017,35 @@ class TradeExecutor {
     async skipMgmtSignal(signalId, reason) {
         return await managementExecutor.skipMgmtSignal(this, signalId, reason);
     }
-    async applyManagement(signal, parsed, brokers) {
-        return await managementExecutor.applyManagement(this, signal, parsed, brokers);
+    async applyManagement(signal, parsed, brokers, mgmtOpts) {
+        return await managementExecutor.applyManagement(this, signal, parsed, brokers, mgmtOpts);
     }
     /**
      * Telegram "Close worse entries": close open basket legs whose entry is within
      * `close_worse_entries_pips` of the live quote at instruction time.
      */
-    async applyCloseWorseEntriesInstruction(signal, parsed, rows, byBroker) {
-        return await managementExecutor.applyCloseWorseEntriesInstruction(this, signal, parsed, rows, byBroker);
+    async applyCloseWorseEntriesInstruction(signal, parsed, rows, byBroker, mgmtOpts) {
+        return await managementExecutor.applyCloseWorseEntriesInstruction(this, signal, parsed, rows, byBroker, mgmtOpts);
     }
     /**
      * One-time cleanup of broker-side BuyLimit/SellLimit orders left over from
-     * the pre-virtual-pendings era. Filters by our `TSCopier:` comment prefix so
+     * the pre-virtual-pendings era. Filters by our `TScopier:` comment prefix so
      * we never touch orders placed by the user manually or other systems.
      *
      * Gated by env flag `WORKER_LEGACY_PENDING_CLEANUP=true`. Safe to leave on
      * indefinitely — it becomes a no-op once the legacy pendings are gone.
      */
     async cleanupLegacyBrokerPendings() {
-        if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
+        if (!(0, fxsocketClient_1.hasFxsocketConfigured)())
             return;
-        const brokers = Array.from(this.brokersById.values()).filter(b => b.is_active && (0, helpers_2.isMtUuid)(b.metaapi_account_id));
+        const brokers = Array.from(this.brokersById.values()).filter(b => b.is_active && (0, helpers_2.brokerHasLinkedSession)(b));
         if (!brokers.length)
             return;
         console.log(`[tradeExecutor] legacy pending cleanup: scanning ${brokers.length} brokers...`);
         let totalClosed = 0;
         let totalFailed = 0;
         for (const broker of brokers) {
-            const uuid = broker.metaapi_account_id;
+            const uuid = (0, helpers_2.brokerSessionUuid)(broker);
             const api = this.apiFor(broker);
             if (!api)
                 continue;
@@ -830,7 +1066,7 @@ class TradeExecutor {
                 const ticket = Number(o.ticket ?? o.Ticket ?? o.orderId ?? o.OrderID ?? 0);
                 if (!operation.includes('Limit') && !operation.includes('Stop'))
                     continue;
-                if (!comment.startsWith('TSCopier:'))
+                if (!(0, tscopierComment_1.isTscopierComment)(comment))
                     continue;
                 if (!Number.isFinite(ticket) || ticket <= 0)
                     continue;
@@ -869,11 +1105,11 @@ class TradeExecutor {
     async fetchSymbolList(uuid) {
         return await brokerSymbolCache.fetchSymbolList(this, uuid);
     }
-    resolveBrokerSymbolFromInventory(inventory, requested) {
-        return brokerSymbolCache.resolveBrokerSymbolFromInventory(this, inventory, requested);
+    resolveBrokerSymbolFromInventory(inventory, requested, opts) {
+        return brokerSymbolCache.resolveBrokerSymbolFromInventory(this, inventory, requested, opts);
     }
-    async resolveBrokerSymbolForLiveEntry(uuid, requested) {
-        return await brokerSymbolCache.resolveBrokerSymbolForLiveEntry(this, uuid, requested);
+    async resolveBrokerSymbolForLiveEntry(uuid, requested, opts) {
+        return await brokerSymbolCache.resolveBrokerSymbolForLiveEntry(this, uuid, requested, opts);
     }
     async deferredVirtualPendingMaterialize(args) {
         const { signal, broker, uuid, api, symbol, virtualPendings, parsed, plan, params, strictEntryPrefetch, } = args;
@@ -901,11 +1137,24 @@ class TradeExecutor {
         const safe = Math.max(Number(params?.stopsLevel) || 0, Number(params?.freezeLevel) || 0);
         const zoneHi = safe > 0 ? anchor + (safe + 2) * (params?.point ?? 0) : null;
         const zoneLo = safe > 0 ? anchor - (safe + 2) * (params?.point ?? 0) : null;
+        const signalRangeBoundary = plan.rangeLayering?.signalRangeBoundary ?? null;
+        const signalZoneLo = plan.rangeLayering?.signalZoneLo ?? null;
+        const signalZoneHi = plan.rangeLayering?.signalZoneHi ?? null;
+        const useSignalEntryRange = plan.rangeLayering?.useSignalEntryRange === true;
         const nowMs = Date.now();
         const insertRows = [];
         for (const v of virtualPendings) {
             const triggerPrice = (0, helpers_2.triggerPriceFor)(v, anchor, digits);
-            if (zoneHi != null && zoneLo != null && triggerPrice > zoneLo && triggerPrice < zoneHi) {
+            if (!(0, helpers_2.virtualPendingTriggerAllowed)({
+                triggerPrice,
+                signalRangeBoundary,
+                isBuy: v.isBuy,
+                stopsZoneLo: zoneLo,
+                stopsZoneHi: zoneHi,
+                signalZoneLo,
+                signalZoneHi,
+                useSignalEntryRange,
+            })) {
                 continue;
             }
             const expiresAt = v.expiryHours && v.expiryHours > 0
@@ -946,8 +1195,29 @@ class TradeExecutor {
      *   2. Fall back to fuzzy matching against `/Symbols` using common broker suffixes
      *      and prefix/suffix substitution. Picks the shortest match (closest variant).
      */
-    async resolveBrokerSymbol(uuid, requested) {
-        return await brokerSymbolCache.resolveBrokerSymbol(this, uuid, requested);
+    async resolveBrokerSymbol(uuid, requested, opts) {
+        return await brokerSymbolCache.resolveBrokerSymbol(this, uuid, requested, opts);
+    }
+    async fetchCopyLimitState(brokerId, channelId) {
+        const key = `${brokerId}:${(0, channelTradingConfig_2.normalizeChannelUuid)(channelId) ?? channelId}`;
+        const hit = this.copyLimitStateCache.get(key);
+        if (hit && Date.now() - hit.at < 20000)
+            return hit.state;
+        const channelKey = (0, channelTradingConfig_2.normalizeChannelUuid)(channelId);
+        if (!channelKey)
+            return { paused_period_keys: [], periods: {} };
+        const { data, error } = await this.supabase
+            .from('broker_channel_trading_configs')
+            .select('copy_limit_state')
+            .eq('broker_account_id', brokerId)
+            .eq('channel_id', channelKey)
+            .maybeSingle();
+        if (error) {
+            console.warn(`[tradeExecutor] fetchCopyLimitState failed: ${error.message}`);
+        }
+        const state = (0, copyLimitTypes_1.normalizeCopyLimitState)(data?.copy_limit_state);
+        this.copyLimitStateCache.set(key, { state, at: Date.now() });
+        return state;
     }
 }
 exports.TradeExecutor = TradeExecutor;

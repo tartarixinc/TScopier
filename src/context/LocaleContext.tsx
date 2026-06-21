@@ -1,5 +1,4 @@
 import {
-  createContext,
   useCallback,
   useContext,
   useEffect,
@@ -7,35 +6,34 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { getTranslations, type Translations } from '../i18n/locales'
+import { getTranslations, loadTranslations } from '../i18n/locales'
 import {
   DEFAULT_LOCALE,
   LOCALE_STORAGE_KEY,
+  isLocale,
   type Locale,
 } from '../i18n/types'
+import { LocaleContext } from './localeContextInstance'
+
+function detectBrowserLocale(): Locale | null {
+  if (typeof navigator === 'undefined') return null
+  const lang = navigator.language.split('-')[0]?.toLowerCase()
+  return isLocale(lang) ? lang : null
+}
 
 function readStoredLocale(): Locale {
   try {
     const raw = localStorage.getItem(LOCALE_STORAGE_KEY)
-    if (raw === 'en' || raw === 'es' || raw === 'fr') return raw
+    if (isLocale(raw)) return raw
   } catch {
     /* private mode */
   }
-  return DEFAULT_LOCALE
+  return detectBrowserLocale() ?? DEFAULT_LOCALE
 }
-
-interface LocaleContextValue {
-  locale: Locale
-  setLocale: (locale: Locale) => void
-  t: Translations
-  /** @deprecated Use `t.auth` */
-  auth: Translations['auth']
-}
-
-const LocaleContext = createContext<LocaleContextValue | null>(null)
 
 export function LocaleProvider({ children }: { children: ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>(() => readStoredLocale())
+  const [t, setT] = useState(() => getTranslations(locale))
 
   const setLocale = useCallback((next: Locale) => {
     setLocaleState(next)
@@ -48,9 +46,14 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     document.documentElement.lang = locale
+    let cancelled = false
+    void loadTranslations(locale).then(translations => {
+      if (!cancelled) setT(translations)
+    })
+    return () => {
+      cancelled = true
+    }
   }, [locale])
-
-  const t = useMemo(() => getTranslations(locale), [locale])
 
   const value = useMemo(
     () => ({

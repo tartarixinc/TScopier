@@ -2,8 +2,8 @@
  * End-to-end latency stamps for live entry signals (Telegram → OrderSend).
  */
 export type PipelineTimestamps = {
-  /** Unix ms when listener applied a Telegram message edit to this signal. */
-  t_message_edit_received?: number
+  /** Unix ms when AI/deterministic modification parse completed. */
+  t_ai_parse_done?: number
   t_telegram_event?: number
   t_listener_received?: number
   t_parse_done?: number
@@ -39,7 +39,7 @@ export function parsePipelineTimestamps(raw: unknown): PipelineTimestamps | unde
     return typeof v === 'number' && Number.isFinite(v) ? v : undefined
   }
   const ts: PipelineTimestamps = {
-    t_message_edit_received: n('t_message_edit_received'),
+    t_ai_parse_done: n('t_ai_parse_done'),
     t_telegram_event: n('t_telegram_event'),
     t_listener_received: n('t_listener_received'),
     t_parse_done: n('t_parse_done'),

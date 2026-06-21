@@ -13,6 +13,11 @@ from telethon.errors import SessionPasswordNeededError
 from telethon.sessions import StringSession
 
 from .config import Config
+from .telegram_account_claims import (
+    assert_telegram_account_available,
+    normalize_telegram_phone,
+    upsert_telegram_account_claim,
+)
 
 
 @dataclass
@@ -33,6 +38,8 @@ class AuthService:
         self._pending: dict[str, PendingAuth] = {}
 
     async def send_code(self, user_id: str, phone: str) -> dict[str, str]:
+        normalized_phone = normalize_telegram_phone(phone)
+        assert_telegram_account_available(self.supabase, user_id, phone=normalized_phone)
         await self._cleanup_pending(user_id)
         client = TelegramClient(
             StringSession(""),
@@ -40,10 +47,10 @@ class AuthService:
             self.cfg.telegram_api_hash,
         )
         await client.connect()
-        result = await client.send_code_request(phone)
+        result = await client.send_code_request(normalized_phone)
         self._pending[user_id] = PendingAuth(
             client=client,
-            phone=phone.strip(),
+            phone=normalized_phone,
             phone_code_hash=result.phone_code_hash,
             created_at=asyncio.get_event_loop().time(),
         )
@@ -51,7 +58,7 @@ class AuthService:
         self.supabase.table("telegram_auth_pending").upsert(
             {
                 "user_id": user_id,
-                "phone": phone.strip(),
+                "phone": normalized_phone,
                 "phone_code_hash": result.phone_code_hash,
                 "expires_at": expires,
                 "awaiting_password": False,
@@ -96,6 +103,15 @@ class AuthService:
         self._pending.pop(user_id, None)
         self.supabase.table("telegram_auth_pending").delete().eq("user_id", user_id).execute()
 
+        me = await pending.client.get_me()
+        telegram_user_id = int(me.id)
+        assert_telegram_account_available(
+            self.supabase,
+            user_id,
+            phone=pending.phone,
+            telegram_user_id=telegram_user_id,
+        )
+
         self.supabase.table("telegram_sessions").upsert(
             {
                 "user_id": user_id,
@@ -106,6 +122,13 @@ class AuthService:
             },
             on_conflict="user_id",
         ).execute()
+
+        upsert_telegram_account_claim(
+            self.supabase,
+            user_id,
+            phone=pending.phone,
+            telegram_user_id=telegram_user_id,
+        )
 
         await self.session_manager.adopt_client(user_id, pending.client, session_string)
         channels = await self.session_manager.list_channels(user_id)

@@ -129,6 +129,24 @@ Use **multi** when the channel posts two take-profits and you want two separate 
 
 **Message edits (same Telegram post updated):** Some channels post a bare entry first (`Gold buy now`) and **edit the same message** later to add `@ entry`, SL, and TP. The listener detects edits (and duplicate message-id replays with changed text), re-parses the existing `signals` row, and re-dispatches with `source=message_edit` so open legs get **SL/TP updates only**. Phase 1 does **not** change entry price on already-open market fills; entry-only edits are ignored until SL or TP appears in the parsed message. Requires worker + Telethon listener redeploy and migration `20260526120000_signals_telegram_message_edited_at.sql`.
 
+## 9. Multilingual channels
+
+Foreign-language Telegram channels are supported via **per-channel AI training** (Account Config → AI Training). On link, the worker backfills recent history (instrument + price filter) and trains channel-native buy/sell/SL/TP keywords.
+
+**Diagnose skipped foreign signals:**
+
+1. Replay parse with stored keywords:
+
+```bash
+./scripts/diagnostics/replay_channel_parse.sh \
+  --channel-id CHANNEL_UUID \
+  --message 'COMPRA XAUUSD @ 2650 SL 2640 TP 2670'
+```
+
+2. Check `listener_events` (query #12): `heuristic_rejected` means the ingest gate dropped the message before parse; `signals.status = skipped` with keyword skip means parse missed — **re-run Train channel** in Account Config.
+
+3. Optional worker env `AI_ENTRY_PARSE_ENABLED=true` (requires `OPENAI_API_KEY`) adds OpenAI fallback when deterministic entry parse fails.
+
 ## 8. Incident note template
 
 ```

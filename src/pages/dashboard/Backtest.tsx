@@ -21,6 +21,7 @@ import type {
   SimpleBacktestConfig,
   StoredBacktestSignal,
 } from '../../lib/backtestTypes'
+import { lossTextClass, pipValueTextClass, profitTextClass } from '../../lib/pnlDisplay'
 import { buildSymbolProfiles } from '../../components/backtest/ProfileSignalsPanel'
 import { BacktestResultsList } from '../../components/backtest/BacktestResultsList'
 import { BacktestResultModal } from '../../components/backtest/BacktestResultModal'
@@ -103,6 +104,7 @@ export function Backtest() {
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null)
   const [profileNote, setProfileNote] = useState('')
   const [profiling, setProfiling] = useState(false)
+  const [profileProgress, setProfileProgress] = useState({ pct: 0, message: '' })
   const [profileKey, setProfileKey] = useState('')
   const [step, setStep] = useState<FlowStep>('configure')
   const [activeRun, setActiveRun] = useState<BacktestRunRow | null>(null)
@@ -229,6 +231,7 @@ export function Backtest() {
   const showResults = useCallback(() => setStep('results'), [])
 
   const profileSignals = async () => {
+    if (!user?.id) return
     if (!selectedChannelId) {
       setError(bt.selectChannelError)
       return
@@ -240,9 +243,17 @@ export function Backtest() {
     setProfileKey('')
     clearResults()
     setProfiling(true)
+    setProfileProgress({ pct: 0, message: bt.pullingSignals })
     try {
       const config = buildConfig(selectedChannelId, dateFrom, dateTo)
-      const result = await backtestApi.sync(config)
+      const result = await backtestApi.syncAndWait(config, user.id, {
+        onTick: (run) => {
+          setProfileProgress({
+            pct: Number(run.progress_pct ?? 0),
+            message: run.progress_message ?? bt.pullingSignals,
+          })
+        },
+      })
       let signals = await loadStoredSignals(selectedChannelId, dateFrom, dateTo)
       if (signals.length === 0 && result.imported > 0) {
         for (let attempt = 0; attempt < 3; attempt++) {
@@ -277,6 +288,7 @@ export function Backtest() {
       setError(userError(e))
     } finally {
       setProfiling(false)
+      setProfileProgress({ pct: 0, message: '' })
     }
   }
 
@@ -341,7 +353,6 @@ export function Backtest() {
     }
   }
 
-  const totalPipsTone = totalPips == null ? 'neutral' : totalPips >= 0 ? 'good' : 'bad'
   const canProfile = Boolean(selectedChannelId) && !isBusy
   const canBacktest = hasValidProfile && Boolean(selectedSymbol) && !isBusy && hasBacktestAccess
 
@@ -478,7 +489,7 @@ export function Backtest() {
             {profiling ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                {bt.pullingSignals}
+                {profileProgress.message || bt.pullingSignals}
               </>
             ) : (
               <>
@@ -488,6 +499,17 @@ export function Backtest() {
               </>
             )}
           </Button>
+
+          {profiling ? (
+            <div className="space-y-2">
+              <div className="h-2 rounded-full bg-teal-100 dark:bg-teal-900 overflow-hidden">
+                <div
+                  className="h-full bg-teal-500 transition-all duration-500"
+                  style={{ width: `${Math.min(100, Math.max(profileProgress.pct, 4))}%` }}
+                />
+              </div>
+            </div>
+          ) : null}
         </section>
       ) : null}
 
@@ -614,13 +636,7 @@ export function Backtest() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4 col-span-2 sm:col-span-1">
               <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">{bt.totalPips}</p>
-              <p
-                className={clsx(
-                  'text-3xl font-bold tabular-nums mt-1',
-                  totalPipsTone === 'good' && 'text-teal-600',
-                  totalPipsTone === 'bad' && 'text-error-600',
-                )}
-              >
+              <p className={clsx('text-3xl font-bold tabular-nums mt-1', pipValueTextClass(totalPips))}>
                 {formatPipValue(totalPips)}
               </p>
             </div>
@@ -632,7 +648,11 @@ export function Backtest() {
                 </div>
                 <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
                   <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">{bt.winLoss}</p>
-                  <p className="text-2xl font-bold mt-1 tabular-nums">{summary.wins}/{summary.losses}</p>
+                  <p className="text-2xl font-bold mt-1 tabular-nums">
+                    <span className={profitTextClass}>{summary.wins}</span>
+                    <span className="text-neutral-300 dark:text-neutral-600">/</span>
+                    <span className={lossTextClass}>{summary.losses}</span>
+                  </p>
                 </div>
                 <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
                   <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">{bt.signalsLabel}</p>

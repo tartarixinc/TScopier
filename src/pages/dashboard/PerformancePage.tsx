@@ -13,6 +13,7 @@ import {
 import { useAuth } from '../../context/AuthContext'
 import { useT } from '../../context/LocaleContext'
 import { useFormatMoney } from '../../hooks/useFormatMoney'
+import { lossTextClass, pnlTone, profitTextClass } from '../../lib/pnlDisplay'
 import { interpolate } from '../../i18n/interpolate'
 import { buildAccountGrowthSeries, buildTradeVolumeByDays } from '../../lib/dashboardCharts'
 import {
@@ -168,22 +169,33 @@ export function PerformancePage() {
       {!loading && !error && accounts.length > 0 && !hasMtBrokers ? (
         <Alert>{p.noMtBroker}</Alert>
       ) : null}
-      {!loading && !error && hasMtBrokers && !hasMtHistory ? (
+      {!loading && !refreshing && !error && hasMtBrokers && !hasMtHistory ? (
         <Alert>{p.noTradeHistory}</Alert>
       ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <PerformanceStatCard
           label={p.realizedPnl}
+          amount={stats.realizedPnl}
           value={loading ? '—' : formatSignedMoney(stats.realizedPnl)}
           sub={interpolate(p.closedTrades, { count: String(stats.tradesTaken) })}
           icon={stats.realizedPnl >= 0 ? ArrowUpRight : ArrowDownRight}
-          tone={stats.realizedPnl > 0 ? 'positive' : stats.realizedPnl < 0 ? 'negative' : 'neutral'}
+          tone={pnlTone(stats.realizedPnl)}
         />
         <PerformanceStatCard
           label={p.winRate}
           value={loading ? '—' : formatPct(stats.winRate, 0)}
-          sub={interpolate(p.winLoss, { won: String(stats.tradesWon), lost: String(stats.tradesLost) })}
+          sub={
+            <span className="inline-flex flex-wrap items-center gap-x-1">
+              <span className={profitTextClass}>
+                {interpolate(t.common.won, { count: stats.tradesWon })}
+              </span>
+              <span className="text-neutral-300 dark:text-neutral-600">·</span>
+              <span className={lossTextClass}>
+                {interpolate(t.common.lost, { count: stats.tradesLost })}
+              </span>
+            </span>
+          }
           icon={Target}
           tone={
             stats.winRate != null && stats.winRate >= 50

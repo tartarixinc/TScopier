@@ -13,29 +13,15 @@ import { useNavigate } from 'react-router-dom'
 import {
   Search,
   X,
-  LayoutDashboard,
-  Settings,
-  History,
-  Send,
-  LayoutTemplate,
-  ScrollText,
-  Newspaper,
-  Calendar,
-  ChartBar as BarChart2,
-  ChartNoAxesColumn,
-  LifeBuoy,
-  Lightbulb,
-  Handshake,
-  Share2,
-  CreditCard,
-  Repeat,
   Server,
   Radio,
+  type LucideIcon,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useT } from '../../context/LocaleContext'
+import { APP_ROUTE_ICONS, getAppRouteIcon } from '../../lib/appNavIcons'
 import {
   buildAppSearchPages,
   filterSearchResults,
@@ -44,28 +30,10 @@ import {
   type AppSearchResultKind,
 } from '../../lib/appSearch'
 
-const PAGE_ICONS: Record<string, typeof LayoutDashboard> = {
-  '/dashboard': LayoutDashboard,
-  '/account-configuration': Settings,
-  '/account-trades': History,
-  '/settings': Settings,
-  '/channels': Send,
-  '/backtest': LayoutTemplate,
-  '/copier-logs': ScrollText,
-  '/updates': ChartNoAxesColumn,
-  '/performance': BarChart2,
-  '/market-news': Newspaper,
-  '/economic-calendar': Calendar,
-  '/contact-support': LifeBuoy,
-  '/feature-request': Lightbulb,
-  '/partner-with-us': Handshake,
-  '/affiliate-program': Share2,
-  '/billing': CreditCard,
-  '/subscriptions': Repeat,
-}
+const PAGE_ICONS = APP_ROUTE_ICONS
 
-const KIND_ICONS: Record<AppSearchResultKind, typeof LayoutDashboard> = {
-  page: LayoutDashboard,
+const KIND_ICONS: Record<AppSearchResultKind, LucideIcon> = {
+  page: getAppRouteIcon('/dashboard'),
   broker: Server,
   channel: Radio,
 }
@@ -191,7 +159,7 @@ function useAppSearchController(headerEl: HTMLElement | null) {
       kind: 'broker',
       title: b.label,
       subtitle: b.server || undefined,
-      path: '/account-configuration',
+      path: '/brokers',
       sectionLabel: t.globalSearch.groupBrokers,
       keywords: [b.server, b.id, 'broker', 'account'],
     }))

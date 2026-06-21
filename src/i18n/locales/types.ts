@@ -1,5 +1,9 @@
 import type { AuthTranslations } from '../auth/types'
 import type { ChannelWorkerTranslations } from '../channelWorker/types'
+import type { ContactSupportPageTranslations } from '../contactSupport/types'
+import type { RiskDisclaimerPageTranslations } from '../riskDisclaimer/types'
+import type { LegalDocumentPageTranslations } from '../legal/types'
+import type { TradeNotificationsTranslations } from '../tradeNotifications/types'
 import type { ConfigureModalTranslations } from './configureModal/types'
 import type { LandingTranslations } from './landing/types'
 
@@ -20,11 +24,14 @@ export interface NavTranslations {
     feedback: string
     growth: string
     membership: string
+    help: string
   }
   items: {
     dashboard: string
     configuration: string
+    brokers: string
     trades: string
+    management: string
     channels: string
     backtest: string
     copierLogs: string
@@ -45,9 +52,38 @@ export interface NavTranslations {
   closeMenu: string
   expandSidebar: string
   collapseSidebar: string
+  openTradesActive: string
+  highImpactNewsToday: string
   planFree: string
   settings: string
   help: string
+  copierPause: {
+    pauseLabel: string
+    resumeLabel: string
+    pausedHint: string
+    statusRunning: string
+    statusStopped: string
+    statusPaused?: string
+    statusCopierStopped?: string
+    stoppedHintSubscription?: string
+    stoppedHintSetup?: string
+    stopCopier: string
+    confirmTitle: string
+    confirmBody: string
+  }
+  notifications: {
+    title: string
+    close: string
+    loading: string
+    empty: string
+    kindExecuted: string
+    kindModified: string
+    kindClosed: string
+    markAllRead: string
+    viewTrades: string
+    dayToday: string
+    dayYesterday: string
+  }
   helpMenu: {
     title: string
     documentation: string
@@ -90,11 +126,79 @@ export interface CommonTranslations {
   noResults: string
   show: string
   results: string
+  cookieConsent: {
+    message: string
+    policyLink: string
+    accept: string
+    dismiss: string
+  }
 }
 
 export interface PageMeta {
   title: string
   description: string
+}
+
+export interface DashboardBrokerStatsTranslations {
+  close: string
+  refresh: string
+  notFound: string
+  initialBalance: string
+  initialBalanceHint: string
+  connectedAt: string
+  connectedAtHint: string
+  currentBalance: string
+  currentEquity: string
+  totalProfit: string
+  totalProfitHint: string
+  todayProfit: string
+  todayProfitHint: string
+  winRate: string
+  maxDrawdown: string
+  roi: string
+  closedDeals: string
+  connectedChannels: string
+  connectedChannelsHint: string
+  noChannels: string
+  tradesCount: string
+  activeSignalTrade: string
+  activeSignalTradeHint: string
+  noActiveSignalTrade: string
+  openPnl: string
+  openedAt: string
+  direction: string
+  lots: string
+  lastSignalTrade: string
+  lastSignalTradeHint: string
+  noLastSignalTrade: string
+  channel: string
+  symbol: string
+  lastSignalTotalProfit: string
+  seeAll: string
+  profit: string
+  closedAt: string
+  closeChannel: string
+  closeAllChannels: string
+  closeChannelConfirm: string
+  closeAllConfirm: string
+  closeConfirmTitleChannel: string
+  closeConfirmTitleBroker: string
+  closeConfirmTitleAllAccounts: string
+  closeConfirmBodyChannel: string
+  closeConfirmBodyBroker: string
+  closeConfirmBodyAllAccounts: string
+  closeConfirmAction: string
+  closeConfirmWarning: string
+  closeConfirmAccount: string
+  closeConfirmPositionsLabel: string
+  closeConfirmPositions: string
+  closeConfirmLots: string
+  closeConfirmChannelCount: string
+  closing: string
+  closeSuccess: string
+  closePartial: string
+  closeFailed: string
+  closeDisconnected: string
 }
 
 export interface DashboardLinkedAccountsTranslations {
@@ -116,25 +220,35 @@ export interface DashboardLinkedAccountsTranslations {
   statusActive: string
   statusPaused: string
   statusConnected: string
+  statusConnecting: string
+  statusRecovering: string
   accountTypeLive: string
   accountTypeDemo: string
+  accountTypePropFirm: string
   statusDisconnected: string
   reconnect: string
 }
 
 export interface DashboardTranslations {
   title: string
+  loadingMetrics: string
   totalBalance: string
   acrossAccounts: string
   todaysProfit: string
   /** Tooltip: how Today's profit is calculated vs broker terminal. */
   todaysProfitHint: string
   tradesTakenToday: string
+  tradesVsYesterday: string
   noClosedTradesToday: string
   openPnl: string
   openPnlNoOpen: string
   openPnlAcrossOneAccount: string
   openPnlAcrossAccounts: string
+  openPnlModalTitle: string
+  openPnlModalSubtitle: string
+  openPnlModalEmpty: string
+  closeAllAccounts: string
+  closeAllAccountsConfirm: string
   activeSignalChannels: string
   connectedTelegramChannels: string
   manageChannels: string
@@ -162,10 +276,19 @@ export interface DashboardTranslations {
   channelProfitTitle: string
   channelProfitSubtitle: string
   channelProfitEmpty: string
-  channelWorker: string
-  noChannelWorkerLogs: string
+  tradeActivities: string
+  tradeActivitiesHint: string
+  noTradeActivities: string
+  management: string
   noData: string
+  telegramNotConnectedTitle: string
+  telegramNotConnectedBody: string
+  connectTelegram: string
+  pastDuePaymentTitle?: string
+  pastDuePaymentBody?: string
+  payInvoices?: string
   linkedAccounts: DashboardLinkedAccountsTranslations
+  brokerStats: DashboardBrokerStatsTranslations
 }
 
 export interface SignalHistoryPageTranslations {
@@ -180,12 +303,85 @@ export interface SignalHistoryPageTranslations {
   resetFilters: string
   totalFound: string
   noSignals: string
+  colChannel: string
+  colSignal: string
+  colTime: string
+  signalsToday: string
+  signalsLast7d: string
+  signalsLast30d: string
+  signalsTotal: string
+  actionBuy: string
+  actionSell: string
+  actionClose: string
+  actionCloseWorseEntries: string
+  actionBreakeven: string
+  actionModify: string
+  actionPartialProfit: string
+  actionPartialBreakeven: string
+  onSymbol: string
+  entryAt: string
+  slAt: string
+  tpAt: string
+  statusOpen: string
+  statusClosed: string
+  editSignal: string
+  updateLiveTrades: string
+  saving: string
+  originalSignal: string
+  overrideSignal: string
+  applySuccess: string
+  applyFailed: string
+  invalidLevels: string
+  closedReadOnly: string
+  stopLoss: string
+  takeProfits: string
+  addTp: string
+  removeTp: string
+  closeModal: string
+  colStatus: string
+  /** @deprecated legacy stat labels — kept for locale bundles not yet updated */
   updatesReceivedToday: string
   updatesReceivedLast7d: string
   updatesReceivedLast30d: string
   updatesReceivedTotal: string
   updatesReceivedThisWeek: string
   updatesReceivedThisMonth: string
+}
+
+export interface ManagementTranslations {
+  title: string
+  subtitle: string
+  filterAll: string
+  filterSuccessful: string
+  filterSkipped: string
+  filterFailed: string
+  statusSuccessful: string
+  statusSkipped: string
+  statusFailed: string
+  retry: string
+  retryAll: string
+  retrySuccess: string
+  retryAllSuccess: string
+  retryFailedGeneric: string
+  retryFailedDetail: string
+  retryReasonNotFound: string
+  retryReasonNotFailed: string
+  retryReasonNotEligible: string
+  retryReasonNoSignal: string
+  retryReasonNotRetryable: string
+  retryReasonDispatchRejected: string
+  retryReasonWorkerUnavailable: string
+  emptyTitle: string
+  emptySubtitle: string
+  emptyFailedTitle: string
+  kindBreakeven: string
+  kindClose: string
+  kindCloseWorseEntries: string
+  kindModify: string
+  kindOrder: string
+  kindLayering: string
+  kindPipeline: string
+  kindOther: string
 }
 
 export interface CopierLogsTranslations {
@@ -230,10 +426,14 @@ export interface AccountConfigConnectFormTranslations {
   platformMt4: string
   brokerServerLabel: string
   brokerServerHint: string
+  brokerServerPlaceholder: string
   brokerCompanySearchPlaceholder: string
+  brokerCompanySearchServersHeading: string
+  brokerCompanySearchCompaniesHeading: string
   brokerCompanySearchEmpty: string
   brokerCompanySearchMinChars: string
   brokerCompanySearchNoResults: string
+  brokerCompanySearchUseQuery: string
   brokerCompanySearchLoading: string
   brokerCompanySearchError: string
   brokerServerPickerTitle: string
@@ -249,13 +449,55 @@ export interface AccountConfigConnectFormTranslations {
   rememberPasswordLabel: string
   rememberPasswordHint: string
   connectButton: string
+  connectingTitle: string
+  connectingStepLinking: string
+  connectingStepTerminal: string
+  connectingStepSlow: string
   validationRequired: string
   connectFailed: string
+  addMoreButton: string
+  removeRowAria: string
+  connectMultipleButton: string
+  uploadAccountsButton: string
+  accountRowTitle: string
+}
+
+export interface AccountConfigBulkConnectTranslations {
+  title: string
+  securityNote: string
+  downloadTemplate: string
+  uploadCsv: string
+  uploadHint: string
+  previewTitle: string
+  colLabel: string
+  colPlatform: string
+  colServer: string
+  colLogin: string
+  colPassword: string
+  colStatus: string
+  parseErrorLine: string
+  noValidRows: string
+  connectCount: string
+  connectingTitle: string
+  statusQueued: string
+  statusLinking: string
+  statusLinked: string
+  statusFailed: string
+  statusSkippedDuplicate: string
+  statusSkippedLimit: string
+  statusSkippedInvalid: string
+  summaryTitle: string
+  summaryBody: string
+  summaryFailedTitle: string
+  dismiss: string
+  viewBrokers: string
 }
 
 export interface AccountConfigBrokerListTranslations {
   statusPaused: string
   statusConnected: string
+  statusConnecting: string
+  statusRecovering: string
   statusError: string
   statusDisconnected: string
   copyTrades: string
@@ -267,12 +509,15 @@ export interface AccountConfigBrokerListTranslations {
   detailAccountType: string
   accountTypeDemo: string
   accountTypeLive: string
+  accountTypePropFirm: string
   detailServer: string
   detailSignalChannels: string
   detailBalance: string
   detailEquity: string
   channelsNoneSelected: string
   channelsEmptySaveWarning: string
+  channelsSaveChannelListNotReady: string
+  channelsSaveLinkedChannelsInvalid: string
   channelsSignalChannel: string
   channelsAll: string
   relinkOne: string
@@ -284,6 +529,8 @@ export interface AccountConfigBrokerListTranslations {
   connectErrorWrongServer: string
   connectErrorInvestorPassword: string
   connectErrorAccountDisabled: string
+  connectErrorCredentialsRejected: string
+  connectErrorTerminalNotReady: string
   connectErrorSessionExpired: string
   connectErrorUnknown: string
   reconnectFailed: string
@@ -299,6 +546,8 @@ export interface AccountConfigBrokerListTranslations {
   deleteFailed: string
   deleteSessionExpired: string
   duplicateMtLogin: string
+  platformServerMismatchMt4: string
+  platformServerMismatchMt5: string
   deleteTitle: string
   deleteBody: string
   deleteConfirm: string
@@ -312,6 +561,15 @@ export interface AccountConfigBrokerListTranslations {
   accountSearchNoMatch: string
 }
 
+export interface AccountConfigBrokerConnectedSuccessTranslations {
+  title: string
+  titlePending: string
+  body: string
+  bodyPending: string
+  addChannel: string
+  configure: string
+}
+
 export interface AccountConfigTranslations {
   brokersEmptyTitle: string
   brokersEmptySubtitle: string
@@ -319,6 +577,8 @@ export interface AccountConfigTranslations {
   connectForm: AccountConfigConnectFormTranslations
   brokerList: AccountConfigBrokerListTranslations
   configureModal: ConfigureModalTranslations
+  brokerConnectedSuccess: AccountConfigBrokerConnectedSuccessTranslations
+  bulkConnect: AccountConfigBulkConnectTranslations
 }
 
 export interface TradesTranslations {
@@ -386,6 +646,75 @@ export interface EconomicCalendarTranslations {
   relatedNewsEmpty: string
   readArticle: string
   dataByFmp: string
+}
+
+export interface BrokersPageTranslations {
+  title: string
+  subtitle: string
+  mt5OnlyNote: string
+  apiKeyRotationNote: string
+  setupNote: string
+  sectionAccounts: string
+  sectionCompare: string
+  sectionRawLog: string
+  connectTitle: string
+  labelField: string
+  loginField: string
+  passwordField: string
+  serverField: string
+  connectButton: string
+  connecting: string
+  refresh: string
+  delete: string
+  copyUuid: string
+  uuidCopied: string
+  openSwagger: string
+  lastSynced: string
+  noAccounts: string
+  compareFxAccount: string
+  compareLegacyBroker: string
+  symbolField: string
+  runDiagnostics: string
+  runDemoTrade: string
+  compareRunning: string
+  compareTableOperation: string
+  compareTableFxMs: string
+  compareTableLegacyMs: string
+  compareTableDelta: string
+  compareTableStatus: string
+  statusOk: string
+  statusError: string
+  demoTradeTitle: string
+  demoTradeBody: string
+  demoTradeConfirm: string
+  demoTradeCancel: string
+  connectionStatus: {
+    connecting: string
+    connected: string
+    error: string
+    disconnected: string
+  }
+  opLabels: {
+    account_summary: string
+    quote: string
+    opened_orders: string
+    order_send: string
+  }
+  loadError: string
+  connectError: string
+  deleteConfirm: string
+  selectFxAccount: string
+  selectLegacyBroker: string
+  docsUrl: string
+  docsLinkLabel: string
+  v1DocsUrl: string
+  v1DocsLinkLabel: string
+  docsEndpointNote: string
+  linkExistingTitle: string
+  existingUuidField: string
+  linkExistingButton: string
+  connectModeCredentials: string
+  connectModeLinkUuid: string
 }
 
 export interface MarketNewsTranslations {
@@ -492,6 +821,8 @@ export interface SettingsTranslations {
     timezone: string
     newPassword: string
     confirmPassword: string
+    notificationSound: string
+    notificationSoundDescription: string
   }
   placeholders: {
     address: string
@@ -593,8 +924,10 @@ export interface CopierEnginePageTranslations {
   networkError: string
   failedSendCode: string
   verificationFailed: string
+  telegramAlreadyLinked: string
   failedLoadTgChannels: string
   telegramSessionExpired: string
+  telegramConnectionBusy: string
   reconnectTelegram: string
   channelSearchPlaceholder: string
   noChannelSearchResults: string
@@ -799,6 +1132,15 @@ export interface BacktestTranslations {
     be: string
     tp: string
   }
+  replayTitle: string
+  replayLoading: string
+  replayError: string
+  replayPlay: string
+  replayPause: string
+  replayScrub: string
+  replaySourceTicks: string
+  replaySourceBars: string
+  replayExit: string
   errors: {
     rateLimit: string
   }
@@ -833,6 +1175,13 @@ export interface PricingTranslations {
     name: string
     description: string
   }
+  custom: {
+    name: string
+    description: string
+  }
+  contactUs: string
+  contactSales: string
+  customFeatures: string[]
   billing: {
     title: string
     subtitle: string
@@ -844,11 +1193,13 @@ export interface PricingTranslations {
     currentPlan: string
     billed: string
     noActiveSubscription: string
+    noSubscriptionHeaderBanner: string
     freePlan: string
     freePlanSummary: string
     basicPlanSummary: string
     advancedPlanSummary: string
     adminPlanSummary: string
+    adminPlanSummaryUntil: string
     statusLine: string
     invoices: string
     invoicesHint: string
@@ -963,6 +1314,7 @@ export interface AffiliateTranslations {
 export interface Translations {
   auth: AuthTranslations
   channelWorker: ChannelWorkerTranslations
+  tradeNotifications: TradeNotificationsTranslations
   nav: NavTranslations
   globalSearch: GlobalSearchTranslations
   common: CommonTranslations
@@ -970,6 +1322,7 @@ export interface Translations {
   landing: LandingTranslations
   accountConfig: AccountConfigTranslations
   dashboard: DashboardTranslations
+  management: ManagementTranslations
   copierLogs: CopierLogsTranslations
   signalHistoryPage: SignalHistoryPageTranslations
   trades: TradesTranslations
@@ -977,13 +1330,24 @@ export interface Translations {
   copierEnginePage: CopierEnginePageTranslations
   backtest: BacktestTranslations
   marketNews: MarketNewsTranslations
+  brokersPage: BrokersPageTranslations
   economicCalendar: EconomicCalendarTranslations
+  contactSupportPage: ContactSupportPageTranslations
+  riskDisclaimerPage: RiskDisclaimerPageTranslations
+  termsOfServicePage: LegalDocumentPageTranslations
+  privacyPolicyPage: LegalDocumentPageTranslations
+  cookiePolicyPage: LegalDocumentPageTranslations
   performance: PerformanceTranslations
   settings: SettingsTranslations
   affiliate: AffiliateTranslations
   pages: {
     accountConfiguration: PageMeta
+    brokers: PageMeta
     contactSupport: PageMeta
+    riskDisclaimer: PageMeta
+    termsOfService: PageMeta
+    privacyPolicy: PageMeta
+    cookiePolicy: PageMeta
     featureRequest: PageMeta
     partnerWithUs: PageMeta
     affiliateProgram: PageMeta

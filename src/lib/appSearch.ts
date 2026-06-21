@@ -26,13 +26,14 @@ export function buildAppSearchPages(t: Translations): AppSearchPageDef[] {
   const p = t.pages
   return [
     { path: '/dashboard', title: t.nav.items.dashboard, sectionLabel: t.nav.sections.general, subtitle: t.dashboard.title, keywords: ['home', 'overview'] },
-    { path: '/account-configuration', title: t.nav.items.configuration, sectionLabel: t.nav.sections.general, subtitle: p.accountConfiguration.description, keywords: ['broker', 'mt4', 'mt5', 'account', 'copier'] },
+    { path: '/brokers', title: t.nav.items.brokers, sectionLabel: t.nav.sections.general, subtitle: p.accountConfiguration.description, keywords: ['broker', 'mt5', 'fxsocket', 'account', 'copier'] },
     { path: '/account-trades', title: t.nav.items.trades, sectionLabel: t.nav.sections.general, keywords: ['positions', 'orders', 'history', 'trades'] },
     { path: '/settings', title: t.nav.settings, sectionLabel: t.nav.sections.general, subtitle: p.settings.description, keywords: ['profile', 'password', 'timezone'] },
     { path: '/channels', title: t.nav.items.channels, sectionLabel: t.nav.sections.signals, subtitle: p.copierEngine.description, keywords: ['telegram', 'signals'] },
     { path: '/backtest', title: t.nav.items.backtest, sectionLabel: t.nav.sections.signals, subtitle: t.backtest.subtitle, keywords: ['simulate', 'test'] },
     { path: '/copier-logs', title: t.nav.items.copierLogs, sectionLabel: t.nav.sections.signals, keywords: ['logs', 'executed', 'skipped'] },
-    { path: '/updates', title: t.nav.items.signalHistory, sectionLabel: t.nav.sections.signals, subtitle: p.signalHistory.description, keywords: ['parsed', 'messages', 'updates'] },
+    { path: '/activities', title: t.management.title, sectionLabel: t.nav.sections.general, subtitle: t.management.subtitle, keywords: ['retry', 'breakeven', 'activities', 'failed', 'trade'] },
+    { path: '/manage-signals', title: t.nav.items.signalHistory, sectionLabel: t.nav.sections.signals, subtitle: p.signalHistory.description, keywords: ['parsed', 'messages', 'signals', 'buy', 'sell', 'manage'] },
     { path: '/performance', title: t.nav.items.performance, sectionLabel: t.nav.sections.signals, subtitle: p.performance.description, keywords: ['roi', 'win rate', 'stats'] },
     { path: '/market-news', title: t.nav.items.marketNews, sectionLabel: t.nav.sections.tradingTools, subtitle: p.marketNews.description, keywords: ['news', 'forex'] },
     { path: '/economic-calendar', title: t.nav.items.economicCalendar, sectionLabel: t.nav.sections.tradingTools, subtitle: p.economicCalendar.description, keywords: ['events', 'calendar'] },

@@ -18,7 +18,7 @@ export async function startPlanCheckout(params: {
       interval: params.interval,
       extraAccounts: params.plan === 'advanced' ? (params.extraAccounts ?? 0) : 0,
       successUrl: params.successUrl ?? `${window.location.origin}/dashboard?checkout=success`,
-      cancelUrl: params.cancelUrl ?? `${window.location.origin}/billing`,
+      cancelUrl: params.cancelUrl ?? `${window.location.origin}/pricing`,
     }),
   })
   const data = (await res.json()) as { url?: string; error?: string }

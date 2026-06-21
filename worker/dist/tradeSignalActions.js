@@ -8,6 +8,7 @@ exports.isManagementAction = isManagementAction;
 exports.isEntryAction = isEntryAction;
 exports.tradeExecutorModeForRole = tradeExecutorModeForRole;
 exports.signalMatchesExecutorMode = signalMatchesExecutorMode;
+exports.isTimeSensitiveManagementAction = isTimeSensitiveManagementAction;
 exports.dispatchPriorityForAction = dispatchPriorityForAction;
 function parsedAction(parsed) {
     return String(parsed?.action ?? '').toLowerCase().trim();
@@ -45,6 +46,14 @@ function signalMatchesExecutorMode(parsed, mode) {
         return isManagementAction(action);
     return true;
 }
+function isTimeSensitiveManagementAction(action) {
+    const a = action.toLowerCase();
+    return a === 'close_worse_entries' || a === 'close' || a === 'modify';
+}
 function dispatchPriorityForAction(action) {
-    return isEntryAction(action) ? 'high' : 'normal';
+    if (isEntryAction(action))
+        return 'high';
+    if (isTimeSensitiveManagementAction(action))
+        return 'high';
+    return 'normal';
 }

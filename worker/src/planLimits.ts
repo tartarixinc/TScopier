@@ -7,19 +7,6 @@ export type SubscriptionStatus =
   | 'past_due'
   | 'incomplete'
 
-export const PLAN_LIMITS = {
-  basic: {
-    maxBrokerAccounts: 1,
-    maxTelegramChannels: 5,
-    maxBacktestsPerMonth: 5,
-    maxTpRows: 3,
-  },
-  advanced: {
-    maxBrokerAccountsBase: 5,
-    maxBrokerAccountsExtra: 95,
-  },
-} as const
-
 export function isSubscriptionActive(status: string | null | undefined): boolean {
   return status === 'active' || status === 'trialing'
 }

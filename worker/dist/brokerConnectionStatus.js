@@ -19,13 +19,18 @@ async function writeBrokerConnectionStatus(supabase, brokerId, status, opts) {
         patch.connection_error_kind = null;
         patch.connection_error_message = null;
     }
+    else if (status === 'recovering') {
+        patch.connection_error_kind = null;
+        patch.connection_error_message = null;
+    }
     else if (opts?.rawError) {
-        patch.connection_error_kind = opts.errorKind ?? (0, brokerConnectError_1.classifyBrokerConnectError)(opts.rawError);
-        patch.connection_error_message = (0, brokerConnectError_1.friendlyBrokerConnectError)(opts.rawError);
+        const raw = String(opts.rawError).trim() || 'Broker session is not connected';
+        patch.connection_error_kind = opts.errorKind ?? (0, brokerConnectError_1.classifyBrokerConnectError)(raw);
+        patch.connection_error_message = raw;
     }
     else if (status === 'error') {
         patch.connection_error_kind = 'session_expired';
-        patch.connection_error_message = (0, brokerConnectError_1.friendlyBrokerConnectError)('session expired');
+        patch.connection_error_message = 'session expired';
     }
     const { error } = await supabase
         .from('broker_accounts')

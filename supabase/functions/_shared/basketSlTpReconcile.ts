@@ -2,7 +2,11 @@
  * Basket SL/TP reconcile helpers for edge sweep. Keep in sync with worker/src/basketSlTpReconcile.ts.
  */
 
-import type { MetatraderApiClient } from "./metatraderapi.ts"
+type BrokerTradingApi = {
+  openedOrders(uuid: string): Promise<unknown[]>
+  quote(uuid: string, symbol: string): Promise<{ bid?: number; ask?: number }>
+  orderModify(uuid: string, payload: Record<string, unknown>): Promise<unknown>
+}
 import {
   expandPerLegTargetsToCount,
   type ManualTpLotLike,
@@ -63,7 +67,7 @@ export async function loadOpenBasketLegs(
   return ((data ?? []) as BasketOpenLeg[]).filter((tr) => symbolsCompatible(symbolHint, tr.symbol))
 }
 
-export async function fetchOpenBrokerTickets(api: MetatraderApiClient, uuid: string): Promise<Set<number>> {
+export async function fetchOpenBrokerTickets(api: BrokerTradingApi, uuid: string): Promise<Set<number>> {
   const tickets = new Set<number>()
   try {
     const orders = await api.openedOrders(uuid)
@@ -104,7 +108,7 @@ function clampStops(
 
 export async function runEdgeBasketLegModifies(args: {
   supabase: SupabaseLike
-  api: MetatraderApiClient
+  api: BrokerTradingApi
   uuid: string
   symbol: string
   direction: "buy" | "sell"

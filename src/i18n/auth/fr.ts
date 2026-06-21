@@ -75,8 +75,12 @@ export const authFr: AuthTranslations = {
     passwordTooShort: 'Le mot de passe doit contenir au moins 6 caractères',
     passwordMismatch: 'Les mots de passe ne correspondent pas',
     submit: 'Créer un compte',
-    terms:
-      "En créant un compte, vous acceptez d'utiliser TScopier de manière responsable et de respecter les conditions de votre broker.",
+    terms: {
+      prefix: 'En vous inscrivant, vous acceptez nos',
+      termsOfService: 'Conditions d’utilisation',
+      conjunction: ' et notre ',
+      privacyPolicy: 'Politique de confidentialité',
+    },
   },
   verify: {
     heading: 'Vérifiez votre e-mail',
@@ -84,6 +88,20 @@ export const authFr: AuthTranslations = {
     resend: 'Renvoyer l\'e-mail',
     resent: 'E-mail envoyé !',
     backToLogin: 'Retour à la connexion',
+    confirmLinkExpired: 'Ce lien de confirmation a expiré ou a déjà été utilisé. Connectez-vous ou demandez un nouvel e-mail.',
+  },
+  welcome: {
+    title: 'Bienvenue sur TScopier',
+    subtitle: 'Votre compte est prêt. Commencez votre essai gratuit pour copier les signaux Telegram vers votre broker.',
+    steps: [
+      'Connectez Telegram et choisissez vos canaux de signaux',
+      'Liez votre compte MT4/MT5',
+      'Copiez les trades automatiquement avec vos paramètres de risque',
+    ],
+    exploreDashboard: 'Explorer le tableau de bord d\'abord',
+    seePricing: 'Voir les tarifs',
+    errorFallback: 'Impossible de continuer. Veuillez réessayer.',
+    checkoutFailed: 'Impossible de démarrer le paiement. Veuillez réessayer.',
   },
   marketing: {
     headline: 'Un copieur fluide pour chaque signal Telegram',
@@ -94,6 +112,8 @@ export const authFr: AuthTranslations = {
   language: {
     label: 'Langue',
     choose: 'Choisir la langue',
+    searchPlaceholder: 'Rechercher une langue…',
+    noResults: 'Aucune langue trouvée',
   },
   theme: {
     light: 'Mode clair',

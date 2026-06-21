@@ -3,9 +3,11 @@ import { Link } from 'react-router-dom'
 import clsx from 'clsx'
 import { Radio, Trash2, RefreshCw, CircleAlert as AlertCircle, ChevronDown, Plus, X } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import { whenRealtimeReady } from '../../lib/whenRealtimeReady'
 import { useAuth } from '../../context/AuthContext'
 import { useT } from '../../context/LocaleContext'
 import { interpolate } from '../../i18n/interpolate'
+import { isBrokerCopyEnabled } from '../../lib/brokerLink'
 import {
   brokersMatchingChannel,
   brokersNotMatchingChannel,
@@ -14,6 +16,7 @@ import {
   getBrokerDisplayLabel,
   pruneStaleBrokerChannelIds,
 } from '../../lib/brokerChannelLink'
+import { triggerBackgroundChannelAiTraining } from '../../lib/channelAiTrainingBackground'
 import { defaultChannelFiltersForPlan } from '../../lib/channelMessageFilters'
 import {
   hasValidTelegramChannelIdentity,
@@ -26,8 +29,6 @@ import {
 } from '../../lib/telegramChannelReconcile'
 import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
 import { useSubscription } from '../../context/SubscriptionContext'
-import { isSubscriptionRequiredError, PaywallErrorAlert } from '../../components/billing/PaywallErrorAlert'
-import { UpgradePrompt } from '../../components/billing/UpgradePrompt'
 import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
 import { Toggle } from '../../components/ui/Toggle'
@@ -42,6 +43,7 @@ import {
   setCachedTgChannels,
   type TgChannelListItem,
 } from '../../lib/telegramChannelsCache'
+import { resolveTelegramAuthError } from '../../lib/telegramAuthError'
 import {
   getCachedTgSession,
   invalidateTgSessionCache,
@@ -140,25 +142,34 @@ export function CopierEnginePage() {
 
   useEffect(() => {
     if (!user?.id) return
-    const rt = supabase
-      .channel(`telegram_channels_ui:${user.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'telegram_channels',
-          filter: `user_id=eq.${user.id}`,
-        },
-        payload => {
-          const row = payload.new as TelegramChannel
-          if (!row?.id) return
-          setChannels(prev => prev.map(c => (c.id === row.id ? { ...c, ...row } : c)))
-        },
-      )
-      .subscribe()
+
+    let cancelled = false
+    let rt: ReturnType<typeof supabase.channel> | null = null
+
+    void whenRealtimeReady(user.id).then(() => {
+      if (cancelled) return
+      rt = supabase
+        .channel(`telegram_channels_ui:${user.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'telegram_channels',
+            filter: `user_id=eq.${user.id}`,
+          },
+          payload => {
+            const row = payload.new as TelegramChannel
+            if (!row?.id) return
+            setChannels(prev => prev.map(c => (c.id === row.id ? { ...c, ...row } : c)))
+          },
+        )
+        .subscribe()
+    })
+
     return () => {
-      void supabase.removeChannel(rt)
+      cancelled = true
+      if (rt) void supabase.removeChannel(rt)
     }
   }, [user?.id])
 
@@ -284,10 +295,15 @@ export function CopierEnginePage() {
             return
           }
           if (!res.ok || data.error) {
+            const errText = typeof data.error === 'string' ? data.error : ''
+            const isBusy = /temporarily busy|AUTH_KEY_DUPLICATED|still closing|reconnecting/i.test(errText)
+            if (isBusy) {
+              if (!opts?.background) setError(ce.telegramConnectionBusy)
+              return
+            }
             if (attempt < maxAttempts - 1) continue
             if (!opts?.background) {
-              const msg = typeof data.error === 'string' ? data.error : ce.failedLoadTgChannels
-              setError(msg)
+              setError(errText || ce.failedLoadTgChannels)
             }
             return
           }
@@ -362,6 +378,7 @@ export function CopierEnginePage() {
     }
     if (updated) {
       replaceBroker(updated)
+      void triggerBackgroundChannelAiTraining(channelId, { userId: user.id })
     }
     setConnectMenuChannelId(null)
   }
@@ -369,7 +386,7 @@ export function CopierEnginePage() {
   const handleConnectAllBrokersToChannel = async (channelId: string) => {
     if (!user) return
     const toLink = brokersNotMatchingChannel(
-      brokers.filter(b => b.is_active),
+      brokers.filter(b => isBrokerCopyEnabled(b)),
       channelId,
     )
     if (toLink.length === 0) return
@@ -393,6 +410,7 @@ export function CopierEnginePage() {
       }
     }
     setBrokers(nextBrokers)
+    void triggerBackgroundChannelAiTraining(channelId, { userId: user.id })
     setConnectingAllChannelId(null)
     setConnectMenuChannelId(null)
   }
@@ -423,11 +441,7 @@ export function CopierEnginePage() {
   const addFromTg = async (ch: { id: string; title: string; username: string }) => {
     setError('')
     const alreadyLinked = channels.some(row => row.channel_id === ch.id)
-    if (!hasActiveSubscription) {
-      setError(pw.subscriptionRequired)
-      return
-    }
-    if (!alreadyLinked && !canAddChannel()) {
+    if (hasActiveSubscription && !alreadyLinked && !canAddChannel()) {
       setError(interpolate(pw.channelLimit, { limit: String(limits.maxTelegramChannels ?? 5) }))
       return
     }
@@ -482,7 +496,7 @@ export function CopierEnginePage() {
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok || data.error) {
-        const msg = typeof data.error === 'string' ? data.error : ce.failedSendCode
+        const msg = resolveTelegramAuthError(data.error, ce.failedSendCode, ce)
         setTgError(msg)
         return
       }
@@ -524,7 +538,7 @@ export function CopierEnginePage() {
         return
       }
       if (!res.ok || data.error) {
-        const msg = typeof data.error === 'string' ? data.error : ce.verificationFailed
+        const msg = resolveTelegramAuthError(data.error, ce.verificationFailed, ce)
         setTgError(msg)
         return
       }
@@ -581,23 +595,11 @@ export function CopierEnginePage() {
         }
       />
 
-      {!hasActiveSubscription || !canAddChannel() ? (
-        <UpgradePrompt
-          variant="banner"
-          reason={
-            !hasActiveSubscription
-              ? pw.subscriptionRequired
-              : interpolate(pw.channelLimit, { limit: String(limits.maxTelegramChannels ?? 5) })
-          }
-          className="mb-4"
-        />
-      ) : null}
-
       {/* Status row */}
       {/* {brokers.length === 0 && (
         <div className="mb-4 px-4 py-3 bg-warning-50 border border-warning-200 rounded-xl text-sm text-warning-700 flex items-center gap-2">
           <span className="font-medium">No active broker account.</span>
-          <a href="/account-configuration" className="underline text-warning-800">Connect one in Account Configuration.</a>
+          <a href="/brokers" className="underline text-warning-800">Connect one in Brokers.</a>
         </div>
       )} */}
       {!loading && showTelegramConnectFlow && (
@@ -639,7 +641,7 @@ export function CopierEnginePage() {
                 <p className="text-xs text-neutral-500 dark:text-neutral-400">{ce.telegramConnectedHint}</p>
               </div>
               <span className="flex-shrink-0 hidden sm:inline-flex">
-                <Badge variant="success" size="sm">{ce.connected}</Badge>
+                <Badge variant="primary" size="sm">{ce.connected}</Badge>
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -687,25 +689,19 @@ export function CopierEnginePage() {
               ))}
             </div>
           ) : error ? (
-            isSubscriptionRequiredError(error, pw.subscriptionRequired) ? (
-              <div className="px-4 py-4">
-                <PaywallErrorAlert message={error} />
+            <div className="px-4 py-8 text-center">
+              <AlertCircle className="w-8 h-8 mx-auto mb-2 text-error-300" />
+              <p className="text-sm text-neutral-700 dark:text-neutral-300 font-medium">{error}</p>
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                <Button size="sm" variant="secondary" onClick={() => void fetchTgChannels({ force: true })} loading={loadingTg}>
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  {t.common.refresh}
+                </Button>
+                <Button size="sm" onClick={() => void reconnectTelegram()}>
+                  {ce.reconnectTelegram}
+                </Button>
               </div>
-            ) : (
-              <div className="px-4 py-8 text-center">
-                <AlertCircle className="w-8 h-8 mx-auto mb-2 text-error-300" />
-                <p className="text-sm text-neutral-700 dark:text-neutral-300 font-medium">{error}</p>
-                <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-                  <Button size="sm" variant="secondary" onClick={() => void fetchTgChannels({ force: true })} loading={loadingTg}>
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    {t.common.refresh}
-                  </Button>
-                  <Button size="sm" onClick={() => void reconnectTelegram()}>
-                    {ce.reconnectTelegram}
-                  </Button>
-                </div>
-              </div>
-            )
+            </div>
           ) : tgChannels.length === 0 ? (
             <div className="px-4 py-8 text-center">
               <Radio className="w-8 h-8 mx-auto mb-2 text-neutral-200" />
@@ -832,7 +828,7 @@ function ChannelRow({
     () => brokersNotMatchingChannel(brokers, channel.id),
     [brokers, channel.id],
   )
-  const hasAnyBrokers = brokers.some(b => b.is_active)
+  const hasAnyBrokers = brokers.some(b => isBrokerCopyEnabled(b))
   const identityValid = hasValidTelegramChannelIdentity(channel)
 
   useEffect(() => {
@@ -938,7 +934,7 @@ function ChannelRow({
                       )}
                       <div className="border-t border-neutral-100 dark:border-neutral-800 mt-1 pt-1">
                         <Link
-                          to="/account-configuration"
+                          to="/brokers"
                           className="block px-3 py-2 text-xs text-primary-600 hover:bg-neutral-50 dark:hover:bg-neutral-800"
                           onClick={onCloseConnectMenu}
                         >
@@ -995,7 +991,7 @@ function ChannelRow({
             </div>
           ) : (
             <Link
-              to="/account-configuration"
+              to="/brokers"
               className="inline-flex items-center rounded-lg border border-dashed border-neutral-300 dark:border-neutral-600 px-3 py-1.5 text-xs font-medium text-primary-600 hover:bg-white dark:hover:bg-neutral-900 transition-colors"
             >
               {ce.connectToBroker}

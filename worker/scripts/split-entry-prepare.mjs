@@ -30,13 +30,13 @@ const virtBlock = src.slice(VIRT_START, VIRT_END)
 const sendCall = src.slice(VIRT_END)
 
 const sharedImports = `import {
-  hasMetatraderApiConfigured,
+  hasFxsocketConfigured,
   isBrokerDisconnectedMessage,
   MT_SESSION_EXPIRED_HINT,
-  MetatraderApiClient,
+  FxsocketBrokerClient,
   MtOperation,
   OrderSendArgs,
-} from '../metatraderapi'
+} from '../fxsocketClient'
 import {
   clampPendingExpiryHours,
   parsedHasExplicitEntryAnchor,
@@ -83,7 +83,7 @@ export type PreparedEntry = {
   parsed: ParsedSignal
   broker: BrokerRow
   manual: ManualSettings
-  api: MetatraderApiClient
+  api: FxsocketBrokerClient
   uuid: string
   symbol: string
   requestedSymbol: string
@@ -161,8 +161,8 @@ ${prepPart1}${prepPart2}
 // Fix early returns in prepare body to return { ok: false, outcome: ... }
 let prepareBody = prepareFn
 prepareBody = prepareBody.replace(
-  /(\n  if \(!hasMetatraderApiConfigured\(\)\) return \{\})/,
-  '\n  if (!hasMetatraderApiConfigured()) return { ok: false, outcome: {} }',
+  /(\n  if \(!hasFxsocketConfigured\(\)\) return \{\})/,
+  '\n  if (!hasFxsocketConfigured()) return { ok: false, outcome: {} }',
 )
 prepareBody = prepareBody.replace(
   /(\n  if \(!api\) return \{\})/g,
@@ -198,7 +198,7 @@ prepareBody = prepareBody.replace(
 fs.writeFileSync(path.join(root, 'entryPrepare.ts'), sharedImports + prepareBody)
 
 // rangeTradeExecutor - multi log + virtual materialize
-const rangeImports = `import type { OrderSendArgs } from '../metatraderapi'
+const rangeImports = `import type { OrderSendArgs } from '../fxsocketClient'
 import type { ManualSettings, PlannerResult, VirtualPendingLeg } from '../manualPlanner'
 import type { TradeExecutorContext } from './context'
 import { roundLot, triggerPriceFor } from './helpers'
@@ -233,10 +233,10 @@ const virtFn = virtBlock
   )
 
 const strictImports = `import {
-  MetatraderApiClient,
+  FxsocketBrokerClient,
   MtOperation,
   OrderSendArgs,
-} from '../metatraderapi'
+} from '../fxsocketClient'
 import {
   clampPendingExpiryHours,
   lastPositiveParsedTpPrice,
@@ -350,7 +350,7 @@ import { sendImmediateLegs } from './orderLegExecution'
 export type EntryArgs = {
   signal: import('./types').SignalRow
   parsed: import('./types').ParsedSignal
-  op: import('../metatraderapi').MtOperation
+  op: import('../fxsocketClient').MtOperation
   broker: import('./types').BrokerRow
   channelKeywords: import('../manualPlanner').ChannelKeywords | null
   pipelineT0?: number

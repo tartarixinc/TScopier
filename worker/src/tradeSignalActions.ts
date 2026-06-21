@@ -42,6 +42,13 @@ export function signalMatchesExecutorMode(
   return true
 }
 
+export function isTimeSensitiveManagementAction(action: string): boolean {
+  const a = action.toLowerCase()
+  return a === 'close_worse_entries' || a === 'close' || a === 'modify'
+}
+
 export function dispatchPriorityForAction(action: string): 'high' | 'normal' {
-  return isEntryAction(action) ? 'high' : 'normal'
+  if (isEntryAction(action)) return 'high'
+  if (isTimeSensitiveManagementAction(action)) return 'high'
+  return 'normal'
 }

@@ -1,7 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getCalendarEventsCached = getCalendarEventsCached;
-exports.clearCalendarCacheForTests = clearCalendarCacheForTests;
 const undici_1 = require("undici");
 const CACHE_TTL_MS = 15 * 60000;
 let cache = null;
@@ -20,21 +19,32 @@ function parseImpact(raw) {
 function buildDatetime(dateStr, timeStr) {
     const date = dateStr.trim();
     const time = timeStr.trim() || '00:00:00';
-    const iso = time.length <= 5 ? `${date}T${time}:00` : `${date}T${time}`;
-    const ms = Date.parse(iso);
+    const normalized = time.length <= 5 ? `${time}:00` : time;
+    // FMP timestamps are UTC — parse explicitly as UTC regardless of host TZ.
+    const ms = Date.parse(`${date}T${normalized}Z`);
     if (Number.isFinite(ms))
         return new Date(ms).toISOString();
-    const fallback = Date.parse(date);
+    const fallback = Date.parse(`${date}T00:00:00Z`);
     return Number.isFinite(fallback) ? new Date(fallback).toISOString() : new Date().toISOString();
+}
+/**
+ * FMP's calendar endpoints embed the release time inside `date`
+ * ("2026-06-11 08:30:00"); there is no separate `time` field. Without this,
+ * every event collapses to midnight UTC and news blackout windows are wrong.
+ */
+function extractEmbeddedTime(rawDate) {
+    const tail = rawDate.slice(11);
+    return /^\d{2}:\d{2}/.test(tail) ? tail : '';
 }
 function normalizeRow(raw) {
     const event = String(raw.event ?? raw.name ?? raw.title ?? '').trim();
     if (!event)
         return null;
-    const date = String(raw.date ?? '').slice(0, 10);
+    const rawDate = String(raw.date ?? '').trim();
+    const date = rawDate.slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
         return null;
-    const time = String(raw.time ?? raw.releaseTime ?? '00:00:00');
+    const time = String(raw.time ?? raw.releaseTime ?? extractEmbeddedTime(rawDate));
     const country = String(raw.country ?? '').trim().toUpperCase();
     const currency = String(raw.currency ?? raw.countryCode ?? country ?? '').trim().toUpperCase();
     const datetime = buildDatetime(date, time);
@@ -91,8 +101,4 @@ async function getCalendarEventsCached(now = new Date()) {
         console.warn(`[newsTrading] calendar fetch failed: ${msg}`);
         return cache?.events ?? [];
     }
-}
-function clearCalendarCacheForTests() {
-    cache = null;
-    warnedNoKey = false;
 }

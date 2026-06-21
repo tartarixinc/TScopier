@@ -3,6 +3,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.DEFAULT_MANUAL_TP_LOTS = void 0;
 exports.sanitizeTpLots = sanitizeTpLots;
 exports.normalizeManualSettingsForExecution = normalizeManualSettingsForExecution;
+const computeMultiTradeOrderCount_1 = require("./computeMultiTradeOrderCount");
+const resolveManualLot_1 = require("./resolveManualLot");
 /** Default Targets % rows — keep aligned with AccountConfigPage `DEFAULT_MANUAL_TP_LOTS`. */
 exports.DEFAULT_MANUAL_TP_LOTS = [
     { label: 'TP1', lot: 0.01, percent: 50, enabled: true },
@@ -31,7 +33,7 @@ function sanitizeTpLots(rows) {
  * Normalize `manual_settings` from DB for execution (Targets %, leg %, range).
  * Mirrors `normalizeManualSettings` in AccountConfigPage — without UI-only fields.
  */
-function normalizeManualSettingsForExecution(raw) {
+function normalizeManualSettingsForExecution(raw, opts) {
     const j = raw && typeof raw === 'object' ? raw : {};
     const tpLotsRaw = Array.isArray(j.tp_lots) ? j.tp_lots : exports.DEFAULT_MANUAL_TP_LOTS;
     const tpLots = tpLotsRaw.map((x, i) => {
@@ -46,6 +48,35 @@ function normalizeManualSettingsForExecution(raw) {
     });
     const legPctRaw = Number(j.multi_trade_leg_percent);
     const legPct = Number.isFinite(legPctRaw) && legPctRaw > 0 ? Math.min(100, legPctRaw) : 5;
+    const legacyMaxLegsRaw = Number(j.multi_trade_max_legs);
+    const tradeStyle = j.trade_style === 'multi' ? 'multi' : 'single';
+    const riskMode = String(j.risk_mode ?? 'fixed_lot');
+    const accountBalance = opts?.accountBalance;
+    let maxOrders;
+    const seedMaxOrdersFromLot = (manualLot) => {
+        if (!Number.isFinite(manualLot) || manualLot <= 0)
+            return;
+        const preview = (0, computeMultiTradeOrderCount_1.computeMultiTradeOrderCount)({
+            manualLot,
+            legPercent: legPct,
+            rangeTrading: j.range_trading === true,
+            rangePercent: Number(j.range_percent),
+            rangeStepPips: Number(j.range_step_pips),
+            rangeDistancePips: Number(j.range_distance_pips),
+        });
+        if (preview > 0)
+            maxOrders = preview;
+    };
+    if (tradeStyle === 'multi' && riskMode === 'dynamic_balance_percent' && Number(accountBalance) > 0) {
+        // Recompute from live balance — stored cap goes stale when balance or % changes.
+        seedMaxOrdersFromLot((0, resolveManualLot_1.resolveManualLotForSettings)(j, accountBalance));
+    }
+    else if (tradeStyle === 'multi' && Number.isFinite(legacyMaxLegsRaw) && legacyMaxLegsRaw > 0) {
+        maxOrders = Math.max(1, Math.min(500, Math.floor(legacyMaxLegsRaw)));
+    }
+    else if (tradeStyle === 'multi') {
+        seedMaxOrdersFromLot((0, resolveManualLot_1.resolveManualLotForSettings)(j, accountBalance));
+    }
     const readNumber = (key, fallback) => {
         const v = Number(j[key]);
         return Number.isFinite(v) ? v : fallback;
@@ -77,6 +108,7 @@ function normalizeManualSettingsForExecution(raw) {
     return {
         ...j,
         multi_trade_leg_percent: legPct,
+        ...(maxOrders != null ? { multi_trade_max_orders: maxOrders } : {}),
         range_percent: rangePercent,
         range_step_pips: rangeStepPips,
         range_distance_pips: rangeDistancePips,
@@ -86,10 +118,16 @@ function normalizeManualSettingsForExecution(raw) {
         use_signal_entry_price: j.use_signal_entry_price === true,
         trade_style: j.trade_style === 'multi' ? 'multi' : 'single',
         range_trading: j.range_trading === true,
+        range_layer_till_close: j.range_layer_till_close === true,
+        use_signal_entry_range: j.use_signal_entry_range === true,
         close_worse_entries: j.close_worse_entries === true,
         close_worse_entries_pips: Math.max(0, readNumber('close_worse_entries_pips', 30)),
         use_predefined_sl_pips: j.use_predefined_sl_pips === true,
         use_predefined_tp_pips: j.use_predefined_tp_pips === true,
         add_new_trades_to_existing: j.add_new_trades_to_existing !== false,
+        order_comments_enabled: j.order_comments_enabled !== false,
+        copy_limits: j.copy_limits && typeof j.copy_limits === 'object'
+            ? j.copy_limits
+            : undefined,
     };
 }

@@ -8,10 +8,10 @@ import { isAutoBeTriggerMet } from '../autoManagement'
 import { deriveManualStopsWithClamp } from '../manualPlanning/manualStops'
 import { signalPipPrice } from '../signalPip'
 import {
-  hasMetatraderApiConfigured,
-  type MetatraderApiClient,
-} from '../metatraderapi'
-import { apiForMetaapiAccount, loadPlatformByMetaapiId } from '../mtApiByAccount'
+  hasFxsocketConfigured,
+  type FxsocketBrokerClient,
+} from '../fxsocketClient'
+import { apiForFxsocketAccount, brokerSessionId, loadPlatformByFxsocketId } from '../mtApiByAccount'
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -20,12 +20,12 @@ const supabase = createClient(
 
 async function main() {
   console.log('=== Live broker E2E check ===\n')
-  console.log('MT API configured:', hasMetatraderApiConfigured())
+  console.log('MT API configured:', hasFxsocketConfigured())
   console.log('Supabase:', process.env.SUPABASE_URL?.replace(/https?:\/\//, '').split('/')[0])
 
   const { data: brokers, error: bErr } = await supabase
     .from('broker_accounts')
-    .select('id,user_id,platform,is_active,connection_status,copier_mode,metaapi_account_id,manual_settings,channel_trading_configs')
+    .select('id,user_id,platform,is_active,connection_status,copier_mode,fxsocket_account_id,metaapi_account_id,manual_settings,channel_trading_configs')
     .eq('is_active', true)
     .eq('connection_status', 'connected')
   if (bErr) throw bErr
@@ -69,21 +69,21 @@ async function main() {
 
   console.log('\nOpen trades awaiting auto-BE:', autoTrades?.length ?? 0)
 
-  if (!hasMetatraderApiConfigured()) {
+  if (!hasFxsocketConfigured()) {
     console.log('\nSKIP MT quote / trigger dry-run — MT4API_BASIC_USER/PASSWORD not set locally.')
     console.log('Deploy trade_mgmt worker with MT API creds to apply auto-BE on open trades.')
     return
   }
 
   const brokerById = new Map((brokers ?? []).map(b => [b.id, b]))
-  const uuids = [...new Set((brokers ?? []).map(b => String(b.metaapi_account_id ?? '')).filter(Boolean))]
-  const platformByUuid = await loadPlatformByMetaapiId(supabase, uuids)
+  const uuids = [...new Set((brokers ?? []).map(b => brokerSessionId(b)).filter(Boolean))]
+  const platformByUuid = await loadPlatformByFxsocketId(supabase, uuids)
 
   for (const trade of autoTrades ?? []) {
     const broker = brokerById.get(trade.broker_account_id ?? '')
-    if (!broker?.metaapi_account_id) continue
-    const uuid = String(broker.metaapi_account_id)
-    const api: MetatraderApiClient | null = apiForMetaapiAccount(platformByUuid, uuid)
+    const uuid = broker ? brokerSessionId(broker) : ''
+    if (!uuid) continue
+    const api: FxsocketBrokerClient | null = apiForFxsocketAccount(platformByUuid, uuid)
     if (!api) {
       console.log(`  ${trade.symbol} ${trade.direction}: no API client for ${uuid.slice(0, 8)}`)
       continue

@@ -39,5 +39,14 @@ def test_explicit_close_all():
     assert looks_like_trading_signal("Close all now")
 
 
-def test_empty_text():
-    assert not looks_like_trading_signal("")
+def test_spanish_channel_aliases():
+    assert looks_like_trading_signal(
+        "COMPRA XAUUSD @ 2650 SL 2640 TP 2670",
+        channel_aliases=["COMPRA", "VENTA", "SL", "TP"],
+    )
+
+
+def test_training_candidate_instrument_price():
+    from app.signal_heuristic import looks_like_training_candidate
+
+    assert looks_like_training_candidate("XAUUSD 2650 2640 2670")

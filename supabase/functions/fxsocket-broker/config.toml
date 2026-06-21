@@ -1,0 +1,2 @@
+[functions.fxsocket-broker]
+verify_jwt = true

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { hasMetatraderApiConfigured } from './metatraderapi'
-import { apiForMetaapiAccount, loadPlatformByMetaapiId, type PlatformByMetaapiId } from './mtApiByAccount'
+import { hasFxsocketConfigured } from './fxsocketClient'
+import { apiForFxsocketAccount, loadPlatformByFxsocketId, type PlatformByFxsocketId } from './mtApiByAccount'
 import {
   fetchOpenBrokerTickets,
   loadOpenBasketLegs,
@@ -11,8 +11,8 @@ import {
   type BasketReconcileJobRow,
   type BasketSymbolParams,
 } from './basketSlTpReconcile'
+import { resolveFreshTargetsForJob, sweepOpenBasketsForReconcileDrift } from './basketReconcileTargets'
 import {
-  applyShardToQuery,
   hasWorkOnShard,
   monitorActiveIntervalMs,
   monitorIdleIntervalMs,
@@ -21,23 +21,30 @@ import {
 } from './monitorIdleGate'
 import { normalizeManualSettingsForExecution } from './manualPlanning/normalizeManualSettings'
 import { resolveChannelTradingConfig } from './channelTradingConfig'
-import { normalizeSymbolParams } from './metatraderapi'
+import { normalizeSymbolParams } from './fxsocketClient'
+import { isUserCopierPausedCached } from './copierPause'
+import { brokerSessionUuid } from './tradeExecutor/helpers'
 
 const ACTIVE_MS = monitorActiveIntervalMs('BASKET_RECONCILE_TICK_MS', 15_000)
 const IDLE_MS = monitorIdleIntervalMs('BASKET_RECONCILE_IDLE_MS', 120_000)
 const BATCH_LIMIT = 20
 const HOST_ID = `worker-${process.pid}`
+const SWEEP_INTERVAL_MS = Math.min(
+  600_000,
+  Math.max(60_000, Number(process.env.BASKET_RECONCILE_SWEEP_MS ?? 180_000)),
+)
 
 export class BasketSlTpReconcileMonitor {
   private loop: MonitorLoopHandle | null = null
   private ticking = false
-  private platformByUuid: PlatformByMetaapiId = new Map()
+  private platformByUuid: PlatformByFxsocketId = new Map()
+  private lastSweepAt = 0
 
   constructor(private readonly supabase: SupabaseClient) {}
 
   start() {
     if (this.loop) return
-    if (!hasMetatraderApiConfigured()) {
+    if (!hasFxsocketConfigured()) {
       console.warn('[basketSlTpReconcileMonitor] MT4API_BASIC_USER/PASSWORD missing — disabled')
       return
     }
@@ -46,15 +53,17 @@ export class BasketSlTpReconcileMonitor {
       supabase: this.supabase,
       activeIntervalMs: ACTIVE_MS,
       idleIntervalMs: IDLE_MS,
-      hasWork: (sb) => {
-        const now = new Date().toISOString()
+      hasWork: async sb => {
+        const now = Date.now()
+        if (now - this.lastSweepAt >= SWEEP_INTERVAL_MS) return true
+        const ts = new Date().toISOString()
         return hasWorkOnShard(sb, 'basket_reconcile_jobs', q =>
-          q.eq('status', 'pending').lte('next_run_at', now),
+          q.eq('status', 'pending').lte('next_run_at', ts),
         )
       },
       tick: () => this.runTick(),
     })
-    console.log(`[basketSlTpReconcileMonitor] started active=${ACTIVE_MS}ms idle=${IDLE_MS}ms`)
+    console.log(`[basketSlTpReconcileMonitor] started active=${ACTIVE_MS}ms idle=${IDLE_MS}ms sweep=${SWEEP_INTERVAL_MS}ms`)
   }
 
   stop() {
@@ -88,18 +97,28 @@ export class BasketSlTpReconcileMonitor {
 
     if (error) {
       console.warn(`[basketSlTpReconcileMonitor] select failed: ${error.message}`)
-      return
+    } else {
+      for (const raw of (jobs ?? []) as BasketReconcileJobRow[]) {
+        if (raw.attempts >= raw.max_attempts) {
+          await this.supabase
+            .from('basket_reconcile_jobs')
+            .update({ status: 'failed', updated_at: new Date().toISOString() })
+            .eq('id', raw.id)
+          continue
+        }
+        await this.processJob(raw)
+      }
     }
 
-    for (const raw of (jobs ?? []) as BasketReconcileJobRow[]) {
-      if (raw.attempts >= raw.max_attempts) {
-        await this.supabase
-          .from('basket_reconcile_jobs')
-          .update({ status: 'failed', updated_at: new Date().toISOString() })
-          .eq('id', raw.id)
-        continue
+    if (Date.now() - this.lastSweepAt >= SWEEP_INTERVAL_MS) {
+      this.lastSweepAt = Date.now()
+      try {
+        await sweepOpenBasketsForReconcileDrift(this.supabase)
+      } catch (err) {
+        console.warn(
+          `[basketSlTpReconcileMonitor] drift sweep failed: ${err instanceof Error ? err.message : String(err)}`,
+        )
       }
-      await this.processJob(raw)
     }
   }
 
@@ -123,23 +142,23 @@ export class BasketSlTpReconcileMonitor {
     const row = claimed as BasketReconcileJobRow
     const { data: broker } = await this.supabase
       .from('broker_accounts')
-      .select('id,user_id,metaapi_account_id,platform,default_lot_size,manual_settings,channel_trading_configs,copier_mode,ai_settings')
+      .select('id,user_id,fxsocket_account_id,metaapi_account_id,platform,default_lot_size,manual_settings,channel_trading_configs,copier_mode,ai_settings')
       .eq('id', row.broker_account_id)
       .maybeSingle()
 
-    if (!broker?.metaapi_account_id) {
+    const uuid = broker ? brokerSessionUuid(broker as { fxsocket_account_id?: string; metaapi_account_id?: string }) : null
+    if (!broker || !uuid) {
       await this.releaseJob(row.id, 'broker not found', row.attempts)
       return
     }
 
-    const uuid = broker.metaapi_account_id as string
-    if (uuid.includes('|')) {
-      await this.releaseJob(row.id, 'invalid metaapi uuid', row.attempts)
+    if (isUserCopierPausedCached(String(broker.user_id ?? ''))) {
+      await this.releaseJob(row.id, 'copier paused', row.attempts)
       return
     }
 
-    this.platformByUuid = await loadPlatformByMetaapiId(this.supabase, [uuid])
-    const api = apiForMetaapiAccount(this.platformByUuid, uuid)
+    this.platformByUuid = await loadPlatformByFxsocketId(this.supabase, [uuid])
+    const api = apiForFxsocketAccount(this.platformByUuid, uuid)
     if (!api) {
       await this.releaseJob(row.id, 'MT API not configured', row.attempts)
       return
@@ -168,11 +187,44 @@ export class BasketSlTpReconcileMonitor {
       return
     }
 
-    const perLegTargets = parsePerLegTargets(row.per_leg_targets)
-    if (!perLegTargets.length) {
+    const { data: anchorSig } = await this.supabase
+      .from('signals')
+      .select('parsed_data, channel_id')
+      .eq('id', row.anchor_signal_id)
+      .maybeSingle()
+    const anchorParsed = (anchorSig as { parsed_data?: { tp?: number[] }; channel_id?: string | null } | null)?.parsed_data
+    const anchorChannelId = (anchorSig as { channel_id?: string | null } | null)?.channel_id ?? row.channel_id
+
+    const manual = normalizeManualSettingsForExecution(
+      resolveChannelTradingConfig(
+        broker as Parameters<typeof resolveChannelTradingConfig>[0],
+        anchorChannelId,
+      ).manual_settings,
+    )
+
+    const storedTargets = parsePerLegTargets(row.per_leg_targets)
+    const {
+      perLegTargets: freshTargets,
+      signalTps: freshSignalTps,
+      effectiveStoploss,
+    } = await resolveFreshTargetsForJob(
+      this.supabase,
+      row,
+      familyTrades,
+      manual,
+    )
+    const effectiveTargets = freshTargets.length ? freshTargets : storedTargets
+    if (!effectiveTargets.length) {
       await this.releaseJob(row.id, 'empty per_leg_targets', row.attempts)
       return
     }
+    const effectiveSignalTps = freshSignalTps.length
+      ? freshSignalTps
+      : (Array.isArray(anchorParsed?.tp)
+        ? anchorParsed.tp.filter(
+            (t): t is number => typeof t === 'number' && Number.isFinite(t) && t > 0,
+          )
+        : [])
 
     let params: BasketSymbolParams | null = null
     try {
@@ -191,24 +243,6 @@ export class BasketSlTpReconcileMonitor {
 
     const openedTickets = await fetchOpenBrokerTickets(api, uuid)
     const baseLot = Number(broker.default_lot_size ?? 0.01)
-    const { data: anchorSig } = await this.supabase
-      .from('signals')
-      .select('parsed_data, channel_id')
-      .eq('id', row.anchor_signal_id)
-      .maybeSingle()
-    const anchorParsed = (anchorSig as { parsed_data?: { tp?: number[] }; channel_id?: string | null } | null)?.parsed_data
-    const anchorChannelId = (anchorSig as { channel_id?: string | null } | null)?.channel_id ?? null
-    const manual = normalizeManualSettingsForExecution(
-      resolveChannelTradingConfig(
-        broker as Parameters<typeof resolveChannelTradingConfig>[0],
-        anchorChannelId,
-      ).manual_settings,
-    )
-    const signalTps = Array.isArray(anchorParsed?.tp)
-      ? anchorParsed.tp.filter(
-          (t): t is number => typeof t === 'number' && Number.isFinite(t) && t > 0,
-        )
-      : []
     const { summary, legErrors } = await runBasketLegModifies({
       supabase: this.supabase,
       api,
@@ -221,14 +255,17 @@ export class BasketSlTpReconcileMonitor {
       userId: row.user_id,
       brokerAccountId: row.broker_account_id,
       familyTrades,
-      perLegTargets,
-      signalTps,
+      perLegTargets: effectiveTargets,
+      signalTps: effectiveSignalTps,
       tpLots: manual.tp_lots,
       nImmCwe: row.n_imm_cwe ?? 0,
       overrideTp: row.override_tp,
       strictEntryPrefetch: null,
       openedTickets,
       skipAlreadySynced: true,
+      internalRebalance: manual.range_trading === true,
+      effectiveStoploss: effectiveStoploss > 0 ? effectiveStoploss : undefined,
+      orderCommentsEnabled: manual.order_comments_enabled !== false,
     })
 
     const mergeFailed = summary.modified < summary.openLegs

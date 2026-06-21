@@ -17,7 +17,7 @@ export function StepCopyVisual() {
             <div className="flex items-center gap-1.5">
               <Clock className="h-3.5 w-3.5 text-teal-500" aria-hidden />
               <span className="text-xs font-semibold text-neutral-900 dark:text-neutral-50">
-                {t.dashboard.channelWorker}
+                {t.dashboard.tradeActivities}
               </span>
               <Info className="h-3 w-3 text-neutral-300 dark:text-neutral-400" aria-hidden />
             </div>

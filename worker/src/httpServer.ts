@@ -1,11 +1,19 @@
 import { createServer, IncomingMessage, Server, ServerResponse } from 'http'
 import { AuthService } from './authService'
-import { TelegramSessionInvalidError, TELEGRAM_SESSION_INVALID_CODE } from './telegramClient'
+import {
+  isAuthKeyDuplicated,
+  TelegramSessionInvalidError,
+  TELEGRAM_SESSION_INVALID_CODE,
+} from './telegramClient'
 import type { SignalRow, TradeExecutor } from './tradeExecutor'
 import { UserSessionManager } from './sessionManager'
 import { userBelongsToShard } from './workerConfig'
 import { getQueueHealthMetrics } from './queue/queueHealth'
 import { parseRawChannelMessage } from './parseSignal'
+import { aiParseModification, aiResultToParseResult } from './aiParseModification'
+import { applySignalOverride } from './applySignalOverride'
+import { forceCloseSignalTrades } from './forceCloseSignalTrades'
+import { retryTradeActivity } from './retryActivity'
 
 const INTERNAL_TOKEN = process.env.WORKER_INTERNAL_TOKEN ?? ''
 const PORT = parseInt(process.env.WORKER_PORT ?? '8080', 10)
@@ -17,6 +25,7 @@ interface Body {
   password?: string
   channel_row_id?: string
   days?: number
+  for_training?: boolean | string
   from?: string
   to?: string
   run_id?: string
@@ -54,7 +63,11 @@ function sendSessionInvalid(res: ServerResponse) {
 /** Strip gramjs "(caused by …)" tails from messages shown to users. */
 function sanitizeClientError(msg: string): string {
   const idx = msg.indexOf('(caused by')
-  return (idx > 0 ? msg.slice(0, idx) : msg).trim() || 'Request failed'
+  const cleaned = (idx > 0 ? msg.slice(0, idx) : msg).trim() || 'Request failed'
+  if (isAuthKeyDuplicated(cleaned)) {
+    return 'Telegram connection is temporarily busy (another copy is still closing). Wait 30 seconds, press Refresh, or use Reconnect Telegram if it persists.'
+  }
+  return cleaned
 }
 
 /**
@@ -94,8 +107,13 @@ export function startHttpServer(
         if (!body.user_id || !body.phone) {
           return sendJson(res, 400, { error: 'user_id and phone are required' })
         }
-        const r = await authService.sendCode(body.user_id, body.phone)
-        return sendJson(res, 200, r)
+        try {
+          const r = await authService.sendCode(body.user_id, body.phone)
+          return sendJson(res, 200, r)
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : 'Failed to send code'
+          return sendJson(res, 400, { error: sanitizeClientError(msg) })
+        }
       }
 
       if (url === '/auth/verify_code') {
@@ -133,10 +151,12 @@ export function startHttpServer(
           return sendJson(res, 400, { error: 'user_id and channel_row_id are required' })
         }
         try {
+          const forTraining = body.for_training === true || body.for_training === 'true'
           const result = await sessionManager.backfillChannelHistory(
             body.user_id,
             body.channel_row_id,
             Number(body.days ?? 30),
+            { forTraining },
           )
           return sendJson(res, 200, result)
         } catch (err: unknown) {
@@ -177,6 +197,29 @@ export function startHttpServer(
         } catch (err: unknown) {
           return handleTelegramRpcError(res, body.user_id, sessionManager, err, 'Failed to sync backtest signals')
         }
+      }
+
+      if (url === '/internal/reconcile-signals') {
+        const body = (await readJson(req)) as {
+          user_id?: string
+          channel_row_id?: string
+        }
+        if (body.user_id) {
+          if (!userBelongsToShard(body.user_id)) {
+            return sendJson(res, 200, { ok: false, reason: 'wrong_shard' })
+          }
+          try {
+            const result = await sessionManager.reconcileUserSignals(body.user_id, {
+              channelRowId: body.channel_row_id,
+            })
+            return sendJson(res, 200, result)
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : 'reconcile failed'
+            return sendJson(res, 500, { error: msg })
+          }
+        }
+        const result = await sessionManager.reconcileAllListenersOnShard()
+        return sendJson(res, 200, { ok: true, ...result })
       }
 
       return sendJson(res, 404, { error: 'Unknown route' })
@@ -250,6 +293,63 @@ export function startTradeHttpServer(
         }
       }
 
+      if (url === '/internal/parse-modification' && req.method === 'POST') {
+        if (!INTERNAL_TOKEN) {
+          return sendJson(res, 503, { error: 'WORKER_INTERNAL_TOKEN not configured' })
+        }
+        const token = req.headers['x-internal-token']
+        if (token !== INTERNAL_TOKEN) {
+          return sendJson(res, 401, { error: 'Unauthorized' })
+        }
+        const body = (await readJson(req)) as {
+          channel_row_id?: string
+          raw_message?: string
+          user_id?: string
+          is_reply?: boolean
+          parent_signal_id?: string | null
+          revision?: {
+            prior_raw_message?: string
+            prior_parsed_data?: Record<string, unknown> | null
+          }
+          force_ai?: boolean
+        }
+        if (!body.channel_row_id || typeof body.raw_message !== 'string' || !body.user_id) {
+          return sendJson(res, 400, { error: 'channel_row_id, raw_message, and user_id required' })
+        }
+        if (!userBelongsToShard(body.user_id)) {
+          return sendJson(res, 200, { parsed: null, status: 'skipped', reason: 'wrong_shard' })
+        }
+        try {
+          const aiResult = await aiParseModification(sessionManager.getSupabase(), {
+            userId: body.user_id,
+            channelRowId: body.channel_row_id,
+            rawMessage: body.raw_message,
+            isReply: body.is_reply === true,
+            parentSignalId: body.parent_signal_id ?? null,
+            revision: body.revision?.prior_raw_message
+              ? {
+                  prior_raw_message: body.revision.prior_raw_message,
+                  prior_parsed_data: body.revision.prior_parsed_data ?? null,
+                }
+              : undefined,
+            forceAi: body.force_ai === true,
+          })
+          const parseResult = aiResultToParseResult(aiResult)
+          return sendJson(res, 200, {
+            parsed: parseResult.parsed,
+            status: parseResult.status,
+            skip_reason: parseResult.skip_reason,
+            intent: aiResult.intent,
+            typo_corrected: aiResult.typo_corrected,
+            confidence: aiResult.confidence,
+            source: aiResult.source,
+          })
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : 'parse modification failed'
+          return sendJson(res, 500, { error: msg })
+        }
+      }
+
       if (url === '/internal/dispatch-signal' && req.method === 'POST') {
         if (!INTERNAL_TOKEN) {
           return sendJson(res, 503, { error: 'WORKER_INTERNAL_TOKEN not configured' })
@@ -282,13 +382,122 @@ export function startTradeHttpServer(
           priority: body.priority,
           source: body.source ?? 'listener_push',
         }
+        const awaitByDefault = String(process.env.TRADE_DISPATCH_AWAIT_DEFAULT ?? 'false').toLowerCase() === 'true'
         const shouldAwait = body.await === true
-          || body.source === 'listener_push'
-          || String(process.env.TRADE_DISPATCH_AWAIT_DEFAULT ?? 'true').toLowerCase() !== 'false'
+          || (body.await !== false && awaitByDefault)
         const accepted = shouldAwait
           ? await tradeExecutor.acceptDispatchSignalAwait(signalRow, dispatchOpts)
           : tradeExecutor.acceptDispatchSignal(signalRow, dispatchOpts)
         return sendJson(res, 200, { accepted, awaited: shouldAwait })
+      }
+
+      if (url === '/internal/retry-activity' && req.method === 'POST') {
+        if (!INTERNAL_TOKEN) {
+          return sendJson(res, 503, { error: 'WORKER_INTERNAL_TOKEN not configured' })
+        }
+        const token = req.headers['x-internal-token']
+        if (token !== INTERNAL_TOKEN) {
+          return sendJson(res, 401, { error: 'Unauthorized' })
+        }
+        if (!tradeExecutor) {
+          return sendJson(res, 503, { error: 'trade_executor_not_running' })
+        }
+        const body = (await readJson(req)) as {
+          user_id?: string
+          log_id?: string
+        }
+        const userId = body.user_id?.trim()
+        const logId = body.log_id?.trim()
+        if (!userId || !logId) {
+          return sendJson(res, 400, { error: 'user_id and log_id required' })
+        }
+        if (!userBelongsToShard(userId)) {
+          return sendJson(res, 200, { ok: false, reason: 'wrong_shard' })
+        }
+        try {
+          const result = await retryTradeActivity(tradeExecutor, { userId, logId })
+          return sendJson(res, 200, result)
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : 'retry failed'
+          return sendJson(res, 500, { error: msg })
+        }
+      }
+
+      if (url === '/internal/apply-signal-override' && req.method === 'POST') {
+        if (!INTERNAL_TOKEN) {
+          return sendJson(res, 503, { error: 'WORKER_INTERNAL_TOKEN not configured' })
+        }
+        const token = req.headers['x-internal-token']
+        if (token !== INTERNAL_TOKEN) {
+          return sendJson(res, 401, { error: 'Unauthorized' })
+        }
+        if (!tradeExecutor) {
+          return sendJson(res, 503, { error: 'trade_executor_not_running' })
+        }
+        const body = (await readJson(req)) as {
+          user_id?: string
+          signal_id?: string
+        }
+        const userId = body.user_id?.trim()
+        const signalId = body.signal_id?.trim()
+        if (!userId || !signalId) {
+          return sendJson(res, 400, { error: 'user_id and signal_id required' })
+        }
+        if (!userBelongsToShard(userId)) {
+          return sendJson(res, 200, { applied_legs: 0, skipped_legs: 0, failed_legs: 0, reason: 'wrong_shard' })
+        }
+        try {
+          const result = await applySignalOverride(tradeExecutor.supabase, { userId, signalId })
+          return sendJson(res, 200, result)
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : 'apply failed'
+          return sendJson(res, 500, { error: msg })
+        }
+      }
+
+      if (url === '/internal/force-close-trades' && req.method === 'POST') {
+        if (!INTERNAL_TOKEN) {
+          return sendJson(res, 503, { error: 'WORKER_INTERNAL_TOKEN not configured' })
+        }
+        const token = req.headers['x-internal-token']
+        if (token !== INTERNAL_TOKEN) {
+          return sendJson(res, 401, { error: 'Unauthorized' })
+        }
+        if (!tradeExecutor) {
+          return sendJson(res, 503, { error: 'trade_executor_not_running' })
+        }
+        const body = (await readJson(req)) as {
+          user_id?: string
+          broker_account_id?: string
+          channel_id?: string | null
+        }
+        const userId = body.user_id?.trim()
+        const brokerAccountId = body.broker_account_id?.trim()
+        if (!userId || !brokerAccountId) {
+          return sendJson(res, 400, { error: 'user_id and broker_account_id required' })
+        }
+        if (!userBelongsToShard(userId)) {
+          return sendJson(res, 200, {
+            ok: false,
+            closed: 0,
+            failed: 0,
+            pending_cancelled: 0,
+            virtual_legs_deleted: 0,
+            channels_processed: 0,
+            reason: 'wrong_shard',
+          })
+        }
+        try {
+          const result = await forceCloseSignalTrades(tradeExecutor.supabase, {
+            userId,
+            brokerAccountId,
+            channelId: body.channel_id?.trim() || null,
+          })
+          return sendJson(res, 200, result)
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : 'force close failed'
+          return sendJson(res, 500, { error: msg })
+        }
       }
 
       return sendJson(res, 404, { error: 'Not found' })
@@ -304,14 +513,6 @@ export function startTradeHttpServer(
   })
 
   return server
-}
-
-/** @deprecated Use startTradeHttpServer */
-export function startHealthOnlyServer(
-  sessionManager: UserSessionManager,
-  tradeExecutor?: TradeExecutor | null,
-): Server {
-  return startTradeHttpServer(sessionManager, tradeExecutor ?? null)
 }
 
 async function readJson(req: IncomingMessage): Promise<unknown> {

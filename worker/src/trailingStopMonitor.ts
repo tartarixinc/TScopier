@@ -6,12 +6,12 @@ import {
   type TrailingStopConfig,
 } from './trailingStop'
 import {
-  hasMetatraderApiConfigured,
+  hasFxsocketConfigured,
   normalizeSymbolParams,
-  type MetatraderApiClient,
+  type FxsocketBrokerClient,
   type SymbolParams,
-} from './metatraderapi'
-import { apiForMetaapiAccount, loadPlatformByMetaapiId, type PlatformByMetaapiId } from './mtApiByAccount'
+} from './fxsocketClient'
+import { apiForFxsocketAccount, brokerSessionId, loadPlatformByFxsocketId, type PlatformByFxsocketId } from './mtApiByAccount'
 import { isBenignOrderModifyError } from './orderModifyBenign'
 import {
   applyShardToQuery,
@@ -21,6 +21,7 @@ import {
   startMonitorLoop,
   type MonitorLoopHandle,
 } from './monitorIdleGate'
+import { isUserCopierPausedCached } from './copierPause'
 
 interface TrailTradeRow {
   id: string
@@ -42,12 +43,13 @@ interface TrailTradeRow {
 
 interface BrokerRow {
   id: string
-  metaapi_account_id: string
+  fxsocket_account_id: string | null
+  metaapi_account_id: string | null
   platform: string
 }
 
-const ACTIVE_MS = monitorActiveIntervalMs('TRAILING_STOP_TICK_MS', 1_500)
-const IDLE_MS = monitorIdleIntervalMs('TRAILING_STOP_IDLE_MS', 60_000)
+const ACTIVE_MS = monitorActiveIntervalMs('TRAILING_STOP_TICK_MS', 400)
+const IDLE_MS = monitorIdleIntervalMs('TRAILING_STOP_IDLE_MS', 15_000)
 const SYMBOL_CACHE_TTL_MS = 5 * 60_000
 
 type SymbolCacheEntry = {
@@ -59,7 +61,7 @@ type SymbolCacheEntry = {
 
 export class TrailingStopMonitor {
   private loop: MonitorLoopHandle | null = null
-  private platformByUuid: PlatformByMetaapiId = new Map()
+  private platformByUuid: PlatformByFxsocketId = new Map()
   private ticking = false
   private firstTickLogged = false
   private quietTicks = 0
@@ -69,7 +71,7 @@ export class TrailingStopMonitor {
 
   start() {
     if (this.loop) return
-    if (!hasMetatraderApiConfigured()) {
+    if (!hasFxsocketConfigured()) {
       console.warn('[trailingStopMonitor] MT4API_BASIC_USER/PASSWORD missing — trailing stop monitor disabled')
       return
     }
@@ -106,7 +108,7 @@ export class TrailingStopMonitor {
   }
 
   private async tick(): Promise<void> {
-    if (!hasMetatraderApiConfigured()) return
+    if (!hasFxsocketConfigured()) return
 
     const tradesQ = await applyShardToQuery(
       this.supabase,
@@ -126,7 +128,8 @@ export class TrailingStopMonitor {
       console.error('[trailingStopMonitor] select failed:', error.message)
       return
     }
-    const rows = (data ?? []) as unknown as TrailTradeRow[]
+    const rows = ((data ?? []) as unknown as TrailTradeRow[])
+      .filter(r => !isUserCopierPausedCached(r.user_id))
     if (!this.firstTickLogged) {
       this.firstTickLogged = true
       console.log(`[trailingStopMonitor] first tick ok trail_rows=${rows.length}`)
@@ -136,23 +139,24 @@ export class TrailingStopMonitor {
     const brokerIds = [...new Set(rows.map(r => r.broker_account_id).filter(Boolean))] as string[]
     const { data: brokers, error: brokerErr } = await this.supabase
       .from('broker_accounts')
-      .select('id,metaapi_account_id,platform')
+      .select('id,fxsocket_account_id,metaapi_account_id,platform')
       .in('id', brokerIds)
     if (brokerErr) {
       console.error('[trailingStopMonitor] broker lookup failed:', brokerErr.message)
       return
     }
     const brokerById = new Map((brokers ?? []).map(b => [b.id, b as BrokerRow]))
-    this.platformByUuid = await loadPlatformByMetaapiId(
+    this.platformByUuid = await loadPlatformByFxsocketId(
       this.supabase,
-      (brokers ?? []).map(b => String((b as BrokerRow).metaapi_account_id ?? '')),
+      (brokers ?? []).map(b => brokerSessionId(b as BrokerRow)),
     )
 
     const groups = new Map<string, TrailTradeRow[]>()
     for (const row of rows) {
       const b = brokerById.get(row.broker_account_id ?? '')
-      if (!b?.metaapi_account_id) continue
-      const key = `${b.metaapi_account_id}:${row.symbol.toUpperCase()}`
+      const sessionId = b ? brokerSessionId(b) : ''
+      if (!sessionId) continue
+      const key = `${sessionId}:${row.symbol.toUpperCase()}`
       const list = groups.get(key) ?? []
       list.push(row)
       groups.set(key, list)
@@ -165,7 +169,7 @@ export class TrailingStopMonitor {
       const symbol = group[0]?.symbol ?? ''
       let bid = NaN
       let ask = NaN
-      const api = apiForMetaapiAccount(this.platformByUuid, uuid)
+      const api = apiForFxsocketAccount(this.platformByUuid, uuid)
       if (!api) continue
       try {
         const q = await api.quote(uuid, symbol)
@@ -198,7 +202,7 @@ export class TrailingStopMonitor {
   private async maybeTrailTrade(
     trade: TrailTradeRow,
     uuid: string,
-    api: MetatraderApiClient,
+    api: FxsocketBrokerClient,
     bid: number,
     ask: number,
   ): Promise<boolean | null> {
@@ -310,7 +314,7 @@ export class TrailingStopMonitor {
     const key = `${uuid}:${symbol.toUpperCase()}`
     const cached = this.symbolCache.get(key)
     if (cached && Date.now() - cached.loadedAt < SYMBOL_CACHE_TTL_MS) return cached
-    const api = apiForMetaapiAccount(this.platformByUuid, uuid)
+    const api = apiForFxsocketAccount(this.platformByUuid, uuid)
     if (!api) return null
     try {
       const p: SymbolParams = await api.symbolParams(uuid, symbol)

@@ -27,3 +27,21 @@ export async function claimSignalBrokerDispatch(
   )
   return true
 }
+
+/** Release a prior claim so range-wake or retry can dispatch orders. */
+export async function releaseSignalBrokerDispatchClaim(
+  supabase: SupabaseClient,
+  signalId: string,
+  brokerAccountId: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('signal_broker_dispatch_claims')
+    .delete()
+    .eq('signal_id', signalId)
+    .eq('broker_account_id', brokerAccountId)
+  if (error) {
+    console.warn(
+      `[tradeExecutor] signal_broker_dispatch_claim release failed signal=${signalId} broker=${brokerAccountId}: ${error.message}`,
+    )
+  }
+}

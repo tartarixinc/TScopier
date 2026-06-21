@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { adminClient, corsHeaders, requireAuthedAdmin } from "../_shared/adminAuth.ts";
+import { isAdminAccessActive } from "../_shared/adminAccess.ts";
 
 function bad(status: number, message: string): Response {
   return Response.json({ error: message }, { status, headers: corsHeaders });
@@ -69,7 +70,7 @@ Deno.serve(async (req: Request) => {
     const search = String(body.search ?? "").trim().toLowerCase();
     const rows = await optionalRows(
       supabase.from("user_profiles")
-        .select("user_id,display_name,first_name,last_name,subscription_status,is_admin,created_at,base_currency")
+        .select("user_id,display_name,first_name,last_name,subscription_status,is_admin,admin_until,created_at,base_currency")
         .order("created_at", { ascending: false })
         .limit(200),
     ) as Array<Record<string, unknown>>;
@@ -125,6 +126,11 @@ Deno.serve(async (req: Request) => {
         base_currency: String(r.base_currency ?? "USD"),
         subscription_status: r.subscription_status ?? null,
         is_admin: r.is_admin === true,
+        admin_until: r.admin_until ?? null,
+        admin_active: isAdminAccessActive({
+          is_admin: r.is_admin === true,
+          admin_until: r.admin_until as string | null | undefined,
+        }),
       };
     });
 

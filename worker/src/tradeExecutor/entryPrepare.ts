@@ -1,11 +1,11 @@
 import {
-  hasMetatraderApiConfigured,
+  hasFxsocketConfigured,
   isBrokerDisconnectedMessage,
   MT_SESSION_EXPIRED_HINT,
-  MetatraderApiClient,
+  FxsocketBrokerClient,
   MtOperation,
   OrderSendArgs,
-} from '../metatraderapi'
+} from '../fxsocketClient'
 import {
   clampPendingExpiryHours,
   parsedHasExplicitEntryAnchor,
@@ -13,7 +13,9 @@ import {
   resolvedParsedEntryPrice,
   resolvedParsedEntryZone,
   signalEntryPriceStrictEnabled,
+  signalEntryRangeStrictEnabled,
   SKIP_REASON_SIGNAL_ENTRY_REQUIRED,
+  SKIP_REASON_SIGNAL_ENTRY_RANGE_REQUIRED,
   strictSignalEntryQuoteAllowsImmediate,
   lastPositiveParsedTpPrice,
   type ChannelKeywords,
@@ -28,15 +30,20 @@ import { isNewsTradingEnabled } from '../newsTrading/settings'
 import { shouldRouteAsBasketParameterRefresh } from '../multiTradeMerge'
 import { parsedHasReEnterIntent } from '../signalPriceInference'
 import {
+  ENTRY_ZONE_FAR_FROM_MARKET_REASON,
+  entryZoneFarFromQuote,
+} from '../signalEntryZoneSanity'
+import {
   applyChannelParamsToVirtualPendingList,
-  loadChannelActiveTradeParamsForSymbol,
-  mergeParsedWithChannelParams,
   parsedSignalHasExplicitStops,
-  upsertChannelActiveTradeParams,
+  refreshChannelParamsFromSignal,
+  resolveEntryChannelStops,
+  shouldPreferParsedStopsOnEntry,
+  type ChannelActiveTradeParams,
 } from '../channelActiveTradeParams'
-import { buildTscopierCommentPrefix } from '../tradeComment'
+import { resolveTscopierCommentPrefix } from '../tradeComment'
 import type { TradeExecutorContext } from './context'
-import { applySymbolMapping, computeCweTp, computeLot, isExcluded, roundLot, type Leg } from './helpers'
+import { applySymbolMapping, computeLot, isExcluded, isMt5OnlyOperation, roundLot, triggerPriceFor, brokerSessionUuid, type Leg } from './helpers'
 import type {
   BrokerRow,
   ParsedSignal,
@@ -45,6 +52,19 @@ import type {
   SymbolCacheEntry,
   SymbolMappingResult,
 } from './types'
+import {
+  logSignalRangeEntryNoPrice,
+  logSignalRangeEntryWaiting,
+  logSignalRangeEntryWakeRetry,
+  SIGNAL_RANGE_WAKE_DISPATCH_SOURCE,
+  upsertSignalRangeEntryWait,
+} from '../signalRangeEntryHelpers'
+import {
+  evaluatePreEntryStaleness,
+  evaluateWakeEligibility,
+  expireWait,
+} from '../signalRangeEntryService'
+import { releaseSignalBrokerDispatchClaim } from './signalBrokerDispatchClaim'
 
 export type EntryArgs = {
   signal: SignalRow
@@ -53,7 +73,7 @@ export type EntryArgs = {
   broker: BrokerRow
   channelKeywords: ChannelKeywords | null
   pipelineT0?: number
-  sendOpts?: { liveEntryFast?: boolean; commentPrefix?: string; messageEditOnly?: boolean }
+  sendOpts?: { liveEntryFast?: boolean; liveMgmtFast?: boolean; commentSlug?: string | null; commentPrefix?: string; sameSignalRefresh?: boolean }
 }
 
 export type PreparedEntry = {
@@ -62,7 +82,7 @@ export type PreparedEntry = {
   parsed: ParsedSignal
   broker: BrokerRow
   manual: ManualSettings
-  api: MetatraderApiClient
+  api: FxsocketBrokerClient
   uuid: string
   symbol: string
   requestedSymbol: string
@@ -167,12 +187,25 @@ export async function prepareEntryExecution(
     return { ok: false, outcome: {} }
   }
   const liveEntryFast = sendOpts?.liveEntryFast === true
-  const commentPrefix = sendOpts?.commentPrefix ?? buildTscopierCommentPrefix(signal.id)
-  if (!hasMetatraderApiConfigured()) return { ok: false, outcome: {} }
+  if (!hasFxsocketConfigured()) return { ok: false, outcome: {} }
   const api = ctx.apiFor(broker)
   if (!api) return { ok: false, outcome: {} }
-  const uuid = broker.metaapi_account_id!
+  const uuid = brokerSessionUuid(broker)!
+  const signalSymbol = (parsed.symbol ?? '').trim()
+  if (isExcluded(signalSymbol, broker)) {
+    await ctx.logSendSkipped(signal, broker, 'symbol_exempted_from_trading', {
+      signal_symbol: parsed.symbol ?? null,
+      reason: 'symbols_exclude',
+    })
+    return { ok: false, outcome: {} }
+  }
+
   const mapping = applySymbolMapping(parsed.symbol!, broker)
+
+  if (broker.platform === 'MT4' && isMt5OnlyOperation(op)) {
+    await ctx.logSendSkipped(signal, broker, 'mt4_unsupported_operation', { operation: op })
+    return { ok: false, outcome: { finalizeSkipReason: 'mt4_unsupported_operation' } }
+  }
 
   // Whitelist mode: when the user listed multiple symbols, only let signals
   // matching one of them through. Skip the signal otherwise.
@@ -188,23 +221,22 @@ export async function prepareEntryExecution(
   }
 
   const requestedSymbol = mapping.symbol
-  if (isExcluded(requestedSymbol, broker)) {
-    await ctx.logSendSkipped(signal, broker, 'symbol_exempted_from_trading', {
-      signal_symbol: parsed.symbol ?? null,
-      trade_symbol: requestedSymbol,
-      reason: 'symbols_exclude',
-    })
-    return { ok: false, outcome: {} }
-  }
 
   const isManual = (broker.copier_mode ?? 'ai') === 'manual'
   const manual = (broker.manual_settings ?? {}) as ManualSettings
+  const commentPrefix = resolveTscopierCommentPrefix(
+    signal.id,
+    sendOpts?.commentSlug,
+    manual,
+    sendOpts?.commentPrefix,
+  )
 
   const needsQuotePrefetch =
-    !liveEntryFast
-    && isManual
-    && signalEntryPriceStrictEnabled(manual)
-    && parsedHasExplicitEntryAnchor(parsed)
+    isManual
+    && (
+      (signalEntryPriceStrictEnabled(manual) && parsedHasExplicitEntryAnchor(parsed))
+      || signalEntryRangeStrictEnabled(manual)
+    )
 
   const stampOnResolve = liveEntryFast && !!signal.pipeline_ts
   const sessionPromise = (liveEntryFast
@@ -216,26 +248,29 @@ export async function prepareEntryExecution(
     }
     return r
   })
+  const resolveOpts = { userDecorated: mapping.userDecorated }
   const symbolPromise = (liveEntryFast
-    ? ctx.resolveBrokerSymbolForLiveEntry(uuid, requestedSymbol)
-    : ctx.resolveBrokerSymbol(uuid, requestedSymbol)
+    ? ctx.resolveBrokerSymbolForLiveEntry(uuid, requestedSymbol, resolveOpts)
+    : ctx.resolveBrokerSymbol(uuid, requestedSymbol, resolveOpts)
   ).then(r => {
     if (stampOnResolve && signal.pipeline_ts && signal.pipeline_ts.t_symbol_resolved == null) {
       signal.pipeline_ts.t_symbol_resolved = Date.now()
     }
     return r
   })
-  const paramsPromise = ctx.getSymbolParams(uuid, requestedSymbol).catch(() => null).then(r => {
-    if (stampOnResolve && signal.pipeline_ts && signal.pipeline_ts.t_params_resolved == null) {
-      signal.pipeline_ts.t_params_resolved = Date.now()
-    }
-    return r
-  })
+  const paramsPromise = ctx.getSymbolParams(uuid, requestedSymbol).catch(() => null)
   const [sessionOk, symbol, paramsFromRequested] = await Promise.all([
     sessionPromise,
     symbolPromise,
     paramsPromise,
   ])
+  let params = paramsFromRequested
+  if (symbol.toUpperCase() !== requestedSymbol.toUpperCase()) {
+    params = await ctx.getSymbolParams(uuid, symbol).catch(() => params)
+  }
+  if (stampOnResolve && signal.pipeline_ts && signal.pipeline_ts.t_params_resolved == null) {
+    signal.pipeline_ts.t_params_resolved = Date.now()
+  }
   if (liveEntryFast && signal.pipeline_ts && signal.pipeline_ts.t_send_caches_resolved == null) {
     signal.pipeline_ts.t_send_caches_resolved = Date.now()
   }
@@ -249,9 +284,11 @@ export async function prepareEntryExecution(
   }
   if (symbol.toUpperCase() !== requestedSymbol.toUpperCase()) {
     console.log(`[tradeExecutor] symbol resolved broker=${broker.id} ${requestedSymbol} → ${symbol}`)
+  } else if (mapping.userDecorated && !params) {
+    console.warn(
+      `[tradeExecutor] user-decorated symbol params missing broker=${broker.id} symbol=${symbol}`,
+    )
   }
-
-  let params = paramsFromRequested ?? await ctx.getSymbolParams(uuid, symbol).catch(() => null)
   const baseLot = roundLot(computeLot(broker, parsed), params)
 
   let strictEntryPrefetch: { bid: number; ask: number } | null = null
@@ -266,8 +303,51 @@ export async function prepareEntryExecution(
     }
   }
 
+  const entryDirection = String(parsed.action ?? '').toLowerCase()
+  const hasEntryZone =
+    parsed.entry_zone_low != null
+    || parsed.entry_zone_high != null
+  if (
+    isManual
+    && hasEntryZone
+    && !signalEntryRangeStrictEnabled(manual)
+    && (entryDirection === 'buy' || entryDirection === 'sell')
+    && sendOpts?.sameSignalRefresh !== true
+  ) {
+    try {
+      const q = strictEntryPrefetch ?? await api.quote(uuid, symbol)
+      if (
+        entryZoneFarFromQuote({
+          parsed,
+          quoteBid: q.bid,
+          quoteAsk: q.ask,
+          direction: entryDirection,
+        })
+      ) {
+        await ctx.logSendSkipped(signal, broker, ENTRY_ZONE_FAR_FROM_MARKET_REASON, {
+          symbol,
+          quote_bid: q.bid,
+          quote_ask: q.ask,
+          entry_zone_low: parsed.entry_zone_low ?? null,
+          entry_zone_high: parsed.entry_zone_high ?? null,
+        })
+        return {
+          ok: false,
+          outcome: { finalizeSkipReason: ENTRY_ZONE_FAR_FROM_MARKET_REASON },
+        }
+      }
+    } catch {
+      // Best-effort guard — proceed when quote is unavailable.
+    }
+  }
+
   // Basket SL/TP refresh — always before OrderSend (not deferred to post-fill).
-  if (isManual && shouldRouteAsBasketParameterRefresh(parsed)) {
+  // Skip when Use signal range is on: zone+market-now+SL/TP must open via range entry wait,
+  // not merge into a prior teaser that may never have opened.
+  let basketRefreshSucceeded = false
+  const sameSignalRefresh = sendOpts?.sameSignalRefresh === true
+  const rangeEntryStrict = signalEntryRangeStrictEnabled(manual)
+  if (isManual && !rangeEntryStrict && (shouldRouteAsBasketParameterRefresh(parsed) || sameSignalRefresh)) {
     const paramOutcome = await ctx.tryParameterFollowUpMergeModifyOnly({
       signal,
       parsed,
@@ -279,13 +359,42 @@ export async function prepareEntryExecution(
       uuid,
       strictEntryPrefetch,
       commentPrefix,
-      messageEditOnly: sendOpts?.messageEditOnly === true,
+      sameSignalRefresh,
+      liveMgmtFast: sendOpts?.liveMgmtFast === true,
     })
+    if (sameSignalRefresh && paramOutcome.handled) {
+      return {
+        ok: false,
+        outcome: {
+          openedOrMerged: paramOutcome.success === true,
+        },
+      }
+    }
     if (paramOutcome.handled && paramOutcome.success) {
+      basketRefreshSucceeded = true
       return { ok: false, outcome: { openedOrMerged: true } }
     }
-    if (paramOutcome.handled) {
-      return { ok: false, outcome: { openedOrMerged: false } }
+    // handled + !success: anchor had no open legs — fall through to range entry / OrderSend.
+  }
+
+  if (isManual && !sameSignalRefresh && !basketRefreshSucceeded && !rangeEntryStrict) {
+    const teaserOutcome = await ctx.tryTeaserCompletionMerge({
+      signal,
+      parsed,
+      broker,
+      channelKeywords,
+      baseLot,
+      params,
+      symbol,
+      uuid,
+      strictEntryPrefetch,
+      commentPrefix,
+    })
+    if (teaserOutcome.handled) {
+      return {
+        ok: false,
+        outcome: { openedOrMerged: teaserOutcome.success === true },
+      }
     }
   }
 
@@ -293,7 +402,7 @@ export async function prepareEntryExecution(
   if (
     isManual
     && manual.add_new_trades_to_existing === true
-    && !shouldRouteAsBasketParameterRefresh(parsed)
+    && !basketRefreshSucceeded
   ) {
     const mergeOutcome = await ctx.tryMergeSignalIntoExistingOpenTrade({
       signal,
@@ -355,6 +464,8 @@ export async function prepareEntryExecution(
   // manual mode delegates to the planner so filters / multi-TP / pip-derived
   // SL & TP / pending expiry / reverse all apply consistently.
   let mergedChannelParams = false
+  let entryChannelParams: ChannelActiveTradeParams | null = null
+  let channelParamsRefreshedFromSignal = false
   let plan: PlannerResult
   if (isManual) {
     const rpe = resolvedParsedEntryPrice(parsed)
@@ -372,29 +483,28 @@ export async function prepareEntryExecution(
       partial_close_fraction: parsed.partial_close_fraction,
       raw_instruction: parsed.raw_instruction,
     }
-    if (!liveEntryFast && signal.channel_id) {
-      if (parsedSignalHasExplicitStops(plannerParsed)) {
-        const refreshTpLevels = (plannerParsed.tp ?? []).filter(
-          (t): t is number => typeof t === 'number' && Number.isFinite(t) && t > 0,
-        )
-        await upsertChannelActiveTradeParams(ctx.supabase, {
+    if (signal.channel_id) {
+      if (!liveEntryFast) {
+        const resolved = await resolveEntryChannelStops(ctx.supabase, {
           userId: signal.user_id,
           channelId: signal.channel_id,
-          symbols: [symbol],
-          stoploss: plannerParsed.sl,
-          tpLevels: refreshTpLevels,
-        })
-      } else {
-        const channelParams = await loadChannelActiveTradeParamsForSymbol(
-          ctx.supabase,
-          signal.user_id,
-          signal.channel_id,
+          brokerAccountId: broker.id,
           symbol,
-        )
-        if (channelParams) {
-          plannerParsed = mergeParsedWithChannelParams(plannerParsed, channelParams)
-          mergedChannelParams = true
-        }
+          plannerParsed,
+          signalId: signal.id,
+        })
+        plannerParsed = resolved.plannerParsed
+        mergedChannelParams = resolved.mergedChannelParams
+        entryChannelParams = resolved.channelParams
+        channelParamsRefreshedFromSignal = parsedSignalHasExplicitStops(plannerParsed)
+      } else if (parsedSignalHasExplicitStops(plannerParsed)) {
+        entryChannelParams = await refreshChannelParamsFromSignal(ctx.supabase, {
+          userId: signal.user_id,
+          channelId: signal.channel_id,
+          symbol,
+          plannerParsed,
+        })
+        channelParamsRefreshedFromSignal = entryChannelParams != null
       }
     }
     plan = planManualOrders({
@@ -442,6 +552,10 @@ export async function prepareEntryExecution(
     await ctx.logSendSkipped(signal, broker, plan.skip_reason ?? 'filtered', { symbol })
     const entryStrict =
       isManual && plan.skip_reason === SKIP_REASON_SIGNAL_ENTRY_REQUIRED
+    if (isManual && plan.skip_reason === SKIP_REASON_SIGNAL_ENTRY_RANGE_REQUIRED) {
+      await logSignalRangeEntryNoPrice(ctx.supabase, signal, broker, parsed, symbol)
+      return { ok: false, outcome: { signalRangeEntryRequiredSkip: true } }
+    }
     return { ok: false, outcome: entryStrict ? { signalEntryRequiredSkip: true } : {} }
   }
 
@@ -452,26 +566,31 @@ export async function prepareEntryExecution(
     console.warn(
       `[tradeExecutor] plan_fallback signal=${signal.id} broker=${broker.id} symbol=${symbol} reason=${plan.fallback_reason}`,
     )
-    try {
-      await ctx.supabase.from('trade_execution_logs').insert({
-        user_id: signal.user_id,
-        signal_id: signal.id,
-        broker_account_id: broker.id,
-        action: 'plan_fallback',
-        status: 'success',
-        request_payload: {
-          reason: plan.fallback_reason,
-          manual_lot: baseLot,
-          target_leg: +(baseLot * ((Number(manual.multi_trade_leg_percent ?? 5)) / 100)).toFixed(4),
-          min_lot: params?.minLot ?? null,
-          lot_step: params?.lotStep ?? null,
-          stops_level: params?.stopsLevel ?? null,
-          freeze_level: params?.freezeLevel ?? null,
-          symbol,
-        } as unknown as Record<string, unknown>,
-      })
-    } catch {
-      // Logging failure is non-fatal.
+    const fallbackRow = {
+      user_id: signal.user_id,
+      signal_id: signal.id,
+      broker_account_id: broker.id,
+      action: 'plan_fallback',
+      status: 'success',
+      request_payload: {
+        reason: plan.fallback_reason,
+        manual_lot: baseLot,
+        target_leg: +(baseLot * ((Number(manual.multi_trade_leg_percent ?? 5)) / 100)).toFixed(4),
+        min_lot: params?.minLot ?? null,
+        lot_step: params?.lotStep ?? null,
+        stops_level: params?.stopsLevel ?? null,
+        freeze_level: params?.freezeLevel ?? null,
+        symbol,
+      } as unknown as Record<string, unknown>,
+    }
+    if (liveEntryFast) {
+      void ctx.supabase.from('trade_execution_logs').insert(fallbackRow)
+    } else {
+      try {
+        await ctx.supabase.from('trade_execution_logs').insert(fallbackRow)
+      } catch {
+        // Logging failure is non-fatal.
+      }
     }
   }
 
@@ -496,44 +615,54 @@ export async function prepareEntryExecution(
   }
   let virtualPendings = (plan.virtualPendings ?? []).slice(0, 500)
   const totalPlannedLegCount = capped.length + virtualPendings.length
-  if (!liveEntryFast && virtualPendings.length > 0 && signal.channel_id && mergedChannelParams) {
-    const channelParams = await loadChannelActiveTradeParamsForSymbol(
-      ctx.supabase,
-      signal.user_id,
-      signal.channel_id,
-      symbol,
+  if (
+    virtualPendings.length > 0
+    && signal.channel_id
+    && entryChannelParams
+    && (
+      channelParamsRefreshedFromSignal
+      || !shouldPreferParsedStopsOnEntry(parsed)
     )
+  ) {
     virtualPendings = applyChannelParamsToVirtualPendingList(
       virtualPendings,
-      channelParams,
+      entryChannelParams,
       capped.length,
       manual.tp_lots,
       totalPlannedLegCount,
     )
   }
 
-  const already = await ctx.manualDispatchAlreadyMaterialized(signal.id, broker.id)
-  if (already) {
-    console.warn(
-      `[tradeExecutor] skip duplicate entry dispatch signal=${signal.id} broker=${broker.id}`,
-    )
-    return { ok: false, outcome: { openedOrMerged: true } }
+  // sendOrder already claims + dedupes on the live fast path — skip the extra
+  // four-table materialized probe here so we don't pay a second DB round-trip.
+  if (!liveEntryFast) {
+    const already = await ctx.manualDispatchAlreadyMaterialized(signal.id, broker.id)
+    if (already) {
+      console.warn(
+        `[tradeExecutor] skip duplicate entry dispatch signal=${signal.id} broker=${broker.id}`,
+      )
+      return { ok: false, outcome: { openedOrMerged: true } }
+    }
   }
 
   // ── Strict signal entry (post-delay live quote) ───────────────────────
   // Buy: immediate market only when ask ≤ entry; else one virtual pending at entry.
   // Sell: immediate only when bid ≥ entry; else virtual at entry. Quote failure → defer.
   let strictDeferred = false
-  if (isManual && plan.strictEntry && api && !liveEntryFast) {
+  if (isManual && plan.strictEntry && api) {
     const se = plan.strictEntry
+    const pipTol = Math.max(0, Number(manual.signal_entry_pip_tolerance ?? 0))
+    const pipSize = plan.pip ?? params?.point ?? 0.00001
     try {
-      const q = await api.quote(uuid, symbol)
+      const q = strictEntryPrefetch ?? await api.quote(uuid, symbol)
       strictEntryPrefetch = q
       strictDeferred = !strictSignalEntryQuoteAllowsImmediate({
         isBuy: se.isBuy,
         entryPrice: se.entryPrice,
         bid: q.bid,
         ask: q.ask,
+        tolerancePips: pipTol,
+        pipSize,
       })
       if (strictDeferred) {
         console.log(
@@ -550,7 +679,125 @@ export async function prepareEntryExecution(
     }
   }
 
+  let rangeEntryDeferred = false
+  if (
+    isManual
+    && signalEntryRangeStrictEnabled(manual)
+    && plan.rangeEntryWait
+    && api
+    && !strictDeferred
+  ) {
+    const wait = plan.rangeEntryWait
+    const zoneFromParsed = resolvedParsedEntryZone(parsed)
+    const waitToStore = zoneFromParsed
+      ? { ...wait, zoneLo: zoneFromParsed.lo, zoneHi: zoneFromParsed.hi }
+      : wait
+    const pipSize = plan.pip ?? params?.point ?? 0.00001
+    const fromWake = signal.dispatch_source === SIGNAL_RANGE_WAKE_DISPATCH_SOURCE
+    try {
+      const q = strictEntryPrefetch ?? await api.quote(uuid, symbol)
+      strictEntryPrefetch = q
+      const stale = evaluatePreEntryStaleness({
+        parsed,
+        bid: q.bid,
+        ask: q.ask,
+        isBuy: wait.isBuy,
+      })
+      if (stale.stale && stale.reason) {
+        const { data: waitRow } = await ctx.supabase
+          .from('signal_range_entry_waits')
+          .select('id')
+          .eq('signal_id', signal.id)
+          .eq('broker_account_id', broker.id)
+          .eq('status', 'waiting')
+          .maybeSingle()
+        if (waitRow?.id) {
+          await expireWait(ctx.supabase, {
+            waitId: waitRow.id,
+            signalId: signal.id,
+            userId: signal.user_id,
+            brokerAccountId: broker.id,
+            reason: stale.reason,
+            symbol,
+            bid: q.bid,
+            ask: q.ask,
+          })
+        }
+        return {
+          ok: false,
+          outcome: { finalizeSkipReason: 'signal_entry_range_expired' },
+        }
+      }
+      const allowed = evaluateWakeEligibility({
+        wait: waitToStore,
+        bid: q.bid,
+        ask: q.ask,
+        pipSize,
+      })
+      if (!allowed) {
+        rangeEntryDeferred = true
+        await upsertSignalRangeEntryWait(ctx.supabase, {
+          signal,
+          broker,
+          uuid,
+          symbol,
+          wait: waitToStore,
+          manual,
+          parsed,
+        })
+        if (fromWake) {
+          await logSignalRangeEntryWakeRetry(ctx.supabase, signal, broker.id, symbol, q.bid, q.ask)
+        } else {
+          await logSignalRangeEntryWaiting(
+            ctx.supabase,
+            signal,
+            broker,
+            waitToStore,
+            symbol,
+            q.bid,
+            q.ask,
+          )
+        }
+        console.log(
+          `[tradeExecutor] signal range entry deferred signal=${signal.id} broker=${broker.id} symbol=${symbol}`
+          + ` isBuy=${wait.isBuy} bid=${q.bid} ask=${q.ask} tol=${wait.tolerancePips}p fromWake=${fromWake}`,
+        )
+      }
+    } catch (err) {
+      rangeEntryDeferred = true
+      const msg = err instanceof Error ? err.message : String(err)
+      console.warn(
+        `[tradeExecutor] signal range entry /Quote failed; deferring signal=${signal.id} broker=${broker.id} symbol=${symbol}: ${msg}`,
+      )
+      await upsertSignalRangeEntryWait(ctx.supabase, {
+        signal,
+        broker,
+        uuid,
+        symbol,
+        wait: waitToStore,
+        manual,
+        parsed,
+      })
+    }
+  }
+
+  if (rangeEntryDeferred) {
+    await releaseSignalBrokerDispatchClaim(ctx.supabase, signal.id, broker.id)
+    return {
+      ok: false,
+      outcome: { signalRangeEntryDeferred: true, channelDelayMs, channelDelaySkipped },
+    }
+  }
+
   const effectiveCapped = strictDeferred ? [] : capped
+
+  if (!strictDeferred && plan.strictEntry) {
+    for (const o of effectiveCapped) {
+      if (o.operation === 'Buy' || o.operation === 'Sell') {
+        o.price = 0
+      }
+    }
+  }
 
   // Build immediate legs with rounded volumes. Immediates already carry the
   // planner's intended entry price (signal entry or zero for true market orders).
@@ -575,19 +822,14 @@ export async function prepareEntryExecution(
 
   // ── Anchor resolution ────────────────────────────────────────────────
   // Priority: parsed signal entry → live /Quote (Ask for buy, Bid for sell).
-  // Needed whenever we have virtual pendings to persist (so we can compute
-  // trigger prices) OR Close-Worse-Entries is on (so we can compute the
-  // single override TP). Strict broker pendings use the signal entry as the
-  // clamp reference — no extra quote solely for that path.
+  // Needed whenever we have virtual pendings to persist (so we can compute trigger prices).
   // The Quote is a ~50-150ms GET that we issue BEFORE sending immediates so every
   // leg + every virtual trigger sees the same deterministic reference price.
   // Live fast + immediate legs: defer virtual-only anchor work until after OrderSend.
   const deferVirtualAnchor = liveEntryFast
     && legs.length > 0
     && virtualPendings.length > 0
-    && !plan.closeWorseEntries
-  const needsAnchor = !deferVirtualAnchor
-    && (virtualPendings.length > 0 || !!plan.closeWorseEntries)
+  const needsAnchor = !deferVirtualAnchor && virtualPendings.length > 0
   let anchor: number | null = plan.anchor?.value ?? plan.strictEntry?.entryPrice ?? null
   let anchorSource: 'signal' | 'quote' | 'unknown' = plan.anchor?.source ?? 'unknown'
   if (needsAnchor && (anchor == null || anchor <= 0)) {
@@ -622,33 +864,6 @@ export async function prepareEntryExecution(
     }
   }
 
-  // Apply Close-Worse-Entries to immediate legs. As of May-12 this is a *worker-managed* close: the
-  // broker never sees the threshold as a takeprofit (which produced
-  // "Invalid stops" rejections whenever the basket was already in profit or
-  // inside the stops/freeze zone). Instead we:
-  //   1. Set takeprofit = 0 on the CWE-tagged leg's broker order so only
-  //      the SL rides (the bucket TP is intentionally dropped — the user
-  //      wants these worse entries to be exited by CWE, not by TP1/TP2/TP3).
-  //   2. Stamp `cweClosePrice` on the leg / pending so the post-INSERT path
-  //      writes it into `trades.cwe_close_price` / `range_pending_legs.cwe_close_price`.
-  //   3. The new `cweCloseMonitor` polls /Quote and fires /OrderClose on
-  //      every CWE-tagged open trade once the threshold is crossed.
-  const overrideTp = computeCweTp(plan, anchor, params)
-  if (overrideTp != null && plan.closeWorseEntries) {
-    const nImm = Math.max(0, Math.min(legs.length, plan.closeWorseEntries.immediates))
-    for (let i = 0; i < nImm; i++) {
-      legs[i] = {
-        ...legs[i]!,
-        args: {
-          ...legs[i]!.args,
-          takeprofit: 0,
-          comment: `${legs[i]!.args.comment ?? ''}.cw`,
-        },
-        cweClosePrice: overrideTp,
-      }
-    }
-  }
-
   if (isManual) {
     // One-line plan summary so it's obvious whether Range Trading / CWE are
     // actually firing, and at which anchor. Helps debug "settings not applying".
@@ -659,17 +874,30 @@ export async function prepareEntryExecution(
     const contractSize = plan.pipQuote?.contractSize
     const quoteCcy = plan.pipQuote?.quoteCurrency ?? ''
     const partialCount = plan.partialTps?.length ?? 0
+    let rangeLayerLog = ''
+    if (plan.rangeLayering) {
+      const rl = plan.rangeLayering
+      rangeLayerLog = ` range_step=${rl.rangeStepPips} range_dist=${rl.rangeDistancePips}`
+        + ` eff_step=${rl.effectiveStepPips} step_offset=${rl.stepPriceOffset}`
+        + ` max_step_idx=${rl.maxStepIdx} reserved_pending=${rl.reservedPendingLegs} active_pending=${rl.activePendingLegs}`
+      if (anchor != null && virtualPendings.length > 0) {
+        const logDigits = Math.max(0, Math.min(8, Number(params?.digits) || 5))
+        const first = triggerPriceFor(virtualPendings[0]!, anchor, logDigits)
+        const last = triggerPriceFor(virtualPendings[virtualPendings.length - 1]!, anchor, logDigits)
+        rangeLayerLog += ` trigger_first=${first} trigger_last=${last}`
+      }
+    }
     console.log(
       `[tradeExecutor] manual plan signal=${signal.id} broker=${broker.id} symbol=${symbol}`
       + ` style=${manual.trade_style ?? 'single'} legs=${legs.length + virtualPendings.length}`
       + ` (immediate=${legs.length}, virtual_pending=${virtualPendings.length}${partialCount > 0 ? `, partial_tp=${partialCount}` : ''})`
-      + ` rangeOn=${manual.range_trading === true} cwOn=${!!plan.closeWorseEntries}`
-      + (overrideTp != null ? ` cweClose=${overrideTp}` : '')
+      + ` rangeOn=${manual.range_trading === true}`
       + ` pip=${plan.pip ?? 'n/a'}`
       + (pipValue != null ? ` pipValue=${pipValue.toFixed(4)}${quoteCcy ? '_' + quoteCcy : ''}/lot` : '')
       + (contractSize != null ? ` contractSize=${contractSize}` : '')
       + ` anchorSource=${anchorSource} anchor=${anchor ?? 'n/a'}`
       + ` stops_level=${stopsLevel} freeze_level=${freezeLevel} point=${point}`
+      + rangeLayerLog
       + (plan.fallback_reason ? ` fallback=${plan.fallback_reason}` : ''),
     )
   }

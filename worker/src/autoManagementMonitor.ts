@@ -1,20 +1,22 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
+  clampBreakevenModifyStops,
   computeBreakevenStopLoss,
   isAutoBeTriggerMet,
   isSlAtOrBeyondBreakeven,
+  resolveSlForBreakevenCheck,
   type AutoBeMode,
   type AutoBeType,
 } from './autoManagement'
 import { pipCalculator, pipValueForLots } from './pipCalculator'
 import { signalPipPrice } from './signalPip'
 import {
-  hasMetatraderApiConfigured,
+  hasFxsocketConfigured,
   normalizeSymbolParams,
-  type MetatraderApiClient,
+  type FxsocketBrokerClient,
   type SymbolParams,
-} from './metatraderapi'
-import { apiForMetaapiAccount, loadPlatformByMetaapiId, type PlatformByMetaapiId } from './mtApiByAccount'
+} from './fxsocketClient'
+import { apiForFxsocketAccount, brokerSessionId, loadPlatformByFxsocketId, type PlatformByFxsocketId } from './mtApiByAccount'
 import {
   applyShardToQuery,
   hasWorkOnShard,
@@ -23,6 +25,7 @@ import {
   startMonitorLoop,
   type MonitorLoopHandle,
 } from './monitorIdleGate'
+import { isUserCopierPausedCached } from './copierPause'
 
 interface AutoBeTradeRow {
   id: string
@@ -53,25 +56,28 @@ interface PartialLegRow {
 
 interface BrokerRow {
   id: string
-  metaapi_account_id: string
+  fxsocket_account_id: string | null
+  metaapi_account_id: string | null
   platform: string
   manual_settings: Record<string, unknown> | null
 }
 
-const ACTIVE_MS = monitorActiveIntervalMs('AUTO_MANAGEMENT_TICK_MS', 1_500)
-const IDLE_MS = monitorIdleIntervalMs('AUTO_MANAGEMENT_IDLE_MS', 60_000)
+const ACTIVE_MS = monitorActiveIntervalMs('AUTO_MANAGEMENT_TICK_MS', 400)
+const IDLE_MS = monitorIdleIntervalMs('AUTO_MANAGEMENT_IDLE_MS', 15_000)
 const SYMBOL_CACHE_TTL_MS = 5 * 60_000
 
 type SymbolCacheEntry = {
   digits: number
   point: number
   contractSize: number | null
+  stopsLevel: number
+  freezeLevel: number
   loadedAt: number
 }
 
 export class AutoManagementMonitor {
   private loop: MonitorLoopHandle | null = null
-  private platformByUuid: PlatformByMetaapiId = new Map()
+  private platformByUuid: PlatformByFxsocketId = new Map()
   private ticking = false
   private firstTickLogged = false
   private quietTicks = 0
@@ -81,7 +87,7 @@ export class AutoManagementMonitor {
 
   start() {
     if (this.loop) return
-    if (!hasMetatraderApiConfigured()) {
+    if (!hasFxsocketConfigured()) {
       console.warn('[autoManagementMonitor] MT4API_BASIC_USER/PASSWORD missing — auto-management monitor disabled')
       return
     }
@@ -118,7 +124,7 @@ export class AutoManagementMonitor {
   }
 
   private async tick(): Promise<void> {
-    if (!hasMetatraderApiConfigured()) return
+    if (!hasFxsocketConfigured()) return
 
     const tradesQ = await applyShardToQuery(
       this.supabase,
@@ -139,7 +145,8 @@ export class AutoManagementMonitor {
       console.error('[autoManagementMonitor] select failed:', error.message)
       return
     }
-    const rows = (data ?? []) as unknown as AutoBeTradeRow[]
+    const rows = ((data ?? []) as unknown as AutoBeTradeRow[])
+      .filter(r => !isUserCopierPausedCached(r.user_id))
     if (!this.firstTickLogged) {
       this.firstTickLogged = true
       console.log(`[autoManagementMonitor] first tick ok auto_be_rows=${rows.length}`)
@@ -152,23 +159,24 @@ export class AutoManagementMonitor {
     const brokerIds = [...new Set(rows.map(r => r.broker_account_id).filter(Boolean))] as string[]
     const { data: brokers, error: brokerErr } = await this.supabase
       .from('broker_accounts')
-      .select('id,metaapi_account_id,platform,manual_settings')
+      .select('id,fxsocket_account_id,metaapi_account_id,platform,manual_settings')
       .in('id', brokerIds)
     if (brokerErr) {
       console.error('[autoManagementMonitor] broker lookup failed:', brokerErr.message)
       return
     }
     const brokerById = new Map((brokers ?? []).map(b => [b.id, b as BrokerRow]))
-    this.platformByUuid = await loadPlatformByMetaapiId(
+    this.platformByUuid = await loadPlatformByFxsocketId(
       this.supabase,
-      (brokers ?? []).map(b => String((b as BrokerRow).metaapi_account_id ?? '')),
+      (brokers ?? []).map(b => brokerSessionId(b as BrokerRow)),
     )
 
     const groups = new Map<string, AutoBeTradeRow[]>()
     for (const row of rows) {
       const b = brokerById.get(row.broker_account_id ?? '')
-      if (!b?.metaapi_account_id) continue
-      const key = `${b.metaapi_account_id}:${row.symbol.toUpperCase()}`
+      const sessionId = b ? brokerSessionId(b) : ''
+      if (!sessionId) continue
+      const key = `${sessionId}:${row.symbol.toUpperCase()}`
       const list = groups.get(key) ?? []
       list.push(row)
       groups.set(key, list)
@@ -181,7 +189,7 @@ export class AutoManagementMonitor {
       const symbol = group[0]?.symbol ?? ''
       let bid = NaN
       let ask = NaN
-      const api = apiForMetaapiAccount(this.platformByUuid, uuid)
+      const api = apiForFxsocketAccount(this.platformByUuid, uuid)
       if (!api) continue
       try {
         const q = await api.quote(uuid, symbol)
@@ -240,7 +248,7 @@ export class AutoManagementMonitor {
   private async maybeApplyBreakeven(
     trade: AutoBeTradeRow,
     uuid: string,
-    api: MetatraderApiClient,
+    api: FxsocketBrokerClient,
     bid: number,
     ask: number,
     partials: PartialLegRow[],
@@ -293,8 +301,24 @@ export class AutoManagementMonitor {
     const beSl = computeBreakevenStopLoss(isBuy, entry, offsetPips, signalPip, symEntry.digits)
     const currentSl = trade.sl != null && Number.isFinite(Number(trade.sl)) ? Number(trade.sl) : null
 
-    if (isSlAtOrBeyondBreakeven(isBuy, currentSl, beSl, signalPip)) {
-      await this.markApplied(trade.id, { sl: currentSl ?? beSl })
+    let brokerSl: number | null = null
+    try {
+      const orders = await api.openedOrders(uuid)
+      for (const raw of orders ?? []) {
+        const o = raw as Record<string, unknown>
+        const t = Number(o.ticket ?? o.Ticket ?? o.order ?? o.Order ?? 0)
+        if (t !== ticketNum) continue
+        const sl = Number(o.stopLoss ?? o.StopLoss ?? o.sl ?? o.SL ?? 0)
+        if (Number.isFinite(sl) && sl > 0) brokerSl = sl
+        break
+      }
+    } catch {
+      /* fall back to DB SL */
+    }
+
+    const effectiveSl = resolveSlForBreakevenCheck(currentSl, brokerSl)
+    if (isSlAtOrBeyondBreakeven(isBuy, effectiveSl, beSl, signalPip)) {
+      await this.markApplied(trade.id, { sl: effectiveSl ?? beSl })
       return null
     }
 
@@ -317,12 +341,25 @@ export class AutoManagementMonitor {
     }
 
     const tpSanitize = brokerTp ?? 0
+    const refPrice = isBuy ? bid : ask
+    const clamped = clampBreakevenModifyStops({
+      isBuy,
+      stoploss: beSl,
+      takeprofit: tpSanitize,
+      referencePrice: refPrice,
+      point: symEntry.point,
+      digits: symEntry.digits,
+      stopsLevel: symEntry.stopsLevel,
+      freezeLevel: symEntry.freezeLevel,
+    })
+    const modifySl = clamped.stoploss
+    const modifyTp = clamped.takeprofit
 
     try {
       await api.orderModify(uuid, {
         ticket: ticketNum,
-        stoploss: beSl,
-        takeprofit: tpSanitize,
+        stoploss: modifySl,
+        takeprofit: modifyTp,
       })
 
       let remainingLots = lots
@@ -342,7 +379,7 @@ export class AutoManagementMonitor {
       }
 
       const patch: Record<string, unknown> = {
-        sl: beSl,
+        sl: modifySl,
         auto_be_applied_at: new Date().toISOString(),
       }
       if (remainingLots < 0.0001) {
@@ -367,14 +404,14 @@ export class AutoManagementMonitor {
           direction: trade.direction,
           mode,
           trigger_value: triggerValue,
-          new_sl: beSl,
+          new_sl: modifySl,
           be_type: beType,
           half_close: beType === 'sl_and_close_half',
         } as unknown as Record<string, unknown>,
       })
 
       console.log(
-        `[autoManagementMonitor] applied trade=${trade.id} symbol=${trade.symbol} mode=${mode} sl→${beSl}`,
+        `[autoManagementMonitor] applied trade=${trade.id} symbol=${trade.symbol} mode=${mode} sl→${modifySl}`,
       )
       return true
     } catch (err) {
@@ -398,7 +435,7 @@ export class AutoManagementMonitor {
         broker_account_id: trade.broker_account_id,
         action: 'auto_be',
         status: 'failed',
-        request_payload: { ticket: ticketNum, symbol: trade.symbol, attempted_sl: beSl, mode },
+        request_payload: { ticket: ticketNum, symbol: trade.symbol, attempted_sl: modifySl, mode },
         error_message: msg,
       })
       return false
@@ -423,7 +460,7 @@ export class AutoManagementMonitor {
     const key = `${uuid}:${symbol.toUpperCase()}`
     const cached = this.symbolCache.get(key)
     if (cached && Date.now() - cached.loadedAt < SYMBOL_CACHE_TTL_MS) return cached
-    const api = apiForMetaapiAccount(this.platformByUuid, uuid)
+    const api = apiForFxsocketAccount(this.platformByUuid, uuid)
     if (!api) return null
     try {
       const p: SymbolParams = await api.symbolParams(uuid, symbol)
@@ -432,6 +469,8 @@ export class AutoManagementMonitor {
         digits: n.digits ?? 5,
         point: n.point ?? 0.00001,
         contractSize: Number.isFinite(n.contractSize) && (n.contractSize ?? 0) > 0 ? Number(n.contractSize) : null,
+        stopsLevel: Math.max(0, n.stopsLevel ?? 0),
+        freezeLevel: Math.max(0, n.freezeLevel ?? 0),
         loadedAt: Date.now(),
       }
       this.symbolCache.set(key, entry)

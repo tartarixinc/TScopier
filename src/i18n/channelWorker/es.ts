@@ -60,6 +60,17 @@ export const channelWorkerEs: ChannelWorkerTranslations = {
   entryCancelled: 'Orden de entrada en espera cancelada {on}.',
   entryFailed: 'Falló la orden de entrada {on}{err}',
 
+  rangeEntryWaitingNoPrice: '{side} pendiente — Esperando rango de precio.',
+  rangeEntryWaitingAtPrice: '{side} pendiente — Esperando precio @ {price}.',
+  rangeEntryWaitingZone: '{side} pendiente — Esperando rango {lo}–{hi}.',
+  rangeEntryFired: '{side} ejecutado {on} (precio alcanzó el rango de la señal).',
+  rangeEntryExpired: '{side} pendiente expirado — ventana de entrada cerrada.',
+  rangeEntryTpBeforeEntry: '{side} pendiente expirado — TP alcanzado antes de la entrada.',
+  rangeEntrySlBeforeEntry: '{side} pendiente expirado — SL alcanzado antes de la entrada.',
+  rangeEntryUpdated: '{side} pendiente — rango actualizado a {lo}–{hi}.',
+  rangeEntryCancelled: '{side} pendiente cancelado ({reason}).',
+  rangeEntryWakeRetry: '{side} pendiente — precio salió del rango; esperando de nuevo.',
+
   mergeAddedNamed: 'Añadido a la posición existente en {symbol}.',
   mergeAddedGeneric: 'Añadido a tu operación abierta.',
   mergeSlTpSuccessNamed:
@@ -93,6 +104,8 @@ export const channelWorkerEs: ChannelWorkerTranslations = {
   signalSellGeneric: '{prefix}: señal de venta.',
   signalCloseNamed: '{prefix}: cerrar {symbol}.',
   signalCloseGeneric: '{prefix}: cerrar tu operación abierta.',
+  signalCloseWorseNamed: '{prefix}: cerrar entradas peores en {symbol}.',
+  signalCloseWorseGeneric: '{prefix}: cerrar entradas peores en tu operación abierta.',
   signalBreakevenUnderstood: 'Entendido: mover SL a break-even {on}.',
   signalBreakevenCompleted: 'SL movido a break-even {on}.',
   signalPartialProfit: '{prefix}: tomar beneficio parcial {on}{pct}.',
@@ -103,6 +116,8 @@ export const channelWorkerEs: ChannelWorkerTranslations = {
 
   mgmtCloseSuccessNamed: 'Posición en {symbol} cerrada.',
   mgmtCloseSuccessGeneric: 'Tu operación abierta fue cerrada.',
+  mgmtCloseWorseSuccessNamed: 'Piernas instantáneas de {symbol} cerradas (capas conservadas).',
+  mgmtCloseWorseSuccessGeneric: 'Piernas instantáneas cerradas (capas conservadas).',
   mgmtBreakevenSuccess: 'SL movido a break-even {on}.',
   mgmtPartialProfit: 'Beneficio parcial tomado {on}{pct}.',
   mgmtPartialBreakeven: 'Beneficio parcial y SL a break-even {on}.',
@@ -112,6 +127,8 @@ export const channelWorkerEs: ChannelWorkerTranslations = {
 
   mgmtCloseFailNamed: 'No se pudo cerrar {symbol}',
   mgmtCloseFailGeneric: 'No se pudo cerrar tu operación abierta',
+  mgmtCloseWorseFailNamed: 'No se pudieron cerrar piernas instantáneas de {symbol}',
+  mgmtCloseWorseFailGeneric: 'No se pudieron cerrar piernas instantáneas',
   mgmtBreakevenFailNamed: 'No se pudo mover {symbol} a break-even',
   mgmtBreakevenFailGeneric: 'No se pudo mover tu operación abierta a break-even',
   mgmtPartialProfitFail: 'No se pudo tomar beneficio parcial {on}',
@@ -122,12 +139,25 @@ export const channelWorkerEs: ChannelWorkerTranslations = {
 
   mgmtCloseSkippedNamed: 'No se cerró {symbol}',
   mgmtCloseSkippedGeneric: 'No se cerró tu operación abierta',
+  mgmtCloseWorseSkippedNamed: 'No se cerraron piernas instantáneas de {symbol}',
+  mgmtCloseWorseSkippedGeneric: 'No se cerraron piernas instantáneas',
   mgmtSkippedNamed: 'Actualización de {symbol} omitida',
-  mgmtSkippedGeneric: 'Actualización de tu operación omitida',
+  mgmtSkippedGeneric: 'Omitido!',
   mgmtSkippedReason: '{phrase} ({reason}).',
 
   skipReasons: {
     no_matching_open_trade: 'sin operación abierta coincidente',
+    mgmt_no_open_trades: 'sin operación abierta coincidente',
+    mgmt_no_open_trades_db: 'sin operación abierta coincidente en la base del copier',
+    mgmt_no_open_trades_broker: 'sin posición abierta en el broker para este canal',
+    mgmt_no_open_trades_symbol: 'el símbolo del cierre no coincidió con ninguna pierna abierta',
+    mgmt_ambiguous_modify: 'sin operación abierta coincidente',
+    cwe_no_open_trades: 'no hay piernas abiertas para cerrar',
+    cwe_no_eligible_broker_trades: 'las piernas abiertas no están vinculadas a un broker activo',
+    cwe_no_open_immediates: 'todas las piernas abiertas son entradas de capas (se mantienen abiertas)',
+    cwe_close_failed: 'el broker no pudo cerrar las piernas seleccionadas',
+    copier_paused: 'el copiador está en pausa',
+    close_worse_entries_disabled: 'cerrar entradas peores está desactivado en la configuración',
     not_placed: 'no colocada',
     symbol_exempted_from_trading: 'símbolo exento de trading',
     symbol_not_in_whitelist: 'símbolo no en lista blanca',
@@ -154,7 +184,10 @@ export const channelWorkerEs: ChannelWorkerTranslations = {
   errorSymbolNotFound: 'Símbolo no encontrado: {symbol}',
   errorBrokerNotConnected:
     'Broker no conectado — en Configuración de cuenta, use Reconnect e ingrese su contraseña MT',
+  errorInvalidStops:
+    'El broker rechazó estos niveles de stop — compruebe que SL/TP están del lado correcto del mercado y cumplen la distancia mínima.',
   errorBridgeGlitch:
     'Fallo temporal del servidor de trading — las entradas escalonadas se reintentarán solas. Use Reconnect si persiste.',
   errorStopsAlreadySet: 'El SL y el TP ya estaban configurados en el broker (no se requirió cambio).',
+  errorSignalLinkFailed: 'No se pudo vincular esta operación con su señal.',
 }

@@ -1,4 +1,4 @@
--- Optional encrypted MT password for automatic reconnect when the MetatraderAPI session is fully gone.
+-- Optional encrypted MT password for automatic reconnect when the FxSocket session is fully gone.
 -- Ciphertext is readable only by service_role; clients may read auto_reconnect_enabled for UI state.
 
 alter table public.broker_accounts

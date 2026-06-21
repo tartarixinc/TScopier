@@ -1,6 +1,6 @@
 # Stripe subscription setup
 
-This document covers TSCopier Stripe billing, webhook sync, and soft paywall enforcement.
+This document covers TScopier Stripe billing, webhook sync, and soft paywall enforcement.
 
 ## Products and prices
 
@@ -52,13 +52,26 @@ Migration `20260527140000_user_profiles_admin_subscription_status.sql` adds:
 - `is_admin` (boolean, default `false`) — full app access without Stripe subscription
 - `subscription_status` (text, nullable) — mirror of `subscriptions.status`, synced by trigger
 
-Users cannot self-promote to admin; a DB trigger resets `is_admin` and `subscription_status` on client updates. Set admin only via SQL Editor or service role:
+Migration `20260605140000_user_profiles_admin_until.sql` adds:
+
+- `admin_until` (timestamptz, nullable) — when set with `is_admin = true`, admin bypass expires at this time; `NULL` means permanent admin
+- pg_cron job `expire-timed-admin-access` (every 5 minutes) sets `is_admin = false` when `admin_until` has passed
+
+Users cannot self-promote to admin; a DB trigger resets `is_admin`, `admin_until`, and `subscription_status` on client updates. Set admin only via SQL Editor, service role, or backoffice `set_admin_access`:
 
 ```sql
+-- Permanent admin
 UPDATE public.user_profiles
-SET is_admin = true
+SET is_admin = true, admin_until = NULL
+WHERE user_id = '<uuid>';
+
+-- Timed admin (expires automatically)
+UPDATE public.user_profiles
+SET is_admin = true, admin_until = '2026-07-01T00:00:00Z'
 WHERE user_id = '<uuid>';
 ```
+
+When timed admin expires, the user returns to **Free** plan behavior (paywall / subscription limits). Paid Stripe subscriptions are **not** canceled.
 
 Admin bypass applies in the UI (`SubscriptionContext`), edge functions (`subscriptionAccess.ts`), and the trade worker.
 

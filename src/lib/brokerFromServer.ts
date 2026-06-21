@@ -81,6 +81,8 @@ export function inferBrokerLabelFromServer(server: string | null | undefined): s
     ['blackbull', 'BlackBull'],
     ['blueberry', 'Blueberry'],
     ['dukascopy', 'Dukascopy'],
+    ['upcomers', 'Upcomers'],
+    ['4xhub', '4x Hub'],
   ]
 
   for (const [needle, label] of rules) {
@@ -97,7 +99,169 @@ export function inferBrokerLabelFromServer(server: string | null | undefined): s
   return spaced.charAt(0).toUpperCase() + spaced.slice(1)
 }
 
-export type LinkedAccountType = 'Live' | 'Demo'
+export type LinkedAccountType = 'Live' | 'Demo' | 'PropFirm'
+
+export interface LinkedAccountTypeLabels {
+  demo: string
+  live: string
+  propFirm: string
+}
+
+/**
+ * Substrings matched against MT server hostnames and broker labels.
+ * Kept specific to avoid false positives on retail brokers.
+ */
+const PROP_FIRM_HINT_NEEDLES: readonly string[] = [
+  'ftmo',
+  'the5ers',
+  '5percentonline',
+  'fivepercent',
+  'fundednext',
+  'fundingpips',
+  'funderpro',
+  'e8funding',
+  'e8markets',
+  'goatfunded',
+  'instantfunding',
+  'blueguardian',
+  'brightfunded',
+  'aquafunded',
+  'fidelcrest',
+  'luxtrading',
+  'maventrading',
+  'alphacapital',
+  'alpha-capital',
+  'audacitycapital',
+  'breakoutprop',
+  'forexify',
+  'atmosfunded',
+  'quantec',
+  'propfirm',
+  'prop-firm',
+  'proptrad',
+  'fundedtrader',
+  'trueforexfunds',
+  'myforexfunds',
+  'finotive',
+  'seacrest',
+  'citytraders',
+  'fundedsquad',
+  'surgetrader',
+  'topstep',
+  'tradeify',
+  'blueberryfunded',
+  'blueberry-funded',
+  'fundedelite',
+  'thefunded',
+  'getfunded',
+  'fundedphase',
+  'citytradersimperium',
+  'fundedtrading',
+  'fundingtraders',
+  'oanda-prop',
+  'thinkcapital',
+  'think-capital',
+  'for traders',
+  'fortraders',
+  'pipfarm',
+  'titan capital',
+  'titancapital',
+  'lark funding',
+  'larkfunding',
+  'sabiotrade',
+  'rebelsfunding',
+  'rebels funding',
+  'upcomers',
+  'upcomerscapital',
+  'my funded',
+  'myfundedfx',
+  'bespoke',
+  'nova funding',
+  'novafunding',
+  'matchtrader',
+  'darwinex zero',
+  '4xhub',
+  '4x hub',
+]
+
+/** True when server or broker label looks like a prop-firm environment. */
+export function inferPropFirmAccount(...hints: Array<string | null | undefined>): boolean {
+  for (const hint of hints) {
+    const s = (hint ?? '').trim().toLowerCase()
+    if (!s) continue
+    if (PROP_FIRM_HINT_NEEDLES.some(needle => s.includes(needle))) return true
+  }
+  return false
+}
+
+/** Retail broker hostname fragments — when not demo, treat as Live. */
+const RETAIL_LIVE_SERVER_NEEDLES: readonly string[] = [
+  'icmarkets',
+  'pepperstone',
+  'exness',
+  'vantage',
+  'xmglobal',
+  'deriv',
+  'fusionmarkets',
+  'fpmarkets',
+  'blackbull',
+  'tickmill',
+  'oanda',
+  'fxtm',
+  'hfmarkets',
+  'robomarkets',
+  'eightcap',
+  'vtmarkets',
+  'blueberry',
+  'justmarkets',
+  'axi',
+  'dukascopy',
+  'thinkmarkets',
+  'globalprime',
+  'lmax',
+  'fxdd',
+  'm4markets',
+]
+
+const RETAIL_BROKER_LABELS: ReadonlySet<string> = new Set([
+  'ic markets',
+  'exness',
+  'deriv',
+  'eightcap',
+  'vpfx',
+  'm4 markets',
+  'olympic markets',
+  'hfm',
+  'fxdd',
+  'vt markets',
+  'lmax',
+  'robomarkets',
+  'trading.com',
+  'metaquotes',
+  'pepperstone',
+  'oanda',
+  'fxtm',
+  'admirals',
+  'tickmill',
+  'thinkmarkets',
+  'vantage',
+  'fusion markets',
+  'global prime',
+  'xm',
+  'justmarkets',
+  'axi',
+  'fp markets',
+  'blackbull',
+  'blueberry',
+  'dukascopy',
+])
+
+function isKnownRetailBrokerLabel(value?: string | null): boolean {
+  const label = (value ?? '').trim().toLowerCase()
+  if (!label) return false
+  if (RETAIL_BROKER_LABELS.has(label)) return true
+  return RETAIL_LIVE_SERVER_NEEDLES.some(needle => label.includes(needle))
+}
 
 /** Parse MT AccountSummary `type` (e.g. ACCOUNT_TRADE_MODE_DEMO, "0", "2"). */
 export function parseMtAccountTradeMode(
@@ -113,7 +277,7 @@ export function parseMtAccountTradeMode(
   return undefined
 }
 
-/** Infer Demo vs Live from the MT server hostname (e.g. ICMarkets-Demo, FTMO-Server-Live). */
+/** Infer Demo vs Live from the MT server hostname (e.g. ICMarkets-Demo, ICMarketsSC-MT5-4). */
 export function inferAccountTypeFromServer(server?: string | null): LinkedAccountType | undefined {
   const s = (server ?? '').trim().toLowerCase()
   if (!s) return undefined
@@ -121,13 +285,89 @@ export function inferAccountTypeFromServer(server?: string | null): LinkedAccoun
   if (/\blive\b/.test(s) || /\breal\b/.test(s) || s.includes('-live') || s.endsWith('live')) {
     return 'Live'
   }
+  for (const needle of RETAIL_LIVE_SERVER_NEEDLES) {
+    if (s.includes(needle)) return 'Live'
+  }
   return undefined
 }
 
-/** Prefer broker-reported trade mode; fall back to server name heuristics. */
+function inferRetailLiveFromHints(
+  server: string | null,
+  hints: string[],
+): LinkedAccountType | undefined {
+  if (inferPropFirmAccount(server, ...hints)) return undefined
+  const haystack = [server, ...hints].filter(Boolean).join(' ').toLowerCase()
+  if (/\bdemo\b/.test(haystack)) return undefined
+  if (hints.some(h => isKnownRetailBrokerLabel(h))) return 'Live'
+  return undefined
+}
+
+/** Collect server + stored/inferred broker labels used for account-type detection. */
+export function brokerAccountTypeHints(
+  account: Pick<BrokerAccount, 'broker_name' | 'broker_server' | 'metaapi_account_id' | 'label'>,
+  serverHint?: string | null,
+): { server: string | null; hints: string[] } {
+  const server = resolveMtServerCandidate(account as BrokerAccount, serverHint)
+  const hints: string[] = []
+  const seen = new Set<string>()
+  const push = (value?: string | null) => {
+    const v = (value ?? '').trim()
+    if (!v) return
+    const key = v.toLowerCase()
+    if (seen.has(key)) return
+    seen.add(key)
+    hints.push(v)
+  }
+  push(account.label)
+  push(account.broker_name)
+  if (server) {
+    push(inferBrokerLabelFromServer(server))
+    push(server)
+  }
+  return { server, hints }
+}
+
+/**
+ * Prefer prop-firm heuristics, then broker-reported trade mode, then server name demo/live hints.
+ */
 export function resolveLinkedAccountType(
   mtSummaryType?: string | number | null,
   server?: string | null,
+  brokerHint?: string | null,
+  ...extraHints: Array<string | null | undefined>
 ): LinkedAccountType | undefined {
+  if (inferPropFirmAccount(server, brokerHint, ...extraHints)) return 'PropFirm'
   return parseMtAccountTradeMode(mtSummaryType) ?? inferAccountTypeFromServer(server)
+}
+
+/** Resolve account type for a linked broker row (server + stored/inferred broker labels). */
+export function resolveLinkedAccountTypeForBroker(
+  account: Pick<BrokerAccount, 'broker_name' | 'broker_server' | 'metaapi_account_id' | 'label'>,
+  mtSummaryType?: string | number | null,
+  serverHint?: string | null,
+): LinkedAccountType | undefined {
+  const { server, hints } = brokerAccountTypeHints(account, serverHint)
+  const [primary, ...rest] = hints
+  return (
+    resolveLinkedAccountType(mtSummaryType, server, primary, ...rest)
+    ?? inferRetailLiveFromHints(server, hints)
+  )
+}
+
+export function formatLinkedAccountTypeLabel(
+  type: LinkedAccountType | undefined,
+  labels: LinkedAccountTypeLabels,
+): string {
+  if (!type) return '—'
+  if (type === 'Demo') return labels.demo
+  if (type === 'Live') return labels.live
+  if (type === 'PropFirm') return labels.propFirm
+  return type
+}
+
+export function linkedAccountTypeValueClass(type: LinkedAccountType | undefined): string {
+  if (type === 'Demo') return 'font-semibold text-amber-700 dark:text-amber-300'
+  if (type === 'Live') return 'font-semibold text-teal-700 dark:text-teal-300'
+  if (type === 'PropFirm') return 'font-semibold text-neutral-600 dark:text-neutral-400'
+  return 'text-neutral-900 dark:text-neutral-50'
 }

@@ -1,0 +1,61 @@
+import type { SettingsBundleTranslations } from './types'
+
+export const settingsSv: SettingsBundleTranslations = {
+  settings: {
+    title: 'Inställningar',
+    subtitle: 'Hantera din profil, dina inställningar och kontosäkerhet.',
+    loadError: 'Kunde inte läsa in inställningarna.',
+    saveError: 'Kunde inte spara ändringarna.',
+    saved: 'Ändringar sparade.',
+    emailHint: 'E-post hanteras av din inloggningsleverantör och kan inte ändras här.',
+    passwordHint: 'Minst 8 tecken.',
+    passwordTooShort: 'Lösenordet måste vara minst 8 tecken.',
+    passwordMismatch: 'Lösenorden matchar inte.',
+    passwordUpdated: 'Lösenordet har uppdaterats.',
+    passwordError: 'Kunde inte uppdatera lösenordet.',
+    sections: {
+      personal: 'Personuppgifter',
+      general: 'Allmänna inställningar',
+      security: 'Säkerhet',
+    },
+    personal: {
+      title: 'Personuppgifter',
+      description: 'Dina kontaktuppgifter och hur du visas i TScopier.',
+    },
+    general: {
+      title: 'Allmänna inställningar',
+      description: 'Standardvärden för saldon, rapporter och tidsstämplar.',
+    },
+    security: {
+      title: 'Säkerhet',
+      description: 'Uppdatera ditt lösenord för att skydda kontot.',
+      updatePassword: 'Uppdatera lösenord',
+    },
+    fields: {
+      firstName: 'Förnamn',
+      lastName: 'Efternamn',
+      username: 'Användarnamn',
+      email: 'E-post',
+      country: 'Land',
+      city: 'Stad',
+      mobile: 'Mobilnummer',
+      address: 'Adress',
+      baseCurrency: 'Basvaluta',
+      timezone: 'Tidszon',
+      newPassword: 'Nytt lösenord',
+      confirmPassword: 'Bekräfta lösenord',
+      notificationSound: 'Ljud för handelsnotiser',
+      notificationSoundDescription: 'Spela upp ett ljud när en affär genomförs, ändras eller stängs.',
+    },
+    placeholders: {
+      address: 'Gata, byggnad, postnummer…',
+      selectCountry: 'Välj land',
+      selectTimezone: 'Välj tidszon',
+      selectCurrency: 'Välj valuta',
+      searchCountry: 'Sök länder…',
+      searchTimezone: 'Sök tidszoner…',
+      searchCurrency: 'Sök valutor…',
+      noMatches: 'Inga träffar',
+    },
+  },
+}

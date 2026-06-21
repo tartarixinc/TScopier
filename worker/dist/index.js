@@ -14,12 +14,15 @@ const virtualPendingMonitor_1 = require("./virtualPendingMonitor");
 const cweCloseMonitor_1 = require("./cweCloseMonitor");
 const partialTpMonitor_1 = require("./partialTpMonitor");
 const signalEntryPendingMonitor_1 = require("./signalEntryPendingMonitor");
+const signalRangeEntryMonitor_1 = require("./signalRangeEntryMonitor");
 const autoManagementMonitor_1 = require("./autoManagementMonitor");
 const trailingStopMonitor_1 = require("./trailingStopMonitor");
 const basketSlTpReconcileMonitor_1 = require("./basketSlTpReconcileMonitor");
 const newsTradingMonitor_1 = require("./newsTradingMonitor");
-const brokerConnectionMonitor_1 = require("./brokerConnectionMonitor");
 const openTradeReconcileMonitor_1 = require("./openTradeReconcileMonitor");
+const brokerStreamProxy_1 = require("./brokerStreamProxy");
+const fxsocketStreamManager_1 = require("./fxsocketStreamManager");
+const copyLimitMonitor_1 = require("./copyLimitMonitor");
 const workerConfig_1 = require("./workerConfig");
 const tradeSignalPush_1 = require("./tradeSignalPush");
 const signalQueueConsumer_1 = require("./queue/signalQueueConsumer");
@@ -51,7 +54,7 @@ function trackMonitor(m) {
         monitorLoops.push(...m.getLoopHandles());
     }
 }
-function startTradeMonitors() {
+function startTradeMonitors(executor) {
     if (workerConfig_1.workerConfig.runsExecutionMonitors) {
         const virtualPendingMonitor = new virtualPendingMonitor_1.VirtualPendingMonitor(supabase);
         const cweCloseMonitor = new cweCloseMonitor_1.CweCloseMonitor(supabase);
@@ -68,11 +71,16 @@ function startTradeMonitors() {
         trackMonitor(partialTpMonitor);
         trackMonitor(signalEntryPendingMonitor);
         trackMonitor(openTradeReconcileMonitor);
+        if (executor) {
+            const signalRangeEntryMonitor = new signalRangeEntryMonitor_1.SignalRangeEntryMonitor(supabase, executor);
+            signalRangeEntryMonitor.start();
+            trackMonitor(signalRangeEntryMonitor);
+        }
     }
     if (workerConfig_1.workerConfig.runsTrade) {
-        const brokerConnectionMonitor = new brokerConnectionMonitor_1.BrokerConnectionMonitor(supabase);
-        brokerConnectionMonitor.start();
-        trackMonitor(brokerConnectionMonitor);
+        const copyLimitMonitor = new copyLimitMonitor_1.CopyLimitMonitor(supabase);
+        copyLimitMonitor.start();
+        trackMonitor(copyLimitMonitor);
     }
     if (workerConfig_1.workerConfig.runsManagementMonitors) {
         const trailingStopMonitor = new trailingStopMonitor_1.TrailingStopMonitor(supabase);
@@ -116,12 +124,23 @@ async function main() {
         const sweepHandle = tradeExecutor.getSweepLoopHandle();
         if (sweepHandle)
             monitorLoops.push(sweepHandle);
-        startTradeMonitors();
+        startTradeMonitors(tradeExecutor);
         if (monitorLoops.length > 0 && !stopWorkWake) {
             stopWorkWake = (0, monitorWorkWake_1.subscribeMonitorWorkWake)(supabase, monitorLoops);
         }
         if (!httpServer) {
             httpServer = (0, httpServer_1.startTradeHttpServer)(sessionManager, tradeExecutor);
+        }
+        if (httpServer) {
+            const streamManager = (0, fxsocketStreamManager_1.getFxsocketStreamManager)();
+            if (streamManager) {
+                (0, brokerStreamProxy_1.attachBrokerStreamProxy)(httpServer, supabase, streamManager);
+                console.log('[worker] broker stream proxy attached at /broker/stream');
+            }
+            else {
+                console.error('[worker] broker stream proxy DISABLED — set FXSOCKET_API_KEY on this trade worker'
+                    + ' and point WORKER_PUBLIC_URL / VITE_WORKER_URL here (not the listener service)');
+            }
         }
         const queueCfg = (0, signalQueueConfig_1.signalQueueConfig)();
         if (queueCfg.enabled && (0, signalQueueConfig_1.redisQueueConfigured)()) {

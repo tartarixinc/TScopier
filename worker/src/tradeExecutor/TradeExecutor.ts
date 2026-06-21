@@ -1,16 +1,16 @@
 import { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js'
 import {
-  getMetatraderApi,
-  hasMetatraderApiConfigured,
+  getFxsocketClient,
+  hasFxsocketConfigured,
   isBrokerDisconnectedMessage,
   MT_SESSION_EXPIRED_HINT,
+  FxsocketBrokerClient,
   mtPlatformFrom,
-  MetatraderApiClient,
   MtOperation,
   normalizeSymbolParams,
   OrderSendArgs,
   SymbolParams,
-} from '../metatraderapi'
+} from '../fxsocketClient'
 import {
   clampPendingExpiryHours,
   parsedHasExplicitEntryAnchor,
@@ -29,9 +29,19 @@ import {
   type VirtualPendingLeg,
 } from '../manualPlanner'
 import { normalizeManualSettingsForExecution } from '../manualPlanning/normalizeManualSettings'
+import { resolveBrokerTotalBalance } from '../effectiveBrokerBalance'
 import { normalizeChannelTradingConfigsMap, withChannelTradingConfig, channelConfigReadyForExecution, resolveChannelTradingConfig, healChannelTradingConfigsMap } from '../channelTradingConfig'
+import {
+  applyBrokerChannelTradingConfigRow,
+  fetchBrokerChannelTradingConfigRows,
+  fetchFreshBrokerForChannel,
+  mergeChannelTradingConfigsFromTable,
+  type BrokerChannelTradingConfigRow,
+} from '../brokerChannelTradingConfigs'
 import { manualDispatchAlreadyMaterialized } from './basketMerge/helpers'
-import { claimSignalBrokerDispatch } from './signalBrokerDispatchClaim'
+import { claimSignalBrokerDispatch, releaseSignalBrokerDispatchClaim } from './signalBrokerDispatchClaim'
+import { hasActiveSignalRangeEntryWait, SIGNAL_RANGE_WAKE_DISPATCH_SOURCE } from '../signalRangeEntryHelpers'
+import { MESSAGE_REVISION_DISPATCH_SOURCE } from '../signalRevision'
 import { findActiveNewsBlackout } from '../newsTrading/blackout'
 import { getCalendarEventsCached } from '../newsTrading/calendarProvider'
 import { isNewsTradingEnabled } from '../newsTrading/settings'
@@ -50,6 +60,7 @@ import {
   signalMatchesExecutorMode,
 } from '../tradeSignalActions'
 import { workerConfig, userBelongsToShard } from '../workerConfig'
+import type { MgmtExecOptions, MgmtExecResult } from '../mgmtExecOptions'
 import { writeBrokerConnectionStatus } from '../brokerConnectionStatus'
 import {
   applyShardToQuery,
@@ -70,6 +81,7 @@ import { signalPipPrice } from '../signalPip'
 import { trailingTradeRowSnapshot } from '../trailingStop'
 import { isPostgresDuplicateKeyError } from '../rangePendingLegPersist'
 import { cancelSignalEntryRowAtBroker, type SignalEntryPendingRow } from '../signalEntryPendingHelpers'
+import { isTscopierComment } from '../tscopierComment'
 import {
   computeBasketMergeLinkContext,
   type BasketMergeLinkContext,
@@ -101,6 +113,9 @@ import {
 import { syncRangePendingLadderOnBasketRefresh } from '../rangePendingLadderSync'
 import { loadExistingRangeStepIndices } from '../rangePendingFireGuard'
 import { channelMatchesBrokerSignal } from '../brokerChannelFilter'
+import { replayParsedSignalsForBroker } from '../brokerSignalReplay'
+import { normalizeChannelUuid } from '../channelTradingConfig'
+import { normalizeCopyLimitState, type CopyLimitState } from '../copyLimitTypes'
 import { takeProfitForLegIndex } from '../manualPlanning/tpBucketDistribution'
 import {
   explicitMgmtSymbol,
@@ -138,17 +153,19 @@ import { isBenignOrderModifyError } from '../orderModifyBenign'
 import { invalidateChannelParseCache } from '../channelKeywordsCache'
 import {
   applySymbolMapping,
+  brokerHasLinkedSession,
   brokerOrderOpenMs,
+  brokerSessionUuid,
   clampOrderStops,
   computeCweTp,
   computeLot,
   isBuySideOp,
   isExcluded,
-  isMtUuid,
   operationFor,
   parseSymbolToTradeList,
   roundLot,
   triggerPriceFor,
+  virtualPendingTriggerAllowed,
   type Leg,
 } from './helpers'
 import {
@@ -168,6 +185,7 @@ import {
   type BrokerRow,
   type MergeOutcome,
   type ParsedSignal,
+  type QueuedSignal,
   type RangePendingCancelScope,
   type SendOrderOutcome,
   type SignalRow,
@@ -178,13 +196,18 @@ import * as brokerSymbolCache from './brokerSymbolCache'
 import * as dispatch from './dispatch'
 import * as basketMerge from './basketMerge'
 import * as managementExecutor from './managementExecutor'
-import { runSingleEntry, runRangeEntry } from './entryRouter'
+import { runSingleEntry } from './singleEntryExecutor'
+import { runRangeEntry } from './rangeTradeExecutor'
+import {
+  applyCopierPauseProfileUpdate,
+  primeCopierPauseCache,
+} from '../copierPause'
 
 export type { SignalRow } from './types'
 
 export class TradeExecutor {
   private sweepLoop: MonitorLoopHandle | null = null
-  /** Cancels TSCopier broker pendings past `pending_expiry_hours` (1–24) when env enabled. */
+  /** Cancels TScopier broker pendings past `pending_expiry_hours` (1–24) when env enabled. */
   private brokerPendingSweepTimer: NodeJS.Timeout | null = null
   private sessionHeartbeatTimer: NodeJS.Timeout | null = null
   private sessionHeartbeatInFlight = false
@@ -192,15 +215,17 @@ export class TradeExecutor {
   private symbolCacheKeepaliveTimer: NodeJS.Timeout | null = null
   private signalsChannel: RealtimeChannel | null = null
   private brokersChannel: RealtimeChannel | null = null
+  private channelTradingConfigsChannel: RealtimeChannel | null = null
   private channelsChannel: RealtimeChannel | null = null
+  private userProfilesChannel: RealtimeChannel | null = null
   brokersByUser = new Map<string, BrokerRow[]>()
   brokersById = new Map<string, BrokerRow>()
   inflight = new Set<string>()
   /** Prevents overlapping sendOrder for the same signal+broker (live-fast race). */
   private entryBrokerInflight = new Set<string>()
   queuedIds = new Set<string>()
-  highPriorityQueue: SignalRow[] = []
-  normalPriorityQueue: SignalRow[] = []
+  highPriorityQueue: QueuedSignal[] = []
+  normalPriorityQueue: QueuedSignal[] = []
   queueDrainScheduled = false
   queueDraining = false
   symbolCache = new Map<string, SymbolCacheEntry>()
@@ -229,31 +254,37 @@ export class TradeExecutor {
    * that piled up while the broker was disabled.
    */
   brokerActivatedAt = new Map<string, number>()
+  userTimezoneById = new Map<string, string>()
+  private copyLimitStateCache = new Map<string, { state: CopyLimitState; at: number }>()
   constructor(
     readonly supabase: SupabaseClient,
     readonly sessionManager?: UserSessionManager,
   ) {
-    if (!hasMetatraderApiConfigured()) {
+    if (!hasFxsocketConfigured()) {
       console.warn('[tradeExecutor] MT4API_BASIC_USER/PASSWORD missing — trade execution disabled.')
     }
   }
 
-  apiFor(broker: BrokerRow): MetatraderApiClient | null {
-    return getMetatraderApi(mtPlatformFrom(broker.platform))
+  apiFor(broker: BrokerRow): FxsocketBrokerClient | null {
+    return getFxsocketClient()
   }
 
-  apiForUuid(uuid: string): MetatraderApiClient | null {
+  apiForUuid(uuid: string): FxsocketBrokerClient | null {
     for (const b of this.brokersById.values()) {
-      if (b.metaapi_account_id === uuid) return this.apiFor(b)
+      const sessionId = brokerSessionUuid(b)
+      if (sessionId === uuid) return this.apiFor(b)
     }
-    return getMetatraderApi('MT5')
+    console.error(`[tradeExecutor] apiForUuid: unknown broker uuid=${uuid}`)
+    return null
   }
 
   async start() {
     await this.loadBrokers()
     this.subscribeSignals()
     this.subscribeBrokers()
+    this.subscribeChannelTradingConfigs()
     this.subscribeChannelKeywords()
+    this.subscribeUserProfilesCopierPause()
     const replaySince = () =>
       new Date(Date.now() - EXECUTOR_REPLAY_MAX_AGE_MS).toISOString()
     this.sweepLoop = startMonitorLoop({
@@ -283,10 +314,14 @@ export class TradeExecutor {
       )
     }
     void this.prewarmBrokerCaches()
-    this.sessionHeartbeatTimer = setInterval(() => {
-      void this.runSessionHeartbeatTick()
-    }, BROKER_SESSION_HEARTBEAT_MS)
-    this.sessionHeartbeatTimer.unref?.()
+    if (workerConfig.runsBrokerSessionHeartbeat) {
+      this.sessionHeartbeatTimer = setInterval(() => {
+        void this.runSessionHeartbeatTick()
+      }, BROKER_SESSION_HEARTBEAT_MS)
+      this.sessionHeartbeatTimer.unref?.()
+    } else {
+      console.log('[tradeExecutor] broker session heartbeat disabled on this role (trade_entry handles keepalive)')
+    }
     // Re-fetch every cached symbol list / params entry before its TTL expires
     // so the live-entry hot path always finds a warm cache. Without this,
     // signal symbols outside `symbol_to_trade` fall back to a cold broker
@@ -308,23 +343,38 @@ export class TradeExecutor {
     this.symbolCacheKeepaliveTimer = null
     if (this.signalsChannel) { void this.supabase.removeChannel(this.signalsChannel); this.signalsChannel = null }
     if (this.brokersChannel) { void this.supabase.removeChannel(this.brokersChannel); this.brokersChannel = null }
+    if (this.channelTradingConfigsChannel) {
+      void this.supabase.removeChannel(this.channelTradingConfigsChannel)
+      this.channelTradingConfigsChannel = null
+    }
     if (this.channelsChannel) { void this.supabase.removeChannel(this.channelsChannel); this.channelsChannel = null }
+    if (this.userProfilesChannel) {
+      void this.supabase.removeChannel(this.userProfilesChannel)
+      this.userProfilesChannel = null
+    }
   }
 
   // ── caches ────────────────────────────────────────────────────────────
 
   private normalizeBrokerRow(row: BrokerRow): BrokerRow {
     const healedConfigs = healChannelTradingConfigsMap(row)
+    const accountBalance = resolveBrokerTotalBalance(row) || null
     const normalizedConfigs: Record<string, unknown> = {}
     for (const [channelId, cfg] of Object.entries(healedConfigs)) {
       normalizedConfigs[channelId] = {
         ...cfg,
-        manual_settings: normalizeManualSettingsForExecution(cfg.manual_settings) as Record<string, unknown>,
+        manual_settings: normalizeManualSettingsForExecution(cfg.manual_settings, {
+          accountBalance,
+        }) as Record<string, unknown>,
       }
     }
+    const sessionId = brokerSessionUuid(row)
     return {
       ...row,
-      manual_settings: normalizeManualSettingsForExecution(row.manual_settings) as Record<string, unknown>,
+      metaapi_account_id: sessionId ?? row.metaapi_account_id,
+      manual_settings: normalizeManualSettingsForExecution(row.manual_settings, {
+        accountBalance,
+      }) as Record<string, unknown>,
       channel_trading_configs: normalizedConfigs,
     }
   }
@@ -336,7 +386,7 @@ export class TradeExecutor {
   private async loadBrokers() {
     const brokersQ = await applyShardToQuery(
       this.supabase,
-      this.supabase.from('broker_accounts').select('*').eq('is_active', true),
+      this.supabase.from('broker_accounts').select('*').or('fxsocket_account_id.neq.,metaapi_account_id.neq.'),
     )
     if (!brokersQ) {
       this.brokersByUser.clear()
@@ -348,16 +398,59 @@ export class TradeExecutor {
       console.error('[tradeExecutor] loadBrokers failed:', error.message)
       return
     }
+    const brokerRows = (data ?? []) as BrokerRow[]
+    const brokerIds = brokerRows.map(row => row.id)
+    const tableConfigRows = await fetchBrokerChannelTradingConfigRows(this.supabase, brokerIds)
+    const configsByBroker = new Map<string, typeof tableConfigRows>()
+    for (const cfgRow of tableConfigRows) {
+      const list = configsByBroker.get(cfgRow.broker_account_id) ?? []
+      list.push(cfgRow)
+      configsByBroker.set(cfgRow.broker_account_id, list)
+    }
     this.brokersByUser.clear()
     this.brokersById.clear()
     this.brokerActivatedAt.clear()
-    for (const row of (data ?? []) as BrokerRow[]) {
-      const normalized = this.normalizeBrokerRow(row)
+    this.userTimezoneById.clear()
+    const userIds = [...new Set(brokerRows.map(r => r.user_id).filter(Boolean))]
+    if (userIds.length) {
+      const { data: profiles } = await this.supabase
+        .from('user_profiles')
+        .select('user_id,timezone,copier_paused')
+        .in('user_id', userIds)
+      primeCopierPauseCache(profiles ?? [])
+      for (const p of profiles ?? []) {
+        const uid = String((p as { user_id?: string }).user_id ?? '')
+        const tz = String((p as { timezone?: string }).timezone ?? 'UTC').trim() || 'UTC'
+        if (uid) this.userTimezoneById.set(uid, tz)
+      }
+    }
+    for (const row of brokerRows) {
+      if (!brokerHasLinkedSession(row)) continue
+      const tableRows = configsByBroker.get(row.id) ?? []
+      const mergedRow = tableRows.length
+        ? {
+            ...row,
+            channel_trading_configs: mergeChannelTradingConfigsFromTable(
+              row.channel_trading_configs,
+              tableRows,
+            ),
+          }
+        : row
+      const normalized = this.normalizeBrokerRow(mergedRow)
       this.brokersById.set(row.id, normalized)
-      const arr = this.brokersByUser.get(row.user_id) ?? []
-      arr.push(normalized)
-      this.brokersByUser.set(row.user_id, arr)
-      this.trackBrokerActivation(normalized)
+      if (normalized.is_active) {
+        const arr = this.brokersByUser.get(row.user_id) ?? []
+        arr.push(normalized)
+        this.brokersByUser.set(row.user_id, arr)
+        this.trackBrokerActivation(normalized)
+      }
+    }
+    const api = getFxsocketClient()
+    if (api) {
+      for (const broker of this.brokersById.values()) {
+        const sessionId = brokerSessionUuid(broker)
+        if (sessionId) api.seedPlatformCache(sessionId, mtPlatformFrom(broker.platform))
+      }
     }
     console.log(`[tradeExecutor] cached ${this.brokersById.size} broker accounts across ${this.brokersByUser.size} users`)
     const pingOnStart = String(process.env.BROKER_PING_ON_WORKER_START ?? 'true').toLowerCase()
@@ -411,13 +504,24 @@ export class TradeExecutor {
     return await brokerSymbolCache.reconnectCachedBrokers(this)
   }
 
-  private upsertBrokerCache(row: BrokerRow) {
-    if (!userBelongsToShard(row.user_id)) return
+  private applyBrokerCacheRow(row: BrokerRow) {
     const normalized = this.normalizeBrokerRow(row)
+    const sessionId = brokerSessionUuid(normalized)
+    if (sessionId) getFxsocketClient()?.seedPlatformCache(sessionId, mtPlatformFrom(normalized.platform))
     const previous = this.brokersById.get(row.id)
+    const wasSessionDown = Boolean(
+      previous
+      && (
+        previous.connection_status === 'error'
+        || this.sessionOrderBlocked.has(row.id)
+      ),
+    )
     this.brokersById.set(row.id, normalized)
     if (normalized.connection_status === 'connected') {
       this.sessionOrderBlocked.delete(row.id)
+      if (wasSessionDown) {
+        void replayParsedSignalsForBroker(this, normalized)
+      }
     }
     this.trackBrokerActivation(normalized, previous)
     const userId = row.user_id
@@ -430,6 +534,28 @@ export class TradeExecutor {
     }
   }
 
+  private async mergeBrokerRowWithTableConfigs(row: BrokerRow): Promise<BrokerRow> {
+    const tableRows = await fetchBrokerChannelTradingConfigRows(this.supabase, [row.id])
+    if (!tableRows.length) return row
+    return {
+      ...row,
+      channel_trading_configs: mergeChannelTradingConfigsFromTable(
+        row.channel_trading_configs,
+        tableRows,
+      ),
+    }
+  }
+
+  private upsertBrokerCache(row: BrokerRow) {
+    if (!userBelongsToShard(row.user_id)) return
+    void this.mergeBrokerRowWithTableConfigs(row)
+      .then(merged => this.applyBrokerCacheRow(merged))
+      .catch(err => {
+        console.error('[tradeExecutor] upsertBrokerCache table config merge failed:', err)
+        this.applyBrokerCacheRow(row)
+      })
+  }
+
   private removeBrokerCache(id: string) {
     const row = this.brokersById.get(id)
     if (!row) return
@@ -437,6 +563,10 @@ export class TradeExecutor {
     const list = (this.brokersByUser.get(row.user_id) ?? []).filter(b => b.id !== id)
     this.brokersByUser.set(row.user_id, list)
     this.brokerActivatedAt.delete(id)
+  }
+
+  lookupBroker(id: string): BrokerRow | undefined {
+    return this.brokersById.get(id)
   }
 
   /**
@@ -486,7 +616,7 @@ export class TradeExecutor {
           if (!row) return
           if (!userBelongsToShard(row.user_id)) return
           if (!PARSED_STATUSES.has(row.status)) return
-          this.enqueueSignal(row, { source: 'realtime' })
+          this.acceptDispatchSignal(row, { source: 'realtime', priority: 'high' })
         },
       )
       .subscribe()
@@ -509,11 +639,69 @@ export class TradeExecutor {
           const row = payload.new as BrokerRow | undefined
           if (!row) return
           if (!userBelongsToShard(row.user_id)) return
-          if (row.is_active === false) this.removeBrokerCache(row.id)
-          else {
-            this.upsertBrokerCache(row)
+          if (!brokerHasLinkedSession(row)) {
+            this.removeBrokerCache(row.id)
+            return
+          }
+          this.upsertBrokerCache(row)
+          if (row.is_active) {
             void this.pingBrokerSession(row)
           }
+        },
+      )
+      .subscribe()
+  }
+
+  private subscribeUserProfilesCopierPause() {
+    if (this.userProfilesChannel) return
+    this.userProfilesChannel = this.supabase
+      .channel('trade_executor_user_profiles_copier_pause')
+      .on(
+        'postgres_changes' as never,
+        { event: 'UPDATE', schema: 'public', table: 'user_profiles' } as never,
+        (payload: { new?: Record<string, unknown>; old?: Record<string, unknown> }) => {
+          const row = payload.new
+          if (!row) return
+          const userId = String(row.user_id ?? '')
+          if (!userId || !userBelongsToShard(userId)) return
+          const copierPaused = row.copier_paused === true
+          const previousPaused = payload.old?.copier_paused === true
+          applyCopierPauseProfileUpdate(userId, copierPaused, previousPaused)
+        },
+      )
+      .subscribe()
+  }
+
+  private subscribeChannelTradingConfigs() {
+    if (this.channelTradingConfigsChannel) return
+    this.channelTradingConfigsChannel = this.supabase
+      .channel('trade_executor_broker_channel_configs')
+      .on(
+        'postgres_changes' as never,
+        { event: '*', schema: 'public', table: 'broker_channel_trading_configs' } as never,
+        (payload: {
+          eventType?: string
+          new?: Record<string, unknown>
+          old?: Record<string, unknown>
+        }) => {
+          const evt = payload.eventType
+          if (evt === 'DELETE') {
+            const brokerId = String(payload.old?.broker_account_id ?? '')
+            if (!brokerId) return
+            const cached = this.brokersById.get(brokerId)
+            if (!cached) return
+            void this.mergeBrokerRowWithTableConfigs(cached)
+              .then(merged => this.applyBrokerCacheRow(merged))
+              .catch(err => {
+                console.error('[tradeExecutor] channel config delete refresh failed:', err)
+              })
+            return
+          }
+          const row = payload.new as BrokerChannelTradingConfigRow | undefined
+          if (!row?.broker_account_id) return
+          const cached = this.brokersById.get(row.broker_account_id)
+          if (!cached) return
+          this.applyBrokerCacheRow(applyBrokerChannelTradingConfigRow(cached, row))
         },
       )
       .subscribe()
@@ -554,11 +742,15 @@ export class TradeExecutor {
     const { data } = await signalsQ
     for (const row of (data ?? []) as SignalRow[]) {
       if (this.inflight.has(row.id)) continue
+      if (await hasActiveSignalRangeEntryWait(this.supabase, row.id)) continue
       if (await this.signalAlreadyHandled(row.id)) {
         await this.markSignalExecuted(row.id)
         continue
       }
-      this.enqueueSignal(row, { source: 'sweep' })
+      this.acceptDispatchSignal(row, {
+        source: 'sweep',
+        priority: dispatchPriorityForAction(parsedAction(row.parsed_data)),
+      })
     }
   }
 
@@ -589,6 +781,9 @@ export class TradeExecutor {
     // cache hit by the time it runs.
     this.prewarmForDispatch(rowWithTs)
     const entryFast = this.shouldUseEntryFastPath(rowWithTs)
+    const mgmtFast = dispatch.shouldUseMgmtFastPath(rowWithTs, source)
+    const useFastPath = entryFast || mgmtFast
+    if (entryFast) this.kickLiveEntryPrewarm(rowWithTs)
     const listenerTs = parsePipelineTimestamps(rowWithTs.pipeline_ts)
     if (
       source === 'listener_push'
@@ -599,11 +794,11 @@ export class TradeExecutor {
         + ' — redeploy listener service (LISTENER_INLINE_PARSE + pipeline_ts on dispatch)',
       )
     }
-    if (!entryFast) {
+    if (!useFastPath) {
       void this.logPipelineStage(rowWithTs, 'dispatch_received', { source, priority: opts?.priority ?? null })
     }
 
-    if (entryFast) {
+    if (useFastPath) {
       if (this.inflight.has(row.id) || this.queuedIds.has(row.id)) return true
       void this.handleSignal(rowWithTs, {
         liveDispatch: true,
@@ -629,13 +824,14 @@ export class TradeExecutor {
    */
   async acceptDispatchSignalAwait(
     row: SignalRow,
-    opts?: { priority?: 'high' | 'normal'; source?: string },
+    opts?: { priority?: 'high' | 'normal'; source?: string; wakeBrokerAccountId?: string },
   ): Promise<boolean> {
     if (!PARSED_STATUSES.has(row.status)) return false
     if (!signalMatchesExecutorMode(row.parsed_data, workerConfig.tradeExecutorMode)) {
       return false
     }
     const source = opts?.source ?? 'queue'
+    const isRangeWake = source === SIGNAL_RANGE_WAKE_DISPATCH_SOURCE
     const receivedAt = Date.now()
     const rowWithTs: SignalRow = {
       ...row,
@@ -645,19 +841,35 @@ export class TradeExecutor {
       },
     }
     this.prewarmForDispatch(rowWithTs)
-    const entryFast = this.shouldUseEntryFastPath(rowWithTs)
+    const entryFast = isRangeWake || this.shouldUseEntryFastPath(rowWithTs)
+    const mgmtFast = dispatch.shouldUseMgmtFastPath(rowWithTs, source)
+    const useFastPath = entryFast || mgmtFast
+    if (entryFast) this.kickLiveEntryPrewarm(rowWithTs)
 
-    if (!entryFast) {
+    if (!useFastPath) {
       await this.logPipelineStage(rowWithTs, 'dispatch_received', { source, priority: opts?.priority ?? null })
     }
 
-    if (this.inflight.has(row.id)) return true
+    if (this.inflight.has(row.id)) {
+      if (source === MESSAGE_REVISION_DISPATCH_SOURCE) {
+        await dispatch.waitForSignalInflightClear(
+          this,
+          row.id,
+          dispatch.revisionInflightWaitMs(rowWithTs, source),
+        )
+      } else if (!isRangeWake) {
+        return true
+      } else {
+        await dispatch.waitForSignalInflightClear(this, row.id, 15_000)
+      }
+    }
 
     await this.handleSignal(rowWithTs, {
       liveDispatch: true,
       dispatchSource: source,
       dispatchReceivedAt: receivedAt,
-      lightIdempotency: entryFast,
+      lightIdempotency: useFastPath || isRangeWake,
+      wakeBrokerAccountId: opts?.wakeBrokerAccountId ?? row.wake_broker_account_id,
     })
     return true
   }
@@ -670,6 +882,10 @@ export class TradeExecutor {
       priority: dispatchPriorityForAction(parsedAction(row.parsed_data)),
       source: 'in_process',
     })
+  }
+
+  shouldUseMgmtFastPath(row: SignalRow, source?: string): boolean {
+    return dispatch.shouldUseMgmtFastPath(row, source)
   }
 
   shouldUseEntryFastPath(row: SignalRow): boolean {
@@ -690,7 +906,7 @@ export class TradeExecutor {
     return dispatch.scheduleQueueDrain(this)
   }
 
-  dequeueQueuedSignal(): SignalRow | null {
+  dequeueQueuedSignal(): QueuedSignal | null {
     return dispatch.dequeueQueuedSignal(this)
   }
 
@@ -750,6 +966,7 @@ export class TradeExecutor {
       lightIdempotency?: boolean
       dispatchSource?: string
       dispatchReceivedAt?: number
+      wakeBrokerAccountId?: string
     },) {
     return await dispatch.handleSignal(this, row, opts)
   }
@@ -872,9 +1089,25 @@ export class TradeExecutor {
     uuid: string
     strictEntryPrefetch: { bid: number; ask: number } | null
     commentPrefix: string
-    messageEditOnly?: boolean
+    sameSignalRefresh?: boolean
+    liveMgmtFast?: boolean
   }): Promise<MergeOutcome> {
     return await basketMerge.tryParameterFollowUpMergeModifyOnly(this, args)
+  }
+
+  async tryTeaserCompletionMerge(args: {
+    signal: SignalRow
+    parsed: ParsedSignal
+    broker: BrokerRow
+    channelKeywords: ChannelKeywords | null
+    baseLot: number
+    params: SymbolCacheEntry | null
+    symbol: string
+    uuid: string
+    strictEntryPrefetch: { bid: number; ask: number } | null
+    commentPrefix: string
+  }): Promise<MergeOutcome> {
+    return await basketMerge.tryTeaserCompletionMerge(this, args)
   }
 
   /**
@@ -912,7 +1145,8 @@ export class TradeExecutor {
     anchorSignalId: string
     direction: 'buy' | 'sell'
     logAction: 'merge_routed_modify_only' | 'signal_merge_into_open_trade'
-    messageEditOnly?: boolean
+    sameSignalRefresh?: boolean
+    liveMgmtFast?: boolean
     mergeLinkMeta?: Record<string, unknown>
   }): Promise<{ success: boolean; summary: MergeModifySummary }> {
     return await basketMerge.applyBasketSlTpRefresh(this, args)
@@ -941,11 +1175,11 @@ export class TradeExecutor {
   }
 
   private async sweepExpiredTscopierBrokerPendings(): Promise<void> {
-    if (!hasMetatraderApiConfigured()) return
+    if (!hasFxsocketConfigured()) return
     if (String(process.env.WORKER_BROKER_PENDING_EXPIRY_SWEEP ?? '').toLowerCase() !== 'true') return
 
     const brokers = Array.from(this.brokersById.values()).filter(b =>
-      b.is_active && isMtUuid(b.metaapi_account_id) && (b.copier_mode ?? 'ai') === 'manual',
+      b.is_active && brokerHasLinkedSession(b) && (b.copier_mode ?? 'ai') === 'manual',
     )
     if (!brokers.length) return
 
@@ -954,7 +1188,7 @@ export class TradeExecutor {
       const manual = (broker.manual_settings ?? {}) as ManualSettings
       const ttlH = clampPendingExpiryHours(manual.pending_expiry_hours)
       if (ttlH <= 0) continue
-      const uuid = broker.metaapi_account_id!
+      const uuid = brokerSessionUuid(broker)!
       const api = this.apiFor(broker)
       if (!api) continue
       let orders: unknown[]
@@ -972,7 +1206,7 @@ export class TradeExecutor {
         const comment = String(o.comment ?? o.Comment ?? '')
         const ticket = Number(o.ticket ?? o.Ticket ?? o.orderId ?? o.OrderID ?? 0)
         if (!operation.includes('Limit') && !operation.includes('Stop')) continue
-        if (!comment.startsWith('TSCopier:')) continue
+        if (!isTscopierComment(comment)) continue
         if (!Number.isFinite(ticket) || ticket <= 0) continue
         const openMs = brokerOrderOpenMs(o)
         if (openMs == null || openMs > cutoff) continue
@@ -996,7 +1230,7 @@ export class TradeExecutor {
     return await brokerSymbolCache.pingBrokerSession(this, row)
   }
 
-  async ensureBrokerSession(api: MetatraderApiClient,
+  async ensureBrokerSession(api: FxsocketBrokerClient,
     uuid: string,
     broker: BrokerRow,
     opts?: { force?: boolean },): Promise<boolean> {
@@ -1004,7 +1238,7 @@ export class TradeExecutor {
   }
 
   /** Live entry: CheckConnect only (not AccountSummary+OpenedOrders). Deduped per uuid. */
-  async ensureBrokerSessionLiveFast(api: MetatraderApiClient,
+  async ensureBrokerSessionLiveFast(api: FxsocketBrokerClient,
     uuid: string,
     broker: BrokerRow,): Promise<boolean> {
     return await brokerSymbolCache.ensureBrokerSessionLiveFast(this, api, uuid, broker)
@@ -1037,6 +1271,19 @@ export class TradeExecutor {
     return brokerSymbolCache.prewarmForDispatch(this, row)
   }
 
+  /** Session + symbol cache warmup for channel-matched brokers on the live fast path. */
+  private kickLiveEntryPrewarm(row: SignalRow): void {
+    const parsed = row.parsed_data as PlannerParsedSignal | null
+    const signalSymbol = parsed?.symbol?.trim()
+    if (!signalSymbol) return
+    const warmBrokers = (this.brokersByUser.get(row.user_id) ?? []).filter(b =>
+      b.is_active && brokerHasLinkedSession(b) && channelMatchesBrokerSignal(b, row.channel_id),
+    )
+    if (warmBrokers.length > 0) {
+      void this.prewarmBrokersForLiveEntry(warmBrokers, signalSymbol)
+    }
+  }
+
   /** Warm session + symbol caches once per live signal before OrderSend. */
   async prewarmBrokersForLiveEntry(brokers: BrokerRow[], signalSymbol: string): Promise<void> {
     return await brokerSymbolCache.prewarmBrokersForLiveEntry(this, brokers, signalSymbol)
@@ -1049,7 +1296,7 @@ export class TradeExecutor {
     broker: BrokerRow,
     channelKeywords: ChannelKeywords | null,
     pipelineT0?: number,
-    sendOpts?: { liveEntryFast?: boolean; commentPrefix?: string; messageEditOnly?: boolean },
+    sendOpts?: { liveEntryFast?: boolean; liveMgmtFast?: boolean; commentSlug?: string | null; commentPrefix?: string; sameSignalRefresh?: boolean },
   ): Promise<SendOrderOutcome>  {
     const configReady = channelConfigReadyForExecution(broker, signal.channel_id)
     if (!configReady.ready) {
@@ -1063,38 +1310,71 @@ export class TradeExecutor {
       return { openedOrMerged: false, finalizeSkipReason: configReady.reason }
     }
 
-    const effectiveBroker = withChannelTradingConfig(broker, signal.channel_id) as BrokerRow
-    const resolved = resolveChannelTradingConfig(broker, signal.channel_id)
-    const entryKey = `${signal.id}:${effectiveBroker.id}`
-
-    if (await manualDispatchAlreadyMaterialized(this, signal.id, effectiveBroker.id)) {
-      console.warn(
-        `[tradeExecutor] skip already materialized signal=${signal.id} broker=${effectiveBroker.id}`,
-      )
-      return { openedOrMerged: true }
+    let executionBroker = broker
+    if (signal.channel_id) {
+      const fresh = await fetchFreshBrokerForChannel(this.supabase, broker, signal.channel_id)
+      if (fresh.channel_trading_configs !== broker.channel_trading_configs) {
+        this.applyBrokerCacheRow(fresh)
+        executionBroker = this.brokersById.get(broker.id) ?? fresh
+      }
     }
 
+    const effectiveBroker = withChannelTradingConfig(executionBroker, signal.channel_id) as BrokerRow
+    const resolved = resolveChannelTradingConfig(executionBroker, signal.channel_id)
+    const entryKey = `${signal.id}:${effectiveBroker.id}`
+    const liveFast = sendOpts?.liveEntryFast === true
+
+    if (!liveFast) {
+      if (await manualDispatchAlreadyMaterialized(this, signal.id, effectiveBroker.id)) {
+        console.warn(
+          `[tradeExecutor] skip already materialized signal=${signal.id} broker=${effectiveBroker.id}`,
+        )
+        return { openedOrMerged: true }
+      }
+    }
+
+    const isRevisionRefresh = sendOpts?.sameSignalRefresh === true
+    const isRangeWake = signal.dispatch_source === SIGNAL_RANGE_WAKE_DISPATCH_SOURCE
     if (this.entryBrokerInflight.has(entryKey)) {
-      console.warn(
-        `[tradeExecutor] skip duplicate in-flight sendOrder signal=${signal.id} broker=${effectiveBroker.id}`,
-      )
-      return { openedOrMerged: true }
+      if (isRevisionRefresh) {
+        const deadline = Date.now() + 60_000
+        while (this.entryBrokerInflight.has(entryKey) && Date.now() < deadline) {
+          await new Promise(resolve => setTimeout(resolve, 100))
+        }
+      } else {
+        const materialized = liveFast
+          ? true
+          : await manualDispatchAlreadyMaterialized(this, signal.id, effectiveBroker.id)
+        console.warn(
+          `[tradeExecutor] skip duplicate in-flight sendOrder signal=${signal.id} broker=${effectiveBroker.id}`
+          + ` materialized=${materialized}`,
+        )
+        return { openedOrMerged: materialized }
+      }
     }
     this.entryBrokerInflight.add(entryKey)
     try {
-      const claimed = await claimSignalBrokerDispatch(this.supabase, signal.id, effectiveBroker.id)
-      if (!claimed) {
-        console.warn(
-          `[tradeExecutor] skip duplicate dispatch claim signal=${signal.id} broker=${effectiveBroker.id}`,
-        )
-        return { openedOrMerged: true }
+      if (!isRevisionRefresh) {
+        if (isRangeWake) {
+          await releaseSignalBrokerDispatchClaim(this.supabase, signal.id, effectiveBroker.id)
+        }
+        const claimed = await claimSignalBrokerDispatch(this.supabase, signal.id, effectiveBroker.id)
+        if (!claimed) {
+          const materialized = await manualDispatchAlreadyMaterialized(this, signal.id, effectiveBroker.id)
+          console.warn(
+            `[tradeExecutor] skip duplicate dispatch claim signal=${signal.id} broker=${effectiveBroker.id}`
+            + ` materialized=${materialized}`,
+          )
+          return { openedOrMerged: materialized }
+        }
       }
 
       const ms = resolved.manual_settings as Record<string, unknown>
       console.log(
         `[tradeExecutor] sendOrder signal=${signal.id} broker=${effectiveBroker.id}`
         + ` channel=${signal.channel_id ?? 'none'} source=${resolved.config_source}`
-        + ` style=${String(ms.trade_style ?? 'single')} fixed_lot=${String(ms.fixed_lot ?? 'missing')}`,
+        + ` style=${String(ms.trade_style ?? 'single')} fixed_lot=${String(ms.fixed_lot ?? 'missing')}`
+        + ` range_trading=${ms.range_trading === true}`,
       )
 
       const isManual = (effectiveBroker.copier_mode ?? 'ai') === 'manual'
@@ -1119,8 +1399,13 @@ export class TradeExecutor {
     return await managementExecutor.skipMgmtSignal(this, signalId, reason)
   }
 
-  async applyManagement(signal: SignalRow, parsed: ParsedSignal, brokers: BrokerRow[]): Promise<void> {
-    return await managementExecutor.applyManagement(this, signal, parsed, brokers)
+  async applyManagement(
+    signal: SignalRow,
+    parsed: ParsedSignal,
+    brokers: BrokerRow[],
+    mgmtOpts?: MgmtExecOptions,
+  ): Promise<MgmtExecResult> {
+    return await managementExecutor.applyManagement(this, signal, parsed, brokers, mgmtOpts)
   }
 
   /**
@@ -1140,29 +1425,31 @@ export class TradeExecutor {
       entry_price: number | null
       cwe_close_price?: number | null
     }>,
-    byBroker: Map<string, BrokerRow>,): Promise<void> {
-    return await managementExecutor.applyCloseWorseEntriesInstruction(this, signal, parsed, rows, byBroker)
+    byBroker: Map<string, BrokerRow>,
+    mgmtOpts?: MgmtExecOptions,
+  ): Promise<MgmtExecResult> {
+    return await managementExecutor.applyCloseWorseEntriesInstruction(this, signal, parsed, rows, byBroker, mgmtOpts)
   }
 
   /**
    * One-time cleanup of broker-side BuyLimit/SellLimit orders left over from
-   * the pre-virtual-pendings era. Filters by our `TSCopier:` comment prefix so
+   * the pre-virtual-pendings era. Filters by our `TScopier:` comment prefix so
    * we never touch orders placed by the user manually or other systems.
    *
    * Gated by env flag `WORKER_LEGACY_PENDING_CLEANUP=true`. Safe to leave on
    * indefinitely — it becomes a no-op once the legacy pendings are gone.
    */
   private async cleanupLegacyBrokerPendings(): Promise<void> {
-    if (!hasMetatraderApiConfigured()) return
+    if (!hasFxsocketConfigured()) return
     const brokers = Array.from(this.brokersById.values()).filter(b =>
-      b.is_active && isMtUuid(b.metaapi_account_id),
+      b.is_active && brokerHasLinkedSession(b),
     )
     if (!brokers.length) return
     console.log(`[tradeExecutor] legacy pending cleanup: scanning ${brokers.length} brokers...`)
     let totalClosed = 0
     let totalFailed = 0
     for (const broker of brokers) {
-      const uuid = broker.metaapi_account_id!
+      const uuid = brokerSessionUuid(broker)!
       const api = this.apiFor(broker)
       if (!api) continue
       let orders: unknown[]
@@ -1179,7 +1466,7 @@ export class TradeExecutor {
         const comment = String(o.comment ?? o.Comment ?? '')
         const ticket = Number(o.ticket ?? o.Ticket ?? o.orderId ?? o.OrderID ?? 0)
         if (!operation.includes('Limit') && !operation.includes('Stop')) continue
-        if (!comment.startsWith('TSCopier:')) continue
+        if (!isTscopierComment(comment)) continue
         if (!Number.isFinite(ticket) || ticket <= 0) continue
         try {
           await api.orderClose(uuid, { ticket })
@@ -1222,20 +1509,27 @@ export class TradeExecutor {
     return await brokerSymbolCache.fetchSymbolList(this, uuid)
   }
 
-  resolveBrokerSymbolFromInventory(inventory: SymbolListCacheEntry,
-    requested: string,): string {
-    return brokerSymbolCache.resolveBrokerSymbolFromInventory(this, inventory, requested)
+  resolveBrokerSymbolFromInventory(
+    inventory: SymbolListCacheEntry,
+    requested: string,
+    opts?: { userDecorated?: boolean },
+  ): string {
+    return brokerSymbolCache.resolveBrokerSymbolFromInventory(this, inventory, requested, opts)
   }
 
-  async resolveBrokerSymbolForLiveEntry(uuid: string, requested: string): Promise<string> {
-    return await brokerSymbolCache.resolveBrokerSymbolForLiveEntry(this, uuid, requested)
+  async resolveBrokerSymbolForLiveEntry(
+    uuid: string,
+    requested: string,
+    opts?: { userDecorated?: boolean },
+  ): Promise<string> {
+    return await brokerSymbolCache.resolveBrokerSymbolForLiveEntry(this, uuid, requested, opts)
   }
 
   async deferredVirtualPendingMaterialize(args: {
     signal: SignalRow
     broker: BrokerRow
     uuid: string
-    api: MetatraderApiClient
+    api: FxsocketBrokerClient
     symbol: string
     virtualPendings: VirtualPendingLeg[]
     parsed: ParsedSignal
@@ -1273,11 +1567,24 @@ export class TradeExecutor {
     const safe = Math.max(Number(params?.stopsLevel) || 0, Number(params?.freezeLevel) || 0)
     const zoneHi = safe > 0 ? anchor + (safe + 2) * (params?.point ?? 0) : null
     const zoneLo = safe > 0 ? anchor - (safe + 2) * (params?.point ?? 0) : null
+    const signalRangeBoundary = plan.rangeLayering?.signalRangeBoundary ?? null
+    const signalZoneLo = plan.rangeLayering?.signalZoneLo ?? null
+    const signalZoneHi = plan.rangeLayering?.signalZoneHi ?? null
+    const useSignalEntryRange = plan.rangeLayering?.useSignalEntryRange === true
     const nowMs = Date.now()
     const insertRows: Record<string, unknown>[] = []
     for (const v of virtualPendings) {
       const triggerPrice = triggerPriceFor(v, anchor, digits)
-      if (zoneHi != null && zoneLo != null && triggerPrice > zoneLo && triggerPrice < zoneHi) {
+      if (!virtualPendingTriggerAllowed({
+        triggerPrice,
+        signalRangeBoundary,
+        isBuy: v.isBuy,
+        stopsZoneLo: zoneLo,
+        stopsZoneHi: zoneHi,
+        signalZoneLo,
+        signalZoneHi,
+        useSignalEntryRange,
+      })) {
         continue
       }
       const expiresAt = v.expiryHours && v.expiryHours > 0
@@ -1323,7 +1630,36 @@ export class TradeExecutor {
    *   2. Fall back to fuzzy matching against `/Symbols` using common broker suffixes
    *      and prefix/suffix substitution. Picks the shortest match (closest variant).
    */
-  async resolveBrokerSymbol(uuid: string, requested: string): Promise<string> {
-    return await brokerSymbolCache.resolveBrokerSymbol(this, uuid, requested)
+  async resolveBrokerSymbol(
+    uuid: string,
+    requested: string,
+    opts?: { userDecorated?: boolean },
+  ): Promise<string> {
+    return await brokerSymbolCache.resolveBrokerSymbol(this, uuid, requested, opts)
+  }
+
+  async fetchCopyLimitState(brokerId: string, channelId: string): Promise<CopyLimitState> {
+    const key = `${brokerId}:${normalizeChannelUuid(channelId) ?? channelId}`
+    const hit = this.copyLimitStateCache.get(key)
+    if (hit && Date.now() - hit.at < 20_000) return hit.state
+
+    const channelKey = normalizeChannelUuid(channelId)
+    if (!channelKey) return { paused_period_keys: [], periods: {} }
+
+    const { data, error } = await this.supabase
+      .from('broker_channel_trading_configs')
+      .select('copy_limit_state')
+      .eq('broker_account_id', brokerId)
+      .eq('channel_id', channelKey)
+      .maybeSingle()
+
+    if (error) {
+      console.warn(`[tradeExecutor] fetchCopyLimitState failed: ${error.message}`)
+    }
+    const state = normalizeCopyLimitState(
+      (data as { copy_limit_state?: unknown } | null)?.copy_limit_state,
+    )
+    this.copyLimitStateCache.set(key, { state, at: Date.now() })
+    return state
   }
 }

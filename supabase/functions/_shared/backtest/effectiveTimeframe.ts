@@ -1,6 +1,6 @@
 import type { BacktestTimeframe } from "./types.ts"
 
-/** Coarser bars for longer ranges — fewer Massive pages and faster simulation. */
+/** Coarser bars for longer ranges — fewer API calls and faster simulation. */
 export function effectiveTimeframeForRange(
   dateFrom: string,
   dateTo: string,

@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -32,6 +30,9 @@ html.dark {
 
 html {
   scroll-behavior: smooth;
+  font-family: "Instrument Sans", system-ui, sans-serif;
+  font-optical-sizing: auto;
+  font-variation-settings: "wdth" 100;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -48,11 +49,19 @@ html.dark body {
 
 body {
   margin: 0;
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: "Instrument Sans", system-ui, sans-serif;
+  font-optical-sizing: auto;
+  font-variation-settings: "wdth" 100;
   background-color: var(--tsc-page);
   color: var(--tsc-text);
   -webkit-font-smoothing: antialiased;
   transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+@layer base {
+  input[type='checkbox'] {
+    @apply accent-teal-600;
+  }
 }
 
 /* iOS Safari zooms focused inputs when font-size < 16px */

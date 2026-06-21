@@ -68,6 +68,35 @@ export async function loadRangeLegRows(
   return (data ?? []) as RangeLegRow[]
 }
 
+/**
+ * Anchor of the existing ladder for this basket scope (rows share one anchor from the
+ * original materialization). Basket-refresh inserts MUST reuse it: re-anchoring at the
+ * newest fill or live quote walks the ladder in the favorable direction and fires new
+ * layers while the basket is in profit — layering is averaging *against* the position.
+ */
+export async function resolveExistingRangeLadderAnchor(
+  supabase: SupabaseClient,
+  scope: RangeLadderScope,
+): Promise<number | null> {
+  const { data, error } = await supabase
+    .from('range_pending_legs')
+    .select('anchor_price')
+    .eq('signal_id', scope.signalId)
+    .eq('broker_account_id', scope.brokerAccountId)
+    .eq('symbol', scope.symbol)
+    .gt('anchor_price', 0)
+    .order('step_idx', { ascending: true })
+    .limit(1)
+  if (error) {
+    console.warn(
+      `[rangePendingLadderSync] anchor lookup failed signal=${scope.signalId} broker=${scope.brokerAccountId}: ${error.message}`,
+    )
+    return null
+  }
+  const v = Number((data?.[0] as { anchor_price?: number } | undefined)?.anchor_price)
+  return Number.isFinite(v) && v > 0 ? v : null
+}
+
 export function consumedStepIndices(rows: RangeLegRow[]): Set<number> {
   const out = new Set<number>()
   for (const r of rows) {
@@ -86,6 +115,115 @@ export function maxConsumedStepIndex(consumed: Set<number>): number {
   return max
 }
 
+export function pendingLegStopsForBasketRefresh(args: {
+  row: RangeLegRow
+  planLeg: VirtualPendingLeg | undefined
+  channelParams: ChannelActiveTradeParams | null | undefined
+  plannedRangeLegs: number
+  activeRowCount: number
+  tpLots?: ManualTpLot[] | null
+}): { stoploss: number | null; takeprofit: number | null; cwe_close_price: number | null } | null {
+  const { row, planLeg, channelParams, plannedRangeLegs, activeRowCount, tpLots } = args
+  const legIndex = Math.max(0, row.step_idx - 1)
+  const rangeLegCount = Math.max(plannedRangeLegs, activeRowCount, 1)
+  const hasChannelStops = channelParams != null
+    && (channelParams.stoploss != null || channelParams.tpLevels.length > 0)
+
+  if (planLeg) {
+    const stops = applyChannelParamsToVirtualLeg(
+      {
+        stoploss: planLeg.stoploss,
+        takeprofit: planLeg.cweClosePrice != null ? null : planLeg.takeprofit,
+      },
+      channelParams ?? null,
+      { rangeLegIndex: legIndex, rangeLegCount, tpLots },
+    )
+    return {
+      stoploss: stops.stoploss ?? null,
+      takeprofit: planLeg.cweClosePrice != null ? null : (stops.takeprofit ?? null),
+      cwe_close_price: planLeg.cweClosePrice ?? null,
+    }
+  }
+
+  if (!hasChannelStops) return null
+
+  const stops = applyChannelParamsToVirtualLeg(
+    {
+      stoploss: row.stoploss,
+      takeprofit: row.cwe_close_price != null ? null : row.takeprofit,
+    },
+    channelParams ?? null,
+    { rangeLegIndex: legIndex, rangeLegCount, tpLots },
+  )
+  return {
+    stoploss: stops.stoploss ?? null,
+    takeprofit: row.cwe_close_price != null ? null : (stops.takeprofit ?? null),
+    cwe_close_price: row.cwe_close_price ?? null,
+  }
+}
+
+/** Patch SL/TP on all active pending rows for one basket (SL-only refresh, no ladder replan). */
+export async function patchActiveRangePendingLegStops(args: {
+  supabase: SupabaseClient
+  scope: RangeLadderScope
+  stoploss?: number | null
+  channelParams?: ChannelActiveTradeParams | null
+  tpLots?: ManualTpLot[] | null
+  plannedRangeLegs?: number
+}): Promise<number> {
+  const {
+    supabase,
+    scope,
+    stoploss,
+    channelParams,
+    tpLots,
+    plannedRangeLegs = 0,
+  } = args
+  const explicitSl = typeof stoploss === 'number' && Number.isFinite(stoploss) && stoploss > 0
+    ? stoploss
+    : null
+  const hasChannelStops = channelParams != null
+    && (channelParams.stoploss != null || channelParams.tpLevels.length > 0)
+  if (explicitSl == null && !hasChannelStops) return 0
+
+  const existing = await loadRangeLegRows(supabase, scope)
+  const activeRows = existing.filter(r => r.status === 'pending' || r.status === 'claimed')
+  if (!activeRows.length) return 0
+
+  let updated = 0
+  for (const row of activeRows) {
+    let patch: { stoploss: number | null; takeprofit: number | null } | null = null
+    if (hasChannelStops) {
+      const computed = pendingLegStopsForBasketRefresh({
+        row,
+        planLeg: undefined,
+        channelParams,
+        plannedRangeLegs,
+        activeRowCount: activeRows.length,
+        tpLots,
+      })
+      if (computed) {
+        patch = { stoploss: computed.stoploss, takeprofit: computed.takeprofit }
+      }
+    }
+    if (explicitSl != null) {
+      patch = {
+        stoploss: explicitSl,
+        takeprofit: patch?.takeprofit ?? (row.cwe_close_price != null ? null : row.takeprofit),
+      }
+    }
+    if (!patch) continue
+
+    const { error } = await supabase
+      .from('range_pending_legs')
+      .update(patch)
+      .eq('id', row.id)
+      .in('status', ['pending', 'claimed'])
+    if (!error) updated += 1
+  }
+  return updated
+}
+
 /**
  * On basket SL/TP refresh: patch SL/TP on active pendings; insert only rungs that
  * have not fired and respect total leg budget (immediates + range layering).
@@ -102,6 +240,7 @@ export async function syncRangePendingLadderOnBasketRefresh(args: {
   buildInsertRow: (leg: VirtualPendingLeg) => Record<string, unknown> | null
   persistRows: (rows: Record<string, unknown>[], context: string) => Promise<{ ok: boolean }>
   context: string
+  layerTillClose?: boolean
 }): Promise<{ updated: number; inserted: number; skippedConsumed: number; skippedCap: number }> {
   const {
     supabase,
@@ -115,10 +254,13 @@ export async function syncRangePendingLadderOnBasketRefresh(args: {
     buildInsertRow,
     persistRows,
     context,
+    layerTillClose = false,
   } = args
 
   const stats = { updated: 0, inserted: 0, skippedConsumed: 0, skippedCap: 0 }
-  if (!virtualPendings.length) return stats
+  const hasChannelStops = channelParams != null
+    && (channelParams.stoploss != null || channelParams.tpLevels.length > 0)
+  if (!virtualPendings.length && !hasChannelStops) return stats
 
   const existing = await loadRangeLegRows(supabase, scope)
   const consumed = consumedStepIndices(existing)
@@ -138,20 +280,19 @@ export async function syncRangePendingLadderOnBasketRefresh(args: {
 
   for (const row of activeRows) {
     const planLeg = planByStep.get(row.step_idx)
-    if (!planLeg) continue
-    const legIndex = Math.max(0, row.step_idx - 1)
-    const stops = applyChannelParamsToVirtualLeg(
-      {
-        stoploss: planLeg.stoploss,
-        takeprofit: planLeg.cweClosePrice != null ? null : planLeg.takeprofit,
-      },
-      channelParams ?? null,
-      { rangeLegIndex: legIndex, rangeLegCount: plannedRangeLegs, tpLots },
-    )
+    const computed = pendingLegStopsForBasketRefresh({
+      row,
+      planLeg,
+      channelParams,
+      plannedRangeLegs,
+      activeRowCount: activeRows.length,
+      tpLots,
+    })
+    if (!computed) continue
     const patch: Record<string, unknown> = {
-      stoploss: stops.stoploss,
-      takeprofit: planLeg.cweClosePrice != null ? null : stops.takeprofit,
-      cwe_close_price: planLeg.cweClosePrice ?? null,
+      stoploss: computed.stoploss,
+      takeprofit: computed.takeprofit,
+      cwe_close_price: computed.cwe_close_price,
     }
     const { error } = await supabase
       .from('range_pending_legs')
@@ -161,8 +302,10 @@ export async function syncRangePendingLadderOnBasketRefresh(args: {
     if (!error) stats.updated += 1
   }
 
-  if (await hasRangePendingTpTouchLock(supabase, scope)) {
-    // Once TP touch lock is set, no new ladder rows should be inserted.
+  if (!virtualPendings.length) return stats
+
+  if (!layerTillClose && await hasRangePendingTpTouchLock(supabase, scope)) {
+    // Layering frozen (TP touch or partial close with layer-till-close off).
     stats.skippedCap += virtualPendings.length
     return stats
   }

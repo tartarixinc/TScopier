@@ -391,6 +391,10 @@ class UserSessionManager {
         }
     }
     async listChannels(userId, opts) {
+        const local = this.listeners.get(userId);
+        if (local?.isTelegramConnected()) {
+            return local.listChannels(opts);
+        }
         const listener = await this.ensureListener(userId);
         return listener.listChannels(opts);
     }
@@ -421,7 +425,7 @@ class UserSessionManager {
             throw new Error('Failed to start listener for user');
         return listener;
     }
-    async backfillChannelHistory(userId, channelRowId, days) {
+    async backfillChannelHistory(userId, channelRowId, days, opts) {
         // Prefer the live listener (listener-only deploys). Avoids a second MTProto
         // connection that would trigger AUTH_KEY_DUPLICATED.
         if (workerConfig_1.workerConfig.runsListener) {
@@ -435,13 +439,13 @@ class UserSessionManager {
                 }
             }
             if (listener?.isTelegramConnected()) {
-                return listener.backfillChannelHistory(channelRowId, days);
+                return listener.backfillChannelHistory(channelRowId, days, opts);
             }
         }
         if (!workerConfig_1.workerConfig.runsBacktestHttp) {
             throw new Error('Telegram listener is not connected. Link Telegram on Copier Engine, wait a few seconds, then refresh.');
         }
-        return this.withEphemeralTelegram(userId, () => (0, backtestSync_1.runWithEphemeralListener)(this.supabase, userId, listener => listener.backfillChannelHistory(channelRowId, days)));
+        return this.withEphemeralTelegram(userId, () => (0, backtestSync_1.runWithEphemeralListener)(this.supabase, userId, listener => listener.backfillChannelHistory(channelRowId, days, opts)));
     }
     async importBacktestChannelHistory(userId, channelRowId, fromIso, toIso) {
         if (!workerConfig_1.workerConfig.runsBacktestHttp) {
@@ -465,24 +469,53 @@ class UserSessionManager {
         const pauseLive = workerConfig_1.workerConfig.runsListener
             && (workerConfig_1.workerConfig.role === 'all' || process.env.BACKTEST_PAUSE_LIVE_LISTENER !== 'false');
         let sessionString = null;
-        if (pauseLive && this.listeners.has(userId)) {
+        let hadLiveListener = false;
+        if (pauseLive) {
             sessionString = (await this.supabase
                 .from('telegram_sessions')
                 .select('session_string')
                 .eq('user_id', userId)
                 .maybeSingle()).data?.session_string ?? null;
-            console.log(`[sessionManager] pausing live listener for backtest user=${userId}`);
-            await this.stopListener(userId);
-            await new Promise(r => setTimeout(r, 2000));
+            hadLiveListener = this.listeners.has(userId);
+            if (hadLiveListener) {
+                console.log(`[sessionManager] pausing live listener for backtest user=${userId}`);
+                await this.stopListener(userId);
+            }
+            if (sessionString) {
+                await new Promise(r => setTimeout(r, authKeyReleaseDelayMs()));
+            }
         }
         try {
             return await fn();
         }
         finally {
-            if (pauseLive && sessionString) {
-                await this.startListener(userId, sessionString);
+            if (pauseLive && sessionString && hadLiveListener) {
+                await this.restartListenerAfterBacktest(userId, sessionString);
             }
         }
+    }
+    /** Backtest pauses the copier listener; retry MTProto restart so Telegram does not stay offline. */
+    async restartListenerAfterBacktest(userId, sessionString) {
+        const retryDelaysMs = [0, 3000, 5000, 10000];
+        for (let attempt = 0; attempt < retryDelaysMs.length; attempt++) {
+            const delay = retryDelaysMs[attempt] ?? 0;
+            if (delay > 0)
+                await new Promise(r => setTimeout(r, delay));
+            if (this.listeners.has(userId)) {
+                console.log(`[sessionManager] listener restored after backtest user=${userId}`);
+                return;
+            }
+            try {
+                await this.startListener(userId, sessionString);
+            }
+            catch (err) {
+                console.warn(`[sessionManager] restart listener after backtest attempt ${attempt + 1} for ${userId}:`, err instanceof Error ? err.message : err);
+            }
+            if (this.listeners.has(userId))
+                return;
+        }
+        console.error(`[sessionManager] failed to restart listener after backtest user=${userId}`
+            + ' — open Copier Engine and use Reconnect Telegram');
     }
     async startListener(userId, sessionString) {
         if (this.listeners.has(userId))
@@ -534,6 +567,41 @@ class UserSessionManager {
         await this.withConnectionLock(userId, async () => {
             await this.disconnectListener(userId);
         });
+    }
+    async reconcileUserSignals(userId, opts) {
+        if (!(0, workerConfig_1.userBelongsToShard)(userId)) {
+            return { ok: false, reason: 'wrong_shard' };
+        }
+        const listener = this.listeners.get(userId);
+        if (!listener) {
+            return { ok: false, reason: 'listener_not_running' };
+        }
+        let channelRow;
+        if (opts?.channelRowId) {
+            const { data } = await this.supabase
+                .from('telegram_channels')
+                .select('id, channel_id, channel_username, last_seen_message_id, last_seen_at, last_live_at')
+                .eq('id', opts.channelRowId)
+                .eq('user_id', userId)
+                .maybeSingle();
+            if (data)
+                channelRow = data;
+        }
+        const stats = await listener.runSignalTelegramReconcile('cron', channelRow);
+        return { ok: true, stats };
+    }
+    async reconcileAllListenersOnShard() {
+        const totals = { checked: 0, mismatches: 0, revised: 0, errors: 0 };
+        let users = 0;
+        for (const [, listener] of this.listeners) {
+            users += 1;
+            const stats = await listener.runSignalTelegramReconcile('cron');
+            totals.checked += stats.checked;
+            totals.mismatches += stats.mismatches;
+            totals.revised += stats.revised;
+            totals.errors += stats.errors;
+        }
+        return { users, stats: totals };
     }
     async disconnectAll() {
         if (this.channelChannel) {

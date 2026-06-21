@@ -5,7 +5,6 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.parseQueueJobFields = parseQueueJobFields;
 exports.enqueueParsedSignal = enqueueParsedSignal;
-exports.describeQueuePublisherStatus = describeQueuePublisherStatus;
 const tradeSignalActions_1 = require("../tradeSignalActions");
 const redisStreamsClient_1 = require("./redisStreamsClient");
 const signalQueueConfig_1 = require("./signalQueueConfig");
@@ -142,15 +141,4 @@ async function enqueueParsedSignal(supabase, row) {
         console.warn(`[signalQueue] enqueue failed signal=${row.id} user=${row.user_id} stream=${streamKey}: ${msg}`);
         return { ok: false, streamKey, lane, shardId, error: msg };
     }
-}
-function describeQueuePublisherStatus() {
-    const cfg = (0, signalQueueConfig_1.signalQueueConfig)();
-    return {
-        enabled: cfg.enabled,
-        canary_shards: cfg.canaryShardIds ? [...cfg.canaryShardIds] : null,
-        shard_count: cfg.shardCount,
-        entry_stream_base: cfg.entryStreamBase,
-        mgmt_stream_base: cfg.mgmtStreamBase,
-        redis_configured: Boolean(cfg.redisRestUrl && cfg.redisRestToken),
-    };
 }

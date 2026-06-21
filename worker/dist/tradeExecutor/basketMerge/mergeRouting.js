@@ -2,24 +2,28 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.tryParameterFollowUpMergeModifyOnly = tryParameterFollowUpMergeModifyOnly;
 exports.tryMergeSignalIntoExistingOpenTrade = tryMergeSignalIntoExistingOpenTrade;
-const metatraderapi_1 = require("../../metatraderapi");
-const manualPlanner_1 = require("../../manualPlanner");
-const channelMessageFilters_1 = require("../../channelMessageFilters");
-const signalMergeLink_1 = require("../../signalMergeLink");
-const multiTradeMerge_1 = require("../../multiTradeMerge");
-const signalPriceInference_1 = require("../../signalPriceInference");
+exports.tryTeaserCompletionMerge = tryTeaserCompletionMerge;
 const basketModFollowUp_1 = require("../../basketModFollowUp");
 const channelActiveTradeParams_1 = require("../../channelActiveTradeParams");
-const slTpRefresh_1 = require("./slTpRefresh");
+const channelMessageFilters_1 = require("../../channelMessageFilters");
+const manualPlanner_1 = require("../../manualPlanner");
+const fxsocketClient_1 = require("../../fxsocketClient");
+const multiTradeMerge_1 = require("../../multiTradeMerge");
+const signalMergeLink_1 = require("../../signalMergeLink");
+const signalEntryNowRequirement_1 = require("../../signalEntryNowRequirement");
+const signalRevision_1 = require("../../signalRevision");
+const signalPriceInference_1 = require("../../signalPriceInference");
 const helpers_1 = require("./helpers");
+const slTpRefresh_1 = require("./slTpRefresh");
 async function tryParameterFollowUpMergeModifyOnly(ctx, args) {
     const { signal, parsed, broker, channelKeywords, baseLot, params, symbol, uuid, strictEntryPrefetch, commentPrefix, } = args;
-    if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
+    if (!(0, fxsocketClient_1.hasFxsocketConfigured)())
         return { handled: false };
     if ((0, signalPriceInference_1.parsedHasReEnterIntent)(parsed))
         return { handled: false };
-    if (!(0, multiTradeMerge_1.shouldRouteAsBasketParameterRefresh)(parsed))
+    if (!(0, multiTradeMerge_1.shouldRouteAsBasketParameterRefresh)(parsed) && args.sameSignalRefresh !== true) {
         return { handled: false };
+    }
     const api = ctx.apiFor(broker);
     if (!api)
         return { handled: false };
@@ -42,17 +46,31 @@ async function tryParameterFollowUpMergeModifyOnly(ctx, args) {
     if (a !== 'buy' && a !== 'sell')
         return { handled: false };
     const direction = a === 'buy' ? 'buy' : 'sell';
-    const anchor = await (0, multiTradeMerge_1.resolveOpenBasketAnchorForParameterFollowUp)(ctx.supabase, {
-        userId: signal.user_id,
-        brokerAccountId: broker.id,
-        brokerSymbol: symbol,
-        signalSymbol: parsed.symbol,
-        direction,
-        channelId: signal.channel_id,
-    }, {
-        currentSignalId: signal.id,
-        currentSignalCreatedAt: signal.created_at ?? null,
-    });
+    const sameSignalRefresh = args.sameSignalRefresh === true;
+    let anchor = sameSignalRefresh
+        ? await (0, multiTradeMerge_1.resolveOpenBasketAnchorForSameSignal)(ctx.supabase, {
+            userId: signal.user_id,
+            brokerAccountId: broker.id,
+            signalId: signal.id,
+            brokerSymbol: symbol,
+            signalSymbol: parsed.symbol,
+            direction,
+            channelId: signal.channel_id,
+        })
+        : null;
+    if (!anchor) {
+        anchor = await (0, multiTradeMerge_1.resolveOpenBasketAnchorForParameterFollowUp)(ctx.supabase, {
+            userId: signal.user_id,
+            brokerAccountId: broker.id,
+            brokerSymbol: symbol,
+            signalSymbol: parsed.symbol,
+            direction,
+            channelId: signal.channel_id,
+        }, {
+            currentSignalId: signal.id,
+            currentSignalCreatedAt: signal.created_at ?? null,
+        });
+    }
     if (!anchor) {
         // Fire-and-forget: this is a diagnostic-only log on the live-entry hot
         // path; awaiting it adds ~50–150 ms to send_plan_ms for no functional
@@ -97,43 +115,65 @@ async function tryParameterFollowUpMergeModifyOnly(ctx, args) {
     // Exception: when add_new_trades_to_existing=false, the strategy is "single slot";
     // a same-direction signal carrying explicit stops should refresh that live slot.
     const manual = (broker.manual_settings ?? {});
-    const allowUnlinkedRefresh = (manual.add_new_trades_to_existing === false && (0, channelActiveTradeParams_1.parsedSignalHasExplicitStops)(parsed))
+    const sameSignalRevision = sameSignalRefresh && anchor.anchorSignalId === signal.id;
+    const revisionBypassLinking = (0, signalMergeLink_1.messageRevisionBypassesMergeLinking)({
+        sameSignalRefresh,
+        hasExplicitStops: (0, channelActiveTradeParams_1.parsedSignalHasExplicitStops)(parsed),
+    });
+    const allowUnlinkedRefresh = sameSignalRevision
+        || revisionBypassLinking
+        || (manual.add_new_trades_to_existing === false && (0, channelActiveTradeParams_1.parsedSignalHasExplicitStops)(parsed))
         || link.parameterRefreshSameChannel
         || (link.implicitBundleWithinTightWindow && link.implicitSameChannelBundle && (0, channelActiveTradeParams_1.parsedSignalHasExplicitStops)(parsed));
-    if (!link.replyOk && !link.threadLinksAnchor && !link.parentLinksAnchor && !allowUnlinkedRefresh) {
-        void ctx.supabase.from('trade_execution_logs').insert({
-            user_id: signal.user_id,
-            signal_id: signal.id,
-            broker_account_id: broker.id,
-            action: 'merge_routed_modify_only',
-            status: 'skipped',
-            request_payload: {
-                skip_reason: 'parameter_follow_up_requires_explicit_link',
-                symbol,
-                direction,
-                channel_id: signal.channel_id,
-                anchor_signal_id: anchor.anchorSignalId,
-                dt_ms: link.dtMs,
-            },
-        }).then(() => undefined, () => undefined);
-        return { handled: false };
+    if (!sameSignalRevision && !revisionBypassLinking) {
+        if (!link.replyOk && !link.threadLinksAnchor && !link.parentLinksAnchor && !allowUnlinkedRefresh) {
+            void ctx.supabase.from('trade_execution_logs').insert({
+                user_id: signal.user_id,
+                signal_id: signal.id,
+                broker_account_id: broker.id,
+                action: 'merge_routed_modify_only',
+                status: 'skipped',
+                request_payload: {
+                    skip_reason: 'parameter_follow_up_requires_explicit_link',
+                    symbol,
+                    direction,
+                    channel_id: signal.channel_id,
+                    anchor_signal_id: anchor.anchorSignalId,
+                    dt_ms: link.dtMs,
+                },
+            }).then(() => undefined, () => undefined);
+            return { handled: false };
+        }
+        if (!link.isLinked) {
+            void ctx.supabase.from('trade_execution_logs').insert({
+                user_id: signal.user_id,
+                signal_id: signal.id,
+                broker_account_id: broker.id,
+                action: 'merge_routed_modify_only',
+                status: 'skipped',
+                request_payload: {
+                    skip_reason: 'parameter_follow_up_not_linked',
+                    symbol,
+                    direction,
+                    channel_id: signal.channel_id,
+                    anchor_signal_id: anchor.anchorSignalId,
+                    dt_ms: link.dtMs,
+                },
+            }).then(() => undefined, () => undefined);
+            return { handled: false };
+        }
     }
-    if (!link.isLinked) {
-        void ctx.supabase.from('trade_execution_logs').insert({
-            user_id: signal.user_id,
-            signal_id: signal.id,
-            broker_account_id: broker.id,
-            action: 'merge_routed_modify_only',
-            status: 'skipped',
-            request_payload: {
-                skip_reason: 'parameter_follow_up_not_linked',
-                symbol,
-                direction,
-                channel_id: signal.channel_id,
-                anchor_signal_id: anchor.anchorSignalId,
-                dt_ms: link.dtMs,
-            },
-        }).then(() => undefined, () => undefined);
+    const { data: anchorFamilyRows } = await ctx.supabase
+        .from('trades')
+        .select('id,signal_id,metaapi_order_id,opened_at,lot_size,sl,tp,entry_price,direction,symbol')
+        .eq('broker_account_id', broker.id)
+        .eq('signal_id', anchor.anchorSignalId)
+        .eq('status', 'open')
+        .order('opened_at', { ascending: true })
+        .limit(500);
+    const anchorFamily = (anchorFamilyRows ?? []).filter(tr => (0, basketModFollowUp_1.symbolsCompatibleForBasket)(parsed.symbol ?? symbol, tr.symbol)
+        || (0, basketModFollowUp_1.symbolsCompatibleForBasket)(symbol, tr.symbol));
+    if (!anchorFamily.length) {
         return { handled: false };
     }
     console.log(`[tradeExecutor] merge_anchor_selected signal=${signal.id} broker=${broker.id}`
@@ -155,16 +195,6 @@ async function tryParameterFollowUpMergeModifyOnly(ctx, args) {
         });
     }
     catch { /* best-effort */ }
-    const { data: anchorFamilyRows } = await ctx.supabase
-        .from('trades')
-        .select('id,signal_id,metaapi_order_id,opened_at,lot_size,sl,tp,entry_price,direction,symbol')
-        .eq('broker_account_id', broker.id)
-        .eq('signal_id', anchor.anchorSignalId)
-        .eq('status', 'open')
-        .order('opened_at', { ascending: true })
-        .limit(500);
-    const anchorFamily = (anchorFamilyRows ?? []).filter(tr => (0, basketModFollowUp_1.symbolsCompatibleForBasket)(parsed.symbol ?? symbol, tr.symbol)
-        || (0, basketModFollowUp_1.symbolsCompatibleForBasket)(symbol, tr.symbol));
     const ghostCheck = await (0, helpers_1.reconcileGhostBasketLegs)(ctx, {
         signal,
         broker,
@@ -190,7 +220,8 @@ async function tryParameterFollowUpMergeModifyOnly(ctx, args) {
         anchorSignalId: anchor.anchorSignalId,
         direction,
         logAction: 'merge_routed_modify_only',
-        messageEditOnly: args.messageEditOnly === true,
+        sameSignalRefresh: args.sameSignalRefresh === true,
+        liveMgmtFast: args.liveMgmtFast === true,
         mergeLinkMeta: {
             reply_chain: link.replyOk,
             within_time_window: link.withinWindow,
@@ -199,6 +230,7 @@ async function tryParameterFollowUpMergeModifyOnly(ctx, args) {
             implicit_bundle_within_tight_window: link.implicitBundleWithinTightWindow,
             implicit_same_channel_bundle: link.implicitSameChannelBundle,
             parameter_refresh_same_channel: link.parameterRefreshSameChannel,
+            same_signal_refresh: sameSignalRevision,
             implicit_bundle_dt_ms: link.dtMs,
             merge_implicit_tight_window_ms: signalMergeLink_1.MERGE_IMPLICIT_CHANNEL_BUNDLE_MS,
             legacy_merge_linking: (0, multiTradeMerge_1.legacyMergeLinkingEnabled)(),
@@ -208,7 +240,7 @@ async function tryParameterFollowUpMergeModifyOnly(ctx, args) {
 }
 async function tryMergeSignalIntoExistingOpenTrade(ctx, args) {
     const { signal, parsed, op, broker, channelKeywords, baseLot, params, symbol, uuid, strictEntryPrefetch, commentPrefix, } = args;
-    if (!(0, metatraderapi_1.hasMetatraderApiConfigured)())
+    if (!(0, fxsocketClient_1.hasFxsocketConfigured)())
         return { handled: false };
     const api = ctx.apiFor(broker);
     if (!api)
@@ -217,8 +249,6 @@ async function tryMergeSignalIntoExistingOpenTrade(ctx, args) {
         return { handled: false };
     const manual = (broker.manual_settings ?? {});
     if (manual.add_new_trades_to_existing !== true)
-        return { handled: false };
-    if ((0, multiTradeMerge_1.shouldRouteAsBasketParameterRefresh)(parsed))
         return { handled: false };
     if ((0, manualPlanner_1.signalEntryPriceStrictEnabled)(manual) && !(0, manualPlanner_1.parsedHasExplicitEntryAnchor)(parsed)) {
         return { handled: false };
@@ -239,11 +269,19 @@ async function tryMergeSignalIntoExistingOpenTrade(ctx, args) {
         .limit(64);
     if (openErr || !openDesc?.length)
         return { handled: false };
-    const newest = openDesc[0];
+    let channelOpenLegs = openDesc;
+    if (signal.channel_id) {
+        const allowedSignalIds = await (0, multiTradeMerge_1.filterSignalIdsByChannel)(ctx.supabase, signal.user_id, signal.channel_id, channelOpenLegs.map(t => t.signal_id).filter(Boolean));
+        channelOpenLegs = channelOpenLegs.filter(t => allowedSignalIds.has(t.signal_id));
+    }
+    if (!channelOpenLegs.length)
+        return { handled: false };
+    channelOpenLegs.sort((a, b) => new Date(b.opened_at).getTime() - new Date(a.opened_at).getTime());
+    const newest = channelOpenLegs[0];
     const anchorSignalId = newest.signal_id;
     if (!anchorSignalId)
         return { handled: false };
-    const familyTrades = openDesc
+    const familyTrades = channelOpenLegs
         .filter(t => t.signal_id === anchorSignalId)
         .sort((a, b) => new Date(a.opened_at).getTime() - new Date(b.opened_at).getTime());
     if (!familyTrades.length)
@@ -300,4 +338,123 @@ async function tryMergeSignalIntoExistingOpenTrade(ctx, args) {
         },
     });
     return { handled: true, success: refresh.success };
+}
+/**
+ * SIGNALS PRO pattern: teaser opened fast, then a new "Gold buy now + SL/TP" message
+ * within the implicit bundle window — modify the teaser basket instead of OrderSend.
+ */
+async function tryTeaserCompletionMerge(ctx, args) {
+    const { signal, parsed, broker, channelKeywords, baseLot, params, symbol, uuid, strictEntryPrefetch, commentPrefix, } = args;
+    if (!(0, fxsocketClient_1.hasFxsocketConfigured)())
+        return { handled: false };
+    if (!(0, channelActiveTradeParams_1.parsedSignalHasExplicitStops)(parsed))
+        return { handled: false };
+    if (!(0, signalEntryNowRequirement_1.messageHasMarketNowIntent)(String(parsed.raw_instruction ?? '')))
+        return { handled: false };
+    if ((0, multiTradeMerge_1.shouldRouteAsBasketParameterRefresh)(parsed))
+        return { handled: false };
+    if ((0, signalPriceInference_1.parsedHasReEnterIntent)(parsed))
+        return { handled: false };
+    const a = String(parsed.action ?? '').toLowerCase();
+    if (a !== 'buy' && a !== 'sell')
+        return { handled: false };
+    const direction = a === 'buy' ? 'buy' : 'sell';
+    if ((0, channelMessageFilters_1.isChannelSlTpUpdateBlocked)((0, channelMessageFilters_1.normalizeChannelMessageFiltersMap)(broker.channel_message_filters), signal.channel_id, parsed)) {
+        return { handled: true, success: false };
+    }
+    const anchor = await (0, multiTradeMerge_1.resolveOpenBasketAnchorForParameterFollowUp)(ctx.supabase, {
+        userId: signal.user_id,
+        brokerAccountId: broker.id,
+        brokerSymbol: symbol,
+        signalSymbol: parsed.symbol,
+        direction,
+        channelId: signal.channel_id,
+    }, {
+        currentSignalId: signal.id,
+        currentSignalCreatedAt: signal.created_at ?? null,
+    });
+    if (!anchor)
+        return { handled: false };
+    const { data: anchorSignal } = await ctx.supabase
+        .from('signals')
+        .select('parsed_data')
+        .eq('id', anchor.anchorSignalId)
+        .maybeSingle();
+    const anchorParsed = anchorSignal?.parsed_data;
+    if (!(0, signalRevision_1.entryDispatchLooksSettleable)(anchorParsed))
+        return { handled: false };
+    const mergeSignal = await (0, helpers_1.loadMergeSignalForLinking)(ctx, signal);
+    const link = await (0, helpers_1.resolveBasketMergeLinkContext)(ctx, {
+        mergeSignal,
+        anchorSignalId: anchor.anchorSignalId,
+        newestTradeOpenedAt: anchor.newestOpenedAt,
+        parsed,
+    });
+    const allowImplicit = link.implicitBundleWithinTightWindow
+        && link.implicitSameChannelBundle
+        && (0, channelActiveTradeParams_1.parsedSignalHasExplicitStops)(parsed);
+    if (!link.isLinked && !allowImplicit) {
+        return { handled: false };
+    }
+    const { data: anchorFamilyRows } = await ctx.supabase
+        .from('trades')
+        .select('id,signal_id,metaapi_order_id,opened_at,lot_size,sl,tp,entry_price,direction,symbol')
+        .eq('broker_account_id', broker.id)
+        .eq('signal_id', anchor.anchorSignalId)
+        .eq('status', 'open')
+        .order('opened_at', { ascending: true })
+        .limit(500);
+    const anchorFamily = (anchorFamilyRows ?? []).filter(tr => (0, basketModFollowUp_1.symbolsCompatibleForBasket)(parsed.symbol ?? symbol, tr.symbol)
+        || (0, basketModFollowUp_1.symbolsCompatibleForBasket)(symbol, tr.symbol));
+    if (!anchorFamily.length) {
+        return { handled: false };
+    }
+    const ghostCheck = await (0, helpers_1.reconcileGhostBasketLegs)(ctx, {
+        signal,
+        broker,
+        uuid,
+        anchorSignalId: anchor.anchorSignalId,
+        symbol,
+        familyTrades: anchorFamily,
+    });
+    if (ghostCheck.isGhostBasket)
+        return { handled: false };
+    console.log(`[tradeExecutor] teaser_completion_merge signal=${signal.id} anchor=${anchor.anchorSignalId}`
+        + ` symbol=${symbol} direction=${direction}`);
+    const outcome = await (0, slTpRefresh_1.applyBasketSlTpRefresh)(ctx, {
+        signal,
+        parsed,
+        broker,
+        channelKeywords,
+        baseLot,
+        params,
+        symbol,
+        uuid,
+        strictEntryPrefetch,
+        commentPrefix,
+        anchorSignalId: anchor.anchorSignalId,
+        direction,
+        logAction: 'merge_routed_modify_only',
+        mergeLinkMeta: {
+            teaser_completion: true,
+            implicit_bundle_dt_ms: link.dtMs,
+            parameter_refresh_same_channel: link.parameterRefreshSameChannel,
+        },
+    });
+    if (outcome.success) {
+        void ctx.supabase.from('listener_events').insert({
+            user_id: signal.user_id,
+            channel_row_id: signal.channel_id,
+            telegram_message_id: signal.telegram_message_id,
+            event_type: 'teaser_completion_merge_applied',
+            detail: {
+                signal_id: signal.id,
+                anchor_signal_id: anchor.anchorSignalId,
+                symbol,
+                sl: parsed.sl ?? null,
+                tp: parsed.tp ?? [],
+            },
+        }).then(() => undefined, () => undefined);
+    }
+    return { handled: true, success: outcome.success };
 }

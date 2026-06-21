@@ -32,30 +32,6 @@ function isRecent(key: string): boolean {
   return true
 }
 
-/** Returns true when this delivery should be skipped as a duplicate. */
-export async function isDuplicateQueueDelivery(
-  supabase: SupabaseClient,
-  idempotencyKey: string,
-): Promise<boolean> {
-  if (isRecent(idempotencyKey)) return true
-
-  const { data, error } = await supabase
-    .from('signal_queue_idempotency')
-    .select('id')
-    .eq('idempotency_key', idempotencyKey)
-    .maybeSingle()
-
-  if (error) {
-    console.warn(`[signalQueue] idempotency lookup failed key=${idempotencyKey}: ${error.message}`)
-    return false
-  }
-  if (data) {
-    markRecent(idempotencyKey)
-    return true
-  }
-  return false
-}
-
 /** Claim idempotency before execution. Returns false if already claimed. */
 export async function claimQueueIdempotency(
   supabase: SupabaseClient,
@@ -82,9 +58,4 @@ export async function claimQueueIdempotency(
 
   markRecent(idempotencyKey)
   return true
-}
-
-/** Test helper */
-export function resetIdempotencyCache(): void {
-  recentKeys.clear()
 }

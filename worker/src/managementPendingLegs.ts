@@ -4,6 +4,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { symbolsCompatibleForBasket } from './basketModFollowUp'
+import { breakevenStopLossForSymbol } from './autoManagement'
 import { takeProfitForLegIndex } from './manualPlanning/tpBucketDistribution'
 import { type ManualTpLot } from './manualPlanning/types'
 import type { MgmtParsedLike, MgmtTradeRow } from './managementScope'
@@ -106,6 +107,7 @@ export async function updateRangePendingLegsForManagement(args: {
   pendingLegs: RangePendingMgmtRow[]
   openTrades: MgmtTradeRow[]
   tpLotsByBroker: Map<string, ManualTpLot[] | null | undefined>
+  breakevenManualByBroker: Map<string, { breakeven_offset_pips?: number }>
   action: string
   hasNewSl: boolean
   hasNewTp: boolean
@@ -117,6 +119,7 @@ export async function updateRangePendingLegsForManagement(args: {
     pendingLegs,
     openTrades,
     tpLotsByBroker,
+    breakevenManualByBroker,
     action,
     hasNewSl,
     hasNewTp,
@@ -147,7 +150,15 @@ export async function updateRangePendingLegsForManagement(args: {
 
     if (act === 'breakeven' || act === 'partial_breakeven') {
       const anchor = sanitizeLevel(leg.anchor_price)
-      if (anchor > 0) stoploss = anchor
+      if (anchor > 0) {
+        const manual = breakevenManualByBroker.get(leg.broker_account_id) ?? {}
+        stoploss = breakevenStopLossForSymbol({
+          isBuy: leg.is_buy,
+          entryPrice: anchor,
+          manual,
+          symbol: leg.symbol,
+        })
+      }
     } else if (act === 'modify') {
       if (hasNewSl) stoploss = parsed.sl as number
       if (hasNewTp && leg.cwe_close_price == null) {

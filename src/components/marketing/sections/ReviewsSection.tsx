@@ -19,6 +19,11 @@ export function ReviewsSection() {
         {l.items.map((review, index) => (
           <GlassCard key={`${review.author}-${index}`} className="flex flex-col p-6">
             <TrustpilotStars className="mb-4 justify-start" />
+            {review.headline ? (
+              <p className="mb-2 text-sm font-semibold text-neutral-900 dark:text-neutral-50">
+                {review.headline}
+              </p>
+            ) : null}
             <blockquote className="flex-1 text-sm leading-relaxed text-neutral-700 dark:text-neutral-300">
               &ldquo;{review.quote}&rdquo;
             </blockquote>

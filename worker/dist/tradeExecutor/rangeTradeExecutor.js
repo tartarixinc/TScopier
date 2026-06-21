@@ -1,11 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.logMultiRangePlan = logMultiRangePlan;
 exports.runRangeEntry = runRangeEntry;
 const entryPrepare_1 = require("./entryPrepare");
 const strictEntryPending_1 = require("./strictEntryPending");
 const virtualPendingMaterialize_1 = require("./virtualPendingMaterialize");
 const entryExecution_1 = require("./entryExecution");
+const signalRangeEntryHelpers_1 = require("../signalRangeEntryHelpers");
 /** Log `multi_range_plan` diagnostics for manual multi / range ladder entries. */
 async function logMultiRangePlan(ctx, prep) {
     const { signal, broker, manual, parsed, plan, capped, virtualPendings, baseLot, symbol, liveEntryFast } = prep;
@@ -56,5 +56,10 @@ async function runRangeEntry(ctx, args) {
     await logMultiRangePlan(ctx, prep);
     const strictBrokerPlaced = await (0, strictEntryPending_1.placeStrictSignalEntryPending)(ctx, prep, false);
     const materializedVirtuals = await (0, virtualPendingMaterialize_1.materializeVirtualPendingLegs)(ctx, prep, strictBrokerPlaced);
-    return (0, entryExecution_1.finishEntrySend)(prep, strictBrokerPlaced, materializedVirtuals, true);
+    const outcome = await (0, entryExecution_1.finishEntrySend)(prep, strictBrokerPlaced, materializedVirtuals, true);
+    if (outcome.openedOrMerged === true && prep.plan.rangeEntryWait) {
+        await (0, signalRangeEntryHelpers_1.markSignalRangeEntryFired)(ctx.supabase, prep.signal.id, prep.broker.id);
+        await (0, signalRangeEntryHelpers_1.logSignalRangeEntryFired)(ctx.supabase, prep.signal, prep.broker.id, prep.plan.rangeEntryWait, prep.symbol);
+    }
+    return outcome;
 }

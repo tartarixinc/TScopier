@@ -1,12 +1,12 @@
 import { supabase } from './supabase'
-import type { MtTrade } from './metatraderapi'
+import type { MtTrade } from './fxsocketBroker'
 import type { Signal, TelegramChannel } from '../types/database'
-import { parseTscopierComment } from './tscopierComment'
+import { parseTscopierComment, signalIdMatchesPrefix } from './tscopierComment'
 
 export type { ParsedTscopierComment } from './tscopierComment'
 export { parseTscopierComment, sanitizeChannelCommentSlug, CHANNEL_COMMENT_SLUG_MAX } from './tscopierComment'
 
-export type TradeSignalLinkMethod = 'db_ticket' | 'comment_prefix'
+export type TradeSignalLinkMethod = 'db_ticket' | 'comment_prefix' | 'attribution'
 
 export interface SignalInstructionLine {
   label: string
@@ -18,6 +18,8 @@ export interface TradeSignalContext {
   channel: TelegramChannel | null
   linkMethod: TradeSignalLinkMethod
 }
+
+const SIGNAL_PREFIX_SCAN_LIMIT = 400
 
 function num(v: unknown): number | null {
   if (v == null || v === '') return null
@@ -109,19 +111,42 @@ async function loadSignalById(signalId: string): Promise<Signal | null> {
   return (data as Signal | null) ?? null
 }
 
+/** Pure: pick best signal row matching an 8-char UUID prefix (for tests + in-memory scan). */
+export function pickSignalByIdPrefix(
+  candidates: Signal[],
+  prefix: string,
+  preferredSignalId?: string | null,
+): Signal | null {
+  const norm = prefix.toLowerCase()
+  if (!/^[a-f0-9]{8}$/.test(norm)) return null
+  const rows = candidates.filter(row => signalIdMatchesPrefix(row.id, norm))
+  if (rows.length === 0) return null
+  if (preferredSignalId) {
+    const hit = rows.find(r => r.id === preferredSignalId)
+    if (hit) return hit
+  }
+  if (rows.length === 1) return rows[0]!
+  return rows[0]!
+}
+
 async function loadSignalByIdPrefix(userId: string, prefix: string): Promise<Signal | null> {
+  const norm = prefix.toLowerCase()
+  if (!/^[a-f0-9]{8}$/.test(norm)) return null
+
+  // Never use ILIKE on UUID columns — PostgREST/Postgres rejects uuid ~~* unknown.
   const { data, error } = await supabase
     .from('signals')
     .select('*')
     .eq('user_id', userId)
-    .ilike('id', `${prefix}%`)
     .order('created_at', { ascending: false })
-    .limit(5)
+    .limit(SIGNAL_PREFIX_SCAN_LIMIT)
   if (error) throw new Error(error.message)
-  const rows = (data ?? []) as Signal[]
+
+  const candidates = (data ?? []) as Signal[]
+  const rows = candidates.filter(row => signalIdMatchesPrefix(row.id, norm))
   if (rows.length === 0) return null
   if (rows.length === 1) return rows[0]!
-  // Prefer signal referenced by a trades row
+
   const ids = rows.map(r => r.id)
   const { data: tradeRefs } = await supabase
     .from('trades')
@@ -129,24 +154,44 @@ async function loadSignalByIdPrefix(userId: string, prefix: string): Promise<Sig
     .in('signal_id', ids)
     .limit(1)
   const refId = tradeRefs?.[0]?.signal_id as string | undefined
-  if (refId) {
-    const hit = rows.find(r => r.id === refId)
-    if (hit) return hit
+  return pickSignalByIdPrefix(rows, norm, refId)
+}
+
+async function loadSignalFromAttribution(
+  userId: string,
+  brokerAccountId: string,
+  ticket: number,
+): Promise<{ signal: Signal; channelId: string | null } | null> {
+  const { data, error } = await supabase
+    .from('trade_channel_attributions')
+    .select('signal_id, channel_id')
+    .eq('user_id', userId)
+    .eq('broker_account_id', brokerAccountId)
+    .eq('metaapi_order_id', String(ticket))
+    .maybeSingle()
+  if (error || !data?.signal_id) return null
+
+  const signal = await loadSignalById(data.signal_id as string)
+  if (!signal) return null
+  return {
+    signal,
+    channelId: (data.channel_id as string | null) ?? signal.channel_id,
   }
-  return rows[0]!
 }
 
 export async function resolveTradeSignalContext(
   userId: string,
   trade: MtTrade,
 ): Promise<TradeSignalContext | null> {
+  const ticket = trade.ticket
+
   // Primary: DB trades row by broker + ticket
   const { data: dbTrade, error: dbErr } = await supabase
     .from('trades')
     .select('signal_id')
     .eq('user_id', userId)
     .eq('broker_account_id', trade.broker_id)
-    .eq('metaapi_order_id', String(trade.ticket))
+    .eq('metaapi_order_id', String(ticket))
     .maybeSingle()
   if (dbErr) throw new Error(dbErr.message)
 
@@ -158,7 +203,14 @@ export async function resolveTradeSignalContext(
     }
   }
 
-  // Fallback: parse TSCopier comment
+  // Secondary: durable attribution row (survives config changes)
+  const attributed = await loadSignalFromAttribution(userId, trade.broker_id, ticket)
+  if (attributed) {
+    const channel = await loadChannel(attributed.channelId)
+    return { signal: attributed.signal, channel, linkMethod: 'attribution' }
+  }
+
+  // Fallback: parse TScopier comment prefix
   const parsed = parseTscopierComment(trade.comment)
   if (!parsed) return null
 

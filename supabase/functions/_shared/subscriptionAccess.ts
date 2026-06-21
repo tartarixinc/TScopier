@@ -8,6 +8,7 @@ import {
   type SubscriptionPlan,
   type SubscriptionStatus,
 } from "./planLimits.ts";
+import { isAdminAccessActive } from "./adminAccess.ts";
 
 export interface UserSubscriptionRow {
   plan: SubscriptionPlan;
@@ -44,7 +45,7 @@ export async function loadUserIsAdmin(
 
   const { data, error } = await supabase
     .from("user_profiles")
-    .select("is_admin")
+    .select("is_admin, admin_until")
     .eq("user_id", userId)
     .maybeSingle();
 
@@ -52,7 +53,7 @@ export async function loadUserIsAdmin(
     console.warn(
       `[subscriptionAccess] user_profiles.is_admin lookup failed for ${userId}: ${error.message}`,
     );
-  } else if (data?.is_admin === true) {
+  } else if (isAdminAccessActive(data)) {
     return true;
   }
 

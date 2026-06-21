@@ -5,6 +5,7 @@ const WATCH_TABLES = [
     'range_pending_legs',
     'partial_tp_legs',
     'signal_entry_pending_orders',
+    'signal_range_entry_waits',
     'basket_reconcile_jobs',
     'trades',
     'signals',

@@ -2,6 +2,7 @@
  * Listener → trade worker HTTP push (split deploy). Supabase Realtime remains fallback.
  */
 
+import type { ParsedSignal } from './manualPlanning/types'
 import { dispatchPriorityForAction, isManagementAction, parsedAction } from './tradeSignalActions'
 import type { PipelineTimestamps } from './pipelineTimestamps'
 import { deployedTradeShardCount, redisQueueConfigured, signalQueueConfig } from './queue/signalQueueConfig'
@@ -11,7 +12,7 @@ export type TradeSignalPushPayload = {
   id: string
   user_id: string
   channel_id: string | null
-  parsed_data: Record<string, unknown> | null
+  parsed_data: ParsedSignal | null
   status: string
   parent_signal_id?: string | null
   is_modification?: boolean
@@ -20,6 +21,7 @@ export type TradeSignalPushPayload = {
   created_at?: string
   pipeline_ts?: PipelineTimestamps
   dispatch_source?: string
+  revision_prior_action?: string | null
 }
 
 const PUSH_MAX_ATTEMPTS = Math.max(1, Math.min(5, Number(process.env.TRADE_SIGNAL_PUSH_MAX_ATTEMPTS ?? 3)))
@@ -195,7 +197,7 @@ async function pushParsedSignalToTradeWorkerInner(
   }
 
   const isMgmt = isManagementAction(action ?? '')
-  const defaultTimeoutMs = isMgmt ? 2_000 : 4_000
+  const defaultTimeoutMs = isMgmt ? 5_000 : 4_000
   const timeoutMs = Math.max(
     500,
     Math.min(10_000, Number(process.env.TRADE_SIGNAL_PUSH_TIMEOUT_MS ?? defaultTimeoutMs)),
@@ -216,9 +218,10 @@ async function pushParsedSignalToTradeWorkerInner(
     reply_to_message_id: row.reply_to_message_id ?? null,
     created_at: row.created_at,
     pipeline_ts: row.pipeline_ts,
+    revision_prior_action: row.revision_prior_action ?? null,
   }
 
-  await logPushAttemptToDb(row, 'success', {
+  void logPushAttemptToDb(row, 'success', {
     run_id: 'latency-v3',
     phase: 'start',
     action,
@@ -240,7 +243,7 @@ async function pushParsedSignalToTradeWorkerInner(
       opts?.awaitExecution === true,
       dispatchSource,
     )
-    await logPushAttemptToDb(row, result.ok ? 'success' : 'failed', {
+    void logPushAttemptToDb(row, result.ok ? 'success' : 'failed', {
       run_id: 'latency-v3',
       phase: 'attempt',
       action,
@@ -268,16 +271,29 @@ async function pushParsedSignalToTradeWorkerInner(
   return false
 }
 
-/**
- * Fire-and-forget POST to trade worker with short retry on transient failures.
- */
-export function pushParsedSignalToTradeWorker(row: TradeSignalPushPayload): void {
-  void pushParsedSignalToTradeWorkerInner(row).catch(err => {
-    console.warn('[tradeSignalPush] push failed:', err instanceof Error ? err.message : err)
+/** Fire-and-forget push — listener must not block on trade completion. */
+export function pushParsedSignalToTradeWorker(
+  row: TradeSignalPushPayload,
+  opts?: { source?: string },
+): void {
+  void pushParsedSignalToTradeWorkerInner(row, {
+    awaitExecution: false,
+    source: opts?.source ?? row.dispatch_source,
   })
 }
 
-/** Awaitable push — used after signals row is persisted (durable handoff). */
+/** Awaitable push — worker accepts dispatch only; execution continues in-process (mgmt hot path). */
+export async function pushParsedSignalToTradeWorkerAccept(
+  row: TradeSignalPushPayload,
+  opts?: { source?: string },
+): Promise<boolean> {
+  return pushParsedSignalToTradeWorkerInner(row, {
+    awaitExecution: false,
+    source: opts?.source ?? row.dispatch_source,
+  })
+}
+
+/** Await full handleSignal completion (queue consumer / diagnostics only). */
 export async function pushParsedSignalToTradeWorkerAwait(
   row: TradeSignalPushPayload,
   opts?: { source?: string },

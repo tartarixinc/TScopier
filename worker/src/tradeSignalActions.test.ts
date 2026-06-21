@@ -22,6 +22,9 @@ describe('tradeSignalActions', () => {
 
   test('dispatchPriorityForAction', () => {
     assert.equal(dispatchPriorityForAction('sell'), 'high')
-    assert.equal(dispatchPriorityForAction('modify'), 'normal')
+    assert.equal(dispatchPriorityForAction('modify'), 'high')
+    assert.equal(dispatchPriorityForAction('close_worse_entries'), 'high')
+    assert.equal(dispatchPriorityForAction('close'), 'high')
+    assert.equal(dispatchPriorityForAction('breakeven'), 'normal')
   })
 })

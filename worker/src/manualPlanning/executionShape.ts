@@ -1,4 +1,4 @@
-import type { MtOperation, OrderSendArgs } from '../metatraderapi'
+import type { MtOperation, OrderSendArgs } from '../fxsocketClient'
 import type { PlannerStrictEntry } from './types'
 import { clampPendingExpiryHours } from './manualSettings'
 
@@ -25,10 +25,19 @@ export function strictSignalEntryQuoteAllowsImmediate(args: {
   entryPrice: number
   bid: number
   ask: number
+  tolerancePips?: number
+  pipSize?: number
 }): boolean {
   const { isBuy, entryPrice, bid, ask } = args
-  if (!Number.isFinite(entryPrice) || entryPrice <= 0 || !Number.isFinite(bid) || !Number.isFinite(ask)) return false
-  return isBuy ? ask <= entryPrice : bid >= entryPrice
+  if (!Number.isFinite(entryPrice) || entryPrice <= 0 || !Number.isFinite(bid) || !Number.isFinite(ask)) {
+    return false
+  }
+  const tolPips = Math.max(0, Number(args.tolerancePips ?? 0))
+  const pip = Number(args.pipSize ?? 0)
+  const tolPx = tolPips > 0 && pip > 0 ? tolPips * pip : 0
+  return isBuy
+    ? ask <= entryPrice + tolPx
+    : bid >= entryPrice - tolPx
 }
 
 export interface ResolveOpExecAndStrictArgs {
@@ -94,12 +103,9 @@ export function resolveOpExecAndStrict(args: ResolveOpExecAndStrictArgs): Resolv
     entryAnchor != null && Number.isFinite(entryAnchor) && entryAnchor > 0
       ? roundPrice(entryAnchor)
       : 0
-  let orderPrice = 0
-  if (!isMarketExec) {
-    orderPrice = roundedEntry
-  } else if (manualStrict && roundedEntry > 0) {
-    orderPrice = roundedEntry
-  }
+  // Market immediates use price=0 (live fill). Signal entry is carried in strictEntry
+  // for defer / broker-pending placement — not as a market order price.
+  const orderPrice = isMarketExec ? 0 : roundedEntry
 
   const orderBase = {
     symbol: resolvedSymbol,

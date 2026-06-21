@@ -62,6 +62,14 @@ export function computeThreadLinksAnchor(args: {
  * - Long window + same channel + SL/TP/entry parameter post (typical “entry + SL + TP”
  *   follow-up that is not a Telegram reply).
  */
+/** Telegram message edits re-dispatch with `sameSignalRefresh` — authoritative SL/TP update. */
+export function messageRevisionBypassesMergeLinking(args: {
+  sameSignalRefresh: boolean
+  hasExplicitStops: boolean
+}): boolean {
+  return args.sameSignalRefresh === true && args.hasExplicitStops
+}
+
 export function isMergeFollowUpLinked(args: {
   replyOk: boolean
   withinWindow: boolean
@@ -69,16 +77,18 @@ export function isMergeFollowUpLinked(args: {
   implicitBundleWithinTightWindow: boolean
   implicitSameChannelBundle: boolean
   parameterRefreshSameChannel?: boolean
-  messageEditSameSignal?: boolean
+  sameSignalRefresh?: boolean
+  sameChannel?: boolean
 }): boolean {
   const implicitPath =
     args.implicitBundleWithinTightWindow && args.implicitSameChannelBundle
+  const sameChannel = args.sameChannel === true
   return (
     args.replyOk ||
-    (args.withinWindow && args.threadLinksAnchor) ||
+    (args.withinWindow && args.threadLinksAnchor && sameChannel) ||
     implicitPath ||
     (args.withinWindow && args.parameterRefreshSameChannel === true) ||
-    args.messageEditSameSignal === true
+    args.sameSignalRefresh === true
   )
 }
 
@@ -104,7 +114,8 @@ export type BasketMergeLinkContext = {
   implicitBundleWithinTightWindow: boolean
   implicitSameChannelBundle: boolean
   parameterRefreshSameChannel: boolean
-  messageEditSameSignal: boolean
+  sameSignalRefresh: boolean
+  sameChannel: boolean
   isLinked: boolean
   dtMs: number
   parentLinksAnchor: boolean
@@ -145,9 +156,10 @@ export function computeBasketMergeLinkContext(input: BasketMergeLinkInput): Bask
     && (input.hasSl || input.hasTp),
   )
   const mergeSignalId = String(input.mergeSignalId ?? '').trim()
-  const messageEditSameSignal = Boolean(
+  const sameSignalRefresh = Boolean(
     mergeSignalId && mergeSignalId === input.anchorSignalId && (input.hasSl || input.hasTp),
   )
+  const sameChannel = Boolean(mergeCh && anchorCh && mergeCh === anchorCh)
   const flags = {
     replyOk,
     withinWindow,
@@ -155,7 +167,8 @@ export function computeBasketMergeLinkContext(input: BasketMergeLinkInput): Bask
     implicitBundleWithinTightWindow,
     implicitSameChannelBundle,
     parameterRefreshSameChannel,
-    messageEditSameSignal,
+    sameSignalRefresh,
+    sameChannel,
   }
   return {
     ...flags,

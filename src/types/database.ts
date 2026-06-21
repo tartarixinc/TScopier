@@ -80,9 +80,13 @@ export interface UserProfileRow {
   base_currency: string
   timezone: string
   is_admin: boolean
+  admin_until: string | null
   subscription_status: string | null
   onboarding_completed_at: string | null
+  email_verified_at: string | null
   referred_by_user_id: string | null
+  notification_sound_enabled: boolean
+  copier_paused: boolean
   created_at: string
   updated_at: string
 }
@@ -206,6 +210,49 @@ export interface ManualChannelKeywords {
 
 export type ChannelKeywords = ManualChannelKeywords
 
+export type CopyLimitPeriod = 'daily' | 'weekly' | 'monthly' | 'overall'
+export type CopyLimitValueType = 'amount' | 'percent'
+export type CopyLimitTimezoneMode = 'profile' | 'custom'
+
+export interface ProfitTargetRule {
+  id: string
+  enabled: boolean
+  period: CopyLimitPeriod
+  value_type: CopyLimitValueType
+  value: number
+}
+
+export interface MaxRiskRule {
+  id: string
+  enabled: boolean
+  period: CopyLimitPeriod
+  value_type: CopyLimitValueType
+  value: number
+}
+
+export interface CopyLimitsConfig {
+  profit_targets_enabled: boolean
+  profit_targets: ProfitTargetRule[]
+  max_risk_enabled: boolean
+  max_risks: MaxRiskRule[]
+  timezone_mode: CopyLimitTimezoneMode
+  timezone?: string
+}
+
+export interface CopyLimitPeriodSnapshot {
+  period_key: string
+  reference_equity: number
+  peak_equity: number
+  peak_channel_pnl?: number
+  last_evaluated_at: string
+}
+
+export interface CopyLimitState {
+  paused_period_keys: string[]
+  flattened_pause_keys?: string[]
+  periods: Record<string, CopyLimitPeriodSnapshot>
+}
+
 export interface ManualSettings {
   schema_version?: number
   symbol_mapping?: Record<string, string>
@@ -228,6 +275,10 @@ export interface ManualSettings {
   range_step_pips?: number
   /** Total pip distance the range spans from entry. Caps the pending count to floor(distance / step). */
   range_distance_pips?: number
+  /** When true, virtual range pendings stay active until the whole basket is flat (not after first TP/CWE close). */
+  range_layer_till_close?: boolean
+  /** When true with multi trade, gate entry on parsed price/zone ± pip tolerance (virtual wait, no broker pending). Independent of range_trading layering. */
+  use_signal_entry_range?: boolean
   /** When true, immediate multi-trade legs are closed at anchor + `close_worse_entries_pips` via the worker. */
   close_worse_entries?: boolean
   /** Pips from signal entry (anchor) at which instant legs auto-close. Default 30. */
@@ -264,6 +315,8 @@ export interface ManualSettings {
   trailing_step_pips?: number
   trailing_distance_pips?: number
   close_on_opposite_signal?: boolean
+  /** When false, OrderSend comments are left empty (Management tab). Default on. */
+  order_comments_enabled?: boolean
   time_filter_enabled?: boolean
   trade_start_time?: string
   trade_end_time?: string
@@ -277,45 +330,52 @@ export interface ManualSettings {
   allow_high_impact_news?: boolean
   close_before_news_minutes?: number
   resume_after_news_minutes?: number
+  /** Per-channel profit targets and max risk (Targets tab). */
+  copy_limits?: CopyLimitsConfig
 }
+
+export type FxsocketConnectionStatus = 'connecting' | 'connected' | 'error' | 'disconnected'
 
 export interface BrokerAccount {
   id: string
   user_id: string
   label: string
   platform: string
-  /** MetatraderAPI account UUID returned by /RegisterAccount. */
+  /** DEPRECATED: legacy mt4api session UUID. Use fxsocket_account_id. */
   metaapi_account_id: string
+  /** FxSocket terminal UUID (api.fxsocket.com/mt5/{id}/...). */
+  fxsocket_account_id?: string | null
+  /** FxSocket v1 account status. */
+  fxsocket_status?: FxsocketConnectionStatus | null
+  terminal_connected?: boolean | null
+  trade_allowed?: boolean | null
+  connection_error?: string | null
   /** MT login number, kept separate from the UUID for display. */
   account_login?: string | null
   /** Human-readable broker name (e.g. "IC Markets"). */
   broker_name?: string | null
   /** MT server hostname as entered when linking (e.g. ICMarketsSC-MT5-2). */
   broker_server?: string | null
-  /** Last known status from MetatraderAPI register/check. */
-  connection_status?: 'pending' | 'connected' | 'error' | null
+  /** Last known status from FxSocket register/check. */
+  connection_status?: 'pending' | 'connected' | 'recovering' | 'error' | null
   /** Cached AccountSummary values for fast UI render. */
   last_balance?: number | null
   last_equity?: number | null
   last_currency?: string | null
   last_synced_at?: string | null
   /**
-   * Balance at first successful link/summary (TSCopier tracking start).
-   * Dashboard total profit uses current equity minus this baseline per account.
+   * Balance snapshotted at first successful FxSocket connect.
+   * Dashboard total profit uses current balance minus this baseline per account.
    */
   performance_baseline_balance?: number | null
+  /** UTC time when `performance_baseline_balance` was first captured. */
+  performance_baseline_captured_at?: string | null
+  /** Wall time when the broker was last activated (connect / reconnect). */
+  last_activated_at?: string | null
   /** Balance at the start of `day_start_balance_on` (local calendar day). */
   day_start_balance?: number | null
   /** Local calendar day (YYYY-MM-DD) for `day_start_balance`. */
   day_start_balance_on?: string | null
-  /** User opted in to encrypted server-side password storage for automatic reconnect. */
-  auto_reconnect_enabled?: boolean | null
-  /** When stored credentials were last written (no password exposed to client). */
-  password_updated_at?: string | null
-  /** Classified last connect failure (wrong_password, session_expired, etc.). */
-  connection_error_kind?: string | null
-  /** User-facing last connect failure message. */
-  connection_error_message?: string | null
   is_active: boolean
   /** AI uses balance-scaled sizing; Manual uses defaults unless signal specifies lots. */
   copier_mode?: 'ai' | 'manual'
@@ -343,6 +403,19 @@ export interface ChannelTradingPreset {
   copier_mode: 'ai' | 'manual'
   manual_settings: ManualSettings
   channel_filters: Json
+  created_at: string
+  updated_at: string
+}
+
+/** Authoritative per-broker, per-channel trading configuration row. */
+export interface BrokerChannelTradingConfig {
+  id: string
+  user_id: string
+  broker_account_id: string
+  channel_id: string
+  copier_mode: 'ai' | 'manual'
+  manual_settings: ManualSettings
+  ai_settings: Json
   created_at: string
   updated_at: string
 }
@@ -392,6 +465,8 @@ export interface Signal {
   raw_message: string
   raw_image_url: string | null
   parsed_data: Json | null
+  /** User SL/TP overrides from Manage Signals; merged over parsed_data at display/execute time. */
+  user_override?: Json | null
   status: string
   skip_reason: string | null
   telegram_message_id: string | null
@@ -399,7 +474,8 @@ export interface Signal {
   reply_to_message_id?: string | null
   is_modification: boolean
   parent_signal_id: string | null
-  telegram_message_edited_at?: string | null
+  telegram_reconciled_at?: string | null
+  telegram_edit_date_seen?: number | null
   created_at: string
 }
 

@@ -41,7 +41,7 @@ export function toBacktestRunConfig(
     dateFrom: cfg.dateFrom,
     dateTo: cfg.dateTo,
     timeframe: effectiveTimeframeForRange(cfg.dateFrom, cfg.dateTo, cfg.timeframe),
-    executionMode: "minute_bars",
+    executionMode: "tick_quotes",
     initialBalance: cfg.initialBalance,
     currency: "USD",
     sizingMode: "fixed_lot",

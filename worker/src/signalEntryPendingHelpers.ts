@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { MetatraderApiClient } from './metatraderapi'
+import type { FxsocketBrokerClient } from './fxsocketClient'
 
 export type SignalEntryPendingRow = {
   id: string
@@ -14,7 +14,17 @@ export type SignalEntryPendingRow = {
 }
 
 export function rawOrderTicket(o: Record<string, unknown>): number {
-  const t = Number(o.ticket ?? o.Ticket ?? o.orderId ?? o.OrderID ?? o.deal ?? o.Deal ?? 0)
+  const t = Number(
+    o.ticket
+    ?? o.Ticket
+    ?? o.order
+    ?? o.Order
+    ?? o.orderId
+    ?? o.OrderID
+    ?? o.deal
+    ?? o.Deal
+    ?? 0,
+  )
   return Number.isFinite(t) ? t : 0
 }
 
@@ -22,7 +32,7 @@ export function rawOrderOperation(o: Record<string, unknown>): string {
   return String(o.operation ?? o.Operation ?? '').toLowerCase()
 }
 
-function rawNumericOrderKind(o: Record<string, unknown>): number | undefined {
+export function rawNumericOrderKind(o: Record<string, unknown>): number | undefined {
   const pick = (v: unknown): number | undefined => {
     if (typeof v === 'number' && Number.isFinite(v)) return v
     if (typeof v === 'string' && v.trim()) {
@@ -79,6 +89,27 @@ export function findOpenedRowByTicket(orders: unknown[], ticket: number): Record
   return null
 }
 
+/** Read SL from /OpenedOrders rows (FxSocket often uses camelCase `stopLoss`). */
+export function readBrokerOrderStopLoss(raw: unknown): number | null {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  for (const key of [
+    'stopLoss',
+    'StopLoss',
+    'stoploss',
+    'Stoploss',
+    'sl',
+    'SL',
+    'stop_loss',
+  ]) {
+    const v = o[key]
+    if (v === null || v === undefined || v === '') continue
+    const n = typeof v === 'number' ? v : Number(v)
+    if (Number.isFinite(n) && n > 0) return n
+  }
+  return null
+}
+
 /**
  * Best-effort fill lookup in /ClosedOrders for a pending ticket that disappeared
  * from /OpenedOrders (limit filled or cancelled).
@@ -117,7 +148,7 @@ export function findClosedRowForTicket(
  */
 export async function cancelSignalEntryRowAtBroker(
   supabase: SupabaseClient,
-  api: MetatraderApiClient,
+  api: FxsocketBrokerClient,
   row: SignalEntryPendingRow,
   reason: string,
 ): Promise<{ ok: boolean; error?: string }> {

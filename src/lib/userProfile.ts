@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { isAdminAccessActive } from './adminAccess'
 
 export interface UserProfile {
   user_id: string
@@ -13,9 +14,13 @@ export interface UserProfile {
   base_currency: string
   timezone: string
   is_admin?: boolean
+  admin_until?: string | null
   subscription_status?: string | null
   onboarding_completed_at?: string | null
+  email_verified_at?: string | null
   referred_by_user_id?: string | null
+  notification_sound_enabled?: boolean
+  copier_paused?: boolean
   created_at?: string
   updated_at?: string
 }
@@ -33,14 +38,16 @@ export const EMPTY_USER_PROFILE: Omit<UserProfile, 'user_id'> = {
   timezone: typeof Intl !== 'undefined'
     ? Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
     : 'UTC',
+  notification_sound_enabled: true,
+  copier_paused: false,
 }
 
-/** Admin bypass: DB flag or Supabase Auth app_metadata (matches edge subscriptionAccess). */
+/** Admin bypass: DB flag (with timed expiry) or Supabase Auth app_metadata (matches edge subscriptionAccess). */
 export function resolveUserIsAdmin(
-  profile: Pick<UserProfile, 'is_admin'> | null | undefined,
+  profile: Pick<UserProfile, 'is_admin' | 'admin_until'> | null | undefined,
   appMetadata: Record<string, unknown> | undefined,
 ): boolean {
-  if (profile?.is_admin === true) return true
+  if (isAdminAccessActive(profile)) return true
   const meta = appMetadata ?? {}
   if (meta.is_admin === true || meta.role === 'admin') return true
   return false
@@ -62,8 +69,10 @@ export async function saveUserProfile(
 ): Promise<void> {
   const {
     is_admin: _isAdmin,
+    admin_until: _adminUntil,
     subscription_status: _subscriptionStatus,
     referred_by_user_id: _referredByUserId,
+    email_verified_at: _emailVerifiedAt,
     ...safePatch
   } = patch
   const { error } = await supabase

@@ -60,6 +60,17 @@ export const channelWorkerEn: ChannelWorkerTranslations = {
   entryCancelled: 'Cancelled the waiting entry order {on}.',
   entryFailed: 'Entry order failed {on}{err}',
 
+  rangeEntryWaitingNoPrice: '{side} pending — Waiting for price range.',
+  rangeEntryWaitingAtPrice: '{side} pending — Waiting for price @ {price}.',
+  rangeEntryWaitingZone: '{side} pending — Waiting for price range {lo}–{hi}.',
+  rangeEntryFired: '{side} entered {on} (price reached signal range).',
+  rangeEntryExpired: '{side} pending expired — signal range entry window closed.',
+  rangeEntryTpBeforeEntry: '{side} pending expired — take profit reached before entry.',
+  rangeEntrySlBeforeEntry: '{side} pending expired — stop loss reached before entry.',
+  rangeEntryUpdated: '{side} pending — signal range updated to {lo}–{hi}.',
+  rangeEntryCancelled: '{side} pending cancelled ({reason}).',
+  rangeEntryWakeRetry: '{side} pending — price left range; waiting again.',
+
   mergeAddedNamed: 'Added to the existing {symbol} position.',
   mergeAddedGeneric: 'Added to your open trade.',
   mergeSlTpSuccessNamed:
@@ -93,6 +104,8 @@ export const channelWorkerEn: ChannelWorkerTranslations = {
   signalSellGeneric: '{prefix}: sell signal.',
   signalCloseNamed: '{prefix}: close {symbol}.',
   signalCloseGeneric: '{prefix}: close your open trade.',
+  signalCloseWorseNamed: '{prefix}: close worse entries on {symbol}.',
+  signalCloseWorseGeneric: '{prefix}: close worse entries on your open trade.',
   signalBreakevenUnderstood: 'Understood: move stop loss to break-even {on}.',
   signalBreakevenCompleted: 'Moved stop loss to break-even {on}.',
   signalPartialProfit: '{prefix}: take partial profit {on}{pct}.',
@@ -103,6 +116,8 @@ export const channelWorkerEn: ChannelWorkerTranslations = {
 
   mgmtCloseSuccessNamed: 'Closed the {symbol} position.',
   mgmtCloseSuccessGeneric: 'Closed your open trade.',
+  mgmtCloseWorseSuccessNamed: 'Closed instant {symbol} legs (layering legs kept open).',
+  mgmtCloseWorseSuccessGeneric: 'Closed instant legs on your open trade (layering legs kept open).',
   mgmtBreakevenSuccess: 'Moved stop loss to break-even {on}.',
   mgmtPartialProfit: 'Took partial profit {on}{pct}.',
   mgmtPartialBreakeven: 'Took partial profit and moved stop loss to break-even {on}.',
@@ -112,6 +127,8 @@ export const channelWorkerEn: ChannelWorkerTranslations = {
 
   mgmtCloseFailNamed: 'Could not close {symbol}',
   mgmtCloseFailGeneric: 'Could not close your open trade',
+  mgmtCloseWorseFailNamed: 'Could not close instant {symbol} legs',
+  mgmtCloseWorseFailGeneric: 'Could not close instant legs on your open trade',
   mgmtBreakevenFailNamed: 'Could not move {symbol} to break-even',
   mgmtBreakevenFailGeneric: 'Could not move your open trade to break-even',
   mgmtPartialProfitFail: 'Could not take partial profit {on}',
@@ -122,12 +139,25 @@ export const channelWorkerEn: ChannelWorkerTranslations = {
 
   mgmtCloseSkippedNamed: 'Did not close {symbol}',
   mgmtCloseSkippedGeneric: 'Did not close your open trade',
+  mgmtCloseWorseSkippedNamed: 'Did not close instant {symbol} legs',
+  mgmtCloseWorseSkippedGeneric: 'Did not close instant legs on your open trade',
   mgmtSkippedNamed: 'Skipped the {symbol} update',
-  mgmtSkippedGeneric: 'Skipped the update to your open trade',
+  mgmtSkippedGeneric: 'Skipped!',
   mgmtSkippedReason: '{phrase} ({reason}).',
 
   skipReasons: {
     no_matching_open_trade: 'no matching open trade',
+    mgmt_no_open_trades: 'no matching open trade',
+    mgmt_no_open_trades_db: 'no matching open trade in the copier database',
+    mgmt_no_open_trades_broker: 'no open position on the broker for this channel',
+    mgmt_no_open_trades_symbol: 'symbol on the close message did not match any open leg',
+    mgmt_ambiguous_modify: 'no matching open trade',
+    cwe_no_open_trades: 'no open legs to close',
+    cwe_no_eligible_broker_trades: 'open legs are not linked to an active broker account',
+    cwe_no_open_immediates: 'all open legs are layering entries (kept open)',
+    cwe_close_failed: 'broker could not close the selected legs',
+    copier_paused: 'copier is paused',
+    close_worse_entries_disabled: 'close worse entries is disabled in settings',
     not_placed: 'not placed',
     symbol_exempted_from_trading: 'symbol exempted from trading',
     symbol_not_in_whitelist: 'symbol not in whitelist',
@@ -153,7 +183,10 @@ export const channelWorkerEn: ChannelWorkerTranslations = {
   errorSymbolNotFound: 'Symbol not found: {symbol}',
   errorBrokerNotConnected:
     'Broker not connected — in Account Configuration, use Reconnect and enter your MT password for this account',
+  errorInvalidStops:
+    'The broker rejected these stop levels — check SL/TP are on the correct side of market and meet minimum distance.',
   errorBridgeGlitch:
     'Temporary broker trade-server glitch — layered entries will retry automatically. Use Reconnect if this keeps happening.',
   errorStopsAlreadySet: 'Stop loss and take profit were already set on the broker (no change needed).',
+  errorSignalLinkFailed: 'Could not link this trade to its signal.',
 }

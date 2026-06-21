@@ -1,9 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  Settings,
-  CreditCard,
-  Share2,
   LogOut,
   ChevronRight,
   type LucideIcon,
@@ -13,6 +10,8 @@ import { useAuth } from '../../context/AuthContext'
 import { useT } from '../../context/LocaleContext'
 import { useUserProfile } from '../../context/UserProfileContext'
 import { useSubscription } from '../../context/SubscriptionContext'
+import { UserAvatar } from './UserAvatar'
+import { getAppRouteIcon } from '../../lib/appNavIcons'
 
 export interface UserMenuDropdownProps {
   open: boolean
@@ -36,17 +35,6 @@ type MenuItem =
       destructive?: boolean
     }
 
-function userInitials(
-  profile: { first_name?: string; last_name?: string },
-  email?: string | null,
-): string {
-  const first = profile.first_name?.trim()
-  const last = profile.last_name?.trim()
-  if (first && last) return `${first[0]}${last[0]}`.toUpperCase()
-  if (first) return first.slice(0, 2).toUpperCase()
-  return email?.slice(0, 2).toUpperCase() ?? 'U'
-}
-
 export function UserMenuDropdown({ open, onClose, onSignOut }: UserMenuDropdownProps) {
   const t = useT()
   const um = t.nav.userMenu
@@ -68,9 +56,9 @@ export function UserMenuDropdown({ open, onClose, onSignOut }: UserMenuDropdownP
   if (!open) return null
 
   const items: MenuItem[] = [
-    { id: 'profile', kind: 'link', label: um.profileSettings, icon: Settings, path: '/settings' },
-    { id: 'billing', kind: 'link', label: um.subscriptionBilling, icon: CreditCard, path: '/billing' },
-    { id: 'affiliate', kind: 'link', label: um.affiliateProgram, icon: Share2, path: '/affiliate-program' },
+    { id: 'profile', kind: 'link', label: um.profileSettings, icon: getAppRouteIcon('/settings'), path: '/settings' },
+    { id: 'billing', kind: 'link', label: um.subscriptionBilling, icon: getAppRouteIcon('/billing'), path: '/billing' },
+    { id: 'affiliate', kind: 'link', label: um.affiliateProgram, icon: getAppRouteIcon('/affiliate-program'), path: '/affiliate-program' },
     { id: 'signout', kind: 'action', label: um.signOut, icon: LogOut, destructive: true },
   ]
 
@@ -90,8 +78,6 @@ export function UserMenuDropdown({ open, onClose, onSignOut }: UserMenuDropdownP
     user?.email?.split('@')[0] ||
     'User'
 
-  const initials = userInitials(profile, user?.email)
-
   return (
     <div
       ref={panelRef}
@@ -105,9 +91,7 @@ export function UserMenuDropdown({ open, onClose, onSignOut }: UserMenuDropdownP
     >
       <div className="border-b border-neutral-100 px-3 py-3 dark:border-neutral-800">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-teal-600 text-sm font-semibold text-white">
-            {initials}
-          </div>
+          <UserAvatar user={user} profile={profile} email={user?.email} size="md" />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">{headerName}</p>
             <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">{user?.email}</p>
@@ -129,7 +113,7 @@ export function UserMenuDropdown({ open, onClose, onSignOut }: UserMenuDropdownP
                 className={clsx(
                   'flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm font-medium transition-colors',
                   isDestructive
-                    ? 'text-neutral-600 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800/40'
+                    ? 'text-error-600 hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-950/40'
                     : 'text-neutral-800 hover:bg-neutral-50 dark:text-neutral-100 dark:hover:bg-neutral-800/80',
                 )}
               >
@@ -137,7 +121,7 @@ export function UserMenuDropdown({ open, onClose, onSignOut }: UserMenuDropdownP
                   className={clsx(
                     'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
                     isDestructive
-                      ? 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800/50 dark:text-neutral-400'
+                      ? 'bg-error-50 text-error-600 dark:bg-error-950/40 dark:text-error-400'
                       : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300',
                   )}
                 >

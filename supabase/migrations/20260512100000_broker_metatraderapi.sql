@@ -1,4 +1,4 @@
--- MetatraderAPI integration: split MT login from API UUID, cache live account data,
+-- Broker API integration: split MT login from API UUID, cache live account data,
 -- and add a clean broker label on mt_servers for the new typeahead.
 
 alter table public.broker_accounts
@@ -24,7 +24,7 @@ alter table public.broker_accounts
   add column if not exists last_synced_at timestamptz;
 
 comment on column public.broker_accounts.metaapi_account_id is
-  'MetatraderAPI account UUID returned by /RegisterAccount. Used as the id query param for every MetatraderAPI call.';
+  'FxSocket account UUID returned by /RegisterAccount. Used as the id query param for every broker API call.';
 
 comment on column public.broker_accounts.account_login is
   'MT login number (separate from the API UUID).';

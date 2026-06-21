@@ -1,11 +1,14 @@
 import { normalizeManualSettingsForExecution } from './manualPlanning/normalizeManualSettings'
 import type { ManualSettings } from './manualPlanning/types'
 import { normalizeSignalChannelIds } from './brokerChannelFilter'
+import { normalizeCopyLimitState, type CopyLimitState } from './copyLimitTypes'
+import { resolveBrokerTotalBalance } from './effectiveBrokerBalance'
 
 export interface ChannelTradingConfig {
   copier_mode?: 'ai' | 'manual'
   manual_settings?: ManualSettings | Record<string, unknown> | null
   ai_settings?: Record<string, unknown> | null
+  copy_limit_state?: CopyLimitState
 }
 
 export type ChannelTradingConfigsMap = Record<string, ChannelTradingConfig>
@@ -16,6 +19,13 @@ export type BrokerChannelTradingFields = {
   ai_settings?: Record<string, unknown> | null
   channel_trading_configs?: unknown
   signal_channel_ids?: string[] | null
+  last_balance?: number | null
+  last_equity?: number | null
+}
+
+function brokerAccountBalance(broker: BrokerChannelTradingFields): number | null {
+  const bal = resolveBrokerTotalBalance(broker) ?? 0
+  return bal > 0 ? bal : null
 }
 
 export type ChannelConfigSource = 'per_channel' | 'broker_fallback' | 'unlinked'
@@ -45,6 +55,9 @@ export function normalizeChannelTradingConfigsMap(raw: unknown): ChannelTradingC
       ai_settings: row.ai_settings && typeof row.ai_settings === 'object'
         ? (row.ai_settings as Record<string, unknown>)
         : undefined,
+      copy_limit_state: row.copy_limit_state && typeof row.copy_limit_state === 'object'
+        ? normalizeCopyLimitState(row.copy_limit_state)
+        : undefined,
     }
   }
   return out
@@ -67,6 +80,7 @@ function mergeHealedChannelManualSettings(
   existing: Record<string, unknown> | null | undefined,
   brokerFallback: Record<string, unknown>,
   defaultManual: Record<string, unknown>,
+  accountBalance: number | null,
 ): Record<string, unknown> {
   const base = channelManualSettingsComplete(brokerFallback) ? brokerFallback : defaultManual
   const partial = existing && typeof existing === 'object' && !Array.isArray(existing)
@@ -76,7 +90,7 @@ function mergeHealedChannelManualSettings(
   return normalizeManualSettingsForExecution({
     ...base,
     ...partial,
-  }) as Record<string, unknown>
+  }, { accountBalance }) as Record<string, unknown>
 }
 
 export function healChannelTradingConfigsMap(
@@ -84,11 +98,16 @@ export function healChannelTradingConfigsMap(
 ): ChannelTradingConfigsMap {
   const configs = { ...normalizeChannelTradingConfigsMap(broker.channel_trading_configs) }
   const linkedIds = normalizeSignalChannelIds(broker.signal_channel_ids)
-  const fallbackManual = normalizeManualSettingsForExecution(broker.manual_settings) as Record<string, unknown>
+  const multiChannel = linkedIds.length > 1
+  const balance = brokerAccountBalance(broker)
+  const brokerFallbackManual = normalizeManualSettingsForExecution(broker.manual_settings, { accountBalance: balance }) as Record<string, unknown>
   const defaultManual = normalizeManualSettingsForExecution(
     buildDefaultChannelTradingConfig().manual_settings,
   ) as Record<string, unknown>
   const fallbackMode = (broker.copier_mode ?? 'manual') as 'ai' | 'manual'
+  // broker.manual_settings mirrors the last channel saved in Account Configuration —
+  // never use it to heal other linked channels or lot/style bleed across providers.
+  const healBrokerFallback = multiChannel ? defaultManual : brokerFallbackManual
 
   for (const channelId of linkedIds) {
     const key = normalizeChannelUuid(channelId)
@@ -98,8 +117,9 @@ export function healChannelTradingConfigsMap(
     const existing = resolveChannelConfigEntry(configs, key)
     const manual = mergeHealedChannelManualSettings(
       existing?.manual_settings as Record<string, unknown> | undefined,
-      fallbackManual,
+      healBrokerFallback,
       defaultManual,
+      balance,
     )
     if (!channelManualSettingsComplete(manual)) {
       console.warn(
@@ -109,7 +129,9 @@ export function healChannelTradingConfigsMap(
     } else if (!existing?.manual_settings || !channelManualSettingsComplete(existing.manual_settings)) {
       console.warn(
         `[channelTradingConfig] healed missing per-channel config for ${key}`
-        + ' from broker manual_settings / defaults — re-save Account Configuration for this channel',
+        + (multiChannel
+          ? ' from defaults — re-save Account Configuration for this channel'
+          : ' from broker manual_settings / defaults — re-save Account Configuration for this channel'),
       )
     }
 
@@ -117,6 +139,7 @@ export function healChannelTradingConfigsMap(
       copier_mode: existing?.copier_mode ?? fallbackMode,
       manual_settings: manual,
       ai_settings: (existing?.ai_settings ?? broker.ai_settings ?? {}) as Record<string, unknown>,
+      copy_limit_state: existing?.copy_limit_state,
     }
   }
   return configs
@@ -152,6 +175,7 @@ export function isMinimalSeedManualSettings(raw: unknown): boolean {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return true
   const row = raw as Record<string, unknown>
   if ('schema_version' in row) return false
+  if (row.copy_limits != null && typeof row.copy_limits === 'object') return false
   if (!channelManualSettingsComplete(row)) return true
   const keys = Object.keys(row).filter(k => row[k] !== undefined && row[k] !== null)
   if (keys.length > 4) return false
@@ -205,7 +229,8 @@ export function resolveChannelTradingConfig(
   config_source: ChannelConfigSource
 } {
   const fallbackMode = (broker.copier_mode ?? 'manual') as 'ai' | 'manual'
-  const fallbackManual = normalizeManualSettingsForExecution(broker.manual_settings) as Record<string, unknown>
+  const balance = brokerAccountBalance(broker)
+  const fallbackManual = normalizeManualSettingsForExecution(broker.manual_settings, { accountBalance: balance }) as Record<string, unknown>
   const fallbackAi = (broker.ai_settings ?? {}) as Record<string, unknown>
 
   if (!channelId) {
@@ -226,6 +251,7 @@ export function resolveChannelTradingConfig(
       copier_mode: channelConfig.copier_mode ?? fallbackMode,
       manual_settings: normalizeManualSettingsForExecution(
         channelConfig.manual_settings,
+        { accountBalance: balance },
       ) as Record<string, unknown>,
       ai_settings: (channelConfig.ai_settings ?? fallbackAi) as Record<string, unknown>,
       config_source: 'per_channel',
@@ -261,25 +287,4 @@ export function withChannelTradingConfig<T extends BrokerChannelTradingFields>(
     manual_settings: resolved.manual_settings,
     ai_settings: resolved.ai_settings,
   }
-}
-
-export function cloneChannelTradingConfig(from: ChannelTradingConfig): ChannelTradingConfig {
-  return {
-    copier_mode: from.copier_mode ?? 'manual',
-    manual_settings: from.manual_settings
-      ? JSON.parse(JSON.stringify(from.manual_settings))
-      : buildDefaultChannelTradingConfig().manual_settings,
-    ai_settings: from.ai_settings
-      ? JSON.parse(JSON.stringify(from.ai_settings))
-      : {},
-  }
-}
-
-export function removeChannelTradingConfigKey(
-  configs: ChannelTradingConfigsMap,
-  channelId: string,
-): ChannelTradingConfigsMap {
-  const next = { ...configs }
-  delete next[channelId]
-  return next
 }

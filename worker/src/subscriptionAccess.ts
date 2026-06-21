@@ -6,6 +6,7 @@ import {
   type SubscriptionPlan,
   type SubscriptionStatus,
 } from './planLimits'
+import { isAdminAccessActive } from './adminAccess'
 
 export interface UserSubscriptionRow {
   plan: SubscriptionPlan
@@ -52,10 +53,10 @@ export async function loadCachedUserIsAdmin(
   if (!isAdmin) {
     const { data, error } = await supabase
       .from('user_profiles')
-      .select('is_admin')
+      .select('is_admin, admin_until')
       .eq('user_id', userId)
       .maybeSingle()
-    if (!error && data?.is_admin === true) isAdmin = true
+    if (!error && isAdminAccessActive(data)) isAdmin = true
   }
 
   if (!isAdmin) {

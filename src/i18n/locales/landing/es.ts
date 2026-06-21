@@ -6,6 +6,8 @@ export const landingEs: LandingTranslations = {
     product: 'Producto',
     features: 'Funciones',
     pricing: 'Precios',
+    faq: 'FAQ',
+    docs: 'Docs',
     signIn: 'Iniciar sesión',
     getStarted: 'Empezar',
     dashboard: 'Panel',
@@ -15,14 +17,14 @@ export const landingEs: LandingTranslations = {
   hero: {
     trustedBy: 'Más de 30.000 traders de 156 países ya se han unido',
     avatarAlts: ['Avatar de trader', 'Avatar de trader', 'Avatar de trader'],
-    headline: 'Convierte las señales de Telegram en operaciones en vivo,',
-    headlineAccent: '100 % en piloto automático.',
+    headline: 'Copia a tus proveedores de señales de trading',
+    headlineAccent: '24/7 en piloto automático.',
     subheadline:
-      'Conecta tu cuenta MT4/MT5, elige canales de señales y deja que TSCopier ejecute entradas, capas y gestión — con control total del riesgo y filtros.',
-    primaryCta: 'Pruébalo gratis',
+      'Conecta Telegram y copia señales directamente a tus cuentas MT4/MT5 en menos de 2 minutos: sin configuraciones complicadas, sin EA y sin VPS.',
+    primaryCta: 'Empieza tu prueba gratuita de 10 días',
     secondaryCta: 'Iniciar sesión',
     imageAlt:
-      'Panel de TSCopier con saldo, beneficio diario, resultados de operaciones y gráficos de crecimiento',
+      'Panel de TScopier con saldo, beneficio diario, resultados de operaciones y gráficos de crecimiento',
     previewUrl: 'app.tscopier.ai/dashboard',
     dashboard: {
       headlineStats: [
@@ -120,7 +122,7 @@ export const landingEs: LandingTranslations = {
         metric: '100%',
         metricVariant: 'teal',
         description:
-          '100 % en la nube: sin descargas, sin EA y sin VPS. Todo desde el navegador.',
+          '100 % en la nube: sin descargas, sin EA en tu terminal y sin VPS. Funciona con todas las firmas prop, con o sin EA permitido.',
         layout: 'short',
         icon: 'cloud',
       },
@@ -174,10 +176,10 @@ export const landingEs: LandingTranslations = {
         icon: 'chart',
       },
       {
-        label: 'Telegram',
-        metric: 'Ilimitado',
+        label: 'Multilingüe',
+        metric: 'Señales',
         metricVariant: 'teal',
-        description: 'Canales y grupos de Telegram ilimitados.',
+        description: 'Interpreta compra, venta, SL y TP en canales en inglés, español, ruso, polaco y más.',
         layout: 'tall',
         icon: 'messages',
       },
@@ -201,8 +203,15 @@ export const landingEs: LandingTranslations = {
         eyebrow: 'Copiador de señales',
         title: 'Copia señales de Telegram a MT4 y MT5 con precisión',
         description:
-          'Refleja canales de confianza en tus cuentas de broker. TSCopier analiza entradas, TPs, capas de rango e instrucciones de gestión, y ejecuta con tus reglas de lote, multi-trade y capas en cada cuenta conectada.',
+          'Refleja canales de confianza en tus cuentas de broker. TScopier analiza entradas, TPs, capas de rango e instrucciones de gestión, y ejecuta con tus reglas de lote, multi-trade y capas en cada cuenta conectada.',
         visual: 'copier',
+      },
+      {
+        eyebrow: 'Señales multilingües',
+        title: 'Compatible con señales en varios idiomas',
+        description:
+          'Copia canales que publican en inglés, español, francés, ruso, polaco, japonés y más. TScopier reconoce compra/venta, SL, TP y frases de gestión en cada idioma, además del entrenamiento por canal para el vocabulario exacto de tu proveedor.',
+        visual: 'multilingual',
       },
       {
         eyebrow: 'Control por canal',
@@ -210,6 +219,13 @@ export const landingEs: LandingTranslations = {
         description:
           'Permite o bloquea tipos de instrucción por canal: cierres, break-even, ajustes SL/TP y más. Solo las señales que quieres llegan al broker.',
         visual: 'filters',
+      },
+      {
+        eyebrow: 'Ediciones de mensaje',
+        title: 'Modificación de señal desde mensajes editados',
+        description:
+          'Cuando un proveedor edita un mensaje de Telegram para cambiar el stop loss o los take-profits, TScopier detecta la revisión y actualiza tu cesta abierta en el broker — sin nuevas entradas, solo SL/TP sincronizados en cada pierna.',
+        visual: 'signalEdit',
       },
       {
         eyebrow: 'Backtest',
@@ -277,6 +293,64 @@ export const landingEs: LandingTranslations = {
             decision: 'allow',
           },
         ],
+      },
+      multilingual: {
+        languagesBadge: 'Más de 10 idiomas',
+        moreLanguages: 'Alemán, árabe, portugués, italiano y más',
+        parsedLabel: 'Analizado',
+        ribbonFlags: ['us', 'gb', 'es', 'fr', 'pl', 'ru', 'se', 'nl', 'jp'],
+        signals: [
+          {
+            flagId: 'us',
+            language: 'English',
+            message: 'BUY XAUUSD now · SL 2640 · TP 2670',
+            parsedAction: 'BUY XAUUSD',
+            side: 'buy',
+          },
+          {
+            flagId: 'es',
+            language: 'Español',
+            message: 'COMPRA XAUUSD ahora · SL 2640 · TP 2670',
+            parsedAction: 'BUY XAUUSD',
+            side: 'buy',
+          },
+          {
+            flagId: 'fr',
+            language: 'Français',
+            message: 'ACHAT XAUUSD immédiat · SL 2640 · TP 2670',
+            parsedAction: 'BUY XAUUSD',
+            side: 'buy',
+          },
+          {
+            flagId: 'ru',
+            language: 'Русский',
+            message: 'ПОКУПКА XAUUSD сейчас · SL 2640 · TP 2670',
+            parsedAction: 'BUY XAUUSD',
+            side: 'buy',
+          },
+          {
+            flagId: 'ja',
+            language: '日本語',
+            message: 'XAUUSD 買い 成行 · SL 2640 · TP 2670',
+            parsedAction: 'BUY XAUUSD',
+            side: 'buy',
+          },
+        ],
+      },
+      signalEdit: {
+        channelName: 'Gold Signals Pro',
+        channelMeta: 'Telegram · mensaje editado',
+        editedLabel: 'Editado',
+        messageBuy: 'COMPRA XAUUSD',
+        beforeLabel: 'Anterior',
+        beforeSl: 'SL 4190',
+        beforeTp: 'TP1 4220',
+        afterLabel: 'Actualizado',
+        afterSl: 'SL 4175',
+        afterTp: 'TP1 4230 · TP2 4240',
+        workerTitle: 'Channel worker',
+        workerMessage: 'SL/TP actualizados en 7 piernas XAUUSD abiertas (sin nuevos trades)',
+        workerTime: 'Ahora mismo',
       },
       backtest: {
         resultsTitle: 'Resultados del backtest',
@@ -476,12 +550,17 @@ export const landingEs: LandingTranslations = {
   faq: {
     eyebrow: 'Preguntas frecuentes',
     title: 'Preguntas frecuentes',
-    subtitle: 'Respuestas rápidas sobre configuración, copia y qué hace diferente a TSCopier.',
+    subtitle: 'Respuestas rápidas sobre configuración, copia y qué hace diferente a TScopier.',
     items: [
       {
         question: '¿Necesito descargar un EA o un VPS?',
         answer:
           'No. TScopier es 100 % en la nube. Inicias sesión en el navegador, conectas Telegram y tus cuentas MT4/MT5, y el copiador corre en nuestra infraestructura—sin EA ni VPS que mantener.',
+      },
+      {
+        question: '¿TScopier funciona con firmas prop que prohíben los EA?',
+        answer:
+          'Sí. TScopier funciona íntegramente en la nube: no se instala nada en tu terminal MT4/MT5. Puedes copiar señales en cualquier cuenta de firma prop, permitan o no los Asesores Expertos.',
       },
       {
         question: '¿Qué plataformas admite TScopier?',
@@ -555,6 +634,13 @@ export const landingEs: LandingTranslations = {
         tscopier: '100 % en la nube: sin descarga, sin EA y sin VPS que mantener.',
       },
       {
+        aspect: 'Firmas prop',
+        other:
+          'Muchos copiadores usan Asesores Expertos en tu terminal, bloqueados cuando la firma prohíbe el trading automatizado.',
+        tscopier:
+          'Ejecución en la nube sin EA en tu cuenta: funciona con todas las firmas prop, permitan o no los EA.',
+      },
+      {
         aspect: 'Ejecución',
         other: 'Ejecución lenta después de que llega la señal a Telegram.',
         tscopier: 'Pipeline de menos de 150 ms del parseo al envío al broker.',
@@ -580,6 +666,20 @@ export const landingEs: LandingTranslations = {
         tscopier: 'Copiador, backtest, logs, noticias y calendario en una suscripción.',
       },
       {
+        aspect: 'Fusión de trades',
+        other:
+          '"Gold buy now" abre trades y luego "Gold buy now" con SL/TP abre otra vez: duplicas o lo arreglas a mano.',
+        tscopier:
+          '"Gold buy now" abre el trade. Cuando el SL y el TP llegan en el siguiente mensaje, actualizamos esas operaciones — no abrimos Gold otra vez.',
+      },
+      {
+        aspect: 'Mensajes editados',
+        other:
+          'Los mensajes de Telegram editados se ignoran: pierdes actualizaciones de SL/TP o corriges a mano.',
+        tscopier:
+          'Modificación de señal desde mensajes editados: SL y TPs sincronizados en la cesta abierta, sin nuevos trades.',
+      },
+      {
         aspect: 'Backtest',
         other: 'Poco o ningún replay real del historial del canal con tus reglas.',
         tscopier: 'Backtest de señales pasadas con tu configuración real antes de ir en vivo.',
@@ -590,6 +690,130 @@ export const landingEs: LandingTranslations = {
     title: 'Elige tu plan',
     subtitle: 'Comienza a copiar señales a tus cuentas de trading hoy.',
   },
+  planComparison: {
+    eyebrow: 'Comparar planes',
+    title: 'Encuentra el plan ideal',
+    subtitle: 'Comparación lado a lado de lo que incluye cada plan.',
+    basicColumn: 'Basic',
+    advancedColumn: 'Advanced',
+    customColumn: 'Personalizado',
+    rows: [
+      {
+        feature: 'Cuentas de broker',
+        basic: '1',
+        advanced: '5 (hasta 100)',
+        custom: 'Personalizado',
+      },
+      {
+        feature: 'Backtests de señales',
+        basic: '5 / mes',
+        advanced: 'Ilimitados',
+        custom: 'Personalizado',
+      },
+      {
+        feature: 'Canales de Telegram',
+        basic: '5',
+        advanced: 'Ilimitados',
+        custom: 'Personalizado',
+      },
+      {
+        feature: 'Niveles de take profit',
+        basic: '3 TPs',
+        advanced: 'TPs/SLs ilimitados',
+        custom: 'Personalizado',
+      },
+      {
+        feature: 'Trading en rango y layering',
+        basic: 'no',
+        advanced: 'yes',
+        custom: 'yes',
+      },
+      {
+        feature: 'Breakeven y gestión automática',
+        basic: 'no',
+        advanced: 'yes',
+        custom: 'yes',
+      },
+      {
+        feature: 'Seguimiento por palabras clave',
+        basic: 'no',
+        advanced: 'yes',
+        custom: 'yes',
+      },
+      {
+        feature: 'Soporte prioritario',
+        basic: 'no',
+        advanced: 'no',
+        custom: 'yes',
+      },
+      {
+        feature: 'Onboarding dedicado',
+        basic: 'no',
+        advanced: 'no',
+        custom: 'yes',
+      },
+      {
+        feature: 'Prueba gratuita',
+        basic: 'no',
+        advanced: '10 días',
+        custom: 'Personalizado',
+      },
+      {
+        feature: 'Precio inicial',
+        basic: '9,99 $ / mes',
+        advanced: '39,99 $ / mes',
+        custom: 'Contáctanos',
+      },
+    ],
+  },
+  pricingFaq: {
+    eyebrow: 'FAQ de precios',
+    title: 'Preguntas sobre precios',
+    subtitle: 'Facturación, pruebas y cambios de plan explicados.',
+    items: [
+      {
+        question: '¿Hay prueba gratuita?',
+        answer:
+          'Advanced incluye 10 días de prueba gratuita al suscribirte. Basic se factura desde el primer día a 9,99 $/mes (o 95,90 $/año con facturación anual). Puedes explorar el panel antes de suscribirte, pero la copia en vivo requiere un plan activo.',
+      },
+      {
+        question: '¿Cuál es la diferencia entre facturación mensual y anual?',
+        answer:
+          'La facturación anual ahorra un 20 % frente a pagar mes a mes durante un año. Basic baja de 9,99 $/mes a 7,99 $/mes efectivos (95,90 $/año). Advanced baja de 39,99 $/mes a 31,99 $/mes efectivos (383,90 $/año). Las cuentas extra en Advanced también tienen descuento anual.',
+      },
+      {
+        question: '¿Cómo funcionan las cuentas extra en Advanced?',
+        answer:
+          'Advanced incluye 5 cuentas demo/en vivo. Puedes añadir hasta 95 más a 10 $/cuenta/mes (o 96 $/cuenta/año con facturación anual), hasta un máximo de 100 cuentas conectadas por usuario.',
+      },
+      {
+        question: '¿Puedo cambiar de plan más tarde?',
+        answer:
+          'Sí. Mejora o reduce tu plan en cualquier momento desde Facturación en tu panel. Los cambios se aplican según tu ciclo de facturación y Stripe gestiona la prorrateo al cambiar de plan.',
+      },
+      {
+        question: '¿Qué métodos de pago aceptáis?',
+        answer:
+          'Aceptamos las principales tarjetas de crédito y débito a través de Stripe. Las facturas e historial de pagos están disponibles en tu página de Facturación.',
+      },
+      {
+        question: '¿Cuándo debería elegir Personalizado?',
+        answer:
+          'Personalizado es para firmas prop, equipos de trading u operadores de alto volumen que necesitan límites, facturación u onboarding adaptados. Contacta con ventas y prepararemos un plan a medida.',
+      },
+      {
+        question: '¿Puedo cancelar en cualquier momento?',
+        answer:
+          'Sí. Cancela desde Facturación o el portal de cliente de Stripe. Mantienes el acceso hasta el final del periodo de facturación actual. No hay contratos a largo plazo en Basic o Advanced.',
+      },
+    ],
+  },
+  pricingSocialProof: {
+    banner: '{count} traders compraron hoy',
+    purchaseToast: 'Un trader de {country} acaba de comprar la suscripción {plan}.',
+    timeAgoJustNow: 'Ahora mismo',
+    timeAgoOneMinute: 'Hace 1 minuto',
+  },
   pricingSnippet: {
     basic: 'Basic — 9,99 $/mes',
     advanced: 'Advanced — 10 días gratis, luego 39,99 $/mes',
@@ -599,7 +823,7 @@ export const landingEs: LandingTranslations = {
       title: '¿Listo para copiar señales sin trabajo manual?',
       subtitle:
         'Conecta Telegram, enlaza MT4 o MT5 y empieza a copiar en minutos — sin VPS ni instalación.',
-      primary: 'Pruébalo gratis',
+      primary: 'Empieza tu prueba gratuita de 10 días',
       secondary: 'Iniciar sesión',
     },
     tagline: 'Copiador de señales de Telegram ultrarrápido para cuentas MetaTrader.',
@@ -617,6 +841,10 @@ export const landingEs: LandingTranslations = {
     docs: 'Documentación',
       status: 'Estado del sistema',
       telegram: 'Soporte en Telegram',
+      riskDisclaimer: 'Aviso de riesgo',
+      termsOfService: 'Términos de servicio',
+      privacyPolicy: 'Política de privacidad',
+      cookiePolicy: 'Política de cookies',
       signIn: 'Iniciar sesión',
       signUp: 'Crear cuenta',
       openApp: 'Abrir panel',
@@ -625,11 +853,5 @@ export const landingEs: LandingTranslations = {
     copyright: '© {year} Tartarix Inc. Todos los derechos reservados.',
     disclaimer:
       'Operar implica riesgo. TScopier es una herramienta de copia — no asesoramiento financiero.',
-  },
-  cookieConsent: {
-    message:
-      'Usamos cookies para mejorar la atribución de afiliados y entender la interacción en la landing. Al continuar, aceptas nuestras cookies de seguimiento.',
-    accept: 'Aceptar cookies',
-    dismiss: 'Cerrar',
   },
 }

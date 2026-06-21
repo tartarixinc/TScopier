@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.claimSignalBrokerDispatch = claimSignalBrokerDispatch;
+exports.releaseSignalBrokerDispatchClaim = releaseSignalBrokerDispatchClaim;
 function isDuplicateKeyError(error) {
     if (!error)
         return false;
@@ -24,4 +25,15 @@ async function claimSignalBrokerDispatch(supabase, signalId, brokerAccountId) {
         return false;
     console.warn(`[tradeExecutor] signal_broker_dispatch_claim insert failed signal=${signalId} broker=${brokerAccountId}: ${error.message}`);
     return true;
+}
+/** Release a prior claim so range-wake or retry can dispatch orders. */
+async function releaseSignalBrokerDispatchClaim(supabase, signalId, brokerAccountId) {
+    const { error } = await supabase
+        .from('signal_broker_dispatch_claims')
+        .delete()
+        .eq('signal_id', signalId)
+        .eq('broker_account_id', brokerAccountId);
+    if (error) {
+        console.warn(`[tradeExecutor] signal_broker_dispatch_claim release failed signal=${signalId} broker=${brokerAccountId}: ${error.message}`);
+    }
 }

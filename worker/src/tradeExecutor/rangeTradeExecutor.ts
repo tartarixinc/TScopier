@@ -5,11 +5,15 @@ import { prepareEntryExecution } from './entryPrepare'
 import { placeStrictSignalEntryPending } from './strictEntryPending'
 import { materializeVirtualPendingLegs } from './virtualPendingMaterialize'
 import { finishEntrySend, type EntryArgs } from './entryExecution'
+import {
+  logSignalRangeEntryFired,
+  markSignalRangeEntryFired,
+} from '../signalRangeEntryHelpers'
 
 export type { EntryArgs } from './entryPrepare'
 
 /** Log `multi_range_plan` diagnostics for manual multi / range ladder entries. */
-export async function logMultiRangePlan(
+async function logMultiRangePlan(
   ctx: TradeExecutorContext,
   prep: PreparedEntry,
 ): Promise<void> {
@@ -70,5 +74,16 @@ export async function runRangeEntry(
   const strictBrokerPlaced = await placeStrictSignalEntryPending(ctx, prep, false)
   const materializedVirtuals = await materializeVirtualPendingLegs(ctx, prep, strictBrokerPlaced)
 
-  return finishEntrySend(prep, strictBrokerPlaced, materializedVirtuals, true)
+  const outcome = await finishEntrySend(prep, strictBrokerPlaced, materializedVirtuals, true)
+  if (outcome.openedOrMerged === true && prep.plan.rangeEntryWait) {
+    await markSignalRangeEntryFired(ctx.supabase, prep.signal.id, prep.broker.id)
+    await logSignalRangeEntryFired(
+      ctx.supabase,
+      prep.signal,
+      prep.broker.id,
+      prep.plan.rangeEntryWait,
+      prep.symbol,
+    )
+  }
+  return outcome
 }

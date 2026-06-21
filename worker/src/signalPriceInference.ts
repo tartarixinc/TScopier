@@ -14,7 +14,7 @@ export type ClassifiedStops = {
 
 /** True when the channel explicitly asks to add a new trade (not modify existing). */
 export function detectReEnterIntent(message: string): boolean {
-  return /\bre[-\s]?enter\b/i.test(String(message ?? ''))
+  return /\b(?:re[-\s]?(?:entry|enter)|reenter)\b/i.test(String(message ?? ''))
 }
 
 export function parsedHasReEnterIntent(parsed: {
@@ -119,6 +119,24 @@ function collectLabeledSpans(message: string): LabeledPriceSpan[] {
   addMatches(new RegExp(`\\b(?:buy|sell)\\s+at\\s+(${SIGNAL_PRICE_NUM})`, 'gi'))
   addMatches(new RegExp(`\\bentry\\s+(${SIGNAL_PRICE_NUM})`, 'gi'))
 
+  const addTwoPriceZone = (rx: RegExp) => {
+    for (const m of text.matchAll(rx)) {
+      const spanStart = m.index ?? 0
+      const spanEnd = spanStart + m[0].length
+      for (let i = 1; i <= 2; i++) {
+        const value = parseSignalPriceToken(m[i])
+        if (value == null) continue
+        spans.push({ start: spanStart, end: spanEnd, value })
+      }
+    }
+  }
+  addTwoPriceZone(
+    new RegExp(`\\b(?:between|from)\\s+(${SIGNAL_PRICE_NUM})\\s+(?:and|to|-|–)\\s+(${SIGNAL_PRICE_NUM})\\b`, 'gi'),
+  )
+  addTwoPriceZone(
+    new RegExp(`\\b(?:now|instant|market|mkt)\\s+(${SIGNAL_PRICE_NUM})\\s*(?:-|–|to)\\s*(${SIGNAL_PRICE_NUM})\\b`, 'gi'),
+  )
+
   // TP: 4557 / 4527 — each slash-separated value is labeled
   for (const m of text.matchAll(
     /\b(?:tp|take\s*profit|target(?:\s+level)?)\s*[:=]?\s*((?:\d+(?:\.\d+)?(?:\s*(?:\/|\band\b|\|)\s*)+)+\d+(?:\.\d+)?)/gi,
@@ -161,6 +179,16 @@ export function extractUnlabeledPrices(message: string): number[] {
     if (isInsideParenthetical(index, text)) continue
     if (isPercentagePriceAt(text, index, raw.length)) continue
 
+    const prefix = text.slice(Math.max(0, index - 3), index)
+    if (/[£$€]\s*$/.test(prefix)) continue
+    const contextBefore = text.slice(Math.max(0, index - 28), index)
+    if (
+      /\b(?:profit|made|earned|gains?)\b/i.test(contextBefore)
+      && !/\b(?:sl|tp|stop|take)\b/i.test(contextBefore)
+    ) {
+      continue
+    }
+
     // Skip parenthetical duplicates: 4577 (4577.10)
     const after = text.slice(index + raw.length).trimStart()
     if (after.startsWith('(')) {
@@ -173,11 +201,34 @@ export function extractUnlabeledPrices(message: string): number[] {
 
     const value = parseSignalPriceToken(raw)
     if (value == null || seen.has(value)) continue
+    const digitsOnly = raw.replace(/,/g, '')
+    if (/^\d{4}$/.test(digitsOnly)) {
+      const year = Number(digitsOnly)
+      if (year >= 1900 && year <= 2100) continue
+    }
     seen.add(value)
     out.push(value)
   }
 
   return out
+}
+
+/**
+ * FX Culture / ICT style bare range on its own line: "4282.0-4287.0", "4282 / 4287".
+ * Must appear as a two-price range, not a single labeled SL/TP value.
+ */
+export function extractBarePriceRangeZone(message: string): { low: number; high: number } | null {
+  const collapsed = String(message ?? '').replace(/\s+/g, ' ').trim()
+  const zoneRx = new RegExp(
+    `(?:^|\\s)(${SIGNAL_PRICE_NUM})\\s*(?:-|–)\\s*(${SIGNAL_PRICE_NUM})(?:\\.|\\s|$)`,
+    'i',
+  )
+  const m = collapsed.match(zoneRx)
+  if (!m?.[1] || !m?.[2]) return null
+  const a = parseSignalPriceToken(m[1])
+  const b = parseSignalPriceToken(m[2])
+  if (a == null || b == null) return null
+  return { low: Math.min(a, b), high: Math.max(a, b) }
 }
 
 export function entryReferenceFromParsed(parsed: {

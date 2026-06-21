@@ -1,4 +1,4 @@
-import { MtOperation, OrderSendArgs } from '../metatraderapi'
+import { MtOperation, OrderSendArgs } from '../fxsocketClient'
 import { clampPendingExpiryHours } from '../manualPlanner'
 import { autoManagementTradeSnapshot } from '../autoManagement'
 import type { TradeExecutorContext } from './context'
@@ -60,8 +60,24 @@ export async function placeStrictSignalEntryPending(
     )
   }
 
-  try {
-    const result = await api.orderSend(uuid, clamped.args)
+    try {
+      let result
+      try {
+        result = await api.orderSend(uuid, clamped.args)
+      } catch (sendErr) {
+        const msg = sendErr instanceof Error ? sendErr.message : String(sendErr)
+        const isInvalidStops = /invalid\s+stops/i.test(msg)
+        const hasStops = (Number(clamped.args.stoploss) || 0) > 0
+          || (Number(clamped.args.takeprofit) || 0) > 0
+        if (isInvalidStops && hasStops) {
+          console.warn(
+            `[tradeExecutor] strict entry retry without stops signal=${signal.id} broker=${broker.id}: ${msg}`,
+          )
+          result = await api.orderSend(uuid, { ...clamped.args, stoploss: 0, takeprofit: 0 })
+        } else {
+          throw sendErr
+        }
+      }
     const ticket = result.ticket
     const isBuyLeg = se.isBuy
     const pendingSl = clamped.args.stoploss && clamped.args.stoploss > 0 ? clamped.args.stoploss : null

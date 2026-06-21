@@ -152,7 +152,9 @@ flowchart LR
 ```env
 UPSTASH_REDIS_REST_URL=https://xxx.upstash.io
 UPSTASH_REDIS_REST_TOKEN=your-token
+# Auto-enabled when Redis URL+token are set. Set false to force HTTP-only dispatch.
 TRADE_SIGNAL_QUEUE_ENABLED=true
+TRADE_SIGNAL_QUEUE_MGMT_CONSUMER_BLOCK_MS=150
 TRADE_SIGNAL_QUEUE_SHARD_COUNT=4
 TRADE_SIGNAL_QUEUE_ENTRY_STREAM=signals:entry
 TRADE_SIGNAL_QUEUE_MGMT_STREAM=signals:mgmt
@@ -161,11 +163,19 @@ TRADE_SIGNAL_QUEUE_CANARY_SHARDS=0
 TRADE_SIGNAL_PUSH_FALLBACK_ON_QUEUE_FAIL=true
 ```
 
+**Split deploy latency (listener):** management HTTP push is **awaited** so push failures are visible immediately. Tune Telegram fallback polling:
+
+```env
+TELEGRAM_SAFETY_POLL_MS=10000
+TELEGRAM_FAST_POLL_MS=3000
+TELEGRAM_FAST_POLL_LIVE_STALE_MS=120000
+```
+
 Trade shards also need the same Redis env + `TRADE_SIGNAL_QUEUE_ENABLED=true` + matching `WORKER_SHARD_ID` / `TRADE_SIGNAL_QUEUE_SHARD_COUNT`.
 
 ### Cutover playbook
 
-1. **Dark launch** — Deploy code with `TRADE_SIGNAL_QUEUE_ENABLED=false` (no behavior change).
+1. **Dark launch** — Deploy code; queue auto-enables when Redis env is present (or set `TRADE_SIGNAL_QUEUE_ENABLED=false` explicitly for no change).
 2. **Canary shard 0** — Set `TRADE_SIGNAL_QUEUE_CANARY_SHARDS=0`, enable queue on listener + trade-entry-shard-0 + trade-mgmt-shard-0. Keep `TRADE_SIGNAL_PUSH_FALLBACK_ON_QUEUE_FAIL=true`.
 3. **Monitor** — Run queue slices in [`scripts/diagnostics/scalability_scorecard.sql`](../scripts/diagnostics/scalability_scorecard.sql) (#10–#14). Check trade `/health` → `queue[]` pending/lag.
 4. **Expand** — Add shards to canary list (`0,1`, then all). When enqueue p99 and `queue_dead_letter` are stable for 24h+, set `TRADE_SIGNAL_PUSH_FALLBACK_ON_QUEUE_FAIL=false` on canaried shards.
@@ -194,15 +204,16 @@ Tune via env (see `worker/.env.example`):
 
 | Monitor | Active (default) | Idle (default) |
 |---------|------------------|----------------|
-| virtual pending / partial TP / auto-mgmt / trail / CWE / signal entry | 1500ms | 60000ms |
+| virtual pending / partial TP / auto-mgmt / trail / CWE / signal entry | 400ms | 15000ms |
 | basket reconcile | 15000ms | 120000ms |
-| executor parsed sweep | 3000ms | 60000ms |
+| executor parsed sweep | 3000ms | 15000ms |
 | broker reconnect sweep | 120000ms | 300000ms |
 | forced hard-reconnect sweep | 900000ms | n/a |
 
 Broker keepalive notes:
 
-- `BROKER_SESSION_HEARTBEAT_MS` runs as a fixed interval with single-flight protection (no overlapping heartbeat sweeps).
+- **Worker-side FxSocket keepalive** — `TradeExecutor.sessionHeartbeatTick` runs every `BROKER_SESSION_HEARTBEAT_MS` (default **15s**) with single-flight protection. Each tick calls `keepSessionAlive` (light `checkConnect`) for all active shard brokers and prewarms symbol list/params from each broker's `symbol_to_trade`. The old Supabase edge `broker-session-keepalive` cron was removed during the FxSocket migration; warming is trade-worker local again.
+- Align `BROKER_SESSION_PING_MIN_INTERVAL_MS` with the heartbeat interval (e.g. both **10s**) so `sessionPingAt` stays fresh and `brokers_warm_at_dispatch: true` on live entries.
 - `BROKER_RECONNECT_BACKOFF_MAX_MS` and `BROKER_RECONNECT_BACKOFF_RESET_MS` tune weekend/off-hours retry starvation.
 - `BROKER_HARD_RECONNECT_SWEEP_MS` periodically retries errored accounts with stored credentials even when normal backoff is active.
 
@@ -236,7 +247,7 @@ sequenceDiagram
 1. **Inline parse** — `worker/src/parseSignal.ts` + `channelKeywordsCache` (no edge HTTP on live path).
 2. **Dispatch-first** — Pre-generated `signals.id`, `POST /internal/dispatch-signal` before DB writes; listener persists in background.
 3. **Entry fast path** — Live `buy`/`sell` bypass queue and heavy DB idempotency (`inflight` only); `OrderSend` first, management (opposite close, merge, channel SL/TP, pip stops) in `postFillFollowUp`.
-4. **Broker pre-warm** — `EXECUTOR_PREWARM_SYMBOLS` loads symbol list/params on start; `BROKER_SESSION_HEARTBEAT_MS` (default **15s**) keeps sessions warm.
+4. **Broker pre-warm** — `EXECUTOR_PREWARM_SYMBOLS` loads symbol list/params on start and on each heartbeat tick; `BROKER_SESSION_HEARTBEAT_MS` (default **15s**, recommend **10s** in production) keeps FxSocket sessions warm via `keepSessionAlive`.
 5. **No market `/Quote` on live path** — Clamp from cached `SymbolParams`; pip/channel stops applied via `OrderModify` post-fill.
 6. **Concurrent queue drain** — `EXECUTOR_MAX_CONCURRENT_SIGNALS` (default **4**) for sweep/realtime/management.
 7. **Lease gate cache** — `WORKER_LEASE_GATE_CACHE_MS` (default **8000**).
@@ -283,10 +294,20 @@ limit 1;
 | `order_send_ms` / `send_order_ms` | **Entire `sendOrder`** — includes channel `delay_msec`, planning, virtual-pending DB, and all leg `OrderSend` calls. |
 | `broker_send_ms` | First→last broker `OrderSend` API only (after deploy with stamp fields). |
 | `channel_delay_ms` | Configured Copier Engine delay; on live fast path this is **skipped** (`channel_delay_skipped: true`) so entries are not held 15s+. |
+| `brokers_warm_at_dispatch` | `true` when session ping + symbol caches were fresh at signal dispatch (heartbeat + `symbol_to_trade` prewarm working). |
+| `dispatch_source` | `listener_push`, `sweep`, `queue`, etc. — identifies how the signal reached the trade worker. |
 
 Sweep/realtime/management paths still emit `dispatch_received`, `handle_start`, `handle_end`, and per-leg `order_send` rows.
 
-Look for `parse_ms` &gt; 100 (inline parse should stay &lt;30ms), `order_send_ms` ≈ `channel_delay_ms` (delay was blocking — fixed on live fast path), or large `prep_ms` (broker session cold — check heartbeat logs).
+Look for `parse_ms` &gt; 100 (inline parse should stay &lt;30ms), `order_send_ms` ≈ `channel_delay_ms` (delay was blocking — fixed on live fast path), large `prep_ms` / `broker_resolve_ms` with `brokers_warm_at_dispatch: false` (cold broker — check heartbeat env and `symbol_to_trade`), or rising `dispatch_push_attempt` failures (wrong `TRADE_WORKER_URL` / worker asleep).
+
+| Symptom | Likely cause | Fix |
+|---------|--------------|-----|
+| `brokers_warm_at_dispatch: false`, high `broker_resolve_ms` | Heartbeat disabled/stale or missing `symbol_to_trade` | Set `BROKER_SESSION_HEARTBEAT_MS=10000`, `EXECUTOR_PREWARM_SYMBOLS=true`, list traded symbols in broker settings |
+| High `dispatch_ms`, `dispatch_source: listener_push` | Listener → trade HTTP slow or worker cold | Verify `TRADE_WORKER_URL`, no scale-to-zero on trade entry |
+| `dispatch_push_attempt` failures | Push URL/token mismatch | Fix shard URL env; check listener logs |
+| `order_send_ms` ≈ `channel_delay_ms` | Channel delay blocking | Set channel `delay_msec` = 0; confirm `channel_delay_skipped: true` on live entries |
+| High `parse_ms` or missing listener timestamps | Listener not stamping pipeline | Redeploy listener; signals via sweep only |
 
 ### Range pending legs (duplicate opens)
 
@@ -343,6 +364,23 @@ Management messages (`Close half`, `Close worse entries`, `Adjust SL`, etc.) are
 
 **Close worse entries** (channel post) closes open legs on that channel whose entry is within your configured pip band of the live price, and always closes legs tagged with `cwe_close_price` (range multi-trade CWE immediates). Requires **Multi Trades** + **Close worse entries** enabled on the broker account. Redeploy **trade worker** and **parse-signal** after CWE fixes.
 
+### Management execution speed (live Telegram)
+
+Live management (`close_worse_entries`, `close`, `modify`, edited SL/TP) bypasses the in-process queue and uses parallel leg execution with fast close/modify on the trade-mgmt worker. Sweeps and reconcile jobs keep verified closes.
+
+| Env | Recommendation |
+|-----|----------------|
+| `LISTENER_INLINE_PARSE=true` | Required (default) — avoids OpenAI parse delay before dispatch |
+| `AI_MODIFICATION_PARSE_ENABLED=false` | Optional: deterministic-only if channel keywords cover your phrases |
+| `AI_MODIFICATION_PARSE_TIMEOUT_MS=1500` | Lower if AI modification parse stays enabled |
+| `TRADE_MGMT_WORKER_URL` | Dedicated mgmt worker URL on listener (not shared with entry) |
+| `EXECUTOR_MAX_CONCURRENT_SIGNALS=6` | More parallel signal handlers on mgmt shard |
+| `MGMT_LEG_CONCURRENCY=6` | Parallel CWE/SL legs per broker (max 12) |
+| `TRADE_SIGNAL_QUEUE_MGMT_CONSUMER_BLOCK_MS=150` | Lower Redis mgmt consumer latency |
+| `TRADE_SIGNAL_PUSH_TIMEOUT_MS=5000` | HTTP push fallback timeout for mgmt (when queue off) |
+
+Pipeline logs include `mgmt_fast_path`, `mgmt_wall_ms`, `mgmt_legs_total`, and `mgmt_legs_parallelism` on live mgmt dispatches.
+
 Channel **Adjust SL / TP** instructions are stored in `channel_active_trade_params` (per channel + symbol). They apply to **management**, **pending ladder legs**, and **parameter refresh** on open baskets — not to naked **buy/sell** posts with no SL/TP in the message (avoids stale levels → broker "Invalid stops"). Run migration `20260520130000_channel_active_trade_params.sql` when upgrading.
 
 | **Channel post**, no symbol in text | All **open trades** on that Telegram channel |
@@ -362,7 +400,7 @@ TScopier stores a GramJS **StringSession** in `telegram_sessions.session_string`
 | Field | Purpose |
 |-------|---------|
 | **Production configuration** | Real `api_id` + `api_hash` for live Telegram. **Use these** in `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` on the listener worker. |
-| **Test configuration** | Separate credentials for Telegram’s **test DCs** (fake users, not production traffic). Do **not** use for TSCopier. |
+| **Test configuration** | Separate credentials for Telegram’s **test DCs** (fake users, not production traffic). Do **not** use for TScopier. |
 | **DC 2 IP addresses** | Telegram datacenter server IPs. The MTProto client picks the correct DC automatically; you do not configure these in env. |
 | **Public Key** | Telegram server RSA key used during MTProto encryption handshake. Handled internally by GramJS — not an env var. |
 
@@ -399,3 +437,24 @@ See [`docs/telegram-copier-triage.md`](telegram-copier-triage.md) and `scripts/d
 ## Environment reference
 
 See `worker/.env.example` for catch-up, lease, and parse tuning variables.
+
+## FxSocket Brokers sandbox (`/brokers`)
+
+The **`fxsocket-broker`** Edge function is isolated from the live copier.
+
+- **Account linking (v1):** [api.fxsocket.com/v1/docs](https://api.fxsocket.com/v1/docs) — `POST /v1/accounts` with login/password/server; auth via `X-API-Key` only.
+- **Trading (per-account):** [fxsocket.com/docs#request-builder](https://fxsocket.com/docs#request-builder) — `https://api.fxsocket.com/mt5/{account_id}/…`
+
+The API has no CORS headers — all calls go through Edge.
+
+Set these in **Supabase → Edge Functions → Secrets** (not worker env):
+
+| Secret | Purpose |
+|--------|---------|
+| `FXSOCKET_API_KEY` | `fxs_live_…` platform key (`X-API-Key` on all FxSocket calls) — **only required secret** |
+| `FXSOCKET_BASE_URL` | Optional; default `https://api.fxsocket.com` |
+
+Deploy: `supabase functions deploy fxsocket-broker`. Apply migration `20260615190000_fxsocket_broker_accounts.sql`.
+
+Unit tests: `deno test supabase/functions/_shared/fxsocketClient.test.ts`
+

@@ -70,24 +70,45 @@ export interface AuthTranslations {
     passwordTooShort: string
     passwordMismatch: string
     submit: string
-    terms: string
+    terms: {
+      prefix: string
+      termsOfService: string
+      conjunction: string
+      privacyPolicy: string
+    }
   }
   verify: {
     heading: string
     subtitle: string
+    instructions?: string
     resend: string
     resent: string
     backToLogin: string
+    confirming?: string
+    confirmingHint?: string
+    confirmPending?: string
+    confirmLinkExpired?: string
+  }
+  welcome: {
+    title: string
+    subtitle: string
+    steps: string[]
+    seePricing: string
+    exploreDashboard: string
+    errorFallback: string
+    checkoutFailed: string
   }
   marketing: {
     headline: string
     copyright: string
     trustpilotLabel: string
-    reviews: Array<{ quote: string; author: string; role?: string }>
+    reviews: Array<{ headline?: string; quote: string; author: string; role?: string }>
   }
   language: {
     label: string
     choose: string
+    searchPlaceholder: string
+    noResults: string
   }
   theme: {
     light: string

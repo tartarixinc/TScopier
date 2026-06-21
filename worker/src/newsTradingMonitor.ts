@@ -2,14 +2,16 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { findPreNewsCloseTriggers } from './newsTrading/blackout'
 import { getCalendarEventsCached } from './newsTrading/calendarProvider'
 import { isNewsTradingEnabled, type ScheduleFilterSettings } from './newsTrading/settings'
-import { hasMetatraderApiConfigured } from './metatraderapi'
-import { apiForMetaapiAccount, loadPlatformByMetaapiId } from './mtApiByAccount'
+import { hasFxsocketConfigured } from './fxsocketClient'
+import { apiForFxsocketAccount, brokerSessionId, loadPlatformByFxsocketId } from './mtApiByAccount'
 import { resolveChannelTradingConfig } from './channelTradingConfig'
+import { isUserCopierPausedCached } from './copierPause'
 
 interface BrokerRow {
   id: string
   user_id: string
-  metaapi_account_id: string
+  fxsocket_account_id: string | null
+  metaapi_account_id: string | null
   platform: string
   manual_settings: Record<string, unknown> | null
   channel_trading_configs: Record<string, unknown> | null
@@ -39,7 +41,7 @@ export class NewsTradingMonitor {
 
   start() {
     if (this.timer) return
-    if (!hasMetatraderApiConfigured()) {
+    if (!hasFxsocketConfigured()) {
       console.warn('[newsTradingMonitor] MT API not configured — monitor disabled')
       return
     }
@@ -68,9 +70,9 @@ export class NewsTradingMonitor {
 
     const { data, error } = await this.supabase
       .from('broker_accounts')
-      .select('id,user_id,metaapi_account_id,platform,manual_settings,channel_trading_configs,copier_mode,ai_settings,is_active')
+      .select('id,user_id,fxsocket_account_id,metaapi_account_id,platform,manual_settings,channel_trading_configs,copier_mode,ai_settings,is_active')
       .eq('is_active', true)
-      .not('metaapi_account_id', 'is', null)
+      .not('fxsocket_account_id', 'is', null)
     if (error) {
       console.error('[newsTradingMonitor] broker select failed:', error.message)
       return
@@ -79,17 +81,20 @@ export class NewsTradingMonitor {
     const brokers = (data ?? []) as BrokerRow[]
     if (!brokers.length) return
 
-    const platformByUuid = await loadPlatformByMetaapiId(
+    const platformByUuid = await loadPlatformByFxsocketId(
       this.supabase,
-      brokers.map(b => String(b.metaapi_account_id ?? '')),
+      brokers.map(b => brokerSessionId(b)),
     )
 
     const now = new Date()
     this.pruneClosedMap(now)
 
     for (const broker of brokers) {
-      const uuid = broker.metaapi_account_id
-      const api = apiForMetaapiAccount(platformByUuid, uuid)
+      if (isUserCopierPausedCached(broker.user_id)) continue
+
+      const uuid = brokerSessionId(broker)
+      if (!uuid) continue
+      const api = apiForFxsocketAccount(platformByUuid, uuid)
       if (!api) continue
 
       const { data: trades, error: tradeErr } = await this.supabase

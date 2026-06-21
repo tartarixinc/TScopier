@@ -1,4 +1,4 @@
-import type { OrderSendArgs } from '../metatraderapi'
+import type { OrderSendArgs } from '../fxsocketClient'
 import type { PipQuote } from '../pipCalculator'
 
 export interface ParsedSignal {
@@ -36,11 +36,20 @@ export interface ManualSettings {
   tp_lots?: ManualTpLot[]
   single_tp_target?: 'tp1' | 'tp2' | 'tp3' | 'farthest'
   multi_trade_leg_percent?: number
+  /**
+   * Optional cap on simultaneous market orders per entry burst. When set below
+   * the planned leg count, legs sharing the same TP are consolidated into fewer,
+   * larger orders (volume + TP split preserved). Default 500 = one order per leg.
+   */
+  multi_trade_max_orders?: number
   trade_style?: 'single' | 'multi'
   range_trading?: boolean
   range_percent?: number
   range_step_pips?: number
   range_distance_pips?: number
+  range_layer_till_close?: boolean
+  /** When true with range_trading, cap layering depth from parsed entry zone instead of range_distance_pips. */
+  use_signal_entry_range?: boolean
   close_worse_entries?: boolean
   close_worse_entries_pips?: number
   /** @deprecated Replaced by `range_percent`. */
@@ -59,6 +68,8 @@ export interface ManualSettings {
   pending_expiry_hours?: number
   add_new_trades_to_existing?: boolean
   close_on_opposite_signal?: boolean
+  /** When false, OrderSend comments are left empty. Default on. */
+  order_comments_enabled?: boolean
   time_filter_enabled?: boolean
   trade_start_time?: string
   trade_end_time?: string
@@ -73,6 +84,7 @@ export interface ManualSettings {
   move_sl_to_entry_tp_index?: number
   move_sl_to_entry_type?: 'sl_only' | 'sl_and_close_half'
   breakeven_offset_pips?: number
+  copy_limits?: Record<string, unknown>
 }
 
 export interface ChannelKeywords {
@@ -135,11 +147,35 @@ export interface PlannerStrictEntry {
   isBuy: boolean
 }
 
+/** Virtual range-entry gate metadata (no broker pending). */
+export interface PlannerRangeEntryWait {
+  isBuy: boolean
+  entryPrice: number | null
+  zoneLo: number | null
+  zoneHi: number | null
+  tolerancePips: number
+}
+
 export interface PlannerPartialTp {
   tpIdx: number
   triggerPrice: number
   closeLots: number
   percent: number
+}
+
+export interface PlannerRangeLayering {
+  rangeStepPips: number
+  rangeDistancePips: number
+  effectiveStepPips: number
+  stepPriceOffset: number
+  maxStepIdx: number
+  reservedPendingLegs: number
+  activePendingLegs: number
+  useSignalEntryRange?: boolean
+  signalRangeBoundary?: number | null
+  signalZoneLo?: number | null
+  signalZoneHi?: number | null
+  effectiveDistancePips?: number
 }
 
 export interface PlannerResult {
@@ -152,6 +188,8 @@ export interface PlannerResult {
   closeWorseEntries?: PlannerCloseWorseEntries
   partialTps?: PlannerPartialTp[]
   strictEntry?: PlannerStrictEntry
+  rangeEntryWait?: PlannerRangeEntryWait
+  rangeLayering?: PlannerRangeLayering
   skip_reason?: string
   fallback_reason?: string
   delay_ms: number
@@ -171,7 +209,12 @@ export interface PlanRangeSplitArgs {
 
 export interface PlanRangeSplitResult {
   immediateLegs: number
+  /** Legs reserved by range_percent (preview count). */
   pendingLegs: number
+  /** Legs actually emitted after range_distance depth cap. */
+  activePendingLegs: number
+  /** Deepest step index allowed: floor(distPips / effectiveStepPips). */
+  maxStepIdx: number
   effectiveStepPips: number
   stepPriceOffset: number
   fallbackReason?: string

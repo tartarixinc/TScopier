@@ -34,7 +34,7 @@ const EXPLICIT_SYMBOLS = new Set([
   'XAUUSD', 'XAGUSD', 'US30', 'US500', 'US100', 'NAS100', 'GER40', 'UK100', 'SPX500', 'USTEC',
 ])
 
-export type TradableInstrumentClass = 'forex' | 'metal' | 'crypto' | 'index'
+type TradableInstrumentClass = 'forex' | 'metal' | 'crypto' | 'index'
 
 export function cleanInstrumentSymbol(symbol: string): string {
   const upper = String(symbol || '').toUpperCase().trim()
@@ -53,7 +53,7 @@ export function cleanInstrumentSymbol(symbol: string): string {
   return core
 }
 
-export function classifyTradableInstrument(symbol: string): TradableInstrumentClass | null {
+function classifyTradableInstrument(symbol: string): TradableInstrumentClass | null {
   const s = cleanInstrumentSymbol(symbol)
   if (!s || s.length < 3 || s.length > 12) return null
   if (EXPLICIT_SYMBOLS.has(s)) {

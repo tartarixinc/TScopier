@@ -7,6 +7,7 @@ exports.pendingLegsToCancelScopes = pendingLegsToCancelScopes;
 exports.loadRangePendingLegsInMgmtScope = loadRangePendingLegsInMgmtScope;
 exports.updateRangePendingLegsForManagement = updateRangePendingLegsForManagement;
 const basketModFollowUp_1 = require("./basketModFollowUp");
+const autoManagement_1 = require("./autoManagement");
 const tpBucketDistribution_1 = require("./manualPlanning/tpBucketDistribution");
 function sanitizeLevel(v) {
     const n = typeof v === 'number' ? v : Number(v ?? 0);
@@ -65,7 +66,7 @@ async function loadRangePendingLegsInMgmtScope(supabase, args) {
     return legs;
 }
 async function updateRangePendingLegsForManagement(args) {
-    const { supabase, parsed, pendingLegs, openTrades, tpLotsByBroker, action, hasNewSl, hasNewTp, parsedTpLevels, } = args;
+    const { supabase, parsed, pendingLegs, openTrades, tpLotsByBroker, breakevenManualByBroker, action, hasNewSl, hasNewTp, parsedTpLevels, } = args;
     if (!pendingLegs.length)
         return 0;
     const act = action.toLowerCase();
@@ -88,8 +89,15 @@ async function updateRangePendingLegsForManagement(args) {
         let takeprofit = leg.takeprofit;
         if (act === 'breakeven' || act === 'partial_breakeven') {
             const anchor = sanitizeLevel(leg.anchor_price);
-            if (anchor > 0)
-                stoploss = anchor;
+            if (anchor > 0) {
+                const manual = breakevenManualByBroker.get(leg.broker_account_id) ?? {};
+                stoploss = (0, autoManagement_1.breakevenStopLossForSymbol)({
+                    isBuy: leg.is_buy,
+                    entryPrice: anchor,
+                    manual,
+                    symbol: leg.symbol,
+                });
+            }
         }
         else if (act === 'modify') {
             if (hasNewSl)

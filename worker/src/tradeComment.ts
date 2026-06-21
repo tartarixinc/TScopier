@@ -1,5 +1,5 @@
 /**
- * MT order comment helpers. All copier trades use a `TSCopier:` prefix so open-
+ * MT order comment helpers. All copier trades use a `TScopier:` prefix so open-
  * order reconciliation can find our legs; when a signal has a channel we embed
  * a short channel slug before the signal id.
  */
@@ -31,12 +31,46 @@ export function sanitizeChannelCommentSlug(raw: string): string {
 
 /**
  * Prefix for planner / OrderSend comments.
- * With channel: `TSCopier:ChannelSlug:abc12345`
- * Without: `TSCopier:abc12345`
+ * With channel: `TScopier:ChannelSlug:abc12345`
+ * Without: `TScopier:abc12345`
  */
 export function buildTscopierCommentPrefix(signalId: string, channelSlug?: string | null): string {
   const id8 = signalId.slice(0, 8)
   const slug = channelSlug?.trim()
-  if (slug) return `TSCopier:${slug}:${id8}`
-  return `TSCopier:${id8}`
+  if (slug) return `TScopier:${slug}:${id8}`
+  return `TScopier:${id8}`
+}
+
+export type OrderCommentsManual = { order_comments_enabled?: boolean } | null | undefined
+
+/** Default on — only explicit `false` disables MT order comments. */
+export function areOrderCommentsEnabled(manual?: OrderCommentsManual): boolean {
+  return manual?.order_comments_enabled !== false
+}
+
+/**
+ * Resolve the comment prefix for a broker after manual settings are known.
+ * Returns empty string when order comments are disabled for that channel config.
+ */
+export function resolveTscopierCommentPrefix(
+  signalId: string,
+  channelSlug?: string | null,
+  manual?: OrderCommentsManual,
+  overridePrefix?: string | null,
+): string {
+  if (!areOrderCommentsEnabled(manual)) return ''
+  if (overridePrefix != null && overridePrefix !== '') return overridePrefix
+  return buildTscopierCommentPrefix(signalId, channelSlug)
+}
+
+/** Append a planner suffix (`:tp1`, `:rg2.tp`, …); empty when comments are off. */
+export function appendOrderCommentSuffix(prefix: string, suffix: string): string {
+  if (!prefix) return ''
+  return `${prefix}${suffix}`
+}
+
+/** Comment for basket refresh OrderSend when a leg must be re-opened. */
+export function buildBasketRefreshComment(signalId: string, manual?: OrderCommentsManual): string {
+  if (!areOrderCommentsEnabled(manual)) return ''
+  return `TScopier:${signalId.slice(0, 8)}:refresh`
 }

@@ -10,6 +10,7 @@ export const configureModalEn: ConfigureModalTranslations = {
   addChannel: 'Add channel',
   editLinkedChannels: 'Edit linked channels',
   doneEditingLinkedChannels: 'Done editing channels',
+  removeLinkedChannel: 'Remove {channel}',
   selectChannelToConfigure: 'Select or link a channel to configure its trading settings.',
   selectChannelPrompt: 'Select a channel from the list to configure or connect it to this broker.',
   connectChannelPrompt: 'Link {channel} to {broker} to copy its signals and tune trading settings.',
@@ -85,22 +86,27 @@ export const configureModalEn: ConfigureModalTranslations = {
     commaSeparatedHint: 'Comma-separated values',
     autoTrainingInProgress: 'Training in progress... {progress}%',
     autoTrainingDone: 'Training completed and saved.',
+    trainingLearnedFrom: 'Keywords learned from {count} sample messages.',
+    multilingualRetrainHint:
+      'Non-English channel? Run Train channel after linking so the copier learns buy/sell/SL/TP words. If Copier Logs show skipped signals, re-train here.',
   },
   channelSymbols: {
-    title: 'Symbols to trade',
+    title: 'Symbol mapping',
     intro:
-      'We detect instruments from this channel’s recent signals. Choose which ones this broker should copy. When all are selected, every detected symbol is traded.',
-    refresh: 'Refresh analysis',
-    refreshing: 'Analyzing…',
-    loading: 'Loading symbols from recent signals…',
-    empty:
-      'No symbols detected yet. Connect Telegram, wait for signals on this channel, then refresh.',
-    selectAll: 'Select all',
-    clearAll: 'Clear all',
-    selectedCount: '{count} of {total} selected',
-    tradeAllHint: 'All detected symbols will be copied.',
-    staleSymbolNote: 'Saved but not seen in recent signals: {symbols}',
-    signalsCount: 'Based on {count} recent messages',
+      'Match signal symbols to your broker’s instrument names. Add a prefix or suffix if your broker uses different codes (e.g. XAUUSD+). Unmapped symbols still use automatic broker matching.',
+    prefixLabel: 'Symbol prefix',
+    prefixHint: 'Prepended to every signal symbol before placing orders (e.g. # for #XAUUSD).',
+    suffixLabel: 'Symbol suffix',
+    suffixHint: 'Appended to every signal symbol (e.g. + for XAUUSD+). Leave blank if names match the signal.',
+    example: 'Example: XAUUSD with suffix + → orders on XAUUSD+',
+    tradeOnlyLabel: 'Symbols to trade',
+    tradeOnlyHint:
+      'Leave empty to copy every symbol from this channel. When listed, only signals matching these symbols are copied (comma-separated, e.g. XAUUSD, EURUSD).',
+    tradeOnlyPlaceholder: 'e.g. XAUUSD, EURUSD',
+    avoidLabel: 'Symbols to avoid',
+    avoidHint:
+      'Leave empty to allow all symbols (subject to Symbols to trade). Listed symbols are never copied from this channel.',
+    avoidPlaceholder: 'e.g. BTCUSD, US30',
   },
   ai: {
     title: 'AI configuration',
@@ -120,9 +126,14 @@ export const configureModalEn: ConfigureModalTranslations = {
     riskMode: 'Risk Mode',
     fixedLot: 'Fixed Lot',
     dynamicBalance: 'Dynamic (% Balance)',
+    dynamicBalanceLotSize: 'Lot size for this signal',
+    dynamicBalanceLotSizeHint: '{lot} lots from {percent}% of {balance} balance',
+    dynamicBalanceLotSizeFallback: '{lot} lots (using fixed-lot fallback — account balance not loaded)',
     tradeStyle: 'Trade Style',
-    singleTrade: 'Single Trade',
-    multiTrades: 'Multi Trades',
+    tradeStyleHint:
+      'Single Entry: one order at your full configured lot. Range Trading: splits that lot into many smaller orders across the signal\'s take-profit levels.',
+    singleTrade: 'Single Entry',
+    multiTrades: 'Range Trading',
     singleTpTarget: 'Single TP target',
     singleTpTargetHint:
       'Choose which TP the broker order should target in Single Trade mode. Earlier TP levels can still trigger partial closes based on your TP distribution.',
@@ -134,39 +145,121 @@ export const configureModalEn: ConfigureModalTranslations = {
     signalEntryBody:
       'Use Signal Entry Price applies only in Single Trade mode. When enabled, the signal must include an explicit parsed entry (price, zone, @ price, or labels like "Entry Price:"). After any channel delay, the worker compares the live quote to that entry: Buy fills at market only when ask is at or below the entry; otherwise it places a buy limit at the entry. Sell is the inverse. The broker take-profit targets the last parsed TP when you have several targets, with optional partial closes from your TP ladder. Copier tracks each strict-entry pending so fills sync to your trade list; pendings are cancelled when the basket is flat. Bare "buy now" messages with no entry are skipped.',
     useSignalEntryPrice: 'Use Signal Entry Price',
-    pipToleranceLegacy: 'Pip tolerance (legacy)',
+    pipToleranceLegacy: 'Pip tolerance',
     pipToleranceHint:
-      'Unused for strict entry routing; kept for backward compatibility with saved settings.',
+      'Allowed distance from the signal entry level before entry is deferred (single trade strict entry and range signal range).',
     multiIntro:
-      'Multi Trades splits your fixed lot into many smaller orders (e.g. 1.0 lot @ 5%/leg = 20 trades of 0.05). Legs are distributed across the signal\'s TPs using the percent rows below. If the per-leg size falls below the broker\'s symbol minimum, the planner falls back to a single full-size trade and logs the reason.',
+      'Range Trading splits your fixed lot into many smaller orders (e.g. 1.0 lot @ 5%/leg = 20 trades of 0.05). Legs are distributed across the signal\'s TPs using the percent rows below. If the per-leg size falls below the broker\'s symbol minimum, the planner falls back to a single full-size trade and logs the reason.',
     perLegSize: 'Per-leg size (% of fixed lot)',
     totalOpenTrades: 'Total Open Trades',
-    previewFallbackSingle: '1 (split not possible at 0.01 min / 0.01 step preview)',
-    previewInstantPending: '{total} ({immediate} instant + {pending} for layering)',
+    previewFallbackSingle: '{lot} lots x 1 trade (split not possible at 0.01 min / 0.01 step preview)',
+    multiTradeSplitSaveBlocked:
+      'Cannot save: split not possible at 0.01 min / 0.01 step preview. Increase lot size or per-leg %.',
+    previewLotsXTrades: '{lot} lots x {total} trades',
+    previewLotsXTradesLayered: '{lot} lots x {total} trades ({immediate} instant + {pending} for layering)',
     previewFooter:
-      'Estimated from Fixed Lot and per-leg %. Live execution uses the symbol\'s min lot and step (may differ slightly). Capped at 500 orders per signal. Telegram-reported lots on each signal do not resize multi-trade baskets—they always split your Fixed Lot.',
+      'How many trades the copier plans to open for one signal. Based on your configured lot size and per-leg size. Your broker may open fewer if the market did not cover the zone during layering.',
     previewDynamicRisk:
-      ' With Dynamic (% Balance) risk, the resolved lot at runtime can differ from Fixed Lot.',
+      ' Lot size is computed from your account balance and Dynamic (% Balance) percent.',
     previewLadderSpan:
-      ' Ladder span = {pending} × {step}p = {distance}p (configured distance {configured}p is advisory).',
-    previewCweLegs: ' {count} instant leg(s) close at +{pips}p from anchor.',
+      ' Range Layering: {active} order(s) at {step}-pip steps (ladder spans up to {distance} pips from entry).',
+    previewLadderDistanceCap:
+      ' Range distance caps layering to {active} of {pending} orders reserved by %.',
+    previewCweLegs:
+      ' {count} trade(s) open right away and may close when price moves {pips} pips in your favor.',
     rangeLayering: 'Range Layering',
     rangeIntro:
-      'Reserve a share of the planned legs as pending Limit orders stepped away from the live anchor by a fixed pip interval (averaging-down). When the signal carries no entry price, the worker fetches a live /Quote bid/ask and anchors the ladder there. Stop-loss and TP distribution mirror the immediate legs. If distance ÷ step caps the count, the effective pending total is reduced.',
+      'Set some trades as virtual pending orders spaced at intervals from the starting price (averaging down). If there is no specific entry price given, use the current live market price (bid/ask) as the starting point. All pending orders copy the Stop-Loss and Take-Profit settings of your immediate trades.',
     reservedLot: 'Reserved lot (% of total)',
     reservedLotHint: 'Share of total legs reserved as pendings.',
     stepPips: 'Step (pips per layering)',
     stepPipsFallback: 'Pips between pendings.',
-    rangeDistance: 'Range distance (pips from entry)',
+    rangeDistance: 'Range distance (pips)',
     rangeDistanceFallback:
-      'Advisory target span. Actual ladder reach = pending count × step (Total Open Trades is not capped by this).',
+      'The distance of the range provided by your signal provider. This determines how far the trade is layered.',
+    layerTillClose: 'Layer till close',
+    layerTillCloseBody:
+      'On: range pending orders keep opening until the whole trade is closed, even if price pulls back after a take-profit or close-worse-entries. Off: pending orders are cancelled after the first take-profit or when any order closes, so no deeper orders open on a reversal.',
+    useSignalRange: 'Trade Signal Range Only',
+    useSignalRangeBody:
+      'When on, the signal must include a parsed entry price or zone (e.g. 4505, 4505/4500, or @ 4505). Bare "buy now" messages with no price are skipped and shown as waiting for a price range. Unlike Use Signal Entry Price, no broker pending order is placed — the copier waits virtually and opens when live price is anywhere inside the signal entry zone, with pip tolerance extending slightly beyond both bounds. Layering depth still comes from the signal entry zone when present.',
+    useSignalRangePipTolerance: 'Pip tolerance',
+    useSignalRangePipToleranceHint:
+      'Extra pips beyond the zone bounds (both sides) within which entry may still trigger. Single-price signals use tolerance above (buy) or below (sell) the entry level.',
+    useSignalRangeDistanceDisabledHint:
+      'Depth is taken from the signal entry zone when the signal includes one.',
+    previewSignalRangeFootnote:
+      ' With Trade Signal Range Only on, entry waits until price is inside the signal zone (± tolerance on both bounds).',
     closeWorseEntries: 'Close worse entries',
     closeWorseBody:
-      'When price reaches +X pips from the signal entry (anchor), the worker auto-closes instant legs via /OrderClose. A channel message such as "Close worse entries" closes every open leg whose entry is within X pips of the live price at that moment (e.g. instant fills near the signal, not deep layers). No broker TP is set on CWE legs — only the SL rides on the broker.',
+      'When the price moves +X pips in your favor from the starting entry, the system automatically closes your immediate trades. When a "Close worse entries" message is enabled and triggered, the system closes any open trade that is within X pips of the current market price. Trades affected by "Close worse entries" do not have a Take-Profit (TP) set on the broker\'s side. Only the Stop-Loss (SL) is sent to the broker.',
     closeWorsePips: 'Close profits from worse entry (pips)',
     closeWorsePipsFallback: 'Distance from live price (instruction) or anchor + X pips (auto).',
     basicPlanTradeStyleLimit:
       'Only Single trade mode allowed. Multi-Trade and Range Layering settings are available on the Advanced plan.',
+    openLotCalculator: 'Calculate risk / lot size',
+    lotCalculator: {
+      title: 'Risk & lot size calculator',
+      intro:
+        'Estimate how much you risk per signal and what you could earn at your take-profit levels. Adjust inputs until the risk fits your account, then apply to this channel.',
+      accountBalance: 'Starting account balance',
+      symbol: 'Symbol',
+      symbolHint: 'Used for pip value estimates. Defaults from Symbol to Trade when set.',
+      slPips: 'Stop loss (pips)',
+      usePredefinedSl: 'Use as Predefined SL',
+      usePredefinedTp: 'Use as Predefined TP',
+      tpLevelsTitle: 'Take-profit levels',
+      tpLevelsHint:
+        'Pips = distance from entry for each TP. % target = share of volume (single) or legs (multi) closed at that TP.',
+      tpPipsCol: 'Pips',
+      tpPercentCol: '% target',
+      tpLabel: 'TP{index}',
+      tpPercentTotal: 'Enabled total',
+      tpUnallocated: '{pct}% unallocated',
+      tpOverCap: 'Total exceeds 100%',
+      addTp: 'Add TP',
+      remove: 'Remove',
+      tradeStyle: 'Trade style',
+      singleTrade: 'Single entry',
+      multiTrades: 'Range trading (multi)',
+      perLegSize: 'Per-leg size (% of fixed lot)',
+      rangeLayering: 'Range layering',
+      rangePercent: 'Reserved lot (% of legs)',
+      rangeStep: 'Step (pips)',
+      rangeDistance: 'Range distance (pips)',
+      fixedLot: 'Fixed lot',
+      targetRiskPct: 'Target risk (% of balance)',
+      targetRiskHint: 'Optional — suggests a lot size that stays near this risk per signal (worst case).',
+      useSuggestedLot: 'Use suggested lot',
+      enabled: 'On',
+      advanced: 'Advanced',
+      winRate: 'Assumed win rate (%)',
+      winRateHint:
+        'Optional. Estimates probability of ruin using your computed reward:risk and a fixed risk per signal. Not a guarantee.',
+      resultsTitle: 'Results',
+      riskFull: 'Risk if SL hit (full basket)',
+      riskImmediate: 'Risk if SL hit (immediate legs only)',
+      riskPct: 'Risk % of balance',
+      rewardTotal: 'Best-case reward (all TPs)',
+      rewardRiskRatio: 'Reward : risk',
+      legSummary: 'Leg breakdown',
+      legSummarySingle: '1 order at {lot} lots',
+      legSummaryMulti: '{total} orders × {lot} lots ({immediate} immediate + {pending} pending)',
+      legSummaryRange: 'Ladder span ~{distance} pips ({pending} pending × {step} pips)',
+      lossesToRuin: 'Consecutive full-SL hits to wipe account',
+      riskOfRuin: 'Estimated risk of ruin',
+      perTpReward: 'Reward by TP (pips × % target)',
+      brokerPreviewNote:
+        'Leg counts use 0.01 min lot / 0.01 step preview defaults. Your broker symbol settings may differ slightly.',
+      fallbackSingleNote:
+        'Per-leg size is below broker minimum — copier would open a single full-size trade instead.',
+      riskWarningModerate: 'Above 1% risk per signal — consider reducing lot size.',
+      riskWarningHigh: 'Above 2% risk per signal — high drawdown risk.',
+      riskWarningExtreme: 'Above 5% risk per signal — dangerous for most accounts.',
+      apply: 'Apply settings',
+      cancel: 'Cancel',
+      close: 'Close',
+    },
   },
   stops: {
     predefinedTitle: 'Predefined SL & TP',
@@ -184,7 +277,7 @@ export const configureModalEn: ConfigureModalTranslations = {
     tpDistributionIntro:
       'Set each enabled TP\'s share manually. The total across enabled rows cannot exceed 100% — any input is capped to the remaining budget. Disabled rows are pinned at 0%.',
     multiTradeNote:
-      'Multi-trade: distributes the planned legs across TPs by these percentages (e.g. 50/30/20 of 20 legs → 10/6/4 at TP1/TP2/TP3).',
+      'Range Trading: distributes the planned legs across TPs by these percentages (e.g. 50/30/20 of 20 legs → 10/6/4 at TP1/TP2/TP3).',
     singleTradeNote:
       'Single-trade: the order rides to the last enabled TP at the broker; the worker auto-partial-closes the configured percentage at every earlier TP (e.g. 50/30/20 on a 1.0 lot → close 0.50 at TP1, 0.30 at TP2, remaining 0.20 closes at TP3 via the broker).',
     enabledTotal: 'Enabled total:',
@@ -198,6 +291,33 @@ export const configureModalEn: ConfigureModalTranslations = {
     summaryJoin: '; ',
     summaryPrefix: 'Channel SL/TP are ignored for enabled sides — copier uses {parts}.',
     basicPlanMoreTpsLimit: 'More TPs are available on the Advanced plan.',
+    profitTargetsTitle: 'Profit targets',
+    profitTargetsIntro:
+      'When enabled, reaching a target closes all open channel trades automatically and stops the copier from processing further instructions until the period resets. Amount targets use account equity change from the period start (e.g. $1,000 closes when equity is up $1,000).',
+    profitTargetsToggle: 'Enable profit targets',
+    maxRiskTitle: 'Maximum Loss',
+    maxRiskIntro:
+      'When account equity falls by your loss limit from the period start (or drawdown from the period peak for percent rules), all open channel trades are closed automatically and the copier stops processing further instructions until the period resets.',
+    maxRiskToggle: 'Enable maximum loss',
+    addTarget: 'Add target',
+    addRiskRule: 'Add loss limit',
+    riskValue: 'Loss limit',
+    periodDaily: 'Daily',
+    periodWeekly: 'Weekly',
+    periodMonthly: 'Monthly',
+    periodOverall: 'Overall',
+    valueTypeAmount: 'Amount ($)',
+    valueTypePercent: 'Percent (%)',
+    targetValue: 'Target value',
+    periodLabel: 'Period',
+    typeLabel: 'Type',
+    timezoneTitle: 'Period timezone',
+    timezoneProfile: 'Use my profile timezone ({tz})',
+    timezoneCustom: 'Custom timezone',
+    timezoneHint: 'Daily, weekly, and monthly limits reset at midnight in this timezone.',
+    pausedProfitBanner: 'Profit target reached — channel trades were closed and copying is paused until the period resets.',
+    pausedRiskBanner: 'Maximum loss reached — channel trades were closed and copying is paused until the period resets.',
+    pausedOverallBanner: 'Limit reached — channel trades were closed and copying stays paused until you change or disable this rule.',
   },
   management: {
     monitorIntroMulti:
@@ -255,6 +375,9 @@ export const configureModalEn: ConfigureModalTranslations = {
     ruleBreakevenOffset: 'entry + {offset} pip(s)',
     ruleBreakevenTrue: 'entry (true breakeven)',
     ruleTriggerTpHit: 'when TP{index} is reached',
+    orderCommentsTitle: 'Order comments',
+    orderCommentsSubtitle:
+      'When off, TScopier leaves the broker order comment field empty for trades it opens or refreshes.',
   },
   filters: {
     timeTitle: 'Time filter',
@@ -395,5 +518,9 @@ export const configureModalEn: ConfigureModalTranslations = {
   common: {
     yes: 'Yes',
     no: 'No',
+  },
+  riskDisclaimer: {
+    warning: 'Warning! Your capital is at risk. Only copy signal providers you trust.',
+    fullLink: 'See full risk disclaimer',
   },
 }

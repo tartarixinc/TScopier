@@ -2,6 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   DEFAULT_CHANNEL_KEYWORDS,
+  normalizeChannelKeywords,
   parseChannelMessageSync,
   type ChannelLexiconRow,
 } from './parseSignal'
@@ -32,6 +33,20 @@ describe('parseChannelMessageSync', () => {
     const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
     assert.equal(result.status, 'parsed')
     assert.equal(result.parsed.action, 'close')
+  })
+
+  it('skips conditional close suggestion (if happy close now)', () => {
+    const msg = 'If you are happy, close now'
+    const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+    assert.equal(result.status, 'skipped')
+    assert.equal(result.parsed.action, 'ignore')
+  })
+
+  it('skips conditional close suggestion (close if satisfied)', () => {
+    const msg = 'Close if you are satisfied'
+    const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+    assert.equal(result.status, 'skipped')
+    assert.equal(result.parsed.action, 'ignore')
   })
 
   it('parses standard market entry (SIGNALS PRO / SIGNALS 2 style)', () => {
@@ -79,6 +94,26 @@ describe('parseChannelMessageSync', () => {
     assert.equal(result.status, 'parsed')
     assert.equal(result.parsed.action, 'breakeven')
     assert.equal(result.parsed.symbol, 'XAUUSD')
+  })
+
+  it('parses stretched breakeven hype text', () => {
+    const result = parseChannelMessageSync(
+      'Set breakevennnnnnnn',
+      DEFAULT_CHANNEL_KEYWORDS,
+      lexicon,
+    )
+    assert.equal(result.status, 'parsed')
+    assert.equal(result.parsed.action, 'breakeven')
+  })
+
+  it('parses breakevennn noowwwww as breakeven', () => {
+    const result = parseChannelMessageSync(
+      'breakevennn noowwwww',
+      DEFAULT_CHANNEL_KEYWORDS,
+      lexicon,
+    )
+    assert.equal(result.status, 'parsed')
+    assert.equal(result.parsed.action, 'breakeven')
   })
 
   it('skips buy/sell without SL, TP, or NOW', () => {
@@ -197,6 +232,76 @@ SL: 4577`
     assert.deepEqual(result.parsed.tp, [4564, 4527])
   })
 
+  it('parses gold sell now entry zone with SL, TPs, and TP open runner', () => {
+    const msg = `Gold sell now 4292 - 4295
+
+SL: 4299
+
+TP: 4290
+TP: 4288
+TP: 4286
+TP: open`
+    const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+    assert.equal(result.status, 'parsed')
+    assert.equal(result.parsed.action, 'sell')
+    assert.equal(result.parsed.symbol, 'XAUUSD')
+    assert.equal(result.parsed.entry_zone_low, 4292)
+    assert.equal(result.parsed.entry_zone_high, 4295)
+    assert.equal(result.parsed.entry_price, null)
+    assert.equal(result.parsed.sl, 4299)
+    assert.deepEqual(result.parsed.tp, [4290, 4288, 4286])
+    assert.equal(result.parsed.open_tp, true)
+  })
+
+  it('parses GTMO VIP re-entry with custom channel keywords (tp: open must not flip sell)', () => {
+    const gtmoKeywords = normalizeChannelKeywords({
+      signal: {
+        sl: 'sl: 4180',
+        tp: 'tp: open|tp: 4467',
+        buy: 'gold buy now',
+        sell: 'gold sell now|tp: open|all tp‘s doneeeee',
+        entry_point: 'gold buy now|gold sell now',
+      },
+      additional: { delimiters: '|', ai_signal_requires_price: true },
+    })
+    const msg = `Gold buy now re-entry 4213 - 4210
+
+SL: 4207
+
+TP: 4215
+TP: 4217
+TP: 4219
+TP: open`
+    const result = parseChannelMessageSync(msg, gtmoKeywords, lexicon)
+    assert.equal(result.status, 'parsed')
+    assert.equal(result.parsed.action, 'buy')
+    assert.equal(result.parsed.re_enter, true)
+    assert.equal(result.parsed.entry_zone_low, 4210)
+    assert.equal(result.parsed.entry_zone_high, 4213)
+    assert.equal(result.parsed.sl, 4207)
+    assert.deepEqual(result.parsed.tp, [4215, 4217, 4219])
+    assert.equal(result.parsed.open_tp, true)
+  })
+
+  it('parses gold buy now entry zone with decimal prices (GTMO VIP format)', () => {
+    const msg = `Gold buy now 4465.2 - 4462
+
+SL: 4458
+
+TP: 4467
+TP: 4469
+TP: 4471
+TP: open`
+    const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+    assert.equal(result.status, 'parsed')
+    assert.equal(result.parsed.action, 'buy')
+    assert.equal(result.parsed.entry_zone_low, 4462)
+    assert.equal(result.parsed.entry_zone_high, 4465.2)
+    assert.equal(result.parsed.sl, 4458)
+    assert.deepEqual(result.parsed.tp, [4467, 4469, 4471])
+    assert.equal(result.parsed.open_tp, true)
+  })
+
   it('parses Trading Central partial close (secure 30% profits)', () => {
     const msg = `First take profit target is hit , which gives us +30 pips
 Make sure to secure 30% profits by closing partial lotsize`
@@ -219,6 +324,25 @@ Make sure to secure 30% profits by closing partial lotsize`
     assert.equal(result.status, 'parsed')
     assert.equal(result.parsed.action, 'modify')
     assert.equal(result.parsed.sl, 4505)
+  })
+
+  it('parses stop-loss adjust phrasing variants (risk, stop loss, stoploss)', () => {
+    const cases = [
+      'Adjust Risk to 4505',
+      'Adjust Stop Loss to 4505',
+      'Adjust Stoploss to 4505',
+      'Adjust SL + 15pips to 4505',
+      'Move risk to 4505',
+      'Change stop loss to 4505',
+      'Update stoploss to 4505',
+      'Set risk to 4505',
+    ]
+    for (const msg of cases) {
+      const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+      assert.equal(result.status, 'parsed', msg)
+      assert.equal(result.parsed.action, 'modify', msg)
+      assert.equal(result.parsed.sl, 4505, msg)
+    }
   })
 
   it('skips commentary "short of TP2" chatter with gold mention', () => {
@@ -265,6 +389,17 @@ My private community, receives more trades, for free as well, but receive it bef
     assert.deepEqual(result.parsed.tp, [4535.53])
   })
 
+  it('skips profit testimonial that mentions past gold buy', () => {
+    const msg = `**INSANE RESULT** 🔥
+
+**Darryl** from **the UK **🇬🇧 took my **GOLD BUY** from today and made** £1110** **PROFIT!** 💰
+
+**Truly amazing to see ❤️**🔥`
+    const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+    assert.equal(result.status, 'skipped')
+    assert.equal(result.parsed.action, 'ignore')
+  })
+
   it('skips weekend watch commentary with gold and colloquial buy', () => {
     const msg = `Before I leave you for the weekend... a bit of insider scoop
 
@@ -273,6 +408,32 @@ Major watch brands (Patek/Rolex etc) have just announced a surprise price rise o
 They buy. We buy.
 
 Have a great weekend.`
+    const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+    assert.equal(result.status, 'skipped')
+    assert.equal(result.parsed.action, 'ignore')
+  })
+
+  it('skips FX Culture-style market news update with gold and CPI prose', () => {
+    const msg = `📰 Market News Update: Gold Plummets 3% Toward as In-Line CPI Fails to Alter Fed's Hiking Path
+
+📊 Gold Plunge & Key Tech Levels
+
+- Gold (XAU/USD) collapsed over 3.0% on Wednesday, crashing to around $4,125 and carving out fresh 11-week lows.
+
+- The Bureau of Labor Statistics reported that headline CPI accelerated to 4.2% YoY in May, marking its highest level since April 2023.
+
+- President Donald Trump warned that Iran had "taken too long to negotiate a deal" and would now "have to pay the price."
+
+- This pushed the US Dollar Index (DXY) right back to its cyclical highs over the bullion market.
+
+🚀 Stay sharp, traders!`
+    const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+    assert.equal(result.status, 'skipped')
+    assert.equal(result.parsed.action, 'ignore')
+  })
+
+  it('does not parse too long to negotiate as buy side without trade structure', () => {
+    const msg = 'Gold discussion: Iran had taken too long to negotiate a deal over the bullion market.'
     const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
     assert.equal(result.status, 'skipped')
     assert.equal(result.parsed.action, 'ignore')
@@ -306,5 +467,166 @@ Have a great weekend.`
     assert.equal(result.parsed.entry_price, 4500)
     assert.equal(result.parsed.sl, 4488)
     assert.deepEqual(result.parsed.tp, [4520])
+  })
+
+  it('parses BTC/ETH channel template: SYMBOL BUY, ENTRY zone slash, SL, TPn without colon', () => {
+    const msg = `XAUUSD BUY
+
+ENTRY: 4335 / 4325
+
+SL: 4320
+
+TP1 4340
+
+TP2 4345
+
+TP3 4350
+
+TP4 4355
+
+TP5 4360
+
+Risk only 1-2% of your balance.`
+    const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+    assert.equal(result.status, 'parsed')
+    assert.equal(result.parsed.action, 'buy')
+    assert.equal(result.parsed.symbol, 'XAUUSD')
+    assert.equal(result.parsed.entry_price, null)
+    assert.equal(result.parsed.entry_zone_low, 4325)
+    assert.equal(result.parsed.entry_zone_high, 4335)
+    assert.equal(result.parsed.sl, 4320)
+    assert.deepEqual(result.parsed.tp, [4340, 4345, 4350, 4355, 4360])
+  })
+
+  it('parses ENTRY zone slash template without SL line when TP tiers are space-separated', () => {
+    const msg = `XAUUSD BUY
+
+ENTRY: 4335 / 4325
+
+TP1 4340
+
+TP2 4345`
+    const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+    assert.equal(result.status, 'parsed')
+    assert.equal(result.parsed.action, 'buy')
+    assert.equal(result.parsed.entry_zone_low, 4325)
+    assert.equal(result.parsed.entry_zone_high, 4335)
+    assert.deepEqual(result.parsed.tp, [4340, 4345])
+  })
+
+  it('parses Spanish COMPRA with configured channel keywords', () => {
+    const keywords = {
+      ...DEFAULT_CHANNEL_KEYWORDS,
+      signal: {
+        ...DEFAULT_CHANNEL_KEYWORDS.signal,
+        buy: 'COMPRA|COMPRAR',
+        sell: 'VENTA|VENDER',
+      },
+    }
+    const msg = 'COMPRA XAUUSD @ 2650 SL 2640 TP 2670'
+    const result = parseChannelMessageSync(msg, keywords, lexicon)
+    assert.equal(result.status, 'parsed')
+    assert.equal(result.parsed.action, 'buy')
+    assert.equal(result.parsed.symbol, 'XAUUSD')
+    assert.equal(result.parsed.sl, 2640)
+    assert.deepEqual(result.parsed.tp, [2670])
+  })
+
+  it('parses Russian sell via lexicon action_aliases', () => {
+    const msg = 'ПРОДАЖА EURUSD SL 1.0950 TP 1.0900'
+    const ruLexicon: ChannelLexiconRow = {
+      user_id: 'u',
+      channel_id: 'c',
+      action_aliases: { buy: [], sell: ['продажа', 'продать'], modify: [] },
+    }
+    const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, ruLexicon)
+    assert.equal(result.status, 'parsed')
+    assert.equal(result.parsed.action, 'sell')
+    assert.equal(result.parsed.symbol, 'EURUSD')
+  })
+
+  it('parses Polish KUPNO with channel buy keyword', () => {
+    const keywords = {
+      ...DEFAULT_CHANNEL_KEYWORDS,
+      signal: { ...DEFAULT_CHANNEL_KEYWORDS.signal, buy: 'KUPNO|KUPIC' },
+    }
+    const msg = 'KUPNO GOLD SL 2650 TP 2700'
+    const result = parseChannelMessageSync(msg, keywords, lexicon)
+    assert.equal(result.status, 'parsed')
+    assert.equal(result.parsed.action, 'buy')
+    assert.equal(result.parsed.symbol, 'XAUUSD')
+  })
+
+  it('parses French ACHAT IMMÉDIAT gold teaser without channel training', () => {
+    const msg = '📈 SIGNAL OR (XAU/USD) – ACHAT IMMÉDIAT'
+    const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+    assert.equal(result.status, 'parsed')
+    assert.equal(result.parsed.action, 'buy')
+    assert.equal(result.parsed.symbol, 'XAUUSD')
+    assert.equal(result.parsed.sl, null)
+    assert.deepEqual(result.parsed.tp, [])
+  })
+
+  it('parses French FERMEZ TOUT MAINTENANT as close all', () => {
+    const msg = 'FERMEZ TOUT MAINTENANT'
+    const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+    assert.equal(result.status, 'parsed')
+    assert.equal(result.parsed.action, 'close')
+  })
+
+  it('parses FERMEZ TOUT when trained on channel close_all keywords', () => {
+    const keywords = {
+      ...DEFAULT_CHANNEL_KEYWORDS,
+      additional: {
+        ...DEFAULT_CHANNEL_KEYWORDS.additional,
+        close_all: 'FERMEZ TOUT|FERMER TOUT',
+        ai_management_keyword_groups: {
+          close_all: ['FERMEZ TOUT', 'FERMER TOUT'],
+          close_partial: [],
+          close_half: [],
+          break_even: [],
+          modify_sl: [],
+          modify_tp: [],
+          close_worse_entries: [],
+        },
+      },
+      update: {
+        ...DEFAULT_CHANNEL_KEYWORDS.update,
+        close_full: 'FERMEZ TOUT|FERMER TOUT',
+      },
+    }
+    const result = parseChannelMessageSync('FERMEZ TOUT MAINTENANT', keywords, lexicon)
+    assert.equal(result.status, 'parsed')
+    assert.equal(result.parsed.action, 'close')
+  })
+
+  it('parses FX Culture BUY TRADE with bare entry zone line and SL/TP', () => {
+    const msg = `BUY TRADE XAU/USD 
+
+4282.0-4287.0
+
+
+📍Stop Loss: 4265
+
+Target: 4365.0`
+    const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+    assert.equal(result.status, 'parsed')
+    assert.equal(result.parsed.action, 'buy')
+    assert.equal(result.parsed.symbol, 'XAUUSD')
+    assert.equal(result.parsed.entry_zone_low, 4282)
+    assert.equal(result.parsed.entry_zone_high, 4287)
+    assert.equal(result.parsed.sl, 4265)
+    assert.deepEqual(result.parsed.tp, [4365])
+  })
+
+  it('skips FX Culture FOMC trade recap commentary', () => {
+    const msg = `After the FOMC news, I waited around 30 minutes before taking any position.
+
+Gold started to show bullish structure after the initial move, so I took the buy and caught around a $25 /250 pips move higher.
+
+The key lesson here: wait for confirmation, execute clean, manage risk.`
+    const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+    assert.equal(result.status, 'skipped')
+    assert.equal(result.parsed.action, 'ignore')
   })
 })

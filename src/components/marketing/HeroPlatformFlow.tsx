@@ -17,7 +17,7 @@ function pulseDelay(pathFraction: number): number {
 
 const NODES = [
   { src: '/Telegram.svg', alt: 'Telegram', hub: false, className: 'hero-platform-flow__node--telegram' },
-  { src: '/tslogo-collapse.png', alt: 'TSCopier', hub: true, className: 'hero-platform-flow__node--hub' },
+  { src: '/tslogo-collapse.png', alt: 'TScopier', hub: true, className: 'hero-platform-flow__node--hub' },
   { src: '/MT5.png', alt: 'MetaTrader 5', hub: false, className: 'hero-platform-flow__node--broker' },
 ] as const
 
@@ -123,7 +123,7 @@ export function HeroPlatformFlow() {
       ref={containerRef}
       className="hero-platform-flow"
       role="img"
-      aria-label="Signals flow from Telegram through TSCopier to MetaTrader 5"
+      aria-label="Signals flow from Telegram through TScopier to MetaTrader 5"
       style={
         geometry
           ? ({

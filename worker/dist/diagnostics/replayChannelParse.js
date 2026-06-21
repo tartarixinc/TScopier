@@ -11,7 +11,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
  */
 const supabase_js_1 = require("@supabase/supabase-js");
 const parseSignal_1 = require("../parseSignal");
-const tradableSymbol_1 = require("../tradableSymbol");
+const signalTradingHeuristic_1 = require("../signalTradingHeuristic");
 function parseArgs(argv) {
     let channelId = '';
     let message = '';
@@ -42,25 +42,6 @@ function parseArgs(argv) {
     }
     return { channelId, message, telethonHeuristic };
 }
-/** Mirrors telegram-listener/app/signal_heuristic.py (TS-aligned scoring). */
-function looksLikeTradingSignalTs(text, isReply = false) {
-    const normalized = text.toLowerCase().replace(/\s+/g, ' ').trim();
-    if (!normalized)
-        return false;
-    const hasInstrument = (0, tradableSymbol_1.hasTradableInstrumentInText)(text);
-    const hasDirectionOrAction = /\b(buy|sell|long|short|close|tp|take profit|sl|stop loss|breakeven|be)\b/.test(normalized);
-    const hasPriceContext = /\b\d{1,5}(?:\.\d{1,5})\b/.test(normalized) ||
-        /\b(entry|zone|between|above|below|now)\b/.test(normalized);
-    const hasTradeStructure = /\b(tp\s*\d*|sl|entry|signal|setup)\b/.test(normalized);
-    if (isReply && /\b(move|set|update|adjust|tp|sl|breakeven|be|close)\b/.test(normalized)) {
-        return true;
-    }
-    const score = Number(hasDirectionOrAction) +
-        Number(hasInstrument) +
-        Number(hasPriceContext) +
-        Number(hasTradeStructure);
-    return score >= 2;
-}
 async function main() {
     const { channelId, message, telethonHeuristic } = parseArgs(process.argv);
     const url = String(process.env.SUPABASE_URL ?? '').trim();
@@ -84,7 +65,7 @@ async function main() {
         channel_id: channelId,
         channel_name: channelRow?.display_name ?? null,
         message_preview: message.length > 120 ? `${message.slice(0, 120)}…` : message,
-        heuristic_ts: looksLikeTradingSignalTs(message),
+        heuristic_ts: (0, signalTradingHeuristic_1.looksLikeTradingSignal)(message, false, { keywords, lexicon }),
         parse: result,
     };
     if (telethonHeuristic) {

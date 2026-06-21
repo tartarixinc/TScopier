@@ -68,15 +68,19 @@ export function parseSummary(raw: unknown): BacktestSummary | null {
   return null
 }
 
-/** Hide raw Massive/Polygon trace rate-limit blobs in the UI. */
+/** Hide raw API trace blobs in the UI. */
 export function sanitizeBacktestUserError(raw: string, rateLimitMessage?: string): string {
   const t = String(raw ?? '').trim()
   if (!t) return ''
   if (/rate limit exceeded for trace/i.test(t)) {
     return (
       rateLimitMessage
-      ?? 'Market data rate limit — wait about a minute and run again, or set MASSIVE_CALLS_PER_MINUTE to 2–3 in Supabase edge secrets.'
+      ?? 'Market data request failed — wait a moment and run again.'
     )
+  }
+  if (/Connect an MT5 broker/i.test(t)) return t
+  if (/MRPC_TIMEOUT|CopyRates failed/i.test(t)) {
+    return 'Broker history unavailable — ensure your broker is connected and the symbol is listed.'
   }
   return t.replace(/\s*·\s*Rate limit exceeded for trace [a-f0-9]+\.?\s*Retry after \d+ms\.?/gi, '').trim() || t
 }

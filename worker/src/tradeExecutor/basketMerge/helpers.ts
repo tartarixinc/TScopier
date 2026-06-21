@@ -1,150 +1,17 @@
-import { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js'
-import {
-  getMetatraderApi,
-  hasMetatraderApiConfigured,
-  isBrokerDisconnectedMessage,
-  MT_SESSION_EXPIRED_HINT,
-  mtPlatformFrom,
-  MetatraderApiClient,
-  MtOperation,
-  normalizeSymbolParams,
-  OrderSendArgs,
-  SymbolParams,
-} from '../../metatraderapi'
-import {
-  clampPendingExpiryHours,
-  computeCwOverrideTp,
-  parsedHasExplicitEntryAnchor,
-  planManualOrders,
-  resolvedParsedEntryPrice,
-  resolvedParsedEntryZone,
-  signalEntryPriceStrictEnabled,
-  SKIP_REASON_SIGNAL_ENTRY_REQUIRED,
-  strictSignalEntryQuoteAllowsImmediate,
-  lastPositiveParsedTpPrice,
-  type ChannelKeywords,
-  type ManualSettings,
-  type ParsedSignal as PlannerParsedSignal,
-  type PlannerPartialTp,
-  type PlannerResult,
-  type VirtualPendingLeg,
-} from '../../manualPlanner'
-import { normalizeManualSettingsForExecution } from '../../manualPlanning/normalizeManualSettings'
-import { findActiveNewsBlackout } from '../../newsTrading/blackout'
-import { getCalendarEventsCached } from '../../newsTrading/calendarProvider'
-import { isNewsTradingEnabled } from '../../newsTrading/settings'
-import { autoManagementTradeSnapshot } from '../../autoManagement'
-import {
-  referencePriceForDirection,
-  cweInstructionGroupKey,
-  parseCweInstructionGroupKey,
-  selectTradesForCweInstruction,
-} from '../../closeWorseEntries'
-import {
-  dispatchPriorityForAction,
-  isEntryAction,
-  isManagementAction,
-  parsedAction,
-  signalMatchesExecutorMode,
-} from '../../tradeSignalActions'
-import { workerConfig, userBelongsToShard } from '../../workerConfig'
-import { writeBrokerConnectionStatus } from '../../brokerConnectionStatus'
-import {
-  applyShardToQuery,
-  hasWorkOnShard,
-  monitorActiveIntervalMs,
-  monitorIdleIntervalMs,
-  startMonitorLoop,
-  type MonitorLoopHandle,
-} from '../../monitorIdleGate'
-import {
-  isChannelManagementBlocked,
-  isOppositeSignalCloseBlocked,
-  isPendingCancelBlocked,
-  normalizeChannelMessageFiltersMap,
-  type ChannelMessageFiltersMap,
-} from '../../channelMessageFilters'
-import { signalPipPrice } from '../../signalPip'
-import { trailingTradeRowSnapshot } from '../../trailingStop'
-import { isPostgresDuplicateKeyError } from '../../rangePendingLegPersist'
-import { cancelSignalEntryRowAtBroker, type SignalEntryPendingRow } from '../../signalEntryPendingHelpers'
-import {
-  computeBasketMergeLinkContext,
-  type BasketMergeLinkContext,
-  MERGE_IMPLICIT_CHANNEL_BUNDLE_MS,
-} from '../../signalMergeLink'
-import type { UserSessionManager } from '../../sessionManager'
-import {
-  buildPerLegStopTargets,
-  legacyMergeLinkingEnabled,
-  mergePlanImmediateOrders,
-  resolveLatestOpenBasketAnchor,
-  shouldRouteAsBasketParameterRefresh,
-  type MergeModifySummary,
-} from '../../multiTradeMerge'
-import { symbolsCompatibleForBasket } from '../../basketModFollowUp'
 import {
   classifyGhostBasketLegs,
   closeStaleOpenTrades,
-  fetchOpenBrokerTickets,
   fetchOpenBrokerTicketsStrict,
   GHOST_BASKET_CLOSED_USER_MESSAGE,
-  markBasketReconcileDone,
   markBasketReconcileDoneForAnchor,
-  runBasketLegModifies,
-  upsertBasketReconcileJob,
-  type BasketOpenLeg,
-  type BasketSymbolParams,
+  type BasketOpenLeg
 } from '../../basketSlTpReconcile'
-import { syncRangePendingLadderOnBasketRefresh } from '../../rangePendingLadderSync'
 import { loadExistingRangeStepIndices } from '../../rangePendingFireGuard'
-import { channelMatchesBrokerSignal } from '../../brokerChannelFilter'
-import { takeProfitForLegIndex } from '../../manualPlanning/tpBucketDistribution'
-import {
-  explicitMgmtSymbol,
-  isReplyScopedManagement,
-  loadOpenTradesForManagement,
-  resolveChannelModifyTargets,
-  type MgmtTradeRow,
-} from '../../managementScope'
-import {
-  applyChannelParamsToVirtualPendingList,
-  estimateBasketTotalPlannedLegs,
-  loadChannelActiveTradeParamsForSymbol,
-  mergeParsedWithChannelParams,
-  reapplyChannelParamsToPendingLegs,
-  parsedSignalHasExplicitStops,
-  shouldMergeChannelParamsForEntry,
-  stripInvalidStopsForSide,
-  symbolsForChannelParamsPersist,
-  upsertChannelActiveTradeParams,
-  type ChannelActiveTradeParams,
-} from '../../channelActiveTradeParams'
-import {
-  loadRangePendingLegsInMgmtScope,
-  pendingLegsToCancelScopes,
-  updateRangePendingLegsForManagement,
-} from '../../managementPendingLegs'
-import { parsePipelineTimestamps, pipelineSummaryPayload, type PipelineTimestamps } from '../../pipelineTimestamps'
-import {
-  buildTscopierCommentPrefix,
-  resolveChannelLabelForComment,
-  sanitizeChannelCommentSlug,
-} from '../../tradeComment'
-import { applyPostFillFollowUp, type PostFillTradeLeg } from '../../postFillFollowUp'
-import { isBenignOrderModifyError } from '../../orderModifyBenign'
-import { invalidateChannelParseCache } from '../../channelKeywordsCache'
-import type { TradeExecutorContext } from '../context'
-import type {
-  BrokerRow,
-  MergeOutcome,
-  ParsedSignal,
-  RangePendingCancelScope,
-  SignalRow,
-  SymbolCacheEntry,
-} from '../types'
-import { computeCweTp, roundLot, triggerPriceFor } from '../helpers'
-
+import { isPostgresDuplicateKeyError } from '../../rangePendingLegPersist'
+import { computeBasketMergeLinkContext, type BasketMergeLinkContext } from '../../signalMergeLink'
+import { symbolsCompatibleForBasket } from '../../basketModFollowUp'
+import { type TradeExecutorContext } from '../context'
+import { type BrokerRow, type ParsedSignal, type SignalRow } from '../types'
 
 export async function hasOpenTradeForSymbol(ctx: TradeExecutorContext, brokerId: string, symbol: string): Promise<boolean> {
     try {
@@ -311,7 +178,7 @@ export async function resolveBasketAnchorSignalIdForOpenTrades(ctx: TradeExecuto
       .limit(200)
 
     let cand = (openRows ?? []) as { signal_id: string; symbol: string }[]
-    if (symUp) cand = cand.filter(t => String(t.symbol ?? '').toUpperCase() === symUp)
+    if (symUp) cand = cand.filter(t => symbolsCompatibleForBasket(symUp, t.symbol))
     const candSigIds = [...new Set(cand.map(t => t.signal_id))]
     if (!candSigIds.length) return null
 

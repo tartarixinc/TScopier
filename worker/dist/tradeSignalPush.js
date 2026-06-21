@@ -5,6 +5,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.parseTradeWorkerShardUrls = parseTradeWorkerShardUrls;
 exports.pushParsedSignalToTradeWorker = pushParsedSignalToTradeWorker;
+exports.pushParsedSignalToTradeWorkerAccept = pushParsedSignalToTradeWorkerAccept;
 exports.pushParsedSignalToTradeWorkerAwait = pushParsedSignalToTradeWorkerAwait;
 exports.validateListenerTradeShardConfig = validateListenerTradeShardConfig;
 exports.validateListenerQueueConfig = validateListenerQueueConfig;
@@ -150,7 +151,7 @@ async function pushParsedSignalToTradeWorkerInner(row, opts) {
         return false;
     }
     const isMgmt = (0, tradeSignalActions_1.isManagementAction)(action ?? '');
-    const defaultTimeoutMs = isMgmt ? 2000 : 4000;
+    const defaultTimeoutMs = isMgmt ? 5000 : 4000;
     const timeoutMs = Math.max(500, Math.min(10000, Number(process.env.TRADE_SIGNAL_PUSH_TIMEOUT_MS ?? defaultTimeoutMs)));
     const dispatchSource = opts?.source ?? row.dispatch_source ?? 'listener_push';
     const url = `${baseUrl}/internal/dispatch-signal`;
@@ -167,8 +168,9 @@ async function pushParsedSignalToTradeWorkerInner(row, opts) {
         reply_to_message_id: row.reply_to_message_id ?? null,
         created_at: row.created_at,
         pipeline_ts: row.pipeline_ts,
+        revision_prior_action: row.revision_prior_action ?? null,
     };
-    await logPushAttemptToDb(row, 'success', {
+    void logPushAttemptToDb(row, 'success', {
         run_id: 'latency-v3',
         phase: 'start',
         action,
@@ -181,7 +183,7 @@ async function pushParsedSignalToTradeWorkerInner(row, opts) {
     for (let attempt = 1; attempt <= PUSH_MAX_ATTEMPTS; attempt++) {
         const attemptStartedAt = Date.now();
         const result = await postDispatchSignal(url, token, signalBody, priority, timeoutMs, opts?.awaitExecution === true, dispatchSource);
-        await logPushAttemptToDb(row, result.ok ? 'success' : 'failed', {
+        void logPushAttemptToDb(row, result.ok ? 'success' : 'failed', {
             run_id: 'latency-v3',
             phase: 'attempt',
             action,
@@ -206,15 +208,21 @@ async function pushParsedSignalToTradeWorkerInner(row, opts) {
     }
     return false;
 }
-/**
- * Fire-and-forget POST to trade worker with short retry on transient failures.
- */
-function pushParsedSignalToTradeWorker(row) {
-    void pushParsedSignalToTradeWorkerInner(row).catch(err => {
-        console.warn('[tradeSignalPush] push failed:', err instanceof Error ? err.message : err);
+/** Fire-and-forget push — listener must not block on trade completion. */
+function pushParsedSignalToTradeWorker(row, opts) {
+    void pushParsedSignalToTradeWorkerInner(row, {
+        awaitExecution: false,
+        source: opts?.source ?? row.dispatch_source,
     });
 }
-/** Awaitable push — used after signals row is persisted (durable handoff). */
+/** Awaitable push — worker accepts dispatch only; execution continues in-process (mgmt hot path). */
+async function pushParsedSignalToTradeWorkerAccept(row, opts) {
+    return pushParsedSignalToTradeWorkerInner(row, {
+        awaitExecution: false,
+        source: opts?.source ?? row.dispatch_source,
+    });
+}
+/** Await full handleSignal completion (queue consumer / diagnostics only). */
 async function pushParsedSignalToTradeWorkerAwait(row, opts) {
     return pushParsedSignalToTradeWorkerInner(row, {
         awaitExecution: true,

@@ -9,6 +9,7 @@ const planLimits_1 = require("./planLimits");
 Object.defineProperty(exports, "effectivePlan", { enumerable: true, get: function () { return planLimits_1.effectivePlan; } });
 Object.defineProperty(exports, "isSubscriptionActive", { enumerable: true, get: function () { return planLimits_1.isSubscriptionActive; } });
 Object.defineProperty(exports, "manualSettingsUseAdvancedFeatures", { enumerable: true, get: function () { return planLimits_1.manualSettingsUseAdvancedFeatures; } });
+const adminAccess_1 = require("./adminAccess");
 const CACHE_TTL_MS = 60000;
 const cache = new Map();
 const adminCache = new Map();
@@ -37,10 +38,10 @@ async function loadCachedUserIsAdmin(supabase, userId) {
     if (!isAdmin) {
         const { data, error } = await supabase
             .from('user_profiles')
-            .select('is_admin')
+            .select('is_admin, admin_until')
             .eq('user_id', userId)
             .maybeSingle();
-        if (!error && data?.is_admin === true)
+        if (!error && (0, adminAccess_1.isAdminAccessActive)(data))
             isAdmin = true;
     }
     if (!isAdmin) {

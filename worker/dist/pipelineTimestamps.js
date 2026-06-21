@@ -11,7 +11,7 @@ function parsePipelineTimestamps(raw) {
         return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
     };
     const ts = {
-        t_message_edit_received: n('t_message_edit_received'),
+        t_ai_parse_done: n('t_ai_parse_done'),
         t_telegram_event: n('t_telegram_event'),
         t_listener_received: n('t_listener_received'),
         t_parse_done: n('t_parse_done'),

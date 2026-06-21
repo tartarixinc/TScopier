@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { memo, useEffect, useRef, useState, type FormEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { AlertTriangle, RefreshCw, X } from 'lucide-react'
 import type { BrokerAccount } from '../../types/database'
+import { useOverlayDismiss } from '../../hooks/useOverlayDismiss'
 import { PasswordInput } from '../auth/PasswordInput'
 import { Button } from '../ui/Button'
 
@@ -28,27 +30,26 @@ interface BrokerReconnectPasswordModalProps {
   open: boolean
   broker: BrokerAccount | null
   copy: BrokerReconnectPasswordModalCopy
-  defaultRememberPassword?: boolean
   onSubmit: (payload: { password: string; rememberPassword: boolean }) => void
   onCancel: () => void
 }
 
-export function BrokerReconnectPasswordModal({
+function BrokerReconnectPasswordModalInner({
   open,
   broker,
   copy,
-  defaultRememberPassword = false,
   onSubmit,
   onCancel,
 }: BrokerReconnectPasswordModalProps) {
   const [password, setPassword] = useState('')
-  const [rememberPassword, setRememberPassword] = useState(defaultRememberPassword)
   const overlayRef = useRef<HTMLDivElement>(null)
+  const backdropRef = useRef<HTMLDivElement>(null)
+  const scrollLockRef = useRef<string | null>(null)
+  const { onOverlayMouseDown, onOverlayClick } = useOverlayDismiss(overlayRef, backdropRef, onCancel)
 
   useEffect(() => {
     if (!open) {
       setPassword('')
-      setRememberPassword(defaultRememberPassword)
       return
     }
     const handleKey = (e: KeyboardEvent) => {
@@ -62,11 +63,22 @@ export function BrokerReconnectPasswordModal({
       document.removeEventListener('keydown', handleKey)
       window.clearTimeout(focusTimer)
     }
-  }, [open, onCancel, defaultRememberPassword])
+  }, [open, onCancel])
 
   useEffect(() => {
-    document.body.style.overflow = open ? 'hidden' : ''
-    return () => { document.body.style.overflow = '' }
+    if (!open) {
+      if (scrollLockRef.current != null) {
+        document.body.style.overflow = scrollLockRef.current
+        scrollLockRef.current = null
+      }
+      return
+    }
+    scrollLockRef.current = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = scrollLockRef.current ?? ''
+      scrollLockRef.current = null
+    }
   }, [open])
 
   if (!open || !broker) return null
@@ -77,16 +89,17 @@ export function BrokerReconnectPasswordModal({
     e.preventDefault()
     const trimmed = password.trim()
     if (!trimmed) return
-    onSubmit({ password: trimmed, rememberPassword })
+    onSubmit({ password: trimmed, rememberPassword: true })
   }
 
-  return (
+  const modal = (
     <div
       ref={overlayRef}
       className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-4 sm:p-6 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
-      onClick={e => { if (e.target === overlayRef.current) onCancel() }}
+      onMouseDown={onOverlayMouseDown}
+      onClick={onOverlayClick}
     >
-      <div className="absolute inset-0 bg-neutral-950/45 backdrop-blur-[2px] animate-in" />
+      <div ref={backdropRef} className="absolute inset-0 bg-neutral-950/55" aria-hidden />
 
       <div
         role="dialog"
@@ -125,7 +138,7 @@ export function BrokerReconnectPasswordModal({
           <div className="mb-4 flex items-center gap-3 rounded-xl border border-neutral-100 bg-neutral-50 px-3 py-3 dark:border-neutral-800 dark:bg-neutral-800/50">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white shadow-sm dark:bg-neutral-900">
               {logo ? (
-                <img src={logo} alt={broker.platform} className="h-8 w-8 object-contain" />
+                <img src={logo} alt={broker.platform} className="h-8 w-8 object-contain" decoding="async" />
               ) : (
                 <span className="text-xs font-semibold text-neutral-500">{broker.platform}</span>
               )}
@@ -157,23 +170,6 @@ export function BrokerReconnectPasswordModal({
               required
             />
 
-            <label className="flex items-start gap-3 rounded-xl border border-neutral-100 bg-neutral-50 px-3 py-3 dark:border-neutral-800 dark:bg-neutral-800/40 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={rememberPassword}
-                onChange={e => setRememberPassword(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-neutral-300 text-teal-600 focus:ring-teal-500"
-              />
-              <span className="min-w-0">
-                <span className="block text-sm font-medium text-neutral-800 dark:text-neutral-100">
-                  {copy.rememberPasswordLabel}
-                </span>
-                <span className="mt-0.5 block text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
-                  {copy.rememberPasswordHint}
-                </span>
-              </span>
-            </label>
-
             <div className="flex justify-end gap-2 pt-1">
               <Button type="button" variant="ghost" onClick={onCancel}>
                 {copy.cancel}
@@ -188,4 +184,8 @@ export function BrokerReconnectPasswordModal({
       </div>
     </div>
   )
+
+  return createPortal(modal, document.body)
 }
+
+export const BrokerReconnectPasswordModal = memo(BrokerReconnectPasswordModalInner)

@@ -60,6 +60,17 @@ export const channelWorkerFr: ChannelWorkerTranslations = {
   entryCancelled: 'Ordre d\'entrée en attente annulé {on}.',
   entryFailed: 'Échec de l\'ordre d\'entrée {on}{err}',
 
+  rangeEntryWaitingNoPrice: '{side} en attente — En attente du range de prix.',
+  rangeEntryWaitingAtPrice: '{side} en attente — En attente du prix @ {price}.',
+  rangeEntryWaitingZone: '{side} en attente — En attente du range {lo}–{hi}.',
+  rangeEntryFired: '{side} exécuté {on} (prix dans le range du signal).',
+  rangeEntryExpired: '{side} en attente expiré — fenêtre d’entrée fermée.',
+  rangeEntryTpBeforeEntry: '{side} en attente expiré — TP atteint avant l’entrée.',
+  rangeEntrySlBeforeEntry: '{side} en attente expiré — SL atteint avant l’entrée.',
+  rangeEntryUpdated: '{side} en attente — range mis à jour {lo}–{hi}.',
+  rangeEntryCancelled: '{side} en attente annulé ({reason}).',
+  rangeEntryWakeRetry: '{side} en attente — prix hors range; nouvelle attente.',
+
   mergeAddedNamed: 'Ajout à la position existante sur {symbol}.',
   mergeAddedGeneric: 'Ajout à votre position ouverte.',
   mergeSlTpSuccessNamed:
@@ -93,6 +104,8 @@ export const channelWorkerFr: ChannelWorkerTranslations = {
   signalSellGeneric: '{prefix} : signal de vente.',
   signalCloseNamed: '{prefix} : fermer {symbol}.',
   signalCloseGeneric: '{prefix} : fermer votre position ouverte.',
+  signalCloseWorseNamed: '{prefix} : fermer les entrées défavorables sur {symbol}.',
+  signalCloseWorseGeneric: '{prefix} : fermer les entrées défavorables sur votre position ouverte.',
   signalBreakevenUnderstood: 'Compris : déplacer le SL au break-even {on}.',
   signalBreakevenCompleted: 'SL déplacé au break-even {on}.',
   signalPartialProfit: '{prefix} : prise de profit partiel {on}{pct}.',
@@ -103,6 +116,8 @@ export const channelWorkerFr: ChannelWorkerTranslations = {
 
   mgmtCloseSuccessNamed: 'Position {symbol} fermée.',
   mgmtCloseSuccessGeneric: 'Votre position ouverte a été fermée.',
+  mgmtCloseWorseSuccessNamed: 'Jambes instantanées {symbol} fermées (jambes de couche conservées).',
+  mgmtCloseWorseSuccessGeneric: 'Jambes instantanées fermées (jambes de couche conservées).',
   mgmtBreakevenSuccess: 'SL déplacé au break-even {on}.',
   mgmtPartialProfit: 'Profit partiel pris {on}{pct}.',
   mgmtPartialBreakeven: 'Profit partiel et SL au break-even {on}.',
@@ -112,6 +127,8 @@ export const channelWorkerFr: ChannelWorkerTranslations = {
 
   mgmtCloseFailNamed: 'Impossible de fermer {symbol}',
   mgmtCloseFailGeneric: 'Impossible de fermer votre position ouverte',
+  mgmtCloseWorseFailNamed: 'Impossible de fermer les jambes instantanées {symbol}',
+  mgmtCloseWorseFailGeneric: 'Impossible de fermer les jambes instantanées',
   mgmtBreakevenFailNamed: 'Impossible de déplacer {symbol} au break-even',
   mgmtBreakevenFailGeneric: 'Impossible de déplacer votre position au break-even',
   mgmtPartialProfitFail: 'Impossible de prendre un profit partiel {on}',
@@ -122,12 +139,25 @@ export const channelWorkerFr: ChannelWorkerTranslations = {
 
   mgmtCloseSkippedNamed: '{symbol} non fermé',
   mgmtCloseSkippedGeneric: 'Votre position ouverte non fermée',
+  mgmtCloseWorseSkippedNamed: 'Jambes instantanées {symbol} non fermées',
+  mgmtCloseWorseSkippedGeneric: 'Jambes instantanées non fermées',
   mgmtSkippedNamed: 'Mise à jour {symbol} ignorée',
-  mgmtSkippedGeneric: 'Mise à jour de votre position ignorée',
+  mgmtSkippedGeneric: 'Ignoré!',
   mgmtSkippedReason: '{phrase} ({reason}).',
 
   skipReasons: {
     no_matching_open_trade: 'aucune position ouverte correspondante',
+    mgmt_no_open_trades: 'aucune position ouverte correspondante',
+    mgmt_no_open_trades_db: 'aucune position correspondante dans la base du copier',
+    mgmt_no_open_trades_broker: 'aucune position ouverte sur le courtier pour ce canal',
+    mgmt_no_open_trades_symbol: 'le symbole du message de clôture ne correspond à aucune jambe ouverte',
+    mgmt_ambiguous_modify: 'aucune position ouverte correspondante',
+    cwe_no_open_trades: 'aucune jambe ouverte à fermer',
+    cwe_no_eligible_broker_trades: 'les jambes ouvertes ne sont pas liées à un compte broker actif',
+    cwe_no_open_immediates: 'toutes les jambes ouvertes sont des entrées de couche (conservées ouvertes)',
+    cwe_close_failed: 'le broker n\'a pas pu fermer les jambes sélectionnées',
+    copier_paused: 'le copieur est en pause',
+    close_worse_entries_disabled: 'fermer les entrées défavorables est désactivé dans les paramètres',
     not_placed: 'non placé',
     symbol_exempted_from_trading: 'symbole exempté du trading',
     symbol_not_in_whitelist: 'symbole hors liste blanche',
@@ -154,7 +184,10 @@ export const channelWorkerFr: ChannelWorkerTranslations = {
   errorSymbolNotFound: 'Symbole introuvable : {symbol}',
   errorBrokerNotConnected:
     'Courtier non connecté — dans Configuration du compte, utilisez Reconnect et entrez votre mot de passe MT',
+  errorInvalidStops:
+    'Le courtier a rejeté ces niveaux de stop — vérifiez que SL/TP sont du bon côté du marché et respectent la distance minimale.',
   errorBridgeGlitch:
     'Panne temporaire du serveur de trading — les entrées échelonnées seront réessayées automatiquement. Utilisez Reconnect si cela continue.',
   errorStopsAlreadySet: 'Le SL et le TP étaient déjà définis sur le courtier (aucun changement requis).',
+  errorSignalLinkFailed: 'Impossible de lier ce trade à son signal.',
 }

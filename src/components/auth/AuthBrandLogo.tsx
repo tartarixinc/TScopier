@@ -21,7 +21,7 @@ export function AuthBrandLogo({ className }: AuthBrandLogoProps) {
   return (
     <img
       src={src}
-      alt="TSCopier"
+      alt="TScopier"
       className={clsx('h-8 w-auto max-w-[140px] object-contain', className)}
       draggable={false}
       onError={() => {

@@ -67,7 +67,7 @@ test('isMergeFollowUpLinked: time window alone is NOT enough (fresh broadcast)',
   )
 })
 
-test('isMergeFollowUpLinked: time window + thread link allows merge (direct parent)', () => {
+test('isMergeFollowUpLinked: time window + thread link allows merge (direct parent, same channel)', () => {
   assert.equal(
     isMergeFollowUpLinked({
       replyOk: false,
@@ -75,8 +75,23 @@ test('isMergeFollowUpLinked: time window + thread link allows merge (direct pare
       threadLinksAnchor: true,
       implicitBundleWithinTightWindow: false,
       implicitSameChannelBundle: false,
+      sameChannel: true,
     }),
     true,
+  )
+})
+
+test('isMergeFollowUpLinked: thread link blocked across channels', () => {
+  assert.equal(
+    isMergeFollowUpLinked({
+      replyOk: false,
+      withinWindow: true,
+      threadLinksAnchor: true,
+      implicitBundleWithinTightWindow: false,
+      implicitSameChannelBundle: false,
+      sameChannel: false,
+    }),
+    false,
   )
 })
 
@@ -128,7 +143,7 @@ test('isMergeFollowUpLinked: same-signal message edit with SL/TP', () => {
       implicitBundleWithinTightWindow: false,
       implicitSameChannelBundle: false,
       parameterRefreshSameChannel: false,
-      messageEditSameSignal: true,
+      sameSignalRefresh: true,
     }),
     true,
   )
@@ -150,7 +165,7 @@ test('computeBasketMergeLinkContext: same signal id edit refresh', () => {
     hasTp: true,
     ancestorChainContainsAnchor: false,
   })
-  assert.equal(ctx.messageEditSameSignal, true)
+  assert.equal(ctx.sameSignalRefresh, true)
   assert.equal(ctx.isLinked, true)
 })
 
@@ -251,7 +266,7 @@ test('mergeSignalTimeDeltaMs: signal after trade open → positive dt', () => {
   assert.equal(mergeSignalTimeDeltaMs({ signalCreatedAtMs: t1, newestTradeOpenedAtMs: t0 }), 60_000)
 })
 
-test('merge policy: multi-hop reply + window → merge allowed', () => {
+test('merge policy: multi-hop reply + window → merge allowed on same channel', () => {
   const anchor = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
   const thread = computeThreadLinksAnchor({
     parentLinksAnchor: parentSignalLinksAnchor('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', anchor),
@@ -266,6 +281,7 @@ test('merge policy: multi-hop reply + window → merge allowed', () => {
       threadLinksAnchor: thread,
       implicitBundleWithinTightWindow: false,
       implicitSameChannelBundle: false,
+      sameChannel: true,
     }),
     true,
   )

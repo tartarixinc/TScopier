@@ -1,0 +1,61 @@
+import type { SettingsBundleTranslations } from './types'
+
+export const settingsRu: SettingsBundleTranslations = {
+  settings: {
+    title: 'Настройки',
+    subtitle: 'Управляйте профилем, предпочтениями и безопасностью учетной записи.',
+    loadError: 'Не удалось загрузить настройки.',
+    saveError: 'Не удалось сохранить изменения.',
+    saved: 'Изменения сохранены.',
+    emailHint: 'Адрес электронной почты управляется вашим провайдером входа и не может быть изменен здесь.',
+    passwordHint: 'Минимум 8 символов.',
+    passwordTooShort: 'Пароль должен содержать не менее 8 символов.',
+    passwordMismatch: 'Пароли не совпадают.',
+    passwordUpdated: 'Пароль успешно обновлен.',
+    passwordError: 'Не удалось обновить пароль.',
+    sections: {
+      personal: 'Личная информация',
+      general: 'Общие настройки',
+      security: 'Безопасность',
+    },
+    personal: {
+      title: 'Личная информация',
+      description: 'Ваши контактные данные и то, как вы отображаетесь в TScopier.',
+    },
+    general: {
+      title: 'Общие настройки',
+      description: 'Значения по умолчанию для балансов, отчетов и меток времени.',
+    },
+    security: {
+      title: 'Безопасность',
+      description: 'Обновите пароль, чтобы защитить учетную запись.',
+      updatePassword: 'Обновить пароль',
+    },
+    fields: {
+      firstName: 'Имя',
+      lastName: 'Фамилия',
+      username: 'Имя пользователя',
+      email: 'Электронная почта',
+      country: 'Страна',
+      city: 'Город',
+      mobile: 'Номер телефона',
+      address: 'Адрес',
+      baseCurrency: 'Базовая валюта',
+      timezone: 'Часовой пояс',
+      newPassword: 'Новый пароль',
+      confirmPassword: 'Подтвердите пароль',
+      notificationSound: 'Звук уведомлений о сделках',
+      notificationSoundDescription: 'Проигрывать звук, когда сделка исполнена, изменена или закрыта.',
+    },
+    placeholders: {
+      address: 'Улица, дом, почтовый индекс…',
+      selectCountry: 'Выберите страну',
+      selectTimezone: 'Выберите часовой пояс',
+      selectCurrency: 'Выберите валюту',
+      searchCountry: 'Поиск стран…',
+      searchTimezone: 'Поиск часовых поясов…',
+      searchCurrency: 'Поиск валют…',
+      noMatches: 'Нет совпадений',
+    },
+  },
+}

@@ -1,50 +1,74 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Settings, History, Send, LayoutTemplate, ScrollText, Newspaper, Calendar, ChartBar as BarChart2, CircleHelp, ChevronDown, ChartNoAxesColumn, PanelLeftClose, PanelLeftOpen, Menu, X, CreditCard, Share2 } from 'lucide-react'
+import { ChevronDown, PanelLeftClose, PanelLeftOpen, Menu, X, type LucideIcon } from 'lucide-react'
 import clsx from 'clsx'
+import { getAppRouteIcon } from '../../lib/appNavIcons'
 import { TscopierLogo } from '../ui/TscopierLogo'
 import { AppSearchDesktop, AppSearchMobileTrigger, AppSearchProvider } from './AppSearch'
 import { useAuth } from '../../context/AuthContext'
 import { useT } from '../../context/LocaleContext'
+import { getSubscribeCtaLabel } from '../../lib/subscriptionCta'
 import { ThemeToggle } from '../ui/ThemeToggle'
 import { LanguageSwitcher } from '../auth/LanguageSwitcher'
-import { HelpMenuDropdown } from './HelpMenuDropdown'
+import { HelpSidebarNav } from './HelpSidebarNav'
+import { NotificationBell } from './NotificationBell'
+import { CopierPauseToggle } from './CopierPauseToggle'
 import { UserMenuDropdown } from './UserMenuDropdown'
+import { UserAvatar } from './UserAvatar'
+import { DashboardKeepAlive } from './DashboardKeepAlive'
 import { useUserProfile } from '../../context/UserProfileContext'
 import { useSubscription } from '../../context/SubscriptionContext'
+import { useHasOpenTrades } from '../../hooks/useHasOpenTrades'
+import { useHasHighImpactNewsToday } from '../../hooks/useHasHighImpactNewsToday'
+import { useNeedsWelcome } from '../../hooks/useNeedsWelcome'
+import { isRouteAllowedWithoutSubscription } from '../../lib/subscriptionNavAccess'
+
+type NavItem = {
+  to: string
+  label: string
+  showOpenTradesIndicator?: boolean
+  showHighImpactNewsIndicator?: boolean
+}
 
 export function AppLayout() {
   const t = useT()
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  const onDashboardRoute = location.pathname === '/dashboard'
+    || location.pathname.startsWith('/dashboard/broker/')
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
-  const [helpMenuOpen, setHelpMenuOpen] = useState(false)
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [headerEl, setHeaderEl] = useState<HTMLElement | null>(null)
-  const helpMenuRef = useRef<HTMLDivElement>(null)
   const userMenuRef = useRef<HTMLDivElement>(null)
-  const helpMenuCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const userMenuCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { profile } = useUserProfile()
-  const { planName, hasActiveSubscription, effectivePlan, openUpgrade } = useSubscription()
-
-  const openHelpMenu = () => {
-    if (helpMenuCloseTimerRef.current) {
-      clearTimeout(helpMenuCloseTimerRef.current)
-      helpMenuCloseTimerRef.current = null
+  const { planName, hasActiveSubscription, effectivePlan, openUpgrade, isPastDue, hasTrialExpired, loading: subscriptionLoading } =
+    useSubscription()
+  const navLocked = !subscriptionLoading && !hasActiveSubscription
+  const subscribeCta = getSubscribeCtaLabel(t, {
+    isPastDue,
+    effectivePlan,
+    hasTrialExpired,
+  })
+  const { deferAppBootstrap } = useNeedsWelcome()
+  const [calendarCheckEnabled, setCalendarCheckEnabled] = useState(false)
+  useEffect(() => {
+    if (deferAppBootstrap) return
+    const enable = () => setCalendarCheckEnabled(true)
+    if (typeof requestIdleCallback !== 'undefined') {
+      const idleId = requestIdleCallback(enable, { timeout: 5000 })
+      return () => cancelIdleCallback(idleId)
     }
-    setHelpMenuOpen(true)
-  }
-
-  const scheduleCloseHelpMenu = () => {
-    if (helpMenuCloseTimerRef.current) clearTimeout(helpMenuCloseTimerRef.current)
-    helpMenuCloseTimerRef.current = setTimeout(() => {
-      setHelpMenuOpen(false)
-      helpMenuCloseTimerRef.current = null
-    }, 150)
-  }
+    const timer = window.setTimeout(enable, 3000)
+    return () => window.clearTimeout(timer)
+  }, [deferAppBootstrap])
+  const hasOpenTrades = useHasOpenTrades(deferAppBootstrap ? undefined : user?.id)
+  const hasHighImpactNewsToday = useHasHighImpactNewsToday(
+    deferAppBootstrap ? false : calendarCheckEnabled,
+  )
 
   const openUserMenu = () => {
     if (userMenuCloseTimerRef.current) {
@@ -64,21 +88,9 @@ export function AppLayout() {
 
   useEffect(() => {
     return () => {
-      if (helpMenuCloseTimerRef.current) clearTimeout(helpMenuCloseTimerRef.current)
       if (userMenuCloseTimerRef.current) clearTimeout(userMenuCloseTimerRef.current)
     }
   }, [])
-
-  useEffect(() => {
-    if (!helpMenuOpen) return
-    const onDoc = (e: MouseEvent) => {
-      if (!helpMenuRef.current?.contains(e.target as Node)) {
-        setHelpMenuOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', onDoc)
-    return () => document.removeEventListener('mousedown', onDoc)
-  }, [helpMenuOpen])
 
   useEffect(() => {
     if (!userMenuOpen) return
@@ -92,37 +104,38 @@ export function AppLayout() {
   }, [userMenuOpen])
 
   const navSections = useMemo(
-    () => [
+    (): Array<{ label: string; items: NavItem[] }> => [
       {
         label: t.nav.sections.general,
         items: [
-          { to: '/dashboard', icon: LayoutDashboard, label: t.nav.items.dashboard },
-          { to: '/account-configuration', icon: Settings, label: t.nav.items.configuration },
-          { to: '/account-trades', icon: History, label: t.nav.items.trades },
+          { to: '/dashboard', label: t.nav.items.dashboard },
+          { to: '/brokers', label: t.nav.items.brokers },
+          { to: '/account-trades', label: t.nav.items.trades, showOpenTradesIndicator: true },
+          { to: '/activities', label: t.nav.items.management },
         ],
       },
       {
         label: t.nav.sections.signals,
         items: [
-          { to: '/channels', icon: Send, label: t.nav.items.channels },
-          { to: '/backtest', icon: LayoutTemplate, label: t.nav.items.backtest },
-          { to: '/copier-logs', icon: ScrollText, label: t.nav.items.copierLogs },
-          { to: '/updates', icon: ChartNoAxesColumn, label: t.nav.items.signalHistory },
-          { to: '/performance', icon: BarChart2, label: t.nav.items.performance },
+          { to: '/channels', label: t.nav.items.channels },
+          { to: '/backtest', label: t.nav.items.backtest },
+          { to: '/copier-logs', label: t.nav.items.copierLogs },
+          { to: '/manage-signals', label: t.nav.items.signalHistory },
+          { to: '/performance', label: t.nav.items.performance },
         ],
       },
       {
         label: t.nav.sections.tradingTools,
         items: [
-          { to: '/market-news', icon: Newspaper, label: t.nav.items.marketNews },
-          { to: '/economic-calendar', icon: Calendar, label: t.nav.items.economicCalendar },
+          { to: '/market-news', label: t.nav.items.marketNews },
+          { to: '/economic-calendar', label: t.nav.items.economicCalendar, showHighImpactNewsIndicator: true },
         ],
       },
       {
         label: t.nav.sections.membership,
         items: [
-          { to: '/billing', icon: CreditCard, label: t.nav.userMenu.subscriptionBilling },
-          { to: '/affiliate-program', icon: Share2, label: t.nav.userMenu.affiliateProgram },
+          { to: '/billing', label: t.nav.userMenu.subscriptionBilling },
+          { to: '/affiliate-program', label: t.nav.userMenu.affiliateProgram },
         ],
       },
     ],
@@ -131,7 +144,14 @@ export function AppLayout() {
 
   useEffect(() => {
     setMobileNavOpen(false)
+    setNotificationsOpen(false)
   }, [location.pathname])
+
+  useEffect(() => {
+    if (!navLocked) return
+    if (isRouteAllowedWithoutSubscription(location.pathname)) return
+    navigate('/dashboard', { replace: true })
+  }, [navLocked, location.pathname, navigate])
 
   useEffect(() => {
     document.documentElement.classList.add('app-viewport-lock')
@@ -152,13 +172,6 @@ export function AppLayout() {
     navigate('/login')
   }
 
-  const initials = (() => {
-    const first = profile.first_name?.trim()
-    const last = profile.last_name?.trim()
-    if (first && last) return `${first[0]}${last[0]}`.toUpperCase()
-    if (first) return first.slice(0, 2).toUpperCase()
-    return user?.email?.slice(0, 2).toUpperCase() ?? 'U'
-  })()
   const displayName =
     [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim() ||
     profile.display_name?.trim() ||
@@ -167,19 +180,86 @@ export function AppLayout() {
 
   const sidebarExpanded = !isSidebarCollapsed
 
-  const navLinkClass = (isCollapsed: boolean) =>
+  const navLinkClass = (isCollapsed: boolean, disabled = false) =>
     ({ isActive }: { isActive: boolean }) =>
       clsx(
-        'flex items-center px-3 py-2.5 rounded-lg text-sm font-medium transition-colors min-h-[44px]',
-        isCollapsed ? 'justify-center' : 'gap-3',
-        isActive
-          ? 'bg-teal-50 text-teal-700 dark:bg-teal-950/60 dark:text-teal-400'
-          : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100',
+        'flex items-center px-3 py-2.5 rounded-xl text-sm transition-colors min-h-[20px]',
+        isCollapsed ? 'justify-center' : 'gap-2',
+        disabled
+          ? 'cursor-pointer font-medium text-neutral-400 opacity-45 hover:bg-neutral-50 hover:text-neutral-600 hover:opacity-80 dark:text-neutral-500 dark:hover:bg-neutral-800 dark:hover:text-neutral-300'
+          : isActive
+            ? 'bg-teal-50 text-teal-800 font-semibold dark:bg-teal-950/60 dark:text-teal-400'
+            : 'text-neutral-800 font-medium hover:bg-neutral-50 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100',
       )
+
+  const renderNavItemContent = (
+    opts: { collapsed: boolean },
+    {
+      icon: Icon,
+      label,
+      isActive,
+      showOpenTradesIndicator,
+      showHighImpactNewsIndicator,
+    }: {
+      icon: LucideIcon
+      label: string
+      isActive: boolean
+      showOpenTradesIndicator?: boolean
+      showHighImpactNewsIndicator?: boolean
+    },
+  ) => {
+    const showOpenIndicator = Boolean(showOpenTradesIndicator && hasOpenTrades)
+    const showFireIndicator = Boolean(showHighImpactNewsIndicator && hasHighImpactNewsToday)
+    return (
+      <>
+        <span className="relative inline-flex shrink-0">
+          <Icon
+            className={clsx(
+              'w-4 h-4',
+              isActive ? 'text-teal-600 dark:text-teal-400' : '',
+            )}
+          />
+          {showOpenIndicator && opts.collapsed ? (
+            <span
+              className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-teal-500 ring-2 ring-white dark:ring-neutral-900"
+              aria-hidden
+            />
+          ) : null}
+          {showFireIndicator && opts.collapsed && !showOpenIndicator ? (
+            <span
+              className="absolute -right-1 -top-1 text-[10px] leading-none"
+              aria-hidden
+            >
+              🔥
+            </span>
+          ) : null}
+        </span>
+        <span className={clsx(opts.collapsed && 'lg:hidden')}>{label}</span>
+        {showOpenIndicator && !opts.collapsed ? (
+          <span
+            className="ml-auto h-2 w-2 shrink-0 rounded-full bg-teal-500"
+            aria-hidden
+          />
+        ) : null}
+        {showFireIndicator && !opts.collapsed && !showOpenIndicator ? (
+          <span className="ml-auto shrink-0 text-sm leading-none" aria-hidden>
+            🔥
+          </span>
+        ) : null}
+      </>
+    )
+  }
 
   const renderNav = (opts: { collapsed: boolean; onNavigate?: () => void }) => (
     <>
-      {navSections.map(section => (
+      {navSections.map(section => {
+        const sectionItems = section.items.map(item => ({
+          ...item,
+          disabled: navLocked && !isRouteAllowedWithoutSubscription(item.to),
+        }))
+        if (sectionItems.every(item => item.disabled)) return null
+
+        return (
         <div key={section.label}>
           <p
             className={clsx(
@@ -190,35 +270,68 @@ export function AppLayout() {
             {section.label}
           </p>
           <div className="space-y-0.5">
-            {section.items.map(({ to, icon: Icon, label }) => (
-              <NavLink
-                key={to}
-                to={to}
-                title={label}
-                onClick={opts.onNavigate}
-                className={navLinkClass(opts.collapsed)}
-              >
-                {({ isActive }) => (
-                  <>
-                    <Icon
-                      className={clsx(
-                        'w-4 h-4 flex-shrink-0',
-                        isActive ? 'text-teal-600 dark:text-teal-400' : '',
-                      )}
-                    />
-                    <span className={clsx(opts.collapsed && 'lg:hidden')}>{label}</span>
-                  </>
-                )}
-              </NavLink>
-            ))}
+            {sectionItems.map(({ to, label, showOpenTradesIndicator, showHighImpactNewsIndicator, disabled }) => {
+              const Icon = getAppRouteIcon(to)
+              const ariaExtra = showOpenTradesIndicator && hasOpenTrades
+                ? t.nav.openTradesActive
+                : showHighImpactNewsIndicator && hasHighImpactNewsToday
+                  ? t.nav.highImpactNewsToday
+                  : null
+
+              if (disabled) {
+                return (
+                  <button
+                    type="button"
+                    key={to}
+                    title={label}
+                    aria-label={ariaExtra ? `${label} — ${ariaExtra}` : label}
+                    onClick={() => {
+                      openUpgrade('advanced')
+                      opts.onNavigate?.()
+                    }}
+                    className={clsx(navLinkClass(opts.collapsed, true)({ isActive: false }), 'w-full text-left')}
+                  >
+                    {renderNavItemContent(opts, {
+                      icon: Icon,
+                      label,
+                      isActive: false,
+                      showOpenTradesIndicator,
+                      showHighImpactNewsIndicator,
+                    })}
+                  </button>
+                )
+              }
+
+              return (
+                <NavLink
+                  key={to}
+                  to={to}
+                  title={label}
+                  aria-label={ariaExtra ? `${label} — ${ariaExtra}` : label}
+                  onClick={opts.onNavigate}
+                  className={navLinkClass(opts.collapsed)}
+                >
+                  {({ isActive }) => (
+                    renderNavItemContent(opts, {
+                      icon: Icon,
+                      label,
+                      isActive,
+                      showOpenTradesIndicator,
+                      showHighImpactNewsIndicator,
+                    })
+                  )}
+                </NavLink>
+              )
+            })}
           </div>
         </div>
-      ))}
+        )
+      })}
     </>
   )
 
   return (
-    <div className="flex h-[100dvh] min-h-0 w-full overflow-hidden overscroll-none bg-neutral-50 dark:bg-neutral-950">
+    <div className="flex h-full min-h-0 w-full overflow-hidden overscroll-none bg-neutral-50 dark:bg-neutral-950">
       {mobileNavOpen && (
         <button
           type="button"
@@ -283,8 +396,11 @@ export function AppLayout() {
             collapsed: !sidebarExpanded,
             onNavigate: () => setMobileNavOpen(false),
           })}
+          <HelpSidebarNav
+            collapsed={!sidebarExpanded}
+            onNavigate={() => setMobileNavOpen(false)}
+          />
         </nav>
-
       </aside>
 
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden overscroll-none">
@@ -293,7 +409,7 @@ export function AppLayout() {
           ref={setHeaderEl}
           className={clsx(
             'z-30 flex shrink-0 touch-none items-center gap-2 border-b border-neutral-100 bg-white px-3 dark:border-neutral-800 dark:bg-neutral-900 sm:gap-4 sm:px-6',
-            'fixed inset-x-0 top-0 h-[calc(3.5rem+env(safe-area-inset-top,0px))] pt-[env(safe-area-inset-top,0px)] sm:h-[calc(4rem+env(safe-area-inset-top,0px))]',
+            'fixed inset-x-0 top-[var(--app-banner-h,0px)] h-[calc(3.5rem+env(safe-area-inset-top,0px))] pt-[env(safe-area-inset-top,0px)] sm:h-[calc(4rem+env(safe-area-inset-top,0px))]',
             'lg:static lg:z-20 lg:h-16 lg:min-h-0 lg:pt-0 lg:touch-auto',
           )}
         >
@@ -320,46 +436,27 @@ export function AppLayout() {
           <div className="flex-1 min-w-0 lg:hidden" />
 
           <div className="relative z-40 flex shrink-0 items-center gap-1 sm:gap-2 lg:ml-auto">
-            {!hasActiveSubscription || effectivePlan === 'basic' ? (
+            {hasActiveSubscription && effectivePlan === 'basic' ? (
               <button
                 type="button"
                 onClick={() => openUpgrade('advanced')}
                 className="hidden sm:inline-flex items-center rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-700 transition-colors hover:bg-teal-100 dark:border-teal-800 dark:bg-teal-950/40 dark:text-teal-300 dark:hover:bg-teal-950/60"
               >
-                {!hasActiveSubscription ? t.pricing.paywall.purchaseSubscriptionCta : t.pricing.paywall.upgradeCta}
+                {subscribeCta}
               </button>
             ) : null}
+            <CopierPauseToggle />
             <AppSearchMobileTrigger />
             <LanguageSwitcher />
             <ThemeToggle />
-            <div
-              ref={helpMenuRef}
-              className="relative"
-              onMouseEnter={openHelpMenu}
-              onMouseLeave={scheduleCloseHelpMenu}
-            >
-              <button
-                type="button"
-                onClick={() => {
-                  if (!window.matchMedia('(hover: hover)').matches) {
-                    setHelpMenuOpen(open => !open)
-                  }
-                }}
-                title={t.nav.help}
-                aria-label={t.nav.help}
-                aria-haspopup="menu"
-                aria-expanded={helpMenuOpen}
-                className={clsx(
-                  'p-2 rounded-lg transition-colors',
-                  helpMenuOpen
-                    ? 'text-teal-600 bg-teal-50 dark:text-teal-400 dark:bg-teal-950/50'
-                    : 'text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800',
-                )}
-              >
-                <CircleHelp className="w-5 h-5" />
-              </button>
-              <HelpMenuDropdown open={helpMenuOpen} onClose={() => setHelpMenuOpen(false)} />
-            </div>
+            <NotificationBell
+              open={notificationsOpen}
+              onOpen={() => {
+                setUserMenuOpen(false)
+                setNotificationsOpen(true)
+              }}
+              onClose={() => setNotificationsOpen(false)}
+            />
 
             <div
               ref={userMenuRef}
@@ -371,6 +468,7 @@ export function AppLayout() {
                 type="button"
                 onClick={() => {
                   if (!window.matchMedia('(hover: hover)').matches) {
+                    setNotificationsOpen(false)
                     setUserMenuOpen(open => !open)
                   }
                 }}
@@ -384,9 +482,7 @@ export function AppLayout() {
                     : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/60',
                 )}
               >
-              <div className="w-8 h-8 rounded-full bg-teal-600 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">
-                {initials}
-              </div>
+              <UserAvatar user={user} profile={profile} email={user?.email} size="sm" />
               <div className="hidden md:block text-left">
                 <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 leading-tight truncate max-w-[8rem]">
                   {displayName}
@@ -417,7 +513,8 @@ export function AppLayout() {
             'lg:pt-0',
           )}
         >
-          <Outlet />
+          <DashboardKeepAlive />
+          {!deferAppBootstrap && !onDashboardRoute && <Outlet />}
         </main>
       </div>
     </div>

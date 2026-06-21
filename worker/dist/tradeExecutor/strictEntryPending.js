@@ -49,7 +49,23 @@ async function placeStrictSignalEntryPending(ctx, prep, singleTpOverride) {
         console.warn(`[tradeExecutor] strict entry pending stops clamped signal=${signal.id} broker=${broker.id}: ${clamped.adjustments.join(', ')}`);
     }
     try {
-        const result = await api.orderSend(uuid, clamped.args);
+        let result;
+        try {
+            result = await api.orderSend(uuid, clamped.args);
+        }
+        catch (sendErr) {
+            const msg = sendErr instanceof Error ? sendErr.message : String(sendErr);
+            const isInvalidStops = /invalid\s+stops/i.test(msg);
+            const hasStops = (Number(clamped.args.stoploss) || 0) > 0
+                || (Number(clamped.args.takeprofit) || 0) > 0;
+            if (isInvalidStops && hasStops) {
+                console.warn(`[tradeExecutor] strict entry retry without stops signal=${signal.id} broker=${broker.id}: ${msg}`);
+                result = await api.orderSend(uuid, { ...clamped.args, stoploss: 0, takeprofit: 0 });
+            }
+            else {
+                throw sendErr;
+            }
+        }
         const ticket = result.ticket;
         const isBuyLeg = se.isBuy;
         const pendingSl = clamped.args.stoploss && clamped.args.stoploss > 0 ? clamped.args.stoploss : null;

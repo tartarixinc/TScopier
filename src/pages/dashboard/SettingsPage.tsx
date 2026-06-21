@@ -21,6 +21,7 @@ import { PageHeader } from '../../components/layout/PageHeader'
 import { PageShell } from '../../components/layout/PageShell'
 import { Button } from '../../components/ui/Button'
 import { Alert } from '../../components/ui/Alert'
+import { Toggle } from '../../components/ui/Toggle'
 
 type SettingsSection = 'personal' | 'general' | 'security'
 
@@ -319,6 +320,22 @@ export function SettingsPage() {
                   required
                   className="sm:col-span-2"
                 />
+                <div className="sm:col-span-2 flex items-start justify-between gap-4 rounded-xl border border-neutral-200 bg-neutral-50/80 px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900/60">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
+                      {t.settings.fields.notificationSound}
+                    </p>
+                    <p className="mt-0.5 text-sm text-neutral-500 dark:text-neutral-400">
+                      {t.settings.fields.notificationSoundDescription}
+                    </p>
+                  </div>
+                  <Toggle
+                    checked={profile.notification_sound_enabled !== false}
+                    onChange={checked =>
+                      void applyPreference({ notification_sound_enabled: checked }, setGeneralMsg)
+                    }
+                  />
+                </div>
               </div>
             </SettingsCard>
           ) : null}

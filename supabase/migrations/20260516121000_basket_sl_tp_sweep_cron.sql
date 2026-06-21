@@ -1,5 +1,5 @@
 /*
-  # TSCopier - schedule basket-sl-tp-sweep edge function
+  # TScopier - schedule basket-sl-tp-sweep edge function
 
   Backup to worker BasketSlTpReconcileMonitor (15s). Edge only claims jobs
   untouched for 45s+ so the two pollers do not fight.

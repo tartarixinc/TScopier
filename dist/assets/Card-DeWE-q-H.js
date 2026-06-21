@@ -1,0 +1,1 @@
+import{f as e}from"./charts-BHXAsES8.js";import{p as t}from"./vendor-W77evrBX.js";var n=t();function r({children:t,className:r,padding:i=`md`}){return(0,n.jsx)(`div`,{className:e(`bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800`,{"p-4":i===`sm`,"p-6":i===`md`,"p-8":i===`lg`,"":i===`none`},r),children:t})}export{r as t};

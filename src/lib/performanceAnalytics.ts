@@ -173,6 +173,7 @@ export function mtTradesToStatsRows(
     status: string
     profit: number | null
     closed_at: string | null
+    opened_at?: string | null
     symbol: string
     lot_size: number
     direction?: string
@@ -186,6 +187,7 @@ export function mtTradesToStatsRows(
     status: t.status,
     profit: t.profit,
     closed_at: t.closed_at,
+    opened_at: t.opened_at ?? null,
     symbol: t.symbol,
     lot_size: t.lot_size,
     direction: t.direction,

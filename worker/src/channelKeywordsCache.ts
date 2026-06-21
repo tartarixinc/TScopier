@@ -5,7 +5,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ChannelKeywords, ChannelLexiconRow } from './parseSignal'
 import {
-  DEFAULT_CHANNEL_KEYWORDS,
   loadChannelKeywords,
   loadChannelLexicon,
 } from './parseSignal'
@@ -27,14 +26,6 @@ export function invalidateChannelParseCache(channelId: string): void {
   cache.delete(channelId)
 }
 
-export function setChannelParseCache(
-  channelId: string,
-  keywords: ChannelKeywords,
-  lexicon: ChannelLexiconRow | null,
-): void {
-  cache.set(channelId, { keywords, lexicon, loadedAt: Date.now() })
-}
-
 export async function getChannelParseContext(
   supabase: SupabaseClient,
   channelId: string,
@@ -50,11 +41,3 @@ export async function getChannelParseContext(
   cache.set(channelId, { keywords, lexicon, loadedAt: Date.now() })
   return { keywords, lexicon }
 }
-
-export function getCachedChannelKeywords(channelId: string): ChannelKeywords | null {
-  const hit = cache.get(channelId)
-  if (!hit || Date.now() - hit.loadedAt >= CACHE_TTL_MS) return null
-  return hit.keywords
-}
-
-export { DEFAULT_CHANNEL_KEYWORDS }

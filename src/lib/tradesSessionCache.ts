@@ -1,5 +1,5 @@
-import { clearSessionCacheKey } from './sessionDataCache'
-import type { MtTrade } from './metatraderapi'
+import { clearSessionCacheKey, readSessionCache } from './sessionDataCache'
+import type { MtTrade } from './fxsocketBroker'
 
 /** Serve Trades page from cache; background refetch when older than this. */
 export const TRADES_CACHE_TTL_MS = 90 * 1000
@@ -10,7 +10,7 @@ export type TradesCachePayload = {
 }
 
 export function tradesCacheKey(userId: string): string {
-  return `trades:v2:${userId}`
+  return `trades:v13:${userId}`
 }
 
 /** Cheap signature so we can skip re-renders when MT data is unchanged. */
@@ -25,6 +25,13 @@ export function tradesListFingerprint(trades: MtTrade[]): string {
     if (Number.isFinite(ts) && ts > maxTs) maxTs = ts
   }
   return `${trades.length}:${open}:${maxTs}`
+}
+
+/** True when cached Trades page data includes at least one open leg; null if no fresh cache. */
+export function hasOpenTradesInCache(userId: string): boolean | null {
+  const cached = readSessionCache<TradesCachePayload>(tradesCacheKey(userId), TRADES_CACHE_TTL_MS)
+  if (!cached) return null
+  return cached.data.trades.some(t => t.status === 'open')
 }
 
 export function clearTradesSessionCache(userId?: string | null): void {

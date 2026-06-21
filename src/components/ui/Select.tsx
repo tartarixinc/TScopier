@@ -1,18 +1,26 @@
 import { type SelectHTMLAttributes, forwardRef } from 'react'
 import clsx from 'clsx'
+import { FieldLabelWithInfo } from './InfoTooltip'
 
 interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
   label?: string
   error?: string
+  hint?: string
+  hintInTooltip?: boolean
   options: { value: string; label: string }[]
 }
 
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(
-  ({ label, error, options, className, ...props }, ref) => {
+  ({ label, error, hint, hintInTooltip, options, className, ...props }, ref) => {
+    const showHintInTooltip = hintInTooltip === true
     return (
       <div className="flex flex-col gap-1.5">
         {label && (
-          <label className="text-sm font-medium text-neutral-700 dark:text-neutral-300">{label}</label>
+          showHintInTooltip && hint && !error
+            ? <FieldLabelWithInfo label={label} hint={hint} />
+            : (
+              <label className="text-sm font-medium text-neutral-700 dark:text-neutral-300">{label}</label>
+            )
         )}
         <select
           ref={ref}
@@ -30,6 +38,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
           ))}
         </select>
         {error && <p className="text-xs text-error-600">{error}</p>}
+        {hint && !error && !showHintInTooltip && <p className="text-xs text-neutral-500 dark:text-neutral-400">{hint}</p>}
       </div>
     )
   }

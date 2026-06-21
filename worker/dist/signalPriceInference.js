@@ -7,12 +7,13 @@ exports.detectReEnterIntent = detectReEnterIntent;
 exports.parsedHasReEnterIntent = parsedHasReEnterIntent;
 exports.classifyPricesByDirection = classifyPricesByDirection;
 exports.extractUnlabeledPrices = extractUnlabeledPrices;
+exports.extractBarePriceRangeZone = extractBarePriceRangeZone;
 exports.entryReferenceFromParsed = entryReferenceFromParsed;
 const signalPriceFormat_1 = require("./signalPriceFormat");
 const signalCommentaryGuard_1 = require("./signalCommentaryGuard");
 /** True when the channel explicitly asks to add a new trade (not modify existing). */
 function detectReEnterIntent(message) {
-    return /\bre[-\s]?enter\b/i.test(String(message ?? ''));
+    return /\b(?:re[-\s]?(?:entry|enter)|reenter)\b/i.test(String(message ?? ''));
 }
 function parsedHasReEnterIntent(parsed) {
     if (!parsed)
@@ -97,6 +98,20 @@ function collectLabeledSpans(message) {
     addMatches(new RegExp(`@\\s*(${signalPriceFormat_1.SIGNAL_PRICE_NUM})`, 'g'));
     addMatches(new RegExp(`\\b(?:buy|sell)\\s+at\\s+(${signalPriceFormat_1.SIGNAL_PRICE_NUM})`, 'gi'));
     addMatches(new RegExp(`\\bentry\\s+(${signalPriceFormat_1.SIGNAL_PRICE_NUM})`, 'gi'));
+    const addTwoPriceZone = (rx) => {
+        for (const m of text.matchAll(rx)) {
+            const spanStart = m.index ?? 0;
+            const spanEnd = spanStart + m[0].length;
+            for (let i = 1; i <= 2; i++) {
+                const value = (0, signalPriceFormat_1.parseSignalPriceToken)(m[i]);
+                if (value == null)
+                    continue;
+                spans.push({ start: spanStart, end: spanEnd, value });
+            }
+        }
+    };
+    addTwoPriceZone(new RegExp(`\\b(?:between|from)\\s+(${signalPriceFormat_1.SIGNAL_PRICE_NUM})\\s+(?:and|to|-|–)\\s+(${signalPriceFormat_1.SIGNAL_PRICE_NUM})\\b`, 'gi'));
+    addTwoPriceZone(new RegExp(`\\b(?:now|instant|market|mkt)\\s+(${signalPriceFormat_1.SIGNAL_PRICE_NUM})\\s*(?:-|–|to)\\s*(${signalPriceFormat_1.SIGNAL_PRICE_NUM})\\b`, 'gi'));
     // TP: 4557 / 4527 — each slash-separated value is labeled
     for (const m of text.matchAll(/\b(?:tp|take\s*profit|target(?:\s+level)?)\s*[:=]?\s*((?:\d+(?:\.\d+)?(?:\s*(?:\/|\band\b|\|)\s*)+)+\d+(?:\.\d+)?)/gi)) {
         const block = m[1] ?? '';
@@ -134,6 +149,14 @@ function extractUnlabeledPrices(message) {
             continue;
         if ((0, signalCommentaryGuard_1.isPercentagePriceAt)(text, index, raw.length))
             continue;
+        const prefix = text.slice(Math.max(0, index - 3), index);
+        if (/[£$€]\s*$/.test(prefix))
+            continue;
+        const contextBefore = text.slice(Math.max(0, index - 28), index);
+        if (/\b(?:profit|made|earned|gains?)\b/i.test(contextBefore)
+            && !/\b(?:sl|tp|stop|take)\b/i.test(contextBefore)) {
+            continue;
+        }
         // Skip parenthetical duplicates: 4577 (4577.10)
         const after = text.slice(index + raw.length).trimStart();
         if (after.startsWith('(')) {
@@ -147,10 +170,32 @@ function extractUnlabeledPrices(message) {
         const value = (0, signalPriceFormat_1.parseSignalPriceToken)(raw);
         if (value == null || seen.has(value))
             continue;
+        const digitsOnly = raw.replace(/,/g, '');
+        if (/^\d{4}$/.test(digitsOnly)) {
+            const year = Number(digitsOnly);
+            if (year >= 1900 && year <= 2100)
+                continue;
+        }
         seen.add(value);
         out.push(value);
     }
     return out;
+}
+/**
+ * FX Culture / ICT style bare range on its own line: "4282.0-4287.0", "4282 / 4287".
+ * Must appear as a two-price range, not a single labeled SL/TP value.
+ */
+function extractBarePriceRangeZone(message) {
+    const collapsed = String(message ?? '').replace(/\s+/g, ' ').trim();
+    const zoneRx = new RegExp(`(?:^|\\s)(${signalPriceFormat_1.SIGNAL_PRICE_NUM})\\s*(?:-|–)\\s*(${signalPriceFormat_1.SIGNAL_PRICE_NUM})(?:\\.|\\s|$)`, 'i');
+    const m = collapsed.match(zoneRx);
+    if (!m?.[1] || !m?.[2])
+        return null;
+    const a = (0, signalPriceFormat_1.parseSignalPriceToken)(m[1]);
+    const b = (0, signalPriceFormat_1.parseSignalPriceToken)(m[2]);
+    if (a == null || b == null)
+        return null;
+    return { low: Math.min(a, b), high: Math.max(a, b) };
 }
 function entryReferenceFromParsed(parsed) {
     const ep = positivePrice(parsed.entry_price);

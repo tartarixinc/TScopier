@@ -16,7 +16,6 @@ export function getChannelFilterCategories(cm: ConfigureModalTranslations) {
       'close_all',
       'close_worse_entries',
       'delete_pendings',
-      'reverse',
     ] as const
   ).map(key => ({
     key: key as ChannelFilterKey,
@@ -72,7 +71,7 @@ function describeAutoBeActionI18n(
   ms: ManualSettings,
   mgmt: ConfigureModalTranslations['management'],
 ): string {
-  const offset = ms.breakeven_offset_pips ?? 0
+  const offset = ms.breakeven_offset_pips ?? 3
   const target =
     offset > 0
       ? interpolate(mgmt.ruleBreakevenOffset, { offset: String(offset) })

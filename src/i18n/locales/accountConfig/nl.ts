@@ -1,0 +1,194 @@
+import { configureModalNl } from '../configureModal/nl'
+import type { AccountConfigBundleTranslations } from './types'
+
+export const accountConfigNl: AccountConfigBundleTranslations = {
+  accountConfig: {
+    brokersEmptyTitle: 'Er zijn nog geen accounts gekoppeld',
+    brokersEmptySubtitle: 'Voeg je tradingaccount toe om te beginnen',
+    addAccount: {
+      title: 'Een tradingaccount toevoegen',
+      subtitle: 'Kies je gewenste handelsplatform om te beginnen',
+      footerHint: 'Meer platformen volgen binnenkort',
+      comingSoonBadge: 'Binnenkort',
+      comingSoonPlatform: 'Integratie met {platform} komt binnenkort. Kies voorlopig MT4 of MT5.',
+    },
+    connectForm: {
+      addAccountButton: 'Account toevoegen',
+      title: 'Een nieuw {platform}-account koppelen',
+      accountLabel: 'Accountlabel (optioneel)',
+      accountLabelPlaceholder: 'bijv. Live {platform}',
+      platformLabel: 'Platform',
+      platformMt5: 'MetaTrader 5 (MT5)',
+      platformMt4: 'MetaTrader 4 (MT4)',
+      brokerServerLabel: 'Brokerserver',
+      brokerServerHint:
+        'Plak de exacte servernaam uit je MetaTrader-terminal (Bestand → Inloggen op handelsaccount).',
+      brokerServerPlaceholder: 'bijv. ICMarketsSC-MT5',
+      brokerCompanySearchPlaceholder: 'Zoek op brokerbedrijf of servernaam',
+      brokerCompanySearchServersHeading: 'Servers',
+      brokerCompanySearchCompaniesHeading: 'Brokers',
+      brokerCompanySearchEmpty: 'Zoek je brokerbedrijf of servernaam',
+      brokerCompanySearchMinChars: 'Typ minimaal 4 tekens om te zoeken',
+      brokerCompanySearchNoResults: 'Geen resultaten in onze brokerlijst.',
+      brokerCompanySearchUseQuery: '"{query}" gebruiken als servernaam',
+      brokerCompanySearchLoading: 'Brokers zoeken…',
+      brokerCompanySearchError: 'Zoeken naar brokers is mislukt. Probeer opnieuw of voer je server handmatig in.',
+      brokerServerPickerTitle: 'Server',
+      brokerServerSelectPrompt: 'Zoek het bedrijf van je broker',
+      brokerServerManualToggle: 'Kun je je broker niet vinden? Voer server handmatig in',
+      brokerServerManualLabel: 'Servernaam',
+      brokerServerManualHint: 'Gebruik de exacte servernaam uit je MT-terminal.',
+      mtLoginLabel: 'MT-login',
+      mtLoginPlaceholder: 'Tradingaccountnummer',
+      passwordLabel: 'Wachtwoord',
+      passwordPlaceholder: 'Wachtwoord van tradingaccount',
+      passwordHint: '',
+      rememberPasswordLabel: 'Wachtwoord onthouden voor automatisch opnieuw verbinden',
+      rememberPasswordHint:
+        'Versleutelt je MT-wachtwoord op onze servers zodat TScopier de sessie kan herstellen zonder opnieuw te vragen. Je kunt het op elk moment verwijderen.',
+      connectButton: 'Account koppelen',
+      connectingTitle: 'Je broker koppelen',
+      connectingStepLinking: 'Je {platform}-account wordt gekoppeld…',
+      connectingStepTerminal: 'Je {platform}-terminal wordt gestart — dit duurt meestal 10–30 seconden.',
+      connectingStepSlow: 'Nog bezig… de eerste keer kan dit enkele minuten duren.',
+      validationRequired: 'Accountnummer, wachtwoord en server zijn verplicht',
+      connectFailed: 'Account koppelen mislukt',
+      addMoreButton: 'Meer toevoegen',
+      removeRowAria: 'Accountregel verwijderen',
+      connectMultipleButton: '{count} accounts koppelen',
+      uploadAccountsButton: 'Accounts uploaden',
+      accountRowTitle: 'Account {index}',
+    },
+    bulkConnect: {
+      title: 'MT4/MT5-accounts uploaden',
+      securityNote:
+        'Je CSV bevat tradingwachtwoorden. Deze wordt alleen in je browser verwerkt en nooit als bestand geüpload.',
+      downloadTemplate: 'CSV-sjabloon downloaden',
+      uploadCsv: 'CSV uploaden',
+      uploadHint: 'Sleep hier een CSV-bestand of klik om te bladeren. Gebruik de platform-kolom (MT4 of MT5) per rij — standaard MT5 als die ontbreekt.',
+      previewTitle: 'Voorbeeld',
+      colLabel: 'Label',
+      colPlatform: 'Platform',
+      colServer: 'Server',
+      colLogin: 'Login',
+      colPassword: 'Wachtwoord',
+      colStatus: 'Status',
+      parseErrorLine: 'Regel {line}: {message}',
+      noValidRows: 'Geen geldige accounts gevonden in het CSV-bestand.',
+      connectCount: '{count} accounts koppelen',
+      connectingTitle: 'Accounts koppelen…',
+      statusQueued: 'In wachtrij',
+      statusLinking: 'Koppelen…',
+      statusLinked: 'Gekoppeld',
+      statusFailed: 'Mislukt',
+      statusSkippedDuplicate: 'Dubbel',
+      statusSkippedLimit: 'Limiet bereikt',
+      statusSkippedInvalid: 'Ongeldig',
+      summaryTitle: 'Accounts gekoppeld',
+      summaryBody: '{linked} gekoppeld, {failed} mislukt, {skipped} overgeslagen.',
+      summaryFailedTitle: 'Mislukte accounts',
+      dismiss: 'Sluiten',
+      viewBrokers: 'Brokers bekijken',
+    },
+    brokerList: {
+      statusPaused: 'Gepauzeerd',
+      statusConnected: 'Verbonden',
+      statusConnecting: 'Verbinden',
+      statusRecovering: 'Opnieuw verbinden',
+      statusError: 'Fout',
+      statusDisconnected: 'Verbroken',
+      copyTrades: 'Trades kopiëren',
+      reconnect: 'Opnieuw verbinden',
+      reconnectAll: 'Alles opnieuw verbinden',
+      configure: 'Configureren',
+      removeAria: 'Verwijder {label}',
+      detailLogin: 'Login',
+      detailAccountType: 'Accounttype',
+      accountTypeDemo: 'Demo',
+      accountTypeLive: 'Live',
+      accountTypePropFirm: 'Prop firm',
+      detailServer: 'Server',
+      detailSignalChannels: 'Signaalkanalen',
+      detailBalance: 'Saldo',
+      detailEquity: 'Equity',
+      channelsNoneSelected: 'Geen geselecteerd',
+      channelsEmptySaveWarning:
+        'Er zijn geen signaalkanalen geselecteerd — deze broker zal geen Telegram-signalen kopiëren. Toch opslaan?',
+      channelsSaveChannelListNotReady:
+        'De kanalenlijst wordt nog geladen. Wacht even en probeer opnieuw op te slaan.',
+      channelsSaveLinkedChannelsInvalid:
+        'Gekoppelde signaalkanalen konden niet worden opgeslagen. Vernieuw de pagina en probeer opnieuw.',
+      channelsSignalChannel: 'Signaalkanaal',
+      channelsAll: 'Alle signaalkanalen',
+      relinkOne:
+        'Dit account gebruikt een ouder koppelingsformaat. Verwijder het en koppel opnieuw met je MT-login en wachtwoord.',
+      relinkMany:
+        '{count} accounts gebruiken een ouder koppelingsformaat. Verwijder elk account en koppel opnieuw met je MT-login en wachtwoord.',
+      reconnectDroppedOne:
+        'De handelssessie is verlopen op de tradeserver. Gebruik Opnieuw verbinden en voer je huidige MT-wachtwoord in.',
+      reconnectDroppedMany:
+        '{count} accounts zijn de brokerverbinding kwijt en worden als Verbroken weergegeven. Gebruik Opnieuw verbinden op elk account.',
+      connectErrorWrongPassword:
+        'Het wachtwoord van het MT-account is onjuist. Controleer het wachtwoord in je MetaTrader-terminal en probeer opnieuw.',
+      connectErrorWrongLogin:
+        'Het MT-loginnummer komt niet overeen met deze brokerserver. Controleer het accountnummer in MetaTrader.',
+      connectErrorWrongServer:
+        'De brokerservernaam is onjuist of past niet bij deze login. Controleer de exacte servernaam in MetaTrader.',
+      connectErrorInvestorPassword:
+        'Er is een investeerderswachtwoord (alleen-lezen) gebruikt. Koppel met het hoofdwachtwoord voor trading uit MetaTrader.',
+      connectErrorAccountDisabled:
+        'Dit MT-account is uitgeschakeld of geblokkeerd bij de broker. Neem contact op met je broker of log eerst in via MetaTrader.',
+      connectErrorCredentialsRejected:
+        'Inloggen met deze MT-gegevens is mislukt. Controleer je accountnummer, tradingwachtwoord en exacte servernaam in MetaTrader.',
+      connectErrorTerminalNotReady:
+        'We konden je account nog niet van de broker laden. Als je net hebt gekoppeld, wacht een minuut en probeer opnieuw. Controleer anders of je MT-login, wachtwoord en server exact overeenkomen met MetaTrader.',
+      connectErrorSessionExpired:
+        'De handelssessie is verlopen op de tradeserver. Gebruik Opnieuw verbinden en voer je huidige MT-wachtwoord in.',
+      connectErrorUnknown:
+        'De brokerverbinding is mislukt. Controleer je MT-gegevens of gebruik Opnieuw verbinden als dit account eerder was gekoppeld.',
+      reconnectFailed: 'Broker opnieuw verbinden is mislukt',
+      reconnectPasswordTitle: 'Brokersessie verlopen',
+      reconnectPasswordBody:
+        'Je brokersessie is verlopen op de tradeserver. Voer je MT-accountwachtwoord in om opnieuw te verbinden.',
+      reconnectPasswordLabel: 'MT-accountwachtwoord',
+      reconnectPasswordHint:
+        'Wordt alleen naar MT-servers verzonden. Schakel hieronder onthouden in om het versleuteld op te slaan voor automatisch opnieuw verbinden.',
+      reconnectPasswordPlaceholder: 'Wachtwoord van tradingaccount',
+      rememberPasswordLabel: 'Wachtwoord onthouden voor automatisch opnieuw verbinden',
+      rememberPasswordHint:
+        'Slaat een versleutelde kopie op zodat TScopier opnieuw kan verbinden zonder opnieuw te vragen. Je kunt dit wissen in Accountconfiguratie.',
+      clearStoredCredentials: 'Opgeslagen wachtwoord vergeten',
+      storedCredentialsActive: 'Automatisch opnieuw verbinden ingeschakeld',
+      deleteFailed: 'Broker verwijderen mislukt',
+      deleteSessionExpired:
+        'Je inlogsessie is verlopen. Vernieuw de pagina en probeer opnieuw, of log uit en weer in.',
+      duplicateMtLogin:
+        'Deze MT-login is hier al gekoppeld aan een ander account. Verwijder die eerst of gebruik Opnieuw verbinden — dezelfde login kan niet twee keer worden gekoppeld.',
+      platformServerMismatchMt4:
+        'Deze servernaam lijkt op MT4, maar je hebt MT5 geselecteerd. Kopiëren en tradebeheer kunnen mislukken. Als MT4 koppelen?',
+      platformServerMismatchMt5:
+        'Deze servernaam lijkt op MT5, maar je hebt MT4 geselecteerd. Kopiëren en tradebeheer kunnen mislukken. Als MT5 koppelen?',
+      deleteTitle: 'Tradingaccount verwijderen?',
+      deleteBody: 'Dit koppelt {label} los van je broker en de copier. Dit kan niet ongedaan worden gemaakt.',
+      deleteConfirm: 'Loskoppelen',
+      connectedAccountsHeading: 'Gekoppelde accounts',
+      connectedAccountsUnlimited: 'Onbeperkt',
+      brokerFilterLabel: 'Broker',
+      brokerFilterAll: 'Alle brokers',
+      brokerFilterNoMatch: 'Geen accounts komen overeen met deze broker.',
+      accountSearchLabel: 'Accounts zoeken',
+      accountSearchPlaceholder: 'Label, login, server, broker…',
+      accountSearchNoMatch: 'Geen accounts komen overeen met je zoekopdracht.',
+    },
+    brokerConnectedSuccess: {
+      title: 'Broker gekoppeld',
+      titlePending: 'Broker gelinkt',
+      body: '{account} is gekoppeld en klaar om signalen te kopiëren.',
+      bodyPending:
+        '{account} is gelinkt. Je MT5-terminal wordt gestart — je kunt kanalen configureren terwijl de verbinding wordt gemaakt.',
+      addChannel: 'Kanaal toevoegen',
+      configure: 'Configureren',
+    },
+    configureModal: configureModalNl,
+  },
+}

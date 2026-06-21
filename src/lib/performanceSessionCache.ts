@@ -1,6 +1,6 @@
 import { clearSessionCacheKey } from './sessionDataCache'
 import type { PerformanceChannelLinkMaps } from './performanceInsights'
-import type { MtTrade } from './metatraderapi'
+import type { MtTrade } from './fxsocketBroker'
 import type { BrokerAccount } from '../types/database'
 
 /** How long Performance page data is served from cache without refetching. */
@@ -15,7 +15,7 @@ export type PerformanceCachePayload = {
 }
 
 export function performanceCacheKey(userId: string): string {
-  return `performance:v2:${userId}`
+  return `performance:v4:${userId}`
 }
 
 export function clearPerformanceSessionCache(userId?: string | null): void {

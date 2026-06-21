@@ -1,14 +1,19 @@
 import os from 'node:os'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
-  hasMetatraderApiConfigured,
+  hasFxsocketConfigured,
   normalizeSymbolParams,
   OrderSendArgs,
   SymbolParams,
-} from './metatraderapi'
-import { apiForMetaapiAccount, loadPlatformByMetaapiId, type PlatformByMetaapiId } from './mtApiByAccount'
+} from './fxsocketClient'
+import { apiForFxsocketAccount, loadPlatformByFxsocketId, type PlatformByFxsocketId } from './mtApiByAccount'
+import { autoManagementTradeSnapshot } from './autoManagement'
 import { tryApplyBasketFollowUpToNewFill } from './basketModFollowUp'
+import { channelParamsPredateBasket, loadChannelActiveTradeParamsForSymbol } from './channelActiveTradeParams'
+import { resolveChannelTradingConfig } from './channelTradingConfig'
 import { markRangeLegFired, markRangeLegsExpired } from './rangePendingLadderSync'
+import { normalizeManualSettingsForExecution } from './manualPlanning/normalizeManualSettings'
+import { syncRangeBasketTakeProfits, toRangeBasketParsedSlice } from './rangeBasketTpSync'
 import {
   hasWorkOnShard,
   monitorActiveIntervalMs,
@@ -18,9 +23,12 @@ import {
   type MonitorLoopHandle,
 } from './monitorIdleGate'
 import {
-  expireActiveRangeLegsForTpLock,
+  loadRangeLayerTillCloseForSignal,
+  stopRangeLayeringUnlessEnabled,
+} from './rangeLayerTillClose'
+import { isUserCopierPausedCached } from './copierPause'
+import {
   reconcileStaleClaimedLegs,
-  setTpTouchedLock,
   shouldBlockVirtualLegFire,
 } from './rangePendingFireGuard'
 import { isMtBridgeGlitchMessage } from './brokerConnectError'
@@ -103,6 +111,7 @@ interface BasketOpenTpRow {
   user_id: string
   direction: string
   tp: number | null
+  status?: string | null
 }
 
 interface SymbolCacheEntry {
@@ -122,9 +131,14 @@ interface SymbolCacheEntry {
   loadedAt: number
 }
 
+type BrokerConfigCacheEntry = {
+  manual: Record<string, unknown>
+  loadedAt: number
+}
+
 const SYMBOL_TTL_MS = 10 * 60_000
-const ACTIVE_MS = monitorActiveIntervalMs('VIRTUAL_PENDING_TICK_MS', 1_500)
-const IDLE_MS = monitorIdleIntervalMs('VIRTUAL_PENDING_IDLE_MS', 60_000)
+const ACTIVE_MS = monitorActiveIntervalMs('VIRTUAL_PENDING_TICK_MS', 400)
+const IDLE_MS = monitorIdleIntervalMs('VIRTUAL_PENDING_IDLE_MS', 15_000)
 const STALE_CLAIM_AFTER_MS = 30_000
 
 async function virtualPendingHasWork(
@@ -171,6 +185,33 @@ export function isBlockedByShallowerStep(
   return false
 }
 
+/**
+ * A layer must fill at (or better than) its planned rung price, within the
+ * configured slippage. Guards against the fire-time price racing away from the
+ * tick-time trigger check — without it, a buy rung that triggered on a brief
+ * dip can fill seconds later at the top of a rally, printing a WORSE entry
+ * than the immediates it was supposed to average down from and ignoring the
+ * step-pips ladder spacing.
+ */
+export function fillWithinTriggerBand(args: {
+  isBuy: boolean
+  triggerPrice: number
+  bid: number
+  ask: number
+  slippagePoints: number
+  point: number | null
+}): { ok: boolean; reason?: string } {
+  const { isBuy, triggerPrice, bid, ask, slippagePoints, point } = args
+  if (!isTriggered(isBuy, triggerPrice, bid, ask)) {
+    return { ok: false, reason: 'no_longer_triggered' }
+  }
+  if (point == null || !(point > 0)) return { ok: true }
+  const tol = Math.max(2, Math.max(0, slippagePoints)) * point
+  const fillSide = isBuy ? ask : bid
+  const ok = isBuy ? fillSide <= triggerPrice + tol : fillSide >= triggerPrice - tol
+  return ok ? { ok: true } : { ok: false, reason: 'fill_outside_trigger_band' }
+}
+
 export function evaluateTpTouch(args: {
   direction: string
   tps: number[]
@@ -191,10 +232,47 @@ export function evaluateTpTouch(args: {
   return { touched: false, triggerPrice: null, triggerSide: null }
 }
 
+/**
+ * Decide whether a basket's layering must be locked when "layer till close"
+ * is OFF. Two independent triggers:
+ *  1. live quote touches an open trade's TP (catches the touch in real time)
+ *  2. the basket is PARTIALLY closed — some trades closed while others remain
+ *     open. A broker-side TP fill closes its trades within seconds, so by the
+ *     time the monitor scans, the touched TP rows are no longer 'open' and
+ *     trigger (1) can never fire. A partial close is sticky evidence that a
+ *     TP/CWE/partial close happened and survives that race.
+ */
+export function shouldLockBasketLayering(args: {
+  direction: string
+  openTps: number[]
+  openCount: number
+  closedCount: number
+  bid: number
+  ask: number
+}): {
+  lock: boolean
+  reason: 'tp_touched' | 'basket_partially_closed' | null
+  triggerPrice: number | null
+  triggerSide: 'bid' | 'ask' | null
+} {
+  const { direction, openTps, openCount, closedCount, bid, ask } = args
+  if (openCount <= 0) return { lock: false, reason: null, triggerPrice: null, triggerSide: null }
+
+  const touch = evaluateTpTouch({ direction, tps: openTps, bid, ask })
+  if (touch.touched) {
+    return { lock: true, reason: 'tp_touched', triggerPrice: touch.triggerPrice, triggerSide: touch.triggerSide }
+  }
+  if (closedCount > 0) {
+    return { lock: true, reason: 'basket_partially_closed', triggerPrice: null, triggerSide: null }
+  }
+  return { lock: false, reason: null, triggerPrice: null, triggerSide: null }
+}
+
 export class VirtualPendingMonitor {
   private loop: MonitorLoopHandle | null = null
-  private platformByUuid: PlatformByMetaapiId = new Map()
+  private platformByUuid: PlatformByFxsocketId = new Map()
   private symbolCache = new Map<string, SymbolCacheEntry>()
+  private brokerConfigCache = new Map<string, BrokerConfigCacheEntry>()
   private hostId: string
   private ticking = false
   /** Heartbeat counter: when there ARE pending rows but none triggered, we
@@ -202,6 +280,11 @@ export class VirtualPendingMonitor {
    *  and how far the live quote sits from the nearest trigger. */
   private quietTicks = 0
   private firstTickLogged = false
+  /** Throttle basket_in_profit skip logs — legs re-check every tick. */
+  private profitSkipLogAt = new Map<string, number>()
+  /** Throttle trigger-band defer logs — legs re-check every tick. */
+  private bandSkipLogAt = new Map<string, number>()
+  private static readonly PROFIT_SKIP_LOG_MS = 60_000
 
   constructor(private readonly supabase: SupabaseClient) {
     this.hostId = `worker:${os.hostname()}:${process.pid}`
@@ -209,7 +292,7 @@ export class VirtualPendingMonitor {
 
   start() {
     if (this.loop) return
-    if (!hasMetatraderApiConfigured()) {
+    if (!hasFxsocketConfigured()) {
       console.warn('[virtualPendingMonitor] MT4API_BASIC_USER/PASSWORD missing — virtual pending monitor disabled')
       return
     }
@@ -245,7 +328,7 @@ export class VirtualPendingMonitor {
   }
 
   private async tick(): Promise<void> {
-    if (!hasMetatraderApiConfigured()) return
+    if (!hasFxsocketConfigured()) return
 
     // Re-open rows whose claim is stale. Anything older than STALE_CLAIM_AFTER_MS
     // is considered abandoned (the claiming worker probably crashed); reset it
@@ -267,9 +350,10 @@ export class VirtualPendingMonitor {
       .eq('status', 'pending')
       .not('expires_at', 'is', null)
       .lt('expires_at', nowIso)
-      .select('id,signal_id,user_id,broker_account_id,symbol,step_idx')
+      .select('id,signal_id,user_id,broker_account_id,metaapi_account_id,symbol,is_buy,step_idx')
     if (expired && expired.length) {
-      for (const r of expired as Array<{ id: string; signal_id: string; user_id: string; broker_account_id: string; symbol: string; step_idx: number }>) {
+      for (const r of expired as PendingRow[]) {
+        if (isUserCopierPausedCached(r.user_id)) continue
         try {
           await this.supabase.from('trade_execution_logs').insert({
             user_id: r.user_id,
@@ -300,7 +384,8 @@ export class VirtualPendingMonitor {
       console.error('[virtualPendingMonitor] select failed:', error.message)
       return
     }
-    const rows = (data ?? []) as PendingRow[]
+    const rows = ((data ?? []) as PendingRow[])
+      .filter(r => !isUserCopierPausedCached(r.user_id))
     if (!this.firstTickLogged) {
       this.firstTickLogged = true
       console.log(`[virtualPendingMonitor] first tick ok pending_rows=${rows.length}`)
@@ -312,7 +397,7 @@ export class VirtualPendingMonitor {
       return
     }
 
-    this.platformByUuid = await loadPlatformByMetaapiId(
+    this.platformByUuid = await loadPlatformByFxsocketId(
       this.supabase,
       rows.map(r => r.metaapi_account_id),
     )
@@ -321,7 +406,7 @@ export class VirtualPendingMonitor {
     await reconcilePendingLegBasketsFromBroker(
       this.supabase,
       rows,
-      uuid => apiForMetaapiAccount(this.platformByUuid, uuid),
+      uuid => apiForFxsocketAccount(this.platformByUuid, uuid),
     )
 
     // Group by (account, symbol) so we issue at most ONE /Quote per group.
@@ -343,7 +428,7 @@ export class VirtualPendingMonitor {
     await Promise.all(Array.from(groups.entries()).map(async ([key, legs]) => {
       const [uuid, symbol] = key.split('|')
       if (!uuid || !symbol) return
-      const api = apiForMetaapiAccount(this.platformByUuid, uuid)
+      const api = apiForFxsocketAccount(this.platformByUuid, uuid)
       if (!api) return
       let q
       try {
@@ -469,14 +554,16 @@ export class VirtualPendingMonitor {
     const symbol = legs[0]?.symbol ?? null
     if (!symbol) return touched
 
+    // Scan open AND closed trades: a TP fill closes its rows at the broker
+    // within seconds, so an open-only scan misses the touch (the remaining
+    // open trades carry deeper TPs that were never reached).
     const { data, error } = await this.supabase
       .from('trades')
-      .select('signal_id,broker_account_id,user_id,direction,tp')
+      .select('signal_id,broker_account_id,user_id,direction,tp,status')
       .in('signal_id', signalIds)
       .in('broker_account_id', brokerIds)
       .eq('symbol', symbol)
-      .eq('status', 'open')
-      .not('tp', 'is', null)
+      .in('status', ['open', 'closed'])
 
     if (error) {
       console.warn(`[virtualPendingMonitor] tp-touch scan failed: ${error.message}`)
@@ -485,39 +572,47 @@ export class VirtualPendingMonitor {
 
     const byBasket = new Map<string, BasketOpenTpRow[]>()
     for (const row of (data ?? []) as BasketOpenTpRow[]) {
-      const tp = Number(row.tp)
-      if (!Number.isFinite(tp) || tp <= 0) continue
       const basketKey = `${row.signal_id}|${row.broker_account_id}`
       const arr = byBasket.get(basketKey) ?? []
-      arr.push({ ...row, tp })
+      arr.push(row)
       byBasket.set(basketKey, arr)
     }
 
     for (const [basketKey, rows] of byBasket) {
-      const direction = String(rows[0]?.direction ?? '').toLowerCase()
-      const tps = rows
+      const openRows = rows.filter(r => r.status === 'open')
+      const closedCount = rows.length - openRows.length
+      const direction = String((openRows[0] ?? rows[0])?.direction ?? '').toLowerCase()
+      const openTps = openRows
         .map(r => Number(r.tp))
         .filter(tp => Number.isFinite(tp) && tp > 0)
-      const touch = evaluateTpTouch({ direction, tps, bid, ask })
-      if (!touch.touched) continue
+      const decision = shouldLockBasketLayering({
+        direction,
+        openTps,
+        openCount: openRows.length,
+        closedCount,
+        bid,
+        ask,
+      })
+      if (!decision.lock) continue
 
       const [signalId, brokerAccountId] = basketKey.split('|')
       if (!signalId || !brokerAccountId) continue
-      const userId = rows[0]?.user_id
+      const userId = (openRows[0] ?? rows[0])?.user_id
       if (!userId) continue
 
-      await setTpTouchedLock(this.supabase, {
+      const layerTillClose = await loadRangeLayerTillCloseForSignal(
+        this.supabase,
         signalId,
         brokerAccountId,
-        symbol,
-        userId,
-        triggerPrice: touch.triggerPrice,
-        triggerSide: touch.triggerSide,
-      })
-      const expiredRows = await expireActiveRangeLegsForTpLock(
-        this.supabase,
-        { signalId, brokerAccountId, symbol },
       )
+      if (layerTillClose) continue
+
+      const { stopped, deleted } = await stopRangeLayeringUnlessEnabled(
+        this.supabase,
+        { signalId, brokerAccountId, symbol, userId },
+        decision.reason ?? 'tp_touched',
+      )
+      if (!stopped) continue
       touched.add(basketKey)
 
       try {
@@ -530,11 +625,15 @@ export class VirtualPendingMonitor {
           request_payload: {
             symbol,
             direction,
-            trigger_price: touch.triggerPrice,
-            trigger_side: touch.triggerSide,
+            trigger_price: decision.triggerPrice,
+            trigger_side: decision.triggerSide,
+            lock_trigger: decision.reason,
+            closed_trades: closedCount,
+            open_trades: openRows.length,
             bid,
             ask,
-            expired_rows: expiredRows,
+            deleted_rows: deleted,
+            lock_reason: 'layering_stopped',
           } as unknown as Record<string, unknown>,
         })
       } catch {
@@ -543,6 +642,18 @@ export class VirtualPendingMonitor {
     }
 
     return touched
+  }
+
+  /** Undo a CAS claim when the fire-time price check fails — leg stays live. */
+  private async releaseClaimedLegToPending(legId: string): Promise<void> {
+    const { error } = await this.supabase
+      .from('range_pending_legs')
+      .update({ status: 'pending', claimed_at: null, claimed_by: null })
+      .eq('id', legId)
+      .eq('status', 'claimed')
+    if (error) {
+      console.warn(`[virtualPendingMonitor] release claim failed leg=${legId}: ${error.message}`)
+    }
   }
 
   private async markLegFiredWithRetry(
@@ -563,12 +674,31 @@ export class VirtualPendingMonitor {
   }
 
   private async fireLeg(leg: PendingRow, bid: number, ask: number): Promise<boolean> {
-    const api = apiForMetaapiAccount(this.platformByUuid, leg.metaapi_account_id)
+    const api = apiForFxsocketAccount(this.platformByUuid, leg.metaapi_account_id)
     if (!api) return false
 
-    const block = await shouldBlockVirtualLegFire(this.supabase, leg)
+    const layerTillClose = await loadRangeLayerTillCloseForSignal(
+      this.supabase,
+      leg.signal_id,
+      leg.broker_account_id,
+    )
+    const block = await shouldBlockVirtualLegFire(this.supabase, leg, {
+      layerTillClose,
+      quote: { bid, ask },
+      isBuy: leg.is_buy,
+    })
     if (block.block) {
-      if (block.reason) {
+      if (block.reason === 'basket_in_profit') {
+        const bk = `${leg.signal_id}|${leg.broker_account_id}`
+        const now = Date.now()
+        const last = this.profitSkipLogAt.get(bk) ?? 0
+        if (now - last >= VirtualPendingMonitor.PROFIT_SKIP_LOG_MS) {
+          this.profitSkipLogAt.set(bk, now)
+          console.log(
+            `[virtualPendingMonitor] skip fire leg=${leg.id} signal=${leg.signal_id} step=${leg.step_idx}: basket_in_profit`,
+          )
+        }
+      } else if (block.reason) {
         console.log(
           `[virtualPendingMonitor] skip fire leg=${leg.id} signal=${leg.signal_id} step=${leg.step_idx}: ${block.reason}`,
         )
@@ -590,6 +720,54 @@ export class VirtualPendingMonitor {
       return false
     }
     if (!claimed) return false
+
+    // SL/TP may have been refreshed after this tick's queue SELECT (mgmt / basket refresh).
+    try {
+      const { data: freshRow } = await this.supabase
+        .from('range_pending_legs')
+        .select('stoploss,takeprofit,cwe_close_price')
+        .eq('id', leg.id)
+        .maybeSingle()
+      if (freshRow) {
+        leg.stoploss = (freshRow as { stoploss?: number | null }).stoploss ?? leg.stoploss
+        leg.takeprofit = (freshRow as { takeprofit?: number | null }).takeprofit ?? leg.takeprofit
+        leg.cwe_close_price = (freshRow as { cwe_close_price?: number | null }).cwe_close_price ?? leg.cwe_close_price
+      }
+    } catch {
+      // best-effort — fire with stops from the tick snapshot
+    }
+
+    // Channel memory may hold a newer SL than the leg row (e.g. symbol-less Adjust SL).
+    // Only when the memory was written during this basket's lifetime — older
+    // memory belongs to a previous signal and produces wrong-side stops.
+    let channelIdForTrade: string | null = null
+    try {
+      const { data: sigMeta } = await this.supabase
+        .from('signals')
+        .select('channel_id,created_at')
+        .eq('id', leg.signal_id)
+        .maybeSingle()
+      channelIdForTrade = (sigMeta as { channel_id?: string } | null)?.channel_id ?? null
+      const basketCreatedAt = (sigMeta as { created_at?: string } | null)?.created_at ?? null
+      if (channelIdForTrade) {
+        const channelParams = await loadChannelActiveTradeParamsForSymbol(
+          this.supabase,
+          leg.user_id,
+          channelIdForTrade,
+          leg.symbol,
+        )
+        if (
+          channelParams?.stoploss != null
+          && channelParams.stoploss > 0
+          && !channelParamsPredateBasket(channelParams, basketCreatedAt)
+        ) {
+          leg.stoploss = channelParams.stoploss
+        }
+      }
+    } catch {
+      // best-effort — fire with stops from pending leg row
+    }
+
     const staleReason = await this.getStaleLegReason(leg, api, leg.metaapi_account_id)
     if (staleReason) {
       await deleteRangePendingLegsForBasket(
@@ -598,6 +776,45 @@ export class VirtualPendingMonitor {
         staleReason,
       )
       return true
+    }
+
+    const params = await this.getSymbolParams(leg.metaapi_account_id, leg.symbol)
+
+    // The tick's quote can be seconds old by now (claim + guard round-trips).
+    // Re-quote just before send and require the leg is STILL triggered AND the
+    // fill side sits within slippage of the rung — otherwise release the claim
+    // and let the leg fire when price genuinely returns to its level.
+    let fireBid = bid
+    let fireAsk = ask
+    try {
+      const fresh = await api.quote(leg.metaapi_account_id, leg.symbol)
+      if (Number.isFinite(fresh.bid) && Number.isFinite(fresh.ask)) {
+        fireBid = fresh.bid
+        fireAsk = fresh.ask
+      }
+    } catch {
+      // fall back to the tick quote
+    }
+    const band = fillWithinTriggerBand({
+      isBuy: leg.is_buy,
+      triggerPrice: leg.trigger_price,
+      bid: fireBid,
+      ask: fireAsk,
+      slippagePoints: leg.slippage ?? 20,
+      point: params?.point ?? null,
+    })
+    if (!band.ok) {
+      await this.releaseClaimedLegToPending(leg.id)
+      const now = Date.now()
+      const last = this.bandSkipLogAt.get(leg.id) ?? 0
+      if (now - last >= VirtualPendingMonitor.PROFIT_SKIP_LOG_MS) {
+        this.bandSkipLogAt.set(leg.id, now)
+        console.log(
+          `[virtualPendingMonitor] defer fire leg=${leg.id} signal=${leg.signal_id} step=${leg.step_idx}: `
+          + `${band.reason} trigger=${leg.trigger_price} bid=${fireBid} ask=${fireAsk}`,
+        )
+      }
+      return false
     }
 
     // Build a MARKET order. We DO NOT send `price` for Buy/Sell — the broker
@@ -617,14 +834,12 @@ export class VirtualPendingMonitor {
       slippage: leg.slippage ?? 20,
       stoploss: leg.stoploss ?? 0,
       takeprofit: leg.cwe_close_price != null ? 0 : (leg.takeprofit ?? 0),
-      comment: leg.comment ?? `TSCopier:rg${leg.step_idx}`,
+      comment: leg.comment ?? '',
       expertID: leg.expert_id ?? 909090,
     }
 
-    // Last-second SL/TP clamp using the live quote as the reference. Pulls
-    // SymbolParams once per (account, symbol) every 10 minutes.
-    const params = await this.getSymbolParams(leg.metaapi_account_id, leg.symbol)
-    const refPrice = leg.is_buy ? ask : bid
+    // Last-second SL/TP clamp using the fire-time quote as the reference.
+    const refPrice = leg.is_buy ? fireAsk : fireBid
     if (params) {
       const clamped = this.clampOrderStops(args, refPrice, params)
       if (clamped.adjustments.length) {
@@ -660,15 +875,19 @@ export class VirtualPendingMonitor {
         `[virtualPendingMonitor] virtual leg fired signal=${leg.signal_id} stepIdx=${leg.step_idx} trigger=${leg.trigger_price} ref=${refPrice} ticket=${result.ticket} latency=${latencyMs}ms`,
       )
       const entryPx = result.openPrice ?? refPrice ?? null
+      const openSl = result.stopLoss ?? args.stoploss ?? null
+      const manual = await this.loadManualSettingsForLeg(leg.broker_account_id, channelIdForTrade)
+      const autoBeCols = autoManagementTradeSnapshot(manual, entryPx, openSl)
       const { data: insTrade, error: insErr } = await this.supabase.from('trades').insert({
         user_id: leg.user_id,
         signal_id: leg.signal_id,
+        telegram_channel_id: channelIdForTrade,
         broker_account_id: leg.broker_account_id,
         metaapi_order_id: result.ticket != null ? String(result.ticket) : null,
         symbol: leg.symbol,
         direction: leg.is_buy ? 'buy' : 'sell',
         entry_price: entryPx,
-        sl: result.stopLoss ?? args.stoploss ?? null,
+        sl: openSl,
         tp: result.takeProfit ?? args.takeprofit ?? null,
         lot_size: result.lots ?? args.volume,
         status: 'open',
@@ -677,6 +896,7 @@ export class VirtualPendingMonitor {
         // newly-filled leg alongside its sibling immediates. Null for
         // non-CWE pendings.
         cwe_close_price: leg.cwe_close_price,
+        ...autoBeCols,
       }).select('id').maybeSingle()
       if (insErr) {
         console.warn(`[virtualPendingMonitor] trades insert failed leg=${leg.id}: ${insErr.message}`)
@@ -688,7 +908,7 @@ export class VirtualPendingMonitor {
         tradeRowId
         && Number.isFinite(ticketNum)
         && ticketNum > 0
-        && hasMetatraderApiConfigured()
+        && hasFxsocketConfigured()
       ) {
         try {
           await tryApplyBasketFollowUpToNewFill(this.supabase, api, {
@@ -702,6 +922,7 @@ export class VirtualPendingMonitor {
             entryPrice: entryPx,
             existingSl: result.stopLoss ?? args.stoploss ?? null,
             existingTp: result.takeProfit ?? args.takeprofit ?? null,
+            isBuy: leg.is_buy,
           })
         } catch (hookErr) {
           console.warn(
@@ -709,6 +930,20 @@ export class VirtualPendingMonitor {
             hookErr,
           )
         }
+        // Brief pause so the new trade row is visible before the basket-wide rebalance query.
+        await new Promise(r => setTimeout(r, 500))
+        try {
+          await this.rebalanceRangeBasketTakeProfits(leg, { forceLayeringRebalance: true })
+        } catch (rebalErr) {
+          console.warn(
+            `[virtualPendingMonitor] TP rebalance after range fill leg=${leg.id} signal=${leg.signal_id}:`,
+            rebalErr,
+          )
+        }
+      } else if (tradeRowId && Number.isFinite(ticketNum) && ticketNum > 0) {
+        console.warn(
+          `[virtualPendingMonitor] skip TP rebalance leg=${leg.id} signal=${leg.signal_id}: fxsocket not configured`,
+        )
       }
       try {
         await this.supabase.from('trade_execution_logs').insert({
@@ -802,7 +1037,7 @@ export class VirtualPendingMonitor {
 
   private async getStaleLegReason(
     leg: PendingRow,
-    api: ReturnType<typeof apiForMetaapiAccount> | null,
+    api: ReturnType<typeof apiForFxsocketAccount> | null,
     metaapiAccountId: string,
   ): Promise<string | null> {
     return reconcileBasketFlatFromBroker(
@@ -839,8 +1074,100 @@ export class VirtualPendingMonitor {
     }
   }
 
+  private async rebalanceRangeBasketTakeProfits(
+    leg: Pick<PendingRow, 'user_id' | 'signal_id' | 'broker_account_id' | 'metaapi_account_id' | 'symbol' | 'is_buy'>,
+    opts?: { forceLayeringRebalance?: boolean },
+  ): Promise<void> {
+    if (!hasFxsocketConfigured()) return
+
+    const { data: signalRow, error: signalErr } = await this.supabase
+      .from('signals')
+      .select('parsed_data, channel_id, created_at')
+      .eq('id', leg.signal_id)
+      .maybeSingle()
+    if (signalErr) {
+      console.warn(
+        `[virtualPendingMonitor] signal load failed for rebalance signal=${leg.signal_id}: ${signalErr.message}`,
+      )
+      return
+    }
+    const channelId = (signalRow?.channel_id ?? null) as string | null
+    const basketCreatedAt = (signalRow?.created_at ?? null) as string | null
+    const rawManual = await this.loadManualSettingsForLeg(leg.broker_account_id, channelId)
+    const manual = normalizeManualSettingsForExecution(rawManual)
+    if (manual.range_trading !== true) return
+
+    const api = apiForFxsocketAccount(this.platformByUuid, leg.metaapi_account_id)
+    if (!api) return
+
+    const params = await this.getSymbolParams(leg.metaapi_account_id, leg.symbol)
+    const parsed = toRangeBasketParsedSlice(
+      (signalRow?.parsed_data ?? null) as { sl?: unknown; tp?: unknown } | null,
+    )
+
+    await syncRangeBasketTakeProfits({
+      supabase: this.supabase,
+      api,
+      uuid: leg.metaapi_account_id,
+      symbol: leg.symbol,
+      direction: leg.is_buy ? 'buy' : 'sell',
+      baseLot: 0.01,
+      params: params
+        ? {
+            digits: params.digits,
+            point: params.point,
+            minLot: params.minLot,
+            lotStep: params.lotStep,
+            contractSize: params.contractSize,
+            stopsLevel: params.stopsLevel,
+            freezeLevel: params.freezeLevel,
+          }
+        : null,
+      signalId: leg.signal_id,
+      userId: leg.user_id,
+      brokerAccountId: leg.broker_account_id,
+      manual,
+      parsed,
+      plan: null,
+      forceLayeringRebalance: opts?.forceLayeringRebalance,
+      channelId,
+      basketCreatedAt,
+    })
+  }
+
+  private async loadManualSettingsForLeg(
+    brokerAccountId: string,
+    channelId: string | null,
+  ): Promise<Record<string, unknown>> {
+    const cacheKey = `${brokerAccountId}|${channelId ?? ''}`
+    const cached = this.brokerConfigCache.get(cacheKey)
+    if (cached && Date.now() - cached.loadedAt < SYMBOL_TTL_MS) {
+      return cached.manual
+    }
+    const { data, error } = await this.supabase
+      .from('broker_accounts')
+      .select('manual_settings,channel_trading_configs,copier_mode,signal_channel_ids')
+      .eq('id', brokerAccountId)
+      .maybeSingle()
+    if (error || !data) return {}
+    const resolved = resolveChannelTradingConfig(
+      data as {
+        manual_settings?: Record<string, unknown> | null
+        channel_trading_configs?: unknown
+        copier_mode?: string | null
+        signal_channel_ids?: string[] | null
+      },
+      channelId,
+    )
+    this.brokerConfigCache.set(cacheKey, {
+      manual: resolved.manual_settings,
+      loadedAt: Date.now(),
+    })
+    return resolved.manual_settings
+  }
+
   private async getSymbolParams(uuid: string, symbol: string): Promise<SymbolCacheEntry | null> {
-    const api = apiForMetaapiAccount(this.platformByUuid, uuid)
+    const api = apiForFxsocketAccount(this.platformByUuid, uuid)
     if (!api) return null
     const key = `${uuid}:${symbol.toUpperCase()}`
     const cached = this.symbolCache.get(key)
@@ -949,7 +1276,7 @@ export class VirtualPendingMonitor {
     leg: PendingRow,
     args: OrderSendArgs,
   ): Promise<{ ticket?: number; openPrice?: number; lots?: number; stopLoss?: number; takeProfit?: number }> {
-    const api = apiForMetaapiAccount(this.platformByUuid, leg.metaapi_account_id)
+    const api = apiForFxsocketAccount(this.platformByUuid, leg.metaapi_account_id)
     if (!api) throw new Error('api unavailable')
     try {
       return await api.orderSend(leg.metaapi_account_id, args)

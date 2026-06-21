@@ -1,19 +1,24 @@
-import type { OrderSendArgs } from '../metatraderapi'
+import type { OrderSendArgs } from '../fxsocketClient'
 import type { PipQuote } from '../pipCalculator'
 import type {
   ManualSettings,
-  PlannerCloseWorseEntries,
+  ParsedSignal,
   PlannerContext,
   PlannerResult,
   PlannerStrictEntry,
   VirtualPendingLeg,
 } from './types'
 import { clampPendingExpiryHours } from './manualSettings'
+import { appendOrderCommentSuffix } from '../tradeComment'
 import type { PlanSingleManualOrdersArgs } from './planSingleManualOrders'
 import { planRangeSplit } from './rangeSplit'
-import { buildDistributedPerLegTakeProfits } from './tpBucketDistribution'
+import { buildDistributedPerLegTakeProfits, buildEntryQualityTakeProfitMap } from './tpBucketDistribution'
+import { resolveMultiTradeTargetUnits, multiTradeUnitsToLot } from './multiTradeLegUnits'
+import { resolveRangeDistancePips } from './signalEntryRange'
+import { resolvedParsedEntryZone } from './parsedEntry'
 
 export interface PlanMultiManualOrdersArgs {
+  parsed: ParsedSignal
   orderBase: Omit<OrderSendArgs, 'volume' | 'stoploss' | 'takeprofit' | 'expiration' | 'expirationType'>
   expirationFields: { expiration?: string; expirationType?: OrderSendArgs['expirationType'] }
   strictEntry: PlannerStrictEntry | undefined
@@ -42,6 +47,7 @@ export function planMultiManualOrders(args: PlanMultiManualOrdersArgs): PlannerR
     strictEntry,
     manual,
     manualLot,
+    parsed,
     ctx,
     commentPrefix,
     expertId,
@@ -60,20 +66,20 @@ export function planMultiManualOrders(args: PlanMultiManualOrdersArgs): PlannerR
 
   const minLot = Number.isFinite(ctx.minLot) && ctx.minLot > 0 ? ctx.minLot : 0.01
   const lotStep = Number.isFinite(ctx.lotStep) && ctx.lotStep > 0 ? ctx.lotStep : 0.01
-  const FP_EPS = 1e-9
-  const toUnits = (v: number): number => {
-    if (!Number.isFinite(v) || v <= 0) return 0
-    return Math.max(0, Math.floor(v / lotStep + FP_EPS))
-  }
-  const unitsToLot = (u: number): number => Number((u * lotStep).toFixed(8))
-
   const legPct = Math.max(0.1, Math.min(100, Number(manual.multi_trade_leg_percent ?? 5)))
   const ABS_MAX_LEGS = 500
 
-  const manualUnits = toUnits(manualLot)
-  const targetUnits = toUnits(manualLot * (legPct / 100))
-  const minUnits = Math.max(1, Math.round(minLot / lotStep))
+  const { manualUnits, targetUnits, minUnits } = resolveMultiTradeTargetUnits({
+    manualLot,
+    legPercent: legPct,
+    minLot,
+    lotStep,
+  })
+  const targetLeg = multiTradeUnitsToLot(targetUnits, lotStep)
 
+  if (manualUnits < minUnits) {
+    return { orders: [], skip_reason: 'lot_below_symbol_min', delay_ms }
+  }
   if (targetUnits < minUnits) {
     return buildSingleOrder({
       orderBase,
@@ -93,12 +99,8 @@ export function planMultiManualOrders(args: PlanMultiManualOrdersArgs): PlannerR
       fallbackReason: 'multi_trade_fallback_min_lot',
     })
   }
-  if (manualUnits < minUnits) {
-    return { orders: [], skip_reason: 'lot_below_symbol_min', delay_ms }
-  }
 
   const totalLegs = Math.max(1, Math.min(ABS_MAX_LEGS, Math.floor(manualUnits / targetUnits)))
-  const targetLeg = unitsToLot(targetUnits)
 
   // Use the *effective* immediate op (market vs broker pending), not `opSplit`.
   // Signals with an entry used to map to BuyLimit for SL/TP geometry, but we
@@ -106,21 +108,23 @@ export function planMultiManualOrders(args: PlanMultiManualOrdersArgs): PlannerR
   // broker pendings on that path, so range layering must stay enabled.
   const baseIsPendingSignal =
     orderBase.operation.includes('Limit') || orderBase.operation.includes('Stop')
+  const rangeDistance = resolveRangeDistancePips({ manual, parsed, pip, isBuy })
   const split = planRangeSplit({
     totalLegs,
     baseIsPendingSignal,
     rangeOn: manual.range_trading === true,
     rangePct: Math.max(0, Math.min(100, Number(manual.range_percent ?? 0))),
     stepPips: Math.max(0, Number(manual.range_step_pips ?? 0)),
-    distPips: Math.max(0, Number(manual.range_distance_pips ?? 0)),
+    distPips: rangeDistance.distPips,
     pip,
     minStepPriceUnits: minStopDist,
     hasSignalAnchor: entryAnchor != null,
   })
   const immediateLegs = split.immediateLegs
-  const effectiveRangeLegs = split.pendingLegs
+  const reservedRangeLegs = split.pendingLegs
+  const effectiveRangeLegs = split.activePendingLegs
   const stepPriceOffset = split.stepPriceOffset
-  const rangeFallbackReason = split.fallbackReason
+  let rangeFallbackReason = split.fallbackReason
 
   const totalLegsForTp = immediateLegs + effectiveRangeLegs
   const immediateTpPrices = buildDistributedPerLegTakeProfits({
@@ -141,22 +145,111 @@ export function planMultiManualOrders(args: PlanMultiManualOrdersArgs): PlannerR
   }
   const tpForRangeIndex = (idx: number): number | null => {
     if (finalTps.length === 0) return null
+    if (
+      manual.range_trading === true
+      && effectiveRangeLegs > 0
+      && entryAnchor != null
+      && entryAnchor > 0
+      && stepPriceOffset > 0
+    ) {
+      const projectedLegs: Array<{ id: string; entryPrice: number; openedAt: string }> = []
+      for (let i = 0; i < immediateLegs; i++) {
+        projectedLegs.push({
+          id: `imm${i}`,
+          entryPrice: entryAnchor,
+          openedAt: `imm${String(i).padStart(4, '0')}`,
+        })
+      }
+      for (let i = 0; i < effectiveRangeLegs; i++) {
+        const stepIdx = i + 1
+        const offset = stepIdx * stepPriceOffset
+        projectedLegs.push({
+          id: `rg${stepIdx}`,
+          entryPrice: isBuy ? entryAnchor - offset : entryAnchor + offset,
+          openedAt: `rg${String(stepIdx).padStart(4, '0')}`,
+        })
+      }
+      const projectedTp = buildEntryQualityTakeProfitMap({
+        legs: projectedLegs,
+        isBuy,
+        slotLegCount: immediateLegs + effectiveRangeLegs,
+        finalTps,
+        tpLots: manual.tp_lots,
+      }).get(`rg${idx + 1}`)
+      if (typeof projectedTp === 'number' && projectedTp > 0) return projectedTp
+    }
     const price = rangeTpPrices[idx]
     if (typeof price === 'number' && Number.isFinite(price) && price > 0) return price
     return finalTps[finalTps.length - 1] ?? null
   }
 
-  const orders: OrderSendArgs[] = []
+  // Assign a TP to every granular leg first (preserves the tp_lots volume
+  // distribution exactly), then consolidate legs sharing the same TP into at
+  // most `multi_trade_max_orders` orders. The MT bridge executes OrderSends
+  // serially per account (~0.5-0.7s each), so an uncapped burst of 25 legs
+  // takes ~18s — consolidation keeps total volume and the per-TP volume split
+  // identical while bounding placement time to a few seconds.
+  const burstCapRaw = Number(manual.multi_trade_max_orders ?? ABS_MAX_LEGS)
+  const burstCap = Number.isFinite(burstCapRaw) && burstCapRaw > 0
+    ? Math.max(1, Math.min(ABS_MAX_LEGS, Math.floor(burstCapRaw)))
+    : ABS_MAX_LEGS
+  if (burstCap < immediateLegs) {
+    console.log(
+      `[planMulti] burst cap ${burstCap} consolidates ${immediateLegs} immediate legs`
+      + ` (leg%=${legPct} manualLot=${manualLot})`,
+    )
+  }
+
+  type BurstGroup = { tpPrice: number | null; legCount: number }
+  const burstGroups: BurstGroup[] = []
   for (let i = 0; i < immediateLegs; i++) {
     const tpPrice = tpForImmediateIndex(i)
-    orders.push({
-      ...orderBase,
-      volume: targetLeg,
-      stoploss: roundPrice(finalSl),
-      takeprofit: roundPrice(tpPrice),
-      ...expirationFields,
-      comment: `${commentPrefix}:tp${i + 1}`,
-    })
+    const last = burstGroups[burstGroups.length - 1]
+    if (last && last.tpPrice === tpPrice) last.legCount += 1
+    else burstGroups.push({ tpPrice, legCount: 1 })
+  }
+
+  const orders: OrderSendArgs[] = []
+  if (burstGroups.length > 0) {
+    // Every distinct TP keeps at least one order; spare slots go to the
+    // groups carrying the most volume so order sizes stay balanced.
+    const cap = Math.max(burstGroups.length, Math.min(burstCap, immediateLegs))
+    const alloc = burstGroups.map(g => ({ g, orders: 1 }))
+    let used = burstGroups.length
+    while (used < cap) {
+      let best = -1
+      for (let i = 0; i < alloc.length; i++) {
+        if (alloc[i].orders >= alloc[i].g.legCount) continue
+        if (best < 0
+          || alloc[i].g.legCount / alloc[i].orders > alloc[best].g.legCount / alloc[best].orders) {
+          best = i
+        }
+      }
+      if (best < 0) break
+      alloc[best].orders += 1
+      used += 1
+    }
+
+    let orderNo = 0
+    for (const { g, orders: orderCount } of alloc) {
+      const groupUnits = g.legCount * targetUnits
+      const baseUnits = Math.floor(groupUnits / orderCount)
+      let remainder = groupUnits - baseUnits * orderCount
+      for (let k = 0; k < orderCount; k++) {
+        const units = baseUnits + (remainder > 0 ? 1 : 0)
+        if (remainder > 0) remainder -= 1
+        if (units <= 0) continue
+        orderNo += 1
+        orders.push({
+          ...orderBase,
+          volume: multiTradeUnitsToLot(units, lotStep),
+          stoploss: roundPrice(finalSl),
+          takeprofit: roundPrice(g.tpPrice),
+          ...expirationFields,
+          comment: appendOrderCommentSuffix(commentPrefix, `:tp${orderNo}`),
+        })
+      }
+    }
   }
 
   const virtualPendings: VirtualPendingLeg[] = []
@@ -175,7 +268,7 @@ export function planMultiManualOrders(args: PlanMultiManualOrdersArgs): PlannerR
         stoploss: finalSl,
         takeprofit: tpPrice,
         slippage: slippage ?? 20,
-        comment: `${commentPrefix}:rg${stepIdx}.tp`,
+        comment: appendOrderCommentSuffix(commentPrefix, `:rg${stepIdx}.tp`),
         expertID: expertId,
         expiryHours,
       })
@@ -190,23 +283,12 @@ export function planMultiManualOrders(args: PlanMultiManualOrdersArgs): PlannerR
         ?? tpForImmediateIndex(0)
       orders.push({
         ...orderBase,
-        volume: unitsToLot(remainderUnits),
+        volume: multiTradeUnitsToLot(remainderUnits, lotStep),
         stoploss: roundPrice(finalSl),
         takeprofit: roundPrice(tpPrice),
         ...expirationFields,
-        comment: `${commentPrefix}:tp.rem`,
+        comment: appendOrderCommentSuffix(commentPrefix, ':tp.rem'),
       })
-    }
-  }
-
-  let closeWorseEntries: PlannerCloseWorseEntries | undefined
-  if (manual.close_worse_entries === true && immediateLegs > 0) {
-    const cwPips = Math.max(0, Number(manual.close_worse_entries_pips ?? 0))
-    if (cwPips > 0) {
-      closeWorseEntries = {
-        immediates: immediateLegs,
-        pipsFromAnchor: cwPips,
-      }
     }
   }
 
@@ -238,7 +320,28 @@ export function planMultiManualOrders(args: PlanMultiManualOrdersArgs): PlannerR
     pipQuote,
     isBuy,
     ...(strictEntry ? { strictEntry } : {}),
-    ...(closeWorseEntries ? { closeWorseEntries } : {}),
+    ...(manual.range_trading === true && reservedRangeLegs > 0
+      ? {
+          rangeLayering: {
+            rangeStepPips: Math.max(0, Number(manual.range_step_pips ?? 0)),
+            rangeDistancePips: Math.max(0, Number(manual.range_distance_pips ?? 0)),
+            effectiveStepPips: split.effectiveStepPips,
+            stepPriceOffset: split.stepPriceOffset,
+            maxStepIdx: split.maxStepIdx,
+            reservedPendingLegs: reservedRangeLegs,
+            activePendingLegs: effectiveRangeLegs,
+            ...(manual.use_signal_entry_range === true
+              ? {
+                  useSignalEntryRange: true,
+                  signalRangeBoundary: rangeDistance.boundary,
+                  signalZoneLo: resolvedParsedEntryZone(parsed)?.lo ?? null,
+                  signalZoneHi: resolvedParsedEntryZone(parsed)?.hi ?? null,
+                  effectiveDistancePips: rangeDistance.distPips,
+                }
+              : {}),
+          },
+        }
+      : {}),
     delay_ms,
     ...(rangeFallbackReason ? { fallback_reason: rangeFallbackReason } : {}),
   }

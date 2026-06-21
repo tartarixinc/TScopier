@@ -18,6 +18,16 @@ export type AnalyzeChannelProfileResult = {
   error?: string
 }
 
+export type ManagementKeywordGroups = {
+  close_all: string[]
+  close_partial: string[]
+  close_half: string[]
+  break_even: string[]
+  modify_sl: string[]
+  modify_tp: string[]
+  close_worse_entries: string[]
+}
+
 export type SignalTrainingSchema = {
   entry_cues: string[]
   buy_cues: string[]
@@ -26,6 +36,8 @@ export type SignalTrainingSchema = {
   take_profit_cues: string[]
   take_profit_tier_cues: string[]
   management_cues: string[]
+  management_keyword_groups?: ManagementKeywordGroups
+  market_order_cues?: string[]
   signal_order_pattern: 'signal_then_price' | 'price_then_signal' | 'mixed' | 'unknown'
   signal_requires_price: boolean | null
   language_hints: string[]
@@ -94,11 +106,15 @@ export async function analyzeChannelProfile(
 export async function trainChannelSignals(
   channelId: string,
   lookbackDays = 30,
+  historicalMessages?: string[],
 ): Promise<TrainChannelSignalsResult> {
   return callAnalyzeChannelProfile({
     channel_id: channelId,
     lookback_days: lookbackDays,
     action: 'train',
+    ...(historicalMessages && historicalMessages.length > 0
+      ? { historical_messages: historicalMessages.slice(0, 300) }
+      : {}),
   }) as Promise<TrainChannelSignalsResult>
 }
 

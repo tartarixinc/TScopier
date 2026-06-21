@@ -48,7 +48,10 @@ export async function recalculateRunSummary(
   await supabase.from("backtest_runs").update({
     summary: {
       ...summary,
-      massiveApiCalls: prevSummary.massiveApiCalls ?? summary.massiveApiCalls,
+      marketDataApiCalls: prevSummary.marketDataApiCalls ?? prevSummary.massiveApiCalls ?? summary.marketDataApiCalls,
+      massiveApiCalls: prevSummary.massiveApiCalls ?? prevSummary.marketDataApiCalls ?? summary.massiveApiCalls,
+      brokerAccountId: prevSummary.brokerAccountId,
+      brokerLabel: prevSummary.brokerLabel,
       importWarnings: prevSummary.importWarnings,
       signalSource: prevSummary.signalSource ?? summary.signalSource,
       rawParsedCount: prevSummary.rawParsedCount,
