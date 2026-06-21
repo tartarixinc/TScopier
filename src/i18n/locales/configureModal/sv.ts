@@ -98,10 +98,10 @@ export const configureModalSv: ConfigureModalTranslations = {
     example: 'Exempel: XAUUSD med suffix + → beställningar på XAUUSD+',
     tradeOnlyLabel: 'Symboler att handla med',
     tradeOnlyHint: 'Lämna tomt för att kopiera varje symbol från den här kanalen. När de är listade kopieras endast signaler som matchar dessa symboler (kommaseparerade, t.ex. XAUUSD, EURUSD).',
-    tradeOnlyPlaceholder: 'XAUUSD, EURUSD',
+    tradeOnlyPlaceholder: 't.ex. XAUUSD, EURUSD',
     avoidLabel: 'Symboler att undvika',
     avoidHint: 'Lämna tomt för att tillåta alla symboler (med förbehåll för symboler att byta). Listade symboler kopieras aldrig från denna kanal.',
-    avoidPlaceholder: 'BTCUSD, US30'
+    avoidPlaceholder: 't.ex. BTCUSD, US30'
   },
   ai: {
     title: 'AI-konfiguration',

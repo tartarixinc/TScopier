@@ -98,10 +98,10 @@ export const configureModalRu: ConfigureModalTranslations = {
     example: 'Пример: XAUUSD с суффиксом + → ордера на XAUUSD+.',
     tradeOnlyLabel: 'Символы для торговли',
     tradeOnlyHint: 'Оставьте пустым, чтобы скопировать каждый символ из этого канала. При указании копируются только сигналы, соответствующие этим символам (через запятую, например, XAUUSD, EURUSD).',
-    tradeOnlyPlaceholder: 'XAUUSD, EURUSD',
+    tradeOnlyPlaceholder: 'напр. XAUUSD, EURUSD',
     avoidLabel: 'Символы, которых следует избегать',
     avoidHint: 'Оставьте пустым, чтобы разрешить все символы (с учетом символов для торговли). Перечисленные символы никогда не копируются из этого канала.',
-    avoidPlaceholder: 'BTCUSD, 30 долларов США'
+    avoidPlaceholder: 'напр. BTCUSD, US30'
   },
   ai: {
     title: 'Конфигурация ИИ',

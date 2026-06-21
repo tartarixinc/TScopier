@@ -98,10 +98,10 @@ export const configureModalJa: ConfigureModalTranslations = {
     example: '例: サフィックス + が付いた XAUUSD → XAUUSD+ で注文',
     tradeOnlyLabel: '取引するシンボル',
     tradeOnlyHint: 'このチャネルからすべてのシンボルをコピーするには、空のままにします。リストされている場合、これらの記号に一致する信号のみがコピーされます (カンマ区切り、例: XAUUSD、EURUSD)。',
-    tradeOnlyPlaceholder: 'XAUUSD、ユーロドル',
+    tradeOnlyPlaceholder: '例: XAUUSD, EURUSD',
     avoidLabel: '避けるべき記号',
     avoidHint: 'すべてのシンボルを許可するには、空のままにします (取引するシンボルの対象となります)。リストされたシンボルがこのチャネルからコピーされることはありません。',
-    avoidPlaceholder: 'BTCUSD、US30'
+    avoidPlaceholder: '例: BTCUSD, US30'
   },
   ai: {
     title: 'AIの設定',

@@ -98,10 +98,10 @@ export const configureModalPl: ConfigureModalTranslations = {
     example: 'Przykład: XAUUSD z przyrostkiem + → zlecenia na XAUUSD+',
     tradeOnlyLabel: 'Symbole do handlu',
     tradeOnlyHint: 'Pozostaw puste, aby skopiować każdy symbol z tego kanału. Gdy są wymienione, kopiowane są tylko sygnały pasujące do tych symboli (oddzielone przecinkami, np. XAUUSD, EURUSD).',
-    tradeOnlyPlaceholder: 'XAUUSD, EURUSD',
+    tradeOnlyPlaceholder: 'np. XAUUSD, EURUSD',
     avoidLabel: 'Symbole, których należy unikać',
     avoidHint: 'Pozostaw puste, aby zezwolić na wszystkie symbole (z zastrzeżeniem handlu symbolami). Wymienione symbole nigdy nie są kopiowane z tego kanału.',
-    avoidPlaceholder: 'BTCUSD, US30'
+    avoidPlaceholder: 'np. BTCUSD, US30'
   },
   ai: {
     title: 'Konfiguracja AI',

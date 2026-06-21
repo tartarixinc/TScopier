@@ -98,10 +98,10 @@ export const configureModalNl: ConfigureModalTranslations = {
     example: 'Voorbeeld: XAUUSD met achtervoegsel + → bestellingen op XAUUSD+',
     tradeOnlyLabel: 'Symbolen om te verhandelen',
     tradeOnlyHint: 'Laat dit leeg om elk symbool uit dit kanaal te kopiëren. Indien vermeld, worden alleen signalen die overeenkomen met deze symbolen gekopieerd (door komma\'s gescheiden, bijvoorbeeld XAUUSD, EURUSD).',
-    tradeOnlyPlaceholder: 'XAUUSD, EURUSD',
+    tradeOnlyPlaceholder: 'bijv. XAUUSD, EURUSD',
     avoidLabel: 'Symbolen om te vermijden',
     avoidHint: 'Laat dit leeg om alle symbolen toe te staan ​​(afhankelijk van de symbolen die kunnen worden verhandeld). De vermelde symbolen worden nooit uit dit kanaal gekopieerd.',
-    avoidPlaceholder: 'BTCUSD, US30'
+    avoidPlaceholder: 'bijv. BTCUSD, US30'
   },
   ai: {
     title: 'AI-configuratie',

@@ -102,11 +102,11 @@ export const configureModalEs: ConfigureModalTranslations = {
     tradeOnlyLabel: 'Símbolos a operar',
     tradeOnlyHint:
       'Déjalo vacío para copiar todos los símbolos del canal. Si indicas una lista, solo se copian esas señales (separadas por comas, p. ej. XAUUSD, EURUSD).',
-    tradeOnlyPlaceholder: 'XAUUSD, EURUSD',
+    tradeOnlyPlaceholder: 'p. ej. XAUUSD, EURUSD',
     avoidLabel: 'Símbolos a evitar',
     avoidHint:
       'Déjalo vacío para permitir todos los símbolos (según Símbolos a operar). Los listados nunca se copian desde este canal.',
-    avoidPlaceholder: 'BTCUSD, US30',
+    avoidPlaceholder: 'p. ej. BTCUSD, US30',
   },
   ai: {
     title: 'Configuración de IA',
