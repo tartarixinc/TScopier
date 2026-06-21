@@ -182,14 +182,14 @@ export const configureModalEn: ConfigureModalTranslations = {
       'On: range pending orders keep opening until the whole trade is closed, even if price pulls back after a take-profit or close-worse-entries. Off: pending orders are cancelled after the first take-profit or when any order closes, so no deeper orders open on a reversal.',
     useSignalRange: 'Use signal range',
     useSignalRangeBody:
-      'When on, the signal must include a parsed entry price or zone (e.g. 4505, 4505/4500, or @ 4505). Bare "buy now" messages with no price are skipped and shown as waiting for a price range. Unlike Use Signal Entry Price, no broker pending order is placed — the copier waits virtually and opens when live price reaches the signal level or zone edge plus pip tolerance. Layering depth still comes from the signal entry zone when present.',
+      'When on, the signal must include a parsed entry price or zone (e.g. 4505, 4505/4500, or @ 4505). Bare "buy now" messages with no price are skipped and shown as waiting for a price range. Unlike Use Signal Entry Price, no broker pending order is placed — the copier waits virtually and opens when live price is anywhere inside the signal entry zone, with pip tolerance extending slightly beyond both bounds. Layering depth still comes from the signal entry zone when present.',
     useSignalRangePipTolerance: 'Pip tolerance',
     useSignalRangePipToleranceHint:
-      'How many pips above (buy) or below (sell) the signal entry level the market may be and still trigger entry.',
+      'Extra pips beyond the zone bounds (both sides) within which entry may still trigger. Single-price signals use tolerance above (buy) or below (sell) the entry level.',
     useSignalRangeDistanceDisabledHint:
       'Depth is taken from the signal entry zone when the signal includes one.',
     previewSignalRangeFootnote:
-      ' With Use signal range on, entry waits for price at the signal level ± tolerance; range depth is taken from the entry zone when present.',
+      ' With Use signal range on, entry waits until price is inside the signal zone (± tolerance on both bounds); range depth is taken from the entry zone when present.',
     closeWorseEntries: 'Close worse entries',
     closeWorseBody:
       'When the price moves +X pips in your favor from the starting entry, the system automatically closes your immediate trades. When a "Close worse entries" message is enabled and triggered, the system closes any open trade that is within X pips of the current market price. Trades affected by "Close worse entries" do not have a Take-Profit (TP) set on the broker\'s side. Only the Stop-Loss (SL) is sent to the broker.',

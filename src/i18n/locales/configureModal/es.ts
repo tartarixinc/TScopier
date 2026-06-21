@@ -182,14 +182,14 @@ export const configureModalEs: ConfigureModalTranslations = {
       'Activado: las órdenes pendientes del rango siguen abriéndose hasta que toda la operación esté cerrada, aunque el precio retroceda tras un take-profit o un cierre CWE. Desactivado: las pendientes se cancelan en el primer take-profit o al cerrar cualquier orden, así que no se abren órdenes más profundas si el precio revierte.',
     useSignalRange: 'Usar rango de la señal',
     useSignalRangeBody:
-      'Activado: la señal debe incluir un precio o zona de entrada analizada (p. ej. 4505, 4505/4500, @ 4505). Los mensajes «comprar ahora» sin precio se omiten y se muestran en espera de rango. A diferencia de «Usar precio de entrada de la señal», no se coloca una orden pendiente en el broker — el copiador espera virtualmente y abre cuando el precio alcanza el nivel o borde de zona ± tolerancia en pips.',
+      'Activado: la señal debe incluir un precio o zona de entrada analizada (p. ej. 4505, 4505/4500, @ 4505). Los mensajes «comprar ahora» sin precio se omiten y se muestran en espera de rango. A diferencia de «Usar precio de entrada de la señal», no se coloca una orden pendiente en el broker — el copiador espera virtualmente y abre cuando el precio está en cualquier punto dentro de la zona de entrada de la señal, con tolerancia en pips ligeramente más allá de ambos límites.',
     useSignalRangePipTolerance: 'Tolerancia (pips)',
     useSignalRangePipToleranceHint:
-      'Pips por encima (compra) o por debajo (venta) del nivel de entrada de la señal para activar la entrada.',
+      'Pips extra más allá de los límites de la zona (ambos lados) dentro de los cuales la entrada aún puede activarse. Señales con un solo precio: tolerancia por encima (compra) o por debajo (venta) del nivel de entrada.',
     useSignalRangeDistanceDisabledHint:
       'La profundidad se toma de la zona de entrada de la señal cuando está presente.',
     previewSignalRangeFootnote:
-      ' En la ejecución, la profundidad del rango se toma de la zona de entrada de la señal cuando está presente.',
+      ' Con «Usar rango de la señal», la entrada espera hasta que el precio esté dentro de la zona (± tolerancia en ambos límites); la profundidad del rango se toma de la zona de entrada cuando está presente.',
     closeWorseEntries: 'Cerrar entradas peores',
     closeWorseBody:
       'Cuando el precio avanza +X pips a su favor desde la entrada inicial, el sistema cierra automáticamente sus operaciones inmediatas. Cuando la opción « Cerrar entradas peores » está activada y se dispara, el sistema cierra cualquier operación abierta que esté a X pips del precio de mercado actual. Las operaciones afectadas por « Cerrar entradas peores » no tienen take-profit (TP) establecido en el broker. Solo se envía el stop loss (SL) al broker.',

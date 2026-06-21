@@ -182,14 +182,14 @@ export const configureModalFr: ConfigureModalTranslations = {
       'Activé : les ordres en attente du range continuent tant que la position n’est pas entièrement fermée, même si le prix repart après un take-profit ou une fermeture CWE. Désactivé : les ordres en attente sont annulés au premier take-profit ou à la première fermeture, donc aucun ordre plus profond ne s’ouvre en cas de retournement.',
     useSignalRange: 'Utiliser le range du signal',
     useSignalRangeBody:
-      'Activé : le signal doit inclure un prix ou une zone d’entrée analysée (ex. 4505, 4505/4500, @ 4505). Les messages « acheter maintenant » sans prix sont ignorés et affichés en attente de range. Contrairement à « Utiliser le prix d’entrée du signal », aucun ordre en attente n’est placé chez le courtier — le copieur attend virtuellement et ouvre lorsque le prix atteint le niveau ou le bord de zone ± tolérance en pips. La profondeur d’échelonnage vient toujours de la zone d’entrée lorsqu’elle est présente.',
+      'Activé : le signal doit inclure un prix ou une zone d’entrée analysée (ex. 4505, 4505/4500, @ 4505). Les messages « acheter maintenant » sans prix sont ignorés et affichés en attente de range. Contrairement à « Utiliser le prix d’entrée du signal », aucun ordre en attente n’est placé chez le courtier — le copieur attend virtuellement et ouvre lorsque le prix est n’importe où dans la zone d’entrée du signal, avec une tolérance en pips légèrement au-delà des deux bornes. La profondeur d’échelonnage vient toujours de la zone d’entrée lorsqu’elle est présente.',
     useSignalRangePipTolerance: 'Tolérance (pips)',
     useSignalRangePipToleranceHint:
-      'Nombre de pips au-dessus (achat) ou en dessous (vente) du niveau d’entrée du signal pour déclencher l’entrée.',
+      'Pips supplémentaires au-delà des bornes de la zone (des deux côtés) dans lesquels l’entrée peut encore se déclencher. Pour un prix unique, tolérance au-dessus (achat) ou en dessous (vente) du niveau d’entrée.',
     useSignalRangeDistanceDisabledHint:
       'La profondeur est prise dans la zone d’entrée du signal lorsqu’elle est présente.',
     previewSignalRangeFootnote:
-      ' À l’exécution, la profondeur du range est prise dans la zone d’entrée du signal lorsqu’elle est présente.',
+      ' Avec « Utiliser le range du signal », l’entrée attend que le prix soit dans la zone du signal (± tolérance des deux côtés) ; la profondeur du range est prise dans la zone d’entrée lorsqu’elle est présente.',
     closeWorseEntries: 'Fermer les entrées défavorables',
     closeWorseBody:
       'Lorsque le prix évolue de +X pips en votre faveur depuis l’entrée initiale, le système ferme automatiquement vos opérations immédiates. Lorsqu’un message « Fermer les entrées défavorables » est activé et déclenché, le système ferme toute opération ouverte située à moins de X pips du cours du marché actuel. Les opérations concernées par « Fermer les entrées défavorables » n’ont pas de take-profit (TP) défini côté courtier. Seul le stop loss (SL) est envoyé au courtier.',

@@ -357,11 +357,11 @@ export async function prepareEntryExecution(
       sameSignalRefresh,
       liveMgmtFast: sendOpts?.liveMgmtFast === true,
     })
-    if (sameSignalRefresh) {
+    if (sameSignalRefresh && paramOutcome.handled) {
       return {
         ok: false,
         outcome: {
-          openedOrMerged: paramOutcome.handled === true && paramOutcome.success === true,
+          openedOrMerged: paramOutcome.success === true,
         },
       }
     }
@@ -683,13 +683,17 @@ export async function prepareEntryExecution(
     && !strictDeferred
   ) {
     const wait = plan.rangeEntryWait
+    const zoneFromParsed = resolvedParsedEntryZone(parsed)
+    const waitToStore = zoneFromParsed
+      ? { ...wait, zoneLo: zoneFromParsed.lo, zoneHi: zoneFromParsed.hi }
+      : wait
     const pipSize = plan.pip ?? params?.point ?? 0.00001
     const fromWake = signal.dispatch_source === 'signal_range_wake'
     try {
       const q = strictEntryPrefetch ?? await api.quote(uuid, symbol)
       strictEntryPrefetch = q
       const allowed = signalRangeEntryQuoteAllowsImmediate({
-        wait,
+        wait: waitToStore,
         bid: q.bid,
         ask: q.ask,
         pipSize,
@@ -701,14 +705,14 @@ export async function prepareEntryExecution(
           broker,
           uuid,
           symbol,
-          wait,
+          wait: waitToStore,
           manual,
         })
         await logSignalRangeEntryWaiting(
           ctx.supabase,
           signal,
           broker,
-          wait,
+          waitToStore,
           symbol,
           q.bid,
           q.ask,
@@ -732,7 +736,7 @@ export async function prepareEntryExecution(
         broker,
         uuid,
         symbol,
-        wait,
+        wait: waitToStore,
         manual,
       })
     }

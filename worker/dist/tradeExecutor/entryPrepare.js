@@ -229,11 +229,11 @@ async function prepareEntryExecution(ctx, args) {
             sameSignalRefresh,
             liveMgmtFast: sendOpts?.liveMgmtFast === true,
         });
-        if (sameSignalRefresh) {
+        if (sameSignalRefresh && paramOutcome.handled) {
             return {
                 ok: false,
                 outcome: {
-                    openedOrMerged: paramOutcome.handled === true && paramOutcome.success === true,
+                    openedOrMerged: paramOutcome.success === true,
                 },
             };
         }
@@ -518,13 +518,17 @@ async function prepareEntryExecution(ctx, args) {
         && api
         && !strictDeferred) {
         const wait = plan.rangeEntryWait;
+        const zoneFromParsed = (0, manualPlanner_1.resolvedParsedEntryZone)(parsed);
+        const waitToStore = zoneFromParsed
+            ? { ...wait, zoneLo: zoneFromParsed.lo, zoneHi: zoneFromParsed.hi }
+            : wait;
         const pipSize = plan.pip ?? params?.point ?? 0.00001;
         const fromWake = signal.dispatch_source === 'signal_range_wake';
         try {
             const q = strictEntryPrefetch ?? await api.quote(uuid, symbol);
             strictEntryPrefetch = q;
             const allowed = (0, manualPlanner_1.signalRangeEntryQuoteAllowsImmediate)({
-                wait,
+                wait: waitToStore,
                 bid: q.bid,
                 ask: q.ask,
                 pipSize,
@@ -536,10 +540,10 @@ async function prepareEntryExecution(ctx, args) {
                     broker,
                     uuid,
                     symbol,
-                    wait,
+                    wait: waitToStore,
                     manual,
                 });
-                await (0, signalRangeEntryHelpers_1.logSignalRangeEntryWaiting)(ctx.supabase, signal, broker, wait, symbol, q.bid, q.ask);
+                await (0, signalRangeEntryHelpers_1.logSignalRangeEntryWaiting)(ctx.supabase, signal, broker, waitToStore, symbol, q.bid, q.ask);
                 console.log(`[tradeExecutor] signal range entry deferred signal=${signal.id} broker=${broker.id} symbol=${symbol}`
                     + ` isBuy=${wait.isBuy} bid=${q.bid} ask=${q.ask} tol=${wait.tolerancePips}p`);
             }
@@ -557,7 +561,7 @@ async function prepareEntryExecution(ctx, args) {
                 broker,
                 uuid,
                 symbol,
-                wait,
+                wait: waitToStore,
                 manual,
             });
         }

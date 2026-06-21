@@ -52,25 +52,30 @@ function buildRangeEntryWait(args) {
     };
 }
 /**
- * True when live quote is at or better than the signal entry level (point or zone edge) ± tolerance.
- * Buy: ask <= reference + tol; sell: bid >= reference - tol.
+ * True when live quote is inside the signal entry band.
+ * Zone: buy uses ask, sell uses bid, allowed when [zone_lo − tol, zone_hi + tol].
+ * Point-only entry (no zone): buy ask ≤ entry + tol; sell bid ≥ entry − tol.
  */
 function signalRangeEntryQuoteAllowsImmediate(args) {
     const { wait, bid, ask } = args;
     if (!Number.isFinite(bid) || !Number.isFinite(ask))
         return false;
     const pip = Number(args.pipSize ?? 0);
+    const tolPips = Math.max(0, Number(wait.tolerancePips ?? 0));
+    const tolPx = tolPips > 0 && pip > 0 ? tolPips * pip : 0;
     const zone = wait.zoneLo != null && wait.zoneHi != null
         ? { lo: Math.min(wait.zoneLo, wait.zoneHi), hi: Math.max(wait.zoneLo, wait.zoneHi) }
         : null;
-    const reference = wait.isBuy
-        ? (zone?.hi ?? wait.entryPrice)
-        : (zone?.lo ?? wait.entryPrice);
-    if (reference == null || !Number.isFinite(reference) || reference <= 0)
+    if (zone) {
+        const price = wait.isBuy ? ask : bid;
+        return price >= zone.lo - tolPx && price <= zone.hi + tolPx;
+    }
+    const entryPrice = wait.entryPrice;
+    if (entryPrice == null || !Number.isFinite(entryPrice) || entryPrice <= 0)
         return false;
     return (0, executionShape_1.strictSignalEntryQuoteAllowsImmediate)({
         isBuy: wait.isBuy,
-        entryPrice: reference,
+        entryPrice,
         bid,
         ask,
         tolerancePips: wait.tolerancePips,

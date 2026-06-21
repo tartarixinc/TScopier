@@ -1,5 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { hasFxsocketConfigured, normalizeSymbolParams } from './fxsocketClient'
+import { pipCalculator } from './pipCalculator'
+import { resolvedParsedEntryZone } from './manualPlanning/parsedEntry'
+import type { ParsedSignal } from './manualPlanning/types'
 import { apiForFxsocketAccount, loadPlatformByFxsocketId, type PlatformByFxsocketId } from './mtApiByAccount'
 import { signalRangeEntryQuoteAllowsImmediate } from './manualPlanner'
 import { isUserCopierPausedCached } from './copierPause'
@@ -134,9 +137,16 @@ export class SignalRangeEntryMonitor {
         ask = q.ask
         try {
           const rawParams = await api.symbolParams(sample.metaapi_account_id, sample.symbol)
-          const point = normalizeSymbolParams(rawParams).point
+          const normalized = normalizeSymbolParams(rawParams)
+          const point = normalized.point
+          const digits = normalized.digits
           if (point != null && Number.isFinite(point) && point > 0) {
-            pipSize = point
+            pipSize = pipCalculator(
+              sample.symbol,
+              point,
+              digits ?? 5,
+              normalized.contractSize ?? null,
+            ).pipPrice
           }
         } catch {
           /* default pipSize */
@@ -151,6 +161,29 @@ export class SignalRangeEntryMonitor {
 
       for (const row of group) {
         const wait = waitRowToPlannerWait(row)
+        const { data: signalZoneRow } = await this.supabase
+          .from('signals')
+          .select('parsed_data')
+          .eq('id', row.signal_id)
+          .maybeSingle()
+        const freshZone = signalZoneRow?.parsed_data
+          ? resolvedParsedEntryZone(signalZoneRow.parsed_data as ParsedSignal)
+          : null
+        if (freshZone) {
+          wait.zoneLo = freshZone.lo
+          wait.zoneHi = freshZone.hi
+          if (freshZone.lo !== row.zone_lo || freshZone.hi !== row.zone_hi) {
+            await this.supabase
+              .from('signal_range_entry_waits')
+              .update({
+                zone_lo: freshZone.lo,
+                zone_hi: freshZone.hi,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', row.id)
+              .eq('status', 'waiting')
+          }
+        }
         if (!signalRangeEntryQuoteAllowsImmediate({ wait, bid, ask, pipSize })) continue
 
         const { data: claimed, error: claimErr } = await this.supabase

@@ -2,6 +2,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SignalRangeEntryMonitor = void 0;
 const fxsocketClient_1 = require("./fxsocketClient");
+const pipCalculator_1 = require("./pipCalculator");
+const parsedEntry_1 = require("./manualPlanning/parsedEntry");
 const mtApiByAccount_1 = require("./mtApiByAccount");
 const manualPlanner_1 = require("./manualPlanner");
 const copierPause_1 = require("./copierPause");
@@ -109,9 +111,11 @@ class SignalRangeEntryMonitor {
                 ask = q.ask;
                 try {
                     const rawParams = await api.symbolParams(sample.metaapi_account_id, sample.symbol);
-                    const point = (0, fxsocketClient_1.normalizeSymbolParams)(rawParams).point;
+                    const normalized = (0, fxsocketClient_1.normalizeSymbolParams)(rawParams);
+                    const point = normalized.point;
+                    const digits = normalized.digits;
                     if (point != null && Number.isFinite(point) && point > 0) {
-                        pipSize = point;
+                        pipSize = (0, pipCalculator_1.pipCalculator)(sample.symbol, point, digits ?? 5, normalized.contractSize ?? null).pipPrice;
                     }
                 }
                 catch {
@@ -125,6 +129,29 @@ class SignalRangeEntryMonitor {
             }
             for (const row of group) {
                 const wait = (0, signalRangeEntryHelpers_1.waitRowToPlannerWait)(row);
+                const { data: signalZoneRow } = await this.supabase
+                    .from('signals')
+                    .select('parsed_data')
+                    .eq('id', row.signal_id)
+                    .maybeSingle();
+                const freshZone = signalZoneRow?.parsed_data
+                    ? (0, parsedEntry_1.resolvedParsedEntryZone)(signalZoneRow.parsed_data)
+                    : null;
+                if (freshZone) {
+                    wait.zoneLo = freshZone.lo;
+                    wait.zoneHi = freshZone.hi;
+                    if (freshZone.lo !== row.zone_lo || freshZone.hi !== row.zone_hi) {
+                        await this.supabase
+                            .from('signal_range_entry_waits')
+                            .update({
+                            zone_lo: freshZone.lo,
+                            zone_hi: freshZone.hi,
+                            updated_at: new Date().toISOString(),
+                        })
+                            .eq('id', row.id)
+                            .eq('status', 'waiting');
+                    }
+                }
                 if (!(0, manualPlanner_1.signalRangeEntryQuoteAllowsImmediate)({ wait, bid, ask, pipSize }))
                     continue;
                 const { data: claimed, error: claimErr } = await this.supabase

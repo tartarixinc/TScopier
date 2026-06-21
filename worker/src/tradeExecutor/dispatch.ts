@@ -739,7 +739,18 @@ export async function handleSignal(ctx: TradeExecutorContext,
           // best-effort
         }
       } else if (rangeDeferred) {
-        /* signal stays parsed for SignalRangeEntryMonitor */
+        try {
+          const { error: sigErr } = await ctx.supabase
+            .from('signals')
+            .update({ status: 'parsed', skip_reason: null })
+            .eq('id', row.id)
+            .eq('status', 'parsed')
+          if (sigErr) {
+            console.warn(`[tradeExecutor] signal range wait finalize failed id=${row.id}: ${sigErr.message}`)
+          }
+        } catch {
+          // best-effort
+        }
       } else if (!anyOpened && finalizeSkipReasons.length === brokers.length && finalizeSkipReasons.length > 0) {
         const skipReason = finalizeSkipReasons[0]!
         try {
@@ -760,7 +771,31 @@ export async function handleSignal(ctx: TradeExecutorContext,
         const revisionApplied = outcomes.some(o => o.openedOrMerged === true)
         if (revisionApplied) {
           await ctx.markSignalExecuted(row.id)
+        } else if (rangeDeferred) {
+          try {
+            await ctx.supabase
+              .from('signals')
+              .update({ status: 'parsed', skip_reason: null })
+              .eq('id', row.id)
+          } catch {
+            // best-effort
+          }
         } else {
+          const { count: activeWaits } = await ctx.supabase
+            .from('signal_range_entry_waits')
+            .select('id', { count: 'exact', head: true })
+            .eq('signal_id', row.id)
+            .eq('status', 'waiting')
+          if ((activeWaits ?? 0) > 0) {
+            try {
+              await ctx.supabase
+                .from('signals')
+                .update({ status: 'parsed', skip_reason: null })
+                .eq('id', row.id)
+            } catch {
+              // best-effort
+            }
+          } else {
           try {
             const { error: sigErr } = await ctx.supabase
               .from('signals')
@@ -773,6 +808,7 @@ export async function handleSignal(ctx: TradeExecutorContext,
             }
           } catch {
             // best-effort
+          }
           }
         }
       }
