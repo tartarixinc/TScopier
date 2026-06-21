@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest'
-import type { MtTrade } from './metatraderapi'
+import type { MtTrade } from './fxsocketBroker'
 import {
   buildPerformanceChannelLinkMaps,
   computeProfitByChannel,
