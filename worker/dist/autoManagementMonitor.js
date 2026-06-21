@@ -8,8 +8,8 @@ const fxsocketClient_1 = require("./fxsocketClient");
 const mtApiByAccount_1 = require("./mtApiByAccount");
 const monitorIdleGate_1 = require("./monitorIdleGate");
 const copierPause_1 = require("./copierPause");
-const ACTIVE_MS = (0, monitorIdleGate_1.monitorActiveIntervalMs)('AUTO_MANAGEMENT_TICK_MS', 1500);
-const IDLE_MS = (0, monitorIdleGate_1.monitorIdleIntervalMs)('AUTO_MANAGEMENT_IDLE_MS', 60000);
+const ACTIVE_MS = (0, monitorIdleGate_1.monitorActiveIntervalMs)('AUTO_MANAGEMENT_TICK_MS', 400);
+const IDLE_MS = (0, monitorIdleGate_1.monitorIdleIntervalMs)('AUTO_MANAGEMENT_IDLE_MS', 15000);
 const SYMBOL_CACHE_TTL_MS = 5 * 60000;
 class AutoManagementMonitor {
     constructor(supabase) {

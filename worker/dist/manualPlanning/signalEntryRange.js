@@ -4,6 +4,7 @@ exports.signalRangeBoundary = signalRangeBoundary;
 exports.signalZoneWidthPips = signalZoneWidthPips;
 exports.resolveRangeDistancePips = resolveRangeDistancePips;
 exports.buildRangeEntryWait = buildRangeEntryWait;
+exports.quoteOverlapsEntryZone = quoteOverlapsEntryZone;
 exports.signalRangeEntryQuoteAllowsImmediate = signalRangeEntryQuoteAllowsImmediate;
 exports.virtualLegTriggerInZone = virtualLegTriggerInZone;
 exports.virtualLegTriggerAllowed = virtualLegTriggerAllowed;
@@ -53,8 +54,22 @@ function buildRangeEntryWait(args) {
     };
 }
 /**
+ * True when the live BBO bracket overlaps the entry zone band.
+ * Uses spread overlap (bid <= hi + tol AND ask >= lo - tol) so entry fires when
+ * either side of the market touches the zone — not delayed by full spread width.
+ */
+function quoteOverlapsEntryZone(args) {
+    const { bid, ask } = args;
+    if (!Number.isFinite(bid) || !Number.isFinite(ask))
+        return false;
+    const tolPx = Math.max(0, Number(args.tolPx ?? 0));
+    const lo = Math.min(args.zoneLo, args.zoneHi) - tolPx;
+    const hi = Math.max(args.zoneLo, args.zoneHi) + tolPx;
+    return bid <= hi && ask >= lo;
+}
+/**
  * True when live quote is inside the signal entry band.
- * Zone: buy uses ask, sell uses bid, allowed when [zone_lo − tol, zone_hi + tol].
+ * Zone: BBO overlap with [zone_lo − tol, zone_hi + tol] (works for any spread).
  * Point-only entry (no zone): buy ask ≤ entry + tol; sell bid ≥ entry − tol.
  */
 function signalRangeEntryQuoteAllowsImmediate(args) {
@@ -68,8 +83,13 @@ function signalRangeEntryQuoteAllowsImmediate(args) {
         ? { lo: Math.min(wait.zoneLo, wait.zoneHi), hi: Math.max(wait.zoneLo, wait.zoneHi) }
         : null;
     if (zone) {
-        const price = wait.isBuy ? ask : bid;
-        return price >= zone.lo - tolPx && price <= zone.hi + tolPx;
+        return quoteOverlapsEntryZone({
+            bid,
+            ask,
+            zoneLo: zone.lo,
+            zoneHi: zone.hi,
+            tolPx,
+        });
     }
     const entryPrice = wait.entryPrice;
     if (entryPrice == null || !Number.isFinite(entryPrice) || entryPrice <= 0)

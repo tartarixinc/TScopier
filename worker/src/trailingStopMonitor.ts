@@ -48,8 +48,8 @@ interface BrokerRow {
   platform: string
 }
 
-const ACTIVE_MS = monitorActiveIntervalMs('TRAILING_STOP_TICK_MS', 1_500)
-const IDLE_MS = monitorIdleIntervalMs('TRAILING_STOP_IDLE_MS', 60_000)
+const ACTIVE_MS = monitorActiveIntervalMs('TRAILING_STOP_TICK_MS', 400)
+const IDLE_MS = monitorIdleIntervalMs('TRAILING_STOP_IDLE_MS', 15_000)
 const SYMBOL_CACHE_TTL_MS = 5 * 60_000
 
 type SymbolCacheEntry = {

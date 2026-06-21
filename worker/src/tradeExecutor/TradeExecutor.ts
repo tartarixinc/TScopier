@@ -612,7 +612,7 @@ export class TradeExecutor {
           if (!row) return
           if (!userBelongsToShard(row.user_id)) return
           if (!PARSED_STATUSES.has(row.status)) return
-          this.enqueueSignal(row, { source: 'realtime' })
+          this.acceptDispatchSignal(row, { source: 'realtime', priority: 'high' })
         },
       )
       .subscribe()
@@ -743,7 +743,10 @@ export class TradeExecutor {
         await this.markSignalExecuted(row.id)
         continue
       }
-      this.enqueueSignal(row, { source: 'sweep' })
+      this.acceptDispatchSignal(row, {
+        source: 'sweep',
+        priority: dispatchPriorityForAction(parsedAction(row.parsed_data)),
+      })
     }
   }
 

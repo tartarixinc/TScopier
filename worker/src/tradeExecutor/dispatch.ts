@@ -193,9 +193,12 @@ export async function drainSignalQueues(ctx: TradeExecutorContext, ): Promise<vo
           if (!item) break
           const row = item.row
           ctx.queuedIds.delete(row.id)
+          const entryFast = ctx.shouldUseEntryFastPath(row)
+          const mgmtFast = shouldUseMgmtFastPath(row, item.source)
+          const useFastPath = entryFast || mgmtFast
           const job = ctx.handleSignal(row, {
-            liveDispatch: item.liveDispatch === true,
-            lightIdempotency: false,
+            liveDispatch: useFastPath || item.liveDispatch === true,
+            lightIdempotency: useFastPath,
             dispatchSource: item.source,
             dispatchReceivedAt: item.dispatchReceivedAt,
           })
@@ -270,6 +273,27 @@ export function logPipelineSummaryBackground(ctx: TradeExecutorContext,
     extra?: Record<string, unknown>,
   ): void {
     const ts = signal.pipeline_ts ?? {}
+    const listenerToDispatchMs = ts.t_dispatch_received != null && ts.t_listener_received != null
+      ? ts.t_dispatch_received - ts.t_listener_received
+      : null
+    const handleMs = typeof extra?.handle_ms === 'number' ? extra.handle_ms : null
+    const mgmtFast = extra?.mgmt_fast_path === true
+    const dispatchSource = extra?.dispatch_source ?? null
+    const action = parsedAction(signal.parsed_data)
+    if (isManagementAction(action)) {
+      if (!mgmtFast) {
+        console.warn(
+          `[tradeExecutor] mgmt slow path signal=${signal.id} source=${String(dispatchSource ?? 'unknown')}`
+          + `${listenerToDispatchMs != null ? ` listener_to_dispatch_ms=${listenerToDispatchMs}` : ''}`,
+        )
+      }
+      if (handleMs != null && handleMs > 2_000) {
+        console.warn(
+          `[tradeExecutor] slow mgmt handle signal=${signal.id} ms=${handleMs}`
+          + ` fast=${mgmtFast} source=${String(dispatchSource ?? 'unknown')}`,
+        )
+      }
+    }
     void ctx.supabase
       .from('trade_execution_logs')
       .insert({
@@ -277,7 +301,10 @@ export function logPipelineSummaryBackground(ctx: TradeExecutorContext,
         signal_id: signal.id,
         action: 'pipeline_summary',
         status: 'success',
-        request_payload: pipelineSummaryPayload(ts, extra) as unknown as Record<string, unknown>,
+        request_payload: pipelineSummaryPayload(ts, {
+          ...extra,
+          listener_to_dispatch_ms: listenerToDispatchMs,
+        }) as unknown as Record<string, unknown>,
       })
       .then(({ error }) => {
         if (error) {
@@ -882,8 +909,18 @@ export async function handleSignal(ctx: TradeExecutorContext,
       }
     } finally {
       const handleMs = Date.now() - handleStartMs
+      const listenerTs = parsePipelineTimestamps(row.pipeline_ts)
+      const listenerToDispatchMs = listenerTs?.t_dispatch_received != null
+        && listenerTs?.t_listener_received != null
+        ? listenerTs.t_dispatch_received - listenerTs.t_listener_received
+        : null
+      const summaryExtra = {
+        handle_ms: handleMs,
+        listener_to_dispatch_ms: listenerToDispatchMs,
+        ...pipelineOutcome,
+      }
       if (liveFast || liveMgmtFast) {
-        ctx.logPipelineSummaryBackground(row, { handle_ms: handleMs, ...pipelineOutcome })
+        ctx.logPipelineSummaryBackground(row, summaryExtra)
       } else {
         void ctx.logPipelineStage(row, 'handle_end', {
           handle_ms: handleMs,

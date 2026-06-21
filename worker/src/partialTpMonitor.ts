@@ -61,8 +61,8 @@ interface ParentTradeRow {
   status: string
 }
 
-const ACTIVE_MS = monitorActiveIntervalMs('PARTIAL_TP_TICK_MS', 1_500)
-const IDLE_MS = monitorIdleIntervalMs('PARTIAL_TP_IDLE_MS', 60_000)
+const ACTIVE_MS = monitorActiveIntervalMs('PARTIAL_TP_TICK_MS', 400)
+const IDLE_MS = monitorIdleIntervalMs('PARTIAL_TP_IDLE_MS', 15_000)
 const STALE_CLAIM_AFTER_MS = 30_000
 
 /**

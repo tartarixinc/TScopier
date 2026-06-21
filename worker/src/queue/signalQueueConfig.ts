@@ -44,8 +44,11 @@ export function queueShardCount(): number {
 }
 
 export function loadSignalQueueConfig(): SignalQueueConfig {
+  const redisRestUrl = String(process.env.UPSTASH_REDIS_REST_URL ?? process.env.REDIS_REST_URL ?? '').trim()
+  const redisRestToken = String(process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.REDIS_REST_TOKEN ?? '').trim()
+  const redisConfigured = Boolean(redisRestUrl && redisRestToken)
   return {
-    enabled: parseEnvBool(process.env.TRADE_SIGNAL_QUEUE_ENABLED, false),
+    enabled: parseEnvBool(process.env.TRADE_SIGNAL_QUEUE_ENABLED, redisConfigured),
     canaryShardIds: parseCanaryShards(process.env.TRADE_SIGNAL_QUEUE_CANARY_SHARDS),
     entryStreamBase: String(process.env.TRADE_SIGNAL_QUEUE_ENTRY_STREAM ?? 'signals:entry').trim(),
     mgmtStreamBase: String(process.env.TRADE_SIGNAL_QUEUE_MGMT_STREAM ?? 'signals:mgmt').trim(),
@@ -67,8 +70,8 @@ export function loadSignalQueueConfig(): SignalQueueConfig {
       ),
     ),
     pushFallbackOnQueueFail: parseEnvBool(process.env.TRADE_SIGNAL_PUSH_FALLBACK_ON_QUEUE_FAIL, true),
-    redisRestUrl: String(process.env.UPSTASH_REDIS_REST_URL ?? process.env.REDIS_REST_URL ?? '').trim(),
-    redisRestToken: String(process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.REDIS_REST_TOKEN ?? '').trim(),
+    redisRestUrl,
+    redisRestToken,
   }
 }
 

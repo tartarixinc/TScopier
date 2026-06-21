@@ -137,8 +137,8 @@ type BrokerConfigCacheEntry = {
 }
 
 const SYMBOL_TTL_MS = 10 * 60_000
-const ACTIVE_MS = monitorActiveIntervalMs('VIRTUAL_PENDING_TICK_MS', 1_500)
-const IDLE_MS = monitorIdleIntervalMs('VIRTUAL_PENDING_IDLE_MS', 60_000)
+const ACTIVE_MS = monitorActiveIntervalMs('VIRTUAL_PENDING_TICK_MS', 400)
+const IDLE_MS = monitorIdleIntervalMs('VIRTUAL_PENDING_IDLE_MS', 15_000)
 const STALE_CLAIM_AFTER_MS = 30_000
 
 async function virtualPendingHasWork(

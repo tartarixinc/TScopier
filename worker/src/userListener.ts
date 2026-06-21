@@ -29,6 +29,7 @@ import { normalizeSignalMessageForParse } from './normalizeTelegramMessageText'
 import type { PipelineTimestamps } from './pipelineTimestamps'
 import { incMetric } from './workerMetrics'
 import { workerConfig } from './workerConfig'
+import { isManagementAction, parsedAction } from './tradeSignalActions'
 import { applyCopierPauseProfileUpdate, loadCachedUserCopierPaused } from './copierPause'
 import {
   MESSAGE_REVISION_DISPATCH_SOURCE,
@@ -79,19 +80,22 @@ const DIALOG_CACHE_TTL_MS = 60_000
 const DIALOG_MAX_SCAN = 500
 const WATCHDOG_INTERVAL_MS = 30_000
 const WATCHDOG_FAILURE_THRESHOLD = 2
-const SAFETY_POLL_INTERVAL_MS = 30_000
+const SAFETY_POLL_INTERVAL_MS = Math.max(
+  5_000,
+  Math.min(60_000, Number(process.env.TELEGRAM_SAFETY_POLL_MS ?? 10_000)),
+)
 /**
  * Fast poll for channels Telegram is NOT pushing live updates for (last_live_at
  * stale/null). Telegram silently stops pushing updates for broadcast channels it
  * considers inactive on a session; without this, those signals are only picked
- * up by the 30s safety poll (avg ~15s extra latency).
+ * up by the safety poll (avg ~5s extra latency at 10s safety interval).
  */
 const FAST_POLL_INTERVAL_MS = Math.max(
   1_000, Math.min(15_000, Number(process.env.TELEGRAM_FAST_POLL_MS ?? 3_000)),
 )
 /** A channel counts as live-dead when no live push has been seen for this long. */
 const FAST_POLL_LIVE_STALE_MS = Math.max(
-  60_000, Number(process.env.TELEGRAM_FAST_POLL_LIVE_STALE_MS ?? 10 * 60_000),
+  60_000, Number(process.env.TELEGRAM_FAST_POLL_LIVE_STALE_MS ?? 2 * 60_000),
 )
 const SESSION_PERSIST_INTERVAL_MS = 30 * 60_000
 const CATCHUP_BACKPRESSURE_MS = 250
@@ -1807,13 +1811,20 @@ export class UserListener {
     const shouldPush = workerConfig.runsListener && (!workerConfig.runsTrade || !dispatchedInProcess)
     if (!shouldPush) return
 
-    void enqueueParsedSignal(this.supabase, dispatchRow).then(queueResult => {
+    void enqueueParsedSignal(this.supabase, dispatchRow).then(async queueResult => {
       const queueCfg = signalQueueConfig()
       const queueSucceeded = queueResult?.ok === true
       const shouldHttpPush = !queueSucceeded
         && (queueCfg.pushFallbackOnQueueFail || !queueResult || queueResult.skipped)
+      let httpPushOk: boolean | null = null
       if (shouldHttpPush) {
-        pushParsedSignalToTradeWorker(dispatchRow)
+        const action = parsedAction(dispatchRow.parsed_data)
+        if (isManagementAction(action)) {
+          httpPushOk = await pushParsedSignalToTradeWorkerAwait(dispatchRow)
+        } else {
+          pushParsedSignalToTradeWorker(dispatchRow)
+          httpPushOk = true
+        }
       }
       void this.supabase.from('trade_execution_logs').insert({
         user_id: this.userId,
@@ -1828,6 +1839,8 @@ export class UserListener {
           queue_skipped_reason: queueResult?.skipped ? queueResult.reason : null,
           queue_error: queueResult?.error ?? null,
           http_push_fallback: shouldHttpPush,
+          http_push_ok: httpPushOk,
+          mgmt_push_awaited: isManagementAction(parsedAction(dispatchRow.parsed_data)),
           runs_trade: workerConfig.runsTrade,
           runs_listener: workerConfig.runsListener,
           persist_before_dispatch: false,

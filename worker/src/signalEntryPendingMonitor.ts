@@ -23,7 +23,7 @@ import {
 import { isUserCopierPausedCached } from './copierPause'
 
 const ACTIVE_MS = monitorActiveIntervalMs('SIGNAL_ENTRY_PENDING_TICK_MS', 2_000)
-const IDLE_MS = monitorIdleIntervalMs('SIGNAL_ENTRY_PENDING_IDLE_MS', 60_000)
+const IDLE_MS = monitorIdleIntervalMs('SIGNAL_ENTRY_PENDING_IDLE_MS', 15_000)
 const MISSING_BEFORE_ASSUME_GONE = 6
 
 type MonitorRow = SignalEntryPendingRow & {

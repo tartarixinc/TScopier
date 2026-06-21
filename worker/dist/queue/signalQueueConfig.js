@@ -32,8 +32,11 @@ function queueShardCount() {
     return Math.max(1, Math.floor(Number(raw)));
 }
 function loadSignalQueueConfig() {
+    const redisRestUrl = String(process.env.UPSTASH_REDIS_REST_URL ?? process.env.REDIS_REST_URL ?? '').trim();
+    const redisRestToken = String(process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.REDIS_REST_TOKEN ?? '').trim();
+    const redisConfigured = Boolean(redisRestUrl && redisRestToken);
     return {
-        enabled: (0, workerConfig_1.parseEnvBool)(process.env.TRADE_SIGNAL_QUEUE_ENABLED, false),
+        enabled: (0, workerConfig_1.parseEnvBool)(process.env.TRADE_SIGNAL_QUEUE_ENABLED, redisConfigured),
         canaryShardIds: parseCanaryShards(process.env.TRADE_SIGNAL_QUEUE_CANARY_SHARDS),
         entryStreamBase: String(process.env.TRADE_SIGNAL_QUEUE_ENTRY_STREAM ?? 'signals:entry').trim(),
         mgmtStreamBase: String(process.env.TRADE_SIGNAL_QUEUE_MGMT_STREAM ?? 'signals:mgmt').trim(),
@@ -47,8 +50,8 @@ function loadSignalQueueConfig() {
             ?? process.env.EXECUTOR_MAX_CONCURRENT_SIGNALS
             ?? 8))),
         pushFallbackOnQueueFail: (0, workerConfig_1.parseEnvBool)(process.env.TRADE_SIGNAL_PUSH_FALLBACK_ON_QUEUE_FAIL, true),
-        redisRestUrl: String(process.env.UPSTASH_REDIS_REST_URL ?? process.env.REDIS_REST_URL ?? '').trim(),
-        redisRestToken: String(process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.REDIS_REST_TOKEN ?? '').trim(),
+        redisRestUrl,
+        redisRestToken,
     };
 }
 let cachedConfig = null;

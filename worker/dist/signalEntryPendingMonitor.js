@@ -7,7 +7,7 @@ const monitorIdleGate_1 = require("./monitorIdleGate");
 const signalEntryPendingHelpers_1 = require("./signalEntryPendingHelpers");
 const copierPause_1 = require("./copierPause");
 const ACTIVE_MS = (0, monitorIdleGate_1.monitorActiveIntervalMs)('SIGNAL_ENTRY_PENDING_TICK_MS', 2000);
-const IDLE_MS = (0, monitorIdleGate_1.monitorIdleIntervalMs)('SIGNAL_ENTRY_PENDING_IDLE_MS', 60000);
+const IDLE_MS = (0, monitorIdleGate_1.monitorIdleIntervalMs)('SIGNAL_ENTRY_PENDING_IDLE_MS', 15000);
 const MISSING_BEFORE_ASSUME_GONE = 6;
 function parsePartialTpPlan(raw) {
     if (!Array.isArray(raw))

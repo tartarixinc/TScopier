@@ -10,7 +10,7 @@ const signalRangeEntryHelpers_1 = require("./signalRangeEntryHelpers");
 const signalRangeEntryService_1 = require("./signalRangeEntryService");
 const channelTradingConfig_1 = require("./channelTradingConfig");
 const ACTIVE_MS = (0, monitorIdleGate_1.monitorActiveIntervalMs)('SIGNAL_RANGE_ENTRY_TICK_MS', 1000);
-const IDLE_MS = (0, monitorIdleGate_1.monitorIdleIntervalMs)('SIGNAL_RANGE_ENTRY_IDLE_MS', 60000);
+const IDLE_MS = (0, monitorIdleGate_1.monitorIdleIntervalMs)('SIGNAL_RANGE_ENTRY_IDLE_MS', 15000);
 /**
  * Polls /Quote for virtual "Trade Signal Range Only" waits and re-dispatches when price
  * is inside the signal zone ± pip tolerance.

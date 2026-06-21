@@ -27,7 +27,7 @@ import type { SignalRow } from './tradeExecutor/types'
 import { resolveChannelTradingConfig } from './channelTradingConfig'
 
 const ACTIVE_MS = monitorActiveIntervalMs('SIGNAL_RANGE_ENTRY_TICK_MS', 1_000)
-const IDLE_MS = monitorIdleIntervalMs('SIGNAL_RANGE_ENTRY_IDLE_MS', 60_000)
+const IDLE_MS = monitorIdleIntervalMs('SIGNAL_RANGE_ENTRY_IDLE_MS', 15_000)
 
 /**
  * Polls /Quote for virtual "Trade Signal Range Only" waits and re-dispatches when price

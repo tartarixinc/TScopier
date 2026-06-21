@@ -442,7 +442,7 @@ class TradeExecutor {
                 return;
             if (!types_1.PARSED_STATUSES.has(row.status))
                 return;
-            this.enqueueSignal(row, { source: 'realtime' });
+            this.acceptDispatchSignal(row, { source: 'realtime', priority: 'high' });
         })
             .subscribe();
     }
@@ -559,7 +559,10 @@ class TradeExecutor {
                 await this.markSignalExecuted(row.id);
                 continue;
             }
-            this.enqueueSignal(row, { source: 'sweep' });
+            this.acceptDispatchSignal(row, {
+                source: 'sweep',
+                priority: (0, tradeSignalActions_1.dispatchPriorityForAction)((0, tradeSignalActions_1.parsedAction)(row.parsed_data)),
+            });
         }
     }
     /**

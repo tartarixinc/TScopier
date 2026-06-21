@@ -152,7 +152,9 @@ flowchart LR
 ```env
 UPSTASH_REDIS_REST_URL=https://xxx.upstash.io
 UPSTASH_REDIS_REST_TOKEN=your-token
+# Auto-enabled when Redis URL+token are set. Set false to force HTTP-only dispatch.
 TRADE_SIGNAL_QUEUE_ENABLED=true
+TRADE_SIGNAL_QUEUE_MGMT_CONSUMER_BLOCK_MS=150
 TRADE_SIGNAL_QUEUE_SHARD_COUNT=4
 TRADE_SIGNAL_QUEUE_ENTRY_STREAM=signals:entry
 TRADE_SIGNAL_QUEUE_MGMT_STREAM=signals:mgmt
@@ -161,11 +163,19 @@ TRADE_SIGNAL_QUEUE_CANARY_SHARDS=0
 TRADE_SIGNAL_PUSH_FALLBACK_ON_QUEUE_FAIL=true
 ```
 
+**Split deploy latency (listener):** management HTTP push is **awaited** so push failures are visible immediately. Tune Telegram fallback polling:
+
+```env
+TELEGRAM_SAFETY_POLL_MS=10000
+TELEGRAM_FAST_POLL_MS=3000
+TELEGRAM_FAST_POLL_LIVE_STALE_MS=120000
+```
+
 Trade shards also need the same Redis env + `TRADE_SIGNAL_QUEUE_ENABLED=true` + matching `WORKER_SHARD_ID` / `TRADE_SIGNAL_QUEUE_SHARD_COUNT`.
 
 ### Cutover playbook
 
-1. **Dark launch** — Deploy code with `TRADE_SIGNAL_QUEUE_ENABLED=false` (no behavior change).
+1. **Dark launch** — Deploy code; queue auto-enables when Redis env is present (or set `TRADE_SIGNAL_QUEUE_ENABLED=false` explicitly for no change).
 2. **Canary shard 0** — Set `TRADE_SIGNAL_QUEUE_CANARY_SHARDS=0`, enable queue on listener + trade-entry-shard-0 + trade-mgmt-shard-0. Keep `TRADE_SIGNAL_PUSH_FALLBACK_ON_QUEUE_FAIL=true`.
 3. **Monitor** — Run queue slices in [`scripts/diagnostics/scalability_scorecard.sql`](../scripts/diagnostics/scalability_scorecard.sql) (#10–#14). Check trade `/health` → `queue[]` pending/lag.
 4. **Expand** — Add shards to canary list (`0,1`, then all). When enqueue p99 and `queue_dead_letter` are stable for 24h+, set `TRADE_SIGNAL_PUSH_FALLBACK_ON_QUEUE_FAIL=false` on canaried shards.
@@ -194,9 +204,9 @@ Tune via env (see `worker/.env.example`):
 
 | Monitor | Active (default) | Idle (default) |
 |---------|------------------|----------------|
-| virtual pending / partial TP / auto-mgmt / trail / CWE / signal entry | 1500ms | 60000ms |
+| virtual pending / partial TP / auto-mgmt / trail / CWE / signal entry | 400ms | 15000ms |
 | basket reconcile | 15000ms | 120000ms |
-| executor parsed sweep | 3000ms | 60000ms |
+| executor parsed sweep | 3000ms | 15000ms |
 | broker reconnect sweep | 120000ms | 300000ms |
 | forced hard-reconnect sweep | 900000ms | n/a |
 

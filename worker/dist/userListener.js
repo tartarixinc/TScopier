@@ -19,6 +19,7 @@ const signalManagementIntent_1 = require("./signalManagementIntent");
 const normalizeTelegramMessageText_1 = require("./normalizeTelegramMessageText");
 const workerMetrics_1 = require("./workerMetrics");
 const workerConfig_1 = require("./workerConfig");
+const tradeSignalActions_1 = require("./tradeSignalActions");
 const copierPause_1 = require("./copierPause");
 const signalRevision_1 = require("./signalRevision");
 const aiParseModification_1 = require("./aiParseModification");
@@ -44,16 +45,16 @@ const DIALOG_CACHE_TTL_MS = 60000;
 const DIALOG_MAX_SCAN = 500;
 const WATCHDOG_INTERVAL_MS = 30000;
 const WATCHDOG_FAILURE_THRESHOLD = 2;
-const SAFETY_POLL_INTERVAL_MS = 30000;
+const SAFETY_POLL_INTERVAL_MS = Math.max(5000, Math.min(60000, Number(process.env.TELEGRAM_SAFETY_POLL_MS ?? 10000)));
 /**
  * Fast poll for channels Telegram is NOT pushing live updates for (last_live_at
  * stale/null). Telegram silently stops pushing updates for broadcast channels it
  * considers inactive on a session; without this, those signals are only picked
- * up by the 30s safety poll (avg ~15s extra latency).
+ * up by the safety poll (avg ~5s extra latency at 10s safety interval).
  */
 const FAST_POLL_INTERVAL_MS = Math.max(1000, Math.min(15000, Number(process.env.TELEGRAM_FAST_POLL_MS ?? 3000)));
 /** A channel counts as live-dead when no live push has been seen for this long. */
-const FAST_POLL_LIVE_STALE_MS = Math.max(60000, Number(process.env.TELEGRAM_FAST_POLL_LIVE_STALE_MS ?? 10 * 60000));
+const FAST_POLL_LIVE_STALE_MS = Math.max(60000, Number(process.env.TELEGRAM_FAST_POLL_LIVE_STALE_MS ?? 2 * 60000));
 const SESSION_PERSIST_INTERVAL_MS = 30 * 60000;
 const CATCHUP_BACKPRESSURE_MS = 250;
 const CATCHUP_PER_CHANNEL_CAP = 200;
@@ -1500,13 +1501,21 @@ class UserListener {
         const shouldPush = workerConfig_1.workerConfig.runsListener && (!workerConfig_1.workerConfig.runsTrade || !dispatchedInProcess);
         if (!shouldPush)
             return;
-        void (0, signalQueuePublisher_1.enqueueParsedSignal)(this.supabase, dispatchRow).then(queueResult => {
+        void (0, signalQueuePublisher_1.enqueueParsedSignal)(this.supabase, dispatchRow).then(async (queueResult) => {
             const queueCfg = (0, signalQueueConfig_1.signalQueueConfig)();
             const queueSucceeded = queueResult?.ok === true;
             const shouldHttpPush = !queueSucceeded
                 && (queueCfg.pushFallbackOnQueueFail || !queueResult || queueResult.skipped);
+            let httpPushOk = null;
             if (shouldHttpPush) {
-                (0, tradeSignalPush_1.pushParsedSignalToTradeWorker)(dispatchRow);
+                const action = (0, tradeSignalActions_1.parsedAction)(dispatchRow.parsed_data);
+                if ((0, tradeSignalActions_1.isManagementAction)(action)) {
+                    httpPushOk = await (0, tradeSignalPush_1.pushParsedSignalToTradeWorkerAwait)(dispatchRow);
+                }
+                else {
+                    (0, tradeSignalPush_1.pushParsedSignalToTradeWorker)(dispatchRow);
+                    httpPushOk = true;
+                }
             }
             void this.supabase.from('trade_execution_logs').insert({
                 user_id: this.userId,
@@ -1521,6 +1530,8 @@ class UserListener {
                     queue_skipped_reason: queueResult?.skipped ? queueResult.reason : null,
                     queue_error: queueResult?.error ?? null,
                     http_push_fallback: shouldHttpPush,
+                    http_push_ok: httpPushOk,
+                    mgmt_push_awaited: (0, tradeSignalActions_1.isManagementAction)((0, tradeSignalActions_1.parsedAction)(dispatchRow.parsed_data)),
                     runs_trade: workerConfig_1.workerConfig.runsTrade,
                     runs_listener: workerConfig_1.workerConfig.runsListener,
                     persist_before_dispatch: false,

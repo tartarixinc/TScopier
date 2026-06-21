@@ -8,8 +8,8 @@ const mtApiByAccount_1 = require("./mtApiByAccount");
 const orderModifyBenign_1 = require("./orderModifyBenign");
 const monitorIdleGate_1 = require("./monitorIdleGate");
 const copierPause_1 = require("./copierPause");
-const ACTIVE_MS = (0, monitorIdleGate_1.monitorActiveIntervalMs)('TRAILING_STOP_TICK_MS', 1500);
-const IDLE_MS = (0, monitorIdleGate_1.monitorIdleIntervalMs)('TRAILING_STOP_IDLE_MS', 60000);
+const ACTIVE_MS = (0, monitorIdleGate_1.monitorActiveIntervalMs)('TRAILING_STOP_TICK_MS', 400);
+const IDLE_MS = (0, monitorIdleGate_1.monitorIdleIntervalMs)('TRAILING_STOP_IDLE_MS', 15000);
 const SYMBOL_CACHE_TTL_MS = 5 * 60000;
 class TrailingStopMonitor {
     constructor(supabase) {
