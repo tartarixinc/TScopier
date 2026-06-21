@@ -4,22 +4,22 @@ const path = require('node:path')
 
 const workerRoot = path.join(__dirname, '..')
 
-function collectTestFiles(dir, out = []) {
+function collectPerfTestFiles(dir, out = []) {
   for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, ent.name)
     if (ent.isDirectory()) {
-      collectTestFiles(full, out)
-    } else if (ent.name.endsWith('.test.ts')) {
+      collectPerfTestFiles(full, out)
+    } else if (ent.name.endsWith('.perf.test.ts')) {
       out.push(full)
     }
   }
   return out
 }
 
-const testFiles = collectTestFiles(path.join(workerRoot, 'src')).sort()
+const testFiles = collectPerfTestFiles(path.join(workerRoot, 'src')).sort()
 
 if (testFiles.length === 0) {
-  console.error('No worker test files found under src/')
+  console.error('No worker perf test files found (*.perf.test.ts)')
   process.exit(1)
 }
 

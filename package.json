@@ -18,7 +18,9 @@
     "test:e2e": "playwright test",
     "test:edge": "deno test --allow-read --config supabase/functions/deno.json supabase/functions/_shared",
     "test:worker": "npm --prefix worker test",
-    "test:all": "npm run test:worker && npm run test:unit && npm run test:edge && npm run test:e2e"
+    "test:worker:perf": "npm --prefix worker run test:perf",
+    "test:regression": "playwright test --grep @regression",
+    "test:all": "npm run test:worker && npm run test:worker:perf && npm run test:unit && npm run test:edge && npm run test:e2e"
   },
   "dependencies": {
     "@livechat/widget-react": "^1.4.0",

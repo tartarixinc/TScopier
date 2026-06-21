@@ -5,52 +5,88 @@
 | Layer | Tool | Command |
 |-------|------|---------|
 | Worker unit | Node `node:test` | `npm run test:worker` |
-| Frontend unit | Vitest + Testing Library + MSW | `npm test` |
+| Worker latency | Node `node:test` + perf budgets | `npm run test:worker:perf` |
+| Frontend unit | Vitest + Testing Library | `npm test` |
+| Frontend integration | Vitest + MSW | `npm test` (includes `src/test/integration`) |
 | Edge functions | Deno test | `npm run test:edge` |
-| E2E | Playwright | `npm run test:e2e` |
+| E2E smoke | Playwright | `npm run test:e2e` |
+| E2E regression | Playwright `@regression` | `npm run test:regression` |
 | All | — | `npm run test:all` |
 
-CI runs all of the above on **every push to any branch** (see `.github/workflows/typescript-ci.yml`).
+CI runs all jobs on **every push to any branch** (see `.github/workflows/typescript-ci.yml`).
 
 ## First-time local setup
 
 ```bash
-# Root (frontend unit + E2E runner)
 npm ci
 npx playwright install chromium
-
-# Worker
 npm ci --prefix worker
-
-# Deno (edge tests) — install from https://deno.land
-deno --version
+deno --version   # https://deno.land
 ```
 
 ## Commands
 
 ```bash
-npm test              # Vitest unit tests (src/)
-npm run test:watch    # Vitest watch mode
-npm run test:worker   # Worker unit tests
-npm run test:edge     # Supabase _shared Deno tests
-npm run test:e2e      # Playwright (builds app + runs browser)
-npm run test:all      # Full suite
+npm test                    # Vitest (unit + integration)
+npm run test:watch          # Vitest watch mode
+npm run test:worker         # Worker unit tests (~300+ cases)
+npm run test:worker:perf    # Worker latency / perf budgets
+npm run test:edge           # Supabase _shared Deno tests
+npm run test:e2e            # Playwright smoke + regression
+npm run test:regression     # Playwright @regression only
+npm run test:all            # Full automation suite
 ```
 
-## MSW (integration mocks)
+## Test types
 
-Handlers live in `src/test/msw/handlers.ts`. Vitest starts the MSW server in `src/test/setup.ts`. Add mocks there when testing components that call APIs.
+### Unit tests
+Pure functions: signal parsing, pip math, dashboard analytics, plan limits, broker helpers.
+
+- Frontend: `src/**/*.test.ts(x)` via Vitest
+- Worker: `worker/src/**/*.test.ts` via Node test runner
+- Edge: `supabase/functions/_shared/**/*.test.ts` via Deno
+
+### Integration tests (MSW)
+API boundaries mocked without a live Supabase project.
+
+- Handlers: `src/test/msw/handlers.ts`
+- Setup: `src/test/setup.ts`
+- Examples: `src/test/integration/`, `ProtectedRoute.test.tsx`
+
+### Regression tests
+Stable routes and host switching that previously broke.
+
+- E2E: `e2e/regression.spec.ts` (tag `@regression`)
+- Lib regression: existing Vitest files under `src/lib/` and `worker/src/`
+
+### Latency tests (worker)
+Perf budgets for hot paths in the copier pipeline. Files: `worker/src/**/*.perf.test.ts`
+
+| Path | Budget (median) |
+|------|-----------------|
+| `parseChannelMessageSync` | 12 ms |
+| `classifySymbol` | 0.15 ms |
+| `evaluateParsedSignalExecutionEligibility` | 2 ms |
+| `buildIdempotencyKey` | 0.25 ms |
+| `parallelMap(120, c=8)` | 250 ms |
+
+CI uses `WORKER_PERF_BUDGET_MULTIPLIER=2.5` for slower runners. Override locally:
+
+```bash
+WORKER_PERF_BUDGET_MULTIPLIER=3 npm run test:worker:perf
+```
 
 ## E2E notes
 
-- Playwright serves the production build via `vite preview` on port 4173.
-- On localhost, the app host is the default; use `?site=marketing` for marketing pages.
-- E2E does not use snapshots (per project decision).
+- Playwright builds the app and serves via `vite preview` on port 4173.
+- App routes: `/login`, `/dashboard`, etc. (default on localhost).
+- Marketing: `/?site=marketing` or `VITE_DEV_SITE=marketing`.
+- No snapshot tests (project decision).
 
 ## Troubleshooting `npm install`
 
-If install fails with `UNABLE_TO_VERIFY_LEAF_SIGNATURE` / `unable to verify the first certificate`, npm cannot validate TLS to `registry.npmjs.org`. Common causes: corporate proxy/VPN SSL inspection or outdated CA store on Windows.
+If install fails with `UNABLE_TO_VERIFY_LEAF_SIGNATURE`, npm cannot validate TLS to `registry.npmjs.org`. Try off VPN, or configure a corporate root CA: `npm config set cafile "C:\path\to\corp-root.pem"`.
 
-1. Retry off VPN or on a network without SSL interception.
-2. If IT provides a root CA, configure npm once: `npm config set cafile "C:\path\to\corp-root.pem"`.
-3. After `npm install` succeeds, run `npx playwright install chromium` and commit the updated `package-lock.json`.
+## Troubleshooting worker tests on Windows
+
+Worker tests use `worker/scripts/run-tests.cjs` (cross-platform). If you see `Cannot find module 'undici'`, run `npm ci --prefix worker`.

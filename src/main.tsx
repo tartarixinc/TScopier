@@ -1,4 +1,4 @@
-import { StrictMode, lazy, Suspense, useEffect } from 'react'
+import { StrictMode, lazy, Suspense, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import { applyThemeToDocument, readStoredTheme, ThemeProvider } from './context/ThemeContext.tsx'
@@ -12,8 +12,6 @@ applyThemeToDocument(readStoredTheme())
 const App = lazy(() => import('./App.tsx'))
 const MarketingApp = lazy(() => import('./MarketingApp.tsx'))
 
-const RootComponent = isAppHost() ? App : MarketingApp
-
 function BootGuardClear() {
   useEffect(() => {
     clearChunkReloadGuard()
@@ -21,9 +19,20 @@ function BootGuardClear() {
   return null
 }
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <ThemeProvider>
+function Root() {
+  const [showApp, setShowApp] = useState(() => isAppHost())
+
+  useEffect(() => {
+    const sync = () => setShowApp(isAppHost())
+    sync()
+    window.addEventListener('popstate', sync)
+    return () => window.removeEventListener('popstate', sync)
+  }, [])
+
+  const Component = showApp ? App : MarketingApp
+
+  return (
+    <>
       <BootGuardClear />
       <Suspense
         fallback={
@@ -32,8 +41,16 @@ createRoot(document.getElementById('root')!).render(
           </div>
         }
       >
-        <RootComponent />
+        <Component />
       </Suspense>
+    </>
+  )
+}
+
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <ThemeProvider>
+      <Root />
     </ThemeProvider>
   </StrictMode>,
 )
