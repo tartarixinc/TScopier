@@ -25,6 +25,6 @@ describe('parseChannelMessageSync latency', () => {
       i += 1
     }, 400)
 
-    assertLatencyBudget('parseChannelMessageSync', samples, 12)
+    assertLatencyBudget('parseChannelMessageSync', samples, 5)
   })
 })

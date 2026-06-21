@@ -34,12 +34,40 @@ export async function benchmarkAsync(fn: () => Promise<void>, iterations: number
 
 /** Assert p50 latency stays under budget (ms). Scale budget in CI via WORKER_PERF_BUDGET_MULTIPLIER. */
 export function assertLatencyBudget(label: string, samples: number[], maxMedianMs: number): void {
-  const multiplier = Number(process.env.WORKER_PERF_BUDGET_MULTIPLIER ?? '1')
-  const budget = maxMedianMs * (Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1)
+  const multiplier = budgetMultiplier()
+  const budget = maxMedianMs * multiplier
   const median = percentileMs(samples, 50)
   const p95 = percentileMs(samples, 95)
   assert.ok(
     median <= budget,
     `${label}: median ${median.toFixed(2)}ms (p95 ${p95.toFixed(2)}ms) exceeds ${budget.toFixed(2)}ms budget`,
   )
+}
+
+/** Assert p95 latency stays under budget (ms). Use for end-to-end Telegram → trade ceilings. */
+export function assertP95Budget(label: string, samples: number[], maxP95Ms: number): void {
+  const multiplier = budgetMultiplier()
+  const budget = maxP95Ms * multiplier
+  const p95 = percentileMs(samples, 95)
+  const max = Math.max(...samples)
+  assert.ok(
+    p95 <= budget,
+    `${label}: p95 ${p95.toFixed(2)}ms (max ${max.toFixed(2)}ms) exceeds ${budget.toFixed(2)}ms budget`,
+  )
+}
+
+/** Assert every sample stays under a hard ceiling (ms). */
+export function assertMaxBudget(label: string, samples: number[], maxMs: number): void {
+  const multiplier = budgetMultiplier()
+  const budget = maxMs * multiplier
+  const max = Math.max(...samples)
+  assert.ok(
+    max <= budget,
+    `${label}: max ${max.toFixed(2)}ms exceeds ${budget.toFixed(2)}ms ceiling`,
+  )
+}
+
+function budgetMultiplier(): number {
+  const multiplier = Number(process.env.WORKER_PERF_BUDGET_MULTIPLIER ?? '1')
+  return Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1
 }

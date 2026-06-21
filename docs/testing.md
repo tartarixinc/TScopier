@@ -59,16 +59,37 @@ Stable routes and host switching that previously broke.
 - E2E: `e2e/regression.spec.ts` (tag `@regression`)
 - Lib regression: existing Vitest files under `src/lib/` and `worker/src/`
 
-### Latency tests (worker)
-Perf budgets for hot paths in the copier pipeline. Files: `worker/src/**/*.perf.test.ts`
+### Latency tests (worker) — Telegram → MetaTrader / FXSocket
+
+Product targets for **worker-side** processing (after Telegram delivers the message, before live broker RTT):
+
+| Segment | Target (p50) | Max (p95 / hard) |
+|---------|--------------|------------------|
+| Listener → dispatch ready (parse + eligibility) | **5 ms** | — |
+| Full path → first `OrderSend` (mock-warm caches) | **5 ms** | **80 ms** |
+| `parseChannelMessageSync` alone | **5 ms** | — |
+
+Files:
+- `worker/src/telegramToTradePipeline.perf.test.ts` — end-to-end worker simulation
+- `worker/src/test/telegramPipelineStages.ts` — stage harness
+- `worker/src/test/pipelineLatencyBudgets.ts` — constants
+
+**Not included in unit perf suite** (track separately in production logs via `pipelineTimestamps`):
+- gramjs Telegram network delivery
+- Redis queue / HTTP push between listener and trade worker
+- Live FXSocket / MT4 / MT5 API round-trip
+
+Production hooks: `pipelineSummaryPayload()` fields `parse_ms`, `prep_ms`, `send_order_prep_ms`, `broker_send_ms`, `total_ms`.
+
+### Other latency tests (worker modules)
 
 | Path | Budget (median) |
 |------|-----------------|
-| `parseChannelMessageSync` | 12 ms |
 | `classifySymbol` | 0.15 ms |
 | `evaluateParsedSignalExecutionEligibility` | 2 ms |
 | `buildIdempotencyKey` | 0.25 ms |
 | `parallelMap(120, c=8)` | 250 ms |
+| **Telegram → mock OrderSend (full worker path)** | **5 ms p50 / 80 ms p95** |
 
 CI uses `WORKER_PERF_BUDGET_MULTIPLIER=2.5` for slower runners. Override locally:
 
