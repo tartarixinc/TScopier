@@ -364,6 +364,7 @@ async function resolveRecentEntrySignalAnchor(
     status: string
   }[]) {
     if (row.id === opts?.currentSignalId) continue
+    if (row.status === 'skipped') continue
     const parsed = row.parsed_data ?? {}
     const act = String(parsed.action ?? '').toLowerCase()
     if (act !== args.direction) continue

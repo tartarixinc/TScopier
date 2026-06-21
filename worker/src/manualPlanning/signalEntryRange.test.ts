@@ -177,3 +177,29 @@ test('signalRangeEntryQuoteAllowsImmediate: sell zone uses low edge', () => {
     false,
   )
 })
+
+test('signalRangeEntryQuoteAllowsImmediate: pip tolerance requires pipSize', () => {
+  const wait = buildRangeEntryWait({
+    manual: { use_signal_entry_range: true, range_trading: true, trade_style: 'multi', signal_entry_pip_tolerance: 10 },
+    parsed: {
+      action: 'sell',
+      symbol: 'BTCUSD',
+      entry_price: null,
+      entry_zone_low: 64259,
+      entry_zone_high: 64459,
+      sl: 64659,
+      tp: [64159],
+      lot_size: null,
+    },
+    isBuy: false,
+  })!
+  // At zone low 64259, bid 64258.5 is within 10 pips (point=1) when pipSize is set.
+  assert.equal(
+    signalRangeEntryQuoteAllowsImmediate({ wait, bid: 64258.5, ask: 64300, pipSize: 1 }),
+    true,
+  )
+  assert.equal(
+    signalRangeEntryQuoteAllowsImmediate({ wait, bid: 64258.5, ask: 64300 }),
+    false,
+  )
+})

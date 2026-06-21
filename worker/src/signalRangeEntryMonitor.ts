@@ -127,10 +127,19 @@ export class SignalRangeEntryMonitor {
       if (!api) continue
       let bid: number
       let ask: number
+      let pipSize = 0.00001
       try {
         const q = await api.quote(sample.metaapi_account_id, sample.symbol)
         bid = q.bid
         ask = q.ask
+        try {
+          const params = await api.symbolParams(sample.metaapi_account_id, sample.symbol)
+          if (Number.isFinite(params.point) && params.point > 0) {
+            pipSize = params.point
+          }
+        } catch {
+          /* default pipSize */
+        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         console.warn(
@@ -141,7 +150,7 @@ export class SignalRangeEntryMonitor {
 
       for (const row of group) {
         const wait = waitRowToPlannerWait(row)
-        if (!signalRangeEntryQuoteAllowsImmediate({ wait, bid, ask })) continue
+        if (!signalRangeEntryQuoteAllowsImmediate({ wait, bid, ask, pipSize })) continue
 
         const { data: claimed, error: claimErr } = await this.supabase
           .from('signal_range_entry_waits')

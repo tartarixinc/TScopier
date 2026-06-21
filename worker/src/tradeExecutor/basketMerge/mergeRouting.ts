@@ -202,6 +202,22 @@ export async function tryParameterFollowUpMergeModifyOnly(ctx: TradeExecutorCont
       }
     }
 
+    const { data: anchorFamilyRows } = await ctx.supabase
+      .from('trades')
+      .select('id,signal_id,metaapi_order_id,opened_at,lot_size,sl,tp,entry_price,direction,symbol')
+      .eq('broker_account_id', broker.id)
+      .eq('signal_id', anchor.anchorSignalId)
+      .eq('status', 'open')
+      .order('opened_at', { ascending: true })
+      .limit(500)
+    const anchorFamily = ((anchorFamilyRows ?? []) as BasketOpenLeg[]).filter(tr =>
+      symbolsCompatibleForBasket(parsed.symbol ?? symbol, tr.symbol)
+      || symbolsCompatibleForBasket(symbol, tr.symbol),
+    )
+    if (!anchorFamily.length) {
+      return { handled: false }
+    }
+
     console.log(
       `[tradeExecutor] merge_anchor_selected signal=${signal.id} broker=${broker.id}`
       + ` anchor=${anchor.anchorSignalId} symbol=${symbol} direction=${direction}`,
@@ -224,18 +240,6 @@ export async function tryParameterFollowUpMergeModifyOnly(ctx: TradeExecutorCont
       })
     } catch { /* best-effort */ }
 
-    const { data: anchorFamilyRows } = await ctx.supabase
-      .from('trades')
-      .select('id,signal_id,metaapi_order_id,opened_at,lot_size,sl,tp,entry_price,direction,symbol')
-      .eq('broker_account_id', broker.id)
-      .eq('signal_id', anchor.anchorSignalId)
-      .eq('status', 'open')
-      .order('opened_at', { ascending: true })
-      .limit(500)
-    const anchorFamily = ((anchorFamilyRows ?? []) as BasketOpenLeg[]).filter(tr =>
-      symbolsCompatibleForBasket(parsed.symbol ?? symbol, tr.symbol)
-      || symbolsCompatibleForBasket(symbol, tr.symbol),
-    )
     const ghostCheck = await reconcileGhostBasketLegs(ctx, {
       signal,
       broker,
@@ -497,6 +501,9 @@ export async function tryTeaserCompletionMerge(ctx: TradeExecutorContext, args: 
       symbolsCompatibleForBasket(parsed.symbol ?? symbol, tr.symbol)
       || symbolsCompatibleForBasket(symbol, tr.symbol),
     )
+    if (!anchorFamily.length) {
+      return { handled: false }
+    }
     const ghostCheck = await reconcileGhostBasketLegs(ctx, {
       signal,
       broker,
