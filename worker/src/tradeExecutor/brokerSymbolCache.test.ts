@@ -8,6 +8,8 @@ process.env.FXSOCKET_API_KEY = process.env.FXSOCKET_API_KEY ?? 'test-fxsocket-ke
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const brokerSymbolCache = require('./brokerSymbolCache') as typeof import('./brokerSymbolCache')
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { runRepeatedSessionHeartbeatTicks } = require('../test/brokerSymbolCacheTestHelpers') as typeof import('../test/brokerSymbolCacheTestHelpers')
 
 const FX_UUID = 'b970faaf-1c0a-4d0a-a999-9bad9c1f0a65'
 
@@ -127,10 +129,7 @@ test('sessionHeartbeatTick marks broker down after repeated failures', async () 
     2,
     Number(process.env.BROKER_HEARTBEAT_FAILURES_BEFORE_DOWN ?? 4) || 4,
   )
-  for (let i = 0; i < failuresBeforeDown; i += 1) {
-    ctx.sessionPingAt.delete(FX_UUID)
-    await brokerSymbolCache.sessionHeartbeatTick(ctx)
-  }
+  await runRepeatedSessionHeartbeatTicks(brokerSymbolCache, ctx, FX_UUID, failuresBeforeDown)
   assert.equal(downCalls, 1)
 })
 

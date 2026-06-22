@@ -31,7 +31,25 @@ export interface FxsocketWsClientOptions {
   reconnect?: boolean
   reconnectDelayMs?: number
   maxReconnectDelayMs?: number
+  /** WebSocket ping interval (ms). Default 30_000; 0 disables. */
+  heartbeatIntervalMs?: number
+  /** Close socket if no pong within this window after a ping (ms). */
+  heartbeatTimeoutMs?: number
   onConnectionChange?: (connected: boolean) => void
+  onHeartbeat?: (event: FxsocketWsHeartbeatEvent) => void
+}
+
+export type FxsocketWsHeartbeatEvent = {
+  type: 'ping' | 'pong' | 'timeout'
+  at: number
+  missedCount: number
+}
+
+export type FxsocketWsHeartbeatStats = {
+  pingsSent: number
+  pongsReceived: number
+  timeouts: number
+  lastPongAt: number | null
 }
 
 function trimEnv(v: string | undefined): string {
@@ -67,6 +85,15 @@ export class FxsocketWsClient {
   private intentionalClose = false
   private reconnectTimer: NodeJS.Timeout | null = null
   private reconnectAttempt = 0
+  private heartbeatTimer: NodeJS.Timeout | null = null
+  private heartbeatAwaitingPong = false
+  private readonly heartbeatIntervalMs: number
+  private readonly heartbeatTimeoutMs: number
+  private readonly onHeartbeat?: (event: FxsocketWsHeartbeatEvent) => void
+  private pingsSent = 0
+  private pongsReceived = 0
+  private heartbeatTimeouts = 0
+  private lastPongAt: number | null = null
 
   constructor(opts: FxsocketWsClientOptions) {
     const base = trimEnv(opts.baseUrl) || trimEnv(process.env.FXSOCKET_BASE_URL) || DEFAULT_BASE_URL
@@ -83,10 +110,46 @@ export class FxsocketWsClient {
     this.reconnectDelayMs = Math.max(500, opts.reconnectDelayMs ?? 2_000)
     this.maxReconnectDelayMs = Math.max(this.reconnectDelayMs, opts.maxReconnectDelayMs ?? 60_000)
     this.onConnectionChange = opts.onConnectionChange
+    this.onHeartbeat = opts.onHeartbeat
+    const interval = opts.heartbeatIntervalMs ?? Number(process.env.FXSOCKET_WS_HEARTBEAT_MS ?? 30_000)
+    this.heartbeatIntervalMs = interval > 0 ? interval : 0
+    this.heartbeatTimeoutMs = Math.max(
+      this.heartbeatIntervalMs,
+      opts.heartbeatTimeoutMs ?? this.heartbeatIntervalMs * 2,
+    )
+  }
+
+  get heartbeatStats(): FxsocketWsHeartbeatStats {
+    return {
+      pingsSent: this.pingsSent,
+      pongsReceived: this.pongsReceived,
+      timeouts: this.heartbeatTimeouts,
+      lastPongAt: this.lastPongAt,
+    }
   }
 
   get connected(): boolean {
     return this.ws?.readyState === WebSocket.OPEN
+  }
+
+  /** Resolves when the socket is open (or immediately if already connected). */
+  whenOpen(timeoutMs = 10_000): Promise<void> {
+    if (this.connected) return Promise.resolve()
+    return new Promise((resolve, reject) => {
+      const deadline = Date.now() + timeoutMs
+      const tick = (): void => {
+        if (this.connected) {
+          resolve()
+          return
+        }
+        if (Date.now() >= deadline) {
+          reject(new Error('FxsocketWsClient: open timeout'))
+          return
+        }
+        setTimeout(tick, 25)
+      }
+      tick()
+    })
   }
 
   onMessage(handler: FxsocketWsMessageHandler): () => void {
@@ -109,10 +172,20 @@ export class FxsocketWsClient {
 
     ws.on('open', () => {
       this.reconnectAttempt = 0
+      this.lastPongAt = Date.now()
+      this.heartbeatAwaitingPong = false
+      this.startHeartbeat(ws)
       this.onConnectionChange?.(true)
       for (const frame of this.activeSubscriptions.values()) {
         this.sendFrame(frame)
       }
+    })
+
+    ws.on('pong', () => {
+      this.lastPongAt = Date.now()
+      this.pongsReceived += 1
+      this.heartbeatAwaitingPong = false
+      this.onHeartbeat?.({ type: 'pong', at: this.lastPongAt, missedCount: 0 })
     })
 
     ws.on('message', (data) => {
@@ -126,6 +199,7 @@ export class FxsocketWsClient {
     })
 
     ws.on('close', () => {
+      this.stopHeartbeat()
       this.onConnectionChange?.(false)
       if (!this.intentionalClose && this.reconnect && this.handlers.size > 0) {
         this.scheduleReconnect()
@@ -140,6 +214,7 @@ export class FxsocketWsClient {
   close(): void {
     this.intentionalClose = true
     this.clearReconnectTimer()
+    this.stopHeartbeat()
     if (this.ws) {
       try { this.ws.close() } catch { /* ignore */ }
       this.ws = null
@@ -203,6 +278,44 @@ export class FxsocketWsClient {
       clearTimeout(this.reconnectTimer)
       this.reconnectTimer = null
     }
+  }
+
+  private startHeartbeat(ws: WebSocket): void {
+    this.stopHeartbeat()
+    if (this.heartbeatIntervalMs <= 0) return
+    this.heartbeatTimer = setInterval(() => {
+      if (!this.ws || this.ws !== ws || ws.readyState !== WebSocket.OPEN) return
+      const now = Date.now()
+      if (this.heartbeatAwaitingPong && this.lastPongAt != null) {
+        if (now - this.lastPongAt > this.heartbeatTimeoutMs) {
+          this.heartbeatTimeouts += 1
+          this.onHeartbeat?.({
+            type: 'timeout',
+            at: now,
+            missedCount: this.heartbeatTimeouts,
+          })
+          try { ws.terminate() } catch { /* ignore */ }
+          return
+        }
+      }
+      try {
+        ws.ping()
+        this.pingsSent += 1
+        this.heartbeatAwaitingPong = true
+        this.onHeartbeat?.({ type: 'ping', at: now, missedCount: this.heartbeatTimeouts })
+      } catch (e) {
+        console.warn('[fxsocketWsClient] heartbeat ping failed:', e instanceof Error ? e.message : e)
+      }
+    }, this.heartbeatIntervalMs)
+    this.heartbeatTimer.unref?.()
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer)
+      this.heartbeatTimer = null
+    }
+    this.heartbeatAwaitingPong = false
   }
 }
 

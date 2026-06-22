@@ -19,6 +19,9 @@
     "test:edge": "deno test --allow-read --config supabase/functions/deno.json supabase/functions/_shared",
     "test:worker": "npm --prefix worker test",
     "test:worker:perf": "npm --prefix worker run test:perf",
+    "test:load:stress": "npm --prefix worker run load:stress",
+    "test:load:smoke": "npm --prefix worker run load:stress:smoke",
+    "test:load:ws:live": "npm --prefix worker run load:ws:live",
     "test:regression": "playwright test --grep @regression",
     "test:all": "npm run test:worker && npm run test:worker:perf && npm run test:unit && npm run test:edge && npm run test:e2e"
   },

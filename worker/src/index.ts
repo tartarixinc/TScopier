@@ -1,4 +1,4 @@
-import 'dotenv/config'
+import './loadEnv'
 import { createClient } from '@supabase/supabase-js'
 import WebSocket from 'ws'
 import { UserSessionManager } from './sessionManager'

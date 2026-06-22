@@ -9,7 +9,7 @@ function collectTestFiles(dir, out = []) {
     const full = path.join(dir, ent.name)
     if (ent.isDirectory()) {
       collectTestFiles(full, out)
-    } else if (ent.name.endsWith('.test.ts')) {
+    } else if (ent.name.endsWith('.test.ts') && !ent.name.endsWith('.perf.test.ts')) {
       out.push(full)
     }
   }

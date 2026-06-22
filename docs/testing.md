@@ -15,6 +15,8 @@
 
 CI runs all jobs on **every push to any branch** (see `.github/workflows/typescript-ci.yml`).
 
+Latest local run details and failure analysis: **[test-results.md](./test-results.md)**.
+
 ## First-time local setup
 
 ```bash
@@ -89,6 +91,69 @@ Simulates many users each executing multiple trades at once (unique user/signal/
 |----------|-------|-------------|
 | Standard load | **10 users × 5 trades** (50 requests) | 8 |
 | Burst load | **25 users × 4 trades** (100 requests) | 8 |
+
+### Heavy stress load (5k–10k users) — CLI
+
+Simulates a **full fleet**: thousands of users, **4–10 Telegram signals each**, assigned to **MT4 / MT5 / FXSocket** round-robin. Reports:
+
+- **Pipeline funnel** — how many signals reached each stage (telegram → heuristic → parse → eligible → dispatch → broker OrderSend)
+- **User delivery** — % of users where **all** signals reached the trading platform
+- **Signal delivery rate** — % of total signals that reached broker
+- **Latency** — min / p50 / p95 / p99 / max (worker-side, successful only)
+- **By platform** — MT4, MT5, FXSocket breakdown
+
+```powershell
+# Default: 5,000 users × 4–10 signals (~35k signals)
+npm run test:load:stress
+
+# Quick smoke (500 users)
+npm run test:load:smoke
+
+# Custom scale
+$env:LOAD_USERS="10000"
+$env:LOAD_MIN_SIGNALS="4"
+$env:LOAD_MAX_SIGNALS="10"
+$env:LOAD_CONCURRENCY="32"
+$env:LOAD_WRITE_JSON="1"
+npm run test:load:stress
+
+# Mixed profile (~60% happy + heuristic/parse/eligibility/FxSocket broker failures)
+$env:LOAD_PROFILE="mixed"
+npm run test:load:stress
+
+# All failure paths only
+$env:LOAD_PROFILE="unhappy"
+npm run test:load:stress
+
+# FxSocket WebSocket heartbeat (in-process mock; set LOAD_WS_LIVE=1 for real FxSocket)
+$env:LOAD_WS_ACCOUNTS="500"
+$env:LOAD_WS_DURATION_MS="15000"
+$env:LOAD_WS_HEARTBEAT_MS="5000"
+npm run test:load:stress
+
+# Live FxSocket WS — requires real terminal UUIDs (from broker_accounts.fxsocket_account_id)
+$env:LOAD_WS_LIVE="1"
+$env:LOAD_WS_ACCOUNT_IDS="your-fxsocket-uuid:MT5"
+$env:LOAD_WS_ACCOUNTS="1"
+npm run test:load:stress
+```
+
+**Note:** This is a **worker-side simulation** (parse + dispatch + mock-warm OrderSend). It does not hit live Telegram or live MetaTrader terminals. Use production `pipelineTimestamps` logs for real broker RTT.
+
+**Profiles:**
+| Profile | Behavior |
+|---------|----------|
+| `happy` (default) | All signals are valid trades → broker OrderSend |
+| `mixed` | ~60% happy + heuristic/parse/eligibility/FxSocket session/OrderSend/WS failures |
+| `unhappy` | Rotates through every failure class |
+
+**FxSocket:** All MT4/MT5 connectivity goes through [FxSocket](https://fxsocket.com/docs) REST (`OrderSend`) and WebSocket (live `account`/`positions`/`prices` streams). Non-happy broker failures simulate `keepSessionAlive` heartbeat loss, REST reject, and WS disconnect.
+
+**WebSocket heartbeat:** Phase 3 of the load CLI opens many FxSocket WS clients with ping/pong keepalive (mock server by default). Unit tests: `telegramPipelineScenarios.test.ts`, `fxsocketWsClient.test.ts`.
+
+Files:
+- `worker/src/diagnostics/heavyTelegramLoad.ts` — CLI entry
+- `worker/src/test/heavyTelegramLoadRunner.ts` — runner + report formatter
 
 Files:
 - `worker/src/telegramToTradePipeline.load.perf.test.ts`
