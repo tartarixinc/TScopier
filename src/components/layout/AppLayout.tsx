@@ -45,9 +45,9 @@ export function AppLayout() {
   const userMenuRef = useRef<HTMLDivElement>(null)
   const userMenuCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { profile } = useUserProfile()
-  const { planName, hasActiveSubscription, effectivePlan, openUpgrade, isPastDue, hasTrialExpired, loading: subscriptionLoading } =
+  const { planName, hasActiveSubscription, effectivePlan, openUpgrade, isPastDue, hasTrialExpired, loading: subscriptionGateLoading } =
     useSubscription()
-  const navLocked = !subscriptionLoading && !hasActiveSubscription
+  const navLocked = !subscriptionGateLoading && !hasActiveSubscription
   const subscribeCta = getSubscribeCtaLabel(t, {
     isPastDue,
     effectivePlan,
