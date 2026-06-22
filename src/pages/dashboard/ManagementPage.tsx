@@ -49,9 +49,10 @@ export function ManagementPage() {
     window.setTimeout(() => setToastMessage(null), 4500)
   }, [])
 
-  const loadActivities = useCallback(async () => {
+  const loadActivities = useCallback(async (opts?: { background?: boolean }) => {
     if (!user) return
-    setLoading(true)
+    const background = opts?.background === true
+    if (!background) setLoading(true)
     const [channelsRes, logsRes] = await Promise.all([
       supabase
         .from('telegram_channels')
@@ -67,14 +68,14 @@ export function ManagementPage() {
 
     setChannelDisplayNames(buildChannelDisplayNames((channelsRes.data ?? []) as ChannelNameRow[]))
     setRawLogs((logsRes.data ?? []) as TradeActivityLogRow[])
-    setLoading(false)
+    if (!background) setLoading(false)
   }, [user])
 
   useEffect(() => {
     void loadActivities()
   }, [loadActivities])
 
-  useTradeActivitiesRealtime(user?.id, loadActivities)
+  useTradeActivitiesRealtime(user?.id, () => { void loadActivities({ background: true }) })
 
   useEffect(() => {
     setPage(1)

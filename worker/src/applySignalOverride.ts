@@ -4,6 +4,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { stripInvalidStopsForSide } from './channelActiveTradeParams'
+import { channelMatchesBrokerSignal } from './brokerChannelFilter'
 import {
   clampBasketOrderStops,
   type BasketSymbolParams,
@@ -22,6 +23,10 @@ import type { ManualTpLot } from './manualPlanning/types'
 import { isBenignOrderModifyError, stopsAlreadyMatchDb } from './orderModifyBenign'
 import { effectiveParsedFromSignalRow } from './signalOverride'
 import { brokerHasLinkedSession, brokerSessionUuid } from './tradeExecutor/helpers'
+import {
+  expandMgmtRowsToFullBaskets,
+  loadOpenTradesForManagement,
+} from './managementScope'
 
 export type ApplySignalOverrideResult = {
   applied_legs: number
@@ -89,17 +94,59 @@ export async function applySignalOverride(
     return { applied_legs: 0, skipped_legs: 0, failed_legs: 0, errors: ['no_sl_or_tp_in_override'] }
   }
 
-  const { data: trades, error: trErr } = await supabase
-    .from('trades')
-    .select('id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,sl,tp,opened_at,entry_price')
-    .eq('user_id', args.userId)
-    .eq('signal_id', args.signalId)
-    .eq('status', 'open')
-    .not('metaapi_order_id', 'is', null)
-    .order('opened_at', { ascending: true })
-  if (trErr) throw trErr
+  const channelId = (signal as { channel_id?: string | null }).channel_id ?? null
+  const symbol = String(effective.symbol ?? '').trim() || null
+  let rows: TradeRow[] = []
 
-  const rows = (trades ?? []) as TradeRow[]
+  if (channelId && symbol) {
+    const { data: brokerRows } = await supabase
+      .from('broker_accounts')
+      .select('id,signal_channel_ids,is_active,fxsocket_account_id,metaapi_account_id')
+      .eq('user_id', args.userId)
+      .eq('is_active', true)
+    const brokerAccountIds = (brokerRows ?? [])
+      .filter(b => channelMatchesBrokerSignal(b as { signal_channel_ids?: string[] | null }, channelId))
+      .map(b => (b as { id: string }).id)
+    if (brokerAccountIds.length) {
+      const scoped = await loadOpenTradesForManagement(supabase, {
+        userId: args.userId,
+        channelId,
+        brokerAccountIds,
+        symbolFilter: symbol,
+      })
+      const expanded = await expandMgmtRowsToFullBaskets(supabase, {
+        userId: args.userId,
+        rows: scoped.filter(r => r.status === 'open'),
+      })
+      rows = expanded
+        .filter(r => r.status === 'open' && r.metaapi_order_id)
+        .map(r => ({
+          id: r.id,
+          signal_id: r.signal_id,
+          broker_account_id: r.broker_account_id,
+          metaapi_order_id: r.metaapi_order_id,
+          symbol: r.symbol,
+          direction: r.direction,
+          sl: r.sl,
+          tp: r.tp,
+          opened_at: r.opened_at ?? '',
+          entry_price: r.entry_price,
+        }))
+    }
+  }
+
+  if (!rows.length) {
+    const { data: trades, error: trErr } = await supabase
+      .from('trades')
+      .select('id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,sl,tp,opened_at,entry_price')
+      .eq('user_id', args.userId)
+      .eq('signal_id', args.signalId)
+      .eq('status', 'open')
+      .not('metaapi_order_id', 'is', null)
+      .order('opened_at', { ascending: true })
+    if (trErr) throw trErr
+    rows = (trades ?? []) as TradeRow[]
+  }
   if (!rows.length) {
     return { applied_legs: 0, skipped_legs: 0, failed_legs: 0 }
   }

@@ -119,28 +119,29 @@ function scrollToPricingTop() {
 
 export function SubscriptionProvider({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { user, loading: authLoading } = useAuth()
   const { isAdmin, loading: profileLoading } = useUserProfile()
   const userId = user?.id ?? null
   const [subscription, setSubscription] = useState<Subscription | null>(null)
-  const [loading, setLoading] = useState(true)
+  /** Last user id for which subscription + usage fetch completed (prevents no-plan flash on sign-in). */
+  const [resolvedUserId, setResolvedUserId] = useState<string | null>(null)
   const [usage, setUsage] = useState<SubscriptionUsage>(emptyUsage)
   const [usageLoading, setUsageLoading] = useState(true)
+
+  const subscriptionLoading =
+    authLoading || (userId != null && resolvedUserId !== userId)
 
   const fetchSubscription = useCallback(async (options?: { background?: boolean }) => {
     if (!userId) {
       setSubscription(null)
-      setLoading(false)
+      setResolvedUserId(null)
       setUsage(emptyUsage)
       setUsageLoading(false)
       return
     }
 
     const background = options?.background ?? false
-    if (!background) {
-      setLoading(true)
-      setUsageLoading(true)
-    }
+    if (!background) setUsageLoading(true)
     const monthStart = monthStartUtcIso()
 
     const [{ data }, usageResults] = await Promise.all([
@@ -170,20 +171,20 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       telegramChannels: usageResults[1].count ?? 0,
       backtestsThisMonth: usageResults[2].count ?? 0,
     })
-    setLoading(false)
+    setResolvedUserId(userId)
     setUsageLoading(false)
   }, [userId])
 
   useEffect(() => {
     if (!userId) {
       setSubscription(null)
-      setLoading(false)
+      setResolvedUserId(null)
       setUsage(emptyUsage)
-      setUsageLoading(false)
+      setUsageLoading(authLoading)
       return
     }
     void fetchSubscription()
-  }, [userId, fetchSubscription])
+  }, [userId, fetchSubscription, authLoading])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -314,8 +315,8 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     <SubscriptionContext.Provider
       value={{
         subscription,
-        loading: loading || profileLoading,
-        subscriptionLoading: loading,
+        loading: subscriptionLoading || profileLoading,
+        subscriptionLoading,
         isAdmin,
         usage,
         usageLoading,

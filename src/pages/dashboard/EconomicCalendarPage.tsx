@@ -64,7 +64,7 @@ export function EconomicCalendarPage() {
   const [from, setFrom] = useState(initialRange.from)
   const [to, setTo] = useState(initialRange.to)
   const [country, setCountry] = useState<CalendarCountryFilter>('ALL')
-  const [impact, setImpact] = useState<CalendarImpactFilter>('all')
+  const [impact, setImpact] = useState<CalendarImpactFilter>('high')
   const [showNewsFilter, setShowNewsFilter] = useState(false)
 
   const initialQuery = useMemo<EconomicCalendarQuery>(
@@ -72,7 +72,7 @@ export function EconomicCalendarPage() {
       from: initialRange.from,
       to: initialRange.to,
       country: 'ALL',
-      impact: 'all',
+      impact: 'high',
     }),
     [initialRange.from, initialRange.to],
   )

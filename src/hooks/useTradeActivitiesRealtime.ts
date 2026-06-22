@@ -44,6 +44,11 @@ export function useTradeActivitiesRealtime(
           { event: 'UPDATE', schema: 'public', table: 'trade_execution_logs', filter },
           schedule,
         )
+        .on(
+          'postgres_changes',
+          { event: 'DELETE', schema: 'public', table: 'trade_execution_logs', filter },
+          schedule,
+        )
         .subscribe(status => {
           if (status === 'CHANNEL_ERROR') {
             console.warn('[management] realtime subscription error')

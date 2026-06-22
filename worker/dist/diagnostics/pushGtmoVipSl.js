@@ -13,6 +13,7 @@ exports.resolveGtmoVipUserIds = resolveGtmoVipUserIds;
  *
  * Env:
  *   SL_OVERRIDE=4261   — target SL (default 4261)
+ *   ENTRY_ACTION=sell  — anchor on latest buy or sell entry (default: any entry with open legs)
  *   USER_ID=           — optional; limit to one copier user
  *   ALL_GTMO_USERS=true — run for every subscriber with open GTMO VIP legs (not just one)
  *   FXSOCKET_ONLY=true — only brokers on fxsocket_account_id (no legacy metaapi_account_id)
@@ -23,7 +24,16 @@ const supabase_js_1 = require("@supabase/supabase-js");
 const pushSignalStopsToBroker_1 = require("./pushSignalStopsToBroker");
 const supabase = (0, supabase_js_1.createClient)(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 const GTMO_CHANNEL_PATTERN = '%GTMO VIP%';
-async function resolveGtmoVipAnchorSignalId(userId) {
+function parseEntryAction(raw) {
+    const v = String(raw ?? '').trim().toLowerCase();
+    if (v === 'buy' || v === 'sell')
+        return v;
+    return undefined;
+}
+function signalEntryAction(parsed) {
+    return String(parsed?.action ?? '').toLowerCase();
+}
+async function resolveGtmoVipAnchorSignalId(userId, entryAction) {
     const { data: channels, error: chErr } = await supabase
         .from('telegram_channels')
         .select('id,display_name,user_id')
@@ -72,6 +82,8 @@ async function resolveGtmoVipAnchorSignalId(userId) {
         legCountBySignal.set(sid, (legCountBySignal.get(sid) ?? 0) + 1);
     }
     for (const sig of recentSignals) {
+        if (entryAction && signalEntryAction(sig.parsed_data) !== entryAction)
+            continue;
         const openLegs = legCountBySignal.get(sig.id) ?? 0;
         if (openLegs > 0) {
             return {
@@ -84,18 +96,21 @@ async function resolveGtmoVipAnchorSignalId(userId) {
         }
     }
     for (const sig of recentSignals) {
-        const action = String(sig.parsed_data?.action ?? '').toLowerCase();
-        if (action === 'buy' || action === 'sell') {
-            return {
-                signalId: sig.id,
-                userId: sig.user_id,
-                displayName: channelNameById.get(sig.channel_id) ?? 'GTMO VIP',
-                createdAt: sig.created_at,
-                openLegs: 0,
-            };
-        }
+        const action = signalEntryAction(sig.parsed_data);
+        if (action !== 'buy' && action !== 'sell')
+            continue;
+        if (entryAction && action !== entryAction)
+            continue;
+        return {
+            signalId: sig.id,
+            userId: sig.user_id,
+            displayName: channelNameById.get(sig.channel_id) ?? 'GTMO VIP',
+            createdAt: sig.created_at,
+            openLegs: 0,
+        };
     }
-    throw new Error('No GTMO VIP entry signal found — set SIGNAL_ID on push-signal-stops instead');
+    const hint = entryAction ? ` (${entryAction} entry)` : '';
+    throw new Error(`No GTMO VIP entry signal found${hint} — set SIGNAL_ID on push-signal-stops instead`);
 }
 /** Distinct copier users with open legs on a GTMO VIP basket anchor signal. */
 async function resolveGtmoVipUserIds() {
@@ -136,7 +151,7 @@ async function resolveGtmoVipUserIds() {
     return [...users];
 }
 async function pushGtmoVipSlForUser(args) {
-    const anchor = await resolveGtmoVipAnchorSignalId(args.userId);
+    const anchor = await resolveGtmoVipAnchorSignalId(args.userId, args.entryAction);
     console.log(`GTMO VIP anchor signal ${anchor.signalId}`
         + ` (${anchor.displayName}, user=${anchor.userId})`
         + ` created=${anchor.createdAt} open_legs=${anchor.openLegs}`);
@@ -172,6 +187,7 @@ async function main() {
     const dryRun = String(process.env.DRY_RUN ?? '').toLowerCase() === 'true';
     const fxsocketOnly = String(process.env.FXSOCKET_ONLY ?? '').toLowerCase() === 'true';
     const slOverride = numEnv('SL_OVERRIDE', 4261);
+    const entryAction = parseEntryAction(process.env.ENTRY_ACTION);
     if (allGtmoUsers && userId) {
         throw new Error('Use either USER_ID or ALL_GTMO_USERS=true, not both');
     }
@@ -182,11 +198,11 @@ async function main() {
         console.log(`ALL_GTMO_USERS: ${userIds.length} subscriber(s)\n`);
         for (const uid of userIds) {
             console.log(`\n========== user ${uid} ==========\n`);
-            await pushGtmoVipSlForUser({ userId: uid, dryRun, slOverride, fxsocketOnly });
+            await pushGtmoVipSlForUser({ userId: uid, dryRun, slOverride, fxsocketOnly, entryAction });
         }
         return;
     }
-    await pushGtmoVipSlForUser({ userId, dryRun, slOverride, fxsocketOnly });
+    await pushGtmoVipSlForUser({ userId, dryRun, slOverride, fxsocketOnly, entryAction });
 }
 if (require.main === module) {
     main().catch(err => {

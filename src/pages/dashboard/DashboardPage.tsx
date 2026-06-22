@@ -56,7 +56,7 @@ import {
   buildCopierLogSymbolLabels,
   buildSignalSymbolLookup,
 } from '../../lib/copierLogDisplay'
-import { buildDisplayableTradeActivities, buildChannelDisplayNames, dedupePipelineParseAttempts, type TradeActivityLogRow } from '../../lib/tradeActivities'
+import { buildDisplayableTradeActivities, buildChannelDisplayNames, dedupePipelineParseAttempts, TRADE_ACTIVITY_FETCH_LIMIT, type TradeActivityLogRow } from '../../lib/tradeActivities'
 import { TradeActivityCard } from '../../components/dashboard/TradeActivityCard'
 import {
   DASHBOARD_ACTIVE_USER_KEY,
@@ -1281,7 +1281,7 @@ export function DashboardPage() {
         )
         .eq('user_id', user!.id)
         .order('created_at', { ascending: false })
-        .limit(20),
+        .limit(TRADE_ACTIVITY_FETCH_LIMIT),
       mtTradesPromise,
     ])
 

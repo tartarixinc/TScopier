@@ -4,7 +4,8 @@ const RETENTION_INTERVAL_MS = Math.max(
   5 * 60_000,
   Number(process.env.TRADE_LOG_RETENTION_INTERVAL_MS ?? 10 * 60_000),
 )
-const RETENTION_KEEP = Math.max(1, Number(process.env.TRADE_LOG_RETENTION_KEEP ?? 20))
+/** Match Management page fetch cap (`TRADE_ACTIVITY_FETCH_LIMIT`). */
+const RETENTION_KEEP = Math.max(1, Number(process.env.TRADE_LOG_RETENTION_KEEP ?? 500))
 
 export function startTradeLogRetention(supabase: SupabaseClient): () => void {
   const tick = async () => {

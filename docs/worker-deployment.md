@@ -219,7 +219,7 @@ Broker keepalive notes:
 
 **`connection_status`** is written only by the worker (`brokerConnectionMonitor`, session-down paths), debounced to at most once per 60s per broker when status unchanged. Edge `check` and frontend health polls are read-only for DB status (local UI state only).
 
-**`trade_execution_logs`** retention runs every 10 minutes via worker RPC — not on every INSERT.
+**`trade_execution_logs`** retention runs every 10 minutes via worker RPC (`prune_all_trade_execution_logs`, default **500** rows per user). Set `TRADE_LOG_RETENTION_KEEP` on the worker if you need a different cap.
 
 Expected idle DB load drop: **~60–80%** vs fixed 1.5s global polls.
 

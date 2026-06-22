@@ -168,25 +168,24 @@ Deno.serve(async (req: Request) => {
       })
     }
 
-    const { count: openCount } = await supabase
+    const { count: signalOpenCount } = await supabase
       .from("trades")
       .select("id", { count: "exact", head: true })
       .eq("user_id", userId)
       .eq("signal_id", signalId)
       .eq("status", "open")
 
-    const open = (openCount ?? 0) > 0
+    let open = (signalOpenCount ?? 0) > 0
     let appliedLegs = 0
     let failedLegs = 0
     let applyErrors: string[] | undefined
-    if (open) {
-      const workerResult = await callWorkerApply({ userId, signalId })
-      appliedLegs = workerResult.applied_legs
-      failedLegs = workerResult.failed_legs ?? 0
-      applyErrors = workerResult.errors
-      if (applyErrors?.length) {
-        console.warn(`[signal-override] worker apply warnings: ${applyErrors.join("; ")}`)
-      }
+    const workerResult = await callWorkerApply({ userId, signalId })
+    appliedLegs = workerResult.applied_legs
+    failedLegs = workerResult.failed_legs ?? 0
+    applyErrors = workerResult.errors
+    open = open || appliedLegs > 0
+    if (applyErrors?.length) {
+      console.warn(`[signal-override] worker apply warnings: ${applyErrors.join("; ")}`)
     }
 
     return Response.json(

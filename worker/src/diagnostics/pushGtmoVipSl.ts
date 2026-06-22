@@ -9,6 +9,7 @@
  *
  * Env:
  *   SL_OVERRIDE=4261   — target SL (default 4261)
+ *   ENTRY_ACTION=sell  — anchor on latest buy or sell entry (default: any entry with open legs)
  *   USER_ID=           — optional; limit to one copier user
  *   ALL_GTMO_USERS=true — run for every subscriber with open GTMO VIP legs (not just one)
  *   FXSOCKET_ONLY=true — only brokers on fxsocket_account_id (no legacy metaapi_account_id)
@@ -25,7 +26,17 @@ const supabase = createClient(
 
 const GTMO_CHANNEL_PATTERN = '%GTMO VIP%'
 
-export async function resolveGtmoVipAnchorSignalId(userId?: string): Promise<{
+function parseEntryAction(raw: string | undefined): 'buy' | 'sell' | undefined {
+  const v = String(raw ?? '').trim().toLowerCase()
+  if (v === 'buy' || v === 'sell') return v
+  return undefined
+}
+
+function signalEntryAction(parsed: unknown): string {
+  return String((parsed as { action?: string } | null)?.action ?? '').toLowerCase()
+}
+
+export async function resolveGtmoVipAnchorSignalId(userId?: string, entryAction?: 'buy' | 'sell'): Promise<{
   signalId: string
   userId: string
   displayName: string
@@ -85,6 +96,7 @@ export async function resolveGtmoVipAnchorSignalId(userId?: string): Promise<{
   }
 
   for (const sig of recentSignals) {
+    if (entryAction && signalEntryAction(sig.parsed_data) !== entryAction) continue
     const openLegs = legCountBySignal.get(sig.id) ?? 0
     if (openLegs > 0) {
       return {
@@ -98,19 +110,20 @@ export async function resolveGtmoVipAnchorSignalId(userId?: string): Promise<{
   }
 
   for (const sig of recentSignals) {
-    const action = String((sig.parsed_data as { action?: string } | null)?.action ?? '').toLowerCase()
-    if (action === 'buy' || action === 'sell') {
-      return {
+    const action = signalEntryAction(sig.parsed_data)
+    if (action !== 'buy' && action !== 'sell') continue
+    if (entryAction && action !== entryAction) continue
+    return {
         signalId: sig.id,
         userId: sig.user_id,
         displayName: channelNameById.get(sig.channel_id) ?? 'GTMO VIP',
         createdAt: sig.created_at,
         openLegs: 0,
       }
-    }
   }
 
-  throw new Error('No GTMO VIP entry signal found — set SIGNAL_ID on push-signal-stops instead')
+  const hint = entryAction ? ` (${entryAction} entry)` : ''
+  throw new Error(`No GTMO VIP entry signal found${hint} — set SIGNAL_ID on push-signal-stops instead`)
 }
 
 /** Distinct copier users with open legs on a GTMO VIP basket anchor signal. */
@@ -154,8 +167,9 @@ async function pushGtmoVipSlForUser(args: {
   dryRun: boolean
   slOverride: number
   fxsocketOnly: boolean
+  entryAction?: 'buy' | 'sell'
 }): Promise<void> {
-  const anchor = await resolveGtmoVipAnchorSignalId(args.userId)
+  const anchor = await resolveGtmoVipAnchorSignalId(args.userId, args.entryAction)
   console.log(
     `GTMO VIP anchor signal ${anchor.signalId}`
     + ` (${anchor.displayName}, user=${anchor.userId})`
@@ -197,6 +211,7 @@ async function main() {
   const dryRun = String(process.env.DRY_RUN ?? '').toLowerCase() === 'true'
   const fxsocketOnly = String(process.env.FXSOCKET_ONLY ?? '').toLowerCase() === 'true'
   const slOverride = numEnv('SL_OVERRIDE', 4261)
+  const entryAction = parseEntryAction(process.env.ENTRY_ACTION)
 
   if (allGtmoUsers && userId) {
     throw new Error('Use either USER_ID or ALL_GTMO_USERS=true, not both')
@@ -208,12 +223,12 @@ async function main() {
     console.log(`ALL_GTMO_USERS: ${userIds.length} subscriber(s)\n`)
     for (const uid of userIds) {
       console.log(`\n========== user ${uid} ==========\n`)
-      await pushGtmoVipSlForUser({ userId: uid, dryRun, slOverride, fxsocketOnly })
+      await pushGtmoVipSlForUser({ userId: uid, dryRun, slOverride, fxsocketOnly, entryAction })
     }
     return
   }
 
-  await pushGtmoVipSlForUser({ userId, dryRun, slOverride, fxsocketOnly })
+  await pushGtmoVipSlForUser({ userId, dryRun, slOverride, fxsocketOnly, entryAction })
 }
 
 if (require.main === module) {

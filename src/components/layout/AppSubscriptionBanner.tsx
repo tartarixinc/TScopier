@@ -13,7 +13,7 @@ export function AppSubscriptionBanner() {
   const { user } = useAuth()
   const {
     hasActiveSubscription,
-    subscriptionLoading,
+    loading: subscriptionGateLoading,
     openUpgrade,
     isPastDue,
     effectivePlan,
@@ -25,7 +25,7 @@ export function AppSubscriptionBanner() {
     hasTrialExpired,
   })
 
-  if (!user || subscriptionLoading || hasActiveSubscription) {
+  if (!user || subscriptionGateLoading || hasActiveSubscription) {
     return null
   }
 
