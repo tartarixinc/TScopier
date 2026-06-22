@@ -81,6 +81,25 @@ Files:
 
 Production hooks: `pipelineSummaryPayload()` fields `parse_ms`, `prep_ms`, `send_order_prep_ms`, `broker_send_ms`, `total_ms`.
 
+### Concurrent load (multi-user × multi-trade)
+
+Simulates many users each executing multiple trades at once (unique user/signal/broker ids, mixed symbols):
+
+| Scenario | Shape | Concurrency |
+|----------|-------|-------------|
+| Standard load | **10 users × 5 trades** (50 requests) | 8 |
+| Burst load | **25 users × 4 trades** (100 requests) | 8 |
+
+Files:
+- `worker/src/telegramToTradePipeline.load.perf.test.ts`
+- `worker/src/test/telegramPipelineLoad.ts`
+
+Per-request budgets:
+- **Single request (idle): p50 ≤ 5 ms**
+- **Multi-user concurrent load: median / p95 / max ≤ 80 ms** (0 failures)
+- Standard: **10 users × 5 trades** (50 requests), concurrency 8
+- Burst: **25 users × 4 trades** (100 requests), concurrency 8
+
 ### Other latency tests (worker modules)
 
 | Path | Budget (median) |
