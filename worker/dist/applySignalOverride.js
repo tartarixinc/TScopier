@@ -5,12 +5,14 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.applySignalOverride = applySignalOverride;
 const channelActiveTradeParams_1 = require("./channelActiveTradeParams");
+const brokerChannelFilter_1 = require("./brokerChannelFilter");
 const basketSlTpReconcile_1 = require("./basketSlTpReconcile");
 const fxsocketClient_1 = require("./fxsocketClient");
 const tpBucketDistribution_1 = require("./manualPlanning/tpBucketDistribution");
 const orderModifyBenign_1 = require("./orderModifyBenign");
 const signalOverride_1 = require("./signalOverride");
 const helpers_1 = require("./tradeExecutor/helpers");
+const managementScope_1 = require("./managementScope");
 function num(v) {
     if (v == null)
         return null;
@@ -38,17 +40,58 @@ async function applySignalOverride(supabase, args) {
     if (targetSl == null && targetTps.length === 0) {
         return { applied_legs: 0, skipped_legs: 0, failed_legs: 0, errors: ['no_sl_or_tp_in_override'] };
     }
-    const { data: trades, error: trErr } = await supabase
-        .from('trades')
-        .select('id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,sl,tp,opened_at,entry_price')
-        .eq('user_id', args.userId)
-        .eq('signal_id', args.signalId)
-        .eq('status', 'open')
-        .not('metaapi_order_id', 'is', null)
-        .order('opened_at', { ascending: true });
-    if (trErr)
-        throw trErr;
-    const rows = (trades ?? []);
+    const channelId = signal.channel_id ?? null;
+    const symbol = String(effective.symbol ?? '').trim() || null;
+    let rows = [];
+    if (channelId && symbol) {
+        const { data: brokerRows } = await supabase
+            .from('broker_accounts')
+            .select('id,signal_channel_ids,is_active,fxsocket_account_id,metaapi_account_id')
+            .eq('user_id', args.userId)
+            .eq('is_active', true);
+        const brokerAccountIds = (brokerRows ?? [])
+            .filter(b => (0, brokerChannelFilter_1.channelMatchesBrokerSignal)(b, channelId))
+            .map(b => b.id);
+        if (brokerAccountIds.length) {
+            const scoped = await (0, managementScope_1.loadOpenTradesForManagement)(supabase, {
+                userId: args.userId,
+                channelId,
+                brokerAccountIds,
+                symbolFilter: symbol,
+            });
+            const expanded = await (0, managementScope_1.expandMgmtRowsToFullBaskets)(supabase, {
+                userId: args.userId,
+                rows: scoped.filter(r => r.status === 'open'),
+            });
+            rows = expanded
+                .filter(r => r.status === 'open' && r.metaapi_order_id)
+                .map(r => ({
+                id: r.id,
+                signal_id: r.signal_id,
+                broker_account_id: r.broker_account_id,
+                metaapi_order_id: r.metaapi_order_id,
+                symbol: r.symbol,
+                direction: r.direction,
+                sl: r.sl,
+                tp: r.tp,
+                opened_at: r.opened_at ?? '',
+                entry_price: r.entry_price,
+            }));
+        }
+    }
+    if (!rows.length) {
+        const { data: trades, error: trErr } = await supabase
+            .from('trades')
+            .select('id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,sl,tp,opened_at,entry_price')
+            .eq('user_id', args.userId)
+            .eq('signal_id', args.signalId)
+            .eq('status', 'open')
+            .not('metaapi_order_id', 'is', null)
+            .order('opened_at', { ascending: true });
+        if (trErr)
+            throw trErr;
+        rows = (trades ?? []);
+    }
     if (!rows.length) {
         return { applied_legs: 0, skipped_legs: 0, failed_legs: 0 };
     }

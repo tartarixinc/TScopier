@@ -369,17 +369,23 @@ export async function loadOpenTradesForChannelWideCwe(
 }
 
 /**
- * Channel-wide modify without explicit symbol: scope to the newest open symbol first,
- * then plausibility within that basket. Avoids applying a gold SL to stale/other symbols.
+ * Channel-wide modify without explicit symbol: apply to every open symbol bucket
+ * whose legs accept the parsed SL/TP levels (all matching accounts/baskets).
+ * Falls back to the newest open symbol when levels are ambiguous.
  */
 export function resolveChannelModifyTargets(
   trades: MgmtTradeRow[],
   parsed: MgmtParsedLike,
 ): MgmtTradeRow[] {
+  if (!trades.length) return []
+  if (!mgmtHasPriceLevels(parsed)) {
+    return resolveNewestOpenSymbolTrades(trades)
+  }
+
+  const plausibleAll = filterTradesByPlausibleMgmtLevels(trades, parsed)
+  if (plausibleAll.length) return plausibleAll
+
   const scoped = resolveNewestOpenSymbolTrades(trades)
-  if (!scoped.length) return []
-  const plausible = filterTradesByPlausibleMgmtLevels(scoped, parsed)
-  if (plausible.length) return plausible
   return scoped
 }
 

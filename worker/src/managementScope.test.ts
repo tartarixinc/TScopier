@@ -112,7 +112,52 @@ describe('resolveChannelModifyTargets', () => {
     assert.equal(out[0]!.id, 'e')
   })
 
-  it('applies plausible SL within newest symbol basket', () => {
+  it('applies plausible SL across all gold baskets when a newer other-symbol leg exists', () => {
+    const trades = [
+      row({
+        id: 'g1',
+        broker_account_id: 'broker-a',
+        signal_id: 'entry-old',
+        symbol: 'XAUUSD',
+        direction: 'buy',
+        entry_price: 4220,
+        opened_at: '2026-01-01T10:00:00Z',
+      }),
+      row({
+        id: 'g2',
+        broker_account_id: 'broker-b',
+        signal_id: 'entry-old',
+        symbol: 'XAUUSD',
+        direction: 'buy',
+        entry_price: 4218,
+        opened_at: '2026-01-01T10:05:00Z',
+      }),
+      row({
+        id: 'g3',
+        broker_account_id: 'broker-c',
+        signal_id: 'entry-new',
+        symbol: 'XAUUSD',
+        direction: 'buy',
+        entry_price: 4215,
+        opened_at: '2026-01-01T12:30:00Z',
+      }),
+      row({
+        id: 'e',
+        symbol: 'EURUSD',
+        direction: 'buy',
+        entry_price: 1.1,
+        opened_at: '2026-01-01T12:00:00Z',
+      }),
+    ]
+    const out = resolveChannelModifyTargets(trades, { action: 'modify', sl: 4199, tp: [] })
+    assert.equal(out.length, 3)
+    assert.ok(out.some(t => t.id === 'g1'))
+    assert.ok(out.some(t => t.id === 'g2'))
+    assert.ok(out.some(t => t.id === 'g3'))
+    assert.equal(out.some(t => t.id === 'e'), false)
+  })
+
+  it('applies plausible SL within newest symbol basket when only that bucket matches', () => {
     const trades = [
       row({ id: 'g1', symbol: 'XAUUSD', direction: 'buy', entry_price: 4500, opened_at: '2026-01-01T12:00:00Z' }),
       row({ id: 'g2', symbol: 'XAUUSD', direction: 'buy', entry_price: 4510, opened_at: '2026-01-01T12:01:00Z' }),
