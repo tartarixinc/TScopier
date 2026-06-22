@@ -13,7 +13,19 @@
 | E2E regression | Playwright `@regression` | `npm run test:regression` |
 | All | — | `npm run test:all` |
 
-CI runs all jobs on **every push to any branch** (see `.github/workflows/typescript-ci.yml`).
+CI runs all jobs on **every push to any branch** (see `.github/workflows/typescript-ci.yml`):
+
+| Job | What it runs |
+|-----|----------------|
+| `worker` | Unit tests + TypeScript build |
+| `worker-perf` | Latency budgets (`*.perf.test.ts`) |
+| `worker-load-smoke` | 500-user mixed load + mock FxSocket WS heartbeat |
+| `frontend-unit` | Vitest |
+| `frontend-build` | `tsc` + Vite build |
+| `edge-functions` | Deno `_shared` tests |
+| `e2e` | Playwright |
+
+Live FxSocket (`npm run load:ws:live`) is **local/manual only** — requires real account UUID + API key.
 
 Latest local run details and failure analysis: **[test-results.md](./test-results.md)**.
 

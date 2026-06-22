@@ -86,6 +86,35 @@ jobs:
         env:
           WORKER_PERF_BUDGET_MULTIPLIER: "2.5"
 
+  worker-load-smoke:
+    name: Worker load smoke (mock Telegram + FxSocket WS)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        working-directory: worker
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: worker/package-lock.json
+
+      - name: Install worker dependencies
+        run: npm ci
+
+      - name: Run mixed load smoke (500 users, mock FxSocket WebSocket)
+        run: npm run load:stress:smoke
+        env:
+          # In-process mock only — no FXSOCKET_API_KEY or live account IDs required.
+          LOAD_SKIP_WS_HEARTBEAT: "0"
+
   frontend-build:
     name: Frontend TypeScript build
     runs-on: ubuntu-latest
