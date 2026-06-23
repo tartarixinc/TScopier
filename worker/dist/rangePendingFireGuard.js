@@ -15,10 +15,8 @@ exports.loadBasketLegCap = loadBasketLegCap;
 exports.loadOpenTradesForBasket = loadOpenTradesForBasket;
 exports.countOpenTradesForBasket = countOpenTradesForBasket;
 exports.basketInProfitAtQuote = basketInProfitAtQuote;
-exports.shouldBlockLayerOnRetracement = shouldBlockLayerOnRetracement;
 exports.shouldBlockVirtualLegFire = shouldBlockVirtualLegFire;
 exports.reconcileStaleClaimedLegs = reconcileStaleClaimedLegs;
-const rangeLayering_1 = require("./rangeLayering");
 async function hasTpTouchedLock(supabase, scope) {
     const { count, error } = await supabase
         .from('range_pending_tp_locks')
@@ -205,55 +203,6 @@ function basketInProfitAtQuote(openTrades, isBuy, bid, ask) {
         return bid >= avgEntry;
     return ask <= avgEntry;
 }
-function legInProfitAtQuote(entry, isBuy, bid, ask) {
-    if (!Number.isFinite(entry) || entry <= 0)
-        return false;
-    if (isBuy)
-        return Number.isFinite(bid) && bid >= entry;
-    return Number.isFinite(ask) && ask <= entry;
-}
-/**
- * Block layering when price retraces favorably from the last reference entry
- * or when the best open leg is already in profit.
- */
-function shouldBlockLayerOnRetracement(args) {
-    if (!(0, rangeLayering_1.rangeLayerRelativeStepEnabled)())
-        return { block: false };
-    const lastEntry = (0, rangeLayering_1.resolveLayerReferenceEntry)(args.openTrades, args.isBuy);
-    if (lastEntry == null)
-        return { block: false };
-    if (args.isBuy) {
-        if (Number.isFinite(args.bid) && args.bid > lastEntry) {
-            return { block: true, reason: 'favorable_retrace' };
-        }
-        let bestEntry = null;
-        for (const t of args.openTrades) {
-            const px = Number(t.entry_price);
-            if (!Number.isFinite(px) || px <= 0)
-                continue;
-            bestEntry = bestEntry == null ? px : Math.max(bestEntry, px);
-        }
-        if (bestEntry != null && legInProfitAtQuote(bestEntry, true, args.bid, args.ask)) {
-            return { block: true, reason: 'best_leg_in_profit' };
-        }
-    }
-    else {
-        if (Number.isFinite(args.bid) && args.bid < lastEntry) {
-            return { block: true, reason: 'favorable_retrace' };
-        }
-        let bestEntry = null;
-        for (const t of args.openTrades) {
-            const px = Number(t.entry_price);
-            if (!Number.isFinite(px) || px <= 0)
-                continue;
-            bestEntry = bestEntry == null ? px : Math.min(bestEntry, px);
-        }
-        if (bestEntry != null && legInProfitAtQuote(bestEntry, false, args.bid, args.ask)) {
-            return { block: true, reason: 'best_leg_in_profit' };
-        }
-    }
-    return { block: false };
-}
 /** True if this leg should not fire (already consumed or basket at cap). */
 async function shouldBlockVirtualLegFire(supabase, leg, opts) {
     const tpLockScope = {
@@ -291,15 +240,6 @@ async function shouldBlockVirtualLegFire(supabase, leg, opts) {
     if (opts?.quote != null && opts.isBuy != null) {
         if (basketInProfitAtQuote(openTrades, opts.isBuy, opts.quote.bid, opts.quote.ask)) {
             return { block: true, reason: 'basket_in_profit' };
-        }
-        const retrace = shouldBlockLayerOnRetracement({
-            isBuy: opts.isBuy,
-            openTrades,
-            bid: opts.quote.bid,
-            ask: opts.quote.ask,
-        });
-        if (retrace.block) {
-            return { block: true, reason: retrace.reason ?? 'favorable_retrace' };
         }
     }
     return { block: false };

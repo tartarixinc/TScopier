@@ -80,38 +80,11 @@ test('fillWithinTriggerBand: sell fill below the rung beyond slippage is rejecte
   assert.equal(out.reason, 'fill_outside_trigger_band')
 })
 
-test('fillWithinTriggerBand: sell fill at/above the rung within slippage is allowed', () => {
+test('fillWithinTriggerBand: sell fill at/above the rung is allowed', () => {
   assert.deepEqual(
     fillWithinTriggerBand({ isBuy: false, triggerPrice: 4120, bid: 4120.10, ask: 4120.30, slippagePoints: 20, point: 0.01 }),
     { ok: true },
   )
-})
-
-test('fillWithinTriggerBand: sell fill far above the rung is rejected', () => {
-  const out = fillWithinTriggerBand({
-    isBuy: false,
-    triggerPrice: 4130.55,
-    bid: 4132.70,
-    ask: 4132.90,
-    slippagePoints: 20,
-    point: 0.01,
-  })
-  assert.equal(out.ok, false)
-  assert.equal(out.reason, 'fill_outside_trigger_band')
-})
-
-test('fillWithinTriggerBand: pip fallback enforces symmetric band when point is null', () => {
-  const out = fillWithinTriggerBand({
-    isBuy: false,
-    triggerPrice: 4130.55,
-    bid: 4132.70,
-    ask: 4132.90,
-    slippagePoints: 20,
-    point: null,
-    pipFallback: 0.1,
-  })
-  assert.equal(out.ok, false)
-  assert.equal(out.reason, 'fill_outside_trigger_band')
 })
 
 test('fillWithinTriggerBand: without symbol point only re-checks the trigger', () => {

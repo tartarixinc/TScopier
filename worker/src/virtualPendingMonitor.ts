@@ -30,18 +30,7 @@ import { isUserCopierPausedCached } from './copierPause'
 import {
   reconcileStaleClaimedLegs,
   shouldBlockVirtualLegFire,
-  loadOpenTradesForBasket,
 } from './rangePendingFireGuard'
-import {
-  adverseMoveReached,
-  layerFillDeltaPips,
-  rangeLayerRelativeStepEnabled,
-  refreshPendingLayerTriggersAfterFire,
-  resolveEffectiveStepPips,
-  resolveLayerReferenceEntry,
-  resolveEffectiveLayerTriggerPrice,
-} from './rangeLayering'
-import { signalPipPrice } from './signalPip'
 import { isMtBridgeGlitchMessage } from './brokerConnectError'
 import {
   deleteRangePendingLegsForBasket,
@@ -151,8 +140,6 @@ const SYMBOL_TTL_MS = 10 * 60_000
 const ACTIVE_MS = monitorActiveIntervalMs('VIRTUAL_PENDING_TICK_MS', 400)
 const IDLE_MS = monitorIdleIntervalMs('VIRTUAL_PENDING_IDLE_MS', 15_000)
 const STALE_CLAIM_AFTER_MS = 30_000
-/** Max extra range layers per basket per tick when price gaps through multiple rungs. */
-const MAX_CATCHUP_FIRES_PER_TICK = 8
 
 async function virtualPendingHasWork(
   supabase: SupabaseClient,
@@ -213,22 +200,15 @@ export function fillWithinTriggerBand(args: {
   ask: number
   slippagePoints: number
   point: number | null
-  pipFallback?: number | null
 }): { ok: boolean; reason?: string } {
-  const { isBuy, triggerPrice, bid, ask, slippagePoints, point, pipFallback } = args
+  const { isBuy, triggerPrice, bid, ask, slippagePoints, point } = args
   if (!isTriggered(isBuy, triggerPrice, bid, ask)) {
     return { ok: false, reason: 'no_longer_triggered' }
   }
-  const tol = point != null && point > 0
-    ? Math.max(2, Math.max(0, slippagePoints)) * point
-    : (pipFallback != null && pipFallback > 0
-      ? Math.max(2, Math.max(0, slippagePoints)) * pipFallback
-      : null)
-  if (tol == null) return { ok: true }
+  if (point == null || !(point > 0)) return { ok: true }
+  const tol = Math.max(2, Math.max(0, slippagePoints)) * point
   const fillSide = isBuy ? ask : bid
-  const ok = isBuy
-    ? fillSide <= triggerPrice + tol
-    : fillSide >= triggerPrice - tol && fillSide <= triggerPrice + tol
+  const ok = isBuy ? fillSide <= triggerPrice + tol : fillSide >= triggerPrice - tol
   return ok ? { ok: true } : { ok: false, reason: 'fill_outside_trigger_band' }
 }
 
@@ -459,64 +439,16 @@ export class VirtualPendingMonitor {
         return
       }
       const tpTouchedBaskets = await this.detectAndLockTpTouchedBaskets(legs, q.bid, q.ask)
-      const openByBasket = await this.loadOpenTradesByBasket(legs)
-      const relativeMode = rangeLayerRelativeStepEnabled()
-      const symbolParams = await this.getSymbolParams(uuid, symbol)
-      const digits = Math.max(0, Math.min(8, Number(symbolParams?.digits) || 5))
-      const channelBySignal = await this.loadSignalChannelIds(legs.map(l => l.signal_id))
-      const stepMetaByBroker = new Map<string, ReturnType<typeof resolveEffectiveStepPips>>()
-
-      const effectiveTriggerFor = (leg: PendingRow): number => {
-        const bk = `${leg.signal_id}|${leg.broker_account_id}`
-        const openTrades = openByBasket.get(bk) ?? []
-        const lastEntry = resolveLayerReferenceEntry(openTrades, leg.is_buy)
-          ?? (leg.anchor_price > 0 ? leg.anchor_price : null)
-        let stepMeta = stepMetaByBroker.get(leg.broker_account_id)
-        if (!stepMeta) {
-          const channelId = channelBySignal.get(leg.signal_id) ?? null
-          const manual = this.brokerConfigCache.get(`${leg.broker_account_id}|${channelId ?? ''}`)?.manual
-            ?? {}
-          stepMeta = resolveEffectiveStepPips(manual, null, leg.symbol)
-          stepMetaByBroker.set(leg.broker_account_id, stepMeta)
-        }
-        return resolveEffectiveLayerTriggerPrice({
-          relativeMode,
-          isBuy: leg.is_buy,
-          plannedTrigger: leg.trigger_price,
-          anchorPrice: leg.anchor_price,
-          lastEntry,
-          stepPriceOffset: stepMeta.stepPriceOffset,
-          digits,
-        })
-      }
-
-      // Preload broker manual settings for step resolution (cached on monitor).
-      for (const leg of legs) {
-        const channelId = channelBySignal.get(leg.signal_id) ?? null
-        const cacheKey = `${leg.broker_account_id}|${channelId ?? ''}`
-        if (!this.brokerConfigCache.has(cacheKey)) {
-          await this.loadManualSettingsForLeg(leg.broker_account_id, channelId)
-        }
-        if (!stepMetaByBroker.has(leg.broker_account_id)) {
-          const manual = this.brokerConfigCache.get(cacheKey)?.manual ?? {}
-          stepMetaByBroker.set(
-            leg.broker_account_id,
-            resolveEffectiveStepPips(manual, null, leg.symbol),
-          )
-        }
-      }
-
       // How far is the nearest trigger? Useful diagnostic when nothing fires.
       let nearestGap = Number.POSITIVE_INFINITY
       const triggeredInGroup: PendingRow[] = []
       for (const leg of legs) {
         const basketKey = `${leg.signal_id}|${leg.broker_account_id}`
         if (tpTouchedBaskets.has(basketKey)) continue
-        const trigger = effectiveTriggerFor(leg)
         const ref = leg.is_buy ? q.bid : q.ask
-        const gap = leg.is_buy ? ref - trigger : trigger - ref
+        const gap = leg.is_buy ? ref - leg.trigger_price : leg.trigger_price - ref
         if (Number.isFinite(gap) && gap < nearestGap) nearestGap = gap
-        if (isTriggered(leg.is_buy, trigger, q.bid, q.ask)) triggeredInGroup.push(leg)
+        if (isTriggered(leg.is_buy, leg.trigger_price, q.bid, q.ask)) triggeredInGroup.push(leg)
       }
 
       const cancelledStaleIds = new Set<string>()
@@ -567,8 +499,7 @@ export class VirtualPendingMonitor {
       const byBasket = new Map<string, PendingRow[]>()
       for (const leg of triggeredInGroup) {
         if (cancelledStaleIds.has(leg.id)) continue
-        const trigger = effectiveTriggerFor(leg)
-        if (!isTriggered(leg.is_buy, trigger, q.bid, q.ask)) continue
+        if (!isTriggered(leg.is_buy, leg.trigger_price, q.bid, q.ask)) continue
         if (isBlockedByShallowerStep(leg, activeStepsByBasket)) continue
         const bk = `${leg.signal_id}|${leg.broker_account_id}`
         const arr = byBasket.get(bk) ?? []
@@ -578,38 +509,12 @@ export class VirtualPendingMonitor {
 
       for (const [, arr] of byBasket) {
         arr.sort((a, b) => a.step_idx - b.step_idx || a.id.localeCompare(b.id))
-        let winner: PendingRow | undefined = arr[0]
-        for (let catchUp = 0; catchUp < MAX_CATCHUP_FIRES_PER_TICK && winner; catchUp += 1) {
-          triggeredTotal += 1
-          const ok = await this.fireLeg(winner, q.bid, q.ask)
-          if (!ok) {
-            firedErrTotal += 1
-            break
-          }
-          firedOkTotal += 1
-          const bk = `${winner.signal_id}|${winner.broker_account_id}`
-          openByBasket.set(bk, await loadOpenTradesForBasket(
-            this.supabase,
-            winner.signal_id,
-            winner.broker_account_id,
-          ))
-          const activeSteps = await this.fetchShallowActiveSteps(uuid, symbol, [winner.signal_id])
-          const { data: pendingRows } = await this.supabase
-            .from('range_pending_legs')
-            .select('*')
-            .eq('signal_id', winner.signal_id)
-            .eq('broker_account_id', winner.broker_account_id)
-            .eq('metaapi_account_id', uuid)
-            .eq('symbol', symbol)
-            .eq('status', 'pending')
-            .not('comment', 'ilike', '%:strictEntry%')
-            .not('comment', 'ilike', '%:strictEntryAgg%')
-          const nextCandidates: PendingRow[] = ((pendingRows ?? []) as PendingRow[])
-            .filter(l => !isBlockedByShallowerStep(l, activeSteps))
-            .filter(l => isTriggered(l.is_buy, effectiveTriggerFor(l), q.bid, q.ask))
-            .sort((a, b) => a.step_idx - b.step_idx || a.id.localeCompare(b.id))
-          winner = nextCandidates[0]
-        }
+        const winner = arr[0]
+        if (!winner) continue
+        triggeredTotal += 1
+        const ok = await this.fireLeg(winner, q.bid, q.ask)
+        if (ok) firedOkTotal += 1
+        else firedErrTotal += 1
       }
 
       distances.push({ symbol, bid: q.bid, ask: q.ask, gapPriceUnits: nearestGap, legs: legs.length })
@@ -768,75 +673,9 @@ export class VirtualPendingMonitor {
     throw lastErr instanceof Error ? lastErr : new Error(String(lastErr))
   }
 
-  private async resolveEffectiveLayerTrigger(
-    leg: PendingRow,
-    channelId: string | null,
-  ): Promise<{
-    plannedTrigger: number
-    computedTrigger: number
-    lastEntry: number | null
-    stepPriceOffset: number
-    effectiveStepPips: number
-    digits: number
-  }> {
-    const params = await this.getSymbolParams(leg.metaapi_account_id, leg.symbol)
-    const digits = Math.max(0, Math.min(8, Number(params?.digits) || 5))
-    const plannedTrigger = leg.trigger_price
-    const manual = await this.loadManualSettingsForLeg(leg.broker_account_id, channelId)
-    const stepMeta = resolveEffectiveStepPips(manual, null, leg.symbol)
-
-    if (!rangeLayerRelativeStepEnabled()) {
-      return {
-        plannedTrigger,
-        computedTrigger: plannedTrigger,
-        lastEntry: null,
-        stepPriceOffset: stepMeta.stepPriceOffset,
-        effectiveStepPips: stepMeta.stepPips,
-        digits,
-      }
-    }
-
-    const openTrades = await loadOpenTradesForBasket(
-      this.supabase,
-      leg.signal_id,
-      leg.broker_account_id,
-    )
-    const lastEntry = resolveLayerReferenceEntry(openTrades, leg.is_buy)
-      ?? (leg.anchor_price > 0 ? leg.anchor_price : null)
-
-    const computedTrigger = resolveEffectiveLayerTriggerPrice({
-      relativeMode: rangeLayerRelativeStepEnabled(),
-      isBuy: leg.is_buy,
-      plannedTrigger,
-      anchorPrice: leg.anchor_price,
-      lastEntry,
-      stepPriceOffset: stepMeta.stepPriceOffset,
-      digits,
-    })
-
-    return {
-      plannedTrigger,
-      computedTrigger,
-      lastEntry,
-      stepPriceOffset: stepMeta.stepPriceOffset,
-      effectiveStepPips: stepMeta.stepPips,
-      digits,
-    }
-  }
-
   private async fireLeg(leg: PendingRow, bid: number, ask: number): Promise<boolean> {
     const api = apiForFxsocketAccount(this.platformByUuid, leg.metaapi_account_id)
     if (!api) return false
-
-    let channelIdForTrade: string | null = null
-    try {
-      const { data: sigMeta } = await this.supabase
-        .from('signals')
-        .select('channel_id')
-        .eq('id', leg.signal_id)
-        .maybeSingle()
-      channelIdForTrade = (sigMeta as { channel_id?: string } | null)?.channel_id ?? null
-    } catch { /* best-effort */ }
 
     const layerTillClose = await loadRangeLayerTillCloseForSignal(
       this.supabase,
@@ -864,25 +703,6 @@ export class VirtualPendingMonitor {
           `[virtualPendingMonitor] skip fire leg=${leg.id} signal=${leg.signal_id} step=${leg.step_idx}: ${block.reason}`,
         )
       }
-      return false
-    }
-
-    const triggerCtx = await this.resolveEffectiveLayerTrigger(leg, channelIdForTrade)
-    const effectiveTrigger = triggerCtx.computedTrigger
-
-    if (rangeLayerRelativeStepEnabled() && triggerCtx.lastEntry != null && triggerCtx.stepPriceOffset > 0) {
-      if (!adverseMoveReached({
-        isBuy: leg.is_buy,
-        lastEntry: triggerCtx.lastEntry,
-        stepPriceOffset: triggerCtx.stepPriceOffset,
-        bid,
-        ask,
-      })) {
-        return false
-      }
-    }
-
-    if (!isTriggered(leg.is_buy, effectiveTrigger, bid, ask)) {
       return false
     }
 
@@ -920,13 +740,14 @@ export class VirtualPendingMonitor {
     // Channel memory may hold a newer SL than the leg row (e.g. symbol-less Adjust SL).
     // Only when the memory was written during this basket's lifetime — older
     // memory belongs to a previous signal and produces wrong-side stops.
+    let channelIdForTrade: string | null = null
     try {
       const { data: sigMeta } = await this.supabase
         .from('signals')
         .select('channel_id,created_at')
         .eq('id', leg.signal_id)
         .maybeSingle()
-      channelIdForTrade = (sigMeta as { channel_id?: string } | null)?.channel_id ?? channelIdForTrade
+      channelIdForTrade = (sigMeta as { channel_id?: string } | null)?.channel_id ?? null
       const basketCreatedAt = (sigMeta as { created_at?: string } | null)?.created_at ?? null
       if (channelIdForTrade) {
         const channelParams = await loadChannelActiveTradeParamsForSymbol(
@@ -976,12 +797,11 @@ export class VirtualPendingMonitor {
     }
     const band = fillWithinTriggerBand({
       isBuy: leg.is_buy,
-      triggerPrice: effectiveTrigger,
+      triggerPrice: leg.trigger_price,
       bid: fireBid,
       ask: fireAsk,
       slippagePoints: leg.slippage ?? 20,
       point: params?.point ?? null,
-      pipFallback: signalPipPrice(leg.symbol),
     })
     if (!band.ok) {
       await this.releaseClaimedLegToPending(leg.id)
@@ -991,7 +811,7 @@ export class VirtualPendingMonitor {
         this.bandSkipLogAt.set(leg.id, now)
         console.log(
           `[virtualPendingMonitor] defer fire leg=${leg.id} signal=${leg.signal_id} step=${leg.step_idx}: `
-          + `${band.reason} trigger=${effectiveTrigger} planned=${triggerCtx.plannedTrigger} bid=${fireBid} ask=${fireAsk}`,
+          + `${band.reason} trigger=${leg.trigger_price} bid=${fireBid} ask=${fireAsk}`,
         )
       }
       return false
@@ -1052,7 +872,7 @@ export class VirtualPendingMonitor {
       await this.markLegFiredWithRetry(leg.id, result.ticket ?? null)
       const latencyMs = Date.now() - t0
       console.log(
-        `[virtualPendingMonitor] virtual leg fired signal=${leg.signal_id} stepIdx=${leg.step_idx} trigger=${effectiveTrigger} ref=${refPrice} ticket=${result.ticket} latency=${latencyMs}ms`,
+        `[virtualPendingMonitor] virtual leg fired signal=${leg.signal_id} stepIdx=${leg.step_idx} trigger=${leg.trigger_price} ref=${refPrice} ticket=${result.ticket} latency=${latencyMs}ms`,
       )
       const entryPx = result.openPrice ?? refPrice ?? null
       const openSl = result.stopLoss ?? args.stoploss ?? null
@@ -1084,32 +904,6 @@ export class VirtualPendingMonitor {
 
       const ticketNum = result.ticket != null ? Number(result.ticket) : NaN
       const tradeRowId = (insTrade as { id?: string } | null)?.id ?? null
-      if (
-        tradeRowId
-        && Number.isFinite(ticketNum)
-        && ticketNum > 0
-        && rangeLayerRelativeStepEnabled()
-        && entryPx != null
-        && entryPx > 0
-      ) {
-        try {
-          await refreshPendingLayerTriggersAfterFire(this.supabase, {
-            signalId: leg.signal_id,
-            brokerAccountId: leg.broker_account_id,
-            symbol: leg.symbol,
-            isBuy: leg.is_buy,
-            newFillPrice: entryPx,
-            stepPriceOffset: triggerCtx.stepPriceOffset,
-            digits: triggerCtx.digits,
-          })
-        } catch (refreshErr) {
-          console.warn(
-            `[virtualPendingMonitor] refresh pending triggers failed leg=${leg.id} signal=${leg.signal_id}:`,
-            refreshErr,
-          )
-        }
-      }
-
       if (
         tradeRowId
         && Number.isFinite(ticketNum)
@@ -1161,17 +955,8 @@ export class VirtualPendingMonitor {
           request_payload: {
             leg_id: leg.id,
             step_idx: leg.step_idx,
-            planned_trigger: triggerCtx.plannedTrigger,
-            computed_trigger: effectiveTrigger,
-            trigger_price: effectiveTrigger,
+            trigger_price: leg.trigger_price,
             ref_price: refPrice,
-            fill_price: entryPx,
-            delta_pips: entryPx != null
-              ? layerFillDeltaPips(entryPx, effectiveTrigger, leg.symbol)
-              : null,
-            anchor_source: rangeLayerRelativeStepEnabled() ? 'relative_last_fill' : 'absolute_anchor',
-            last_entry: triggerCtx.lastEntry,
-            effective_step_pips: triggerCtx.effectiveStepPips,
           } as unknown as Record<string, unknown>,
           response_payload: { ticket: result.ticket, latency_ms: latencyMs, claimed_by: this.hostId },
         })
@@ -1348,57 +1133,6 @@ export class VirtualPendingMonitor {
       channelId,
       basketCreatedAt,
     })
-  }
-
-  private async loadOpenTradesByBasket(
-    legs: PendingRow[],
-  ): Promise<Map<string, Array<{ entry_price: number; lot_size?: number }>>> {
-    const out = new Map<string, Array<{ entry_price: number; lot_size?: number }>>()
-    const signalIds = [...new Set(legs.map(l => l.signal_id))]
-    const brokerIds = [...new Set(legs.map(l => l.broker_account_id))]
-    if (!signalIds.length || !brokerIds.length) return out
-
-    const { data, error } = await this.supabase
-      .from('trades')
-      .select('signal_id, broker_account_id, entry_price, lot_size')
-      .in('signal_id', signalIds)
-      .in('broker_account_id', brokerIds)
-      .eq('status', 'open')
-    if (error || !data?.length) return out
-
-    for (const row of data as Array<{
-      signal_id: string
-      broker_account_id: string
-      entry_price?: number | null
-      lot_size?: number | null
-    }>) {
-      const entry = Number(row.entry_price)
-      const lots = Number(row.lot_size)
-      if (!Number.isFinite(entry) || entry <= 0) continue
-      const bk = `${row.signal_id}|${row.broker_account_id}`
-      const arr = out.get(bk) ?? []
-      arr.push({
-        entry_price: entry,
-        lot_size: Number.isFinite(lots) && lots > 0 ? lots : undefined,
-      })
-      out.set(bk, arr)
-    }
-    return out
-  }
-
-  private async loadSignalChannelIds(signalIds: string[]): Promise<Map<string, string | null>> {
-    const out = new Map<string, string | null>()
-    const unique = [...new Set(signalIds)].filter(Boolean)
-    if (!unique.length) return out
-    const { data, error } = await this.supabase
-      .from('signals')
-      .select('id, channel_id')
-      .in('id', unique)
-    if (error || !data?.length) return out
-    for (const row of data as Array<{ id: string; channel_id?: string | null }>) {
-      out.set(row.id, row.channel_id ?? null)
-    }
-    return out
   }
 
   private async loadManualSettingsForLeg(

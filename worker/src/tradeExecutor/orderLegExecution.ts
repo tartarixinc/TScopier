@@ -9,7 +9,6 @@ import { autoManagementTradeSnapshot } from '../autoManagement'
 import { stripInvalidStopsForSide } from '../channelActiveTradeParams'
 import { trailingTradeRowSnapshot } from '../trailingStop'
 import { applyPostFillFollowUp, type PostFillTradeLeg } from '../postFillFollowUp'
-import { computeFirstFillAnchor } from '../rangeLayering'
 import type { TradeExecutorContext } from './context'
 import { clampOrderStops, isBuySideOp, type Leg } from './helpers'
 import type { BrokerRow, ParsedSignal, SendOrderOutcome, SignalRow, SymbolCacheEntry, SymbolMappingResult } from './types'
@@ -277,30 +276,23 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
   // persisted; the worker monitor + edge sweep will fire them on trigger.
   const sendResults = await Promise.allSettled(sendLegs.map(sendLeg))
   if (deferVirtualAnchor && virtualPendings.length > 0 && api) {
-    const anyOpened = sendResults.some(r => r.status === 'fulfilled' && r.value === true)
-    if (anyOpened) {
-      const fillAnchor = computeFirstFillAnchor(
-        filledLegs.map(f => ({ entryPrice: f.entryPrice })),
+    void ctx.deferredVirtualPendingMaterialize({
+      signal,
+      broker,
+      uuid,
+      api,
+      symbol,
+      virtualPendings,
+      parsed,
+      plan,
+      params,
+      strictEntryPrefetch,
+    }).catch(err => {
+      console.error(
+        `[tradeExecutor] deferred virtual pending failed signal=${signal.id} broker=${broker.id}:`,
+        err,
       )
-      void ctx.deferredVirtualPendingMaterialize({
-        signal,
-        broker,
-        uuid,
-        api,
-        symbol,
-        virtualPendings,
-        parsed,
-        plan,
-        params,
-        strictEntryPrefetch,
-        fillAnchor,
-      }).catch(err => {
-        console.error(
-          `[tradeExecutor] deferred virtual pending failed signal=${signal.id} broker=${broker.id}:`,
-          err,
-        )
-      })
-    }
+    })
   }
   if (liveEntryFast && filledLegs.length > 0) {
     const plannerCtx = params

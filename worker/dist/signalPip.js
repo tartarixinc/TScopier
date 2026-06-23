@@ -7,7 +7,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.normalizeSignalSymbol = normalizeSignalSymbol;
 exports.getPipMultiplierForSymbol = getPipMultiplierForSymbol;
 exports.signalPipPrice = signalPipPrice;
-exports.priceDeltaToPips = priceDeltaToPips;
 const pipMath_1 = require("./pipMath");
 const METAL_ALIASES = {
     GOLD: 'XAUUSD',
@@ -61,12 +60,6 @@ function getPipMultiplierForSymbol(userSymbol) {
 function signalPipPrice(symbol) {
     const mult = getPipMultiplierForSymbol(symbol);
     return mult > 0 ? 1 / mult : 0.0001;
-}
-function priceDeltaToPips(delta, symbol) {
-    const pip = signalPipPrice(symbol);
-    if (!Number.isFinite(pip) || pip <= 0 || !Number.isFinite(delta))
-        return 0;
-    return roundSignalPips(Math.abs(delta) / pip);
 }
 function roundSignalPips(pips) {
     return Math.round(pips * 100) / 100;

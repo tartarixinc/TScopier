@@ -4,10 +4,6 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import {
-  rangeLayerRelativeStepEnabled,
-  resolveLayerReferenceEntry,
-} from './rangeLayering'
 
 export type RangeLegBasketScope = {
   signalId: string
@@ -279,62 +275,6 @@ export function basketInProfitAtQuote(
   return ask <= avgEntry
 }
 
-function legInProfitAtQuote(
-  entry: number,
-  isBuy: boolean,
-  bid: number,
-  ask: number,
-): boolean {
-  if (!Number.isFinite(entry) || entry <= 0) return false
-  if (isBuy) return Number.isFinite(bid) && bid >= entry
-  return Number.isFinite(ask) && ask <= entry
-}
-
-/**
- * Block layering when price retraces favorably from the last reference entry
- * or when the best open leg is already in profit.
- */
-export function shouldBlockLayerOnRetracement(args: {
-  isBuy: boolean
-  openTrades: Array<{ entry_price: number; lot_size: number }>
-  bid: number
-  ask: number
-}): { block: boolean; reason?: string } {
-  if (!rangeLayerRelativeStepEnabled()) return { block: false }
-  const lastEntry = resolveLayerReferenceEntry(args.openTrades, args.isBuy)
-  if (lastEntry == null) return { block: false }
-
-  if (args.isBuy) {
-    if (Number.isFinite(args.bid) && args.bid > lastEntry) {
-      return { block: true, reason: 'favorable_retrace' }
-    }
-    let bestEntry: number | null = null
-    for (const t of args.openTrades) {
-      const px = Number(t.entry_price)
-      if (!Number.isFinite(px) || px <= 0) continue
-      bestEntry = bestEntry == null ? px : Math.max(bestEntry, px)
-    }
-    if (bestEntry != null && legInProfitAtQuote(bestEntry, true, args.bid, args.ask)) {
-      return { block: true, reason: 'best_leg_in_profit' }
-    }
-  } else {
-    if (Number.isFinite(args.bid) && args.bid < lastEntry) {
-      return { block: true, reason: 'favorable_retrace' }
-    }
-    let bestEntry: number | null = null
-    for (const t of args.openTrades) {
-      const px = Number(t.entry_price)
-      if (!Number.isFinite(px) || px <= 0) continue
-      bestEntry = bestEntry == null ? px : Math.min(bestEntry, px)
-    }
-    if (bestEntry != null && legInProfitAtQuote(bestEntry, false, args.bid, args.ask)) {
-      return { block: true, reason: 'best_leg_in_profit' }
-    }
-  }
-
-  return { block: false }
-}
-
 /** True if this leg should not fire (already consumed or basket at cap). */
 export async function shouldBlockVirtualLegFire(
   supabase: SupabaseClient,
@@ -384,15 +324,6 @@ export async function shouldBlockVirtualLegFire(
   if (opts?.quote != null && opts.isBuy != null) {
     if (basketInProfitAtQuote(openTrades, opts.isBuy, opts.quote.bid, opts.quote.ask)) {
       return { block: true, reason: 'basket_in_profit' }
-    }
-    const retrace = shouldBlockLayerOnRetracement({
-      isBuy: opts.isBuy,
-      openTrades,
-      bid: opts.quote.bid,
-      ask: opts.quote.ask,
-    })
-    if (retrace.block) {
-      return { block: true, reason: retrace.reason ?? 'favorable_retrace' }
     }
   }
 

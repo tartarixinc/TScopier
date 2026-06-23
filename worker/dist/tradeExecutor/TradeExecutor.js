@@ -48,7 +48,6 @@ const tradeSignalActions_1 = require("../tradeSignalActions");
 const workerConfig_1 = require("../workerConfig");
 const monitorIdleGate_1 = require("../monitorIdleGate");
 const tscopierComment_1 = require("../tscopierComment");
-const rangeLayering_1 = require("../rangeLayering");
 const brokerChannelFilter_1 = require("../brokerChannelFilter");
 const brokerSignalReplay_1 = require("../brokerSignalReplay");
 const listenerSignalReplay_1 = require("../listenerSignalReplay");
@@ -1115,28 +1114,21 @@ class TradeExecutor {
         return await brokerSymbolCache.resolveBrokerSymbolForLiveEntry(this, uuid, requested, opts);
     }
     async deferredVirtualPendingMaterialize(args) {
-        const { signal, broker, uuid, api, symbol, virtualPendings, parsed, plan, params, strictEntryPrefetch, fillAnchor, } = args;
-        let anchor = fillAnchor ?? plan.anchor?.value ?? plan.strictEntry?.entryPrice ?? null;
-        let anchorSource = fillAnchor != null && fillAnchor > 0
-            ? 'fill'
-            : 'unknown';
-        if (!(fillAnchor != null && fillAnchor > 0)) {
-            const parsedEntry = (0, manualPlanner_1.resolvedParsedEntryPrice)(parsed);
-            if (parsedEntry != null && parsedEntry > 0) {
-                anchor = parsedEntry;
-                anchorSource = 'signal';
+        const { signal, broker, uuid, api, symbol, virtualPendings, parsed, plan, params, strictEntryPrefetch, } = args;
+        let anchor = plan.anchor?.value ?? plan.strictEntry?.entryPrice ?? null;
+        const parsedEntry = (0, manualPlanner_1.resolvedParsedEntryPrice)(parsed);
+        if (parsedEntry != null && parsedEntry > 0) {
+            anchor = parsedEntry;
+        }
+        else {
+            try {
+                const q = strictEntryPrefetch ?? await api.quote(uuid, symbol);
+                anchor = plan.isBuy === false ? q.bid : q.ask;
             }
-            else {
-                try {
-                    const q = strictEntryPrefetch ?? await api.quote(uuid, symbol);
-                    anchor = plan.isBuy === false ? q.bid : q.ask;
-                    anchorSource = 'quote';
-                }
-                catch (err) {
-                    const msg = err instanceof Error ? err.message : String(err);
-                    console.warn(`[tradeExecutor] deferred virtual /Quote failed signal=${signal.id} broker=${broker.id}: ${msg}`);
-                    return;
-                }
+            catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                console.warn(`[tradeExecutor] deferred virtual /Quote failed signal=${signal.id} broker=${broker.id}: ${msg}`);
+                return;
             }
         }
         if (anchor == null || !Number.isFinite(anchor) || anchor <= 0) {
@@ -1151,26 +1143,10 @@ class TradeExecutor {
         const signalZoneLo = plan.rangeLayering?.signalZoneLo ?? null;
         const signalZoneHi = plan.rangeLayering?.signalZoneHi ?? null;
         const useSignalEntryRange = plan.rangeLayering?.useSignalEntryRange === true;
-        const relativeMode = (0, rangeLayering_1.rangeLayerRelativeStepEnabled)();
-        const stepMeta = (0, rangeLayering_1.resolveEffectiveStepPips)(null, plan.rangeLayering ?? null, symbol);
-        const stepIndices = virtualPendings.map(v => v.stepIdx);
         const nowMs = Date.now();
         const insertRows = [];
         for (const v of virtualPendings) {
-            const triggerPrice = relativeMode
-                ? (0, rangeLayering_1.resolveRangePendingTrigger)({
-                    relativeMode: true,
-                    anchor,
-                    virtual: {
-                        stepIdx: v.stepIdx,
-                        isBuy: v.isBuy,
-                        volume: v.volume,
-                        stepPriceOffset: v.stepPriceOffset,
-                    },
-                    digits,
-                    allStepIndices: stepIndices,
-                })
-                : (0, helpers_2.triggerPriceFor)(v, anchor, digits);
+            const triggerPrice = (0, helpers_2.triggerPriceFor)(v, anchor, digits);
             if (!(0, helpers_2.virtualPendingTriggerAllowed)({
                 triggerPrice,
                 signalRangeBoundary,
@@ -1212,30 +1188,7 @@ class TradeExecutor {
         const persist = await this.persistRangePendingLegRows(insertRows, `deferred live signal=${signal.id} broker=${broker.id}`);
         if (!persist.ok) {
             console.error(`[tradeExecutor] deferred virtual persist failed signal=${signal.id} broker=${broker.id}: ${persist.lastError ?? 'unknown'}`);
-            return;
         }
-        try {
-            await this.supabase.from('trade_execution_logs').insert({
-                user_id: signal.user_id,
-                signal_id: signal.id,
-                broker_account_id: broker.id,
-                action: 'virtual_pending_inserted',
-                status: 'success',
-                request_payload: {
-                    rows: insertRows.length,
-                    anchor,
-                    anchorSource,
-                    symbol,
-                    relative_layer_step: relativeMode,
-                    effective_step_pips: stepMeta.stepPips,
-                    stepIdxs: insertRows.map(r => r.step_idx),
-                    triggers: insertRows.map(r => r.trigger_price),
-                    range_layering: plan.rangeLayering ?? null,
-                    deferred: true,
-                },
-            });
-        }
-        catch { /* best-effort */ }
     }
     /**
      * Map a generic symbol (e.g. 'BTCUSD') to the exact instrument name the broker

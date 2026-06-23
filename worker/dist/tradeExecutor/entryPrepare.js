@@ -695,9 +695,6 @@ async function prepareEntryExecution(ctx, args) {
             rangeLayerLog = ` range_step=${rl.rangeStepPips} range_dist=${rl.rangeDistancePips}`
                 + ` eff_step=${rl.effectiveStepPips} step_offset=${rl.stepPriceOffset}`
                 + ` max_step_idx=${rl.maxStepIdx} reserved_pending=${rl.reservedPendingLegs} active_pending=${rl.activePendingLegs}`;
-            if (rl.effectiveStepPips != null && rl.effectiveStepPips !== rl.rangeStepPips) {
-                rangeLayerLog += ` step_auto_expanded_from=${rl.rangeStepPips}`;
-            }
             if (anchor != null && virtualPendings.length > 0) {
                 const logDigits = Math.max(0, Math.min(8, Number(params?.digits) || 5));
                 const first = (0, helpers_1.triggerPriceFor)(virtualPendings[0], anchor, logDigits);

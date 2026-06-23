@@ -112,12 +112,6 @@ import {
 } from '../basketSlTpReconcile'
 import { syncRangePendingLadderOnBasketRefresh } from '../rangePendingLadderSync'
 import { loadExistingRangeStepIndices } from '../rangePendingFireGuard'
-import {
-  computeFirstFillAnchor,
-  rangeLayerRelativeStepEnabled,
-  resolveEffectiveStepPips,
-  resolveRangePendingTrigger,
-} from '../rangeLayering'
 import { channelMatchesBrokerSignal } from '../brokerChannelFilter'
 import { replayParsedSignalsForBroker } from '../brokerSignalReplay'
 import { listenerLeaseRecoveryTick } from '../listenerSignalReplay'
@@ -1544,37 +1538,26 @@ export class TradeExecutor {
     plan: PlannerResult
     params: SymbolCacheEntry | null
     strictEntryPrefetch: { bid: number; ask: number } | null
-    fillAnchor?: number | null
   }): Promise<void> {
     const {
       signal, broker, uuid, api, symbol, virtualPendings, parsed, plan, params, strictEntryPrefetch,
-      fillAnchor,
     } = args
-    let anchor: number | null = fillAnchor ?? plan.anchor?.value ?? plan.strictEntry?.entryPrice ?? null
-    let anchorSource: 'fill' | 'signal' | 'quote' | 'unknown' = fillAnchor != null && fillAnchor > 0
-      ? 'fill'
-      : 'unknown'
-
-    if (!(fillAnchor != null && fillAnchor > 0)) {
-      const parsedEntry = resolvedParsedEntryPrice(parsed)
-      if (parsedEntry != null && parsedEntry > 0) {
-        anchor = parsedEntry
-        anchorSource = 'signal'
-      } else {
-        try {
-          const q = strictEntryPrefetch ?? await api.quote(uuid, symbol)
-          anchor = plan.isBuy === false ? q.bid : q.ask
-          anchorSource = 'quote'
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err)
-          console.warn(
-            `[tradeExecutor] deferred virtual /Quote failed signal=${signal.id} broker=${broker.id}: ${msg}`,
-          )
-          return
-        }
+    let anchor: number | null = plan.anchor?.value ?? plan.strictEntry?.entryPrice ?? null
+    const parsedEntry = resolvedParsedEntryPrice(parsed)
+    if (parsedEntry != null && parsedEntry > 0) {
+      anchor = parsedEntry
+    } else {
+      try {
+        const q = strictEntryPrefetch ?? await api.quote(uuid, symbol)
+        anchor = plan.isBuy === false ? q.bid : q.ask
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        console.warn(
+          `[tradeExecutor] deferred virtual /Quote failed signal=${signal.id} broker=${broker.id}: ${msg}`,
+        )
+        return
       }
     }
-
     if (anchor == null || !Number.isFinite(anchor) || anchor <= 0) {
       console.warn(
         `[tradeExecutor] deferred virtual: no anchor signal=${signal.id} broker=${broker.id}`,
@@ -1590,26 +1573,10 @@ export class TradeExecutor {
     const signalZoneLo = plan.rangeLayering?.signalZoneLo ?? null
     const signalZoneHi = plan.rangeLayering?.signalZoneHi ?? null
     const useSignalEntryRange = plan.rangeLayering?.useSignalEntryRange === true
-    const relativeMode = rangeLayerRelativeStepEnabled()
-    const stepMeta = resolveEffectiveStepPips(null, plan.rangeLayering ?? null, symbol)
-    const stepIndices = virtualPendings.map(v => v.stepIdx)
     const nowMs = Date.now()
     const insertRows: Record<string, unknown>[] = []
     for (const v of virtualPendings) {
-      const triggerPrice = relativeMode
-        ? resolveRangePendingTrigger({
-            relativeMode: true,
-            anchor,
-            virtual: {
-              stepIdx: v.stepIdx,
-              isBuy: v.isBuy,
-              volume: v.volume,
-              stepPriceOffset: v.stepPriceOffset,
-            },
-            digits,
-            allStepIndices: stepIndices,
-          })
-        : triggerPriceFor(v, anchor, digits)
+      const triggerPrice = triggerPriceFor(v, anchor, digits)
       if (!virtualPendingTriggerAllowed({
         triggerPrice,
         signalRangeBoundary,
@@ -1655,29 +1622,7 @@ export class TradeExecutor {
       console.error(
         `[tradeExecutor] deferred virtual persist failed signal=${signal.id} broker=${broker.id}: ${persist.lastError ?? 'unknown'}`,
       )
-      return
     }
-    try {
-      await this.supabase.from('trade_execution_logs').insert({
-        user_id: signal.user_id,
-        signal_id: signal.id,
-        broker_account_id: broker.id,
-        action: 'virtual_pending_inserted',
-        status: 'success',
-        request_payload: {
-          rows: insertRows.length,
-          anchor,
-          anchorSource,
-          symbol,
-          relative_layer_step: relativeMode,
-          effective_step_pips: stepMeta.stepPips,
-          stepIdxs: insertRows.map(r => r.step_idx),
-          triggers: insertRows.map(r => r.trigger_price),
-          range_layering: plan.rangeLayering ?? null,
-          deferred: true,
-        } as unknown as Record<string, unknown>,
-      })
-    } catch { /* best-effort */ }
   }
 
   /**

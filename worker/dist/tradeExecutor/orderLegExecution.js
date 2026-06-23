@@ -7,7 +7,6 @@ const autoManagement_1 = require("../autoManagement");
 const channelActiveTradeParams_1 = require("../channelActiveTradeParams");
 const trailingStop_1 = require("../trailingStop");
 const postFillFollowUp_1 = require("../postFillFollowUp");
-const rangeLayering_1 = require("../rangeLayering");
 const helpers_1 = require("./helpers");
 async function sendImmediateLegs(input) {
     const { ctx, signal, parsed, broker, manual, api, uuid, symbol, requestedSymbol, mapping, params, legs, liveEntryFast, pipelineT0, strictEntryPrefetch, channelDelayMs, channelDelaySkipped, deferVirtualAnchor, virtualPendings, plan, materializedVirtuals, strictBrokerPlaced, strictDeferred, op, channelKeywords, baseLot, syncMultiLegTps, } = input;
@@ -210,25 +209,20 @@ async function sendImmediateLegs(input) {
     // persisted; the worker monitor + edge sweep will fire them on trigger.
     const sendResults = await Promise.allSettled(sendLegs.map(sendLeg));
     if (deferVirtualAnchor && virtualPendings.length > 0 && api) {
-        const anyOpened = sendResults.some(r => r.status === 'fulfilled' && r.value === true);
-        if (anyOpened) {
-            const fillAnchor = (0, rangeLayering_1.computeFirstFillAnchor)(filledLegs.map(f => ({ entryPrice: f.entryPrice })));
-            void ctx.deferredVirtualPendingMaterialize({
-                signal,
-                broker,
-                uuid,
-                api,
-                symbol,
-                virtualPendings,
-                parsed,
-                plan,
-                params,
-                strictEntryPrefetch,
-                fillAnchor,
-            }).catch(err => {
-                console.error(`[tradeExecutor] deferred virtual pending failed signal=${signal.id} broker=${broker.id}:`, err);
-            });
-        }
+        void ctx.deferredVirtualPendingMaterialize({
+            signal,
+            broker,
+            uuid,
+            api,
+            symbol,
+            virtualPendings,
+            parsed,
+            plan,
+            params,
+            strictEntryPrefetch,
+        }).catch(err => {
+            console.error(`[tradeExecutor] deferred virtual pending failed signal=${signal.id} broker=${broker.id}:`, err);
+        });
     }
     if (liveEntryFast && filledLegs.length > 0) {
         const plannerCtx = params

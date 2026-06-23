@@ -57,12 +57,6 @@ export function signalPipPrice(symbol: string): number {
   return mult > 0 ? 1 / mult : 0.0001
 }
 
-export function priceDeltaToPips(delta: number, symbol: string): number {
-  const pip = signalPipPrice(symbol)
-  if (!Number.isFinite(pip) || pip <= 0 || !Number.isFinite(delta)) return 0
-  return roundSignalPips(Math.abs(delta) / pip)
-}
-
 function roundSignalPips(pips: number): number {
   return Math.round(pips * 100) / 100
 }
