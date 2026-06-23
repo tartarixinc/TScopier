@@ -52,6 +52,11 @@ export const copierEngineSv: CopierEngineBundleTranslations = {
     yourTelegramChannels: 'Dina Telegram-kanaler',
     telegramConnectedHint: 'Lägg till kanaler nedan för att börja kopiera signaler',
     connected: 'Ansluten',
+    listenerLeaseLive: 'Kopieringsmotor aktiv',
+    listenerLeaseExpired: 'Kopieringsmotor offline',
+    listenerLeaseExpiredHint:
+      'Affärer kopieras kanske inte förrän workern återhämtat sig. Vänta en minut, uppdatera eller återanslut Telegram.',
+    listenerLeaseUnknown: 'Kontrollerar kopieringsmotor…',
     expand: 'Expandera',
     collapse: 'Fäll ihop',
     disconnect: 'Koppla från',

@@ -861,6 +861,11 @@ export const es: Translations = {
     yourTelegramChannels: 'Tus canales de Telegram',
     telegramConnectedHint: 'Añade canales abajo para empezar a copiar señales',
     connected: 'Conectado',
+    listenerLeaseLive: 'Motor copiador activo',
+    listenerLeaseExpired: 'Motor copiador desconectado',
+    listenerLeaseExpiredHint:
+      'Los trades pueden no copiarse hasta que el worker se recupere. Espera un minuto, actualiza o reconecta Telegram.',
+    listenerLeaseUnknown: 'Comprobando motor copiador…',
     expand: 'Expandir',
     collapse: 'Contraer',
     disconnect: 'Desconectar',

@@ -5,6 +5,7 @@ import { TelegramSessionInvalidError } from './telegramClient'
 import { ChannelInfo, ListenerStatus, UserListener, type SignalReconcileStats } from './userListener'
 import {
   acquireSessionLease,
+  countFreshListenerLeasesForUsers,
   ensureSessionLeaseFresh,
   listActiveLeases,
   releaseSessionLease,
@@ -339,8 +340,13 @@ export class UserSessionManager {
     shard: string
     instance: string
     listeners: number
+    connected_listeners: number
     detail: ListenerStatus[]
     active_leases: number
+    fresh_leases_for_connected: number
+    lease_mismatch: boolean
+    lease_gap: number
+    lease_mismatch_user_ids?: string[]
     metrics: Record<string, number>
     checked_at: string
   }> {
@@ -350,22 +356,54 @@ export class UserSessionManager {
       60_000,
       Math.min(600_000, Number(process.env.WORKER_HEALTH_STALE_MS ?? 180_000)),
     )
-    const listenerOk = !workerConfig.runsListener
+    const connectedStatus = status.filter(s => s.connected)
+    const listenerActivityOk = !workerConfig.runsListener
       || status.length === 0
       || status.every(s =>
         s.connected && (s.last_event_at === 0 || now - s.last_event_at < staleMs),
       )
+
+    let freshLeasesForConnected = 0
+    let leaseMismatchUserIds: string[] = []
+    if (workerConfig.runsListener && connectedStatus.length > 0) {
+      const leaseCheck = await countFreshListenerLeasesForUsers(
+        this.supabase,
+        connectedStatus.map(s => s.user_id),
+      )
+      freshLeasesForConnected = leaseCheck.fresh
+      leaseMismatchUserIds = leaseCheck.missingUserIds
+    }
+
+    const leaseGap = Math.max(0, connectedStatus.length - freshLeasesForConnected)
+    const leaseMismatch = workerConfig.runsListener && leaseGap > 0
+
     const leases = workerConfig.runsListener
       ? await listActiveLeases(this.supabase)
       : []
+
+    if (leaseMismatch) {
+      console.warn(
+        `[sessionManager] lease mismatch connected=${connectedStatus.length}`
+        + ` fresh_leases=${freshLeasesForConnected} gap=${leaseGap}`
+        + ` users=${leaseMismatchUserIds.join(',')}`,
+      )
+    }
+
     return {
-      ok: listenerOk,
+      ok: listenerActivityOk && !leaseMismatch,
       role: workerConfig.role,
       shard: `${workerConfig.shardId}/${workerConfig.shardCount}`,
       instance: workerConfig.instanceId,
       listeners: status.length,
+      connected_listeners: connectedStatus.length,
       detail: status,
       active_leases: leases.length,
+      fresh_leases_for_connected: freshLeasesForConnected,
+      lease_mismatch: leaseMismatch,
+      lease_gap: leaseGap,
+      ...(leaseMismatchUserIds.length > 0
+        ? { lease_mismatch_user_ids: leaseMismatchUserIds }
+        : {}),
       metrics: getMetricsSnapshot(),
       checked_at: new Date(now).toISOString(),
     }

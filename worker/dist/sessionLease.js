@@ -5,6 +5,8 @@ exports.ensureSessionLeaseFresh = ensureSessionLeaseFresh;
 exports.renewSessionLease = renewSessionLease;
 exports.releaseSessionLease = releaseSessionLease;
 exports.isTelegramListenerLiveForUser = isTelegramListenerLiveForUser;
+exports.isLeaseRowLive = isLeaseRowLive;
+exports.countFreshListenerLeasesForUsers = countFreshListenerLeasesForUsers;
 exports.listActiveLeases = listActiveLeases;
 const workerConfig_1 = require("./workerConfig");
 const LEASE_TTL_MS = Math.max(15000, Math.min(120000, Number(process.env.WORKER_SESSION_LEASE_TTL_MS ?? 45000)));
@@ -126,18 +128,39 @@ async function isTelegramListenerLiveForUser(supabase, userId) {
     setCachedListenerLive(userId, live);
     return live;
 }
+function isLeaseRowLive(row, nowMs = Date.now()) {
+    if (!row)
+        return false;
+    const role = String(row.role ?? '');
+    if (role !== 'listener' && role !== 'all')
+        return false;
+    return new Date(row.expires_at).getTime() > nowMs;
+}
 async function fetchTelegramListenerLiveForUser(supabase, userId) {
     const { data } = await supabase
         .from('worker_session_leases')
         .select('expires_at, role')
         .eq('user_id', userId)
         .maybeSingle();
-    if (!data)
-        return false;
-    const role = String(data.role ?? '');
-    if (role !== 'listener' && role !== 'all')
-        return false;
-    return new Date(data.expires_at).getTime() > Date.now();
+    return isLeaseRowLive(data);
+}
+/** Fresh listener leases among the given user ids (for /health lease sync). */
+async function countFreshListenerLeasesForUsers(supabase, userIds) {
+    if (userIds.length === 0)
+        return { fresh: 0, missingUserIds: [] };
+    const { data } = await supabase
+        .from('worker_session_leases')
+        .select('user_id, expires_at, role')
+        .in('user_id', userIds);
+    const now = Date.now();
+    const liveUsers = new Set();
+    for (const row of data ?? []) {
+        if (isLeaseRowLive(row, now)) {
+            liveUsers.add(row.user_id);
+        }
+    }
+    const missingUserIds = userIds.filter(id => !liveUsers.has(id));
+    return { fresh: liveUsers.size, missingUserIds };
 }
 async function listActiveLeases(supabase) {
     const { data } = await supabase

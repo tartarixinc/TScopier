@@ -328,20 +328,42 @@ class UserSessionManager {
         const status = this.getStatus();
         const now = Date.now();
         const staleMs = Math.max(60000, Math.min(600000, Number(process.env.WORKER_HEALTH_STALE_MS ?? 180000)));
-        const listenerOk = !workerConfig_1.workerConfig.runsListener
+        const connectedStatus = status.filter(s => s.connected);
+        const listenerActivityOk = !workerConfig_1.workerConfig.runsListener
             || status.length === 0
             || status.every(s => s.connected && (s.last_event_at === 0 || now - s.last_event_at < staleMs));
+        let freshLeasesForConnected = 0;
+        let leaseMismatchUserIds = [];
+        if (workerConfig_1.workerConfig.runsListener && connectedStatus.length > 0) {
+            const leaseCheck = await (0, sessionLease_1.countFreshListenerLeasesForUsers)(this.supabase, connectedStatus.map(s => s.user_id));
+            freshLeasesForConnected = leaseCheck.fresh;
+            leaseMismatchUserIds = leaseCheck.missingUserIds;
+        }
+        const leaseGap = Math.max(0, connectedStatus.length - freshLeasesForConnected);
+        const leaseMismatch = workerConfig_1.workerConfig.runsListener && leaseGap > 0;
         const leases = workerConfig_1.workerConfig.runsListener
             ? await (0, sessionLease_1.listActiveLeases)(this.supabase)
             : [];
+        if (leaseMismatch) {
+            console.warn(`[sessionManager] lease mismatch connected=${connectedStatus.length}`
+                + ` fresh_leases=${freshLeasesForConnected} gap=${leaseGap}`
+                + ` users=${leaseMismatchUserIds.join(',')}`);
+        }
         return {
-            ok: listenerOk,
+            ok: listenerActivityOk && !leaseMismatch,
             role: workerConfig_1.workerConfig.role,
             shard: `${workerConfig_1.workerConfig.shardId}/${workerConfig_1.workerConfig.shardCount}`,
             instance: workerConfig_1.workerConfig.instanceId,
             listeners: status.length,
+            connected_listeners: connectedStatus.length,
             detail: status,
             active_leases: leases.length,
+            fresh_leases_for_connected: freshLeasesForConnected,
+            lease_mismatch: leaseMismatch,
+            lease_gap: leaseGap,
+            ...(leaseMismatchUserIds.length > 0
+                ? { lease_mismatch_user_ids: leaseMismatchUserIds }
+                : {}),
             metrics: (0, workerMetrics_1.getMetricsSnapshot)(),
             checked_at: new Date(now).toISOString(),
         };

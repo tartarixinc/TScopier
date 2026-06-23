@@ -39,6 +39,7 @@ const signalRangeEntryHelpers_1 = require("../signalRangeEntryHelpers");
 const signalRangeEntryService_1 = require("../signalRangeEntryService");
 const manualSettings_1 = require("../manualPlanning/manualSettings");
 const signalOverride_1 = require("../signalOverride");
+const workerMetrics_1 = require("../workerMetrics");
 const messageRevisionDirectionFlipClose_1 = require("./messageRevisionDirectionFlipClose");
 const subscriptionAccess_1 = require("../subscriptionAccess");
 const signalExecutionEligibility_1 = require("../signalExecutionEligibility");
@@ -214,6 +215,11 @@ async function logPipelineStage(ctx, signal, action, payload) {
 const TRANSIENT_DISPATCH_SKIP_REASONS = new Set(['telegram_listener_not_live']);
 async function logDispatchSkipped(ctx, signal, skipReason, extra) {
     const transient = TRANSIENT_DISPATCH_SKIP_REASONS.has(skipReason);
+    if (skipReason === 'telegram_listener_not_live') {
+        (0, workerMetrics_1.incMetric)('dispatch_skipped_listener_not_live');
+        console.warn(`[tradeExecutor] dispatch_skipped telegram_listener_not_live`
+            + ` signal=${signal.id} user=${signal.user_id} channel=${signal.channel_id ?? 'n/a'}`);
+    }
     try {
         await ctx.supabase.from('trade_execution_logs').insert({
             user_id: signal.user_id,

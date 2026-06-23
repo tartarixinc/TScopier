@@ -53,6 +53,11 @@ export const copierEngineNl: CopierEngineBundleTranslations = {
     yourTelegramChannels: 'Je Telegram-kanalen',
     telegramConnectedHint: 'Voeg hieronder kanalen toe om signalen te kopiëren',
     connected: 'Verbonden',
+    listenerLeaseLive: 'Kopieermotor actief',
+    listenerLeaseExpired: 'Kopieermotor offline',
+    listenerLeaseExpiredHint:
+      'Trades worden mogelijk niet gekopieerd tot de worker herstelt. Wacht een minuut, vernieuw of koppel Telegram opnieuw.',
+    listenerLeaseUnknown: 'Kopieermotor controleren…',
     expand: 'Uitklappen',
     collapse: 'Inklappen',
     disconnect: 'Verbinding verbreken',

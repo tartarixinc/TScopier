@@ -168,6 +168,16 @@ export async function isTelegramListenerLiveForUser(
   return live
 }
 
+export function isLeaseRowLive(
+  row: { expires_at: string; role?: string | null } | null | undefined,
+  nowMs = Date.now(),
+): boolean {
+  if (!row) return false
+  const role = String(row.role ?? '')
+  if (role !== 'listener' && role !== 'all') return false
+  return new Date(row.expires_at).getTime() > nowMs
+}
+
 async function fetchTelegramListenerLiveForUser(
   supabase: SupabaseClient,
   userId: string,
@@ -178,10 +188,30 @@ async function fetchTelegramListenerLiveForUser(
     .eq('user_id', userId)
     .maybeSingle()
 
-  if (!data) return false
-  const role = String(data.role ?? '')
-  if (role !== 'listener' && role !== 'all') return false
-  return new Date(data.expires_at as string).getTime() > Date.now()
+  return isLeaseRowLive(data)
+}
+
+/** Fresh listener leases among the given user ids (for /health lease sync). */
+export async function countFreshListenerLeasesForUsers(
+  supabase: SupabaseClient,
+  userIds: string[],
+): Promise<{ fresh: number; missingUserIds: string[] }> {
+  if (userIds.length === 0) return { fresh: 0, missingUserIds: [] }
+
+  const { data } = await supabase
+    .from('worker_session_leases')
+    .select('user_id, expires_at, role')
+    .in('user_id', userIds)
+
+  const now = Date.now()
+  const liveUsers = new Set<string>()
+  for (const row of data ?? []) {
+    if (isLeaseRowLive(row as { expires_at: string; role?: string }, now)) {
+      liveUsers.add(row.user_id as string)
+    }
+  }
+  const missingUserIds = userIds.filter(id => !liveUsers.has(id))
+  return { fresh: liveUsers.size, missingUserIds }
 }
 
 export async function listActiveLeases(

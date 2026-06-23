@@ -52,6 +52,11 @@ export const copierEngineRu: CopierEngineBundleTranslations = {
     yourTelegramChannels: 'Ваши каналы Telegram',
     telegramConnectedHint: 'Добавьте каналы ниже, чтобы начать копирование сигналов',
     connected: 'Подключено',
+    listenerLeaseLive: 'Движок копирования активен',
+    listenerLeaseExpired: 'Движок копирования офлайн',
+    listenerLeaseExpiredHint:
+      'Сделки могут не копироваться, пока worker не восстановится. Подождите минуту, обновите или переподключите Telegram.',
+    listenerLeaseUnknown: 'Проверка движка копирования…',
     expand: 'Развернуть',
     collapse: 'Свернуть',
     disconnect: 'Отключить',

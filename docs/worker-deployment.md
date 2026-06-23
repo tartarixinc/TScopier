@@ -110,10 +110,19 @@ On deploy, old and new containers may briefly share an auth key. Mitigations:
 
 `GET /health` (no auth) returns:
 
-- `ok` — all listeners connected and `last_event_at` within `WORKER_HEALTH_STALE_MS` (default 180s).
+- `ok` — listeners connected, `last_event_at` within `WORKER_HEALTH_STALE_MS` (default 180s), **and** every connected listener has a fresh DB lease (`lease_mismatch` is false).
 - `role`, `shard`, `instance`, `metrics`, `active_leases`.
+- `connected_listeners` — MTProto connections on this pod.
+- `fresh_leases_for_connected` — how many of those users have `worker_session_leases.expires_at > now()`.
+- `lease_mismatch` / `lease_gap` — **alert when true or &gt; 0** (listener ingesting but trade workers will block copies).
+- `lease_mismatch_user_ids` — user ids missing a fresh lease (when mismatch).
+- `metrics.dispatch_skipped_listener_not_live` — counter when trade executor skips due to stale lease (page on sustained increase).
 
-Use external uptime checks on this URL for production paging.
+Use external uptime checks on listener `/health` with `ok === true` for production paging.
+
+**SQL drift check:** `scripts/diagnostics/listener_lease_drift.sql` — active `telegram_sessions` without a fresh lease.
+
+**Lease timing:** keep `WORKER_LEASE_RENEW_INTERVAL_MS` (default 20s) well below `WORKER_SESSION_LEASE_TTL_MS` (default 45s). Do not gate lease renewal on channel message activity (`WORKER_HEALTH_STALE_MS` is for ingest staleness only).
 
 ## Sharding
 

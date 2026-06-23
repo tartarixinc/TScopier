@@ -52,6 +52,11 @@ export const copierEngineJa: CopierEngineBundleTranslations = {
     yourTelegramChannels: 'あなたのTelegramチャンネル',
     telegramConnectedHint: '下でチャンネルを追加してシグナルコピーを開始',
     connected: '接続済み',
+    listenerLeaseLive: 'コピーエンジン稼働中',
+    listenerLeaseExpired: 'コピーエンジンオフライン',
+    listenerLeaseExpiredHint:
+      'ワーカーが復旧するまでトレードがコピーされない場合があります。1分待つか、更新するか、Telegramを再接続してください。',
+    listenerLeaseUnknown: 'コピーエンジンを確認中…',
     expand: '展開',
     collapse: '折りたたむ',
     disconnect: '切断',

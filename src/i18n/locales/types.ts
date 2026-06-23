@@ -934,6 +934,10 @@ export interface CopierEnginePageTranslations {
   yourTelegramChannels: string
   telegramConnectedHint: string
   connected: string
+  listenerLeaseLive: string
+  listenerLeaseExpired: string
+  listenerLeaseExpiredHint: string
+  listenerLeaseUnknown: string
   expand: string
   collapse: string
   disconnect: string

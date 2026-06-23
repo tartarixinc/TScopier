@@ -41,6 +41,7 @@ import { hasActiveSignalRangeEntryWait, SIGNAL_RANGE_WAKE_DISPATCH_SOURCE } from
 import { finalizeSignalIfAllWaitsTerminal, syncWaitRow } from '../signalRangeEntryService'
 import { signalEntryRangeStrictEnabled } from '../manualPlanning/manualSettings'
 import { applyUserOverrideToSignalRow } from '../signalOverride'
+import { incMetric } from '../workerMetrics'
 import {
   closeBasketForRevisionDirectionFlip,
   waitForSignalBasketFlat,
@@ -249,6 +250,13 @@ export async function logDispatchSkipped(ctx: TradeExecutorContext,
     extra?: Record<string, unknown>,
   ): Promise<void> {
     const transient = TRANSIENT_DISPATCH_SKIP_REASONS.has(skipReason)
+    if (skipReason === 'telegram_listener_not_live') {
+      incMetric('dispatch_skipped_listener_not_live')
+      console.warn(
+        `[tradeExecutor] dispatch_skipped telegram_listener_not_live`
+        + ` signal=${signal.id} user=${signal.user_id} channel=${signal.channel_id ?? 'n/a'}`,
+      )
+    }
     try {
       await ctx.supabase.from('trade_execution_logs').insert({
         user_id: signal.user_id,

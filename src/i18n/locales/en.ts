@@ -861,6 +861,11 @@ export const en: Translations = {
     yourTelegramChannels: 'Your Telegram channels',
     telegramConnectedHint: 'Add channels below to start copying signals',
     connected: 'Connected',
+    listenerLeaseLive: 'Copier engine live',
+    listenerLeaseExpired: 'Copier engine offline',
+    listenerLeaseExpiredHint:
+      'Trades may not copy until the worker recovers. Wait a minute, press Refresh, or use Reconnect Telegram.',
+    listenerLeaseUnknown: 'Checking copier engine…',
     expand: 'Expand',
     collapse: 'Collapse',
     disconnect: 'Disconnect',

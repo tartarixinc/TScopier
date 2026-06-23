@@ -49,6 +49,10 @@ import {
   invalidateTgSessionCache,
   setCachedTgSession,
 } from '../../lib/telegramSessionCache'
+import {
+  fetchListenerLeaseStatus,
+  type ListenerLeaseSnapshot,
+} from '../../lib/listenerLeaseStatus'
 import type { BrokerAccount, TelegramChannel } from '../../types/database'
 
 function getTelegramAvatarUrl(username?: string): string | null {
@@ -130,8 +134,18 @@ export function CopierEnginePage() {
   const [tgPassword, setTgPassword] = useState('')
   const [tgLoading, setTgLoading] = useState(false)
   const [tgError, setTgError] = useState('')
+  const [listenerLease, setListenerLease] = useState<ListenerLeaseSnapshot>({
+    status: 'unknown',
+    expiresAt: null,
+  })
 
   const EDGE_FN = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/telegram-auth`
+
+  const refreshListenerLease = useCallback(async () => {
+    if (!user?.id) return
+    const snap = await fetchListenerLeaseStatus(supabase, user.id)
+    setListenerLease(snap)
+  }, [user?.id])
 
   useEffect(() => {
     if (!user) return
@@ -173,6 +187,45 @@ export function CopierEnginePage() {
     }
   }, [user?.id])
 
+  useEffect(() => {
+    if (!user?.id || !hasTgSession) {
+      setListenerLease({ status: 'unknown', expiresAt: null })
+      return
+    }
+    void refreshListenerLease()
+    const interval = setInterval(() => void refreshListenerLease(), 30_000)
+    return () => clearInterval(interval)
+  }, [user?.id, hasTgSession, refreshListenerLease])
+
+  useEffect(() => {
+    if (!user?.id || !hasTgSession) return
+
+    let cancelled = false
+    let rt: ReturnType<typeof supabase.channel> | null = null
+
+    void whenRealtimeReady(user.id).then(() => {
+      if (cancelled) return
+      rt = supabase
+        .channel(`worker_session_leases_ui:${user.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'worker_session_leases',
+            filter: `user_id=eq.${user.id}`,
+          },
+          () => void refreshListenerLease(),
+        )
+        .subscribe()
+    })
+
+    return () => {
+      cancelled = true
+      if (rt) void supabase.removeChannel(rt)
+    }
+  }, [user?.id, hasTgSession, refreshListenerLease])
+
   const loadData = async (opts?: { skipTgFetch?: boolean; backgroundTgFetch?: boolean; forceTgFetch?: boolean }) => {
     const [channelsRes, sessionRes] = await Promise.all([
       supabase.from('telegram_channels').select('*').eq('user_id', user!.id).order('created_at', { ascending: false }),
@@ -198,6 +251,7 @@ export function CopierEnginePage() {
           : 'idle',
     )
     setLoading(false)
+    if (hasSession) void refreshListenerLease()
     if (hasSession && !opts?.skipTgFetch) {
       const cached = user?.id ? getCachedTgChannels(user.id) : null
       if (cached && !opts?.forceTgFetch) {
@@ -580,6 +634,11 @@ export function CopierEnginePage() {
     }
   }
 
+  const showListenerLeaseWarning =
+    hasTgSession
+    && !isTgReconnectFlow
+    && (listenerLease.status === 'expired' || listenerLease.status === 'missing')
+
   return (
     <PageShell maxWidth="lg" spacing="none" className="space-y-6">
       <PageHeader
@@ -594,6 +653,27 @@ export function CopierEnginePage() {
           ) : undefined
         }
       />
+
+      {showListenerLeaseWarning && (
+        <div className="mb-3 px-4 py-3 bg-warning-50 dark:bg-amber-950/40 border border-warning-200 dark:border-amber-800 rounded-xl text-sm text-warning-800 dark:text-amber-100 flex flex-col sm:flex-row sm:items-center gap-2 sm:justify-between">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-medium">{ce.listenerLeaseExpired}</p>
+              <p className="text-xs mt-0.5 opacity-90">{ce.listenerLeaseExpiredHint}</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2 sm:flex-shrink-0">
+            <Button size="sm" variant="secondary" onClick={() => void fetchTgChannels({ force: true })} loading={loadingTg}>
+              <RefreshCw className="w-3.5 h-3.5" />
+              {t.common.refresh}
+            </Button>
+            <Button size="sm" onClick={() => void reconnectTelegram()}>
+              {ce.reconnectTelegram}
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Status row */}
       {/* {brokers.length === 0 && (
@@ -640,8 +720,17 @@ export function CopierEnginePage() {
                 <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 truncate">{ce.yourTelegramChannels}</p>
                 <p className="text-xs text-neutral-500 dark:text-neutral-400">{ce.telegramConnectedHint}</p>
               </div>
-              <span className="flex-shrink-0 hidden sm:inline-flex">
+              <span className="flex-shrink-0 hidden sm:inline-flex gap-1.5">
                 <Badge variant="primary" size="sm">{ce.connected}</Badge>
+                {listenerLease.status === 'live' && (
+                  <Badge variant="success" size="sm">{ce.listenerLeaseLive}</Badge>
+                )}
+                {listenerLease.status === 'unknown' && (
+                  <Badge variant="neutral" size="sm">{ce.listenerLeaseUnknown}</Badge>
+                )}
+                {(listenerLease.status === 'expired' || listenerLease.status === 'missing') && (
+                  <Badge variant="warning" size="sm">{ce.listenerLeaseExpired}</Badge>
+                )}
               </span>
             </div>
             <div className="flex items-center gap-2">
