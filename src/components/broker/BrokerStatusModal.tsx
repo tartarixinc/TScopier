@@ -5,7 +5,7 @@ import {
   CheckCircle2,
   RefreshCw,
   Server,
-  Shield,
+  ShieldCheck,
   X,
   XCircle,
 } from 'lucide-react'
@@ -270,7 +270,7 @@ function BrokerStatusModalInner({
             <p className="py-8 text-center text-sm text-error-600 dark:text-error-400">{error}</p>
           ) : status ? (
             <div className="space-y-3">
-              <SectionCard title={copy.sectionOverall} icon={Shield}>
+              <SectionCard title={copy.sectionOverall} icon={ShieldCheck}>
                 {checks.map(check => (
                   <StatusRow
                     key={check.id}
@@ -304,7 +304,7 @@ function BrokerStatusModalInner({
                 />
               </SectionCard>
 
-              <SectionCard title={copy.sectionAccount} icon={Shield}>
+              <SectionCard title={copy.sectionAccount} icon={ShieldCheck}>
                 <StatusRow
                   label={copy.checkAccountLoggedIn}
                   ok={status.account?.loggedIn === true}
