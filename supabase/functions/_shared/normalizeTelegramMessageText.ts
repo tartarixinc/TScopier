@@ -28,7 +28,18 @@ export function normalizeTelegramMessageText(raw: string): string {
   return text.trim()
 }
 
+/**
+ * Remove decorative emoji glued to SL/TP/entry labels (e.g. BUY 🟢4110, TP1 🎯4127, SL ⛔️4104).
+ * Parsers match word boundaries and digits; emoji between label and price breaks those regexes.
+ */
+export function stripSignalDecorativeEmojis(text: string): string {
+  return String(text ?? '').replace(
+    /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{200D}\u{20E3}\u{1F1E6}-\u{1F1FF}]/gu,
+    '',
+  )
+}
+
 /** Telegram format strip + casual management typo collapse for parsers. */
 export function normalizeSignalMessageForParse(raw: string): string {
-  return collapseCasualSignalTypos(normalizeTelegramMessageText(raw))
+  return collapseCasualSignalTypos(stripSignalDecorativeEmojis(normalizeTelegramMessageText(raw)))
 }

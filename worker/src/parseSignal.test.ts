@@ -629,4 +629,23 @@ The key lesson here: wait for confirmation, execute clean, manage risk.`
     assert.equal(result.status, 'skipped')
     assert.equal(result.parsed.action, 'ignore')
   })
+
+  it('parses FOREX KING Gold buy with emoji-glued entry zone, SL, and TP tiers', () => {
+    const msg = `Gold（XAUUSD）📊
+BUY 🟢4110-4120
+
+TP1 🎯4127
+TP2 🎯4130
+TP3 🎯4135
+
+SL ⛔️4104`
+    const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+    assert.equal(result.status, 'parsed')
+    assert.equal(result.parsed.action, 'buy')
+    assert.equal(result.parsed.symbol, 'XAUUSD')
+    assert.equal(result.parsed.entry_zone_low, 4110)
+    assert.equal(result.parsed.entry_zone_high, 4120)
+    assert.equal(result.parsed.sl, 4104)
+    assert.deepEqual(result.parsed.tp, [4127, 4130, 4135])
+  })
 })
