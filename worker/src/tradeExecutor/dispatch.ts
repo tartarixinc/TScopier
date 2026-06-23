@@ -240,11 +240,15 @@ export async function logPipelineStage(ctx: TradeExecutorContext,
     }
   }
 
+/** Skip reasons that may clear when listener lease recovers — keep signal parsed for sweep/replay. */
+const TRANSIENT_DISPATCH_SKIP_REASONS = new Set(['telegram_listener_not_live'])
+
 export async function logDispatchSkipped(ctx: TradeExecutorContext, 
     signal: SignalRow,
     skipReason: string,
     extra?: Record<string, unknown>,
   ): Promise<void> {
+    const transient = TRANSIENT_DISPATCH_SKIP_REASONS.has(skipReason)
     try {
       await ctx.supabase.from('trade_execution_logs').insert({
         user_id: signal.user_id,
@@ -255,14 +259,17 @@ export async function logDispatchSkipped(ctx: TradeExecutorContext,
         request_payload: {
           skip_reason: skipReason,
           channel_id: signal.channel_id ?? null,
+          transient,
           ...extra,
         },
       })
-      await ctx.supabase
-        .from('signals')
-        .update({ status: 'skipped', skip_reason: skipReason })
-        .eq('id', signal.id)
-        .in('status', ['parsed', 'pending'])
+      if (!transient) {
+        await ctx.supabase
+          .from('signals')
+          .update({ status: 'skipped', skip_reason: skipReason })
+          .eq('id', signal.id)
+          .in('status', ['parsed', 'pending'])
+      }
     } catch {
       /* best-effort */
     }

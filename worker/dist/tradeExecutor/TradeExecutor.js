@@ -50,6 +50,7 @@ const monitorIdleGate_1 = require("../monitorIdleGate");
 const tscopierComment_1 = require("../tscopierComment");
 const brokerChannelFilter_1 = require("../brokerChannelFilter");
 const brokerSignalReplay_1 = require("../brokerSignalReplay");
+const listenerSignalReplay_1 = require("../listenerSignalReplay");
 const channelTradingConfig_2 = require("../channelTradingConfig");
 const copyLimitTypes_1 = require("../copyLimitTypes");
 const pipelineTimestamps_1 = require("../pipelineTimestamps");
@@ -311,7 +312,8 @@ class TradeExecutor {
         return await brokerSymbolCache.prewarmBrokerCaches(this);
     }
     async sessionHeartbeatTick() {
-        return await brokerSymbolCache.sessionHeartbeatTick(this);
+        await brokerSymbolCache.sessionHeartbeatTick(this);
+        await (0, listenerSignalReplay_1.listenerLeaseRecoveryTick)(this);
     }
     async runSessionHeartbeatTick() {
         if (this.sessionHeartbeatInFlight) {

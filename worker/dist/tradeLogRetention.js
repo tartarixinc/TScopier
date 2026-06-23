@@ -2,7 +2,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.startTradeLogRetention = startTradeLogRetention;
 const RETENTION_INTERVAL_MS = Math.max(5 * 60000, Number(process.env.TRADE_LOG_RETENTION_INTERVAL_MS ?? 10 * 60000));
-const RETENTION_KEEP = Math.max(1, Number(process.env.TRADE_LOG_RETENTION_KEEP ?? 20));
+/** Match Management page fetch cap (`TRADE_ACTIVITY_FETCH_LIMIT`). */
+const RETENTION_KEEP = Math.max(1, Number(process.env.TRADE_LOG_RETENTION_KEEP ?? 500));
 function startTradeLogRetention(supabase) {
     const tick = async () => {
         try {

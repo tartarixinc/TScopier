@@ -123,17 +123,27 @@ async function acquireSessionLeaseLegacy(
   return { ok: true }
 }
 
+/**
+ * Refresh listener lease via acquire RPC (extends TTL for this worker or reclaims expired rows).
+ * Unlike renewSessionLease, survives pod restarts where worker_id changed while MTProto stayed up.
+ */
+export async function ensureSessionLeaseFresh(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<{ ok: true; recovered: boolean } | { ok: false; reason: string }> {
+  const wasLive = await fetchTelegramListenerLiveForUser(supabase, userId)
+  const result = await acquireSessionLease(supabase, userId)
+  if (!result.ok) {
+    setCachedListenerLive(userId, false)
+    return result
+  }
+  setCachedListenerLive(userId, true)
+  return { ok: true, recovered: !wasLive }
+}
+
+/** @deprecated Prefer ensureSessionLeaseFresh — direct UPDATE misses expired or foreign worker_id rows. */
 export async function renewSessionLease(supabase: SupabaseClient, userId: string): Promise<void> {
-  const workerId = listenerWorkerId()
-  await supabase
-    .from('worker_session_leases')
-    .update({
-      worker_id: workerId,
-      expires_at: expiresAtIso(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('user_id', userId)
-    .eq('worker_id', workerId)
+  await ensureSessionLeaseFresh(supabase, userId)
 }
 
 export async function releaseSessionLease(supabase: SupabaseClient, userId: string): Promise<void> {

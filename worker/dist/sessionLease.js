@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.acquireSessionLease = acquireSessionLease;
+exports.ensureSessionLeaseFresh = ensureSessionLeaseFresh;
 exports.renewSessionLease = renewSessionLease;
 exports.releaseSessionLease = releaseSessionLease;
 exports.isTelegramListenerLiveForUser = isTelegramListenerLiveForUser;
@@ -90,17 +91,23 @@ async function acquireSessionLeaseLegacy(supabase, userId) {
         return { ok: false, reason: error.message };
     return { ok: true };
 }
+/**
+ * Refresh listener lease via acquire RPC (extends TTL for this worker or reclaims expired rows).
+ * Unlike renewSessionLease, survives pod restarts where worker_id changed while MTProto stayed up.
+ */
+async function ensureSessionLeaseFresh(supabase, userId) {
+    const wasLive = await fetchTelegramListenerLiveForUser(supabase, userId);
+    const result = await acquireSessionLease(supabase, userId);
+    if (!result.ok) {
+        setCachedListenerLive(userId, false);
+        return result;
+    }
+    setCachedListenerLive(userId, true);
+    return { ok: true, recovered: !wasLive };
+}
+/** @deprecated Prefer ensureSessionLeaseFresh — direct UPDATE misses expired or foreign worker_id rows. */
 async function renewSessionLease(supabase, userId) {
-    const workerId = (0, workerConfig_1.listenerWorkerId)();
-    await supabase
-        .from('worker_session_leases')
-        .update({
-        worker_id: workerId,
-        expires_at: expiresAtIso(),
-        updated_at: new Date().toISOString(),
-    })
-        .eq('user_id', userId)
-        .eq('worker_id', workerId);
+    await ensureSessionLeaseFresh(supabase, userId);
 }
 async function releaseSessionLease(supabase, userId) {
     const workerId = (0, workerConfig_1.listenerWorkerId)();

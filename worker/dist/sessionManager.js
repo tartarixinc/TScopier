@@ -159,11 +159,26 @@ class UserSessionManager {
     async renewAllLeases() {
         const staleMs = Math.max(60000, Math.min(600000, Number(process.env.WORKER_HEALTH_STALE_MS ?? 180000)));
         for (const [userId, listener] of this.listeners) {
-            if (!listener.isListenerHealthy(staleMs)) {
-                console.warn(`[sessionManager] skip lease renew — listener stale user=${userId}`);
+            if (!listener.isTelegramConnected())
                 continue;
+            try {
+                const result = await (0, sessionLease_1.ensureSessionLeaseFresh)(this.supabase, userId);
+                if (!result.ok) {
+                    console.warn(`[sessionManager] lease refresh failed ${userId}: ${result.reason}`);
+                    continue;
+                }
+                if (result.recovered && this.tradeExecutor) {
+                    const { replaySignalsAfterListenerRecovery } = await Promise.resolve().then(() => __importStar(require('./listenerSignalReplay')));
+                    void replaySignalsAfterListenerRecovery(this.tradeExecutor, userId);
+                }
             }
-            await (0, sessionLease_1.renewSessionLease)(this.supabase, userId).catch(err => console.warn(`[sessionManager] lease renew failed ${userId}:`, err));
+            catch (err) {
+                console.warn(`[sessionManager] lease refresh failed ${userId}:`, err);
+            }
+            if (!listener.isListenerHealthy(staleMs)) {
+                console.warn(`[sessionManager] listener quiet but lease renewed user=${userId}`
+                    + ' (no Telegram events recently — normal for low-traffic channels)');
+            }
         }
     }
     subscribeToChannelChanges() {

@@ -114,6 +114,7 @@ import { syncRangePendingLadderOnBasketRefresh } from '../rangePendingLadderSync
 import { loadExistingRangeStepIndices } from '../rangePendingFireGuard'
 import { channelMatchesBrokerSignal } from '../brokerChannelFilter'
 import { replayParsedSignalsForBroker } from '../brokerSignalReplay'
+import { listenerLeaseRecoveryTick } from '../listenerSignalReplay'
 import { normalizeChannelUuid } from '../channelTradingConfig'
 import { normalizeCopyLimitState, type CopyLimitState } from '../copyLimitTypes'
 import { takeProfitForLegIndex } from '../manualPlanning/tpBucketDistribution'
@@ -468,7 +469,8 @@ export class TradeExecutor {
   }
 
   async sessionHeartbeatTick(): Promise<void> {
-    return await brokerSymbolCache.sessionHeartbeatTick(this)
+    await brokerSymbolCache.sessionHeartbeatTick(this)
+    await listenerLeaseRecoveryTick(this)
   }
 
   private async runSessionHeartbeatTick(): Promise<void> {

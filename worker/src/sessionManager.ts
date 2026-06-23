@@ -5,9 +5,9 @@ import { TelegramSessionInvalidError } from './telegramClient'
 import { ChannelInfo, ListenerStatus, UserListener, type SignalReconcileStats } from './userListener'
 import {
   acquireSessionLease,
+  ensureSessionLeaseFresh,
   listActiveLeases,
   releaseSessionLease,
-  renewSessionLease,
 } from './sessionLease'
 import { getMetricsSnapshot } from './workerMetrics'
 import { userBelongsToShard, workerConfig } from './workerConfig'
@@ -158,13 +158,28 @@ export class UserSessionManager {
       Math.min(600_000, Number(process.env.WORKER_HEALTH_STALE_MS ?? 180_000)),
     )
     for (const [userId, listener] of this.listeners) {
-      if (!listener.isListenerHealthy(staleMs)) {
-        console.warn(`[sessionManager] skip lease renew — listener stale user=${userId}`)
-        continue
+      if (!listener.isTelegramConnected()) continue
+
+      try {
+        const result = await ensureSessionLeaseFresh(this.supabase, userId)
+        if (!result.ok) {
+          console.warn(`[sessionManager] lease refresh failed ${userId}: ${result.reason}`)
+          continue
+        }
+        if (result.recovered && this.tradeExecutor) {
+          const { replaySignalsAfterListenerRecovery } = await import('./listenerSignalReplay')
+          void replaySignalsAfterListenerRecovery(this.tradeExecutor, userId)
+        }
+      } catch (err) {
+        console.warn(`[sessionManager] lease refresh failed ${userId}:`, err)
       }
-      await renewSessionLease(this.supabase, userId).catch(err =>
-        console.warn(`[sessionManager] lease renew failed ${userId}:`, err),
-      )
+
+      if (!listener.isListenerHealthy(staleMs)) {
+        console.warn(
+          `[sessionManager] listener quiet but lease renewed user=${userId}`
+          + ' (no Telegram events recently — normal for low-traffic channels)',
+        )
+      }
     }
   }
 
