@@ -12,6 +12,8 @@ import { computeBasketMergeLinkContext, type BasketMergeLinkContext } from '../.
 import { symbolsCompatibleForBasket } from '../../basketModFollowUp'
 import { type TradeExecutorContext } from '../context'
 import { type BrokerRow, type ParsedSignal, type SignalRow } from '../types'
+import { isV2 } from '../../engine/executionMode'
+import { getFxClient, toMtPlatform } from '../../engine/fxClient'
 
 export async function hasOpenTradeForSymbol(ctx: TradeExecutorContext, brokerId: string, symbol: string): Promise<boolean> {
     try {
@@ -37,20 +39,35 @@ export async function reconcileGhostBasketLegs(ctx: TradeExecutorContext, args: 
   }): Promise<{ isGhostBasket: boolean; closedCount: number }> {
     const { signal, broker, uuid, anchorSignalId, symbol, familyTrades } = args
     if (!familyTrades.length) return { isGhostBasket: false, closedCount: 0 }
-    const api = ctx.apiFor(broker)
-    if (!api) return { isGhostBasket: false, closedCount: 0 }
-    const alive = await api.keepSessionAlive(uuid)
-    if (!alive) return { isGhostBasket: false, closedCount: 0 }
 
     let brokerTickets: Set<number>
-    try {
-      brokerTickets = await fetchOpenBrokerTicketsStrict(api, uuid)
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      console.warn(
-        `[tradeExecutor] ghost basket check skipped broker=${broker.id} anchor=${anchorSignalId}: ${msg}`,
-      )
-      return { isGhostBasket: false, closedCount: 0 }
+    if (isV2({ brokerAccountId: broker.id, userId: signal.user_id })) {
+      // v2: one fast, stateless fxClient read (~200-500ms). No keepSessionAlive ping
+      // (fxClient authenticates per call) - this removes ~4s from the entry merge path.
+      try {
+        const orders = await getFxClient().openedOrders(uuid, toMtPlatform(broker.platform))
+        brokerTickets = new Set(orders.map(o => o.ticket))
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        console.warn(
+          `[tradeExecutor] ghost basket check skipped (v2) broker=${broker.id} anchor=${anchorSignalId}: ${msg}`,
+        )
+        return { isGhostBasket: false, closedCount: 0 }
+      }
+    } else {
+      const api = ctx.apiFor(broker)
+      if (!api) return { isGhostBasket: false, closedCount: 0 }
+      const alive = await api.keepSessionAlive(uuid)
+      if (!alive) return { isGhostBasket: false, closedCount: 0 }
+      try {
+        brokerTickets = await fetchOpenBrokerTicketsStrict(api, uuid)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        console.warn(
+          `[tradeExecutor] ghost basket check skipped broker=${broker.id} anchor=${anchorSignalId}: ${msg}`,
+        )
+        return { isGhostBasket: false, closedCount: 0 }
+      }
     }
 
     const { onBroker, ghost } = classifyGhostBasketLegs(familyTrades, brokerTickets)
