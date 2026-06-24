@@ -1,5 +1,6 @@
 import { Agent, request } from 'undici'
 import { isMtBridgeGlitchMessage } from './brokerConnectError'
+import { createConcurrencyGate } from './perAccountConcurrency'
 import { ingestMtHistoryRows, type MtHistoryProfile } from './mtTradeFields'
 import {
   isFxsocketMtStatusHealthy,
@@ -450,6 +451,27 @@ export function isTransientMtApiError(err: unknown): boolean {
   }
   const msg = (err instanceof Error ? err.message : String(err)).toLowerCase()
   return /timeout|econnreset|econnrefused|fetch failed|network error|socket hang up|epipe|ehostunreach|abort/.test(msg)
+}
+
+/**
+ * Bridge-side "TradingHelper.OrderModify timed out" — the terminal didn't ack in
+ * time. Safe to retry only for IDEMPOTENT ops (OrderModify/OrderClose); never for
+ * OrderSend, where a lost ack could mean the order actually opened (duplicate risk).
+ */
+export function isOrderOpTimedOutMessage(message: string | null | undefined): boolean {
+  return /\btimed\s+out\b/i.test(String(message ?? ''))
+}
+
+/**
+ * An MT terminal executes order operations serially; firing many concurrently at
+ * one terminal makes the bridge queue them and time out. Bound in-flight trade
+ * ops per account so a single terminal is never overwhelmed (shared across all
+ * client instances in the process).
+ */
+const tradeOpGate = createConcurrencyGate()
+export function perAccountTradeConcurrency(): number {
+  const raw = Number(process.env.MT_PER_ACCOUNT_TRADE_CONCURRENCY ?? 3)
+  return Number.isFinite(raw) && raw >= 1 ? Math.min(8, Math.floor(raw)) : 3
 }
 
 /** FxSocket / upstream rate limit (also matches Supabase-style throttle text). */
@@ -1039,29 +1061,36 @@ export class FxsocketBrokerClient {
   }
 
   async orderSend(id: string, args: OrderSendArgs): Promise<OrderResult> {
-    const MAX_ATTEMPTS = Math.max(1, Number(process.env.MT_ORDERSEND_MAX_ATTEMPTS ?? 3) || 3)
-    let lastErr: unknown
-    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-      try {
-        return await this.orderSendOnce(id, args)
-      } catch (err) {
-        lastErr = err
-        if (isBrokerDisconnectedMessage(err instanceof Error ? err.message : String(err))) throw err
-        if (isMtSessionGoneError(err)) throw err
-        const msg = err instanceof Error ? err.message : String(err)
-        const retryable = isMtBridgeGlitchMessage(msg) || isTransientMtApiError(err)
-        if (!retryable || attempt >= MAX_ATTEMPTS - 1) throw err
-        if (isMtBridgeGlitchMessage(msg)) {
-          await this.keepSessionAlive(id).catch(() => {})
+    const release = await tradeOpGate.acquire(id, perAccountTradeConcurrency())
+    try {
+      const MAX_ATTEMPTS = Math.max(1, Number(process.env.MT_ORDERSEND_MAX_ATTEMPTS ?? 3) || 3)
+      let lastErr: unknown
+      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+        try {
+          return await this.orderSendOnce(id, args)
+        } catch (err) {
+          lastErr = err
+          if (isBrokerDisconnectedMessage(err instanceof Error ? err.message : String(err))) throw err
+          if (isMtSessionGoneError(err)) throw err
+          const msg = err instanceof Error ? err.message : String(err)
+          // NOTE: do NOT retry on a bare "timed out" here — a lost ack could mean
+          // the order actually opened, so retrying risks a duplicate position.
+          const retryable = isMtBridgeGlitchMessage(msg) || isTransientMtApiError(err)
+          if (!retryable || attempt >= MAX_ATTEMPTS - 1) throw err
+          if (isMtBridgeGlitchMessage(msg)) {
+            await this.keepSessionAlive(id).catch(() => {})
+          }
+          const jitterMs = 600 + Math.random() * 900 + attempt * 400
+          console.warn(
+            `[fxsocketClient] OrderSend retry id=${id} symbol=${args.symbol} attempt=${attempt + 1}/${MAX_ATTEMPTS}: ${msg}`,
+          )
+          await new Promise(r => setTimeout(r, jitterMs))
         }
-        const jitterMs = 600 + Math.random() * 900 + attempt * 400
-        console.warn(
-          `[fxsocketClient] OrderSend retry id=${id} symbol=${args.symbol} attempt=${attempt + 1}/${MAX_ATTEMPTS}: ${msg}`,
-        )
-        await new Promise(r => setTimeout(r, jitterMs))
       }
+      throw lastErr instanceof Error ? lastErr : new FxsocketApiError(String(lastErr), 502)
+    } finally {
+      release()
     }
-    throw lastErr instanceof Error ? lastErr : new FxsocketApiError(String(lastErr), 502)
   }
 
   private async orderSendOnce(id: string, args: OrderSendArgs): Promise<OrderResult> {
@@ -1097,30 +1126,38 @@ export class FxsocketBrokerClient {
   }
 
   async orderModify(id: string, args: OrderModifyArgs): Promise<OrderResult> {
-    const MAX_ATTEMPTS = Math.max(1, Number(process.env.MT_ORDERMODIFY_MAX_ATTEMPTS ?? 3) || 3)
-    let lastErr: unknown
-    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-      try {
-        return await this.orderModifyOnce(id, args)
-      } catch (err) {
-        lastErr = err
-        if (isBrokerDisconnectedMessage(err instanceof Error ? err.message : String(err))) throw err
-        if (isMtSessionGoneError(err)) throw err
-        const msg = err instanceof Error ? err.message : String(err)
-        const retryable = isMtBridgeGlitchMessage(msg) || isTransientMtApiError(err)
-        if (!retryable || attempt >= MAX_ATTEMPTS - 1) throw err
-        if (isMtBridgeGlitchMessage(msg)) {
-          await this.keepSessionAlive(id).catch(() => {})
+    const release = await tradeOpGate.acquire(id, perAccountTradeConcurrency())
+    try {
+      const MAX_ATTEMPTS = Math.max(1, Number(process.env.MT_ORDERMODIFY_MAX_ATTEMPTS ?? 3) || 3)
+      let lastErr: unknown
+      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+        try {
+          return await this.orderModifyOnce(id, args)
+        } catch (err) {
+          lastErr = err
+          if (isBrokerDisconnectedMessage(err instanceof Error ? err.message : String(err))) throw err
+          if (isMtSessionGoneError(err)) throw err
+          const msg = err instanceof Error ? err.message : String(err)
+          // OrderModify is idempotent, so a bridge "timed out" is safe to retry.
+          const retryable = isMtBridgeGlitchMessage(msg)
+            || isTransientMtApiError(err)
+            || isOrderOpTimedOutMessage(msg)
+          if (!retryable || attempt >= MAX_ATTEMPTS - 1) throw err
+          if (isMtBridgeGlitchMessage(msg)) {
+            await this.keepSessionAlive(id).catch(() => {})
+          }
+          const jitterMs = 600 + Math.random() * 900 + attempt * 400
+          console.warn(
+            `[fxsocketClient] OrderModify retry id=${id} ticket=${args.ticket}`
+            + ` attempt=${attempt + 1}/${MAX_ATTEMPTS}: ${msg}`,
+          )
+          await new Promise(r => setTimeout(r, jitterMs))
         }
-        const jitterMs = 600 + Math.random() * 900 + attempt * 400
-        console.warn(
-          `[fxsocketClient] OrderModify retry id=${id} ticket=${args.ticket}`
-          + ` attempt=${attempt + 1}/${MAX_ATTEMPTS}: ${msg}`,
-        )
-        await new Promise(r => setTimeout(r, jitterMs))
       }
+      throw lastErr instanceof Error ? lastErr : new FxsocketApiError(String(lastErr), 502)
+    } finally {
+      release()
     }
-    throw lastErr instanceof Error ? lastErr : new FxsocketApiError(String(lastErr), 502)
   }
 
   private async orderModifyOnce(id: string, args: OrderModifyArgs): Promise<OrderResult> {
@@ -1136,16 +1173,21 @@ export class FxsocketBrokerClient {
   }
 
   async orderClose(id: string, args: OrderCloseArgs): Promise<OrderResult> {
-    const payload: Record<string, unknown> = {
-      ticket: args.ticket,
-      slippage: args.slippage ?? 20,
-    }
-    if (args.lots != null && args.lots > 0) payload.volume = args.lots
-    if (args.price != null && args.price > 0) payload.price = args.price
+    const release = await tradeOpGate.acquire(id, perAccountTradeConcurrency())
+    try {
+      const payload: Record<string, unknown> = {
+        ticket: args.ticket,
+        slippage: args.slippage ?? 20,
+      }
+      if (args.lots != null && args.lots > 0) payload.volume = args.lots
+      if (args.price != null && args.price > 0) payload.price = args.price
 
-    const raw = await this.post<unknown>(`${await this.accountBase(id)}/OrderClose`, payload, 90_000)
-    assertNoApiError(raw)
-    return normalizeOrderResponse(raw)
+      const raw = await this.post<unknown>(`${await this.accountBase(id)}/OrderClose`, payload, 90_000)
+      assertNoApiError(raw)
+      return normalizeOrderResponse(raw)
+    } finally {
+      release()
+    }
   }
 }
 
