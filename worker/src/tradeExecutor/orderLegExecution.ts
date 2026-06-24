@@ -12,6 +12,18 @@ import { applyPostFillFollowUp, type PostFillTradeLeg } from '../postFillFollowU
 import type { TradeExecutorContext } from './context'
 import { clampOrderStops, isBuySideOp, type Leg } from './helpers'
 import type { BrokerRow, ParsedSignal, SendOrderOutcome, SignalRow, SymbolCacheEntry, SymbolMappingResult } from './types'
+import { isV2 } from '../engine/executionMode'
+import { getFxClient, toMtPlatform } from '../engine/fxClient'
+import type { FxOpenOrder } from '../engine/fxContract'
+
+/** Normalized broker fill shape shared by the v1 client and the v2 fxClient. */
+type NormalizedFill = {
+  ticket: number
+  openPrice: number | null
+  stopLoss: number | null
+  takeProfit: number | null
+  lots: number | null
+}
 
 export type SendImmediateLegsInput = {
   ctx: TradeExecutorContext
@@ -77,6 +89,15 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
 
   const filledLegs: PostFillTradeLeg[] = []
 
+  // v2 entries fire PROTECTED-at-send through the strict fxClient (bounded timeout,
+  // strict retcode, no blind 3x retries) instead of the old client. One pre-burst
+  // OpenedOrders snapshot powers ambiguous-send adoption so retries never duplicate.
+  const useV2 = isV2({ brokerAccountId: broker.id, userId: signal.user_id })
+  const v2Platform = toMtPlatform(broker.platform)
+  const v2Snapshot: FxOpenOrder[] = useV2
+    ? await getFxClient().openedOrders(uuid, v2Platform).catch(() => [])
+    : []
+
   const sendLeg = async (leg: Leg): Promise<boolean> => {
     let args = leg.args
     const isBuyLeg = isBuySideOp(String(args.operation))
@@ -118,13 +139,48 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
       signal.pipeline_ts.t_first_broker_send = t0
     }
     try {
-      const result = await api.orderSend(uuid, args)
+      let result: NormalizedFill
+      if (useV2) {
+        const r = await getFxClient().orderSend(
+          uuid,
+          v2Platform,
+          {
+            symbol: args.symbol,
+            operation: args.operation,
+            volume: args.volume,
+            price: Number(args.price) > 0 ? Number(args.price) : undefined,
+            stopLoss: Number(args.stoploss) > 0 ? Number(args.stoploss) : undefined,
+            takeProfit: Number(args.takeprofit) > 0 ? Number(args.takeprofit) : undefined,
+            comment: args.comment,
+            slippage: args.slippage,
+            expertId: args.expertID,
+          },
+          { anchorSignalId: signal.id, legIndex: leg.idx, preSnapshot: v2Snapshot },
+        )
+        if (!r.ok || !r.ticket) throw new Error(r.message || `v2 order_send rejected (${r.retcodeName})`)
+        result = {
+          ticket: r.ticket,
+          openPrice: r.price,
+          stopLoss: Number(args.stoploss) > 0 ? Number(args.stoploss) : null,
+          takeProfit: Number(args.takeprofit) > 0 ? Number(args.takeprofit) : null,
+          lots: r.volume ?? args.volume,
+        }
+      } else {
+        const raw = await api.orderSend(uuid, args)
+        result = {
+          ticket: raw.ticket,
+          openPrice: raw.openPrice ?? null,
+          stopLoss: raw.stopLoss ?? null,
+          takeProfit: raw.takeProfit ?? null,
+          lots: raw.lots ?? null,
+        }
+      }
       const latencyMs = Date.now() - t0
       if (liveEntryFast && signal.pipeline_ts) {
         signal.pipeline_ts.t_last_broker_send = Date.now()
       }
       console.log(
-        `[tradeExecutor] OrderSend ok signal=${signal.id} broker=${broker.id} ticket=${result.ticket} leg=${leg.idx + 1}/${totalCount} price=${args.price ?? 0} ${latencyMs}ms`,
+        `[tradeExecutor] OrderSend ok signal=${signal.id} broker=${broker.id} ticket=${result.ticket} leg=${leg.idx + 1}/${totalCount} price=${args.price ?? 0} ${latencyMs}ms v2=${useV2}`,
       )
 
       const isBuy = !args.operation.toLowerCase().includes('sell')
