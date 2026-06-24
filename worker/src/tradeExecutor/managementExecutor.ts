@@ -53,6 +53,7 @@ import { findStaleBasketKeys, upsertBasketSlTpTarget } from '../basketTargetStor
 import type { PerLegStopTarget } from '../multiTradeMerge'
 import { resolveLatestOpenBasketAnchor } from '../multiTradeMerge'
 import { isBenignOrderModifyError } from '../orderModifyBenign'
+import { modifyLegSlTpWithFallback } from '../orderModifySafe'
 import { mgmtLegConcurrency, mgmtVerifyAfterModify, parallelMap } from '../parallelPool'
 import { patchActiveRangePendingLegStops } from '../rangePendingLadderSync'
 import { symbolsCompatibleForBasket } from '../basketModFollowUp'
@@ -990,11 +991,13 @@ export async function applyManagement(
                 lastErr = null
                 break
               }
-              const modRes = await api.orderModify(uuid, {
-                ticket: effectiveTicket,
-                stoploss: beSl,
-                takeprofit: modifyTp,
-              })
+              // SL-first with split fallback: the breakeven SL is the protective
+              // stop and must land even if the (best-effort) TP is invalid.
+              const safe = await modifyLegSlTpWithFallback(api, uuid, effectiveTicket, beSl, modifyTp)
+              if (!safe.ok || (beSl > 0 && !safe.slApplied)) {
+                throw new Error(safe.error ?? 'OrderModify failed')
+              }
+              const modRes = (safe.result ?? {}) as { stopLoss?: number | null }
               // Post-modify broker re-verify is off by default for speed; the
               // reconcile monitor re-checks broker SL and re-applies on drift.
               if (verifyAfter) {

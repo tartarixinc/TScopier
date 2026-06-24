@@ -16,6 +16,7 @@ import {
 } from './manualPlanning/tpBucketDistribution'
 import type { ManualTpLot } from './manualPlanning/types'
 import { isBenignOrderModifyError, stopsAlreadyMatchDb } from './orderModifyBenign'
+import { modifyLegSlTpWithFallback } from './orderModifySafe'
 import {
   upsertBasketReconcileJob,
   type BasketOpenLeg,
@@ -630,11 +631,42 @@ export async function applyChannelStopsToBaskets(
     const execOne = async (plan: LegModPlan): Promise<LegModOutcome> => {
       const { tr, ticket, target, modifyArgs } = plan
       try {
-        await api!.orderModify(uuid, modifyArgs)
+        // SL-first with split fallback: an invalid/late TP must never block the
+        // protective SL (previously a rejected combined modify left the leg naked).
+        const safe = await modifyLegSlTpWithFallback(
+          api!,
+          uuid,
+          ticket,
+          modifyArgs.stoploss ?? 0,
+          modifyArgs.takeprofit ?? 0,
+        )
+        if (!safe.ok) {
+          await supabase.from('trade_execution_logs').insert({
+            user_id: userId,
+            signal_id: signalId,
+            broker_account_id: brokerId,
+            action: 'mgmt_modify',
+            status: 'failed',
+            error_message: safe.error ?? 'OrderModify failed',
+            request_payload: { ticket, trade_id: tr.id, channel_stop_apply: true } as unknown as Record<string, unknown>,
+          })
+          return { ...noop(), failed: 1, error: { tradeId: tr.id, ticket, message: safe.error ?? 'OrderModify failed' } }
+        }
+        // The SL is the protective stop — if it was requested but not applied
+        // (split TP-only success), the leg is not safe; flag for reconcile.
+        const slRequested = !tpOnly && target.stoploss > 0
+        if (slRequested && !safe.slApplied) {
+          return {
+            ...noop(),
+            failed: 1,
+            error: { tradeId: tr.id, ticket, message: safe.error ?? 'SL not applied', skipReason: 'sl_not_applied' },
+          }
+        }
 
         const brokerOk = !verifyOnBroker
           || !hasNewSl
           || target.stoploss <= 0
+          || !safe.slApplied
           || verifyLegStopOnBroker(ordersByTicket, ticket, target.stoploss)
 
         if (!brokerOk) {
@@ -651,8 +683,8 @@ export async function applyChannelStopsToBaskets(
         }
 
         const dbPatch: { sl?: number | null; tp?: number | null } = {}
-        if (!tpOnly && target.stoploss > 0) dbPatch.sl = target.stoploss
-        if (!slOnly && target.takeprofit > 0) dbPatch.tp = target.takeprofit
+        if (!tpOnly && target.stoploss > 0 && safe.slApplied) dbPatch.sl = target.stoploss
+        if (!slOnly && target.takeprofit > 0 && safe.tpApplied) dbPatch.tp = target.takeprofit
         if (Object.keys(dbPatch).length > 0) {
           await supabase.from('trades').update(dbPatch).eq('id', tr.id)
         }
@@ -666,8 +698,10 @@ export async function applyChannelStopsToBaskets(
           request_payload: {
             ticket,
             action: 'modify',
-            target_sl: modifyArgs.stoploss ?? null,
-            target_tp: modifyArgs.takeprofit ?? null,
+            target_sl: safe.slApplied ? (modifyArgs.stoploss ?? null) : null,
+            target_tp: safe.tpApplied ? (modifyArgs.takeprofit ?? null) : null,
+            modify_mode: safe.mode,
+            tp_deferred: !safe.tpApplied && (modifyArgs.takeprofit ?? 0) > 0,
             manual_push: manualPush,
             trade_id: tr.id,
             channel_stop_apply: true,

@@ -12,6 +12,7 @@ import { symbolsCompatibleForBasket } from './basketModFollowUp'
 import { stripInvalidStopsForSide } from './channelActiveTradeParams'
 import { isMtBridgeGlitchMessage } from './brokerConnectError'
 import { isBenignOrderModifyError, stopsAlreadyMatchDb } from './orderModifyBenign'
+import { modifyLegSlTpWithFallback } from './orderModifySafe'
 import { isSlMoreProtective } from './basketEffectiveStops'
 import { mgmtLegConcurrency, parallelMap } from './parallelPool'
 import { buildBasketRefreshComment } from './tradeComment'
@@ -576,19 +577,48 @@ export async function runBasketLegModifies(args: {
     }
 
     try {
-      const modRes = await api.orderModify(uuid, {
-        ticket,
-        stoploss: modSl,
-        takeprofit: modTp,
-      })
-      const newSl = modRes.stopLoss ?? modSl ?? null
-      const newTp = modRes.takeProfit ?? modTp ?? null
+      // SL-first with split fallback: an invalid/late TP must never block the
+      // protective SL (avoids legs left fully naked after an "Invalid stops").
+      const safe = await modifyLegSlTpWithFallback(api, uuid, ticket, modSl, modTp)
+      if (!safe.ok || (modSl > 0 && !safe.slApplied)) {
+        const failMsg = safe.error ?? 'OrderModify failed'
+        const legErr: LegModifyError = {
+          trade_id: tr.id,
+          ticket,
+          leg_index: i + 1,
+          broker_symbol: tr.symbol,
+          target_sl: modSl,
+          target_tp: modTp,
+          error: failMsg,
+        }
+        console.warn(
+          `[basketSlTpReconcile] OrderModify failed leg=${i + 1}/${familyTrades.length} trade=${tr.id}: ${failMsg}`,
+        )
+        await logLegModify({
+          userId,
+          signalId,
+          brokerAccountId,
+          status: 'failed',
+          tradeId: tr.id,
+          ticket,
+          legIndex: i + 1,
+          brokerSymbol: tr.symbol,
+          targetSl: modSl,
+          targetTp: modTp,
+          errorMessage: failMsg,
+        })
+        return { ...noopOutcome(), legError: legErr, attempted: 1, failed: 1 }
+      }
+      const res = (safe.result ?? {}) as { stopLoss?: number | null; takeProfit?: number | null }
+      const newSl = safe.slApplied ? (res.stopLoss ?? modSl ?? null) : null
+      const newTp = safe.tpApplied ? (res.takeProfit ?? modTp ?? null) : null
       const cweClose = cweIdx < nImmCwe ? args.overrideTp : null
-      await supabase.from('trades').update({
-        sl: typeof newSl === 'number' && newSl > 0 ? newSl : null,
-        tp: typeof newTp === 'number' && newTp > 0 ? newTp : null,
+      const tradePatch: { sl?: number | null; tp?: number | null; cwe_close_price?: number | null } = {
         cwe_close_price: typeof cweClose === 'number' && cweClose > 0 ? cweClose : null,
-      }).eq('id', tr.id)
+      }
+      if (safe.slApplied) tradePatch.sl = typeof newSl === 'number' && newSl > 0 ? newSl : null
+      if (safe.tpApplied) tradePatch.tp = typeof newTp === 'number' && newTp > 0 ? newTp : null
+      await supabase.from('trades').update(tradePatch).eq('id', tr.id)
       await logLegModify({
         userId,
         signalId,
@@ -598,8 +628,8 @@ export async function runBasketLegModifies(args: {
         ticket,
         legIndex: i + 1,
         brokerSymbol: tr.symbol,
-        targetSl: modSl,
-        targetTp: modTp,
+        targetSl: safe.slApplied ? modSl : 0,
+        targetTp: safe.tpApplied ? modTp : 0,
       })
       return { ...noopOutcome(), modifiedId: tr.id, attempted: 1, modified: 1 }
     } catch (err) {
