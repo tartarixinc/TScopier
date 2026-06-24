@@ -210,6 +210,7 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
       sl: plannerParsed.sl,
       tp: plannerParsed.tp,
     }
+    let effectiveSlIsExplicitMgmt = false
     if (manual.range_trading === true && anchorSignalId && signal.channel_id) {
       const resolvedStops = await resolveEffectiveBasketStops({
         supabase: ctx.supabase,
@@ -228,6 +229,11 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
       if (resolvedStops.tpLevels.length) {
         effectiveParsed = { ...effectiveParsed, tp: resolvedStops.tpLevels }
       }
+      effectiveSlIsExplicitMgmt = resolvedStops.source === 'mgmt_signal'
+    }
+    if (!effectiveSlIsExplicitMgmt && logAction === 'merge_routed_modify_only') {
+      const parsedSl = typeof effectiveParsed.sl === 'number' ? effectiveParsed.sl : 0
+      if (parsedSl > 0) effectiveSlIsExplicitMgmt = true
     }
     if (!parsedHasExplicitEntryAnchor(plannerParsed)) {
       const ep = Number(newest.entry_price)
@@ -394,6 +400,10 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
           direction: direction as 'buy' | 'sell',
           activePendingCount,
           maxPendingStepIdx,
+          stoplossOverride: effectiveSlIsExplicitMgmt
+            ? (typeof effectiveParsed.sl === 'number' && effectiveParsed.sl > 0 ? effectiveParsed.sl : null)
+            : null,
+          explicitSl: effectiveSlIsExplicitMgmt,
         })
       : buildPerLegStopTargets({
           plan,
@@ -530,6 +540,7 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
         skipAlreadySynced: true,
         liveMgmtFast,
         orderCommentsEnabled: manual.order_comments_enabled !== false,
+        explicitChannelTargets: effectiveSlIsExplicitMgmt,
       })
       for (const id of pass.modifiedTradeIds) modifiedTradeIds.add(id)
       summary = pass.summary
