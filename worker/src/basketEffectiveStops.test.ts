@@ -3,11 +3,27 @@ import assert from 'node:assert/strict'
 import {
   mergeWithProtectiveLegSl,
   mostProtectiveOpenLegSl,
+  resolveEffectiveBasketStops,
   resolveEffectiveStoplossPriority,
   unanimousLegSl,
   isSlMoreProtective,
 } from './basketEffectiveStops'
 import type { BasketOpenLeg } from './basketSlTpReconcile'
+
+function mockSupabase(dataByTable: Record<string, unknown[]>) {
+  function builder(table: string) {
+    const b: Record<string, unknown> = {}
+    const self = () => b
+    b.select = self
+    b.eq = self
+    b.in = self
+    b.gte = self
+    b.order = self
+    b.limit = () => Promise.resolve({ data: dataByTable[table] ?? [], error: null })
+    return b
+  }
+  return { from: (t: string) => builder(t) }
+}
 
 function leg(sl: number | null): BasketOpenLeg {
   return {
@@ -102,5 +118,49 @@ describe('isSlMoreProtective', () => {
   it('detects buy leg SL above target', () => {
     assert.equal(isSlMoreProtective(4248, 4245, true), true)
     assert.equal(isSlMoreProtective(4245, 4248, true), false)
+  })
+})
+
+describe('resolveEffectiveBasketStops explicit-adjustment wins', () => {
+  it('a loosening mgmt adjust is NOT overridden by a tighter open-leg SL', async () => {
+    const supabase = mockSupabase({
+      signals: [
+        { id: 'mod-1', parsed_data: { action: 'modify', sl: 4155, symbol: null }, created_at: '2026-06-17T12:00:00Z' },
+      ],
+      channel_active_trade_params: [],
+    })
+    const eff = await resolveEffectiveBasketStops({
+      supabase: supabase as never,
+      userId: 'u',
+      channelId: 'c',
+      anchorSignalId: 'sig',
+      symbol: 'XAUUSD',
+      basketCreatedAt: '2026-06-17T11:00:00Z',
+      anchorParsed: { sl: 4100, tp: [4265] },
+      familyTrades: [leg(4258), leg(4258)],
+    })
+    assert.equal(eff.source, 'mgmt_signal')
+    assert.equal(eff.stoploss, 4155, 'explicit channel adjust wins, not the tighter 4258 leg SL')
+  })
+
+  it('non-mgmt source (channel memory) still merges the most-protective leg SL', async () => {
+    const supabase = mockSupabase({
+      signals: [],
+      channel_active_trade_params: [
+        { symbol: 'XAUUSD', stoploss: 4150, tp_levels: [4265], updated_at: '2026-06-17T12:00:00Z' },
+      ],
+    })
+    const eff = await resolveEffectiveBasketStops({
+      supabase: supabase as never,
+      userId: 'u',
+      channelId: 'c',
+      anchorSignalId: 'sig',
+      symbol: 'XAUUSD',
+      basketCreatedAt: '2026-06-17T11:00:00Z',
+      anchorParsed: { sl: 4100, tp: [4265] },
+      familyTrades: [leg(4258), leg(4258)],
+    })
+    assert.equal(eff.source, 'channel_memory')
+    assert.equal(eff.stoploss, 4258, 'protective merge still applies for non-explicit sources')
   })
 })

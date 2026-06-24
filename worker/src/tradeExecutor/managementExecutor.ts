@@ -52,7 +52,7 @@ import { upsertBasketReconcileJob, type BasketOpenLeg } from '../basketSlTpRecon
 import type { PerLegStopTarget } from '../multiTradeMerge'
 import { resolveLatestOpenBasketAnchor } from '../multiTradeMerge'
 import { isBenignOrderModifyError } from '../orderModifyBenign'
-import { mgmtLegConcurrency, parallelMap } from '../parallelPool'
+import { mgmtLegConcurrency, mgmtVerifyAfterModify, parallelMap } from '../parallelPool'
 import { patchActiveRangePendingLegStops } from '../rangePendingLadderSync'
 import { symbolsCompatibleForBasket } from '../basketModFollowUp'
 import { type TradeExecutorContext } from './context'
@@ -270,9 +270,11 @@ async function verifyBreakevenApplied(args: {
   pipPrice: number
   /** When /OpenedOrders omits SL, trust OrderModify response if present. */
   confirmSl?: number | null
+  /** Reuse a pre-fetched OpenedOrders snapshot to avoid a per-leg broker read. */
+  ordersSnapshot?: unknown[] | null
 }): Promise<{ ok: boolean; reason?: string }> {
-  const { api, uuid, ticket, expectedSl, isBuy, pipPrice, confirmSl } = args
-  const rawOrders = await api.openedOrders(uuid)
+  const { api, uuid, ticket, expectedSl, isBuy, pipPrice, confirmSl, ordersSnapshot } = args
+  const rawOrders = ordersSnapshot ?? await api.openedOrders(uuid)
   const order = findRawOrderByTicket(rawOrders ?? [], ticket)
   if (!order) return { ok: false, reason: 'verify failed: ticket missing from opened orders' }
   const sl = readBrokerOrderStopLoss(order)
@@ -759,7 +761,6 @@ export async function applyManagement(
       legsTotal += eligibleTrades.length
     }
 
-    const usedBreakevenTicketsByUuid = new Map<string, Set<number>>()
     /** Most protective breakeven SL applied per symbol — persisted to channel memory after mgmt. */
     const channelBreakevenSlBySymbol = new Map<string, { sl: number; isBuy: boolean }>()
     /** Breakeven leg-level outcome tracking for the reconcile fallback + memory gating. */
@@ -767,6 +768,47 @@ export async function applyManagement(
     const breakevenSlByTradeId = new Map<string, number>()
     const breakevenFailedSymbolKeys = new Set<string>()
     let breakevenNeedsRetry = false
+    // Breakeven: one OpenedOrders snapshot per broker session + pre-assigned
+    // distinct tickets per leg, so legs run in parallel race-free (no shared
+    // ticket-exclusion map mutated mid-flight).
+    const breakevenOrdersByUuid = new Map<string, unknown[]>()
+    const breakevenAssignedTicket = new Map<string, number>()
+    const breakevenExcludeByTradeId = new Map<string, Set<number>>()
+    const prepareBreakevenTickets = async (): Promise<void> => {
+      const byUuid = new Map<string, MgmtTradeRow[]>()
+      for (const trade of eligibleTrades) {
+        const broker = byBroker.get(trade.broker_account_id)
+        const u = broker ? brokerSessionUuid(broker) : null
+        if (!u) continue
+        const list = byUuid.get(u) ?? []
+        list.push(trade)
+        byUuid.set(u, list)
+      }
+      await Promise.all([...byUuid.entries()].map(async ([u, legs]) => {
+        const broker = byBroker.get(legs[0]!.broker_account_id)
+        const api = broker ? ctx.apiFor(broker) : null
+        if (!api) return
+        const raw = (await api.openedOrders(u).catch(() => [])) ?? []
+        breakevenOrdersByUuid.set(u, raw)
+        const used = new Set<number>()
+        for (const leg of legs) {
+          const reconciled = resolveReconciledTicketForTrade(leg, raw, used)
+          const stored = Number(leg.metaapi_order_id)
+          const ticket = reconciled ?? (Number.isFinite(stored) && stored > 0 ? stored : null)
+          if (ticket != null) {
+            breakevenAssignedTicket.set(leg.id, ticket)
+            used.add(ticket)
+          }
+        }
+        // Each leg's exclude set = the other legs' assigned tickets (immutable).
+        for (const leg of legs) {
+          const mine = breakevenAssignedTicket.get(leg.id)
+          const excl = new Set<number>()
+          for (const t of used) if (t !== mine) excl.add(t)
+          breakevenExcludeByTradeId.set(leg.id, excl)
+        }
+      }))
+    }
 
     const processTrade = async (trade: MgmtTradeRow): Promise<void> => {
       const broker = byBroker.get(trade.broker_account_id)
@@ -867,13 +909,12 @@ export async function applyManagement(
             await ctx.supabase.from('trades').update({ lot_size: remaining }).eq('id', trade.id)
           }
         } else if (action === 'breakeven') {
-          const excludeTickets = usedBreakevenTicketsByUuid.get(uuid) ?? new Set<number>()
-          const rawOrdersForReconcile = await api.openedOrders(uuid).catch(() => [])
-          const upfrontTicket = resolveReconciledTicketForTrade(
-            trade,
-            rawOrdersForReconcile ?? [],
-            excludeTickets,
-          )
+          // Tickets were pre-reconciled once from a single OpenedOrders snapshot;
+          // use the pre-assigned ticket (no per-leg broker read here).
+          const excludeTickets = breakevenExcludeByTradeId.get(trade.id) ?? new Set<number>()
+          const snapshotOrders = breakevenOrdersByUuid.get(uuid) ?? null
+          const upfrontTicket = breakevenAssignedTicket.get(trade.id)
+            ?? resolveReconciledTicketForTrade(trade, snapshotOrders ?? [], excludeTickets)
           if (upfrontTicket && upfrontTicket !== effectiveTicket) {
             ticketReconciledFrom = effectiveTicket
             effectiveTicket = upfrontTicket
@@ -929,11 +970,12 @@ export async function applyManagement(
             /* quote optional; use computed breakeven SL */
           }
           breakevenSlByTradeId.set(trade.id, beSl)
-          const usedTickets = usedBreakevenTicketsByUuid.get(uuid) ?? new Set<number>()
+          const verifyAfter = mgmtVerifyAfterModify()
           const maxAttempts = 3
           let lastErr: unknown = null
           for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
             try {
+              // Pre-verify against the pre-fetched snapshot (no extra broker read).
               const preVerify = await verifyBreakevenApplied({
                 api,
                 uuid,
@@ -941,6 +983,7 @@ export async function applyManagement(
                 expectedSl: beSl,
                 isBuy,
                 pipPrice,
+                ordersSnapshot: snapshotOrders ?? undefined,
               })
               if (preVerify.ok) {
                 lastErr = null
@@ -951,25 +994,29 @@ export async function applyManagement(
                 stoploss: beSl,
                 takeprofit: modifyTp,
               })
-              const verify = await verifyBreakevenApplied({
-                api,
-                uuid,
-                ticket: effectiveTicket,
-                expectedSl: beSl,
-                isBuy,
-                pipPrice,
-                confirmSl: modRes.stopLoss ?? beSl,
-              })
-              if (!verify.ok) throw new Error(verify.reason ?? 'verify failed')
+              // Post-modify broker re-verify is off by default for speed; the
+              // reconcile monitor re-checks broker SL and re-applies on drift.
+              if (verifyAfter) {
+                const verify = await verifyBreakevenApplied({
+                  api,
+                  uuid,
+                  ticket: effectiveTicket,
+                  expectedSl: beSl,
+                  isBuy,
+                  pipPrice,
+                  confirmSl: modRes.stopLoss ?? beSl,
+                })
+                if (!verify.ok) throw new Error(verify.reason ?? 'verify failed')
+              }
               lastErr = null
               break
             } catch (err) {
               lastErr = err
               const msg = err instanceof Error ? err.message : String(err)
-              const excludeTickets = usedBreakevenTicketsByUuid.get(uuid) ?? new Set<number>()
+              // Re-reconcile from the pre-fetched snapshot + this leg's immutable
+              // exclude set (other legs' tickets) — race-free under parallelism.
               if (isUnknownTicketError(msg)) {
-                const rawOrders = await api.openedOrders(uuid)
-                const reconciledTicket = resolveReconciledTicketForTrade(trade, rawOrders ?? [], excludeTickets)
+                const reconciledTicket = resolveReconciledTicketForTrade(trade, snapshotOrders ?? [], excludeTickets)
                 if (reconciledTicket && reconciledTicket !== effectiveTicket) {
                   ticketReconciledFrom = effectiveTicket
                   effectiveTicket = reconciledTicket
@@ -978,20 +1025,12 @@ export async function applyManagement(
               }
               if (attempt < maxAttempts && isRetryableBreakevenError(msg)) {
                 await sleepMs(250 * attempt)
-                const rawOrders = await api.openedOrders(uuid).catch(() => [])
-                const reconciledTicket = resolveReconciledTicketForTrade(trade, rawOrders ?? [], excludeTickets)
-                if (reconciledTicket && reconciledTicket !== effectiveTicket) {
-                  ticketReconciledFrom = effectiveTicket
-                  effectiveTicket = reconciledTicket
-                }
                 continue
               }
               break
             }
           }
           if (lastErr) throw lastErr
-          usedTickets.add(effectiveTicket)
-          usedBreakevenTicketsByUuid.set(uuid, usedTickets)
           await ctx.supabase
             .from('trades')
             .update({
@@ -1153,24 +1192,13 @@ export async function applyManagement(
     }
 
     if (action === 'breakeven') {
-      // Serialize legs that share one broker session so the breakeven
-      // ticket-exclusion map (usedBreakevenTicketsByUuid) is never
-      // read-modify-written concurrently — that race could target the same
-      // ticket twice or skip a just-reconciled leg. Distinct broker sessions
-      // still run in parallel for fan-out speed.
-      const legsByUuid = new Map<string, MgmtTradeRow[]>()
-      for (const trade of eligibleTrades) {
-        const broker = byBroker.get(trade.broker_account_id)
-        const uuid = (broker ? brokerSessionUuid(broker) : null) ?? trade.broker_account_id
-        const list = legsByUuid.get(uuid) ?? []
-        list.push(trade)
-        legsByUuid.set(uuid, list)
-      }
-      if (liveMgmtFast && legsByUuid.size > 1) {
+      // Pre-reconcile each leg to a distinct ticket from a single OpenedOrders
+      // snapshot per broker, so legs can run in parallel without racing on a
+      // shared ticket-exclusion map (the old serial-per-session bottleneck).
+      await prepareBreakevenTickets()
+      if (eligibleTrades.length > 1) {
         await Promise.allSettled(
-          [...legsByUuid.values()].map(async group => {
-            for (const trade of group) await processTrade(trade)
-          }),
+          await parallelMap(eligibleTrades, legConcurrency, trade => processTrade(trade)),
         )
       } else {
         for (const trade of eligibleTrades) {

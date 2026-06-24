@@ -135,6 +135,60 @@ describe('basketLegModifyMergeFailed', () => {
   })
 })
 
+describe('runBasketLegModifies explicit loosening', () => {
+  it('applies a looser explicit SL when explicitChannelTargets is true', async () => {
+    const familyLeg: BasketOpenLeg = {
+      id: 'trade-1',
+      signal_id: 'sig-mod',
+      metaapi_order_id: '9001',
+      opened_at: new Date().toISOString(),
+      lot_size: 0.05,
+      sl: 4180, // current tighter SL for a sell (closer to price)
+      tp: 4100,
+      entry_price: 4150,
+      direction: 'sell',
+      symbol: 'XAUUSD',
+    }
+    let modifiedSl: number | null = null
+    const api = {
+      quote: async () => ({ bid: 4150, ask: 4150.2, symbol: 'XAUUSD' }),
+      orderModify: async (_uuid: string, args: { stoploss?: number }) => {
+        modifiedSl = args.stoploss ?? null
+        return { stopLoss: args.stoploss, takeProfit: 4100 }
+      },
+    }
+    const supabase = {
+      from: () => ({
+        insert: async () => ({ error: null }),
+        update: () => ({ eq: async () => ({ error: null }) }),
+      }),
+    }
+
+    const { summary } = await runBasketLegModifies({
+      supabase: supabase as never,
+      api: api as never,
+      uuid: 'broker-uuid',
+      symbol: 'XAUUSD',
+      direction: 'sell',
+      baseLot: 0.05,
+      params: { point: 0.01, stopsLevel: 0, freezeLevel: 0, minLot: 0.01, lotStep: 0.01, contractSize: null, digits: 2 },
+      signalId: 'sig-mod',
+      userId: 'user-1',
+      brokerAccountId: 'broker-1',
+      familyTrades: [familyLeg],
+      perLegTargets: [{ stoploss: 4200, takeprofit: 4100 }], // looser SL (further above price) for sell
+      nImmCwe: 0,
+      overrideTp: null,
+      strictEntryPrefetch: null,
+      openedTickets: new Set([9001]),
+      explicitChannelTargets: true,
+    })
+
+    assert.equal(summary.modified, 1)
+    assert.equal(modifiedSl, 4200, 'explicit channel target loosens the SL (no protective block)')
+  })
+})
+
 describe('runBasketLegModifies wrong-side guard', () => {
   it('skips sell leg when channel TP is above live bid (explicit targets)', async () => {
     const familyLeg: BasketOpenLeg = {

@@ -257,6 +257,7 @@ export class BasketSlTpReconcileMonitor {
       perLegTargets: freshTargets,
       signalTps: freshSignalTps,
       effectiveStoploss,
+      effectiveSlSource,
     } = await resolveFreshTargetsForJob(
       this.supabase,
       row,
@@ -322,7 +323,11 @@ export class BasketSlTpReconcileMonitor {
       internalRebalance: manual.range_trading === true,
       effectiveStoploss: effectiveStoploss > 0 ? effectiveStoploss : undefined,
       orderCommentsEnabled: manual.order_comments_enabled !== false,
-      explicitChannelTargets: row.source_signal_id !== row.anchor_signal_id,
+      // Explicit latest channel adjustment must apply even if it loosens; also
+      // when this job was enqueued from a mgmt signal (source != anchor).
+      explicitChannelTargets:
+        row.source_signal_id !== row.anchor_signal_id
+        || effectiveSlSource === 'mgmt_signal',
     })
 
     const mergeFailed = basketLegModifyMergeFailed(summary)

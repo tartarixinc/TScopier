@@ -17,7 +17,6 @@ import {
 import type { ManualTpLot } from './manualPlanning/types'
 import { isBenignOrderModifyError, stopsAlreadyMatchDb } from './orderModifyBenign'
 import {
-  fetchOpenBrokerTickets,
   upsertBasketReconcileJob,
   type BasketOpenLeg,
 } from './basketSlTpReconcile'
@@ -225,6 +224,30 @@ export async function fetchBrokerOrdersByTicket(
     /* caller falls back to ticket-set preflight only */
   }
   return map
+}
+
+/** One OpenedOrders call -> both the open-ticket set and the ticket->order map. */
+export async function fetchBrokerOrdersSnapshot(
+  api: FxsocketBrokerClient,
+  uuid: string,
+): Promise<{ tickets: Set<number>; ordersByTicket: Map<number, unknown> }> {
+  const tickets = new Set<number>()
+  const ordersByTicket = new Map<number, unknown>()
+  try {
+    const orders = await api.openedOrders(uuid)
+    for (const raw of orders ?? []) {
+      if (!raw || typeof raw !== 'object') continue
+      const o = raw as Record<string, unknown>
+      const ticket = Number(o.ticket ?? o.Ticket ?? o.orderId ?? o.OrderID ?? 0)
+      if (Number.isFinite(ticket) && ticket > 0) {
+        tickets.add(ticket)
+        ordersByTicket.set(ticket, raw)
+      }
+    }
+  } catch {
+    /* caller treats empty as skip-preflight */
+  }
+  return { tickets, ordersByTicket }
 }
 
 export function verifyLegStopOnBroker(
@@ -462,10 +485,10 @@ export async function applyChannelStopsToBaskets(
     let ordersByTicket = new Map<number, unknown>()
     if (api) {
       try {
-        openedTickets = await fetchOpenBrokerTickets(api, uuid)
-        if (verifyOnBroker) {
-          ordersByTicket = await fetchBrokerOrdersByTicket(api, uuid)
-        }
+        // Single OpenedOrders snapshot serves both preflight and SL verification.
+        const snapshot = await fetchBrokerOrdersSnapshot(api, uuid)
+        openedTickets = snapshot.tickets
+        ordersByTicket = snapshot.ordersByTicket
       } catch {
         openedTickets = null
       }

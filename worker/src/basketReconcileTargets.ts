@@ -155,6 +155,7 @@ export async function resolveFreshBasketReconcileTargets(
       channelTpLevels,
       finalTpsOverride: signalTps.length ? signalTps : null,
       stoplossOverride: effective.stoploss > 0 ? effective.stoploss : null,
+      explicitSl: effective.source === 'mgmt_signal',
     })
     const isBuy = args.direction === 'buy'
     let mapped = built.map(t => ({

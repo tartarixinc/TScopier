@@ -376,6 +376,24 @@ test('preserveOpenLegTakeProfits keeps current leg TPs', () => {
   assert.equal(preserved[1]!.takeprofit, 4350)
 })
 
+test('applyOpenLegStopLossToTargets: skipProtectiveMerge keeps the explicit resolved SL', () => {
+  const legs = [
+    { ...openLeg('a', 4165.25, '2026-01-01T00:00:00Z'), sl: 4164.25, direction: 'sell' as const },
+    { ...openLeg('b', 4166, '2026-01-01T00:00:01Z'), sl: 4172.5, direction: 'sell' as const },
+  ]
+  const out = applyOpenLegStopLossToTargets(
+    legs,
+    [
+      { stoploss: 4180, takeprofit: 4155 },
+      { stoploss: 4180, takeprofit: 4150 },
+    ],
+    false,
+    { skipProtectiveMerge: true },
+  )
+  // Explicit adjust (4180) is kept even though it loosens vs the 4164.25 leg.
+  assert.ok(out.every(t => t.stoploss === 4180))
+})
+
 test('applyOpenLegStopLossToTargets: propagates sell breakeven SL to legs still on anchor', () => {
   const legs = [
     { ...openLeg('a', 4165.25, '2026-01-01T00:00:00Z'), sl: 4164.25, direction: 'sell' as const },

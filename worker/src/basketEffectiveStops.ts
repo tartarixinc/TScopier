@@ -220,8 +220,15 @@ export async function resolveEffectiveBasketStops(
     legConsensus,
   })
 
+  // An explicit, recent channel management adjustment (modify / breakeven signal)
+  // is the user's latest instruction and must win for the whole basket and new
+  // layers — even when it LOOSENS the stop. Merging with the most-protective
+  // open-leg SL here would silently keep a tighter/older leg SL and revert the
+  // adjustment. Auto-breakeven re-tightens individual legs separately.
   const protectiveLegSl = mostProtectiveOpenLegSl(args.familyTrades, isBuy)
-  const stoploss = mergeWithProtectiveLegSl(prioritySl, protectiveLegSl, isBuy)
+  const stoploss = source === 'mgmt_signal'
+    ? prioritySl
+    : mergeWithProtectiveLegSl(prioritySl, protectiveLegSl, isBuy)
 
   const parsedSlice: RangeBasketParsedSlice = {
     sl: stoploss > 0 ? stoploss : args.anchorParsed.sl,

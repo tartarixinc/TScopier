@@ -143,10 +143,14 @@ describe('channelStopApply', () => {
 
     let inFlight = 0
     let maxConcurrent = 0
+    let openedOrdersCalls = 0
     const attempted = new Set<number>()
     const api = {
       seedPlatformCache: () => {},
-      openedOrders: async () => legs.map(l => ({ ticket: Number(l.metaapi_order_id) })),
+      openedOrders: async () => {
+        openedOrdersCalls += 1
+        return legs.map(l => ({ ticket: Number(l.metaapi_order_id) }))
+      },
       orderModify: async (_uuid: string, modifyArgs: { ticket: number }) => {
         attempted.add(modifyArgs.ticket)
         inFlight += 1
@@ -178,5 +182,6 @@ describe('channelStopApply', () => {
     assert.equal(attempted.size, 16, 'all legs attempted')
     assert.equal(result.totalModified, 16)
     assert.ok(maxConcurrent > 1, `expected parallel modifies, got max concurrency ${maxConcurrent}`)
+    assert.equal(openedOrdersCalls, 1, 'single OpenedOrders snapshot (no duplicate fetch)')
   })
 })

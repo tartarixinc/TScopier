@@ -202,10 +202,12 @@ export function buildRangeBasketTpTargets(args: {
   finalTpsOverride?: number[] | null
   /** Wins over parsed.sl when set (e.g. post-adjust effective SL). */
   stoplossOverride?: number | null
+  /** SL is an explicit latest channel adjustment — do not re-tighten per leg. */
+  explicitSl?: boolean
 }): PerLegStopTargetLike[] {
   const {
     familyTrades, plan, parsed, tpLots, direction, activePendingCount, maxPendingStepIdx,
-    forceLayeringRebalance, channelTpLevels, finalTpsOverride, stoplossOverride,
+    forceLayeringRebalance, channelTpLevels, finalTpsOverride, stoplossOverride, explicitSl,
   } = args
   if (!familyTrades.length) return []
 
@@ -259,7 +261,9 @@ export function buildRangeBasketTpTargets(args: {
     finalTps,
     tpLots,
   })
-  return applyOpenLegStopLossToTargets(familyTrades, targets, isBuy)
+  return applyOpenLegStopLossToTargets(familyTrades, targets, isBuy, {
+    skipProtectiveMerge: explicitSl === true,
+  })
 }
 
 export async function loadRangePendingMeta(
@@ -476,7 +480,11 @@ export function applyOpenLegStopLossToTargets(
   familyTrades: BasketOpenLeg[],
   perLegTargets: PerLegStopTargetLike[],
   isBuy: boolean,
+  opts?: { skipProtectiveMerge?: boolean },
 ): PerLegStopTargetLike[] {
+  // When the SL is an explicit latest channel adjustment, it must win as-is —
+  // do not re-tighten it to the most-protective/current leg SL.
+  if (opts?.skipProtectiveMerge) return perLegTargets
   const basketProtective = mostProtectiveOpenLegSl(familyTrades, isBuy)
   return perLegTargets.map((t, i) => {
     let sl = Number(t.stoploss) || 0
@@ -733,8 +741,10 @@ export async function syncRangeBasketTakeProfits(args: RangeBasketTpSyncArgs): P
     channelTpLevels,
     finalTpsOverride: finalTps,
     stoplossOverride: effective.stoploss > 0 ? effective.stoploss : null,
+    explicitSl: effective.source === 'mgmt_signal',
   })
   if (!perLegTargets.length) return
+  const explicitMgmtSl = effective.source === 'mgmt_signal'
 
   const planImmediateLegCount = estimatePlanImmediateLegCount({
     openLegCount: familyTrades.length,
@@ -862,6 +872,8 @@ export async function syncRangeBasketTakeProfits(args: RangeBasketTpSyncArgs): P
     internalRebalance,
     effectiveStoploss: effective.stoploss > 0 ? effective.stoploss : undefined,
     orderCommentsEnabled: args.manual.order_comments_enabled !== false,
+    // Explicit latest channel adjustment must apply even if it loosens.
+    explicitChannelTargets: explicitMgmtSl,
   })
 
   // Always run a modify pass: in frozen mode this only touches naked legs (and
