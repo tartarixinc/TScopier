@@ -53,6 +53,12 @@ test('looksLikeChannelManagementUpdate: SL to entry / BE without a digit (breake
   assert.equal(looksLikeChannelManagementUpdate('move stop to entry'), true)
 })
 
+test('looksLikeChannelManagementUpdate: Make / Bring SL verbs', () => {
+  assert.equal(looksLikeChannelManagementUpdate('Make SL to 4155'), true)
+  assert.equal(looksLikeChannelManagementUpdate('Make SL 4155'), true)
+  assert.equal(looksLikeChannelManagementUpdate('Bring SL to 4155'), true)
+})
+
 test('looksLikeChannelManagementUpdate: SL to entry stays management even for trained-management channels', () => {
   // Channels with trained management config previously skipped the universal
   // breakeven cue list — "SL to Entry" then leaked to the AI entry parser.

@@ -513,6 +513,42 @@ export function deepestFinalTp(finalTps: number[], isBuy: boolean): number {
 }
 
 /**
+ * SL/TP a newly-firing range layer should open with, using the basket's
+ * resolved effective stops (latest Adjust signal / edit > channel memory >
+ * anchor, already merged with the most-protective open-leg SL).
+ *
+ *  - SL: always the latest effective SL when available (this is the fix — new
+ *    layers must not open with the stale anchor SL).
+ *  - TP: never repaint a leg that already carries a TP (it was distributed or
+ *    deepest-backfilled); a naked leg gets the deepest/final TP. CWE legs ride
+ *    with no TP (closed by cweCloseMonitor).
+ */
+export function resolveFiringLegStops(args: {
+  legStoploss: number | null | undefined
+  legTakeprofit: number | null | undefined
+  cweClosePrice: number | null | undefined
+  effective: { stoploss: number; tpLevels: number[] }
+  isBuy: boolean
+}): { stoploss: number; takeprofit: number } {
+  const curSl = Number(args.legStoploss)
+  const effSl = Number(args.effective.stoploss)
+  const stoploss = Number.isFinite(effSl) && effSl > 0
+    ? effSl
+    : (Number.isFinite(curSl) && curSl > 0 ? curSl : 0)
+
+  if (args.cweClosePrice != null) {
+    return { stoploss, takeprofit: 0 }
+  }
+
+  const curTp = Number(args.legTakeprofit)
+  if (Number.isFinite(curTp) && curTp > 0) {
+    return { stoploss, takeprofit: curTp }
+  }
+  const deepest = deepestFinalTp(args.effective.tpLevels, args.isBuy)
+  return { stoploss, takeprofit: deepest > 0 ? deepest : 0 }
+}
+
+/**
  * Freeze mode targets: never repaint a leg that already has a TP; assign the
  * deepest/final TP to any leg that is naked (tp <= 0). This guarantees every
  * open leg ends with SL + TP without redistributing after a TP has been hit.

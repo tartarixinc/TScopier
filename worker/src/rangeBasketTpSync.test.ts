@@ -9,6 +9,7 @@ import {
   fillZeroTargetsWithDeepest,
   preserveOpenLegTakeProfits,
   applyOpenLegStopLossToTargets,
+  resolveFiringLegStops,
   resolveRangeBasketFinalTps,
   resolveRangeBasketLegCounts,
   resolveRangeTpRebalanceGate,
@@ -301,6 +302,66 @@ test('every layering leg ends with SL and TP (Fix 1: no SL-only legs)', () => {
   assert.equal(filled.length, 9)
   assert.ok(filled.every(t => t.stoploss > 0), 'all legs have SL')
   assert.ok(filled.every(t => t.takeprofit > 0), 'all legs have TP')
+})
+
+test('resolveFiringLegStops: latest effective SL overrides a stale leg SL', () => {
+  const out = resolveFiringLegStops({
+    legStoploss: 4100,
+    legTakeprofit: 4490,
+    cweClosePrice: null,
+    effective: { stoploss: 4155, tpLevels: [4530, 4510, 4490] },
+    isBuy: true,
+  })
+  assert.equal(out.stoploss, 4155)
+  assert.equal(out.takeprofit, 4490, 'existing TP preserved, not repainted')
+})
+
+test('resolveFiringLegStops: naked leg gets deepest TP (buy=max), keeps effective SL', () => {
+  const out = resolveFiringLegStops({
+    legStoploss: 0,
+    legTakeprofit: 0,
+    cweClosePrice: null,
+    effective: { stoploss: 4155, tpLevels: [4530, 4510, 4490] },
+    isBuy: true,
+  })
+  assert.equal(out.stoploss, 4155)
+  assert.equal(out.takeprofit, 4530)
+})
+
+test('resolveFiringLegStops: sell naked leg gets deepest TP (min)', () => {
+  const out = resolveFiringLegStops({
+    legStoploss: null,
+    legTakeprofit: null,
+    cweClosePrice: null,
+    effective: { stoploss: 4180, tpLevels: [4150, 4140, 4130] },
+    isBuy: false,
+  })
+  assert.equal(out.stoploss, 4180)
+  assert.equal(out.takeprofit, 4130)
+})
+
+test('resolveFiringLegStops: CWE leg rides with no TP', () => {
+  const out = resolveFiringLegStops({
+    legStoploss: 4100,
+    legTakeprofit: 4490,
+    cweClosePrice: 4200,
+    effective: { stoploss: 4155, tpLevels: [4530] },
+    isBuy: true,
+  })
+  assert.equal(out.stoploss, 4155)
+  assert.equal(out.takeprofit, 0)
+})
+
+test('resolveFiringLegStops: falls back to leg SL when effective SL is missing', () => {
+  const out = resolveFiringLegStops({
+    legStoploss: 4100,
+    legTakeprofit: 0,
+    cweClosePrice: null,
+    effective: { stoploss: 0, tpLevels: [] },
+    isBuy: true,
+  })
+  assert.equal(out.stoploss, 4100)
+  assert.equal(out.takeprofit, 0)
 })
 
 test('preserveOpenLegTakeProfits keeps current leg TPs', () => {

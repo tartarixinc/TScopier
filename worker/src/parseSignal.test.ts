@@ -115,6 +115,15 @@ describe('parseChannelMessageSync', () => {
     }
   })
 
+  it('parses "Make SL 4155" / "Make SL to 4155" as modify with the new SL', () => {
+    for (const msg of ['Make SL 4155', 'Make SL to 4155']) {
+      const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+      assert.equal(result.status, 'parsed', msg)
+      assert.equal(result.parsed.action, 'modify', msg)
+      assert.equal(result.parsed.sl, 4155, msg)
+    }
+  })
+
   it('parses breakevennn noowwwww as breakeven', () => {
     const result = parseChannelMessageSync(
       'breakevennn noowwwww',

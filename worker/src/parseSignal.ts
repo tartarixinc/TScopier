@@ -535,7 +535,7 @@ function wantsExplicitFullClose(
 /** Stop-loss labels used in management updates (providers often say "risk" or "stoploss"). */
 const SL_TEXT_LABELS = 'sl|stop\\s*loss|stoploss|risk'
 const TP_TEXT_LABELS = 'tp|take\\s*profit|target'
-const SL_MGMT_VERBS = 'set|move|adjust|bring|change|update'
+const SL_MGMT_VERBS = 'set|move|adjust|bring|change|update|make'
 
 function slPriceFromClause(clause: string): number | null {
   const slClauseTo = clause.match(new RegExp(`\\bto\\s*(${SIGNAL_PRICE_NUM})\\b`, 'i'))

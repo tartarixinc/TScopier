@@ -12,11 +12,11 @@ import { autoManagementTradeSnapshot } from './autoManagement'
 import { tryApplyBasketFollowUpToNewFill } from './basketModFollowUp'
 import { loadOpenBasketLegs, upsertBasketReconcileJob } from './basketSlTpReconcile'
 import { resolveFreshBasketReconcileTargets } from './basketReconcileTargets'
-import { channelParamsPredateBasket, loadChannelActiveTradeParamsForSymbol } from './channelActiveTradeParams'
+import { resolveEffectiveBasketStops } from './basketEffectiveStops'
 import { resolveChannelTradingConfig } from './channelTradingConfig'
 import { markRangeLegFired, markRangeLegsExpired } from './rangePendingLadderSync'
 import { normalizeManualSettingsForExecution } from './manualPlanning/normalizeManualSettings'
-import { syncRangeBasketTakeProfits, toRangeBasketParsedSlice } from './rangeBasketTpSync'
+import { resolveFiringLegStops, syncRangeBasketTakeProfits, toRangeBasketParsedSlice } from './rangeBasketTpSync'
 import {
   hasWorkOnShard,
   monitorActiveIntervalMs,
@@ -819,33 +819,48 @@ export class VirtualPendingMonitor {
       // best-effort — fire with stops from the tick snapshot
     }
 
-    // Channel memory may hold a newer SL than the leg row (e.g. symbol-less Adjust SL).
-    // Only when the memory was written during this basket's lifetime — older
-    // memory belongs to a previous signal and produces wrong-side stops.
+    // A new layer must fire with the LATEST SL/TP, not the stale anchor value.
+    // resolveEffectiveBasketStops is the same source of truth the rebalance and
+    // reconcile paths use: latest Adjust signal (incl. entry edits) > channel
+    // memory > anchor, merged with the most-protective open-leg SL. Reading the
+    // anchor's current parsed_data means message edits are honored too.
     let channelIdForTrade: string | null = null
     try {
       const { data: sigMeta } = await this.supabase
         .from('signals')
-        .select('channel_id,created_at')
+        .select('channel_id,created_at,parsed_data')
         .eq('id', leg.signal_id)
         .maybeSingle()
       channelIdForTrade = (sigMeta as { channel_id?: string } | null)?.channel_id ?? null
       const basketCreatedAt = (sigMeta as { created_at?: string } | null)?.created_at ?? null
-      if (channelIdForTrade) {
-        const channelParams = await loadChannelActiveTradeParamsForSymbol(
-          this.supabase,
-          leg.user_id,
-          channelIdForTrade,
-          leg.symbol,
-        )
-        if (
-          channelParams?.stoploss != null
-          && channelParams.stoploss > 0
-          && !channelParamsPredateBasket(channelParams, basketCreatedAt)
-        ) {
-          leg.stoploss = channelParams.stoploss
-        }
-      }
+      const anchorParsed = toRangeBasketParsedSlice(
+        (sigMeta as { parsed_data?: { sl?: unknown; tp?: unknown } } | null)?.parsed_data,
+      )
+      const familyTrades = await loadOpenBasketLegs(
+        this.supabase,
+        leg.broker_account_id,
+        leg.signal_id,
+        leg.symbol,
+      )
+      const effective = await resolveEffectiveBasketStops({
+        supabase: this.supabase,
+        userId: leg.user_id,
+        channelId: channelIdForTrade,
+        anchorSignalId: leg.signal_id,
+        symbol: leg.symbol,
+        basketCreatedAt,
+        anchorParsed,
+        familyTrades,
+      })
+      const firing = resolveFiringLegStops({
+        legStoploss: leg.stoploss,
+        legTakeprofit: leg.takeprofit,
+        cweClosePrice: leg.cwe_close_price,
+        effective,
+        isBuy: leg.is_buy,
+      })
+      if (firing.stoploss > 0) leg.stoploss = firing.stoploss
+      if (leg.cwe_close_price == null && firing.takeprofit > 0) leg.takeprofit = firing.takeprofit
     } catch {
       // best-effort — fire with stops from pending leg row
     }
