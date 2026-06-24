@@ -3,10 +3,12 @@
  */
 import type { ChannelKeywords, ChannelLexiconRow } from './parseSignal'
 import {
+  COMMON_BREAKEVEN_PHRASES,
   textLooksLikeConditionalClose,
   textLooksLikeMultilingualFullClose,
   textLooksLikeMultilingualManagement,
 } from './multilingualManagementTerms'
+import { messageContainsKeyword } from './multilingualSignalTerms'
 import {
   flattenManagementGroups,
   resolveManagementGroups,
@@ -150,12 +152,18 @@ export function looksLikeChannelManagementUpdate(
   const trained = trainedManagementAliases(channelKeywords, lexicon)
   if (trained.length > 0 && hasAnyKeyword(t, trained)) return true
 
+  // Breakeven cues ("sl to entry", "sl to be", "be now", …) are universal and
+  // safe — recognize them even when the channel has trained management config,
+  // otherwise "SL to Entry" is misrouted to the AI entry parser.
+  if (COMMON_BREAKEVEN_PHRASES.some(p => messageContainsKeyword(t, p))) return true
+
   if (!channelHasTrainedManagement(channelKeywords, lexicon)) {
     if (textLooksLikeMultilingualManagement(t)) return true
   }
 
   return (
     /\b(move\s+stop|move\s+sl|move\s+risk|stop\s+to\s+breakeven|breakeven|break\s*even)\b/i.test(t)
+    || /\b(?:sl|stop\s*loss|stoploss|risk|stop)\s+to\s+(?:be|entry|breakeven|break\s*even)\b/i.test(t)
     || /\b(?:adjust|move|set|change|update)\s+(?:sl|stop\s*loss|stoploss|risk)\b/i.test(t)
     || /\b(?:sl|stop\s*loss|stoploss|risk)\s+to\s+\d/i.test(t)
     || /\b(close\s+partial|closing\s+partial|take\s+partial|partial\s+(?:lot|lots|lotsize|position|trade))\b/i.test(t)

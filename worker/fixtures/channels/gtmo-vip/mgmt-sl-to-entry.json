@@ -1,0 +1,5 @@
+{
+  "name": "Management: SL to Entry (breakeven, no symbol)",
+  "message": "SL to Entry",
+  "expect": { "status": "parsed", "action": "breakeven", "symbol": null }
+}

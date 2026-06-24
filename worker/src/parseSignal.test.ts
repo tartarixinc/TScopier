@@ -106,6 +106,15 @@ describe('parseChannelMessageSync', () => {
     assert.equal(result.parsed.action, 'breakeven')
   })
 
+  it('parses "SL to Entry" / "SL to BE" as breakeven with no symbol (not an entry)', () => {
+    for (const msg of ['SL to Entry', 'SL to BE']) {
+      const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+      assert.equal(result.status, 'parsed', msg)
+      assert.equal(result.parsed.action, 'breakeven', msg)
+      assert.equal(result.parsed.symbol, null, msg)
+    }
+  })
+
   it('parses breakevennn noowwwww as breakeven', () => {
     const result = parseChannelMessageSync(
       'breakevennn noowwwww',

@@ -47,6 +47,22 @@ test('looksLikeChannelManagementUpdate: French close all now', () => {
   assert.equal(looksLikeChannelManagementUpdate('FERMEZ TOUT MAINTENANT'), true)
 })
 
+test('looksLikeChannelManagementUpdate: SL to entry / BE without a digit (breakeven)', () => {
+  assert.equal(looksLikeChannelManagementUpdate('SL to Entry'), true)
+  assert.equal(looksLikeChannelManagementUpdate('SL to BE'), true)
+  assert.equal(looksLikeChannelManagementUpdate('move stop to entry'), true)
+})
+
+test('looksLikeChannelManagementUpdate: SL to entry stays management even for trained-management channels', () => {
+  // Channels with trained management config previously skipped the universal
+  // breakeven cue list — "SL to Entry" then leaked to the AI entry parser.
+  const trainedLexicon = { action_aliases: { modify: ['adjust sl'] } } as never
+  assert.equal(
+    looksLikeChannelManagementUpdate('SL to Entry', undefined, trainedLexicon),
+    true,
+  )
+})
+
 test('partialCloseFractionFromMessage: secure 30% profits', () => {
   assert.equal(
     partialCloseFractionFromMessage('secure 30% profits by closing partial lotsize'),
