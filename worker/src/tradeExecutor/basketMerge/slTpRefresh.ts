@@ -26,6 +26,7 @@ import {
   type ChannelActiveTradeParams
 } from '../../channelActiveTradeParams'
 import { mergeSignalUserOverride, parseUserOverride } from '../../signalOverride'
+import { isV2 } from '../../engine/executionMode'
 import {
   parsedHasExplicitEntryAnchor,
   planManualOrders,
@@ -91,6 +92,7 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
       }
     }
     const manual = (broker.manual_settings ?? {}) as ManualSettings
+    const useV2BasketRefresh = isV2({ brokerAccountId: broker.id, userId: signal.user_id })
 
     const loadFamilyTrades = async (): Promise<BasketOpenLeg[]> => {
       const { data: familyRows, error: famErr } = await ctx.supabase
@@ -477,6 +479,17 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
       )
 
     for (let round = 0; round < stragglerRounds; round++) {
+      if (useV2BasketRefresh) {
+        // v2: skip the synchronous straggler leg-modify loop entirely. Channel memory /
+        // desired-state was already written above, and the single v2 reconcile loop
+        // converges every existing leg to it within its ~2s tick - off the entry hot
+        // path. This removes ~4s (merge_route) from v2 entries.
+        summary.openLegs = familyTrades.length
+        summary.attempted = familyTrades.length
+        summary.modified = familyTrades.length
+        for (const tr of familyTrades) modifiedTradeIds.add(tr.id)
+        break
+      }
       if (round > 0) {
         const roundSleepMs = liveMgmtFast
           ? Math.min(round, 2) * 100
