@@ -50,6 +50,8 @@ WORKER_SHARD_COUNT=1
 WORKER_REQUIRE_TELEGRAM_LIVE_FOR_TRADES=true
 WORKER_INTERNAL_TOKEN=<shared secret>
 EXECUTOR_REALTIME_SIGNALS=false
+EXECUTION_ENGINE=v2
+FXSOCKET_API_KEY=fxs_live_...
 ```
 
 - **Replicas:** one process per **shard index** (`WORKER_SHARD_ID=0..N-1`). Do not run two containers with the same shard id.
@@ -65,17 +67,24 @@ WORKER_SHARD_ID=0
 WORKER_SHARD_COUNT=1
 WORKER_INTERNAL_TOKEN=<shared secret>
 EXECUTOR_REALTIME_SIGNALS=false
+EXECUTION_ENGINE=v2
+FXSOCKET_API_KEY=fxs_live_...
+# Optional: v2 reconcile tick (default 4000ms)
+# V2_RECONCILE_TICK_MS=4000
 ```
 
 - Same sharding env as trade entry — each mgmt shard handles management for its user partition.
 - Handles **close / modify / breakeven / close worse entries**, etc.
-- Monitors: basket SL/TP reconcile, auto-management, trailing stop, news filter.
+- With `EXECUTION_ENGINE=v2`, the **v2 reconcile monitor** owns background SL/TP convergence; the v1 basket reconcile job skips v2 brokers.
+- Monitors: v2 reconcile (when enabled), basket SL/TP reconcile (v1 brokers only), auto-management, trailing stop, news filter.
 
 ### 4. Trade combined (`WORKER_ROLE=trade`)
 
 ```env
 WORKER_ROLE=trade
 WORKER_REQUIRE_TELEGRAM_LIVE_FOR_TRADES=true
+EXECUTION_ENGINE=v2
+FXSOCKET_API_KEY=fxs_live_...
 ```
 
 - Same as running `trade_entry` + `trade_mgmt` in one process (all monitors, all actions).
@@ -446,6 +455,28 @@ See [`docs/telegram-copier-triage.md`](telegram-copier-triage.md) and `scripts/d
 ## Environment reference
 
 See `worker/.env.example` for catch-up, lease, and parse tuning variables.
+
+### Execution engine v2 (global cutover)
+
+Set on **every trade worker** that executes or manages orders (`trade_entry`, `trade_mgmt`, or combined `trade`):
+
+```env
+EXECUTION_ENGINE=v2
+FXSOCKET_API_KEY=fxs_live_...
+```
+
+Then **remove** staged-cutover variables (they are ignored when `EXECUTION_ENGINE=v2` is set, but removing them avoids confusion):
+
+- `EXECUTION_ENGINE_V2_BROKERS`
+- `EXECUTION_ENGINE_V2_USERS`
+
+Optional tuning:
+
+- `V2_RECONCILE_TICK_MS` — v2 background SL/TP loop interval (default **4000** ms). Omit unless you need faster convergence than 4s.
+
+**Requirements:** `FXSOCKET_API_KEY` must be present on trade entry and trade mgmt services. Without it, v2 broker calls fail.
+
+**Rollback:** unset `EXECUTION_ENGINE` (or set `EXECUTION_ENGINE=v1`) and redeploy — all brokers return to the legacy v1 path.
 
 ## FxSocket Brokers sandbox (`/brokers`)
 
