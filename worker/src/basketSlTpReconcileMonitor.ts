@@ -27,8 +27,8 @@ import { normalizeSymbolParams } from './fxsocketClient'
 import { isUserCopierPausedCached } from './copierPause'
 import { brokerSessionUuid } from './tradeExecutor/helpers'
 
-const ACTIVE_MS = monitorActiveIntervalMs('BASKET_RECONCILE_TICK_MS', 2_000)
-const IDLE_MS = monitorIdleIntervalMs('BASKET_RECONCILE_IDLE_MS', 30_000)
+const ACTIVE_MS = monitorActiveIntervalMs('BASKET_RECONCILE_TICK_MS', 5_000)
+const IDLE_MS = monitorIdleIntervalMs('BASKET_RECONCILE_IDLE_MS', 15_000)
 const JOB_BATCH_LIMIT = Math.min(
   80,
   Math.max(5, Number(process.env.BASKET_RECONCILE_SWEEP_BATCH ?? 50)),
@@ -42,7 +42,7 @@ function reconcileTargetsHaveSl(
 }
 const SWEEP_INTERVAL_MS = Math.min(
   600_000,
-  Math.max(30_000, Number(process.env.BASKET_RECONCILE_SWEEP_MS ?? 60_000)),
+  Math.max(30_000, Number(process.env.BASKET_RECONCILE_SWEEP_MS ?? 90_000)),
 )
 /**
  * A job stuck in `claimed` longer than this (worker crashed mid-process, or pod

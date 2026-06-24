@@ -31,11 +31,16 @@ const FXSOCKET_HTTP_CONNECTIONS = Math.max(
   Math.min(512, Number(process.env.FXSOCKET_HTTP_CONNECTIONS ?? 128)),
 )
 
+const FXSOCKET_HTTP_PIPELINING = Math.max(
+  1,
+  Math.min(10, Number(process.env.FXSOCKET_HTTP_PIPELINING ?? 6)),
+)
+
 const KEEP_ALIVE_AGENT = new Agent({
   keepAliveTimeout: 60_000,
   keepAliveMaxTimeout: 600_000,
   connections: FXSOCKET_HTTP_CONNECTIONS,
-  pipelining: 1,
+  pipelining: FXSOCKET_HTTP_PIPELINING,
 })
 
 /** MetaTrader platform for FxSocket per-account REST paths. */

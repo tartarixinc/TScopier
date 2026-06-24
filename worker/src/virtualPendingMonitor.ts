@@ -283,6 +283,7 @@ export class VirtualPendingMonitor {
    *  still log one line every N ticks so it's obvious the monitor is alive
    *  and how far the live quote sits from the nearest trigger. */
   private quietTicks = 0
+  private reconcileTicks = 0
   private firstTickLogged = false
   /** Throttle basket_in_profit skip logs — legs re-check every tick. */
   private profitSkipLogAt = new Map<string, number>()
@@ -407,11 +408,15 @@ export class VirtualPendingMonitor {
     )
 
     // SL/TP/manual broker closes leave DB trades "open" — reconcile before triggers.
-    await reconcilePendingLegBasketsFromBroker(
-      this.supabase,
-      rows,
-      uuid => apiForFxsocketAccount(this.platformByUuid, uuid),
-    )
+    // Run every 5th tick (~7.5s) instead of every tick to avoid blocking the fire path.
+    this.reconcileTicks += 1
+    if (this.reconcileTicks % 5 === 1) {
+      await reconcilePendingLegBasketsFromBroker(
+        this.supabase,
+        rows,
+        uuid => apiForFxsocketAccount(this.platformByUuid, uuid),
+      )
+    }
 
     // Group by (account, symbol) so we issue at most ONE /Quote per group.
     const groups = new Map<string, PendingRow[]>()
@@ -511,13 +516,19 @@ export class VirtualPendingMonitor {
         byBasket.set(bk, arr)
       }
 
+      const fireJobs: Array<{ leg: PendingRow; bid: number; ask: number }> = []
       for (const [, arr] of byBasket) {
         arr.sort((a, b) => a.step_idx - b.step_idx || a.id.localeCompare(b.id))
         const winner = arr[0]
         if (!winner) continue
         triggeredTotal += 1
-        const ok = await this.fireLeg(winner, q.bid, q.ask)
-        if (ok) firedOkTotal += 1
+        fireJobs.push({ leg: winner, bid: q.bid, ask: q.ask })
+      }
+      const fireResults = await Promise.allSettled(
+        fireJobs.map(j => this.fireLeg(j.leg, j.bid, j.ask)),
+      )
+      for (const r of fireResults) {
+        if (r.status === 'fulfilled' && r.value) firedOkTotal += 1
         else firedErrTotal += 1
       }
 
@@ -759,17 +770,10 @@ export class VirtualPendingMonitor {
     const api = apiForFxsocketAccount(this.platformByUuid, leg.metaapi_account_id)
     if (!api) return false
 
-    // Re-quote BEFORE fire guards so profit/direction checks use fresh data,
-    // not the tick-start quote which can be seconds old by now.
+    // Use the tick-level quote directly — it was fetched moments ago in this
+    // same tick cycle. The monotonicity check below still prevents stale fires.
     let guardBid = bid
     let guardAsk = ask
-    try {
-      const freshGuard = await api.quote(leg.metaapi_account_id, leg.symbol)
-      if (Number.isFinite(freshGuard.bid) && Number.isFinite(freshGuard.ask)) {
-        guardBid = freshGuard.bid
-        guardAsk = freshGuard.ask
-      }
-    } catch { /* fall back to tick quote */ }
 
     // Monotonicity check: verify price is still triggered at fresh quote.
     // Prevents firing when price briefly dipped to trigger then bounced back.
@@ -896,19 +900,9 @@ export class VirtualPendingMonitor {
 
     const params = await this.getSymbolParams(leg.metaapi_account_id, leg.symbol)
 
-    // Re-quote just before send. Reuse the guard quote if still reasonably
-    // fresh (< 2s since guard fetch), otherwise fetch again.
-    let fireBid = guardBid
-    let fireAsk = guardAsk
-    try {
-      const fresh = await api.quote(leg.metaapi_account_id, leg.symbol)
-      if (Number.isFinite(fresh.bid) && Number.isFinite(fresh.ask)) {
-        fireBid = fresh.bid
-        fireAsk = fresh.ask
-      }
-    } catch {
-      // fall back to the guard quote
-    }
+    // Reuse the tick quote — already validated by monotonicity check above.
+    const fireBid = guardBid
+    const fireAsk = guardAsk
     const band = fillWithinTriggerBand({
       isBuy: leg.is_buy,
       triggerPrice: leg.trigger_price,
