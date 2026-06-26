@@ -92,8 +92,15 @@ export function userBelongsToShard(userId: string): boolean {
   return shardForUserId(userId, workerConfig.shardCount) === workerConfig.shardId
 }
 
+/**
+ * Build marker so we can confirm which worker build is actually running by
+ * reading worker_session_leases.worker_id. Bump on meaningful worker changes.
+ * Used symmetrically by acquire/renew/release, so changing it is safe.
+ */
+export const WORKER_BUILD_TAG = String(process.env.WORKER_BUILD_TAG ?? 'lease-hardening-1')
+
 export function listenerWorkerId(): string {
-  return `listener:${workerConfig.shardId}:${workerConfig.instanceId}`
+  return `listener:${workerConfig.shardId}:${workerConfig.instanceId}:${WORKER_BUILD_TAG}`
 }
 
 export function leaseRoleLabel(): string {

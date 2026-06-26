@@ -20,7 +20,7 @@ import { OpenTradeReconcileMonitor } from './openTradeReconcileMonitor'
 import { attachBrokerStreamProxy } from './brokerStreamProxy'
 import { getFxsocketStreamManager } from './fxsocketStreamManager'
 import { CopyLimitMonitor } from './copyLimitMonitor'
-import { workerConfig } from './workerConfig'
+import { workerConfig, WORKER_BUILD_TAG } from './workerConfig'
 import { validateListenerTradeShardConfig, validateListenerMgmtShardConfig, validateListenerQueueConfig } from './tradeSignalPush'
 import { SignalQueueConsumerManager } from './queue/signalQueueConsumer'
 import { deployedTradeShardCount, signalQueueConfig, redisQueueConfigured } from './queue/signalQueueConfig'
@@ -138,7 +138,7 @@ async function main() {
 
   console.log(
     `[worker] starting role=${workerConfig.role} shard=${workerConfig.shardId}/${workerConfig.shardCount}`
-    + ` instance=${workerConfig.instanceId}`,
+    + ` instance=${workerConfig.instanceId} build=${WORKER_BUILD_TAG}`,
   )
 
   if (workerConfig.runsListener || workerConfig.runsBacktestHttp) {

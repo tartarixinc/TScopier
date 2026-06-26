@@ -11,7 +11,7 @@
  *   backtest     — Ephemeral Telegram client for backtest sync only
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.workerConfig = void 0;
+exports.WORKER_BUILD_TAG = exports.workerConfig = void 0;
 exports.parseEnvBool = parseEnvBool;
 exports.shardForUserId = shardForUserId;
 exports.userBelongsToShard = userBelongsToShard;
@@ -77,8 +77,14 @@ function userBelongsToShard(userId) {
         return true;
     return shardForUserId(userId, exports.workerConfig.shardCount) === exports.workerConfig.shardId;
 }
+/**
+ * Build marker so we can confirm which worker build is actually running by
+ * reading worker_session_leases.worker_id. Bump on meaningful worker changes.
+ * Used symmetrically by acquire/renew/release, so changing it is safe.
+ */
+exports.WORKER_BUILD_TAG = String(process.env.WORKER_BUILD_TAG ?? 'lease-hardening-1');
 function listenerWorkerId() {
-    return `listener:${exports.workerConfig.shardId}:${exports.workerConfig.instanceId}`;
+    return `listener:${exports.workerConfig.shardId}:${exports.workerConfig.instanceId}:${exports.WORKER_BUILD_TAG}`;
 }
 function leaseRoleLabel() {
     if (exports.workerConfig.role === 'listener')

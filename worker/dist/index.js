@@ -126,7 +126,7 @@ async function main() {
         }
     }
     console.log(`[worker] starting role=${workerConfig_1.workerConfig.role} shard=${workerConfig_1.workerConfig.shardId}/${workerConfig_1.workerConfig.shardCount}`
-        + ` instance=${workerConfig_1.workerConfig.instanceId}`);
+        + ` instance=${workerConfig_1.workerConfig.instanceId} build=${workerConfig_1.WORKER_BUILD_TAG}`);
     if (workerConfig_1.workerConfig.runsListener || workerConfig_1.workerConfig.runsBacktestHttp) {
         authService = new authService_1.AuthService(supabase, sessionManager);
         httpServer = (0, httpServer_1.startHttpServer)(authService, sessionManager);
