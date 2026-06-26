@@ -111,7 +111,6 @@ export function AppLayout() {
           { to: '/dashboard', label: t.nav.items.dashboard },
           { to: '/brokers', label: t.nav.items.brokers },
           { to: '/account-trades', label: t.nav.items.trades, showOpenTradesIndicator: true },
-          { to: '/activities', label: t.nav.items.management },
         ],
       },
       {
@@ -119,6 +118,7 @@ export function AppLayout() {
         items: [
           { to: '/channels', label: t.nav.items.channels },
           { to: '/backtest', label: t.nav.items.backtest },
+          { to: '/activities', label: t.nav.items.management },
           { to: '/copier-logs', label: t.nav.items.copierLogs },
           { to: '/manage-signals', label: t.nav.items.signalHistory },
           { to: '/performance', label: t.nav.items.performance },
