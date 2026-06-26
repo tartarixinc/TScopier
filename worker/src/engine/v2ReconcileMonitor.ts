@@ -56,8 +56,15 @@ function deepestTp(tpLevels: number[], isBuy: boolean): number | null {
  *    comes from an explicit, newer instruction (basket_target / mgmt_signal), which
  *    resolveEffectiveBasketStops only surfaces when it is newer than the breakeven;
  *    then the latest instruction wins for the whole basket.
- *  - TP: keep the leg's existing broker TP (never repaint a hit/active target); only
- *    fill a naked leg (no broker TP) with the deepest ladder TP.
+ *  - TP: the DB leg's TP is the basket's INTENDED per-leg target (set by the
+ *    distributed plan, a management modify, or the merge apply) and is authoritative
+ *    over the live broker snapshot. Preferring it (a) stops a reconcile tick that
+ *    races an in-flight distribution from collapsing every leg to the deepest ladder
+ *    TP when a leg still looks naked on the broker, and (b) lets the tick SELF-HEAL
+ *    broker drift back to the intended distributed TP instead of getting stuck on a
+ *    once-applied deepest TP. Order: intended DB TP > live broker TP > deepest ladder
+ *    TP (only for a leg that is genuinely naked everywhere). A hit TP closes its leg,
+ *    so an open leg's intended TP is never a taken target.
  */
 export function buildDesiredLegTargets(args: {
   legs: BasketOpenLeg[]
@@ -90,8 +97,9 @@ export function buildDesiredLegTargets(args: {
       sl = explicitBasketInstruction ? (baseSl ?? beSl) : beSl
     }
 
+    const intendedTp = leg.tp != null && leg.tp > 0 ? leg.tp : null
     const existingTp = o.takeProfit != null && o.takeProfit > 0 ? o.takeProfit : null
-    const fillTp = existingTp ?? deepestTp(args.effectiveTpLevels, args.isBuy)
+    const fillTp = intendedTp ?? existingTp ?? deepestTp(args.effectiveTpLevels, args.isBuy)
 
     out.push({ ticket, stoploss: sl, takeProfit: fillTp })
   }

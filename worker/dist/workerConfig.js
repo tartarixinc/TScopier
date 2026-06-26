@@ -82,7 +82,7 @@ function userBelongsToShard(userId) {
  * reading worker_session_leases.worker_id. Bump on meaningful worker changes.
  * Used symmetrically by acquire/renew/release, so changing it is safe.
  */
-exports.WORKER_BUILD_TAG = String(process.env.WORKER_BUILD_TAG ?? 'merge-tp-distribute-1');
+exports.WORKER_BUILD_TAG = String(process.env.WORKER_BUILD_TAG ?? 'reconcile-tp-dbintent-1');
 function listenerWorkerId() {
     return `listener:${exports.workerConfig.shardId}:${exports.workerConfig.instanceId}:${exports.WORKER_BUILD_TAG}`;
 }

@@ -35,15 +35,43 @@ describe('buildDesiredLegTargets', () => {
     assert.equal(t[0]!.takeProfit, 4089, 'present TP preserved, not replaced by ladder')
   })
 
-  it('fills a naked leg (no broker TP) with the deepest ladder TP', () => {
+  it('fills a leg naked everywhere (no DB TP, no broker TP) with the deepest ladder TP', () => {
     const t = buildDesiredLegTargets({
-      legs: [leg({ metaapi_order_id: '100' })],
+      legs: [leg({ metaapi_order_id: '100', tp: null })],
       snapshot: [open(100, { takeProfit: null })],
       effectiveSl: 4090,
       effectiveTpLevels: [4083, 4095],
       isBuy: true,
     })
     assert.equal(t[0]!.takeProfit, 4095, 'deepest (farthest) TP for a buy')
+  })
+
+  it('prefers the intended DB TP over a drifted broker TP (self-heals a collapsed distribution)', () => {
+    // The basket distributed TP1=4083 to this leg, but a racing tick previously
+    // pushed the deepest TP (4095) onto the broker. The reconciler must restore
+    // the intended distributed TP, not keep the broker's collapsed deepest.
+    const t = buildDesiredLegTargets({
+      legs: [leg({ metaapi_order_id: '100', tp: 4083 })],
+      snapshot: [open(100, { takeProfit: 4095 })],
+      effectiveSl: 4090,
+      effectiveTpLevels: [4083, 4089, 4095],
+      isBuy: true,
+    })
+    assert.equal(t[0]!.takeProfit, 4083, 'intended DB TP wins over drifted broker TP')
+  })
+
+  it('uses the intended DB TP for a leg still naked on the broker (race with in-flight distribution)', () => {
+    // mgmt modify wrote the distributed TP to the DB but the broker snapshot was
+    // captured before the broker modify landed. Without this the tick would fill
+    // the deepest TP and collapse the distribution.
+    const t = buildDesiredLegTargets({
+      legs: [leg({ metaapi_order_id: '100', tp: 4089 })],
+      snapshot: [open(100, { takeProfit: null })],
+      effectiveSl: 4090,
+      effectiveTpLevels: [4083, 4089, 4095],
+      isBuy: true,
+    })
+    assert.equal(t[0]!.takeProfit, 4089, 'naked broker leg gets the intended DB TP, not the deepest')
   })
 
   it('enforces SL on a naked leg (broker SL missing) using the effective SL', () => {
