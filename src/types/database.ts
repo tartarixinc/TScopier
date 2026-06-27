@@ -23,6 +23,26 @@ export interface Database {
         Insert: Omit<TelegramChannel, 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Omit<TelegramChannel, 'id' | 'created_at' | 'updated_at'>>
       }
+      signal_channels: {
+        Row: SignalChannel
+        Insert: Omit<SignalChannel, 'id' | 'created_at' | 'updated_at' | 'first_seen_at'> & { first_seen_at?: string }
+        Update: Partial<Omit<SignalChannel, 'id' | 'created_at' | 'first_seen_at'>>
+      }
+      channel_messages: {
+        Row: ChannelMessage
+        Insert: Omit<ChannelMessage, 'id' | 'created_at' | 'received_at'> & { received_at?: string }
+        Update: Partial<Omit<ChannelMessage, 'id' | 'created_at'>>
+      }
+      channel_signals: {
+        Row: ChannelSignal
+        Insert: Omit<ChannelSignal, 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Omit<ChannelSignal, 'id' | 'created_at'>>
+      }
+      channel_listener_leases: {
+        Row: ChannelListenerLease
+        Insert: Omit<ChannelListenerLease, 'updated_at'> & { updated_at?: string }
+        Update: Partial<Omit<ChannelListenerLease, 'signal_channel_id'>>
+      }
       channel_signal_profiles: {
         Row: ChannelSignalProfile
         Insert: Omit<ChannelSignalProfile, 'id' | 'created_at' | 'updated_at' | 'analyzed_at'>
@@ -445,6 +465,8 @@ export interface TelegramChannel {
   channel_username: string
   display_name: string
   is_active: boolean
+  /** FK to permanent global signal_channels registry row. */
+  signal_channel_id?: string | null
   lot_size_override: number | null
   pip_tolerance_override: number | null
   channel_keywords?: Json | null
@@ -462,6 +484,8 @@ export interface Signal {
   id: string
   user_id: string
   channel_id: string | null
+  /** Optional link to canonical channel_signals row. */
+  channel_signal_id?: string | null
   raw_message: string
   raw_image_url: string | null
   parsed_data: Json | null
@@ -483,6 +507,7 @@ export interface ChannelSignalProfile {
   id: string
   user_id: string
   channel_id: string
+  signal_channel_id?: string | null
   lookback_days: number
   sample_size: number
   signal_type: string
@@ -496,6 +521,54 @@ export interface ChannelSignalProfile {
   meta: Json
   analyzed_at: string
   created_at: string
+  updated_at: string
+}
+
+export interface SignalChannel {
+  id: string
+  telegram_chat_id: string
+  channel_username: string
+  display_name: string
+  first_seen_at: string
+  last_live_at: string | null
+  subscriber_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface ChannelMessage {
+  id: string
+  signal_channel_id: string
+  telegram_message_id: string
+  raw_message: string
+  edit_date: string | null
+  reply_to_message_id: string | null
+  received_at: string
+  created_at: string
+}
+
+export interface ChannelSignal {
+  id: string
+  signal_channel_id: string
+  telegram_message_id: string
+  raw_message: string
+  parsed_data: Json | null
+  parent_message_id: string | null
+  status: string
+  skip_reason: string | null
+  pipeline_ts: Json | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ChannelListenerLease {
+  signal_channel_id: string
+  reader_user_id: string
+  worker_id: string
+  role: string
+  shard_id: number
+  shard_count: number
+  expires_at: string
   updated_at: string
 }
 

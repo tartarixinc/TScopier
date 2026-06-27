@@ -60,6 +60,16 @@ import {
   telegramMessageText,
 } from './signalTelegramReconcile'
 import { evaluateParsedSignalExecutionEligibility } from './signalExecutionEligibility'
+import {
+  handlePostParseChannelIngest,
+  isChannelRowPassive,
+  refreshPassiveSignalChannels,
+  resolveSignalChannelIdForRow,
+  shouldSkipPassiveChannelIngest,
+  syncUserChannelReaderLeases,
+} from './channelListenerIntegration'
+import { channelListenerShadowMode } from './channelListenerConfig'
+import { inheritChannelHistory } from './channelRegistry'
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? ''
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
@@ -188,6 +198,7 @@ interface ChannelRow {
   id: string
   channel_id: string
   channel_username: string
+  signal_channel_id?: string | null
   last_seen_message_id: number | string | null
   last_seen_at?: string | null
   last_live_at?: string | null
@@ -306,6 +317,8 @@ export class UserListener {
   private userProfilesCopierPauseChannel: ReturnType<SupabaseClient['channel']> | null = null
   /** Serializes message revision apply per channel row + telegram message id. */
   private revisionChains = new Map<string, Promise<boolean>>()
+  /** signal_channel_ids where canonical feed is live — skip poll/reconcile in primary mode. */
+  private passiveSignalChannelIds = new Set<string>()
 
   constructor(
     userId: string,
@@ -358,6 +371,7 @@ export class UserListener {
     // Warm gramjs entity cache so NewMessage events fire for all channels.
     await this.warmEntityCache()
     await this.refreshChannelSubscription()
+    await this.refreshChannelListenerState()
     this.scheduleCatchUpOnStart()
 
     this.startWatchdog()
@@ -427,11 +441,28 @@ export class UserListener {
     }
   }
 
+  getClient(): TelegramClient {
+    return this.client
+  }
+
+  /** Public wrapper for channel reconcile monitor peer resolution. */
+  async resolveChannelPeerForReconcile(row: ChannelRow): Promise<unknown> {
+    return this.resolveChannelPeer(row)
+  }
+
   /** Used by session manager to skip lease renew when listener is stale. */
   isListenerHealthy(staleMs: number): boolean {
     const now = Date.now()
     const lastActivity = Math.max(this.lastEventAt, this.lastSuccessfulPollAt)
     return this.isConnected && (lastActivity === 0 || now - lastActivity < staleMs)
+  }
+
+  private async refreshChannelListenerState(): Promise<void> {
+    this.passiveSignalChannelIds = await refreshPassiveSignalChannels(this.supabase, this.userId)
+    const acquired = await syncUserChannelReaderLeases(this.supabase, this.userId)
+    if (acquired > 0) {
+      console.log(`[userListener] acquired ${acquired} channel reader lease(s) user=${this.userId}`)
+    }
   }
 
   // ── channel subscription ──────────────────────────────────────────────
@@ -454,9 +485,11 @@ export class UserListener {
     const previous = new Set(this.monitoredChannels)
     await this.refreshChannelSubscription()
 
+    await this.refreshChannelListenerState()
+
     const { data: rows } = await this.supabase
       .from('telegram_channels')
-      .select('id, channel_id, channel_username, last_seen_message_id, last_seen_at, last_live_at')
+      .select('id, channel_id, channel_username, signal_channel_id, last_seen_message_id, last_seen_at, last_live_at')
       .eq('user_id', this.userId)
       .eq('is_active', true)
 
@@ -476,6 +509,11 @@ export class UserListener {
     for (const key of added) {
       const row = lookup.get(key)
       if (row) {
+        if (row.signal_channel_id) {
+          void inheritChannelHistory(this.supabase, this.userId, row.signal_channel_id).catch(err =>
+            console.warn(`[userListener] inheritChannelHistory failed channel=${row.id}:`, err),
+          )
+        }
         await this.warmChannelEntity(row).catch(err =>
           console.warn(`[userListener] entity warmup failed channel=${row.id}:`, err),
         )
@@ -1596,6 +1634,20 @@ export class UserListener {
   ): Promise<boolean> {
     if (await this.skipMessageWhileCopierPaused(channelRow, String(message.id))) return false
 
+    const signalChannelId = await resolveSignalChannelIdForRow(this.supabase, channelRow)
+    if (signalChannelId) {
+      channelRow.signal_channel_id = signalChannelId
+      if (await shouldSkipPassiveChannelIngest(
+        this.supabase,
+        this.userId,
+        signalChannelId,
+        this.passiveSignalChannelIds,
+      )) {
+        incMetric('channel_passive_ingest_skipped')
+        return false
+      }
+    }
+
     const messageId = String(message.id)
     const rawMessage = telegramMessageText(message)
     const isReply = !!message.replyTo
@@ -1768,6 +1820,24 @@ export class UserListener {
       : parseResult
 
     if (effectiveParseResult.status !== 'parsed') {
+      if (signalChannelId) {
+        const channelResult = await handlePostParseChannelIngest({
+          supabase: this.supabase,
+          userId: this.userId,
+          channelRow,
+          signalChannelId,
+          messageId,
+          rawMessage,
+          replyToMessageId,
+          parseResult: {
+            parsed: effectiveParseResult.parsed as unknown as Record<string, unknown>,
+            status: effectiveParseResult.status,
+            skip_reason: effectiveParseResult.skip_reason,
+          },
+          pipelineTs: pipelineTs as Record<string, unknown>,
+        })
+        if (channelResult.skipPerUserIngest) return true
+      }
       void this.persistSignalBackground({
         signalId,
         channelRow,
@@ -1779,6 +1849,33 @@ export class UserListener {
         parseResult: effectiveParseResult,
       })
       return true
+    }
+
+    if (signalChannelId) {
+      const channelResult = await handlePostParseChannelIngest({
+        supabase: this.supabase,
+        userId: this.userId,
+        channelRow,
+        signalChannelId,
+        messageId,
+        rawMessage,
+        replyToMessageId,
+        parseResult: {
+          parsed: effectiveParseResult.parsed as unknown as Record<string, unknown>,
+          status: effectiveParseResult.status,
+          skip_reason: effectiveParseResult.skip_reason,
+        },
+        pipelineTs: pipelineTs as Record<string, unknown>,
+        dispatch: this.onSignalParsed ?? undefined,
+      })
+      if (channelResult.skipPerUserIngest) {
+        this.liveMessageDedup.set(dedupKey, Date.now())
+        await this.bumpLastSeen(channelRow.id, messageId)
+        return true
+      }
+      if (channelResult.canonicalWritten && channelListenerShadowMode()) {
+        // shadow mode: fall through to per-user ingest below
+      }
     }
 
     pipelineTs.t_dispatch_sent = Date.now()
@@ -2162,6 +2259,13 @@ export class UserListener {
     source: string,
   ): Promise<SignalReconcileStats> {
     const stats: SignalReconcileStats = { checked: 0, mismatches: 0, revised: 0, errors: 0 }
+    const signalChannelId = channelRow.signal_channel_id
+      ?? await resolveSignalChannelIdForRow(this.supabase, channelRow)
+    if (isChannelRowPassive(signalChannelId, this.passiveSignalChannelIds)) {
+      incMetric('channel_passive_reconcile_skipped')
+      return stats
+    }
+
     let peer: unknown
     try {
       peer = await this.resolveChannelPeer(channelRow)
@@ -2487,7 +2591,7 @@ export class UserListener {
     if (!this.isConnected) return
     const { data: rows } = await this.supabase
       .from('telegram_channels')
-      .select('id, channel_id, channel_username, last_seen_message_id, last_seen_at, last_live_at')
+      .select('id, channel_id, channel_username, signal_channel_id, last_seen_message_id, last_seen_at, last_live_at')
       .eq('user_id', this.userId)
       .eq('is_active', true)
 
@@ -2503,6 +2607,13 @@ export class UserListener {
    * (common when the linked account broadcasts to its own channel).
    */
   private async pollChannelNewMessages(row: ChannelRow): Promise<void> {
+    const signalChannelId = row.signal_channel_id
+      ?? await resolveSignalChannelIdForRow(this.supabase, row)
+    if (isChannelRowPassive(signalChannelId, this.passiveSignalChannelIds)) {
+      incMetric('channel_passive_poll_skipped')
+      return
+    }
+
     let peer: unknown
     try {
       peer = await this.resolveChannelPeer(row)

@@ -20,6 +20,8 @@ export type ListenerEventType =
   | 'signal_reconcile_mismatch'
   | 'signal_reconcile_sweep_error'
   | 'signal_reconcile_checked'
+  | 'channel_shadow_mismatch'
+  | 'channel_reconcile_mismatch'
 
 export async function persistListenerEvent(
   supabase: SupabaseClient,

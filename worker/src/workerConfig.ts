@@ -7,7 +7,8 @@
  *   trade        — TradeExecutor (entries + management) + all monitors
  *   trade_entry  — buy/sell only + execution-side monitors (virtual pending, CWE, …)
  *   trade_mgmt   — management only + reconcile / auto-mgmt monitors
- *   backtest     — Ephemeral Telegram client for backtest sync only
+ *   backtest          — Ephemeral Telegram client for backtest sync only
+ *   channel_listener  — Channel-scoped ingest sharded by signal_channel_id
  */
 
 import { tradeExecutorModeForRole, type TradeExecutorMode } from './tradeSignalActions'
@@ -15,6 +16,7 @@ import { tradeExecutorModeForRole, type TradeExecutorMode } from './tradeSignalA
 type WorkerRole =
   | 'all'
   | 'listener'
+  | 'channel_listener'
   | 'trade'
   | 'trade_entry'
   | 'trade_mgmt'
@@ -24,6 +26,7 @@ function parseRole(raw: string | undefined): WorkerRole {
   const v = String(raw ?? 'all').toLowerCase().trim()
   if (
     v === 'listener'
+    || v === 'channel_listener'
     || v === 'trade'
     || v === 'trade_entry'
     || v === 'trade_mgmt'
@@ -51,7 +54,8 @@ export const workerConfig = {
   ),
   shardId: Math.max(0, Math.floor(Number(process.env.WORKER_SHARD_ID ?? 0))),
   shardCount: Math.max(1, Math.floor(Number(process.env.WORKER_SHARD_COUNT ?? 1))),
-  runsListener: role === 'all' || role === 'listener',
+  runsListener: role === 'all' || role === 'listener' || role === 'channel_listener',
+  runsChannelListener: role === 'all' || role === 'channel_listener',
   runsTrade: runsTradeRole,
   runsBrokerSessionHeartbeat,
   tradeExecutorMode: tradeExecutorModeForRole(role) as TradeExecutorMode,
@@ -97,14 +101,27 @@ export function userBelongsToShard(userId: string): boolean {
  * reading worker_session_leases.worker_id. Bump on meaningful worker changes.
  * Used symmetrically by acquire/renew/release, so changing it is safe.
  */
-export const WORKER_BUILD_TAG = String(process.env.WORKER_BUILD_TAG ?? 'reconcile-tp-dbintent-1')
+export const WORKER_BUILD_TAG = String(process.env.WORKER_BUILD_TAG ?? 'channel-scoped-listener-1')
 
 export function listenerWorkerId(): string {
   return `listener:${workerConfig.shardId}:${workerConfig.instanceId}:${WORKER_BUILD_TAG}`
 }
 
+export function channelListenerWorkerId(): string {
+  return `channel_listener:${workerConfig.shardId}:${workerConfig.instanceId}:${WORKER_BUILD_TAG}`
+}
+
+export function shardForSignalChannelId(signalChannelId: string, shardCount: number): number {
+  let h = 0
+  for (let i = 0; i < signalChannelId.length; i++) {
+    h = (h * 31 + signalChannelId.charCodeAt(i)) | 0
+  }
+  return Math.abs(h) % Math.max(1, shardCount)
+}
+
 export function leaseRoleLabel(): string {
   if (workerConfig.role === 'listener') return 'listener'
+  if (workerConfig.role === 'channel_listener') return 'channel_listener'
   if (workerConfig.role === 'all') return 'listener'
   return workerConfig.role
 }

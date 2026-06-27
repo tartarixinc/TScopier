@@ -11,6 +11,7 @@ import { Toggle } from '../../components/ui/Toggle'
 import { Button } from '../../components/ui/Button'
 import { Alert } from '../../components/ui/Alert'
 import { Input } from '../../components/ui/Input'
+import { prepareChannelSubscriptionUpsert } from '../../lib/signalChannelRegistry'
 import type { TelegramChannel } from '../../types/database'
 
 export function ChannelsPage() {
@@ -59,15 +60,21 @@ export function ChannelsPage() {
     }
 
     setSaving(true)
+    const channelId = newChannel.channel_id.trim() || newChannel.channel_username.trim()
+    const prepared = await prepareChannelSubscriptionUpsert(supabase, {
+      userId: user!.id,
+      telegramChatId: channelId,
+      channelUsername: newChannel.channel_username.trim(),
+      displayName: newChannel.display_name.trim(),
+    })
+    if (prepared.error) {
+      setSaving(false)
+      setError(prepared.error)
+      return
+    }
     const { data, error: dbErr } = await supabase
       .from('telegram_channels')
-      .insert({
-        user_id: user!.id,
-        channel_id: newChannel.channel_id.trim() || newChannel.channel_username.trim(),
-        channel_username: newChannel.channel_username.trim().replace(/^@/, ''),
-        display_name: newChannel.display_name.trim(),
-        is_active: true,
-      })
+      .insert(prepared.row)
       .select('*')
       .single()
 

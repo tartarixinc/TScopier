@@ -4,7 +4,7 @@ import { supabase } from '../../../lib/supabase'
 import { Card } from '../../../components/ui/Card'
 import { Button } from '../../../components/ui/Button'
 import { Alert } from '../../../components/ui/Alert'
-import { Badge } from '../../../components/ui/Badge'
+import { prepareChannelSubscriptionUpsert } from '../../../lib/signalChannelRegistry'
 import { Radio, Check } from 'lucide-react'
 
 interface TgChannel {
@@ -75,15 +75,21 @@ export function ChannelSelectStep({ onDone }: Props) {
     setSaving(true)
     const userId = (await supabase.auth.getUser()).data.user!.id
 
-    const rows = channels
-      .filter(c => selected.has(c.id))
-      .map(c => ({
-        user_id: userId,
-        channel_id: c.id,
-        channel_username: c.username || '',
-        display_name: c.title,
-        is_active: true,
-      }))
+    const rows: Record<string, unknown>[] = []
+    for (const c of channels.filter(ch => selected.has(ch.id))) {
+      const prepared = await prepareChannelSubscriptionUpsert(supabase, {
+        userId,
+        telegramChatId: c.id,
+        channelUsername: c.username || '',
+        displayName: c.title,
+      })
+      if (prepared.error) {
+        setSaving(false)
+        setError(prepared.error)
+        return
+      }
+      rows.push(prepared.row)
+    }
 
     const { error: dbErr } = await supabase
       .from('telegram_channels')

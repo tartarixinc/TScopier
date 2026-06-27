@@ -16,6 +16,10 @@ import { parallelMap } from './parallelPool'
 import type { TradeExecutor } from './tradeExecutor'
 import type { SignalRow } from './tradeExecutor/types'
 import { dispatchPriorityForAction, parsedAction } from './tradeSignalActions'
+import { ChannelListenerManager } from './channelListenerManager'
+import { ChannelReconcileMonitor } from './channelReconcileMonitor'
+import { isChannelFeedLiveForSubscriber } from './channelFeedGate'
+import { channelListenerPrimaryMode } from './channelListenerConfig'
 
 /**
  * Race a promise against a timeout so a single wedged network call cannot
@@ -73,9 +77,46 @@ export class UserSessionManager {
   private authGuard: ((userId: string) => boolean) | null = null
   /** Guards renewAllLeases so slow cycles cannot stack up and exhaust sockets. */
   private renewLeasesInFlight = false
+  private channelListenerManager: ChannelListenerManager | null = null
+  private channelReconcileMonitor: ChannelReconcileMonitor | null = null
 
   constructor(supabase: SupabaseClient) {
     this.supabase = supabase
+    this.channelListenerManager = new ChannelListenerManager(supabase)
+    this.channelReconcileMonitor = new ChannelReconcileMonitor(
+      supabase,
+      async (readerUserId, signalChannelId, telegramChatId) => {
+        const listener = this.listeners.get(readerUserId)
+        if (!listener?.isTelegramConnected()) return null
+        const row = {
+          id: '',
+          channel_id: telegramChatId,
+          channel_username: '',
+          signal_channel_id: signalChannelId,
+          last_seen_message_id: null,
+        }
+        return {
+          client: listener.getClient(),
+          resolvePeer: () => listener.resolveChannelPeerForReconcile(row),
+        }
+      },
+    )
+  }
+
+  getListener(userId: string): UserListener | undefined {
+    return this.listeners.get(userId)
+  }
+
+  async startChannelListenerServices(): Promise<void> {
+    if (!this.channelListenerManager) return
+    await this.channelListenerManager.startup()
+    this.channelListenerManager.startPeriodicSync()
+    this.channelReconcileMonitor?.start()
+  }
+
+  stopChannelListenerServices(): void {
+    this.channelListenerManager?.stop()
+    this.channelReconcileMonitor?.stop()
   }
 
   /** In-memory pending auth check (send_code → verify_code window on this process). */
@@ -383,8 +424,24 @@ export class UserSessionManager {
     return false
   }
 
-  /** Async lease check for trade-only workers. */
-  async canExecuteTelegramCopierTradesAsync(userId: string): Promise<boolean> {
+  /** Async lease check for trade-only workers; canonical feed satisfies gate in primary mode. */
+  async canExecuteTelegramCopierTradesAsync(
+    userId: string,
+    subscriptionChannelId?: string | null,
+  ): Promise<boolean> {
+    if (subscriptionChannelId && channelListenerPrimaryMode()) {
+      const { data } = await this.supabase
+        .from('telegram_channels')
+        .select('signal_channel_id')
+        .eq('id', subscriptionChannelId)
+        .maybeSingle()
+      const signalChannelId = (data as { signal_channel_id?: string | null } | null)?.signal_channel_id
+      if (signalChannelId) {
+        const feedLive = await isChannelFeedLiveForSubscriber(this.supabase, userId, signalChannelId)
+        if (feedLive) return true
+      }
+    }
+
     if (workerConfig.runsListener) {
       return this.canExecuteTelegramCopierTrades(userId)
     }

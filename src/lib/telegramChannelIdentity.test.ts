@@ -4,6 +4,7 @@ import {
   hasValidTelegramChannelIdentity,
   isNumericTelegramChatId,
   isValidTelegramUsername,
+  normalizeTelegramChatId,
   validateManualChannelInput,
 } from './telegramChannelIdentity'
 
@@ -11,6 +12,11 @@ test('isNumericTelegramChatId accepts Telegram chat ids', () => {
   assert.equal(isNumericTelegramChatId('-1001234567890'), true)
   assert.equal(isNumericTelegramChatId('1234567890'), true)
   assert.equal(isNumericTelegramChatId('Test Signal Channel'), false)
+})
+
+test('normalizeTelegramChatId matches worker canonical form', () => {
+  assert.equal(normalizeTelegramChatId('1234567890'), '-1001234567890')
+  assert.equal(normalizeTelegramChatId('-1001234567890'), '-1001234567890')
 })
 
 test('isValidTelegramUsername rejects display names and spaces', () => {

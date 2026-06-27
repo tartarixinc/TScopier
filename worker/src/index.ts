@@ -226,6 +226,9 @@ async function main() {
     void sessionManager.loadAll().catch(err =>
       console.error('[worker] loadAll failed:', err instanceof Error ? err.message : err),
     )
+    void sessionManager.startChannelListenerServices().catch(err =>
+      console.error('[worker] channel listener services failed:', err instanceof Error ? err.message : err),
+    )
   } else if (workerConfig.runsBacktestHttp) {
     console.log('[worker] backtest-only: no live Telegram listeners loaded')
   }

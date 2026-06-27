@@ -43,6 +43,10 @@ const workerMetrics_1 = require("./workerMetrics");
 const workerConfig_1 = require("./workerConfig");
 const parallelPool_1 = require("./parallelPool");
 const tradeSignalActions_1 = require("./tradeSignalActions");
+const channelListenerManager_1 = require("./channelListenerManager");
+const channelReconcileMonitor_1 = require("./channelReconcileMonitor");
+const channelFeedGate_1 = require("./channelFeedGate");
+const channelListenerConfig_1 = require("./channelListenerConfig");
 /**
  * Race a promise against a timeout so a single wedged network call cannot
  * stall a whole loop forever. Does not cancel the underlying work (the
@@ -95,7 +99,40 @@ class UserSessionManager {
         this.authGuard = null;
         /** Guards renewAllLeases so slow cycles cannot stack up and exhaust sockets. */
         this.renewLeasesInFlight = false;
+        this.channelListenerManager = null;
+        this.channelReconcileMonitor = null;
         this.supabase = supabase;
+        this.channelListenerManager = new channelListenerManager_1.ChannelListenerManager(supabase);
+        this.channelReconcileMonitor = new channelReconcileMonitor_1.ChannelReconcileMonitor(supabase, async (readerUserId, signalChannelId, telegramChatId) => {
+            const listener = this.listeners.get(readerUserId);
+            if (!listener?.isTelegramConnected())
+                return null;
+            const row = {
+                id: '',
+                channel_id: telegramChatId,
+                channel_username: '',
+                signal_channel_id: signalChannelId,
+                last_seen_message_id: null,
+            };
+            return {
+                client: listener.getClient(),
+                resolvePeer: () => listener.resolveChannelPeerForReconcile(row),
+            };
+        });
+    }
+    getListener(userId) {
+        return this.listeners.get(userId);
+    }
+    async startChannelListenerServices() {
+        if (!this.channelListenerManager)
+            return;
+        await this.channelListenerManager.startup();
+        this.channelListenerManager.startPeriodicSync();
+        this.channelReconcileMonitor?.start();
+    }
+    stopChannelListenerServices() {
+        this.channelListenerManager?.stop();
+        this.channelReconcileMonitor?.stop();
     }
     /** In-memory pending auth check (send_code → verify_code window on this process). */
     setAuthGuard(fn) {
@@ -353,8 +390,21 @@ class UserSessionManager {
         }
         return false;
     }
-    /** Async lease check for trade-only workers. */
-    async canExecuteTelegramCopierTradesAsync(userId) {
+    /** Async lease check for trade-only workers; canonical feed satisfies gate in primary mode. */
+    async canExecuteTelegramCopierTradesAsync(userId, subscriptionChannelId) {
+        if (subscriptionChannelId && (0, channelListenerConfig_1.channelListenerPrimaryMode)()) {
+            const { data } = await this.supabase
+                .from('telegram_channels')
+                .select('signal_channel_id')
+                .eq('id', subscriptionChannelId)
+                .maybeSingle();
+            const signalChannelId = data?.signal_channel_id;
+            if (signalChannelId) {
+                const feedLive = await (0, channelFeedGate_1.isChannelFeedLiveForSubscriber)(this.supabase, userId, signalChannelId);
+                if (feedLive)
+                    return true;
+            }
+        }
         if (workerConfig_1.workerConfig.runsListener) {
             return this.canExecuteTelegramCopierTrades(userId);
         }

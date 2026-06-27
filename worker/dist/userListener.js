@@ -26,6 +26,9 @@ const aiParseModification_1 = require("./aiParseModification");
 const aiParseEntry_1 = require("./aiParseEntry");
 const signalTelegramReconcile_1 = require("./signalTelegramReconcile");
 const signalExecutionEligibility_1 = require("./signalExecutionEligibility");
+const channelListenerIntegration_1 = require("./channelListenerIntegration");
+const channelListenerConfig_1 = require("./channelListenerConfig");
+const channelRegistry_1 = require("./channelRegistry");
 const SUPABASE_URL = process.env.SUPABASE_URL ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
 const PARSE_SIGNAL_URL = process.env.PARSE_SIGNAL_URL ?? (SUPABASE_URL ? `${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/parse-signal` : '');
@@ -186,6 +189,8 @@ class UserListener {
         this.userProfilesCopierPauseChannel = null;
         /** Serializes message revision apply per channel row + telegram message id. */
         this.revisionChains = new Map();
+        /** signal_channel_ids where canonical feed is live — skip poll/reconcile in primary mode. */
+        this.passiveSignalChannelIds = new Set();
         this.userId = userId;
         this.supabase = supabase;
         this.client = adoptedClient ?? (0, telegramClient_1.buildClient)(sessionString);
@@ -232,6 +237,7 @@ class UserListener {
         // Warm gramjs entity cache so NewMessage events fire for all channels.
         await this.warmEntityCache();
         await this.refreshChannelSubscription();
+        await this.refreshChannelListenerState();
         this.scheduleCatchUpOnStart();
         this.startWatchdog();
         this.startSafetyPoll();
@@ -294,11 +300,25 @@ class UserListener {
             consecutive_probe_failures: this.consecutiveProbeFailures,
         };
     }
+    getClient() {
+        return this.client;
+    }
+    /** Public wrapper for channel reconcile monitor peer resolution. */
+    async resolveChannelPeerForReconcile(row) {
+        return this.resolveChannelPeer(row);
+    }
     /** Used by session manager to skip lease renew when listener is stale. */
     isListenerHealthy(staleMs) {
         const now = Date.now();
         const lastActivity = Math.max(this.lastEventAt, this.lastSuccessfulPollAt);
         return this.isConnected && (lastActivity === 0 || now - lastActivity < staleMs);
+    }
+    async refreshChannelListenerState() {
+        this.passiveSignalChannelIds = await (0, channelListenerIntegration_1.refreshPassiveSignalChannels)(this.supabase, this.userId);
+        const acquired = await (0, channelListenerIntegration_1.syncUserChannelReaderLeases)(this.supabase, this.userId);
+        if (acquired > 0) {
+            console.log(`[userListener] acquired ${acquired} channel reader lease(s) user=${this.userId}`);
+        }
     }
     // ── channel subscription ──────────────────────────────────────────────
     /**
@@ -319,9 +339,10 @@ class UserListener {
         }
         const previous = new Set(this.monitoredChannels);
         await this.refreshChannelSubscription();
+        await this.refreshChannelListenerState();
         const { data: rows } = await this.supabase
             .from('telegram_channels')
-            .select('id, channel_id, channel_username, last_seen_message_id, last_seen_at, last_live_at')
+            .select('id, channel_id, channel_username, signal_channel_id, last_seen_message_id, last_seen_at, last_live_at')
             .eq('user_id', this.userId)
             .eq('is_active', true);
         const added = [...this.monitoredChannels].filter(c => !previous.has(c));
@@ -339,6 +360,9 @@ class UserListener {
         for (const key of added) {
             const row = lookup.get(key);
             if (row) {
+                if (row.signal_channel_id) {
+                    void (0, channelRegistry_1.inheritChannelHistory)(this.supabase, this.userId, row.signal_channel_id).catch(err => console.warn(`[userListener] inheritChannelHistory failed channel=${row.id}:`, err));
+                }
                 await this.warmChannelEntity(row).catch(err => console.warn(`[userListener] entity warmup failed channel=${row.id}:`, err));
                 await this.catchUpChannel(row).catch(err => console.error(`[userListener] catchUp (added) failed for ${row.id}:`, err));
             }
@@ -1308,6 +1332,14 @@ class UserListener {
     async logSignalInner(channelRow, message, opts) {
         if (await this.skipMessageWhileCopierPaused(channelRow, String(message.id)))
             return false;
+        const signalChannelId = await (0, channelListenerIntegration_1.resolveSignalChannelIdForRow)(this.supabase, channelRow);
+        if (signalChannelId) {
+            channelRow.signal_channel_id = signalChannelId;
+            if (await (0, channelListenerIntegration_1.shouldSkipPassiveChannelIngest)(this.supabase, this.userId, signalChannelId, this.passiveSignalChannelIds)) {
+                (0, workerMetrics_1.incMetric)('channel_passive_ingest_skipped');
+                return false;
+            }
+        }
         const messageId = String(message.id);
         const rawMessage = (0, signalTelegramReconcile_1.telegramMessageText)(message);
         const isReply = !!message.replyTo;
@@ -1462,6 +1494,25 @@ class UserListener {
             }
             : parseResult;
         if (effectiveParseResult.status !== 'parsed') {
+            if (signalChannelId) {
+                const channelResult = await (0, channelListenerIntegration_1.handlePostParseChannelIngest)({
+                    supabase: this.supabase,
+                    userId: this.userId,
+                    channelRow,
+                    signalChannelId,
+                    messageId,
+                    rawMessage,
+                    replyToMessageId,
+                    parseResult: {
+                        parsed: effectiveParseResult.parsed,
+                        status: effectiveParseResult.status,
+                        skip_reason: effectiveParseResult.skip_reason,
+                    },
+                    pipelineTs: pipelineTs,
+                });
+                if (channelResult.skipPerUserIngest)
+                    return true;
+            }
             void this.persistSignalBackground({
                 signalId,
                 channelRow,
@@ -1473,6 +1524,32 @@ class UserListener {
                 parseResult: effectiveParseResult,
             });
             return true;
+        }
+        if (signalChannelId) {
+            const channelResult = await (0, channelListenerIntegration_1.handlePostParseChannelIngest)({
+                supabase: this.supabase,
+                userId: this.userId,
+                channelRow,
+                signalChannelId,
+                messageId,
+                rawMessage,
+                replyToMessageId,
+                parseResult: {
+                    parsed: effectiveParseResult.parsed,
+                    status: effectiveParseResult.status,
+                    skip_reason: effectiveParseResult.skip_reason,
+                },
+                pipelineTs: pipelineTs,
+                dispatch: this.onSignalParsed ?? undefined,
+            });
+            if (channelResult.skipPerUserIngest) {
+                this.liveMessageDedup.set(dedupKey, Date.now());
+                await this.bumpLastSeen(channelRow.id, messageId);
+                return true;
+            }
+            if (channelResult.canonicalWritten && (0, channelListenerConfig_1.channelListenerShadowMode)()) {
+                // shadow mode: fall through to per-user ingest below
+            }
         }
         pipelineTs.t_dispatch_sent = Date.now();
         const dispatchRow = {
@@ -1761,6 +1838,12 @@ class UserListener {
     }
     async runSignalReconcileForChannel(channelRow, signals, source) {
         const stats = { checked: 0, mismatches: 0, revised: 0, errors: 0 };
+        const signalChannelId = channelRow.signal_channel_id
+            ?? await (0, channelListenerIntegration_1.resolveSignalChannelIdForRow)(this.supabase, channelRow);
+        if ((0, channelListenerIntegration_1.isChannelRowPassive)(signalChannelId, this.passiveSignalChannelIds)) {
+            (0, workerMetrics_1.incMetric)('channel_passive_reconcile_skipped');
+            return stats;
+        }
         let peer;
         try {
             peer = await this.resolveChannelPeer(channelRow);
@@ -2062,7 +2145,7 @@ class UserListener {
             return;
         const { data: rows } = await this.supabase
             .from('telegram_channels')
-            .select('id, channel_id, channel_username, last_seen_message_id, last_seen_at, last_live_at')
+            .select('id, channel_id, channel_username, signal_channel_id, last_seen_message_id, last_seen_at, last_live_at')
             .eq('user_id', this.userId)
             .eq('is_active', true);
         for (const row of (rows ?? [])) {
@@ -2074,6 +2157,12 @@ class UserListener {
      * (common when the linked account broadcasts to its own channel).
      */
     async pollChannelNewMessages(row) {
+        const signalChannelId = row.signal_channel_id
+            ?? await (0, channelListenerIntegration_1.resolveSignalChannelIdForRow)(this.supabase, row);
+        if ((0, channelListenerIntegration_1.isChannelRowPassive)(signalChannelId, this.passiveSignalChannelIds)) {
+            (0, workerMetrics_1.incMetric)('channel_passive_poll_skipped');
+            return;
+        }
         let peer;
         try {
             peer = await this.resolveChannelPeer(row);

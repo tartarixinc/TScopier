@@ -8,7 +8,8 @@
  *   trade        — TradeExecutor (entries + management) + all monitors
  *   trade_entry  — buy/sell only + execution-side monitors (virtual pending, CWE, …)
  *   trade_mgmt   — management only + reconcile / auto-mgmt monitors
- *   backtest     — Ephemeral Telegram client for backtest sync only
+ *   backtest          — Ephemeral Telegram client for backtest sync only
+ *   channel_listener  — Channel-scoped ingest sharded by signal_channel_id
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.WORKER_BUILD_TAG = exports.workerConfig = void 0;
@@ -16,11 +17,14 @@ exports.parseEnvBool = parseEnvBool;
 exports.shardForUserId = shardForUserId;
 exports.userBelongsToShard = userBelongsToShard;
 exports.listenerWorkerId = listenerWorkerId;
+exports.channelListenerWorkerId = channelListenerWorkerId;
+exports.shardForSignalChannelId = shardForSignalChannelId;
 exports.leaseRoleLabel = leaseRoleLabel;
 const tradeSignalActions_1 = require("./tradeSignalActions");
 function parseRole(raw) {
     const v = String(raw ?? 'all').toLowerCase().trim();
     if (v === 'listener'
+        || v === 'channel_listener'
         || v === 'trade'
         || v === 'trade_entry'
         || v === 'trade_mgmt'
@@ -39,7 +43,8 @@ exports.workerConfig = {
         ?? `${process.env.HOSTNAME ?? 'local'}:${process.pid}`),
     shardId: Math.max(0, Math.floor(Number(process.env.WORKER_SHARD_ID ?? 0))),
     shardCount: Math.max(1, Math.floor(Number(process.env.WORKER_SHARD_COUNT ?? 1))),
-    runsListener: role === 'all' || role === 'listener',
+    runsListener: role === 'all' || role === 'listener' || role === 'channel_listener',
+    runsChannelListener: role === 'all' || role === 'channel_listener',
     runsTrade: runsTradeRole,
     runsBrokerSessionHeartbeat,
     tradeExecutorMode: (0, tradeSignalActions_1.tradeExecutorModeForRole)(role),
@@ -82,13 +87,25 @@ function userBelongsToShard(userId) {
  * reading worker_session_leases.worker_id. Bump on meaningful worker changes.
  * Used symmetrically by acquire/renew/release, so changing it is safe.
  */
-exports.WORKER_BUILD_TAG = String(process.env.WORKER_BUILD_TAG ?? 'reconcile-tp-dbintent-1');
+exports.WORKER_BUILD_TAG = String(process.env.WORKER_BUILD_TAG ?? 'channel-scoped-listener-1');
 function listenerWorkerId() {
     return `listener:${exports.workerConfig.shardId}:${exports.workerConfig.instanceId}:${exports.WORKER_BUILD_TAG}`;
+}
+function channelListenerWorkerId() {
+    return `channel_listener:${exports.workerConfig.shardId}:${exports.workerConfig.instanceId}:${exports.WORKER_BUILD_TAG}`;
+}
+function shardForSignalChannelId(signalChannelId, shardCount) {
+    let h = 0;
+    for (let i = 0; i < signalChannelId.length; i++) {
+        h = (h * 31 + signalChannelId.charCodeAt(i)) | 0;
+    }
+    return Math.abs(h) % Math.max(1, shardCount);
 }
 function leaseRoleLabel() {
     if (exports.workerConfig.role === 'listener')
         return 'listener';
+    if (exports.workerConfig.role === 'channel_listener')
+        return 'channel_listener';
     if (exports.workerConfig.role === 'all')
         return 'listener';
     return exports.workerConfig.role;

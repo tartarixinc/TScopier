@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { shardForUserId, userBelongsToShard } from './workerConfig'
+import { shardForUserId, shardForSignalChannelId, userBelongsToShard } from './workerConfig'
 
 describe('shardForUserId', () => {
   it('assigns every user to exactly one bucket', () => {
@@ -15,6 +15,14 @@ describe('shardForUserId', () => {
       }
       assert.equal(hits, 1)
     }
+  })
+})
+
+describe('shardForSignalChannelId', () => {
+  it('assigns signal channels to buckets', () => {
+    const id = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
+    const bucket = shardForSignalChannelId(id, 4)
+    assert.ok(bucket >= 0 && bucket < 4)
   })
 })
 

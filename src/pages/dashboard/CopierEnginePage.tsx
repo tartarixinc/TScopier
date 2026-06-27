@@ -17,7 +17,7 @@ import {
   pruneStaleBrokerChannelIds,
 } from '../../lib/brokerChannelLink'
 import { triggerBackgroundChannelAiTraining } from '../../lib/channelAiTrainingBackground'
-import { defaultChannelFiltersForPlan } from '../../lib/channelMessageFilters'
+import { prepareChannelSubscriptionUpsert } from '../../lib/signalChannelRegistry'
 import {
   hasValidTelegramChannelIdentity,
   isNumericTelegramChatId,
@@ -500,15 +500,19 @@ export function CopierEnginePage() {
       return
     }
     await removeStaleDuplicateChannels(supabase, user!.id, { id: ch.id, title: ch.title })
+    const prepared = await prepareChannelSubscriptionUpsert(supabase, {
+      userId: user!.id,
+      telegramChatId: ch.id,
+      channelUsername: ch.username,
+      displayName: ch.title,
+    })
+    if (prepared.error) {
+      setError(prepared.error)
+      return
+    }
     const { data, error: dbErr } = await supabase
       .from('telegram_channels')
-      .upsert({
-        user_id: user!.id,
-        channel_id: ch.id,
-        channel_username: normalizeTelegramUsername(ch.username),
-        display_name: ch.title,
-        is_active: true,
-      }, { onConflict: 'user_id,channel_id' })
+      .upsert(prepared.row, { onConflict: 'user_id,channel_id' })
       .select('*')
       .single()
     if (dbErr) {

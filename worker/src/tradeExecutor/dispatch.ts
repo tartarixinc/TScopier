@@ -514,7 +514,7 @@ export async function handleSignal(ctx: TradeExecutorContext,
         && ctx.sessionManager
       ) {
         const [teleLive, sub, admin] = await Promise.all([
-          ctx.sessionManager.canExecuteTelegramCopierTradesAsync(row.user_id),
+          ctx.sessionManager.canExecuteTelegramCopierTradesAsync(row.user_id, row.channel_id),
           loadCachedUserSubscription(ctx.supabase, row.user_id),
           loadCachedUserIsAdmin(ctx.supabase, row.user_id),
         ])
@@ -530,7 +530,7 @@ export async function handleSignal(ctx: TradeExecutorContext,
       } else {
         if (telegramLiveTradeGateEnabled() && row.channel_id) {
           const live = ctx.sessionManager
-            ? await ctx.sessionManager.canExecuteTelegramCopierTradesAsync(row.user_id)
+            ? await ctx.sessionManager.canExecuteTelegramCopierTradesAsync(row.user_id, row.channel_id)
             : false
           if (!live) {
             console.warn(

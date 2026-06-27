@@ -439,7 +439,7 @@ async function handleSignal(ctx, row, opts) {
             && row.channel_id
             && ctx.sessionManager) {
             const [teleLive, sub, admin] = await Promise.all([
-                ctx.sessionManager.canExecuteTelegramCopierTradesAsync(row.user_id),
+                ctx.sessionManager.canExecuteTelegramCopierTradesAsync(row.user_id, row.channel_id),
                 (0, subscriptionAccess_1.loadCachedUserSubscription)(ctx.supabase, row.user_id),
                 (0, subscriptionAccess_1.loadCachedUserIsAdmin)(ctx.supabase, row.user_id),
             ]);
@@ -454,7 +454,7 @@ async function handleSignal(ctx, row, opts) {
         else {
             if ((0, types_1.telegramLiveTradeGateEnabled)() && row.channel_id) {
                 const live = ctx.sessionManager
-                    ? await ctx.sessionManager.canExecuteTelegramCopierTradesAsync(row.user_id)
+                    ? await ctx.sessionManager.canExecuteTelegramCopierTradesAsync(row.user_id, row.channel_id)
                     : false;
                 if (!live) {
                     console.warn(`[tradeExecutor] skip signal ${row.id} (user ${row.user_id}): telegram listener not live for channel-backed copier`);
