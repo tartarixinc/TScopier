@@ -17,6 +17,7 @@ import {
   pruneStaleBrokerChannelIds,
 } from '../../lib/brokerChannelLink'
 import { triggerBackgroundChannelAiTraining } from '../../lib/channelAiTrainingBackground'
+import { defaultChannelFiltersForPlan } from '../../lib/channelMessageFilters'
 import { prepareChannelSubscriptionUpsert } from '../../lib/signalChannelRegistry'
 import {
   hasValidTelegramChannelIdentity,
