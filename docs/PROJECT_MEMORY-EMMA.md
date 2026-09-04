@@ -4,6 +4,14 @@ Changelog entries authored by Emma, kept separate from the main PROJECT_MEMORY.m
 
 ## Changelog
 
+### 2026-09-03 - Stefan Production Readiness After Staging Acceptance
+
+- **Original failure:** Stefan's second complete same-channel XAUUSD BUY setup refreshed the first basket's SL/TP instead of opening an independent basket.
+- **Entry root cause:** Real Telegram persistence could keep the explicit entry zone only in `parsed_data._intent.entry`; the merge guard originally checked top-level entry fields, so the complete second setup looked like a parameter refresh. Automated fixtures missed this shape until real staging retest exposed it.
+- **Entry fix and staging PASS:** Complete unlinked same-side signals with their own entry/zone, SL, and TP now bypass basket refresh and open independently. Staging confirmed Signal A opened Basket A and Signal B opened Basket B.
+- **Management regression:** Staging then exposed that a reply-linked `Move SL to breakeven` to Signal A affected both same-symbol baskets because `applyManagement(...)` used channel-wide trade loading even when a Telegram parent identity existed.
+- **Management fix and staging PASS:** Explicit reply/parent management now resolves the replied parent to a basket anchor and scopes management to trades for that `signal_id`; unthreaded management fallback is unchanged. Staging confirmed Basket A breakeven was applied and later hit, Basket B stayed open with original SL/TP, and no new basket was created.
+- **Production readiness:** Temporary Stefan debug instrumentation was removed after acceptance. Ready for production PR after final focused validation; no push, merge, deploy, or full-suite claim was made here.
 ### 2026-09-03 - Stefan Reply-Linked Management Basket Scoping
 
 - **Stefan independent-entry staging PASS:** Staging confirmed the original Stefan multi-signal fix: Signal A opened its own XAUUSD BUY basket, and a second complete XAUUSD BUY opened as independent Basket B instead of refreshing Basket A.
