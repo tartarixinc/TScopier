@@ -39,3 +39,10 @@ scripts/opencode-bridge.mjs
 # Firecrawl research cache (local only)
 .firecrawl/
 
+# MTAPI conformance docs (contain live credentials, tokens, and demo account details)
+# Redact all credentials before committing these files
+docs/mtapi-conformance.md
+docs/mtapi-conformance.pdf
+docs/mtapi-progress.md
+docs/mtapi-migration-plan.pdf
+

@@ -2,6 +2,35 @@
 
 ## Changelog
 
+### 2026-09-14 — MTAPI migration Phase 1: BrokerProvider seam complete
+
+- **Plain English:** We built the foundation for switching from FXSocket to MTAPI. A new `provider` column on broker accounts lets us route each account to a different broker backend. The existing FXSocket code is wrapped behind a clean interface so a future MTAPI provider can slot in without touching the trade execution logic. Hosting decided: self-hosted Docker on Contabo (~$7/mo) with nginx for TLS + auth, instead of Railway (~$85-100/mo). Also corrected the migration plan: "shadow mode" (running both providers simultaneously) is not possible because brokers only allow one connection per account at a time.
+- **Root cause (technical):** N/A — this is infrastructure, not a bug fix.
+- **Fix (files):**
+  - `worker/src/brokerProvider.ts` (new) — `BrokerProvider` interface defining all broker operations (session lifecycle, orders, data reads, market data, health). Also defines `BrokerProviderName` (`'fxsocket' | 'mtapi'`), `MtPlatform`, and shared types (`BrokerAccountSummary`, `BrokerQuote`, `BrokerSymbolParams`, `BrokerOrderResult`, `BrokerOpenedOrder`).
+  - `worker/src/fxsocketProvider.ts` (new) — `FxsocketProvider` implementing `BrokerProvider`, wrapping existing `FxsocketBrokerClient`. All methods delegate to the existing client (no behaviour change).
+  - `worker/src/providerResolver.ts` (new) — `apiForBrokerAccount(provider, sessionId)` dispatches to the right provider by name. `inferProvider(row)` infers provider from broker_accounts columns. Falls back to fxsocket for unknown/null values.
+  - `worker/src/providerResolver.test.ts` (new) — 12 tests covering apiForBrokerAccount (null/pipe/valid/unknown provider) and inferProvider (mtapi/fxsocket/null/undefined).
+  - `supabase/migrations/20260914120000_add_broker_accounts_provider.sql` (new) — adds `provider text not null default 'fxsocket'` to `broker_accounts` with a partial index on `provider != 'fxsocket'`.
+  - `worker/src/orderCloseAudit.ts` — source type expanded: `'fxsocket' | 'fx_v2' | 'mtapi'`.
+  - `worker/src/layeringBrokerCapability.ts` — provider type expanded: `'fxsocket' | 'mtapi' | 'unknown'`; gate check allows `'mtapi'`.
+  - `docs/mtapi-migration-plan.md` — updated §2.3 (deployment model with nginx), §6 Phase 0 (Contabo hosting decision), §6 Phase 2 (removed unrealistic shadow mode), §10 (rollback requires disconnect first), §11 (added broker single-connection constraint), §12 (hosting decided), §13 (new files added).
+  - `docs/mtapi-progress.md` — updated with Phase 1 completion details.
+- **Design decisions:**
+  - BrokerProvider interface lives in `brokerProvider.ts` (not `fxsocketClient.ts`) to avoid coupling the interface to FxSocket.
+  - `MtPlatform` type defined in `brokerProvider.ts` rather than importing from FxSocket.
+  - Provider resolver falls back to fxsocket for unknown values (forward compatibility).
+  - Partial index on `provider != 'fxsocket'` avoids bloating with FXSocket rows (172 accounts).
+  - No CHECK constraint on `provider` column (noted as MEDIUM finding from code review — acceptable because the resolver handles unknown values gracefully).
+- **Tests/verification:** Typecheck PASS (tsc --noEmit); Lint PASS (all changed files); Tests 20/20 PASS (providerResolver 12, layeringBrokerCapability 5, orderCloseAudit 3); Code-tester subagent PASS; Code-review subagent PASS_WITH_NOTES (all findings addressed).
+- **Deploy state:** committed to `migration` branch; NOT yet deployed.
+- **Follow-ups:**
+  1. Phase 2: implement MtapiProvider for reads on a demo account.
+  2. Phase 2: encrypted credential storage (brokerCredentialsCrypto.ts).
+  3. Phase 2.5: frontend provider awareness.
+  4. Phase 3: MTAPI writes on one staging account.
+  5. Phase 4: per-account cutover.
+
 ### 2026-09-08 — Telegram listener reconnect storm: flapping loop that blocked new logins (users could not re-connect Telegram)
 
 - **Plain English:** Several users reported they could not connect their Telegram account. Behind the scenes their listeners were stuck in a loop — constantly dropping and reconnecting every ~20 seconds for hours — and during that state the app could not even request a fresh login code. The failure had two parts: a counting bug meant the safety mechanism that should have restarted a stuck listener never fired, and a network hang could permanently freeze the reconnect logic. We fixed both so a stuck listener now either recovers on its own or is cleanly restarted, and a single mistaken login code no longer forces the user to start over.

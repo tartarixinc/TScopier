@@ -10,7 +10,7 @@ export type NativePendingCapabilityReason =
 
 export interface NativePendingCapability {
   supported: boolean
-  provider: 'fxsocket' | 'unknown'
+  provider: 'fxsocket' | 'mtapi' | 'unknown'
   platform: 'mt4' | 'mt5' | 'unknown'
   canPlace: boolean
   canReconcile: boolean
@@ -21,6 +21,7 @@ export interface NativePendingCapability {
 export interface NativePendingCapabilityInput {
   readonly broker?: {
     readonly platform?: string | null
+    readonly provider?: string | null
     readonly fxsocket_account_id?: string | null
     readonly metaapi_account_id?: string | null
     readonly connection_status?: string | null
@@ -41,13 +42,17 @@ export function resolveNativePendingCapability(input: NativePendingCapabilityInp
   const linked = Boolean(String(broker?.fxsocket_account_id ?? broker?.metaapi_account_id ?? '').trim())
   const connected = broker?.connection_status === 'connected' || broker?.terminal_connected === true
   const tradeAllowed = broker?.trade_allowed !== false
-  const provider: NativePendingCapability['provider'] = linked ? 'fxsocket' : 'unknown'
+  const explicitProvider = String(broker?.provider ?? '').trim()
+  const provider: NativePendingCapability['provider'] =
+    explicitProvider === 'mtapi' ? 'mtapi'
+    : linked ? 'fxsocket'
+    : 'unknown'
   const api = input.api
   const canPlace = hasMethod(api, 'orderSend') && hasMethod(api, 'quote')
   const canReconcile = hasMethod(api, 'openedOrders')
   const canCancel = hasMethod(api, 'orderClose')
 
-  if (provider !== 'fxsocket') {
+  if (provider !== 'fxsocket' && provider !== 'mtapi') {
     return { supported: false, provider, platform, canPlace, canReconcile, canCancel, reason: 'provider_unsupported' }
   }
   if (platform !== 'mt4' && platform !== 'mt5') {
