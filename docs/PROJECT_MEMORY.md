@@ -31,7 +31,7 @@
   4. Phase 3: MTAPI writes on one staging account.
   5. Phase 4: per-account cutover.
 
-### 2026-09-08 — Telegram listener reconnect storm: flapping loop that blocked new logins (users could not re-connect Telegram)
+### 2026-08-19 — Assistant stops answering a failed signal as the user's live/ongoing trade
 
 - **Plain English:** Several users reported they could not connect their Telegram account. Behind the scenes their listeners were stuck in a loop — constantly dropping and reconnecting every ~20 seconds for hours — and during that state the app could not even request a fresh login code. The failure had two parts: a counting bug meant the safety mechanism that should have restarted a stuck listener never fired, and a network hang could permanently freeze the reconnect logic. We fixed both so a stuck listener now either recovers on its own or is cleanly restarted, and a single mistaken login code no longer forces the user to start over.
 - **Root cause (technical):**
@@ -305,6 +305,8 @@
 - **Rule:** `.cursor/rules/supabase-migration-branch.mdc` alwaysApply. Do not merge the branch unless asked.
 - Local `.env` / `worker/.env` were already pointed at this branch.
 
+=======
+>>>>>>> origin/migration
 ### 2026-08-19 — Assistant stops answering a failed signal as the user's live/ongoing trade
 
 - **Symptom (plain English):** Asked "show my current trade and why am I in loss" / "my live trades" / "my ongoing trade", the assistant answered with a signal that had **failed** to execute (`symbol not found: STPRNG`) and called it the user's trade, even though nothing was ever sent to the broker. It kept reaching for the copier-logs tool instead of the live-trades data, so the user never saw their actual executed positions.
