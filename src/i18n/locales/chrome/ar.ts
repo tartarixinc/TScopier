@@ -24,6 +24,7 @@ export const chromeAr: AppChromeTranslations = {
       copierLogs: 'سجلات الناسخ',
       signalHistory: 'إدارة الإشارات',
       reportedTrades: 'الصفقات المبلغ عنها',
+      updates: 'التحديثات',
       marketNews: 'أخبار السوق',
       economicCalendar: 'التقويم الاقتصادي',
       performance: 'الأداء',

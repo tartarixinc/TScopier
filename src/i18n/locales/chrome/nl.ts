@@ -24,6 +24,7 @@ export const chromeNl: AppChromeTranslations = {
       copierLogs: 'Copierlogs',
       signalHistory: 'Signalen beheren',
       reportedTrades: 'Gemelde transacties',
+      updates: 'Updates',
       marketNews: 'Marktnieuws',
       economicCalendar: 'Economische kalender',
       performance: 'Prestaties',

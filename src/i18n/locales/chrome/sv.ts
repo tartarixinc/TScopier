@@ -24,6 +24,7 @@ export const chromeSv: AppChromeTranslations = {
       copierLogs: 'Kopieringsloggar',
       signalHistory: 'Hantera signaler',
       reportedTrades: 'Rapporterade affärer',
+      updates: 'Uppdateringar',
       marketNews: 'Marknadsnyheter',
       economicCalendar: 'Ekonomisk kalender',
       performance: 'Prestanda',

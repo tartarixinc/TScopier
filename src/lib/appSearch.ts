@@ -33,6 +33,7 @@ export function buildAppSearchPages(t: Translations): AppSearchPageDef[] {
     { path: '/backtest', title: t.nav.items.backtest, sectionLabel: t.nav.sections.signals, subtitle: t.backtest.subtitle, keywords: ['simulate', 'test'] },
     { path: '/copier-logs', title: t.nav.items.copierLogs, sectionLabel: t.nav.sections.signals, keywords: ['logs', 'executed', 'skipped'] },
     { path: '/reported-trades', title: t.nav.items.reportedTrades, sectionLabel: t.nav.sections.signals, keywords: ['reports', 'reported', 'issues'] },
+    { path: '/updates', title: t.nav.items.updates, sectionLabel: t.nav.sections.help, keywords: ['updates', 'changelog', 'new', 'features', 'fixes'] },
     { path: '/activities', title: t.management.title, sectionLabel: t.nav.sections.general, subtitle: t.management.subtitle, keywords: ['retry', 'breakeven', 'copier engine', 'activities', 'failed', 'trade'] },
     { path: '/manage-signals', title: t.nav.items.signalHistory, sectionLabel: t.nav.sections.signals, subtitle: p.signalHistory.description, keywords: ['parsed', 'messages', 'signals', 'buy', 'sell', 'manage'] },
     { path: '/performance', title: t.nav.items.performance, sectionLabel: t.nav.sections.signals, subtitle: p.performance.description, keywords: ['roi', 'win rate', 'stats'] },

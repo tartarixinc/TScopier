@@ -24,6 +24,7 @@ export const chromeRu: AppChromeTranslations = {
       copierLogs: 'Логи копирования',
       signalHistory: 'Управление сигналами',
       reportedTrades: 'Отчеты по сделкам',
+      updates: 'Обновления',
       marketNews: 'Новости рынка',
       economicCalendar: 'Экономический календарь',
       performance: 'Результаты',

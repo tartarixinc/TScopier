@@ -24,6 +24,7 @@ export const chromeJa: AppChromeTranslations = {
       copierLogs: 'コピーログ',
       signalHistory: 'シグナル管理',
       reportedTrades: '報告済みの取引',
+      updates: 'アップデート',
       marketNews: 'マーケットニュース',
       economicCalendar: '経済カレンダー',
       performance: 'パフォーマンス',

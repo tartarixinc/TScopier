@@ -19,6 +19,7 @@ import {
   Settings,
   Share2,
   SlidersHorizontal,
+  Sparkles,
   TrendingUp,
   type LucideIcon,
 } from 'lucide-react'
@@ -45,6 +46,7 @@ export const APP_ROUTE_ICONS: Record<string, LucideIcon> = {
   '/affiliate-program': Share2,
   '/billing': CreditCard,
   '/subscriptions': Repeat,
+  '/updates': Sparkles,
 }
 
 export const APP_HELP_ICONS = {

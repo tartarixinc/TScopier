@@ -24,6 +24,7 @@ export const chromePl: AppChromeTranslations = {
       copierLogs: 'Dzienniki kopiowania',
       signalHistory: 'Zarządzaj sygnałami',
       reportedTrades: 'Zgłoszone transakcje',
+      updates: 'Aktualizacje',
       marketNews: 'Wiadomości rynkowe',
       economicCalendar: 'Kalendarz ekonomiczny',
       performance: 'Wyniki',
