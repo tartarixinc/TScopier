@@ -452,7 +452,7 @@ export async function prepareEntryExecution(
         bid: q.bid,
         ask: q.ask,
         tolerancePips,
-        pipSize: params?.point ?? 0.00001,
+        pipSize: pipCalculator(symbol, params?.point ?? 0.00001, params?.digits ?? 5, params?.contractSize ?? null).pipPrice,
       })
       if (moved) {
         await ctx.logSendSkipped(signal, broker, ENTRY_PRICE_MOVED_ADVERSE_REASON, {

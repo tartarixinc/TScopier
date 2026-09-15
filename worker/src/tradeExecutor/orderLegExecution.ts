@@ -417,7 +417,9 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
                 : 'broker_order_rejected',
             severity: reasonCode === 'BROKER_RATE_LIMITED' ? 'warning' : 'error',
             reasonCode,
-            message: 'Broker rejected trade copy order',
+            message: reasonCode === 'BROKER_SYMBOL_NOT_FOUND'
+              ? `Broker does not offer ${sendArgs.symbol} — symbol not in broker inventory`
+              : 'Broker rejected trade copy order',
             userImpact: 'failed',
             context: {
               user_id: signal.user_id,

@@ -69,9 +69,9 @@ function displayFromCode(reasonCode: string, context: Record<string, unknown>): 
   if (code === 'BROKER_SYMBOL_NOT_FOUND' || code === 'SYMBOL_UNSUPPORTED') {
     return {
       reasonCode: 'BROKER_SYMBOL_NOT_FOUND',
-      title: 'Trade not copied - Broker symbol not found',
-      explanation: `We could not find ${instrument} or a supported equivalent on your broker account. Your broker may use a custom symbol name.`,
-      recommendedAction: 'Check the instrument name in your broker terminal, then add a symbol mapping or contact support.',
+      title: 'Trade not copied - Instrument not available',
+      explanation: `Your broker does not offer ${instrument}. This instrument is not available on your broker account. Signals for this symbol will be skipped.`,
+      recommendedAction: 'Check the available instruments in your broker terminal. If you believe this is an error, contact support.',
       retryable: false,
       userActionRequired: true,
       safeContext: context,

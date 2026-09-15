@@ -94,6 +94,26 @@ export function CopierLogDetailModal({
     assistant.openAssistant()
   }
 
+  const askAssistantExplainSignal = () => {
+    const parsed = signal?.parsed_data as Record<string, unknown> | null
+    const context = [
+      `Signal ID: ${signal?.id}`,
+      `Status: ${signal?.status}`,
+      `Symbol: ${symbol}`,
+      `Action: ${parsed?.action ?? '—'}`,
+      parsed?.entry_price ? `Entry price: ${parsed.entry_price}` : '',
+      parsed?.sl ? `Stop loss: ${parsed.sl}` : '',
+      Array.isArray(parsed?.tp) ? `Take profit: ${parsed.tp.join(', ')}` : '',
+      signal?.skip_reason ? `Skip reason: ${signal.skip_reason}` : '',
+      timeline?.length ? `Timeline: ${timeline.map(r => `${r.action} (${r.status})`).join(', ')}` : '',
+    ].filter(Boolean).join('\n')
+    assistant.persistMessages(prev => [
+      ...prev,
+      { role: 'user', content: `Please explain what happened with this trade signal in plain English.\n\n${context}` },
+    ])
+    assistant.openAssistant()
+  }
+
   useEffect(() => {
     if (!signal) {
       setTimeline(null)
@@ -205,6 +225,13 @@ export function CopierLogDetailModal({
                     Ask AI about this issue
                   </button>
                 ) : null}
+                <button
+                  type="button"
+                  onClick={askAssistantExplainSignal}
+                  className="text-xs font-semibold text-teal-700 dark:text-teal-300 hover:underline underline-offset-2"
+                >
+                  {dm.explainWithAi}
+                </button>
                 {technicalCode !== '—' && technicalCode !== reasonShort ? (
                   <DetailRow label={dm.technicalCode} value={technicalCode} mono />
                 ) : null}

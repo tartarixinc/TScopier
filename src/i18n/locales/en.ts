@@ -877,6 +877,7 @@ broker: {
       noTimeline: 'No additional execution events were recorded.',
       viewDetails: 'View details',
       receivedAt: 'Received',
+      explainWithAi: 'Explain with AI',
     },
   },
   signalHistoryPage: {
