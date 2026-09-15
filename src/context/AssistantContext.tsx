@@ -36,6 +36,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
   const userId = user?.id ?? null
   const [open, setOpen] = useState(false)
+  const [pendingAutoSend, setPendingAutoSend] = useState<string | null>(null)
   const [messages, setMessages] = useState<AssistantChatMessage[]>(() => {
     if (!userId) return []
     const { activeThreadId, threads } = loadAssistantThreads(userId)
@@ -303,6 +304,8 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       pendingClientActions,
       setPendingClientActions,
       persistMessages,
+      pendingAutoSend,
+      setPendingAutoSend,
       telegramLink,
       setTelegramLink,
       startTelegramLinkFlow,
@@ -326,6 +329,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       pendingConfirmations,
       pendingClientActions,
       persistMessages,
+      pendingAutoSend,
       telegramLink,
       startTelegramLinkFlow,
       resetTelegramLinkFlow,

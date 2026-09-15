@@ -107,10 +107,7 @@ export function CopierLogDetailModal({
       signal?.skip_reason ? `Skip reason: ${signal.skip_reason}` : '',
       timeline?.length ? `Timeline: ${timeline.map(r => `${r.action} (${r.status})`).join(', ')}` : '',
     ].filter(Boolean).join('\n')
-    assistant.persistMessages(prev => [
-      ...prev,
-      { role: 'user', content: `Please explain what happened with this trade signal in plain English.\n\n${context}` },
-    ])
+    assistant.setPendingAutoSend(`Please explain what happened with this trade signal in plain English.\n\n${context}`)
     assistant.openAssistant()
   }
 

@@ -26,6 +26,9 @@ export type AssistantContextValue = {
     next: AssistantChatMessage[] | ((prev: AssistantChatMessage[]) => AssistantChatMessage[]),
     ownerThreadId?: string,
   ) => string | null
+  /** When set, the panel auto-sends this message on next render then clears it. */
+  pendingAutoSend: string | null
+  setPendingAutoSend: React.Dispatch<React.SetStateAction<string | null>>
   telegramLink: AssistantTelegramLinkState
   setTelegramLink: React.Dispatch<React.SetStateAction<AssistantTelegramLinkState>>
   startTelegramLinkFlow: () => void
