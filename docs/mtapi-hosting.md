@@ -21,6 +21,28 @@ bridge, which forwards them to the broker over the MT5 protocol.
 Worker (Railway) → HTTP/HTTPS → MTAPI Bridge (Contabo) → MT5 protocol → Broker (Exness)
 ```
 
+### What the Docker container actually is
+
+The Docker container is software that does two things:
+
+1. **Runs a MetaTrader 5 terminal** — the same trading platform that runs on a
+   desktop, but running on a server inside the container.
+
+2. **Exposes a REST API** — an HTTP interface so our code can talk to it.
+
+When our worker needs to place a trade, it sends an HTTP request to the container.
+The container receives that request, converts it into the MT5 protocol that the
+broker understands, and sends it to the broker's server. The broker responds, and
+the container sends the result back as JSON.
+
+The container holds the broker connection open. Our worker does not connect to the
+broker directly — it connects to the container, and the container connects to the
+broker.
+
+FXSocket does the same thing, but they run the terminals on their servers. With
+the Docker container, we run the terminals on our own server. That is the only
+difference.
+
 ---
 
 ## 2. Hosting options compared
