@@ -548,6 +548,7 @@ export interface CopierLogsTranslations {
     noTimeline: string
     viewDetails: string
     receivedAt: string
+    explainWithAi: string
   }
 }
 
