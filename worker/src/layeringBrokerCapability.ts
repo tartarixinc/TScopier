@@ -44,7 +44,9 @@ export function resolveNativePendingCapability(input: NativePendingCapabilityInp
   const tradeAllowed = broker?.trade_allowed !== false
   const explicitProvider = String(broker?.provider ?? '').trim()
   const provider: NativePendingCapability['provider'] =
-    explicitProvider === 'mtapi' ? 'mtapi'
+    explicitProvider === 'fxsocket' ? 'fxsocket'
+    : explicitProvider === 'mtapi' ? 'mtapi'
+    : explicitProvider ? 'unknown'
     : linked ? 'fxsocket'
     : 'unknown'
   const api = input.api
@@ -52,7 +54,9 @@ export function resolveNativePendingCapability(input: NativePendingCapabilityInp
   const canReconcile = hasMethod(api, 'openedOrders')
   const canCancel = hasMethod(api, 'orderClose')
 
-  if (provider !== 'fxsocket' && provider !== 'mtapi') {
+  // Phase 1 has no MTAPI provider implementation. Native layering must remain
+  // unavailable instead of implying that MTAPI order methods are supported.
+  if (provider !== 'fxsocket') {
     return { supported: false, provider, platform, canPlace, canReconcile, canCancel, reason: 'provider_unsupported' }
   }
   if (platform !== 'mt4' && platform !== 'mt5') {

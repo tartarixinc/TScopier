@@ -4,6 +4,15 @@ Changelog entries authored by Emma, kept separate from the main PROJECT_MEMORY.m
 
 ## Changelog
 
+### 2026-09-16 - MTAPI Phase 2 READ-ONLY implementation
+
+- Worker-side MTAPI reads, provider resolution, token-first session recovery,
+  encrypted credential fallback, and startup orphan reconciliation are
+  implemented locally. MTAPI trading/layering remains disabled.
+- Focused tests, worker typecheck/build, and FXSocket/v2 regressions pass. Real
+  MTAPI acceptance is NOT_PERFORMED, so environment sign-off remains blocked.
+- Full record and James handoff: docs/PROJECT_MEMORY-EMMA-MTAPI.md.
+
 ### 2026-09-03 - Stefan Production Readiness After Staging Acceptance
 
 - **Original failure:** Stefan's second complete same-channel XAUUSD BUY setup refreshed the first basket's SL/TP instead of opening an independent basket.

@@ -304,9 +304,10 @@ export class V2ReconcileMonitor {
     if (!unique.length) return out
     const { data } = await this.supabase
       .from('broker_accounts')
-      .select('id,user_id,fxsocket_account_id,metaapi_account_id,platform')
+      .select('id,user_id,provider,fxsocket_account_id,metaapi_account_id,platform')
       .in('id', unique)
-    for (const b of (data ?? []) as Array<{ id: string; user_id?: string; fxsocket_account_id?: string; metaapi_account_id?: string; platform?: string }>) {
+    for (const b of (data ?? []) as Array<{ id: string; user_id?: string; provider?: string | null; fxsocket_account_id?: string; metaapi_account_id?: string; platform?: string }>) {
+      if (b.provider != null && b.provider !== '' && b.provider !== 'fxsocket') continue
       const uuid = brokerSessionUuid(b)
       if (!uuid) continue
       const platform: MtPlatform = String(b.platform).toUpperCase() === 'MT4' ? 'MT4' : 'MT5'

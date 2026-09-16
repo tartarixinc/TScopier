@@ -1,140 +1,86 @@
 /**
- * BrokerProvider — unified interface for broker operations.
+ * Phase 1 broker seam.
  *
- * Every broker operation (session lifecycle, orders, reads, health) goes through
- * this interface. FxsocketProvider wraps the existing FXSocket client.
- * MtapiProvider (Phase 2) will wrap MTAPI.
- *
- * Execution safety (idempotent send, ambiguous recovery) sits ABOVE this layer
- * in the trade executor — the provider is a transport, not a safety mechanism.
+ * The interface deliberately mirrors the FXSocket API shapes consumed by the
+ * worker. Phase 1 is transport plumbing only: callers must see the same
+ * arguments and return values they saw before the seam was introduced.
  */
-
-// ── Types ────────────────────────────────────────────────────────────────────
+import type {
+  AccountSummary,
+  FxsocketBrokerClient,
+  FxsocketMtStatus,
+  FxsocketTerminalStatus,
+  MtPlatform,
+  OrderCloseArgs,
+  OrderModifyArgs,
+  OrderResult,
+  OrderSendArgs,
+  QuoteResult,
+  SymbolParams,
+} from './fxsocketClient'
+import type { MtHistoryProfile } from './mtTradeFields'
 
 export type BrokerProviderName = 'fxsocket' | 'mtapi'
 
-/** MetaTrader platform. Defined here to avoid coupling the interface to FxSocket. */
-export type MtPlatform = 'MT4' | 'MT5'
-
-export interface BrokerAccountSummary {
-  balance?: number
-  credit?: number
-  profit?: number
-  equity?: number
-  margin?: number
-  freeMargin?: number
-  marginLevel?: number
-  leverage?: number
-  currency?: string
-  synced?: boolean
+export type {
+  AccountSummary as BrokerAccountSummary,
+  MtPlatform,
+  OrderCloseArgs,
+  OrderModifyArgs,
+  OrderResult as BrokerOrderResult,
+  OrderSendArgs,
+  QuoteResult as BrokerQuote,
+  SymbolParams as BrokerSymbolParams,
 }
-
-export interface BrokerQuote {
-  symbol: string
-  bid: number
-  ask: number
-  time?: string
-}
-
-export interface BrokerSymbolParams {
-  symbolName?: string
-  digits?: number
-  point?: number
-  contractSize?: number
-  stopsLevel?: number
-  freezeLevel?: number
-  minLot?: number
-  maxLot?: number
-  lotStep?: number
-}
-
-export interface BrokerOrderResult {
-  ticket: number
-  openPrice?: number
-  stopLoss?: number
-  takeProfit?: number
-  lots?: number
-  symbol?: string
-  orderType?: string
-  state?: string
-  closePrice?: number
-  profit?: number
-  swap?: number
-  commission?: number
-  fee?: number
-  comment?: string
-}
-
-export interface BrokerOpenedOrder {
-  ticket: number
-  symbol: string
-  operation: string
-  isBuy: boolean
-  volume: number
-  openPrice: number | null
-  stopLoss: number | null
-  takeProfit: number | null
-  [key: string]: unknown
-}
-
-// ── Interface ────────────────────────────────────────────────────────────────
 
 export interface BrokerProvider {
   readonly name: BrokerProviderName
 
-  // Session lifecycle
-  connect(args: {
-    user: string
-    password: string
-    server?: string
-    host?: string
-    port?: number
-    platform: MtPlatform
-  }): Promise<string>
+  seedPlatformCache(id: string, platform: MtPlatform | string | null | undefined): void
+  getV1Account(id: string): ReturnType<FxsocketBrokerClient['getV1Account']>
+  connectEx(args: { id: string; server: string; login: string; password: string; platform?: MtPlatform }): Promise<string>
+  connectByToken(id: string): Promise<void>
   ensureConnected(id: string): Promise<void>
   checkConnect(id: string): Promise<void>
   disconnect(id: string): Promise<void>
   keepSessionAlive(id: string): Promise<boolean>
+  keepSessionAliveDetailed(id: string): ReturnType<FxsocketBrokerClient['keepSessionAliveDetailed']>
+  verifyTradingReady(id: string): Promise<boolean>
 
-  // Orders
-  orderSend(id: string, args: {
-    symbol: string
-    operation: string
-    volume: number
-    price?: number | null
-    slippage?: number
-    stoploss?: number | null
-    takeprofit?: number | null
-    comment?: string
-  }): Promise<BrokerOrderResult>
-  orderModify(id: string, args: {
-    ticket: number
-    stoploss?: number | null
-    takeprofit?: number | null
-    price?: number | null
-  }): Promise<BrokerOrderResult>
-  orderClose(id: string, args: {
-    ticket: number
-    lots?: number
-    price?: number
-    slippage?: number
-  }): Promise<BrokerOrderResult>
+  orderSend(id: string, args: OrderSendArgs): Promise<OrderResult>
+  orderModify(id: string, args: OrderModifyArgs): Promise<OrderResult>
+  orderClose(id: string, args: OrderCloseArgs): Promise<OrderResult>
 
-  // Data reads
-  openedOrders(id: string): Promise<BrokerOpenedOrder[]>
+  openedOrders(id: string): Promise<unknown[]>
   closedOrders(id: string): Promise<unknown[]>
   orderHistory(id: string, from: string, to: string): Promise<unknown[]>
   historyPositions(id: string, from: string, to: string): Promise<unknown[]>
+  orderHistoryPage(
+    id: string,
+    from: string,
+    to: string,
+    pageNumber: number,
+    ordersPerPage?: number,
+  ): Promise<{ orders: unknown[]; pagesCount: number }>
+  closedOrdersHistory(
+    id: string,
+    from: string,
+    to: string,
+    profile?: MtHistoryProfile,
+  ): Promise<unknown[]>
+  closedOrdersHistoryLite(
+    id: string,
+    from: string,
+    to: string,
+    profile?: MtHistoryProfile,
+    maxPages?: number,
+    ordersPerPage?: number,
+  ): Promise<unknown[]>
 
-  // Account
-  accountSummary(id: string): Promise<BrokerAccountSummary>
-
-  // Market
-  quote(id: string, symbol: string): Promise<BrokerQuote>
-  symbolParams(id: string, symbol: string): Promise<BrokerSymbolParams>
+  accountSummary(id: string): Promise<AccountSummary>
+  quote(id: string, symbol: string): Promise<QuoteResult>
+  symbolParams(id: string, symbol: string): Promise<SymbolParams>
   symbols(id: string): Promise<unknown[]>
-
-  // Health
-  mtStatus(id: string): Promise<unknown>
-  terminalStatus(id: string): Promise<unknown>
+  mtStatus(id: string, platformHint?: MtPlatform): Promise<FxsocketMtStatus>
+  terminalStatus(id: string, platformHint?: MtPlatform): Promise<FxsocketTerminalStatus>
 }

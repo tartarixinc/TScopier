@@ -5,7 +5,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { clearChannelActiveTradeParamsWhenFlat } from './channelActiveTradeParams'
 import { normalizeSignalChannelIds } from './brokerChannelFilter'
-import { getFxsocketClient, hasFxsocketConfigured } from './fxsocketClient'
+import { hasFxsocketConfigured } from './fxsocketClient'
+import { apiForBrokerAccount } from './providerResolver'
 import { closeWithVerification } from './managementClose'
 import {
   cancelChannelBrokerPendingOrders,
@@ -33,6 +34,7 @@ export type ForceCloseSignalTradesResult = {
 type BrokerRow = {
   id: string
   user_id: string
+  provider?: string | null
   platform?: string | null
   fxsocket_account_id?: string | null
   metaapi_account_id?: string | null
@@ -198,8 +200,8 @@ async function forceCloseChannelOnBroker(
     virtual_legs_deleted: 0,
   }
 
-  const api = getFxsocketClient()
   const uuid = brokerSessionUuid(broker)
+  const api = apiForBrokerAccount(broker.provider, uuid)
   if (!api || !uuid || uuid.includes('|')) return result
 
   const trades = await loadOpenTradesForManagement(supabase, {
@@ -372,7 +374,7 @@ export async function forceCloseSignalTrades(
 
   const { data: broker, error: brokerErr } = await supabase
     .from('broker_accounts')
-    .select('id,user_id,platform,fxsocket_account_id,metaapi_account_id,signal_channel_ids')
+    .select('id,user_id,platform,provider,mtapi_session_id,fxsocket_account_id,metaapi_account_id,signal_channel_ids')
     .eq('id', brokerAccountId)
     .eq('user_id', userId)
     .maybeSingle()

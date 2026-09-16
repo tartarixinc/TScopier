@@ -32,6 +32,38 @@ test('generic API object without FxSocket account is rejected', () => {
   assert.equal(result.reason, 'provider_unsupported')
 })
 
+test('MTAPI remains unsupported in Phase 1 even when methods are present', () => {
+  const result = resolveNativePendingCapability({
+    broker: {
+      provider: 'mtapi',
+      platform: 'MT5',
+      metaapi_account_id: 'future-session',
+      connection_status: 'connected',
+      trade_allowed: true,
+    },
+    api,
+  })
+  assert.equal(result.supported, false)
+  assert.equal(result.provider, 'mtapi')
+  assert.equal(result.reason, 'provider_unsupported')
+})
+
+test('unknown explicit provider remains unknown and fails closed', () => {
+  const result = resolveNativePendingCapability({
+    broker: {
+      provider: 'unexpected',
+      platform: 'MT5',
+      fxsocket_account_id: 'fx-1',
+      connection_status: 'connected',
+      trade_allowed: true,
+    },
+    api,
+  })
+  assert.equal(result.supported, false)
+  assert.equal(result.provider, 'unknown')
+  assert.equal(result.reason, 'provider_unsupported')
+})
+
 test('FxSocket unsupported platform is rejected', () => {
   const result = resolveNativePendingCapability({
     broker: { platform: 'ctrader', fxsocket_account_id: 'fx-1', connection_status: 'connected', trade_allowed: true },

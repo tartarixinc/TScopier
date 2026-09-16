@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { periodWindowUtc } from './copyLimitPeriods'
 import type { CopyLimitPeriod } from './copyLimitTypes'
-import { getFxsocketClient, hasFxsocketConfigured } from './fxsocketClient'
+import { apiForBrokerAccount } from './providerResolver'
 
 export type ChannelPnlSnapshot = {
   realizedPnl: number
@@ -44,6 +44,7 @@ export async function fetchChannelFloatingPnl(
   channelId: string,
   metaapiAccountId: string,
   platform: string,
+  provider?: string | null,
 ): Promise<number> {
   const { data: openRows, error } = await supabase
     .from('trades')
@@ -68,26 +69,24 @@ export async function fetchChannelFloatingPnl(
     if (ticket && Number.isFinite(p)) dbProfitByTicket.set(ticket, p)
   }
 
-  if (hasFxsocketConfigured()) {
+  const api = apiForBrokerAccount(provider, metaapiAccountId)
+  if (api) {
     try {
-      const api = getFxsocketClient()
-      if (api) {
-        const orders = await api.openedOrders(metaapiAccountId)
-        const ticketSet = new Set(tickets)
-        for (const o of orders ?? []) {
-          const rec = o as Record<string, unknown>
-          const ticket = String(rec.ticket ?? rec.Ticket ?? rec.order ?? rec.Order ?? '').trim()
-          if (!ticketSet.has(ticket)) continue
-          const profit = Number(rec.profit ?? rec.Profit)
-          if (Number.isFinite(profit)) {
-            sum += profit
-            continue
-          }
-          const fromDb = dbProfitByTicket.get(ticket)
-          if (fromDb != null) sum += fromDb
+      const orders = await api.openedOrders(metaapiAccountId)
+      const ticketSet = new Set(tickets)
+      for (const o of orders ?? []) {
+        const rec = o as Record<string, unknown>
+        const ticket = String(rec.ticket ?? rec.Ticket ?? rec.order ?? rec.Order ?? '').trim()
+        if (!ticketSet.has(ticket)) continue
+        const profit = Number(rec.profit ?? rec.Profit)
+        if (Number.isFinite(profit)) {
+          sum += profit
+          continue
         }
-        return sum
+        const fromDb = dbProfitByTicket.get(ticket)
+        if (fromDb != null) sum += fromDb
       }
+      return sum
     } catch (err) {
       console.warn('[copyLimitMetrics] openedOrders failed:', err instanceof Error ? err.message : String(err))
     }
@@ -103,6 +102,7 @@ export async function buildChannelPnlSnapshot(args: {
   channelId: string
   metaapiAccountId: string
   platform: string
+  provider?: string | null
   period: CopyLimitPeriod
   timeZone: string
   at?: Date
@@ -121,6 +121,7 @@ export async function buildChannelPnlSnapshot(args: {
     args.channelId,
     args.metaapiAccountId,
     args.platform,
+    args.provider,
   )
   return {
     realizedPnl,
@@ -152,15 +153,15 @@ export async function fetchLiveAccountEquity(
   metaapiAccountId: string,
   platform: string,
   fallbackEquity: number,
-  opts?: { lastBalance?: number | null },
+  opts?: { lastBalance?: number | null; provider?: string | null },
 ): Promise<number> {
   if (!metaapiAccountId || metaapiAccountId.includes('|')) return fallbackEquity
-  if (!hasFxsocketConfigured()) return fallbackEquity
-  const api = getFxsocketClient()
+  const api = apiForBrokerAccount(opts?.provider, metaapiAccountId)
   if (!api) return fallbackEquity
 
   const readEquity = async (): Promise<number | null> => {
     const summary = await api.accountSummary(metaapiAccountId)
+    if (summary.synced === false) return null
     const eq = Number(summary.equity)
     return Number.isFinite(eq) && eq > 0 ? eq : null
   }
