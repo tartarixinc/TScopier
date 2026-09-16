@@ -4,6 +4,24 @@ Changelog entries authored by Emma, kept separate from the main PROJECT_MEMORY.m
 
 ## Changelog
 
+### 2026-09-16 - Signup validation guidance
+
+- **Customer complaint:** Create Account stayed dull/disabled when a password
+  lacked a required symbol, with no clear explanation of what remained.
+- **Root UX issue:** The form already enforced password strength, confirmation,
+  and CAPTCHA gating, plus native required fields and email policy checks, but
+  exposed only a single static password hint and no live list of unmet signup
+  conditions near the disabled button.
+- **Change:** Added a compact real-time password checklist using the existing
+  six password rules and an accessible live status listing only current unmet
+  fields, email policy, password/confirmation, and CAPTCHA conditions. The
+  existing disabled expression, submit handler, Supabase payload, verification
+  email flow, auth contracts, and backend behavior are unchanged.
+- **Tests/results:** Focused signup/password/email tests PASS (22/22); frontend
+  typecheck PASS; changed-file lint PASS with the page's unrelated pre-existing
+  referral-effect rule excluded; production frontend build PASS; git diff check
+  PASS. No commit or push.
+
 ### 2026-09-03 - Stefan Production Readiness After Staging Acceptance
 
 - **Original failure:** Stefan's second complete same-channel XAUUSD BUY setup refreshed the first basket's SL/TP instead of opening an independent basket.
@@ -267,3 +285,10 @@ Changelog entries authored by Emma, kept separate from the main PROJECT_MEMORY.m
 - **Validation:** Focused worker notification/reconcile tests passed, frontend notification tests passed, worker build passed, root frontend build passed, root typecheck passed, and `git diff --check` passed locally. Staging validation is pending.
 - **Staging retest focus:** Confirm a real broker-side manual SL/TP edit on a copied basket produces exactly one bell notification and one email after successful reconciliation, both linking to Manage Signal; confirm naked-fill recovery and Manage Signal edits do not produce the warning.
 - **Do not break these invariants:** Do not make broker-side manual overrides persistent. Do not notify before a successful broker restore. Do not notify on every reconcile sweep. Do not notify on naked-fill recovery, Telegram management commands, Trades UI edits, auto-BE, trailing, failed modify attempts, skipped reconciliation, or missing broker tickets. Do not change Stefan Issue B / TP4 behavior.
+
+### 2026-09-16 - Signup Validation Guidance
+
+- **Customer complaint:** A customer could not tell why the disabled Create Account button would not activate when their password was missing a symbol.
+- **Root UX issue:** The form gated Create Account on password strength, password confirmation, and configured CAPTCHA, but exposed no live explanation of unmet requirements.
+- **Change made:** Added an interaction-gated, real-time password checklist for the existing six password rules (minimum length, uppercase, lowercase, number, symbol, and not-common password) plus a compact live notice listing current unmet signup conditions. The disabled expression and signup/auth request flow remain unchanged.
+- **Tests/results:** Focused `signupValidation` tests cover incomplete/satisfied password requirements, missing CAPTCHA and fields, multiple unmet conditions, existing enablement behavior, and unchanged signup submission sequence; frontend typecheck passed locally.
