@@ -126,6 +126,8 @@ export interface AccountSummary {
   marginLevel?: number
   leverage?: number
   currency?: string
+  /** MTAPI only: false means balance/equity are not authoritative yet. */
+  synced?: boolean
 }
 
 export interface FxsocketTerminalStatus {

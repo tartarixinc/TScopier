@@ -1,7 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { clearChannelActiveTradeParamsWhenFlat } from './channelActiveTradeParams'
 import { loadOpenTradesForManagement } from './managementScope'
-import { getFxsocketClient, hasFxsocketConfigured } from './fxsocketClient'
+import type { ResolvedBrokerProvider } from './providerResolver'
+import { apiForBrokerAccount } from './providerResolver'
 import { deleteRangePendingLegsForBasket } from './rangePendingLegDelete'
 import {
   cancelSignalEntryRowAtBroker,
@@ -16,7 +17,7 @@ type CopyLimitFlattenResult = {
 }
 
 async function closeBrokerTicket(
-  api: NonNullable<ReturnType<typeof getFxsocketClient>>,
+  api: ResolvedBrokerProvider,
   uuid: string,
   ticket: number,
 ): Promise<boolean> {
@@ -36,6 +37,7 @@ export async function flattenChannelTradesForCopyLimit(args: {
   brokerAccountId: string
   metaapiAccountId: string
   platform: string
+  provider?: string | null
   channelId: string
   reason: string
 }): Promise<CopyLimitFlattenResult> {
@@ -46,9 +48,7 @@ export async function flattenChannelTradesForCopyLimit(args: {
     virtualLegsDeleted: 0,
   }
 
-  if (!hasFxsocketConfigured()) return result
-
-  const api = getFxsocketClient()
+  const api = apiForBrokerAccount(args.provider, args.metaapiAccountId)
   if (!api || !args.metaapiAccountId || args.metaapiAccountId.includes('|')) return result
 
   const trades = await loadOpenTradesForManagement(args.supabase, {

@@ -2,6 +2,16 @@
 
 ## Changelog
 
+### 2026-09-16 - MTAPI migration Phase 1 repair
+
+- Supersedes the 2026-09-14 notes below where they describe unknown-provider fallback, MTAPI layering support, an MTAPI close-audit source, or a missing provider CHECK.
+- Null/absent providers resolve to FXSocket; `mtapi` and unknown values fail closed until Phase 2.
+- `FxsocketProvider` delegates existing arguments and results without normalization, including expert/expiration fields, disconnect behavior, and nested `SymbolParams`.
+- Worker entry, management, monitor, copy-limit, force-close, stream, and v2 reconciliation boundaries are provider-gated. Existing safety-aware `FxClient` v2 calls remain intact behind that gate.
+- The migration enforces `provider in ('fxsocket', 'mtapi')`; MTAPI layering remains unsupported; the premature MTAPI close-audit source was removed.
+- The unrelated assistant thread ID behavior change was reverted from the Phase 1 range.
+- Phase 2 has not started; no MTAPI transport, session, read, or write logic was added.
+
 ### 2026-09-14 — MTAPI migration Phase 1: BrokerProvider seam complete
 
 - **Plain English:** We built the foundation for switching from FXSocket to MTAPI. A new `provider` column on broker accounts lets us route each account to a different broker backend. The existing FXSocket code is wrapped behind a clean interface so a future MTAPI provider can slot in without touching the trade execution logic. Hosting decided: self-hosted Docker on Contabo (~$7/mo) with nginx for TLS + auth, instead of Railway (~$85-100/mo). Also corrected the migration plan: "shadow mode" (running both providers simultaneously) is not possible because brokers only allow one connection per account at a time.

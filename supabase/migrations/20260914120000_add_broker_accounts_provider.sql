@@ -2,7 +2,9 @@
 -- Default 'fxsocket' preserves existing behaviour; MTAPI accounts get 'mtapi'.
 
 alter table broker_accounts
-  add column provider text not null default 'fxsocket';
+  add column provider text not null default 'fxsocket'
+  constraint broker_accounts_provider_check
+    check (provider in ('fxsocket', 'mtapi'));
 
 comment on column broker_accounts.provider is
   'Broker provider: fxsocket (default) or mtapi. Controls which BrokerProvider implementation handles this account.';

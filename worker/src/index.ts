@@ -46,6 +46,7 @@ import { telegramShutdownDrainMs } from './workerShutdown'
 import { registerOrderCloseAuditSupabase } from './orderCloseAudit'
 import { initializeBrokerExecutionCapability } from './brokerExecutionMode'
 import { testFlagEnabled } from './testFlags'
+import { MtapiSessionManager } from './mtapiSessionManager'
 
 initWorkerSentry()
 installWorkerProcessSentryHandlers()
@@ -87,6 +88,7 @@ let httpServer: Server | null = null
 let authService: AuthService | null = null
 let tradeExecutor: TradeExecutor | null = null
 let signalQueueConsumers: SignalQueueConsumerManager | null = null
+let mtapiSessionManager: MtapiSessionManager | null = null
 
 const monitors: Array<{ stop: () => void }> = []
 const monitorLoops: MonitorLoopHandle[] = []
@@ -196,6 +198,13 @@ async function main() {
   }
 
   if (workerConfig.runsTrade) {
+    mtapiSessionManager = new MtapiSessionManager(supabase)
+    await mtapiSessionManager.start().catch(error => {
+      console.warn(
+        '[worker] MTAPI session startup skipped: '
+        + (error instanceof Error ? error.name : 'UNKNOWN'),
+      )
+    })
     tradeExecutor = new TradeExecutor(supabase, sessionManager)
     sessionManager.setTradeExecutor(tradeExecutor)
     await tradeExecutor.start()
@@ -316,6 +325,7 @@ async function main() {
     stopLogRetention?.()
     setQueueMetricsProvider(null)
     await signalQueueConsumers?.stop()
+    mtapiSessionManager?.stop()
     tradeExecutor?.stop()
     for (const m of monitors) m.stop()
     if (workerConfig.runsListener) {

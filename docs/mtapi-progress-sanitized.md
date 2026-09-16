@@ -1,7 +1,13 @@
 # MTAPI Migration — Progress Log (Sanitized)
 
-**Date:** 2026-09-14
-**Status:** Phase 1 complete
+**Date:** 2026-09-16
+**Status:** Phase 1 repaired and verified; Phase 2 not started
+
+> **Repair note (2026-09-16):** The original Phase 1 notes below are superseded
+> where they describe fallback for unknown providers, MTAPI layering support,
+> an MTAPI close-audit source, or a missing database CHECK. Null/absent provider
+> values use FXSocket; `mtapi` and unknown values fail closed. The migration now
+> checks `provider in ('fxsocket', 'mtapi')`, and MTAPI layering remains unsupported.
 
 > **Note:** This is the sanitized version of `docs/mtapi-progress.md` (gitignored).
 > Credentials, tokens, and account details have been redacted.

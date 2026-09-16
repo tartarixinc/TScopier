@@ -40,6 +40,10 @@ export async function reconcileGhostBasketLegs(ctx: TradeExecutorContext, args: 
   }): Promise<{ isGhostBasket: boolean; closedCount: number }> {
     const { signal, broker, uuid, anchorSignalId, symbol, familyTrades } = args
     if (!familyTrades.length) return { isGhostBasket: false, closedCount: 0 }
+    // Resolve first even on v2: Phase 1 uses this as the provider fail-closed
+    // gate, while the safety-aware FxClient path below remains unchanged.
+    const api = ctx.apiFor(broker)
+    if (!api) return { isGhostBasket: false, closedCount: 0 }
 
     let brokerTickets: Set<number>
     if (isV2({ brokerAccountId: broker.id, userId: signal.user_id })) {
@@ -56,8 +60,6 @@ export async function reconcileGhostBasketLegs(ctx: TradeExecutorContext, args: 
         return { isGhostBasket: false, closedCount: 0 }
       }
     } else {
-      const api = ctx.apiFor(broker)
-      if (!api) return { isGhostBasket: false, closedCount: 0 }
       try {
         brokerTickets = await fetchOpenBrokerTicketsStrict(api, uuid)
       } catch (err) {
