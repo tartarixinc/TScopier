@@ -2,6 +2,55 @@
 
 ## Changelog
 
+### 2026-09-16 — MTAPI Phase 2 signed off + migration DB applied
+
+- **Plain English:** The read-only MTAPI provider is complete and verified. We can now connect to a broker through the MTAPI bridge and read quotes, positions, account summary, and order history — the same data we currently get from FXSocket, but through our own self-hosted bridge. The migration database (`supmsgcubipmmowrzoub`) is fully synced with all required columns, triggers, and security policies. Hosting decision: Contabo Core VPS 4 in US East (Carlstadt, NJ) for the MTAPI bridge at $8.08/mo ($5.28 base + $2.80 location fee). Carlstadt NJ is ~5ms from NYC, ~15ms from NY broker servers.
+- **Root cause (technical):** N/A — this is feature completion, not a bug fix.
+- **Fix (files):**
+  - `worker/src/mtapiProvider.ts` (514 lines) — `MtapiProvider` implementing read-only `BrokerProvider` methods. Handles ConnectEx/ConnectByToken session lifecycle, token-based reconnect with credential recovery, `INVALID_TOKEN` retry, and all read endpoints (quotes, positions, account summary, order history, symbols, connection status).
+  - `worker/src/mtapiSessionManager.ts` (160 lines) — `MtapiSessionManager` managing session lifecycle: startup reconciliation via `DisconnectOrphans`, periodic health sweeps, credential recovery on token expiry, and platform cache seeding.
+  - `worker/src/mtapiProvider.test.ts` (204 lines) — 15 unit tests covering read normalization, error handling, token reconnect, retry logic, and read-only enforcement (MTAPI_READ_ONLY on write methods).
+  - `worker/src/mtapiSessionManager.test.ts` — session manager unit tests.
+  - `worker/src/providerResolver.ts` — updated to dispatch to MTAPI when `provider = 'mtapi'`.
+  - `supabase/migrations/20260916120000_mtapi_read_sessions.sql` — adds `mtapi_session_id`, `broker_password_encrypted`, `auto_reconnect_enabled`, `password_updated_at` columns; guard trigger blocks credential exposure to `authenticated` role; SELECT grants restricted to safe columns only.
+  - `docs/mtapi-hosting.md` — updated with Hetzner recommendation, broker landscape table (163 accounts across 15+ brokers, top 4 = 84 accounts in NY/LD4).
+  - `docs/mtapi-migration-plan.md` — Phase 2 marked as signed off with notes.
+- **Design decisions:**
+  - Shadow mode (both providers simultaneously) not possible — brokers allow one connection per account. Tested on separate demo account instead.
+  - URL query password exposure (MEDIUM finding) acceptable for Phase 2 reads; will be addressed before Phase 3 writes.
+  - Silent error swallowing in `closedOrdersHistoryLite` (MEDIUM finding) acceptable for Phase 2; will add logging before Phase 3.
+  - Hetzner NY over Contabo for broker proximity ($15/mo vs $7/mo — worth it for latency).
+- **Tests/verification:** Code-tester PASS (1552 assertions, 0 failures). Code-review PASS_WITH_NOTES (Security A-, Correctness A, Quality B+, Readiness A-). Migration DB integration tests: 21/21 PASS (columns, trigger, indexes, SELECT grants, session manager query, insert/delete lifecycle).
+- **Deploy state:** committed to `migration` branch; migration applied to `supmsgcubipmmowrzoub`; NOT deployed to Railway yet.
+- **Follow-ups:**
+  1. Phase 0: set up Contabo VPS + Docker MTAPI bridge.
+  2. Phase 0: test ConnectEx → live broker with demo account.
+  3. Phase 2.5: frontend provider awareness.
+  4. Phase 3: MTAPI writes on one staging account.
+  5. Phase 4: per-account cutover.
+
+### 2026-09-17 — MTAPI Phase 3: write operations enabled
+
+- **Plain English:** The MTAPI provider can now place, modify, and close trades — not just read them. This means we can execute signals through our own self-hosted bridge instead of relying on FXSocket. MT5 trades use idempotent "Safe" endpoints that prevent duplicate orders even on retries. MT4 trades use legacy endpoints with extra safety: timeout errors are not retried to avoid opening duplicate positions. Every trade close is audited for observability.
+- **Root cause (technical):** N/A — feature completion, replacing the `writeDisabled()` stubs that threw `MTAPI_READ_ONLY` on every write attempt.
+- **Fix (files):**
+  - `worker/src/mtapiProvider.ts` — `orderSend`, `orderModify`, `orderClose` implementations. MT5 routes to `OrderSendSafe`/`OrderModifySafe`/`OrderCloseSafe` (idempotent). MT4 routes to `OrderSend`/`OrderModify`/`OrderClose`. New `requestWithRetry` helper with `allowTimeoutRetry` flag — `orderSend` passes `platform === 'MT5'` to prevent timeout retry on MT4 (avoids duplicate positions). `orderClose` calls `auditOrderClose` on both success and failure paths. Concurrency gating via `tradeOpGate` (configurable `MT_TRADE_OP_CONCURRENCY`, default 3).
+  - `worker/src/mtapiProvider.test.ts` — 5 new write tests (OrderSendSafe, OrderModifySafe, OrderCloseSafe, MT4 fallback, INVALID_TOKEN retry). Total: 13 tests pass.
+  - `worker/src/orderCloseAudit.ts` — `OrderCloseAuditEvent.source` union expanded: `'fxsocket' | 'fx_v2' | 'mtapi'`.
+- **Design decisions:**
+  - MT5 `*Safe` endpoints are idempotent server-side — safe to retry on timeout.
+  - MT4 `OrderSend` is NOT idempotent — a lost ack could mean the order opened, so timeout retries are excluded (matching FxSocket's pattern at `fxsocketClient.ts:1079-1080`).
+  - `requestWithRetry` accepts `allowTimeoutRetry` boolean (default `true`); only `orderSend` sets it to `false` for MT4.
+  - Audit trail on every `orderClose` (success + failure) for observability.
+  - Same concurrency gating pattern as FxSocket (`tradeOpGate.acquire` + `finally { release() }`).
+- **Tests/verification:** 15/15 tests pass (13 provider + 2 session manager). Code-tester PASS. Code-review PASS_WITH_NOTES (1 MEDIUM fixed: MT4 timeout retry guard).
+- **Deploy state:** committed to `migration` branch; NOT deployed. Needs Contabo VPS + Docker bridge for live testing.
+- **Follow-ups:**
+  1. Set up Contabo VPS + Docker MTAPI bridge.
+  2. Live test: open trade → modify SL/TP → close → verify no duplicates.
+  3. Sign off Phase 3 after live verification.
+  4. Phase 4: per-account cutover.
+
 ### 2026-09-16 - MTAPI migration Phase 1 repair
 
 - Supersedes the 2026-09-14 notes below where they describe unknown-provider fallback, MTAPI layering support, an MTAPI close-audit source, or a missing provider CHECK.
