@@ -61,6 +61,7 @@ import {
   tpClauseHasExplicitPips,
   type PriceUnit,
 } from './signalStopUnits'
+import type { EntryOrderType } from './manualPlanning/types'
 
 /** Loose hint that a message references a Deriv synthetic index (any alias form). */
 const DERIV_SYNTHETIC_HINT_RE =
@@ -73,6 +74,8 @@ export interface ChannelParsedSignal {
   entry_price: number | null
   entry_zone_low: number | null
   entry_zone_high: number | null
+  /** Explicit provider instruction; null when the signal did not name an order type. */
+  entry_order_type?: EntryOrderType | null
   sl: number | null
   tp: number[]
   /** Whether `tp` values are absolute prices or pip offsets from entry. */
@@ -1620,6 +1623,15 @@ export type ParseChannelMessageResult = {
 
 export { looksLikeChannelManagementUpdate, looksLikeDeletePendingsCommand, looksLikeExplicitFullCloseCommand } from './signalManagementIntent'
 
+/** Preserve explicit BUY/SELL STOP or LIMIT wording for broker-order routing. */
+function applyExplicitEntryOrderType(parsed: ChannelParsedSignal, rawMessage: string): ChannelParsedSignal {
+  const action = String(parsed.action ?? '').toLowerCase()
+  if (action !== 'buy' && action !== 'sell') return parsed
+  const match = rawMessage.match(/\b(?:buy|sell)\s+(stop|limit)\b/i)
+  const entry_order_type: EntryOrderType | null = match ? match[1]!.toLowerCase() as EntryOrderType : null
+  return { ...parsed, entry_order_type }
+}
+
 function applyStopUnits(
   parsed: ChannelParsedSignal,
   rawMessage: string,
@@ -1667,9 +1679,10 @@ export function enrichParsedKeywordMatch(
   const quoteRepaired = applyQuoteLevelSymbolRepair(repaired, rawMessage)
   const dropped = dropInvalidTradeSymbol(quoteRepaired)
   const withUnits = applyStopUnits(dropped, rawMessage, channelKeywords)
-  const providerNum = withUnits.provider_signal_number ?? extractProviderSignalNumber(rawMessage)
-  if (providerNum == null) return withUnits
-  return { ...withUnits, provider_signal_number: providerNum }
+  const withOrderType = applyExplicitEntryOrderType(withUnits, rawMessage)
+  const providerNum = withOrderType.provider_signal_number ?? extractProviderSignalNumber(rawMessage)
+  if (providerNum == null) return withOrderType
+  return { ...withOrderType, provider_signal_number: providerNum }
 }
 
 /** Deterministic management / SL-TP follow-up parse only (no entry parsers). */
