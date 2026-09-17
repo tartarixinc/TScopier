@@ -113,10 +113,11 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
       if (e.key === 'Escape') onClose()
     }
     document.addEventListener('keydown', onKey)
+    const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => {
       document.removeEventListener('keydown', onKey)
-      document.body.style.overflow = ''
+      document.body.style.overflow = previousOverflow
     }
   }, [trade, onClose])
 
@@ -155,6 +156,24 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
       ...prev,
       { role: 'user', content: buildTradeFailureAssistantPrompt(structuredBrokerFailure) },
     ])
+    assistant.openAssistant()
+  }
+
+  const askAssistantExplainSignal = () => {
+    if (!trade) return
+    const parsed = context?.signal?.parsed_data as Record<string, unknown> | null
+    const ctx = [
+      `Signal ID: ${context?.signal?.id}`,
+      `Status: ${context?.signal?.status}`,
+      `Symbol: ${trade.symbol}`,
+      `Action: ${parsed?.action ?? '—'}`,
+      parsed?.entry_price ? `Entry price: ${parsed.entry_price}` : '',
+      parsed?.sl ? `Stop loss: ${parsed.sl}` : '',
+      Array.isArray(parsed?.tp) ? `Take profit: ${parsed.tp.join(', ')}` : '',
+      context?.signal?.skip_reason ? `Skip reason: ${context.signal.skip_reason}` : '',
+      rawMessage ? `\nOriginal Telegram message:\n${rawMessage}` : '',
+    ].filter(Boolean).join('\n')
+    assistant.setPendingAutoSend(`Please explain what happened with this trade signal in plain English.\n\n${ctx}`)
     assistant.openAssistant()
   }
 
@@ -425,22 +444,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
 
               <button
                 type="button"
-                onClick={() => {
-                  const parsed = context?.signal?.parsed_data as Record<string, unknown> | null
-                  const ctx = [
-                    `Signal ID: ${context?.signal?.id}`,
-                    `Status: ${context?.signal?.status}`,
-                    `Symbol: ${trade.symbol}`,
-                    `Action: ${parsed?.action ?? '—'}`,
-                    parsed?.entry_price ? `Entry price: ${parsed.entry_price}` : '',
-                    parsed?.sl ? `Stop loss: ${parsed.sl}` : '',
-                    Array.isArray(parsed?.tp) ? `Take profit: ${parsed.tp.join(', ')}` : '',
-                    context?.signal?.skip_reason ? `Skip reason: ${context.signal.skip_reason}` : '',
-                    rawMessage ? `\nOriginal Telegram message:\n${rawMessage}` : '',
-                  ].filter(Boolean).join('\n')
-                  assistant.setPendingAutoSend(`Please explain what happened with this trade signal in plain English.\n\n${ctx}`)
-                  assistant.openAssistant()
-                }}
+                onClick={askAssistantExplainSignal}
                 className="text-xs font-semibold text-teal-700 dark:text-teal-300 hover:underline underline-offset-2"
               >
                 {t.copierLogs.detailModal?.explainWithAi ?? 'Explain with AI'}

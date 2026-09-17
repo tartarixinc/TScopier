@@ -85,8 +85,9 @@ export function CopierLogDetailModal({
     ? tradeSignalActionLabel(action, summaryLabels)
     : '—'
 
+  const rawMessage = signal?.raw_message?.trim() || (signal?.raw_image_url ? '(image)' : '—')
+
   const askAssistantExplainSignal = () => {
-    const parsed = signal?.parsed_data as Record<string, unknown> | null
     const context = [
       `Signal ID: ${signal?.id}`,
       `Status: ${signal?.status}`,
@@ -140,7 +141,6 @@ export function CopierLogDetailModal({
   if (!signal) return null
 
   const receivedAt = new Date(signal.created_at).toLocaleString()
-  const rawMessage = signal.raw_message?.trim() || (signal.raw_image_url ? '(image)' : '—')
   const technicalCode = signal.skip_reason?.trim() || '—'
   const showReason = signal.status === 'skipped' || signal.status === 'failed' || Boolean(signal.skip_reason)
   const effectiveRetryEligible = retryEligible && structuredFailure?.retryable !== false
