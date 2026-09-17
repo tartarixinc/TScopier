@@ -41,6 +41,16 @@ export function HelpSidebarNav({ collapsed, onNavigate }: HelpSidebarNavProps) {
 
       <div className="space-y-0.5">
         <NavLink
+          to="/updates"
+          title={t.nav.items.updates}
+          onClick={onNavigate}
+          className={({ isActive }) => itemClass(isActive)}
+        >
+          <UpdatesIcon className="h-4 w-4 shrink-0" aria-hidden />
+          <span className={clsx(collapsed && 'lg:hidden')}>{t.nav.items.updates}</span>
+        </NavLink>
+
+        <NavLink
           to="/contact-support"
           title={hm.liveChat}
           onClick={onNavigate}
@@ -58,16 +68,6 @@ export function HelpSidebarNav({ collapsed, onNavigate }: HelpSidebarNavProps) {
         >
           <ReportedTradesIcon className="h-4 w-4 shrink-0" aria-hidden />
           <span className={clsx(collapsed && 'lg:hidden')}>{t.nav.items.reportedTrades}</span>
-        </NavLink>
-
-        <NavLink
-          to="/updates"
-          title={t.nav.items.updates}
-          onClick={onNavigate}
-          className={({ isActive }) => itemClass(isActive)}
-        >
-          <UpdatesIcon className="h-4 w-4 shrink-0" aria-hidden />
-          <span className={clsx(collapsed && 'lg:hidden')}>{t.nav.items.updates}</span>
         </NavLink>
 
         <a
