@@ -2,12 +2,35 @@
 
 ## Changelog
 
+### 2026-09-17 — Phase 2.5: frontend provider awareness
+
+- **Plain English:** The website now knows whether a broker account uses FXSocket or MTAPI. Before this change, the UI only checked FXSocket fields — so any account set to MTAPI would appear as "not connected" even if it was working. Now the connection status, copy eligibility, and session counts all reflect the correct provider. This is needed before we can enable MTAPI writes, because the user needs to see that their MTAPI account is connected and ready to copy trades.
+- **Root cause (technical):** All frontend provider-check functions (`hasFxsocketBrokerSession`, `isBrokerCopyEnabled`, `brokerEffectiveConnectionStatus`, `countLinkedBrokerSessions`) were hardcoded to only read FXSocket columns (`fxsocket_account_id`, `fxsocket_status`). The `BROKER_ACCOUNT_CLIENT_SELECT` query also didn't fetch the new provider columns.
+- **Fix (files):**
+  - `src/types/database.ts` — added `provider`, `mtapi_session_id`, `mtapi_status` to `BrokerAccount` interface.
+  - `src/lib/brokerLink.ts` — added `resolveProvider`, `hasMtapiBrokerSession`, `hasAnyBrokerSession`. Updated `isBrokerCopyEnabled` and `countLinkedBrokerSessions` to use `hasAnyBrokerSession` (handles both providers).
+  - `src/lib/brokerReconnect.ts` — `brokerEffectiveConnectionStatus` now dispatches on `provider`: reads `mtapi_status` for MTAPI accounts, `fxsocket_status` for FXSocket. `brokerCanReconnect` checks the correct session field per provider.
+  - `src/lib/brokerAccountSelect.ts` — added `provider`, `mtapi_session_id`, `mtapi_status` to `BROKER_ACCOUNT_CLIENT_SELECT` so the columns are actually fetched from Supabase.
+  - `src/lib/brokerLink.test.ts` — 10 new MTAPI test cases (resolveProvider, hasMtapiBrokerSession, hasAnyBrokerSession, isBrokerCopyEnabled, countLinkedBrokerSessions with MTAPI accounts).
+  - `src/lib/brokerReconnect.test.ts` — 6 new MTAPI test cases (brokerEffectiveConnectionStatus, brokerCanReconnect with provider='mtapi').
+- **Design decisions:**
+  - `resolveProvider` defaults to `'fxsocket'` for null, undefined, or unknown strings — safe backward compatibility.
+  - `BROKER_ACCOUNT_CLIENT_SELECT` is the single source of truth for frontend queries; all 8 consumers use it.
+  - `stream_ticket` edge function was already provider-agnostic (builds worker URL from account row ID), no changes needed.
+- **Tests/verification:** 28 tests pass (15 brokerLink + 13 brokerReconnect). TypeScript clean.
+- **Deploy state:** committed to `migration` branch; NOT deployed.
+- **Follow-ups:**
+  1. Set up Contabo VPS + Docker MTAPI bridge (Phase 0).
+  2. Live test Phase 3: open trade → modify SL/TP → close → verify no duplicates.
+  3. Sign off Phase 3 after live verification.
+  4. Phase 4: per-account cutover.
+
 ### 2026-09-17 — Branch state: migration diverged from staging (intentional)
 
 - **Plain English:** The `migration` branch has MTAPI work (Phases 0–3) that does not belong on `staging`. Staging was cleaned and rebuilt from a pre-MTAPI point. The two branches intentionally diverge — this is by design, not a mistake.
 - **Root cause (technical):** AGENTS.md rule: all MTAPI migration work lives exclusively on the `migration` branch. Staging must remain free of migration code to prevent accidental merges into main.
 - **Current state:**
-  - `migration`: MTAPI Phases 0–3 (read + write operations, session manager, provider resolver, MTAPI columns migration). Latest: `3cce3c10` (Phase 3 writes).
+  - `migration`: MTAPI Phases 0–3 (read + write operations, session manager, provider resolver, MTAPI columns migration) + Phase 2.5 (frontend provider awareness). Latest: `159ffc0c` (Phase 2.5).
   - `staging` = `main`: Explain with AI, platform updates, signup validation, INVALID_REQUEST error handling, code review fixes. Latest: `8f2a1b2b`.
   - `upstream/main` is 14 commits behind `origin/main` — PR ready for merge.
 - **Divergence point:** `migration` forked from staging before MTAPI work was added. Staging was force-pushed from `2647c63d` (pre-MTAPI) and rebuilt with non-MTAPI commits cherry-picked back.
