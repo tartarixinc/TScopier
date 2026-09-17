@@ -95,6 +95,20 @@ export const chromeNl: AppChromeTranslations = {
       status: 'Status',
       statusOperational: 'Alle systemen operationeel',
     },
+    updatesAnnouncement: {
+      title: 'Platform Update',
+      viewAll: 'View All Updates',
+      dismiss: 'Dismiss',
+    },
+    updatesPage: {
+      title: 'Updates',
+      subtitle: 'Recent changes, fixes, and improvements to TScopier.',
+      empty: 'No updates yet. Check back soon.',
+      typeFeature: 'Feature',
+      typeFix: 'Fix',
+      typeImprovement: 'Improvement',
+    },
+
 
     assistant: {
       title: 'TScopier Assistant',
