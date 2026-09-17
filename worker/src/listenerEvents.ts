@@ -30,6 +30,9 @@ export type ListenerEventType =
   | 'channel_auto_disabled'
   | 'channel_reactivated'
   | 'poll_flood_backoff'
+  | 'telegram_link_attempt'
+  | 'telegram_link_success'
+  | 'telegram_link_failed'
 
 export async function persistListenerEvent(
   supabase: SupabaseClient,
@@ -55,4 +58,31 @@ export async function persistListenerEvent(
       error.message,
     )
   }
+}
+
+/** Fire-and-forget: log a Telegram auth failure to listener_events. */
+export function logTelegramAuthFailure(
+  supabase: SupabaseClient,
+  userId: string,
+  step: string,
+  error: string,
+): void {
+  void persistListenerEvent(supabase, {
+    userId,
+    eventType: 'telegram_link_failed',
+    detail: { step, error },
+  })
+}
+
+/** Fire-and-forget: log a Telegram auth success to listener_events. */
+export function logTelegramAuthSuccess(
+  supabase: SupabaseClient,
+  userId: string,
+  sessionId: string,
+): void {
+  void persistListenerEvent(supabase, {
+    userId,
+    eventType: 'telegram_link_success',
+    detail: { session_id: sessionId },
+  })
 }

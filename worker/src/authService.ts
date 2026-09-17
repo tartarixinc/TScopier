@@ -11,6 +11,7 @@ import {
   normalizeTelegramPhoneNumber,
   upsertTelegramAccountClaim,
 } from './telegramAccountClaims'
+import { logTelegramAuthFailure, logTelegramAuthSuccess } from './listenerEvents'
 import { buildQrStatusFromPending, formatQrLoginUrl, qrStatusFromActiveSession, type QrStatusResponse } from './telegramQrAuth'
 import {
   isPhoneCodeFatalAuthError,
@@ -631,6 +632,7 @@ export class AuthService {
     if (dbErr || !row) {
       logAuthEvent('finalize_auth_db_failed', { userId, correlationId, error: dbErr?.message ?? 'no row returned', timeMs: Date.now() - tStart })
       console.error(`[authService] finalizeAuth db_upsert_failed user=${userId}: ${dbErr?.message ?? 'no row returned'}`)
+      logTelegramAuthFailure(this.supabase, userId, 'finalize', dbErr?.message ?? 'Failed to persist session')
       try { await client.disconnect() } catch { /* ignore */ }
       await this.clearPendingRow(userId, 'finalizeAuth_db_fail')
       throw new Error(dbErr?.message ?? 'Failed to persist Telegram session')
@@ -645,6 +647,7 @@ export class AuthService {
     } catch (claimErr) {
       logAuthEvent('finalize_auth_claim_failed', { userId, correlationId, error: claimErr instanceof Error ? claimErr.message : String(claimErr) })
       console.error(`[authService] finalizeAuth claim_failed user=${userId}:`, claimErr instanceof Error ? claimErr.message : claimErr)
+      logTelegramAuthFailure(this.supabase, userId, 'finalize', claimErr instanceof Error ? claimErr.message : String(claimErr))
       await this.supabase.from('telegram_sessions').delete().eq('user_id', userId)
       try { await client.disconnect() } catch { /* ignore */ }
       await this.clearPendingRow(userId, 'finalizeAuth_claim_fail')
@@ -675,6 +678,7 @@ export class AuthService {
     }
 
     logAuthEvent('finalize_auth_complete', { userId, sessionId: row.id, totalTimeMs: Date.now() - tStart, correlationId })
+    logTelegramAuthSuccess(this.supabase, userId, row.id as string)
     return { ok: true, session_id: row.id as string, channels }
   }
 
@@ -757,10 +761,12 @@ export class AuthService {
     if (!normalizedPhone || !normalizedPhone.startsWith('+')) {
       logAuthEvent('send_code_invalid_phone', { userId, phone, correlationId })
       console.warn(`[authService] send_code invalid phone format user=${userId} phone=${redactAuthLogValue('phone', phone)}`)
+      logTelegramAuthFailure(this.supabase, userId, 'send_code', 'Invalid phone format')
       throw new Error('Use full phone with country code, e.g. +44...')
     }
     if (this.isAuthInFlight(userId)) {
       logAuthEvent('send_code_duplicate_in_flight', { userId, correlationId })
+      logTelegramAuthFailure(this.supabase, userId, 'send_code', 'Duplicate in flight')
       throw new Error('Telegram login is already starting. Wait a few seconds before requesting another code.')
     }
     await assertTelegramAccountAvailable(this.supabase, userId, { phone: normalizedPhone })
@@ -814,6 +820,7 @@ export class AuthService {
       if (holdErr) {
         logAuthEvent('send_code_hold_failed', { userId, correlationId, error: holdErr.message })
         console.error('[authService] auth hold upsert failed:', holdErr.message)
+        logTelegramAuthFailure(this.supabase, userId, 'send_code', 'Could not save login state')
         throw new Error('Could not start Telegram login. Try again in a minute.')
       }
 
@@ -888,6 +895,7 @@ export class AuthService {
               totalTimeMs: Date.now() - tStart,
             })
             console.warn(`[authService] send_code Telegram API failed user=${userId}:`, errMsg)
+            logTelegramAuthFailure(this.supabase, userId, 'send_code', errMsg)
             try { await client.disconnect() } catch { /* ignore */ }
             this.pending.delete(userId)
             await this.clearPendingRow(userId)
@@ -900,6 +908,7 @@ export class AuthService {
       if (errMsg === 'AUTH_OPERATION_TIMEOUT') {
         logAuthEvent('send_code_timeout', { userId, correlationId, totalTimeMs: Date.now() - tStart })
         console.warn(`[authService] send_code timed out for user ${userId} after ${Date.now() - tStart}ms`)
+        logTelegramAuthFailure(this.supabase, userId, 'send_code', 'Operation timed out')
       }
       throw err
     } finally {
@@ -1011,6 +1020,7 @@ export class AuthService {
     logAuthEvent('verify_code_start', { userId, correlationId, hasCode: !!normalizedCode, hasPassword: !!password })
     if (!normalizedCode) {
       logAuthEvent('verify_code_missing', { userId, correlationId })
+      logTelegramAuthFailure(this.supabase, userId, 'verify_code', 'Missing code')
       throw new Error('Verification code is required')
     }
     await this.sessionManager.pauseForAuth(userId, { releaseDelay: false })
@@ -1029,6 +1039,7 @@ export class AuthService {
     if (!pending) {
       logAuthEvent('verify_code_no_pending', { userId, correlationId })
       console.warn(`[authService] verifyCode no pending user=${userId}`)
+      logTelegramAuthFailure(this.supabase, userId, 'verify_code', 'No pending auth session')
       const err = new Error(noPendingPhoneAuthMessage())
       err.name = NO_PENDING_PHONE_AUTH_ERROR
       throw err
@@ -1086,6 +1097,9 @@ export class AuthService {
           }
           const errCat = isRecoverableTelegramAuthError(err) ? 'recoverable' : 'fatal'
           logAuthEvent('verify_code_signin_error', { userId, correlationId, error: msg, category: errCat })
+          if (errCat === 'fatal') {
+            logTelegramAuthFailure(this.supabase, userId, 'verify_code', msg)
+          }
           throw err
         }
       }
