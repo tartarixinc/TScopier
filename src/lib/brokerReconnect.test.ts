@@ -66,3 +66,67 @@ describe('brokerConnectionBadgeVariant', () => {
     })).toBe('error')
   })
 })
+
+describe('brokerEffectiveConnectionStatus — MTAPI', () => {
+  it('returns mtapi_status when provider=mtapi', () => {
+    expect(brokerEffectiveConnectionStatus({
+      fxsocket_status: null,
+      connection_status: null,
+      provider: 'mtapi',
+      mtapi_status: 'connected',
+    })).toBe('connected')
+  })
+
+  it('prefers connection_status error over mtapi_status', () => {
+    expect(brokerEffectiveConnectionStatus({
+      fxsocket_status: null,
+      connection_status: 'error',
+      provider: 'mtapi',
+      mtapi_status: 'connected',
+    })).toBe('error')
+  })
+
+  it('falls back to connection_status when mtapi_status is null', () => {
+    expect(brokerEffectiveConnectionStatus({
+      fxsocket_status: 'connected',
+      connection_status: 'connected',
+      provider: 'mtapi',
+      mtapi_status: null,
+    })).toBe('connected')
+  })
+})
+
+describe('brokerCanReconnect — MTAPI', () => {
+  it('shows reconnect for disconnected MTAPI session', () => {
+    expect(brokerCanReconnect({
+      fxsocket_account_id: null,
+      fxsocket_status: null,
+      connection_status: null,
+      provider: 'mtapi',
+      mtapi_session_id: 'sess_abc',
+      mtapi_status: 'disconnected',
+    })).toBe(true)
+  })
+
+  it('hides reconnect for connected MTAPI session', () => {
+    expect(brokerCanReconnect({
+      fxsocket_account_id: null,
+      fxsocket_status: null,
+      connection_status: null,
+      provider: 'mtapi',
+      mtapi_session_id: 'sess_abc',
+      mtapi_status: 'connected',
+    })).toBe(false)
+  })
+
+  it('hides reconnect for MTAPI without session', () => {
+    expect(brokerCanReconnect({
+      fxsocket_account_id: null,
+      fxsocket_status: null,
+      connection_status: 'error',
+      provider: 'mtapi',
+      mtapi_session_id: null,
+      mtapi_status: 'error',
+    })).toBe(false)
+  })
+})

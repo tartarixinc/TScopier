@@ -397,6 +397,12 @@ export interface BrokerAccount {
   fxsocket_account_id?: string | null
   /** FxSocket v1 account status. */
   fxsocket_status?: FxsocketConnectionStatus | null
+  /** Provider routing: 'fxsocket' (default) or 'mtapi'. */
+  provider?: 'fxsocket' | 'mtapi' | null
+  /** MTAPI session ID (when provider='mtapi'). */
+  mtapi_session_id?: string | null
+  /** MTAPI connection status (when provider='mtapi'). */
+  mtapi_status?: 'connected' | 'connecting' | 'disconnected' | 'error' | null
   terminal_connected?: boolean | null
   trade_allowed?: boolean | null
   /** Client-side live terminal health from FxSocket /status polling. */

@@ -48,4 +48,7 @@ export const BROKER_ACCOUNT_CLIENT_SELECT = [
   'created_at',
   'updated_at',
   'last_activated_at',
+  'provider',
+  'mtapi_session_id',
+  'mtapi_status',
 ].join(',')
