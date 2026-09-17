@@ -2,6 +2,17 @@
 
 ## Changelog
 
+### 2026-09-17 — Branch state: migration diverged from staging (intentional)
+
+- **Plain English:** The `migration` branch has MTAPI work (Phases 0–3) that does not belong on `staging`. Staging was cleaned and rebuilt from a pre-MTAPI point. The two branches intentionally diverge — this is by design, not a mistake.
+- **Root cause (technical):** AGENTS.md rule: all MTAPI migration work lives exclusively on the `migration` branch. Staging must remain free of migration code to prevent accidental merges into main.
+- **Current state:**
+  - `migration`: MTAPI Phases 0–3 (read + write operations, session manager, provider resolver, MTAPI columns migration). Latest: `3cce3c10` (Phase 3 writes).
+  - `staging` = `main`: Explain with AI, platform updates, signup validation, INVALID_REQUEST error handling, code review fixes. Latest: `8f2a1b2b`.
+  - `upstream/main` is 14 commits behind `origin/main` — PR ready for merge.
+- **Divergence point:** `migration` forked from staging before MTAPI work was added. Staging was force-pushed from `2647c63d` (pre-MTAPI) and rebuilt with non-MTAPI commits cherry-picked back.
+- **Do NOT merge migration into staging.** If migration commits appear on staging by accident, revert immediately.
+
 ### 2026-09-16 — MTAPI Phase 2 signed off + migration DB applied
 
 - **Plain English:** The read-only MTAPI provider is complete and verified. We can now connect to a broker through the MTAPI bridge and read quotes, positions, account summary, and order history — the same data we currently get from FXSocket, but through our own self-hosted bridge. The migration database (`supmsgcubipmmowrzoub`) is fully synced with all required columns, triggers, and security policies. Hosting decision: Contabo Core VPS 4 in US East (Carlstadt, NJ) for the MTAPI bridge at $8.08/mo ($5.28 base + $2.80 location fee). Carlstadt NJ is ~5ms from NYC, ~15ms from NY broker servers.
