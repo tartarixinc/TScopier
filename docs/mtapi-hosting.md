@@ -1,6 +1,6 @@
 # MTAPI Hosting Guide
 
-Date: 2026-09-14 · Status: **Decision made** · Owner: TBD
+Date: 2026-09-16 · Status: **Decision made** · Owner: TBD
 
 This document covers everything related to hosting the MTAPI Docker bridge:
 infrastructure options, cost comparisons, the chosen setup (Contabo + nginx),
@@ -73,28 +73,90 @@ Railway pricing: $20/vCPU/month + $10/GB RAM/month + plan fee ($5-20/mo).
 **Cons:** Usage-based billing = expensive for an always-on service. Overkill for
 a simple Docker container. Egress charges ($0.05/GB).
 
-### 2.3 Contabo (chosen)
+### 2.3 Hetzner
 
-| Plan | CPU | RAM | Storage | Price |
-|------|-----|-----|---------|-------|
-| Cloud VPS 4 | 4 vCPU | 8 GB | 75 GB NVMe | $6.60/mo |
-| Cloud VPS 6 | 6 vCPU | 12 GB | 100 GB NVMe | $7.95/mo |
-| Cloud VPS 8 | 8 vCPU | 24 GB | 200 GB NVMe | $15.00/mo |
+| Plan | CPU | RAM | Storage | Traffic | Price (US) | Price (EU) |
+|------|-----|-----|---------|---------|------------|------------|
+| CPX11 (shared) | 2 vCPU | 4 GB | 80 GB NVMe | 1 TB | $20.49/mo | €5.99/mo |
+| CPX21 (shared) | 4 vCPU | 8 GB | 160 GB NVMe | 1 TB | $37.49/mo | €9.99/mo |
+| CPX31 (shared) | 8 vCPU | 16 GB | 320 GB NVMe | 1 TB | $73.49/mo | €17.99/mo |
+| CCX13 (dedicated) | 2 vCPU | 8 GB | 80 GB NVMe | 1 TB | $50.99/mo | €16.49/mo |
 
-All plans include 32 TB traffic, unlimited incoming. 12-month term pricing shown.
+**Note:** Prices increased ~30-40% on June 15, 2026. US datacenters (Ashburn VA,
+Hillsboro OR) only offer CPX/CCX — no CX/CAX budget tiers. EU regions (Germany,
+Finland) are 3-4x cheaper but add ~80ms latency to NY broker servers. US plans
+include only 1 TB traffic (vs 20 TB in EU); overage at $1/TB.
 
-**Pros:** Fixed monthly cost. Way cheaper ($7 vs $85-100). More resources.
-**Cons:** Need to manage server ourselves (SSH, Docker, updates). Mixed support
-reviews. No auto-scaling.
+**Pros:** Excellent performance (Geekbench 6 single-core ~1,480, NVMe 58k IOPS).
+Ashburn VA is the world's densest internet exchange — great peering. Provisioning
+in ~25 seconds. 99.9% SLA. Clean API and Terraform provider.
+**Cons:** US pricing is 3-4x EU pricing. Only 1 TB traffic included in US.
+No phone support (ticket + email only). Servers bill whether on or off.
 
-### 2.4 Other VPS providers (for reference)
+### 2.4 Contabo
+
+| Plan | CPU | RAM | Storage | Traffic | Base Price (24-mo) |
+|------|-----|-----|---------|---------|-------------------|
+| Core VPS 4 | 4 vCPU | 8 GB | 100 GB SSD | Unlimited | €4.40/mo (~$5.28) |
+| Core VPS 6 | 6 vCPU | 12 GB | 200 GB SSD | Unlimited | €6.00/mo (~$7.20) |
+| Core VPS 8 | 8 vCPU | 24 GB | 300 GB SSD | Unlimited | €11.20/mo (~$13.44) |
+| Performance VPS 4 | 4 vCPU AMD EPYC | 8 GB | 150 GB NVMe | Unlimited | €10.80/mo (~$13.00) |
+
+US datacenter locations: **US East (Carlstadt, NJ)**, US Central (St. Louis),
+US West (Seattle). Location fees apply on top of base price:
+
+| Region | Location fee |
+|--------|-------------|
+| EU (Germany) | Free |
+| US Central (St. Louis) | $1.80/mo |
+| US West (Seattle) | $2.30/mo |
+| **US East (New York)** | **$2.80/mo** |
+
+All plans include unlimited traffic. Core VPS uses SSD; Performance VPS uses
+NVMe with AMD EPYC CPUs. 99.9% SLA.
+
+**Actual cost for US East (our use case):** $5.28 + $2.80 = **$8.08/mo** for
+Core VPS 4 (24-month term).
+
+**Pros:** Cheapest option — 4 vCPU + 8 GB for $8.08/mo in NY. Unlimited traffic.
+Carlstadt NJ is ~5ms from NYC, ~15ms from NY broker servers. 99.9% SLA.
+**Cons:** Shared vCPUs with lower per-core performance. Email-only support.
+Provisioning can take hours on first order. No hourly billing.
+
+### 2.5 Other VPS providers (for reference)
 
 | Provider | 4 vCPU, 8 GB RAM | Notes |
 |----------|-------------------|-------|
-| Hetzner | ~$15-20/mo | Better support, dedicated vCPU options |
 | DigitalOcean | ~$24-40/mo | Better docs, marketplace |
 | Vultr | ~$20-40/mo | Good global coverage |
 | AWS Lightsail | ~$20-40/mo | Easy AWS integration |
+
+---
+
+## 2.6 Broker landscape
+
+User accounts by broker (production, as of 2026-09-16):
+
+| Broker | Accounts | Server names | Primary datacenter |
+|--------|----------|-------------|-------------------|
+| Exness | 31 | MT5Trial9, MT5Trial15, MT5Trial11, MT5Real10, ... | NY (us-east-1) |
+| VantageMarkets | 27 | Demo, Live 14, Live 4, Live, Live 6, ... | LD4 (London) + NY |
+| PUPrime | 14 | Demo, Live 6, Live | LD4 (London) + HK |
+| ICMarkets | 12 | SC-Demo, SC-MT5-3, SC-MT5-4, SC-MT5-2 | NY (us-east-1) + LD4 |
+| MetaQuotes | 7 | Demo (MTAPI demo server) | Global |
+| Tickmill | 6 | EU-Demo, Demo | LD4 (London) |
+| XMGlobal | 5 | Demo 2, MT5 2/4/7/9 | LD4 + NY |
+| FTMO | 5 | Demo, Demo2 | LD4 (London) |
+| RoboForex | 4 | Pro, ProCent-5 | LD4 + HK |
+| 4xHub | 4 | International-Server | LD4 (London) |
+| VEOMarkets | 3 | Trade | LD4 (London) |
+| FBS | 2 | Demo | LD4 + NY |
+| BlackBull | 2 | Demo, Live | LD4 (London) |
+| Pepperstone | 1 | UK-Demo | LD4 (London) |
+| Other | 53 | (40+ different brokers) | Various |
+
+**Top 4 brokers = 84 accounts (60% of userbase).** All have NY or LD4 servers.
+Hetzner NY gives the lowest latency to the majority of broker endpoints.
 
 ---
 
@@ -105,10 +167,16 @@ reviews. No auto-scaling.
 | MTAPI Cloud 500 | $1,500 |
 | MTAPI Cloud 100 | $500 |
 | Railway (MTAPI + Worker) | ~$130-150 |
-| **Contabo + Worker (Railway)** | **~$57** |
-| Contabo only | ~$7 |
+| **Contabo Core VPS 4 (US East) + Worker (Railway)** | **~$58** |
+| Hetzner CPX21 (US) + Worker (Railway) | ~$87 |
+| Contabo Core VPS 4 (US East) only | ~$8 |
+| Hetzner CPX21 (US) only | ~$37 |
 
-**Decision:** Contabo for the MTAPI bridge. Worker stays on Railway.
+**Decision:** Contabo Core VPS 4 in US East (Carlstadt, NJ) for the MTAPI bridge.
+At $8.08/mo ($5.28 base + $2.80 location fee) with 4 vCPU, 8 GB RAM, and
+unlimited traffic, it delivers the MTAPI bridge workload at one-quarter the cost
+of Hetzner US. Carlstadt NJ is ~5ms from NYC, ~15ms from NY broker servers.
+Worker stays on Railway.
 
 ---
 
@@ -145,7 +213,7 @@ MTAPI itself has no API key. Security is network-level (nginx + firewall).
 ### 5.1 Contabo VPS
 
 1. Sign up at contabo.com
-2. Create a Cloud VPS 4 (Ubuntu 22.04)
+2. Create a Cloud VPS 4 (Ubuntu 22.04) — select **US East (New York)** datacenter
 3. Note the IP address and root password
 
 ### 5.2 Initial server setup

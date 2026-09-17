@@ -592,7 +592,7 @@ can be flipped back to FXSocket instantly.
       `FxsocketProvider`, add the `provider` column (default `fxsocket`), route all
       calls through the resolver. Deploy from the migration branch; confirm
       identical behaviour.
-3. **Phase 2 — MTAPI reads on a demo account.**
+3. **Phase 2 — MTAPI reads on a demo account.** ✅ **Signed off 2026-09-16.**
    - Implement `MtapiProvider` for reads on a staging demo account. **Shadow mode
      (running both providers simultaneously on the same account) is not possible**
      because brokers only allow one connection per account — connecting MTAPI would
@@ -601,6 +601,16 @@ can be flipped back to FXSocket instantly.
      order history), then disconnect. Re-introduce encrypted-credential storage
      here (needed for bridge-restart recovery). Implement startup session
      reconciliation via `DisconnectOrphans`.
+   - **Sign-off notes:** `MtapiProvider` (514 lines) + `MtapiSessionManager` (160
+     lines) implemented by Emma. Code-review PASS_WITH_NOTES (Security A-,
+     Correctness A, Quality B+, Readiness A-). Two MEDIUM findings (URL query
+     passwords — MTAPI protocol limitation; silent error swallowing in
+     `closedOrdersHistoryLite`) — acceptable for Phase 2 reads, will be addressed
+     before Phase 3 writes. `providerResolver.ts` dispatches to MTAPI when
+     `provider = 'mtapi'`. DB migration (`20260916120000_mtapi_read_sessions.sql`)
+     applied to migration Supabase (`supmsgcubipmmowrzoub`). Integration tests
+     passed: 21/21 (columns, trigger, indexes, SELECT grants, session manager
+     query pattern, insert/delete lifecycle). Migration branch merged locally.
 4. **Phase 2.5 — Frontend provider awareness.**
    - Make the website provider-aware before enabling writes. The frontend connects
      to the worker's `/broker/stream` proxy (not directly to FXSocket), so the
