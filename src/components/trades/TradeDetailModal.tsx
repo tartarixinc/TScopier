@@ -423,27 +423,6 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
                 </p>
               </section>
 
-              {messageBody ? (
-                <section className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                    {tr.telegramMessage}
-                  </p>
-                  <p className="text-sm text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50/80 dark:bg-neutral-800/30 px-4 py-3">
-                    {messageBody}
-                  </p>
-                  {context.signal.raw_image_url ? (
-                    <a
-                      href={context.signal.raw_image_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-teal-600 dark:text-teal-400 hover:underline"
-                    >
-                      {context.signal.raw_image_url}
-                    </a>
-                  ) : null}
-                </section>
-              ) : null}
-
               <button
                 type="button"
                 onClick={() => {
@@ -466,6 +445,27 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
               >
                 {t.copierLogs.detailModal?.explainWithAi ?? 'Explain with AI'}
               </button>
+
+              {messageBody ? (
+                <section className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                    {tr.telegramMessage}
+                  </p>
+                  <p className="text-sm text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50/80 dark:bg-neutral-800/30 px-4 py-3">
+                    {messageBody}
+                  </p>
+                  {context.signal.raw_image_url ? (
+                    <a
+                      href={context.signal.raw_image_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-teal-600 dark:text-teal-400 hover:underline"
+                    >
+                      {context.signal.raw_image_url}
+                    </a>
+                  ) : null}
+                </section>
+              ) : null}
 
               {instructionLines.length > 0 ? (
                 <section className="space-y-2">
