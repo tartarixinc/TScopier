@@ -444,6 +444,29 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
                 </section>
               ) : null}
 
+              <button
+                type="button"
+                onClick={() => {
+                  const parsed = context?.signal?.parsed_data as Record<string, unknown> | null
+                  const ctx = [
+                    `Signal ID: ${context?.signal?.id}`,
+                    `Status: ${context?.signal?.status}`,
+                    `Symbol: ${trade.symbol}`,
+                    `Action: ${parsed?.action ?? '—'}`,
+                    parsed?.entry_price ? `Entry price: ${parsed.entry_price}` : '',
+                    parsed?.sl ? `Stop loss: ${parsed.sl}` : '',
+                    Array.isArray(parsed?.tp) ? `Take profit: ${parsed.tp.join(', ')}` : '',
+                    context?.signal?.skip_reason ? `Skip reason: ${context.signal.skip_reason}` : '',
+                    rawMessage ? `\nOriginal Telegram message:\n${rawMessage}` : '',
+                  ].filter(Boolean).join('\n')
+                  assistant.setPendingAutoSend(`Please explain what happened with this trade signal in plain English.\n\n${ctx}`)
+                  assistant.openAssistant()
+                }}
+                className="text-xs font-semibold text-teal-700 dark:text-teal-300 hover:underline underline-offset-2"
+              >
+                {t.copierLogs.detailModal?.explainWithAi ?? 'Explain with AI'}
+              </button>
+
               {instructionLines.length > 0 ? (
                 <section className="space-y-2">
                   <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
