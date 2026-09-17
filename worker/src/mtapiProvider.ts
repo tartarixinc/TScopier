@@ -2,8 +2,11 @@ import type {
   AccountSummary, FxsocketMtStatus, FxsocketTerminalStatus, MtPlatform,
   OrderCloseArgs, OrderModifyArgs, OrderResult, OrderSendArgs, QuoteResult, SymbolParams,
 } from './fxsocketClient'
+import { normalizeOrderResponse, isTransientMtApiError, isOrderOpTimedOutMessage } from './fxsocketClient'
 import type { BrokerProvider } from './brokerProvider'
 import { ingestMtHistoryRows, type MtHistoryProfile } from './mtTradeFields'
+import { auditOrderClose } from './orderCloseAudit'
+import { createConcurrencyGate } from './perAccountConcurrency'
 
 type FetchLike = typeof fetch
 type RecoveryHandler = (sessionId: string) => Promise<string | null>
@@ -76,12 +79,9 @@ function isSessionGone(error: unknown): boolean {
   return text.includes('INVALID_TOKEN') || text.includes('CLIENT WITH ID')
 }
 
-function writeDisabled(operation: string): never {
-  throw new MtapiApiError(
-    'MTAPI ' + operation + ' is disabled during read-only Phase 2',
-    403,
-    'MTAPI_READ_ONLY',
-  )
+const tradeOpGate = createConcurrencyGate()
+function perAccountTradeConcurrency(): number {
+  return Math.max(1, Number(process.env.MT_TRADE_OP_CONCURRENCY ?? 3) || 3)
 }
 
 export interface MtapiProviderOptions {
@@ -286,14 +286,117 @@ export class MtapiProvider implements BrokerProvider {
     return this.request('DisconnectOrphans', {}, { method: 'POST', form, platform })
   }
 
-  async orderSend(_id: string, _args: OrderSendArgs): Promise<OrderResult> {
-    return writeDisabled('OrderSend')
+  async orderSend(id: string, args: OrderSendArgs): Promise<OrderResult> {
+    const release = await tradeOpGate.acquire(id, perAccountTradeConcurrency())
+    try {
+      const platform = this.platform(id)
+      const endpoint = platform === 'MT5' ? 'OrderSendSafe' : 'OrderSend'
+      const params: Record<string, string | number> = {
+        symbol: args.symbol,
+        operation: args.operation,
+        volume: args.volume,
+      }
+      if (args.price != null && args.price > 0) params.price = args.price
+      if (args.stoploss != null && args.stoploss !== 0) params.stoploss = args.stoploss
+      if (args.takeprofit != null && args.takeprofit !== 0) params.takeprofit = args.takeprofit
+      if (args.slippage != null) params.slippage = args.slippage
+      if (args.comment) params.comment = args.comment
+
+      const raw = await this.requestWithRetry(endpoint, params, id, platform === 'MT5')
+      return normalizeOrderResponse(raw)
+    } finally {
+      release()
+    }
   }
-  async orderModify(_id: string, _args: OrderModifyArgs): Promise<OrderResult> {
-    return writeDisabled('OrderModify')
+
+  async orderModify(id: string, args: OrderModifyArgs): Promise<OrderResult> {
+    const release = await tradeOpGate.acquire(id, perAccountTradeConcurrency())
+    try {
+      const platform = this.platform(id)
+      const endpoint = platform === 'MT5' ? 'OrderModifySafe' : 'OrderModify'
+      const params: Record<string, string | number> = {
+        ticket: args.ticket,
+      }
+      if (args.stoploss != null) params.stoploss = args.stoploss
+      if (args.takeprofit != null) params.takeprofit = args.takeprofit
+      if (args.price != null) params.price = args.price
+
+      const raw = await this.requestWithRetry(endpoint, params, id)
+      return normalizeOrderResponse(raw)
+    } finally {
+      release()
+    }
   }
-  async orderClose(_id: string, _args: OrderCloseArgs): Promise<OrderResult> {
-    return writeDisabled('OrderClose')
+
+  async orderClose(id: string, args: OrderCloseArgs): Promise<OrderResult> {
+    const release = await tradeOpGate.acquire(id, perAccountTradeConcurrency())
+    try {
+      const platform = this.platform(id)
+      const endpoint = platform === 'MT5' ? 'OrderCloseSafe' : 'OrderClose'
+      const params: Record<string, string | number> = {
+        ticket: args.ticket,
+      }
+      if (args.lots != null && args.lots > 0) params.volume = args.lots
+      if (args.price != null && args.price > 0) params.price = args.price
+      if (args.slippage != null) params.slippage = args.slippage
+
+      const raw = await this.requestWithRetry(endpoint, params, id)
+      const result = normalizeOrderResponse(raw)
+      auditOrderClose({
+        source: 'mtapi',
+        accountId: id,
+        ticket: args.ticket,
+        volume: args.lots,
+        slippage: args.slippage,
+        ok: true,
+        message: result.state ?? null,
+      })
+      return result
+    } catch (err) {
+      auditOrderClose({
+        source: 'mtapi',
+        accountId: id,
+        ticket: args.ticket,
+        volume: args.lots,
+        slippage: args.slippage,
+        ok: false,
+        message: err instanceof Error ? err.message : String(err),
+      })
+      throw err
+    } finally {
+      release()
+    }
+  }
+
+  private async requestWithRetry(
+    endpoint: string,
+    params: Record<string, string | number>,
+    sessionId: string,
+    allowTimeoutRetry = true,
+  ): Promise<unknown> {
+    const MAX_ATTEMPTS = Math.max(1, Number(process.env.MT_ORDERSEND_MAX_ATTEMPTS ?? 3) || 3)
+    let lastErr: unknown
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      try {
+        return await this.request(endpoint, params, { sessionId })
+      } catch (error) {
+        lastErr = error
+        if (isSessionGone(error)) {
+          await this.ensureConnected(sessionId)
+          continue
+        }
+        const msg = error instanceof Error ? error.message : String(error)
+        const retryable = isTransientMtApiError(error)
+          || (allowTimeoutRetry && isOrderOpTimedOutMessage(msg))
+        if (!retryable || attempt >= MAX_ATTEMPTS - 1) throw error
+        const jitterMs = 600 + Math.random() * 900 + attempt * 400
+        console.warn(
+          `[mtapiProvider] ${endpoint} retry id=${sessionId} attempt=${attempt + 1}/${MAX_ATTEMPTS}: ${msg}`,
+        )
+        await new Promise(r => setTimeout(r, jitterMs))
+      }
+    }
+    throw lastErr instanceof Error ? lastErr : new MtapiApiError(String(lastErr), 502)
   }
 
   async openedOrders(id: string): Promise<unknown[]> {

@@ -187,18 +187,102 @@ test('read retries once after INVALID_TOKEN encoded in the MTAPI error field', a
   ])
 })
 
-test('all MTAPI trading methods fail locally with MTAPI_READ_ONLY', async () => {
-  let requests = 0
-  const api = provider(() => { requests += 1; return new Response('{}') })
-  for (const call of [
-    () => api.orderSend('session', { symbol: 'EURUSD', operation: 'Buy', volume: 0.1 }),
-    () => api.orderModify('session', { ticket: 1, stoploss: 1 }),
-    () => api.orderClose('session', { ticket: 1 }),
-  ]) {
-    await assert.rejects(
-      call,
-      (error: unknown) => error instanceof MtapiApiError && error.code === 'MTAPI_READ_ONLY',
-    )
-  }
-  assert.equal(requests, 0)
+test('orderSend calls OrderSendSafe on MT5 and normalizes the response', async () => {
+  let capturedUrl: URL | undefined
+  const api = provider(url => {
+    capturedUrl = url
+    return new Response(JSON.stringify({
+      ticket: 3223311401, openPrice: 1.1548, lots: 0.01, state: 'Filled',
+      symbol: 'EURUSDm', stopLoss: 0, takeProfit: 0,
+    }))
+  })
+  const result = await api.orderSend('session', {
+    symbol: 'EURUSDm', operation: 'Buy', volume: 0.01,
+    stoploss: 1.15, takeprofit: 1.16,
+  })
+  assert.equal(result.ticket, 3223311401)
+  assert.equal(result.state, 'Filled')
+  assert.equal(capturedUrl?.pathname, '/OrderSendSafe')
+  assert.equal(capturedUrl?.searchParams.get('symbol'), 'EURUSDm')
+  assert.equal(capturedUrl?.searchParams.get('operation'), 'Buy')
+  assert.equal(capturedUrl?.searchParams.get('volume'), '0.01')
+  assert.equal(capturedUrl?.searchParams.get('stoploss'), '1.15')
+  assert.equal(capturedUrl?.searchParams.get('takeprofit'), '1.16')
+})
+
+test('orderModify calls OrderModifySafe on MT5 and normalizes the response', async () => {
+  let capturedUrl: URL | undefined
+  const api = provider(url => {
+    capturedUrl = url
+    return new Response(JSON.stringify({
+      ticket: 3223311401, stopLoss: 1.149, takeProfit: 1.161, state: 'Filled',
+    }))
+  })
+  const result = await api.orderModify('session', {
+    ticket: 3223311401, stoploss: 1.149, takeprofit: 1.161,
+  })
+  assert.equal(result.ticket, 3223311401)
+  assert.equal(capturedUrl?.pathname, '/OrderModifySafe')
+  assert.equal(capturedUrl?.searchParams.get('ticket'), '3223311401')
+  assert.equal(capturedUrl?.searchParams.get('stoploss'), '1.149')
+  assert.equal(capturedUrl?.searchParams.get('takeprofit'), '1.161')
+})
+
+test('orderClose calls OrderCloseSafe on MT5 and normalizes the response', async () => {
+  let capturedUrl: URL | undefined
+  const api = provider(url => {
+    capturedUrl = url
+    return new Response(JSON.stringify({
+      ticket: 3223311401, closePrice: 1.1544, closeLots: 0.01,
+      state: 'Started', profit: -0.4,
+    }))
+  })
+  const result = await api.orderClose('session', { ticket: 3223311401 })
+  assert.equal(result.ticket, 3223311401)
+  assert.equal(result.state, 'Started')
+  assert.equal(capturedUrl?.pathname, '/OrderCloseSafe')
+  assert.equal(capturedUrl?.searchParams.get('ticket'), '3223311401')
+})
+
+test('orderClose calls OrderClose on MT4', async () => {
+  let capturedUrl: URL | undefined
+  const api = provider(url => {
+    capturedUrl = url
+    return new Response(JSON.stringify({
+      ticket: 123, closePrice: 1.15, state: 'Started', profit: 0,
+    }))
+  })
+  api.seedPlatformCache('mt4-session', 'MT4')
+  const result = await api.orderClose('mt4-session', { ticket: 123 })
+  assert.equal(result.ticket, 123)
+  assert.equal(capturedUrl?.pathname, '/OrderClose')
+})
+
+test('orderSend retries after INVALID_TOKEN and reconnects', async () => {
+  const endpoints: string[] = []
+  let sendCalls = 0
+  const api = provider(url => {
+    endpoints.push(url.pathname)
+    if (url.pathname === '/OrderSendSafe') {
+      sendCalls += 1
+      if (sendCalls === 1) {
+        return new Response(JSON.stringify({ error: 'INVALID_TOKEN', message: 'gone' }), {
+          status: 201,
+        })
+      }
+      return new Response(JSON.stringify({ ticket: 999, state: 'Filled' }))
+    }
+    if (url.pathname === '/CheckConnect') {
+      return new Response(JSON.stringify({ error: 'INVALID_TOKEN' }), { status: 201 })
+    }
+    if (url.pathname === '/ConnectByToken') return new Response('session')
+    return new Response('{}')
+  })
+  const result = await api.orderSend('session', {
+    symbol: 'EURUSDm', operation: 'Buy', volume: 0.01,
+  })
+  assert.equal(result.ticket, 999)
+  assert.deepEqual(endpoints, [
+    '/OrderSendSafe', '/CheckConnect', '/ConnectByToken', '/OrderSendSafe',
+  ])
 })
