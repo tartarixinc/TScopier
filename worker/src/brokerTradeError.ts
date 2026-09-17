@@ -138,6 +138,15 @@ function tradeFailureCopy(
         retryable: false,
         userActionRequired: true,
       }
+    case 'INVALID_REQUEST':
+      return {
+        category: 'broker',
+        title: 'Trade not copied - Invalid request',
+        explanation: 'The broker rejected the order as invalid. This typically means the symbol is not available on this account, the order parameters are incompatible with the current market state, or the position was already closed.',
+        recommendedAction: 'Check that the symbol is enabled on your broker account and that the lot size and stop levels are valid. If this persists, verify the symbol mapping in Account Configuration.',
+        retryable: false,
+        userActionRequired: true,
+      }
     default:
       return null
   }
@@ -186,6 +195,9 @@ export function tradeFailureReasonFromBrokerMessage(
   }
   if (/rate limit|too many requests/.test(lower)) {
     return tradeFailureReasonFromCode('BROKER_RATE_LIMITED', safeContext)
+  }
+  if (/invalid\s+request/.test(lower)) {
+    return tradeFailureReasonFromCode('INVALID_REQUEST', safeContext)
   }
   return null
 }
@@ -301,6 +313,9 @@ export function humanizeOrderSendError(message: string, symbol?: string | null):
     return sym
       ? `Broker rejected the order for ${sym}. Check symbol mapping and try again.`
       : 'Broker rejected this order. Check symbol mapping and connection, then try again.'
+  }
+  if (/^invalid\s+request$/i.test(m)) {
+    return 'Broker rejected order: invalid request. Check symbol availability and order parameters.'
   }
   return m
 }
