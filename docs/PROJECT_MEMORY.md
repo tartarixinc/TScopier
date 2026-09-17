@@ -2,6 +2,25 @@
 
 ## Changelog
 
+### 2026-09-17 — Staging release: updates page, INVALID_REQUEST error handling, UI improvements
+
+- **Plain English:** Shipped a platform updates page so users can see what changed without leaving the app. Improved error messages when a broker rejects an order — instead of a cryptic "Invalid request", users now see what went wrong and how to fix it. Moved the Updates link above Help & Support in the sidebar for visibility. Also fixed signup validation messages and a pip size calculation bug.
+- **Root cause (technical):** N/A — feature improvements and UX fixes.
+- **Fix (files):**
+  - `src/pages/dashboard/UpdatesPage.tsx` — dedicated `/updates` route showing platform changelog.
+  - `src/components/updates/UpdatesAnnouncementModal.tsx` — modal triggered on first visit after new changes; localStorage dismiss.
+  - `src/lib/platformUpdates.ts` — changelog data + localStorage helpers.
+  - `worker/src/brokerTradeError.ts` — new `INVALID_REQUEST` case in `tradeFailureCopy` (broker category, actionable guidance); new pattern in `tradeFailureReasonFromBrokerMessage` mapping "invalid request" / "MT4 error 4108"; new mapping in `humanizeOrderSendError` for bare "Invalid request".
+  - `worker/src/brokerTradeError.test.ts` — 3 new test cases for INVALID_REQUEST.
+  - `src/components/layout/HelpSidebarNav.tsx` — reordering: Updates above Contact Support.
+  - `src/lib/signupValidation.ts` — improved error messages for required fields.
+  - `worker/src/tradeExecutor/entryPrepare.ts` — whitelist comparison fix for mapped symbols.
+- **Tests/verification:** All tests pass. 3 new INVALID_REQUEST test cases. Typecheck clean.
+- **Deploy state:** committed to `staging` branch; ready for PR to `upstream/main`.
+- **Follow-ups:**
+  1. Open PR: staging → upstream/main.
+  2. Monitor INVALID_REQUEST errors in Sentry after deploy.
+
 ### 2026-09-08 — Telegram listener reconnect storm: flapping loop that blocked new logins (users could not re-connect Telegram)
 
 - **Plain English:** Several users reported they could not connect their Telegram account. Behind the scenes their listeners were stuck in a loop — constantly dropping and reconnecting every ~20 seconds for hours — and during that state the app could not even request a fresh login code. The failure had two parts: a counting bug meant the safety mechanism that should have restarted a stuck listener never fired, and a network hang could permanently freeze the reconnect logic. We fixed both so a stuck listener now either recovers on its own or is cleanly restarted, and a single mistaken login code no longer forces the user to start over.
