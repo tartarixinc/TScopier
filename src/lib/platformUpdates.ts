@@ -12,12 +12,20 @@ export interface PlatformUpdate {
  */
 export const PLATFORM_UPDATES: PlatformUpdate[] = [
   {
-    id: 'symbol-mapping-whitelist-fix',
+    id: 'explain-with-ai-copier-logs',
     date: '2026-09-15',
-    title: 'Symbol mapping now works with whitelists',
+    title: 'Explain with AI is now in Copier Logs',
     description:
-      'When your broker uses a different symbol name (e.g. XAUUSD.X) than the channel signals (e.g. XAUUSD), the system now correctly translates symbols before checking your allowed symbols list. No manual configuration needed — just set your symbol mapping and it works.',
-    type: 'fix',
+      'Click "Explain with AI" on any trade in Copier Logs to get an instant AI analysis of what happened — why the trade was opened, what the outcome was, and any issues encountered. No need to leave the page or copy-paste details.',
+    type: 'feature',
+  },
+  {
+    id: 'platform-updates-page',
+    date: '2026-09-15',
+    title: 'Platform Updates page',
+    description:
+      'You can now see what changed in TScopier without leaving the app. Check the Updates section in the sidebar for recent features, fixes, and improvements.',
+    type: 'feature',
   },
 ]
 
