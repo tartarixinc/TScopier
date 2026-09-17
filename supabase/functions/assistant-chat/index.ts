@@ -22,6 +22,7 @@ import {
   sanitizeManualPatch,
   summarizeManualPatch,
 } from "../_shared/assistantConfigTools.ts";
+import { logAssistantEvent } from "../_shared/listenerEvents.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -2339,7 +2340,10 @@ function runClientActionTool(name: string, args: Record<string, unknown>): ToolR
       };
     case "start_telegram_link":
       return {
-        content: JSON.stringify({ queued: true }),
+        content: JSON.stringify({
+          queued: true,
+          hint: "A phone number input card has appeared below this message. Tell the user: 'Enter your phone number with country code (e.g. +44...) in the field below and click Send Code. You will receive an OTP on your Telegram app or via SMS.' Do NOT say a code was sent — it has not been sent yet. The user must enter their phone first.",
+        }),
         pendingClientAction: {
           type: "start_telegram_link",
           summary: "Start in-chat Telegram phone link",
@@ -2478,6 +2482,12 @@ const EXECUTABLE_MUTATIONS = new Set([
   "save_preset",
   "update_channel_config",
   "report_trade",
+]);
+
+const CLIENT_SIDE_TOOLS = new Set([
+  "navigate", "start_telegram_link", "open_telegram_link",
+  "start_broker_connect", "open_connect_broker", "open_live_chat",
+  "open_backtest", "open_trades",
 ]);
 
 function isImageDataUrl(value: unknown): value is string {
@@ -2731,6 +2741,15 @@ Deno.serve(async (req: Request) => {
         if (result.pendingClientAction) pendingClientActions.push(result.pendingClientAction);
         if (result.pendingConfirmation) pendingConfirmations.push(result.pendingConfirmation);
         toolResultsLog.push({ tool: name, result: result.content.slice(0, 4000) });
+
+        // Log client-side tool calls for observability
+        if (CLIENT_SIDE_TOOLS.has(name)) {
+          logAssistantEvent({
+            userId,
+            eventType: "assistant_tool_call",
+            detail: { tool: name, args },
+          }).catch(() => {}); // fire-and-forget
+        }
         messages.push({
           role: "tool",
           content: result.content,
