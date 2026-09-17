@@ -137,6 +137,10 @@ export class MtapiProvider implements BrokerProvider {
     }
     if (sessionId) url.searchParams.set('id', sessionId)
 
+    if ('password' in params) {
+      console.warn(`[mtapiProvider] request "${endpoint}" sends password via URL query — MTAPI protocol limitation, ensure server access logs are secured`)
+    }
+
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), this.timeoutMs)
     try {
@@ -475,7 +479,9 @@ export class MtapiProvider implements BrokerProvider {
     try {
       ingestMtHistoryRows(byKey, await this.closedOrders(id), profile)
       successfulRead = true
-    } catch { /* try paginated history */ }
+    } catch (err) {
+      console.warn(`[mtapiProvider] closedOrders failed for ${id}: ${err instanceof Error ? err.message : err}`)
+    }
     try {
       const first = await this.orderHistoryPage(id, from, to, 0, ordersPerPage)
       successfulRead = true
@@ -486,7 +492,9 @@ export class MtapiProvider implements BrokerProvider {
           : await this.orderHistoryPage(id, from, to, page, ordersPerPage)
         ingestMtHistoryRows(byKey, current.orders, profile)
       }
-    } catch { /* use any successful source */ }
+    } catch (err) {
+      console.warn(`[mtapiProvider] orderHistoryPage failed for ${id}: ${err instanceof Error ? err.message : err}`)
+    }
     if (!successfulRead) {
       throw new MtapiApiError('MTAPI history reads failed', 502, 'HISTORY_READ_FAILED')
     }
