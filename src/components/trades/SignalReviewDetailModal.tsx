@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Radio, ShieldAlert, X } from 'lucide-react'
 import { useHumanReview } from '../../context/HumanReviewContext'
+import { useAssistant } from '../../context/useAssistant'
+import { useT } from '../../context/LocaleContext'
 import { useReviewActions } from '../../hooks/useReviewActions'
 import {
   formatReviewRemaining,
@@ -20,6 +22,8 @@ type ChannelInfo = { display_name: string | null; channel_username: string | nul
 export function SignalReviewDetailModal({ signal, onClose }: SignalReviewDetailModalProps) {
   const { pending } = useHumanReview()
   const { approvingId, errorBySignal, approve, dismiss } = useReviewActions()
+  const assistant = useAssistant()
+  const t = useT()
   const [now, setNow] = useState(() => Date.now())
   const [channel, setChannel] = useState<ChannelInfo | null | undefined>(undefined)
 
@@ -61,6 +65,24 @@ export function SignalReviewDetailModal({ signal, onClose }: SignalReviewDetailM
       document.body.style.overflow = ''
     }
   }, [signal, onClose])
+
+  const askAssistantExplainSignal = () => {
+    const parsed = signal?.parsed_data as Record<string, unknown> | null
+    const rawMessage = signal?.raw_message?.trim() || ''
+    const context = [
+      `Signal ID: ${signal?.id}`,
+      `Status: ${signal?.status}`,
+      `Symbol: ${parsed?.symbol ?? '—'}`,
+      `Action: ${parsed?.action ?? '—'}`,
+      parsed?.entry_price ? `Entry price: ${parsed.entry_price}` : '',
+      parsed?.sl ? `Stop loss: ${parsed.sl}` : '',
+      Array.isArray(parsed?.tp) ? `Take profit: ${parsed.tp.join(', ')}` : '',
+      signal?.skip_reason ? `Skip reason: ${signal.skip_reason}` : '',
+      rawMessage ? `\nOriginal Telegram message:\n${rawMessage}` : '',
+    ].filter(Boolean).join('\n')
+    assistant.setPendingAutoSend(`Please explain what happened with this trade signal in plain English.\n\n${context}`)
+    assistant.openAssistant()
+  }
 
   const levels = useMemo(() => {
     if (!signal) return null
@@ -182,6 +204,14 @@ export function SignalReviewDetailModal({ signal, onClose }: SignalReviewDetailM
               </a>
             ) : null}
           </section>
+
+          <button
+            type="button"
+            onClick={askAssistantExplainSignal}
+            className="text-xs font-semibold text-teal-700 dark:text-teal-300 hover:underline underline-offset-2"
+          >
+            {t.copierLogs.detailModal?.explainWithAi ?? 'Explain with AI'}
+          </button>
 
           {levels ? (
             <section className="space-y-2">
