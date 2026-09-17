@@ -200,7 +200,7 @@ export class MtapiProvider implements BrokerProvider {
     const body = await this.request('ConnectEx', {
       user: args.login, password: args.password, server: args.server,
     }, { platform })
-    const token = String(body ?? '').trim().replace(/^|$/g, '')
+    const token = String(body ?? '').trim().replace(/^["']|["']$/g, '')
     if (!token) throw new MtapiApiError('MTAPI ConnectEx returned no session token', 502, 'INVALID_RESPONSE')
     this.seedPlatformCache(token, platform)
     if (args.id) this.canonicalSession.set(args.id, token)
@@ -214,7 +214,7 @@ export class MtapiProvider implements BrokerProvider {
     const body = await this.request('Connect', {
       user: args.login, password: args.password, host: args.host, port: args.port,
     }, { platform })
-    const token = String(body ?? '').trim().replace(/^|$/g, '')
+    const token = String(body ?? '').trim().replace(/^["']|["']$/g, '')
     if (!token) throw new MtapiApiError('MTAPI Connect returned no session token', 502, 'INVALID_RESPONSE')
     this.seedPlatformCache(token, platform)
     if (args.id) this.canonicalSession.set(args.id, token)
@@ -223,7 +223,7 @@ export class MtapiProvider implements BrokerProvider {
 
   async connectByToken(id: string): Promise<void> {
     const body = await this.request('ConnectByToken', {}, { sessionId: id })
-    const token = String(body ?? '').trim().replace(/^|$/g, '')
+    const token = String(body ?? '').trim().replace(/^["']|["']$/g, '')
     if (token && token.toUpperCase() !== 'OK') {
       this.canonicalSession.set(id, token)
       this.seedPlatformCache(token, this.platform(id))
