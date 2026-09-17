@@ -237,11 +237,14 @@ export async function prepareEntryExecution(
 
   // Whitelist mode: when the user listed multiple symbols, only let signals
   // matching one of them through. Skip the signal otherwise.
+  // Compare against the mapped symbol (after symbol_mapping / prefix / suffix)
+  // so that a mapping like XAUUSD → XAUUSD.X passes the whitelist check.
   if (mapping.whitelist.length > 0) {
-    const sig = (parsed.symbol ?? '').toUpperCase()
+    const sig = mapping.symbol.toUpperCase()
     if (!mapping.whitelist.includes(sig)) {
       await ctx.logSendSkipped(signal, broker, 'symbol_exempted_from_trading', {
         signal_symbol: parsed.symbol ?? null,
+        mapped_symbol: mapping.symbol,
         allowed: mapping.whitelist,
       })
       return { ok: false, outcome: {} }
