@@ -4,23 +4,22 @@ Changelog entries authored by Emma, kept separate from the main PROJECT_MEMORY.m
 
 ## Changelog
 
-### 2026-09-16 - Signup validation guidance
+### 2026-09-19 - Explicit pending order routing fix (cherry-picked from Emmanuel's work)
 
-- **Customer complaint:** Create Account stayed dull/disabled when a password
-  lacked a required symbol, with no clear explanation of what remained.
-- **Root UX issue:** The form already enforced password strength, confirmation,
-  and CAPTCHA gating, plus native required fields and email policy checks, but
-  exposed only a single static password hint and no live list of unmet signup
-  conditions near the disabled button.
-- **Change:** Added a compact real-time password checklist using the existing
-  six password rules and an accessible live status listing only current unmet
-  fields, email policy, password/confirmation, and CAPTCHA conditions. The
-  existing disabled expression, submit handler, Supabase payload, verification
-  email flow, auth contracts, and backend behavior are unchanged.
-- **Tests/results:** Focused signup/password/email tests PASS (22/22); frontend
-  typecheck PASS; changed-file lint PASS with the page's unrelated pre-existing
-  referral-effect rule excluded; production frontend build PASS; git diff check
-  PASS. No commit or push.
+- Cherry-picked Emmanuel's commits (`fd4b1750`, `28f59e79`) to fix a bug where "buy limit" messages were misclassified as "delete pendings" commands.
+- Adds `entry_order_type: 'market' | 'limit' | 'stop' | null` to parsed signals.
+- Explicit "BUY LIMIT" and "BUY STOP" wording is now preserved in the parser.
+- The copier routes explicit pending order operations directly to `BuyLimit`, `SellLimit`, `BuyStop`, or `SellStop` instead of converting them to market orders or misclassifying them.
+- Tests: all 3 explicit pending order tests pass. Worker typecheck passes.
+
+### 2026-09-16 - MTAPI Phase 2 READ-ONLY implementation
+
+- Worker-side MTAPI reads, provider resolution, token-first session recovery,
+  encrypted credential fallback, and startup orphan reconciliation are
+  implemented locally. MTAPI trading/layering remains disabled.
+- Focused tests, worker typecheck/build, and FXSocket/v2 regressions pass. Real
+  MTAPI acceptance is NOT_PERFORMED, so environment sign-off remains blocked.
+- Full record and James handoff: docs/PROJECT_MEMORY-EMMA-MTAPI.md.
 
 ### 2026-09-03 - Stefan Production Readiness After Staging Acceptance
 
@@ -292,3 +291,12 @@ Changelog entries authored by Emma, kept separate from the main PROJECT_MEMORY.m
 - **Root UX issue:** The form gated Create Account on password strength, password confirmation, and configured CAPTCHA, but exposed no live explanation of unmet requirements.
 - **Change made:** Added an interaction-gated, real-time password checklist for the existing six password rules (minimum length, uppercase, lowercase, number, symbol, and not-common password) plus a compact live notice listing current unmet signup conditions. The disabled expression and signup/auth request flow remain unchanged.
 - **Tests/results:** Focused `signupValidation` tests cover incomplete/satisfied password requirements, missing CAPTCHA and fields, multiple unmet conditions, existing enablement behavior, and unchanged signup submission sequence; frontend typecheck passed locally.
+
+### 2026-09-17 - Explicit Pending Signal Intent (Jeffrey Reproduction)
+
+- **Reproduction/root cause:** Jeffrey's `XAUUSD BUY STOP`, entry `4300`, received while XAUUSD was about `4268`, was parsed as plain `buy` with an entry price only. The planner then applied legacy entry/tolerance routing; multi style disabled strict signal-entry routing and coerced the inferred pending operation to market Buy, producing four immediate positions for the four TP legs.
+- **Parser contract:** Parsed entries now carry `entry_order_type: 'market' | 'limit' | 'stop' | null`. Deterministic parsing preserves explicit `BUY/SELL STOP` and `BUY/SELL LIMIT`; ordinary BUY/SELL receives `null` and retains legacy routing.
+- **Execution:** Explicit stop/limit intent maps authoritatively to `BuyStop`, `SellStop`, `BuyLimit`, or `SellLimit`. It bypasses generic market coercion and strict-entry quote inference, retains the supplied entry price, and retains existing pending-expiry fields.
+- **Multi-TP:** TP distribution and lot sizing are unchanged. Every multi-TP leg retains the same explicit pending operation and entry price while retaining its own TP.
+- **Automated coverage:** Focused parser, operation/planner, pending-expiry, and multi-TP BuyStop/SellStop regression tests were added. Existing strict-entry and normal BUY/SELL paths remain covered by the focused worker suite.
+- **Acceptance status:** REAL local/staging broker acceptance remains pending; no broker API, MTAPI migration, deployment, push, or commit was performed.

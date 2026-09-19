@@ -182,6 +182,11 @@ export const channelWorkerNl: ChannelWorkerTranslations = {
       'bericht bevatte geen entry-opdracht (bijv. buy now, gold sell now) of gelabelde SL/TP',
     entry_tp_without_sl: 'SL not given — set predefined SL pips in broker configuration',
     signal_missing_required_sl: 'SL not given — set predefined SL pips in broker configuration',
+    delete_pendings_no_parent:
+      'kon de originele transactie niet vinden waar deze reactie naar verwijst — reageer op het originele signaalbericht om de openstaande orders te annuleren',
+    delete_pendings_requires_reply:
+      'annuleringsinstructies moeten worden verzonden als een reactie op het originele signaalbericht',
+    delete_pendings_none: 'geen openstaande orders gevonden om te annuleren voor deze transactie',
   },
   dispatchSkipped: 'Dit signaal is niet gekopieerd ({reason}).',
   rangeRebalanceSkippedNamed: 'Take-profit-herverdeling voor {symbol} overgeslagen ({reason})',

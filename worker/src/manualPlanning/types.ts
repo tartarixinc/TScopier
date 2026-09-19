@@ -1,12 +1,17 @@
 import type { OrderSendArgs } from '../fxsocketClient'
 import type { PipQuote } from '../pipCalculator'
 
+/** Explicit entry order wording supplied by the signal provider. */
+export type EntryOrderType = 'market' | 'limit' | 'stop'
+
 export interface ParsedSignal {
   action: string
   symbol: string | null
   entry_price: number | null
   entry_zone_low: number | null
   entry_zone_high: number | null
+  /** Explicit provider instruction; absent/null retains legacy inferred routing. */
+  entry_order_type?: EntryOrderType | null
   sl: number | null
   tp: number[] | null
   tp_unit?: 'price' | 'pips'

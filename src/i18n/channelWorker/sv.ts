@@ -182,6 +182,11 @@ export const channelWorkerSv: ChannelWorkerTranslations = {
       'meddelandet innehöll ingen entry-fras (t.ex. buy now, gold sell now) eller märkta SL/TP',
     entry_tp_without_sl: 'SL not given — set predefined SL pips in broker configuration',
     signal_missing_required_sl: 'SL not given — set predefined SL pips in broker configuration',
+    delete_pendings_no_parent:
+      'kunde inte hitta den ursprungliga affären som detta svar refererar till — svara på ursprungliga signaldmeddelandet för att avbryta dess väntande order',
+    delete_pendings_requires_reply:
+      'avbrottsinstructioner måste skickas som svar på ursprungliga signaldmeddelandet',
+    delete_pendings_none: 'inga väntande order hittades att avbryta för denna affär',
   },
   dispatchSkipped: 'Kopierade inte den här signalen ({reason}).',
   rangeRebalanceSkippedNamed: 'Hoppade över take-profit-ombalansering av {symbol} ({reason})',

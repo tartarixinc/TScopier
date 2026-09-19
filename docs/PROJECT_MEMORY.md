@@ -2,26 +2,175 @@
 
 ## Changelog
 
-### 2026-09-17 — Staging release: updates page, INVALID_REQUEST error handling, UI improvements
+### 2026-09-19 — "Buy limit" signal misclassified as "delete pendings" command
 
-- **Plain English:** Shipped a platform updates page so users can see what changed without leaving the app. Improved error messages when a broker rejects an order — instead of a cryptic "Invalid request", users now see what went wrong and how to fix it. Moved the Updates link above Help & Support in the sidebar for visibility. Also fixed signup validation messages and a pip size calculation bug.
-- **Root cause (technical):** N/A — feature improvements and UX fixes.
+- **Plain English:** A user sent a "XAUUSD buy limit@4347.520" message with stop loss and take profit levels to the Lorax Layer VIP channel. The copier's AI incorrectly decided this was a command to cancel pending orders instead of recognizing it as a new buy limit order. The copier showed the user a raw internal code "delete pendings no parent" instead of a helpful error message. We fixed this by cherry-picking Emmanuel's pending order routing fix, adding @ as a valid separator in TP parsing, and adding missing translations for the skip reason across all 9 supported languages.
+- **Root cause (technical):**
+  1. AI misclassified "XAUUSD buy limit" as `cancel_pending` intent (85% confidence). The message format is clearly a new entry, not a cancel command.
+  2. Before Emmanuel's fix, the copier did not recognize explicit "BUY LIMIT" or "BUY STOP" wording. The message was parsed as a plain `buy` with an entry price, which the AI then misinterpreted as a cancel command when combined with the reply context.
+  3. The replied-to message (62159) was never a signal in the copier's database, so the copier gave up entirely instead of attempting to place the trade.
+  4. The skip reason `delete_pendings_no_parent` had no user-facing label in any locale, so the fallback just converted underscores to spaces.
+  5. TP parsing did not support @ symbol — regex patterns used `[:=\-\s]` as separators but did not include `@`.
 - **Fix (files):**
-  - `src/pages/dashboard/UpdatesPage.tsx` — dedicated `/updates` route showing platform changelog.
-  - `src/components/updates/UpdatesAnnouncementModal.tsx` — modal triggered on first visit after new changes; localStorage dismiss.
-  - `src/lib/platformUpdates.ts` — changelog data + localStorage helpers.
-  - `worker/src/brokerTradeError.ts` — new `INVALID_REQUEST` case in `tradeFailureCopy` (broker category, actionable guidance); new pattern in `tradeFailureReasonFromBrokerMessage` mapping "invalid request" / "MT4 error 4108"; new mapping in `humanizeOrderSendError` for bare "Invalid request".
-  - `worker/src/brokerTradeError.test.ts` — 3 new test cases for INVALID_REQUEST.
-  - `src/components/layout/HelpSidebarNav.tsx` — reordering: Updates above Contact Support.
-  - `src/lib/signupValidation.ts` — improved error messages for required fields.
-  - `worker/src/tradeExecutor/entryPrepare.ts` — whitelist comparison fix for mapped symbols.
-- **Tests/verification:** All tests pass. 3 new INVALID_REQUEST test cases. Typecheck clean.
-- **Deploy state:** committed to `staging` branch; ready for PR to `upstream/main`.
+  - Cherry-picked Emmanuel's commits (`fd4b1750`, `28f59e79`): adds `entry_order_type` field to parsed signals, routes explicit pending orders to correct broker operations (BuyLimit/SellLimit/BuyStop/SellStop), bypasses legacy market coercion.
+  - `worker/src/parseSignal.ts` — added `@` to TP parsing regex character class.
+  - `src/i18n/channelWorker/{en,fr,es,ar,ja,nl,pl,ru,sv}.ts` — added `delete_pendings_no_parent`, `delete_pendings_requires_reply`, `delete_pendings_none` translations.
+  - `src/lib/copierSkipReasonLabels.ts` — added labels and details for `delete_pendings_*` skip reasons.
+- **Tests/verification:** All 3 explicit pending order tests pass. Parser correctly identifies `entry_order_type: limit` for "buy limit" messages. TP parsing now works with @ symbol (Tp1@4357). Worker typecheck passes.
+- **Deploy state:** committed to `migration` branch; cherry-picked to `staging` for this incident fix only. NOT deployed.
 - **Follow-ups:**
-  1. Open PR: staging → upstream/main.
-  2. Monitor INVALID_REQUEST errors in Sentry after deploy.
+  1. Investigate why the AI pipeline misclassified "XAUUSD buy limit" as `cancel_pending` — 85% confidence suggests a systematic issue.
+  2. Deploy to production worker.
 
-### 2026-09-08 — Telegram listener reconnect storm: flapping loop that blocked new logins (users could not re-connect Telegram)
+### 2026-09-17 — Phase 3 verified live + capacity measurement
+
+- **Plain English:** We proved the MTAPI bridge can actually trade. Running the MTAPI Docker container on a local machine, connected to a demo broker account, we opened a trade, changed its stop loss and take profit, closed it, and confirmed the account balance updated. This is the first time the full write path (not just reading) has been exercised end to end. We also measured how much memory the bridge uses: about 35 MB per connected account, far less than the earlier rough estimate of 500 MB–1 GB. That means the cheapest Contabo server (4 vCPU, 8 GB, ~$8/mo) should comfortably handle all 163 broker accounts.
+- **Root cause (technical):** N/A — verification, not a bug fix. One real bug found and fixed (see below).
+- **Bug found and fixed:**
+  - `worker/src/mtapiProvider.ts:203` — `ConnectEx` returns the session token wrapped in literal double quotes (e.g. `"5889b125-…"`). The old regex `/^|$/g` matched the start/end of the string and replaced with nothing, so the quotes stayed. The token was then URL-encoded as `%22…%22`, and every subsequent request failed with `Client with id = "…" not found`. Fixed by changing the regex to `/^["']|["']$/g` to strip surrounding quotes. Same pattern fixed in `connectByToken`.
+- **Live test (all 6 steps passed):**
+  - Docker: `timurila/mt5rest` (trial) on localhost:5000, `MaxSessions=100`
+  - Broker: Exness-MT5Trial9, login 476205231
+  - 1. `ConnectEx` → token returned (after quote fix)
+  - 2. `AccountSummary` → balance $4,998.74, equity $4,990.91, leverage 1:2000
+  - 3. `OrderSendSafe` → Sell XAUUSDm 0.01 lots, filled at 4312.986, ticket 3243677565
+  - 4. `OrderModifySafe` → SL=4350, TP=4300 applied
+  - 5. `OrderCloseSafe` → closed at 4313.246, audit logged
+  - 6. `AccountSummary` → balance updated to $4,998.48
+- **Capacity measurements (trial image, 1 session):** idle container 55.9 MB; with one session 88–91 MB; **~35 MB marginal per session**. Stable over time and after API calls. Estimated: 163 sessions ≈ 5.6 GB, 300 ≈ 10.5 GB, 500 ≈ 17.5 GB.
+- **Trial container limitation:** `CheckConnect` and `ConnectByToken` fail on the trial image because it has no MongoDB. This means `ensureConnected` cannot recover a dropped session. The paid image includes MongoDB and is required for production.
+- **Docs updated:** `docs/mtapi-hosting.md` (current Contabo pricing, VPS/VDS/Dedicated tiers, corrected memory figures, new §8.6 latency measurement plan), `docs/mtapi-migration-plan.md` (corrected price to $8.08/mo), new `docs/mtapi-contabo-setup.md` (one-page server request guide for whoever creates the VPS).
+- **Tests/verification:** 13/13 `mtapiProvider` unit tests pass after the quote fix. Live 6-step trade lifecycle passed.
+- **Deploy state:** committed to `migration` branch; NOT deployed.
+- **Follow-ups:**
+  1. Create Contabo VPS (Cloud VPS 4, US East) — guide at `docs/mtapi-contabo-setup.md`.
+  2. Instrument `requestWithRetry` with duration logging for latency percentiles.
+  3. Verify per-session memory with 3–5 demo accounts before finalizing the production plan.
+  4. Purchase paid MTAPI license (with MongoDB) before production.
+
+### 2026-09-17 — Phase 2.5: frontend provider awareness
+
+- **Plain English:** The website now knows whether a broker account uses FXSocket or MTAPI. Before this change, the UI only checked FXSocket fields — so any account set to MTAPI would appear as "not connected" even if it was working. Now the connection status, copy eligibility, and session counts all reflect the correct provider. This is needed before we can enable MTAPI writes, because the user needs to see that their MTAPI account is connected and ready to copy trades.
+- **Root cause (technical):** All frontend provider-check functions (`hasFxsocketBrokerSession`, `isBrokerCopyEnabled`, `brokerEffectiveConnectionStatus`, `countLinkedBrokerSessions`) were hardcoded to only read FXSocket columns (`fxsocket_account_id`, `fxsocket_status`). The `BROKER_ACCOUNT_CLIENT_SELECT` query also didn't fetch the new provider columns.
+- **Fix (files):**
+  - `src/types/database.ts` — added `provider`, `mtapi_session_id`, `mtapi_status` to `BrokerAccount` interface.
+  - `src/lib/brokerLink.ts` — added `resolveProvider`, `hasMtapiBrokerSession`, `hasAnyBrokerSession`. Updated `isBrokerCopyEnabled` and `countLinkedBrokerSessions` to use `hasAnyBrokerSession` (handles both providers).
+  - `src/lib/brokerReconnect.ts` — `brokerEffectiveConnectionStatus` now dispatches on `provider`: reads `mtapi_status` for MTAPI accounts, `fxsocket_status` for FXSocket. `brokerCanReconnect` checks the correct session field per provider.
+  - `src/lib/brokerAccountSelect.ts` — added `provider`, `mtapi_session_id`, `mtapi_status` to `BROKER_ACCOUNT_CLIENT_SELECT` so the columns are actually fetched from Supabase.
+  - `src/lib/brokerLink.test.ts` — 10 new MTAPI test cases (resolveProvider, hasMtapiBrokerSession, hasAnyBrokerSession, isBrokerCopyEnabled, countLinkedBrokerSessions with MTAPI accounts).
+  - `src/lib/brokerReconnect.test.ts` — 6 new MTAPI test cases (brokerEffectiveConnectionStatus, brokerCanReconnect with provider='mtapi').
+- **Design decisions:**
+  - `resolveProvider` defaults to `'fxsocket'` for null, undefined, or unknown strings — safe backward compatibility.
+  - `BROKER_ACCOUNT_CLIENT_SELECT` is the single source of truth for frontend queries; all 8 consumers use it.
+  - `stream_ticket` edge function was already provider-agnostic (builds worker URL from account row ID), no changes needed.
+- **Tests/verification:** 28 tests pass (15 brokerLink + 13 brokerReconnect). TypeScript clean.
+- **Deploy state:** committed to `migration` branch; NOT deployed.
+- **Follow-ups:**
+  1. Set up Contabo VPS + Docker MTAPI bridge (Phase 0).
+  2. Live test Phase 3: open trade → modify SL/TP → close → verify no duplicates.
+  3. Sign off Phase 3 after live verification.
+  4. Phase 4: per-account cutover.
+
+### 2026-09-17 — Branch state: migration diverged from staging (intentional)
+
+- **Plain English:** The `migration` branch has MTAPI work (Phases 0–3) that does not belong on `staging`. Staging was cleaned and rebuilt from a pre-MTAPI point. The two branches intentionally diverge — this is by design, not a mistake.
+- **Root cause (technical):** AGENTS.md rule: all MTAPI migration work lives exclusively on the `migration` branch. Staging must remain free of migration code to prevent accidental merges into main.
+- **Current state:**
+  - `migration`: MTAPI Phases 0–3 (read + write operations, session manager, provider resolver, MTAPI columns migration) + Phase 2.5 (frontend provider awareness). Latest: `159ffc0c` (Phase 2.5).
+  - `staging` = `main`: Explain with AI, platform updates, signup validation, INVALID_REQUEST error handling, code review fixes. Latest: `8f2a1b2b`.
+  - `upstream/main` is 14 commits behind `origin/main` — PR ready for merge.
+- **Divergence point:** `migration` forked from staging before MTAPI work was added. Staging was force-pushed from `2647c63d` (pre-MTAPI) and rebuilt with non-MTAPI commits cherry-picked back.
+- **Do NOT merge migration into staging.** If migration commits appear on staging by accident, revert immediately.
+
+### 2026-09-16 — MTAPI Phase 2 signed off + migration DB applied
+
+- **Plain English:** The read-only MTAPI provider is complete and verified. We can now connect to a broker through the MTAPI bridge and read quotes, positions, account summary, and order history — the same data we currently get from FXSocket, but through our own self-hosted bridge. The migration database (`supmsgcubipmmowrzoub`) is fully synced with all required columns, triggers, and security policies. Hosting decision: Contabo Core VPS 4 in US East (Carlstadt, NJ) for the MTAPI bridge at $8.08/mo ($5.28 base + $2.80 location fee). Carlstadt NJ is ~5ms from NYC, ~15ms from NY broker servers.
+- **Root cause (technical):** N/A — this is feature completion, not a bug fix.
+- **Fix (files):**
+  - `worker/src/mtapiProvider.ts` (514 lines) — `MtapiProvider` implementing read-only `BrokerProvider` methods. Handles ConnectEx/ConnectByToken session lifecycle, token-based reconnect with credential recovery, `INVALID_TOKEN` retry, and all read endpoints (quotes, positions, account summary, order history, symbols, connection status).
+  - `worker/src/mtapiSessionManager.ts` (160 lines) — `MtapiSessionManager` managing session lifecycle: startup reconciliation via `DisconnectOrphans`, periodic health sweeps, credential recovery on token expiry, and platform cache seeding.
+  - `worker/src/mtapiProvider.test.ts` (204 lines) — 15 unit tests covering read normalization, error handling, token reconnect, retry logic, and read-only enforcement (MTAPI_READ_ONLY on write methods).
+  - `worker/src/mtapiSessionManager.test.ts` — session manager unit tests.
+  - `worker/src/providerResolver.ts` — updated to dispatch to MTAPI when `provider = 'mtapi'`.
+  - `supabase/migrations/20260916120000_mtapi_read_sessions.sql` — adds `mtapi_session_id`, `broker_password_encrypted`, `auto_reconnect_enabled`, `password_updated_at` columns; guard trigger blocks credential exposure to `authenticated` role; SELECT grants restricted to safe columns only.
+  - `docs/mtapi-hosting.md` — updated with Hetzner recommendation, broker landscape table (163 accounts across 15+ brokers, top 4 = 84 accounts in NY/LD4).
+  - `docs/mtapi-migration-plan.md` — Phase 2 marked as signed off with notes.
+- **Design decisions:**
+  - Shadow mode (both providers simultaneously) not possible — brokers allow one connection per account. Tested on separate demo account instead.
+  - URL query password exposure (MEDIUM finding) acceptable for Phase 2 reads; will be addressed before Phase 3 writes.
+  - Silent error swallowing in `closedOrdersHistoryLite` (MEDIUM finding) acceptable for Phase 2; will add logging before Phase 3.
+  - Hetzner NY over Contabo for broker proximity ($15/mo vs $7/mo — worth it for latency).
+- **Tests/verification:** Code-tester PASS (1552 assertions, 0 failures). Code-review PASS_WITH_NOTES (Security A-, Correctness A, Quality B+, Readiness A-). Migration DB integration tests: 21/21 PASS (columns, trigger, indexes, SELECT grants, session manager query, insert/delete lifecycle).
+- **Deploy state:** committed to `migration` branch; migration applied to `supmsgcubipmmowrzoub`; NOT deployed to Railway yet.
+- **Follow-ups:**
+  1. Phase 0: set up Contabo VPS + Docker MTAPI bridge.
+  2. Phase 0: test ConnectEx → live broker with demo account.
+  3. Phase 2.5: frontend provider awareness.
+  4. Phase 3: MTAPI writes on one staging account.
+  5. Phase 4: per-account cutover.
+
+### 2026-09-17 — MTAPI Phase 3: write operations enabled
+
+- **Plain English:** The MTAPI provider can now place, modify, and close trades — not just read them. This means we can execute signals through our own self-hosted bridge instead of relying on FXSocket. MT5 trades use idempotent "Safe" endpoints that prevent duplicate orders even on retries. MT4 trades use legacy endpoints with extra safety: timeout errors are not retried to avoid opening duplicate positions. Every trade close is audited for observability.
+- **Root cause (technical):** N/A — feature completion, replacing the `writeDisabled()` stubs that threw `MTAPI_READ_ONLY` on every write attempt.
+- **Fix (files):**
+  - `worker/src/mtapiProvider.ts` — `orderSend`, `orderModify`, `orderClose` implementations. MT5 routes to `OrderSendSafe`/`OrderModifySafe`/`OrderCloseSafe` (idempotent). MT4 routes to `OrderSend`/`OrderModify`/`OrderClose`. New `requestWithRetry` helper with `allowTimeoutRetry` flag — `orderSend` passes `platform === 'MT5'` to prevent timeout retry on MT4 (avoids duplicate positions). `orderClose` calls `auditOrderClose` on both success and failure paths. Concurrency gating via `tradeOpGate` (configurable `MT_TRADE_OP_CONCURRENCY`, default 3).
+  - `worker/src/mtapiProvider.test.ts` — 5 new write tests (OrderSendSafe, OrderModifySafe, OrderCloseSafe, MT4 fallback, INVALID_TOKEN retry). Total: 13 tests pass.
+  - `worker/src/orderCloseAudit.ts` — `OrderCloseAuditEvent.source` union expanded: `'fxsocket' | 'fx_v2' | 'mtapi'`.
+- **Design decisions:**
+  - MT5 `*Safe` endpoints are idempotent server-side — safe to retry on timeout.
+  - MT4 `OrderSend` is NOT idempotent — a lost ack could mean the order opened, so timeout retries are excluded (matching FxSocket's pattern at `fxsocketClient.ts:1079-1080`).
+  - `requestWithRetry` accepts `allowTimeoutRetry` boolean (default `true`); only `orderSend` sets it to `false` for MT4.
+  - Audit trail on every `orderClose` (success + failure) for observability.
+  - Same concurrency gating pattern as FxSocket (`tradeOpGate.acquire` + `finally { release() }`).
+- **Tests/verification:** 15/15 tests pass (13 provider + 2 session manager). Code-tester PASS. Code-review PASS_WITH_NOTES (1 MEDIUM fixed: MT4 timeout retry guard).
+- **Deploy state:** committed to `migration` branch; NOT deployed. Needs Contabo VPS + Docker bridge for live testing.
+- **Follow-ups:**
+  1. Set up Contabo VPS + Docker MTAPI bridge.
+  2. Live test: open trade → modify SL/TP → close → verify no duplicates.
+  3. Sign off Phase 3 after live verification.
+  4. Phase 4: per-account cutover.
+
+### 2026-09-16 - MTAPI migration Phase 1 repair
+
+- Supersedes the 2026-09-14 notes below where they describe unknown-provider fallback, MTAPI layering support, an MTAPI close-audit source, or a missing provider CHECK.
+- Null/absent providers resolve to FXSocket; `mtapi` and unknown values fail closed until Phase 2.
+- `FxsocketProvider` delegates existing arguments and results without normalization, including expert/expiration fields, disconnect behavior, and nested `SymbolParams`.
+- Worker entry, management, monitor, copy-limit, force-close, stream, and v2 reconciliation boundaries are provider-gated. Existing safety-aware `FxClient` v2 calls remain intact behind that gate.
+- The migration enforces `provider in ('fxsocket', 'mtapi')`; MTAPI layering remains unsupported; the premature MTAPI close-audit source was removed.
+- The unrelated assistant thread ID behavior change was reverted from the Phase 1 range.
+- Phase 2 has not started; no MTAPI transport, session, read, or write logic was added.
+
+### 2026-09-14 — MTAPI migration Phase 1: BrokerProvider seam complete
+
+- **Plain English:** We built the foundation for switching from FXSocket to MTAPI. A new `provider` column on broker accounts lets us route each account to a different broker backend. The existing FXSocket code is wrapped behind a clean interface so a future MTAPI provider can slot in without touching the trade execution logic. Hosting decided: self-hosted Docker on Contabo (~$7/mo) with nginx for TLS + auth, instead of Railway (~$85-100/mo). Also corrected the migration plan: "shadow mode" (running both providers simultaneously) is not possible because brokers only allow one connection per account at a time.
+- **Root cause (technical):** N/A — this is infrastructure, not a bug fix.
+- **Fix (files):**
+  - `worker/src/brokerProvider.ts` (new) — `BrokerProvider` interface defining all broker operations (session lifecycle, orders, data reads, market data, health). Also defines `BrokerProviderName` (`'fxsocket' | 'mtapi'`), `MtPlatform`, and shared types (`BrokerAccountSummary`, `BrokerQuote`, `BrokerSymbolParams`, `BrokerOrderResult`, `BrokerOpenedOrder`).
+  - `worker/src/fxsocketProvider.ts` (new) — `FxsocketProvider` implementing `BrokerProvider`, wrapping existing `FxsocketBrokerClient`. All methods delegate to the existing client (no behaviour change).
+  - `worker/src/providerResolver.ts` (new) — `apiForBrokerAccount(provider, sessionId)` dispatches to the right provider by name. `inferProvider(row)` infers provider from broker_accounts columns. Falls back to fxsocket for unknown/null values.
+  - `worker/src/providerResolver.test.ts` (new) — 12 tests covering apiForBrokerAccount (null/pipe/valid/unknown provider) and inferProvider (mtapi/fxsocket/null/undefined).
+  - `supabase/migrations/20260914120000_add_broker_accounts_provider.sql` (new) — adds `provider text not null default 'fxsocket'` to `broker_accounts` with a partial index on `provider != 'fxsocket'`.
+  - `worker/src/orderCloseAudit.ts` — source type expanded: `'fxsocket' | 'fx_v2' | 'mtapi'`.
+  - `worker/src/layeringBrokerCapability.ts` — provider type expanded: `'fxsocket' | 'mtapi' | 'unknown'`; gate check allows `'mtapi'`.
+  - `docs/mtapi-migration-plan.md` — updated §2.3 (deployment model with nginx), §6 Phase 0 (Contabo hosting decision), §6 Phase 2 (removed unrealistic shadow mode), §10 (rollback requires disconnect first), §11 (added broker single-connection constraint), §12 (hosting decided), §13 (new files added).
+  - `docs/mtapi-progress.md` — updated with Phase 1 completion details.
+- **Design decisions:**
+  - BrokerProvider interface lives in `brokerProvider.ts` (not `fxsocketClient.ts`) to avoid coupling the interface to FxSocket.
+  - `MtPlatform` type defined in `brokerProvider.ts` rather than importing from FxSocket.
+  - Provider resolver falls back to fxsocket for unknown values (forward compatibility).
+  - Partial index on `provider != 'fxsocket'` avoids bloating with FXSocket rows (172 accounts).
+  - No CHECK constraint on `provider` column (noted as MEDIUM finding from code review — acceptable because the resolver handles unknown values gracefully).
+- **Tests/verification:** Typecheck PASS (tsc --noEmit); Lint PASS (all changed files); Tests 20/20 PASS (providerResolver 12, layeringBrokerCapability 5, orderCloseAudit 3); Code-tester subagent PASS; Code-review subagent PASS_WITH_NOTES (all findings addressed).
+- **Deploy state:** committed to `migration` branch; NOT yet deployed.
+- **Follow-ups:**
+  1. Phase 2: implement MtapiProvider for reads on a demo account.
+  2. Phase 2: encrypted credential storage (brokerCredentialsCrypto.ts).
+  3. Phase 2.5: frontend provider awareness.
+  4. Phase 3: MTAPI writes on one staging account.
+  5. Phase 4: per-account cutover.
+
+### 2026-08-19 — Assistant stops answering a failed signal as the user's live/ongoing trade
 
 - **Plain English:** Several users reported they could not connect their Telegram account. Behind the scenes their listeners were stuck in a loop — constantly dropping and reconnecting every ~20 seconds for hours — and during that state the app could not even request a fresh login code. The failure had two parts: a counting bug meant the safety mechanism that should have restarted a stuck listener never fired, and a network hang could permanently freeze the reconnect logic. We fixed both so a stuck listener now either recovers on its own or is cleanly restarted, and a single mistaken login code no longer forces the user to start over.
 - **Root cause (technical):**
@@ -295,6 +444,8 @@
 - **Rule:** `.cursor/rules/supabase-migration-branch.mdc` alwaysApply. Do not merge the branch unless asked.
 - Local `.env` / `worker/.env` were already pointed at this branch.
 
+=======
+>>>>>>> origin/migration
 ### 2026-08-19 — Assistant stops answering a failed signal as the user's live/ongoing trade
 
 - **Symptom (plain English):** Asked "show my current trade and why am I in loss" / "my live trades" / "my ongoing trade", the assistant answered with a signal that had **failed** to execute (`symbol not found: STPRNG`) and called it the user's trade, even though nothing was ever sent to the broker. It kept reaching for the copier-logs tool instead of the live-trades data, so the user never saw their actual executed positions.
