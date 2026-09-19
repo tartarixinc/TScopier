@@ -272,4 +272,88 @@ describe('signalRevision', () => {
     assert.equal(ok, true)
     assert.equal(usedOr, false)
   })
+
+  it('rejects buy/sell revisions that label an entry the parser missed (forces AI)', () => {
+    const INCIDENT_RAW = 'BUY: XAU/USD\nENTRY ZONE: 4358\nSL: 4348\nTP1: 4368'
+    // Message labels "ENTRY ZONE" but the parse has no anchor → must go to the AI
+    assert.equal(
+      revisionHasDeterministicActionableParse(
+        { action: 'buy', sl: null, tp: [] },
+        {
+          action: 'buy',
+          sl: 4348,
+          tp: [4368, 4378, 4388],
+          entry_price: null,
+          entry_zone_low: null,
+          entry_zone_high: null,
+          raw_instruction: INCIDENT_RAW,
+        },
+      ),
+      false,
+    )
+    // Same message but the parser DID read the anchor → accepted deterministically
+    assert.equal(
+      revisionHasDeterministicActionableParse(
+        { action: 'buy', sl: null, tp: [] },
+        {
+          action: 'buy',
+          sl: 4348,
+          tp: [4368, 4378, 4388],
+          entry_price: 4358,
+          entry_zone_low: null,
+          entry_zone_high: null,
+          raw_instruction: INCIDENT_RAW,
+        },
+      ),
+      true,
+    )
+    // Market entry with no entry label → accepted deterministically (SIGNALS PRO flow)
+    assert.equal(
+      revisionHasDeterministicActionableParse(
+        { action: 'buy', sl: null, tp: [] },
+        {
+          action: 'buy',
+          sl: 4190,
+          tp: [4210, 4220],
+          entry_price: null,
+          entry_zone_low: null,
+          entry_zone_high: null,
+          raw_instruction: 'Gold buy now\nSL: 4190\nTP: 4210',
+        },
+      ),
+      true,
+    )
+    // Completes-settleable path is also blocked when the entry label was missed
+    assert.equal(
+      revisionCompletesSettleableEntry(
+        { action: 'buy', sl: null, tp: [], entry_price: null },
+        {
+          action: 'buy',
+          sl: 4348,
+          tp: [4368],
+          entry_price: null,
+          entry_zone_low: null,
+          entry_zone_high: null,
+          raw_instruction: INCIDENT_RAW,
+        },
+      ),
+      false,
+    )
+    // A modify revision is blocked too when the entry label was missed
+    assert.equal(
+      revisionHasDeterministicActionableParse(
+        { action: 'buy', sl: 2650, tp: [2670] },
+        {
+          action: 'modify',
+          sl: 4348,
+          tp: [4368],
+          entry_price: null,
+          entry_zone_low: null,
+          entry_zone_high: null,
+          raw_instruction: INCIDENT_RAW,
+        },
+      ),
+      false,
+    )
+  })
 })
