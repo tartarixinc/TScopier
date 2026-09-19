@@ -627,6 +627,7 @@ export async function prepareEntryExecution(
       entry_price: rpe,
       entry_zone_low: rzo?.lo ?? parsed.entry_zone_low,
       entry_zone_high: rzo?.hi ?? parsed.entry_zone_high,
+      entry_order_type: parsed.entry_order_type,
       sl: parsed.sl,
       tp: parsed.tp,
       tp_unit: parsed.tp_unit,

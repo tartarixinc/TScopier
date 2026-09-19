@@ -2,6 +2,32 @@
 
 ## Changelog
 
+### 2026-09-17 — Phase 3 verified live + capacity measurement
+
+- **Plain English:** We proved the MTAPI bridge can actually trade. Running the MTAPI Docker container on a local machine, connected to a demo broker account, we opened a trade, changed its stop loss and take profit, closed it, and confirmed the account balance updated. This is the first time the full write path (not just reading) has been exercised end to end. We also measured how much memory the bridge uses: about 35 MB per connected account, far less than the earlier rough estimate of 500 MB–1 GB. That means the cheapest Contabo server (4 vCPU, 8 GB, ~$8/mo) should comfortably handle all 163 broker accounts.
+- **Root cause (technical):** N/A — verification, not a bug fix. One real bug found and fixed (see below).
+- **Bug found and fixed:**
+  - `worker/src/mtapiProvider.ts:203` — `ConnectEx` returns the session token wrapped in literal double quotes (e.g. `"5889b125-…"`). The old regex `/^|$/g` matched the start/end of the string and replaced with nothing, so the quotes stayed. The token was then URL-encoded as `%22…%22`, and every subsequent request failed with `Client with id = "…" not found`. Fixed by changing the regex to `/^["']|["']$/g` to strip surrounding quotes. Same pattern fixed in `connectByToken`.
+- **Live test (all 6 steps passed):**
+  - Docker: `timurila/mt5rest` (trial) on localhost:5000, `MaxSessions=100`
+  - Broker: Exness-MT5Trial9, login 476205231
+  - 1. `ConnectEx` → token returned (after quote fix)
+  - 2. `AccountSummary` → balance $4,998.74, equity $4,990.91, leverage 1:2000
+  - 3. `OrderSendSafe` → Sell XAUUSDm 0.01 lots, filled at 4312.986, ticket 3243677565
+  - 4. `OrderModifySafe` → SL=4350, TP=4300 applied
+  - 5. `OrderCloseSafe` → closed at 4313.246, audit logged
+  - 6. `AccountSummary` → balance updated to $4,998.48
+- **Capacity measurements (trial image, 1 session):** idle container 55.9 MB; with one session 88–91 MB; **~35 MB marginal per session**. Stable over time and after API calls. Estimated: 163 sessions ≈ 5.6 GB, 300 ≈ 10.5 GB, 500 ≈ 17.5 GB.
+- **Trial container limitation:** `CheckConnect` and `ConnectByToken` fail on the trial image because it has no MongoDB. This means `ensureConnected` cannot recover a dropped session. The paid image includes MongoDB and is required for production.
+- **Docs updated:** `docs/mtapi-hosting.md` (current Contabo pricing, VPS/VDS/Dedicated tiers, corrected memory figures, new §8.6 latency measurement plan), `docs/mtapi-migration-plan.md` (corrected price to $8.08/mo), new `docs/mtapi-contabo-setup.md` (one-page server request guide for whoever creates the VPS).
+- **Tests/verification:** 13/13 `mtapiProvider` unit tests pass after the quote fix. Live 6-step trade lifecycle passed.
+- **Deploy state:** committed to `migration` branch; NOT deployed.
+- **Follow-ups:**
+  1. Create Contabo VPS (Cloud VPS 4, US East) — guide at `docs/mtapi-contabo-setup.md`.
+  2. Instrument `requestWithRetry` with duration logging for latency percentiles.
+  3. Verify per-session memory with 3–5 demo accounts before finalizing the production plan.
+  4. Purchase paid MTAPI license (with MongoDB) before production.
+
 ### 2026-09-17 — Phase 2.5: frontend provider awareness
 
 - **Plain English:** The website now knows whether a broker account uses FXSocket or MTAPI. Before this change, the UI only checked FXSocket fields — so any account set to MTAPI would appear as "not connected" even if it was working. Now the connection status, copy eligibility, and session counts all reflect the correct provider. This is needed before we can enable MTAPI writes, because the user needs to see that their MTAPI account is connected and ready to copy trades.

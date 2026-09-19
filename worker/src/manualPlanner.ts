@@ -7,6 +7,7 @@
 
 export type {
   ParsedSignal,
+  EntryOrderType,
   ManualSettings,
   LayeringMode,
   LayeringPlanSnapshot,

@@ -88,6 +88,11 @@ export function isExcluded(symbol: string, broker: BrokerRow): boolean {
 export function operationFor(action: string, signal: ParsedSignal): import('../fxsocketClient').MtOperation | null {
   const a = action.toLowerCase()
   const hasEntry = parsedHasExplicitEntryAnchor(signal)
+  const explicitType = signal.entry_order_type
+  if (a === 'buy' && explicitType === 'stop') return 'BuyStop'
+  if (a === 'sell' && explicitType === 'stop') return 'SellStop'
+  if (a === 'buy' && explicitType === 'limit') return 'BuyLimit'
+  if (a === 'sell' && explicitType === 'limit') return 'SellLimit'
   if (a === 'buy') return hasEntry ? 'BuyLimit' : 'Buy'
   if (a === 'sell') return hasEntry ? 'SellLimit' : 'Sell'
   return null

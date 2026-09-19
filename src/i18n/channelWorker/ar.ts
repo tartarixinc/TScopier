@@ -183,6 +183,11 @@ export const channelWorkerAr: ChannelWorkerTranslations = {
       'الرسالة لم تتضمن عبارة دخول (مثل buy now أو gold sell now) أو SL/TP موسومة',
     entry_tp_without_sl: 'SL not given — set predefined SL pips in broker configuration',
     signal_missing_required_sl: 'SL not given — set predefined SL pips in broker configuration',
+    delete_pendings_no_parent:
+      'تعذر العثور على الصفقة الأصلية التي تشير إليها هذه الرد — رد على رسالة الإشارة الأصلية لإلغاء أوامرها المعلقة',
+    delete_pendings_requires_reply:
+      'يجب إرسال تعليمات الإلغاء كرد على رسالة الإشارة الأصلية',
+    delete_pendings_none: 'لم يتم العثور على أوامر معلقة لإلغائها لهذه الصفقة',
   },
   dispatchSkipped: 'لم يُنسخ هذا الإشعار ({reason}).',
   rangeRebalanceSkippedNamed: 'تم تخطي إعادة موازنة جني الأرباح لـ {symbol} ({reason}).',

@@ -1,5 +1,5 @@
 import type { MtOperation, OrderSendArgs } from '../fxsocketClient'
-import type { PlannerStrictEntry } from './types'
+import type { EntryOrderType, PlannerStrictEntry } from './types'
 import { clampPendingExpiryHours } from './manualSettings'
 
 export function flipOperation(op: MtOperation): MtOperation {
@@ -48,6 +48,8 @@ export interface ResolveOpExecAndStrictArgs {
   manualStrict: boolean
   /** `parsedHasExplicitEntryAnchor(parsed)` */
   hasExplicitEntry: boolean
+  /** A provider named STOP/LIMIT; this must bypass legacy market/strict routing. */
+  explicitEntryOrderType?: EntryOrderType | null
   roundPrice: (v: number | null | undefined) => number
   resolvedSymbol: string
   commentPrefix: string
@@ -75,7 +77,7 @@ export function resolveOpExecAndStrict(args: ResolveOpExecAndStrictArgs): Resolv
     isBuy,
     entryAnchor,
     manualStrict,
-    hasExplicitEntry,
+    hasExplicitEntry, explicitEntryOrderType,
     roundPrice,
     resolvedSymbol,
     commentPrefix,
@@ -85,11 +87,13 @@ export function resolveOpExecAndStrict(args: ResolveOpExecAndStrictArgs): Resolv
     pendingExpiryRaw,
   } = args
 
+  const hasExplicitPendingIntent = explicitEntryOrderType === 'limit' || explicitEntryOrderType === 'stop'
   let opExec: MtOperation = opSplit
-  if (manualStrict && hasExplicitEntry && entryAnchor != null) {
+  if (!hasExplicitPendingIntent && manualStrict && hasExplicitEntry && entryAnchor != null) {
     opExec = isBuy ? 'Buy' : 'Sell'
   } else if (
-    !manualStrict
+    !hasExplicitPendingIntent
+    && !manualStrict
     && (opSplit.includes('Limit') || opSplit.includes('Stop'))
   ) {
     // Single- and multi-trade immediates: never send broker pendings here — MT often
@@ -127,7 +131,7 @@ export function resolveOpExecAndStrict(args: ResolveOpExecAndStrictArgs): Resolv
   }
 
   const strictEntry: PlannerStrictEntry | undefined =
-    manualStrict && hasExplicitEntry && roundedEntry > 0
+    !hasExplicitPendingIntent && manualStrict && hasExplicitEntry && roundedEntry > 0
       ? { entryPrice: roundedEntry, isBuy }
       : undefined
 

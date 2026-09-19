@@ -276,3 +276,19 @@ Changelog entries authored by Emma, kept separate from the main PROJECT_MEMORY.m
 - **Validation:** Focused worker notification/reconcile tests passed, frontend notification tests passed, worker build passed, root frontend build passed, root typecheck passed, and `git diff --check` passed locally. Staging validation is pending.
 - **Staging retest focus:** Confirm a real broker-side manual SL/TP edit on a copied basket produces exactly one bell notification and one email after successful reconciliation, both linking to Manage Signal; confirm naked-fill recovery and Manage Signal edits do not produce the warning.
 - **Do not break these invariants:** Do not make broker-side manual overrides persistent. Do not notify before a successful broker restore. Do not notify on every reconcile sweep. Do not notify on naked-fill recovery, Telegram management commands, Trades UI edits, auto-BE, trailing, failed modify attempts, skipped reconciliation, or missing broker tickets. Do not change Stefan Issue B / TP4 behavior.
+
+### 2026-09-16 - Signup Validation Guidance
+
+- **Customer complaint:** A customer could not tell why the disabled Create Account button would not activate when their password was missing a symbol.
+- **Root UX issue:** The form gated Create Account on password strength, password confirmation, and configured CAPTCHA, but exposed no live explanation of unmet requirements.
+- **Change made:** Added an interaction-gated, real-time password checklist for the existing six password rules (minimum length, uppercase, lowercase, number, symbol, and not-common password) plus a compact live notice listing current unmet signup conditions. The disabled expression and signup/auth request flow remain unchanged.
+- **Tests/results:** Focused `signupValidation` tests cover incomplete/satisfied password requirements, missing CAPTCHA and fields, multiple unmet conditions, existing enablement behavior, and unchanged signup submission sequence; frontend typecheck passed locally.
+
+### 2026-09-17 - Explicit Pending Signal Intent (Jeffrey Reproduction)
+
+- **Reproduction/root cause:** Jeffrey's `XAUUSD BUY STOP`, entry `4300`, received while XAUUSD was about `4268`, was parsed as plain `buy` with an entry price only. The planner then applied legacy entry/tolerance routing; multi style disabled strict signal-entry routing and coerced the inferred pending operation to market Buy, producing four immediate positions for the four TP legs.
+- **Parser contract:** Parsed entries now carry `entry_order_type: 'market' | 'limit' | 'stop' | null`. Deterministic parsing preserves explicit `BUY/SELL STOP` and `BUY/SELL LIMIT`; ordinary BUY/SELL receives `null` and retains legacy routing.
+- **Execution:** Explicit stop/limit intent maps authoritatively to `BuyStop`, `SellStop`, `BuyLimit`, or `SellLimit`. It bypasses generic market coercion and strict-entry quote inference, retains the supplied entry price, and retains existing pending-expiry fields.
+- **Multi-TP:** TP distribution and lot sizing are unchanged. Every multi-TP leg retains the same explicit pending operation and entry price while retaining its own TP.
+- **Automated coverage:** Focused parser, operation/planner, pending-expiry, and multi-TP BuyStop/SellStop regression tests were added. Existing strict-entry and normal BUY/SELL paths remain covered by the focused worker suite.
+- **Acceptance status:** REAL local/staging broker acceptance remains pending; no broker API, MTAPI migration, deployment, push, or commit was performed.
