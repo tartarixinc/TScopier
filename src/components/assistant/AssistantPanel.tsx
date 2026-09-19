@@ -104,6 +104,8 @@ export function AssistantPanel() {
     switchThread,
     startNewThread,
     deleteThread,
+    pendingAutoSend,
+    setPendingAutoSend,
   } = useAssistant()
 
   const [draft, setDraft] = useState('')
@@ -148,6 +150,14 @@ export function AssistantPanel() {
     if (!open) return
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' })
   }, [open, messages, pendingConfirmations, sending, draftImages, telegramLink.stage, telegramLink.error, brokerConnect.active, brokerConnect.error])
+
+  // Auto-send when pendingAutoSend is set (e.g. from "Explain with AI" button).
+  useEffect(() => {
+    if (!open || !pendingAutoSend) return
+    const text = pendingAutoSend
+    setPendingAutoSend(null)
+    void send(text)
+  }, [open, pendingAutoSend])
 
   useEffect(() => {
     if (!historyOpen) return
@@ -443,8 +453,8 @@ export function AssistantPanel() {
     }
   }
 
-  const send = async () => {
-    const text = draft.trim()
+  const send = async (overrideText?: string) => {
+    const text = (overrideText ?? draft).trim()
     if ((!text && draftImages.length === 0) || sending || attaching || telegramLink.busy || brokerConnect.busy) return
 
     // Never send OTP/password free-text to OpenAI while linking.

@@ -455,7 +455,7 @@ export async function prepareEntryExecution(
         bid: q.bid,
         ask: q.ask,
         tolerancePips,
-        pipSize: params?.point ?? 0.00001,
+        pipSize: pipCalculator(symbol, params?.point ?? 0.00001, params?.digits ?? 5, params?.contractSize ?? null).pipPrice,
       })
       if (moved) {
         await ctx.logSendSkipped(signal, broker, ENTRY_PRICE_MOVED_ADVERSE_REASON, {
@@ -630,6 +630,7 @@ export async function prepareEntryExecution(
       entry_price: rpe,
       entry_zone_low: rzo?.lo ?? parsed.entry_zone_low,
       entry_zone_high: rzo?.hi ?? parsed.entry_zone_high,
+      entry_order_type: parsed.entry_order_type,
       sl: parsed.sl,
       tp: parsed.tp,
       tp_unit: parsed.tp_unit,

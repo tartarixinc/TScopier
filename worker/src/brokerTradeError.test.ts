@@ -49,19 +49,6 @@ describe('formatFxHttpFailureMessage', () => {
   })
 })
 
-describe('humanizeOrderSendError', () => {
-  it('upgrades historical HTTP 500 with symbol', () => {
-    assert.equal(
-      humanizeOrderSendError('HTTP 500', 'XAUUSD'),
-      'Broker rejected the order for XAUUSD. Check symbol mapping and try again.',
-    )
-  })
-
-  it('normalizes SymbolSelect failed', () => {
-    assert.equal(humanizeOrderSendError('SymbolSelect failed', 'gold#'), 'Symbol not found: GOLD#')
-  })
-})
-
 describe('isStopLossWithheldByProvider', () => {
   it('recognizes premium/VIP stop-loss wording', () => {
     assert.equal(isStopLossWithheldByProvider('GOLD BUY TP 2400 SL premium'), true)
@@ -112,6 +99,19 @@ describe('tradeFailureReasonFromCode', () => {
     assert.match(reason?.explanation ?? '', /GOLD\/XAUUSD/)
     assert.equal(reason?.retryable, false)
   })
+
+  it('classifies INVALID_REQUEST as a broker rejection with actionable guidance', () => {
+    const reason = tradeFailureReasonFromCode('INVALID_REQUEST', {
+      requestedSymbol: 'XAUUSD',
+    })
+    assert.equal(reason?.reasonCode, 'INVALID_REQUEST')
+    assert.equal(reason?.category, 'broker')
+    assert.equal(reason?.retryable, false)
+    assert.equal(reason?.userActionRequired, true)
+    assert.match(reason?.title ?? '', /Invalid request/i)
+    assert.match(reason?.explanation ?? '', /symbol is not available|order parameters|position was already closed/i)
+    assert.match(reason?.recommendedAction ?? '', /symbol.*enabled|lot size|symbol mapping/i)
+  })
 })
 
 describe('tradeFailureReasonFromBrokerMessage', () => {
@@ -131,6 +131,37 @@ describe('tradeFailureReasonFromBrokerMessage', () => {
     assert.equal(
       tradeFailureReasonFromBrokerMessage('invalid volume')?.reasonCode,
       'INVALID_LOT',
+    )
+  })
+
+  it('maps "Invalid request" to INVALID_REQUEST', () => {
+    assert.equal(
+      tradeFailureReasonFromBrokerMessage('Invalid request')?.reasonCode,
+      'INVALID_REQUEST',
+    )
+    assert.equal(
+      tradeFailureReasonFromBrokerMessage('MT4 error 4108: Invalid request')?.reasonCode,
+      'INVALID_REQUEST',
+    )
+  })
+})
+
+describe('humanizeOrderSendError', () => {
+  it('upgrades historical HTTP 500 with symbol', () => {
+    assert.equal(
+      humanizeOrderSendError('HTTP 500', 'XAUUSD'),
+      'Broker rejected the order for XAUUSD. Check symbol mapping and try again.',
+    )
+  })
+
+  it('normalizes SymbolSelect failed', () => {
+    assert.equal(humanizeOrderSendError('SymbolSelect failed', 'gold#'), 'Symbol not found: GOLD#')
+  })
+
+  it('maps "Invalid request" to a descriptive message', () => {
+    assert.equal(
+      humanizeOrderSendError('Invalid request'),
+      'Broker rejected order: invalid request. Check symbol availability and order parameters.',
     )
   })
 })

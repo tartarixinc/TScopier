@@ -43,6 +43,7 @@ export const en: Translations = {
       copierLogs: 'Copier Logs',
       signalHistory: 'Manage Signals',
       reportedTrades: 'Reported Trades',
+      updates: 'Updates',
       marketNews: 'Market News',
       economicCalendar: 'Economic Calendar',
       performance: 'Performance',
@@ -112,6 +113,19 @@ export const en: Translations = {
       liveChat: 'Help & Support',
       status: 'Status',
       statusOperational: 'All systems operational',
+    },
+    updatesAnnouncement: {
+      title: 'Platform Update',
+      viewAll: 'View All Updates',
+      dismiss: 'Dismiss',
+    },
+    updatesPage: {
+      title: 'Updates',
+      subtitle: 'Recent changes, fixes, and improvements to TScopier.',
+      empty: 'No updates yet. Check back soon.',
+      typeFeature: 'Feature',
+      typeFix: 'Fix',
+      typeImprovement: 'Improvement',
     },
     assistant: {
       title: 'TScopier Assistant',
@@ -877,6 +891,7 @@ broker: {
       noTimeline: 'No additional execution events were recorded.',
       viewDetails: 'View details',
       receivedAt: 'Received',
+      explainWithAi: 'Explain with AI',
     },
   },
   signalHistoryPage: {

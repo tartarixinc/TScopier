@@ -134,6 +134,7 @@ export function planManualOrders(args: {
     entryAnchor,
     manualStrict,
     hasExplicitEntry,
+    explicitEntryOrderType: parsed.entry_order_type,
     roundPrice,
     resolvedSymbol,
     commentPrefix,

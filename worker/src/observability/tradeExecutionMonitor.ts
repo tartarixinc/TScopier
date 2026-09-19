@@ -6,6 +6,16 @@ const DEFAULT_MIN_ATTEMPTS = 10
 const DEFAULT_FAILURE_THRESHOLD_PCT = 50
 const MAX_HISTORY = 500
 
+/**
+ * Error codes that represent per-account configuration issues, not system
+ * failures. These must not count toward the systemic failure threshold —
+ * a single user's broker not offering gold should not page the team.
+ */
+const CONFIG_ERROR_CODES = new Set([
+  'BROKER_SYMBOL_NOT_FOUND',
+  'SYMBOL_UNSUPPORTED',
+])
+
 type ExecutionRecord = {
   timestamp: number
   success: boolean
@@ -93,8 +103,8 @@ export class TradeExecutionMonitor {
     // failure rate drops below the threshold, a later spike can alert again.
     // captureCriticalHealthIssue's own cooldown still prevents alert storms.
     if (this.alertEmitted && windowRecords.length >= this.minAttempts) {
-      const failures = windowRecords.filter(r => !r.success).length
-      const failureRatePct = (failures / windowRecords.length) * 100
+      const systemFailures = windowRecords.filter(r => !r.success && !CONFIG_ERROR_CODES.has(r.errorCode ?? '')).length
+      const failureRatePct = (systemFailures / windowRecords.length) * 100
       if (failureRatePct < this.failureThresholdPct) {
         this.alertEmitted = false
       }
@@ -103,12 +113,12 @@ export class TradeExecutionMonitor {
     if (this.alertEmitted) return
     if (windowRecords.length < this.minAttempts) return
 
-    const failures = windowRecords.filter(r => !r.success).length
-    const failureRatePct = (failures / windowRecords.length) * 100
+    const systemFailures = windowRecords.filter(r => !r.success && !CONFIG_ERROR_CODES.has(r.errorCode ?? '')).length
+    const failureRatePct = (systemFailures / windowRecords.length) * 100
 
     if (failureRatePct >= this.failureThresholdPct) {
       this.alertEmitted = true
-      this.emitAlert(failures, windowRecords.length, failureRatePct, now)
+      this.emitAlert(systemFailures, windowRecords.length, failureRatePct, now)
     }
   }
 

@@ -39,6 +39,7 @@ export interface NavTranslations {
     copierLogs: string
     signalHistory: string
     reportedTrades: string
+    updates: string
     marketNews: string
     economicCalendar: string
     performance: string
@@ -100,6 +101,19 @@ export interface NavTranslations {
     liveChat: string
     status: string
     statusOperational: string
+  }
+  updatesAnnouncement: {
+    title: string
+    viewAll: string
+    dismiss: string
+  }
+  updatesPage: {
+    title: string
+    subtitle: string
+    empty: string
+    typeFeature: string
+    typeFix: string
+    typeImprovement: string
   }
   userMenu: {
     menuLabel: string
@@ -548,6 +562,7 @@ export interface CopierLogsTranslations {
     noTimeline: string
     viewDetails: string
     receivedAt: string
+    explainWithAi: string
   }
 }
 
