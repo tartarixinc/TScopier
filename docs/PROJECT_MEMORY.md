@@ -2,6 +2,28 @@
 
 ## Changelog
 
+### 2026-09-19 — "Entry not opened": edited signal bypassed the AI and the entry price was never read
+
+- **Plain English:** A provider posted a gold buy setup on the Lorax Layer VIP channel, then **edited** the Telegram message a minute later to add the full details — entry zone, take profits, and stop loss. The copier treats an edited message differently from a brand-new one: it first tries its built-in rules and only asks the AI if those rules fail. The rules accepted the edit because it had a stop loss and take profits and the same direction as before, but they never check whether an entry price is present. The rules also did not understand the format "ENTRY ZONE: 4358" when only a single price is given (they only understood a range like "4358-4360"). So the copier accepted the signal without an entry price, never asked the AI for help, and could not open the trade — the user saw "No position opened". No money was at risk.
+- **Root cause (technical):**
+  1. Telegram edits go through `tryApplyMessageRevisionInner` (`worker/src/userListener.ts:1983`), which calls `tryDeterministicRevisionCompletion` (`:2306`) and only falls back to `parseUniversalSignal` (the AI) if it returns `null` (`:2056`).
+  2. `revisionHasDeterministicActionableParse` (`worker/src/signalRevision.ts`) accepted a buy/sell edit carrying SL/TP with the same direction, without checking for an entry anchor, so the AI was skipped.
+  3. `extractOptionalEntryAnchor` (`worker/src/parseSignal.ts`) had no pattern for a single price after "ENTRY ZONE" — the two-price zone patterns only matched ranges — so `entry_price` stayed `null`.
+  4. Dispatch then failed with `entry_not_opened` (`worker/src/tradeExecutor/dispatch.ts`).
+  5. `parseAtPriceExcludingSlTp` did not exclude numbered SL/TP labels, so `TP1 @ 4256` was read as the entry price, turning a market signal into a limit order at the take-profit price.
+- **Fix (files):**
+  - `worker/src/parseSignal.ts` — Fix A: single-price `entry\s*zone\s*[:=]?\s*<price>` pattern with a negative lookahead so a range (`ENTRY ZONE: 4358 / 4360`) is still read as a zone; `entrySlashZone` accepts `zone|area` and `/`. Fix D: `parseAtPriceExcludingSlTp` now excludes numbered SL/TP labels (`TP1 @`, `TP 1 @`, `TP(1) @`, `TP1: @`, `Take Profit 1 @`) so a take-profit `@` is not read as the entry price. `target` is deliberately **not** in the exclusion list, so `Entry Target @4235` still parses as an entry.
+  - `worker/src/signalEntryNowRequirement.ts` — new exported `messageLabelsEntryAnchor` and `parsedMissesLabeledEntry` helpers.
+  - `worker/src/signalRevision.ts` — new `revisedMissesLabeledEntry` guard on both `revisionCompletesSettleableEntry` and `revisionHasDeterministicActionableParse`: reject the deterministic result (let the AI try) only when the message labels an entry but the parse has no anchor. Genuine market entries ("Gold buy now", "SELL AT MARKET") are still accepted deterministically.
+  - `worker/src/signalIntent/universalSignalParser.ts` — Fix C: `deterministicQualifiesForFastPath` also rejects a buy/sell that missed a labeled entry, so the new-message fast lane cannot skip the AI either.
+  - Tests: `worker/src/parseSignal.test.ts`, `worker/src/signalRevision.test.ts`, new `worker/src/signalEntryNowRequirement.test.ts`, `worker/src/signalIntent/parseRouting.test.ts`.
+- **Tests/verification:** `npm --prefix worker run build` clean; the entire worker suite passes (198 files, ~1,960 tests). Empirically: the incident message parses `entry_price: 4358`; `ENTRY AREA` forces the AI; `SELL AT MARKET` and `Entry Target @4235` behave correctly.
+- **Deploy state:** cherry-picked onto `dev`; also on `staging` and `main`.
+- **Follow-ups:**
+  1. The guard is a regex allow-list; a label neither parser nor guard recognises can still skip the AI on an edit.
+  2. LOW: `parseSlFromText` reads the ordinal in `SL2 @ 4276` as the stop price (pre-existing).
+  - Incident report: `docs/incident-2026-09-18-entry-not-opened-revision-fastpath.{md,html,pdf}`.
+
 ### 2026-09-08 — Telegram listener reconnect storm: flapping loop that blocked new logins (users could not re-connect Telegram)
 
 - **Plain English:** Several users reported they could not connect their Telegram account. Behind the scenes their listeners were stuck in a loop — constantly dropping and reconnecting every ~20 seconds for hours — and during that state the app could not even request a fresh login code. The failure had two parts: a counting bug meant the safety mechanism that should have restarted a stuck listener never fired, and a network hang could permanently freeze the reconnect logic. We fixed both so a stuck listener now either recovers on its own or is cleanly restarted, and a single mistaken login code no longer forces the user to start over.

@@ -114,6 +114,62 @@ export function messageHasExplicitSlTpLabels(message: string): boolean {
   return false
 }
 
+/**
+ * True when the message explicitly labels an entry price/zone/level, as opposed to a bare
+ * market entry such as "Gold buy now". Used to detect a parser gap: if the message labels an
+ * entry but the parse carries no anchor, the deterministic result must not be trusted alone.
+ */
+export function messageLabelsEntryAnchor(message: string): boolean {
+  const text = String(message ?? '')
+  if (!text) return false
+  // "ENTRY", "ENTRY ZONE", "ENTRY AREA", … must be followed by a price, so the bare word
+  // "entry" in prose ("wait for a good entry") is not a label. "ENTRY at 4358" / "ENTRY @ 4358"
+  // are accepted connectors.
+  if (/\bentry\s*(?:price|zone|area|level|point)?\s*(?:at\s+|@\s*)?[:=]?\s*\d/i.test(text)) return true
+  // "buy at 4358" / "sell at 4358" — a price must follow, so "sell at market" is NOT an anchor.
+  if (/\b(?:buy|sell)\s+at\s+\d/i.test(text)) return true
+  if (/\b(?:buy|sell)\s+limit(?:\s*order)?\b/i.test(text)) return true
+  if (/\b(?:entry|limit)\s*price\s*[:=]?\s*\d/i.test(text)) return true
+  // Bare "PRICE: 4256" is a provider entry label, but only when it starts a line —
+  // "TP price:" / "Target price:" must not count.
+  if (/(?:^|\n)\s*price\s*[:=]\s*\d/i.test(text)) return true
+  // "ZONE: 4358" (single-price zone) is a provider entry label.
+  if (/(?:^|\n)\s*zone\s*[:=]\s*\d/i.test(text)) return true
+  // "AREA: 4358" (entry area): line-initial or with a separator, so "support area 4350" is not one.
+  if (/(?:^|\n)\s*area\s*[:=]?\s*\d/i.test(text)) return true
+  if (/\barea\s*[:=]\s*\d/i.test(text)) return true
+  // "FROM 4358" (entry-from): line-initial, right after a direction word, or after a symbol.
+  // Bare "…from <n>" in prose ("SL moved from 4348", "200 pips from 2640") is not an entry.
+  if (/(?:^|\n)\s*from\s+\d/i.test(text)) return true
+  if (/\b(?:buy|sell|long|short|entry)\s+from\s+\d/i.test(text)) return true
+  if (/\b(?:buy|sell|long|short)\s+(?:xauusd|xagusd|gold|silver|btcusd|btcusdt|ethusd|ethusdt|eurusd|gbpusd|usdjpy|us30|nas100)\s+from\s+\d/i.test(text)) return true
+  // Bare "@4358" is an entry unless the "@" is the SL/TP separator ("TP @ 4256"), which the
+  // parser itself excludes (parseAtPriceExcludingSlTp).
+  for (const m of text.matchAll(/@\s*\d/g)) {
+    const before = text.slice(Math.max(0, (m.index ?? 0) - 32), m.index ?? 0)
+    if (/\b(?:sl|stop\s*loss|stoploss|tp|take\s*profit)[\s._#()/:-]*\d{0,2}\b[_\s./():-]*$/i.test(before)) continue
+    return true
+  }
+  if (/(?:منطقة\s*الدخول|سعر\s*الدخول|نقطة\s*الدخول)/u.test(text)) return true
+  return false
+}
+
+/**
+ * True when the parse carries no entry anchor but the message text labels an entry the parser
+ * may have missed. Callers use this to route to the AI instead of trusting an incomplete parse.
+ */
+export function parsedMissesLabeledEntry(
+  parsed: { entry_price?: unknown; entry_zone_low?: unknown; entry_zone_high?: unknown } | null | undefined,
+  rawMessage: string | null | undefined,
+): boolean {
+  if (!parsed) return false
+  const hasAnchor = positivePrice(parsed.entry_price) != null
+    || positivePrice(parsed.entry_zone_low) != null
+    || positivePrice(parsed.entry_zone_high) != null
+  if (hasAnchor) return false
+  return messageLabelsEntryAnchor(String(rawMessage ?? ''))
+}
+
 /** Multiple numeric prices usually means a real signal (entry/SL/TP), not profit commentary. */
 function messageHasStructuredPriceEvidence(message: string): boolean {
   const prices = String(message ?? '').match(/\b\d{1,5}(?:\.\d{1,5})?\b/g) ?? []
