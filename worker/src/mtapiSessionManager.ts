@@ -146,6 +146,7 @@ export class MtapiSessionManager {
       return
     }
     const pending = (data ?? []) as MtapiSessionRow[]
+    console.info('[mtapiSession] provision scan pending=' + pending.length)
     for (const row of pending) {
       const password = decryptMtPassword(row.broker_password_encrypted)
       const login = String(row.account_login ?? '').trim()
