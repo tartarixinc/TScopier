@@ -11,6 +11,7 @@ type MtapiSessionRow = {
   platform: string | null
   broker_password_encrypted: string | null
   auto_reconnect_enabled: boolean | null
+  connection_status: string | null
 }
 
 function enabled(value: string | undefined, fallback: boolean): boolean {
@@ -133,6 +134,57 @@ export class MtapiSessionManager {
     }
   }
 
+  private async provisionNewAccounts(): Promise<void> {
+    const { data, error } = await this.supabase
+      .from('broker_accounts')
+      .select('id,account_login,broker_server,platform,broker_password_encrypted')
+      .eq('provider', 'mtapi')
+      .is('mtapi_session_id', null)
+      .eq('connection_status', 'pending')
+    if (error) {
+      console.warn('[mtapiSession] provision query failed code=' + error.message)
+      return
+    }
+    const pending = (data ?? []) as MtapiSessionRow[]
+    for (const row of pending) {
+      const password = decryptMtPassword(row.broker_password_encrypted)
+      const login = String(row.account_login ?? '').trim()
+      const server = String(row.broker_server ?? '').trim()
+      if (!password || !login || !server) {
+        console.warn('[mtapiSession] provision skipped broker=' + row.id + ' (missing credentials)')
+        continue
+      }
+      try {
+        const token = await this.provider.connectEx({
+          id: '',
+          server,
+          login,
+          password,
+          platform: platformOf(row.platform),
+        })
+        const { error: updErr } = await this.supabase
+          .from('broker_accounts')
+          .update({ mtapi_session_id: token, connection_status: 'connected', connection_error: null })
+          .eq('id', row.id)
+          .eq('connection_status', 'pending')
+        if (updErr) {
+          console.warn('[mtapiSession] provision persist failed broker=' + row.id + ' code=' + updErr.message)
+          continue
+        }
+        this.provider.seedPlatformCache(token, platformOf(row.platform))
+        console.info('[mtapiSession] provisioned broker=' + row.id + ' token=' + token.slice(0, 8) + '...')
+      } catch (err) {
+        const code = safeCode(err)
+        console.warn('[mtapiSession] provision failed broker=' + row.id + ' code=' + code)
+        await this.supabase
+          .from('broker_accounts')
+          .update({ connection_status: 'error', connection_error: 'MTAPI connect failed: ' + code })
+          .eq('id', row.id)
+          .eq('connection_status', 'pending')
+      }
+    }
+  }
+
   async start(): Promise<void> {
     if (!mtapiConfigured()) return
     this.provider.setRecoveryHandler(id => this.recoverWithCredentials(id))
@@ -142,12 +194,18 @@ export class MtapiSessionManager {
       if (id) this.provider.seedPlatformCache(id, platformOf(row.platform))
     }
     await this.reconcileOrphans(rows)
+    await this.provisionNewAccounts()
     await this.sweep(rows)
     const intervalMs = Math.max(30_000, Number(process.env.MTAPI_SESSION_HEALTH_INTERVAL_MS ?? 240_000))
     this.timer = setInterval(() => {
-      void this.sweep().catch(error => {
-        console.warn('[mtapiSession] health sweep failed code=' + safeCode(error))
-      })
+      void Promise.all([
+        this.provisionNewAccounts().catch(error => {
+          console.warn('[mtapiSession] provision sweep failed code=' + safeCode(error))
+        }),
+        this.sweep().catch(error => {
+          console.warn('[mtapiSession] health sweep failed code=' + safeCode(error))
+        }),
+      ])
     }, intervalMs)
     this.timer.unref?.()
   }
