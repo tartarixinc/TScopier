@@ -116,6 +116,7 @@ import { lossTextClass, pnlSignTextClass } from '../../lib/pnlDisplay'
 import { formatMoneyWithCode } from '../../lib/currency'
 import { interpolate } from '../../i18n/interpolate'
 import { TelegramConnectBanner } from '../../components/dashboard/TelegramConnectBanner'
+import { TelegramCommunityBanner } from '../../components/dashboard/TelegramCommunityBanner'
 import { ListenerLeaseOfflineBanner } from '../../components/dashboard/ListenerLeaseOfflineBanner'
 import { CopierStatusCard } from '../../components/dashboard/CopierStatusCard'
 import {
@@ -2151,6 +2152,7 @@ export function DashboardPage() {
       ) : (
         <>
       <PageHeader title={t.dashboard.title} />
+      <TelegramCommunityBanner />
       <TelegramConnectBanner className="mb-6" />
       <ListenerLeaseOfflineBanner className="mb-6" />
 

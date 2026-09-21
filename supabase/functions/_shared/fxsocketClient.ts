@@ -689,6 +689,14 @@ export class FxsocketClient {
   }
 
   /** Unlink account via DELETE /v1/accounts/{id}. */
+  /** Strict deletion for enforcement flows that must observe remote failure. */
+  async deleteAccountStrict(accountId: string): Promise<void> {
+    await this.request(`${this.v1BaseUrl}/accounts/${encodeURIComponent(accountId)}`, {
+      method: "DELETE",
+      timeoutMs: 30_000,
+    })
+  }
+
   async deleteAccount(accountId: string): Promise<void> {
     try {
       await this.request(
