@@ -146,7 +146,7 @@ export class MtapiProvider implements BrokerProvider {
     try {
       const headers: Record<string, string> = { accept: 'application/json, text/plain' }
       const proxyKey = env('MTAPI_PROXY_KEY') || env('MTAPI_API_KEY')
-      if (proxyKey) headers['X-MTAPI-Key'] = proxyKey
+      if (proxyKey) headers['Authorization'] = 'Bearer ' + proxyKey
       const response = await this.fetchImpl(url, {
         method: options.method ?? 'GET',
         headers,
