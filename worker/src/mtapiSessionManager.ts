@@ -79,7 +79,7 @@ export class MtapiSessionManager {
     if (token !== sessionId) {
       const { error: updateError } = await this.supabase
         .from('broker_accounts')
-        .update({ mtapi_session_id: token, connection_status: 'connected' })
+        .update({ mtapi_session_id: token, connection_status: 'connected', mtapi_status: 'connected' })
         .eq('id', row.id)
         .eq('mtapi_session_id', sessionId)
       if (updateError) throw new Error('MTAPI recovered token persistence failed')
@@ -164,7 +164,7 @@ export class MtapiSessionManager {
         })
         const { error: updErr } = await this.supabase
           .from('broker_accounts')
-          .update({ mtapi_session_id: token, connection_status: 'connected', connection_error: null })
+          .update({ mtapi_session_id: token, connection_status: 'connected', mtapi_status: 'connected', connection_error: null })
           .eq('id', row.id)
           .eq('connection_status', 'pending')
         if (updErr) {
@@ -178,7 +178,7 @@ export class MtapiSessionManager {
         console.warn('[mtapiSession] provision failed broker=' + row.id + ' code=' + code)
         await this.supabase
           .from('broker_accounts')
-          .update({ connection_status: 'error', connection_error: 'MTAPI connect failed: ' + code })
+          .update({ connection_status: 'error', mtapi_status: 'error', connection_error: 'MTAPI connect failed: ' + code })
           .eq('id', row.id)
           .eq('connection_status', 'pending')
       }
