@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
-import { encryptMtPassword, isBrokerCredentialsCryptoConfigured } from "../_shared/brokerCredentialsCrypto.ts"
+import { encryptMtPassword, isEncryptionConfigured } from "../_shared/brokerCredentialsCrypto.ts"
 import {
   assertBrokerAccountLimit,
   loadUserSubscription,
@@ -91,7 +91,7 @@ Deno.serve(async (req: Request) => {
       return bad(409, `This MT login is already linked as "${dup.label}". Delete it first to reconnect.`)
     }
 
-    const encryptedPassword = isBrokerCredentialsCryptoConfigured(Deno.env)
+    const encryptedPassword = isEncryptionConfigured(Deno.env)
       ? await encryptMtPassword(password, Deno.env)
       : password
 
@@ -156,7 +156,7 @@ Deno.serve(async (req: Request) => {
     const { data: updated, error: updErr } = await supabase
       .from("broker_accounts")
       .update({
-        broker_password_encrypted: isBrokerCredentialsCryptoConfigured(Deno.env)
+        broker_password_encrypted: isEncryptionConfigured(Deno.env)
           ? await encryptMtPassword(password, Deno.env)
           : password,
         auto_reconnect_enabled: true,
