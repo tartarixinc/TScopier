@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
+import { logAssistantEvent } from "../_shared/listenerEvents.ts"
 
 /**
  * Thin proxy in front of the worker's MTProto auth API.
@@ -114,6 +115,23 @@ Deno.serve(async (req: Request) => {
       if (typeof rec.message === "string") {
         rec.message = String(rec.message).replace(/\s*\(caused by[\s\S]*$/i, "").trim()
       }
+    }
+
+    // Log telegram_link_attempt with delivery info from worker response
+    if ((action === "send_code" || action === "verify_code") && workerRes.ok) {
+      const rec = payload as Record<string, unknown> | undefined
+      const phone = typeof rest.phone === "string" ? rest.phone.slice(0, 4) + "****" : undefined
+      const detail: Record<string, unknown> = { action, phone }
+      if (action === "send_code" && rec && typeof rec === "object") {
+        if (typeof rec.delivery === "string") detail.delivery = rec.delivery
+        if (typeof rec.code_length === "number") detail.code_length = rec.code_length
+        if (typeof rec.can_resend === "boolean") detail.can_resend = rec.can_resend
+      }
+      logAssistantEvent({
+        userId: user.id,
+        eventType: "telegram_link_attempt",
+        detail,
+      }).catch(() => {})
     }
     return new Response(JSON.stringify(payload), {
       status: workerRes.status,

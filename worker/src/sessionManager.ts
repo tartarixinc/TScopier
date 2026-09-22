@@ -14,6 +14,7 @@ import {
   releaseSessionLease,
 } from './sessionLease'
 import { getMetricsSnapshot } from './workerMetrics'
+import { persistListenerEvent } from './listenerEvents'
 import { leaseRoleLabel, userBelongsToShard, workerConfig } from './workerConfig'
 import { parallelMap } from './parallelPool'
 import type { TradeExecutor } from './tradeExecutor'
@@ -1112,6 +1113,10 @@ export class UserSessionManager {
       mtprotoConnected: false,
       healthReason: 'user_disconnected_telegram',
     }, { force: true, allowWithoutLease: true })
+    void persistListenerEvent(this.supabase, {
+      userId,
+      eventType: 'telegram_link_disconnect',
+    })
     return { ok: true }
   }
 
