@@ -4,11 +4,26 @@
 const PREFIX = "v1";
 const IV_LEN = 12;
 
-function resolveEncryptionKeyRaw(env: Record<string, string | undefined>): string {
+// Accepts either a Deno.env-like object (has .get) or a plain record. The edge
+// runtime exposes env vars only through Deno.env.get(name); reading them as
+// properties returns undefined, which silently disabled encryption.
+type EnvLike =
+  | { get(name: string): string | undefined }
+  | Record<string, string | undefined>;
+
+function readEnv(env: EnvLike, key: string): string {
+  const getter = (env as { get?: (name: string) => string | undefined }).get;
+  const raw = typeof getter === "function"
+    ? getter.call(env, key)
+    : (env as Record<string, string | undefined>)[key];
+  return String(raw ?? "").trim();
+}
+
+function resolveEncryptionKeyRaw(env: EnvLike): string {
   return (
-    (env.BROKER_CREDENTIALS_ENCRYPTION_KEY ?? "").trim()
-    || (env.BROKER_CREDENTIALS_KEY ?? "").trim()
-    || (env.MT_PASSWORD_ENCRYPTION_KEY ?? "").trim()
+    readEnv(env, "BROKER_CREDENTIALS_ENCRYPTION_KEY")
+    || readEnv(env, "BROKER_CREDENTIALS_KEY")
+    || readEnv(env, "MT_PASSWORD_ENCRYPTION_KEY")
   );
 }
 
@@ -39,7 +54,7 @@ function decodeKeyMaterial(raw: string): Uint8Array | null {
   return null; // Will be handled by hash fallback
 }
 
-async function getKey(env: Record<string, string | undefined>): Promise<CryptoKey | null> {
+async function getKey(env: EnvLike): Promise<CryptoKey | null> {
   const raw = resolveEncryptionKeyRaw(env);
   if (!raw) return null;
 
@@ -56,7 +71,7 @@ async function getKey(env: Record<string, string | undefined>): Promise<CryptoKe
 
 export async function encryptMtPassword(
   plaintext: string,
-  env: Record<string, string | undefined>,
+  env: EnvLike,
 ): Promise<string | null> {
   const password = plaintext.trim();
   if (!password) return null;
@@ -78,7 +93,7 @@ export async function encryptMtPassword(
 
 export async function decryptMtPassword(
   stored: string | null | undefined,
-  env: Record<string, string | undefined>,
+  env: EnvLike,
 ): Promise<string | null> {
   const value = String(stored ?? "").trim();
   if (!value) return null;
@@ -102,6 +117,6 @@ export async function decryptMtPassword(
   }
 }
 
-export function isEncryptionConfigured(env: Record<string, string | undefined>): boolean {
+export function isEncryptionConfigured(env: EnvLike): boolean {
   return Boolean(resolveEncryptionKeyRaw(env));
 }
