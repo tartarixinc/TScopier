@@ -33,6 +33,7 @@ export type ListenerEventType =
   | 'telegram_link_attempt'
   | 'telegram_link_success'
   | 'telegram_link_failed'
+  | 'telegram_link_disconnect'
 
 export async function persistListenerEvent(
   supabase: SupabaseClient,
