@@ -252,13 +252,17 @@ export type { FxsocketStreamSubscribeFrame } from './fxsocketStreamTypes'
 export const FXSOCKET_DOCS_URL = 'https://fxsocket.com/docs#request-builder'
 export const FXSOCKET_V1_DOCS_URL = 'https://api.fxsocket.com/v1/docs#/'
 
-function fetchBrokerStatusCall(accountId: string): Promise<{
+function fetchBrokerStatusCall(
+  accountId: string,
+  provider?: 'fxsocket' | 'mtapi',
+): Promise<{
   account: BrokerAccount
   healthy: boolean
   status: FxsocketMtStatus
 }> {
   return call({
     body: { action: 'broker_status', account_id: accountId },
+    edgeFn: provider === 'mtapi' ? 'mtapi-broker' : undefined,
     timeoutMs: 15_000,
     expect: (b) => {
       const row = b as {

@@ -12,6 +12,7 @@ type MtapiSessionRow = {
   broker_password_encrypted: string | null
   auto_reconnect_enabled: boolean | null
   connection_status: string | null
+  performance_baseline_balance?: number | null
 }
 
 function enabled(value: string | undefined, fallback: boolean): boolean {
@@ -48,7 +49,7 @@ export class MtapiSessionManager {
   private async sessions(): Promise<MtapiSessionRow[]> {
     const { data, error } = await this.supabase
       .from('broker_accounts')
-      .select('id,mtapi_session_id,account_login,broker_server,platform,broker_password_encrypted,auto_reconnect_enabled')
+      .select('id,mtapi_session_id,account_login,broker_server,platform,broker_password_encrypted,auto_reconnect_enabled,performance_baseline_balance')
       .eq('provider', 'mtapi')
     if (error) throw new Error('MTAPI session query failed')
     return (data ?? []) as MtapiSessionRow[]
@@ -57,7 +58,7 @@ export class MtapiSessionManager {
   private async recoverWithCredentials(sessionId: string): Promise<string | null> {
     const { data, error } = await this.supabase
       .from('broker_accounts')
-      .select('id,mtapi_session_id,account_login,broker_server,platform,broker_password_encrypted,auto_reconnect_enabled')
+      .select('id,mtapi_session_id,account_login,broker_server,platform,broker_password_encrypted,auto_reconnect_enabled,performance_baseline_balance')
       .eq('provider', 'mtapi')
       .eq('mtapi_session_id', sessionId)
       .maybeSingle()
@@ -114,6 +115,29 @@ export class MtapiSessionManager {
     }
   }
 
+  private async syncAccountState(row: MtapiSessionRow, sessionId: string): Promise<void> {
+    const summary = await this.provider.accountSummary(sessionId)
+    const now = new Date().toISOString()
+    const patch: Record<string, unknown> = {
+      mtapi_status: 'connected',
+      connection_status: 'connected',
+      connection_error: null,
+      last_synced_at: now,
+    }
+    if (summary.balance != null) patch.last_balance = summary.balance
+    if (summary.equity != null) patch.last_equity = summary.equity
+    if (summary.currency != null) patch.last_currency = summary.currency
+    if (row.performance_baseline_balance == null && summary.balance != null) {
+      patch.performance_baseline_balance = summary.balance
+      patch.performance_baseline_captured_at = now
+    }
+    const { error } = await this.supabase
+      .from('broker_accounts')
+      .update(patch)
+      .eq('id', row.id)
+    if (error) throw new Error('MTAPI account state persist failed')
+  }
+
   private async sweep(rows?: MtapiSessionRow[]): Promise<void> {
     if (this.sweepRunning) return
     this.sweepRunning = true
@@ -125,6 +149,7 @@ export class MtapiSessionManager {
         this.provider.seedPlatformCache(sessionId, platformOf(row.platform))
         try {
           await this.provider.ensureConnected(sessionId)
+          await this.syncAccountState(row, sessionId)
         } catch (error) {
           console.warn('[mtapiSession] health recovery failed broker=' + row.id + ' code=' + safeCode(error))
         }
@@ -137,7 +162,7 @@ export class MtapiSessionManager {
   private async provisionNewAccounts(): Promise<void> {
     const { data, error } = await this.supabase
       .from('broker_accounts')
-      .select('id,account_login,broker_server,platform,broker_password_encrypted')
+      .select('id,account_login,broker_server,platform,broker_password_encrypted,performance_baseline_balance')
       .eq('provider', 'mtapi')
       .is('mtapi_session_id', null)
       .eq('connection_status', 'pending')
@@ -174,6 +199,11 @@ export class MtapiSessionManager {
         }
         this.provider.seedPlatformCache(token, platformOf(row.platform))
         console.info('[mtapiSession] provisioned broker=' + row.id + ' token=' + token.slice(0, 8) + '...')
+        try {
+          await this.syncAccountState({ ...row, connection_status: 'connected' }, token)
+        } catch (syncError) {
+          console.warn('[mtapiSession] initial account sync failed broker=' + row.id + ' code=' + safeCode(syncError))
+        }
       } catch (err) {
         const code = safeCode(err)
         console.warn('[mtapiSession] provision failed broker=' + row.id + ' code=' + code)

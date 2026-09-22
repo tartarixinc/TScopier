@@ -177,6 +177,35 @@ Deno.serve(async (req: Request) => {
     )
   }
 
+  // ── broker_status ────────────────────────────────────────
+  // DB-cached snapshot (worker refreshes it each sweep). Returned in the same
+  // shape as fxsocket-broker's broker_status so the health modal is provider-agnostic.
+  if (action === "broker_status") {
+    const connected = row.mtapi_status === "connected" || row.connection_status === "connected"
+    const status = {
+      status: connected ? "ready" : "disconnected",
+      serverTime: row.last_synced_at ?? null,
+      terminal: { alive: connected },
+      broker: { connected, server: row.broker_server ?? undefined },
+      account: {
+        loggedIn: connected,
+        login: row.account_login ? Number(row.account_login) : undefined,
+        currency: row.last_currency ?? undefined,
+        tradeAllowed: connected,
+      },
+      bridge: { tradeEaReady: connected, symbolsSynced: connected },
+    }
+    return Response.json(
+      {
+        ok: true,
+        account: stripSecrets(row as Record<string, unknown>),
+        healthy: connected,
+        status,
+      },
+      { headers: corsHeaders },
+    )
+  }
+
   // ── refresh_summary ──────────────────────────────────────
   if (action === "refresh_summary") {
     return Response.json(
