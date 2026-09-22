@@ -27,17 +27,11 @@ import {
   loadUserSubscription,
 } from "../_shared/subscriptionAccess.ts"
 import { effectiveAccountSummaryBalance } from "../_shared/effectiveBrokerBalance.ts"
-import { encryptMtPassword, isEncryptionConfigured } from "../_shared/brokerCredentialsCrypto.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
-}
-
-function stripSecrets(row: Record<string, unknown>) {
-  const { broker_password_encrypted: _pw, mtapi_session_id: _sid, ...safe } = row
-  return safe
 }
 
 function isApiThrottleMessage(message: string | null | undefined): boolean {
@@ -141,11 +135,8 @@ async function loadOwnedBrokerRow(
     .maybeSingle()
   if (error) throw new Error(error.message)
   if (!data) throw new FxsocketApiError("Broker account not found", 404)
-  // MTAPI accounts don't have fxsocket_account_id — that's fine
-  if (data.provider !== "mtapi") {
-    const fxsocketId = String(data.fxsocket_account_id ?? "").trim()
-    if (!fxsocketId) throw new FxsocketApiError("Broker has no FxSocket account linked", 400)
-  }
+  const fxsocketId = String(data.fxsocket_account_id ?? "").trim()
+  if (!fxsocketId) throw new FxsocketApiError("Broker has no FxSocket account linked", 400)
   return data
 }
 
@@ -173,10 +164,10 @@ Deno.serve(async (req: Request) => {
         .from("broker_accounts")
         .select("*")
         .eq("user_id", userId)
+        .neq("fxsocket_account_id", "")
         .order("created_at", { ascending: false })
       if (error) return bad(500, error.message)
-      const safe = (data ?? []).map(row => stripSecrets(row as Record<string, unknown>))
-      return Response.json({ ok: true, accounts: safe }, { headers: corsHeaders })
+      return Response.json({ ok: true, accounts: data ?? [] }, { headers: corsHeaders })
     }
 
     if (action === "search_brokers") {
@@ -189,6 +180,9 @@ Deno.serve(async (req: Request) => {
       const companies = await searchBrokerDirectory(Deno.env, { query, platform })
       return Response.json({ ok: true, companies }, { headers: corsHeaders })
     }
+
+    ensureFxsocketConfigured()
+    const fx = makeFxsocketClientFromEnv(Deno.env)
 
     if (action === "connect") {
       const sub = await loadUserSubscription(supabase, userId)
@@ -206,12 +200,17 @@ Deno.serve(async (req: Request) => {
       const label = String(body.label ?? "").trim()
       const platformRaw = String(body.platform ?? "MT5").trim().toUpperCase()
       const platform = platformRaw === "MT4" ? "MT4" : "MT5"
+      const existingUuid = String(body.fxsocket_account_id ?? "").trim()
+      const linkingExisting = /^[0-9a-f-]{36}$/i.test(existingUuid)
 
-      if (!server) return bad(400, "server required")
-      if (!login) return bad(400, "login required")
-      if (!password) return bad(400, "password required")
+      if (!linkingExisting) {
+        if (!server) return bad(400, "server required")
+        if (!login) return bad(400, "login required")
+        if (!password) return bad(400, "password required")
+      }
 
-      const displayLabel = label || (login ? `${platform} • ${login}` : platform)
+      const displayLabel = label
+        || (login ? `${platform} • ${login}` : linkingExisting ? `${platform} • ${existingUuid.slice(0, 8)}` : platform)
 
       const { data: dup } = await supabase
         .from("broker_accounts")
@@ -224,19 +223,45 @@ Deno.serve(async (req: Request) => {
         return bad(409, `This MT login is already linked as "${dup.label}". Delete it first to reconnect.`)
       }
 
+      if (linkingExisting) {
+        const { data: dupUuid } = await supabase
+          .from("broker_accounts")
+          .select("id,label")
+          .eq("user_id", userId)
+          .eq("fxsocket_account_id", existingUuid)
+          .maybeSingle()
+        if (dupUuid) {
+          return bad(409, `This FxSocket account UUID is already linked as "${dupUuid.label}".`)
+        }
+      }
+
+      let accountId = linkingExisting ? existingUuid : ""
+      if (!accountId) {
+        try {
+          const connected = await fx.connectAccount({
+            login,
+            password,
+            server,
+            label: displayLabel,
+            platform,
+          })
+          accountId = connected.accountId
+        } catch (e) {
+          const msg = e instanceof FxsocketApiError ? e.message : e instanceof Error ? e.message : "Connect failed"
+          return bad(e instanceof FxsocketApiError ? e.status : 502, msg)
+        }
+      }
+
       const insertBase: Record<string, unknown> = {
         user_id: userId,
         label: displayLabel,
         platform,
-        provider: "mtapi",
+        metaapi_account_id: "",
+        fxsocket_account_id: accountId,
         account_login: login || null,
         broker_server: server || null,
-        broker_password_encrypted: isEncryptionConfigured(Deno.env)
-          ? await encryptMtPassword(password, Deno.env)
-          : password,
-        auto_reconnect_enabled: true,
+        fxsocket_status: "connecting",
         connection_status: "pending",
-        mtapi_status: "connecting",
         connection_error: null,
         is_active: true,
         default_lot_size: 0.01,
@@ -251,6 +276,9 @@ Deno.serve(async (req: Request) => {
         .single()
 
       if (insErr) {
+        if (!linkingExisting) {
+          try { await fx.deleteAccount(accountId) } catch { /* swallow */ }
+        }
         const msg = insErr.message
         if (/broker_account_limit|subscription_required/i.test(msg)) {
           const cleaned = msg.includes(": ") ? msg.slice(msg.indexOf(": ") + 2) : msg
@@ -259,30 +287,19 @@ Deno.serve(async (req: Request) => {
         return bad(500, msg)
       }
 
+      // Return immediately — MT5 terminal spin-up can take minutes. Client polls refresh_summary.
       return Response.json(
-        { ok: true, account: stripSecrets(row as Record<string, unknown>), pending: true },
+        { ok: true, account: row, pending: true },
         { headers: corsHeaders },
       )
-    }
-
-    // FXSocket client for remaining actions (delete, reconnect, refresh, etc.)
-    // Lazy initialization — only required for FXSocket-specific code paths.
-    let fx: ReturnType<typeof makeFxsocketClientFromEnv> | null = null
-    function getFx() {
-      if (!fx) {
-        ensureFxsocketConfigured()
-        fx = makeFxsocketClientFromEnv(Deno.env)
-      }
-      return fx
     }
 
     if (action === "delete") {
       const accountRowId = String(body.account_id ?? body.broker_id ?? "")
       if (!accountRowId) return bad(400, "account_id required")
       const row = await loadOwnedBrokerRow(supabase, userId, accountRowId)
-      // Only clean up FXSocket accounts
-      if (row.provider !== "mtapi" && row.fxsocket_account_id) {
-        try { await getFx().deleteAccount(row.fxsocket_account_id) } catch { /* swallow */ }
+      if (row.fxsocket_account_id) {
+        try { await fx.deleteAccount(row.fxsocket_account_id) } catch { /* swallow */ }
       }
       const { error } = await supabase
         .from("broker_accounts")
@@ -306,40 +323,13 @@ Deno.serve(async (req: Request) => {
       if (!login) return bad(400, "Broker login is missing — delete and connect again.")
       if (!server) return bad(400, "Broker server is missing — delete and connect again.")
 
-      // MTAPI accounts: update password and let the worker reconnect
-      if (row.provider === "mtapi") {
-        const { data: updated, error: updErr } = await supabase
-          .from("broker_accounts")
-          .update({
-            broker_password_encrypted: isEncryptionConfigured(Deno.env)
-              ? await encryptMtPassword(password, Deno.env)
-              : password,
-            auto_reconnect_enabled: true,
-            mtapi_session_id: null,
-            connection_status: "pending",
-            mtapi_status: "connecting",
-            connection_error: null,
-            connection_error_kind: null,
-            connection_error_message: null,
-          })
-          .eq("id", accountRowId)
-          .eq("user_id", userId)
-          .select("*")
-          .single()
-        if (updErr) return bad(500, updErr.message)
-        return Response.json(
-          { ok: true, account: stripSecrets(updated as Record<string, unknown>), pending: true },
-          { headers: corsHeaders },
-        )
-      }
-
       const platform = brokerApiPlatform(row)
       const oldUuid = String(row.fxsocket_account_id ?? "").trim()
       const displayLabel = String(row.label ?? "").trim() || `${platform} • ${login}`
 
       let newAccountId = ""
       try {
-        const connected = await getFx().connectAccount({
+        const connected = await fx.connectAccount({
           login,
           password,
           server,
@@ -366,7 +356,7 @@ Deno.serve(async (req: Request) => {
       }
 
       if (oldUuid && oldUuid !== newAccountId) {
-        try { await getFx().deleteAccount(oldUuid) } catch { /* swallow */ }
+        try { await fx.deleteAccount(oldUuid) } catch { /* swallow */ }
       }
 
       const { data: updated, error: updErr } = await supabase
@@ -388,12 +378,12 @@ Deno.serve(async (req: Request) => {
         .single()
 
       if (updErr) {
-        try { await getFx().deleteAccount(newAccountId) } catch { /* swallow */ }
+        try { await fx.deleteAccount(newAccountId) } catch { /* swallow */ }
         return bad(500, updErr.message)
       }
 
       return Response.json(
-        { ok: true, account: stripSecrets(updated as Record<string, unknown>), pending: true },
+        { ok: true, account: updated, pending: true },
         { headers: corsHeaders },
       )
     }
@@ -402,19 +392,6 @@ Deno.serve(async (req: Request) => {
       const accountRowId = String(body.account_id ?? "")
       if (!accountRowId) return bad(400, "account_id required")
       const row = await loadOwnedBrokerRow(supabase, userId, accountRowId)
-
-      // MTAPI accounts: the worker connects in the background.
-      // Just return the current DB state so the client can poll until connected.
-      if (row.provider === "mtapi") {
-        return Response.json(
-          {
-            ok: true,
-            account: stripSecrets(row as Record<string, unknown>),
-            pending: row.connection_status !== "connected",
-          },
-          { headers: corsHeaders },
-        )
-      }
 
       const respondPending = async () => {
         const { data: updated, error } = await supabase
@@ -432,7 +409,7 @@ Deno.serve(async (req: Request) => {
           .single()
         if (error) return bad(500, error.message)
         return Response.json(
-          { ok: true, account: stripSecrets((updated ?? row) as Record<string, unknown>), pending: true },
+          { ok: true, account: updated ?? row, pending: true },
           { headers: corsHeaders },
         )
       }
@@ -442,7 +419,7 @@ Deno.serve(async (req: Request) => {
       const establishing = ["pending", "connecting", "error"].includes(row.connection_status)
 
       try {
-        const readiness = await getFx().resolveLinkReadiness(row.fxsocket_account_id)
+        const readiness = await fx.resolveLinkReadiness(row.fxsocket_account_id)
 
         if (readiness.ready) {
           let baselinePatch: Record<string, number | string> = {}
@@ -458,7 +435,7 @@ Deno.serve(async (req: Request) => {
           }
 
           const terminalPatch = await fetchTerminalHealthPatch(
-            getFx(),
+            fx,
             row.fxsocket_account_id,
             brokerApiPlatform(row),
           )
@@ -481,7 +458,7 @@ Deno.serve(async (req: Request) => {
             .single()
           if (error) return bad(500, error.message)
           return Response.json(
-            { ok: true, account: stripSecrets(updated as Record<string, unknown>), summary: readiness.summary },
+            { ok: true, account: updated, summary: readiness.summary },
             { headers: corsHeaders },
           )
         }
@@ -495,7 +472,7 @@ Deno.serve(async (req: Request) => {
           return Response.json(
             {
               ok: true,
-              account: stripSecrets(row as Record<string, unknown>),
+              account: row,
               throttled: true,
               retry_after_ms: parseThrottleBackoffMs(rawMsg),
             },
@@ -523,7 +500,7 @@ Deno.serve(async (req: Request) => {
           return Response.json(
             {
               ok: true,
-              account: stripSecrets(row as Record<string, unknown>),
+              account: row,
               throttled: true,
               retry_after_ms: parseThrottleBackoffMs(rawMsg),
             },
@@ -552,9 +529,8 @@ Deno.serve(async (req: Request) => {
       const accountRowId = String(body.account_id ?? "")
       if (!accountRowId) return bad(400, "account_id required")
       const row = await loadOwnedBrokerRow(supabase, userId, accountRowId)
-      if (row.provider === "mtapi") return bad(400, "Use the worker to check MTAPI connection status.")
       try {
-        const status = await getFx().mtStatus(row.fxsocket_account_id, brokerApiPlatform(row))
+        const status = await fx.mtStatus(row.fxsocket_account_id, brokerApiPlatform(row))
         const { healthy, account } = await persistBrokerMtStatus(supabase, userId, accountRowId, status)
         return Response.json(
           { ok: true, healthy, status, account },
@@ -587,8 +563,7 @@ Deno.serve(async (req: Request) => {
       const accountRowId = String(body.account_id ?? "")
       if (!accountRowId) return bad(400, "account_id required")
       const row = await loadOwnedBrokerRow(supabase, userId, accountRowId)
-      if (row.provider === "mtapi") return bad(400, "This action is not supported for MTAPI accounts.")
-      const orders = await getFx().openedOrders(row.fxsocket_account_id, brokerApiPlatform(row))
+      const orders = await fx.openedOrders(row.fxsocket_account_id, brokerApiPlatform(row))
       return Response.json({ ok: true, orders }, { headers: corsHeaders })
     }
 
@@ -600,8 +575,7 @@ Deno.serve(async (req: Request) => {
         return bad(400, "account_id, history_from, and history_to required")
       }
       const row = await loadOwnedBrokerRow(supabase, userId, accountRowId)
-      if (row.provider === "mtapi") return bad(400, "This action is not supported for MTAPI accounts.")
-      const orders = await getFx().orderHistory(row.fxsocket_account_id, historyFrom, historyTo, brokerApiPlatform(row))
+      const orders = await fx.orderHistory(row.fxsocket_account_id, historyFrom, historyTo, brokerApiPlatform(row))
       return Response.json({ ok: true, orders }, { headers: corsHeaders })
     }
 
@@ -613,8 +587,7 @@ Deno.serve(async (req: Request) => {
         return bad(400, "account_id, history_from, and history_to required")
       }
       const row = await loadOwnedBrokerRow(supabase, userId, accountRowId)
-      if (row.provider === "mtapi") return bad(400, "This action is not supported for MTAPI accounts.")
-      const positions = await getFx().positionHistory(row.fxsocket_account_id, historyFrom, historyTo, brokerApiPlatform(row))
+      const positions = await fx.positionHistory(row.fxsocket_account_id, historyFrom, historyTo, brokerApiPlatform(row))
       return Response.json({ ok: true, positions }, { headers: corsHeaders })
     }
 
@@ -623,8 +596,7 @@ Deno.serve(async (req: Request) => {
       const symbol = String(body.symbol ?? "EURUSD").trim()
       if (!accountRowId) return bad(400, "account_id required")
       const row = await loadOwnedBrokerRow(supabase, userId, accountRowId)
-      if (row.provider === "mtapi") return bad(400, "This action is not supported for MTAPI accounts.")
-      const quote = await getFx().getQuote(row.fxsocket_account_id, symbol, brokerApiPlatform(row))
+      const quote = await fx.getQuote(row.fxsocket_account_id, symbol, brokerApiPlatform(row))
       return Response.json({ ok: true, quote }, { headers: corsHeaders })
     }
 
@@ -632,8 +604,7 @@ Deno.serve(async (req: Request) => {
       const accountRowId = String(body.account_id ?? "")
       if (!accountRowId) return bad(400, "account_id required")
       const row = await loadOwnedBrokerRow(supabase, userId, accountRowId)
-      if (row.provider === "mtapi") return bad(400, "This action is not supported for MTAPI accounts.")
-      const symbols = await getFx().symbols(row.fxsocket_account_id, brokerApiPlatform(row))
+      const symbols = await fx.symbols(row.fxsocket_account_id, brokerApiPlatform(row))
       return Response.json({ ok: true, symbols }, { headers: corsHeaders })
     }
 
@@ -643,8 +614,7 @@ Deno.serve(async (req: Request) => {
       if (!accountRowId) return bad(400, "account_id required")
       if (!symbol) return bad(400, "symbol required")
       const row = await loadOwnedBrokerRow(supabase, userId, accountRowId)
-      if (row.provider === "mtapi") return bad(400, "This action is not supported for MTAPI accounts.")
-      const info = await getFx().symbolInfo(row.fxsocket_account_id, symbol, brokerApiPlatform(row))
+      const info = await fx.symbolInfo(row.fxsocket_account_id, symbol, brokerApiPlatform(row))
       return Response.json({ ok: true, symbol_info: info }, { headers: corsHeaders })
     }
 
@@ -652,15 +622,14 @@ Deno.serve(async (req: Request) => {
       const accountRowId = String(body.account_id ?? body.broker_id ?? "")
       if (!accountRowId) return bad(400, "account_id required")
       const row = await loadOwnedBrokerRow(supabase, userId, accountRowId)
-      if (row.provider === "mtapi") return bad(400, "This action is not supported for MTAPI accounts.")
-      const summary = await getFx().accountSummary(row.fxsocket_account_id, brokerApiPlatform(row))
+      const summary = await fx.accountSummary(row.fxsocket_account_id, brokerApiPlatform(row))
 
       if (body.check_terminal !== true) {
         return Response.json({ ok: true, summary }, { headers: corsHeaders })
       }
 
       try {
-        const status = await getFx().mtStatus(row.fxsocket_account_id, brokerApiPlatform(row))
+        const status = await fx.mtStatus(row.fxsocket_account_id, brokerApiPlatform(row))
         const { healthy, account } = await persistBrokerMtStatus(supabase, userId, accountRowId, status)
         return Response.json(
           { ok: true, summary, status, healthy, account },
