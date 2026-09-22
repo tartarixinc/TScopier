@@ -2768,7 +2768,7 @@ export function AccountConfigPage() {
                         {broker.broker_server && (
                           <p className="mt-0.5 truncate text-xs text-neutral-500 dark:text-neutral-400">{broker.broker_server}</p>
                         )}
-                        {broker.connection_error && brokerCanReconnect(broker) ? (
+                        {broker.connection_error ? (
                           <p className="mt-1 text-xs text-error-600 dark:text-error-400 leading-relaxed">
                             {brokerConnectErrorText(
                               classifyBrokerConnectError(broker.connection_error),
