@@ -4,7 +4,8 @@ export type AssistantEventType =
   | "assistant_tool_call"
   | "telegram_link_attempt"
   | "telegram_link_success"
-  | "telegram_link_failed";
+  | "telegram_link_failed"
+  | "telegram_link_disconnect";
 
 let _supabase: SupabaseClient | null = null;
 

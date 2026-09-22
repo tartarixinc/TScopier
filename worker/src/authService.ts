@@ -11,7 +11,7 @@ import {
   normalizeTelegramPhoneNumber,
   upsertTelegramAccountClaim,
 } from './telegramAccountClaims'
-import { logTelegramAuthFailure, logTelegramAuthSuccess } from './listenerEvents'
+import { logTelegramAuthFailure, logTelegramAuthSuccess, persistListenerEvent } from './listenerEvents'
 import { buildQrStatusFromPending, formatQrLoginUrl, qrStatusFromActiveSession, type QrStatusResponse } from './telegramQrAuth'
 import {
   isPhoneCodeFatalAuthError,
@@ -604,6 +604,7 @@ export class AuthService {
     userId: string,
     phone: string,
     correlationId?: string,
+    method: 'phone' | 'qr' = 'phone',
   ): Promise<VerifySuccess> {
     const sessionString = (client.session.save() as unknown) as string
     logAuthEvent('finalize_auth_start', { userId, phone, correlationId })
@@ -678,7 +679,11 @@ export class AuthService {
     }
 
     logAuthEvent('finalize_auth_complete', { userId, sessionId: row.id, totalTimeMs: Date.now() - tStart, correlationId })
-    logTelegramAuthSuccess(this.supabase, userId, row.id as string)
+    void persistListenerEvent(this.supabase, {
+      userId,
+      eventType: 'telegram_link_success',
+      detail: { session_id: row.id, method },
+    })
     return { ok: true, session_id: row.id as string, channels }
   }
 
@@ -722,7 +727,7 @@ export class AuthService {
       pending.phone = phone
       // Mark success only after finalizeAuth returns. finalizeAuth clears the Map
       // entry — re-attach so the next poll can observe success without racing.
-      const result = await this.finalizeAuth(client, userId, phone || `tg:${me.id}`, correlationId)
+      const result = await this.finalizeAuth(client, userId, phone || `tg:${me.id}`, correlationId, 'qr')
       pending.status = 'success'
       pending.result = result
       this.pending.set(userId, pending)
@@ -1123,6 +1128,11 @@ export class AuthService {
   async startQrLogin(userId: string): Promise<{ qr_url: string; expires_at: string }> {
     const correlationId = authCorrelationId()
     logAuthEvent('qr_login_start', { userId, correlationId })
+    void persistListenerEvent(this.supabase, {
+      userId,
+      eventType: 'telegram_link_attempt',
+      detail: { action: 'start_qr' },
+    })
     const existing = this.pending.get(userId)
     if (existing?.method === 'qr' && existing.status === 'waiting' && existing.latestQrUrl) {
       logAuthEvent('qr_login_reuse', { userId, correlationId })
@@ -1210,6 +1220,11 @@ export class AuthService {
         logAuthEvent('qr_login_timeout', { userId, correlationId, totalTimeMs: Date.now() - tStart })
         console.warn(`[authService] startQrLogin timed out for user ${userId} after ${Date.now() - tStart}ms`)
       }
+      void persistListenerEvent(this.supabase, {
+        userId,
+        eventType: 'telegram_link_failed',
+        detail: { step: 'qr', error: errMsg },
+      })
       throw err
     } finally {
       this.clearAuthInFlight(userId)
@@ -1292,7 +1307,7 @@ export class AuthService {
       const me = await pending.client.getMe()
       const phone = me.phone ? normalizePhoneNumber(`+${me.phone}`) : pending.phone ?? ''
       pending.status = 'success'
-      pending.result = await this.finalizeAuth(pending.client, userId, phone || `tg:${me.id}`, correlationId)
+      pending.result = await this.finalizeAuth(pending.client, userId, phone || `tg:${me.id}`, correlationId, 'qr')
       return pending.result
     }
 
