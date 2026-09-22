@@ -29,7 +29,7 @@ Deno.serve(async (req: Request) => {
   const authHeader = req.headers.get("Authorization")
   if (!authHeader) return bad(401, "Missing authorization")
 
-  const supabase = createClient(
+  const authClient = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_ANON_KEY")!,
     { global: { headers: { Authorization: authHeader } } },
@@ -38,9 +38,18 @@ Deno.serve(async (req: Request) => {
   const {
     data: { user },
     error: authError,
-  } = await supabase.auth.getUser()
+  } = await authClient.auth.getUser()
   if (authError || !user) return bad(401, "Unauthorized")
   const userId = user.id
+
+  // Service-role client for DB writes. The broker_accounts_guard_mtapi_credentials
+  // trigger strips broker_password_encrypted / mtapi_session_id / auto_reconnect_enabled
+  // for the authenticated and anon roles, so trusted edge code must write as service_role.
+  // Every query below is still scoped by user_id.
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  )
 
   let body: Record<string, unknown> = {}
   try {
