@@ -91,15 +91,6 @@ Deno.serve(async (req: Request) => {
     delete rest.phone_code_hash
     delete rest.session_string
 
-    // Log Telegram linking attempts for observability
-    if (action === "send_code" || action === "verify_code") {
-      logAssistantEvent({
-        userId: user.id,
-        eventType: "telegram_link_attempt",
-        detail: { action, phone: typeof rest.phone === "string" ? rest.phone.slice(0, 4) + "****" : undefined },
-      }).catch(() => {}); // fire-and-forget
-    }
-
     const workerRes = await fetch(`${WORKER_URL}${path}`, {
       method: "POST",
       headers: {
@@ -124,6 +115,31 @@ Deno.serve(async (req: Request) => {
       if (typeof rec.message === "string") {
         rec.message = String(rec.message).replace(/\s*\(caused by[\s\S]*$/i, "").trim()
       }
+    }
+
+    // Log every Telegram linking attempt with its outcome so we can see whether
+    // the code was actually sent (delivery), how long it was, and why it failed.
+    if (action === "send_code" || action === "verify_code") {
+      const rec = (payload && typeof payload === "object" && !Array.isArray(payload))
+        ? payload as Record<string, unknown>
+        : undefined
+      const detail: Record<string, unknown> = {
+        action,
+        phone: typeof rest.phone === "string" ? rest.phone.slice(0, 4) + "****" : undefined,
+        ok: workerRes.ok && !(rec && typeof rec.error === "string" && rec.error),
+      }
+      if (rec) {
+        if (typeof rec.delivery === "string") detail.delivery = rec.delivery
+        if (typeof rec.code_length === "number") detail.code_length = rec.code_length
+        if (typeof rec.can_resend === "boolean") detail.can_resend = rec.can_resend
+        if (typeof rec.requires_password === "boolean") detail.requires_password = rec.requires_password
+        if (typeof rec.error === "string") detail.error = rec.error
+      }
+      logAssistantEvent({
+        userId: user.id,
+        eventType: "telegram_link_attempt",
+        detail,
+      }).catch(() => {}); // fire-and-forget
     }
 
     return new Response(JSON.stringify(payload), {
