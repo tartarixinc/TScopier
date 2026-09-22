@@ -170,7 +170,7 @@ export function CopierPauseToggle({ className }: CopierPauseToggleProps) {
         }
         title={showStopped ? stoppedHint : cp.stopCopier}
         className={clsx(
-          'group flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 sm:gap-2 sm:px-2.5 sm:text-sm',
+          'group flex h-9 w-9 items-center justify-center rounded-lg px-1.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 lg:min-h-9 lg:w-auto lg:gap-2 lg:px-2.5 lg:text-sm',
           lockedStopped
             ? clsx('cursor-not-allowed', lossIconWrapClass, lossTextClass)
             : showStopped
@@ -186,7 +186,7 @@ export function CopierPauseToggle({ className }: CopierPauseToggleProps) {
             ) : (
               <Play className="h-4 w-4 shrink-0 sm:h-[1.125rem] sm:w-[1.125rem]" aria-hidden />
             )}
-            <span className="whitespace-nowrap">{stoppedLabel}</span>
+            <span className="hidden whitespace-nowrap lg:inline">{stoppedLabel}</span>
           </>
         ) : (
           <>
@@ -197,8 +197,8 @@ export function CopierPauseToggle({ className }: CopierPauseToggleProps) {
               className="hidden h-4 w-4 shrink-0 group-hover:block sm:h-[1.125rem] sm:w-[1.125rem]"
               aria-hidden
             />
-            <span className="whitespace-nowrap group-hover:hidden">{cp.statusRunning}</span>
-            <span className="hidden whitespace-nowrap group-hover:inline">{cp.stopCopier}</span>
+            <span className="hidden whitespace-nowrap lg:inline lg:group-hover:hidden">{cp.statusRunning}</span>
+            <span className="hidden whitespace-nowrap lg:group-hover:inline">{cp.stopCopier}</span>
           </>
         )}
       </button>

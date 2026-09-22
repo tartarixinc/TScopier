@@ -184,7 +184,7 @@ Changelog entries authored by Emma, kept separate from the main PROJECT_MEMORY.m
 
 - **Production evidence:** Multiple independent users were unable to see Telegram login codes even though TScopier successfully reached Telegram. Railway logs showed `auth.SendCode` succeeding with `delivery=app`, `nextDelivery` absent, `timeoutSeconds` absent, and a returned `phone_code_hash`.
 - **Impact pattern:** At least three users reproduced the same behavior. The shared infrastructure is the TScopier Telegram auth/listener stack and shared `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` configuration; this patch does not prove Telegram API-app reputation as the root cause.
-- **Root bug fixed:** `worker/src/authService.ts` fabricated a local resend availability time when Telegram omitted `timeout`. The UI then exposed “Request another delivery method” even though Telegram had not advertised `next_type` or a resend timeout.
+- **Root bug fixed:** `worker/src/authService.ts` fabricated a local resend availability time when Telegram omitted `timeout`. The UI then exposed ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œRequest another delivery methodÃƒÂ¢Ã¢â€šÂ¬Ã‚Â even though Telegram had not advertised `next_type` or a resend timeout.
 - **Correct resend eligibility rule:** Resend is available only when Telegram returns both a `next_type` and a positive `timeout`. If Telegram returns `delivery=app` with no `next_type` and no `timeout`, the server returns `can_resend=false` and `resend_available_at=null`, and `resendCode` rejects locally with `NO_RESEND_AVAILABLE` without calling Telegram or replacing the pending `phone_code_hash`.
 - **CodeSettings correction:** Server-side Node/GramJS `auth.SendCode` now uses conservative settings: `allowFlashcall=false`, `currentNumber=false`, `allowAppHash=false`, `allowMissedCall=false`, `allowFirebase=false`. Mobile-only token/app sandbox/logout-token behavior was not added.
 - **QR fallback UX:** Shared Telegram connection UI now treats app/no-next/no-timeout as a no-fallback state: it says Telegram accepted the login request but did not offer another code delivery method, tells the user to check Telegram for a Telegram login message, hides resend/countdown, and offers the existing QR login flow as the primary alternative. It does not auto-switch to QR.
@@ -300,3 +300,22 @@ Changelog entries authored by Emma, kept separate from the main PROJECT_MEMORY.m
 - **Multi-TP:** TP distribution and lot sizing are unchanged. Every multi-TP leg retains the same explicit pending operation and entry price while retaining its own TP.
 - **Automated coverage:** Focused parser, operation/planner, pending-expiry, and multi-TP BuyStop/SellStop regression tests were added. Existing strict-entry and normal BUY/SELL paths remain covered by the focused worker suite.
 - **Acceptance status:** REAL local/staging broker acceptance remains pending; no broker API, MTAPI migration, deployment, push, or commit was performed.
+
+### 2026-09-22 - Mobile Header and User Menu Responsiveness
+
+- **Problem:** On narrow portrait phones, a single fixed-height header row could exceed available width and clip right-side account controls. The account dropdown could exceed a short mobile viewport without an internal scroll region.
+- **Header implementation:** Below 390px, the header uses tighter gutters/gaps and compact control hit areas. Copier status text is hidden in favour of its existing indicator/icon while its full accessible name and title remain. Hamburger, copier, assistant, search, language, theme, notifications, and avatar remain present; larger breakpoints retain their existing presentation.
+- **Menu implementation:** The account dropdown width is capped to `calc(100vw - 1rem)`, is end-aligned, has a dynamic-viewport/safe-area-aware max height, and uses an internal overscroll-contained vertical list. The account header remains fixed while lower actions including Sign Out scroll into reach.
+- **Files:** `src/components/layout/AppLayout.tsx`, `CopierPauseToggle.tsx`, `AppSearch.tsx`, `NotificationBell.tsx`, and `UserMenuDropdown.tsx`.
+- **Validation:** Production frontend build/typecheck passed and `git diff --check` was run. Real-device portrait, short-viewport, landscape, and desktop acceptance remains the final manual check.
+
+### 2026-09-22 - Scope Clarification
+
+- The automated expired-subscription FXSocket cleanup is not an application feature and was removed; a separate one-time production database operation remains pending.
+- The Telegram community CTA is in User Menu after Rate us and before Sign Out, opening `https://t.me/tscopierai` safely in a new tab. No dashboard banner remains.
+- On mobile, LanguageSwitcher and ThemeToggle moved from the main header to the hamburger sidebar top bar. Desktop header behavior remains unchanged.
+
+### 2026-09-22 - Final Mobile Chrome Polish
+
+- **Copier status:** The authenticated header uses icon/indicator-only copier control below lg; full running/stopped text is desktop-only while the accessible label/title remains intact.
+- **Sidebar top bar:** Mobile LanguageSwitcher is flag-only and sits as a sibling of the logo, theme, and close controls. The picker remains viewport-safe and is not clipped by the sidebar.
