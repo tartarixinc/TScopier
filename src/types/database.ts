@@ -403,8 +403,6 @@ export interface BrokerAccount {
   mtapi_session_id?: string | null
   /** MTAPI connection status (when provider='mtapi'). */
   mtapi_status?: 'connected' | 'connecting' | 'disconnected' | 'error' | null
-  /** Encrypted broker password. Not exposed to client. */
-  broker_password_encrypted?: string | null
   /** Auto-reconnect enabled flag. */
   auto_reconnect_enabled?: boolean | null
   /** Error kind classifier (e.g. credential, network, timeout). */

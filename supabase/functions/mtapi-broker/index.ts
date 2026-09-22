@@ -161,6 +161,7 @@ Deno.serve(async (req: Request) => {
           : password,
         auto_reconnect_enabled: true,
         mtapi_session_id: null,
+        mtapi_status: "connecting",
         connection_status: "pending",
         connection_error: null,
         connection_error_kind: null,
