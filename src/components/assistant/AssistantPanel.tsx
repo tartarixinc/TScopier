@@ -397,6 +397,7 @@ export function AssistantPanel() {
         password: values.password,
         server: values.broker_server,
         label: values.label || undefined,
+        provider: 'mtapi',
       })
       upsertBroker(account)
       await refreshBrokers({ silent: true }).catch(() => {})

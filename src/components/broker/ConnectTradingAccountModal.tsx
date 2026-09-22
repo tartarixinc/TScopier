@@ -161,12 +161,14 @@ export function ConnectTradingAccountModal({
       server,
       platform,
       label: row.label.trim() || undefined,
+      provider: 'mtapi',
     })
     upsertBroker(account)
 
     let ready = account
     if (account.connection_status !== 'connected') {
       const result = await fxsocketBroker.waitUntilConnected(account.id, {
+        provider: 'mtapi',
         onProgress: ({ account: updated }) => upsertBroker(updated),
       })
       ready = result.account

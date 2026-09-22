@@ -127,6 +127,8 @@ interface CallOpts<T> {
   body: Record<string, unknown>
   expect?: (body: unknown) => T
   timeoutMs?: number
+  /** Edge function name — defaults to fxsocket-broker. Use 'mtapi-broker' for MTAPI accounts. */
+  edgeFn?: string
 }
 
 function fxsocketFetchError(e: unknown, fallback: string): Error {
@@ -140,7 +142,8 @@ function fxsocketFetchError(e: unknown, fallback: string): Error {
 }
 
 async function call<T = unknown>(opts: CallOpts<T>): Promise<T> {
-  const url = (import.meta.env.VITE_SUPABASE_URL as string) + '/functions/v1/fxsocket-broker'
+  const fnName = opts.edgeFn ?? 'fxsocket-broker'
+  const url = (import.meta.env.VITE_SUPABASE_URL as string) + '/functions/v1/' + fnName
   const timeoutMs = opts.timeoutMs ?? FXSOCKET_EDGE_TIMEOUT_MS
 
   const doFetch = async (token: string): Promise<Response> => {
@@ -308,6 +311,7 @@ export const fxsocketBroker = {
     server?: string
     platform?: 'MT4' | 'MT5'
     fxsocketAccountId?: string
+    provider?: 'fxsocket' | 'mtapi'
     timeoutMs?: number
   }): Promise<{ account: BrokerAccount; pending?: boolean }> {
     return call({
@@ -320,6 +324,7 @@ export const fxsocketBroker = {
         platform: args.platform ?? 'MT5',
         fxsocket_account_id: args.fxsocketAccountId,
       },
+      edgeFn: args.provider === 'mtapi' ? 'mtapi-broker' : undefined,
       timeoutMs: args.timeoutMs ?? FXSOCKET_CONNECT_TIMEOUT_MS,
       expect: (b) => {
         const row = b as { account?: BrokerAccount; pending?: boolean }
@@ -336,6 +341,7 @@ export const fxsocketBroker = {
     opts?: {
       maxMs?: number
       intervalMs?: number
+      provider?: 'fxsocket' | 'mtapi'
       onProgress?: (result: { account: BrokerAccount; summary?: AccountSummary; pending?: boolean }) => void
     },
   ): Promise<{ account: BrokerAccount; summary?: AccountSummary }> {
@@ -350,6 +356,7 @@ export const fxsocketBroker = {
         try {
           const result = await call({
             body: { action: 'refresh_summary', account_id: accountId },
+            edgeFn: opts?.provider === 'mtapi' ? 'mtapi-broker' : undefined,
             expect: (b) => {
               const row = b as { account?: BrokerAccount; summary?: AccountSummary; pending?: boolean }
               const account = row.account
@@ -394,6 +401,7 @@ export const fxsocketBroker = {
     accountId: string
     password: string
     server?: string
+    provider?: 'fxsocket' | 'mtapi'
     timeoutMs?: number
   }): Promise<{ account: BrokerAccount; pending?: boolean }> {
     return call({
@@ -403,6 +411,7 @@ export const fxsocketBroker = {
         password: args.password,
         server: args.server,
       },
+      edgeFn: args.provider === 'mtapi' ? 'mtapi-broker' : undefined,
       timeoutMs: args.timeoutMs ?? FXSOCKET_CONNECT_TIMEOUT_MS,
       expect: (b) => {
         const row = b as { account?: BrokerAccount; pending?: boolean }
@@ -413,20 +422,22 @@ export const fxsocketBroker = {
     })
   },
 
-  delete(accountId: string): Promise<void> {
+  delete(accountId: string, provider?: 'fxsocket' | 'mtapi'): Promise<void> {
     return call({
       body: { action: 'delete', account_id: accountId },
+      edgeFn: provider === 'mtapi' ? 'mtapi-broker' : undefined,
       expect: () => undefined,
     })
   },
 
-  refreshSummary(accountId: string): Promise<{
+  refreshSummary(accountId: string, provider?: 'fxsocket' | 'mtapi'): Promise<{
     account: BrokerAccount
     summary?: AccountSummary
     pending?: boolean
   }> {
     return call({
       body: { action: 'refresh_summary', account_id: accountId },
+      edgeFn: provider === 'mtapi' ? 'mtapi-broker' : undefined,
       expect: (b) => {
         const row = b as { account?: BrokerAccount; summary?: AccountSummary; pending?: boolean }
         const account = row.account

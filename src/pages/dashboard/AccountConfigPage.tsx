@@ -864,7 +864,7 @@ export function AccountConfigPage() {
       for (const b of stale) {
         if (cancelled) return
         try {
-          const { account } = await fxsocketBroker.refreshSummary(b.id)
+          const { account } = await fxsocketBroker.refreshSummary(b.id, b.provider as 'fxsocket' | 'mtapi' | undefined)
           if (!cancelled) replaceBroker(account)
         } catch {
           /* best-effort — throttle must not mark the account disconnected */
@@ -2531,7 +2531,7 @@ export function AccountConfigPage() {
     if (configAccount?.id === id) closeConfigureModal({ force: true })
 
     try {
-      await fxsocketBroker.delete(id)
+      await fxsocketBroker.delete(id, removed.provider as 'fxsocket' | 'mtapi' | undefined)
     } catch (err) {
       const msg = err instanceof Error ? err.message : bl.deleteFailed
 

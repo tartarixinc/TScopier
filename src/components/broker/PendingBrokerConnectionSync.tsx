@@ -28,7 +28,8 @@ export function PendingBrokerConnectionSync() {
       for (const id of pendingBrokerKey.split(',')) {
         if (cancelled || !id) continue
         try {
-          const { account } = await fxsocketBroker.refreshSummary(id)
+          const broker = brokers.find(b => b.id === id)
+          const { account } = await fxsocketBroker.refreshSummary(id, broker?.provider as 'fxsocket' | 'mtapi' | undefined)
           if (cancelled) return
           upsertBroker(account)
         } catch {
