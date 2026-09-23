@@ -516,6 +516,7 @@ export class MtapiProvider implements BrokerProvider {
       marginLevel: numberValue(row.marginLevel ?? row.MarginLevel),
       leverage: numberValue(row.leverage ?? row.Leverage),
       currency: row.currency == null ? undefined : String(row.currency),
+      type: row.type != null ? Number(row.type) : undefined,
       synced: boolValue(row.synced ?? row.Synced),
     }
   }

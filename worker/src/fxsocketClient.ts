@@ -126,6 +126,8 @@ export interface AccountSummary {
   marginLevel?: number
   leverage?: number
   currency?: string
+  /** MTAPI only: account trade mode (0=demo, 1=contest, 2=real). */
+  type?: number
   /** MTAPI only: false means balance/equity are not authoritative yet. */
   synced?: boolean
 }

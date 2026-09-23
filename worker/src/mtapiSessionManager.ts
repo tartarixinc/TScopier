@@ -127,6 +127,9 @@ export class MtapiSessionManager {
     if (summary.balance != null) patch.last_balance = summary.balance
     if (summary.equity != null) patch.last_equity = summary.equity
     if (summary.currency != null) patch.last_currency = summary.currency
+    if (summary.type != null) {
+      patch.linked_account_type = summary.type === 0 || summary.type === 1 ? 'Demo' : 'Live'
+    }
     if (row.performance_baseline_balance == null && summary.balance != null) {
       patch.performance_baseline_balance = summary.balance
       patch.performance_baseline_captured_at = now
