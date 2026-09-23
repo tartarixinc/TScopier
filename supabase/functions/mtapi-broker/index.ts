@@ -192,6 +192,8 @@ Deno.serve(async (req: Request) => {
         loggedIn: connected,
         login: row.account_login ? Number(row.account_login) : undefined,
         currency: row.last_currency ?? undefined,
+        // parseMtAccountTradeMode accepts 'Demo'/'Live' strings as well as numeric modes.
+        type: (row.linked_account_type as string | null) ?? undefined,
         tradeAllowed: connected,
       },
       bridge: { tradeEaReady: connected, symbolsSynced: connected },

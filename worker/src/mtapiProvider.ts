@@ -49,6 +49,18 @@ function boolValue(value: unknown): boolean | undefined {
   return undefined
 }
 
+/** MT5 ACCOUNT_TRADE_MODE: 0=demo, 1=contest, 2=real. MTAPI may also send strings. */
+function tradeModeValue(value: unknown): number | undefined {
+  if (value == null) return undefined
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  const text = String(value).trim().toLowerCase()
+  if (text === 'demo' || text === '0') return 0
+  if (text === 'contest' || text === '1') return 1
+  if (text === 'real' || text === 'live' || text === '2') return 2
+  const n = Number(value)
+  return Number.isFinite(n) ? n : undefined
+}
+
 function errorDetails(value: unknown): { code?: string; message?: string } {
   const row = object(value)
   const rawError = row.error ?? row.Error
@@ -516,7 +528,7 @@ export class MtapiProvider implements BrokerProvider {
       marginLevel: numberValue(row.marginLevel ?? row.MarginLevel),
       leverage: numberValue(row.leverage ?? row.Leverage),
       currency: row.currency == null ? undefined : String(row.currency),
-      type: row.type != null ? Number(row.type) : undefined,
+      type: tradeModeValue(row.type ?? row.Type ?? row.tradeMode ?? row.TradeMode),
       synced: boolValue(row.synced ?? row.Synced),
     }
   }

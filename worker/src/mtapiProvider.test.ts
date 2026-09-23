@@ -79,9 +79,25 @@ test('AccountSummary preserves synced=false and normalizes values', async () => 
     marginLevel: undefined,
     leverage: undefined,
     currency: 'USD',
+    type: undefined,
     synced: false,
   })
   assert.equal(await api.verifyTradingReady('session'), false)
+})
+
+test('AccountSummary maps string and numeric trade modes to AccountSummary.type', async () => {
+  const make = (type: unknown) => provider(() => new Response(JSON.stringify({
+    balance: 100, equity: 100, type, synced: true,
+  })))
+  assert.equal((await make('demo').accountSummary('s')).type, 0)
+  assert.equal((await make('Demo').accountSummary('s')).type, 0)
+  assert.equal((await make('contest').accountSummary('s')).type, 1)
+  assert.equal((await make('real').accountSummary('s')).type, 2)
+  assert.equal((await make('live').accountSummary('s')).type, 2)
+  assert.equal((await make(0).accountSummary('s')).type, 0)
+  assert.equal((await make(2).accountSummary('s')).type, 2)
+  assert.equal((await make('nonsense').accountSummary('s')).type, undefined)
+  assert.equal((await make(undefined).accountSummary('s')).type, undefined)
 })
 
 test('quote, symbols, SymbolParams, status, and history reads normalize MTAPI shapes', async () => {

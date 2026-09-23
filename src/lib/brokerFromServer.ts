@@ -278,6 +278,7 @@ export function parseMtAccountTradeMode(
   const t = String(mtSummaryType ?? '').trim().toLowerCase()
   if (!t) return undefined
   if (t.includes('demo') || t.includes('contest') || t.includes('test')) return 'Demo'
+  if (t.includes('prop')) return 'PropFirm'
   if (t.includes('real') || t.includes('live')) return 'Live'
   return undefined
 }

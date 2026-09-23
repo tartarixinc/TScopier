@@ -50,4 +50,5 @@ export const BROKER_ACCOUNT_CLIENT_SELECT = [
   'last_activated_at',
   'provider',
   'mtapi_status',
+  'linked_account_type',
 ].join(',')
