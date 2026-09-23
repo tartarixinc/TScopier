@@ -38,7 +38,7 @@ export async function syncMultiBasketLegTakeProfits(ctx: TradeExecutorContext, a
     // these synchronous per-leg broker modifies are redundant. Skipping them keeps
     // the (already async) post-fill path off the broker for v2 — matching the v2
     // skip in applyBasketSlTpRefresh and removing duplicate OrderModify round-trips.
-    if (isV2({ brokerAccountId: broker.id, userId: signal.user_id })) return
+    if (isV2({ brokerAccountId: broker.id, userId: signal.user_id, provider: broker.provider })) return
 
     await new Promise(r => setTimeout(r, 250))
 

@@ -46,7 +46,7 @@ export async function reconcileGhostBasketLegs(ctx: TradeExecutorContext, args: 
     if (!api) return { isGhostBasket: false, closedCount: 0 }
 
     let brokerTickets: Set<number>
-    if (isV2({ brokerAccountId: broker.id, userId: signal.user_id })) {
+    if (isV2({ brokerAccountId: broker.id, userId: signal.user_id, provider: broker.provider })) {
       // v2: one fast, stateless fxClient read (~200-500ms). No keepSessionAlive ping
       // (fxClient authenticates per call) - this removes ~4s from the entry merge path.
       try {

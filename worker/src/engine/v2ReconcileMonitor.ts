@@ -271,10 +271,18 @@ export class V2ReconcileMonitor {
       .limit(5000)
     if (error || !data) return { baskets: 0, modified: 0, closed: 0 }
 
+    const brokerIds = [...new Set(
+      (data as Array<{ broker_account_id?: string | null }>)
+        .map(r => r.broker_account_id ?? '')
+        .filter(Boolean),
+    )]
+    const brokerMeta = await this.loadBrokerEngineMeta(brokerIds)
+
     const baskets = new Map<string, BasketKey>()
     for (const r of data as Array<{ broker_account_id: string; signal_id: string; symbol: string; direction: string }>) {
       if (!r.broker_account_id || !r.signal_id) continue
-      if (!isV2({ brokerAccountId: r.broker_account_id })) continue
+      const meta = brokerMeta.get(r.broker_account_id)
+      if (!isV2({ brokerAccountId: r.broker_account_id, userId: meta?.userId, provider: meta?.provider })) continue
       const key = `${r.broker_account_id}|${r.signal_id}|${r.symbol}`
       if (!baskets.has(key)) {
         baskets.set(key, {
@@ -296,6 +304,26 @@ export class V2ReconcileMonitor {
       if (res) { modified += res.modified; closed += res.closed }
     }
     return { baskets: baskets.size, modified, closed }
+  }
+
+  /** Provider/user metadata for engine routing (MTAPI must never enter the v2 lane). */
+  private async loadBrokerEngineMeta(
+    brokerIds: string[],
+  ): Promise<Map<string, { userId: string | null; provider: string | null }>> {
+    const out = new Map<string, { userId: string | null; provider: string | null }>()
+    if (!brokerIds.length) return out
+    const { data, error } = await this.supabase
+      .from('broker_accounts')
+      .select('id,user_id,provider')
+      .in('id', brokerIds)
+    if (error) {
+      console.warn(`[v2ReconcileMonitor] broker meta load failed: ${error.message}`)
+      return out
+    }
+    for (const b of (data ?? []) as Array<{ id: string; user_id?: string | null; provider?: string | null }>) {
+      out.set(b.id, { userId: b.user_id ?? null, provider: b.provider ?? null })
+    }
+    return out
   }
 
   private async loadSessions(brokerIds: string[]): Promise<Map<string, BrokerSession>> {

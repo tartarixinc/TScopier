@@ -31,9 +31,12 @@ export type ExecutionModeEnv = {
 }
 
 export function resolveExecutionEngine(
-  args: { brokerAccountId?: string | null; userId?: string | null },
+  args: { brokerAccountId?: string | null; userId?: string | null; provider?: string | null },
   env: ExecutionModeEnv = process.env,
 ): ExecutionEngineVersion {
+  // MTAPI accounts never use FxClient (FxSocket). Bypass EXECUTION_ENGINE entirely —
+  // see docs/mtapi-migration-plan.md (provider resolver returns MtapiProvider directly).
+  if (String(args.provider ?? '').trim() === 'mtapi') return 'v1'
   if ((env.EXECUTION_ENGINE ?? '').trim().toLowerCase() === 'v2') return 'v2'
   const brokers = parseIds(env.EXECUTION_ENGINE_V2_BROKERS)
   if (args.brokerAccountId && brokers.has(args.brokerAccountId)) return 'v2'
@@ -42,23 +45,26 @@ export function resolveExecutionEngine(
   return 'v1'
 }
 
-export function isV2(args: { brokerAccountId?: string | null; userId?: string | null }, env?: ExecutionModeEnv): boolean {
+export function isV2(
+  args: { brokerAccountId?: string | null; userId?: string | null; provider?: string | null },
+  env?: ExecutionModeEnv,
+): boolean {
   return resolveExecutionEngine(args, env) === 'v2'
 }
 
 /**
  * Partition a signal's matching brokers into v1 vs v2 lanes so the two engines can
  * run side by side during cutover. With the flag off every broker lands in `v1` and
- * behavior is byte-for-byte unchanged.
+ * behavior is byte-for-byte unchanged. MTAPI brokers always stay in `v1`.
  */
-export function splitBrokersByEngine<T extends { id: string; user_id?: string | null }>(
+export function splitBrokersByEngine<T extends { id: string; user_id?: string | null; provider?: string | null }>(
   brokers: T[],
   env?: ExecutionModeEnv,
 ): { v1: T[]; v2: T[] } {
   const v1: T[] = []
   const v2: T[] = []
   for (const b of brokers) {
-    if (isV2({ brokerAccountId: b.id, userId: b.user_id ?? null }, env)) v2.push(b)
+    if (isV2({ brokerAccountId: b.id, userId: b.user_id ?? null, provider: b.provider }, env)) v2.push(b)
     else v1.push(b)
   }
   return { v1, v2 }

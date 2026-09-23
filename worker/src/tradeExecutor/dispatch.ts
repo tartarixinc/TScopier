@@ -79,7 +79,7 @@ async function seedV2EntryDesiredState(
     : []
   if (sl == null && tps.length === 0) return
   for (const b of brokers) {
-    if (!isV2({ brokerAccountId: b.id, userId: row.user_id })) continue
+    if (!isV2({ brokerAccountId: b.id, userId: row.user_id, provider: b.provider })) continue
     const reverse = (b.manual_settings as { reverse_signal?: boolean } | null)?.reverse_signal === true
     // Channel SL/TP are still the original side. Seeding them as desired state
     // would later overwrite the reversed ticket's predefined/mirrored stops.

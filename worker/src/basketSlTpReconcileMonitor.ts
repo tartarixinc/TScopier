@@ -198,11 +198,11 @@ export class BasketSlTpReconcileMonitor {
     const row = claimed as BasketReconcileJobRow
     const { data: broker } = await this.supabase
       .from('broker_accounts')
-      .select('id,user_id,fxsocket_account_id,metaapi_account_id,platform,default_lot_size,manual_settings,channel_trading_configs,copier_mode,ai_settings')
+      .select('id,user_id,provider,mtapi_session_id,fxsocket_account_id,metaapi_account_id,platform,default_lot_size,manual_settings,channel_trading_configs,copier_mode,ai_settings')
       .eq('id', row.broker_account_id)
       .maybeSingle()
 
-    const uuid = broker ? brokerSessionUuid(broker as { fxsocket_account_id?: string; metaapi_account_id?: string }) : null
+    const uuid = broker ? brokerSessionUuid(broker as { provider?: string | null; mtapi_session_id?: string | null; fxsocket_account_id?: string; metaapi_account_id?: string }) : null
     if (!broker || !uuid) {
       await this.releaseJob(row.id, 'broker not found', row.attempts)
       return
@@ -211,7 +211,8 @@ export class BasketSlTpReconcileMonitor {
     // Management-first v2 cutover: the single V2ReconcileMonitor owns background
     // convergence for v2-flagged brokers. Retire this v1 job so the two loops never
     // both modify the same basket (the old multi-applier flip-flop).
-    if (isV2({ brokerAccountId: row.broker_account_id, userId: String(broker.user_id ?? '') || null })) {
+    // MTAPI stays on this loop (isV2 forces v1 for provider=mtapi).
+    if (isV2({ brokerAccountId: row.broker_account_id, userId: String(broker.user_id ?? '') || null, provider: broker.provider })) {
       await markBasketReconcileDone(this.supabase, row.id)
       return
     }

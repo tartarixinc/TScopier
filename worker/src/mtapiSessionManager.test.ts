@@ -37,6 +37,7 @@ test('startup reconciles known sessions and starts token health checks', async (
   const query = {
     select() { return this },
     eq() { return this },
+    is() { return this },
     then(resolve: (value: unknown) => unknown) {
       return Promise.resolve({ data: rows, error: null }).then(resolve)
     },

@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { classifySignal, isDesiredStateOnly, isEntry } from './dispatch'
-import { resolveExecutionEngine, splitBrokersByEngine } from './executionMode'
+import { isV2, resolveExecutionEngine, splitBrokersByEngine } from './executionMode'
 
 describe('classifySignal', () => {
   it('routes buy/sell as entries', () => {
@@ -41,6 +41,24 @@ describe('resolveExecutionEngine (cutover flag)', () => {
   it('per-user allowlist', () => {
     assert.equal(resolveExecutionEngine({ userId: 'u1' }, { EXECUTION_ENGINE_V2_USERS: 'u1' }), 'v2')
   })
+  it('MTAPI provider bypasses EXECUTION_ENGINE and stays on v1', () => {
+    assert.equal(
+      resolveExecutionEngine({ brokerAccountId: 'b1', userId: 'u1', provider: 'mtapi' }, { EXECUTION_ENGINE: 'v2' }),
+      'v1',
+    )
+    assert.equal(
+      resolveExecutionEngine({ brokerAccountId: 'b1', provider: 'mtapi' }, { EXECUTION_ENGINE_V2_BROKERS: 'b1' }),
+      'v1',
+    )
+    assert.equal(
+      isV2({ brokerAccountId: 'b1', userId: 'u1', provider: 'mtapi' }, { EXECUTION_ENGINE: 'v2' }),
+      false,
+    )
+  })
+  it('fxsocket/null provider still follows the global v2 switch', () => {
+    assert.equal(resolveExecutionEngine({ brokerAccountId: 'b1', provider: 'fxsocket' }, { EXECUTION_ENGINE: 'v2' }), 'v2')
+    assert.equal(resolveExecutionEngine({ brokerAccountId: 'b1', provider: null }, { EXECUTION_ENGINE: 'v2' }), 'v2')
+  })
 })
 
 describe('splitBrokersByEngine', () => {
@@ -59,5 +77,14 @@ describe('splitBrokersByEngine', () => {
     const { v1, v2 } = splitBrokersByEngine(brokers, { EXECUTION_ENGINE: 'v2' })
     assert.equal(v1.length, 0)
     assert.equal(v2.length, 3)
+  })
+  it('global switch keeps MTAPI brokers in the v1 lane', () => {
+    const mixed = [
+      { id: 'b1', user_id: 'u1', provider: 'fxsocket' },
+      { id: 'b2', user_id: 'u2', provider: 'mtapi' },
+    ]
+    const { v1, v2 } = splitBrokersByEngine(mixed, { EXECUTION_ENGINE: 'v2' })
+    assert.deepEqual(v1.map(b => b.id), ['b2'])
+    assert.deepEqual(v2.map(b => b.id), ['b1'])
   })
 })

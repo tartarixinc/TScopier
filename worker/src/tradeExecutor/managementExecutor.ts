@@ -439,7 +439,7 @@ export async function logSendSkipped(ctx: TradeExecutorContext,
         broker_account_id: broker.id,
         symbol: typeof extra.symbol === 'string' ? extra.symbol : null,
         operation: 'order_send',
-        broker_provider: String(broker.platform ?? 'unknown'),
+        broker_provider: String(broker.provider ?? broker.platform ?? 'unknown'),
         extra,
       },
     })
@@ -1058,7 +1058,7 @@ export async function applyManagement(
         if (action === 'close') {
           let closeConfirmed = false
           let lastCloseReason: string | undefined
-          if (isV2({ brokerAccountId: broker.id, userId: signal.user_id })) {
+          if (isV2({ brokerAccountId: broker.id, userId: signal.user_id, provider: broker.provider })) {
             // v2 fast close: strict retcode-validated single call (~200ms live),
             // no slow verify/retry loop. Idempotent - a gone ticket reads as closed.
             const r = await getFxClient().orderClose(uuid, toMtPlatform(broker.platform), { ticket: effectiveTicket })
