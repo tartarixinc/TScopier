@@ -319,3 +319,12 @@ Changelog entries authored by Emma, kept separate from the main PROJECT_MEMORY.m
 
 - **Copier status:** The authenticated header uses icon/indicator-only copier control below lg; full running/stopped text is desktop-only while the accessible label/title remains intact.
 - **Sidebar top bar:** Mobile LanguageSwitcher is flag-only and sits as a sibling of the logo, theme, and close controls. The picker remains viewport-safe and is not clipped by the sidebar.
+
+
+### 2026-09-24 - Dormant FxSocket Cleanup Remote-Operation Guard
+
+- **Problem:** Broker rows retained for audit after dormant-subscription cleanup could point at intentionally removed FxSocket sessions. Partial-TP quote polling and open-trade reconciliation retried those sessions indefinitely, producing avoidable worker warning/business-event spam.
+- **Guard:** Worker remote operations now treat exactly fxsocket_status='disconnected', connection_status='error', terminal_connected=false, and trade_allowed=false as an explicitly unavailable remote broker. This is intentionally not an is_active gate, so healthy and recovering brokers retain their existing behavior.
+- **Partial TP:** The monitor loads broker state and current parent-trade state before grouping/quoting. Explicitly unavailable brokers and legs whose parent is not currently open are skipped before any FxSocket request; pending legs/trades are not mutated.
+- **Open-trade reconciliation:** The monitor selects the cleanup-state fields and excludes only explicitly unavailable brokers before /OpenedOrders; intentional skips do not emit reconciliation_failed.
+- **Data boundary:** This is worker-side request suppression only. It does not alter broker rows, cleanup state, open/pending trade rows, or any production data.

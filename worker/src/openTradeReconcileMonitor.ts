@@ -11,8 +11,9 @@ import {
 } from './monitorIdleGate'
 import { reconcileOpenTradesForBroker, type OpenTradeReconcileRow } from './openTradeReconcile'
 import { captureBusinessIssue } from './observability/businessEvents'
+import { availableRemoteBrokers, type RemoteBrokerState } from './brokerRemoteAvailability'
 
-interface BrokerRow {
+interface BrokerRow extends RemoteBrokerState {
   id: string
   fxsocket_account_id: string | null
   metaapi_account_id: string | null
@@ -98,7 +99,7 @@ export class OpenTradeReconcileMonitor {
     const brokerIds = [...byBroker.keys()]
     const { data: brokers, error: brokerErr } = await this.supabase
       .from('broker_accounts')
-      .select('id,fxsocket_account_id,metaapi_account_id')
+      .select('id,fxsocket_account_id,metaapi_account_id,fxsocket_status,connection_status,terminal_connected,trade_allowed')
       .in('id', brokerIds)
 
     if (brokerErr) {
@@ -106,13 +107,14 @@ export class OpenTradeReconcileMonitor {
       return
     }
 
-    const uuids = ((brokers ?? []) as BrokerRow[])
+    const availableBrokers = availableRemoteBrokers((brokers ?? []) as BrokerRow[])
+    const uuids = availableBrokers
       .map(b => brokerSessionId(b))
       .filter(uuid => uuid.length > 0)
     this.platformByUuid = await loadPlatformByFxsocketId(this.supabase, uuids)
 
     let totalClosed = 0
-    for (const broker of (brokers ?? []) as BrokerRow[]) {
+    for (const broker of availableBrokers) {
       const uuid = brokerSessionId(broker)
       if (!uuid) continue
       const api = apiForFxsocketAccount(this.platformByUuid, uuid)
