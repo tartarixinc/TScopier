@@ -297,10 +297,21 @@ Deno.serve(async (req: Request) => {
     if (!row) return bad(404, "Broker account not found")
     if (row.provider !== "mtapi") return bad(400, "This account is not an MTAPI account.")
 
-    // ── opened_orders / order_history / position_history ────
+    // ── opened_orders / order_history / position_history / quote ──
     // Same shapes as fxsocket-broker so trade-time hydration is provider-agnostic.
-    if (action === "opened_orders" || action === "order_history" || action === "position_history") {
+    if (action === "opened_orders" || action === "order_history" || action === "position_history" || action === "quote") {
       const session = String(row.mtapi_session_id ?? "").trim()
+
+      if (action === "quote") {
+        const symbol = String(body.symbol ?? "EURUSD").trim()
+        if (!symbol) return bad(400, "symbol required")
+        if (!session) return Response.json({ ok: true, quote: {} }, { headers: corsHeaders })
+        const mtapiQuote = makeMtapiClient()
+        const quotePlatform = row.platform === "MT4" ? "MT4" : "MT5"
+        const quote = await mtapiQuote.getQuote(session, symbol, quotePlatform)
+        return Response.json({ ok: true, quote }, { headers: corsHeaders })
+      }
+
       if (!session) return Response.json({ ok: true, orders: [], positions: [] }, { headers: corsHeaders })
       const mtapi = makeMtapiClient()
       const platform = row.platform === "MT4" ? "MT4" : "MT5"

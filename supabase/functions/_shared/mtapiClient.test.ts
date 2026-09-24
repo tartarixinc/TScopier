@@ -49,6 +49,27 @@ Deno.test("orderHistory and positionHistory pass date range", async () => {
   assertEquals(calls[1].pathname, "/HistoryPositions")
 })
 
+Deno.test("getQuote normalizes GetQuote bid/ask", async () => {
+  const { client, calls } = provider(url => {
+    assertEquals(url.pathname, "/GetQuote")
+    assertEquals(url.searchParams.get("symbol"), "XAUUSD")
+    assertEquals(url.searchParams.get("id"), "sess-q")
+    return new Response(JSON.stringify({ Bid: 4290.1, Ask: 4290.4, Symbol: "XAUUSD", time: "12:00:00" }))
+  })
+  assertEquals(await client.getQuote("sess-q", "XAUUSD"), {
+    symbol: "XAUUSD",
+    bid: 4290.1,
+    ask: 4290.4,
+    time: "12:00:00",
+  })
+  assertEquals(calls.length, 1)
+})
+
+Deno.test("getQuote rejects invalid prices", async () => {
+  const { client } = provider(() => new Response(JSON.stringify({ bid: 0, ask: -1 })))
+  await assertRejectsLike(() => client.getQuote("s", "EURUSD"), MtapiApiError, "invalid prices")
+})
+
 Deno.test("missing MTAPI_BASE_URL throws NOT_CONFIGURED", async () => {
   const { client } = provider(() => new Response("[]"), { MTAPI_PROXY_KEY: "k" })
   await assertRejectsLike(

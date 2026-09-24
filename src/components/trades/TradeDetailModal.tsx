@@ -31,6 +31,8 @@ import {
   formatTradePrice,
   getTradeDisplayMeta,
 } from '../../lib/tradeDisplay'
+import { formatBidAskLine } from '../../lib/tradeLiveQuote'
+import { useTradeLiveQuote } from '../../hooks/useTradeLiveQuote'
 import {
   getManualBrokerOverrideWarningForTrade,
   manualOverrideManageSignalUrl,
@@ -125,6 +127,8 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
     () => brokerFailures.map(row => getTradeFailureDisplayFromLog(row)).find(Boolean) ?? null,
     [brokerFailures],
   )
+  const liveQuote = useTradeLiveQuote(trade, userId)
+  const bidAskLine = formatBidAskLine(liveQuote.quote)
 
   const linkedSignalId = context?.signal?.id
 
@@ -316,6 +320,26 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
                   {formatTradePrice(trade.tp)}
                 </dd>
               </div>
+              {trade.status === 'open' ? (
+                <div className="col-span-2">
+                  <dt className="text-neutral-400 uppercase tracking-wide">{tr.colCurrent}</dt>
+                  <dd className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
+                    <span className="text-neutral-700 dark:text-neutral-300 tabular-nums font-medium">
+                      {liveQuote.price != null
+                        ? formatTradePrice(liveQuote.price)
+                        : liveQuote.loading
+                          ? '…'
+                          : '—'}
+                    </span>
+                    {bidAskLine ? (
+                      <span className="text-neutral-400 tabular-nums text-[11px]">{bidAskLine}</span>
+                    ) : null}
+                    {liveQuote.loading ? (
+                      <Loader2 className="w-3 h-3 animate-spin text-neutral-400" aria-hidden="true" />
+                    ) : null}
+                  </dd>
+                </div>
+              ) : null}
             </dl>
           </section>
 

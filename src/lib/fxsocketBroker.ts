@@ -495,9 +495,15 @@ export const fxsocketBroker = {
     })
   },
 
-  quote(accountId: string, symbol = 'EURUSD'): Promise<Record<string, unknown>> {
+  quote(
+    accountId: string,
+    symbol = 'EURUSD',
+    provider?: 'fxsocket' | 'mtapi',
+  ): Promise<Record<string, unknown>> {
     return call({
       body: { action: 'quote', account_id: accountId, symbol },
+      edgeFn: provider === 'mtapi' ? 'mtapi-broker' : undefined,
+      timeoutMs: 15_000,
       expect: (b) => {
         const quote = (b as { quote?: Record<string, unknown> }).quote
         return quote && typeof quote === 'object' ? quote : {}

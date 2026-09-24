@@ -196,6 +196,27 @@ export class MtapiClient {
     }
     return row
   }
+
+  /** Market bid/ask for one symbol (GET /GetQuote). Same shape as FxSocket getQuote. */
+  async getQuote(
+    sessionId: string,
+    symbol: string,
+    platform?: string | null,
+  ): Promise<Record<string, unknown>> {
+    const row = object(await this.request("GetQuote", { symbol }, sessionId, platform))
+    const bid = Number(row.bid ?? row.Bid)
+    const ask = Number(row.ask ?? row.Ask)
+    if (!Number.isFinite(bid) || !Number.isFinite(ask) || bid <= 0 || ask <= 0) {
+      throw new MtapiApiError("GetQuote returned invalid prices", 502, "INVALID_RESPONSE")
+    }
+    const time = row.time ?? row.Time
+    return {
+      symbol: String(row.symbol ?? row.Symbol ?? symbol),
+      bid,
+      ask,
+      time: time == null ? undefined : String(time),
+    }
+  }
 }
 
 /** Map raw MTAPI AccountSummary into the FxSocket summary shape used by the UI. */

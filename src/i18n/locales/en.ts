@@ -971,6 +971,7 @@ broker: {
     colLots: 'Lots',
     colPnl: 'PnL',
     colTime: 'Date & Time',
+    colCurrent: 'Current',
     instructionAction: 'Action',
     instructionSymbol: 'Symbol',
     instructionEntry: 'Entry',
