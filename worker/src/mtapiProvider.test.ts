@@ -8,6 +8,7 @@ import {
 } from './providerResolver'
 
 const oldBase = process.env.MTAPI_BASE_URL
+const oldInternalToken = process.env.MTAPI_INTERNAL_TOKEN
 
 beforeEach(() => {
   process.env.MTAPI_BASE_URL = 'https://mtapi.test'
@@ -17,6 +18,8 @@ afterEach(() => {
   resetProviderResolverForTests()
   if (oldBase == null) delete process.env.MTAPI_BASE_URL
   else process.env.MTAPI_BASE_URL = oldBase
+  if (oldInternalToken == null) delete process.env.MTAPI_INTERNAL_TOKEN
+  else process.env.MTAPI_INTERNAL_TOKEN = oldInternalToken
 })
 
 test('synced=false account equity is not authoritative to copy-limit consumers', async () => {
@@ -49,6 +52,51 @@ function provider(handler: (url: URL, init?: RequestInit) => Response | Promise<
 test('OpenedOrders accepts a successful authoritative empty list', async () => {
   const api = provider(() => new Response('[]', { status: 200 }))
   assert.deepEqual(await api.openedOrders('session'), [])
+})
+
+test('X-Internal-Token header is sent when MTAPI_INTERNAL_TOKEN is set', async () => {
+  process.env.MTAPI_INTERNAL_TOKEN = 'internal-secret'
+  let token: string | undefined
+  const api = new MtapiProvider({
+    fetchImpl: (async (_input: string | URL | Request, init?: RequestInit) => {
+      const headers = init?.headers as Record<string, string>
+      token = headers['X-Internal-Token']
+      return new Response('[]')
+    }) as typeof fetch,
+    timeoutMs: 2_000,
+  })
+  assert.deepEqual(await api.openedOrders('session'), [])
+  assert.equal(token, 'internal-secret')
+})
+
+test('X-Internal-Token header is omitted when MTAPI_INTERNAL_TOKEN is unset', async () => {
+  delete process.env.MTAPI_INTERNAL_TOKEN
+  let hasToken = false
+  const api = new MtapiProvider({
+    fetchImpl: (async (_input: string | URL | Request, init?: RequestInit) => {
+      const headers = init?.headers as Record<string, string>
+      hasToken = 'X-Internal-Token' in headers
+      return new Response('[]')
+    }) as typeof fetch,
+    timeoutMs: 2_000,
+  })
+  assert.deepEqual(await api.openedOrders('session'), [])
+  assert.equal(hasToken, false)
+})
+
+test('X-Internal-Token header is omitted for whitespace-only MTAPI_INTERNAL_TOKEN', async () => {
+  process.env.MTAPI_INTERNAL_TOKEN = '   '
+  let hasToken = false
+  const api = new MtapiProvider({
+    fetchImpl: (async (_input: string | URL | Request, init?: RequestInit) => {
+      const headers = init?.headers as Record<string, string>
+      hasToken = 'X-Internal-Token' in headers
+      return new Response('[]')
+    }) as typeof fetch,
+    timeoutMs: 2_000,
+  })
+  assert.deepEqual(await api.openedOrders('session'), [])
+  assert.equal(hasToken, false)
 })
 
 test('OpenedOrders failure and malformed success never become authoritative empty lists', async () => {

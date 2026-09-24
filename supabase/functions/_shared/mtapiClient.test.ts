@@ -102,6 +102,56 @@ Deno.test("Authorization bearer uses MTAPI_PROXY_KEY when set", async () => {
   await client.openedOrders("s")
 })
 
+Deno.test("X-Internal-Token header is sent when MTAPI_INTERNAL_TOKEN is set", async () => {
+  let token: string | null = null
+  const client = new MtapiClient({
+    env: makeEnv({
+      MTAPI_BASE_URL: "https://mtapi.test",
+      MTAPI_API_KEY: "api-key",
+      MTAPI_INTERNAL_TOKEN: "internal-secret",
+    }),
+    fetchImpl: (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const headers = init?.headers as Record<string, string>
+      token = headers["X-Internal-Token"] ?? null
+      return new Response("[]")
+    }) as typeof fetch,
+  })
+  await client.openedOrders("s")
+  assertEquals(token, "internal-secret")
+})
+
+Deno.test("X-Internal-Token header is omitted when MTAPI_INTERNAL_TOKEN is unset", async () => {
+  let hasToken = false
+  const client = new MtapiClient({
+    env: makeEnv({ MTAPI_BASE_URL: "https://mtapi.test", MTAPI_API_KEY: "api-key" }),
+    fetchImpl: (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const headers = init?.headers as Record<string, string>
+      hasToken = "X-Internal-Token" in headers
+      return new Response("[]")
+    }) as typeof fetch,
+  })
+  await client.openedOrders("s")
+  assertEquals(hasToken, false)
+})
+
+Deno.test("X-Internal-Token header is omitted for whitespace-only MTAPI_INTERNAL_TOKEN", async () => {
+  let hasToken = false
+  const client = new MtapiClient({
+    env: makeEnv({
+      MTAPI_BASE_URL: "https://mtapi.test",
+      MTAPI_API_KEY: "api-key",
+      MTAPI_INTERNAL_TOKEN: "   ",
+    }),
+    fetchImpl: (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const headers = init?.headers as Record<string, string>
+      hasToken = "X-Internal-Token" in headers
+      return new Response("[]")
+    }) as typeof fetch,
+  })
+  await client.openedOrders("s")
+  assertEquals(hasToken, false)
+})
+
 async function assertRejectsLike<T>(
   fn: () => Promise<T>,
   Ctor: new (...args: never[]) => Error,

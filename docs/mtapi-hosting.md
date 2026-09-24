@@ -303,14 +303,16 @@ ufw allow 22/tcp
 # Allow HTTPS (nginx)
 ufw allow 443/tcp
 
-# Allow HTTP (certbot renewal)
+# Allow HTTP (certbot renewal — ACME challenge only on :80)
 ufw allow 80/tcp
 
 # Enable firewall
 ufw enable
 ```
 
-Port 5000 (MTAPI Docker) is NOT exposed publicly — nginx proxies to it locally.
+Port 5000/8080 (MTAPI Docker) must **not** be public — nginx proxies to `127.0.0.1:8080`.
+Docker published ports bypass UFW, so bind the container with `-p 127.0.0.1:8080:80`
+(`HOST_IP` default in `deploy/mtapi-log-redactor/install.sh`). Do not rely on `ufw deny 8080`.
 
 ### 5.6 DNS
 
@@ -393,6 +395,16 @@ curl -H "X-MTAPI-Key: <secret>" https://mtapi.yourdomain.com/CheckConnect?id=<to
 ssh root@<contabo-ip>
 docker logs -f mt5rest
 ```
+
+> **Security:** `timurila/mt5rest` can log connection tuples that include the broker password on WRN/ERR paths (see `docs/incidents/incident-2026-09-23-mtapi-docker-password-logs.md`). Install the log redactor before using this container in production, and keep the container bound to localhost only — `ufw deny` does **not** block Docker-published ports:
+>
+> ```bash
+> # from repo root, on the VPS
+> bash deploy/mtapi-log-redactor/install.sh
+> # defaults to -p 127.0.0.1:8080:80 so only nginx can reach the bridge
+> ```
+>
+> Never paste raw `docker logs` output into tickets or chat. Secrets map: `docs/mtapi-credentials.md`.
 
 ### 8.3 nginx logs
 

@@ -104,6 +104,8 @@ export class MtapiClient {
     const headers: Record<string, string> = { accept: "application/json, text/plain" }
     const proxyKey = envString(this.env, "MTAPI_PROXY_KEY") || envString(this.env, "MTAPI_API_KEY")
     if (proxyKey) headers["Authorization"] = "Bearer " + proxyKey
+    const internalToken = envString(this.env, "MTAPI_INTERNAL_TOKEN")
+    if (internalToken) headers["X-Internal-Token"] = internalToken
 
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs ?? this.timeoutMs)
