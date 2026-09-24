@@ -28,7 +28,7 @@ import { useUserProfile } from '../../context/UserProfileContext'
 import { normalizeCopyLimitState, type CopyLimitState } from '../../lib/copyLimitTypes'
 import { ConfigTitle, ConfigToggleLabel, ConfigureInput, ConfigureSelect, InfoTooltip } from '../../components/ui/InfoTooltip'
 import { fxsocketBroker, BrokerHealthCheckUnsupportedError } from '../../lib/fxsocketBroker'
-import { isLegacyBrokerLink, countLinkedBrokerSessions, hasFxsocketBrokerSession } from '../../lib/brokerLink'
+import { isLegacyBrokerLink, countLinkedBrokerSessionsForUi, hasFxsocketBrokerSession } from '../../lib/brokerLink'
 import { resolveBrokerTotalBalance } from '../../lib/effectiveBrokerBalance'
 import { brokerCanReconnect, brokerConnectionBadgeVariant, brokerConnectionStatusLabel } from '../../lib/brokerReconnect'
 import {
@@ -1010,7 +1010,7 @@ export function AccountConfigPage() {
   const brokerRangeEnd = Math.min(safeBrokerPage * BROKER_PAGE_SIZE, filteredBrokers.length)
 
   const linkedBrokerCount = useMemo(
-    () => countLinkedBrokerSessions(brokers),
+    () => countLinkedBrokerSessionsForUi(brokers),
     [brokers],
   )
   const connectedAccountCount = usageLoading ? linkedBrokerCount : usage.brokerAccounts

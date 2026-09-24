@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { getLocalCalendarDayBounds } from '../lib/dashboardTradeStats'
 import { formatBrokerHistoryDate } from '../lib/mtApiDateTime'
-import { fxsocketBroker, type MtTrade } from '../lib/fxsocketBroker'
+import { fetchTradesAcrossProviders, type MtTrade } from '../lib/fxsocketBroker'
 import { BROKER_ACCOUNT_CLIENT_SELECT } from '../lib/brokerAccountSelect'
 import { filterMtTradesSinceConnect } from '../lib/tradesSinceConnect'
 import type { BrokerAccount } from '../types/database'
@@ -22,23 +22,24 @@ const VISIBILITY_STALE_MS = 30_000
 
 async function fetchTradesFromMt(userId: string): Promise<MtTrade[]> {
   const { tomorrowStart: historyTo } = getLocalCalendarDayBounds()
-  const [tradesRes, brokerRes] = await Promise.all([
-    fxsocketBroker.trades({
-      scope: 'all',
-      historyProfile: 'trades',
-      historyFrom: BROKER_FULL_HISTORY_FROM,
-      historyTo: formatBrokerHistoryDate(historyTo),
-    }),
-    supabase
-      .from('broker_accounts')
-      .select(BROKER_ACCOUNT_CLIENT_SELECT)
-      .eq('user_id', userId),
-  ])
+  const brokerRes = await supabase
+    .from('broker_accounts')
+    .select(BROKER_ACCOUNT_CLIENT_SELECT)
+    .eq('user_id', userId)
   if (brokerRes.error) throw brokerRes.error
+  const accounts = (brokerRes.data ?? []) as unknown as BrokerAccount[]
+
+  const tradesRes = await fetchTradesAcrossProviders({
+    scope: 'all',
+    historyProfile: 'trades',
+    historyFrom: BROKER_FULL_HISTORY_FROM,
+    historyTo: formatBrokerHistoryDate(historyTo),
+    accounts,
+  })
 
   let normalized = enrichMtTradesTimestamps(tradesRes.trades ?? [])
   if (normalized.some(mtTradeMissingDisplayTime)) {
-    const { trades: hydrated, stats } = await hydrateMtTradesTimesFromBrokers(normalized)
+    const { trades: hydrated, stats } = await hydrateMtTradesTimesFromBrokers(normalized, accounts)
     normalized = hydrated
     if (import.meta.env.DEV && (stats.missingBefore > 0 || stats.historyErrors.length > 0)) {
       console.debug('[trades] time hydration fallback', stats)
@@ -54,7 +55,6 @@ async function fetchTradesFromMt(userId: string): Promise<MtTrade[]> {
       })
     }
   }
-  const accounts = (brokerRes.data ?? []) as unknown as BrokerAccount[]
   return filterMtTradesSinceConnect(normalized, accounts)
 }
 

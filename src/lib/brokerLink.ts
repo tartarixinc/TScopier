@@ -38,11 +38,34 @@ export function hasAnyBrokerSession(account: ProviderAwareAccount): boolean {
   return hasFxsocketBrokerSession(account)
 }
 
+/**
+ * Client-safe “is this account linked?” gate for UI that loads
+ * `BROKER_ACCOUNT_CLIENT_SELECT` (no `mtapi_session_id` — stripped/not selected).
+ * MTAPI: any row with provider=mtapi counts (session presence is server-only).
+ * FxSocket: still requires a terminal UUID.
+ */
+export function hasLinkedBrokerForUi(
+  account: ProviderAwareAccount & { mtapi_status?: string | null },
+): boolean {
+  if (resolveProvider(account) === 'mtapi') return true
+  return hasFxsocketBrokerSession(account)
+}
+
 /** Broker is eligible to copy new signals (Copy trades toggle on). */
 export function isBrokerCopyEnabled(
   account: ProviderAwareAccount & { is_active?: boolean },
 ): boolean {
   return account.is_active !== false && hasAnyBrokerSession(account)
+}
+
+/**
+ * Client-safe copy-toggle check for `BROKER_ACCOUNT_CLIENT_SELECT` rows
+ * (no `mtapi_session_id`). Same product rule as `isBrokerCopyEnabled`.
+ */
+export function isBrokerCopyEnabledForUi(
+  account: ProviderAwareAccount & { is_active?: boolean; mtapi_status?: string | null },
+): boolean {
+  return account.is_active !== false && hasLinkedBrokerForUi(account)
 }
 
 /** Session-linked broker — use for metrics, streams, and connected counts. */
@@ -66,4 +89,11 @@ export function isLegacyBrokerLink(metaapiAccountId: string | null | undefined):
 /** Count brokers using a plan slot (linked session of any provider, regardless of copy toggle). */
 export function countLinkedBrokerSessions(brokers: readonly ProviderAwareAccount[]): number {
   return brokers.filter(hasAnyBrokerSession).length
+}
+
+/** Client-safe plan-slot count for rows without `mtapi_session_id`. */
+export function countLinkedBrokerSessionsForUi(
+  brokers: readonly (ProviderAwareAccount & { mtapi_status?: string | null })[],
+): number {
+  return brokers.filter(hasLinkedBrokerForUi).length
 }

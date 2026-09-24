@@ -3,7 +3,7 @@ import {
   PERFORMANCE_MT_HISTORY_DAYS,
 } from './dashboardCharts'
 import { getLocalCalendarDayBounds } from './dashboardTradeStats'
-import { fxsocketBroker, type MtTrade } from './fxsocketBroker'
+import { fetchTradesAcrossProviders, type MtTrade } from './fxsocketBroker'
 import { formatLocalMtApiDateTime } from './mtApiDateTime'
 import { resolveBrokerConnectMs, type BrokerConnectAnchor } from './tradesSinceConnect'
 
@@ -35,7 +35,7 @@ export function resolveDashboardMtHistoryFrom(
   return chartFrom
 }
 
-/** Pull open positions + closed deal history from linked FxSocket brokers (edge `trades` action). */
+/** Pull open positions + closed deal history from linked brokers (edge `trades` action). */
 export async function fetchBrokerMtTrades(opts: {
   scope?: BrokerMtHistoryScope
   brokerId?: string
@@ -43,9 +43,11 @@ export async function fetchBrokerMtTrades(opts: {
   historyDays?: number
   limit?: number
   /** When set (dashboard scope), history starts at max(chart window, broker connect). */
-  accounts?: readonly BrokerConnectAnchor[]
+  accounts?: readonly (BrokerConnectAnchor & { provider?: string | null })[]
   /** Skip OrderHistory balance rows — dashboard analytics only needs position deals. */
   includeBalanceCashflow?: boolean
+  /** Restrict to one provider when the caller already knows the account. */
+  providers?: Array<'fxsocket' | 'mtapi'>
 } = {}): Promise<MtTrade[]> {
   const scope = opts.scope ?? 'dashboard'
   const historyDays = opts.historyDays ?? DEFAULT_HISTORY_DAYS[scope]
@@ -59,7 +61,7 @@ export async function fetchBrokerMtTrades(opts: {
         return from
       })()
 
-  const res = await fxsocketBroker.trades({
+  const res = await fetchTradesAcrossProviders({
     brokerId: opts.brokerId,
     scope: 'all',
     historyProfile,
@@ -67,6 +69,11 @@ export async function fetchBrokerMtTrades(opts: {
     historyTo: formatLocalMtApiDateTime(historyTo),
     ...(opts.limit != null && opts.limit > 0 ? { limit: opts.limit } : {}),
     ...(opts.includeBalanceCashflow === false ? { includeBalanceCashflow: false } : {}),
+    ...(opts.providers
+      ? { providers: opts.providers }
+      : opts.accounts
+        ? { accounts: opts.accounts.map(a => ({ provider: a.provider ?? null })) }
+        : {}),
   })
   return res.trades ?? []
 }

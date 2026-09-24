@@ -1,5 +1,6 @@
 import type { MtTrade } from './fxsocketBroker'
 import { fxsocketBroker } from './fxsocketBroker'
+import { resolveProvider } from './brokerLink'
 import { getLocalCalendarDayBounds } from './dashboardTradeStats'
 import { formatBrokerHistoryDate, parseMtHistoryTimestamp } from './mtApiDateTime'
 import { BROKER_FULL_HISTORY_FROM } from './tradesConstants'
@@ -207,9 +208,10 @@ function tradesHistoryRange(): { from: string; to: string } {
   }
 }
 
-/** Fill trade times from FxSocket OpenedOrders + OrderHistory + PositionHistory. */
+/** Fill trade times from broker OpenedOrders + OrderHistory + PositionHistory (per provider). */
 export async function hydrateMtTradesTimesFromBrokers(
   trades: MtTrade[],
+  accounts?: Array<{ id?: string; provider?: string | null }>,
 ): Promise<{ trades: MtTrade[]; stats: MtTradeTimeHydrationStats }> {
   const closed = trades.filter(t => t.status === 'closed')
   const open = trades.filter(t => t.status === 'open')
@@ -234,6 +236,12 @@ export async function hydrateMtTradesTimesFromBrokers(
     return { trades, stats }
   }
 
+  const providerByBrokerId = new Map<string, 'fxsocket' | 'mtapi'>()
+  for (const account of accounts ?? []) {
+    if (!account.id) continue
+    providerByBrokerId.set(account.id, resolveProvider(account))
+  }
+
   const { from, to } = tradesHistoryRange()
   const lookupsByBroker: Record<string, TicketTimeLookup> = {}
 
@@ -241,11 +249,16 @@ export async function hydrateMtTradesTimesFromBrokers(
     brokerIds.map(async brokerId => {
       const needsHistory = closed.some(t => t.broker_id === brokerId)
       const needsOpened = open.some(t => t.broker_id === brokerId)
+      const provider = providerByBrokerId.get(brokerId)
 
       const [ordersRes, positionsRes, openedRes] = await Promise.allSettled([
-        needsHistory ? fxsocketBroker.orderHistory({ accountId: brokerId, from, to }) : Promise.resolve([]),
-        needsHistory ? fxsocketBroker.positionHistory({ accountId: brokerId, from, to }) : Promise.resolve([]),
-        needsOpened ? fxsocketBroker.openedOrders(brokerId) : Promise.resolve([]),
+        needsHistory
+          ? fxsocketBroker.orderHistory({ accountId: brokerId, from, to, provider })
+          : Promise.resolve([]),
+        needsHistory
+          ? fxsocketBroker.positionHistory({ accountId: brokerId, from, to, provider })
+          : Promise.resolve([]),
+        needsOpened ? fxsocketBroker.openedOrders(brokerId, provider) : Promise.resolve([]),
       ])
 
       if (ordersRes.status === 'fulfilled') {

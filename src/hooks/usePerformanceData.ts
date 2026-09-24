@@ -30,10 +30,10 @@ import { BROKER_ACCOUNT_CLIENT_SELECT } from '../lib/brokerAccountSelect'
 import { filterMtTradesSinceConnect } from '../lib/tradesSinceConnect'
 import type { BrokerAccount } from '../types/database'
 
-import { isFxsocketLinkedBroker } from '../lib/brokerLink'
+import { hasLinkedBrokerForUi, resolveProvider } from '../lib/brokerLink'
 
 function hasStaleEmptyBrokerHistory(payload: PerformanceCachePayload): boolean {
-  return payload.mtTrades.length === 0 && payload.accounts.some(isFxsocketLinkedBroker)
+  return payload.mtTrades.length === 0 && payload.accounts.some(hasLinkedBrokerForUi)
 }
 
 async function fetchPerformancePayload(userId: string): Promise<PerformanceCachePayload> {
@@ -59,11 +59,15 @@ async function fetchPerformancePayload(userId: string): Promise<PerformanceCache
   if (brokerRes.error) throw brokerRes.error
 
   const linked = (brokerRes.data ?? []) as unknown as BrokerAccount[]
-  const mtBrokers = linked.filter(isFxsocketLinkedBroker)
+  const mtBrokers = linked.filter(hasLinkedBrokerForUi)
 
   let trades: MtTrade[] = []
   if (mtBrokers.length > 0) {
-    trades = await fetchBrokerMtTrades({ scope: 'performance', historyProfile: 'trades' })
+    trades = await fetchBrokerMtTrades({
+      scope: 'performance',
+      historyProfile: 'trades',
+      accounts: linked,
+    })
     trades = filterMtTradesSinceConnect(trades, linked)
   }
 
@@ -94,7 +98,7 @@ async function fetchPerformancePayload(userId: string): Promise<PerformanceCache
   const baselineById: Record<string, number> = {}
 
   for (const account of linked) {
-    if (!isFxsocketLinkedBroker(account)) {
+    if (!hasLinkedBrokerForUi(account)) {
       const eq = account.last_equity ?? account.last_balance
       const bal = account.last_balance ?? account.last_equity
       if (eq != null && Number.isFinite(Number(eq))) equity[account.id] = Number(eq)
@@ -102,7 +106,8 @@ async function fetchPerformancePayload(userId: string): Promise<PerformanceCache
       continue
     }
     try {
-      const { account: refreshed, summary } = await fxsocketBroker.refreshSummary(account.id)
+      const provider = resolveProvider(account)
+      const { account: refreshed, summary } = await fxsocketBroker.refreshSummary(account.id, provider)
       const eq = summary?.equity ?? refreshed.last_equity ?? effectiveAccountSummaryBalance(summary) ?? refreshed.last_balance
       const bal = refreshed.last_balance ?? effectiveAccountSummaryBalance(summary) ?? refreshed.last_equity ?? summary?.equity
       if (eq != null && Number.isFinite(Number(eq))) equity[account.id] = Number(eq)
@@ -117,7 +122,7 @@ async function fetchPerformancePayload(userId: string): Promise<PerformanceCache
       if (eq != null && Number.isFinite(Number(eq))) equity[account.id] = Number(eq)
       if (bal != null && Number.isFinite(Number(bal))) balance[account.id] = Number(bal)
     }
-    // Avoid parallel FxSocket refresh storms for users with many linked accounts.
+    // Avoid parallel broker refresh storms for users with many linked accounts.
     await new Promise(r => setTimeout(r, 800))
   }
 
@@ -304,13 +309,14 @@ export function usePerformanceData(userId: string | undefined) {
     [chartTrades, statsRows],
   )
 
-  const hasMtBrokers = accounts.some(isFxsocketLinkedBroker)
+  const hasMtBrokers = accounts.some(hasLinkedBrokerForUi)
 
   const refreshBroker = useCallback(
     async (brokerId: string, opts?: { silent?: boolean }) => {
       if (!userId) return
       const account = payloadRef.current?.accounts.find(a => a.id === brokerId)
-      if (!account || !isFxsocketLinkedBroker(account)) return
+      if (!account || !hasLinkedBrokerForUi(account)) return
+      const provider = resolveProvider(account)
 
       if (!opts?.silent) {
         setRefreshing(true)
@@ -319,8 +325,13 @@ export function usePerformanceData(userId: string | undefined) {
 
       try {
         const [summaryRes, brokerTrades] = await Promise.all([
-          fxsocketBroker.refreshSummary(brokerId),
-          fetchBrokerMtTrades({ scope: 'performance', brokerId, historyProfile: 'trades' }),
+          fxsocketBroker.refreshSummary(brokerId, provider),
+          fetchBrokerMtTrades({
+            scope: 'performance',
+            brokerId,
+            historyProfile: 'trades',
+            providers: [provider],
+          }),
         ])
 
         const { account: refreshed, summary } = summaryRes

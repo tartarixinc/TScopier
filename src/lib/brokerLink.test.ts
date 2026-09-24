@@ -2,10 +2,13 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   countLinkedBrokerSessions,
+  countLinkedBrokerSessionsForUi,
   hasAnyBrokerSession,
   hasFxsocketBrokerSession,
+  hasLinkedBrokerForUi,
   hasMtapiBrokerSession,
   isBrokerCopyEnabled,
+  isBrokerCopyEnabledForUi,
   isFxsocketLinkedBroker,
   resolveProvider,
 } from './brokerLink'
@@ -115,5 +118,67 @@ describe('brokerLink — MTAPI provider', () => {
       { provider: 'mtapi', mtapi_session_id: null },
     ])
     assert.equal(count, 2)
+  })
+})
+
+describe('brokerLink — hasLinkedBrokerForUi (BROKER_ACCOUNT_CLIENT_SELECT shape)', () => {
+  // Mirrors a row the browser actually receives: provider + mtapi_status, no session id.
+  it('MTAPI client row without mtapi_session_id still passes the gate', () => {
+    assert.equal(
+      hasLinkedBrokerForUi({ provider: 'mtapi', mtapi_status: 'connected' }),
+      true,
+    )
+    assert.equal(
+      hasLinkedBrokerForUi({ provider: 'mtapi', mtapi_status: null }),
+      true,
+    )
+  })
+
+  it('FxSocket client row still requires a terminal UUID', () => {
+    assert.equal(
+      hasLinkedBrokerForUi({ provider: 'fxsocket', fxsocket_account_id: SESSION_UUID }),
+      true,
+    )
+    assert.equal(
+      hasLinkedBrokerForUi({ provider: 'fxsocket', fxsocket_account_id: null }),
+      false,
+    )
+  })
+
+  it('defaults to FxSocket rules when provider is missing', () => {
+    assert.equal(hasLinkedBrokerForUi({}), false)
+    assert.equal(hasLinkedBrokerForUi({ fxsocket_account_id: SESSION_UUID }), true)
+  })
+
+  it('countLinkedBrokerSessionsForUi counts MTAPI client rows without session id', () => {
+    const count = countLinkedBrokerSessionsForUi([
+      { provider: 'mtapi', mtapi_status: 'connected' },
+      { provider: 'fxsocket', fxsocket_account_id: SESSION_UUID },
+      { provider: 'fxsocket', fxsocket_account_id: null },
+    ])
+    assert.equal(count, 2)
+  })
+
+  it('isBrokerCopyEnabledForUi requires copy toggle and client-safe link', () => {
+    assert.equal(
+      isBrokerCopyEnabledForUi({ provider: 'mtapi', is_active: true }),
+      true,
+    )
+    assert.equal(
+      isBrokerCopyEnabledForUi({ provider: 'mtapi', is_active: false }),
+      false,
+    )
+    assert.equal(
+      isBrokerCopyEnabledForUi({ provider: 'fxsocket', is_active: true }),
+      false,
+    )
+    assert.equal(
+      isBrokerCopyEnabledForUi({
+        provider: 'fxsocket',
+        fxsocket_account_id: SESSION_UUID,
+        is_active: true,
+      }),
+      true,
+    )
   })
 })

@@ -23,7 +23,7 @@ import { Toggle } from '../../components/ui/Toggle'
 import { Button } from '../../components/ui/Button'
 import { InfoTooltip } from '../../components/ui/InfoTooltip'
 import { fxsocketBroker, type MtTrade } from '../../lib/fxsocketBroker'
-import { isFxsocketLinkedBroker, countLinkedBrokerSessions } from '../../lib/brokerLink'
+import { isFxsocketLinkedBroker, countLinkedBrokerSessionsForUi, hasLinkedBrokerForUi } from '../../lib/brokerLink'
 import { resolveBrokerTotalBalance } from '../../lib/effectiveBrokerBalance'
 import { useFxsocketStream } from '../../hooks/useFxsocketStream'
 import {
@@ -220,7 +220,7 @@ function aggregateTotalProfitFromMtTrades(
 }
 
 function hasActiveMtBroker(accounts: BrokerAccount[]): boolean {
-  return accounts.some(isFxsocketLinkedBroker)
+  return accounts.some(hasLinkedBrokerForUi)
 }
 
 type BrokerBalanceSnapshot = {
@@ -303,7 +303,7 @@ function recomputeLiveBrokerDashboardStats(
   }
 
   const hasOpenTrades = hasConnectedBrokerOpenTrades(accounts, balances, wsLiveBrokerIds)
-  const openTrades = accounts.some(isFxsocketLinkedBroker)
+  const openTrades = accounts.some(hasLinkedBrokerForUi)
     ? sumConnectedOpenTrades(accounts, balances, wsLiveBrokerIds)
     : hasOpenTrades
       ? sumConnectedOpenTrades(accounts, balances, wsLiveBrokerIds)
@@ -358,7 +358,7 @@ function resolveDashboardOpenTradesCount(
   balances: Record<string, BrokerBalanceSnapshot>,
   dbOpenCount: number,
 ): number {
-  if (accounts.some(isFxsocketLinkedBroker)) {
+  if (accounts.some(hasLinkedBrokerForUi)) {
     return sumConnectedOpenTrades(accounts, balances)
   }
   if (hasConnectedBrokerOpenTrades(accounts, balances)) {
@@ -511,7 +511,7 @@ function bootDashboardChartsReady(cached: DashboardCachePayload | null): boolean
   if (!cached?.stats) return false
   if (hasDashboardAnalyticsData(cached.cachedAnalytics)) return true
   if (bootChartTrades(cached).length > 0 || (cached.mtTrades?.length ?? 0) > 0) return true
-  return !cached.linkedAccounts?.some(isFxsocketLinkedBroker)
+  return !cached.linkedAccounts?.some(hasLinkedBrokerForUi)
 }
 
 function isDashboardBootReady(cached: DashboardCachePayload | null): boolean {
@@ -1042,7 +1042,7 @@ export function DashboardPage() {
 
   const displayAnalytics = useMemo(() => {
     const live = dashboardAnalytics
-    const hasLinkedBroker = linkedAccounts.some(isFxsocketLinkedBroker)
+    const hasLinkedBroker = linkedAccounts.some(hasLinkedBrokerForUi)
     if (hasDashboardAnalyticsData(live)) return live
     if (cachedAnalytics && hasDashboardAnalyticsData(cachedAnalytics) && !hasLinkedBroker) {
       return cachedAnalytics
@@ -1212,7 +1212,7 @@ export function DashboardPage() {
     connectPnlByAccountId,
   ])
 
-  const hasLinkedBroker = linkedAccounts.some(isFxsocketLinkedBroker)
+  const hasLinkedBroker = linkedAccounts.some(hasLinkedBrokerForUi)
 
   const formatVsYesterdayDelta = (
     todayValue: number,
@@ -1471,7 +1471,7 @@ export function DashboardPage() {
       }>,
     )
     const mtBrokerConnected = hasActiveMtBroker(brokerAccounts)
-    const activeBrokerCount = countLinkedBrokerSessions(brokerAccounts)
+    const activeBrokerCount = countLinkedBrokerSessionsForUi(brokerAccounts)
     // Seed the balance map from the cached columns the worker / edge function
     // wrote on AccountSummary. This is what makes the page render instantly
     // without waiting for a live FxSocket roundtrip on every page load.
@@ -1608,7 +1608,7 @@ export function DashboardPage() {
     )
 
     const mergedAfterDb = mergeDashboardStats(statsRef.current, nextStats, useMtTrades, {
-      trustOpenTrades: brokerAccounts.some(isFxsocketLinkedBroker) || hasAnyBrokerOpenTradesFromSummary,
+      trustOpenTrades: brokerAccounts.some(hasLinkedBrokerForUi) || hasAnyBrokerOpenTradesFromSummary,
       preserveMtTradeCounts: mtBrokerConnected && useMtTrades,
       preserveMtPnl: mtBrokerConnected && useMtTrades,
       mtHasClosedTrades: useMtTrades
@@ -1895,7 +1895,7 @@ export function DashboardPage() {
       } else {
         scheduleDismissDashboardMetricsLoader()
       }
-      if (cached?.linkedAccounts?.some(isFxsocketLinkedBroker)) {
+      if (cached?.linkedAccounts?.some(hasLinkedBrokerForUi)) {
         void loadDashboard({ fresh: false, syncLive: true })
       }
       return
@@ -1931,7 +1931,7 @@ export function DashboardPage() {
     const now = Date.now()
     if (!opts?.force && now - lastMtTradesRefreshRef.current < MT_TRADES_REFRESH_MS) return
     const sourceAccounts = brokerAccounts ?? linkedAccounts
-    const hasMtBroker = sourceAccounts.some(isFxsocketLinkedBroker)
+    const hasMtBroker = sourceAccounts.some(hasLinkedBrokerForUi)
     if (!hasMtBroker) return
     lastMtTradesRefreshRef.current = now
 
@@ -1966,7 +1966,7 @@ export function DashboardPage() {
     const nextBalances = { ...linkedBalancesRef.current }
     let openCountsChanged = false
     for (const account of sourceAccounts) {
-      if (!isFxsocketLinkedBroker(account)) continue
+      if (!hasLinkedBrokerForUi(account)) continue
       const count = openByBroker[account.id] ?? 0
       const liveBook = positionBooksRef.current[account.id]
       if (!liveBook || liveBook.size === 0) {
@@ -2116,7 +2116,7 @@ export function DashboardPage() {
     if (!user) return
     const snapshot = linkedAccounts
     const applyActiveStats = (accounts: BrokerAccount[]) => {
-      const activeCount = countLinkedBrokerSessions(accounts)
+      const activeCount = countLinkedBrokerSessionsForUi(accounts)
       setStats(s => ({
         ...s,
         accounts: activeCount,
@@ -2139,7 +2139,7 @@ export function DashboardPage() {
     !hasDashboardAnalyticsData(displayAnalytics) &&
     effectiveChartTrades.length === 0 &&
     mtTrades.length === 0 &&
-    (hasActiveMtBroker(linkedAccounts) || Boolean(bootCache?.linkedAccounts?.some(isFxsocketLinkedBroker)))
+    (hasActiveMtBroker(linkedAccounts) || Boolean(bootCache?.linkedAccounts?.some(hasLinkedBrokerForUi)))
 
   const showDashboardLoader = dashboardMetricsLoading
 

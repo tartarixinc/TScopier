@@ -3,6 +3,7 @@ import type { BrokerAccount } from '../types/database'
 import type { FxsocketMtStatus } from './fxsocketMtStatus'
 import type { FxsocketStreamSubscribeFrame } from './fxsocketStreamTypes'
 import { classifyBrokerConnectError } from './brokerConnectError'
+import { resolveProvider } from './brokerLink'
 
 const FXSOCKET_EDGE_TIMEOUT_MS = 120_000
 /** Full-account PositionHistory can require many chunked broker calls. */
@@ -483,9 +484,10 @@ export const fxsocketBroker = {
     })
   },
 
-  openedOrders(accountId: string): Promise<unknown[]> {
+  openedOrders(accountId: string, provider?: 'fxsocket' | 'mtapi'): Promise<unknown[]> {
     return call({
       body: { action: 'opened_orders', account_id: accountId },
+      edgeFn: provider === 'mtapi' ? 'mtapi-broker' : undefined,
       expect: (b) => {
         const orders = (b as { orders?: unknown[] }).orders
         return Array.isArray(orders) ? orders : []
@@ -517,6 +519,7 @@ export const fxsocketBroker = {
     accountId: string
     from: string
     to: string
+    provider?: 'fxsocket' | 'mtapi'
   }): Promise<unknown[]> {
     return call({
       body: {
@@ -525,6 +528,7 @@ export const fxsocketBroker = {
         history_from: args.from,
         history_to: args.to,
       },
+      edgeFn: args.provider === 'mtapi' ? 'mtapi-broker' : undefined,
       timeoutMs: FXSOCKET_EDGE_TIMEOUT_MS,
       expect: (b) => {
         const orders = (b as { orders?: unknown[] }).orders
@@ -537,6 +541,7 @@ export const fxsocketBroker = {
     accountId: string
     from: string
     to: string
+    provider?: 'fxsocket' | 'mtapi'
   }): Promise<unknown[]> {
     return call({
       body: {
@@ -545,6 +550,7 @@ export const fxsocketBroker = {
         history_from: args.from,
         history_to: args.to,
       },
+      edgeFn: args.provider === 'mtapi' ? 'mtapi-broker' : undefined,
       timeoutMs: FXSOCKET_EDGE_TIMEOUT_MS,
       expect: (b) => {
         const positions = (b as { positions?: unknown[] }).positions
@@ -561,6 +567,7 @@ export const fxsocketBroker = {
     historyProfile?: 'dashboard' | 'trades'
     limit?: number
     includeBalanceCashflow?: boolean
+    provider?: 'fxsocket' | 'mtapi'
   } = {}): Promise<{ trades: MtTrade[] }> {
     return call({
       body: {
@@ -573,6 +580,7 @@ export const fxsocketBroker = {
         ...(args.limit != null && args.limit > 0 ? { limit: args.limit } : {}),
         ...(args.includeBalanceCashflow === false ? { include_balance_cashflow: false } : {}),
       },
+      edgeFn: args.provider === 'mtapi' ? 'mtapi-broker' : undefined,
       timeoutMs: FXSOCKET_TRADES_TIMEOUT_MS,
       expect: (b) => b as { trades: MtTrade[] },
     })
@@ -587,4 +595,101 @@ export const fxsocketBroker = {
     const id = encodeURIComponent(fxsocketAccountId.trim())
     return `https://api.fxsocket.com/mt5/${id}/swagger-ui/`
   },
+}
+
+export type TradesFetchArgs = {
+  brokerId?: string
+  scope?: 'all' | 'open' | 'closed'
+  historyFrom?: string
+  historyTo?: string
+  historyProfile?: 'dashboard' | 'trades'
+  limit?: number
+  includeBalanceCashflow?: boolean
+}
+
+function isWrongProviderError(message: string): boolean {
+  return /not an MTAPI account|no FxSocket account linked/i.test(message)
+}
+
+/**
+ * Fetch trades from every requested provider (or both when omitted) and merge.
+ *
+ * Each edge only returns rows for its own provider, so merging is safe.
+ * A wrong-provider 400 (when brokerId is set on the other edge) is ignored
+ * as long as at least one provider returned successfully.
+ */
+export async function fetchTradesAcrossProviders(
+  args: TradesFetchArgs & {
+    providers?: Array<'fxsocket' | 'mtapi'>
+    accounts?: ReadonlyArray<{ provider?: string | null; id?: string }>
+  } = {},
+): Promise<{ trades: MtTrade[] }> {
+  let providers = args.providers
+  if (!providers && args.accounts) {
+    const set = new Set(args.accounts.map(a => resolveProvider(a)))
+    // Anchors without a provider field resolve to fxsocket — if nothing was
+    // explicitly marked, still query both so MTAPI-only data is not dropped.
+    const anyExplicit = args.accounts.some(
+      a => a.provider === 'mtapi' || a.provider === 'fxsocket',
+    )
+    providers = anyExplicit && set.size > 0 ? [...set] : ['fxsocket', 'mtapi']
+  }
+  if (!providers) providers = ['fxsocket', 'mtapi']
+  if (providers.length === 0) return { trades: [] }
+  if (providers.length === 1) {
+    return fxsocketBroker.trades({ ...args, provider: providers[0] })
+  }
+
+  const base: TradesFetchArgs = {
+    brokerId: args.brokerId,
+    scope: args.scope,
+    historyFrom: args.historyFrom,
+    historyTo: args.historyTo,
+    historyProfile: args.historyProfile,
+    limit: args.limit,
+    includeBalanceCashflow: args.includeBalanceCashflow,
+  }
+
+  const results = await Promise.allSettled(
+    providers.map(provider => fxsocketBroker.trades({ ...base, provider })),
+  )
+  const ok = results.filter(
+    (r): r is PromiseFulfilledResult<{ trades: MtTrade[] }> => r.status === 'fulfilled',
+  )
+  const failed = results.filter(
+    (r): r is PromiseRejectedResult => r.status === 'rejected',
+  )
+  // Prefer a real (non wrong-provider) rejection over failed[0], which may be
+  // a wrong-provider 400 ordered first by the providers array.
+  const pickRealFailure = (): unknown => {
+    const real = failed.find(
+      r =>
+        !(r.reason instanceof Error
+          ? isWrongProviderError(r.reason.message)
+          : isWrongProviderError(String(r.reason))),
+    )
+    if (real) return real.reason
+    if (failed[0]?.reason instanceof Error) return failed[0].reason
+    if (failed[0]) return failed[0].reason
+    return new Error('Failed to load trades')
+  }
+  if (ok.length === 0) {
+    throw pickRealFailure()
+  }
+  if (failed.length > 0) {
+    const failedMessages = failed.map(r =>
+      r.reason instanceof Error ? r.reason.message : String(r.reason),
+    )
+    const realFailures = failedMessages.filter(
+      m => m.length > 0 && !isWrongProviderError(m),
+    )
+    const anyData = ok.some(r => (r.value.trades ?? []).length > 0)
+    if (realFailures.length > 0 && !anyData) {
+      throw pickRealFailure()
+    }
+    if (realFailures.length > 0) {
+      console.warn('[trades] partial provider fetch', realFailures)
+    }
+  }
+  return { trades: ok.flatMap(r => r.value.trades ?? []) }
 }
