@@ -46,3 +46,6 @@ docs/mtapi-conformance.pdf
 docs/mtapi-progress.md
 docs/mtapi-migration-plan.pdf
 
+
+# Nginx reverse-proxy setup (VPS ops — local only)
+docs/nginx-setup/
