@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { hasFxsocketConfigured } from './fxsocketClient'
 import { apiForFxsocketAccount, loadPlatformByFxsocketId, type PlatformByFxsocketId } from './mtApiByAccount'
 import {
+  closeStaleOpenTrades,
   loadOpenBasketLegs,
   markBasketReconcileDone,
   parsePerLegTargets,
@@ -45,6 +46,29 @@ function reconcileTargetsHaveSl(
   targets: Array<{ stoploss?: number; takeprofit?: number }>,
 ): boolean {
   return targets.some(t => (t.stoploss ?? 0) > 0)
+}
+
+/**
+ * True when every open DB leg was skipped because its ticket is absent from a
+ * non-empty OpenedOrders snapshot — the positions are gone on the broker.
+ */
+export function isAllLegsGhostOnBroker(summary: {
+  openLegs: number
+  skippedNotOnBroker: number
+  modified: number
+  failed: number
+}): boolean {
+  return (
+    summary.openLegs > 0
+    && summary.skippedNotOnBroker >= summary.openLegs
+    && summary.modified === 0
+    && summary.failed === 0
+  )
+}
+
+/** Empty OpenedOrders is inconclusive (disconnect/flake), not "all closed". */
+export function isEmptyOpenedOrdersInconclusive(orderCount: number): boolean {
+  return orderCount === 0
 }
 const SWEEP_INTERVAL_MS = Math.min(
   600_000,
@@ -298,6 +322,13 @@ export class BasketSlTpReconcileMonitor {
     } catch { /* optional */ }
 
     const preModifyOrdersByTicket = await fetchBrokerOrdersByTicket(api, uuid)
+    // Empty OpenedOrders is inconclusive (session flake / disconnect), not "no
+    // positions". Do not preflight-skip every leg or fail on DB-vs-target drift —
+    // that produced endless `broker SL still drifted` loops on MTAPI.
+    if (isEmptyOpenedOrdersInconclusive(preModifyOrdersByTicket.size)) {
+      await this.releaseJob(row.id, 'empty OpenedOrders snapshot (inconclusive)', row.attempts)
+      return
+    }
     const openedTickets = new Set(preModifyOrdersByTicket.keys())
     const driftSweepJob = isDriftSweepReconcileJob(row)
     const manualBrokerOverrideDetection = driftSweepJob
@@ -360,6 +391,49 @@ export class BasketSlTpReconcileMonitor {
     })
 
     const mergeFailed = basketLegModifyMergeFailed(summary)
+    // All open DB legs absent from a non-empty OpenedOrders snapshot: the
+    // positions are gone on the broker (manual close / TP-SL). Close the stale
+    // rows and finish the job instead of retrying an impossible modify.
+    // Mirrors tradeExecutor/basketMerge/slTpRefresh.ts allLegsGhostOnBroker.
+    const allLegsGhostOnBroker = isAllLegsGhostOnBroker(summary)
+
+    if (allLegsGhostOnBroker) {
+      const closedCount = await closeStaleOpenTrades(
+        this.supabase,
+        familyTrades.map(tr => tr.id),
+      )
+      try {
+        await this.supabase.from('trade_execution_logs').insert({
+          user_id: row.user_id,
+          signal_id: row.source_signal_id,
+          broker_account_id: row.broker_account_id,
+          action: 'basket_reconcile_tick',
+          status: 'success',
+          error_message: null,
+          request_payload: {
+            job_id: row.id,
+            anchor_signal_id: row.anchor_signal_id,
+            ghost_closed: true,
+            closed_stale_trades: closedCount,
+            ...summary,
+            leg_errors: legErrors.slice(0, 5),
+          } as unknown as Record<string, unknown>,
+        })
+      } catch { /* best-effort */ }
+      console.log(
+        `[basketSlTpReconcileMonitor] ghost basket closed job=${row.id}`
+        + ` signal=${row.anchor_signal_id} broker=${row.broker_account_id}`
+        + ` closed=${closedCount}`,
+      )
+      await markBasketReconcileDone(this.supabase, row.id)
+      await this.supabase
+        .from('signals')
+        .update({ status: 'executed' })
+        .eq('id', row.source_signal_id)
+        .eq('status', 'parsed')
+      return
+    }
+
     let brokerStillDrift = false
     if (!mergeFailed && reconcileTargetsHaveSl(effectiveTargets)) {
       const ordersByTicket = await fetchBrokerOrdersByTicket(api, uuid)
@@ -375,6 +449,7 @@ export class BasketSlTpReconcileMonitor {
       ? `Reconcile: ${summary.modified}/${summary.openLegs} legs`
         + (summary.failed > 0 ? `; ${summary.failed} broker errors` : '')
         + (summary.skippedUnfixable > 0 ? `; ${summary.skippedUnfixable} skipped (market moved)` : '')
+        + (summary.skippedNotOnBroker > 0 ? `; ${summary.skippedNotOnBroker} not on broker` : '')
         + (brokerStillDrift ? '; broker SL still drifted' : '')
       : null
 

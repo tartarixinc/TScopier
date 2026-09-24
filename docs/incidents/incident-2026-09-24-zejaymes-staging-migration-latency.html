@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ZeJaymes — Staging vs Migration Execution Latency Comparison</title>
+<style>
+@page { size: A4; margin: 22mm 20mm; }
+* { box-sizing: border-box; }
+body { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 10.5px; line-height: 1.5; color: #1a1a1a; margin: 0; }
+h1 { font-size: 20px; margin: 0 0 4px; color: #0f172a; }
+.subtitle { color: #475569; font-size: 11px; margin-bottom: 14px; }
+h2 { font-size: 13px; color: #1e293b; border-bottom: 2px solid #2563eb; padding-bottom: 3px; margin: 18px 0 8px; }
+table { width: 100%; border-collapse: collapse; margin: 8px 0 12px; font-size: 9.5px; }
+th, td { border: 1px solid #cbd5e1; padding: 5px 7px; text-align: left; vertical-align: top; }
+th { background: #f1f5f9; font-weight: 600; }
+.meta { width: 100%; border-collapse: collapse; margin: 12px 0 6px; }
+.meta td { border: 1px solid #cbd5e1; padding: 5px 8px; width: 25%; }
+.meta .label { background: #f8fafc; font-weight: 600; color: #475569; font-size: 9px; text-transform: uppercase; }
+.pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 9px; font-weight: 700; }
+.pill-green { background: #dcfce7; color: #166534; }
+.pill-amber { background: #fef3c7; color: #92400e; }
+.pill-red { background: #fee2e2; color: #991b1b; }
+.box { border-left: 4px solid #2563eb; background: #eff6ff; padding: 8px 10px; margin: 10px 0; font-size: 10px; }
+.box-green { border-left-color: #16a34a; background: #f0fdf4; }
+.box-amber { border-left-color: #d97706; background: #fffbeb; }
+code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 9px; background: #f1f5f9; padding: 1px 4px; border-radius: 3px; }
+.muted { color: #64748b; }
+.good { color: #15803d; font-weight: 600; }
+.bad { color: #b91c1c; font-weight: 600; }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+
+<h1>ZeJaymes — Staging vs Migration Latency Comparison</h1>
+<div class="subtitle">Execution timing, broker send path, and open SL-drift failures for user <code>zejaymes</code></div>
+
+<table class="meta">
+  <tr>
+    <td class="label">Severity</td><td><span class="pill pill-amber">Info / Open follow-up</span></td>
+    <td class="label">Status</td><td><span class="pill pill-green">Latency OK</span> <span class="pill pill-amber">SL drift fix pending deploy</span></td>
+  </tr>
+  <tr>
+    <td class="label">Date</td><td>2026-09-24</td>
+    <td class="label">Component</td><td>Trade worker pipeline (staging + migration)</td>
+  </tr>
+  <tr>
+    <td class="label">User</td><td>zejaymes (James Peter)</td>
+    <td class="label">Root cause</td><td>No latency regression; V1 reconcile ghost-leg loop (fixed in code, pending deploy)</td>
+  </tr>
+</table>
+
+<h2>1. Executive summary (plain English)</h2>
+<div class="box box-green">
+We compared how fast the same user’s trades open on the staging environment versus the migration environment.
+Entry speed is essentially the same on both — about 5 to 6 seconds from the moment a signal is received until the trade appears filled. Migration is not slower; on the raw broker HTTP send it is slightly faster.
+Separately, migration repeatedly tried (and failed) to fix a stop-loss that did not match the broker. The real problem was that the background “fix the stop” job kept retrying a trade the broker no longer listed as open, instead of closing our leftover open record. That is a sync/cleanup bug on the MTAPI path, not a copy-speed problem; the code fix is written and awaiting deploy.
+</div>
+
+<h2>2. Accounts compared</h2>
+<table>
+  <tr><th>Environment</th><th>Project</th><th>User ID</th><th>Profile created</th></tr>
+  <tr><td>Staging</td><td><code>axdcledcyhyvzrnfkwat</code></td><td><code>f1d54bc2-d6d4-4c4e-be94-13b11bc7d049</code></td><td>2026-07-23</td></tr>
+  <tr><td>Migration</td><td><code>supmsgcubipmmowrzoub</code></td><td><code>20733d28-c337-4dfd-b985-ada9b3609635</code></td><td>2026-08-19</td></tr>
+</table>
+<p class="muted">Same username <code>zejaymes</code>, display name James Peter. Sample window: recent trades and <code>trade_execution_logs</code> as of 2026-09-24 ~09:10 UTC.</p>
+
+<h2>3. Recent trades (both envs)</h2>
+<table>
+  <tr><th>Time (UTC)</th><th>Symbol</th><th>Side</th><th>Lot</th><th>Staging ticket</th><th>Migration ticket</th></tr>
+  <tr><td>09:07:44</td><td>XAUUSDm</td><td>sell</td><td>0.01</td><td>3275911511</td><td>3275911509</td></tr>
+  <tr><td>08:52:21</td><td>USDJPYm</td><td>buy</td><td>0.01</td><td>3275802624</td><td>3275802668</td></tr>
+  <tr><td>08:52:08</td><td>EURUSDm</td><td>sell</td><td>0.01</td><td>3275801985</td><td>3275801962</td></tr>
+  <tr><td>08:42:55</td><td>GBPUSDm</td><td>sell</td><td>0.01</td><td>3275755535</td><td>3275755570</td></tr>
+  <tr><td>08:35:48</td><td>XAUUSDm</td><td>sell</td><td>0.01</td><td>3275713604</td><td>3275713716</td></tr>
+</table>
+<p class="muted">Same smoke-test set on both environments; broker tickets filled on both MTAPI demo sessions.</p>
+
+<h2>4. End-to-end latency (signal → trade row)</h2>
+<table>
+  <tr><th>Metric</th><th class="num">Staging</th><th class="num">Migration</th><th>Notes</th></tr>
+  <tr><td>Samples (n)</td><td class="num">11</td><td class="num">12</td><td>Linked trades with signal timestamps</td></tr>
+  <tr><td>p50</td><td class="num">5,010 ms</td><td class="num">6,236 ms</td><td>Migration +1.2 s median on this sample</td></tr>
+  <tr><td>avg</td><td class="num">5,533 ms</td><td class="num">5,651 ms</td><td>Within ~100 ms</td></tr>
+  <tr><td>p90</td><td class="num">7,946 ms</td><td class="num">7,129 ms</td><td>Migration better at p90</td></tr>
+  <tr><td>max</td><td class="num">8,146 ms</td><td class="num">7,956 ms</td><td>Similar ceiling</td></tr>
+</table>
+
+<table>
+  <tr><th>Paired signal</th><th class="num">Staging</th><th class="num">Migration</th><th>Faster</th></tr>
+  <tr><td>XAUUSD 09:07</td><td class="num">7,946 ms</td><td class="num">6,515 ms</td><td class="good">Migration</td></tr>
+  <tr><td>USDJPY 08:52</td><td class="num">4,516 ms</td><td class="num">4,802 ms</td><td class="good">Staging</td></tr>
+  <tr><td>EURUSD 08:52</td><td class="num">5,329 ms</td><td class="num">4,852 ms</td><td class="good">Migration</td></tr>
+  <tr><td>GBPUSD 08:42</td><td class="num">4,428 ms</td><td class="num">4,797 ms</td><td class="good">Staging</td></tr>
+</table>
+<div class="box">No consistent winner per symbol. Overall average is effectively the same; migration is not introducing a copy-speed regression.</div>
+
+<h2>5. Pipeline breakdown (<code>pipeline_summary</code>)</h2>
+<table>
+  <tr><th>Field</th><th class="num">Staging p50</th><th class="num">Migration p50</th><th>Comment</th></tr>
+  <tr><td>queue_wait_ms</td><td class="num">262 ms</td><td class="num">246 ms</td><td class="good">Similar</td></tr>
+  <tr><td>parse_ms</td><td class="num">114 ms</td><td class="num">136 ms</td><td>Similar</td></tr>
+  <tr><td>handle_ms</td><td class="num">5,604 ms</td><td class="num">879 ms</td><td>Migration lower (sample n=15)</td></tr>
+  <tr><td>broker_resolve_ms</td><td class="num">223 ms</td><td class="num">291 ms</td><td>Staging slightly better</td></tr>
+  <tr><td><strong>broker_send_ms</strong></td><td class="num">443 ms</td><td class="num"><strong>306 ms</strong></td><td class="good">MTAPI HTTP send faster on migration</td></tr>
+  <tr><td>order_send_ms</td><td class="num">5,005 ms</td><td class="num">4,545 ms</td><td class="good">Migration slightly better</td></tr>
+  <tr><td>total_ms</td><td class="num">8,108 ms</td><td class="num">7,183 ms*</td><td>*Some migration samples have total_ms=0</td></tr>
+</table>
+<p class="muted">Staging sample sizes are larger (n=73–85) than migration (n=5–15). Treat migration percentiles as directional.</p>
+
+<h2>6. Errors and open issue (migration only)</h2>
+<table>
+  <tr><th>Action | status</th><th class="num">Staging</th><th class="num">Migration</th></tr>
+  <tr><td>pipeline_summary | success</td><td class="num">85</td><td class="num">15</td></tr>
+  <tr><td>dispatch_push_attempt | success</td><td class="num">146</td><td class="num">11</td></tr>
+  <tr><td>dispatch_push_attempt | failed</td><td class="num">0</td><td class="num bad">3</td></tr>
+  <tr><td>basket_reconcile_tick | failed</td><td class="num">0</td><td class="num bad">460</td></tr>
+  <tr><td>merge_routed_modify_only | skipped</td><td class="num">31</td><td class="num">1</td></tr>
+</table>
+<div class="box box-amber">
+  <strong>Root cause found — migration SL-drift loop (460 failed ticks, 04:07–09:07 UTC):</strong>
+  On the MTAPI path the V1 basket reconcile monitor kept retrying two XAUUSD baskets
+  (<code>1fcca2ff</code> and <code>5260104c</code>) after the broker ticket was missing from
+  <code>/OpenedOrders</code>. Legs were skipped as <code>skipped_not_on_broker</code>
+  (not a hard broker error), but the post-pass still compared the database stop against
+  the freshly resolved channel target and logged
+  <code>Reconcile: 0/1 legs; broker SL still drifted</code> every ~70 seconds.
+  An <em>empty</em> OpenedOrders snapshot (session flake) was treated as “nothing open,”
+  which forced every leg down that path. Unlike the merge-refresh and V2 loops, the V1
+  monitor never closed ghost legs and never treated an empty snapshot as inconclusive —
+  so it retried an impossible modify until the trade was closed elsewhere
+  (<code>1fcca2ff</code> closed 09:07:42) or a later snapshot recovered
+  (<code>5260104c</code> success 08:28). Fix: empty snapshot → release job as
+  inconclusive; all legs missing from a non-empty snapshot →
+  <code>closeStaleOpenTrades</code> + mark job done; failure message now includes
+  “N not on broker”. See scratchpad
+  <code>docs/scratchpad-zejaymes-migration-sl-drift-2026-09-24.md</code>.
+</div>
+
+<h2>7. Verification</h2>
+<ul>
+  <li>REST queries via service role on both projects: <code>trades</code>, <code>signals</code>, <code>trade_execution_logs</code>, <code>user_profiles</code>.</li>
+  <li>End-to-end latency = <code>trades.created_at − signals.created_at</code> for linked <code>signal_id</code>, window 0–10 minutes.</li>
+  <li>Pipeline metrics from <code>request_payload</code> on <code>action=pipeline_summary</code>.</li>
+  <li>Source: live DB on 2026-09-24; not a synthetic load test.</li>
+</ul>
+
+<h2>8. Deployment / environment state</h2>
+<ul>
+  <li>Staging: FxSocket-era worker path; ZeJaymes has longer trade history.</li>
+  <li>Migration: MTAPI bridge path; token auth cutover complete same day; ZeJaymes has fewer historical trades (newer account).</li>
+  <li>No code change required for latency based on this sample.</li>
+</ul>
+
+<h2>9. Follow-ups</h2>
+<ol>
+  <li><strong>Deploy the V1 reconcile guard</strong> — empty OpenedOrders → inconclusive release; all legs missing from a non-empty snapshot → <code>closeStaleOpenTrades</code> + mark job done (<code>worker/src/basketSlTpReconcileMonitor.ts</code>).</li>
+  <li>Optional: re-run comparison after more migration samples to firm up percentiles.</li>
+  <li>Monitor migration <code>dispatch_push_attempt</code> failures (3 in window).</li>
+</ol>
+
+</body>
+</html>

@@ -1015,6 +1015,9 @@ export async function upsertBasketReconcileJob(
       n_imm_cwe: args.nImmCwe,
       override_tp: args.overrideTp,
       status: 'pending',
+      // Fresh re-enqueue gets a full attempt budget (empty-snapshot releases
+      // would otherwise burn attempts without ever reaching ghost-close).
+      attempts: 0,
       max_attempts: maxAttempts,
       next_run_at: new Date().toISOString(),
       last_error: args.lastError,
