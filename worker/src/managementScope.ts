@@ -300,15 +300,15 @@ export function resolveChannelCweTargets(
   return resolveNewestOpenSymbolTrades(filtered)
 }
 
-export async function loadTradesForBasketAnchor(
+export async function loadTradesForBasketAnchorChecked(
   supabase: SupabaseClient,
   args: {
     userId: string
     brokerAccountIds: string[]
     anchorSignalId: string
   },
-): Promise<MgmtTradeRow[]> {
-  const { data } = await supabase
+): Promise<{ rows: MgmtTradeRow[]; error: string | null }> {
+  const { data, error } = await supabase
     .from('trades')
     .select(MGMT_TRADE_SELECT)
     .eq('user_id', args.userId)
@@ -317,7 +317,20 @@ export async function loadTradesForBasketAnchor(
     .in('status', ['open', 'pending'])
     .order('opened_at', { ascending: true })
     .limit(500)
-  return (data ?? []) as MgmtTradeRow[]
+  if (error) return { rows: [], error: error.message }
+  return { rows: (data ?? []) as MgmtTradeRow[], error: null }
+}
+
+export async function loadTradesForBasketAnchor(
+  supabase: SupabaseClient,
+  args: {
+    userId: string
+    brokerAccountIds: string[]
+    anchorSignalId: string
+  },
+): Promise<MgmtTradeRow[]> {
+  const { rows } = await loadTradesForBasketAnchorChecked(supabase, args)
+  return rows
 }
 
 /**

@@ -413,6 +413,32 @@ export function SignalHistoryPage() {
     await handleSaved(editSession.signalId, result)
   }, [editSession, handleSaved])
 
+  const handleClosedFromModal = useCallback(async (result: { closed: number; failed: number; virtualDeleted: number }) => {
+    if (!editSession) return
+    const bs = t.dashboard.brokerStats
+    // Mirrors the modal: also fires from the modal's error path when queued
+    // legs were swept but no position closed — then failed > 0 and the banner
+    // must read as a warning, not as "nothing was open".
+    const text = result.closed > 0
+      ? result.failed > 0
+        ? interpolate(bs.closePartial, {
+            closed: String(result.closed),
+            total: String(result.closed + result.failed),
+          })
+        : interpolate(bs.closeSuccess, { count: String(result.closed) })
+      : result.failed > 0
+        ? interpolate(bs.closePartial, {
+            closed: '0',
+            total: String(result.failed),
+          })
+        : interpolate(sh.closeQueuedRemoved, { count: String(result.virtualDeleted) })
+    setBanner({
+      tone: result.failed > 0 ? 'warning' : 'success',
+      text,
+    })
+    await refreshAfterOverrideSave(editSession.signalId)
+  }, [editSession, refreshAfterOverrideSave, sh, t.dashboard.brokerStats])
+
   const resetFilters = () => {
     setChannelFilter('all')
     setDateFrom('')
@@ -651,6 +677,7 @@ export function SignalHistoryPage() {
           {...editSession}
           onClose={closeEditModal}
           onSaved={handleSavedFromModal}
+          onClosed={handleClosedFromModal}
         />
       ) : null}
     </PageShell>

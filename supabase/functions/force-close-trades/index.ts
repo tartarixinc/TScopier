@@ -18,8 +18,9 @@ function normalizeChannelIds(raw: unknown): string[] {
 
 async function callWorkerForceClose(args: {
   userId: string
-  brokerAccountId: string
+  brokerAccountId?: string | null
   channelId?: string | null
+  signalId?: string | null
 }): Promise<Record<string, unknown>> {
   const workerUrl = (
     Deno.env.get("TRADE_WORKER_URL")
@@ -40,8 +41,9 @@ async function callWorkerForceClose(args: {
     },
     body: JSON.stringify({
       user_id: args.userId,
-      broker_account_id: args.brokerAccountId,
+      broker_account_id: args.brokerAccountId ?? null,
       channel_id: args.channelId ?? null,
+      signal_id: args.signalId ?? null,
     }),
   })
   const data = await res.json().catch(() => ({})) as Record<string, unknown>
@@ -67,11 +69,35 @@ Deno.serve(async (req: Request) => {
     if (authErr || !authData.user) return bad(401, "Unauthorized")
     const userId = authData.user.id
 
-    let body: { broker_account_id?: string; channel_id?: string | null }
+    let body: { broker_account_id?: string; channel_id?: string | null; signal_id?: string | null }
     try {
       body = await req.json() as typeof body
     } catch {
       return bad(400, "Invalid JSON body")
+    }
+
+    const signalId = body.signal_id?.trim() || null
+    if (signalId) {
+      // Signal scope: close ONLY this signal's open positions, on every
+      // broker account that holds them. broker_account_id is not required.
+      const { data: signal, error: sigErr } = await supabase
+        .from("signals")
+        .select("id,user_id")
+        .eq("id", signalId)
+        .eq("user_id", userId)
+        .maybeSingle()
+      if (sigErr) {
+        console.error("[force-close-trades] signal lookup failed:", sigErr.message)
+        return bad(500, "Force close failed")
+      }
+      if (!signal) return bad(404, "Signal not found")
+
+      const workerResult = await callWorkerForceClose({ userId, signalId })
+      if (workerResult.error && workerResult.ok !== true) {
+        console.error("[force-close-trades] worker error (signal scope):", String(workerResult.error))
+        return bad(503, "Force close failed")
+      }
+      return Response.json(workerResult, { status: 200, headers: corsHeaders })
     }
 
     const brokerAccountId = body.broker_account_id?.trim()
@@ -83,7 +109,10 @@ Deno.serve(async (req: Request) => {
       .eq("id", brokerAccountId)
       .eq("user_id", userId)
       .maybeSingle()
-    if (brokerErr) return bad(500, brokerErr.message)
+    if (brokerErr) {
+      console.error("[force-close-trades] broker lookup failed:", brokerErr.message)
+      return bad(500, "Force close failed")
+    }
     if (!broker) return bad(404, "Broker account not found")
     if (!String(broker.fxsocket_account_id ?? "").trim()) {
       return bad(400, "Broker has no FxSocket account linked")
@@ -97,7 +126,10 @@ Deno.serve(async (req: Request) => {
         .eq("id", channelId)
         .eq("user_id", userId)
         .maybeSingle()
-      if (chErr) return bad(500, chErr.message)
+      if (chErr) {
+        console.error("[force-close-trades] channel lookup failed:", chErr.message)
+        return bad(500, "Force close failed")
+      }
       if (!channel) return bad(404, "Channel not found")
 
       const linked = normalizeChannelIds(broker.signal_channel_ids)
@@ -115,13 +147,14 @@ Deno.serve(async (req: Request) => {
       channelId,
     })
     if (workerResult.error && workerResult.ok !== true) {
-      return bad(503, String(workerResult.error))
+      console.error("[force-close-trades] worker error (broker scope):", String(workerResult.error))
+      return bad(503, "Force close failed")
     }
 
     return Response.json(workerResult, { status: 200, headers: corsHeaders })
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     console.error("[force-close-trades]", msg)
-    return bad(500, msg)
+    return bad(500, "Force close failed")
   }
 })

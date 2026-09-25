@@ -452,6 +452,22 @@ export interface SignalHistoryPageTranslations {
   addTp: string
   removeTp: string
   closeModal: string
+  closeTrade: string
+  closeConfirmTitle: string
+  closeConfirmBody: string
+  confirmClose: string
+  cancelAction: string
+  closing: string
+  closeSuccess: string
+  closePartial: string
+  closeFailed: string
+  closeNoOpenTrades: string
+  closeNotConnected: string
+  closeRetry: string
+  closeQueuedRemoved: string
+  closeSignalGone: string
+  autoCloseIn: string
+  doneTitle: string
   colStatus: string
   /** @deprecated legacy stat labels — kept for locale bundles not yet updated */
   updatesReceivedToday: string

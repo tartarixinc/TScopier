@@ -15,7 +15,7 @@ import { getChannelParseContext } from './channelKeywordsCache'
 import { getUniversalParseMode, routeSignalParse } from './signalIntent/parseRouting'
 import { aiParseModification, aiResultToParseResult } from './aiParseModification'
 import { applySignalOverride } from './applySignalOverride'
-import { forceCloseSignalTrades } from './forceCloseSignalTrades'
+import { forceCloseSignalById, forceCloseSignalTrades } from './forceCloseSignalTrades'
 import { retryTradeActivity } from './retryActivity'
 import { retrySignal } from './retrySignal'
 import { getBrokerExecutionCapability } from './brokerExecutionMode'
@@ -733,11 +733,13 @@ export function startTradeHttpServer(
           user_id?: string
           broker_account_id?: string
           channel_id?: string | null
+          signal_id?: string | null
         }
         const userId = body.user_id?.trim()
         const brokerAccountId = body.broker_account_id?.trim()
-        if (!userId || !brokerAccountId) {
-          return sendJson(res, 400, { error: 'user_id and broker_account_id required' })
+        const signalId = body.signal_id?.trim() || null
+        if (!userId || (!brokerAccountId && !signalId)) {
+          return sendJson(res, 400, { error: 'user_id and broker_account_id (or signal_id) required' })
         }
         if (!userBelongsToShard(userId)) {
           return sendJson(res, 200, {
@@ -751,11 +753,13 @@ export function startTradeHttpServer(
           })
         }
         try {
-          const result = await forceCloseSignalTrades(tradeExecutor.supabase, {
-            userId,
-            brokerAccountId,
-            channelId: body.channel_id?.trim() || null,
-          })
+          const result = signalId
+            ? await forceCloseSignalById(tradeExecutor.supabase, { userId, signalId })
+            : await forceCloseSignalTrades(tradeExecutor.supabase, {
+                userId,
+                brokerAccountId: brokerAccountId!,
+                channelId: body.channel_id?.trim() || null,
+              })
           return sendJson(res, 200, result)
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : 'force close failed'
