@@ -232,8 +232,10 @@ export async function fetchFxsocketBrokerTrades(
     wantClosed
       ? opts.historyProfile === "trades"
         ? fx.closedHistorySource === "order_history"
-          // OrderHistory serves orders only (no balance ops) — one call, no
-          // separate 45-day-chunked cash-flow fetch over full history.
+          // One OrderHistory call serves the whole range (live-verified from
+          // 2000-01-01). Balance rows in the response are filtered as non-trade
+          // rows below — the same outcome as the PositionHistory branch's
+          // cash-flow merge, which drops them after direction reconciliation.
           ? fetchTradesListFromOrderHistory(fx, broker, {
             historyFrom: opts.historyFrom,
             historyTo: opts.historyTo,
@@ -581,8 +583,13 @@ export async function fetchTradesListFromPositionHistory(
  * ORDER_HISTORY_NOT_READY).
  *
  * One row per closed order (partial closes stay on one order via
- * partialCloseDeals). MTAPI OrderHistory serves orders only — deposits and
- * withdrawals are not orders — so no separate cash-flow fetch is needed.
+ * partialCloseDeals). Balance / deposit rows that the bridge includes in
+ * OrderHistory are filtered out as non-trade rows — the PositionHistory
+ * path's separate cash-flow fetch drops them too (profit is nulled during
+ * direction reconciliation), so neither provider lists them today.
+ *
+ * Non-executed orders (cancelled or still-placed pendings) carry a state
+ * but were never trades — they are dropped by the state guard.
  */
 export async function fetchTradesListFromOrderHistory(
   fx: MtHistorySource,
@@ -608,6 +615,11 @@ export async function fetchTradesListFromOrderHistory(
     // real closed legs belong here.
     const closeMs = trade.closed_at ? Date.parse(trade.closed_at) : NaN
     if (!Number.isFinite(closeMs) || closeMs <= 0) continue
+    // Cancelled / never-executed pending orders also appear in OrderHistory
+    // with a close time — they must not count as closed trades. Executed rows
+    // report state "Started" or "Filled" on MTAPI, so this is a blacklist.
+    const state = String(trade.state ?? "").trim()
+    if (state && /cancel|placed|pending|expired|deleted|reject/i.test(state)) continue
     if (trade.lot_size <= 0 || !trade.symbol.trim()) continue
     if (isNonTradeEntry(trade.direction, trade.type, trade.lot_size)) continue
     seen.add(trade.ticket)

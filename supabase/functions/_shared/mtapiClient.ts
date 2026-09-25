@@ -174,6 +174,11 @@ export class MtapiClient {
       platform,
       90_000,
     )
+    if (object(raw).partialResponse === true) {
+      console.warn(
+        "[mtapiClient] OrderHistory partialResponse=true — older rows may be missing (pagination not implemented)",
+      )
+    }
     return list(raw, ["orders", "Orders"], "OrderHistory")
   }
 

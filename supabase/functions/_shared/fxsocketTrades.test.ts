@@ -1,4 +1,4 @@
-import { assertEquals, assertNotEquals } from "https://deno.land/std@0.224.0/assert/mod.ts"
+import { assertEquals, assertNotEquals, assertRejects } from "https://deno.land/std@0.224.0/assert/mod.ts"
 import {
   fetchFxsocketBrokerTrades,
   fetchTradesListFromOrderHistory,
@@ -259,4 +259,68 @@ Deno.test("fetchTradesListFromOrderHistory: open orders and balance rows are ski
   })
   assertEquals(rows.length, 1)
   assertEquals(rows[0].ticket, 3276777659)
+})
+
+Deno.test("fetchTradesListFromOrderHistory: cancelled pending orders are skipped", async () => {
+  const source: MtHistorySource = {
+    openedOrders: async () => [],
+    orderHistory: async () => [
+      // Cancelled pending: real close time, size, and symbol — but never a trade.
+      {
+        ...mtapiClosedOrder,
+        ticket: 3290000099,
+        state: "Cancelled",
+        profit: 0,
+      },
+      mtapiClosedOrder,
+    ],
+    positionHistory: async () => {
+      throw new Error("not used")
+    },
+    closedHistorySource: "order_history",
+  }
+
+  const rows = await fetchTradesListFromOrderHistory(source, sessionBroker, {
+    historyFrom: tradesOpts.historyFrom,
+    historyTo: tradesOpts.historyTo,
+  })
+  assertEquals(rows.length, 1)
+  assertEquals(rows[0].ticket, 3276777659)
+})
+
+Deno.test("fetchFxsocketBrokerTrades: all rejected closed requests throw", async () => {
+  const source: MtHistorySource = {
+    openedOrders: async () => [mtapiOpenOrder],
+    orderHistory: async () => {
+      throw new Error("ORDER_HISTORY_NOT_READY")
+    },
+    positionHistory: async () => {
+      throw new Error("ORDER_HISTORY_NOT_READY")
+    },
+    closedHistorySource: "order_history",
+  }
+
+  await assertRejects(
+    () => fetchFxsocketBrokerTrades(source, sessionBroker, { ...tradesOpts, scope: "closed" }),
+    Error,
+    "ORDER_HISTORY_NOT_READY",
+  )
+})
+
+Deno.test("fetchFxsocketBrokerTrades: default source throws when history fails", async () => {
+  const source: MtHistorySource = {
+    openedOrders: async () => [],
+    orderHistory: async () => {
+      throw new Error("not used")
+    },
+    positionHistory: async () => {
+      throw new Error("ORDER_HISTORY_NOT_READY")
+    },
+  }
+
+  await assertRejects(
+    () => fetchFxsocketBrokerTrades(source, sessionBroker, { ...tradesOpts, scope: "closed" }),
+    Error,
+    "ORDER_HISTORY_NOT_READY",
+  )
 })
