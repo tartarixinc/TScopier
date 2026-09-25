@@ -7,9 +7,10 @@ import { filterLocales, LOCALES, type Locale } from '../../i18n/types'
 
 interface LanguageSwitcherProps {
   className?: string
+  compact?: boolean
 }
 
-export function LanguageSwitcher({ className }: LanguageSwitcherProps) {
+export function LanguageSwitcher({ className, compact = false }: LanguageSwitcherProps) {
   const { locale, setLocale, auth } = useLocale()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -107,9 +108,9 @@ export function LanguageSwitcher({ className }: LanguageSwitcherProps) {
         title={auth.language.label}
       >
         <LocaleFlag flagId={current.flagId} className="h-3 w-[1.125rem]" title={current.label} />
-        <span className="tabular-nums">{current.short}</span>
+        <span className={clsx('tabular-nums', compact && 'max-lg:hidden')}>{current.short}</span>
         <ChevronDown
-          className={clsx('h-3.5 w-3.5 opacity-60 transition-transform', open && 'rotate-180')}
+          className={clsx('h-3.5 w-3.5 opacity-60 transition-transform', compact && 'max-lg:hidden', open && 'rotate-180')}
           aria-hidden
         />
       </button>
@@ -117,7 +118,7 @@ export function LanguageSwitcher({ className }: LanguageSwitcherProps) {
       {open ? (
         <div
           className={clsx(
-            'absolute end-0 top-full z-50 mt-1.5 w-[17rem] overflow-hidden rounded-xl border shadow-lg',
+            'absolute end-0 top-full z-50 mt-1.5 w-[17rem] overflow-hidden rounded-xl border shadow-lg max-lg:fixed max-lg:inset-x-2 max-lg:top-[calc(env(safe-area-inset-top)+3.5rem)] max-lg:mt-0 max-lg:w-auto',
             'border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-900',
           )}
         >

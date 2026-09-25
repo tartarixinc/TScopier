@@ -160,9 +160,9 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
     })
   }, [location.pathname])
 
-  // Subscription reminder modal on dashboard handles the nudge — no forced redirect.
+  // Subscription reminder modal on dashboard handles the nudge ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â no forced redirect.
 
-  // After Stripe success, paywall may have raced to /pricing before webhook sync — send back.
+  // After Stripe success, paywall may have raced to /pricing before webhook sync ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â send back.
   useEffect(() => {
     if (!checkoutSyncPending) return
     if (location.pathname !== '/pricing') return
@@ -250,7 +250,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
               className="absolute -end-1 -top-1 text-[10px] leading-none"
               aria-hidden
             >
-              🔥
+              ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¥
             </span>
           ) : null}
         </span>
@@ -263,7 +263,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
         ) : null}
         {showFireIndicator && !opts.collapsed && !showOpenIndicator ? (
           <span className="ms-auto shrink-0 text-sm leading-none" aria-hidden>
-            🔥
+            ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¥
           </span>
         ) : null}
       </>
@@ -303,7 +303,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
                     type="button"
                     key={to}
                     title={label}
-                    aria-label={ariaExtra ? `${label} — ${ariaExtra}` : label}
+                    aria-label={ariaExtra ? `${label} ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ${ariaExtra}` : label}
                     onClick={() => {
                       openUpgrade('advanced')
                       opts.onNavigate?.()
@@ -326,7 +326,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
                   key={to}
                   to={to}
                   title={label}
-                  aria-label={ariaExtra ? `${label} — ${ariaExtra}` : label}
+                  aria-label={ariaExtra ? `${label} ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ${ariaExtra}` : label}
                   onClick={opts.onNavigate}
                   className={navLinkClass(opts.collapsed)}
                 >
@@ -362,7 +362,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
 
       <aside
         className={clsx(
-          'fixed inset-y-0 left-0 z-50 flex h-full min-h-0 flex-col overflow-hidden border-e border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900 transition-transform duration-200 ease-out rtl:left-auto rtl:right-0',
+          'fixed inset-y-0 left-0 z-50 flex h-full min-h-0 flex-col overflow-hidden border-e border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900 transition-transform duration-200 ease-out max-lg:overflow-visible rtl:left-auto rtl:right-0',
           'w-64 max-w-[85vw]',
           mobileNavOpen ? 'translate-x-0' : 'max-lg:-translate-x-full max-lg:rtl:translate-x-full',
           'lg:sticky lg:top-0 lg:z-30 lg:max-w-none lg:translate-x-0',
@@ -372,7 +372,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
         <div
           className={clsx(
             'flex h-16 shrink-0 items-center border-b border-neutral-100 dark:border-neutral-800',
-            sidebarExpanded ? 'justify-between px-4' : 'justify-center px-2',
+            sidebarExpanded ? 'justify-between px-2 lg:px-4' : 'justify-center px-2',
           )}
         >
           <Link
@@ -381,8 +381,13 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
             aria-label={t.nav.items.dashboard}
             onClick={() => setMobileNavOpen(false)}
           >
+
             <TscopierLogo className="h-6 w-auto" />
           </Link>
+          <div className="flex shrink-0 items-center gap-0.5 lg:hidden">
+            <LanguageSwitcher compact className="max-lg:[&>button]:gap-0 max-lg:[&>button]:px-2" />
+            <ThemeToggle />
+          </div>
           <div
             className={clsx(
               'hidden lg:block transition-all duration-200',
@@ -402,7 +407,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
           </div>
           <button
             type="button"
-            className="p-2 rounded-lg text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800 lg:hidden"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800 lg:hidden"
             aria-label={t.nav.closeMenu}
             onClick={() => setMobileNavOpen(false)}
           >
@@ -427,7 +432,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
         <header
           ref={setHeaderEl}
           className={clsx(
-            'z-30 flex shrink-0 touch-none items-center gap-2 border-b border-neutral-100 bg-white px-3 dark:border-neutral-800 dark:bg-neutral-900 sm:gap-4 sm:px-6',
+            'z-30 flex shrink-0 touch-none items-center gap-1 border-b border-neutral-100 bg-white px-1.5 dark:border-neutral-800 dark:bg-neutral-900 sm:gap-4 sm:px-6',
             'fixed inset-x-0 top-[var(--app-banner-h,0px)] h-[calc(3.5rem+env(safe-area-inset-top,0px))] pt-[env(safe-area-inset-top,0px)] sm:h-[calc(4rem+env(safe-area-inset-top,0px))]',
             'lg:static lg:z-20 lg:h-16 lg:min-h-0 lg:pt-0 lg:touch-auto',
           )}
@@ -435,7 +440,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
           <button
             type="button"
             onClick={() => setMobileNavOpen(true)}
-            className="p-2 rounded-lg text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800 transition-colors lg:hidden"
+            className="shrink-0 p-1.5 rounded-lg text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800 transition-colors sm:p-2 lg:hidden"
             aria-label={t.nav.openMenu}
           >
             <Menu className="w-5 h-5" />
@@ -454,7 +459,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
 
           <div className="flex-1 min-w-0 lg:hidden" />
 
-          <div className="relative z-40 flex shrink-0 items-center gap-1 sm:gap-2 lg:ms-auto">
+          <div className="relative z-40 flex shrink-0 items-center gap-0 sm:gap-2 lg:ms-auto">
             {hasActiveSubscription && effectivePlan === 'basic' ? (
               <button
                 type="button"
@@ -471,7 +476,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
               aria-label={t.nav.assistant.ariaLabel}
               title={t.nav.assistant.title}
               className={clsx(
-                'inline-flex h-10 w-10 items-center justify-center rounded-lg text-teal-700 transition-colors',
+                'inline-flex h-9 w-9 items-center justify-center rounded-lg text-teal-700 transition-colors sm:h-10 sm:w-10',
                 'hover:bg-teal-50 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 focus:ring-offset-white',
                 'dark:text-teal-300 dark:hover:bg-teal-950/50 dark:focus:ring-offset-neutral-900',
               )}
@@ -479,8 +484,8 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
               <Sparkles className="h-5 w-5" aria-hidden />
             </button>
             <AppSearchMobileTrigger />
-            <LanguageSwitcher />
-            <ThemeToggle />
+            <LanguageSwitcher className="hidden lg:block" />
+            <ThemeToggle className="hidden lg:block" />
             <NotificationBell
               open={notificationsOpen}
               onOpen={() => {
@@ -492,7 +497,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
 
             <div
               ref={userMenuRef}
-              className="relative"
+              className="relative shrink-0"
               onMouseEnter={openUserMenu}
               onMouseLeave={scheduleCloseUserMenu}
             >
@@ -508,7 +513,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
                 aria-expanded={userMenuOpen}
                 aria-label={t.nav.userMenu.menuLabel}
                 className={clsx(
-                  'flex items-center gap-2 rounded-lg ps-1 pe-2 min-h-[44px] transition-colors',
+                  'flex min-h-10 items-center gap-2 rounded-lg ps-1 pe-1.5 transition-colors sm:min-h-[44px] sm:pe-2',
                   userMenuOpen
                     ? 'bg-neutral-100 dark:bg-neutral-800'
                     : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/60',

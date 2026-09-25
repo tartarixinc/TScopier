@@ -184,6 +184,11 @@ export const channelWorkerEs: ChannelWorkerTranslations = {
       'el mensaje no incluía una frase de entrada (p. ej. buy now, gold sell now) ni SL/TP etiquetados',
     entry_tp_without_sl: 'SL no indicado — use pips de SL predefinidos en la configuración del bróker',
     signal_missing_required_sl: 'SL no indicado — use pips de SL predefinidos en la configuración del bróker',
+    delete_pendings_no_parent:
+      'no se pudo encontrar la operación original a la que hace referencia esta respuesta — responda al mensaje de la señal original para cancelar sus órdenes pendientes',
+    delete_pendings_requires_reply:
+      'las instrucciones de cancelación deben enviarse como respuesta al mensaje de la señal original',
+    delete_pendings_none: 'no se encontraron órdenes pendientes para cancelar en esta operación',
   },
   dispatchSkipped: 'No se copió la señal ({reason}).',
   rangeRebalanceSkippedNamed: 'Se omitió el rebalanceo de take profit de {symbol} ({reason})',

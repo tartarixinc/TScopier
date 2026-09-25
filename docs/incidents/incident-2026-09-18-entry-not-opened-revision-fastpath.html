@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4; margin: 22mm 20mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Helvetica Neue", Arial, sans-serif; color: #1e293b; font-size: 10.5px; line-height: 1.5; margin: 0; }
+  h1 { font-size: 19px; margin: 0 0 2px 0; color: #0f172a; }
+  .subtitle { color: #64748b; font-size: 11px; margin-bottom: 12px; }
+  h2 { font-size: 12.5px; margin: 16px 0 6px 0; padding-bottom: 3px; border-bottom: 2px solid #2563eb; color: #0f172a; }
+  table { border-collapse: collapse; width: 100%; }
+  code { font-family: Menlo, Consolas, monospace; background: #f1f5f9; padding: 1px 4px; border-radius: 3px; font-size: 9.5px; }
+  .meta { width: 100%; margin-bottom: 6px; }
+  .meta td { padding: 4px 8px; vertical-align: top; border: 1px solid #e2e8f0; }
+  .meta .k { color: #64748b; font-weight: bold; width: 90px; text-transform: uppercase; font-size: 8.5px; letter-spacing: 0.5px; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-weight: bold; font-size: 9.5px; }
+  .pill.green { background: #dcfce7; color: #15803d; }
+  .pill.red { background: #fee2e2; color: #b91c1c; }
+  .pill.amber { background: #fef3c7; color: #b45309; }
+  .box { border-left: 4px solid #2563eb; background: #eff6ff; padding: 8px 12px; margin: 8px 0; border-radius: 0 4px 4px 0; }
+  .box.green { border-left-color: #16a34a; background: #f0fdf4; }
+  .box.amber { border-left-color: #d97706; background: #fffbeb; }
+  ol, ul { margin: 4px 0 8px 18px; padding: 0; }
+  li { margin-bottom: 4px; }
+  .tbl { margin-top: 4px; }
+  .tbl th { background: #f1f5f9; text-align: left; padding: 4px 8px; border: 1px solid #e2e8f0; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.4px; color: #475569; }
+  .tbl td { padding: 4px 8px; border: 1px solid #e2e8f0; vertical-align: top; }
+  .ts { font-family: Menlo, Consolas, monospace; font-size: 9px; color: #475569; white-space: nowrap; }
+  .note { color: #64748b; font-size: 9.5px; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<h1>Signal failed with &ldquo;no position opened&rdquo; &mdash; edited message bypassed the AI</h1>
+<div class="subtitle">Incident report &middot; TScopier Telegram edit/revision path &middot; 2026-09-18</div>
+
+<table class="meta">
+  <tr>
+    <td class="k">Severity</td><td><span style="color:#b45309;font-weight:bold;">Medium</span></td>
+    <td class="k">Status</td><td><span class="pill amber">Fix written &mdash; not deployed</span></td>
+  </tr>
+  <tr>
+    <td class="k">Dates</td><td>Signal 2026-09-18 16:05 UTC; edit 16:06 UTC; diagnosed 2026-09-19</td>
+    <td class="k">Affected</td><td>1 user &mdash; <code>k.eloifabien@gmail.com</code> (<code>ce0fc42d-&hellip;bd6be</code>)</td>
+  </tr>
+  <tr>
+    <td class="k">Component</td><td><code>userListener.ts</code>, <code>signalRevision.ts</code>, <code>parseSignal.ts</code></td>
+    <td class="k">Root cause</td><td>Edit path accepted a buy/sell with SL/TP but no entry anchor, so the AI was never consulted</td>
+  </tr>
+</table>
+
+<h2>1. Executive summary (plain English)</h2>
+<div class="box green">
+<p>A signal provider posted a gold buy setup, then <strong>edited</strong> the message a minute later to add the full details &mdash; entry zone, take profits, and stop loss. The copier handles an edited message differently from a brand-new one. On an edit, it first tries to understand the message with its built-in rules, and only asks the AI if those rules fail.</p>
+<p>The built-in rules accepted the edited message because it had a stop loss and take profits and the same direction as before. Those rules never check whether an entry price is present. The rules also do not recognise the format &ldquo;ENTRY ZONE: 4358&rdquo; when only a single price is given &mdash; they only understand a range like &ldquo;4358-4360&rdquo;.</p>
+<p>So the copier accepted the signal without an entry price, never asked the AI for help, and could not open the trade. The user saw &ldquo;No position opened&rdquo;. No money was at risk.</p>
+</div>
+
+<h2>2. Issue encountered</h2>
+<ul>
+  <li>At <span class="ts">2026-09-18 16:05:29 UTC</span>, Telegram message <code>89381</code> arrived and signal <code>4e530999</code> was created.</li>
+  <li>At <span class="ts">2026-09-18 16:06:20 UTC</span>, the provider <strong>edited</strong> the message to the full setup:
+    <br><code>🟢 BUY: XAU/USD &nbsp; 📍 ENTRY ZONE: 4358 &nbsp; 🎯 TP1: 4368 / TP2: 4378 / TP3: 4388 &nbsp; 🛑 SL: 4348</code></li>
+  <li>The listener logged <code>source=live_edit</code> and dispatched the revision.</li>
+  <li>The stored parse had <code>entry_price: null</code>, <code>entry_zone_low: null</code>, <code>entry_zone_high: null</code>, with <code>sl: 4348</code> and <code>tp: [4368, 4378, 4388]</code>.</li>
+  <li>Dispatch failed with <code>entry_not_opened</code> &mdash; there was no entry price to send to the broker.</li>
+  <li>The admin dashboard showed &ldquo;OSS context interpretation &mdash; Not reached (fast lane / AI disabled)&rdquo;.</li>
+</ul>
+
+<h2>3. Affected user(s)</h2>
+<table class="tbl">
+  <tr><th>User (email)</th><th>Supabase id</th><th>Channel</th><th>Signal</th><th>Trades</th></tr>
+  <tr>
+    <td>k.eloifabien@gmail.com</td>
+    <td><code>ce0fc42d-&hellip;bd6be</code></td>
+    <td>Lorax Layer VIP</td>
+    <td><code>4e530999</code></td>
+    <td>0 on this channel; 2 open sells elsewhere</td>
+  </tr>
+</table>
+<p class="note">No trades were placed for this signal. No money was at risk.</p>
+
+<h2>4. Root cause</h2>
+<div class="box amber">
+<ol>
+  <li><strong>Edits take a different code path than new messages.</strong> <code>tryApplyMessageRevisionInner</code> (<code>userListener.ts:1983</code>) handles Telegram edits. It first calls <code>tryDeterministicRevisionCompletion</code> (<code>userListener.ts:2306</code>) and only calls the AI if that returns <code>null</code> (<code>userListener.ts:2056</code>).</li>
+  <li><strong>The revision fast-path does not require an entry anchor.</strong> <code>revisionHasDeterministicActionableParse</code> (<code>signalRevision.ts:238</code>) accepts a revised parse when the action is <code>buy</code>/<code>sell</code>, it carries explicit stops or targets, and the prior action is <code>null</code> or the same direction (<code>signalRevision.ts:258-266</code>). It never checks for <code>entry_price</code> / <code>entry_zone_low</code> / <code>entry_zone_high</code>.</li>
+  <li><strong>The parser does not read <code>ENTRY ZONE: &lt;single price&gt;</code>.</strong> <code>extractOptionalEntryAnchor</code> (<code>parseSignal.ts</code>, single-price block at line 1108) understands <code>entry price:</code>, <code>entry:</code>, <code>entry level:</code>, <code>@price</code>, <code>buy at price</code>, and two-price ranges &mdash; but not a single price after the words &ldquo;ENTRY ZONE&rdquo;.</li>
+  <li><strong>Result:</strong> a buy signal with SL/TP but no entry was accepted, the AI was never consulted, and dispatch failed with <code>entry_not_opened</code>.</li>
+</ol>
+</div>
+
+<h2>5. Why this is surprising</h2>
+<div class="box">
+<p>The AI normally <em>would</em> have caught this. Over the last 7 days, <strong>8,840 of 9,081</strong> signals carried a verification chain:</p>
+<table class="tbl">
+  <tr><th>Path</th><th>Count</th></tr>
+  <tr><td><code>fast_lane</code></td><td>2,526</td></tr>
+  <tr><td><code>stage2_veto</code></td><td>2,600</td></tr>
+  <tr><td><code>stage3</code></td><td>2,094</td></tr>
+  <tr><td><code>stage2</code></td><td>1,124</td></tr>
+</table>
+<p class="note">With <code>UNIVERSAL_PARSE_MODE=fastpath</code> and <code>UNIVERSAL_PARSE_FASTPATH_CONFIDENCE=0.99</code>, a 0.93-confidence signal would normally be sent to the AI. The <strong>edit path</strong> is the exception &mdash; it does not apply the confidence threshold and decides purely on the parsed shape.</p>
+</div>
+
+<h2>6. The fix (applied)</h2>
+<ul>
+  <li><strong>A. Parser gap.</strong> <code>parseSignal.ts</code> &mdash; added a single-price <code>entry\s*zone\s*[:=]?\s*&lt;price&gt;</code> pattern with a negative lookahead so a range (<code>ENTRY ZONE: 4358 / 4360</code>) is still read as a zone. Also added <code>zone|area</code> and <code>/</code> to the <code>entrySlashZone</code> range pattern.</li>
+  <li><strong>B. Revision fast-path.</strong> <code>signalRevision.ts</code> &mdash; both revision helpers now return <code>false</code> when the message <strong>labels an entry</strong> (helper <code>messageLabelsEntryAnchor</code>) but the parse has no anchor. A genuine market entry (&ldquo;Gold buy now&rdquo;, no entry label) is still accepted deterministically.</li>
+  <li><strong>C. Fast-lane guard.</strong> <code>universalSignalParser.ts</code> &mdash; <code>deterministicQualifiesForFastPath</code> now also returns <code>false</code> for a buy/sell when the message labels an entry the parser missed. The shared helper <code>parsedMissesLabeledEntry</code> backs both B and C.</li>
+  <li><strong>D. Phantom entry from numbered TP/SL <code>@</code> separators.</strong> <code>parseSignal.ts</code> &mdash; <code>parseAtPriceExcludingSlTp</code> did not exclude numbered SL/TP labels, so <code>TP1 @ 4256</code> (and <code>TP 1 @</code>, <code>TP(1) @</code>, <code>TP1: @</code>, <code>Take Profit 1 @</code>) was read as the entry price, which could turn a &ldquo;SELL NOW&rdquo; market signal into a limit order at the take-profit price. The exclusion now covers numbered labels with optional separators, mirrored in the guard. The word <code>target</code> is deliberately <strong>not</strong> in the exclusion list, so an entry written as <code>Entry Target @4235</code> is still read as the entry (a first attempt added <code>target</code> and broke that case).</li>
+</ul>
+<div class="box amber">
+<p><strong>Rejected approach:</strong> the first attempt required an entry anchor on the revised parse. Review found this broke the legitimate market-entry completion (&ldquo;Gold buy now&rdquo; edited to add SL/TP has no anchor by design), and <code>evaluateParsedSignalExecutionEligibility</code> would not have caught the incident either (it returns <code>eligible: true</code> for labeled stops with a zero entry price). The label-gap check avoids both.</p>
+</div>
+
+<h2>7. Files changed</h2>
+<ul>
+  <li><code>worker/src/parseSignal.ts</code> &mdash; Fix A (single-price <code>entry zone</code> with range lookahead) and Fix D (numbered SL/TP <code>@</code> exclusion).</li>
+  <li><code>worker/src/signalRevision.ts</code> &mdash; Fix B: <code>revisedMissesLabeledEntry</code> guard on both revision helpers.</li>
+  <li><code>worker/src/signalEntryNowRequirement.ts</code> &mdash; new exported <code>messageLabelsEntryAnchor</code> and <code>parsedMissesLabeledEntry</code> helpers.</li>
+  <li><code>worker/src/signalIntent/universalSignalParser.ts</code> &mdash; Fix C: fast-lane guard.</li>
+  <li><code>worker/src/parseSignal.test.ts</code>, <code>signalRevision.test.ts</code>, <code>signalEntryNowRequirement.test.ts</code>, <code>signalIntent/parseRouting.test.ts</code> &mdash; regression tests.</li>
+</ul>
+
+<h2>8. Verification</h2>
+<ul>
+  <li>Confirmed against production DB: signal <code>4e530999</code> has <code>entry_price</code>/<code>entry_zone_low</code>/<code>entry_zone_high</code> all <code>null</code>, <code>sl: 4348</code>, <code>tp: [4368,4378,4388]</code>, <code>confidence: 0.93</code>, <code>skip_reason: entry_not_opened</code>, and no <code>_verification</code> chain.</li>
+  <li>Confirmed in Railway listener logs (deployment <code>59949940</code>, production): <code>message revision dispatch &hellip; signalId=4e530999 &hellip; source=live_edit</code>.</li>
+  <li>Confirmed production runs the AI on most signals: 8,840/9,081 signals in the last 7 days have a verification chain.</li>
+  <li>After Fix A: the exact message parses <code>entry_price: 4358</code>; <code>ENTRY ZONE: 4358 / 4360</code> parses as zone 4358&ndash;4360.</li>
+  <li>After Fix B/C: a labeled entry the parser missed returns <code>false</code> (AI consulted); market entries and incidental prose remain deterministic/fast-laned.</li>
+  <li>After Fix D: <code>TP1 @</code>, <code>TP 1 @</code>, <code>TP(1) @</code>, <code>TP1: @</code>, <code>TP#1 @</code>, <code>Take Profit 1 @</code> no longer set <code>entry_price</code>; <code>BUY XAUUSD @ 4358</code> still parses.</li>
+  <li>Review regression (<code>signalsProEditFlow.test.ts:42</code>) found on the first attempt was fixed; the test now passes.</li>
+  <li><code>npm --prefix worker run build</code> (tsc) passes clean; 260 tests pass across all affected test files, 0 failures.</li>
+</ul>
+
+<h2>9. Post-implementation review</h2>
+<div class="box">
+<p>Two review subagents were run per project policy.</p>
+<ul>
+  <li><strong>code-tester: PASS.</strong> Typecheck clean; all targeted suites green.</li>
+  <li><strong>code-review: several passes.</strong> Fix B&rsquo;s first attempt (require an entry anchor) was rejected as CRITICAL &mdash; it broke the legitimate market-entry completion. The reworked label-gap guard then drew a HIGH false positive (<code>buy|sell at</code> matched &ldquo;SELL AT MARKET&rdquo;), then two MEDIUM items (<code>price[:=]</code> matching &ldquo;TP price:&rdquo;/&ldquo;Target price:&rdquo;, and the <code>modify</code> branch running before the guard). Fix C and the label additions then drew a HIGH (<code>\bfrom\s+\d</code> matching prose) plus MEDIUMs (<code>area</code>, bare <code>entry</code>, the <code>@</code> SL/TP separator, and numbered <code>TP1</code>/<code>TP 1</code> forms). All were fixed and re-verified; the final pass returned PASS_WITH_NOTES with only LOW/INFO items.</li>
+  <li>One confirmation pass could not run &mdash; the review subagent returned &ldquo;Insufficient Balance&rdquo;; that intermediate diff was reviewed manually.</li>
+</ul>
+</div>
+
+<h2>10. Deployment status</h2>
+<div class="box">
+<p><strong>Fix written, reviewed, and tested locally. Not committed and not deployed.</strong></p>
+</div>
+
+<h2>11. Follow-ups</h2>
+<ul>
+  <li>Commit and deploy to staging, then prod.</li>
+  <li>Consider whether the revision path should also respect a confidence threshold, or always consult the AI when the revised parse lacks an entry anchor.</li>
+  <li>The guard is a regex allow-list; a label neither the parser nor the guard recognises can still skip the AI on an edit. Known residual examples: <code>BUY ZONE 4358</code>, <code>buy area 4358</code>. An inherent limitation to revisit if another such incident appears.</li>
+  <li>LOW: <code>parseSlFromText</code> reads the ordinal in <code>SL2 @ 4276</code> as the stop price (pre-existing, untouched by this fix).</li>
+  <li>LOW: prose ending in &ldquo;entry &lt;n&gt;&rdquo; (e.g. &ldquo;wait for a good entry 2 hours ago&rdquo;) is treated as an entry label; the effect is only an unnecessary AI call (fail-safe), not a wrong trade.</li>
+</ul>
+
+</body>
+</html>
