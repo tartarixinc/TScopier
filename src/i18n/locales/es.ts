@@ -941,7 +941,7 @@ export const es: Translations = {
     colLots: 'Lotes',
     colPnl: 'PnL',
     colTime: 'Fecha y hora',
-    colCurrent: 'Actual',
+    colCurrent: 'Precio en vivo',
     instructionAction: 'Acción',
     instructionSymbol: 'Símbolo',
     instructionEntry: 'Entrada',

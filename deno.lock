@@ -3,7 +3,8 @@
   "specifiers": {
     "jsr:@std/assert@*": "1.0.19",
     "jsr:@std/assert@1": "1.0.19",
-    "jsr:@std/internal@^1.0.12": "1.0.13"
+    "jsr:@std/internal@^1.0.12": "1.0.13",
+    "jsr:@supabase/functions-js@*": "2.112.3"
   },
   "jsr": {
     "@std/assert@1.0.19": {
@@ -14,6 +15,9 @@
     },
     "@std/internal@1.0.13": {
       "integrity": "2f9546691d4ac2d32859c82dff284aaeac980ddeca38430d07941e7e288725c0"
+    },
+    "@supabase/functions-js@2.112.3": {
+      "integrity": "a61957d4fdadccbe858523bf1396c047a30927b3c0eceb1dab049266640286f3"
     }
   },
   "remote": {

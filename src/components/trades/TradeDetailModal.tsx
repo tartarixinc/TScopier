@@ -324,7 +324,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
                 <div className="col-span-2">
                   <dt className="text-neutral-400 uppercase tracking-wide">{tr.colCurrent}</dt>
                   <dd className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
-                    <span className="text-neutral-700 dark:text-neutral-300 tabular-nums font-medium">
+                    <span className="text-neutral-700 dark:text-neutral-300 tabular-nums font-semibold">
                       {liveQuote.price != null
                         ? formatTradePrice(liveQuote.price)
                         : liveQuote.loading

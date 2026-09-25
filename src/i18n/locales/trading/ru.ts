@@ -35,7 +35,7 @@ export const tradingRu: TradingPagesBundleTranslations = {
     colLots: 'Лоты',
     colPnl: 'PnL',
     colTime: 'Дата и время',
-    colCurrent: 'Текущая',
+    colCurrent: 'Актуальная цена',
     instructionAction: 'Действие',
     instructionSymbol: 'Символ',
     instructionEntry: 'Вход',
