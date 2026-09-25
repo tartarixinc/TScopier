@@ -35,6 +35,13 @@ export interface MtHistorySource {
     to: string,
     platform?: string | null,
   ): Promise<unknown[]>
+  /**
+   * Endpoint that serves closed trade rows. Defaults to PositionHistory
+   * (round trips). MTAPI sets `order_history`: its bridge sessions are
+   * connected without `downloadOrderHistory`, so HistoryPositions fails with
+   * ORDER_HISTORY_NOT_READY, while OrderHistory returns the same closed legs.
+   */
+  readonly closedHistorySource?: "position_history" | "order_history"
 }
 
 export interface FxsocketBrokerTradeRow {
@@ -224,23 +231,30 @@ export async function fetchFxsocketBrokerTrades(
     wantOpen ? fx.openedOrders(sessionId, platform) : Promise.resolve([] as unknown[]),
     wantClosed
       ? opts.historyProfile === "trades"
-        ? fetchTradesListFromPositionHistory(fx, broker, {
-          historyFrom: opts.historyFrom,
-          historyTo: opts.historyTo,
-        }).then(async (positions) => {
-          if (!includeBalanceCashFlow) return positions
-          const cashFlows = await fetchBalanceCashFlowFromOrderHistory(fx, broker, {
+        ? fx.closedHistorySource === "order_history"
+          // OrderHistory serves orders only (no balance ops) — one call, no
+          // separate 45-day-chunked cash-flow fetch over full history.
+          ? fetchTradesListFromOrderHistory(fx, broker, {
             historyFrom: opts.historyFrom,
             historyTo: opts.historyTo,
-            historyProfile: opts.historyProfile,
           })
-          const tickets = new Set(positions.map(row => row.ticket))
-          const merged = [...positions]
-          for (const row of cashFlows) {
-            if (!tickets.has(row.ticket)) merged.push(row)
-          }
-          return merged
-        })
+          : fetchTradesListFromPositionHistory(fx, broker, {
+            historyFrom: opts.historyFrom,
+            historyTo: opts.historyTo,
+          }).then(async (positions) => {
+            if (!includeBalanceCashFlow) return positions
+            const cashFlows = await fetchBalanceCashFlowFromOrderHistory(fx, broker, {
+              historyFrom: opts.historyFrom,
+              historyTo: opts.historyTo,
+              historyProfile: opts.historyProfile,
+            })
+            const tickets = new Set(positions.map(row => row.ticket))
+            const merged = [...positions]
+            for (const row of cashFlows) {
+              if (!tickets.has(row.ticket)) merged.push(row)
+            }
+            return merged
+          })
         : fetchClosedHistoryForBaseline(fx, broker, {
           historyFrom: opts.historyFrom,
           historyTo: opts.historyTo,
@@ -555,6 +569,49 @@ export async function fetchTradesListFromPositionHistory(
       seen.add(trade.ticket)
       out.push(trade)
     }
+  }
+
+  return out.sort((a, b) => rowCloseMs(b) - rowCloseMs(a))
+}
+
+/**
+ * Trades page closed legs from OrderHistory — for sources whose
+ * PositionHistory is unavailable (MTAPI bridge sessions are connected
+ * without `downloadOrderHistory`, so HistoryPositions returns
+ * ORDER_HISTORY_NOT_READY).
+ *
+ * One row per closed order (partial closes stay on one order via
+ * partialCloseDeals). MTAPI OrderHistory serves orders only — deposits and
+ * withdrawals are not orders — so no separate cash-flow fetch is needed.
+ */
+export async function fetchTradesListFromOrderHistory(
+  fx: MtHistorySource,
+  broker: BrokerRow & { fxsocket_account_id: string },
+  opts: {
+    historyFrom: string
+    historyTo: string
+  },
+): Promise<FxsocketBrokerTradeRow[]> {
+  const sessionId = String(broker.fxsocket_account_id ?? "").trim()
+  if (!sessionId) return []
+  const platform = brokerApiPlatform(broker)
+
+  const rows = await fx.orderHistory(sessionId, opts.historyFrom, opts.historyTo, platform)
+
+  const seen = new Set<number>()
+  const out: FxsocketBrokerTradeRow[] = []
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue
+    const trade = normalizeOrder(row as RawOrder, broker, "closed", "trades")
+    if (trade.ticket <= 0 || seen.has(trade.ticket)) continue
+    // History feeds echo open orders with a zero/epoch close time — only
+    // real closed legs belong here.
+    const closeMs = trade.closed_at ? Date.parse(trade.closed_at) : NaN
+    if (!Number.isFinite(closeMs) || closeMs <= 0) continue
+    if (trade.lot_size <= 0 || !trade.symbol.trim()) continue
+    if (isNonTradeEntry(trade.direction, trade.type, trade.lot_size)) continue
+    seen.add(trade.ticket)
+    out.push(trade)
   }
 
   return out.sort((a, b) => rowCloseMs(b) - rowCloseMs(a))

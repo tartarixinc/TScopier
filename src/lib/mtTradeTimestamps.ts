@@ -255,7 +255,9 @@ export async function hydrateMtTradesTimesFromBrokers(
         needsHistory
           ? fxsocketBroker.orderHistory({ accountId: brokerId, from, to, provider })
           : Promise.resolve([]),
-        needsHistory
+        // MTAPI bridge sessions are connected without downloadOrderHistory, so
+        // HistoryPositions always fails with ORDER_HISTORY_NOT_READY — skip it.
+        needsHistory && provider !== 'mtapi'
           ? fxsocketBroker.positionHistory({ accountId: brokerId, from, to, provider })
           : Promise.resolve([]),
         needsOpened ? fxsocketBroker.openedOrders(brokerId, provider) : Promise.resolve([]),

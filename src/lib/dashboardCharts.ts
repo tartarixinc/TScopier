@@ -1,6 +1,6 @@
 import type { BrokerAccount } from '../types/database'
 import { inferBrokerLabelFromServer } from './brokerFromServer'
-import { isFxsocketLinkedBroker } from './brokerLink'
+import { hasLinkedBrokerForUi } from './brokerLink'
 import { coerceMtTimestamp, parseMtHistoryTimestamp, isMtTimestampInRange } from './mtApiDateTime'
 import type { MtTrade } from './fxsocketBroker'
 import { getLocalCalendarDayBounds, isTradeableClosedRow } from './dashboardTradeStats'
@@ -430,7 +430,7 @@ export function buildAccountGrowthSeries(
 
   const dayKeys = new Set(buckets.map(b => b.key))
   const dailyByAccount = dailyNetPnlByAccount(trades, dayKeys)
-  const active = accounts.filter(isFxsocketLinkedBroker)
+  const active = accounts.filter(hasLinkedBrokerForUi)
 
   type AccState = {
     id: string

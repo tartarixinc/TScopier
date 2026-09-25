@@ -76,6 +76,13 @@ export interface MtapiClientOptions {
  * (session id + optional platform), so one trades pipeline serves both providers.
  */
 export class MtapiClient {
+  /**
+   * Closed trade rows are served from OrderHistory: bridge sessions are
+   * connected without `downloadOrderHistory`, so HistoryPositions fails with
+   * ORDER_HISTORY_NOT_READY. See MtHistorySource.closedHistorySource.
+   */
+  readonly closedHistorySource = "order_history" as const
+
   private readonly env: Deno.Env
   private readonly fetchImpl: typeof fetch
   private readonly timeoutMs: number

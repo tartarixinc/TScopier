@@ -297,6 +297,38 @@ function numFromRawFields(order: RawMtOrder, ...keys: string[]): number | null {
   return null
 }
 
+/**
+ * First *positive* value across the keys (top-level only).
+ *
+ * Lot resolution must skip keys that are present but 0: an open MTAPI order
+ * carries `closeLots: 0` / `closeVolume: 0` next to `lots: 0.01`, and a
+ * first-present read would shadow the real size with 0 (trades showing 0.00).
+ */
+function firstPositiveRawField(order: RawMtOrder, ...keys: string[]): number | null {
+  for (const k of keys) {
+    const v = order[k]
+    if (v === null || v === undefined || v === "") continue
+    const n = Number(v)
+    if (Number.isFinite(n) && n > 0) return n
+  }
+  return null
+}
+
+/** Same as firstPositiveRawField but reads through pickMtField (flattened + nested). */
+function firstPositiveMtField(
+  order: RawMtOrder,
+  profile: MtHistoryProfile,
+  ...keys: string[]
+): number | null {
+  for (const k of keys) {
+    const v = pickMtField(order, profile, k)
+    if (v === null || v === undefined || v === "") continue
+    const n = Number(v)
+    if (Number.isFinite(n) && n > 0) return n
+  }
+  return null
+}
+
 function mtVolumeToLots(vol: number): number {
   if (vol <= 0) return 0
   if (vol >= 1_000_000) return vol / 100_000_000
@@ -306,37 +338,35 @@ function mtVolumeToLots(vol: number): number {
 
 /** Convert MT volume / lots fields to standard lots (0.01 = 0.01 lot). */
 export function resolveMtLots(order: RawMtOrder, profile: MtHistoryProfile): number {
-  if (profile === "trades") {
-    const rawLots = numFromRawFields(
-      order,
-      "closeLots", "CloseLots", "lots", "Lots", "lot", "Lot",
-      "volumeLots", "VolumeLots", "volume_lots", "requestLots", "RequestLots",
-    )
-    if (rawLots != null && rawLots > 0) return rawLots
-
-    const rawVol = numFromRawFields(
-      order,
-      "volumeClosed", "VolumeClosed", "closeVolume", "CloseVolume",
-      "volume", "Volume", "dealVolume", "DealVolume",
-      "requestVolume", "RequestVolume", "volumeExt", "VolumeExt",
-    )
-    if (rawVol != null && rawVol > 0) return mtVolumeToLots(rawVol)
-  }
-
-  const keys = profile === "trades"
+  const lotKeys = profile === "trades"
     ? [
       "closeLots", "CloseLots", "lots", "Lots", "lot", "Lot",
       "volumeLots", "VolumeLots", "volume_lots", "requestLots", "RequestLots",
     ]
     : ["lots", "Lots", "lot", "Lot", "volumeLots", "VolumeLots", "volume_lots"]
 
-  const direct = numMtField(order, profile, ...keys)
-  if (direct != null && direct > 0) return direct
+  if (profile === "trades") {
+    // Skip present-but-zero keys (e.g. closeLots: 0 on an open order) so an
+    // earlier key can never shadow a later positive one with 0.
+    const rawLots = firstPositiveRawField(order, ...lotKeys)
+    if (rawLots != null) return rawLots
 
-  const volExt = numMtField(order, profile, "volumeExt", "VolumeExt")
-  if (volExt != null && volExt > 0) return mtVolumeToLots(volExt)
+    const rawVol = firstPositiveRawField(
+      order,
+      "volumeClosed", "VolumeClosed", "closeVolume", "CloseVolume",
+      "volume", "Volume", "dealVolume", "DealVolume",
+      "requestVolume", "RequestVolume", "volumeExt", "VolumeExt",
+    )
+    if (rawVol != null) return mtVolumeToLots(rawVol)
+  }
 
-  const vol = numMtField(
+  const direct = firstPositiveMtField(order, profile, ...lotKeys)
+  if (direct != null) return direct
+
+  const volExt = firstPositiveMtField(order, profile, "volumeExt", "VolumeExt")
+  if (volExt != null) return mtVolumeToLots(volExt)
+
+  const vol = firstPositiveMtField(
     order,
     profile,
     "volumeClosed",
@@ -350,7 +380,7 @@ export function resolveMtLots(order: RawMtOrder, profile: MtHistoryProfile): num
     "dealVolume",
     "DealVolume",
   )
-  if (vol == null || vol <= 0) return 0
+  if (vol == null) return 0
   return mtVolumeToLots(vol)
 }
 
