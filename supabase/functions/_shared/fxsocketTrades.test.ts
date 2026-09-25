@@ -272,6 +272,8 @@ Deno.test("fetchTradesListFromOrderHistory: cancelled pending orders are skipped
         state: "Cancelled",
         profit: 0,
       },
+      // The other documented executed state must be kept.
+      { ...mtapiClosedOrder, ticket: 3290000100, state: "Started" },
       mtapiClosedOrder,
     ],
     positionHistory: async () => {
@@ -284,8 +286,8 @@ Deno.test("fetchTradesListFromOrderHistory: cancelled pending orders are skipped
     historyFrom: tradesOpts.historyFrom,
     historyTo: tradesOpts.historyTo,
   })
-  assertEquals(rows.length, 1)
-  assertEquals(rows[0].ticket, 3276777659)
+  assertEquals(rows.length, 2)
+  assertEquals(rows.map(r => r.ticket).sort((a, b) => a - b), [3276777659, 3290000100])
 })
 
 Deno.test("fetchFxsocketBrokerTrades: all rejected closed requests throw", async () => {

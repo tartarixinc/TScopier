@@ -233,9 +233,10 @@ export async function fetchFxsocketBrokerTrades(
       ? opts.historyProfile === "trades"
         ? fx.closedHistorySource === "order_history"
           // One OrderHistory call serves the whole range (live-verified from
-          // 2000-01-01). Balance rows in the response are filtered as non-trade
-          // rows below — the same outcome as the PositionHistory branch's
-          // cash-flow merge, which drops them after direction reconciliation.
+          // 2000-01-01). Balance rows are dropped by the lot/symbol guards
+          // below; the PositionHistory branch's cash-flow merge drops them
+          // too (type label lost in reconciliation → profit nulled → not a
+          // cash-flow row).
           ? fetchTradesListFromOrderHistory(fx, broker, {
             historyFrom: opts.historyFrom,
             historyTo: opts.historyTo,
@@ -583,13 +584,16 @@ export async function fetchTradesListFromPositionHistory(
  * ORDER_HISTORY_NOT_READY).
  *
  * One row per closed order (partial closes stay on one order via
- * partialCloseDeals). Balance / deposit rows that the bridge includes in
- * OrderHistory are filtered out as non-trade rows — the PositionHistory
- * path's separate cash-flow fetch drops them too (profit is nulled during
- * direction reconciliation), so neither provider lists them today.
+ * partialCloseDeals). Balance / deposit rows the bridge includes in
+ * OrderHistory are dropped structurally here (lot/symbol guards); on the
+ * PositionHistory side they lose their type label in direction
+ * reconciliation, so `normalizeOrder` nulls their profit and
+ * `isBalanceCashFlowTrade` returns false — neither provider lists them.
  *
  * Non-executed orders (cancelled or still-placed pendings) carry a state
- * but were never trades — they are dropped by the state guard.
+ * but were never trades — they are dropped by the state guard, and any
+ * skip is logged once per response so state-vocabulary drift (e.g. MT4)
+ * stays visible.
  */
 export async function fetchTradesListFromOrderHistory(
   fx: MtHistorySource,
@@ -607,6 +611,7 @@ export async function fetchTradesListFromOrderHistory(
 
   const seen = new Set<number>()
   const out: FxsocketBrokerTradeRow[] = []
+  const skippedStates: string[] = []
   for (const row of rows) {
     if (!row || typeof row !== "object") continue
     const trade = normalizeOrder(row as RawOrder, broker, "closed", "trades")
@@ -619,11 +624,21 @@ export async function fetchTradesListFromOrderHistory(
     // with a close time — they must not count as closed trades. Executed rows
     // report state "Started" or "Filled" on MTAPI, so this is a blacklist.
     const state = String(trade.state ?? "").trim()
-    if (state && /cancel|placed|pending|expired|deleted|reject/i.test(state)) continue
+    if (state && /cancel|placed|pending|expired|deleted|reject/i.test(state)) {
+      skippedStates.push(`${trade.ticket}:${state}`)
+      continue
+    }
     if (trade.lot_size <= 0 || !trade.symbol.trim()) continue
     if (isNonTradeEntry(trade.direction, trade.type, trade.lot_size)) continue
     seen.add(trade.ticket)
     out.push(trade)
+  }
+
+  if (skippedStates.length > 0) {
+    console.warn(
+      `[fxsocketTrades] OrderHistory state-skip ${skippedStates.length} row(s): ` +
+        skippedStates.slice(0, 20).join(", "),
+    )
   }
 
   return out.sort((a, b) => rowCloseMs(b) - rowCloseMs(a))
