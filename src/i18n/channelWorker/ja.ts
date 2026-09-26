@@ -146,6 +146,13 @@ export const channelWorkerJa: ChannelWorkerTranslations = {
   mgmtSkippedReason: '{phrase} ({reason}).',
 
   skipReasons: {
+    entry_not_opened: 'このシグナルについてブローカーがポジションを開きませんでした',
+    entry_zone_far_from_market: 'エントリー価格が現在の市場価格から遠すぎます',
+    broker_bridge_unavailable: 'ブローカーブリッジが利用できません — MT5でアルゴ取引を有効にし、アカウント設定でTrade EAの準備完了を確認してください',
+    entry_price_moved_adverse: '注文送信前に価格がエントリーを通過しました',
+    ai_classified_as_non_actionable: 'AIはこのメッセージに取引シグナルが見つからないと判断しました',
+    ai_classified_as_non_entry: 'AIはこのメッセージにエントリー指示が見つからないと判断しました',
+    modification_no_open_trade: '修正できる保有中の取引がありません',
     no_matching_open_trade: '一致する保有中の取引がありません',
     mgmt_no_open_trades: '一致する保有中の取引がありません',
     mgmt_no_open_trades_db: 'copierデータベースに一致する保有中の取引がありません',

@@ -36,6 +36,7 @@ export const tradingNl: TradingPagesBundleTranslations = {
     colPnl: 'PnL',
     colTime: 'Datum en tijd',
     colCurrent: 'Live prijs',
+    colClosePrice: 'Prijs bij sluiting',
     instructionAction: 'Actie',
     instructionSymbol: 'Symbool',
     instructionEntry: 'Instap',

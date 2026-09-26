@@ -146,6 +146,12 @@ export const channelWorkerEs: ChannelWorkerTranslations = {
   mgmtSkippedReason: '{phrase} ({reason}).',
 
   skipReasons: {
+    entry_not_opened: 'el bróker no abrió ninguna posición para esta señal',
+    entry_zone_far_from_market: 'la zona de entrada está demasiado lejos del precio de mercado actual',
+    entry_price_moved_adverse: 'el precio superó la entrada antes de enviar la orden',
+    ai_classified_as_non_actionable: 'la IA no encontró una señal de operación en este mensaje',
+    ai_classified_as_non_entry: 'la IA no encontró una instrucción de entrada en este mensaje',
+    modification_no_open_trade: 'no hay ninguna operación abierta que modificar',
     no_matching_open_trade: 'sin operación abierta coincidente',
     mgmt_no_open_trades: 'sin operación abierta coincidente',
     mgmt_no_open_trades_db: 'sin operación abierta coincidente en la base del copier',

@@ -2,6 +2,20 @@ import type { MtTrade } from './fxsocketBroker'
 import { directionDisplayLabel, resolveTradeDisplayDirection } from './tradeDirection'
 import { formatTradeCloseTimeLabel } from './mtTradeTimestamps'
 
+/** Listing order: open positions always first, then closed; newest first within each group. */
+export function sortTradesOpenFirst(trades: MtTrade[]): MtTrade[] {
+  const timeOf = (t: MtTrade): number => {
+    const raw = t.status === 'closed' ? (t.closed_at ?? t.opened_at) : t.opened_at
+    const ts = raw ? Date.parse(raw) : 0
+    return Number.isFinite(ts) ? ts : 0
+  }
+  return [...trades].sort((a, b) => {
+    const rankDiff = (a.status === 'open' ? 0 : 1) - (b.status === 'open' ? 0 : 1)
+    if (rankDiff !== 0) return rankDiff
+    return timeOf(b) - timeOf(a)
+  })
+}
+
 export function formatTradePrice(value: number | null | undefined): string {
   if (value === null || value === undefined) return '—'
   if (!Number.isFinite(value) || value === 0) return '—'

@@ -147,6 +147,13 @@ export const channelWorkerPl: ChannelWorkerTranslations = {
   mgmtSkippedReason: '{phrase} ({reason}).',
 
   skipReasons: {
+    entry_not_opened: 'broker nie otworzył żadnej pozycji dla tego sygnału',
+    entry_zone_far_from_market: 'strefa wejścia jest zbyt daleka od bieżącej ceny rynkowej',
+    broker_bridge_unavailable: 'most brokera niedostępny — włącz Algo Trading w MT5 i sprawdź w konfiguracji konta, czy Trade EA jest gotowy',
+    entry_price_moved_adverse: 'cena przekroczyła wejście przed wysłaniem zlecenia',
+    ai_classified_as_non_actionable: 'AI nie znalazło sygnału handlowego w tej wiadomości',
+    ai_classified_as_non_entry: 'AI nie znalazło instrukcji wejścia w tej wiadomości',
+    modification_no_open_trade: 'brak otwartej pozycji do modyfikacji',
     no_matching_open_trade: 'brak pasującej otwartej pozycji',
     mgmt_no_open_trades: 'brak pasującej otwartej pozycji',
     mgmt_no_open_trades_db: 'brak pasującej otwartej pozycji w bazie copiera',

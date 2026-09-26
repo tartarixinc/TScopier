@@ -942,6 +942,7 @@ export const fr: Translations = {
     colPnl: 'PnL',
     colTime: 'Date et heure',
     colCurrent: 'Prix en direct',
+    colClosePrice: 'Prix de clôture',
     instructionAction: 'Action',
     instructionSymbol: 'Symbole',
     instructionEntry: 'Entrée',

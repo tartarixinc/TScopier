@@ -44,8 +44,9 @@ export class FxsocketProvider implements BrokerProvider {
   orderClose(id: string, args: OrderCloseArgs): Promise<OrderResult> { return this.client.orderClose(id, args) }
   openedOrders(id: string): Promise<unknown[]> { return this.client.openedOrders(id) }
   closedOrders(id: string): Promise<unknown[]> { return this.client.closedOrders(id) }
-  orderHistory(id: string, from: string, to: string): Promise<unknown[]> {
-    return this.client.orderHistory(id, from, to)
+  orderHistory(id: string, from: string, to: string, timeoutMs?: number): Promise<unknown[]> {
+    if (timeoutMs === undefined) return this.client.orderHistory(id, from, to)
+    return this.client.orderHistory(id, from, to, timeoutMs)
   }
   historyPositions(id: string, from: string, to: string): Promise<unknown[]> {
     return this.client.historyPositions(id, from, to)

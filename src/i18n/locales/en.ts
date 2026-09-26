@@ -988,6 +988,7 @@ broker: {
     colPnl: 'PnL',
     colTime: 'Date & Time',
     colCurrent: 'Live price',
+    colClosePrice: 'Close price',
     instructionAction: 'Action',
     instructionSymbol: 'Symbol',
     instructionEntry: 'Entry',

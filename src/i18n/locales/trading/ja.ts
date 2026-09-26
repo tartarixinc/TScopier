@@ -36,6 +36,7 @@ export const tradingJa: TradingPagesBundleTranslations = {
     colPnl: '損益',
     colTime: '日時',
     colCurrent: 'ライブ価格',
+    colClosePrice: '決済価格',
     instructionAction: 'アクション',
     instructionSymbol: '銘柄',
     instructionEntry: 'エントリー',

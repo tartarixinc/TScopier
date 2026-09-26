@@ -49,6 +49,117 @@ Deno.test("orderHistory and positionHistory pass date range", async () => {
   assertEquals(calls[1].pathname, "/HistoryPositions")
 })
 
+Deno.test("orderHistory pages through OrderHistoryPagination when partial", async () => {
+  const { client, calls } = provider(url => {
+    if (url.pathname === "/OrderHistory") {
+      return new Response(JSON.stringify({ partialResponse: true, orders: [{ ticket: 1 }] }))
+    }
+    if (url.pathname === "/OrderHistoryPagination") {
+      assertEquals(url.searchParams.get("ordersPerPage"), "500")
+      const page = Number(url.searchParams.get("pageNumber"))
+      if (page === 0) {
+        return new Response(JSON.stringify({ pagesCount: 2, orders: [{ ticket: 1 }, { ticket: 2 }] }))
+      }
+      return new Response(JSON.stringify({ pagesCount: 2, orders: [{ ticket: 3 }] }))
+    }
+    return new Response("unexpected endpoint", { status: 500 })
+  })
+
+  const rows = await client.orderHistory("s", "2000-01-01", "2026-09-25")
+  // Probe page 0 rows are reused (start === 0), then page 1 is fetched
+  // newest-first: [1, 2] + [3], two pagination requests total.
+  assertEquals(
+    rows.map(r => (r as { ticket: number }).ticket),
+    [1, 2, 3],
+  )
+  assertEquals(
+    calls.map(c => c.pathname),
+    ["/OrderHistory", "/OrderHistoryPagination", "/OrderHistoryPagination"],
+  )
+})
+
+Deno.test("orderHistory keeps truncated rows when pagination is unavailable", async () => {
+  const { client } = provider(url => {
+    if (url.pathname === "/OrderHistory") {
+      return new Response(JSON.stringify({ partialResponse: true, orders: [{ ticket: 5 }] }))
+    }
+    return new Response("not found", { status: 404 })
+  })
+
+  const rows = await client.orderHistory("s", "2000-01-01", "2026-09-25")
+  assertEquals(rows, [{ ticket: 5 }])
+})
+
+Deno.test("orderHistory capped pagination reads the newest window", async () => {
+  const requested: number[] = []
+  const { client } = provider(url => {
+    if (url.pathname === "/OrderHistory") {
+      return new Response(JSON.stringify({ partialResponse: true, orders: [{ ticket: 999 }] }))
+    }
+    if (url.pathname === "/OrderHistoryPagination") {
+      const page = Number(url.searchParams.get("pageNumber"))
+      requested.push(page)
+      if (page === 0) {
+        return new Response(JSON.stringify({ pagesCount: 45, orders: [{ ticket: 0 }] }))
+      }
+      return new Response(JSON.stringify({ orders: [{ ticket: page }] }))
+    }
+    return new Response("unexpected endpoint", { status: 500 })
+  })
+
+  const rows = await client.orderHistory("s", "2000-01-01", "2026-09-25")
+  // 45 pages > 40-page cap → oldest page 0 is discarded and pages 5..44
+  // (the newest window, 40 pages) are read, newest-first: probe(0) then
+  // 44, 43, … 5.
+  assertEquals(requested[0], 0)
+  assertEquals(requested[1], 44)
+  assertEquals(requested.length, 41)
+  assertEquals(rows.length, 40)
+  assertEquals((rows[0] as { ticket: number }).ticket, 44)
+  assertEquals((rows[39] as { ticket: number }).ticket, 5)
+})
+
+Deno.test("orderHistory keeps fetched pages when an older page fails", async () => {
+  const { client } = provider(url => {
+    if (url.pathname === "/OrderHistory") {
+      return new Response(JSON.stringify({ partialResponse: true, orders: [{ ticket: 999 }] }))
+    }
+    if (url.pathname === "/OrderHistoryPagination") {
+      const page = Number(url.searchParams.get("pageNumber"))
+      // Probe page 0 succeeds and is reused (start === 0); the newest page
+      // (2) succeeds; the older refetched page (1) then fails — the catch
+      // must keep the probe + newest pages instead of falling back to the
+      // truncated rows.
+      if (page === 0) {
+        return new Response(JSON.stringify({ pagesCount: 3, orders: [{ ticket: 1 }, { ticket: 2 }] }))
+      }
+      if (page === 2) {
+        return new Response(JSON.stringify({ pagesCount: 3, orders: [{ ticket: 3 }] }))
+      }
+      return new Response("not found", { status: 404 })
+    }
+    return new Response("unexpected endpoint", { status: 500 })
+  })
+
+  const rows = await client.orderHistory("s", "2000-01-01", "2026-09-25")
+  assertEquals(rows.map(r => (r as { ticket: number }).ticket), [1, 2, 3])
+})
+
+Deno.test("orderHistory keeps truncated rows when pagination returns no rows", async () => {
+  const { client } = provider(url => {
+    if (url.pathname === "/OrderHistory") {
+      return new Response(JSON.stringify({ partialResponse: true, orders: [{ ticket: 5 }] }))
+    }
+    if (url.pathname === "/OrderHistoryPagination") {
+      return new Response(JSON.stringify({ pagesCount: 1, orders: [] }))
+    }
+    return new Response("unexpected endpoint", { status: 500 })
+  })
+
+  const rows = await client.orderHistory("s", "2000-01-01", "2026-09-25")
+  assertEquals(rows, [{ ticket: 5 }])
+})
+
 Deno.test("getQuote normalizes GetQuote bid/ask", async () => {
   const { client, calls } = provider(url => {
     assertEquals(url.pathname, "/GetQuote")

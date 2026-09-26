@@ -10,6 +10,7 @@ import {
   type SignalBatchRow,
   type SignalDisplayContext,
 } from '../../lib/signalOverride'
+import { symbolForCopierLog } from '../../lib/copierLogDisplay'
 import { signalOverrideApi } from '../../lib/signalOverrideApi'
 import { forceCloseTradesApi } from '../../lib/forceCloseTradesApi'
 import type { Signal } from '../../types/database'
@@ -23,6 +24,8 @@ export type OverrideDraft = {
 
 export type EditSignalOverrideSnapshot = {
   signalId: string
+  /** Trade symbol resolved for this signal (copier-log rules); '—' when unknown. */
+  symbol: string
   initialDraft: OverrideDraft
   original: { sl: string; tp: string }
   current: { sl: string; tp: string }
@@ -94,6 +97,11 @@ export function buildEditSignalOverrideSnapshot(
   const absorbed = absorbedEntryUpdates.length ? [...absorbedEntryUpdates] : []
   return {
     signalId: signal.id,
+    symbol: symbolForCopierLog(
+      signal,
+      displayContext.symbolContext ?? { lookup: new Map(), replyParentBySignalId: new Map() },
+      displayContext.batchSignals as SignalBatchRow[],
+    ),
     initialDraft: overrideToDraft(signal, displayContext, absorbed),
     original: channelFoldedSummary(signal, displayContext, absorbed),
     current: formatEffectiveSummary(signal, displayContext, absorbed),
@@ -156,6 +164,7 @@ type EditSignalOverrideModalProps = EditSignalOverrideSnapshot & {
 
 export function EditSignalOverrideModal({
   signalId,
+  symbol,
   initialDraft,
   original,
   current,
@@ -165,6 +174,7 @@ export function EditSignalOverrideModal({
 }: EditSignalOverrideModalProps) {
   const t = useT()
   const sh = t.signalHistoryPage
+  const symbolPrefix = symbol && symbol !== '—' ? `${symbol} · ` : ''
   const [draft, setDraft] = useState(initialDraft)
   const [busy, setBusy] = useState(false)
   const [formError, setFormError] = useState('')
@@ -374,8 +384,8 @@ export function EditSignalOverrideModal({
               {sh.closeConfirmBody}
             </div>
             <div className="rounded-xl border border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950/50 px-3 py-2.5 text-xs text-neutral-500 space-y-1">
-              <p>{sh.originalSignal}: SL {original.sl} · TP {original.tp}</p>
-              <p>{sh.overrideSignal}: SL {current.sl} · TP {current.tp}</p>
+              <p>{sh.originalSignal}: {symbolPrefix}SL {original.sl} · TP {original.tp}</p>
+              <p>{sh.overrideSignal}: {symbolPrefix}SL {current.sl} · TP {current.tp}</p>
             </div>
             {closeError ? (
               <p className="text-xs text-error-600 dark:text-error-400">{closeError}</p>
@@ -407,8 +417,8 @@ export function EditSignalOverrideModal({
         ) : (
           <div className="p-5 space-y-4">
             <div className="rounded-xl border border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950/50 px-3 py-2.5 text-xs text-neutral-500 space-y-1">
-              <p>{sh.originalSignal}: SL {original.sl} · TP {original.tp}</p>
-              <p>{sh.overrideSignal}: SL {current.sl} · TP {current.tp}</p>
+              <p>{sh.originalSignal}: {symbolPrefix}SL {original.sl} · TP {original.tp}</p>
+              <p>{sh.overrideSignal}: {symbolPrefix}SL {current.sl} · TP {current.tp}</p>
             </div>
 
             <Input

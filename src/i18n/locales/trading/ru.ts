@@ -36,6 +36,7 @@ export const tradingRu: TradingPagesBundleTranslations = {
     colPnl: 'PnL',
     colTime: 'Дата и время',
     colCurrent: 'Актуальная цена',
+    colClosePrice: 'Цена закрытия',
     instructionAction: 'Действие',
     instructionSymbol: 'Символ',
     instructionEntry: 'Вход',

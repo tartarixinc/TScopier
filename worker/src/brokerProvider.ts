@@ -53,7 +53,7 @@ export interface BrokerProvider {
 
   openedOrders(id: string): Promise<unknown[]>
   closedOrders(id: string): Promise<unknown[]>
-  orderHistory(id: string, from: string, to: string): Promise<unknown[]>
+  orderHistory(id: string, from: string, to: string, timeoutMs?: number): Promise<unknown[]>
   historyPositions(id: string, from: string, to: string): Promise<unknown[]>
   orderHistoryPage(
     id: string,

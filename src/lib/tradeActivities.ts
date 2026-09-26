@@ -65,6 +65,7 @@ const PIPELINE_ACTIONS = new Set([
   'dispatch_received',
   'dispatch_skipped',
   'keyword_parse',
+  'signal_skipped',
 ])
 
 export function buildChannelDisplayNames(channels: ChannelNameRow[]): Record<string, string> {
@@ -232,7 +233,104 @@ export function filterTradeActivitiesByTab(
   return activities.filter(a => a.status === filter)
 }
 
+/** Parse-level skipped signals — they never write trade_execution_logs rows. */
+export type SkippedSignalRow = {
+  id: string
+  created_at: string
+  channel_id?: string | null
+  parsed_data?: Record<string, unknown> | null
+  skip_reason?: string | null
+  status?: string | null
+}
+
 export const TRADE_ACTIVITY_FETCH_LIMIT = 500
+
+export const TRADE_SKIPPED_SIGNAL_FETCH_LIMIT = 200
+
+export const TRADE_SKIPPED_SIGNAL_SELECT = `
+  id,
+  created_at,
+  channel_id,
+  parsed_data,
+  skip_reason,
+  status
+`
+
+/** Synthesize activity rows for skipped signals that have no visible execution log. */
+export function buildSkippedSignalActivities(
+  signals: SkippedSignalRow[],
+  logActivities: DisplayableTradeActivity[],
+  cw: ChannelWorkerTranslations,
+  mgmt: ManagementTranslations,
+  channelDisplayNames: Record<string, string>,
+): DisplayableTradeActivity[] {
+  // Only skipped log rows occupy the Skipped tab — a signal whose logs are all
+  // success/failed still needs a synthesized row there.
+  const displayedSignalIds = new Set(
+    logActivities
+      .filter(a => a.status === 'skipped')
+      .map(a => a.row.signal_id)
+      .filter((id): id is string => Boolean(id)),
+  )
+
+  const out: DisplayableTradeActivity[] = []
+  for (const sig of signals) {
+    if (String(sig.status ?? '').toLowerCase() !== 'skipped') continue
+    if (displayedSignalIds.has(sig.id)) continue
+    const row: TradeActivityLogRow = {
+      id: `signal:${sig.id}`,
+      created_at: sig.created_at,
+      action: 'signal_skipped',
+      status: 'skipped',
+      request_payload: sig.skip_reason ? { skip_reason: sig.skip_reason } : null,
+      response_payload: null,
+      error_message: null,
+      signal_id: sig.id,
+      broker_account_id: null,
+      signals: {
+        channel_id: sig.channel_id ?? null,
+        parsed_data: sig.parsed_data ?? null,
+        status: 'skipped',
+        skip_reason: sig.skip_reason ?? null,
+      },
+    }
+    const message = channelWorkerLogMessage(row, cw, channelDisplayNames)
+    if (!message) continue
+    const status = normalizeActivityStatus(row.status)
+    if (!status) continue
+    out.push({
+      row,
+      message,
+      status,
+      kind: resolveTradeActivityKind(row, mgmt),
+      symbol: resolveInstrumentSymbol(row),
+      channelName: resolveChannelNameFromLog(row, channelDisplayNames),
+      retryEligible: false,
+    })
+  }
+  return out
+}
+
+/** Merge parse-level skipped signals into the Skipped tab feed, newest first. */
+export function mergeSkippedSignalActivities(
+  logActivities: DisplayableTradeActivity[],
+  skippedSignals: SkippedSignalRow[],
+  cw: ChannelWorkerTranslations,
+  mgmt: ManagementTranslations,
+  channelDisplayNames: Record<string, string>,
+): DisplayableTradeActivity[] {
+  const synthesized = buildSkippedSignalActivities(
+    skippedSignals,
+    logActivities,
+    cw,
+    mgmt,
+    channelDisplayNames,
+  )
+  if (!synthesized.length) return logActivities
+  return [...logActivities, ...synthesized].sort(
+    (a, b) => Date.parse(b.row.created_at) - Date.parse(a.row.created_at),
+  )
+}
 
 export const TRADE_EXECUTION_LOG_SELECT = `
   id,

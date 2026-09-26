@@ -167,6 +167,7 @@ export class MtapiClient {
     to: string,
     platform?: string | null,
   ): Promise<unknown[]> {
+    const startedAt = Date.now()
     const raw = await this.request(
       "OrderHistory",
       { from, to },
@@ -174,12 +175,86 @@ export class MtapiClient {
       platform,
       90_000,
     )
-    if (object(raw).partialResponse === true) {
+    const rows = list(raw, ["orders", "Orders"], "OrderHistory")
+    if (object(raw).partialResponse !== true) return rows
+
+    // The bridge truncated the response — re-read through the paginated
+    // endpoint so large histories stay complete (mirrors the worker's
+    // orderHistoryPage flow). Safety cap: 40 pages × 500 rows = 20k rows,
+    // windowed to the newest pages (start = pagesCount - maxPages) like the
+    // worker. Pages are fetched NEWEST-FIRST so a budget cut or a mid-loop
+    // failure keeps the most recent rows (consumers dedupe by ticket and
+    // re-sort by time, so row order does not matter), and page 0's probe
+    // rows are reused when page 0 is inside the window. Budget: 30s from
+    // now but never past 115s from method entry, so the 120s client-side
+    // edge-call timeout still wins over this whole read; on expiry return
+    // what we have (never throw) — this runs every 15s poll. If the
+    // paginated endpoint is unavailable, keep the truncated rows rather
+    // than failing the whole read. `ascending: true` is pinned so the
+    // newest-window selection never depends on the bridge default.
+    const all: unknown[] = []
+    try {
+      const ordersPerPage = 500
+      const maxPages = 40
+      const deadline = Math.min(startedAt + 115_000, Date.now() + 30_000)
+      const pageTimeoutMs = () => Math.max(1_000, Math.min(90_000, deadline - Date.now()))
+      const page0 = object(await this.request(
+        "OrderHistoryPagination",
+        { from, to, pageNumber: 0, ordersPerPage, ascending: true },
+        sessionId,
+        platform,
+        pageTimeoutMs(),
+      ))
+      const rawPages = Number(page0.pagesCount ?? page0.PagesCount ?? page0.totalPages)
+      const pagesCount = Number.isFinite(rawPages) ? Math.max(1, Math.floor(rawPages)) : 1
+      const start = Math.max(0, pagesCount - maxPages)
+      if (start > 0) {
+        console.warn(
+          `[mtapiClient] OrderHistory pagination capped at ${maxPages}/${pagesCount} pages — reading the newest window (pages ${start}..${pagesCount - 1})`,
+        )
+      }
+      // Page 0 doubles as the pagesCount probe; reuse its rows when it is
+      // inside the window (oldest page, already paid for) instead of
+      // refetching it at the end of the loop.
+      const reuseProbe = start === 0
+      if (reuseProbe) {
+        all.push(...list(page0, ["orders", "Orders"], "OrderHistoryPagination"))
+      }
+      const loopFloor = reuseProbe ? 1 : start
+      for (let pageNumber = pagesCount - 1; pageNumber >= loopFloor; pageNumber -= 1) {
+        // Always attempt the newest page (first iteration) even if the
+        // probe already burned the budget; check the deadline after that.
+        if (pageNumber !== pagesCount - 1 && Date.now() >= deadline) {
+          console.warn(
+            `[mtapiClient] OrderHistory pagination stopped after ${all.length} rows (${rows.length} truncated) — pagination budget exhausted`,
+          )
+          break
+        }
+        const next = await this.request(
+          "OrderHistoryPagination",
+          { from, to, pageNumber, ordersPerPage, ascending: true },
+          sessionId,
+          platform,
+          pageTimeoutMs(),
+        )
+        all.push(...list(next, ["orders", "Orders"], "OrderHistoryPagination"))
+      }
+      if (all.length === 0 && rows.length > 0) {
+        console.warn(
+          `[mtapiClient] OrderHistoryPagination returned no rows — keeping ${rows.length} truncated rows`,
+        )
+        return rows
+      }
       console.warn(
-        "[mtapiClient] OrderHistory partialResponse=true — older rows may be missing (pagination not implemented)",
+        `[mtapiClient] OrderHistory partialResponse=true — read ${all.length} rows via OrderHistoryPagination`,
       )
+      return all
+    } catch (err) {
+      console.warn(
+        `[mtapiClient] OrderHistoryPagination failed (${err instanceof Error ? err.message : String(err)}) — returning ${all.length ? `${all.length} newest paginated rows` : `${rows.length} truncated rows`}`,
+      )
+      return all.length ? all : rows
     }
-    return list(raw, ["orders", "Orders"], "OrderHistory")
   }
 
   async positionHistory(

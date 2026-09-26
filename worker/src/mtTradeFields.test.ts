@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
-import { ingestMtHistoryRows } from './mtTradeFields'
+import { ingestMtHistoryRows, resolveMtLots } from './mtTradeFields'
 
 test('ingestMtHistoryRows: merges rows by ticket key', () => {
   const target = new Map<string, Record<string, unknown>>()
@@ -33,4 +33,12 @@ test('ingestMtHistoryRows: reads lots and profit from dealInternalOut on trades 
   const row = [...target.values()][0]!
   assert.equal(row.lots, 0.12)
   assert.equal(row.profit, 87.4)
+})
+
+test('resolveMtLots: present-but-zero keys do not shadow a positive lot value', () => {
+  // Open orders echo closeLots: 0 — the scan must skip zeros (trades profile).
+  assert.equal(resolveMtLots({ ticket: 1, lots: 0, closeLots: 0.01 }, 'trades'), 0.01)
+  assert.equal(resolveMtLots({ ticket: 2, lots: 0.01, closeLots: 0 }, 'trades'), 0.01)
+  assert.equal(resolveMtLots({ ticket: 3, lots: 0, closeLots: 0 }, 'trades'), 0)
+  assert.equal(resolveMtLots({ ticket: 4, lots: 0.05 }, 'dashboard'), 0.05)
 })

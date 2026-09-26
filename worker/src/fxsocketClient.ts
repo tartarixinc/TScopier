@@ -830,8 +830,8 @@ export class FxsocketBrokerClient {
     }
   }
 
-  async orderHistory(id: string, from: string, to: string): Promise<unknown[]> {
-    const raw = await this.get<unknown>(`${await this.accountBase(id)}/OrderHistory`, { from, to })
+  async orderHistory(id: string, from: string, to: string, timeoutMs?: number): Promise<unknown[]> {
+    const raw = await this.get<unknown>(`${await this.accountBase(id)}/OrderHistory`, { from, to }, timeoutMs)
     assertNoApiError(raw)
     return unwrapOrderList(raw)
   }

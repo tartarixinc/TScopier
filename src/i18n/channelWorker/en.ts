@@ -146,6 +146,10 @@ export const channelWorkerEn: ChannelWorkerTranslations = {
   mgmtSkippedReason: '{phrase} ({reason}).',
 
   skipReasons: {
+    entry_price_moved_adverse: 'price moved past the entry before the order was placed',
+    ai_classified_as_non_actionable: 'the AI found no trade signal in this message',
+    ai_classified_as_non_entry: 'the AI found no entry instruction in this message',
+    modification_no_open_trade: 'there is no open trade to modify',
     no_matching_open_trade: 'no matching open trade',
     mgmt_no_open_trades: 'no matching open trade',
     mgmt_no_open_trades_db: 'no matching open trade in the copier database',

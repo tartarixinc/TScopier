@@ -820,6 +820,7 @@ export interface TradesTranslations {
   colPnl: string
   colTime: string
   colCurrent: string
+  colClosePrice: string
   instructionAction: string
   instructionSymbol: string
   instructionEntry: string

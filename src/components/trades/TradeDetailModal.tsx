@@ -339,7 +339,14 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
                     ) : null}
                   </dd>
                 </div>
-              ) : null}
+              ) : (
+                <div className="col-span-2">
+                  <dt className="text-neutral-400 uppercase tracking-wide">{tr.colClosePrice}</dt>
+                  <dd className="text-neutral-700 dark:text-neutral-300 tabular-nums mt-0.5 font-semibold">
+                    {formatTradePrice(trade.close_price)}
+                  </dd>
+                </div>
+              )}
             </dl>
           </section>
 

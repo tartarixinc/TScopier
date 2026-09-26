@@ -20,9 +20,13 @@ import {
   buildChannelDisplayNames,
   buildDisplayableTradeActivities,
   filterTradeActivitiesByTab,
+  mergeSkippedSignalActivities,
   TRADE_ACTIVITY_FETCH_LIMIT,
   TRADE_EXECUTION_LOG_SELECT,
+  TRADE_SKIPPED_SIGNAL_FETCH_LIMIT,
+  TRADE_SKIPPED_SIGNAL_SELECT,
   tradeActivityLogsFingerprint,
+  type SkippedSignalRow,
   type TradeActivityFilter,
   type TradeActivityLogRow,
 } from '../../lib/tradeActivities'
@@ -41,12 +45,14 @@ export function ManagementPage() {
   const [pageSize, setPageSize] = useState<PageSizeOption>(25)
   const [loading, setLoading] = useState(true)
   const [rawLogs, setRawLogs] = useState<TradeActivityLogRow[]>([])
+  const [rawSkippedSignals, setRawSkippedSignals] = useState<SkippedSignalRow[]>([])
   const [channelDisplayNames, setChannelDisplayNames] = useState<Record<string, string>>({})
   const [toastMessage, setToastMessage] = useState<string | null>(null)
   const [retryingLogIds, setRetryingLogIds] = useState<Set<string>>(() => new Set())
   const [retryAllBusy, setRetryAllBusy] = useState(false)
   const loadGenRef = useRef(0)
   const fingerprintRef = useRef('')
+  const skippedFingerprintRef = useRef('')
   const channelsLoadedRef = useRef(false)
 
   const showToast = useCallback((message: string) => {
@@ -54,9 +60,10 @@ export function ManagementPage() {
     window.setTimeout(() => setToastMessage(null), 4500)
   }, [])
 
-  const loadActivities = useCallback(async (opts?: { background?: boolean }) => {
+  const loadActivities = useCallback(async (opts?: { background?: boolean; skipped?: boolean }) => {
     if (!userId) {
       setRawLogs([])
+      setRawSkippedSignals([])
       setLoading(false)
       return
     }
@@ -64,8 +71,12 @@ export function ManagementPage() {
     const gen = ++loadGenRef.current
     if (!background) setLoading(true)
 
+    // The skipped-signals query only serves the Skipped tab — callers ask for it
+    // explicitly (tab click, or a realtime refresh while that tab is open) so
+    // background refreshes on other tabs don't scan the signals table needlessly.
+    const needSkipped = opts?.skipped === true
     const needChannels = !channelsLoadedRef.current
-    const [channelsRes, logsRes] = await Promise.all([
+    const [channelsRes, logsRes, skippedRes] = await Promise.all([
       needChannels
         ? supabase
           .from('telegram_channels')
@@ -78,6 +89,16 @@ export function ManagementPage() {
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .limit(TRADE_ACTIVITY_FETCH_LIMIT),
+      needSkipped
+        ? supabase
+          .from('signals')
+          .select(TRADE_SKIPPED_SIGNAL_SELECT)
+          .eq('user_id', userId)
+          .eq('status', 'skipped')
+          .or('skip_reason.is.null,and(skip_reason.not.in.(non_trade_message,no_broker_channel_match),skip_reason.not.ilike.%non-trade%,skip_reason.not.ilike.%non trade%)')
+          .order('created_at', { ascending: false })
+          .limit(TRADE_SKIPPED_SIGNAL_FETCH_LIMIT)
+        : Promise.resolve({ data: null, error: null }),
     ])
     if (gen !== loadGenRef.current) return
 
@@ -92,26 +113,50 @@ export function ManagementPage() {
       fingerprintRef.current = fingerprint
       setRawLogs(next)
     }
+
+    if (needSkipped) {
+      const skipped = (skippedRes.data ?? []) as SkippedSignalRow[]
+      const skippedFingerprint = tradeActivityLogsFingerprint(skipped)
+      if (skippedFingerprint !== skippedFingerprintRef.current) {
+        skippedFingerprintRef.current = skippedFingerprint
+        setRawSkippedSignals(skipped)
+      }
+    }
     setLoading(false)
   }, [userId])
 
   useEffect(() => {
     loadGenRef.current += 1
     fingerprintRef.current = ''
+    skippedFingerprintRef.current = ''
     channelsLoadedRef.current = false
     void loadActivities()
   }, [loadActivities])
 
-  useTradeActivitiesRealtime(userId, () => { void loadActivities({ background: true }) })
+  useTradeActivitiesRealtime(userId, () => {
+    void loadActivities({ background: true, skipped: filter === 'skipped' })
+  })
 
   useEffect(() => {
     setPage(1)
   }, [filter, pageSize])
 
-  const allActivities = useMemo(
-    () => buildDisplayableTradeActivities(rawLogs, t.channelWorker, t.management, channelDisplayNames),
-    [rawLogs, t.channelWorker, t.management, channelDisplayNames],
-  )
+  const allActivities = useMemo(() => {
+    const logActivities = buildDisplayableTradeActivities(
+      rawLogs,
+      t.channelWorker,
+      t.management,
+      channelDisplayNames,
+    )
+    if (filter !== 'skipped') return logActivities
+    return mergeSkippedSignalActivities(
+      logActivities,
+      rawSkippedSignals,
+      t.channelWorker,
+      t.management,
+      channelDisplayNames,
+    )
+  }, [rawLogs, rawSkippedSignals, filter, t.channelWorker, t.management, channelDisplayNames])
 
   const filteredActivities = useMemo(
     () => filterTradeActivitiesByTab(allActivities, filter),
@@ -222,7 +267,12 @@ export function ManagementPage() {
                   <button
                     key={f.value}
                     type="button"
-                    onClick={() => setFilter(f.value)}
+                    onClick={() => {
+                      setFilter(f.value)
+                      // Parse-level skips write no log rows, so the existing realtime
+                      // subscription never refreshes them — refetch when the tab opens.
+                      if (f.value === 'skipped') void loadActivities({ background: true, skipped: true })
+                    }}
                     className={clsx(
                       'shrink-0 px-3 py-2 text-xs rounded-md font-medium transition-colors whitespace-nowrap',
                       filter === f.value

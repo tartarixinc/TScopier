@@ -446,7 +446,9 @@ export class MtapiProvider implements BrokerProvider {
   ): Promise<{ orders: unknown[]; pagesCount: number }> {
     const raw = await this.readRequest(
       'OrderHistoryPagination',
-      { from, to, pageNumber, ordersPerPage },
+      // ascending pinned so newest-window selection never depends on the
+      // bridge default (matches the edge's orderHistory pagination).
+      { from, to, pageNumber, ordersPerPage, ascending: true },
       id,
     )
     const row = object(raw)

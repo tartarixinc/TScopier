@@ -639,6 +639,7 @@ export interface Trade {
   opened_at: string
   closed_at: string | null
   profit: number | null
+  close_price?: number | null
   created_at: string
 }
 
