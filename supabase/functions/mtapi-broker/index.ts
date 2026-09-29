@@ -1,6 +1,14 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
-import { encryptMtPassword, isEncryptionConfigured } from "../_shared/brokerCredentialsCrypto.ts"
+import {
+  BrokerCredentialEncryptionError,
+  encryptMtPasswordRequired,
+} from "../_shared/brokerCredentialsCrypto.ts"
+import {
+  prepareMtapiMigration,
+  MtapiPreparationError,
+  type MtapiPreparationBrokerRow,
+} from "../_shared/mtapiPreparation.ts"
 import {
   assertBrokerAccountLimit,
   loadUserSubscription,
@@ -144,9 +152,7 @@ Deno.serve(async (req: Request) => {
         return bad(409, `This MT login is already linked as "${dup.label}". Delete it first to reconnect.`)
       }
 
-      const encryptedPassword = isEncryptionConfigured(Deno.env)
-        ? await encryptMtPassword(password, Deno.env)
-        : password
+      const encryptedPassword = await encryptMtPasswordRequired(password, Deno.env)
 
       const insertBase: Record<string, unknown> = {
         user_id: userId,
@@ -179,6 +185,85 @@ Deno.serve(async (req: Request) => {
 
       return Response.json(
         { ok: true, account: stripSecrets(row as Record<string, unknown>), pending: true },
+        { headers: corsHeaders },
+      )
+    }
+
+    // Prepare an existing FXSocket row for Phase 4C without switching writers.
+    if (action === "prepare_migration") {
+      const brokerAccountId = String(body.broker_account_id ?? "").trim()
+      const accountPassword = String(body.account_password ?? "")
+      if (!brokerAccountId) return bad(400, "broker_account_id required")
+      if (!accountPassword.trim()) return bad(400, "account_password required")
+
+      const mtapi = makeMtapiClient()
+      const result = await prepareMtapiMigration(
+        { brokerAccountId, userId, accountPassword },
+        {
+          async loadOwnedBroker(id, ownerId) {
+            const { data, error } = await supabase
+              .from("broker_accounts")
+              .select("*")
+              .eq("id", id)
+              .eq("user_id", ownerId)
+              .maybeSingle()
+            if (error) {
+              throw new MtapiPreparationError(
+                "Unable to load broker account.",
+                500,
+                "ACCOUNT_LOAD_FAILED",
+              )
+            }
+            return (data ?? null) as MtapiPreparationBrokerRow | null
+          },
+          encryptPassword(password) {
+            return encryptMtPasswordRequired(password, Deno.env)
+          },
+          connect(args) {
+            return mtapi.connectEx(args)
+          },
+          checkConnected(sessionId, platform) {
+            return mtapi.checkConnect(sessionId, platform)
+          },
+          accountSummary(sessionId, platform) {
+            return mtapi.accountSummary(sessionId, platform)
+          },
+          async persist(args) {
+            let update = supabase
+              .from("broker_accounts")
+              .update(args.patch)
+              .eq("id", args.brokerAccountId)
+              .eq("user_id", args.userId)
+              .eq("provider", "fxsocket")
+            update = args.expectedSessionId
+              ? update.eq("mtapi_session_id", args.expectedSessionId)
+              : update.is("mtapi_session_id", null)
+            const { data, error } = await update.select("*").maybeSingle()
+            if (error) {
+              throw new MtapiPreparationError(
+                "Unable to save MTAPI migration preparation.",
+                500,
+                "PREPARATION_PERSIST_FAILED",
+              )
+            }
+            return (data ?? null) as MtapiPreparationBrokerRow | null
+          },
+          disconnect(sessionId, platform) {
+            return mtapi.disconnect(sessionId, platform)
+          },
+          now() {
+            return new Date().toISOString()
+          },
+        },
+      )
+
+      return Response.json(
+        {
+          ok: true,
+          prepared: true,
+          account: result.account,
+          summary: normalizeMtapiAccountSummary(result.summary),
+        },
         { headers: corsHeaders },
       )
     }
@@ -338,18 +423,17 @@ Deno.serve(async (req: Request) => {
     // ── reconnect ────────────────────────────────────────────
     if (action === "reconnect") {
       const password = String(body.password ?? "").trim()
-      const server = String(body.server ?? "").trim()
-      const login = String(body.login ?? "").trim()
+      const server = String(row.broker_server ?? "").trim()
+      const login = String(row.account_login ?? "").trim()
       if (!password) return bad(400, "password required")
       if (!login) return bad(400, "Broker login is missing — delete and connect again.")
       if (!server) return bad(400, "Broker server is missing — delete and connect again.")
+      const encryptedPassword = await encryptMtPasswordRequired(password, Deno.env)
 
       const { data: updated, error: updErr } = await supabase
         .from("broker_accounts")
         .update({
-          broker_password_encrypted: isEncryptionConfigured(Deno.env)
-            ? await encryptMtPassword(password, Deno.env)
-            : password,
+          broker_password_encrypted: encryptedPassword,
           auto_reconnect_enabled: true,
           mtapi_session_id: null,
           mtapi_status: "connecting",
@@ -490,6 +574,12 @@ Deno.serve(async (req: Request) => {
 
     return bad(400, `Unknown action: ${action}`)
   } catch (e) {
+    if (e instanceof MtapiPreparationError) {
+      return bad(e.status, e.message)
+    }
+    if (e instanceof BrokerCredentialEncryptionError) {
+      return bad(503, e.message)
+    }
     if (e instanceof MtapiApiError) {
       // MTAPI often returns application errors with HTTP 201. Forwarding that
       // status makes res.ok true in the browser and hides the error as [].

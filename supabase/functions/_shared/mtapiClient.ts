@@ -1,8 +1,8 @@
 /**
  * Minimal MTAPI HTTP client for Deno edge functions.
  *
- * Read-only endpoints mirror worker MtapiProvider shapes:
- *   GET /OpenedOrders, /OrderHistory, /HistoryPositions, /ClosedOrders, /AccountSummary
+ * Endpoints mirror worker MtapiProvider shapes. Session preparation uses
+ * ConnectEx, CheckConnect, AccountSummary, and Disconnect.
  * Session id is passed as `?id=` (same protocol as the worker bridge).
  */
 
@@ -18,7 +18,11 @@ function envString(env: Deno.Env, name: string): string {
 }
 
 export function isMtapiConfigured(env: Deno.Env): boolean {
-  return envString(env, "MTAPI_BASE_URL").length > 0
+  return Boolean(
+    envString(env, "MTAPI_BASE_URL")
+    || envString(env, "MTAPI_MT4_BASE_URL")
+    || envString(env, "MTAPI_MT5_BASE_URL"),
+  )
 }
 
 function baseUrl(env: Deno.Env, platform?: string | null): string {
@@ -93,6 +97,42 @@ export class MtapiClient {
     this.timeoutMs = options.timeoutMs ?? 30_000
   }
 
+  async connectEx(args: {
+    server: string
+    login: string
+    password: string
+    platform: "MT4" | "MT5"
+  }): Promise<string> {
+    const body = await this.request("ConnectEx", {
+      user: args.login,
+      password: args.password,
+      server: args.server,
+    }, "", args.platform)
+    const token = String(body ?? "").trim().replace(/^["']|["']$/g, "")
+    if (!token || token === "[object Object]") {
+      throw new MtapiApiError(
+        "MTAPI ConnectEx returned no session token",
+        502,
+        "INVALID_RESPONSE",
+      )
+    }
+    return token
+  }
+
+  async checkConnect(sessionId: string, platform: "MT4" | "MT5"): Promise<void> {
+    const body = await this.request("CheckConnect", {}, sessionId, platform)
+    if (typeof body === "string" && body.trim().toUpperCase() === "OK") return
+    throw new MtapiApiError(
+      "MTAPI CheckConnect returned an invalid response",
+      502,
+      "INVALID_RESPONSE",
+    )
+  }
+
+  async disconnect(sessionId: string, platform: "MT4" | "MT5"): Promise<void> {
+    await this.request("Disconnect", {}, sessionId, platform)
+  }
+
   private async request(
     endpoint: string,
     params: Record<string, string | number | boolean | null | undefined>,
@@ -133,8 +173,11 @@ export class MtapiClient {
       }
       const details = errorDetails(body)
       if (!response.ok || details.code) {
+        const containsCredential = params.password !== undefined && params.password !== null
         throw new MtapiApiError(
-          details.message || details.code || ("MTAPI " + endpoint + " failed"),
+          containsCredential
+            ? "MTAPI " + endpoint + " failed"
+            : details.message || details.code || ("MTAPI " + endpoint + " failed"),
           response.status,
           details.code,
         )

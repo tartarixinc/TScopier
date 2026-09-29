@@ -187,3 +187,85 @@ database contract, so no TypeScript database type change was required.
   is not installed and the full chain requires Supabase-specific roles and
   extensions. Migration ordering and the focused PostgreSQL replay were
   verified instead.
+## 2026-09-29 - Phase 4B same-row MTAPI preparation
+
+### One-time password requirement
+
+An FXSocket session or token cannot be converted into an MTAPI session. Existing
+users must provide their MT4/MT5 broker password once so MTAPI can authenticate
+the canonical login, server, and platform already stored on their existing
+`broker_accounts` row.
+
+### Same-row preparation design
+
+The authenticated `mtapi-broker` action `prepare_migration` accepts only
+`broker_account_id` and `account_password`. The edge function loads the row
+by both `broker_accounts.id` and authenticated `user_id`, requires the row''s
+current provider to be `fxsocket`, and uses the row''s canonical login, server,
+and MT4/MT5 platform. It does not run new-account plan limits, duplicate-account
+checks, or an insert.
+
+Preparation encrypts the credential first, calls MTAPI `ConnectEx`, requires
+`CheckConnect` to return OK, and verifies `AccountSummary`. It then updates
+the same row with the MTAPI session, encrypted credential,
+`auto_reconnect_enabled = true`, `mtapi_status = ''connected''`, and
+`password_updated_at`.
+
+The response strips `mtapi_session_id` and `broker_password_encrypted`.
+The frontend exposes a reusable `prepareExistingBrokerForMtapi` helper, but no
+launch CTA or migration-modal product flow was added in this phase.
+
+### Provider and open-trade safety
+
+Preparation deliberately leaves `provider = ''fxsocket''`,
+`fxsocket_account_id`, the broker row ID, and all other account/trade/config
+relationships unchanged. Active-provider terminal health fields are also left
+unchanged because FXSocket remains the writer. Worker provider-resolution
+coverage proves that a prepared row containing both session identities still
+selects the FXSocket session and provider.
+
+Writer activation and its fencing remain Phase 4C work.
+
+### Encryption decision
+
+MTAPI credential persistence now fails closed. `encryptMtPasswordRequired`
+rejects requests when no supported encryption key is configured or encryption
+fails. The connect and reconnect paths no longer fall back to storing a raw
+password. Application errors do not contain passwords, and the MTAPI client
+does not log request URLs or query strings.
+
+### Failure and re-preparation behavior
+
+Failures before persistence leave the FXSocket provider, FXSocket account ID,
+existing MTAPI credential/session, and broker row unchanged. A newly created
+session is disconnected after verification or confirmed persistence failure.
+If the DB update response is ambiguous, the row is re-read first: an observable
+commit is accepted, a confirmed non-commit is cleaned up, and an unknown outcome
+does not disconnect a token the row may reference.
+
+Successful re-preparation updates the same row, then best-effort disconnects the
+previous distinct MTAPI session. A token already stored on the row is never
+disconnected by a failed verification attempt. No additional broker-account
+slot or duplicate broker row is created.
+
+### Tests
+
+- Deno focused MTAPI preparation, credential crypto, and client tests: PASS.
+  Coverage includes ownership, canonical MT4/MT5 credentials, wrong password,
+  service outage/timeout, malformed connect response, CheckConnect and
+  AccountSummary failure, fail-closed encryption, persistence failure and
+  ambiguity, secret stripping, and re-preparation.
+- Frontend preparation helper tests: PASS, 5/5.
+- Worker provider resolver tests: PASS, 9/9, including prepared-row routing.
+- Worker typecheck and build: PASS.
+- Frontend typecheck and production build: PASS.
+- Integrated edge-function Deno check was attempted but not completed because
+  the edge-runtime npm auto-resolution timed out; focused imported modules were
+  type-checked by their Deno tests.
+- `git diff --check`: PASS.
+
+### Real MTAPI acceptance
+
+NOT_PERFORMED. No real MTAPI bridge/account was contacted in Phase 4B. Launch
+UX, real ConnectEx/CheckConnect/AccountSummary acceptance, and writer
+activation/fencing remain required before production cutover.

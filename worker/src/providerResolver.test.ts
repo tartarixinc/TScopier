@@ -108,6 +108,22 @@ test('broker session identity is provider-specific and unknown providers fail cl
   assert.equal(brokerSessionId({ ...row, provider: 'unknown' }), '')
 })
 
+test('MTAPI preparation alone keeps open-trade routing on FXSocket', () => {
+  const fxsocket = new FxsocketProvider(fakeClient())
+  const mtapi = new MtapiProvider({ fetchImpl: async () => new Response('OK') })
+  setFxsocketProviderForTests(fxsocket)
+  setMtapiProviderForResolverTests(mtapi)
+  const preparedRow = {
+    provider: 'fxsocket',
+    fxsocket_account_id: 'fxsocket-live-writer',
+    mtapi_session_id: 'prepared-mtapi-session',
+  }
+
+  assert.equal(brokerSessionId(preparedRow), 'fxsocket-live-writer')
+  assert.equal(apiForBrokerAccount(preparedRow.provider, brokerSessionId(preparedRow)), fxsocket)
+  assert.notEqual(apiForBrokerAccount(preparedRow.provider, brokerSessionId(preparedRow)), mtapi)
+})
+
 test('FxsocketProvider preserves order arguments and raw return objects', async () => {
   let sendArgs: OrderSendArgs | undefined
   let modifyArgs: OrderModifyArgs | undefined
