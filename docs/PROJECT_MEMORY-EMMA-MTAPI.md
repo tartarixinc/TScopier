@@ -122,3 +122,68 @@ instance, and no real demo-account read comparison was performed in this work.
 6. Force token expiry and bridge restart, then verify token-first reconnect,
    encrypted fallback, persisted token update, and orphan reconciliation.
 7. Do not enable MTAPI writes or layering. Phase 3 requires separate approval.
+
+## 2026-09-29 - Phase 4A schema truth for MTAPI status
+
+### Audit blocker
+
+Current worker, edge-function, and frontend code read or write
+`broker_accounts.mtapi_status`, but no checked-in migration created the column.
+This made a clean production deployment fail as soon as those runtime paths
+selected or updated the missing field.
+
+### Schema decision
+
+`mtapi_status` is the provider-specific MTAPI session lifecycle badge. It is
+separate from the shared `connection_status` workflow state and from
+`terminal_connected` / `trade_allowed` terminal-health facts.
+
+The column is nullable `text`, has no default, and is constrained to:
+
+- `connecting`
+- `connected`
+- `error`
+- `disconnected`
+
+`NULL` means the MTAPI-specific state is not applicable or has not yet been
+observed. Frontend status resolution already falls back to
+`connection_status` when an MTAPI row has a null `mtapi_status`.
+
+### Migration added
+
+- `supabase/migrations/20260929120000_add_broker_accounts_mtapi_status.sql`
+
+The migration runs after the provider, MTAPI session/credential, and linked
+account type migrations. It adds the column and CHECK constraint, documents
+the contract, and grants authenticated clients SELECT access to the column.
+The explicit grant is required because
+`20260916120000_mtapi_read_sessions.sql` replaced table-level SELECT with
+column-level grants.
+
+### Compatibility and backfill decision
+
+No rows are backfilled and no default is assigned. Existing FXSocket rows keep
+all existing status fields unchanged and receive `mtapi_status = NULL`.
+Existing MTAPI rows also start null when the column is introduced; current
+code safely falls back to `connection_status`, and the worker or reconnect path
+then records the first provider-specific status. This avoids inventing an
+MTAPI state from a shared or legacy status field.
+
+The existing `BrokerAccount.mtapi_status` TypeScript union already matches the
+database contract, so no TypeScript database type change was required.
+
+### Tests
+
+- Disposable PostgreSQL 15 migration fixture: PASS. Verified `text`, nullable,
+  no default, authenticated column SELECT, all four accepted states, invalid
+  state rejection, unchanged FXSocket rows, and a second idempotent replay.
+- Frontend `brokerReconnect.test.ts`: PASS, 13/13.
+- Frontend `brokerLink.test.ts`: PASS, 20/20.
+- Worker typecheck (`npx tsc --noEmit --pretty false`): PASS.
+- Worker build (`npm run build`): PASS.
+- Frontend typecheck (`npx tsc -b --pretty false`): PASS.
+- Frontend production build (`npm run build`): PASS.
+- Full clean Supabase migration replay: not available locally; the Supabase CLI
+  is not installed and the full chain requires Supabase-specific roles and
+  extensions. Migration ordering and the focused PostgreSQL replay were
+  verified instead.
