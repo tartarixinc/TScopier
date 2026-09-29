@@ -634,6 +634,63 @@ can be flipped back to FXSocket instantly.
 Every phase is its own change and must pass the project's fast checks and the
 mandatory `code-tester` + `code-review` subagent review before sign-off.
 
+### 6.1 Deploying to staging (with live users) and production
+
+The migration work stays on its own branch, isolated from staging, until a phase
+is ready to roll out. The rollout is not a single flip: it separates *shipping the
+code* from *moving accounts*. Because every existing account defaults to
+FxSocket, deploying the code changes nothing for live users until an account is
+deliberately switched — which is what makes a staging rollout safe while
+customers are connected.
+
+Order for each environment (staging first, then production):
+
+1. Apply the database migrations in order and record each version (inventory
+   below). Migrations must land **before** the code that writes the new columns.
+2. Deploy the worker (Railway) and edge functions (Supabase) with the MTAPI
+   environment and secrets present, but no account switched.
+3. Smoke test: existing FxSocket accounts behave exactly as before.
+4. Switch one account to `provider = 'mtapi'`; watch trade logs, connection
+   status and reconciliation; expand gradually.
+5. Roll back any account by disconnecting its MTAPI session and setting
+   `provider = 'fxsocket'`.
+
+**Migration inventory (apply order).** State verified 2026-09-26 against each
+project.
+
+| # | Migration | What it does | Migration env `supmsgcubipmmowrzoub` | Staging `axdcledcyhyvzrnfkwat` | Production `sxkpcovbyaficvtkpsdo` |
+|---|-----------|--------------|--------------------------------------|-------------------------------|-----------------------------------|
+| — | `20260525180000_broker_stored_credentials.sql` | First encrypted MT-password column + guard trigger (FxSocket era). | applied | applied | applied |
+| — | `20260616120000_fxsocket_unify_broker_accounts.sql` | FxSocket unification; dropped the credential columns and the old guard. | applied | applied | applied |
+| — | `20260617120000_drop_broker_accounts_guard_credentials.sql` | Drops the dangling credential guard trigger. | applied | applied | applied |
+| 1 | `20260914120000_add_broker_accounts_provider.sql` | Adds `broker_accounts.provider` (`'fxsocket'` default) + partial index. Phase 1. | applied, **not registered** | not applied | not applied |
+| 2 | `20260916120000_mtapi_read_sessions.sql` | Adds `mtapi_session_id`, `broker_password_encrypted`, `auto_reconnect_enabled`, `password_updated_at`; unique session index; column-level SELECT grant; credentials guard trigger. Phase 2. | applied, **not registered** | not applied | not applied |
+| 3 | `20260923120000_add_broker_accounts_linked_account_type.sql` | Adds `linked_account_type` (`Live`/`Demo`/`PropFirm`) + column grant. | applied, **not registered** | not applied | not applied |
+| 4 | `20260925190000_trades_close_price.sql` | Adds `trades.close_price` + partial index for the close-price backfill. | applied 2026-09-26 (recorded as version `20260926151532`) | not applied | not applied |
+
+Notes: migrations 1–3 are applied on the migration project but their versions are
+not in `schema_migrations`, so a plain `supabase db push` would try to re-run
+them — and migration 1 is not idempotent. Register each version after applying.
+Migrations 1–3 are additive and behaviour-preserving (`provider` defaults to
+`'fxsocket'`). Migration 2 replaces the table SELECT grant with a column list, so
+any later column must be granted explicitly (as migration 3 does).
+
+**Apply route.** Schema work uses the Supabase Management API. The two surfaces
+have separate permissions: `POST /v1/projects/<ref>/database/query` needs the
+**Database** capability (the stored token has read only, so DDL there fails with
+`25006`), while `POST /v1/projects/<ref>/database/migrations` needs the
+**Migrations** capability (read-write) and both runs the SQL and records the
+version. Body: `{ "name": "<filename-without-.sql>", "query": "<file>" }`.
+
+Targets: staging `axdcledcyhyvzrnfkwat`, production `sxkpcovbyaficvtkpsdo`.
+Once rollout begins, the "never merge migration into staging" rule in `AGENTS.md`
+should be updated to reference this procedure.
+
+The operational, customer-facing rollout plan — the reconnect flow users will
+actually see, the critical path, what is blocking us right now, the production
+wave table, and the MT4 readiness assessment — lives in
+`docs/mtapi-rollout-plan.md`.
+
 ---
 
 ## 7. Endpoint mapping (FXSocket → MTAPI)
@@ -1089,7 +1146,14 @@ An engineer implementing the migration will need to read most of these.
   `20260617120000_drop_broker_accounts_guard_credentials.sql`,
   `20260805130000_enforce_plan_broker_channel_limits.sql`,
   `20260914120000_add_broker_accounts_provider.sql` (Phase 1 — adds
-  `provider` column to `broker_accounts`, default `'fxsocket'`)
+  `provider` column to `broker_accounts`, default `'fxsocket'`),
+  `20260916120000_mtapi_read_sessions.sql` (Phase 2 — `mtapi_session_id`,
+  `broker_password_encrypted`, `auto_reconnect_enabled`, `password_updated_at`,
+  unique session index, column-level SELECT grant, credentials guard trigger),
+  `20260923120000_add_broker_accounts_linked_account_type.sql`
+  (`linked_account_type`), `20260925190000_trades_close_price.sql`
+  (`trades.close_price` + partial index). Full inventory with per-environment
+  applied state: `docs/mtapi-progress.md`.
 - MTAPI docs: `mt5.mtapi.io` / `mt4.mtapi.io` (client REST, swagger + readme)
 
 ---

@@ -308,18 +308,67 @@ test('orderClose calls OrderCloseSafe on MT5 and normalizes the response', async
   assert.equal(capturedUrl?.searchParams.get('ticket'), '3223311401')
 })
 
-test('orderClose calls OrderClose on MT4', async () => {
-  let capturedUrl: URL | undefined
+test('MT4 writes use the idempotent Safe endpoints and partial close sends lots', async () => {
+  const paths: string[] = []
+  let closed: URL | undefined
   const api = provider(url => {
-    capturedUrl = url
+    paths.push(url.pathname)
+    if (url.pathname === '/OrderCloseSafe') closed = url
     return new Response(JSON.stringify({
       ticket: 123, closePrice: 1.15, state: 'Started', profit: 0,
+      lots: 0.02, symbol: 'EURUSD', stopLoss: 1, takeProfit: 2,
     }))
   })
   api.seedPlatformCache('mt4-session', 'MT4')
-  const result = await api.orderClose('mt4-session', { ticket: 123 })
-  assert.equal(result.ticket, 123)
-  assert.equal(capturedUrl?.pathname, '/OrderClose')
+  assert.equal((await api.orderClose('mt4-session', { ticket: 123, lots: 0.02 })).ticket, 123)
+  assert.equal(closed?.searchParams.get('lots'), '0.02')
+  assert.equal(closed?.searchParams.get('volume'), null)
+  assert.equal((await api.orderSend('mt4-session', {
+    symbol: 'EURUSD', operation: 'Buy', volume: 0.01,
+  })).ticket, 123)
+  assert.equal((await api.orderModify('mt4-session', {
+    ticket: 123, stoploss: 1.1, takeprofit: 1.3,
+  })).ticket, 123)
+  assert.deepEqual(paths, ['/OrderCloseSafe', '/OrderSendSafe', '/OrderModifySafe'])
+})
+
+test('orderClose partial close sends lots rather than volume', async () => {
+  let capturedUrl: URL | undefined
+  const api = provider(url => {
+    capturedUrl = url
+    return new Response(JSON.stringify({ ticket: 42, closePrice: 1.15, state: 'Filled', lots: 0.01 }))
+  })
+  await api.orderClose('session', { ticket: 42, lots: 0.01 })
+  assert.equal(capturedUrl?.pathname, '/OrderCloseSafe')
+  assert.equal(capturedUrl?.searchParams.get('lots'), '0.01')
+  assert.equal(capturedUrl?.searchParams.get('volume'), null)
+})
+
+test('MT4 quote reads the Quote endpoint', async () => {
+  let capturedUrl: URL | undefined
+  const api = provider(url => {
+    capturedUrl = url
+    return new Response(JSON.stringify({ symbol: 'EURUSD', bid: 1.1, ask: 1.2, time: 'now' }))
+  })
+  api.seedPlatformCache('mt4-session', 'MT4')
+  assert.deepEqual(await api.quote('mt4-session', 'EURUSD'), {
+    symbol: 'EURUSD', bid: 1.1, ask: 1.2, time: 'now',
+  })
+  assert.equal(capturedUrl?.pathname, '/Quote')
+})
+
+test('MT4 ConnectEx and Connect request the order history download', async () => {
+  const calls: URL[] = []
+  const api = provider(url => {
+    calls.push(url)
+    return new Response('token-1')
+  })
+  await api.connectEx({ id: 'mt4-broker', server: 'Demo', login: '1', password: 'p', platform: 'MT4' })
+  await api.connect({ id: 'mt4-broker', login: '1', password: 'p', host: 'h', port: 443, platform: 'MT4' })
+  await api.connectEx({ id: 'mt5-broker', server: 'Demo', login: '1', password: 'p', platform: 'MT5' })
+  assert.equal(calls[0]?.searchParams.get('downloadOrderHistory'), 'true')
+  assert.equal(calls[1]?.searchParams.get('downloadOrderHistory'), 'true')
+  assert.equal(calls[2]?.searchParams.get('downloadOrderHistory'), null)
 })
 
 test('orderSend retries after INVALID_TOKEN and reconnects', async () => {

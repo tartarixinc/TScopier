@@ -263,6 +263,9 @@ export class MtapiClient {
     to: string,
     platform?: string | null,
   ): Promise<unknown[]> {
+    if (String(platform ?? "").toUpperCase() === "MT4") {
+      return await this.orderHistory(sessionId, from, to, platform)
+    }
     const raw = await this.request(
       "HistoryPositions",
       { from, to },
@@ -284,17 +287,18 @@ export class MtapiClient {
     return row
   }
 
-  /** Market bid/ask for one symbol (GET /GetQuote). Same shape as FxSocket getQuote. */
+  /** Market bid/ask for one symbol. Same shape as FxSocket getQuote. */
   async getQuote(
     sessionId: string,
     symbol: string,
     platform?: string | null,
   ): Promise<Record<string, unknown>> {
-    const row = object(await this.request("GetQuote", { symbol }, sessionId, platform))
+    const endpoint = String(platform ?? "").toUpperCase() === "MT4" ? "Quote" : "GetQuote"
+    const row = object(await this.request(endpoint, { symbol }, sessionId, platform))
     const bid = Number(row.bid ?? row.Bid)
     const ask = Number(row.ask ?? row.Ask)
     if (!Number.isFinite(bid) || !Number.isFinite(ask) || bid <= 0 || ask <= 0) {
-      throw new MtapiApiError("GetQuote returned invalid prices", 502, "INVALID_RESPONSE")
+      throw new MtapiApiError(endpoint + " returned invalid prices", 502, "INVALID_RESPONSE")
     }
     const time = row.time ?? row.Time
     return {

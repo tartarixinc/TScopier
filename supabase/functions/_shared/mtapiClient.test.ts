@@ -49,6 +49,18 @@ Deno.test("orderHistory and positionHistory pass date range", async () => {
   assertEquals(calls[1].pathname, "/HistoryPositions")
 })
 
+Deno.test("positionHistory reads OrderHistory on MT4 because HistoryPositions never succeeds", async () => {
+  const { client, calls } = provider(url => {
+    assertEquals(url.pathname, "/OrderHistory")
+    return new Response(JSON.stringify({ orders: [{ ticket: 3 }, { ticket: 4 }] }))
+  })
+  assertEquals(await client.positionHistory("s", "2000-01-01", "2026-09-28", "MT4"), [
+    { ticket: 3 },
+    { ticket: 4 },
+  ])
+  assertEquals(calls.length, 1)
+})
+
 Deno.test("orderHistory pages through OrderHistoryPagination when partial", async () => {
   const { client, calls } = provider(url => {
     if (url.pathname === "/OrderHistory") {
@@ -172,6 +184,21 @@ Deno.test("getQuote normalizes GetQuote bid/ask", async () => {
     bid: 4290.1,
     ask: 4290.4,
     time: "12:00:00",
+  })
+  assertEquals(calls.length, 1)
+})
+
+Deno.test("getQuote uses the Quote endpoint on MT4", async () => {
+  const { client, calls } = provider(url => {
+    assertEquals(url.pathname, "/Quote")
+    assertEquals(url.searchParams.get("symbol"), "EURUSD")
+    return new Response(JSON.stringify({ bid: 1.1001, ask: 1.1003, symbol: "EURUSD" }))
+  })
+  assertEquals(await client.getQuote("sess-q", "EURUSD", "MT4"), {
+    symbol: "EURUSD",
+    bid: 1.1001,
+    ask: 1.1003,
+    time: undefined,
   })
   assertEquals(calls.length, 1)
 })
