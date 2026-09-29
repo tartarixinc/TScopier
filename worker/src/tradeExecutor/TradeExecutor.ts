@@ -108,6 +108,7 @@ import { safeBuildMgmtSweepExhaustionPayload } from '../managementBreakevenDiagn
 import { getTradeExecutionMonitor, tradeOutcomeIsSuccess } from '../observability/tradeExecutionMonitor'
 import { testFlagEnabled } from '../testFlags'
 import { apiForBrokerAccount } from '../providerResolver'
+import { authorityFromBrokerRow } from '../brokerWriteAuthority'
 
 export type { SignalRow } from './types'
 
@@ -191,7 +192,7 @@ export class TradeExecutor {
   }
 
   apiFor(broker: BrokerRow): FxsocketBrokerClient | null {
-    return apiForBrokerAccount(broker.provider, brokerSessionUuid(broker))
+    return apiForBrokerAccount(broker.provider, brokerSessionUuid(broker), authorityFromBrokerRow(broker))
   }
 
   apiForUuid(uuid: string): FxsocketBrokerClient | null {

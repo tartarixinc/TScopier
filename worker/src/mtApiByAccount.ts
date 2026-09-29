@@ -1,10 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { type FxsocketBrokerClient, mtPlatformFrom, type MtPlatform } from './fxsocketClient'
 import { apiForBrokerAccount } from './providerResolver'
+import { authorityFromBrokerRow, type BrokerWriteAuthority } from './brokerWriteAuthority'
 
 export type BrokerApiMetadata = {
   platform: MtPlatform
   provider?: string | null
+  authority?: BrokerWriteAuthority | null
 }
 
 export type PlatformByFxsocketId = Map<string, BrokerApiMetadata>
@@ -38,7 +40,7 @@ export async function loadPlatformByFxsocketId(
   if (!ids.length) return out
   const { data, error } = await supabase
     .from('broker_accounts')
-    .select('mtapi_session_id,fxsocket_account_id,metaapi_account_id,platform,provider')
+    .select('id,mtapi_session_id,fxsocket_account_id,metaapi_account_id,platform,provider,writer_epoch,provider_transition_state')
     .or(`mtapi_session_id.in.(${ids.join(',')}),fxsocket_account_id.in.(${ids.join(',')}),metaapi_account_id.in.(${ids.join(',')})`)
   if (error) {
     console.warn(`[fxApi] broker platform lookup failed: ${error.message}`)
@@ -52,6 +54,7 @@ export async function loadPlatformByFxsocketId(
     out.set(id, {
       platform: mtPlatformFrom((row as { platform?: string | null }).platform),
       provider: (row as { provider?: string | null }).provider,
+      authority: authorityFromBrokerRow(row),
     })
   }
   return out
@@ -66,7 +69,7 @@ export function apiForFxsocketAccount(
   sessionId: string,
 ): FxsocketBrokerClient | null {
   const metadata = platformById.get(sessionId)
-  const api = apiForBrokerAccount(metadata?.provider, sessionId)
+  const api = apiForBrokerAccount(metadata?.provider, sessionId, metadata?.authority)
   if (api && metadata) api.seedPlatformCache(sessionId, metadata.platform)
   return api
 }

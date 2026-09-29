@@ -83,3 +83,6 @@ verify_jwt = true
 
 [functions.manual-broker-override-email]
 verify_jwt = true
+
+[functions.provider-transition]
+verify_jwt = false

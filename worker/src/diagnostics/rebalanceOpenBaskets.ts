@@ -17,7 +17,6 @@
 import 'dotenv/config'
 import { createClient } from '@supabase/supabase-js'
 import {
-  getFxsocketClient,
   hasFxsocketConfigured,
   mtPlatformFrom,
 } from '../fxsocketClient'
@@ -33,11 +32,18 @@ import {
 import { resolveRangeBasketFinalTps, toRangeBasketParsedSlice } from '../rangeBasketTpSync'
 import type { BasketOpenLeg } from '../basketSlTpReconcile'
 import type { ManualTpLot } from '../manualPlanning/types'
+import { apiForBrokerAccount } from '../providerResolver'
+import {
+  authorityFromBrokerRow,
+  createSupabaseBrokerWriteAuthorityStore,
+  registerBrokerWriteAuthorityStore,
+} from '../brokerWriteAuthority'
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 )
+registerBrokerWriteAuthorityStore(createSupabaseBrokerWriteAuthorityStore(supabase))
 
 type TradeRow = BasketOpenLeg & {
   broker_account_id: string
@@ -49,8 +55,12 @@ type BrokerRow = {
   user_id: string
   label?: string | null
   platform?: string | null
+  provider?: string | null
+  mtapi_session_id?: string | null
   fxsocket_account_id?: string | null
   metaapi_account_id?: string | null
+  writer_epoch?: number | null
+  provider_transition_state?: string | null
   manual_settings?: { tp_lots?: ManualTpLot[] | null; range_trading?: boolean } | null
 }
 
@@ -164,7 +174,7 @@ async function main() {
   const brokerIds = [...new Set(rows.map(r => r.broker_account_id))]
   const { data: brokers } = await supabase
     .from('broker_accounts')
-    .select('id,user_id,label,platform,fxsocket_account_id,metaapi_account_id,manual_settings')
+    .select('id,user_id,label,platform,provider,mtapi_session_id,fxsocket_account_id,metaapi_account_id,writer_epoch,provider_transition_state,manual_settings')
     .in('id', brokerIds)
   const brokerById = new Map((brokers ?? []).map(b => [b.id, b as BrokerRow]))
 
@@ -175,12 +185,11 @@ async function main() {
     .in('id', signalIds)
   const signalById = new Map((signalRows ?? []).map(s => [s.id, s]))
 
-  const api = getFxsocketClient()
-  let basketsDone = 0
   let modified = 0
   let failed = 0
   let skipped = 0
 
+  let basketsDone = 0
   for (const [key, legs] of byBasket) {
     const [anchorSignalId, brokerId] = key.split('|')
     if (!anchorSignalId || !brokerId) continue
@@ -200,6 +209,8 @@ async function main() {
       skipped += legs.length
       continue
     }
+
+    const api = apiForBrokerAccount(broker.provider, uuid, authorityFromBrokerRow(broker))
 
     if (!allChannels && ladderSignal?.channel_id && channelId !== ladderSignal.channel_id) {
       continue
@@ -277,7 +288,7 @@ async function main() {
       + ` ladder=[${finalTps.join(',')}] targets=${JSON.stringify(tpCounts)}`,
     )
 
-    if (!api && !dryRun) break
+    if (!api && !dryRun) continue
     api?.seedPlatformCache(uuid, mtPlatformFrom(broker.platform))
 
     for (const tr of legs) {

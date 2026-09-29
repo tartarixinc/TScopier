@@ -38,6 +38,7 @@ test('startup reconciles known sessions and starts token health checks', async (
     select() { return this },
     eq() { return this },
     is() { return this },
+    not() { return this },
     then(resolve: (value: unknown) => unknown) {
       return Promise.resolve({ data: rows, error: null }).then(resolve)
     },
@@ -69,4 +70,59 @@ test('startup reconciles known sessions and starts token health checks', async (
     { ids: ['token-1'], dryRun: true, platform: 'MT5' },
     { ids: ['token-1'], dryRun: false, platform: 'MT5' },
   ])
+})
+
+test('provisioning loses activation race without persisting or leaking the new session', async () => {
+  process.env.BROKER_CREDENTIALS_ENCRYPTION_KEY = 'phase-4c-race-key'
+  const row = {
+    id: 'broker-race',
+    provider: 'mtapi',
+    mtapi_session_id: null,
+    fxsocket_account_id: 'fx-preserved',
+    metaapi_account_id: null,
+    writer_epoch: 4,
+    provider_transition_state: 'stable',
+    account_login: '123',
+    broker_server: 'Server',
+    platform: 'MT5',
+    broker_password_encrypted: encryptMtPassword('secret'),
+    connection_status: 'pending',
+    performance_baseline_balance: null,
+  }
+  let fromCalls = 0
+  const supabase = {
+    from() {
+      fromCalls += 1
+      if (fromCalls === 1) {
+        const query = {
+          select() { return this },
+          eq() { return this },
+          is() { return this },
+          then(resolve: (value: unknown) => unknown) {
+            return Promise.resolve({ data: [row], error: null }).then(resolve)
+          },
+        }
+        return query
+      }
+      return {
+        update() { return this },
+        eq() { return this },
+        is() { return this },
+        select() { return this },
+        maybeSingle() { return Promise.resolve({ data: null, error: null }) },
+      }
+    },
+  } as unknown as SupabaseClient
+  const disconnected: string[] = []
+  const provider = {
+    async connectEx() { return 'new-mtapi-session' },
+    async disconnect(id: string) { disconnected.push(id) },
+  } as unknown as MtapiProvider
+
+  const manager = new MtapiSessionManager(supabase, provider) as unknown as {
+    provisionNewAccounts(): Promise<void>
+  }
+  await manager.provisionNewAccounts()
+
+  assert.deepEqual(disconnected, ['new-mtapi-session'])
 })

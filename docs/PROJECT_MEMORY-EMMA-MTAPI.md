@@ -269,3 +269,99 @@ slot or duplicate broker row is created.
 NOT_PERFORMED. No real MTAPI bridge/account was contacted in Phase 4B. Launch
 UX, real ConnectEx/CheckConnect/AccountSummary acceptance, and writer
 activation/fencing remain required before production cutover.
+
+## 2026-09-29 - Phase 4C single-writer fencing and controlled activation
+
+### Authoritative writer design
+
+broker_accounts.provider remains the authoritative writer only while
+provider_transition_state = 'stable'. A monotonic writer_epoch invalidates
+work captured before any forward or rollback transition.
+provider_transition_target is populated only while the account is fenced in
+transition; no separate provider timestamp was needed.
+
+Every broker mutation resolved through the worker provider seam now acquires a
+short-lived broker_write_leases row immediately before the external call.
+The database validates broker row ID, provider, provider-specific session ID,
+stable state, and expected writer epoch under a row lock. The same guard covers
+market/pending sends, modify/cancel/partial/full close, management, trailing,
+auto-management, partial TP, basket follow-up/reconciliation, force close, and
+copy-limit flattening. The active raw FxSocket v2 send, close, and reconciliation
+exceptions are wrapped explicitly. Worker and edge reconnects use the same
+lease so session replacement cannot race provider activation.
+
+The MTAPI orphan allow-list now includes prepared MTAPI sessions on
+FXSocket-active rows, preventing preparation tokens from being disconnected
+before activation.
+
+### Transition and fence semantics
+
+The transition RPC atomically changes stable -> transition and increments
+writer_epoch. That row lock serializes with lease acquisition: operations
+that acquired a lease first are allowed to finish, while all later operations
+fail closed. Existing leases may renew while draining, but no new lease can be
+created. Activation waits for all prior-epoch leases to finish or expire before
+the provider flip.
+
+Stale work is rejected rather than silently rerouted. This covers stale
+FXSocket jobs after MTAPI activation, stale MTAPI jobs after rollback, and a
+full FXSocket -> MTAPI -> FXSocket cycle where the preserved session ID is the
+same but the epoch has advanced.
+
+### Internal activation sequence
+
+The new provider-transition edge function has no frontend entry point and
+accepts only the configured service-role bearer token. activate_mtapi
+requires a stable FXSocket writer, encrypted credential, connected MTAPI
+status, MTAPI session, successful CheckConnect, and authoritative
+AccountSummary. It then begins the fence, drains writes, reloads the
+authoritative transition row, repeats both MTAPI checks, and atomically flips
+the same broker row to provider = 'mtapi' and stable.
+
+The existing row ID, FXSocket ID, MTAPI session, trade/config foreign keys,
+channel/risk settings, and performance baseline are not rewritten. FXSocket is
+not remotely deleted or disconnected by activation.
+
+Handled failures before the flip abort back to the prior stable provider while
+retaining the incremented epoch. A lost finish response is resolved by
+authoritative reread. If the outcome cannot be observed, the account remains
+fail-closed in transition rather than guessing or enabling two writers.
+
+### Rollback primitive
+
+The internal rollback_fxsocket action uses the identical epoch, transition,
+lease-drain, and atomic-finish sequence and requires a preserved FXSocket
+account ID. It does not disconnect MTAPI. This is writer-authority rollback
+only; open-position ticket/position compatibility is intentionally not claimed
+until Phase 4E / Fix #5 acceptance.
+
+### Known residual race
+
+No client-side fence can prove what a remote broker did after an HTTP timeout
+or connection loss. A broker/bridge can apply a request after the caller sees
+an ambiguous timeout. Leases close the local distributed scheduling race, but
+remote late application still requires provider idempotency, broker reads, and
+reconciliation. Real bridge behavior under timeout/restart remains untested.
+
+### Tests and real acceptance
+
+Focused worker authority/provider/session tests passed 16/16 and cover stable
+FXSocket/MTAPI authority, transition blocks, wrong sessions, stale
+provider/epoch rejection, preparation routing, and provision/activation CAS.
+Affected force-close tests
+passed 12/12; order-leg and reply-scoped management tests passed 6/6. Focused
+Deno preparation/transition/lease/crypto/migration tests passed 26/26 and cover
+same-row activation, pre-flip failure recovery, concurrent activation,
+rollback, preserved sessions, ambiguous finish observation, secret-free
+output/logs, and migration invariants. The new lease helper, transition
+orchestrator, and internal transition function pass Deno check. Worker
+typecheck/build, frontend typecheck/build, and git diff --check pass.
+
+The repository's two existing broker Edge entry files do not currently pass a
+whole-file Deno check under the installed Supabase/Deno type resolver: it
+reports existing untyped-client generic/never inference errors across those
+files. The new imported fencing modules check cleanly. No live database
+migration replay was performed in Phase 4C.
+
+REAL_ACCEPTANCE: NOT_PERFORMED. No real MTAPI or FXSocket account was switched
+in Phase 4C, and no public migration control was added.

@@ -3,6 +3,7 @@ import { clearChannelActiveTradeParamsWhenFlat } from './channelActiveTradeParam
 import { loadOpenTradesForManagement } from './managementScope'
 import type { ResolvedBrokerProvider } from './providerResolver'
 import { apiForBrokerAccount } from './providerResolver'
+import { authorityFromBrokerRow } from './brokerWriteAuthority'
 import { deleteRangePendingLegsForBasket } from './rangePendingLegDelete'
 import {
   cancelSignalEntryRowAtBroker,
@@ -38,6 +39,9 @@ export async function flattenChannelTradesForCopyLimit(args: {
   metaapiAccountId: string
   platform: string
   provider?: string | null
+  writerEpoch: number
+  providerTransitionState: 'stable' | 'transition'
+  mtapiSessionId?: string | null
   channelId: string
   reason: string
 }): Promise<CopyLimitFlattenResult> {
@@ -48,7 +52,18 @@ export async function flattenChannelTradesForCopyLimit(args: {
     virtualLegsDeleted: 0,
   }
 
-  const api = apiForBrokerAccount(args.provider, args.metaapiAccountId)
+  const api = apiForBrokerAccount(
+    args.provider,
+    args.metaapiAccountId,
+    authorityFromBrokerRow({
+      id: args.brokerAccountId,
+      provider: args.provider,
+      mtapi_session_id: args.mtapiSessionId,
+      fxsocket_account_id: args.provider === 'mtapi' ? null : args.metaapiAccountId,
+      writer_epoch: args.writerEpoch,
+      provider_transition_state: args.providerTransitionState,
+    }),
+  )
   if (!api || !args.metaapiAccountId || args.metaapiAccountId.includes('|')) return result
 
   const trades = await loadOpenTradesForManagement(args.supabase, {

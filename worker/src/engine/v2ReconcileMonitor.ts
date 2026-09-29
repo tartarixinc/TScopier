@@ -44,6 +44,7 @@ import {
   detectManualBrokerStopOverridesDetailed,
   notifyManualBrokerOverrideReverted,
 } from '../manualBrokerOverrideNotification'
+import { authorityFromBrokerRow, type BrokerWriteAuthority, withBrokerWriteAuthority } from '../brokerWriteAuthority'
 
 const TICK_MS = Math.min(60_000, Math.max(1_000, Number(process.env.V2_RECONCILE_TICK_MS ?? 4_000)))
 const MANUAL_OVERRIDE_LOG_PREFIX = '[MANUAL_OVERRIDE_NOTIFY]'
@@ -208,7 +209,7 @@ function filterDirectionallyValidModifies(
 
 type BasketKey = { brokerAccountId: string; anchorSignalId: string; symbol: string; isBuy: boolean }
 
-type BrokerSession = { uuid: string; platform: MtPlatform; userId: string | null }
+type BrokerSession = { uuid: string; platform: MtPlatform; userId: string | null; authority: BrokerWriteAuthority | null }
 
 function perLegTargetsForManualOverrideDetection(
   legs: BasketOpenLeg[],
@@ -332,14 +333,14 @@ export class V2ReconcileMonitor {
     if (!unique.length) return out
     const { data } = await this.supabase
       .from('broker_accounts')
-      .select('id,user_id,provider,fxsocket_account_id,metaapi_account_id,platform')
+      .select('id,user_id,provider,mtapi_session_id,fxsocket_account_id,metaapi_account_id,platform,writer_epoch,provider_transition_state')
       .in('id', unique)
     for (const b of (data ?? []) as Array<{ id: string; user_id?: string; provider?: string | null; fxsocket_account_id?: string; metaapi_account_id?: string; platform?: string }>) {
       if (b.provider != null && b.provider !== '' && b.provider !== 'fxsocket') continue
       const uuid = brokerSessionUuid(b)
       if (!uuid) continue
       const platform: MtPlatform = String(b.platform).toUpperCase() === 'MT4' ? 'MT4' : 'MT5'
-      out.set(b.id, { uuid, platform, userId: b.user_id ?? null })
+      out.set(b.id, { uuid, platform, userId: b.user_id ?? null, authority: authorityFromBrokerRow(b) })
     }
     return out
   }
@@ -432,7 +433,10 @@ export class V2ReconcileMonitor {
       if (t != null) ticketToTradeId.set(t, leg.id)
     }
 
-    const result = await applyReconcileActions(
+    const result = await withBrokerWriteAuthority(
+      session.authority,
+      'v2_reconcile_modify',
+      () => applyReconcileActions(
       {
         fx: this.fx,
         accountId: session.uuid,
@@ -444,6 +448,7 @@ export class V2ReconcileMonitor {
         adoptOrphan: async () => {},
       },
       actions,
+      ),
     )
 
     if (result.closed > 0) {

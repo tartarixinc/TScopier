@@ -79,6 +79,7 @@ import {
   type ManagementBreakevenAggregateDiagnostic,
   type ManagementBreakevenFailureDiagnostic,
 } from '../managementBreakevenDiagnostics'
+import { authorityFromBrokerRow, withBrokerWriteAuthority } from '../brokerWriteAuthority'
 
 function mgmtCloseOpts(liveMgmtFast: boolean) {
   return { maxAttempts: 2, slippageEscalation: 50, liveFast: liveMgmtFast }
@@ -1061,7 +1062,11 @@ export async function applyManagement(
           if (isV2({ brokerAccountId: broker.id, userId: signal.user_id, provider: broker.provider })) {
             // v2 fast close: strict retcode-validated single call (~200ms live),
             // no slow verify/retry loop. Idempotent - a gone ticket reads as closed.
-            const r = await getFxClient().orderClose(uuid, toMtPlatform(broker.platform), { ticket: effectiveTicket })
+            const r = await withBrokerWriteAuthority(
+              authorityFromBrokerRow(broker),
+              'v2_orderClose',
+              () => getFxClient().orderClose(uuid, toMtPlatform(broker.platform), { ticket: effectiveTicket }),
+            )
             closeConfirmed = r.ok
             if (!r.ok) {
               lastCloseReason = r.message
