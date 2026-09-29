@@ -297,3 +297,84 @@ async function assertRejectsLike<T>(
     assertStringIncludes(e.message, messagePart)
   }
 }
+
+Deno.test("isMtapiConfigured accepts platform-specific bridge URLs", () => {
+  assertEquals(isMtapiConfigured(makeEnv({ MTAPI_MT4_BASE_URL: "https://mt4.test" })), true)
+  assertEquals(isMtapiConfigured(makeEnv({ MTAPI_MT5_BASE_URL: "https://mt5.test" })), true)
+})
+
+Deno.test("ConnectEx uses canonical credentials and returns the session token", async () => {
+  const { client, calls } = provider(url => {
+    assertEquals(url.pathname, "/ConnectEx")
+    assertEquals(url.searchParams.get("user"), "123456")
+    assertEquals(url.searchParams.get("password"), "private password")
+    assertEquals(url.searchParams.get("server"), "Broker-Live")
+    return new Response("session-token")
+  }, { MTAPI_MT4_BASE_URL: "https://mt4.test" })
+
+  assertEquals(await client.connectEx({
+    login: "123456",
+    password: "private password",
+    server: "Broker-Live",
+    platform: "MT4",
+  }), "session-token")
+  assertEquals(calls[0].origin, "https://mt4.test")
+})
+
+Deno.test("ConnectEx rejects malformed session responses", async () => {
+  const { client } = provider(() => new Response(JSON.stringify({ session: "not-a-plain-token" })))
+  await assertRejectsLike(
+    () => client.connectEx({
+      login: "123456",
+      password: "secret",
+      server: "Broker-Live",
+      platform: "MT5",
+    }),
+    MtapiApiError,
+    "no session token",
+  )
+})
+
+Deno.test("CheckConnect and Disconnect use the created session", async () => {
+  const { client, calls } = provider(url => {
+    if (url.pathname === "/CheckConnect") return new Response("OK")
+    if (url.pathname === "/Disconnect") return new Response("OK")
+    return new Response("unexpected", { status: 500 })
+  })
+  await client.checkConnect("session-1", "MT5")
+  await client.disconnect("session-1", "MT5")
+  assertEquals(calls.map(url => [url.pathname, url.searchParams.get("id")]), [
+    ["/CheckConnect", "session-1"],
+    ["/Disconnect", "session-1"],
+  ])
+})
+
+Deno.test("CheckConnect rejects non-authoritative responses", async () => {
+  const { client } = provider(() => new Response("CONNECTING"))
+  await assertRejectsLike(
+    () => client.checkConnect("session-1", "MT5"),
+    MtapiApiError,
+    "invalid response",
+  )
+})
+
+Deno.test("credential-bearing provider errors never expose the password", async () => {
+  const secret = "do-not-return-this-password"
+  const { client } = provider(() => new Response(JSON.stringify({
+    code: "AUTH_FAILED",
+    message: `invalid password ${secret}`,
+  }), { status: 401 }))
+  try {
+    await client.connectEx({
+      login: "123456",
+      password: secret,
+      server: "Broker-Live",
+      platform: "MT5",
+    })
+    throw new Error("expected rejection")
+  } catch (error) {
+    if (!(error instanceof MtapiApiError)) throw error
+    assertEquals(error.message.includes(secret), false)
+    assertEquals(error.message, "MTAPI ConnectEx failed")
+  }
+})

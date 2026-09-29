@@ -60,7 +60,7 @@ async function getKey(env: EnvLike): Promise<CryptoKey | null> {
 
   const material = decodeKeyMaterial(raw);
   if (material) {
-    return crypto.subtle.importKey("raw", material, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+    return crypto.subtle.importKey("raw", material.buffer as ArrayBuffer, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
   }
 
   // Hash the raw string to 32 bytes via SHA-256
@@ -89,6 +89,46 @@ export async function encryptMtPassword(
   const payloadB64 = btoa(String.fromCharCode(...payload));
 
   return `${PREFIX}:${ivB64}:${payloadB64}`;
+}
+
+export class BrokerCredentialEncryptionError extends Error {
+  readonly code: "ENCRYPTION_NOT_CONFIGURED" | "ENCRYPTION_FAILED";
+
+  constructor(
+    message: string,
+    code: "ENCRYPTION_NOT_CONFIGURED" | "ENCRYPTION_FAILED",
+  ) {
+    super(message);
+    this.name = "BrokerCredentialEncryptionError";
+    this.code = code;
+  }
+}
+
+/** Encrypt for persistence and fail closed when encryption is unavailable. */
+export async function encryptMtPasswordRequired(
+  plaintext: string,
+  env: EnvLike,
+): Promise<string> {
+  if (!isEncryptionConfigured(env)) {
+    throw new BrokerCredentialEncryptionError(
+      "Broker credential encryption is not configured.",
+      "ENCRYPTION_NOT_CONFIGURED",
+    );
+  }
+
+  try {
+    const encrypted = await encryptMtPassword(plaintext, env);
+    if (!encrypted || !encrypted.startsWith(`${PREFIX}:`)) {
+      throw new Error("invalid encrypted credential");
+    }
+    return encrypted;
+  } catch (error) {
+    if (error instanceof BrokerCredentialEncryptionError) throw error;
+    throw new BrokerCredentialEncryptionError(
+      "Broker credential encryption failed.",
+      "ENCRYPTION_FAILED",
+    );
+  }
 }
 
 export async function decryptMtPassword(

@@ -197,6 +197,83 @@ async function call<T = unknown>(opts: CallOpts<T>): Promise<T> {
   return (opts.expect ? opts.expect(body) : (body as T))
 }
 
+export type MtapiMigrationPreparationRequest = {
+  body: {
+    action: 'prepare_migration'
+    broker_account_id: string
+    account_password: string
+  }
+  edgeFn: 'mtapi-broker'
+  timeoutMs: number
+}
+
+export type MtapiMigrationPreparationResult = {
+  account: BrokerAccount
+  summary?: AccountSummary
+  prepared: true
+}
+
+type MtapiMigrationPreparationInvoker = (
+  request: MtapiMigrationPreparationRequest,
+) => Promise<unknown>
+
+function browserSafePreparedAccount(raw: Record<string, unknown>): BrokerAccount {
+  const {
+    mtapi_session_id: _session,
+    broker_password_encrypted: _password,
+    ...safe
+  } = raw
+  if (resolveProvider(safe as { provider?: string | null }) !== 'fxsocket') {
+    throw new Error('MTAPI preparation must not activate the provider')
+  }
+  return safe as unknown as BrokerAccount
+}
+
+/**
+ * Reusable Phase 4B action. UI supplies only the existing row and a one-time
+ * password; login/server/platform remain canonical server-side.
+ */
+export async function prepareExistingBrokerForMtapi(
+  args: {
+    account: Pick<BrokerAccount, 'id' | 'provider'>
+    accountPassword: string
+    timeoutMs?: number
+  },
+  invoke?: MtapiMigrationPreparationInvoker,
+): Promise<MtapiMigrationPreparationResult> {
+  if (resolveProvider(args.account) !== 'fxsocket') {
+    throw new Error('Only an FXSocket broker account can be prepared for MTAPI migration')
+  }
+  const accountPassword = args.accountPassword
+  if (!accountPassword.trim()) throw new Error('Broker password is required')
+
+  const request: MtapiMigrationPreparationRequest = {
+    body: {
+      action: 'prepare_migration',
+      broker_account_id: args.account.id,
+      account_password: accountPassword,
+    },
+    edgeFn: 'mtapi-broker',
+    timeoutMs: args.timeoutMs ?? FXSOCKET_CONNECT_TIMEOUT_MS,
+  }
+  const raw = await (invoke
+    ? invoke(request)
+    : call({ ...request, expect: body => body }))
+  const response = raw as {
+    prepared?: boolean
+    account?: Record<string, unknown>
+    summary?: AccountSummary
+  }
+  if (response.prepared !== true || !response.account) {
+    throw new Error('MTAPI preparation did not return an account')
+  }
+  return {
+    prepared: true,
+    account: browserSafePreparedAccount(response.account),
+    summary: response.summary,
+  }
+}
+
 export interface AccountSummary {
   balance?: number
   equity?: number
@@ -401,6 +478,13 @@ export const fxsocketBroker = {
     return isWaitingForConnect(accountId)
   },
 
+  prepareMtapiMigration(args: {
+    account: Pick<BrokerAccount, 'id' | 'provider'>
+    accountPassword: string
+    timeoutMs?: number
+  }): Promise<MtapiMigrationPreparationResult> {
+    return prepareExistingBrokerForMtapi(args)
+  },
   /** Re-link FxSocket on an existing broker row (password required; config preserved). */
   reconnect(args: {
     accountId: string
