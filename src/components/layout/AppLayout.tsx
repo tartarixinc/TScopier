@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { ChevronDown, PanelLeftClose, PanelLeftOpen, Menu, Sparkles, X, type LucideIcon } from 'lucide-react'
+import { ChevronDown, Flame, PanelLeftClose, PanelLeftOpen, Menu, Sparkles, X, type LucideIcon } from 'lucide-react'
 import clsx from 'clsx'
 import { getAppRouteIcon } from '../../lib/appNavIcons'
 import { TscopierLogo } from '../ui/TscopierLogo'
@@ -160,9 +160,9 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
     })
   }, [location.pathname])
 
-  // Subscription reminder modal on dashboard handles the nudge ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â no forced redirect.
+  // Subscription reminder modal on dashboard handles the nudge. No forced redirect.
 
-  // After Stripe success, paywall may have raced to /pricing before webhook sync ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â send back.
+  // After Stripe success, paywall may have raced to /pricing before webhook sync. Send back.
   useEffect(() => {
     if (!checkoutSyncPending) return
     if (location.pathname !== '/pricing') return
@@ -246,12 +246,10 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
             />
           ) : null}
           {showFireIndicator && opts.collapsed && !showOpenIndicator ? (
-            <span
-              className="absolute -end-1 -top-1 text-[10px] leading-none"
+            <Flame
+              className="absolute -end-1 -top-1 h-2.5 w-2.5 text-orange-500"
               aria-hidden
-            >
-              ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¥
-            </span>
+            />
           ) : null}
         </span>
         <span className={clsx(opts.collapsed && 'lg:hidden')}>{label}</span>
@@ -262,9 +260,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
           />
         ) : null}
         {showFireIndicator && !opts.collapsed && !showOpenIndicator ? (
-          <span className="ms-auto shrink-0 text-sm leading-none" aria-hidden>
-            ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¥
-          </span>
+          <Flame className="ms-auto h-3.5 w-3.5 shrink-0 text-orange-500" aria-hidden />
         ) : null}
       </>
     )
@@ -303,7 +299,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
                     type="button"
                     key={to}
                     title={label}
-                    aria-label={ariaExtra ? `${label} ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ${ariaExtra}` : label}
+                    aria-label={ariaExtra ? `${label}, ${ariaExtra}` : label}
                     onClick={() => {
                       openUpgrade('advanced')
                       opts.onNavigate?.()
@@ -326,7 +322,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
                   key={to}
                   to={to}
                   title={label}
-                  aria-label={ariaExtra ? `${label} ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ${ariaExtra}` : label}
+                  aria-label={ariaExtra ? `${label}, ${ariaExtra}` : label}
                   onClick={opts.onNavigate}
                   className={navLinkClass(opts.collapsed)}
                 >
