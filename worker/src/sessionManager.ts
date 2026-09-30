@@ -2,7 +2,15 @@ import { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js'
 import { TelegramClient } from 'telegram'
 import { runEphemeralBacktestSync, runWithEphemeralListener } from './backtestSync'
 import { TelegramSessionInvalidError } from './telegramClient'
-import { ChannelInfo, ListenerStatus, UserListener, type SignalReconcileStats } from './userListener'
+import { envNumber } from './envNumber'
+import {
+  ChannelInfo,
+  ListenerStatus,
+  UserListener,
+  type SignalReconcileStats,
+  telegramConnectTimeoutMs,
+  withTelegramTimeout,
+} from './userListener'
 import {
   acquireSessionLease,
   countFreshListenerLeasesForUsers,
@@ -70,22 +78,16 @@ function shouldRunGramjsForSession(session: { listener_engine?: string | null })
 
 /** Wait after disconnect so Telegram releases the auth key before a new connect. */
 function authKeyReleaseDelayMs(): number {
-  return Math.max(500, Math.min(120_000, Number(process.env.TELEGRAM_RECONNECT_COOLDOWN_MS ?? 3500)))
+  return envNumber(process.env.TELEGRAM_RECONNECT_COOLDOWN_MS, 3500, 500, 120_000)
 }
 
 function listenerStartTimeoutMs(): number {
-  return Math.max(
-    15_000,
-    Math.min(180_000, Number(process.env.LISTENER_START_TIMEOUT_MS ?? 60_000)),
-  )
+  return envNumber(process.env.LISTENER_START_TIMEOUT_MS, 60_000, 15_000, 180_000)
 }
 
 /** Consecutive renew ticks with MTProto down before hard-resetting the Map entry. */
 function disconnectedRenewHealTicks(): number {
-  return Math.max(
-    2,
-    Math.min(20, Number(process.env.LISTENER_DISCONNECT_HEAL_TICKS ?? 3)),
-  )
+  return envNumber(process.env.LISTENER_DISCONNECT_HEAL_TICKS, 3, 2, 20)
 }
 
 export class UserSessionManager {
@@ -385,26 +387,39 @@ export class UserSessionManager {
       return
     }
     if (!listener.isTelegramConnected()) {
-      // Dead Map entries used to skip renew forever (UI "Copier engine offline").
-      // Kick reconnect first; after several failed ticks, hard-reset so syncSessions
-      // can startListener cleanly (reconnect-only can leave No lease forever).
-      const ticks = (this.disconnectedRenewTicks.get(userId) ?? 0) + 1
-      this.disconnectedRenewTicks.set(userId, ticks)
-      const healAfter = disconnectedRenewHealTicks()
-      if (ticks >= healAfter) {
-        console.warn(
-          `[sessionManager] hard-reset disconnected listener user=${userId}`
-          + ` after ${ticks} renew ticks — syncSessions will restart`,
-        )
+      if (listener.isSessionRevoked()) {
+        // A revoked auth key cannot be repaired by reconnecting. The generic
+        // heal path below (hard-reset after N disconnected ticks, then
+        // syncSessions restarts) created an endless cycle: a fresh instance
+        // reported healthy for ~30 s until the watchdog flagged it again, and
+        // the health row flipped between `reconnect_required` and `linked`, so
+        // the re-link banner flickered and every cycle emitted a Sentry issue
+        // (incident 2026-09-29). Keep the lease and leave the listener parked
+        // until the user re-links. The transition itself is logged once by the
+        // listener, so nothing is logged per tick here.
         this.disconnectedRenewTicks.delete(userId)
-        await this.stopListener(userId)
-        return
+      } else {
+        // Dead Map entries used to skip renew forever (UI "Copier engine offline").
+        // Kick reconnect first; after several failed ticks, hard-reset so syncSessions
+        // can startListener cleanly (reconnect-only can leave No lease forever).
+        const ticks = (this.disconnectedRenewTicks.get(userId) ?? 0) + 1
+        this.disconnectedRenewTicks.set(userId, ticks)
+        const healAfter = disconnectedRenewHealTicks()
+        if (ticks >= healAfter) {
+          console.warn(
+            `[sessionManager] hard-reset disconnected listener user=${userId}`
+            + ` after ${ticks} renew ticks — syncSessions will restart`,
+          )
+          this.disconnectedRenewTicks.delete(userId)
+          await this.stopListener(userId)
+          return
+        }
+        console.log(
+          `[sessionManager] listener disconnected but renewing lease anyway`
+          + ` user=${userId} — kicking reconnect in background`,
+        )
+        listener.requestReconnectIfDisconnected('lease_renew_disconnected')
       }
-      console.log(
-        `[sessionManager] listener disconnected but renewing lease anyway`
-        + ` user=${userId} — kicking reconnect in background`,
-      )
-      listener.requestReconnectIfDisconnected('lease_renew_disconnected')
     } else {
       // Only reset the counter when the listener is actually connected — an
       // unconditional delete here wiped the count every tick, so the
@@ -436,7 +451,9 @@ export class UserSessionManager {
       return
     }
 
-    if (!listener.isListenerHealthy(opts.staleMs)) {
+    // A parked revoked listener is quiet by design, not by low traffic — do not
+    // emit this warning every renew tick (20 s) for a user who must re-link.
+    if (!listener.isSessionRevoked() && !listener.isListenerHealthy(opts.staleMs)) {
       console.warn(
         `[sessionManager] listener quiet but lease renewed user=${userId}`
         + ' (no Telegram events recently — normal for low-traffic channels)',
@@ -950,7 +967,29 @@ export class UserSessionManager {
         this.listeners.set(userId, listener)
         console.log(`[sessionManager] Adopted live client for user ${userId}`)
       } catch (err) {
-        try { await client.disconnect() } catch { /* ignore */ }
+        // destroy(), not disconnect(): the UserListener built above already
+        // attached the update-loop TIMEOUT recovery handler to this client, and
+        // that handler reconnects unconditionally (incident 2026-09-29). A
+        // client that is only disconnected keeps its gramjs update loop alive,
+        // so ~10 s later it reconnects itself and holds a second MTProto session
+        // on the same auth key (AUTH_KEY_DUPLICATED). destroy() sets the loop's
+        // exit flag synchronously; both steps are bounded so a hung socket cannot
+        // stall the connection lock this runs under.
+        try {
+          await withTelegramTimeout(
+            client.destroy(),
+            telegramConnectTimeoutMs(),
+            `adopted listener destroy ${userId}`,
+          )
+        } catch {
+          try {
+            await withTelegramTimeout(
+              client.disconnect(),
+              5_000,
+              `adopted listener disconnect ${userId}`,
+            )
+          } catch { /* ignore */ }
+        }
         throw err
       } finally {
         this.adoptingUsers.delete(userId)
@@ -1391,30 +1430,44 @@ export class UserSessionManager {
   private async disconnectListener(userId: string): Promise<void> {
     const listener = this.listeners.get(userId)
     if (!listener) return
-    void persistCopierHealth(this.supabase, userId, {
-      telegramAccountStatus: 'linked',
+    // A revoked session must survive teardown: both columns below are
+    // overwritten on every upsert, so hard-coding 'linked' here silently
+    // dropped the re-link banner written by the listener a moment earlier
+    // (incident 2026-09-29). The status only flips back to 'linked' once a
+    // fresh listener starts for the re-linked session.
+    const revoked = listener.isSessionRevoked()
+    const telegramAccountStatus = revoked ? 'reconnect_required' : 'linked'
+    // Awaited (not fire-and-forget) while the connection lock is held: a slow
+    // write landing after a successor's `listener_started` row would re-stamp
+    // `reconnect_required` over a fresh `linked` row. persistCopierHealth never
+    // throws, so awaiting cannot fail the stop.
+    await persistCopierHealth(this.supabase, userId, {
+      telegramAccountStatus,
       listenerStatus: 'disconnected',
       copierEngineStatus: 'stopped',
       workerOwnershipStatus: 'owned',
       mtprotoConnected: false,
       shutdownInProgress: true,
+      recoveryExhausted: revoked,
       healthReason: 'listener_stop_requested',
     }, {
       force: true,
       ownershipEpoch: listener.getHealthOwnershipEpoch(),
       leaseAcquiredAt: listener.getHealthLeaseAcquiredAt(),
+      allowWithoutLease: revoked,
     })
     await listener.stop()
     this.listeners.delete(userId)
     this.disconnectedRenewTicks.delete(userId)
     await releaseSessionLease(this.supabase, userId)
-    void persistCopierHealth(this.supabase, userId, {
-      telegramAccountStatus: 'linked',
+    await persistCopierHealth(this.supabase, userId, {
+      telegramAccountStatus,
       listenerStatus: 'disconnected',
       copierEngineStatus: 'stopped',
       workerOwnershipStatus: 'unowned',
       mtprotoConnected: false,
       shutdownInProgress: false,
+      recoveryExhausted: revoked,
       healthReason: 'listener_stopped',
     }, {
       force: true,

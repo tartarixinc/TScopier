@@ -9,7 +9,9 @@ import {
 } from './observability/sentry'
 import { startWorkerHeartbeatCheckIns, stopWorkerHeartbeatCheckIns } from './observability/workerHeartbeat'
 // Must be loaded before any TelegramClient runtime code — patches console.log
-// to suppress GramJS flood-wait INFO noise (83% of log volume).
+// to suppress GramJS flood-wait INFO noise (83% of log volume) and
+// console.error to aggregate the `Error: TIMEOUT` stacks GramJS's update loop
+// prints every ~9 s per dead connection (incident 2026-09-29).
 import './gramjsLogSuppress'
 import { createClient } from '@supabase/supabase-js'
 import WebSocket from 'ws'
