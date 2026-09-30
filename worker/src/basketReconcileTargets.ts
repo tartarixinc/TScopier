@@ -450,7 +450,7 @@ export async function sweepOpenBasketsForReconcileDrift(
       .map(b => brokerSessionUuid(b))
       .filter((u): u is string => typeof u === 'string' && u.length > 0 && !u.includes('|')),
   )]
-  const platformByUuid = brokerUuids.length && hasFxsocketConfigured()
+  const platformByUuid = brokerUuids.length
     ? await loadPlatformByFxsocketId(supabase, brokerUuids)
     : new Map()
   const ordersCache = new Map<string, Map<number, unknown>>()
@@ -509,9 +509,7 @@ export async function sweepOpenBasketsForReconcileDrift(
 
     if (!perLegTargets.length) continue
 
-    const ordersByTicket = hasFxsocketConfigured()
-      ? await loadSweepBrokerOrders(supabase, broker, platformByUuid, ordersCache)
-      : new Map<number, unknown>()
+    const ordersByTicket = await loadSweepBrokerOrders(supabase, broker, platformByUuid, ordersCache)
     const outOfSync = basketLegsOutOfSyncOnBroker(
       familyTrades,
       perLegTargets,

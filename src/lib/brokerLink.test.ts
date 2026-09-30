@@ -28,6 +28,10 @@ describe('brokerLink', () => {
   it('isFxsocketLinkedBroker matches session linked only', () => {
     const linked = { fxsocket_account_id: SESSION_UUID, is_active: false }
     assert.equal(isFxsocketLinkedBroker(linked), true)
+    assert.equal(
+      isFxsocketLinkedBroker({ provider: 'mtapi', fxsocket_account_id: SESSION_UUID }),
+      false,
+    )
   })
 
   it('isBrokerCopyEnabled requires copy toggle and session', () => {

@@ -697,16 +697,6 @@ export async function applyChannelStopsToBaskets(
   let totalFailed = 0
   let totalSkipped = 0
 
-  if (!dryRun && !hasFxsocketConfigured()) {
-    return {
-      brokers: [],
-      allFullySynced: false,
-      totalModified: 0,
-      totalFailed: 0,
-      totalSkipped: 0,
-    }
-  }
-
   // Apply baskets (one per account) concurrently — each targets a different MT
   // terminal, so distinct baskets don't contend. Per-leg modifies within a basket
   // still run under mgmtLegConcurrency(), and the fxClient per-terminal gate keeps

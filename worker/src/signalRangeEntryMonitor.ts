@@ -1,8 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { hasFxsocketConfigured, normalizeSymbolParams } from './fxsocketClient'
+import { normalizeSymbolParams } from './fxsocketClient'
 import { pipCalculator } from './pipCalculator'
 import type { ParsedSignal } from './manualPlanning/types'
-import { apiForFxsocketAccount, loadPlatformByFxsocketId, type PlatformByFxsocketId } from './mtApiByAccount'
+import { apiForFxsocketAccount, resolveDurableBrokerArtifacts, type PlatformByFxsocketId } from './mtApiByAccount'
 import { isUserCopierPausedCached, loadCachedUserCopierPaused } from './copierPause'
 import {
   applyShardToQuery,
@@ -46,10 +46,6 @@ export class SignalRangeEntryMonitor {
 
   start() {
     if (this.loop) return
-    if (!hasFxsocketConfigured()) {
-      console.warn('[signalRangeEntryMonitor] FxSocket not configured — monitor disabled')
-      return
-    }
     this.loop = startMonitorLoop({
       name: 'signalRangeEntryMonitor',
       supabase: this.supabase,
@@ -83,8 +79,6 @@ export class SignalRangeEntryMonitor {
   }
 
   private async tickOnce(): Promise<void> {
-    if (!hasFxsocketConfigured()) return
-
     const rowsQ = await applyShardToQuery(
       this.supabase,
       this.supabase
@@ -103,10 +97,9 @@ export class SignalRangeEntryMonitor {
     const rows = (data ?? []) as SignalRangeEntryWaitRow[]
     if (!rows.length) return
 
-    this.platformByUuid = await loadPlatformByFxsocketId(
-      this.supabase,
-      rows.map(r => r.metaapi_account_id),
-    )
+    const resolved = await resolveDurableBrokerArtifacts(this.supabase, rows)
+    this.platformByUuid = resolved.platformBySession
+    rows.splice(0, rows.length, ...resolved.rows)
 
     const now = Date.now()
     const active: SignalRangeEntryWaitRow[] = []

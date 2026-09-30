@@ -525,13 +525,6 @@ export async function applyManagement(
     let basketsTotal: number | undefined
     let basketApplyMs: number | undefined
     let basketConcurrency: number | undefined
-    if (!hasFxsocketConfigured()) {
-      await skipMgmtSignalWithLog(ctx, signal, 'broker_api_not_configured', {
-        action: String(parsed.action ?? '').toLowerCase(),
-      })
-      return emptyMgmtResult(legConcurrency)
-    }
-
     const brokerAccountIds = brokers.map(b => b.id)
     const replyScoped = isReplyScopedManagement(signal)
     const symbolFromText = explicitMgmtSymbol(parsed)
@@ -2053,11 +2046,6 @@ export async function applyCloseWorseEntriesInstruction(ctx: TradeExecutorContex
     const liveMgmtFast = mgmtOpts?.liveMgmtFast === true
     const legConcurrency = liveMgmtFast ? mgmtLegConcurrency() : 1
     let legsTotal = 0
-
-    if (!hasFxsocketConfigured()) {
-      await skipMgmtSignalWithLog(ctx, signal, 'broker_api_not_configured', { action: 'close_worse_entries' })
-      return emptyMgmtResult(legConcurrency)
-    }
 
     const openRows = rows.filter(r => r.status === 'open')
     if (!openRows.length) {

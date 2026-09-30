@@ -17,7 +17,6 @@ export async function closeOppositeDirectionTrades(ctx: TradeExecutorContext,
     broker: BrokerRow,
     symbol: string,
   ): Promise<void> {
-    if (!hasFxsocketConfigured()) return
     const manual = (broker.manual_settings ?? {}) as ManualSettings
     if (manual.close_on_opposite_signal !== true) return
     if (isOppositeSignalCloseBlocked(

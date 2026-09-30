@@ -365,3 +365,101 @@ migration replay was performed in Phase 4C.
 
 REAL_ACCEPTANCE: NOT_PERFORMED. No real MTAPI or FXSocket account was switched
 in Phase 4C, and no public migration control was added.
+
+
+## 2026-09-29 - Phase 4D removal of hidden FXSocket runtime dependencies
+
+### Provider-neutral runtime paths
+
+Production trading and management paths no longer use global FXSocket
+configuration as an availability gate. Trade dispatch and entry preparation,
+management commands, message-revision closes, basket merge/close/SL-TP
+reconciliation, Edit Signal Override, channel stops, force close, symbol-cache
+maintenance, news pre-close, copy-limit flattening, pending cleanup, and the
+background monitors now resolve the active provider through the broker row.
+
+Open-trade reconciliation, trailing stop, automatic breakeven/management, CWE,
+and news management load the current broker row by broker_accounts.id and
+construct the provider client from the current provider, provider-specific
+session, writer epoch, and transition state. The Phase 4C lease remains the
+last authority check immediately before orderSend, orderModify, or orderClose.
+A transition therefore blocks monitor mutations, and a stale provider/session
+cannot gain authority from a durable work row.
+
+The force-close Edge function now validates the current provider-specific
+session and stable transition state. It no longer requires
+fxsocket_account_id for an MTAPI broker. Ownership and channel-link checks are
+unchanged.
+
+### Durable session ID policy
+
+partial_tp_legs, signal_entry_pending_orders, range_pending_legs, and
+signal_range_entry_waits retain their captured metaapi_account_id values as
+historical/debug metadata. Execution does not treat that value as authority.
+resolveDurableBrokerArtifacts loads broker_accounts by broker_account_id,
+selects the current provider/session/epoch, and rewrites only an in-memory copy
+of each artifact before broker reads or writes.
+
+This policy covers scheduled partial TP, strict-entry pending cancellation and
+fill reconciliation, range broker-pending reconciliation/cancellation, virtual
+range firing, signal-range wake quotes, copy-limit pending cancellation, and
+basket-empty pending cleanup. No historical database rows or trade tickets are
+rewritten. FXSocket artifacts can execute through MTAPI after activation, and
+MTAPI artifacts resolve back to FXSocket after a controlled rollback, subject
+to Phase 4E ticket-compatibility acceptance.
+
+Open-trade reconciliation keeps its existing conservative empty-snapshot
+behavior: an empty OpenedOrders response while local trades are tracked is
+inconclusive and does not mass-close local rows.
+
+### Intentional FXSocket-only boundaries
+
+FXSocket WebSocket streaming and the broker stream proxy remain FXSocket-only.
+MTAPI accounts are excluded from useFxsocketStream by provider, even though
+fxsocket_account_id is preserved for rollback, and continue through the
+existing provider-aware Edge polling/database snapshot paths. Assistant setup
+and broker-list connected counts also use the active provider session. Rich MTAPI
+WebSocket parity is not implemented and requires real dashboard acceptance.
+
+The raw FxSocket v2 reconciliation engine, FxSocket broker Edge API, explicit
+FxSocket diagnostics, and FxSocket-backed backtesting remain provider-specific.
+They no longer gate the provider-neutral worker paths.
+
+Native broker-pending layering remains explicitly FXSocket-only because exact
+MTAPI placement, client-reference adoption, ambiguous-send recovery, and
+cancellation parity have not been proven. Both worker and Edge capability
+checks reject provider=mtapi even when fxsocket_account_id is preserved for
+rollback. Existing pending artifacts are still reconciled/cancelled through
+the current provider seam; new MTAPI native layering is not advertised.
+
+### MTAPI-only environment and tests
+
+A configuration-level regression removes FXSOCKET_API_KEY and FXSOCKET_URL,
+marks the FXSocket provider unavailable, and proves that an MTAPI broker row
+resolves its current session and provider client. A migration-window regression
+also proves that an FXSocket-active row containing a prepared MTAPI session
+continues to resolve FXSocket.
+
+Focused results:
+
+- Worker TypeScript check: PASS.
+- Worker production build: PASS.
+- Provider/current-session/native-layering tests: PASS, 20/20.
+- Provider-neutral runtime architecture tests: PASS, 5/5.
+- Reconciliation, trailing stop, automatic management, copy-limit, and runtime
+  tests: PASS, 49/49, including empty OpenedOrders protection.
+- Broader affected provider/fence/force-close/partial/CWE/virtual-pending tests:
+  93 passed; the initial run had one compile-only fixture failure after
+  BrokerApiMetadata gained required identity fields. The fixture was corrected
+  and its provider suite then passed 19/19.
+- Modified force-close and layering Edge functions: Deno check PASS.
+- Frontend broker-link/stream eligibility tests: PASS, 20/20.
+- Frontend typecheck and production build: PASS.
+- The three force-close/layering Edge functions pass Deno check. The existing
+  assistant-chat whole-file check still reports five pre-existing unrelated
+  typing errors in assistantConfigTools/tool-argument handling; the changed
+  provider-session query itself emitted no new diagnostic.
+
+REAL_ACCEPTANCE: NOT_PERFORMED. No real MT4/MT5 bridge, provider cutover,
+pending fill, partial close, restart, dashboard, or ticket-compatibility test
+was performed in Phase 4D.

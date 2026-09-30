@@ -48,8 +48,6 @@ export async function closeBasketForRevisionDirectionFlip(
   row: SignalRow,
   brokers: BrokerRow[],
 ): Promise<{ closed: number; failed: number }> {
-  if (!hasFxsocketConfigured()) return { closed: 0, failed: 0 }
-
   let closed = 0
   let failed = 0
   const purgeScopes: Array<{ signalId: string; brokerAccountId: string }> = []

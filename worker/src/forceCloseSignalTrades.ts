@@ -368,10 +368,6 @@ export async function forceCloseSignalTrades(
     channels_processed: 0,
   }
 
-  if (!hasFxsocketConfigured()) {
-    return { ...empty, reason: 'broker_api_not_configured' }
-  }
-
   const brokerAccountId = args.brokerAccountId.trim()
   const userId = args.userId.trim()
   if (!brokerAccountId || !userId) {
@@ -464,10 +460,6 @@ export async function forceCloseSignalById(
     pending_cancelled: 0,
     virtual_legs_deleted: 0,
     channels_processed: 0,
-  }
-
-  if (!hasFxsocketConfigured()) {
-    return { ...empty, reason: 'broker_api_not_configured' }
   }
 
   const userId = args.userId.trim()

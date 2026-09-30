@@ -192,10 +192,6 @@ export async function applySignalOverride(
     }
   }
 
-  if (!dryRun && !hasFxsocketConfigured()) {
-    throw new Error('FXSOCKET_API_KEY not set — cannot call broker')
-  }
-
   const brokerIds = [...new Set(rows.map(r => r.broker_account_id))]
   const { data: brokers } = await supabase
     .from('broker_accounts')

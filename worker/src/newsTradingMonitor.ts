@@ -3,8 +3,7 @@ import { findPreNewsCloseTriggers } from './newsTrading/blackout'
 import { getCalendarEventsCached } from './newsTrading/calendarProvider'
 import { isNewsTradingEnabled, type ScheduleFilterSettings } from './newsTrading/settings'
 import { isPositionGoneCloseError } from './orderModifyBenign'
-import { hasFxsocketConfigured } from './fxsocketClient'
-import { apiForFxsocketAccount, brokerSessionId, loadPlatformByFxsocketId } from './mtApiByAccount'
+import { brokerRuntimeForAccount, loadBrokerApiByAccountId } from './mtApiByAccount'
 import { resolveChannelTradingConfig } from './channelTradingConfig'
 import { isUserCopierPausedCached } from './copierPause'
 
@@ -61,10 +60,6 @@ export class NewsTradingMonitor {
 
   start() {
     if (this.timer) return
-    if (!hasFxsocketConfigured()) {
-      console.warn('[newsTradingMonitor] MT API not configured — monitor disabled')
-      return
-    }
     this.timer = setInterval(() => {
       if (this.ticking) return
       this.ticking = true
@@ -92,7 +87,6 @@ export class NewsTradingMonitor {
       .from('broker_accounts')
       .select('id,user_id,fxsocket_account_id,metaapi_account_id,platform,manual_settings,channel_trading_configs,copier_mode,ai_settings,is_active')
       .eq('is_active', true)
-      .not('fxsocket_account_id', 'is', null)
     if (error) {
       console.error('[newsTradingMonitor] broker select failed:', error.message)
       return
@@ -101,9 +95,9 @@ export class NewsTradingMonitor {
     const brokers = (data ?? []) as BrokerRow[]
     if (!brokers.length) return
 
-    const platformByUuid = await loadPlatformByFxsocketId(
+    const runtimeByBroker = await loadBrokerApiByAccountId(
       this.supabase,
-      brokers.map(b => brokerSessionId(b)),
+      brokers.map(b => b.id),
     )
 
     const now = new Date()
@@ -112,10 +106,9 @@ export class NewsTradingMonitor {
     for (const broker of brokers) {
       if (isUserCopierPausedCached(broker.user_id)) continue
 
-      const uuid = brokerSessionId(broker)
-      if (!uuid) continue
-      const api = apiForFxsocketAccount(platformByUuid, uuid)
-      if (!api) continue
+      const runtime = brokerRuntimeForAccount(runtimeByBroker, broker.id)
+      if (!runtime) continue
+      const { api, sessionId: uuid } = runtime
 
       const { data: trades, error: tradeErr } = await this.supabase
         .from('trades')

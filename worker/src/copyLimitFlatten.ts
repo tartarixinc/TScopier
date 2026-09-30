@@ -124,7 +124,7 @@ export async function flattenChannelTradesForCopyLimit(args: {
       const cancelled = await cancelSignalEntryRowAtBroker(
         args.supabase,
         api,
-        row,
+        { ...row, metaapi_account_id: args.metaapiAccountId },
         args.reason,
       )
       if (cancelled.ok) result.pendingCancelled += 1
