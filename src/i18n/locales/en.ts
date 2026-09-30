@@ -564,6 +564,11 @@ broker: {
       reconnectPasswordTitle: 'Broker session expired',
       reconnectPasswordBody:
         'Your broker session expired on the trade server. Enter your MT account password to reconnect.',
+      reconnectMigrationTitle: 'We have updated how TScopier connects to your broker',
+      reconnectMigrationBody: 'Reconnect this account to keep copying trades. Your settings, trade history and open trades are unchanged.',
+      reconnectMigrationPasswordTitle: 'Enter your password to reconnect',
+      reconnectMigrationPasswordBody: 'Your account number and server are already filled in. The password is stored encrypted and only used to connect to your broker.',
+      reconnectMigrationBack: 'Back',
       reconnectPasswordLabel: 'MT account password',
       reconnectPasswordHint: 'Sent to MT servers only. Enable remember below to store it encrypted for automatic reconnect.',
       reconnectPasswordPlaceholder: 'Trading account password',

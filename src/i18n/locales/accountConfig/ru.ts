@@ -157,6 +157,11 @@ export const accountConfigRu: AccountConfigBundleTranslations = {
       reconnectPasswordTitle: 'Сессия брокера истекла',
       reconnectPasswordBody:
         'Сессия брокера истекла на торговом сервере. Введите пароль счета MT для переподключения.',
+      reconnectMigrationTitle: 'Мы обновили способ подключения TScopier к вашему брокеру',
+      reconnectMigrationBody: 'Переподключите этот счёт, чтобы продолжить копирование сделок. Настройки, история и открытые сделки не изменятся.',
+      reconnectMigrationPasswordTitle: 'Введите пароль, чтобы переподключиться',
+      reconnectMigrationPasswordBody: 'Номер счёта и сервер уже указаны. Пароль хранится в зашифрованном виде и используется только для подключения к брокеру.',
+      reconnectMigrationBack: 'Назад',
       reconnectPasswordLabel: 'Пароль счета MT',
       reconnectPasswordHint:
         'Передается только на серверы MT. Включите запоминание ниже, чтобы сохранить пароль в зашифрованном виде для автоподключения.',

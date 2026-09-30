@@ -715,6 +715,11 @@ export interface AccountConfigBrokerListTranslations {
   reconnectFailed: string
   reconnectPasswordTitle: string
   reconnectPasswordBody: string
+  reconnectMigrationTitle: string
+  reconnectMigrationBody: string
+  reconnectMigrationPasswordTitle: string
+  reconnectMigrationPasswordBody: string
+  reconnectMigrationBack: string
   reconnectPasswordLabel: string
   reconnectPasswordHint: string
   reconnectPasswordPlaceholder: string

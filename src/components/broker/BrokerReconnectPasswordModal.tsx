@@ -24,22 +24,39 @@ export interface BrokerReconnectPasswordModalCopy {
   detailServer: string
   reconnect: string
   cancel: string
+  back?: string
 }
 
 interface BrokerReconnectPasswordModalProps {
   open: boolean
   broker: BrokerAccount | null
+  /**
+   * `details` — stage 1: account details and an explanation, no password field.
+   * `password` — stage 2: the password form. The caller owns the stage because
+   * it also owns which prompt (migration or session-expiry) is showing.
+   */
+  stage: 'details' | 'password'
   copy: BrokerReconnectPasswordModalCopy
   onSubmit: (payload: { password: string; rememberPassword: boolean }) => void
   onCancel: () => void
+  /** Stage 1 → stage 2. Starts the reconnect that ends in the password prompt. */
+  onContinue?: () => void
+  /** Stage 2 → stage 1 (only when the caller offers it). */
+  onBack?: () => void
+  /** Last reconnect failure, shown in the dialog when the page has no toast. */
+  error?: string | null
 }
 
 function BrokerReconnectPasswordModalInner({
   open,
   broker,
+  stage,
   copy,
   onSubmit,
   onCancel,
+  onContinue,
+  onBack,
+  error,
 }: BrokerReconnectPasswordModalProps) {
   const [password, setPassword] = useState('')
   const overlayRef = useRef<HTMLDivElement>(null)
@@ -57,13 +74,16 @@ function BrokerReconnectPasswordModalInner({
     }
     document.addEventListener('keydown', handleKey)
     const focusTimer = window.setTimeout(() => {
-      document.getElementById('broker-reconnect-password')?.focus()
+      const target = stage === 'password'
+        ? document.getElementById('broker-reconnect-password')
+        : document.getElementById('broker-reconnect-dialog')
+      target?.focus()
     }, 50)
     return () => {
       document.removeEventListener('keydown', handleKey)
       window.clearTimeout(focusTimer)
     }
-  }, [open, onCancel])
+  }, [open, stage, onCancel])
 
   useEffect(() => {
     if (!open) {
@@ -102,8 +122,10 @@ function BrokerReconnectPasswordModalInner({
       <div ref={backdropRef} className="absolute inset-0 bg-neutral-950/55" aria-hidden />
 
       <div
+        id="broker-reconnect-dialog"
         role="dialog"
         aria-modal="true"
+        tabIndex={-1}
         aria-labelledby="broker-reconnect-password-title"
         className="relative w-full max-w-md rounded-2xl bg-white dark:bg-neutral-900 shadow-2xl border border-neutral-200 dark:border-neutral-800 animate-modal-in overflow-hidden"
       >
@@ -158,28 +180,58 @@ function BrokerReconnectPasswordModalInner({
             </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <PasswordInput
-              id="broker-reconnect-password"
-              label={copy.passwordLabel}
-              placeholder={copy.passwordPlaceholder}
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              hint={copy.passwordHint}
-              autoComplete="current-password"
-              required
-            />
+          {error && (
+            <div
+              role="alert"
+              className="mb-4 rounded-lg border border-error-200 bg-error-50 px-3 py-2 text-sm text-error-700 dark:border-error-900/60 dark:bg-error-950/40 dark:text-error-300"
+            >
+              {error}
+            </div>
+          )}
 
+          {stage === 'details' ? (
             <div className="flex justify-end gap-2 pt-1">
               <Button type="button" variant="ghost" onClick={onCancel}>
                 {copy.cancel}
               </Button>
-              <Button type="submit" disabled={!password.trim()}>
+              <Button type="button" onClick={onContinue}>
                 <RefreshCw className="h-4 w-4" />
                 {copy.reconnect}
               </Button>
             </div>
-          </form>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <PasswordInput
+                id="broker-reconnect-password"
+                label={copy.passwordLabel}
+                placeholder={copy.passwordPlaceholder}
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                hint={copy.passwordHint}
+                autoComplete="current-password"
+                required
+              />
+
+              <div className="flex items-center justify-between gap-2 pt-1">
+                <div>
+                  {onBack && (
+                    <Button type="button" variant="ghost" onClick={onBack}>
+                      {copy.back ?? copy.cancel}
+                    </Button>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <Button type="button" variant="ghost" onClick={onCancel}>
+                    {copy.cancel}
+                  </Button>
+                  <Button type="submit" disabled={!password.trim()}>
+                    <RefreshCw className="h-4 w-4" />
+                    {copy.reconnect}
+                  </Button>
+                </div>
+              </div>
+            </form>
+          )}
         </div>
       </div>
     </div>

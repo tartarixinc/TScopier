@@ -48,6 +48,41 @@ interface BrokerAccountsContextValue {
 
 const BrokerAccountsContext = createContext<BrokerAccountsContextValue | null>(null)
 
+/**
+ * Session-scoped suppression for the migration reconnect prompt. Closing the
+ * prompt keeps it closed for the rest of this browser session; the dashboard
+ * banner stays as the persistent fallback. Cleared automatically when the tab
+ * session ends, and never set by a successful reconnect.
+ */
+const MIGRATION_PROMPT_DISMISS_KEY = 'tscopier_reconnect_migration_dismissed'
+
+function readMigrationPromptDismissed(): boolean {
+  try {
+    return window.sessionStorage.getItem(MIGRATION_PROMPT_DISMISS_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function writeMigrationPromptDismissed(): void {
+  try {
+    window.sessionStorage.setItem(MIGRATION_PROMPT_DISMISS_KEY, '1')
+  } catch {
+    // Storage unavailable (private mode/blocked) — dismissal then only lasts
+    // for this mount, which is still shorter than nagging forever.
+  }
+}
+
+/**
+ * The case this prompt exists for: an account moved to MTAPI that has never
+ * connected through it, so it cannot copy anything yet. Anything else — an
+ * ordinary FxSocket session expiry, or an MTAPI session that dropped later —
+ * keeps the existing session-expiry wording.
+ */
+function isMigrationSwitchCase(broker: BrokerAccount | null | undefined): boolean {
+  return broker?.provider === 'mtapi' && (broker.mtapi_status ?? null) == null
+}
+
 export function BrokerAccountsProvider({
   children,
   enabled = true,
@@ -162,25 +197,90 @@ export function BrokerAccountsProvider({
     brokers,
     upsertBroker,
     reconnectFailedLabel: bl.reconnectFailed,
-    onError: (message) => reconnectErrorHandlerRef.current?.(message),
-    onSuccess: (brokerId) => reconnectSuccessHandlerRef.current?.(brokerId),
+    onError: (message) => {
+      // Pages register their own toast; when none does (the prompt can open on
+      // any page) keep the message so the dialog can show it.
+      if (reconnectErrorHandlerRef.current) reconnectErrorHandlerRef.current(message)
+      else setReconnectError(message)
+    },
+    onSuccess: (brokerId) => {
+      setReconnectError(null)
+      reconnectSuccessHandlerRef.current?.(brokerId)
+    },
   })
 
   const noopClear = useCallback(async () => ({ error: null as string | null }), [])
 
-  const passwordModalCopy = useMemo(() => ({
-    title: bl.reconnectPasswordTitle,
-    body: bl.reconnectPasswordBody,
-    passwordLabel: bl.reconnectPasswordLabel,
-    passwordHint: bl.reconnectPasswordHint,
-    passwordPlaceholder: bl.reconnectPasswordPlaceholder,
-    rememberPasswordLabel: bl.rememberPasswordLabel,
-    rememberPasswordHint: bl.rememberPasswordHint,
-    detailLogin: bl.detailLogin,
-    detailServer: bl.detailServer,
-    reconnect: bl.reconnect,
-    cancel: t.common.cancel,
-  }), [bl, t.common.cancel])
+  // ── Migration reconnect prompt (app-level, two-stage modal) ────────────────
+  const [migrationPromptDismissed, setMigrationPromptDismissed] =
+    useState<boolean>(readMigrationPromptDismissed)
+  const [reconnectError, setReconnectError] = useState<string | null>(null)
+
+  const dismissMigrationPrompt = useCallback(() => {
+    setMigrationPromptDismissed(true)
+    setReconnectError(null)
+    writeMigrationPromptDismissed()
+  }, [])
+
+  // Derived rather than stored: whenever an account needs reconnecting and the
+  // prompt has not been dismissed this session, it is up — on any page. Paused
+  // accounts are skipped (copying is off, so there is nothing to keep running),
+  // and an account whose reconnect is already in flight is skipped so the dialog
+  // never drops back to stage 1 while the attempt is running.
+  const migrationPromptBroker = useMemo(() => {
+    if (migrationPromptDismissed) return null
+    return brokersNeedingReconnect.find(
+      broker => broker.is_active !== false && !reconnectingBrokerIds.has(broker.id),
+    ) ?? null
+  }, [brokersNeedingReconnect, migrationPromptDismissed, reconnectingBrokerIds])
+
+  const activeBroker = passwordPromptBroker ?? migrationPromptBroker
+  const modalStage: 'details' | 'password' = passwordPromptBroker ? 'password' : 'details'
+  // The wording follows the cause, not which prompt happens to be open: only a
+  // row moved to MTAPI that has never connected through it gets the migration
+  // text. An ordinary FxSocket expiry — or a later MTAPI session drop — keeps
+  // "Broker session expired".
+  const migrationCopy = isMigrationSwitchCase(activeBroker)
+
+  const handleModalCancel = () => {
+    // Closing the dialog while an account still needs reconnecting counts as a
+    // dismissal: suppress the automatic prompt for the rest of this session.
+    const suppressAutomaticPrompt = !migrationPromptDismissed && brokersNeedingReconnect.length > 0
+    if (passwordPromptBroker) cancelPasswordPrompt()
+    if (suppressAutomaticPrompt) dismissMigrationPrompt()
+  }
+
+  const handleModalBack = () => {
+    // Abort the password prompt only — the details stage stays up, and nothing
+    // is suppressed, so the customer can step forward again.
+    if (passwordPromptBroker) cancelPasswordPrompt()
+  }
+
+  const handleModalContinue = () => {
+    setReconnectError(null)
+    if (migrationPromptBroker) void reconnectBroker(migrationPromptBroker.id)
+  }
+
+  const modalCopy = useMemo(() => {
+    const shared = {
+      passwordLabel: bl.reconnectPasswordLabel,
+      passwordHint: bl.reconnectPasswordHint,
+      passwordPlaceholder: bl.reconnectPasswordPlaceholder,
+      rememberPasswordLabel: bl.rememberPasswordLabel,
+      rememberPasswordHint: bl.rememberPasswordHint,
+      detailLogin: bl.detailLogin,
+      detailServer: bl.detailServer,
+      reconnect: bl.reconnect,
+      cancel: t.common.cancel,
+      back: bl.reconnectMigrationBack,
+    }
+    if (!migrationCopy) {
+      return { title: bl.reconnectPasswordTitle, body: bl.reconnectPasswordBody, ...shared }
+    }
+    return modalStage === 'password'
+      ? { title: bl.reconnectMigrationPasswordTitle, body: bl.reconnectMigrationPasswordBody, ...shared }
+      : { title: bl.reconnectMigrationTitle, body: bl.reconnectMigrationBody, ...shared }
+  }, [bl, migrationCopy, modalStage, t.common.cancel])
 
   const value = useMemo(
     (): BrokerAccountsContextValue => ({
@@ -229,12 +329,18 @@ export function BrokerAccountsProvider({
   return (
     <BrokerAccountsContext.Provider value={value}>
       {children}
+      {/* Remount on stage change so the password field always starts empty. */}
       <BrokerReconnectPasswordModal
-        open={passwordPromptBroker != null}
-        broker={passwordPromptBroker}
-        copy={passwordModalCopy}
+        key={modalStage}
+        open={activeBroker != null}
+        broker={activeBroker}
+        stage={modalStage}
+        copy={modalCopy}
         onSubmit={submitPasswordPrompt}
-        onCancel={cancelPasswordPrompt}
+        onCancel={handleModalCancel}
+        onContinue={handleModalContinue}
+        onBack={migrationCopy ? handleModalBack : undefined}
+        error={reconnectError}
       />
     </BrokerAccountsContext.Provider>
   )

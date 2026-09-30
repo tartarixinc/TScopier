@@ -567,6 +567,11 @@ export const es: Translations = {
       reconnectPasswordTitle: 'Sesión del broker expirada',
       reconnectPasswordBody:
         'La sesión del broker expiró en el servidor de trading. Introduce la contraseña de tu cuenta MT para reconectar.',
+      reconnectMigrationTitle: 'Hemos actualizado la forma en que TScopier se conecta a tu bróker',
+      reconnectMigrationBody: 'Vuelve a conectar esta cuenta para seguir copiando operaciones. Tus ajustes, el historial y las operaciones abiertas no cambian.',
+      reconnectMigrationPasswordTitle: 'Introduce tu contraseña para reconectar',
+      reconnectMigrationPasswordBody: 'Tu número de cuenta y servidor ya están rellenados. La contraseña se guarda cifrada y solo se usa para conectarse a tu bróker.',
+      reconnectMigrationBack: 'Atrás',
       reconnectPasswordLabel: 'Contraseña de la cuenta MT',
       reconnectPasswordHint: 'Se envía solo a servidores MT. Activa recordar abajo para guardarla cifrada y reconectar automáticamente.',
       reconnectPasswordPlaceholder: 'Contraseña de la cuenta de trading',

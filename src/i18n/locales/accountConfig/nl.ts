@@ -157,6 +157,11 @@ export const accountConfigNl: AccountConfigBundleTranslations = {
       reconnectPasswordTitle: 'Brokersessie verlopen',
       reconnectPasswordBody:
         'Je brokersessie is verlopen op de tradeserver. Voer je MT-accountwachtwoord in om opnieuw te verbinden.',
+      reconnectMigrationTitle: 'We hebben de manier waarop TScopier verbinding maakt met je broker bijgewerkt',
+      reconnectMigrationBody: 'Koppel dit account opnieuw om trades te blijven kopiëren. Je instellingen, handelsgeschiedenis en open posities blijven hetzelfde.',
+      reconnectMigrationPasswordTitle: 'Voer je wachtwoord in om opnieuw te verbinden',
+      reconnectMigrationPasswordBody: 'Je accountnummer en server zijn al ingevuld. Het wachtwoord wordt versleuteld opgeslagen en alleen gebruikt om verbinding te maken met je broker.',
+      reconnectMigrationBack: 'Terug',
       reconnectPasswordLabel: 'MT-accountwachtwoord',
       reconnectPasswordHint:
         'Wordt alleen naar MT-servers verzonden. Schakel hieronder onthouden in om het versleuteld op te slaan voor automatisch opnieuw verbinden.',

@@ -157,6 +157,11 @@ export const accountConfigJa: AccountConfigBundleTranslations = {
       reconnectPasswordTitle: 'ブローカーセッションの期限切れ',
       reconnectPasswordBody:
         '取引サーバー上でブローカーセッションが期限切れになりました。再接続するには MT 口座のパスワードを入力してください。',
+      reconnectMigrationTitle: 'TScopier がブローカーに接続する方法を更新しました',
+      reconnectMigrationBody: 'この口座を再接続すると取引のコピーを続けられます。設定・取引履歴・保有中の注文は変わりません。',
+      reconnectMigrationPasswordTitle: 'パスワードを入力して再接続',
+      reconnectMigrationPasswordBody: '口座番号とサーバーは入力済みです。パスワードは暗号化して保存され、ブローカーへの接続にのみ使用されます。',
+      reconnectMigrationBack: '戻る',
       reconnectPasswordLabel: 'MT 口座パスワード',
       reconnectPasswordHint:
         'MT サーバーにのみ送信されます。下の「記憶する」を有効にすると、暗号化して保存し自動再接続できます。',

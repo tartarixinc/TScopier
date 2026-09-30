@@ -157,6 +157,11 @@ export const accountConfigAr: AccountConfigBundleTranslations = {
       reconnectPasswordTitle: 'انتهت جلسة الوسيط',
       reconnectPasswordBody:
         'انتهت جلسة الوسيط على خادم التداول. أدخل كلمة مرور حساب MT لإعادة الاتصال.',
+      reconnectMigrationTitle: 'لقد حدّثنا طريقة اتصال TScopier بوسيطك',
+      reconnectMigrationBody: 'أعد ربط هذا الحساب لمواصلة نسخ الصفقات. الإعدادات وسجل الصفقات والصفقات المفتوحة لن تتغير.',
+      reconnectMigrationPasswordTitle: 'أدخل كلمة المرور لإعادة الاتصال',
+      reconnectMigrationPasswordBody: 'رقم الحساب والخادم مملوءان مسبقًا. تُخزَّن كلمة المرور مشفّرة وتُستخدم فقط للاتصال بوسيطك.',
+      reconnectMigrationBack: 'رجوع',
       reconnectPasswordLabel: 'كلمة مرور حساب MT',
       reconnectPasswordHint:
         'تُرسل فقط إلى خوادم MT. فعّل خيار التذكّر أدناه لحفظها مشفّرة لإعادة الاتصال التلقائي.',

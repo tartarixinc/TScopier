@@ -1,5 +1,5 @@
 import type { BrokerAccount } from '../types/database'
-import { hasFxsocketBrokerSession, hasMtapiBrokerSession, resolveProvider } from './brokerLink'
+import { hasFxsocketBrokerSession, resolveProvider } from './brokerLink'
 
 type BrokerAccountLike = Pick<BrokerAccount, 'fxsocket_status' | 'connection_status'> & {
   provider?: string | null
@@ -46,12 +46,23 @@ export function brokerCanReconnect(
   account: BrokerAccountLikeReconnect,
 ): boolean {
   const provider = resolveProvider(account)
-  if (provider === 'mtapi') {
-    if (!hasMtapiBrokerSession(account)) return false
-  } else {
-    if (!hasFxsocketBrokerSession(account)) return false
-  }
   const status = brokerEffectiveConnectionStatus(account)
+
+  if (provider === 'mtapi') {
+    // mtapi_session_id is not part of the initial fetch (it is stripped from
+    // BROKER_ACCOUNT_CLIENT_SELECT), so it may be absent even for a connected
+    // row — deciding on it made this gate unreliable. Provider status is the
+    // signal that is always present.
+    if (status === 'connecting' || status === 'recovering' || status === 'pending') {
+      return false
+    }
+    // Never observed on MTAPI: the account cannot copy yet, even when the
+    // previous provider's connection_status still reads 'connected'.
+    if (account.mtapi_status == null) return true
+    return status === 'error' || status === 'disconnected'
+  }
+
+  if (!hasFxsocketBrokerSession(account)) return false
   return status === 'error' || status === 'disconnected'
 }
 
