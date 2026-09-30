@@ -699,3 +699,122 @@ test('channelWorkerLogMessage: range basket TP rebalance success stays hidden', 
   )
   assert.equal(message, null)
 })
+
+test('channelWorkerLogMessage: renders synthesized signal_skipped rows with localized reason', () => {
+  const message = channelWorkerLogMessage(
+    {
+      action: 'signal_skipped',
+      status: 'skipped',
+      request_payload: null,
+      response_payload: null,
+      error_message: null,
+      signals: {
+        channel_id: 'ch-1',
+        parsed_data: { action: 'ignore' },
+        status: 'skipped',
+        skip_reason: 'AI classified as non-actionable',
+      },
+    },
+    channelWorkerEn,
+    { 'ch-1': 'James VIP Signals' },
+  )
+  assert.ok(message)
+  assert.match(message!, /Did not copy this signal/i)
+  assert.match(message!, /no trade signal in this message/i)
+  assert.doesNotMatch(message!, /AI classified as non-actionable/i)
+})
+
+test('channelWorkerLogMessage: signal_skipped modification reason uses skip-reason label', () => {
+  const message = channelWorkerLogMessage(
+    {
+      action: 'signal_skipped',
+      status: 'skipped',
+      request_payload: { skip_reason: 'modification_no_open_trade' },
+      response_payload: null,
+      error_message: null,
+      signals: {
+        channel_id: 'ch-1',
+        parsed_data: { action: 'modify', symbol: 'XAUUSD' },
+        status: 'skipped',
+        skip_reason: 'modification_no_open_trade',
+      },
+    },
+    channelWorkerEn,
+    { 'ch-1': 'Fredtrading' },
+  )
+  assert.ok(message)
+  assert.match(message!, /no open trade to modify/i)
+})
+
+test('channelWorkerLogMessage: signal_skipped non-trade message stays hidden', () => {
+  const message = channelWorkerLogMessage(
+    {
+      action: 'signal_skipped',
+      status: 'skipped',
+      request_payload: null,
+      response_payload: null,
+      error_message: null,
+      signals: {
+        channel_id: 'ch-1',
+        parsed_data: { action: 'ignore' },
+        status: 'skipped',
+        skip_reason: 'non_trade_message',
+      },
+    },
+    channelWorkerEn,
+    {},
+  )
+  assert.equal(message, null)
+})
+
+test('channelWorkerLogMessage: signal_skipped setup gap stays hidden', () => {
+  const message = channelWorkerLogMessage(
+    {
+      action: 'signal_skipped',
+      status: 'skipped',
+      request_payload: null,
+      response_payload: null,
+      error_message: null,
+      signals: {
+        channel_id: 'ch-1',
+        parsed_data: null,
+        status: 'skipped',
+        skip_reason: 'no_broker_channel_match',
+      },
+    },
+    channelWorkerEn,
+    {},
+  )
+  assert.equal(message, null)
+})
+
+test('channelWorker skipReasons key parity across all locales', async () => {
+  const { channelWorkerEn } = await import('../i18n/channelWorker/en')
+  const { channelWorkerEs } = await import('../i18n/channelWorker/es')
+  const { channelWorkerFr } = await import('../i18n/channelWorker/fr')
+  const { channelWorkerAr } = await import('../i18n/channelWorker/ar')
+  const { channelWorkerJa } = await import('../i18n/channelWorker/ja')
+  const { channelWorkerNl } = await import('../i18n/channelWorker/nl')
+  const { channelWorkerPl } = await import('../i18n/channelWorker/pl')
+  const { channelWorkerRu } = await import('../i18n/channelWorker/ru')
+  const { channelWorkerSv } = await import('../i18n/channelWorker/sv')
+
+  const base = Object.keys(channelWorkerEn.skipReasons).sort()
+  const locales: Record<string, { skipReasons: Record<string, string> }> = {
+    es: channelWorkerEs,
+    fr: channelWorkerFr,
+    ar: channelWorkerAr,
+    ja: channelWorkerJa,
+    nl: channelWorkerNl,
+    pl: channelWorkerPl,
+    ru: channelWorkerRu,
+    sv: channelWorkerSv,
+  }
+  for (const [name, bundle] of Object.entries(locales)) {
+    assert.deepEqual(
+      Object.keys(bundle.skipReasons).sort(),
+      base,
+      `${name} skipReasons keys must match en`,
+    )
+  }
+})

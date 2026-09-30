@@ -35,6 +35,8 @@ export const tradingPl: TradingPagesBundleTranslations = {
     colLots: 'Loty',
     colPnl: 'PnL',
     colTime: 'Data i godzina',
+    colCurrent: 'Cena na żywo',
+    colClosePrice: 'Cena zamknięcia',
     instructionAction: 'Akcja',
     instructionSymbol: 'Symbol',
     instructionEntry: 'Wejście',

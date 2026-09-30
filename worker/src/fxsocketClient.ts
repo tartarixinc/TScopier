@@ -126,6 +126,10 @@ export interface AccountSummary {
   marginLevel?: number
   leverage?: number
   currency?: string
+  /** MTAPI only: account trade mode (0=demo, 1=contest, 2=real). */
+  type?: number
+  /** MTAPI only: false means balance/equity are not authoritative yet. */
+  synced?: boolean
 }
 
 export interface FxsocketTerminalStatus {
@@ -826,8 +830,8 @@ export class FxsocketBrokerClient {
     }
   }
 
-  async orderHistory(id: string, from: string, to: string): Promise<unknown[]> {
-    const raw = await this.get<unknown>(`${await this.accountBase(id)}/OrderHistory`, { from, to })
+  async orderHistory(id: string, from: string, to: string, timeoutMs?: number): Promise<unknown[]> {
+    const raw = await this.get<unknown>(`${await this.accountBase(id)}/OrderHistory`, { from, to }, timeoutMs)
     assertNoApiError(raw)
     return unwrapOrderList(raw)
   }

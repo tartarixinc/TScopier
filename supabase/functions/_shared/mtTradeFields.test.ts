@@ -25,6 +25,40 @@ Deno.test("resolveMtLots: position history row keeps full round-trip size", () =
   assertEquals(lots, 5)
 })
 
+Deno.test("resolveMtLots: open MTAPI order skips present-but-zero close fields", () => {
+  // Captured shape: open order carries closeLots/closeVolume as 0 next to lots 0.01.
+  const lots = resolveMtLots({
+    ticket: 3276777659,
+    closeLots: 0,
+    lots: 0.01,
+    closeVolume: 0,
+    volume: 1000000,
+  }, "trades")
+  assertEquals(lots, 0.01)
+})
+
+Deno.test("resolveMtLots: closed MTAPI order prefers positive closeLots", () => {
+  const lots = resolveMtLots({
+    ticket: 3276777659,
+    closeLots: 0.01,
+    lots: 0.01,
+    closeVolume: 1000000,
+    volume: 1000000,
+  }, "trades")
+  assertEquals(lots, 0.01)
+})
+
+Deno.test("resolveMtLots: falls through zero lot fields to a positive volume", () => {
+  const lots = resolveMtLots({
+    ticket: 9002,
+    closeLots: 0,
+    lots: 0,
+    closeVolume: 0,
+    volume: 5000,
+  }, "trades")
+  assertEquals(lots, 0.5)
+})
+
 Deno.test("ingestMtHistoryRows: keeps separate partial close deals", () => {
   const target = new Map<string, Record<string, unknown>>()
   ingestMtHistoryRows(target, [

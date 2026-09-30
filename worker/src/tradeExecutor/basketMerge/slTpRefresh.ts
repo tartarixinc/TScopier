@@ -104,7 +104,7 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
       }
     }
     const manual = (broker.manual_settings ?? {}) as ManualSettings
-    const useV2BasketRefresh = isV2({ brokerAccountId: broker.id, userId: signal.user_id })
+    const useV2BasketRefresh = isV2({ brokerAccountId: broker.id, userId: signal.user_id, provider: broker.provider })
 
     const loadFamilyTrades = async (): Promise<BasketOpenLeg[]> => {
       const { data: familyRows, error: famErr } = await ctx.supabase

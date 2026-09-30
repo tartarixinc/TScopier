@@ -397,6 +397,18 @@ export interface BrokerAccount {
   fxsocket_account_id?: string | null
   /** FxSocket v1 account status. */
   fxsocket_status?: FxsocketConnectionStatus | null
+  /** Provider routing: 'fxsocket' (default) or 'mtapi'. */
+  provider?: 'fxsocket' | 'mtapi' | null
+  /** MTAPI session ID (when provider='mtapi'). Not exposed to client. */
+  mtapi_session_id?: string | null
+  /** MTAPI connection status (when provider='mtapi'). */
+  mtapi_status?: 'connected' | 'connecting' | 'disconnected' | 'error' | null
+  /** Auto-reconnect enabled flag. */
+  auto_reconnect_enabled?: boolean | null
+  /** Error kind classifier (e.g. credential, network, timeout). */
+  connection_error_kind?: string | null
+  /** Human-readable error detail from the edge function / worker. */
+  connection_error_message?: string | null
   terminal_connected?: boolean | null
   trade_allowed?: boolean | null
   /** Client-side live terminal health from FxSocket /status polling. */
@@ -629,6 +641,7 @@ export interface Trade {
   opened_at: string
   closed_at: string | null
   profit: number | null
+  close_price?: number | null
   created_at: string
 }
 

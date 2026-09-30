@@ -35,6 +35,8 @@ export const tradingSv: TradingPagesBundleTranslations = {
     colLots: 'Lotter',
     colPnl: 'PnL',
     colTime: 'Datum och tid',
+    colCurrent: 'Livepris',
+    colClosePrice: 'Stängningspris',
     instructionAction: 'Åtgärd',
     instructionSymbol: 'Symbol',
     instructionEntry: 'Inträde',

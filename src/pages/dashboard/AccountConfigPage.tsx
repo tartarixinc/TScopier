@@ -28,7 +28,7 @@ import { useUserProfile } from '../../context/UserProfileContext'
 import { normalizeCopyLimitState, type CopyLimitState } from '../../lib/copyLimitTypes'
 import { ConfigTitle, ConfigToggleLabel, ConfigureInput, ConfigureSelect, InfoTooltip } from '../../components/ui/InfoTooltip'
 import { fxsocketBroker, BrokerHealthCheckUnsupportedError } from '../../lib/fxsocketBroker'
-import { isLegacyBrokerLink, countLinkedBrokerSessions, hasFxsocketBrokerSession } from '../../lib/brokerLink'
+import { isLegacyBrokerLink, countLinkedBrokerSessionsForUi, hasFxsocketBrokerSession } from '../../lib/brokerLink'
 import { resolveBrokerTotalBalance } from '../../lib/effectiveBrokerBalance'
 import { brokerCanReconnect, brokerConnectionBadgeVariant, brokerConnectionStatusLabel } from '../../lib/brokerReconnect'
 import {
@@ -864,7 +864,7 @@ export function AccountConfigPage() {
       for (const b of stale) {
         if (cancelled) return
         try {
-          const { account } = await fxsocketBroker.refreshSummary(b.id)
+          const { account } = await fxsocketBroker.refreshSummary(b.id, b.provider as 'fxsocket' | 'mtapi' | undefined)
           if (!cancelled) replaceBroker(account)
         } catch {
           /* best-effort — throttle must not mark the account disconnected */
@@ -1010,7 +1010,7 @@ export function AccountConfigPage() {
   const brokerRangeEnd = Math.min(safeBrokerPage * BROKER_PAGE_SIZE, filteredBrokers.length)
 
   const linkedBrokerCount = useMemo(
-    () => countLinkedBrokerSessions(brokers),
+    () => countLinkedBrokerSessionsForUi(brokers),
     [brokers],
   )
   const connectedAccountCount = usageLoading ? linkedBrokerCount : usage.brokerAccounts
@@ -2531,7 +2531,7 @@ export function AccountConfigPage() {
     if (configAccount?.id === id) closeConfigureModal({ force: true })
 
     try {
-      await fxsocketBroker.delete(id)
+      await fxsocketBroker.delete(id, removed.provider as 'fxsocket' | 'mtapi' | undefined)
     } catch (err) {
       const msg = err instanceof Error ? err.message : bl.deleteFailed
 
@@ -2768,7 +2768,7 @@ export function AccountConfigPage() {
                         {broker.broker_server && (
                           <p className="mt-0.5 truncate text-xs text-neutral-500 dark:text-neutral-400">{broker.broker_server}</p>
                         )}
-                        {broker.connection_error && brokerCanReconnect(broker) ? (
+                        {broker.connection_error ? (
                           <p className="mt-1 text-xs text-error-600 dark:text-error-400 leading-relaxed">
                             {brokerConnectErrorText(
                               classifyBrokerConnectError(broker.connection_error),

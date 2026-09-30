@@ -320,6 +320,8 @@ type SweepBasketRow = {
 type SweepBrokerRow = {
   id: string
   user_id: string
+  provider?: string | null
+  mtapi_session_id?: string | null
   fxsocket_account_id?: string | null
   metaapi_account_id?: string | null
   platform?: string | null
@@ -436,7 +438,7 @@ export async function sweepOpenBasketsForReconcileDrift(
   const brokerIds = [...new Set(sortedBaskets.map(r => r.broker_account_id))]
   const { data: brokers } = await supabase
     .from('broker_accounts')
-    .select('id,user_id,fxsocket_account_id,metaapi_account_id,platform,manual_settings,channel_trading_configs,copier_mode,ai_settings')
+    .select('id,user_id,provider,mtapi_session_id,fxsocket_account_id,metaapi_account_id,platform,manual_settings,channel_trading_configs,copier_mode,ai_settings')
     .in('id', brokerIds)
 
   const brokerById = new Map(

@@ -103,22 +103,40 @@ function numMtField(order: RawMtOrder, profile: MtHistoryProfile, ...keys: strin
   return Number.isFinite(n) ? n : null
 }
 
-function resolveMtLots(order: RawMtOrder, profile: MtHistoryProfile): number {
+/** First key whose value parses to a finite number > 0 (skips present-but-zero keys). */
+function firstPositiveNumMtField(order: RawMtOrder, profile: MtHistoryProfile, ...keys: string[]): number | null {
+  for (const k of keys) {
+    const v = pickMtField(order, profile, k)
+    if (v === null || v === undefined || v === '') continue
+    const n = Number(v)
+    if (Number.isFinite(n) && n > 0) return n
+  }
+  return null
+}
+
+/** Resolve the trade size in standard lots. Scans keys first-positive so a
+ * present-but-zero key (closeLots: 0) can never shadow a later positive one. */
+export function resolveMtLots(order: RawMtOrder, profile: MtHistoryProfile): number {
   const keys =
     profile === 'trades'
       ? ['lots', 'Lots', 'lot', 'Lot', 'volumeLots', 'VolumeLots', 'closeLots', 'CloseLots', 'requestLots', 'RequestLots']
       : ['lots', 'Lots', 'lot', 'Lot', 'volumeLots', 'VolumeLots']
 
-  const direct = numMtField(order, profile, ...keys)
-  if (direct != null && direct > 0) return direct
+  // First PRESENT key is not enough: open orders echo closeLots/closeVolume: 0
+  // and would shadow a later positive key — scan for the first value > 0
+  // (matches the edge's zero-shadowing rule only; key order and the
+  // volExt/flatten handling still differ from
+  // supabase/functions/_shared/mtTradeFields.ts — see PROJECT_MEMORY).
+  const direct = firstPositiveNumMtField(order, profile, ...keys)
+  if (direct != null) return direct
 
-  const volExt = numMtField(order, profile, 'volumeExt', 'VolumeExt')
-  if (volExt != null && volExt > 0) {
+  const volExt = firstPositiveNumMtField(order, profile, 'volumeExt', 'VolumeExt')
+  if (volExt != null) {
     if (volExt >= 1_000_000) return volExt / 100_000_000
     if (volExt >= 10_000) return volExt / 10_000
   }
 
-  const vol = numMtField(
+  const vol = firstPositiveNumMtField(
     order,
     profile,
     'volume',
@@ -132,9 +150,15 @@ function resolveMtLots(order: RawMtOrder, profile: MtHistoryProfile): number {
     'dealVolume',
     'DealVolume',
   )
-  if (vol == null || vol <= 0) return 0
+  if (vol == null) return 0
   if (vol >= 100 && Number.isInteger(vol)) return vol / 10_000
   return vol
+}
+
+/** Close/exit fill price from a broker history row. First positive wins —
+ * a present-but-zero key means "not reported", never a real zero price. */
+export function resolveMtClosePrice(order: RawMtOrder, profile: MtHistoryProfile): number | null {
+  return firstPositiveNumMtField(order, profile, 'closePrice', 'ClosePrice')
 }
 
 function resolveMtDealProfit(order: RawMtOrder, profile: MtHistoryProfile): number | null {
@@ -163,9 +187,30 @@ function resolveMtDealProfit(order: RawMtOrder, profile: MtHistoryProfile): numb
   return p
 }
 
-function resolveMtTicket(order: RawMtOrder, profile: MtHistoryProfile): number {
+export function resolveMtTicket(order: RawMtOrder, profile: MtHistoryProfile): number {
   const ticket = Number(pickMtField(order, profile, 'ticket', 'Ticket', 'order', 'Order', 'deal', 'Deal') ?? 0)
   return Number.isFinite(ticket) && ticket > 0 ? ticket : 0
+}
+
+/** Opening / position ticket on MT5 close deals (differs from the closing
+ * deal ticket). Ported from `supabase/functions/_shared/mtTradeFields.ts` —
+ * FxSocket `OrderHistory` returns deal rows where `position` is the id the
+ * `trades` table stores in `metaapi_order_id`. */
+export function resolveMtPositionTicket(
+  order: RawMtOrder,
+  profile: MtHistoryProfile,
+): number | null {
+  const flat = profile === 'trades' ? flattenMtOrder(order, 'trades') : order
+  for (const key of ['dealInternalIn', 'DealInternalIn', 'position', 'Position'] as const) {
+    const nested = flat[key]
+    if (!isPlainObject(nested)) continue
+    const ticket = resolveMtTicket(nested as RawMtOrder, profile)
+    if (ticket > 0) return ticket
+  }
+  const positionId = Number(
+    pickMtField(flat, profile, 'positionId', 'PositionId', 'position', 'Position', 'order', 'Order') ?? 0,
+  )
+  return Number.isFinite(positionId) && positionId > 0 ? positionId : null
 }
 
 function closeTimeKey(order: RawMtOrder, profile: MtHistoryProfile): string {

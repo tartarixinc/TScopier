@@ -32,6 +32,7 @@ import { NewsTradingMonitor } from './newsTradingMonitor'
 import { V2ReconcileMonitor } from './engine/v2ReconcileMonitor'
 import { v2EngineConfigured } from './engine/executionMode'
 import { OpenTradeReconcileMonitor } from './openTradeReconcileMonitor'
+import { ClosedTradeClosePriceMonitor } from './closedTradeClosePriceMonitor'
 import { attachBrokerStreamProxy } from './brokerStreamProxy'
 import { getFxsocketStreamManager } from './fxsocketStreamManager'
 import { CopyLimitMonitor } from './copyLimitMonitor'
@@ -48,6 +49,7 @@ import { telegramShutdownDrainMs } from './workerShutdown'
 import { registerOrderCloseAuditSupabase } from './orderCloseAudit'
 import { initializeBrokerExecutionCapability } from './brokerExecutionMode'
 import { testFlagEnabled } from './testFlags'
+import { MtapiSessionManager } from './mtapiSessionManager'
 
 initWorkerSentry()
 installWorkerProcessSentryHandlers()
@@ -89,6 +91,7 @@ let httpServer: Server | null = null
 let authService: AuthService | null = null
 let tradeExecutor: TradeExecutor | null = null
 let signalQueueConsumers: SignalQueueConsumerManager | null = null
+let mtapiSessionManager: MtapiSessionManager | null = null
 
 const monitors: Array<{ stop: () => void }> = []
 const monitorLoops: MonitorLoopHandle[] = []
@@ -114,6 +117,7 @@ function startTradeMonitors(executor: TradeExecutor | null) {
     const partialTpMonitor = new PartialTpMonitor(supabase)
     const signalEntryPendingMonitor = new SignalEntryPendingMonitor(supabase)
     const openTradeReconcileMonitor = new OpenTradeReconcileMonitor(supabase)
+    const closedTradeClosePriceMonitor = new ClosedTradeClosePriceMonitor(supabase)
     virtualPendingMonitor.start()
     registerVirtualPendingMonitor(virtualPendingMonitor)
     rangeBrokerPendingMonitor.start()
@@ -121,12 +125,14 @@ function startTradeMonitors(executor: TradeExecutor | null) {
     partialTpMonitor.start()
     signalEntryPendingMonitor.start()
     openTradeReconcileMonitor.start()
+    closedTradeClosePriceMonitor.start()
     trackMonitor(virtualPendingMonitor)
     trackMonitor(rangeBrokerPendingMonitor)
     trackMonitor(cweCloseMonitor)
     trackMonitor(partialTpMonitor)
     trackMonitor(signalEntryPendingMonitor)
     trackMonitor(openTradeReconcileMonitor)
+    trackMonitor(closedTradeClosePriceMonitor)
     if (executor) {
       const signalRangeEntryMonitor = new SignalRangeEntryMonitor(supabase, executor)
       signalRangeEntryMonitor.start()
@@ -198,6 +204,13 @@ async function main() {
   }
 
   if (workerConfig.runsTrade) {
+    mtapiSessionManager = new MtapiSessionManager(supabase)
+    await mtapiSessionManager.start().catch(error => {
+      console.warn(
+        '[worker] MTAPI session startup skipped: '
+        + (error instanceof Error ? error.name : 'UNKNOWN'),
+      )
+    })
     tradeExecutor = new TradeExecutor(supabase, sessionManager)
     sessionManager.setTradeExecutor(tradeExecutor)
     await tradeExecutor.start()
@@ -318,6 +331,7 @@ async function main() {
     stopLogRetention?.()
     setQueueMetricsProvider(null)
     await signalQueueConsumers?.stop()
+    mtapiSessionManager?.stop()
     tradeExecutor?.stop()
     for (const m of monitors) m.stop()
     if (workerConfig.runsListener) {

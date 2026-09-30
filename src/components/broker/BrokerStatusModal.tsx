@@ -136,7 +136,10 @@ function BrokerStatusModalInner({
     setError(null)
     setUnsupported(false)
     try {
-      const result = await fxsocketBroker.fetchBrokerStatus(broker.id)
+      const result = await fxsocketBroker.fetchBrokerStatus(
+        broker.id,
+        broker.provider as 'fxsocket' | 'mtapi' | undefined,
+      )
       setStatus(result.status)
       onAccountUpdate?.({
         ...result.account,

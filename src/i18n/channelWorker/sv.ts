@@ -146,6 +146,13 @@ export const channelWorkerSv: ChannelWorkerTranslations = {
   mgmtSkippedReason: '{phrase} ({reason}).',
 
   skipReasons: {
+    entry_not_opened: 'brokern öppnade ingen position för den här signalen',
+    entry_zone_far_from_market: 'entrén är för långt från det aktuella marknadspriset',
+    broker_bridge_unavailable: 'brokerbrygga ej tillgänglig — aktivera Algo Trading i MT5 och kontrollera i kontokonfigurationen att Trade EA är redo',
+    entry_price_moved_adverse: 'priset gick förbi entrén innan ordern skickades',
+    ai_classified_as_non_actionable: 'AI:n hittade ingen handelssignal i det här meddelandet',
+    ai_classified_as_non_entry: 'AI:n hittade ingen entréinstruktion i det här meddelandet',
+    modification_no_open_trade: 'det finns ingen öppen position att ändra',
     no_matching_open_trade: 'ingen matchande öppen position',
     mgmt_no_open_trades: 'ingen matchande öppen position',
     mgmt_no_open_trades_db: 'ingen matchande öppen position i copier-databasen',

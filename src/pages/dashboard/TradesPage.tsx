@@ -21,6 +21,7 @@ import {
   formatTradeLots,
   formatTradePrice,
   getTradeDisplayMeta,
+  sortTradesOpenFirst,
 } from '../../lib/tradeDisplay'
 import { supabase } from '../../lib/supabase'
 import {
@@ -74,7 +75,7 @@ export function TradesPage() {
   )
 
   const visibleTrades = useMemo(
-    () => (filter === 'all' ? trades : trades.filter(tr => tr.status === filter)),
+    () => sortTradesOpenFirst(filter === 'all' ? trades : trades.filter(tr => tr.status === filter)),
     [trades, filter],
   )
 

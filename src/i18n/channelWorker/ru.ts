@@ -147,6 +147,13 @@ export const channelWorkerRu: ChannelWorkerTranslations = {
   mgmtSkippedReason: '{phrase} ({reason}).',
 
   skipReasons: {
+    entry_not_opened: 'брокер не открыл ни одной позиции по этому сигналу',
+    entry_zone_far_from_market: 'цена входа слишком далеко от текущей рыночной цены',
+    broker_bridge_unavailable: 'шлюз брокера недоступен — включите алгоритмическую торговлю в MT5 и убедитесь, что Trade EA готов в настройках счёта',
+    entry_price_moved_adverse: 'цена прошла вход до отправки ордера',
+    ai_classified_as_non_actionable: 'ИИ не нашёл торгового сигнала в этом сообщении',
+    ai_classified_as_non_entry: 'ИИ не нашёл инструкции для входа в этом сообщении',
+    modification_no_open_trade: 'нет открытой сделки для изменения',
     no_matching_open_trade: 'нет подходящей открытой сделки',
     mgmt_no_open_trades: 'нет подходящей открытой сделки',
     mgmt_no_open_trades_db: 'нет подходящей открытой сделки в базе copier',

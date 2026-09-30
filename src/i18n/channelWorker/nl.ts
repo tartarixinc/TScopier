@@ -146,6 +146,13 @@ export const channelWorkerNl: ChannelWorkerTranslations = {
   mgmtSkippedReason: '{phrase} ({reason}).',
 
   skipReasons: {
+    entry_not_opened: 'de broker heeft geen positie geopend voor dit signaal',
+    entry_zone_far_from_market: 'het entrygebied is te ver van de huidige marktprijs',
+    broker_bridge_unavailable: 'brokerbridge niet beschikbaar — schakel Algo Trading in op MT5 en controleer in Account Configuration of Trade EA gereed is',
+    entry_price_moved_adverse: 'de prijs bewoog voorbij de entry voordat de order werd verstuurd',
+    ai_classified_as_non_actionable: 'de AI vond geen handelssignaal in dit bericht',
+    ai_classified_as_non_entry: 'de AI vond geen entry-instructie in dit bericht',
+    modification_no_open_trade: 'er is geen open positie om aan te passen',
     no_matching_open_trade: 'geen overeenkomende open positie',
     mgmt_no_open_trades: 'geen overeenkomende open positie',
     mgmt_no_open_trades_db: 'geen overeenkomende open positie in de copier-database',

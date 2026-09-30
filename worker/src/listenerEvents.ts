@@ -80,10 +80,11 @@ export function logTelegramAuthSuccess(
   supabase: SupabaseClient,
   userId: string,
   sessionId: string,
+  method?: 'phone' | 'qr',
 ): void {
   void persistListenerEvent(supabase, {
     userId,
     eventType: 'telegram_link_success',
-    detail: { session_id: sessionId },
+    detail: { session_id: sessionId, ...(method ? { method } : {}) },
   })
 }

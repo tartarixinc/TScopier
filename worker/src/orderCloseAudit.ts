@@ -5,7 +5,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 export type OrderCloseAuditEvent = {
-  source: 'fxsocket' | 'fx_v2'
+  source: 'fxsocket' | 'fx_v2' | 'mtapi'
   accountId: string
   ticket: number
   volume?: number | null

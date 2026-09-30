@@ -98,10 +98,12 @@ export function useBrokerReconnect(opts: {
       const { account } = await fxsocketBroker.reconnect({
         accountId: brokerId,
         password: entered.password.trim(),
+        provider: opts.brokers.find(b => b.id === brokerId)?.provider as 'fxsocket' | 'mtapi' | undefined,
       })
       upsertBrokerRef.current(account)
 
       const result = await fxsocketBroker.waitUntilConnected(account.id, {
+        provider: opts.brokers.find(b => b.id === brokerId)?.provider as 'fxsocket' | 'mtapi' | undefined,
         onProgress: (progress) => {
           upsertBrokerRef.current(progress.account)
         },

@@ -5,6 +5,7 @@ import {
   normalizeCopierSkipReasonKey,
 } from './brokerBridgeErrorDisplay'
 import { resolveTradeFailureDisplay } from './tradeFailureDisplay'
+import { COPIER_SKIP_REASON_LABELS } from './copierSkipReasonLabels'
 import {
   instrumentGuessFromRawTelegram,
   isPlausibleCopierSymbol,
@@ -269,9 +270,13 @@ function translateSkipReason(reason: string, cw: ChannelWorkerTranslations, symb
   if (structured) return structured.title
   const key = normalizeCopierSkipReasonKey(reason)
   if (cw.skipReasons[key]) return cw.skipReasons[key]
+  const altKey = normalizeSkipReasonKey(reason)
+  if (altKey !== key && cw.skipReasons[altKey]) return cw.skipReasons[altKey]
   // Raw broker failures (e.g. historical "HTTP 500") — reuse trade-error copy.
   const friendly = translateBrokerError(reason, cw, symbolHint)
   if (friendly !== reason) return friendly
+  const label = COPIER_SKIP_REASON_LABELS[altKey] ?? COPIER_SKIP_REASON_LABELS[key]
+  if (label) return label
   return reason.replace(/_/g, ' ')
 }
 
@@ -611,6 +616,9 @@ export function channelWorkerLogMessage(
   const logAction = row.action.toLowerCase()
   const signalAction = signalActionFromLog(row)
   if (CHANNEL_WORKER_HIDDEN_LOG_ACTIONS.has(logAction)) return null
+  if (logAction === 'signal_skipped') {
+    return interpolate(cw.dispatchSkipped, { reason: skipReasonForSignal(row, cw) })
+  }
   if (signalAction === 'ignore') return null
 
   if (

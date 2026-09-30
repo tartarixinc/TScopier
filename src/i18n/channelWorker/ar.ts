@@ -147,6 +147,13 @@ export const channelWorkerAr: ChannelWorkerTranslations = {
   mgmtSkippedReason: '{phrase} ({reason}).',
 
   skipReasons: {
+    entry_not_opened: 'لم يفتح الوسيط أي مركز لهذه الإشارة',
+    entry_zone_far_from_market: 'نقطة الدخول بعيدة جدًا عن سعر السوق الحالي',
+    broker_bridge_unavailable: 'جسر الوسيط غير متاح — فعّل التداول الخوارزمي على MT5 وتأكد من أن Trade EA جاهز في إعدادات الحساب',
+    entry_price_moved_adverse: 'تحرك السعر عبر نقطة الدخول قبل إرسال الأمر',
+    ai_classified_as_non_actionable: 'لم يجد الذكاء الاصطناعي إشارة تداول في هذه الرسالة',
+    ai_classified_as_non_entry: 'لم يجد الذكاء الاصطناعي تعليمات دخول في هذه الرسالة',
+    modification_no_open_trade: 'لا توجد صفقة مفتوحة للتعديل',
     no_matching_open_trade: 'لا توجد صفقة مفتوحة مطابقة',
     mgmt_no_open_trades: 'لا توجد صفقة مفتوحة مطابقة',
     mgmt_no_open_trades_db: 'لا توجد صفقة مفتوحة مطابقة في قاعدة الناسخ',

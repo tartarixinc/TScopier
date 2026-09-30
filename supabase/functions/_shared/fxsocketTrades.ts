@@ -1,4 +1,3 @@
-import type { FxsocketClient } from "./fxsocketClient.ts"
 import {
   adjustMtTradesPositionDirection,
   flattenMtOrder,
@@ -17,6 +16,33 @@ import {
 } from "./mtTradeFields.ts"
 
 type RawOrder = Record<string, unknown>
+
+/**
+ * Shared read surface for FxSocket and MTAPI clients used by the trades pipeline.
+ * Both expose session-scoped history methods with the same signatures.
+ */
+export interface MtHistorySource {
+  openedOrders(sessionId: string, platform?: string | null): Promise<unknown[]>
+  orderHistory(
+    sessionId: string,
+    from: string,
+    to: string,
+    platform?: string | null,
+  ): Promise<unknown[]>
+  positionHistory(
+    sessionId: string,
+    from: string,
+    to: string,
+    platform?: string | null,
+  ): Promise<unknown[]>
+  /**
+   * Endpoint that serves closed trade rows. Defaults to PositionHistory
+   * (round trips). MTAPI sets `order_history`: its bridge sessions are
+   * connected without `downloadOrderHistory`, so HistoryPositions fails with
+   * ORDER_HISTORY_NOT_READY, while OrderHistory returns the same closed legs.
+   */
+  readonly closedHistorySource?: "position_history" | "order_history"
+}
 
 export interface FxsocketBrokerTradeRow {
   id: string
@@ -182,7 +208,7 @@ function normalizeOrder(
 }
 
 export async function fetchFxsocketBrokerTrades(
-  fx: FxsocketClient,
+  fx: MtHistorySource,
   broker: BrokerRow & { fxsocket_account_id: string },
   opts: {
     scope: string
@@ -205,23 +231,33 @@ export async function fetchFxsocketBrokerTrades(
     wantOpen ? fx.openedOrders(sessionId, platform) : Promise.resolve([] as unknown[]),
     wantClosed
       ? opts.historyProfile === "trades"
-        ? fetchTradesListFromPositionHistory(fx, broker, {
-          historyFrom: opts.historyFrom,
-          historyTo: opts.historyTo,
-        }).then(async (positions) => {
-          if (!includeBalanceCashFlow) return positions
-          const cashFlows = await fetchBalanceCashFlowFromOrderHistory(fx, broker, {
+        ? fx.closedHistorySource === "order_history"
+          // One OrderHistory call serves the whole range (live-verified from
+          // 2000-01-01). Balance rows are dropped by the lot/symbol guards
+          // below; the PositionHistory branch's cash-flow merge drops them
+          // too (type label lost in reconciliation → profit nulled → not a
+          // cash-flow row).
+          ? fetchTradesListFromOrderHistory(fx, broker, {
             historyFrom: opts.historyFrom,
             historyTo: opts.historyTo,
-            historyProfile: opts.historyProfile,
           })
-          const tickets = new Set(positions.map(row => row.ticket))
-          const merged = [...positions]
-          for (const row of cashFlows) {
-            if (!tickets.has(row.ticket)) merged.push(row)
-          }
-          return merged
-        })
+          : fetchTradesListFromPositionHistory(fx, broker, {
+            historyFrom: opts.historyFrom,
+            historyTo: opts.historyTo,
+          }).then(async (positions) => {
+            if (!includeBalanceCashFlow) return positions
+            const cashFlows = await fetchBalanceCashFlowFromOrderHistory(fx, broker, {
+              historyFrom: opts.historyFrom,
+              historyTo: opts.historyTo,
+              historyProfile: opts.historyProfile,
+            })
+            const tickets = new Set(positions.map(row => row.ticket))
+            const merged = [...positions]
+            for (const row of cashFlows) {
+              if (!tickets.has(row.ticket)) merged.push(row)
+            }
+            return merged
+          })
         : fetchClosedHistoryForBaseline(fx, broker, {
           historyFrom: opts.historyFrom,
           historyTo: opts.historyTo,
@@ -231,6 +267,27 @@ export async function fetchFxsocketBrokerTrades(
   ])
 
   const out: FxsocketBrokerTradeRow[] = []
+  const wanted: Array<PromiseSettledResult<unknown>> = []
+  if (wantOpen) wanted.push(openedRes)
+  if (wantClosed) wanted.push(closedRes)
+
+  // Every sub-request rejected (expired session, NOT_CONFIGURED, bridge down):
+  // throw so the edge returns a real error instead of HTTP 200 { trades: [] }.
+  if (wanted.length > 0 && wanted.every(r => r.status === "rejected")) {
+    const first = wanted[0] as PromiseRejectedResult
+    const reason = first.reason
+    throw reason instanceof Error ? reason : new Error(String(reason))
+  }
+  const rejected = wanted.filter(
+    (r): r is PromiseRejectedResult => r.status === "rejected",
+  )
+  if (rejected.length > 0) {
+    console.warn(
+      "[fxsocketTrades] partial history fetch",
+      rejected.map(r => (r.reason instanceof Error ? r.reason.message : String(r.reason))),
+    )
+  }
+
   if (openedRes.status === "fulfilled" && Array.isArray(openedRes.value)) {
     for (const o of openedRes.value as RawOrder[]) {
       out.push(normalizeOrder(o, broker, "open", opts.historyProfile))
@@ -324,7 +381,7 @@ function rowCloseMs(row: Pick<FxsocketBrokerTradeRow, "closed_at" | "opened_at">
 
 /** Full closed history for baseline inference — chunked OrderHistory + ticket dedupe. */
 export async function fetchClosedHistoryForBaseline(
-  fx: FxsocketClient,
+  fx: MtHistorySource,
   broker: BrokerRow & { fxsocket_account_id: string },
   opts: {
     historyFrom: string
@@ -341,6 +398,7 @@ export async function fetchClosedHistoryForBaseline(
   const orderSettled = await Promise.allSettled(
     chunks.map(chunk => fx.orderHistory(sessionId, chunk.from, chunk.to, platform)),
   )
+  throwIfAllChunksRejected(orderSettled)
 
   for (const result of orderSettled) {
     if (result.status !== "fulfilled") continue
@@ -370,7 +428,7 @@ export async function fetchClosedHistoryForBaseline(
 
 /** Deposit / withdrawal rows from OrderHistory — not present in PositionHistory. */
 export async function fetchBalanceCashFlowFromOrderHistory(
-  fx: FxsocketClient,
+  fx: MtHistorySource,
   broker: BrokerRow & { fxsocket_account_id: string },
   opts: {
     historyFrom: string
@@ -387,6 +445,7 @@ export async function fetchBalanceCashFlowFromOrderHistory(
   const orderSettled = await Promise.allSettled(
     chunks.map(chunk => fx.orderHistory(sessionId, chunk.from, chunk.to, platform)),
   )
+  throwIfAllChunksRejected(orderSettled)
 
   for (const result of orderSettled) {
     if (result.status !== "fulfilled") continue
@@ -484,7 +543,7 @@ export function mapPositionHistoryRow(row: RawOrder, broker: BrokerRow): Fxsocke
 
 /** Trades page closed legs — one row per PositionHistory round-trip. */
 export async function fetchTradesListFromPositionHistory(
-  fx: FxsocketClient,
+  fx: MtHistorySource,
   broker: BrokerRow & { fxsocket_account_id: string },
   opts: {
     historyFrom: string
@@ -499,6 +558,7 @@ export async function fetchTradesListFromPositionHistory(
   const settled = await Promise.allSettled(
     chunks.map(chunk => fx.positionHistory(sessionId, chunk.from, chunk.to, platform)),
   )
+  throwIfAllChunksRejected(settled)
 
   const seen = new Set<number>()
   const out: FxsocketBrokerTradeRow[] = []
@@ -515,4 +575,94 @@ export async function fetchTradesListFromPositionHistory(
   }
 
   return out.sort((a, b) => rowCloseMs(b) - rowCloseMs(a))
+}
+
+/**
+ * Trades page closed legs from OrderHistory — for sources whose
+ * PositionHistory is unavailable (MTAPI bridge sessions are connected
+ * without `downloadOrderHistory`, so HistoryPositions returns
+ * ORDER_HISTORY_NOT_READY).
+ *
+ * One row per closed order (partial closes stay on one order via
+ * partialCloseDeals). Balance / deposit rows the bridge includes in
+ * OrderHistory are dropped structurally here (lot/symbol guards); on the
+ * PositionHistory side they lose their type label in direction
+ * reconciliation, so `normalizeOrder` nulls their profit and
+ * `isBalanceCashFlowTrade` returns false — neither provider lists them.
+ *
+ * Non-executed orders (cancelled or still-placed pendings) carry a state
+ * but were never trades — they are dropped by the state guard, and any
+ * skip is logged once per response so state-vocabulary drift (e.g. MT4)
+ * stays visible.
+ */
+export async function fetchTradesListFromOrderHistory(
+  fx: MtHistorySource,
+  broker: BrokerRow & { fxsocket_account_id: string },
+  opts: {
+    historyFrom: string
+    historyTo: string
+  },
+): Promise<FxsocketBrokerTradeRow[]> {
+  const sessionId = String(broker.fxsocket_account_id ?? "").trim()
+  if (!sessionId) return []
+  const platform = brokerApiPlatform(broker)
+
+  const rows = await fx.orderHistory(sessionId, opts.historyFrom, opts.historyTo, platform)
+
+  const seen = new Set<number>()
+  const out: FxsocketBrokerTradeRow[] = []
+  const skippedStates: string[] = []
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue
+    const trade = normalizeOrder(row as RawOrder, broker, "closed", "trades")
+    if (trade.ticket <= 0 || seen.has(trade.ticket)) continue
+    // History feeds echo open orders with a zero/epoch close time — only
+    // real closed legs belong here.
+    const closeMs = trade.closed_at ? Date.parse(trade.closed_at) : NaN
+    if (!Number.isFinite(closeMs) || closeMs <= 0) continue
+    // Cancelled / never-executed pending orders also appear in OrderHistory
+    // with a close time — they must not count as closed trades. Executed rows
+    // report state "Started" or "Filled" on MTAPI, so this is a blacklist.
+    const state = String(trade.state ?? "").trim()
+    if (state && /cancel|placed|pending|expired|deleted|reject/i.test(state)) {
+      skippedStates.push(`${trade.ticket}:${state}`)
+      continue
+    }
+    if (trade.lot_size <= 0 || !trade.symbol.trim()) continue
+    if (isNonTradeEntry(trade.direction, trade.type, trade.lot_size)) continue
+    seen.add(trade.ticket)
+    out.push(trade)
+  }
+
+  if (skippedStates.length > 0) {
+    console.warn(
+      `[fxsocketTrades] OrderHistory state-skip ${skippedStates.length} row(s): ` +
+        skippedStates.slice(0, 20).join(", "),
+    )
+  }
+
+  return out.sort((a, b) => rowCloseMs(b) - rowCloseMs(a))
+}
+
+/**
+ * When every history chunk fails (bridge down, expired session), rethrow so
+ * callers surface a real error instead of treating total failure as `[]`.
+ */
+function throwIfAllChunksRejected(settled: PromiseSettledResult<unknown>[]): void {
+  if (settled.length === 0) return
+  if (!settled.every(r => r.status === "rejected")) {
+    const rejected = settled.filter(
+      (r): r is PromiseRejectedResult => r.status === "rejected",
+    )
+    if (rejected.length > 0) {
+      console.warn(
+        "[fxsocketTrades] partial chunk fetch",
+        rejected.map(r => (r.reason instanceof Error ? r.reason.message : String(r.reason))),
+      )
+    }
+    return
+  }
+  const first = settled[0] as PromiseRejectedResult
+  const reason = first.reason
+  throw reason instanceof Error ? reason : new Error(String(reason))
 }
