@@ -43,6 +43,7 @@ export const es: Translations = {
       copierLogs: 'Registros',
       signalHistory: 'Gestionar señales',
       reportedTrades: 'Operaciones reportadas',
+      updates: 'Actualizaciones',
       marketNews: 'Noticias',
       economicCalendar: 'Calendario',
       performance: 'Rendimiento',
@@ -112,6 +113,19 @@ export const es: Translations = {
       liveChat: 'Ayuda y soporte',
       status: 'Estado del servicio',
       statusOperational: 'Todos los sistemas operativos',
+    },
+    updatesAnnouncement: {
+      title: 'Actualización de la plataforma',
+      viewAll: 'Ver todas las actualizaciones',
+      dismiss: 'Cerrar',
+    },
+    updatesPage: {
+      title: 'Actualizaciones',
+      subtitle: 'Cambios, correcciones y mejoras recientes en TScopier.',
+      empty: 'No hay actualizaciones aún. Vuelve pronto.',
+      typeFeature: 'Función',
+      typeFix: 'Corrección',
+      typeImprovement: 'Mejora',
     },
 
     assistant: {

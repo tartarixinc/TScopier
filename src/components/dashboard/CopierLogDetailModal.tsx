@@ -14,7 +14,7 @@ import {
   summarizeExecutionLogRow,
   type CopierExecutionLogRow,
 } from '../../lib/copierLogDetail'
-import { buildTradeFailureAssistantPrompt, resolveTradeFailureDisplay } from '../../lib/tradeFailureDisplay'
+import { resolveTradeFailureDisplay } from '../../lib/tradeFailureDisplay'
 import { tradeSignalActionLabel, type TradeSignalSummaryLabels } from '../../lib/copierLogDisplay'
 import type { Signal } from '../../types/database'
 import { Badge } from '../ui/Badge'
@@ -85,17 +85,9 @@ export function CopierLogDetailModal({
     ? tradeSignalActionLabel(action, summaryLabels)
     : '—'
 
-  const askAssistantAboutFailure = () => {
-    if (!structuredFailure) return
-    assistant.persistMessages(prev => [
-      ...prev,
-      { role: 'user', content: buildTradeFailureAssistantPrompt(structuredFailure) },
-    ])
-    assistant.openAssistant()
-  }
+  const rawMessage = signal?.raw_message?.trim() || (signal?.raw_image_url ? '(image)' : '—')
 
   const askAssistantExplainSignal = () => {
-    const parsed = signal?.parsed_data as Record<string, unknown> | null
     const context = [
       `Signal ID: ${signal?.id}`,
       `Status: ${signal?.status}`,
@@ -106,11 +98,9 @@ export function CopierLogDetailModal({
       Array.isArray(parsed?.tp) ? `Take profit: ${parsed.tp.join(', ')}` : '',
       signal?.skip_reason ? `Skip reason: ${signal.skip_reason}` : '',
       timeline?.length ? `Timeline: ${timeline.map(r => `${r.action} (${r.status})`).join(', ')}` : '',
+      rawMessage && rawMessage !== '—' ? `\nOriginal Telegram message:\n${rawMessage}` : '',
     ].filter(Boolean).join('\n')
-    assistant.persistMessages(prev => [
-      ...prev,
-      { role: 'user', content: `Please explain what happened with this trade signal in plain English.\n\n${context}` },
-    ])
+    assistant.setPendingAutoSend(`Please explain what happened with this trade signal in plain English.\n\n${context}`)
     assistant.openAssistant()
   }
 
@@ -151,7 +141,6 @@ export function CopierLogDetailModal({
   if (!signal) return null
 
   const receivedAt = new Date(signal.created_at).toLocaleString()
-  const rawMessage = signal.raw_message?.trim() || (signal.raw_image_url ? '(image)' : '—')
   const technicalCode = signal.skip_reason?.trim() || '—'
   const showReason = signal.status === 'skipped' || signal.status === 'failed' || Boolean(signal.skip_reason)
   const effectiveRetryEligible = retryEligible && structuredFailure?.retryable !== false
@@ -216,27 +205,18 @@ export function CopierLogDetailModal({
                     {reasonDetail}
                   </p>
                 ) : null}
-                {structuredFailure ? (
-                  <button
-                    type="button"
-                    onClick={askAssistantAboutFailure}
-                    className="text-xs font-semibold text-teal-700 dark:text-teal-300 hover:underline underline-offset-2"
-                  >
-                    Ask AI about this issue
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={askAssistantExplainSignal}
-                  className="text-xs font-semibold text-teal-700 dark:text-teal-300 hover:underline underline-offset-2"
-                >
-                  {dm.explainWithAi}
-                </button>
                 {technicalCode !== '—' && technicalCode !== reasonShort ? (
                   <DetailRow label={dm.technicalCode} value={technicalCode} mono />
                 ) : null}
               </>
             ) : null}
+            <button
+              type="button"
+              onClick={askAssistantExplainSignal}
+              className="text-xs font-semibold text-teal-700 dark:text-teal-300 hover:underline underline-offset-2"
+            >
+              {dm.explainWithAi}
+            </button>
           </section>
 
           {(levels.entry || levels.sl || levels.tp) ? (

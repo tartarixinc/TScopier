@@ -19,6 +19,10 @@ const WelcomeModal = lazy(() =>
   import('../onboarding/WelcomeModal').then(m => ({ default: m.WelcomeModal })),
 )
 
+const UpdatesAnnouncementModal = lazy(() =>
+  import('../updates/UpdatesAnnouncementModal').then(m => ({ default: m.UpdatesAnnouncementModal })),
+)
+
 const LAUNCHER_VISIBLE_STORAGE_KEY = 'tscopier-assistant-launcher-visible'
 const LAUNCHER_MINIMIZED_STORAGE_KEY = 'tscopier-assistant-launcher-collapsed'
 const LAUNCHER_POSITION_STORAGE_KEY = 'tscopier-assistant-launcher-position'
@@ -95,6 +99,11 @@ function AssistantSurface({
       {needsWelcome ? (
         <Suspense fallback={null}>
           <WelcomeModal />
+        </Suspense>
+      ) : null}
+      {!deferAppBootstrap && !needsWelcome ? (
+        <Suspense fallback={null}>
+          <UpdatesAnnouncementModal />
         </Suspense>
       ) : null}
     </>

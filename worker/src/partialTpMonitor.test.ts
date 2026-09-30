@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
-import { isPartialTpBenignBrokerError, isPartialTpTriggered } from './partialTpMonitor'
+import { isPartialTpBenignBrokerError, isPartialTpTriggered, shouldMonitorPartialTpLeg } from './partialTpMonitor'
 
 // Single-mode trades ride to the LAST configured-bucket TP at the broker.
 // The earlier TPs are partial-closes fired by the worker: a long basket's
@@ -59,4 +59,20 @@ test('isPartialTpBenignBrokerError: real broker failures stay retryable', () => 
   assert.equal(isPartialTpBenignBrokerError('trade context busy'), false)
   assert.equal(isPartialTpBenignBrokerError('Invalid stops'), false)
   assert.equal(isPartialTpBenignBrokerError('HTTP 500'), false)
+})
+
+test('pending parent trade => zero quote calls and no leg mutation', () => {
+  let quoteCalls = 0
+  let legMutations = 0
+  const monitorable = shouldMonitorPartialTpLeg(
+    { broker_account_id: 'healthy-broker', trade_id: 'pending-trade' },
+    new Set(),
+    new Set(),
+  )
+  if (monitorable) {
+    quoteCalls += 1
+    legMutations += 1
+  }
+  assert.equal(quoteCalls, 0)
+  assert.equal(legMutations, 0)
 })

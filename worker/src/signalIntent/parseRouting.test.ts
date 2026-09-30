@@ -110,6 +110,87 @@ TP 2660`
       false,
     )
   })
+
+  it('rejects a high-confidence parse that missed a labeled entry (Fix C)', () => {
+    const msg = `BUY XAUUSD
+AREA: 4358
+SL: 4348
+TP: 4370`
+    const det = {
+      status: 'parsed' as const,
+      skip_reason: null,
+      parsed: {
+        action: 'buy',
+        symbol: 'XAUUSD',
+        entry_price: null,
+        entry_zone_low: null,
+        entry_zone_high: null,
+        sl: 4348,
+        tp: [4370],
+        lot_size: null,
+        confidence: 0.99,
+        raw_instruction: msg,
+      },
+    }
+    assert.equal(
+      deterministicQualifiesForFastPath(det, msg, DEFAULT_CHANNEL_KEYWORDS),
+      false,
+    )
+  })
+
+  it('still fast-lanes a high-confidence market entry with no entry label (Fix C)', () => {
+    const msg = 'GOLD BUY NOW SL 2640 TP 2660'
+    const det = {
+      status: 'parsed' as const,
+      skip_reason: null,
+      parsed: {
+        action: 'buy',
+        symbol: 'XAUUSD',
+        entry_price: null,
+        entry_zone_low: null,
+        entry_zone_high: null,
+        sl: 2640,
+        tp: [2660],
+        lot_size: null,
+        confidence: 0.99,
+        raw_instruction: msg,
+      },
+    }
+    assert.equal(
+      deterministicQualifiesForFastPath(det, msg, DEFAULT_CHANNEL_KEYWORDS),
+      true,
+    )
+  })
+
+  it('still fast-lanes market text with incidental from/area prose (Fix C)', () => {
+    for (const msg of [
+      'GOLD BUY NOW SL 2640 TP 2660, target 200 pips from 2640',
+      'GOLD BUY NOW SL 2640 TP 2660, support area 4350',
+      'GOLD BUY NOW SL 2640 TP 2660, wait for a good entry',
+    ]) {
+      const det = {
+        status: 'parsed' as const,
+        skip_reason: null,
+        parsed: {
+          action: 'buy',
+          symbol: 'XAUUSD',
+          entry_price: null,
+          entry_zone_low: null,
+          entry_zone_high: null,
+          sl: 2640,
+          tp: [2660],
+          lot_size: null,
+          confidence: 0.99,
+          raw_instruction: msg,
+        },
+      }
+      assert.equal(
+        deterministicQualifiesForFastPath(det, msg, DEFAULT_CHANNEL_KEYWORDS),
+        true,
+        `expected fast-lane for: ${msg}`,
+      )
+    }
+  })
 })
 
 describe('shouldReconcileSignal', () => {

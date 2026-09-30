@@ -24,6 +24,7 @@ export const chromeRu: AppChromeTranslations = {
       copierLogs: 'Логи копирования',
       signalHistory: 'Управление сигналами',
       reportedTrades: 'Отчеты по сделкам',
+      updates: 'Обновления',
       marketNews: 'Новости рынка',
       economicCalendar: 'Экономический календарь',
       performance: 'Результаты',
@@ -95,6 +96,20 @@ export const chromeRu: AppChromeTranslations = {
       status: 'Статус',
       statusOperational: 'Все системы работают нормально',
     },
+    updatesAnnouncement: {
+      title: 'Platform Update',
+      viewAll: 'View All Updates',
+      dismiss: 'Dismiss',
+    },
+    updatesPage: {
+      title: 'Updates',
+      subtitle: 'Recent changes, fixes, and improvements to TScopier.',
+      empty: 'No updates yet. Check back soon.',
+      typeFeature: 'Feature',
+      typeFix: 'Fix',
+      typeImprovement: 'Improvement',
+    },
+
 
     assistant: {
       title: 'TScopier Assistant',

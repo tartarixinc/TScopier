@@ -135,6 +135,49 @@
   2. Decide on the IP allowlist (leave off vs. confirmed-stable egress IPs).
   3. Reduce MTAPI container log verbosity so its own logs do not capture query strings.
   4. Deploy the updated worker to the Railway migration environment if not already running there.
+### 2026-09-19 — "Entry not opened": edited signal bypassed the AI and the entry price was never read
+
+- **Plain English:** A provider posted a gold buy setup on the Lorax Layer VIP channel, then **edited** the Telegram message a minute later to add the full details — entry zone, take profits, and stop loss. The copier treats an edited message differently from a brand-new one: it first tries its built-in rules and only asks the AI if those rules fail. The rules accepted the edit because it had a stop loss and take profits and the same direction as before, but they never check whether an entry price is present. The rules also did not understand the format "ENTRY ZONE: 4358" when only a single price is given (they only understood a range like "4358-4360"). So the copier accepted the signal without an entry price, never asked the AI for help, and could not open the trade — the user saw "No position opened". No money was at risk.
+- **Root cause (technical):**
+  1. Telegram edits go through `tryApplyMessageRevisionInner` (`worker/src/userListener.ts:1983`), which calls `tryDeterministicRevisionCompletion` (`:2306`) and only falls back to `parseUniversalSignal` (the AI) if it returns `null` (`:2056`).
+  2. `revisionHasDeterministicActionableParse` (`worker/src/signalRevision.ts`) accepted a buy/sell edit carrying SL/TP with the same direction, without checking for an entry anchor, so the AI was skipped.
+  3. `extractOptionalEntryAnchor` (`worker/src/parseSignal.ts`) had no pattern for a single price after "ENTRY ZONE" — the two-price zone patterns only matched ranges — so `entry_price` stayed `null`.
+  4. Dispatch then failed with `entry_not_opened` (`worker/src/tradeExecutor/dispatch.ts`).
+  - Note: `evaluateParsedSignalExecutionEligibility` returns `eligible: true` for this parse (labeled stops + `tradeableFromParsed` accepting a zero entry price), so it could not be used as the guard.
+- **Fix (files):**
+  - `worker/src/parseSignal.ts` — Fix A: single-price `entry\s*zone\s*[:=]?\s*<price>` pattern with a negative lookahead so a range (`ENTRY ZONE: 4358 / 4360`) is still read as a zone; `entrySlashZone` accepts `zone|area` and `/`. Fix D: `parseAtPriceExcludingSlTp` now excludes numbered SL/TP labels (`TP1 @`, `TP 1 @`, `TP(1) @`, `TP1: @`, `Take Profit 1 @`) so a take-profit `@` is not read as the entry price (which had turned "SELL NOW" into a limit order at the TP price). `target` is deliberately **not** in the exclusion list, so `Entry Target @4235` still parses as an entry.
+  - `worker/src/signalEntryNowRequirement.ts` — new exported `messageLabelsEntryAnchor` and `parsedMissesLabeledEntry` helpers.
+  - `worker/src/signalRevision.ts` — new `revisedMissesLabeledEntry` guard on both `revisionCompletesSettleableEntry` and `revisionHasDeterministicActionableParse`: reject the deterministic result (let the AI try) only when the message labels an entry but the parse has no anchor. Genuine market entries ("Gold buy now", "SELL AT MARKET") are still accepted deterministically.
+  - `worker/src/signalIntent/universalSignalParser.ts` — Fix C: `deterministicQualifiesForFastPath` also rejects a buy/sell that missed a labeled entry, so the new-message fast lane cannot skip the AI either.
+  - Tests: `worker/src/parseSignal.test.ts`, `worker/src/signalRevision.test.ts`, new `worker/src/signalEntryNowRequirement.test.ts`, `worker/src/signalIntent/parseRouting.test.ts`.
+- **Tests/verification:** `npm --prefix worker run build` clean. The entire worker suite was run (198 files, ~1,960 tests) with a per-file timeout: all pass, 0 failures. Empirically: the incident message parses `entry_price: 4358`; `ENTRY AREA` forces the AI; `SELL AT MARKET` and `Entry Target @4235` behave correctly. Review: code-tester PASS; code-review went through several passes and found/fixed a CRITICAL market-entry regression, HIGH false positives (`buy|sell at`, `\bfrom\s+\d`), and MEDIUM items (`price[:=]`, `area`, bare `entry`, the `@` SL/TP separator, numbered ordinals). Final pass PASS_WITH_NOTES (LOW/INFO only).
+- **Deploy state:** written on `staging`; NOT committed, NOT deployed.
+- **Follow-ups:**
+  1. Commit and deploy to staging, then prod.
+  2. The guard is a regex allow-list; a label neither parser nor guard recognises can still skip the AI on an edit (known residual: `BUY ZONE 4358`, `buy area 4358`).
+  3. LOW: `parseSlFromText` reads the ordinal in `SL2 @ 4276` as the stop price (pre-existing).
+  - Incident report: `docs/incidents/incident-2026-09-18-entry-not-opened-revision-fastpath.{md,html,pdf}`.
+
+### 2026-09-19 — "Buy limit" signal misclassified as "delete pendings" command
+
+- **Plain English:** A user sent a "XAUUSD buy limit@4347.520" message with stop loss and take profit levels to the Lorax Layer VIP channel. The copier's AI incorrectly decided this was a command to cancel pending orders instead of recognizing it as a new buy limit order. The copier showed the user a raw internal code "delete pendings no parent" instead of a helpful error message. We fixed this by cherry-picking Emmanuel's pending order routing fix, adding @ as a valid separator in TP parsing, and adding missing translations for the skip reason across all 9 supported languages.
+- **Root cause (technical):**
+  1. AI misclassified "XAUUSD buy limit" as `cancel_pending` intent (85% confidence). The message format is clearly a new entry, not a cancel command.
+  2. Before Emmanuel's fix, the copier did not recognize explicit "BUY LIMIT" or "BUY STOP" wording. The message was parsed as a plain `buy` with an entry price, which the AI then misinterpreted as a cancel command when combined with the reply context.
+  3. The replied-to message (62159) was never a signal in the copier's database, so the copier gave up entirely instead of attempting to place the trade.
+  4. The skip reason `delete_pendings_no_parent` had no user-facing label in any locale, so the fallback just converted underscores to spaces.
+  5. TP parsing did not support @ symbol — regex patterns used `[:=\-\s]` as separators but did not include `@`.
+- **Fix (files):**
+  - Cherry-picked Emmanuel's commits (`fd4b1750`, `28f59e79`): adds `entry_order_type` field to parsed signals, routes explicit pending orders to correct broker operations (BuyLimit/SellLimit/BuyStop/SellStop), bypasses legacy market coercion.
+  - `worker/src/parseSignal.ts` — added `@` to TP parsing regex character class.
+  - `src/i18n/channelWorker/{en,fr,es,ar,ja,nl,pl,ru,sv}.ts` — added `delete_pendings_no_parent`, `delete_pendings_requires_reply`, `delete_pendings_none` translations.
+  - `src/lib/copierSkipReasonLabels.ts` — added labels and details for `delete_pendings_*` skip reasons.
+- **Tests/verification:** All 3 explicit pending order tests pass. Parser correctly identifies `entry_order_type: limit` for "buy limit" messages. TP parsing now works with @ symbol (Tp1@4357). Worker typecheck passes.
+- **Deploy state:** committed to `migration` branch; cherry-picked to `staging` for this incident fix only. NOT deployed.
+- **Follow-ups:**
+  1. Investigate why the AI pipeline misclassified "XAUUSD buy limit" as `cancel_pending` — 85% confidence suggests a systematic issue.
+  2. Deploy to production worker.
+  - **Resolved 2026-09-19 (review note, no code change):** A code-review note that `worker/src/signalPriceInference.ts` TP patterns still lacked `@` was checked and found to be cosmetic. That file has a separate general rule treating any `@price` as a labelled price, so `TP1@4357` is already recognised there. `extractUnlabeledPrices` returns `[]` for both `TP1@4357` and `TP1: 4357`, and the parsed results are identical. No change made (do not "fix" this — it is redundant).
 
 ### 2026-09-17 — Phase 3 verified live + capacity measurement
 
@@ -558,8 +601,6 @@
 - **Rule:** `.cursor/rules/supabase-migration-branch.mdc` alwaysApply. Do not merge the branch unless asked.
 - Local `.env` / `worker/.env` were already pointed at this branch.
 
-=======
->>>>>>> origin/migration
 ### 2026-08-19 — Assistant stops answering a failed signal as the user's live/ongoing trade
 
 - **Symptom (plain English):** Asked "show my current trade and why am I in loss" / "my live trades" / "my ongoing trade", the assistant answered with a signal that had **failed** to execute (`symbol not found: STPRNG`) and called it the user's trade, even though nothing was ever sent to the broker. It kept reaching for the copier-logs tool instead of the live-trades data, so the user never saw their actual executed positions.

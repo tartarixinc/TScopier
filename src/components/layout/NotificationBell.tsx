@@ -28,7 +28,7 @@ export function NotificationBell({ open, onOpen, onClose }: NotificationBellProp
         aria-haspopup="menu"
         aria-expanded={open}
         className={clsx(
-          'relative rounded-lg p-2 transition-colors',
+          'relative rounded-lg p-1.5 transition-colors sm:p-2',
           open
             ? 'text-teal-600 bg-teal-50 dark:text-teal-400 dark:bg-teal-950/50'
             : soundEnabled

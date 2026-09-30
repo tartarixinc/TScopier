@@ -4,6 +4,7 @@ import {
   LogOut,
   ChevronRight,
   Star,
+  Send,
   type LucideIcon,
 } from 'lucide-react'
 import clsx from 'clsx'
@@ -71,6 +72,7 @@ export function UserMenuDropdown({ open, onClose, onSignOut }: UserMenuDropdownP
     { id: 'billing', kind: 'link', label: um.subscriptionBilling, icon: getAppRouteIcon('/billing'), path: '/billing' },
     { id: 'affiliate', kind: 'link', label: um.affiliateProgram, icon: getAppRouteIcon('/affiliate-program'), path: '/affiliate-program' },
     { id: 'rate-us', kind: 'external', label: um.rateUs, icon: Star, href: TRUSTPILOT_REVIEW_URL },
+    { id: 'join-telegram', kind: 'external', label: 'Join Telegram', icon: Send, href: 'https://t.me/tscopierai' },
     { id: 'signout', kind: 'action', label: um.signOut, icon: LogOut, destructive: true },
   ]
 
@@ -101,12 +103,12 @@ export function UserMenuDropdown({ open, onClose, onSignOut }: UserMenuDropdownP
       role="menu"
       aria-label={um.menuLabel}
       className={clsx(
-        'absolute end-0 top-full z-50 mt-1 w-64 rounded-xl border border-neutral-200 bg-white py-1 shadow-lg',
+        'absolute end-0 top-full z-50 mt-1 flex w-[min(16rem,calc(100vw-1rem))] max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-4.5rem)] flex-col overflow-hidden overscroll-contain rounded-xl border border-neutral-200 bg-white py-1 shadow-lg sm:max-h-[min(32rem,calc(100dvh-5rem))]',
         'before:absolute before:-top-1 before:inset-x-0 before:h-1 before:content-[""]',
         'dark:border-neutral-700 dark:bg-neutral-900',
       )}
     >
-      <div className="border-b border-neutral-100 px-3 py-3 dark:border-neutral-800">
+      <div className="shrink-0 border-b border-neutral-100 px-3 py-3 dark:border-neutral-800">
         <div className="flex items-center gap-3">
           <UserAvatar user={user} profile={profile} email={user?.email} size="md" />
           <div className="min-w-0 flex-1">
@@ -117,7 +119,7 @@ export function UserMenuDropdown({ open, onClose, onSignOut }: UserMenuDropdownP
         </div>
       </div>
 
-      <ul className="py-1">
+      <ul className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain py-1 pb-[max(0.25rem,env(safe-area-inset-bottom))]">
         {items.map(item => {
           const Icon = item.icon
           const isDestructive = item.kind === 'action' && item.destructive

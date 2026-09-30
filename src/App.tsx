@@ -68,6 +68,9 @@ const SignalHistoryPage = lazy(() =>
 const SettingsPage = lazy(() =>
   import('./pages/dashboard/SettingsPage').then(m => ({ default: m.SettingsPage })),
 )
+const UpdatesPage = lazy(() =>
+  import('./pages/dashboard/UpdatesPage').then(m => ({ default: m.UpdatesPage })),
+)
 
 // Support pages — same chunk, separate route entries
 const AffiliateProgramPage = lazy(() =>
@@ -158,7 +161,7 @@ export default function App() {
             <Route path="/management" element={<Navigate to="/activities" replace />} />
             <Route path="/manage-signals" element={<LazyPage><SignalHistoryPage /></LazyPage>} />
             <Route path="/signals" element={<Navigate to="/manage-signals" replace />} />
-            <Route path="/updates" element={<Navigate to="/manage-signals" replace />} />
+            <Route path="/updates" element={<LazyPage><UpdatesPage /></LazyPage>} />
             <Route path="/signal-history" element={<Navigate to="/manage-signals" replace />} />
             <Route path="/market-news" element={<LazyPage><MarketNewsPage /></LazyPage>} />
             <Route path="/economic-calendar" element={<LazyPage><EconomicCalendarPage /></LazyPage>} />

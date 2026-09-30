@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
+import { AlertCircle, Check, Circle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { PasswordInput } from '../../components/auth/PasswordInput'
 import { Input } from '../../components/ui/Input'
@@ -29,7 +30,13 @@ import {
   signupErrorPolicyCode,
   signupPolicyMessage,
 } from '../../lib/signupEmailPolicy'
-import { evaluatePassword, isPasswordStrongEnough } from '../../lib/passwordPolicy'
+import { evaluatePassword } from '../../lib/passwordPolicy'
+import {
+  isCreateAccountDisabled,
+  passwordRequirementStatuses,
+  signupUnmetConditions,
+  type SignupUnmetCondition,
+} from '../../lib/signupValidation'
 
 function GoogleIcon({ className }: { className?: string }) {
   return (
@@ -70,9 +77,51 @@ export function SignupPage() {
   const [googleLoading, setGoogleLoading] = useState(false)
   const [error, setError] = useState('')
   const [captchaToken, setCaptchaToken] = useState<string | null>(null)
+  const [passwordInteracted, setPasswordInteracted] = useState(false)
+  const [formInteracted, setFormInteracted] = useState(false)
   const turnstileRef = useRef<TurnstileWidgetHandle>(null)
   const captchaRequired = isTurnstileEnabled()
   const captchaMisconfigured = isTurnstileMisconfigured()
+  const validationInput = {
+    firstName,
+    lastName,
+    email,
+    password,
+    confirmPassword,
+    captchaRequired,
+    captchaToken,
+    captchaMisconfigured,
+  }
+  const passwordRequirements = passwordRequirementStatuses(password)
+  const unmetConditions = signupUnmetConditions(validationInput)
+  const showValidationGuidance = formInteracted || passwordInteracted
+
+  const unmetConditionMessage = (condition: SignupUnmetCondition): string => {
+    switch (condition) {
+      case 'first_name_required':
+        return signupT.firstName + ' is required.'
+      case 'last_name_required':
+        return signupT.lastName + ' is required.'
+      case 'email_required':
+        return signupT.email + ' is required.'
+      case 'email_invalid':
+        return 'Enter a valid email address.'
+      case 'email_blocked':
+        return signupT.emailNotAllowed
+      case 'email_disposable':
+        return signupT.disposableEmailNotAllowed
+      case 'password_incomplete':
+        return 'Complete all password requirements.'
+      case 'confirm_password_required':
+        return signupT.confirmPassword + ' is required.'
+      case 'password_mismatch':
+        return signupT.passwordMismatch
+      case 'captcha_required':
+        return auth.oauth.captchaRequired
+      case 'captcha_misconfigured':
+        return 'Signup protection is misconfigured. Please try again later.'
+    }
+  }
 
   useEffect(() => {
     const fromUrl = captureReferralFromUrl(location.search)
@@ -264,7 +313,11 @@ export function SignupPage() {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form
+        onSubmit={handleSubmit}
+        onChange={() => setFormInteracted(true)}
+        className="space-y-4"
+      >
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Input
             label={signupT.firstName}
@@ -303,11 +356,49 @@ export function SignupPage() {
           label={signupT.password}
           placeholder={signupT.passwordPlaceholder}
           value={password}
-          onChange={e => setPassword(e.target.value)}
+          onFocus={() => setPasswordInteracted(true)}
+          onChange={e => {
+            setPasswordInteracted(true)
+            setPassword(e.target.value)
+          }}
           required
           autoComplete="new-password"
-          hint={signupT.passwordHint}
+          hint={passwordInteracted ? undefined : signupT.passwordHint}
         />
+
+        {passwordInteracted ? (
+          <div
+            aria-label="Password requirements"
+            className="-mt-1 rounded-lg border border-neutral-200 bg-neutral-50/70 px-3 py-2.5 dark:border-neutral-700 dark:bg-neutral-900/70"
+          >
+            <p className="mb-2 text-xs font-medium text-neutral-700 dark:text-neutral-300">
+              Password requirements
+            </p>
+            <ul className="grid grid-cols-1 gap-x-3 gap-y-1.5 sm:grid-cols-2">
+              {passwordRequirements.map(requirement => (
+                <li
+                  key={requirement.id}
+                  className={clsx(
+                    'flex items-center gap-1.5 text-xs',
+                    requirement.satisfied
+                      ? 'text-teal-700 dark:text-teal-300'
+                      : 'text-neutral-500 dark:text-neutral-400',
+                  )}
+                >
+                  {requirement.satisfied ? (
+                    <Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  ) : (
+                    <Circle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  )}
+                  <span className="sr-only">
+                    {requirement.satisfied ? 'Satisfied: ' : 'Incomplete: '}
+                  </span>
+                  <span>{requirement.label}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
 
         <PasswordInput
           label={signupT.confirmPassword}
@@ -340,15 +431,36 @@ export function SignupPage() {
           </Alert>
         ) : null}
 
+        {showValidationGuidance && unmetConditions.length > 0 ? (
+          <div
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            className="rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2.5 text-neutral-700 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-neutral-300"
+          >
+            <div className="flex items-start gap-2">
+              <AlertCircle
+                className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400"
+                aria-hidden="true"
+              />
+              <div className="min-w-0">
+                <p className="text-xs font-medium">
+                  Complete the following to create your account:
+                </p>
+                <ul className="mt-1 list-disc space-y-0.5 ps-4 text-xs text-neutral-600 dark:text-neutral-400">
+                  {unmetConditions.map(condition => (
+                    <li key={condition}>{unmetConditionMessage(condition)}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         <Button
           type="submit"
           loading={loading}
-          disabled={
-            captchaMisconfigured
-            || (captchaRequired && !captchaToken)
-            || !isPasswordStrongEnough(password)
-            || password !== confirmPassword
-          }
+          disabled={isCreateAccountDisabled(validationInput)}
           className="w-full !mt-6"
           size="lg"
         >

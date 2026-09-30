@@ -24,6 +24,7 @@ export const chromeAr: AppChromeTranslations = {
       copierLogs: 'سجلات الناسخ',
       signalHistory: 'إدارة الإشارات',
       reportedTrades: 'الصفقات المبلغ عنها',
+      updates: 'التحديثات',
       marketNews: 'أخبار السوق',
       economicCalendar: 'التقويم الاقتصادي',
       performance: 'الأداء',
@@ -93,6 +94,19 @@ export const chromeAr: AppChromeTranslations = {
       liveChat: 'المساعدة والدعم',
       status: 'الحالة',
       statusOperational: 'جميع الأنظمة تعمل بشكل طبيعي',
+    },
+    updatesAnnouncement: {
+      title: 'Platform Update',
+      viewAll: 'View All Updates',
+      dismiss: 'Dismiss',
+    },
+    updatesPage: {
+      title: 'Updates',
+      subtitle: 'Recent changes, fixes, and improvements to TScopier.',
+      empty: 'No updates yet. Check back soon.',
+      typeFeature: 'Feature',
+      typeFix: 'Fix',
+      typeImprovement: 'Improvement',
     },
 
     assistant: {

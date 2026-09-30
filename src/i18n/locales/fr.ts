@@ -43,6 +43,7 @@ export const fr: Translations = {
       copierLogs: 'Journaux',
       signalHistory: 'Gérer les signaux',
       reportedTrades: 'Transactions signalées',
+      updates: 'Mises à jour',
       marketNews: 'Actualités',
       economicCalendar: 'Calendrier',
       performance: 'Performance',
@@ -112,6 +113,19 @@ export const fr: Translations = {
       liveChat: 'Aide et support',
       status: 'État du service',
       statusOperational: 'Tous les systèmes sont opérationnels',
+    },
+    updatesAnnouncement: {
+      title: 'Mise à jour de la plateforme',
+      viewAll: 'Voir toutes les mises à jour',
+      dismiss: 'Fermer',
+    },
+    updatesPage: {
+      title: 'Mises à jour',
+      subtitle: 'Changements, corrections et améliorations récents de TScopier.',
+      empty: 'Aucune mise à jour pour le moment. Revenez bientôt.',
+      typeFeature: 'Fonctionnalité',
+      typeFix: 'Correction',
+      typeImprovement: 'Amélioration',
     },
 
     assistant: {

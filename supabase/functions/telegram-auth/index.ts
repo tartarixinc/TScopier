@@ -117,22 +117,31 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Log telegram_link_attempt with delivery info from worker response
-    if ((action === "send_code" || action === "verify_code") && workerRes.ok) {
-      const rec = payload as Record<string, unknown> | undefined
-      const phone = typeof rest.phone === "string" ? rest.phone.slice(0, 4) + "****" : undefined
-      const detail: Record<string, unknown> = { action, phone }
-      if (action === "send_code" && rec && typeof rec === "object") {
+    // Log every Telegram linking attempt with its outcome so we can see whether
+    // the code was actually sent (delivery), how long it was, and why it failed.
+    if (action === "send_code" || action === "verify_code") {
+      const rec = (payload && typeof payload === "object" && !Array.isArray(payload))
+        ? payload as Record<string, unknown>
+        : undefined
+      const detail: Record<string, unknown> = {
+        action,
+        phone: typeof rest.phone === "string" ? rest.phone.slice(0, 4) + "****" : undefined,
+        ok: workerRes.ok && !(rec && typeof rec.error === "string" && rec.error),
+      }
+      if (rec) {
         if (typeof rec.delivery === "string") detail.delivery = rec.delivery
         if (typeof rec.code_length === "number") detail.code_length = rec.code_length
         if (typeof rec.can_resend === "boolean") detail.can_resend = rec.can_resend
+        if (typeof rec.requires_password === "boolean") detail.requires_password = rec.requires_password
+        if (typeof rec.error === "string") detail.error = rec.error
       }
       logAssistantEvent({
         userId: user.id,
         eventType: "telegram_link_attempt",
         detail,
-      }).catch(() => {})
+      }).catch(() => {}); // fire-and-forget
     }
+
     return new Response(JSON.stringify(payload), {
       status: workerRes.status,
       headers: { ...corsHeaders, "content-type": "application/json" },

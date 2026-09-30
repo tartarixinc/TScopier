@@ -1260,4 +1260,56 @@ APPLY PROPER RISK MANAGEMENT ALWAYS!`
     assert.ok(result.parsed.tp?.includes(4276.29))
     assert.ok(result.parsed.tp?.includes(4337.15))
   })
+
+  it('parses single-price ENTRY ZONE (incident 4e530999 format)', () => {
+    const msg = `🟢 BUY: XAU/USD
+
+📍 ENTRY ZONE: 4358
+
+🎯 TP1: 4368 (+100 pips)
+🎯 TP2: 4378 (+200 pips)
+🎯 TP3: 4388 (+300 pips)
+🎯 FINAL TP: Open
+
+🛑 SL: 4348 (-100 pips )`
+    const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+    assert.equal(result.status, 'parsed')
+    assert.equal(result.parsed.action, 'buy')
+    assert.equal(result.parsed.symbol, 'XAUUSD')
+    assert.equal(result.parsed.entry_price, 4358)
+    assert.equal(result.parsed.sl, 4348)
+    assert.deepEqual(result.parsed.tp, [4368, 4378, 4388])
+  })
+
+  it('parses ENTRY ZONE slash range as a zone, not a single price', () => {
+    const msg = 'BUY XAUUSD\nENTRY ZONE: 4358 / 4360\nSL: 4348\nTP: 4370'
+    const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+    assert.equal(result.status, 'parsed')
+    assert.equal(result.parsed.entry_price, null)
+    assert.equal(result.parsed.entry_zone_low, 4358)
+    assert.equal(result.parsed.entry_zone_high, 4360)
+  })
+
+  it('does not read a numbered TP/SL @ separator as the entry price', () => {
+    for (const msg of [
+      'GOLD SELL NOW\nTP1 @ 4256\nSL @ 4276',
+      'GOLD SELL NOW\nTP 1 @ 4256\nSL @ 4276',
+      'GOLD SELL NOW\nTP(1) @ 4256\nSL @ 4276',
+      'GOLD SELL NOW\nTP1: @ 4256\nSL @ 4276',
+      'GOLD SELL NOW\nTP#1 @ 4256\nSL @ 4276',
+      'GOLD SELL NOW\nTake Profit 1 @ 4256\nSL @ 4276',
+    ]) {
+      const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+      assert.equal(result.status, 'parsed')
+      assert.equal(result.parsed.entry_price, null, `entry should be null for: ${msg}`)
+    }
+    const ok = parseChannelMessageSync('BUY XAUUSD @ 4358\nSL 4348\nTP 4370', DEFAULT_CHANNEL_KEYWORDS, lexicon)
+    assert.equal(ok.parsed.entry_price, 4358)
+  })
+
+  it('reads an entry written as "Entry Target @price"', () => {
+    const result = parseChannelMessageSync('BUY XAUUSD\nEntry Target @4235\nSL 4210', DEFAULT_CHANNEL_KEYWORDS, lexicon)
+    assert.equal(result.parsed.entry_price, 4235)
+    assert.equal(result.parsed.sl, 4210)
+  })
 })

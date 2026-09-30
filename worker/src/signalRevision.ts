@@ -6,6 +6,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ParseChannelMessageResult } from './parseSignal'
 import type { PipelineTimestamps } from './pipelineTimestamps'
 import type { SignalRow } from './tradeExecutor'
+import { parsedMissesLabeledEntry } from './signalEntryNowRequirement'
 
 export const MESSAGE_REVISION_DISPATCH_SOURCE = 'message_revision'
 
@@ -206,25 +207,30 @@ export function parsedHasExplicitStopsOrTargets(parsed: {
   return tps.some(t => Number(t) > 0)
 }
 
+type RevisionParsedFields = {
+  action?: unknown
+  sl?: unknown
+  tp?: unknown
+  entry_price?: unknown
+  entry_zone_low?: unknown
+  entry_zone_high?: unknown
+  raw_instruction?: unknown
+}
+
+/**
+ * True when the message labels an entry price/zone/level but the deterministic parse has no
+ * anchor — a parser gap. Such a revision must not be trusted on its own; let the AI try.
+ */
+function revisedMissesLabeledEntry(revisedParsed: RevisionParsedFields | null | undefined): boolean {
+  return parsedMissesLabeledEntry(revisedParsed, String(revisedParsed?.raw_instruction ?? ''))
+}
+
 /** Bare entry was edited into a fully-parameterized entry on the same Telegram message. */
 export function revisionCompletesSettleableEntry(
-  priorParsed: {
-    action?: unknown
-    sl?: unknown
-    tp?: unknown
-    entry_price?: unknown
-    entry_zone_low?: unknown
-    entry_zone_high?: unknown
-  } | null | undefined,
-  revisedParsed: {
-    action?: unknown
-    sl?: unknown
-    tp?: unknown
-    entry_price?: unknown
-    entry_zone_low?: unknown
-    entry_zone_high?: unknown
-  } | null | undefined,
+  priorParsed: RevisionParsedFields | null | undefined,
+  revisedParsed: RevisionParsedFields | null | undefined,
 ): boolean {
+  if (revisedMissesLabeledEntry(revisedParsed)) return false
   return entryDispatchLooksSettleable(priorParsed)
     && !entryDispatchLooksSettleable(revisedParsed)
     && parsedHasExplicitStopsOrTargets(revisedParsed)
@@ -236,27 +242,16 @@ export function revisionCompletesSettleableEntry(
  * entry, or an explicit modify with stops.
  */
 export function revisionHasDeterministicActionableParse(
-  priorParsed: {
-    action?: unknown
-    sl?: unknown
-    tp?: unknown
-    entry_price?: unknown
-    entry_zone_low?: unknown
-    entry_zone_high?: unknown
-  } | null | undefined,
-  revisedParsed: {
-    action?: unknown
-    sl?: unknown
-    tp?: unknown
-    entry_price?: unknown
-    entry_zone_low?: unknown
-    entry_zone_high?: unknown
-  } | null | undefined,
+  priorParsed: RevisionParsedFields | null | undefined,
+  revisedParsed: RevisionParsedFields | null | undefined,
 ): boolean {
   if (!revisedParsed) return false
   if (revisionCompletesSettleableEntry(priorParsed, revisedParsed)) return true
   const action = String(revisedParsed.action ?? '').toLowerCase()
   if (!parsedHasExplicitStopsOrTargets(revisedParsed)) return false
+  // If the message labels an entry the parser could not read, let the AI try — for
+  // buy/sell and modify alike.
+  if (revisedMissesLabeledEntry(revisedParsed)) return false
   if (action === 'modify') return true
   if (action !== 'buy' && action !== 'sell') return false
   // Same-direction (or first-time) entry edit that carries explicit SL/TP — e.g.
