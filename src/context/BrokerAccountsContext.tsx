@@ -22,6 +22,11 @@ import {
 import { planLimitErrorMessage } from '../lib/telegramChannelApi'
 import { useT } from './LocaleContext'
 import { BrokerReconnectPasswordModal } from '../components/broker/BrokerReconnectPasswordModal'
+import {
+  isMigrationSwitchCase,
+  isPromptDismissible,
+  pickPromptBroker,
+} from '../lib/migrationPrompt'
 
 interface BrokerAccountsContextValue {
   brokers: BrokerAccount[]
@@ -49,39 +54,10 @@ interface BrokerAccountsContextValue {
 const BrokerAccountsContext = createContext<BrokerAccountsContextValue | null>(null)
 
 /**
- * Session-scoped suppression for the migration reconnect prompt. Closing the
- * prompt keeps it closed for the rest of this browser session; the dashboard
- * banner stays as the persistent fallback. Cleared automatically when the tab
- * session ends, and never set by a successful reconnect.
+ * Which account the automatic reconnect prompt is about, which copy it uses and
+ * whether it may be closed all live in `lib/migrationPrompt`, where they can be
+ * tested without a browser.
  */
-const MIGRATION_PROMPT_DISMISS_KEY = 'tscopier_reconnect_migration_dismissed'
-
-function readMigrationPromptDismissed(): boolean {
-  try {
-    return window.sessionStorage.getItem(MIGRATION_PROMPT_DISMISS_KEY) === '1'
-  } catch {
-    return false
-  }
-}
-
-function writeMigrationPromptDismissed(): void {
-  try {
-    window.sessionStorage.setItem(MIGRATION_PROMPT_DISMISS_KEY, '1')
-  } catch {
-    // Storage unavailable (private mode/blocked) — dismissal then only lasts
-    // for this mount, which is still shorter than nagging forever.
-  }
-}
-
-/**
- * The case this prompt exists for: an account moved to MTAPI that has never
- * connected through it, so it cannot copy anything yet. Anything else — an
- * ordinary FxSocket session expiry, or an MTAPI session that dropped later —
- * keeps the existing session-expiry wording.
- */
-function isMigrationSwitchCase(broker: BrokerAccount | null | undefined): boolean {
-  return broker?.provider === 'mtapi' && (broker.mtapi_status ?? null) == null
-}
 
 export function BrokerAccountsProvider({
   children,
@@ -211,43 +187,24 @@ export function BrokerAccountsProvider({
 
   const noopClear = useCallback(async () => ({ error: null as string | null }), [])
 
-  // ── Migration reconnect prompt (app-level, two-stage modal) ────────────────
-  const [migrationPromptDismissed, setMigrationPromptDismissed] =
-    useState<boolean>(readMigrationPromptDismissed)
+  // ── Reconnect prompt (app-level, two-stage modal) ──────────────────────────
   const [reconnectError, setReconnectError] = useState<string | null>(null)
 
-  const dismissMigrationPrompt = useCallback(() => {
-    setMigrationPromptDismissed(true)
-    setReconnectError(null)
-    writeMigrationPromptDismissed()
-  }, [])
-
-  // Derived rather than stored: whenever an account needs reconnecting and the
-  // prompt has not been dismissed this session, it is up — on any page. Paused
-  // accounts are skipped (copying is off, so there is nothing to keep running),
-  // and an account whose reconnect is already in flight is skipped so the dialog
-  // never drops back to stage 1 while the attempt is running.
-  const migrationPromptBroker = useMemo(() => {
-    if (migrationPromptDismissed) return null
-    return brokersNeedingReconnect.find(
-      broker => broker.is_active !== false && !reconnectingBrokerIds.has(broker.id),
-    ) ?? null
-  }, [brokersNeedingReconnect, migrationPromptDismissed, reconnectingBrokerIds])
+  const migrationPromptBroker = useMemo(
+    () => pickPromptBroker(brokersNeedingReconnect, reconnectingBrokerIds),
+    [brokersNeedingReconnect, reconnectingBrokerIds],
+  )
 
   const activeBroker = passwordPromptBroker ?? migrationPromptBroker
   const modalStage: 'details' | 'password' = passwordPromptBroker ? 'password' : 'details'
-  // The wording follows the cause, not which prompt happens to be open: only a
-  // row moved to MTAPI that has never connected through it gets the migration
-  // text. An ordinary FxSocket expiry — or a later MTAPI session drop — keeps
-  // "Broker session expired".
+  // The wording follows the cause, not which prompt happens to be open.
   const migrationCopy = isMigrationSwitchCase(activeBroker)
+  // Only a dialog the customer opened themselves may be closed. The automatic
+  // prompt is stuck until the account reconnects.
+  const modalDismissible = isPromptDismissible(brokersNeedingReconnect, activeBroker)
 
   const handleModalCancel = () => {
-    // Closing the dialog while an account still needs reconnecting counts as a
-    // dismissal: suppress the automatic prompt for the rest of this session.
-    const suppressAutomaticPrompt = !migrationPromptDismissed && brokersNeedingReconnect.length > 0
     if (passwordPromptBroker) cancelPasswordPrompt()
-    if (suppressAutomaticPrompt) dismissMigrationPrompt()
   }
 
   const handleModalBack = () => {
@@ -341,6 +298,7 @@ export function BrokerAccountsProvider({
         onContinue={handleModalContinue}
         onBack={migrationCopy ? handleModalBack : undefined}
         error={reconnectError}
+        dismissible={modalDismissible}
       />
     </BrokerAccountsContext.Provider>
   )

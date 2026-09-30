@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState, type FormEvent } from 'react'
+import { memo, useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { AlertTriangle, RefreshCw, X } from 'lucide-react'
 import type { BrokerAccount } from '../../types/database'
@@ -45,6 +45,13 @@ interface BrokerReconnectPasswordModalProps {
   onBack?: () => void
   /** Last reconnect failure, shown in the dialog when the page has no toast. */
   error?: string | null
+  /**
+   * When false the dialog cannot be dismissed at all: no close button, no
+   * Escape, no backdrop click, no Cancel — it stays until the account is
+   * resolved. The automatic migration prompt passes false; a dialog the
+   * customer opened themselves stays closable.
+   */
+  dismissible?: boolean
 }
 
 function BrokerReconnectPasswordModalInner({
@@ -57,12 +64,18 @@ function BrokerReconnectPasswordModalInner({
   onContinue,
   onBack,
   error,
+  dismissible = true,
 }: BrokerReconnectPasswordModalProps) {
   const [password, setPassword] = useState('')
   const overlayRef = useRef<HTMLDivElement>(null)
   const backdropRef = useRef<HTMLDivElement>(null)
   const scrollLockRef = useRef<string | null>(null)
-  const { onOverlayMouseDown, onOverlayClick } = useOverlayDismiss(overlayRef, backdropRef, onCancel)
+  const ignoreDismiss = useCallback(() => {}, [])
+  const { onOverlayMouseDown, onOverlayClick } = useOverlayDismiss(
+    overlayRef,
+    backdropRef,
+    dismissible ? onCancel : ignoreDismiss,
+  )
 
   useEffect(() => {
     if (!open) {
@@ -70,7 +83,7 @@ function BrokerReconnectPasswordModalInner({
       return
     }
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel()
+      if (e.key === 'Escape' && dismissible) onCancel()
     }
     document.addEventListener('keydown', handleKey)
     const focusTimer = window.setTimeout(() => {
@@ -83,7 +96,7 @@ function BrokerReconnectPasswordModalInner({
       document.removeEventListener('keydown', handleKey)
       window.clearTimeout(focusTimer)
     }
-  }, [open, stage, onCancel])
+  }, [open, stage, onCancel, dismissible])
 
   useEffect(() => {
     if (!open) {
@@ -145,14 +158,16 @@ function BrokerReconnectPasswordModalInner({
                 {copy.body}
               </p>
             </div>
-            <button
-              type="button"
-              onClick={onCancel}
-              aria-label={copy.cancel}
-              className="shrink-0 rounded-lg p-2 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
-            >
-              <X className="h-4 w-4" />
-            </button>
+            {dismissible && (
+              <button
+                type="button"
+                onClick={onCancel}
+                aria-label={copy.cancel}
+                className="shrink-0 rounded-lg p-2 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -191,9 +206,11 @@ function BrokerReconnectPasswordModalInner({
 
           {stage === 'details' ? (
             <div className="flex justify-end gap-2 pt-1">
-              <Button type="button" variant="ghost" onClick={onCancel}>
-                {copy.cancel}
-              </Button>
+              {dismissible && (
+                <Button type="button" variant="ghost" onClick={onCancel}>
+                  {copy.cancel}
+                </Button>
+              )}
               <Button type="button" onClick={onContinue}>
                 <RefreshCw className="h-4 w-4" />
                 {copy.reconnect}
@@ -221,9 +238,11 @@ function BrokerReconnectPasswordModalInner({
                   )}
                 </div>
                 <div className="flex gap-2">
-                  <Button type="button" variant="ghost" onClick={onCancel}>
-                    {copy.cancel}
-                  </Button>
+                  {dismissible && (
+                    <Button type="button" variant="ghost" onClick={onCancel}>
+                      {copy.cancel}
+                    </Button>
+                  )}
                   <Button type="submit" disabled={!password.trim()}>
                     <RefreshCw className="h-4 w-4" />
                     {copy.reconnect}
