@@ -11,12 +11,32 @@ import {
 } from './monitorIdleGate'
 import { reconcileOpenTradesForBroker, type OpenTradeReconcileRow } from './openTradeReconcile'
 import { captureBusinessIssue } from './observability/businessEvents'
-import { availableRemoteBrokers, type RemoteBrokerState } from './brokerRemoteAvailability'
+import { isExplicitlyUnavailableRemoteBroker, type RemoteBrokerState } from './brokerRemoteAvailability'
 
 interface BrokerRow extends RemoteBrokerState {
   id: string
+  provider?: string | null
+  mtapi_session_id?: string | null
+  mtapi_status?: string | null
   fxsocket_account_id: string | null
   metaapi_account_id: string | null
+}
+
+/**
+ * Whether it is worth asking this broker about its open positions.
+ *
+ * MTAPI rows are judged on their own status: the FxSocket columns
+ * (`fxsocket_status`, `terminal_connected`, `trade_allowed`) are leftovers from
+ * before the switch, and judging an already-switched account by them would
+ * quietly remove it from reconciliation — which is how a position closed at the
+ * broker would stay `open` in our database forever.
+ */
+export function reconcilable(broker: BrokerRow): boolean {
+  if ((broker.provider ?? '') === 'mtapi') {
+    const status = broker.mtapi_status ?? broker.connection_status ?? ''
+    return status !== 'error' && status !== 'disconnected'
+  }
+  return !isExplicitlyUnavailableRemoteBroker(broker)
 }
 
 const ACTIVE_MS = monitorActiveIntervalMs('OPEN_TRADE_RECONCILE_TICK_MS', 30_000)
@@ -99,7 +119,7 @@ export class OpenTradeReconcileMonitor {
     const brokerIds = [...byBroker.keys()]
     const { data: brokers, error: brokerErr } = await this.supabase
       .from('broker_accounts')
-      .select('id,fxsocket_account_id,metaapi_account_id,fxsocket_status,connection_status,terminal_connected,trade_allowed')
+      .select('id,provider,mtapi_status,mtapi_session_id,fxsocket_account_id,metaapi_account_id,fxsocket_status,connection_status,terminal_connected,trade_allowed')
       .in('id', brokerIds)
 
     if (brokerErr) {
@@ -107,7 +127,7 @@ export class OpenTradeReconcileMonitor {
       return
     }
 
-    const availableBrokers = availableRemoteBrokers((brokers ?? []) as BrokerRow[])
+    const availableBrokers = ((brokers ?? []) as BrokerRow[]).filter(reconcilable)
     const uuids = availableBrokers
       .map(b => brokerSessionId(b))
       .filter(uuid => uuid.length > 0)
