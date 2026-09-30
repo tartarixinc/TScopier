@@ -16,7 +16,8 @@
     "push-signal-stops:dev": "ts-node -r dotenv/config src/diagnostics/pushSignalStopsToBroker.ts",
     "push-gtmo-vip-sl:dev": "ts-node -r dotenv/config src/diagnostics/pushGtmoVipSl.ts",
     "push-gtmo-vip-sl-fxsocket:dev": "FXSOCKET_ONLY=true ALL_GTMO_USERS=true ts-node -r dotenv/config src/diagnostics/pushGtmoVipSl.ts",
-    "rebalance-open-baskets:dev": "ts-node -r dotenv/config src/diagnostics/rebalanceOpenBaskets.ts"
+    "rebalance-open-baskets:dev": "ts-node -r dotenv/config src/diagnostics/rebalanceOpenBaskets.ts",
+    "latency-report": "ts-node -r dotenv/config src/diagnostics/pipelineLatencyReport.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

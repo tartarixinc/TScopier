@@ -129,6 +129,66 @@ Use **multi** when the channel posts two take-profits and you want two separate 
 
 **Message edits (same Telegram post updated):** Some channels post a bare entry first (`Gold buy now`) and **edit the same message** later to add `@ entry`, SL, and TP. The listener detects edits (and duplicate message-id replays with changed text), re-parses the existing `signals` row, and re-dispatches with `source=message_edit` so open legs get **SL/TP updates only**. Phase 1 does **not** change entry price on already-open market fills; entry-only edits are ignored until SL or TP appears in the parsed message. Requires worker + Telethon listener redeploy and migration `20260526120000_signals_telegram_message_edited_at.sql`.
 
+## 8. Latency regression (trades feel slower)
+
+When copy speed degrades, compare recent pipeline timings against the 7-day baseline using `pipeline_summary` rows in `trade_execution_logs`.
+
+### Quick report (CLI)
+
+```bash
+./scripts/diagnostics/latency_test.sh
+```
+
+Or from `worker/`:
+
+```bash
+npm run latency-report
+```
+
+Requires `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` in `worker/.env`.
+
+Optional env:
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `LATENCY_CURRENT_HOURS` | 6 | Recent window to compare |
+| `LATENCY_BASELINE_DAYS` | 7 | Baseline lookback (excludes current window) |
+| `LATENCY_REGRESSION_PCT` | 25 | Exit code 1 when p50 or p95 `total_ms` rises more than this % |
+
+The report prints p50/p95 per stage (`parse_ms`, `dispatch_ms`, `broker_resolve_ms`, `broker_send_ms`, `total_ms`, etc.), slow-pipeline counts (`>4000ms`), dispatch_source split, warm vs cold broker sessions, and worst users by p99.
+
+### SQL drill-down
+
+Run [`scripts/diagnostics/pipeline_latency_regression.sql`](../scripts/diagnostics/pipeline_latency_regression.sql) in Supabase SQL Editor for the same windows plus worst-user breakdown.
+
+### Which stage regressed?
+
+| Stage up | Likely cause |
+|----------|----------------|
+| `listener_to_dispatch_ms` / `dispatch_ms` | Listener→trade push, Redis queue, shard routing |
+| `parse_ms` | Inline parse load, channel keyword/AI path |
+| `broker_resolve_ms` | Cold FxSocket session, symbol cache miss |
+| `broker_send_ms` | Broker API RTT, per-account concurrency gate |
+| `order_send_ms` (not broker_send) | Planning, channel delay, multi-leg routing |
+| `prep_ms` | Trade worker before `sendOrder` — see substages below |
+| `queue_wait_ms` | Trade worker backlog, Redis consumer lag |
+
+**`prep_ms` substages** (in `pipeline_summary.request_payload` after worker deploy):
+
+| Field | Meaning |
+|-------|---------|
+| `prep_pre_handle_ms` | `t_dispatch_received` → `handleStartMs` (inflight wait + claim; not in `handle_ms`) |
+| `prep_inflight_wait_ms` | Time blocked on `waitForSignalInflightClear` (revision overlap) |
+| `prep_gates_ms` | Subscription, admin, telegram-live checks |
+| `prep_revision_db_ms` | `loadSignalById` + `syncWaitRow` on message edits |
+| `prep_copy_limit_ms` | `fetchCopyLimitState` per broker |
+| `prep_revision_flip_ms` | Direction-flip close + `waitForSignalBasketFlat` |
+| `prep_channel_meta_ms` | `getChannelMeta` await (keywords + comment slug) |
+
+The latency CLI prints p50/p95 for each substage when present.
+
+Follow-up: [`pipeline_latency.sql`](../scripts/diagnostics/pipeline_latency.sql) (minute-by-minute), [`scalability_scorecard.sql`](../scripts/diagnostics/scalability_scorecard.sql) (per-user stage p95).
+
 ## 9. Multilingual channels
 
 Foreign-language Telegram channels are supported via **per-channel AI training** (Account Config → AI Training). On link, the worker backfills recent history (instrument + price filter) and trains channel-native buy/sell/SL/TP keywords.

@@ -24,7 +24,7 @@ import {
 import { shouldRouteAsBasketParameterRefresh, parsedHasSlOrTp } from '../multiTradeMerge'
 import type { ParsedSignal } from '../manualPlanner'
 import { SKIP_REASON_SIGNAL_ENTRY_REQUIRED, SKIP_REASON_SIGNAL_ENTRY_RANGE_REQUIRED, SKIP_REASON_SIGNAL_ENTRY_RANGE_EXPIRED, SKIP_REASON_ENTRY_NOT_OPENED } from '../manualPlanner'
-import { parsePipelineTimestamps, pipelineSummaryPayload } from '../pipelineTimestamps'
+import { parsePipelineTimestamps, pipelineSummaryPayload, prepSubstagePayload } from '../pipelineTimestamps'
 import { signalExecutionProven } from '../signalExecutionProven'
 import { resolveChannelLabelForComment, sanitizeChannelCommentSlug } from '../tradeComment'
 import { isMtUuid, operationFor, brokerHasLinkedSession, brokerSessionUuid } from './helpers'
@@ -426,16 +426,21 @@ export async function handleSignal(ctx: TradeExecutorContext,
       dispatchSource?: string
       dispatchReceivedAt?: number
       wakeBrokerAccountId?: string
+      /** Inflight wait in acceptDispatchSignalAwait before handleSignal (message_revision / range_wake). */
+      prepInflightAwaitMs?: number
     },
   ) {
     if (!hasFxsocketConfigured()) return
+    let prepInflightWaitMs = opts?.prepInflightAwaitMs ?? 0
     const isMessageRevisionEarly = opts?.dispatchSource === MESSAGE_REVISION_DISPATCH_SOURCE
     if (isMessageRevisionEarly) {
+      const inflightT0 = Date.now()
       await waitForSignalInflightClear(
         ctx,
         row.id,
         revisionInflightWaitMs(row, opts?.dispatchSource),
       )
+      prepInflightWaitMs += Date.now() - inflightT0
     }
     if (!ctx.claimSignalExecution(row.id)) return
 
@@ -456,6 +461,12 @@ export async function handleSignal(ctx: TradeExecutorContext,
     }
 
     const handleStartMs = Date.now()
+    const dispatchReceivedAt = opts?.dispatchReceivedAt
+      ?? parsePipelineTimestamps(row.pipeline_ts)?.t_dispatch_received
+      ?? null
+    const prepPreHandleMs = dispatchReceivedAt != null
+      ? Math.max(0, handleStartMs - dispatchReceivedAt)
+      : null
     const isRangeWake = opts?.dispatchSource === SIGNAL_RANGE_WAKE_DISPATCH_SOURCE
     const liveFast = isRangeWake
       || (opts?.liveDispatch === true && opts?.lightIdempotency === true)
@@ -466,6 +477,11 @@ export async function handleSignal(ctx: TradeExecutorContext,
     const queueWaitMs = opts?.dispatchReceivedAt != null
       ? Math.max(0, handleStartMs - (opts.dispatchReceivedAt as number))
       : null
+    let prepGatesMs = 0
+    let prepRevisionDbMs = 0
+    let prepCopyLimitMs = 0
+    let prepRevisionFlipMs = 0
+    let prepChannelMetaMs = 0
     let pipelineOutcome: Record<string, unknown> = {
       live_fast: liveFast,
       mgmt_fast_path: liveMgmtFast,
@@ -490,6 +506,7 @@ export async function handleSignal(ctx: TradeExecutorContext,
       }
       let userSub: Awaited<ReturnType<typeof loadCachedUserSubscription>>
       let isAdmin: boolean
+      const gatesT0 = Date.now()
       if (
         (liveFast || liveMgmtFast)
         && telegramLiveTradeGateEnabled()
@@ -501,6 +518,7 @@ export async function handleSignal(ctx: TradeExecutorContext,
           loadCachedUserSubscription(ctx.supabase, row.user_id),
           loadCachedUserIsAdmin(ctx.supabase, row.user_id),
         ])
+        prepGatesMs = Date.now() - gatesT0
         if (!teleLive) {
           console.warn(
             `[tradeExecutor] skip signal ${row.id} (user ${row.user_id}): telegram listener not live for channel-backed copier`,
@@ -515,6 +533,7 @@ export async function handleSignal(ctx: TradeExecutorContext,
           const live = ctx.sessionManager
             ? await ctx.sessionManager.canExecuteTelegramCopierTradesAsync(row.user_id, row.channel_id)
             : false
+          prepGatesMs = Date.now() - gatesT0
           if (!live) {
             console.warn(
               `[tradeExecutor] skip signal ${row.id} (user ${row.user_id}): telegram listener not live for channel-backed copier`,
@@ -527,6 +546,7 @@ export async function handleSignal(ctx: TradeExecutorContext,
           loadCachedUserSubscription(ctx.supabase, row.user_id),
           loadCachedUserIsAdmin(ctx.supabase, row.user_id),
         ])
+        prepGatesMs = Date.now() - gatesT0
       }
       if (!isAdmin && (!userSub || !isSubscriptionActive(userSub.status, userSub.trial_ends_at))) {
         await ctx.logDispatchSkipped(row, 'subscription_inactive')
@@ -534,6 +554,7 @@ export async function handleSignal(ctx: TradeExecutorContext,
       }
 
       if (isMessageRevision) {
+        const revisionDbT0 = Date.now()
         const fresh = await loadSignalById(ctx.supabase, row.id)
         if (!fresh?.parsed_data?.action) return
         row = applyUserOverrideToSignalRow({
@@ -571,6 +592,7 @@ export async function handleSignal(ctx: TradeExecutorContext,
             })
           }
         }
+        prepRevisionDbMs = Date.now() - revisionDbT0
       } else {
         row = applyUserOverrideToSignalRow(row)
       }
@@ -623,6 +645,7 @@ export async function handleSignal(ctx: TradeExecutorContext,
         if (liveFast && parsed.symbol) {
           void ctx.prewarmBrokersForLiveEntry(brokers, parsed.symbol)
         }
+        const copyLimitT0 = Date.now()
         const pauseResults = await Promise.all(
           brokers.map(async broker => {
             const state = await ctx.fetchCopyLimitState(broker.id, channelId)
@@ -645,6 +668,7 @@ export async function handleSignal(ctx: TradeExecutorContext,
             return broker
           }),
         )
+        prepCopyLimitMs = Date.now() - copyLimitT0
         brokers = pauseResults.filter((b): b is typeof brokers[number] => b != null)
       }
       if (!brokers.length) {
@@ -697,8 +721,10 @@ export async function handleSignal(ctx: TradeExecutorContext,
         && row.revision_prior_action
         && revisionDirectionFlippedFromActions(row.revision_prior_action, action)
       ) {
+        const revisionFlipT0 = Date.now()
         const flipClose = await closeBasketForRevisionDirectionFlip(ctx, row, brokers)
         await waitForSignalBasketFlat(ctx, row, brokers)
+        prepRevisionFlipMs = Date.now() - revisionFlipT0
         if (flipClose.closed === 0 && flipClose.failed > 0) {
           await ctx.logDispatchSkipped(row, 'message_revision_direction_flip_close_failed')
           return
@@ -711,9 +737,11 @@ export async function handleSignal(ctx: TradeExecutorContext,
       }
 
       // Pre-fetch channel keywords + comment slug once per signal.
+      const channelMetaT0 = Date.now()
       const { keywords: channelKeywords, commentSlug } = channelMetaPromise
         ? await channelMetaPromise
         : await ctx.getChannelMeta(row.channel_id)
+      prepChannelMetaMs = Date.now() - channelMetaT0
       const rawText = String(parsed.raw_instruction ?? '').toLowerCase()
       const ignoreKw = channelKeywords?.additional?.ignore_keyword?.trim().toLowerCase()
       const skipKw = channelKeywords?.additional?.skip_keyword?.trim().toLowerCase()
@@ -973,6 +1001,15 @@ export async function handleSignal(ctx: TradeExecutorContext,
       const summaryExtra = {
         handle_ms: handleMs,
         listener_to_dispatch_ms: listenerToDispatchMs,
+        ...prepSubstagePayload({
+          prepPreHandleMs,
+          prepInflightWaitMs,
+          prepGatesMs,
+          prepRevisionDbMs,
+          prepCopyLimitMs,
+          prepRevisionFlipMs,
+          prepChannelMetaMs,
+        }),
         ...pipelineOutcome,
       }
       if (liveFast || liveMgmtFast) {

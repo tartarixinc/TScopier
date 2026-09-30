@@ -31,6 +31,40 @@ export type PipelineTimestamps = {
   t_order_send_done?: number
 }
 
+/** Sub-stages of `prep_ms` (t_dispatch_received → t_order_send_start) in pipeline_summary. */
+export const PREP_SUBSTAGE_KEYS = [
+  'prep_pre_handle_ms',
+  'prep_inflight_wait_ms',
+  'prep_gates_ms',
+  'prep_revision_db_ms',
+  'prep_copy_limit_ms',
+  'prep_revision_flip_ms',
+  'prep_channel_meta_ms',
+] as const
+
+export type PrepSubstageKey = (typeof PREP_SUBSTAGE_KEYS)[number]
+export type PrepSubstageMs = Partial<Record<PrepSubstageKey, number>>
+
+export function prepSubstagePayload(args: {
+  prepPreHandleMs: number | null
+  prepInflightWaitMs: number
+  prepGatesMs: number
+  prepRevisionDbMs: number
+  prepCopyLimitMs: number
+  prepRevisionFlipMs: number
+  prepChannelMetaMs: number
+}): PrepSubstageMs {
+  const out: PrepSubstageMs = {}
+  if (args.prepPreHandleMs != null) out.prep_pre_handle_ms = args.prepPreHandleMs
+  if (args.prepInflightWaitMs > 0) out.prep_inflight_wait_ms = args.prepInflightWaitMs
+  if (args.prepGatesMs > 0) out.prep_gates_ms = args.prepGatesMs
+  if (args.prepRevisionDbMs > 0) out.prep_revision_db_ms = args.prepRevisionDbMs
+  if (args.prepCopyLimitMs > 0) out.prep_copy_limit_ms = args.prepCopyLimitMs
+  if (args.prepRevisionFlipMs > 0) out.prep_revision_flip_ms = args.prepRevisionFlipMs
+  if (args.prepChannelMetaMs > 0) out.prep_channel_meta_ms = args.prepChannelMetaMs
+  return out
+}
+
 export function parsePipelineTimestamps(raw: unknown): PipelineTimestamps | undefined {
   if (raw == null || typeof raw !== 'object') return undefined
   const o = raw as Record<string, unknown>

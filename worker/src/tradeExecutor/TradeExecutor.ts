@@ -855,7 +855,9 @@ export class TradeExecutor {
       await this.logPipelineStage(rowWithTs, 'dispatch_received', { source, priority: opts?.priority ?? null })
     }
 
+    let prepInflightAwaitMs = 0
     if (this.inflight.has(row.id)) {
+      const inflightT0 = Date.now()
       if (source === MESSAGE_REVISION_DISPATCH_SOURCE) {
         await dispatch.waitForSignalInflightClear(
           this,
@@ -867,6 +869,7 @@ export class TradeExecutor {
       } else {
         await dispatch.waitForSignalInflightClear(this, row.id, 15_000)
       }
+      prepInflightAwaitMs = Date.now() - inflightT0
     }
 
     await this.handleSignal(rowWithTs, {
@@ -875,6 +878,7 @@ export class TradeExecutor {
       dispatchReceivedAt: receivedAt,
       lightIdempotency: useFastPath || isRangeWake,
       wakeBrokerAccountId: opts?.wakeBrokerAccountId ?? row.wake_broker_account_id,
+      prepInflightAwaitMs,
     })
     return true
   }
