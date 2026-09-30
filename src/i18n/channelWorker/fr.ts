@@ -182,6 +182,11 @@ export const channelWorkerFr: ChannelWorkerTranslations = {
       'le message n\'incluait pas d\'ordre d\'entrée (ex. buy now, gold sell now) ni de SL/TP étiquetés',
     entry_tp_without_sl: 'SL non fourni — définissez des pips SL prédéfinis dans la configuration du courtier',
     signal_missing_required_sl: 'SL non fourni — définissez des pips SL prédéfinis dans la configuration du courtier',
+    delete_pendings_no_parent:
+      'impossible de trouver le trade original auquel cette réponse fait référence — répondez au message du signal original pour annuler ses ordres en attente',
+    delete_pendings_requires_reply:
+      'les instructions d\'annulation doivent être envoyées en réponse au message du signal original',
+    delete_pendings_none: 'aucun ordre en attente à annuler pour ce trade',
   },
   dispatchSkipped: 'Signal non copié ({reason}).',
   rangeRebalanceSkippedNamed: 'Rééquilibrage du take profit {symbol} ignoré ({reason})',

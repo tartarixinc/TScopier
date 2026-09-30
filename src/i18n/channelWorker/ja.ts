@@ -182,6 +182,11 @@ export const channelWorkerJa: ChannelWorkerTranslations = {
       'メッセージにエントリー命令（buy now、gold sell now など）またはラベル付き SL/TP がありませんでした',
     entry_tp_without_sl: 'SL not given — set predefined SL pips in broker configuration',
     signal_missing_required_sl: 'SL not given — set predefined SL pips in broker configuration',
+    delete_pendings_no_parent:
+      'この返信が参照している元の取引が見つかりませんでした — 元のシグナルメッセージに返信して保留中の注文をキャンセルしてください',
+    delete_pendings_requires_reply:
+      'キャンセル指示は元のシグナルメッセージへの返信として送信する必要があります',
+    delete_pendings_none: 'この取引でキャンセルする保留中の注文が見つかりませんでした',
   },
   dispatchSkipped: 'このシグナルはコピーされませんでした（{reason}）。',
   rangeRebalanceSkippedNamed: '{symbol}の利益確定リバランスをスキップしました（{reason}）',

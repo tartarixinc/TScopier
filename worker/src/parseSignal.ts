@@ -562,15 +562,15 @@ function extractTpLevels(message: string, extraLabels: string[] = []): {
   }
 
   // Numbered tiers first — "TP 1 4086" must not capture ordinal 1 via the generic TP regex.
-  collect(new RegExp(`\\b(?:tp|take\\s*profit|target(?:\\s+level)?)\\s*#\\s*\\d+\\s*[:=\\-]\\s*(${SIGNAL_PRICE_NUM})`, 'gi'))
-  collect(new RegExp(`\\b(?:tp|take\\s*profit|target(?:\\s+level)?)\\s+\\d+\\s*[:=\\-]\\s*(${SIGNAL_PRICE_NUM})`, 'gi'))
-  collect(new RegExp(`\\b(?:tp|target(?:\\s+level)?)\\s*\\d+\\s*[:=\\-]\\s*(${SIGNAL_PRICE_NUM})`, 'gi'))
+  collect(new RegExp(`\\b(?:tp|take\\s*profit|target(?:\\s+level)?)\\s*#\\s*\\d+\\s*[:=\\-@]\\s*(${SIGNAL_PRICE_NUM})`, 'gi'))
+  collect(new RegExp(`\\b(?:tp|take\\s*profit|target(?:\\s+level)?)\\s+\\d+\\s*[:=\\-@]\\s*(${SIGNAL_PRICE_NUM})`, 'gi'))
+  collect(new RegExp(`\\b(?:tp|target(?:\\s+level)?)\\s*\\d+\\s*[:=\\-@]\\s*(${SIGNAL_PRICE_NUM})`, 'gi'))
   collect(new RegExp(`\\b(?:tp|target(?:\\s+level)?)\\s*\\d+\\s+(${SIGNAL_PRICE_NUM})`, 'gi'))
   collect(new RegExp(`\\btp\\s*\\.\\s*(${SIGNAL_PRICE_NUM})`, 'gi'))
   collect(new RegExp(`\\b(?:tp|take\\s*profit)\\b[.\\s]+(${SIGNAL_PRICE_NUM})`, 'gi'))
-  // Tier index only (1–2 digits): "TP1. 4066". Must not match "TP 4053.22" (full decimal price).
+  // Tier index only (1–2 digits): "TP1. 4066" or "TP1@4066". Must not match "TP 4053.22" (full decimal price).
   collect(new RegExp(`\\btp\\s*\\d{1,2}\\s*\\.\\s*(${SIGNAL_PRICE_NUM})`, 'gi'))
-  collect(new RegExp(`\\btp\\s*\\d{1,2}[.\\s]+(${SIGNAL_PRICE_NUM})`, 'gi'))
+  collect(new RegExp(`\\btp\\s*\\d{1,2}[@.\\s]+(${SIGNAL_PRICE_NUM})`, 'gi'))
   collect(new RegExp(`\\btp[\\u00B9\\u00B2\\u00B3\\u2070-\\u2079]+(${SIGNAL_PRICE_NUM})`, 'giu'))
   collect(new RegExp(`(?:الهدف\\s*(?:الأول|الثاني|الثالث|\\d+)|جني\\s*الأرباح|جني\\s*الارباح)\\s*[:：]?\\s*(${SIGNAL_PRICE_NUM})`, 'giu'))
 
@@ -736,7 +736,7 @@ function parseAtPriceExcludingSlTp(text: string): number | null {
   for (const m of text.matchAll(new RegExp(`@\\s*(${SIGNAL_PRICE_NUM})\\b`, 'gi'))) {
     const start = m.index ?? 0
     const before = text.slice(Math.max(0, start - 32), start)
-    if (/\b(?:sl|stop\s*loss|stoploss|tp|take\s*profit)\b[_\s./]*$/i.test(before)) continue
+    if (/\b(?:sl|stop\s*loss|stoploss|tp|take\s*profit)[\s._#()/:-]*\d{0,2}\b[_\s./():-]*$/i.test(before)) continue
     if (/\bsl\b[_\s]*\/\s*@?\s*$/i.test(before)) continue
     const value = parseSignalPriceToken(m[1] ?? '')
     if (value != null) return value
@@ -1080,7 +1080,7 @@ function extractOptionalEntryAnchor(
     const slashZone = symSideColonSlash ?? symPriceSlash ?? sidePriceSlash
     const entrySlashZone = text.match(
       new RegExp(
-        `\\bentry\\s*(?:price|level)?\\s*[:=]?\\s*(${SIGNAL_PRICE_NUM})\\s*(?:\\/|\\band\\b|-|–)\\s*(${SIGNAL_PRICE_NUM})\\b`,
+        `\\bentry\\s*(?:price|zone|area|level)?\\s*[:=]?\\s*(${SIGNAL_PRICE_NUM})\\s*(?:\\/|\\band\\b|-|–|to|_)\\s*(${SIGNAL_PRICE_NUM})\\b`,
         'i',
       ),
     )
@@ -1106,6 +1106,17 @@ function extractOptionalEntryAnchor(
     }
 
     if (entry_zone_low == null) {
+      // Single-price "ENTRY ZONE: 4358" / "Entry Zone 4358" (when no range was parsed above).
+      // The lookahead keeps a slash/word range (e.g. "4358 / 4360") from being read as a single price.
+      if (entry_price == null) {
+        const entryZoneSingle = text.match(
+          new RegExp(
+            `\\bentry\\s*zone\\s*[:=]?\\s*(${SIGNAL_PRICE_NUM})(?!\\s*(?:\\/|\\band\\b|-|–|to|_)\\s*${SIGNAL_PRICE_NUM})\\b`,
+            'i',
+          ),
+        )
+        if (entryZoneSingle?.[1]) entry_price = parseSignalPriceToken(entryZoneSingle[1])
+      }
       const entryLevel = text.match(new RegExp(`\\bentry\\s+level\\s*[:=]?\\s*(${SIGNAL_PRICE_NUM})\\b`, 'i'))
       if (entryLevel?.[1]) entry_price = parseSignalPriceToken(entryLevel[1])
       const entryLabel = text.match(new RegExp(`\\bentry\\s*(?:price|level)?\\s*[:=]\\s*(${SIGNAL_PRICE_NUM})\\b`, 'i'))

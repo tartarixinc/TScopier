@@ -12,6 +12,7 @@ import {
 import { apiForFxsocketAccount, loadPlatformByFxsocketId, type PlatformByFxsocketId } from './mtApiByAccount'
 import { stopRangeLayeringUnlessEnabled } from './rangeLayerTillClose'
 import { isUserCopierPausedCached } from './copierPause'
+import { isExplicitlyUnavailableRemoteBroker, type RemoteBrokerState } from './brokerRemoteAvailability'
 
 /**
  * Worker-side monitor that fires partial /OrderClose calls for single-mode
@@ -61,6 +62,10 @@ interface ParentTradeRow {
   status: string
 }
 
+interface BrokerRow extends RemoteBrokerState {
+  id: string
+}
+
 const ACTIVE_MS = monitorActiveIntervalMs('PARTIAL_TP_TICK_MS', 400)
 const IDLE_MS = monitorIdleIntervalMs('PARTIAL_TP_IDLE_MS', 15_000)
 const STALE_CLAIM_AFTER_MS = 30_000
@@ -81,6 +86,15 @@ export function isPartialTpTriggered(isBuy: boolean, triggerPrice: number, bid: 
   if (!Number.isFinite(triggerPrice) || triggerPrice <= 0) return false
   if (!Number.isFinite(bid) || !Number.isFinite(ask)) return false
   return isBuy ? bid >= triggerPrice : ask <= triggerPrice
+}
+
+/** Keeps non-open parent trades out of the quote/close path without mutating their legs. */
+export function shouldMonitorPartialTpLeg(
+  leg: Pick<PartialRow, 'broker_account_id' | 'trade_id'>,
+  unavailableBrokerIds: ReadonlySet<string>,
+  openParentIds: ReadonlySet<string>,
+): boolean {
+  return !unavailableBrokerIds.has(leg.broker_account_id) && openParentIds.has(leg.trade_id)
 }
 
 /**
@@ -191,15 +205,51 @@ export class PartialTpMonitor {
       return
     }
 
-    this.platformByUuid = await loadPlatformByFxsocketId(
-      this.supabase,
-      rows.map(r => r.metaapi_account_id),
+    // A removed dormant-subscription session intentionally remains as a broker
+    // row/trade history. Never turn that known cleanup state into /Quote spam.
+    const brokerIds = [...new Set(rows.map(r => r.broker_account_id).filter(Boolean))]
+    const { data: brokers, error: brokerErr } = await this.supabase
+      .from('broker_accounts')
+      .select('id,fxsocket_status,connection_status,terminal_connected,trade_allowed')
+      .in('id', brokerIds)
+    if (brokerErr) {
+      console.warn(`[partialTpMonitor] broker load failed: ${brokerErr.message}`)
+      return
+    }
+    const unavailableBrokerIds = new Set(
+      ((brokers ?? []) as BrokerRow[])
+        .filter(isExplicitlyUnavailableRemoteBroker)
+        .map(broker => broker.id),
     )
 
-    // Group by (metaapi_account_id, symbol) → at most ONE /Quote per group
+    // A pending parent has no live broker position. Filter before grouping so
+    // it cannot produce a quote request or mutate the partial leg.
+    const tradeIds = [...new Set(rows.map(r => r.trade_id))]
+    const { data: parents, error: parentErr } = await this.supabase
+      .from('trades')
+      .select('id,status')
+      .in('id', tradeIds)
+    if (parentErr) {
+      console.warn(`[partialTpMonitor] parent trade load failed: ${parentErr.message}`)
+      return
+    }
+    const openParentIds = new Set(
+      ((parents ?? []) as ParentTradeRow[]).filter(parent => parent.status === 'open').map(parent => parent.id),
+    )
+    const monitorableRows = rows.filter(row =>
+      shouldMonitorPartialTpLeg(row, unavailableBrokerIds, openParentIds),
+    )
+    if (!monitorableRows.length) return
+
+    this.platformByUuid = await loadPlatformByFxsocketId(
+      this.supabase,
+      monitorableRows.map(r => r.metaapi_account_id),
+    )
+
+    // Group by (metaapi_account_id, symbol) -> at most ONE /Quote per group
     // per tick. Same shape as the other monitors for consistency.
     const groups = new Map<string, PartialRow[]>()
-    for (const r of rows) {
+    for (const r of monitorableRows) {
       const key = `${r.metaapi_account_id}|${r.symbol}`
       const list = groups.get(key) ?? []
       list.push(r)

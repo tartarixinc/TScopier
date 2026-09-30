@@ -404,6 +404,8 @@ export interface BrokerAccount {
   /** Client-side account type from FxSocket /status (Demo/Live/Prop Firm). */
   linked_account_type?: 'Live' | 'Demo' | 'PropFirm' | null
   connection_error?: string | null
+  disconnect_reason?: string | null
+  disconnected_at?: string | null
   /** MT login number, kept separate from the UUID for display. */
   account_login?: string | null
   /** Human-readable broker name (e.g. "IC Markets"). */

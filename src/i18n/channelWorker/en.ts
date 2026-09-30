@@ -185,6 +185,11 @@ export const channelWorkerEn: ChannelWorkerTranslations = {
       'message did not include an entry order phrase (e.g. buy now, gold sell now) or labeled SL/TP',
     entry_tp_without_sl: 'SL not given — set predefined SL pips in broker configuration',
     signal_missing_required_sl: 'SL not given — set predefined SL pips in broker configuration',
+    delete_pendings_no_parent:
+      'could not find the original trade this reply is referencing — reply to the original signal message to cancel its pending orders',
+    delete_pendings_requires_reply:
+      'cancel-pending instructions must be sent as a reply to the original signal message',
+    delete_pendings_none: 'no pending orders found to cancel for this trade',
   },
   dispatchSkipped: 'Did not copy this signal ({reason}).',
   rangeRebalanceSkippedNamed: 'Skipped {symbol} take-profit rebalance ({reason})',

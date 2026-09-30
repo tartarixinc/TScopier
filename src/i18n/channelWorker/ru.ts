@@ -183,6 +183,11 @@ export const channelWorkerRu: ChannelWorkerTranslations = {
       'в сообщении не было фразы входа (например buy now, gold sell now) или помеченных SL/TP',
     entry_tp_without_sl: 'SL not given — set predefined SL pips in broker configuration',
     signal_missing_required_sl: 'SL not given — set predefined SL pips in broker configuration',
+    delete_pendings_no_parent:
+      'не удалось найти оригинальную сделку, на которую ссылается этот ответ — ответьте на исходное сообщение сигнала, чтобы отменить его ожидающие ордера',
+    delete_pendings_requires_reply:
+      'инструкции по отмене должны отправляться в ответ на исходное сообщение сигнала',
+    delete_pendings_none: 'не найдено ожидающих ордеров для отмены в этой сделке',
   },
   dispatchSkipped: 'Этот сигнал не был скопирован ({reason}).',
   rangeRebalanceSkippedNamed: 'Пропущен ребаланс тейк-профита {symbol} ({reason})',

@@ -183,6 +183,11 @@ export const channelWorkerPl: ChannelWorkerTranslations = {
       'wiadomość nie zawierała frazy wejścia (np. buy now, gold sell now) ani oznaczonych SL/TP',
     entry_tp_without_sl: 'SL not given — set predefined SL pips in broker configuration',
     signal_missing_required_sl: 'SL not given — set predefined SL pips in broker configuration',
+    delete_pendings_no_parent:
+      'nie można znaleźć oryginalnej transakcji, do której odnosi się ta odpowiedź — odpowiedz na oryginalną wiadomość sygnału, aby anulować jej oczekujące zlecenia',
+    delete_pendings_requires_reply:
+      'instrukcje anulowania muszą być wysyłane jako odpowiedź na oryginalną wiadomość sygnału',
+    delete_pendings_none: 'nie znaleziono oczekujących zleceń do anulowania dla tej transakcji',
   },
   dispatchSkipped: 'Nie skopiowano tego sygnału ({reason}).',
   rangeRebalanceSkippedNamed: 'Pominięto zmianę take profit {symbol} ({reason})',

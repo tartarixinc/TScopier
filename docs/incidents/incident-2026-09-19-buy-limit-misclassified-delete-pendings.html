@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4; margin: 22mm 20mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Helvetica Neue", Arial, sans-serif; color: #1e293b; font-size: 10.5px; line-height: 1.5; margin: 0; }
+  h1 { font-size: 19px; margin: 0 0 2px 0; color: #0f172a; }
+  .subtitle { color: #64748b; font-size: 11px; margin-bottom: 12px; }
+  h2 { font-size: 12.5px; margin: 16px 0 6px 0; padding-bottom: 3px; border-bottom: 2px solid #2563eb; color: #0f172a; }
+  table { border-collapse: collapse; width: 100%; }
+  code { font-family: Menlo, Consolas, monospace; background: #f1f5f9; padding: 1px 4px; border-radius: 3px; font-size: 9.5px; }
+  .meta { width: 100%; margin-bottom: 6px; }
+  .meta td { padding: 4px 8px; vertical-align: top; border: 1px solid #e2e8f0; }
+  .meta .k { color: #64748b; font-weight: bold; width: 90px; text-transform: uppercase; font-size: 8.5px; letter-spacing: 0.5px; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-weight: bold; font-size: 9.5px; }
+  .pill.green { background: #dcfce7; color: #15803d; }
+  .pill.red { background: #fee2e2; color: #b91c1c; }
+  .pill.amber { background: #fef3c7; color: #b45309; }
+  .box { border-left: 4px solid #2563eb; background: #eff6ff; padding: 8px 12px; margin: 8px 0; border-radius: 0 4px 4px 0; }
+  .box.green { border-left-color: #16a34a; background: #f0fdf4; }
+  .box.amber { border-left-color: #d97706; background: #fffbeb; }
+  ol, ul { margin: 4px 0 8px 18px; padding: 0; }
+  li { margin-bottom: 4px; }
+  .tbl { margin-top: 4px; }
+  .tbl th { background: #f1f5f9; text-align: left; padding: 4px 8px; border: 1px solid #e2e8f0; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.4px; color: #475569; }
+  .tbl td { padding: 4px 8px; border: 1px solid #e2e8f0; vertical-align: top; }
+  .ts { font-family: Menlo, Consolas, monospace; font-size: 9px; color: #475569; white-space: nowrap; }
+  .note { color: #64748b; font-size: 9.5px; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<h1>&ldquo;Buy limit&rdquo; signal misclassified as &ldquo;delete pendings&rdquo; command</h1>
+<div class="subtitle">Incident report &middot; TScopier signal parsing pipeline &middot; 2026-09-19</div>
+
+<table class="meta">
+  <tr>
+    <td class="k">Severity</td><td><span style="color:#b45309;font-weight:bold;">Low</span></td>
+    <td class="k">Status</td><td><span class="pill green">Fixed &mdash; pending order routing + TP parsing + translations</span></td>
+  </tr>
+  <tr>
+    <td class="k">Dates</td><td>Signal received 2026-09-18 15:04 UTC; fix 2026-09-19</td>
+    <td class="k">Affected</td><td>1 user &mdash; <code>k.eloifabien@gmail.com</code> (<code>ce0fc42d-&hellip;bd6be</code>)</td>
+  </tr>
+  <tr>
+    <td class="k">Component</td><td><code>parseSignal.ts</code>, <code>executionShape.ts</code>, <code>helpers.ts</code></td>
+    <td class="k">Root cause</td><td>AI misclassified &ldquo;buy limit&rdquo; as cancel command; missing entry_order_type field; TP @-separator not supported</td>
+  </tr>
+</table>
+
+<h2>1. Executive summary (plain English)</h2>
+<div class="box green">
+<p>A user sent a message to the &ldquo;Lorax Layer VIP&rdquo; channel that said &ldquo;XAUUSD buy limit@4347.520&rdquo; with stop loss and take profit levels. The copier&rsquo;s AI read this message and incorrectly decided it was a command to cancel pending orders, instead of recognizing it as a new buy limit order that should be placed on the broker.</p>
+<p>Because the message was sent as a reply to another Telegram message, the copier tried to find the original trade being referenced. But the replied-to message was never a signal the copier had seen before, so it had no idea what trade to cancel. The copier then showed the user a raw internal code &ldquo;delete pendings no parent&rdquo; instead of a helpful error message.</p>
+<p>We fixed this by pulling in Emmanuel&rsquo;s pending order routing fix, which adds proper recognition of explicit &ldquo;buy limit&rdquo; and &ldquo;buy stop&rdquo; wording. We also fixed a separate issue where take-profit values using the @ symbol (like &ldquo;Tp1@4357&rdquo;) were not being parsed correctly, and added missing translations for the error message across all supported languages.</p>
+</div>
+
+<h2>2. Issue encountered</h2>
+<ul>
+  <li>At <span class="ts">2026-09-18 15:04:48 UTC</span>, user sent this message in the &ldquo;Lorax Layer VIP&rdquo; channel as a reply to Telegram message <code>62159</code>:
+    <br><code>XAUUSD buy limit@4347.520<br>Sl@4337<br>Tp1@4357<br>Tp2@4375</code></li>
+  <li>The AI pipeline classified the intent as <code>cancel_pending</code> (confidence 85%) &mdash; it interpreted this as &ldquo;cancel my pending orders for XAUUSD.&rdquo;</li>
+  <li>The copier recognized it as a reply-scoped management instruction and tried to find the parent signal.</li>
+  <li>Message <code>62159</code> was not found in the <code>signals</code> table or <code>channel_messages</code> table &mdash; it was never a signal the copier had parsed.</li>
+  <li>The copier skipped the instruction with reason <code>delete_pendings_no_parent</code>.</li>
+  <li>The user saw the raw internal code &ldquo;delete pendings no parent&rdquo; instead of a helpful message.</li>
+</ul>
+
+<h2>3. Affected user(s)</h2>
+<table class="tbl">
+  <tr><th>User (email)</th><th>Supabase id</th><th>Created (UTC)</th><th>Channel</th><th>Trades</th></tr>
+  <tr>
+    <td>k.eloifabien@gmail.com</td>
+    <td><code>ce0fc42d-&hellip;bd6be</code></td>
+    <td class="ts">2026-08-25 19:45</td>
+    <td>Lorax Layer VIP</td>
+    <td>0 on this channel; 2 open sells on other channels</td>
+  </tr>
+</table>
+<p class="note">No trades were affected &mdash; the signal was skipped entirely. The user has 2 open sell positions on gold from other channels (GtMax F&amp;F, TRADING LIFE, DAVO ELITE CLUB, etc.), but none from &ldquo;Lorax Layer VIP.&rdquo;</p>
+
+<h2>4. Root cause</h2>
+<div class="box amber">
+<ol>
+  <li><strong>AI misclassified the intent.</strong> The message &ldquo;XAUUSD buy limit@4347.520&rdquo; was clearly a new entry order, but the AI pipeline classified it as <code>cancel_pending</code> (85% confidence). This is a classification error in the signal parsing pipeline.</li>
+  <li><strong>Missing <code>entry_order_type</code> field.</strong> Before Emmanuel&rsquo;s fix, the copier did not recognize explicit &ldquo;BUY LIMIT&rdquo; or &ldquo;BUY STOP&rdquo; wording. The message was parsed as a plain <code>buy</code> with an entry price, which the AI then misinterpreted as a cancel command when combined with the reply context.</li>
+  <li><strong>No parent signal found.</strong> The copier tried to find the original trade referenced by the reply (message <code>62159</code>), but that message was never a signal in the copier&rsquo;s database. The copier gave up entirely instead of attempting to place the trade.</li>
+  <li><strong>Missing translation.</strong> The skip reason <code>delete_pendings_no_parent</code> had no user-facing label in any locale, so the fallback at <code>channelWorkerLogMessage.ts:275</code> just converted underscores to spaces.</li>
+  <li><strong>TP parsing did not support @ symbol.</strong> The regex patterns for parsing take-profit values used <code>[:=\-\s]</code> as separators but did not include <code>@</code>. Messages like &ldquo;Tp1@4357&rdquo; were not parsed correctly.</li>
+</ol>
+</div>
+
+<h2>5. The fix</h2>
+<ul>
+  <li><strong>Emmanuel&rsquo;s pending order routing fix</strong> (cherry-picked from <code>fd4b1750</code> and <code>28f59e79</code>):
+    <ul>
+      <li>Adds <code>entry_order_type: 'market' | 'limit' | 'stop' | null</code> to parsed signals.</li>
+      <li>Explicit &ldquo;BUY LIMIT&rdquo; and &ldquo;BUY STOP&rdquo; wording is now preserved in the parser.</li>
+      <li>The copier routes explicit pending order operations directly to <code>BuyLimit</code>, <code>SellLimit</code>, <code>BuyStop</code>, or <code>SellStop</code> instead of converting them to market orders or misclassifying them.</li>
+    </ul>
+  </li>
+  <li><strong>TP @-separator fix</strong> (<code>worker/src/parseSignal.ts</code>):
+    <ul>
+      <li>Added <code>@</code> to the regex character class <code>[:=\-\s]</code> in TP parsing patterns.</li>
+      <li>Messages like &ldquo;Tp1@4357&rdquo; are now correctly parsed as take-profit levels.</li>
+    </ul>
+  </li>
+  <li><strong>Missing translations</strong> (all 9 locale files + <code>copierSkipReasonLabels.ts</code>):
+    <ul>
+      <li>Added <code>delete_pendings_no_parent</code>, <code>delete_pendings_requires_reply</code>, and <code>delete_pendings_none</code> to all locale files.</li>
+      <li>Added labels and detailed explanations to <code>COPIER_SKIP_REASON_LABELS</code> and <code>COPIER_SKIP_REASON_DETAILS</code>.</li>
+    </ul>
+  </li>
+</ul>
+
+<h2>6. Files changed</h2>
+<ul>
+  <li><code>worker/src/explicitPendingOrder.test.ts</code> &mdash; <strong>new</strong> test file for explicit pending order parsing and routing.</li>
+  <li><code>worker/src/manualPlanning/executionShape.ts</code> &mdash; added <code>explicitEntryOrderType</code> parameter; explicit pending orders bypass legacy market/strict-entry coercion.</li>
+  <li><code>worker/src/manualPlanning/planManualOrders.ts</code> &mdash; passes <code>explicitEntryOrderType</code> to <code>resolveOpExecAndStrict</code>.</li>
+  <li><code>worker/src/manualPlanning/types.ts</code> &mdash; added <code>EntryOrderType</code> type and <code>entry_order_type</code> field to <code>ParsedSignal</code>.</li>
+  <li><code>worker/src/parseSignal.ts</code> &mdash; added <code>applyExplicitEntryOrderType</code> function; added <code>@</code> to TP parsing regex patterns.</li>
+  <li><code>worker/src/tradeExecutor/entryPrepare.ts</code> &mdash; passes <code>entry_order_type</code> through the planning pipeline.</li>
+  <li><code>worker/src/tradeExecutor/helpers.ts</code> &mdash; <code>operationFor</code> now maps explicit <code>entry_order_type</code> to correct broker operations.</li>
+  <li><code>src/i18n/channelWorker/en.ts</code> &mdash; added <code>delete_pendings_no_parent</code>, <code>delete_pendings_requires_reply</code>, <code>delete_pendings_none</code>.</li>
+  <li><code>src/i18n/channelWorker/fr.ts</code> &mdash; French translations.</li>
+  <li><code>src/i18n/channelWorker/es.ts</code> &mdash; Spanish translations.</li>
+  <li><code>src/i18n/channelWorker/ar.ts</code> &mdash; Arabic translations.</li>
+  <li><code>src/i18n/channelWorker/ja.ts</code> &mdash; Japanese translations.</li>
+  <li><code>src/i18n/channelWorker/nl.ts</code> &mdash; Dutch translations.</li>
+  <li><code>src/i18n/channelWorker/pl.ts</code> &mdash; Polish translations.</li>
+  <li><code>src/i18n/channelWorker/ru.ts</code> &mdash; Russian translations.</li>
+  <li><code>src/i18n/channelWorker/sv.ts</code> &mdash; Swedish translations.</li>
+  <li><code>src/lib/copierSkipReasonLabels.ts</code> &mdash; added labels and details for <code>delete_pendings_*</code> skip reasons.</li>
+  <li><code>docs/PROJECT_MEMORY-EMMA.md</code> &mdash; Emmanuel&rsquo;s project memory entry for the explicit pending order fix.</li>
+</ul>
+
+<h2>7. Verification</h2>
+<ul>
+  <li>Confirmed against production DB: <code>signals</code> table shows the skipped signal <code>bb6b1b85</code> with <code>parent_signal_id: null</code> and <code>skip_reason: delete_pendings_no_parent</code>.</li>
+  <li>Confirmed the replied-to message <code>62159</code> does not exist in <code>signals</code> or <code>channel_messages</code> &mdash; it was never a signal the copier had parsed.</li>
+  <li>Parser test: &ldquo;XAUUSD buy limit@4347.520\nSl@4337\nTp1@4357\nTp2@4375&rdquo; now correctly parses with <code>entry_order_type: limit</code> and <code>tp: [4357, 4375]</code>.</li>
+  <li>All 3 explicit pending order tests pass.</li>
+  <li>Worker typecheck (<code>npx tsc --noEmit</code>) passes.</li>
+</ul>
+
+<h2>8. Deployment status</h2>
+<div class="box">
+<ul>
+  <li><strong>Code</strong>: cherry-picked to the <code>migration</code> branch and staged. Not yet committed or deployed.</li>
+  <li><strong>Pending</strong>: commit, push to staging, deploy to production worker.</li>
+</ul>
+</div>
+
+<h2>9. Follow-ups</h2>
+<ul>
+  <li>Investigate why the AI pipeline misclassified &ldquo;XAUUSD buy limit&rdquo; as a <code>cancel_pending</code> intent. The message format is clearly a new entry, not a cancel command. The classification confidence was 85%, which suggests a systematic issue with how the AI distinguishes between entry orders and cancel commands.</li>
+  <li>Deploy the fix to staging and production.</li>
+  <li>Consider adding a more robust fallback: if a management instruction fails to find a parent signal, surface a clear user-facing message instead of a raw code.</li>
+</ul>
+
+</body>
+</html>

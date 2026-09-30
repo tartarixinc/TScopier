@@ -17,6 +17,7 @@ import { coerceMgmtSlTpFollowUpAction } from '../aiParseModification'
 import { coerceAiEntrySignal } from '../aiParseEntry'
 import type { ParsedSignal } from '../manualPlanning/types'
 import { evaluateParsedSignalExecutionEligibility } from '../signalExecutionEligibility'
+import { parsedMissesLabeledEntry } from '../signalEntryNowRequirement'
 import { isManagementAction, parsedAction } from '../tradeSignalActions'
 import { coerceTradeIntent } from './coerceTradeIntent'
 import {
@@ -627,7 +628,10 @@ export function deterministicQualifiesForFastPath(
   if (isManagementAction(action)) return true
 
   if (action === 'buy' || action === 'sell') {
-    return evaluateParsedSignalExecutionEligibility(det.parsed, rawMessage, keywords).eligible
+    if (!evaluateParsedSignalExecutionEligibility(det.parsed, rawMessage, keywords).eligible) return false
+    // If the message labels an entry the parser missed, do not fast-lane; let the AI repair it.
+    if (parsedMissesLabeledEntry(det.parsed, rawMessage)) return false
+    return true
   }
   return false
 }

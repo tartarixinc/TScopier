@@ -396,7 +396,7 @@ function useAppSearchController(headerEl: HTMLElement | null) {
       aria-label={t.nav.search}
       aria-expanded={mobileExpanded}
       className={clsx(
-        'shrink-0 rounded-lg p-2 transition-colors lg:hidden',
+        'shrink-0 rounded-lg p-1.5 transition-colors sm:p-2 lg:hidden',
         mobileExpanded
           ? 'text-teal-600 bg-teal-50 dark:text-teal-400 dark:bg-teal-950/50'
           : 'text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800',

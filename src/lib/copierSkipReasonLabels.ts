@@ -37,6 +37,9 @@ export const COPIER_SKIP_REASON_LABELS: Record<string, string> = {
   signal_missing_required_sl: 'SL not given — set predefined SL pips in broker configuration',
   basket_modify_failed: 'Could not update open trades',
   parameter_follow_up_no_open_basket: 'No open trade to update',
+  delete_pendings_no_parent: 'Original trade not found for this reply',
+  delete_pendings_requires_reply: 'Must be a reply to the original signal',
+  delete_pendings_none: 'No pending orders to cancel',
   mgmt_no_open_trades: 'No matching open trade',
   mgmt_no_open_trades_db: 'No open trade in copier',
   mgmt_no_open_trades_broker: 'No open position on broker',
@@ -97,6 +100,12 @@ export const COPIER_SKIP_REASON_DETAILS: Record<string, string> = {
     'The signal was received but updating SL/TP on open trades failed. Check open positions and broker connection.',
   parameter_follow_up_no_open_basket:
     'This looked like an SL/TP update but there was no open trade from this channel to modify.',
+  delete_pendings_no_parent:
+    'This message was sent as a reply, but the original signal it references was not found in the copier. Reply to the exact original signal message to cancel its pending orders.',
+  delete_pendings_requires_reply:
+    'Cancel-pending instructions must be sent as a reply to the original signal message, not as a standalone message.',
+  delete_pendings_none:
+    'The copier understood the cancel-pending instruction, but there were no pending orders to cancel for this trade.',
   mgmt_no_open_trades:
     'This management instruction (close, modify, breakeven, etc.) did not match any open trade from this channel.',
   mgmt_no_open_trades_db:
