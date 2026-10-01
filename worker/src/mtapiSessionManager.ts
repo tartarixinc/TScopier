@@ -39,6 +39,7 @@ function mtapiConfigured(): boolean {
 
 export class MtapiSessionManager {
   private timer: NodeJS.Timeout | null = null
+  private provisionTimer: NodeJS.Timeout | null = null
   private sweepRunning = false
 
   constructor(
@@ -234,16 +235,22 @@ export class MtapiSessionManager {
     await this.reconcileOrphans(rows)
     await this.provisionNewAccounts()
     await this.sweep(rows)
+    // A newly authorised account waits for the provision sweep, so it runs far
+    // more often than the health sweep: the bridge link must be made in
+    // seconds, not minutes. The health sweep stays slow because it queries the
+    // bridge once per session.
+    const provisionIntervalMs = Math.max(5_000, Number(process.env.MTAPI_PROVISION_INTERVAL_MS ?? 15_000))
+    this.provisionTimer = setInterval(() => {
+      void this.provisionNewAccounts().catch(error => {
+        console.warn('[mtapiSession] provision sweep failed code=' + safeCode(error))
+      })
+    }, provisionIntervalMs)
+    this.provisionTimer.unref?.()
     const intervalMs = Math.max(30_000, Number(process.env.MTAPI_SESSION_HEALTH_INTERVAL_MS ?? 240_000))
     this.timer = setInterval(() => {
-      void Promise.all([
-        this.provisionNewAccounts().catch(error => {
-          console.warn('[mtapiSession] provision sweep failed code=' + safeCode(error))
-        }),
-        this.sweep().catch(error => {
-          console.warn('[mtapiSession] health sweep failed code=' + safeCode(error))
-        }),
-      ])
+      void this.sweep().catch(error => {
+        console.warn('[mtapiSession] health sweep failed code=' + safeCode(error))
+      })
     }, intervalMs)
     this.timer.unref?.()
   }
@@ -251,6 +258,8 @@ export class MtapiSessionManager {
   stop(): void {
     if (this.timer) clearInterval(this.timer)
     this.timer = null
+    if (this.provisionTimer) clearInterval(this.provisionTimer)
+    this.provisionTimer = null
     this.provider.setRecoveryHandler(undefined)
   }
 }

@@ -23,6 +23,11 @@ const copy = {
   reconnect: 'Reconnect',
   cancel: 'Cancel',
   back: 'Back',
+  connectingTitle: 'Connecting your account',
+  connectingBody: 'Sign-in accepted. Waiting for the broker bridge — this can take a moment.',
+  successTitle: 'Account connected',
+  successBody: 'Connected. Copying resumes automatically.',
+  successAction: 'Next account',
 }
 
 const broker = {
@@ -174,5 +179,27 @@ describe('BrokerReconnectPasswordModal — password stage', () => {
     render({ stage: 'details', dismissible: false, error: 'Wrong password for this account' })
     const alert = document.querySelector('[role="alert"]')
     expect(alert?.textContent).toBe('Wrong password for this account')
+  })
+})
+
+describe('BrokerReconnectPasswordModal — connecting stage', () => {
+  it('shows the waiting message with no form and no buttons', () => {
+    render({ stage: 'connecting', dismissible: false })
+    expect(document.body.textContent).toContain('Waiting for the broker bridge')
+    expect(document.querySelector('[role="status"]')).not.toBeNull()
+    expect(document.getElementById('broker-reconnect-password')).toBeNull()
+    expect(buttonByLabel('Reconnect')).toBeNull()
+    expect(buttonByLabel('Cancel')).toBeNull()
+  })
+})
+
+describe('BrokerReconnectPasswordModal — success stage', () => {
+  it('confirms the connection and continues on the action button', () => {
+    const onContinue = vi.fn()
+    render({ stage: 'success', dismissible: false, onContinue })
+    expect(document.body.textContent).toContain('Connected. Copying resumes automatically.')
+    expect(document.querySelector('[role="status"]')).not.toBeNull()
+    buttonByLabel('Next account')?.click()
+    expect(onContinue).toHaveBeenCalledTimes(1)
   })
 })

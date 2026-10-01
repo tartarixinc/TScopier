@@ -162,6 +162,13 @@ export const accountConfigPl: AccountConfigBundleTranslations = {
       reconnectMigrationPasswordTitle: 'Wpisz hasło, aby połączyć się ponownie',
       reconnectMigrationPasswordBody: 'Numer konta i serwer są już uzupełnione. Hasło jest przechowywane w formie zaszyfrowanej i służy wyłącznie do połączenia z brokerem.',
       reconnectMigrationBack: 'Wstecz',
+      reconnectConnectingTitle: 'Łączenie z kontem',
+      reconnectConnectingBody:
+        'Dane logowania zaakceptowane. Czekamy na pośrednika brokera — to może chwilę potrwać.',
+      reconnectSuccessTitle: 'Konto połączone',
+      reconnectSuccessBody: 'Połączono. Kopiowanie transakcji zostanie automatycznie wznowione.',
+      reconnectSuccessNext: 'Następne konto',
+      reconnectSuccessDone: 'Gotowe',
       reconnectPasswordLabel: 'Hasło konta MT',
       reconnectPasswordHint:
         'Wysyłane tylko do serwerów MT. Włącz opcję zapamiętywania poniżej, aby zapisać je szyfrowane do automatycznego ponownego połączenia.',

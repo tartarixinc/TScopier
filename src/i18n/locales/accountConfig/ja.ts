@@ -162,6 +162,12 @@ export const accountConfigJa: AccountConfigBundleTranslations = {
       reconnectMigrationPasswordTitle: 'パスワードを入力して再接続',
       reconnectMigrationPasswordBody: '口座番号とサーバーは入力済みです。パスワードは暗号化して保存され、ブローカーへの接続にのみ使用されます。',
       reconnectMigrationBack: '戻る',
+      reconnectConnectingTitle: 'アカウントに接続しています',
+      reconnectConnectingBody: 'ログイン情報が受理されました。ブローカーへの接続を待っています。しばらくお待ちください。',
+      reconnectSuccessTitle: 'アカウントが接続されました',
+      reconnectSuccessBody: '接続されました。取引のコピーは自動的に再開されます。',
+      reconnectSuccessNext: '次のアカウント',
+      reconnectSuccessDone: '完了',
       reconnectPasswordLabel: 'MT 口座パスワード',
       reconnectPasswordHint:
         'MT サーバーにのみ送信されます。下の「記憶する」を有効にすると、暗号化して保存し自動再接続できます。',

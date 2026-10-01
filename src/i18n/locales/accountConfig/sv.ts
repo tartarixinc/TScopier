@@ -162,6 +162,13 @@ export const accountConfigSv: AccountConfigBundleTranslations = {
       reconnectMigrationPasswordTitle: 'Ange ditt lösenord för att ansluta igen',
       reconnectMigrationPasswordBody: 'Kontonummer och server är redan ifyllda. Lösenordet lagras krypterat och används bara för att ansluta till din mäklare.',
       reconnectMigrationBack: 'Tillbaka',
+      reconnectConnectingTitle: 'Ansluter ditt konto',
+      reconnectConnectingBody:
+        'Inloggningsuppgifterna godkändes. Väntar på brokerns anslutning — det kan ta en stund.',
+      reconnectSuccessTitle: 'Konto anslutet',
+      reconnectSuccessBody: 'Anslutet. Kopieringen av trades återupptas automatiskt.',
+      reconnectSuccessNext: 'Nästa konto',
+      reconnectSuccessDone: 'Klar',
       reconnectPasswordLabel: 'Lösenord för MT-konto',
       reconnectPasswordHint:
         'Skickas endast till MT-servrar. Aktivera kom ihåg nedan för att spara det krypterat för automatisk återanslutning.',

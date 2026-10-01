@@ -569,6 +569,13 @@ broker: {
       reconnectMigrationPasswordTitle: 'Enter your password to reconnect',
       reconnectMigrationPasswordBody: 'Your account number and server are already filled in. The password is stored encrypted and only used to connect to your broker.',
       reconnectMigrationBack: 'Back',
+      reconnectConnectingTitle: 'Connecting your account',
+      reconnectConnectingBody:
+        'Sign-in accepted. Waiting for the broker bridge — this can take a moment.',
+      reconnectSuccessTitle: 'Account connected',
+      reconnectSuccessBody: 'Connected. Copying resumes automatically.',
+      reconnectSuccessNext: 'Next account',
+      reconnectSuccessDone: 'Done',
       reconnectPasswordLabel: 'MT account password',
       reconnectPasswordHint: 'Sent to MT servers only. Enable remember below to store it encrypted for automatic reconnect.',
       reconnectPasswordPlaceholder: 'Trading account password',

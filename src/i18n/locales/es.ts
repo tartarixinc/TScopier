@@ -572,6 +572,13 @@ export const es: Translations = {
       reconnectMigrationPasswordTitle: 'Introduce tu contraseña para reconectar',
       reconnectMigrationPasswordBody: 'Tu número de cuenta y servidor ya están rellenados. La contraseña se guarda cifrada y solo se usa para conectarse a tu bróker.',
       reconnectMigrationBack: 'Atrás',
+      reconnectConnectingTitle: 'Conectando tu cuenta',
+      reconnectConnectingBody:
+        'Acceso aceptado. Esperando al puente del bróker — puede tardar un momento.',
+      reconnectSuccessTitle: 'Cuenta conectada',
+      reconnectSuccessBody: 'Conectado. La copia de operaciones se reanuda automáticamente.',
+      reconnectSuccessNext: 'Siguiente cuenta',
+      reconnectSuccessDone: 'Listo',
       reconnectPasswordLabel: 'Contraseña de la cuenta MT',
       reconnectPasswordHint: 'Se envía solo a servidores MT. Activa recordar abajo para guardarla cifrada y reconectar automáticamente.',
       reconnectPasswordPlaceholder: 'Contraseña de la cuenta de trading',

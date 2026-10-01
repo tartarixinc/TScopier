@@ -572,6 +572,13 @@ export const fr: Translations = {
       reconnectMigrationPasswordTitle: 'Saisissez votre mot de passe pour vous reconnecter',
       reconnectMigrationPasswordBody: 'Votre numéro de compte et votre serveur sont déjà renseignés. Le mot de passe est chiffré et sert uniquement à se connecter à votre courtier.',
       reconnectMigrationBack: 'Retour',
+      reconnectConnectingTitle: 'Connexion de votre compte',
+      reconnectConnectingBody:
+        'Identifiants acceptés. En attente du pont du courtier — cela peut prendre un instant.',
+      reconnectSuccessTitle: 'Compte connecté',
+      reconnectSuccessBody: 'Connecté. La copie des opérations reprend automatiquement.',
+      reconnectSuccessNext: 'Compte suivant',
+      reconnectSuccessDone: 'Terminé',
       reconnectPasswordLabel: 'Mot de passe du compte MT',
       reconnectPasswordHint: 'Envoyé aux serveurs MT uniquement. Activez mémoriser ci-dessous pour stockage chiffré et reconnexion auto.',
       reconnectPasswordPlaceholder: 'Mot de passe du compte de trading',

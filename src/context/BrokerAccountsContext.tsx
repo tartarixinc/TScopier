@@ -166,6 +166,10 @@ export function BrokerAccountsProvider({
   // Declared before useBrokerReconnect: onError writes to it, and the prompt
   // may be the only place the customer can see the message.
   const [reconnectError, setReconnectError] = useState<string | null>(null)
+  // A reconnect that just succeeded, so the dialog can confirm it before it
+  // moves on to the next account or closes. Cleared when the customer
+  // continues or dismisses the confirmation.
+  const [reconnectSuccessId, setReconnectSuccessId] = useState<string | null>(null)
 
   const {
     reconnectBroker,
@@ -187,6 +191,7 @@ export function BrokerAccountsProvider({
     },
     onSuccess: (brokerId) => {
       setReconnectError(null)
+      setReconnectSuccessId(brokerId)
       reconnectSuccessHandlerRef.current?.(brokerId)
     },
   })
@@ -198,8 +203,25 @@ export function BrokerAccountsProvider({
     [brokersNeedingReconnect, reconnectingBrokerIds],
   )
 
-  const activeBroker = passwordPromptBroker ?? migrationPromptBroker
-  const modalStage: 'details' | 'password' = passwordPromptBroker ? 'password' : 'details'
+  const successBroker = reconnectSuccessId
+    ? (brokers.find(b => b.id === reconnectSuccessId) ?? null)
+    : null
+  // While the bridge is still working, the dialog stays on the account the
+  // customer submitted instead of jumping ahead to the next one.
+  const inflightBrokerId = [...reconnectingBrokerIds][0]
+  const inflightBroker = inflightBrokerId
+    ? (brokers.find(b => b.id === inflightBrokerId) ?? null)
+    : null
+
+  const activeBroker =
+    passwordPromptBroker ?? successBroker ?? inflightBroker ?? migrationPromptBroker
+  const modalStage: 'details' | 'password' | 'connecting' | 'success' = passwordPromptBroker
+    ? 'password'
+    : successBroker
+      ? 'success'
+      : inflightBroker
+        ? 'connecting'
+        : 'details'
   // The wording follows the cause, not which prompt happens to be open.
   const migrationCopy = isMigrationSwitchCase(activeBroker)
   // Only a dialog the customer opened themselves may be closed. The automatic
@@ -208,6 +230,7 @@ export function BrokerAccountsProvider({
 
   const handleModalCancel = () => {
     if (passwordPromptBroker) cancelPasswordPrompt()
+    setReconnectSuccessId(null)
   }
 
   const handleModalBack = () => {
@@ -218,8 +241,19 @@ export function BrokerAccountsProvider({
 
   const handleModalContinue = () => {
     setReconnectError(null)
+    // Success confirmation: clear it and fall through to the next account, or
+    // close the dialog when none are left.
+    if (successBroker) {
+      setReconnectSuccessId(null)
+      return
+    }
     if (migrationPromptBroker) void reconnectBroker(migrationPromptBroker.id)
   }
+
+  // On the success confirmation, the button name follows what comes next.
+  const hasMoreAfterSuccess = reconnectSuccessId
+    ? brokersNeedingReconnect.some(b => b.id !== reconnectSuccessId)
+    : false
 
   const modalCopy = useMemo(() => {
     const shared = {
@@ -234,13 +268,26 @@ export function BrokerAccountsProvider({
       cancel: t.common.cancel,
       back: bl.reconnectMigrationBack,
     }
+    const progress = {
+      connectingTitle: bl.reconnectConnectingTitle,
+      connectingBody: bl.reconnectConnectingBody,
+      successTitle: bl.reconnectSuccessTitle,
+      successBody: bl.reconnectSuccessBody,
+      successAction: hasMoreAfterSuccess ? bl.reconnectSuccessNext : bl.reconnectSuccessDone,
+    }
+    if (modalStage === 'connecting') {
+      return { title: bl.reconnectConnectingTitle, body: bl.reconnectConnectingBody, ...progress, ...shared }
+    }
+    if (modalStage === 'success') {
+      return { title: bl.reconnectSuccessTitle, body: bl.reconnectSuccessBody, ...progress, ...shared }
+    }
     if (!migrationCopy) {
-      return { title: bl.reconnectPasswordTitle, body: bl.reconnectPasswordBody, ...shared }
+      return { title: bl.reconnectPasswordTitle, body: bl.reconnectPasswordBody, ...progress, ...shared }
     }
     return modalStage === 'password'
-      ? { title: bl.reconnectMigrationPasswordTitle, body: bl.reconnectMigrationPasswordBody, ...shared }
-      : { title: bl.reconnectMigrationTitle, body: bl.reconnectMigrationBody, ...shared }
-  }, [bl, migrationCopy, modalStage, t.common.cancel])
+      ? { title: bl.reconnectMigrationPasswordTitle, body: bl.reconnectMigrationPasswordBody, ...progress, ...shared }
+      : { title: bl.reconnectMigrationTitle, body: bl.reconnectMigrationBody, ...progress, ...shared }
+  }, [bl, migrationCopy, modalStage, t.common.cancel, hasMoreAfterSuccess])
 
   const value = useMemo(
     (): BrokerAccountsContextValue => ({

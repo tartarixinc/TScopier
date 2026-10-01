@@ -162,6 +162,13 @@ export const accountConfigNl: AccountConfigBundleTranslations = {
       reconnectMigrationPasswordTitle: 'Voer je wachtwoord in om opnieuw te verbinden',
       reconnectMigrationPasswordBody: 'Je accountnummer en server zijn al ingevuld. Het wachtwoord wordt versleuteld opgeslagen en alleen gebruikt om verbinding te maken met je broker.',
       reconnectMigrationBack: 'Terug',
+      reconnectConnectingTitle: 'Je account wordt verbonden',
+      reconnectConnectingBody:
+        'Inloggegevens geaccepteerd. Wachten op de broker-verbinding — dit kan even duren.',
+      reconnectSuccessTitle: 'Account verbonden',
+      reconnectSuccessBody: 'Verbonden. Het kopiëren van transacties hervat automatisch.',
+      reconnectSuccessNext: 'Volgend account',
+      reconnectSuccessDone: 'Klaar',
       reconnectPasswordLabel: 'MT-accountwachtwoord',
       reconnectPasswordHint:
         'Wordt alleen naar MT-servers verzonden. Schakel hieronder onthouden in om het versleuteld op te slaan voor automatisch opnieuw verbinden.',

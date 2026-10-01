@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { AlertTriangle, RefreshCw, X } from 'lucide-react'
+import { CheckCircle2, Loader2, AlertTriangle, RefreshCw, X } from 'lucide-react'
 import type { BrokerAccount } from '../../types/database'
 import { useOverlayDismiss } from '../../hooks/useOverlayDismiss'
 import { PasswordInput } from '../auth/PasswordInput'
@@ -25,6 +25,13 @@ export interface BrokerReconnectPasswordModalCopy {
   reconnect: string
   cancel: string
   back?: string
+  /** Stage: waiting on the broker bridge after a successful sign-in. */
+  connectingTitle?: string
+  connectingBody?: string
+  /** Stage: the account reconnected — shown before the dialog moves on. */
+  successTitle?: string
+  successBody?: string
+  successAction?: string
 }
 
 interface BrokerReconnectPasswordModalProps {
@@ -34,8 +41,10 @@ interface BrokerReconnectPasswordModalProps {
    * `details` — stage 1: account details and an explanation, no password field.
    * `password` — stage 2: the password form. The caller owns the stage because
    * it also owns which prompt (migration or session-expiry) is showing.
+   * `connecting` — sign-in accepted, waiting for the broker bridge.
+   * `success` — the account reconnected; shown before the dialog advances.
    */
-  stage: 'details' | 'password'
+  stage: 'details' | 'password' | 'connecting' | 'success'
   copy: BrokerReconnectPasswordModalCopy
   onSubmit: (payload: { password: string; rememberPassword: boolean }) => void
   onCancel: () => void
@@ -117,6 +126,18 @@ function BrokerReconnectPasswordModalInner({
   if (!open || !broker) return null
 
   const logo = platformLogo(broker.platform)
+  const headerIcon =
+    stage === 'connecting' ? (
+      <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+    ) : stage === 'success' ? (
+      <CheckCircle2 className="h-5 w-5" aria-hidden />
+    ) : (
+      <AlertTriangle className="h-5 w-5" aria-hidden />
+    )
+  const headerTint =
+    stage === 'success'
+      ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400'
+      : 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400'
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
@@ -144,8 +165,10 @@ function BrokerReconnectPasswordModalInner({
       >
         <div className="px-5 pt-5 pb-4 border-b border-neutral-100 dark:border-neutral-800">
           <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400">
-              <AlertTriangle className="h-5 w-5" aria-hidden />
+            <div
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${headerTint}`}
+            >
+              {headerIcon}
             </div>
             <div className="min-w-0 flex-1">
               <h2
@@ -204,7 +227,7 @@ function BrokerReconnectPasswordModalInner({
             </div>
           )}
 
-          {stage === 'details' ? (
+          {stage === 'details' && (
             <div className="flex justify-end gap-2 pt-1">
               {dismissible && (
                 <Button type="button" variant="ghost" onClick={onCancel}>
@@ -216,7 +239,9 @@ function BrokerReconnectPasswordModalInner({
                 {copy.reconnect}
               </Button>
             </div>
-          ) : (
+          )}
+
+          {stage === 'password' && (
             <form onSubmit={handleSubmit} className="space-y-4">
               <PasswordInput
                 id="broker-reconnect-password"
@@ -250,6 +275,37 @@ function BrokerReconnectPasswordModalInner({
                 </div>
               </div>
             </form>
+          )}
+
+          {stage === 'connecting' && (
+            <div
+              role="status"
+              className="flex items-center gap-3 rounded-lg border border-neutral-100 bg-neutral-50 px-3 py-3 dark:border-neutral-800 dark:bg-neutral-800/50"
+            >
+              <Loader2
+                className="h-4 w-4 shrink-0 animate-spin text-amber-600 dark:text-amber-400"
+                aria-hidden
+              />
+              <p className="text-sm leading-relaxed text-neutral-600 dark:text-neutral-300">
+                {copy.connectingBody}
+              </p>
+            </div>
+          )}
+
+          {stage === 'success' && (
+            <div className="space-y-4">
+              <div
+                role="status"
+                className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+              >
+                {copy.successBody}
+              </div>
+              <div className="flex justify-end pt-1">
+                <Button type="button" onClick={onContinue}>
+                  {copy.successAction ?? copy.reconnect}
+                </Button>
+              </div>
+            </div>
           )}
         </div>
       </div>

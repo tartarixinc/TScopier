@@ -162,6 +162,12 @@ export const accountConfigAr: AccountConfigBundleTranslations = {
       reconnectMigrationPasswordTitle: 'أدخل كلمة المرور لإعادة الاتصال',
       reconnectMigrationPasswordBody: 'رقم الحساب والخادم مملوءان مسبقًا. تُخزَّن كلمة المرور مشفّرة وتُستخدم فقط للاتصال بوسيطك.',
       reconnectMigrationBack: 'رجوع',
+      reconnectConnectingTitle: 'جارٍ توصيل حسابك',
+      reconnectConnectingBody: 'تم قبول بيانات الدخول. بانتظار جسر الوسيط — قد يستغرق ذلك لحظة.',
+      reconnectSuccessTitle: 'تم توصيل الحساب',
+      reconnectSuccessBody: 'تم التوصيل. يستأنف نسخ الصفقات تلقائيًا.',
+      reconnectSuccessNext: 'الحساب التالي',
+      reconnectSuccessDone: 'تم',
       reconnectPasswordLabel: 'كلمة مرور حساب MT',
       reconnectPasswordHint:
         'تُرسل فقط إلى خوادم MT. فعّل خيار التذكّر أدناه لحفظها مشفّرة لإعادة الاتصال التلقائي.',
