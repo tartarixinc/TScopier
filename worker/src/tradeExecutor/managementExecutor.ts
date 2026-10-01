@@ -22,7 +22,7 @@ import {
   selectWorseImmediateLegsForCweInstruction,
 } from '../closeWorseEntries'
 import { tryBrokerFallbackClose, cancelChannelBrokerPendingOrders } from '../managementBrokerClose'
-import { extractOpenOrderFromBrokerRaw } from '../managementBrokerClose'
+import { resolveCanonicalOpenPosition, resolveCurrentLivePosition } from '../livePositionIdentity'
 import { closeWithVerification } from '../managementClose'
 import { findOpenedRowByTicket, readBrokerOrderStopLoss } from '../signalEntryPendingHelpers'
 import { applyMgmtModifyToBasketGroups } from '../managementModifyBaskets'
@@ -79,6 +79,7 @@ import {
   type ManagementBreakevenAggregateDiagnostic,
   type ManagementBreakevenFailureDiagnostic,
 } from '../managementBreakevenDiagnostics'
+import { authorityFromBrokerRow, withBrokerWriteAuthority } from '../brokerWriteAuthority'
 
 function mgmtCloseOpts(liveMgmtFast: boolean) {
   return { maxAttempts: 2, slippageEscalation: 50, liveFast: liveMgmtFast }
@@ -362,40 +363,8 @@ function resolveReconciledTicketForTrade(
   rawOrders: unknown[],
   excludeTickets: ReadonlySet<number> = new Set(),
 ): number | null {
-  const storedTicket = Number(trade.metaapi_order_id)
-  const expectedDir = String(trade.direction).toLowerCase() === 'buy'
-  const expectedLots = Number.isFinite(Number(trade.lot_size)) ? Number(trade.lot_size) : null
-  const expectedEntry = Number.isFinite(Number(trade.entry_price)) ? Number(trade.entry_price) : null
-  const candidates = rawOrders
-    .map(extractOpenOrderFromBrokerRaw)
-    .filter((o): o is NonNullable<ReturnType<typeof extractOpenOrderFromBrokerRaw>> => o != null)
-    .filter(o => symbolsCompatibleForBasket(trade.symbol, o.symbol))
-    .filter(o => o.isBuy === expectedDir)
-    .filter(o => !excludeTickets.has(o.ticket))
-
-  if (!candidates.length) return null
-
-  if (Number.isFinite(storedTicket) && storedTicket > 0 && !excludeTickets.has(storedTicket)) {
-    const storedMatch = candidates.find(o => o.ticket === storedTicket)
-    if (storedMatch) return storedTicket
-  }
-
-  candidates.sort((a, b) => {
-    const lotScoreA = expectedLots == null ? 0 : Math.abs((a.lots || 0) - expectedLots)
-    const lotScoreB = expectedLots == null ? 0 : Math.abs((b.lots || 0) - expectedLots)
-    if (lotScoreA !== lotScoreB) return lotScoreA - lotScoreB
-    const entryA = Number.isFinite(Number((a as { openPrice?: number }).openPrice))
-      ? Number((a as { openPrice?: number }).openPrice)
-      : null
-    const entryB = Number.isFinite(Number((b as { openPrice?: number }).openPrice))
-      ? Number((b as { openPrice?: number }).openPrice)
-      : null
-    const entryScoreA = expectedEntry != null && entryA != null ? Math.abs(entryA - expectedEntry) : 0
-    const entryScoreB = expectedEntry != null && entryB != null ? Math.abs(entryB - expectedEntry) : 0
-    if (entryScoreA !== entryScoreB) return entryScoreA - entryScoreB
-    return b.ticket - a.ticket
-  })
-  return candidates[0]?.ticket ?? null
+  const resolution = resolveCanonicalOpenPosition({ trade, openedOrders: rawOrders, excludeTickets })
+  return resolution.status === 'resolved' ? resolution.ticket : null
 }
 
 export async function logSendSkipped(ctx: TradeExecutorContext, 
@@ -524,13 +493,6 @@ export async function applyManagement(
     let basketsTotal: number | undefined
     let basketApplyMs: number | undefined
     let basketConcurrency: number | undefined
-    if (!hasFxsocketConfigured()) {
-      await skipMgmtSignalWithLog(ctx, signal, 'broker_api_not_configured', {
-        action: String(parsed.action ?? '').toLowerCase(),
-      })
-      return emptyMgmtResult(legConcurrency)
-    }
-
     const brokerAccountIds = brokers.map(b => b.id)
     const replyScoped = isReplyScopedManagement(signal)
     const symbolFromText = explicitMgmtSymbol(parsed)
@@ -1055,19 +1017,51 @@ export async function applyManagement(
       if (!api) return
 
       try {
-        if (action === 'close') {
+        if (
+          action === 'close' || action === 'partial_profit'
+          || action === 'breakeven' || action === 'partial_breakeven'
+        ) {
+          const resolution = await resolveCurrentLivePosition({
+            supabase: ctx.supabase,
+            api,
+            sessionId: uuid,
+            trade,
+          })
+          if (resolution.status !== 'resolved') {
+            throw new Error(`live position reconciliation required: ${resolution.reason}`)
+          }
+          if (resolution.ticket !== effectiveTicket) {
+            ticketReconciledFrom = effectiveTicket
+            effectiveTicket = resolution.ticket
+          }
+        }
           let closeConfirmed = false
+        if (action === 'close') {
           let lastCloseReason: string | undefined
           if (isV2({ brokerAccountId: broker.id, userId: signal.user_id, provider: broker.provider })) {
             // v2 fast close: strict retcode-validated single call (~200ms live),
             // no slow verify/retry loop. Idempotent - a gone ticket reads as closed.
-            const r = await getFxClient().orderClose(uuid, toMtPlatform(broker.platform), { ticket: effectiveTicket })
+            const r = await withBrokerWriteAuthority(
+              authorityFromBrokerRow(broker),
+              'v2_orderClose',
+              () => getFxClient().orderClose(uuid, toMtPlatform(broker.platform), { ticket: effectiveTicket }),
+            )
             closeConfirmed = r.ok
             if (!r.ok) {
               lastCloseReason = r.message
               if (r.retcodeName === 'AMBIGUOUS') {
-                const stillOpen = await getFxClient().openedOrders(uuid, toMtPlatform(broker.platform)).catch(() => [])
-                closeConfirmed = !stillOpen.some(o => o.ticket === effectiveTicket)
+                try {
+                  const stillOpen = await api.openedOrders(uuid)
+                  const resolution = resolveCanonicalOpenPosition({
+                    trade: { ...trade, metaapi_order_id: String(effectiveTicket) },
+                    openedOrders: stillOpen,
+                  })
+                  closeConfirmed = resolution.status === 'missing'
+                  if (resolution.status === 'ambiguous') lastCloseReason = resolution.reason
+                } catch {
+                  closeConfirmed = false
+                  lastCloseReason = 'ambiguous close broker readback failed'
+                }
               }
             }
           } else {
@@ -1079,6 +1073,10 @@ export async function applyManagement(
                 effectiveTicket,
                 mgmtCloseOpts(liveMgmtFast),
               )
+              if (closeResult.ticket && closeResult.ticket !== effectiveTicket) {
+                ticketReconciledFrom = ticketReconciledFrom ?? effectiveTicket
+                effectiveTicket = closeResult.ticket
+              }
               if (closeResult.confirmed) {
                 closeConfirmed = true
                 break
@@ -1153,7 +1151,7 @@ export async function applyManagement(
             })
             return
           }
-          await api.orderClose(uuid, { ticket, lots })
+          await api.orderClose(uuid, { ticket: effectiveTicket, lots })
           const remaining = Math.max(0, +(trade.lot_size - lots).toFixed(2))
           if (remaining < 0.0001) {
             await ctx.supabase.from('trades').update({
@@ -1174,14 +1172,7 @@ export async function applyManagement(
         } else if (action === 'breakeven' || action === 'partial_breakeven') {
           // Tickets were pre-reconciled once from a single OpenedOrders snapshot;
           // use the pre-assigned ticket (no per-leg broker read here).
-          const excludeTickets = breakevenExcludeByTradeId.get(trade.id) ?? new Set<number>()
           const snapshotOrders = breakevenOrdersByUuid.get(uuid) ?? null
-          const upfrontTicket = breakevenAssignedTicket.get(trade.id)
-            ?? resolveReconciledTicketForTrade(trade, snapshotOrders ?? [], excludeTickets)
-          if (upfrontTicket && upfrontTicket !== effectiveTicket) {
-            ticketReconciledFrom = effectiveTicket
-            effectiveTicket = upfrontTicket
-          }
           let entry = sanitizeLevel(trade.entry_price)
           if (entry <= 0) {
             entry = sanitizeLevel(await resolveMgmtEntryPrice({
@@ -1284,16 +1275,6 @@ export async function applyManagement(
             } catch (err) {
               lastErr = err
               const msg = err instanceof Error ? err.message : String(err)
-              // Re-reconcile from the pre-fetched snapshot + this leg's immutable
-              // exclude set (other legs' tickets) — race-free under parallelism.
-              if (isUnknownTicketError(msg)) {
-                const reconciledTicket = resolveReconciledTicketForTrade(trade, snapshotOrders ?? [], excludeTickets)
-                if (reconciledTicket && reconciledTicket !== effectiveTicket) {
-                  ticketReconciledFrom = effectiveTicket
-                  effectiveTicket = reconciledTicket
-                  continue
-                }
-              }
               if (attempt < maxAttempts && isRetryableBreakevenError(msg)) {
                 await sleepMs(250 * attempt)
                 continue
@@ -2048,11 +2029,6 @@ export async function applyCloseWorseEntriesInstruction(ctx: TradeExecutorContex
     const liveMgmtFast = mgmtOpts?.liveMgmtFast === true
     const legConcurrency = liveMgmtFast ? mgmtLegConcurrency() : 1
     let legsTotal = 0
-
-    if (!hasFxsocketConfigured()) {
-      await skipMgmtSignalWithLog(ctx, signal, 'broker_api_not_configured', { action: 'close_worse_entries' })
-      return emptyMgmtResult(legConcurrency)
-    }
 
     const openRows = rows.filter(r => r.status === 'open')
     if (!openRows.length) {

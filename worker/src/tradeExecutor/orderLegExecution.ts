@@ -39,6 +39,7 @@ import {
 } from '../observability/businessEvents'
 import { captureDeferredBusinessFailure } from '../observability/deferredBusinessEvents'
 import { collapseIdenticalImmediateLegs } from './collapseIdenticalImmediateLegs'
+import { authorityFromBrokerRow, withBrokerWriteAuthority } from '../brokerWriteAuthority'
 
 export { collapseIdenticalImmediateLegs }
 
@@ -250,7 +251,10 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
           dispatchSource: signal.dispatch_source,
         })
         if (useV2) {
-          const sendPromise = getFxClient().orderSend(
+          const sendPromise = withBrokerWriteAuthority(
+            authorityFromBrokerRow(broker),
+            'v2_orderSend',
+            () => getFxClient().orderSend(
             uuid,
             v2Platform,
             {
@@ -265,6 +269,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
               expertId: sendArgs.expertID,
             },
             { anchorSignalId: signal.id, legIndex: leg.idx, preSnapshot: v2Snapshot },
+            ),
           )
           emitPipelineEvent({
             event: 'broker_request_started',

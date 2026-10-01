@@ -107,16 +107,21 @@ describe('forceCloseSignalById', () => {
     else process.env.FXSOCKET_API_KEY = originalKey
   }
 
-  test('returns broker_api_not_configured when FXSOCKET_API_KEY missing', async () => {
+  test('does not require FXSOCKET_API_KEY before provider-neutral lookup', async () => {
     delete process.env.FXSOCKET_API_KEY
     try {
-      const supabase = { from() { throw new Error('should not query') } }
+      const supabase = {
+        from(table: string) {
+          if (table === 'signals') return chainQuery(null)
+          throw new Error(`unexpected table ${table}`)
+        },
+      }
       const result = await forceCloseSignalById(supabase as never, {
         userId: 'user-1',
         signalId: 'sig-1',
       })
       assert.equal(result.ok, false)
-      assert.equal(result.reason, 'broker_api_not_configured')
+      assert.equal(result.reason, 'signal_not_found')
     } finally {
       restoreKey()
     }

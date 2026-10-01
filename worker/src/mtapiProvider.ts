@@ -2,7 +2,7 @@ import type {
   AccountSummary, FxsocketMtStatus, FxsocketTerminalStatus, MtPlatform,
   OrderCloseArgs, OrderModifyArgs, OrderResult, OrderSendArgs, QuoteResult, SymbolParams,
 } from './fxsocketClient'
-import { normalizeOrderResponse, isTransientMtApiError, isOrderOpTimedOutMessage } from './fxsocketClient'
+import { normalizeOrderResponse, isTransientMtApiError, isOrderOpTimedOutMessage, orderListResponseIsIncomplete } from './fxsocketClient'
 import type { BrokerProvider } from './brokerProvider'
 import { ingestMtHistoryRows, type MtHistoryProfile } from './mtTradeFields'
 import { auditOrderClose } from './orderCloseAudit'
@@ -323,7 +323,7 @@ export class MtapiProvider implements BrokerProvider {
       if (args.comment) params.comment = args.comment
 
       const raw = await this.requestWithRetry('OrderSendSafe', params, id, this.platform(id) === 'MT5')
-      return normalizeOrderResponse(raw)
+      return normalizeOrderResponse(raw, { platform: this.platform(id), operation: args.operation })
     } finally {
       release()
     }
@@ -340,7 +340,7 @@ export class MtapiProvider implements BrokerProvider {
       if (args.price != null) params.price = args.price
 
       const raw = await this.requestWithRetry('OrderModifySafe', params, id)
-      return normalizeOrderResponse(raw)
+      return normalizeOrderResponse(raw, { platform: this.platform(id) })
     } finally {
       release()
     }
@@ -357,7 +357,7 @@ export class MtapiProvider implements BrokerProvider {
       if (args.slippage != null) params.slippage = args.slippage
 
       const raw = await this.requestWithRetry('OrderCloseSafe', params, id)
-      const result = normalizeOrderResponse(raw)
+      const result = normalizeOrderResponse(raw, { platform: this.platform(id) })
       auditOrderClose({
         source: 'mtapi',
         accountId: id,
@@ -417,6 +417,9 @@ export class MtapiProvider implements BrokerProvider {
 
   async openedOrders(id: string): Promise<unknown[]> {
     const raw = await this.readRequest('OpenedOrders', {}, id)
+    if (orderListResponseIsIncomplete(raw)) {
+      throw new MtapiApiError('OpenedOrders returned an incomplete response', 502, 'INCOMPLETE_RESPONSE')
+    }
     return list(raw, ['orders', 'Orders'], 'OpenedOrders')
   }
 

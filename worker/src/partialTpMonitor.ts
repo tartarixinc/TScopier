@@ -1,6 +1,6 @@
 import os from 'node:os'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { hasFxsocketConfigured, type FxsocketBrokerClient } from './fxsocketClient'
+import { type FxsocketBrokerClient } from './fxsocketClient'
 import {
   applyShardToQuery,
   hasWorkOnShard,
@@ -9,8 +9,13 @@ import {
   startMonitorLoop,
   type MonitorLoopHandle,
 } from './monitorIdleGate'
-import { apiForFxsocketAccount, loadPlatformByFxsocketId, type PlatformByFxsocketId } from './mtApiByAccount'
+import {
+  brokerRuntimeForAccount,
+  loadBrokerApiByAccountId,
+  type BrokerApiByAccountId,
+} from './mtApiByAccount'
 import { stopRangeLayeringUnlessEnabled } from './rangeLayerTillClose'
+import { resolveCurrentLivePosition } from './livePositionIdentity'
 import { isUserCopierPausedCached } from './copierPause'
 
 /**
@@ -59,6 +64,10 @@ interface ParentTradeRow {
   id: string
   metaapi_order_id: string | null
   status: string
+  symbol: string
+  direction: string
+  lot_size: number
+  entry_price: number | null
 }
 
 const ACTIVE_MS = monitorActiveIntervalMs('PARTIAL_TP_TICK_MS', 400)
@@ -99,7 +108,7 @@ export function isPartialTpBenignBrokerError(message: string): boolean {
 
 export class PartialTpMonitor {
   private loop: MonitorLoopHandle | null = null
-  private platformByUuid: PlatformByFxsocketId = new Map()
+  private runtimeByBroker: BrokerApiByAccountId = new Map()
   private hostId: string
   private ticking = false
   private firstTickLogged = false
@@ -113,10 +122,6 @@ export class PartialTpMonitor {
 
   start() {
     if (this.loop) return
-    if (!hasFxsocketConfigured()) {
-      console.warn('[partialTpMonitor] MT4API_BASIC_USER/PASSWORD missing — partial TP monitor disabled')
-      return
-    }
     const staleCutoff = () => new Date(Date.now() - STALE_CLAIM_AFTER_MS).toISOString()
     this.loop = startMonitorLoop({
       name: 'partialTpMonitor',
@@ -155,8 +160,6 @@ export class PartialTpMonitor {
   }
 
   private async tick(): Promise<void> {
-    if (!hasFxsocketConfigured()) return
-
     // Re-claim stuck rows so a crashed worker can't strand a partial. Same
     // 30s threshold as virtualPendingMonitor.
     const staleCutoff = new Date(Date.now() - STALE_CLAIM_AFTER_MS).toISOString()
@@ -191,16 +194,17 @@ export class PartialTpMonitor {
       return
     }
 
-    this.platformByUuid = await loadPlatformByFxsocketId(
+    this.runtimeByBroker = await loadBrokerApiByAccountId(
       this.supabase,
-      rows.map(r => r.metaapi_account_id),
+      [...new Set(rows.map(r => r.broker_account_id).filter(Boolean))],
     )
 
-    // Group by (metaapi_account_id, symbol) → at most ONE /Quote per group
+    // Group by current broker-account authority and symbol → at most ONE /Quote per group
     // per tick. Same shape as the other monitors for consistency.
     const groups = new Map<string, PartialRow[]>()
     for (const r of rows) {
-      const key = `${r.metaapi_account_id}|${r.symbol}`
+      if (!brokerRuntimeForAccount(this.runtimeByBroker, r.broker_account_id)) continue
+      const key = `${r.broker_account_id}|${r.symbol}`
       const list = groups.get(key) ?? []
       list.push(r)
       groups.set(key, list)
@@ -212,10 +216,11 @@ export class PartialTpMonitor {
     const distances: Array<{ symbol: string; bid: number; ask: number; gap: number; legs: number }> = []
 
     await Promise.all(Array.from(groups.entries()).map(async ([key, partials]) => {
-      const [uuid, symbol] = key.split('|')
-      if (!uuid || !symbol) return
-      const api = apiForFxsocketAccount(this.platformByUuid, uuid)
-      if (!api) return
+      const [brokerAccountId, symbol] = key.split('|')
+      if (!brokerAccountId || !symbol) return
+      const runtime = brokerRuntimeForAccount(this.runtimeByBroker, brokerAccountId)
+      if (!runtime) return
+      const { api, sessionId: uuid } = runtime
       let q
       try {
         q = await api.quote(uuid, symbol)
@@ -233,7 +238,7 @@ export class PartialTpMonitor {
         if (Number.isFinite(gap) && gap < nearestGap) nearestGap = gap
         if (!isPartialTpTriggered(partial.is_buy, partial.trigger_price, q.bid, q.ask)) continue
         triggeredTotal += 1
-        const ok = await this.firePartial(partial, api, q.bid, q.ask)
+        const ok = await this.firePartial(partial, api, uuid, q.bid, q.ask)
         if (ok) firedOkTotal += 1
         else firedErrTotal += 1
       }
@@ -274,6 +279,7 @@ export class PartialTpMonitor {
   private async firePartial(
     partial: PartialRow,
     api: FxsocketBrokerClient,
+    sessionId: string,
     bid: number,
     ask: number,
   ): Promise<boolean> {
@@ -296,7 +302,7 @@ export class PartialTpMonitor {
     // (no position to slice) so the row doesn't keep retrying forever.
     const { data: parent } = await this.supabase
       .from('trades')
-      .select('id,metaapi_order_id,status')
+      .select('id,metaapi_order_id,status,symbol,direction,lot_size,entry_price')
       .eq('id', partial.trade_id)
       .maybeSingle()
     const parentRow = (parent ?? null) as ParentTradeRow | null
@@ -319,15 +325,25 @@ export class PartialTpMonitor {
     const t0 = Date.now()
     const refPrice = partial.is_buy ? bid : ask
     try {
-      const result = await api.orderClose(partial.metaapi_account_id, {
-        ticket: ticketNum,
+      const resolution = await resolveCurrentLivePosition({
+        supabase: this.supabase,
+        api,
+        sessionId,
+        trade: parentRow,
+      })
+      if (resolution.status !== 'resolved') {
+        throw new Error(`partial close reconciliation required: ${resolution.reason}`)
+      }
+      const effectiveTicket = resolution.ticket
+      const result = await api.orderClose(sessionId, {
+        ticket: effectiveTicket,
         lots: partial.close_lots,
         // price=0 lets the broker fill at market (same as a manual partial
         // close from the terminal). refPrice is reported in logs only.
       })
       const latencyMs = Date.now() - t0
       console.log(
-        `[partialTpMonitor] partial fired signal=${partial.signal_id} symbol=${partial.symbol} ticket=${ticketNum}`
+        `[partialTpMonitor] partial fired signal=${partial.signal_id} symbol=${partial.symbol} ticket=${effectiveTicket}`
         + ` TP${partial.tp_idx}@${partial.trigger_price} ref=${refPrice} close=${partial.close_lots} latency=${latencyMs}ms`,
       )
       await this.supabase
@@ -371,30 +387,13 @@ export class PartialTpMonitor {
       const benign = isPartialTpBenignBrokerError(msg)
       if (benign) {
         console.log(
-          `[partialTpMonitor] parent gone signal=${partial.signal_id} ticket=${ticketNum}: ${msg}`,
+          `[partialTpMonitor] close ambiguous signal=${partial.signal_id} ticket=${ticketNum}: ${msg}`,
         )
         await this.supabase
-          .from('trades')
-          .update({ status: 'closed', closed_at: new Date().toISOString() })
-          .eq('id', partial.trade_id)
-          .eq('status', 'open')
-        await this.supabase
           .from('partial_tp_legs')
-          .update({ status: 'cancelled', fired_at: new Date().toISOString(), error_message: msg })
+          .update({ status: 'pending', claimed_at: null, claimed_by: null, error_message: `reconciliation required: ${msg}` })
           .eq('id', partial.id)
-        if (partial.signal_id && partial.broker_account_id) {
-          await stopRangeLayeringUnlessEnabled(
-            this.supabase,
-            {
-              signalId: partial.signal_id,
-              brokerAccountId: partial.broker_account_id,
-              symbol: partial.symbol,
-              userId: partial.user_id,
-            },
-            'partial_tp_parent_gone',
-          )
-        }
-        return true
+        return false
       }
       console.error(
         `[partialTpMonitor] fire failed partial=${partial.id} ticket=${ticketNum}: ${msg}`,

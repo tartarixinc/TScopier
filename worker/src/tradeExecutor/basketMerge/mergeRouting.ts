@@ -118,7 +118,6 @@ export async function tryParameterFollowUpMergeModifyOnly(ctx: TradeExecutorCont
     const sameSignalRefresh = args.sameSignalRefresh === true
     const manual = (broker.manual_settings ?? {}) as ManualSettings
     const revisionSafeSkip = (): MergeOutcome => revisionRefreshSafeSkipOutcome()
-    if (!hasFxsocketConfigured()) return sameSignalRefresh ? revisionSafeSkip() : { handled: false }
     if (parsedHasReEnterIntent(parsed)) return sameSignalRefresh ? revisionSafeSkip() : { handled: false }
     if (!shouldRouteAsBasketParameterRefresh(parsed) && args.sameSignalRefresh !== true) {
       return { handled: false }
@@ -377,7 +376,6 @@ export async function tryMergeSignalIntoExistingOpenTrade(ctx: TradeExecutorCont
       signal, parsed, broker, channelKeywords, baseLot, params, symbol, uuid,
       strictEntryPrefetch, commentPrefix,
     } = args
-    if (!hasFxsocketConfigured()) return { handled: false }
     const api = ctx.apiFor(broker)
     if (!api) return { handled: false }
     if (parsedHasReEnterIntent(parsed)) return { handled: false }
@@ -515,7 +513,6 @@ export async function tryTeaserCompletionMerge(ctx: TradeExecutorContext, args: 
       strictEntryPrefetch, commentPrefix,
     } = args
     const manual = (broker.manual_settings ?? {}) as ManualSettings
-    if (!hasFxsocketConfigured()) return { handled: false }
     if (!parsedSignalHasExplicitStops(parsed)) return { handled: false }
     if (!messageHasMarketNowIntent(String(parsed.raw_instruction ?? ''))) return { handled: false }
     if (shouldRouteAsBasketParameterRefresh(parsed)) return { handled: false }

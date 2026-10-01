@@ -105,7 +105,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: broker, error: brokerErr } = await supabase
       .from("broker_accounts")
-      .select("id,fxsocket_account_id,signal_channel_ids")
+      .select("id,provider,mtapi_session_id,fxsocket_account_id,metaapi_account_id,provider_transition_state,signal_channel_ids")
       .eq("id", brokerAccountId)
       .eq("user_id", userId)
       .maybeSingle()
@@ -114,9 +114,17 @@ Deno.serve(async (req: Request) => {
       return bad(500, "Force close failed")
     }
     if (!broker) return bad(404, "Broker account not found")
-    if (!String(broker.fxsocket_account_id ?? "").trim()) {
-      return bad(400, "Broker has no FxSocket account linked")
+    const provider = String(broker.provider ?? "fxsocket").trim()
+    if (provider !== "fxsocket" && provider !== "mtapi") {
+      return bad(400, "Broker provider is invalid")
     }
+    if (String(broker.provider_transition_state ?? "stable") !== "stable") {
+      return bad(409, "Broker provider transition is in progress")
+    }
+    const sessionId = provider === "mtapi"
+      ? String(broker.mtapi_session_id ?? "").trim()
+      : String(broker.fxsocket_account_id ?? broker.metaapi_account_id ?? "").trim()
+    if (!sessionId) return bad(400, "Broker has no active provider session")
 
     const channelId = body.channel_id?.trim() || null
     if (channelId) {

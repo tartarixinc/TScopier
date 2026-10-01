@@ -1,13 +1,12 @@
 import os from 'node:os'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
-  hasFxsocketConfigured,
   isTransientMtApiError,
   normalizeSymbolParams,
   OrderSendArgs,
   SymbolParams,
 } from './fxsocketClient'
-import { apiForFxsocketAccount, loadPlatformByFxsocketId, type PlatformByFxsocketId } from './mtApiByAccount'
+import { apiForFxsocketAccount, resolveDurableBrokerArtifacts, type PlatformByFxsocketId } from './mtApiByAccount'
 import { autoManagementTradeSnapshot, breakevenStopLossForSymbol, resolveAutoBeTpHitTriggerPriceFromManual, shouldStampAutoBeAppliedAt } from './autoManagement'
 import { signalPipPrice } from './signalPip'
 import { tryApplyBasketFollowUpToNewFill, symbolsCompatibleForBasket } from './basketModFollowUp'
@@ -311,10 +310,6 @@ export class VirtualPendingMonitor {
 
   start() {
     if (this.loop) return
-    if (!hasFxsocketConfigured()) {
-      console.warn('[virtualPendingMonitor] MT4API_BASIC_USER/PASSWORD missing — virtual pending monitor disabled')
-      return
-    }
     const staleCut = () => new Date(Date.now() - STALE_CLAIM_AFTER_MS).toISOString()
     this.loop = startMonitorLoop({
       name: 'virtualPendingMonitor',
@@ -359,8 +354,6 @@ export class VirtualPendingMonitor {
   }
 
   private async tick(scope?: { signalId: string; brokerAccountId: string }): Promise<void> {
-    if (!hasFxsocketConfigured()) return
-
     // Re-open rows whose claim is stale. Anything older than STALE_CLAIM_AFTER_MS
     // is considered abandoned (the claiming worker probably crashed); reset it
     // so another monitor can pick it up.
@@ -438,10 +431,9 @@ export class VirtualPendingMonitor {
       return
     }
 
-    this.platformByUuid = await loadPlatformByFxsocketId(
-      this.supabase,
-      rows.map(r => r.metaapi_account_id),
-    )
+    const resolved = await resolveDurableBrokerArtifacts(this.supabase, rows)
+    this.platformByUuid = resolved.platformBySession
+    rows.splice(0, rows.length, ...resolved.rows)
 
     // SL/TP/manual broker closes leave DB trades "open" — reconcile before triggers.
     // Run every 5th tick (~7.5s) instead of every tick to avoid blocking the fire path.
@@ -1383,7 +1375,6 @@ export class VirtualPendingMonitor {
         tradeRowId
         && Number.isFinite(ticketNum)
         && ticketNum > 0
-        && hasFxsocketConfigured()
       ) {
         // Naked open (invalid-stops fallback or broker ignored stops): assign now.
         if (result.openedNaked && (desiredSl || desiredTp)) {
@@ -1829,7 +1820,6 @@ export class VirtualPendingMonitor {
     leg: Pick<PendingRow, 'user_id' | 'signal_id' | 'broker_account_id' | 'metaapi_account_id' | 'symbol' | 'is_buy'>,
     opts?: { forceLayeringRebalance?: boolean },
   ): Promise<void> {
-    if (!hasFxsocketConfigured()) return
 
     const { data: signalRow, error: signalErr } = await this.supabase
       .from('signals')

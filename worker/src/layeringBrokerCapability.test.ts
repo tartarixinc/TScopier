@@ -32,11 +32,12 @@ test('generic API object without FxSocket account is rejected', () => {
   assert.equal(result.reason, 'provider_unsupported')
 })
 
-test('MTAPI remains unsupported in Phase 1 even when methods are present', () => {
+test('MTAPI native layering remains unsupported even when methods are present', () => {
   const result = resolveNativePendingCapability({
     broker: {
       provider: 'mtapi',
       platform: 'MT5',
+      fxsocket_account_id: 'preserved-for-rollback',
       metaapi_account_id: 'future-session',
       connection_status: 'connected',
       trade_allowed: true,

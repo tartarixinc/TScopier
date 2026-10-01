@@ -3,11 +3,14 @@ import { clearChannelActiveTradeParamsWhenFlat } from './channelActiveTradeParam
 import { loadOpenTradesForManagement } from './managementScope'
 import type { ResolvedBrokerProvider } from './providerResolver'
 import { apiForBrokerAccount } from './providerResolver'
+import { authorityFromBrokerRow } from './brokerWriteAuthority'
 import { deleteRangePendingLegsForBasket } from './rangePendingLegDelete'
 import {
   cancelSignalEntryRowAtBroker,
   type SignalEntryPendingRow,
 } from './signalEntryPendingHelpers'
+import { closeWithVerification } from './managementClose'
+import { resolveCurrentLivePosition } from './livePositionIdentity'
 
 type CopyLimitFlattenResult = {
   closed: number
@@ -38,6 +41,9 @@ export async function flattenChannelTradesForCopyLimit(args: {
   metaapiAccountId: string
   platform: string
   provider?: string | null
+  writerEpoch: number
+  providerTransitionState: 'stable' | 'transition'
+  mtapiSessionId?: string | null
   channelId: string
   reason: string
 }): Promise<CopyLimitFlattenResult> {
@@ -48,7 +54,18 @@ export async function flattenChannelTradesForCopyLimit(args: {
     virtualLegsDeleted: 0,
   }
 
-  const api = apiForBrokerAccount(args.provider, args.metaapiAccountId)
+  const api = apiForBrokerAccount(
+    args.provider,
+    args.metaapiAccountId,
+    authorityFromBrokerRow({
+      id: args.brokerAccountId,
+      provider: args.provider,
+      mtapi_session_id: args.mtapiSessionId,
+      fxsocket_account_id: args.provider === 'mtapi' ? null : args.metaapiAccountId,
+      writer_epoch: args.writerEpoch,
+      provider_transition_state: args.providerTransitionState,
+    }),
+  )
   if (!api || !args.metaapiAccountId || args.metaapiAccountId.includes('|')) return result
 
   const trades = await loadOpenTradesForManagement(args.supabase, {
@@ -69,7 +86,25 @@ export async function flattenChannelTradesForCopyLimit(args: {
     const ticket = Number(trade.metaapi_order_id)
     if (!Number.isFinite(ticket) || ticket <= 0) continue
 
-    const ok = await closeBrokerTicket(api, args.metaapiAccountId, ticket)
+    let ok = false
+    if (trade.status === 'pending') {
+      ok = await closeBrokerTicket(api, args.metaapiAccountId, ticket)
+    } else {
+      try {
+        const resolution = await resolveCurrentLivePosition({
+          supabase: args.supabase,
+          api,
+          sessionId: args.metaapiAccountId,
+          trade,
+        })
+        if (resolution.status === 'resolved') {
+          const close = await closeWithVerification(api, args.metaapiAccountId, resolution.ticket, { liveFast: true })
+          ok = close.confirmed
+        }
+      } catch {
+        ok = false
+      }
+    }
     if (!ok) {
       result.failed += 1
       continue
@@ -109,7 +144,7 @@ export async function flattenChannelTradesForCopyLimit(args: {
       const cancelled = await cancelSignalEntryRowAtBroker(
         args.supabase,
         api,
-        row,
+        { ...row, metaapi_account_id: args.metaapiAccountId },
         args.reason,
       )
       if (cancelled.ok) result.pendingCancelled += 1

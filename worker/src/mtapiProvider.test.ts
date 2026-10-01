@@ -113,6 +113,17 @@ test('OpenedOrders failure and malformed success never become authoritative empt
   )
 })
 
+test('OpenedOrders rejects a successful but explicitly incomplete non-empty snapshot', async () => {
+  const api = provider(() => new Response(JSON.stringify({
+    orders: [{ ticket: 123, type: 0 }],
+    complete: false,
+  }), { status: 200 }))
+  await assert.rejects(
+    () => api.openedOrders('session'),
+    (error: unknown) => error instanceof MtapiApiError && error.code === 'INCOMPLETE_RESPONSE',
+  )
+})
+
 test('AccountSummary preserves synced=false and normalizes values', async () => {
   const api = provider(() => new Response(JSON.stringify({
     balance: 5000, equity: 0, currency: 'USD', synced: false,

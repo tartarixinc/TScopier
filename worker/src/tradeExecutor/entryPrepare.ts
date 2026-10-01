@@ -215,7 +215,6 @@ export async function prepareEntryExecution(
     return { ok: false, outcome: {} }
   }
   const liveEntryFast = sendOpts?.liveEntryFast === true
-  if (!hasFxsocketConfigured()) return { ok: false, outcome: {} }
   const api = ctx.apiFor(broker)
   if (!api) return { ok: false, outcome: {} }
   const uuid = brokerSessionUuid(broker)!
