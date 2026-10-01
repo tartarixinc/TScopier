@@ -9,6 +9,8 @@ import {
   cancelSignalEntryRowAtBroker,
   type SignalEntryPendingRow,
 } from './signalEntryPendingHelpers'
+import { closeWithVerification } from './managementClose'
+import { resolveCurrentLivePosition } from './livePositionIdentity'
 
 type CopyLimitFlattenResult = {
   closed: number
@@ -84,7 +86,25 @@ export async function flattenChannelTradesForCopyLimit(args: {
     const ticket = Number(trade.metaapi_order_id)
     if (!Number.isFinite(ticket) || ticket <= 0) continue
 
-    const ok = await closeBrokerTicket(api, args.metaapiAccountId, ticket)
+    let ok = false
+    if (trade.status === 'pending') {
+      ok = await closeBrokerTicket(api, args.metaapiAccountId, ticket)
+    } else {
+      try {
+        const resolution = await resolveCurrentLivePosition({
+          supabase: args.supabase,
+          api,
+          sessionId: args.metaapiAccountId,
+          trade,
+        })
+        if (resolution.status === 'resolved') {
+          const close = await closeWithVerification(api, args.metaapiAccountId, resolution.ticket, { liveFast: true })
+          ok = close.confirmed
+        }
+      } catch {
+        ok = false
+      }
+    }
     if (!ok) {
       result.failed += 1
       continue

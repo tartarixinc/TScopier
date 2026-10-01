@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
 import { MtapiClient } from "../_shared/mtapiClient.ts"
 import {
+  mtapiAccountModeFromSummary,
   ProviderTransitionError,
   transitionBrokerProvider,
   type BrokerProviderName,
@@ -63,6 +64,7 @@ Deno.serve(async (req: Request) => {
           await mtapi.checkConnect(sessionId, platform)
           const summary = await mtapi.accountSummary(sessionId, platform)
           if (!summary || Object.keys(summary).length === 0) throw new Error("MTAPI_VERIFY_FAILED")
+          return { accountMode: mtapiAccountModeFromSummary(summary) }
         },
         async begin(args) {
           const { data, error } = await supabase.rpc("begin_broker_provider_transition", {

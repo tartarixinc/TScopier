@@ -1,47 +1,11 @@
 import { purgeRangePendingLegsForBaskets } from '../rangePendingLegDelete'
 import { channelMatchesBrokerSignal } from '../brokerChannelFilter'
-import { hasFxsocketConfigured, type FxsocketBrokerClient } from '../fxsocketClient'
+import { hasFxsocketConfigured } from '../fxsocketClient'
+import { closeWithVerification } from '../managementClose'
+import { resolveCurrentLivePosition } from '../livePositionIdentity'
 import { brokerHasLinkedSession, brokerSessionUuid } from './helpers'
 import type { TradeExecutorContext } from './context'
 import type { BrokerRow, SignalRow } from './types'
-
-interface CloseVerificationResult {
-  confirmed: boolean
-  reason?: string
-}
-
-async function closeWithVerification(
-  api: FxsocketBrokerClient,
-  uuid: string,
-  ticket: number,
-): Promise<CloseVerificationResult> {
-  const maxAttempts = 2
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const slippage = 20 + (attempt - 1) * 50
-    const result = await api.orderClose(uuid, { ticket, slippage })
-    if (result.state && /^(rejected|cancelled|expired)/i.test(result.state)) {
-      if (attempt >= maxAttempts) {
-        return { confirmed: false, reason: `orderClose state=${result.state}` }
-      }
-      await new Promise(r => setTimeout(r, 300))
-      continue
-    }
-    await new Promise(r => setTimeout(r, 400))
-    try {
-      const openOrders = await api.openedOrders(uuid)
-      for (const raw of openOrders ?? []) {
-        if (!raw || typeof raw !== 'object') continue
-        const o = raw as Record<string, unknown>
-        const t = Number(o.ticket ?? o.Ticket ?? o.orderId ?? o.OrderID ?? 0)
-        if (t === ticket) return { confirmed: false, reason: 'ticket_still_open' }
-      }
-    } catch {
-      return { confirmed: true }
-    }
-    return { confirmed: true }
-  }
-  return { confirmed: false, reason: 'max_attempts' }
-}
 
 export async function closeBasketForRevisionDirectionFlip(
   ctx: TradeExecutorContext,
@@ -61,7 +25,7 @@ export async function closeBasketForRevisionDirectionFlip(
 
     const { data: openTrades, error } = await ctx.supabase
       .from('trades')
-      .select('id,metaapi_order_id,symbol,signal_id')
+      .select('id,metaapi_order_id,symbol,signal_id,direction,lot_size,entry_price')
       .eq('user_id', row.user_id)
       .eq('broker_account_id', broker.id)
       .eq('signal_id', row.id)
@@ -74,6 +38,9 @@ export async function closeBasketForRevisionDirectionFlip(
       metaapi_order_id: string | null
       symbol: string
       signal_id: string
+      direction: string
+      lot_size: number
+      entry_price: number | null
     }>) {
       const ticket = Number(trade.metaapi_order_id)
       if (!Number.isFinite(ticket) || ticket <= 0) {
@@ -81,7 +48,14 @@ export async function closeBasketForRevisionDirectionFlip(
         continue
       }
       try {
-        const result = await closeWithVerification(api, uuid, ticket)
+        const resolution = await resolveCurrentLivePosition({
+          supabase: ctx.supabase,
+          api,
+          sessionId: uuid,
+          trade,
+        })
+        if (resolution.status !== 'resolved') throw new Error(`close reconciliation required: ${resolution.reason}`)
+        const result = await closeWithVerification(api, uuid, resolution.ticket)
         if (!result.confirmed) {
           failed += 1
           await ctx.supabase.from('trade_execution_logs').insert({

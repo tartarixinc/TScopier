@@ -138,6 +138,10 @@ export class MtapiSessionManager {
         ids: knownRows.map(row => String(row.mtapi_session_id ?? '').trim()).filter(Boolean),
       }]
     for (const { platform, ids } of groups) {
+      if (platform === 'MT4') {
+        console.warn('[mtapiSession] orphan reconciliation skipped platform=MT4 endpoint unavailable')
+        continue
+      }
       try {
         await this.provider.disconnectOrphans(ids, true, platform)
         await this.provider.disconnectOrphans(ids, false, platform)

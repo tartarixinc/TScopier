@@ -1,6 +1,7 @@
 import { assert, assertEquals, assertRejects } from "https://deno.land/std@0.224.0/assert/mod.ts"
 import {
   ProviderTransitionError,
+  mtapiAccountModeFromSummary,
   transitionBrokerProvider,
   type ProviderTransitionDeps,
   type ProviderTransitionRow,
@@ -24,6 +25,7 @@ function baseRow(overrides: Partial<ProviderTransitionRow> = {}): ProviderTransi
 }
 
 function harness(initial = baseRow()) {
+  let accountMode: "hedging" | "netting" | "unknown" = "hedging"
   let row = { ...initial }
   let oldLeases = 0
   let verifyCalls = 0
@@ -35,6 +37,7 @@ function harness(initial = baseRow()) {
     async verifyMtapi() {
       verifyCalls += 1
       if (failVerifyAt === verifyCalls) throw new Error("verify failed")
+      return { accountMode }
     },
     async begin(args) {
       if (
@@ -82,6 +85,7 @@ function harness(initial = baseRow()) {
   }
   return {
     deps,
+    setAccountMode(value: "hedging" | "netting" | "unknown") { accountMode = value },
     logs,
     get row() { return row },
     get verifyCalls() { return verifyCalls },
@@ -155,4 +159,54 @@ Deno.test("lost finish response is resolved by authoritative reread without roll
   )
   assertEquals(result.provider, "mtapi")
   assertEquals(h.row.provider_transition_state, "stable")
+})
+
+Deno.test("MT5 hedging activation is accepted", async () => {
+  const h = harness()
+  h.setAccountMode("hedging")
+  const result = await transitionBrokerProvider(
+    { brokerAccountId: "broker-1", targetProvider: "mtapi" },
+    h.deps,
+  )
+  assertEquals(result.provider, "mtapi")
+})
+
+Deno.test("MT5 netting activation is rejected before provider cutover", async () => {
+  const h = harness()
+  h.setAccountMode("netting")
+  const error = await assertRejects(
+    () => transitionBrokerProvider({ brokerAccountId: "broker-1", targetProvider: "mtapi" }, h.deps),
+    ProviderTransitionError,
+  )
+  assertEquals(error.code, "MT5_NETTING_UNSUPPORTED")
+  assertEquals(h.row.provider, "fxsocket")
+  assertEquals(h.row.writer_epoch, 1)
+})
+
+Deno.test("MT5 activation fails closed when account mode is unavailable", async () => {
+  const h = harness()
+  h.setAccountMode("unknown")
+  const error = await assertRejects(
+    () => transitionBrokerProvider({ brokerAccountId: "broker-1", targetProvider: "mtapi" }, h.deps),
+    ProviderTransitionError,
+  )
+  assertEquals(error.code, "MT5_ACCOUNT_MODE_UNAVAILABLE")
+  assertEquals(h.row.provider, "fxsocket")
+})
+
+Deno.test("MT4 activation does not require an MT5 account mode", async () => {
+  const h = harness(baseRow({ platform: "MT4" }))
+  h.setAccountMode("unknown")
+  const result = await transitionBrokerProvider(
+    { brokerAccountId: "broker-1", targetProvider: "mtapi" },
+    h.deps,
+  )
+  assertEquals(result.provider, "mtapi")
+})
+
+Deno.test("account mode parser uses the authoritative MTAPI summary method", () => {
+  assertEquals(mtapiAccountModeFromSummary({ method: "Hedging" }), "hedging")
+  assertEquals(mtapiAccountModeFromSummary({ Method: "Netting" }), "netting")
+  assertEquals(mtapiAccountModeFromSummary({ method: "Exchange" }), "netting")
+  assertEquals(mtapiAccountModeFromSummary({}), "unknown")
 })

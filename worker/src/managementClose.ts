@@ -1,10 +1,12 @@
 import type { FxsocketBrokerClient } from './fxsocketClient'
-import { findOpenedRowByTicket } from './signalEntryPendingHelpers'
+import { resolveCanonicalOpenPosition } from './livePositionIdentity'
 
 export interface CloseVerificationResult {
   confirmed: boolean
   reason?: string
   attempts: number
+  ticket?: number
+  reconciliationRequired?: boolean
 }
 
 function mgmtCloseVerifySleepMs(liveFast: boolean): number {
@@ -26,7 +28,13 @@ export async function closeOrderFast(
   if (result.state && /^(rejected|cancelled|expired)/i.test(result.state)) {
     return { confirmed: false, reason: `orderClose state=${result.state}`, attempts: 1 }
   }
-  return { confirmed: true, attempts: 1 }
+  return {
+    confirmed: false,
+    reason: 'orderClose accepted but broker readback was skipped',
+    attempts: 1,
+    ticket,
+    reconciliationRequired: true,
+  }
 }
 
 export async function closeWithVerification(
@@ -37,28 +45,38 @@ export async function closeWithVerification(
 ): Promise<CloseVerificationResult> {
   const liveFast = opts.liveFast === true
   const verifySleepMs = mgmtCloseVerifySleepMs(liveFast)
-  if (liveFast && verifySleepMs === 0) {
-    const maxAttempts = opts.maxAttempts ?? 2
-    const slippageStep = opts.slippageEscalation ?? 50
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      const slippage = 20 + (attempt - 1) * slippageStep
-      const result = await closeOrderFast(api, uuid, ticket, slippage)
-      if (result.confirmed) return { ...result, attempts: attempt }
-      if (attempt >= maxAttempts) return result
-    }
-    return { confirmed: false, reason: 'exhausted attempts', attempts: maxAttempts }
-  }
 
   const maxAttempts = opts.maxAttempts ?? 2
   const slippageStep = opts.slippageEscalation ?? 50
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+  let effectiveTicket = ticket
+  try {
+    const before = await api.openedOrders(uuid)
+    const resolved = resolveCanonicalOpenPosition({
+      trade: { id: 'close-verification', metaapi_order_id: String(ticket) },
+      openedOrders: before,
+    })
+    if (resolved.status !== 'resolved') {
+      return {
+        confirmed: false,
+        reason: `close reconciliation required: ${resolved.reason}`,
+        attempts: 0,
+        ticket,
+        reconciliationRequired: true,
+      }
+    }
+    effectiveTicket = resolved.ticket
+  } catch {
+    return { confirmed: false, reason: 'close pre-readback failed', attempts: 0, ticket, reconciliationRequired: true }
+  }
+
     const slippage = 20 + (attempt - 1) * slippageStep
-    const result = await api.orderClose(uuid, { ticket, slippage })
+    const result = await api.orderClose(uuid, { ticket: effectiveTicket, slippage })
 
     if (result.state && /^(rejected|cancelled|expired)/i.test(result.state)) {
       if (attempt >= maxAttempts) {
-        return { confirmed: false, reason: `orderClose state=${result.state}`, attempts: attempt }
+        return { confirmed: false, reason: `orderClose state=${result.state}`, attempts: attempt, ticket: effectiveTicket }
       }
       await new Promise(r => setTimeout(r, 300))
       continue
@@ -68,20 +86,47 @@ export async function closeWithVerification(
       await new Promise(r => setTimeout(r, verifySleepMs))
     }
 
-    let stillOpen = false
+    let after: unknown[]
     try {
-      const openOrders = await api.openedOrders(uuid)
-      stillOpen = findOpenedRowByTicket(openOrders ?? [], ticket) != null
+      after = await api.openedOrders(uuid)
     } catch {
-      return { confirmed: true, attempts: attempt }
+      return {
+        confirmed: false,
+        reason: 'close broker readback failed',
+        attempts: attempt,
+        ticket: effectiveTicket,
+        reconciliationRequired: true,
+      }
+    }
+    if (after.length === 0) {
+      return {
+        confirmed: false,
+        reason: 'close broker readback was empty; reconciliation required',
+        attempts: attempt,
+        ticket: effectiveTicket,
+        reconciliationRequired: true,
+      }
     }
 
-    if (!stillOpen) {
-      return { confirmed: true, attempts: attempt }
+    const afterResolution = resolveCanonicalOpenPosition({
+      trade: { id: 'close-verification', metaapi_order_id: String(effectiveTicket) },
+      openedOrders: after,
+    })
+    if (afterResolution.status === 'missing') {
+      return { confirmed: true, attempts: attempt, ticket: effectiveTicket }
+    }
+    if (afterResolution.status === 'ambiguous') {
+      return {
+        confirmed: false,
+        reason: `close reconciliation required: ${afterResolution.reason}`,
+        attempts: attempt,
+        ticket: effectiveTicket,
+        reconciliationRequired: true,
+      }
     }
 
     if (attempt >= maxAttempts) {
-      return { confirmed: false, reason: 'ticket still open after orderClose + verification', attempts: attempt }
+      return { confirmed: false, reason: 'ticket still open after orderClose + verification', attempts: attempt, ticket: effectiveTicket }
     }
     await new Promise(r => setTimeout(r, 300))
   }

@@ -14,9 +14,15 @@ export type ProviderTransitionRow = {
   platform: string | null
 }
 
+export type MtapiAccountMode = "hedging" | "netting" | "unknown"
+
+export type MtapiVerification = {
+  accountMode: MtapiAccountMode
+}
+
 export type ProviderTransitionDeps = {
   load(brokerAccountId: string): Promise<ProviderTransitionRow | null>
-  verifyMtapi(sessionId: string, platform: "MT4" | "MT5"): Promise<void>
+  verifyMtapi(sessionId: string, platform: "MT4" | "MT5"): Promise<MtapiVerification>
   begin(args: {
     brokerAccountId: string
     expectedProvider: BrokerProviderName
@@ -64,6 +70,33 @@ function platformOf(row: ProviderTransitionRow): "MT4" | "MT5" {
     throw new ProviderTransitionError("Broker platform is invalid.", 409, "PLATFORM_INVALID")
   }
   return value
+}
+
+export function mtapiAccountModeFromSummary(summary: Record<string, unknown>): MtapiAccountMode {
+  const raw = String(summary.method ?? summary.Method ?? "").trim().toLowerCase()
+  if (raw.includes("hedg")) return "hedging"
+  if (raw.includes("net") || raw.includes("exchange")) return "netting"
+  return "unknown"
+}
+
+function assertMtapiActivationMode(
+  platform: "MT4" | "MT5",
+  verification: MtapiVerification,
+): void {
+  if (platform === "MT4") return
+  if (verification.accountMode === "hedging") return
+  if (verification.accountMode === "netting") {
+    throw new ProviderTransitionError(
+      "MT5 netting accounts are not supported for MTAPI activation.",
+      409,
+      "MT5_NETTING_UNSUPPORTED",
+    )
+  }
+  throw new ProviderTransitionError(
+    "MT5 account mode is unavailable; MTAPI activation requires authoritative hedging confirmation.",
+    409,
+    "MT5_ACCOUNT_MODE_UNAVAILABLE",
+  )
 }
 
 function publicResult(row: ProviderTransitionRow) {
@@ -116,7 +149,9 @@ export async function transitionBrokerProvider(
     ) {
       throw new ProviderTransitionError("MTAPI preparation is incomplete.", 409, "MTAPI_NOT_PREPARED")
     }
-    await deps.verifyMtapi(mtapiSession, platformOf(initial))
+    const platform = platformOf(initial)
+    const verification = await deps.verifyMtapi(mtapiSession, platform)
+    assertMtapiActivationMode(platform, verification)
   } else if (!sessionFor(initial, "fxsocket")) {
     throw new ProviderTransitionError("Preserved FXSocket session is missing.", 409, "FXSOCKET_SESSION_MISSING")
   }
@@ -171,7 +206,9 @@ export async function transitionBrokerProvider(
         || fenced.mtapi_status !== "connected"
         || !String(fenced.broker_password_encrypted ?? "").trim()
       ) throw new ProviderTransitionError("MTAPI preparation changed during transition.", 409, "MTAPI_NOT_PREPARED")
-      await deps.verifyMtapi(mtapiSession, platformOf(fenced))
+      const platform = platformOf(fenced)
+      const verification = await deps.verifyMtapi(mtapiSession, platform)
+      assertMtapiActivationMode(platform, verification)
     } else if (!sessionFor(fenced, "fxsocket")) {
       throw new ProviderTransitionError("Preserved FXSocket session changed during transition.", 409, "FXSOCKET_SESSION_MISSING")
     }

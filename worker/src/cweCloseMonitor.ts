@@ -4,6 +4,8 @@ import {
   brokerRuntimeForAccount,
   loadBrokerApiByAccountId,
 } from './mtApiByAccount'
+import { closeWithVerification } from './managementClose'
+import { resolveCurrentLivePosition } from './livePositionIdentity'
 import {
   applyShardToQuery,
   hasWorkOnShard,
@@ -36,12 +38,11 @@ import { isUserCopierPausedCached } from './copierPause'
  *   buy  → close when bid  >= cwe_close_price   (long basket reached +X pips profit)
  *   sell → close when ask  <= cwe_close_price   (short basket reached +X pips profit)
  *
- * Failure handling: a /OrderClose that returns "trade not found" / "already
- * closed" is treated as success — the trade is updated to status='closed'
- * and cwe_close_price is cleared. Any other error leaves the row in place
- * for the next tick to retry. We never throw out of the tick loop.
+ * Failure handling: no broker error text is proof of closure. Unconfirmed or
+ * ambiguous closes restore the watch for a later canonical reconciliation.
  *
  * Cadence: 1.5s, same as VirtualPendingMonitor. Cheap because the partial
+  entry_price: number | null
  * index `trades_cwe_open_idx` keeps the working set tiny — most signals
  * have no CWE basket, and the basket clears on first hit.
  */
@@ -131,7 +132,7 @@ export class CweCloseMonitor {
       this.supabase,
       this.supabase
         .from('trades')
-        .select('id,user_id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,lot_size,cwe_close_price')
+        .select('id,user_id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,lot_size,entry_price,cwe_close_price')
         .eq('status', 'open')
         .not('cwe_close_price', 'is', null)
         .limit(500),
@@ -276,16 +277,26 @@ export class CweCloseMonitor {
     const isBuy = String(trade.direction).toLowerCase() === 'buy'
     const refPrice = isBuy ? bid : ask
     try {
-      const result = await api.orderClose(uuid, {
-        ticket: ticketNum,
-        lots: trade.lot_size ?? 0,
-        // Leaving price=0 lets the broker fill at market — same behavior as
-        // a manual close from the terminal. We *report* refPrice in logs for
-        // diagnostics only.
+      const identity = await resolveCurrentLivePosition({
+        supabase: this.supabase,
+        api,
+        sessionId: uuid,
+        trade,
       })
+      if (identity.status !== 'resolved') {
+        throw new Error(`canonical position unresolved (${identity.status}:${identity.reason})`)
+      }
+      const effectiveTicket = identity.ticket
+      const result = await closeWithVerification(api, uuid, effectiveTicket, {
+        maxAttempts: 2,
+        liveFast: process.env.LIVE_FAST_CLOSE === 'true',
+      })
+      if (!result.confirmed) {
+        throw new Error(`close ambiguous; reconciliation required (${result.reason ?? 'unconfirmed'})`)
+      }
       const latencyMs = Date.now() - t0
       console.log(
-        `[cweCloseMonitor] closed signal=${trade.signal_id ?? 'n/a'} symbol=${trade.symbol} ticket=${ticketNum}`
+        `[cweCloseMonitor] closed signal=${trade.signal_id ?? 'n/a'} symbol=${trade.symbol} ticket=${effectiveTicket}`
         + ` threshold=${trade.cwe_close_price} ref=${refPrice} latency=${latencyMs}ms`,
       )
       await this.supabase
@@ -299,13 +310,13 @@ export class CweCloseMonitor {
         action: 'cwe_close',
         status: 'success',
         request_payload: {
-          ticket: ticketNum,
+          ticket: effectiveTicket,
           symbol: trade.symbol,
           direction: trade.direction,
           threshold: trade.cwe_close_price,
           ref_price: refPrice,
         } as unknown as Record<string, unknown>,
-        response_payload: { ticket: result.ticket, latency_ms: latencyMs },
+        response_payload: { ticket: result.ticket ?? effectiveTicket, latency_ms: latencyMs },
       })
       if (trade.signal_id && trade.broker_account_id) {
         await stopRangeLayeringUnlessEnabled(
@@ -322,32 +333,6 @@ export class CweCloseMonitor {
       return true
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      // "trade not found" / "position already closed" — treat as success,
-      // the trade is gone either way. Conservative match list so we never
-      // swallow a real error.
-      const benign = /not\s+found|already\s+closed|invalid\s+ticket|no\s+such\s+order|unknown\s+ticket/i.test(msg)
-      if (benign) {
-        console.log(
-          `[cweCloseMonitor] trade already gone signal=${trade.signal_id ?? 'n/a'} ticket=${ticketNum}: ${msg}`,
-        )
-        await this.supabase
-          .from('trades')
-          .update({ status: 'closed', closed_at: new Date().toISOString() })
-          .eq('id', trade.id)
-        if (trade.signal_id && trade.broker_account_id) {
-          await stopRangeLayeringUnlessEnabled(
-            this.supabase,
-            {
-              signalId: trade.signal_id,
-              brokerAccountId: trade.broker_account_id,
-              symbol: trade.symbol,
-              userId: trade.user_id,
-            },
-            'cwe_close_benign',
-          )
-        }
-        return true
-      }
       console.error(
         `[cweCloseMonitor] close failed signal=${trade.signal_id ?? 'n/a'} ticket=${ticketNum}: ${msg}`,
       )

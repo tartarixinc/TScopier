@@ -22,6 +22,7 @@ import {
   loadBrokerApiByAccountId,
   type BrokerApiByAccountId,
 } from './mtApiByAccount'
+import { resolveCurrentLivePosition } from './livePositionIdentity'
 import {
   applyShardToQuery,
   hasWorkOnShard,
@@ -376,8 +377,18 @@ export class AutoManagementMonitor {
     }
 
     try {
+      const resolution = await resolveCurrentLivePosition({
+        supabase: this.supabase,
+        api,
+        sessionId: uuid,
+        trade,
+      })
+      if (resolution.status !== 'resolved') {
+        throw new Error(`automatic management reconciliation required: ${resolution.reason}`)
+      }
+      const effectiveTicket = resolution.ticket
       await api.orderModify(uuid, {
-        ticket: ticketNum,
+        ticket: effectiveTicket,
         stoploss: modifySl,
         takeprofit: modifyTp,
       })
@@ -387,12 +398,12 @@ export class AutoManagementMonitor {
         const closeLots = +(lots * (halfClosePercent / 100)).toFixed(2)
         if (closeLots >= 0.01) {
           try {
-            await api.orderClose(uuid, { ticket: ticketNum, lots: closeLots })
+            await api.orderClose(uuid, { ticket: effectiveTicket, lots: closeLots })
             remainingLots = Math.max(0, +(lots - closeLots).toFixed(2))
           } catch (halfErr) {
             const msg = halfErr instanceof Error ? halfErr.message : String(halfErr)
             console.warn(
-              `[autoManagementMonitor] half close failed trade=${trade.id} ticket=${ticketNum}: ${msg}`,
+              `[autoManagementMonitor] half close failed trade=${trade.id} ticket=${effectiveTicket}: ${msg}`,
             )
           }
         }
@@ -424,7 +435,7 @@ export class AutoManagementMonitor {
         action: 'auto_be',
         status: 'success',
         request_payload: {
-          ticket: ticketNum,
+          ticket: effectiveTicket,
           symbol: trade.symbol,
           direction: trade.direction,
           mode,
@@ -444,15 +455,8 @@ export class AutoManagementMonitor {
       const benign = /not\s+found|already\s+closed|invalid\s+ticket|no\s+such\s+order|unknown\s+ticket/i.test(msg)
       if (benign) {
         this.failureLogCooldownUntil.delete(trade.id)
-        await this.supabase
-          .from('trades')
-          .update({
-            status: 'closed',
-            closed_at: new Date().toISOString(),
-            auto_be_applied_at: new Date().toISOString(),
-          })
-          .eq('id', trade.id)
-        return null
+        console.warn(`[autoManagementMonitor] broker identity/close state ambiguous trade=${trade.id}; deferring to reconciliation`)
+        return false
       }
       console.warn(`[autoManagementMonitor] apply failed trade=${trade.id} ticket=${ticketNum}: ${msg}`)
       const now = Date.now()

@@ -15,6 +15,7 @@ import {
   type BrokerApiByAccountId,
 } from './mtApiByAccount'
 import { stopRangeLayeringUnlessEnabled } from './rangeLayerTillClose'
+import { resolveCurrentLivePosition } from './livePositionIdentity'
 import { isUserCopierPausedCached } from './copierPause'
 
 /**
@@ -63,6 +64,10 @@ interface ParentTradeRow {
   id: string
   metaapi_order_id: string | null
   status: string
+  symbol: string
+  direction: string
+  lot_size: number
+  entry_price: number | null
 }
 
 const ACTIVE_MS = monitorActiveIntervalMs('PARTIAL_TP_TICK_MS', 400)
@@ -297,7 +302,7 @@ export class PartialTpMonitor {
     // (no position to slice) so the row doesn't keep retrying forever.
     const { data: parent } = await this.supabase
       .from('trades')
-      .select('id,metaapi_order_id,status')
+      .select('id,metaapi_order_id,status,symbol,direction,lot_size,entry_price')
       .eq('id', partial.trade_id)
       .maybeSingle()
     const parentRow = (parent ?? null) as ParentTradeRow | null
@@ -320,15 +325,25 @@ export class PartialTpMonitor {
     const t0 = Date.now()
     const refPrice = partial.is_buy ? bid : ask
     try {
+      const resolution = await resolveCurrentLivePosition({
+        supabase: this.supabase,
+        api,
+        sessionId,
+        trade: parentRow,
+      })
+      if (resolution.status !== 'resolved') {
+        throw new Error(`partial close reconciliation required: ${resolution.reason}`)
+      }
+      const effectiveTicket = resolution.ticket
       const result = await api.orderClose(sessionId, {
-        ticket: ticketNum,
+        ticket: effectiveTicket,
         lots: partial.close_lots,
         // price=0 lets the broker fill at market (same as a manual partial
         // close from the terminal). refPrice is reported in logs only.
       })
       const latencyMs = Date.now() - t0
       console.log(
-        `[partialTpMonitor] partial fired signal=${partial.signal_id} symbol=${partial.symbol} ticket=${ticketNum}`
+        `[partialTpMonitor] partial fired signal=${partial.signal_id} symbol=${partial.symbol} ticket=${effectiveTicket}`
         + ` TP${partial.tp_idx}@${partial.trigger_price} ref=${refPrice} close=${partial.close_lots} latency=${latencyMs}ms`,
       )
       await this.supabase
@@ -372,30 +387,13 @@ export class PartialTpMonitor {
       const benign = isPartialTpBenignBrokerError(msg)
       if (benign) {
         console.log(
-          `[partialTpMonitor] parent gone signal=${partial.signal_id} ticket=${ticketNum}: ${msg}`,
+          `[partialTpMonitor] close ambiguous signal=${partial.signal_id} ticket=${ticketNum}: ${msg}`,
         )
         await this.supabase
-          .from('trades')
-          .update({ status: 'closed', closed_at: new Date().toISOString() })
-          .eq('id', partial.trade_id)
-          .eq('status', 'open')
-        await this.supabase
           .from('partial_tp_legs')
-          .update({ status: 'cancelled', fired_at: new Date().toISOString(), error_message: msg })
+          .update({ status: 'pending', claimed_at: null, claimed_by: null, error_message: `reconciliation required: ${msg}` })
           .eq('id', partial.id)
-        if (partial.signal_id && partial.broker_account_id) {
-          await stopRangeLayeringUnlessEnabled(
-            this.supabase,
-            {
-              signalId: partial.signal_id,
-              brokerAccountId: partial.broker_account_id,
-              symbol: partial.symbol,
-              userId: partial.user_id,
-            },
-            'partial_tp_parent_gone',
-          )
-        }
-        return true
+        return false
       }
       console.error(
         `[partialTpMonitor] fire failed partial=${partial.id} ticket=${ticketNum}: ${msg}`,

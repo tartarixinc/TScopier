@@ -7,12 +7,18 @@ import { MtapiSessionManager } from './mtapiSessionManager'
 
 const oldBase = process.env.MTAPI_BASE_URL
 const oldKey = process.env.BROKER_CREDENTIALS_ENCRYPTION_KEY
+const oldMt4Url = process.env.MTAPI_MT4_BASE_URL
+const oldMt5Url = process.env.MTAPI_MT5_BASE_URL
 
 afterEach(() => {
   if (oldBase == null) delete process.env.MTAPI_BASE_URL
   else process.env.MTAPI_BASE_URL = oldBase
   if (oldKey == null) delete process.env.BROKER_CREDENTIALS_ENCRYPTION_KEY
   else process.env.BROKER_CREDENTIALS_ENCRYPTION_KEY = oldKey
+  if (oldMt4Url == null) delete process.env.MTAPI_MT4_BASE_URL
+  else process.env.MTAPI_MT4_BASE_URL = oldMt4Url
+  if (oldMt5Url == null) delete process.env.MTAPI_MT5_BASE_URL
+  else process.env.MTAPI_MT5_BASE_URL = oldMt5Url
 })
 
 test('credential encryption round-trips without embedding plaintext', () => {
@@ -125,4 +131,109 @@ test('provisioning loses activation race without persisting or leaking the new s
   await manager.provisionNewAccounts()
 
   assert.deepEqual(disconnected, ['new-mtapi-session'])
+})
+
+test('orphan reconciliation skips MT4 because the MT4 bridge has no bulk cleanup', async () => {
+  process.env.MTAPI_BASE_URL = 'https://mtapi.test'
+  process.env.MTAPI_MT4_BASE_URL = 'https://mt4.test'
+  process.env.MTAPI_MT5_BASE_URL = 'https://mt5.test'
+  const rows = [{
+    id: 'broker-1',
+    mtapi_session_id: 'mt4-token',
+    account_login: '123',
+    broker_server: 'Server',
+    platform: 'MT4',
+    broker_password_encrypted: null,
+    auto_reconnect_enabled: false,
+  }, {
+    id: 'broker-2',
+    mtapi_session_id: 'mt5-token',
+    account_login: '456',
+    broker_server: 'Server',
+    platform: 'MT5',
+    broker_password_encrypted: null,
+    auto_reconnect_enabled: false,
+  }]
+  const query = {
+    select() { return this },
+    eq() { return this },
+    is() { return this },
+    not() { return this },
+    then(resolve: (value: unknown) => unknown) {
+      return Promise.resolve({ data: rows, error: null }).then(resolve)
+    },
+  }
+  const supabase = { from: () => query } as unknown as SupabaseClient
+  const reconciled: Array<{ ids: string[]; dryRun: boolean; platform: string }> = []
+  const provider = {
+    setRecoveryHandler() { },
+    seedPlatformCache() { },
+    async ensureConnected() { },
+    async disconnectOrphans(ids: string[], dryRun: boolean, platform: string) {
+      reconciled.push({ ids, dryRun, platform })
+    },
+  } as unknown as MtapiProvider
+
+  const manager = new MtapiSessionManager(supabase, provider)
+  await manager.start()
+  manager.stop()
+
+  assert.deepEqual(reconciled, [
+    { ids: ['mt5-token'], dryRun: true, platform: 'MT5' },
+    { ids: ['mt5-token'], dryRun: false, platform: 'MT5' },
+  ])
+})
+
+test('orphan reconciliation protects prepared MTAPI sessions on FXSocket accounts', async () => {
+  process.env.MTAPI_BASE_URL = 'https://mtapi.test'
+  process.env.MTAPI_MT4_BASE_URL = 'https://mt4.test'
+  process.env.MTAPI_MT5_BASE_URL = 'https://mt5.test'
+  const activeRows = [{
+    id: 'broker-active',
+    provider: 'mtapi',
+    mtapi_session_id: 'active-token',
+    platform: 'MT5',
+  }]
+  const allSessionRows = [{
+    id: 'broker-prepared',
+    provider: 'fxsocket',
+    mtapi_session_id: 'prepared-token',
+    platform: 'MT5',
+  }, ...activeRows]
+  let fromCalls = 0
+  const supabase = {
+    from() {
+      fromCalls += 1
+      const data = fromCalls === 1 ? activeRows : fromCalls === 2 ? allSessionRows : []
+      return {
+        select() { return this },
+        update() { return this },
+        eq() { return this },
+        is() { return this },
+        not() { return this },
+        then(resolve: (value: unknown) => unknown) {
+          return Promise.resolve({ data, error: null }).then(resolve)
+        },
+      }
+    },
+  } as unknown as SupabaseClient
+  const reconciled: Array<{ ids: string[]; dryRun: boolean; platform: string }> = []
+  const provider = {
+    setRecoveryHandler() { },
+    seedPlatformCache() { },
+    async ensureConnected() { },
+    async accountSummary() { return {} },
+    async disconnectOrphans(ids: string[], dryRun: boolean, platform: string) {
+      reconciled.push({ ids, dryRun, platform })
+    },
+  } as unknown as MtapiProvider
+
+  const manager = new MtapiSessionManager(supabase, provider)
+  await manager.start()
+  manager.stop()
+
+  assert.deepEqual(reconciled, [
+    { ids: ['prepared-token', 'active-token'], dryRun: true, platform: 'MT5' },
+    { ids: ['prepared-token', 'active-token'], dryRun: false, platform: 'MT5' },
+  ])
 })

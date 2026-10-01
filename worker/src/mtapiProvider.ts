@@ -2,7 +2,7 @@ import type {
   AccountSummary, FxsocketMtStatus, FxsocketTerminalStatus, MtPlatform,
   OrderCloseArgs, OrderModifyArgs, OrderResult, OrderSendArgs, QuoteResult, SymbolParams,
 } from './fxsocketClient'
-import { normalizeOrderResponse, isTransientMtApiError, isOrderOpTimedOutMessage } from './fxsocketClient'
+import { normalizeOrderResponse, isTransientMtApiError, isOrderOpTimedOutMessage, orderListResponseIsIncomplete } from './fxsocketClient'
 import type { BrokerProvider } from './brokerProvider'
 import { ingestMtHistoryRows, type MtHistoryProfile } from './mtTradeFields'
 import { auditOrderClose } from './orderCloseAudit'
@@ -211,9 +211,11 @@ export class MtapiProvider implements BrokerProvider {
     id: string; server: string; login: string; password: string; platform?: MtPlatform
   }): Promise<string> {
     const platform = args.platform ?? this.platform(args.id)
-    const body = await this.request('ConnectEx', {
+    const params: Record<string, string | number | boolean> = {
       user: args.login, password: args.password, server: args.server,
-    }, { platform })
+    }
+    if (platform === 'MT4') params.downloadOrderHistory = true
+    const body = await this.request('ConnectEx', params, { platform })
     const token = String(body ?? '').trim().replace(/^["']|["']$/g, '')
     if (!token) throw new MtapiApiError('MTAPI ConnectEx returned no session token', 502, 'INVALID_RESPONSE')
     this.seedPlatformCache(token, platform)
@@ -225,9 +227,11 @@ export class MtapiProvider implements BrokerProvider {
     id?: string; login: string; password: string; host: string; port: number; platform?: MtPlatform
   }): Promise<string> {
     const platform = args.platform ?? this.platform(args.id ?? '')
-    const body = await this.request('Connect', {
+    const params: Record<string, string | number | boolean> = {
       user: args.login, password: args.password, host: args.host, port: args.port,
-    }, { platform })
+    }
+    if (platform === 'MT4') params.downloadOrderHistory = true
+    const body = await this.request('Connect', params, { platform })
     const token = String(body ?? '').trim().replace(/^["']|["']$/g, '')
     if (!token) throw new MtapiApiError('MTAPI Connect returned no session token', 502, 'INVALID_RESPONSE')
     this.seedPlatformCache(token, platform)
@@ -307,8 +311,6 @@ export class MtapiProvider implements BrokerProvider {
   async orderSend(id: string, args: OrderSendArgs): Promise<OrderResult> {
     const release = await tradeOpGate.acquire(id, perAccountTradeConcurrency())
     try {
-      const platform = this.platform(id)
-      const endpoint = platform === 'MT5' ? 'OrderSendSafe' : 'OrderSend'
       const params: Record<string, string | number> = {
         symbol: args.symbol,
         operation: args.operation,
@@ -320,8 +322,8 @@ export class MtapiProvider implements BrokerProvider {
       if (args.slippage != null) params.slippage = args.slippage
       if (args.comment) params.comment = args.comment
 
-      const raw = await this.requestWithRetry(endpoint, params, id, platform === 'MT5')
-      return normalizeOrderResponse(raw)
+      const raw = await this.requestWithRetry('OrderSendSafe', params, id, this.platform(id) === 'MT5')
+      return normalizeOrderResponse(raw, { platform: this.platform(id), operation: args.operation })
     } finally {
       release()
     }
@@ -330,8 +332,6 @@ export class MtapiProvider implements BrokerProvider {
   async orderModify(id: string, args: OrderModifyArgs): Promise<OrderResult> {
     const release = await tradeOpGate.acquire(id, perAccountTradeConcurrency())
     try {
-      const platform = this.platform(id)
-      const endpoint = platform === 'MT5' ? 'OrderModifySafe' : 'OrderModify'
       const params: Record<string, string | number> = {
         ticket: args.ticket,
       }
@@ -339,8 +339,8 @@ export class MtapiProvider implements BrokerProvider {
       if (args.takeprofit != null) params.takeprofit = args.takeprofit
       if (args.price != null) params.price = args.price
 
-      const raw = await this.requestWithRetry(endpoint, params, id)
-      return normalizeOrderResponse(raw)
+      const raw = await this.requestWithRetry('OrderModifySafe', params, id)
+      return normalizeOrderResponse(raw, { platform: this.platform(id) })
     } finally {
       release()
     }
@@ -349,17 +349,15 @@ export class MtapiProvider implements BrokerProvider {
   async orderClose(id: string, args: OrderCloseArgs): Promise<OrderResult> {
     const release = await tradeOpGate.acquire(id, perAccountTradeConcurrency())
     try {
-      const platform = this.platform(id)
-      const endpoint = platform === 'MT5' ? 'OrderCloseSafe' : 'OrderClose'
       const params: Record<string, string | number> = {
         ticket: args.ticket,
       }
-      if (args.lots != null && args.lots > 0) params.volume = args.lots
+      if (args.lots != null && args.lots > 0) params.lots = args.lots
       if (args.price != null && args.price > 0) params.price = args.price
       if (args.slippage != null) params.slippage = args.slippage
 
-      const raw = await this.requestWithRetry(endpoint, params, id)
-      const result = normalizeOrderResponse(raw)
+      const raw = await this.requestWithRetry('OrderCloseSafe', params, id)
+      const result = normalizeOrderResponse(raw, { platform: this.platform(id) })
       auditOrderClose({
         source: 'mtapi',
         accountId: id,
@@ -419,6 +417,9 @@ export class MtapiProvider implements BrokerProvider {
 
   async openedOrders(id: string): Promise<unknown[]> {
     const raw = await this.readRequest('OpenedOrders', {}, id)
+    if (orderListResponseIsIncomplete(raw)) {
+      throw new MtapiApiError('OpenedOrders returned an incomplete response', 502, 'INCOMPLETE_RESPONSE')
+    }
     return list(raw, ['orders', 'Orders'], 'OpenedOrders')
   }
 
@@ -538,11 +539,12 @@ export class MtapiProvider implements BrokerProvider {
   }
 
   async quote(id: string, symbol: string): Promise<QuoteResult> {
-    const row = object(await this.readRequest('GetQuote', { symbol }, id))
+    const endpoint = this.platform(id) === 'MT4' ? 'Quote' : 'GetQuote'
+    const row = object(await this.readRequest(endpoint, { symbol }, id))
     const bid = numberValue(row.bid ?? row.Bid)
     const ask = numberValue(row.ask ?? row.Ask)
     if (bid == null || ask == null || bid <= 0 || ask <= 0) {
-      throw new MtapiApiError('GetQuote returned invalid prices', 502, 'INVALID_RESPONSE')
+      throw new MtapiApiError(endpoint + ' returned invalid prices', 502, 'INVALID_RESPONSE')
     }
     return {
       symbol: String(row.symbol ?? row.Symbol ?? symbol),

@@ -28,31 +28,12 @@ test('isPositionGoneCloseError: real failures stay non-benign', () => {
   assert.equal(isPositionGoneCloseError('HTTP 500'), false)
 })
 
-test('reconcileGoneNewsTrade: marks an open trade closed', async () => {
-  let updated: Record<string, unknown> | null = null
-  let eqFilter: unknown[] = []
+test('reconcileGoneNewsTrade: unknown ticket alone leaves the trade open', async () => {
   const supabase = {
-    from: () => ({
-      update: (patch: Record<string, unknown>) => {
-        updated = patch
-        const builder = {
-          eq: (col: string, val: unknown) => {
-            eqFilter.push([col, val])
-            return eqFilter.length >= 2
-              ? { select: async () => ({ data: [{ id: 'trade-1' }], error: null }) }
-              : builder
-          },
-        }
-        return builder
-      },
-    }),
+    from: () => { throw new Error('identity uncertainty must not mutate the trade') },
   }
   const ok = await reconcileGoneNewsTrade(supabase as never, 'trade-1')
-  assert.equal(ok, true)
-  const upd = (updated ?? {}) as { status?: string; closed_at?: string }
-  assert.equal(upd.status, 'closed')
-  assert.ok(upd.closed_at)
-  assert.deepEqual(eqFilter, [['id', 'trade-1'], ['status', 'open']])
+  assert.equal(ok, false)
 })
 
 test('reconcileGoneNewsTrade: reports false when the row is not open', async () => {
