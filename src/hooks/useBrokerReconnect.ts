@@ -122,7 +122,11 @@ export function useBrokerReconnect(opts: {
         return next
       })
     }
-  }, [requestPassword])
+    // opts.brokers is a dependency because the provider lookups above read the
+    // current list. Without it the callback keeps the first render's opts —
+    // brokers still [] — so provider resolves to undefined and the request is
+    // routed to the FxSocket edge function even for MTAPI accounts.
+  }, [requestPassword, opts.brokers])
 
   const isReconnecting = useCallback(
     (brokerId: string) => reconnectingBrokerIds.has(brokerId),
