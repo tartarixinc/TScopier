@@ -4,6 +4,7 @@ import { test } from 'node:test'
 import type { ParsedSignal } from '../types'
 import type { BasketMergeLinkContext } from '../../signalMergeLink'
 import {
+  anchorParsedIsCompleteEntry,
   isUnlinkedCompleteEntryMerge,
   revisionRefreshWithoutOpenBasketOutcome,
 } from './mergeRouting'
@@ -102,6 +103,77 @@ test('market-now teaser completion remains eligible for merge handling', () => {
     ...stefanSignal4,
     raw_instruction: 'Gold buy now 4441 - 4436\nSL 4531\nTP 4446',
   }, link()), false)
+})
+
+test('market-now entry into a complete-entry anchor is not merge-eligible', () => {
+  assert.equal(isUnlinkedCompleteEntryMerge({
+    ...stefanSignal4,
+    raw_instruction: 'Gold buy now 4441 - 4436\nSL 4531\nTP 4446',
+  }, link(), { anchorIsCompleteEntry: true }), true)
+})
+
+test('market-now entry into a teaser anchor stays merge-eligible', () => {
+  assert.equal(isUnlinkedCompleteEntryMerge({
+    ...stefanSignal4,
+    raw_instruction: 'Gold buy now 4441 - 4436\nSL 4531\nTP 4446',
+  }, link(), { anchorIsCompleteEntry: false }), false)
+})
+
+test('entry-shaped follow-up with no stops into a complete-entry anchor is not merge-eligible', () => {
+  assert.equal(isUnlinkedCompleteEntryMerge({
+    action: 'buy',
+    symbol: 'XAUUSD',
+    entry_price: 4175.41,
+    entry_zone_low: null,
+    entry_zone_high: null,
+    sl: null,
+    tp: [],
+    lot_size: null,
+    raw_instruction: 'Order : Buy\nEntry Price : 4175.41',
+  }, link(), { anchorIsCompleteEntry: true }), true)
+})
+
+test('entry-shaped follow-up with no stops into a teaser anchor is not merge-eligible', () => {
+  assert.equal(isUnlinkedCompleteEntryMerge({
+    action: 'sell',
+    symbol: 'XAUUSD',
+    entry_price: 4165.79,
+    entry_zone_low: null,
+    entry_zone_high: null,
+    sl: null,
+    tp: [],
+    lot_size: null,
+    raw_instruction: 'Order : Sell\nEntry Price : 4165.79\nOrder Type : Instant\nStop Loss : 0.00',
+  }, link(), { anchorIsCompleteEntry: false }), true)
+})
+
+test('anchorParsedIsCompleteEntry classifies anchor shapes', () => {
+  // Complete entry: explicit entry price.
+  assert.equal(anchorParsedIsCompleteEntry({
+    action: 'buy', symbol: 'XAUUSD', entry_price: 4176.16,
+    entry_zone_low: null, entry_zone_high: null, sl: null, tp: [], lot_size: null,
+  } as ParsedSignal), true)
+  // Complete entry: stops but no price (market entry with stops).
+  assert.equal(anchorParsedIsCompleteEntry({
+    action: 'buy', symbol: 'XAUUSD', entry_price: null,
+    entry_zone_low: null, entry_zone_high: null, sl: 4150, tp: [4165], lot_size: null,
+  } as ParsedSignal), true)
+  // Teaser: direction only, no price and no stops.
+  assert.equal(anchorParsedIsCompleteEntry({
+    action: 'buy', symbol: 'XAUUSD', entry_price: null,
+    entry_zone_low: null, entry_zone_high: null, sl: null, tp: [], lot_size: null,
+  } as ParsedSignal), false)
+  // Unknown shapes are not classified.
+  assert.equal(anchorParsedIsCompleteEntry({ action: 'ignore' } as ParsedSignal), undefined)
+  assert.equal(anchorParsedIsCompleteEntry({} as ParsedSignal), undefined)
+  assert.equal(anchorParsedIsCompleteEntry(null), undefined)
+})
+
+test('reply-linked follow-up into a complete-entry anchor stays merge-eligible', () => {
+  assert.equal(isUnlinkedCompleteEntryMerge({
+    ...stefanSignal4,
+    raw_instruction: 'Gold buy now 4441 - 4436\nSL 4531\nTP 4446',
+  }, link({ replyOk: true }), { anchorIsCompleteEntry: true }), false)
 })
 
 test('SL-only management refresh remains eligible for merge handling', () => {

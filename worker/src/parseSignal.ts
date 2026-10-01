@@ -1297,6 +1297,14 @@ function parseChannelParameterFollowUp(
   }
 }
 
+/**
+ * Maximum ratio of an inferred (unlabelled) stop/target price to the entry price.
+ * Real stops/targets sit within a few percent of entry; this only exists to reject
+ * identity numbers (order ids) that leak into price extraction. Applied as an upper
+ * bound only, so deep-but-legitimate stops are never dropped.
+ */
+const INFERRED_PRICE_MAX_ENTRY_RATIO = 10
+
 function applyDirectionalPriceInference(
   parsed: ChannelParsedSignal,
   rawMessage: string,
@@ -1317,10 +1325,19 @@ function applyDirectionalPriceInference(
   )
   if (!bare.length) return parsed
 
+  // A bare price is only a plausible stop/target when it is not far above the entry.
+  // `filterPlausibleInstrumentPrices` has a floor but no ceiling, so an order id or
+  // other large unlabelled number could otherwise be classified as a price.
+  const entryRef = entryReferenceFromParsed(parsed)
+  const bounded = entryRef != null && entryRef > 0
+    ? bare.filter(p => p <= entryRef * INFERRED_PRICE_MAX_ENTRY_RATIO)
+    : bare
+  if (!bounded.length) return parsed
+
   const classified = classifyPricesByDirection(
     action as TradeDirection,
-    entryReferenceFromParsed(parsed),
-    bare,
+    entryRef,
+    bounded,
   )
 
   return {

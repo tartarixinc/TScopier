@@ -48,6 +48,42 @@ test('classifyPricesByDirection: buy without entry uses min as SL', () => {
   assert.deepEqual(tp, [98, 102])
 })
 
+test('extractUnlabeledPrices skips order identity numbers (ID / Order / Ticket)', () => {
+  assert.deepEqual(
+    extractUnlabeledPrices([
+      'Type : New Order',
+      'ID : 719904880',
+      'Order : Buy',
+      'Entry Price : 4175.41',
+      'Stop Loss : 0.00',
+      'Take Profit : 0.00',
+    ].join('\n')),
+    [],
+  )
+  assert.deepEqual(
+    extractUnlabeledPrices('Ticket #481670416 opened at market'),
+    [],
+  )
+  assert.deepEqual(extractUnlabeledPrices('Order : 4176'), [])
+  assert.deepEqual(extractUnlabeledPrices('Buy order 4176'), [])
+  assert.deepEqual(extractUnlabeledPrices('Ref: 99'), [])
+  // Legitimate bare prices must survive the identity filter.
+  assert.deepEqual(extractUnlabeledPrices('Bid 4176'), [4176])
+  assert.deepEqual(extractUnlabeledPrices('Trade at 4176'), [4176])
+  // The sell card from the incident: the order id must not become a stop loss.
+  assert.deepEqual(
+    extractUnlabeledPrices([
+      'Type : New Order',
+      'ID : 720325281',
+      'Order : Sell',
+      'Entry Price : 4165.79',
+      'Stop Loss : 0.00',
+      'Take Profit : 0.00',
+    ].join('\n')),
+    [],
+  )
+})
+
 test('extractUnlabeledPrices skips labeled SL/TP/entry', () => {
   const msg = `Gold sell now
 TP: 4557 / 4527

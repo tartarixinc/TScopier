@@ -83,18 +83,90 @@ function storedIntentHasMarketNow(parsed: ParsedSignal): boolean {
   return storedIntent(parsed)?.flags?.market_now === true
 }
 
-export function isUnlinkedCompleteEntryMerge(parsed: ParsedSignal, link: BasketMergeLinkContext): boolean {
-  if (!parsedSignalHasExplicitStops(parsed)) return false
+export function isUnlinkedCompleteEntryMerge(
+  parsed: ParsedSignal,
+  link: BasketMergeLinkContext,
+  options: { anchorIsCompleteEntry?: boolean } = {},
+): boolean {
   if (
     !parsedHasExplicitEntryAnchor(parsed)
     && !storedIntentHasExplicitEntryAnchor(parsed)
     && !rawInstructionHasExplicitEntryAnchor(parsed.raw_instruction)
   ) return false
+  // Reply / thread / parent / same-message-edit links are explicit follow-ups and
+  // may always refresh the basket.
+  if (
+    link.replyOk
+    || link.threadLinksAnchor
+    || link.parentLinksAnchor
+    || link.sameSignalRefresh
+  ) return false
+  // If the basket's anchor was itself a complete entry, a later entry-shaped
+  // message is an independent order and must not be folded into it. This holds
+  // regardless of market-now wording: "instant execution" describes how an order
+  // fills, not whether it completes an earlier signal.
+  if (options.anchorIsCompleteEntry === true) return true
+  // Teaser completion: the only remaining way to merge an entry-shaped message into
+  // a price-less anchor is by supplying stops with market-now wording. A message
+  // that carries an entry price but no stops supplies nothing, so it is treated as
+  // an independent order even against a teaser anchor.
+  if (!parsedSignalHasExplicitStops(parsed)) return true
   if (messageHasMarketNowIntent(String(parsed.raw_instruction ?? '')) || storedIntentHasMarketNow(parsed)) return false
-  return !link.replyOk
-    && !link.threadLinksAnchor
-    && !link.parentLinksAnchor
-    && !link.sameSignalRefresh
+  return true
+}
+
+/**
+ * Whether an anchor signal's parsed data describes a complete entry (it carried an
+ * explicit entry price and/or stops) rather than a price-less "teaser". Returns
+ * undefined when the shape is not a recognised entry (missing data, or a
+ * non-buy/sell action), so callers can decide the default.
+ */
+export function anchorParsedIsCompleteEntry(
+  parsed: (ParsedSignal & { action?: unknown }) | null | undefined,
+): boolean | undefined {
+  if (!parsed || typeof parsed !== 'object') return undefined
+  const action = String((parsed as { action?: unknown }).action ?? '').toLowerCase()
+  if (action !== 'buy' && action !== 'sell') return undefined
+  return parsedHasExplicitEntryAnchor(parsed)
+    || storedIntentHasExplicitEntryAnchor(parsed)
+    || parsedSignalHasExplicitStops(parsed)
+}
+
+/**
+ * Loads the anchor signal and reports whether it was a complete entry. When the
+ * anchor cannot be read the result is treated as a complete entry (block the merge
+ * and open a new trade), which matches the documented default: open a new trade
+ * unless the anchor is proven to be a teaser. The failure is logged so it is not
+ * silent.
+ */
+async function loadAnchorIsCompleteEntry(
+  ctx: TradeExecutorContext,
+  signal: SignalRow,
+  anchorSignalId: string,
+): Promise<boolean> {
+  try {
+    const { data, error } = await ctx.supabase
+      .from('signals')
+      .select('parsed_data')
+      .eq('id', anchorSignalId)
+      .eq('user_id', signal.user_id)
+      .maybeSingle()
+    if (error) {
+      console.warn(
+        `[tradeExecutor] anchor completeness read failed; treating anchor as complete`
+        + ` signal=${signal.id} anchor=${anchorSignalId} err=${error.message}`,
+      )
+      return true
+    }
+    const parsed = (data as { parsed_data?: Record<string, unknown> | null } | null)?.parsed_data
+    return anchorParsedIsCompleteEntry(parsed as ParsedSignal | null | undefined) ?? true
+  } catch (err) {
+    console.warn(
+      `[tradeExecutor] anchor completeness read threw; treating anchor as complete`
+      + ` signal=${signal.id} anchor=${anchorSignalId} err=${(err as Error)?.message ?? String(err)}`,
+    )
+    return true
+  }
 }
 
 export async function tryParameterFollowUpMergeModifyOnly(ctx: TradeExecutorContext, args: {
@@ -214,7 +286,13 @@ export async function tryParameterFollowUpMergeModifyOnly(ctx: TradeExecutorCont
       newestTradeOpenedAt: anchor.newestOpenedAt,
       parsed,
     })
-    const unlinkedCompleteEntryMerge = isUnlinkedCompleteEntryMerge(parsed, link)
+    const explicitlyLinked =
+      link.replyOk || link.threadLinksAnchor || link.parentLinksAnchor || link.sameSignalRefresh
+    const unlinkedCompleteEntryMerge = isUnlinkedCompleteEntryMerge(parsed, link, {
+      anchorIsCompleteEntry: explicitlyLinked
+        ? undefined
+        : await loadAnchorIsCompleteEntry(ctx, signal, anchor.anchorSignalId),
+    })
     if (!sameSignalRefresh && unlinkedCompleteEntryMerge) {
       console.warn(
         `[tradeExecutor] modify-only merge skipped for unlinked complete entry signal=${signal.id}`
@@ -445,7 +523,13 @@ export async function tryMergeSignalIntoExistingOpenTrade(ctx: TradeExecutorCont
       newestTradeOpenedAt: newest.opened_at,
       parsed,
     })
-    const unlinkedCompleteEntryMerge = isUnlinkedCompleteEntryMerge(parsed, link)
+    const explicitlyLinked =
+      link.replyOk || link.threadLinksAnchor || link.parentLinksAnchor || link.sameSignalRefresh
+    const unlinkedCompleteEntryMerge = isUnlinkedCompleteEntryMerge(parsed, link, {
+      anchorIsCompleteEntry: explicitlyLinked
+        ? undefined
+        : await loadAnchorIsCompleteEntry(ctx, signal, anchorSignalId),
+    })
     if (unlinkedCompleteEntryMerge) {
       console.warn(
         `[tradeExecutor] merge skipped for unlinked complete entry signal=${signal.id}`

@@ -234,7 +234,18 @@ export function parseForexBroManagementMessage(message: string): ForexBroParseRe
 
 /** True when a bare numeric token is a provider signal id (Signal #898), not a price. */
 export function isProviderSignalNumberToken(message: string, index: number, rawToken: string): boolean {
-  const before = String(message ?? '').slice(Math.max(0, index - 24), index)
-  return /(?:new\s+signal|signal|صفقة\s+(?:رقم|حديثة))\s*#\s*$/i.test(before)
-    && /^\d{1,6}$/.test(String(rawToken).replace(/,/g, ''))
+  const before = String(message ?? '').slice(Math.max(0, index - 32), index)
+  const digits = String(rawToken).replace(/,/g, '')
+  if (
+    /(?:new\s+signal|signal|صفقة\s+(?:رقم|حديثة))\s*#\s*$/i.test(before)
+    && /^\d{1,6}$/.test(digits)
+  ) {
+    return true
+  }
+  // Order identity labels ("ID : 719904880", "Order 123", "Ticket #456", "Ref: 99").
+  // These are provider/order identifiers, never prices.
+  if (/\b(?:id|order(?:\s*id)?|ticket|ref(?:erence)?|trade(?:\s*id)?)\s*[:#=]?\s*$/i.test(before)) {
+    return /^\d+$/.test(digits)
+  }
+  return false
 }
