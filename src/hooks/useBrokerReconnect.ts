@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { BrokerAccount } from '../types/database'
 import { fxsocketBroker } from '../lib/fxsocketBroker'
 import { brokerCanReconnect } from '../lib/brokerReconnect'
@@ -38,10 +38,15 @@ export function useBrokerReconnect(opts: {
   const onSuccessRef = useRef(opts.onSuccess)
   const upsertBrokerRef = useRef(opts.upsertBroker)
   const reconnectFailedLabelRef = useRef(opts.reconnectFailedLabel)
-  onErrorRef.current = opts.onError
-  onSuccessRef.current = opts.onSuccess
-  upsertBrokerRef.current = opts.upsertBroker
-  reconnectFailedLabelRef.current = opts.reconnectFailedLabel
+  // Keep the refs on the latest callbacks while reconnectBroker stays stable
+  // (its deps are intentional). Synced after render; the refs are only read
+  // inside async callbacks, never during render.
+  useEffect(() => {
+    onErrorRef.current = opts.onError
+    onSuccessRef.current = opts.onSuccess
+    upsertBrokerRef.current = opts.upsertBroker
+    reconnectFailedLabelRef.current = opts.reconnectFailedLabel
+  })
 
   const brokersNeedingReconnect = useMemo(
     () => opts.brokers.filter(brokerCanReconnect),
