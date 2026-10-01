@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState, type FormEvent } from '
 import { createPortal } from 'react-dom'
 import { CheckCircle2, Loader2, AlertTriangle, RefreshCw, X } from 'lucide-react'
 import type { BrokerAccount } from '../../types/database'
+import type { ReconnectDialogStage } from '../../lib/migrationPrompt'
 import { useOverlayDismiss } from '../../hooks/useOverlayDismiss'
 import { PasswordInput } from '../auth/PasswordInput'
 import { Button } from '../ui/Button'
@@ -25,12 +26,7 @@ export interface BrokerReconnectPasswordModalCopy {
   reconnect: string
   cancel: string
   back?: string
-  /** Stage: waiting on the broker bridge after a successful sign-in. */
-  connectingTitle?: string
-  connectingBody?: string
-  /** Stage: the account reconnected — shown before the dialog moves on. */
-  successTitle?: string
-  successBody?: string
+  /** Stage `success`: the action button — "Next account" or "Done". */
   successAction?: string
 }
 
@@ -38,13 +34,11 @@ interface BrokerReconnectPasswordModalProps {
   open: boolean
   broker: BrokerAccount | null
   /**
-   * `details` — stage 1: account details and an explanation, no password field.
-   * `password` — stage 2: the password form. The caller owns the stage because
-   * it also owns which prompt (migration or session-expiry) is showing.
-   * `connecting` — sign-in accepted, waiting for the broker bridge.
-   * `success` — the account reconnected; shown before the dialog advances.
+   * The caller owns the stage because it also owns which prompt (migration,
+   * session-expiry, in-flight attempt, success confirmation) is showing.
+   * See `ReconnectDialogStage` in `src/lib/migrationPrompt.ts`.
    */
-  stage: 'details' | 'password' | 'connecting' | 'success'
+  stage: ReconnectDialogStage
   copy: BrokerReconnectPasswordModalCopy
   onSubmit: (payload: { password: string; rememberPassword: boolean }) => void
   onCancel: () => void
@@ -80,10 +74,19 @@ function BrokerReconnectPasswordModalInner({
   const backdropRef = useRef<HTMLDivElement>(null)
   const scrollLockRef = useRef<string | null>(null)
   const ignoreDismiss = useCallback(() => {}, [])
+  // The effects below need the latest cancel handler without re-running when
+  // the caller recreates it (health polling would steal focus on every poll).
+  const onCancelRef = useRef(onCancel)
+  useEffect(() => {
+    onCancelRef.current = onCancel
+  })
+  const stableCancel = useCallback(() => {
+    onCancelRef.current()
+  }, [])
   const { onOverlayMouseDown, onOverlayClick } = useOverlayDismiss(
     overlayRef,
     backdropRef,
-    dismissible ? onCancel : ignoreDismiss,
+    dismissible ? stableCancel : ignoreDismiss,
   )
 
   useEffect(() => {
@@ -92,7 +95,7 @@ function BrokerReconnectPasswordModalInner({
       return
     }
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && dismissible) onCancel()
+      if (e.key === 'Escape' && dismissible) onCancelRef.current()
     }
     document.addEventListener('keydown', handleKey)
     const focusTimer = window.setTimeout(() => {
@@ -105,7 +108,7 @@ function BrokerReconnectPasswordModalInner({
       document.removeEventListener('keydown', handleKey)
       window.clearTimeout(focusTimer)
     }
-  }, [open, stage, onCancel, dismissible])
+  }, [open, stage, dismissible])
 
   useEffect(() => {
     if (!open) {
@@ -170,7 +173,12 @@ function BrokerReconnectPasswordModalInner({
             >
               {headerIcon}
             </div>
-            <div className="min-w-0 flex-1">
+            <div
+              className="min-w-0 flex-1"
+              {...(stage === 'connecting' || stage === 'success'
+                ? { role: 'status' as const }
+                : {})}
+            >
               <h2
                 id="broker-reconnect-password-title"
                 className="text-base font-semibold text-neutral-900 dark:text-neutral-50"
@@ -277,34 +285,14 @@ function BrokerReconnectPasswordModalInner({
             </form>
           )}
 
-          {stage === 'connecting' && (
-            <div
-              role="status"
-              className="flex items-center gap-3 rounded-lg border border-neutral-100 bg-neutral-50 px-3 py-3 dark:border-neutral-800 dark:bg-neutral-800/50"
-            >
-              <Loader2
-                className="h-4 w-4 shrink-0 animate-spin text-amber-600 dark:text-amber-400"
-                aria-hidden
-              />
-              <p className="text-sm leading-relaxed text-neutral-600 dark:text-neutral-300">
-                {copy.connectingBody}
-              </p>
-            </div>
-          )}
-
+          {/* `connecting` has no footer: the header spinner and body text
+              carry the waiting state — a second copy of the same sentence
+              below would just print it twice. */}
           {stage === 'success' && (
-            <div className="space-y-4">
-              <div
-                role="status"
-                className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
-              >
-                {copy.successBody}
-              </div>
-              <div className="flex justify-end pt-1">
-                <Button type="button" onClick={onContinue}>
-                  {copy.successAction ?? copy.reconnect}
-                </Button>
-              </div>
+            <div className="flex justify-end pt-1">
+              <Button type="button" onClick={onContinue}>
+                {copy.successAction ?? copy.reconnect}
+              </Button>
             </div>
           )}
         </div>

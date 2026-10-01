@@ -4,6 +4,7 @@ import {
   isMigrationSwitchCase,
   isPromptDismissible,
   pickPromptBroker,
+  resolveReconnectDialog,
   routeReconnectError,
 } from './migrationPrompt'
 
@@ -107,5 +108,67 @@ describe('routeReconnectError', () => {
     const dialog: string[] = []
     routeReconnectError('Unauthorized', { dialog: message => dialog.push(message), page: null })
     expect(dialog).toEqual(['Unauthorized'])
+  })
+})
+
+describe('resolveReconnectDialog', () => {
+  const none = {
+    passwordPrompt: null,
+    success: null,
+    inflight: null,
+    errorAnchor: null,
+    migrationPrompt: null,
+  }
+  const a = broker({ id: 'a' })
+  const b = broker({ id: 'b' })
+  const c = broker({ id: 'c' })
+  const d = broker({ id: 'd' })
+  const e = broker({ id: 'e' })
+
+  it('shows the password prompt above everything else', () => {
+    expect(resolveReconnectDialog({
+      ...none,
+      passwordPrompt: a,
+      success: b,
+      inflight: c,
+      errorAnchor: d,
+      migrationPrompt: e,
+    })).toEqual({ active: a, stage: 'password' })
+  })
+
+  it('confirms a success before any in-flight or failed attempt', () => {
+    expect(resolveReconnectDialog({
+      ...none,
+      success: a,
+      inflight: b,
+      errorAnchor: c,
+      migrationPrompt: d,
+    })).toEqual({ active: a, stage: 'success' })
+  })
+
+  it('stays on the account still waiting for the bridge instead of advancing', () => {
+    expect(resolveReconnectDialog({
+      ...none,
+      inflight: a,
+      errorAnchor: b,
+      migrationPrompt: c,
+    })).toEqual({ active: a, stage: 'connecting' })
+  })
+
+  it('keeps a failed attempt on screen even when its row is off the needs-reconnect list', () => {
+    expect(resolveReconnectDialog({
+      ...none,
+      errorAnchor: a,
+      migrationPrompt: b,
+    })).toEqual({ active: a, stage: 'details' })
+  })
+
+  it('falls through to the automatic prompt for the next account', () => {
+    expect(resolveReconnectDialog({ ...none, migrationPrompt: a }))
+      .toEqual({ active: a, stage: 'details' })
+  })
+
+  it('resolves to a closed dialog when nothing is active', () => {
+    expect(resolveReconnectDialog(none)).toEqual({ active: null, stage: 'details' })
   })
 })

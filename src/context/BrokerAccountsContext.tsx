@@ -26,6 +26,7 @@ import {
   isMigrationSwitchCase,
   isPromptDismissible,
   pickPromptBroker,
+  resolveReconnectDialog,
   routeReconnectError,
 } from '../lib/migrationPrompt'
 
@@ -170,9 +171,13 @@ export function BrokerAccountsProvider({
   // moves on to the next account or closes. Cleared when the customer
   // continues or dismisses the confirmation.
   const [reconnectSuccessId, setReconnectSuccessId] = useState<string | null>(null)
+  // A reconnect the customer started, kept so a failure can still anchor the
+  // dialog after the account's row leaves the needs-reconnect list (a
+  // mid-connect `pending` row is not on it). Cleared on cancel and on success.
+  const [reconnectAttemptId, setReconnectAttemptId] = useState<string | null>(null)
 
   const {
-    reconnectBroker,
+    reconnectBroker: reconnectBrokerBase,
     reconnectingBrokerIds,
     brokersNeedingReconnect,
     isReconnecting,
@@ -196,6 +201,15 @@ export function BrokerAccountsProvider({
     },
   })
 
+  // Every entry point (dialog, config page) records its attempt, so a failure
+  // can always anchor the dialog even after the row leaves the
+  // needs-reconnect list. Starting a new attempt also clears the last error.
+  const reconnectBroker = useCallback(async (brokerId: string) => {
+    setReconnectAttemptId(brokerId)
+    setReconnectError(null)
+    return reconnectBrokerBase(brokerId)
+  }, [reconnectBrokerBase])
+
   const noopClear = useCallback(async () => ({ error: null as string | null }), [])
 
   const migrationPromptBroker = useMemo(
@@ -212,47 +226,77 @@ export function BrokerAccountsProvider({
   const inflightBroker = inflightBrokerId
     ? (brokers.find(b => b.id === inflightBrokerId) ?? null)
     : null
+  // A failed attempt keeps the dialog open on its account even when the row
+  // is mid-connect (`pending`) and therefore off the needs-reconnect list —
+  // otherwise the error would land behind a dialog that just closed.
+  const errorAnchor =
+    reconnectError && reconnectAttemptId
+      ? (brokers.find(b => b.id === reconnectAttemptId) ?? null)
+      : null
 
-  const activeBroker =
-    passwordPromptBroker ?? successBroker ?? inflightBroker ?? migrationPromptBroker
-  const modalStage: 'details' | 'password' | 'connecting' | 'success' = passwordPromptBroker
-    ? 'password'
-    : successBroker
-      ? 'success'
-      : inflightBroker
-        ? 'connecting'
-        : 'details'
+  const { active: activeBroker, stage: modalStage } = resolveReconnectDialog({
+    passwordPrompt: passwordPromptBroker,
+    success: successBroker,
+    inflight: inflightBroker,
+    errorAnchor,
+    migrationPrompt: migrationPromptBroker,
+  })
+
   // The wording follows the cause, not which prompt happens to be open.
   const migrationCopy = isMigrationSwitchCase(activeBroker)
   // Only a dialog the customer opened themselves may be closed. The automatic
-  // prompt is stuck until the account reconnects.
-  const modalDismissible = isPromptDismissible(brokersNeedingReconnect, activeBroker)
+  // prompt is stuck until the account reconnects. While the bridge is working
+  // there is nothing to cancel, so it is forced shut — an X or Escape that
+  // does nothing is worse than no X at all.
+  const modalDismissible =
+    modalStage === 'connecting'
+      ? false
+      : isPromptDismissible(brokersNeedingReconnect, activeBroker)
 
-  const handleModalCancel = () => {
-    if (passwordPromptBroker) cancelPasswordPrompt()
+  // The handlers read the latest brokers through refs so their identity stays
+  // stable while health polling replaces the list: a fresh identity re-runs
+  // the dialog's focus effect and steals focus on every poll.
+  const passwordPromptBrokerRef = useRef(passwordPromptBroker)
+  const successBrokerRef = useRef(successBroker)
+  const activeBrokerRef = useRef(activeBroker)
+  useEffect(() => {
+    passwordPromptBrokerRef.current = passwordPromptBroker
+    successBrokerRef.current = successBroker
+    activeBrokerRef.current = activeBroker
+  })
+
+  const handleModalCancel = useCallback(() => {
+    if (passwordPromptBrokerRef.current) cancelPasswordPrompt()
+    setReconnectError(null)
+    setReconnectAttemptId(null)
     setReconnectSuccessId(null)
-  }
+  }, [cancelPasswordPrompt])
 
-  const handleModalBack = () => {
+  const handleModalBack = useCallback(() => {
     // Abort the password prompt only — the details stage stays up, and nothing
     // is suppressed, so the customer can step forward again.
-    if (passwordPromptBroker) cancelPasswordPrompt()
-  }
+    if (passwordPromptBrokerRef.current) cancelPasswordPrompt()
+  }, [cancelPasswordPrompt])
 
-  const handleModalContinue = () => {
+  const handleModalContinue = useCallback(() => {
     setReconnectError(null)
     // Success confirmation: clear it and fall through to the next account, or
     // close the dialog when none are left.
-    if (successBroker) {
+    if (successBrokerRef.current) {
       setReconnectSuccessId(null)
+      setReconnectAttemptId(null)
       return
     }
-    if (migrationPromptBroker) void reconnectBroker(migrationPromptBroker.id)
-  }
+    // The active account covers both the automatic prompt and a failed
+    // attempt's retry (its row may be pending, so the prompt is not there).
+    const active = activeBrokerRef.current
+    if (active) void reconnectBroker(active.id)
+  }, [reconnectBroker])
 
-  // On the success confirmation, the button name follows what comes next.
+  // On the success confirmation, the button name follows what comes next
+  // (paused accounts cannot be advanced to, so they do not count).
   const hasMoreAfterSuccess = reconnectSuccessId
-    ? brokersNeedingReconnect.some(b => b.id !== reconnectSuccessId)
+    ? brokersNeedingReconnect.some(b => b.id !== reconnectSuccessId && b.is_active !== false)
     : false
 
   const modalCopy = useMemo(() => {
@@ -267,26 +311,20 @@ export function BrokerAccountsProvider({
       reconnect: bl.reconnect,
       cancel: t.common.cancel,
       back: bl.reconnectMigrationBack,
-    }
-    const progress = {
-      connectingTitle: bl.reconnectConnectingTitle,
-      connectingBody: bl.reconnectConnectingBody,
-      successTitle: bl.reconnectSuccessTitle,
-      successBody: bl.reconnectSuccessBody,
       successAction: hasMoreAfterSuccess ? bl.reconnectSuccessNext : bl.reconnectSuccessDone,
     }
     if (modalStage === 'connecting') {
-      return { title: bl.reconnectConnectingTitle, body: bl.reconnectConnectingBody, ...progress, ...shared }
+      return { title: bl.reconnectConnectingTitle, body: bl.reconnectConnectingBody, ...shared }
     }
     if (modalStage === 'success') {
-      return { title: bl.reconnectSuccessTitle, body: bl.reconnectSuccessBody, ...progress, ...shared }
+      return { title: bl.reconnectSuccessTitle, body: bl.reconnectSuccessBody, ...shared }
     }
     if (!migrationCopy) {
-      return { title: bl.reconnectPasswordTitle, body: bl.reconnectPasswordBody, ...progress, ...shared }
+      return { title: bl.reconnectPasswordTitle, body: bl.reconnectPasswordBody, ...shared }
     }
     return modalStage === 'password'
-      ? { title: bl.reconnectMigrationPasswordTitle, body: bl.reconnectMigrationPasswordBody, ...progress, ...shared }
-      : { title: bl.reconnectMigrationTitle, body: bl.reconnectMigrationBody, ...progress, ...shared }
+      ? { title: bl.reconnectMigrationPasswordTitle, body: bl.reconnectMigrationPasswordBody, ...shared }
+      : { title: bl.reconnectMigrationTitle, body: bl.reconnectMigrationBody, ...shared }
   }, [bl, migrationCopy, modalStage, t.common.cancel, hasMoreAfterSuccess])
 
   const value = useMemo(
@@ -336,9 +374,10 @@ export function BrokerAccountsProvider({
   return (
     <BrokerAccountsContext.Provider value={value}>
       {children}
-      {/* Remount on stage change so the password field always starts empty. */}
+      {/* Remount on stage or account change so the password field always
+          starts empty — never carry one account's password to another. */}
       <BrokerReconnectPasswordModal
-        key={modalStage}
+        key={`${modalStage}:${activeBroker?.id ?? ''}`}
         open={activeBroker != null}
         broker={activeBroker}
         stage={modalStage}

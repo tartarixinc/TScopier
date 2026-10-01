@@ -50,7 +50,7 @@ export function isPromptDismissible(
  * The page registers its own handler (a toast or a banner), but the automatic
  * prompt sits on top of that page and cannot be dismissed — so a message sent
  * only to the page is hidden behind the dialog and the customer sees nothing
- * happen at all. The dialog always gets the message; the page does too, for
+ * happen at all. The dialog always gets the message; the page too, for
  * when the prompt is closed and the banner is readable.
  */
 export function routeReconnectError(
@@ -62,4 +62,40 @@ export function routeReconnectError(
 ): void {
   targets.dialog(message)
   targets.page?.(message)
+}
+
+/**
+ * The reconnect dialog's four faces:
+ * - `details` — stage 1: account details and the Reconnect button;
+ * - `password` — stage 2: the password form;
+ * - `connecting` — sign-in accepted, waiting on the broker bridge;
+ * - `success` — the account reconnected, confirmed before the dialog moves on.
+ */
+export type ReconnectDialogStage = 'details' | 'password' | 'connecting' | 'success'
+
+/**
+ * Which account the dialog is about and which stage it shows.
+ *
+ * Precedence, highest first:
+ * 1. an open password prompt — the customer is typing, nothing outranks it;
+ * 2. a success to confirm — shown before the dialog advances or closes;
+ * 3. an attempt still waiting on the bridge — the dialog stays on that
+ *    account instead of jumping ahead to the next one;
+ * 4. a failed attempt's account — anchored even when its row is mid-connect
+ *    (`pending`) and therefore no longer on the needs-reconnect list, so the
+ *    error is never shown behind a dialog that just closed;
+ * 5. the automatic prompt for the next account that needs reconnecting.
+ */
+export function resolveReconnectDialog<T extends { id: string }>(args: {
+  passwordPrompt: T | null
+  success: T | null
+  inflight: T | null
+  errorAnchor: T | null
+  migrationPrompt: T | null
+}): { active: T | null; stage: ReconnectDialogStage } {
+  if (args.passwordPrompt) return { active: args.passwordPrompt, stage: 'password' }
+  if (args.success) return { active: args.success, stage: 'success' }
+  if (args.inflight) return { active: args.inflight, stage: 'connecting' }
+  if (args.errorAnchor) return { active: args.errorAnchor, stage: 'details' }
+  return { active: args.migrationPrompt, stage: 'details' }
 }

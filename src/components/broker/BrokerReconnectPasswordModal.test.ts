@@ -23,10 +23,6 @@ const copy = {
   reconnect: 'Reconnect',
   cancel: 'Cancel',
   back: 'Back',
-  connectingTitle: 'Connecting your account',
-  connectingBody: 'Sign-in accepted. Waiting for the broker bridge — this can take a moment.',
-  successTitle: 'Account connected',
-  successBody: 'Connected. Copying resumes automatically.',
   successAction: 'Next account',
 }
 
@@ -183,9 +179,15 @@ describe('BrokerReconnectPasswordModal — password stage', () => {
 })
 
 describe('BrokerReconnectPasswordModal — connecting stage', () => {
-  it('shows the waiting message with no form and no buttons', () => {
-    render({ stage: 'connecting', dismissible: false })
-    expect(document.body.textContent).toContain('Waiting for the broker bridge')
+  it('shows the waiting message exactly once with no form and no buttons', () => {
+    const waiting = 'Sign-in accepted. Waiting for the broker bridge — this can take a moment.'
+    render({
+      stage: 'connecting',
+      dismissible: false,
+      copy: { ...copy, title: 'Connecting your account', body: waiting },
+    })
+    // Exactly once: the header carries the message, nothing repeats it below.
+    expect(document.body.textContent?.split(waiting).length - 1).toBe(1)
     expect(document.querySelector('[role="status"]')).not.toBeNull()
     expect(document.getElementById('broker-reconnect-password')).toBeNull()
     expect(buttonByLabel('Reconnect')).toBeNull()
@@ -194,10 +196,16 @@ describe('BrokerReconnectPasswordModal — connecting stage', () => {
 })
 
 describe('BrokerReconnectPasswordModal — success stage', () => {
-  it('confirms the connection and continues on the action button', () => {
+  it('confirms the connection exactly once and continues on the action button', () => {
+    const confirmation = 'Connected. Copying resumes automatically.'
     const onContinue = vi.fn()
-    render({ stage: 'success', dismissible: false, onContinue })
-    expect(document.body.textContent).toContain('Connected. Copying resumes automatically.')
+    render({
+      stage: 'success',
+      dismissible: false,
+      onContinue,
+      copy: { ...copy, title: 'Account connected', body: confirmation },
+    })
+    expect(document.body.textContent?.split(confirmation).length - 1).toBe(1)
     expect(document.querySelector('[role="status"]')).not.toBeNull()
     buttonByLabel('Next account')?.click()
     expect(onContinue).toHaveBeenCalledTimes(1)

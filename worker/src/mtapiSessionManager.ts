@@ -167,7 +167,23 @@ export class MtapiSessionManager {
     }
   }
 
+  private provisionRunning = false
+
   private async provisionNewAccounts(): Promise<void> {
+    // The provision timer (15 s) is shorter than one bridge call can take
+    // (HTTP timeout 20 s). Without this guard a slow ConnectEx would let a
+    // second scan claim the same pending row and open a second bridge session
+    // for one login, leaking an orphan the reconciler cannot see.
+    if (this.provisionRunning) return
+    this.provisionRunning = true
+    try {
+      await this.provisionPendingAccounts()
+    } finally {
+      this.provisionRunning = false
+    }
+  }
+
+  private async provisionPendingAccounts(): Promise<void> {
     const { data, error } = await this.supabase
       .from('broker_accounts')
       .select('id,account_login,broker_server,platform,broker_password_encrypted,performance_baseline_balance')
@@ -179,7 +195,11 @@ export class MtapiSessionManager {
       return
     }
     const pending = (data ?? []) as MtapiSessionRow[]
-    console.info('[mtapiSession] provision scan pending=' + pending.length)
+    // Log only real work: at the 15 s cadence a "pending=0" line every tick
+    // would be thousands of lines a day.
+    if (pending.length > 0) {
+      console.info('[mtapiSession] provision scan pending=' + pending.length)
+    }
     for (const row of pending) {
       const password = decryptMtPassword(row.broker_password_encrypted)
       const login = String(row.account_login ?? '').trim()
@@ -238,15 +258,21 @@ export class MtapiSessionManager {
     // A newly authorised account waits for the provision sweep, so it runs far
     // more often than the health sweep: the bridge link must be made in
     // seconds, not minutes. The health sweep stays slow because it queries the
-    // bridge once per session.
-    const provisionIntervalMs = Math.max(5_000, Number(process.env.MTAPI_PROVISION_INTERVAL_MS ?? 15_000))
+    // bridge once per session. A malformed env value (e.g. "15000ms") must
+    // fall back to the default — Number() would be NaN and Node would set the
+    // interval to 1 ms.
+    const rawProvisionMs = Number(process.env.MTAPI_PROVISION_INTERVAL_MS ?? 15_000)
+    const provisionIntervalMs = Number.isFinite(rawProvisionMs)
+      ? Math.max(5_000, rawProvisionMs)
+      : 15_000
     this.provisionTimer = setInterval(() => {
       void this.provisionNewAccounts().catch(error => {
         console.warn('[mtapiSession] provision sweep failed code=' + safeCode(error))
       })
     }, provisionIntervalMs)
     this.provisionTimer.unref?.()
-    const intervalMs = Math.max(30_000, Number(process.env.MTAPI_SESSION_HEALTH_INTERVAL_MS ?? 240_000))
+    const rawHealthMs = Number(process.env.MTAPI_SESSION_HEALTH_INTERVAL_MS ?? 240_000)
+    const intervalMs = Number.isFinite(rawHealthMs) ? Math.max(30_000, rawHealthMs) : 240_000
     this.timer = setInterval(() => {
       void this.sweep().catch(error => {
         console.warn('[mtapiSession] health sweep failed code=' + safeCode(error))
