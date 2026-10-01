@@ -43,3 +43,23 @@ export function isPromptDismissible(
   if (!active) return false
   return !needingReconnect.some(broker => broker.id === active.id)
 }
+
+/**
+ * Where a reconnect failure has to be shown.
+ *
+ * The page registers its own handler (a toast or a banner), but the automatic
+ * prompt sits on top of that page and cannot be dismissed — so a message sent
+ * only to the page is hidden behind the dialog and the customer sees nothing
+ * happen at all. The dialog always gets the message; the page does too, for
+ * when the prompt is closed and the banner is readable.
+ */
+export function routeReconnectError(
+  message: string,
+  targets: {
+    dialog: (message: string) => void
+    page?: ((message: string) => void) | null
+  },
+): void {
+  targets.dialog(message)
+  targets.page?.(message)
+}

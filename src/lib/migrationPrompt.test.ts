@@ -4,6 +4,7 @@ import {
   isMigrationSwitchCase,
   isPromptDismissible,
   pickPromptBroker,
+  routeReconnectError,
 } from './migrationPrompt'
 
 function broker(overrides: Partial<BrokerAccount> & { id: string }): BrokerAccount {
@@ -76,5 +77,35 @@ describe('isMigrationSwitchCase', () => {
   it('is not the migration case for an ordinary FxSocket account', () => {
     expect(isMigrationSwitchCase(broker({ id: 'f', provider: 'fxsocket' }))).toBe(false)
     expect(isMigrationSwitchCase(null)).toBe(false)
+  })
+})
+
+describe('routeReconnectError', () => {
+  it('shows the message in the dialog even when the page has its own handler', () => {
+    // Regression: the prompt covers the page and cannot be dismissed, so a
+    // message routed only to the page banner was invisible — the reconnect
+    // failure looked like nothing had happened at all.
+    const dialog: string[] = []
+    const page: string[] = []
+    routeReconnectError('MTAPI connect failed: 503', {
+      dialog: message => dialog.push(message),
+      page: message => page.push(message),
+    })
+    expect(dialog).toEqual(['MTAPI connect failed: 503'])
+    expect(page).toEqual(['MTAPI connect failed: 503'])
+  })
+
+  it('shows the message in the dialog when no page handler is registered', () => {
+    const dialog: string[] = []
+    routeReconnectError('Broker request timed out', {
+      dialog: message => dialog.push(message),
+    })
+    expect(dialog).toEqual(['Broker request timed out'])
+  })
+
+  it('tolerates an explicitly null page handler', () => {
+    const dialog: string[] = []
+    routeReconnectError('Unauthorized', { dialog: message => dialog.push(message), page: null })
+    expect(dialog).toEqual(['Unauthorized'])
   })
 })

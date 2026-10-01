@@ -26,6 +26,7 @@ import {
   isMigrationSwitchCase,
   isPromptDismissible,
   pickPromptBroker,
+  routeReconnectError,
 } from '../lib/migrationPrompt'
 
 interface BrokerAccountsContextValue {
@@ -161,6 +162,11 @@ export function BrokerAccountsProvider({
 
   useBrokerAccountsRealtime(enabled ? user?.id : undefined, setBrokers)
 
+  // ── Reconnect prompt (app-level, two-stage modal) ──────────────────────────
+  // Declared before useBrokerReconnect: onError writes to it, and the prompt
+  // may be the only place the customer can see the message.
+  const [reconnectError, setReconnectError] = useState<string | null>(null)
+
   const {
     reconnectBroker,
     reconnectingBrokerIds,
@@ -174,10 +180,10 @@ export function BrokerAccountsProvider({
     upsertBroker,
     reconnectFailedLabel: bl.reconnectFailed,
     onError: (message) => {
-      // Pages register their own toast; when none does (the prompt can open on
-      // any page) keep the message so the dialog can show it.
-      if (reconnectErrorHandlerRef.current) reconnectErrorHandlerRef.current(message)
-      else setReconnectError(message)
+      routeReconnectError(message, {
+        dialog: setReconnectError,
+        page: reconnectErrorHandlerRef.current,
+      })
     },
     onSuccess: (brokerId) => {
       setReconnectError(null)
@@ -186,9 +192,6 @@ export function BrokerAccountsProvider({
   })
 
   const noopClear = useCallback(async () => ({ error: null as string | null }), [])
-
-  // ── Reconnect prompt (app-level, two-stage modal) ──────────────────────────
-  const [reconnectError, setReconnectError] = useState<string | null>(null)
 
   const migrationPromptBroker = useMemo(
     () => pickPromptBroker(brokersNeedingReconnect, reconnectingBrokerIds),
