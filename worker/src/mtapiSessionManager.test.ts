@@ -141,4 +141,8 @@ test('resolveIntervalMs falls back on empty or malformed values and clamps finit
   assert.equal(resolveIntervalMs(' 20000 ', 15_000, 5_000), 20_000)
   assert.equal(resolveIntervalMs('1000', 15_000, 5_000), 5_000)
   assert.equal(resolveIntervalMs('0', 15_000, 5_000), 5_000)
+  // Absurd values: Node clamps any delay above 2^31-1 to 1 ms, so they must
+  // fall back to the default instead.
+  assert.equal(resolveIntervalMs('1e12', 15_000, 5_000), 15_000)
+  assert.equal(resolveIntervalMs('9999999999999', 15_000, 5_000), 15_000)
 })

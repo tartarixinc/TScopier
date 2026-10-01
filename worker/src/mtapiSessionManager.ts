@@ -38,16 +38,18 @@ function mtapiConfigured(): boolean {
 }
 
 /**
- * Parse an interval env value. Empty or malformed text falls back to the
- * default — a typo like "15000ms" must not become a 1 ms hot loop, and a
- * blank value must not clamp to the floor — and a finite value is clamped at
- * the floor.
+ * Parse an interval env value. Empty, malformed, or absurd text falls back to
+ * the default — a typo like "15000ms" must not become a 1 ms hot loop, a
+ * blank value must not clamp to the floor, and a value above 2^31-1 would be
+ * silently turned into 1 ms by Node's setTimeout — and a finite value is
+ * clamped at the floor.
  */
+const MAX_INTERVAL_MS = 2_147_483_647
 export function resolveIntervalMs(raw: string | undefined, fallback: number, floor: number): number {
   const text = (raw ?? '').trim()
   if (text === '') return fallback
   const ms = Number(text)
-  return Number.isFinite(ms) ? Math.max(floor, ms) : fallback
+  return Number.isFinite(ms) && ms <= MAX_INTERVAL_MS ? Math.max(floor, ms) : fallback
 }
 
 export class MtapiSessionManager {

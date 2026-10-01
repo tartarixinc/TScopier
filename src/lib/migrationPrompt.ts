@@ -32,9 +32,11 @@ export function pickPromptBroker(
 /**
  * Whether the dialog showing `active` may be closed.
  *
- * It may not: an account that still needs reconnecting must stay prompted until
- * it is resolved. It may when the customer opened the dialog themselves — an
- * ordinary session-expiry reconnect that is not on the needs-reconnect list.
+ * It may not: an account that still needs reconnecting must stay prompted
+ * until it is resolved. It may when the customer opened the dialog themselves —
+ * an ordinary session-expiry reconnect that is not on the needs-reconnect
+ * list — and always for a paused account (`is_active === false`): it copies
+ * nothing, so a failed attempt on it must not trap the customer.
  */
 export function isPromptDismissible(
   needingReconnect: readonly BrokerAccount[],
