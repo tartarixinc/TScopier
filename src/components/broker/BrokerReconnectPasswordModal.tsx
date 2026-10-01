@@ -52,7 +52,8 @@ interface BrokerReconnectPasswordModalProps {
    * When false the dialog cannot be dismissed at all: no close button, no
    * Escape, no backdrop click, no Cancel — it stays until the account is
    * resolved. The automatic migration prompt passes false; a dialog the
-   * customer opened themselves stays closable.
+   * customer opened themselves stays closable. Dismissal is always refused
+   * on the `connecting` stage regardless of this prop.
    */
   dismissible?: boolean
 }
@@ -83,10 +84,14 @@ function BrokerReconnectPasswordModalInner({
   const stableCancel = useCallback(() => {
     onCancelRef.current()
   }, [])
+  // The dialog itself refuses dismissal while the bridge is working: an X or
+  // Escape that does nothing is worse than no X at all. This holds even if a
+  // caller passes stage='connecting' with dismissible=true.
+  const canDismiss = dismissible && stage !== 'connecting'
   const { onOverlayMouseDown, onOverlayClick } = useOverlayDismiss(
     overlayRef,
     backdropRef,
-    dismissible ? stableCancel : ignoreDismiss,
+    canDismiss ? stableCancel : ignoreDismiss,
   )
 
   useEffect(() => {
@@ -95,7 +100,7 @@ function BrokerReconnectPasswordModalInner({
       return
     }
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && dismissible) onCancelRef.current()
+      if (e.key === 'Escape' && canDismiss) onCancelRef.current()
     }
     document.addEventListener('keydown', handleKey)
     const focusTimer = window.setTimeout(() => {
@@ -108,7 +113,7 @@ function BrokerReconnectPasswordModalInner({
       document.removeEventListener('keydown', handleKey)
       window.clearTimeout(focusTimer)
     }
-  }, [open, stage, dismissible])
+  }, [open, stage, canDismiss])
 
   useEffect(() => {
     if (!open) {
@@ -189,7 +194,7 @@ function BrokerReconnectPasswordModalInner({
                 {copy.body}
               </p>
             </div>
-            {dismissible && (
+            {canDismiss && (
               <button
                 type="button"
                 onClick={onCancel}
@@ -237,7 +242,7 @@ function BrokerReconnectPasswordModalInner({
 
           {stage === 'details' && (
             <div className="flex justify-end gap-2 pt-1">
-              {dismissible && (
+              {canDismiss && (
                 <Button type="button" variant="ghost" onClick={onCancel}>
                   {copy.cancel}
                 </Button>
@@ -271,7 +276,7 @@ function BrokerReconnectPasswordModalInner({
                   )}
                 </div>
                 <div className="flex gap-2">
-                  {dismissible && (
+                  {canDismiss && (
                     <Button type="button" variant="ghost" onClick={onCancel}>
                       {copy.cancel}
                     </Button>

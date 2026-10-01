@@ -3,7 +3,7 @@ import { afterEach, test } from 'node:test'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { decryptMtPassword, encryptMtPassword } from './brokerCredentialsCrypto'
 import type { MtapiProvider } from './mtapiProvider'
-import { MtapiSessionManager } from './mtapiSessionManager'
+import { MtapiSessionManager, resolveIntervalMs } from './mtapiSessionManager'
 
 const oldBase = process.env.MTAPI_BASE_URL
 const oldKey = process.env.BROKER_CREDENTIALS_ENCRYPTION_KEY
@@ -125,4 +125,20 @@ test('orphan reconciliation skips MT4 because the MT4 bridge has no bulk cleanup
     { ids: ['mt5-token'], dryRun: true, platform: 'MT5' },
     { ids: ['mt5-token'], dryRun: false, platform: 'MT5' },
   ])
+})
+
+test('resolveIntervalMs falls back on empty or malformed values and clamps finite ones', () => {
+  // Empty / missing → the default, never the floor (a blank Railway var must
+  // not turn the health sweep into a 30 s loop).
+  assert.equal(resolveIntervalMs(undefined, 15_000, 5_000), 15_000)
+  assert.equal(resolveIntervalMs('', 15_000, 5_000), 15_000)
+  assert.equal(resolveIntervalMs('   ', 15_000, 5_000), 15_000)
+  // Malformed → the default, never 1 ms.
+  assert.equal(resolveIntervalMs('15000ms', 15_000, 5_000), 15_000)
+  assert.equal(resolveIntervalMs('Infinity', 15_000, 5_000), 15_000)
+  // Finite values are honoured, trimmed, and clamped at the floor.
+  assert.equal(resolveIntervalMs('15000', 15_000, 5_000), 15_000)
+  assert.equal(resolveIntervalMs(' 20000 ', 15_000, 5_000), 20_000)
+  assert.equal(resolveIntervalMs('1000', 15_000, 5_000), 5_000)
+  assert.equal(resolveIntervalMs('0', 15_000, 5_000), 5_000)
 })

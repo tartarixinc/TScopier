@@ -193,6 +193,16 @@ describe('BrokerReconnectPasswordModal — connecting stage', () => {
     expect(buttonByLabel('Reconnect')).toBeNull()
     expect(buttonByLabel('Cancel')).toBeNull()
   })
+
+  it('refuses dismissal even when the caller passes dismissible=true', () => {
+    const onCancel = vi.fn()
+    render({ stage: 'connecting', dismissible: true, onCancel })
+    expect(document.querySelector('[aria-label="Cancel"]')).toBeNull()
+    expect(buttonByLabel('Cancel')).toBeNull()
+    pressEscape()
+    clickBackdrop()
+    expect(onCancel).not.toHaveBeenCalled()
+  })
 })
 
 describe('BrokerReconnectPasswordModal — success stage', () => {

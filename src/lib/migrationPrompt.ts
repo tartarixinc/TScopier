@@ -41,6 +41,9 @@ export function isPromptDismissible(
   active: BrokerAccount | null | undefined,
 ): boolean {
   if (!active) return false
+  // A paused account is not copying anything: even a failed attempt on it must
+  // not trap the customer in a dialog they cannot close.
+  if (active.is_active === false) return true
   return !needingReconnect.some(broker => broker.id === active.id)
 }
 

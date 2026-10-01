@@ -63,6 +63,11 @@ describe('isPromptDismissible', () => {
   it('is false when no account is shown', () => {
     expect(isPromptDismissible(needsReconnect, null)).toBe(false)
   })
+
+  it('allows closing a failed attempt on a paused account — it copies nothing', () => {
+    const paused = broker({ id: 'paused-err', is_active: false, connection_status: 'error' })
+    expect(isPromptDismissible([paused], paused)).toBe(true)
+  })
 })
 
 describe('isMigrationSwitchCase', () => {
