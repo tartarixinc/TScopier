@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2"
-import type { FxsocketClient } from "../fxsocketClient.ts"
+import type { HistoricalMarketDataSources } from "./historicalMarketData.ts"
 import type { BacktestRunConfig, ParsedSignalForBacktest } from "./types.ts"
 import { preloadMarketData } from "./marketData.ts"
 import { recalculateRunSummary } from "./recalculateRunSummary.ts"
@@ -45,7 +45,7 @@ function applyOverrides(row: DbBacktestTradeRow, overrides: TradeOverrides) {
 
 export async function resimulateBacktestTrade(
   supabase: SupabaseClient,
-  fx: FxsocketClient,
+  sources: HistoricalMarketDataSources,
   userId: string,
   tradeId: string,
   overrides: TradeOverrides,
@@ -90,9 +90,9 @@ export async function resimulateBacktestTrade(
 
   const fromMs = new Date(config.dateFrom).getTime()
   const toMs = new Date(config.dateTo + "T23:59:59.999Z").getTime()
-  const brokerCtx = await resolveBacktestBroker(supabase, fx, userId, signal.symbol)
+  const brokerCtx = await resolveBacktestBroker(supabase, sources, userId, signal.symbol)
   const { seriesBySymbol } = await preloadMarketData(
-    fx,
+    sources,
     brokerCtx,
     [signal.symbol],
     [signal],

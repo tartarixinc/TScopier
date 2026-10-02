@@ -1,12 +1,12 @@
-import { FxsocketApiError, type FxsocketClient } from "../fxsocketClient.ts"
 import {
-  fxsocketBarsToMidPoints,
-  fxsocketTicksToMidPoints,
-  fxsocketMarketQueryRange,
+  historicalBarsToPricePoints,
+  type HistoricalMarketDataSource,
+  type HistoricalMarketDataSources,
+} from "./historicalMarketData.ts"
+import {
+  isRetriableMarketDataError,
   resolveBrokerSymbol,
   sanitizeMarketDataErrorMessage,
-  isRetriableMarketDataError,
-  toFxsocketTimeframe,
 } from "./fxsocketMarketData.ts"
 import type { BacktestBrokerContext } from "./resolveBacktestBroker.ts"
 import type { PricePoint } from "./simulator.ts"
@@ -18,7 +18,6 @@ export interface PreloadedMarketData {
   fetchLog: string[]
   fetchFailures: number
   brokerContext: BacktestBrokerContext
-  utcOffsetSeconds: number
 }
 
 function signalWindowForSymbol(
@@ -28,121 +27,102 @@ function signalWindowForSymbol(
   configToMs: number,
 ): { fromMs: number; toMs: number } {
   const symSigs = signals.filter((s) => s.symbol === symbol)
-  if (!symSigs.length) {
-    return { fromMs: configFromMs, toMs: configToMs }
-  }
+  if (!symSigs.length) return { fromMs: configFromMs, toMs: configToMs }
   const minSig = Math.min(...symSigs.map((s) => s.signalAt.getTime()))
   const maxSig = Math.max(...symSigs.map((s) => s.signalAt.getTime()))
-  const padBefore = 24 * 3_600_000
-  const padAfter = 5 * 24 * 3_600_000
   return {
-    fromMs: Math.max(configFromMs, minSig - padBefore),
-    toMs: Math.min(configToMs, maxSig + padAfter),
-  }
-}
-
-export async function fetchUtcOffsetSeconds(
-  fx: FxsocketClient,
-  accountId: string,
-  platform?: string | null,
-): Promise<number> {
-  try {
-    const tz = await fx.serverTimezone(accountId, platform)
-    const offset = Number(tz.utcOffsetSeconds ?? tz.utc_offset_seconds ?? 0)
-    return Number.isFinite(offset) ? offset : 0
-  } catch {
-    return 0
+    fromMs: Math.max(configFromMs, minSig - 24 * 3_600_000),
+    toMs: Math.min(configToMs, maxSig + 5 * 24 * 3_600_000),
   }
 }
 
 export async function fetchBarsForSymbol(
-  fx: FxsocketClient,
+  source: HistoricalMarketDataSource,
   ctx: BacktestBrokerContext,
   brokerSymbol: string,
-  timeframe: string,
+  timeframe: BacktestRunConfig["timeframe"],
   fromMs: number,
   toMs: number,
-  utcOffsetSeconds: number,
   retry = true,
 ): Promise<{ pts: PricePoint[]; apiCalls: number; log: string; failed: boolean }> {
-  const query = fxsocketMarketQueryRange(fromMs, toMs, utcOffsetSeconds)
-  const rangeLabel = `${query.from}→${query.to}`
   try {
-    const bars = await fx.priceHistory(ctx.fxsocketAccountId, {
+    const result = await source.historicalBars({
+      sessionId: ctx.sessionId,
+      platform: ctx.platform,
       symbol: brokerSymbol,
       timeframe,
-      from: query.from,
-      to: query.to,
-    }, ctx.platform)
-    const pts = fxsocketBarsToMidPoints(bars, utcOffsetSeconds)
+      fromMs,
+      toMs,
+    })
+    const pts = historicalBarsToPricePoints(result.data)
     return {
       pts,
-      apiCalls: 1,
-      log: `${pts.length} bars (${brokerSymbol}, ${timeframe}, ${rangeLabel})`,
+      apiCalls: result.requestCount,
+      log: `${pts.length} bars (${brokerSymbol}, ${timeframe}, ${new Date(fromMs).toISOString()}→${new Date(toMs).toISOString()})`,
       failed: false,
     }
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e)
-    if (retry && isRetriableMarketDataError(msg)) {
-      await new Promise((r) => setTimeout(r, 2_000))
-      return fetchBarsForSymbol(
-        fx, ctx, brokerSymbol, timeframe, fromMs, toMs, utcOffsetSeconds, false,
-      )
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (String((error as { code?: unknown })?.code ?? "") === "MTAPI_HISTORY_TIMEZONE_UNVERIFIED") {
+      throw error
     }
-    const short = sanitizeMarketDataErrorMessage(msg)
+    if (retry && isRetriableMarketDataError(message)) {
+      await new Promise((resolve) => setTimeout(resolve, 2_000))
+      return await fetchBarsForSymbol(source, ctx, brokerSymbol, timeframe, fromMs, toMs, false)
+    }
     return {
       pts: [],
       apiCalls: 1,
-      log: `fetch failed: ${short}`,
+      log: `fetch failed: ${sanitizeMarketDataErrorMessage(message)}`,
       failed: true,
     }
   }
 }
 
 export async function fetchTicksForSymbol(
-  fx: FxsocketClient,
+  source: HistoricalMarketDataSource,
   ctx: BacktestBrokerContext,
   brokerSymbol: string,
   fromMs: number,
   toMs: number,
-  utcOffsetSeconds: number,
   retry = true,
 ): Promise<{ pts: PricePoint[]; apiCalls: number; log: string; failed: boolean }> {
-  const query = fxsocketMarketQueryRange(fromMs, toMs, utcOffsetSeconds)
-  const rangeLabel = `${query.from}→${query.to}`
-  try {
-    const ticks = await fx.quoteTicks(ctx.fxsocketAccountId, {
-      symbol: brokerSymbol,
-      from: query.from,
-      to: query.to,
-    }, ctx.platform)
-    const pts = fxsocketTicksToMidPoints(ticks, utcOffsetSeconds)
+  if (!source.historicalTicks) {
     return {
-      pts,
-      apiCalls: 1,
-      log: `${pts.length} ticks (${brokerSymbol}, ${rangeLabel})`,
+      pts: [],
+      apiCalls: 0,
+      log: "MTAPI tick history unavailable/unverified — using OHLC bars",
       failed: false,
     }
-  } catch (e) {
-    if (e instanceof FxsocketApiError && e.status === 404) {
-      return {
-        pts: [],
-        apiCalls: 0,
-        log: "QuoteTicks endpoint unavailable — using OHLC bars",
-        failed: false,
-      }
+  }
+  try {
+    const result = await source.historicalTicks({
+      sessionId: ctx.sessionId,
+      platform: ctx.platform,
+      symbol: brokerSymbol,
+      fromMs,
+      toMs,
+    })
+    return {
+      pts: result.data,
+      apiCalls: result.requestCount,
+      log: `${result.data.length} ticks (${brokerSymbol}, ${new Date(fromMs).toISOString()}→${new Date(toMs).toISOString()})`,
+      failed: false,
     }
-    const msg = e instanceof Error ? e.message : String(e)
-    if (retry && isRetriableMarketDataError(msg)) {
-      await new Promise((r) => setTimeout(r, 2_000))
-      return fetchTicksForSymbol(
-        fx, ctx, brokerSymbol, fromMs, toMs, utcOffsetSeconds, false,
-      )
+  } catch (error) {
+    const status = Number((error as { status?: unknown })?.status)
+    if (status === 404) {
+      return { pts: [], apiCalls: 0, log: "QuoteTicks endpoint unavailable — using OHLC bars", failed: false }
+    }
+    const message = error instanceof Error ? error.message : String(error)
+    if (retry && isRetriableMarketDataError(message)) {
+      await new Promise((resolve) => setTimeout(resolve, 2_000))
+      return await fetchTicksForSymbol(source, ctx, brokerSymbol, fromMs, toMs, false)
     }
     return {
       pts: [],
       apiCalls: 1,
-      log: `ticks fetch failed: ${sanitizeMarketDataErrorMessage(msg)}`,
+      log: `ticks fetch failed: ${sanitizeMarketDataErrorMessage(message)}`,
       failed: true,
     }
   }
@@ -151,88 +131,47 @@ export async function fetchTicksForSymbol(
 const SYMBOL_FETCH_CONCURRENCY = 3
 
 async function fetchSymbolSeries(
-  fx: FxsocketClient,
+  source: HistoricalMarketDataSource,
   ctx: BacktestBrokerContext,
   symbol: string,
   signals: ParsedSignalForBacktest[],
   config: BacktestRunConfig,
   configFromMs: number,
   configToMs: number,
-  utcOffsetSeconds: number,
 ): Promise<{ symbol: string; pts: PricePoint[]; apiCalls: number; logs: string[]; failed: boolean }> {
   const brokerSymbol = resolveBrokerSymbol(symbol, ctx.brokerSymbols)
   if (!brokerSymbol) {
-    return {
-      symbol,
-      pts: [],
-      apiCalls: 0,
-      logs: [`${symbol}: not listed on broker ${ctx.brokerLabel}`],
-      failed: true,
-    }
+    return { symbol, pts: [], apiCalls: 0, logs: [`${symbol}: not listed on broker ${ctx.brokerLabel}`], failed: true }
   }
-
   const { fromMs, toMs } = signalWindowForSymbol(symbol, signals, configFromMs, configToMs)
   if (fromMs >= toMs) {
-    return {
-      symbol,
-      pts: [],
-      apiCalls: 0,
-      logs: [`${symbol}: invalid time window`],
-      failed: true,
-    }
+    return { symbol, pts: [], apiCalls: 0, logs: [`${symbol}: invalid time window`], failed: true }
   }
 
-  const timeframe = toFxsocketTimeframe(config.timeframe)
   const logs: string[] = []
   let apiCalls = 0
   let pts: PricePoint[] = []
   let failed = false
-
   if (config.executionMode === "tick_quotes") {
-    const tickResult = await fetchTicksForSymbol(
-      fx, ctx, brokerSymbol, fromMs, toMs, utcOffsetSeconds,
-    )
-    apiCalls += tickResult.apiCalls
-    logs.push(`${symbol}: ${tickResult.log}`)
-    pts = tickResult.pts
-    if (tickResult.failed) failed = true
-
-    if (pts.length === 0 && !tickResult.log.includes("unavailable")) {
-      const barResult = await fetchBarsForSymbol(
-        fx, ctx, brokerSymbol, timeframe, fromMs, toMs, utcOffsetSeconds,
-      )
-      apiCalls += barResult.apiCalls
-      pts = barResult.pts
-      if (barResult.failed) failed = true
-      logs.push(`${symbol}: ${barResult.log}`)
-    } else if (pts.length === 0 && tickResult.log.includes("unavailable")) {
-      const barResult = await fetchBarsForSymbol(
-        fx, ctx, brokerSymbol, timeframe, fromMs, toMs, utcOffsetSeconds,
-      )
-      apiCalls += barResult.apiCalls
-      pts = barResult.pts
-      if (barResult.failed) failed = true
-      logs.push(`${symbol}: ${barResult.log}`)
-    }
-  } else {
-    const barResult = await fetchBarsForSymbol(
-      fx, ctx, brokerSymbol, timeframe, fromMs, toMs, utcOffsetSeconds,
-    )
-    apiCalls += barResult.apiCalls
-    pts = barResult.pts
-    if (barResult.failed) failed = true
-    logs.push(`${symbol}: ${barResult.log}`)
+    const ticks = await fetchTicksForSymbol(source, ctx, brokerSymbol, fromMs, toMs)
+    apiCalls += ticks.apiCalls
+    logs.push(`${symbol}: ${ticks.log}`)
+    pts = ticks.pts
+    failed = ticks.failed
   }
-
+  if (pts.length === 0) {
+    const bars = await fetchBarsForSymbol(source, ctx, brokerSymbol, config.timeframe, fromMs, toMs)
+    apiCalls += bars.apiCalls
+    logs.push(`${symbol}: ${bars.log}`)
+    pts = bars.pts
+    failed = bars.failed
+  }
   return { symbol, pts, apiCalls, logs, failed }
 }
 
-/**
- * Fetch OHLC bars (or quote ticks) from the user's linked FxSocket broker
- * for every symbol before simulation. Per-symbol failures do not abort the run.
- */
+/** Fetch normalized history from the broker account's authoritative provider. */
 export async function preloadMarketData(
-  fx: FxsocketClient,
+  sources: HistoricalMarketDataSources,
   ctx: BacktestBrokerContext,
   symbols: string[],
   signals: ParsedSignalForBacktest[],
@@ -240,28 +179,23 @@ export async function preloadMarketData(
   configFromMs: number,
   configToMs: number,
 ): Promise<PreloadedMarketData> {
-  const utcOffsetSeconds = await fetchUtcOffsetSeconds(fx, ctx.fxsocketAccountId, ctx.platform)
+  const source = sources[ctx.provider]
+  if (!source) throw new Error(`${ctx.provider} market data source is unavailable`)
   const seriesBySymbol = new Map<string, PricePoint[]>()
   const fetchLog: string[] = []
   let apiCalls = 0
   let fetchFailures = 0
 
   for (let i = 0; i < symbols.length; i += SYMBOL_FETCH_CONCURRENCY) {
-    const batch = symbols.slice(i, i + SYMBOL_FETCH_CONCURRENCY)
-    const results = await Promise.all(
-      batch.map((symbol) =>
-        fetchSymbolSeries(
-          fx, ctx, symbol, signals, config, configFromMs, configToMs, utcOffsetSeconds,
-        ),
-      ),
-    )
-    for (const r of results) {
-      seriesBySymbol.set(r.symbol, r.pts)
-      apiCalls += r.apiCalls
-      fetchLog.push(...r.logs)
-      if (r.failed) fetchFailures++
+    const results = await Promise.all(symbols.slice(i, i + SYMBOL_FETCH_CONCURRENCY).map((symbol) =>
+      fetchSymbolSeries(source, ctx, symbol, signals, config, configFromMs, configToMs)
+    ))
+    for (const result of results) {
+      seriesBySymbol.set(result.symbol, result.pts)
+      apiCalls += result.apiCalls
+      fetchLog.push(...result.logs)
+      if (result.failed) fetchFailures += 1
     }
   }
-
-  return { seriesBySymbol, apiCalls, fetchLog, fetchFailures, brokerContext: ctx, utcOffsetSeconds }
+  return { seriesBySymbol, apiCalls, fetchLog, fetchFailures, brokerContext: ctx }
 }
