@@ -1656,8 +1656,27 @@ function applyExplicitEntryOrderType(parsed: ChannelParsedSignal, rawMessage: st
   const action = String(parsed.action ?? '').toLowerCase()
   if (action !== 'buy' && action !== 'sell') return parsed
   const match = rawMessage.match(/\b(?:buy|sell)\s+(stop|limit)\b/i)
-  const entry_order_type: EntryOrderType | null = match ? match[1]!.toLowerCase() as EntryOrderType : null
-  return { ...parsed, entry_order_type }
+  let entry_order_type: EntryOrderType | null = match ? match[1]!.toLowerCase() as EntryOrderType : null
+  let entry_price = parsed.entry_price
+  // "Pending LIMIT (informational only) @ 4272.35": route as a broker limit at
+  // the level instead of treating the bias price as an immediate market entry.
+  const pending = rawMessage.match(/\bpending\s+(buy|sell)?\s*limit(?:\s+order)?\b[^@\n]*@\s*([0-9][0-9.,]*)/i)
+  if (pending && entry_order_type !== 'stop') {
+    const pendingSide = pending[1]?.toLowerCase() ?? null
+    const level = parsePendingLevelToken(pending[2]!)
+    if ((pendingSide == null || pendingSide === action) && level != null && level > 0) {
+      entry_order_type = 'limit'
+      entry_price = level
+    }
+  }
+  return { ...parsed, entry_order_type, entry_price }
+}
+
+/** Accept plain decimals and thousands-grouped levels; reject ambiguous tokens. */
+function parsePendingLevelToken(token: string): number | null {
+  if (/^\d+(?:\.\d+)?$/.test(token)) return Number(token)
+  if (/^\d{1,3}(?:,\d{3})+(?:\.\d+)?$/.test(token)) return Number(token.replace(/,/g, ''))
+  return null
 }
 
 function applyStopUnits(
