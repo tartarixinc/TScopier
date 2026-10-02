@@ -405,3 +405,53 @@ Deno.test("credential-bearing provider errors never expose the password", async 
     assertEquals(error.message, "MTAPI ConnectEx failed")
   }
 })
+
+Deno.test("PriceHistory selects MT5 endpoint and exact parameters", async () => {
+  const { client, calls } = provider(() => new Response(JSON.stringify([{ time: "2025-01-01" }])))
+  await client.priceHistory("session-redacted", {
+    symbol: "EURUSD.pro",
+    from: "2025-01-01T00:00:00",
+    to: "2025-01-02T00:00:00",
+    timeFrame: 5,
+    timeoutSeconds: 30,
+  }, "MT5")
+  const url = calls[0]
+  assertEquals(url.pathname, "/PriceHistory")
+  assertEquals(url.searchParams.get("id"), "session-redacted")
+  assertEquals(url.searchParams.get("symbol"), "EURUSD.pro")
+  assertEquals(url.searchParams.get("timeFrame"), "5")
+  assertEquals(url.searchParams.get("timeoutSeconds"), "30")
+})
+
+Deno.test("QuoteHistory selects MT4 endpoint and from/count parameters", async () => {
+  const { client, calls } = provider(() => new Response("[]"), {
+    MTAPI_MT4_BASE_URL: "https://mt4.test",
+  })
+  await client.quoteHistory("session-redacted", {
+    symbol: "GOLD",
+    timeframe: "H1",
+    from: "2025-01-02T00:00:00",
+    count: 250,
+  }, "MT4")
+  const url = calls[0]
+  assertEquals(url.origin, "https://mt4.test")
+  assertEquals(url.pathname, "/QuoteHistory")
+  assertEquals(url.searchParams.get("id"), "session-redacted")
+  assertEquals(url.searchParams.get("symbol"), "GOLD")
+  assertEquals(url.searchParams.get("timeframe"), "H1")
+  assertEquals(url.searchParams.get("from"), "2025-01-02T00:00:00")
+  assertEquals(url.searchParams.get("count"), "250")
+})
+
+Deno.test("Symbols and timezone/account metadata use read-only endpoints", async () => {
+  const { client, calls } = provider(url => {
+    if (url.pathname === "/Symbols") return new Response(JSON.stringify([{ Symbol: "EURUSD" }]))
+    if (url.pathname === "/ServerTimezone") return new Response("2")
+    if (url.pathname === "/AccountDetails") return new Response(JSON.stringify({ ServerTimeZone: 2 }))
+    return new Response("not found", { status: 404 })
+  })
+  assertEquals(await client.symbols("session-redacted"), ["EURUSD"])
+  assertEquals(await client.serverTimezone("session-redacted"), "2")
+  assertEquals(await client.accountDetails("session-redacted"), { ServerTimeZone: 2 })
+  assertEquals(calls.map(url => url.pathname), ["/Symbols", "/ServerTimezone", "/AccountDetails"])
+})

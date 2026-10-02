@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2"
-import { FxsocketClient } from "../fxsocketClient.ts"
+import type { HistoricalMarketDataSources } from "./historicalMarketData.ts"
 import { loadBacktestSignals } from "./loadSignals.ts"
 import { preloadMarketData } from "./marketData.ts"
 import { runPortfolioSimulation } from "./portfolio.ts"
@@ -16,7 +16,7 @@ export interface BacktestRunContext {
 
 export async function executeBacktestRun(
   supabase: SupabaseClient,
-  fx: FxsocketClient,
+  sources: HistoricalMarketDataSources,
   runId: string,
   userId: string,
   config: BacktestRunConfig,
@@ -124,7 +124,7 @@ export async function executeBacktestRun(
 
   await updateProgress(
     10,
-    `Loaded ${signals.length} tradeable signal(s) — fetching FXsocket market data…`,
+    `Loaded ${signals.length} tradeable signal(s) — resolving broker market data…`,
   )
 
   const fromMs = new Date(config.dateFrom).getTime()
@@ -133,15 +133,16 @@ export async function executeBacktestRun(
 
   const primarySymbol = config.symbols[0] ?? symbolsNeeded[0] ?? ""
   const symbolsCache = new Map<string, string[]>()
-  const brokerCtx = await resolveBacktestBroker(supabase, fx, userId, primarySymbol, symbolsCache)
+  const brokerCtx = await resolveBacktestBroker(supabase, sources, userId, primarySymbol, symbolsCache)
+  const providerLabel = brokerCtx.provider === "mtapi" ? "MTAPI" : "FXSocket"
 
   await updateProgress(
     12,
-    `FXsocket (${config.timeframe} bars via ${brokerCtx.brokerLabel}): ${symbolsNeeded.length} symbol(s)…`,
+    `${providerLabel} (${config.timeframe} bars via ${brokerCtx.brokerLabel}): ${symbolsNeeded.length} symbol(s)…`,
   )
 
   const { seriesBySymbol, apiCalls, fetchLog, fetchFailures } = await preloadMarketData(
-    fx,
+    sources,
     brokerCtx,
     symbolsNeeded,
     signals,
@@ -150,17 +151,17 @@ export async function executeBacktestRun(
     toMs,
   )
 
-  console.log("[backtest-run] FXsocket preload:", {
+  console.log("[backtest-run] market data preload:", {
+    provider: brokerCtx.provider,
     apiCalls,
     fetchLog,
     fetchFailures,
     broker: brokerCtx.brokerLabel,
-    fxsocketAccountId: brokerCtx.fxsocketAccountId,
   })
 
   const mdProgress = fetchFailures > 0
-    ? `FXsocket: ${apiCalls} request(s) · ${fetchFailures} symbol(s) had fetch issues`
-    : `FXsocket: ${apiCalls} request(s) · ${symbolsNeeded.length} symbol(s) via ${brokerCtx.brokerLabel}`
+    ? `${providerLabel}: ${apiCalls} request(s) · ${fetchFailures} symbol(s) had fetch issues`
+    : `${providerLabel}: ${apiCalls} request(s) · ${symbolsNeeded.length} symbol(s) via ${brokerCtx.brokerLabel}`
   await updateProgress(20, mdProgress)
 
   const results: SimulatedTradeResult[] = []
@@ -262,7 +263,7 @@ export async function executeBacktestRun(
   const noDataCount = results.filter((r) => r.outcome === "no_data").length
   const progressMsg = noDataCount > 0
     ? `Complete · ${noDataCount} signal(s) had no market data${fetchFailures > 0 ? " (some symbol fetches failed)" : ""}`
-    : `Complete · FXsocket ${apiCalls} request(s) via ${brokerCtx.brokerLabel}`
+    : `Complete · ${providerLabel} ${apiCalls} request(s) via ${brokerCtx.brokerLabel}`
 
   await supabase.from("backtest_runs").update({
     status: "completed",
