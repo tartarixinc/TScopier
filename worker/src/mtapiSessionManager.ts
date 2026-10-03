@@ -29,6 +29,27 @@ function safeCode(error: unknown): string {
   return error instanceof Error ? error.name : 'UNKNOWN'
 }
 
+/**
+ * Plain-English text for the bridge error codes that reach an operator in the
+ * log and a customer in `broker_accounts.connection_error`. The bridge sends
+ * codes only, so a rejection such as `INVALID_ACCOUNT` would otherwise arrive
+ * as a bare constant that says nothing about what to fix. Codes without an
+ * entry keep their existing behaviour and are reported on their own.
+ */
+const MTAPI_CODE_DETAIL: Record<string, string> = {
+  INVALID_ACCOUNT: 'invalid login or password',
+}
+
+export function mtapiFailureDetail(code: string): string {
+  return MTAPI_CODE_DETAIL[code] ?? ''
+}
+
+/** Customer-facing text for `connection_error`: detail first, code kept for support. */
+export function mtapiFailureSummary(code: string): string {
+  const detail = mtapiFailureDetail(code)
+  return detail ? detail + ' (' + code + ')' : code
+}
+
 function mtapiConfigured(): boolean {
   return Boolean(
     String(process.env.MTAPI_BASE_URL ?? '').trim()
@@ -175,7 +196,10 @@ export class MtapiSessionManager {
           await this.provider.ensureConnected(sessionId)
           await this.syncAccountState(row, sessionId)
         } catch (error) {
-          console.warn('[mtapiSession] health recovery failed broker=' + row.id + ' code=' + safeCode(error))
+          const code = safeCode(error)
+          const detail = mtapiFailureDetail(code)
+          console.warn('[mtapiSession] health recovery failed broker=' + row.id + ' code=' + code
+            + (detail ? ' detail=' + detail : ''))
         }
       }))
     } finally {
@@ -248,10 +272,16 @@ export class MtapiSessionManager {
         }
       } catch (err) {
         const code = safeCode(err)
-        console.warn('[mtapiSession] provision failed broker=' + row.id + ' code=' + code)
+        const detail = mtapiFailureDetail(code)
+        console.warn('[mtapiSession] provision failed broker=' + row.id + ' code=' + code
+          + (detail ? ' detail=' + detail : ''))
         await this.supabase
           .from('broker_accounts')
-          .update({ connection_status: 'error', mtapi_status: 'error', connection_error: 'MTAPI connect failed: ' + code })
+          .update({
+            connection_status: 'error',
+            mtapi_status: 'error',
+            connection_error: 'MTAPI connect failed: ' + mtapiFailureSummary(code),
+          })
           .eq('id', row.id)
           .eq('connection_status', 'pending')
       }
