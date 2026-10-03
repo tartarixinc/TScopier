@@ -3,7 +3,7 @@ import { afterEach, test } from 'node:test'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { decryptMtPassword, encryptMtPassword } from './brokerCredentialsCrypto'
 import type { MtapiProvider } from './mtapiProvider'
-import { MtapiSessionManager } from './mtapiSessionManager'
+import { MtapiSessionManager, mtapiFailureDetail, mtapiFailureSummary } from './mtapiSessionManager'
 
 const oldBase = process.env.MTAPI_BASE_URL
 const oldKey = process.env.BROKER_CREDENTIALS_ENCRYPTION_KEY
@@ -27,6 +27,15 @@ test('credential encryption round-trips without embedding plaintext', () => {
   assert.ok(encrypted)
   assert.equal(encrypted?.includes('broker-secret'), false)
   assert.equal(decryptMtPassword(encrypted), 'broker-secret')
+})
+
+test('bridge rejection codes carry plain-English detail, unknown codes stay bare', () => {
+  assert.equal(mtapiFailureDetail('INVALID_ACCOUNT'), 'invalid login or password')
+  assert.equal(mtapiFailureSummary('INVALID_ACCOUNT'), 'invalid login or password (INVALID_ACCOUNT)')
+  assert.equal(mtapiFailureDetail('HTTP_500'), '')
+  assert.equal(mtapiFailureSummary('HTTP_500'), 'HTTP_500')
+  assert.equal(mtapiFailureDetail(''), '')
+  assert.equal(mtapiFailureSummary(''), '')
 })
 
 test('startup reconciles known sessions and starts token health checks', async () => {
