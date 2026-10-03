@@ -41,7 +41,12 @@ const MTAPI_CODE_DETAIL: Record<string, string> = {
 }
 
 export function mtapiFailureDetail(code: string): string {
-  return MTAPI_CODE_DETAIL[code] ?? ''
+  // hasOwnProperty, not a plain lookup: `code` comes from the bridge response,
+  // so a value like "toString" must not resolve to an Object.prototype member
+  // and end up in a customer-visible column.
+  return Object.prototype.hasOwnProperty.call(MTAPI_CODE_DETAIL, code)
+    ? MTAPI_CODE_DETAIL[code]
+    : ''
 }
 
 /** Customer-facing text for `connection_error`: detail first, code kept for support. */
