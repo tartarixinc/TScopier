@@ -5,8 +5,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { clearTpTouchedLock } from './rangePendingFireGuard'
-import { hasFxsocketConfigured } from './fxsocketClient'
-import { apiForFxsocketAccount, loadPlatformByFxsocketId } from './mtApiByAccount'
+import { apiForFxsocketAccount, resolveDurableBrokerArtifacts } from './mtApiByAccount'
 import { cancelBrokerRangeLegAtBroker, type RangeBrokerPendingRow } from './rangeBrokerPendingHelpers'
 import { isPendingEntryRow, rawOrderTicket } from './signalEntryPendingHelpers'
 
@@ -67,7 +66,6 @@ async function cancelBrokerPendingLegsForScope(
   scope: BasketScope,
   reason: string,
 ): Promise<number> {
-  if (!hasFxsocketConfigured()) return 0
   const { data, error } = await supabase
     .from('range_pending_legs')
     .select('id,signal_id,user_id,broker_account_id,metaapi_account_id,ticket,comment,symbol')
@@ -76,13 +74,14 @@ async function cancelBrokerPendingLegsForScope(
     .eq('status', 'broker_pending')
   if (error || !data?.length) return 0
 
-  const platform = await loadPlatformByFxsocketId(
+  const resolved = await resolveDurableBrokerArtifacts(
     supabase,
-    (data as RangeBrokerPendingRow[]).map(r => r.metaapi_account_id),
+    data as RangeBrokerPendingRow[],
   )
+  const platform = resolved.platformBySession
   let cancelled = 0
   const byAccount = new Map<string, RangeBrokerPendingRow[]>()
-  for (const row of data as RangeBrokerPendingRow[]) {
+  for (const row of resolved.rows) {
     const list = byAccount.get(row.metaapi_account_id) ?? []
     list.push(row)
     byAccount.set(row.metaapi_account_id, list)

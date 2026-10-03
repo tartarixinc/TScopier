@@ -1,6 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { hasFxsocketConfigured } from './fxsocketClient'
-import { apiForFxsocketAccount, brokerSessionId, loadPlatformByFxsocketId, type PlatformByFxsocketId } from './mtApiByAccount'
+import {
+  brokerRuntimeForAccount,
+  loadBrokerApiByAccountId,
+} from './mtApiByAccount'
 import {
   applyShardToQuery,
   hasWorkOnShard,
@@ -11,33 +13,6 @@ import {
 } from './monitorIdleGate'
 import { reconcileOpenTradesForBroker, type OpenTradeReconcileRow } from './openTradeReconcile'
 import { captureBusinessIssue } from './observability/businessEvents'
-import { isExplicitlyUnavailableRemoteBroker, type RemoteBrokerState } from './brokerRemoteAvailability'
-
-interface BrokerRow extends RemoteBrokerState {
-  id: string
-  provider?: string | null
-  mtapi_session_id?: string | null
-  mtapi_status?: string | null
-  fxsocket_account_id: string | null
-  metaapi_account_id: string | null
-}
-
-/**
- * Whether it is worth asking this broker about its open positions.
- *
- * MTAPI rows are judged on their own status: the FxSocket columns
- * (`fxsocket_status`, `terminal_connected`, `trade_allowed`) are leftovers from
- * before the switch, and judging an already-switched account by them would
- * quietly remove it from reconciliation — which is how a position closed at the
- * broker would stay `open` in our database forever.
- */
-export function reconcilable(broker: BrokerRow): boolean {
-  if ((broker.provider ?? '') === 'mtapi') {
-    const status = broker.mtapi_status ?? broker.connection_status ?? ''
-    return status !== 'error' && status !== 'disconnected'
-  }
-  return !isExplicitlyUnavailableRemoteBroker(broker)
-}
 
 const ACTIVE_MS = monitorActiveIntervalMs('OPEN_TRADE_RECONCILE_TICK_MS', 30_000)
 const IDLE_MS = monitorIdleIntervalMs('OPEN_TRADE_RECONCILE_IDLE_MS', 120_000)
@@ -46,16 +21,11 @@ const BATCH_LIMIT = 500
 export class OpenTradeReconcileMonitor {
   private loop: MonitorLoopHandle | null = null
   private ticking = false
-  private platformByUuid: PlatformByFxsocketId = new Map()
 
   constructor(private readonly supabase: SupabaseClient) {}
 
   start() {
     if (this.loop) return
-    if (!hasFxsocketConfigured()) {
-      console.warn('[openTradeReconcileMonitor] MT4API_BASIC_USER/PASSWORD missing — disabled')
-      return
-    }
     this.loop = startMonitorLoop({
       name: 'openTradeReconcileMonitor',
       supabase: this.supabase,
@@ -91,7 +61,7 @@ export class OpenTradeReconcileMonitor {
       this.supabase,
       this.supabase
         .from('trades')
-        .select('id,signal_id,broker_account_id,metaapi_order_id')
+        .select('id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,lot_size,entry_price')
         .eq('status', 'open')
         .not('broker_account_id', 'is', null)
         .limit(BATCH_LIMIT),
@@ -117,48 +87,30 @@ export class OpenTradeReconcileMonitor {
     }
 
     const brokerIds = [...byBroker.keys()]
-    const { data: brokers, error: brokerErr } = await this.supabase
-      .from('broker_accounts')
-      .select('id,provider,mtapi_status,mtapi_session_id,fxsocket_account_id,metaapi_account_id,fxsocket_status,connection_status,terminal_connected,trade_allowed')
-      .in('id', brokerIds)
-
-    if (brokerErr) {
-      console.warn(`[openTradeReconcileMonitor] broker load failed: ${brokerErr.message}`)
-      return
-    }
-
-    const availableBrokers = ((brokers ?? []) as BrokerRow[]).filter(reconcilable)
-    const uuids = availableBrokers
-      .map(b => brokerSessionId(b))
-      .filter(uuid => uuid.length > 0)
-    this.platformByUuid = await loadPlatformByFxsocketId(this.supabase, uuids)
+    const runtimeByBroker = await loadBrokerApiByAccountId(this.supabase, brokerIds)
 
     let totalClosed = 0
-    for (const broker of availableBrokers) {
-      const uuid = brokerSessionId(broker)
-      if (!uuid) continue
-      const api = apiForFxsocketAccount(this.platformByUuid, uuid)
-      if (!api) continue
-
-      const openForBroker = byBroker.get(broker.id) ?? []
+    for (const [brokerId, openForBroker] of byBroker) {
+      const runtime = brokerRuntimeForAccount(runtimeByBroker, brokerId)
+      if (!runtime) continue
       if (!openForBroker.length) continue
 
       try {
         const closed = await reconcileOpenTradesForBroker(
           this.supabase,
-          api,
-          uuid,
+          runtime.api,
+          runtime.sessionId,
           openForBroker,
         )
         if (closed > 0) {
           totalClosed += closed
           console.log(
-            `[openTradeReconcileMonitor] closed ${closed} stale open trade(s) broker=${broker.id}`,
+            `[openTradeReconcileMonitor] closed ${closed} stale open trade(s) broker=${brokerId}`,
           )
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
-        console.warn(`[openTradeReconcileMonitor] reconcile failed broker=${broker.id}: ${msg}`)
+        console.warn(`[openTradeReconcileMonitor] reconcile failed broker=${brokerId}: ${msg}`)
         captureBusinessIssue({
           category: 'reconciliation',
           event: 'reconciliation_failed',
@@ -168,7 +120,7 @@ export class OpenTradeReconcileMonitor {
           userImpact: 'manual_review_required',
           fingerprint: ['reconciliation_failed', 'open_trade_reconcile', 'OPEN_TRADE_RECONCILE_FAILED'],
           context: {
-            broker_account_id: broker.id,
+            broker_account_id: brokerId,
             stage: 'open_trade_reconcile',
             operation: 'open_trade_reconcile',
             extra: { tracked_open_trades: openForBroker.length },

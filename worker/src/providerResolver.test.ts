@@ -68,10 +68,10 @@ test('shared production account lookup routes through the fail-closed resolver',
   setFxsocketProviderForTests(provider)
   setMtapiProviderForResolverTests(mtapi)
   const fxMap: PlatformByFxsocketId = new Map([
-    ['fx', { platform: 'MT5', provider: 'fxsocket' }],
-    ['legacy', { platform: 'MT4', provider: null }],
-    ['future', { platform: 'MT5', provider: 'mtapi' }],
-    ['invalid', { platform: 'MT5', provider: 'invalid' }],
+    ['fx', { brokerAccountId: 'b-fx', sessionId: 'fx', platform: 'MT5', provider: 'fxsocket' }],
+    ['legacy', { brokerAccountId: 'b-legacy', sessionId: 'legacy', platform: 'MT4', provider: null }],
+    ['future', { brokerAccountId: 'b-future', sessionId: 'future', platform: 'MT5', provider: 'mtapi' }],
+    ['invalid', { brokerAccountId: 'b-invalid', sessionId: 'invalid', platform: 'MT5', provider: 'invalid' }],
   ])
   assert.equal(apiForFxsocketAccount(fxMap, 'fx'), provider)
   assert.equal(apiForFxsocketAccount(fxMap, 'legacy'), provider)

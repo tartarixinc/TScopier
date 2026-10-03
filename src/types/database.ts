@@ -399,6 +399,12 @@ export interface BrokerAccount {
   fxsocket_status?: FxsocketConnectionStatus | null
   /** Provider routing: 'fxsocket' (default) or 'mtapi'. */
   provider?: 'fxsocket' | 'mtapi' | null
+  /** Monotonic broker-writer fence used to reject stale worker jobs. */
+  writer_epoch?: number
+  /** Mutations are allowed only while stable. */
+  provider_transition_state?: 'stable' | 'transition'
+  /** Internal cutover target; null while stable. */
+  provider_transition_target?: 'fxsocket' | 'mtapi' | null
   /** MTAPI session ID (when provider='mtapi'). Not exposed to client. */
   mtapi_session_id?: string | null
   /** MTAPI connection status (when provider='mtapi'). */

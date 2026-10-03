@@ -7,6 +7,7 @@ import { clearChannelActiveTradeParamsWhenFlat } from './channelActiveTradeParam
 import { normalizeSignalChannelIds } from './brokerChannelFilter'
 import { hasFxsocketConfigured } from './fxsocketClient'
 import { apiForBrokerAccount } from './providerResolver'
+import { authorityFromBrokerRow } from './brokerWriteAuthority'
 import { closeWithVerification } from './managementClose'
 import {
   cancelChannelBrokerPendingOrders,
@@ -38,6 +39,10 @@ type BrokerRow = {
   provider?: string | null
   platform?: string | null
   fxsocket_account_id?: string | null
+  mtapi_session_id?: string | null
+  writer_epoch?: number | null
+  provider_transition_state?: 'stable' | 'transition' | null
+  provider_transition_target?: 'fxsocket' | 'mtapi' | null
   metaapi_account_id?: string | null
   signal_channel_ids?: string[] | null
 }
@@ -202,7 +207,7 @@ async function forceCloseChannelOnBroker(
   }
 
   const uuid = brokerSessionUuid(broker)
-  const api = apiForBrokerAccount(broker.provider, uuid)
+  const api = apiForBrokerAccount(broker.provider, uuid, authorityFromBrokerRow(broker))
   if (!api || !uuid || uuid.includes('|')) return result
 
   const trades = await loadOpenTradesForManagement(supabase, {
@@ -363,10 +368,6 @@ export async function forceCloseSignalTrades(
     channels_processed: 0,
   }
 
-  if (!hasFxsocketConfigured()) {
-    return { ...empty, reason: 'broker_api_not_configured' }
-  }
-
   const brokerAccountId = args.brokerAccountId.trim()
   const userId = args.userId.trim()
   if (!brokerAccountId || !userId) {
@@ -375,7 +376,7 @@ export async function forceCloseSignalTrades(
 
   const { data: broker, error: brokerErr } = await supabase
     .from('broker_accounts')
-    .select('id,user_id,platform,provider,mtapi_session_id,fxsocket_account_id,metaapi_account_id,signal_channel_ids')
+    .select('id,user_id,platform,provider,mtapi_session_id,fxsocket_account_id,metaapi_account_id,signal_channel_ids,writer_epoch,provider_transition_state,provider_transition_target')
     .eq('id', brokerAccountId)
     .eq('user_id', userId)
     .maybeSingle()
@@ -461,10 +462,6 @@ export async function forceCloseSignalById(
     channels_processed: 0,
   }
 
-  if (!hasFxsocketConfigured()) {
-    return { ...empty, reason: 'broker_api_not_configured' }
-  }
-
   const userId = args.userId.trim()
   const signalId = args.signalId.trim()
   if (!userId || !signalId) {
@@ -538,7 +535,7 @@ export async function forceCloseSignalById(
 
   const { data: brokerRows, error: brokerRowsErr } = await supabase
     .from('broker_accounts')
-    .select('id,user_id,provider,platform,mtapi_session_id,fxsocket_account_id,metaapi_account_id')
+    .select('id,user_id,provider,platform,mtapi_session_id,fxsocket_account_id,metaapi_account_id,writer_epoch,provider_transition_state,provider_transition_target')
     .eq('user_id', userId)
     .in('id', brokerIds)
   if (brokerRowsErr) {
@@ -554,7 +551,7 @@ export async function forceCloseSignalById(
     const brokerId = (broker as { id: string }).id
     const legs = rows.filter(r => r.broker_account_id === brokerId)
     const uuid = brokerSessionUuid(broker)
-    const api = apiForBrokerAccount((broker as BrokerRow).provider, uuid)
+    const api = apiForBrokerAccount((broker as BrokerRow).provider, uuid, authorityFromBrokerRow(broker as BrokerRow))
     if (!api || !uuid || uuid.includes('|') || !brokerHasLinkedSession(broker as BrokerRow)) {
       // Broker holds this signal's legs but cannot be reached — count them so
       // a mixed run reports partial failure instead of silent success, and

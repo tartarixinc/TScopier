@@ -59,7 +59,11 @@ export type ChannelStopBroker = {
   label?: string | null
   platform?: string | null
   fxsocket_account_id?: string | null
+  provider?: string | null
+  mtapi_session_id?: string | null
   metaapi_account_id?: string | null
+  writer_epoch?: number | null
+  provider_transition_state?: string | null
   manual_settings?: { tp_lots?: ManualTpLot[] | null } | null
 }
 
@@ -692,16 +696,6 @@ export async function applyChannelStopsToBaskets(
   let totalModified = 0
   let totalFailed = 0
   let totalSkipped = 0
-
-  if (!dryRun && !hasFxsocketConfigured()) {
-    return {
-      brokers: [],
-      allFullySynced: false,
-      totalModified: 0,
-      totalFailed: 0,
-      totalSkipped: 0,
-    }
-  }
 
   // Apply baskets (one per account) concurrently — each targets a different MT
   // terminal, so distinct baskets don't contend. Per-leg modifies within a basket

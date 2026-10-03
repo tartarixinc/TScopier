@@ -23,7 +23,7 @@
  */
 import 'dotenv/config'
 import { createClient } from '@supabase/supabase-js'
-import { getFxsocketClient, hasFxsocketConfigured } from '../fxsocketClient'
+import { hasFxsocketConfigured } from '../fxsocketClient'
 import { loadChannelActiveTradeParamsForSymbol } from '../channelActiveTradeParams'
 import {
   applyChannelStopsToBaskets,
@@ -31,11 +31,19 @@ import {
   type ChannelStopBroker,
   type ChannelStopLeg,
 } from '../channelStopApply'
+import { apiForBrokerAccount } from '../providerResolver'
+import { brokerSessionUuid } from '../tradeExecutor/helpers'
+import {
+  authorityFromBrokerRow,
+  createSupabaseBrokerWriteAuthorityStore,
+  registerBrokerWriteAuthorityStore,
+} from '../brokerWriteAuthority'
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 )
+registerBrokerWriteAuthorityStore(createSupabaseBrokerWriteAuthorityStore(supabase))
 
 function num(v: unknown): number | null {
   if (v == null) return null
@@ -163,14 +171,17 @@ export async function runPushSignalStops(config: PushStopsConfig): Promise<void>
   const brokerIds = [...new Set(rows.map(r => r.broker_account_id))]
   const { data: brokers } = await supabase
     .from('broker_accounts')
-    .select('id,label,platform,fxsocket_account_id,metaapi_account_id,manual_settings')
+    .select('id,label,platform,provider,mtapi_session_id,fxsocket_account_id,metaapi_account_id,writer_epoch,provider_transition_state,manual_settings')
     .in('id', brokerIds)
   const brokerById = new Map((brokers ?? []).map(b => [b.id, b as ChannelStopBroker]))
 
-  const api = getFxsocketClient()
   const result = await applyChannelStopsToBaskets({
     supabase,
-    apiFor: () => api,
+    apiFor: broker => {
+      const sessionId = brokerSessionUuid(broker)
+      if (!sessionId) return null
+      return apiForBrokerAccount(broker.provider, sessionId, authorityFromBrokerRow(broker))
+    },
     userId: signal.user_id,
     channelId: signal.channel_id,
     signalId,

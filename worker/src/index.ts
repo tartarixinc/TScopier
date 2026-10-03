@@ -50,6 +50,10 @@ import { registerOrderCloseAuditSupabase } from './orderCloseAudit'
 import { initializeBrokerExecutionCapability } from './brokerExecutionMode'
 import { testFlagEnabled } from './testFlags'
 import { MtapiSessionManager } from './mtapiSessionManager'
+import {
+  createSupabaseBrokerWriteAuthorityStore,
+  registerBrokerWriteAuthorityStore,
+} from './brokerWriteAuthority'
 
 initWorkerSentry()
 installWorkerProcessSentryHandlers()
@@ -85,6 +89,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 )
 registerOrderCloseAuditSupabase(supabase)
+registerBrokerWriteAuthorityStore(createSupabaseBrokerWriteAuthorityStore(supabase))
 
 const sessionManager = new UserSessionManager(supabase)
 let httpServer: Server | null = null
