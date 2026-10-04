@@ -868,19 +868,32 @@ function settleDashboardMetricsLoader(
   }
 }
 
-function markDashboardCachePresent(setHadBootCache: (present: boolean) => void) {
-  setHadBootCache(true)
+function markDashboardCachePresent(
+  cached: DashboardCachePayload,
+  handlers: { setHadBootCache: (present: boolean) => void; setBootCache: (c: DashboardCachePayload | null) => void },
+) {
+  handlers.setHadBootCache(true)
+  handlers.setBootCache(cached)
 }
 
 function markDashboardUserSwitch(
   previousUserId: string,
-  setHadBootCache: (present: boolean) => void,
+  handlers: {
+    setHadBootCache: (present: boolean) => void
+    setBootCache: (c: DashboardCachePayload | null) => void
+    setStickyChartTrades: (trades: DashboardChartTrade[]) => void
+  },
 ) {
   clearDashboardSessionCache(previousUserId)
-  setHadBootCache(false)
+  handlers.setHadBootCache(false)
+  // The frozen boot snapshot and the sticky chart belong to the previous
+  // account — clear both before this user renders again.
+  handlers.setBootCache(null)
+  handlers.setStickyChartTrades([])
 }
 
-type DashboardHydrationResetHandlers = DashboardLoaderHandlers & {
+type DashboardHydrationResetHandlers = {
+  showLoader: () => void
   setStats: (stats: DashboardStats) => void
   setCopierLogs: (logs: Signal[]) => void
   setCopierLogSymbols: (symbols: Record<string, string>) => void
@@ -893,6 +906,7 @@ type DashboardHydrationResetHandlers = DashboardLoaderHandlers & {
   setCachedAnalytics: (analytics: DashboardAnalytics | null) => void
   setDashboardChartsReady: (ready: boolean) => void
   setHadBootCache: (present: boolean) => void
+  setStickyChartTrades: (trades: DashboardChartTrade[]) => void
   liveBrokerStateRef: MutableRefObject<Record<string, { open_pnl?: number; open_trades?: number }>>
   mtTradesRef: MutableRefObject<MtTrade[] | null>
   linkedBalancesRef: MutableRefObject<Record<string, BrokerBalanceSnapshot>>
@@ -914,6 +928,7 @@ function applyDashboardHydrationReset(handlers: DashboardHydrationResetHandlers)
   handlers.setChannelLinkMaps(EMPTY_CHANNEL_LINK_MAPS)
   handlers.setCachedAnalytics(null)
   handlers.setDashboardChartsReady(false)
+  handlers.setStickyChartTrades([])
   handlers.showLoader()
   handlers.setHadBootCache(false)
 }
@@ -966,7 +981,7 @@ export function DashboardPage() {
   const navigate = useNavigate()
   // Read once at mount: the boot snapshot only seeds the first paint — the
   // layout effect below applies the authoritative copy before anything shows.
-  const [bootCache] = useState<DashboardCachePayload | null>(() =>
+  const [bootCache, setBootCache] = useState<DashboardCachePayload | null>(() =>
     user?.id ? readBootstrapDashboardCache(user?.id) : null,
   )
   const [hadBootCache, setHadBootCache] = useState(() => Boolean(bootCache?.stats))
@@ -1079,13 +1094,13 @@ export function DashboardPage() {
     const previousUser = getDashboardActiveUserId()
     const isUserSwitch = previousUser != null && previousUser !== user.id
     if (isUserSwitch) {
-      markDashboardUserSwitch(previousUser, setHadBootCache)
+      markDashboardUserSwitch(previousUser, { setHadBootCache, setBootCache, setStickyChartTrades })
     }
     setDashboardActiveUserId(user.id)
 
     const cached = readBootstrapDashboardCache(user.id)
     if (cached?.stats) {
-      markDashboardCachePresent(setHadBootCache)
+      markDashboardCachePresent(cached, { setHadBootCache, setBootCache })
       applyDashboardCacheSnapshot(user.id, cached, {
         setStats,
         setCopierLogs,
@@ -1132,8 +1147,7 @@ export function DashboardPage() {
         setCachedAnalytics,
         setDashboardChartsReady,
         setHadBootCache,
-        setDashboardMetricsLoading,
-        cancelDismissLoader: cancelDismissDashboardMetricsLoader,
+        setStickyChartTrades,
         showLoader: showDashboardMetricsLoader,
         liveBrokerStateRef,
         mtTradesRef,

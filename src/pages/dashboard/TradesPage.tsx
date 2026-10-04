@@ -152,6 +152,7 @@ export function TradesPage() {
                   key={f.value}
                   type="button"
                   onClick={() => {
+                    if (f.value === filter) return
                     setFilter(f.value)
                     setPage(1)
                   }}

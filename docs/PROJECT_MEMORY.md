@@ -18,6 +18,8 @@
   1. Repo-wide lint debt outside this scope: ~333 problems remain in untouched files — worth a dedicated sweep (12 are auto-fixable with `--fix`).
   2. The sticky-chart behaviour is now live for the first time; if holding the previous chart during an empty refresh is ever unwanted, revert `effectiveChartTrades` to `chartTrades` alone.
   3. The four `eslint-disable` comments encode intentional dependency lists — revisit if the underlying effects are ever restructured.
+  4. Two accepted behaviour deltas from the cleanup: the trades-page page clamp is now derived (`currentPage`), so a list that shrinks and later regrows returns to the original page instead of staying clamped (the old effect persisted the clamp); and the dashboard's `chartForCache` cache write now falls back to the last *non-empty* chart (the sticky value) rather than the current possibly-empty list — both are consequences of the documented sticky-chart activation.
+  5. On a same-mount account switch (only reachable via a cross-tab sign-in without an intervening sign-out) the boot snapshot and sticky chart are now explicitly cleared (`markDashboardUserSwitch`), matching what the old render-time mirror did implicitly.
 
 ### 2026-10-04 — When the live broker feed goes down, the app now shows the user's own saved trades and a banner that clears itself when the feed returns
 
