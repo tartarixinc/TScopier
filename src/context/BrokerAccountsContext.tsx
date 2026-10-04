@@ -350,7 +350,6 @@ export function BrokerAccountsProvider({
   const modalCopy = useMemo(() => {
     const shared = {
       passwordLabel: bl.reconnectPasswordLabel,
-      passwordHint: bl.reconnectPasswordHint,
       passwordPlaceholder: bl.reconnectPasswordPlaceholder,
       rememberPasswordLabel: bl.rememberPasswordLabel,
       rememberPasswordHint: bl.rememberPasswordHint,

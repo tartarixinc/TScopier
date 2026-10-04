@@ -17,7 +17,7 @@ export interface BrokerReconnectPasswordModalCopy {
   title: string
   body: string
   passwordLabel: string
-  passwordHint: string
+  passwordHint?: string
   passwordPlaceholder: string
   /** "Remind me later" postpones this account until the next app load. */
   remindLater?: string
@@ -370,7 +370,6 @@ function BrokerReconnectPasswordModalInner({
                 placeholder={copy.passwordPlaceholder}
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                hint={copy.passwordHint}
                 autoComplete="current-password"
                 required
               />
