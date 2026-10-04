@@ -221,3 +221,25 @@ describe('BrokerReconnectPasswordModal — success stage', () => {
     expect(onContinue).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('BrokerReconnectPasswordModal — multi-account hint', () => {
+  const hint = '3 accounts need reconnecting. You will be asked for the password once for each one.'
+
+  it('tells the customer they will be asked once per account (details stage)', () => {
+    render({ stage: 'details', copy: { ...copy, hint } })
+    expect(document.body.textContent).toContain(hint)
+    expect(document.body.textContent).toContain('Reconnect this account to keep copying trades.')
+  })
+
+  it('shows the same warning above the password field', () => {
+    render({ stage: 'password', copy: { ...copy, hint } })
+    expect(document.body.textContent).toContain(hint)
+    expect(document.getElementById('broker-reconnect-password')).not.toBeNull()
+  })
+
+  it('stays quiet when only one account is queued (no hint supplied)', () => {
+    render({ stage: 'details' })
+    expect(document.body.textContent).not.toContain('accounts need reconnecting')
+    expect(document.body.textContent).not.toContain('once for each one')
+  })
+})

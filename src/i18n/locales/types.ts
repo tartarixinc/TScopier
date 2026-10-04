@@ -720,6 +720,7 @@ export interface AccountConfigBrokerListTranslations {
   reconnectMigrationPasswordTitle: string
   reconnectMigrationPasswordBody: string
   reconnectMigrationBack: string
+  reconnectManyAccountsHint: string
   reconnectConnectingTitle: string
   reconnectConnectingBody: string
   reconnectSuccessTitle: string

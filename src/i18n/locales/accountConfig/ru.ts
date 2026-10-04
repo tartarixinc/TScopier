@@ -162,6 +162,8 @@ export const accountConfigRu: AccountConfigBundleTranslations = {
       reconnectMigrationPasswordTitle: 'Введите пароль, чтобы переподключиться',
       reconnectMigrationPasswordBody: 'Номер счёта и сервер уже указаны. Пароль хранится в зашифрованном виде и используется только для подключения к брокеру.',
       reconnectMigrationBack: 'Назад',
+      reconnectManyAccountsHint:
+        '{count} аккаунтов нужно переподключить. Пароль будет запрошен для каждого из них отдельно.',
       reconnectConnectingTitle: 'Подключение аккаунта',
       reconnectConnectingBody: 'Данные приняты. Ожидание моста брокера — это может занять некоторое время.',
       reconnectSuccessTitle: 'Аккаунт подключён',

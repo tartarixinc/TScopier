@@ -21,6 +21,7 @@ import {
 } from '../lib/brokerAccountSelect'
 import { planLimitErrorMessage } from '../lib/telegramChannelApi'
 import { useT } from './LocaleContext'
+import { interpolate } from '../i18n/interpolate'
 import { BrokerReconnectPasswordModal } from '../components/broker/BrokerReconnectPasswordModal'
 import {
   isMigrationSwitchCase,
@@ -299,6 +300,14 @@ export function BrokerAccountsProvider({
     ? brokersNeedingReconnect.some(b => b.id !== reconnectSuccessId && b.is_active !== false)
     : false
 
+  // Several accounts queued: say so up front instead of letting the customer
+  // discover the queue one password prompt at a time. Paused accounts are
+  // never queued, so they are not counted.
+  const reconnectManyHint = useMemo(() => {
+    const queued = brokersNeedingReconnect.filter(b => b.is_active !== false).length
+    return queued > 1 ? interpolate(bl.reconnectManyAccountsHint, { count: queued }) : null
+  }, [brokersNeedingReconnect, bl.reconnectManyAccountsHint])
+
   const modalCopy = useMemo(() => {
     const shared = {
       passwordLabel: bl.reconnectPasswordLabel,
@@ -312,6 +321,11 @@ export function BrokerAccountsProvider({
       cancel: t.common.cancel,
       back: bl.reconnectMigrationBack,
       successAction: hasMoreAfterSuccess ? bl.reconnectSuccessNext : bl.reconnectSuccessDone,
+      // Only the stages where the customer is about to act: a hint on the
+      // "connecting" spinner or the success tick would just be noise.
+      ...((modalStage === 'details' || modalStage === 'password') && reconnectManyHint
+        ? { hint: reconnectManyHint }
+        : {}),
     }
     if (modalStage === 'connecting') {
       return { title: bl.reconnectConnectingTitle, body: bl.reconnectConnectingBody, ...shared }
@@ -325,7 +339,7 @@ export function BrokerAccountsProvider({
     return modalStage === 'password'
       ? { title: bl.reconnectMigrationPasswordTitle, body: bl.reconnectMigrationPasswordBody, ...shared }
       : { title: bl.reconnectMigrationTitle, body: bl.reconnectMigrationBody, ...shared }
-  }, [bl, migrationCopy, modalStage, t.common.cancel, hasMoreAfterSuccess])
+  }, [bl, migrationCopy, modalStage, t.common.cancel, hasMoreAfterSuccess, reconnectManyHint])
 
   const value = useMemo(
     (): BrokerAccountsContextValue => ({

@@ -162,6 +162,8 @@ export const accountConfigSv: AccountConfigBundleTranslations = {
       reconnectMigrationPasswordTitle: 'Ange ditt lösenord för att ansluta igen',
       reconnectMigrationPasswordBody: 'Kontonummer och server är redan ifyllda. Lösenordet lagras krypterat och används bara för att ansluta till din mäklare.',
       reconnectMigrationBack: 'Tillbaka',
+      reconnectManyAccountsHint:
+        '{count} konton behöver återanslutas. Du blir ombedd om lösenordet en gång för varje konto.',
       reconnectConnectingTitle: 'Ansluter ditt konto',
       reconnectConnectingBody:
         'Inloggningsuppgifterna godkändes. Väntar på brokerns anslutning — det kan ta en stund.',

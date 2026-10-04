@@ -162,6 +162,8 @@ export const accountConfigPl: AccountConfigBundleTranslations = {
       reconnectMigrationPasswordTitle: 'Wpisz hasło, aby połączyć się ponownie',
       reconnectMigrationPasswordBody: 'Numer konta i serwer są już uzupełnione. Hasło jest przechowywane w formie zaszyfrowanej i służy wyłącznie do połączenia z brokerem.',
       reconnectMigrationBack: 'Wstecz',
+      reconnectManyAccountsHint:
+        '{count} kont wymaga ponownego połączenia. Hasło zostanie poproszone raz dla każdego konta.',
       reconnectConnectingTitle: 'Łączenie z kontem',
       reconnectConnectingBody:
         'Dane logowania zaakceptowane. Czekamy na pośrednika brokera — to może chwilę potrwać.',

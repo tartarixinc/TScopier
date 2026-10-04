@@ -162,6 +162,8 @@ export const accountConfigNl: AccountConfigBundleTranslations = {
       reconnectMigrationPasswordTitle: 'Voer je wachtwoord in om opnieuw te verbinden',
       reconnectMigrationPasswordBody: 'Je accountnummer en server zijn al ingevuld. Het wachtwoord wordt versleuteld opgeslagen en alleen gebruikt om verbinding te maken met je broker.',
       reconnectMigrationBack: 'Terug',
+      reconnectManyAccountsHint:
+        '{count} accounts moeten opnieuw verbonden worden. Je wordt voor elk account om het wachtwoord gevraagd.',
       reconnectConnectingTitle: 'Je account wordt verbonden',
       reconnectConnectingBody:
         'Inloggegevens geaccepteerd. Wachten op de broker-verbinding — dit kan even duren.',

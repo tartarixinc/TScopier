@@ -162,6 +162,8 @@ export const accountConfigJa: AccountConfigBundleTranslations = {
       reconnectMigrationPasswordTitle: 'パスワードを入力して再接続',
       reconnectMigrationPasswordBody: '口座番号とサーバーは入力済みです。パスワードは暗号化して保存され、ブローカーへの接続にのみ使用されます。',
       reconnectMigrationBack: '戻る',
+      reconnectManyAccountsHint:
+        '{count}件のアカウントを再接続する必要があります。アカウントごとにパスワードの入力が求められます。',
       reconnectConnectingTitle: 'アカウントに接続しています',
       reconnectConnectingBody: 'ログイン情報が受理されました。ブローカーへの接続を待っています。しばらくお待ちください。',
       reconnectSuccessTitle: 'アカウントが接続されました',

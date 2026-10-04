@@ -162,6 +162,8 @@ export const accountConfigAr: AccountConfigBundleTranslations = {
       reconnectMigrationPasswordTitle: 'أدخل كلمة المرور لإعادة الاتصال',
       reconnectMigrationPasswordBody: 'رقم الحساب والخادم مملوءان مسبقًا. تُخزَّن كلمة المرور مشفّرة وتُستخدم فقط للاتصال بوسيطك.',
       reconnectMigrationBack: 'رجوع',
+      reconnectManyAccountsHint:
+        '{count} حسابًا بحاجة إلى إعادة الاتصال. سيُطلب منك كلمة المرور مرة واحدة لكل حساب.',
       reconnectConnectingTitle: 'جارٍ توصيل حسابك',
       reconnectConnectingBody: 'تم قبول بيانات الدخول. بانتظار جسر الوسيط — قد يستغرق ذلك لحظة.',
       reconnectSuccessTitle: 'تم توصيل الحساب',

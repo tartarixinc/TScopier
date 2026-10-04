@@ -572,6 +572,8 @@ export const es: Translations = {
       reconnectMigrationPasswordTitle: 'Introduce tu contraseña para reconectar',
       reconnectMigrationPasswordBody: 'Tu número de cuenta y servidor ya están rellenados. La contraseña se guarda cifrada y solo se usa para conectarse a tu bróker.',
       reconnectMigrationBack: 'Atrás',
+      reconnectManyAccountsHint:
+        '{count} cuentas necesitan reconectarse. Se te pedirá la contraseña una vez por cada una.',
       reconnectConnectingTitle: 'Conectando tu cuenta',
       reconnectConnectingBody:
         'Acceso aceptado. Esperando al puente del bróker — puede tardar un momento.',

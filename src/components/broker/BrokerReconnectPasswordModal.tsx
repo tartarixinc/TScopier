@@ -26,6 +26,8 @@ export interface BrokerReconnectPasswordModalCopy {
   reconnect: string
   cancel: string
   back?: string
+  /** Shown under the body when several accounts are queued — tells the customer they will be asked for each one. */
+  hint?: string
   /** Stage `success`: the action button — "Next account" or "Done". */
   successAction?: string
 }
@@ -193,6 +195,11 @@ function BrokerReconnectPasswordModalInner({
               <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed">
                 {copy.body}
               </p>
+              {copy.hint && (
+                <p className="mt-2 text-xs font-medium text-neutral-600 dark:text-neutral-300 leading-relaxed">
+                  {copy.hint}
+                </p>
+              )}
             </div>
             {canDismiss && (
               <button

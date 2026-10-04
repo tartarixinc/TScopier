@@ -572,6 +572,8 @@ export const fr: Translations = {
       reconnectMigrationPasswordTitle: 'Saisissez votre mot de passe pour vous reconnecter',
       reconnectMigrationPasswordBody: 'Votre numéro de compte et votre serveur sont déjà renseignés. Le mot de passe est chiffré et sert uniquement à se connecter à votre courtier.',
       reconnectMigrationBack: 'Retour',
+      reconnectManyAccountsHint:
+        '{count} comptes doivent être reconnectés. Le mot de passe vous sera demandé une fois pour chacun.',
       reconnectConnectingTitle: 'Connexion de votre compte',
       reconnectConnectingBody:
         'Identifiants acceptés. En attente du pont du courtier — cela peut prendre un instant.',

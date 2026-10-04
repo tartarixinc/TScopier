@@ -569,6 +569,8 @@ broker: {
       reconnectMigrationPasswordTitle: 'Enter your password to reconnect',
       reconnectMigrationPasswordBody: 'Your account number and server are already filled in. The password is stored encrypted and only used to connect to your broker.',
       reconnectMigrationBack: 'Back',
+      reconnectManyAccountsHint:
+        '{count} accounts need reconnecting. You will be asked for the password once for each one.',
       reconnectConnectingTitle: 'Connecting your account',
       reconnectConnectingBody:
         'Sign-in accepted. Waiting for the broker bridge — this can take a moment.',
