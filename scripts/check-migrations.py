@@ -8,7 +8,7 @@ before a Railway deploy.
 
 It NEVER executes DDL. The only query it sends is:
 
-    SELECT version FROM supabase_migrations.schema_migrations
+    SELECT version, name FROM supabase_migrations.schema_migrations
 
 Examples:
     python3 scripts/check-migrations.py                      # working tree vs staging
@@ -34,13 +34,13 @@ TOKEN_PATH = os.path.expanduser("~/.supabase/access-token")
 MIGRATIONS_GLOB = "supabase/migrations/*.sql"
 
 
-def applied_versions(project_ref: str) -> set:
+def applied_rows(project_ref: str) -> list:
     """Read the migration history recorded in the database (SELECT only)."""
     with open(TOKEN_PATH) as fh:
         token = fh.read().strip()
     url = f"https://api.supabase.com/v1/projects/{project_ref}/database/query"
     body = json.dumps({
-        "query": "SELECT version FROM supabase_migrations.schema_migrations ORDER BY version",
+        "query": "SELECT version, name FROM supabase_migrations.schema_migrations ORDER BY version",
     }).encode()
     req = urllib.request.Request(url, data=body, headers={
         "Authorization": f"Bearer {token}",
@@ -52,7 +52,7 @@ def applied_versions(project_ref: str) -> set:
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode()[:500]
         sys.exit(f"Failed to read applied migrations: HTTP {exc.code}\n{detail}")
-    return {str(row["version"]) for row in rows}
+    return rows
 
 
 def file_versions(ref: str | None) -> list:
@@ -87,20 +87,32 @@ def main() -> int:
     print(f"Project: {args.project} ({project_ref})")
     print(f"Comparing migration files from the {source} against the database...\n")
 
-    applied = applied_versions(project_ref)
+    rows = applied_rows(project_ref)
+    # A file counts as applied if the database recorded EITHER its version
+    # (the leading number of the filename) OR its name (the filename stem).
+    # Applying from the dashboard stamps the version with the apply time, so
+    # version alone misses migrations applied that way — see PROJECT_MEMORY
+    # 2026-10-04, where provider_writer_fencing was applied but registered
+    # under version 20261002211236.
+    applied_versions = {str(row["version"]) for row in rows}
+    applied_names = {str(row["name"]) for row in rows if row.get("name")}
     files = file_versions(args.ref)
     file_set = {version for version, _ in files}
+    file_stems = {name[:-4] for _, name in files}
     print(f"  migration files:  {len(files)}")
-    print(f"  applied in db:    {len(applied)}")
+    print(f"  applied in db:    {len(rows)}")
 
-    missing = [(v, n) for v, n in files if v not in applied]
-    extra = sorted(applied - file_set)
+    missing = [(v, n) for v, n in files
+               if v not in applied_versions and n[:-4] not in applied_names]
+    extra = [row for row in rows
+             if str(row["version"]) not in file_set
+             and str(row.get("name") or "") not in file_stems]
 
     if extra:
         print(f"\n  {len(extra)} applied version(s) have no file in this ref"
               " (applied from another branch — normal during a merge):")
-        for version in extra[-10:]:
-            print(f"    {version}")
+        for row in extra[-10:]:
+            print(f"    {row['version']}  {row.get('name') or '(no name)'}")
         if len(extra) > 10:
             print(f"    ... and {len(extra) - 10} more")
 
