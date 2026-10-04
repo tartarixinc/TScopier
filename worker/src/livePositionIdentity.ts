@@ -67,6 +67,12 @@ function directionOf(row: Record<string, unknown>): boolean | null {
   const kind = rawNumericOrderKind(row)
   if (kind === 0) return true
   if (kind === 1) return false
+  // MTAPI bridge rows spell the side as a word, so attribute matching can
+  // still confirm direction when the stored ticket did not line up.
+  const side = `${String(row.orderType ?? '')} ${String(row.dealType ?? '')} ${String(row.type ?? '')}`
+    .toLowerCase()
+  if (side.includes('buy')) return true
+  if (side.includes('sell')) return false
   return null
 }
 

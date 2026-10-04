@@ -116,3 +116,58 @@ describe('canonical live position resolver', () => {
     assert.match(source, /else if \(action === 'partial_profit'\)[\s\S]*?orderClose\(uuid, \{ ticket: effectiveTicket, lots \}\)/)
   })
 })
+
+describe('MTAPI bridge rows in open-trade reconcile', () => {
+  // Regression guard for the false-close of 2026-10-04: these rows carry no
+  // `operation` field, so the position filter rejected them, reconcile saw no
+  // live positions and marked every tracked trade closed while it was open.
+  it('resolves a filled MT5 row by its stored ticket', () => {
+    const result = resolveCanonicalOpenPosition({
+      trade: {
+        id: 'trade-mtapi',
+        metaapi_order_id: '3316111495',
+        symbol: 'XAUUSDm',
+        direction: 'buy',
+        lot_size: 0.01,
+        entry_price: 4179.911,
+      },
+      openedOrders: [{
+        ticket: 3316111495,
+        orderType: 'Buy',
+        dealType: 'DealBuy',
+        state: 'Filled',
+        symbol: 'XAUUSDm',
+        lots: 0.01,
+        openPrice: 4179.911,
+      }],
+    })
+    assert.equal(result.status, 'resolved')
+    if (result.status === 'resolved') {
+      assert.equal(result.matchedBy, 'canonical_ticket')
+      assert.equal(result.ticket, 3316111495)
+    }
+  })
+
+  it('falls back to attributes when the stored ticket no longer matches', () => {
+    const result = resolveCanonicalOpenPosition({
+      trade: {
+        id: 'trade-mtapi-2',
+        metaapi_order_id: '999999',
+        symbol: 'XAUUSDm',
+        direction: 'buy',
+        lot_size: 0.01,
+        entry_price: 4179.911,
+      },
+      openedOrders: [{
+        ticket: 555,
+        orderType: 'Buy',
+        state: 'Filled',
+        symbol: 'XAUUSDm',
+        lots: 0.01,
+        openPrice: 4179.911,
+      }],
+    })
+    assert.equal(result.status, 'resolved')
+    if (result.status === 'resolved') assert.equal(result.matchedBy, 'attributes')
+  })
+})
