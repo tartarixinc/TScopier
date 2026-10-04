@@ -233,9 +233,10 @@ describe('BrokerReconnectPasswordModal — remind later and delete', () => {
     deleteConfirmCta: 'Delete account',
   }
 
-  it('offers Remind me later and calls it', () => {
+  it('offers Remind me later exactly once and calls it', () => {
     const onRemindLater = vi.fn()
     render({ stage: 'details', copy: escapeCopy, onRemindLater })
+    expect(document.body.textContent?.split('Remind me later').length - 1).toBe(1)
     buttonByLabel('Remind me later')?.click()
     expect(onRemindLater).toHaveBeenCalledTimes(1)
   })

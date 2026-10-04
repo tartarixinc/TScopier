@@ -204,6 +204,14 @@ export function BrokerAccountsProvider({
     onSuccess: (brokerId) => {
       setReconnectError(null)
       setReconnectSuccessId(brokerId)
+      // A reconnected account no longer needs postponing — forget any snooze
+      // so a future reconnect need prompts again immediately.
+      setSnoozedIds(prev => {
+        if (!prev.has(brokerId)) return prev
+        const next = new Set(prev)
+        next.delete(brokerId)
+        return next
+      })
       reconnectSuccessHandlerRef.current?.(brokerId)
     },
   })
@@ -286,6 +294,10 @@ export function BrokerAccountsProvider({
 
   /** "Remind me later": hide this account until the next app load, then move on. */
   const handleRemindLater = useCallback(() => {
+    // Unwind any in-flight attempt first: on the password stage the reconnect
+    // is awaiting this prompt, and leaving it unresolved would hold the
+    // account's reconnect lease for the rest of the session.
+    if (passwordPromptBrokerRef.current) cancelPasswordPrompt()
     const active = activeBrokerRef.current
     if (active) {
       snoozeMigrationPrompt(active.id)
@@ -294,12 +306,15 @@ export function BrokerAccountsProvider({
     setReconnectError(null)
     setReconnectAttemptId(null)
     setReconnectSuccessId(null)
-  }, [])
+  }, [cancelPasswordPrompt])
 
   /** Delete = the permanent exit for an account that cannot be reconnected. */
   const handleDeleteAccount = useCallback(async () => {
     const active = activeBrokerRef.current
     if (!active) return
+    // Same unwind as "remind me later": never leave a reconnect awaiting a
+    // prompt for an account that is about to disappear.
+    if (passwordPromptBrokerRef.current) cancelPasswordPrompt()
     try {
       await fxsocketBroker.delete(active.id, active.provider as 'fxsocket' | 'mtapi' | undefined)
     } catch (err) {
@@ -307,10 +322,16 @@ export function BrokerAccountsProvider({
       return
     }
     removeBroker(active.id)
+    setSnoozedIds(prev => {
+      if (!prev.has(active.id)) return prev
+      const next = new Set(prev)
+      next.delete(active.id)
+      return next
+    })
     setReconnectError(null)
     setReconnectAttemptId(null)
     setReconnectSuccessId(null)
-  }, [bl.deleteFailed, removeBroker])
+  }, [bl.deleteFailed, cancelPasswordPrompt, removeBroker])
 
   const handleModalBack = useCallback(() => {
     // Abort the password prompt only — the details stage stays up, and nothing
@@ -351,8 +372,6 @@ export function BrokerAccountsProvider({
     const shared = {
       passwordLabel: bl.reconnectPasswordLabel,
       passwordPlaceholder: bl.reconnectPasswordPlaceholder,
-      rememberPasswordLabel: bl.rememberPasswordLabel,
-      rememberPasswordHint: bl.rememberPasswordHint,
       remindLater: bl.remindLater,
       deleteAccountLink: bl.deleteAccountLink,
       deleteConfirmTitle: bl.deleteConfirmTitle,

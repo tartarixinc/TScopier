@@ -105,41 +105,23 @@ export function resolveReconnectDialog<T extends { id: string }>(args: {
   return { active: args.migrationPrompt, stage: 'details' }
 }
 
-const SNOOZE_KEY = 'tscopier:migrationPromptSnoozed'
-
 /**
- * "Remind me later" postpones one account until the next app load.
- * sessionStorage is exactly that: it survives navigation inside the app and
- * disappears when the tab closes, so the prompt always returns the next time
- * the customer opens TScopier — it can never be silenced for good. Deleting the
- * account is the only permanent exit.
+ * "Remind me later" postpones one account until the next app load, so the
+ * snooze lives in memory only: it survives navigation inside the app and is
+ * gone the moment the page reloads — the customer is always prompted again on
+ * the next load. Nothing can silence an account for good; deleting it is the
+ * only permanent exit.
  */
-function readSnoozedAccountIds(): Set<string> {
-  if (typeof window === 'undefined') return new Set()
-  try {
-    const raw = window.sessionStorage.getItem(SNOOZE_KEY)
-    const parsed: unknown = raw ? JSON.parse(raw) : []
-    return new Set(Array.isArray(parsed) ? parsed.map(String) : [])
-  } catch {
-    return new Set()
-  }
-}
+const snoozedAccountIds = new Set<string>()
 
 export function snoozedMigrationPromptIds(): ReadonlySet<string> {
-  return readSnoozedAccountIds()
+  return snoozedAccountIds
 }
 
 export function snoozeMigrationPrompt(accountId: string): void {
-  if (typeof window === 'undefined') return
-  const ids = readSnoozedAccountIds()
-  ids.add(String(accountId))
-  try {
-    window.sessionStorage.setItem(SNOOZE_KEY, JSON.stringify([...ids]))
-  } catch {
-    // Private mode or storage disabled: the prompt simply comes back sooner.
-  }
+  snoozedAccountIds.add(String(accountId))
 }
 
 export function isMigrationPromptSnoozed(accountId: string): boolean {
-  return readSnoozedAccountIds().has(String(accountId))
+  return snoozedAccountIds.has(String(accountId))
 }

@@ -115,7 +115,14 @@ function BrokerReconnectPasswordModalInner({
       return
     }
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && canDismiss) onCancelRef.current()
+      if (e.key !== 'Escape') return
+      // Escape backs out of the delete confirmation one level, never the whole
+      // reconnect flow; otherwise it behaves as before.
+      if (confirmingDelete) {
+        setConfirmingDelete(false)
+        return
+      }
+      if (canDismiss) onCancelRef.current()
     }
     document.addEventListener('keydown', handleKey)
     const focusTimer = window.setTimeout(() => {
@@ -185,6 +192,7 @@ function BrokerReconnectPasswordModalInner({
         <div
           role="dialog"
           aria-modal="true"
+          aria-labelledby="broker-delete-confirm-title"
           className="relative w-full max-w-md rounded-2xl bg-white dark:bg-neutral-900 shadow-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden"
         >
           <div className="px-5 pt-5 pb-4 border-b border-neutral-100 dark:border-neutral-800">
@@ -193,7 +201,7 @@ function BrokerReconnectPasswordModalInner({
                 <AlertTriangle className="h-5 w-5" aria-hidden />
               </div>
               <div className="min-w-0 flex-1">
-                <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
+                <h2 id="broker-delete-confirm-title" className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
                   {copy.deleteConfirmTitle}
                 </h2>
                 <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed">
@@ -360,8 +368,6 @@ function BrokerReconnectPasswordModalInner({
             </div>
           )}
 
-          {secondaryActions}
-
           {stage === 'password' && (
             <form onSubmit={handleSubmit} className="space-y-4">
               <PasswordInput
@@ -397,11 +403,7 @@ function BrokerReconnectPasswordModalInner({
             </form>
           )}
 
-          {secondaryActions}
-
-          {/* `connecting` has no footer: the header spinner and body text
-              carry the waiting state — a second copy of the same sentence
-              below would just print it twice. */}
+          {(stage === 'details' || stage === 'password') && secondaryActions}
           {stage === 'success' && (
             <div className="flex justify-end pt-1">
               <Button type="button" onClick={onContinue}>
