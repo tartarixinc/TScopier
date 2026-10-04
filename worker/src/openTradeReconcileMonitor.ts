@@ -101,6 +101,9 @@ export class OpenTradeReconcileMonitor {
           runtime.api,
           runtime.sessionId,
           openForBroker,
+          // An empty position list only means "flat" when the session answers
+          // its health check; otherwise the loop keeps deferring as before.
+          () => runtime.api.checkConnect(runtime.sessionId),
         )
         if (closed > 0) {
           totalClosed += closed

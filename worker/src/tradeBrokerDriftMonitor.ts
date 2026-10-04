@@ -152,8 +152,18 @@ export class TradeBrokerDriftMonitor {
         continue
       }
       if (!Array.isArray(orders) || orders.length === 0) {
-        // An empty answer means we learned nothing (usually a disconnected or
-        // flat session) — it must never count towards "this ticket is gone".
+        // An empty answer is not automatically "no evidence": a flat account
+        // answers empty and is perfectly healthy. Ask the session, and when it
+        // answers, count the account as probed so the two-pass ghost rule can
+        // finally conclude the rows left behind (the last trade on an account
+        // can never be reconciled otherwise — closing it is what empties the
+        // account).
+        try {
+          await runtime.api.checkConnect(runtime.sessionId)
+          probedOkByUser.set(userId, (probedOkByUser.get(userId) ?? 0) + 1)
+        } catch {
+          // disconnected: no evidence, as before
+        }
         continue
       }
       let parsed = 0
