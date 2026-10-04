@@ -406,6 +406,9 @@ export const fr: Translations = {
     noResults: 'Aucun résultat',
     show: 'Afficher',
     results: 'résultats',
+    brokerFeedDegraded: 'Nous rencontrons des difficultés pour joindre l’infrastructure de votre courtier.',
+    brokerFeedDegradedHint:
+      'Affichage de vos opérations enregistrées ; les positions et les bénéfices en direct peuvent être retardés et les nouvelles opérations ne seront peut-être pas copiées avant le rétablissement.',
     cookieConsent: {
       message: 'Nous utilisons des cookies pour améliorer votre expérience.',
       policyLink: 'Politique de cookies',

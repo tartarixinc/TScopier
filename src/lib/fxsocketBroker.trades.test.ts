@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { fetchTradesAcrossProviders, fxsocketBroker, type MtTrade } from './fxsocketBroker'
+import { getLiveFeedStatus, reportLiveFeedSuccess, resetLiveFeedStatus } from './liveFeedStatus'
 
 function trade(ticket: number, brokerId: string): MtTrade {
   return {
@@ -100,5 +101,62 @@ describe('fetchTradesAcrossProviders', () => {
       throw new Error('MTAPI is not configured')
     })
     await expect(fetchTradesAcrossProviders({})).rejects.toThrow('MTAPI is not configured')
+  })
+
+  it('raises the degraded feed banner when one provider succeeds and another really fails', async () => {
+    resetLiveFeedStatus()
+    tradesSpy.mockImplementation(async (args) => {
+      if (args.provider === 'fxsocket') return { trades: [trade(1, 'b1')] }
+      throw new Error('mtapi edge down')
+    })
+    const res = await fetchTradesAcrossProviders({})
+    expect(res.trades).toHaveLength(1)
+    expect(getLiveFeedStatus().degraded).toBe(true)
+    expect(getLiveFeedStatus().reason).toContain('mtapi edge down')
+    reportLiveFeedSuccess()
+  })
+
+  it('does not raise the banner for a wrong-provider rejection', async () => {
+    resetLiveFeedStatus()
+    tradesSpy.mockImplementation(async (args) => {
+      if (args.provider === 'fxsocket') return { trades: [trade(9, 'fx-b')] }
+      throw new Error('This account is not an MTAPI account.')
+    })
+    await fetchTradesAcrossProviders({ brokerId: 'fx-b' })
+    expect(getLiveFeedStatus().degraded).toBe(false)
+  })
+})
+
+describe('fxsocketBroker.trades ?demo=broker-down', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('rejects before any network call when the flag is set', async () => {
+    vi.stubGlobal('window', { location: { search: '?demo=broker-down' } })
+    const fetchSpy = vi.fn()
+    vi.stubGlobal('fetch', fetchSpy)
+
+    await expect(fxsocketBroker.trades({ scope: 'all' })).rejects.toThrow(
+      'Broker feed is down (demo flag)',
+    )
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('does not engage the guard without the flag', async () => {
+    vi.stubGlobal('window', { location: { search: '' } })
+    // Stub the network: whatever stage the call reaches (the auth check
+    // before fetch, or fetch itself), no real request can leave the test.
+    const fetchSpy = vi.fn(() => Promise.reject(new Error('network off in tests')))
+    vi.stubGlobal('fetch', fetchSpy)
+
+    const err = await fxsocketBroker.trades({ scope: 'all' }).then(
+      () => null,
+      (e: unknown) => e as Error,
+    )
+    // Without the flag the call proceeds past the guard into the real
+    // auth/network path — it must fail there, not with the demo message.
+    expect(err?.message).not.toBe('Broker feed is down (demo flag)')
+    expect(['Not signed in', 'network off in tests']).toContain(err?.message)
   })
 })

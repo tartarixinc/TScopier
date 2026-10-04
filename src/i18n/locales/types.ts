@@ -236,6 +236,8 @@ export interface CommonTranslations {
   noResults: string
   show: string
   results: string
+  brokerFeedDegraded: string
+  brokerFeedDegradedHint: string
   cookieConsent: {
     message: string
     policyLink: string

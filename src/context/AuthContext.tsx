@@ -6,6 +6,7 @@ import { invalidateRealtimeReadyCache } from '../lib/whenRealtimeReady'
 import { clearDashboardSessionCache } from '../lib/dashboardSessionCache'
 import { clearPerformanceSessionCache } from '../lib/performanceSessionCache'
 import { clearTradesSessionCache } from '../lib/tradesSessionCache'
+import { resetLiveFeedStatus } from '../lib/liveFeedStatus'
 
 interface AuthContextValue {
   user: User | null
@@ -49,7 +50,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (event === 'SIGNED_OUT' || event === 'SIGNED_IN') {
         invalidateRealtimeReadyCache()
       }
-      if (event === 'SIGNED_OUT') clearAuthPresenceCookie()
+      if (event === 'SIGNED_OUT') {
+        clearAuthPresenceCookie()
+        // The degraded-feed banner is module state that outlives the session;
+        // a sign-out (manual or expiry) must not carry it to the next user.
+        resetLiveFeedStatus()
+      }
       setLoading(false)
     })
 
@@ -61,6 +67,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     clearDashboardSessionCache(uid)
     clearPerformanceSessionCache(uid)
     clearTradesSessionCache(uid)
+    resetLiveFeedStatus()
     await supabase.auth.signOut()
     clearAuthPresenceCookie()
   }

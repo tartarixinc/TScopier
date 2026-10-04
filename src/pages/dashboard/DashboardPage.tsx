@@ -117,6 +117,13 @@ import { formatMoneyWithCode } from '../../lib/currency'
 import { interpolate } from '../../i18n/interpolate'
 import { TelegramConnectBanner } from '../../components/dashboard/TelegramConnectBanner'
 import { ListenerLeaseOfflineBanner } from '../../components/dashboard/ListenerLeaseOfflineBanner'
+import { LiveFeedDegradedBanner } from '../../components/LiveFeedDegradedBanner'
+import {
+  getLiveFeedGeneration,
+  isAuthSessionError,
+  reportLiveFeedFailure,
+  reportLiveFeedSuccess,
+} from '../../lib/liveFeedStatus'
 import { CopierStatusCard } from '../../components/dashboard/CopierStatusCard'
 import {
   sortLinkedAccounts,
@@ -1236,15 +1243,38 @@ export function DashboardPage() {
       ? linkedAccountsRef.current
       : [] as BrokerAccount[]
     const mtBrokerConnectedEarly = hasActiveMtBroker(brokerAccountsEarly)
-    const mtTradesPromise = mtBrokerConnectedEarly
-      ? fetchBrokerMtTrades({
-          scope: 'dashboard',
-          historyProfile: 'trades',
-          limit: DASHBOARD_MT_HISTORY_LIMIT,
-          accounts: brokerAccountsEarly,
-          includeBalanceCashflow: false,
-        }).catch(() => [] as MtTrade[])
-      : Promise.resolve([] as MtTrade[])
+    // Captured before the read: a partial provider failure raised during it
+    // must not be cleared by this read's success.
+    const feedGeneration = getLiveFeedGeneration()
+    let mtTradesPromise: Promise<MtTrade[]>
+    if (mtBrokerConnectedEarly) {
+      mtTradesPromise = fetchBrokerMtTrades({
+        scope: 'dashboard',
+        historyProfile: 'trades',
+        limit: DASHBOARD_MT_HISTORY_LIMIT,
+        accounts: brokerAccountsEarly,
+        includeBalanceCashflow: false,
+      })
+        .then(mtTrades => {
+          reportLiveFeedSuccess(feedGeneration)
+          return mtTrades
+        })
+        .catch(err => {
+          console.warn('[dashboard] broker history fetch failed', err)
+          if (!isAuthSessionError(err instanceof Error ? err.message : '')) {
+            reportLiveFeedFailure('dashboard broker history')
+          }
+          return [] as MtTrade[]
+        })
+    } else {
+      // No MT broker to read from: there is no live feed that could be
+      // degraded here, so an up banner (from an earlier outage or another
+      // page) must clear rather than stick forever. The generation token
+      // matches at clear time by construction (no await in between); any
+      // failure reported after this point re-raises the banner itself.
+      reportLiveFeedSuccess(feedGeneration)
+      mtTradesPromise = Promise.resolve([] as MtTrade[])
+    }
 
     const [channelsRes, tradesRes, todaySignalsRes, yesterdaySignalsRes, logsRes, allSignalsRes, channelsMetaRes, attributionRes, aiLogsRes, prefetchedMtTrades] = await Promise.all([
       supabase.from('telegram_channels').select('id').eq('user_id', user!.id).eq('is_active', true),
@@ -1932,13 +1962,22 @@ export function DashboardPage() {
     if (!opts?.force && now - lastMtTradesRefreshRef.current < MT_TRADES_REFRESH_MS) return
     const sourceAccounts = brokerAccounts ?? linkedAccounts
     const hasMtBroker = sourceAccounts.some(hasLinkedBrokerForUi)
-    if (!hasMtBroker) return
+    if (!hasMtBroker) {
+      // Defensive only: the sole call site already gates on
+      // `mtBrokerConnected` with the same predicate, so this branch does
+      // not run today — the loadDashboard else-branch is the clear that
+      // matters. Kept so a future caller cannot leave the banner stuck for
+      // a user whose brokers were removed or disconnected.
+      reportLiveFeedSuccess(getLiveFeedGeneration())
+      return
+    }
     lastMtTradesRefreshRef.current = now
 
     let trades: MtTrade[]
     if (opts?.preloadedTrades !== undefined) {
       trades = opts.preloadedTrades
     } else {
+      const feedGeneration = getLiveFeedGeneration()
       try {
         trades = await fetchBrokerMtTrades({
           scope: 'dashboard',
@@ -1947,7 +1986,12 @@ export function DashboardPage() {
           accounts: sourceAccounts,
           includeBalanceCashflow: false,
         })
-      } catch {
+        reportLiveFeedSuccess(feedGeneration)
+      } catch (err) {
+        console.warn('[dashboard] broker history refresh failed', err)
+        if (!isAuthSessionError(err instanceof Error ? err.message : '')) {
+          reportLiveFeedFailure('dashboard broker history')
+        }
         trades = mtTradesRef.current ?? []
         if (trades.length === 0) return
       }
@@ -2153,6 +2197,7 @@ export function DashboardPage() {
       <PageHeader title={t.dashboard.title} />
       <TelegramConnectBanner className="mb-6" />
       <ListenerLeaseOfflineBanner className="mb-6" />
+      <LiveFeedDegradedBanner className="mb-6" />
 
       {/* Stats bar */}
       <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 mb-6">
