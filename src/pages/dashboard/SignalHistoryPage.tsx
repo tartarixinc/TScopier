@@ -347,8 +347,14 @@ export function SignalHistoryPage() {
     absorbedEntryUpdates: ReadonlyArray<SignalBatchRow>,
     ctx: SignalDisplayContext,
   ) => {
-    setEditSession(buildEditSignalOverrideSnapshot(signal, ctx, absorbedEntryUpdates))
-  }, [])
+    const channel = signal.channel_id ? channelById.get(signal.channel_id) : undefined
+    setEditSession(buildEditSignalOverrideSnapshot(
+      signal,
+      ctx,
+      absorbedEntryUpdates,
+      channelDisplayName(channel),
+    ))
+  }, [channelById])
 
   const closeEditModal = useCallback(() => {
     setEditSession(null)

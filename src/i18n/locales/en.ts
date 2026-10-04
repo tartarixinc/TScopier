@@ -949,6 +949,8 @@ broker: {
     saving: 'Sending Order',
     originalSignal: 'Channel signal',
     overrideSignal: 'Current override',
+    channelMessageLabel: 'Channel message',
+    brokerAccountLabel: 'Broker account',
     applySuccess: 'Override saved. Applied to {count} open leg(s).',
     applyBrokerSummary: 'Updated {updated} of {total} broker(s).',
     applyPartialBrokers: 'Override saved. Updated {updated} of {total} broker(s) — the rest are being reconciled.',

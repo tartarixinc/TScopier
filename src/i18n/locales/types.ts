@@ -457,6 +457,8 @@ export interface SignalHistoryPageTranslations {
   saving: string
   originalSignal: string
   overrideSignal: string
+  channelMessageLabel: string
+  brokerAccountLabel: string
   applySuccess: string
   applyBrokerSummary: string
   applyPartialBrokers: string

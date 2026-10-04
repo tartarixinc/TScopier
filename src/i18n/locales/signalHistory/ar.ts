@@ -38,6 +38,8 @@ export const signalHistoryAr: SignalHistoryPageTranslations = {
   saving: 'جارٍ إرسال الأمر',
   originalSignal: 'إشارة القناة',
   overrideSignal: 'التعديل الحالي',
+  channelMessageLabel: 'رسالة القناة',
+  brokerAccountLabel: 'حساب الوسيط',
   applySuccess: 'تم حفظ التعديل. طُبِّق على {count} صفقة/صفقات مفتوحة.',
   applyBrokerSummary: 'تم التحديث على {updated} من {total} وسيط/وسطاء.',
   applyPartialBrokers: 'تم حفظ التعديل. تم التحديث على {updated} من {total} وسيط/وسطاء — والباقي قيد المزامنة.',
