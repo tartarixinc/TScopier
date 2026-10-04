@@ -164,6 +164,12 @@ export const accountConfigRu: AccountConfigBundleTranslations = {
       reconnectMigrationBack: 'Назад',
       reconnectManyAccountsHint:
         '{count} аккаунтов нужно переподключить. Пароль будет запрошен для каждого из них отдельно.',
+      remindLater: 'Напомнить позже',
+      deleteAccountLink: 'Не удаётся переподключить — удалить этот счёт',
+      deleteConfirmTitle: 'Удалить этот счёт?',
+      deleteConfirmBody: 'Это удалит счёт, историю сделок и настройки из TScopier. Позиции остаются у брокера. Позже можно подключить снова с новым паролем.',
+      deleteConfirmNote: 'Это действие нельзя отменить.',
+      deleteConfirmCta: 'Удалить счёт',
       reconnectConnectingTitle: 'Подключение аккаунта',
       reconnectConnectingBody: 'Данные приняты. Ожидание моста брокера — это может занять некоторое время.',
       reconnectSuccessTitle: 'Аккаунт подключён',

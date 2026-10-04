@@ -577,6 +577,12 @@ export const es: Translations = {
       reconnectMigrationBack: 'Atrás',
       reconnectManyAccountsHint:
         '{count} cuentas necesitan reconectarse. Se te pedirá la contraseña una vez por cada una.',
+      remindLater: 'Recordármelo más tarde',
+      deleteAccountLink: 'No puedo reconectar — eliminar esta cuenta',
+      deleteConfirmTitle: '¿Eliminar esta cuenta?',
+      deleteConfirmBody: 'Esto elimina la cuenta, su historial de operaciones y su configuración de TScopier. Las posiciones permanecen en tu bróker. Podrás conectarla de nuevo más tarde con una contraseña nueva.',
+      deleteConfirmNote: 'Esta acción no se puede deshacer.',
+      deleteConfirmCta: 'Eliminar cuenta',
       reconnectConnectingTitle: 'Conectando tu cuenta',
       reconnectConnectingBody:
         'Acceso aceptado. Esperando al puente del bróker — puede tardar un momento.',

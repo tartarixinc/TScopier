@@ -729,6 +729,12 @@ export interface AccountConfigBrokerListTranslations {
   reconnectMigrationPasswordBody: string
   reconnectMigrationBack: string
   reconnectManyAccountsHint: string
+  remindLater: string
+  deleteAccountLink: string
+  deleteConfirmTitle: string
+  deleteConfirmBody: string
+  deleteConfirmNote: string
+  deleteConfirmCta: string
   reconnectConnectingTitle: string
   reconnectConnectingBody: string
   reconnectSuccessTitle: string

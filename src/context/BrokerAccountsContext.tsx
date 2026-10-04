@@ -24,12 +24,15 @@ import { useT } from './LocaleContext'
 import { interpolate } from '../i18n/interpolate'
 import { BrokerReconnectPasswordModal } from '../components/broker/BrokerReconnectPasswordModal'
 import {
+  isMigrationPromptSnoozed,
   isMigrationSwitchCase,
   isPromptDismissible,
   pickPromptBroker,
   resolveReconnectDialog,
   routeReconnectError,
+  snoozeMigrationPrompt,
 } from '../lib/migrationPrompt'
+import { fxsocketBroker } from '../lib/fxsocketBroker'
 
 interface BrokerAccountsContextValue {
   brokers: BrokerAccount[]
@@ -176,6 +179,9 @@ export function BrokerAccountsProvider({
   // dialog after the account's row leaves the needs-reconnect list (a
   // mid-connect `pending` row is not on it). Cleared on cancel and on success.
   const [reconnectAttemptId, setReconnectAttemptId] = useState<string | null>(null)
+  // Bumped whenever the queue changes without the broker list changing
+  // (snoozed or deleted), so the prompt re-picks immediately.
+  const [promptTick, setPromptTick] = useState(0)
 
   const {
     reconnectBroker: reconnectBrokerBase,
@@ -214,8 +220,13 @@ export function BrokerAccountsProvider({
   const noopClear = useCallback(async () => ({ error: null as string | null }), [])
 
   const migrationPromptBroker = useMemo(
-    () => pickPromptBroker(brokersNeedingReconnect, reconnectingBrokerIds),
-    [brokersNeedingReconnect, reconnectingBrokerIds],
+    () => pickPromptBroker(
+      // "Remind me later" hides the account from the queue until the next app
+      // load, so the next queued account can be dealt with immediately.
+      brokersNeedingReconnect.filter(broker => !isMigrationPromptSnoozed(broker.id)),
+      reconnectingBrokerIds,
+    ),
+    [brokersNeedingReconnect, reconnectingBrokerIds, promptTick],
   )
 
   const successBroker = reconnectSuccessId
@@ -273,6 +284,33 @@ export function BrokerAccountsProvider({
     setReconnectSuccessId(null)
   }, [cancelPasswordPrompt])
 
+  /** "Remind me later": hide this account until the next app load, then move on. */
+  const handleRemindLater = useCallback(() => {
+    const active = activeBrokerRef.current
+    if (active) snoozeMigrationPrompt(active.id)
+    setReconnectError(null)
+    setReconnectAttemptId(null)
+    setReconnectSuccessId(null)
+    setPromptTick(tick => tick + 1)
+  }, [])
+
+  /** Delete = the permanent exit for an account that cannot be reconnected. */
+  const handleDeleteAccount = useCallback(async () => {
+    const active = activeBrokerRef.current
+    if (!active) return
+    try {
+      await fxsocketBroker.delete(active.id, active.provider as 'fxsocket' | 'mtapi' | undefined)
+    } catch (err) {
+      setReconnectError(err instanceof Error ? err.message : bl.deleteFailed)
+      return
+    }
+    removeBroker(active.id)
+    setReconnectError(null)
+    setReconnectAttemptId(null)
+    setReconnectSuccessId(null)
+    setPromptTick(tick => tick + 1)
+  }, [bl.deleteFailed, removeBroker])
+
   const handleModalBack = useCallback(() => {
     // Abort the password prompt only — the details stage stays up, and nothing
     // is suppressed, so the customer can step forward again.
@@ -315,6 +353,12 @@ export function BrokerAccountsProvider({
       passwordPlaceholder: bl.reconnectPasswordPlaceholder,
       rememberPasswordLabel: bl.rememberPasswordLabel,
       rememberPasswordHint: bl.rememberPasswordHint,
+      remindLater: bl.remindLater,
+      deleteAccountLink: bl.deleteAccountLink,
+      deleteConfirmTitle: bl.deleteConfirmTitle,
+      deleteConfirmBody: bl.deleteConfirmBody,
+      deleteConfirmNote: bl.deleteConfirmNote,
+      deleteConfirmCta: bl.deleteConfirmCta,
       detailLogin: bl.detailLogin,
       detailServer: bl.detailServer,
       reconnect: bl.reconnect,
@@ -402,6 +446,8 @@ export function BrokerAccountsProvider({
         onBack={migrationCopy ? handleModalBack : undefined}
         error={reconnectError}
         dismissible={modalDismissible}
+        onRemindLater={handleRemindLater}
+        onDeleteAccount={() => { void handleDeleteAccount() }}
       />
     </BrokerAccountsContext.Provider>
   )

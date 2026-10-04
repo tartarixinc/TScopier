@@ -222,6 +222,43 @@ describe('BrokerReconnectPasswordModal — success stage', () => {
   })
 })
 
+describe('BrokerReconnectPasswordModal — remind later and delete', () => {
+  const escapeCopy = {
+    ...copy,
+    remindLater: 'Remind me later',
+    deleteAccountLink: "I can't reconnect — delete this account",
+    deleteConfirmTitle: 'Delete this account?',
+    deleteConfirmBody: 'This removes the account and its history.',
+    deleteConfirmNote: 'This cannot be undone.',
+    deleteConfirmCta: 'Delete account',
+  }
+
+  it('offers Remind me later and calls it', () => {
+    const onRemindLater = vi.fn()
+    render({ stage: 'details', copy: escapeCopy, onRemindLater })
+    buttonByLabel('Remind me later')?.click()
+    expect(onRemindLater).toHaveBeenCalledTimes(1)
+  })
+
+  it('deletes only after the confirmation step', () => {
+    const onDeleteAccount = vi.fn()
+    render({ stage: 'details', copy: escapeCopy, onDeleteAccount })
+    // The link alone must not delete anything.
+    act(() => { buttonByLabel("I can't reconnect — delete this account")?.click() })
+    expect(onDeleteAccount).not.toHaveBeenCalled()
+    expect(document.body.textContent).toContain('Delete this account?')
+    expect(document.body.textContent).toContain('This cannot be undone.')
+    // Cancel backs out without deleting.
+    act(() => { buttonByLabel('Cancel')?.click() })
+    expect(onDeleteAccount).not.toHaveBeenCalled()
+    expect(document.body.textContent).not.toContain('Delete this account?')
+    // The red button performs it.
+    act(() => { buttonByLabel("I can't reconnect — delete this account")?.click() })
+    act(() => { buttonByLabel('Delete account')?.click() })
+    expect(onDeleteAccount).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('BrokerReconnectPasswordModal — multi-account hint', () => {
   const hint = '3 accounts need reconnecting. You will be asked for the password once for each one.'
 

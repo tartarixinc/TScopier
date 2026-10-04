@@ -19,8 +19,14 @@ export interface BrokerReconnectPasswordModalCopy {
   passwordLabel: string
   passwordHint: string
   passwordPlaceholder: string
-  rememberPasswordLabel: string
-  rememberPasswordHint: string
+  /** "Remind me later" postpones this account until the next app load. */
+  remindLater?: string
+  /** Muted escape hatch for an account that can never be reconnected. */
+  deleteAccountLink?: string
+  deleteConfirmTitle?: string
+  deleteConfirmBody?: string
+  deleteConfirmNote?: string
+  deleteConfirmCta?: string
   detailLogin: string
   detailServer: string
   reconnect: string
@@ -48,6 +54,10 @@ interface BrokerReconnectPasswordModalProps {
   onContinue?: () => void
   /** Stage 2 → stage 1 (only when the caller offers it). */
   onBack?: () => void
+  /** Postpone this account until the next app load. */
+  onRemindLater?: () => void
+  /** Permanent exit for an account that cannot be reconnected. */
+  onDeleteAccount?: () => void
   /** Last reconnect failure, shown in the dialog when the page has no toast. */
   error?: string | null
   /**
@@ -69,10 +79,13 @@ function BrokerReconnectPasswordModalInner({
   onCancel,
   onContinue,
   onBack,
+  onRemindLater,
+  onDeleteAccount,
   error,
   dismissible = true,
 }: BrokerReconnectPasswordModalProps) {
   const [password, setPassword] = useState('')
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
   const overlayRef = useRef<HTMLDivElement>(null)
   const backdropRef = useRef<HTMLDivElement>(null)
   const scrollLockRef = useRef<string | null>(null)
@@ -134,6 +147,92 @@ function BrokerReconnectPasswordModalInner({
   }, [open])
 
   if (!open || !broker) return null
+
+  // Steps out of the way for an account that cannot be reconnected right now:
+  // postpone until the next app load, or remove the account for good.
+  const secondaryActions = (onRemindLater || onDeleteAccount) ? (
+    <div className="space-y-2 pt-1">
+      {onRemindLater && copy.remindLater ? (
+        <Button
+          type="button"
+          variant="ghost"
+          className="w-full"
+          onClick={onRemindLater}
+        >
+          {copy.remindLater}
+        </Button>
+      ) : null}
+      {onDeleteAccount && copy.deleteAccountLink ? (
+        <button
+          type="button"
+          onClick={() => setConfirmingDelete(true)}
+          className="w-full text-center text-xs text-neutral-400 underline underline-offset-2 transition-colors hover:text-error-600 disabled:opacity-50 dark:text-neutral-500 dark:hover:text-error-400"
+        >
+          {copy.deleteAccountLink}
+        </button>
+      ) : null}
+    </div>
+  ) : null
+
+  if (confirmingDelete) {
+    return createPortal(
+      <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-4 sm:p-6 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
+        <div
+          className="absolute inset-0 bg-neutral-950/55"
+          aria-hidden
+          onClick={() => setConfirmingDelete(false)}
+        />
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="relative w-full max-w-md rounded-2xl bg-white dark:bg-neutral-900 shadow-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden"
+        >
+          <div className="px-5 pt-5 pb-4 border-b border-neutral-100 dark:border-neutral-800">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-error-50 text-error-600 dark:bg-error-950/40 dark:text-error-400">
+                <AlertTriangle className="h-5 w-5" aria-hidden />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
+                  {copy.deleteConfirmTitle}
+                </h2>
+                <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed">
+                  {copy.deleteConfirmBody}
+                </p>
+                <p className="mt-2 text-xs font-medium text-error-600 dark:text-error-400">
+                  {copy.deleteConfirmNote}
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="px-5 py-4 space-y-4">
+            <div className="rounded-xl border border-neutral-100 bg-neutral-50 px-3 py-3 dark:border-neutral-800 dark:bg-neutral-800/50">
+              <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{broker.label}</p>
+              <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
+                {copy.detailLogin}: {broker.account_login || '—'}
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <Button className="flex-1" variant="secondary" onClick={() => setConfirmingDelete(false)}>
+                {copy.cancel}
+              </Button>
+              <Button
+                className="flex-1"
+                variant="danger"
+                onClick={() => {
+                  setConfirmingDelete(false)
+                  onDeleteAccount?.()
+                }}
+              >
+                {copy.deleteConfirmCta}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>,
+      document.body,
+    )
+  }
 
   const logo = platformLogo(broker.platform)
   const headerIcon =
@@ -261,6 +360,8 @@ function BrokerReconnectPasswordModalInner({
             </div>
           )}
 
+          {secondaryActions}
+
           {stage === 'password' && (
             <form onSubmit={handleSubmit} className="space-y-4">
               <PasswordInput
@@ -296,6 +397,8 @@ function BrokerReconnectPasswordModalInner({
               </div>
             </form>
           )}
+
+          {secondaryActions}
 
           {/* `connecting` has no footer: the header spinner and body text
               carry the waiting state — a second copy of the same sentence

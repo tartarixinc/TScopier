@@ -164,6 +164,12 @@ export const accountConfigJa: AccountConfigBundleTranslations = {
       reconnectMigrationBack: '戻る',
       reconnectManyAccountsHint:
         '{count}件のアカウントを再接続する必要があります。アカウントごとにパスワードの入力が求められます。',
+      remindLater: 'あとで通知',
+      deleteAccountLink: '再接続できません — このアカウントを削除',
+      deleteConfirmTitle: 'このアカウントを削除しますか？',
+      deleteConfirmBody: 'TScopier からアカウント、取引履歴、設定が削除されます。ポジションはブローカーに残ります。後で新しいパスワードで再接続できます。',
+      deleteConfirmNote: 'この操作は取り消せません。',
+      deleteConfirmCta: 'アカウントを削除',
       reconnectConnectingTitle: 'アカウントに接続しています',
       reconnectConnectingBody: 'ログイン情報が受理されました。ブローカーへの接続を待っています。しばらくお待ちください。',
       reconnectSuccessTitle: 'アカウントが接続されました',

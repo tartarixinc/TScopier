@@ -164,6 +164,12 @@ export const accountConfigAr: AccountConfigBundleTranslations = {
       reconnectMigrationBack: 'رجوع',
       reconnectManyAccountsHint:
         '{count} حسابًا بحاجة إلى إعادة الاتصال. سيُطلب منك كلمة المرور مرة واحدة لكل حساب.',
+      remindLater: 'ذكّرني لاحقًا',
+      deleteAccountLink: 'لا أستطيع إعادة الاتصال — حذف هذا الحساب',
+      deleteConfirmTitle: 'حذف هذا الحساب؟',
+      deleteConfirmBody: 'سيؤدي هذا إلى حذف الحساب وسجل الصفقات والإعدادات من TScopier. تبقى المراكز لدى الوسيط. يمكنك إعادة ربطه لاحقًا بكلمة مرور جديدة.',
+      deleteConfirmNote: 'لا يمكن التراجع عن هذا الإجراء.',
+      deleteConfirmCta: 'حذف الحساب',
       reconnectConnectingTitle: 'جارٍ توصيل حسابك',
       reconnectConnectingBody: 'تم قبول بيانات الدخول. بانتظار جسر الوسيط — قد يستغرق ذلك لحظة.',
       reconnectSuccessTitle: 'تم توصيل الحساب',

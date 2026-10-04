@@ -164,6 +164,12 @@ export const accountConfigPl: AccountConfigBundleTranslations = {
       reconnectMigrationBack: 'Wstecz',
       reconnectManyAccountsHint:
         '{count} kont wymaga ponownego połączenia. Hasło zostanie poproszone raz dla każdego konta.',
+      remindLater: 'Przypomnij mi później',
+      deleteAccountLink: 'Nie mogę połączyć ponownie — usuń to konto',
+      deleteConfirmTitle: 'Usunąć to konto?',
+      deleteConfirmBody: 'Spowoduje to usunięcie konta, historii transakcji i ustawień z TScopier. Pozycje pozostają u brokera. Możesz połączyć je ponownie później z nowym hasłem.',
+      deleteConfirmNote: 'Tej operacji nie można cofnąć.',
+      deleteConfirmCta: 'Usuń konto',
       reconnectConnectingTitle: 'Łączenie z kontem',
       reconnectConnectingBody:
         'Dane logowania zaakceptowane. Czekamy na pośrednika brokera — to może chwilę potrwać.',

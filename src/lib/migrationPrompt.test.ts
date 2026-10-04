@@ -1,11 +1,13 @@
-import { describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { BrokerAccount } from '../types/database'
 import {
+  isMigrationPromptSnoozed,
   isMigrationSwitchCase,
   isPromptDismissible,
   pickPromptBroker,
   resolveReconnectDialog,
   routeReconnectError,
+  snoozeMigrationPrompt,
 } from './migrationPrompt'
 
 function broker(overrides: Partial<BrokerAccount> & { id: string }): BrokerAccount {
@@ -175,5 +177,29 @@ describe('resolveReconnectDialog', () => {
 
   it('resolves to a closed dialog when nothing is active', () => {
     expect(resolveReconnectDialog(none)).toEqual({ active: null, stage: 'details' })
+  })
+})
+
+describe('migration prompt snooze ("Remind me later")', () => {
+  const store = new Map<string, string>()
+
+  beforeAll(() => {
+    ;(globalThis as unknown as { window?: unknown }).window = {
+      sessionStorage: {
+        getItem: (key: string) => store.get(key) ?? null,
+        setItem: (key: string, value: string) => { store.set(key, value) },
+      },
+    }
+  })
+  afterAll(() => {
+    delete (globalThis as unknown as { window?: unknown }).window
+    store.clear()
+  })
+
+  it('postpones one account without touching the others', () => {
+    expect(isMigrationPromptSnoozed('account-a')).toBe(false)
+    snoozeMigrationPrompt('account-a')
+    expect(isMigrationPromptSnoozed('account-a')).toBe(true)
+    expect(isMigrationPromptSnoozed('account-b')).toBe(false)
   })
 })

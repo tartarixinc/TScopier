@@ -574,6 +574,12 @@ broker: {
       reconnectMigrationBack: 'Back',
       reconnectManyAccountsHint:
         '{count} accounts need reconnecting. You will be asked for the password once for each one.',
+      remindLater: 'Remind me later',
+      deleteAccountLink: 'I can\'t reconnect — delete this account',
+      deleteConfirmTitle: 'Delete this account?',
+      deleteConfirmBody: 'This removes the account, its trade history and its settings from TScopier. The positions themselves stay at your broker. You can connect it again later with a new password.',
+      deleteConfirmNote: 'This cannot be undone.',
+      deleteConfirmCta: 'Delete account',
       reconnectConnectingTitle: 'Connecting your account',
       reconnectConnectingBody:
         'Sign-in accepted. Waiting for the broker bridge — this can take a moment.',
@@ -582,7 +588,7 @@ broker: {
       reconnectSuccessNext: 'Next account',
       reconnectSuccessDone: 'Done',
       reconnectPasswordLabel: 'MT account password',
-      reconnectPasswordHint: 'Sent to MT servers only. Enable remember below to store it encrypted for automatic reconnect.',
+      reconnectPasswordHint: 'Sent to MT servers only. Stored encrypted so the account can reconnect automatically.',
       reconnectPasswordPlaceholder: 'Trading account password',
       rememberPasswordLabel: 'Remember password for automatic reconnect',
       rememberPasswordHint:

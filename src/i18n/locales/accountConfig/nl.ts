@@ -164,6 +164,12 @@ export const accountConfigNl: AccountConfigBundleTranslations = {
       reconnectMigrationBack: 'Terug',
       reconnectManyAccountsHint:
         '{count} accounts moeten opnieuw verbonden worden. Je wordt voor elk account om het wachtwoord gevraagd.',
+      remindLater: 'Herinner me later',
+      deleteAccountLink: 'Ik kan niet opnieuw verbinden — dit account verwijderen',
+      deleteConfirmTitle: 'Dit account verwijderen?',
+      deleteConfirmBody: 'Dit verwijdert het account, de transactiegeschiedenis en de instellingen uit TScopier. De posities blijven bij je broker. Je kunt het later opnieuw verbinden met een nieuw wachtwoord.',
+      deleteConfirmNote: 'Dit kan niet ongedaan worden gemaakt.',
+      deleteConfirmCta: 'Account verwijderen',
       reconnectConnectingTitle: 'Je account wordt verbonden',
       reconnectConnectingBody:
         'Inloggegevens geaccepteerd. Wachten op de broker-verbinding — dit kan even duren.',

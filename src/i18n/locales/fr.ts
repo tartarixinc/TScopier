@@ -577,6 +577,12 @@ export const fr: Translations = {
       reconnectMigrationBack: 'Retour',
       reconnectManyAccountsHint:
         '{count} comptes doivent être reconnectés. Le mot de passe vous sera demandé une fois pour chacun.',
+      remindLater: 'Me le rappeler plus tard',
+      deleteAccountLink: 'Je ne peux pas reconnecter — supprimer ce compte',
+      deleteConfirmTitle: 'Supprimer ce compte ?',
+      deleteConfirmBody: 'Cela supprime le compte, son historique de trades et ses paramètres de TScopier. Les positions restent chez votre courtier. Vous pourrez le reconnecter plus tard avec un nouveau mot de passe.',
+      deleteConfirmNote: 'Cette action est irréversible.',
+      deleteConfirmCta: 'Supprimer le compte',
       reconnectConnectingTitle: 'Connexion de votre compte',
       reconnectConnectingBody:
         'Identifiants acceptés. En attente du pont du courtier — cela peut prendre un instant.',

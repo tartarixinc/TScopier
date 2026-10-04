@@ -164,6 +164,12 @@ export const accountConfigSv: AccountConfigBundleTranslations = {
       reconnectMigrationBack: 'Tillbaka',
       reconnectManyAccountsHint:
         '{count} konton behöver återanslutas. Du blir ombedd om lösenordet en gång för varje konto.',
+      remindLater: 'Påminn mig senare',
+      deleteAccountLink: 'Jag kan inte återansluta — ta bort kontot',
+      deleteConfirmTitle: 'Ta bort kontot?',
+      deleteConfirmBody: 'Detta tar bort kontot, transaktionshistoriken och inställningarna från TScopier. Positionerna finns kvar hos din mäklare. Du kan ansluta igen senare med ett nytt lösenord.',
+      deleteConfirmNote: 'Detta går inte att ångra.',
+      deleteConfirmCta: 'Ta bort kontot',
       reconnectConnectingTitle: 'Ansluter ditt konto',
       reconnectConnectingBody:
         'Inloggningsuppgifterna godkändes. Väntar på brokerns anslutning — det kan ta en stund.',
