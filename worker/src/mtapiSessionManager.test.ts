@@ -31,7 +31,7 @@ test('credential encryption round-trips without embedding plaintext', () => {
 
 test('bridge rejection codes carry plain-English detail, unknown codes stay bare', () => {
   assert.equal(mtapiFailureDetail('INVALID_ACCOUNT'), 'invalid login or password')
-  assert.equal(mtapiFailureSummary('INVALID_ACCOUNT'), 'invalid login or password (INVALID_ACCOUNT)')
+  assert.equal(mtapiFailureSummary('INVALID_ACCOUNT'), 'invalid login or password')
   assert.equal(mtapiFailureDetail('HTTP_500'), '')
   assert.equal(mtapiFailureSummary('HTTP_500'), 'HTTP_500')
   assert.equal(mtapiFailureDetail(''), '')
@@ -186,7 +186,7 @@ test('a rejected provision stores plain-English connection_error and logs the de
   }
 
   const stored = updates.find((u) => typeof u.connection_error === 'string')
-  assert.equal(stored?.connection_error, 'MTAPI connect failed: invalid login or password (INVALID_ACCOUNT)')
+  assert.equal(stored?.connection_error, 'MTAPI connect failed: invalid login or password')
   assert.ok(
     warnings.some((w) => w.includes('code=INVALID_ACCOUNT detail=invalid login or password')),
     'expected the provision failure log to carry the plain-English detail'

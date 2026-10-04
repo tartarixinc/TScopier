@@ -49,10 +49,14 @@ export function mtapiFailureDetail(code: string): string {
     : ''
 }
 
-/** Customer-facing text for `connection_error`: detail first, code kept for support. */
+/**
+ * Customer-facing text for `connection_error`. Plain English only: the raw
+ * bridge code must not reach the user. Support still gets it — the worker log
+ * records `code=... detail=...` on the same failure.
+ */
 export function mtapiFailureSummary(code: string): string {
   const detail = mtapiFailureDetail(code)
-  return detail ? detail + ' (' + code + ')' : code
+  return detail || code
 }
 
 function mtapiConfigured(): boolean {
