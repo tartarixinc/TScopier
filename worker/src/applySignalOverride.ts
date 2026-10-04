@@ -13,7 +13,6 @@ import {
 } from './basketSlTpReconcile'
 import { upsertBasketSlTpTarget } from './basketTargetStore'
 import {
-  hasFxsocketConfigured,
   mtPlatformFrom,
   normalizeSymbolParams,
 } from './fxsocketClient'

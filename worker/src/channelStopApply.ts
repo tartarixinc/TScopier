@@ -9,7 +9,6 @@ import {
   type TradeFailureReason,
 } from './brokerTradeError'
 import {
-  hasFxsocketConfigured,
   mtPlatformFrom,
   type FxsocketBrokerClient,
 } from './fxsocketClient'

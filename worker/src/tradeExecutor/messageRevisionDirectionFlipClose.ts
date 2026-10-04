@@ -1,6 +1,5 @@
 import { purgeRangePendingLegsForBaskets } from '../rangePendingLegDelete'
 import { channelMatchesBrokerSignal } from '../brokerChannelFilter'
-import { hasFxsocketConfigured } from '../fxsocketClient'
 import { closeWithVerification } from '../managementClose'
 import { resolveCurrentLivePosition } from '../livePositionIdentity'
 import { brokerHasLinkedSession, brokerSessionUuid } from './helpers'

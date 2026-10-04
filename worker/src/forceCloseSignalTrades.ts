@@ -5,7 +5,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { clearChannelActiveTradeParamsWhenFlat } from './channelActiveTradeParams'
 import { normalizeSignalChannelIds } from './brokerChannelFilter'
-import { hasFxsocketConfigured } from './fxsocketClient'
 import { apiForBrokerAccount } from './providerResolver'
 import { authorityFromBrokerRow } from './brokerWriteAuthority'
 import { closeWithVerification } from './managementClose'

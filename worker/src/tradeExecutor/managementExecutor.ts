@@ -49,7 +49,6 @@ import {
   type MgmtTradeRow
 } from '../managementScope'
 import { type ManualSettings } from '../manualPlanner'
-import { hasFxsocketConfigured } from '../fxsocketClient'
 import { upsertBasketReconcileJob, type BasketOpenLeg } from '../basketSlTpReconcile'
 import { findStaleBasketKeys, upsertBasketSlTpTarget } from '../basketTargetStore'
 import { isV2 } from '../engine/executionMode'

@@ -1,5 +1,4 @@
 import type { TradeExecutorContext } from './context'
-import { hasFxsocketConfigured } from '../fxsocketClient'
 import type { BrokerRow, QueuedSignal, SendOrderOutcome, SignalRow } from './types'
 import {
   dispatchPriorityForAction,

@@ -1,5 +1,4 @@
 import {
-  hasFxsocketConfigured,
   MT_SESSION_EXPIRED_HINT,
   FxsocketBrokerClient,
   MtOperation,

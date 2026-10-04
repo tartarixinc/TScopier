@@ -1,6 +1,5 @@
 import { isOppositeSignalCloseBlocked, isPendingCancelBlocked, normalizeChannelMessageFiltersMap } from '../../channelMessageFilters'
 import { type ManualSettings } from '../../manualPlanner'
-import { hasFxsocketConfigured } from '../../fxsocketClient'
 import { type TradeExecutorContext } from '../context'
 import {
   type BrokerRow,

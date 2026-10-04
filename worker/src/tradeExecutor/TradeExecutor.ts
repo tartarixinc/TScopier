@@ -1,6 +1,5 @@
 import { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js'
 import {
-  hasFxsocketConfigured,
   FxsocketBrokerClient,
   mtPlatformFrom,
   MtOperation,

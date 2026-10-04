@@ -9,7 +9,7 @@ import {
   type ChannelKeywords,
   type ManualSettings
 } from '../../manualPlanner'
-import { hasFxsocketConfigured, MtOperation } from '../../fxsocketClient'
+import { MtOperation } from '../../fxsocketClient'
 import {
   legacyMergeLinkingEnabled,
   filterSignalIdsByChannel,

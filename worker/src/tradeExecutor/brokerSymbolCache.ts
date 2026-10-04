@@ -1,7 +1,6 @@
 import type { TradeExecutorContext } from './context'
 import type { ParsedSignal } from './types'
 import {
-  hasFxsocketConfigured,
   FxsocketBrokerClient,
   normalizeSymbolParams,
   type SymbolParams,
