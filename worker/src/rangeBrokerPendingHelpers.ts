@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { FxsocketBrokerClient } from './fxsocketClient'
+import { resolveDurableBrokerArtifacts } from './mtApiByAccount'
 
 export type RangeBrokerPendingRow = {
   id: string
@@ -83,8 +84,12 @@ export async function reconcileBasketEmptyCancelledLegs(
     .not('ticket', 'is', null)
     .limit(100)
   if (error || !data?.length) return 0
+  const resolved = await resolveDurableBrokerArtifacts(
+    supabase,
+    data as RangeBrokerPendingRow[],
+  )
   let closed = 0
-  for (const row of data as RangeBrokerPendingRow[]) {
+  for (const row of resolved.rows) {
     const api = apiLookup(row.metaapi_account_id)
     if (!api) continue
     const ok = await cancelBrokerRangeLegAtBroker(supabase, api, row, 'basket_empty')

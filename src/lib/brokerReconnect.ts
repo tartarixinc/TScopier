@@ -1,9 +1,14 @@
 import type { BrokerAccount } from '../types/database'
-import { hasFxsocketBrokerSession } from './brokerLink'
+import { hasFxsocketBrokerSession, resolveProvider } from './brokerLink'
 
-/** Prefer worker-marked connection_status=error over a stale fxsocket_status=connected. */
+type BrokerAccountLike = Pick<BrokerAccount, 'fxsocket_status' | 'connection_status'> & {
+  provider?: string | null
+  mtapi_status?: string | null
+}
+
+/** Prefer worker-marked connection_status=error over a stale provider status=connected. */
 export function brokerEffectiveConnectionStatus(
-  account: Pick<BrokerAccount, 'fxsocket_status' | 'connection_status'>,
+  account: BrokerAccountLike,
 ): string | null {
   if (account.connection_status === 'error') {
     return 'error'
@@ -11,27 +16,53 @@ export function brokerEffectiveConnectionStatus(
   if (account.connection_status === 'pending' || account.connection_status === 'recovering') {
     return account.connection_status
   }
+
+  const provider = resolveProvider(account)
+  if (provider === 'mtapi') {
+    return account.mtapi_status ?? account.connection_status ?? null
+  }
   return account.fxsocket_status ?? account.connection_status ?? null
 }
 
 export function isBrokerSessionHealthy(
-  account: Pick<BrokerAccount, 'fxsocket_status' | 'connection_status'>,
+  account: BrokerAccountLike,
 ): boolean {
   const status = brokerEffectiveConnectionStatus(account)
   return status === 'connected' || status === 'connecting' || status === 'recovering'
 }
 
 export function isBrokerSessionConnected(
-  account: Pick<BrokerAccount, 'fxsocket_status' | 'connection_status'>,
+  account: BrokerAccountLike,
 ): boolean {
   return brokerEffectiveConnectionStatus(account) === 'connected'
 }
 
+type BrokerAccountLikeReconnect = BrokerAccountLike & {
+  fxsocket_account_id?: string | null
+  mtapi_session_id?: string | null
+}
+
 export function brokerCanReconnect(
-  account: Pick<BrokerAccount, 'fxsocket_account_id' | 'fxsocket_status' | 'connection_status'>,
+  account: BrokerAccountLikeReconnect,
 ): boolean {
-  if (!hasFxsocketBrokerSession(account)) return false
+  const provider = resolveProvider(account)
   const status = brokerEffectiveConnectionStatus(account)
+
+  if (provider === 'mtapi') {
+    // mtapi_session_id is not part of the initial fetch (it is stripped from
+    // BROKER_ACCOUNT_CLIENT_SELECT), so it may be absent even for a connected
+    // row — deciding on it made this gate unreliable. Provider status is the
+    // signal that is always present.
+    if (status === 'connecting' || status === 'recovering' || status === 'pending') {
+      return false
+    }
+    // Never observed on MTAPI: the account cannot copy yet, even when the
+    // previous provider's connection_status still reads 'connected'.
+    if (account.mtapi_status == null) return true
+    return status === 'error' || status === 'disconnected'
+  }
+
+  if (!hasFxsocketBrokerSession(account)) return false
   return status === 'error' || status === 'disconnected'
 }
 
@@ -45,7 +76,7 @@ type BrokerConnectionStatusLabels = {
 
 /** User-facing link state — pending first-time connect vs session recovery. */
 function brokerConnectionDisplayPhase(
-  account: Pick<BrokerAccount, 'fxsocket_status' | 'connection_status'>,
+  account: BrokerAccountLike,
 ): 'connected' | 'connecting' | 'recovering' | 'disconnected' {
   if (account.connection_status === 'pending') return 'connecting'
   if (account.connection_status === 'recovering') return 'recovering'
@@ -57,7 +88,7 @@ function brokerConnectionDisplayPhase(
 }
 
 export function brokerConnectionStatusLabel(
-  account: Pick<BrokerAccount, 'is_active' | 'fxsocket_status' | 'connection_status'>,
+  account: BrokerAccountLike & { is_active?: boolean },
   labels: BrokerConnectionStatusLabels,
 ): string {
   if (!account.is_active) return labels.statusPaused
@@ -70,7 +101,7 @@ export function brokerConnectionStatusLabel(
 }
 
 export function brokerConnectionBadgeVariant(
-  account: Pick<BrokerAccount, 'is_active' | 'fxsocket_status' | 'connection_status'>,
+  account: BrokerAccountLike & { is_active?: boolean },
 ): 'primary' | 'neutral' | 'error' {
   if (!account.is_active) return 'neutral'
   const status = brokerEffectiveConnectionStatus(account)

@@ -39,6 +39,7 @@ import {
 } from '../observability/businessEvents'
 import { captureDeferredBusinessFailure } from '../observability/deferredBusinessEvents'
 import { collapseIdenticalImmediateLegs } from './collapseIdenticalImmediateLegs'
+import { authorityFromBrokerRow, withBrokerWriteAuthority } from '../brokerWriteAuthority'
 
 export { collapseIdenticalImmediateLegs }
 
@@ -169,7 +170,8 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
   // v2 entries fire PROTECTED-at-send through the strict fxClient (bounded timeout,
   // strict retcode, no blind 3x retries) instead of the old client. One pre-burst
   // OpenedOrders snapshot powers ambiguous-send adoption so retries never duplicate.
-  const useV2 = isV2({ brokerAccountId: broker.id, userId: signal.user_id })
+  // MTAPI brokers must never take the FxClient path (FxSocket-only) — isV2 forces v1 for provider=mtapi.
+  const useV2 = isV2({ brokerAccountId: broker.id, userId: signal.user_id, provider: broker.provider })
   const v2Platform = toMtPlatform(broker.platform)
   const v2Snapshot: FxOpenOrder[] = useV2
     ? await getFxClient().openedOrders(uuid, v2Platform).catch(() => [])
@@ -249,7 +251,10 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
           dispatchSource: signal.dispatch_source,
         })
         if (useV2) {
-          const sendPromise = getFxClient().orderSend(
+          const sendPromise = withBrokerWriteAuthority(
+            authorityFromBrokerRow(broker),
+            'v2_orderSend',
+            () => getFxClient().orderSend(
             uuid,
             v2Platform,
             {
@@ -264,6 +269,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
               expertId: sendArgs.expertID,
             },
             { anchorSignalId: signal.id, legIndex: leg.idx, preSnapshot: v2Snapshot },
+            ),
           )
           emitPipelineEvent({
             event: 'broker_request_started',

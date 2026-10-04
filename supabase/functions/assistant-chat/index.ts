@@ -685,7 +685,7 @@ async function toolGetSetupStatus(supabase: SupabaseClient, userId: string): Pro
       supabase.from("user_profiles").select("copier_paused,display_name").eq("user_id", userId).maybeSingle(),
       supabase
         .from("broker_accounts")
-        .select("id,label,account_login,platform,is_active,fxsocket_account_id")
+        .select("id,label,account_login,platform,is_active,provider,mtapi_session_id,fxsocket_account_id")
         .eq("user_id", userId),
       supabase
         .from("telegram_channels")
@@ -697,7 +697,12 @@ async function toolGetSetupStatus(supabase: SupabaseClient, userId: string): Pro
 
   const telegramLinked = Boolean(session?.session_string && String(session.session_string).length > 0);
   const brokerList = brokers ?? [];
-  const connected = brokerList.filter((b) => b.is_active && b.fxsocket_account_id).length;
+  const connected = brokerList.filter((b) => {
+    if (!b.is_active) return false;
+    return b.provider === "mtapi"
+      ? Boolean(String(b.mtapi_session_id ?? "").trim())
+      : Boolean(String(b.fxsocket_account_id ?? "").trim());
+  }).length;
 
   return {
     content: JSON.stringify({
@@ -715,7 +720,7 @@ async function toolGetSetupStatus(supabase: SupabaseClient, userId: string): Pro
 async function toolListBrokers(supabase: SupabaseClient, userId: string): Promise<ToolResult> {
   const { data, error } = await supabase
     .from("broker_accounts")
-    .select("id,label,account_login,platform,is_active,fxsocket_account_id,broker_server,broker_name")
+    .select("id,label,account_login,platform,is_active,provider,mtapi_session_id,fxsocket_account_id,broker_server,broker_name")
     .eq("user_id", userId)
     .order("created_at", { ascending: true });
   if (error) return { content: JSON.stringify({ error: error.message }) };
@@ -728,7 +733,9 @@ async function toolListBrokers(supabase: SupabaseClient, userId: string): Promis
         platform: b.platform,
         is_active: b.is_active,
         copying: b.is_active === true,
-        connected: Boolean(b.fxsocket_account_id),
+        connected: b.provider === "mtapi"
+          ? Boolean(String(b.mtapi_session_id ?? "").trim())
+          : Boolean(String(b.fxsocket_account_id ?? "").trim()),
         broker_server: b.broker_server ?? null,
       })),
     }),

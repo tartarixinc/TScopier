@@ -37,9 +37,13 @@ import {
   type SignalBatchRow,
   type SignalDisplayContext,
 } from '../../lib/signalOverride'
+import { mergeSignalsWithOpenFallbacks, pinOpenSignalsFirst } from '../../lib/signalListMerge'
 import { useSignalHistoryRealtime } from '../../hooks/useSignalHistoryRealtime'
 
 const SIGNALS_PAGE_LIMIT = 500
+
+const SIGNAL_LIST_COLUMNS =
+  'id,channel_id,created_at,parsed_data,raw_message,parent_signal_id,user_override,reply_to_message_id,is_modification,skip_reason,telegram_message_id'
 
 type DatePreset = 'all' | 'today' | '7d' | '30d' | 'custom'
 
@@ -215,7 +219,7 @@ export function SignalHistoryPage() {
         .order('created_at', { ascending: false }),
       supabase
         .from('signals')
-        .select('id,channel_id,created_at,parsed_data,raw_message,parent_signal_id,user_override,reply_to_message_id,is_modification,skip_reason,telegram_message_id')
+        .select(SIGNAL_LIST_COLUMNS)
         .eq('user_id', user.id)
         .or('skip_reason.is.null,skip_reason.neq.non_trade_message')
         .order('created_at', { ascending: false })
@@ -224,16 +228,37 @@ export function SignalHistoryPage() {
         .from('trades')
         .select('signal_id')
         .eq('user_id', user.id)
-        .eq('status', 'open'),
+        .in('status', ['open', 'pending']),
     ])
     const loadedChannels = (channelsRes.data ?? []) as TelegramChannel[]
     const loadedSignals = ((signalsRes.data ?? []) as Signal[]).filter(isTelegramTradeSignal)
+    const openTradeRows = (openTradesRes.data ?? []) as { signal_id?: string | null }[]
+    // The page limit can cut older signals off; always fetch the ones backing
+    // open/pending trades so they stay visible and editable on this page.
+    const openSignalIdList = openTradeRows
+      .map(row => row.signal_id)
+      .filter((id): id is string => Boolean(id))
+    const loadedIds = new Set(loadedSignals.map(signal => signal.id))
+    const missingOpenIds = openSignalIdList.filter(id => !loadedIds.has(id))
+    let openFallbackSignals: Signal[] = []
+    if (missingOpenIds.length > 0) {
+      const fallbackRes = await supabase
+        .from('signals')
+        .select(SIGNAL_LIST_COLUMNS)
+        .in('id', missingOpenIds)
+      if (!fallbackRes.error) {
+        openFallbackSignals = ((fallbackRes.data ?? []) as Signal[]).filter(isTelegramTradeSignal)
+      } else {
+        console.warn(`[signal-history] open-signal fallback fetch failed: ${fallbackRes.error.message}`)
+      }
+    }
+    const mergedSignals = mergeSignalsWithOpenFallbacks(loadedSignals, openFallbackSignals)
     setChannels(loadedChannels)
-    setSignals(loadedSignals)
-    setOpenSignalIds(buildOpenSignalIdSet((openTradesRes.data ?? []) as { signal_id?: string | null }[]))
+    setSignals(mergedSignals)
+    setOpenSignalIds(buildOpenSignalIdSet(openTradeRows))
     if (!silent) setLoading(false)
 
-    const nextSymbolContext = await buildSignalSymbolLookup(supabase, user.id, loadedSignals)
+    const nextSymbolContext = await buildSignalSymbolLookup(supabase, user.id, mergedSignals)
     setSymbolContext(nextSymbolContext)
     setSymbolLookupReady(true)
   }, [user])
@@ -245,10 +270,10 @@ export function SignalHistoryPage() {
         .from('trades')
         .select('signal_id')
         .eq('user_id', user.id)
-        .eq('status', 'open'),
+        .in('status', ['open', 'pending']),
       supabase
         .from('signals')
-        .select('id,channel_id,created_at,parsed_data,raw_message,parent_signal_id,user_override,reply_to_message_id,is_modification,skip_reason,telegram_message_id')
+        .select(SIGNAL_LIST_COLUMNS)
         .eq('id', signalId)
         .maybeSingle(),
     ])
@@ -322,8 +347,14 @@ export function SignalHistoryPage() {
     absorbedEntryUpdates: ReadonlyArray<SignalBatchRow>,
     ctx: SignalDisplayContext,
   ) => {
-    setEditSession(buildEditSignalOverrideSnapshot(signal, ctx, absorbedEntryUpdates))
-  }, [])
+    const channel = signal.channel_id ? channelById.get(signal.channel_id) : undefined
+    setEditSession(buildEditSignalOverrideSnapshot(
+      signal,
+      ctx,
+      absorbedEntryUpdates,
+      channelDisplayName(channel),
+    ))
+  }, [channelById])
 
   const closeEditModal = useCallback(() => {
     setEditSession(null)
@@ -361,7 +392,7 @@ export function SignalHistoryPage() {
 
   const signalDisplayRows = useMemo(() => {
     if (!symbolLookupReady) return []
-    return consolidatedSignals.map(({ signal, lastActivityAt, absorbedEntryUpdates }) => {
+    const rows = consolidatedSignals.map(({ signal, lastActivityAt, absorbedEntryUpdates }) => {
       const displaySignal = signalForDisplay(signal, displayContext, absorbedEntryUpdates)
       const openStatus = resolveSignalOpenStatus(signal, openSignalIds, openStatusContext)
       return {
@@ -378,6 +409,8 @@ export function SignalHistoryPage() {
           : undefined,
       }
     })
+    // Open first — newest-first order is preserved inside each group.
+    return pinOpenSignalsFirst(rows)
   }, [
     symbolLookupReady,
     consolidatedSignals,
@@ -412,6 +445,32 @@ export function SignalHistoryPage() {
     if (!editSession) return
     await handleSaved(editSession.signalId, result)
   }, [editSession, handleSaved])
+
+  const handleClosedFromModal = useCallback(async (result: { closed: number; failed: number; virtualDeleted: number }) => {
+    if (!editSession) return
+    const bs = t.dashboard.brokerStats
+    // Mirrors the modal: also fires from the modal's error path when queued
+    // legs were swept but no position closed — then failed > 0 and the banner
+    // must read as a warning, not as "nothing was open".
+    const text = result.closed > 0
+      ? result.failed > 0
+        ? interpolate(bs.closePartial, {
+            closed: String(result.closed),
+            total: String(result.closed + result.failed),
+          })
+        : interpolate(bs.closeSuccess, { count: String(result.closed) })
+      : result.failed > 0
+        ? interpolate(bs.closePartial, {
+            closed: '0',
+            total: String(result.failed),
+          })
+        : interpolate(sh.closeQueuedRemoved, { count: String(result.virtualDeleted) })
+    setBanner({
+      tone: result.failed > 0 ? 'warning' : 'success',
+      text,
+    })
+    await refreshAfterOverrideSave(editSession.signalId)
+  }, [editSession, refreshAfterOverrideSave, sh, t.dashboard.brokerStats])
 
   const resetFilters = () => {
     setChannelFilter('all')
@@ -651,6 +710,7 @@ export function SignalHistoryPage() {
           {...editSession}
           onClose={closeEditModal}
           onSaved={handleSavedFromModal}
+          onClosed={handleClosedFromModal}
         />
       ) : null}
     </PageShell>

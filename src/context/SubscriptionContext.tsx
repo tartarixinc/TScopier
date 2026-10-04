@@ -176,8 +176,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
           .select('id', { count: 'exact', head: true })
           .eq('user_id', userId)
           .eq('is_active', true)
-          .not('fxsocket_account_id', 'is', null)
-          .neq('fxsocket_account_id', ''),
+          .or('provider.eq.mtapi,fxsocket_account_id.neq.'),
         supabase
           .from('telegram_channels')
           .select('id', { count: 'exact', head: true })

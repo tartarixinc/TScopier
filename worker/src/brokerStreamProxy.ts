@@ -33,17 +33,19 @@ async function loadOwnedBroker(
   supabase: SupabaseClient,
   userId: string,
   brokerAccountId: string,
-): Promise<{ fxsocket_account_id: string; metaapi_account_id?: string | null; platform?: string | null } | null> {
+): Promise<{ fxsocket_account_id: string; metaapi_account_id?: string | null; platform?: string | null; provider?: string | null } | null> {
   const { data, error } = await supabase
     .from('broker_accounts')
-    .select('fxsocket_account_id,metaapi_account_id,platform')
+    .select('fxsocket_account_id,metaapi_account_id,platform,provider')
     .eq('id', brokerAccountId)
     .eq('user_id', userId)
     .maybeSingle()
   if (error || !data) return null
+  const provider = (data as { provider?: string | null }).provider
+  if (provider != null && provider !== '' && provider !== 'fxsocket') return null
   const sessionId = brokerSessionId(data)
   if (!sessionId) return null
-  return data as { fxsocket_account_id: string; metaapi_account_id?: string | null }
+  return data as { fxsocket_account_id: string; metaapi_account_id?: string | null; platform?: string | null; provider?: string | null }
 }
 
 /**

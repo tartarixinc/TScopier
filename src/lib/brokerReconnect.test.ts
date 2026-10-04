@@ -66,3 +66,90 @@ describe('brokerConnectionBadgeVariant', () => {
     })).toBe('error')
   })
 })
+
+describe('brokerEffectiveConnectionStatus — MTAPI', () => {
+  it('returns mtapi_status when provider=mtapi', () => {
+    expect(brokerEffectiveConnectionStatus({
+      fxsocket_status: null,
+      connection_status: null,
+      provider: 'mtapi',
+      mtapi_status: 'connected',
+    })).toBe('connected')
+  })
+
+  it('prefers connection_status error over mtapi_status', () => {
+    expect(brokerEffectiveConnectionStatus({
+      fxsocket_status: null,
+      connection_status: 'error',
+      provider: 'mtapi',
+      mtapi_status: 'connected',
+    })).toBe('error')
+  })
+
+  it('falls back to connection_status when mtapi_status is null', () => {
+    expect(brokerEffectiveConnectionStatus({
+      fxsocket_status: 'connected',
+      connection_status: 'connected',
+      provider: 'mtapi',
+      mtapi_status: null,
+    })).toBe('connected')
+  })
+})
+
+describe('brokerCanReconnect — MTAPI', () => {
+  it('shows reconnect for disconnected MTAPI session', () => {
+    expect(brokerCanReconnect({
+      fxsocket_account_id: null,
+      fxsocket_status: null,
+      connection_status: null,
+      provider: 'mtapi',
+      mtapi_session_id: 'sess_abc',
+      mtapi_status: 'disconnected',
+    })).toBe(true)
+  })
+
+  it('hides reconnect for connected MTAPI session', () => {
+    expect(brokerCanReconnect({
+      fxsocket_account_id: null,
+      fxsocket_status: null,
+      connection_status: null,
+      provider: 'mtapi',
+      mtapi_session_id: 'sess_abc',
+      mtapi_status: 'connected',
+    })).toBe(false)
+  })
+
+  it('shows reconnect for an MTAPI row with no session yet (it cannot copy)', () => {
+    expect(brokerCanReconnect({
+      fxsocket_account_id: null,
+      fxsocket_status: null,
+      connection_status: 'error',
+      provider: 'mtapi',
+      mtapi_session_id: null,
+      mtapi_status: 'error',
+    })).toBe(true)
+  })
+
+  it('shows reconnect for a row moved to MTAPI that has never connected', () => {
+    // mtapi_session_id is not sent to the browser at all, and mtapi_status is
+    // null until the first observation — this is the shape a freshly switched
+    // account has, and it must still be promptable.
+    expect(brokerCanReconnect({
+      fxsocket_account_id: null,
+      fxsocket_status: 'connected',
+      connection_status: 'connected',
+      provider: 'mtapi',
+      mtapi_status: null,
+    })).toBe(true)
+  })
+
+  it('hides reconnect while an MTAPI connect attempt is in flight', () => {
+    expect(brokerCanReconnect({
+      fxsocket_account_id: null,
+      fxsocket_status: null,
+      connection_status: 'pending',
+      provider: 'mtapi',
+      mtapi_status: 'connecting',
+    })).toBe(false)
+  })
+})

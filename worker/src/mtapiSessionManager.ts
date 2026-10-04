@@ -1,0 +1,385 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { decryptMtPassword } from './brokerCredentialsCrypto'
+import type { MtPlatform } from './fxsocketClient'
+import { getMtapiProvider, MtapiApiError, type MtapiProvider } from './mtapiProvider'
+import { authorityFromBrokerRow, withBrokerWriteAuthority } from './brokerWriteAuthority'
+
+type MtapiSessionRow = {
+  id: string
+  mtapi_session_id: string | null
+  account_login: string | null
+  broker_server: string | null
+  platform: string | null
+  broker_password_encrypted: string | null
+  auto_reconnect_enabled: boolean | null
+  connection_status: string | null
+  performance_baseline_balance?: number | null
+  provider?: string | null
+  fxsocket_account_id?: string | null
+  metaapi_account_id?: string | null
+  writer_epoch?: number | null
+  provider_transition_state?: 'stable' | 'transition' | null
+}
+
+function enabled(value: string | undefined, fallback: boolean): boolean {
+  if (value == null || value.trim() === '') return fallback
+  return !['0', 'false', 'no', 'off'].includes(value.trim().toLowerCase())
+}
+
+function platformOf(value: string | null): MtPlatform {
+  return String(value ?? '').toUpperCase() === 'MT4' ? 'MT4' : 'MT5'
+}
+
+function safeCode(error: unknown): string {
+  if (error instanceof MtapiApiError) return error.code || ('HTTP_' + error.status)
+  return error instanceof Error ? error.name : 'UNKNOWN'
+}
+
+/**
+ * Plain-English text for the bridge error codes that reach an operator in the
+ * log and a customer in `broker_accounts.connection_error`. The bridge sends
+ * codes only, so a rejection such as `INVALID_ACCOUNT` would otherwise arrive
+ * as a bare constant that says nothing about what to fix. Codes without an
+ * entry keep their existing behaviour and are reported on their own.
+ */
+const MTAPI_CODE_DETAIL: Record<string, string> = {
+  INVALID_ACCOUNT: 'invalid login or password',
+}
+
+export function mtapiFailureDetail(code: string): string {
+  // hasOwnProperty, not a plain lookup: `code` comes from the bridge response,
+  // so a value like "toString" must not resolve to an Object.prototype member
+  // and end up in a customer-visible column.
+  return Object.prototype.hasOwnProperty.call(MTAPI_CODE_DETAIL, code)
+    ? MTAPI_CODE_DETAIL[code]
+    : ''
+}
+
+/**
+ * Customer-facing text for `connection_error`. Plain English only: the raw
+ * bridge code must not reach the user. Support still gets it — the worker log
+ * records `code=... detail=...` on the same failure.
+ */
+export function mtapiFailureSummary(code: string): string {
+  const detail = mtapiFailureDetail(code)
+  return detail || code
+}
+
+function mtapiConfigured(): boolean {
+  return Boolean(
+    String(process.env.MTAPI_BASE_URL ?? '').trim()
+    || String(process.env.MTAPI_MT4_BASE_URL ?? '').trim()
+    || String(process.env.MTAPI_MT5_BASE_URL ?? '').trim(),
+  )
+}
+
+/**
+ * Parse an interval env value. Empty, malformed, or absurd text falls back to
+ * the default — a typo like "15000ms" must not become a 1 ms hot loop, a
+ * blank value must not clamp to the floor, and a value above 2^31-1 would be
+ * silently turned into 1 ms by Node's setTimeout — and a finite value is
+ * clamped at the floor.
+ */
+const MAX_INTERVAL_MS = 2_147_483_647
+export function resolveIntervalMs(raw: string | undefined, fallback: number, floor: number): number {
+  const text = (raw ?? '').trim()
+  if (text === '') return fallback
+  const ms = Number(text)
+  return Number.isFinite(ms) && ms <= MAX_INTERVAL_MS ? Math.max(floor, ms) : fallback
+}
+
+export class MtapiSessionManager {
+  private timer: NodeJS.Timeout | null = null
+  private provisionTimer: NodeJS.Timeout | null = null
+  private sweepRunning = false
+  private provisionRunning = false
+
+  constructor(
+    private readonly supabase: SupabaseClient,
+    private readonly provider: MtapiProvider = getMtapiProvider(),
+  ) {}
+
+  private async sessions(): Promise<MtapiSessionRow[]> {
+    const { data, error } = await this.supabase
+      .from('broker_accounts')
+      .select('id,provider,mtapi_session_id,fxsocket_account_id,metaapi_account_id,writer_epoch,provider_transition_state,account_login,broker_server,platform,broker_password_encrypted,auto_reconnect_enabled,performance_baseline_balance')
+      .eq('provider', 'mtapi')
+    if (error) throw new Error('MTAPI session query failed')
+    return (data ?? []) as MtapiSessionRow[]
+  }
+
+  private async recoverWithCredentials(sessionId: string): Promise<string | null> {
+    const { data, error } = await this.supabase
+      .from('broker_accounts')
+      .select('id,provider,mtapi_session_id,fxsocket_account_id,metaapi_account_id,writer_epoch,provider_transition_state,account_login,broker_server,platform,broker_password_encrypted,auto_reconnect_enabled,performance_baseline_balance')
+      .eq('provider', 'mtapi')
+      .eq('mtapi_session_id', sessionId)
+      .maybeSingle()
+    if (error || !data) return null
+    const row = data as MtapiSessionRow
+    if (row.auto_reconnect_enabled !== true) return null
+    const password = decryptMtPassword(row.broker_password_encrypted)
+    const login = String(row.account_login ?? '').trim()
+    const server = String(row.broker_server ?? '').trim()
+    if (!password || !login || !server) return null
+
+    return withBrokerWriteAuthority(
+      authorityFromBrokerRow(row),
+      'mtapi_reconnect',
+      async () => {
+        const token = await this.provider.connectEx({
+          id: sessionId,
+          server,
+          login,
+          password,
+          platform: platformOf(row.platform),
+        })
+        if (token !== sessionId) {
+          const { data: updated, error: updateError } = await this.supabase
+            .from('broker_accounts')
+            .update({
+              mtapi_session_id: token,
+              connection_status: 'connected',
+              mtapi_status: 'connected',
+            })
+            .eq('id', row.id)
+            .eq('provider', 'mtapi')
+            .eq('provider_transition_state', 'stable')
+            .eq('writer_epoch', row.writer_epoch)
+            .eq('mtapi_session_id', sessionId)
+            .select('id')
+            .maybeSingle()
+          if (updateError || !updated) {
+            await this.provider.disconnect(token).catch(() => undefined)
+            throw new Error('MTAPI recovered token persistence failed')
+          }
+        }
+        return token
+      },
+    )
+  }
+
+  private async reconcileOrphans(rows: MtapiSessionRow[]): Promise<void> {
+    if (!enabled(process.env.MTAPI_DISCONNECT_ORPHANS_ENABLED, true)) return
+    const mt4Url = String(process.env.MTAPI_MT4_BASE_URL ?? '').trim().replace(/\/+$/, '')
+    const { data: allSessionRows, error: allSessionError } = await this.supabase
+      .from('broker_accounts')
+      .select('id,mtapi_session_id,platform')
+      .not('mtapi_session_id', 'is', null)
+    const knownRows = allSessionError
+      ? rows
+      : (allSessionRows ?? []) as MtapiSessionRow[]
+
+    const mt5Url = String(process.env.MTAPI_MT5_BASE_URL ?? '').trim().replace(/\/+$/, '')
+    const separateBridges = Boolean(mt4Url && mt5Url && mt4Url !== mt5Url)
+    const groups: Array<{ platform: MtPlatform; ids: string[] }> = separateBridges
+      ? (['MT4', 'MT5'] as const).map(platform => ({
+        platform,
+        ids: knownRows
+          .filter(row => platformOf(row.platform) === platform)
+          .map(row => String(row.mtapi_session_id ?? '').trim())
+          .filter(Boolean),
+      }))
+      : [{
+        platform: 'MT5',
+        ids: knownRows.map(row => String(row.mtapi_session_id ?? '').trim()).filter(Boolean),
+      }]
+    for (const { platform, ids } of groups) {
+      if (platform === 'MT4') {
+        console.warn('[mtapiSession] orphan reconciliation skipped platform=MT4 endpoint unavailable')
+        continue
+      }
+      try {
+        await this.provider.disconnectOrphans(ids, true, platform)
+        await this.provider.disconnectOrphans(ids, false, platform)
+      } catch (error) {
+        console.warn('[mtapiSession] orphan reconciliation failed platform=' + platform + ' code=' + safeCode(error))
+      }
+    }
+  }
+
+  private async syncAccountState(row: MtapiSessionRow, sessionId: string): Promise<void> {
+    const summary = await this.provider.accountSummary(sessionId)
+    const now = new Date().toISOString()
+    const patch: Record<string, unknown> = {
+      mtapi_status: 'connected',
+      connection_status: 'connected',
+      connection_error: null,
+      last_synced_at: now,
+    }
+    if (summary.balance != null) patch.last_balance = summary.balance
+    if (summary.equity != null) patch.last_equity = summary.equity
+    if (summary.currency != null) patch.last_currency = summary.currency
+    if (summary.type != null) {
+      patch.linked_account_type = summary.type === 0 || summary.type === 1 ? 'Demo' : 'Live'
+    }
+    if (row.performance_baseline_balance == null && summary.balance != null) {
+      patch.performance_baseline_balance = summary.balance
+      patch.performance_baseline_captured_at = now
+    }
+    const { error } = await this.supabase
+      .from('broker_accounts')
+      .update(patch)
+      .eq('id', row.id)
+      .eq('provider', 'mtapi')
+      .eq('provider_transition_state', 'stable')
+      .eq('writer_epoch', row.writer_epoch)
+      .eq('mtapi_session_id', sessionId)
+    if (error) throw new Error('MTAPI account state persist failed')
+  }
+
+  private async sweep(rows?: MtapiSessionRow[]): Promise<void> {
+    if (this.sweepRunning) return
+    this.sweepRunning = true
+    try {
+      const current = rows ?? await this.sessions()
+      await Promise.all(current.map(async row => {
+        const sessionId = String(row.mtapi_session_id ?? '').trim()
+        if (!sessionId) return
+        this.provider.seedPlatformCache(sessionId, platformOf(row.platform))
+        try {
+          await this.provider.ensureConnected(sessionId)
+          await this.syncAccountState(row, sessionId)
+        } catch (error) {
+          const code = safeCode(error)
+          const detail = mtapiFailureDetail(code)
+          console.warn('[mtapiSession] health recovery failed broker=' + row.id + ' code=' + code
+            + (detail ? ' detail=' + detail : ''))
+        }
+      }))
+    } finally {
+      this.sweepRunning = false
+    }
+  }
+
+  private async provisionNewAccounts(): Promise<void> {
+    // The provision timer (15 s) is shorter than one bridge call can take
+    // (HTTP timeout 20 s). Without this guard a slow ConnectEx would let a
+    // second scan claim the same pending row and open a second bridge session
+    // for one login, leaking an orphan the reconciler cannot see.
+    if (this.provisionRunning) return
+    this.provisionRunning = true
+    try {
+      await this.provisionPendingAccounts()
+    } finally {
+      this.provisionRunning = false
+    }
+  }
+
+  private async provisionPendingAccounts(): Promise<void> {
+    const { data, error } = await this.supabase
+      .from('broker_accounts')
+      .select('id,provider,mtapi_session_id,fxsocket_account_id,metaapi_account_id,writer_epoch,provider_transition_state,account_login,broker_server,platform,broker_password_encrypted,performance_baseline_balance')
+      .eq('provider', 'mtapi')
+      .eq('provider_transition_state', 'stable')
+      .is('mtapi_session_id', null)
+      .eq('connection_status', 'pending')
+    if (error) {
+      console.warn('[mtapiSession] provision query failed code=' + error.message)
+      return
+    }
+    const pending = (data ?? []) as MtapiSessionRow[]
+    // Log only real work: at the 15 s cadence a "pending=0" line every tick
+    // would be thousands of lines a day.
+    if (pending.length > 0) {
+      console.info('[mtapiSession] provision scan pending=' + pending.length)
+    }
+    for (const row of pending) {
+      const password = decryptMtPassword(row.broker_password_encrypted)
+      const login = String(row.account_login ?? '').trim()
+      const server = String(row.broker_server ?? '').trim()
+      if (!password || !login || !server) {
+        console.warn('[mtapiSession] provision skipped broker=' + row.id + ' (missing credentials)')
+        continue
+      }
+      try {
+        const token = await this.provider.connectEx({
+          id: '',
+          server,
+          login,
+          password,
+          platform: platformOf(row.platform),
+        })
+        const { data: updated, error: updErr } = await this.supabase
+          .from('broker_accounts')
+          .update({ mtapi_session_id: token, connection_status: 'connected', mtapi_status: 'connected', connection_error: null })
+          .eq('id', row.id)
+          .eq('provider', 'mtapi')
+          .eq('provider_transition_state', 'stable')
+          .eq('writer_epoch', row.writer_epoch)
+          .is('mtapi_session_id', null)
+          .eq('connection_status', 'pending')
+          .select('id')
+          .maybeSingle()
+        if (updErr || !updated) {
+          await this.provider.disconnect(token).catch(() => undefined)
+          console.warn(
+            '[mtapiSession] provision persist failed broker=' + row.id
+            + ' code=' + (updErr?.message ?? 'STALE_AUTHORITY'),
+          )
+          continue
+        }
+        this.provider.seedPlatformCache(token, platformOf(row.platform))
+        console.info('[mtapiSession] provisioned broker=' + row.id)
+        try {
+          await this.syncAccountState({ ...row, connection_status: 'connected' }, token)
+        } catch (syncError) {
+          console.warn('[mtapiSession] initial account sync failed broker=' + row.id + ' code=' + safeCode(syncError))
+        }
+      } catch (err) {
+        const code = safeCode(err)
+        const detail = mtapiFailureDetail(code)
+        console.warn('[mtapiSession] provision failed broker=' + row.id + ' code=' + code
+          + (detail ? ' detail=' + detail : ''))
+        await this.supabase
+          .from('broker_accounts')
+          .update({
+            connection_status: 'error',
+            mtapi_status: 'error',
+            connection_error: 'MTAPI connect failed: ' + mtapiFailureSummary(code),
+          })
+          .eq('id', row.id)
+          .eq('connection_status', 'pending')
+      }
+    }
+  }
+
+  async start(): Promise<void> {
+    if (!mtapiConfigured()) return
+    this.provider.setRecoveryHandler(id => this.recoverWithCredentials(id))
+    const rows = await this.sessions()
+    for (const row of rows) {
+      const id = String(row.mtapi_session_id ?? '').trim()
+      if (id) this.provider.seedPlatformCache(id, platformOf(row.platform))
+    }
+    await this.reconcileOrphans(rows)
+    await this.provisionNewAccounts()
+    await this.sweep(rows)
+    // A newly authorised account waits for the provision sweep, so it runs far
+    // more often than the health sweep: the bridge link must be made in
+    // seconds, not minutes. The health sweep stays slow because it queries the
+    // bridge once per session.
+    const provisionIntervalMs = resolveIntervalMs(process.env.MTAPI_PROVISION_INTERVAL_MS, 15_000, 5_000)
+    this.provisionTimer = setInterval(() => {
+      void this.provisionNewAccounts().catch(error => {
+        console.warn('[mtapiSession] provision sweep failed code=' + safeCode(error))
+      })
+    }, provisionIntervalMs)
+    this.provisionTimer.unref?.()
+    const intervalMs = resolveIntervalMs(process.env.MTAPI_SESSION_HEALTH_INTERVAL_MS, 240_000, 30_000)
+    this.timer = setInterval(() => {
+      void this.sweep().catch(error => {
+        console.warn('[mtapiSession] health sweep failed code=' + safeCode(error))
+      })
+    }, intervalMs)
+    this.timer.unref?.()
+  }
+
+  stop(): void {
+    if (this.timer) clearInterval(this.timer)
+    this.timer = null
+    if (this.provisionTimer) clearInterval(this.provisionTimer)
+    this.provisionTimer = null
+    this.provider.setRecoveryHandler(undefined)
+  }
+}

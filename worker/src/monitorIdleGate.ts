@@ -109,8 +109,10 @@ export async function shardUserIds(supabase: SupabaseClient): Promise<string[] |
 type FilterChain = {
   in: (col: string, vals: string[]) => FilterChain
   eq: (col: string, val: unknown) => FilterChain
+  neq: (col: string, val: unknown) => FilterChain
   not: (col: string, op: string, val: unknown) => FilterChain
   is: (col: string, val: unknown) => FilterChain
+  or: (filter: string) => FilterChain
   lt: (col: string, val: string) => FilterChain
   lte: (col: string, val: string) => FilterChain
   gte: (col: string, val: string) => FilterChain

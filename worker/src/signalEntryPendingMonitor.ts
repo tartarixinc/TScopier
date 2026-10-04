@@ -1,6 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { hasFxsocketConfigured } from './fxsocketClient'
-import { apiForFxsocketAccount, loadPlatformByFxsocketId, type PlatformByFxsocketId } from './mtApiByAccount'
+import { apiForFxsocketAccount, resolveDurableBrokerArtifacts, type PlatformByFxsocketId } from './mtApiByAccount'
 import {
   applyShardToQuery,
   hasWorkOnShard,
@@ -76,10 +75,6 @@ export class SignalEntryPendingMonitor {
 
   start() {
     if (this.loop) return
-    if (!hasFxsocketConfigured()) {
-      console.warn('[signalEntryPendingMonitor] MT4API_BASIC_USER/PASSWORD missing — signal entry pending monitor disabled')
-      return
-    }
     this.loop = startMonitorLoop({
       name: 'signalEntryPendingMonitor',
       supabase: this.supabase,
@@ -113,8 +108,6 @@ export class SignalEntryPendingMonitor {
   }
 
   private async tick(): Promise<void> {
-    if (!hasFxsocketConfigured()) return
-
     const rowsQ = await applyShardToQuery(
       this.supabase,
       this.supabase
@@ -138,10 +131,9 @@ export class SignalEntryPendingMonitor {
       return
     }
 
-    this.platformByUuid = await loadPlatformByFxsocketId(
-      this.supabase,
-      rows.map(r => r.metaapi_account_id),
-    )
+    const resolved = await resolveDurableBrokerArtifacts(this.supabase, rows)
+    this.platformByUuid = resolved.platformBySession
+    rows.splice(0, rows.length, ...resolved.rows)
 
     const nowMs = Date.now()
     const expiredIds = new Set<string>()

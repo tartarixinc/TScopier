@@ -40,6 +40,26 @@ export function strictSignalEntryQuoteAllowsImmediate(args: {
     : bid >= entryPrice - tolPx
 }
 
+/**
+ * True when the live quote already moved past a broker limit price, so the
+ * broker would reject the order (buy limit: ask ≤ level; sell limit: bid ≥ level).
+ */
+export function brokerLimitLevelPassed(args: {
+  operation: MtOperation
+  level: number
+  bid: number
+  ask: number
+}): boolean {
+  if (args.operation !== 'BuyLimit' && args.operation !== 'SellLimit') return false
+  if (!Number.isFinite(args.level) || args.level <= 0) return false
+  return strictSignalEntryQuoteAllowsImmediate({
+    isBuy: args.operation === 'BuyLimit',
+    entryPrice: args.level,
+    bid: args.bid,
+    ask: args.ask,
+  })
+}
+
 export interface ResolveOpExecAndStrictArgs {
   opSplit: MtOperation
   isBuy: boolean

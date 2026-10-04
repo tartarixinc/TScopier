@@ -100,7 +100,14 @@ export interface OrderCloseArgs {
 }
 
 export interface OrderResult {
+  /** Backward-compatible canonical ticket used by existing callers. */
   ticket: number
+  /** Broker order identity when the bridge exposes it separately (notably MT5). */
+  orderTicket?: number
+  /** Broker execution/deal identity when the bridge exposes it separately (notably MT5). */
+  dealTicket?: number
+  /** Live broker position identity when the bridge exposes it separately (notably MT5). */
+  positionTicket?: number
   openPrice?: number
   stopLoss?: number
   takeProfit?: number
@@ -126,6 +133,10 @@ export interface AccountSummary {
   marginLevel?: number
   leverage?: number
   currency?: string
+  /** MTAPI only: account trade mode (0=demo, 1=contest, 2=real). */
+  type?: number
+  /** MTAPI only: false means balance/equity are not authoritative yet. */
+  synced?: boolean
 }
 
 export interface FxsocketTerminalStatus {
@@ -194,14 +205,29 @@ function nestedTicket(o: Record<string, unknown>, key: string): unknown {
   const nest = o[key]
   if (nest == null || typeof nest !== 'object') return undefined
   const n = nest as Record<string, unknown>
-  return n.ticket ?? n.Ticket ?? n.order ?? n.Order
+  return n.ticket ?? n.Ticket ?? n.positionId ?? n.PositionId ?? n.position ?? n.Position ?? n.order ?? n.Order
 }
 
+function positiveTicket(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    const ticket = num(value)
+    if (ticket != null && ticket > 0) return ticket
+  }
+  return undefined
+}
+
+export type NormalizeOrderResponseOptions = {
+  platform?: MtPlatform | null
+  operation?: string | null
+}
 /**
  * Normalize order responses from FxSocket ({ order, deal, success }) and legacy
  * MT REST shapes ({ ticket, Ticket, result: { … } }) into camelCase OrderResult.
  */
-export function normalizeOrderResponse(body: unknown): OrderResult {
+export function normalizeOrderResponse(
+  body: unknown,
+  options: NormalizeOrderResponseOptions = {},
+): OrderResult {
   if (body == null || typeof body !== 'object') {
     return { ticket: NaN }
   }
@@ -212,24 +238,37 @@ export function normalizeOrderResponse(body: unknown): OrderResult {
     o = root.result as Record<string, unknown>
   }
 
-  const ticketRaw =
-    o.ticket
-    ?? o.Ticket
-    ?? o.order
-    ?? o.Order
-    ?? o.orderId
-    ?? o.OrderId
-    ?? o.deal
-    ?? o.Deal
-    ?? nestedTicket(o, 'deal')
-    ?? nestedTicket(o, 'Deal')
-    ?? nestedTicket(o, 'DealInternalIn')
-    ?? nestedTicket(o, 'ex')
+  const legacyTicket = positiveTicket(o.ticket, o.Ticket)
+  const orderTicket = positiveTicket(
+    o.orderTicket, o.OrderTicket, o.order_id, o.orderId, o.OrderId, o.OrderID,
+    o.order, o.Order, nestedTicket(o, 'order'), nestedTicket(o, 'Order'),
+  )
+  const dealTicket = positiveTicket(
+    o.dealTicket, o.DealTicket, o.deal_id, o.dealId, o.DealId, o.DealID,
+    o.deal, o.Deal, nestedTicket(o, 'deal'), nestedTicket(o, 'Deal'),
+    nestedTicket(o, 'DealInternalOut'), nestedTicket(o, 'ex'),
+  )
+  const positionTicket = positiveTicket(
+    o.positionTicket, o.PositionTicket, o.position_ticket,
+    o.positionId, o.PositionId, o.PositionID, o.position, o.Position,
+    nestedTicket(o, 'position'), nestedTicket(o, 'Position'),
+    nestedTicket(o, 'DealInternalIn'),
+  )
 
-  const ticket = typeof ticketRaw === 'number' ? ticketRaw : Number(ticketRaw)
+  const platform = String(options.platform ?? '').toUpperCase()
+  const operation = String(options.operation ?? '').toLowerCase()
+  const isPending = operation.includes('limit') || operation.includes('stop')
+  const ticket = platform === 'MT5'
+    ? (isPending
+        ? orderTicket ?? legacyTicket ?? positionTicket ?? dealTicket
+        : positionTicket ?? legacyTicket ?? orderTicket ?? dealTicket)
+    : legacyTicket ?? orderTicket ?? positionTicket ?? dealTicket
 
   return {
-    ticket: Number.isFinite(ticket) ? ticket : NaN,
+    ticket: ticket ?? NaN,
+    ...(orderTicket != null ? { orderTicket } : {}),
+    ...(dealTicket != null ? { dealTicket } : {}),
+    ...(positionTicket != null ? { positionTicket } : {}),
     openPrice: num(o.openPrice ?? o.OpenPrice ?? o.price ?? o.Price),
     stopLoss: num(o.stopLoss ?? o.StopLoss),
     takeProfit: num(o.takeProfit ?? o.TakeProfit),
@@ -343,6 +382,35 @@ export function unwrapOrderList(raw: unknown): unknown[] {
   return []
 }
 
+function orderListObject(raw: unknown): Record<string, unknown> | null {
+  return raw != null && typeof raw === 'object' && !Array.isArray(raw)
+    ? raw as Record<string, unknown>
+    : null
+}
+
+export function orderListResponseIsIncomplete(raw: unknown): boolean {
+  const row = orderListObject(raw)
+  if (!row) return false
+  const incomplete = row.partialResponse === true
+    || row.PartialResponse === true
+    || row.partial === true
+    || row.truncated === true
+    || row.complete === false
+    || row.isComplete === false
+  if (incomplete) return true
+  return orderListResponseIsIncomplete(row.result ?? row.Result)
+}
+
+function orderListResponseHasList(raw: unknown): boolean {
+  if (Array.isArray(raw)) return true
+  const row = orderListObject(raw)
+  if (!row) return false
+  if (
+    Array.isArray(row.orders) || Array.isArray(row.Orders)
+    || Array.isArray(row.result) || Array.isArray(row.Result)
+  ) return true
+  return orderListResponseHasList(row.result ?? row.Result)
+}
 function trimEnv(v: string | undefined): string {
   return (v ?? '').trim()
 }
@@ -811,6 +879,12 @@ export class FxsocketBrokerClient {
   async openedOrders(id: string): Promise<unknown[]> {
     const raw = await this.get<unknown>(`${await this.accountBase(id)}/OpenedOrders`)
     assertNoApiError(raw)
+    if (orderListResponseIsIncomplete(raw)) {
+      throw new FxsocketApiError('OpenedOrders returned an incomplete response', 502, 'INCOMPLETE_RESPONSE')
+    }
+    if (!orderListResponseHasList(raw)) {
+      throw new FxsocketApiError('OpenedOrders returned an invalid list response', 502, 'INVALID_RESPONSE')
+    }
     return unwrapOrderList(raw)
   }
 
@@ -826,8 +900,8 @@ export class FxsocketBrokerClient {
     }
   }
 
-  async orderHistory(id: string, from: string, to: string): Promise<unknown[]> {
-    const raw = await this.get<unknown>(`${await this.accountBase(id)}/OrderHistory`, { from, to })
+  async orderHistory(id: string, from: string, to: string, timeoutMs?: number): Promise<unknown[]> {
+    const raw = await this.get<unknown>(`${await this.accountBase(id)}/OrderHistory`, { from, to }, timeoutMs)
     assertNoApiError(raw)
     return unwrapOrderList(raw)
   }

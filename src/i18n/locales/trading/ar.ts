@@ -35,6 +35,8 @@ export const tradingAr: TradingPagesBundleTranslations = {
     colLots: 'اللوت',
     colPnl: 'PnL',
     colTime: 'التاريخ والوقت',
+    colCurrent: 'السعر المباشر',
+    colClosePrice: 'سعر الإغلاق',
     instructionAction: 'الإجراء',
     instructionSymbol: 'الرمز',
     instructionEntry: 'الدخول',

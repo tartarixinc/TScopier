@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { BrokerAccount } from '../types/database'
 import { fxsocketBroker } from '../lib/fxsocketBroker'
 import { brokerCanReconnect } from '../lib/brokerReconnect'
@@ -38,10 +38,15 @@ export function useBrokerReconnect(opts: {
   const onSuccessRef = useRef(opts.onSuccess)
   const upsertBrokerRef = useRef(opts.upsertBroker)
   const reconnectFailedLabelRef = useRef(opts.reconnectFailedLabel)
-  onErrorRef.current = opts.onError
-  onSuccessRef.current = opts.onSuccess
-  upsertBrokerRef.current = opts.upsertBroker
-  reconnectFailedLabelRef.current = opts.reconnectFailedLabel
+  // Keep the refs on the latest callbacks while reconnectBroker stays stable
+  // (its deps are intentional). Synced after render; the refs are only read
+  // inside async callbacks, never during render.
+  useEffect(() => {
+    onErrorRef.current = opts.onError
+    onSuccessRef.current = opts.onSuccess
+    upsertBrokerRef.current = opts.upsertBroker
+    reconnectFailedLabelRef.current = opts.reconnectFailedLabel
+  })
 
   const brokersNeedingReconnect = useMemo(
     () => opts.brokers.filter(brokerCanReconnect),
@@ -98,10 +103,12 @@ export function useBrokerReconnect(opts: {
       const { account } = await fxsocketBroker.reconnect({
         accountId: brokerId,
         password: entered.password.trim(),
+        provider: opts.brokers.find(b => b.id === brokerId)?.provider as 'fxsocket' | 'mtapi' | undefined,
       })
       upsertBrokerRef.current(account)
 
       const result = await fxsocketBroker.waitUntilConnected(account.id, {
+        provider: opts.brokers.find(b => b.id === brokerId)?.provider as 'fxsocket' | 'mtapi' | undefined,
         onProgress: (progress) => {
           upsertBrokerRef.current(progress.account)
         },
@@ -120,7 +127,11 @@ export function useBrokerReconnect(opts: {
         return next
       })
     }
-  }, [requestPassword])
+    // opts.brokers is a dependency because the provider lookups above read the
+    // current list. Without it the callback keeps the first render's opts —
+    // brokers still [] — so provider resolves to undefined and the request is
+    // routed to the FxSocket edge function even for MTAPI accounts.
+  }, [requestPassword, opts.brokers])
 
   const isReconnecting = useCallback(
     (brokerId: string) => reconnectingBrokerIds.has(brokerId),

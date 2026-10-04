@@ -157,6 +157,26 @@ export const accountConfigSv: AccountConfigBundleTranslations = {
       reconnectPasswordTitle: 'Mäklarsessionen har löpt ut',
       reconnectPasswordBody:
         'Din mäklarsession har löpt ut på handelsservern. Ange lösenordet för ditt MT-konto för att återansluta.',
+      reconnectMigrationTitle: 'Vi har uppdaterat hur TScopier ansluter till din mäklare',
+      reconnectMigrationBody: 'Anslut det här kontot igen för att fortsätta kopiera trades. Dina inställningar, historik och öppna positioner är oförändrade.',
+      reconnectMigrationPasswordTitle: 'Ange ditt lösenord för att ansluta igen',
+      reconnectMigrationPasswordBody: 'Kontonummer och server är redan ifyllda. Lösenordet lagras krypterat och används bara för att ansluta till din mäklare.',
+      reconnectMigrationBack: 'Tillbaka',
+      reconnectManyAccountsHint:
+        '{count} konton behöver återanslutas. Du blir ombedd om lösenordet en gång för varje konto.',
+      remindLater: 'Påminn mig senare',
+      deleteAccountLink: 'Jag kan inte återansluta — ta bort kontot',
+      deleteConfirmTitle: 'Ta bort kontot?',
+      deleteConfirmBody: 'Detta tar bort kontot, transaktionshistoriken och inställningarna från TScopier. Positionerna finns kvar hos din mäklare. Du kan ansluta igen senare med ett nytt lösenord.',
+      deleteConfirmNote: 'Detta går inte att ångra.',
+      deleteConfirmCta: 'Ta bort kontot',
+      reconnectConnectingTitle: 'Ansluter ditt konto',
+      reconnectConnectingBody:
+        'Inloggningsuppgifterna godkändes. Väntar på brokerns anslutning — det kan ta en stund.',
+      reconnectSuccessTitle: 'Konto anslutet',
+      reconnectSuccessBody: 'Anslutet. Kopieringen av trades återupptas automatiskt.',
+      reconnectSuccessNext: 'Nästa konto',
+      reconnectSuccessDone: 'Klar',
       reconnectPasswordLabel: 'Lösenord för MT-konto',
       reconnectPasswordHint:
         'Skickas endast till MT-servrar. Aktivera kom ihåg nedan för att spara det krypterat för automatisk återanslutning.',

@@ -49,10 +49,13 @@ function allowlist(): Set<string> {
 function nativePendingCapability(row: Record<string, unknown>) {
   const platformRaw = String(row.platform ?? "").toUpperCase()
   const platform = platformRaw === "MT4" ? "mt4" : platformRaw === "MT5" ? "mt5" : "unknown"
-  const linked = typeof row.fxsocket_account_id === "string" && row.fxsocket_account_id.trim().length > 0
+  const provider = String(row.provider ?? "fxsocket").trim()
+  const linked = provider === "fxsocket"
+    && typeof row.fxsocket_account_id === "string"
+    && row.fxsocket_account_id.trim().length > 0
   const connected = row.connection_status === "connected" || row.terminal_connected === true
   const tradeAllowed = row.trade_allowed !== false
-  if (!linked) return { supported: false, provider: "unknown", platform, canPlace: false, canReconcile: false, canCancel: false, reason: "provider_unsupported" }
+  if (!linked) return { supported: false, provider: provider === "mtapi" ? "mtapi" : "unknown", platform, canPlace: false, canReconcile: false, canCancel: false, reason: "provider_unsupported" }
   if (platform !== "mt4" && platform !== "mt5") return { supported: false, provider: "fxsocket", platform, canPlace: true, canReconcile: true, canCancel: true, reason: "platform_unsupported" }
   if (!connected || !tradeAllowed) return { supported: false, provider: "fxsocket", platform, canPlace: true, canReconcile: true, canCancel: true, reason: "connection_not_ready" }
   return { supported: true, provider: "fxsocket", platform, canPlace: true, canReconcile: true, canCancel: true, reason: "supported" }
@@ -156,7 +159,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: broker, error: brokerError } = await supabase
       .from("broker_accounts")
-      .select("id,user_id,platform,fxsocket_account_id,connection_status,terminal_connected,trade_allowed,manual_settings,channel_trading_configs,copier_mode")
+      .select("id,user_id,provider,platform,fxsocket_account_id,connection_status,terminal_connected,trade_allowed,manual_settings,channel_trading_configs,copier_mode")
       .eq("id", brokerAccountId)
       .eq("user_id", authData.user.id)
       .maybeSingle()

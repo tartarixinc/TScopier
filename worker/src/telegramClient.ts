@@ -105,6 +105,16 @@ export function rethrowIfSessionInvalid(err: unknown): never {
   throw err
 }
 
+/**
+ * The auth key is unusable, in either of its two shapes: Telegram reports
+ * AUTH_KEY_UNREGISTERED directly, or an inner helper already converted it with
+ * `rethrowIfSessionInvalid` (whose message no longer contains the raw code).
+ * Callers recovering from a connection must treat both as "re-link required".
+ */
+export function isSessionInvalid(err: unknown): boolean {
+  return isAuthKeyUnregistered(err) || err instanceof TelegramSessionInvalidError
+}
+
 export async function tgInvoke<T>(
   client: TelegramClient,
   req: unknown,

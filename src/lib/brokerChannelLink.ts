@@ -8,7 +8,7 @@ import {
   normalizeChannelUuid,
   resolveChannelConfigEntry,
 } from './channelTradingConfig'
-import { isBrokerCopyEnabled } from './brokerLink'
+import { isBrokerCopyEnabledForUi } from './brokerLink'
 import {
   deleteBrokerChannelTradingConfig,
   upsertBrokerChannelTradingConfigs,
@@ -44,11 +44,11 @@ export function getBrokerDisplayLabel(broker: BrokerAccount): string {
 }
 
 export function brokersMatchingChannel(brokers: BrokerAccount[], channelId: string): BrokerAccount[] {
-  return brokers.filter(b => isBrokerCopyEnabled(b) && channelMatchesBrokerSignal(b, channelId))
+  return brokers.filter(b => isBrokerCopyEnabledForUi(b) && channelMatchesBrokerSignal(b, channelId))
 }
 
 export function brokersNotMatchingChannel(brokers: BrokerAccount[], channelId: string): BrokerAccount[] {
-  return brokers.filter(b => isBrokerCopyEnabled(b) && !channelMatchesBrokerSignal(b, channelId))
+  return brokers.filter(b => isBrokerCopyEnabledForUi(b) && !channelMatchesBrokerSignal(b, channelId))
 }
 
 export async function connectChannelToBroker(
@@ -118,7 +118,7 @@ export async function linkChannelToAllActiveBrokers(
   brokers: BrokerAccount[],
   options?: { defaultChannelFilters?: ChannelFilters },
 ): Promise<{ brokers: BrokerAccount[]; error: string | null }> {
-  const active = brokers.filter(b => isBrokerCopyEnabled(b))
+  const active = brokers.filter(b => isBrokerCopyEnabledForUi(b))
   if (active.length === 0) return { brokers, error: null }
 
   let nextBrokers = [...brokers]

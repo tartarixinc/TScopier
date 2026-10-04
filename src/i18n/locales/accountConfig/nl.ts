@@ -157,6 +157,26 @@ export const accountConfigNl: AccountConfigBundleTranslations = {
       reconnectPasswordTitle: 'Brokersessie verlopen',
       reconnectPasswordBody:
         'Je brokersessie is verlopen op de tradeserver. Voer je MT-accountwachtwoord in om opnieuw te verbinden.',
+      reconnectMigrationTitle: 'We hebben de manier waarop TScopier verbinding maakt met je broker bijgewerkt',
+      reconnectMigrationBody: 'Koppel dit account opnieuw om trades te blijven kopiëren. Je instellingen, handelsgeschiedenis en open posities blijven hetzelfde.',
+      reconnectMigrationPasswordTitle: 'Voer je wachtwoord in om opnieuw te verbinden',
+      reconnectMigrationPasswordBody: 'Je accountnummer en server zijn al ingevuld. Het wachtwoord wordt versleuteld opgeslagen en alleen gebruikt om verbinding te maken met je broker.',
+      reconnectMigrationBack: 'Terug',
+      reconnectManyAccountsHint:
+        '{count} accounts moeten opnieuw verbonden worden. Je wordt voor elk account om het wachtwoord gevraagd.',
+      remindLater: 'Herinner me later',
+      deleteAccountLink: 'Ik kan niet opnieuw verbinden — dit account verwijderen',
+      deleteConfirmTitle: 'Dit account verwijderen?',
+      deleteConfirmBody: 'Dit verwijdert het account, de transactiegeschiedenis en de instellingen uit TScopier. De posities blijven bij je broker. Je kunt het later opnieuw verbinden met een nieuw wachtwoord.',
+      deleteConfirmNote: 'Dit kan niet ongedaan worden gemaakt.',
+      deleteConfirmCta: 'Account verwijderen',
+      reconnectConnectingTitle: 'Je account wordt verbonden',
+      reconnectConnectingBody:
+        'Inloggegevens geaccepteerd. Wachten op de broker-verbinding — dit kan even duren.',
+      reconnectSuccessTitle: 'Account verbonden',
+      reconnectSuccessBody: 'Verbonden. Het kopiëren van transacties hervat automatisch.',
+      reconnectSuccessNext: 'Volgend account',
+      reconnectSuccessDone: 'Klaar',
       reconnectPasswordLabel: 'MT-accountwachtwoord',
       reconnectPasswordHint:
         'Wordt alleen naar MT-servers verzonden. Schakel hieronder onthouden in om het versleuteld op te slaan voor automatisch opnieuw verbinden.',

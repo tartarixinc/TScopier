@@ -352,10 +352,10 @@ export function TelegramConnectFlow({
               disabled={loading || resendWaitSeconds > 0}
               onClick={canResend ? onResendCode : onRequestNewCode}
             >
-              {resendWaitSeconds > 0
-                ? `${ce.sendNewCode} (${resendWaitSeconds}s)`
-                : canResend
-                  ? 'Request another delivery method'
+              {canResend
+                ? `Request another delivery method${resendWaitSeconds > 0 ? ` (${resendWaitSeconds}s)` : ''}`
+                : resendWaitSeconds > 0
+                  ? `${ce.sendNewCode} (${resendWaitSeconds}s)`
                   : ce.sendNewCode}
             </Button>
             {noAppFallback && (

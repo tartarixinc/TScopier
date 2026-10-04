@@ -1,5 +1,5 @@
 import type { BrokerAccount } from '../types/database'
-import { countLinkedBrokerSessions } from './brokerLink'
+import { countLinkedBrokerSessionsForUi } from './brokerLink'
 import {
   emptyConnectTradingAccountForm,
   type ConnectTradingAccountForm,
@@ -250,6 +250,7 @@ export type ConnectAccountsBatchArgs = {
     server?: string
     label?: string
     platform?: TradingPlatform
+    provider?: 'fxsocket' | 'mtapi'
   }) => Promise<{ account: BrokerAccount; pending?: boolean }>
   /** Known brokers accumulated during the batch (for timeout recovery). */
   getKnownBrokers?: () => BrokerAccount[]
@@ -309,7 +310,7 @@ async function findLinkedBrokerAccount(
 export async function connectAccountsBatch(args: ConnectAccountsBatchArgs): Promise<BulkConnectResult> {
   const connect = args.connect ?? (async (connectArgs) => {
     const { fxsocketBroker, FXSOCKET_BULK_CONNECT_TIMEOUT_MS } = await import('./fxsocketBroker')
-    return fxsocketBroker.connect({ ...connectArgs, timeoutMs: FXSOCKET_BULK_CONNECT_TIMEOUT_MS })
+    return fxsocketBroker.connect({ ...connectArgs, provider: 'mtapi', timeoutMs: FXSOCKET_BULK_CONNECT_TIMEOUT_MS })
   })
   const progress: BulkConnectRowProgress[] = args.rows.map((row, index) => ({
     index,
@@ -424,6 +425,6 @@ export function resolveActiveBrokerCount(
   brokers: readonly BrokerAccount[],
   usageCount: number,
 ): number {
-  const activeBrokers = countLinkedBrokerSessions(brokers)
+  const activeBrokers = countLinkedBrokerSessionsForUi(brokers)
   return Math.max(activeBrokers, usageCount)
 }

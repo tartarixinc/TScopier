@@ -1,5 +1,4 @@
 import {
-  hasFxsocketConfigured,
   MT_SESSION_EXPIRED_HINT,
   FxsocketBrokerClient,
   MtOperation,
@@ -14,6 +13,8 @@ import {
   signalEntryRangeStrictEnabled,
   SKIP_REASON_SIGNAL_ENTRY_REQUIRED,
   SKIP_REASON_SIGNAL_ENTRY_RANGE_REQUIRED,
+  SKIP_REASON_LEVEL_ALREADY_PASSED,
+  brokerLimitLevelPassed,
   strictSignalEntryQuoteAllowsImmediate,
   type ChannelKeywords,
   type ManualSettings,
@@ -215,7 +216,6 @@ export async function prepareEntryExecution(
     return { ok: false, outcome: {} }
   }
   const liveEntryFast = sendOpts?.liveEntryFast === true
-  if (!hasFxsocketConfigured()) return { ok: false, outcome: {} }
   const api = ctx.apiFor(broker)
   if (!api) return { ok: false, outcome: {} }
   const uuid = brokerSessionUuid(broker)!
@@ -874,6 +874,37 @@ export async function prepareEntryExecution(
       + ` liveFast=${liveEntryFast}`,
     )
     return { ok: false, outcome: { openedOrMerged: true } }
+  }
+
+  // Explicit broker limit: if the live quote already passed the level, the
+  // broker rejects the order as invalid — skip with a clear reason instead.
+  const pendingLimitLeg = isManual
+    ? plan.orders.find(o => o.operation === 'BuyLimit' || o.operation === 'SellLimit')
+    : undefined
+  if (pendingLimitLeg && api) {
+    try {
+      const q = strictEntryPrefetch ?? await api.quote(uuid, symbol)
+      strictEntryPrefetch = q
+      if (brokerLimitLevelPassed({
+        operation: pendingLimitLeg.operation,
+        level: pendingLimitLeg.price ?? 0,
+        bid: q.bid,
+        ask: q.ask,
+      })) {
+        console.log(
+          `[tradeExecutor] limit level passed signal=${signal.id} broker=${broker.id} symbol=${symbol}`
+          + ` op=${pendingLimitLeg.operation} level=${pendingLimitLeg.price} bid=${q.bid} ask=${q.ask}`,
+        )
+        await ctx.logSendSkipped(signal, broker, SKIP_REASON_LEVEL_ALREADY_PASSED, { symbol })
+        return { ok: false, outcome: { finalizeSkipReason: SKIP_REASON_LEVEL_ALREADY_PASSED } }
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.warn(
+        `[tradeExecutor] limit level check /Quote failed; sending anyway signal=${signal.id}`
+        + ` broker=${broker.id} symbol=${symbol}: ${msg}`,
+      )
+    }
   }
 
   // ── Strict signal entry (post-delay live quote) ───────────────────────

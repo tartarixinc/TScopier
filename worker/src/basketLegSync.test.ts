@@ -2,7 +2,7 @@ import { describe, it, beforeEach, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { applyBasketLegSync, type BasketOpenLeg } from './basketSlTpReconcile'
 import { applyMgmtModifyToBasketGroups } from './managementModifyBaskets'
-import { BasketSlTpReconcileMonitor } from './basketSlTpReconcileMonitor'
+import { BasketSlTpReconcileMonitor, isAllLegsGhostOnBroker, isEmptyOpenedOrdersInconclusive } from './basketSlTpReconcileMonitor'
 import type { MgmtTradeRow } from './managementScope'
 
 const UUID = '11111111-1111-1111-1111-111111111111'
@@ -251,5 +251,54 @@ describe('BasketSlTpReconcileMonitor stale-claim recovery', () => {
     assert.ok(reclaim, 'should issue a pending-reset update on basket_reconcile_jobs')
     assert.equal((reclaim!.payload as { locked_at?: unknown }).locked_at, null)
     assert.equal((reclaim!.payload as { locked_by?: unknown }).locked_by, null)
+  })
+})
+
+describe('BasketSlTpReconcileMonitor ghost / empty snapshot guards', () => {
+  it('treats an empty OpenedOrders snapshot as inconclusive (not all-closed)', () => {
+    assert.equal(isEmptyOpenedOrdersInconclusive(0), true)
+    assert.equal(isEmptyOpenedOrdersInconclusive(1), false)
+  })
+
+  it('closes the job when every open leg is absent from a non-empty snapshot', () => {
+    assert.equal(isAllLegsGhostOnBroker({
+      openLegs: 1,
+      skippedNotOnBroker: 1,
+      modified: 0,
+      failed: 0,
+    }), true)
+    assert.equal(isAllLegsGhostOnBroker({
+      openLegs: 2,
+      skippedNotOnBroker: 2,
+      modified: 0,
+      failed: 0,
+    }), true)
+  })
+
+  it('does not ghost-close when a leg modified, failed, or legs remain on broker', () => {
+    assert.equal(isAllLegsGhostOnBroker({
+      openLegs: 2,
+      skippedNotOnBroker: 1,
+      modified: 1,
+      failed: 0,
+    }), false, 'partial presence is not a ghost basket')
+    assert.equal(isAllLegsGhostOnBroker({
+      openLegs: 1,
+      skippedNotOnBroker: 1,
+      modified: 0,
+      failed: 1,
+    }), false, 'hard broker errors keep the retry path')
+    assert.equal(isAllLegsGhostOnBroker({
+      openLegs: 0,
+      skippedNotOnBroker: 0,
+      modified: 0,
+      failed: 0,
+    }), false, 'empty basket is handled by the no-legs early return')
+    assert.equal(isAllLegsGhostOnBroker({
+      openLegs: 1,
+      skippedNotOnBroker: 0,
+      modified: 1,
+      failed: 0,
+    }), false, 'ticket still on broker — normal success path')
   })
 })

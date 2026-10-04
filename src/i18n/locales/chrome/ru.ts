@@ -239,6 +239,9 @@ export const chromeRu: AppChromeTranslations = {
     noResults: 'Нет результатов',
     show: 'Показать',
     results: 'результатов',
+    brokerFeedDegraded: 'Не удаётся подключиться к инфраструктуре вашего брокера.',
+    brokerFeedDegradedHint:
+      'Показываем сохранённые сделки; живые позиции и прибыль могут обновляться с задержкой, а новые сделки могут не копироваться до восстановления связи.',
     cookieConsent: {
       message: 'Мы используем cookie, чтобы улучшить пользовательский опыт.',
       policyLink: 'Политика cookie',

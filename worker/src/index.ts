@@ -9,7 +9,9 @@ import {
 } from './observability/sentry'
 import { startWorkerHeartbeatCheckIns, stopWorkerHeartbeatCheckIns } from './observability/workerHeartbeat'
 // Must be loaded before any TelegramClient runtime code — patches console.log
-// to suppress GramJS flood-wait INFO noise (83% of log volume).
+// to suppress GramJS flood-wait INFO noise (83% of log volume) and
+// console.error to aggregate the `Error: TIMEOUT` stacks GramJS's update loop
+// prints every ~9 s per dead connection (incident 2026-09-29).
 import './gramjsLogSuppress'
 import { createClient } from '@supabase/supabase-js'
 import WebSocket from 'ws'
@@ -30,6 +32,8 @@ import { NewsTradingMonitor } from './newsTradingMonitor'
 import { V2ReconcileMonitor } from './engine/v2ReconcileMonitor'
 import { v2EngineConfigured } from './engine/executionMode'
 import { OpenTradeReconcileMonitor } from './openTradeReconcileMonitor'
+import { ClosedTradeFillMonitor } from './closedTradeFillMonitor'
+import { TradeBrokerDriftMonitor } from './tradeBrokerDriftMonitor'
 import { attachBrokerStreamProxy } from './brokerStreamProxy'
 import { getFxsocketStreamManager } from './fxsocketStreamManager'
 import { CopyLimitMonitor } from './copyLimitMonitor'
@@ -46,6 +50,11 @@ import { telegramShutdownDrainMs } from './workerShutdown'
 import { registerOrderCloseAuditSupabase } from './orderCloseAudit'
 import { initializeBrokerExecutionCapability } from './brokerExecutionMode'
 import { testFlagEnabled } from './testFlags'
+import { MtapiSessionManager } from './mtapiSessionManager'
+import {
+  createSupabaseBrokerWriteAuthorityStore,
+  registerBrokerWriteAuthorityStore,
+} from './brokerWriteAuthority'
 
 initWorkerSentry()
 installWorkerProcessSentryHandlers()
@@ -81,12 +90,14 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 )
 registerOrderCloseAuditSupabase(supabase)
+registerBrokerWriteAuthorityStore(createSupabaseBrokerWriteAuthorityStore(supabase))
 
 const sessionManager = new UserSessionManager(supabase)
 let httpServer: Server | null = null
 let authService: AuthService | null = null
 let tradeExecutor: TradeExecutor | null = null
 let signalQueueConsumers: SignalQueueConsumerManager | null = null
+let mtapiSessionManager: MtapiSessionManager | null = null
 
 const monitors: Array<{ stop: () => void }> = []
 const monitorLoops: MonitorLoopHandle[] = []
@@ -112,6 +123,8 @@ function startTradeMonitors(executor: TradeExecutor | null) {
     const partialTpMonitor = new PartialTpMonitor(supabase)
     const signalEntryPendingMonitor = new SignalEntryPendingMonitor(supabase)
     const openTradeReconcileMonitor = new OpenTradeReconcileMonitor(supabase)
+    const closedTradeFillMonitor = new ClosedTradeFillMonitor(supabase)
+    const tradeBrokerDriftMonitor = new TradeBrokerDriftMonitor(supabase)
     virtualPendingMonitor.start()
     registerVirtualPendingMonitor(virtualPendingMonitor)
     rangeBrokerPendingMonitor.start()
@@ -119,12 +132,16 @@ function startTradeMonitors(executor: TradeExecutor | null) {
     partialTpMonitor.start()
     signalEntryPendingMonitor.start()
     openTradeReconcileMonitor.start()
+    closedTradeFillMonitor.start()
+    tradeBrokerDriftMonitor.start()
     trackMonitor(virtualPendingMonitor)
     trackMonitor(rangeBrokerPendingMonitor)
     trackMonitor(cweCloseMonitor)
     trackMonitor(partialTpMonitor)
     trackMonitor(signalEntryPendingMonitor)
     trackMonitor(openTradeReconcileMonitor)
+    trackMonitor(closedTradeFillMonitor)
+    trackMonitor(tradeBrokerDriftMonitor)
     if (executor) {
       const signalRangeEntryMonitor = new SignalRangeEntryMonitor(supabase, executor)
       signalRangeEntryMonitor.start()
@@ -196,6 +213,13 @@ async function main() {
   }
 
   if (workerConfig.runsTrade) {
+    mtapiSessionManager = new MtapiSessionManager(supabase)
+    await mtapiSessionManager.start().catch(error => {
+      console.warn(
+        '[worker] MTAPI session startup skipped: '
+        + (error instanceof Error ? error.name : 'UNKNOWN'),
+      )
+    })
     tradeExecutor = new TradeExecutor(supabase, sessionManager)
     sessionManager.setTradeExecutor(tradeExecutor)
     await tradeExecutor.start()
@@ -316,6 +340,7 @@ async function main() {
     stopLogRetention?.()
     setQueueMetricsProvider(null)
     await signalQueueConsumers?.stop()
+    mtapiSessionManager?.stop()
     tradeExecutor?.stop()
     for (const m of monitors) m.stop()
     if (workerConfig.runsListener) {

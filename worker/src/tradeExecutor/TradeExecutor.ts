@@ -1,7 +1,5 @@
 import { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js'
 import {
-  getFxsocketClient,
-  hasFxsocketConfigured,
   FxsocketBrokerClient,
   mtPlatformFrom,
   MtOperation,
@@ -108,6 +106,8 @@ import { captureDeferredBusinessFailure } from '../observability/deferredBusines
 import { safeBuildMgmtSweepExhaustionPayload } from '../managementBreakevenDiagnostics'
 import { getTradeExecutionMonitor, tradeOutcomeIsSuccess } from '../observability/tradeExecutionMonitor'
 import { testFlagEnabled } from '../testFlags'
+import { apiForBrokerAccount } from '../providerResolver'
+import { authorityFromBrokerRow } from '../brokerWriteAuthority'
 
 export type { SignalRow } from './types'
 
@@ -185,14 +185,10 @@ export class TradeExecutor {
     readonly supabase: SupabaseClient,
     readonly sessionManager?: UserSessionManager,
   ) {
-    if (!hasFxsocketConfigured()) {
-      console.warn('[tradeExecutor] MT4API_BASIC_USER/PASSWORD missing — trade execution disabled.')
-    }
   }
 
   apiFor(broker: BrokerRow): FxsocketBrokerClient | null {
-    void broker
-    return getFxsocketClient()
+    return apiForBrokerAccount(broker.provider, brokerSessionUuid(broker), authorityFromBrokerRow(broker))
   }
 
   apiForUuid(uuid: string): FxsocketBrokerClient | null {
@@ -315,7 +311,7 @@ export class TradeExecutor {
   private async loadBrokers() {
     const brokersQ = await applyShardToQuery(
       this.supabase,
-      this.supabase.from('broker_accounts').select('*').or('fxsocket_account_id.neq.,metaapi_account_id.neq.'),
+      this.supabase.from('broker_accounts').select('*').or('mtapi_session_id.neq.,fxsocket_account_id.neq.,metaapi_account_id.neq.'),
     )
     if (!brokersQ) {
       this.brokersByUser.clear()
@@ -381,12 +377,10 @@ export class TradeExecutor {
         this.trackBrokerActivation(normalized)
       }
     }
-    const api = getFxsocketClient()
-    if (api) {
-      for (const broker of this.brokersById.values()) {
-        const sessionId = brokerSessionUuid(broker)
-        if (sessionId) api.seedPlatformCache(sessionId, mtPlatformFrom(broker.platform))
-      }
+    for (const broker of this.brokersById.values()) {
+      const sessionId = brokerSessionUuid(broker)
+      const api = this.apiFor(broker)
+      if (sessionId && api) api.seedPlatformCache(sessionId, mtPlatformFrom(broker.platform))
     }
     console.log(`[tradeExecutor] cached ${this.brokersById.size} broker accounts across ${this.brokersByUser.size} users`)
     const pingOnStart = String(process.env.BROKER_PING_ON_WORKER_START ?? 'true').toLowerCase()
@@ -452,7 +446,7 @@ export class TradeExecutor {
       normalized.channel_trading_configs as Record<string, unknown>,
     )
     const sessionId = brokerSessionUuid(normalized)
-    if (sessionId) getFxsocketClient()?.seedPlatformCache(sessionId, mtPlatformFrom(normalized.platform))
+    if (sessionId) this.apiFor(normalized)?.seedPlatformCache(sessionId, mtPlatformFrom(normalized.platform))
     const previous = this.brokersById.get(row.id)
     const wasSessionDown = Boolean(
       previous
@@ -1270,7 +1264,6 @@ export class TradeExecutor {
   }
 
   private async sweepExpiredTscopierBrokerPendings(): Promise<void> {
-    if (!hasFxsocketConfigured()) return
     if (String(process.env.WORKER_BROKER_PENDING_EXPIRY_SWEEP ?? '').toLowerCase() !== 'true') return
 
     const brokers = Array.from(this.brokersById.values()).filter(b =>
@@ -1730,7 +1723,6 @@ export class TradeExecutor {
    * indefinitely — it becomes a no-op once the legacy pendings are gone.
    */
   private async cleanupLegacyBrokerPendings(): Promise<void> {
-    if (!hasFxsocketConfigured()) return
     const brokers = Array.from(this.brokersById.values()).filter(b =>
       b.is_active && brokerHasLinkedSession(b),
     )

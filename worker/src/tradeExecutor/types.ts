@@ -74,10 +74,16 @@ export type MergeOutcome =
 export interface BrokerRow {
   id: string
   user_id: string
+  /** Missing/null is the legacy FXSocket default. Other unknown values fail closed. */
+  provider?: string | null
+  writer_epoch?: number | null
+  provider_transition_state?: 'stable' | 'transition' | null
+  provider_transition_target?: 'fxsocket' | 'mtapi' | null
   /** Copy-trades toggle — when false, broker stays linked but does not receive new signals. */
   is_active: boolean
   platform: string
   connection_status?: string | null
+  mtapi_session_id?: string | null
   fxsocket_account_id?: string | null
   metaapi_account_id: string | null
   account_login: string | null

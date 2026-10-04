@@ -39,7 +39,6 @@ import { hasTpTouchedLock } from './rangePendingFireGuard'
 import { resolveChannelTradingConfig } from './channelTradingConfig'
 import { normalizeManualSettingsForExecution } from './manualPlanning/normalizeManualSettings'
 import { isUserCopierPausedCached } from './copierPause'
-import { hasFxsocketConfigured } from './fxsocketClient'
 import { apiForFxsocketAccount, loadPlatformByFxsocketId, type PlatformByFxsocketId } from './mtApiByAccount'
 import { fetchBrokerOrdersByTicket } from './channelStopApply'
 import { brokerSessionUuid } from './tradeExecutor/helpers'
@@ -320,6 +319,8 @@ type SweepBasketRow = {
 type SweepBrokerRow = {
   id: string
   user_id: string
+  provider?: string | null
+  mtapi_session_id?: string | null
   fxsocket_account_id?: string | null
   metaapi_account_id?: string | null
   platform?: string | null
@@ -436,7 +437,7 @@ export async function sweepOpenBasketsForReconcileDrift(
   const brokerIds = [...new Set(sortedBaskets.map(r => r.broker_account_id))]
   const { data: brokers } = await supabase
     .from('broker_accounts')
-    .select('id,user_id,fxsocket_account_id,metaapi_account_id,platform,manual_settings,channel_trading_configs,copier_mode,ai_settings')
+    .select('id,user_id,provider,mtapi_session_id,fxsocket_account_id,metaapi_account_id,platform,manual_settings,channel_trading_configs,copier_mode,ai_settings')
     .in('id', brokerIds)
 
   const brokerById = new Map(
@@ -448,7 +449,7 @@ export async function sweepOpenBasketsForReconcileDrift(
       .map(b => brokerSessionUuid(b))
       .filter((u): u is string => typeof u === 'string' && u.length > 0 && !u.includes('|')),
   )]
-  const platformByUuid = brokerUuids.length && hasFxsocketConfigured()
+  const platformByUuid = brokerUuids.length
     ? await loadPlatformByFxsocketId(supabase, brokerUuids)
     : new Map()
   const ordersCache = new Map<string, Map<number, unknown>>()
@@ -507,9 +508,7 @@ export async function sweepOpenBasketsForReconcileDrift(
 
     if (!perLegTargets.length) continue
 
-    const ordersByTicket = hasFxsocketConfigured()
-      ? await loadSweepBrokerOrders(supabase, broker, platformByUuid, ordersCache)
-      : new Map<number, unknown>()
+    const ordersByTicket = await loadSweepBrokerOrders(supabase, broker, platformByUuid, ordersCache)
     const outOfSync = basketLegsOutOfSyncOnBroker(
       familyTrades,
       perLegTargets,

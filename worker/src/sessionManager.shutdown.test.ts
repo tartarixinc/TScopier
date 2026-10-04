@@ -469,16 +469,20 @@ describe('UserListener AUTH_KEY_DUPLICATED lifecycle', () => {
 
   async function withFastMalformedRecovery<T>(fn: () => Promise<T>): Promise<T> {
     const prevCooldown = process.env.TELEGRAM_RECONNECT_COOLDOWN_MS
+    const prevJitter = process.env.TELEGRAM_RECONNECT_JITTER_MAX_MS
     const prevMalformedMax = process.env.TELEGRAM_MALFORMED_RPC_MAX_RECOVERIES
     const prevAuthMax = process.env.TELEGRAM_AUTH_DUP_MAX_RECOVERY_ATTEMPTS
     try {
       process.env.TELEGRAM_RECONNECT_COOLDOWN_MS = '500'
+      process.env.TELEGRAM_RECONNECT_JITTER_MAX_MS = '0'
       process.env.TELEGRAM_MALFORMED_RPC_MAX_RECOVERIES = '10'
       process.env.TELEGRAM_AUTH_DUP_MAX_RECOVERY_ATTEMPTS = '1'
       return await fn()
     } finally {
       if (prevCooldown == null) delete process.env.TELEGRAM_RECONNECT_COOLDOWN_MS
       else process.env.TELEGRAM_RECONNECT_COOLDOWN_MS = prevCooldown
+      if (prevJitter == null) delete process.env.TELEGRAM_RECONNECT_JITTER_MAX_MS
+      else process.env.TELEGRAM_RECONNECT_JITTER_MAX_MS = prevJitter
       if (prevMalformedMax == null) delete process.env.TELEGRAM_MALFORMED_RPC_MAX_RECOVERIES
       else process.env.TELEGRAM_MALFORMED_RPC_MAX_RECOVERIES = prevMalformedMax
       if (prevAuthMax == null) delete process.env.TELEGRAM_AUTH_DUP_MAX_RECOVERY_ATTEMPTS

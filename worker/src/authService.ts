@@ -679,11 +679,7 @@ export class AuthService {
     }
 
     logAuthEvent('finalize_auth_complete', { userId, sessionId: row.id, totalTimeMs: Date.now() - tStart, correlationId })
-    void persistListenerEvent(this.supabase, {
-      userId,
-      eventType: 'telegram_link_success',
-      detail: { session_id: row.id, method },
-    })
+    logTelegramAuthSuccess(this.supabase, userId, row.id as string, method)
     return { ok: true, session_id: row.id as string, channels }
   }
 

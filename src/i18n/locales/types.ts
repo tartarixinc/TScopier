@@ -236,6 +236,8 @@ export interface CommonTranslations {
   noResults: string
   show: string
   results: string
+  brokerFeedDegraded: string
+  brokerFeedDegradedHint: string
   cookieConsent: {
     message: string
     policyLink: string
@@ -455,6 +457,10 @@ export interface SignalHistoryPageTranslations {
   saving: string
   originalSignal: string
   overrideSignal: string
+  channelMessageLabel: string
+  brokerAccountLabel: string
+  accountsHolding: string
+  closeOneAccount: string
   applySuccess: string
   applyBrokerSummary: string
   applyPartialBrokers: string
@@ -466,6 +472,24 @@ export interface SignalHistoryPageTranslations {
   addTp: string
   removeTp: string
   closeModal: string
+  closeTrade: string
+  closeConfirmTitle: string
+  closeConfirmBody: string
+  confirmClose: string
+  cancelAction: string
+  closing: string
+  closeSuccess: string
+  closePartial: string
+  closeFailed: string
+  closeMarketClosed: string
+  applyMarketClosed: string
+  closeNoOpenTrades: string
+  closeNotConnected: string
+  closeRetry: string
+  closeQueuedRemoved: string
+  closeSignalGone: string
+  autoCloseIn: string
+  doneTitle: string
   colStatus: string
   /** @deprecated legacy stat labels — kept for locale bundles not yet updated */
   updatesReceivedToday: string
@@ -699,6 +723,24 @@ export interface AccountConfigBrokerListTranslations {
   reconnectFailed: string
   reconnectPasswordTitle: string
   reconnectPasswordBody: string
+  reconnectMigrationTitle: string
+  reconnectMigrationBody: string
+  reconnectMigrationPasswordTitle: string
+  reconnectMigrationPasswordBody: string
+  reconnectMigrationBack: string
+  reconnectManyAccountsHint: string
+  remindLater: string
+  deleteAccountLink: string
+  deleteConfirmTitle: string
+  deleteConfirmBody: string
+  deleteConfirmNote: string
+  deleteConfirmCta: string
+  reconnectConnectingTitle: string
+  reconnectConnectingBody: string
+  reconnectSuccessTitle: string
+  reconnectSuccessBody: string
+  reconnectSuccessNext: string
+  reconnectSuccessDone: string
   reconnectPasswordLabel: string
   reconnectPasswordHint: string
   reconnectPasswordPlaceholder: string
@@ -817,6 +859,8 @@ export interface TradesTranslations {
   colLots: string
   colPnl: string
   colTime: string
+  colCurrent: string
+  colClosePrice: string
   instructionAction: string
   instructionSymbol: string
   instructionEntry: string

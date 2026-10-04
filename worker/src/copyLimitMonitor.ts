@@ -25,7 +25,12 @@ const TICK_MS = 30_000
 interface BrokerAccountRow {
   id: string
   user_id: string
+  provider?: string | null
   fxsocket_account_id: string | null
+  mtapi_session_id?: string | null
+  writer_epoch: number
+  provider_transition_state: 'stable' | 'transition'
+  provider_transition_target?: 'fxsocket' | 'mtapi' | null
   metaapi_account_id: string | null
   platform: string
   last_balance: number | null
@@ -102,7 +107,7 @@ export class CopyLimitMonitor {
     const brokerIds = [...new Set(activeRows.map(r => r.broker_account_id))]
     const { data: brokers, error: brokerErr } = await this.supabase
       .from('broker_accounts')
-      .select('id,user_id,fxsocket_account_id,metaapi_account_id,platform,last_balance,last_equity,is_active')
+      .select('id,user_id,provider,mtapi_session_id,fxsocket_account_id,metaapi_account_id,platform,last_balance,last_equity,is_active,writer_epoch,provider_transition_state,provider_transition_target')
       .in('id', brokerIds)
       .eq('is_active', true)
 
@@ -135,7 +140,7 @@ export class CopyLimitMonitor {
         sessionId,
         broker.platform,
         fallbackEquity,
-        { lastBalance: broker.last_balance },
+        { lastBalance: broker.last_balance, provider: broker.provider },
       )
       if (currentEquity <= 0) continue
 
@@ -170,6 +175,7 @@ export class CopyLimitMonitor {
           channelId,
           metaapiAccountId: sessionId,
           platform: broker.platform,
+          provider: broker.provider,
           period,
           timeZone,
         })
@@ -206,7 +212,11 @@ export class CopyLimitMonitor {
             brokerAccountId: broker.id,
             metaapiAccountId: sessionId,
             platform: broker.platform,
+            provider: broker.provider,
             channelId,
+            writerEpoch: broker.writer_epoch,
+            providerTransitionState: broker.provider_transition_state,
+            mtapiSessionId: broker.mtapi_session_id,
             reason: flattenReason,
           })
           state = {

@@ -27,6 +27,7 @@ import {
   loadUserSubscription,
 } from "../_shared/subscriptionAccess.ts"
 import { effectiveAccountSummaryBalance } from "../_shared/effectiveBrokerBalance.ts"
+import { withBrokerWriteLease } from "../_shared/brokerWriteLease.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -47,6 +48,12 @@ function parseThrottleBackoffMs(message: string | null | undefined): number {
 
 function bad(status: number, msg: string) {
   return Response.json({ error: msg }, { status, headers: corsHeaders })
+}
+
+/** Strip sensitive columns so they are never sent to the browser. */
+function stripSecrets(row: Record<string, unknown>) {
+  const { broker_password_encrypted: _pw, mtapi_session_id: _sid, ...safe } = row
+  return safe
 }
 
 function ensureFxsocketConfigured(): void {
@@ -164,10 +171,10 @@ Deno.serve(async (req: Request) => {
         .from("broker_accounts")
         .select("*")
         .eq("user_id", userId)
-        .neq("fxsocket_account_id", "")
         .order("created_at", { ascending: false })
       if (error) return bad(500, error.message)
-      return Response.json({ ok: true, accounts: data ?? [] }, { headers: corsHeaders })
+      const safe = (data ?? []).map(row => stripSecrets(row as Record<string, unknown>))
+      return Response.json({ ok: true, accounts: safe }, { headers: corsHeaders })
     }
 
     if (action === "search_brokers") {
@@ -289,7 +296,7 @@ Deno.serve(async (req: Request) => {
 
       // Return immediately — MT5 terminal spin-up can take minutes. Client polls refresh_summary.
       return Response.json(
-        { ok: true, account: row, pending: true },
+        { ok: true, account: stripSecrets(row as Record<string, unknown>), pending: true },
         { headers: corsHeaders },
       )
     }
@@ -319,6 +326,7 @@ Deno.serve(async (req: Request) => {
 
       const row = await loadOwnedBrokerRow(supabase, userId, accountRowId)
       const login = String(row.account_login ?? "").trim()
+      return await withBrokerWriteLease(supabase, row, "fxsocket_reconnect", async () => {
       const server = String(body.server ?? row.broker_server ?? "").trim()
       if (!login) return bad(400, "Broker login is missing — delete and connect again.")
       if (!server) return bad(400, "Broker server is missing — delete and connect again.")
@@ -383,9 +391,10 @@ Deno.serve(async (req: Request) => {
       }
 
       return Response.json(
-        { ok: true, account: updated, pending: true },
+        { ok: true, account: stripSecrets(updated as Record<string, unknown>), pending: true },
         { headers: corsHeaders },
       )
+      })
     }
 
     if (action === "refresh_summary") {
@@ -409,7 +418,7 @@ Deno.serve(async (req: Request) => {
           .single()
         if (error) return bad(500, error.message)
         return Response.json(
-          { ok: true, account: updated ?? row, pending: true },
+          { ok: true, account: stripSecrets((updated ?? row) as Record<string, unknown>), pending: true },
           { headers: corsHeaders },
         )
       }

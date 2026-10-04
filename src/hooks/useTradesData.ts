@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { getLocalCalendarDayBounds } from '../lib/dashboardTradeStats'
 import { formatBrokerHistoryDate } from '../lib/mtApiDateTime'
-import { fxsocketBroker, type MtTrade } from '../lib/fxsocketBroker'
+import { fetchTradesAcrossProviders, type MtTrade } from '../lib/fxsocketBroker'
 import { BROKER_ACCOUNT_CLIENT_SELECT } from '../lib/brokerAccountSelect'
 import { filterMtTradesSinceConnect } from '../lib/tradesSinceConnect'
 import type { BrokerAccount } from '../types/database'
@@ -16,29 +16,41 @@ import {
   type TradesCachePayload,
 } from '../lib/tradesSessionCache'
 import { useDashboardRealtime } from './useDashboardRealtime'
+import {
+  fetchTradesFromDatabase,
+  recoverFromLiveFeedFailure,
+} from '../lib/dbTradesFallback'
+import {
+  getLiveFeedGeneration,
+  getLiveFeedStatus,
+  isAuthSessionError,
+  reportLiveFeedFailure,
+  reportLiveFeedSuccess,
+} from '../lib/liveFeedStatus'
 
 const AUTO_REFRESH_MS = 15_000
 const VISIBILITY_STALE_MS = 30_000
 
 async function fetchTradesFromMt(userId: string): Promise<MtTrade[]> {
   const { tomorrowStart: historyTo } = getLocalCalendarDayBounds()
-  const [tradesRes, brokerRes] = await Promise.all([
-    fxsocketBroker.trades({
-      scope: 'all',
-      historyProfile: 'trades',
-      historyFrom: BROKER_FULL_HISTORY_FROM,
-      historyTo: formatBrokerHistoryDate(historyTo),
-    }),
-    supabase
-      .from('broker_accounts')
-      .select(BROKER_ACCOUNT_CLIENT_SELECT)
-      .eq('user_id', userId),
-  ])
+  const brokerRes = await supabase
+    .from('broker_accounts')
+    .select(BROKER_ACCOUNT_CLIENT_SELECT)
+    .eq('user_id', userId)
   if (brokerRes.error) throw brokerRes.error
+  const accounts = (brokerRes.data ?? []) as unknown as BrokerAccount[]
+
+  const tradesRes = await fetchTradesAcrossProviders({
+    scope: 'all',
+    historyProfile: 'trades',
+    historyFrom: BROKER_FULL_HISTORY_FROM,
+    historyTo: formatBrokerHistoryDate(historyTo),
+    accounts,
+  })
 
   let normalized = enrichMtTradesTimestamps(tradesRes.trades ?? [])
   if (normalized.some(mtTradeMissingDisplayTime)) {
-    const { trades: hydrated, stats } = await hydrateMtTradesTimesFromBrokers(normalized)
+    const { trades: hydrated, stats } = await hydrateMtTradesTimesFromBrokers(normalized, accounts)
     normalized = hydrated
     if (import.meta.env.DEV && (stats.missingBefore > 0 || stats.historyErrors.length > 0)) {
       console.debug('[trades] time hydration fallback', stats)
@@ -54,7 +66,6 @@ async function fetchTradesFromMt(userId: string): Promise<MtTrade[]> {
       })
     }
   }
-  const accounts = (brokerRes.data ?? []) as unknown as BrokerAccount[]
   return filterMtTradesSinceConnect(normalized, accounts)
 }
 
@@ -68,9 +79,17 @@ export function useTradesData(userId: string | undefined) {
   const inflightRef = useRef(false)
   const fingerprintRef = useRef<string>('')
   const hydratedUserRef = useRef<string | null>(null)
+  // True while LIVE rows are on screen (session cache or last successful
+  // read) — decides whether a failed refresh keeps them or falls back to
+  // stored rows. Not keyed on this call's cache read: a forced refresh or an
+  // expired TTL still has live rows on screen.
+  const hasLiveRowsRef = useRef(false)
 
   const applyPayload = useCallback((payload: TradesCachePayload, fetchedAt: number) => {
     fingerprintRef.current = payload.fingerprint
+    // Only real rows count: a successful read of an empty list must not stop
+    // a later failure from falling back to stored rows.
+    hasLiveRowsRef.current = payload.trades.length > 0
     setTrades(payload.trades)
     setLastSyncedAt(fetchedAt)
     setError(null)
@@ -85,29 +104,75 @@ export function useTradesData(userId: string | undefined) {
         !opts?.force ? readSessionCache<TradesCachePayload>(key, TRADES_CACHE_TTL_MS) : null
 
       if (cached && !opts?.force) {
-        applyPayload(cached.data, cached.fetchedAt)
-        if (!opts?.background) setLoading(false)
+        // Deferred a microtask: when `load()` is called directly from an
+        // effect, the effect body must not perform setState synchronously.
+        // Relative order is preserved (this queues before the spinner write
+        // and before anything the fetch path queues).
+        void Promise.resolve().then(() => {
+          applyPayload(cached.data, cached.fetchedAt)
+          if (!opts?.background) setLoading(false)
+        })
         const staleMissingTimes = cached.data.trades.some(mtTradeMissingDisplayTime)
-        if (!staleMissingTimes && Date.now() - cached.fetchedAt < TRADES_CACHE_TTL_MS) return
+        // While the feed is degraded, skip the cache short-circuit so the
+        // next real attempt can clear the banner as soon as the feed is back.
+        if (
+          !staleMissingTimes &&
+          Date.now() - cached.fetchedAt < TRADES_CACHE_TTL_MS &&
+          !getLiveFeedStatus().degraded
+        ) {
+          return
+        }
       }
 
       inflightRef.current = true
-      if (opts?.force || cached) setRefreshing(true)
-      else setLoading(true)
+      void Promise.resolve().then(() => {
+        if (opts?.force || cached) setRefreshing(true)
+        else setLoading(true)
+      })
 
+      // Captured before the read: a partial provider failure raised inside
+      // fetchTradesAcrossProviders must not be cleared by this read's
+      // success — only a read that saw no newer failure may clear it.
+      const feedGeneration = getLiveFeedGeneration()
+      // The user (or session) may change while this read is in flight; a
+      // completion for a previous user must not touch state or the cache.
+      const startedForUser = userId
       try {
         const list = await fetchTradesFromMt(userId)
+        if (hydratedUserRef.current !== startedForUser) return
         const fingerprint = tradesListFingerprint(list)
         const fetchedAt = Date.now()
 
         const payload: TradesCachePayload = { trades: list, fingerprint }
         writeSessionCache(key, payload)
         applyPayload(payload, fetchedAt)
+        reportLiveFeedSuccess(feedGeneration)
       } catch (e) {
-        if (!cached) {
-          setTrades([])
-          setError(e instanceof Error ? e.message : 'Failed to load trades')
-        }
+        if (hydratedUserRef.current !== startedForUser) return
+        // Note: a failing broker_accounts read lands here too and would be
+        // reported as feed trouble (its message is only kept for debugging;
+        // the banner text itself never blames a specific vendor) — except
+        // for auth-shaped errors, which are about our session, not the feed.
+        const reason = e instanceof Error ? e.message : 'Failed to load trades'
+        if (!isAuthSessionError(reason)) reportLiveFeedFailure(reason)
+        await recoverFromLiveFeedFailure({
+          reason,
+          hasLiveRows: hasLiveRowsRef.current,
+          readStoredTrades: () => fetchTradesFromDatabase(supabase, userId),
+          keepLiveRows: () => {
+            // Live rows already on screen are stale but real; the banner
+            // explains the delay. Stored rows must never reach the session
+            // cache — it holds live reads only.
+          },
+          applyStoredTrades: rows => {
+            setTrades(rows)
+            setError(null)
+          },
+          showReadError: message => {
+            setTrades([])
+            setError(message)
+          },
+        })
       } finally {
         inflightRef.current = false
         setLoading(false)
@@ -120,26 +185,46 @@ export function useTradesData(userId: string | undefined) {
   useEffect(() => {
     if (!userId) {
       hydratedUserRef.current = null
-      setLoading(false)
+      hasLiveRowsRef.current = false
+      // No setLoading(false) here: ProtectedRoute only renders this hook
+      // while a user exists, so userId only turns undefined on the way to
+      // unmounting — a loading flag flip would never be observed.
       return
     }
 
     if (hydratedUserRef.current !== userId) {
       hydratedUserRef.current = userId
+      // Any live rows on screen belong to the previous user.
+      hasLiveRowsRef.current = false
       const key = tradesCacheKey(userId)
       const cached = readSessionCache<TradesCachePayload>(key, TRADES_CACHE_TTL_MS)
       if (cached) {
-        applyPayload(cached.data, cached.fetchedAt)
-        setLoading(false)
+        // Hydration writes are deferred a microtask so the effect body
+        // itself performs no setState; the decision below only reads the
+        // cache entry, so nothing depends on them having run yet.
+        void Promise.resolve().then(() => {
+          applyPayload(cached.data, cached.fetchedAt)
+          setLoading(false)
+        })
         const staleMissingTimes = cached.data.trades.some(mtTradeMissingDisplayTime)
-        if (!staleMissingTimes && Date.now() - cached.fetchedAt < TRADES_CACHE_TTL_MS) return
-        void load({ background: true })
+        if (
+          !staleMissingTimes &&
+          Date.now() - cached.fetchedAt < TRADES_CACHE_TTL_MS &&
+          !getLiveFeedStatus().degraded
+        ) {
+          return
+        }
+        // Kicked through a promise callback: the effect body itself must not
+        // call a state-setting function directly (react-hooks/set-state-in-effect).
+        void Promise.resolve().then(() => load({ background: true }))
         return
       }
-      setLoading(true)
+      // Deferred as well; `load()` below sets the same flag in its own
+      // synchronous prefix, so this only covers the early-return edge.
+      void Promise.resolve().then(() => setLoading(true))
     }
 
-    void load()
+    void Promise.resolve().then(() => load())
   }, [userId, load, applyPayload])
 
   useEffect(() => {

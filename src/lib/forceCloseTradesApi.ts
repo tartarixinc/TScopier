@@ -1,9 +1,21 @@
 import { supabase } from './supabase'
 
-export type ForceCloseTradesRequest = {
-  broker_account_id: string
-  channel_id?: string | null
-}
+export type ForceCloseTradesRequest =
+  | {
+      /**
+       * Signal scope: close ONLY this signal's open positions across all
+       * brokers that hold them.
+       */
+      signal_id: string
+      broker_account_id?: never
+      channel_id?: never
+    }
+  | {
+      /** Close every trade for the user on this broker (optionally one channel). */
+      broker_account_id: string
+      channel_id?: string | null
+      signal_id?: never
+    }
 
 export type ForceCloseTradesResponse = {
   ok: boolean
@@ -14,6 +26,17 @@ export type ForceCloseTradesResponse = {
   channels_processed: number
   reason?: string
   error?: string
+  /** Every failed close was refused because the market is closed. */
+  market_closed?: boolean
+}
+
+/**
+ * True when a broker/worker message says the market is closed right now.
+ * Gold, silver and forex are shut at weekends while crypto never is — that is
+ * why a mixed basket closes half its legs and refuses the rest.
+ */
+export function isMarketClosedMessage(message: string | null | undefined): boolean {
+  return /market.*closed|markets?\s+are\s+closed|off quotes/i.test(String(message ?? ''))
 }
 
 async function call<T>(body: ForceCloseTradesRequest): Promise<T> {
@@ -32,9 +55,15 @@ async function call<T>(body: ForceCloseTradesRequest): Promise<T> {
         apikey: import.meta.env.VITE_SUPABASE_ANON_KEY as string,
       },
       body: JSON.stringify(body),
+      // A hung request must not trap the modal with every dismissal control
+      // disabled; closes are sequential per leg, so allow a long but finite run.
+      signal: AbortSignal.timeout(120_000),
     })
-  } catch {
-    throw new Error('Could not reach force-close-trades. Deploy the edge function first.')
+  } catch (err) {
+    if (err instanceof DOMException && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
+      throw new Error('The trade service timed out. Please try again.', { cause: err })
+    }
+    throw new Error('Could not reach force-close-trades. Deploy the edge function first.', { cause: err })
   }
 
   const text = await res.text()
@@ -47,6 +76,11 @@ async function call<T>(body: ForceCloseTradesRequest): Promise<T> {
       ? String((data as Record<string, unknown>).error)
       : text || `HTTP ${res.status}`
     throw new Error(msg)
+  }
+  // A gateway/proxy can answer 200 with a non-JSON body; never let that read
+  // as a result with undefined counters.
+  if (!data || typeof data !== 'object' || typeof (data as { closed?: unknown }).closed !== 'number') {
+    throw new Error('Force close returned an unexpected response')
   }
   return data as T
 }

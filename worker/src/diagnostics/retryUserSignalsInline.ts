@@ -8,6 +8,10 @@ import { UserSessionManager } from '../sessionManager'
 import { TradeExecutor } from '../tradeExecutor'
 import { retrySignal } from '../retrySignal'
 import { FxsocketBrokerClient } from '../fxsocketClient'
+import {
+  createSupabaseBrokerWriteAuthorityStore,
+  registerBrokerWriteAuthorityStore,
+} from '../brokerWriteAuthority'
 import { listFxsocketMtStatusChecks } from '../fxsocketMtStatus'
 
 async function main() {
@@ -22,6 +26,7 @@ async function main() {
     process.env.SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   )
+  registerBrokerWriteAuthorityStore(createSupabaseBrokerWriteAuthorityStore(supabase))
 
   const { data: broker } = await supabase
     .from('broker_accounts')

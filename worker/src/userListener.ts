@@ -14,9 +14,11 @@ import {
   isAuthKeyDuplicated,
   isAuthKeyUnregistered,
   isMalformedRpcResult,
+  isSessionInvalid,
   rethrowIfSessionInvalid,
   TelegramSessionInvalidError,
 } from './telegramClient'
+import { envNumber } from './envNumber'
 import {
   authKeyDupDeferredRetryMs,
   authKeyDupMaxRecoveryAttempts,
@@ -308,7 +310,18 @@ function livePriorityPauseMs(): number {
 }
 
 function reconnectCooldownMs(): number {
-  return Math.max(500, Math.min(120_000, Number(process.env.TELEGRAM_RECONNECT_COOLDOWN_MS ?? 3500)))
+  return envNumber(process.env.TELEGRAM_RECONNECT_COOLDOWN_MS, 3500, 500, 120_000)
+}
+
+/**
+ * Random delay added to every reconnect cycle. When many listeners lose MTProto
+ * at the same moment (a Telegram-side blip), each one requests a reconnect in
+ * the same second; the jitter spreads those cycles so the fleet does not
+ * reconnect in lockstep (incident 2026-09-29: 43 sessions rebuilt inside one
+ * second and pushed the log pipe past Railway's 500 lines/second limit).
+ */
+function reconnectJitterMaxMs(): number {
+  return envNumber(process.env.TELEGRAM_RECONNECT_JITTER_MAX_MS, 2000, 0, 30_000)
 }
 
 /**
@@ -319,8 +332,8 @@ function reconnectCooldownMs(): number {
  * could ever run). The underlying promise is NOT cancelled — the cycle just stops
  * waiting and treats the attempt as failed so retry/exhaust logic can proceed.
  */
-function telegramConnectTimeoutMs(): number {
-  return Math.max(5_000, Math.min(120_000, Number(process.env.TELEGRAM_CONNECT_TIMEOUT_MS ?? 45_000)))
+export function telegramConnectTimeoutMs(): number {
+  return envNumber(process.env.TELEGRAM_CONNECT_TIMEOUT_MS, 45_000, 5_000, 120_000)
 }
 
 export async function withTelegramTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
@@ -554,6 +567,12 @@ export class UserListener {
   private catchUpParseActive = 0
   private lastLiveMessageAt = 0
   private isConnected = false
+  /**
+   * Telegram revoked this session's auth key (AUTH_KEY_UNREGISTERED). No
+   * reconnect can repair it — the account must be re-linked in the app. Set
+   * once so every reconnect path stops retrying.
+   */
+  private sessionRevoked = false
   private lastEventAt = 0
   private lastSuccessfulPollAt = 0
   private lastReconnectAt = 0
@@ -652,8 +671,23 @@ export class UserListener {
     return 'unknown'
   }
 
-  private updateHealth(reason: string, opts?: { force?: boolean; recoveryExhausted?: boolean }): void {
-    const listenerStatus: SignalListenerState = opts?.recoveryExhausted
+  private updateHealth(
+    reason: string,
+    opts?: {
+      force?: boolean
+      recoveryExhausted?: boolean
+      sessionInvalid?: boolean
+      allowWithoutLease?: boolean
+    },
+  ): void {
+    // Sticky: once the auth key is revoked, every health row this instance
+    // writes must keep `reconnect_required`. Otherwise a later write
+    // (`listener_stopped`, a reconnect that raced the detection) silently
+    // downgrades the row to `linked` and the re-link banner disappears
+    // (incident 2026-09-29).
+    const sessionInvalid = opts?.sessionInvalid === true || this.sessionRevoked
+    const failed = opts?.recoveryExhausted === true || sessionInvalid
+    const listenerStatus: SignalListenerState = failed
       ? 'failed'
       : reason === 'watchdog_probe_failed'
         ? 'reconnecting'
@@ -663,6 +697,7 @@ export class UserListener {
       linked: true,
       listenerStatus,
       owned: true,
+      sessionInvalid,
       mtprotoConnected: this.isConnected,
       lastSuccessfulProbeAt: lastSuccessful,
       recoveryExhausted: opts?.recoveryExhausted,
@@ -728,7 +763,7 @@ export class UserListener {
         await this.noteMalformedRpcResult(err)
         return
       }
-      if (msg.includes('TIMEOUT') && this.isConnected) {
+      if (msg.includes('TIMEOUT')) {
         console.warn(`[userListener] _updateLoop TIMEOUT for ${this.userId} — requesting reconnect`)
         addWorkerBreadcrumb({
           category: 'telegram',
@@ -736,7 +771,13 @@ export class UserListener {
           level: 'warning',
           data: { reason: 'update_loop_timeout' },
         })
-        this.requestReconnect('update_loop_timeout')
+        // Await the cycle so gramjs's update loop blocks until the reconnect
+        // completes instead of pinging the dead socket in parallel. Do NOT gate
+        // this on `isConnected`: a failed ping is proof the connection is dead,
+        // and `forceReconnect` sets `isConnected = false` before the first
+        // timeout surfaces — the gate silently skipped every recovery
+        // (regression re-introduced 2026-07-28, incident 2026-09-29).
+        await this.requestReconnect('update_loop_timeout')
       }
     }
   }
@@ -1136,7 +1177,29 @@ export class UserListener {
       }
       await this.persistSessionIfChanged()
       this.connectionTrace('disconnect_start', { source: 'stop' })
-      await this.client.disconnect()
+      // destroy(), not disconnect(): gramjs's _updateLoop only exits when the
+      // client is destroyed, and disconnect() never sets that flag. A stopped
+      // listener whose loop keeps running pinged a dead socket forever and
+      // logged "Error: TIMEOUT" every ~30 s until the process restarted
+      // (incident 2026-09-29). Both steps are bounded: stop() runs while the
+      // sessionManager connection lock is held, and destroy() awaits borrowed
+      // senders that can retry forever (incident 2026-09-07: a wedged
+      // teardown blocked disconnectTelegramSession).
+      try {
+        await withTelegramTimeout(
+          this.client.destroy(),
+          telegramConnectTimeoutMs(),
+          `listener destroy ${this.userId}`,
+        )
+      } catch {
+        try {
+          await withTelegramTimeout(
+            this.client.disconnect(),
+            telegramConnectTimeoutMs(),
+            `listener disconnect ${this.userId}`,
+          )
+        } catch { /* ignore */ }
+      }
       this.connectionTrace('disconnect_complete', { source: 'stop' })
     } catch (err) {
       this.connectionTrace('disconnect_failed', { source: 'stop', error: err })
@@ -1182,17 +1245,33 @@ export class UserListener {
   }
 
   /**
+   * True once Telegram revoked this session's auth key. The listener stays
+   * parked (no reconnect, no probing) until the user re-links, and every health
+   * row it writes keeps `telegram_account_status = reconnect_required`.
+   */
+  isSessionRevoked(): boolean {
+    return this.sessionRevoked
+  }
+
+  /**
    * Kick recovery when the listener is in the Map but MTProto is down (lease renew
    * skips disconnected users — without this they stay offline until process restart).
    */
   requestReconnectIfDisconnected(reason = 'disconnected_recovery'): void {
     if (this.stopping) return
+    if (this.sessionRevoked) return
     if (this.isConnected) return
     void this.requestReconnect(reason)
   }
 
   /** Await recovery until MTProto is up, or throw a client-safe busy error. */
   async ensureTelegramConnected(reason = 'ensure'): Promise<void> {
+    // Check revocation first: if the two flags ever disagree (revoked while a
+    // reconnect cycle was still in flight), reporting "connected" would send the
+    // caller straight into a dead client instead of the clear re-link error.
+    if (this.sessionRevoked) {
+      throw new Error('Telegram connection expired. Reconnect Telegram to resume copying.')
+    }
     if (this.isConnected) return
     await this.requestReconnect(reason)
     if (!this.isConnected) {
@@ -1527,6 +1606,13 @@ export class UserListener {
     let lastErr: unknown
     for (let attempt = 0; attempt < delays.length; attempt++) {
       this.isConnected = false
+      if (this.sessionRevoked) {
+        // Revoked while this duplicate-key recovery was running (or before it
+        // started): stop retrying a dead auth key and report the re-link error
+        // instead of the "recovery exhausted" path below.
+        lastErr = new Error('Telegram connection expired. Reconnect Telegram to resume copying.')
+        break
+      }
       this.connectionTrace('disconnect_start', { source: `getDialogs:retry_${attempt + 1}`, cycleId })
       try { await this.client.disconnect() } catch { /* ignore */ }
       this.connectionTrace('disconnect_complete', { source: `getDialogs:retry_${attempt + 1}`, cycleId })
@@ -1541,6 +1627,13 @@ export class UserListener {
           `telegram connect getDialogs ${this.userId}`,
         )
         if (this.stopping) { try { await this.client.disconnect() } catch { /* ignore */ } break }
+        if (this.sessionRevoked) {
+          // Revocation landed while this attempt was in flight (during the sleep
+          // above or during connect()): never report a connection for a dead
+          // auth key — `isConnected` must not survive a parked session.
+          lastErr = new Error('Telegram connection expired. Reconnect Telegram to resume copying.')
+          break
+        }
         this.isConnected = true
         const dialogs = await this.fetchAllDialogs()
         this.connectionTrace('recovery_complete', { source: 'getDialogs', cycleId, attempt: attempt + 1 })
@@ -1556,7 +1649,11 @@ export class UserListener {
       }
     }
     this.connectionTrace('recovery_invalidated', { source: 'getDialogs', cycleId, attempts: delays.length })
-    setImmediate(() => this.onAuthKeyDuplicatedRecoveryExhausted?.(this.userId, 'getDialogs'))
+    if (!this.sessionRevoked) {
+      // A revoked session is already parked and reported; telling the session
+      // manager that recovery was "exhausted" now would re-open that state.
+      setImmediate(() => this.onAuthKeyDuplicatedRecoveryExhausted?.(this.userId, 'getDialogs'))
+    }
     throw lastErr
   }
 
@@ -4447,6 +4544,9 @@ export class UserListener {
    * disconnect + cooldown + reconnect in `forceReconnect`.
    */
   private async runWatchdog() {
+    // A revoked session cannot be repaired by probing/reconnecting — stay quiet
+    // until the user re-links (no health writes every 30 s, no reconnect loop).
+    if (this.sessionRevoked) return
     try {
       await tgInvoke(this.client, new Api.updates.GetState())
       this.consecutiveProbeFailures = 0
@@ -4454,6 +4554,10 @@ export class UserListener {
       this.lastSuccessfulPollAt = Date.now()
       this.updateHealth('watchdog_probe_ok')
     } catch (err) {
+      if (isSessionInvalid(err)) {
+        this.noteSessionRevoked('watchdog_probe', err)
+        return
+      }
       if (isAuthKeyDuplicated(err)) {
         this.noteAuthKeyDuplicated('watchdog_probe')
         return
@@ -4475,6 +4579,7 @@ export class UserListener {
     channelRowId?: string,
     detail?: Record<string, unknown>,
   ): void {
+    if (this.sessionRevoked) return
     this.isConnected = false
     const now = Date.now()
     if (shouldEmitAuthKeyDupEvent(this.lastAuthKeyDupLogAt, now, 30_000)) {
@@ -4503,15 +4608,84 @@ export class UserListener {
     void this.requestReconnect(`auth_key_duplicated:${source}`)
   }
 
+  /**
+   * The stored Telegram authorisation is gone: AUTH_KEY_UNREGISTERED means the
+   * user logged out, or Telegram invalidated the key for this session. No
+   * reconnect can repair it — only re-linking in the app can.
+   *
+   * Mark health so the existing "Telegram connection expired. Reconnect
+   * Telegram to resume copying." banner appears, and stop every retry path so
+   * the listener does not churn forever (incident 2026-09-29: one revoked
+   * account was reconnected every 30 s indefinitely, logged ~415 times per
+   * 10 minutes, and its user was never told).
+   */
+  private noteSessionRevoked(source: string, err: unknown): void {
+    if (this.sessionRevoked) return
+    this.sessionRevoked = true
+    this.isConnected = false
+    this.connectionTrace('session_revoked', { source, error: err })
+    console.warn(
+      `[userListener] Telegram session revoked (${source}) for ${this.userId}`
+      + ' — re-link required; stopping reconnect attempts',
+    )
+    addWorkerBreadcrumb({
+      category: 'telegram',
+      message: 'telegram session revoked; re-link required',
+      level: 'error',
+      data: { reason: 'auth_key_unregistered', source },
+    })
+    captureBusinessIssue({
+      category: 'telegram',
+      event: 'telegram_session_revoked',
+      severity: 'error',
+      reasonCode: 'AUTH_KEY_UNREGISTERED',
+      message: 'Telegram session revoked — user must re-link Telegram',
+      userImpact: 'failed',
+      fingerprint: ['telegram_session_revoked', 'auth_key_unregistered'],
+      context: {
+        user_id: this.userId,
+        stage: 'telegram_reconnect',
+        operation: 'telegram_reconnect',
+        extra: { source },
+      },
+    })
+    this.updateHealth('telegram_session_revoked', {
+      force: true,
+      recoveryExhausted: true,
+      sessionInvalid: true,
+      // This write is what puts the "Telegram connection expired" banner on
+      // screen, and nothing after it will retry (every reconnect path is now
+      // short-circuited). Without allowWithoutLease a stale lease makes
+      // persistCopierHealth return 'stale_ownership' and the banner never
+      // appears — the same treatment sessionManager gives the equivalent
+      // TelegramSessionInvalidError write.
+      allowWithoutLease: true,
+    })
+    // Drop the socket to the revoked key immediately. The listener is parked
+    // from here on, so nothing else will tear it down until the user re-links,
+    // and the client's update loop would otherwise keep pinging it. destroy()
+    // is idempotent, so the later stop() is unaffected.
+    void withTelegramTimeout(
+      this.client.destroy(),
+      telegramConnectTimeoutMs(),
+      `session revoked destroy ${this.userId}`,
+    ).catch(() => { /* the listener is parked; nothing to recover here */ })
+  }
+
   private requestReconnect(reason: string): Promise<void> {
     if (this.stopping) return Promise.resolve()
+    // A revoked auth key cannot be repaired by reconnecting; keep the listener
+    // quiet until the user re-links.
+    if (this.sessionRevoked) return Promise.resolve()
     if (this.reconnectInFlight) return this.reconnectInFlight
 
     const cycleId = crypto.randomUUID().slice(0, 8)
-    // Enforce a minimum cooldown between reconnect cycles to prevent cascading loops.
+    // Enforce a minimum cooldown between reconnect cycles to prevent cascading
+    // loops, plus jitter so simultaneous failures do not reconnect in lockstep.
     const cooldown = reconnectCooldownMs()
     const elapsed = Date.now() - this.lastReconnectEndedAt
-    const delay = elapsed < cooldown ? cooldown - elapsed : 0
+    const jitter = Math.floor(Math.random() * (reconnectJitterMaxMs() + 1))
+    const delay = (elapsed < cooldown ? cooldown - elapsed : 0) + jitter
 
     this.reconnectInFlight = (async () => {
       this.updateHealth(reason, { force: true })
@@ -4593,7 +4767,7 @@ export class UserListener {
     )
     this.deferredRetryTimer = setTimeout(() => {
       this.deferredRetryTimer = null
-      if (this.isConnected || this.stopping) return
+      if (this.isConnected || this.stopping || this.sessionRevoked) return
       void this.requestReconnect('deferred_retry')
     }, delayMs)
     this.deferredRetryTimer.unref?.()
@@ -4608,18 +4782,40 @@ export class UserListener {
     this.updateHealth(reason, { force: true })
     this.connectionTrace('disconnect_start', { source: reason, cycleId })
     const oldClient = this.client
+    // This cycle replaces the client object; the old one is discarded. Destroy
+    // (not just disconnect) it so its gramjs _updateLoop stops instead of
+    // pinging a dead socket forever (incident 2026-09-29).
+    const willRecreateClient = reason === 'malformed_rpc_result' && this.canRecreateClient
     let sessionSnapshot = this.lastSavedSession
     try {
       const saved = (oldClient.session.save() as unknown) as string
       if (saved) sessionSnapshot = saved
     } catch { /* keep last known persisted session */ }
-    if (reason === 'malformed_rpc_result' && this.canRecreateClient) {
+    if (willRecreateClient) {
       this.removeCurrentHandler(oldClient)
     }
-    try { await oldClient.disconnect() } catch { /* ignore */ }
+    try {
+      if (willRecreateClient) {
+        await withTelegramTimeout(
+          oldClient.destroy(),
+          telegramConnectTimeoutMs(),
+          `telegram destroy ${this.userId}`,
+        )
+      } else {
+        await withTelegramTimeout(
+          oldClient.disconnect(),
+          telegramConnectTimeoutMs(),
+          `telegram disconnect ${this.userId}`,
+        )
+      }
+    } catch {
+      // destroy() failed (or is unsupported): still disconnect so the socket
+      // cannot stay half-open and keep the old client's update loop alive.
+      try { await oldClient.disconnect() } catch { /* ignore */ }
+    }
     this.connectionTrace('disconnect_complete', { source: reason, cycleId })
     if (this.stopping) return
-    if (reason === 'malformed_rpc_result' && this.canRecreateClient) {
+    if (willRecreateClient) {
       this.connectionTrace('client_recreate_start', { source: reason, cycleId })
       this.client = this.clientFactory(sessionSnapshot)
       this.lastSavedSession = sessionSnapshot
@@ -4635,7 +4831,10 @@ export class UserListener {
     let lastErr: unknown
     for (let attempt = 0; attempt < delays.length; attempt++) {
       await new Promise(r => setTimeout(r, delays[attempt]))
-      if (this.stopping) return
+      // A revoked key cannot be recovered: stop instead of connecting to a
+      // client another path just destroyed (and skip the exhausted-reconnect
+      // report below — the session is parked, not exhausted).
+      if (this.stopping || this.sessionRevoked) return
       try {
         this.clientGeneration += 1
         this.connectionTrace('connect_start', { source: reason, cycleId, attempt: attempt + 1 })
@@ -4652,6 +4851,23 @@ export class UserListener {
           `telegram probe ${this.userId}`,
         )
         if (this.stopping) { try { await this.client.disconnect() } catch { /* ignore */ } return }
+        if (this.sessionRevoked) {
+          // Revoked by another path (watchdog or a parallel probe) while this
+          // cycle was in flight: a dead auth key must never be reported as a
+          // healthy connection, and the socket must not be left open.
+          this.connectionTrace('recovery_abandoned', {
+            source: reason,
+            cycleId,
+            attempt: attempt + 1,
+            session_revoked: true,
+          })
+          void withTelegramTimeout(
+            this.client.destroy(),
+            telegramConnectTimeoutMs(),
+            `revoked recovery destroy ${this.userId}`,
+          ).catch(() => { /* listener is parked */ })
+          return
+        }
         this.isConnected = true
         this.resetTelegramBackoffState()
         this.lastSuccessfulPollAt = Date.now()
@@ -4669,7 +4885,10 @@ export class UserListener {
           `[userListener] reconnect attempt ${attempt + 1}/${delays.length} failed for ${this.userId}: cycle=${cycleId}`,
           redactTelegramConnectionLog(err),
         )
-        if (isAuthKeyUnregistered(err)) return
+        if (isSessionInvalid(err)) {
+          this.noteSessionRevoked(`${reason}:attempt_${attempt + 1}`, err)
+          return
+        }
         if (!isAuthKeyDuplicated(err)) {
           // Transient network errors / connect timeouts: keep trying remaining
           // delays. Disconnect first so a connect() that timed out but later
@@ -4751,7 +4970,11 @@ export class UserListener {
     try {
       await this.warmEntityCache()
     } catch (err) {
-      if (isAuthKeyUnregistered(err) || isAuthKeyDuplicated(err)) {
+      if (isSessionInvalid(err)) {
+        this.noteSessionRevoked('reconnect_warmup', err)
+        return
+      }
+      if (isAuthKeyDuplicated(err)) {
         // Session died again between connect() and warmup (e.g. the auth key
         // is invalidated/duplicated by a peer replica). Never let this escape
         // forceReconnect — treat it like the exhausted-recovery path instead

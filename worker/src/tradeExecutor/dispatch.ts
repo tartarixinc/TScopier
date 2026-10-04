@@ -1,5 +1,4 @@
 import type { TradeExecutorContext } from './context'
-import { hasFxsocketConfigured } from '../fxsocketClient'
 import type { BrokerRow, QueuedSignal, SendOrderOutcome, SignalRow } from './types'
 import {
   dispatchPriorityForAction,
@@ -79,7 +78,7 @@ async function seedV2EntryDesiredState(
     : []
   if (sl == null && tps.length === 0) return
   for (const b of brokers) {
-    if (!isV2({ brokerAccountId: b.id, userId: row.user_id })) continue
+    if (!isV2({ brokerAccountId: b.id, userId: row.user_id, provider: b.provider })) continue
     const reverse = (b.manual_settings as { reverse_signal?: boolean } | null)?.reverse_signal === true
     // Channel SL/TP are still the original side. Seeding them as desired state
     // would later overwrite the reversed ticket's predefined/mirrored stops.
@@ -478,7 +477,6 @@ export async function handleSignal(ctx: TradeExecutorContext,
       wakeBrokerAccountId?: string
     },
   ) {
-    if (!hasFxsocketConfigured()) return
     const isMessageRevisionEarly = opts?.dispatchSource === MESSAGE_REVISION_DISPATCH_SOURCE
     if (isMessageRevisionEarly) {
       await waitForSignalInflightClear(

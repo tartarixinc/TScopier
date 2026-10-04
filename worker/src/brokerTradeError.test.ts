@@ -5,6 +5,7 @@ import {
   SIGNAL_MISSING_REQUIRED_SL,
   formatFxHttpFailureMessage,
   humanizeOrderSendError,
+  isMarketClosedMessage,
   isStopLossWithheldByProvider,
   parseFxErrorEnvelope,
   tradeFailureReasonFromBrokerMessage,
@@ -163,5 +164,24 @@ describe('humanizeOrderSendError', () => {
       humanizeOrderSendError('Invalid request'),
       'Broker rejected order: invalid request. Check symbol availability and order parameters.',
     )
+  })
+})
+
+describe('isMarketClosedMessage', () => {
+  it('recognises the broker wording for a shut market', () => {
+    assert.equal(isMarketClosedMessage('Market is closed'), true)
+    assert.equal(isMarketClosedMessage('Markets are closed'), true)
+    assert.equal(isMarketClosedMessage('off quotes'), true)
+    // "trade disabled" deliberately NOT treated as market-closed: it also fires
+    // for a symbol restriction or a read-only account.
+    assert.equal(isMarketClosedMessage('trade disabled'), false)
+    assert.equal(isMarketClosedMessage('MARKET_CLOSED'), true)
+  })
+
+  it('leaves ordinary failures alone', () => {
+    assert.equal(isMarketClosedMessage('unknown ticket'), false)
+    assert.equal(isMarketClosedMessage('invalid volume'), false)
+    assert.equal(isMarketClosedMessage(''), false)
+    assert.equal(isMarketClosedMessage(null), false)
   })
 })

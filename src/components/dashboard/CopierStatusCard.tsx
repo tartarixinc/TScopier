@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useSubscription } from '../../context/SubscriptionContext'
 import { useT } from '../../context/LocaleContext'
 import { isBrokerSessionHealthy } from '../../lib/brokerReconnect'
-import { isFxsocketLinkedBroker } from '../../lib/brokerLink'
+import { hasLinkedBrokerForUi } from '../../lib/brokerLink'
 import {
   fetchCopierHealthStatus,
   type CopierHealthSnapshot,
@@ -172,7 +172,7 @@ export function CopierStatusCard({
   }, [userId, refreshCopierHealth])
 
   const { brokerConnectionsLabel, brokerConnectionsTone, brokerErrorCount } = useMemo(() => {
-    const linked = accounts.filter(isFxsocketLinkedBroker)
+    const linked = accounts.filter(hasLinkedBrokerForUi)
     const activeLinked = linked.filter(a => a.is_active !== false)
     const errors = activeLinked.filter(a => !isBrokerSessionHealthy(a)).length
 

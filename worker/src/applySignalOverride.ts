@@ -13,11 +13,11 @@ import {
 } from './basketSlTpReconcile'
 import { upsertBasketSlTpTarget } from './basketTargetStore'
 import {
-  getFxsocketClient,
-  hasFxsocketConfigured,
   mtPlatformFrom,
   normalizeSymbolParams,
 } from './fxsocketClient'
+import { apiForBrokerAccount } from './providerResolver'
+import { authorityFromBrokerRow } from './brokerWriteAuthority'
 import {
   buildEntryQualityTakeProfitMap,
   type EntryQualityLeg,
@@ -76,7 +76,12 @@ type TradeRow = {
 
 type BrokerRow = {
   id: string
+  provider?: string | null
   label?: string | null
+  mtapi_session_id?: string | null
+  writer_epoch?: number | null
+  provider_transition_state?: 'stable' | 'transition' | null
+  provider_transition_target?: 'fxsocket' | 'mtapi' | null
   platform?: string | null
   fxsocket_account_id?: string | null
   metaapi_account_id?: string | null
@@ -186,18 +191,12 @@ export async function applySignalOverride(
     }
   }
 
-  if (!dryRun && !hasFxsocketConfigured()) {
-    throw new Error('FXSOCKET_API_KEY not set — cannot call broker')
-  }
-
   const brokerIds = [...new Set(rows.map(r => r.broker_account_id))]
   const { data: brokers } = await supabase
     .from('broker_accounts')
-    .select('id,label,platform,fxsocket_account_id,metaapi_account_id,manual_settings')
+    .select('id,label,platform,provider,mtapi_session_id,fxsocket_account_id,metaapi_account_id,manual_settings,writer_epoch,provider_transition_state,provider_transition_target')
     .in('id', brokerIds)
   const brokerById = new Map((brokers ?? []).map(b => [b.id, b as BrokerRow]))
-
-  const api = getFxsocketClient()
 
   // Apply one broker basket. Each broker targets a distinct MT terminal, so
   // brokers run in parallel (bounded); legs within a broker stay sequential
@@ -217,7 +216,7 @@ export async function applySignalOverride(
       return { outcome: { broker_id: brokerId, applied: 0, skipped: legCount, failed: 0 }, errors: localErrors }
     }
 
-    const client = api
+    const client = apiForBrokerAccount(broker.provider, uuid, authorityFromBrokerRow(broker))
     if (!client && !dryRun) {
       localErrors.push(`broker ${brokerId}: fxsocket client unavailable`)
       return { outcome: { broker_id: brokerId, applied: 0, skipped: legCount, failed: 0 }, errors: localErrors }

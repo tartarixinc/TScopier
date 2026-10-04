@@ -65,3 +65,6 @@ export const SKIP_REASON_SIGNAL_ENTRY_RANGE_EXPIRED = 'signal_entry_range_expire
 
 /** Entry dispatch ran but no broker opened or merged a position. */
 export const SKIP_REASON_ENTRY_NOT_OPENED = 'entry_not_opened' as const
+
+/** The live quote already passed an explicit broker limit level, so the order would be rejected. */
+export const SKIP_REASON_LEVEL_ALREADY_PASSED = 'level_already_passed' as const
