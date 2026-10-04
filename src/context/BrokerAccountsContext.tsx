@@ -24,12 +24,12 @@ import { useT } from './LocaleContext'
 import { interpolate } from '../i18n/interpolate'
 import { BrokerReconnectPasswordModal } from '../components/broker/BrokerReconnectPasswordModal'
 import {
-  isMigrationPromptSnoozed,
   isMigrationSwitchCase,
   isPromptDismissible,
   pickPromptBroker,
   resolveReconnectDialog,
   routeReconnectError,
+  snoozedMigrationPromptIds,
   snoozeMigrationPrompt,
 } from '../lib/migrationPrompt'
 import { fxsocketBroker } from '../lib/fxsocketBroker'
@@ -179,9 +179,9 @@ export function BrokerAccountsProvider({
   // dialog after the account's row leaves the needs-reconnect list (a
   // mid-connect `pending` row is not on it). Cleared on cancel and on success.
   const [reconnectAttemptId, setReconnectAttemptId] = useState<string | null>(null)
-  // Bumped whenever the queue changes without the broker list changing
-  // (snoozed or deleted), so the prompt re-picks immediately.
-  const [promptTick, setPromptTick] = useState(0)
+  // Accounts postponed with "Remind me later" — real state so the prompt
+  // re-picks immediately; the sessionStorage copy is only for the next load.
+  const [snoozedIds, setSnoozedIds] = useState<ReadonlySet<string>>(() => snoozedMigrationPromptIds())
 
   const {
     reconnectBroker: reconnectBrokerBase,
@@ -223,10 +223,10 @@ export function BrokerAccountsProvider({
     () => pickPromptBroker(
       // "Remind me later" hides the account from the queue until the next app
       // load, so the next queued account can be dealt with immediately.
-      brokersNeedingReconnect.filter(broker => !isMigrationPromptSnoozed(broker.id)),
+      brokersNeedingReconnect.filter(broker => !snoozedIds.has(broker.id)),
       reconnectingBrokerIds,
     ),
-    [brokersNeedingReconnect, reconnectingBrokerIds, promptTick],
+    [brokersNeedingReconnect, reconnectingBrokerIds, snoozedIds],
   )
 
   const successBroker = reconnectSuccessId
@@ -287,11 +287,13 @@ export function BrokerAccountsProvider({
   /** "Remind me later": hide this account until the next app load, then move on. */
   const handleRemindLater = useCallback(() => {
     const active = activeBrokerRef.current
-    if (active) snoozeMigrationPrompt(active.id)
+    if (active) {
+      snoozeMigrationPrompt(active.id)
+      setSnoozedIds(prev => new Set(prev).add(active.id))
+    }
     setReconnectError(null)
     setReconnectAttemptId(null)
     setReconnectSuccessId(null)
-    setPromptTick(tick => tick + 1)
   }, [])
 
   /** Delete = the permanent exit for an account that cannot be reconnected. */
@@ -308,7 +310,6 @@ export function BrokerAccountsProvider({
     setReconnectError(null)
     setReconnectAttemptId(null)
     setReconnectSuccessId(null)
-    setPromptTick(tick => tick + 1)
   }, [bl.deleteFailed, removeBroker])
 
   const handleModalBack = useCallback(() => {

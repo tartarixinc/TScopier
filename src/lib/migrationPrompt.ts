@@ -125,6 +125,10 @@ function readSnoozedAccountIds(): Set<string> {
   }
 }
 
+export function snoozedMigrationPromptIds(): ReadonlySet<string> {
+  return readSnoozedAccountIds()
+}
+
 export function snoozeMigrationPrompt(accountId: string): void {
   if (typeof window === 'undefined') return
   const ids = readSnoozedAccountIds()
