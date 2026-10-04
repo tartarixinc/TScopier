@@ -185,7 +185,7 @@ interface DashboardStats {
   yesterdayMostTradedAsset: string
 }
 
-interface AiExpertLogRow extends TradeActivityLogRow {}
+type AiExpertLogRow = TradeActivityLogRow
 
 type ChannelNameRow = { id: string; display_name: string; channel_username?: string | null }
 

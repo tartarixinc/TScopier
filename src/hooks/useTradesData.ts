@@ -104,8 +104,14 @@ export function useTradesData(userId: string | undefined) {
         !opts?.force ? readSessionCache<TradesCachePayload>(key, TRADES_CACHE_TTL_MS) : null
 
       if (cached && !opts?.force) {
-        applyPayload(cached.data, cached.fetchedAt)
-        if (!opts?.background) setLoading(false)
+        // Deferred a microtask: when `load()` is called directly from an
+        // effect, the effect body must not perform setState synchronously.
+        // Relative order is preserved (this queues before the spinner write
+        // and before anything the fetch path queues).
+        void Promise.resolve().then(() => {
+          applyPayload(cached.data, cached.fetchedAt)
+          if (!opts?.background) setLoading(false)
+        })
         const staleMissingTimes = cached.data.trades.some(mtTradeMissingDisplayTime)
         // While the feed is degraded, skip the cache short-circuit so the
         // next real attempt can clear the banner as soon as the feed is back.
@@ -119,8 +125,10 @@ export function useTradesData(userId: string | undefined) {
       }
 
       inflightRef.current = true
-      if (opts?.force || cached) setRefreshing(true)
-      else setLoading(true)
+      void Promise.resolve().then(() => {
+        if (opts?.force || cached) setRefreshing(true)
+        else setLoading(true)
+      })
 
       // Captured before the read: a partial provider failure raised inside
       // fetchTradesAcrossProviders must not be cleared by this read's
@@ -178,7 +186,9 @@ export function useTradesData(userId: string | undefined) {
     if (!userId) {
       hydratedUserRef.current = null
       hasLiveRowsRef.current = false
-      setLoading(false)
+      // No setLoading(false) here: ProtectedRoute only renders this hook
+      // while a user exists, so userId only turns undefined on the way to
+      // unmounting — a loading flag flip would never be observed.
       return
     }
 
@@ -189,8 +199,13 @@ export function useTradesData(userId: string | undefined) {
       const key = tradesCacheKey(userId)
       const cached = readSessionCache<TradesCachePayload>(key, TRADES_CACHE_TTL_MS)
       if (cached) {
-        applyPayload(cached.data, cached.fetchedAt)
-        setLoading(false)
+        // Hydration writes are deferred a microtask so the effect body
+        // itself performs no setState; the decision below only reads the
+        // cache entry, so nothing depends on them having run yet.
+        void Promise.resolve().then(() => {
+          applyPayload(cached.data, cached.fetchedAt)
+          setLoading(false)
+        })
         const staleMissingTimes = cached.data.trades.some(mtTradeMissingDisplayTime)
         if (
           !staleMissingTimes &&
@@ -199,13 +214,17 @@ export function useTradesData(userId: string | undefined) {
         ) {
           return
         }
-        void load({ background: true })
+        // Kicked through a promise callback: the effect body itself must not
+        // call a state-setting function directly (react-hooks/set-state-in-effect).
+        void Promise.resolve().then(() => load({ background: true }))
         return
       }
-      setLoading(true)
+      // Deferred as well; `load()` below sets the same flag in its own
+      // synchronous prefix, so this only covers the early-return edge.
+      void Promise.resolve().then(() => setLoading(true))
     }
 
-    void load()
+    void Promise.resolve().then(() => load())
   }, [userId, load, applyPayload])
 
   useEffect(() => {

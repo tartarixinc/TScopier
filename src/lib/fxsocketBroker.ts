@@ -220,11 +220,9 @@ type MtapiMigrationPreparationInvoker = (
 ) => Promise<unknown>
 
 function browserSafePreparedAccount(raw: Record<string, unknown>): BrokerAccount {
-  const {
-    mtapi_session_id: _session,
-    broker_password_encrypted: _password,
-    ...safe
-  } = raw
+  const safe = { ...raw }
+  delete safe.mtapi_session_id
+  delete safe.broker_password_encrypted
   if (resolveProvider(safe as { provider?: string | null }) !== 'fxsocket') {
     throw new Error('MTAPI preparation must not activate the provider')
   }
