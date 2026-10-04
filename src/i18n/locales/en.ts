@@ -403,6 +403,9 @@ broker: {
     noResults: 'No results',
     show: 'Show',
     results: 'results',
+    brokerFeedDegraded: 'We’re having trouble reaching your broker’s infrastructure.',
+    brokerFeedDegradedHint:
+      'Showing your saved trade records; live positions and profit may be delayed, and new trades may not copy until it recovers.',
     cookieConsent: {
       message: 'We use cookies to improve user experience.',
       policyLink: 'Cookie Policy',

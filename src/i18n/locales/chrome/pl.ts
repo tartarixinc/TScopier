@@ -239,6 +239,9 @@ export const chromePl: AppChromeTranslations = {
     noResults: 'Brak wyników',
     show: 'Pokaż',
     results: 'wyników',
+    brokerFeedDegraded: 'Nie możemy połączyć się z infrastrukturą Twojego brokera.',
+    brokerFeedDegradedHint:
+      'Wyświetlamy zapisane transakcje; pozycje i zysk na żywo mogą być opóźnione, a nowe transakcje mogą nie być kopiowane do czasu przywrócenia działania.',
     cookieConsent: {
       message: 'Używamy plików cookie, aby poprawić komfort użytkowania.',
       policyLink: 'Polityka plików cookie',

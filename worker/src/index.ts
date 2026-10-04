@@ -32,7 +32,7 @@ import { NewsTradingMonitor } from './newsTradingMonitor'
 import { V2ReconcileMonitor } from './engine/v2ReconcileMonitor'
 import { v2EngineConfigured } from './engine/executionMode'
 import { OpenTradeReconcileMonitor } from './openTradeReconcileMonitor'
-import { ClosedTradeClosePriceMonitor } from './closedTradeClosePriceMonitor'
+import { ClosedTradeFillMonitor } from './closedTradeFillMonitor'
 import { TradeBrokerDriftMonitor } from './tradeBrokerDriftMonitor'
 import { attachBrokerStreamProxy } from './brokerStreamProxy'
 import { getFxsocketStreamManager } from './fxsocketStreamManager'
@@ -123,7 +123,7 @@ function startTradeMonitors(executor: TradeExecutor | null) {
     const partialTpMonitor = new PartialTpMonitor(supabase)
     const signalEntryPendingMonitor = new SignalEntryPendingMonitor(supabase)
     const openTradeReconcileMonitor = new OpenTradeReconcileMonitor(supabase)
-    const closedTradeClosePriceMonitor = new ClosedTradeClosePriceMonitor(supabase)
+    const closedTradeFillMonitor = new ClosedTradeFillMonitor(supabase)
     const tradeBrokerDriftMonitor = new TradeBrokerDriftMonitor(supabase)
     virtualPendingMonitor.start()
     registerVirtualPendingMonitor(virtualPendingMonitor)
@@ -132,7 +132,7 @@ function startTradeMonitors(executor: TradeExecutor | null) {
     partialTpMonitor.start()
     signalEntryPendingMonitor.start()
     openTradeReconcileMonitor.start()
-    closedTradeClosePriceMonitor.start()
+    closedTradeFillMonitor.start()
     tradeBrokerDriftMonitor.start()
     trackMonitor(virtualPendingMonitor)
     trackMonitor(rangeBrokerPendingMonitor)
@@ -140,7 +140,7 @@ function startTradeMonitors(executor: TradeExecutor | null) {
     trackMonitor(partialTpMonitor)
     trackMonitor(signalEntryPendingMonitor)
     trackMonitor(openTradeReconcileMonitor)
-    trackMonitor(closedTradeClosePriceMonitor)
+    trackMonitor(closedTradeFillMonitor)
     trackMonitor(tradeBrokerDriftMonitor)
     if (executor) {
       const signalRangeEntryMonitor = new SignalRangeEntryMonitor(supabase, executor)

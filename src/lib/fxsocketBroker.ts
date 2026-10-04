@@ -4,6 +4,8 @@ import type { FxsocketMtStatus } from './fxsocketMtStatus'
 import type { FxsocketStreamSubscribeFrame } from './fxsocketStreamTypes'
 import { classifyBrokerConnectError } from './brokerConnectError'
 import { resolveProvider } from './brokerLink'
+import { isBrokerDownDemo } from './demoOutage'
+import { reportLiveFeedFailure } from './liveFeedStatus'
 
 const FXSOCKET_EDGE_TIMEOUT_MS = 120_000
 /** Full-account PositionHistory can require many chunked broker calls. */
@@ -218,11 +220,9 @@ type MtapiMigrationPreparationInvoker = (
 ) => Promise<unknown>
 
 function browserSafePreparedAccount(raw: Record<string, unknown>): BrokerAccount {
-  const {
-    mtapi_session_id: _session,
-    broker_password_encrypted: _password,
-    ...safe
-  } = raw
+  const safe = { ...raw }
+  delete safe.mtapi_session_id
+  delete safe.broker_password_encrypted
   if (resolveProvider(safe as { provider?: string | null }) !== 'fxsocket') {
     throw new Error('MTAPI preparation must not activate the provider')
   }
@@ -659,6 +659,13 @@ export const fxsocketBroker = {
     includeBalanceCashflow?: boolean
     provider?: 'fxsocket' | 'mtapi'
   } = {}): Promise<{ trades: MtTrade[] }> {
+    // ?demo=broker-down simulates a vendor outage at the single choke point
+    // every live trade read goes through: the read fails exactly as it would
+    // during an incident, so the database fallback and the degraded banner
+    // can be reviewed on demand.
+    if (isBrokerDownDemo()) {
+      return Promise.reject(new Error('Broker feed is down (demo flag)'))
+    }
     return call({
       body: {
         action: 'trades',
@@ -779,6 +786,13 @@ export async function fetchTradesAcrossProviders(
     }
     if (realFailures.length > 0) {
       console.warn('[trades] partial provider fetch', realFailures)
+      // One provider answered and another did not: the list on screen is
+      // missing a provider's trades, so the degraded banner must show even
+      // though this read "succeeded". Callers that capture the feed
+      // generation before reading will not clear this on their success.
+      reportLiveFeedFailure(
+        `partial provider fetch: ${realFailures.join('; ')}`.slice(0, 400),
+      )
     }
   }
   return { trades: ok.flatMap(r => r.value.trades ?? []) }

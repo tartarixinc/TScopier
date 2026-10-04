@@ -238,6 +238,9 @@ export const chromeSv: AppChromeTranslations = {
     noResults: 'Inga resultat',
     show: 'Visa',
     results: 'resultat',
+    brokerFeedDegraded: 'Vi har problem med att nå din mäklars infrastruktur.',
+    brokerFeedDegradedHint:
+      'Visar dina sparade affärer; live-positioner och vinst kan vara fördröjda och nya affärer kopieras kanske inte förrän det fungerar igen.',
     cookieConsent: {
       message: 'Vi använder cookies för att förbättra användarupplevelsen.',
       policyLink: 'Cookiepolicy',

@@ -406,6 +406,9 @@ export const es: Translations = {
     noResults: 'Sin resultados',
     show: 'Mostrar',
     results: 'resultados',
+    brokerFeedDegraded: 'No podemos conectar con la infraestructura de tu bróker.',
+    brokerFeedDegradedHint:
+      'Mostramos tus operaciones guardadas; las posiciones y los beneficios en vivo pueden estar retrasados y es posible que las nuevas operaciones no se copíen hasta que se restablezca.',
     cookieConsent: {
       message: 'Usamos cookies para mejorar tu experiencia.',
       policyLink: 'Política de cookies',
