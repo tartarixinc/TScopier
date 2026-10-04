@@ -28,14 +28,16 @@ function authority(row: BrokerWriterRow) {
     ? String(row.mtapi_session_id ?? "").trim()
     : String(row.fxsocket_account_id ?? row.metaapi_account_id ?? "").trim()
   const epoch = Number(row.writer_epoch)
+  // Unknown provider, stale epoch or a mid-switch account always refuse: those
+  // are the states where a second writer must not get in. An account that is
+  // stable but simply has no session yet is NOT a refusal — see leaseRequired.
   if (
     (provider !== "fxsocket" && provider !== "mtapi")
-    || !sessionId
     || !Number.isSafeInteger(epoch)
     || epoch < 1
     || row.provider_transition_state !== "stable"
   ) throw new BrokerWriteFenceError()
-  return { provider, sessionId, epoch }
+  return { provider, sessionId, epoch, leaseRequired: sessionId.length > 0 }
 }
 
 export async function withBrokerWriteLease<T>(
@@ -45,6 +47,15 @@ export async function withBrokerWriteLease<T>(
   mutate: () => Promise<T>,
 ): Promise<T> {
   const expected = authority(row)
+  if (!expected.leaseRequired) {
+    // No session yet — a fresh connect, or an account reset before the
+    // migration prompt runs again. Nothing can hold a lease on it (the
+    // database refuses an empty expected session, so no other writer can have
+    // acquired one), which means there is nothing to fence off. Run the
+    // mutation directly; refusing here would block the very reconnect that
+    // establishes the session.
+    return mutate()
+  }
   const { data, error } = await supabase.rpc("acquire_broker_write_lease", {
     p_broker_account_id: row.id,
     p_expected_provider: expected.provider,

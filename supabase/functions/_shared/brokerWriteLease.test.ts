@@ -75,3 +75,47 @@ Deno.test("edge write lease rejects stale authority before external mutation", a
   )
   assertEquals(mutations, 0)
 })
+
+Deno.test("edge write lease runs unleased for a stable account with no session yet", async () => {
+  // A fresh connect, or an account reset before the migration prompt runs
+  // again: nothing can hold a lease on a session-less account, so refusing
+  // would block the reconnect that establishes the session.
+  let rpcCalls = 0
+  const row: BrokerWriterRow = {
+    id: "33333333-3333-3333-3333-333333333333",
+    provider: "mtapi",
+    mtapi_session_id: null,
+    writer_epoch: 1,
+    provider_transition_state: "stable",
+  }
+  const result = await withBrokerWriteLease(
+    { rpc() { rpcCalls += 1; return Promise.resolve({ data: null, error: null }) } },
+    row,
+    "mtapi_reconnect",
+    async () => "reconnected",
+  )
+  assertEquals(result, "reconnected")
+  assertEquals(rpcCalls, 0)
+})
+
+Deno.test("edge write lease still refuses a session-less account that is mid-switch", async () => {
+  let rpcCalls = 0
+  let mutations = 0
+  await assertRejects(
+    () => withBrokerWriteLease(
+      { rpc() { rpcCalls += 1; return Promise.resolve({ data: null, error: null }) } },
+      {
+        id: "44444444-4444-4444-4444-444444444444",
+        provider: "mtapi",
+        mtapi_session_id: null,
+        writer_epoch: 3,
+        provider_transition_state: "transition",
+      },
+      "mtapi_reconnect",
+      async () => { mutations += 1 },
+    ),
+    BrokerWriteFenceError,
+  )
+  assertEquals(rpcCalls, 0)
+  assertEquals(mutations, 0)
+})
