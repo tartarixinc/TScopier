@@ -37,7 +37,7 @@ import {
   type SignalBatchRow,
   type SignalDisplayContext,
 } from '../../lib/signalOverride'
-import { mergeSignalsWithOpenFallbacks } from '../../lib/signalListMerge'
+import { mergeSignalsWithOpenFallbacks, pinOpenSignalsFirst } from '../../lib/signalListMerge'
 import { useSignalHistoryRealtime } from '../../hooks/useSignalHistoryRealtime'
 
 const SIGNALS_PAGE_LIMIT = 500
@@ -386,7 +386,7 @@ export function SignalHistoryPage() {
 
   const signalDisplayRows = useMemo(() => {
     if (!symbolLookupReady) return []
-    return consolidatedSignals.map(({ signal, lastActivityAt, absorbedEntryUpdates }) => {
+    const rows = consolidatedSignals.map(({ signal, lastActivityAt, absorbedEntryUpdates }) => {
       const displaySignal = signalForDisplay(signal, displayContext, absorbedEntryUpdates)
       const openStatus = resolveSignalOpenStatus(signal, openSignalIds, openStatusContext)
       return {
@@ -403,6 +403,8 @@ export function SignalHistoryPage() {
           : undefined,
       }
     })
+    // Open first — newest-first order is preserved inside each group.
+    return pinOpenSignalsFirst(rows)
   }, [
     symbolLookupReady,
     consolidatedSignals,
