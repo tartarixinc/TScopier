@@ -9,6 +9,7 @@ import { apiForBrokerAccount } from './providerResolver'
 import { authorityFromBrokerRow } from './brokerWriteAuthority'
 import { closeWithVerification } from './managementClose'
 import { isMarketClosedMessage } from './brokerTradeError'
+import { rawOrderTicket } from './signalEntryPendingHelpers'
 import {
   cancelChannelBrokerPendingOrders,
   tryBrokerFallbackClose,
@@ -54,6 +55,8 @@ type ChannelCloseAccum = {
   failed: number
   pending_cancelled: number
   virtual_legs_deleted: number
+  market_closed?: boolean
+  failure_detail?: string
 }
 
 function isBenignCloseError(message: string): boolean {
@@ -169,6 +172,8 @@ async function insertForceCloseLog(
     failed: number
     pendingCancelled: number
     virtualLegsDeleted: number
+    /** Broker wording for the first failure, so a stale row is diagnosable later. */
+    errorMessage?: string
   },
 ): Promise<void> {
   if (!args.signalId) return
@@ -179,6 +184,7 @@ async function insertForceCloseLog(
     broker_account_id: args.brokerAccountId,
     action: 'user_force_close',
     status,
+    error_message: args.errorMessage ?? null,
     request_payload: {
       scope: args.scope,
       channel_id: args.channelId,
@@ -221,6 +227,30 @@ async function forceCloseChannelOnBroker(
   const now = new Date().toISOString()
   const basketScopes = new Map<string, { signalId: string; brokerAccountId: string }>()
 
+  // Ask the broker what it still holds, once per account: a refused close can
+  // simply mean the position is already gone — which must settle the row rather
+  // than leave it open forever. The wording differs per provider; the snapshot
+  // does not.
+  let openTickets: Set<number> | null = null
+  let openTicketsLoaded = false
+  const ticketAlreadyGone = async (ticket: number): Promise<boolean | null> => {
+    if (!openTicketsLoaded) {
+      openTicketsLoaded = true
+      try {
+        const rows = await api.openedOrders(uuid)
+        openTickets = new Set(
+          ((rows ?? []) as Array<Record<string, unknown>>)
+            .map(row => rawOrderTicket(row))
+            .filter(value => value > 0),
+        )
+      } catch {
+        openTickets = null
+      }
+    }
+    if (!openTickets) return null
+    return !openTickets.has(ticket)
+  }
+
   for (const trade of trades) {
     if (trade.signal_id) {
       basketScopes.set(`${trade.signal_id}|${trade.broker_account_id}`, {
@@ -232,13 +262,7 @@ async function forceCloseChannelOnBroker(
     const ticket = Number(trade.metaapi_order_id)
     if (!Number.isFinite(ticket) || ticket <= 0) continue
 
-    try {
-      const closeResult = await closeWithVerification(api, uuid, ticket, { liveFast: true })
-      if (!closeResult.confirmed) {
-        result.failed += 1
-        continue
-      }
-      result.closed += 1
+    const settle = async () => {
       const terminalStatus = trade.status === 'pending' ? 'cancelled' : 'closed'
       await supabase
         .from('trades')
@@ -250,25 +274,37 @@ async function forceCloseChannelOnBroker(
         channelId: args.channelId,
         symbolHint: trade.symbol,
       })
+    }
+
+    let failure = ''
+    try {
+      const closeResult = await closeWithVerification(api, uuid, ticket, { liveFast: true })
+      if (closeResult.confirmed) {
+        await settle()
+        result.closed += 1
+        continue
+      }
+      failure = String(closeResult.reason ?? 'close not confirmed')
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       if (isBenignCloseError(msg)) {
+        await settle()
         result.closed += 1
-        const terminalStatus = trade.status === 'pending' ? 'cancelled' : 'closed'
-        await supabase
-          .from('trades')
-          .update({ status: terminalStatus, closed_at: now })
-          .eq('id', trade.id)
-          .in('status', ['open', 'pending'])
-        await clearChannelActiveTradeParamsWhenFlat(supabase, {
-          userId: args.userId,
-          channelId: args.channelId,
-          symbolHint: trade.symbol,
-        })
-      } else {
-        result.failed += 1
+        continue
       }
+      failure = msg
     }
+
+    if (isMarketClosedMessage(failure)) result.market_closed = true
+    // Refused, but the broker no longer holds the ticket: the position is gone,
+    // so settle the row instead of leaving it open forever.
+    if (await ticketAlreadyGone(ticket) === true) {
+      await settle()
+      result.closed += 1
+      continue
+    }
+    result.failed += 1
+    if (!result.failure_detail) result.failure_detail = failure.slice(0, 200)
   }
 
   result.pending_cancelled = await cancelChannelBrokerPendingOrders({
@@ -342,6 +378,7 @@ async function forceCloseChannelOnBroker(
     failed: result.failed,
     pendingCancelled: result.pending_cancelled,
     virtualLegsDeleted: result.virtual_legs_deleted,
+    errorMessage: result.failure_detail,
   })
 
   console.log(
@@ -420,6 +457,7 @@ export async function forceCloseSignalTrades(
   let failed = 0
   let pending_cancelled = 0
   let virtual_legs_deleted = 0
+  let marketClosed = false
 
   for (const channelId of channelIds) {
     const one = await forceCloseChannelOnBroker(supabase, {
@@ -432,6 +470,7 @@ export async function forceCloseSignalTrades(
     failed += one.failed
     pending_cancelled += one.pending_cancelled
     virtual_legs_deleted += one.virtual_legs_deleted
+    if (one.market_closed) marketClosed = true
   }
 
   return {
@@ -441,7 +480,11 @@ export async function forceCloseSignalTrades(
     pending_cancelled,
     virtual_legs_deleted,
     channels_processed: channelIds.length,
-    ...(failed > 0 && closed === 0 ? { reason: 'close_failed' } : {}),
+    ...(closed === 0 && failed > 0
+      ? marketClosed
+        ? { market_closed: true, reason: 'market_closed' }
+        : { reason: 'close_failed' }
+      : {}),
   }
 }
 
@@ -585,7 +628,32 @@ export async function forceCloseSignalById(
 
     let brokerClosed = 0
     let brokerFailed = 0
+    let brokerFailureDetail = ''
     const now = new Date().toISOString()
+
+    // Ask the broker what it still holds, once per account: a refused close can
+    // simply mean the position is already gone — which must settle the row
+    // rather than leave it open forever. Matching the broker's wording is
+    // fragile (MT4 and MT5 phrase it differently); the snapshot is not.
+    let openTickets: Set<number> | null = null
+    let openTicketsLoaded = false
+    const ticketStillOpen = async (ticket: number): Promise<boolean | null> => {
+      if (!openTicketsLoaded) {
+        openTicketsLoaded = true
+        try {
+          const rows = await api.openedOrders(uuid)
+          openTickets = new Set(
+            ((rows ?? []) as Array<Record<string, unknown>>)
+              .map(row => rawOrderTicket(row))
+              .filter(value => value > 0),
+          )
+        } catch {
+          openTickets = null
+        }
+      }
+      if (!openTickets) return null
+      return openTickets.has(ticket)
+    }
 
     for (const trade of legs) {
       const ticket = Number(trade.metaapi_order_id)
@@ -608,28 +676,35 @@ export async function forceCloseSignalById(
         brokerFailed += 1
         continue
       }
+      let failure = ''
       try {
         const closeResult = await closeWithVerification(api, uuid, ticket, { liveFast: true })
-        if (!closeResult.confirmed) {
-          brokerFailed += 1
-          if (isMarketClosedMessage(closeResult.reason)) marketClosed = true
+        if (closeResult.confirmed) {
+          brokerClosed += 1
+          await markDone()
           continue
         }
-        brokerClosed += 1
-        await markDone()
+        failure = String(closeResult.reason ?? 'close not confirmed')
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         if (isBenignCloseError(msg)) {
           brokerClosed += 1
           await markDone()
-        } else {
-          brokerFailed += 1
-          // Broker rejections are usually THROWN (MTAPI/FxSocket both throw on a
-          // rejected order), so the market-closed check must live here as well
-          // as on the returned result — otherwise the message never fires.
-          if (isMarketClosedMessage(msg)) marketClosed = true
+          continue
         }
+        failure = msg
       }
+
+      if (isMarketClosedMessage(failure)) marketClosed = true
+      // The broker refused this close — but if it no longer holds the ticket,
+      // the position is gone and the row must be settled from our side.
+      if (await ticketStillOpen(ticket) === false) {
+        brokerClosed += 1
+        await markDone()
+        continue
+      }
+      brokerFailed += 1
+      if (!brokerFailureDetail) brokerFailureDetail = failure.slice(0, 200)
     }
 
     const brokerVirtualDeleted = await deleteRangePendingLegsForBasket(
@@ -650,6 +725,7 @@ export async function forceCloseSignalById(
         failed: brokerFailed,
         pendingCancelled: 0,
         virtualLegsDeleted: brokerVirtualDeleted,
+        errorMessage: brokerFailureDetail || undefined,
       })
     }
 
