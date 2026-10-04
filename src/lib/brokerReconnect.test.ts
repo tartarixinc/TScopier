@@ -119,7 +119,7 @@ describe('brokerCanReconnect — MTAPI', () => {
     })).toBe(false)
   })
 
-  it('hides reconnect for MTAPI without session', () => {
+  it('shows reconnect for an MTAPI row with no session yet (it cannot copy)', () => {
     expect(brokerCanReconnect({
       fxsocket_account_id: null,
       fxsocket_status: null,
@@ -127,6 +127,29 @@ describe('brokerCanReconnect — MTAPI', () => {
       provider: 'mtapi',
       mtapi_session_id: null,
       mtapi_status: 'error',
+    })).toBe(true)
+  })
+
+  it('shows reconnect for a row moved to MTAPI that has never connected', () => {
+    // mtapi_session_id is not sent to the browser at all, and mtapi_status is
+    // null until the first observation — this is the shape a freshly switched
+    // account has, and it must still be promptable.
+    expect(brokerCanReconnect({
+      fxsocket_account_id: null,
+      fxsocket_status: 'connected',
+      connection_status: 'connected',
+      provider: 'mtapi',
+      mtapi_status: null,
+    })).toBe(true)
+  })
+
+  it('hides reconnect while an MTAPI connect attempt is in flight', () => {
+    expect(brokerCanReconnect({
+      fxsocket_account_id: null,
+      fxsocket_status: null,
+      connection_status: 'pending',
+      provider: 'mtapi',
+      mtapi_status: 'connecting',
     })).toBe(false)
   })
 })

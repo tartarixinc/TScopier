@@ -157,6 +157,20 @@ export const accountConfigPl: AccountConfigBundleTranslations = {
       reconnectPasswordTitle: 'Sesja brokera wygasła',
       reconnectPasswordBody:
         'Twoja sesja brokera wygasła na serwerze handlowym. Wpisz hasło do konta MT, aby połączyć ponownie.',
+      reconnectMigrationTitle: 'Zaktualizowaliśmy sposób, w jaki TScopier łączy się z Twoim brokerem',
+      reconnectMigrationBody: 'Połącz ponownie to konto, aby nadal kopiować transakcje. Ustawienia, historia i otwarte pozycje pozostają bez zmian.',
+      reconnectMigrationPasswordTitle: 'Wpisz hasło, aby połączyć się ponownie',
+      reconnectMigrationPasswordBody: 'Numer konta i serwer są już uzupełnione. Hasło jest przechowywane w formie zaszyfrowanej i służy wyłącznie do połączenia z brokerem.',
+      reconnectMigrationBack: 'Wstecz',
+      reconnectManyAccountsHint:
+        '{count} kont wymaga ponownego połączenia. Hasło zostanie poproszone raz dla każdego konta.',
+      reconnectConnectingTitle: 'Łączenie z kontem',
+      reconnectConnectingBody:
+        'Dane logowania zaakceptowane. Czekamy na pośrednika brokera — to może chwilę potrwać.',
+      reconnectSuccessTitle: 'Konto połączone',
+      reconnectSuccessBody: 'Połączono. Kopiowanie transakcji zostanie automatycznie wznowione.',
+      reconnectSuccessNext: 'Następne konto',
+      reconnectSuccessDone: 'Gotowe',
       reconnectPasswordLabel: 'Hasło konta MT',
       reconnectPasswordHint:
         'Wysyłane tylko do serwerów MT. Włącz opcję zapamiętywania poniżej, aby zapisać je szyfrowane do automatycznego ponownego połączenia.',

@@ -161,6 +161,44 @@ export function resolveMtClosePrice(order: RawMtOrder, profile: MtHistoryProfile
   return firstPositiveNumMtField(order, profile, 'closePrice', 'ClosePrice')
 }
 
+/** When the row says it was closed: epoch milliseconds, or null when no
+ * key holds a usable close timestamp. Keys are tried in order and an
+ * unusable one (0, empty, unparseable) does not block a later usable key —
+ * the same "first usable wins" rule the edge applies. Only positivity
+ * matters to callers: an open position echoed into OrderHistory carries no
+ * close time (and an epoch-0/`0001-01-01` value means "never closed"), so
+ * a non-positive value reports null rather than a fabricated instant. */
+export function resolveMtCloseTimeMs(order: RawMtOrder, profile: MtHistoryProfile): number | null {
+  for (const key of MT_CLOSE_TIME_KEYS) {
+    const v = pickMtField(order, profile, key)
+    if (v === null || v === undefined || v === '') continue
+    const ms = parseMtInstant(String(v))
+    if (ms != null) return ms
+  }
+  return null
+}
+
+/** One timestamp value → epoch ms: a number is epoch seconds below 1e12 and
+ * epoch ms at or above it, anything else is parsed as a date string. A naive
+ * ISO string (no zone designator — what the bridges send) is read as UTC,
+ * not the process's local zone, so the value does not shift with the
+ * container's TZ and stays on the same clock as the DB's `closed_at`.
+ * Null when it is not a positive instant. */
+function parseMtInstant(raw: string): number | null {
+  const trimmed = raw.trim().replace(/^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})/, '$1T$2')
+  const asNum = Number(trimmed)
+  if (Number.isFinite(asNum)) {
+    if (asNum <= 0) return null
+    return asNum >= 1e12 ? asNum : asNum * 1000
+  }
+  const zoned = NAIVE_ISO_RE.test(trimmed) ? `${trimmed}Z` : trimmed
+  const ms = Date.parse(zoned)
+  return Number.isFinite(ms) && ms > 0 ? ms : null
+}
+
+/** ISO-8601 without a zone offset (`2026-09-24T09:51:00.000`, `…:00`). */
+const NAIVE_ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/
+
 function resolveMtDealProfit(order: RawMtOrder, profile: MtHistoryProfile): number | null {
   const p = numMtField(
     order,
@@ -185,6 +223,46 @@ function resolveMtDealProfit(order: RawMtOrder, profile: MtHistoryProfile): numb
   }
 
   return p
+}
+
+/** `netProfit` from sources trusted to describe THIS close: the row itself,
+ * its `result`, or the closing deal (`dealInternalOut`). Deliberately not the
+ * generic flattened read — `flattenMtOrder` absorbs scalars from every nested
+ * object (`dealInternalIn`, `orderInternal`, `position`, …), so an entry-side
+ * value could win over the closing one and be persisted as realized P/L.
+ * `resolveMtDealProfit` applies the same closing-deal restriction to its own
+ * nested fallback for the same reason. */
+function trustedNetProfit(order: RawMtOrder): number | null {
+  const sources: RawMtOrder[] = [order]
+  if (isPlainObject(order.result)) sources.push(order.result as RawMtOrder)
+  for (const key of ['dealInternalOut', 'DealInternalOut'] as const) {
+    if (isPlainObject(order[key])) sources.push(order[key] as RawMtOrder)
+  }
+  for (const src of sources) {
+    for (const key of ['netProfit', 'NetProfit'] as const) {
+      const v = src[key]
+      if (v === null || v === undefined || v === '') continue
+      const n = Number(v)
+      if (Number.isFinite(n)) return n
+    }
+  }
+  return null
+}
+
+/** Realized profit to persist for a closed trade. Preferred source is an
+ * explicit `netProfit` (the position-level net the FxSocket position
+ * reader normalizes with `profit: netProfit ?? profit` in
+ * `supabase/functions/_shared/fxsocketTrades.ts`), else the resolved deal
+ * profit. This is the better P/L figure for a fallback and for copy-limit
+ * maths (it can carry swap/commission that a single deal does not), but it
+ * is NOT guaranteed to equal what the live dashboard shows: the dashboard's
+ * MTAPI OrderHistory path reads only `resolveMtDealProfit`, and its FxSocket
+ * closed list reads position history rather than these deals. Treat the two
+ * as the same trade's P/L, not as byte-identical figures. */
+export function resolveMtStoredProfit(order: RawMtOrder, profile: MtHistoryProfile): number | null {
+  const net = trustedNetProfit(order)
+  if (net != null) return net
+  return resolveMtDealProfit(order, profile)
 }
 
 export function resolveMtTicket(order: RawMtOrder, profile: MtHistoryProfile): number {
@@ -213,21 +291,53 @@ export function resolveMtPositionTicket(
   return Number.isFinite(positionId) && positionId > 0 ? positionId : null
 }
 
+/** Close-time keys, same set and order as `MT_CLOSE_TIME_KEYS` in
+ * `supabase/functions/_shared/mtTradeFields.ts` (the committed, sanitized
+ * payload samples in `docs/mtapi-conformance-sanitized.md` carry
+ * `closeTime`). Deliberately WITHOUT the edge's `time`/`Time` fallback: on
+ * an open position echoed into OrderHistory `time` is the OPEN time, and
+ * accepting it would let floating P/L through as realized profit. */
+const MT_CLOSE_TIME_KEYS = [
+  'closeTime',
+  'CloseTime',
+  'close_time',
+  'CLOSE_TIME',
+  'Close_Time',
+  'timeClose',
+  'TimeClose',
+  'doneTime',
+  'DoneTime',
+  'time_done',
+  'Time_Done',
+  'timeDone',
+  'TimeDone',
+  'timeDoneMsc',
+  'TimeDoneMsc',
+  'time_done_msc',
+  'doneBrokerTime',
+  'DoneBrokerTime',
+  'historyTime',
+  'HistoryTime',
+] as const
+
+/** First PRESENT close-time value (used as a dedupe key, where an unusable
+ * value still distinguishes two rows). */
 function closeTimeKey(order: RawMtOrder, profile: MtHistoryProfile): string {
-  const ct = pickMtField(
-    order,
-    profile,
-    'closeTime',
-    'CloseTime',
-    'close_time',
-    'timeClose',
-    'TimeClose',
-    'doneTime',
-    'DoneTime',
-    'historyTime',
-    'HistoryTime',
-  )
+  const ct = pickMtField(order, profile, ...MT_CLOSE_TIME_KEYS)
   return ct != null ? String(ct) : ''
+}
+
+/** First present text value across the keys, read through the same
+ * flattening the dashboard's normalizer uses (`pickMtField`), so a value
+ * that only exists on a nested deal object is seen here too. */
+export function resolveMtText(
+  order: RawMtOrder,
+  profile: MtHistoryProfile,
+  ...keys: string[]
+): string {
+  const v = pickMtField(order, profile, ...keys)
+  if (v === null || v === undefined) return ''
+  return String(v).trim()
 }
 
 function historyRowKey(order: RawMtOrder, profile: MtHistoryProfile): string {

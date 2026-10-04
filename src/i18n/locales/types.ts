@@ -236,6 +236,8 @@ export interface CommonTranslations {
   noResults: string
   show: string
   results: string
+  brokerFeedDegraded: string
+  brokerFeedDegradedHint: string
   cookieConsent: {
     message: string
     policyLink: string
@@ -715,6 +717,18 @@ export interface AccountConfigBrokerListTranslations {
   reconnectFailed: string
   reconnectPasswordTitle: string
   reconnectPasswordBody: string
+  reconnectMigrationTitle: string
+  reconnectMigrationBody: string
+  reconnectMigrationPasswordTitle: string
+  reconnectMigrationPasswordBody: string
+  reconnectMigrationBack: string
+  reconnectManyAccountsHint: string
+  reconnectConnectingTitle: string
+  reconnectConnectingBody: string
+  reconnectSuccessTitle: string
+  reconnectSuccessBody: string
+  reconnectSuccessNext: string
+  reconnectSuccessDone: string
   reconnectPasswordLabel: string
   reconnectPasswordHint: string
   reconnectPasswordPlaceholder: string

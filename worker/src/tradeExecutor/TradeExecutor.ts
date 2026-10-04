@@ -1,6 +1,5 @@
 import { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js'
 import {
-  hasFxsocketConfigured,
   FxsocketBrokerClient,
   mtPlatformFrom,
   MtOperation,
@@ -108,6 +107,7 @@ import { safeBuildMgmtSweepExhaustionPayload } from '../managementBreakevenDiagn
 import { getTradeExecutionMonitor, tradeOutcomeIsSuccess } from '../observability/tradeExecutionMonitor'
 import { testFlagEnabled } from '../testFlags'
 import { apiForBrokerAccount } from '../providerResolver'
+import { authorityFromBrokerRow } from '../brokerWriteAuthority'
 
 export type { SignalRow } from './types'
 
@@ -185,13 +185,10 @@ export class TradeExecutor {
     readonly supabase: SupabaseClient,
     readonly sessionManager?: UserSessionManager,
   ) {
-    if (!hasFxsocketConfigured()) {
-      console.warn('[tradeExecutor] MT4API_BASIC_USER/PASSWORD missing — trade execution disabled.')
-    }
   }
 
   apiFor(broker: BrokerRow): FxsocketBrokerClient | null {
-    return apiForBrokerAccount(broker.provider, brokerSessionUuid(broker))
+    return apiForBrokerAccount(broker.provider, brokerSessionUuid(broker), authorityFromBrokerRow(broker))
   }
 
   apiForUuid(uuid: string): FxsocketBrokerClient | null {
@@ -1267,7 +1264,6 @@ export class TradeExecutor {
   }
 
   private async sweepExpiredTscopierBrokerPendings(): Promise<void> {
-    if (!hasFxsocketConfigured()) return
     if (String(process.env.WORKER_BROKER_PENDING_EXPIRY_SWEEP ?? '').toLowerCase() !== 'true') return
 
     const brokers = Array.from(this.brokersById.values()).filter(b =>
@@ -1727,7 +1723,6 @@ export class TradeExecutor {
    * indefinitely — it becomes a no-op once the legacy pendings are gone.
    */
   private async cleanupLegacyBrokerPendings(): Promise<void> {
-    if (!hasFxsocketConfigured()) return
     const brokers = Array.from(this.brokersById.values()).filter(b =>
       b.is_active && brokerHasLinkedSession(b),
     )

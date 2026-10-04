@@ -18,6 +18,8 @@ function broker(overrides: Partial<MtapiPreparationBrokerRow> = {}): MtapiPrepar
     fxsocket_account_id: "fxsocket-1",
     mtapi_session_id: null,
     label: "Primary",
+    writer_epoch: 1,
+    provider_transition_state: "stable",
     ...overrides,
   }
 }
@@ -60,6 +62,8 @@ function harness(initial = broker()) {
       if (
         !row || row.user_id !== args.userId || row.provider !== "fxsocket"
         || row.mtapi_session_id !== args.expectedSessionId
+        || row.provider_transition_state !== "stable"
+        || row.writer_epoch !== args.expectedWriterEpoch
       ) return null
       patches.push({ ...args.patch })
       const updated = { ...row, ...args.patch }

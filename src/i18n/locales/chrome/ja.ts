@@ -237,6 +237,9 @@ export const chromeJa: AppChromeTranslations = {
     noResults: '結果なし',
     show: '表示',
     results: '件',
+    brokerFeedDegraded: 'ブローカーのインフラに接続できない問題が発生しています。',
+    brokerFeedDegradedHint:
+      '保存済みの取引履歴を表示しています。ライブのポジションと損益が遅れる可能性があり、復旧するまで新しい取引はコピーされない場合があります。',
     cookieConsent: {
       message: 'ユーザー体験向上のために Cookie を使用しています。',
       policyLink: 'Cookieポリシー',

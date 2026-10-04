@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { ArrowUpRight, ArrowDownRight, ChevronLeft, ChevronRight, ChevronRight as ChevronRightIcon, Minus, RefreshCw, TrendingUp, TrendingDown } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
@@ -11,6 +11,7 @@ import { PageShell } from '../../components/layout/PageShell'
 import { Card } from '../../components/ui/Card'
 import { Badge } from '../../components/ui/Badge'
 import { Alert } from '../../components/ui/Alert'
+import { LiveFeedDegradedBanner } from '../../components/LiveFeedDegradedBanner'
 import { TradeDetailModal } from '../../components/trades/TradeDetailModal'
 import { AwaitingApprovalSection } from '../../components/trades/AwaitingApprovalSection'
 import { SignalReviewDetailModal } from '../../components/trades/SignalReviewDetailModal'
@@ -81,26 +82,26 @@ export function TradesPage() {
 
   const totalPages = Math.max(1, Math.ceil(visibleTrades.length / pageSize))
 
-  useEffect(() => {
-    setPage(1)
-  }, [filter, pageSize])
-
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages)
-  }, [page, totalPages])
+  // The filter and page-size controls reset to page 1 in the same event that
+  // changes them (see below). When the list itself shrinks under the current
+  // page (a data refresh), clamp while rendering instead of scheduling a
+  // state write from an effect.
+  const currentPage = Math.min(page, totalPages)
 
   const paginatedTrades = useMemo(() => {
-    const start = (page - 1) * pageSize
+    const start = (currentPage - 1) * pageSize
     return visibleTrades.slice(start, start + pageSize)
-  }, [visibleTrades, page, pageSize])
+  }, [visibleTrades, currentPage, pageSize])
 
-  const rangeStart = visibleTrades.length === 0 ? 0 : (page - 1) * pageSize + 1
-  const rangeEnd = Math.min(page * pageSize, visibleTrades.length)
+  const rangeStart = visibleTrades.length === 0 ? 0 : (currentPage - 1) * pageSize + 1
+  const rangeEnd = Math.min(currentPage * pageSize, visibleTrades.length)
 
   const showInitialSkeleton = loading && trades.length === 0
 
-  const refreshManualOverrideWarnings = async () => {
+  const refreshManualOverrideWarnings = useCallback(async () => {
     if (!user?.id) {
+      // Defer the reset: setState must not run synchronously inside the effect.
+      await Promise.resolve()
       setManualOverrideWarningMaps(emptyManualBrokerOverrideWarningMaps())
       return
     }
@@ -109,11 +110,14 @@ export function TradesPage() {
     } catch (err) {
       console.warn(`[trades] manual broker override warnings failed: ${err instanceof Error ? err.message : String(err)}`)
     }
-  }
+    // Deps are `[user]` (not `user?.id`): the compiler infers the whole
+    // object and refuses to preserve a more specific manual dependency.
+  }, [user])
 
   useEffect(() => {
-    void refreshManualOverrideWarnings()
-  }, [user?.id])
+    // Deferred a microtask so the effect body itself performs no setState.
+    void Promise.resolve().then(refreshManualOverrideWarnings)
+  }, [refreshManualOverrideWarnings])
 
   return (
     <PageShell maxWidth="lg" spacing="none" className="space-y-6">
@@ -147,7 +151,11 @@ export function TradesPage() {
                 <button
                   key={f.value}
                   type="button"
-                  onClick={() => setFilter(f.value)}
+                  onClick={() => {
+                    if (f.value === filter) return
+                    setFilter(f.value)
+                    setPage(1)
+                  }}
                   className={`shrink-0 px-3 py-2 text-sm rounded-md font-medium transition-colors whitespace-nowrap ${
                     filter === f.value
                       ? 'bg-teal-600 text-white'
@@ -163,6 +171,8 @@ export function TradesPage() {
           </div>
         )}
       />
+
+      <LiveFeedDegradedBanner className="mb-4" />
 
       {error && !showInitialSkeleton && <Alert className="mb-4 px-4 py-2.5">{error}</Alert>}
 
@@ -252,14 +262,17 @@ export function TradesPage() {
             </div>
             {visibleTrades.length > 0 && (
               <TradesPagination
-                page={page}
+                page={currentPage}
                 pageSize={pageSize}
                 totalPages={totalPages}
                 rangeStart={rangeStart}
                 rangeEnd={rangeEnd}
                 total={visibleTrades.length}
                 onPageChange={setPage}
-                onPageSizeChange={setPageSize}
+                onPageSizeChange={size => {
+                  setPageSize(size)
+                  setPage(1)
+                }}
               />
             )}
           </>
@@ -305,7 +318,7 @@ function TradesPagination({
       return Array.from({ length: totalPages }, (_, i) => i + 1)
     }
     let start = Math.max(1, page - 2)
-    let end = Math.min(totalPages, start + maxButtons - 1)
+    const end = Math.min(totalPages, start + maxButtons - 1)
     start = Math.max(1, end - maxButtons + 1)
     return Array.from({ length: end - start + 1 }, (_, i) => start + i)
   }, [page, totalPages])

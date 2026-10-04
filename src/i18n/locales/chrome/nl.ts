@@ -238,6 +238,9 @@ export const chromeNl: AppChromeTranslations = {
     noResults: 'Geen resultaten',
     show: 'Weergeven',
     results: 'resultaten',
+    brokerFeedDegraded: 'We kunnen de infrastructuur van je broker niet bereiken.',
+    brokerFeedDegradedHint:
+      'We tonen je opgeslagen transacties; live posities en winst kunnen vertragen en nieuwe transacties worden mogelijk niet gekopieerd tot het weer werkt.',
     cookieConsent: {
       message: 'We gebruiken cookies om de gebruikerservaring te verbeteren.',
       policyLink: 'Cookiebeleid',

@@ -3,6 +3,8 @@
  * Keeps poll_error spam down and spaces reconnect attempts while the old TCP dies.
  */
 
+import { envNumber } from './envNumber'
+
 /** True when enough time has passed since the last persisted/logged dup event. */
 export function shouldEmitAuthKeyDupEvent(
   lastEmittedAtMs: number,
@@ -35,26 +37,20 @@ export function authKeyDupReconnectDelaysMs(
 
 /** Delay between AUTH_KEY_DUPLICATED recovery connect attempts. */
 export function authKeyDupReconnectDelayMs(): number {
-  return Math.max(
-    2_000,
-    Math.min(120_000, Number(process.env.TELEGRAM_AUTH_DUP_RECONNECT_DELAY_MS ?? 30_000)),
-  )
+  return envNumber(process.env.TELEGRAM_AUTH_DUP_RECONNECT_DELAY_MS, 30_000, 2_000, 120_000)
 }
 
 /** Maximum connect cycles before requiring the user to re-link Telegram. */
 export function authKeyDupMaxRecoveryAttempts(): number {
-  return Math.max(
-    1,
-    Math.min(100, Math.floor(Number(process.env.TELEGRAM_AUTH_DUP_MAX_RECOVERY_ATTEMPTS ?? 4))),
-  )
+  // A non-numeric value used to yield NaN here, and `Array.from({ length: NaN })`
+  // is an empty array — forceReconnect would then run zero attempts and report a
+  // recovery it never performed.
+  return Math.floor(envNumber(process.env.TELEGRAM_AUTH_DUP_MAX_RECOVERY_ATTEMPTS, 4, 1, 100))
 }
 
 /** Schedule another reconnect attempt after forceReconnect exhausts retries. */
 export function authKeyDupDeferredRetryMs(): number {
-  return Math.max(
-    15_000,
-    Math.min(300_000, Number(process.env.TELEGRAM_AUTH_DUP_DEFERRED_RETRY_MS ?? 60_000)),
-  )
+  return envNumber(process.env.TELEGRAM_AUTH_DUP_DEFERRED_RETRY_MS, 60_000, 15_000, 300_000)
 }
 
 export function redactTelegramConnectionLog(value: unknown): string {

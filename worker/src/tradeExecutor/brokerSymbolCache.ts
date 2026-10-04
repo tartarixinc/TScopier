@@ -1,7 +1,6 @@
 import type { TradeExecutorContext } from './context'
 import type { ParsedSignal } from './types'
 import {
-  hasFxsocketConfigured,
   FxsocketBrokerClient,
   normalizeSymbolParams,
   type SymbolParams,
@@ -308,7 +307,7 @@ export function prewarmSymbolsEnabled(ctx: TradeExecutorContext, ): boolean {
   }
 
 export async function prewarmBrokerCaches(ctx: TradeExecutorContext, ): Promise<void> {
-    if (!ctx.prewarmSymbolsEnabled() || !hasFxsocketConfigured()) return
+    if (!ctx.prewarmSymbolsEnabled()) return
     for (const row of ctx.brokersById.values()) {
       const uuid = brokerSessionUuid(row)
       if (!uuid) continue
@@ -317,7 +316,6 @@ export async function prewarmBrokerCaches(ctx: TradeExecutorContext, ): Promise<
   }
 
 export async function sessionHeartbeatTick(ctx: TradeExecutorContext): Promise<void> {
-  if (!hasFxsocketConfigured()) return
   const brokers = activeBrokersForHeartbeat(ctx)
   if (!brokers.length) return
 
@@ -342,7 +340,7 @@ export async function reconnectCachedBrokers(ctx: TradeExecutorContext): Promise
 }
 
 export async function pingBrokerSession(ctx: TradeExecutorContext, row: BrokerRow): Promise<void> {
-  if (!hasFxsocketConfigured() || !row.is_active) return
+  if (!row.is_active) return
   const uuid = brokerSessionUuid(row)
   if (!uuid) return
   const api = ctx.apiFor(row)
@@ -351,7 +349,6 @@ export async function pingBrokerSession(ctx: TradeExecutorContext, row: BrokerRo
 }
 
 export async function symbolCacheKeepaliveTick(ctx: TradeExecutorContext, ): Promise<void> {
-    if (!hasFxsocketConfigured()) return
     if (!ctx.prewarmSymbolsEnabled()) return
 
     const uuidsWithList = [...ctx.symbolListCache.keys()]
@@ -470,7 +467,6 @@ export function brokersWarmForLiveEntry(ctx: TradeExecutorContext, brokers: Brok
   }
 
 export function prewarmForDispatch(ctx: TradeExecutorContext, row: SignalRow): void {
-    if (!hasFxsocketConfigured()) return
     const parsed = row.parsed_data as ParsedSignal | null
     const signalSymbol = parsed?.symbol
     if (!signalSymbol) return
@@ -522,7 +518,6 @@ export async function getSymbolParams(ctx: TradeExecutorContext, uuid: string, s
       if (age < SYMBOL_CACHE_TTL_MS) return cached
     }
 
-    if (!hasFxsocketConfigured()) return null
     return ctx.refreshSymbolParams(uuid, symbol, key)
   }
 
@@ -599,7 +594,6 @@ export async function getSymbolList(ctx: TradeExecutorContext, uuid: string): Pr
   }
 
 export async function fetchSymbolList(ctx: TradeExecutorContext, uuid: string): Promise<SymbolListCacheEntry | null> {
-    if (!hasFxsocketConfigured()) return null
     const api = ctx.apiForUuid(uuid)
     if (!api) return null
     try {

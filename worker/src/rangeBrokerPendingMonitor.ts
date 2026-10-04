@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { hasFxsocketConfigured, normalizeSymbolParams, type SymbolParams } from './fxsocketClient'
-import { apiForFxsocketAccount, loadPlatformByFxsocketId, type PlatformByFxsocketId } from './mtApiByAccount'
+import { normalizeSymbolParams, type SymbolParams } from './fxsocketClient'
+import { apiForFxsocketAccount, resolveDurableBrokerArtifacts, type PlatformByFxsocketId } from './mtApiByAccount'
 import { autoManagementTradeSnapshot, resolveAutoBeTpHitTriggerPriceFromManual } from './autoManagement'
 import { signalPipPrice } from './signalPip'
 import { tryApplyBasketFollowUpToNewFill } from './basketModFollowUp'
@@ -70,7 +70,6 @@ async function rebalanceAfterFill(
   leg: RangeBrokerPendingRow,
   channelId: string | null,
 ): Promise<void> {
-  if (!hasFxsocketConfigured()) return
   const api = apiForFxsocketAccount(platformByUuid, leg.metaapi_account_id)
   if (!api) return
 
@@ -467,10 +466,6 @@ export class RangeBrokerPendingMonitor {
 
   start() {
     if (this.loop) return
-    if (!hasFxsocketConfigured()) {
-      console.warn('[rangeBrokerPendingMonitor] MT4API_BASIC_USER/PASSWORD missing — monitor disabled')
-      return
-    }
     this.loop = startMonitorLoop({
       name: 'rangeBrokerPendingMonitor',
       supabase: this.supabase,
@@ -503,8 +498,6 @@ export class RangeBrokerPendingMonitor {
   }
 
   private async tick(): Promise<void> {
-    if (!hasFxsocketConfigured()) return
-
     const rowsQ = await applyShardToQuery(
       this.supabase,
       this.supabase
@@ -530,17 +523,20 @@ export class RangeBrokerPendingMonitor {
 
     const { data: cancelRows } = await this.supabase
       .from('range_pending_legs')
-      .select('metaapi_account_id')
+      .select('broker_account_id,metaapi_account_id')
       .eq('status', 'cancelled')
       .eq('error_message', 'basket_empty')
       .not('ticket', 'is', null)
       .limit(100)
 
-    const accountIds = [
-      ...rows.map(r => r.metaapi_account_id),
-      ...((cancelRows ?? []) as Array<{ metaapi_account_id: string }>).map(r => r.metaapi_account_id),
-    ]
-    this.platformByUuid = await loadPlatformByFxsocketId(this.supabase, accountIds)
+    const cancelledArtifacts = (cancelRows ?? []) as Array<{ broker_account_id: string; metaapi_account_id: string }>
+    const resolved = await resolveDurableBrokerArtifacts(
+      this.supabase,
+      [...rows, ...cancelledArtifacts],
+    )
+    const resolvedRows = resolved.rows.filter((row): row is RangeBrokerPendingRow => 'id' in row)
+    rows.splice(0, rows.length, ...resolvedRows)
+    this.platformByUuid = resolved.platformBySession
 
     await recoverNativeLayeringSubmissions({
       supabase: this.supabase,

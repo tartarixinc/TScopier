@@ -1,6 +1,5 @@
 import { isOppositeSignalCloseBlocked, isPendingCancelBlocked, normalizeChannelMessageFiltersMap } from '../../channelMessageFilters'
 import { type ManualSettings } from '../../manualPlanner'
-import { hasFxsocketConfigured } from '../../fxsocketClient'
 import { type TradeExecutorContext } from '../context'
 import {
   type BrokerRow,
@@ -9,6 +8,8 @@ import {
   type SignalRow
 } from '../types'
 import { brokerSessionUuid } from '../helpers'
+import { closeWithVerification } from '../../managementClose'
+import { resolveCurrentLivePosition } from '../../livePositionIdentity'
 import { cancelRangePendingLegsForScopes } from './pendingCancel'
 
 export async function closeOppositeDirectionTrades(ctx: TradeExecutorContext, 
@@ -17,7 +18,6 @@ export async function closeOppositeDirectionTrades(ctx: TradeExecutorContext,
     broker: BrokerRow,
     symbol: string,
   ): Promise<void> {
-    if (!hasFxsocketConfigured()) return
     const manual = (broker.manual_settings ?? {}) as ManualSettings
     if (manual.close_on_opposite_signal !== true) return
     if (isOppositeSignalCloseBlocked(
@@ -33,7 +33,7 @@ export async function closeOppositeDirectionTrades(ctx: TradeExecutorContext,
     if (!api) return
     const { data: opposites } = await ctx.supabase
       .from('trades')
-      .select('id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,lot_size')
+      .select('id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,lot_size,entry_price')
       .eq('broker_account_id', broker.id)
       .eq('symbol', symbol)
       .eq('status', 'open')
@@ -46,7 +46,15 @@ export async function closeOppositeDirectionTrades(ctx: TradeExecutorContext,
       const ticket = Number(t.metaapi_order_id)
       if (!Number.isFinite(ticket) || ticket <= 0) continue
       try {
-        await api.orderClose(uuid, { ticket })
+        const resolution = await resolveCurrentLivePosition({
+          supabase: ctx.supabase,
+          api,
+          sessionId: uuid,
+          trade: t,
+        })
+        if (resolution.status !== 'resolved') throw new Error(`close reconciliation required: ${resolution.reason}`)
+        const close = await closeWithVerification(api, uuid, resolution.ticket, { liveFast: true })
+        if (!close.confirmed) throw new Error(close.reason ?? 'close reconciliation required')
         await ctx.supabase
           .from('trades')
           .update({ status: 'closed', closed_at: new Date().toISOString() })

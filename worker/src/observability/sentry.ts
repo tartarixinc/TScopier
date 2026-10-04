@@ -218,6 +218,15 @@ function beforeBreadcrumb(breadcrumb: unknown): unknown {
  */
 const DEFAULT_LOG_NOISE_PATTERNS: RegExp[] = [
   /sleeping for \d+\s*s\s*on flood wait\s*\(caused by messages\./i,
+  // GramJS's own `_updateLoop` ping timeout, with its ~15-line stack. It was
+  // 10-15% of all production log volume (incident 2026-09-29); the worker
+  // aggregates the count into one line per minute instead of reporting each.
+  // Left unanchored on purpose: Sentry's log message is the stringified error,
+  // not the console prefix. Verified against worker/src — no log of ours
+  // contains the literal "Error: TIMEOUT" (our own line reads
+  // "[userListener] _updateLoop TIMEOUT for <userId>"), so nothing else is
+  // swallowed. `new Error('TIMEOUT')` appears nowhere outside GramJS.
+  /Error: TIMEOUT\b/,
 ]
 
 function compileLogNoisePatterns(env: NodeJS.ProcessEnv): RegExp[] {

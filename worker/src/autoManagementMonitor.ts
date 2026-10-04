@@ -13,12 +13,16 @@ import {
 import { pipCalculator, pipValueForLots } from './pipCalculator'
 import { signalPipPrice } from './signalPip'
 import {
-  hasFxsocketConfigured,
   normalizeSymbolParams,
   type FxsocketBrokerClient,
   type SymbolParams,
 } from './fxsocketClient'
-import { apiForFxsocketAccount, brokerSessionId, loadPlatformByFxsocketId, type PlatformByFxsocketId } from './mtApiByAccount'
+import {
+  brokerRuntimeForAccount,
+  loadBrokerApiByAccountId,
+  type BrokerApiByAccountId,
+} from './mtApiByAccount'
+import { resolveCurrentLivePosition } from './livePositionIdentity'
 import {
   applyShardToQuery,
   hasWorkOnShard,
@@ -57,14 +61,6 @@ interface PartialLegRow {
   status: string
 }
 
-interface BrokerRow {
-  id: string
-  fxsocket_account_id: string | null
-  metaapi_account_id: string | null
-  platform: string
-  manual_settings: Record<string, unknown> | null
-}
-
 const ACTIVE_MS = monitorActiveIntervalMs('AUTO_MANAGEMENT_TICK_MS', 400)
 const IDLE_MS = monitorIdleIntervalMs('AUTO_MANAGEMENT_IDLE_MS', 15_000)
 const SYMBOL_CACHE_TTL_MS = 5 * 60_000
@@ -82,7 +78,7 @@ type SymbolCacheEntry = {
 
 export class AutoManagementMonitor {
   private loop: MonitorLoopHandle | null = null
-  private platformByUuid: PlatformByFxsocketId = new Map()
+  private runtimeByBroker: BrokerApiByAccountId = new Map()
   private ticking = false
   private firstTickLogged = false
   private quietTicks = 0
@@ -93,10 +89,6 @@ export class AutoManagementMonitor {
 
   start() {
     if (this.loop) return
-    if (!hasFxsocketConfigured()) {
-      console.warn('[autoManagementMonitor] MT4API_BASIC_USER/PASSWORD missing — auto-management monitor disabled')
-      return
-    }
     this.loop = startMonitorLoop({
       name: 'autoManagementMonitor',
       supabase: this.supabase,
@@ -130,8 +122,6 @@ export class AutoManagementMonitor {
   }
 
   private async tick(): Promise<void> {
-    if (!hasFxsocketConfigured()) return
-
     const tradesQ = await applyShardToQuery(
       this.supabase,
       this.supabase
@@ -167,26 +157,13 @@ export class AutoManagementMonitor {
     const partialByTrade = await this.loadPartialLegs(tradeIds)
 
     const brokerIds = [...new Set(rows.map(r => r.broker_account_id).filter(Boolean))] as string[]
-    const { data: brokers, error: brokerErr } = await this.supabase
-      .from('broker_accounts')
-      .select('id,fxsocket_account_id,metaapi_account_id,platform,manual_settings')
-      .in('id', brokerIds)
-    if (brokerErr) {
-      console.error('[autoManagementMonitor] broker lookup failed:', brokerErr.message)
-      return
-    }
-    const brokerById = new Map((brokers ?? []).map(b => [b.id, b as BrokerRow]))
-    this.platformByUuid = await loadPlatformByFxsocketId(
-      this.supabase,
-      (brokers ?? []).map(b => brokerSessionId(b as BrokerRow)),
-    )
+    this.runtimeByBroker = await loadBrokerApiByAccountId(this.supabase, brokerIds)
 
     const groups = new Map<string, AutoBeTradeRow[]>()
     for (const row of rows) {
-      const b = brokerById.get(row.broker_account_id ?? '')
-      const sessionId = b ? brokerSessionId(b) : ''
-      if (!sessionId) continue
-      const key = `${sessionId}:${row.symbol.toUpperCase()}`
+      const brokerId = row.broker_account_id ?? ''
+      if (!brokerRuntimeForAccount(this.runtimeByBroker, brokerId)) continue
+      const key = `${brokerId}:${row.symbol.toUpperCase()}`
       const list = groups.get(key) ?? []
       list.push(row)
       groups.set(key, list)
@@ -195,12 +172,13 @@ export class AutoManagementMonitor {
     let appliedTotal = 0
     let applyErrTotal = 0
     for (const [key, group] of groups) {
-      const uuid = key.split(':')[0]!
+      const brokerId = key.split(':')[0]!
       const symbol = group[0]?.symbol ?? ''
       let bid = NaN
       let ask = NaN
-      const api = apiForFxsocketAccount(this.platformByUuid, uuid)
-      if (!api) continue
+      const runtime = brokerRuntimeForAccount(this.runtimeByBroker, brokerId)
+      if (!runtime) continue
+      const { api, sessionId: uuid } = runtime
       try {
         const q = await api.quote(uuid, symbol)
         bid = q.bid
@@ -216,8 +194,7 @@ export class AutoManagementMonitor {
           continue
         }
         const partials = partialByTrade.get(trade.id) ?? []
-        const broker = brokerById.get(trade.broker_account_id ?? '')
-        const manual = (broker?.manual_settings ?? {}) as { half_close_percent?: number }
+        const manual = (runtime.manualSettings ?? {}) as { half_close_percent?: number }
         const halfClosePct = Math.min(
           99,
           Math.max(1, Math.floor(Number(manual.half_close_percent ?? 50) || 50)),
@@ -297,7 +274,7 @@ export class AutoManagementMonitor {
     const entry = Number(trade.entry_price)
     if (!Number.isFinite(entry) || entry <= 0) return null
 
-    const symEntry = await this.getSymbolCache(uuid, trade.symbol)
+    const symEntry = await this.getSymbolCache(uuid, trade.symbol, api)
     if (!symEntry) return null
 
     const pipQuote = pipCalculator(
@@ -400,8 +377,18 @@ export class AutoManagementMonitor {
     }
 
     try {
+      const resolution = await resolveCurrentLivePosition({
+        supabase: this.supabase,
+        api,
+        sessionId: uuid,
+        trade,
+      })
+      if (resolution.status !== 'resolved') {
+        throw new Error(`automatic management reconciliation required: ${resolution.reason}`)
+      }
+      const effectiveTicket = resolution.ticket
       await api.orderModify(uuid, {
-        ticket: ticketNum,
+        ticket: effectiveTicket,
         stoploss: modifySl,
         takeprofit: modifyTp,
       })
@@ -411,12 +398,12 @@ export class AutoManagementMonitor {
         const closeLots = +(lots * (halfClosePercent / 100)).toFixed(2)
         if (closeLots >= 0.01) {
           try {
-            await api.orderClose(uuid, { ticket: ticketNum, lots: closeLots })
+            await api.orderClose(uuid, { ticket: effectiveTicket, lots: closeLots })
             remainingLots = Math.max(0, +(lots - closeLots).toFixed(2))
           } catch (halfErr) {
             const msg = halfErr instanceof Error ? halfErr.message : String(halfErr)
             console.warn(
-              `[autoManagementMonitor] half close failed trade=${trade.id} ticket=${ticketNum}: ${msg}`,
+              `[autoManagementMonitor] half close failed trade=${trade.id} ticket=${effectiveTicket}: ${msg}`,
             )
           }
         }
@@ -448,7 +435,7 @@ export class AutoManagementMonitor {
         action: 'auto_be',
         status: 'success',
         request_payload: {
-          ticket: ticketNum,
+          ticket: effectiveTicket,
           symbol: trade.symbol,
           direction: trade.direction,
           mode,
@@ -468,15 +455,8 @@ export class AutoManagementMonitor {
       const benign = /not\s+found|already\s+closed|invalid\s+ticket|no\s+such\s+order|unknown\s+ticket/i.test(msg)
       if (benign) {
         this.failureLogCooldownUntil.delete(trade.id)
-        await this.supabase
-          .from('trades')
-          .update({
-            status: 'closed',
-            closed_at: new Date().toISOString(),
-            auto_be_applied_at: new Date().toISOString(),
-          })
-          .eq('id', trade.id)
-        return null
+        console.warn(`[autoManagementMonitor] broker identity/close state ambiguous trade=${trade.id}; deferring to reconciliation`)
+        return false
       }
       console.warn(`[autoManagementMonitor] apply failed trade=${trade.id} ticket=${ticketNum}: ${msg}`)
       const now = Date.now()
@@ -510,12 +490,14 @@ export class AutoManagementMonitor {
     await this.supabase.from('trades').update(patch).eq('id', tradeId)
   }
 
-  private async getSymbolCache(uuid: string, symbol: string): Promise<SymbolCacheEntry | null> {
+  private async getSymbolCache(
+    uuid: string,
+    symbol: string,
+    api: FxsocketBrokerClient,
+  ): Promise<SymbolCacheEntry | null> {
     const key = `${uuid}:${symbol.toUpperCase()}`
     const cached = this.symbolCache.get(key)
     if (cached && Date.now() - cached.loadedAt < SYMBOL_CACHE_TTL_MS) return cached
-    const api = apiForFxsocketAccount(this.platformByUuid, uuid)
-    if (!api) return null
     try {
       const p: SymbolParams = await api.symbolParams(uuid, symbol)
       const n = normalizeSymbolParams(p)

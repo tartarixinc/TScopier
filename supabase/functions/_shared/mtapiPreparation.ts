@@ -9,6 +9,8 @@ export type MtapiPreparationBrokerRow = Record<string, unknown> & {
   platform: string | null
   fxsocket_account_id: string | null
   mtapi_session_id: string | null
+  writer_epoch: number
+  provider_transition_state: "stable" | "transition"
 }
 
 export type MtapiPreparationPatch = {
@@ -46,6 +48,7 @@ export type MtapiPreparationDependencies = {
     userId: string
     expectedSessionId: string | null
     patch: MtapiPreparationPatch
+    expectedWriterEpoch: number
   }): Promise<MtapiPreparationBrokerRow | null>
   disconnect(sessionId: string, platform: MtapiPreparationPlatform): Promise<void>
   now(): string
@@ -113,6 +116,13 @@ export async function prepareMtapiMigration(
       409,
       "PROVIDER_NOT_FXSOCKET",
     )
+  }
+  if (
+    row.provider_transition_state !== "stable"
+    || !Number.isSafeInteger(row.writer_epoch)
+    || row.writer_epoch < 1
+  ) {
+    throw preparationError("Broker provider transition is in progress.", 409, "PROVIDER_TRANSITION_ACTIVE")
   }
 
   const login = String(row.account_login ?? "").trim()
@@ -183,6 +193,7 @@ export async function prepareMtapiMigration(
         brokerAccountId: row.id,
         userId,
         expectedSessionId: row.mtapi_session_id,
+        expectedWriterEpoch: row.writer_epoch,
         patch: {
           mtapi_session_id: newSessionId,
           broker_password_encrypted: encryptedPassword,

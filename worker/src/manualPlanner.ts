@@ -33,6 +33,7 @@ export {
   SKIP_REASON_SIGNAL_ENTRY_RANGE_REQUIRED,
   SKIP_REASON_SIGNAL_ENTRY_RANGE_EXPIRED,
   SKIP_REASON_ENTRY_NOT_OPENED,
+  SKIP_REASON_LEVEL_ALREADY_PASSED,
 } from './manualPlanning/parsedEntry'
 
 export {
@@ -67,6 +68,6 @@ export {
 
 export { computeCwOverrideTp } from './manualPlanning/cwOverride'
 
-export { strictSignalEntryQuoteAllowsImmediate } from './manualPlanning/executionShape'
+export { strictSignalEntryQuoteAllowsImmediate, brokerLimitLevelPassed } from './manualPlanning/executionShape'
 
 export { planManualOrders } from './manualPlanning/planManualOrders'

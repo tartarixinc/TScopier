@@ -1,0 +1,247 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { symbolsCompatibleForBasket } from './basketModFollowUp'
+import type { FxsocketBrokerClient } from './fxsocketClient'
+import { isLikelyMarketPositionRow, rawNumericOrderKind, rawOrderOperation } from './signalEntryPendingHelpers'
+
+export type LiveTradeIdentity = {
+  id: string
+  metaapi_order_id: string | null
+  symbol?: string | null
+  direction?: string | null
+  lot_size?: number | null
+  entry_price?: number | null
+}
+
+export type CanonicalPositionResolution =
+  | {
+      status: 'resolved'
+      ticket: number
+      storedTicket: number
+      replacement: boolean
+      matchedBy: 'canonical_ticket' | 'explicit_relationship' | 'attributes'
+      row: Record<string, unknown>
+    }
+  | { status: 'missing' | 'ambiguous'; storedTicket: number; reason: string }
+
+type ParsedLivePosition = {
+  row: Record<string, unknown>
+  canonicalTicket: number
+  identities: Set<number>
+  symbol: string
+  isBuy: boolean | null
+  lots: number | null
+  entryPrice: number | null
+}
+
+function positiveNumber(value: unknown): number | null {
+  if (value == null || value === '') return null
+  const number = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(number) && number > 0 ? number : null
+}
+
+function nestedTicket(value: unknown): number | null {
+  if (value == null) return null
+  const direct = positiveNumber(value)
+  if (direct != null) return direct
+  if (typeof value !== 'object' || Array.isArray(value)) return null
+  const row = value as Record<string, unknown>
+  return positiveNumber(
+    row.positionTicket ?? row.PositionTicket ?? row.positionId ?? row.PositionId
+    ?? row.ticket ?? row.Ticket ?? row.orderTicket ?? row.OrderTicket
+    ?? row.orderId ?? row.OrderId ?? row.order ?? row.Order,
+  )
+}
+
+function firstTicket(row: Record<string, unknown>, keys: string[]): number | null {
+  for (const key of keys) {
+    const ticket = nestedTicket(row[key])
+    if (ticket != null) return ticket
+  }
+  return null
+}
+
+function directionOf(row: Record<string, unknown>): boolean | null {
+  const operation = rawOrderOperation(row).replace(/\s+/g, '')
+  if (operation.includes('buy')) return true
+  if (operation.includes('sell')) return false
+  const kind = rawNumericOrderKind(row)
+  if (kind === 0) return true
+  if (kind === 1) return false
+  // MTAPI bridge rows spell the side as a word, so attribute matching can
+  // still confirm direction when the stored ticket did not line up.
+  const side = `${String(row.orderType ?? '')} ${String(row.dealType ?? '')} ${String(row.type ?? '')}`
+    .toLowerCase()
+  if (side.includes('buy')) return true
+  if (side.includes('sell')) return false
+  return null
+}
+
+function parseLivePosition(raw: unknown): ParsedLivePosition | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const row = raw as Record<string, unknown>
+  if (!isLikelyMarketPositionRow(row)) return null
+
+  const legacyTicket = firstTicket(row, ['ticket', 'Ticket'])
+  const orderTicket = firstTicket(row, [
+    'orderTicket', 'OrderTicket', 'order_id', 'orderId', 'OrderId', 'OrderID', 'order', 'Order',
+  ])
+  const dealTicket = firstTicket(row, [
+    'dealTicket', 'DealTicket', 'deal_id', 'dealId', 'DealId', 'DealID', 'deal', 'Deal',
+    'dealInternalIn', 'DealInternalIn', 'dealInternalOut', 'DealInternalOut',
+  ])
+  const positionTicket = firstTicket(row, [
+    'positionTicket', 'PositionTicket', 'position_ticket', 'positionId', 'PositionId', 'PositionID',
+    'position', 'Position', 'dealInternalIn', 'DealInternalIn',
+  ])
+  const canonicalTicket = positionTicket ?? legacyTicket ?? orderTicket
+  if (canonicalTicket == null) return null
+
+  const identities = new Set<number>([canonicalTicket])
+  for (const ticket of [legacyTicket, orderTicket, dealTicket, positionTicket]) {
+    if (ticket != null) identities.add(ticket)
+  }
+
+  const lots = positiveNumber(row.lots ?? row.Lots ?? row.volume ?? row.Volume ?? row.lotSize)
+  const entryPrice = positiveNumber(
+    row.openPrice ?? row.OpenPrice ?? row.priceOpen ?? row.PriceOpen ?? row.price ?? row.Price,
+  )
+  return {
+    row,
+    canonicalTicket,
+    identities,
+    symbol: String(row.symbol ?? row.Symbol ?? '').trim(),
+    isBuy: directionOf(row),
+    lots,
+    entryPrice,
+  }
+}
+
+function closeEnough(left: number, right: number, floor: number, ratio: number): boolean {
+  return Math.abs(left - right) <= Math.max(floor, Math.abs(right) * ratio)
+}
+
+export function resolveCanonicalOpenPosition(args: {
+  trade: LiveTradeIdentity
+  openedOrders: unknown[]
+  excludeTickets?: ReadonlySet<number>
+}): CanonicalPositionResolution {
+  const storedTicket = Number(args.trade.metaapi_order_id)
+  if (!Number.isFinite(storedTicket) || storedTicket <= 0) {
+    return { status: 'missing', storedTicket, reason: 'stored ticket is invalid' }
+  }
+
+  const positions = args.openedOrders
+    .map(parseLivePosition)
+    .filter((position): position is ParsedLivePosition => position != null)
+    .filter(position => !args.excludeTickets?.has(position.canonicalTicket))
+
+  const identityMatches = positions.filter(position => position.identities.has(storedTicket))
+  const distinctIdentityTickets = new Set(identityMatches.map(position => position.canonicalTicket))
+  if (distinctIdentityTickets.size === 1) {
+    const match = identityMatches[0]!
+    return {
+      status: 'resolved',
+      ticket: match.canonicalTicket,
+      storedTicket,
+      replacement: match.canonicalTicket !== storedTicket,
+      matchedBy: match.canonicalTicket === storedTicket ? 'canonical_ticket' : 'explicit_relationship',
+      row: match.row,
+    }
+  }
+  if (distinctIdentityTickets.size > 1) {
+    return { status: 'ambiguous', storedTicket, reason: 'stored ticket maps to multiple live positions' }
+  }
+
+  const expectedSymbol = String(args.trade.symbol ?? '').trim()
+  const direction = String(args.trade.direction ?? '').trim().toLowerCase()
+  const expectedIsBuy = direction === 'buy' ? true : direction === 'sell' ? false : null
+  const expectedLots = positiveNumber(args.trade.lot_size)
+  const expectedEntry = positiveNumber(args.trade.entry_price)
+  if (!expectedSymbol || expectedIsBuy == null || (expectedLots == null && expectedEntry == null)) {
+    return { status: 'missing', storedTicket, reason: 'no explicit relationship and insufficient attributes' }
+  }
+
+  const attributeMatches = positions.filter(position => {
+    if (!position.symbol || !symbolsCompatibleForBasket(expectedSymbol, position.symbol)) return false
+    if (position.isBuy !== expectedIsBuy) return false
+    if (expectedLots != null && (position.lots == null || !closeEnough(position.lots, expectedLots, 0.001, 0.05))) {
+      return false
+    }
+    if (
+      expectedEntry != null
+      && (position.entryPrice == null || !closeEnough(position.entryPrice, expectedEntry, expectedEntry * 0.00001, 0.002))
+    ) return false
+    return true
+  })
+
+  const distinctAttributeTickets = new Set(attributeMatches.map(position => position.canonicalTicket))
+  if (distinctAttributeTickets.size !== 1) {
+    return {
+      status: distinctAttributeTickets.size > 1 ? 'ambiguous' : 'missing',
+      storedTicket,
+      reason: distinctAttributeTickets.size > 1
+        ? 'attributes match multiple live positions'
+        : 'stored ticket has no live position match',
+    }
+  }
+  const match = attributeMatches[0]!
+  return {
+    status: 'resolved',
+    ticket: match.canonicalTicket,
+    storedTicket,
+    replacement: match.canonicalTicket !== storedTicket,
+    matchedBy: 'attributes',
+    row: match.row,
+  }
+}
+
+export async function persistCanonicalPositionTicket(
+  supabase: SupabaseClient,
+  trade: LiveTradeIdentity,
+  resolution: CanonicalPositionResolution,
+): Promise<boolean> {
+  if (resolution.status !== 'resolved' || !resolution.replacement) return resolution.status === 'resolved'
+  const { data, error } = await supabase
+    .from('trades')
+    .update({ metaapi_order_id: String(resolution.ticket) })
+    .eq('id', trade.id)
+    .eq('status', 'open')
+    .eq('metaapi_order_id', String(resolution.storedTicket))
+    .select('id')
+    .maybeSingle()
+  return !error && data?.id === trade.id
+}
+
+export async function resolveCurrentLivePosition(args: {
+  supabase: SupabaseClient
+  api: FxsocketBrokerClient
+  sessionId: string
+  trade: LiveTradeIdentity
+  openedOrders?: unknown[]
+  excludeTickets?: ReadonlySet<number>
+}): Promise<CanonicalPositionResolution> {
+  const openedOrders = args.openedOrders ?? await args.api.openedOrders(args.sessionId)
+  if (!Array.isArray(openedOrders)) {
+    return {
+      status: 'ambiguous',
+      storedTicket: Number(args.trade.metaapi_order_id),
+      reason: 'OpenedOrders response is not a complete list',
+    }
+  }
+  const resolution = resolveCanonicalOpenPosition({
+    trade: args.trade,
+    openedOrders,
+    excludeTickets: args.excludeTickets,
+  })
+  if (resolution.status === 'resolved' && resolution.replacement) {
+    const persisted = await persistCanonicalPositionTicket(args.supabase, args.trade, resolution)
+    if (!persisted) {
+      return {
+        status: 'ambiguous',
+        storedTicket: resolution.storedTicket,
+        reason: 'canonical replacement lost persistence authority',
+      }
+    }
+  }
+  return resolution
+}

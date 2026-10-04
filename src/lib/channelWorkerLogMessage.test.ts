@@ -530,7 +530,7 @@ test('channelWorkerLogMessage: HTTP 500 with symbol shows mapping guidance', () 
   )
 })
 
-test('channelWorkerLogMessage: Symbol not found uses mapping guidance', () => {
+test('channelWorkerLogMessage: Symbol not found surfaces the instrument-unavailable copy', () => {
   const message = channelWorkerLogMessage(
     {
       action: 'order_send',
@@ -548,8 +548,11 @@ test('channelWorkerLogMessage: Symbol not found uses mapping guidance', () => {
     channelWorkerEn,
     { 'ch-1': 'Gold Trader Mo' },
   )
-  assert.ok(message?.includes('XAUUSD'))
-  assert.ok(message?.includes('Broker symbol not found') || message?.includes('symbol mapping') || message?.includes('custom symbol'))
+  assert.ok(message?.includes('XAUUSD'), `expected the symbol in the message, got: ${message}`)
+  assert.ok(
+    message?.includes('Instrument not available'),
+    `expected the instrument-unavailable copy from tradeFailureDisplay, got: ${message}`,
+  )
 })
 
 test('channelWorkerLogMessage: structured missing SL reason uses central friendly copy', () => {

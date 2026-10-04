@@ -1297,6 +1297,14 @@ function parseChannelParameterFollowUp(
   }
 }
 
+/**
+ * Maximum ratio of an inferred (unlabelled) stop/target price to the entry price.
+ * Real stops/targets sit within a few percent of entry; this only exists to reject
+ * identity numbers (order ids) that leak into price extraction. Applied as an upper
+ * bound only, so deep-but-legitimate stops are never dropped.
+ */
+const INFERRED_PRICE_MAX_ENTRY_RATIO = 10
+
 function applyDirectionalPriceInference(
   parsed: ChannelParsedSignal,
   rawMessage: string,
@@ -1317,10 +1325,19 @@ function applyDirectionalPriceInference(
   )
   if (!bare.length) return parsed
 
+  // A bare price is only a plausible stop/target when it is not far above the entry.
+  // `filterPlausibleInstrumentPrices` has a floor but no ceiling, so an order id or
+  // other large unlabelled number could otherwise be classified as a price.
+  const entryRef = entryReferenceFromParsed(parsed)
+  const bounded = entryRef != null && entryRef > 0
+    ? bare.filter(p => p <= entryRef * INFERRED_PRICE_MAX_ENTRY_RATIO)
+    : bare
+  if (!bounded.length) return parsed
+
   const classified = classifyPricesByDirection(
     action as TradeDirection,
-    entryReferenceFromParsed(parsed),
-    bare,
+    entryRef,
+    bounded,
   )
 
   return {
@@ -1639,8 +1656,27 @@ function applyExplicitEntryOrderType(parsed: ChannelParsedSignal, rawMessage: st
   const action = String(parsed.action ?? '').toLowerCase()
   if (action !== 'buy' && action !== 'sell') return parsed
   const match = rawMessage.match(/\b(?:buy|sell)\s+(stop|limit)\b/i)
-  const entry_order_type: EntryOrderType | null = match ? match[1]!.toLowerCase() as EntryOrderType : null
-  return { ...parsed, entry_order_type }
+  let entry_order_type: EntryOrderType | null = match ? match[1]!.toLowerCase() as EntryOrderType : null
+  let entry_price = parsed.entry_price
+  // "Pending LIMIT (informational only) @ 4272.35": route as a broker limit at
+  // the level instead of treating the bias price as an immediate market entry.
+  const pending = rawMessage.match(/\bpending\s+(buy|sell)?\s*limit(?:\s+order)?\b[^@\n]*@\s*([0-9][0-9.,]*)/i)
+  if (pending && entry_order_type !== 'stop') {
+    const pendingSide = pending[1]?.toLowerCase() ?? null
+    const level = parsePendingLevelToken(pending[2]!)
+    if ((pendingSide == null || pendingSide === action) && level != null && level > 0) {
+      entry_order_type = 'limit'
+      entry_price = level
+    }
+  }
+  return { ...parsed, entry_order_type, entry_price }
+}
+
+/** Accept plain decimals and thousands-grouped levels; reject ambiguous tokens. */
+function parsePendingLevelToken(token: string): number | null {
+  if (/^\d+(?:\.\d+)?$/.test(token)) return Number(token)
+  if (/^\d{1,3}(?:,\d{3})+(?:\.\d+)?$/.test(token)) return Number(token.replace(/,/g, ''))
+  return null
 }
 
 function applyStopUnits(

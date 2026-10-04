@@ -406,6 +406,9 @@ export const es: Translations = {
     noResults: 'Sin resultados',
     show: 'Mostrar',
     results: 'resultados',
+    brokerFeedDegraded: 'No podemos conectar con la infraestructura de tu bróker.',
+    brokerFeedDegradedHint:
+      'Mostramos tus operaciones guardadas; las posiciones y los beneficios en vivo pueden estar retrasados y es posible que las nuevas operaciones no se copíen hasta que se restablezca.',
     cookieConsent: {
       message: 'Usamos cookies para mejorar tu experiencia.',
       policyLink: 'Política de cookies',
@@ -567,6 +570,20 @@ export const es: Translations = {
       reconnectPasswordTitle: 'Sesión del broker expirada',
       reconnectPasswordBody:
         'La sesión del broker expiró en el servidor de trading. Introduce la contraseña de tu cuenta MT para reconectar.',
+      reconnectMigrationTitle: 'Hemos actualizado la forma en que TScopier se conecta a tu bróker',
+      reconnectMigrationBody: 'Vuelve a conectar esta cuenta para seguir copiando operaciones. Tus ajustes, el historial y las operaciones abiertas no cambian.',
+      reconnectMigrationPasswordTitle: 'Introduce tu contraseña para reconectar',
+      reconnectMigrationPasswordBody: 'Tu número de cuenta y servidor ya están rellenados. La contraseña se guarda cifrada y solo se usa para conectarse a tu bróker.',
+      reconnectMigrationBack: 'Atrás',
+      reconnectManyAccountsHint:
+        '{count} cuentas necesitan reconectarse. Se te pedirá la contraseña una vez por cada una.',
+      reconnectConnectingTitle: 'Conectando tu cuenta',
+      reconnectConnectingBody:
+        'Acceso aceptado. Esperando al puente del bróker — puede tardar un momento.',
+      reconnectSuccessTitle: 'Cuenta conectada',
+      reconnectSuccessBody: 'Conectado. La copia de operaciones se reanuda automáticamente.',
+      reconnectSuccessNext: 'Siguiente cuenta',
+      reconnectSuccessDone: 'Listo',
       reconnectPasswordLabel: 'Contraseña de la cuenta MT',
       reconnectPasswordHint: 'Se envía solo a servidores MT. Activa recordar abajo para guardarla cifrada y reconectar automáticamente.',
       reconnectPasswordPlaceholder: 'Contraseña de la cuenta de trading',

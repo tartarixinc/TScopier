@@ -237,6 +237,9 @@ export const chromeAr: AppChromeTranslations = {
     noResults: 'لا نتائج',
     show: 'عرض',
     results: 'نتائج',
+    brokerFeedDegraded: 'تعذّر الوصول إلى بنية منصّة الوساطة الخاصة بك.',
+    brokerFeedDegradedHint:
+      'نعرض سجلّات صفقاتك المحفوظة؛ قد تتأخّر المراكز والأرباح المباشرة، وقد لا تُنسخ الصفقات الجديدة حتى عودة الخدمة.',
     cookieConsent: {
       message: 'نستخدم ملفات تعريف الارتباط لتحسين تجربتك.',
       policyLink: 'سياسة ملفات تعريف الارتباط',

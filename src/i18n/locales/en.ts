@@ -403,6 +403,9 @@ broker: {
     noResults: 'No results',
     show: 'Show',
     results: 'results',
+    brokerFeedDegraded: 'We’re having trouble reaching your broker’s infrastructure.',
+    brokerFeedDegradedHint:
+      'Showing your saved trade records; live positions and profit may be delayed, and new trades may not copy until it recovers.',
     cookieConsent: {
       message: 'We use cookies to improve user experience.',
       policyLink: 'Cookie Policy',
@@ -564,6 +567,20 @@ broker: {
       reconnectPasswordTitle: 'Broker session expired',
       reconnectPasswordBody:
         'Your broker session expired on the trade server. Enter your MT account password to reconnect.',
+      reconnectMigrationTitle: 'We have updated how TScopier connects to your broker',
+      reconnectMigrationBody: 'Reconnect this account to keep copying trades. Your settings, trade history and open trades are unchanged.',
+      reconnectMigrationPasswordTitle: 'Enter your password to reconnect',
+      reconnectMigrationPasswordBody: 'Your account number and server are already filled in. The password is stored encrypted and only used to connect to your broker.',
+      reconnectMigrationBack: 'Back',
+      reconnectManyAccountsHint:
+        '{count} accounts need reconnecting. You will be asked for the password once for each one.',
+      reconnectConnectingTitle: 'Connecting your account',
+      reconnectConnectingBody:
+        'Sign-in accepted. Waiting for the broker bridge — this can take a moment.',
+      reconnectSuccessTitle: 'Account connected',
+      reconnectSuccessBody: 'Connected. Copying resumes automatically.',
+      reconnectSuccessNext: 'Next account',
+      reconnectSuccessDone: 'Done',
       reconnectPasswordLabel: 'MT account password',
       reconnectPasswordHint: 'Sent to MT servers only. Enable remember below to store it encrypted for automatic reconnect.',
       reconnectPasswordPlaceholder: 'Trading account password',

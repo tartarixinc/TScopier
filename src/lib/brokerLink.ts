@@ -70,9 +70,9 @@ export function isBrokerCopyEnabledForUi(
 
 /** Session-linked broker — use for metrics, streams, and connected counts. */
 export function isFxsocketLinkedBroker(
-  account: Pick<{ fxsocket_account_id?: string | null }, 'fxsocket_account_id'>,
+  account: Pick<ProviderAwareAccount, 'provider' | 'fxsocket_account_id'>,
 ): boolean {
-  return hasFxsocketBrokerSession(account)
+  return resolveProvider(account) === 'fxsocket' && hasFxsocketBrokerSession(account)
 }
 
 /** @deprecated Use isFxsocketSessionUuid */

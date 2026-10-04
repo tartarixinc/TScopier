@@ -3,6 +3,11 @@ import type { FxsocketBrokerClient } from './fxsocketClient'
 import type { BrokerProvider, BrokerProviderName } from './brokerProvider'
 import { createFxsocketProvider, type FxsocketProvider } from './fxsocketProvider'
 import { getMtapiProvider, type MtapiProvider } from './mtapiProvider'
+import {
+  type BrokerWriteAuthority,
+  brokerWriteAuthorityStoreRegistered,
+  withBrokerWriteAuthority,
+} from './brokerWriteAuthority'
 
 export type ResolvedBrokerProvider = BrokerProvider & FxsocketBrokerClient
 
@@ -22,16 +27,38 @@ function resolveMtapiProvider(): MtapiProvider | null {
 export function apiForBrokerAccount(
   provider: BrokerProviderName | string | null | undefined,
   sessionId: string | null | undefined,
+  authority?: BrokerWriteAuthority | null,
 ): ResolvedBrokerProvider | null {
   const id = String(sessionId ?? '').trim()
   if (!id || id.includes('|')) return null
 
   const value = provider == null || provider === '' ? 'fxsocket' : provider
-  if (value === 'fxsocket') return getFxsocketProvider() as ResolvedBrokerProvider | null
+  let resolved: ResolvedBrokerProvider | null = null
+  if (value === 'fxsocket') resolved = getFxsocketProvider() as ResolvedBrokerProvider | null
   if (value === 'mtapi') {
-    return resolveMtapiProvider() as unknown as ResolvedBrokerProvider | null
+    resolved = resolveMtapiProvider() as unknown as ResolvedBrokerProvider | null
   }
-  return null
+  if (!resolved) return null
+  if (!brokerWriteAuthorityStoreRegistered()) return resolved
+
+  const guardedMethods = new Set(['orderSend', 'orderModify', 'orderClose'])
+  return new Proxy(resolved, {
+    get(target, prop, receiver) {
+      const member = Reflect.get(target, prop, receiver)
+      if (typeof member !== 'function') return member
+      if (!guardedMethods.has(String(prop))) return member.bind(target)
+      return (callSessionId: string, ...args: unknown[]) => {
+        if (authority && callSessionId !== authority.sessionId) {
+          throw new Error('BROKER_WRITE_FENCE_REJECTED')
+        }
+        return withBrokerWriteAuthority(
+          authority,
+          String(prop),
+          () => member.call(target, callSessionId, ...args),
+        )
+      }
+    },
+  })
 }
 
 /** Null/absent is the legacy FXSocket default; every other invalid value closes. */

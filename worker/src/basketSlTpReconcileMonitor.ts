@@ -1,5 +1,4 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { hasFxsocketConfigured } from './fxsocketClient'
 import { apiForFxsocketAccount, loadPlatformByFxsocketId, type PlatformByFxsocketId } from './mtApiByAccount'
 import {
   closeStaleOpenTrades,
@@ -95,10 +94,6 @@ export class BasketSlTpReconcileMonitor {
 
   start() {
     if (this.loop) return
-    if (!hasFxsocketConfigured()) {
-      console.warn('[basketSlTpReconcileMonitor] MT4API_BASIC_USER/PASSWORD missing — disabled')
-      return
-    }
     this.loop = startMonitorLoop({
       name: 'basketSlTpReconcileMonitor',
       supabase: this.supabase,

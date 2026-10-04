@@ -27,6 +27,7 @@ import {
   loadUserSubscription,
 } from "../_shared/subscriptionAccess.ts"
 import { effectiveAccountSummaryBalance } from "../_shared/effectiveBrokerBalance.ts"
+import { withBrokerWriteLease } from "../_shared/brokerWriteLease.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -325,6 +326,7 @@ Deno.serve(async (req: Request) => {
 
       const row = await loadOwnedBrokerRow(supabase, userId, accountRowId)
       const login = String(row.account_login ?? "").trim()
+      return await withBrokerWriteLease(supabase, row, "fxsocket_reconnect", async () => {
       const server = String(body.server ?? row.broker_server ?? "").trim()
       if (!login) return bad(400, "Broker login is missing — delete and connect again.")
       if (!server) return bad(400, "Broker server is missing — delete and connect again.")
@@ -392,6 +394,7 @@ Deno.serve(async (req: Request) => {
         { ok: true, account: stripSecrets(updated as Record<string, unknown>), pending: true },
         { headers: corsHeaders },
       )
+      })
     }
 
     if (action === "refresh_summary") {

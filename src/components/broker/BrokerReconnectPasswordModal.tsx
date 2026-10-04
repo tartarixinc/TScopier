@@ -1,7 +1,8 @@
-import { memo, useEffect, useRef, useState, type FormEvent } from 'react'
+import { memo, useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { AlertTriangle, RefreshCw, X } from 'lucide-react'
+import { CheckCircle2, Loader2, AlertTriangle, RefreshCw, X } from 'lucide-react'
 import type { BrokerAccount } from '../../types/database'
+import type { ReconnectDialogStage } from '../../lib/migrationPrompt'
 import { useOverlayDismiss } from '../../hooks/useOverlayDismiss'
 import { PasswordInput } from '../auth/PasswordInput'
 import { Button } from '../ui/Button'
@@ -24,28 +25,76 @@ export interface BrokerReconnectPasswordModalCopy {
   detailServer: string
   reconnect: string
   cancel: string
+  back?: string
+  /** Shown under the body when several accounts are queued — tells the customer they will be asked for each one. */
+  hint?: string
+  /** Stage `success`: the action button — "Next account" or "Done". */
+  successAction?: string
 }
 
 interface BrokerReconnectPasswordModalProps {
   open: boolean
   broker: BrokerAccount | null
+  /**
+   * The caller owns the stage because it also owns which prompt (migration,
+   * session-expiry, in-flight attempt, success confirmation) is showing.
+   * See `ReconnectDialogStage` in `src/lib/migrationPrompt.ts`.
+   */
+  stage: ReconnectDialogStage
   copy: BrokerReconnectPasswordModalCopy
   onSubmit: (payload: { password: string; rememberPassword: boolean }) => void
   onCancel: () => void
+  /** Stage 1 → stage 2. Starts the reconnect that ends in the password prompt. */
+  onContinue?: () => void
+  /** Stage 2 → stage 1 (only when the caller offers it). */
+  onBack?: () => void
+  /** Last reconnect failure, shown in the dialog when the page has no toast. */
+  error?: string | null
+  /**
+   * When false the dialog cannot be dismissed at all: no close button, no
+   * Escape, no backdrop click, no Cancel — it stays until the account is
+   * resolved. The automatic migration prompt passes false; a dialog the
+   * customer opened themselves stays closable. Dismissal is always refused
+   * on the `connecting` stage regardless of this prop.
+   */
+  dismissible?: boolean
 }
 
 function BrokerReconnectPasswordModalInner({
   open,
   broker,
+  stage,
   copy,
   onSubmit,
   onCancel,
+  onContinue,
+  onBack,
+  error,
+  dismissible = true,
 }: BrokerReconnectPasswordModalProps) {
   const [password, setPassword] = useState('')
   const overlayRef = useRef<HTMLDivElement>(null)
   const backdropRef = useRef<HTMLDivElement>(null)
   const scrollLockRef = useRef<string | null>(null)
-  const { onOverlayMouseDown, onOverlayClick } = useOverlayDismiss(overlayRef, backdropRef, onCancel)
+  const ignoreDismiss = useCallback(() => {}, [])
+  // The effects below need the latest cancel handler without re-running when
+  // the caller recreates it (health polling would steal focus on every poll).
+  const onCancelRef = useRef(onCancel)
+  useEffect(() => {
+    onCancelRef.current = onCancel
+  })
+  const stableCancel = useCallback(() => {
+    onCancelRef.current()
+  }, [])
+  // The dialog itself refuses dismissal while the bridge is working: an X or
+  // Escape that does nothing is worse than no X at all. This holds even if a
+  // caller passes stage='connecting' with dismissible=true.
+  const canDismiss = dismissible && stage !== 'connecting'
+  const { onOverlayMouseDown, onOverlayClick } = useOverlayDismiss(
+    overlayRef,
+    backdropRef,
+    canDismiss ? stableCancel : ignoreDismiss,
+  )
 
   useEffect(() => {
     if (!open) {
@@ -53,17 +102,20 @@ function BrokerReconnectPasswordModalInner({
       return
     }
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel()
+      if (e.key === 'Escape' && canDismiss) onCancelRef.current()
     }
     document.addEventListener('keydown', handleKey)
     const focusTimer = window.setTimeout(() => {
-      document.getElementById('broker-reconnect-password')?.focus()
+      const target = stage === 'password'
+        ? document.getElementById('broker-reconnect-password')
+        : document.getElementById('broker-reconnect-dialog')
+      target?.focus()
     }, 50)
     return () => {
       document.removeEventListener('keydown', handleKey)
       window.clearTimeout(focusTimer)
     }
-  }, [open, onCancel])
+  }, [open, stage, canDismiss])
 
   useEffect(() => {
     if (!open) {
@@ -84,6 +136,18 @@ function BrokerReconnectPasswordModalInner({
   if (!open || !broker) return null
 
   const logo = platformLogo(broker.platform)
+  const headerIcon =
+    stage === 'connecting' ? (
+      <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+    ) : stage === 'success' ? (
+      <CheckCircle2 className="h-5 w-5" aria-hidden />
+    ) : (
+      <AlertTriangle className="h-5 w-5" aria-hidden />
+    )
+  const headerTint =
+    stage === 'success'
+      ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400'
+      : 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400'
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
@@ -102,17 +166,26 @@ function BrokerReconnectPasswordModalInner({
       <div ref={backdropRef} className="absolute inset-0 bg-neutral-950/55" aria-hidden />
 
       <div
+        id="broker-reconnect-dialog"
         role="dialog"
         aria-modal="true"
+        tabIndex={-1}
         aria-labelledby="broker-reconnect-password-title"
         className="relative w-full max-w-md rounded-2xl bg-white dark:bg-neutral-900 shadow-2xl border border-neutral-200 dark:border-neutral-800 animate-modal-in overflow-hidden"
       >
         <div className="px-5 pt-5 pb-4 border-b border-neutral-100 dark:border-neutral-800">
           <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400">
-              <AlertTriangle className="h-5 w-5" aria-hidden />
+            <div
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${headerTint}`}
+            >
+              {headerIcon}
             </div>
-            <div className="min-w-0 flex-1">
+            <div
+              className="min-w-0 flex-1"
+              {...(stage === 'connecting' || stage === 'success'
+                ? { role: 'status' as const }
+                : {})}
+            >
               <h2
                 id="broker-reconnect-password-title"
                 className="text-base font-semibold text-neutral-900 dark:text-neutral-50"
@@ -122,15 +195,22 @@ function BrokerReconnectPasswordModalInner({
               <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed">
                 {copy.body}
               </p>
+              {copy.hint && (
+                <p className="mt-2 text-xs font-medium text-neutral-600 dark:text-neutral-300 leading-relaxed">
+                  {copy.hint}
+                </p>
+              )}
             </div>
-            <button
-              type="button"
-              onClick={onCancel}
-              aria-label={copy.cancel}
-              className="shrink-0 rounded-lg p-2 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
-            >
-              <X className="h-4 w-4" />
-            </button>
+            {canDismiss && (
+              <button
+                type="button"
+                onClick={onCancel}
+                aria-label={copy.cancel}
+                className="shrink-0 rounded-lg p-2 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -158,28 +238,75 @@ function BrokerReconnectPasswordModalInner({
             </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <PasswordInput
-              id="broker-reconnect-password"
-              label={copy.passwordLabel}
-              placeholder={copy.passwordPlaceholder}
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              hint={copy.passwordHint}
-              autoComplete="current-password"
-              required
-            />
+          {error && (
+            <div
+              role="alert"
+              className="mb-4 rounded-lg border border-error-200 bg-error-50 px-3 py-2 text-sm text-error-700 dark:border-error-900/60 dark:bg-error-950/40 dark:text-error-300"
+            >
+              {error}
+            </div>
+          )}
 
+          {stage === 'details' && (
             <div className="flex justify-end gap-2 pt-1">
-              <Button type="button" variant="ghost" onClick={onCancel}>
-                {copy.cancel}
-              </Button>
-              <Button type="submit" disabled={!password.trim()}>
+              {canDismiss && (
+                <Button type="button" variant="ghost" onClick={onCancel}>
+                  {copy.cancel}
+                </Button>
+              )}
+              <Button type="button" onClick={onContinue}>
                 <RefreshCw className="h-4 w-4" />
                 {copy.reconnect}
               </Button>
             </div>
-          </form>
+          )}
+
+          {stage === 'password' && (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <PasswordInput
+                id="broker-reconnect-password"
+                label={copy.passwordLabel}
+                placeholder={copy.passwordPlaceholder}
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                hint={copy.passwordHint}
+                autoComplete="current-password"
+                required
+              />
+
+              <div className="flex items-center justify-between gap-2 pt-1">
+                <div>
+                  {onBack && (
+                    <Button type="button" variant="ghost" onClick={onBack}>
+                      {copy.back ?? copy.cancel}
+                    </Button>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  {canDismiss && (
+                    <Button type="button" variant="ghost" onClick={onCancel}>
+                      {copy.cancel}
+                    </Button>
+                  )}
+                  <Button type="submit" disabled={!password.trim()}>
+                    <RefreshCw className="h-4 w-4" />
+                    {copy.reconnect}
+                  </Button>
+                </div>
+              </div>
+            </form>
+          )}
+
+          {/* `connecting` has no footer: the header spinner and body text
+              carry the waiting state — a second copy of the same sentence
+              below would just print it twice. */}
+          {stage === 'success' && (
+            <div className="flex justify-end pt-1">
+              <Button type="button" onClick={onContinue}>
+                {copy.successAction ?? copy.reconnect}
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     </div>

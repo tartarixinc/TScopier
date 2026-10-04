@@ -27,6 +27,7 @@ import type { MtHistoryProfile } from "../_shared/mtTradeFields.ts"
 import { effectiveAccountSummaryBalance } from "../_shared/effectiveBrokerBalance.ts"
 import { resolvePerformanceBaselineBalance } from "../_shared/performanceBaseline.ts"
 
+import { withBrokerWriteLease } from "../_shared/brokerWriteLease.ts"
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
@@ -235,6 +236,8 @@ Deno.serve(async (req: Request) => {
               .eq("id", args.brokerAccountId)
               .eq("user_id", args.userId)
               .eq("provider", "fxsocket")
+              .eq("provider_transition_state", "stable")
+              .eq("writer_epoch", args.expectedWriterEpoch)
             update = args.expectedSessionId
               ? update.eq("mtapi_session_id", args.expectedSessionId)
               : update.is("mtapi_session_id", null)
@@ -429,6 +432,7 @@ Deno.serve(async (req: Request) => {
       if (!login) return bad(400, "Broker login is missing — delete and connect again.")
       if (!server) return bad(400, "Broker server is missing — delete and connect again.")
       const encryptedPassword = await encryptMtPasswordRequired(password, Deno.env)
+      return await withBrokerWriteLease(supabase, row, "mtapi_reconnect", async () => {
 
       const { data: updated, error: updErr } = await supabase
         .from("broker_accounts")
@@ -451,6 +455,7 @@ Deno.serve(async (req: Request) => {
         { ok: true, account: stripSecrets(updated as Record<string, unknown>), pending: true },
         { headers: corsHeaders },
       )
+      })
     }
 
     // ── broker_status ────────────────────────────────────────

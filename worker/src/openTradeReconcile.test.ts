@@ -75,4 +75,37 @@ describe('reconcileOpenTradesForBroker', () => {
     assert.equal(closed, 0)
     assert.equal(updates.length, 0)
   })
+
+
+  it('does not falsely close after one non-empty identity-mismatch snapshot', async () => {
+    let openedCalls = 0
+    const api = {
+      openedOrders: async () => {
+        openedCalls += 1
+        if (openedCalls === 1) return [{ ticket: 999, type: 0, symbol: 'GBPUSD' }]
+        return [{ ticket: 100, type: 0, symbol: 'EURUSD', lots: 0.1, openPrice: 1.1 }]
+      },
+    }
+    const supabase = {
+      from() {
+        throw new Error('DB must not be mutated when the second snapshot restores identity')
+      },
+    }
+    const closed = await reconcileOpenTradesForBroker(
+      supabase as never,
+      api as never,
+      'acct',
+      [{
+        id: 'a',
+        broker_account_id: 'b1',
+        metaapi_order_id: '100',
+        symbol: 'EURUSD',
+        direction: 'buy',
+        lot_size: 0.1,
+        entry_price: 1.1,
+      }],
+    )
+    assert.equal(closed, 0)
+    assert.equal(openedCalls, 2)
+  })
 })

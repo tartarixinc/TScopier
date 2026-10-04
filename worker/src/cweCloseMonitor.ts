@@ -1,6 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { hasFxsocketConfigured, type FxsocketBrokerClient } from './fxsocketClient'
-import { apiForFxsocketAccount, brokerSessionId, loadPlatformByFxsocketId } from './mtApiByAccount'
+import { type FxsocketBrokerClient } from './fxsocketClient'
+import {
+  brokerRuntimeForAccount,
+  loadBrokerApiByAccountId,
+} from './mtApiByAccount'
+import { closeWithVerification } from './managementClose'
+import { resolveCurrentLivePosition } from './livePositionIdentity'
 import {
   applyShardToQuery,
   hasWorkOnShard,
@@ -33,12 +38,11 @@ import { isUserCopierPausedCached } from './copierPause'
  *   buy  → close when bid  >= cwe_close_price   (long basket reached +X pips profit)
  *   sell → close when ask  <= cwe_close_price   (short basket reached +X pips profit)
  *
- * Failure handling: a /OrderClose that returns "trade not found" / "already
- * closed" is treated as success — the trade is updated to status='closed'
- * and cwe_close_price is cleared. Any other error leaves the row in place
- * for the next tick to retry. We never throw out of the tick loop.
+ * Failure handling: no broker error text is proof of closure. Unconfirmed or
+ * ambiguous closes restore the watch for a later canonical reconciliation.
  *
  * Cadence: 1.5s, same as VirtualPendingMonitor. Cheap because the partial
+  entry_price: number | null
  * index `trades_cwe_open_idx` keeps the working set tiny — most signals
  * have no CWE basket, and the basket clears on first hit.
  */
@@ -53,13 +57,6 @@ interface CweTradeRow {
   direction: 'buy' | 'sell' | string
   lot_size: number | null
   cwe_close_price: number
-}
-
-interface BrokerRow {
-  id: string
-  fxsocket_account_id: string | null
-  metaapi_account_id: string | null
-  platform: string
 }
 
 const ACTIVE_MS = monitorActiveIntervalMs('CWE_CLOSE_TICK_MS', 400)
@@ -95,10 +92,6 @@ export class CweCloseMonitor {
 
   start() {
     if (this.loop) return
-    if (!hasFxsocketConfigured()) {
-      console.warn('[cweCloseMonitor] MT4API_BASIC_USER/PASSWORD missing — close-worse-entries monitor disabled')
-      return
-    }
     this.loop = startMonitorLoop({
       name: 'cweCloseMonitor',
       supabase: this.supabase,
@@ -132,8 +125,6 @@ export class CweCloseMonitor {
   }
 
   private async tick(): Promise<void> {
-    if (!hasFxsocketConfigured()) return
-
     // Pull every open trade that has a CWE close threshold pinned to it.
     // The partial index `trades_cwe_open_idx` makes this a constant-time
     // probe even with millions of historical trades on the table.
@@ -141,7 +132,7 @@ export class CweCloseMonitor {
       this.supabase,
       this.supabase
         .from('trades')
-        .select('id,user_id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,lot_size,cwe_close_price')
+        .select('id,user_id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,lot_size,entry_price,cwe_close_price')
         .eq('status', 'open')
         .not('cwe_close_price', 'is', null)
         .limit(500),
@@ -163,37 +154,17 @@ export class CweCloseMonitor {
       return
     }
 
-    // Resolve each broker_account_id once so we can call /Quote and
-    // /OrderClose by FxSocket terminal UUID. Trades that reference a deleted
-    // broker silently skip.
+    // Resolve current provider/session by durable broker row identity.
     const brokerIds = Array.from(new Set(rows.map(r => r.broker_account_id).filter((x): x is string => !!x)))
-    const brokerMap = new Map<string, string>() // broker_account_id -> fxsocket session id
-    if (brokerIds.length > 0) {
-      const { data: brokers, error: brokerErr } = await this.supabase
-        .from('broker_accounts')
-        .select('id,fxsocket_account_id,metaapi_account_id,platform')
-        .in('id', brokerIds)
-      if (brokerErr) {
-        console.error('[cweCloseMonitor] broker lookup failed:', brokerErr.message)
-        return
-      }
-      for (const b of (brokers ?? []) as BrokerRow[]) {
-        const sessionId = brokerSessionId(b)
-        if (sessionId) brokerMap.set(b.id, sessionId)
-      }
-    }
-    const platformByUuid = await loadPlatformByFxsocketId(
-      this.supabase,
-      Array.from(brokerMap.values()),
-    )
+    const runtimeByBroker = await loadBrokerApiByAccountId(this.supabase, brokerIds)
 
     // Group by (fxsocket session id, symbol) so we issue at most ONE /Quote per
     // group per tick. Same shape as virtualPendingMonitor for consistency.
     const groups = new Map<string, CweTradeRow[]>()
     for (const r of rows) {
-      const uuid = r.broker_account_id ? brokerMap.get(r.broker_account_id) : null
-      if (!uuid) continue
-      const key = `${uuid}|${r.symbol}`
+      const brokerId = r.broker_account_id ?? ''
+      if (!brokerRuntimeForAccount(runtimeByBroker, brokerId)) continue
+      const key = `${brokerId}|${r.symbol}`
       const list = groups.get(key) ?? []
       list.push(r)
       groups.set(key, list)
@@ -207,10 +178,11 @@ export class CweCloseMonitor {
     const distances: Array<{ symbol: string; bid: number; ask: number; gap: number; legs: number }> = []
 
     await Promise.all(Array.from(groups.entries()).map(async ([key, trades]) => {
-      const [uuid, symbol] = key.split('|')
-      if (!uuid || !symbol) return
-      const api = apiForFxsocketAccount(platformByUuid, uuid)
-      if (!api) return
+      const [brokerId, symbol] = key.split('|')
+      if (!brokerId || !symbol) return
+      const runtime = brokerRuntimeForAccount(runtimeByBroker, brokerId)
+      if (!runtime) return
+      const { api, sessionId: uuid } = runtime
       let q
       try {
         q = await api.quote(uuid, symbol)
@@ -305,16 +277,26 @@ export class CweCloseMonitor {
     const isBuy = String(trade.direction).toLowerCase() === 'buy'
     const refPrice = isBuy ? bid : ask
     try {
-      const result = await api.orderClose(uuid, {
-        ticket: ticketNum,
-        lots: trade.lot_size ?? 0,
-        // Leaving price=0 lets the broker fill at market — same behavior as
-        // a manual close from the terminal. We *report* refPrice in logs for
-        // diagnostics only.
+      const identity = await resolveCurrentLivePosition({
+        supabase: this.supabase,
+        api,
+        sessionId: uuid,
+        trade,
       })
+      if (identity.status !== 'resolved') {
+        throw new Error(`canonical position unresolved (${identity.status}:${identity.reason})`)
+      }
+      const effectiveTicket = identity.ticket
+      const result = await closeWithVerification(api, uuid, effectiveTicket, {
+        maxAttempts: 2,
+        liveFast: process.env.LIVE_FAST_CLOSE === 'true',
+      })
+      if (!result.confirmed) {
+        throw new Error(`close ambiguous; reconciliation required (${result.reason ?? 'unconfirmed'})`)
+      }
       const latencyMs = Date.now() - t0
       console.log(
-        `[cweCloseMonitor] closed signal=${trade.signal_id ?? 'n/a'} symbol=${trade.symbol} ticket=${ticketNum}`
+        `[cweCloseMonitor] closed signal=${trade.signal_id ?? 'n/a'} symbol=${trade.symbol} ticket=${effectiveTicket}`
         + ` threshold=${trade.cwe_close_price} ref=${refPrice} latency=${latencyMs}ms`,
       )
       await this.supabase
@@ -328,13 +310,13 @@ export class CweCloseMonitor {
         action: 'cwe_close',
         status: 'success',
         request_payload: {
-          ticket: ticketNum,
+          ticket: effectiveTicket,
           symbol: trade.symbol,
           direction: trade.direction,
           threshold: trade.cwe_close_price,
           ref_price: refPrice,
         } as unknown as Record<string, unknown>,
-        response_payload: { ticket: result.ticket, latency_ms: latencyMs },
+        response_payload: { ticket: result.ticket ?? effectiveTicket, latency_ms: latencyMs },
       })
       if (trade.signal_id && trade.broker_account_id) {
         await stopRangeLayeringUnlessEnabled(
@@ -351,32 +333,6 @@ export class CweCloseMonitor {
       return true
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      // "trade not found" / "position already closed" — treat as success,
-      // the trade is gone either way. Conservative match list so we never
-      // swallow a real error.
-      const benign = /not\s+found|already\s+closed|invalid\s+ticket|no\s+such\s+order|unknown\s+ticket/i.test(msg)
-      if (benign) {
-        console.log(
-          `[cweCloseMonitor] trade already gone signal=${trade.signal_id ?? 'n/a'} ticket=${ticketNum}: ${msg}`,
-        )
-        await this.supabase
-          .from('trades')
-          .update({ status: 'closed', closed_at: new Date().toISOString() })
-          .eq('id', trade.id)
-        if (trade.signal_id && trade.broker_account_id) {
-          await stopRangeLayeringUnlessEnabled(
-            this.supabase,
-            {
-              signalId: trade.signal_id,
-              brokerAccountId: trade.broker_account_id,
-              symbol: trade.symbol,
-              userId: trade.user_id,
-            },
-            'cwe_close_benign',
-          )
-        }
-        return true
-      }
       console.error(
         `[cweCloseMonitor] close failed signal=${trade.signal_id ?? 'n/a'} ticket=${ticketNum}: ${msg}`,
       )
