@@ -17,7 +17,6 @@ export interface BrokerReconnectPasswordModalCopy {
   title: string
   body: string
   passwordLabel: string
-  passwordHint?: string
   passwordPlaceholder: string
   /** "Remind me later" postpones this account until the next app load. */
   remindLater?: string

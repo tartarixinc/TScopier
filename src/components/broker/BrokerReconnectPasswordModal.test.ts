@@ -241,6 +241,20 @@ describe('BrokerReconnectPasswordModal — remind later and delete', () => {
     expect(onRemindLater).toHaveBeenCalledTimes(1)
   })
 
+  it('offers the escape hatches once on the password stage and not while connecting', () => {
+    render({ stage: 'password', copy: escapeCopy, onRemindLater: vi.fn(), onDeleteAccount: vi.fn() })
+    expect(document.body.textContent?.split('Remind me later').length - 1).toBe(1)
+    expect(document.body.textContent?.split("I can't reconnect").length - 1).toBe(1)
+    act(() => root?.unmount())
+    container?.remove()
+    document.body.innerHTML = ''
+    root = null
+    container = null
+    render({ stage: 'connecting', copy: escapeCopy, onRemindLater: vi.fn(), onDeleteAccount: vi.fn() })
+    expect(document.body.textContent).not.toContain('Remind me later')
+    expect(document.body.textContent).not.toContain("I can't reconnect")
+  })
+
   it('deletes only after the confirmation step', () => {
     const onDeleteAccount = vi.fn()
     render({ stage: 'details', copy: escapeCopy, onDeleteAccount })

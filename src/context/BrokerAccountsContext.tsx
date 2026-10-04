@@ -31,6 +31,7 @@ import {
   routeReconnectError,
   snoozedMigrationPromptIds,
   snoozeMigrationPrompt,
+  unsnoozeMigrationPrompt,
 } from '../lib/migrationPrompt'
 import { fxsocketBroker } from '../lib/fxsocketBroker'
 
@@ -180,7 +181,8 @@ export function BrokerAccountsProvider({
   // mid-connect `pending` row is not on it). Cleared on cancel and on success.
   const [reconnectAttemptId, setReconnectAttemptId] = useState<string | null>(null)
   // Accounts postponed with "Remind me later" — real state so the prompt
-  // re-picks immediately; the sessionStorage copy is only for the next load.
+  // re-picks immediately. The module-level snooze set is kept in step so a
+  // provider remount within this page load still sees the same set.
   const [snoozedIds, setSnoozedIds] = useState<ReadonlySet<string>>(() => snoozedMigrationPromptIds())
 
   const {
@@ -206,6 +208,7 @@ export function BrokerAccountsProvider({
       setReconnectSuccessId(brokerId)
       // A reconnected account no longer needs postponing — forget any snooze
       // so a future reconnect need prompts again immediately.
+      unsnoozeMigrationPrompt(brokerId)
       setSnoozedIds(prev => {
         if (!prev.has(brokerId)) return prev
         const next = new Set(prev)
@@ -322,6 +325,7 @@ export function BrokerAccountsProvider({
       return
     }
     removeBroker(active.id)
+    unsnoozeMigrationPrompt(active.id)
     setSnoozedIds(prev => {
       if (!prev.has(active.id)) return prev
       const next = new Set(prev)

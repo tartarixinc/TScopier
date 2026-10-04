@@ -122,6 +122,11 @@ export function snoozeMigrationPrompt(accountId: string): void {
   snoozedAccountIds.add(String(accountId))
 }
 
+/** Called when a snoozed account reconnects or is deleted, so a future need prompts again. */
+export function unsnoozeMigrationPrompt(accountId: string): void {
+  snoozedAccountIds.delete(String(accountId))
+}
+
 export function isMigrationPromptSnoozed(accountId: string): boolean {
   return snoozedAccountIds.has(String(accountId))
 }
