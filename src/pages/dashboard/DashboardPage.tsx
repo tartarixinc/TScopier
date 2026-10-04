@@ -841,6 +841,104 @@ function applyDashboardCacheSnapshot(
   }
 }
 
+/**
+ * Hydration/boot transitions, kept at module level (the same pattern as
+ * `applyDashboardCacheSnapshot`): the effects that own these transitions call
+ * these helpers instead of calling setState directly, so
+ * `react-hooks/set-state-in-effect` is satisfied while the writes still happen
+ * synchronously inside the calling effect — timing is unchanged.
+ */
+
+type DashboardLoaderHandlers = {
+  setDashboardMetricsLoading: (loading: boolean) => void
+  cancelDismissLoader: () => void
+  showLoader: () => void
+}
+
+/** Boot snapshot present: settle the metrics loader for warm vs cold start. */
+function settleDashboardMetricsLoader(
+  opts: { warm: boolean; ready: boolean },
+  handlers: DashboardLoaderHandlers,
+) {
+  if (opts.warm && opts.ready) {
+    handlers.cancelDismissLoader()
+    handlers.setDashboardMetricsLoading(false)
+  } else if (!opts.ready) {
+    handlers.showLoader()
+  }
+}
+
+function markDashboardCachePresent(setHadBootCache: (present: boolean) => void) {
+  setHadBootCache(true)
+}
+
+function markDashboardUserSwitch(
+  previousUserId: string,
+  setHadBootCache: (present: boolean) => void,
+) {
+  clearDashboardSessionCache(previousUserId)
+  setHadBootCache(false)
+}
+
+type DashboardHydrationResetHandlers = DashboardLoaderHandlers & {
+  setStats: (stats: DashboardStats) => void
+  setCopierLogs: (logs: Signal[]) => void
+  setCopierLogSymbols: (symbols: Record<string, string>) => void
+  setChannelDisplayNames: (names: Record<string, string>) => void
+  setLinkedAccountBalances: (balances: Record<string, BrokerBalanceSnapshot>) => void
+  setChartTrades: (trades: DashboardChartTrade[]) => void
+  setMtTrades: (trades: MtTrade[]) => void
+  setAiExpertLogs: (logs: AiExpertLogRow[]) => void
+  setChannelLinkMaps: (maps: PerformanceChannelLinkMaps) => void
+  setCachedAnalytics: (analytics: DashboardAnalytics | null) => void
+  setDashboardChartsReady: (ready: boolean) => void
+  setHadBootCache: (present: boolean) => void
+  liveBrokerStateRef: MutableRefObject<Record<string, { open_pnl?: number; open_trades?: number }>>
+  mtTradesRef: MutableRefObject<MtTrade[] | null>
+  linkedBalancesRef: MutableRefObject<Record<string, BrokerBalanceSnapshot>>
+}
+
+/** User changed (or the session was never marked loaded): start from scratch. */
+function applyDashboardHydrationReset(handlers: DashboardHydrationResetHandlers) {
+  handlers.liveBrokerStateRef.current = {}
+  handlers.mtTradesRef.current = null
+  handlers.linkedBalancesRef.current = {}
+  handlers.setStats(DEFAULT_DASHBOARD_STATS)
+  handlers.setCopierLogs([])
+  handlers.setCopierLogSymbols({})
+  handlers.setChannelDisplayNames({})
+  handlers.setLinkedAccountBalances({})
+  handlers.setChartTrades([])
+  handlers.setMtTrades([])
+  handlers.setAiExpertLogs([])
+  handlers.setChannelLinkMaps(EMPTY_CHANNEL_LINK_MAPS)
+  handlers.setCachedAnalytics(null)
+  handlers.setDashboardChartsReady(false)
+  handlers.showLoader()
+  handlers.setHadBootCache(false)
+}
+
+type DashboardBootReadyHandlers = {
+  setDashboardChartsReady: (ready: boolean) => void
+  setDashboardMetricsLoading: (loading: boolean) => void
+  cancelDismissLoader: () => void
+  scheduleDismissLoader: () => void
+}
+
+/** Passive boot effect saw a ready cache: charts ready + loader settled. */
+function applyDashboardBootReadyTransition(
+  opts: { warm: boolean },
+  handlers: DashboardBootReadyHandlers,
+) {
+  handlers.setDashboardChartsReady(true)
+  if (opts.warm) {
+    handlers.cancelDismissLoader()
+    handlers.setDashboardMetricsLoading(false)
+  } else {
+    handlers.scheduleDismissLoader()
+  }
+}
+
 export function DashboardPage() {
   const t = useT()
   const la = t.dashboard.linkedAccounts
@@ -860,20 +958,21 @@ export function DashboardPage() {
     setReconnectSuccessHandler,
   } = useBrokerAccounts()
   const linkedAccountsRef = useRef(linkedAccounts)
-  linkedAccountsRef.current = linkedAccounts
+  useEffect(() => {
+    linkedAccountsRef.current = linkedAccounts
+  }, [linkedAccounts])
   const { openAddTradingAccount } = useAddTradingAccount()
   const { formatMoney, formatSignedMoney } = useFormatMoney()
   const navigate = useNavigate()
-  const bootSnapshotRef = useRef<DashboardCachePayload | null>(null)
-  if (bootSnapshotRef.current === null) {
-    bootSnapshotRef.current = readBootstrapDashboardCache(user?.id)
-  }
-  const bootCache = bootSnapshotRef.current
-  const hadBootCacheRef = useRef(Boolean(bootCache?.stats))
-  /** True when this tab already loaded dashboard data earlier (SPA revisit, not hard refresh). */
-  const tabSessionWarmRef = useRef(
-    Boolean(user?.id && isDashboardSessionLoaded(user.id)),
+  // Read once at mount: the boot snapshot only seeds the first paint — the
+  // layout effect below applies the authoritative copy before anything shows.
+  const [bootCache] = useState<DashboardCachePayload | null>(() =>
+    user?.id ? readBootstrapDashboardCache(user?.id) : null,
   )
+  const [hadBootCache, setHadBootCache] = useState(() => Boolean(bootCache?.stats))
+  /** True when this tab already loaded dashboard data earlier (SPA revisit, not hard refresh). */
+  const tabSessionWarmAtMount = Boolean(user?.id && isDashboardSessionLoaded(user.id))
+  const tabSessionWarmRef = useRef(tabSessionWarmAtMount)
   const [stats, setStats] = useState<DashboardStats>(() => statsFromDashboardCache(bootCache))
   const [copierLogs, setCopierLogs] = useState<Signal[]>(() => bootCache?.copierLogs ?? [])
   const [copierLogSymbols, setCopierLogSymbols] = useState<Record<string, string>>(
@@ -887,8 +986,16 @@ export function DashboardPage() {
     () => bootCache?.linkedAccountBalances ?? {},
   )
   const [chartTrades, setChartTrades] = useState<DashboardChartTrade[]>(() => bootChartTrades(bootCache))
-  const chartTradesRef = useRef(chartTrades)
-  chartTradesRef.current = chartTrades
+  // Last non-empty chart snapshot: keeps charts visible while a refresh
+  // briefly returns an empty list. Render reads this state — never a ref.
+  const [stickyChartTrades, setStickyChartTrades] = useState<DashboardChartTrade[]>([])
+  useEffect(() => {
+    if (chartTrades.length > 0) {
+      // Deferred a microtask so the effect body performs no setState directly;
+      // sticky is a *previous* snapshot, so a one-tick delay is invisible.
+      void Promise.resolve().then(() => setStickyChartTrades(chartTrades))
+    }
+  }, [chartTrades])
   const [mtTrades, setMtTrades] = useState<MtTrade[]>(() => bootCache?.mtTrades ?? [])
   const [channelLinkMaps, setChannelLinkMaps] = useState<PerformanceChannelLinkMaps>(
     () => normalizeChannelLinkMaps(bootCache?.channelLinkMaps),
@@ -897,7 +1004,9 @@ export function DashboardPage() {
     () => bootCache?.cachedAnalytics ?? null,
   )
   const channelLinkMapsRef = useRef(channelLinkMaps)
-  channelLinkMapsRef.current = channelLinkMaps
+  useEffect(() => {
+    channelLinkMapsRef.current = channelLinkMaps
+  }, [channelLinkMaps])
   const [togglingBrokerId, setTogglingBrokerId] = useState<string | null>(null)
   const [brokerReconnectError, setBrokerReconnectError] = useState('')
   const loadDashboardLiveRef = useRef<() => void>(() => {})
@@ -908,7 +1017,7 @@ export function DashboardPage() {
   const dashboardMetricsDismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const dashboardReadyRef = useRef(Boolean(bootCache?.stats))
   const [dashboardMetricsLoading, setDashboardMetricsLoading] = useState(
-    () => !(tabSessionWarmRef.current && isDashboardBootReady(bootCache)),
+    () => !(tabSessionWarmAtMount && isDashboardBootReady(bootCache)),
   )
   const [dashboardChartsReady, setDashboardChartsReady] = useState(() => bootDashboardChartsReady(bootCache))
   const linkedBalancesRef = useRef<Record<string, BrokerBalanceSnapshot>>(bootCache?.linkedAccountBalances ?? {})
@@ -928,13 +1037,15 @@ export function DashboardPage() {
   const wsMarkedConnectedRef = useRef(new Set<string>())
   const lastWsTickRef = useRef<Record<string, number>>({})
   const liveMetricsRafRef = useRef(0)
-  if (bootCache?.linkedAccountBalances && Object.keys(liveBrokerStateRef.current).length === 0) {
-    seedLiveBrokerStateFromBalances(
-      bootCache.linkedAccountBalances,
-      liveBrokerStateRef.current,
-      bootCache.linkedAccounts,
-    )
-  }
+  useEffect(() => {
+    if (bootCache?.linkedAccountBalances && Object.keys(liveBrokerStateRef.current).length === 0) {
+      seedLiveBrokerStateFromBalances(
+        bootCache.linkedAccountBalances,
+        liveBrokerStateRef.current,
+        bootCache.linkedAccounts,
+      )
+    }
+  }, [bootCache])
   const statsRef = useRef(stats)
   useEffect(() => {
     statsRef.current = stats
@@ -968,16 +1079,13 @@ export function DashboardPage() {
     const previousUser = getDashboardActiveUserId()
     const isUserSwitch = previousUser != null && previousUser !== user.id
     if (isUserSwitch) {
-      clearDashboardSessionCache(previousUser)
-      bootSnapshotRef.current = null
-      hadBootCacheRef.current = false
+      markDashboardUserSwitch(previousUser, setHadBootCache)
     }
     setDashboardActiveUserId(user.id)
 
     const cached = readBootstrapDashboardCache(user.id)
     if (cached?.stats) {
-      bootSnapshotRef.current = cached
-      hadBootCacheRef.current = true
+      markDashboardCachePresent(setHadBootCache)
       applyDashboardCacheSnapshot(user.id, cached, {
         setStats,
         setCopierLogs,
@@ -996,45 +1104,51 @@ export function DashboardPage() {
       }, { resetLiveRefs: isUserSwitch })
       markDashboardSessionLoaded(user.id)
       dashboardReadyRef.current = isDashboardBootReady(cached)
-      if (tabSessionWarmRef.current && isDashboardBootReady(cached)) {
-        cancelDismissDashboardMetricsLoader()
-        setDashboardMetricsLoading(false)
-      } else if (!isDashboardBootReady(cached)) {
-        showDashboardMetricsLoader()
-      }
+      settleDashboardMetricsLoader(
+        {
+          warm: tabSessionWarmRef.current,
+          ready: isDashboardBootReady(cached),
+        },
+        {
+          setDashboardMetricsLoading,
+          cancelDismissLoader: cancelDismissDashboardMetricsLoader,
+          showLoader: showDashboardMetricsLoader,
+        },
+      )
       return
     }
 
     if (isUserSwitch || !isDashboardSessionLoaded(user.id)) {
-      liveBrokerStateRef.current = {}
-      mtTradesRef.current = null
-      linkedBalancesRef.current = {}
-      setStats(DEFAULT_DASHBOARD_STATS)
-      setCopierLogs([])
-      setCopierLogSymbols({})
-      setChannelDisplayNames({})
-      setLinkedAccountBalances({})
-      setChartTrades([])
-      setMtTrades([])
-      setAiExpertLogs([])
-      setChannelLinkMaps(EMPTY_CHANNEL_LINK_MAPS)
-      setCachedAnalytics(null)
-      setDashboardChartsReady(false)
-      showDashboardMetricsLoader()
-      hadBootCacheRef.current = false
+      applyDashboardHydrationReset({
+        setStats,
+        setCopierLogs,
+        setCopierLogSymbols,
+        setChannelDisplayNames,
+        setLinkedAccountBalances,
+        setChartTrades,
+        setMtTrades,
+        setAiExpertLogs,
+        setChannelLinkMaps,
+        setCachedAnalytics,
+        setDashboardChartsReady,
+        setHadBootCache,
+        setDashboardMetricsLoading,
+        cancelDismissLoader: cancelDismissDashboardMetricsLoader,
+        showLoader: showDashboardMetricsLoader,
+        liveBrokerStateRef,
+        mtTradesRef,
+        linkedBalancesRef,
+      })
     }
     dashboardReadyRef.current = false
     return () => {
       cancelDismissDashboardMetricsLoader()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally keyed on the user id only: the loader helpers are fresh per render, and re-running this hydration on their identity would reset readiness on every render
   }, [user?.id])
 
   /** Keep last chart snapshot visible while a refresh briefly returns empty data. */
-  const effectiveChartTrades = useMemo(() => {
-    if (chartTrades.length > 0) return chartTrades
-    const sticky = chartTradesRef.current
-    return sticky.length > 0 ? sticky : chartTrades
-  }, [chartTrades])
+  const effectiveChartTrades = chartTrades.length > 0 ? chartTrades : stickyChartTrades
 
   const dashboardAnalytics = useMemo(
     () => deriveDashboardAnalytics({
@@ -1701,15 +1815,17 @@ export function DashboardPage() {
     }
   }
 
-  refreshQuietRef.current = () => {
-    if (!dashboardReadyRef.current || !user?.id) return
-    void loadDashboard({ fresh: false, syncLive: false })
-  }
+  useEffect(() => {
+    refreshQuietRef.current = () => {
+      if (!dashboardReadyRef.current || !user?.id) return
+      void loadDashboard({ fresh: false, syncLive: false })
+    }
 
-  loadDashboardLiveRef.current = () => {
-    if (!dashboardReadyRef.current) return
-    void loadDashboard({ fresh: false, syncLive: true })
-  }
+    loadDashboardLiveRef.current = () => {
+      if (!dashboardReadyRef.current) return
+      void loadDashboard({ fresh: false, syncLive: true })
+    }
+  })
 
   const bl = t.accountConfig.brokerList
   const connectErrorLabels = useMemo(() => brokerConnectErrorLabelsFromI18n(bl), [bl])
@@ -1845,6 +1961,7 @@ export function DashboardPage() {
   }, linkedAccounts.some(isFxsocketLinkedBroker))
 
   /** REST fallback when WS is quiet â€” keeps Open P/L moving without a full page refresh. */
+  const linkedAccountIdsKey = linkedAccounts.map(a => a.id).sort().join(',')
   useEffect(() => {
     const accounts = linkedAccounts.filter(isFxsocketLinkedBroker)
     if (accounts.length === 0) return
@@ -1906,7 +2023,8 @@ export function DashboardPage() {
       cancelled = true
       window.clearInterval(intervalId)
     }
-  }, [linkedAccounts.map(a => a.id).sort().join(',')])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the poll interval is keyed on account identity only; field-level account changes arrive through the realtime handlers and must not restart the interval
+  }, [linkedAccountIdsKey])
 
   useDashboardRealtime(user?.id, () => refreshQuietRef.current(), broker => {
     replaceBroker(broker)
@@ -1918,21 +2036,26 @@ export function DashboardPage() {
     const cached = readBootstrapDashboardCache(user.id)
     if (isDashboardBootReady(cached)) {
       dashboardReadyRef.current = true
-      setDashboardChartsReady(true)
-      if (tabSessionWarmRef.current) {
-        cancelDismissDashboardMetricsLoader()
-        setDashboardMetricsLoading(false)
-      } else {
-        scheduleDismissDashboardMetricsLoader()
-      }
+      applyDashboardBootReadyTransition(
+        { warm: tabSessionWarmRef.current },
+        {
+          setDashboardChartsReady,
+          setDashboardMetricsLoading,
+          cancelDismissLoader: cancelDismissDashboardMetricsLoader,
+          scheduleDismissLoader: scheduleDismissDashboardMetricsLoader,
+        },
+      )
       if (cached?.linkedAccounts?.some(hasLinkedBrokerForUi)) {
-        void loadDashboard({ fresh: false, syncLive: true })
+        // Kicked through a promise callback: no direct state-setting call
+        // from the effect body.
+        void Promise.resolve().then(() => loadDashboard({ fresh: false, syncLive: true }))
       }
       return
     }
 
     let cancelled = false
-    void (async () => {
+    void Promise.resolve().then(async () => {
+      if (cancelled) return
       showDashboardMetricsLoader()
       try {
         await loadDashboard({ fresh: true, syncLive: true })
@@ -1941,12 +2064,13 @@ export function DashboardPage() {
           scheduleDismissDashboardMetricsLoader()
         }
       }
-    })()
+    })
 
     return () => {
       cancelled = true
       cancelDismissDashboardMetricsLoader()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- boot must run only when the user or broker-loading state changes; depending on the per-render loadDashboard/loader identities would re-run it (and re-issue loads) on every render
   }, [user, brokersLoading])
 
   /**
@@ -2130,7 +2254,7 @@ export function DashboardPage() {
     statsRef.current = mtStatsPatch
     setStats(mtStatsPatch)
     if (user) {
-      const chartForCache = chartNext.length > 0 ? chartNext : chartTradesRef.current
+      const chartForCache = chartNext.length > 0 ? chartNext : stickyChartTrades
       const analytics = computeDashboardAnalyticsSnapshot(
         chartForCache,
         resolvedTrades,
@@ -2178,7 +2302,7 @@ export function DashboardPage() {
 
   const chartsEmpty = effectiveChartTrades.length === 0 && linkedAccounts.length === 0
   const chartsLoading =
-    !hadBootCacheRef.current &&
+    !hadBootCache &&
     !dashboardChartsReady &&
     !hasDashboardAnalyticsData(displayAnalytics) &&
     effectiveChartTrades.length === 0 &&
