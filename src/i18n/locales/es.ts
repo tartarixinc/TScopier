@@ -905,6 +905,8 @@ export const es: Translations = {
     overrideSignal: 'Current override',
     channelMessageLabel: 'Mensaje del canal',
     brokerAccountLabel: 'Cuenta del bróker',
+    accountsHolding: 'Cuentas del bróker con esta señal',
+    closeOneAccount: 'Cerrar esta cuenta',
     applySuccess: 'Override saved. Applied to {count} open leg(s).',
     applyBrokerSummary: 'Updated {updated} of {total} broker(s).',
     applyPartialBrokers: 'Override saved. Updated {updated} of {total} broker(s) — the rest are being reconciled.',

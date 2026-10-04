@@ -8,6 +8,7 @@ import {
   hasWorkOnShard,
   monitorActiveIntervalMs,
   monitorIdleIntervalMs,
+  shardUserIds,
   startMonitorLoop,
   type MonitorLoopHandle,
 } from './monitorIdleGate'
@@ -72,7 +73,22 @@ export class TradeBrokerDriftMonitor {
       supabase: this.supabase,
       activeIntervalMs: ACTIVE_MS,
       idleIntervalMs: IDLE_MS,
-      hasWork: sb => hasWorkOnShard(sb, 'trades', q => q.in('status', ['open', 'pending'])),
+      // The sweeps main job is rows the broker still holds while our table says
+      // closed — a state that can have NO open/pending rows at all. Gating on
+      // those alone starved exactly the case it exists for, so any shard user
+      // with a broker account counts as work too.
+      hasWork: async sb => {
+        if (await hasWorkOnShard(sb, 'trades', q => q.in('status', ['open', 'pending']))) return true
+        const uids = await shardUserIds(sb)
+        if (uids === null) return true
+        if (uids.length === 0) return false
+        const { data } = await sb
+          .from('broker_accounts')
+          .select('id')
+          .in('user_id', uids)
+          .limit(1)
+        return Boolean(data?.length)
+      },
       tick: () => this.runTick(),
     })
     console.log(`[tradeBrokerDriftMonitor] started active=${ACTIVE_MS}ms idle=${IDLE_MS}ms`)

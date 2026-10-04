@@ -216,7 +216,10 @@ export function isStopLossWithheldByProvider(message: string | null | undefined)
  * mixed basket closes half and refuses the other half).
  */
 export function isMarketClosedMessage(message: string | null | undefined): boolean {
-  return /market.*closed|markets?\s+are\s+closed|off quotes|trade disabled/i.test(String(message ?? ''))
+  // "trade disabled" is deliberately NOT matched: on MT4/MT5 it also fires when
+  // trading is disabled for a symbol or on a read-only account, and telling the
+  // customer "the market is closed" for that would be wrong.
+  return /market.*closed|markets?\s+are\s+closed|off quotes/i.test(String(message ?? ''))
 }
 
 export function parseFxErrorEnvelope(body: unknown): { message: string; code?: string } {

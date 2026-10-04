@@ -905,6 +905,8 @@ export const fr: Translations = {
     overrideSignal: 'Current override',
     channelMessageLabel: 'Message de la chaîne',
     brokerAccountLabel: 'Compte courtier',
+    accountsHolding: 'Comptes courtier portant ce signal',
+    closeOneAccount: 'Clôturer ce compte',
     applySuccess: 'Override saved. Applied to {count} open leg(s).',
     applyBrokerSummary: 'Updated {updated} of {total} broker(s).',
     applyPartialBrokers: 'Override saved. Updated {updated} of {total} broker(s) — the rest are being reconciled.',

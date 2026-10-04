@@ -36,7 +36,7 @@ export type ForceCloseTradesResponse = {
  * why a mixed basket closes half its legs and refuses the rest.
  */
 export function isMarketClosedMessage(message: string | null | undefined): boolean {
-  return /market.*closed|markets?\s+are\s+closed|off quotes|trade disabled/i.test(String(message ?? ''))
+  return /market.*closed|markets?\s+are\s+closed|off quotes/i.test(String(message ?? ''))
 }
 
 async function call<T>(body: ForceCloseTradesRequest): Promise<T> {

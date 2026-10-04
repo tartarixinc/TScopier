@@ -624,6 +624,10 @@ export async function forceCloseSignalById(
           await markDone()
         } else {
           brokerFailed += 1
+          // Broker rejections are usually THROWN (MTAPI/FxSocket both throw on a
+          // rejected order), so the market-closed check must live here as well
+          // as on the returned result — otherwise the message never fires.
+          if (isMarketClosedMessage(msg)) marketClosed = true
         }
       }
     }
@@ -672,9 +676,12 @@ export async function forceCloseSignalById(
     pending_cancelled: 0,
     virtual_legs_deleted: virtualLegsDeleted,
     channels_processed: brokersProcessed,
-    ...(marketClosed ? { market_closed: true } : {}),
-    ...(failed > 0 && closed === 0
-      ? { reason: marketClosed ? 'market_closed' : 'close_failed' }
+    // Only when the market refused everything: a partial close must still read
+    // as partial success, never as "market closed".
+    ...(closed === 0 && failed > 0
+      ? marketClosed
+        ? { market_closed: true, reason: 'market_closed' }
+        : { reason: 'close_failed' }
       : {}),
   }
 }

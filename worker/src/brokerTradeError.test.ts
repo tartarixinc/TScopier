@@ -172,7 +172,9 @@ describe('isMarketClosedMessage', () => {
     assert.equal(isMarketClosedMessage('Market is closed'), true)
     assert.equal(isMarketClosedMessage('Markets are closed'), true)
     assert.equal(isMarketClosedMessage('off quotes'), true)
-    assert.equal(isMarketClosedMessage('trade disabled'), true)
+    // "trade disabled" deliberately NOT treated as market-closed: it also fires
+    // for a symbol restriction or a read-only account.
+    assert.equal(isMarketClosedMessage('trade disabled'), false)
     assert.equal(isMarketClosedMessage('MARKET_CLOSED'), true)
   })
 

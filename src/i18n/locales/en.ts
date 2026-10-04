@@ -951,6 +951,8 @@ broker: {
     overrideSignal: 'Current override',
     channelMessageLabel: 'Channel message',
     brokerAccountLabel: 'Broker account',
+    accountsHolding: 'Broker accounts holding this signal',
+    closeOneAccount: 'Close this account',
     applySuccess: 'Override saved. Applied to {count} open leg(s).',
     applyBrokerSummary: 'Updated {updated} of {total} broker(s).',
     applyPartialBrokers: 'Override saved. Updated {updated} of {total} broker(s) — the rest are being reconciled.',

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { CheckCircle2, Loader2, Plus, X } from 'lucide-react'
 import { useT } from '../../context/LocaleContext'
@@ -195,42 +195,57 @@ export function EditSignalOverrideModal({
   const [countdown, setCountdown] = useState(RESULT_AUTO_CLOSE_SECONDS)
   const [closingTrade, setClosingTrade] = useState(false)
   const [closeError, setCloseError] = useState('')
-  const [brokerLabels, setBrokerLabels] = useState<string[]>([])
+  const [accounts, setAccounts] = useState<Array<{ id: string; label: string; open: number; closed: number }>>([])
+  const [closingAccountId, setClosingAccountId] = useState<string | null>(null)
   const closeInFlightRef = useRef(false)
   const hasChanges = !draftsEqual(draft, initialDraft)
   const actionBusy = busy || closingTrade
 
-  // Which broker account(s) hold the live trades behind this signal — the
-  // accounts an SL/TP change or a close will actually touch.
+  // Per account: what this signal holds there and whether that leg is still
+  // live. A signal copied to two brokers must show both, with their own state,
+  // so a close can be aimed at one of them instead of all of them.
+  const loadAccounts = useCallback(async () => {
+    const tradesRes = await supabase
+      .from('trades')
+      .select('broker_account_id,status')
+      .eq('signal_id', signalId)
+    const rows = (tradesRes.data ?? []) as Array<{ broker_account_id?: string | null; status?: string | null }>
+    const perAccount = new Map<string, { open: number; closed: number }>()
+    for (const row of rows) {
+      const id = String(row.broker_account_id ?? '').trim()
+      if (!id) continue
+      const entry = perAccount.get(id) ?? { open: 0, closed: 0 }
+      if (row.status === 'open' || row.status === 'pending') entry.open += 1
+      else entry.closed += 1
+      perAccount.set(id, entry)
+    }
+    const ids = [...perAccount.keys()]
+    if (!ids.length) {
+      setAccounts([])
+      return
+    }
+    const brokersRes = await supabase.from('broker_accounts').select('id,label').in('id', ids)
+    const labels = new Map(
+      ((brokersRes.data ?? []) as Array<{ id?: string; label?: string | null }>)
+        .map(row => [String(row.id ?? ''), String(row.label ?? '').trim() || '—']),
+    )
+    setAccounts(ids.map(id => ({
+      id,
+      label: labels.get(id) ?? '—',
+      ...(perAccount.get(id) ?? { open: 0, closed: 0 }),
+    })))
+  }, [signalId])
+
   useEffect(() => {
     let cancelled = false
     void (async () => {
-      const tradesRes = await supabase
-        .from('trades')
-        .select('broker_account_id')
-        .eq('signal_id', signalId)
-        .in('status', ['open', 'pending'])
-      const ids = [...new Set(
-        ((tradesRes.data ?? []) as Array<{ broker_account_id?: string | null }>)
-          .map(row => String(row.broker_account_id ?? '').trim())
-          .filter(Boolean),
-      )]
-      if (!ids.length) return
-      const brokersRes = await supabase
-        .from('broker_accounts')
-        .select('id,label')
-        .in('id', ids)
+      await loadAccounts()
       if (cancelled) return
-      setBrokerLabels(
-        ((brokersRes.data ?? []) as Array<{ label?: string | null }>)
-          .map(row => String(row.label ?? '').trim())
-          .filter(Boolean),
-      )
     })()
     return () => {
       cancelled = true
     }
-  }, [signalId])
+  }, [loadAccounts])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -304,6 +319,34 @@ export function EditSignalOverrideModal({
       setFormError(e instanceof Error ? e.message : sh.applyFailed)
     } finally {
       setBusy(false)
+    }
+  }
+
+  const handleCloseAccount = async (brokerAccountId: string) => {
+    if (actionBusy || closeInFlightRef.current) return
+    closeInFlightRef.current = true
+    setClosingAccountId(brokerAccountId)
+    setCloseError('')
+    try {
+      const res = await forceCloseTradesApi.close({ broker_account_id: brokerAccountId })
+      const virtualDeleted = res.virtual_legs_deleted ?? 0
+      if (res.market_closed) {
+        setCloseError(sh.closeMarketClosed)
+        return
+      }
+      if (res.closed === 0 && (res.failed > 0 || virtualDeleted === 0)) {
+        if (virtualDeleted > 0) onClosed({ closed: 0, failed: res.failed, virtualDeleted })
+        setCloseError(closeResultError(sh, res))
+        return
+      }
+      onClosed({ closed: res.closed, failed: res.failed, virtualDeleted })
+      await loadAccounts()
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : ''
+      setCloseError(msg === 'Signal not found' ? sh.closeSignalGone : sh.closeRetry)
+    } finally {
+      closeInFlightRef.current = false
+      setClosingAccountId(null)
     }
   }
 
@@ -446,7 +489,34 @@ export function EditSignalOverrideModal({
                   {sh.channelMessageLabel}: {channelMessage}
                 </p>
               ) : null}
-              <p>{sh.brokerAccountLabel}: {brokerLabels.length ? brokerLabels.join(', ') : '—'}</p>
+              {accounts.length ? (
+                <div className="space-y-1 pt-1">
+                  <p className="font-medium text-neutral-600 dark:text-neutral-300">{sh.accountsHolding}</p>
+                  {accounts.map(account => (
+                    <div key={account.id} className="flex items-center justify-between gap-3">
+                      <span className="truncate">{account.label}</span>
+                      <span className="flex shrink-0 items-center gap-2">
+                        <span className={account.open > 0
+                          ? 'text-emerald-600 dark:text-emerald-400'
+                          : 'text-neutral-400 dark:text-neutral-500'}
+                        >
+                          {account.open > 0 ? sh.statusOpen : sh.statusClosed}
+                        </span>
+                        {mode === 'confirmClose' && account.open > 0 ? (
+                          <button
+                            type="button"
+                            className="underline underline-offset-2 hover:text-neutral-700 dark:hover:text-neutral-200"
+                            disabled={actionBusy}
+                            onClick={() => { void handleCloseAccount(account.id) }}
+                          >
+                            {closingAccountId === account.id ? sh.closing : sh.closeOneAccount}
+                          </button>
+                        ) : null}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </div>
             {closeError ? (
               <p className="text-xs text-error-600 dark:text-error-400">{closeError}</p>
@@ -488,7 +558,24 @@ export function EditSignalOverrideModal({
                   {sh.channelMessageLabel}: {channelMessage}
                 </p>
               ) : null}
-              <p>{sh.brokerAccountLabel}: {brokerLabels.length ? brokerLabels.join(', ') : '—'}</p>
+              {accounts.length ? (
+                <div className="space-y-1 pt-1">
+                  <p className="font-medium text-neutral-600 dark:text-neutral-300">{sh.accountsHolding}</p>
+                  {accounts.map(account => (
+                    <div key={account.id} className="flex items-center justify-between gap-3">
+                      <span className="truncate">{account.label}</span>
+                      <span className="flex shrink-0 items-center gap-2">
+                        <span className={account.open > 0
+                          ? 'text-emerald-600 dark:text-emerald-400'
+                          : 'text-neutral-400 dark:text-neutral-500'}
+                        >
+                          {account.open > 0 ? sh.statusOpen : sh.statusClosed}
+                        </span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </div>
 
             <Input
