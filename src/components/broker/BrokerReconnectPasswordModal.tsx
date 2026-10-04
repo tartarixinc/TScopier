@@ -135,7 +135,7 @@ function BrokerReconnectPasswordModalInner({
       document.removeEventListener('keydown', handleKey)
       window.clearTimeout(focusTimer)
     }
-  }, [open, stage, canDismiss])
+  }, [open, stage, canDismiss, confirmingDelete])
 
   useEffect(() => {
     if (!open) {
