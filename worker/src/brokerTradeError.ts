@@ -209,6 +209,16 @@ export function isStopLossWithheldByProvider(message: string | null | undefined)
     || /\b(?:premium|vip|subscriber|subscribe|members?|paid|private)\b.{0,40}\b(?:sl|s\/l|stop\s*loss|stoploss|risk)\b/i.test(text)
 }
 
+/**
+ * True when a broker message says the market is closed or not tradable right
+ * now — used to tell the customer that clearly instead of a generic failure
+ * (gold/silver/forex are shut at weekends; crypto never is, which is why a
+ * mixed basket closes half and refuses the other half).
+ */
+export function isMarketClosedMessage(message: string | null | undefined): boolean {
+  return /market.*closed|markets?\s+are\s+closed|off quotes|trade disabled/i.test(String(message ?? ''))
+}
+
 export function parseFxErrorEnvelope(body: unknown): { message: string; code?: string } {
   if (body && typeof body === 'object') {
     const o = body as Record<string, unknown>

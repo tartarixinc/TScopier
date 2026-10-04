@@ -12,7 +12,7 @@ import {
 } from '../../lib/signalOverride'
 import { symbolForCopierLog } from '../../lib/copierLogDisplay'
 import { signalOverrideApi } from '../../lib/signalOverrideApi'
-import { forceCloseTradesApi } from '../../lib/forceCloseTradesApi'
+import { forceCloseTradesApi, isMarketClosedMessage } from '../../lib/forceCloseTradesApi'
 import { supabase } from '../../lib/supabase'
 import type { Signal } from '../../types/database'
 import { Button } from '../ui/Button'
@@ -144,6 +144,7 @@ function closeResultError(
     closeNotConnected: string
     closeRetry: string
     closeFailed: string
+    closeMarketClosed: string
     closeSignalGone: string
   },
   res: { reason?: string },
@@ -152,6 +153,7 @@ function closeResultError(
     case 'no_open_trades': return sh.closeNoOpenTrades
     case 'broker_not_connected': return sh.closeNotConnected
     case 'close_failed': return sh.closeFailed
+    case 'market_closed': return sh.closeMarketClosed
     case 'signal_not_found': return sh.closeSignalGone
     case 'wrong_shard':
     case 'missing_ids': return sh.closeRetry
@@ -269,7 +271,8 @@ export function EditSignalOverrideModal({
         tp_levels: parsed.tp_levels,
       })
       if ((saveResult.failed_legs ?? 0) > 0 && saveResult.applied_legs === 0) {
-        setFormError(saveResult.errors?.[0] ?? sh.applyFailed)
+        const errs = saveResult.errors ?? []
+        setFormError(errs.some(isMarketClosedMessage) ? sh.applyMarketClosed : (errs[0] ?? sh.applyFailed))
         return
       }
       const total = saveResult.brokers_total ?? 0
@@ -312,6 +315,12 @@ export function EditSignalOverrideModal({
     try {
       const closeResult = await forceCloseTradesApi.close({ signal_id: signalId })
       const virtualDeleted = closeResult.virtual_legs_deleted ?? 0
+      // The market itself refused: say so, instead of a generic failure
+      // (weekend gold/silver/forex closes are impossible until it reopens).
+      if (closeResult.market_closed) {
+        setCloseError(sh.closeMarketClosed)
+        return
+      }
       // Nothing actually closed (broker down, close not confirmed, wrong shard,
       // no legs): stay on the confirm view with a specific error instead of
       // showing a green success — even if queued legs were swept along the way.

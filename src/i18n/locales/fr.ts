@@ -925,6 +925,8 @@ export const fr: Translations = {
     closeSuccess: 'Trade closed. {count} position(s) closed.',
     closePartial: 'Closed {closed} of {total} position(s). Some could not be closed.',
     closeFailed: 'Could not close the trade.',
+    closeMarketClosed: 'Le marché est actuellement fermé — vous pourrez clôturer ce trade à la réouverture.',
+    applyMarketClosed: 'Le marché est actuellement fermé — la modification SL/TP n’a pas pu être appliquée. Réessayez à la réouverture.',
     closeNoOpenTrades: 'No open positions found for this signal.',
     closeNotConnected: 'Broker account is not connected.',
     closeRetry: 'The trade service did not answer. Please try again.',

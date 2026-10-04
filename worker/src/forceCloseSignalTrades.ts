@@ -8,6 +8,7 @@ import { normalizeSignalChannelIds } from './brokerChannelFilter'
 import { apiForBrokerAccount } from './providerResolver'
 import { authorityFromBrokerRow } from './brokerWriteAuthority'
 import { closeWithVerification } from './managementClose'
+import { isMarketClosedMessage } from './brokerTradeError'
 import {
   cancelChannelBrokerPendingOrders,
   tryBrokerFallbackClose,
@@ -30,6 +31,8 @@ export type ForceCloseSignalTradesResult = {
   channels_processed: number
   reason?: string
   error?: string
+  /** True when every failed close was refused because the market is closed. */
+  market_closed?: boolean
 }
 
 type BrokerRow = {
@@ -543,6 +546,7 @@ export async function forceCloseSignalById(
 
   let closed = 0
   let failed = orphanLegs
+  let marketClosed = false
   let virtualLegsDeleted = 0
   let brokersProcessed = 0
 
@@ -608,6 +612,7 @@ export async function forceCloseSignalById(
         const closeResult = await closeWithVerification(api, uuid, ticket, { liveFast: true })
         if (!closeResult.confirmed) {
           brokerFailed += 1
+          if (isMarketClosedMessage(closeResult.reason)) marketClosed = true
           continue
         }
         brokerClosed += 1
@@ -667,6 +672,9 @@ export async function forceCloseSignalById(
     pending_cancelled: 0,
     virtual_legs_deleted: virtualLegsDeleted,
     channels_processed: brokersProcessed,
-    ...(failed > 0 && closed === 0 ? { reason: 'close_failed' } : {}),
+    ...(marketClosed ? { market_closed: true } : {}),
+    ...(failed > 0 && closed === 0
+      ? { reason: marketClosed ? 'market_closed' : 'close_failed' }
+      : {}),
   }
 }

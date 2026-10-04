@@ -971,6 +971,8 @@ broker: {
     closeSuccess: 'Trade closed. {count} position(s) closed.',
     closePartial: 'Closed {closed} of {total} position(s). Some could not be closed.',
     closeFailed: 'Could not close the trade.',
+    closeMarketClosed: 'The market is closed right now — you can close this trade when it reopens.',
+    applyMarketClosed: 'The market is closed right now — the SL/TP change could not be applied. Try again when it reopens.',
     closeNoOpenTrades: 'No open positions found for this signal.',
     closeNotConnected: 'Broker account is not connected.',
     closeRetry: 'The trade service did not answer. Please try again.',

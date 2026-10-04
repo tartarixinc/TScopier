@@ -60,6 +60,8 @@ export const signalHistoryAr: SignalHistoryPageTranslations = {
   closeSuccess: 'تم إغلاق الصفقة. أُغلقت {count} صفقة.',
   closePartial: 'أُغلقت {closed} من {total} صفقة. تعذر إغلاق بعضها.',
   closeFailed: 'تعذر إغلاق الصفقة.',
+  closeMarketClosed: 'السوق مغلق حاليًا — يمكنك إغلاق هذه الصفقة عند إعادة الافتتاح.',
+  applyMarketClosed: 'السوق مغلق حاليًا — لم يتم تطبيق تعديل وقف الخسارة/الأرباح. أعد المحاولة عند الافتتاح.',
   closeNoOpenTrades: 'لا توجد صفقات مفتوحة لهذه الإشارة.',
   closeNotConnected: 'حساب الوسيط غير متصل.',
   closeRetry: 'لم تستجب خدمة التداول. يُرجى المحاولة مرة أخرى.',

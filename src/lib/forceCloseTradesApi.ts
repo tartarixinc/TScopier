@@ -26,6 +26,17 @@ export type ForceCloseTradesResponse = {
   channels_processed: number
   reason?: string
   error?: string
+  /** Every failed close was refused because the market is closed. */
+  market_closed?: boolean
+}
+
+/**
+ * True when a broker/worker message says the market is closed right now.
+ * Gold, silver and forex are shut at weekends while crypto never is — that is
+ * why a mixed basket closes half its legs and refuses the rest.
+ */
+export function isMarketClosedMessage(message: string | null | undefined): boolean {
+  return /market.*closed|markets?\s+are\s+closed|off quotes|trade disabled/i.test(String(message ?? ''))
 }
 
 async function call<T>(body: ForceCloseTradesRequest): Promise<T> {

@@ -479,6 +479,8 @@ export interface SignalHistoryPageTranslations {
   closeSuccess: string
   closePartial: string
   closeFailed: string
+  closeMarketClosed: string
+  applyMarketClosed: string
   closeNoOpenTrades: string
   closeNotConnected: string
   closeRetry: string
