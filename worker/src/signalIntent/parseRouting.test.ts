@@ -1,8 +1,8 @@
-import { describe, it } from 'node:test'
+import { describe, it, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { DEFAULT_CHANNEL_KEYWORDS } from '../parseSignal'
 import { deterministicQualifiesForFastPath } from './universalSignalParser'
-import { shouldReconcileSignal } from './parseRouting'
+import { routeStageThreeResult, shouldReconcileSignal } from './parseRouting'
 import { tradeIntentToChannelParsedSignal } from './tradeIntentAdapter'
 import type { TradeIntent } from './tradeIntent'
 import type { ParseChannelMessageResult, ChannelParsedSignal } from '../parseSignal'
@@ -258,5 +258,44 @@ describe('shouldReconcileSignal', () => {
   it('does not reconcile when stage 2 is unavailable', () => {
     const uni = stageTwo('ignore', {}, { source: 'unavailable', skipReason: 'universal_parse_unavailable' })
     assert.equal(shouldReconcileSignal(skippedDet, uni), false)
+  })
+})
+
+describe('routeStageThreeResult uncertain gating', () => {
+  const prev = process.env.HUMAN_REVIEW_ESCALATION_ENABLED
+  after(() => {
+    if (prev != null) process.env.HUMAN_REVIEW_ESCALATION_ENABLED = prev
+    else delete process.env.HUMAN_REVIEW_ESCALATION_ENABLED
+  })
+
+  // det is a confident deterministic PARSED entry while the reconciler still
+  // says uncertain — the shape where falling through would execute the trade.
+  const reconciledUncertain = () =>
+    stageTwo('uncertain', {}, { skipReason: 'AI classified as non-actionable' })
+
+  it('holds the skipped result and never executes when escalation is off (default)', () => {
+    delete process.env.HUMAN_REVIEW_ESCALATION_ENABLED
+    const reconciled = reconciledUncertain()
+    const det = detResult()
+    const result = routeStageThreeResult(reconciled, det, {
+      universal: reconciled,
+      path: 'stage3',
+    })
+    assert.equal(result.parseResult, reconciled.parseResult)
+    assert.equal(result.parseResult.status, 'skipped')
+    assert.equal(result.aiMeta?.reviewRequired, undefined)
+    assert.equal(result.aiMeta?.intent, 'uncertain')
+  })
+
+  it('asks for approval only while escalation is active', () => {
+    process.env.HUMAN_REVIEW_ESCALATION_ENABLED = 'true'
+    const reconciled = reconciledUncertain()
+    const result = routeStageThreeResult(reconciled, detResult(), {
+      universal: reconciled,
+      path: 'stage3',
+    })
+    assert.equal(result.parseResult, reconciled.parseResult)
+    assert.equal(result.parseResult.status, 'skipped')
+    assert.equal(result.aiMeta?.reviewRequired, true)
   })
 })

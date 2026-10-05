@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ChannelKeywords, ChannelLexiconRow, ParseChannelMessageResult } from '../parseSignal'
 import { setPipelineTimestamp } from '../pipelineTimestamps'
-import { getUniversalParseMode, universalParseAiVetoEnabled, universalParseReconcileEnabled } from './parseConfig'
+import { getUniversalParseMode, humanReviewEscalationEnabled, universalParseAiVetoEnabled, universalParseReconcileEnabled } from './parseConfig'
 export { getUniversalParseMode }
 import { compareParseShadowDiff } from './shadowDiff'
 import { tradeIntentToChannelParsedSignal } from './tradeIntentAdapter'
@@ -327,7 +327,7 @@ export function shouldReconcileSignal(
   return detParsed && !uniExecutable
 }
 
-function routeStageThreeResult(
+export function routeStageThreeResult(
   reconciled: UniversalParseResult,
   det: ParseChannelMessageResult,
   chain: { universal: UniversalParseResult | null; path: string; timings?: StageTimings },
@@ -353,14 +353,17 @@ function routeStageThreeResult(
       aiMeta: { intent: reconciled.intent.kind, source: reconciled.source },
     }
   }
+  // A signal the reconciler still calls uncertain is never executed, flag or
+  // no flag: falling through to the deterministic result below would trade a
+  // message the model was unsure about. With escalation on it waits for the
+  // user's approval; with it off the skipped result stands as an ordinary
+  // non-actionable skip and nobody is asked.
   if (reconciled.intent.kind === 'uncertain') {
     return {
       ...base,
-      aiMeta: {
-        intent: 'uncertain',
-        source: reconciled.source,
-        reviewRequired: true,
-      },
+      aiMeta: humanReviewEscalationEnabled()
+        ? { intent: 'uncertain', source: reconciled.source, reviewRequired: true }
+        : { intent: 'uncertain', source: reconciled.source },
     }
   }
   if (universalParseAiVetoEnabled()) {
@@ -674,8 +677,9 @@ export async function routeSignalParse(args: {
       }
     }
 
-    // Only an explicit uncertain result enters human review. Clear commentary
-    // and ignore results are ordinary skips and must not create review spam.
+    // Only an explicit uncertain result enters human review, and only while
+    // HUMAN_REVIEW_ESCALATION_ENABLED is on. Clear commentary and ignore
+    // results are ordinary skips and must not create review spam.
     if (universalParseAiVetoEnabled()) {
       return {
         parseResult: universal.parseResult,
@@ -683,7 +687,8 @@ export async function routeSignalParse(args: {
           intent: universal.intent.kind,
           source: universal.source,
           fallbackReason: universal.fallback_reason ?? undefined,
-          reviewRequired: universal.intent.kind === 'uncertain',
+          reviewRequired:
+            humanReviewEscalationEnabled() && universal.intent.kind === 'uncertain',
         },
         universalIntent: universal.intent,
         verification: buildVerificationChain({
@@ -691,7 +696,9 @@ export async function routeSignalParse(args: {
           timings,
           universal,
           reconciled: null,
-          path: universal.intent.kind === 'uncertain' ? 'review' : 'stage2_veto',
+          path: humanReviewEscalationEnabled() && universal.intent.kind === 'uncertain'
+            ? 'review'
+            : 'stage2_veto',
           finalSource: universal.source,
           finalKind: universal.intent.kind,
           finalSkipReason: universal.parseResult.skip_reason ?? null,
@@ -827,7 +834,9 @@ export async function routeSignalParse(args: {
       timings,
       universal,
       reconciled: null,
-      path: universal.intent.kind === 'uncertain' ? 'review' : 'stage2_veto',
+      path: humanReviewEscalationEnabled() && universal.intent.kind === 'uncertain'
+        ? 'review'
+        : 'stage2_veto',
       finalSource: universal.source,
       finalKind: universal.intent.kind,
       finalSkipReason: universal.parseResult.skip_reason ?? null,

@@ -34,6 +34,17 @@ export function universalParseAiVetoEnabled(): boolean {
   return parseEnvBool('UNIVERSAL_PARSE_AI_VETO_ENABLED', false)
 }
 
+/**
+ * Human-review escalation: AI-uncertain signals are held as skips and the user
+ * is asked to approve them within a 2-minute window (in-app modal, Telegram
+ * nudge, optional email). Deactivated by default — uncertain signals become
+ * ordinary "AI classified as non-actionable" skips and nothing asks the user.
+ * Set HUMAN_REVIEW_ESCALATION_ENABLED=true to activate it again.
+ */
+export function humanReviewEscalationEnabled(): boolean {
+  return parseEnvBool('HUMAN_REVIEW_ESCALATION_ENABLED', false)
+}
+
 export function universalParseModel(): string {
   return String(
     process.env.UNIVERSAL_PARSE_MODEL
