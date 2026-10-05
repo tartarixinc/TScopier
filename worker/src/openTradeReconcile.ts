@@ -105,6 +105,20 @@ export async function reconcileOpenTradesForBroker(
     return 0
   }
 
+  // The reason is the whole point: 'stored ticket maps to multiple live
+  // positions' and 'attributes match multiple live positions' have different
+  // fixes, and neither was visible in the log before. Signal-derived symbol
+  // text is stripped to a log-safe shape so a crafted symbol cannot forge a
+  // line.
+  const logAmbiguous = (trade: OpenTradeReconcileRow, reason: string, pass: string): void => {
+    console.warn(
+      `[openTradeReconcile] identity ambiguous trade=${trade.id}`
+      + ` ticket=${trade.metaapi_order_id ?? 'none'}`
+      + ` symbol=${String(trade.symbol ?? 'unknown').replace(/[^\w./-]/g, '_')}`
+      + ` reason="${reason}" pass=${pass} — deferring close`,
+    )
+  }
+
   const absentOnce: OpenTradeReconcileRow[] = []
   for (const trade of openTrades) {
     const resolution = resolveCanonicalOpenPosition({ trade, openedOrders: firstSnapshot })
@@ -118,7 +132,7 @@ export async function reconcileOpenTradesForBroker(
       continue
     }
     if (resolution.status === 'ambiguous') {
-      console.warn(`[openTradeReconcile] identity ambiguous trade=${trade.id}; deferring close`)
+      logAmbiguous(trade, resolution.reason, 'first')
       continue
     }
     absentOnce.push(trade)
@@ -145,6 +159,13 @@ export async function reconcileOpenTradesForBroker(
           console.warn(`[openTradeReconcile] replacement ticket CAS lost trade=${trade.id}; deferring`)
         }
       }
+      continue
+    }
+    if (resolution.status === 'ambiguous') {
+      // Previously dropped on the floor here: only 'missing' was collected, so
+      // a trade that turned ambiguous on the second pass was deferred with no
+      // log line at all.
+      logAmbiguous(trade, resolution.reason, 'second')
       continue
     }
     if (resolution.status === 'missing') ghostIds.push(trade.id)

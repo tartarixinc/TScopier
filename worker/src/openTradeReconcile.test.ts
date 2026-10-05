@@ -169,4 +169,103 @@ describe('reconcileOpenTradesForBroker', () => {
     )
     assert.equal(closed, 0)
   })
+
+  it('logs why identity is ambiguous and defers instead of closing', async () => {
+    const warnings: string[] = []
+    const originalWarn = console.warn
+    console.warn = (...args: unknown[]): void => {
+      warnings.push(args.map(String).join(' '))
+    }
+    try {
+      const supabase = {
+        from() {
+          throw new Error('DB must not be mutated for an ambiguous trade')
+        },
+      }
+      const api = {
+        // The stored ticket (100) is gone from the broker, but two live
+        // positions are identical on every attribute the matcher compares —
+        // the shape that produced the undiagnosable production log line.
+        openedOrders: async () => [
+          { ticket: 500, type: 1, symbol: 'BTCUSDm', lots: 0.15, openPrice: 85600 },
+          { ticket: 501, type: 1, symbol: 'BTCUSDm', lots: 0.15, openPrice: 85600.05 },
+        ],
+      }
+      const closed = await reconcileOpenTradesForBroker(
+        supabase as never,
+        api as never,
+        'acct',
+        [{
+          id: 'amb-1',
+          broker_account_id: 'b1',
+          metaapi_order_id: '100',
+          symbol: 'BTCUSDm',
+          direction: 'sell',
+          lot_size: 0.15,
+          entry_price: 85600,
+        }],
+      )
+      assert.equal(closed, 0)
+      const line = warnings.find(w => w.includes('identity ambiguous trade=amb-1'))
+      assert.ok(line, `expected an identity ambiguous line, got: ${JSON.stringify(warnings)}`)
+      assert.match(line, /reason="attributes match multiple live positions"/)
+      assert.match(line, /pass=first/)
+      assert.match(line, /ticket=100/)
+      assert.match(line, /symbol=BTCUSDm/)
+    } finally {
+      console.warn = originalWarn
+    }
+  })
+
+  it('logs pass=second when identity only becomes ambiguous on the second snapshot', async () => {
+    const warnings: string[] = []
+    const originalWarn = console.warn
+    console.warn = (...args: unknown[]): void => {
+      warnings.push(args.map(String).join(' '))
+    }
+    try {
+      const supabase = {
+        from() {
+          throw new Error('DB must not be mutated for an ambiguous trade')
+        },
+      }
+      let openedCalls = 0
+      const api = {
+        // First snapshot: the stored ticket is gone and nothing matches on
+        // attributes, so the trade reaches the second pass. Second snapshot:
+        // two indistinguishable positions appear, which is ambiguous there —
+        // previously logged nowhere.
+        openedOrders: async () => {
+          openedCalls += 1
+          if (openedCalls === 1) return [{ ticket: 999, type: 0, symbol: 'EURUSD' }]
+          return [
+            { ticket: 500, type: 1, symbol: 'BTCUSDm', lots: 0.15, openPrice: 85600 },
+            { ticket: 501, type: 1, symbol: 'BTCUSDm', lots: 0.15, openPrice: 85600.05 },
+          ]
+        },
+      }
+      const closed = await reconcileOpenTradesForBroker(
+        supabase as never,
+        api as never,
+        'acct',
+        [{
+          id: 'amb-second',
+          broker_account_id: 'b1',
+          metaapi_order_id: '100',
+          symbol: 'BTCUSDm',
+          direction: 'sell',
+          lot_size: 0.15,
+          entry_price: 85600,
+        }],
+      )
+      assert.equal(closed, 0)
+      assert.equal(openedCalls, 2)
+      const line = warnings.find(w => w.includes('identity ambiguous trade=amb-second'))
+      assert.ok(line, `expected a second-pass identity ambiguous line, got: ${JSON.stringify(warnings)}`)
+      assert.match(line, /pass=second/)
+      assert.match(line, /reason="attributes match multiple live positions"/)
+    } finally {
+      console.warn = originalWarn
+    }
+  })
 })
