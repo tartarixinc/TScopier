@@ -7,7 +7,39 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { FxsocketBrokerClient } from './fxsocketClient'
 import { closeStaleOpenTrades } from './basketSlTpReconcile'
 import { persistCanonicalPositionTicket, resolveCanonicalOpenPosition } from './livePositionIdentity'
+import { matchClosedHistory } from './openTradeClassification'
+import { captureBusinessIssue } from './observability/businessEvents'
 import { purgeRangePendingLegsForBaskets, type BasketScope } from './rangePendingLegDelete'
+
+/** How far back to look for a close record when corroborating a ghost close. */
+const HISTORY_DAYS = Math.max(1, Number(process.env.OPEN_TRADE_RECONCILE_HISTORY_DAYS ?? 30))
+
+/**
+ * Corroborate a ghost close with a positive close record. Default on; set
+ * `OPEN_TRADE_RECONCILE_REQUIRE_CLOSED_HISTORY=false` to restore the old
+ * absence-only behaviour (not recommended — it can mass-close on a false-empty
+ * snapshot from a live session).
+ */
+function requireClosedHistory(): boolean {
+  return process.env.OPEN_TRADE_RECONCILE_REQUIRE_CLOSED_HISTORY !== 'false'
+}
+
+function mtDate(d: Date): string {
+  return d.toISOString().slice(0, 19)
+}
+
+async function loadClosedHistory(api: FxsocketBrokerClient, accountId: string): Promise<unknown[]> {
+  try {
+    const to = mtDate(new Date())
+    const from = mtDate(new Date(Date.now() - HISTORY_DAYS * 86_400_000))
+    return (await api.orderHistory(accountId, from, to)) ?? []
+  } catch (err) {
+    console.warn(
+      `[openTradeReconcile] closed-history load failed account=${accountId}: ${err instanceof Error ? err.message : String(err)}`,
+    )
+    return []
+  }
+}
 
 export type OpenTradeReconcileRow = {
   id: string
@@ -78,23 +110,71 @@ export async function reconcileOpenTradesForBroker(
     if (probeHealthy && await sessionIsHealthy(probeHealthy)) {
       const emptyAgain = await api.openedOrders(metaapiAccountId)
       if (Array.isArray(emptyAgain) && emptyAgain.length > 0) return 0
-      const ghostIds = openTrades
-        .filter(trade => {
-          const ticket = Number(trade.metaapi_order_id)
-          return Number.isFinite(ticket) && ticket > 0
-        })
-        .map(trade => trade.id)
-      if (!ghostIds.length) return 0
-      const closed = await closeStaleOpenTrades(supabase, ghostIds)
-      if (closed > 0) {
-        const scopes = basketScopesForGhosts(openTrades, ghostIds)
-        if (scopes.length) {
-          await purgeRangePendingLegsForBaskets(supabase, scopes, 'basket_flat_reconcile')
+      const ghostTrades = openTrades.filter(trade => {
+        const ticket = Number(trade.metaapi_order_id)
+        return Number.isFinite(ticket) && ticket > 0
+      })
+      if (!ghostTrades.length) return 0
+
+      // An empty-but-successful snapshot is not proof a position is gone: a live
+      // session can answer empty for the wrong account / a transient bridge
+      // fault, and closing on that would strand a real, unmanaged position.
+      // Require a positive close record (ticket or signal comment in history)
+      // before closing; anything unconfirmed is deferred to review.
+      let closableIds: string[]
+      let unconfirmed: OpenTradeReconcileRow[]
+      if (requireClosedHistory()) {
+        const closedOrders = await loadClosedHistory(api, metaapiAccountId)
+        const closable: string[] = []
+        unconfirmed = []
+        for (const trade of ghostTrades) {
+          if (matchClosedHistory(trade, closedOrders)) closable.push(trade.id)
+          else unconfirmed.push(trade)
         }
+        closableIds = closable
+      } else {
+        closableIds = ghostTrades.map(trade => trade.id)
+        unconfirmed = []
+      }
+
+      let closed = 0
+      if (closableIds.length) {
+        closed = await closeStaleOpenTrades(supabase, closableIds)
+        if (closed > 0) {
+          const scopes = basketScopesForGhosts(openTrades, closableIds)
+          if (scopes.length) {
+            await purgeRangePendingLegsForBaskets(supabase, scopes, 'basket_flat_reconcile')
+          }
+          console.warn(
+            `[openTradeReconcile] session healthy with no open positions — closed ${closed} stale row(s)`
+            + ` confirmed in history account=${metaapiAccountId}`,
+          )
+        }
+      }
+
+      if (unconfirmed.length) {
         console.warn(
-          `[openTradeReconcile] session healthy with no open positions — closed ${closed} stale row(s)`
-          + ` account=${metaapiAccountId}`,
+          `[openTradeReconcile] empty OpenedOrders but ${unconfirmed.length} trade(s) not confirmed in`
+          + ` history account=${metaapiAccountId} — deferring (needs review)`,
         )
+        captureBusinessIssue({
+          category: 'reconciliation',
+          event: 'reconciliation_needs_review',
+          severity: 'warning',
+          reasonCode: 'GHOST_UNCONFIRMED_BY_HISTORY',
+          message: 'Flat account snapshot not corroborated by closed history',
+          userImpact: 'manual_review_required',
+          fingerprint: ['reconciliation_needs_review', 'open_trade_reconcile', 'GHOST_UNCONFIRMED_BY_HISTORY'],
+          context: {
+            broker_account_id: metaapiAccountId,
+            stage: 'open_trade_reconcile',
+            operation: 'open_trade_reconcile',
+            extra: {
+              unconfirmed_trades: unconfirmed.length,
+              trade_ids: unconfirmed.slice(0, 10).map(t => t.id),
+            },
+          },
+        })
       }
       return closed
     }

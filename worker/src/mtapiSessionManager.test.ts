@@ -9,6 +9,8 @@ const oldBase = process.env.MTAPI_BASE_URL
 const oldKey = process.env.BROKER_CREDENTIALS_ENCRYPTION_KEY
 const oldMt4Url = process.env.MTAPI_MT4_BASE_URL
 const oldMt5Url = process.env.MTAPI_MT5_BASE_URL
+const oldSweepConcurrency = process.env.MTAPI_SESSION_HEALTH_CONCURRENCY
+const oldSweepGap = process.env.MTAPI_SESSION_HEALTH_GAP_MS
 
 afterEach(() => {
   if (oldBase == null) delete process.env.MTAPI_BASE_URL
@@ -19,7 +21,44 @@ afterEach(() => {
   else process.env.MTAPI_MT4_BASE_URL = oldMt4Url
   if (oldMt5Url == null) delete process.env.MTAPI_MT5_BASE_URL
   else process.env.MTAPI_MT5_BASE_URL = oldMt5Url
+  if (oldSweepConcurrency == null) delete process.env.MTAPI_SESSION_HEALTH_CONCURRENCY
+  else process.env.MTAPI_SESSION_HEALTH_CONCURRENCY = oldSweepConcurrency
+  if (oldSweepGap == null) delete process.env.MTAPI_SESSION_HEALTH_GAP_MS
+  else process.env.MTAPI_SESSION_HEALTH_GAP_MS = oldSweepGap
 })
+
+function sweepRows(count: number) {
+  return Array.from({ length: count }, (_, i) => ({
+    id: `broker-${i}`,
+    mtapi_session_id: `token-${i}`,
+    account_login: '123',
+    broker_server: 'Server',
+    platform: 'MT5',
+    broker_password_encrypted: null,
+    auto_reconnect_enabled: false,
+  }))
+}
+
+async function waitFor(check: () => boolean, timeoutMs = 3000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (!check()) {
+    if (Date.now() > deadline) throw new Error('waitFor timed out')
+    await new Promise<void>(resolve => setTimeout(resolve, 5))
+  }
+}
+
+function sweepSupabase(rows: unknown[]) {
+  const query = {
+    select() { return this },
+    eq() { return this },
+    is() { return this },
+    not() { return this },
+    then(resolve: (value: unknown) => unknown) {
+      return Promise.resolve({ data: rows, error: null }).then(resolve)
+    },
+  }
+  return { from: () => query } as unknown as SupabaseClient
+}
 
 test('credential encryption round-trips without embedding plaintext', () => {
   process.env.BROKER_CREDENTIALS_ENCRYPTION_KEY = 'phase-2-test-key'
@@ -322,5 +361,66 @@ test('a rejected provision stores plain-English connection_error and logs the de
   assert.ok(
     warnings.some((w) => w.includes('code=INVALID_ACCOUNT detail=invalid login or password')),
     'expected the provision failure log to carry the plain-English detail'
+  )
+})
+
+test('health sweep bounds concurrent bridge checks instead of firing all sessions at once', async () => {
+  process.env.MTAPI_BASE_URL = 'https://mtapi.test'
+  process.env.MTAPI_SESSION_HEALTH_CONCURRENCY = '2'
+  process.env.MTAPI_SESSION_HEALTH_GAP_MS = '0'
+  const rows = sweepRows(6)
+  const supabase = sweepSupabase(rows)
+  let active = 0
+  let maxActive = 0
+  const checked: string[] = []
+  const provider = {
+    setRecoveryHandler() {},
+    seedPlatformCache() {},
+    async ensureConnected(id: string) {
+      active += 1
+      maxActive = Math.max(maxActive, active)
+      await new Promise<void>(resolve => setTimeout(resolve, 5))
+      active -= 1
+      checked.push(id)
+    },
+    async disconnectOrphans() {},
+  } as unknown as MtapiProvider
+
+  const manager = new MtapiSessionManager(supabase, provider)
+  await manager.start()
+  // The initial sweep is intentionally fire-and-forget (it must not delay the
+  // trade executor), so wait for it to drain before asserting.
+  await waitFor(() => checked.length === 6).catch(() => undefined)
+  manager.stop()
+
+  assert.equal(checked.length, 6)
+  assert.ok(maxActive <= 2, `expected at most 2 concurrent checks, saw ${maxActive}`)
+})
+
+test('health sweep paces request starts by the configured gap', async () => {
+  process.env.MTAPI_BASE_URL = 'https://mtapi.test'
+  process.env.MTAPI_SESSION_HEALTH_CONCURRENCY = '1'
+  process.env.MTAPI_SESSION_HEALTH_GAP_MS = '50'
+  const rows = sweepRows(3)
+  const supabase = sweepSupabase(rows)
+  const starts: number[] = []
+  const provider = {
+    setRecoveryHandler() {},
+    seedPlatformCache() {},
+    async ensureConnected() { starts.push(Date.now()) },
+    async disconnectOrphans() {},
+  } as unknown as MtapiProvider
+
+  const manager = new MtapiSessionManager(supabase, provider)
+  await manager.start()
+  await waitFor(() => starts.length === 3).catch(() => undefined)
+  manager.stop()
+
+  assert.equal(starts.length, 3)
+  // Each gap is jittered to 0.5x-1.5x the base, so two gaps take at least
+  // 50ms; assert a conservative lower bound to avoid timer flakiness.
+  assert.ok(
+    starts[2] - starts[0] >= 40,
+    `expected paced starts (>=40ms apart), saw span ${starts[2] - starts[0]}ms`,
   )
 })

@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict'
-import { describe, it } from 'node:test'
+import { afterEach, describe, it } from 'node:test'
 import { findGhostOpenTradeIds, reconcileOpenTradesForBroker } from './openTradeReconcile'
+
+const oldRequireHistory = process.env.OPEN_TRADE_RECONCILE_REQUIRE_CLOSED_HISTORY
+afterEach(() => {
+  if (oldRequireHistory == null) delete process.env.OPEN_TRADE_RECONCILE_REQUIRE_CLOSED_HISTORY
+  else process.env.OPEN_TRADE_RECONCILE_REQUIRE_CLOSED_HISTORY = oldRequireHistory
+})
 
 describe('findGhostOpenTradeIds', () => {
   it('returns ids for tickets absent from broker', () => {
@@ -140,7 +146,11 @@ describe('reconcileOpenTradesForBroker', () => {
         return query
       },
     }
-    const api = { openedOrders: async () => [] }
+    const api = {
+      openedOrders: async () => [],
+      // Positive close record corroborates the ghost close.
+      orderHistory: async () => [{ ticket: 400406267, closePrice: 4160, closeTime: 1_760_000_000 }],
+    }
     await reconcileOpenTradesForBroker(
       supabase as never,
       api as never,
@@ -151,6 +161,72 @@ describe('reconcileOpenTradesForBroker', () => {
     // The close ran (one update attempted) rather than deferring.
     assert.equal(updates.length, 1)
     assert.equal((updates[0] as { status?: string }).status, 'closed')
+  })
+
+  it('does NOT close an empty-snapshot ghost that is not corroborated by history', async () => {
+    const updates: unknown[] = []
+    const supabase = {
+      from() {
+        return {
+          select() { return this },
+          in() { return this },
+          eq() { return this },
+          update(payload: unknown) {
+            updates.push(payload)
+            return { in: () => ({ eq: () => ({ select: async () => ({ data: [], error: null }) }) }) }
+          },
+        }
+      },
+    }
+    const api = {
+      openedOrders: async () => [],
+      orderHistory: async () => [], // no close record -> cannot corroborate
+    }
+    const closed = await reconcileOpenTradesForBroker(
+      supabase as never,
+      api as never,
+      'acct',
+      [{ id: 'a', broker_account_id: 'b1', metaapi_order_id: '400406267' }],
+      async () => {},
+    )
+    assert.equal(closed, 0)
+    assert.equal(updates.length, 0, 'must not close without a corroborating close record')
+  })
+
+  it('closes without history only when the requirement is explicitly disabled', async () => {
+    process.env.OPEN_TRADE_RECONCILE_REQUIRE_CLOSED_HISTORY = 'false'
+    const updates: unknown[] = []
+    const supabase = {
+      from() {
+        const query: Record<string, unknown> = {
+          select() { return query },
+          in() { return query },
+          eq() { return query },
+          update(payload: unknown) {
+            updates.push(payload)
+            return { in: () => ({ eq: () => ({ select: async () => ({ data: [], error: null }) }) }) }
+          },
+          then(resolve: (value: unknown) => unknown) {
+            return Promise.resolve({
+              data: [{ id: 'a', signal_id: null, broker_account_id: 'b1' }],
+              error: null,
+            }).then(resolve)
+          },
+        }
+        return query
+      },
+    }
+    const api = { openedOrders: async () => [] }
+    const closed = await reconcileOpenTradesForBroker(
+      supabase as never,
+      api as never,
+      'acct',
+      [{ id: 'a', broker_account_id: 'b1', metaapi_order_id: '400406267' }],
+      async () => {},
+    )
+    assert.equal(updates.length, 1)
+    assert.equal((updates[0] as { status?: string }).status, 'closed')
+    assert.ok(closed >= 0)
   })
 
   it('still defers on an empty snapshot when the session does not answer', async () => {

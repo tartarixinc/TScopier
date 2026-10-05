@@ -9,6 +9,8 @@ import {
 
 const oldBase = process.env.MTAPI_BASE_URL
 const oldInternalToken = process.env.MTAPI_INTERNAL_TOKEN
+const oldRateBackoff = process.env.MT_RATE_LIMIT_BACKOFF_MS
+const oldOrderThrottleRetry = process.env.MTAPI_ORDER_THROTTLE_RETRY
 
 beforeEach(() => {
   process.env.MTAPI_BASE_URL = 'https://mtapi.test'
@@ -20,6 +22,10 @@ afterEach(() => {
   else process.env.MTAPI_BASE_URL = oldBase
   if (oldInternalToken == null) delete process.env.MTAPI_INTERNAL_TOKEN
   else process.env.MTAPI_INTERNAL_TOKEN = oldInternalToken
+  if (oldRateBackoff == null) delete process.env.MT_RATE_LIMIT_BACKOFF_MS
+  else process.env.MT_RATE_LIMIT_BACKOFF_MS = oldRateBackoff
+  if (oldOrderThrottleRetry == null) delete process.env.MTAPI_ORDER_THROTTLE_RETRY
+  else process.env.MTAPI_ORDER_THROTTLE_RETRY = oldOrderThrottleRetry
 })
 
 test('synced=false account equity is not authoritative to copy-limit consumers', async () => {
@@ -48,6 +54,19 @@ function provider(handler: (url: URL, init?: RequestInit) => Response | Promise<
     timeoutMs: 2_000,
   })
 }
+
+test('checkConnect accepts the bridge JSON-encoded "OK"', async () => {
+  const api = provider(() => new Response(JSON.stringify('OK'), {
+    status: 200,
+    headers: { 'content-type': 'application/json; charset=utf-8' },
+  }))
+  await assert.doesNotReject(() => api.checkConnect('session'))
+})
+
+test('checkConnect accepts a plain-text OK', async () => {
+  const api = provider(() => new Response('OK', { status: 200 }))
+  await assert.doesNotReject(() => api.checkConnect('session'))
+})
 
 test('OpenedOrders accepts a successful authoritative empty list', async () => {
   const api = provider(() => new Response('[]', { status: 200 }))
@@ -409,4 +428,100 @@ test('orderSend retries after INVALID_TOKEN and reconnects', async () => {
   assert.deepEqual(endpoints, [
     '/OrderSendSafe', '/CheckConnect', '/ConnectByToken', '/OrderSendSafe',
   ])
+})
+
+test('orderSend retries a bridge 429 rate_limited only when explicitly enabled', async () => {
+  process.env.MT_RATE_LIMIT_BACKOFF_MS = '0'
+  process.env.MTAPI_ORDER_THROTTLE_RETRY = 'true'
+  let sendCalls = 0
+  const api = provider(url => {
+    if (url.pathname === '/OrderSendSafe') {
+      sendCalls += 1
+      if (sendCalls === 1) {
+        // What the MTAPI nginx bridge returns when its rate limit trips.
+        return new Response(
+          JSON.stringify({ error: 'rate_limited', message: 'Too many requests' }),
+          { status: 429 },
+        )
+      }
+      return new Response(JSON.stringify({ ticket: 555, state: 'Filled' }))
+    }
+    return new Response('{}')
+  })
+  const result = await api.orderSend('session', {
+    symbol: 'EURUSDm', operation: 'Buy', volume: 0.01,
+  })
+  assert.equal(result.ticket, 555)
+  assert.equal(sendCalls, 2)
+})
+
+test('orderSend surfaces a persistent rate_limited after exhausting retries', async () => {
+  process.env.MT_RATE_LIMIT_BACKOFF_MS = '0'
+  process.env.MTAPI_ORDER_THROTTLE_RETRY = 'true'
+  let sendCalls = 0
+  const api = provider(url => {
+    if (url.pathname === '/OrderSendSafe') {
+      sendCalls += 1
+      return new Response(
+        JSON.stringify({ error: 'rate_limited', message: 'Too many requests' }),
+        { status: 429 },
+      )
+    }
+    return new Response('{}')
+  })
+  await assert.rejects(
+    () => api.orderSend('session', { symbol: 'EURUSDm', operation: 'Buy', volume: 0.01 }),
+    (error: unknown) => {
+      assert.ok(error instanceof MtapiApiError)
+      assert.equal((error as MtapiApiError).status, 429)
+      return true
+    },
+  )
+  // Default MT_ORDERSEND_MAX_ATTEMPTS is 3.
+  assert.equal(sendCalls, 3)
+})
+
+test('orderSend does not retry rate_limited by default (idempotency unproven)', async () => {
+  process.env.MT_RATE_LIMIT_BACKOFF_MS = '0'
+  delete process.env.MTAPI_ORDER_THROTTLE_RETRY
+  let sendCalls = 0
+  const api = provider(url => {
+    if (url.pathname === '/OrderSendSafe') {
+      sendCalls += 1
+      return new Response(
+        JSON.stringify({ error: 'rate_limited', message: 'Too many requests' }),
+        { status: 429 },
+      )
+    }
+    return new Response('{}')
+  })
+  await assert.rejects(
+    () => api.orderSend('session', { symbol: 'EURUSDm', operation: 'Buy', volume: 0.01 }),
+    (error: unknown) => error instanceof MtapiApiError,
+  )
+  assert.equal(sendCalls, 1)
+})
+
+test('orderSend does not retry a bare 429 without the pre-accept rate_limited code', async () => {
+  process.env.MT_RATE_LIMIT_BACKOFF_MS = '0'
+  let sendCalls = 0
+  const api = provider(url => {
+    if (url.pathname === '/OrderSendSafe') {
+      sendCalls += 1
+      // A 429 without the bridge's pre-accept `rate_limited` code could have
+      // been produced after the terminal accepted the order, so a
+      // non-idempotent send must not resend it.
+      return new Response('Too many requests', { status: 429 })
+    }
+    return new Response('{}')
+  })
+  await assert.rejects(
+    () => api.orderSend('session', { symbol: 'EURUSDm', operation: 'Buy', volume: 0.01 }),
+    (error: unknown) => {
+      assert.ok(error instanceof MtapiApiError)
+      assert.equal((error as MtapiApiError).status, 429)
+      return true
+    },
+  )
+  assert.equal(sendCalls, 1)
 })

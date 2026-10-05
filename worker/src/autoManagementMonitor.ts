@@ -66,6 +66,41 @@ const IDLE_MS = monitorIdleIntervalMs('AUTO_MANAGEMENT_IDLE_MS', 15_000)
 const SYMBOL_CACHE_TTL_MS = 5 * 60_000
 /** Throttle failed auto_be log rows per trade so a disconnected broker cannot flood trade_execution_logs. */
 const FAILURE_LOG_THROTTLE_MS = Math.max(60_000, Number(process.env.AUTO_BE_FAILURE_LOG_THROTTLE_MS ?? 5 * 60_000))
+/**
+ * Per-trade retry backoff. A trade whose apply keeps failing (e.g. its stored
+ * ticket has no live position match) must not be re-driven every 400 ms tick —
+ * that floods the broker bridge and starves real order sends. Backoff is
+ * exponential with jitter and is cleared as soon as the trade applies or leaves
+ * the work set, so healthy trades are never delayed.
+ */
+const TRANSIENT_BACKOFF_BASE_MS = Math.max(250, Number(process.env.AUTO_BE_TRANSIENT_BACKOFF_MS ?? 1_000))
+const TRANSIENT_BACKOFF_MAX_MS = Math.max(
+  TRANSIENT_BACKOFF_BASE_MS,
+  Number(process.env.AUTO_BE_TRANSIENT_BACKOFF_MAX_MS ?? 15_000),
+)
+const UNRESOLVABLE_BACKOFF_BASE_MS = Math.max(1_000, Number(process.env.AUTO_BE_FAILURE_BACKOFF_MS ?? 5_000))
+const UNRESOLVABLE_BACKOFF_MAX_MS = Math.max(
+  UNRESOLVABLE_BACKOFF_BASE_MS,
+  Number(process.env.AUTO_BE_FAILURE_BACKOFF_MAX_MS ?? 5 * 60_000),
+)
+/** Consecutive unresolvable failures before a trade is parked (long backoff). */
+const UNRESOLVABLE_QUARANTINE_AFTER = Math.max(3, Number(process.env.AUTO_BE_QUARANTINE_AFTER ?? 6))
+const UNRESOLVABLE_QUARANTINE_MS = Math.max(60_000, Number(process.env.AUTO_BE_QUARANTINE_MS ?? 30 * 60_000))
+
+/**
+ * A failure a retry cannot fix — the stored ticket does not map to a unique live
+ * position. Retrying these at any rate is pointless (only reconciliation can
+ * resolve them), so they get a long, escalating backoff. Everything else is
+ * treated as transient and retried soon so protective moves are not delayed.
+ */
+export function isUnresolvableFailure(message: string | null | undefined): boolean {
+  const m = String(message ?? '').toLowerCase()
+  return m.includes('no live position match')
+    || m.includes('maps to multiple live positions')
+    || m.includes('attributes match multiple live positions')
+    || m.includes('reconciliation required')
+    || m.includes('identity ambiguous')
+}
 
 type SymbolCacheEntry = {
   digits: number
@@ -84,6 +119,10 @@ export class AutoManagementMonitor {
   private quietTicks = 0
   private symbolCache = new Map<string, SymbolCacheEntry>()
   private failureLogCooldownUntil = new Map<string, number>()
+  /** Per-trade retry state so a permanently-failing trade backs off instead of hot-looping. */
+  private failureByTrade = new Map<string, { count: number; nextAt: number }>()
+  /** Why the last apply for a trade failed, to pick transient vs unresolvable backoff. */
+  private failureClassByTrade = new Map<string, 'transient' | 'unresolvable'>()
 
   constructor(private readonly supabase: SupabaseClient) {}
 
@@ -94,8 +133,11 @@ export class AutoManagementMonitor {
       supabase: this.supabase,
       activeIntervalMs: ACTIVE_MS,
       idleIntervalMs: IDLE_MS,
+      // broker_account_id is required: a trade with no account can never be
+      // managed, so it must not keep this monitor permanently active.
       hasWork: sb => hasWorkOnShard(sb, 'trades', q =>
-        q.eq('status', 'open').not('auto_be_mode', 'is', null).is('auto_be_applied_at', null),
+        q.eq('status', 'open').not('auto_be_mode', 'is', null).is('auto_be_applied_at', null)
+          .not('broker_account_id', 'is', null),
       ),
       tick: () => this.runTick(),
     })
@@ -121,6 +163,36 @@ export class AutoManagementMonitor {
     }
   }
 
+  private markFailureClass(tradeId: string, message: string): 'transient' | 'unresolvable' {
+    const cls = isUnresolvableFailure(message) ? 'unresolvable' : 'transient'
+    this.failureClassByTrade.set(tradeId, cls)
+    return cls
+  }
+
+  private registerFailure(tradeId: string, cls: 'transient' | 'unresolvable'): void {
+    const prev = this.failureByTrade.get(tradeId)
+    const count = Math.min((prev?.count ?? 0) + 1, 30)
+    const base = cls === 'unresolvable' ? UNRESOLVABLE_BACKOFF_BASE_MS : TRANSIENT_BACKOFF_BASE_MS
+    const max = cls === 'unresolvable' ? UNRESOLVABLE_BACKOFF_MAX_MS : TRANSIENT_BACKOFF_MAX_MS
+    let wait = Math.min(max, base * 2 ** (count - 1))
+    if (cls === 'unresolvable' && count >= UNRESOLVABLE_QUARANTINE_AFTER) {
+      wait = UNRESOLVABLE_QUARANTINE_MS
+      if (count === UNRESOLVABLE_QUARANTINE_AFTER) {
+        console.warn(
+          `[autoManagementMonitor] parking unresolvable trade=${tradeId} after ${count} attempts`
+          + ` (needs reconciliation; will retry in ~${Math.round(wait / 60000)}m)`,
+        )
+      }
+    }
+    const jitter = wait * (0.5 + Math.random())
+    this.failureByTrade.set(tradeId, { count, nextAt: Date.now() + jitter })
+  }
+
+  private clearFailure(tradeId: string): void {
+    this.failureByTrade.delete(tradeId)
+    this.failureClassByTrade.delete(tradeId)
+  }
+
   private async tick(): Promise<void> {
     const tradesQ = await applyShardToQuery(
       this.supabase,
@@ -133,6 +205,7 @@ export class AutoManagementMonitor {
         .eq('status', 'open')
         .not('auto_be_mode', 'is', null)
         .is('auto_be_applied_at', null)
+        .not('broker_account_id', 'is', null)
         .limit(500),
     )
     if (!tradesQ) return
@@ -171,6 +244,11 @@ export class AutoManagementMonitor {
 
     let appliedTotal = 0
     let applyErrTotal = 0
+    const tickNow = Date.now()
+    // One open-orders snapshot per account per tick (not per trade): the apply
+    // decision reads the same live-position data for every trade on the account,
+    // so N trades must not mean N identical bridge reads.
+    const openedOrdersByAccount = new Map<string, unknown[] | null>()
     for (const [key, group] of groups) {
       const brokerId = key.split(':')[0]!
       const symbol = group[0]?.symbol ?? ''
@@ -190,6 +268,7 @@ export class AutoManagementMonitor {
       }
 
       for (const trade of group) {
+        if ((this.failureByTrade.get(trade.id)?.nextAt ?? 0) > tickNow) continue
         if (userOverrideHasStopLevels(overrideBySignal.get(trade.signal_id ?? ''))) {
           continue
         }
@@ -199,11 +278,36 @@ export class AutoManagementMonitor {
           99,
           Math.max(1, Math.floor(Number(manual.half_close_percent ?? 50) || 50)),
         )
-        const ok = await this.maybeApplyBreakeven(trade, uuid, api, bid, ask, partials, halfClosePct)
+        let ordersSnapshot: unknown[] | null
+        if (openedOrdersByAccount.has(uuid)) {
+          ordersSnapshot = openedOrdersByAccount.get(uuid)!
+        } else {
+          try {
+            ordersSnapshot = (await api.openedOrders(uuid)) ?? []
+          } catch {
+            ordersSnapshot = null
+          }
+          openedOrdersByAccount.set(uuid, ordersSnapshot)
+        }
+        const ok = await this.maybeApplyBreakeven(
+          trade, uuid, api, bid, ask, partials, halfClosePct, ordersSnapshot,
+        )
+        if (ok === false) {
+          this.registerFailure(trade.id, this.failureClassByTrade.get(trade.id) ?? 'transient')
+        } else {
+          this.clearFailure(trade.id)
+        }
         if (ok === true) appliedTotal++
         if (ok === false) applyErrTotal++
       }
     }
+
+    // Drop retry state for trades no longer in the work set so these maps stay
+    // bounded over the process lifetime.
+    const liveIds = new Set(rows.map(r => r.id))
+    for (const key of this.failureByTrade.keys()) if (!liveIds.has(key)) this.failureByTrade.delete(key)
+    for (const key of this.failureClassByTrade.keys()) if (!liveIds.has(key)) this.failureClassByTrade.delete(key)
+    for (const key of this.failureLogCooldownUntil.keys()) if (!liveIds.has(key)) this.failureLogCooldownUntil.delete(key)
 
     if (appliedTotal > 0 || applyErrTotal > 0) {
       this.quietTicks = 0
@@ -264,6 +368,7 @@ export class AutoManagementMonitor {
     ask: number,
     partials: PartialLegRow[],
     halfClosePercent: number,
+    brokerOrders: unknown[] | null,
   ): Promise<boolean | null> {
     const ticketNum = Number(trade.metaapi_order_id)
     if (!Number.isFinite(ticketNum) || ticketNum <= 0) {
@@ -313,9 +418,8 @@ export class AutoManagementMonitor {
     const currentSl = trade.sl != null && Number.isFinite(Number(trade.sl)) ? Number(trade.sl) : null
 
     let brokerSl: number | null = null
-    try {
-      const orders = await api.openedOrders(uuid)
-      for (const raw of orders ?? []) {
+    if (brokerOrders) {
+      for (const raw of brokerOrders) {
         const o = raw as Record<string, unknown>
         const t = Number(o.ticket ?? o.Ticket ?? o.order ?? o.Order ?? 0)
         if (t !== ticketNum) continue
@@ -323,8 +427,6 @@ export class AutoManagementMonitor {
         if (Number.isFinite(sl) && sl > 0) brokerSl = sl
         break
       }
-    } catch {
-      /* fall back to DB SL */
     }
 
     const effectiveSl = resolveSlForBreakevenCheck(currentSl, brokerSl)
@@ -382,6 +484,7 @@ export class AutoManagementMonitor {
         api,
         sessionId: uuid,
         trade,
+        openedOrders: brokerOrders ?? undefined,
       })
       if (resolution.status !== 'resolved') {
         throw new Error(`automatic management reconciliation required: ${resolution.reason}`)
@@ -455,9 +558,14 @@ export class AutoManagementMonitor {
       const benign = /not\s+found|already\s+closed|invalid\s+ticket|no\s+such\s+order|unknown\s+ticket/i.test(msg)
       if (benign) {
         this.failureLogCooldownUntil.delete(trade.id)
+        // A benign "not found / already closed / unknown ticket" cannot be fixed
+        // by retrying — the row needs reconciliation — so classify it explicitly
+        // as unresolvable (its wording does not match the generic classifier).
+        this.failureClassByTrade.set(trade.id, 'unresolvable')
         console.warn(`[autoManagementMonitor] broker identity/close state ambiguous trade=${trade.id}; deferring to reconciliation`)
         return false
       }
+      this.markFailureClass(trade.id, msg)
       console.warn(`[autoManagementMonitor] apply failed trade=${trade.id} ticket=${ticketNum}: ${msg}`)
       const now = Date.now()
       if (now >= (this.failureLogCooldownUntil.get(trade.id) ?? 0)) {
