@@ -354,16 +354,16 @@ function BrokerReconnectPasswordModalInner({
           )}
 
           {stage === 'details' && (
-            <div className="flex justify-end gap-2 pt-1">
-              {canDismiss && (
-                <Button type="button" variant="ghost" onClick={onCancel}>
-                  {copy.cancel}
-                </Button>
-              )}
-              <Button type="button" onClick={onContinue}>
+            <div className="space-y-2 pt-1">
+              <Button type="button" className="w-full" onClick={onContinue}>
                 <RefreshCw className="h-4 w-4" />
                 {copy.reconnect}
               </Button>
+              {canDismiss && (
+                <Button type="button" variant="ghost" className="w-full" onClick={onCancel}>
+                  {copy.cancel}
+                </Button>
+              )}
             </div>
           )}
 
