@@ -330,6 +330,77 @@ export class MtapiClient {
     return row
   }
 
+  async symbols(sessionId: string, platform?: string | null): Promise<string[]> {
+    const raw = await this.request("Symbols", {}, sessionId, platform)
+    if (Array.isArray(raw)) {
+      return raw.map((value) => {
+        if (typeof value === "string") return value
+        const row = object(value)
+        return String(row.symbol ?? row.Symbol ?? "")
+      }).filter(Boolean)
+    }
+    const row = object(raw)
+    if (Object.keys(row).length === 0) return []
+    return Object.keys(row)
+  }
+
+  /** Raw integer contract; interpretation belongs to the explicitly verified adapter policy. */
+  async serverTimezone(sessionId: string, platform?: string | null): Promise<unknown> {
+    return await this.request("ServerTimezone", {}, sessionId, platform)
+  }
+
+  async accountDetails(
+    sessionId: string,
+    platform?: string | null,
+  ): Promise<Record<string, unknown>> {
+    const row = object(await this.request("AccountDetails", {}, sessionId, platform))
+    if (Object.keys(row).length === 0) {
+      throw new MtapiApiError("AccountDetails returned an invalid response", 502, "INVALID_RESPONSE")
+    }
+    return row
+  }
+
+  async priceHistory(
+    sessionId: string,
+    args: {
+      symbol: string
+      from: string
+      to: string
+      timeFrame: number
+      timeoutSeconds?: number
+    },
+    platform: string | null = "MT5",
+  ): Promise<unknown[]> {
+    const raw = await this.request("PriceHistory", {
+      symbol: args.symbol,
+      from: args.from,
+      to: args.to,
+      timeFrame: args.timeFrame,
+      timeoutSeconds: args.timeoutSeconds ?? 30,
+    }, sessionId, platform, Math.max(45_000, ((args.timeoutSeconds ?? 30) + 10) * 1000))
+    if (!Array.isArray(raw)) {
+      throw new MtapiApiError("PriceHistory returned an invalid response", 502, "INVALID_RESPONSE")
+    }
+    return raw
+  }
+
+  async quoteHistory(
+    sessionId: string,
+    args: { symbol: string; timeframe: string; from: string; count: number },
+    platform: string | null = "MT4",
+  ): Promise<unknown[]> {
+    const raw = await this.request("QuoteHistory", {
+      symbol: args.symbol,
+      timeframe: args.timeframe,
+      from: args.from,
+      count: args.count,
+    }, sessionId, platform, 90_000)
+    if (!Array.isArray(raw)) {
+      throw new MtapiApiError("QuoteHistory returned an invalid response", 502, "INVALID_RESPONSE")
+    }
+    return raw
+  }
+
   /** Market bid/ask for one symbol. Same shape as FxSocket getQuote. */
   async getQuote(
     sessionId: string,
