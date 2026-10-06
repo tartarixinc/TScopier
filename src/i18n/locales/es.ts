@@ -437,6 +437,13 @@ export const es: Translations = {
     allSymbols: 'Todos',
     none: 'Ninguno',
     editConfiguration: 'Editar {channel} en {broker}',
+    viewConfiguration: 'Ver {channel} en {broker}',
+    edit: 'Editar',
+    addChannel: 'Añadir canal',
+    addBroker: 'Añadir nuevo broker',
+    dragToConnect: 'Arrastra {channel} a un broker',
+    dragToDisconnect: 'Arrastra {channel} fuera de {broker} para desconectar',
+    noAvailableChannels: 'Todos tus canales ya están en esta página.',
     loadError: 'No se pudieron cargar las configuraciones de los canales.',
   },
   accountConfig: {

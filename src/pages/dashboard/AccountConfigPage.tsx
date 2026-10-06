@@ -21,6 +21,7 @@ import { Button } from '../../components/ui/Button'
 import { Badge } from '../../components/ui/Badge'
 import { Alert } from '../../components/ui/Alert'
 import { useAddTradingAccount } from '../../context/AddTradingAccountContext'
+import { BrokerConfigurationsModal } from '../../components/configure/BrokerConfigurationsModal'
 import { RiskLotCalculatorModal } from '../../components/configure/RiskLotCalculatorModal'
 import { CopyLimitsTargetsSection } from '../../components/configure/CopyLimitsTargetsSection'
 import { ChannelSignalExamplesSection } from '../../components/configure/ChannelSignalExamplesSection'
@@ -884,6 +885,12 @@ export function AccountConfigPage() {
     userId ? (channelOptionsCache.get(userId) ?? []) : [],
   )
   const [configAccount, setConfigAccount] = useState<BrokerAccount | null>(null)
+  const [configurationView, setConfigurationView] = useState<{
+    broker: BrokerAccount
+    loading: boolean
+    error: string | null
+  } | null>(null)
+  const configurationViewRequest = useRef(0)
   const [layeringCapabilities, setLayeringCapabilities] = useState<LayeringModeCapabilities>(LEGACY_ONLY_LAYERING_CAPABILITIES)
   const configAccountTotalBalance = useMemo(
     () => (configAccount ? resolveBrokerTotalBalance(configAccount) : null),
@@ -1733,6 +1740,28 @@ export function AccountConfigPage() {
     )
     setChannelLinkEditMode(false)
     if (userId) void refreshTradingPresets(userId)
+  }
+
+  const openBrokerConfigurations = async (broker: BrokerAccount) => {
+    const request = ++configurationViewRequest.current
+    const fresh = brokers.find(b => b.id === broker.id) ?? broker
+    setConfigurationView({ broker: fresh, loading: true, error: null })
+    const { rows, error: configLoadErr } = await fetchBrokerChannelTradingConfigRows(supabase, fresh.id)
+    if (request !== configurationViewRequest.current) return
+    if (configLoadErr) {
+      setConfigurationView({ broker: fresh, loading: false, error: configLoadErr })
+      return
+    }
+    setConfigurationView({
+      broker: mergeBrokerWithChannelTradingConfigRows(fresh, rows),
+      loading: false,
+      error: null,
+    })
+  }
+
+  const closeBrokerConfigurations = () => {
+    configurationViewRequest.current += 1
+    setConfigurationView(null)
   }
 
   useEffect(() => {
@@ -2748,12 +2777,12 @@ export function AccountConfigPage() {
                   padding="none"
                   role="button"
                   tabIndex={0}
-                  aria-label={`${bl.configure} ${broker.label}`}
-                  onClick={() => { void openConfigureModal(broker) }}
+                  aria-label={`${t.configurationsPage.title} ${broker.label}`}
+                  onClick={() => { void openBrokerConfigurations(broker) }}
                   onKeyDown={e => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault()
-                      void openConfigureModal(broker)
+                      void openBrokerConfigurations(broker)
                     }
                   }}
                   className={clsx(
@@ -2983,6 +3012,23 @@ export function AccountConfigPage() {
           </div>
         </div>
       )}
+
+      {configurationView ? (
+        <BrokerConfigurationsModal
+          broker={configurationView.broker}
+          channels={channelOptions}
+          loading={configurationView.loading}
+          error={configurationView.error}
+          copy={t.configurationsPage}
+          modalCopy={t.accountConfig.configureModal}
+          onClose={closeBrokerConfigurations}
+          onEdit={() => {
+            const broker = configurationView.broker
+            closeBrokerConfigurations()
+            void openConfigureModal(broker)
+          }}
+        />
+      ) : null}
 
       {configAccount && createPortal(
         <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 pb-[env(safe-area-inset-bottom)]">

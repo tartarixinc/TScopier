@@ -434,6 +434,13 @@ broker: {
     allSymbols: 'All',
     none: 'None',
     editConfiguration: 'Edit {channel} on {broker}',
+    viewConfiguration: 'View {channel} on {broker}',
+    edit: 'Edit',
+    addChannel: 'Add Channel',
+    addBroker: 'Add new broker',
+    dragToConnect: 'Drag {channel} to a broker',
+    dragToDisconnect: 'Drag {channel} off {broker} to disconnect',
+    noAvailableChannels: 'All of your channels are already on this page.',
     loadError: 'Could not load channel configurations.',
   },
   accountConfig: {

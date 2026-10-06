@@ -841,6 +841,13 @@ export interface ConfigurationsPageTranslations {
   allSymbols: string
   none: string
   editConfiguration: string
+  viewConfiguration: string
+  edit: string
+  addChannel: string
+  addBroker: string
+  dragToConnect: string
+  dragToDisconnect: string
+  noAvailableChannels: string
   loadError: string
 }
 
