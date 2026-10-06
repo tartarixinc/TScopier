@@ -845,6 +845,8 @@ export interface ConfigurationsPageTranslations {
   edit: string
   addChannel: string
   addBroker: string
+  copyFrom: string
+  copyTo: string
   dragToConnect: string
   dragToDisconnect: string
   removeChannel: string

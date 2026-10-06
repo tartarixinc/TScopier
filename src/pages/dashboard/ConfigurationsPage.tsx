@@ -1013,6 +1013,7 @@ function ConfigurationMap({
       className="relative hidden lg:grid lg:grid-cols-[minmax(220px,1fr)_168px_minmax(220px,1fr)] lg:items-start"
     >
       <div className="flex flex-col gap-3">
+        <SectionLabel label={copy.copyFrom} />
         {linkedChannelIds.map(channelId => {
           const dragging = cardDrag?.kind === 'channel' && cardDrag.id === channelId
           const name = channelDisplayName(channelById.get(channelId), copy.unknownChannel)
@@ -1062,6 +1063,7 @@ function ConfigurationMap({
       </div>
       <div />
       <div className="flex flex-col gap-3">
+        <SectionLabel label={copy.copyTo} />
         {brokers.map(broker => {
           const dragging = cardDrag?.kind === 'broker' && cardDrag.id === broker.id
           const connectTarget = (drag?.kind === 'connect' && drag.overBrokerId === broker.id)
@@ -1300,6 +1302,7 @@ function ConfigurationStack({
 
   return (
     <div className="flex flex-col gap-6 lg:hidden">
+      <SectionLabel label={copy.copyFrom} />
       {linkedChannelIds.map(channelId => {
         const name = channelDisplayName(channelById.get(channelId), copy.unknownChannel)
         const linkedBrokers = brokers.filter(broker =>
@@ -1372,6 +1375,7 @@ function ConfigurationStack({
         </div>
       ) : null}
       <AddSectionAction label={copy.addChannel} onClick={onAddChannel} />
+      <SectionLabel label={copy.copyTo} />
       {unlinked.map(broker => {
         const dragging = cardDrag?.kind === 'broker' && cardDrag.id === broker.id
         return (
@@ -1399,6 +1403,12 @@ function ConfigurationStack({
         </CardDragGhost>
       ) : null}
     </div>
+  )
+}
+
+function SectionLabel({ label }: { label: string }) {
+  return (
+    <p className="text-sm font-medium text-neutral-500 dark:text-neutral-400">{label}</p>
   )
 }
 
