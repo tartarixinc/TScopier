@@ -1,7 +1,7 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
-import { Plus, Settings, X } from 'lucide-react'
+import { Plus, Settings, Trash2, X } from 'lucide-react'
 import { PageHeader } from '../../components/layout/PageHeader'
 import { PageShell } from '../../components/layout/PageShell'
 import { Badge } from '../../components/ui/Badge'
@@ -50,6 +50,17 @@ interface PairSelection {
   channelId: string
 }
 
+interface CardDrag {
+  kind: 'channel' | 'broker'
+  id: string
+  overBin: boolean
+  x: number
+  y: number
+  offsetX: number
+  offsetY: number
+  width: number
+}
+
 function PlatformLogo({ platform }: { platform: string }) {
   const [failed, setFailed] = useState(false)
   const raw = platform.trim()
@@ -76,6 +87,27 @@ function TelegramLogo() {
       className="h-7 w-7 shrink-0 object-contain"
     />
   )
+}
+
+function mergeOrder(order: string[], ids: string[]): string[] {
+  const present = new Set(ids)
+  const kept = order.filter(id => present.has(id))
+  const extra = ids.filter(id => !kept.includes(id))
+  return [...kept, ...extra]
+}
+
+function sameOrder(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((id, index) => id === right[index])
+}
+
+function reorderList(ids: string[], fromId: string, toId: string, placeAfter: boolean): string[] {
+  if (fromId === toId) return ids
+  const next = ids.filter(id => id !== fromId)
+  let index = next.indexOf(toId)
+  if (index < 0) return ids
+  if (placeAfter) index += 1
+  next.splice(index, 0, fromId)
+  return next
 }
 
 function channelDisplayName(channel: ChannelName | undefined, fallback: string): string {
@@ -118,7 +150,7 @@ export function ConfigurationsPage() {
   const { openAddTradingAccount } = useAddTradingAccount()
   const { user } = useAuth()
   const { brokers, loading: brokersLoading, replaceBroker } = useBrokerAccounts()
-  const { canUseFeature } = useSubscription()
+  const { canUseFeature, refresh: refreshSubscription } = useSubscription()
   const [channels, setChannels] = useState<ChannelName[]>([])
   const [channelsLoading, setChannelsLoading] = useState(true)
   const [configRows, setConfigRows] = useState<BrokerChannelTradingConfigRow[]>([])
@@ -128,6 +160,9 @@ export function ConfigurationsPage() {
   const [addChannelOpen, setAddChannelOpen] = useState(false)
   const [placedChannelIds, setPlacedChannelIds] = useState<string[]>([])
   const [linkError, setLinkError] = useState<string | null>(null)
+  const [channelOrder, setChannelOrder] = useState<string[]>([])
+  const [brokerOrder, setBrokerOrder] = useState<string[]>([])
+  const [removedChannelIds, setRemovedChannelIds] = useState<string[]>([])
   const linkingRef = useRef(false)
   const latestBrokersRef = useRef<BrokerAccount[]>([])
   const linkChainRef = useRef(Promise.resolve())
@@ -277,17 +312,17 @@ export function ConfigurationsPage() {
 
   const disconnectDraggedChannel = (channelId: string, brokerId: string) => {
     const task = linkChainRef.current.then(async () => {
-      if (!user?.id) return
+      if (!user?.id) return false
       const broker = latestBrokersRef.current.find(item => item.id === brokerId)
-      if (!broker) return
-      if (!normalizeSignalChannelIds(broker.signal_channel_ids).includes(channelId.toLowerCase())) return
+      if (!broker) return false
+      if (!normalizeSignalChannelIds(broker.signal_channel_ids).includes(channelId.toLowerCase())) return true
       linkingRef.current = true
       setLinkError(null)
       const { broker: updated, error } = await disconnectChannelFromBroker(supabase, user.id, broker, channelId)
       if (error || !updated) {
         linkingRef.current = false
         setLinkError(error ?? copy.loadError)
-        return
+        return false
       }
       latestBrokersRef.current = latestBrokersRef.current.map(item =>
         item.id === updated.id ? { ...item, ...updated } : item,
@@ -297,13 +332,75 @@ export function ConfigurationsPage() {
       linkingRef.current = false
       if (configError) {
         setLinkError(configError)
-        return
+        return false
       }
       setConfigRows(prev => [...prev.filter(row => row.broker_account_id !== updated.id), ...rows])
+      return true
     })
     linkChainRef.current = task.then(() => undefined, () => undefined)
     return task
   }
+
+  const removeDraggedChannel = async (channelId: string) => {
+    if (!user?.id) return
+    const id = channelId.toLowerCase()
+    const row = channels.find(channel => channel.id.toLowerCase() === id) ?? null
+    const snapshot = {
+      channels,
+      placed: placedChannelIds,
+      order: channelOrder,
+    }
+    setRemovedChannelIds(prev => (prev.includes(id) ? prev : [...prev, id]))
+    if (row) setChannels(prev => prev.filter(channel => channel.id !== row.id))
+    setPlacedChannelIds(prev => prev.filter(channel => channel !== id))
+    setChannelOrder(prev => prev.filter(channel => channel !== id))
+
+    const restore = () => {
+      setRemovedChannelIds(prev => prev.filter(channel => channel !== id))
+      setChannels(snapshot.channels)
+      setPlacedChannelIds(snapshot.placed)
+      setChannelOrder(snapshot.order)
+    }
+
+    const linked = latestBrokersRef.current.filter(broker =>
+      normalizeSignalChannelIds(broker.signal_channel_ids).includes(id),
+    )
+    for (const broker of linked) {
+      const removed = await disconnectDraggedChannel(id, broker.id)
+      if (!removed) {
+        restore()
+        return
+      }
+    }
+    if (row) {
+      const { error } = await supabase.from('telegram_channels').delete().eq('id', row.id)
+      if (error) {
+        setLinkError(error.message)
+        restore()
+        return
+      }
+    }
+    setRemovedChannelIds(prev => prev.filter(channel => channel !== id))
+    void refreshSubscription()
+  }
+
+  const orderedChannelIds = useMemo(
+    () => mergeOrder(channelOrder, mapChannelIds).filter(id => !removedChannelIds.includes(id)),
+    [channelOrder, mapChannelIds, removedChannelIds],
+  )
+  const orderedBrokers = useMemo(() => {
+    const hidden = new Set(removedChannelIds)
+    const ids = mergeOrder(brokerOrder, mergedBrokers.map(broker => broker.id))
+    return ids.flatMap(id => {
+      const broker = mergedBrokers.find(item => item.id === id)
+      if (!broker) return []
+      if (hidden.size === 0) return [broker]
+      const linked = normalizeSignalChannelIds(broker.signal_channel_ids)
+      const next = linked.filter(channelId => !hidden.has(channelId))
+      if (next.length === linked.length) return [broker]
+      return [{ ...broker, signal_channel_ids: next }]
+    })
+  }, [brokerOrder, mergedBrokers, removedChannelIds])
 
   const loading = brokersLoading || channelsLoading || configsLoading
   const selectedBroker = openPair
@@ -336,8 +433,8 @@ export function ConfigurationsPage() {
             </Card>
           ) : null}
           <ConfigurationMap
-            brokers={mergedBrokers}
-            linkedChannelIds={mapChannelIds}
+            brokers={orderedBrokers}
+            linkedChannelIds={orderedChannelIds}
             channelById={channelById}
             copy={copy}
             onOpen={setOpenPair}
@@ -345,15 +442,21 @@ export function ConfigurationsPage() {
             onAddBroker={openAddTradingAccount}
             onConnect={(channelId, brokerId) => connectDraggedChannel(channelId, brokerId)}
             onDisconnect={(channelId, brokerId) => disconnectDraggedChannel(channelId, brokerId)}
+            onReorderChannels={setChannelOrder}
+            onReorderBrokers={setBrokerOrder}
+            onRemoveChannel={channelId => { void removeDraggedChannel(channelId) }}
           />
           <ConfigurationStack
-            brokers={mergedBrokers}
-            linkedChannelIds={mapChannelIds}
+            brokers={orderedBrokers}
+            linkedChannelIds={orderedChannelIds}
             channelById={channelById}
             copy={copy}
             onOpen={setOpenPair}
             onAddChannel={() => setAddChannelOpen(true)}
             onAddBroker={openAddTradingAccount}
+            onReorderChannels={setChannelOrder}
+            onReorderBrokers={setBrokerOrder}
+            onRemoveChannel={channelId => { void removeDraggedChannel(channelId) }}
           />
         </>
       )}
@@ -392,6 +495,78 @@ export function ConfigurationsPage() {
   )
 }
 
+function draggedCard(
+  drag: CardDrag,
+  brokers: BrokerAccount[],
+  channelById: Map<string, ChannelName>,
+  copy: ConfigurationsPageTranslations,
+) {
+  if (drag.kind === 'channel') {
+    return <ChannelNode name={channelDisplayName(channelById.get(drag.id), copy.unknownChannel)} />
+  }
+  const broker = brokers.find(item => item.id === drag.id)
+  return broker ? <BrokerNode broker={broker} copy={copy} /> : null
+}
+
+function CardDragGhost({ drag, children }: { drag: CardDrag; children: ReactNode }) {
+  return createPortal(
+    <div
+      className="pointer-events-none fixed z-[80]"
+      style={{
+        left: drag.x - drag.offsetX,
+        top: drag.y - drag.offsetY,
+        width: drag.width,
+        transform: drag.overBin ? 'scale(0.86)' : 'translateY(-6px) scale(1.03)',
+        opacity: drag.overBin ? 0.72 : 1,
+      }}
+    >
+      <div className={drag.overBin ? '' : 'shadow-xl'}>{children}</div>
+    </div>,
+    document.body,
+  )
+}
+
+function dragSlotClass(dragging: boolean) {
+  return `relative touch-none select-none cursor-grab ${dragging ? 'cursor-grabbing opacity-40' : ''}`
+}
+
+function useCardPointerSession() {
+  const moveRef = useRef<(event: PointerEvent) => void>(() => {})
+  const endRef = useRef<(event: PointerEvent) => void>(() => {})
+  const stopRef = useRef<(() => void) | null>(null)
+
+  const stop = () => {
+    document.body.style.cursor = ''
+    stopRef.current?.()
+  }
+
+  const begin = () => {
+    stop()
+    const move = (event: PointerEvent) => moveRef.current(event)
+    const end = (event: PointerEvent) => {
+      stop()
+      endRef.current(event)
+    }
+    window.addEventListener('pointermove', move, true)
+    window.addEventListener('pointerup', end, true)
+    window.addEventListener('pointercancel', end, true)
+    document.body.style.cursor = 'grabbing'
+    stopRef.current = () => {
+      window.removeEventListener('pointermove', move, true)
+      window.removeEventListener('pointerup', end, true)
+      window.removeEventListener('pointercancel', end, true)
+      stopRef.current = null
+    }
+  }
+
+  useEffect(() => () => {
+    document.body.style.cursor = ''
+    stopRef.current?.()
+  }, [])
+
+  return { moveRef, endRef, begin, stop }
+}
+
 function ConfigurationMap({
   brokers,
   linkedChannelIds,
@@ -402,6 +577,9 @@ function ConfigurationMap({
   onAddBroker,
   onConnect,
   onDisconnect,
+  onReorderChannels,
+  onReorderBrokers,
+  onRemoveChannel,
 }: {
   brokers: BrokerAccount[]
   linkedChannelIds: string[]
@@ -411,7 +589,10 @@ function ConfigurationMap({
   onAddChannel: () => void
   onAddBroker: () => void
   onConnect: (channelId: string, brokerId: string) => Promise<void>
-  onDisconnect: (channelId: string, brokerId: string) => Promise<void>
+  onDisconnect: (channelId: string, brokerId: string) => Promise<boolean | void>
+  onReorderChannels: (ids: string[]) => void
+  onReorderBrokers: (ids: string[]) => void
+  onRemoveChannel: (channelId: string) => void
 }) {
   const mapRef = useRef<HTMLDivElement>(null)
   const channelRefs = useRef(new Map<string, HTMLElement>())
@@ -421,7 +602,7 @@ function ConfigurationMap({
     brokers: Record<string, Anchor>
   }>({ channels: {}, brokers: {} })
   const dragRef = useRef<
-    | { kind: 'connect'; channelId: string }
+    | { kind: 'connect'; channelId: string; overBrokerId: string | null }
     | { kind: 'disconnect'; channelId: string; brokerId: string; start: Point }
     | null
   >(null)
@@ -432,6 +613,10 @@ function ConfigurationMap({
   >(null)
   const [pendingLink, setPendingLink] = useState<{ channelId: string; brokerId: string } | null>(null)
   const [pendingUnlink, setPendingUnlink] = useState<{ channelId: string; brokerId: string } | null>(null)
+  const binRef = useRef<HTMLDivElement>(null)
+  const cardDragRef = useRef<CardDrag | null>(null)
+  const [cardDrag, setCardDrag] = useState<CardDrag | null>(null)
+  const cardPointer = useCardPointerSession()
 
   const connections = useMemo(() => {
     const linked = brokers.flatMap(broker =>
@@ -447,15 +632,15 @@ function ConfigurationMap({
     return exists ? linked : [...linked, pendingLink]
   }, [brokers, pendingLink])
 
-  const brokerUnderPointer = (clientX: number, clientY: number): string | null => {
+  const brokerUnderPointer = (clientX: number, clientY: number, reach = 20): string | null => {
     let found: string | null = null
     let best = Number.POSITIVE_INFINITY
     brokerRefs.current.forEach((el, id) => {
       const rect = el.getBoundingClientRect()
-      const inside = clientX >= rect.left - 20
-        && clientX <= rect.right
-        && clientY >= rect.top
-        && clientY <= rect.bottom
+      const inside = clientX >= rect.left - reach
+        && clientX <= rect.right + 24
+        && clientY >= rect.top - 40
+        && clientY <= rect.bottom + 40
       if (!inside) return
       const distance = Math.abs(clientY - (rect.top + rect.height / 2))
       if (distance < best) {
@@ -465,6 +650,8 @@ function ConfigurationMap({
     })
     return found
   }
+
+  const brokerConnectTarget = (clientX: number, clientY: number) => brokerUnderPointer(clientX, clientY, 220)
 
   const pointerInMap = (clientX: number, clientY: number): Point | null => {
     const map = mapRef.current
@@ -483,14 +670,15 @@ function ConfigurationMap({
 
   const onPortPointerDown = (channelId: string, event: ReactPointerEvent<HTMLButtonElement>) => {
     if (!beginPointerDrag(event)) return
-    dragRef.current = { kind: 'connect', channelId }
+    const overBrokerId = brokerConnectTarget(event.clientX, event.clientY)
+    dragRef.current = { kind: 'connect', channelId, overBrokerId }
     const pointer = pointerInMap(event.clientX, event.clientY)
     if (!pointer) return
     setDrag({
       kind: 'connect',
       channelId,
       pointer,
-      overBrokerId: brokerUnderPointer(event.clientX, event.clientY),
+      overBrokerId,
     })
   }
 
@@ -520,11 +708,13 @@ function ConfigurationMap({
     const pointer = pointerInMap(event.clientX, event.clientY)
     if (!pointer) return
     if (current.kind === 'connect') {
+      const overBrokerId = brokerConnectTarget(event.clientX, event.clientY)
+      current.overBrokerId = overBrokerId
       setDrag({
         kind: 'connect',
         channelId: current.channelId,
         pointer,
-        overBrokerId: brokerUnderPointer(event.clientX, event.clientY),
+        overBrokerId,
       })
       return
     }
@@ -550,7 +740,7 @@ function ConfigurationMap({
       void onDisconnect(current.channelId, current.brokerId).finally(() => setPendingUnlink(null))
       return
     }
-    const brokerId = brokerUnderPointer(event.clientX, event.clientY)
+    const brokerId = brokerConnectTarget(event.clientX, event.clientY) ?? current.overBrokerId
     if (!brokerId) return
     const alreadyLinked = brokers.some(broker =>
       broker.id === brokerId
@@ -566,7 +756,93 @@ function ConfigurationMap({
     setDrag(null)
   }
 
-  const layoutKey = `${linkedChannelIds.join(',')}|${brokers.map(broker => broker.id).join(',')}|${connections.map(item => `${item.channelId}:${item.brokerId}`).join(',')}`
+  const pointerOverBin = (clientX: number, clientY: number) => {
+    const bin = binRef.current
+    if (!bin) return false
+    const rect = bin.getBoundingClientRect()
+    return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom
+  }
+
+  const itemUnderPointer = (
+    refs: Map<string, HTMLElement>,
+    clientX: number,
+    clientY: number,
+    ignoreId: string,
+  ) => {
+    let found: string | null = null
+    refs.forEach((el, id) => {
+      if (id === ignoreId) return
+      const rect = el.getBoundingClientRect()
+      if (clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom) {
+        found = id
+      }
+    })
+    return found
+  }
+
+  const onCardPointerDown = (
+    kind: 'channel' | 'broker',
+    id: string,
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) => {
+    if (event.button !== 0) return
+    if ((event.target as HTMLElement).closest('button')) return
+    event.preventDefault()
+    const rect = event.currentTarget.getBoundingClientRect()
+    const next = {
+      kind,
+      id,
+      overBin: false,
+      x: event.clientX,
+      y: event.clientY,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+      width: rect.width,
+    }
+    cardDragRef.current = next
+    setCardDrag(next)
+    cardPointer.begin()
+  }
+
+  const onCardPointerMove = (event: { clientX: number; clientY: number }) => {
+    const current = cardDragRef.current
+    if (!current) return
+    const overBin = current.kind === 'channel' && pointerOverBin(event.clientX, event.clientY)
+    const next = { ...current, x: event.clientX, y: event.clientY, overBin }
+    cardDragRef.current = next
+    setCardDrag(next)
+    if (overBin) return
+    const refs = current.kind === 'channel' ? channelRefs.current : brokerRefs.current
+    const ids = current.kind === 'channel' ? linkedChannelIds : brokers.map(broker => broker.id)
+    const targetId = itemUnderPointer(refs, event.clientX, event.clientY, current.id)
+    if (!targetId) return
+    const rect = refs.get(targetId)?.getBoundingClientRect()
+    if (!rect) return
+    const reordered = reorderList(ids, current.id, targetId, event.clientY > rect.top + rect.height / 2)
+    if (sameOrder(reordered, ids)) return
+    if (current.kind === 'channel') onReorderChannels(reordered)
+    else onReorderBrokers(reordered)
+  }
+
+  const onCardPointerUp = (event: { clientX: number; clientY: number }) => {
+    cardPointer.stop()
+    const current = cardDragRef.current
+    cardDragRef.current = null
+    const overBin = current?.kind === 'channel' && pointerOverBin(event.clientX, event.clientY)
+    setCardDrag(null)
+    if (overBin && current) onRemoveChannel(current.id)
+  }
+
+  const onCardPointerCancel = () => {
+    cardPointer.stop()
+    cardDragRef.current = null
+    setCardDrag(null)
+  }
+
+  cardPointer.moveRef.current = onCardPointerMove
+  cardPointer.endRef.current = onCardPointerUp
+
+  const layoutKey = `${linkedChannelIds.join(',')}|${brokers.map(broker => broker.id).join(',')}|${connections.map(item => `${item.channelId}:${item.brokerId}`).join(',')}|${cardDrag?.id ?? ''}`
 
   useLayoutEffect(() => {
     const map = mapRef.current
@@ -597,6 +873,8 @@ function ConfigurationMap({
     measure()
     const observer = new ResizeObserver(measure)
     observer.observe(map)
+    channelRefs.current.forEach(el => observer.observe(el))
+    brokerRefs.current.forEach(el => observer.observe(el))
     window.addEventListener('resize', measure)
     return () => {
       observer.disconnect()
@@ -609,7 +887,8 @@ function ConfigurationMap({
         if (drag.kind === 'disconnect') return connectorGeometry(drag.start, drag.pointer)
         const start = anchors.channels[drag.channelId]
         if (!start) return null
-        return connectorGeometry(start, drag.pointer)
+        const brokerAnchor = drag.overBrokerId ? anchors.brokers[drag.overBrokerId] : null
+        return connectorGeometry(start, brokerAnchor ?? drag.pointer)
       })()
     : null
 
@@ -681,54 +960,81 @@ function ConfigurationMap({
       dir="ltr"
       className="relative hidden lg:grid lg:grid-cols-[minmax(220px,1fr)_168px_minmax(220px,1fr)] lg:items-start"
     >
-      <div className="space-y-3">
-        {linkedChannelIds.map(channelId => (
+      <div className="flex flex-col gap-3">
+        {linkedChannelIds.map(channelId => {
+          const dragging = cardDrag?.kind === 'channel' && cardDrag.id === channelId
+          const name = channelDisplayName(channelById.get(channelId), copy.unknownChannel)
+          return (
+            <div
+              key={channelId}
+              ref={el => {
+                if (el) channelRefs.current.set(channelId, el)
+                else channelRefs.current.delete(channelId)
+              }}
+              className={dragSlotClass(dragging)}
+              onPointerDown={event => onCardPointerDown('channel', channelId, event)}
+              onPointerUp={onCardPointerUp}
+              onPointerCancel={onCardPointerCancel}
+            >
+              <div className="relative min-h-0">
+                <ChannelNode name={name} />
+                <button
+                  type="button"
+                  className="absolute end-0 top-1/2 z-30 h-3.5 w-3.5 -translate-y-1/2 translate-x-1/2 cursor-grab touch-none rounded-full bg-teal-500 ring-2 ring-white hover:scale-110 active:cursor-grabbing dark:ring-neutral-950"
+                  aria-label={interpolate(copy.dragToConnect, { channel: name })}
+                  onPointerDown={event => onPortPointerDown(channelId, event)}
+                  onPointerMove={onPortPointerMove}
+                  onPointerUp={onPortPointerUp}
+                  onPointerCancel={onPortPointerCancel}
+                />
+              </div>
+            </div>
+          )
+        })}
+        {cardDrag?.kind === 'channel' ? (
           <div
-            key={channelId}
-            ref={el => {
-              if (el) channelRefs.current.set(channelId, el)
-              else channelRefs.current.delete(channelId)
-            }}
-            className="relative"
+            ref={binRef}
+            role="img"
+            aria-label={copy.removeChannel}
+            className={`flex items-center justify-center gap-2 rounded-2xl border border-dashed px-4 py-4 text-sm font-medium ${
+              cardDrag.overBin
+                ? 'border-error-500 bg-error-50 text-error-600 dark:bg-error-950/40 dark:text-error-400'
+                : 'border-neutral-300 text-neutral-500 dark:border-neutral-700 dark:text-neutral-400'
+            }`}
           >
-            <ChannelNode name={channelDisplayName(channelById.get(channelId), copy.unknownChannel)} />
-            <button
-              type="button"
-              className="absolute end-0 top-1/2 z-30 h-3.5 w-3.5 -translate-y-1/2 translate-x-1/2 cursor-grab touch-none rounded-full bg-teal-500 ring-2 ring-white hover:scale-110 active:cursor-grabbing dark:ring-neutral-950"
-              aria-label={interpolate(copy.dragToConnect, {
-                channel: channelDisplayName(channelById.get(channelId), copy.unknownChannel),
-              })}
-              onPointerDown={event => onPortPointerDown(channelId, event)}
-              onPointerMove={onPortPointerMove}
-              onPointerUp={onPortPointerUp}
-              onPointerCancel={onPortPointerCancel}
-            />
+            <Trash2 className="h-5 w-5" />
+            {copy.removeChannel}
           </div>
-        ))}
+        ) : null}
         <AddSectionAction label={copy.addChannel} onClick={onAddChannel} />
       </div>
       <div />
-      <div className="space-y-3">
-        {brokers.map(broker => (
-          <div
-            key={broker.id}
-            ref={el => {
-              if (el) brokerRefs.current.set(broker.id, el)
-              else brokerRefs.current.delete(broker.id)
-            }}
-            className={`relative rounded-2xl ${
-              (drag?.kind === 'connect' && drag.overBrokerId === broker.id)
-              || (drag?.kind === 'disconnect' && drag.brokerId === broker.id && drag.overBroker)
-                ? 'ring-2 ring-teal-500'
-                : ''
-            }`}
-          >
-            {normalizeSignalChannelIds(broker.signal_channel_ids).length === 0 ? (
-              <span className="absolute start-0 top-1/2 z-30 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-teal-500 ring-2 ring-white dark:ring-neutral-950" />
-            ) : null}
-            <BrokerNode broker={broker} copy={copy} />
-          </div>
-        ))}
+      <div className="flex flex-col gap-3">
+        {brokers.map(broker => {
+          const dragging = cardDrag?.kind === 'broker' && cardDrag.id === broker.id
+          const connectTarget = (drag?.kind === 'connect' && drag.overBrokerId === broker.id)
+            || (drag?.kind === 'disconnect' && drag.brokerId === broker.id && drag.overBroker)
+          return (
+            <div
+              key={broker.id}
+              ref={el => {
+                if (el) brokerRefs.current.set(broker.id, el)
+                else brokerRefs.current.delete(broker.id)
+              }}
+              className={dragSlotClass(dragging)}
+              onPointerDown={event => onCardPointerDown('broker', broker.id, event)}
+              onPointerUp={onCardPointerUp}
+              onPointerCancel={onCardPointerCancel}
+            >
+              <div className={`relative min-h-0 rounded-2xl ${connectTarget ? 'ring-2 ring-teal-500' : ''}`}>
+                {normalizeSignalChannelIds(broker.signal_channel_ids).length === 0 ? (
+                  <span className="absolute start-0 top-1/2 z-30 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-teal-500 ring-2 ring-white dark:ring-neutral-950" />
+                ) : null}
+                <BrokerNode broker={broker} copy={copy} />
+              </div>
+            </div>
+          )
+        })}
         <AddSectionAction label={copy.addBroker} onClick={onAddBroker} />
       </div>
 
@@ -753,8 +1059,12 @@ function ConfigurationMap({
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
-            strokeDasharray="6 4"
-            className={drag?.kind === 'disconnect' && !drag.overBroker ? 'text-error-500' : 'text-teal-400'}
+            strokeDasharray={drag?.kind === 'connect' && drag.overBrokerId ? undefined : '6 4'}
+            className={
+              drag?.kind === 'disconnect' && !drag.overBroker
+                ? 'text-error-500'
+                : 'text-teal-500'
+            }
           />
         ) : null}
       </svg>
@@ -810,6 +1120,11 @@ function ConfigurationMap({
           />
         )
       })}
+      {cardDrag ? (
+        <CardDragGhost drag={cardDrag}>
+          {draggedCard(cardDrag, brokers, channelById, copy)}
+        </CardDragGhost>
+      ) : null}
     </div>
   )
 }
@@ -822,6 +1137,9 @@ function ConfigurationStack({
   onOpen,
   onAddChannel,
   onAddBroker,
+  onReorderChannels,
+  onReorderBrokers,
+  onRemoveChannel,
 }: {
   brokers: BrokerAccount[]
   linkedChannelIds: string[]
@@ -830,44 +1148,204 @@ function ConfigurationStack({
   onOpen: (pair: PairSelection) => void
   onAddChannel: () => void
   onAddBroker: () => void
+  onReorderChannels: (ids: string[]) => void
+  onReorderBrokers: (ids: string[]) => void
+  onRemoveChannel: (channelId: string) => void
 }) {
+  const channelRefs = useRef(new Map<string, HTMLElement>())
+  const brokerRefs = useRef(new Map<string, HTMLElement>())
+  const binRef = useRef<HTMLDivElement>(null)
+  const cardDragRef = useRef<CardDrag | null>(null)
+  const [cardDrag, setCardDrag] = useState<CardDrag | null>(null)
+  const cardPointer = useCardPointerSession()
   const unlinked = brokers.filter(broker => normalizeSignalChannelIds(broker.signal_channel_ids).length === 0)
 
+  const pointerOverBin = (clientX: number, clientY: number) => {
+    const bin = binRef.current
+    if (!bin) return false
+    const rect = bin.getBoundingClientRect()
+    return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom
+  }
+
+  const itemUnderPointer = (
+    refs: Map<string, HTMLElement>,
+    clientX: number,
+    clientY: number,
+    ignoreId: string,
+  ) => {
+    let found: string | null = null
+    refs.forEach((el, id) => {
+      if (id === ignoreId) return
+      const rect = el.getBoundingClientRect()
+      if (clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom) {
+        found = id
+      }
+    })
+    return found
+  }
+
+  const onCardPointerDown = (
+    kind: 'channel' | 'broker',
+    id: string,
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) => {
+    if (event.button !== 0) return
+    if ((event.target as HTMLElement).closest('button')) return
+    event.preventDefault()
+    const rect = event.currentTarget.getBoundingClientRect()
+    const next = {
+      kind,
+      id,
+      overBin: false,
+      x: event.clientX,
+      y: event.clientY,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+      width: rect.width,
+    }
+    cardDragRef.current = next
+    setCardDrag(next)
+    cardPointer.begin()
+  }
+
+  const onCardPointerMove = (event: { clientX: number; clientY: number }) => {
+    const current = cardDragRef.current
+    if (!current) return
+    const overBin = current.kind === 'channel' && pointerOverBin(event.clientX, event.clientY)
+    const next = { ...current, x: event.clientX, y: event.clientY, overBin }
+    cardDragRef.current = next
+    setCardDrag(next)
+    if (overBin) return
+    const refs = current.kind === 'channel' ? channelRefs.current : brokerRefs.current
+    const ids = current.kind === 'channel' ? linkedChannelIds : brokers.map(broker => broker.id)
+    const targetId = itemUnderPointer(refs, event.clientX, event.clientY, current.id)
+    if (!targetId) return
+    const rect = refs.get(targetId)?.getBoundingClientRect()
+    if (!rect) return
+    const reordered = reorderList(ids, current.id, targetId, event.clientY > rect.top + rect.height / 2)
+    if (sameOrder(reordered, ids)) return
+    if (current.kind === 'channel') onReorderChannels(reordered)
+    else onReorderBrokers(reordered)
+  }
+
+  const onCardPointerUp = (event: { clientX: number; clientY: number }) => {
+    cardPointer.stop()
+    const current = cardDragRef.current
+    cardDragRef.current = null
+    const overBin = current?.kind === 'channel' && pointerOverBin(event.clientX, event.clientY)
+    setCardDrag(null)
+    if (overBin && current) onRemoveChannel(current.id)
+  }
+
+  const onCardPointerCancel = () => {
+    cardPointer.stop()
+    cardDragRef.current = null
+    setCardDrag(null)
+  }
+
+  cardPointer.moveRef.current = onCardPointerMove
+  cardPointer.endRef.current = onCardPointerUp
+
   return (
-    <div className="space-y-6 lg:hidden">
+    <div className="flex flex-col gap-6 lg:hidden">
       {linkedChannelIds.map(channelId => {
         const name = channelDisplayName(channelById.get(channelId), copy.unknownChannel)
         const linkedBrokers = brokers.filter(broker =>
           normalizeSignalChannelIds(broker.signal_channel_ids).includes(channelId),
         )
+        const draggingChannel = cardDrag?.kind === 'channel' && cardDrag.id === channelId
         return (
-          <div key={channelId} className="space-y-0">
-            <ChannelNode name={name} />
-            {linkedBrokers.map(broker => (
-              <div key={broker.id} className="flex flex-col items-center">
-                <div className="h-4 w-0.5 bg-teal-500" />
-                <button
-                  type="button"
-                  className="flex h-8 w-8 items-center justify-center rounded-full border border-teal-200 bg-white text-teal-700 shadow-sm dark:border-teal-800 dark:bg-neutral-950 dark:text-teal-300"
-                  aria-label={interpolate(copy.viewConfiguration, { channel: name, broker: broker.label })}
-                  onClick={() => onOpen({ brokerId: broker.id, channelId })}
-                >
-                  <Settings className="h-4 w-4" />
-                </button>
-                <div className="h-4 w-0.5 bg-teal-500" />
-                <div className="w-full">
-                  <BrokerNode broker={broker} copy={copy} />
-                </div>
+          <div key={channelId}>
+            <div
+              ref={el => {
+                if (el) channelRefs.current.set(channelId, el)
+                else channelRefs.current.delete(channelId)
+              }}
+              className={dragSlotClass(draggingChannel)}
+              onPointerDown={event => onCardPointerDown('channel', channelId, event)}
+              onPointerUp={onCardPointerUp}
+              onPointerCancel={onCardPointerCancel}
+            >
+              <div className="min-h-0">
+                <ChannelNode name={name} />
               </div>
-            ))}
+            </div>
+            {linkedBrokers.map(broker => {
+              const draggingBroker = cardDrag?.kind === 'broker' && cardDrag.id === broker.id
+              return (
+                <div key={broker.id} className="flex flex-col items-center">
+                  <div className="h-4 w-0.5 bg-teal-500" />
+                  <button
+                    type="button"
+                    className="flex h-8 w-8 items-center justify-center rounded-full border border-teal-200 bg-white text-teal-700 shadow-sm dark:border-teal-800 dark:bg-neutral-950 dark:text-teal-300"
+                    aria-label={interpolate(copy.viewConfiguration, { channel: name, broker: broker.label })}
+                    onClick={() => onOpen({ brokerId: broker.id, channelId })}
+                  >
+                    <Settings className="h-4 w-4" />
+                  </button>
+                  <div className="h-4 w-0.5 bg-teal-500" />
+                  <div
+                    ref={el => {
+                      if (el) brokerRefs.current.set(broker.id, el)
+                      else brokerRefs.current.delete(broker.id)
+                    }}
+                    className={`w-full ${dragSlotClass(draggingBroker)}`}
+                    onPointerDown={event => onCardPointerDown('broker', broker.id, event)}
+                    onPointerUp={onCardPointerUp}
+                    onPointerCancel={onCardPointerCancel}
+                  >
+                    <div className="min-h-0 w-full">
+                      <BrokerNode broker={broker} copy={copy} />
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )
       })}
+      {cardDrag?.kind === 'channel' ? (
+        <div
+          ref={binRef}
+          role="img"
+          aria-label={copy.removeChannel}
+          className={`flex items-center justify-center gap-2 rounded-2xl border border-dashed px-4 py-4 text-sm font-medium ${
+            cardDrag.overBin
+              ? 'border-error-500 bg-error-50 text-error-600 dark:bg-error-950/40 dark:text-error-400'
+              : 'border-neutral-300 text-neutral-500 dark:border-neutral-700 dark:text-neutral-400'
+          }`}
+        >
+          <Trash2 className="h-5 w-5" />
+          {copy.removeChannel}
+        </div>
+      ) : null}
       <AddSectionAction label={copy.addChannel} onClick={onAddChannel} />
-      {unlinked.map(broker => (
-        <BrokerNode key={broker.id} broker={broker} copy={copy} />
-      ))}
+      {unlinked.map(broker => {
+        const dragging = cardDrag?.kind === 'broker' && cardDrag.id === broker.id
+        return (
+          <div
+            key={broker.id}
+            ref={el => {
+              if (el) brokerRefs.current.set(broker.id, el)
+              else brokerRefs.current.delete(broker.id)
+            }}
+            className={dragSlotClass(dragging)}
+            onPointerDown={event => onCardPointerDown('broker', broker.id, event)}
+            onPointerUp={onCardPointerUp}
+            onPointerCancel={onCardPointerCancel}
+          >
+            <div className="min-h-0">
+              <BrokerNode broker={broker} copy={copy} />
+            </div>
+          </div>
+        )
+      })}
       <AddSectionAction label={copy.addBroker} onClick={onAddBroker} />
+      {cardDrag ? (
+        <CardDragGhost drag={cardDrag}>
+          {draggedCard(cardDrag, brokers, channelById, copy)}
+        </CardDragGhost>
+      ) : null}
     </div>
   )
 }

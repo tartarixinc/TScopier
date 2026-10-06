@@ -847,6 +847,7 @@ export interface ConfigurationsPageTranslations {
   addBroker: string
   dragToConnect: string
   dragToDisconnect: string
+  removeChannel: string
   noAvailableChannels: string
   loadError: string
 }

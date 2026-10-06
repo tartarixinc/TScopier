@@ -443,6 +443,7 @@ export const es: Translations = {
     addBroker: 'Añadir nuevo broker',
     dragToConnect: 'Arrastra {channel} a un broker',
     dragToDisconnect: 'Arrastra {channel} fuera de {broker} para desconectar',
+    removeChannel: 'Eliminar canal',
     noAvailableChannels: 'Todos tus canales ya están en esta página.',
     loadError: 'No se pudieron cargar las configuraciones de los canales.',
   },

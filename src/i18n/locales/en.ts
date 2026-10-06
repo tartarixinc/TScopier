@@ -440,6 +440,7 @@ broker: {
     addBroker: 'Add new broker',
     dragToConnect: 'Drag {channel} to a broker',
     dragToDisconnect: 'Drag {channel} off {broker} to disconnect',
+    removeChannel: 'Remove channel',
     noAvailableChannels: 'All of your channels are already on this page.',
     loadError: 'Could not load channel configurations.',
   },
