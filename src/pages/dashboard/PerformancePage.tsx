@@ -280,8 +280,8 @@ export function PerformancePage() {
         stale={refreshing && !loading}
       />
 
-      <section className="overflow-hidden rounded-xl border border-neutral-200/80 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-200 px-4 py-3 dark:border-neutral-800">
+      <section className="overflow-hidden rounded-xl border border-neutral-200/55 bg-white shadow-sm dark:border-neutral-800/55 dark:bg-neutral-950">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-200/65 px-4 py-3 dark:border-neutral-800/55">
           <div>
             <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{p.accountsTitle}</h2>
             <p className="text-xs text-neutral-500 dark:text-neutral-400">{p.accountsSubtitle}</p>

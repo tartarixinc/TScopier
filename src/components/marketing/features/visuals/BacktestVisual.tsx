@@ -24,7 +24,7 @@ export function BacktestVisual() {
 
   return (
     <div className="flex h-full min-h-[260px] items-center justify-center p-3 sm:p-4">
-      <div className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
+      <div className="w-full max-w-md rounded-2xl border border-neutral-200/65 bg-white dark:border-neutral-800/55 dark:bg-neutral-900">
         <div className="flex items-start justify-between gap-2 px-4 pt-4 pb-2">
           <div className="min-w-0">
             <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{v.resultsTitle}</p>
@@ -39,19 +39,19 @@ export function BacktestVisual() {
         </div>
 
         <div className="grid grid-cols-2 gap-2 px-4 pb-3 sm:grid-cols-4">
-          <div className="rounded-xl border border-neutral-200 p-2.5 dark:border-neutral-800">
+          <div className="rounded-xl border border-neutral-200/65 p-2.5 dark:border-neutral-800/55">
             <p className="text-[9px] font-medium uppercase tracking-wide text-neutral-400">{v.totalPipsLabel}</p>
             <p className="mt-0.5 text-lg font-bold tabular-nums text-teal-600 dark:text-teal-400 sm:text-xl">
               {v.totalPips}
             </p>
           </div>
-          <div className="rounded-xl border border-neutral-200 p-2.5 dark:border-neutral-800">
+          <div className="rounded-xl border border-neutral-200/65 p-2.5 dark:border-neutral-800/55">
             <p className="text-[9px] font-medium uppercase tracking-wide text-neutral-400">{v.winRateLabel}</p>
             <p className="mt-0.5 text-lg font-bold tabular-nums text-neutral-900 dark:text-neutral-50 sm:text-xl">
               {v.winRate}
             </p>
           </div>
-          <div className="rounded-xl border border-neutral-200 p-2.5 dark:border-neutral-800">
+          <div className="rounded-xl border border-neutral-200/65 p-2.5 dark:border-neutral-800/55">
             <p className="text-[9px] font-medium uppercase tracking-wide text-neutral-400">{v.winLossLabel}</p>
             <p className="mt-0.5 text-lg font-bold tabular-nums sm:text-xl">
               {winLossLosses ? (
@@ -65,7 +65,7 @@ export function BacktestVisual() {
               )}
             </p>
           </div>
-          <div className="rounded-xl border border-neutral-200 p-2.5 dark:border-neutral-800">
+          <div className="rounded-xl border border-neutral-200/65 p-2.5 dark:border-neutral-800/55">
             <p className="text-[9px] font-medium uppercase tracking-wide text-neutral-400">{v.signalsLabel}</p>
             <p className="mt-0.5 text-lg font-bold tabular-nums text-neutral-900 dark:text-neutral-50 sm:text-xl">
               {v.signalsCount}

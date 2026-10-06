@@ -62,7 +62,7 @@ export function BacktestPriceLadder({ trade, labels: labelsProp }: BacktestPrice
   }, [levels])
 
   return (
-    <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50/80 dark:bg-neutral-900/50 p-4">
+    <div className="rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50/80 dark:bg-neutral-900/50 p-4">
       <div className="flex items-center gap-2 mb-4">
         {isBuy ? (
           <TrendingUp className="w-4 h-4 text-teal-600" />

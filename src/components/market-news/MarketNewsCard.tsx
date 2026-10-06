@@ -54,7 +54,7 @@ export function MarketNewsCard({ article, readArticle }: MarketNewsCardProps) {
   )
 
   const className =
-    'flex h-full flex-col overflow-hidden rounded-xl border border-neutral-200/80 bg-white shadow-sm transition-all hover:border-teal-200/80 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-teal-800/50'
+    'flex h-full flex-col overflow-hidden rounded-xl border border-neutral-200/55 bg-white shadow-sm transition-all hover:border-teal-200/80 hover:shadow-md dark:border-neutral-800/55 dark:bg-neutral-950 dark:hover:border-teal-800/50'
 
   if (article.url) {
     return (

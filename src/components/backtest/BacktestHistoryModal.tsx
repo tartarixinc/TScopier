@@ -189,7 +189,7 @@ export function BacktestHistoryModal({
         aria-label={bt.close}
         onClick={onClose}
       />
-      <div className="relative w-full sm:max-w-lg max-h-[85vh] flex flex-col rounded-t-2xl sm:rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-2xl">
+      <div className="relative w-full sm:max-w-lg max-h-[85vh] flex flex-col rounded-t-2xl sm:rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 shadow-2xl">
         <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-neutral-100 dark:border-neutral-800 shrink-0">
           <div>
             <h2 id="backtest-history-title" className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">

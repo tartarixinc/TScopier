@@ -45,7 +45,7 @@ export function LegalDocumentPage({ page }: { page: LegalDocumentPageTranslation
           ))}
         </div>
 
-        <section className="mt-10 rounded-lg border border-neutral-200 bg-neutral-50/80 p-5 dark:border-neutral-800 dark:bg-neutral-900/50">
+        <section className="mt-10 rounded-lg border border-neutral-200/65 bg-neutral-50/80 p-5 dark:border-neutral-800/55 dark:bg-neutral-900/50">
           <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">{c.title}</h2>
           <dl className="mt-3 space-y-2 text-sm text-neutral-600 dark:text-neutral-400">
             <div>
@@ -100,7 +100,7 @@ export function LegalDocumentPage({ page }: { page: LegalDocumentPageTranslation
         </section>
 
         {page.closing ? (
-          <p className="mt-8 border-t border-neutral-200 pt-8 text-sm leading-relaxed text-neutral-700 dark:border-neutral-800 dark:text-neutral-300">
+          <p className="mt-8 border-t border-neutral-200/65 pt-8 text-sm leading-relaxed text-neutral-700 dark:border-neutral-800/55 dark:text-neutral-300">
             {page.closing}
           </p>
         ) : null}

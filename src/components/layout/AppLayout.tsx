@@ -346,7 +346,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
   )
 
   return (
-    <div className="flex h-full min-h-0 w-full overflow-hidden overscroll-none bg-neutral-50 dark:bg-neutral-950">
+    <div className="flex h-full min-h-0 w-full overflow-hidden overscroll-none bg-white dark:bg-neutral-950">
       {mobileNavOpen && (
         <button
           type="button"
@@ -358,7 +358,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
 
       <aside
         className={clsx(
-          'fixed inset-y-0 left-0 z-50 flex h-full min-h-0 flex-col overflow-hidden border-e border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900 transition-transform duration-200 ease-out max-lg:overflow-visible rtl:left-auto rtl:right-0',
+          'fixed inset-y-0 left-0 z-50 flex h-full min-h-0 flex-col overflow-hidden border-e border-neutral-100 dark:border-neutral-800 bg-[#F7F8FA] dark:bg-neutral-950 transition-transform duration-200 ease-out max-lg:overflow-visible rtl:left-auto rtl:right-0',
           'w-64 max-w-[85vw]',
           mobileNavOpen ? 'translate-x-0' : 'max-lg:-translate-x-full max-lg:rtl:translate-x-full',
           'lg:sticky lg:top-0 lg:z-30 lg:max-w-none lg:translate-x-0',
@@ -428,7 +428,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
         <header
           ref={setHeaderEl}
           className={clsx(
-            'z-30 flex shrink-0 touch-none items-center gap-1 border-b border-neutral-100 bg-white px-1.5 dark:border-neutral-800 dark:bg-neutral-900 sm:gap-4 sm:px-6',
+            'z-30 flex shrink-0 touch-none items-center gap-1 border-b border-neutral-100 bg-white px-1.5 dark:border-neutral-800 dark:bg-neutral-950 sm:gap-4 sm:px-6',
             'fixed inset-x-0 top-[var(--app-banner-h,0px)] h-[calc(3.5rem+env(safe-area-inset-top,0px))] pt-[env(safe-area-inset-top,0px)] sm:h-[calc(4rem+env(safe-area-inset-top,0px))]',
             'lg:static lg:z-20 lg:h-16 lg:min-h-0 lg:pt-0 lg:touch-auto',
           )}
@@ -541,7 +541,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
 
         <main
           className={clsx(
-            'min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain bg-neutral-50 dark:bg-neutral-950',
+            'min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain bg-white dark:bg-neutral-950',
             'pt-[calc(3.5rem+env(safe-area-inset-top,0px))] sm:pt-[calc(4rem+env(safe-area-inset-top,0px))]',
             'lg:pt-0',
           )}

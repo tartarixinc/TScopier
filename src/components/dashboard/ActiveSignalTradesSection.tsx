@@ -64,14 +64,14 @@ export function ActiveSignalTradesSection({
       ) : null}
       <ul
         className={clsx(
-          'divide-y divide-neutral-100 dark:divide-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-800 overflow-hidden',
+          'divide-y divide-neutral-100 dark:divide-neutral-800 rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 overflow-hidden',
           showHeader ? 'mt-3' : '',
         )}
       >
         {rows.map(row => (
           <li
             key={row.channelId}
-            className="flex items-center justify-between gap-3 px-4 py-3 bg-white dark:bg-neutral-900"
+            className="flex items-center justify-between gap-3 px-4 py-3 bg-white dark:bg-neutral-950"
           >
             <div className="min-w-0">
               <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50 truncate">

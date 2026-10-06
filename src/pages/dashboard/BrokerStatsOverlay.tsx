@@ -114,7 +114,7 @@ function StatTile({
   valueClassName?: string
 }) {
   return (
-    <div className="rounded-xl border border-neutral-200 bg-neutral-50/80 p-3 dark:border-neutral-800 dark:bg-neutral-800/40">
+    <div className="rounded-xl border border-neutral-200/65 bg-neutral-50/80 p-3 dark:border-neutral-800/55 dark:bg-neutral-800/40">
       <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400" title={hint}>
         {label}
       </p>
@@ -324,7 +324,7 @@ export function BrokerStatsOverlay() {
         aria-label={bs.close}
         onClick={close}
       />
-      <div className="relative w-full sm:max-w-2xl max-h-[92vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-2xl">
+      <div className="relative w-full sm:max-w-2xl max-h-[92vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 shadow-2xl">
         <div className="sticky top-0 z-10 flex items-start justify-between gap-3 px-5 py-4 border-b border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900">
           {headerReady ? (
             <div className="min-w-0">
@@ -464,7 +464,7 @@ export function BrokerStatsOverlay() {
                 {stats.profitByChannel.length === 0 ? (
                   <p className="mt-3 text-sm text-neutral-400 dark:text-neutral-500">{bs.noChannels}</p>
                 ) : (
-                  <ul className="mt-3 divide-y divide-neutral-100 dark:divide-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-800 overflow-hidden">
+                  <ul className="mt-3 divide-y divide-neutral-100 dark:divide-neutral-800 rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 overflow-hidden">
                     {stats.profitByChannel.map(row => (
                       <li
                         key={row.key}
@@ -483,7 +483,7 @@ export function BrokerStatsOverlay() {
                 )}
               </section>
 
-              <section className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-4">
+              <section className="rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 p-4">
                 {stats ? (
                   <ActiveSignalTradesSection
                     rows={stats.activeSignalTrades}
@@ -518,7 +518,7 @@ export function BrokerStatsOverlay() {
                 ) : null}
               </section>
 
-              <section className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-4">
+              <section className="rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{bs.lastSignalTrade}</h3>

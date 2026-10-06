@@ -11,7 +11,7 @@ interface RelatedNewsPanelProps {
 
 export function RelatedNewsPanel({ articles, title, empty, readArticle }: RelatedNewsPanelProps) {
   return (
-    <div className="rounded-xl border border-neutral-200/80 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+    <div className="rounded-xl border border-neutral-200/55 bg-white shadow-sm dark:border-neutral-800/55 dark:bg-neutral-950">
       <div className="border-b border-neutral-100 px-4 py-3 dark:border-neutral-800">
         <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{title}</h2>
       </div>

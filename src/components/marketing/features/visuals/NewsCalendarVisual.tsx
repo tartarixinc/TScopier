@@ -81,7 +81,7 @@ export function NewsCalendarVisual() {
   return (
     <div className="flex h-full min-h-[300px] items-center justify-center p-2 sm:p-4">
       <div className="flex w-full max-w-lg flex-col gap-3 sm:gap-4">
-        <div className="overflow-hidden rounded-xl border border-neutral-200/80 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="overflow-hidden rounded-xl border border-neutral-200/55 bg-white shadow-sm dark:border-neutral-800/55 dark:bg-neutral-900">
           <div className="px-3 sm:px-4">
             <h3 className="sticky top-0 z-10 bg-white/95 py-2 text-[10px] font-semibold uppercase tracking-wide text-neutral-500 backdrop-blur dark:bg-neutral-900/95 dark:text-neutral-400 sm:text-xs">
               {v.dayHeading}
@@ -97,7 +97,7 @@ export function NewsCalendarVisual() {
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-xl border border-neutral-200/80 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="overflow-hidden rounded-xl border border-neutral-200/55 bg-white shadow-sm dark:border-neutral-800/55 dark:bg-neutral-900">
           <div className="border-b border-neutral-100 px-3 py-2.5 dark:border-neutral-800 sm:px-4 sm:py-3">
             <h2 className="text-xs font-semibold text-neutral-900 dark:text-neutral-50 sm:text-sm">{ec.relatedNews}</h2>
           </div>

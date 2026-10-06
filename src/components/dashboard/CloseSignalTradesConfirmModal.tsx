@@ -97,7 +97,7 @@ export function CloseSignalTradesConfirmModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="close-signal-trades-confirm-title"
-        className="relative w-full max-w-md rounded-2xl bg-white dark:bg-neutral-900 shadow-2xl border border-neutral-200 dark:border-neutral-800 animate-modal-in overflow-hidden"
+        className="relative w-full max-w-md rounded-2xl bg-white dark:bg-neutral-900 shadow-2xl border border-neutral-200/65 dark:border-neutral-800/55 animate-modal-in overflow-hidden"
       >
         <div className="px-5 pt-5 pb-4">
           <div className="flex items-start gap-3">
@@ -117,7 +117,7 @@ export function CloseSignalTradesConfirmModal({
             </div>
           </div>
 
-          <div className="mt-4 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50/80 dark:bg-neutral-800/40 divide-y divide-neutral-200/80 dark:divide-neutral-700/80">
+          <div className="mt-4 rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50/80 dark:bg-neutral-800/40 divide-y divide-neutral-200/80 dark:divide-neutral-700/80">
             {detailRows.map(row => (
               <div key={row.label} className="flex items-center justify-between gap-3 px-3.5 py-2.5">
                 <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">{row.label}</span>

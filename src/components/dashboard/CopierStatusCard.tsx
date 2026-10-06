@@ -291,7 +291,7 @@ export function CopierStatusCard({
     <div
       className={clsx(
         !embedded &&
-          'bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800',
+          'bg-white dark:bg-neutral-950 rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55',
         className,
       )}
     >

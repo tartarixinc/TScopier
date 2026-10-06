@@ -23,7 +23,7 @@ function SignalCard({
   return (
     <div
       className={clsx(
-        'rounded-xl border border-neutral-200/90 bg-white/95 px-3.5 py-3 shadow-sm backdrop-blur-sm dark:border-neutral-800 dark:bg-neutral-900/95',
+        'rounded-xl border border-neutral-200/60 bg-white/95 px-3.5 py-3 shadow-sm backdrop-blur-sm dark:border-neutral-800/55 dark:bg-neutral-900/95',
         elevated && 'shadow-md ring-1 ring-teal-500/10 dark:ring-teal-400/10',
       )}
     >
@@ -63,7 +63,7 @@ export function MultilingualSignalsVisual() {
       />
 
       <div className="relative w-full max-w-md space-y-4">
-        <div className="flex items-center justify-between gap-3 rounded-2xl border border-neutral-200/80 bg-white/90 px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900/90">
+        <div className="flex items-center justify-between gap-3 rounded-2xl border border-neutral-200/55 bg-white/90 px-4 py-3 dark:border-neutral-800/55 dark:bg-neutral-900/90">
           <div className="flex items-center gap-2">
             <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-teal-50 text-teal-700 dark:bg-teal-950/60 dark:text-teal-300">
               <Languages className="h-4 w-4" aria-hidden />

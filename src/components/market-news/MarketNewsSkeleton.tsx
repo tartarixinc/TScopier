@@ -1,7 +1,7 @@
 export function MarketNewsSkeleton() {
   return (
     <div className="space-y-6 animate-pulse">
-      <div className="overflow-hidden rounded-2xl border border-neutral-200 dark:border-neutral-800">
+      <div className="overflow-hidden rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55">
         <div className="grid md:grid-cols-2">
           <div className="aspect-[16/10] bg-neutral-200 dark:bg-neutral-800 md:min-h-[280px]" />
           <div className="space-y-4 p-6 lg:p-8">
@@ -20,7 +20,7 @@ export function MarketNewsSkeleton() {
         {Array.from({ length: 6 }).map((_, i) => (
           <div
             key={i}
-            className="overflow-hidden rounded-xl border border-neutral-200 dark:border-neutral-800"
+            className="overflow-hidden rounded-xl border border-neutral-200/65 dark:border-neutral-800/55"
           >
             <div className="aspect-[16/9] bg-neutral-200 dark:bg-neutral-800" />
             <div className="space-y-3 p-4">

@@ -2577,7 +2577,7 @@ export function AccountConfigPage() {
   if (loading) {
     return (
       <PageShell maxWidth="lg" spacing="none" className="space-y-3">
-        {[...Array(2)].map((_, i) => <div key={i} className="h-28 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-100 dark:border-neutral-800 animate-pulse" />)}
+        {[...Array(2)].map((_, i) => <div key={i} className="h-28 bg-white dark:bg-neutral-950 rounded-xl border border-neutral-100 dark:border-neutral-800 animate-pulse" />)}
       </PageShell>
     )
   }
@@ -2652,7 +2652,7 @@ export function AccountConfigPage() {
         </p>
 
         {brokers.length === 0 ? (
-          <div className="bg-white dark:bg-neutral-900 rounded-xl border border-dashed border-neutral-200 dark:border-neutral-800 py-8 text-center">
+          <div className="bg-white dark:bg-neutral-950 rounded-xl border border-dashed border-neutral-200/65 dark:border-neutral-800/55 py-8 text-center">
             <Server className="w-8 h-8 mx-auto mb-2 text-neutral-300 dark:text-neutral-600" />
             <p className="text-sm text-neutral-400 dark:text-neutral-500">{t.accountConfig.brokersEmptyTitle}</p>
             <p className="text-xs text-neutral-300 dark:text-neutral-600 mt-0.5">{t.accountConfig.brokersEmptySubtitle}</p>
@@ -2672,7 +2672,7 @@ export function AccountConfigPage() {
                       value={brokerSearchQuery}
                       onChange={e => setBrokerSearchQuery(e.target.value)}
                       placeholder={bl.accountSearchPlaceholder}
-                      className="w-full rounded-lg border border-neutral-200 bg-white py-2 ps-9 pe-3 text-sm text-neutral-900 placeholder:text-neutral-400 hover:border-neutral-300 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary-500 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-50"
+                      className="w-full rounded-lg border border-neutral-200/65 bg-white py-2 ps-9 pe-3 text-sm text-neutral-900 placeholder:text-neutral-400 hover:border-neutral-300 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary-500 dark:border-neutral-800/55 dark:bg-neutral-900 dark:text-neutral-50"
                     />
                   </div>
                 </div>
@@ -2691,7 +2691,7 @@ export function AccountConfigPage() {
             </div>
 
             {filteredBrokers.length === 0 ? (
-              <div className="bg-white dark:bg-neutral-900 rounded-xl border border-dashed border-neutral-200 dark:border-neutral-800 py-8 text-center">
+              <div className="bg-white dark:bg-neutral-950 rounded-xl border border-dashed border-neutral-200/65 dark:border-neutral-800/55 py-8 text-center">
                 <p className="text-sm text-neutral-500 dark:text-neutral-400">
                   {brokerSearchQuery.trim() ? bl.accountSearchNoMatch : bl.brokerFilterNoMatch}
                 </p>
@@ -2920,7 +2920,7 @@ export function AccountConfigPage() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="delete-broker-title"
-            className="relative w-full max-w-md rounded-2xl bg-white dark:bg-neutral-900 shadow-xl border border-neutral-200 dark:border-neutral-800"
+            className="relative w-full max-w-md rounded-2xl bg-white dark:bg-neutral-900 shadow-xl border border-neutral-200/65 dark:border-neutral-800/55"
           >
             <div className="px-5 py-4 border-b border-neutral-100 dark:border-neutral-800">
               <h3 id="delete-broker-title" className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
@@ -2960,7 +2960,7 @@ export function AccountConfigPage() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="configure-trading-title"
-            className="relative z-[1] w-full max-w-5xl h-[100dvh] sm:h-[88vh] max-h-[100dvh] sm:max-h-[88vh] flex flex-col rounded-none sm:rounded-2xl bg-white dark:bg-neutral-900 shadow-xl border-0 sm:border border-neutral-200 dark:border-neutral-800 overflow-hidden"
+            className="relative z-[1] w-full max-w-5xl h-[100dvh] sm:h-[88vh] max-h-[100dvh] sm:max-h-[88vh] flex flex-col rounded-none sm:rounded-2xl bg-white dark:bg-neutral-900 shadow-xl border-0 sm:border border-neutral-200/65 dark:border-neutral-800/55 overflow-hidden"
           >
             <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-neutral-100 dark:border-neutral-800 flex items-start justify-between gap-3 shrink-0">
               <div className="min-w-0 flex-1">
@@ -3067,7 +3067,7 @@ export function AccountConfigPage() {
                       className={clsx(
                               'flex-1 min-w-0 flex items-center gap-2 text-start px-2 py-2 rounded-lg text-sm transition-colors min-h-[44px] sm:min-h-0',
                               selected
-                                ? 'bg-white dark:bg-neutral-900 text-primary-700 shadow-sm border border-primary-100 dark:border-primary-900/50'
+                                ? 'bg-white dark:bg-neutral-950 text-primary-700 shadow-sm border border-primary-100 dark:border-primary-900/50'
                                 : linked
                                   ? 'text-neutral-700 dark:text-neutral-300 hover:bg-white dark:hover:bg-neutral-900 border border-transparent'
                                   : 'text-neutral-600 dark:text-neutral-400 hover:bg-white dark:hover:bg-neutral-900 border border-dashed border-neutral-200 dark:border-neutral-700',
@@ -3106,7 +3106,7 @@ export function AccountConfigPage() {
               {/* Config body column */}
               <div className="flex-1 flex flex-col min-h-0 min-w-0">
                 {selectedChannelLinked ? (
-                  <div className="shrink-0 px-4 sm:px-6 pt-3 sm:pt-4 bg-white dark:bg-neutral-900 border-b border-neutral-100 dark:border-neutral-800 overflow-x-auto overscroll-x-contain">
+                  <div className="shrink-0 px-4 sm:px-6 pt-3 sm:pt-4 bg-white dark:bg-neutral-950 border-b border-neutral-100 dark:border-neutral-800 overflow-x-auto overscroll-x-contain">
                     <div className="flex flex-nowrap items-center gap-1 min-w-max sm:min-w-0 sm:flex-wrap pb-px">
                       {manualSubTabs.map(sub => {
                         const SubIcon = sub.icon
@@ -3193,7 +3193,7 @@ export function AccountConfigPage() {
                   <div className="space-y-5">
                     {/* <div>
                       <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100 mb-2">Configure mode</p>
-                      <div className="inline-flex rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/50 p-1">
+                      <div className="inline-flex rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50 dark:bg-neutral-800/50 p-1">
                         <button
                           onClick={() => setConfigDraft(prev => ({ ...prev, mode: 'ai' }))}
                           className={`px-4 py-2 text-sm rounded-md transition-colors ${channelMode === 'ai' ? 'bg-primary-600 text-white' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:bg-neutral-800'}`}
@@ -3210,7 +3210,7 @@ export function AccountConfigPage() {
                     </div> */}
 
                     {AI_CONFIGURATION_ENABLED && channelMode === 'ai' ? (
-                      <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-4 space-y-3">
+                      <div className="rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 p-4 space-y-3">
                         <ConfigTitle variant="semibold" info={cm.ai.intro}>{cm.ai.title}</ConfigTitle>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           <FeatureBullet icon={DollarSign} title={cm.ai.moneyManagementTitle} body={cm.ai.moneyManagementBody} />
@@ -3258,7 +3258,7 @@ export function AccountConfigPage() {
                           
                           {
                           selectedChannelOption && configDraft.selectedChannelId ? (
-                            <section className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-4 space-y-4">
+                            <section className="rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 p-4 space-y-4">
                               <ConfigTitle variant="semibold" info={cm.channelSymbols.intro}>
                                 {cm.channelSymbols.title}
                               </ConfigTitle>
@@ -3432,7 +3432,7 @@ export function AccountConfigPage() {
                                     <ConfigTitle className="mb-1" info={dynamicBalanceLotPreview?.hint}>
                                       {cm.risk.dynamicBalanceLotSize}
                                     </ConfigTitle>
-                                    <div className="rounded-md border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/50 px-3 py-2 text-sm font-mono text-neutral-900 dark:text-neutral-50">
+                                    <div className="rounded-md border border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50 dark:bg-neutral-800/50 px-3 py-2 text-sm font-mono text-neutral-900 dark:text-neutral-50">
                                       {dynamicBalanceLotPreview?.lotLabel ?? '—'}
                                     </div>
                                     {dynamicBalanceLotPreview?.hint ? (
@@ -3480,7 +3480,7 @@ export function AccountConfigPage() {
                                 ]}
                               />
                               {singleTpLotBreakdownText ? (
-                                <div className="rounded-md border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/60 px-3 py-2.5 space-y-1">
+                                <div className="rounded-md border border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50 dark:bg-neutral-900/60 px-3 py-2.5 space-y-1">
                                   <p className="text-xs font-medium text-neutral-700 dark:text-neutral-200">
                                     {cm.risk.singleTpLotBreakdownTitle}
                                   </p>
@@ -3489,10 +3489,10 @@ export function AccountConfigPage() {
                                   </p>
                                 </div>
                               ) : null}
-                              <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3 space-y-3">
+                              <div className="rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 p-3 space-y-3">
                                 <ConfigTitle info={cm.risk.signalEntryBody}>{cm.risk.signalEntryTitle}</ConfigTitle>
-                                <div className="rounded-md border border-neutral-200 dark:border-neutral-800 overflow-hidden">
-                                  <div className="flex items-center justify-between gap-3 bg-white dark:bg-neutral-900 px-3 py-2.5">
+                                <div className="rounded-md border border-neutral-200/65 dark:border-neutral-800/55 overflow-hidden">
+                                  <div className="flex items-center justify-between gap-3 bg-white dark:bg-neutral-950 px-3 py-2.5">
                                     <ConfigToggleLabel>{cm.risk.useSignalEntryPrice}</ConfigToggleLabel>
                                     <Toggle
                                       checked={channelManualSettings.use_signal_entry_price === true}
@@ -3500,7 +3500,7 @@ export function AccountConfigPage() {
                                     />
                                   </div>
                                   {channelManualSettings.use_signal_entry_price && (
-                                    <div className="border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/80 px-3 py-3 space-y-2">
+                                    <div className="border-t border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50 dark:bg-neutral-800/80 px-3 py-3 space-y-2">
                                       <ConfigureInput
                                         label={cm.risk.pipToleranceLegacy}
                                         hint={cm.risk.pipToleranceHint}
@@ -3526,7 +3526,7 @@ export function AccountConfigPage() {
                                   )}
                                   aria-disabled={!multiTradeStyleEnabled}
                                 >
-                              <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3 space-y-3">
+                              <div className="rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 p-3 space-y-3">
                                 <ConfigTitle info={cm.risk.multiIntro}>{cm.risk.multiTrades}</ConfigTitle>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                   <ConfigureInput
@@ -3539,15 +3539,15 @@ export function AccountConfigPage() {
                                   />
                                   <div>
                                     <ConfigTitle className="mb-1" info={multiTradePreviewTooltip}>{cm.risk.totalOpenTrades}</ConfigTitle>
-                                    <div className="rounded-md border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/50 px-3 py-2 text-sm font-mono text-neutral-900 dark:text-neutral-50">
+                                    <div className="rounded-md border border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50 dark:bg-neutral-800/50 px-3 py-2 text-sm font-mono text-neutral-900 dark:text-neutral-50">
                                       {multiTradeTotalOpenTradesLabel}
                                     </div>
                                   </div>
                                 </div>
                               </div>
 
-                              <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
-                                <div className="flex items-center justify-between gap-3 bg-white dark:bg-neutral-900 px-3 py-2.5">
+                              <div className="rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 overflow-hidden">
+                                <div className="flex items-center justify-between gap-3 bg-white dark:bg-neutral-950 px-3 py-2.5">
                                   <ConfigToggleLabel info={cm.risk.useSignalRangeBody}>{cm.risk.useSignalRange}</ConfigToggleLabel>
                                   <Toggle
                                     checked={channelManualSettings.use_signal_entry_range === true}
@@ -3555,7 +3555,7 @@ export function AccountConfigPage() {
                                   />
                                 </div>
                                 {channelManualSettings.use_signal_entry_range && (
-                                  <div className="border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/80 px-3 py-3 space-y-2">
+                                  <div className="border-t border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50 dark:bg-neutral-800/80 px-3 py-3 space-y-2">
                                     <ConfigureInput
                                       label={cm.risk.useSignalRangePipTolerance}
                                       hint={cm.risk.useSignalRangePipToleranceHint}
@@ -3569,7 +3569,7 @@ export function AccountConfigPage() {
                                 )}
                               </div>
 
-                              <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3 space-y-3">
+                              <div className="rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 p-3 space-y-3">
                                 <div className="flex items-center justify-between">
                                   <ConfigToggleLabel info={cm.risk.rangeIntro}>{cm.risk.rangeLayering}</ConfigToggleLabel>
                                   <Toggle
@@ -3706,7 +3706,7 @@ export function AccountConfigPage() {
                           const predefSummary = describePredefinedStopsOverrideI18n(ms, cm.stops)
                           return (
                           <div className="space-y-6">
-                            <section className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3 space-y-3">
+                            <section className="rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 p-3 space-y-3">
                               <div className="flex items-center justify-between">
                                 <ConfigTitle info={`${cm.stops.tpDistributionIntro}\n\n${cm.stops.multiTradeNote}\n\n${cm.stops.singleTradeNote}`}>{cm.stops.tpDistributionTitle}</ConfigTitle>
                                 <Button
@@ -3752,12 +3752,12 @@ export function AccountConfigPage() {
                                   return (
                                     <div key={`${row.label}-${idx}`} className="grid grid-cols-12 gap-2 items-center">
                                       <input
-                                        className="col-span-4 rounded-md border border-neutral-200 dark:border-neutral-800 px-2 py-1.5 text-sm"
+                                        className="col-span-4 rounded-md border border-neutral-200/65 dark:border-neutral-800/55 px-2 py-1.5 text-sm"
                                         value={row.label}
                                         onChange={e => updateTpLotRow(idx, { label: e.target.value })}
                                       />
                                       <input
-                                        className="col-span-3 rounded-md border border-neutral-200 dark:border-neutral-800 px-2 py-1.5 text-sm disabled:bg-neutral-100 dark:bg-neutral-800 disabled:text-neutral-400"
+                                        className="col-span-3 rounded-md border border-neutral-200/65 dark:border-neutral-800/55 px-2 py-1.5 text-sm disabled:bg-neutral-100 dark:bg-neutral-800 disabled:text-neutral-400"
                                         type="number"
                                         min={0}
                                         max={rowBudget}
@@ -3795,7 +3795,7 @@ export function AccountConfigPage() {
                               onChange={next => setManual({ copy_limits: next })}
                             />
 
-                            <section className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-4 space-y-3">
+                            <section className="rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 p-4 space-y-3">
                               <ConfigTitle info={cm.stops.predefinedIntro}>{cm.stops.predefinedTitle}</ConfigTitle>
                               {predefSummary ? (
                                 <div className="rounded-lg border border-teal-200 bg-teal-50/80 px-3 py-2.5 text-sm text-teal-900 dark:border-teal-900/50 dark:bg-teal-950/40 dark:text-teal-200">
@@ -3803,13 +3803,13 @@ export function AccountConfigPage() {
                             </div>
                               ) : null}
                               <div className="space-y-3">
-                                <div className="rounded-md border border-neutral-200 dark:border-neutral-800 overflow-hidden">
-                                  <div className="flex items-center justify-between gap-3 bg-white dark:bg-neutral-900 px-3 py-2.5">
+                                <div className="rounded-md border border-neutral-200/65 dark:border-neutral-800/55 overflow-hidden">
+                                  <div className="flex items-center justify-between gap-3 bg-white dark:bg-neutral-950 px-3 py-2.5">
                                     <ConfigToggleLabel>{cm.stops.overrideSl}</ConfigToggleLabel>
                                     <Toggle checked={ms.use_predefined_sl_pips === true} onChange={v => setManual({ use_predefined_sl_pips: v })} />
                                   </div>
                                   {ms.use_predefined_sl_pips && (
-                                    <div className="border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/80 px-3 py-3">
+                                    <div className="border-t border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50 dark:bg-neutral-800/80 px-3 py-3">
                                       <ConfigureInput
                                         label={cm.stops.slPips}
                                         type="number"
@@ -3822,8 +3822,8 @@ export function AccountConfigPage() {
                           </div>
                         )}
                             </div>
-                                <div className="rounded-md border border-neutral-200 dark:border-neutral-800 overflow-hidden">
-                                  <div className="flex items-center justify-between gap-3 bg-white dark:bg-neutral-900 px-3 py-2.5">
+                                <div className="rounded-md border border-neutral-200/65 dark:border-neutral-800/55 overflow-hidden">
+                                  <div className="flex items-center justify-between gap-3 bg-white dark:bg-neutral-950 px-3 py-2.5">
                                     <ConfigToggleLabel info={cm.stops.tpRowsIntro}>{cm.stops.overrideTps}</ConfigToggleLabel>
                                     <Toggle
                                       checked={ms.use_predefined_tp_pips === true}
@@ -3850,7 +3850,7 @@ export function AccountConfigPage() {
                                     />
                                   </div>
                                   {ms.use_predefined_tp_pips && (
-                                    <div className="border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/80 px-3 py-3 space-y-3">
+                                    <div className="border-t border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50 dark:bg-neutral-800/80 px-3 py-3 space-y-3">
                                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
                                         <Button variant="ghost" size="sm" className="shrink-0 self-start sm:self-auto" onClick={addPredefinedTpPipRow}>{cm.stops.addTp}</Button>
                                       </div>
@@ -3922,8 +3922,8 @@ export function AccountConfigPage() {
 
                           return (
                           <div className="space-y-6">
-                            <section className="rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
-                              <div className="flex items-center justify-between gap-3 bg-white dark:bg-neutral-900 px-4 py-3">
+                            <section className="rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 overflow-hidden">
+                              <div className="flex items-center justify-between gap-3 bg-white dark:bg-neutral-950 px-4 py-3">
                                 <ConfigTitle
                                   info={
                                     !isSingleTrade
@@ -3950,7 +3950,7 @@ export function AccountConfigPage() {
                               </div>
 
                               {autoMgmtEnabled && (
-                                <div className="border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/80 px-4 py-4 space-y-4">
+                                <div className="border-t border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50 dark:bg-neutral-800/80 px-4 py-4 space-y-4">
                                   {autoRuleSummary ? (
                                     <div className="rounded-lg border border-teal-200 bg-teal-50/80 px-3 py-2.5 text-sm text-teal-900 dark:border-teal-900/50 dark:bg-teal-950/40 dark:text-teal-200">
                                       {autoRuleSummary}
@@ -3969,7 +3969,7 @@ export function AccountConfigPage() {
                                             'rounded-lg border px-2.5 py-2 text-start text-sm transition-colors',
                                             triggerMode === m.id
                                               ? 'border-primary-500 bg-primary-50 dark:bg-teal-950/50 text-primary-900 dark:text-teal-300'
-                                              : 'border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-700 dark:text-neutral-300',
+                                              : 'border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-950 text-neutral-700 dark:text-neutral-300',
                                           )}
                                         >
                                           <span className="font-medium inline-flex items-center gap-1">
@@ -4047,8 +4047,8 @@ export function AccountConfigPage() {
                                     />
                                 </div>
 
-                                  <div className="rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 overflow-hidden">
-                                    <div className="px-3 py-2.5 border-b border-neutral-200 dark:border-neutral-800">
+                                  <div className="rounded-md border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 overflow-hidden">
+                                    <div className="px-3 py-2.5 border-b border-neutral-200/65 dark:border-neutral-800/55">
                                       <ConfigTitle info={cm.management.breakevenTypeSubtitle}>{cm.management.breakevenTypeTitle}</ConfigTitle>
                                     </div>
                                     <div className="p-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -4059,7 +4059,7 @@ export function AccountConfigPage() {
                                           'rounded-lg border px-3 py-2.5 text-start text-sm transition-colors',
                                           beType === 'sl_only'
                                             ? 'border-primary-500 bg-primary-50 dark:bg-teal-950/50 text-primary-900 dark:text-teal-300'
-                                            : 'border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-700 dark:text-neutral-300 hover:border-neutral-300 dark:hover:border-neutral-600',
+                                            : 'border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-950 text-neutral-700 dark:text-neutral-300 hover:border-neutral-300 dark:hover:border-neutral-600',
                                         )}
                                       >
                                         <span className="font-medium inline-flex items-center gap-1">
@@ -4074,7 +4074,7 @@ export function AccountConfigPage() {
                                           'rounded-lg border px-3 py-2.5 text-start text-sm transition-colors',
                                           beType === 'sl_and_close_half'
                                             ? 'border-primary-500 bg-primary-50 dark:bg-teal-950/50 text-primary-900 dark:text-teal-300'
-                                            : 'border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-700 dark:text-neutral-300 hover:border-neutral-300 dark:hover:border-neutral-600',
+                                            : 'border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-950 text-neutral-700 dark:text-neutral-300 hover:border-neutral-300 dark:hover:border-neutral-600',
                                         )}
                                       >
                                         <span className="font-medium inline-flex items-center gap-1">
@@ -4105,8 +4105,8 @@ export function AccountConfigPage() {
                             </section>
 
                             {isSingleTrade && (
-                              <section className="rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
-                                <div className="flex items-center justify-between gap-3 bg-white dark:bg-neutral-900 px-4 py-3">
+                              <section className="rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 overflow-hidden">
+                                <div className="flex items-center justify-between gap-3 bg-white dark:bg-neutral-950 px-4 py-3">
                                   <ConfigTitle info={cm.management.trailingSubtitle}>{cm.management.trailingTitle}</ConfigTitle>
                                   <Toggle
                                     checked={ms.trailing_enabled === true}
@@ -4114,7 +4114,7 @@ export function AccountConfigPage() {
                                   />
                                 </div>
                                 {ms.trailing_enabled && (
-                                  <div className="border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/80 px-4 py-4">
+                                  <div className="border-t border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50 dark:bg-neutral-800/80 px-4 py-4">
                                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                               <ConfigureInput
                                         label={cm.management.trailStart}
@@ -4155,7 +4155,7 @@ export function AccountConfigPage() {
                               </p>
                             )}
 
-                            <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3 space-y-3">
+                            <div className="rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 p-3 space-y-3">
                               <ConfigTitle>{cm.strategy.signalBehavior}</ConfigTitle>
                               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                 <ConfigureSelect
@@ -4184,11 +4184,11 @@ export function AccountConfigPage() {
                               </div>
                                 </div>
 
-                            <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3 space-y-3">
+                            <div className="rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 p-3 space-y-3">
                               <ConfigTitle info={cm.strategy.rrFallbacksIntro}>{cm.strategy.rrFallbacksTitle}</ConfigTitle>
                               <div className="space-y-3">
-                                <div className="rounded-md border border-neutral-200 dark:border-neutral-800 overflow-hidden">
-                                  <div className="flex items-center justify-between gap-3 bg-white dark:bg-neutral-900 px-3 py-2.5">
+                                <div className="rounded-md border border-neutral-200/65 dark:border-neutral-800/55 overflow-hidden">
+                                  <div className="flex items-center justify-between gap-3 bg-white dark:bg-neutral-950 px-3 py-2.5">
                                     <span className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{cm.strategy.enableRrSl}</span>
                                     <Toggle
                                       checked={ms.rr_for_sl_enabled === true}
@@ -4196,7 +4196,7 @@ export function AccountConfigPage() {
                                     />
                                   </div>
                                   {ms.rr_for_sl_enabled && (
-                                    <div className="border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/80 px-3 py-3 space-y-1">
+                                    <div className="border-t border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50 dark:bg-neutral-800/80 px-3 py-3 space-y-1">
                                       <ConfigureInput
                                         label={cm.strategy.slRr}
                                         type="number"
@@ -4208,8 +4208,8 @@ export function AccountConfigPage() {
                                   )}
                                 </div>
 
-                                <div className="rounded-md border border-neutral-200 dark:border-neutral-800 overflow-hidden">
-                                  <div className="flex items-center justify-between gap-3 bg-white dark:bg-neutral-900 px-3 py-2.5">
+                                <div className="rounded-md border border-neutral-200/65 dark:border-neutral-800/55 overflow-hidden">
+                                  <div className="flex items-center justify-between gap-3 bg-white dark:bg-neutral-950 px-3 py-2.5">
                                     <span className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{cm.strategy.enableRrTps}</span>
                                     <Toggle
                                       checked={ms.rr_for_tps_enabled === true}
@@ -4217,7 +4217,7 @@ export function AccountConfigPage() {
                                     />
                                   </div>
                                   {ms.rr_for_tps_enabled && (
-                                    <div className="border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/80 px-3 py-3 space-y-1">
+                                    <div className="border-t border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50 dark:bg-neutral-800/80 px-3 py-3 space-y-1">
                                       <ConfigureInput
                                         label={cm.strategy.tpRrValues}
                                         hint={cm.strategy.tpRrHint}
@@ -4230,7 +4230,7 @@ export function AccountConfigPage() {
                               </div>
                             </div>
 
-                            <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3 space-y-3">
+                            <div className="rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 p-3 space-y-3">
                               <ConfigTitle info={cm.strategy.pendingIntro}>{cm.strategy.pendingTitle}</ConfigTitle>
                               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                 <ConfigureInput
@@ -4250,8 +4250,8 @@ export function AccountConfigPage() {
                               </div>
                             </div>
 
-                            <section className="rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
-                              <div className="flex items-center justify-between gap-3 bg-white dark:bg-neutral-900 px-4 py-3">
+                            <section className="rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 overflow-hidden">
+                              <div className="flex items-center justify-between gap-3 bg-white dark:bg-neutral-950 px-4 py-3">
                                 <ConfigTitle info={cm.management.orderCommentsSubtitle}>
                                   {cm.management.orderCommentsTitle}
                                 </ConfigTitle>
@@ -4277,7 +4277,7 @@ export function AccountConfigPage() {
                             {cm.manualSubTabs.filters}
                           </h3>
                           <div className="space-y-6">
-                            <section className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-4 space-y-3">
+                            <section className="rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 p-4 space-y-3">
                               <ConfigTitle info={cm.filters.timeSubtitle}>{cm.filters.timeTitle}</ConfigTitle>
                               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                               <ConfigureSelect label={cm.filters.timeFilter} value={channelManualSettings.time_filter_enabled ? 'yes' : 'no'} onChange={e => setManual({ time_filter_enabled: e.target.value === 'yes' })} options={[{ value: 'no', label: cm.filters.timeNo }, { value: 'yes', label: cm.filters.timeYes }]} />
@@ -4290,7 +4290,7 @@ export function AccountConfigPage() {
                             </div>
                             </section>
 
-                            <section className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-4 space-y-3">
+                            <section className="rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 p-4 space-y-3">
                               <ConfigTitle info={cm.filters.daysSubtitle}>{cm.filters.daysTitle}</ConfigTitle>
                               <ConfigureSelect label={cm.filters.daysFilter} value={channelManualSettings.days_filter_enabled ? 'yes' : 'no'} onChange={e => setManual({ days_filter_enabled: e.target.value === 'yes' })} options={[{ value: 'no', label: cm.filters.daysNo }, { value: 'yes', label: cm.filters.daysYes }]} />
                             {channelManualSettings.days_filter_enabled && (
@@ -4321,7 +4321,7 @@ export function AccountConfigPage() {
                             )}
                             </section>
 
-                            <section className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-4 space-y-3">
+                            <section className="rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 p-4 space-y-3">
                               <ConfigTitle info={cm.filters.newsSubtitle}>{cm.filters.newsTitle}</ConfigTitle>
                                   <ConfigureSelect
                                 label={cm.filters.newsTrading}
@@ -4487,7 +4487,7 @@ export function AccountConfigPage() {
                   aria-modal="true"
                   aria-labelledby="apply-preset-title"
                   aria-describedby="apply-preset-description"
-                  className="w-full max-w-md rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 shadow-xl overflow-hidden"
+                  className="w-full max-w-md rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200/65 dark:border-neutral-800/55 shadow-xl overflow-hidden"
                 >
                   <div className="px-5 pt-5 pb-4">
                     <div className="flex gap-3">
@@ -4506,7 +4506,7 @@ export function AccountConfigPage() {
                         </p>
                             </div>
                       </div>
-                    <div className="mt-4 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/50 px-3 py-2.5 space-y-2">
+                    <div className="mt-4 rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50 dark:bg-neutral-800/50 px-3 py-2.5 space-y-2">
                       <div className="flex items-center justify-between gap-3 text-sm">
                         <span className="text-neutral-500 dark:text-neutral-400">{cm.applyPresetChannelLabel}</span>
                         <span className="font-medium text-neutral-900 dark:text-neutral-50 truncate">
@@ -4551,7 +4551,7 @@ export function AccountConfigPage() {
                   role="dialog"
                   aria-modal="true"
                   aria-labelledby="manage-presets-title"
-                  className="w-full max-w-md rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 shadow-xl overflow-hidden"
+                  className="w-full max-w-md rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200/65 dark:border-neutral-800/55 shadow-xl overflow-hidden"
                 >
                   <div className="px-5 pt-5 pb-3">
                     <h4 id="manage-presets-title" className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
@@ -4652,7 +4652,7 @@ export function AccountConfigPage() {
                   role="dialog"
                   aria-modal="true"
                   aria-labelledby="edit-preset-title"
-                  className="w-full max-w-md rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 shadow-xl p-5 space-y-4"
+                  className="w-full max-w-md rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200/65 dark:border-neutral-800/55 shadow-xl p-5 space-y-4"
                 >
                   <h4 id="edit-preset-title" className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
                     {cm.editPresetTitle}
@@ -4697,7 +4697,7 @@ export function AccountConfigPage() {
                   role="dialog"
                   aria-modal="true"
                   aria-labelledby="delete-preset-title"
-                  className="w-full max-w-md rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 shadow-xl overflow-hidden"
+                  className="w-full max-w-md rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200/65 dark:border-neutral-800/55 shadow-xl overflow-hidden"
                 >
                   <div className="px-5 pt-5 pb-4">
                     <div className="flex gap-3">
@@ -4742,7 +4742,7 @@ export function AccountConfigPage() {
                   role="dialog"
                   aria-modal="true"
                   aria-labelledby="export-presets-title"
-                  className="w-full max-w-md rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 shadow-xl overflow-hidden"
+                  className="w-full max-w-md rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200/65 dark:border-neutral-800/55 shadow-xl overflow-hidden"
                 >
                   <div className="px-5 pt-5 pb-3 space-y-3">
                     <h4 id="export-presets-title" className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
@@ -4831,7 +4831,7 @@ export function AccountConfigPage() {
                   role="dialog"
                   aria-modal="true"
                   aria-labelledby="save-preset-title"
-                  className="w-full max-w-md rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 shadow-xl p-5 space-y-4"
+                  className="w-full max-w-md rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200/65 dark:border-neutral-800/55 shadow-xl p-5 space-y-4"
                 >
                   <h4 id="save-preset-title" className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
                     {cm.saveAsPresetTitle}
@@ -4881,7 +4881,7 @@ export function AccountConfigPage() {
 
 function FeatureBullet({ icon: Icon, title, body }: { icon: typeof DollarSign; title: string; body: string }) {
   return (
-    <div className="rounded-lg bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-800 p-3">
+    <div className="rounded-lg bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200/65 dark:border-neutral-800/55 p-3">
       <p className="text-xs font-medium text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
         <Icon className="w-3.5 h-3.5 text-primary-600" />
         {title}
@@ -4912,7 +4912,7 @@ function ChannelFiltersCard({
     0,
   )
   return (
-    <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-3 space-y-3">
+    <div className="rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-950 p-3 space-y-3">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {categories.map(cat => (
               <CategoryRow
@@ -4959,20 +4959,20 @@ function CategoryRow({
   onChange: (v: ChannelFilterDecision) => void
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-md border border-neutral-200 dark:border-neutral-800 px-3 py-2">
+    <div className="flex items-center justify-between gap-3 rounded-md border border-neutral-200/65 dark:border-neutral-800/55 px-3 py-2">
       <div className="min-w-0">
         <p className="text-sm text-neutral-800 dark:text-neutral-100 truncate inline-flex items-center gap-1">
           {label}
           <InfoTooltip text={example} />
         </p>
       </div>
-      <div className="inline-flex items-center rounded-md border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/50 p-0.5 shrink-0">
+      <div className="inline-flex items-center rounded-md border border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50 dark:bg-neutral-800/50 p-0.5 shrink-0">
         <button
           type="button"
           disabled={disabled}
           className={clsx(
             'px-2.5 py-1 text-xs rounded disabled:cursor-not-allowed disabled:opacity-60',
-            value === 'allow' ? 'bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-50 shadow-sm' : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:text-neutral-300',
+            value === 'allow' ? 'bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-50 shadow-sm' : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:text-neutral-300',
           )}
           onClick={() => onChange('allow')}
           aria-pressed={value === 'allow'}
@@ -5026,7 +5026,7 @@ function AccountBrokerPagination({
   }, [page, totalPages])
 
   return (
-    <div className="mt-3 flex flex-col gap-3 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 sm:px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="mt-3 flex flex-col gap-3 rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-950 px-3 sm:px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
       <p className="text-xs text-neutral-500 dark:text-neutral-400 tabular-nums">
         {showingRange}
       </p>
@@ -5036,7 +5036,7 @@ function AccountBrokerPagination({
             type="button"
             onClick={() => onPageChange(page - 1)}
             disabled={page <= 1}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-md border border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 disabled:opacity-40 disabled:pointer-events-none"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-md border border-neutral-200/65 dark:border-neutral-800/55 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 disabled:opacity-40 disabled:pointer-events-none"
             aria-label={previousLabel}
           >
             <ChevronLeft className="w-4 h-4" />
@@ -5069,7 +5069,7 @@ function AccountBrokerPagination({
             type="button"
             onClick={() => onPageChange(page + 1)}
             disabled={page >= totalPages}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-md border border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 disabled:opacity-40 disabled:pointer-events-none"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-md border border-neutral-200/65 dark:border-neutral-800/55 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 disabled:opacity-40 disabled:pointer-events-none"
             aria-label={nextLabel}
           >
             <span className="hidden sm:inline">{nextLabel}</span>

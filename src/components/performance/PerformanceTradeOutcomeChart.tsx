@@ -41,7 +41,7 @@ export function PerformanceTradeOutcomeChart({
   const empty = data.every((d) => d.profit === 0 && d.loss === 0)
 
   return (
-    <div className="min-w-0 rounded-2xl border border-neutral-200 bg-white p-4 sm:p-5 dark:border-neutral-800 dark:bg-neutral-900">
+    <div className="min-w-0 rounded-2xl border border-neutral-200/65 bg-white p-4 sm:p-5 dark:border-neutral-800/55 dark:bg-neutral-950">
       <div className="mb-4">
         <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{title}</h2>
         <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">{subtitle}</p>

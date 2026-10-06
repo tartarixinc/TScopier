@@ -171,7 +171,7 @@ export function ChannelsPage() {
       {loading ? (
         <div className="space-y-3">
           {[...Array(3)].map((_, i) => (
-            <div key={i} className="h-16 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 animate-pulse" />
+            <div key={i} className="h-16 bg-white dark:bg-neutral-950 rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 animate-pulse" />
           ))}
         </div>
       ) : channels.length === 0 ? (

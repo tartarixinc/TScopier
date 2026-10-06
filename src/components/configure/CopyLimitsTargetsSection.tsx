@@ -105,7 +105,7 @@ export function CopyLimitsTargetsSection(props: {
 
       {/* Period timezone — hidden for now; limits still use profile timezone via resolveCopyLimitTimezone
       {needsTimezone ? (
-        <section className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-4 space-y-3">
+        <section className="rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 p-4 space-y-3">
           <ConfigTitle info={props.labels.timezoneHint}>{props.labels.timezoneTitle}</ConfigTitle>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
             <label className="flex items-center gap-2 text-sm">
@@ -141,7 +141,7 @@ export function CopyLimitsTargetsSection(props: {
       ) : null}
       */}
 
-      <section className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-4 space-y-3">
+      <section className="rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 p-4 space-y-3">
         <div className="flex items-center justify-between gap-3">
           <ConfigTitle info={props.labels.profitTargetsIntro}>{props.labels.profitTargetsTitle}</ConfigTitle>
           <Toggle
@@ -245,7 +245,7 @@ export function CopyLimitsTargetsSection(props: {
         ) : null}
       </section>
 
-      <section className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-4 space-y-3">
+      <section className="rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 p-4 space-y-3">
         <div className="flex items-center justify-between gap-3">
           <ConfigTitle info={props.labels.maxRiskIntro}>{props.labels.maxRiskTitle}</ConfigTitle>
           <Toggle

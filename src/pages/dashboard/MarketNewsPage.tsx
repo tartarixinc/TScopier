@@ -157,7 +157,7 @@ export function MarketNewsPage() {
         </div>
       )}
 
-      <footer className="border-t border-neutral-200 pt-6 dark:border-neutral-800">
+      <footer className="border-t border-neutral-200/65 pt-6 dark:border-neutral-800/55">
         <a
           href="https://site.financialmodelingprep.com"
           target="_blank"

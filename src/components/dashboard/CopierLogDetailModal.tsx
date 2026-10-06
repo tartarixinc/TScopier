@@ -158,7 +158,7 @@ export function CopierLogDetailModal({
         aria-label={dm.close}
         onClick={onClose}
       />
-      <div className="relative w-full sm:max-w-lg max-h-[92vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-2xl">
+      <div className="relative w-full sm:max-w-lg max-h-[92vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 shadow-2xl">
         <div className="sticky top-0 z-10 flex items-center justify-between gap-3 px-5 py-4 border-b border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900">
           <div className="min-w-0">
             <h2 id="copier-log-detail-title" className="text-lg font-semibold text-neutral-900 dark:text-neutral-50 truncate">
@@ -177,7 +177,7 @@ export function CopierLogDetailModal({
         </div>
 
         <div className="p-5 space-y-5">
-          <section className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-4 space-y-3">
+          <section className="rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 p-4 space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant={status.variant} size="sm">{status.label}</Badge>
               {action ? (
@@ -220,7 +220,7 @@ export function CopierLogDetailModal({
           </section>
 
           {(levels.entry || levels.sl || levels.tp) ? (
-            <section className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-4 space-y-2">
+            <section className="rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 p-4 space-y-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{dm.levels}</p>
               {levels.entry ? <DetailRow label={dm.entry} value={levels.entry} /> : null}
               {levels.sl ? <DetailRow label={dm.stopLoss} value={levels.sl} /> : null}
@@ -228,14 +228,14 @@ export function CopierLogDetailModal({
             </section>
           ) : null}
 
-          <section className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-4 space-y-2">
+          <section className="rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 p-4 space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{dm.signalMessage}</p>
             <pre className="text-sm text-neutral-700 dark:text-neutral-200 whitespace-pre-wrap font-sans leading-relaxed">
               {rawMessage}
             </pre>
           </section>
 
-          <section className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-4 space-y-3">
+          <section className="rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 p-4 space-y-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{dm.timeline}</p>
             {timelineLoading ? (
               <p className="text-sm text-neutral-500 inline-flex items-center gap-2">

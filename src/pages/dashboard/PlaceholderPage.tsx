@@ -13,7 +13,7 @@ export function PlaceholderPage({ title }: PlaceholderPageProps) {
   return (
     <PageShell maxWidth="sm">
       <PageHeader title={title} />
-      <div className="rounded-xl border border-dashed border-neutral-200 bg-white py-20 text-center dark:border-neutral-700 dark:bg-neutral-900">
+      <div className="rounded-xl border border-dashed border-neutral-200 bg-white py-20 text-center dark:border-neutral-700 dark:bg-neutral-950">
         <Construction className="mx-auto mb-3 h-10 w-10 text-neutral-300 dark:text-neutral-600" />
         <p className="text-sm font-medium text-neutral-500 dark:text-neutral-400">{t.common.comingSoon}</p>
         <p className="mt-1 text-xs text-neutral-300 dark:text-neutral-600">{t.common.underDevelopment}</p>

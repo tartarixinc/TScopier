@@ -175,7 +175,7 @@ function HeroTradeOutcomeChart() {
   const { theme } = useTheme()
   const colors = chartThemeColors(theme)
   return (
-    <div className="min-w-0 rounded-2xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
+    <div className="min-w-0 rounded-2xl border border-neutral-200/65 bg-white p-5 dark:border-neutral-800/55 dark:bg-neutral-950">
       <div className="mb-4">
         <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
           {t.dashboard.tradeOutcomeTitle}
@@ -253,7 +253,7 @@ function HeroChannelProfitChart() {
   const zeroX = ((0 - CHANNEL_PROFIT_MIN) / CHANNEL_PROFIT_SPAN) * plotW
 
   return (
-    <div className="min-w-0 rounded-2xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
+    <div className="min-w-0 rounded-2xl border border-neutral-200/65 bg-white p-5 dark:border-neutral-800/55 dark:bg-neutral-950">
       <div className="mb-4">
         <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
           {t.dashboard.channelProfitTitle}
@@ -438,8 +438,8 @@ export function HeroDashboardPreview() {
           transformOrigin: isRtl ? 'top right' : 'top left',
         }}
       >
-        <div className="flex h-full w-full overflow-hidden bg-neutral-50 dark:bg-neutral-950" dir={dir}>
-          <aside className="flex w-64 shrink-0 flex-col border-e border-neutral-100 bg-white dark:border-neutral-800 dark:bg-neutral-900 rtl:w-[15.5rem]">
+        <div className="flex h-full w-full overflow-hidden bg-white dark:bg-neutral-950" dir={dir}>
+          <aside className="flex w-64 shrink-0 flex-col border-e border-neutral-100 bg-[#F7F8FA] dark:border-neutral-800 dark:bg-neutral-950 rtl:w-[15.5rem]">
             <div className="flex h-16 shrink-0 items-center border-b border-neutral-100 px-4 dark:border-neutral-800">
               <TscopierLogo className="h-6 w-auto" />
             </div>
@@ -479,7 +479,7 @@ export function HeroDashboardPreview() {
           </aside>
 
           <div className="flex min-w-0 flex-1 flex-col">
-            <header className="z-20 flex h-16 shrink-0 items-center gap-3 border-b border-neutral-100 bg-white px-4 dark:border-neutral-800 dark:bg-neutral-900 sm:gap-4 sm:px-6">
+            <header className="z-20 flex h-16 shrink-0 items-center gap-3 border-b border-neutral-100 bg-white px-4 dark:border-neutral-800 dark:bg-neutral-950 sm:gap-4 sm:px-6">
               <DirectionalIcon icon={PanelLeftClose} className="h-5 w-5 shrink-0 text-neutral-400" />
               <div className="flex h-9 min-w-0 max-w-md flex-1 items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 text-sm text-neutral-400 dark:border-neutral-700 dark:bg-neutral-800/80">
                 <Search className="h-4 w-4 shrink-0" aria-hidden />
@@ -519,7 +519,7 @@ export function HeroDashboardPreview() {
               </div>
             </header>
 
-            <main className="min-h-0 flex-1 overflow-hidden bg-neutral-50 dark:bg-neutral-950">
+            <main className="min-h-0 flex-1 overflow-hidden bg-white dark:bg-neutral-950">
               <div className="mx-auto h-full w-full max-w-[1600px] space-y-6 overflow-hidden px-8 py-8">
                 <header>
                   <h1 className="text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
@@ -527,7 +527,7 @@ export function HeroDashboardPreview() {
                   </h1>
                 </header>
 
-                <div className="rounded-2xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
+                <div className="rounded-2xl border border-neutral-200/65 bg-white dark:border-neutral-800/55 dark:bg-neutral-950">
                   <div className="grid grid-cols-4 divide-x divide-neutral-100 dark:divide-neutral-800 rtl:divide-x-reverse">
                     {d.headlineStats.map(stat => (
                       <HeroStatBlock
@@ -555,7 +555,7 @@ export function HeroDashboardPreview() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-6">
-                  <div className="min-w-0 overflow-hidden rounded-2xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
+                  <div className="min-w-0 overflow-hidden rounded-2xl border border-neutral-200/65 bg-white dark:border-neutral-800/55 dark:bg-neutral-950">
                     <div className="flex items-center justify-between gap-2 border-b border-neutral-100 px-5 py-4 dark:border-neutral-800">
                       <div className="flex items-center gap-2">
                         <Clock className="h-4 w-4 text-teal-500" aria-hidden />
@@ -579,7 +579,7 @@ export function HeroDashboardPreview() {
                     </div>
                   </div>
 
-                  <div className="min-w-0 overflow-hidden rounded-2xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
+                  <div className="min-w-0 overflow-hidden rounded-2xl border border-neutral-200/65 bg-white dark:border-neutral-800/55 dark:bg-neutral-950">
                     <div className="flex items-center justify-between gap-2 border-b border-neutral-100 px-5 py-4 dark:border-neutral-800">
                       <div className="flex items-center gap-2">
                         <Clock className="h-4 w-4 text-teal-500" aria-hidden />

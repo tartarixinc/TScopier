@@ -220,7 +220,7 @@ export function PricingPlansSection({ variant = 'marketing' }: PricingPlansSecti
       </div>
 
       <div className="mt-12 grid gap-8 lg:grid-cols-3">
-        <div className="relative rounded-2xl border border-neutral-200 bg-white p-8 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="relative rounded-2xl border border-neutral-200/65 bg-white p-8 shadow-sm dark:border-neutral-800/55 dark:bg-neutral-900">
           <div className="mb-6">
             <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">{pt.basic.name}</h2>
             <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{pt.basic.description}</p>
@@ -352,7 +352,7 @@ export function PricingPlansSection({ variant = 'marketing' }: PricingPlansSecti
           </div>
         </div>
 
-        <div className="relative rounded-2xl border border-neutral-200 bg-white p-8 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="relative rounded-2xl border border-neutral-200/65 bg-white p-8 shadow-sm dark:border-neutral-800/55 dark:bg-neutral-900">
           <div className="mb-6">
             <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">{pt.custom.name}</h2>
             <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{pt.custom.description}</p>

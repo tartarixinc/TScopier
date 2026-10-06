@@ -421,7 +421,7 @@ export function BillingPage() {
         ) : null}
 
         <Card padding="none" className="overflow-hidden">
-          <div className="border-b border-neutral-200 px-6 py-4 dark:border-neutral-800">
+          <div className="border-b border-neutral-200/65 px-6 py-4 dark:border-neutral-800/55">
             <div className="flex items-start gap-3">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-teal-50 dark:bg-teal-950/40">
                 <Receipt className="h-4 w-4 text-teal-600 dark:text-teal-400" />
@@ -452,7 +452,7 @@ export function BillingPage() {
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead>
-                  <tr className="border-b border-neutral-200 bg-neutral-50/80 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900/60 dark:text-neutral-400">
+                  <tr className="border-b border-neutral-200/65 bg-neutral-50/80 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:border-neutral-800/55 dark:bg-neutral-900/60 dark:text-neutral-400">
                     <th className="px-6 py-3">{bt.invoiceNumber}</th>
                     <th className="px-6 py-3">{bt.period}</th>
                     <th className="px-6 py-3">{bt.date}</th>
@@ -508,7 +508,7 @@ export function BillingPage() {
           )}
 
           {(invoicePageIndex > 0 || invoiceHasMore) && currentInvoices.length > 0 ? (
-            <div className="flex items-center justify-end gap-2 border-t border-neutral-200 px-6 py-3 dark:border-neutral-800">
+            <div className="flex items-center justify-end gap-2 border-t border-neutral-200/65 px-6 py-3 dark:border-neutral-800/55">
               <Button
                 variant="ghost"
                 size="sm"

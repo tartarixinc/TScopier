@@ -192,7 +192,7 @@ function TradeRow({
   return (
     <li
       className={clsx(
-        'rounded-xl border border-neutral-200 bg-white p-2.5 dark:border-neutral-800 dark:bg-neutral-900/70',
+        'rounded-xl border border-neutral-200/65 bg-white p-2.5 dark:border-neutral-800/55 dark:bg-neutral-900/70',
         clickable &&
           'cursor-pointer transition hover:border-teal-300 hover:bg-neutral-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/60 dark:hover:border-teal-700 dark:hover:bg-neutral-800/60',
       )}
@@ -292,7 +292,7 @@ function TradeRow({
 function ReportRow({ report, copy }: { report: NonNullable<ParsedResult['reports']>[number]; copy: AssistantTradesCardCopy }) {
   const resolved = (report.status ?? '').toLowerCase() === 'resolved'
   return (
-    <li className="rounded-xl border border-neutral-200 bg-white px-3 py-2.5 dark:border-neutral-800 dark:bg-neutral-900/70">
+    <li className="rounded-xl border border-neutral-200/65 bg-white px-3 py-2.5 dark:border-neutral-800/55 dark:bg-neutral-900/70">
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-1.5">
           <span className="truncate font-semibold text-neutral-900 dark:text-neutral-50">

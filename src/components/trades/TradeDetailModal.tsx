@@ -229,7 +229,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
       />
       <div
         ref={panelRef}
-        className="relative w-full sm:max-w-lg max-h-[92vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-2xl"
+        className="relative w-full sm:max-w-lg max-h-[92vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 shadow-2xl"
       >
         <div className="sticky top-0 z-10 flex items-center justify-between gap-3 px-5 py-4 border-b border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900">
           <div className="min-w-0">
@@ -266,7 +266,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
         </div>
 
         <div className="p-5 space-y-5">
-          <section className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-4 space-y-3">
+          <section className="rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 p-4 space-y-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{tr.tradeSummary}</p>
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant={display.status.variant} size="sm">{statusLabel}</Badge>
@@ -486,7 +486,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
                   <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
                     {tr.telegramMessage}
                   </p>
-                  <p className="text-sm text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50/80 dark:bg-neutral-800/30 px-4 py-3">
+                  <p className="text-sm text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50/80 dark:bg-neutral-800/30 px-4 py-3">
                     {messageBody}
                   </p>
                   {context.signal.raw_image_url ? (
@@ -507,7 +507,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
                   <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
                     {tr.parsedInstruction}
                   </p>
-                  <dl className="rounded-xl border border-neutral-200 dark:border-neutral-800 divide-y divide-neutral-100 dark:divide-neutral-800">
+                  <dl className="rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 divide-y divide-neutral-100 dark:divide-neutral-800">
                     {instructionLines.map(line => (
                       <div key={line.label} className="flex justify-between gap-3 px-4 py-2.5 text-sm">
                         <dt className="text-neutral-500 shrink-0">{line.label}</dt>

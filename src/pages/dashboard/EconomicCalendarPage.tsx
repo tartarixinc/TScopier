@@ -218,7 +218,7 @@ export function EconomicCalendarPage() {
       {error ? <Alert>{error}</Alert> : null}
 
       <div className={showNewsFilter ? 'grid gap-6 lg:grid-cols-[1fr_20rem]' : ''}>
-        <div className="rounded-xl border border-neutral-200/80 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="rounded-xl border border-neutral-200/55 bg-white shadow-sm dark:border-neutral-800/55 dark:bg-neutral-950">
           {loading ? (
             <div className="space-y-4 p-4 animate-pulse">
               {Array.from({ length: 6 }).map((_, i) => (
@@ -263,7 +263,7 @@ export function EconomicCalendarPage() {
         ) : null}
       </div>
 
-      <footer className="border-t border-neutral-200 pt-6 dark:border-neutral-800">
+      <footer className="border-t border-neutral-200/65 pt-6 dark:border-neutral-800/55">
         <a
           href="https://site.financialmodelingprep.com"
           target="_blank"

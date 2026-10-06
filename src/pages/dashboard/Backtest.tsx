@@ -414,7 +414,7 @@ export function Backtest() {
       ) : null}
 
       {step === 'configure' ? (
-        <section className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 space-y-6 shadow-sm">
+        <section className="rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-950 p-6 space-y-6 shadow-sm">
           <div>
             <p className="text-sm text-neutral-500 mt-1">{bt.configureHint}</p>
           </div>
@@ -503,7 +503,7 @@ export function Backtest() {
       ) : null}
 
       {step === 'symbol' ? (
-        <section className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 space-y-6 shadow-sm">
+        <section className="rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-950 p-6 space-y-6 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">{bt.readyTitle}</h2>
@@ -639,7 +639,7 @@ export function Backtest() {
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4 col-span-2 sm:col-span-1">
+            <div className="rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-950 p-4 col-span-2 sm:col-span-1">
               <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">{bt.totalPips}</p>
               <p className={clsx('text-3xl font-bold tabular-nums mt-1', pipValueTextClass(totalPips))}>
                 {formatPipValue(totalPips)}
@@ -647,11 +647,11 @@ export function Backtest() {
             </div>
             {summary ? (
               <>
-                <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
+                <div className="rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-950 p-4">
                   <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">{bt.winRate}</p>
                   <p className="text-2xl font-bold mt-1">{(summary.winRate * 100).toFixed(0)}%</p>
                 </div>
-                <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
+                <div className="rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-950 p-4">
                   <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">{bt.winLoss}</p>
                   <p className="text-2xl font-bold mt-1 tabular-nums">
                     <span className={profitTextClass}>{summary.wins}</span>
@@ -659,7 +659,7 @@ export function Backtest() {
                     <span className={lossTextClass}>{summary.losses}</span>
                   </p>
                 </div>
-                <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
+                <div className="rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-950 p-4">
                   <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">{bt.signalsLabel}</p>
                   <p className="text-2xl font-bold mt-1 tabular-nums">{summary.tradedSignals}</p>
                 </div>
@@ -667,7 +667,7 @@ export function Backtest() {
             ) : null}
           </div>
 
-          <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 overflow-hidden shadow-sm">
+          <div className="rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-950 overflow-hidden shadow-sm">
             <div className="px-4 py-3 border-b border-neutral-100 dark:border-neutral-800">
               <p className="text-sm font-medium text-neutral-700 dark:text-neutral-200">
                 {signalListLabel}

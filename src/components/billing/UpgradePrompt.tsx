@@ -81,7 +81,7 @@ export function UpgradePrompt({
   return (
     <div
       className={clsx(
-        'rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900',
+        'rounded-xl border border-neutral-200/65 bg-white p-4 dark:border-neutral-800/55 dark:bg-neutral-950',
         className,
       )}
     >

@@ -191,7 +191,7 @@ export function SignalReviewDetailModal({ signal, onClose }: SignalReviewDetailM
             <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
               Telegram message
             </p>
-            <p className="text-sm text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap break-words rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50/80 dark:bg-neutral-800/30 px-4 py-3">
+            <p className="text-sm text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap break-words rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50/80 dark:bg-neutral-800/30 px-4 py-3">
               {messageText}
             </p>
             {signal.raw_image_url ? (
@@ -219,7 +219,7 @@ export function SignalReviewDetailModal({ signal, onClose }: SignalReviewDetailM
               <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
                 Parsed levels
               </p>
-              <dl className="rounded-xl border border-neutral-200 dark:border-neutral-800 divide-y divide-neutral-100 dark:divide-neutral-800">
+              <dl className="rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 divide-y divide-neutral-100 dark:divide-neutral-800">
                 {levels.symbol ? (
                   <div className="flex justify-between gap-3 px-4 py-2.5 text-sm">
                     <dt className="text-neutral-500 shrink-0">Symbol</dt>

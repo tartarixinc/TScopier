@@ -1078,7 +1078,7 @@ export function CopierEnginePage() {
                       onClick={() => addFromTg(ch)}
                       className={`px-3 py-1 text-xs font-medium rounded-lg border transition-colors flex-shrink-0 ${
                         alreadyAdded
-                          ? 'border-neutral-200 dark:border-neutral-800 text-neutral-400 cursor-default'
+                          ? 'border-neutral-200/65 dark:border-neutral-800/55 text-neutral-400 cursor-default'
                           : 'border-primary-500 text-primary-600 hover:bg-primary-50'
                       }`}
                       disabled={alreadyAdded}
@@ -1096,10 +1096,10 @@ export function CopierEnginePage() {
       {/* Channel list */}
       {loading ? (
         <div className="space-y-2">
-          {[...Array(3)].map((_, i) => <div key={i} className="h-14 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-100 dark:border-neutral-800 animate-pulse" />)}
+          {[...Array(3)].map((_, i) => <div key={i} className="h-14 bg-white dark:bg-neutral-950 rounded-xl border border-neutral-100 dark:border-neutral-800 animate-pulse" />)}
         </div>
       ) : channels.length === 0 ? (
-        <div className="bg-white dark:bg-neutral-900 rounded-xl border border-dashed border-neutral-200 dark:border-neutral-800 py-10 text-center">
+        <div className="bg-white dark:bg-neutral-950 rounded-xl border border-dashed border-neutral-200/65 dark:border-neutral-800/55 py-10 text-center">
           <Radio className="w-8 h-8 mx-auto mb-2 text-neutral-200" />
           <p className="text-sm font-medium text-neutral-400">{ce.configuredEmptyTitle}</p>
           <p className="text-xs text-neutral-300 mt-0.5 max-w-sm mx-auto">

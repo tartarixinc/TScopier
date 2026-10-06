@@ -29,7 +29,7 @@ export function TradeVolumeChart({ data, loading, stale }: TradeVolumeChartProps
   const colors = chartThemeColors(theme)
 
   return (
-    <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-4 sm:p-5 min-w-0">
+    <div className="bg-white dark:bg-neutral-950 rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55 p-4 sm:p-5 min-w-0">
       <div className="mb-4">
         <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{t.dashboard.tradeOutcomeTitle}</h2>
         <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">{t.dashboard.tradeOutcomeSubtitle}</p>

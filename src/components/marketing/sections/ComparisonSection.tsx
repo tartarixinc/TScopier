@@ -37,11 +37,11 @@ export function ComparisonSection() {
             <tr>
               <th
                 scope="col"
-                className="w-[26%] border-b border-neutral-200 bg-neutral-50/80 px-4 py-4 dark:border-neutral-800 dark:bg-neutral-900/80 sm:px-5"
+                className="w-[26%] border-b border-neutral-200/65 bg-neutral-50/80 px-4 py-4 dark:border-neutral-800/55 dark:bg-neutral-900/80 sm:px-5"
               />
               <th
                 scope="col"
-                className="border-b border-neutral-200 bg-neutral-50/80 px-4 py-4 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900/80 dark:text-neutral-400 sm:px-5"
+                className="border-b border-neutral-200/65 bg-neutral-50/80 px-4 py-4 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:border-neutral-800/55 dark:bg-neutral-900/80 dark:text-neutral-400 sm:px-5"
               >
                 {c.otherLabel}
               </th>
@@ -107,11 +107,11 @@ function ComparisonMobileCard({
   return (
     <li
       className={clsx(
-        'overflow-hidden rounded-2xl border border-neutral-200/90 shadow-sm dark:border-neutral-800',
+        'overflow-hidden rounded-2xl border border-neutral-200/60 shadow-sm dark:border-neutral-800/55',
         striped ? 'bg-white dark:bg-neutral-900' : 'bg-neutral-50/60 dark:bg-neutral-900/50',
       )}
     >
-      <p className="border-b border-neutral-200/90 px-4 py-3 text-sm font-semibold text-neutral-900 dark:border-neutral-800 dark:text-neutral-50">
+      <p className="border-b border-neutral-200/60 px-4 py-3 text-sm font-semibold text-neutral-900 dark:border-neutral-800/55 dark:text-neutral-50">
         {row.aspect}
       </p>
       <div className="border-b border-neutral-100 px-4 py-3.5 dark:border-neutral-800">
