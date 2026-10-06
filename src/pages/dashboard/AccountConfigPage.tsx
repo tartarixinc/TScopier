@@ -3924,7 +3924,14 @@ export function AccountConfigPage() {
 
                           return (
                           <div className="space-y-6">
-                            <section className="relative rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
+                            <div className="relative">
+                            <section
+                              className={clsx(
+                                'rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden',
+                                !autoManagementPlanEnabled && 'pointer-events-none select-none opacity-60',
+                              )}
+                              aria-disabled={!autoManagementPlanEnabled}
+                            >
                               <div className="flex items-center justify-between gap-3 bg-white dark:bg-neutral-900 px-4 py-3">
                                 <ConfigTitle
                                   info={
@@ -3937,6 +3944,7 @@ export function AccountConfigPage() {
                                 </ConfigTitle>
                                 <Toggle
                                   checked={autoMgmtEnabled}
+                                  disabled={!autoManagementPlanEnabled}
                                   onChange={v => {
                                     if (v) {
                                       const prev = ms.move_sl_to_entry_after_mode
@@ -4104,14 +4112,15 @@ export function AccountConfigPage() {
                                   </div>
                                 </div>
                               )}
-                              {!autoManagementPlanEnabled ? (
-                                <div className="absolute inset-0 z-10 flex items-center justify-center p-4">
-                                  <div className="pointer-events-auto w-full max-w-md">
-                                    <UpgradePrompt reason={cm.management.basicPlanAutoManagementLimit} />
-                                  </div>
-                                </div>
-                              ) : null}
                             </section>
+                            {!autoManagementPlanEnabled ? (
+                              <div className="absolute inset-0 z-10 flex items-center justify-center p-4">
+                                <div className="pointer-events-auto w-full max-w-md">
+                                  <UpgradePrompt reason={cm.management.basicPlanAutoManagementLimit} />
+                                </div>
+                              </div>
+                            ) : null}
+                            </div>
 
                             {isSingleTrade && (
                               <section className="rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
