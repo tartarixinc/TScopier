@@ -3,6 +3,10 @@ import type { DashboardBundleTranslations } from './types'
 export const dashboardJa: DashboardBundleTranslations = {
   dashboard: {
     title: 'ダッシュボード',
+    greetingMorning: 'おはようございます',
+    greetingAfternoon: 'こんにちは',
+    greetingEvening: 'こんばんは',
+    greetingNamed: '{name}さん、{greeting}',
     loadingMetrics: 'ダッシュボード指標を読み込み中',
     totalBalance: '総残高',
     acrossAccounts: '接続済み {count} 口座の合計',

@@ -291,7 +291,7 @@ export function CopierStatusCard({
     <div
       className={clsx(
         !embedded &&
-          'bg-white dark:bg-neutral-950 rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55',
+          'overflow-hidden rounded-2xl border border-neutral-200/65 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-neutral-800/55 dark:bg-neutral-950 dark:shadow-none',
         className,
       )}
     >
@@ -300,12 +300,12 @@ export function CopierStatusCard({
         onClick={toggleExpanded}
         aria-expanded={expanded}
         className={clsx(
-          'w-full px-4 sm:px-5 py-3.5 flex items-center gap-2 text-left',
-          'hover:bg-neutral-50/80 dark:hover:bg-neutral-800/40 transition-colors',
+          'flex w-full items-center gap-2 px-5 py-4 text-left',
+          'transition-colors hover:bg-[#F7F8FA] dark:hover:bg-white/[0.03]',
           expanded && 'border-b border-neutral-100 dark:border-neutral-800',
         )}
       >
-        <Activity className="w-4 h-4 text-teal-500 shrink-0" />
+        <Activity className="h-4 w-4 shrink-0 text-neutral-400" />
         {!expanded ? (
           <span className="min-w-0 flex-1 truncate text-sm">
             <span className="font-semibold text-neutral-900 dark:text-neutral-50">
@@ -315,7 +315,7 @@ export function CopierStatusCard({
           </span>
         ) : (
           <>
-            <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 shrink-0">
+            <span className="shrink-0 text-[15px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
               {cs.title}
             </span>
             <span className="flex-1" />
@@ -332,7 +332,7 @@ export function CopierStatusCard({
       </button>
 
       {expanded ? (
-        <div className="px-4 sm:px-5 py-3 divide-y divide-neutral-100 dark:divide-neutral-800">
+        <div className="divide-y divide-neutral-100 px-5 py-4 dark:divide-neutral-800/80">
           <div className="pb-3 text-sm text-neutral-700 dark:text-neutral-300">
             <div>{statusMessage}</div>
             <div className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">

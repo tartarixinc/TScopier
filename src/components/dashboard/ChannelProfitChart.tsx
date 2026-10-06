@@ -30,12 +30,12 @@ export function ChannelProfitChart({ data, loading, stale }: ChannelProfitChartP
   const empty = chartData.length === 0
 
   return (
-    <div className="min-w-0 rounded-2xl border border-neutral-200/65 bg-white p-4 sm:p-5 dark:border-neutral-800/55 dark:bg-neutral-950">
-      <div className="mb-4">
-        <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
+    <div className="min-w-0 rounded-2xl border border-neutral-200/65 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-neutral-800/55 dark:bg-neutral-950 dark:shadow-none">
+      <div className="mb-5">
+        <h2 className="text-[15px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
           {t.dashboard.channelProfitTitle}
         </h2>
-        <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
+        <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
           {t.dashboard.channelProfitSubtitle}
         </p>
       </div>

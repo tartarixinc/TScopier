@@ -634,6 +634,10 @@ export const es: Translations = {
   },
   dashboard: {
     title: 'Panel',
+    greetingMorning: 'Buenos días',
+    greetingAfternoon: 'Buenas tardes',
+    greetingEvening: 'Buenas noches',
+    greetingNamed: '{greeting}, {name}.',
     loadingMetrics: 'Cargando métricas del panel…',
     totalBalance: 'Balance total',
     acrossAccounts: 'En {count} cuenta(s) conectada(s)',

@@ -3,6 +3,10 @@ import type { DashboardBundleTranslations } from './types'
 export const dashboardRu: DashboardBundleTranslations = {
   dashboard: {
     title: 'Панель',
+    greetingMorning: 'Доброе утро',
+    greetingAfternoon: 'Добрый день',
+    greetingEvening: 'Добрый вечер',
+    greetingNamed: '{greeting}, {name}.',
     loadingMetrics: 'Загрузка метрик панели',
     totalBalance: 'Общий баланс',
     acrossAccounts: 'По {count} подключенным счетам',

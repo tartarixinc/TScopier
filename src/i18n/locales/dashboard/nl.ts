@@ -3,6 +3,10 @@ import type { DashboardBundleTranslations } from './types'
 export const dashboardNl: DashboardBundleTranslations = {
   dashboard: {
     title: 'Dashboard',
+    greetingMorning: 'Goedemorgen',
+    greetingAfternoon: 'Goedemiddag',
+    greetingEvening: 'Goedenavond',
+    greetingNamed: '{greeting}, {name}.',
     loadingMetrics: 'Je dashboardstatistieken worden geladen',
     totalBalance: 'Totaal saldo',
     acrossAccounts: 'Over {count} gekoppelde account(s)',

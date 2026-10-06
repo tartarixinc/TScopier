@@ -3,6 +3,10 @@ import type { DashboardBundleTranslations } from './types'
 export const dashboardAr: DashboardBundleTranslations = {
   dashboard: {
     title: 'لوحة التحكم',
+    greetingMorning: 'صباح الخير',
+    greetingAfternoon: 'طاب نهارك',
+    greetingEvening: 'مساء الخير',
+    greetingNamed: '{greeting}، {name}.',
     loadingMetrics: 'جارٍ تحميل مقاييس لوحة التحكم',
     totalBalance: 'إجمالي الرصيد',
     acrossAccounts: 'على {count} حسابات متصلة',

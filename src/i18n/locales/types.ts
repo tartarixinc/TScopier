@@ -343,6 +343,11 @@ export interface DashboardLinkedAccountsTranslations {
 
 export interface DashboardTranslations {
   title: string
+  greetingMorning: string
+  greetingAfternoon: string
+  greetingEvening: string
+  /** `{greeting}` plus `{name}`, e.g. "Good afternoon, Martins." */
+  greetingNamed: string
   loadingMetrics: string
   totalBalance: string
   acrossAccounts: string

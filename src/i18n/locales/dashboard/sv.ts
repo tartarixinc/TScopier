@@ -3,6 +3,10 @@ import type { DashboardBundleTranslations } from './types'
 export const dashboardSv: DashboardBundleTranslations = {
   dashboard: {
     title: 'Instrumentpanel',
+    greetingMorning: 'God morgon',
+    greetingAfternoon: 'God eftermiddag',
+    greetingEvening: 'God kväll',
+    greetingNamed: '{greeting}, {name}.',
     loadingMetrics: 'Laddar dina instrumentpanelsmätvärden',
     totalBalance: 'Totalt saldo',
     acrossAccounts: 'Över {count} anslutna konto(n)',

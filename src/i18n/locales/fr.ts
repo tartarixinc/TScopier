@@ -634,6 +634,10 @@ export const fr: Translations = {
   },
   dashboard: {
     title: 'Tableau de bord',
+    greetingMorning: 'Bonjour',
+    greetingAfternoon: 'Bon après-midi',
+    greetingEvening: 'Bonsoir',
+    greetingNamed: '{greeting}, {name}.',
     loadingMetrics: 'Chargement des métriques du tableau de bord…',
     totalBalance: 'Solde total',
     acrossAccounts: 'Sur {count} compte(s) connecté(s)',

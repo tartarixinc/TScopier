@@ -44,9 +44,9 @@ export const TradeActivityCard = memo(function TradeActivityCard({
 
   if (variant === 'compact') {
     return (
-      <div className="px-5 py-3">
-        <p className="text-sm text-neutral-800 dark:text-neutral-100">{activity.message}</p>
-        <p className="text-[11px] text-neutral-400 mt-1">{timeLabel}</p>
+      <div className="px-5 py-3.5 transition-colors hover:bg-[#F7F8FA] dark:hover:bg-white/[0.03]">
+        <p className="text-sm leading-5 text-neutral-800 dark:text-neutral-100">{activity.message}</p>
+        <p className="mt-1 text-[11px] tabular-nums text-neutral-400">{timeLabel}</p>
       </div>
     )
   }

@@ -631,6 +631,10 @@ broker: {
   },
   dashboard: {
     title: 'Dashboard',
+    greetingMorning: 'Good morning',
+    greetingAfternoon: 'Good afternoon',
+    greetingEvening: 'Good evening',
+    greetingNamed: '{greeting}, {name}.',
     loadingMetrics: 'Loading your dashboard metrics',
     totalBalance: 'Total Balance',
     acrossAccounts: 'Across {count} connected account(s)',
