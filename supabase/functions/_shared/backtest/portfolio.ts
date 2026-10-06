@@ -38,7 +38,8 @@ export function runPortfolioSimulation(
   let equity = config.initialBalance
   let peak = equity
   const curve: EquityPoint[] = []
-  const byChannel: BacktestSummary["byChannel"] = {}
+  type ChannelAccumulator = BacktestSummary["byChannel"][string] & { wins?: number }
+  const byChannel: Record<string, ChannelAccumulator> = {}
 
   let wins = 0
   let losses = 0
@@ -95,7 +96,7 @@ export function runPortfolioSimulation(
     }
     ch.trades++
     ch.netPnl += pnl
-    if (pnl > 0) (ch as { wins: number }).wins += 1
+    if (pnl > 0) ch.wins = (ch.wins ?? 0) + 1
     byChannel[t.channelId] = ch
 
     pushPoint(t.closedAt ?? t.signalAt, 0)
@@ -103,9 +104,9 @@ export function runPortfolioSimulation(
 
   for (const ch of Object.values(byChannel)) {
     ch.netPnl = Number(ch.netPnl.toFixed(2))
-    const w = (ch as { wins?: number }).wins ?? 0
+    const w = ch.wins ?? 0
     ch.winRate = ch.trades > 0 ? Number(((w / ch.trades) * 100).toFixed(1)) : 0
-    delete (ch as { wins?: number }).wins
+    delete ch.wins
   }
 
   const netPnl = equity - config.initialBalance
