@@ -42,6 +42,7 @@ export const chromeNl: AppChromeTranslations = {
     expandSidebar: 'Zijbalk uitklappen',
     collapseSidebar: 'Zijbalk inklappen',
     openTradesActive: 'Open trades actief',
+    openTradesCount: '{count} open',
     highImpactNewsToday: 'Hoog-impactnieuws vandaag',
     planFree: 'Gratis',
     settings: 'Instellingen',

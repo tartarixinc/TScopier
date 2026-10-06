@@ -57,6 +57,8 @@ export interface NavTranslations {
   expandSidebar: string
   collapseSidebar: string
   openTradesActive: string
+  /** Sidebar tag, e.g. "3 Open". */
+  openTradesCount: string
   highImpactNewsToday: string
   planFree: string
   settings: string

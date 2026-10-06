@@ -42,6 +42,7 @@ export const chromeJa: AppChromeTranslations = {
     expandSidebar: 'サイドバーを展開',
     collapseSidebar: 'サイドバーを折りたたむ',
     openTradesActive: '保有中の取引あり',
+    openTradesCount: '{count} 保有',
     highImpactNewsToday: '本日の重要ニュース',
     planFree: '無料',
     settings: '設定',

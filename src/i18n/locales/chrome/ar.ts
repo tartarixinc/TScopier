@@ -42,6 +42,7 @@ export const chromeAr: AppChromeTranslations = {
     expandSidebar: 'توسيع الشريط الجانبي',
     collapseSidebar: 'طي الشريط الجانبي',
     openTradesActive: 'صفقات مفتوحة نشطة',
+    openTradesCount: '{count} مفتوحة',
     highImpactNewsToday: 'أخبار عالية التأثير اليوم',
     planFree: 'مجاني',
     settings: 'الإعدادات',

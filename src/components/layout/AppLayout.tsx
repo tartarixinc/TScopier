@@ -20,7 +20,8 @@ import { UserAvatar } from './UserAvatar'
 import { DashboardKeepAlive } from './DashboardKeepAlive'
 import { useUserProfile } from '../../context/UserProfileContext'
 import { useSubscription } from '../../context/SubscriptionContext'
-import { useHasOpenTrades } from '../../hooks/useHasOpenTrades'
+import { useOpenTradeCount } from '../../hooks/useHasOpenTrades'
+import { interpolate } from '../../i18n/interpolate'
 import { useHasHighImpactNewsToday } from '../../hooks/useHasHighImpactNewsToday'
 import { useNeedsWelcome } from '../../hooks/useNeedsWelcome'
 
@@ -69,7 +70,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
     const timer = window.setTimeout(enable, 3000)
     return () => window.clearTimeout(timer)
   }, [deferAppBootstrap])
-  const hasOpenTrades = useHasOpenTrades(deferAppBootstrap ? undefined : user?.id)
+  const openTradeCount = useOpenTradeCount(deferAppBootstrap ? undefined : user?.id)
   const hasHighImpactNewsToday = useHasHighImpactNewsToday(
     deferAppBootstrap ? false : calendarCheckEnabled,
   )
@@ -228,8 +229,9 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
       showHighImpactNewsIndicator?: boolean
     },
   ) => {
-    const showOpenIndicator = Boolean(showOpenTradesIndicator && hasOpenTrades)
+    const showOpenIndicator = Boolean(showOpenTradesIndicator && openTradeCount > 0)
     const showFireIndicator = Boolean(showHighImpactNewsIndicator && hasHighImpactNewsToday)
+    const openTradesTag = interpolate(t.nav.openTradesCount, { count: openTradeCount })
     return (
       <>
         <span className="relative inline-flex shrink-0">
@@ -240,10 +242,9 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
             )}
           />
           {showOpenIndicator && opts.collapsed ? (
-            <span
-              className="absolute -end-0.5 -top-0.5 h-2 w-2 rounded-full bg-teal-500 ring-2 ring-white dark:ring-neutral-900"
-              aria-hidden
-            />
+            <span className="absolute -end-2.5 -top-1.5 min-w-[1rem] rounded-full bg-teal-600 px-1 text-center text-[9px] font-semibold leading-4 text-white tabular-nums">
+              {openTradeCount}
+            </span>
           ) : null}
           {showFireIndicator && opts.collapsed && !showOpenIndicator ? (
             <Flame
@@ -254,10 +255,9 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
         </span>
         <span className={clsx(opts.collapsed && 'lg:hidden')}>{label}</span>
         {showOpenIndicator && !opts.collapsed ? (
-          <span
-            className="ms-auto h-2 w-2 shrink-0 rounded-full bg-teal-500"
-            aria-hidden
-          />
+          <span className="ms-auto inline-flex shrink-0 items-center rounded-md border border-teal-200/80 bg-teal-50 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums leading-none text-teal-800 dark:border-teal-800/80 dark:bg-teal-950/50 dark:text-teal-300">
+            {openTradesTag}
+          </span>
         ) : null}
         {showFireIndicator && !opts.collapsed && !showOpenIndicator ? (
           <Flame className="ms-auto h-3.5 w-3.5 shrink-0 text-orange-500" aria-hidden />
@@ -287,8 +287,8 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
           <div className="space-y-0.5">
             {sectionItems.map(({ to, label, showOpenTradesIndicator, showHighImpactNewsIndicator, disabled }) => {
               const Icon = getAppRouteIcon(to)
-              const ariaExtra = showOpenTradesIndicator && hasOpenTrades
-                ? t.nav.openTradesActive
+              const ariaExtra = showOpenTradesIndicator && openTradeCount > 0
+                ? interpolate(t.nav.openTradesCount, { count: openTradeCount })
                 : showHighImpactNewsIndicator && hasHighImpactNewsToday
                   ? t.nav.highImpactNewsToday
                   : null

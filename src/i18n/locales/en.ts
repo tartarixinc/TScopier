@@ -61,6 +61,7 @@ export const en: Translations = {
     expandSidebar: 'Expand sidebar',
     collapseSidebar: 'Collapse sidebar',
     openTradesActive: 'Open trades active',
+    openTradesCount: '{count} Open',
     highImpactNewsToday: 'High impact news today',
     planFree: 'Free',
     settings: 'Settings',

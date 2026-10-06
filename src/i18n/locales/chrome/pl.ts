@@ -42,6 +42,7 @@ export const chromePl: AppChromeTranslations = {
     expandSidebar: 'Rozwiń pasek boczny',
     collapseSidebar: 'Zwiń pasek boczny',
     openTradesActive: 'Aktywne otwarte transakcje',
+    openTradesCount: '{count} otwarte',
     highImpactNewsToday: 'Wiadomości wysokiego wpływu dzisiaj',
     planFree: 'Darmowy',
     settings: 'Ustawienia',

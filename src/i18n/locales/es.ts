@@ -61,6 +61,7 @@ export const es: Translations = {
     expandSidebar: 'Expandir barra',
     collapseSidebar: 'Contraer barra',
     openTradesActive: 'Trades abiertos activos',
+    openTradesCount: '{count} abiertas',
     highImpactNewsToday: 'Noticias de alto impacto hoy',
     planFree: 'Gratis',
     settings: 'Ajustes',

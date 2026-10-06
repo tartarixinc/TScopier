@@ -42,6 +42,7 @@ export const chromeSv: AppChromeTranslations = {
     expandSidebar: 'Expandera sidopanel',
     collapseSidebar: 'Minimera sidopanel',
     openTradesActive: 'Aktiva öppna affärer',
+    openTradesCount: '{count} öppna',
     highImpactNewsToday: 'Högpåverkande nyheter idag',
     planFree: 'Gratis',
     settings: 'Inställningar',

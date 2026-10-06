@@ -42,6 +42,7 @@ export const chromeRu: AppChromeTranslations = {
     expandSidebar: 'Развернуть боковую панель',
     collapseSidebar: 'Свернуть боковую панель',
     openTradesActive: 'Активные открытые сделки',
+    openTradesCount: '{count} открыто',
     highImpactNewsToday: 'Новости высокой важности сегодня',
     planFree: 'Бесплатно',
     settings: 'Настройки',
