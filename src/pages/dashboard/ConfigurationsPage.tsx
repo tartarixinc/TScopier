@@ -118,29 +118,39 @@ function channelDisplayName(channel: ChannelName | undefined, fallback: string):
   return username.startsWith('@') ? username : `@${username}`
 }
 
-function cubicPoint(start: Point, c1: Point, c2: Point, end: Point, t: number): Point {
-  const u = 1 - t
+function curveThrough(start: Point, end: Point, gear: Point): { d: string; gear: Point } {
+  const towardGear = (start.x + gear.x) / 2
+  const towardEnd = (gear.x + end.x) / 2
   return {
-    x: u * u * u * start.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * end.x,
-    y: u * u * u * start.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * end.y,
+    d: `M ${start.x} ${start.y} C ${towardGear} ${start.y}, ${towardGear} ${gear.y}, ${gear.x} ${gear.y} C ${towardEnd} ${gear.y}, ${towardEnd} ${end.y}, ${end.x} ${end.y}`,
+    gear,
   }
 }
 
-function connectorGeometry(start: Point, end: Point, gearT = 0.5): { d: string; gear: Point } {
-  const dx = Math.max(48, Math.abs(end.x - start.x) * 0.5)
-  const c1 = { x: start.x + dx, y: start.y }
-  const c2 = { x: end.x - dx, y: end.y }
-  return {
-    d: `M ${start.x} ${start.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${end.x} ${end.y}`,
-    gear: cubicPoint(start, c1, c2, end, gearT),
-  }
+function connectorGeometry(start: Point, end: Point): { d: string; gear: Point } {
+  return curveThrough(start, end, {
+    x: (start.x + end.x) / 2,
+    y: (start.y + end.y) / 2,
+  })
 }
 
 function spreadAnchorY(center: number, height: number, index: number, count: number): number {
   if (count <= 1) return center
-  const span = Math.min(Math.max(height - 24, 0), (count - 1) * 28)
+  const span = Math.min(Math.max(height - 20, 0), (count - 1) * 22)
   const top = center - span / 2
   return top + (span * index) / (count - 1)
+}
+
+function separateGearYs(ys: number[], gap: number): number[] {
+  if (ys.length === 0) return []
+  const placed = [...ys]
+  for (let i = 1; i < placed.length; i++) {
+    placed[i] = Math.max(placed[i], placed[i - 1] + gap)
+  }
+  const desiredMid = (ys[0] + ys[ys.length - 1]) / 2
+  const placedMid = (placed[0] + placed[placed.length - 1]) / 2
+  const shift = desiredMid - placedMid
+  return placed.map(y => y + shift)
 }
 
 export function ConfigurationsPage() {
@@ -150,7 +160,7 @@ export function ConfigurationsPage() {
   const { openAddTradingAccount } = useAddTradingAccount()
   const { user } = useAuth()
   const { brokers, loading: brokersLoading, replaceBroker } = useBrokerAccounts()
-  const { canUseFeature, refresh: refreshSubscription } = useSubscription()
+  const { canUseFeature } = useSubscription()
   const [channels, setChannels] = useState<ChannelName[]>([])
   const [channelsLoading, setChannelsLoading] = useState(true)
   const [configRows, setConfigRows] = useState<BrokerChannelTradingConfigRow[]>([])
@@ -344,20 +354,17 @@ export function ConfigurationsPage() {
   const removeDraggedChannel = async (channelId: string) => {
     if (!user?.id) return
     const id = channelId.toLowerCase()
-    const row = channels.find(channel => channel.id.toLowerCase() === id) ?? null
     const snapshot = {
-      channels,
       placed: placedChannelIds,
       order: channelOrder,
     }
     setRemovedChannelIds(prev => (prev.includes(id) ? prev : [...prev, id]))
-    if (row) setChannels(prev => prev.filter(channel => channel.id !== row.id))
     setPlacedChannelIds(prev => prev.filter(channel => channel !== id))
     setChannelOrder(prev => prev.filter(channel => channel !== id))
+    setOpenPair(current => (current?.channelId === id ? null : current))
 
     const restore = () => {
       setRemovedChannelIds(prev => prev.filter(channel => channel !== id))
-      setChannels(snapshot.channels)
       setPlacedChannelIds(snapshot.placed)
       setChannelOrder(snapshot.order)
     }
@@ -372,16 +379,7 @@ export function ConfigurationsPage() {
         return
       }
     }
-    if (row) {
-      const { error } = await supabase.from('telegram_channels').delete().eq('id', row.id)
-      if (error) {
-        setLinkError(error.message)
-        restore()
-        return
-      }
-    }
     setRemovedChannelIds(prev => prev.filter(channel => channel !== id))
-    void refreshSubscription()
   }
 
   const orderedChannelIds = useMemo(
@@ -901,36 +899,18 @@ function ConfigurationMap({
       return [{ ...connection, startAnchor, endAnchor }]
     })
     const channelsByBroker = new Map<string, string[]>()
-    const brokersByChannel = new Map<string, string[]>()
     for (const connection of ready) {
       const channelIds = channelsByBroker.get(connection.brokerId) ?? []
       channelIds.push(connection.channelId)
       channelsByBroker.set(connection.brokerId, channelIds)
-      const brokerIds = brokersByChannel.get(connection.channelId) ?? []
-      brokerIds.push(connection.brokerId)
-      brokersByChannel.set(connection.channelId, brokerIds)
     }
     const yOfChannel = (id: string) => anchors.channels[id]?.y ?? 0
-    const yOfBroker = (id: string) => anchors.brokers[id]?.y ?? 0
     channelsByBroker.forEach((ids, brokerId) => {
       channelsByBroker.set(brokerId, [...ids].sort((a, b) => yOfChannel(a) - yOfChannel(b) || a.localeCompare(b)))
     })
-    brokersByChannel.forEach((ids, channelId) => {
-      brokersByChannel.set(channelId, [...ids].sort((a, b) => yOfBroker(a) - yOfBroker(b) || a.localeCompare(b)))
-    })
-    const placedGears: Point[] = []
-    return ready.map(connection => {
-      const channelMates = brokersByChannel.get(connection.channelId) ?? [connection.brokerId]
+    const routed = ready.map(connection => {
       const brokerMates = channelsByBroker.get(connection.brokerId) ?? [connection.channelId]
-      const start = {
-        x: connection.startAnchor.x,
-        y: spreadAnchorY(
-          connection.startAnchor.y,
-          connection.startAnchor.height,
-          Math.max(0, channelMates.indexOf(connection.brokerId)),
-          channelMates.length,
-        ),
-      }
+      const start = { x: connection.startAnchor.x, y: connection.startAnchor.y }
       const end = {
         x: connection.endAnchor.x,
         y: spreadAnchorY(
@@ -940,17 +920,22 @@ function ConfigurationMap({
           brokerMates.length,
         ),
       }
-      const gearSlots = [0.5, 0.36, 0.64, 0.24, 0.76]
-      let geometry = connectorGeometry(start, end, 0.5)
-      for (const slot of gearSlots) {
-        geometry = connectorGeometry(start, end, slot)
-        const overlaps = placedGears.some(gear =>
-          Math.hypot(gear.x - geometry.gear.x, gear.y - geometry.gear.y) < 40,
-        )
-        if (!overlaps) break
+      return { ...connection, start, end }
+    })
+    const gearOrder = routed
+      .map((connection, index) => ({
+        index,
+        y: (connection.start.y + connection.end.y) / 2,
+      }))
+      .sort((a, b) => a.y - b.y || a.index - b.index)
+    const gearYs = separateGearYs(gearOrder.map(item => item.y), 48)
+    const gearYByIndex = new Map(gearOrder.map((item, position) => [item.index, gearYs[position]]))
+    return routed.map((connection, index) => {
+      const gear = {
+        x: (connection.start.x + connection.end.x) / 2,
+        y: gearYByIndex.get(index) ?? (connection.start.y + connection.end.y) / 2,
       }
-      placedGears.push(geometry.gear)
-      return { ...connection, ...geometry, start, end }
+      return { ...connection, ...curveThrough(connection.start, connection.end, gear) }
     })
   })()
 
