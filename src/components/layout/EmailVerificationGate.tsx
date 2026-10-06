@@ -6,6 +6,7 @@ import {
   isEmailVerified,
   verifyEmailPath,
 } from '../../lib/emailVerification'
+import { DashboardBootSkeleton, isDashboardBootPath } from '../dashboard/DashboardMetricsSkeleton'
 
 /** Blocks the app for email/password users until profile.email_verified_at is set. */
 export function EmailVerificationGate() {
@@ -14,6 +15,7 @@ export function EmailVerificationGate() {
   const location = useLocation()
 
   if (loading || (user && profileLoading)) {
+    if (isDashboardBootPath(location.pathname)) return <DashboardBootSkeleton />
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="w-6 h-6 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />

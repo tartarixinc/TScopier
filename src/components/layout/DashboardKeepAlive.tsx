@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { Route, Routes, useLocation } from 'react-router-dom'
-import { PageLoader } from './PageLoader'
+import { DashboardRouteSkeleton } from '../dashboard/DashboardMetricsSkeleton'
 import { useNeedsWelcome } from '../../hooks/useNeedsWelcome'
 
 const DashboardPage = lazy(() =>
@@ -26,7 +26,7 @@ export function DashboardKeepAlive() {
 
   return (
     <div className={onDashboard ? 'min-h-full' : 'hidden'} aria-hidden={!onDashboard}>
-      <Suspense fallback={onDashboard ? <PageLoader /> : null}>
+      <Suspense fallback={onDashboard ? <DashboardRouteSkeleton /> : null}>
         <Routes>
           <Route path="/dashboard/*" element={<DashboardPage />}>
             <Route path="broker/:brokerId" element={<BrokerStatsOverlay />} />

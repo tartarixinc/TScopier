@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from 'react'
 import { Link, Outlet, useNavigate } from 'react-router-dom'
-import { ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, Loader2, Plus, RefreshCw } from 'lucide-react'
+import { ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown, Plus, RefreshCw } from 'lucide-react'
 import clsx from 'clsx'
 import { SubscriptionReminderModal } from '../../components/billing/SubscriptionReminderModal'
 import { supabase } from '../../lib/supabase'
@@ -17,6 +17,7 @@ import {
   linkedAccountTypeValueClass,
   type LinkedAccountType,
 } from '../../lib/brokerFromServer'
+import { DashboardMetricsSkeleton } from '../../components/dashboard/DashboardMetricsSkeleton'
 import { PageHeader } from '../../components/layout/PageHeader'
 import { PageShell } from '../../components/layout/PageShell'
 import { useAddTradingAccount } from '../../context/AddTradingAccountContext'
@@ -530,22 +531,6 @@ function bootDashboardChartsReady(cached: DashboardCachePayload | null): boolean
 
 function isDashboardBootReady(cached: DashboardCachePayload | null): boolean {
   return Boolean(cached?.stats && bootDashboardChartsReady(cached))
-}
-
-function DashboardMetricsLoader({ message }: { message: string }) {
-  return (
-    <div
-      className="flex min-h-[min(70vh,640px)] flex-col items-center justify-center gap-4 px-6 py-16"
-      role="status"
-      aria-live="polite"
-      aria-busy="true"
-    >
-      <Loader2 className="h-9 w-9 animate-spin text-teal-600 dark:text-teal-400" aria-hidden />
-      <p className="text-sm font-medium text-neutral-600 dark:text-neutral-300 text-center max-w-sm">
-        {message}
-      </p>
-    </div>
-  )
 }
 
 function hasDashboardAnalyticsData(analytics: DashboardAnalytics | null | undefined): boolean {
@@ -2368,11 +2353,11 @@ export function DashboardPage() {
   return (
     <PageShell maxWidth="xl" spacing="none" className="space-y-8">
       <SubscriptionReminderModal />
+      <PageHeader title={dashboardGreeting} titleClassName="text-3xl" />
       {showDashboardLoader ? (
-        <DashboardMetricsLoader message={t.dashboard.loadingMetrics} />
+        <DashboardMetricsSkeleton message={t.dashboard.loadingMetrics} />
       ) : (
         <>
-      <PageHeader title={dashboardGreeting} titleClassName="text-3xl" />
       <TelegramConnectBanner />
       <ListenerLeaseOfflineBanner />
       <LiveFeedDegradedBanner />
