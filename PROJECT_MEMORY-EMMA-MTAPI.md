@@ -1,5 +1,17 @@
 # MTAPI migration project memory
 
+## 2026-10-06 ? Phase 4F acceptance continuation
+
+- Current `origin/staging` contains Phase 4F (`20bbac31`) plus newer MTAPI pacing/reconciliation and automatic `partial_tp_legs` hardening; those newer changes were preserved.
+- Provider authority remains exclusively `broker_accounts.provider`. For `provider=mtapi`, only `mtapi_session_id` and the MTAPI source are used; prepared FXSocket IDs, FXSocket Symbols/PriceHistory/QuoteTicks, and `FXSOCKET_API_KEY` are not consulted. There is no cross-provider fallback in resolution, runner, resimulation, replay, or market-data loading.
+- Provider/backtest regression suites pass and the `backtest-run` bundle passes full `deno check` after scoped EdgeRuntime/Supabase inference and portfolio accumulator compatibility fixes.
+- Live staging acceptance is not complete: this workspace lacks a Supabase access token/user JWT/service key and all MTAPI credentials/timezone secrets. Deployment metadata, the authoritative broker row, the actual sanitized post-resolution error, MT5 execution, and MT4 bridge availability could not be queried truthfully.
+- `MTAPI_HISTORY_TIMEZONE_UNVERIFIED` remains an intentional fail-closed gate. No UTC/server mode, timezone unit/sign, or `DST=none` policy was guessed; an authenticated read-only clock/history probe is still mandatory.
+- Current `origin/main` contains Phase 4E and provider-neutral prerequisites but not Phase 4F. The raw `20bbac31` patch conflicts with current-main drift in `marketData.ts`, `resolveBacktestBroker.ts`, and `runner.ts`; selectively port and review the final Phase 4F file set instead of merging all staging changes.
+- Git promotion is not an Edge deployment. Staging still requires `supabase functions deploy backtest-run` from its already-linked checkout after operator acceptance; production deployment commands are appropriate only after the reviewed code reaches main.
+- Remaining MT5 acceptance: authoritative broker-row proof, `/Symbols`, BTCUSD?BTCUSDm, `/PriceHistory`, verified clock policy, short run saved, resimulation, replay, and zero FXSocket calls.
+- Remaining MT4 acceptance: deployed bridge proof, `/Symbols`, `/QuoteHistory`, one short run, and zero FXSocket calls. MT4 unavailability does not invalidate truthful MT5 acceptance.
+
 ## 2026-10-01 — Phase 4E minimum pre-cutover identity safety
 
 - Canonical runtime identity remains backward compatible with `OrderResult.ticket` while preserving optional `orderTicket`, `dealTicket`, and `positionTicket` from MTAPI responses.
