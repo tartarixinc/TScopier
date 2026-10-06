@@ -7,6 +7,7 @@ import { PageShell } from '../../components/layout/PageShell'
 import { Badge } from '../../components/ui/Badge'
 import { Card } from '../../components/ui/Card'
 import { AddConfigurationChannelModal } from '../../components/configure/AddConfigurationChannelModal'
+import { ConfigurationSettingsEditor } from '../../components/configure/ConfigurationSettingsEditor'
 import { useAddTradingAccount } from '../../context/AddTradingAccountContext'
 import { useAuth } from '../../context/AuthContext'
 import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
@@ -20,14 +21,13 @@ import {
   fetchBrokerChannelTradingConfigRows,
   fetchBrokerChannelTradingConfigRowsForBrokers,
   mergeBrokerWithChannelTradingConfigRows,
+  upsertBrokerChannelTradingConfigs,
   type BrokerChannelTradingConfigRow,
 } from '../../lib/brokerChannelTradingConfigs'
 import { defaultChannelFiltersForPlan } from '../../lib/channelMessageFilters'
-import { describeChannelConfiguration, type ConfigurationDetailSection } from '../../lib/configurationSummary'
-import { resolveBrokerTotalBalance } from '../../lib/effectiveBrokerBalance'
 import { resolveChannelTradingConfig } from '../../lib/channelTradingConfig'
 import { supabase } from '../../lib/supabase'
-import type { BrokerAccount } from '../../types/database'
+import type { BrokerAccount, Json, ManualSettings } from '../../types/database'
 
 interface ChannelName {
   id: string
@@ -170,12 +170,16 @@ export function ConfigurationsPage() {
   const [addChannelOpen, setAddChannelOpen] = useState(false)
   const [placedChannelIds, setPlacedChannelIds] = useState<string[]>([])
   const [linkError, setLinkError] = useState<string | null>(null)
+  const [configSaveError, setConfigSaveError] = useState<string | null>(null)
   const [channelOrder, setChannelOrder] = useState<string[]>([])
   const [brokerOrder, setBrokerOrder] = useState<string[]>([])
   const [removedChannelIds, setRemovedChannelIds] = useState<string[]>([])
   const linkingRef = useRef(false)
   const latestBrokersRef = useRef<BrokerAccount[]>([])
   const linkChainRef = useRef(Promise.resolve())
+  const configRowsRef = useRef(configRows)
+  const settingsSaveRef = useRef(Promise.resolve())
+  configRowsRef.current = configRows
 
   const brokerIdsKey = brokers.map(broker => broker.id).join(',')
 
@@ -382,6 +386,59 @@ export function ConfigurationsPage() {
     setRemovedChannelIds(prev => prev.filter(channel => channel !== id))
   }
 
+  const patchChannelSettings = (brokerId: string, channelId: string, patch: Partial<ManualSettings>) => {
+    const task = settingsSaveRef.current.then(async () => {
+      if (!user?.id) return
+      const broker = latestBrokersRef.current.find(item => item.id === brokerId)
+      if (!broker) return
+      const key = channelId.toLowerCase()
+      const resolved = resolveChannelTradingConfig(broker, key)
+      const nextSettings = { ...resolved.manual_settings, ...patch }
+      const previousBroker = broker
+      const previousRows = configRowsRef.current
+      const nextBroker: BrokerAccount = {
+        ...broker,
+        channel_trading_configs: {
+          ...(broker.channel_trading_configs && typeof broker.channel_trading_configs === 'object'
+            ? broker.channel_trading_configs as Record<string, Json>
+            : {}),
+          [key]: {
+            copier_mode: resolved.copier_mode,
+            manual_settings: nextSettings,
+            ai_settings: resolved.ai_settings,
+          },
+        } as Json,
+      }
+      const nextRows = withChannelSettings(
+        previousRows,
+        brokerId,
+        key,
+        nextSettings,
+        resolved.copier_mode,
+        resolved.ai_settings,
+      )
+      latestBrokersRef.current = latestBrokersRef.current.map(item => item.id === brokerId ? nextBroker : item)
+      configRowsRef.current = nextRows
+      replaceBroker(nextBroker)
+      setConfigRows(nextRows)
+      setConfigSaveError(null)
+      const { error } = await upsertBrokerChannelTradingConfigs(supabase, user.id, brokerId, {
+        [key]: {
+          copier_mode: resolved.copier_mode,
+          manual_settings: nextSettings,
+          ai_settings: resolved.ai_settings ?? {},
+        },
+      })
+      if (!error) return
+      latestBrokersRef.current = latestBrokersRef.current.map(item => item.id === brokerId ? previousBroker : item)
+      configRowsRef.current = previousRows
+      replaceBroker(previousBroker)
+      setConfigRows(previousRows)
+      setConfigSaveError(error)
+    })
+    settingsSaveRef.current = task.then(() => undefined, () => undefined)
+  }
+
   const orderedChannelIds = useMemo(
     () => mergeOrder(channelOrder, mapChannelIds).filter(id => !removedChannelIds.includes(id)),
     [channelOrder, mapChannelIds, removedChannelIds],
@@ -486,7 +543,17 @@ export function ConfigurationsPage() {
           copy={copy}
           modalCopy={modalCopy}
           closeLabel={modalCopy.close}
-          onClose={() => setOpenPair(null)}
+          multiTradeEnabled={canUseFeature('multi_trade_style')}
+          saveError={configSaveError}
+          onPatch={patch => {
+            setConfigSaveError(null)
+            patchChannelSettings(selectedBroker.id, openPair.channelId, patch)
+          }}
+          onError={setConfigSaveError}
+          onClose={() => {
+            setConfigSaveError(null)
+            setOpenPair(null)
+          }}
         />
       ) : null}
     </PageShell>
@@ -1394,6 +1461,33 @@ function BrokerNode({
   )
 }
 
+function withChannelSettings(
+  rows: BrokerChannelTradingConfigRow[],
+  brokerId: string,
+  channelId: string,
+  settings: ManualSettings,
+  copierMode: 'ai' | 'manual',
+  aiSettings: Json,
+): BrokerChannelTradingConfigRow[] {
+  const index = rows.findIndex(row =>
+    row.broker_account_id === brokerId && row.channel_id.toLowerCase() === channelId,
+  )
+  if (index < 0) {
+    return [...rows, {
+      id: `local-${brokerId}-${channelId}`,
+      broker_account_id: brokerId,
+      channel_id: channelId,
+      copier_mode: copierMode,
+      manual_settings: settings,
+      ai_settings: aiSettings,
+      updated_at: new Date().toISOString(),
+    }]
+  }
+  return rows.map((row, rowIndex) => (
+    rowIndex === index ? { ...row, manual_settings: settings, copier_mode: copierMode } : row
+  ))
+}
+
 function ConfigurationModal({
   broker,
   channelId,
@@ -1401,6 +1495,10 @@ function ConfigurationModal({
   copy,
   modalCopy,
   closeLabel,
+  multiTradeEnabled,
+  saveError,
+  onPatch,
+  onError,
   onClose,
 }: {
   broker: BrokerAccount
@@ -1409,15 +1507,13 @@ function ConfigurationModal({
   copy: ConfigurationsPageTranslations
   modalCopy: ConfigureModalTranslations
   closeLabel: string
+  multiTradeEnabled: boolean
+  saveError: string | null
+  onPatch: (patch: Partial<ManualSettings>) => void
+  onError: (message: string) => void
   onClose: () => void
 }) {
   const resolved = resolveChannelTradingConfig(broker, channelId)
-  const sections = describeChannelConfiguration(
-    resolved.manual_settings,
-    modalCopy,
-    copy,
-    { accountBalance: resolveBrokerTotalBalance(broker) },
-  )
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -1462,7 +1558,16 @@ function ConfigurationModal({
           </button>
         </div>
         <div className="overflow-y-auto px-5 py-4">
-          <ConfigurationSections sections={sections} />
+          <ConfigurationSettingsEditor
+            broker={broker}
+            settings={resolved.manual_settings}
+            copy={copy}
+            modalCopy={modalCopy}
+            multiTradeEnabled={multiTradeEnabled}
+            saveError={saveError}
+            onPatch={onPatch}
+            onError={onError}
+          />
         </div>
         <div className="flex justify-end gap-2 border-t border-neutral-100 px-5 py-4 dark:border-neutral-800">
           <button
@@ -1485,27 +1590,3 @@ function ConfigurationModal({
   )
 }
 
-function ConfigurationSections({ sections }: { sections: ConfigurationDetailSection[] }) {
-  return (
-    <div className="space-y-4">
-      {sections.map(section => (
-        <section key={section.id}>
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-            {section.title}
-          </h3>
-          <dl className="mt-1">
-            {section.rows.map(row => (
-              <div
-                key={`${section.id}-${row.label}`}
-                className="flex items-baseline justify-between gap-4 border-b border-neutral-100 py-1.5 last:border-b-0 dark:border-neutral-800"
-              >
-                <dt className="text-sm text-neutral-500 dark:text-neutral-400">{row.label}</dt>
-                <dd className="text-end text-sm font-medium text-neutral-900 dark:text-neutral-50">{row.value}</dd>
-              </div>
-            ))}
-          </dl>
-        </section>
-      ))}
-    </div>
-  )
-}
