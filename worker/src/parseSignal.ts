@@ -1620,9 +1620,10 @@ function ignorePayload(raw: string): ChannelParsedSignal {
 }
 
 /**
- * Dewa Scalper's lifecycle format carries an external order id and an explicit
- * New/Close declaration. Keep that id in provider metadata; it is never a
- * broker ticket. Zero SL/TP values mean "not supplied".
+ * Provider-generic structured lifecycle format carrying an external order id
+ * and an explicit New/Close declaration. Dewa is one known producer, but the
+ * complete four-field contract is intentionally not header-specific. The id is
+ * never a broker ticket. Zero SL/TP values mean "not supplied".
  */
 export function parseExplicitProviderOrderMessage(rawMessage: string): ChannelParsedSignal | null {
   const raw = normalizeTelegramMessageText(rawMessage)

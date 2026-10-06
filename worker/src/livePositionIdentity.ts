@@ -40,12 +40,31 @@ function positiveNumber(value: unknown): number | null {
 }
 
 
-/** Broker-reported current position volume from an OpenedOrders row. */
+/**
+ * Broker-reported current position volume from an OpenedOrders row.
+ *
+ * The repository's bridge contracts do not establish a safe precedence when
+ * multiple aliases coexist. Accept one positive value (or agreeing aliases)
+ * and fail closed when positive aliases conflict.
+ */
 export function livePositionVolume(row: Record<string, unknown>): number | null {
-  return positiveNumber(
-    row.lots ?? row.Lots ?? row.volume ?? row.Volume
-    ?? row.lotSize ?? row.LotSize ?? row.volumeCurrent ?? row.VolumeCurrent,
+  const values = [
+    row.lots,
+    row.Lots,
+    row.volume,
+    row.Volume,
+    row.lotSize,
+    row.LotSize,
+    row.volumeCurrent,
+    row.VolumeCurrent,
+  ].map(positiveNumber).filter((value): value is number => value != null)
+  if (!values.length) return null
+
+  const first = values[0]!
+  const conflict = values.some(value =>
+    Math.abs(value - first) > Math.max(1e-9, Math.abs(first) * 1e-9),
   )
+  return conflict ? null : first
 }
 function nestedTicket(value: unknown): number | null {
   if (value == null) return null

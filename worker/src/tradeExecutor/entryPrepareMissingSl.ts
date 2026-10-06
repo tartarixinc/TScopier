@@ -54,6 +54,16 @@ export function configuredFallbackSlPossible(parsed: ParsedSignal, manual: Manua
 }
 
 /**
+ * A revision is exempt from entry SL validation only after this signal/broker
+ * has actually materialized an entry or durable pending artifact.
+ */
+export function shouldRunMissingRequiredSlPolicy(
+  isManual: boolean,
+  revisionAlreadyMaterialized: boolean,
+): boolean {
+  return isManual && !revisionAlreadyMaterialized
+}
+/**
  * Returns a skip when the entry must not open due to a missing stop loss.
  * Override signal SL always wins: Premium / missing / wrong-side signal SL still execute.
  * - TP without usable SL → `entry_tp_without_sl` (unless predefined/RR fallback applies)

@@ -4,11 +4,40 @@ import {
   DEFAULT_CHANNEL_KEYWORDS,
   normalizeChannelKeywords,
   parseChannelMessageSync,
+  parseExplicitProviderOrderMessage,
   type ChannelLexiconRow,
 } from './parseSignal'
 import { collapseForexBroBilingualMessage } from './forexBroSignalPatterns'
 import { parsedDataToTradeIntent } from './signalIntent/parsedDataToTradeIntent'
 
+describe('explicit provider lifecycle structural scope', () => {
+  const valid = [
+    'Type : New Order',
+    'ID : 719910668',
+    'Pair : XAUUSD.vx',
+    'Order : Buy',
+  ].join(String.fromCharCode(10))
+
+  it('intentionally supports the complete generic four-field lifecycle contract', () => {
+    assert.equal(parseExplicitProviderOrderMessage(valid)?.provider_order_type, 'new')
+  })
+
+  for (const [name, message] of [
+    ['generic prose', 'We have a New Order idea for gold'],
+    ['Order ID text', 'Order ID: 719910668'],
+    ['missing Type', 'ID: 719910668\nPair: XAUUSD\nOrder: Buy'],
+    ['missing Pair', 'Type: New Order\nID: 719910668\nOrder: Buy'],
+    ['missing side', 'Type: New Order\nID: 719910668\nPair: XAUUSD'],
+    ['missing standalone ID', 'Type: New Order\nPair: XAUUSD\nOrder: Buy'],
+    ['malformed type', 'Type: Pending Order\nID: 719910668\nPair: XAUUSD\nOrder: Buy'],
+    ['malformed ID', 'Type: New Order\nID: ABC123\nPair: XAUUSD\nOrder: Buy'],
+    ['malformed side', 'Type: New Order\nID: 719910668\nPair: XAUUSD\nOrder: Long'],
+  ] as const) {
+    it('rejects ' + name, () => {
+      assert.equal(parseExplicitProviderOrderMessage(message), null)
+    })
+  }
+})
 describe('parseChannelMessageSync', () => {
   const lexicon: ChannelLexiconRow | null = null
 

@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 import { normalizeOrderResponse } from './fxsocketClient'
 import {
+  livePositionVolume,
   persistCanonicalPositionTicket,
   resolveCanonicalOpenPosition,
 } from './livePositionIdentity'
@@ -34,6 +35,26 @@ describe('MTAPI live identity normalization', () => {
   })
 })
 
+describe('broker live volume alias authority', () => {
+  it('accepts each supported single-field shape', () => {
+    assert.equal(livePositionVolume({ lots: 0.2 }), 0.2)
+    assert.equal(livePositionVolume({ volume: 0.3 }), 0.3)
+    assert.equal(livePositionVolume({ volumeCurrent: 0.4 }), 0.4)
+  })
+
+  it('accepts agreeing aliases', () => {
+    assert.equal(livePositionVolume({ lots: 0.2, volume: 0.2, volumeCurrent: 0.2 }), 0.2)
+  })
+
+  it('fails closed when positive aliases conflict', () => {
+    assert.equal(livePositionVolume({ volume: 0.2, volumeCurrent: 0.1 }), null)
+    assert.equal(livePositionVolume({ lots: 0.3, volume: 0.2 }), null)
+  })
+
+  it('ignores zero or invalid aliases when another positive alias is valid', () => {
+    assert.equal(livePositionVolume({ lots: 0, volume: 'invalid', volumeCurrent: 0.1 }), 0.1)
+  })
+})
 describe('canonical live position resolver', () => {
   const trade = {
     id: 'trade-1',

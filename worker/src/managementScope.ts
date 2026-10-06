@@ -9,6 +9,7 @@ import { classifySymbol } from './pipMath'
 import { signalPipPrice } from './signalPip'
 import { sanitizeParsedSymbol } from './tradableSymbol'
 import { extractProviderSignalNumber } from './forexBroSignalPatterns'
+import { parseExplicitProviderOrderMessage } from './parseSignal'
 
 export type MgmtParsedLike = {
   action?: string
@@ -521,6 +522,7 @@ export async function resolveEntrySignalIdByProviderNumber(
     userId: string
     channelId: string
     providerSignalNumber: number
+    symbol?: string | null
   },
 ): Promise<string | null> {
   const n = args.providerSignalNumber
@@ -532,17 +534,36 @@ export async function resolveEntrySignalIdByProviderNumber(
     .eq('channel_id', args.channelId)
     .order('created_at', { ascending: false })
     .limit(300)
-  const ref = new RegExp(`(?:(?:new\\s+signal|signal)\\s*#|ID\\s*:)\\s*${n}\\b`, 'i')
+  const forexBroRef = new RegExp(`(?:new\\s+signal|signal)\\s*#\\s*${n}\\b`, 'i')
   const matches = new Set<string>()
   for (const row of data ?? []) {
-    const pd = row.parsed_data as { action?: string; raw_instruction?: string; provider_signal_number?: number | null } | null
+    const pd = row.parsed_data as {
+      action?: string
+      raw_instruction?: string
+      symbol?: string | null
+      provider_order_type?: 'new' | 'close' | null
+      provider_signal_number?: number | null
+    } | null
     const action = String(pd?.action ?? '').toLowerCase()
     if (action !== 'buy' && action !== 'sell') continue
     const text = String(row.raw_message ?? pd?.raw_instruction ?? '')
-    if (pd?.provider_signal_number === n || ref.test(text)) {
-      matches.add(String(row.id))
-      if (matches.size > 1) return null
+    const legacyStructured = parseExplicitProviderOrderMessage(text)
+    const parsedProviderEntry = pd?.provider_order_type === 'new'
+      && pd.provider_signal_number === n
+    const legacyProviderEntry = legacyStructured?.provider_order_type === 'new'
+      && legacyStructured.provider_signal_number === n
+    const forexBroEntry = forexBroRef.test(text)
+    if (!parsedProviderEntry && !legacyProviderEntry && !forexBroEntry) continue
+
+    if (args.symbol?.trim()) {
+      const candidateSymbol = sanitizeParsedSymbol(
+        String(pd?.symbol ?? legacyStructured?.symbol ?? ''),
+      )
+      if (!candidateSymbol || !symbolsCompatibleForBasket(args.symbol, candidateSymbol)) continue
     }
+
+    matches.add(String(row.id))
+    if (matches.size > 1) return null
   }
   return matches.size === 1 ? [...matches][0]! : null
 }

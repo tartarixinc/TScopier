@@ -4,6 +4,7 @@ import {
   isExplicitProviderNewOrder,
   missingRequiredSlFailure,
   shouldEnforceSingleOpenSymbolSlot,
+  shouldRunMissingRequiredSlPolicy,
 } from './entryPrepareMissingSl'
 import type { ManualSettings, ParsedSignal } from '../manualPlanner'
 
@@ -233,5 +234,19 @@ describe('missingRequiredSlFailure', () => {
       withheldByProvider: false,
       reason: 'entry_tp_without_sl',
     })
+  })
+})
+
+describe('missing-SL policy on Telegram revisions', () => {
+  it('re-runs safety for an unmaterialized manual revision', () => {
+    assert.equal(shouldRunMissingRequiredSlPolicy(true, false), true)
+  })
+
+  it('does not treat an already-materialized revision as a new entry attempt', () => {
+    assert.equal(shouldRunMissingRequiredSlPolicy(true, true), false)
+  })
+
+  it('does not apply manual-entry policy to non-manual execution', () => {
+    assert.equal(shouldRunMissingRequiredSlPolicy(false, false), false)
   })
 })

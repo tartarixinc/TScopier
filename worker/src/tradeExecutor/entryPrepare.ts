@@ -60,6 +60,7 @@ import { applySymbolMapping, computeLot, isBuySideOp, isExcluded, isMt5OnlyOpera
 import {
   isExplicitProviderNewOrder,
   missingRequiredSlFailure,
+  shouldRunMissingRequiredSlPolicy,
   shouldEnforceSingleOpenSymbolSlot,
 } from './entryPrepareMissingSl'
 
@@ -331,7 +332,12 @@ export async function prepareEntryExecution(
   }
   const baseLot = roundLot(computeLot(broker, parsed), params)
   const sameSignalRefresh = sendOpts?.sameSignalRefresh === true
-  const missingSl = isManual && !sameSignalRefresh ? missingRequiredSlFailure(parsed, manual) : null
+  const revisionAlreadyMaterialized = sameSignalRefresh
+    ? await ctx.manualDispatchAlreadyMaterialized(signal.id, broker.id)
+    : false
+  const missingSl = shouldRunMissingRequiredSlPolicy(isManual, revisionAlreadyMaterialized)
+    ? missingRequiredSlFailure(parsed, manual)
+    : null
   if (missingSl) {
     const skipReason = missingSl.reason
     const tradeFailure = tradeFailureReasonFromCode(
@@ -359,8 +365,7 @@ export async function prepareEntryExecution(
   // real entry and must fall through to the normal entry path — otherwise the
   // edited signal can never trade.
   if (sameSignalRefresh) {
-    const revisionMaterialized = await ctx.manualDispatchAlreadyMaterialized(signal.id, broker.id)
-    if (revisionMaterialized) {
+    if (revisionAlreadyMaterialized) {
       const paramOutcome = await ctx.tryParameterFollowUpMergeModifyOnly({
         signal,
         parsed,
@@ -522,8 +527,7 @@ export async function prepareEntryExecution(
   // Message revision / re-dispatch must never place a second market or broker-pending basket
   // after the first entry already logged order_send / trades / range legs (live-fast used to skip this).
   if (sameSignalRefresh || blockNewEntry) {
-    const alreadyMaterialized = blockNewEntry
-      || await ctx.manualDispatchAlreadyMaterialized(signal.id, broker.id)
+    const alreadyMaterialized = blockNewEntry || revisionAlreadyMaterialized
     if (shouldBlockNewEntryOnRevision({
       sameSignalRefresh,
       blockNewEntry,

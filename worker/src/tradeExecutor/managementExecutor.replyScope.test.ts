@@ -350,6 +350,7 @@ describe('PARTIAL_PROFIT broker verification', () => {
     mutateTo?: number
     failPostRead?: boolean
     postTicket?: number
+    postAliases?: Record<string, unknown>
   }): Promise<{ state: TestState; closeCalls: Array<{ ticket: number; lots?: number }>; openedCalls: number }> {
     const oldFxKey = process.env.FXSOCKET_API_KEY
     process.env.FXSOCKET_API_KEY = 'test-only'
@@ -371,6 +372,7 @@ describe('PARTIAL_PROFIT broker verification', () => {
             operation: 'Buy',
             lots: brokerVolume,
             openPrice: row.entry_price,
+            ...(openedCalls > 1 ? args.postAliases : {}),
           }))
         },
         orderClose: async (_uuid: string, closeArgs: { ticket: number; lots?: number }) => {
@@ -466,6 +468,20 @@ describe('PARTIAL_PROFIT broker verification', () => {
   it('does not report Executed when post-close OpenedOrders readback fails', async () => {
     const out = await runPartial({ volume: 0.02, failPostRead: true })
     assert.equal(out.closeCalls.length, 1)
+    assert.equal(out.state.updates.some(u => u.table === 'signals' && u.patch.status === 'executed'), false)
+    assert.equal(out.state.updates.some(u =>
+      u.table === 'signals' && u.patch.skip_reason === 'partial_close_reconciliation_required'
+    ), true)
+  })
+
+  it('does not report Executed when post-close live-volume aliases conflict', async () => {
+    const out = await runPartial({
+      volume: 0.02,
+      mutateTo: 0.01,
+      postAliases: { volumeCurrent: 0.02 },
+    })
+    assert.equal(out.closeCalls.length, 1)
+    assert.equal(out.state.trades[0]?.lot_size, 0.02)
     assert.equal(out.state.updates.some(u => u.table === 'signals' && u.patch.status === 'executed'), false)
     assert.equal(out.state.updates.some(u =>
       u.table === 'signals' && u.patch.skip_reason === 'partial_close_reconciliation_required'

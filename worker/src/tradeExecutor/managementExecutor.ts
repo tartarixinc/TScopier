@@ -31,6 +31,7 @@ import {
 import { planPartialClose, verifyPartialCloseReduction } from '../partialClosePolicy'
 import { closeWithVerification } from '../managementClose'
 import { findOpenedRowByTicket, readBrokerOrderStopLoss } from '../signalEntryPendingHelpers'
+import { cancelSignalRangeEntryWaitsForSignal } from '../signalRangeEntryHelpers'
 import { applyMgmtModifyToBasketGroups } from '../managementModifyBaskets'
 import {
   allChannelModifySymbolBuckets,
@@ -43,7 +44,7 @@ import {
   type ChannelStopApplyResult,
 } from '../channelStopApply'
 import type { MgmtExecOptions, MgmtExecResult } from '../mgmtExecOptions'
-import { loadRangePendingLegsInMgmtScope, pendingLegsToCancelScopes, updateRangePendingLegsForManagement } from '../managementPendingLegs'
+import { loadExactProviderCloseArtifacts, loadRangePendingLegsInMgmtScope, pendingLegsToCancelScopes, updateRangePendingLegsForManagement } from '../managementPendingLegs'
 import {
   explicitMgmtSymbol,
   expandMgmtRowsToFullBaskets,
@@ -639,15 +640,18 @@ export async function applyManagement(
       ? String(signal.parent_signal_id ?? '').trim()
       : ''
     const hasExplicitMgmtParent = explicitParentSignalId.length > 0
-    const explicitBasketAnchorId = hasExplicitMgmtParent
-      ? await ctx.resolveBasketAnchorSignalIdForOpenTrades({
-        userId: signal.user_id,
-        brokerAccountIds,
-        channelId: signal.channel_id,
-        parentSignalId: explicitParentSignalId,
-        symbolHint: scopeSymbolFilter ?? symbolFromText,
-      })
-      : null
+    const mgmtScopeLabel = providerOrderScoped ? 'provider_order' : replyScoped ? 'reply_basket' : 'channel'
+    const explicitBasketAnchorId = providerOrderScoped
+      ? explicitParentSignalId
+      : hasExplicitMgmtParent
+        ? await ctx.resolveBasketAnchorSignalIdForOpenTrades({
+          userId: signal.user_id,
+          brokerAccountIds,
+          channelId: signal.channel_id,
+          parentSignalId: explicitParentSignalId,
+          symbolHint: scopeSymbolFilter ?? symbolFromText,
+        })
+        : null
     let channelRows: MgmtTradeRow[] = []
     if (hasExplicitMgmtParent) {
       const scoped = explicitBasketAnchorId
@@ -741,8 +745,43 @@ export async function applyManagement(
       channelId: hasExplicitMgmtParent ? null : signal.channel_id,
       basketSignalId: hasExplicitMgmtParent ? basketAnchorId : null,
       symbolFilter: symbolFromText,
+      includeBrokerPending: providerOrderScoped,
     })
 
+
+    let providerArtifactCount = pendingLegs.length
+    if (providerOrderScoped) {
+      const exactArtifacts = await loadExactProviderCloseArtifacts(ctx.supabase, {
+        parentSignalId: explicitParentSignalId,
+        brokerAccountIds,
+      })
+      if (exactArtifacts.error) {
+        await skipMgmtSignalWithLog(ctx, signal, 'provider_order_scope_lookup_failed', {
+          action,
+          parent_signal_id: explicitParentSignalId,
+          mgmt_scope: mgmtScopeLabel,
+          error: exactArtifacts.error,
+        })
+        return emptyMgmtResult(legConcurrency)
+      }
+      providerArtifactCount += exactArtifacts.entryPendingCount + exactArtifacts.waitingCount
+      for (const scope of exactArtifacts.scopes) {
+        cancelledPendingScopes.add(JSON.stringify(scope satisfies RangePendingCancelScope))
+      }
+      for (const scope of exactArtifacts.waitScopes) {
+        const broker = byBroker.get(scope.brokerAccountId)
+        if (!broker || isPendingCancelBlocked(
+          normalizeChannelMessageFiltersMap(broker.channel_message_filters),
+          signal.channel_id,
+        )) continue
+        await cancelSignalRangeEntryWaitsForSignal(
+          ctx.supabase,
+          explicitParentSignalId,
+          scope.brokerAccountId,
+          'signal_closed',
+        )
+      }
+    }
     if (action === 'close') {
       for (const scope of pendingLegsToCancelScopes(pendingLegs)) {
         cancelledPendingScopes.add(JSON.stringify(scope satisfies RangePendingCancelScope))
@@ -851,6 +890,37 @@ export async function applyManagement(
       return cweResult
     }
 
+    if (action === 'close' && providerOrderScoped && !rows.length) {
+      if (providerArtifactCount > 0) {
+        const scopes = Array.from(cancelledPendingScopes)
+          .map(enc => JSON.parse(enc) as RangePendingCancelScope)
+          .filter(scope => {
+            const broker = byBroker.get(scope.brokerAccountId)
+            if (!broker) return false
+            return !isPendingCancelBlocked(
+              normalizeChannelMessageFiltersMap(broker.channel_message_filters),
+              signal.channel_id,
+            )
+          })
+        if (scopes.length > 0) {
+          await ctx.cancelRangePendingLegsForScopes(
+            signal.user_id,
+            signal.id,
+            scopes,
+            'signal_closed',
+          )
+        }
+        await finalizeMgmtSignal(ctx, signal.id)
+      } else {
+        await skipMgmtSignalWithLog(ctx, signal, 'provider_order_already_closed', {
+          action,
+          parent_signal_id: explicitParentSignalId,
+          provider_external_order_id: parsed.provider_signal_number,
+          mgmt_scope: mgmtScopeLabel,
+        })
+      }
+      return emptyMgmtResult(legConcurrency)
+    }
     if (!rows.length && !pendingLegs.length) {
       if (action === 'close' && signal.channel_id && !hasExplicitMgmtParent) {
         const channelMeta = await ctx.getChannelMeta(signal.channel_id)
@@ -1177,7 +1247,7 @@ export async function applyManagement(
                 ticket: effectiveTicket,
                 action,
                 basket_anchor_signal_id: trade.signal_id,
-                mgmt_scope: hasExplicitMgmtParent ? 'reply_basket' : 'channel',
+                mgmt_scope: mgmtScopeLabel,
                 mgmt_parent_signal_id: signal.parent_signal_id,
                 skip_reason: plan.reason,
                 current_volume: originalVolume,
@@ -1432,7 +1502,7 @@ export async function applyManagement(
             ticket: effectiveTicket,
             action,
             basket_anchor_signal_id: trade.signal_id,
-            mgmt_scope: replyScoped ? 'reply_basket' : 'channel',
+            mgmt_scope: mgmtScopeLabel,
             mgmt_parent_signal_id: signal.parent_signal_id,
             ticket_reconciled_from: ticketReconciledFrom ?? undefined,
             ...(action === 'partial_breakeven'
@@ -1531,7 +1601,7 @@ export async function applyManagement(
             ticket: effectiveTicket,
             action,
             basket_anchor_signal_id: trade.signal_id,
-            mgmt_scope: replyScoped ? 'reply_basket' : 'channel',
+            mgmt_scope: mgmtScopeLabel,
             mgmt_parent_signal_id: signal.parent_signal_id,
             already_synced: benign || undefined,
             position_gone: positionGone || undefined,
