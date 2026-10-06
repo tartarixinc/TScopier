@@ -112,6 +112,8 @@ export function BillingPage() {
   const subscribeCta = getSubscribeCtaLabel(t, { isPastDue, effectivePlan, hasTrialExpired })
 
   const [portalLoading, setPortalLoading] = useState(false)
+  const [cancelLoading, setCancelLoading] = useState(false)
+  const [cancelError, setCancelError] = useState('')
   const [extraCount, setExtraCount] = useState<number | null>(null)
   const [savingExtras, setSavingExtras] = useState(false)
   const [extraSaved, setExtraSaved] = useState(false)
@@ -253,27 +255,57 @@ export function BillingPage() {
 
   const currentInvoices = invoicePages[invoicePageIndex] ?? []
 
+  const openCustomerPortal = async (flow?: 'cancel') => {
+    if (!session) return
+    const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/customer-portal`
+    const res = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        returnUrl: `${window.location.origin}/billing`,
+        ...(flow ? { flow } : {}),
+      }),
+    })
+    const data = (await res.json().catch(() => ({}))) as { url?: string; error?: string }
+    if (!res.ok || !data.url) {
+      throw new Error(data.error || bt.cancelSubscriptionFailed)
+    }
+    window.location.href = data.url
+  }
+
   const handleManageBilling = async () => {
     if (!session) return
     setPortalLoading(true)
+    setCancelError('')
     try {
-      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/customer-portal`
-      const res = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ returnUrl: `${window.location.origin}/billing` }),
-      })
-      const data = await res.json()
-      if (data.url) {
-        window.location.href = data.url
-      }
+      await openCustomerPortal()
+    } catch {
+      setCancelError(bt.cancelSubscriptionFailed)
     } finally {
       setPortalLoading(false)
     }
   }
+
+  const handleCancelSubscription = async () => {
+    if (!session) return
+    setCancelLoading(true)
+    setCancelError('')
+    try {
+      await openCustomerPortal('cancel')
+    } catch {
+      setCancelError(bt.cancelSubscriptionFailed)
+    } finally {
+      setCancelLoading(false)
+    }
+  }
+
+  const canCancelSubscription =
+    hasActiveSubscription
+    && Boolean(subscription?.stripe_subscription_id?.startsWith('sub_'))
+    && (subscription?.status === 'active' || subscription?.status === 'trialing')
 
   const handleSaveExtras = async () => {
     if (!session || editingExtra === currentExtra) return
@@ -352,16 +384,40 @@ export function BillingPage() {
         </div>
 
         {hasActiveSubscription && subscription ? (
-          <div className="flex flex-wrap gap-3">
-            <Button
-              variant="secondary"
-              onClick={() => void handleManageBilling()}
-              loading={portalLoading}
-              className="gap-2"
-            >
-              {bt.manageBilling}
-              <ExternalLink className="h-3.5 w-3.5" />
-            </Button>
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-3">
+              <Button
+                variant="secondary"
+                onClick={() => void handleManageBilling()}
+                loading={portalLoading}
+                disabled={cancelLoading}
+                className="gap-2"
+              >
+                {bt.manageBilling}
+                <ExternalLink className="h-3.5 w-3.5" />
+              </Button>
+              {canCancelSubscription ? (
+                <Button
+                  variant="danger"
+                  onClick={() => void handleCancelSubscription()}
+                  loading={cancelLoading}
+                  disabled={portalLoading}
+                  className="gap-2"
+                  title={bt.cancelSubscriptionHint}
+                >
+                  {bt.cancelSubscription}
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </Button>
+              ) : null}
+            </div>
+            {canCancelSubscription ? (
+              <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                {bt.cancelSubscriptionHint}
+              </p>
+            ) : null}
+            {cancelError ? (
+              <p className="text-xs text-error-600 dark:text-error-400">{cancelError}</p>
+            ) : null}
           </div>
         ) : null}
 
