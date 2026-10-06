@@ -429,6 +429,8 @@ export const configureModalFr: ConfigureModalTranslations = {
     moveSlTitle: 'Déplacer le SL après mouvement',
     moveSlSubtitle:
       'Déplace automatiquement le stop loss au break-even (plus fermeture partielle optionnelle) une fois le seuil atteint.',
+    basicPlanAutoManagementLimit:
+      'Le déplacement automatique du stop loss au break-even est disponible avec le plan Advanced.',
     activeRule: 'Règle active :',
     triggerTitle: 'Déclencheur — déplacer le SL quand',
     triggerPips: 'Mouvement en pips',

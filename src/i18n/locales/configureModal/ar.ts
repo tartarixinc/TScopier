@@ -393,6 +393,7 @@ export const configureModalAr: ConfigureModalTranslations = {
     monitorIntroMulti: 'يراقب العامل الصفقات المفتوحة كل بضع ثوانٍ. تنطبق القواعد على كل رجل مفتوح (كل رجل Multi Trade يُتتبَّع منفصلًا).',
     moveSlTitle: 'نقل SL بعد الحركة',
     moveSlSubtitle: 'انقل وقف الخسارة تلقائيًا إلى نقطة التعادل (مع إغلاق جزئي اختياري) عند بلوغ العتبة.',
+    basicPlanAutoManagementLimit: 'نقل وقف الخسارة تلقائيًا إلى نقطة التعادل متاح في الخطة المتقدمة.',
     activeRule: 'القاعدة النشطة:',
     triggerTitle: 'المُحفّز — انقل SL عندما',
     triggerPips: 'حركة النقاط',

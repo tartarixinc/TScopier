@@ -1090,6 +1090,7 @@ export function AccountConfigPage() {
 
   const keywordFiltersEnabled = canUsePlanFeature('channel_keyword_filters')
   const multiTradeStyleEnabled = canUsePlanFeature('multi_trade_style')
+  const autoManagementPlanEnabled = canUsePlanFeature('auto_management')
   // Static/dynamic layering modes stay legacy-only in the UI for now.
   const selectedLayeringMode = 'legacy' as const
   const selectedLayeringMechanism = channelManualSettings.range_layering_type === 'pending_order'
@@ -3923,7 +3924,7 @@ export function AccountConfigPage() {
 
                           return (
                           <div className="space-y-6">
-                            <section className="rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
+                            <section className="relative rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
                               <div className="flex items-center justify-between gap-3 bg-white dark:bg-neutral-900 px-4 py-3">
                                 <ConfigTitle
                                   info={
@@ -4103,6 +4104,13 @@ export function AccountConfigPage() {
                                   </div>
                                 </div>
                               )}
+                              {!autoManagementPlanEnabled ? (
+                                <div className="absolute inset-0 z-10 flex items-center justify-center p-4">
+                                  <div className="pointer-events-auto w-full max-w-md">
+                                    <UpgradePrompt reason={cm.management.basicPlanAutoManagementLimit} />
+                                  </div>
+                                </div>
+                              ) : null}
                             </section>
 
                             {isSingleTrade && (
