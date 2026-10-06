@@ -55,6 +55,7 @@ interface CweTradeRow {
   signal_id: string | null
   broker_account_id: string | null
   metaapi_order_id: string | null
+  broker_position_ticket?: string | null
   symbol: string
   direction: 'buy' | 'sell' | string
   lot_size: number | null
@@ -134,7 +135,7 @@ export class CweCloseMonitor {
       this.supabase,
       this.supabase
         .from('trades')
-        .select('id,user_id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,lot_size,entry_price,cwe_close_price')
+        .select('id,user_id,signal_id,broker_account_id,metaapi_order_id,broker_position_ticket,symbol,direction,lot_size,entry_price,cwe_close_price')
         .eq('status', 'open')
         .not('cwe_close_price', 'is', null)
         .limit(500),

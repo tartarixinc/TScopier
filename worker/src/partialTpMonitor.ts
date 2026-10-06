@@ -66,6 +66,7 @@ interface PartialRow {
 interface ParentTradeRow {
   id: string
   metaapi_order_id: string | null
+  broker_position_ticket?: string | null
   status: string
   symbol: string
   direction: string
@@ -739,7 +740,7 @@ export class PartialTpMonitor {
     // (no position to slice) so the row doesn't keep retrying forever.
     const { data: parent } = await this.supabase
       .from('trades')
-      .select('id,metaapi_order_id,status,symbol,direction,lot_size,entry_price')
+      .select('id,metaapi_order_id,broker_position_ticket,status,symbol,direction,lot_size,entry_price')
       .eq('id', partial.trade_id)
       .maybeSingle()
     const parentRow = (parent ?? null) as ParentTradeRow | null
@@ -919,7 +920,7 @@ export class PartialTpMonitor {
 
     const { data: parent } = await this.supabase
       .from('trades')
-      .select('id,metaapi_order_id,signal_id,symbol,direction,lot_size,entry_price')
+      .select('id,metaapi_order_id,broker_position_ticket,signal_id,symbol,direction,lot_size,entry_price')
       .eq('id', partial.trade_id)
       .maybeSingle()
     const parentRow = (parent ?? null) as ClassifyTradeRow | null

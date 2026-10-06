@@ -85,7 +85,7 @@ export async function flattenChannelTradesForCopyLimit(args: {
       brokerAccountId: trade.broker_account_id,
     })
 
-    const ticket = Number(trade.metaapi_order_id)
+    const ticket = Number(trade.broker_position_ticket ?? trade.metaapi_order_id)
     if (!Number.isFinite(ticket) || ticket <= 0) continue
 
     let ok = false

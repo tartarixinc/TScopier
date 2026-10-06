@@ -1010,7 +1010,7 @@ export async function applyManagement(
         return
       }
       const uuid = brokerSessionUuid(broker)!
-      const ticket = Number(trade.metaapi_order_id)
+      const ticket = Number(trade.broker_position_ticket ?? trade.metaapi_order_id)
       if (!Number.isFinite(ticket) || ticket <= 0) return
       let effectiveTicket = ticket
       let ticketReconciledFrom: number | null = null
@@ -2170,7 +2170,7 @@ export async function applyCloseWorseEntriesInstruction(ctx: TradeExecutorContex
       }
 
       const closeOneLeg = async (trade: typeof toClose[number]): Promise<number> => {
-        const ticket = Number(trade.metaapi_order_id)
+        const ticket = Number(trade.broker_position_ticket ?? trade.metaapi_order_id)
         if (!Number.isFinite(ticket) || ticket <= 0) return 0
         try {
           const closeResult = await closeWithVerification(api, uuid, ticket, mgmtCloseOpts(liveMgmtFast))

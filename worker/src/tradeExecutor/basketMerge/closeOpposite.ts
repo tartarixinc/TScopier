@@ -35,7 +35,7 @@ export async function closeOppositeDirectionTrades(ctx: TradeExecutorContext,
     if (!api) return
     const { data: opposites } = await ctx.supabase
       .from('trades')
-      .select('id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,lot_size,entry_price')
+      .select('id,signal_id,broker_account_id,metaapi_order_id,broker_position_ticket,symbol,direction,lot_size,entry_price')
       .eq('broker_account_id', broker.id)
       .eq('symbol', symbol)
       .eq('status', 'open')
@@ -45,7 +45,7 @@ export async function closeOppositeDirectionTrades(ctx: TradeExecutorContext,
 
     const scopes: RangePendingCancelScope[] = []
     for (const t of rows) {
-      const ticket = Number(t.metaapi_order_id)
+      const ticket = Number(t.broker_position_ticket ?? t.metaapi_order_id)
       if (!Number.isFinite(ticket) || ticket <= 0) continue
       try {
         const resolution = await resolveCurrentLivePosition({

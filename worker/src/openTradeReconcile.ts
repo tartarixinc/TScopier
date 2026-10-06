@@ -46,6 +46,7 @@ export type OpenTradeReconcileRow = {
   signal_id?: string | null
   broker_account_id: string | null
   metaapi_order_id: string | null
+  broker_position_ticket?: string | null
   symbol?: string | null
   direction?: string | null
   lot_size?: number | null
@@ -69,7 +70,7 @@ export function findGhostOpenTradeIds(
 ): string[] {
   const ghostIds: string[] = []
   for (const trade of openTrades) {
-    const ticket = Number(trade.metaapi_order_id)
+    const ticket = Number(trade.broker_position_ticket ?? trade.metaapi_order_id)
     if (!Number.isFinite(ticket) || ticket <= 0) continue
     if (!brokerTickets.has(ticket)) ghostIds.push(trade.id)
   }
@@ -111,7 +112,7 @@ export async function reconcileOpenTradesForBroker(
       const emptyAgain = await api.openedOrders(metaapiAccountId)
       if (Array.isArray(emptyAgain) && emptyAgain.length > 0) return 0
       const ghostTrades = openTrades.filter(trade => {
-        const ticket = Number(trade.metaapi_order_id)
+        const ticket = Number(trade.broker_position_ticket ?? trade.metaapi_order_id)
         return Number.isFinite(ticket) && ticket > 0
       })
       if (!ghostTrades.length) return 0
@@ -203,7 +204,10 @@ export async function reconcileOpenTradesForBroker(
   for (const trade of openTrades) {
     const resolution = resolveCanonicalOpenPosition({ trade, openedOrders: firstSnapshot })
     if (resolution.status === 'resolved') {
-      if (resolution.replacement) {
+      // An attribute-only match is not certain enough to freeze into the row;
+      // leave it as-is and let the row resolve by ticket once the position
+      // identity is captured at fill time.
+      if (resolution.replacement && resolution.matchedBy !== 'attributes') {
         const persisted = await persistCanonicalPositionTicket(supabase, trade, resolution)
         if (!persisted) {
           console.warn(`[openTradeReconcile] replacement ticket CAS lost trade=${trade.id}; deferring`)
@@ -233,7 +237,10 @@ export async function reconcileOpenTradesForBroker(
   for (const trade of absentOnce) {
     const resolution = resolveCanonicalOpenPosition({ trade, openedOrders: secondSnapshot })
     if (resolution.status === 'resolved') {
-      if (resolution.replacement) {
+      // An attribute-only match is not certain enough to freeze into the row;
+      // leave it as-is and let the row resolve by ticket once the position
+      // identity is captured at fill time.
+      if (resolution.replacement && resolution.matchedBy !== 'attributes') {
         const persisted = await persistCanonicalPositionTicket(supabase, trade, resolution)
         if (!persisted) {
           console.warn(`[openTradeReconcile] replacement ticket CAS lost trade=${trade.id}; deferring`)

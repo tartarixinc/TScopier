@@ -6,6 +6,13 @@ import { isLikelyMarketPositionRow, rawNumericOrderKind, rawOrderOperation } fro
 export type LiveTradeIdentity = {
   id: string
   metaapi_order_id: string | null
+  /**
+   * Broker position identity captured from a read taken right after the fill
+   * (see `captureBrokerPositionIdentity`). Preferred over `metaapi_order_id`
+   * when present, because on MT5 the order ticket and the position ticket are
+   * different numbers.
+   */
+  broker_position_ticket?: string | null
   symbol?: string | null
   direction?: string | null
   lot_size?: number | null
@@ -125,7 +132,13 @@ export function resolveCanonicalOpenPosition(args: {
   openedOrders: unknown[]
   excludeTickets?: ReadonlySet<number>
 }): CanonicalPositionResolution {
-  const storedTicket = Number(args.trade.metaapi_order_id)
+  const capturedRaw = typeof args.trade.broker_position_ticket === 'string'
+    ? args.trade.broker_position_ticket.trim()
+    : ''
+  const capturedTicket = Number(capturedRaw)
+  const storedTicket = Number.isFinite(capturedTicket) && capturedTicket > 0
+    ? capturedTicket
+    : Number(args.trade.metaapi_order_id)
   if (!Number.isFinite(storedTicket) || storedTicket <= 0) {
     return { status: 'missing', storedTicket, reason: 'stored ticket is invalid' }
   }
@@ -200,16 +213,49 @@ export async function persistCanonicalPositionTicket(
   trade: LiveTradeIdentity,
   resolution: CanonicalPositionResolution,
 ): Promise<boolean> {
-  if (resolution.status !== 'resolved' || !resolution.replacement) return resolution.status === 'resolved'
-  const { data, error } = await supabase
-    .from('trades')
-    .update({ metaapi_order_id: String(resolution.ticket) })
-    .eq('id', trade.id)
-    .eq('status', 'open')
-    .eq('metaapi_order_id', String(resolution.storedTicket))
-    .select('id')
-    .maybeSingle()
-  return !error && data?.id === trade.id
+  if (resolution.status !== 'resolved') return false
+  // Never persist a guess: only a ticket-based match (canonical ticket or an
+  // explicit order→position relationship) may be frozen into the row. An
+  // attribute-only match stays transient and is not written anywhere.
+  if (resolution.matchedBy === 'attributes') return false
+  if (!resolution.replacement) return true
+
+  const stored = String(resolution.storedTicket)
+  const capturedRaw = typeof trade.broker_position_ticket === 'string'
+    ? trade.broker_position_ticket.trim()
+    : ''
+  const sourceColumn = Number(capturedRaw) === resolution.storedTicket && capturedRaw !== ''
+    ? 'broker_position_ticket'
+    : 'metaapi_order_id'
+
+  const apply = async (patch: Record<string, unknown>, column: string) => {
+    const { data, error } = await supabase
+      .from('trades')
+      .update(patch)
+      .eq('id', trade.id)
+      .eq('status', 'open')
+      .eq(column, stored)
+      .select('id')
+      .maybeSingle()
+    return { persisted: !error && data?.id === trade.id, error }
+  }
+
+  // A certain replacement is recorded in the position column and leaves the
+  // order ticket untouched (Option A).
+  const first = await apply({ broker_position_ticket: String(resolution.ticket) }, sourceColumn)
+  if (first.persisted) return true
+
+  // Before the column exists the update is rejected; keep the legacy behaviour
+  // so reconciliation is not wedged while the migration is pending.
+  const columnMissing = !!first.error
+    && (first.error.code === 'PGRST204' || /broker_position_ticket/.test(first.error.message ?? ''))
+  if (!columnMissing) return false
+  console.warn(
+    '[livePositionIdentity] broker_position_ticket column missing — falling back to metaapi_order_id'
+    + ' (apply supabase/migrations/20261006140000_trades_broker_position_ticket.sql)',
+  )
+  const legacy = await apply({ metaapi_order_id: String(resolution.ticket) }, 'metaapi_order_id')
+  return legacy.persisted
 }
 
 export async function resolveCurrentLivePosition(args: {
@@ -222,9 +268,15 @@ export async function resolveCurrentLivePosition(args: {
 }): Promise<CanonicalPositionResolution> {
   const openedOrders = args.openedOrders ?? await args.api.openedOrders(args.sessionId)
   if (!Array.isArray(openedOrders)) {
+    const incompleteCaptured = Number(
+      typeof args.trade.broker_position_ticket === 'string' ? args.trade.broker_position_ticket.trim() : '',
+    )
+    const incompleteStored = Number.isFinite(incompleteCaptured) && incompleteCaptured > 0
+      ? incompleteCaptured
+      : Number(args.trade.metaapi_order_id)
     return {
       status: 'ambiguous',
-      storedTicket: Number(args.trade.metaapi_order_id),
+      storedTicket: incompleteStored,
       reason: 'OpenedOrders response is not a complete list',
     }
   }
@@ -234,6 +286,16 @@ export async function resolveCurrentLivePosition(args: {
     excludeTickets: args.excludeTickets,
   })
   if (resolution.status === 'resolved' && resolution.replacement) {
+    if (resolution.matchedBy === 'attributes') {
+      // Fail closed: an attribute-only match is not certain enough to act on or
+      // to freeze into the row, so every caller (including the close paths)
+      // keeps refusing until the position identity is captured at fill time.
+      return {
+        status: 'ambiguous',
+        storedTicket: resolution.storedTicket,
+        reason: 'identity match is by attributes only; not persisted',
+      }
+    }
     const persisted = await persistCanonicalPositionTicket(args.supabase, args.trade, resolution)
     if (!persisted) {
       return {
