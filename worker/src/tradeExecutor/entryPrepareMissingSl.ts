@@ -27,6 +27,18 @@ function parsedEntryAnchorForFallback(parsed: ParsedSignal): number | null {
   return zone != null ? (zone.lo + zone.hi) / 2 : null
 }
 
+/** Narrow exception: only an explicit provider lifecycle New Order is independent. */
+export function isExplicitProviderNewOrder(parsed: ParsedSignal): boolean {
+  return parsed.provider_order_type === 'new'
+}
+
+export function shouldEnforceSingleOpenSymbolSlot(
+  parsed: ParsedSignal,
+  manual: ManualSettings,
+): boolean {
+  return manual.add_new_trades_to_existing === false && !isExplicitProviderNewOrder(parsed)
+}
+
 /**
  * Account can supply a stop loss without a numeric signal SL:
  * Override signal SL (from fill/quote — no signal entry required), or RR from a TP.

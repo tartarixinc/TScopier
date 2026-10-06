@@ -1,5 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
-import { createClient } from "npm:@supabase/supabase-js@2"
+import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2"
 import {
   parseSimpleConfig,
   toBacktestRunConfig,
@@ -37,12 +37,21 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 }
 
+function scheduleBackgroundTask(promise: Promise<unknown>): boolean {
+  const runtime = (globalThis as typeof globalThis & {
+    EdgeRuntime?: { waitUntil(task: Promise<unknown>): void }
+  }).EdgeRuntime
+  if (!runtime?.waitUntil) return false
+  runtime.waitUntil(promise)
+  return true
+}
+
 function bad(status: number, msg: string) {
   return Response.json({ error: msg }, { status, headers: corsHeaders })
 }
 
 async function startBacktestRun(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   userId: string,
   simple: ReturnType<typeof parseSimpleConfig>,
   mode: BacktestRunMode,
@@ -121,10 +130,7 @@ async function startBacktestRun(
       }).eq("id", runId)
     })
 
-  // @ts-ignore EdgeRuntime.waitUntil
-  if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
-    EdgeRuntime.waitUntil(runPromise)
-  } else {
+  if (!scheduleBackgroundTask(runPromise)) {
     await runPromise
   }
 
@@ -138,7 +144,7 @@ Deno.serve(async (req: Request) => {
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    )
+    ) as unknown as SupabaseClient
 
     const token = req.headers.get("Authorization")?.replace("Bearer ", "") ?? ""
     if (!token) return bad(401, "Unauthorized")
@@ -241,10 +247,7 @@ Deno.serve(async (req: Request) => {
         }
       })()
 
-      // @ts-ignore EdgeRuntime.waitUntil
-      if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
-        EdgeRuntime.waitUntil(syncPromise)
-      } else {
+      if (!scheduleBackgroundTask(syncPromise)) {
         await syncPromise
       }
 

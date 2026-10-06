@@ -39,6 +39,14 @@ function positiveNumber(value: unknown): number | null {
   return Number.isFinite(number) && number > 0 ? number : null
 }
 
+
+/** Broker-reported current position volume from an OpenedOrders row. */
+export function livePositionVolume(row: Record<string, unknown>): number | null {
+  return positiveNumber(
+    row.lots ?? row.Lots ?? row.volume ?? row.Volume
+    ?? row.lotSize ?? row.LotSize ?? row.volumeCurrent ?? row.VolumeCurrent,
+  )
+}
 function nestedTicket(value: unknown): number | null {
   if (value == null) return null
   const direct = positiveNumber(value)
@@ -101,7 +109,7 @@ function parseLivePosition(raw: unknown): ParsedLivePosition | null {
     if (ticket != null) identities.add(ticket)
   }
 
-  const lots = positiveNumber(row.lots ?? row.Lots ?? row.volume ?? row.Volume ?? row.lotSize)
+  const lots = livePositionVolume(row)
   const entryPrice = positiveNumber(
     row.openPrice ?? row.OpenPrice ?? row.priceOpen ?? row.PriceOpen ?? row.price ?? row.Price,
   )

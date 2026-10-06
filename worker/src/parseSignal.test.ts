@@ -7,9 +7,70 @@ import {
   type ChannelLexiconRow,
 } from './parseSignal'
 import { collapseForexBroBilingualMessage } from './forexBroSignalPatterns'
+import { parsedDataToTradeIntent } from './signalIntent/parsedDataToTradeIntent'
 
 describe('parseChannelMessageSync', () => {
   const lexicon: ChannelLexiconRow | null = null
+
+  it('parses exact Dewa Scalper New Order and normalizes zero stops as absent', () => {
+    const msg = `Dewa Scalper Order
+
+Type : New Order
+ID : 719910668
+Date/Time : 01-10-2026 07:49
+Pair : XAUUSD.vx
+Order Type : Instant
+Order : Buy
+Lot Size : 2.00
+Stop Loss : 0.00
+Take Profit : 0.00`
+    const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+    const intent = parsedDataToTradeIntent(result.parsed)
+    assert.equal(result.status, 'parsed')
+    assert.equal(result.parsed.action, 'buy')
+    assert.equal(result.parsed.symbol, 'XAUUSD')
+    assert.equal(result.parsed.entry_price, null)
+    assert.equal(result.parsed.entry_zone_low, null)
+    assert.equal(result.parsed.entry_zone_high, null)
+    assert.equal(result.parsed.sl, null)
+    assert.deepEqual(result.parsed.tp, [])
+    assert.equal(result.parsed.lot_size, 2)
+    assert.equal(result.parsed.raw_instruction, msg)
+    assert.equal(result.parsed.provider_signal_number, 719910668)
+    assert.equal(result.parsed.provider_order_type, 'new')
+    assert.equal(result.parsed.re_enter, true)
+    assert.equal(intent.kind, 'entry')
+    assert.deepEqual(intent.entry, [])
+    assert.equal(intent.sl, null)
+    assert.deepEqual(intent.tp, [])
+    assert.deepEqual(intent.flags, { re_enter: true })
+  })
+
+  it('parses exact Dewa Scalper Close Order with provider correlation id', () => {
+    const msg = `Dewa Scalper Order
+
+Type : Close Order (✅ PROFIT)
+ID : 719910668
+Date/Time : 01-10-2026 08:16
+Pair : XAUUSD.vx
+Order Type : Instant
+Order : Buy`
+    const result = parseChannelMessageSync(msg, DEFAULT_CHANNEL_KEYWORDS, lexicon)
+    const intent = parsedDataToTradeIntent(result.parsed)
+    assert.equal(result.status, 'parsed')
+    assert.equal(result.parsed.action, 'close')
+    assert.equal(result.parsed.symbol, 'XAUUSD')
+    assert.equal(result.parsed.entry_price, null)
+    assert.equal(result.parsed.sl, null)
+    assert.deepEqual(result.parsed.tp, [])
+    assert.equal(result.parsed.lot_size, null)
+    assert.equal(result.parsed.raw_instruction, msg)
+    assert.equal(result.parsed.provider_signal_number, 719910668)
+    assert.equal(result.parsed.provider_order_type, 'close')
+    assert.equal(intent.kind, 'close')
+    assert.deepEqual(intent.entry, [])
+    assert.deepEqual(intent.flags, {})
+  })
 
   it('parses minimal Gold buy now (SIGNALS 2 channel format)', () => {
     const msg = 'Gold buy now'

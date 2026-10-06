@@ -457,6 +457,7 @@ export async function tryMergeSignalIntoExistingOpenTrade(ctx: TradeExecutorCont
     const api = ctx.apiFor(broker)
     if (!api) return { handled: false }
     if (parsedHasReEnterIntent(parsed)) return { handled: false }
+    if (parsed.provider_order_type === 'new') return { handled: false }
     const manual = (broker.manual_settings ?? {}) as ManualSettings
     if (manual.add_new_trades_to_existing !== true) return { handled: false }
     if (signalEntryPriceStrictEnabled(manual) && !parsedHasExplicitEntryAnchor(parsed)) {
@@ -601,6 +602,7 @@ export async function tryTeaserCompletionMerge(ctx: TradeExecutorContext, args: 
     if (!messageHasMarketNowIntent(String(parsed.raw_instruction ?? ''))) return { handled: false }
     if (shouldRouteAsBasketParameterRefresh(parsed)) return { handled: false }
     if (parsedHasReEnterIntent(parsed)) return { handled: false }
+    if (parsed.provider_order_type === 'new') return { handled: false }
 
     const a = String(parsed.action ?? '').toLowerCase()
     if (a !== 'buy' && a !== 'sell') return { handled: false }

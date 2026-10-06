@@ -8,6 +8,7 @@ import {
   isReplyScopedManagement,
   loadOpenTradesForManagement,
   loadOpenTradesForSignalAcrossBrokers,
+  resolveEntrySignalIdByProviderNumber,
   resolveChannelCweTargets,
   resolveChannelModifyTargets,
   resolveNewestOpenSymbolTrades,
@@ -361,5 +362,61 @@ describe('findRecentEntrySignalByProviderNumber', () => {
       excludeTelegramMessageId: '2925',
     })
     assert.equal(dup, null)
+  })
+})
+
+describe('resolveEntrySignalIdByProviderNumber', () => {
+  function supabaseFor(rows: Array<Record<string, unknown>>) {
+    return {
+      from() {
+        return {
+          select() {
+            const chain = {
+              eq() { return chain },
+              order() { return chain },
+              limit() { return Promise.resolve({ data: rows }) },
+            }
+            return chain
+          },
+        }
+      },
+    } as unknown as SupabaseClient
+  }
+
+  it('resolves a Dewa provider ID from parsed metadata', async () => {
+    const id = await resolveEntrySignalIdByProviderNumber(supabaseFor([{
+      id: 'entry-719910668',
+      parsed_data: { action: 'buy', provider_signal_number: 719910668 },
+      raw_message: 'Type : New Order\nID : 719910668',
+    }]), {
+      userId: 'u1',
+      channelId: 'ch1',
+      providerSignalNumber: 719910668,
+    })
+    assert.equal(id, 'entry-719910668')
+  })
+
+  it('fails closed when a provider ID correlates to multiple entry signals', async () => {
+    const id = await resolveEntrySignalIdByProviderNumber(supabaseFor([
+      { id: 'entry-a', parsed_data: { action: 'buy', provider_signal_number: 719910668 } },
+      { id: 'entry-b', parsed_data: { action: 'buy', provider_signal_number: 719910668 } },
+    ]), {
+      userId: 'u1',
+      channelId: 'ch1',
+      providerSignalNumber: 719910668,
+    })
+    assert.equal(id, null)
+  })
+
+  it('does not correlate a different provider ID', async () => {
+    const id = await resolveEntrySignalIdByProviderNumber(supabaseFor([{
+      id: 'entry-other',
+      parsed_data: { action: 'buy', provider_signal_number: 719910669 },
+    }]), {
+      userId: 'u1',
+      channelId: 'ch1',
+      providerSignalNumber: 719910668,
+    })
+    assert.equal(id, null)
   })
 })

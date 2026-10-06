@@ -6,7 +6,6 @@ import { recalculateRunSummary } from "./recalculateRunSummary.ts"
 import { resolveBacktestBroker } from "./resolveBacktestBroker.ts"
 import { simulateTradeOnSeries, sliceSeriesForSignal } from "./simulator.ts"
 import {
-  dbTradeToSimulated,
   parseTpLevels,
   simulatedToTradeRow,
   type DbBacktestTradeRow,
