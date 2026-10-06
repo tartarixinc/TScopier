@@ -2372,7 +2372,7 @@ export function DashboardPage() {
         <DashboardMetricsLoader message={t.dashboard.loadingMetrics} />
       ) : (
         <>
-      <PageHeader title={dashboardGreeting} />
+      <PageHeader title={dashboardGreeting} titleClassName="text-3xl" />
       <TelegramConnectBanner />
       <ListenerLeaseOfflineBanner />
       <LiveFeedDegradedBanner />
