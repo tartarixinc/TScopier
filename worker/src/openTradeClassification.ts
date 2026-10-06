@@ -11,6 +11,7 @@
  * Pure: no I/O, no DB writes. Never mutates anything.
  */
 import { resolveCanonicalOpenPosition, type LiveTradeIdentity } from './livePositionIdentity'
+import { extractClosedTradeFillsByTicket } from './closedTradeFill'
 
 export type ClassifyTradeRow = LiveTradeIdentity & {
   signal_id?: string | null
@@ -129,6 +130,46 @@ export function matchClosedHistory(
     }
   }
   return null
+}
+
+/**
+ * Positive proof that THIS trade's position is closed: history holds a real
+ * closing row for the stored ticket.
+ *
+ * The closing-row test is delegated to `extractClosedTradeFillsByTicket`, so
+ * this gate applies exactly the same per-provider rules the fill pipeline
+ * applies (and inherits its test coverage):
+ *   - MTAPI rows are position-level and must pass `mtCloseRowRejection`, so an
+ *     open-position echo never counts;
+ *   - FxSocket rows are deal-level: only the final closing deal counts
+ *     (`entry` contains `out` AND `order === 0`, matched on `position`, which
+ *     is what `trades.metaapi_order_id` stores) — a partial-close deal, which
+ *     this very monitor creates, never counts;
+ *   - a row must carry a close price or a profit, so a bare ticket echo does
+ *     not count either.
+ *
+ * Deliberately stricter than `matchClosedHistory`, which returns the first row
+ * matching ticket **or** comment and applies no structural gate: a sibling
+ * position of the same signal can close first and mask the parent's own row,
+ * and a comment match is not proof for this ticket anyway.
+ *
+ * `provider` must be the account's provider (`mtapi` | `fxsocket`) because the
+ * two bridges report different id spaces. The wrong value cannot prove a live
+ * position closed: each branch only recognises its own row shape, so a
+ * mismatch fails closed to `false` (no cancel) rather than the reverse.
+ *
+ * Used by `partialTpMonitor`'s terminal-cancel gate. `openTradeReconcile` still
+ * uses the comment-tolerant `matchClosedHistory` behind its own snapshot gates.
+ */
+export function historyTicketCloseMatch(
+  trade: ClassifyTradeRow,
+  closedOrders: unknown[],
+  provider: string = 'mtapi',
+): boolean {
+  const storedRaw = Number(trade.metaapi_order_id)
+  const storedTicket = Number.isFinite(storedRaw) && storedRaw > 0 ? storedRaw : null
+  if (storedTicket == null) return false
+  return extractClosedTradeFillsByTicket(closedOrders, 'trades', provider).has(storedTicket)
 }
 
 export function classifyOpenTrade(args: {

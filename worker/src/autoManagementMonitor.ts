@@ -10,6 +10,7 @@ import {
   type AutoBeMode,
   type AutoBeType,
 } from './autoManagement'
+import { isUnresolvableFailure } from './failureClassification'
 import { pipCalculator, pipValueForLots } from './pipCalculator'
 import { signalPipPrice } from './signalPip'
 import {
@@ -92,15 +93,11 @@ const UNRESOLVABLE_QUARANTINE_MS = Math.max(60_000, Number(process.env.AUTO_BE_Q
  * position. Retrying these at any rate is pointless (only reconciliation can
  * resolve them), so they get a long, escalating backoff. Everything else is
  * treated as transient and retried soon so protective moves are not delayed.
+ *
+ * Defined in `failureClassification.ts` (shared with `partialTpMonitor`) and
+ * re-exported here so existing callers keep working.
  */
-export function isUnresolvableFailure(message: string | null | undefined): boolean {
-  const m = String(message ?? '').toLowerCase()
-  return m.includes('no live position match')
-    || m.includes('maps to multiple live positions')
-    || m.includes('attributes match multiple live positions')
-    || m.includes('reconciliation required')
-    || m.includes('identity ambiguous')
-}
+export { isUnresolvableFailure }
 
 type SymbolCacheEntry = {
   digits: number
@@ -252,8 +249,8 @@ export class AutoManagementMonitor {
     for (const [key, group] of groups) {
       const brokerId = key.split(':')[0]!
       const symbol = group[0]?.symbol ?? ''
-      let bid = NaN
-      let ask = NaN
+      let bid: number
+      let ask: number
       const runtime = brokerRuntimeForAccount(this.runtimeByBroker, brokerId)
       if (!runtime) continue
       const { api, sessionId: uuid } = runtime
