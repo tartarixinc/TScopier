@@ -30,7 +30,8 @@ interface ChannelName {
 
 function PlatformLogo({ platform }: { platform: string }) {
   const [failed, setFailed] = useState(false)
-  const key = platform.trim()
+  const raw = platform.trim()
+  const key = /^mt[45]$/i.test(raw) ? raw.toUpperCase() : raw
   if (!key || failed) return null
   return (
     <img
@@ -203,18 +204,19 @@ function BrokerConfigurationCard({
         <div className="flex min-w-0 items-center gap-3">
           <PlatformLogo platform={broker.platform} />
           <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{broker.label}</h2>
-            <Badge variant="neutral" size="sm">{broker.platform}</Badge>
-            <Badge variant={broker.is_active ? 'success' : 'neutral'} size="sm">
-              {broker.is_active ? copy.copyingOn : copy.copyingOff}
-            </Badge>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{broker.label}</h2>
+              <Badge variant="neutral" size="sm">{broker.platform}</Badge>
+              <Badge variant={broker.is_active ? 'success' : 'neutral'} size="sm">
+                {broker.is_active ? copy.copyingOn : copy.copyingOff}
+              </Badge>
+            </div>
+            {login ? (
+              <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                {copy.login} {login}
+              </p>
+            ) : null}
           </div>
-          {login ? (
-            <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
-              {copy.login} {login}
-            </p>
-          ) : null}
         </div>
       </div>
 
@@ -241,7 +243,15 @@ function BrokerConfigurationCard({
                   aria-label={interpolate(copy.editConfiguration, { channel: name, broker: broker.label })}
                   className="block px-4 py-4 transition-colors hover:bg-primary-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500 dark:hover:bg-primary-950/25"
                 >
-                  <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{name}</p>
+                  <p className="flex items-center gap-2.5 text-sm font-semibold text-neutral-900 dark:text-neutral-50">
+                    <img
+                      src="/Telegram.svg"
+                      alt=""
+                      aria-hidden
+                      className="h-7 w-7 shrink-0 object-contain"
+                    />
+                    <span className="min-w-0">{name}</span>
+                  </p>
                   <div className="mt-4 space-y-4">
                     {sections.map(section => (
                       <section key={section.id}>
