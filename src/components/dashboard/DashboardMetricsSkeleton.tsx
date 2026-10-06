@@ -15,9 +15,6 @@ function SkeletonBar({ className }: { className?: string }) {
 }
 
 export function DashboardMetricsSkeleton({ message }: { message?: string }) {
-  const volumeBars = [42, 78, 34, 92, 56, 70, 38]
-  const channelBars = ['72%', '48%', '86%', '34%', '60%']
-
   return (
     <div className="animate-pulse space-y-8" role="status" aria-live="polite" aria-busy="true">
       {message ? <p className="sr-only">{message}</p> : <p className="sr-only">Loading</p>}
@@ -67,43 +64,11 @@ export function DashboardMetricsSkeleton({ message }: { message?: string }) {
         </div>
       </div>
 
+      {/* Trade Outcome (7 days) and Profit by signal channel (7 days)
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-5">
-        <div className={`${CARD} p-5`}>
-          <SkeletonBar className="h-4 w-40" />
-          <SkeletonBar className="mt-2 h-3 w-56 max-w-full" />
-          <div className="mt-5 flex h-64 items-end gap-2 rounded-xl bg-[#F7F8FA] px-4 pb-6 pt-8 dark:bg-white/[0.03]">
-            {volumeBars.map((height, i) => (
-              <div key={i} className="flex h-full flex-1 items-end gap-1">
-                <div
-                  className="w-1/2 rounded-t-md bg-neutral-200/90 dark:bg-white/[0.08]"
-                  style={{ height: `${Math.max(18, height - 22)}%` }}
-                />
-                <div
-                  className="w-1/2 rounded-t-md bg-teal-600/25 dark:bg-teal-400/25"
-                  style={{ height: `${height}%` }}
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className={`${CARD} p-5`}>
-          <SkeletonBar className="h-4 w-44" />
-          <SkeletonBar className="mt-2 h-3 w-48 max-w-full" />
-          <div className="mt-5 flex h-64 flex-col justify-between rounded-xl bg-[#F7F8FA] px-4 py-5 dark:bg-white/[0.03]">
-            {channelBars.map((width, i) => (
-              <div key={i} className="flex items-center gap-3">
-                <SkeletonBar className="h-3 w-16 shrink-0" />
-                <div className="h-3.5 min-w-0 flex-1">
-                  <div
-                    className="h-full rounded-r-md bg-teal-600/25 dark:bg-teal-400/25"
-                    style={{ width }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        ...
       </div>
+      */}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-5">
         <div className={`${CARD} min-w-0 overflow-hidden`}>

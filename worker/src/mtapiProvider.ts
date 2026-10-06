@@ -2,7 +2,7 @@ import type {
   AccountSummary, FxsocketMtStatus, FxsocketTerminalStatus, MtPlatform,
   OrderCloseArgs, OrderModifyArgs, OrderResult, OrderSendArgs, QuoteResult, SymbolParams,
 } from './fxsocketClient'
-import { normalizeOrderResponse, isTransientMtApiError, isOrderOpTimedOutMessage, orderListResponseIsIncomplete } from './fxsocketClient'
+import { normalizeOrderResponse, isTransientMtApiError, isOrderOpTimedOutMessage, isApiThrottleError, parseApiThrottleBackoffMs, orderListResponseIsIncomplete } from './fxsocketClient'
 import type { BrokerProvider } from './brokerProvider'
 import { ingestMtHistoryRows, type MtHistoryProfile } from './mtTradeFields'
 import { auditOrderClose } from './orderCloseAudit'
@@ -92,8 +92,20 @@ function isSessionGone(error: unknown): boolean {
 }
 
 const tradeOpGate = createConcurrencyGate()
+/**
+ * MTAPI rejects a burst of OrderSend/Modify/Close on one session ("too many
+ * requests"). The terminal also runs trade ops one at a time, so the default
+ * is a single in-flight trade call per session. Raise MT_TRADE_OP_CONCURRENCY
+ * only if a broker is known to accept overlap.
+ */
 function perAccountTradeConcurrency(): number {
-  return Math.max(1, Number(process.env.MT_TRADE_OP_CONCURRENCY ?? 3) || 3)
+  return Math.max(1, Number(process.env.MT_TRADE_OP_CONCURRENCY ?? 1) || 1)
+}
+
+function throttleRetryDelayMs(error: unknown): number {
+  const cap = Number(process.env.MTAPI_THROTTLE_RETRY_CAP_MS ?? 12_000)
+  const capMs = Number.isFinite(cap) && cap >= 0 ? cap : 12_000
+  return Math.min(capMs, parseApiThrottleBackoffMs(error))
 }
 
 export interface MtapiProviderOptions {
@@ -391,8 +403,14 @@ export class MtapiProvider implements BrokerProvider {
     allowTimeoutRetry = true,
   ): Promise<unknown> {
     const MAX_ATTEMPTS = Math.max(1, Number(process.env.MT_ORDERSEND_MAX_ATTEMPTS ?? 3) || 3)
+    // A rate-limited OrderSend was rejected, so retrying cannot duplicate a fill.
+    // Give the broker's window time to clear before failing the trade.
+    const THROTTLE_ATTEMPTS = Math.max(
+      MAX_ATTEMPTS,
+      Number(process.env.MT_ORDER_THROTTLE_ATTEMPTS ?? 6) || 6,
+    )
     let lastErr: unknown
-    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    for (let attempt = 0; attempt < THROTTLE_ATTEMPTS; attempt++) {
       try {
         return await this.request(endpoint, params, { sessionId })
       } catch (error) {
@@ -402,6 +420,15 @@ export class MtapiProvider implements BrokerProvider {
           continue
         }
         const msg = error instanceof Error ? error.message : String(error)
+        if (isApiThrottleError(error)) {
+          if (attempt >= THROTTLE_ATTEMPTS - 1) throw error
+          const waitMs = throttleRetryDelayMs(error)
+          console.warn(
+            `[mtapiProvider] ${endpoint} rate limited id=${sessionId} attempt=${attempt + 1}/${THROTTLE_ATTEMPTS}; waiting ${waitMs}ms`,
+          )
+          await new Promise(r => setTimeout(r, waitMs))
+          continue
+        }
         const retryable = isTransientMtApiError(error)
           || (allowTimeoutRetry && isOrderOpTimedOutMessage(msg))
         if (!retryable || attempt >= MAX_ATTEMPTS - 1) throw error

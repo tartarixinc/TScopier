@@ -410,3 +410,35 @@ test('orderSend retries after INVALID_TOKEN and reconnects', async () => {
     '/OrderSendSafe', '/CheckConnect', '/ConnectByToken', '/OrderSendSafe',
   ])
 })
+
+test('orderSend waits out a broker rate limit and retries the rejected order', async () => {
+  const previousCap = process.env.MTAPI_THROTTLE_RETRY_CAP_MS
+  process.env.MTAPI_THROTTLE_RETRY_CAP_MS = '20'
+  const endpoints: string[] = []
+  let sendCalls = 0
+  const api = provider(url => {
+    endpoints.push(url.pathname)
+    if (url.pathname === '/OrderSendSafe') {
+      sendCalls += 1
+      if (sendCalls === 1) {
+        return new Response(JSON.stringify({
+          code: 'RATE_LIMIT',
+          message: 'Too many requests, expected available in 1 seconds',
+        }), { status: 429 })
+      }
+      return new Response(JSON.stringify({ ticket: 1001, state: 'Filled' }))
+    }
+    return new Response('{}')
+  })
+  try {
+    const result = await api.orderSend('session', {
+      symbol: 'EURUSDm', operation: 'Buy', volume: 0.01,
+    })
+    assert.equal(result.ticket, 1001)
+    assert.equal(sendCalls, 2)
+    assert.deepEqual(endpoints, ['/OrderSendSafe', '/OrderSendSafe'])
+  } finally {
+    if (previousCap == null) delete process.env.MTAPI_THROTTLE_RETRY_CAP_MS
+    else process.env.MTAPI_THROTTLE_RETRY_CAP_MS = previousCap
+  }
+})

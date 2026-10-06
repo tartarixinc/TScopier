@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   effectiveAccountSummaryBalance,
   effectiveBrokerBalance,
+  equityWithFloatingPnl,
   resolveBrokerTotalBalance,
 } from './effectiveBrokerBalance'
 
@@ -57,5 +58,19 @@ describe('resolveBrokerTotalBalance', () => {
         { openPnl: 50 },
       ),
     ).toBe(10_000)
+  })
+})
+
+describe('equityWithFloatingPnl', () => {
+  it('adds live floating P/L onto cash balance when equity is stale', () => {
+    expect(equityWithFloatingPnl(10_000, 72.5, 10_010)).toBe(10_072.5)
+  })
+
+  it('falls back to the equity snapshot when floating P/L is missing', () => {
+    expect(equityWithFloatingPnl(10_000, null, 10_050)).toBe(10_050)
+  })
+
+  it('keeps broker equity when floating P/L is zero', () => {
+    expect(equityWithFloatingPnl(50_000, 0, 50_030)).toBe(50_030)
   })
 })

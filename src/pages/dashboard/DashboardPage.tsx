@@ -25,8 +25,8 @@ import { Toggle } from '../../components/ui/Toggle'
 import { Button } from '../../components/ui/Button'
 import { InfoTooltip } from '../../components/ui/InfoTooltip'
 import { fxsocketBroker, type MtTrade } from '../../lib/fxsocketBroker'
-import { isFxsocketLinkedBroker, countLinkedBrokerSessionsForUi, hasLinkedBrokerForUi } from '../../lib/brokerLink'
-import { resolveBrokerTotalBalance } from '../../lib/effectiveBrokerBalance'
+import { isFxsocketLinkedBroker, countLinkedBrokerSessionsForUi, hasLinkedBrokerForUi, resolveProvider } from '../../lib/brokerLink'
+import { equityWithFloatingPnl, resolveBrokerTotalBalance } from '../../lib/effectiveBrokerBalance'
 import { useFxsocketStream } from '../../hooks/useFxsocketStream'
 import {
   rebuildPositionBookFromPayload,
@@ -96,8 +96,8 @@ import {
   normalizeChannelLinkMaps,
   type PerformanceChannelLinkMaps,
 } from '../../lib/performanceInsights'
-import { ChannelProfitChart } from '../../components/dashboard/ChannelProfitChart'
-import { TradeVolumeChart } from '../../components/dashboard/TradeVolumeChart'
+// import { ChannelProfitChart } from '../../components/dashboard/ChannelProfitChart'
+// import { TradeVolumeChart } from '../../components/dashboard/TradeVolumeChart'
 import { useDashboardRealtime } from '../../hooks/useDashboardRealtime'
 import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
 import {
@@ -303,13 +303,15 @@ function recomputeLiveBrokerDashboardStats(
 
   for (const account of accounts) {
     const snap = balances[account.id]
+    const live = isBrokerLiveForMetrics(account, wsLiveBrokerIds)
     if (snap?.balance != null && Number.isFinite(snap.balance)) {
       portfolioValue += snap.balance
     }
-    if (snap?.equity != null && Number.isFinite(snap.equity)) {
-      totalEquity += snap.equity
-    } else if (snap?.balance != null && Number.isFinite(snap.balance)) {
-      totalEquity += snap.balance
+    const equity = live
+      ? equityWithFloatingPnl(snap?.balance, snap?.open_pnl, snap?.equity)
+      : (snap?.equity != null && Number.isFinite(snap.equity) ? snap.equity : snap?.balance ?? null)
+    if (equity != null && Number.isFinite(equity)) {
+      totalEquity += equity
     }
     if (isBrokerLiveForMetrics(account, wsLiveBrokerIds)) {
       const p = snap?.open_pnl
@@ -1009,7 +1011,7 @@ export function DashboardPage() {
   const [bootCache, setBootCache] = useState<DashboardCachePayload | null>(() =>
     user?.id ? readBootstrapDashboardCache(user?.id) : null,
   )
-  const [hadBootCache, setHadBootCache] = useState(() => Boolean(bootCache?.stats))
+  const [, setHadBootCache] = useState(() => Boolean(bootCache?.stats))
   /** True when this tab already loaded dashboard data earlier (SPA revisit, not hard refresh). */
   const tabSessionWarmAtMount = Boolean(user?.id && isDashboardSessionLoaded(user.id))
   const tabSessionWarmRef = useRef(tabSessionWarmAtMount)
@@ -1059,7 +1061,7 @@ export function DashboardPage() {
   const [dashboardMetricsLoading, setDashboardMetricsLoading] = useState(
     () => !(tabSessionWarmAtMount && isDashboardBootReady(bootCache)),
   )
-  const [dashboardChartsReady, setDashboardChartsReady] = useState(() => bootDashboardChartsReady(bootCache))
+  const [, setDashboardChartsReady] = useState(() => bootDashboardChartsReady(bootCache))
   const linkedBalancesRef = useRef<Record<string, BrokerBalanceSnapshot>>(bootCache?.linkedAccountBalances ?? {})
   const refreshQuietRef = useRef<() => void>(() => {})
   /** Last successful MT trades response, kept across renders so stats survive throttled refresh windows. */
@@ -1910,12 +1912,15 @@ export function DashboardPage() {
   }
 
   const applyBrokerLiveSnapshot = (brokerId: string, patch: Partial<BrokerBalanceSnapshot>) => {
+    const prevSnap = linkedBalancesRef.current[brokerId] ?? {}
+    const nextSnap: BrokerBalanceSnapshot = { ...prevSnap, ...patch }
+    if (patch.open_pnl != null && nextSnap.balance != null && Number.isFinite(nextSnap.balance)) {
+      const equity = equityWithFloatingPnl(nextSnap.balance, patch.open_pnl, nextSnap.equity)
+      if (equity != null) nextSnap.equity = equity
+    }
     linkedBalancesRef.current = {
       ...linkedBalancesRef.current,
-      [brokerId]: {
-        ...(linkedBalancesRef.current[brokerId] ?? {}),
-        ...patch,
-      },
+      [brokerId]: nextSnap,
     }
     liveBrokerStateRef.current[brokerId] = {
       ...liveBrokerStateRef.current[brokerId],
@@ -1999,17 +2004,25 @@ export function DashboardPage() {
     },
   }, linkedAccounts.some(isFxsocketLinkedBroker))
 
-  /** REST fallback when WS is quiet — keeps Open P/L moving without a full page refresh. */
+  /** Poll AccountSummary. MTAPI has no price stream, so this is the live balance source. */
   const linkedAccountIdsKey = linkedAccounts.map(a => a.id).sort().join(',')
   useEffect(() => {
-    const accounts = linkedAccounts.filter(isFxsocketLinkedBroker)
+    const accounts = linkedAccounts.filter(account =>
+      resolveProvider(account) === 'mtapi'
+        ? hasLinkedBrokerForUi(account)
+        : isFxsocketLinkedBroker(account),
+    )
     if (accounts.length === 0) return
 
     let cancelled = false
     let cursor = 0
-    // Multi-account dashboards hammer FxSocket if every account polls every 2s.
-    // Scale interval with account count and rotate one account per tick.
-    const pollIntervalMs = Math.min(15_000, Math.max(4_000, 2_000 * Math.ceil(accounts.length / 2)))
+    // MTAPI AccountSummary shares the trade session. A few-second poll trips
+    // "too many requests" and the copier then fails every order. Keep MTAPI
+    // refreshes infrequent; FxSocket still polls faster because it has a stream.
+    const hasMtapi = accounts.some(account => resolveProvider(account) === 'mtapi')
+    const pollIntervalMs = hasMtapi
+      ? 45_000
+      : Math.min(15_000, Math.max(4_000, 2_000 * Math.ceil(accounts.length / 2)))
     const throttleUntilById: Record<string, number> = {}
 
     const pollLiveSnapshots = async () => {
@@ -2020,11 +2033,18 @@ export function DashboardPage() {
         const account = accounts[cursor % accounts.length]!
         cursor += 1
         if ((throttleUntilById[account.id] ?? 0) > now) continue
+        const provider = resolveProvider(account)
         const lastWs = lastWsTickRef.current[account.id] ?? 0
-        if (now - lastWs < 2500) continue
+        if (provider !== 'mtapi' && now - lastWs < 2500) continue
         try {
-          const { summary } = await fxsocketBroker.liveSnapshot(account.id)
-          if (cancelled) return
+          const summary = provider === 'mtapi'
+            ? await (async () => {
+                const refreshed = await fxsocketBroker.refreshSummary(account.id, 'mtapi')
+                if (refreshed.account) replaceBroker(refreshed.account)
+                return refreshed.pending ? undefined : refreshed.summary
+              })()
+            : (await fxsocketBroker.liveSnapshot(account.id)).summary
+          if (cancelled || !summary) return
           const snap = parseFxsocketAccountStreamData(summary as Record<string, unknown>)
           const openTrades = linkedBalancesRef.current[account.id]?.open_trades ?? 0
           const openPnl = resolveFxsocketFloatingOpenPnl(snap, openTrades)
@@ -2043,10 +2063,11 @@ export function DashboardPage() {
           flushLiveBrokerMetrics()
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
-          if (/throttl|rate limit|expected available in/i.test(msg)) {
+          if (/throttl|rate limit|too many requests|expected available in/i.test(msg)) {
             const m = msg.match(/expected available in\s+(\d+)\s*seconds?/i)
             const sec = m ? Number(m[1]) : 8
-            throttleUntilById[account.id] = Date.now() + Math.min(120_000, Math.max(4_000, (Number.isFinite(sec) ? sec : 8) * 1000 + 500))
+            const floorMs = provider === 'mtapi' ? 90_000 : 4_000
+            throttleUntilById[account.id] = Date.now() + Math.min(180_000, Math.max(floorMs, (Number.isFinite(sec) ? sec : 8) * 1000 + 500))
           }
         }
         return
@@ -2056,10 +2077,15 @@ export function DashboardPage() {
     const intervalId = window.setInterval(() => {
       void pollLiveSnapshots()
     }, pollIntervalMs)
-    void pollLiveSnapshots()
+    // Let the page's own broker reads finish before the first MTAPI summary,
+    // so opening the dashboard does not collide with an order burst.
+    const startId = window.setTimeout(() => {
+      void pollLiveSnapshots()
+    }, hasMtapi ? 15_000 : 0)
 
     return () => {
       cancelled = true
+      window.clearTimeout(startId)
       window.clearInterval(intervalId)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the poll interval is keyed on account identity only; field-level account changes arrive through the realtime handlers and must not restart the interval
@@ -2190,10 +2216,13 @@ export function DashboardPage() {
       const openTrades = bookSnap?.openTrades ?? count
       const prev = nextBalances[account.id]
       if (prev?.open_trades === openTrades && prev?.open_pnl === openPnl) continue
+      const nextOpenPnl = openPnl != null ? openPnl : openTrades === 0 ? 0 : prev?.open_pnl
+      const nextEquity = equityWithFloatingPnl(prev?.balance, nextOpenPnl, prev?.equity)
       nextBalances[account.id] = {
         ...(prev ?? {}),
         open_trades: openTrades,
-        ...(openPnl != null ? { open_pnl: openPnl } : openTrades === 0 ? { open_pnl: 0 } : {}),
+        ...(nextOpenPnl != null ? { open_pnl: nextOpenPnl } : {}),
+        ...(nextEquity != null ? { equity: nextEquity } : {}),
       }
       liveBrokerStateRef.current[account.id] = {
         ...liveBrokerStateRef.current[account.id],
@@ -2340,13 +2369,6 @@ export function DashboardPage() {
   }
 
   const chartsEmpty = effectiveChartTrades.length === 0 && linkedAccounts.length === 0
-  const chartsLoading =
-    !hadBootCache &&
-    !dashboardChartsReady &&
-    !hasDashboardAnalyticsData(displayAnalytics) &&
-    effectiveChartTrades.length === 0 &&
-    mtTrades.length === 0 &&
-    (hasActiveMtBroker(linkedAccounts) || Boolean(bootCache?.linkedAccounts?.some(hasLinkedBrokerForUi)))
 
   const showDashboardLoader = dashboardMetricsLoading
 
@@ -2459,6 +2481,7 @@ export function DashboardPage() {
 
       <CopierStatusCard accounts={linkedAccounts} />
 
+      {/*
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-5">
         <TradeVolumeChart data={displayAnalytics.tradeVolume7Day} loading={chartsLoading} />
         <ChannelProfitChart
@@ -2466,6 +2489,7 @@ export function DashboardPage() {
           loading={chartsLoading}
         />
       </div>
+      */}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-5">
           <div className={`${DASHBOARD_CARD} min-w-0 overflow-hidden`}>
@@ -2913,7 +2937,13 @@ function LinkedAccountRow({
     : account.is_active
       ? 'text-teal-700 border-teal-200 bg-teal-50 dark:text-teal-300 dark:border-teal-800 dark:bg-teal-950/50'
       : 'text-neutral-600 border-neutral-200 bg-neutral-100 dark:text-neutral-400 dark:border-neutral-700 dark:bg-neutral-800/80'
-  const balance = accountSummary?.balance ?? account.last_balance ?? null
+  const cashBalance = accountSummary?.balance ?? account.last_balance ?? null
+  // Cash balance stays put while positions tick. Show cash + live floating P/L.
+  const balance = equityWithFloatingPnl(
+    cashBalance,
+    accountSummary?.open_pnl,
+    accountSummary?.equity ?? account.last_equity,
+  ) ?? cashBalance
   const accountCurrency = (accountSummary?.currency ?? account.last_currency ?? '').trim() || undefined
   const balanceText = formatMoneyWithCode(balance, accountCurrency, { locale: intlLocale })
   const pnl = connectPnl ?? 0

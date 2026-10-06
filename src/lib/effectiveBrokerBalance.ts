@@ -53,6 +53,27 @@ function looksLikeMissingBrokerCredit(balance: number, equity: number): boolean 
   return equity > balance + 0.005 && balance < equity * 0.2
 }
 
+/**
+ * Equity that moves with floating P/L.
+ * `balance` is cash + credit (no floating P/L). Position ticks update open P/L
+ * without a fresh equity field, so equity is balance + open P/L.
+ */
+export function equityWithFloatingPnl(
+  balance: number | null | undefined,
+  openPnl: number | null | undefined,
+  equity?: number | null,
+): number | null {
+  const cash = readFiniteNum(balance)
+  const floating = readFiniteNum(openPnl)
+  const marked = readFiniteNum(equity)
+  if (cash != null && floating != null && floating !== 0) {
+    const fromFloating = Math.round((cash + floating) * 100) / 100
+    if (marked == null || Math.abs(fromFloating - marked) > 0.009) return fromFloating
+    return marked
+  }
+  return marked ?? (cash != null && floating != null ? Math.round((cash + floating) * 100) / 100 : cash)
+}
+
 /** Total balance (cash + credit) for broker_accounts rows and live snapshots. */
 export function resolveBrokerTotalBalance(
   account: { last_balance?: number | null; last_equity?: number | null },
