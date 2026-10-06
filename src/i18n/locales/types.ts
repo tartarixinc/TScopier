@@ -1541,6 +1541,9 @@ export interface PricingTranslations {
     extraAccounts: string
     extraAccountsSummary: string
     manageBilling: string
+    cancelSubscription: string
+    cancelSubscriptionHint: string
+    cancelSubscriptionFailed: string
     noPlan: string
     statusActive: string
     statusTrialing: string
