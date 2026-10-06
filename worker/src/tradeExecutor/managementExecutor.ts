@@ -4,6 +4,8 @@ import {
   upsertChannelActiveTradeParams,
   type ChannelActiveTradeParams
 } from '../channelActiveTradeParams'
+import { TRADE_CLOSE_REASON } from '../tradeCloseReasons'
+import { applyCloseUpdate } from '../tradeCloseUpdate'
 import { resolveChannelTradingConfig } from '../channelTradingConfig'
 import {
   breakevenStopLossForSymbol,
@@ -1104,11 +1106,15 @@ export async function applyManagement(
               lastCloseReason ?? 'orderClose succeeded but ticket still open on broker',
             )
           }
-          await ctx.supabase.from('trades').update({
-            status: 'closed',
-            closed_at: new Date().toISOString(),
-            ...(ticketReconciledFrom != null ? { metaapi_order_id: String(effectiveTicket) } : {}),
-          }).eq('id', trade.id)
+          await applyCloseUpdate(
+            {
+              status: 'closed',
+              closed_at: new Date().toISOString(),
+              close_reason: TRADE_CLOSE_REASON.SIGNAL_CLOSE,
+              ...(ticketReconciledFrom != null ? { metaapi_order_id: String(effectiveTicket) } : {}),
+            },
+            patch => ctx.supabase.from('trades').update(patch).eq('id', trade.id),
+          )
           if (signal.channel_id) {
             await clearChannelActiveTradeParamsWhenFlat(ctx.supabase, {
               userId: signal.user_id,
@@ -1153,11 +1159,15 @@ export async function applyManagement(
           await api.orderClose(uuid, { ticket: effectiveTicket, lots })
           const remaining = Math.max(0, +(trade.lot_size - lots).toFixed(2))
           if (remaining < 0.0001) {
-            await ctx.supabase.from('trades').update({
-              status: 'closed',
-              closed_at: new Date().toISOString(),
-              lot_size: 0,
-            }).eq('id', trade.id)
+            await applyCloseUpdate(
+              {
+                status: 'closed',
+                closed_at: new Date().toISOString(),
+                close_reason: TRADE_CLOSE_REASON.PARTIAL_TP,
+                lot_size: 0,
+              },
+              patch => ctx.supabase.from('trades').update(patch).eq('id', trade.id),
+            )
             if (signal.channel_id) {
               await clearChannelActiveTradeParamsWhenFlat(ctx.supabase, {
                 userId: signal.user_id,
@@ -1318,16 +1328,17 @@ export async function applyManagement(
             if (remainingLots < 0.0001) {
               tradePatch.status = 'closed'
               tradePatch.closed_at = new Date().toISOString()
+              tradePatch.close_reason = TRADE_CLOSE_REASON.PARTIAL_TP
               tradePatch.lot_size = 0
             } else if (halfClosedLots > 0) {
               tradePatch.lot_size = remainingLots
             }
           }
 
-          await ctx.supabase
-            .from('trades')
-            .update(tradePatch)
-            .eq('id', trade.id)
+          await applyCloseUpdate(
+            tradePatch,
+            patch => ctx.supabase.from('trades').update(patch).eq('id', trade.id),
+          )
 
           if (
             action === 'partial_breakeven'
@@ -1430,14 +1441,15 @@ export async function applyManagement(
         }
         if (positionGone) {
           benign = true
-          await ctx.supabase
-            .from('trades')
-            .update({
+          await applyCloseUpdate(
+            {
               status: 'closed',
               closed_at: new Date().toISOString(),
+              close_reason: TRADE_CLOSE_REASON.POSITION_GONE,
               auto_be_applied_at: new Date().toISOString(),
-            })
-            .eq('id', trade.id)
+            },
+            patch => ctx.supabase.from('trades').update(patch).eq('id', trade.id),
+          )
           console.warn(
             `[tradeExecutor] mgmt ${action} closed trade=${trade.id} ticket=${effectiveTicket}: broker position gone (${msg})`,
           )
@@ -2165,14 +2177,15 @@ export async function applyCloseWorseEntriesInstruction(ctx: TradeExecutorContex
           if (!closeResult.confirmed) {
             throw new Error(closeResult.reason ?? 'cwe orderClose: ticket still open')
           }
-          await ctx.supabase
-            .from('trades')
-            .update({
+          await applyCloseUpdate(
+            {
               status: 'closed',
               closed_at: new Date().toISOString(),
+              close_reason: TRADE_CLOSE_REASON.CLOSE_WORSE_ENTRIES,
               cwe_close_price: null,
-            })
-            .eq('id', trade.id)
+            },
+            patch => ctx.supabase.from('trades').update(patch).eq('id', trade.id),
+          )
           if (signal.channel_id) {
             await clearChannelActiveTradeParamsWhenFlat(ctx.supabase, {
               userId: signal.user_id,
@@ -2200,14 +2213,15 @@ export async function applyCloseWorseEntriesInstruction(ctx: TradeExecutorContex
           const msg = err instanceof Error ? err.message : String(err)
           const benign = /not\s+found|already\s+closed|invalid\s+ticket|no\s+such\s+order|unknown\s+ticket/i.test(msg)
           if (benign) {
-            await ctx.supabase
-              .from('trades')
-              .update({
+            await applyCloseUpdate(
+              {
                 status: 'closed',
                 closed_at: new Date().toISOString(),
+                close_reason: TRADE_CLOSE_REASON.POSITION_GONE,
                 cwe_close_price: null,
-              })
-              .eq('id', trade.id)
+              },
+              patch => ctx.supabase.from('trades').update(patch).eq('id', trade.id),
+            )
             if (signal.channel_id) {
               await clearChannelActiveTradeParamsWhenFlat(ctx.supabase, {
                 userId: signal.user_id,

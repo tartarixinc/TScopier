@@ -17,6 +17,8 @@ import {
 import { sanitizeChannelCommentSlug } from './tradeComment'
 import type { BrokerRow } from './tradeExecutor/types'
 import { brokerSessionUuid } from './tradeExecutor/helpers'
+import { TRADE_CLOSE_REASON } from './tradeCloseReasons'
+import { applyCloseUpdate } from './tradeCloseUpdate'
 
 export type BrokerOpenOrderLike = {
   ticket: number
@@ -144,13 +146,20 @@ export async function tryBrokerFallbackClose(args: {
           continue
         }
         closed += 1
-        await supabase
-          .from('trades')
-          .update({ status: 'closed', closed_at: new Date().toISOString() })
-          .eq('user_id', signal.user_id)
-          .eq('broker_account_id', broker.id)
-          .eq('metaapi_order_id', String(order.ticket))
-          .in('status', ['open', 'pending'])
+        await applyCloseUpdate(
+          {
+            status: 'closed',
+            closed_at: new Date().toISOString(),
+            close_reason: TRADE_CLOSE_REASON.SIGNAL_CLOSE,
+          },
+          patch => supabase
+            .from('trades')
+            .update(patch)
+            .eq('user_id', signal.user_id)
+            .eq('broker_account_id', broker.id)
+            .eq('metaapi_order_id', String(order.ticket))
+            .in('status', ['open', 'pending']),
+        )
         if (signal.channel_id) {
           await clearChannelActiveTradeParamsWhenFlat(supabase, {
             userId: signal.user_id,

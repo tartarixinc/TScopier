@@ -1,4 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { TRADE_CLOSE_REASON } from './tradeCloseReasons'
+import { applyCloseUpdate } from './tradeCloseUpdate'
 import { findPreNewsCloseTriggers } from './newsTrading/blackout'
 import { getCalendarEventsCached } from './newsTrading/calendarProvider'
 import { isNewsTradingEnabled, type ScheduleFilterSettings } from './newsTrading/settings'
@@ -191,10 +193,14 @@ export class NewsTradingMonitor {
               console.warn(`[newsTradingMonitor] close ambiguous trade=${t.id}: ${result.reason ?? 'unconfirmed'}`)
               continue
             }
-            await this.supabase
-              .from('trades')
-              .update({ status: 'closed', closed_at: new Date().toISOString() })
-              .eq('id', t.id)
+            await applyCloseUpdate(
+              {
+                status: 'closed',
+                closed_at: new Date().toISOString(),
+                close_reason: TRADE_CLOSE_REASON.NEWS_PRE_CLOSE,
+              },
+              patch => this.supabase.from('trades').update(patch).eq('id', t.id),
+            )
             closed += 1
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err)

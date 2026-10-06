@@ -1,4 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { TRADE_CLOSE_REASON } from './tradeCloseReasons'
+import { applyCloseUpdate } from './tradeCloseUpdate'
 import { signalPipPrice } from './signalPip'
 import {
   computeTrailingStopUpdate,
@@ -265,10 +267,15 @@ export class TrailingStopMonitor {
       const benign = /not\s+found|already\s+closed|invalid\s+ticket|no\s+such\s+order|unknown\s+ticket/i.test(msg)
         || isBenignOrderModifyError(msg)
       if (benign) {
-        await this.supabase
-          .from('trades')
-          .update({ status: 'closed', closed_at: new Date().toISOString(), trail_peak_price: null })
-          .eq('id', trade.id)
+        await applyCloseUpdate(
+          {
+            status: 'closed',
+            closed_at: new Date().toISOString(),
+            close_reason: TRADE_CLOSE_REASON.POSITION_GONE,
+            trail_peak_price: null,
+          },
+          patch => this.supabase.from('trades').update(patch).eq('id', trade.id),
+        )
         return null
       }
       console.warn(`[trailingStopMonitor] OrderModify failed trade=${trade.id} ticket=${ticketNum}: ${msg}`)
