@@ -113,7 +113,10 @@ describe('canonical live position resolver', () => {
 
   it('management partial_profit sends the resolved effectiveTicket', () => {
     const source = readFileSync(require.resolve('./tradeExecutor/managementExecutor'), 'utf8')
-    assert.match(source, /else if \(action === 'partial_profit'\)[\s\S]*?orderClose\(uuid, \{ ticket: effectiveTicket, lots \}\)/)
+    assert.match(
+      source,
+      /else if \(action === 'partial_profit'\)[\s\S]*?orderClose\(uuid, \{ ticket: effectiveTicket, lots: plan\.closeVolume \}\)/,
+    )
   })
 })
 

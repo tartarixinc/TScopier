@@ -57,7 +57,11 @@ import {
 import { resolveTscopierCommentPrefix } from '../tradeComment'
 import type { TradeExecutorContext } from './context'
 import { applySymbolMapping, computeLot, isBuySideOp, isExcluded, isMt5OnlyOperation, roundLot, triggerPriceFor, brokerSessionUuid, type Leg } from './helpers'
-import { missingRequiredSlFailure } from './entryPrepareMissingSl'
+import {
+  isExplicitProviderNewOrder,
+  missingRequiredSlFailure,
+  shouldEnforceSingleOpenSymbolSlot,
+} from './entryPrepareMissingSl'
 
 export { missingRequiredSlFailure } from './entryPrepareMissingSl'
 import type {
@@ -485,7 +489,8 @@ export async function prepareEntryExecution(
   const blockNewEntry = sendOpts?.blockNewEntry === true
   const rangeEntryStrict = signalEntryRangeStrictEnabled(manual)
   const basketParameterRefresh = shouldRouteAsBasketParameterRefresh(parsed)
-  if (isManual && !rangeEntryStrict && (basketParameterRefresh || sameSignalRefresh)) {
+  const explicitProviderNewOrder = isExplicitProviderNewOrder(parsed)
+  if (isManual && !explicitProviderNewOrder && !rangeEntryStrict && (basketParameterRefresh || sameSignalRefresh)) {
     const paramOutcome = await ctx.tryParameterFollowUpMergeModifyOnly({
       signal,
       parsed,
@@ -532,7 +537,7 @@ export async function prepareEntryExecution(
     }
   }
 
-  if (isManual && !sameSignalRefresh && !basketRefreshSucceeded && !rangeEntryStrict) {
+  if (isManual && !explicitProviderNewOrder && !sameSignalRefresh && !basketRefreshSucceeded && !rangeEntryStrict) {
     const teaserOutcome = await ctx.tryTeaserCompletionMerge({
       signal,
       parsed,
@@ -558,6 +563,7 @@ export async function prepareEntryExecution(
     isManual
     && manual.add_new_trades_to_existing === true
     && !basketRefreshSucceeded
+    && !explicitProviderNewOrder
   ) {
     const mergeOutcome = await ctx.tryMergeSignalIntoExistingOpenTrade({
       signal,
@@ -577,16 +583,13 @@ export async function prepareEntryExecution(
     }
   }
 
-  if (isManual && manual.add_new_trades_to_existing === false && !parsedSignalHasExplicitStops(parsed)) {
-    await ctx.logSendSkipped(signal, broker, 'explicit_stops_required_when_add_to_existing_off', { symbol })
-    return { ok: false, outcome: { finalizeSkipReason: 'explicit_stops_required_when_add_to_existing_off' } }
-  }
-
+  // Missing-SL safety is centralized in missingRequiredSlFailure above so
+  // configured predefined/RR fallbacks cannot disagree with a later guard.
   if (!liveEntryFast && isManual && manual.close_on_opposite_signal === true) {
     await ctx.closeOppositeDirectionTrades(signal, parsed, broker, symbol)
   }
 
-  if (isManual && manual.add_new_trades_to_existing === false) {
+  if (isManual && shouldEnforceSingleOpenSymbolSlot(parsed, manual)) {
     const already = await ctx.hasOpenTradeForSymbol(broker.id, symbol)
     if (already) {
       await ctx.logSendSkipped(signal, broker, 'add_new_trades_to_existing=false', { symbol })

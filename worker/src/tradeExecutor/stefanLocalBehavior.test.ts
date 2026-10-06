@@ -489,6 +489,43 @@ test('Stefan local behavior: genuine management text remains management-classifi
   assert.equal(close.action, 'close')
 })
 
+test('explicit provider New Order never merges into an older same-side basket', async () => {
+  const raw = `Dewa Scalper Order
+
+Type : New Order
+ID : 719910669
+Date/Time : 01-10-2026 07:50
+Pair : XAUUSD.vx
+Order Type : Instant
+Order : Buy
+Lot Size : 2.00
+Stop Loss : 0.00
+Take Profit : 0.00`
+  const parsed = mustParse(raw)
+  assert.equal(parsed.provider_order_type, 'new')
+  const result = await tryMergeSignalIntoExistingOpenTrade({
+    apiFor: () => ({}),
+    supabase: {
+      from: () => {
+        throw new Error('explicit New Order must return before merge lookup')
+      },
+    },
+  } as never, {
+    signal: makeSignal('dewa-719910669', 'tg-dewa-2', raw, parsed, '2026-10-01T07:50:00.000Z'),
+    parsed,
+    op: 'Buy',
+    broker,
+    channelKeywords: DEFAULT_CHANNEL_KEYWORDS,
+    baseLot: 2,
+    params: null,
+    symbol: 'XAUUSD',
+    uuid: 'fx-stefan',
+    strictEntryPrefetch: null,
+    commentPrefix: 'TScopier:dewa',
+  })
+  assert.deepEqual(result, { handled: false })
+})
+
 test('Stefan local behavior: explicit reply-linked full entries remain merge eligible', () => {
   const parsed4 = mustParse(signal4Text)
   const linked: BasketMergeLinkContext = {

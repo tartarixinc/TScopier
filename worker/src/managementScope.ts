@@ -13,6 +13,7 @@ import { extractProviderSignalNumber } from './forexBroSignalPatterns'
 export type MgmtParsedLike = {
   action?: string
   symbol?: string | null
+  provider_order_type?: 'new' | 'close' | null
   sl?: number | null
   tp?: number[] | null
   provider_signal_number?: number | null
@@ -513,7 +514,7 @@ export async function loadOpenTradesForSignalAcrossBrokers(
   return { rows, brokersFound: [...found], brokersMissing }
 }
 
-/** Find the entry signal row for a provider trade number (ForexBro Signal #NNN). */
+/** Find one unambiguous entry signal for a provider external trade/order number. */
 export async function resolveEntrySignalIdByProviderNumber(
   supabase: SupabaseClient,
   args: {
@@ -531,15 +532,19 @@ export async function resolveEntrySignalIdByProviderNumber(
     .eq('channel_id', args.channelId)
     .order('created_at', { ascending: false })
     .limit(300)
-  const ref = new RegExp(`(?:new\\s+signal|signal)\\s*#\\s*${n}\\b`, 'i')
+  const ref = new RegExp(`(?:(?:new\\s+signal|signal)\\s*#|ID\\s*:)\\s*${n}\\b`, 'i')
+  const matches = new Set<string>()
   for (const row of data ?? []) {
-    const pd = row.parsed_data as { action?: string; raw_instruction?: string } | null
+    const pd = row.parsed_data as { action?: string; raw_instruction?: string; provider_signal_number?: number | null } | null
     const action = String(pd?.action ?? '').toLowerCase()
     if (action !== 'buy' && action !== 'sell') continue
     const text = String(row.raw_message ?? pd?.raw_instruction ?? '')
-    if (ref.test(text)) return String(row.id)
+    if (pd?.provider_signal_number === n || ref.test(text)) {
+      matches.add(String(row.id))
+      if (matches.size > 1) return null
+    }
   }
-  return null
+  return matches.size === 1 ? [...matches][0]! : null
 }
 
 export const PROVIDER_ENTRY_DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000
