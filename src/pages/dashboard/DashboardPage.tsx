@@ -2735,7 +2735,7 @@ function StatBlock({ label, labelHint, value, sub, subColor, valueColor = 'text-
         {label}
         {labelHint ? <InfoTooltip text={labelHint} /> : null}
       </p>
-      <p className={clsx('mt-2 text-2xl font-semibold tracking-tight tabular-nums', valueColor)}>{value}</p>
+      <p className={clsx('mt-2 text-3xl font-semibold tracking-tight', valueColor)}>{value}</p>
       {sub === '' ? null : typeof sub === 'string' ? (
         <p className={clsx('mt-1.5 text-xs leading-5', subColor)}>{sub}</p>
       ) : (
@@ -2765,7 +2765,7 @@ function OverviewStat({
   return (
     <div className="px-4 py-4 sm:px-5">
       <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-400">{label}</p>
-      <p className="mt-2 text-xl font-semibold tracking-tight tabular-nums text-neutral-900 dark:text-neutral-50">{value}</p>
+      <p className="mt-2 text-xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">{value}</p>
       {onAdd ? (
         <button type="button" onClick={onAdd} className={actionClass}>
           {addLabel ?? `Add ${label}`}

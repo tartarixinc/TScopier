@@ -83,9 +83,9 @@ export const COPIER_SKIP_REASON_DETAILS: Record<string, string> = {
   no_broker_channel_match:
     'No active broker account is linked to this channel. Open Account Configuration → select your broker → Channels tab → enable this channel → Save.',
   copier_paused:
-    'Signal copying is paused for your account. Resume the copier from the dashboard or Copier Engine.',
+    'Signal copying is paused for your account. Resume the copier from the dashboard or Copier Process.',
   telegram_listener_not_live:
-    'Telegram was not connected when this signal arrived. Open Copier Engine and reconnect Telegram.',
+    'Telegram was not connected when this signal arrived. Open Copier Process and reconnect Telegram.',
   subscription_inactive:
     'Your subscription is inactive. Renew your plan to resume signal copying.',
   plan_advanced_feature_required:

@@ -1220,7 +1220,7 @@ export class UserSessionManager {
 
     if (!workerConfig.runsBacktestHttp) {
       throw new Error(
-        'Telegram listener is not connected. Link Telegram on Copier Engine, wait a few seconds, then refresh.',
+        'Telegram listener is not connected. Link Telegram on Copier Process, wait a few seconds, then refresh.',
       )
     }
     return this.withEphemeralTelegram(userId, () =>
@@ -1340,7 +1340,7 @@ export class UserSessionManager {
     }
     console.error(
       `[sessionManager] failed to restart listener after backtest user=${userId}`
-      + ' — open Copier Engine and use Reconnect Telegram',
+      + ' — open Copier Process and use Reconnect Telegram',
     )
   }
 

@@ -182,7 +182,7 @@ export const channelWorkerFr: ChannelWorkerTranslations = {
     channel_filter_ignored:
       'cette instruction du canal est réglée sur Ignorer dans Configurer le trading',
     telegram_listener_not_live:
-      'écoute Telegram inactive — ouvrez Copier Engine et reconnectez Telegram',
+      'écoute Telegram inactive — ouvrez Copier Process et reconnectez Telegram',
     explicit_stops_required_when_add_to_existing_off:
       'ce canal est en mode position unique (Ajouter aux trades existants désactivé), les nouvelles entrées doivent inclure TP/SL',
     entry_requires_imperative_or_labeled_stops:
