@@ -886,7 +886,6 @@ export function CopierEnginePage() {
     <PageShell maxWidth="lg" spacing="none" className="space-y-6">
       <PageHeader
         title={t.pages.copierEngine.title}
-        subtitle={t.pages.copierEngine.description}
         actions={
           hasTgSession ? (
             <Button variant="secondary" size="sm" onClick={() => void fetchTgChannels({ force: true })} loading={loadingTg}>

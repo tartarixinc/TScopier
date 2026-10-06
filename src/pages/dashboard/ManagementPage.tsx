@@ -242,7 +242,6 @@ export function ManagementPage() {
     <PageShell maxWidth="lg" spacing="none" className="space-y-6">
       <PageHeader
         title={t.management.title}
-        subtitle={t.management.subtitle}
         actions={(
           <div className="flex flex-wrap items-center gap-2">
             {filter === 'failed' && retryEligibleOnPage.length > 0 ? (

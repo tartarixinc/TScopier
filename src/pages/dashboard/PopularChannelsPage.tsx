@@ -177,7 +177,7 @@ export function PopularChannelsPage() {
 
   return (
     <PageShell maxWidth="lg" spacing="none" className="space-y-6">
-      <PageHeader title={p.title} subtitle={p.subtitle} />
+      <PageHeader title={p.title} />
 
       <div className="flex items-center gap-3">
         <div className="relative flex-1 max-w-xs">

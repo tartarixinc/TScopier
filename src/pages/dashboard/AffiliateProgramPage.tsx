@@ -147,7 +147,6 @@ export function AffiliateProgramPage() {
     <PageShell>
       <PageHeader
         title={at.title}
-        subtitle={at.subtitle}
         actions={(
           <Button variant="secondary" onClick={() => void refresh()} loading={loading}>
             {at.refresh}

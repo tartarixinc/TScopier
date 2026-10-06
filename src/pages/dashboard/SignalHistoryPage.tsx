@@ -532,7 +532,7 @@ export function SignalHistoryPage() {
 
   return (
     <PageShell maxWidth="lg">
-      <PageHeader title={t.pages.signalHistory.title} subtitle={t.pages.signalHistory.description} />
+      <PageHeader title={t.pages.signalHistory.title} />
 
       {banner ? (
         <div

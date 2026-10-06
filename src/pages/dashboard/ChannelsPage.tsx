@@ -125,7 +125,6 @@ export function ChannelsPage() {
     <PageShell maxWidth="lg" spacing="none" className="space-y-6">
       <PageHeader
         title={ch.title}
-        subtitle={ch.subtitle}
         actions={(
           <Button onClick={() => setShowAdd(true)} size="sm">
             <Plus className="w-3.5 h-3.5" />

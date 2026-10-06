@@ -67,7 +67,7 @@ export function ContactSupportPage() {
 
   return (
     <PageShell maxWidth="lg" spacing="loose">
-      <PageHeader title={page.title} subtitle={page.description} />
+      <PageHeader title={page.title} />
 
       <section aria-labelledby="support-channels-heading">
         <div className="mb-4">

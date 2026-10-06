@@ -391,7 +391,6 @@ export function Backtest() {
       ) : null}
       <PageHeader
         title={bt.title}
-        subtitle={bt.subtitle}
         actions={(
           <Button
             variant="secondary"

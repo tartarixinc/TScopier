@@ -56,7 +56,6 @@ export function UpdatesPage() {
     <PageShell maxWidth="md">
       <PageHeader
         title={t.nav.updatesPage.title}
-        subtitle={t.nav.updatesPage.subtitle}
       />
 
       {PLATFORM_UPDATES.length === 0 ? (

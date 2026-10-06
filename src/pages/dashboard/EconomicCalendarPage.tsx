@@ -169,7 +169,6 @@ export function EconomicCalendarPage() {
     <PageShell maxWidth="lg">
       <PageHeader
         title={ec.title}
-        subtitle={ec.subtitle}
         actions={(
           <>
             {lastUpdatedLabel && !loading ? (

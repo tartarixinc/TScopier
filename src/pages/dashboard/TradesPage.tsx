@@ -44,7 +44,7 @@ export function TradesPage() {
   const { user } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const { pending } = useHumanReview()
-  const { trades, loading, refreshing, error, lastSyncedAt, refresh } = useTradesData(user?.id)
+  const { trades, loading, refreshing, error, refresh } = useTradesData(user?.id)
   const [filter, setFilter] = useState<Filter>('all')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState<PageSizeOption>(10)
@@ -123,17 +123,6 @@ export function TradesPage() {
     <PageShell maxWidth="lg" spacing="none" className="space-y-6">
       <PageHeader
         title={t.trades.title}
-        subtitle={(
-          <>
-            {t.trades.subtitle}
-            {lastSyncedAt && (
-              <span className="text-neutral-400">
-                {' '}
-                · {interpolate(t.common.synced, { time: formatRelative(lastSyncedAt) })}
-              </span>
-            )}
-          </>
-        )}
         actions={(
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
           <button
@@ -555,13 +544,3 @@ function TradeRow({ trade, warning, onSelect }: { trade: MtTrade; warning: Manua
   )
 }
 
-function formatRelative(ts: number): string {
-  const diff = Math.max(0, Date.now() - ts)
-  const sec = Math.floor(diff / 1000)
-  if (sec < 5) return 'just now'
-  if (sec < 60) return `${sec}s ago`
-  const min = Math.floor(sec / 60)
-  if (min < 60) return `${min}m ago`
-  const hr = Math.floor(min / 60)
-  return `${hr}h ago`
-}

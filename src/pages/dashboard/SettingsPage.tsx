@@ -177,7 +177,7 @@ export function SettingsPage() {
 
   return (
     <PageShell maxWidth="md" spacing="none" className="space-y-6 lg:space-y-8">
-      <PageHeader title={t.settings.title} subtitle={t.settings.subtitle} />
+      <PageHeader title={t.settings.title} />
 
       <div className="flex flex-col gap-6 lg:flex-row lg:gap-8">
         <nav className="lg:w-52 shrink-0 flex lg:flex-col gap-1 overflow-x-auto pb-1 lg:pb-0">

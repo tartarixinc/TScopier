@@ -3,7 +3,6 @@ import type { ReactNode } from 'react'
 
 interface PageHeaderProps {
   title: ReactNode
-  subtitle?: ReactNode
   actions?: ReactNode
   className?: string
   /** When actions are wide (e.g. period tabs), stack until large screens. */
@@ -12,7 +11,6 @@ interface PageHeaderProps {
 
 export function PageHeader({
   title,
-  subtitle,
   actions,
   className,
   actionsBreakpoint = 'sm',
@@ -33,9 +31,6 @@ export function PageHeader({
         <h1 className="text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
           {title}
         </h1>
-        {subtitle ? (
-          <p className="mt-1 max-w-2xl text-sm text-neutral-500 dark:text-neutral-400">{subtitle}</p>
-        ) : null}
       </div>
       {actions ? (
         <div

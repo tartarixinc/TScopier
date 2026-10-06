@@ -51,7 +51,6 @@ export function ReportedTradesPage() {
     <PageShell maxWidth="lg" spacing="none" className="space-y-6">
       <PageHeader
         title={tr.reportsTitle}
-        subtitle={tr.reportsSubtitle}
         actions={
           <button
             type="button"

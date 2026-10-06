@@ -145,7 +145,6 @@ export function PerformancePage() {
     <PageShell maxWidth="lg">
       <PageHeader
         title={p.title}
-        subtitle={p.subtitle}
         actionsBreakpoint="lg"
         actions={(
           <>

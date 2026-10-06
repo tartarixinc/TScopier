@@ -337,7 +337,6 @@ export function BillingPage() {
     <PageShell>
       <PageHeader
         title={bt.title}
-        subtitle={bt.subtitle}
         actions={
           <div className="flex flex-col items-stretch gap-3 sm:items-end">
             <div className="flex flex-wrap items-center justify-end gap-x-5 gap-y-1 text-sm">

@@ -89,7 +89,6 @@ export function MarketNewsPage() {
     <PageShell maxWidth="lg">
       <PageHeader
         title={mn.title}
-        subtitle={mn.subtitle}
         actions={(
           <>
             {lastUpdatedLabel && !loading ? (

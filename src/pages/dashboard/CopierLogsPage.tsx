@@ -428,7 +428,6 @@ export function CopierLogsPage() {
       ) : null}
       <PageHeader
         title={t.copierLogs.title}
-        subtitle={t.copierLogs.subtitle}
         actions={(
           <div className="-mx-4 w-full overflow-x-auto px-4 sm:mx-0 sm:w-auto sm:px-0">
           <div className="inline-flex bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg p-0.5 gap-0.5">

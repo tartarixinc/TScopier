@@ -2586,7 +2586,6 @@ export function AccountConfigPage() {
     <PageShell maxWidth="lg" spacing="none" className="space-y-6">
       <PageHeader
         title={t.pages.accountConfiguration.title}
-        subtitle={t.pages.accountConfiguration.description}
         actions={(
           <Button size="sm" onClick={openAddTradingAccount}>
             <Plus className="w-3.5 h-3.5" />
