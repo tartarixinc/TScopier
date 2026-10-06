@@ -17,6 +17,7 @@ import {
   Radio,
   Repeat,
   Settings,
+  Settings2,
   Share2,
   SlidersHorizontal,
   Sparkles,
@@ -28,6 +29,7 @@ import {
 export const APP_ROUTE_ICONS: Record<string, LucideIcon> = {
   '/dashboard': LayoutDashboard,
   '/brokers': Landmark,
+  '/configurations': Settings2,
   '/account-trades': ChartNoAxesCombined,
   '/activities': Activity,
   '/settings': Settings,

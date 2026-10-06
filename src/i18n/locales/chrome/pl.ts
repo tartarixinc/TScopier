@@ -14,7 +14,7 @@ export const chromePl: AppChromeTranslations = {
     },
     items: {
       dashboard: 'Pulpit',
-      configuration: 'Konfiguracja',
+      configuration: 'Konfiguracje',
       brokers: 'Brokerzy',
       trades: 'Transakcje',
       management: 'Aktywności',

@@ -14,7 +14,7 @@ export const chromeSv: AppChromeTranslations = {
     },
     items: {
       dashboard: 'Översikt',
-      configuration: 'Konfiguration',
+      configuration: 'Konfigurationer',
       brokers: 'Mäklare',
       trades: 'Affärer',
       management: 'Aktiviteter',

@@ -26,6 +26,9 @@ const AppPricingPage = lazy(() =>
 const AccountConfigPage = lazy(() =>
   import('./pages/dashboard/AccountConfigPage').then(m => ({ default: m.AccountConfigPage })),
 )
+const ConfigurationsPage = lazy(() =>
+  import('./pages/dashboard/ConfigurationsPage').then(m => ({ default: m.ConfigurationsPage })),
+)
 const CopierEnginePage = lazy(() =>
   import('./pages/dashboard/CopierEnginePage').then(m => ({ default: m.CopierEnginePage })),
 )
@@ -146,6 +149,7 @@ export default function App() {
             <Route element={<AppShell />}>
             <Route path="/dashboard/*" element={<DashboardRouteAnchor />} />
             <Route path="/brokers" element={<LazyPage><AccountConfigPage /></LazyPage>} />
+            <Route path="/configurations" element={<LazyPage><ConfigurationsPage /></LazyPage>} />
             <Route path="/account-configuration" element={<Navigate to="/brokers" replace />} />
             <Route path="/account-trades" element={<LazyPage><TradesPage /></LazyPage>} />
             <Route path="/channels" element={<LazyPage><CopierEnginePage /></LazyPage>} />

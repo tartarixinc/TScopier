@@ -14,7 +14,7 @@ export const chromeRu: AppChromeTranslations = {
     },
     items: {
       dashboard: 'Панель',
-      configuration: 'Конфигурация',
+      configuration: 'Конфигурации',
       brokers: 'Брокеры',
       trades: 'Сделки',
       management: 'Активности',

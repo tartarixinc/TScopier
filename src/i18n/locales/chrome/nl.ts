@@ -14,7 +14,7 @@ export const chromeNl: AppChromeTranslations = {
     },
     items: {
       dashboard: 'Dashboard',
-      configuration: 'Configuratie',
+      configuration: 'Configuraties',
       brokers: 'Brokers',
       trades: 'Trades',
       management: 'Activiteiten',

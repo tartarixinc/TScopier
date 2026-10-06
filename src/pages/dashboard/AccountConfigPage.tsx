@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, useMemo, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Plus, Trash2, Server, Activity, GitBranch, Eye, DollarSign, RefreshCw,
   SlidersHorizontal, Radio, Target, Filter, Wallet, Link2,
@@ -766,6 +766,7 @@ async function resolveLatestManualSettingsPlanContext(args: {
 export function AccountConfigPage() {
   const t = useT()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const cm = t.accountConfig.configureModal
   const bl = t.accountConfig.brokerList
 
@@ -814,6 +815,7 @@ export function AccountConfigPage() {
     upsertBroker,
   } = useBrokerAccounts()
   const brokerBalanceRefreshStartedRef = useRef(false)
+  const configureQueryHandledRef = useRef<string | null>(null)
   const { openAddTradingAccount, pendingConfigureBrokerId, clearPendingConfigureBroker } = useAddTradingAccount()
   const {
     subscription,
@@ -1692,7 +1694,7 @@ export function AccountConfigPage() {
 
   // ── Configure modal ────────────────────────────────────────────────────
 
-  const openConfigureModal = async (broker: BrokerAccount) => {
+  const openConfigureModal = async (broker: BrokerAccount, preferredChannelId?: string | null) => {
     const fresh = brokers.find(b => b.id === broker.id) ?? broker
     const { rows, error: configLoadErr } = await fetchBrokerChannelTradingConfigRows(supabase, fresh.id)
     if (configLoadErr) {
@@ -1712,9 +1714,13 @@ export function AccountConfigPage() {
     setChannelCopyLimitState(limitStateMap)
     resetConfigSectionScroll('signal_examples')
     const draft = buildChannelConfigDraftFromBroker(merged, channelIds, keywordFiltersEnabled)
+    const preferred = normalizeChannelUuid(preferredChannelId)
+    const preferredMatch = preferred
+      ? channelIds.find(id => normalizeChannelUuid(id) === preferred) ?? null
+      : null
     const nextDraft = {
       ...draft,
-      selectedChannelId: draft.selectedChannelId ?? channelOptions[0]?.id ?? null,
+      selectedChannelId: preferredMatch ?? draft.selectedChannelId ?? channelOptions[0]?.id ?? null,
     }
     setConfigDraft(nextDraft)
     setConfigSavedSignature(
@@ -1750,6 +1756,31 @@ export function AccountConfigPage() {
     configAccount?.id,
     clearPendingConfigureBroker,
   ])
+
+  useEffect(() => {
+    const brokerId = searchParams.get('configure')
+    const channelId = searchParams.get('channel')
+    if (!brokerId || !channelId || brokersLoading) return
+    if (channelsLoading && channelOptions.length === 0) return
+    const key = `${brokerId}:${channelId}`
+    if (configureQueryHandledRef.current === key) return
+    configureQueryHandledRef.current = key
+    const clearQuery = () => {
+      setSearchParams(prev => {
+        const next = new URLSearchParams(prev)
+        next.delete('configure')
+        next.delete('channel')
+        return next
+      }, { replace: true })
+    }
+    const broker = brokers.find(b => b.id === brokerId)
+    if (!broker) {
+      clearQuery()
+      return
+    }
+    void openConfigureModal(broker, channelId).finally(clearQuery)
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- open once for the configurations-page deep link
+  }, [searchParams, brokers, brokersLoading, channelsLoading, channelOptions.length])
 
   const selectConfigureChannel = (channelId: string) => {
     setConfigDraft(prev => ({ ...prev, selectedChannelId: channelId }))

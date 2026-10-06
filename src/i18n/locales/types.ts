@@ -821,6 +821,29 @@ export interface AccountConfigBrokerConnectedSuccessTranslations {
   configure: string
 }
 
+export interface ConfigurationsPageTranslations {
+  title: string
+  searchDescription: string
+  copyingOn: string
+  copyingOff: string
+  login: string
+  noChannelsLinked: string
+  emptyTitle: string
+  emptyBody: string
+  openBrokers: string
+  unknownChannel: string
+  on: string
+  off: string
+  lotSize: string
+  layeringMode: string
+  layeringAutomatic: string
+  layeringPending: string
+  allSymbols: string
+  none: string
+  editConfiguration: string
+  loadError: string
+}
+
 export interface AccountConfigTranslations {
   brokersEmptyTitle: string
   brokersEmptySubtitle: string
@@ -1633,6 +1656,7 @@ export interface Translations {
   common: CommonTranslations
   pricing: PricingTranslations
   landing: LandingTranslations
+  configurationsPage: ConfigurationsPageTranslations
   accountConfig: AccountConfigTranslations
   dashboard: DashboardTranslations
   management: ManagementTranslations
