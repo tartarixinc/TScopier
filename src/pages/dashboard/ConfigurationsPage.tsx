@@ -96,6 +96,30 @@ function mergeOrder(order: string[], ids: string[]): string[] {
   return [...kept, ...extra]
 }
 
+const CHANNEL_ORDER_KEY = 'tscopier:configurations:channel-order:'
+const BROKER_ORDER_KEY = 'tscopier:configurations:broker-order:'
+
+function readStoredOrder(key: string): string[] {
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return []
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((id): id is string => typeof id === 'string' && id.length > 0)
+  } catch {
+    return []
+  }
+}
+
+function writeStoredOrder(key: string, ids: string[]) {
+  try {
+    if (ids.length === 0) localStorage.removeItem(key)
+    else localStorage.setItem(key, JSON.stringify(ids))
+  } catch {
+    // A full quota or private mode should not block reshuffling.
+  }
+}
+
 function sameOrder(left: string[], right: string[]): boolean {
   return left.length === right.length && left.every((id, index) => id === right[index])
 }
@@ -171,17 +195,36 @@ export function ConfigurationsPage() {
   const [placedChannelIds, setPlacedChannelIds] = useState<string[]>([])
   const [linkError, setLinkError] = useState<string | null>(null)
   const [configSaveError, setConfigSaveError] = useState<string | null>(null)
-  const [channelOrder, setChannelOrder] = useState<string[]>([])
-  const [brokerOrder, setBrokerOrder] = useState<string[]>([])
+  const [channelOrder, setChannelOrder] = useState<string[]>(() =>
+    user?.id ? readStoredOrder(`${CHANNEL_ORDER_KEY}${user.id}`) : [],
+  )
+  const [brokerOrder, setBrokerOrder] = useState<string[]>(() =>
+    user?.id ? readStoredOrder(`${BROKER_ORDER_KEY}${user.id}`) : [],
+  )
+  const [storedOrderUserId, setStoredOrderUserId] = useState<string | null>(() => user?.id ?? null)
   const [removedChannelIds, setRemovedChannelIds] = useState<string[]>([])
   const linkingRef = useRef(false)
   const latestBrokersRef = useRef<BrokerAccount[]>([])
   const linkChainRef = useRef(Promise.resolve())
+  const displayedChannelOrderRef = useRef<string[]>([])
   const configRowsRef = useRef(configRows)
   const settingsSaveRef = useRef(Promise.resolve())
   configRowsRef.current = configRows
 
   const brokerIdsKey = brokers.map(broker => broker.id).join(',')
+
+  useEffect(() => {
+    if (!user?.id) return
+    setChannelOrder(readStoredOrder(`${CHANNEL_ORDER_KEY}${user.id}`))
+    setBrokerOrder(readStoredOrder(`${BROKER_ORDER_KEY}${user.id}`))
+    setStoredOrderUserId(user.id)
+  }, [user?.id])
+
+  useEffect(() => {
+    if (!user?.id || storedOrderUserId !== user.id) return
+    writeStoredOrder(`${CHANNEL_ORDER_KEY}${user.id}`, channelOrder)
+    writeStoredOrder(`${BROKER_ORDER_KEY}${user.id}`, brokerOrder)
+  }, [user?.id, storedOrderUserId, channelOrder, brokerOrder])
 
   useEffect(() => {
     if (!user?.id) {
@@ -269,7 +312,10 @@ export function ConfigurationsPage() {
       .map(channel => channel.id.toLowerCase())
       .filter(id => linked.has(id) || placed.has(id))
     const knownSet = new Set(known)
-    return [...known, ...linkedChannelIds.filter(id => !knownSet.has(id))]
+    // Channel rows arrive newest-first. Show older ones above so a channel
+    // just added lands at the bottom of the column.
+    const oldestFirst = [...known].reverse()
+    return [...oldestFirst, ...linkedChannelIds.filter(id => !knownSet.has(id))]
   }, [channels, linkedChannelIds, placedChannelIds])
 
   const availableChannels = useMemo(() => {
@@ -280,6 +326,10 @@ export function ConfigurationsPage() {
   const placeChannel = (channelId: string) => {
     const id = channelId.toLowerCase()
     setPlacedChannelIds(prev => (prev.includes(id) ? prev : [...prev, id]))
+    setChannelOrder(prev => {
+      const base = (prev.length > 0 ? prev : displayedChannelOrderRef.current).filter(item => item !== id)
+      return [...base, id]
+    })
     setAddChannelOpen(false)
   }
 
@@ -443,9 +493,12 @@ export function ConfigurationsPage() {
     () => mergeOrder(channelOrder, mapChannelIds).filter(id => !removedChannelIds.includes(id)),
     [channelOrder, mapChannelIds, removedChannelIds],
   )
+  displayedChannelOrderRef.current = orderedChannelIds
   const orderedBrokers = useMemo(() => {
     const hidden = new Set(removedChannelIds)
-    const ids = mergeOrder(brokerOrder, mergedBrokers.map(broker => broker.id))
+    // Broker accounts arrive newest-first. Reverse so a broker just added
+    // is the last card, and keep any dragged order ahead of that.
+    const ids = mergeOrder(brokerOrder, [...mergedBrokers].reverse().map(broker => broker.id))
     return ids.flatMap(id => {
       const broker = mergedBrokers.find(item => item.id === id)
       if (!broker) return []
