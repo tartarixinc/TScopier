@@ -16,6 +16,8 @@ export type ClosedTradeFillRow = {
   id: string
   broker_account_id: string | null
   metaapi_order_id: string | null
+  /** Captured broker position identity; preferred over the send ticket. */
+  broker_position_ticket?: string | null
   closed_at: string | null
   close_price: number | null
   profit: number | null
@@ -242,7 +244,9 @@ export function planClosedTradeUpdates(
 ): ClosedTradeFillUpdate[] {
   const updates: ClosedTradeFillUpdate[] = []
   for (const trade of trades) {
-    const ticket = Number(trade.metaapi_order_id)
+    // Broker history is keyed by the position ticket; the row may hold the send
+    // ticket. Prefer whichever identity was captured at fill time.
+    const ticket = Number(trade.broker_position_ticket ?? trade.metaapi_order_id)
     if (!Number.isFinite(ticket) || ticket <= 0) continue
     const fill = fills.get(ticket)
     if (!fill) continue

@@ -157,7 +157,9 @@ export async function tryBrokerFallbackClose(args: {
             .update(patch)
             .eq('user_id', signal.user_id)
             .eq('broker_account_id', broker.id)
-            .eq('metaapi_order_id', String(order.ticket))
+            // The broker reports the position ticket; the row may hold the send
+            // ticket. Match either so a confirmed close is never left open.
+            .or(`metaapi_order_id.eq.${Number(order.ticket)},broker_position_ticket.eq.${Number(order.ticket)}`)
             .in('status', ['open', 'pending']),
         )
         if (signal.channel_id) {

@@ -324,6 +324,22 @@ locks in drift rather than fixing it.
   `basketReconcileTargets`, `diagnostics/rebalanceOpenBaskets` — same class,
   not individually measured.**
 
+**Fixes applied for these (this checkout):** `planClosedTradeUpdates` now
+matches on `broker_position_ticket ?? metaapi_order_id` and
+`closedTradeFillMonitor` selects the column, so a row whose identity was
+captured at fill time fills its close price and profit;
+`managementBrokerClose` settles the row with an either-column match
+(`metaapi_order_id` or `broker_position_ticket`) so a confirmed close is never
+left open. Tests cover both.
+
+**Rate limiting (verified 2026-10-07):** this is the **same** issue already
+fixed on staging, not a new one. `931347e9` added the broker rate pacer with an
+order-priority lane and routed every bridge call through it (reads included, as
+background traffic). That commit is on staging; production (release `e188ff09`)
+has only the per-account gate and no pacer, which is why its
+`closedTradeFillMonitor` bursts history reads and gets `Too many requests`.
+Nothing more to build for it — it needs the staging work merged to production.
+
 **Newly evidenced live problem (not from the review):** the shared MTAPI
 bridge is rate-limiting the P&L fill monitor on production
 (`history read failed … Too many requests`), which leaves close price and
