@@ -190,3 +190,13 @@ test('historyTicketCloseMatch: missing ticket in the row or in the trade proves 
   assert.equal(historyTicketCloseMatch(trade(), []), false)
   assert.equal(historyTicketCloseMatch(trade(), [null, 'nonsense', [1, 2]]), false)
 })
+
+test('historyTicketCloseMatch: a close row for the captured position ticket proves closure (order ticket differs)', () => {
+  // B2: on MT5 the send ticket and the position ticket differ. The proof must
+  // accept either, so a row whose identity was captured at fill time closes.
+  const positionOnly = { ...trade(), metaapi_order_id: '5001', broker_position_ticket: '7001' }
+  // History is keyed by the position ticket, not the sent order ticket.
+  assert.equal(historyTicketCloseMatch(positionOnly, [closedMtRow({ ticket: 7001 })]), true)
+  // A row with the order ticket only must NOT match the position-ticket close row.
+  assert.equal(historyTicketCloseMatch({ ...trade(), metaapi_order_id: '5001' }, [closedMtRow({ ticket: 7001 })]), false)
+})

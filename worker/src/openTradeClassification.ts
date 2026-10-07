@@ -158,18 +158,24 @@ export function matchClosedHistory(
  * position closed: each branch only recognises its own row shape, so a
  * mismatch fails closed to `false` (no cancel) rather than the reverse.
  *
- * Used by `partialTpMonitor`'s terminal-cancel gate. `openTradeReconcile` still
- * uses the comment-tolerant `matchClosedHistory` behind its own snapshot gates.
+ * Used by `partialTpMonitor`'s terminal-cancel gate and, since the B1 change,
+ * by `openTradeReconcile`'s non-flat path. The flat-account path still uses the
+ * comment-tolerant `matchClosedHistory` behind its own session gates.
  */
 export function historyTicketCloseMatch(
   trade: ClassifyTradeRow,
   closedOrders: unknown[],
   provider: string = 'mtapi',
 ): boolean {
-  const storedRaw = Number(trade.metaapi_order_id)
-  const storedTicket = Number.isFinite(storedRaw) && storedRaw > 0 ? storedRaw : null
-  if (storedTicket == null) return false
-  return extractClosedTradeFillsByTicket(closedOrders, 'trades', provider).has(storedTicket)
+  // The row's identity may live in either column: the send ticket, the captured
+  // broker position ticket, or both. A positive close record for *any* of them
+  // is proof this trade is closed.
+  const candidates = [trade.broker_position_ticket, trade.metaapi_order_id]
+    .map(value => Number(value))
+    .filter(value => Number.isFinite(value) && value > 0)
+  if (!candidates.length) return false
+  const fills = extractClosedTradeFillsByTicket(closedOrders, 'trades', provider)
+  return candidates.some(ticket => fills.has(ticket))
 }
 
 export function classifyOpenTrade(args: {

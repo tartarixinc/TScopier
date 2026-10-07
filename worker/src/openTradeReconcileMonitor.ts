@@ -104,6 +104,7 @@ export class OpenTradeReconcileMonitor {
           // An empty position list only means "flat" when the session answers
           // its health check; otherwise the loop keeps deferring as before.
           () => runtime.api.checkConnect(runtime.sessionId),
+          runtime.provider || 'fxsocket',
         )
         if (closed > 0) {
           totalClosed += closed
