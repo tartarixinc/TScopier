@@ -243,16 +243,50 @@ export function resolveCanonicalOpenPosition(args: {
   }
 }
 
+/**
+ * The broker account logins present in a live-position snapshot. Used to
+ * corroborate that an open-positions read actually belongs to the account we
+ * asked about before concluding that a row is gone: a non-empty snapshot with
+ * none of our login is a wrong/untrusted read, not proof of absence.
+ */
+export function snapshotLogins(openedOrders: unknown[]): Set<string> {
+  const out = new Set<string>()
+  const add = (value: unknown): void => {
+    if (value == null || typeof value === 'object') return
+    const text = String(value).trim()
+    if (text) out.add(text)
+  }
+  for (const raw of openedOrders) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue
+    const row = raw as Record<string, unknown>
+    add(row.login)
+    add(row.Login)
+    for (const nested of ['dealInternalIn', 'DealInternalIn', 'dealInternalOut', 'DealInternalOut', 'position', 'Position'] as const) {
+      const inner = row[nested]
+      if (inner && typeof inner === 'object' && !Array.isArray(inner)) {
+        const obj = inner as Record<string, unknown>
+        add(obj.login)
+        add(obj.Login)
+      }
+    }
+  }
+  return out
+}
+
 export async function persistCanonicalPositionTicket(
   supabase: SupabaseClient,
   trade: LiveTradeIdentity,
   resolution: CanonicalPositionResolution,
+  /** Callers that have *proved* the relationship (e.g. a partial close verified
+   * by a fresh read + volume check) may accept an attribute-only match. Never
+   * set this for a blind resolve. */
+  opts: { allowAttributeMatch?: boolean } = {},
 ): Promise<boolean> {
   if (resolution.status !== 'resolved') return false
   // Never persist a guess: only a ticket-based match (canonical ticket or an
   // explicit order→position relationship) may be frozen into the row. An
   // attribute-only match stays transient and is not written anywhere.
-  if (resolution.matchedBy === 'attributes') return false
+  if (resolution.matchedBy === 'attributes' && !opts.allowAttributeMatch) return false
   if (!resolution.replacement) return true
 
   const stored = String(resolution.storedTicket)
@@ -275,9 +309,14 @@ export async function persistCanonicalPositionTicket(
     return { persisted: !error && data?.id === trade.id, error }
   }
 
-  // A certain replacement is recorded in the position column and leaves the
-  // order ticket untouched (Option A).
-  const first = await apply({ broker_position_ticket: String(resolution.ticket) }, sourceColumn)
+  // A certain replacement is recorded in the position column. The stored
+  // ticket also moves: after a partial close the old ticket is dead at the
+  // broker, so any reader that still keys on `metaapi_order_id` (the remaining
+  // ones) must not be left pointing at it.
+  const first = await apply(
+    { broker_position_ticket: String(resolution.ticket), metaapi_order_id: String(resolution.ticket) },
+    sourceColumn,
+  )
   if (first.persisted) return true
 
   // Before the column exists the update is rejected; keep the legacy behaviour

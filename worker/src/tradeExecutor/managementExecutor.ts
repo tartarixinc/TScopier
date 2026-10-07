@@ -1298,6 +1298,10 @@ export async function applyManagement(
               ctx.supabase,
               { ...trade, metaapi_order_id: String(effectiveTicket) },
               postResolution,
+              // The partial close was just verified against a fresh broker read
+              // and the volume reduction, so the remaining position is provably
+              // this trade's — an attribute match here is not a blind guess.
+              { allowAttributeMatch: true },
             )
             if (!persisted) {
               throw new Error('partial close replacement ticket persistence failed')

@@ -6,13 +6,22 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { FxsocketBrokerClient } from './fxsocketClient'
 import { closeStaleOpenTrades } from './basketSlTpReconcile'
-import { persistCanonicalPositionTicket, resolveCanonicalOpenPosition } from './livePositionIdentity'
+import { persistCanonicalPositionTicket, resolveCanonicalOpenPosition, snapshotLogins } from './livePositionIdentity'
 import { historyTicketCloseMatch, matchClosedHistory } from './openTradeClassification'
 import { captureBusinessIssue } from './observability/businessEvents'
 import { purgeRangePendingLegsForBaskets, type BasketScope } from './rangePendingLegDelete'
 
 /** How far back to look for a close record when corroborating a ghost close. */
-const HISTORY_DAYS = Math.max(1, Number(process.env.OPEN_TRADE_RECONCILE_HISTORY_DAYS ?? 30))
+const historyDaysRaw = Number(process.env.OPEN_TRADE_RECONCILE_HISTORY_DAYS ?? 30)
+const HISTORY_DAYS = Math.max(1, Number.isFinite(historyDaysRaw) ? historyDaysRaw : 30)
+
+/** Minimum gap between `ABSENT_UNCONFIRMED_BY_HISTORY` events per account. */
+const absentAlertCooldownRaw = Number(process.env.OPEN_TRADE_RECONCILE_ALERT_COOLDOWN_MS ?? 30 * 60_000)
+const ABSENT_ALERT_COOLDOWN_MS = Math.max(
+  60_000,
+  Number.isFinite(absentAlertCooldownRaw) ? absentAlertCooldownRaw : 30 * 60_000,
+)
+const absentAlertLastAt = new Map<string, number>()
 
 /**
  * Corroborate a ghost close with a positive close record. Default on; set
@@ -97,6 +106,7 @@ export async function reconcileOpenTradesForBroker(
   openTrades: OpenTradeReconcileRow[],
   probeHealthy?: () => Promise<unknown>,
   provider: string = 'fxsocket',
+  expectedLogin?: string | null,
 ): Promise<number> {
   if (!openTrades.length) return 0
   const firstSnapshot = await api.openedOrders(metaapiAccountId)
@@ -187,6 +197,23 @@ export async function reconcileOpenTradesForBroker(
     return 0
   }
 
+  // Before using this snapshot to decide a row is gone, corroborate that it
+  // belongs to the account we asked about. A wrong or rotated bridge session
+  // can answer with another login's positions, which look "absent" for ours —
+  // that produced false ghost-close warnings (2026-10-07). Non-empty but
+  // nobody we know: an untrusted read, so defer.
+  if (expectedLogin && provider === 'mtapi') {
+    const logins = snapshotLogins(firstSnapshot)
+    if (logins.size > 0 && !logins.has(expectedLogin)) {
+      console.warn(
+        `[openTradeReconcile] OpenOrders snapshot does not belong to this account`
+        + ` account=${metaapiAccountId} expectedLogin=${expectedLogin}`
+        + ` seenLogins=${[...logins].slice(0, 3).join(',')} — deferring (untrusted read)`,
+      )
+      return 0
+    }
+  }
+
   // The reason is the whole point: 'stored ticket maps to multiple live
   // positions' and 'attributes match multiple live positions' have different
   // fixes, and neither was visible in the log before. Signal-derived symbol
@@ -242,6 +269,17 @@ export async function reconcileOpenTradesForBroker(
   // The second pass still validates the snapshot, but a row is no longer judged
   // gone by attribute ambiguity: a positive per-ticket close record in history
   // is what authorises the close (B1). Without the record the row is deferred.
+  if (expectedLogin && provider === 'mtapi') {
+    const secondLogins = snapshotLogins(secondSnapshot)
+    if (secondLogins.size > 0 && !secondLogins.has(expectedLogin)) {
+      console.warn(
+        `[openTradeReconcile] second OpenOrders snapshot does not belong to this account`
+        + ` account=${metaapiAccountId} expectedLogin=${expectedLogin} — deferring (untrusted read)`,
+      )
+      return 0
+    }
+  }
+
   let closedOrders: unknown[] | null = null
   const hasCloseProof = async (trade: OpenTradeReconcileRow): Promise<boolean> => {
     if (!requireClosedHistory()) return true
@@ -285,7 +323,8 @@ export async function reconcileOpenTradesForBroker(
       + ` reason="${item.reason}" — deferring (needs review)`,
     )
   }
-  if (deferred.length) {
+  if (deferred.length && Date.now() - (absentAlertLastAt.get(metaapiAccountId) ?? 0) >= ABSENT_ALERT_COOLDOWN_MS) {
+    absentAlertLastAt.set(metaapiAccountId, Date.now())
     captureBusinessIssue({
       category: 'reconciliation',
       event: 'reconciliation_needs_review',
