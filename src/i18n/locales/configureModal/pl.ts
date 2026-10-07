@@ -393,6 +393,7 @@ export const configureModalPl: ConfigureModalTranslations = {
     monitorIntroMulti: 'Pracownik monitoruje otwarte transakcje co kilka sekund. Zasady mają zastosowanie do każdej otwartej nogi (każda odnoga Multi Trade jest śledzona osobno).',
     moveSlTitle: 'Przesuń SL po ruchu',
     moveSlSubtitle: 'Automatycznie przesuń stop loss na próg rentowności (plus opcjonalnie częściowe zamknięcie), gdy cena osiągnie próg.',
+    basicPlanAutoManagementLimit: 'Automatyczne przesuwanie stop loss na próg rentowności jest dostępne w planie Advanced.',
     activeRule: 'Aktywna reguła:',
     triggerTitle: 'Trigger — przesuń SL, kiedy',
     triggerPips: 'Ruch Pipa',

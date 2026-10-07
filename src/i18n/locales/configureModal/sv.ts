@@ -393,6 +393,7 @@ export const configureModalSv: ConfigureModalTranslations = {
     monitorIntroMulti: 'Arbetaren övervakar öppna affärer med några sekunders mellanrum. Regler gäller per öppet ben (varje Multi Trade-ben spåras separat).',
     moveSlTitle: 'Flytta SL efter rörelse',
     moveSlSubtitle: 'Flytta automatiskt stop loss till breakeven (plus valfritt partiell stängning) när priset når din tröskel.',
+    basicPlanAutoManagementLimit: 'Att flytta stop loss automatiskt till breakeven är tillgängligt på den avancerade planen.',
     activeRule: 'Aktiv regel:',
     triggerTitle: 'Trigger — flytta SL när',
     triggerPips: 'Pip rörelse',

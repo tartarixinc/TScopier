@@ -5,6 +5,8 @@ import { resolveCurrentLivePosition } from '../livePositionIdentity'
 import { brokerHasLinkedSession, brokerSessionUuid } from './helpers'
 import type { TradeExecutorContext } from './context'
 import type { BrokerRow, SignalRow } from './types'
+import { TRADE_CLOSE_REASON } from '../tradeCloseReasons'
+import { applyCloseUpdate } from '../tradeCloseUpdate'
 
 export async function closeBasketForRevisionDirectionFlip(
   ctx: TradeExecutorContext,
@@ -24,7 +26,7 @@ export async function closeBasketForRevisionDirectionFlip(
 
     const { data: openTrades, error } = await ctx.supabase
       .from('trades')
-      .select('id,metaapi_order_id,symbol,signal_id,direction,lot_size,entry_price')
+      .select('id,metaapi_order_id,broker_position_ticket,symbol,signal_id,direction,lot_size,entry_price')
       .eq('user_id', row.user_id)
       .eq('broker_account_id', broker.id)
       .eq('signal_id', row.id)
@@ -35,13 +37,14 @@ export async function closeBasketForRevisionDirectionFlip(
     for (const trade of openTrades as Array<{
       id: string
       metaapi_order_id: string | null
+      broker_position_ticket?: string | null
       symbol: string
       signal_id: string
       direction: string
       lot_size: number
       entry_price: number | null
     }>) {
-      const ticket = Number(trade.metaapi_order_id)
+      const ticket = Number(trade.broker_position_ticket ?? trade.metaapi_order_id)
       if (!Number.isFinite(ticket) || ticket <= 0) {
         failed += 1
         continue
@@ -72,10 +75,14 @@ export async function closeBasketForRevisionDirectionFlip(
           })
           continue
         }
-        await ctx.supabase
-          .from('trades')
-          .update({ status: 'closed', closed_at: new Date().toISOString() })
-          .eq('id', trade.id)
+        await applyCloseUpdate(
+          {
+            status: 'closed',
+            closed_at: new Date().toISOString(),
+            close_reason: TRADE_CLOSE_REASON.SIGNAL_REVISION,
+          },
+          patch => ctx.supabase.from('trades').update(patch).eq('id', trade.id),
+        )
         closed += 1
         purgeScopes.push({ signalId: trade.signal_id, brokerAccountId: broker.id })
         await ctx.supabase.from('trade_execution_logs').insert({

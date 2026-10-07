@@ -1,11 +1,12 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
-import { createClient } from "npm:@supabase/supabase-js@2"
+import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2"
 import {
   parseSimpleConfig,
   toBacktestRunConfig,
   type BacktestRunMode,
 } from "../_shared/backtest/config.ts"
 import { sanitizeMarketDataErrorMessage } from "../_shared/backtest/fxsocketMarketData.ts"
+import { createHistoricalMarketDataSources } from "../_shared/backtest/marketDataSources.ts"
 import { executeBacktestRun } from "../_shared/backtest/runner.ts"
 import {
   deleteBacktestTrade,
@@ -18,6 +19,7 @@ import {
 } from "../_shared/backtest/tradeReplayData.ts"
 import {
   BacktestBrokerNotFoundError,
+  BacktestProviderAuthorityError,
   BacktestSymbolNotFoundError,
   resolveBacktestBroker,
 } from "../_shared/backtest/resolveBacktestBroker.ts"
@@ -26,11 +28,8 @@ import {
   assertBacktestMonthlyLimit,
   loadUserSubscription,
 } from "../_shared/subscriptionAccess.ts"
-import {
-  FxsocketApiError,
-  FxsocketClient,
-  isFxsocketConfigured,
-} from "../_shared/fxsocketClient.ts"
+import { FxsocketApiError } from "../_shared/fxsocketClient.ts"
+import { MtapiApiError } from "../_shared/mtapiClient.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -38,12 +37,21 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 }
 
+function scheduleBackgroundTask(promise: Promise<unknown>): boolean {
+  const runtime = (globalThis as typeof globalThis & {
+    EdgeRuntime?: { waitUntil(task: Promise<unknown>): void }
+  }).EdgeRuntime
+  if (!runtime?.waitUntil) return false
+  runtime.waitUntil(promise)
+  return true
+}
+
 function bad(status: number, msg: string) {
   return Response.json({ error: msg }, { status, headers: corsHeaders })
 }
 
 async function startBacktestRun(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   userId: string,
   simple: ReturnType<typeof parseSimpleConfig>,
   mode: BacktestRunMode,
@@ -58,20 +66,19 @@ async function startBacktestRun(
     return bad(400, "Select a symbol to backtest (profile signals first).")
   }
 
-  if (!isFxsocketConfigured(Deno.env)) {
-    return bad(503, "FXSOCKET_API_KEY not configured")
-  }
-
-  const fx = new FxsocketClient(Deno.env)
+  const sources = createHistoricalMarketDataSources(Deno.env)
 
   try {
-    await resolveBacktestBroker(supabase, fx, userId, symbolFilter[0]!)
+    await resolveBacktestBroker(supabase, sources, userId, symbolFilter[0]!)
   } catch (e) {
     if (e instanceof BacktestBrokerNotFoundError) {
       return bad(400, e.message)
     }
     if (e instanceof BacktestSymbolNotFoundError) {
       return bad(400, e.message)
+    }
+    if (e instanceof BacktestProviderAuthorityError) {
+      return bad(e.code === "PROVIDER_TRANSITION_ACTIVE" ? 409 : 503, e.message)
     }
     throw e
   }
@@ -105,7 +112,7 @@ async function startBacktestRun(
 
     await executeBacktestRun(
       supabase,
-      fx,
+      sources,
       runId,
       userId,
       cfg,
@@ -123,10 +130,7 @@ async function startBacktestRun(
       }).eq("id", runId)
     })
 
-  // @ts-ignore EdgeRuntime.waitUntil
-  if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
-    EdgeRuntime.waitUntil(runPromise)
-  } else {
+  if (!scheduleBackgroundTask(runPromise)) {
     await runPromise
   }
 
@@ -140,7 +144,7 @@ Deno.serve(async (req: Request) => {
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    )
+    ) as unknown as SupabaseClient
 
     const token = req.headers.get("Authorization")?.replace("Bearer ", "") ?? ""
     if (!token) return bad(401, "Unauthorized")
@@ -243,10 +247,7 @@ Deno.serve(async (req: Request) => {
         }
       })()
 
-      // @ts-ignore EdgeRuntime.waitUntil
-      if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
-        EdgeRuntime.waitUntil(syncPromise)
-      } else {
+      if (!scheduleBackgroundTask(syncPromise)) {
         await syncPromise
       }
 
@@ -290,12 +291,9 @@ Deno.serve(async (req: Request) => {
         return bad(400, "sl must be a positive number or empty")
       }
 
-      if (!isFxsocketConfigured(Deno.env)) {
-        return bad(503, "FXSOCKET_API_KEY not configured")
-      }
-      const fx = new FxsocketClient(Deno.env)
+      const sources = createHistoricalMarketDataSources(Deno.env)
 
-      const trade = await resimulateBacktestTrade(supabase, fx, userId, tradeId, {
+      const trade = await resimulateBacktestTrade(supabase, sources, userId, tradeId, {
         direction,
         entry_price,
         sl,
@@ -316,13 +314,10 @@ Deno.serve(async (req: Request) => {
       const tradeId = String(body.trade_id ?? "")
       if (!tradeId) return bad(400, "trade_id required")
 
-      if (!isFxsocketConfigured(Deno.env)) {
-        return bad(503, "FXSOCKET_API_KEY not configured")
-      }
-      const fx = new FxsocketClient(Deno.env)
+      const sources = createHistoricalMarketDataSources(Deno.env)
 
       try {
-        const replay = await fetchTradeReplayData(supabase, fx, userId, tradeId)
+        const replay = await fetchTradeReplayData(supabase, sources, userId, tradeId)
         return Response.json(replay, { headers: corsHeaders })
       } catch (e) {
         if (e instanceof TradeReplayNotFoundError) return bad(404, e.message)
@@ -362,7 +357,8 @@ Deno.serve(async (req: Request) => {
 
     return bad(400, `Unknown action: ${action}`)
   } catch (e) {
-    const status = e instanceof FxsocketApiError ? e.status
+    const status = e instanceof FxsocketApiError || e instanceof MtapiApiError ? e.status
+      : e instanceof BacktestProviderAuthorityError ? (e.code === "PROVIDER_TRANSITION_ACTIVE" ? 409 : 503)
       : e instanceof BacktestBrokerNotFoundError || e instanceof BacktestSymbolNotFoundError
         || e instanceof TradeReplayNotFoundError || e instanceof TradeReplayNoDataError ? 400
       : 500

@@ -6,6 +6,7 @@ import {
   cerebrasParseModel,
   cerebrasParseRetries,
   getUniversalParseMode,
+  humanReviewEscalationEnabled,
   isUniversalParseEnabled,
   universalParseReconcileModel,
   universalParseReconcileTimeoutMs,
@@ -145,5 +146,32 @@ describe('parseConfig', () => {
     delete process.env.CEREBRAS_API_KEY_3
     delete process.env.CEREBRAS_API_KEY
     assert.deepEqual(cerebrasParseApiKeys(), [])
+  })
+})
+
+describe('humanReviewEscalationEnabled', () => {
+  const prev = process.env.HUMAN_REVIEW_ESCALATION_ENABLED
+  after(() => {
+    if (prev != null) process.env.HUMAN_REVIEW_ESCALATION_ENABLED = prev
+    else delete process.env.HUMAN_REVIEW_ESCALATION_ENABLED
+  })
+
+  it('is deactivated by default', () => {
+    delete process.env.HUMAN_REVIEW_ESCALATION_ENABLED
+    assert.equal(humanReviewEscalationEnabled(), false)
+  })
+
+  it('activates on true/1/yes', () => {
+    for (const v of ['true', 'TRUE', '1', 'yes']) {
+      process.env.HUMAN_REVIEW_ESCALATION_ENABLED = v
+      assert.equal(humanReviewEscalationEnabled(), true, `expected true for ${v}`)
+    }
+  })
+
+  it('deactivates on false/0/no', () => {
+    for (const v of ['false', '0', 'no']) {
+      process.env.HUMAN_REVIEW_ESCALATION_ENABLED = v
+      assert.equal(humanReviewEscalationEnabled(), false, `expected false for ${v}`)
+    }
   })
 })

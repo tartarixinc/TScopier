@@ -3,8 +3,10 @@ import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 import { normalizeOrderResponse } from './fxsocketClient'
 import {
+  livePositionVolume,
   persistCanonicalPositionTicket,
   resolveCanonicalOpenPosition,
+  resolveCurrentLivePosition,
 } from './livePositionIdentity'
 
 describe('MTAPI live identity normalization', () => {
@@ -34,6 +36,26 @@ describe('MTAPI live identity normalization', () => {
   })
 })
 
+describe('broker live volume alias authority', () => {
+  it('accepts each supported single-field shape', () => {
+    assert.equal(livePositionVolume({ lots: 0.2 }), 0.2)
+    assert.equal(livePositionVolume({ volume: 0.3 }), 0.3)
+    assert.equal(livePositionVolume({ volumeCurrent: 0.4 }), 0.4)
+  })
+
+  it('accepts agreeing aliases', () => {
+    assert.equal(livePositionVolume({ lots: 0.2, volume: 0.2, volumeCurrent: 0.2 }), 0.2)
+  })
+
+  it('fails closed when positive aliases conflict', () => {
+    assert.equal(livePositionVolume({ volume: 0.2, volumeCurrent: 0.1 }), null)
+    assert.equal(livePositionVolume({ lots: 0.3, volume: 0.2 }), null)
+  })
+
+  it('ignores zero or invalid aliases when another positive alias is valid', () => {
+    assert.equal(livePositionVolume({ lots: 0, volume: 'invalid', volumeCurrent: 0.1 }), 0.1)
+  })
+})
 describe('canonical live position resolver', () => {
   const trade = {
     id: 'trade-1',
@@ -89,7 +111,7 @@ describe('canonical live position resolver', () => {
     assert.equal(result.status, 'ambiguous')
   })
 
-  it('persists an authoritative replacement with a stale-ticket CAS', async () => {
+  it('persists an authoritative replacement into the position column with a stale-ticket CAS', async () => {
     const calls: Array<[string, unknown]> = []
     const query = {
       update(payload: unknown) { calls.push(['update', payload]); return this },
@@ -104,16 +126,69 @@ describe('canonical live position resolver', () => {
     })
     assert.equal(await persistCanonicalPositionTicket(supabase as never, trade, resolution), true)
     assert.deepEqual(calls, [
-      ['update', { metaapi_order_id: '303' }],
+      ['update', { broker_position_ticket: '303' }],
       ['id', 'trade-1'],
       ['status', 'open'],
       ['metaapi_order_id', '101'],
     ])
   })
 
+  it('CASes on the position column when the replacement came from a captured position ticket', async () => {
+    const calls: Array<[string, unknown]> = []
+    const query = {
+      update(payload: unknown) { calls.push(['update', payload]); return this },
+      eq(column: string, value: unknown) { calls.push([column, value]); return this },
+      select() { return this },
+      async maybeSingle() { return { data: { id: 'trade-1' }, error: null } },
+    }
+    const supabase = { from: () => query }
+    const capturedTrade = { ...trade, broker_position_ticket: '101' }
+    const resolution = resolveCanonicalOpenPosition({
+      trade: capturedTrade,
+      openedOrders: [{ type: 0, ticket: 303, orderTicket: 101, positionTicket: 303 }],
+    })
+    assert.equal(await persistCanonicalPositionTicket(supabase as never, capturedTrade, resolution), true)
+    assert.deepEqual(calls, [
+      ['update', { broker_position_ticket: '303' }],
+      ['id', 'trade-1'],
+      ['status', 'open'],
+      ['broker_position_ticket', '101'],
+    ])
+  })
+
+  it('falls back to metaapi_order_id when the position column is missing', async () => {
+    const updates: Array<Record<string, unknown>> = []
+    let attempt = 0
+    const query = {
+      update(payload: Record<string, unknown>) { updates.push(payload); return this },
+      eq() { return this },
+      select() { return this },
+      async maybeSingle() {
+        attempt += 1
+        if (attempt === 1) {
+          return { data: null, error: { code: 'PGRST204', message: "Could not find the 'broker_position_ticket' column of 'trades' in the schema cache" } }
+        }
+        return { data: { id: 'trade-1' }, error: null }
+      },
+    }
+    const supabase = { from: () => query }
+    const resolution = resolveCanonicalOpenPosition({
+      trade,
+      openedOrders: [{ type: 0, ticket: 303, orderTicket: 101, positionTicket: 303 }],
+    })
+    assert.equal(await persistCanonicalPositionTicket(supabase as never, trade, resolution), true)
+    assert.deepEqual(updates, [
+      { broker_position_ticket: '303' },
+      { metaapi_order_id: '303' },
+    ])
+  })
+
   it('management partial_profit sends the resolved effectiveTicket', () => {
     const source = readFileSync(require.resolve('./tradeExecutor/managementExecutor'), 'utf8')
-    assert.match(source, /else if \(action === 'partial_profit'\)[\s\S]*?orderClose\(uuid, \{ ticket: effectiveTicket, lots \}\)/)
+    assert.match(
+      source,
+      /else if \(action === 'partial_profit'\)[\s\S]*?orderClose\(uuid, \{ ticket: effectiveTicket, lots: plan\.closeVolume \}\)/,
+    )
   })
 })
 
@@ -169,5 +244,93 @@ describe('MTAPI bridge rows in open-trade reconcile', () => {
     })
     assert.equal(result.status, 'resolved')
     if (result.status === 'resolved') assert.equal(result.matchedBy, 'attributes')
+  })
+})
+
+describe('broker_position_ticket preference', () => {
+  const positions = [{
+    ticket: 7001,
+    orderTicket: 5001,
+    orderType: 'Buy',
+    state: 'Filled',
+    symbol: 'XAUUSD',
+    lots: 0.05,
+    openPrice: 4146.6,
+  }]
+
+  it('prefers the captured position ticket over the stored order ticket', () => {
+    const result = resolveCanonicalOpenPosition({
+      trade: {
+        id: 'trade-pos',
+        metaapi_order_id: '5001',          // order ticket, matches the row's orderTicket
+        broker_position_ticket: '7001',    // captured position ticket
+        symbol: 'XAUUSD',
+        direction: 'buy',
+        lot_size: 0.05,
+        entry_price: 4146.6,
+      },
+      openedOrders: positions,
+    })
+    assert.equal(result.status, 'resolved')
+    if (result.status === 'resolved') {
+      assert.equal(result.ticket, 7001)
+      assert.equal(result.matchedBy, 'canonical_ticket')
+    }
+  })
+
+  it('falls back to metaapi_order_id when no position ticket was captured', () => {
+    const result = resolveCanonicalOpenPosition({
+      trade: {
+        id: 'trade-no-pos',
+        metaapi_order_id: '5001',
+        symbol: 'XAUUSD',
+        direction: 'buy',
+        lot_size: 0.05,
+        entry_price: 4146.6,
+      },
+      openedOrders: positions,
+    })
+    assert.equal(result.status, 'resolved')
+    if (result.status === 'resolved') assert.equal(result.ticket, 7001)
+  })
+})
+
+describe('attribute-only matches never persist or act', () => {
+  const attrTrade = {
+    id: 'trade-attr',
+    metaapi_order_id: '999999',
+    symbol: 'XAUUSD',
+    direction: 'buy',
+    lot_size: 0.05,
+    entry_price: 4146.6,
+  }
+  const rows = [{ type: 0, ticket: 7001, symbol: 'XAUUSD', lots: 0.05, openPrice: 4146.6 }]
+
+  it('persistCanonicalPositionTicket refuses an attribute-only replacement', async () => {
+    const calls: unknown[] = []
+    const query = {
+      update(payload: unknown) { calls.push(payload); return this },
+      eq() { return this },
+      select() { return this },
+      async maybeSingle() { return { data: { id: 'trade-attr' }, error: null } },
+    }
+    const supabase = { from: () => query }
+    const resolution = resolveCanonicalOpenPosition({ trade: attrTrade, openedOrders: rows })
+    assert.equal(resolution.status, 'resolved')
+    if (resolution.status === 'resolved') assert.equal(resolution.matchedBy, 'attributes')
+    assert.equal(await persistCanonicalPositionTicket(supabase as never, attrTrade, resolution), false)
+    assert.equal(calls.length, 0)
+  })
+
+  it('resolveCurrentLivePosition fails closed for an attribute-only match', async () => {
+    const api = { openedOrders: async () => rows }
+    const res = await resolveCurrentLivePosition({
+      supabase: {} as never,
+      api: api as never,
+      sessionId: 'session-1',
+      trade: attrTrade,
+    })
+    assert.equal(res.status, 'ambiguous')
+    if (res.status === 'ambiguous') assert.match(res.reason, /attributes/)
   })
 })

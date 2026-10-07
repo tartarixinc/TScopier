@@ -1,6 +1,11 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { missingRequiredSlFailure } from './entryPrepareMissingSl'
+import {
+  isExplicitProviderNewOrder,
+  missingRequiredSlFailure,
+  shouldEnforceSingleOpenSymbolSlot,
+  shouldRunMissingRequiredSlPolicy,
+} from './entryPrepareMissingSl'
 import type { ManualSettings, ParsedSignal } from '../manualPlanner'
 
 function parsed(overrides: Partial<ParsedSignal>): ParsedSignal {
@@ -199,6 +204,28 @@ describe('missingRequiredSlFailure', () => {
     assert.equal(result, null)
   })
 
+  it('allows RR-based SL fallback when TP and an entry anchor are usable', () => {
+    const result = missingRequiredSlFailure(parsed({
+      entry_price: 2300,
+      tp: [2320],
+      raw_instruction: 'GOLD BUY 2300 TP 2320',
+    }), {
+      add_new_trades_to_existing: false,
+      rr_for_sl_enabled: true,
+      rr_for_sl: 2,
+    })
+    assert.equal(result, null)
+  })
+
+  it('bypasses the single-symbol slot only for explicit provider New Order intent', () => {
+    const manual = { add_new_trades_to_existing: false }
+    const explicit = parsed({ provider_order_type: 'new', re_enter: true })
+    assert.equal(isExplicitProviderNewOrder(explicit), true)
+    assert.equal(shouldEnforceSingleOpenSymbolSlot(explicit, manual), false)
+    assert.equal(shouldEnforceSingleOpenSymbolSlot(parsed({ re_enter: true }), manual), true)
+    assert.equal(shouldEnforceSingleOpenSymbolSlot(parsed({}), manual), true)
+  })
+
   it('does not treat predefined TP alone as a stop-loss fallback', () => {
     const result = missingRequiredSlFailure(parsed({
       raw_instruction: 'GOLD BUY NOW TP 2400',
@@ -207,5 +234,19 @@ describe('missingRequiredSlFailure', () => {
       withheldByProvider: false,
       reason: 'entry_tp_without_sl',
     })
+  })
+})
+
+describe('missing-SL policy on Telegram revisions', () => {
+  it('re-runs safety for an unmaterialized manual revision', () => {
+    assert.equal(shouldRunMissingRequiredSlPolicy(true, false), true)
+  })
+
+  it('does not treat an already-materialized revision as a new entry attempt', () => {
+    assert.equal(shouldRunMissingRequiredSlPolicy(true, true), false)
+  })
+
+  it('does not apply manual-entry policy to non-manual execution', () => {
+    assert.equal(shouldRunMissingRequiredSlPolicy(false, false), false)
   })
 })

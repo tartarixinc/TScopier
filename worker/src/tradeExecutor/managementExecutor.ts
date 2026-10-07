@@ -4,6 +4,8 @@ import {
   upsertChannelActiveTradeParams,
   type ChannelActiveTradeParams
 } from '../channelActiveTradeParams'
+import { TRADE_CLOSE_REASON } from '../tradeCloseReasons'
+import { applyCloseUpdate } from '../tradeCloseUpdate'
 import { resolveChannelTradingConfig } from '../channelTradingConfig'
 import {
   breakevenStopLossForSymbol,
@@ -22,9 +24,16 @@ import {
   selectWorseImmediateLegsForCweInstruction,
 } from '../closeWorseEntries'
 import { tryBrokerFallbackClose, cancelChannelBrokerPendingOrders } from '../managementBrokerClose'
-import { resolveCanonicalOpenPosition, resolveCurrentLivePosition } from '../livePositionIdentity'
+import {
+  livePositionVolume,
+  persistCanonicalPositionTicket,
+  resolveCanonicalOpenPosition,
+  resolveCurrentLivePosition,
+} from '../livePositionIdentity'
+import { planPartialClose, verifyPartialCloseReduction } from '../partialClosePolicy'
 import { closeWithVerification } from '../managementClose'
 import { findOpenedRowByTicket, readBrokerOrderStopLoss } from '../signalEntryPendingHelpers'
+import { cancelSignalRangeEntryWaitsForSignal } from '../signalRangeEntryHelpers'
 import { applyMgmtModifyToBasketGroups } from '../managementModifyBaskets'
 import {
   allChannelModifySymbolBuckets,
@@ -37,7 +46,7 @@ import {
   type ChannelStopApplyResult,
 } from '../channelStopApply'
 import type { MgmtExecOptions, MgmtExecResult } from '../mgmtExecOptions'
-import { loadRangePendingLegsInMgmtScope, pendingLegsToCancelScopes, updateRangePendingLegsForManagement } from '../managementPendingLegs'
+import { loadExactProviderCloseArtifacts, loadRangePendingLegsInMgmtScope, pendingLegsToCancelScopes, updateRangePendingLegsForManagement } from '../managementPendingLegs'
 import {
   explicitMgmtSymbol,
   expandMgmtRowsToFullBaskets,
@@ -618,19 +627,33 @@ export async function applyManagement(
         mgmtSymbolHint = parentSym
       }
     }
-    const explicitParentSignalId = replyScoped
+    const providerOrderScoped = parsed.provider_order_type === 'close'
+      && typeof parsed.provider_signal_number === 'number'
+      && Number.isFinite(parsed.provider_signal_number)
+      && parsed.provider_signal_number > 0
+    if (providerOrderScoped && !signal.parent_signal_id) {
+      await skipMgmtSignalWithLog(ctx, signal, 'provider_order_id_unresolved', {
+        action: actionPre,
+        provider_external_order_id: parsed.provider_signal_number,
+      })
+      return emptyMgmtResult(legConcurrency)
+    }
+    const explicitParentSignalId = (replyScoped || providerOrderScoped)
       ? String(signal.parent_signal_id ?? '').trim()
       : ''
     const hasExplicitMgmtParent = explicitParentSignalId.length > 0
-    const explicitBasketAnchorId = hasExplicitMgmtParent
-      ? await ctx.resolveBasketAnchorSignalIdForOpenTrades({
-        userId: signal.user_id,
-        brokerAccountIds,
-        channelId: signal.channel_id,
-        parentSignalId: explicitParentSignalId,
-        symbolHint: scopeSymbolFilter ?? symbolFromText,
-      })
-      : null
+    const mgmtScopeLabel = providerOrderScoped ? 'provider_order' : replyScoped ? 'reply_basket' : 'channel'
+    const explicitBasketAnchorId = providerOrderScoped
+      ? explicitParentSignalId
+      : hasExplicitMgmtParent
+        ? await ctx.resolveBasketAnchorSignalIdForOpenTrades({
+          userId: signal.user_id,
+          brokerAccountIds,
+          channelId: signal.channel_id,
+          parentSignalId: explicitParentSignalId,
+          symbolHint: scopeSymbolFilter ?? symbolFromText,
+        })
+        : null
     let channelRows: MgmtTradeRow[] = []
     if (hasExplicitMgmtParent) {
       const scoped = explicitBasketAnchorId
@@ -721,11 +744,46 @@ export async function applyManagement(
     const pendingLegs = await loadRangePendingLegsInMgmtScope(ctx.supabase, {
       userId: signal.user_id,
       brokerAccountIds,
-      channelId: replyScoped ? null : signal.channel_id,
-      basketSignalId: replyScoped ? basketAnchorId : null,
+      channelId: hasExplicitMgmtParent ? null : signal.channel_id,
+      basketSignalId: hasExplicitMgmtParent ? basketAnchorId : null,
       symbolFilter: symbolFromText,
+      includeBrokerPending: providerOrderScoped,
     })
 
+
+    let providerArtifactCount = pendingLegs.length
+    if (providerOrderScoped) {
+      const exactArtifacts = await loadExactProviderCloseArtifacts(ctx.supabase, {
+        parentSignalId: explicitParentSignalId,
+        brokerAccountIds,
+      })
+      if (exactArtifacts.error) {
+        await skipMgmtSignalWithLog(ctx, signal, 'provider_order_scope_lookup_failed', {
+          action,
+          parent_signal_id: explicitParentSignalId,
+          mgmt_scope: mgmtScopeLabel,
+          error: exactArtifacts.error,
+        })
+        return emptyMgmtResult(legConcurrency)
+      }
+      providerArtifactCount += exactArtifacts.entryPendingCount + exactArtifacts.waitingCount
+      for (const scope of exactArtifacts.scopes) {
+        cancelledPendingScopes.add(JSON.stringify(scope satisfies RangePendingCancelScope))
+      }
+      for (const scope of exactArtifacts.waitScopes) {
+        const broker = byBroker.get(scope.brokerAccountId)
+        if (!broker || isPendingCancelBlocked(
+          normalizeChannelMessageFiltersMap(broker.channel_message_filters),
+          signal.channel_id,
+        )) continue
+        await cancelSignalRangeEntryWaitsForSignal(
+          ctx.supabase,
+          explicitParentSignalId,
+          scope.brokerAccountId,
+          'signal_closed',
+        )
+      }
+    }
     if (action === 'close') {
       for (const scope of pendingLegsToCancelScopes(pendingLegs)) {
         cancelledPendingScopes.add(JSON.stringify(scope satisfies RangePendingCancelScope))
@@ -834,6 +892,37 @@ export async function applyManagement(
       return cweResult
     }
 
+    if (action === 'close' && providerOrderScoped && !rows.length) {
+      if (providerArtifactCount > 0) {
+        const scopes = Array.from(cancelledPendingScopes)
+          .map(enc => JSON.parse(enc) as RangePendingCancelScope)
+          .filter(scope => {
+            const broker = byBroker.get(scope.brokerAccountId)
+            if (!broker) return false
+            return !isPendingCancelBlocked(
+              normalizeChannelMessageFiltersMap(broker.channel_message_filters),
+              signal.channel_id,
+            )
+          })
+        if (scopes.length > 0) {
+          await ctx.cancelRangePendingLegsForScopes(
+            signal.user_id,
+            signal.id,
+            scopes,
+            'signal_closed',
+          )
+        }
+        await finalizeMgmtSignal(ctx, signal.id)
+      } else {
+        await skipMgmtSignalWithLog(ctx, signal, 'provider_order_already_closed', {
+          action,
+          parent_signal_id: explicitParentSignalId,
+          provider_external_order_id: parsed.provider_signal_number,
+          mgmt_scope: mgmtScopeLabel,
+        })
+      }
+      return emptyMgmtResult(legConcurrency)
+    }
     if (!rows.length && !pendingLegs.length) {
       if (action === 'close' && signal.channel_id && !hasExplicitMgmtParent) {
         const channelMeta = await ctx.getChannelMeta(signal.channel_id)
@@ -954,6 +1043,8 @@ export async function applyManagement(
     const breakevenFailureDiagnosticsByTradeId = new Map<string, ManagementBreakevenFailureDiagnostic>()
     let breakevenAggregateDiagnostic: ManagementBreakevenAggregateDiagnostic | null = null
     let breakevenNeedsRetry = false
+    let partialProfitSucceeded = 0
+    const partialProfitFailures: string[] = []
     // Breakeven: one OpenedOrders snapshot per broker session + pre-assigned
     // distinct tickets per leg, so legs run in parallel race-free (no shared
     // ticket-exclusion map mutated mid-flight).
@@ -1008,10 +1099,11 @@ export async function applyManagement(
         return
       }
       const uuid = brokerSessionUuid(broker)!
-      const ticket = Number(trade.metaapi_order_id)
+      const ticket = Number(trade.broker_position_ticket ?? trade.metaapi_order_id)
       if (!Number.isFinite(ticket) || ticket <= 0) return
       let effectiveTicket = ticket
       let ticketReconciledFrom: number | null = null
+      let livePositionRow: Record<string, unknown> | null = null
       const api = ctx.apiFor(broker)
       if (!api) return
 
@@ -1029,6 +1121,7 @@ export async function applyManagement(
           if (resolution.status !== 'resolved') {
             throw new Error(`live position reconciliation required: ${resolution.reason}`)
           }
+          livePositionRow = resolution.row
           if (resolution.ticket !== effectiveTicket) {
             ticketReconciledFrom = effectiveTicket
             effectiveTicket = resolution.ticket
@@ -1104,11 +1197,15 @@ export async function applyManagement(
               lastCloseReason ?? 'orderClose succeeded but ticket still open on broker',
             )
           }
-          await ctx.supabase.from('trades').update({
-            status: 'closed',
-            closed_at: new Date().toISOString(),
-            ...(ticketReconciledFrom != null ? { metaapi_order_id: String(effectiveTicket) } : {}),
-          }).eq('id', trade.id)
+          await applyCloseUpdate(
+            {
+              status: 'closed',
+              closed_at: new Date().toISOString(),
+              close_reason: TRADE_CLOSE_REASON.SIGNAL_CLOSE,
+              ...(ticketReconciledFrom != null ? { metaapi_order_id: String(effectiveTicket) } : {}),
+            },
+            patch => ctx.supabase.from('trades').update(patch).eq('id', trade.id),
+          )
           if (signal.channel_id) {
             await clearChannelActiveTradeParamsWhenFlat(ctx.supabase, {
               userId: signal.user_id,
@@ -1125,14 +1222,27 @@ export async function applyManagement(
           const fraction = typeof parsed.partial_close_fraction === 'number' && parsed.partial_close_fraction > 0
             ? Math.min(0.95, parsed.partial_close_fraction)
             : 0.5
-          // Floor, never round up: (0.01 * 0.5).toFixed(2) = "0.01" would close
-          // the FULL position when the user asked to book 50% and hold the rest.
-          const lots = Math.floor(trade.lot_size * fraction * 100) / 100
-          if (lots < 0.01) {
-            console.warn(
-              `[tradeExecutor] partial_profit skipped trade=${trade.id} ticket=${ticket}`
-              + ` fraction=${fraction} lot=${trade.lot_size} → lots=${lots} below min lot 0.01`,
-            )
+          const originalVolume = livePositionRow ? livePositionVolume(livePositionRow) : null
+          if (originalVolume == null) {
+            throw new Error('partial close broker readback missing current position volume')
+          }
+          const brokerSymbol = await ctx.resolveBrokerSymbolForLiveEntry(uuid, trade.symbol).catch(() => trade.symbol)
+          const symbolParams = (await ctx.getSymbolParams(uuid, brokerSymbol).catch(() => null))
+            ?? (brokerSymbol.toUpperCase() !== trade.symbol.toUpperCase()
+              ? await ctx.getSymbolParams(uuid, trade.symbol).catch(() => null)
+              : null)
+          if (!symbolParams) {
+            throw new Error('partial close unavailable: broker volume constraints unavailable')
+          }
+          const plan = planPartialClose({
+            currentVolume: originalVolume,
+            requestedFraction: fraction,
+            minVolume: symbolParams.minLot,
+            volumeStep: symbolParams.lotStep,
+            maxVolume: symbolParams.maxLot,
+          })
+          if (!plan.ok) {
+            partialProfitFailures.push(plan.reason)
             await ctx.supabase.from('trade_execution_logs').insert({
               user_id: signal.user_id,
               signal_id: signal.id,
@@ -1143,31 +1253,66 @@ export async function applyManagement(
                 ticket: effectiveTicket,
                 action,
                 basket_anchor_signal_id: trade.signal_id,
-                mgmt_scope: replyScoped ? 'reply_basket' : 'channel',
+                mgmt_scope: mgmtScopeLabel,
                 mgmt_parent_signal_id: signal.parent_signal_id,
-                skip_reason: 'partial_volume_below_min_lot',
+                skip_reason: plan.reason,
+                current_volume: originalVolume,
+                requested_fraction: fraction,
+                raw_close_volume: plan.rawCloseVolume,
+                min_volume: symbolParams.minLot,
+                volume_step: symbolParams.lotStep,
+                max_volume: symbolParams.maxLot,
               },
             })
             return
           }
-          await api.orderClose(uuid, { ticket: effectiveTicket, lots })
-          const remaining = Math.max(0, +(trade.lot_size - lots).toFixed(2))
-          if (remaining < 0.0001) {
-            await ctx.supabase.from('trades').update({
-              status: 'closed',
-              closed_at: new Date().toISOString(),
-              lot_size: 0,
-            }).eq('id', trade.id)
-            if (signal.channel_id) {
-              await clearChannelActiveTradeParamsWhenFlat(ctx.supabase, {
-                userId: signal.user_id,
-                channelId: signal.channel_id,
-                symbolHint: trade.symbol,
-              })
-            }
-          } else {
-            await ctx.supabase.from('trades').update({ lot_size: remaining }).eq('id', trade.id)
+
+
+          await api.orderClose(uuid, { ticket: effectiveTicket, lots: plan.closeVolume })
+          const postOrders = await api.openedOrders(uuid)
+          const postResolution = resolveCanonicalOpenPosition({
+            trade: {
+              ...trade,
+              metaapi_order_id: String(effectiveTicket),
+              lot_size: plan.expectedRemainingVolume,
+            },
+            openedOrders: postOrders,
+          })
+          if (postResolution.status !== 'resolved') {
+            throw new Error(
+              `partial close reconciliation required: ${postResolution.status} (${postResolution.reason})`,
+            )
+
           }
+          const observedRemaining = livePositionVolume(postResolution.row)
+          const verified = verifyPartialCloseReduction({
+            originalVolume,
+            requestedCloseVolume: plan.closeVolume,
+            observedRemainingVolume: observedRemaining ?? Number.NaN,
+            volumeStep: symbolParams.lotStep,
+          })
+          if (!verified.ok) throw new Error(verified.reason)
+
+          if (postResolution.replacement) {
+            const persisted = await persistCanonicalPositionTicket(
+              ctx.supabase,
+              { ...trade, metaapi_order_id: String(effectiveTicket) },
+              postResolution,
+            )
+            if (!persisted) {
+              throw new Error('partial close replacement ticket persistence failed')
+            }
+            ticketReconciledFrom = ticketReconciledFrom ?? effectiveTicket
+            effectiveTicket = postResolution.ticket
+          }
+          const { error: partialUpdateError } = await ctx.supabase.from('trades').update({
+            lot_size: observedRemaining,
+            metaapi_order_id: String(effectiveTicket),
+          }).eq('id', trade.id).eq('status', 'open')
+          if (partialUpdateError) {
+            throw new Error(`partial close DB state update failed: ${partialUpdateError.message}`)
+          }
+          partialProfitSucceeded += 1
         } else if (action === 'breakeven' || action === 'partial_breakeven') {
           // Tickets were pre-reconciled once from a single OpenedOrders snapshot;
           // use the pre-assigned ticket (no per-leg broker read here).
@@ -1318,16 +1463,17 @@ export async function applyManagement(
             if (remainingLots < 0.0001) {
               tradePatch.status = 'closed'
               tradePatch.closed_at = new Date().toISOString()
+              tradePatch.close_reason = TRADE_CLOSE_REASON.PARTIAL_TP
               tradePatch.lot_size = 0
             } else if (halfClosedLots > 0) {
               tradePatch.lot_size = remainingLots
             }
           }
 
-          await ctx.supabase
-            .from('trades')
-            .update(tradePatch)
-            .eq('id', trade.id)
+          await applyCloseUpdate(
+            tradePatch,
+            patch => ctx.supabase.from('trades').update(patch).eq('id', trade.id),
+          )
 
           if (
             action === 'partial_breakeven'
@@ -1365,7 +1511,7 @@ export async function applyManagement(
             ticket: effectiveTicket,
             action,
             basket_anchor_signal_id: trade.signal_id,
-            mgmt_scope: replyScoped ? 'reply_basket' : 'channel',
+            mgmt_scope: mgmtScopeLabel,
             mgmt_parent_signal_id: signal.parent_signal_id,
             ticket_reconciled_from: ticketReconciledFrom ?? undefined,
             ...(action === 'partial_breakeven'
@@ -1381,6 +1527,7 @@ export async function applyManagement(
         })
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
+        if (action === 'partial_profit') partialProfitFailures.push(msg)
         let breakevenFailureDiagnostic: ManagementBreakevenFailureDiagnostic | null = null
         // Broker confirmed the referenced position is gone (TP/SL hit, closed or
         // replaced): nothing left to modify. Treat as benign and close the DB row
@@ -1388,7 +1535,7 @@ export async function applyManagement(
         // autoManagementMonitor's benign handling of the same replies.
         const positionGone = isUnknownTicketError(msg)
           || (isCloseFamilyAction(action) && isPositionGoneCloseError(msg))
-        let benign = isBenignOrderModifyError(msg) || positionGone
+        let benign = action !== 'partial_profit' && (isBenignOrderModifyError(msg) || positionGone)
         if (benign && !positionGone && (action === 'breakeven' || action === 'partial_breakeven')) {
           let entry = sanitizeLevel(trade.entry_price)
           if (entry <= 0) {
@@ -1428,16 +1575,17 @@ export async function applyManagement(
             benign = false
           }
         }
-        if (positionGone) {
+        if (positionGone && action !== 'partial_profit') {
           benign = true
-          await ctx.supabase
-            .from('trades')
-            .update({
+          await applyCloseUpdate(
+            {
               status: 'closed',
               closed_at: new Date().toISOString(),
+              close_reason: TRADE_CLOSE_REASON.POSITION_GONE,
               auto_be_applied_at: new Date().toISOString(),
-            })
-            .eq('id', trade.id)
+            },
+            patch => ctx.supabase.from('trades').update(patch).eq('id', trade.id),
+          )
           console.warn(
             `[tradeExecutor] mgmt ${action} closed trade=${trade.id} ticket=${effectiveTicket}: broker position gone (${msg})`,
           )
@@ -1463,7 +1611,7 @@ export async function applyManagement(
             ticket: effectiveTicket,
             action,
             basket_anchor_signal_id: trade.signal_id,
-            mgmt_scope: replyScoped ? 'reply_basket' : 'channel',
+            mgmt_scope: mgmtScopeLabel,
             mgmt_parent_signal_id: signal.parent_signal_id,
             already_synced: benign || undefined,
             position_gone: positionGone || undefined,
@@ -1957,6 +2105,23 @@ export async function applyManagement(
           },
         },
       })
+    } else if (
+      action === 'partial_profit'
+      && (
+        eligibleTrades.length === 0
+        || partialProfitFailures.length > 0
+        || partialProfitSucceeded !== eligibleTrades.length
+      )
+    ) {
+      const unavailable = partialProfitFailures.length > 0
+        && partialProfitFailures.every(reason => reason === 'partial_close_unavailable_for_position_size')
+      await skipMgmtSignal(
+        ctx,
+        signal.id,
+        unavailable
+          ? 'partial_close_unavailable_for_position_size'
+          : 'partial_close_reconciliation_required',
+      )
     } else if (breakevenNeedsRetry) {
       const aggregate = breakevenAggregateDiagnostic ?? safeBuildManagementBreakevenAggregateDiagnostic({
         successCount: breakevenAppliedTradeIds.size,
@@ -2158,21 +2323,22 @@ export async function applyCloseWorseEntriesInstruction(ctx: TradeExecutorContex
       }
 
       const closeOneLeg = async (trade: typeof toClose[number]): Promise<number> => {
-        const ticket = Number(trade.metaapi_order_id)
+        const ticket = Number(trade.broker_position_ticket ?? trade.metaapi_order_id)
         if (!Number.isFinite(ticket) || ticket <= 0) return 0
         try {
           const closeResult = await closeWithVerification(api, uuid, ticket, mgmtCloseOpts(liveMgmtFast))
           if (!closeResult.confirmed) {
             throw new Error(closeResult.reason ?? 'cwe orderClose: ticket still open')
           }
-          await ctx.supabase
-            .from('trades')
-            .update({
+          await applyCloseUpdate(
+            {
               status: 'closed',
               closed_at: new Date().toISOString(),
+              close_reason: TRADE_CLOSE_REASON.CLOSE_WORSE_ENTRIES,
               cwe_close_price: null,
-            })
-            .eq('id', trade.id)
+            },
+            patch => ctx.supabase.from('trades').update(patch).eq('id', trade.id),
+          )
           if (signal.channel_id) {
             await clearChannelActiveTradeParamsWhenFlat(ctx.supabase, {
               userId: signal.user_id,
@@ -2200,14 +2366,15 @@ export async function applyCloseWorseEntriesInstruction(ctx: TradeExecutorContex
           const msg = err instanceof Error ? err.message : String(err)
           const benign = /not\s+found|already\s+closed|invalid\s+ticket|no\s+such\s+order|unknown\s+ticket/i.test(msg)
           if (benign) {
-            await ctx.supabase
-              .from('trades')
-              .update({
+            await applyCloseUpdate(
+              {
                 status: 'closed',
                 closed_at: new Date().toISOString(),
+                close_reason: TRADE_CLOSE_REASON.POSITION_GONE,
                 cwe_close_price: null,
-              })
-              .eq('id', trade.id)
+              },
+              patch => ctx.supabase.from('trades').update(patch).eq('id', trade.id),
+            )
             if (signal.channel_id) {
               await clearChannelActiveTradeParamsWhenFlat(ctx.supabase, {
                 userId: signal.user_id,

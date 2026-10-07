@@ -8,10 +8,14 @@ const REFRESH_MS = 60_000
 const REALTIME_DEBOUNCE_MS = 450
 
 async function fetchHasOpenFromBroker(): Promise<boolean> {
+  // MTAPI only: FxSocket is phased out, so this must not fan out to the dead
+  // FxSocket edge (its 404 otherwise looks like a live-feed outage and raises
+  // the "trouble reaching your broker" banner).
   const res = await fetchTradesAcrossProviders({
     scope: 'open',
     historyProfile: 'trades',
     limit: 1,
+    providers: ['mtapi'],
   })
   return (res.trades ?? []).some(t => t.status === 'open')
 }

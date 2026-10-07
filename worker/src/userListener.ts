@@ -2982,6 +2982,7 @@ export class UserListener {
           userId: this.userId,
           channelId: channelRow.id,
           providerSignalNumber: providerNum,
+          symbol: (parseResult.parsed as { symbol?: string | null }).symbol ?? null,
         })
         if (linked) parentSignalId = linked
       }

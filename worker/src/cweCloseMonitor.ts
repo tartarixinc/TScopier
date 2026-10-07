@@ -1,4 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { TRADE_CLOSE_REASON } from './tradeCloseReasons'
+import { applyCloseUpdate } from './tradeCloseUpdate'
 import { type FxsocketBrokerClient } from './fxsocketClient'
 import {
   brokerRuntimeForAccount,
@@ -53,6 +55,7 @@ interface CweTradeRow {
   signal_id: string | null
   broker_account_id: string | null
   metaapi_order_id: string | null
+  broker_position_ticket?: string | null
   symbol: string
   direction: 'buy' | 'sell' | string
   lot_size: number | null
@@ -132,7 +135,7 @@ export class CweCloseMonitor {
       this.supabase,
       this.supabase
         .from('trades')
-        .select('id,user_id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,lot_size,entry_price,cwe_close_price')
+        .select('id,user_id,signal_id,broker_account_id,metaapi_order_id,broker_position_ticket,symbol,direction,lot_size,entry_price,cwe_close_price')
         .eq('status', 'open')
         .not('cwe_close_price', 'is', null)
         .limit(500),
@@ -299,10 +302,14 @@ export class CweCloseMonitor {
         `[cweCloseMonitor] closed signal=${trade.signal_id ?? 'n/a'} symbol=${trade.symbol} ticket=${effectiveTicket}`
         + ` threshold=${trade.cwe_close_price} ref=${refPrice} latency=${latencyMs}ms`,
       )
-      await this.supabase
-        .from('trades')
-        .update({ status: 'closed', closed_at: new Date().toISOString() })
-        .eq('id', trade.id)
+      await applyCloseUpdate(
+        {
+          status: 'closed',
+          closed_at: new Date().toISOString(),
+          close_reason: TRADE_CLOSE_REASON.CLOSE_WORSE_ENTRIES,
+        },
+        patch => this.supabase.from('trades').update(patch).eq('id', trade.id),
+      )
       await this.supabase.from('trade_execution_logs').insert({
         user_id: trade.user_id,
         signal_id: trade.signal_id,

@@ -132,7 +132,7 @@ export class ClosedTradeFillMonitor {
     const since = new Date(Date.now() - LOOKBACK_MS).toISOString()
     const builder = this.supabase
       .from('trades')
-      .select('id,broker_account_id,metaapi_order_id,closed_at,close_price,profit')
+      .select('id,broker_account_id,metaapi_order_id,broker_position_ticket,closed_at,close_price,profit')
       .or(missingFillFilter(this.cursor))
       .eq('status', 'closed')
       .not('broker_account_id', 'is', null)

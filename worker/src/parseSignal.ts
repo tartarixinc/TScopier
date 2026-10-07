@@ -91,6 +91,8 @@ export interface ChannelParsedSignal {
   re_enter?: boolean
   /** Provider-side trade id (e.g. ForexBro Signal #899). */
   provider_signal_number?: number | null
+  /** Explicit provider lifecycle marker; separate from Telegram signal and broker ticket ids. */
+  provider_order_type?: 'new' | 'close' | null
 }
 
 export type ChannelLexiconRow = {
@@ -1617,6 +1619,51 @@ function ignorePayload(raw: string): ChannelParsedSignal {
   }
 }
 
+/**
+ * Provider-generic structured lifecycle format carrying an external order id
+ * and an explicit New/Close declaration. Dewa is one known producer, but the
+ * complete four-field contract is intentionally not header-specific. The id is
+ * never a broker ticket. Zero SL/TP values mean "not supplied".
+ */
+export function parseExplicitProviderOrderMessage(rawMessage: string): ChannelParsedSignal | null {
+  const raw = normalizeTelegramMessageText(rawMessage)
+  const type = raw.match(/^\s*Type\s*:\s*(New|Close)\s+Order\b/im)?.[1]?.toLowerCase()
+  const idText = raw.match(/^\s*ID\s*:\s*(\d{1,18})\s*$/im)?.[1]
+  const pair = raw.match(/^\s*Pair\s*:\s*([^\s]+)\s*$/im)?.[1]
+  const side = raw.match(/^\s*Order\s*:\s*(Buy|Sell)\s*$/im)?.[1]?.toLowerCase()
+  if ((type !== 'new' && type !== 'close') || !idText || !pair || !side) return null
+
+  const providerId = Number(idText)
+  if (!Number.isSafeInteger(providerId) || providerId <= 0) return null
+  const symbol = sanitizeParsedSymbol(pair)
+  if (!symbol) return null
+
+  const positiveField = (label: string): number | null => {
+    const escaped = label.replace(/[.*+?^\$\{\}()|[\]\\]/g, '\\$&')
+    const value = raw.match(new RegExp(`^\\s*${escaped}\\s*:\\s*(-?\\d+(?:\\.\\d+)?)\\s*$`, 'im'))?.[1]
+    if (value == null) return null
+    const n = Number(value)
+    return Number.isFinite(n) && n > 0 ? n : null
+  }
+
+  return {
+    action: type === 'new' ? side : 'close',
+    symbol,
+    entry_price: null,
+    entry_zone_low: null,
+    entry_zone_high: null,
+    sl: positiveField('Stop Loss'),
+    tp: type === 'new' ? [positiveField('Take Profit')].filter((n): n is number => n != null) : [],
+    lot_size: positiveField('Lot Size'),
+    confidence: 1,
+    raw_instruction: raw,
+    open_tp: false,
+    provider_signal_number: providerId,
+    provider_order_type: type,
+    ...(type === 'new' ? { re_enter: true } : {}),
+  }
+}
+
 export async function loadChannelLexicon(
   supabase: SupabaseClient,
   channelId: string | null,
@@ -1728,8 +1775,16 @@ export function enrichParsedKeywordMatch(
   const withUnits = applyStopUnits(dropped, rawMessage, channelKeywords)
   const withOrderType = applyExplicitEntryOrderType(withUnits, rawMessage)
   const providerNum = withOrderType.provider_signal_number ?? extractProviderSignalNumber(rawMessage)
-  if (providerNum == null) return withOrderType
-  return { ...withOrderType, provider_signal_number: providerNum }
+  const explicitProvider = parseExplicitProviderOrderMessage(rawMessage)
+  return {
+    ...withOrderType,
+    ...(providerNum != null ? { provider_signal_number: providerNum } : {}),
+    ...(explicitProvider?.provider_signal_number != null
+      ? { provider_signal_number: explicitProvider.provider_signal_number }
+      : {}),
+    ...(explicitProvider?.provider_order_type ? { provider_order_type: explicitProvider.provider_order_type } : {}),
+    ...(explicitProvider?.provider_order_type === 'new' ? { re_enter: true } : {}),
+  }
 }
 
 /** Deterministic management / SL-TP follow-up parse only (no entry parsers). */
@@ -1805,8 +1860,9 @@ export function parseChannelMessageSync(
 
   const explicitIgnore = hasAnyKeyword(message, ignoreAliases)
 
-  const forexBro = parseForexBroManagementMessage(message)
-  const keywordMatch = forexBro
+  const explicitProvider = parseExplicitProviderOrderMessage(displayMessage)
+  const forexBro = explicitProvider ? null : parseForexBroManagementMessage(message)
+  const keywordMatch = explicitProvider ?? (forexBro
     ? {
       action: forexBro.action,
       symbol: forexBro.symbol,
@@ -1826,7 +1882,7 @@ export function parseChannelMessageSync(
     : parseDeterministicManagement(message, lexicon, channelKeywords) ??
     parseChannelParameterFollowUp(message, lexicon, channelKeywords) ??
     parseSimpleSignal(message, lexicon, channelKeywords) ??
-    parseEntryFromKeywords(message, lexicon, channelKeywords)
+    parseEntryFromKeywords(message, lexicon, channelKeywords))
 
   const rawParsed = explicitIgnore
     ? ignorePayload(displayMessage)
@@ -1844,7 +1900,11 @@ export function parseChannelMessageSync(
       open_tp: false,
     }
 
-  const dropped = enrichParsedKeywordMatch(rawParsed, message, channelKeywords)
+  // The explicit lifecycle parser has already assigned every numeric field by
+  // label. Do not run generic price inference over Date/Time or provider ID.
+  const dropped = !explicitIgnore && explicitProvider
+    ? explicitProvider
+    : enrichParsedKeywordMatch(rawParsed, message, channelKeywords)
   if (entryMissingSlTpRequiresNow(dropped, message, channelKeywords)) {
     return {
       parsed: {

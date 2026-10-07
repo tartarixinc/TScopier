@@ -93,6 +93,8 @@ export class MtapiSessionManager {
   private provisionTimer: NodeJS.Timeout | null = null
   private sweepRunning = false
   private provisionRunning = false
+  /** Earliest epoch ms at which the next paced sweep request may start. */
+  private nextSweepStartAt = 0
 
   constructor(
     private readonly supabase: SupabaseClient,
@@ -228,25 +230,64 @@ export class MtapiSessionManager {
     if (error) throw new Error('MTAPI account state persist failed')
   }
 
+  /**
+   * Space out the start of health-check requests so the whole fleet cannot hit
+   * the bridge at once. The bridge rejects bursts over ~10 req/s per source IP
+   * with `429 rate_limited`, and a simultaneous sweep over every session was
+   * exactly that burst — it starved real orders (see the 2026-10-05 incident).
+   * Requests are paced per process and jittered so they do not re-synchronise
+   * with other periodic traffic.
+   */
+  private async paceSweepStart(gapMs: number): Promise<void> {
+    if (gapMs <= 0) return
+    const jitter = gapMs * (0.5 + Math.random())
+    const now = Date.now()
+    const startAt = Math.max(now, this.nextSweepStartAt)
+    this.nextSweepStartAt = startAt + jitter
+    const wait = startAt - now
+    if (wait > 0) await new Promise<void>(resolve => setTimeout(resolve, wait))
+  }
+
+  private async sweepOne(row: MtapiSessionRow): Promise<void> {
+    const sessionId = String(row.mtapi_session_id ?? '').trim()
+    if (!sessionId) return
+    this.provider.seedPlatformCache(sessionId, platformOf(row.platform))
+    try {
+      await this.provider.ensureConnected(sessionId)
+      await this.syncAccountState(row, sessionId)
+    } catch (error) {
+      const code = safeCode(error)
+      const detail = mtapiFailureDetail(code)
+      console.warn('[mtapiSession] health recovery failed broker=' + row.id + ' code=' + code
+        + (detail ? ' detail=' + detail : ''))
+    }
+  }
+
   private async sweep(rows?: MtapiSessionRow[]): Promise<void> {
     if (this.sweepRunning) return
     this.sweepRunning = true
     try {
       const current = rows ?? await this.sessions()
-      await Promise.all(current.map(async row => {
-        const sessionId = String(row.mtapi_session_id ?? '').trim()
-        if (!sessionId) return
-        this.provider.seedPlatformCache(sessionId, platformOf(row.platform))
-        try {
-          await this.provider.ensureConnected(sessionId)
-          await this.syncAccountState(row, sessionId)
-        } catch (error) {
-          const code = safeCode(error)
-          const detail = mtapiFailureDetail(code)
-          console.warn('[mtapiSession] health recovery failed broker=' + row.id + ' code=' + code
-            + (detail ? ' detail=' + detail : ''))
+      // A handful of workers hide per-session latency, while the per-process
+      // pacer bounds the number of session starts. Note: each session start
+      // makes ~2 bridge calls (CheckConnect + AccountSummary), and every
+      // replica sweeps all sessions, so aggregate request rate is roughly
+      // replicas x 2 / gap. The nginx zone exemption is the real safety net;
+      // this pacing just removes the self-inflicted burst.
+      const concurrency = Math.min(8, resolveIntervalMs(process.env.MTAPI_SESSION_HEALTH_CONCURRENCY, 2, 1))
+      const gapMs = resolveIntervalMs(process.env.MTAPI_SESSION_HEALTH_GAP_MS, 250, 0)
+      let index = 0
+      const worker = async (): Promise<void> => {
+        for (;;) {
+          const i = index++
+          if (i >= current.length) return
+          await this.paceSweepStart(gapMs)
+          await this.sweepOne(current[i])
         }
-      }))
+      }
+      await Promise.all(
+        Array.from({ length: Math.min(concurrency, current.length) }, () => worker()),
+      )
     } finally {
       this.sweepRunning = false
     }
@@ -354,7 +395,14 @@ export class MtapiSessionManager {
     }
     await this.reconcileOrphans(rows)
     await this.provisionNewAccounts()
-    await this.sweep(rows)
+    // Do NOT await the initial health sweep. It is now paced (~1 session per
+    // gap) so awaiting it would delay the trade executor by tens of seconds on
+    // every restart. The interval timer re-runs it anyway; sessions are already
+    // seeded above, and a session found unhealthy is recovered by the trade
+    // path on first use.
+    void this.sweep(rows).catch(error => {
+      console.warn('[mtapiSession] initial health sweep failed code=' + safeCode(error))
+    })
     // A newly authorised account waits for the provision sweep, so it runs far
     // more often than the health sweep: the bridge link must be made in
     // seconds, not minutes. The health sweep stays slow because it queries the

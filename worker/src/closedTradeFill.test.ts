@@ -634,3 +634,24 @@ test('FillAttempts: uncovered reads age out on their own, far larger budget', ()
   assert.equal(attempts.pending([trade]).length, 1, 'progress resets both budgets')
   assert.equal(attempts.tracked, 0)
 })
+
+test('planClosedTradeUpdates: prefers the captured position ticket over the send ticket', () => {
+  // B2: the row holds the send ticket (101) but the captured position ticket
+  // (202) is what broker history is keyed by.
+  const fills = new Map<number, ClosedTradeFill>([[202, { closePrice: 1.1111, profit: 4.2 }]])
+  assert.deepEqual(
+    planClosedTradeUpdates([row('t1', '101', { broker_position_ticket: '202' })], fills),
+    [{ id: 't1', close_price: 1.1111, profit: 4.2 }],
+  )
+  // Without the captured value only the send ticket is used (unchanged).
+  assert.deepEqual(planClosedTradeUpdates([row('t1', '101')], fills), [])
+})
+
+test('managementBrokerClose: settles the row by either ticket column', async () => {
+  const { readFileSync } = await import('node:fs')
+  const source = readFileSync('src/managementBrokerClose.ts', 'utf8')
+  assert.ok(
+    source.includes('metaapi_order_id.eq.${Number(order.ticket)},broker_position_ticket.eq.${Number(order.ticket)}'),
+    'management close must settle the row by either ticket column',
+  )
+})

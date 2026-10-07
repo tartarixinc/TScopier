@@ -8,6 +8,7 @@ import {
   isReplyScopedManagement,
   loadOpenTradesForManagement,
   loadOpenTradesForSignalAcrossBrokers,
+  resolveEntrySignalIdByProviderNumber,
   resolveChannelCweTargets,
   resolveChannelModifyTargets,
   resolveNewestOpenSymbolTrades,
@@ -361,5 +362,161 @@ describe('findRecentEntrySignalByProviderNumber', () => {
       excludeTelegramMessageId: '2925',
     })
     assert.equal(dup, null)
+  })
+})
+
+describe('resolveEntrySignalIdByProviderNumber', () => {
+  function supabaseFor(rows: Array<Record<string, unknown>>) {
+    return {
+      from() {
+        return {
+          select() {
+            const chain = {
+              eq() { return chain },
+              order() { return chain },
+              limit() { return Promise.resolve({ data: rows }) },
+            }
+            return chain
+          },
+        }
+      },
+    } as unknown as SupabaseClient
+  }
+
+  it('resolves a Dewa provider ID from parsed metadata', async () => {
+    const id = await resolveEntrySignalIdByProviderNumber(supabaseFor([{
+      id: 'entry-719910668',
+      parsed_data: { action: 'buy', symbol: 'XAUUSD', provider_order_type: 'new', provider_signal_number: 719910668 },
+      raw_message: 'Type : New Order\nID : 719910668',
+    }]), {
+      userId: 'u1',
+      channelId: 'ch1',
+      providerSignalNumber: 719910668,
+      symbol: 'XAUUSD',
+    })
+    assert.equal(id, 'entry-719910668')
+  })
+
+  it('fails closed when a provider ID correlates to multiple entry signals', async () => {
+    const id = await resolveEntrySignalIdByProviderNumber(supabaseFor([
+      { id: 'entry-a', parsed_data: { action: 'buy', symbol: 'XAUUSD', provider_order_type: 'new', provider_signal_number: 719910668 } },
+      { id: 'entry-b', parsed_data: { action: 'buy', symbol: 'XAUUSD', provider_order_type: 'new', provider_signal_number: 719910668 } },
+    ]), {
+      userId: 'u1',
+      channelId: 'ch1',
+      providerSignalNumber: 719910668,
+    })
+    assert.equal(id, null)
+  })
+
+  it('does not correlate a different provider ID', async () => {
+    const id = await resolveEntrySignalIdByProviderNumber(supabaseFor([{
+      id: 'entry-other',
+      parsed_data: { action: 'buy', symbol: 'XAUUSD', provider_order_type: 'new', provider_signal_number: 719910669 },
+    }]), {
+      userId: 'u1',
+      channelId: 'ch1',
+      providerSignalNumber: 719910668,
+    })
+    assert.equal(id, null)
+  })
+})
+
+describe('provider ID correlation hardening', () => {
+  function scopedSupabase(rows: Array<Record<string, unknown>>) {
+    return {
+      from() {
+        return {
+          select() {
+            const chain = {
+              eq() { return chain },
+              order() { return chain },
+              limit() { return Promise.resolve({ data: rows }) },
+            }
+            return chain
+          },
+        }
+      },
+    } as unknown as SupabaseClient
+  }
+
+  it('rejects incidental Order ID and generic ID text', async () => {
+    for (const raw of ['Order ID: 719910668', 'ID: 719910668']) {
+      const id = await resolveEntrySignalIdByProviderNumber(scopedSupabase([{
+        id: 'incidental',
+        parsed_data: { action: 'buy', symbol: 'XAUUSD' },
+        raw_message: raw,
+      }]), {
+        userId: 'u1',
+        channelId: 'ch1',
+        providerSignalNumber: 719910668,
+        symbol: 'XAUUSD',
+      })
+      assert.equal(id, null)
+    }
+  })
+
+  it('accepts only a complete legacy structured New Order with compatible symbol', async () => {
+    const raw = [
+      'Dewa Scalper Order',
+      'Type : New Order',
+      'ID : 719910668',
+      'Pair : XAUUSD.vx',
+      'Order : Buy',
+    ].join(String.fromCharCode(10))
+    const good = await resolveEntrySignalIdByProviderNumber(scopedSupabase([{
+      id: 'legacy-dewa',
+      parsed_data: { action: 'buy' },
+      raw_message: raw,
+    }]), {
+      userId: 'u1',
+      channelId: 'ch1',
+      providerSignalNumber: 719910668,
+      symbol: 'XAUUSD',
+    })
+    const mismatch = await resolveEntrySignalIdByProviderNumber(scopedSupabase([{
+      id: 'legacy-dewa',
+      parsed_data: { action: 'buy' },
+      raw_message: raw,
+    }]), {
+      userId: 'u1',
+      channelId: 'ch1',
+      providerSignalNumber: 719910668,
+      symbol: 'EURUSD',
+    })
+    assert.equal(good, 'legacy-dewa')
+    assert.equal(mismatch, null)
+  })
+
+  it('preserves ForexBro Signal #N correlation', async () => {
+    const id = await resolveEntrySignalIdByProviderNumber(scopedSupabase([{
+      id: 'forexbro',
+      parsed_data: { action: 'sell', symbol: 'EURUSD' },
+      raw_message: 'New Signal #719910668 SELL EURUSD',
+    }]), {
+      userId: 'u1',
+      channelId: 'ch1',
+      providerSignalNumber: 719910668,
+      symbol: 'EURUSD',
+    })
+    assert.equal(id, 'forexbro')
+  })
+
+  it('fails closed on parsed lifecycle symbol mismatch', async () => {
+    const id = await resolveEntrySignalIdByProviderNumber(scopedSupabase([{
+      id: 'dewa',
+      parsed_data: {
+        action: 'buy',
+        symbol: 'XAUUSD',
+        provider_order_type: 'new',
+        provider_signal_number: 719910668,
+      },
+    }]), {
+      userId: 'u1',
+      channelId: 'ch1',
+      providerSignalNumber: 719910668,
+      symbol: 'EURUSD',
+    })
+    assert.equal(id, null)
   })
 })

@@ -40,10 +40,18 @@ describe('fetchTradesAcrossProviders', () => {
     tradesSpy.mockRestore()
   })
 
-  it('queries both providers when accounts lack an explicit provider field', async () => {
+  it('queries MTAPI only when accounts lack an explicit provider field', async () => {
     tradesSpy.mockResolvedValue({ trades: [] })
     await fetchTradesAcrossProviders({ accounts: [{}, {}] })
-    expect(tradesSpy).toHaveBeenCalledTimes(2)
+    expect(tradesSpy).toHaveBeenCalledTimes(1)
+    expect(tradesSpy.mock.calls[0]?.[0]?.provider).toBe('mtapi')
+  })
+
+  it('queries MTAPI only when the caller passes no providers and no accounts', async () => {
+    tradesSpy.mockResolvedValue({ trades: [] })
+    await fetchTradesAcrossProviders({ scope: 'open' })
+    expect(tradesSpy).toHaveBeenCalledTimes(1)
+    expect(tradesSpy.mock.calls[0]?.[0]?.provider).toBe('mtapi')
   })
 
   it('returns empty when only explicit providers are requested and both succeed', async () => {
@@ -67,13 +75,16 @@ describe('fetchTradesAcrossProviders', () => {
     expect(tradesSpy.mock.calls[0]?.[0]?.provider).toBe('mtapi')
   })
 
-  it('merges results when both providers return data', async () => {
+  it('merges results when both providers are explicitly requested and return data', async () => {
     tradesSpy.mockImplementation(async (args) => ({
       trades: args.provider === 'mtapi'
         ? [trade(2, 'mtapi-b')]
         : [trade(1, 'fx-b')],
     }))
-    const res = await fetchTradesAcrossProviders({ scope: 'all' })
+    const res = await fetchTradesAcrossProviders({
+      scope: 'all',
+      providers: ['fxsocket', 'mtapi'],
+    })
     expect(res.trades.map(t => t.ticket).sort()).toEqual([1, 2])
     expect(tradesSpy).toHaveBeenCalledTimes(2)
   })
@@ -85,7 +96,10 @@ describe('fetchTradesAcrossProviders', () => {
       }
       throw new Error('This account is not an MTAPI account.')
     })
-    const res = await fetchTradesAcrossProviders({ brokerId: 'fx-b' })
+    const res = await fetchTradesAcrossProviders({
+      brokerId: 'fx-b',
+      providers: ['fxsocket', 'mtapi'],
+    })
     expect(res.trades).toHaveLength(1)
     expect(res.trades[0]?.ticket).toBe(9)
   })
@@ -100,7 +114,9 @@ describe('fetchTradesAcrossProviders', () => {
       if (args.provider === 'fxsocket') return { trades: [] }
       throw new Error('MTAPI is not configured')
     })
-    await expect(fetchTradesAcrossProviders({})).rejects.toThrow('MTAPI is not configured')
+    await expect(
+      fetchTradesAcrossProviders({ providers: ['fxsocket', 'mtapi'] }),
+    ).rejects.toThrow('MTAPI is not configured')
   })
 
   it('raises the degraded feed banner when one provider succeeds and another really fails', async () => {
@@ -109,7 +125,7 @@ describe('fetchTradesAcrossProviders', () => {
       if (args.provider === 'fxsocket') return { trades: [trade(1, 'b1')] }
       throw new Error('mtapi edge down')
     })
-    const res = await fetchTradesAcrossProviders({})
+    const res = await fetchTradesAcrossProviders({ providers: ['fxsocket', 'mtapi'] })
     expect(res.trades).toHaveLength(1)
     expect(getLiveFeedStatus().degraded).toBe(true)
     expect(getLiveFeedStatus().reason).toContain('mtapi edge down')
@@ -122,8 +138,42 @@ describe('fetchTradesAcrossProviders', () => {
       if (args.provider === 'fxsocket') return { trades: [trade(9, 'fx-b')] }
       throw new Error('This account is not an MTAPI account.')
     })
-    await fetchTradesAcrossProviders({ brokerId: 'fx-b' })
+    await fetchTradesAcrossProviders({ brokerId: 'fx-b', providers: ['fxsocket', 'mtapi'] })
     expect(getLiveFeedStatus().degraded).toBe(false)
+  })
+
+  it('does not raise the banner when the phased-out provider edge answers 404', async () => {
+    resetLiveFeedStatus()
+    tradesSpy.mockImplementation(async (args) => {
+      if (args.provider === 'fxsocket') throw new Error('HTTP 404')
+      return { trades: [trade(1, 'b1')] }
+    })
+    const res = await fetchTradesAcrossProviders({ providers: ['fxsocket', 'mtapi'] })
+    expect(res.trades).toHaveLength(1)
+    expect(tradesSpy).toHaveBeenCalledTimes(2)
+    expect(getLiveFeedStatus().degraded).toBe(false)
+  })
+
+  it('raises the banner when the MTAPI edge itself answers 404', async () => {
+    resetLiveFeedStatus()
+    tradesSpy.mockImplementation(async (args) => {
+      if (args.provider === 'mtapi') throw new Error('HTTP 404')
+      return { trades: [trade(1, 'fx-b')] }
+    })
+    const res = await fetchTradesAcrossProviders({ providers: ['fxsocket', 'mtapi'] })
+    expect(res.trades).toHaveLength(1)
+    expect(getLiveFeedStatus().degraded).toBe(true)
+    expect(getLiveFeedStatus().reason).toContain('HTTP 404')
+  })
+
+  it('queries every explicitly declared account provider (mixed list)', async () => {
+    tradesSpy.mockResolvedValue({ trades: [] })
+    await fetchTradesAcrossProviders({
+      accounts: [{ provider: 'fxsocket' }, { provider: 'mtapi' }],
+    })
+    expect(tradesSpy).toHaveBeenCalledTimes(2)
+    const called = tradesSpy.mock.calls.map(c => c[0]?.provider).sort()
+    expect(called).toEqual(['fxsocket', 'mtapi'])
   })
 })
 

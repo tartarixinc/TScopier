@@ -39,6 +39,7 @@ export interface OpenTradeForCweClose {
   signal_id?: string | null
   broker_account_id: string
   metaapi_order_id: string | null
+  broker_position_ticket?: string | null
   symbol: string
   direction: string
   lot_size: number

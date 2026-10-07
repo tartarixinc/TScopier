@@ -84,6 +84,121 @@ test('truly empty range plan is still skipped', async () => {
   }])
 })
 
+
+test('unmaterialized explicit New Order revision re-runs missing-SL safety', async () => {
+  const ctx = makeRangeCtx()
+  const parsed = {
+    ...baseParsed('buy'),
+    sl: null,
+    tp: [],
+    raw_instruction: 'Type: New Order\nID: 100\nPair: XAUUSD\nOrder: Buy',
+    provider_order_type: 'new' as const,
+    provider_signal_number: 100,
+    re_enter: true,
+  }
+  const broker = baseBroker({ add_new_trades_to_existing: false })
+
+  await runRangeEntry(ctx as never, {
+    signal: baseSignal('provider-new-100'), parsed, op: 'Buy', broker, channelKeywords: null,
+  })
+  await runRangeEntry(ctx as never, {
+    signal: baseSignal('provider-new-100'), parsed, op: 'Buy', broker, channelKeywords: null,
+    sendOpts: { sameSignalRefresh: true },
+  })
+
+  assert.equal(ctx.orderSends, 0)
+  assert.equal(ctx.persistedRows.length, 0)
+  assert.deepEqual(ctx.skips.map(item => item.reason), [
+    'SIGNAL_MISSING_REQUIRED_SL',
+    'SIGNAL_MISSING_REQUIRED_SL',
+  ])
+})
+
+test('unmaterialized New Order revision with a valid SL proceeds once', async () => {
+  const ctx = makeRangeCtx()
+  const broker = baseBroker({ add_new_trades_to_existing: false })
+  const initial = {
+    ...baseParsed('buy'),
+    sl: null,
+    tp: [],
+    provider_order_type: 'new' as const,
+    provider_signal_number: 100,
+    re_enter: true,
+  }
+  await runRangeEntry(ctx as never, {
+    signal: baseSignal('provider-new-valid-edit'), parsed: initial, op: 'Buy', broker, channelKeywords: null,
+  })
+  await runRangeEntry(ctx as never, {
+    signal: baseSignal('provider-new-valid-edit'),
+    parsed: { ...initial, sl: 2390, tp: [2410] },
+    op: 'Buy', broker, channelKeywords: null,
+    sendOpts: { sameSignalRefresh: true },
+  })
+  assert.equal(ctx.persistedRows.length, 1)
+  assert.equal(ctx.orderSends, 0)
+})
+
+test('unmaterialized New Order revision may use configured predefined SL', async () => {
+  const ctx = makeRangeCtx()
+  const broker = baseBroker({
+    add_new_trades_to_existing: false,
+    use_predefined_sl_pips: true,
+    predefined_sl_pips: 30,
+  })
+  await runRangeEntry(ctx as never, {
+    signal: baseSignal('provider-new-predefined'),
+    parsed: {
+      ...baseParsed('buy'),
+      sl: null,
+      provider_order_type: 'new',
+      provider_signal_number: 101,
+      re_enter: true,
+    },
+    op: 'Buy', broker, channelKeywords: null,
+    sendOpts: { sameSignalRefresh: true },
+  })
+  assert.equal(ctx.persistedRows.length, 1)
+})
+
+test('unmaterialized New Order revision may use configured RR SL', async () => {
+  const ctx = makeRangeCtx()
+  const broker = baseBroker({
+    add_new_trades_to_existing: false,
+    rr_for_sl_enabled: true,
+    rr_for_sl: 2,
+  })
+  await runRangeEntry(ctx as never, {
+    signal: baseSignal('provider-new-rr'),
+    parsed: {
+      ...baseParsed('buy'),
+      sl: null,
+      provider_order_type: 'new',
+      provider_signal_number: 102,
+      re_enter: true,
+    },
+    op: 'Buy', broker, channelKeywords: null,
+    sendOpts: { sameSignalRefresh: true },
+  })
+  assert.equal(ctx.persistedRows.length, 1)
+})
+
+test('already-materialized New Order revision creates no second entry artifact', async () => {
+  const ctx = makeRangeCtx({ materialized: true })
+  await runRangeEntry(ctx as never, {
+    signal: baseSignal('provider-new-materialized'),
+    parsed: {
+      ...baseParsed('buy'),
+      provider_order_type: 'new',
+      provider_signal_number: 103,
+      re_enter: true,
+    },
+    op: 'Buy', broker: baseBroker(), channelKeywords: null,
+    sendOpts: { sameSignalRefresh: true },
+  })
+  assert.equal(ctx.orderSends, 0)
+  assert.equal(ctx.persistedRows.length, 0)
+})
+
 function baseSignal(id: string): SignalRow {
   return {
     id,
@@ -147,7 +262,7 @@ function baseBroker(manualOverrides: Record<string, unknown> = {}): BrokerRow {
   }
 }
 
-function makeRangeCtx() {
+function makeRangeCtx(options: { materialized?: boolean } = {}) {
   const persistedRows: Record<string, unknown>[] = []
   const logs: Record<string, unknown>[] = []
   const skips: Array<{ signalId: string; brokerId: string; reason: string }> = []
@@ -193,7 +308,7 @@ function makeRangeCtx() {
     tryParameterFollowUpMergeModifyOnly: async () => ({ handled: false }),
     tryMergeSignalIntoExistingOpenTrade: async () => ({ handled: false }),
     hasOpenTradeForSymbol: async () => false,
-    manualDispatchAlreadyMaterialized: async () => false,
+    manualDispatchAlreadyMaterialized: async () => options.materialized === true,
     persistRangePendingLegRows: async (rows: Record<string, unknown>[]) => {
       persistedRows.push(...rows)
       return { ok: true }

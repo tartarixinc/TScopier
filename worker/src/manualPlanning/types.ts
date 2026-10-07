@@ -24,6 +24,8 @@ export interface ParsedSignal {
   re_enter?: boolean
   /** Provider-side trade id (e.g. ForexBro Signal #899). */
   provider_signal_number?: number | null
+  /** Explicit provider lifecycle marker; separate from Telegram signal and broker ticket ids. */
+  provider_order_type?: 'new' | 'close' | null
 }
 
 export interface ManualTpLot {

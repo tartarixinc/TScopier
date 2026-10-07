@@ -1,4 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { TRADE_CLOSE_REASON } from './tradeCloseReasons'
+import { applyCloseUpdate } from './tradeCloseUpdate'
 import { signalPipPrice } from './signalPip'
 import {
   computeTrailingStopUpdate,
@@ -32,6 +34,7 @@ interface TrailTradeRow {
   signal_id: string | null
   broker_account_id: string | null
   metaapi_order_id: string | null
+  broker_position_ticket?: string | null
   symbol: string
   direction: string
   entry_price: number | null
@@ -105,7 +108,7 @@ export class TrailingStopMonitor {
       this.supabase
         .from('trades')
         .select(
-          'id,user_id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,entry_price,sl,tp,'
+          'id,user_id,signal_id,broker_account_id,metaapi_order_id,broker_position_ticket,symbol,direction,entry_price,sl,tp,'
           + 'trail_peak_price,trail_last_sl,trail_start_pips,trail_step_pips,trail_distance_pips',
         )
         .eq('status', 'open')
@@ -185,7 +188,7 @@ export class TrailingStopMonitor {
     bid: number,
     ask: number,
   ): Promise<boolean | null> {
-    const ticketNum = Number(trade.metaapi_order_id)
+    const ticketNum = Number(trade.broker_position_ticket ?? trade.metaapi_order_id)
     if (!Number.isFinite(ticketNum) || ticketNum <= 0) {
       await this.clearTrailWatch(trade.id)
       return null
@@ -265,10 +268,15 @@ export class TrailingStopMonitor {
       const benign = /not\s+found|already\s+closed|invalid\s+ticket|no\s+such\s+order|unknown\s+ticket/i.test(msg)
         || isBenignOrderModifyError(msg)
       if (benign) {
-        await this.supabase
-          .from('trades')
-          .update({ status: 'closed', closed_at: new Date().toISOString(), trail_peak_price: null })
-          .eq('id', trade.id)
+        await applyCloseUpdate(
+          {
+            status: 'closed',
+            closed_at: new Date().toISOString(),
+            close_reason: TRADE_CLOSE_REASON.POSITION_GONE,
+            trail_peak_price: null,
+          },
+          patch => this.supabase.from('trades').update(patch).eq('id', trade.id),
+        )
         return null
       }
       console.warn(`[trailingStopMonitor] OrderModify failed trade=${trade.id} ticket=${ticketNum}: ${msg}`)
