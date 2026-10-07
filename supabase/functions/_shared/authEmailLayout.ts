@@ -17,8 +17,8 @@ export function buildAuthEmailHtml(args: {
     : ""
 
   const logoBlock = args.logoUrl
-    ? `<img src="${args.logoUrl}" alt="TScopier" width="148" height="36" style="display:block;margin:0 0 20px 0;height:36px;width:auto;max-width:180px;border:0;" />`
-    : `<p style="margin:0 0 8px 0;font-size:12px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#0d9488;">TScopier</p>`
+    ? `<img src="${args.logoUrl}" alt="UniCopier" width="148" height="36" style="display:block;margin:0 0 20px 0;height:36px;width:auto;max-width:180px;border:0;" />`
+    : `<p style="margin:0 0 8px 0;font-size:12px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#0d9488;">UniCopier</p>`
 
   return `<!DOCTYPE html>
 <html lang="en">

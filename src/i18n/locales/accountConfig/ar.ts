@@ -46,7 +46,7 @@ export const accountConfigAr: AccountConfigBundleTranslations = {
       passwordHint: '',
       rememberPasswordLabel: 'تذكّر كلمة المرور لإعادة الاتصال التلقائي',
       rememberPasswordHint:
-        'يُشفّر كلمة مرور MT على خوادمنا حتى يتمكن TScopier من استعادة الجلسة دون إعادة السؤال. يمكنك حذفها في أي وقت.',
+        'يُشفّر كلمة مرور MT على خوادمنا حتى يتمكن UniCopier من استعادة الجلسة دون إعادة السؤال. يمكنك حذفها في أي وقت.',
       connectButton: 'ربط الحساب',
       connectingTitle: 'جارٍ ربط الوسيط',
       connectingStepLinking: 'جارٍ ربط حساب {platform}…',
@@ -157,7 +157,7 @@ export const accountConfigAr: AccountConfigBundleTranslations = {
       reconnectPasswordTitle: 'انتهت جلسة الوسيط',
       reconnectPasswordBody:
         'انتهت جلسة الوسيط على خادم التداول. أدخل كلمة مرور حساب MT لإعادة الاتصال.',
-      reconnectMigrationTitle: 'لقد حدّثنا طريقة اتصال TScopier بوسيطك',
+      reconnectMigrationTitle: 'لقد حدّثنا طريقة اتصال UniCopier بوسيطك',
       reconnectMigrationBody: 'أعد ربط هذا الحساب لمواصلة نسخ الصفقات. الإعدادات وسجل الصفقات والصفقات المفتوحة لن تتغير.',
       reconnectMigrationPasswordTitle: 'أدخل كلمة المرور لإعادة الاتصال',
       reconnectMigrationPasswordBody: 'رقم الحساب والخادم مملوءان مسبقًا. تُخزَّن كلمة المرور مشفّرة وتُستخدم فقط للاتصال بوسيطك.',
@@ -167,7 +167,7 @@ export const accountConfigAr: AccountConfigBundleTranslations = {
       remindLater: 'ذكّرني لاحقًا',
       deleteAccountLink: 'لا أستطيع إعادة الاتصال — حذف هذا الحساب',
       deleteConfirmTitle: 'حذف هذا الحساب؟',
-      deleteConfirmBody: 'سيؤدي هذا إلى حذف الحساب وسجل الصفقات والإعدادات من TScopier. تبقى المراكز لدى الوسيط. يمكنك إعادة ربطه لاحقًا بكلمة مرور جديدة.',
+      deleteConfirmBody: 'سيؤدي هذا إلى حذف الحساب وسجل الصفقات والإعدادات من UniCopier. تبقى المراكز لدى الوسيط. يمكنك إعادة ربطه لاحقًا بكلمة مرور جديدة.',
       deleteConfirmNote: 'لا يمكن التراجع عن هذا الإجراء.',
       deleteConfirmCta: 'حذف الحساب',
       reconnectConnectingTitle: 'جارٍ توصيل حسابك',
@@ -182,7 +182,7 @@ export const accountConfigAr: AccountConfigBundleTranslations = {
       reconnectPasswordPlaceholder: 'كلمة مرور حساب التداول',
       rememberPasswordLabel: 'تذكّر كلمة المرور لإعادة الاتصال التلقائي',
       rememberPasswordHint:
-        'يخزّن نسخة مشفّرة حتى يتمكن TScopier من إعادة الاتصال دون إعادة السؤال. يمكنك حذفها في إعداد الحساب.',
+        'يخزّن نسخة مشفّرة حتى يتمكن UniCopier من إعادة الاتصال دون إعادة السؤال. يمكنك حذفها في إعداد الحساب.',
       clearStoredCredentials: 'حذف كلمة المرور المحفوظة',
       storedCredentialsActive: 'إعادة الاتصال التلقائي مفعّل',
       deleteFailed: 'تعذّر حذف الوسيط',

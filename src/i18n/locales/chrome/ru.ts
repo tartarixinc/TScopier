@@ -104,7 +104,7 @@ export const chromeRu: AppChromeTranslations = {
     },
     updatesPage: {
       title: 'Updates',
-      subtitle: 'Recent changes, fixes, and improvements to TScopier.',
+      subtitle: 'Recent changes, fixes, and improvements to UniCopier.',
       empty: 'No updates yet. Check back soon.',
       typeFeature: 'Feature',
       typeFix: 'Fix',
@@ -113,7 +113,7 @@ export const chromeRu: AppChromeTranslations = {
 
 
     assistant: {
-      title: 'TScopier Assistant',
+      title: 'UniCopier Assistant',
       subtitle: 'Ask questions or get help taking action',
       ariaLabel: 'Open AI assistant',
       close: 'Close assistant',
@@ -122,12 +122,12 @@ export const chromeRu: AppChromeTranslations = {
       newChat: 'New chat',
       historyEmpty: 'No past conversations yet.',
       deleteChat: 'Delete conversation',
-      placeholder: 'Ask anything about TScopier…',
+      placeholder: 'Ask anything about UniCopier…',
       send: 'Send',
       thinking: 'Thinking…',
       confirm: 'Confirm',
       cancel: 'Cancel',
-      welcomeTitle: 'I can help you set up and run TScopier.',
+      welcomeTitle: 'I can help you set up and run UniCopier.',
       suggestions: [
         'Is my Telegram linked?',
         'Pause the copier',
@@ -261,7 +261,7 @@ export const chromeRu: AppChromeTranslations = {
     },
     contactSupport: {
       title: 'Поддержка',
-      description: 'Получите помощь команды TScopier по аккаунту, настройке копира или техническим проблемам.',
+      description: 'Получите помощь команды UniCopier по аккаунту, настройке копира или техническим проблемам.',
     },
     riskDisclaimer: {
       title: 'Предупреждение о рисках',
@@ -269,7 +269,7 @@ export const chromeRu: AppChromeTranslations = {
     },
     termsOfService: {
       title: 'Условия использования',
-      description: 'Условия, регулирующие использование TScopier.',
+      description: 'Условия, регулирующие использование UniCopier.',
     },
     privacyPolicy: {
       title: 'Политика конфиденциальности',
@@ -277,7 +277,7 @@ export const chromeRu: AppChromeTranslations = {
     },
     cookiePolicy: {
       title: 'Политика cookie',
-      description: 'Как TScopier использует cookie и похожие технологии.',
+      description: 'Как UniCopier использует cookie и похожие технологии.',
     },
     featureRequest: {
       title: 'Запрос функции',

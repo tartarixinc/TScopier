@@ -20,7 +20,7 @@ export const settingsAr: SettingsBundleTranslations = {
     },
     personal: {
       title: 'البيانات الشخصية',
-      description: 'بيانات الاتصال وكيف تظهر في TScopier.',
+      description: 'بيانات الاتصال وكيف تظهر في UniCopier.',
     },
     general: {
       title: 'الإعدادات العامة',

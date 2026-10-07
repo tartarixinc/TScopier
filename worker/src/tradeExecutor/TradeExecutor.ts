@@ -126,7 +126,7 @@ const MGMT_SWEEP_MAX_REDISPATCHES = Math.max(
 
 export class TradeExecutor {
   private sweepLoop: MonitorLoopHandle | null = null
-  /** Cancels TScopier broker pendings past `pending_expiry_hours` (1–24) when env enabled. */
+  /** Cancels UniCopier broker pendings past `pending_expiry_hours` (1–24) when env enabled. */
   private brokerPendingSweepTimer: NodeJS.Timeout | null = null
   private sessionHeartbeatTimer: NodeJS.Timeout | null = null
   private sessionHeartbeatInFlight = false

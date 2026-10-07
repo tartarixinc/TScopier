@@ -826,7 +826,17 @@ export interface ConfigurationsPageTranslations {
   searchDescription: string
   copyingOn: string
   copyingOff: string
+  master: string
   login: string
+  username: string
+  channelId: string
+  subscribers: string
+  balance: string
+  equity: string
+  accountType: string
+  accountTypeLive: string
+  accountTypeDemo: string
+  accountTypePropFirm: string
   noChannelsLinked: string
   emptyTitle: string
   emptyBody: string
@@ -845,12 +855,19 @@ export interface ConfigurationsPageTranslations {
   edit: string
   addChannel: string
   addBroker: string
+  addDestination: string
   copyFrom: string
   copyTo: string
   dragToConnect: string
   dragToDisconnect: string
   removeChannel: string
+  removeSource: string
+  removeDestination: string
   noAvailableChannels: string
+  noAvailableBrokers: string
+  sourceKindPrompt: string
+  sourceTelegram: string
+  sourceBroker: string
   loadError: string
 }
 

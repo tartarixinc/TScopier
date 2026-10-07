@@ -46,7 +46,7 @@ export const accountConfigSv: AccountConfigBundleTranslations = {
       passwordHint: '',
       rememberPasswordLabel: 'Kom ihåg lösenord för automatisk återanslutning',
       rememberPasswordHint:
-        'Krypterar ditt MT-lösenord på våra servrar så att TScopier kan återställa sessionen utan att fråga igen. Du kan ta bort det när som helst.',
+        'Krypterar ditt MT-lösenord på våra servrar så att UniCopier kan återställa sessionen utan att fråga igen. Du kan ta bort det när som helst.',
       connectButton: 'Anslut konto',
       connectingTitle: 'Ansluter din mäklare',
       connectingStepLinking: 'Länkar ditt {platform}-konto…',
@@ -157,7 +157,7 @@ export const accountConfigSv: AccountConfigBundleTranslations = {
       reconnectPasswordTitle: 'Mäklarsessionen har löpt ut',
       reconnectPasswordBody:
         'Din mäklarsession har löpt ut på handelsservern. Ange lösenordet för ditt MT-konto för att återansluta.',
-      reconnectMigrationTitle: 'Vi har uppdaterat hur TScopier ansluter till din mäklare',
+      reconnectMigrationTitle: 'Vi har uppdaterat hur UniCopier ansluter till din mäklare',
       reconnectMigrationBody: 'Anslut det här kontot igen för att fortsätta kopiera trades. Dina inställningar, historik och öppna positioner är oförändrade.',
       reconnectMigrationPasswordTitle: 'Ange ditt lösenord för att ansluta igen',
       reconnectMigrationPasswordBody: 'Kontonummer och server är redan ifyllda. Lösenordet lagras krypterat och används bara för att ansluta till din mäklare.',
@@ -167,7 +167,7 @@ export const accountConfigSv: AccountConfigBundleTranslations = {
       remindLater: 'Påminn mig senare',
       deleteAccountLink: 'Jag kan inte återansluta — ta bort kontot',
       deleteConfirmTitle: 'Ta bort kontot?',
-      deleteConfirmBody: 'Detta tar bort kontot, transaktionshistoriken och inställningarna från TScopier. Positionerna finns kvar hos din mäklare. Du kan ansluta igen senare med ett nytt lösenord.',
+      deleteConfirmBody: 'Detta tar bort kontot, transaktionshistoriken och inställningarna från UniCopier. Positionerna finns kvar hos din mäklare. Du kan ansluta igen senare med ett nytt lösenord.',
       deleteConfirmNote: 'Detta går inte att ångra.',
       deleteConfirmCta: 'Ta bort kontot',
       reconnectConnectingTitle: 'Ansluter ditt konto',
@@ -183,7 +183,7 @@ export const accountConfigSv: AccountConfigBundleTranslations = {
       reconnectPasswordPlaceholder: 'Lösenord för handelskonto',
       rememberPasswordLabel: 'Kom ihåg lösenord för automatisk återanslutning',
       rememberPasswordHint:
-        'Lagrar en krypterad kopia så att TScopier kan återansluta utan att fråga igen. Du kan rensa den i Kontokonfiguration.',
+        'Lagrar en krypterad kopia så att UniCopier kan återansluta utan att fråga igen. Du kan rensa den i Kontokonfiguration.',
       clearStoredCredentials: 'Glöm sparat lösenord',
       storedCredentialsActive: 'Automatisk återanslutning aktiverad',
       deleteFailed: 'Det gick inte att ta bort mäklaren',

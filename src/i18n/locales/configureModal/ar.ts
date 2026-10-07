@@ -444,7 +444,7 @@ export const configureModalAr: ConfigureModalTranslations = {
     ruleTriggerTpHit: 'بعد بلوغ TP{index}',
     orderCommentsTitle: 'تعليقات الأوامر',
     orderCommentsSubtitle:
-      'إيقاف: يترك TScopier حقل تعليق الوسيط فارغًا للصفقات المفتوحة أو المُحدَّثة.',
+      'إيقاف: يترك UniCopier حقل تعليق الوسيط فارغًا للصفقات المفتوحة أو المُحدَّثة.',
   },
   filters: {
     timeTitle: 'فلتر الوقت',

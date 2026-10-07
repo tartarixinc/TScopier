@@ -46,7 +46,7 @@ export const accountConfigPl: AccountConfigBundleTranslations = {
       passwordHint: '',
       rememberPasswordLabel: 'Zapamiętaj hasło do automatycznego ponownego połączenia',
       rememberPasswordHint:
-        'Szyfruje Twoje hasło MT na naszych serwerach, aby TScopier mógł przywrócić sesję bez ponownego pytania. Możesz je usunąć w dowolnym momencie.',
+        'Szyfruje Twoje hasło MT na naszych serwerach, aby UniCopier mógł przywrócić sesję bez ponownego pytania. Możesz je usunąć w dowolnym momencie.',
       connectButton: 'Połącz konto',
       connectingTitle: 'Łączenie brokera',
       connectingStepLinking: 'Łączenie Twojego konta {platform}…',
@@ -157,7 +157,7 @@ export const accountConfigPl: AccountConfigBundleTranslations = {
       reconnectPasswordTitle: 'Sesja brokera wygasła',
       reconnectPasswordBody:
         'Twoja sesja brokera wygasła na serwerze handlowym. Wpisz hasło do konta MT, aby połączyć ponownie.',
-      reconnectMigrationTitle: 'Zaktualizowaliśmy sposób, w jaki TScopier łączy się z Twoim brokerem',
+      reconnectMigrationTitle: 'Zaktualizowaliśmy sposób, w jaki UniCopier łączy się z Twoim brokerem',
       reconnectMigrationBody: 'Połącz ponownie to konto, aby nadal kopiować transakcje. Ustawienia, historia i otwarte pozycje pozostają bez zmian.',
       reconnectMigrationPasswordTitle: 'Wpisz hasło, aby połączyć się ponownie',
       reconnectMigrationPasswordBody: 'Numer konta i serwer są już uzupełnione. Hasło jest przechowywane w formie zaszyfrowanej i służy wyłącznie do połączenia z brokerem.',
@@ -167,7 +167,7 @@ export const accountConfigPl: AccountConfigBundleTranslations = {
       remindLater: 'Przypomnij mi później',
       deleteAccountLink: 'Nie mogę połączyć ponownie — usuń to konto',
       deleteConfirmTitle: 'Usunąć to konto?',
-      deleteConfirmBody: 'Spowoduje to usunięcie konta, historii transakcji i ustawień z TScopier. Pozycje pozostają u brokera. Możesz połączyć je ponownie później z nowym hasłem.',
+      deleteConfirmBody: 'Spowoduje to usunięcie konta, historii transakcji i ustawień z UniCopier. Pozycje pozostają u brokera. Możesz połączyć je ponownie później z nowym hasłem.',
       deleteConfirmNote: 'Tej operacji nie można cofnąć.',
       deleteConfirmCta: 'Usuń konto',
       reconnectConnectingTitle: 'Łączenie z kontem',
@@ -183,7 +183,7 @@ export const accountConfigPl: AccountConfigBundleTranslations = {
       reconnectPasswordPlaceholder: 'Hasło do konta tradingowego',
       rememberPasswordLabel: 'Zapamiętaj hasło do automatycznego ponownego połączenia',
       rememberPasswordHint:
-        'Przechowuje zaszyfrowaną kopię, aby TScopier mógł łączyć ponownie bez ponownego pytania. Możesz ją usunąć w Konfiguracji konta.',
+        'Przechowuje zaszyfrowaną kopię, aby UniCopier mógł łączyć ponownie bez ponownego pytania. Możesz ją usunąć w Konfiguracji konta.',
       clearStoredCredentials: 'Usuń zapisane hasło',
       storedCredentialsActive: 'Automatyczne ponowne łączenie włączone',
       deleteFailed: 'Nie udało się usunąć brokera',

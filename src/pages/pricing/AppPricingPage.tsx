@@ -12,7 +12,7 @@ export function AppPricingPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain bg-white dark:bg-neutral-950">
       <header className="sticky top-0 z-20 flex shrink-0 items-center justify-between border-b border-neutral-200/55 bg-white/95 px-6 py-4 backdrop-blur dark:border-neutral-800/50 dark:bg-neutral-950/95 pt-[calc(1rem+env(safe-area-inset-top,0px)+var(--app-banner-h,0px))]">
-        <Link to="/" className="flex items-center" aria-label="TScopier">
+        <Link to="/" className="flex items-center" aria-label="UniCopier">
           <AuthBrandLogo className="h-8 w-auto" />
         </Link>
         <button

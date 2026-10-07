@@ -23,7 +23,7 @@ export const copierEngineJa: CopierEngineBundleTranslations = {
     tgConnectHowItWorks2: 'Telegramアプリに送信されたコードを入力',
     tgConnectHowItWorks3: '監視・コピーするシグナルチャンネルを選択',
     tgConnectPhoneWarning:
-      'TScopierはあなたのメッセージにアクセスしたり読み取ったりしません。Telegramを接続すると、あなたが参加しているチャンネルへのアクセスのみをアプリに許可します。',
+      'UniCopierはあなたのメッセージにアクセスしたり読み取ったりしません。Telegramを接続すると、あなたが参加しているチャンネルへのアクセスのみをアプリに許可します。',
     tgConnectMethodTitle: 'Choose how to sign in',
     tgConnectMethodSubtitle: 'Use your phone number or scan a QR code with the Telegram app on your phone.',
     tgConnectMethodPhone: 'Phone number',
@@ -59,7 +59,7 @@ export const copierEngineJa: CopierEngineBundleTranslations = {
     failedSendCode: 'コードの送信に失敗しました',
     verificationFailed: '認証に失敗しました',
     telegramAlreadyLinked:
-      'このTelegramアカウントは別のTScopierアカウントにすでに連携されています。そのアカウントでサインインするか、サポートにお問い合わせください。',
+      'このTelegramアカウントは別のUniCopierアカウントにすでに連携されています。そのアカウントでサインインするか、サポートにお問い合わせください。',
     failedLoadTgChannels: 'Telegramチャンネルの読み込みに失敗しました',
     telegramSessionExpired: 'Telegramセッションの有効期限が切れました。再接続してください — 設定済みチャンネルは保持されます。',
     telegramConnectionBusy: 'Telegram is reconnecting after a backtest or another task. Wait 30 seconds, then press Refresh — or use Reconnect Telegram.',

@@ -46,7 +46,7 @@ export const accountConfigJa: AccountConfigBundleTranslations = {
       passwordHint: '',
       rememberPasswordLabel: '自動再接続のためにパスワードを記憶',
       rememberPasswordHint:
-        'MT パスワードを当社サーバー上で暗号化し、TScopier が再入力なしでセッションを復元できるようにします。いつでも削除できます。',
+        'MT パスワードを当社サーバー上で暗号化し、UniCopier が再入力なしでセッションを復元できるようにします。いつでも削除できます。',
       connectButton: '口座を接続',
       connectingTitle: 'ブローカーを接続中',
       connectingStepLinking: '{platform} 口座をリンク中…',
@@ -157,7 +157,7 @@ export const accountConfigJa: AccountConfigBundleTranslations = {
       reconnectPasswordTitle: 'ブローカーセッションの期限切れ',
       reconnectPasswordBody:
         '取引サーバー上でブローカーセッションが期限切れになりました。再接続するには MT 口座のパスワードを入力してください。',
-      reconnectMigrationTitle: 'TScopier がブローカーに接続する方法を更新しました',
+      reconnectMigrationTitle: 'UniCopier がブローカーに接続する方法を更新しました',
       reconnectMigrationBody: 'この口座を再接続すると取引のコピーを続けられます。設定・取引履歴・保有中の注文は変わりません。',
       reconnectMigrationPasswordTitle: 'パスワードを入力して再接続',
       reconnectMigrationPasswordBody: '口座番号とサーバーは入力済みです。パスワードは暗号化して保存され、ブローカーへの接続にのみ使用されます。',
@@ -167,7 +167,7 @@ export const accountConfigJa: AccountConfigBundleTranslations = {
       remindLater: 'あとで通知',
       deleteAccountLink: '再接続できません — このアカウントを削除',
       deleteConfirmTitle: 'このアカウントを削除しますか？',
-      deleteConfirmBody: 'TScopier からアカウント、取引履歴、設定が削除されます。ポジションはブローカーに残ります。後で新しいパスワードで再接続できます。',
+      deleteConfirmBody: 'UniCopier からアカウント、取引履歴、設定が削除されます。ポジションはブローカーに残ります。後で新しいパスワードで再接続できます。',
       deleteConfirmNote: 'この操作は取り消せません。',
       deleteConfirmCta: 'アカウントを削除',
       reconnectConnectingTitle: 'アカウントに接続しています',
@@ -182,7 +182,7 @@ export const accountConfigJa: AccountConfigBundleTranslations = {
       reconnectPasswordPlaceholder: '取引口座のパスワード',
       rememberPasswordLabel: '自動再接続のためにパスワードを記憶',
       rememberPasswordHint:
-        '暗号化されたコピーを保存し、TScopier が再入力なしで再接続できるようにします。口座設定から削除できます。',
+        '暗号化されたコピーを保存し、UniCopier が再入力なしで再接続できるようにします。口座設定から削除できます。',
       clearStoredCredentials: '保存したパスワードを削除',
       storedCredentialsActive: '自動再接続が有効です',
       deleteFailed: 'ブローカーの削除に失敗しました',

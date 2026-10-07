@@ -6,7 +6,7 @@ export function RiskDisclaimerPage() {
   const page = useT().riskDisclaimerPage
 
   useEffect(() => {
-    document.title = `${page.title} · TScopier`
+    document.title = `${page.title} · UniCopier`
   }, [page.title])
 
   return (

@@ -21,7 +21,7 @@ export const tradingAr: TradingPagesBundleTranslations = {
     telegramMessage: 'رسالة Telegram',
     parsedInstruction: 'التعليمات المحلّلة',
     signalTime: 'وُلِّد الإشعار',
-    noLinkedSignal: 'لا إشارة TScopier مرتبطة بهذه الصفقة.',
+    noLinkedSignal: 'لا إشارة UniCopier مرتبطة بهذه الصفقة.',
     imageSignal: '(إشارة صورة)',
     loadingSignal: 'جارٍ تحميل الإشارة…',
     loadSignalError: 'تعذر تحميل تفاصيل الإشارة.',
@@ -94,7 +94,7 @@ export const tradingAr: TradingPagesBundleTranslations = {
   },
   popularChannelsPage: {
     title: 'Popular Channels',
-    subtitle: 'Signal channels ranked by subscriber count across all TSCopier users',
+    subtitle: 'Signal channels ranked by subscriber count across all UniCopier users',
     emptyTitle: 'No channels yet',
     emptySubtitle: 'Channels will appear here as users subscribe to them',
   },

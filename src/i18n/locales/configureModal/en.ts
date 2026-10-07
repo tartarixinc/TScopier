@@ -481,7 +481,7 @@ export const configureModalEn: ConfigureModalTranslations = {
     ruleTriggerTpHit: 'when TP{index} is reached',
     orderCommentsTitle: 'Order comments',
     orderCommentsSubtitle:
-      'When off, TScopier leaves the broker order comment field empty for trades it opens or refreshes.',
+      'When off, UniCopier leaves the broker order comment field empty for trades it opens or refreshes.',
   },
   filters: {
     timeTitle: 'Time filter',

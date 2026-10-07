@@ -482,7 +482,7 @@ export const configureModalEs: ConfigureModalTranslations = {
     ruleTriggerTpHit: 'cuando se alcanza TP{index}',
     orderCommentsTitle: 'Comentarios de orden',
     orderCommentsSubtitle:
-      'Desactivado: TScopier deja vacío el campo de comentario del bróker en las operaciones que abre o actualiza.',
+      'Desactivado: UniCopier deja vacío el campo de comentario del bróker en las operaciones que abre o actualiza.',
   },
   filters: {
     timeTitle: 'Filtro horario',

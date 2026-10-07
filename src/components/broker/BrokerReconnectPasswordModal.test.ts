@@ -11,7 +11,7 @@ import type { BrokerAccount } from '../../types/database'
 type ModalProps = Parameters<typeof BrokerReconnectPasswordModal>[0]
 
 const copy = {
-  title: 'We have updated how TScopier connects to your broker',
+  title: 'We have updated how UniCopier connects to your broker',
   body: 'Reconnect this account to keep copying trades.',
   passwordLabel: 'MT account password',
   passwordHint: 'Sent to MT servers only.',
@@ -87,7 +87,7 @@ afterEach(() => {
 describe('BrokerReconnectPasswordModal — not dismissible (automatic prompt)', () => {
   it('shows the account and the Reconnect button on the details stage', () => {
     render({ dismissible: false })
-    expect(document.body.textContent).toContain('We have updated how TScopier connects to your broker')
+    expect(document.body.textContent).toContain('We have updated how UniCopier connects to your broker')
     expect(document.body.textContent).toContain('Exness Demo')
     expect(document.body.textContent).toContain('436990470')
     expect(document.body.textContent).toContain('Exness-MT5Trial9')

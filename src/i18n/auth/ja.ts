@@ -14,10 +14,10 @@ export const authJa: AuthTranslations = {
     captchaRequired: '続行する前にセキュリティチェックを完了してください。',
   },
   login: {
-    heading: 'TScopierにログイン',
+    heading: 'UniCopierにログイン',
     noAccount: 'アカウントをお持ちでないですか？',
     signUpLink: '新規登録',
-    footerPrompt: 'TScopierは初めてですか？',
+    footerPrompt: 'UniCopierは初めてですか？',
     footerLink: '無料アカウントを作成',
     email: 'メール',
     emailPlaceholder: 'you@example.com',
@@ -42,7 +42,7 @@ export const authJa: AuthTranslations = {
   },
   resetPassword: {
     heading: '新しいパスワードを設定',
-    subtitle: 'TScopierアカウント用の新しいパスワードを設定してください。',
+    subtitle: 'UniCopierアカウント用の新しいパスワードを設定してください。',
     verifyingHeading: 'リセットリンクを確認しています…',
     verifyingSubtitle: 'リンクを安全に検証しています。少々お待ちください。',
     securityNote: '更新後はすべての端末からサインアウトされます。新しいパスワードで再度ログインしてください。',
@@ -102,14 +102,14 @@ export const authJa: AuthTranslations = {
     backToLogin: 'ログインに戻る',
   },
   welcome: {
-    title: 'TScopierへようこそ',
+    title: 'UniCopierへようこそ',
     subtitle: 'アカウントの準備ができました。Telegramを接続して、シグナルのコピーを始めましょう。',
     steps: [
       'Telegramを接続し、シグナルチャンネルを選ぶ',
       'MT4/MT5ブローカー口座を連携する',
       'リスク設定に従って自動でトレードをコピーする',
     ],
-    startUsing: 'TScopierを使い始める',
+    startUsing: 'UniCopierを使い始める',
     exploreDashboard: '先にダッシュボードを見る',
     errorFallback: '続行できませんでした。もう一度お試しください。',
   },

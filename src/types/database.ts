@@ -455,6 +455,8 @@ export interface BrokerAccount {
   copier_mode?: 'ai' | 'manual'
   /** Subscribed telegram_channels row ids; signals copy only when listed here. */
   signal_channel_ids?: string[] | null
+  /** When true, this account is a copy source on the configuration map. */
+  copy_source?: boolean | null
   /** True when at least one channel is explicitly linked. */
   enforce_signal_channel_filter?: boolean | null
   ai_settings?: Json | null
@@ -482,6 +484,17 @@ export interface ChannelTradingPreset {
 }
 
 /** Authoritative per-broker, per-channel trading configuration row. */
+/** Saved map link from a source broker to a destination broker. */
+export interface BrokerCopyLink {
+  id: string
+  user_id: string
+  source_broker_account_id: string
+  destination_broker_account_id: string
+  manual_settings: ManualSettings
+  created_at: string
+  updated_at: string
+}
+
 export interface BrokerChannelTradingConfig {
   id: string
   user_id: string

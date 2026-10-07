@@ -103,7 +103,7 @@ export const chromeAr: AppChromeTranslations = {
     },
     updatesPage: {
       title: 'Updates',
-      subtitle: 'Recent changes, fixes, and improvements to TScopier.',
+      subtitle: 'Recent changes, fixes, and improvements to UniCopier.',
       empty: 'No updates yet. Check back soon.',
       typeFeature: 'Feature',
       typeFix: 'Fix',
@@ -111,7 +111,7 @@ export const chromeAr: AppChromeTranslations = {
     },
 
     assistant: {
-      title: 'TScopier Assistant',
+      title: 'UniCopier Assistant',
       subtitle: 'Ask questions or get help taking action',
       ariaLabel: 'Open AI assistant',
       close: 'Close assistant',
@@ -120,12 +120,12 @@ export const chromeAr: AppChromeTranslations = {
       newChat: 'New chat',
       historyEmpty: 'No past conversations yet.',
       deleteChat: 'Delete conversation',
-      placeholder: 'Ask anything about TScopier…',
+      placeholder: 'Ask anything about UniCopier…',
       send: 'Send',
       thinking: 'Thinking…',
       confirm: 'Confirm',
       cancel: 'Cancel',
-      welcomeTitle: 'I can help you set up and run TScopier.',
+      welcomeTitle: 'I can help you set up and run UniCopier.',
       suggestions: [
         'Is my Telegram linked?',
         'Pause the copier',
@@ -259,7 +259,7 @@ export const chromeAr: AppChromeTranslations = {
     },
     contactSupport: {
       title: 'اتصل بالدعم',
-      description: 'يساعدك فريق TScopier في الحساب وإعدادات النسخ والمشكلات التقنية.',
+      description: 'يساعدك فريق UniCopier في الحساب وإعدادات النسخ والمشكلات التقنية.',
     },
     riskDisclaimer: {
       title: 'إخلاء مسؤولية المخاطر',
@@ -267,7 +267,7 @@ export const chromeAr: AppChromeTranslations = {
     },
     termsOfService: {
       title: 'شروط الخدمة',
-      description: 'الشروط التي تحكم استخدامك لـ TScopier.',
+      description: 'الشروط التي تحكم استخدامك لـ UniCopier.',
     },
     privacyPolicy: {
       title: 'سياسة الخصوصية',
@@ -275,7 +275,7 @@ export const chromeAr: AppChromeTranslations = {
     },
     cookiePolicy: {
       title: 'سياسة ملفات تعريف الارتباط',
-      description: 'كيف نستخدم ملفات تعريف الارتباط والتقنيات المماثلة في TScopier.',
+      description: 'كيف نستخدم ملفات تعريف الارتباط والتقنيات المماثلة في UniCopier.',
     },
     featureRequest: {
       title: 'طلب ميزة',

@@ -110,7 +110,7 @@ export const dashboardAr: DashboardBundleTranslations = {
       refresh: 'تحديث',
       notFound: 'لم يُعثر على حساب الوسيط.',
       initialBalance: 'الرصيد الابتدائي',
-      initialBalanceHint: 'رصيد الحساب المسجّل عند أول ربط هذا الوسيط بـ TScopier.',
+      initialBalanceHint: 'رصيد الحساب المسجّل عند أول ربط هذا الوسيط بـ UniCopier.',
       connectedAt: 'تاريخ الربط',
       connectedAtHint: 'التاريخ والوقت لأول ربط حساب الوسيط هذا وجاهزيته للتداول.',
       currentBalance: 'الرصيد الحالي',

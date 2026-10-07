@@ -27,26 +27,42 @@ function channelLabel(channel: ConfigurationChannelOption): string {
   return username.startsWith('@') ? username : `@${username}`
 }
 
+export interface ConfigurationBrokerOption {
+  id: string
+  label: string
+  platform: string
+  login: string
+}
+
 export function AddConfigurationChannelModal({
   channels,
+  brokers,
   catalog,
   emptyLabel,
+  brokerEmptyLabel,
   onClose,
   onCreated,
   onSelect,
+  onSelectBroker,
+  onAddBroker,
 }: {
   channels: ConfigurationChannelOption[]
+  brokers: ConfigurationBrokerOption[]
   catalog: ConfigurationChannelOption[]
   emptyLabel: string
+  brokerEmptyLabel: string
   onClose: () => void
   onCreated: (channel: ConfigurationChannelOption) => void
   onSelect: (channelId: string) => void
+  onSelectBroker: (brokerId: string) => void
+  onAddBroker: () => void
 }) {
   const t = useT()
   const copy = t.configurationsPage
   const formCopy = t.channelsPage
   const { user } = useAuth()
   const { canAddChannel, limits, refresh: refreshSubscription } = useSubscription()
+  const [step, setStep] = useState<'choose' | 'telegram' | 'broker'>('choose')
   const [showForm, setShowForm] = useState(false)
   const [draft, setDraft] = useState({ channel_id: '', channel_username: '', display_name: '' })
   const [saving, setSaving] = useState(false)
@@ -132,18 +148,24 @@ export function AddConfigurationChannelModal({
             {copy.addChannel}
           </h2>
           <div className="flex items-center gap-1">
-            <button
-              type="button"
-              className="rounded-lg p-2 text-teal-700 hover:bg-teal-50 dark:text-teal-300 dark:hover:bg-teal-950"
-              aria-label={formCopy.addFormTitle}
-              aria-expanded={showForm}
-              onClick={() => {
-                setError('')
-                setShowForm(open => !open)
-              }}
-            >
-              <Plus className="h-4 w-4" />
-            </button>
+            {step === 'choose' ? null : (
+              <button
+                type="button"
+                className="rounded-lg p-2 text-teal-700 hover:bg-teal-50 dark:text-teal-300 dark:hover:bg-teal-950"
+                aria-label={step === 'telegram' ? formCopy.addFormTitle : copy.addBroker}
+                aria-expanded={step === 'telegram' ? showForm : undefined}
+                onClick={() => {
+                  setError('')
+                  if (step === 'broker') {
+                    onAddBroker()
+                    return
+                  }
+                  setShowForm(open => !open)
+                }}
+              >
+                <Plus className="h-4 w-4" />
+              </button>
+            )}
             <button
               type="button"
               className="rounded-lg p-2 text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
@@ -155,7 +177,58 @@ export function AddConfigurationChannelModal({
           </div>
         </div>
         <div className="overflow-y-auto px-5 py-4">
-          {showForm ? (
+          {step === 'choose' ? (
+            <div className="space-y-3">
+              <p className="text-sm text-neutral-500 dark:text-neutral-400">{copy.sourceKindPrompt}</p>
+              <button
+                type="button"
+                className="flex w-full items-center gap-3 rounded-xl border border-neutral-200 px-4 py-3 text-start hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900"
+                onClick={() => setStep('telegram')}
+              >
+                <img src="/Telegram.svg" alt="" aria-hidden className="h-7 w-7 shrink-0 object-contain" />
+                <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{copy.sourceTelegram}</span>
+              </button>
+              <button
+                type="button"
+                className="flex w-full items-center gap-3 rounded-xl border border-neutral-200 px-4 py-3 text-start hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900"
+                onClick={() => setStep('broker')}
+              >
+                <img src="/MT5.png" alt="" aria-hidden className="h-7 w-7 shrink-0 object-contain" />
+                <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{copy.sourceBroker}</span>
+              </button>
+            </div>
+          ) : null}
+          {step === 'broker' ? (
+            brokers.length === 0 ? (
+              <p className="text-sm text-neutral-500 dark:text-neutral-400">{brokerEmptyLabel}</p>
+            ) : (
+              <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
+                {brokers.map(broker => (
+                  <li key={broker.id}>
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2.5 py-2.5 text-start hover:bg-neutral-50 dark:hover:bg-neutral-900"
+                      onClick={() => onSelectBroker(broker.id)}
+                    >
+                      <img
+                        src={`/${broker.platform.toUpperCase()}.png`}
+                        alt=""
+                        aria-hidden
+                        className="h-7 w-7 shrink-0 object-contain"
+                      />
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-medium text-neutral-900 dark:text-neutral-50">{broker.label}</span>
+                        {broker.login ? (
+                          <span className="block truncate text-xs text-neutral-500 dark:text-neutral-400">{copy.login} {broker.login}</span>
+                        ) : null}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )
+          ) : null}
+          {step === 'telegram' && showForm ? (
             <form onSubmit={event => { void addChannel(event) }} className="mb-4 space-y-3">
               <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{formCopy.addFormTitle}</h3>
               {error ? <Alert>{error}</Alert> : null}
@@ -187,9 +260,10 @@ export function AddConfigurationChannelModal({
               </div>
             </form>
           ) : null}
-          {channels.length === 0 ? (
+          {step === 'telegram' && channels.length === 0 ? (
             <p className="text-sm text-neutral-500 dark:text-neutral-400">{emptyLabel}</p>
-          ) : (
+          ) : null}
+          {step === 'telegram' && channels.length > 0 ? (
             <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
               {channels.map(channel => {
                 const name = channelLabel(channel) || copy.unknownChannel
@@ -213,7 +287,7 @@ export function AddConfigurationChannelModal({
                 )
               })}
             </ul>
-          )}
+          ) : null}
         </div>
       </div>
     </div>,

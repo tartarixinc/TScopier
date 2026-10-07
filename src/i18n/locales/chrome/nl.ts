@@ -103,7 +103,7 @@ export const chromeNl: AppChromeTranslations = {
     },
     updatesPage: {
       title: 'Updates',
-      subtitle: 'Recent changes, fixes, and improvements to TScopier.',
+      subtitle: 'Recent changes, fixes, and improvements to UniCopier.',
       empty: 'No updates yet. Check back soon.',
       typeFeature: 'Feature',
       typeFix: 'Fix',
@@ -112,7 +112,7 @@ export const chromeNl: AppChromeTranslations = {
 
 
     assistant: {
-      title: 'TScopier Assistant',
+      title: 'UniCopier Assistant',
       subtitle: 'Ask questions or get help taking action',
       ariaLabel: 'Open AI assistant',
       close: 'Close assistant',
@@ -121,12 +121,12 @@ export const chromeNl: AppChromeTranslations = {
       newChat: 'New chat',
       historyEmpty: 'No past conversations yet.',
       deleteChat: 'Delete conversation',
-      placeholder: 'Ask anything about TScopier…',
+      placeholder: 'Ask anything about UniCopier…',
       send: 'Send',
       thinking: 'Thinking…',
       confirm: 'Confirm',
       cancel: 'Cancel',
-      welcomeTitle: 'I can help you set up and run TScopier.',
+      welcomeTitle: 'I can help you set up and run UniCopier.',
       suggestions: [
         'Is my Telegram linked?',
         'Pause the copier',
@@ -260,7 +260,7 @@ export const chromeNl: AppChromeTranslations = {
     },
     contactSupport: {
       title: 'Contact opnemen met support',
-      description: 'Krijg hulp van het TScopier-team met je account, copier-instellingen of technische problemen.',
+      description: 'Krijg hulp van het UniCopier-team met je account, copier-instellingen of technische problemen.',
     },
     riskDisclaimer: {
       title: 'Risicodisclaimer',
@@ -268,7 +268,7 @@ export const chromeNl: AppChromeTranslations = {
     },
     termsOfService: {
       title: 'Servicevoorwaarden',
-      description: 'Voorwaarden voor het gebruik van TScopier.',
+      description: 'Voorwaarden voor het gebruik van UniCopier.',
     },
     privacyPolicy: {
       title: 'Privacybeleid',
@@ -276,7 +276,7 @@ export const chromeNl: AppChromeTranslations = {
     },
     cookiePolicy: {
       title: 'Cookiebeleid',
-      description: 'Hoe TScopier cookies en vergelijkbare technologieën gebruikt.',
+      description: 'Hoe UniCopier cookies en vergelijkbare technologieën gebruikt.',
     },
     featureRequest: {
       title: 'Functieaanvraag',

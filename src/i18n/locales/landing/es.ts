@@ -17,12 +17,12 @@ export const landingEs: LandingTranslations = {
   hero: {
     headline: 'Señales de Telegram. Copiadas automáticamente.',
     subheadline:
-      'TScopier es una plataforma todo en uno para copiar señales de Telegram que conecta tu Telegram y copia señales de trading directamente a MT4/MT5 — sin configuraciones complicadas, sin EA ni VPS.',
+      'UniCopier es una plataforma todo en uno para copiar señales de Telegram que conecta tu Telegram y copia señales de trading directamente a MT4/MT5 — sin configuraciones complicadas, sin EA ni VPS.',
     socialProof: 'Clasificado #1 copiador de señales Telegram en la nube',
     primaryCta: 'Empieza tu prueba gratuita de 5 días',
     secondaryCta: 'Iniciar sesión',
     imageAlt:
-      'Panel de TScopier con saldo, beneficio diario, resultados de operaciones y gráficos de crecimiento',
+      'Panel de UniCopier con saldo, beneficio diario, resultados de operaciones y gráficos de crecimiento',
     previewUrl: 'app.tscopier.ai/dashboard',
     dashboard: {
       headlineStats: [
@@ -112,7 +112,7 @@ export const landingEs: LandingTranslations = {
     ],
     eyebrow: 'La copia inteligente empieza con herramientas inteligentes',
     title:
-      'Cada función de TScopier está pensada para darte control, claridad y resultados medibles.',
+      'Cada función de UniCopier está pensada para darte control, claridad y resultados medibles.',
     cards: [
       {
         label: 'Velocidad de ejecución',
@@ -208,14 +208,14 @@ export const landingEs: LandingTranslations = {
         eyebrow: 'Copiador de señales',
         title: 'Copia señales de Telegram a MT4 y MT5 con precisión',
         description:
-          'Refleja canales de confianza en tus cuentas de broker. TScopier analiza entradas, TPs, capas de rango e instrucciones de gestión, y ejecuta con tus reglas de lote, multi-trade y capas en cada cuenta conectada.',
+          'Refleja canales de confianza en tus cuentas de broker. UniCopier analiza entradas, TPs, capas de rango e instrucciones de gestión, y ejecuta con tus reglas de lote, multi-trade y capas en cada cuenta conectada.',
         visual: 'copier',
       },
       {
         eyebrow: 'Señales multilingües',
         title: 'Compatible con señales en varios idiomas',
         description:
-          'Copia canales que publican en inglés, español, francés, ruso, polaco, japonés y más. TScopier reconoce compra/venta, SL, TP y frases de gestión en cada idioma, además del entrenamiento por canal para el vocabulario exacto de tu proveedor.',
+          'Copia canales que publican en inglés, español, francés, ruso, polaco, japonés y más. UniCopier reconoce compra/venta, SL, TP y frases de gestión en cada idioma, además del entrenamiento por canal para el vocabulario exacto de tu proveedor.',
         visual: 'multilingual',
       },
       {
@@ -229,7 +229,7 @@ export const landingEs: LandingTranslations = {
         eyebrow: 'Ediciones de mensaje',
         title: 'Modificación de señal desde mensajes editados',
         description:
-          'Cuando un proveedor edita un mensaje de Telegram para cambiar el stop loss o los take-profits, TScopier detecta la revisión y actualiza tu cesta abierta en el broker — sin nuevas entradas, solo SL/TP sincronizados en cada pierna.',
+          'Cuando un proveedor edita un mensaje de Telegram para cambiar el stop loss o los take-profits, UniCopier detecta la revisión y actualiza tu cesta abierta en el broker — sin nuevas entradas, solo SL/TP sincronizados en cada pierna.',
         visual: 'signalEdit',
       },
       {
@@ -259,7 +259,7 @@ export const landingEs: LandingTranslations = {
         telegramLabel: 'Canal de señales',
         channelName: 'Gold Signals Pro',
         channelMeta: '3 señales nuevas · ahora',
-        hubLabel: 'TScopier',
+        hubLabel: 'UniCopier',
         mt4Label: 'Cuenta MT4',
         mt4Meta: 'Copiando · reglas 0.10 lot',
         mt5Label: 'Cuenta MT5',
@@ -555,20 +555,20 @@ export const landingEs: LandingTranslations = {
   faq: {
     eyebrow: 'Preguntas frecuentes',
     title: 'Preguntas frecuentes',
-    subtitle: 'Respuestas rápidas sobre configuración, copia y qué hace diferente a TScopier.',
+    subtitle: 'Respuestas rápidas sobre configuración, copia y qué hace diferente a UniCopier.',
     items: [
       {
         question: '¿Necesito descargar un EA o un VPS?',
         answer:
-          'No. TScopier es 100 % en la nube. Inicias sesión en el navegador, conectas Telegram y tus cuentas MT4/MT5, y el copiador corre en nuestra infraestructura—sin EA ni VPS que mantener.',
+          'No. UniCopier es 100 % en la nube. Inicias sesión en el navegador, conectas Telegram y tus cuentas MT4/MT5, y el copiador corre en nuestra infraestructura—sin EA ni VPS que mantener.',
       },
       {
-        question: '¿TScopier funciona con firmas prop que prohíben los EA?',
+        question: '¿UniCopier funciona con firmas prop que prohíben los EA?',
         answer:
-          'Sí. TScopier funciona íntegramente en la nube: no se instala nada en tu terminal MT4/MT5. Puedes copiar señales en cualquier cuenta de firma prop, permitan o no los Asesores Expertos.',
+          'Sí. UniCopier funciona íntegramente en la nube: no se instala nada en tu terminal MT4/MT5. Puedes copiar señales en cualquier cuenta de firma prop, permitan o no los Asesores Expertos.',
       },
       {
-        question: '¿Qué plataformas admite TScopier?',
+        question: '¿Qué plataformas admite UniCopier?',
         answer:
           'Conectas canales de señales de Telegram y copias a cuentas MetaTrader 4 y 5. Enlaza varios brokers y dirige cada canal a las cuentas que elijas.',
       },
@@ -583,9 +583,9 @@ export const landingEs: LandingTranslations = {
           'Puedes vincular hasta 100 conexiones MT4/MT5 por usuario, según tu plan. Cada canal de Telegram puede conectarse a una o más cuentas desde la página de Canales.',
       },
       {
-        question: '¿TScopier lee mis mensajes privados de Telegram?',
+        question: '¿UniCopier lee mis mensajes privados de Telegram?',
         answer:
-          'TScopier no lee tus chats personales. Conectar Telegram solo da acceso a canales y grupos de los que eres miembro para recibir señales de las fuentes que añades.',
+          'UniCopier no lee tus chats personales. Conectar Telegram solo da acceso a canales y grupos de los que eres miembro para recibir señales de las fuentes que añades.',
       },
       {
         question: '¿Puedo probar un canal antes de ir en vivo?',
@@ -595,7 +595,7 @@ export const landingEs: LandingTranslations = {
       {
         question: '¿Admitís rangos, capas y señales de gestión?',
         answer:
-          'Sí. TScopier gestiona entradas single y range, reparto de lotes en varios TPs, layering, cierre de entradas peores, break-even, beneficios parciales y más, con filtros permitir/ignorar por canal.',
+          'Sí. UniCopier gestiona entradas single y range, reparto de lotes en varios TPs, layering, cierre de entradas peores, break-even, beneficios parciales y más, con filtros permitir/ignorar por canal.',
       },
       {
         question: '¿Qué incluye Basic frente a Advanced?',
@@ -611,11 +611,11 @@ export const landingEs: LandingTranslations = {
   },
   comparison: {
     eyebrow: 'Por qué cambian de copiador',
-    title: 'Sube de nivel con TScopier',
+    title: 'Sube de nivel con UniCopier',
     subtitle:
       'Copiadores típicos de Telegram frente a una plataforma en la nube pensada para velocidad, claridad y escala.',
     otherLabel: 'Otros copiadores',
-    tscopierLabel: 'TScopier',
+    tscopierLabel: 'UniCopier',
     cta: 'Empieza tu prueba gratuita de 5 días',
     rows: [
       {
@@ -857,6 +857,6 @@ export const landingEs: LandingTranslations = {
     platforms: 'Compatible con',
     copyright: '© {year} Tartarix Inc. Todos los derechos reservados.',
     disclaimer:
-      'Operar implica riesgo. TScopier es una herramienta de copia — no asesoramiento financiero.',
+      'Operar implica riesgo. UniCopier es una herramienta de copia — no asesoramiento financiero.',
   },
 }

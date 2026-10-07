@@ -23,7 +23,7 @@ export const copierEngineRu: CopierEngineBundleTranslations = {
     tgConnectHowItWorks2: 'Введите код, отправленный в приложение Telegram',
     tgConnectHowItWorks3: 'Выберите сигнальные каналы для отслеживания и копирования',
     tgConnectPhoneWarning:
-      'TScopier не получает доступ к вашим сообщениям и не читает их. Подключая Telegram, вы даете приложению доступ только к каналам, участником которых вы являетесь.',
+      'UniCopier не получает доступ к вашим сообщениям и не читает их. Подключая Telegram, вы даете приложению доступ только к каналам, участником которых вы являетесь.',
     tgConnectMethodTitle: 'Choose how to sign in',
     tgConnectMethodSubtitle: 'Use your phone number or scan a QR code with the Telegram app on your phone.',
     tgConnectMethodPhone: 'Phone number',
@@ -59,7 +59,7 @@ export const copierEngineRu: CopierEngineBundleTranslations = {
     failedSendCode: 'Не удалось отправить код',
     verificationFailed: 'Проверка не удалась',
     telegramAlreadyLinked:
-      'Этот аккаунт Telegram уже привязан к другому аккаунту TScopier. Войдите в тот аккаунт или обратитесь в поддержку.',
+      'Этот аккаунт Telegram уже привязан к другому аккаунту UniCopier. Войдите в тот аккаунт или обратитесь в поддержку.',
     failedLoadTgChannels: 'Не удалось загрузить каналы Telegram',
     telegramSessionExpired: 'Сессия Telegram истекла. Подключите снова — настроенные каналы сохранятся.',
     telegramConnectionBusy: 'Telegram is reconnecting after a backtest or another task. Wait 30 seconds, then press Refresh — or use Reconnect Telegram.',

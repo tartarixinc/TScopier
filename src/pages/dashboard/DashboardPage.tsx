@@ -368,7 +368,7 @@ function sumConnectedOpenTrades(
 
 /**
  * Open-trade headline count: FxSocket-linked accounts use live broker feeds only
- * (WebSocket positions or REST bootstrap). Never stale TScopier DB leg rows.
+ * (WebSocket positions or REST bootstrap). Never stale UniCopier DB leg rows.
  */
 function resolveDashboardOpenTradesCount(
   accounts: BrokerAccount[],
@@ -2470,7 +2470,7 @@ export function DashboardPage() {
           <OverviewStat
             label={t.dashboard.tradingAccountsConnected}
             value={String(stats.accounts)}
-            onAdd={openAddTradingAccount}
+            onAdd={() => openAddTradingAccount()}
             addLabel={t.dashboard.addOrManageAccounts}
           />
           <OverviewStat
@@ -2598,7 +2598,7 @@ export function DashboardPage() {
           </h2>
           <button
             type="button"
-            onClick={openAddTradingAccount}
+            onClick={() => openAddTradingAccount()}
             className={DASHBOARD_SECTION_LINK}
           >
             <Plus className="h-3.5 w-3.5" />

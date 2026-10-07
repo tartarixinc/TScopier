@@ -1,13 +1,13 @@
-/** Public Storage URLs for TScopier brand images in emails. */
+/** Public Storage URLs for UniCopier brand images in emails. */
 
 export const EMAIL_ASSETS_BUCKET = "email-assets";
 
 export type EmailLogoVariant = "light" | "dark" | "mark";
 
 const LOGO_FILES: Record<EmailLogoVariant, string> = {
-  light: "tscopierlogo.png",
-  dark: "tscopierlogo-dark.png",
-  mark: "tslogo-collapse.png",
+  light: "unicopier_dark.png",
+  dark: "unicopier_light.png",
+  mark: "unicopier_dark.png",
 };
 
 export function emailAssetsPublicBase(supabaseUrl: string): string {
@@ -21,7 +21,7 @@ export function emailBrandLogoUrl(
   return `${emailAssetsPublicBase(supabaseUrl)}/${LOGO_FILES[variant]}`;
 }
 
-/** Prefer explicit override, then Storage, then app-hosted fallback. */
+/** Prefer an explicit override, then the app-hosted UniCopier wordmark. */
 export function resolveEmailLogoUrl(args: {
   supabaseUrl: string;
   appUrl?: string | null;
@@ -31,12 +31,8 @@ export function resolveEmailLogoUrl(args: {
   const explicit = String(args.explicitUrl ?? "").trim();
   if (explicit) return explicit;
 
-  const supabaseUrl = String(args.supabaseUrl ?? "").trim();
-  if (supabaseUrl) {
-    return emailBrandLogoUrl(supabaseUrl, args.variant ?? "light");
-  }
-
-  const appUrl = String(args.appUrl ?? "https://app.tscopier.ai").replace(/\/$/, "");
   const file = LOGO_FILES[args.variant ?? "light"];
+  const appUrl = String(args.appUrl ?? "https://app.tscopier.ai").trim().replace(/\/$/, "")
+    || "https://app.tscopier.ai";
   return `${appUrl}/${file}`;
 }

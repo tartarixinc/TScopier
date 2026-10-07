@@ -4,7 +4,7 @@ import { APP_ORIGIN } from '../../lib/site'
 
 const FN_URL = `${import.meta.env.VITE_SUPABASE_URL as string}/functions/v1/email-unsubscribe`
 const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string
-const LOGO_URL = 'https://sso.tscopier.ai/storage/v1/object/public/email-assets/tscopierlogo-dark.png'
+const LOGO_URL = '/unicopier_light.png'
 
 type View =
   | 'loading'
@@ -16,7 +16,7 @@ type View =
 const REASONS = [
   { value: 'too_frequent', label: 'Too many emails' },
   { value: 'not_relevant', label: 'Not relevant to me' },
-  { value: 'no_longer_use', label: 'I no longer use TScopier' },
+  { value: 'no_longer_use', label: 'I no longer use UniCopier' },
   { value: 'other', label: 'Other reason' },
 ] as const
 
@@ -149,7 +149,7 @@ export function EmailUnsubscribePage() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-[#0f1b1a] px-4 py-6 font-sans antialiased">
       <div className="mb-8">
-        <img src={LOGO_URL} alt="TScopier" className="block h-8" />
+        <img src={LOGO_URL} alt="UniCopier" className="block h-8" />
       </div>
 
       <div className="w-full max-w-[440px] rounded-2xl bg-white px-8 py-10 shadow-[0_4px_24px_rgba(0,0,0,0.25),0_1px_3px_rgba(0,0,0,0.1)]">
@@ -172,7 +172,7 @@ export function EmailUnsubscribePage() {
             </div>
             <h1 className="mb-2 text-center text-xl font-bold text-slate-900">Unsubscribe from emails?</h1>
             <p className="mb-6 text-center text-sm leading-relaxed text-slate-500">
-              You&apos;ll stop receiving subscription reminders and campaign emails from TScopier.
+              You&apos;ll stop receiving subscription reminders and campaign emails from UniCopier.
               Transactional emails (password resets, security alerts) will still be delivered.
             </p>
             <div className="mb-6">
@@ -225,8 +225,8 @@ export function EmailUnsubscribePage() {
             </h1>
             <p className="mb-6 text-center text-sm leading-relaxed text-slate-500">
               {view === 'already'
-                ? "You're already unsubscribed from TScopier campaign emails. No further action is needed."
-                : "You won't receive any more campaign emails from TScopier. If you change your mind, you can re-subscribe from your account settings."}
+                ? "You're already unsubscribed from UniCopier campaign emails. No further action is needed."
+                : "You won't receive any more campaign emails from UniCopier. If you change your mind, you can re-subscribe from your account settings."}
             </p>
             <div className="mb-6 h-px bg-slate-200" />
             <p className="text-center text-xs leading-relaxed text-slate-400">

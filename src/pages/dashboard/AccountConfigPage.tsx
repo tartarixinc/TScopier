@@ -45,7 +45,7 @@ import {
   classifyBrokerConnectError,
 } from '../../lib/brokerConnectError'
 import {
-  BROKER_ACCOUNT_CLIENT_SELECT,
+  selectBrokerAccountColumns,
   sortBrokerAccountsNewestFirst,
 } from '../../lib/brokerAccountSelect'
 import { triggerBackgroundChannelAiTraining } from '../../lib/channelAiTrainingBackground'
@@ -2467,20 +2467,22 @@ export function AccountConfigPage() {
       setError(pruneErr)
       return false
     }
-    const { data, error: upErr } = await supabase
-      .from('broker_accounts')
-      .update({
-        copier_mode: AI_CONFIGURATION_ENABLED && fallbackManualConfig?.mode === 'ai' ? 'ai' : 'manual',
-        signal_channel_ids: channelIds,
-        enforce_signal_channel_filter: restrictChannels,
-        channel_trading_configs: configsToPersist,
-        manual_settings: normalizedFallbackManual,
-        channel_message_filters: channelMessageFilters,
-      })
-      .eq('id', configAccount.id)
-      .eq('user_id', user.id)
-      .select(BROKER_ACCOUNT_CLIENT_SELECT)
-      .single()
+    const { data, error: upErr } = await selectBrokerAccountColumns(columns =>
+      supabase
+        .from('broker_accounts')
+        .update({
+          copier_mode: AI_CONFIGURATION_ENABLED && fallbackManualConfig?.mode === 'ai' ? 'ai' : 'manual',
+          signal_channel_ids: channelIds,
+          enforce_signal_channel_filter: restrictChannels,
+          channel_trading_configs: configsToPersist,
+          manual_settings: normalizedFallbackManual,
+          channel_message_filters: channelMessageFilters,
+        })
+        .eq('id', configAccount.id)
+        .eq('user_id', user.id)
+        .select(columns)
+        .single(),
+    )
     setConfigSaving(false)
 
     if (upErr) {
@@ -2647,7 +2649,7 @@ export function AccountConfigPage() {
       <PageHeader
         title={t.pages.accountConfiguration.title}
         actions={(
-          <Button size="sm" onClick={openAddTradingAccount}>
+          <Button size="sm" onClick={() => openAddTradingAccount()}>
             <Plus className="w-3.5 h-3.5" />
             {t.accountConfig.connectForm.addAccountButton}
           </Button>

@@ -58,7 +58,7 @@ Deno.serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
-    const resendFrom = "TScopier <verification@tscopier.ai>";
+    const resendFrom = "UniCopier <verification@tscopier.ai>";
 
     if (!resendApiKey) {
       return json({ error: "RESEND_API_KEY not configured on the server" }, 500);
@@ -140,7 +140,7 @@ Deno.serve(async (req: Request) => {
     const html = buildAuthEmailHtml({
       title: "Reset your password",
       greeting: `Hello ${firstName},`,
-      bodyHtml: `<p style="margin:0;">We received a request to reset the password for your TScopier account. Click the button below to choose a new password.</p>`,
+      bodyHtml: `<p style="margin:0;">We received a request to reset the password for your UniCopier account. Click the button below to choose a new password.</p>`,
       buttonLabel: "Reset password",
       buttonUrl: resetUrl,
       footerNote:
@@ -157,7 +157,7 @@ Deno.serve(async (req: Request) => {
       body: JSON.stringify({
         from: resendFrom,
         to: [targetEmail],
-        subject: "Reset your TScopier password",
+        subject: "Reset your UniCopier password",
         html,
       }),
     });

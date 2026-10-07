@@ -16,7 +16,7 @@ import type { BrokerAccount } from '../types/database'
 import { useBrokerAccountsRealtime } from '../hooks/useBrokerAccountsRealtime'
 import { useBrokerReconnect } from '../hooks/useBrokerReconnect'
 import {
-  BROKER_ACCOUNT_CLIENT_SELECT,
+  selectBrokerAccountColumns,
   sortBrokerAccountsNewestFirst,
 } from '../lib/brokerAccountSelect'
 import { planLimitErrorMessage } from '../lib/telegramChannelApi'
@@ -105,11 +105,13 @@ export function BrokerAccountsProvider({
     const silent = options?.silent || initialLoadDoneRef.current
     if (!silent) setLoading(true)
     setLoadError(null)
-    const { data, error } = await supabase
-      .from('broker_accounts')
-      .select(BROKER_ACCOUNT_CLIENT_SELECT)
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
+    const { data, error } = await selectBrokerAccountColumns(columns =>
+      supabase
+        .from('broker_accounts')
+        .select(columns)
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false }),
+    )
     if (error) {
       setLoadError(error.message)
       if (!silent) setLoading(false)

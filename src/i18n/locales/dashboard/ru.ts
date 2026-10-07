@@ -110,7 +110,7 @@ export const dashboardRu: DashboardBundleTranslations = {
       refresh: 'Обновить',
       notFound: 'Брокерский счет не найден.',
       initialBalance: 'Начальный баланс',
-      initialBalanceHint: 'Снимок баланса счета при первом подключении этого брокера к TScopier.',
+      initialBalanceHint: 'Снимок баланса счета при первом подключении этого брокера к UniCopier.',
       connectedAt: 'Подключен',
       connectedAtHint: 'Дата и время, когда этот брокерский счет был впервые привязан и готов к торговле.',
       currentBalance: 'Текущий баланс',

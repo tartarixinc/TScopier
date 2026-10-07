@@ -14,10 +14,10 @@ export const authAr: AuthTranslations = {
     captchaRequired: 'يرجى إكمال التحقق الأمني قبل المتابعة.',
   },
   login: {
-    heading: 'تسجيل الدخول إلى TScopier',
+    heading: 'تسجيل الدخول إلى UniCopier',
     noAccount: 'ليس لديك حساب؟',
     signUpLink: 'إنشاء حساب',
-    footerPrompt: 'جديد على TScopier؟',
+    footerPrompt: 'جديد على UniCopier؟',
     footerLink: 'أنشئ حسابًا مجانيًا',
     email: 'البريد الإلكتروني',
     emailPlaceholder: 'you@example.com',
@@ -42,7 +42,7 @@ export const authAr: AuthTranslations = {
   },
   resetPassword: {
     heading: 'تعيين كلمة مرور جديدة',
-    subtitle: 'اختر كلمة مرور جديدة لحساب TScopier الخاص بك.',
+    subtitle: 'اختر كلمة مرور جديدة لحساب UniCopier الخاص بك.',
     verifyingHeading: 'جارٍ التحقق من رابط إعادة التعيين…',
     verifyingSubtitle: 'نتحقق من الرابط بأمان. يرجى الانتظار.',
     securityNote: 'بعد التحديث ستُسجَّل الخروج من جميع الأجهزة. سجّل الدخول بكلمة المرور الجديدة.',
@@ -102,14 +102,14 @@ export const authAr: AuthTranslations = {
     backToLogin: 'العودة إلى تسجيل الدخول',
   },
   welcome: {
-    title: 'مرحبًا بك في TScopier',
+    title: 'مرحبًا بك في UniCopier',
     subtitle: 'حسابك جاهز. اربط Telegram وابدأ بنسخ الإشارات إلى وسيطك.',
     steps: [
       'اربط Telegram واختر قنوات الإشارات',
       'اربط حساب وسيط MT4/MT5',
       'انسخ الصفقات تلقائيًا وفق إعدادات المخاطر',
     ],
-    startUsing: 'ابدأ استخدام TScopier',
+    startUsing: 'ابدأ استخدام UniCopier',
     exploreDashboard: 'استكشف لوحة التحكم أولًا',
     errorFallback: 'تعذرت المتابعة. حاول مرة أخرى.',
   },

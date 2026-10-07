@@ -227,7 +227,7 @@ export function AssistantLauncher({
         <button
           type="button"
           data-assistant-launcher-control="true"
-          aria-label="Close TScopier Assistant launcher"
+          aria-label="Close UniCopier Assistant launcher"
           title="Close"
           onClick={event => {
             event.stopPropagation()
@@ -287,7 +287,7 @@ export function AssistantLauncher({
       <button
         type="button"
         data-assistant-launcher-control="true"
-        aria-label="Minimize TScopier Assistant launcher"
+        aria-label="Minimize UniCopier Assistant launcher"
         title="Minimize"
         onClick={event => {
           event.stopPropagation()
@@ -304,7 +304,7 @@ export function AssistantLauncher({
       <button
         type="button"
         data-assistant-launcher-control="true"
-        aria-label="Close TScopier Assistant launcher"
+        aria-label="Close UniCopier Assistant launcher"
         title="Close"
         onClick={event => {
           event.stopPropagation()

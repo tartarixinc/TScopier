@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { getLocalCalendarDayBounds } from '../lib/dashboardTradeStats'
 import { formatBrokerHistoryDate } from '../lib/mtApiDateTime'
 import { fetchTradesAcrossProviders, type MtTrade } from '../lib/fxsocketBroker'
-import { BROKER_ACCOUNT_CLIENT_SELECT } from '../lib/brokerAccountSelect'
+import { selectBrokerAccountColumns } from '../lib/brokerAccountSelect'
 import { filterMtTradesSinceConnect } from '../lib/tradesSinceConnect'
 import type { BrokerAccount } from '../types/database'
 import { BROKER_FULL_HISTORY_FROM } from '../lib/tradesConstants'
@@ -33,10 +33,12 @@ const VISIBILITY_STALE_MS = 30_000
 
 async function fetchTradesFromMt(userId: string): Promise<MtTrade[]> {
   const { tomorrowStart: historyTo } = getLocalCalendarDayBounds()
-  const brokerRes = await supabase
-    .from('broker_accounts')
-    .select(BROKER_ACCOUNT_CLIENT_SELECT)
-    .eq('user_id', userId)
+  const brokerRes = await selectBrokerAccountColumns(columns =>
+    supabase
+      .from('broker_accounts')
+      .select(columns)
+      .eq('user_id', userId),
+  )
   if (brokerRes.error) throw brokerRes.error
   const accounts = (brokerRes.data ?? []) as unknown as BrokerAccount[]
 

@@ -103,7 +103,7 @@ export const chromeJa: AppChromeTranslations = {
     },
     updatesPage: {
       title: 'Updates',
-      subtitle: 'Recent changes, fixes, and improvements to TScopier.',
+      subtitle: 'Recent changes, fixes, and improvements to UniCopier.',
       empty: 'No updates yet. Check back soon.',
       typeFeature: 'Feature',
       typeFix: 'Fix',
@@ -111,7 +111,7 @@ export const chromeJa: AppChromeTranslations = {
     },
 
     assistant: {
-      title: 'TScopier Assistant',
+      title: 'UniCopier Assistant',
       subtitle: 'Ask questions or get help taking action',
       ariaLabel: 'Open AI assistant',
       close: 'Close assistant',
@@ -120,12 +120,12 @@ export const chromeJa: AppChromeTranslations = {
       newChat: 'New chat',
       historyEmpty: 'No past conversations yet.',
       deleteChat: 'Delete conversation',
-      placeholder: 'Ask anything about TScopier…',
+      placeholder: 'Ask anything about UniCopier…',
       send: 'Send',
       thinking: 'Thinking…',
       confirm: 'Confirm',
       cancel: 'Cancel',
-      welcomeTitle: 'I can help you set up and run TScopier.',
+      welcomeTitle: 'I can help you set up and run UniCopier.',
       suggestions: [
         'Is my Telegram linked?',
         'Pause the copier',
@@ -259,7 +259,7 @@ export const chromeJa: AppChromeTranslations = {
     },
     contactSupport: {
       title: 'サポートに連絡',
-      description: 'アカウント、コピー設定、技術的な問題について TScopier チームがサポートします。',
+      description: 'アカウント、コピー設定、技術的な問題について UniCopier チームがサポートします。',
     },
     riskDisclaimer: {
       title: 'リスクに関する免責事項',
@@ -267,7 +267,7 @@ export const chromeJa: AppChromeTranslations = {
     },
     termsOfService: {
       title: '利用規約',
-      description: 'TScopier の利用に関する規約。',
+      description: 'UniCopier の利用に関する規約。',
     },
     privacyPolicy: {
       title: 'プライバシーポリシー',
@@ -275,7 +275,7 @@ export const chromeJa: AppChromeTranslations = {
     },
     cookiePolicy: {
       title: 'Cookieポリシー',
-      description: 'TScopier における Cookie および類似技術の利用方法。',
+      description: 'UniCopier における Cookie および類似技術の利用方法。',
     },
     featureRequest: {
       title: '機能リクエスト',

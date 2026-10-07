@@ -110,7 +110,7 @@ export const dashboardPl: DashboardBundleTranslations = {
       refresh: 'Odśwież',
       notFound: 'Nie znaleziono konta brokera.',
       initialBalance: 'Saldo początkowe',
-      initialBalanceHint: 'Saldo konta zapisane przy pierwszym połączeniu tego brokera z TScopier.',
+      initialBalanceHint: 'Saldo konta zapisane przy pierwszym połączeniu tego brokera z UniCopier.',
       connectedAt: 'Połączono',
       connectedAtHint: 'Data i godzina pierwszego powiązania tego konta brokera oraz gotowości do handlu.',
       currentBalance: 'Bieżące saldo',

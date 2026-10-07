@@ -247,7 +247,7 @@ test('deriveDashboardAnalytics: excludes manual MT trades without channel attrib
   assert.equal(analytics.tradesTaken, 1)
 })
 
-test('deriveDashboardAnalytics: attributes TScopier comment via account connected channels', () => {
+test('deriveDashboardAnalytics: attributes UniCopier comment via account connected channels', () => {
   const now = new Date(2026, 5, 14, 12, 0, 0)
   const channelId = 'ch-test-1'
   const maps = {

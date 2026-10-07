@@ -21,7 +21,7 @@ export const tradingJa: TradingPagesBundleTranslations = {
     telegramMessage: 'Telegramメッセージ',
     parsedInstruction: '解析された指示',
     signalTime: 'シグナル受信時刻',
-    noLinkedSignal: 'この取引に紐づくTScopierシグナルはありません。',
+    noLinkedSignal: 'この取引に紐づくUniCopierシグナルはありません。',
     imageSignal: '（画像シグナル）',
     loadingSignal: 'シグナルを読み込み中…',
     loadSignalError: 'シグナル詳細を読み込めませんでした。',
@@ -94,7 +94,7 @@ export const tradingJa: TradingPagesBundleTranslations = {
   },
   popularChannelsPage: {
     title: 'Popular Channels',
-    subtitle: 'Signal channels ranked by subscriber count across all TSCopier users',
+    subtitle: 'Signal channels ranked by subscriber count across all UniCopier users',
     emptyTitle: 'No channels yet',
     emptySubtitle: 'Channels will appear here as users subscribe to them',
   },

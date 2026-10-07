@@ -331,7 +331,7 @@ export async function notifyManualBrokerOverrideReverted(args: {
   const payload = {
     notification_type: MANUAL_BROKER_OVERRIDE_REVERTED_ACTION,
     title: 'Manual trade changes were reverted',
-    body: 'TScopier detected a manual SL/TP change made directly on your broker account and restored the signal managed values. To change SL or TP for a copied signal, use Manage Signal in TScopier.',
+    body: 'UniCopier detected a manual SL/TP change made directly on your broker account and restored the signal managed values. To change SL or TP for a copied signal, use Manage Signal in UniCopier.',
     cta_label: 'Manage Signal',
     manage_signal_url: path,
     anchor_signal_id: args.anchorSignalId,

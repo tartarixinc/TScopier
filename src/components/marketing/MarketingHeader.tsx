@@ -146,7 +146,7 @@ export function MarketingHeader() {
           <Link
             to="/"
             className="flex shrink-0 items-center"
-            aria-label="TScopier home"
+            aria-label="UniCopier home"
             onClick={closeMobile}
           >
             <TscopierLogo

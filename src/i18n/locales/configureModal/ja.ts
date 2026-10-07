@@ -444,7 +444,7 @@ export const configureModalJa: ConfigureModalTranslations = {
     ruleTriggerTpHit: 'TP{index} に達したとき',
     orderCommentsTitle: '注文コメント',
     orderCommentsSubtitle:
-      'オフの場合、TScopier が開設・更新する取引のブローカーコメント欄は空のままになります。',
+      'オフの場合、UniCopier が開設・更新する取引のブローカーコメント欄は空のままになります。',
   },
   filters: {
     timeTitle: '時間フィルター',

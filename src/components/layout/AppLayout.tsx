@@ -379,7 +379,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
             onClick={() => setMobileNavOpen(false)}
           >
 
-            <TscopierLogo className="h-6 w-auto" />
+            <TscopierLogo brand="unicopier" className="h-6 w-auto" />
           </Link>
           <div className="flex shrink-0 items-center gap-0.5 lg:hidden">
             <LanguageSwitcher compact className="max-lg:[&>button]:gap-0 max-lg:[&>button]:px-2" />
@@ -397,8 +397,9 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
               aria-label={t.nav.items.dashboard}
             >
               <TscopierLogo
+                brand="unicopier"
                 collapsed={!sidebarExpanded}
-                className={sidebarExpanded ? 'h-6 w-auto' : undefined}
+                className={sidebarExpanded ? 'h-8 w-auto' : undefined}
               />
             </Link>
           </div>
