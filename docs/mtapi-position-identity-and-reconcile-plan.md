@@ -1,7 +1,7 @@
 # MTAPI position identity and open-trade reconciliation — follow-up plan
 
 Date: 2026-10-06
-Status: B2 pushed to `staging` (cf7d156b); B1 implemented on the `staging` checkout (uncommitted, reviewed)
+Status: B2 (`cf7d156b`) and B1 (`efea5747`) both pushed to `staging`; remaining order-ticket conversion reviewed by the design agent — see "Converting the remaining order-ticket sites" below
 Related: `docs/scratchpads/scratchpad-health-check-sentry-2026-10-06.md`, `docs/PROJECT_MEMORY.md`
 
 This document covers two pieces of follow-up work found while investigating a
@@ -277,41 +277,56 @@ returns `ambiguous`, so every caller including the close paths keeps refusing.
 Those legs are actioned again only once their position identity is captured at
 fill time. This is the safe direction the design review required.
 
-### Follow-up (still keyed on the order ticket)
+### Converting the remaining order-ticket sites — design review outcome
 
-The remaining paths that act or filter on `metaapi_order_id` rather than the
-position column: `channelStopApply`, `basketSlTpReconcile`, `rangeBasketTpSync`,
-`applySignalOverride`, `basketModFollowUp`, `basketReconcileTargets`,
-`forceCloseSignalTrades`, `managementBrokerClose`, `copyLimitFlatten`,
-`orderCloseAudit`, and the management executor's direct ticket uses. Pending
-(resting) order paths are correct as-is because a resting order has no position
-ticket.
+The first proposal was to convert the remaining paths by copy-pasting the
+per-site `??` preference. The design agent returned **no-go** on that shape:
+the pattern had already leaked (see the omissions below), so copying it further
+locks in drift rather than fixing it.
 
-### B1 — implemented (this checkout, uncommitted)
+**Chosen shape (recommended by the review):**
 
-`worker/src/openTradeReconcile.ts`, `worker/src/openTradeReconcileMonitor.ts`
-and `worker/src/openTradeClassification.ts`:
+1. One small module (e.g. `worker/src/brokerTicket.ts`) with:
+   - `brokerTicketOf(row)` — the single JS accessor (positive safe integer or
+     null; callers must not coerce null to NaN);
+   - `withTicketFilter(builder, ticket)` — SQL helper that coerces the ticket
+     and emits an either-column predicate, or a guaranteed-no-match on invalid
+     input;
+   - `ticketIsEither(row, ticket)` for drift/reconcile comparisons.
+2. A **guard test** that fails when a broker-call site reads
+   `metaapi_order_id` directly, unless the file is on an explicit
+   pending-order allowlist.
+3. Keep SQL either-column matching only where it bounds a query
+   (`tradeBrokerDriftMonitor`, `orderCloseAudit`); match in JS elsewhere.
+4. Keep the two columns (the order ticket is genuinely needed for resting and
+   pending orders); do not route modify paths through the resolver per leg
+   (bridge load + fail-closed availability loss).
 
-- Both reconcile passes now collect every row whose ticket is not present by
-  identity (a row whose ticket maps to several live positions is treated as
-  present and is never closed; only the attribute-only case counts as absent). An attribute-only match (identical siblings) no longer ends the
-  decision as "ambiguous → defer"; the row is treated as absent.
-- A row is closed only when broker history holds a **positive per-ticket close
-  record** (`historyTicketCloseMatch`). That proof now considers both the send
-  ticket and the captured position ticket, so a row whose identity was captured
-  at fill time is provably closed.
-- The proof is required on this path too (it was previously required only for a
-  flat account). Rows with no close record are deferred **and now raise the
-  `GHOST_UNCONFIRMED_BY_HISTORY` business event**, instead of a silent warning.
-- The legacy escape hatch (`OPEN_TRADE_RECONCILE_REQUIRE_CLOSED_HISTORY=false`)
-  never closes an attribute-ambiguous row — only clearly-missing ones — matching
-  the previous behaviour.
-- The monitor passes the account's provider; an unknown provider means FxSocket,
-  not MTAPI, matching the rest of the codebase.
-- Tests: `selectGhostClosures` unit cases plus two integration cases driving the
-  non-flat path end-to-end (closes when the captured position ticket is in
-  history; defers when it is not).
+**Live gaps the review found that were NOT in the proposal** (fix these
+first — they are existing silent data-integrity bugs on MT5):
 
-Still outstanding for B1: remediate the rows already wedged (their stored
-tickets may not appear in history at all), and confirm against a live account
-that the bridge's history keys on the position ticket for these accounts.
+- **P&L backfill** — `worker/src/closedTradeFill.ts` (`planClosedTradeUpdates`
+  matches `Number(trade.metaapi_order_id)` while fills are keyed by the
+  position ticket) and `closedTradeFillMonitor.ts` (select lacks the column).
+  On MT5 the close price and profit are never filled, and that write is
+  one-shot and cannot be repaired.
+- **`managementBrokerClose`** — closes at the broker, then settles the row with
+  `.eq('metaapi_order_id', String(order.ticket))`; when the position ticket was
+  sent, the update matches nothing and the row stays open (the wedged-row
+  class).
+- **`managementModifyBaskets`** / `slTpRefresh` — live-leg modifies drop the
+  position ticket (`managementModifyBaskets.ts:34,146`).
+- **`copyLimitMetrics`** — floating P&L matched on the order ticket under-reports.
+- Also `basketReconcileTargets.ts`, `diagnostics/rebalanceOpenBaskets.ts`.
+
+**Do not convert** (the order ticket is correct here): pending/resting-order
+paths — `signal_entry_pending_orders.broker_ticket` consumers, the
+`brokerPending*` / `rangeBrokerPending*` / `layering*Pending*` monitors,
+`pendingCancel`, `signalEntryPendingMonitor`, `rangePendingBasketCleanup`,
+order-send persistence, and `status='pending'` rows in `forceCloseSignalTrades`.
+
+**Sequencing:** land the accessor + guard first (no behaviour change while the
+column is null), then fix the P&L backfill and `managementBrokerClose` settle,
+then convert the rest — and prove the capture works on a live multi-leg basket
+before relying on any converted path (the per-batch shared read can miss late
+filling legs).
