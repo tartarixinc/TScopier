@@ -302,8 +302,35 @@ locks in drift rather than fixing it.
    pending orders); do not route modify paths through the resolver per leg
    (bridge load + fail-closed availability loss).
 
-**Live gaps the review found that were NOT in the proposal** (fix these
-first — they are existing silent data-integrity bugs on MT5):
+**Gaps the review flagged, and what the data actually shows** (verified
+2026-10-07 against prod/staging databases and Railway logs):
+
+- **P&L backfill — real but NOT systemic.** Prod, last 4 days, closed trades:
+  MT5 785 closed / 148 missing a close price (18.9%); MT4 7 / 2. Staging:
+  MT5 7 of 161 (4.3%), MT4 0 of 47. So the fill works for the large majority of
+  MT5 rows, which rules out the review's "on MT5 it will never fill" reading
+  (the send ticket is usually already the position ticket). The *observed*
+  driver of the missing fills is the rate-limited bridge — prod logs show
+  `[closedTradeFillMonitor] history read failed … Too many requests`
+  repeatedly, and `fills filled=0 … batch=50` — plus historical rows that
+  predate the monitor. Matching on the preferred ticket is still correct and
+  cheap; it is a partial improvement, not a rescue from total data loss.
+- **`managementBrokerClose` — latent, not live.** The mechanism is real in code
+  (closes at the broker, then settles with `.eq('metaapi_order_id', …)`), but
+  the file emits no log lines at all and no wedged row traced to it has been
+  found; the known wedged rows came from broker take-profit closes. Fix it, but
+  treat it as latent.
+- **`managementModifyBaskets` / `slTpRefresh`, `copyLimitMetrics`,
+  `basketReconcileTargets`, `diagnostics/rebalanceOpenBaskets` — same class,
+  not individually measured.**
+
+**Newly evidenced live problem (not from the review):** the shared MTAPI
+bridge is rate-limiting the P&L fill monitor on production
+(`history read failed … Too many requests`), which leaves close price and
+profit unfilled for rows that *do* have a matching broker record. That is a
+capacity/rate-limit issue, not an identity issue, and it deserves its own
+investigation.
+
 
 - **P&L backfill** — `worker/src/closedTradeFill.ts` (`planClosedTradeUpdates`
   matches `Number(trade.metaapi_order_id)` while fills are keyed by the
