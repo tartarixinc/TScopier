@@ -52,6 +52,7 @@ export type DriftRow = {
   user_id?: string | null
   broker_account_id?: string | null
   metaapi_order_id?: string | null
+  broker_position_ticket?: string | null
   status: string
   signal_id?: string | null
 }
@@ -76,7 +77,7 @@ export type DriftPlan = {
 }
 
 function ticketOf(row: DriftRow): number | null {
-  const ticket = Number(row.metaapi_order_id)
+  const ticket = Number(row.broker_position_ticket ?? row.metaapi_order_id)
   return Number.isFinite(ticket) && ticket > 0 ? ticket : null
 }
 

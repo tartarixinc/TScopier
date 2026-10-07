@@ -48,7 +48,7 @@ const ROW_LIMIT = 1_000
 
 type AccountProbe = { id: string; user_id: string | null }
 
-const ROW_COLUMNS = 'id,user_id,broker_account_id,metaapi_order_id,status,signal_id'
+const ROW_COLUMNS = 'id,user_id,broker_account_id,metaapi_order_id,broker_position_ticket,status,signal_id'
 
 function isFilledPosition(order: Record<string, unknown>): boolean {
   const state = String(order.state ?? '').toUpperCase()
@@ -224,7 +224,7 @@ export class TradeBrokerDriftMonitor {
       const byTicketBase = this.supabase
         .from('trades')
         .select(ROW_COLUMNS)
-        .in('metaapi_order_id', liveTickets)
+        .or(`metaapi_order_id.in.(${liveTickets.join(',')}),broker_position_ticket.in.(${liveTickets.join(',')})`)
         .in('user_id', probedUserIds)
         .order('id')
         .limit(ROW_LIMIT)

@@ -17,6 +17,7 @@ import { humanizeOrderSendError, tradeFailureReasonFromBrokerMessage } from '../
 import { reconcileUnknownSend } from './reconcileUnknownSend'
 import { trailingTradeRowSnapshot } from '../trailingStop'
 import { applyPostFillFollowUp, type PostFillTradeLeg } from '../postFillFollowUp'
+import { captureBrokerPositionIdentity } from '../captureBrokerPositionIdentity'
 import type { TradeExecutorContext } from './context'
 import { clampOrderStops, isBuySideOp, resolveBurstFillAnchor, type Leg } from './helpers'
 import type { BrokerRow, ParsedSignal, SendOrderOutcome, SignalRow, SymbolCacheEntry, SymbolMappingResult } from './types'
@@ -177,6 +178,21 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
   const v2Snapshot: FxOpenOrder[] = useV2
     ? await getFxClient().openedOrders(uuid, v2Platform).catch(() => [])
     : []
+
+  // One broker read per send batch, used only to record the MT5 position
+  // identity of the legs that filled (see captureBrokerPositionIdentity).
+  // Lazy: no read happens unless a market leg is persisted.
+  let positionSnapshotPromise: Promise<unknown[] | null> | null = null
+  const positionSnapshot = (): Promise<unknown[] | null> => {
+    positionSnapshotPromise ??= (async () => {
+      try {
+        return (await api.openedOrders(uuid)) ?? null
+      } catch {
+        return null
+      }
+    })()
+    return positionSnapshotPromise
+  }
 
   const sendLeg = async (leg: Leg): Promise<boolean> => {
     let args = leg.args
@@ -620,6 +636,29 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
     }
 
     const persistPostFillDb = async (tradeRowId: string | null) => {
+      const isMarketFill = sendArgs.operation === 'Buy' || sendArgs.operation === 'Sell'
+      if (tradeRowId && isMarketFill && result.ticket != null) {
+        // Record the broker position identity while the fill is fresh. Only a
+        // certain resolution is written; the helper stays silent otherwise.
+        await captureBrokerPositionIdentity({
+          supabase: ctx.supabase,
+          tradeRowId,
+          trade: {
+            id: tradeRowId,
+            metaapi_order_id: String(result.ticket),
+            symbol: sendArgs.symbol,
+            direction: isBuy ? 'buy' : 'sell',
+            lot_size: result.lots ?? sendArgs.volume,
+            entry_price: entryPx,
+          },
+          openedOrders: await positionSnapshot(),
+        }).catch(err => {
+          console.warn(
+            `[tradeExecutor] position identity capture failed trade=${tradeRowId}:`
+            + ` ${err instanceof Error ? err.message : String(err)}`,
+          )
+        })
+      }
       if (tradeRowId && leg.partialTps && leg.partialTps.length > 0) {
         const partialRows = leg.partialTps.map(p => ({
           trade_id: tradeRowId,

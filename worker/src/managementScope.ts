@@ -29,6 +29,7 @@ export type MgmtTradeRow = {
   signal_id: string
   broker_account_id: string
   metaapi_order_id: string | null
+  broker_position_ticket?: string | null
   symbol: string
   direction: string
   lot_size: number
@@ -182,7 +183,7 @@ export function resolveNewestOpenSymbolTrades(trades: MgmtTradeRow[]): MgmtTrade
 }
 
 const MGMT_TRADE_SELECT =
-  'id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,lot_size,status,sl,tp,entry_price,opened_at,cwe_close_price'
+  'id,signal_id,broker_account_id,metaapi_order_id,broker_position_ticket,symbol,direction,lot_size,status,sl,tp,entry_price,opened_at,cwe_close_price'
 
 /** Active legs eligible for management (open + broker-pending strict entries). */
 export function isMgmtEligibleTradeStatus(status: string): boolean {

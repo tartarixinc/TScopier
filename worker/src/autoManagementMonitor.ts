@@ -43,6 +43,7 @@ interface AutoBeTradeRow {
   signal_id: string | null
   broker_account_id: string | null
   metaapi_order_id: string | null
+  broker_position_ticket?: string | null
   symbol: string
   direction: string
   entry_price: number | null
@@ -199,7 +200,8 @@ export class AutoManagementMonitor {
         .from('trades')
         .select(
           'id,user_id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,entry_price,sl,tp,lot_size,'
-          + 'auto_be_mode,auto_be_trigger_value,auto_be_tp_index,auto_be_type,auto_be_offset_pips,auto_be_risk_sl',
+          + 'auto_be_mode,auto_be_trigger_value,auto_be_tp_index,auto_be_type,auto_be_offset_pips,auto_be_risk_sl,'
+          + 'broker_position_ticket',
         )
         .eq('status', 'open')
         .not('auto_be_mode', 'is', null)
@@ -421,7 +423,7 @@ export class AutoManagementMonitor {
       for (const raw of brokerOrders) {
         const o = raw as Record<string, unknown>
         const t = Number(o.ticket ?? o.Ticket ?? o.order ?? o.Order ?? 0)
-        if (t !== ticketNum) continue
+        if (t !== ticketNum && t !== Number(trade.broker_position_ticket ?? ticketNum)) continue
         const sl = Number(o.stopLoss ?? o.StopLoss ?? o.sl ?? o.SL ?? 0)
         if (Number.isFinite(sl) && sl > 0) brokerSl = sl
         break

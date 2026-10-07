@@ -34,6 +34,7 @@ interface TrailTradeRow {
   signal_id: string | null
   broker_account_id: string | null
   metaapi_order_id: string | null
+  broker_position_ticket?: string | null
   symbol: string
   direction: string
   entry_price: number | null
@@ -107,7 +108,7 @@ export class TrailingStopMonitor {
       this.supabase
         .from('trades')
         .select(
-          'id,user_id,signal_id,broker_account_id,metaapi_order_id,symbol,direction,entry_price,sl,tp,'
+          'id,user_id,signal_id,broker_account_id,metaapi_order_id,broker_position_ticket,symbol,direction,entry_price,sl,tp,'
           + 'trail_peak_price,trail_last_sl,trail_start_pips,trail_step_pips,trail_distance_pips',
         )
         .eq('status', 'open')
@@ -187,7 +188,7 @@ export class TrailingStopMonitor {
     bid: number,
     ask: number,
   ): Promise<boolean | null> {
-    const ticketNum = Number(trade.metaapi_order_id)
+    const ticketNum = Number(trade.broker_position_ticket ?? trade.metaapi_order_id)
     if (!Number.isFinite(ticketNum) || ticketNum <= 0) {
       await this.clearTrailWatch(trade.id)
       return null

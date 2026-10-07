@@ -28,6 +28,7 @@ interface OpenTradeRow {
   user_id: string
   broker_account_id: string | null
   metaapi_order_id: string | null
+  broker_position_ticket?: string | null
   symbol: string
   signal_id: string | null
   direction: string
@@ -110,7 +111,7 @@ export class NewsTradingMonitor {
 
       const { data: trades, error: tradeErr } = await this.supabase
         .from('trades')
-        .select('id,user_id,broker_account_id,metaapi_order_id,symbol,signal_id,direction,lot_size,entry_price')
+        .select('id,user_id,broker_account_id,metaapi_order_id,broker_position_ticket,symbol,signal_id,direction,lot_size,entry_price')
         .eq('broker_account_id', broker.id)
         .eq('status', 'open')
       if (tradeErr) {
@@ -172,7 +173,7 @@ export class NewsTradingMonitor {
 
         let closed = 0
         for (const t of toClose) {
-          const ticket = Number(t.metaapi_order_id)
+          const ticket = Number(t.broker_position_ticket ?? t.metaapi_order_id)
           if (!Number.isFinite(ticket) || ticket <= 0) continue
           try {
             const identity = await resolveCurrentLivePosition({
