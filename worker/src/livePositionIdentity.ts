@@ -28,7 +28,7 @@ export type CanonicalPositionResolution =
       matchedBy: 'canonical_ticket' | 'explicit_relationship' | 'attributes'
       row: Record<string, unknown>
     }
-  | { status: 'missing' | 'ambiguous'; storedTicket: number; reason: string }
+  | { status: 'missing' | 'ambiguous'; storedTicket: number; reason: string; identityMatch?: boolean }
 
 type ParsedLivePosition = {
   row: Record<string, unknown>
@@ -162,7 +162,15 @@ export function resolveCanonicalOpenPosition(args: {
     }
   }
   if (distinctIdentityTickets.size > 1) {
-    return { status: 'ambiguous', storedTicket, reason: 'stored ticket maps to multiple live positions' }
+    return {
+      status: 'ambiguous',
+      storedTicket,
+      // The stored ticket IS present in the snapshot (it maps to several live
+      // positions), so this row is not "absent" and must never be closed by a
+      // history record keyed on that same ticket.
+      identityMatch: true,
+      reason: 'stored ticket maps to multiple live positions',
+    }
   }
 
   const expectedSymbol = String(args.trade.symbol ?? '').trim()

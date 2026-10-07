@@ -1,7 +1,7 @@
 # MTAPI position identity and open-trade reconciliation — follow-up plan
 
 Date: 2026-10-06
-Status: B2 implemented on the `staging` checkout (uncommitted draft, reviewed); B1 proposed
+Status: B2 pushed to `staging` (cf7d156b); B1 implemented on the `staging` checkout (uncommitted, reviewed)
 Related: `docs/scratchpads/scratchpad-health-check-sentry-2026-10-06.md`, `docs/PROJECT_MEMORY.md`
 
 This document covers two pieces of follow-up work found while investigating a
@@ -287,39 +287,31 @@ position column: `channelStopApply`, `basketSlTpReconcile`, `rangeBasketTpSync`,
 (resting) order paths are correct as-is because a resting order has no position
 ticket.
 
-### B1 — not started
+### B1 — implemented (this checkout, uncommitted)
 
-The reconciliation change (decide a basket as a whole so a genuinely-gone leg is
-closed instead of deferred forever) is unchanged from the description above.
+`worker/src/openTradeReconcile.ts`, `worker/src/openTradeReconcileMonitor.ts`
+and `worker/src/openTradeClassification.ts`:
 
-### B2 — independent review outcome and fixes
+- Both reconcile passes now collect every row whose ticket is not present by
+  identity (a row whose ticket maps to several live positions is treated as
+  present and is never closed; only the attribute-only case counts as absent). An attribute-only match (identical siblings) no longer ends the
+  decision as "ambiguous → defer"; the row is treated as absent.
+- A row is closed only when broker history holds a **positive per-ticket close
+  record** (`historyTicketCloseMatch`). That proof now considers both the send
+  ticket and the captured position ticket, so a row whose identity was captured
+  at fill time is provably closed.
+- The proof is required on this path too (it was previously required only for a
+  flat account). Rows with no close record are deferred **and now raise the
+  `GHOST_UNCONFIRMED_BY_HISTORY` business event**, instead of a silent warning.
+- The legacy escape hatch (`OPEN_TRADE_RECONCILE_REQUIRE_CLOSED_HISTORY=false`)
+  never closes an attribute-ambiguous row — only clearly-missing ones — matching
+  the previous behaviour.
+- The monitor passes the account's provider; an unknown provider means FxSocket,
+  not MTAPI, matching the rest of the codebase.
+- Tests: `selectGhostClosures` unit cases plus two integration cases driving the
+  non-flat path end-to-end (closes when the captured position ticket is in
+  history; defers when it is not).
 
-The first review returned FAIL with four HIGH findings. Resolutions:
-
-- **H1 (capture could persist a guess).** Fixed: the capture now rejects any
-  resolution whose `matchedBy` is `attributes`, so only a ticket-based match
-  (canonical ticket or an explicit order→position relationship) is written.
-  Test added for the attribute-only case.
-- **H2 (replacement persistence broken once the column is preferred).** Fixed:
-  `persistCanonicalPositionTicket` now CASes on the column that supplied the
-  stored ticket and writes the **position** column, leaving the order ticket
-  alone; if the column does not exist yet it logs once and falls back to the
-  legacy `metaapi_order_id` write so reconciliation is not wedged. Tests added
-  for the position-column CAS and the fallback.
-- **H3 (deploy order can disable monitors).** Release gate, unchanged in code:
-  the migration must be applied **and registered** before the worker build is
-  promoted. Readers select the new column, so if the build lands first the
-  management monitors' queries fail. Decide the exact order at release time and
-  verify the column exists before promoting.
-- **H4 (trailing stop still modified the order ticket).** Fixed: the trailing
-  stop now modifies `broker_position_ticket ?? metaapi_order_id`.
-- Also fixed: the auto-breakeven broker-SL snapshot lookup now keys on the same
-  resolved ticket the modify uses; the revision-flip close prefers the position
-  ticket and declares the field; the broker-drift prefilter now matches either
-  column; the resolver treats an empty string as "not captured".
-- Left as follow-up (documented above): the remaining stop/close paths that
-  still key on `metaapi_order_id` (channel stop apply, basket SL/TP reconcile,
-  range TP sync, signal override), and the SQL-filtered ticket lookups.
-
-Tests after the fixes: 17 across the two identity test files; 140 across the
-touched monitor suites; 164 tradeExecutor; worker typecheck clean.
+Still outstanding for B1: remediate the rows already wedged (their stored
+tickets may not appear in history at all), and confirm against a live account
+that the bridge's history keys on the position ticket for these accounts.

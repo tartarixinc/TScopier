@@ -7,7 +7,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { FxsocketBrokerClient } from './fxsocketClient'
 import { closeStaleOpenTrades } from './basketSlTpReconcile'
 import { persistCanonicalPositionTicket, resolveCanonicalOpenPosition } from './livePositionIdentity'
-import { matchClosedHistory } from './openTradeClassification'
+import { historyTicketCloseMatch, matchClosedHistory } from './openTradeClassification'
 import { captureBusinessIssue } from './observability/businessEvents'
 import { purgeRangePendingLegsForBaskets, type BasketScope } from './rangePendingLegDelete'
 
@@ -96,6 +96,7 @@ export async function reconcileOpenTradesForBroker(
   metaapiAccountId: string,
   openTrades: OpenTradeReconcileRow[],
   probeHealthy?: () => Promise<unknown>,
+  provider: string = 'fxsocket',
 ): Promise<number> {
   if (!openTrades.length) return 0
   const firstSnapshot = await api.openedOrders(metaapiAccountId)
@@ -200,28 +201,33 @@ export async function reconcileOpenTradesForBroker(
     )
   }
 
-  const absentOnce: OpenTradeReconcileRow[] = []
+  const presentByTicket = (resolution: ReturnType<typeof resolveCanonicalOpenPosition>): boolean =>
+    resolution.status === 'resolved' && resolution.matchedBy !== 'attributes'
+
+  // Pass 1 — persist certain replacements, then collect every row whose ticket
+  // is not present by identity. An attribute-only match is not a ticket match;
+  // it is treated as absent so the closure proof below gets to decide.
+  const unresolved: OpenTradeReconcileRow[] = []
   for (const trade of openTrades) {
     const resolution = resolveCanonicalOpenPosition({ trade, openedOrders: firstSnapshot })
     if (resolution.status === 'resolved') {
-      // An attribute-only match is not certain enough to freeze into the row;
-      // leave it as-is and let the row resolve by ticket once the position
-      // identity is captured at fill time.
       if (resolution.replacement && resolution.matchedBy !== 'attributes') {
         const persisted = await persistCanonicalPositionTicket(supabase, trade, resolution)
         if (!persisted) {
           console.warn(`[openTradeReconcile] replacement ticket CAS lost trade=${trade.id}; deferring`)
         }
       }
-      continue
-    }
-    if (resolution.status === 'ambiguous') {
+      if (presentByTicket(resolution)) continue
+      console.warn(
+        `[openTradeReconcile] identity attributes-only trade=${trade.id}`
+        + ` ticket=${trade.metaapi_order_id ?? 'none'} pass=first — treating as absent`,
+      )
+    } else if (resolution.status === 'ambiguous') {
       logAmbiguous(trade, resolution.reason, 'first')
-      continue
     }
-    absentOnce.push(trade)
+    unresolved.push(trade)
   }
-  if (!absentOnce.length) return 0
+  if (!unresolved.length) return 0
 
   // One non-empty snapshot is not sufficient evidence of closure. Require the
   // same trade to be absent from a second complete snapshot before changing DB state.
@@ -233,29 +239,71 @@ export async function reconcileOpenTradesForBroker(
     return 0
   }
 
-  const ghostIds: string[] = []
-  for (const trade of absentOnce) {
+  // The second pass still validates the snapshot, but a row is no longer judged
+  // gone by attribute ambiguity: a positive per-ticket close record in history
+  // is what authorises the close (B1). Without the record the row is deferred.
+  let closedOrders: unknown[] | null = null
+  const hasCloseProof = async (trade: OpenTradeReconcileRow): Promise<boolean> => {
+    if (!requireClosedHistory()) return true
+    if (closedOrders == null) closedOrders = await loadClosedHistory(api, metaapiAccountId)
+    return historyTicketCloseMatch(trade, closedOrders, provider)
+  }
+
+  const candidates: Array<{
+    trade: OpenTradeReconcileRow
+    resolution: ReturnType<typeof resolveCanonicalOpenPosition>
+  }> = []
+  for (const trade of unresolved) {
     const resolution = resolveCanonicalOpenPosition({ trade, openedOrders: secondSnapshot })
     if (resolution.status === 'resolved') {
-      // An attribute-only match is not certain enough to freeze into the row;
-      // leave it as-is and let the row resolve by ticket once the position
-      // identity is captured at fill time.
       if (resolution.replacement && resolution.matchedBy !== 'attributes') {
         const persisted = await persistCanonicalPositionTicket(supabase, trade, resolution)
         if (!persisted) {
           console.warn(`[openTradeReconcile] replacement ticket CAS lost trade=${trade.id}; deferring`)
         }
       }
-      continue
-    }
-    if (resolution.status === 'ambiguous') {
-      // Previously dropped on the floor here: only 'missing' was collected, so
-      // a trade that turned ambiguous on the second pass was deferred with no
-      // log line at all.
+      if (presentByTicket(resolution)) continue
+    } else if (resolution.status === 'ambiguous') {
       logAmbiguous(trade, resolution.reason, 'second')
-      continue
     }
-    if (resolution.status === 'missing') ghostIds.push(trade.id)
+    candidates.push({ trade, resolution })
+  }
+  if (!candidates.length) return 0
+
+  const proofById = new Map<string, boolean>()
+  for (const { trade } of candidates) {
+    proofById.set(trade.id, await hasCloseProof(trade))
+  }
+  const { ghostIds, deferred } = selectGhostClosures({
+    candidates,
+    closeProof: id => proofById.get(id) === true,
+    requireProof: requireClosedHistory(),
+  })
+  for (const item of deferred) {
+    console.warn(
+      `[openTradeReconcile] absent but not confirmed closed trade=${item.id}`
+      + ` reason="${item.reason}" — deferring (needs review)`,
+    )
+  }
+  if (deferred.length) {
+    captureBusinessIssue({
+      category: 'reconciliation',
+      event: 'reconciliation_needs_review',
+      severity: 'warning',
+      reasonCode: 'ABSENT_UNCONFIRMED_BY_HISTORY',
+      message: 'Open trade absent from the broker snapshot but not confirmed closed in history',
+      userImpact: 'manual_review_required',
+      fingerprint: ['reconciliation_needs_review', 'open_trade_reconcile', 'ABSENT_UNCONFIRMED_BY_HISTORY'],
+      context: {
+        broker_account_id: metaapiAccountId,
+        stage: 'open_trade_reconcile',
+        operation: 'open_trade_reconcile',
+        extra: {
+          unconfirmed_trades: deferred.length,
+          trade_ids: deferred.slice(0, 10).map(d => d.id),
+        },
+      },
+    })
   }
   if (!ghostIds.length) return 0
   const closed = await closeStaleOpenTrades(supabase, ghostIds)
@@ -266,4 +314,42 @@ export async function reconcileOpenTradesForBroker(
     }
   }
   return closed
+}
+
+/**
+ * Decide which absent rows may be closed. A row is only closed when history
+ * holds a positive per-ticket close record (`closeProof`); otherwise it is
+ * deferred for review. Kept pure so the decision is unit-testable.
+ */
+export function selectGhostClosures(args: {
+  candidates: Array<{
+    trade: { id: string }
+    resolution: { status: string; reason?: string; identityMatch?: boolean }
+  }>
+  closeProof: (tradeId: string) => boolean
+  requireProof: boolean
+}): { ghostIds: string[]; deferred: Array<{ id: string; reason: string }> } {
+  const ghostIds: string[] = []
+  const deferred: Array<{ id: string; reason: string }> = []
+  for (const { trade, resolution } of args.candidates) {
+    const reason = resolution.status === 'ambiguous'
+      ? (resolution.reason ?? 'ambiguous')
+      : 'stored ticket has no live position match'
+    // A row whose stored ticket maps to several live positions is present, not
+    // absent: never close it, whatever history says.
+    if (resolution.identityMatch === true) {
+      deferred.push({ id: trade.id, reason })
+      continue
+    }
+    if (!args.requireProof) {
+      // Legacy absence-only mode: a row the resolver could not pin down
+      // (attribute-ambiguous) is never closed here, exactly as before.
+      if (resolution.status === 'missing') ghostIds.push(trade.id)
+      else deferred.push({ id: trade.id, reason })
+      continue
+    }
+    if (args.closeProof(trade.id)) ghostIds.push(trade.id)
+    else deferred.push({ id: trade.id, reason })
+  }
+  return { ghostIds, deferred }
 }
