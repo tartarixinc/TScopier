@@ -5,6 +5,8 @@ import { resolveCurrentLivePosition } from '../livePositionIdentity'
 import { brokerHasLinkedSession, brokerSessionUuid } from './helpers'
 import type { TradeExecutorContext } from './context'
 import type { BrokerRow, SignalRow } from './types'
+import { TRADE_CLOSE_REASON } from '../tradeCloseReasons'
+import { applyCloseUpdate } from '../tradeCloseUpdate'
 
 export async function closeBasketForRevisionDirectionFlip(
   ctx: TradeExecutorContext,
@@ -72,10 +74,14 @@ export async function closeBasketForRevisionDirectionFlip(
           })
           continue
         }
-        await ctx.supabase
-          .from('trades')
-          .update({ status: 'closed', closed_at: new Date().toISOString() })
-          .eq('id', trade.id)
+        await applyCloseUpdate(
+          {
+            status: 'closed',
+            closed_at: new Date().toISOString(),
+            close_reason: TRADE_CLOSE_REASON.SIGNAL_REVISION,
+          },
+          patch => ctx.supabase.from('trades').update(patch).eq('id', trade.id),
+        )
         closed += 1
         purgeScopes.push({ signalId: trade.signal_id, brokerAccountId: broker.id })
         await ctx.supabase.from('trade_execution_logs').insert({

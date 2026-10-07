@@ -1,4 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { TRADE_CLOSE_REASON } from './tradeCloseReasons'
+import { applyCloseUpdate } from './tradeCloseUpdate'
 import { type FxsocketBrokerClient } from './fxsocketClient'
 import {
   brokerRuntimeForAccount,
@@ -299,10 +301,14 @@ export class CweCloseMonitor {
         `[cweCloseMonitor] closed signal=${trade.signal_id ?? 'n/a'} symbol=${trade.symbol} ticket=${effectiveTicket}`
         + ` threshold=${trade.cwe_close_price} ref=${refPrice} latency=${latencyMs}ms`,
       )
-      await this.supabase
-        .from('trades')
-        .update({ status: 'closed', closed_at: new Date().toISOString() })
-        .eq('id', trade.id)
+      await applyCloseUpdate(
+        {
+          status: 'closed',
+          closed_at: new Date().toISOString(),
+          close_reason: TRADE_CLOSE_REASON.CLOSE_WORSE_ENTRIES,
+        },
+        patch => this.supabase.from('trades').update(patch).eq('id', trade.id),
+      )
       await this.supabase.from('trade_execution_logs').insert({
         user_id: trade.user_id,
         signal_id: trade.signal_id,

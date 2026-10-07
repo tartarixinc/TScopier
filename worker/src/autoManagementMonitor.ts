@@ -1,4 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { TRADE_CLOSE_REASON } from './tradeCloseReasons'
+import { applyCloseUpdate } from './tradeCloseUpdate'
 import {
   clampBreakevenModifyStops,
   computeBreakevenStopLoss,
@@ -519,12 +521,16 @@ export class AutoManagementMonitor {
       if (remainingLots < 0.0001) {
         patch.status = 'closed'
         patch.closed_at = new Date().toISOString()
+        patch.close_reason = TRADE_CLOSE_REASON.AUTO_MANAGEMENT
         patch.lot_size = 0
       } else if (remainingLots !== lots) {
         patch.lot_size = remainingLots
       }
 
-      await this.supabase.from('trades').update(patch).eq('id', trade.id).eq('status', 'open')
+      await applyCloseUpdate(
+        patch,
+        p => this.supabase.from('trades').update(p).eq('id', trade.id).eq('status', 'open'),
+      )
 
       this.failureLogCooldownUntil.delete(trade.id)
 

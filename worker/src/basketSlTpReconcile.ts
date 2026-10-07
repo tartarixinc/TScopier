@@ -15,6 +15,8 @@ import { modifyLegSlTpWithFallback } from './orderModifySafe'
 import { isSlMoreProtective } from './basketEffectiveStops'
 import { mgmtLegConcurrency, parallelMap } from './parallelPool'
 import { buildBasketRefreshComment } from './tradeComment'
+import { TRADE_CLOSE_REASON } from './tradeCloseReasons'
+import { applyCloseUpdate } from './tradeCloseUpdate'
 
 export type BasketSymbolParams = {
   digits?: number
@@ -207,12 +209,15 @@ export async function closeStaleOpenTrades(
   if (!rows.length) return 0
 
   const now = new Date().toISOString()
-  const { data, error } = await supabase
-    .from('trades')
-    .update({ status: 'closed', closed_at: now })
-    .in('id', rows.map(r => r.id))
-    .eq('status', 'open')
-    .select('id')
+  const { data, error } = await applyCloseUpdate(
+    { status: 'closed', closed_at: now, close_reason: TRADE_CLOSE_REASON.POSITION_GONE },
+    patch => supabase
+      .from('trades')
+      .update(patch)
+      .in('id', rows.map(r => r.id))
+      .eq('status', 'open')
+      .select('id'),
+  )
   if (error) {
     console.warn(`[basketSlTpReconcile] closeStaleOpenTrades failed: ${error.message}`)
     return 0

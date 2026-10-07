@@ -893,6 +893,20 @@ export interface TradesTranslations {
   brokerErrorTitle: string
   brokerErrorIntro: string
   viewCopierLogs: string
+  closeReason: string
+  reasonNewsPreClose: string
+  reasonSignalClose: string
+  reasonSignalRevision: string
+  reasonOppositeSignal: string
+  reasonPartialTp: string
+  reasonAutoManagement: string
+  reasonCloseWorseEntries: string
+  reasonCopyLimitFlatten: string
+  reasonUserForceClose: string
+  reasonPositionGone: string
+  reasonStopLoss: string
+  reasonTakeProfit: string
+  reasonUnknown: string
   cancel: string
 }
 

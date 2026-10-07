@@ -11,6 +11,8 @@ import { brokerSessionUuid } from '../helpers'
 import { closeWithVerification } from '../../managementClose'
 import { resolveCurrentLivePosition } from '../../livePositionIdentity'
 import { cancelRangePendingLegsForScopes } from './pendingCancel'
+import { TRADE_CLOSE_REASON } from '../../tradeCloseReasons'
+import { applyCloseUpdate } from '../../tradeCloseUpdate'
 
 export async function closeOppositeDirectionTrades(ctx: TradeExecutorContext, 
     signal: SignalRow,
@@ -55,10 +57,14 @@ export async function closeOppositeDirectionTrades(ctx: TradeExecutorContext,
         if (resolution.status !== 'resolved') throw new Error(`close reconciliation required: ${resolution.reason}`)
         const close = await closeWithVerification(api, uuid, resolution.ticket, { liveFast: true })
         if (!close.confirmed) throw new Error(close.reason ?? 'close reconciliation required')
-        await ctx.supabase
-          .from('trades')
-          .update({ status: 'closed', closed_at: new Date().toISOString() })
-          .eq('id', t.id)
+        await applyCloseUpdate(
+          {
+            status: 'closed',
+            closed_at: new Date().toISOString(),
+            close_reason: TRADE_CLOSE_REASON.OPPOSITE_SIGNAL,
+          },
+          patch => ctx.supabase.from('trades').update(patch).eq('id', t.id),
+        )
         scopes.push({ signalId: t.signal_id, brokerAccountId: broker.id, symbol })
         try {
           await ctx.supabase.from('trade_execution_logs').insert({

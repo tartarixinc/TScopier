@@ -3,6 +3,8 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { TRADE_CLOSE_REASON } from './tradeCloseReasons'
+import { applyCloseUpdate } from './tradeCloseUpdate'
 import { clearChannelActiveTradeParamsWhenFlat } from './channelActiveTradeParams'
 import { normalizeSignalChannelIds } from './brokerChannelFilter'
 import { apiForBrokerAccount } from './providerResolver'
@@ -264,11 +266,18 @@ async function forceCloseChannelOnBroker(
 
     const settle = async () => {
       const terminalStatus = trade.status === 'pending' ? 'cancelled' : 'closed'
-      await supabase
-        .from('trades')
-        .update({ status: terminalStatus, closed_at: now })
-        .eq('id', trade.id)
-        .in('status', ['open', 'pending'])
+      await applyCloseUpdate(
+        {
+          status: terminalStatus,
+          closed_at: now,
+          close_reason: TRADE_CLOSE_REASON.USER_FORCE_CLOSE,
+        },
+        patch => supabase
+          .from('trades')
+          .update(patch)
+          .eq('id', trade.id)
+          .in('status', ['open', 'pending']),
+      )
       await clearChannelActiveTradeParamsWhenFlat(supabase, {
         userId: args.userId,
         channelId: args.channelId,
@@ -659,11 +668,18 @@ export async function forceCloseSignalById(
       const ticket = Number(trade.metaapi_order_id)
       const markDone = async () => {
         const terminalStatus = trade.status === 'pending' ? 'cancelled' : 'closed'
-        await supabase
-          .from('trades')
-          .update({ status: terminalStatus, closed_at: now })
-          .eq('id', trade.id)
-          .in('status', ['open', 'pending'])
+        await applyCloseUpdate(
+          {
+            status: terminalStatus,
+            closed_at: now,
+            close_reason: TRADE_CLOSE_REASON.USER_FORCE_CLOSE,
+          },
+          patch => supabase
+            .from('trades')
+            .update(patch)
+            .eq('id', trade.id)
+            .in('status', ['open', 'pending']),
+        )
         if (channelId) {
           await clearChannelActiveTradeParamsWhenFlat(supabase, {
             userId,

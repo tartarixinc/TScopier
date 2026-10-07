@@ -10,6 +10,8 @@ import {
   type SignalEntryPendingRow,
 } from './signalEntryPendingHelpers'
 import { closeWithVerification } from './managementClose'
+import { TRADE_CLOSE_REASON } from './tradeCloseReasons'
+import { applyCloseUpdate } from './tradeCloseUpdate'
 import { resolveCurrentLivePosition } from './livePositionIdentity'
 
 type CopyLimitFlattenResult = {
@@ -112,11 +114,18 @@ export async function flattenChannelTradesForCopyLimit(args: {
 
     result.closed += 1
     const terminalStatus = trade.status === 'pending' ? 'cancelled' : 'closed'
-    await args.supabase
-      .from('trades')
-      .update({ status: terminalStatus, closed_at: now })
-      .eq('id', trade.id)
-      .in('status', ['open', 'pending'])
+    await applyCloseUpdate(
+      {
+        status: terminalStatus,
+        closed_at: now,
+        close_reason: TRADE_CLOSE_REASON.COPY_LIMIT_FLATTEN,
+      },
+      patch => args.supabase
+        .from('trades')
+        .update(patch)
+        .eq('id', trade.id)
+        .in('status', ['open', 'pending']),
+    )
     await clearChannelActiveTradeParamsWhenFlat(args.supabase, {
       userId: args.userId,
       channelId: args.channelId,
