@@ -8,7 +8,7 @@ export const dashboardJa: DashboardBundleTranslations = {
     greetingEvening: 'こんばんは',
     greetingNamed: '{name}さん、{greeting}',
     loadingMetrics: 'ダッシュボード指標を読み込み中',
-    totalBalance: '総残高',
+    totalBalance: 'ポートフォリオ価値',
     acrossAccounts: '接続済み {count} 口座の合計',
     todaysProfit: '本日の利益',
     todaysProfitHint: 'ブローカー接続後、本日決済されたコピー取引の実現 P/L。',

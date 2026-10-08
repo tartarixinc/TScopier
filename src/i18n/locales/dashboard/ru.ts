@@ -8,7 +8,7 @@ export const dashboardRu: DashboardBundleTranslations = {
     greetingEvening: 'Добрый вечер',
     greetingNamed: '{greeting}, {name}.',
     loadingMetrics: 'Загрузка метрик панели',
-    totalBalance: 'Общий баланс',
+    totalBalance: 'Стоимость портфеля',
     acrossAccounts: 'По {count} подключенным счетам',
     todaysProfit: 'Прибыль за сегодня',
     todaysProfitHint:

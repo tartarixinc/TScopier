@@ -16,6 +16,8 @@ export const chromeAr: AppChromeTranslations = {
       dashboard: 'لوحة التحكم',
       configuration: 'الإعدادات',
       brokers: 'الوسطاء',
+      mirrorTrading: 'الحساب المرآة',
+      socialTrading: 'التداول الاجتماعي',
       trades: 'الصفقات',
       management: 'النشاط',
       channels: 'القنوات',

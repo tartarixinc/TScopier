@@ -113,6 +113,7 @@ import {
   brokerReconnectBannerText,
 } from '../../lib/brokerConnectError'
 import { useLocale, useT } from '../../context/LocaleContext'
+import { SOCIAL_FOLLOWER_COUNT, SOCIAL_FOLLOWING_COUNT } from '../../lib/socialTradingFixture'
 import { useFormatMoney } from '../../hooks/useFormatMoney'
 import { lossTextClass, pnlSignTextClass } from '../../lib/pnlDisplay'
 import { formatMoneyWithCode } from '../../lib/currency'
@@ -1466,6 +1467,7 @@ export function DashboardPage() {
           response_payload,
           error_message,
           signal_id,
+          broker_account_id,
           signals ( channel_id, raw_message, parsed_data, status, skip_reason )
         `,
         )
@@ -2375,7 +2377,36 @@ export function DashboardPage() {
   return (
     <PageShell maxWidth="xl" spacing="none" className="space-y-8">
       <SubscriptionReminderModal />
-      <PageHeader title={dashboardGreeting} titleClassName="text-3xl" />
+      <PageHeader
+        title={dashboardGreeting}
+        titleClassName="text-3xl"
+        actions={
+          <div className="flex gap-2">
+            <Link
+              to="/social-trading?view=followers"
+              className="rounded-2xl bg-[#F7F8FA] px-4 py-3 dark:bg-white/[0.03] dark:ring-1 dark:ring-inset dark:ring-white/[0.06]"
+            >
+              <span className="block text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400">
+                {t.socialTradingPage.followers}
+              </span>
+              <span className="mt-1 block text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
+                {SOCIAL_FOLLOWER_COUNT}
+              </span>
+            </Link>
+            <Link
+              to="/social-trading?view=following"
+              className="rounded-2xl bg-[#F7F8FA] px-4 py-3 dark:bg-white/[0.03] dark:ring-1 dark:ring-inset dark:ring-white/[0.06]"
+            >
+              <span className="block text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400">
+                {t.socialTradingPage.following}
+              </span>
+              <span className="mt-1 block text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
+                {SOCIAL_FOLLOWING_COUNT}
+              </span>
+            </Link>
+          </div>
+        }
+      />
       {showDashboardLoader ? (
         <DashboardMetricsSkeleton message={t.dashboard.loadingMetrics} />
       ) : (

@@ -11,7 +11,7 @@ export const logsPl: LogsBundleTranslations = {
     filterPending: 'Oczekujące',
     colStatus: 'Status',
     colReason: 'Powód',
-    colChannel: 'Kanał',
+    colChannel: 'Źródło',
     colSymbol: 'Symbol',
     colMessage: 'Wiadomość',
     colType: 'Typ',

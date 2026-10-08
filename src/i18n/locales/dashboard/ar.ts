@@ -8,7 +8,7 @@ export const dashboardAr: DashboardBundleTranslations = {
     greetingEvening: 'مساء الخير',
     greetingNamed: '{greeting}، {name}.',
     loadingMetrics: 'جارٍ تحميل مقاييس لوحة التحكم',
-    totalBalance: 'إجمالي الرصيد',
+    totalBalance: 'قيمة المحفظة',
     acrossAccounts: 'على {count} حسابات متصلة',
     todaysProfit: 'ربح اليوم',
     todaysProfitHint:

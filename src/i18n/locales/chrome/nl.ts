@@ -16,6 +16,8 @@ export const chromeNl: AppChromeTranslations = {
       dashboard: 'Dashboard',
       configuration: 'Configuraties',
       brokers: 'Brokers',
+      mirrorTrading: 'Spiegelaccount',
+      socialTrading: 'Sociaal handelen',
       trades: 'Trades',
       management: 'Activiteiten',
       channels: 'Kanalen',

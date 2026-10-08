@@ -8,7 +8,7 @@ export const dashboardNl: DashboardBundleTranslations = {
     greetingEvening: 'Goedenavond',
     greetingNamed: '{greeting}, {name}.',
     loadingMetrics: 'Je dashboardstatistieken worden geladen',
-    totalBalance: 'Totaal saldo',
+    totalBalance: 'Portefeuillewaarde',
     acrossAccounts: 'Over {count} gekoppelde account(s)',
     todaysProfit: 'Winst van vandaag',
     todaysProfitHint:

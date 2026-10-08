@@ -8,7 +8,7 @@ export const dashboardPl: DashboardBundleTranslations = {
     greetingEvening: 'Dobry wieczór',
     greetingNamed: '{greeting}, {name}.',
     loadingMetrics: 'Ładowanie metryk pulpitu',
-    totalBalance: 'Łączne saldo',
+    totalBalance: 'Wartość portfela',
     acrossAccounts: 'Na {count} połączonych kontach',
     todaysProfit: 'Dzisiejszy zysk',
     todaysProfitHint:

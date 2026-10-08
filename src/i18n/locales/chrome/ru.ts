@@ -16,6 +16,8 @@ export const chromeRu: AppChromeTranslations = {
       dashboard: 'Панель',
       configuration: 'Конфигурации',
       brokers: 'Брокеры',
+      mirrorTrading: 'Зеркальный счёт',
+      socialTrading: 'Социальный трейдинг',
       trades: 'Сделки',
       management: 'Активности',
       channels: 'Каналы',

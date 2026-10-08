@@ -1,5 +1,6 @@
 import {
   Activity,
+  ArrowLeftRight,
   BookOpen,
   CalendarDays,
   ChartNoAxesCombined,
@@ -22,6 +23,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   TrendingUp,
+  Users,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -29,6 +31,8 @@ import {
 export const APP_ROUTE_ICONS: Record<string, LucideIcon> = {
   '/dashboard': LayoutDashboard,
   '/brokers': Landmark,
+  '/mirror-trading': ArrowLeftRight,
+  '/social-trading': Users,
   '/configurations': Settings2,
   '/account-trades': ChartNoAxesCombined,
   '/activities': Activity,

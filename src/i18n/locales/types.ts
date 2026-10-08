@@ -31,6 +31,8 @@ export interface NavTranslations {
     dashboard: string
     configuration: string
     brokers: string
+    mirrorTrading: string
+    socialTrading: string
     trades: string
     management: string
     channels: string
@@ -819,6 +821,79 @@ export interface AccountConfigBrokerConnectedSuccessTranslations {
   bodyPending: string
   addChannel: string
   configure: string
+}
+
+export interface MirrorTradingPageTranslations {
+  title: string
+  subtitle: string
+  searchDescription: string
+  masters: string
+  slaves: string
+  addMaster: string
+  addSlave: string
+  mastersEmpty: string
+  slavesEmpty: string
+  connectNew: string
+  noAccounts: string
+  copies: string
+  copiesNone: string
+  remove: string
+  login: string
+  balance: string
+  master: string
+  slave: string
+  colAccount: string
+  colCopyFrom: string
+  colRiskType: string
+  colRiskSetting: string
+  colStatus: string
+  colActions: string
+  configure: string
+  pause: string
+  resume: string
+  delete: string
+  riskFixedLot: string
+  riskBalancePercent: string
+  expandSlaves: string
+  collapseSlaves: string
+  resultPerPage: string
+  pageStatus: string
+  back: string
+  next: string
+  loadError: string
+}
+
+export interface SocialTradingPageTranslations {
+  title: string
+  searchPlaceholder: string
+  sortRoi: string
+  sortWinRate: string
+  sortFollowers: string
+  follow: string
+  following: string
+  followers: string
+  allowFollowing: string
+  you: string
+  roi: string
+  winRate: string
+  maxDrawdown: string
+  closedTrades: string
+  openTrades: string
+  closedPerformance: string
+  lastActivities: string
+  buy: string
+  sell: string
+  opened: string
+  closed: string
+  back: string
+  notFound: string
+  empty: string
+  viewAll: string
+  viewFollowers: string
+  viewFollowing: string
+  symbol: string
+  result: string
+  sampleNote: string
 }
 
 export interface ConfigurationsPageTranslations {
@@ -1683,6 +1758,8 @@ export interface Translations {
   common: CommonTranslations
   pricing: PricingTranslations
   landing: LandingTranslations
+  mirrorTradingPage: MirrorTradingPageTranslations
+  socialTradingPage: SocialTradingPageTranslations
   configurationsPage: ConfigurationsPageTranslations
   accountConfig: AccountConfigTranslations
   dashboard: DashboardTranslations

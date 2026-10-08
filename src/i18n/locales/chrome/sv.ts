@@ -16,6 +16,8 @@ export const chromeSv: AppChromeTranslations = {
       dashboard: 'Översikt',
       configuration: 'Konfigurationer',
       brokers: 'Mäklare',
+      mirrorTrading: 'Spegelkonto',
+      socialTrading: 'Social handel',
       trades: 'Affärer',
       management: 'Aktiviteter',
       channels: 'Kanaler',

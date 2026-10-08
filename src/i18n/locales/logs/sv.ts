@@ -11,7 +11,7 @@ export const logsSv: LogsBundleTranslations = {
     filterPending: 'Väntande',
     colStatus: 'Status',
     colReason: 'Orsak',
-    colChannel: 'Kanal',
+    colChannel: 'Källa',
     colSymbol: 'Symbol',
     colMessage: 'Meddelande',
     colType: 'Typ',

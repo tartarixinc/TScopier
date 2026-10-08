@@ -16,6 +16,8 @@ export const chromePl: AppChromeTranslations = {
       dashboard: 'Pulpit',
       configuration: 'Konfiguracje',
       brokers: 'Brokerzy',
+      mirrorTrading: 'Konto lustrzane',
+      socialTrading: 'Trading społecznościowy',
       trades: 'Transakcje',
       management: 'Aktywności',
       channels: 'Kanały',

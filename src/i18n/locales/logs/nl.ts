@@ -11,7 +11,7 @@ export const logsNl: LogsBundleTranslations = {
     filterPending: 'In afwachting',
     colStatus: 'Status',
     colReason: 'Reden',
-    colChannel: 'Kanaal',
+    colChannel: 'Bron',
     colSymbol: 'Symbool',
     colMessage: 'Bericht',
     colType: 'Type',

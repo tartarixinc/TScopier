@@ -8,7 +8,7 @@ export const dashboardSv: DashboardBundleTranslations = {
     greetingEvening: 'God kväll',
     greetingNamed: '{greeting}, {name}.',
     loadingMetrics: 'Laddar dina instrumentpanelsmätvärden',
-    totalBalance: 'Totalt saldo',
+    totalBalance: 'Portföljvärde',
     acrossAccounts: 'Över {count} anslutna konto(n)',
     todaysProfit: 'Dagens vinst',
     todaysProfitHint:

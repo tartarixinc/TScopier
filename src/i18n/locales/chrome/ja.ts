@@ -16,6 +16,8 @@ export const chromeJa: AppChromeTranslations = {
       dashboard: 'ダッシュボード',
       configuration: '設定',
       brokers: 'ブローカー',
+      mirrorTrading: 'ミラーアカウント',
+      socialTrading: 'ソーシャルトレード',
       trades: '取引',
       management: 'アクティビティ',
       channels: 'チャンネル',
