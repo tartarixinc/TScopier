@@ -50,28 +50,38 @@ function positiveNumber(value: unknown): number | null {
 /**
  * Broker-reported current position volume from an OpenedOrders row.
  *
- * The repository's bridge contracts do not establish a safe precedence when
- * multiple aliases coexist. Accept one positive value (or agreeing aliases)
- * and fail closed when positive aliases conflict.
+ * Lot-denominated aliases (`lots`, `lotSize`, `volumeCurrent`, …) are preferred
+ * and must agree with each other; the `volume` alias is consulted only when no
+ * lot field is present. Evidence — a live MTAPI bridge payload captured
+ * 2026-10-07 (account 62136328, EURUSD): the same row carries `lots: 0.01` and
+ * `volume: 1000000`, so `volume` is not in lots on that bridge (the exact unit
+ * is not established by the capture). Treating the two as comparable fails
+ * closed on every real MTAPI row, which disables attribute matching and manual
+ * partial closes on MTAPI. MT4-style rows (as returned raw by FxSocket's
+ * `OpenedOrders` list) carry `volume` in lots and no `lots` key, so the unit
+ * fallback is correct for them; MTAPI is the only observed source of a
+ * `volume` that is not in lots.
  */
-export function livePositionVolume(row: Record<string, unknown>): number | null {
-  const values = [
-    row.lots,
-    row.Lots,
-    row.volume,
-    row.Volume,
-    row.lotSize,
-    row.LotSize,
-    row.volumeCurrent,
-    row.VolumeCurrent,
-  ].map(positiveNumber).filter((value): value is number => value != null)
-  if (!values.length) return null
+const LOT_VOLUME_KEYS = ['lots', 'Lots', 'lotSize', 'LotSize', 'volumeCurrent', 'VolumeCurrent'] as const
+const UNIT_VOLUME_KEYS = ['volume', 'Volume'] as const
 
+function agreedValue(values: number[]): number | null {
+  if (!values.length) return null
   const first = values[0]!
   const conflict = values.some(value =>
     Math.abs(value - first) > Math.max(1e-9, Math.abs(first) * 1e-9),
   )
   return conflict ? null : first
+}
+
+export function livePositionVolume(row: Record<string, unknown>): number | null {
+  const pick = (keys: readonly string[]): number[] =>
+    keys.map(key => positiveNumber(row[key])).filter((value): value is number => value != null)
+  const lotValues = pick(LOT_VOLUME_KEYS)
+  // A disagreement between lot fields is a real conflict: fail closed and do
+  // not fall back to `volume`.
+  if (lotValues.length) return agreedValue(lotValues)
+  return agreedValue(pick(UNIT_VOLUME_KEYS))
 }
 function nestedTicket(value: unknown): number | null {
   if (value == null) return null

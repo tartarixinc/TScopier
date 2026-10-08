@@ -48,9 +48,24 @@ describe('broker live volume alias authority', () => {
     assert.equal(livePositionVolume({ lots: 0.2, volume: 0.2, volumeCurrent: 0.2 }), 0.2)
   })
 
-  it('fails closed when positive aliases conflict', () => {
-    assert.equal(livePositionVolume({ volume: 0.2, volumeCurrent: 0.1 }), null)
-    assert.equal(livePositionVolume({ lots: 0.3, volume: 0.2 }), null)
+  it('fails closed when lot-denominated aliases conflict', () => {
+    assert.equal(livePositionVolume({ lots: 0.3, volumeCurrent: 0.2 }), null)
+    assert.equal(livePositionVolume({ lots: 0.3, lotSize: 0.2 }), null)
+  })
+
+  it('prefers lot fields over the unit-denominated `volume` alias', () => {
+    assert.equal(livePositionVolume({ volume: 0.2, volumeCurrent: 0.1 }), 0.1)
+    assert.equal(livePositionVolume({ lots: 0.3, volume: 0.2 }), 0.3)
+  })
+
+  it('reads the real MTAPI bridge row shape (lots + unit volume together)', () => {
+    // Captured live 2026-10-07 from mtapi.tscopier.ai (account 62136328,
+    // EURUSD): lots is in lots, volume is in contract units. The old
+    // cross-alias conflict check returned null for this row, which made
+    // attribute matching and manual partial closes fail closed on every
+    // MTAPI position.
+    const row = { lots: 0.01, volume: 1000000, contractSize: 100000, state: 'Filled' }
+    assert.equal(livePositionVolume(row), 0.01)
   })
 
   it('ignores zero or invalid aliases when another positive alias is valid', () => {

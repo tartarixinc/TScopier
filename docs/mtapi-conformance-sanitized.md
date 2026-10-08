@@ -288,7 +288,7 @@ GET https://mt5.mtapi.io/OrderCloseSafe?id=<TOKEN>&ticket=<TICKET>
 - Response: `"state": "Cancelled"`
 
 **Key findings:**
-- `closeVolume` in contract units (not lots) — `1000000` = 0.01 lots × 100000 contractSize
+- `closeVolume` is NOT in lots — `closeLots: 0.01` vs `closeVolume: 1000000`; the exact unit is not established (0.01 lots x 100000 contractSize = 1000, not 1000000)
 - `closePrice` is the actual fill price
 - `profit` shows realized P/L
 - For pending orders: `state` becomes `"Cancelled"`

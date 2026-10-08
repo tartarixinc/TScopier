@@ -29,6 +29,7 @@ import {
   persistCanonicalPositionTicket,
   resolveCanonicalOpenPosition,
   resolveCurrentLivePosition,
+  type LiveTradeIdentity,
 } from '../livePositionIdentity'
 import { planPartialClose, verifyPartialCloseReduction } from '../partialClosePolicy'
 import { closeWithVerification } from '../managementClose'
@@ -1270,12 +1271,23 @@ export async function applyManagement(
 
           await api.orderClose(uuid, { ticket: effectiveTicket, lots: plan.closeVolume })
           const postOrders = await api.openedOrders(uuid)
+          // The in-memory row can carry a stale captured ticket (the pre-read
+          // may have reconciled `effectiveTicket` without rewriting `trade`).
+          // Key the verification read on the ticket we just acted on, and keep
+          // the captured column present when it was present before: a
+          // captured-only row diverges (`broker_position_ticket` = position,
+          // `metaapi_order_id` = order ticket), so the persist must CAS on the
+          // column that actually holds `effectiveTicket`.
+          const postCloseTrade: LiveTradeIdentity = {
+            ...trade,
+            broker_position_ticket: trade.broker_position_ticket == null
+              ? null
+              : String(effectiveTicket),
+            metaapi_order_id: String(effectiveTicket),
+            lot_size: plan.expectedRemainingVolume,
+          }
           const postResolution = resolveCanonicalOpenPosition({
-            trade: {
-              ...trade,
-              metaapi_order_id: String(effectiveTicket),
-              lot_size: plan.expectedRemainingVolume,
-            },
+            trade: postCloseTrade,
             openedOrders: postOrders,
           })
           if (postResolution.status !== 'resolved') {
@@ -1296,7 +1308,7 @@ export async function applyManagement(
           if (postResolution.replacement) {
             const persisted = await persistCanonicalPositionTicket(
               ctx.supabase,
-              { ...trade, metaapi_order_id: String(effectiveTicket) },
+              postCloseTrade,
               postResolution,
               // The partial close was just verified against a fresh broker read
               // and the volume reduction, so the remaining position is provably
@@ -1309,12 +1321,23 @@ export async function applyManagement(
             ticketReconciledFrom = ticketReconciledFrom ?? effectiveTicket
             effectiveTicket = postResolution.ticket
           }
-          const { error: partialUpdateError } = await ctx.supabase.from('trades').update({
-            lot_size: observedRemaining,
-            metaapi_order_id: String(effectiveTicket),
-          }).eq('id', trade.id).eq('status', 'open')
+          const { data: partialUpdated, error: partialUpdateError } = await ctx.supabase
+            .from('trades')
+            .update({
+              lot_size: observedRemaining,
+              metaapi_order_id: String(effectiveTicket),
+            })
+            .eq('id', trade.id)
+            .eq('status', 'open')
+            .select('id')
+            .maybeSingle()
           if (partialUpdateError) {
             throw new Error(`partial close DB state update failed: ${partialUpdateError.message}`)
+          }
+          if (partialUpdated?.id !== trade.id) {
+            // No open row matched: the trade was closed concurrently while the
+            // broker reduction is already done. Do not report success.
+            throw new Error('partial close DB state update matched no open row')
           }
           partialProfitSucceeded += 1
         } else if (action === 'breakeven' || action === 'partial_breakeven') {
