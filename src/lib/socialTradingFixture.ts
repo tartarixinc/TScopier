@@ -7,6 +7,10 @@ export interface SocialOpenTrade {
   symbol: string
   side: SocialTradeSide
   openedAt: string
+  /** Demo-only execution-preview values; never used by trade execution. */
+  previewLot: number
+  previewStopLoss: number | null
+  previewTakeProfit: number | null
 }
 
 export interface SocialClosedTrade {
@@ -46,6 +50,8 @@ export interface SocialTrader {
   followerCount: number
   following: boolean
   followsYou: boolean
+  /** Demo-only source balance used to illustrate proportional sizing. */
+  previewBalance: number
   openTrades: SocialOpenTrade[]
   closedPerformance: SocialClosedTrade[]
   activities: SocialActivity[]
@@ -87,9 +93,10 @@ export const SOCIAL_TRADERS: SocialTrader[] = [
     followerCount: 2,
     following: false,
     followsYou: false,
+    previewBalance: 10590,
     openTrades: [
-      { id: 'you-o1', symbol: 'EURUSD', side: 'buy', openedAt: '2026-10-07T08:15:00Z' },
-      { id: 'you-o2', symbol: 'XAUUSD', side: 'sell', openedAt: '2026-10-07T11:40:00Z' },
+      { id: 'you-o1', symbol: 'EURUSD', side: 'buy', openedAt: '2026-10-07T08:15:00Z', previewLot: 0.4, previewStopLoss: 1.1642, previewTakeProfit: 1.1768 },
+      { id: 'you-o2', symbol: 'XAUUSD', side: 'sell', openedAt: '2026-10-07T11:40:00Z', previewLot: 0.2, previewStopLoss: 2668.5, previewTakeProfit: 2634 },
     ],
     closedPerformance: [
       { id: 'you-c1', symbol: 'GBPJPY', side: 'buy', openedAt: '2026-10-06T07:05:00Z', closedAt: '2026-10-06T15:20:00Z', profit: 186 },
@@ -119,9 +126,10 @@ export const SOCIAL_TRADERS: SocialTrader[] = [
     followerCount: 128,
     following: true,
     followsYou: false,
+    previewBalance: 26720,
     openTrades: [
-      { id: 'amira-o1', symbol: 'XAUUSD', side: 'buy', openedAt: '2026-10-07T06:20:00Z' },
-      { id: 'amira-o2', symbol: 'EURUSD', side: 'sell', openedAt: '2026-10-06T14:05:00Z' },
+      { id: 'amira-o1', symbol: 'XAUUSD', side: 'buy', openedAt: '2026-10-07T06:20:00Z', previewLot: 1, previewStopLoss: 2641.5, previewTakeProfit: 2688 },
+      { id: 'amira-o2', symbol: 'EURUSD', side: 'sell', openedAt: '2026-10-06T14:05:00Z', previewLot: 0.6, previewStopLoss: 1.1775, previewTakeProfit: 1.163 },
     ],
     closedPerformance: [
       { id: 'amira-c1', symbol: 'US30', side: 'buy', openedAt: '2026-10-06T08:00:00Z', closedAt: '2026-10-06T19:10:00Z', profit: 420 },
@@ -151,8 +159,9 @@ export const SOCIAL_TRADERS: SocialTrader[] = [
     followerCount: 47,
     following: true,
     followsYou: true,
+    previewBalance: 8150,
     openTrades: [
-      { id: 'leo-o1', symbol: 'USDJPY', side: 'sell', openedAt: '2026-10-07T09:50:00Z' },
+      { id: 'leo-o1', symbol: 'USDJPY', side: 'sell', openedAt: '2026-10-07T09:50:00Z', previewLot: 0.35, previewStopLoss: 153.8, previewTakeProfit: 151.9 },
     ],
     closedPerformance: [
       { id: 'leo-c1', symbol: 'EURUSD', side: 'buy', openedAt: '2026-10-06T06:30:00Z', closedAt: '2026-10-06T12:15:00Z', profit: 88 },
@@ -181,9 +190,10 @@ export const SOCIAL_TRADERS: SocialTrader[] = [
     followerCount: 89,
     following: false,
     followsYou: true,
+    previewBalance: 15720,
     openTrades: [
-      { id: 'nora-o1', symbol: 'NAS100', side: 'buy', openedAt: '2026-10-07T13:05:00Z' },
-      { id: 'nora-o2', symbol: 'GBPUSD', side: 'buy', openedAt: '2026-10-07T07:25:00Z' },
+      { id: 'nora-o1', symbol: 'NAS100', side: 'buy', openedAt: '2026-10-07T13:05:00Z', previewLot: 0.5, previewStopLoss: 24780, previewTakeProfit: 25240 },
+      { id: 'nora-o2', symbol: 'GBPUSD', side: 'buy', openedAt: '2026-10-07T07:25:00Z', previewLot: 0.4, previewStopLoss: 1.332, previewTakeProfit: 1.348 },
     ],
     closedPerformance: [
       { id: 'nora-c1', symbol: 'XAUUSD', side: 'buy', openedAt: '2026-10-06T09:10:00Z', closedAt: '2026-10-06T16:00:00Z', profit: 305 },
@@ -213,8 +223,9 @@ export const SOCIAL_TRADERS: SocialTrader[] = [
     followerCount: 21,
     following: false,
     followsYou: false,
+    previewBalance: 12140,
     openTrades: [
-      { id: 'kenji-o1', symbol: 'USDJPY', side: 'buy', openedAt: '2026-10-07T01:15:00Z' },
+      { id: 'kenji-o1', symbol: 'USDJPY', side: 'buy', openedAt: '2026-10-07T01:15:00Z', previewLot: 0.25, previewStopLoss: 151.7, previewTakeProfit: 154.1 },
     ],
     closedPerformance: [
       { id: 'kenji-c1', symbol: 'EURUSD', side: 'sell', openedAt: '2026-10-06T00:40:00Z', closedAt: '2026-10-06T08:10:00Z', profit: 64 },

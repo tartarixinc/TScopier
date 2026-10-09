@@ -894,6 +894,56 @@ export interface SocialTradingPageTranslations {
   symbol: string
   result: string
   sampleNote: string
+  copySetup: {
+    action: string
+    title: string
+    subtitle: string
+    previewLabel: string
+    destinationAccount: string
+    loadingAccounts: string
+    noAccountsTitle: string
+    noAccountsBody: string
+    connectBroker: string
+    login: string
+    balance: string
+    equity: string
+    copyMethod: string
+    proportional: string
+    proportionalDescription: string
+    fixedLot: string
+    fixedLotDescription: string
+    riskMultiplier: string
+    riskMultiplierDescription: string
+    lots: string
+    protections: string
+    copyStopLoss: string
+    copyTakeProfit: string
+    closeWhenTraderCloses: string
+    copyOpenPositions: string
+    respectRiskLimits: string
+    respectRiskLimitsHint: string
+    setupPreview: string
+    traderAction: string
+    traderSize: string
+    stopLoss: string
+    takeProfit: string
+    yourAccount: string
+    estimatedCopiedLot: string
+    fixedCopiedLot: string
+    copiedLot: string
+    copied: string
+    notCopied: string
+    riskProfile: string
+    proportionalProfile: string
+    estimateUnavailable: string
+    noOpenTrade: string
+    startCopying: string
+    cancel: string
+    successTitle: string
+    successBody: string
+    done: string
+    close: string
+  }
 }
 
 export interface ConfigurationsPageTranslations {
