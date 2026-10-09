@@ -45,7 +45,7 @@ import {
   notifyManualBrokerOverrideReverted,
 } from '../manualBrokerOverrideNotification'
 import { authorityFromBrokerRow, type BrokerWriteAuthority, withBrokerWriteAuthority } from '../brokerWriteAuthority'
-
+import { writeExecutionLog } from '../observability/executionLog'
 const TICK_MS = Math.min(60_000, Math.max(1_000, Number(process.env.V2_RECONCILE_TICK_MS ?? 4_000)))
 const MANUAL_OVERRIDE_LOG_PREFIX = '[MANUAL_OVERRIDE_NOTIFY]'
 
@@ -503,19 +503,17 @@ export class V2ReconcileMonitor {
     payload: Record<string, unknown>,
   ): Promise<void> {
     if (!userId) return
-    try {
-      await this.supabase.from('trade_execution_logs').insert({
-        user_id: userId,
-        signal_id: basket.anchorSignalId,
-        broker_account_id: basket.brokerAccountId,
-        action: 'v2_reconcile_tick',
-        status: (payload.modifyFailed as number) > 0 ? 'failed' : 'success',
-        request_payload: {
-          anchor_signal_id: basket.anchorSignalId,
-          symbol: basket.symbol,
-          ...payload,
-        } as unknown as Record<string, unknown>,
-      })
-    } catch { /* best-effort */ }
+    await writeExecutionLog(this.supabase, {
+      user_id: userId,
+      signal_id: basket.anchorSignalId,
+      broker_account_id: basket.brokerAccountId,
+      action: 'v2_reconcile_tick',
+      status: (payload.modifyFailed as number) > 0 ? 'failed' : 'success',
+      request_payload: {
+        anchor_signal_id: basket.anchorSignalId,
+        symbol: basket.symbol,
+        ...payload,
+      } as unknown as Record<string, unknown>,
+    })
   }
 }

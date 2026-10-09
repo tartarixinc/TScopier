@@ -15,7 +15,7 @@ import { type TradeExecutorContext } from '../context'
 import { type BrokerRow, type ParsedSignal, type SignalRow } from '../types'
 import { isV2 } from '../../engine/executionMode'
 import { getFxClient, toMtPlatform } from '../../engine/fxClient'
-
+import { writeExecutionLog } from '../../observability/executionLog'
 export async function hasOpenTradeForSymbol(ctx: TradeExecutorContext, brokerId: string, symbol: string): Promise<boolean> {
     try {
       const { count } = await ctx.supabase
@@ -85,24 +85,20 @@ export async function reconcileGhostBasketLegs(ctx: TradeExecutorContext, args: 
       `[tradeExecutor] stale_basket_reconciled signal=${signal.id} broker=${broker.id}`
       + ` anchor=${anchorSignalId} symbol=${symbol} closed=${closedCount}/${ghost.length}`,
     )
-
-    try {
-      await ctx.supabase.from('trade_execution_logs').insert({
-        user_id: signal.user_id,
-        signal_id: signal.id,
-        broker_account_id: broker.id,
-        action: 'stale_basket_reconciled',
-        status: 'success',
-        request_payload: {
-          anchor_signal_id: anchorSignalId,
-          symbol,
-          closed_count: closedCount,
-          ghost_leg_count: ghost.length,
-          user_message: GHOST_BASKET_CLOSED_USER_MESSAGE,
-        } as unknown as Record<string, unknown>,
-      })
-    } catch { /* best-effort */ }
-
+    await writeExecutionLog(ctx.supabase, {
+      user_id: signal.user_id,
+      signal_id: signal.id,
+      broker_account_id: broker.id,
+      action: 'stale_basket_reconciled',
+      status: 'success',
+      request_payload: {
+        anchor_signal_id: anchorSignalId,
+        symbol,
+        closed_count: closedCount,
+        ghost_leg_count: ghost.length,
+        user_message: GHOST_BASKET_CLOSED_USER_MESSAGE,
+      } as unknown as Record<string, unknown>,
+    })
     return { isGhostBasket: true, closedCount }
   }
 

@@ -21,7 +21,7 @@ import {
   reconcileUniversalSignal,
   type UniversalParseResult,
 } from './universalSignalParser'
-
+import { writeExecutionLog } from '../observability/executionLog'
 export type RoutedParseResult = {
   parseResult: ParseChannelMessageResult
   aiMeta?: {
@@ -856,22 +856,18 @@ async function logShadowDiff(
 ): Promise<void> {
   const diff = compareParseShadowDiff(args.deterministic, args.universal.parseResult)
   if (!diff.differs) return
-  try {
-    await supabase.from('trade_execution_logs').insert({
-      user_id: args.userId,
-      signal_id: args.signalId,
-      action: 'parse_shadow_diff',
-      status: 'skipped',
-      request_payload: {
-        channel_id: args.channelRowId,
-        ...diff,
-        universal_kind: args.universal.intent.kind,
-        universal_source: args.universal.source,
-      },
-    })
-  } catch {
-    // best-effort
-  }
+  await writeExecutionLog(supabase, {
+    user_id: args.userId,
+    signal_id: args.signalId,
+    action: 'parse_shadow_diff',
+    status: 'skipped',
+    request_payload: {
+      channel_id: args.channelRowId,
+      ...diff,
+      universal_kind: args.universal.intent.kind,
+      universal_source: args.universal.source,
+    },
+  })
 }
 
 export { logShadowDiff }

@@ -9,7 +9,7 @@ import { resolveCurrentLivePosition } from './livePositionIdentity'
 import { brokerRuntimeForAccount, loadBrokerApiByAccountId } from './mtApiByAccount'
 import { resolveChannelTradingConfig } from './channelTradingConfig'
 import { isUserCopierPausedCached } from './copierPause'
-
+import { writeExecutionLog } from './observability/executionLog'
 interface BrokerRow {
   id: string
   user_id: string
@@ -213,22 +213,18 @@ export class NewsTradingMonitor {
           console.log(
             `[newsTradingMonitor] pre-news close broker=${broker.id} event=${event.event} closed=${closed}`,
           )
-          try {
-            await this.supabase.from('trade_execution_logs').insert({
-              user_id: broker.user_id,
-              broker_account_id: broker.id,
-              action: 'news_pre_close',
-              status: 'success',
-              request_payload: {
-                event_id: event.id,
-                event: event.event,
-                currency: event.currency,
-                closed_trades: closed,
-              } as unknown as Record<string, unknown>,
-            })
-          } catch {
-            // best-effort
-          }
+          await writeExecutionLog(this.supabase, {
+            user_id: broker.user_id,
+            broker_account_id: broker.id,
+            action: 'news_pre_close',
+            status: 'success',
+            request_payload: {
+              event_id: event.id,
+              event: event.event,
+              currency: event.currency,
+              closed_trades: closed,
+            } as unknown as Record<string, unknown>,
+          })
         }
         this.closedForEvent.set(dedupeKey, now.getTime())
       }

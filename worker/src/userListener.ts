@@ -49,6 +49,7 @@ import {
 } from './pipelineTimestamps'
 import { addWorkerBreadcrumb, captureWorkerError } from './observability/sentry'
 import { captureBusinessIssue } from './observability/businessEvents'
+import { writeExecutionLog } from './observability/executionLog'
 import { incMetric } from './workerMetrics'
 import { workerConfig } from './workerConfig'
 import { isManagementAction, parsedAction } from './tradeSignalActions'
@@ -3274,7 +3275,7 @@ export class UserListener {
           httpPushOk = true
         }
       }
-      void this.supabase.from('trade_execution_logs').insert({
+      void writeExecutionLog(this.supabase, {
         user_id: this.userId,
         signal_id: dispatchRow.id,
         action: 'dispatch_route_decision',

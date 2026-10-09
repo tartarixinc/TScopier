@@ -7,7 +7,7 @@ import type { TradeExecutorContext } from './context'
 import type { BrokerRow, SignalRow } from './types'
 import { TRADE_CLOSE_REASON } from '../tradeCloseReasons'
 import { applyCloseUpdate } from '../tradeCloseUpdate'
-
+import { writeExecutionLog } from '../observability/executionLog'
 export async function closeBasketForRevisionDirectionFlip(
   ctx: TradeExecutorContext,
   row: SignalRow,
@@ -60,7 +60,7 @@ export async function closeBasketForRevisionDirectionFlip(
         const result = await closeWithVerification(api, uuid, resolution.ticket)
         if (!result.confirmed) {
           failed += 1
-          await ctx.supabase.from('trade_execution_logs').insert({
+          await writeExecutionLog(ctx.supabase, {
             user_id: row.user_id,
             signal_id: row.id,
             broker_account_id: broker.id,
@@ -85,7 +85,7 @@ export async function closeBasketForRevisionDirectionFlip(
         )
         closed += 1
         purgeScopes.push({ signalId: trade.signal_id, brokerAccountId: broker.id })
-        await ctx.supabase.from('trade_execution_logs').insert({
+        await writeExecutionLog(ctx.supabase, {
           user_id: row.user_id,
           signal_id: row.id,
           broker_account_id: broker.id,
@@ -100,7 +100,7 @@ export async function closeBasketForRevisionDirectionFlip(
       } catch (err) {
         failed += 1
         const msg = err instanceof Error ? err.message : String(err)
-        await ctx.supabase.from('trade_execution_logs').insert({
+        await writeExecutionLog(ctx.supabase, {
           user_id: row.user_id,
           signal_id: row.id,
           broker_account_id: broker.id,

@@ -36,7 +36,7 @@ import { resolveLayeringModeRolloutDecision } from './manualPlanning/layeringMod
 import { convergeLayeringPlanAfterLegTerminal, recoverCancellingLayeringPlans } from './layeringPlanLifecycle'
 import { recoverNativeLayeringSubmissions } from './tradeExecutor/layeringModeBrokerPendingRecovery'
 import { captureBusinessIssue } from './observability/businessEvents'
-
+import { writeExecutionLog } from './observability/executionLog'
 const ACTIVE_MS = monitorActiveIntervalMs('RANGE_BROKER_PENDING_TICK_MS', 2_000)
 const IDLE_MS = monitorIdleIntervalMs('RANGE_BROKER_PENDING_IDLE_MS', 15_000)
 const MISSING_BEFORE_ASSUME_GONE = 6
@@ -428,26 +428,23 @@ async function markBrokerRangeLegFilled(
       })
     }
   }
-
-  try {
-    await supabase.from('trade_execution_logs').insert({
-      user_id: leg.user_id,
-      signal_id: leg.signal_id,
-      broker_account_id: leg.broker_account_id,
-      action: 'range_broker_pending_fired',
-      status: 'success',
-      request_payload: {
-        leg_id: leg.id,
-        step_idx: leg.step_idx,
-        trigger_price: leg.trigger_price,
-        fill_price: entryPx,
-        ticket: ticketForTrade,
-        naked_fill: true,
-        desired_sl: desiredSl,
-        cwe: isCwe,
-      } as unknown as Record<string, unknown>,
-    })
-  } catch { /* best-effort */ }
+  await writeExecutionLog(supabase, {
+    user_id: leg.user_id,
+    signal_id: leg.signal_id,
+    broker_account_id: leg.broker_account_id,
+    action: 'range_broker_pending_fired',
+    status: 'success',
+    request_payload: {
+      leg_id: leg.id,
+      step_idx: leg.step_idx,
+      trigger_price: leg.trigger_price,
+      fill_price: entryPx,
+      ticket: ticketForTrade,
+      naked_fill: true,
+      desired_sl: desiredSl,
+      cwe: isCwe,
+    } as unknown as Record<string, unknown>,
+  })
 }
 
 /**

@@ -6,7 +6,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { FxsocketBrokerClient } from './fxsocketClient'
 import { modifyLegSlTpWithFallback } from './orderModifySafe'
 import type { RangeBrokerPendingRow } from './rangeBrokerPendingHelpers'
-
+import { writeExecutionLog } from './observability/executionLog'
 export type BrokerPendingStopTarget = {
   id: string
   ticket: string
@@ -43,7 +43,7 @@ export async function applyStopsToBrokerPendingTickets(args: {
       if (!out.ok) continue
       modified += 1
       try {
-        await supabase.from('trade_execution_logs').insert({
+        await writeExecutionLog(supabase, {
           user_id: leg.user_id,
           signal_id: leg.signal_id,
           broker_account_id: leg.broker_account_id,

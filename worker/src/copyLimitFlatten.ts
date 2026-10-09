@@ -13,7 +13,7 @@ import { closeWithVerification } from './managementClose'
 import { TRADE_CLOSE_REASON } from './tradeCloseReasons'
 import { applyCloseUpdate } from './tradeCloseUpdate'
 import { resolveCurrentLivePosition } from './livePositionIdentity'
-
+import { writeExecutionLog } from './observability/executionLog'
 type CopyLimitFlattenResult = {
   closed: number
   failed: number
@@ -191,22 +191,20 @@ export async function flattenChannelTradesForCopyLimit(args: {
   )
 
   if (result.closed > 0 || result.failed > 0) {
-    try {
-      await args.supabase.from('trade_execution_logs').insert({
-        user_id: args.userId,
-        broker_account_id: args.brokerAccountId,
-        action: 'copy_limit_flatten',
-        status: result.failed > 0 && result.closed === 0 ? 'failed' : 'success',
-        request_payload: {
-          channel_id: args.channelId,
-          reason: args.reason,
-          closed: result.closed,
-          failed: result.failed,
-          pending_cancelled: result.pendingCancelled,
-          virtual_deleted: result.virtualLegsDeleted,
-        } as unknown as Record<string, unknown>,
-      })
-    } catch { /* best-effort */ }
+    await writeExecutionLog(args.supabase, {
+      user_id: args.userId,
+      broker_account_id: args.brokerAccountId,
+      action: 'copy_limit_flatten',
+      status: result.failed > 0 && result.closed === 0 ? 'failed' : 'success',
+      request_payload: {
+        channel_id: args.channelId,
+        reason: args.reason,
+        closed: result.closed,
+        failed: result.failed,
+        pending_cancelled: result.pendingCancelled,
+        virtual_deleted: result.virtualLegsDeleted,
+      } as unknown as Record<string, unknown>,
+    })
   }
 
   return result

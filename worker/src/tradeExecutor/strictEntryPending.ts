@@ -4,7 +4,7 @@ import { autoManagementTradeSnapshot } from '../autoManagement'
 import type { TradeExecutorContext } from './context'
 import { clampOrderStops, roundLot } from './helpers'
 import type { PreparedEntry } from './entryPrepare'
-
+import { writeExecutionLog } from '../observability/executionLog'
 /**
  * Place a broker BuyLimit/SellLimit when strict signal entry defers immediates.
  * Multi/range uses aggregated volume and plan TP; single may override TP from parsed.
@@ -164,7 +164,7 @@ export async function placeStrictSignalEntryPending(
     }
 
     try {
-      await ctx.supabase.from('trade_execution_logs').insert({
+      await writeExecutionLog(ctx.supabase, {
         user_id: signal.user_id,
         signal_id: signal.id,
         broker_account_id: broker.id,
@@ -186,17 +186,15 @@ export async function placeStrictSignalEntryPending(
     console.error(
       `[tradeExecutor] strict entry broker OrderSend failed signal=${signal.id} broker=${broker.id} op=${pendingOp} price=${entryPx}: ${msg}`,
     )
-    try {
-      await ctx.supabase.from('trade_execution_logs').insert({
-        user_id: signal.user_id,
-        signal_id: signal.id,
-        broker_account_id: broker.id,
-        action: 'signal_entry_pending_failed',
-        status: 'failed',
-        request_payload: { operation: pendingOp, entry_price: entryPx, symbol } as unknown as Record<string, unknown>,
-        error_message: msg,
-      })
-    } catch { /* best-effort */ }
+    await writeExecutionLog(ctx.supabase, {
+      user_id: signal.user_id,
+      signal_id: signal.id,
+      broker_account_id: broker.id,
+      action: 'signal_entry_pending_failed',
+      status: 'failed',
+      request_payload: { operation: pendingOp, entry_price: entryPx, symbol } as unknown as Record<string, unknown>,
+      error_message: msg,
+    })
     return false
   }
 }

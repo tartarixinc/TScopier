@@ -36,7 +36,7 @@ import {
 } from './monitorIdleGate'
 import { isUserCopierPausedCached } from './copierPause'
 import { parseUserOverride, userOverrideHasStopLevels } from './signalOverride'
-
+import { writeExecutionLog } from './observability/executionLog'
 interface AutoBeTradeRow {
   id: string
   user_id: string
@@ -535,8 +535,7 @@ export class AutoManagementMonitor {
       )
 
       this.failureLogCooldownUntil.delete(trade.id)
-
-      await this.supabase.from('trade_execution_logs').insert({
+      await writeExecutionLog(this.supabase, {
         user_id: trade.user_id,
         signal_id: trade.signal_id,
         broker_account_id: trade.broker_account_id,
@@ -575,7 +574,7 @@ export class AutoManagementMonitor {
       const now = Date.now()
       if (now >= (this.failureLogCooldownUntil.get(trade.id) ?? 0)) {
         this.failureLogCooldownUntil.set(trade.id, now + FAILURE_LOG_THROTTLE_MS)
-        await this.supabase.from('trade_execution_logs').insert({
+        await writeExecutionLog(this.supabase, {
           user_id: trade.user_id,
           signal_id: trade.signal_id,
           broker_account_id: trade.broker_account_id,

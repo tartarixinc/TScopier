@@ -8,6 +8,7 @@ import { materializeBrokerRangePendingLegs } from './materializeBrokerRangePendi
 import { finishEntrySend, type EntryArgs } from './entryExecution'
 import { runLayeringModeRangeEntry } from './layeringModeIntegration'
 import { resolveLayeringMode } from '../manualPlanning/layeringModes'
+import { writeExecutionLog } from '../observability/executionLog'
 import {
   logSignalRangeEntryFired,
   markSignalRangeEntryFired,
@@ -59,15 +60,10 @@ async function logMultiRangePlan(
   }
 
   if (liveEntryFast) {
-    try {
-      void ctx.supabase.from('trade_execution_logs').insert(row)
-    } catch { /* best-effort */ }
+    void writeExecutionLog(ctx.supabase, row)
     return
   }
-
-  try {
-    await ctx.supabase.from('trade_execution_logs').insert(row)
-  } catch { /* best-effort */ }
+  await writeExecutionLog(ctx.supabase, row)
 }
 
 function shouldUseBrokerRangePendingLegs(prep: PreparedEntry): boolean {

@@ -108,7 +108,7 @@ import { getTradeExecutionMonitor, tradeOutcomeIsSuccess } from '../observabilit
 import { testFlagEnabled } from '../testFlags'
 import { apiForBrokerAccount } from '../providerResolver'
 import { authorityFromBrokerRow } from '../brokerWriteAuthority'
-
+import { writeExecutionLog } from '../observability/executionLog'
 export type { SignalRow } from './types'
 
 /** Parsed-signal sweep guard for management signals: at most one re-dispatch per
@@ -751,7 +751,6 @@ export class TradeExecutor {
           .eq('id', signalId)
           .maybeSingle()
         userId = typeof signalRow?.user_id === 'string' ? signalRow.user_id : null
-
         const { data: logs } = await this.supabase
           .from('trade_execution_logs')
           .select('request_payload')
@@ -771,24 +770,19 @@ export class TradeExecutor {
         .eq('id', signalId)
         .eq('status', 'parsed')
       if (userId) {
-        try {
-          await this.supabase.from('trade_execution_logs').insert({
-            user_id: userId,
-            signal_id: signalId,
-            broker_account_id: null,
-            action: 'mgmt_sweep_max_redispatch',
-            status: 'skipped',
-            request_payload: exhaustionPayload as unknown as Record<string, unknown>,
-          })
-        } catch {
-          console.warn('[tradeExecutor] management breakeven sweep diagnostic insert skipped')
-        }
+        await writeExecutionLog(this.supabase, {
+          user_id: userId,
+          signal_id: signalId,
+          broker_account_id: null,
+          action: 'mgmt_sweep_max_redispatch',
+          status: 'skipped',
+          request_payload: exhaustionPayload as unknown as Record<string, unknown>,
+        })
       }
     } catch {
       // best-effort
     }
   }
-
   /**
    * HTTP push from listener (split deploy) or in-process callback after parse.
    */
@@ -1305,7 +1299,7 @@ export class TradeExecutor {
             `[tradeExecutor] TTL sweep closed ticket=${ticket} broker=${broker.id} op=${operation} ttl_hours=${ttlH}`,
           )
           try {
-            await this.supabase.from('trade_execution_logs').insert({
+            await writeExecutionLog(this.supabase, {
               user_id: broker.user_id,
               broker_account_id: broker.id,
               action: 'pending_ttl_sweep_close',
@@ -1755,7 +1749,7 @@ export class TradeExecutor {
           totalClosed += 1
           console.log(`[tradeExecutor] legacy cleanup closed ticket=${ticket} broker=${broker.id} op=${operation}`)
           try {
-            await this.supabase.from('trade_execution_logs').insert({
+            await writeExecutionLog(this.supabase, {
               user_id: broker.user_id,
               broker_account_id: broker.id,
               action: 'legacy_pending_cleanup_close',
@@ -1961,32 +1955,30 @@ export class TradeExecutor {
     console.log(
       `[tradeExecutor] deferred virtual pendings inserted=${insertRows.length} signal=${signal.id} broker=${broker.id} symbol=${symbol} anchor=${anchor} (${anchorSource})`,
     )
-    try {
-      await this.supabase.from('trade_execution_logs').insert({
-        user_id: signal.user_id,
-        signal_id: signal.id,
-        broker_account_id: broker.id,
-        action: 'virtual_pending_inserted',
-        status: 'success',
-        request_payload: {
-          rows: insertRows.length,
-          anchor,
-          anchorSource,
-          symbol,
-          stepIdxs: insertRows.map(r => r.step_idx),
-          triggers: insertRows.map(r => r.trigger_price),
-          range_layering: plan.rangeLayering ?? null,
-          basket_leg_cap: plan.rangeLayering?.basketLegCap
-            ?? (
-              (plan.rangeLayering?.plannedImmediateLegs ?? 0)
-              + (plan.rangeLayering?.activePendingLegs ?? insertRows.length)
-            ),
-          planned_immediate_legs: plan.rangeLayering?.plannedImmediateLegs ?? null,
-          planned_range_legs: plan.rangeLayering?.activePendingLegs ?? insertRows.length,
-          deferred: true,
-        } as unknown as Record<string, unknown>,
-      })
-    } catch { /* logging is best-effort */ }
+    await writeExecutionLog(this.supabase, {
+      user_id: signal.user_id,
+      signal_id: signal.id,
+      broker_account_id: broker.id,
+      action: 'virtual_pending_inserted',
+      status: 'success',
+      request_payload: {
+        rows: insertRows.length,
+        anchor,
+        anchorSource,
+        symbol,
+        stepIdxs: insertRows.map(r => r.step_idx),
+        triggers: insertRows.map(r => r.trigger_price),
+        range_layering: plan.rangeLayering ?? null,
+        basket_leg_cap: plan.rangeLayering?.basketLegCap
+          ?? (
+            (plan.rangeLayering?.plannedImmediateLegs ?? 0)
+            + (plan.rangeLayering?.activePendingLegs ?? insertRows.length)
+          ),
+        planned_immediate_legs: plan.rangeLayering?.plannedImmediateLegs ?? null,
+        planned_range_legs: plan.rangeLayering?.activePendingLegs ?? insertRows.length,
+        deferred: true,
+      } as unknown as Record<string, unknown>,
+    })
   }
 
   /**

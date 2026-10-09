@@ -12,7 +12,7 @@ import { SKIP_REASON_ENTRY_NOT_OPENED } from './manualPlanner'
 import { applySymbolMapping, brokerHasLinkedSession, brokerSessionUuid } from './tradeExecutor/helpers'
 import { channelMatchesBrokerSignal } from './brokerChannelFilter'
 import { tradeFailureReasonFromCode } from './brokerTradeError'
-
+import { writeExecutionLog } from './observability/executionLog'
 export const SIGNAL_RETRY_DISPATCH_SOURCE = 'signal_retry'
 export const AI_REVIEW_MAX_AGE_MS = 2 * 60_000
 export const AI_REVIEW_EXPIRED_REASON = 'ai_review_expired'
@@ -209,17 +209,13 @@ export async function retrySignal(
       return { ok: false, reason: 'signal_not_retryable' }
     }
   }
-
-  try {
-    await supabase.from('trade_execution_logs').insert({
-      user_id: args.userId,
-      signal_id: args.signalId,
-      action: 'signal_retry',
-      status: 'success',
-      request_payload: { source: SIGNAL_RETRY_DISPATCH_SOURCE },
-    })
-  } catch { /* best-effort */ }
-
+  await writeExecutionLog(supabase, {
+    user_id: args.userId,
+    signal_id: args.signalId,
+    action: 'signal_retry',
+    status: 'success',
+    request_payload: { source: SIGNAL_RETRY_DISPATCH_SOURCE },
+  })
   const fresh = await loadSignalById(supabase, args.signalId)
   if (!fresh?.parsed_data?.action) {
     return { ok: false, reason: 'signal_not_found' }

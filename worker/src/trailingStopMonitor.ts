@@ -27,7 +27,7 @@ import {
   type MonitorLoopHandle,
 } from './monitorIdleGate'
 import { isUserCopierPausedCached } from './copierPause'
-
+import { writeExecutionLog } from './observability/executionLog'
 interface TrailTradeRow {
   id: string
   user_id: string
@@ -244,7 +244,7 @@ export class TrailingStopMonitor {
         })
         .eq('id', trade.id)
         .eq('status', 'open')
-      await this.supabase.from('trade_execution_logs').insert({
+      await writeExecutionLog(this.supabase, {
         user_id: trade.user_id,
         signal_id: trade.signal_id,
         broker_account_id: trade.broker_account_id,
@@ -280,7 +280,7 @@ export class TrailingStopMonitor {
         return null
       }
       console.warn(`[trailingStopMonitor] OrderModify failed trade=${trade.id} ticket=${ticketNum}: ${msg}`)
-      await this.supabase.from('trade_execution_logs').insert({
+      await writeExecutionLog(this.supabase, {
         user_id: trade.user_id,
         signal_id: trade.signal_id,
         broker_account_id: trade.broker_account_id,

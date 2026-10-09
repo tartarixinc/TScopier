@@ -20,7 +20,7 @@ import { isUserCopierPausedCached } from './copierPause'
 import { isExplicitlyUnavailableRemoteBroker, type RemoteBrokerState } from './brokerRemoteAvailability'
 import { isUnresolvableFailure } from './failureClassification'
 import { historyTicketCloseMatch, type ClassifyTradeRow } from './openTradeClassification'
-
+import { writeExecutionLog } from './observability/executionLog'
 /**
  * Worker-side monitor that fires partial /OrderClose calls for single-mode
  * trades the moment the live /Quote crosses each configured early TP.
@@ -805,7 +805,7 @@ export class PartialTpMonitor {
           + ' (claim lost); close is logged but this worker no longer owns the row',
         )
       }
-      await this.supabase.from('trade_execution_logs').insert({
+      await writeExecutionLog(this.supabase, {
         user_id: partial.user_id,
         signal_id: partial.signal_id,
         broker_account_id: partial.broker_account_id,
@@ -869,7 +869,7 @@ export class PartialTpMonitor {
       const now = Date.now()
       if (now >= (this.failureLogCooldownUntil.get(partial.id) ?? 0)) {
         this.failureLogCooldownUntil.set(partial.id, now + FAILURE_LOG_THROTTLE_MS)
-        await this.supabase.from('trade_execution_logs').insert({
+        await writeExecutionLog(this.supabase, {
           user_id: partial.user_id,
           signal_id: partial.signal_id,
           broker_account_id: partial.broker_account_id,
@@ -976,7 +976,7 @@ export class PartialTpMonitor {
       `[partialTpMonitor] cancelled stuck partial=${partial.id} ticket=${ticketNum}`
       + ` after ${unresolvableCount} unresolvable attempts (parent found closed in broker history)`,
     )
-    await this.supabase.from('trade_execution_logs').insert({
+    await writeExecutionLog(this.supabase, {
       user_id: partial.user_id,
       signal_id: partial.signal_id,
       broker_account_id: partial.broker_account_id,

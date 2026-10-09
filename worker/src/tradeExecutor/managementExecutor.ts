@@ -89,7 +89,7 @@ import {
   type ManagementBreakevenFailureDiagnostic,
 } from '../managementBreakevenDiagnostics'
 import { authorityFromBrokerRow, withBrokerWriteAuthority } from '../brokerWriteAuthority'
-
+import { writeExecutionLog } from '../observability/executionLog'
 function mgmtCloseOpts(liveMgmtFast: boolean) {
   return { maxAttempts: 2, slippageEscalation: 50, liveFast: liveMgmtFast }
 }
@@ -388,18 +388,14 @@ export async function logSendSkipped(ctx: TradeExecutorContext,
         await ctx.markBrokerSessionDown(broker, uuid, 'broker_session_not_connected')
       }
     }
-    try {
-      await ctx.supabase.from('trade_execution_logs').insert({
-        user_id: signal.user_id,
-        signal_id: signal.id,
-        broker_account_id: broker.id,
-        action: 'order_send',
-        status: 'skipped',
-        request_payload: { skip_reason: reason, ...extra } as unknown as Record<string, unknown>,
-      })
-    } catch {
-      // Logging failure is non-fatal.
-    }
+    await writeExecutionLog(ctx.supabase, {
+      user_id: signal.user_id,
+      signal_id: signal.id,
+      broker_account_id: broker.id,
+      action: 'order_send',
+      status: 'skipped',
+      request_payload: { skip_reason: reason, ...extra } as unknown as Record<string, unknown>,
+    })
     captureBusinessIssue({
       category: reason === 'broker_session_not_connected' ? 'account' : 'trade',
       event: reason === 'broker_session_not_connected'
@@ -440,16 +436,14 @@ async function logBrokerMgmtSkip(
   reason: string,
   extra?: Record<string, unknown>,
 ): Promise<void> {
-  try {
-    await ctx.supabase.from('trade_execution_logs').insert({
-      user_id: signal.user_id,
-      signal_id: signal.id,
-      broker_account_id: brokerId,
-      action: 'mgmt_skip',
-      status: 'skipped',
-      request_payload: { skip_reason: reason, ...extra } as unknown as Record<string, unknown>,
-    })
-  } catch { /* best-effort */ }
+  await writeExecutionLog(ctx.supabase, {
+    user_id: signal.user_id,
+    signal_id: signal.id,
+    broker_account_id: brokerId,
+    action: 'mgmt_skip',
+    status: 'skipped',
+    request_payload: { skip_reason: reason, ...extra } as unknown as Record<string, unknown>,
+  })
 }
 
 async function skipMgmtSignalWithLog(
@@ -459,16 +453,14 @@ async function skipMgmtSignalWithLog(
   extra?: Record<string, unknown>,
 ): Promise<void> {
   await skipMgmtSignal(ctx, signal.id, reason)
-  try {
-    await ctx.supabase.from('trade_execution_logs').insert({
-      user_id: signal.user_id,
-      signal_id: signal.id,
-      broker_account_id: null,
-      action: 'mgmt_skip',
-      status: 'skipped',
-      request_payload: { skip_reason: reason, ...extra } as unknown as Record<string, unknown>,
-    })
-  } catch { /* best-effort */ }
+  await writeExecutionLog(ctx.supabase, {
+    user_id: signal.user_id,
+    signal_id: signal.id,
+    broker_account_id: null,
+    action: 'mgmt_skip',
+    status: 'skipped',
+    request_payload: { skip_reason: reason, ...extra } as unknown as Record<string, unknown>,
+  })
   captureBusinessIssue({
     category: 'management',
     event: 'trade_management_failed',
@@ -584,22 +576,20 @@ export async function applyManagement(
         scopes,
         'delete_pendings',
       )
-      try {
-        await ctx.supabase.from('trade_execution_logs').insert({
-          user_id: signal.user_id,
-          signal_id: signal.id,
-          broker_account_id: null,
-          action: 'delete_pendings',
-          status: 'success',
-          request_payload: {
-            parent_signal_id: parentId,
-            mgmt_scope: 'reply_basket',
-            brokers: eligibleIds.length,
-            had_entry_pending: Boolean(seRows?.length),
-            had_range_pending: Boolean(rangeRows?.length),
-          } as unknown as Record<string, unknown>,
-        })
-      } catch { /* best-effort */ }
+      await writeExecutionLog(ctx.supabase, {
+        user_id: signal.user_id,
+        signal_id: signal.id,
+        broker_account_id: null,
+        action: 'delete_pendings',
+        status: 'success',
+        request_payload: {
+          parent_signal_id: parentId,
+          mgmt_scope: 'reply_basket',
+          brokers: eligibleIds.length,
+          had_entry_pending: Boolean(seRows?.length),
+          had_range_pending: Boolean(rangeRows?.length),
+        } as unknown as Record<string, unknown>,
+      })
       try {
         await ctx.supabase
           .from('signals')
@@ -1244,7 +1234,7 @@ export async function applyManagement(
           })
           if (!plan.ok) {
             partialProfitFailures.push(plan.reason)
-            await ctx.supabase.from('trade_execution_logs').insert({
+            await writeExecutionLog(ctx.supabase, {
               user_id: signal.user_id,
               signal_id: signal.id,
               broker_account_id: broker.id,
@@ -1528,7 +1518,7 @@ export async function applyManagement(
         } else if (action === 'modify') {
           return
         }
-        await ctx.supabase.from('trade_execution_logs').insert({
+        await writeExecutionLog(ctx.supabase, {
           user_id: signal.user_id,
           signal_id: signal.id,
           broker_account_id: broker.id,
@@ -1628,7 +1618,7 @@ export async function applyManagement(
             }
           }
         }
-        await ctx.supabase.from('trade_execution_logs').insert({
+        await writeExecutionLog(ctx.supabase, {
           user_id: signal.user_id,
           signal_id: signal.id,
           broker_account_id: broker.id,
@@ -2244,7 +2234,7 @@ export async function applyCloseWorseEntriesInstruction(ctx: TradeExecutorContex
 
       const manual = (broker.manual_settings ?? {}) as ManualSettings
       if (manual.trade_style !== 'multi') {
-        await ctx.supabase.from('trade_execution_logs').insert({
+        await writeExecutionLog(ctx.supabase, {
           user_id: signal.user_id,
           signal_id: signal.id,
           broker_account_id: broker.id,
@@ -2261,7 +2251,7 @@ export async function applyCloseWorseEntriesInstruction(ctx: TradeExecutorContex
       const uuid = brokerSessionUuid(broker)!
       const api = ctx.apiFor(broker)
       if (!api) {
-        await ctx.supabase.from('trade_execution_logs').insert({
+        await writeExecutionLog(ctx.supabase, {
           user_id: signal.user_id,
           signal_id: signal.id,
           broker_account_id: broker.id,
@@ -2295,7 +2285,7 @@ export async function applyCloseWorseEntriesInstruction(ctx: TradeExecutorContex
           referencePrice = referencePriceForDirection(parsedKey.direction, q.bid, q.ask)
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
-          await ctx.supabase.from('trade_execution_logs').insert({
+          await writeExecutionLog(ctx.supabase, {
             user_id: signal.user_id,
             signal_id: signal.id,
             broker_account_id: broker.id,
@@ -2330,7 +2320,7 @@ export async function applyCloseWorseEntriesInstruction(ctx: TradeExecutorContex
       )
 
       if (!toClose.length) {
-        await ctx.supabase.from('trade_execution_logs').insert({
+        await writeExecutionLog(ctx.supabase, {
           user_id: signal.user_id,
           signal_id: signal.id,
           broker_account_id: broker.id,
@@ -2373,7 +2363,7 @@ export async function applyCloseWorseEntriesInstruction(ctx: TradeExecutorContex
               symbolHint: trade.symbol,
             })
           }
-          await ctx.supabase.from('trade_execution_logs').insert({
+          await writeExecutionLog(ctx.supabase, {
             user_id: signal.user_id,
             signal_id: signal.id,
             broker_account_id: broker.id,
@@ -2411,7 +2401,7 @@ export async function applyCloseWorseEntriesInstruction(ctx: TradeExecutorContex
             }
             return 1
           }
-          await ctx.supabase.from('trade_execution_logs').insert({
+          await writeExecutionLog(ctx.supabase, {
             user_id: signal.user_id,
             signal_id: signal.id,
             broker_account_id: broker.id,
