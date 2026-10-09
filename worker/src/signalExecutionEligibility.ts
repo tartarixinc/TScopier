@@ -5,6 +5,7 @@ import {
   ENTRY_REQUIRES_NOW_REASON,
   entryMissingSlTpRequiresNow,
   messageHasExplicitSlTpLabels,
+  messageHasExplicitStopLabel,
   parsedHasSlOrTp,
   type MarketNowKeywordFields,
 } from './signalEntryNowRequirement'
@@ -116,6 +117,11 @@ export function deterministicEntryNeedsAiRepair(
 ): boolean {
   const action = String(parsed?.action ?? '').toLowerCase()
   if (action !== 'buy' && action !== 'sell') return false
+  // The message states a stop but the parse carries none: one more parse attempt is
+  // worthwhile before the account's own stop rules are applied. A signal whose text has
+  // no stop label at all is not a parser gap and is left to entry prep.
+  const raw = String(rawMessage ?? parsed?.raw_instruction ?? '').trim()
+  if (raw && messageHasExplicitStopLabel(raw) && positive(parsed?.sl) == null) return true
   return !evaluateParsedSignalExecutionEligibility(parsed, rawMessage, channelKeywords).eligible
 }
 

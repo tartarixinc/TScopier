@@ -107,11 +107,14 @@ function collectLabeledSpans(message: string): LabeledPriceSpan[] {
   addMatches(new RegExp(`\\btp\\s*\\.\\s*(${SIGNAL_PRICE_NUM})`, 'gi'))
   addMatches(new RegExp(`\\b(?:tp|take\\s*profit|target(?:\\s+level)?)\\s*#\\s*\\d+\\s*[:=\\-]\\s*(${SIGNAL_PRICE_NUM})`, 'gi'))
   addMatches(new RegExp(`\\b(?:tp|take\\s*profit|target(?:\\s+level)?)\\s+\\d+\\s*[:=\\-]\\s*(${SIGNAL_PRICE_NUM})`, 'gi'))
-  addMatches(new RegExp(`\\b(?:tp|take\\s*profit|target(?:\\s+level)?)\\s*\\d+\\s+(${SIGNAL_PRICE_NUM})`, 'gi'))
+  // Tier index is 1–2 digits, price on the next line — matches extractTpLevels.
+  // The 1–2 digit bound stops "TP 4105" and a following "100%" joining up; the
+  // `(?!\s*%)` guard stops a "100% sure" line being read as a price.
+  addMatches(new RegExp(`\\b(?:tp|take\\s*profit|target(?:\\s+level)?)\\s*\\d{1,2}\\s+(${SIGNAL_PRICE_NUM})(?![0-9.])(?!\\s*%)`, 'gi'))
   addMatches(new RegExp(`\\b(?:tp|target(?:\\s+level)?)\\s*\\d+\\s*[:=\\-]\\s*(${SIGNAL_PRICE_NUM})`, 'gi'))
   addMatches(
     new RegExp(
-      `\\b(?:tp|take\\s*profit|target(?:\\s+level)?)(?:\\s*[:=\\-]\\s*|\\s+|\\.\\s*)(${SIGNAL_PRICE_NUM})(?!\\s*[:=\\-]\\s*${SIGNAL_PRICE_NUM})`,
+      `\\b(?:tp|take\\s*profit|target(?:\\s+level)?)(?:\\s*[:=\\-]\\s*|\\s+|\\.\\s*)(${SIGNAL_PRICE_NUM})(?![0-9.])(?!\\s*[:=\\-]\\s*${SIGNAL_PRICE_NUM})(?!\\s*%)`,
       'gi',
     ),
   )

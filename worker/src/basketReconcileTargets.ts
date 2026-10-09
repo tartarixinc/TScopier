@@ -15,7 +15,12 @@ import {
 import { parseUserOverride } from './signalOverride'
 import { expandPerLegTargetsToCount } from './manualPlanning/tpBucketDistribution'
 import type { ManualTpLot } from './manualPlanning/types'
+import {
+  resolveChosenTakeProfit,
+  shouldApplySingleTakeProfitTarget,
+} from './manualPlanning/partialTpSchedule'
 import { stopsAlreadyMatchDb } from './orderModifyBenign'
+import { filterPlausibleInstrumentPrices } from './tradableSymbol'
 import { readBrokerOrderStopLoss } from './signalEntryPendingHelpers'
 import {
   type BasketOpenLeg,
@@ -53,7 +58,12 @@ export type FreshReconcileTargetsArgs = {
   brokerAccountId: string
   familyTrades: BasketOpenLeg[]
   storedTargets: PerLegStopTarget[]
-  manual: { range_trading?: boolean; tp_lots?: ManualTpLot[] | null }
+  manual: {
+    range_trading?: boolean
+    tp_lots?: ManualTpLot[] | null
+    trade_style?: string | null
+    single_tp_target?: `tp${number}` | 'farthest' | null
+  }
   nImmCwe: number
   overrideTp: number | null
 }
@@ -64,6 +74,8 @@ export type FreshReconcileTargetsResult = {
   effectiveStoploss: number
   effectiveSlSource: EffectiveStopSource
   tpFrozen?: boolean
+  /** Selected take-profit level on a single-target account; 0 when not applicable. */
+  chosenTp?: number
 }
 
 export async function resolveFreshBasketReconcileTargets(
@@ -109,14 +121,26 @@ export async function resolveFreshBasketReconcileTargets(
 
   const parsed = { ...effective.parsedSlice }
   const channelTpLevels = effective.tpLevels.length ? effective.tpLevels : null
-
-  const signalTps = resolveRangeBasketFinalTps({
-    parsed,
-    familyTrades: args.familyTrades,
-    channelTpLevels,
-    direction: args.direction,
-  })
-
+  // Legacy `parsed_data.tp` may still hold junk (a stray 100 from before the parser
+  // fix). Filtering here covers both the chosen target and the deepest fallback.
+  const signalTps = filterPlausibleInstrumentPrices(
+    args.symbol,
+    resolveRangeBasketFinalTps({
+      parsed,
+      familyTrades: args.familyTrades,
+      channelTpLevels,
+      direction: args.direction,
+    }),
+  )
+  // The level the customer selected on a single-target account. Every post-entry
+  // path used to work from the whole signal ladder and land on the furthest level.
+  const chosenTp = shouldApplySingleTakeProfitTarget(args.manual)
+    ? resolveChosenTakeProfit({
+      finalTps: signalTps,
+      singleTpTarget: args.manual.single_tp_target,
+      isBuy: args.direction === 'buy',
+    })
+    : 0
   let perLegTargets: PerLegStopTarget[]
   let tpFrozen = false
 
@@ -168,8 +192,15 @@ export async function resolveFreshBasketReconcileTargets(
       stoploss: Number(t.stoploss) || 0,
       takeprofit: Number(t.takeprofit) || 0,
     }))
+    // A naked leg must land on the selected level, not the furthest one. Fill it
+    // first so the backfill helpers below become no-ops for those legs.
+    if (chosenTp > 0) {
+      mapped = mapped.map(t =>
+        Number(t.takeprofit) > 0 ? t : { ...t, takeprofit: chosenTp },
+      )
+    }
     // Frozen (a TP was hit): never repaint existing legs; only backfill naked
-    // legs with the deepest TP. Otherwise distribute, but never leave a 0 TP.
+    // legs. Otherwise distribute, but never leave a 0 TP.
     mapped = (tpGate.mode === 'backfill_only'
       ? backfillNakedLegTakeProfits(args.familyTrades, mapped, signalTps, isBuy)
       : fillZeroTargetsWithDeepest(mapped, signalTps, isBuy)
@@ -190,6 +221,7 @@ export async function resolveFreshBasketReconcileTargets(
       openLegCount: args.familyTrades.length,
       finalTps: signalTps,
       tpLots: args.manual.tp_lots,
+      chosenTp,
     }).map(t => ({
       stoploss: Number(t.stoploss) || 0,
       takeprofit: Number(t.takeprofit) || 0,
@@ -212,6 +244,7 @@ export async function resolveFreshBasketReconcileTargets(
     effectiveStoploss: effective.stoploss,
     effectiveSlSource: effective.source,
     tpFrozen: tpFrozen || undefined,
+    chosenTp,
   }
 }
 
@@ -220,9 +253,18 @@ export function basketLegsOutOfSync(
   familyTrades: BasketOpenLeg[],
   perLegTargets: PerLegStopTarget[],
   nImmCwe: number,
-  opts?: { effectiveStoploss?: number; tpFrozen?: boolean },
+  opts?: {
+    effectiveStoploss?: number
+    tpFrozen?: boolean
+    /**
+     * Set when a single take-profit target is configured: a zero target must not
+     * be read as "already correct", or the leg is never repaired.
+     */
+    requireTakeProfit?: boolean
+  },
 ): boolean {
   if (!familyTrades.length || !perLegTargets.length) return false
+  const requireTp = opts?.requireTakeProfit === true
   const expanded = expandPerLegTargetsToCount({
     targets: perLegTargets,
     openLegCount: familyTrades.length,
@@ -257,7 +299,9 @@ export function basketLegsOutOfSync(
       }
       continue
     }
-    if (!stopsAlreadyMatchDb(familyTrades[i]!, compareTarget, nImmCwe, i)) return true
+    if (!stopsAlreadyMatchDb(familyTrades[i]!, compareTarget, nImmCwe, i, 1e-8, {
+      requireTakeProfit: requireTp,
+    })) return true
   }
   return false
 }
@@ -276,7 +320,11 @@ export function basketLegsOutOfSyncOnBroker(
   perLegTargets: PerLegStopTarget[],
   ordersByTicket: Map<number, unknown>,
   nImmCwe: number,
-  opts?: { effectiveStoploss?: number; tpFrozen?: boolean },
+  opts?: {
+    effectiveStoploss?: number
+    tpFrozen?: boolean
+    requireTakeProfit?: boolean
+  },
 ): boolean {
   if (basketLegsOutOfSync(familyTrades, perLegTargets, nImmCwe, opts)) return true
   if (!ordersByTicket.size) return false
@@ -491,8 +539,7 @@ export async function sweepOpenBasketsForReconcileDrift(
 
     const jobStatus = (existingJob as { status?: string } | null)?.status
     if (jobStatus === 'pending' || jobStatus === 'claimed') continue
-
-    const { perLegTargets, signalTps, effectiveStoploss, tpFrozen } = await resolveFreshBasketReconcileTargets(supabase, {
+    const { perLegTargets, signalTps, effectiveStoploss, tpFrozen, chosenTp } = await resolveFreshBasketReconcileTargets(supabase, {
       anchorSignalId: row.signal_id,
       channelId: row.telegram_channel_id,
       symbol: row.symbol,
@@ -514,7 +561,7 @@ export async function sweepOpenBasketsForReconcileDrift(
       perLegTargets,
       ordersByTicket,
       0,
-      { effectiveStoploss, tpFrozen },
+      { effectiveStoploss, tpFrozen, requireTakeProfit: (chosenTp ?? 0) > 0 },
     )
     if (!outOfSync) continue
 
@@ -555,7 +602,12 @@ export async function resolveFreshTargetsForJob(
   supabase: SupabaseClient,
   job: BasketReconcileJobRow,
   familyTrades: BasketOpenLeg[],
-  manual: { range_trading?: boolean; tp_lots?: ManualTpLot[] | null },
+  manual: {
+    range_trading?: boolean
+    tp_lots?: ManualTpLot[] | null
+    trade_style?: string | null
+    single_tp_target?: `tp${number}` | 'farthest' | null
+  },
 ): Promise<FreshReconcileTargetsResult> {
   return resolveFreshBasketReconcileTargets(supabase, {
     anchorSignalId: job.anchor_signal_id,

@@ -185,3 +185,24 @@ describe('isMarketClosedMessage', () => {
     assert.equal(isMarketClosedMessage(null), false)
   })
 })
+describe('missing stop-loss copy', () => {
+  it('says the stop could not be read when the message stated one', () => {
+    const reason = tradeFailureReasonFromCode('ENTRY_TP_WITHOUT_SL', {
+      stopStatedButUnreadable: true,
+    })
+    assert.equal(reason?.title, 'We could not read the stop loss in this signal')
+    assert.match(reason?.explanation ?? '', /could not read its price/)
+    assert.match(reason?.explanation ?? '', /Override signal SL/)
+  })
+  it('keeps the no-stop wording when the signal simply had none', () => {
+    const reason = tradeFailureReasonFromCode('ENTRY_TP_WITHOUT_SL', {})
+    assert.equal(reason?.title, 'SL not given — set predefined SL pips in broker configuration')
+    assert.match(reason?.explanation ?? '', /listed take-profit level\(s\) but no stop loss/)
+  })
+  it('applies the honest wording to the single-slot missing-SL reason too', () => {
+    const reason = tradeFailureReasonFromCode(SIGNAL_MISSING_REQUIRED_SL, {
+      stopStatedButUnreadable: true,
+    })
+    assert.equal(reason?.title, 'We could not read the stop loss in this signal')
+  })
+})

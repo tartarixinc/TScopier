@@ -103,18 +103,35 @@ export function buildDistributedPerLegTakeProfits(args: {
 }
 
 export type PerLegStopTargetLike = { stoploss: number; takeprofit: number }
-
-/** Pad/truncate targets to exactly one row per open leg (reconcile jobs, modify pass). */
+/**
+ * Pad/truncate targets to exactly one row per open leg (reconcile jobs, modify pass).
+ *
+ * `chosenTp` — the take-profit level selected on a `trade_style === 'single'` account.
+ * When set, every leg is pinned to it. Without this, the short-circuit below returned
+ * a seeded row untouched (take-profit 0) and the later reconcile pass reached for the
+ * furthest level of the ladder instead of the selected one.
+ */
 export function expandPerLegTargetsToCount(args: {
   targets: PerLegStopTargetLike[]
   openLegCount: number
   finalTps: number[]
   tpLots?: ManualTpLot[] | null
+  chosenTp?: number
 }): PerLegStopTargetLike[] {
   const n = Math.max(0, args.openLegCount)
   if (n === 0) return []
-  if (args.targets.length >= n) return args.targets.slice(0, n)
+  const chosenTp = Number(args.chosenTp)
+  const pinChosen = Number.isFinite(chosenTp) && chosenTp > 0
+  if (args.targets.length >= n) {
+    const kept = args.targets.slice(0, n)
+    return pinChosen
+      ? kept.map(t => ({ ...t, takeprofit: chosenTp }))
+      : kept
+  }
   const sl = args.targets[0]?.stoploss ?? 0
+  if (pinChosen) {
+    return Array.from({ length: n }, () => ({ stoploss: sl, takeprofit: chosenTp }))
+  }
   const tps = args.finalTps.length
     ? args.finalTps
     : args.targets.map(t => t.takeprofit).filter(tp => tp > 0)
@@ -234,6 +251,8 @@ export function buildEntryQualityTakeProfitMap(args: {
   slotLegCount: number
   finalTps: number[]
   tpLots?: ManualTpLot[] | null
+  /** Selected level on a `trade_style === 'single'` account — every leg rides to it. */
+  chosenTp?: number
 }): Map<string, number> {
   const { legs, isBuy, slotLegCount, finalTps, tpLots } = args
   const out = new Map<string, number>()
@@ -241,7 +260,11 @@ export function buildEntryQualityTakeProfitMap(args: {
 
   const tps = finalTps.filter(t => typeof t === 'number' && Number.isFinite(t) && t > 0)
   if (!tps.length) return out
-
+  const chosenTp = Number(args.chosenTp)
+  if (Number.isFinite(chosenTp) && chosenTp > 0) {
+    for (const leg of legs) out.set(leg.id, chosenTp)
+    return out
+  }
   const slots = buildDistributedPerLegTakeProfits({
     openLegCount: slotLegCount,
     finalTps: tps,

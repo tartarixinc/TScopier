@@ -97,7 +97,7 @@ export const COPIER_SKIP_REASON_DETAILS: Record<string, string> = {
   explicit_stops_required_when_add_to_existing_off:
     'This channel uses single-slot mode (Add to Existing Trades off). New entries must include labeled SL and TP in the message.',
   entry_tp_without_sl:
-    'The signal had take-profit(s) but no stop loss. Enable Override signal SL and set Stop loss (pips from entry) in Account Configuration so the copier can place the trade.',
+    'The copier could not use a stop loss for this trade: the signal listed take profit(s) but the stop loss was missing or could not be read. Enable Override signal SL and set Stop loss (pips from entry) in Account Configuration so the copier can place the trade.',
   signal_missing_required_sl:
     'The signal did not include a usable stop loss. Enable Override signal SL and set Stop loss (pips from entry) in Account Configuration so the copier can still place the trade.',
   basket_modify_failed:

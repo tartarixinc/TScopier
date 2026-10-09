@@ -16,7 +16,7 @@ import {
 } from './rangeBasketTpSync'
 import { shouldStampAutoBeAppliedAt } from './autoManagement'
 import type { RangeBrokerPendingRow } from './rangeBrokerPendingHelpers'
-
+import { writeExecutionLog } from './observability/executionLog'
 export type AssignNakedBrokerFillStopsArgs = {
   supabase: SupabaseClient
   api: FxsocketBrokerClient
@@ -97,6 +97,7 @@ export async function assignNakedBrokerFillStops(
       isBuy: leg.is_buy,
       perLegBreakevenSl,
       effectiveSource: effective.source,
+      symbol: leg.symbol,
     })
     stoploss = firing.stoploss
     takeprofit = firing.takeprofit
@@ -166,26 +167,22 @@ export async function assignNakedBrokerFillStops(
     + ` sl=${outcome.appliedSl || 0} tp=${outcome.appliedTp || 0}`
     + ` mode=${outcome.mode} entry=${entryPrice}`,
   )
-
-  try {
-    await supabase.from('trade_execution_logs').insert({
-      user_id: leg.user_id,
-      signal_id: leg.signal_id,
-      broker_account_id: leg.broker_account_id,
-      action: 'range_broker_pending_stops_assigned',
-      status: 'success',
-      request_payload: {
-        leg_id: leg.id,
-        ticket,
-        trade_id: tradeRowId,
-        stoploss: outcome.appliedSl || 0,
-        takeprofit: outcome.appliedTp || 0,
-        mode: outcome.mode,
-        naked_fill: true,
-      } as unknown as Record<string, unknown>,
-    })
-  } catch { /* best-effort */ }
-
+  await writeExecutionLog(supabase, {
+    user_id: leg.user_id,
+    signal_id: leg.signal_id,
+    broker_account_id: leg.broker_account_id,
+    action: 'range_broker_pending_stops_assigned',
+    status: 'success',
+    request_payload: {
+      leg_id: leg.id,
+      ticket,
+      trade_id: tradeRowId,
+      stoploss: outcome.appliedSl || 0,
+      takeprofit: outcome.appliedTp || 0,
+      mode: outcome.mode,
+      naked_fill: true,
+    } as unknown as Record<string, unknown>,
+  })
   return {
     ok: true,
     stoploss: outcome.appliedSl || stoploss,

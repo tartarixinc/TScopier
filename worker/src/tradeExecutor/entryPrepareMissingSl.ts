@@ -8,6 +8,7 @@ import { resolvePredefinedSlPips } from '../manualPlanning/manualStops'
 import {
   ENTRY_TP_WITHOUT_SL_REASON,
   entryHasTpWithoutSl,
+  messageHasExplicitStopLabel,
   parsedHasSlOrTp,
 } from '../signalEntryNowRequirement'
 import {
@@ -62,6 +63,17 @@ export function shouldRunMissingRequiredSlPolicy(
   revisionAlreadyMaterialized: boolean,
 ): boolean {
   return isManual && !revisionAlreadyMaterialized
+}
+/**
+ * True when the message *did* state a stop loss but the parser could not read its
+ * price. Callers use this so the user is told "we could not read the stop loss"
+ * instead of "the signal had no stop loss".
+ */
+export function stopStatedButUnreadable(parsed: ParsedSignal): boolean {
+  if (positiveNumber(parsed.sl) != null) return false
+  const rawInstruction = parsed.raw_instruction ?? ''
+  if (isStopLossWithheldByProvider(rawInstruction)) return false
+  return messageHasExplicitStopLabel(rawInstruction)
 }
 /**
  * Returns a skip when the entry must not open due to a missing stop loss.

@@ -34,8 +34,10 @@ function makeSignal(): SignalRow {
     is_modification: false,
   }
 }
-
-function makeSupabase(tradeUpdates: Record<string, unknown>[]) {
+function makeSupabase(
+  tradeUpdates: Record<string, unknown>[],
+  inserts: Record<string, unknown>[] = [],
+) {
   return {
     from(_table: string) {
       return {
@@ -46,6 +48,10 @@ function makeSupabase(tradeUpdates: Record<string, unknown>[]) {
               return Promise.resolve({ error: null })
             },
           }
+        },
+        insert(payload: Record<string, unknown>) {
+          inserts.push(payload)
+          return Promise.resolve({ error: null })
         },
       }
     },
@@ -332,4 +338,119 @@ test('applyPostFillFollowUp: reverse fill uses ticket side not parsed buy for pr
   assert.equal(modifies[0]?.takeprofit, 1987)
   assert.equal(tradeUpdates[0]?.sl, 1998)
   assert.equal(tradeUpdates[0]?.tp, 1987)
+})
+function singlePredefinedArgs(overrides: {
+  manual: ManualSettings
+  openTp: number
+  tradeUpdates?: Record<string, unknown>[]
+  inserts?: Record<string, unknown>[]
+}) {
+  const modifies: Array<{ ticket: number; stoploss?: number | null; takeprofit?: number | null }> = []
+  const tradeUpdates = overrides.tradeUpdates ?? []
+  const inserts = overrides.inserts ?? []
+  return {
+    modifies,
+    tradeUpdates,
+    inserts,
+    run: () => applyPostFillFollowUp({
+      supabase: makeSupabase(tradeUpdates, inserts) as never,
+      api: {
+        async orderModify(_uuid: string, args: { ticket: number; stoploss?: number | null; takeprofit?: number | null }) {
+          modifies.push(args)
+          return { ticket: args.ticket }
+        },
+      } as never,
+      uuid: 'acct-1',
+      signal: makeSignal(),
+      parsed,
+      op: 'Buy',
+      broker: {
+        id: 'broker-1',
+        manual_settings: overrides.manual,
+        default_lot_size: 0.01,
+        last_balance: null,
+      },
+      channelKeywords: null,
+      symbol: 'XAUUSD',
+      baseLot: 0.01,
+      params: {
+        point: 0.01,
+        digits: 2,
+        minLot: 0.01,
+        lotStep: 0.01,
+        contractSize: 100,
+        stopsLevel: 0,
+        freezeLevel: 0,
+        defaultLot: 0.01,
+        lastBalance: null,
+      },
+      filledLegs: [{
+        tradeRowId: 'trade-1',
+        ticket: 42,
+        symbol: 'XAUUSD',
+        direction: 'buy',
+        entryPrice: 2000,
+        openSl: 0,
+        openTp: overrides.openTp,
+      }],
+      hooks,
+    }),
+  }
+}
+test('applyPostFillFollowUp: keeps the chosen single target instead of the deepest ladder rung', async () => {
+  const scenario = singlePredefinedArgs({
+    manual: {
+      trade_style: 'single',
+      use_predefined_sl_pips: true,
+      predefined_sl_pips: 80,
+      use_predefined_tp_pips: false,
+    },
+    openTp: 2015,
+  })
+  await scenario.run()
+  assert.equal(scenario.modifies.length, 1)
+  assert.equal(scenario.modifies[0]?.stoploss, 1992)
+  assert.equal(scenario.modifies[0]?.takeprofit, undefined, 'chosen target must not be replaced')
+  assert.equal(scenario.tradeUpdates[0]?.sl, 1992)
+  assert.equal('tp' in (scenario.tradeUpdates[0] ?? {}), false)
+})
+test('applyPostFillFollowUp: still replaces the target when an explicit TP pip override is set', async () => {
+  const scenario = singlePredefinedArgs({
+    manual: {
+      trade_style: 'single',
+      use_predefined_sl_pips: true,
+      predefined_sl_pips: 80,
+      use_predefined_tp_pips: true,
+      predefined_tp_pips: [80],
+    },
+    openTp: 2015,
+  })
+  await scenario.run()
+  assert.equal(scenario.modifies.length, 1)
+  assert.equal(scenario.modifies[0]?.stoploss, 1992)
+  assert.equal(scenario.modifies[0]?.takeprofit, 2008)
+  assert.equal(scenario.tradeUpdates[0]?.tp, 2008)
+})
+test('applyPostFillFollowUp: writes an audit row for every post-fill stop change', async () => {
+  const scenario = singlePredefinedArgs({
+    manual: {
+      trade_style: 'single',
+      use_predefined_sl_pips: true,
+      predefined_sl_pips: 80,
+      use_predefined_tp_pips: false,
+    },
+    openTp: 2015,
+  })
+  await scenario.run()
+  const audit = scenario.inserts.filter(row => row.action === 'post_fill_stops_modify')
+  assert.equal(audit.length, 1, `expected one audit row: ${JSON.stringify(scenario.inserts)}`)
+  assert.equal(audit[0]?.status, 'success')
+  assert.equal(audit[0]?.signal_id, 'sig-1')
+  assert.equal(audit[0]?.broker_account_id, 'broker-1')
+  const payload = audit[0]?.request_payload as Record<string, unknown>
+  assert.equal(payload.stop_source, 'predefined_stops_from_fill')
+  assert.equal(payload.sl_changed, true)
+  assert.equal(payload.tp_changed, false)
+  assert.equal(payload.from_tp, 2015)
+  assert.equal(payload.to_tp, 2015)
 })

@@ -64,6 +64,13 @@ export type SafeModifyOpts = {
    * instead of ending up with none.
    */
   deepestTp?: number
+  /**
+   * Extra TP candidates, in order, tried when the requested TP is rejected.
+   * The selected single target belongs here, ahead of the deepest ladder level,
+   * so a leg lands on the level the customer chose rather than the furthest one.
+   * Deduplicated against the requested TP and `deepestTp`.
+   */
+  tpFallbacks?: number[]
 }
 
 /**
@@ -144,14 +151,18 @@ export async function modifyLegSlTpWithFallback(
         }
       } else slErr = m2
     }
-
-    // TP best-effort: try the requested TP, then (if price passed it) the deepest
-    // ladder TP so the leg still carries a profit target rather than none.
+    // TP best-effort: try the requested TP, then (if price passed it) the selected
+    // target and finally the deepest ladder TP so the leg still carries a profit
+    // target rather than none.
     const deepest = opts?.deepestTp
     const tpCandidates: number[] = [takeprofit]
-    if (deepest != null && Number.isFinite(deepest) && deepest > 0 && deepest !== takeprofit) {
-      tpCandidates.push(deepest)
+    const pushCandidate = (v?: number | null) => {
+      if (v == null || !Number.isFinite(v) || v <= 0) return
+      if (tpCandidates.some(c => Math.abs(c - v) < 1e-9)) return
+      tpCandidates.push(v)
     }
+    for (const c of opts?.tpFallbacks ?? []) pushCandidate(c)
+    pushCandidate(deepest)
     let tpApplied = false
     let appliedTp = 0
     for (const candidate of tpCandidates) {

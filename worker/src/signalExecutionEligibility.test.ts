@@ -316,3 +316,45 @@ Action Plan: Stay Calm, Trust The Setup, And keep Holding Your Trades`
     assert.equal(eligibility.skipReason, ENTRY_REQUIRES_IMPERATIVE_OR_LABELED_STOPS_REASON)
   })
 })
+describe('deterministicEntryNeedsAiRepair stop-label fallback', () => {
+  it('requests another parse attempt when the message states a stop the parse missed', () => {
+    assert.equal(
+      deterministicEntryNeedsAiRepair(
+        { action: 'sell', symbol: 'XAUUSD', sl: null, tp: [4090, 4085] },
+        'GOLD SELL NOW 4095\nTP1 4090\nTP2 4085\nSL.TP 4105',
+        null,
+      ),
+      true,
+    )
+  })
+  it('does not request another attempt once the stop is read', () => {
+    assert.equal(
+      deterministicEntryNeedsAiRepair(
+        { action: 'sell', symbol: 'XAUUSD', sl: 4105, tp: [4090, 4085] },
+        'GOLD SELL NOW 4095\nTP1 4090\nTP2 4085\nSL 4105',
+        null,
+      ),
+      false,
+    )
+  })
+  it('leaves take-profit-only signals to the account fallback rules', () => {
+    assert.equal(
+      deterministicEntryNeedsAiRepair(
+        { action: 'buy', symbol: 'XAUUSD', sl: null, tp: [4124] },
+        'GOLD BUY NOW 4120\nTP1 4124',
+        null,
+      ),
+      false,
+    )
+  })
+  it('never requests another attempt for non-entry actions', () => {
+    assert.equal(
+      deterministicEntryNeedsAiRepair(
+        { action: 'ignore', sl: null, tp: [] },
+        'SL.TP 4105',
+        null,
+      ),
+      false,
+    )
+  })
+})

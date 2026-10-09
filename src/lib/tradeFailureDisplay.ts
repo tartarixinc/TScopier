@@ -36,7 +36,7 @@ function sanitizeContext(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
   const src = value as Record<string, unknown>
   const out: Record<string, unknown> = {}
-  for (const key of ['missingField', 'withheldByProvider', 'requestedSymbol', 'brokerSymbol', 'displayInstrument', 'operation']) {
+  for (const key of ['missingField', 'withheldByProvider', 'stopStatedButUnreadable', 'requestedSymbol', 'brokerSymbol', 'displayInstrument', 'operation']) {
     const v = src[key]
     if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' || v == null) {
       out[key] = v
@@ -51,15 +51,20 @@ function displayFromCode(reasonCode: string, context: Record<string, unknown>): 
   const instrument = displayInstrument(requestedSymbol)
   if (code === 'SIGNAL_MISSING_REQUIRED_SL' || code === 'ENTRY_TP_WITHOUT_SL') {
     const withheld = context.withheldByProvider === true
+    const stopStated = context.stopStatedButUnreadable === true
     const tpWithoutSl = code === 'ENTRY_TP_WITHOUT_SL'
     return {
       reasonCode: code,
-      title: 'SL not given — set predefined SL pips in broker configuration',
-      explanation: tpWithoutSl
-        ? 'This signal listed take-profit level(s) but no stop loss. Enable Override signal SL and set Stop loss (pips from entry) in Account Configuration so the copier can place the trade.'
-        : withheld
-          ? 'The signal did not include a usable Stop Loss (often reserved for premium/VIP subscribers). Enable Override signal SL and set Stop loss (pips from entry) in Account Configuration so the copier can still place the trade.'
-          : 'The signal did not include a usable Stop Loss. Enable Override signal SL and set Stop loss (pips from entry) in Account Configuration so the copier can still place the trade.',
+      title: stopStated
+        ? 'We could not read the stop loss in this signal'
+        : 'SL not given — set predefined SL pips in broker configuration',
+      explanation: stopStated
+        ? 'This signal stated a stop loss, but the copier could not read its price, so the trade was not opened. Enable Override signal SL and set Stop loss (pips from entry) in Account Configuration so the copier can place the trade.'
+        : tpWithoutSl
+          ? 'This signal listed take-profit level(s) but no stop loss. Enable Override signal SL and set Stop loss (pips from entry) in Account Configuration so the copier can place the trade.'
+          : withheld
+            ? 'The signal did not include a usable Stop Loss (often reserved for premium/VIP subscribers). Enable Override signal SL and set Stop loss (pips from entry) in Account Configuration so the copier can still place the trade.'
+            : 'The signal did not include a usable Stop Loss. Enable Override signal SL and set Stop loss (pips from entry) in Account Configuration so the copier can still place the trade.',
       recommendedAction: 'Open Account Configuration for this broker, turn on Override signal SL, and set Stop loss (pips from entry).',
       retryable: false,
       userActionRequired: true,

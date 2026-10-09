@@ -1,7 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { messageLabelsEntryAnchor, parsedMissesLabeledEntry } from './signalEntryNowRequirement'
-
+import { messageHasExplicitStopLabel, messageLabelsEntryAnchor, parsedMissesLabeledEntry } from './signalEntryNowRequirement'
 describe('messageLabelsEntryAnchor', () => {
   it('detects labeled entry anchors', () => {
     const positives = [
@@ -91,5 +90,33 @@ describe('parsedMissesLabeledEntry', () => {
       parsedMissesLabeledEntry({ entry_price: null }, 'Gold buy now\nSL: 4190\nTP: 4210'),
       false,
     )
+  })
+})
+describe('messageHasExplicitStopLabel', () => {
+  it('detects stop labels in every observed shape', () => {
+    const positives = [
+      'GOLD SELL NOW 4095\nSL.TP 4105',
+      'GOLD SELL NOW 4095\nSL \u27a1\ufe0f(4110)',
+      'GOLD BUY NOW 4120\nSL (4080)',
+      'GOLD BUY NOW 4120\nSL 4098',
+      'GOLD BUY NOW 4120\nSTOP LOSS: 4098',
+      'GOLD BUY NOW 4120\nStop Loss to 4098',
+      'GOLD BUY NOW 4120\nSTOP LOSS (SL): 4098',
+      '\u063a\u0631\u0627\u0626 \u0634\u0631\u0627\u0621 \u0627\u0644\u0622\u0646 \u0648\u0642\u0641 \u0627\u0644\u062e\u0633\u0627\u0631\u0629 4105',
+    ]
+    for (const msg of positives) {
+      assert.equal(messageHasExplicitStopLabel(msg), true, `expected true: ${msg}`)
+    }
+  })
+  it('does not flag take-profit-only or prose messages', () => {
+    const negatives = [
+      'GOLD BUY 4090 To 4110 \ud83d\udd25\u2705',
+      'GOLD SELL NOW 4095\nTP1 4090\nTP2 4085',
+      '',
+      'Thanks for the update',
+    ]
+    for (const msg of negatives) {
+      assert.equal(messageHasExplicitStopLabel(msg), false, `expected false: ${msg}`)
+    }
   })
 })
