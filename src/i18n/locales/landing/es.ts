@@ -15,7 +15,8 @@ export const landingEs: LandingTranslations = {
     menuClose: 'Cerrar menú',
   },
   hero: {
-    headline: 'Señales de Telegram. Copiadas automáticamente.',
+    headline: 'Plataforma de copiado todo en uno para',
+    headlinePhrases: ['Señales de Telegram', 'Trading social', 'Espejo de cuentas'],
     subheadline:
       'UniCopier es una plataforma todo en uno para copiar señales de Telegram que conecta tu Telegram y copia señales de trading directamente a MT4/MT5 — sin configuraciones complicadas, sin EA ni VPS.',
     socialProof: 'Clasificado #1 copiador de señales Telegram en la nube',

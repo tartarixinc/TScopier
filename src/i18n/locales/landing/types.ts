@@ -343,6 +343,8 @@ export interface LandingTranslations {
   }
   hero: {
     headline: string
+    /** Rotating emphasis after the headline. When empty, the headline stands alone. */
+    headlinePhrases?: string[]
     subheadline: string
     socialProof: string
     primaryCta: string
