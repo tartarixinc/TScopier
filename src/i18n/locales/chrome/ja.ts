@@ -20,7 +20,7 @@ export const chromeJa: AppChromeTranslations = {
       socialTrading: 'ソーシャルトレード',
       trades: '取引',
       management: 'アクティビティ',
-      channels: 'チャンネル',
+      channels: 'ソース',
       popularChannels: '人気チャンネル',
       backtest: 'バックテスト',
       copierLogs: 'コピーログ',
@@ -324,7 +324,7 @@ export const chromeJa: AppChromeTranslations = {
       description: 'アカウントに紐づく解析済みシグナルを表示。チャンネルと期間で絞り込めます。',
     },
     copierEngine: {
-      title: 'チャンネル',
+      title: 'ソース',
       description: 'Telegram のシグナルチャンネルとコピー設定を管理します。',
     },
     settings: {

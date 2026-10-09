@@ -402,7 +402,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
               <TscopierLogo
                 brand="unicopier"
                 collapsed={!sidebarExpanded}
-                className={sidebarExpanded ? 'h-8 w-auto' : undefined}
+                className={sidebarExpanded ? 'h-12 w-auto' : undefined}
               />
             </Link>
           </div>

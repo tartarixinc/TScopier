@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Plus, Radio, Trash2, Settings } from 'lucide-react'
+import clsx from 'clsx'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useT } from '../../context/LocaleContext'
@@ -30,6 +31,7 @@ export function ChannelsPage() {
   const [newChannel, setNewChannel] = useState({ channel_id: '', channel_username: '', display_name: '' })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [source, setSource] = useState<'telegram' | 'discord' | 'tradingview'>('telegram')
 
   useEffect(() => {
     if (!user) return
@@ -125,15 +127,38 @@ export function ChannelsPage() {
     <PageShell maxWidth="lg" spacing="none" className="space-y-6">
       <PageHeader
         title={ch.title}
-        actions={(
+        actions={source === 'telegram' ? (
           <Button onClick={() => setShowAdd(true)} size="sm">
             <Plus className="w-3.5 h-3.5" />
             {ch.addChannel}
           </Button>
-        )}
+        ) : null}
       />
 
-      {showAdd && (
+      <nav className="flex gap-6 overflow-x-auto border-b border-neutral-200 dark:border-neutral-800" aria-label={ch.title}>
+        <SourceTab active={source === 'telegram'} onClick={() => setSource('telegram')}>
+          {ch.tabTelegram}
+        </SourceTab>
+        <SourceTab active={source === 'discord'} onClick={() => setSource('discord')}>
+          {ch.tabDiscord}
+          <Badge variant="neutral" size="sm">{ch.comingSoon}</Badge>
+        </SourceTab>
+        <SourceTab active={source === 'tradingview'} onClick={() => setSource('tradingview')}>
+          {ch.tabTradingView}
+          <Badge variant="neutral" size="sm">{ch.comingSoon}</Badge>
+        </SourceTab>
+      </nav>
+
+      {source !== 'telegram' ? (
+        <Card>
+          <div className="py-10 text-center">
+            <Badge variant="neutral">{ch.comingSoon}</Badge>
+            <p className="mt-3 text-sm text-neutral-500 dark:text-neutral-400">{ch.comingSoonBody}</p>
+          </div>
+        </Card>
+      ) : null}
+
+      {source === 'telegram' && showAdd && (
         <Card className="mb-4">
           <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 mb-4">{ch.addFormTitle}</h2>
           {error && <Alert className="mb-3">{error}</Alert>}
@@ -168,13 +193,13 @@ export function ChannelsPage() {
         </Card>
       )}
 
-      {loading ? (
+      {source === 'telegram' && loading ? (
         <div className="space-y-3">
           {[...Array(3)].map((_, i) => (
             <div key={i} className="h-16 bg-white dark:bg-neutral-950 rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 animate-pulse" />
           ))}
         </div>
-      ) : channels.length === 0 ? (
+      ) : source === 'telegram' && channels.length === 0 ? (
         <Card>
           <div className="text-center py-8">
             <Radio className="w-10 h-10 mx-auto mb-3 text-neutral-200" />
@@ -182,7 +207,7 @@ export function ChannelsPage() {
             <p className="text-neutral-400 text-xs mt-1">{ch.emptySubtitle}</p>
           </div>
         </Card>
-      ) : (
+      ) : source === 'telegram' ? (
         <div className="space-y-2">
           {channels.map(channel => (
             <ChannelCard
@@ -196,8 +221,33 @@ export function ChannelsPage() {
             />
           ))}
         </div>
-      )}
+      ) : null}
     </PageShell>
+  )
+}
+
+function SourceTab({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={clsx(
+        '-mb-px inline-flex shrink-0 items-center gap-2 border-b-2 pb-3 text-sm font-medium',
+        active
+          ? 'border-neutral-900 text-neutral-900 dark:border-neutral-50 dark:text-neutral-50'
+          : 'border-transparent text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200',
+      )}
+    >
+      {children}
+    </button>
   )
 }
 

@@ -72,7 +72,7 @@ export const tradingNl: TradingPagesBundleTranslations = {
     cancel: 'Annuleren',
   },
   channelsPage: {
-    title: 'Kanalen',
+    title: 'Bron',
     subtitle: 'Beheer welke Telegram-kanalen je monitort',
     addChannel: 'Kanaal toevoegen',
     addFormTitle: 'Kanaal handmatig toevoegen',
@@ -91,6 +91,11 @@ export const tradingNl: TradingPagesBundleTranslations = {
     lotSizeOverride: 'Override voor lotgrootte',
     pipToleranceOverride: 'Override voor pip-tolerantie',
     useBrokerDefault: 'Standaard van broker gebruiken',
+    tabTelegram: 'Telegram',
+    tabDiscord: 'Discord',
+    tabTradingView: 'TradingView',
+    comingSoon: 'Binnenkort',
+    comingSoonBody: 'Deze bron is nog niet beschikbaar.',
   },
   popularChannelsPage: {
     title: 'Popular Channels',

@@ -20,7 +20,7 @@ export const chromeNl: AppChromeTranslations = {
       socialTrading: 'Sociaal handelen',
       trades: 'Trades',
       management: 'Activiteiten',
-      channels: 'Kanalen',
+      channels: 'Bron',
       popularChannels: 'Populaire kanalen',
       backtest: 'Backtest',
       copierLogs: 'Copierlogs',
@@ -325,7 +325,7 @@ export const chromeNl: AppChromeTranslations = {
       description: 'Bekijk geparseerde signalen die aan je account zijn gekoppeld. Filter op kanaal en datumbereik.',
     },
     copierEngine: {
-      title: 'Kanalen',
+      title: 'Bron',
       description: 'Beheer Telegram-signaalkanalen en copier-instellingen.',
     },
     settings: {

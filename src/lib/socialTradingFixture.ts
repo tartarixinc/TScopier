@@ -39,6 +39,44 @@ export interface SocialTraderChart {
 
 export type SocialAccess = 'open' | 'private'
 
+export interface SocialProfileMeta {
+  joinedAt: string
+  rank: number
+  leverage: string
+  country: string
+  timezone: string
+}
+
+export interface SocialCalendarDay {
+  day: number
+  profit: number | null
+  trades: number
+}
+
+export interface SocialTraderStats {
+  monthly: Array<{ label: string; profit: number }>
+  calendar: SocialCalendarDay[]
+  longTrades: number
+  shortTrades: number
+  maxOpenTrades: number
+  sharpe: number
+  avgProfit: number
+  avgHoldingDays: number
+  profitFactor: number
+  dailyProfitPercent: number
+  monthlyProfitPercent: number
+  profitableTrades: number
+  losingTrades: number
+  equity: number
+  deposit: number
+  openPosition: number
+  bestTradeProfit: number
+  bestTradeAt: string
+  worstTradeProfit: number
+  worstTradeAt: string
+  amountFollowing: number
+}
+
 export interface SocialTrader {
   id: string
   displayName: string
@@ -52,10 +90,14 @@ export interface SocialTrader {
   maxDrawdown: number
   closedTrades: number
   followerCount: number
+  /** Average follower rating from 1 to 5. Null when nobody has rated this trader yet. */
+  rating: number | null
+  ratingCount: number
   following: boolean
   followsYou: boolean
   /** Demo-only source balance used to illustrate proportional sizing. */
   previewBalance: number
+  profile: SocialProfileMeta
   openTrades: SocialOpenTrade[]
   closedPerformance: SocialClosedTrade[]
   activities: SocialActivity[]
@@ -96,9 +138,12 @@ export const SOCIAL_TRADERS: SocialTrader[] = [
     maxDrawdown: 7.2,
     closedTrades: 42,
     followerCount: 2,
+    rating: 4.2,
+    ratingCount: 6,
     following: false,
     followsYou: false,
     previewBalance: 10590,
+    profile: { joinedAt: '2024-06-18', rank: 42, leverage: '1:100', country: 'United Kingdom', timezone: 'GMT +00:00' },
     openTrades: [
       { id: 'you-o1', symbol: 'EURUSD', side: 'buy', openedAt: '2026-10-07T08:15:00Z', previewLot: 0.4, previewStopLoss: 1.1642, previewTakeProfit: 1.1768 },
       { id: 'you-o2', symbol: 'XAUUSD', side: 'sell', openedAt: '2026-10-07T11:40:00Z', previewLot: 0.2, previewStopLoss: 2668.5, previewTakeProfit: 2634 },
@@ -130,9 +175,12 @@ export const SOCIAL_TRADERS: SocialTrader[] = [
     maxDrawdown: 5.1,
     closedTrades: 96,
     followerCount: 128,
+    rating: 4.8,
+    ratingCount: 86,
     following: true,
     followsYou: false,
     previewBalance: 26720,
+    profile: { joinedAt: '2023-11-02', rank: 8, leverage: '1:500', country: 'United Arab Emirates', timezone: 'GMT +04:00' },
     openTrades: [
       { id: 'amira-o1', symbol: 'XAUUSD', side: 'buy', openedAt: '2026-10-07T06:20:00Z', previewLot: 1, previewStopLoss: 2641.5, previewTakeProfit: 2688 },
       { id: 'amira-o2', symbol: 'EURUSD', side: 'sell', openedAt: '2026-10-06T14:05:00Z', previewLot: 0.6, previewStopLoss: 1.1775, previewTakeProfit: 1.163 },
@@ -164,9 +212,12 @@ export const SOCIAL_TRADERS: SocialTrader[] = [
     maxDrawdown: 11.4,
     closedTrades: 61,
     followerCount: 47,
+    rating: 3.4,
+    ratingCount: 19,
     following: true,
     followsYou: true,
     previewBalance: 8150,
+    profile: { joinedAt: '2025-01-14', rank: 61, leverage: '1:200', country: 'Sweden', timezone: 'GMT +01:00' },
     openTrades: [
       { id: 'leo-o1', symbol: 'USDJPY', side: 'sell', openedAt: '2026-10-07T09:50:00Z', previewLot: 0.35, previewStopLoss: 153.8, previewTakeProfit: 151.9 },
     ],
@@ -196,9 +247,12 @@ export const SOCIAL_TRADERS: SocialTrader[] = [
     maxDrawdown: 6.4,
     closedTrades: 74,
     followerCount: 89,
+    rating: 4.6,
+    ratingCount: 41,
     following: false,
     followsYou: true,
     previewBalance: 15720,
+    profile: { joinedAt: '2024-02-09', rank: 19, leverage: '1:500', country: 'Nigeria', timezone: 'GMT +01:00' },
     openTrades: [
       { id: 'nora-o1', symbol: 'NAS100', side: 'buy', openedAt: '2026-10-07T13:05:00Z', previewLot: 0.5, previewStopLoss: 24780, previewTakeProfit: 25240 },
       { id: 'nora-o2', symbol: 'GBPUSD', side: 'buy', openedAt: '2026-10-07T07:25:00Z', previewLot: 0.4, previewStopLoss: 1.332, previewTakeProfit: 1.348 },
@@ -230,9 +284,12 @@ export const SOCIAL_TRADERS: SocialTrader[] = [
     maxDrawdown: 8.8,
     closedTrades: 38,
     followerCount: 21,
+    rating: 4.0,
+    ratingCount: 12,
     following: false,
     followsYou: false,
     previewBalance: 12140,
+    profile: { joinedAt: '2025-04-21', rank: 33, leverage: '1:100', country: 'Japan', timezone: 'GMT +09:00' },
     openTrades: [
       { id: 'kenji-o1', symbol: 'USDJPY', side: 'buy', openedAt: '2026-10-07T01:15:00Z', previewLot: 0.25, previewStopLoss: 151.7, previewTakeProfit: 154.1 },
     ],
@@ -250,6 +307,67 @@ export const SOCIAL_TRADERS: SocialTrader[] = [
     ]),
   },
 ]
+
+const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep']
+
+function unitRandom(seed: number) {
+  let state = seed >>> 0
+  return () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0
+    return state / 4294967296
+  }
+}
+
+function seedFromId(id: string): number {
+  return id.split('').reduce((sum, char) => sum + char.charCodeAt(0), 17)
+}
+
+/** Demo profile numbers for the trader page. Not used by trade execution. */
+export function socialTraderStats(trader: SocialTrader): SocialTraderStats {
+  const random = unitRandom(seedFromId(trader.id))
+  const monthly = MONTH_LABELS.map(label => ({
+    label,
+    profit: Math.round(600 + random() * (trader.previewBalance * 0.22)),
+  }))
+  const calendar = Array.from({ length: 30 }, (_, index) => {
+    const day = index + 1
+    const weekday = new Date(Date.UTC(2026, 8, day)).getUTCDay()
+    const weekend = weekday === 0 || weekday === 6
+    if (weekend && random() > 0.4) return { day, profit: null, trades: 0 }
+    const trades = 1 + Math.floor(random() * 6)
+    const profit = Math.round((random() * 90 - 12) * 100) / 100
+    return { day, profit, trades }
+  })
+  const closed = trader.closedPerformance
+  const best = closed.reduce((pick, trade) => trade.profit > pick.profit ? trade : pick, closed[0])
+  const worst = closed.reduce((pick, trade) => trade.profit < pick.profit ? trade : pick, closed[0])
+  const profitableTrades = Math.round(trader.closedTrades * (trader.winRate / 100))
+  const losingTrades = Math.max(trader.closedTrades - profitableTrades, 0)
+  const shortTrades = Math.max(1, Math.round(trader.closedTrades * 0.08))
+  return {
+    monthly,
+    calendar,
+    longTrades: trader.closedTrades - shortTrades,
+    shortTrades,
+    maxOpenTrades: trader.openTrades.length + 2,
+    sharpe: Math.round((0.2 + trader.roi / 80) * 100) / 100,
+    avgProfit: Math.round((trader.previewBalance * (trader.roi / 100) / Math.max(trader.closedTrades, 1)) * 100) / 100,
+    avgHoldingDays: 1 + Math.round(random() * 3),
+    profitFactor: Math.round((1 + trader.winRate / 25) * 100) / 100,
+    dailyProfitPercent: Math.round((trader.roi / 40) * 100) / 100,
+    monthlyProfitPercent: Math.round((trader.roi / 6) * 100) / 100,
+    profitableTrades,
+    losingTrades,
+    equity: Math.round(trader.previewBalance * 0.97),
+    deposit: Math.round(trader.previewBalance * 0.82),
+    openPosition: Math.round(trader.openTrades.reduce((sum, trade) => sum + trade.previewLot * -40, 0) * 100) / 100,
+    bestTradeProfit: best?.profit ?? 0,
+    bestTradeAt: best?.closedAt ?? trader.profile.joinedAt,
+    worstTradeProfit: worst?.profit ?? 0,
+    worstTradeAt: worst?.closedAt ?? trader.profile.joinedAt,
+    amountFollowing: Math.round(trader.previewBalance * Math.max(trader.followerCount, 1) * 0.12),
+  }
+}
 
 export function socialTraderById(id: string): SocialTrader | undefined {
   return SOCIAL_TRADERS.find(trader => trader.id === id)

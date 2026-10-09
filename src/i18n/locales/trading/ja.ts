@@ -72,7 +72,7 @@ export const tradingJa: TradingPagesBundleTranslations = {
     cancel: 'キャンセル',
   },
   channelsPage: {
-    title: 'チャンネル',
+    title: 'ソース',
     subtitle: '監視するTelegramチャンネルを管理します',
     addChannel: 'チャンネルを追加',
     addFormTitle: 'チャンネルを手動で追加',
@@ -91,6 +91,11 @@ export const tradingJa: TradingPagesBundleTranslations = {
     lotSizeOverride: 'ロットサイズの上書き',
     pipToleranceOverride: 'pip許容値の上書き',
     useBrokerDefault: 'ブローカーの既定値を使用',
+    tabTelegram: 'Telegram',
+    tabDiscord: 'Discord',
+    tabTradingView: 'TradingView',
+    comingSoon: '近日公開',
+    comingSoonBody: 'このソースはまだ利用できません。',
   },
   popularChannelsPage: {
     title: 'Popular Channels',

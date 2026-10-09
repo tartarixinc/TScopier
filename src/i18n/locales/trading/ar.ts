@@ -72,7 +72,7 @@ export const tradingAr: TradingPagesBundleTranslations = {
     cancel: 'إلغاء',
   },
   channelsPage: {
-    title: 'القنوات',
+    title: 'المصدر',
     subtitle: 'أدر قنوات Telegram التي تراقبها',
     addChannel: 'إضافة قناة',
     addFormTitle: 'إضافة قناة يدويًا',
@@ -91,6 +91,11 @@ export const tradingAr: TradingPagesBundleTranslations = {
     lotSizeOverride: 'تجاوز حجم اللوت',
     pipToleranceOverride: 'تجاوز تسامح النقاط',
     useBrokerDefault: 'استخدم إعدادات الوسيط الافتراضية',
+    tabTelegram: 'Telegram',
+    tabDiscord: 'Discord',
+    tabTradingView: 'TradingView',
+    comingSoon: 'قريباً',
+    comingSoonBody: 'هذا المصدر غير متاح بعد.',
   },
   popularChannelsPage: {
     title: 'Popular Channels',

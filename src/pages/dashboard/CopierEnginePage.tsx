@@ -118,6 +118,7 @@ export function CopierEnginePage() {
   const channelLinkDefaultFilters = defaultChannelFiltersForPlan(keywordFiltersEnabled)
   const pw = t.pricing.paywall
   const [channels, setChannels] = useState<TelegramChannel[]>([])
+  const [source, setSource] = useState<'telegram' | 'discord' | 'tradingview'>('telegram')
   const [connectMenuChannelId, setConnectMenuChannelId] = useState<string | null>(null)
   const [connectingBrokerId, setConnectingBrokerId] = useState<string | null>(null)
   const [connectingAllChannelId, setConnectingAllChannelId] = useState<string | null>(null)
@@ -887,7 +888,7 @@ export function CopierEnginePage() {
       <PageHeader
         title={t.pages.copierEngine.title}
         actions={
-          hasTgSession ? (
+          source === 'telegram' && hasTgSession ? (
             <Button variant="secondary" size="sm" onClick={() => void fetchTgChannels({ force: true })} loading={loadingTg}>
               <RefreshCw className="w-3.5 h-3.5" />
               {t.common.refresh}
@@ -895,6 +896,30 @@ export function CopierEnginePage() {
           ) : undefined
         }
       />
+
+      <nav className="flex gap-6 overflow-x-auto border-b border-neutral-200 dark:border-neutral-800" aria-label={t.pages.copierEngine.title}>
+        <SourceTab active={source === 'telegram'} onClick={() => setSource('telegram')}>
+          {t.channelsPage.tabTelegram}
+        </SourceTab>
+        <SourceTab active={source === 'discord'} onClick={() => setSource('discord')}>
+          {t.channelsPage.tabDiscord}
+          <Badge variant="neutral" size="sm">{t.channelsPage.comingSoon}</Badge>
+        </SourceTab>
+        <SourceTab active={source === 'tradingview'} onClick={() => setSource('tradingview')}>
+          {t.channelsPage.tabTradingView}
+          <Badge variant="neutral" size="sm">{t.channelsPage.comingSoon}</Badge>
+        </SourceTab>
+      </nav>
+
+      {source !== 'telegram' ? (
+        <Card>
+          <div className="py-10 text-center">
+            <Badge variant="neutral">{t.channelsPage.comingSoon}</Badge>
+            <p className="mt-3 text-sm text-neutral-500 dark:text-neutral-400">{t.channelsPage.comingSoonBody}</p>
+          </div>
+        </Card>
+      ) : (
+      <>
 
       {showListenerLeaseWarning && (
         <div className="mb-3 px-4 py-3 bg-warning-50 dark:bg-amber-950/40 border border-warning-200 dark:border-amber-800 rounded-xl text-sm text-warning-800 dark:text-amber-100 flex flex-col sm:flex-row sm:items-center gap-2 sm:justify-between">
@@ -1138,7 +1163,34 @@ export function CopierEnginePage() {
           </div>
         </Card>
       )}
+      </>
+      )}
     </PageShell>
+  )
+}
+
+function SourceTab({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={clsx(
+        '-mb-px inline-flex shrink-0 items-center gap-2 border-b-2 pb-3 text-sm font-medium',
+        active
+          ? 'border-neutral-900 text-neutral-900 dark:border-neutral-50 dark:text-neutral-50'
+          : 'border-transparent text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200',
+      )}
+    >
+      {children}
+    </button>
   )
 }
 

@@ -72,7 +72,7 @@ export const tradingRu: TradingPagesBundleTranslations = {
     cancel: 'Отмена',
   },
   channelsPage: {
-    title: 'Каналы',
+    title: 'Источник',
     subtitle: 'Управляйте каналами Telegram, которые вы отслеживаете',
     addChannel: 'Добавить канал',
     addFormTitle: 'Добавить канал вручную',
@@ -91,6 +91,11 @@ export const tradingRu: TradingPagesBundleTranslations = {
     lotSizeOverride: 'Переопределение размера лота',
     pipToleranceOverride: 'Переопределение допуска по пипсам',
     useBrokerDefault: 'Использовать настройки брокера по умолчанию',
+    tabTelegram: 'Telegram',
+    tabDiscord: 'Discord',
+    tabTradingView: 'TradingView',
+    comingSoon: 'Скоро',
+    comingSoonBody: 'Этот источник пока недоступен.',
   },
   popularChannelsPage: {
     title: 'Popular Channels',

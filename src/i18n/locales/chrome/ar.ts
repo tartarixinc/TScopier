@@ -20,7 +20,7 @@ export const chromeAr: AppChromeTranslations = {
       socialTrading: 'التداول الاجتماعي',
       trades: 'الصفقات',
       management: 'النشاط',
-      channels: 'القنوات',
+      channels: 'المصدر',
       popularChannels: 'القنوات الشائعة',
       backtest: 'الاختبار التاريخي',
       copierLogs: 'سجلات الناسخ',
@@ -324,7 +324,7 @@ export const chromeAr: AppChromeTranslations = {
       description: 'اعرض الإشارات المحللة المرتبطة بحسابك. صفِّ حسب القناة والفترة.',
     },
     copierEngine: {
-      title: 'القنوات',
+      title: 'المصدر',
       description: 'أدر قنوات إشارات Telegram وإعدادات النسخ.',
     },
     settings: {

@@ -72,7 +72,7 @@ export const tradingSv: TradingPagesBundleTranslations = {
     cancel: 'Avbryt',
   },
   channelsPage: {
-    title: 'Kanaler',
+    title: 'Källa',
     subtitle: 'Hantera vilka Telegram-kanaler du övervakar',
     addChannel: 'Lägg till kanal',
     addFormTitle: 'Lägg till kanal manuellt',
@@ -91,6 +91,11 @@ export const tradingSv: TradingPagesBundleTranslations = {
     lotSizeOverride: 'Överstyrning av lotstorlek',
     pipToleranceOverride: 'Överstyrning av pip-tolerans',
     useBrokerDefault: 'Använd mäklarens standardvärde',
+    tabTelegram: 'Telegram',
+    tabDiscord: 'Discord',
+    tabTradingView: 'TradingView',
+    comingSoon: 'Kommer snart',
+    comingSoonBody: 'Den här källan är inte tillgänglig ännu.',
   },
   popularChannelsPage: {
     title: 'Popular Channels',

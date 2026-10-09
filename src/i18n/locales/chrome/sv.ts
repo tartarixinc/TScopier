@@ -20,7 +20,7 @@ export const chromeSv: AppChromeTranslations = {
       socialTrading: 'Social handel',
       trades: 'Affärer',
       management: 'Aktiviteter',
-      channels: 'Kanaler',
+      channels: 'Källa',
       popularChannels: 'Populära kanaler',
       backtest: 'Backtest',
       copierLogs: 'Kopieringsloggar',
@@ -325,7 +325,7 @@ export const chromeSv: AppChromeTranslations = {
       description: 'Visa tolkade signaler kopplade till ditt konto. Filtrera efter kanal och datumintervall.',
     },
     copierEngine: {
-      title: 'Kanaler',
+      title: 'Källa',
       description: 'Hantera Telegram-signalkanaler och kopierarinställningar.',
     },
     settings: {

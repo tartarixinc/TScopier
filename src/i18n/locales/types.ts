@@ -870,6 +870,10 @@ export interface SocialTradingPageTranslations {
   sortRoi: string
   sortWinRate: string
   sortFollowers: string
+  sortRating: string
+  rating: string
+  noRating: string
+  ratingAria: string
   follow: string
   following: string
   followers: string
@@ -917,6 +921,55 @@ export interface SocialTradingPageTranslations {
   symbol: string
   result: string
   sampleNote: string
+  tabPerformance: string
+  tabTrading: string
+  tabPortfolio: string
+  aum: string
+  leverage: string
+  joined: string
+  rank: string
+  monthlyStatistics: string
+  overview: string
+  dailyProfit: string
+  monthlyProfit: string
+  growth: string
+  drawdown: string
+  profitableTrades: string
+  losingTrades: string
+  balance: string
+  equity: string
+  deposit: string
+  statisticsMonth: string
+  longTrades: string
+  shortTrades: string
+  maxOpenTrades: string
+  sharpeRatio: string
+  avgProfit: string
+  avgHoldingTime: string
+  profitFactor: string
+  pnlCalendar: string
+  noTrades: string
+  tradeCount: string
+  holdingDays: string
+  totalTrades: string
+  lastTrade: string
+  openPosition: string
+  liveCopiers: string
+  bestTrade: string
+  worstTrade: string
+  timezone: string
+  amountFollowing: string
+  netPnl: string
+  winningTrades: string
+  grossPnl: string
+  totalLots: string
+  asset: string
+  unit: string
+  openRate: string
+  closeRate: string
+  openDateTime: string
+  closeDateTime: string
+  pnl: string
   copySetup: {
     action: string
     title: string
@@ -1510,6 +1563,11 @@ export interface ChannelsPageTranslations {
   lotSizeOverride: string
   pipToleranceOverride: string
   useBrokerDefault: string
+  tabTelegram: string
+  tabDiscord: string
+  tabTradingView: string
+  comingSoon: string
+  comingSoonBody: string
 }
 
 export interface BacktestOutcomeLabels {

@@ -1,6 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { ChevronRight } from 'lucide-react'
+import { BarChart3, ChevronRight, LineChart, Star, Wallet, X } from 'lucide-react'
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import clsx from 'clsx'
 import { AccountGrowthChart } from '../../components/dashboard/AccountGrowthChart'
 import { PageHeader } from '../../components/layout/PageHeader'
@@ -10,15 +12,22 @@ import { PerformanceTradeOutcomeChart } from '../../components/performance/Perfo
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { useAddTradingAccount } from '../../context/AddTradingAccountContext'
-import { useT } from '../../context/LocaleContext'
+import { useLocale, useT } from '../../context/LocaleContext'
+import type { SocialTradingPageTranslations } from '../../i18n/locales/types'
+import { useTheme } from '../../context/ThemeContext'
 import { useFormatMoney } from '../../hooks/useFormatMoney'
+import { interpolate } from '../../i18n/interpolate'
+import { chartThemeColors, chartTooltipProps } from '../../lib/chartTheme'
 import {
   SOCIAL_INCOMING_REQUESTS,
   SOCIAL_TRADERS,
   socialTraderById,
+  socialTraderStats,
   type SocialAccess,
+  type SocialCalendarDay,
   type SocialTradeSide,
   type SocialTrader,
+  type SocialTraderStats,
 } from '../../lib/socialTradingFixture'
 
 const FOLLOW_KEY = 'tscopier:social-trading:following'
@@ -30,7 +39,7 @@ type OutgoingStatus = 'pending' | 'declined'
 type IncomingStatus = 'pending' | 'accepted' | 'declined'
 type CopyButtonState = 'follow' | 'following' | 'request' | 'requested'
 
-type SortKey = 'roi' | 'winRate' | 'followers'
+type SortKey = 'roi' | 'winRate' | 'followers' | 'rating'
 type DirectoryView = 'all' | 'followers' | 'following'
 
 function initialFollowing(): Set<string> {
@@ -165,6 +174,50 @@ function percent(value: number): string {
   return `${value.toFixed(1)}%`
 }
 
+function TraderRating({
+  rating,
+  count,
+  copy,
+}: {
+  rating: number | null
+  count: number
+  copy: { noRating: string; ratingAria: string }
+}) {
+  if (rating == null || count <= 0) {
+    return <p className="text-xs text-neutral-400 dark:text-neutral-500">{copy.noRating}</p>
+  }
+  const rounded = Math.round(rating * 2) / 2
+  const score = rating.toFixed(1)
+  return (
+    <p className="flex items-center gap-1.5" aria-label={copy.ratingAria.replace('{rating}', score)}>
+      <span className="inline-flex" aria-hidden="true">
+        {[1, 2, 3, 4, 5].map(star => {
+          const fill = rounded >= star ? 'full' : rounded >= star - 0.5 ? 'half' : 'empty'
+          if (fill === 'half') {
+            return (
+              <span key={star} className="relative inline-flex h-3.5 w-3.5">
+                <Star className="h-3.5 w-3.5 text-neutral-300 dark:text-neutral-600" />
+                <Star className="absolute inset-0 h-3.5 w-3.5 fill-teal-600 text-teal-600" style={{ clipPath: 'inset(0 50% 0 0)' }} />
+              </span>
+            )
+          }
+          return (
+            <Star
+              key={star}
+              className={clsx(
+                'h-3.5 w-3.5',
+                fill === 'full' ? 'fill-teal-600 text-teal-600' : 'text-neutral-300 dark:text-neutral-600',
+              )}
+            />
+          )
+        })}
+      </span>
+      <span className="text-xs font-medium text-neutral-700 dark:text-neutral-200">{score}</span>
+      <span className="text-xs text-neutral-400 dark:text-neutral-500">({count})</span>
+    </p>
+  )
+}
+
 function SideLabel({ side, buy, sell }: { side: SocialTradeSide; buy: string; sell: string }) {
   const isBuy = side === 'buy'
   return (
@@ -208,6 +261,7 @@ export function SocialTradingPage() {
     const rank = (trader: SocialTrader) => {
       if (sort === 'winRate') return trader.winRate
       if (sort === 'followers') return trader.followerCount
+      if (sort === 'rating') return trader.rating ?? -1
       return trader.roi
     }
     return filtered.slice().sort((a, b) => {
@@ -279,6 +333,7 @@ export function SocialTradingPage() {
           <option value="roi">{copy.sortRoi}</option>
           <option value="winRate">{copy.sortWinRate}</option>
           <option value="followers">{copy.sortFollowers}</option>
+          <option value="rating">{copy.sortRating}</option>
         </select>
       </div>
       <Card padding="none" className="overflow-hidden">
@@ -325,6 +380,7 @@ export function SocialTradingPage() {
                           </span>
                           <div className="min-w-0">
                             <p className="truncate font-medium text-neutral-900 dark:text-neutral-50">{name}</p>
+                            <TraderRating rating={trader.rating} count={trader.ratingCount} copy={copy} />
                             <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">
                               #{rank} · {traderAccess === 'open' ? copy.open : copy.private}
                             </p>
@@ -506,19 +562,11 @@ function CopyActionButton({
   )
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <dt className="text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400">{label}</dt>
-      <dd className="mt-1 font-semibold text-neutral-900 dark:text-neutral-50">{value}</dd>
-    </div>
-  )
-}
-
 export function SocialTraderActivityPage() {
   const t = useT()
   const copy = t.socialTradingPage
-  const { formatSignedMoney } = useFormatMoney()
+  const { formatMoney, formatSignedMoney } = useFormatMoney()
+  const { locale } = useLocale()
   const { openAddTradingAccount } = useAddTradingAccount()
   const { traderId } = useParams()
   const trader = traderId ? socialTraderById(traderId) : undefined
@@ -527,6 +575,7 @@ export function SocialTraderActivityPage() {
   const [outgoing, setOutgoing] = useState(initialOutgoing)
   const [incoming, setIncoming] = useState(initialIncoming)
   const [copyModalOpen, setCopyModalOpen] = useState(false)
+  const [profileTab, setProfileTab] = useState<'performance' | 'trading' | 'portfolio'>('performance')
 
   if (!trader) {
     return (
@@ -566,6 +615,9 @@ export function SocialTraderActivityPage() {
 
   const pendingRequests = SOCIAL_TRADERS.filter(person => incoming[person.id] === 'pending')
   const allowedToCopy = canConfigureCopy(trader, following)
+  const stats = socialTraderStats(trader)
+  const name = trader.isYou ? copy.you : trader.displayName
+  const joined = new Date(trader.profile.joinedAt).toLocaleDateString(locale, { year: 'numeric', month: 'short', day: 'numeric' })
 
   return (
     <>
@@ -574,48 +626,55 @@ export function SocialTraderActivityPage() {
         <Link to="/social-trading" className="text-sm font-medium text-teal-700 hover:text-teal-800 dark:text-teal-300">
           {copy.back}
         </Link>
-        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <PageHeader
-              title={(
-                <span className="inline-flex flex-wrap items-center gap-2">
-                  {trader.isYou ? copy.you : trader.displayName}
+        <Card className="mt-3">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-lg font-semibold text-neutral-600 dark:bg-neutral-800 dark:text-neutral-200">
+                {name.slice(0, 1).toUpperCase()}
+              </span>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="truncate text-xl font-semibold text-neutral-900 dark:text-neutral-50">{name}</h1>
                   <AccessTag
                     access={trader.isYou ? access : trader.access}
                     openLabel={copy.open}
                     privateLabel={copy.private}
                   />
-                </span>
-              )}
-            />
-            <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">@{trader.username}</p>
-          </div>
-          {trader.isYou ? (
-            <AccessChoice access={access} copy={copy} onChange={chooseAccess} labelled />
-          ) : (
-            <div className="flex items-center gap-2">
-              <CopyActionButton
-                trader={trader}
-                following={following}
-                outgoing={outgoing}
-                copy={copy}
-                onToggle={runCopyAction}
-              />
-              {allowedToCopy ? (
-                <Button type="button" size="sm" onClick={() => setCopyModalOpen(true)}>
-                  {copy.copySetup.action}
-                </Button>
-              ) : null}
+                </div>
+                <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+                  #{trader.profile.rank} {copy.rank} · {copy.joined} {joined} · {trader.profile.country}
+                </p>
+                <div className="mt-1">
+                  <TraderRating rating={trader.rating} count={trader.ratingCount} copy={copy} />
+                </div>
+              </div>
             </div>
-          )}
-        </div>
+            <dl className="grid grid-cols-3 gap-4 sm:gap-8">
+              <HeaderStat label={copy.aum} value={formatMoney(trader.previewBalance)} />
+              <HeaderStat label={copy.followers} value={String(trader.followerCount)} />
+              <HeaderStat label={copy.leverage} value={trader.profile.leverage} />
+            </dl>
+            {trader.isYou ? (
+              <AccessChoice access={access} copy={copy} onChange={chooseAccess} labelled />
+            ) : (
+              <div className="flex flex-wrap items-center gap-2">
+                <CopyActionButton
+                  trader={trader}
+                  following={following}
+                  outgoing={outgoing}
+                  copy={copy}
+                  onToggle={runCopyAction}
+                />
+                {allowedToCopy ? (
+                  <Button type="button" size="sm" onClick={() => setCopyModalOpen(true)}>
+                    {copy.copySetup.action}
+                  </Button>
+                ) : null}
+              </div>
+            )}
+          </div>
+        </Card>
       </div>
-      <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat label={copy.roi} value={percent(trader.roi)} />
-        <Stat label={copy.winRate} value={percent(trader.winRate)} />
-        <Stat label={copy.maxDrawdown} value={percent(trader.maxDrawdown)} />
-        <Stat label={copy.closedTrades} value={String(trader.closedTrades)} />
-      </dl>
       {trader.isYou && access === 'private' ? (
         <Card padding="none" className="overflow-hidden">
           <h2 className="border-b border-neutral-100 px-4 py-3 text-sm font-semibold text-neutral-900 dark:border-neutral-800 dark:text-neutral-50">
@@ -645,65 +704,94 @@ export function SocialTraderActivityPage() {
           )}
         </Card>
       ) : null}
-      <div className="grid gap-4 xl:grid-cols-2">
-        <AccountGrowthChart data={trader.chart.growth} series={trader.chart.series} />
-        <PerformanceTradeOutcomeChart
-          data={trader.chart.outcome}
-          title={copy.closedPerformance}
-          subtitle={t.performance.outcomeSubtitle}
-          emptyLabel={t.performance.outcomeEmpty}
-          profitLabel={t.dashboard.chartProfit}
-          lossLabel={t.dashboard.chartLoss}
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="min-w-0 space-y-4">
+          <div className="flex gap-2 overflow-x-auto">
+            <ProfileTab icon={<BarChart3 className="h-4 w-4" />} active={profileTab === 'performance'} onClick={() => setProfileTab('performance')}>{copy.tabPerformance}</ProfileTab>
+            <ProfileTab icon={<LineChart className="h-4 w-4" />} active={profileTab === 'trading'} onClick={() => setProfileTab('trading')}>{copy.tabTrading}</ProfileTab>
+            <ProfileTab icon={<Wallet className="h-4 w-4" />} active={profileTab === 'portfolio'} onClick={() => setProfileTab('portfolio')}>{copy.tabPortfolio}</ProfileTab>
+          </div>
+          {profileTab === 'performance' ? (
+            <>
+              <MonthlyProfitChart title={copy.monthlyStatistics} data={stats.monthly} />
+              <StatisticsGrid trader={trader} stats={stats} copy={copy} formatMoney={formatMoney} />
+              <PnlCalendar trader={trader} days={stats.calendar} locale={locale} copy={copy} formatSignedMoney={formatSignedMoney} />
+            </>
+          ) : null}
+          {profileTab === 'trading' ? (
+            <>
+              <TradeTable
+                title={copy.openTrades}
+                whenLabel={copy.opened}
+                rows={trader.openTrades.map(trade => ({
+                  id: trade.id,
+                  symbol: trade.symbol,
+                  side: trade.side,
+                  when: formatWhen(trade.openedAt),
+                  result: null,
+                }))}
+                copy={copy}
+                formatSignedMoney={formatSignedMoney}
+              />
+              <TradeTable
+                title={copy.closedPerformance}
+                whenLabel={copy.closed}
+                rows={trader.closedPerformance.map(trade => ({
+                  id: trade.id,
+                  symbol: trade.symbol,
+                  side: trade.side,
+                  when: formatWhen(trade.closedAt),
+                  result: trade.profit,
+                }))}
+                copy={copy}
+                formatSignedMoney={formatSignedMoney}
+              />
+              <Card padding="none" className="overflow-hidden">
+                <h2 className="border-b border-neutral-100 px-4 py-3 text-sm font-semibold text-neutral-900 dark:border-neutral-800 dark:text-neutral-50">
+                  {copy.lastActivities}
+                </h2>
+                <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
+                  {trader.activities.map(activity => (
+                    <li key={activity.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-sm">
+                      <span className="font-medium text-neutral-900 dark:text-neutral-50">
+                        {activity.kind === 'open' ? copy.opened : copy.closed}
+                      </span>
+                      <span className="text-neutral-800 dark:text-neutral-100">{activity.symbol}</span>
+                      <SideLabel side={activity.side} buy={copy.buy} sell={copy.sell} />
+                      <span className="text-neutral-500 dark:text-neutral-400">{formatWhen(activity.at)}</span>
+                      {activity.profit != null ? (
+                        <span className={clsx('ms-auto font-medium', activity.profit >= 0 ? 'text-teal-700 dark:text-teal-300' : 'text-red-600 dark:text-red-400')}>
+                          {formatSignedMoney(activity.profit)}
+                        </span>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            </>
+          ) : null}
+          {profileTab === 'portfolio' ? (
+            <div className="grid gap-4">
+              <AccountGrowthChart data={trader.chart.growth} series={trader.chart.series} />
+              <PerformanceTradeOutcomeChart
+                data={trader.chart.outcome}
+                title={copy.closedPerformance}
+                subtitle={t.performance.outcomeSubtitle}
+                emptyLabel={t.performance.outcomeEmpty}
+                profitLabel={t.dashboard.chartProfit}
+                lossLabel={t.dashboard.chartLoss}
+              />
+            </div>
+          ) : null}
+        </div>
+        <OverviewPanel
+          trader={trader}
+          stats={stats}
+          copy={copy}
+          formatMoney={formatMoney}
+          formatSignedMoney={formatSignedMoney}
         />
       </div>
-      <TradeTable
-        title={copy.openTrades}
-        whenLabel={copy.opened}
-        rows={trader.openTrades.map(trade => ({
-          id: trade.id,
-          symbol: trade.symbol,
-          side: trade.side,
-          when: formatWhen(trade.openedAt),
-          result: null,
-        }))}
-        copy={copy}
-        formatSignedMoney={formatSignedMoney}
-      />
-      <TradeTable
-        title={copy.closedPerformance}
-        whenLabel={copy.closed}
-        rows={trader.closedPerformance.map(trade => ({
-          id: trade.id,
-          symbol: trade.symbol,
-          side: trade.side,
-          when: formatWhen(trade.closedAt),
-          result: trade.profit,
-        }))}
-        copy={copy}
-        formatSignedMoney={formatSignedMoney}
-      />
-      <Card padding="none" className="overflow-hidden">
-        <h2 className="border-b border-neutral-100 px-4 py-3 text-sm font-semibold text-neutral-900 dark:border-neutral-800 dark:text-neutral-50">
-          {copy.lastActivities}
-        </h2>
-        <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
-          {trader.activities.map(activity => (
-            <li key={activity.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-sm">
-              <span className="font-medium text-neutral-900 dark:text-neutral-50">
-                {activity.kind === 'open' ? copy.opened : copy.closed}
-              </span>
-              <span className="text-neutral-800 dark:text-neutral-100">{activity.symbol}</span>
-              <SideLabel side={activity.side} buy={copy.buy} sell={copy.sell} />
-              <span className="text-neutral-500 dark:text-neutral-400">{formatWhen(activity.at)}</span>
-              {activity.profit != null ? (
-                <span className={clsx('ms-auto font-medium', activity.profit >= 0 ? 'text-teal-700 dark:text-teal-300' : 'text-red-600 dark:text-red-400')}>
-                  {formatSignedMoney(activity.profit)}
-                </span>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      </Card>
     </PageShell>
     {copyModalOpen ? (
       <CopyTraderModal
@@ -717,6 +805,458 @@ export function SocialTraderActivityPage() {
       />
     ) : null}
     </>
+  )
+}
+
+function HeaderStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-xs text-neutral-500 dark:text-neutral-400">{label}</dt>
+      <dd className="mt-1 text-sm font-semibold text-neutral-900 dark:text-neutral-50">{value}</dd>
+    </div>
+  )
+}
+
+function ProfileTab({
+  active,
+  onClick,
+  icon,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  icon: React.ReactNode
+  children: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={clsx(
+        'inline-flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium',
+        active
+          ? 'bg-teal-600 text-white'
+          : 'text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800',
+      )}
+    >
+      {icon}
+      {children}
+    </button>
+  )
+}
+
+function MonthlyProfitChart({ title, data }: { title: string; data: Array<{ label: string; profit: number }> }) {
+  const { formatAxisMoney } = useFormatMoney()
+  const { theme } = useTheme()
+  const colors = chartThemeColors(theme)
+  return (
+    <Card>
+      <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{title}</h2>
+      <div className="mt-4 h-64">
+        <ResponsiveContainer width="100%" height={256}>
+          <BarChart data={data} margin={{ top: 16, right: 8, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} vertical={false} />
+            <XAxis dataKey="label" tick={{ fontSize: 11, fill: colors.tick }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fontSize: 11, fill: colors.tick }} axisLine={false} tickLine={false} tickFormatter={value => formatAxisMoney(Number(value))} width={48} />
+            <Tooltip {...chartTooltipProps(colors)} formatter={value => formatAxisMoney(Number(value ?? 0))} />
+            <Bar dataKey="profit" fill="#0d9488" radius={[4, 4, 0, 0]} maxBarSize={36} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </Card>
+  )
+}
+
+function StatisticsGrid({
+  trader,
+  stats,
+  copy,
+  formatMoney,
+}: {
+  trader: SocialTrader
+  stats: SocialTraderStats
+  copy: SocialTradingPageTranslations
+  formatMoney: (value: number) => string
+}) {
+  const growth = `${trader.roi.toFixed(2)}%`
+  return (
+    <Card>
+      <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{copy.statisticsMonth}</h2>
+      <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-4">
+        <Metric label={copy.growth} value={growth} tone={trader.roi >= 0 ? 'up' : 'down'} />
+        <Metric label={copy.longTrades} value={String(stats.longTrades)} />
+        <Metric label={copy.maxOpenTrades} value={String(stats.maxOpenTrades)} />
+        <Metric label={copy.sharpeRatio} value={stats.sharpe.toFixed(2)} />
+        <Metric label={copy.avgProfit} value={formatMoney(stats.avgProfit)} />
+        <Metric label={copy.shortTrades} value={String(stats.shortTrades)} />
+        <Metric label={copy.avgHoldingTime} value={interpolate(copy.holdingDays, { count: stats.avgHoldingDays })} />
+        <Metric label={copy.profitFactor} value={stats.profitFactor.toFixed(2)} />
+      </dl>
+    </Card>
+  )
+}
+
+function PnlCalendar({
+  trader,
+  days,
+  locale,
+  copy,
+  formatSignedMoney,
+}: {
+  trader: SocialTrader
+  days: SocialCalendarDay[]
+  locale: string
+  copy: SocialTradingPageTranslations
+  formatSignedMoney: (value: number) => string
+}) {
+  const [selected, setSelected] = useState<SocialCalendarDay | null>(null)
+  const weekdays = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(Date.UTC(2026, 8, 6 + index))
+    return date.toLocaleDateString(locale, { weekday: 'short', timeZone: 'UTC' })
+  })
+  const leading = new Date(Date.UTC(2026, 8, 1)).getUTCDay()
+  const symbols = [...trader.openTrades, ...trader.closedPerformance].map(trade => trade.symbol)
+  return (
+    <Card>
+      <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{copy.pnlCalendar}</h2>
+      <div className="mt-4 grid grid-cols-7 gap-2">
+        {weekdays.map(label => (
+          <div key={label} className="pb-1 text-center text-[11px] font-medium text-neutral-500 dark:text-neutral-400">{label}</div>
+        ))}
+        {Array.from({ length: leading }, (_, index) => (
+          <div key={`lead-${index}`} className="min-h-[72px] rounded-lg border border-neutral-100 px-2 py-2 text-xs text-neutral-400 dark:border-neutral-800">
+            <span>{32 - leading + index}</span>
+            <p className="mt-2 text-[11px]">{copy.noTrades}</p>
+          </div>
+        ))}
+        {days.map(day => {
+          const quiet = day.profit == null
+          const up = (day.profit ?? 0) >= 0
+          return (
+            <button
+              key={day.day}
+              type="button"
+              onClick={() => setSelected(day)}
+              className={clsx(
+                'min-h-[72px] rounded-lg border px-2 py-2 text-start text-xs transition-colors',
+                quiet
+                  ? 'border-neutral-100 text-neutral-400 hover:border-neutral-300 dark:border-neutral-800 dark:hover:border-neutral-600'
+                  : up
+                    ? 'border-teal-100 bg-teal-50 text-teal-800 hover:border-teal-300 dark:border-teal-900 dark:bg-teal-950/40 dark:text-teal-200'
+                    : 'border-red-100 bg-red-50 text-red-700 hover:border-red-300 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200',
+              )}
+            >
+              <span className="text-[11px]">{String(day.day).padStart(2, '0')}</span>
+              {quiet ? (
+                <p className="mt-2 text-[11px]">{copy.noTrades}</p>
+              ) : (
+                <>
+                  <p className="mt-1 font-semibold">{formatSignedMoney(day.profit ?? 0)}</p>
+                  <p className="text-[11px] opacity-80">{interpolate(copy.tradeCount, { count: day.trades })}</p>
+                </>
+              )}
+            </button>
+          )
+        })}
+      </div>
+      {selected ? (
+        <DayTradesModal
+          day={selected}
+          symbols={symbols}
+          locale={locale}
+          copy={copy}
+          onClose={() => setSelected(null)}
+        />
+      ) : null}
+    </Card>
+  )
+}
+
+const DAY_SYMBOLS = ['EURUSD', 'GBPUSD', 'USDJPY', 'XAUUSD', 'GBPJPY', 'NAS100']
+
+interface DayFill {
+  symbol: string
+  side: SocialTradeSide
+  unit: number
+  lots: number
+  openRate: number
+  closeRate: number
+  openedAt: string
+  closedAt: string
+  profit: number
+}
+
+function dayFills(day: SocialCalendarDay, symbols: string[]): DayFill[] {
+  if (day.profit == null || day.trades <= 0) return []
+  let seed = day.day * 997 + Math.round(day.profit * 100)
+  const random = () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0
+    return seed / 4294967296
+  }
+  const weights = Array.from({ length: day.trades }, () => 0.35 + random())
+  const weightSum = weights.reduce((sum, weight) => sum + weight, 0)
+  const profits = weights.map(weight => Math.round(((day.profit ?? 0) * weight / weightSum) * 100) / 100)
+  const drift = Math.round(((day.profit ?? 0) - profits.reduce((sum, profit) => sum + profit, 0)) * 100) / 100
+  const last = profits.length - 1
+  profits[last] = Math.round(((profits[last] ?? 0) + drift) * 100) / 100
+  const pool = symbols.length > 0 ? symbols : DAY_SYMBOLS
+  return profits.map((profit, index) => {
+    const symbol = pool[index % pool.length] ?? 'EURUSD'
+    const side: SocialTradeSide = random() > 0.35 ? 'buy' : 'sell'
+    const base = symbol.includes('XAU') ? 2650 : symbol.includes('JPY') ? 151 : symbol.includes('NAS') || symbol.includes('US30') ? 20100 : 1.1
+    const digits = base > 100 ? 2 : 5
+    const openRate = Number((base + random() * (base > 100 ? 8 : 0.02)).toFixed(digits))
+    const closeRate = Number((openRate + (side === 'buy' ? 1 : -1) * (profit >= 0 ? 1 : -1) * (base > 100 ? 0.4 : 0.0002)).toFixed(digits))
+    const openHour = 8 + Math.floor(random() * 8)
+    const closeHour = Math.min(openHour + 1 + Math.floor(random() * 6), 22)
+    const lots = Number((0.01 + Math.floor(random() * 8) * 0.01).toFixed(2))
+    return {
+      symbol,
+      side,
+      unit: Math.round(lots * 100000),
+      lots,
+      openRate,
+      closeRate,
+      openedAt: new Date(Date.UTC(2026, 8, Math.max(day.day - 1, 1), openHour, Math.floor(random() * 60), Math.floor(random() * 60))).toISOString(),
+      closedAt: new Date(Date.UTC(2026, 8, day.day, closeHour, Math.floor(random() * 60), Math.floor(random() * 60))).toISOString(),
+      profit,
+    }
+  })
+}
+
+function DayTradesModal({
+  day,
+  symbols,
+  locale,
+  copy,
+  onClose,
+}: {
+  day: SocialCalendarDay
+  symbols: string[]
+  locale: string
+  copy: SocialTradingPageTranslations
+  onClose: () => void
+}) {
+  const { formatSignedMoney } = useFormatMoney()
+  const fills = dayFills(day, symbols)
+  const wins = fills.filter(fill => fill.profit > 0).length
+  const losses = fills.filter(fill => fill.profit < 0).length
+  const gross = fills.reduce((sum, fill) => sum + fill.profit, 0)
+  const lots = fills.reduce((sum, fill) => sum + fill.lots, 0)
+  const winRate = fills.length === 0 ? 0 : (wins / fills.length) * 100
+  const heading = new Date(Date.UTC(2026, 8, day.day)).toLocaleDateString(locale, {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
+  const curve = fills.reduce<number[]>((points, fill) => {
+    points.push((points[points.length - 1] ?? 0) + fill.profit)
+    return points
+  }, [0])
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const stamp = (iso: string) => new Date(iso).toLocaleString(locale, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  })
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-neutral-900/40 p-0 sm:items-center sm:p-6"
+      role="dialog"
+      aria-modal="true"
+      aria-label={heading}
+      onClick={onClose}
+    >
+      <div
+        className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl dark:bg-neutral-950 sm:rounded-2xl"
+        onClick={event => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
+            {heading}
+            <span className="ms-3 text-sm font-medium text-neutral-500 dark:text-neutral-400">{copy.netPnl}</span>
+            <span className={clsx('ms-2 text-sm font-semibold', (day.profit ?? 0) >= 0 ? 'text-teal-700 dark:text-teal-300' : 'text-red-600 dark:text-red-400')}>
+              {formatSignedMoney(day.profit ?? 0)}
+            </span>
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800"
+            aria-label={copy.copySetup.close}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        {fills.length === 0 ? (
+          <p className="py-10 text-center text-sm text-neutral-500 dark:text-neutral-400">{copy.noTrades}</p>
+        ) : (
+          <>
+            <div className="mt-5 grid gap-4 sm:grid-cols-[9rem_minmax(0,1fr)] sm:items-center">
+              <DaySparkline values={curve} />
+              <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                <Metric label={copy.totalTrades} value={String(fills.length)} />
+                <Metric label={copy.winningTrades} value={String(wins)} />
+                <Metric label={copy.grossPnl} value={formatSignedMoney(gross)} tone={gross >= 0 ? 'up' : 'down'} />
+                <Metric label={copy.winRate} value={`${winRate.toFixed(2)}%`} />
+                <Metric label={copy.losingTrades} value={String(losses)} />
+                <Metric label={copy.totalLots} value={lots.toFixed(2)} />
+              </dl>
+            </div>
+            <div className="mt-5 overflow-x-auto">
+              <table className="w-full min-w-[720px] text-sm">
+                <thead>
+                  <tr className="text-left text-xs font-medium text-neutral-500 dark:text-neutral-400">
+                    <th className="px-2 py-2">{copy.asset} ({fills.length})</th>
+                    <th className="px-2 py-2">{copy.unit}</th>
+                    <th className="px-2 py-2">{copy.openRate}</th>
+                    <th className="px-2 py-2">{copy.closeRate}</th>
+                    <th className="px-2 py-2">{copy.openDateTime}</th>
+                    <th className="px-2 py-2">{copy.closeDateTime}</th>
+                    <th className="px-2 py-2 text-end">{copy.pnl}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {fills.map((fill, index) => (
+                    <tr key={`${fill.symbol}-${index}`} className="border-t border-neutral-100 dark:border-neutral-800">
+                      <td className="px-2 py-3">
+                        <span className="inline-flex items-center gap-2 font-medium text-neutral-900 dark:text-neutral-50">
+                          {fill.symbol}
+                          <SideLabel side={fill.side} buy={copy.buy} sell={copy.sell} />
+                        </span>
+                      </td>
+                      <td className="px-2 py-3 text-neutral-700 dark:text-neutral-200">{fill.unit}</td>
+                      <td className="px-2 py-3 text-neutral-700 dark:text-neutral-200">{fill.openRate}</td>
+                      <td className="px-2 py-3 text-neutral-700 dark:text-neutral-200">{fill.closeRate}</td>
+                      <td className="px-2 py-3 text-neutral-600 dark:text-neutral-300">{stamp(fill.openedAt)}</td>
+                      <td className="px-2 py-3 text-neutral-600 dark:text-neutral-300">{stamp(fill.closedAt)}</td>
+                      <td className={clsx('px-2 py-3 text-end font-medium', fill.profit >= 0 ? 'text-teal-700 dark:text-teal-300' : 'text-red-600 dark:text-red-400')}>
+                        {formatSignedMoney(fill.profit)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
+function DaySparkline({ values }: { values: number[] }) {
+  const width = 140
+  const height = 64
+  const min = Math.min(...values, 0)
+  const max = Math.max(...values, 0)
+  const span = max - min || 1
+  const coords = values.map((value, index) => {
+    const x = (index / Math.max(values.length - 1, 1)) * width
+    const y = height - 6 - ((value - min) / span) * (height - 12)
+    return { x, y }
+  })
+  const line = coords.map(point => `${point.x},${point.y}`).join(' ')
+  const area = `${line} ${width},${height} 0,${height}`
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="h-16 w-36" aria-hidden="true">
+      <polygon points={area} className="fill-teal-100 dark:fill-teal-900" />
+      <polyline points={line} fill="none" className="stroke-teal-600" strokeWidth="2" />
+    </svg>
+  )
+}
+
+function OverviewPanel({
+  trader,
+  stats,
+  copy,
+  formatMoney,
+  formatSignedMoney,
+}: {
+  trader: SocialTrader
+  stats: SocialTraderStats
+  copy: SocialTradingPageTranslations
+  formatMoney: (value: number) => string
+  formatSignedMoney: (value: number) => string
+}) {
+  const lastTrade = trader.activities.reduce((latest, item) => item.at > latest ? item.at : latest, trader.activities[0]?.at ?? '')
+  return (
+    <Card className="xl:sticky xl:top-4">
+      <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{copy.overview}</h2>
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        <div>
+          <p className={clsx('text-lg font-semibold', stats.dailyProfitPercent >= 0 ? 'text-teal-700 dark:text-teal-300' : 'text-red-600')}>
+            {stats.dailyProfitPercent.toFixed(2)}%
+          </p>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400">{copy.dailyProfit}</p>
+        </div>
+        <div>
+          <p className={clsx('text-lg font-semibold', stats.monthlyProfitPercent >= 0 ? 'text-teal-700 dark:text-teal-300' : 'text-red-600')}>
+            {stats.monthlyProfitPercent.toFixed(2)}%
+          </p>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400">{copy.monthlyProfit}</p>
+        </div>
+      </div>
+      <dl className="mt-4 space-y-3 text-sm">
+        <OverviewRow label={copy.growth} value={`${trader.roi.toFixed(2)}%`} tone={trader.roi >= 0 ? 'up' : 'down'} />
+        <OverviewRow label={copy.drawdown} value={`${trader.maxDrawdown.toFixed(2)}%`} tone="down" />
+        <div>
+          <div className="flex items-center justify-between">
+            <dt className="text-neutral-500 dark:text-neutral-400">{copy.winRate}</dt>
+            <dd className="font-semibold text-teal-700 dark:text-teal-300">{trader.winRate.toFixed(2)}%</dd>
+          </div>
+          <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800">
+            <div className="h-full rounded-full bg-teal-600" style={{ width: `${Math.min(trader.winRate, 100)}%` }} />
+          </div>
+        </div>
+        <OverviewRow label={copy.profitableTrades} value={String(stats.profitableTrades)} />
+        <OverviewRow label={copy.losingTrades} value={String(stats.losingTrades)} />
+        <OverviewRow label={copy.balance} value={formatMoney(trader.previewBalance)} />
+        <OverviewRow label={copy.equity} value={formatMoney(stats.equity)} />
+        <OverviewRow label={copy.deposit} value={formatMoney(stats.deposit)} />
+        <OverviewRow label={copy.totalTrades} value={String(trader.closedTrades + trader.openTrades.length)} />
+        <OverviewRow label={copy.lastTrade} value={lastTrade ? formatWhen(lastTrade) : '—'} />
+        <OverviewRow label={copy.openPosition} value={formatSignedMoney(stats.openPosition)} tone={stats.openPosition >= 0 ? 'up' : 'down'} />
+        <OverviewRow label={copy.liveCopiers} value={String(trader.followerCount)} />
+        <OverviewRow label={copy.bestTrade} value={`${formatSignedMoney(stats.bestTradeProfit)} · ${formatWhen(stats.bestTradeAt)}`} tone="up" />
+        <OverviewRow label={copy.worstTrade} value={`${formatSignedMoney(stats.worstTradeProfit)} · ${formatWhen(stats.worstTradeAt)}`} tone="down" />
+        <OverviewRow label={copy.timezone} value={trader.profile.timezone} />
+        <OverviewRow label={copy.amountFollowing} value={formatMoney(stats.amountFollowing)} />
+      </dl>
+    </Card>
+  )
+}
+
+function OverviewRow({ label, value, tone }: { label: string; value: string; tone?: 'up' | 'down' }) {
+  return (
+    <div className="flex items-start justify-between gap-3 border-b border-neutral-100 pb-2 dark:border-neutral-800">
+      <dt className="text-neutral-500 dark:text-neutral-400">{label}</dt>
+      <dd className={clsx('text-end font-medium text-neutral-900 dark:text-neutral-50', tone === 'up' && 'text-teal-700 dark:text-teal-300', tone === 'down' && 'text-red-600 dark:text-red-400')}>{value}</dd>
+    </div>
+  )
+}
+
+function Metric({ label, value, tone }: { label: string; value: string; tone?: 'up' | 'down' }) {
+  return (
+    <div>
+      <dt className="text-xs text-neutral-500 dark:text-neutral-400">{label}</dt>
+      <dd className={clsx('mt-1 text-sm font-semibold text-neutral-900 dark:text-neutral-50', tone === 'up' && 'text-teal-700 dark:text-teal-300', tone === 'down' && 'text-red-600 dark:text-red-400')}>{value}</dd>
+    </div>
   )
 }
 
