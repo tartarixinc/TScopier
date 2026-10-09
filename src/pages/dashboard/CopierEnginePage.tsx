@@ -38,6 +38,7 @@ import { PageShell } from '../../components/layout/PageShell'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { TelegramConnectFlow, type TelegramConnectStage, type TelegramAuthMethod } from '../../components/telegram/TelegramConnectFlow'
+import { TradingViewSourcePanel } from '../../components/dashboard/TradingViewSourcePanel'
 import { callTelegramAuth, resolveResendAvailableAt, resolveTelegramAuthErrorMessage, type QrPollResponse, type TelegramCodeStatusResponse } from '../../lib/telegramAuthApi'
 import {
   getCachedTgChannels,
@@ -242,14 +243,15 @@ export function CopierEnginePage() {
       supabase.from('telegram_channels').select('*').eq('user_id', user!.id).order('created_at', { ascending: false }),
       supabase.from('telegram_sessions').select('id').eq('user_id', user!.id).maybeSingle(),
     ])
-    const channelRows = (channelsRes.data ?? []) as TelegramChannel[]
+    const allChannelRows = (channelsRes.data ?? []) as TelegramChannel[]
+    const channelRows = allChannelRows.filter(row => row.source_kind !== 'tradingview')
     const tgList = user?.id ? getCachedTgChannels(user.id) : null
     const reconciledChannels = tgList?.length
       ? await reconcileChannelIdentitiesFromTelegram(supabase, user!.id, channelRows, tgList)
       : channelRows
     setChannels(reconciledChannels)
     const brokerRows = await refreshBrokers({ silent: true })
-    const reconciled = await pruneStaleBrokerChannelIds(supabase, user!.id, reconciledChannels, brokerRows)
+    const reconciled = await pruneStaleBrokerChannelIds(supabase, user!.id, allChannelRows, brokerRows)
     setBrokers(reconciled)
     const hasSession = !!sessionRes.data
     setHasTgSession(hasSession)
@@ -907,11 +909,12 @@ export function CopierEnginePage() {
         </SourceTab>
         <SourceTab active={source === 'tradingview'} onClick={() => setSource('tradingview')}>
           {t.channelsPage.tabTradingView}
-          <Badge variant="neutral" size="sm">{t.channelsPage.comingSoon}</Badge>
         </SourceTab>
       </nav>
 
-      {source !== 'telegram' ? (
+      {source === 'tradingview' ? (
+        <TradingViewSourcePanel brokers={brokers} replaceBroker={replaceBroker} />
+      ) : source !== 'telegram' ? (
         <Card>
           <div className="py-10 text-center">
             <Badge variant="neutral">{t.channelsPage.comingSoon}</Badge>

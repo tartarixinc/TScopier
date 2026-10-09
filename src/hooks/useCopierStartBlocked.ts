@@ -4,6 +4,7 @@ import { useBrokerAccounts } from '../context/BrokerAccountsContext'
 import { useSubscription } from '../context/SubscriptionContext'
 import { isBrokerSessionConnected } from '../lib/brokerReconnect'
 import { resolveCopierStartBlocked, type CopierStartBlockedReason } from '../lib/copierStartBlocked'
+import { subscribeTradingViewWebhooksChanged } from '../lib/tradingViewWebhook'
 import { getCachedTgSession, setCachedTgSession } from '../lib/telegramSessionCache'
 import { supabase } from '../lib/supabase'
 
@@ -16,6 +17,7 @@ export function useCopierStartBlocked() {
     return getCachedTgSession(user.id)
   })
   const [telegramLoading, setTelegramLoading] = useState(() => user?.id ? telegramConnected === null : false)
+  const [hasTradingViewWebhook, setHasTradingViewWebhook] = useState<boolean | null>(() => (user?.id ? null : false))
 
   const refreshTelegramSession = useCallback(async () => {
     if (!user?.id) {
@@ -35,11 +37,27 @@ export function useCopierStartBlocked() {
     setTelegramLoading(false)
   }, [user?.id])
 
+  const refreshTradingViewWebhooks = useCallback(async () => {
+    if (!user?.id) {
+      setHasTradingViewWebhook(false)
+      return
+    }
+    const { count, error } = await supabase
+      .from('tradingview_webhooks')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+    setHasTradingViewWebhook(!error && (count ?? 0) > 0)
+  }, [user?.id])
+
   useEffect(() => {
     void refreshTelegramSession()
-  }, [refreshTelegramSession])
+    void refreshTradingViewWebhooks()
+    return subscribeTradingViewWebhooksChanged(() => {
+      void refreshTradingViewWebhooks()
+    })
+  }, [refreshTelegramSession, refreshTradingViewWebhooks])
 
-  const resolving = subscriptionLoading || usageLoading || brokersLoading || telegramLoading
+  const resolving = subscriptionLoading || usageLoading || brokersLoading || telegramLoading || hasTradingViewWebhook === null
 
   const hasConnectedBroker = useMemo(
     () => brokers.some(b => b.is_active !== false && isBrokerSessionConnected(b)),
@@ -52,16 +70,14 @@ export function useCopierStartBlocked() {
       hasConnectedBroker,
       hasTelegramSession: telegramConnected === true,
       hasChannels: usage.telegramChannels > 0,
+      hasTradingViewWebhook: hasTradingViewWebhook === true,
     }),
-    [hasActiveSubscription, hasConnectedBroker, telegramConnected, usage.telegramChannels],
+    [hasActiveSubscription, hasConnectedBroker, telegramConnected, usage.telegramChannels, hasTradingViewWebhook],
   )
 
   return {
     copierStartBlocked: blocked,
     copierStartBlockedReason: reason as CopierStartBlockedReason | null,
-    missingBroker: blocked && reason === 'setup' && !hasConnectedBroker,
-    missingTelegram: blocked && reason === 'setup' && !telegramConnected,
-    missingChannels: blocked && reason === 'setup' && usage.telegramChannels === 0,
     resolving,
   }
 }

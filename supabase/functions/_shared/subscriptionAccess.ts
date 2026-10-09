@@ -205,7 +205,7 @@ export async function assertTelegramChannelLimit(
   if (slotsNeeded <= 0) return null;
   const { data, error } = await supabase
     .from("telegram_channels")
-    .select("id")
+    .select("id, source_kind")
     .eq("user_id", userId)
     .eq("is_active", true);
   if (error || !data) {
@@ -219,7 +219,11 @@ export async function assertTelegramChannelLimit(
     );
   }
   const exclude = new Set((options.excludeRowIds ?? []).filter(Boolean));
-  const count = data.reduce((n, row) => n + (exclude.has(row.id) ? 0 : 1), 0);
+  const count = data.reduce((n, row) => {
+    if (exclude.has(row.id)) return n;
+    if ((row as { source_kind?: string | null }).source_kind === "tradingview") return n;
+    return n + 1;
+  }, 0);
   if (count + slotsNeeded > limit) {
     return subscriptionAccessDenied(
       `Basic plan includes ${limit} Telegram channels. Upgrade to Advanced for unlimited channels.`,

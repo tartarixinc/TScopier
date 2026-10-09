@@ -66,6 +66,7 @@ export const chromeRu: AppChromeTranslations = {
       setupBroker: 'подключите брокера',
       setupTelegram: 'подключите Telegram',
       setupChannels: 'добавьте канал',
+      setupSource: 'подключите источник сигналов',
       bannerAction: 'Перейти к настройкам',
       bannerText: 'Чтобы запустить копир, {items}.',
       bannerLastSep: ' и ',

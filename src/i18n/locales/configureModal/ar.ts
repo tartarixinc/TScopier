@@ -6,7 +6,7 @@ export const configureModalAr: ConfigureModalTranslations = {
   saved: 'تم الحفظ',
   cancel: 'إلغاء',
   save: 'حفظ',
-  channelsSidebar: 'القنوات',
+  channelsSidebar: 'المصدر',
   addChannel: 'إضافة قناة',
   editLinkedChannels: 'تعديل القنوات المرتبطة',
   doneEditingLinkedChannels: 'إنهاء تعديل القنوات',

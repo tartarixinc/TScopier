@@ -113,7 +113,7 @@ export const accountConfigRu: AccountConfigBundleTranslations = {
       accountTypeLive: 'Реальный',
       accountTypePropFirm: 'Проп-фирма',
       detailServer: 'Сервер',
-      detailSignalChannels: 'Сигнальные каналы',
+      detailSignalChannels: 'Источник сигналов',
       detailBalance: 'Баланс',
       detailEquity: 'Средства',
       channelsNoneSelected: 'Ничего не выбрано',

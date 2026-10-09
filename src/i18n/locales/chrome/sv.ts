@@ -65,6 +65,7 @@ export const chromeSv: AppChromeTranslations = {
       setupBroker: 'koppla en broker',
       setupTelegram: 'anslut Telegram',
       setupChannels: 'lägg till en kanal',
+      setupSource: 'anslut en signalkälla',
       bannerAction: 'Gå till installationen',
       bannerText: 'För att starta kopieraren, {items}.',
       bannerLastSep: ' och ',

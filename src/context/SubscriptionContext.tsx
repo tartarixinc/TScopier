@@ -181,7 +181,8 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
           .from('telegram_channels')
           .select('id', { count: 'exact', head: true })
           .eq('user_id', userId)
-          .eq('is_active', true),
+          .eq('is_active', true)
+          .neq('source_kind', 'tradingview'),
         supabase
           .from('backtest_runs')
           .select('id', { count: 'exact', head: true })

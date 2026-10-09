@@ -6,7 +6,7 @@ export const configureModalPl: ConfigureModalTranslations = {
   saved: 'Zapisano',
   cancel: 'Anulować',
   save: 'Ratować',
-  channelsSidebar: 'Kanały',
+  channelsSidebar: 'Źródło',
   addChannel: 'Dodaj kanał',
   editLinkedChannels: 'Edytuj połączone kanały',
   doneEditingLinkedChannels: 'Zakończ edycję kanałów',

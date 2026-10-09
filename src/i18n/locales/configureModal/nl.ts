@@ -6,7 +6,7 @@ export const configureModalNl: ConfigureModalTranslations = {
   saved: 'Opgeslagen',
   cancel: 'Annuleren',
   save: 'Redden',
-  channelsSidebar: 'Kanalen',
+  channelsSidebar: 'Bron',
   addChannel: 'Kanaal toevoegen',
   editLinkedChannels: 'Bewerk gekoppelde kanalen',
   doneEditingLinkedChannels: 'Kanalen bewerken is voltooid',

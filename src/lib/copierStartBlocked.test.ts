@@ -7,6 +7,7 @@ const ready = {
   hasConnectedBroker: true,
   hasTelegramSession: true,
   hasChannels: true,
+  hasTradingViewWebhook: false,
 }
 
 describe('resolveCopierStartBlocked', () => {
@@ -21,18 +22,30 @@ describe('resolveCopierStartBlocked', () => {
     )
   })
 
-  it('blocks when broker, telegram, or channels are missing', () => {
+  it('blocks when broker is missing or no signal source exists', () => {
     assert.deepEqual(
       resolveCopierStartBlocked({ ...ready, hasConnectedBroker: false }),
       { blocked: true, reason: 'setup' },
     )
     assert.deepEqual(
-      resolveCopierStartBlocked({ ...ready, hasTelegramSession: false }),
+      resolveCopierStartBlocked({ ...ready, hasTelegramSession: false, hasTradingViewWebhook: false }),
       { blocked: true, reason: 'setup' },
     )
     assert.deepEqual(
-      resolveCopierStartBlocked({ ...ready, hasChannels: false }),
+      resolveCopierStartBlocked({ ...ready, hasChannels: false, hasTradingViewWebhook: false }),
       { blocked: true, reason: 'setup' },
+    )
+  })
+
+  it('allows TradingView alone without a Telegram session or channel', () => {
+    assert.deepEqual(
+      resolveCopierStartBlocked({
+        ...ready,
+        hasTelegramSession: false,
+        hasChannels: false,
+        hasTradingViewWebhook: true,
+      }),
+      { blocked: false, reason: null },
     )
   })
 })

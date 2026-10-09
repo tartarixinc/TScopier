@@ -65,6 +65,7 @@ export const chromeAr: AppChromeTranslations = {
       setupBroker: 'اربط وسيطًا',
       setupTelegram: 'اربط Telegram',
       setupChannels: 'أضف قناة',
+      setupSource: 'اربط مصدر إشارة',
       bannerAction: 'الانتقال إلى الإعداد',
       bannerText: 'لبدء النسخ، يرجى {items}.',
       bannerLastSep: ' و ',

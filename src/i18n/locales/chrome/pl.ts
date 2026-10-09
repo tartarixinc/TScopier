@@ -66,6 +66,7 @@ export const chromePl: AppChromeTranslations = {
       setupBroker: 'powiąż brokera',
       setupTelegram: 'połącz Telegram',
       setupChannels: 'dodaj kanał',
+      setupSource: 'połącz źródło sygnału',
       bannerAction: 'Przejdź do konfiguracji',
       bannerText: 'Aby uruchomić kopiator, {items}.',
       bannerLastSep: ' i ',

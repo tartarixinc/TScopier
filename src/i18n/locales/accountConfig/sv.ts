@@ -113,7 +113,7 @@ export const accountConfigSv: AccountConfigBundleTranslations = {
       accountTypeLive: 'Live',
       accountTypePropFirm: 'Prop firm',
       detailServer: 'Server',
-      detailSignalChannels: 'Signalkanaler',
+      detailSignalChannels: 'Signalkälla',
       detailBalance: 'Saldo',
       detailEquity: 'Eget kapital',
       channelsNoneSelected: 'Inga valda',

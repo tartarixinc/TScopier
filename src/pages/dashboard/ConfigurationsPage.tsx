@@ -52,6 +52,7 @@ interface ChannelName {
   channel_username: string
   channel_id: string
   subscriber_count: number | null
+  source_kind?: 'telegram' | 'tradingview' | null
 }
 
 interface Point {
@@ -315,7 +316,7 @@ export function ConfigurationsPage() {
     void (async () => {
       const { data, error } = await supabase
         .from('telegram_channels')
-        .select('id,display_name,channel_username,channel_id,signal_channel_id')
+        .select('id,display_name,channel_username,channel_id,signal_channel_id,source_kind')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
       if (cancelled) return
@@ -325,7 +326,7 @@ export function ConfigurationsPage() {
         setChannelsLoading(false)
         return
       }
-      const rows = (data ?? []) as Array<ChannelName & { signal_channel_id?: string | null }>
+      const rows = (data ?? []) as Array<ChannelName & { signal_channel_id?: string | null; source_kind?: 'telegram' | 'tradingview' | null }>
       const registryIds = [...new Set(rows.map(row => row.signal_channel_id).filter((id): id is string => Boolean(id)))]
       const counts = new Map<string, number>()
       if (registryIds.length > 0) {
@@ -346,6 +347,7 @@ export function ConfigurationsPage() {
         channel_username: row.channel_username,
         channel_id: row.channel_id,
         subscriber_count: row.signal_channel_id ? counts.get(row.signal_channel_id) ?? null : null,
+        source_kind: row.source_kind ?? 'telegram',
       })))
       setChannelsLoading(false)
     })()
@@ -2030,6 +2032,7 @@ function ChannelNode({
   name: string
   copy: ConfigurationsPageTranslations
 }) {
+  const tradingView = channel?.source_kind === 'tradingview'
   const username = channelUsernameLabel(channel?.channel_username)
   const channelId = channel?.channel_id?.trim() || '—'
   const subscribers = channel?.subscriber_count == null
@@ -2038,13 +2041,19 @@ function ChannelNode({
   return (
     <Card padding="sm">
       <div className="flex items-start gap-3">
-        <ChannelLogo key={username} username={channel?.channel_username ?? ''} />
+        {tradingView ? (
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-teal-600 text-xs font-semibold text-white">
+            TV
+          </div>
+        ) : (
+          <ChannelLogo key={username} username={channel?.channel_username ?? ''} />
+        )}
         <div className="min-w-0 flex-1">
           <p dir="auto" className="truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">{name}</p>
           <dl className="mt-1.5 space-y-0.5 text-xs">
-            <MetaRow label={copy.username} value={username} />
-            <MetaRow label={copy.channelId} value={channelId} />
-            <MetaRow label={copy.subscribers} value={subscribers} />
+            <MetaRow label={copy.username} value={tradingView ? 'TradingView' : username} />
+            {tradingView ? null : <MetaRow label={copy.channelId} value={channelId} />}
+            {tradingView ? null : <MetaRow label={copy.subscribers} value={subscribers} />}
           </dl>
         </div>
       </div>

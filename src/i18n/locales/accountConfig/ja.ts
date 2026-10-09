@@ -113,7 +113,7 @@ export const accountConfigJa: AccountConfigBundleTranslations = {
       accountTypeLive: 'ライブ',
       accountTypePropFirm: 'プロップファーム',
       detailServer: 'サーバー',
-      detailSignalChannels: 'シグナルチャンネル',
+      detailSignalChannels: 'シグナルソース',
       detailBalance: '残高',
       detailEquity: '有効証拠金',
       channelsNoneSelected: '未選択',

@@ -113,7 +113,7 @@ export const accountConfigPl: AccountConfigBundleTranslations = {
       accountTypeLive: 'Rzeczywiste',
       accountTypePropFirm: 'Firma prop',
       detailServer: 'Serwer',
-      detailSignalChannels: 'Kanały sygnałów',
+      detailSignalChannels: 'Źródło sygnału',
       detailBalance: 'Saldo',
       detailEquity: 'Kapitał',
       channelsNoneSelected: 'Nic nie wybrano',

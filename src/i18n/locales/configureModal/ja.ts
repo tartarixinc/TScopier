@@ -6,7 +6,7 @@ export const configureModalJa: ConfigureModalTranslations = {
   saved: '保存されました',
   cancel: 'キャンセル',
   save: '保存',
-  channelsSidebar: 'チャンネル',
+  channelsSidebar: 'ソース',
   addChannel: 'チャンネルを追加',
   editLinkedChannels: 'リンクされたチャンネルを編集する',
   doneEditingLinkedChannels: 'チャンネルの編集が完了しました',

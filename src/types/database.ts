@@ -25,6 +25,16 @@ export interface Database {
         Insert: Omit<TelegramChannel, 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Omit<TelegramChannel, 'id' | 'created_at' | 'updated_at'>>
       }
+      tradingview_webhooks: {
+        Row: TradingViewWebhook
+        Insert: Omit<TradingViewWebhook, 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Omit<TradingViewWebhook, 'id' | 'created_at'>>
+      }
+      tradingview_webhook_deliveries: {
+        Row: TradingViewWebhookDelivery
+        Insert: Omit<TradingViewWebhookDelivery, 'id' | 'created_at'>
+        Update: Partial<Omit<TradingViewWebhookDelivery, 'id' | 'created_at'>>
+      }
       signal_channels: {
         Row: SignalChannel
         Insert: Omit<SignalChannel, 'id' | 'created_at' | 'updated_at' | 'first_seen_at'> & { first_seen_at?: string }
@@ -529,6 +539,29 @@ export interface TelegramAuthPending {
   expires_at: string
 }
 
+export interface TradingViewWebhook {
+  id: string
+  user_id: string
+  channel_id: string
+  name: string
+  token_hash: string
+  token: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface TradingViewWebhookDelivery {
+  id: string
+  webhook_id: string
+  user_id: string
+  signal_id: string | null
+  status: 'accepted' | 'skipped' | 'error' | 'duplicate'
+  skip_reason: string | null
+  idempotency_key: string
+  created_at: string
+}
+
 export interface TelegramChannel {
   id: string
   user_id: string
@@ -536,6 +569,8 @@ export interface TelegramChannel {
   channel_username: string
   display_name: string
   is_active: boolean
+  /** telegram channels are listened to. tradingview rows are webhook copy targets. */
+  source_kind?: 'telegram' | 'tradingview' | null
   /** FK to permanent global signal_channels registry row. */
   signal_channel_id?: string | null
   lot_size_override: number | null

@@ -65,6 +65,7 @@ export const chromeJa: AppChromeTranslations = {
       setupBroker: 'ブローカーのリンク',
       setupTelegram: 'Telegramへの接続',
       setupChannels: 'チャンネルの追加',
+      setupSource: 'シグナルソースへの接続',
       bannerAction: 'セットアップへ進む',
       bannerText: 'コピーを開始するには、{items}が必要です。',
       bannerLastSep: '、',

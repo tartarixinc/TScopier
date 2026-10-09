@@ -157,6 +157,28 @@ interface ChannelOption {
   channel_username: string
   is_active: boolean
   created_at: string
+  source_kind?: 'telegram' | 'tradingview' | null
+}
+
+function SourceKindLogo({ sourceKind }: { sourceKind?: ChannelOption['source_kind'] }) {
+  if (sourceKind === 'tradingview') {
+    return (
+      <img
+        src="/tradingview-logo.png"
+        alt=""
+        aria-hidden
+        className="h-4 w-4 shrink-0 rounded-full object-cover"
+      />
+    )
+  }
+  return (
+    <img
+      src="/Telegram.svg"
+      alt=""
+      aria-hidden
+      className="h-4 w-4 shrink-0 object-contain"
+    />
+  )
 }
 
 /** Survives route unmount so sidebar navigation does not flash the loading skeleton. */
@@ -1091,6 +1113,13 @@ export function AccountConfigPage() {
     () => channelOptions.find(c => c.id === configDraft.selectedChannelId) ?? null,
     [channelOptions, configDraft.selectedChannelId],
   )
+  const selectedIsTradingView = selectedChannelOption?.source_kind === 'tradingview'
+  const visibleManualSubTabs = useMemo(
+    () => (selectedIsTradingView
+      ? manualSubTabs.filter(tab => tab.id !== 'signal_examples' && tab.id !== 'symbols' && tab.id !== 'channel_instructions')
+      : manualSubTabs),
+    [manualSubTabs, selectedIsTradingView],
+  )
 
   const configureAccountType = useMemo((): LinkedAccountType | undefined => {
     if (!configAccount) return undefined
@@ -1561,7 +1590,7 @@ export function AccountConfigPage() {
     const root = configScrollRef.current
     if (!root) return
 
-    const sectionIds = manualSubTabs.map(s => s.id)
+    const sectionIds = visibleManualSubTabs.map(s => s.id)
     let observer: IntersectionObserver | null = null
     let cancelled = false
     let attempts = 0
@@ -1608,7 +1637,7 @@ export function AccountConfigPage() {
       cancelled = true
       observer?.disconnect()
     }
-  }, [manualSubTabs, selectedChannelLinked, configDraft.selectedChannelId])
+  }, [visibleManualSubTabs, selectedChannelLinked, configDraft.selectedChannelId])
 
   useEffect(() => {
     if (!selectedChannelLinked) return
@@ -1689,7 +1718,7 @@ export function AccountConfigPage() {
     }
     const channelsRes = await supabase
         .from('telegram_channels')
-        .select('id,display_name,channel_username,is_active,created_at')
+        .select('id,display_name,channel_username,is_active,created_at,source_kind')
       .eq('user_id', uid)
         .eq('is_active', true)
       .order('created_at', { ascending: false })
@@ -1719,15 +1748,17 @@ export function AccountConfigPage() {
       limitStateMap[row.channel_id] = normalizeCopyLimitState(row.copy_limit_state)
     }
     setChannelCopyLimitState(limitStateMap)
-    resetConfigSectionScroll('signal_examples')
     const draft = buildChannelConfigDraftFromBroker(merged, channelIds, keywordFiltersEnabled)
     const preferred = normalizeChannelUuid(preferredChannelId)
     const preferredMatch = preferred
       ? channelIds.find(id => normalizeChannelUuid(id) === preferred) ?? null
       : null
+    const selectedId = preferredMatch ?? draft.selectedChannelId ?? channelOptions[0]?.id ?? null
+    const openingTradingView = channelOptions.find(channel => channel.id === selectedId)?.source_kind === 'tradingview'
+    resetConfigSectionScroll(openingTradingView ? 'risk' : 'signal_examples')
     const nextDraft = {
       ...draft,
-      selectedChannelId: preferredMatch ?? draft.selectedChannelId ?? channelOptions[0]?.id ?? null,
+      selectedChannelId: selectedId,
     }
     setConfigDraft(nextDraft)
     setConfigSavedSignature(
@@ -1813,7 +1844,8 @@ export function AccountConfigPage() {
 
   const selectConfigureChannel = (channelId: string) => {
     setConfigDraft(prev => ({ ...prev, selectedChannelId: channelId }))
-    resetConfigSectionScroll('signal_examples')
+    const tradingView = channelOptions.find(channel => channel.id === channelId)?.source_kind === 'tradingview'
+    resetConfigSectionScroll(tradingView ? 'risk' : 'signal_examples')
   }
 
   const connectSelectedChannelToBroker = async () => {
@@ -2564,19 +2596,23 @@ export function AccountConfigPage() {
 
   // ── Channel summary helper for cards ───────────────────────────────────
 
-  const getBrokerSignalChannelsLabel = (brokerId: string) => {
+  const getBrokerSignalChannelsLabel = (brokerId: string): ReactNode => {
     if (channelOptions.length === 0) return bl.channelsNoneSelected
     const brokerRow = brokers.find(b => b.id === brokerId)
     const persistedIds = normalizeSignalChannelIds(brokerRow)
     if (persistedIds.length === 0) return bl.channelsNoneSelected
     const selected = channelOptions.filter(ch => persistedIds.includes(ch.id))
     if (selected.length === 0) return bl.channelsNoneSelected
-    if (selected.length === channelOptions.length && channelOptions.length > 1) {
-      return bl.channelsAll
-    }
-    const labels = selected.map(ch => ch.display_name).filter(Boolean)
-    if (labels.length) return labels.join(', ')
-    return bl.channelsNoneSelected
+    return (
+      <span className="inline-flex max-w-full items-center gap-2 align-middle">
+        {selected.map(channel => (
+          <span key={channel.id} className="inline-flex min-w-0 items-center gap-1">
+            <SourceKindLogo sourceKind={channel.source_kind} />
+            <span className="truncate">{channel.display_name || bl.channelsNoneSelected}</span>
+          </span>
+        ))}
+      </span>
+    )
   }
 
   // ── Delete broker ──────────────────────────────────────────────────────
@@ -3152,7 +3188,7 @@ export function AccountConfigPage() {
                                   : 'text-neutral-600 dark:text-neutral-400 hover:bg-white dark:hover:bg-neutral-900 border border-dashed border-neutral-200 dark:border-neutral-700',
                             )}
                           >
-                            <Radio className={clsx('w-4 h-4 shrink-0', selected ? 'text-primary-600' : linked ? 'text-neutral-400' : 'text-neutral-300')} />
+                            <SourceKindLogo sourceKind={channel.source_kind} />
                             <span className="truncate flex-1">{channel.display_name}</span>
                             {!channelLinkEditMode ? (
                               <Badge variant={linked ? 'primary' : 'neutral'}>
@@ -3187,7 +3223,7 @@ export function AccountConfigPage() {
                 {selectedChannelLinked ? (
                   <div className="shrink-0 px-4 sm:px-6 pt-3 sm:pt-4 bg-white dark:bg-neutral-950 border-b border-neutral-100 dark:border-neutral-800 overflow-x-auto overscroll-x-contain">
                     <div className="flex flex-nowrap items-center gap-1 min-w-max sm:min-w-0 sm:flex-wrap pb-px">
-                      {manualSubTabs.map(sub => {
+                      {visibleManualSubTabs.map(sub => {
                         const SubIcon = sub.icon
                         const active = sub.id === activeManualSubTab
                         return (
@@ -3225,7 +3261,7 @@ export function AccountConfigPage() {
                       : cm.channelConfigUnsavedChanges}
                   </Alert>
                 ) : null}
-                {selectedChannelLinked && (activeChannelTrainingRunning || activeChannelTrainingSaving) ? (
+                {selectedChannelLinked && !selectedIsTradingView && (activeChannelTrainingRunning || activeChannelTrainingSaving) ? (
                   <div className="mb-4 rounded-lg border border-primary-200 dark:border-primary-900 bg-primary-50 dark:bg-primary-950/30 p-3">
                     <p className="text-xs font-medium text-primary-800 dark:text-primary-200">
                       {interpolate(cm.aiTraining.autoTrainingInProgress, {
@@ -3300,6 +3336,7 @@ export function AccountConfigPage() {
                       </div>
                     ) : (
                       <div className="space-y-8">
+                        {selectedIsTradingView ? null : (
                         <section
                           id="config-section-signal_examples"
                           data-config-section="signal_examples"
@@ -3324,7 +3361,9 @@ export function AccountConfigPage() {
                           )
                         }
                         </section>
+                        )}
 
+                        {selectedIsTradingView ? null : (
                         <section
                           id="config-section-symbols"
                           data-config-section="symbols"
@@ -3375,7 +3414,9 @@ export function AccountConfigPage() {
                           )
                         }
                         </section>
+                        )}
 
+                        {selectedIsTradingView ? null : (
                         <section
                           id="config-section-channel_instructions"
                           data-config-section="channel_instructions"
@@ -3439,6 +3480,7 @@ export function AccountConfigPage() {
                           )
                         }
                         </section>
+                        )}
 
                         <section
                           id="config-section-risk"

@@ -187,6 +187,27 @@ export function revisionInflightWaitMs(row: SignalRow, dispatchSource?: string):
   return 60_000
 }
 
+const tradingViewSourceCache = new Map<string, { at: number; value: boolean }>()
+
+/** TradingView webhook rows are not Telegram chats, so the listener-live gate does not apply. */
+export async function isTradingViewSourceChannel(
+  supabase: TradeExecutorContext['supabase'],
+  channelId: string | null,
+): Promise<boolean> {
+  if (!channelId) return false
+  const key = channelId.toLowerCase()
+  const hit = tradingViewSourceCache.get(key)
+  if (hit && Date.now() - hit.at < 5 * 60_000) return hit.value
+  const { data } = await supabase
+    .from('telegram_channels')
+    .select('source_kind')
+    .eq('id', channelId)
+    .maybeSingle()
+  const value = (data as { source_kind?: string | null } | null)?.source_kind === 'tradingview'
+  tradingViewSourceCache.set(key, { at: Date.now(), value })
+  return value
+}
+
 export function enqueueSignal(ctx: TradeExecutorContext, 
     row: SignalRow,
     opts?: {
@@ -585,8 +606,10 @@ export async function handleSignal(ctx: TradeExecutorContext,
       }
       let userSub: Awaited<ReturnType<typeof loadCachedUserSubscription>>
       let isAdmin: boolean
+      const tradingViewSource = await isTradingViewSourceChannel(ctx.supabase, row.channel_id)
       if (
-        (liveFast || liveMgmtFast)
+        !tradingViewSource
+        && (liveFast || liveMgmtFast)
         && telegramLiveTradeGateEnabled()
         && row.channel_id
         && ctx.sessionManager
@@ -606,7 +629,7 @@ export async function handleSignal(ctx: TradeExecutorContext,
         userSub = sub
         isAdmin = admin
       } else {
-        if (telegramLiveTradeGateEnabled() && row.channel_id) {
+        if (!tradingViewSource && telegramLiveTradeGateEnabled() && row.channel_id) {
           const live = ctx.sessionManager
             ? await ctx.sessionManager.canExecuteTelegramCopierTradesAsync(row.user_id, row.channel_id)
             : false

@@ -113,7 +113,7 @@ export const accountConfigAr: AccountConfigBundleTranslations = {
       accountTypeLive: 'حقيقي',
       accountTypePropFirm: 'شركة prop',
       detailServer: 'الخادم',
-      detailSignalChannels: 'قنوات الإشارات',
+      detailSignalChannels: 'مصدر الإشارة',
       detailBalance: 'الرصيد',
       detailEquity: 'Equity',
       channelsNoneSelected: 'لم يُحدد شيء',

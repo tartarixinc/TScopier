@@ -65,6 +65,7 @@ export const chromeNl: AppChromeTranslations = {
       setupBroker: 'koppel een broker',
       setupTelegram: 'verbind Telegram',
       setupChannels: 'voeg een kanaal toe',
+      setupSource: 'verbind een signaalbron',
       bannerAction: 'Ga naar instellingen',
       bannerText: 'Om de copier te starten, {items}.',
       bannerLastSep: ' en ',

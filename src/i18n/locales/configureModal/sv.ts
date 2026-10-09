@@ -6,7 +6,7 @@ export const configureModalSv: ConfigureModalTranslations = {
   saved: 'Sparad',
   cancel: 'Avboka',
   save: 'Spara',
-  channelsSidebar: 'Kanaler',
+  channelsSidebar: 'Källa',
   addChannel: 'Lägg till kanal',
   editLinkedChannels: 'Redigera länkade kanaler',
   doneEditingLinkedChannels: 'Klar med att redigera kanaler',

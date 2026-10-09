@@ -17,6 +17,7 @@ export interface ConfigurationChannelOption {
   display_name: string
   channel_username: string
   channel_id?: string
+  source_kind?: 'telegram' | 'tradingview' | null
 }
 
 function channelLabel(channel: ConfigurationChannelOption): string {
@@ -62,7 +63,9 @@ export function AddConfigurationChannelModal({
   const formCopy = t.channelsPage
   const { user } = useAuth()
   const { canAddChannel, limits, refresh: refreshSubscription } = useSubscription()
-  const [step, setStep] = useState<'choose' | 'telegram' | 'broker'>('choose')
+  const [step, setStep] = useState<'choose' | 'telegram' | 'tradingview' | 'broker'>('choose')
+  const telegramChannels = channels.filter(channel => channel.source_kind !== 'tradingview')
+  const tradingViewChannels = channels.filter(channel => channel.source_kind === 'tradingview')
   const [showForm, setShowForm] = useState(false)
   const [draft, setDraft] = useState({ channel_id: '', channel_username: '', display_name: '' })
   const [saving, setSaving] = useState(false)
@@ -148,7 +151,7 @@ export function AddConfigurationChannelModal({
             {copy.addChannel}
           </h2>
           <div className="flex items-center gap-1">
-            {step === 'choose' ? null : (
+            {step === 'choose' || step === 'tradingview' ? null : (
               <button
                 type="button"
                 className="rounded-lg p-2 text-teal-700 hover:bg-teal-50 dark:text-teal-300 dark:hover:bg-teal-950"
@@ -187,6 +190,14 @@ export function AddConfigurationChannelModal({
               >
                 <img src="/Telegram.svg" alt="" aria-hidden className="h-7 w-7 shrink-0 object-contain" />
                 <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{copy.sourceTelegram}</span>
+              </button>
+              <button
+                type="button"
+                className="flex w-full items-center gap-3 rounded-xl border border-neutral-200 px-4 py-3 text-start hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900"
+                onClick={() => setStep('tradingview')}
+              >
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-teal-600 text-[10px] font-semibold text-white">TV</span>
+                <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{formCopy.tabTradingView}</span>
               </button>
               <button
                 type="button"
@@ -260,12 +271,34 @@ export function AddConfigurationChannelModal({
               </div>
             </form>
           ) : null}
-          {step === 'telegram' && channels.length === 0 ? (
+          {step === 'tradingview' && tradingViewChannels.length === 0 ? (
+            <p className="text-sm text-neutral-500 dark:text-neutral-400">{formCopy.tradingViewEmpty}</p>
+          ) : null}
+          {step === 'tradingview' && tradingViewChannels.length > 0 ? (
+            <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
+              {tradingViewChannels.map(channel => {
+                const name = channelLabel(channel) || copy.unknownChannel
+                return (
+                  <li key={channel.id}>
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2.5 py-2.5 text-start hover:bg-neutral-50 dark:hover:bg-neutral-900"
+                      onClick={() => onSelect(channel.id)}
+                    >
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-teal-600 text-[10px] font-semibold text-white">TV</span>
+                      <span className="block truncate text-sm font-medium text-neutral-900 dark:text-neutral-50">{name}</span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          ) : null}
+          {step === 'telegram' && telegramChannels.length === 0 ? (
             <p className="text-sm text-neutral-500 dark:text-neutral-400">{emptyLabel}</p>
           ) : null}
-          {step === 'telegram' && channels.length > 0 ? (
+          {step === 'telegram' && telegramChannels.length > 0 ? (
             <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
-              {channels.map(channel => {
+              {telegramChannels.map(channel => {
                 const name = channelLabel(channel) || copy.unknownChannel
                 const username = channel.channel_username?.trim().replace(/^@/, '')
                 return (

@@ -6,7 +6,7 @@ export const configureModalRu: ConfigureModalTranslations = {
   saved: 'Сохранено',
   cancel: 'Отмена',
   save: 'Сохранять',
-  channelsSidebar: 'Каналы',
+  channelsSidebar: 'Источник',
   addChannel: 'Добавить канал',
   editLinkedChannels: 'Редактировать связанные каналы',
   doneEditingLinkedChannels: 'Редактирование каналов завершено.',

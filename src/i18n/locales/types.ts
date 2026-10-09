@@ -82,6 +82,7 @@ export interface NavTranslations {
     setupBroker?: string
     setupTelegram?: string
     setupChannels?: string
+    setupSource?: string
     bannerAction?: string
     bannerText?: string
     bannerLastSep?: string
@@ -1568,6 +1569,38 @@ export interface ChannelsPageTranslations {
   tabTradingView: string
   comingSoon: string
   comingSoonBody: string
+  tradingViewIntro: string
+  tradingViewCreate: string
+  tradingViewName: string
+  tradingViewUrl: string
+  tradingViewTemplate: string
+  tradingViewTemplateHelp: string
+  tradingViewCopy: string
+  tradingViewCopied: string
+  tradingViewRotate: string
+  tradingViewActive: string
+  tradingViewDelete: string
+  tradingViewShowDetails: string
+  tradingViewEmpty: string
+  tradingViewHeroTitle: string
+  tradingViewHeroSubtitle: string
+  tradingViewHow1: string
+  tradingViewHow2: string
+  tradingViewHow3: string
+  tradingViewConnect: string
+  tradingViewListTitle: string
+  tradingViewCreated: string
+  tradingViewLastEvent: string
+  tradingViewNameRequired: string
+  tradingViewDeliveries: string
+  tradingViewNoDeliveries: string
+  tradingViewAccepted: string
+  tradingViewSkipped: string
+  tradingViewError: string
+  tradingViewDuplicate: string
+  tradingViewCopyTo: string
+  tradingViewNoBrokers: string
+  tradingViewLimit: string
 }
 
 export interface BacktestOutcomeLabels {
