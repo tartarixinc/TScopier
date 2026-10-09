@@ -24,7 +24,7 @@ export function AuthBrandLogo({ className }: AuthBrandLogoProps) {
     <img
       src={src}
       alt="UniCopier"
-      className={clsx('h-8 w-auto max-w-[140px] object-contain', className)}
+      className={clsx('h-14 w-auto max-w-[200px] object-contain', className)}
       draggable={false}
       onError={() => {
         if (src !== AUTH_LOGO_LIGHT) setSrc(AUTH_LOGO_LIGHT)

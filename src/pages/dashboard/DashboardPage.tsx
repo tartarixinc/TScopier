@@ -2863,7 +2863,12 @@ function LogRow({ signal, channelName, symbol }: { signal: Signal; channelName: 
       <span className={`inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${s.color}`}>
         {s.label}
       </span>
-      <span className="min-w-0 text-xs text-neutral-500 dark:text-neutral-400 truncate" title={channelName}>{channelName}</span>
+      <span className="flex min-w-0 items-center gap-2 text-xs text-neutral-700 dark:text-neutral-200" title={channelName}>
+        {signal.channel_id ? (
+          <img src="/Telegram.svg" alt="" aria-hidden className="h-5 w-5 shrink-0 rounded-full object-contain" />
+        ) : null}
+        <span className="truncate">{channelName}</span>
+      </span>
       <span className="min-w-0 text-sm font-medium text-neutral-900 dark:text-neutral-50 truncate" title={symbol}>{symbol}</span>
       <span
         className={`min-w-0 text-xs font-medium uppercase truncate ${

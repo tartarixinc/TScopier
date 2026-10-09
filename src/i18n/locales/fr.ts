@@ -10,6 +10,7 @@ import { landingFr } from './landing/fr'
 import type { Translations } from './types'
 import { configureModalFr } from './configureModal/fr'
 import { statusModalEn } from './accountConfig/statusModal'
+import { copyRiskFr } from './copyRiskLabels'
 
 export const fr: Translations = {
   auth: authFr,
@@ -419,6 +420,7 @@ export const fr: Translations = {
       dismiss: 'Fermer',
     },
   },
+  copyRisk: copyRiskFr,
   mirrorTradingPage: {
     title: 'Compte miroir',
     subtitle: 'Copiez les trades d’un compte maître vers des comptes esclaves.',

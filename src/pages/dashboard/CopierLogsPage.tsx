@@ -54,6 +54,17 @@ function buildChannelDisplayNames(channels: ChannelNameRow[]): Record<string, st
   return out
 }
 
+function TelegramSourceMark() {
+  return (
+    <img
+      src="/Telegram.svg"
+      alt=""
+      aria-hidden
+      className="h-5 w-5 shrink-0 rounded-full object-contain"
+    />
+  )
+}
+
 function channelLabel(channelId: string | null | undefined, names: Record<string, string>): string {
   if (!channelId) return '—'
   return names[channelId] ?? 'Unknown channel'
@@ -139,8 +150,9 @@ function CopierLogCard({
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="min-w-0">
           <p className="text-base font-semibold text-neutral-900 dark:text-neutral-50 truncate">{symbol}</p>
-          <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate mt-0.5" title={channelName}>
-            {channelName}
+          <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400" title={channelName}>
+            {signal.channel_id ? <TelegramSourceMark /> : null}
+            <span className="truncate">{channelName}</span>
           </p>
         </div>
         <div className="flex flex-col items-end gap-1.5 shrink-0">
@@ -243,8 +255,9 @@ function CopierLogRow({
       <span className="text-xs text-neutral-600 dark:text-neutral-300 truncate underline decoration-dotted underline-offset-2" title={reasonShort}>
         {reasonShort}
       </span>
-      <span className="text-xs text-neutral-600 dark:text-neutral-400 truncate" title={channelName}>
-        {channelName}
+      <span className="flex min-w-0 items-center gap-1.5 text-xs text-neutral-600 dark:text-neutral-400" title={channelName}>
+        {signal.channel_id ? <TelegramSourceMark /> : null}
+        <span className="truncate">{channelName}</span>
       </span>
       <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{symbol}</span>
       <span className="text-xs text-neutral-500 dark:text-neutral-400 truncate" title={signal.raw_message ?? ''}>

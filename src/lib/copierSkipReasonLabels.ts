@@ -1,5 +1,6 @@
 /** Default English labels when a locale bundle omits a skip-reason key (shallow locale merge). */
 import { normalizeCopierSkipReasonKey } from './brokerBridgeErrorDisplay'
+import { COPY_RISK_REASON_LABELS } from './copyRiskReasons'
 
 export function resolveCopierSkipReasonKey(reason: string | null | undefined): string {
   const raw = String(reason ?? '').trim()
@@ -11,6 +12,7 @@ export function resolveCopierSkipReasonKey(reason: string | null | undefined): s
 }
 
 export const COPIER_SKIP_REASON_LABELS: Record<string, string> = {
+  ...COPY_RISK_REASON_LABELS,
   ai_classified_as_non_actionable: 'AI found no trade signal in this message',
   ai_classified_as_non_entry: 'AI found no entry instruction in this message',
   modification_no_open_trade: 'No open trade to modify',

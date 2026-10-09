@@ -10,6 +10,7 @@ import { landingEn } from './landing/en'
 import type { Translations } from './types'
 import { configureModalEn } from './configureModal/en'
 import { statusModalEn } from './accountConfig/statusModal'
+import { copyRiskEn } from './copyRiskLabels'
 
 export const en: Translations = {
   auth: authEn,
@@ -416,6 +417,7 @@ broker: {
       dismiss: 'Dismiss',
     },
   },
+  copyRisk: copyRiskEn,
   mirrorTradingPage: {
     title: 'Mirror Account',
     subtitle: 'Copy trades from a master account to slave accounts.',

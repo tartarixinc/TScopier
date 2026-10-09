@@ -6,6 +6,7 @@ import type { LegalDocumentPageTranslations } from '../legal/types'
 import type { TradeNotificationsTranslations } from '../tradeNotifications/types'
 import type { ConfigureModalTranslations } from './configureModal/types'
 import type { LandingTranslations } from './landing/types'
+import type { CopyRiskTranslations } from './copyRiskLabels'
 
 export interface GlobalSearchTranslations {
   placeholder: string
@@ -1759,6 +1760,7 @@ export interface Translations {
   pricing: PricingTranslations
   landing: LandingTranslations
   mirrorTradingPage: MirrorTradingPageTranslations
+  copyRisk: CopyRiskTranslations
   socialTradingPage: SocialTradingPageTranslations
   configurationsPage: ConfigurationsPageTranslations
   accountConfig: AccountConfigTranslations

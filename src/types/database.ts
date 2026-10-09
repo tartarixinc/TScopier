@@ -1,3 +1,5 @@
+import type { CopyRiskSettings } from '../lib/copyRiskTypes'
+
 export type Json = string | number | boolean | null | { [key: string]: Json } | Json[]
 
 export interface Database {
@@ -382,6 +384,8 @@ export interface ManualSettings {
   resume_after_news_minutes?: number
   /** Per-channel profit targets and max risk (Targets tab). */
   copy_limits?: CopyLimitsConfig
+  /** Mirror and social copy risk profile. Telegram channel config leaves this unset. */
+  copy_risk?: CopyRiskSettings
 }
 
 export type FxsocketConnectionStatus = 'connecting' | 'connected' | 'error' | 'disconnected'

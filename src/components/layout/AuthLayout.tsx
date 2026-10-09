@@ -30,7 +30,7 @@ export function AuthLayout() {
           )}
         >
           <Link to="/" className="flex items-center" aria-label="UniCopier home">
-            <AuthBrandLogo className="h-8 w-auto sm:h-6" />
+            <AuthBrandLogo className="h-10 w-auto sm:h-8" />
           </Link>
           <div className="flex items-center gap-1 sm:gap-1.5">
             <LanguageSwitcher />

@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronDown, ChevronUp, Pause, Play, Plus, Settings, Trash2, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, OctagonAlert, Pause, Play, Plus, Settings, Trash2, X } from 'lucide-react'
 import clsx from 'clsx'
-import { ConfigurationSettingsEditor } from '../../components/configure/ConfigurationSettingsEditor'
+import { CopyRiskEditor } from '../../components/configure/CopyRiskEditor'
 import { useAuth } from '../../context/AuthContext'
 import { useAddTradingAccount } from '../../context/AddTradingAccountContext'
 import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
 import { useT } from '../../context/LocaleContext'
-import { useSubscription } from '../../context/SubscriptionContext'
 import { getBrokerDisplayLabel } from '../../lib/brokerChannelLink'
 import {
   connectBrokerCopyLink,
@@ -17,10 +16,10 @@ import {
   updateBrokerCopyLinkSettings,
   type BrokerCopyLinkRow,
 } from '../../lib/brokerCopyLink'
-import type { ConfigureModalTranslations } from '../../i18n/locales/configureModal/types'
-import type { ConfigurationsPageTranslations } from '../../i18n/locales/types'
+import type { CopyRiskTranslations } from '../../i18n/locales/copyRiskLabels'
 import { interpolate } from '../../i18n/interpolate'
 import { supabase } from '../../lib/supabase'
+import { copyRiskForEditor, manualSettingsFromCopyRisk, mirrorSizingValue, normalizeCopyRisk } from '../../lib/copyRiskTypes'
 import type { BrokerAccount, ManualSettings } from '../../types/database'
 import { PageHeader } from '../../components/layout/PageHeader'
 import { PageShell } from '../../components/layout/PageShell'
@@ -168,7 +167,6 @@ export function MirrorTradingPage() {
   const copy = t.mirrorTradingPage
   const { user } = useAuth()
   const { brokers, replaceBroker, toggleBrokerActive } = useBrokerAccounts()
-  const { canUseFeature } = useSubscription()
   const {
     openAddTradingAccount,
     pendingSourceBroker,
@@ -382,6 +380,15 @@ export function MirrorTradingPage() {
     settingsSaveRef.current = task.then(() => undefined, () => undefined)
   }, [user?.id])
 
+  const setSlaveEmergency = useCallback((slaveId: string, enabled: boolean) => {
+    const current = linksRef.current.find(link => link.destination_broker_account_id === slaveId)
+    if (!current) return
+    const profile = copyRiskForEditor(current.manual_settings)
+    profile.protection.emergency_stop = enabled
+    profile.lifecycle.pause_new = enabled
+    patchSlaveSettings(slaveId, manualSettingsFromCopyRisk(profile))
+  }, [patchSlaveSettings])
+
   const masters = useMemo(
     () => brokers.filter(broker => broker.copy_source === true),
     [brokers],
@@ -504,12 +511,15 @@ export function MirrorTradingPage() {
                           source={source}
                           link={link}
                           copy={copy}
+                          modes={t.copyRisk.modes}
+                          emergencyLabel={link?.manual_settings.copy_risk?.protection.emergency_stop ? t.copyRisk.resumeEmergency : t.copyRisk.emergencyStop}
                           onConfigure={() => {
                             setConfigSaveError(null)
                             setConfiguringSlaveId(slave.id)
                           }}
                           onActiveChange={active => setAccountActive(slave.id, active)}
                           onDelete={() => removeSlave(slave.id)}
+                          onEmergency={() => setSlaveEmergency(slave.id, link?.manual_settings.copy_risk?.protection.emergency_stop !== true)}
                         />
                       )
                     }) : null}
@@ -600,15 +610,13 @@ export function MirrorTradingPage() {
         <SlaveConfigureDialog
           slave={configuringSlave}
           source={configuringSource}
-          settings={configuringLink.manual_settings}
-          copy={t.configurationsPage}
-          modalCopy={t.accountConfig.configureModal}
+          settings={copyRiskForEditor(configuringLink.manual_settings)}
+          labels={t.copyRisk}
+          copyFromLabel={t.configurationsPage.copyFrom}
           closeLabel={closeLabel}
           title={copy.configure}
-          multiTradeEnabled={canUseFeature('multi_trade_style')}
           saveError={configSaveError}
-          onPatch={patch => patchSlaveSettings(configuringSlave.id, patch)}
-          onError={setConfigSaveError}
+          onChange={next => patchSlaveSettings(configuringSlave.id, manualSettingsFromCopyRisk(next))}
           onClose={() => setConfiguringSlaveId(null)}
         />
       ) : null}
@@ -626,8 +634,13 @@ function accountTitle(broker: BrokerAccount): string {
 function riskCells(
   link: BrokerCopyLinkRow | undefined,
   copy: { riskFixedLot: string; riskBalancePercent: string },
+  modes: CopyRiskTranslations['modes'],
 ): { type: string; setting: string } {
   if (!link) return { type: '—', setting: '—' }
+  if (link.manual_settings.copy_risk) {
+    const profile = normalizeCopyRisk(link.manual_settings.copy_risk)
+    return { type: modes[profile.sizing.mode], setting: mirrorSizingValue(profile) }
+  }
   if (link.manual_settings.risk_mode === 'dynamic_balance_percent') {
     return {
       type: copy.riskBalancePercent,
@@ -743,7 +756,10 @@ function SlaveRow({
   source,
   link,
   copy,
+  modes,
+  emergencyLabel,
   onConfigure,
+  onEmergency,
   onActiveChange,
   onDelete,
 }: {
@@ -759,12 +775,15 @@ function SlaveRow({
     riskFixedLot: string
     riskBalancePercent: string
   }
+  modes: CopyRiskTranslations['modes']
+  emergencyLabel: string
   onConfigure: () => void
+  onEmergency: () => void
   onActiveChange: (active: boolean) => void
   onDelete: () => void
 }) {
   const active = broker.is_active !== false
-  const risk = riskCells(link, copy)
+  const risk = riskCells(link, copy, modes)
   const sourceLogin = source?.account_login?.trim() || (source ? getBrokerDisplayLabel(source) : '—')
   return (
     <tr>
@@ -802,6 +821,10 @@ function SlaveRow({
             <Settings className="h-3.5 w-3.5" />
             {copy.configure}
           </RowAction>
+          <RowAction label={emergencyLabel} disabled={!link} danger={link?.manual_settings.copy_risk?.protection.emergency_stop === true} onClick={onEmergency}>
+            <OctagonAlert className="h-3.5 w-3.5" />
+            {emergencyLabel}
+          </RowAction>
           <RowAction label={active ? copy.pause : copy.resume} onClick={() => onActiveChange(!active)}>
             {active ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
             {active ? copy.pause : copy.resume}
@@ -820,27 +843,23 @@ function SlaveConfigureDialog({
   slave,
   source,
   settings,
-  copy,
-  modalCopy,
+  labels,
+  copyFromLabel,
   closeLabel,
   title,
-  multiTradeEnabled,
   saveError,
-  onPatch,
-  onError,
+  onChange,
   onClose,
 }: {
   slave: BrokerAccount
   source: BrokerAccount | null
-  settings: ManualSettings
-  copy: ConfigurationsPageTranslations
-  modalCopy: ConfigureModalTranslations
+  settings: ReturnType<typeof copyRiskForEditor>
+  labels: CopyRiskTranslations
+  copyFromLabel: string
   closeLabel: string
   title: string
-  multiTradeEnabled: boolean
   saveError: string | null
-  onPatch: (patch: Partial<ManualSettings>) => void
-  onError: (message: string) => void
+  onChange: (next: ReturnType<typeof copyRiskForEditor>) => void
   onClose: () => void
 }) {
   useEffect(() => {
@@ -871,7 +890,7 @@ function SlaveConfigureDialog({
             </p>
             {source ? (
               <p className="mt-1 truncate text-xs text-neutral-500 dark:text-neutral-400">
-                {copy.copyFrom} {accountTitle(source)}
+                {copyFromLabel} {accountTitle(source)}
               </p>
             ) : null}
           </div>
@@ -885,15 +904,12 @@ function SlaveConfigureDialog({
           </button>
         </div>
         <div className="overflow-y-auto px-5 py-4">
-          <ConfigurationSettingsEditor
-            broker={slave}
+          <CopyRiskEditor
             settings={settings}
-            copy={copy}
-            modalCopy={modalCopy}
-            multiTradeEnabled={multiTradeEnabled}
+            labels={labels}
             saveError={saveError}
-            onPatch={onPatch}
-            onError={onError}
+            currency={slave.last_currency}
+            onChange={onChange}
           />
         </div>
         <div className="flex justify-end border-t border-neutral-100 px-5 py-4 dark:border-neutral-800">

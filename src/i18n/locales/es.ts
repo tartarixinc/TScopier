@@ -10,6 +10,7 @@ import { landingEs } from './landing/es'
 import type { Translations } from './types'
 import { configureModalEs } from './configureModal/es'
 import { statusModalEn } from './accountConfig/statusModal'
+import { copyRiskEs } from './copyRiskLabels'
 
 export const es: Translations = {
   auth: authEs,
@@ -419,6 +420,7 @@ export const es: Translations = {
       dismiss: 'Cerrar',
     },
   },
+  copyRisk: copyRiskEs,
   mirrorTradingPage: {
     title: 'Cuenta espejo',
     subtitle: 'Copia operaciones de una cuenta maestra a cuentas esclavas.',
