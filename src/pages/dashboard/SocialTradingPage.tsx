@@ -3,11 +3,13 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import clsx from 'clsx'
 import { AccountGrowthChart } from '../../components/dashboard/AccountGrowthChart'
 import { PageHeader } from '../../components/layout/PageHeader'
+import { CopyTraderModal } from '../../components/social/CopyTraderModal'
 import { PageShell } from '../../components/layout/PageShell'
 import { PerformanceTradeOutcomeChart } from '../../components/performance/PerformanceTradeOutcomeChart'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { Toggle } from '../../components/ui/Toggle'
+import { useAddTradingAccount } from '../../context/AddTradingAccountContext'
 import { useT } from '../../context/LocaleContext'
 import { useFormatMoney } from '../../hooks/useFormatMoney'
 import {
@@ -239,9 +241,11 @@ export function SocialTraderActivityPage() {
   const t = useT()
   const copy = t.socialTradingPage
   const { formatSignedMoney } = useFormatMoney()
+  const { openAddTradingAccount } = useAddTradingAccount()
   const { traderId } = useParams()
   const trader = traderId ? socialTraderById(traderId) : undefined
   const [following, setFollowing] = useState(initialFollowing)
+  const [copyModalOpen, setCopyModalOpen] = useState(false)
 
   if (!trader) {
     return (
@@ -268,6 +272,7 @@ export function SocialTraderActivityPage() {
   }
 
   return (
+    <>
     <PageShell maxWidth="xl">
       <div>
         <Link to="/social-trading" className="text-sm font-medium text-teal-700 hover:text-teal-800 dark:text-teal-300">
@@ -279,14 +284,19 @@ export function SocialTraderActivityPage() {
             <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">@{trader.username}</p>
           </div>
           {trader.isYou ? null : (
+            <div className="flex items-center gap-2">
             <Button
               type="button"
               size="sm"
-              variant={following.has(trader.id) ? 'secondary' : 'primary'}
+              variant="secondary"
               onClick={toggleFollow}
             >
               {following.has(trader.id) ? copy.following : copy.follow}
             </Button>
+            <Button type="button" size="sm" onClick={() => setCopyModalOpen(true)}>
+              {copy.copySetup.action}
+            </Button>
+            </div>
           )}
         </div>
       </div>
@@ -356,6 +366,18 @@ export function SocialTraderActivityPage() {
         </ul>
       </Card>
     </PageShell>
+    {copyModalOpen ? (
+      <CopyTraderModal
+        trader={trader}
+        copy={copy}
+        onClose={() => setCopyModalOpen(false)}
+        onConnectBroker={() => {
+          setCopyModalOpen(false)
+          openAddTradingAccount({ asDestination: true })
+        }}
+      />
+    ) : null}
+    </>
   )
 }
 
