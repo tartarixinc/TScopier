@@ -17,7 +17,7 @@ export const landingAr: LandingTranslations = {
   hero: {
     headline: 'إشارات Telegram. تُنسخ تلقائيًا.',
     subheadline:
-      'UniCopier منصة شاملة لنسخ إشارات Telegram تربط Telegram وتنسخ إشارات التداول مباشرة إلى MT4/MT5 — بلا إعدادات معقدة، بلا EA، وبلا VPS.',
+      'أتمت تداولاتك من Telegram أو Discord أو TradingView أو حساب رئيسي إلى أكثر من 8 منصات وساطة في أقل من 50 مللي ثانية. بدون VPS.',
     socialProof: 'مصنف رقم 1 كناسخ إشارات Telegram سحابي',
     primaryCta: 'ابدأ تجربتك المجانية لمدة 5 أيام',
     secondaryCta: 'تسجيل الدخول',

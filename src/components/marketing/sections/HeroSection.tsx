@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Lock } from 'lucide-react'
 import clsx from 'clsx'
-// import { TrustpilotWidget } from '../../auth/TrustpilotStars'
 import { HeroDashboardPreview } from '../HeroDashboardPreview'
 import { MarketingAuthCta } from '../MarketingAuthCta'
 import { MarketingPricingHint } from '../MarketingPricingHint'
@@ -50,20 +49,14 @@ export function HeroSection() {
   const l = useT().landing
 
   return (
-    <section id="product" className="relative scroll-mt-28 overflow-hidden">
+    <section
+      id="product"
+      className="relative -mt-[4.75rem] scroll-mt-28 overflow-hidden bg-white pt-[4.75rem] dark:bg-transparent sm:-mt-20 sm:pt-20"
+    >
       <div className="marketing-hero-grid" aria-hidden />
       <div className="relative z-[1] mx-auto max-w-6xl px-5 pb-4 pt-6 sm:px-8 sm:pt-8 sm:pb-8 lg:max-w-7xl lg:pt-10">
         <div className="mx-auto max-w-3xl text-center">
-          <div className="mb-5 sm:mb-6">
-            {/* Trustpilot hero badge temporarily replaced with classic social proof.
-            <TrustpilotWidget excellentLabel="Excellent" trustpilotLabel={l.reviews.trustpilotLabel} />
-            */}
-            <p className="text-sm font-medium tracking-wide text-neutral-600 dark:text-neutral-400 sm:text-base">
-              {l.hero.socialProof}
-            </p>
-          </div>
-
-          <h1 className="text-5xl font-bold tracking-tighter text-neutral-900 dark:text-neutral-50 sm:text-5xl xl:text-[5.05rem] xl:leading-[1.08]">
+          <h1 className="text-5xl font-bold tracking-tighter text-neutral-900 dark:text-neutral-50 sm:text-5xl xl:text-[3.5rem] xl:leading-[1.08]">
             {l.hero.headline}
             {l.hero.headlinePhrases && l.hero.headlinePhrases.length > 0 ? (
               <RotatingHeroPhrase phrases={l.hero.headlinePhrases} />

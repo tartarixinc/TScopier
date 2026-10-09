@@ -17,7 +17,7 @@ export const landingRu: LandingTranslations = {
   hero: {
     headline: 'Сигналы Telegram. Копируются автоматически.',
     subheadline:
-      'UniCopier — это универсальная платформа для копирования сигналов Telegram, которая подключает Telegram и копирует торговые сигналы напрямую на MT4/MT5 — без сложных настроек, советников и VPS.',
+      'Автоматизируйте сделки из Telegram, Discord, TradingView или мастер-счёта на 8+ брокерских платформ менее чем за 50 мс. VPS не требуется.',
     socialProof: 'Рейтинг №1 облачный копировщик сигналов Telegram',
     primaryCta: 'Начните 5-дневный бесплатный пробный период',
     secondaryCta: 'Войти',

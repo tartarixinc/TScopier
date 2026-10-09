@@ -17,7 +17,7 @@ export const landingJa: LandingTranslations = {
   hero: {
     headline: 'Telegramシグナル。自動でコピー。',
     subheadline:
-      'UniCopierはオールインワンのTelegramシグナルコピープラットフォームです。Telegramを接続し、トレードシグナルをMT4/MT5に直接コピー。複雑な設定、EA、VPSは不要です。',
+      'Telegram、Discord、TradingView、またはマスター口座から8以上のブローカーへ、50ms未満で取引を自動化。VPSは不要です。',
     socialProof: 'クラウド型Telegramシグナルコピーで評価#1',
     primaryCta: '5日間の無料トライアルを始める',
     secondaryCta: 'ログイン',
