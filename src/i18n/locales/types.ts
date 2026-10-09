@@ -903,6 +903,17 @@ export interface SocialTradingPageTranslations {
   viewAll: string
   viewFollowers: string
   viewFollowing: string
+  tabProviders: string
+  tabFollowers: string
+  tabFollowing: string
+  colName: string
+  colStatus: string
+  colBalance: string
+  colActions: string
+  statusActive: string
+  visibility: string
+  visibilityAll: string
+  requests: string
   symbol: string
   result: string
   sampleNote: string

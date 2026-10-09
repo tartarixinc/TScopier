@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { ChevronRight } from 'lucide-react'
 import clsx from 'clsx'
 import { AccountGrowthChart } from '../../components/dashboard/AccountGrowthChart'
 import { PageHeader } from '../../components/layout/PageHeader'
@@ -177,9 +178,12 @@ export function SocialTradingPage() {
   const t = useT()
   const copy = t.socialTradingPage
   const navigate = useNavigate()
+  const { formatMoney } = useFormatMoney()
   const [params] = useSearchParams()
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<SortKey>('roi')
+  const [visibility, setVisibility] = useState<'all' | SocialAccess>('all')
+  const [requestsOnly, setRequestsOnly] = useState(false)
   const [following, setFollowing] = useState(initialFollowing)
   const [access, setAccess] = useState(initialAccess)
   const [outgoing, setOutgoing] = useState(initialOutgoing)
@@ -195,6 +199,9 @@ export function SocialTradingPage() {
     const filtered = SOCIAL_TRADERS.filter(trader => {
       if (view === 'followers' && !followsYou(trader, incoming)) return false
       if (view === 'following' && !following.has(trader.id)) return false
+      const traderAccess = trader.isYou ? access : trader.access
+      if (visibility !== 'all' && traderAccess !== visibility) return false
+      if (requestsOnly && outgoing[trader.id] !== 'pending') return false
       if (!needle) return true
       return trader.displayName.toLowerCase().includes(needle) || trader.username.toLowerCase().includes(needle)
     })
@@ -207,7 +214,7 @@ export function SocialTradingPage() {
       if (a.isYou !== b.isYou) return a.isYou ? -1 : 1
       return rank(b) - rank(a)
     })
-  }, [following, incoming, query, sort, view])
+  }, [access, following, incoming, outgoing, query, requestsOnly, sort, view, visibility])
 
   const runCopyAction = (id: string) => {
     const next = applyCopyAction(id, following, outgoing)
@@ -222,12 +229,30 @@ export function SocialTradingPage() {
     writeAccess(value)
   }
 
-  const heading = view === 'followers' ? copy.viewFollowers : view === 'following' ? copy.viewFollowing : copy.title
+  const heading = view === 'followers' ? copy.tabFollowers : view === 'following' ? copy.tabFollowing : copy.tabProviders
+  const openCount = SOCIAL_TRADERS.filter(trader => (trader.isYou ? access : trader.access) === 'open').length
+  const privateCount = SOCIAL_TRADERS.length - openCount
+  const followerCount = SOCIAL_TRADERS.filter(trader => followsYou(trader, incoming)).length
+  const requestCount = Object.values(outgoing).filter(status => status === 'pending').length
+  const toggleVisibility = (next: SocialAccess) => {
+    setVisibility(current => current === next ? 'all' : next)
+  }
 
   return (
     <PageShell maxWidth="xl">
+      <nav className="flex gap-6 overflow-x-auto border-b border-neutral-200 dark:border-neutral-800" aria-label={copy.title}>
+        <DirectoryTab to="/social-trading" active={view === 'all'}>{copy.tabProviders}</DirectoryTab>
+        <DirectoryTab to="/social-trading?view=followers" active={view === 'followers'}>{copy.tabFollowers}</DirectoryTab>
+        <DirectoryTab to="/social-trading?view=following" active={view === 'following'}>{copy.tabFollowing}</DirectoryTab>
+      </nav>
       <PageHeader title={heading} />
-      <p className="text-sm text-neutral-500 dark:text-neutral-400">{copy.sampleNote}</p>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+        <SummaryStat label={copy.open} value={openCount} selected={visibility === 'open'} onClick={() => toggleVisibility('open')} />
+        <SummaryStat label={copy.private} value={privateCount} selected={visibility === 'private'} onClick={() => toggleVisibility('private')} />
+        <SummaryStat label={copy.following} value={following.size} selected={view === 'following'} onClick={() => navigate('/social-trading?view=following')} />
+        <SummaryStat label={copy.followers} value={followerCount} selected={view === 'followers'} onClick={() => navigate('/social-trading?view=followers')} />
+        <SummaryStat label={copy.requests} value={requestCount} selected={requestsOnly} onClick={() => setRequestsOnly(current => !current)} />
+      </div>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <input
           type="search"
@@ -237,79 +262,154 @@ export function SocialTradingPage() {
           className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-50 sm:max-w-xs"
         />
         <select
+          value={visibility}
+          aria-label={copy.visibility}
+          onChange={event => setVisibility(event.target.value === 'open' || event.target.value === 'private' ? event.target.value : 'all')}
+          className="rounded-full border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-200"
+        >
+          <option value="all">{copy.visibility}: {copy.visibilityAll}</option>
+          <option value="open">{copy.visibility}: {copy.open}</option>
+          <option value="private">{copy.visibility}: {copy.private}</option>
+        </select>
+        <select
           value={sort}
           onChange={event => setSort(event.target.value as SortKey)}
-          className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-200"
+          className="rounded-full border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-200"
         >
           <option value="roi">{copy.sortRoi}</option>
           <option value="winRate">{copy.sortWinRate}</option>
           <option value="followers">{copy.sortFollowers}</option>
         </select>
-        {view !== 'all' ? (
-          <Link to="/social-trading" className="text-sm font-medium text-teal-700 hover:text-teal-800 dark:text-teal-300">
-            {copy.viewAll}
-          </Link>
-        ) : null}
       </div>
-      {traders.length === 0 ? (
-        <Card>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400">{copy.empty}</p>
-        </Card>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2">
-          {traders.map(trader => (
-            <Card
-              key={trader.id}
-              padding="sm"
-              role="link"
-              tabIndex={0}
-              aria-label={trader.isYou ? copy.you : trader.displayName}
-              className="flex cursor-pointer flex-col gap-4 transition-colors hover:border-teal-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 dark:hover:border-teal-700"
-              onClick={() => navigate(`/social-trading/${trader.id}`)}
-              onKeyDown={event => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault()
-                  navigate(`/social-trading/${trader.id}`)
-                }
-              }}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="truncate text-base font-semibold text-neutral-900 dark:text-neutral-50">
-                      {trader.isYou ? copy.you : trader.displayName}
-                    </p>
-                    <AccessTag
-                      access={trader.isYou ? access : trader.access}
-                      openLabel={copy.open}
-                      privateLabel={copy.private}
-                    />
-                  </div>
-                  <p className="truncate text-sm text-neutral-500 dark:text-neutral-400">@{trader.username}</p>
-                </div>
-                {trader.isYou ? (
-                  <AccessChoice access={access} copy={copy} onChange={chooseAccess} />
-                ) : (
-                  <CopyActionButton
-                    trader={trader}
-                    following={following}
-                    outgoing={outgoing}
-                    copy={copy}
-                    onToggle={runCopyAction}
-                  />
-                )}
-              </div>
-              <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-                <Stat label={copy.roi} value={percent(trader.roi)} />
-                <Stat label={copy.winRate} value={percent(trader.winRate)} />
-                <Stat label={copy.maxDrawdown} value={percent(trader.maxDrawdown)} />
-                <Stat label={copy.followers} value={String(trader.followerCount)} />
-              </dl>
-            </Card>
-          ))}
-        </div>
-      )}
+      <Card padding="none" className="overflow-hidden">
+        {traders.length === 0 ? (
+          <p className="px-4 py-8 text-sm text-neutral-500 dark:text-neutral-400">{copy.empty}</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[860px] text-sm">
+              <thead>
+                <tr className="border-b border-neutral-100 text-left text-xs font-medium text-neutral-500 dark:border-neutral-800 dark:text-neutral-400">
+                  <th className="px-4 py-3">{copy.colName}</th>
+                  <th className="px-3 py-3">{copy.colStatus}</th>
+                  <th className="px-3 py-3">{copy.roi}</th>
+                  <th className="px-3 py-3">{copy.winRate}</th>
+                  <th className="px-3 py-3">{copy.followers}</th>
+                  <th className="px-3 py-3">{copy.colBalance}</th>
+                  <th className="px-4 py-3 text-end"><span className="sr-only">{copy.colActions}</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                {traders.map(trader => {
+                  const traderAccess = trader.isYou ? access : trader.access
+                  const rank = SOCIAL_TRADERS.findIndex(item => item.id === trader.id) + 1
+                  const name = trader.isYou ? copy.you : trader.displayName
+                  return (
+                    <tr
+                      key={trader.id}
+                      role="link"
+                      tabIndex={0}
+                      aria-label={name}
+                      className="cursor-pointer border-t border-neutral-100 hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-teal-500 dark:border-neutral-800 dark:hover:bg-neutral-900"
+                      onClick={() => navigate(`/social-trading/${trader.id}`)}
+                      onKeyDown={event => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault()
+                          navigate(`/social-trading/${trader.id}`)
+                        }
+                      }}
+                    >
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-sm font-semibold text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">
+                            {name.slice(0, 1).toUpperCase()}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-neutral-900 dark:text-neutral-50">{name}</p>
+                            <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">
+                              #{rank} · {traderAccess === 'open' ? copy.open : copy.private}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-3 py-3">
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                          {copy.statusActive}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3 font-medium text-neutral-800 dark:text-neutral-100">{percent(trader.roi)}</td>
+                      <td className="px-3 py-3 text-neutral-700 dark:text-neutral-200">{percent(trader.winRate)}</td>
+                      <td className="px-3 py-3 text-neutral-700 dark:text-neutral-200">{trader.followerCount}</td>
+                      <td className="px-3 py-3 text-neutral-700 dark:text-neutral-200">{formatMoney(trader.previewBalance)}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-2">
+                          {trader.isYou ? (
+                            <AccessChoice access={access} copy={copy} onChange={chooseAccess} />
+                          ) : (
+                            <CopyActionButton
+                              trader={trader}
+                              following={following}
+                              outgoing={outgoing}
+                              copy={copy}
+                              onToggle={runCopyAction}
+                            />
+                          )}
+                          <ChevronRight className="h-4 w-4 text-neutral-400" aria-hidden="true" />
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
     </PageShell>
+  )
+}
+
+function DirectoryTab({ to, active, children }: { to: string; active: boolean; children: string }) {
+  return (
+    <Link
+      to={to}
+      className={clsx(
+        '-mb-px shrink-0 border-b-2 pb-3 text-sm font-medium',
+        active
+          ? 'border-neutral-900 text-neutral-900 dark:border-neutral-50 dark:text-neutral-50'
+          : 'border-transparent text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200',
+      )}
+    >
+      {children}
+    </Link>
+  )
+}
+
+function SummaryStat({
+  label,
+  value,
+  selected,
+  onClick,
+}: {
+  label: string
+  value: number
+  selected: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={clsx(
+        'rounded-xl border bg-white px-4 py-3 text-left transition-colors dark:bg-neutral-950',
+        selected
+          ? 'border-neutral-900 dark:border-neutral-100'
+          : 'border-neutral-200 hover:border-neutral-300 dark:border-neutral-800 dark:hover:border-neutral-700',
+      )}
+    >
+      <span className="block text-sm text-neutral-500 dark:text-neutral-400">{label}</span>
+      <span className="mt-2 block text-2xl font-semibold text-neutral-900 dark:text-neutral-50">{value}</span>
+    </button>
   )
 }
 
