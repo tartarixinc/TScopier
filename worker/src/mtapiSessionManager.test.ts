@@ -3,7 +3,7 @@ import { afterEach, test } from 'node:test'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { decryptMtPassword, encryptMtPassword } from './brokerCredentialsCrypto'
 import { MtapiApiError, type MtapiProvider } from './mtapiProvider'
-import { MtapiSessionManager, mtapiFailureDetail, mtapiFailureSummary, resolveIntervalMs } from './mtapiSessionManager'
+import { MtapiSessionManager, isTransientProvisionError, mtapiFailureDetail, mtapiFailureSummary, resolveIntervalMs } from './mtapiSessionManager'
 
 const oldBase = process.env.MTAPI_BASE_URL
 const oldKey = process.env.BROKER_CREDENTIALS_ENCRYPTION_KEY
@@ -78,6 +78,27 @@ test('bridge rejection codes carry plain-English detail, unknown codes stay bare
   // A code that collides with Object.prototype must not resolve to a function.
   assert.equal(mtapiFailureDetail('toString'), '')
   assert.equal(mtapiFailureDetail('constructor'), '')
+})
+
+test('bridge outage codes reach the customer in plain English', () => {
+  // The 2026-10-08 outage left customers reading a bare engineer code.
+  assert.equal(mtapiFailureSummary('HTTP_502'), 'broker bridge temporarily unavailable')
+  assert.equal(mtapiFailureSummary('HTTP_503'), 'broker bridge temporarily unavailable')
+  assert.equal(mtapiFailureSummary('HTTP_504'), 'broker bridge temporarily unavailable')
+  assert.equal(mtapiFailureSummary('TRANSPORT_ERROR'), 'broker bridge unreachable')
+  // Rate limiting keeps its original wording — it was deliberately not remapped.
+  assert.equal(mtapiFailureSummary('HTTP_429'), 'HTTP_429')
+  assert.equal(mtapiFailureSummary('RATE_LIMITED'), 'RATE_LIMITED')
+})
+
+test('only bridge-side failures are treated as transient provision failures', () => {
+  for (const code of ['HTTP_502', 'HTTP_503', 'HTTP_504', 'HTTP_500', 'HTTP_429',
+    'TRANSPORT_ERROR', 'INVALID_RESPONSE', 'TIMEOUT', 'RATE_LIMITED']) {
+    assert.equal(isTransientProvisionError(code), true, `${code} should be transient`)
+  }
+  for (const code of ['INVALID_ACCOUNT', 'HTTP_403', 'NOT_CONFIGURED', 'UNKNOWN', '']) {
+    assert.equal(isTransientProvisionError(code), false, `${code} should not be transient`)
+  }
 })
 
 test('startup reconciles known sessions and starts token health checks', async () => {
@@ -423,4 +444,135 @@ test('health sweep paces request starts by the configured gap', async () => {
     starts[2] - starts[0] >= 40,
     `expected paced starts (>=40ms apart), saw span ${starts[2] - starts[0]}ms`,
   )
+})
+
+test('a transient bridge failure is retried with backoff instead of parking the account', async () => {
+  const savedBase = process.env.MTAPI_BASE_URL
+  const savedKey = process.env.BROKER_CREDENTIALS_ENCRYPTION_KEY
+  const savedRetry = process.env.MTAPI_PROVISION_RETRY_BASE_MS
+  process.env.MTAPI_BASE_URL = 'https://mtapi.test'
+  process.env.BROKER_CREDENTIALS_ENCRYPTION_KEY = 'phase-2-test-key'
+  // Long enough that a second scan in this test must be skipped by the backoff.
+  process.env.MTAPI_PROVISION_RETRY_BASE_MS = '60000'
+
+  try {
+    const rows = [{
+      id: 'broker-1',
+      mtapi_session_id: null,
+      account_login: '123',
+      broker_server: 'Server',
+      platform: 'MT5',
+      broker_password_encrypted: encryptMtPassword('broker-secret'),
+      auto_reconnect_enabled: true,
+      connection_status: 'pending',
+      performance_baseline_balance: null,
+    }]
+    const updates: Array<Record<string, unknown>> = []
+    const query = {
+      select() { return this },
+      update(payload: Record<string, unknown>) { updates.push(payload); return this },
+      eq() { return this },
+      is() { return this },
+      not() { return this },
+      then(resolve: (value: unknown) => unknown) {
+        return Promise.resolve({ data: rows, error: null }).then(resolve)
+      },
+    }
+    const supabase = { from: () => query } as unknown as SupabaseClient
+    let connectCalls = 0
+    const provider = {
+      setRecoveryHandler() {},
+      seedPlatformCache() {},
+      async ensureConnected() {},
+      async disconnectOrphans() {},
+      async connectEx() {
+        connectCalls += 1
+        // No `code` on purpose: safeCode() turns this into HTTP_502, exactly what
+        // nginx returned during the outage.
+        throw new MtapiApiError('bad gateway', 502)
+      },
+    } as unknown as MtapiProvider
+
+    const warnings: string[] = []
+    const originalWarn = console.warn
+    console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(' ')) }
+    try {
+      const manager = new MtapiSessionManager(supabase, provider)
+      await manager.start()
+      manager.stop()
+      // A second scan inside the backoff window must not touch the bridge again.
+      await manager.start()
+      manager.stop()
+    } finally {
+      console.warn = originalWarn
+    }
+
+    assert.equal(connectCalls, 1, 'expected the backoff to skip the second attempt')
+    const parked = updates.filter((u) => u.connection_status === 'error')
+    assert.equal(parked.length, 0, 'a transient failure must never park the row in error')
+    assert.ok(
+      updates.some((u) => u.connection_error === 'MTAPI connect failed: broker bridge temporarily unavailable'),
+      'the customer should see plain English while the retry is pending',
+    )
+    assert.ok(
+      updates.every((u) => u.connection_status === undefined),
+      'connection_status must not be written, so the row stays pending and keeps retrying',
+    )
+    assert.ok(
+      warnings.some((w) => w.includes('provision retry scheduled broker=broker-1 code=HTTP_502')),
+      'expected a retry log line carrying the HTTP_502 code',
+    )
+  } finally {
+    if (savedBase == null) delete process.env.MTAPI_BASE_URL
+    else process.env.MTAPI_BASE_URL = savedBase
+    if (savedKey == null) delete process.env.BROKER_CREDENTIALS_ENCRYPTION_KEY
+    else process.env.BROKER_CREDENTIALS_ENCRYPTION_KEY = savedKey
+    if (savedRetry == null) delete process.env.MTAPI_PROVISION_RETRY_BASE_MS
+    else process.env.MTAPI_PROVISION_RETRY_BASE_MS = savedRetry
+  }
+})
+
+test('a permanent rejection still moves the account to error straight away', async () => {
+  process.env.MTAPI_BASE_URL = 'https://mtapi.test'
+  process.env.MTAPI_MT4_BASE_URL = 'https://mt4.test'
+  process.env.MTAPI_MT5_BASE_URL = 'https://mt5.test'
+  process.env.BROKER_CREDENTIALS_ENCRYPTION_KEY = 'phase-2-test-key'
+  const rows = [{
+    id: 'broker-1',
+    mtapi_session_id: null,
+    account_login: '123',
+    broker_server: 'Server',
+    platform: 'MT5',
+    broker_password_encrypted: encryptMtPassword('broker-secret'),
+    auto_reconnect_enabled: true,
+    connection_status: 'pending',
+    performance_baseline_balance: null,
+  }]
+  const updates: Array<Record<string, unknown>> = []
+  const query = {
+    select() { return this },
+    update(payload: Record<string, unknown>) { updates.push(payload); return this },
+    eq() { return this },
+    is() { return this },
+    not() { return this },
+    then(resolve: (value: unknown) => unknown) {
+      return Promise.resolve({ data: rows, error: null }).then(resolve)
+    },
+  }
+  const supabase = { from: () => query } as unknown as SupabaseClient
+  const provider = {
+    setRecoveryHandler() {},
+    seedPlatformCache() {},
+    async ensureConnected() {},
+    async disconnectOrphans() {},
+    async connectEx() { throw new MtapiApiError('rejected', 201, 'INVALID_ACCOUNT') },
+  } as unknown as MtapiProvider
+
+  const manager = new MtapiSessionManager(supabase, provider)
+  await manager.start()
+  manager.stop()
+
+  const stored = updates.find((u) => typeof u.connection_error === 'string')
+  assert.equal(stored?.connection_error, 'MTAPI connect failed: invalid login or password')
+  assert.equal(stored?.connection_status, 'error')
 })
