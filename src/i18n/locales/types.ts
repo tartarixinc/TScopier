@@ -874,6 +874,17 @@ export interface SocialTradingPageTranslations {
   following: string
   followers: string
   allowFollowing: string
+  open: string
+  private: string
+  requestToCopy: string
+  requested: string
+  whoCanCopy: string
+  anyoneCanCopy: string
+  requestsRequired: string
+  copyRequests: string
+  copyRequestsEmpty: string
+  accept: string
+  decline: string
   you: string
   roi: string
   winRate: string

@@ -8,19 +8,26 @@ import { PageShell } from '../../components/layout/PageShell'
 import { PerformanceTradeOutcomeChart } from '../../components/performance/PerformanceTradeOutcomeChart'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
-import { Toggle } from '../../components/ui/Toggle'
 import { useAddTradingAccount } from '../../context/AddTradingAccountContext'
 import { useT } from '../../context/LocaleContext'
 import { useFormatMoney } from '../../hooks/useFormatMoney'
 import {
+  SOCIAL_INCOMING_REQUESTS,
   SOCIAL_TRADERS,
   socialTraderById,
+  type SocialAccess,
   type SocialTradeSide,
   type SocialTrader,
 } from '../../lib/socialTradingFixture'
 
 const FOLLOW_KEY = 'tscopier:social-trading:following'
-const ALLOW_KEY = 'tscopier:social-trading:allow-following'
+const ACCESS_KEY = 'tscopier:social-trading:access'
+const OUTGOING_KEY = 'tscopier:social-trading:copy-requests'
+const INCOMING_KEY = 'tscopier:social-trading:incoming-requests'
+
+type OutgoingStatus = 'pending' | 'declined'
+type IncomingStatus = 'pending' | 'accepted' | 'declined'
+type CopyButtonState = 'follow' | 'following' | 'request' | 'requested'
 
 type SortKey = 'roi' | 'winRate' | 'followers'
 type DirectoryView = 'all' | 'followers' | 'following'
@@ -48,15 +55,103 @@ function writeFollowing(ids: Set<string>) {
   }
 }
 
-function initialAllowFollowing(): boolean {
+function initialAccess(): SocialAccess {
   try {
-    const raw = sessionStorage.getItem(ALLOW_KEY)
-    if (raw === '0') return false
-    if (raw === '1') return true
+    const raw = sessionStorage.getItem(ACCESS_KEY)
+    if (raw === 'open' || raw === 'private') return raw
   } catch {
     // Fall through to the fixture.
   }
-  return SOCIAL_TRADERS.find(trader => trader.isYou)?.allowFollowing ?? false
+  return SOCIAL_TRADERS.find(trader => trader.isYou)?.access ?? 'open'
+}
+
+function writeAccess(access: SocialAccess) {
+  try {
+    sessionStorage.setItem(ACCESS_KEY, access)
+  } catch {
+    // The choice still updates this view.
+  }
+}
+
+function readStatusMap<T extends string>(key: string, allowed: readonly T[]): Record<string, T> {
+  try {
+    const raw = sessionStorage.getItem(key)
+    if (!raw) return {}
+    const parsed: unknown = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    const next: Record<string, T> = {}
+    for (const [id, status] of Object.entries(parsed)) {
+      if (allowed.includes(status as T)) next[id] = status as T
+    }
+    return next
+  } catch {
+    return {}
+  }
+}
+
+function writeStatusMap(key: string, value: Record<string, string>) {
+  try {
+    sessionStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    // The choice still updates this view.
+  }
+}
+
+function initialOutgoing(): Record<string, OutgoingStatus> {
+  return readStatusMap(OUTGOING_KEY, ['pending', 'declined'] as const)
+}
+
+function initialIncoming(): Record<string, IncomingStatus> {
+  const seed: Record<string, IncomingStatus> = {}
+  for (const request of SOCIAL_INCOMING_REQUESTS) seed[request.traderId] = 'pending'
+  return { ...seed, ...readStatusMap(INCOMING_KEY, ['pending', 'accepted', 'declined'] as const) }
+}
+
+function copyButtonState(
+  trader: SocialTrader,
+  following: Set<string>,
+  outgoing: Record<string, OutgoingStatus>,
+): CopyButtonState {
+  if (following.has(trader.id)) return 'following'
+  if (trader.access === 'open') return 'follow'
+  if (outgoing[trader.id] === 'pending') return 'requested'
+  return 'request'
+}
+
+function applyCopyAction(
+  id: string,
+  following: Set<string>,
+  outgoing: Record<string, OutgoingStatus>,
+): { following: Set<string>; outgoing: Record<string, OutgoingStatus> } {
+  const trader = socialTraderById(id)
+  if (!trader || trader.isYou) return { following, outgoing }
+  const state = copyButtonState(trader, following, outgoing)
+  if (state === 'following') {
+    const next = new Set(following)
+    next.delete(id)
+    return { following: next, outgoing }
+  }
+  if (state === 'follow') {
+    const next = new Set(following)
+    next.add(id)
+    const requests = { ...outgoing }
+    delete requests[id]
+    return { following: next, outgoing: requests }
+  }
+  if (state === 'requested') {
+    const requests = { ...outgoing }
+    delete requests[id]
+    return { following, outgoing: requests }
+  }
+  return { following, outgoing: { ...outgoing, [id]: 'pending' } }
+}
+
+function canConfigureCopy(trader: SocialTrader, following: Set<string>): boolean {
+  return trader.access === 'open' || following.has(trader.id)
+}
+
+function followsYou(trader: SocialTrader, incoming: Record<string, IncomingStatus>): boolean {
+  return trader.followsYou || incoming[trader.id] === 'accepted'
 }
 
 function formatWhen(iso: string): string {
@@ -86,7 +181,9 @@ export function SocialTradingPage() {
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<SortKey>('roi')
   const [following, setFollowing] = useState(initialFollowing)
-  const [allowFollowing, setAllowFollowing] = useState(initialAllowFollowing)
+  const [access, setAccess] = useState(initialAccess)
+  const [outgoing, setOutgoing] = useState(initialOutgoing)
+  const [incoming] = useState(initialIncoming)
   const view: DirectoryView = params.get('view') === 'followers'
     ? 'followers'
     : params.get('view') === 'following'
@@ -96,7 +193,7 @@ export function SocialTradingPage() {
   const traders = useMemo(() => {
     const needle = query.trim().toLowerCase()
     const filtered = SOCIAL_TRADERS.filter(trader => {
-      if (view === 'followers' && !trader.followsYou) return false
+      if (view === 'followers' && !followsYou(trader, incoming)) return false
       if (view === 'following' && !following.has(trader.id)) return false
       if (!needle) return true
       return trader.displayName.toLowerCase().includes(needle) || trader.username.toLowerCase().includes(needle)
@@ -110,16 +207,19 @@ export function SocialTradingPage() {
       if (a.isYou !== b.isYou) return a.isYou ? -1 : 1
       return rank(b) - rank(a)
     })
-  }, [following, query, sort, view])
+  }, [following, incoming, query, sort, view])
 
-  const toggleFollow = (id: string) => {
-    setFollowing(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      writeFollowing(next)
-      return next
-    })
+  const runCopyAction = (id: string) => {
+    const next = applyCopyAction(id, following, outgoing)
+    setFollowing(next.following)
+    setOutgoing(next.outgoing)
+    writeFollowing(next.following)
+    writeStatusMap(OUTGOING_KEY, next.outgoing)
+  }
+
+  const chooseAccess = (value: SocialAccess) => {
+    setAccess(value)
+    writeAccess(value)
   }
 
   const heading = view === 'followers' ? copy.viewFollowers : view === 'following' ? copy.viewFollowing : copy.title
@@ -175,43 +275,28 @@ export function SocialTradingPage() {
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="truncate text-base font-semibold text-neutral-900 dark:text-neutral-50">
-                    {trader.isYou ? copy.you : trader.displayName}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="truncate text-base font-semibold text-neutral-900 dark:text-neutral-50">
+                      {trader.isYou ? copy.you : trader.displayName}
+                    </p>
+                    <AccessTag
+                      access={trader.isYou ? access : trader.access}
+                      openLabel={copy.open}
+                      privateLabel={copy.private}
+                    />
+                  </div>
                   <p className="truncate text-sm text-neutral-500 dark:text-neutral-400">@{trader.username}</p>
                 </div>
                 {trader.isYou ? (
-                  <label
-                    className="relative z-10 flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-300"
-                    onClick={event => event.stopPropagation()}
-                    onKeyDown={event => event.stopPropagation()}
-                  >
-                    <span>{copy.allowFollowing}</span>
-                    <Toggle
-                      checked={allowFollowing}
-                      onChange={checked => {
-                        setAllowFollowing(checked)
-                        try {
-                          sessionStorage.setItem(ALLOW_KEY, checked ? '1' : '0')
-                        } catch {
-                          // The switch still updates this view.
-                        }
-                      }}
-                    />
-                  </label>
+                  <AccessChoice access={access} copy={copy} onChange={chooseAccess} />
                 ) : (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={following.has(trader.id) ? 'secondary' : 'primary'}
-                    onClick={event => {
-                      event.stopPropagation()
-                      toggleFollow(trader.id)
-                    }}
-                    onKeyDown={event => event.stopPropagation()}
-                  >
-                    {following.has(trader.id) ? copy.following : copy.follow}
-                  </Button>
+                  <CopyActionButton
+                    trader={trader}
+                    following={following}
+                    outgoing={outgoing}
+                    copy={copy}
+                    onToggle={runCopyAction}
+                  />
                 )}
               </div>
               <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
@@ -225,6 +310,99 @@ export function SocialTradingPage() {
         </div>
       )}
     </PageShell>
+  )
+}
+
+function AccessTag({
+  access,
+  openLabel,
+  privateLabel,
+}: {
+  access: SocialAccess
+  openLabel: string
+  privateLabel: string
+}) {
+  const isOpen = access === 'open'
+  return (
+    <span
+      className={clsx(
+        'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+        isOpen
+          ? 'bg-teal-50 text-teal-700 dark:bg-teal-950/50 dark:text-teal-300'
+          : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300',
+      )}
+    >
+      {isOpen ? openLabel : privateLabel}
+    </span>
+  )
+}
+
+function AccessChoice({
+  access,
+  copy,
+  onChange,
+  labelled = false,
+}: {
+  access: SocialAccess
+  copy: { whoCanCopy: string; anyoneCanCopy: string; requestsRequired: string }
+  onChange: (access: SocialAccess) => void
+  labelled?: boolean
+}) {
+  return (
+    <label
+      className="relative z-10 flex shrink-0 flex-col gap-1 text-xs text-neutral-600 dark:text-neutral-300"
+      onClick={event => event.stopPropagation()}
+      onKeyDown={event => event.stopPropagation()}
+    >
+      {labelled ? <span>{copy.whoCanCopy}</span> : <span className="sr-only">{copy.whoCanCopy}</span>}
+      <select
+        value={access}
+        aria-label={copy.whoCanCopy}
+        onChange={event => onChange(event.target.value === 'private' ? 'private' : 'open')}
+        className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-700 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-200"
+      >
+        <option value="open">{copy.anyoneCanCopy}</option>
+        <option value="private">{copy.requestsRequired}</option>
+      </select>
+    </label>
+  )
+}
+
+function CopyActionButton({
+  trader,
+  following,
+  outgoing,
+  copy,
+  onToggle,
+}: {
+  trader: SocialTrader
+  following: Set<string>
+  outgoing: Record<string, OutgoingStatus>
+  copy: { follow: string; following: string; requestToCopy: string; requested: string }
+  onToggle: (id: string) => void
+}) {
+  const state = copyButtonState(trader, following, outgoing)
+  const label = state === 'following'
+    ? copy.following
+    : state === 'requested'
+      ? copy.requested
+      : state === 'request'
+        ? copy.requestToCopy
+        : copy.follow
+  const quiet = state === 'following' || state === 'requested'
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant={quiet ? 'secondary' : 'primary'}
+      onClick={event => {
+        event.stopPropagation()
+        onToggle(trader.id)
+      }}
+      onKeyDown={event => event.stopPropagation()}
+    >
+      {label}
+    </Button>
   )
 }
 
@@ -245,6 +423,9 @@ export function SocialTraderActivityPage() {
   const { traderId } = useParams()
   const trader = traderId ? socialTraderById(traderId) : undefined
   const [following, setFollowing] = useState(initialFollowing)
+  const [access, setAccess] = useState(initialAccess)
+  const [outgoing, setOutgoing] = useState(initialOutgoing)
+  const [incoming, setIncoming] = useState(initialIncoming)
   const [copyModalOpen, setCopyModalOpen] = useState(false)
 
   if (!trader) {
@@ -261,15 +442,30 @@ export function SocialTraderActivityPage() {
     )
   }
 
-  const toggleFollow = () => {
-    setFollowing(prev => {
-      const next = new Set(prev)
-      if (next.has(trader.id)) next.delete(trader.id)
-      else next.add(trader.id)
-      writeFollowing(next)
+  const runCopyAction = () => {
+    const next = applyCopyAction(trader.id, following, outgoing)
+    setFollowing(next.following)
+    setOutgoing(next.outgoing)
+    writeFollowing(next.following)
+    writeStatusMap(OUTGOING_KEY, next.outgoing)
+    if (!canConfigureCopy(trader, next.following)) setCopyModalOpen(false)
+  }
+
+  const chooseAccess = (value: SocialAccess) => {
+    setAccess(value)
+    writeAccess(value)
+  }
+
+  const resolveIncoming = (id: string, status: 'accepted' | 'declined') => {
+    setIncoming(prev => {
+      const next = { ...prev, [id]: status }
+      writeStatusMap(INCOMING_KEY, next)
       return next
     })
   }
+
+  const pendingRequests = SOCIAL_TRADERS.filter(person => incoming[person.id] === 'pending')
+  const allowedToCopy = canConfigureCopy(trader, following)
 
   return (
     <>
@@ -280,22 +476,36 @@ export function SocialTraderActivityPage() {
         </Link>
         <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <PageHeader title={trader.isYou ? copy.you : trader.displayName} />
+            <PageHeader
+              title={(
+                <span className="inline-flex flex-wrap items-center gap-2">
+                  {trader.isYou ? copy.you : trader.displayName}
+                  <AccessTag
+                    access={trader.isYou ? access : trader.access}
+                    openLabel={copy.open}
+                    privateLabel={copy.private}
+                  />
+                </span>
+              )}
+            />
             <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">@{trader.username}</p>
           </div>
-          {trader.isYou ? null : (
+          {trader.isYou ? (
+            <AccessChoice access={access} copy={copy} onChange={chooseAccess} labelled />
+          ) : (
             <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              onClick={toggleFollow}
-            >
-              {following.has(trader.id) ? copy.following : copy.follow}
-            </Button>
-            <Button type="button" size="sm" onClick={() => setCopyModalOpen(true)}>
-              {copy.copySetup.action}
-            </Button>
+              <CopyActionButton
+                trader={trader}
+                following={following}
+                outgoing={outgoing}
+                copy={copy}
+                onToggle={runCopyAction}
+              />
+              {allowedToCopy ? (
+                <Button type="button" size="sm" onClick={() => setCopyModalOpen(true)}>
+                  {copy.copySetup.action}
+                </Button>
+              ) : null}
             </div>
           )}
         </div>
@@ -306,6 +516,35 @@ export function SocialTraderActivityPage() {
         <Stat label={copy.maxDrawdown} value={percent(trader.maxDrawdown)} />
         <Stat label={copy.closedTrades} value={String(trader.closedTrades)} />
       </dl>
+      {trader.isYou && access === 'private' ? (
+        <Card padding="none" className="overflow-hidden">
+          <h2 className="border-b border-neutral-100 px-4 py-3 text-sm font-semibold text-neutral-900 dark:border-neutral-800 dark:text-neutral-50">
+            {copy.copyRequests}
+          </h2>
+          {pendingRequests.length === 0 ? (
+            <p className="px-4 py-3 text-sm text-neutral-500 dark:text-neutral-400">{copy.copyRequestsEmpty}</p>
+          ) : (
+            <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
+              {pendingRequests.map(person => (
+                <li key={person.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-neutral-900 dark:text-neutral-50">{person.displayName}</p>
+                    <p className="truncate text-sm text-neutral-500 dark:text-neutral-400">@{person.username}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button type="button" size="sm" onClick={() => resolveIncoming(person.id, 'accepted')}>
+                      {copy.accept}
+                    </Button>
+                    <Button type="button" size="sm" variant="secondary" onClick={() => resolveIncoming(person.id, 'declined')}>
+                      {copy.decline}
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      ) : null}
       <div className="grid gap-4 xl:grid-cols-2">
         <AccountGrowthChart data={trader.chart.growth} series={trader.chart.series} />
         <PerformanceTradeOutcomeChart

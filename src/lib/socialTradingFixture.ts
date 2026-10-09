@@ -37,11 +37,15 @@ export interface SocialTraderChart {
   outcome: TradeVolumeDay[]
 }
 
+export type SocialAccess = 'open' | 'private'
+
 export interface SocialTrader {
   id: string
   displayName: string
   username: string
   isYou: boolean
+  /** Open traders can be copied immediately. Private traders require an accepted request. */
+  access: SocialAccess
   allowFollowing: boolean
   roi: number
   winRate: number
@@ -85,6 +89,7 @@ export const SOCIAL_TRADERS: SocialTrader[] = [
     displayName: 'You',
     username: 'you',
     isYou: true,
+    access: 'open',
     allowFollowing: true,
     roi: 18.4,
     winRate: 61,
@@ -118,6 +123,7 @@ export const SOCIAL_TRADERS: SocialTrader[] = [
     displayName: 'Amira Hassan',
     username: 'amira',
     isYou: false,
+    access: 'open',
     allowFollowing: true,
     roi: 34.2,
     winRate: 68,
@@ -151,6 +157,7 @@ export const SOCIAL_TRADERS: SocialTrader[] = [
     displayName: 'Leo Berg',
     username: 'leoberg',
     isYou: false,
+    access: 'private',
     allowFollowing: true,
     roi: 12.6,
     winRate: 54,
@@ -182,6 +189,7 @@ export const SOCIAL_TRADERS: SocialTrader[] = [
     displayName: 'Nora Okonkwo',
     username: 'nora',
     isYou: false,
+    access: 'private',
     allowFollowing: true,
     roi: 27.8,
     winRate: 63,
@@ -215,6 +223,7 @@ export const SOCIAL_TRADERS: SocialTrader[] = [
     displayName: 'Kenji Sato',
     username: 'kenji',
     isYou: false,
+    access: 'open',
     allowFollowing: true,
     roi: 9.1,
     winRate: 57,
@@ -245,6 +254,11 @@ export const SOCIAL_TRADERS: SocialTrader[] = [
 export function socialTraderById(id: string): SocialTrader | undefined {
   return SOCIAL_TRADERS.find(trader => trader.id === id)
 }
+
+/** Sample person asking to copy you. Shown on your page while your access is Private. */
+export const SOCIAL_INCOMING_REQUESTS: Array<{ traderId: string }> = [
+  { traderId: 'kenji-sato' },
+]
 
 /** Sample people who follow you. Stays fixed for the dashboard mock. */
 export const SOCIAL_FOLLOWER_COUNT = SOCIAL_TRADERS.filter(trader => trader.followsYou).length
