@@ -906,15 +906,19 @@ export function CopierEnginePage() {
 
       <nav className="flex gap-6 overflow-x-auto border-b border-neutral-200 dark:border-neutral-800" aria-label={t.pages.copierEngine.title}>
         <SourceTab active={source === 'telegram'} onClick={() => setSource('telegram')}>
+          <img src="/Telegram.svg" alt="" aria-hidden className="h-4 w-4 shrink-0 object-contain" />
           {t.channelsPage.tabTelegram}
         </SourceTab>
         <SourceTab active={source === 'discord'} onClick={() => setSource('discord')}>
+          <img src="/discord-logo.png" alt="" aria-hidden className="h-4 w-4 shrink-0 rounded-full object-cover" />
           {t.channelsPage.tabDiscord}
         </SourceTab>
         <SourceTab active={source === 'whatsapp'} onClick={() => setSource('whatsapp')}>
+          <img src="/whatsapp-icon.png" alt="" aria-hidden className="h-4 w-4 shrink-0 rounded-full object-cover" />
           {t.channelsPage.tabWhatsApp}
         </SourceTab>
         <SourceTab active={source === 'tradingview'} onClick={() => setSource('tradingview')}>
+          <img src="/tradingview-logo.png" alt="" aria-hidden className="h-4 w-4 shrink-0 rounded-full object-cover" />
           {t.channelsPage.tabTradingView}
         </SourceTab>
       </nav>

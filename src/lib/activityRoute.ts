@@ -1,9 +1,10 @@
 import type { BrokerAccount } from '../types/database'
 import type { DisplayableTradeActivity, TradeActivityLogRow } from './tradeActivities'
 import { getBrokerDisplayLabel } from './brokerChannelLink'
+import { normalizeSignalSourceKind, SIGNAL_SOURCE_MARKS, type SignalSourceKind } from './signalSourceMark'
 
 /** Where a copier activity came from. New copy modes add a kind here. */
-export type ActivitySourceKind = 'telegram' | 'whatsapp' | 'broker'
+export type ActivitySourceKind = SignalSourceKind | 'broker'
 
 export interface ActivityRouteMark {
   kind: string
@@ -16,10 +17,7 @@ export interface ActivityRoute {
   destination: ActivityRouteMark | null
 }
 
-const SOURCE_KIND_MARKS: Record<Exclude<ActivitySourceKind, 'broker'>, { iconSrc: string; label: string }> = {
-  telegram: { iconSrc: '/Telegram.svg', label: 'Telegram' },
-  whatsapp: { iconSrc: '/whatsapp-icon.png', label: 'WhatsApp' },
-}
+const SOURCE_KIND_MARKS = SIGNAL_SOURCE_MARKS
 
 const PLATFORM_ICONS: Record<string, string> = {
   mt4: '/MT4.png',
@@ -60,9 +58,15 @@ export function platformIconSrc(platform: string): string | null {
 export function resolveActivitySourceKind(
   row: TradeActivityLogRow,
   channelName: string | null,
+  channelSourceKinds?: Record<string, SignalSourceKind>,
 ): ActivitySourceKind | null {
   const explicit = (payloadString(row, 'source_kind') ?? '').toLowerCase()
-  if (explicit === 'telegram' || explicit === 'whatsapp' || explicit === 'broker') return explicit
+  if (explicit === 'broker') return 'broker'
+  const channelId = row.signals?.channel_id ?? payloadString(row, 'channel_id')
+  const fromChannel = channelId ? channelSourceKinds?.[channelId] : undefined
+  if (fromChannel) return fromChannel
+  const explicitSignal = normalizeSignalSourceKind(explicit)
+  if (explicitSignal) return explicitSignal
   if (row.signals?.channel_id || channelName?.trim()) return 'telegram'
   return null
 }
@@ -73,10 +77,12 @@ function brokerById(brokers: RouteBroker[], id: string | null): RouteBroker | un
 }
 
 export function resolveActivityRoute(
-  activity: Pick<DisplayableTradeActivity, 'row' | 'channelName'>,
+  activity: Pick<DisplayableTradeActivity, 'row' | 'channelName' | 'sourceKind'>,
   brokers: RouteBroker[],
 ): ActivityRoute {
-  const sourceKind = resolveActivitySourceKind(activity.row, activity.channelName)
+  const sourceKind = activity.sourceKind !== undefined
+    ? activity.sourceKind
+    : resolveActivitySourceKind(activity.row, activity.channelName)
   let source: ActivityRouteMark | null = null
   if (sourceKind === 'broker') {
     const sourceBroker = brokerById(brokers, payloadString(activity.row, 'source_broker_account_id'))

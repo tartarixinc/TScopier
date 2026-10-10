@@ -62,6 +62,28 @@ test('a missing broker id leaves the destination mark off', () => {
   assert.equal(route.destination, null)
 })
 
+test('channel source kind overrides the telegram fallback', () => {
+  const row = activity({ channelName: 'Gold room' }).row
+  assert.equal(
+    resolveActivitySourceKind(row, 'Gold room', { 'ch-1': 'discord' }),
+    'discord',
+  )
+  const route = resolveActivityRoute(
+    { row, channelName: 'Gold room', sourceKind: 'discord' },
+    [mt5],
+  )
+  assert.equal(route.source?.kind, 'discord')
+  assert.equal(route.source?.iconSrc, '/discord-logo.png')
+  assert.equal(route.source?.label, 'Discord · Gold room')
+
+  const tradingView = resolveActivityRoute(
+    { row, channelName: 'TV alerts', sourceKind: 'tradingview' },
+    [mt5],
+  )
+  assert.equal(tradingView.source?.iconSrc, '/tradingview-logo.png')
+  assert.equal(tradingView.source?.label, 'TradingView · TV alerts')
+})
+
 test('source_kind selects a non-telegram source', () => {
   const row = activity({
     signals: null,

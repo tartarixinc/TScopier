@@ -61,6 +61,8 @@ import {
   buildSignalSymbolLookup,
 } from '../../lib/copierLogDisplay'
 import { buildDisplayableTradeActivities, buildChannelDisplayNames, dedupePipelineParseAttempts, TRADE_ACTIVITY_FETCH_LIMIT, type TradeActivityLogRow } from '../../lib/tradeActivities'
+import { buildChannelSourceKinds, SIGNAL_SOURCE_MARKS, type SignalSourceKind } from '../../lib/signalSourceMark'
+import { SignalSourceLogo } from '../../components/dashboard/SignalSourceLogo'
 import { TradeActivityCard } from '../../components/dashboard/TradeActivityCard'
 import {
   DASHBOARD_ACTIVE_USER_KEY,
@@ -196,7 +198,7 @@ interface DashboardStats {
 
 type AiExpertLogRow = TradeActivityLogRow
 
-type ChannelNameRow = { id: string; display_name: string; channel_username?: string | null }
+type ChannelNameRow = { id: string; display_name: string; channel_username?: string | null; source_kind?: string | null }
 
 function channelLabel(channelId: string | null | undefined, names: Record<string, string>): string {
   if (!channelId) return '—'
@@ -1024,6 +1026,7 @@ export function DashboardPage() {
   const [channelDisplayNames, setChannelDisplayNames] = useState<Record<string, string>>(
     () => bootCache?.channelDisplayNames ?? {},
   )
+  const [channelSourceKinds, setChannelSourceKinds] = useState<Record<string, SignalSourceKind>>({})
   const [aiExpertLogs, setAiExpertLogs] = useState<AiExpertLogRow[]>(() => bootCache?.aiExpertLogs ?? [])
   const [linkedAccountBalances, setLinkedAccountBalances] = useState<Record<string, BrokerBalanceSnapshot>>(
     () => bootCache?.linkedAccountBalances ?? {},
@@ -1303,8 +1306,8 @@ export function DashboardPage() {
   }, [linkedAccounts, linkedAccountBalances])
 
   const visibleTradeActivities = useMemo(
-    () => buildDisplayableTradeActivities(aiExpertLogs, t.channelWorker, t.management, channelDisplayNames),
-    [aiExpertLogs, channelDisplayNames, t.channelWorker, t.management],
+    () => buildDisplayableTradeActivities(aiExpertLogs, t.channelWorker, t.management, channelDisplayNames, channelSourceKinds),
+    [aiExpertLogs, channelDisplayNames, channelSourceKinds, t.channelWorker, t.management],
   )
 
   const [linkedAccountSortKey, setLinkedAccountSortKey] = useState<LinkedAccountSortKey | null>(null)
@@ -1450,7 +1453,7 @@ export function DashboardPage() {
         .order('created_at', { ascending: false })
         .limit(10),
       supabase.from('signals').select('id,channel_id').eq('user_id', user!.id),
-      supabase.from('telegram_channels').select('id,display_name,channel_username').eq('user_id', user!.id),
+      supabase.from('telegram_channels').select('id,display_name,channel_username,source_kind').eq('user_id', user!.id),
       supabase
         .from('trade_channel_attributions')
         .select('broker_account_id,metaapi_order_id,signal_id,channel_id,channel_label')
@@ -1740,7 +1743,9 @@ export function DashboardPage() {
       mergedBalances,
       openTrades.length,
     )
-    const channelNames = buildChannelDisplayNames((channelsMetaRes.data ?? []) as ChannelNameRow[])
+    const channelRows = (channelsMetaRes.data ?? []) as ChannelNameRow[]
+    const channelNames = buildChannelDisplayNames(channelRows)
+    setChannelSourceKinds(buildChannelSourceKinds(channelRows))
     setChannelLinkMaps(channelMaps)
     const nextStats: DashboardStats = {
       accounts: activeBrokerCount,
@@ -2610,6 +2615,7 @@ export function DashboardPage() {
                   signal={log}
                   channelName={channelLabel(log.channel_id, channelDisplayNames)}
                   symbol={copierLogSymbols[log.id] ?? '—'}
+                  sourceKind={log.channel_id ? (channelSourceKinds[log.channel_id] ?? 'telegram') : null}
                 />
               ))}
             </div>
@@ -2840,7 +2846,7 @@ function OverviewStat({
   )
 }
 
-function LogRow({ signal, channelName, symbol }: { signal: Signal; channelName: string; symbol: string }) {
+function LogRow({ signal, channelName, symbol, sourceKind }: { signal: Signal; channelName: string; symbol: string; sourceKind?: SignalSourceKind | null }) {
   const t = useT()
   const parsed = signal.parsed_data as Record<string, unknown> | null
   const action = parsed?.action as string | undefined
@@ -2857,16 +2863,15 @@ function LogRow({ signal, channelName, symbol }: { signal: Signal; channelName: 
   const isBuy = action === 'buy'
 
   const typeLabel = action ? action.replace(/_/g, ' ') : '—'
+  const channelTitle = sourceKind ? `${SIGNAL_SOURCE_MARKS[sourceKind].label} · ${channelName}` : channelName
 
   return (
     <div className={`${DASHBOARD_COPIER_LOG_GRID} px-5 py-3 transition-colors hover:bg-[#F7F8FA] dark:hover:bg-white/[0.03]`}>
       <span className={`inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${s.color}`}>
         {s.label}
       </span>
-      <span className="flex min-w-0 items-center gap-2 text-xs text-neutral-700 dark:text-neutral-200" title={channelName}>
-        {signal.channel_id ? (
-          <img src="/Telegram.svg" alt="" aria-hidden className="h-5 w-5 shrink-0 rounded-full object-contain" />
-        ) : null}
+      <span className="flex min-w-0 items-center gap-2 text-xs text-neutral-700 dark:text-neutral-200" title={channelTitle}>
+        {sourceKind ? <SignalSourceLogo kind={sourceKind} /> : null}
         <span className="truncate">{channelName}</span>
       </span>
       <span className="min-w-0 text-sm font-medium text-neutral-900 dark:text-neutral-50 truncate" title={symbol}>{symbol}</span>

@@ -19,6 +19,8 @@ import { tradeSignalActionLabel, type TradeSignalSummaryLabels } from '../../lib
 import type { Signal } from '../../types/database'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
+import { SignalSourceLogo } from './SignalSourceLogo'
+import type { SignalSourceKind } from '../../lib/signalSourceMark'
 
 type StatusVariant = 'success' | 'warning' | 'error' | 'neutral' | 'primary'
 
@@ -27,6 +29,7 @@ const DEFAULT_DETAIL_MODAL = en.copierLogs.detailModal!
 export function CopierLogDetailModal({
   signal,
   channelName,
+  sourceKind = null,
   symbol,
   status,
   onClose,
@@ -36,6 +39,7 @@ export function CopierLogDetailModal({
 }: {
   signal: Signal | null
   channelName: string
+  sourceKind?: SignalSourceKind | null
   symbol: string
   status: { variant: StatusVariant; label: string }
   onClose: () => void
@@ -164,7 +168,10 @@ export function CopierLogDetailModal({
             <h2 id="copier-log-detail-title" className="text-lg font-semibold text-neutral-900 dark:text-neutral-50 truncate">
               {dm.title}
             </h2>
-            <p className="text-xs text-neutral-400 truncate">{symbol} · {channelName}</p>
+            <p className="flex min-w-0 items-center gap-1.5 text-xs text-neutral-400">
+              <SignalSourceLogo kind={sourceKind} className="h-4 w-4 shrink-0" />
+              <span className="truncate">{symbol} · {channelName}</span>
+            </p>
           </div>
           <button
             type="button"

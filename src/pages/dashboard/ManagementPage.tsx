@@ -30,11 +30,12 @@ import {
   type TradeActivityFilter,
   type TradeActivityLogRow,
 } from '../../lib/tradeActivities'
+import { buildChannelSourceKinds, type SignalSourceKind } from '../../lib/signalSourceMark'
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50] as const
 type PageSizeOption = (typeof PAGE_SIZE_OPTIONS)[number]
 
-type ChannelNameRow = { id: string; display_name: string; channel_username?: string | null }
+type ChannelNameRow = { id: string; display_name: string; channel_username?: string | null; source_kind?: string | null }
 
 export function ManagementPage() {
   const { user } = useAuth()
@@ -47,6 +48,7 @@ export function ManagementPage() {
   const [rawLogs, setRawLogs] = useState<TradeActivityLogRow[]>([])
   const [rawSkippedSignals, setRawSkippedSignals] = useState<SkippedSignalRow[]>([])
   const [channelDisplayNames, setChannelDisplayNames] = useState<Record<string, string>>({})
+  const [channelSourceKinds, setChannelSourceKinds] = useState<Record<string, SignalSourceKind>>({})
   const [toastMessage, setToastMessage] = useState<string | null>(null)
   const [retryingLogIds, setRetryingLogIds] = useState<Set<string>>(() => new Set())
   const [retryAllBusy, setRetryAllBusy] = useState(false)
@@ -80,7 +82,7 @@ export function ManagementPage() {
       needChannels
         ? supabase
           .from('telegram_channels')
-          .select('id,display_name,channel_username')
+          .select('id,display_name,channel_username,source_kind')
           .eq('user_id', userId)
         : Promise.resolve({ data: null, error: null }),
       supabase
@@ -105,6 +107,7 @@ export function ManagementPage() {
     if (needChannels && channelsRes.data) {
       channelsLoadedRef.current = true
       setChannelDisplayNames(buildChannelDisplayNames((channelsRes.data ?? []) as ChannelNameRow[]))
+      setChannelSourceKinds(buildChannelSourceKinds((channelsRes.data ?? []) as ChannelNameRow[]))
     }
 
     const next = (logsRes.data ?? []) as TradeActivityLogRow[]
@@ -147,6 +150,7 @@ export function ManagementPage() {
       t.channelWorker,
       t.management,
       channelDisplayNames,
+      channelSourceKinds,
     )
     if (filter !== 'skipped') return logActivities
     return mergeSkippedSignalActivities(
@@ -155,8 +159,9 @@ export function ManagementPage() {
       t.channelWorker,
       t.management,
       channelDisplayNames,
+      channelSourceKinds,
     )
-  }, [rawLogs, rawSkippedSignals, filter, t.channelWorker, t.management, channelDisplayNames])
+  }, [rawLogs, rawSkippedSignals, filter, t.channelWorker, t.management, channelDisplayNames, channelSourceKinds])
 
   const filteredActivities = useMemo(
     () => filterTradeActivitiesByTab(allActivities, filter),
