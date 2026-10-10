@@ -26,10 +26,12 @@ export const settingsPl: SettingsBundleTranslations = {
     },
     photo: {
       change: 'Zmień zdjęcie',
-      hint: 'JPG, PNG lub WebP. Do 2 MB.',
-      tooLarge: 'Zdjęcie może mieć najwyżej 2 MB.',
+      hint: 'JPG, PNG lub WebP. Do 12 MB.',
+      tooLarge: 'Zdjęcie może mieć najwyżej 12 MB.',
       invalidType: 'Użyj obrazu JPG, PNG lub WebP.',
       uploadError: 'Nie udało się zaktualizować zdjęcia profilowego.',
+      cropTitle: 'Przytnij zdjęcie',
+      zoom: 'Powiększenie',
     },
     general: {
       title: 'Ustawienia ogólne',

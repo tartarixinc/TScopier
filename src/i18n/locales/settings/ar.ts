@@ -26,10 +26,12 @@ export const settingsAr: SettingsBundleTranslations = {
     },
     photo: {
       change: 'تغيير الصورة',
-      hint: 'JPG أو PNG أو WebP. حتى 2 ميغابايت.',
-      tooLarge: 'يجب أن يكون حجم الصورة 2 ميغابايت أو أقل.',
+      hint: 'JPG أو PNG أو WebP. حتى 12 ميغابايت.',
+      tooLarge: 'يجب أن يكون حجم الصورة 12 ميغابايت أو أقل.',
       invalidType: 'استخدم صورة JPG أو PNG أو WebP.',
       uploadError: 'تعذر تحديث صورة الملف الشخصي.',
+      cropTitle: 'اقتصاص الصورة',
+      zoom: 'تكبير',
     },
     general: {
       title: 'الإعدادات العامة',

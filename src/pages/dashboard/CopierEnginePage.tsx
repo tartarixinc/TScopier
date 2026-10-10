@@ -60,12 +60,21 @@ import {
   fetchListenerLeaseStatus,
   type ListenerLeaseSnapshot,
 } from '../../lib/listenerLeaseStatus'
+import { subscribeDiscordSourcesChanged } from '../../lib/discordSource'
 import { SIGNAL_SOURCE_MARKS, type SignalSourceKind } from '../../lib/signalSourceMark'
+import {
+  SIGNAL_SOURCE_ORDER,
+  appendSignalSource,
+  connectedSignalSources,
+  mergeAddedSignalSourceOrder,
+  signalSourceTabOrder,
+} from '../../lib/signalSourceTabs'
+import { subscribeTradingViewWebhooksChanged } from '../../lib/tradingViewWebhook'
+import { subscribeWhatsAppSourcesChanged } from '../../lib/whatsappSource'
 import type { BrokerAccount, TelegramChannel } from '../../types/database'
 
 type AddedSignalSource = SignalSourceKind
 
-const SIGNAL_SOURCE_ORDER: AddedSignalSource[] = ['telegram', 'whatsapp', 'discord', 'tradingview']
 const ADDED_SIGNAL_SOURCES_KEY = 'tscopier.signalSources.added'
 
 function isAddedSignalSource(value: unknown): value is AddedSignalSource {
@@ -89,24 +98,6 @@ function writeAddedSignalSources(userId: string, sources: AddedSignalSource[]) {
   } catch {
     /* ignore */
   }
-}
-
-function detectConfiguredSignalSources(input: {
-  hasTelegramSession: boolean
-  channels: Array<{ source_kind?: string | null }>
-  discordInstallations: number
-  whatsappStatus: string | null
-  tradingViewWebhooks: number
-}): AddedSignalSource[] {
-  const hasKind = (kind: AddedSignalSource) =>
-    input.channels.some(row => (row.source_kind ?? 'telegram') === kind)
-  const found: AddedSignalSource[] = []
-  if (input.hasTelegramSession || hasKind('telegram')) found.push('telegram')
-  const whatsappStatus = String(input.whatsappStatus ?? '').trim().toLowerCase()
-  if (whatsappStatus === 'connected' || whatsappStatus === 'qr' || hasKind('whatsapp')) found.push('whatsapp')
-  if (input.discordInstallations > 0 || hasKind('discord')) found.push('discord')
-  if (input.tradingViewWebhooks > 0 || hasKind('tradingview')) found.push('tradingview')
-  return found
 }
 
 function getTelegramAvatarUrl(username?: string): string | null {
@@ -170,13 +161,15 @@ export function CopierEnginePage() {
   const pw = t.pricing.paywall
   const [channels, setChannels] = useState<TelegramChannel[]>([])
   const [searchParams] = useSearchParams()
-  const [source, setSource] = useState<AddedSignalSource | null>(
-    searchParams.get('guild_id') ? 'discord' : null,
+  const guildFromInvite = searchParams.get('guild_id')
+  const [source, setSource] = useState<AddedSignalSource | null>(guildFromInvite ? 'discord' : null)
+  const [settingUpSource, setSettingUpSource] = useState<AddedSignalSource | null>(
+    guildFromInvite ? 'discord' : null,
   )
   const [pickedSources, setPickedSources] = useState<AddedSignalSource[]>(() => (
     user?.id ? readAddedSignalSources(user.id) : []
   ))
-  const [configuredSources, setConfiguredSources] = useState<AddedSignalSource[]>([])
+  const [connectedSources, setConnectedSources] = useState<AddedSignalSource[]>([])
   const [sourcesReady, setSourcesReady] = useState(false)
   const [sourcePickerOpen, setSourcePickerOpen] = useState(false)
   const [connectMenuChannelId, setConnectMenuChannelId] = useState<string | null>(null)
@@ -319,9 +312,8 @@ export function CopierEnginePage() {
     setHasTgSession(hasSession)
     if (user?.id) setCachedTgSession(user.id, hasSession)
     const whatsappRow = whatsappSession.data as { status?: string } | null
-    setConfiguredSources(detectConfiguredSignalSources({
+    setConnectedSources(connectedSignalSources({
       hasTelegramSession: hasSession,
-      channels: allChannelRows,
       discordInstallations: discordInstalls.error ? 0 : (discordInstalls.count ?? 0),
       whatsappStatus: whatsappSession.error ? null : (whatsappRow?.status ?? null),
       tradingViewWebhooks: tradingViewHooks.error ? 0 : (tradingViewHooks.count ?? 0),
@@ -349,6 +341,22 @@ export function CopierEnginePage() {
     }
   }
 
+  const loadDataRef = useRef(loadData)
+  loadDataRef.current = loadData
+
+  useEffect(() => {
+    if (!user?.id) return
+    const refresh = () => { void loadDataRef.current({ skipTgFetch: true }) }
+    const stopWhatsApp = subscribeWhatsAppSourcesChanged(refresh)
+    const stopDiscord = subscribeDiscordSourcesChanged(refresh)
+    const stopTradingView = subscribeTradingViewWebhooksChanged(refresh)
+    return () => {
+      stopWhatsApp()
+      stopDiscord()
+      stopTradingView()
+    }
+  }, [user?.id])
+
   /** Remove Telegram session only (manual disconnect). Keeps configured channels. */
   const clearTelegramConnection = useCallback(async (nextStage: 'idle' | 'phone') => {
     if (!user?.id) return
@@ -358,6 +366,7 @@ export function CopierEnginePage() {
       await supabase.from('telegram_sessions').delete().eq('user_id', user.id)
     }
     setHasTgSession(false)
+    setConnectedSources(prev => prev.filter(kind => kind !== 'telegram'))
     setTgChannels([])
     setTgChannelSearch('')
     if (user.id) {
@@ -380,11 +389,13 @@ export function CopierEnginePage() {
   const handleTelegramSessionInvalid = useCallback(async () => {
     if (!user?.id) return
     setHasTgSession(false)
+    setConnectedSources(prev => prev.filter(kind => kind !== 'telegram'))
     setTgChannels([])
     setTgChannelSearch('')
     invalidateTgChannelsCache(user.id)
     invalidateTgSessionCache(user.id)
     setTgError(ce.telegramSessionExpired)
+    setSettingUpSource('telegram')
     const { data: channelRows } = await supabase
       .from('telegram_channels')
       .select('*')
@@ -950,39 +961,47 @@ export function CopierEnginePage() {
     }
   }
 
-  const visibleSources = useMemo(() => {
-    const added = new Set<AddedSignalSource>([...configuredSources, ...pickedSources])
-    return SIGNAL_SOURCE_ORDER.filter(kind => added.has(kind))
-  }, [configuredSources, pickedSources])
+  const visibleSources = useMemo(
+    () => signalSourceTabOrder(pickedSources, connectedSources),
+    [pickedSources, connectedSources],
+  )
 
-  const guildFromInvite = searchParams.get('guild_id')
   useEffect(() => {
-    if (!user?.id) return
+    if (!user?.id || !sourcesReady) return
     setPickedSources(prev => {
-      const stored = readAddedSignalSources(user.id)
-      const merged = SIGNAL_SOURCE_ORDER.filter(kind =>
-        stored.includes(kind) || prev.includes(kind) || (kind === 'discord' && Boolean(guildFromInvite)),
+      const next = mergeAddedSignalSourceOrder(
+        readAddedSignalSources(user.id),
+        prev,
+        connectedSources,
+        guildFromInvite ? 'discord' : null,
       )
-      if (guildFromInvite && !stored.includes('discord')) writeAddedSignalSources(user.id, merged)
-      return merged
+      const unchanged = next.length === prev.length && next.every((kind, index) => kind === prev[index])
+      if (!unchanged) writeAddedSignalSources(user.id, next)
+      return unchanged ? prev : next
     })
-  }, [guildFromInvite, user?.id])
+  }, [connectedSources, guildFromInvite, sourcesReady, user?.id])
 
   useEffect(() => {
     if (!sourcesReady) return
-    if (source && visibleSources.includes(source)) return
+    if (settingUpSource && connectedSources.includes(settingUpSource)) setSettingUpSource(null)
+  }, [connectedSources, settingUpSource, sourcesReady])
+
+  useEffect(() => {
+    if (!sourcesReady) return
+    if (source && (visibleSources.includes(source) || source === settingUpSource)) return
     setSource(visibleSources[0] ?? null)
-  }, [source, sourcesReady, visibleSources])
+  }, [settingUpSource, source, sourcesReady, visibleSources])
 
   const addSignalSource = (kind: AddedSignalSource) => {
     if (user?.id) {
       setPickedSources(prev => {
-        if (prev.includes(kind)) return prev
-        const next = [...prev, kind]
-        writeAddedSignalSources(user.id, next)
+        const next = appendSignalSource(prev, kind)
+        if (next !== prev) writeAddedSignalSources(user.id, next)
         return next
       })
     }
+    if (!connectedSources.includes(kind)) setSettingUpSource(kind)
+    else setSettingUpSource(null)
     setSource(kind)
     setSourcePickerOpen(false)
   }
@@ -1022,7 +1041,7 @@ export function CopierEnginePage() {
 
       {!sourcesReady ? (
         <div className="h-40 animate-pulse rounded-xl border border-neutral-100 bg-white dark:border-neutral-800 dark:bg-neutral-950" />
-      ) : visibleSources.length === 0 ? (
+      ) : visibleSources.length === 0 && !settingUpSource ? (
         <div className="rounded-xl border border-dashed border-neutral-200 bg-white px-6 py-16 text-center dark:border-neutral-800 dark:bg-neutral-950">
           <div className="mb-4 flex items-center justify-center gap-3">
             {SIGNAL_SOURCE_ORDER.map(kind => (
@@ -1047,9 +1066,17 @@ export function CopierEnginePage() {
         </div>
       ) : (
       <>
+      {visibleSources.length > 0 ? (
       <nav className="flex gap-6 overflow-x-auto border-b border-neutral-200 dark:border-neutral-800" aria-label={t.pages.copierEngine.title}>
         {visibleSources.map(kind => (
-          <SourceTab key={kind} active={source === kind} onClick={() => setSource(kind)}>
+          <SourceTab
+            key={kind}
+            active={source === kind}
+            onClick={() => {
+              setSettingUpSource(null)
+              setSource(kind)
+            }}
+          >
             <img
               src={SIGNAL_SOURCE_MARKS[kind].iconSrc}
               alt=""
@@ -1063,6 +1090,7 @@ export function CopierEnginePage() {
           </SourceTab>
         ))}
       </nav>
+      ) : null}
 
       {source === 'tradingview' ? (
         <TradingViewSourcePanel brokers={brokers} replaceBroker={replaceBroker} />

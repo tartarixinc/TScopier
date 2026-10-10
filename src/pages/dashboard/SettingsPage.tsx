@@ -12,7 +12,8 @@ import { useAuth } from '../../context/AuthContext'
 import { useLocale, useT } from '../../context/LocaleContext'
 import { useUserProfile } from '../../context/UserProfileContext'
 import { updatePassword } from '../../lib/userProfile'
-import { uploadProfilePhoto, validateProfilePhoto } from '../../lib/profilePhoto'
+import { uploadProfilePhoto, validateProfilePhoto, validateProfilePhotoSource } from '../../lib/profilePhoto'
+import { ProfilePhotoCropModal } from '../../components/settings/ProfilePhotoCropModal'
 import { UserAvatar } from '../../components/layout/UserAvatar'
 import { buildBaseCurrencyOptions } from '../../lib/baseCurrencies'
 import { countryDisplayName } from '../../lib/countryOptions'
@@ -74,6 +75,7 @@ export function SettingsPage() {
   const [generalSaving, setGeneralSaving] = useState(false)
   const [passwordSaving, setPasswordSaving] = useState(false)
   const [photoSaving, setPhotoSaving] = useState(false)
+  const [cropFile, setCropFile] = useState<File | null>(null)
   const [countryDetecting, setCountryDetecting] = useState(false)
   const photoInputRef = useRef<HTMLInputElement>(null)
 
@@ -135,8 +137,24 @@ export function SettingsPage() {
     }
   }
 
-  const handleChangePhoto = async (file: File | undefined) => {
+  const handlePickPhoto = (file: File | undefined) => {
+    if (photoInputRef.current) photoInputRef.current.value = ''
     if (!user || !file) return
+    setPersonalMsg(null)
+    const rejection = validateProfilePhotoSource(file)
+    if (rejection === 'type') {
+      setPersonalMsg({ type: 'error', text: t.settings.photo.invalidType })
+      return
+    }
+    if (rejection === 'size') {
+      setPersonalMsg({ type: 'error', text: t.settings.photo.tooLarge })
+      return
+    }
+    setCropFile(file)
+  }
+
+  const handleChangePhoto = async (file: File) => {
+    if (!user) return
     setPersonalMsg(null)
     const rejection = validateProfilePhoto(file)
     if (rejection === 'type') {
@@ -151,9 +169,11 @@ export function SettingsPage() {
     try {
       const avatarUrl = await uploadProfilePhoto(user.id, file)
       patchProfile({ avatar_url: avatarUrl })
+      setCropFile(null)
       setPersonalMsg({ type: 'success', text: t.settings.saved })
     } catch (e) {
       const message = e instanceof Error ? e.message : ''
+      setCropFile(null)
       setPersonalMsg({
         type: 'error',
         text: message === 'invalid_type'
@@ -164,7 +184,6 @@ export function SettingsPage() {
       })
     } finally {
       setPhotoSaving(false)
-      if (photoInputRef.current) photoInputRef.current.value = ''
     }
   }
 
@@ -289,7 +308,7 @@ export function SettingsPage() {
                       accept="image/jpeg,image/png,image/webp"
                       className="sr-only"
                       disabled={photoSaving}
-                      onChange={event => { void handleChangePhoto(event.target.files?.[0]) }}
+                      onChange={event => handlePickPhoto(event.target.files?.[0])}
                     />
                     {photoSaving ? t.common.loading : t.settings.photo.change}
                   </label>
@@ -470,6 +489,20 @@ export function SettingsPage() {
           ) : null}
         </div>
       </div>
+      <ProfilePhotoCropModal
+        file={cropFile}
+        saving={photoSaving}
+        title={t.settings.photo.cropTitle}
+        zoomLabel={t.settings.photo.zoom}
+        cancelLabel={t.common.cancel}
+        saveLabel={t.common.save}
+        onClose={() => { if (!photoSaving) setCropFile(null) }}
+        onSave={file => { void handleChangePhoto(file) }}
+        onError={() => {
+          setCropFile(null)
+          setPersonalMsg({ type: 'error', text: t.settings.photo.uploadError })
+        }}
+      />
     </PageShell>
   )
 }

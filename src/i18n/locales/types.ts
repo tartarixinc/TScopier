@@ -1364,13 +1364,15 @@ export interface SettingsTranslations {
     security: string
   }
   personal: { title: string; description: string }
-  photo: {
-    change: string
-    hint: string
-    tooLarge: string
-    invalidType: string
-    uploadError: string
-  }
+    photo: {
+      change: string
+      hint: string
+      tooLarge: string
+      invalidType: string
+      uploadError: string
+      cropTitle: string
+      zoom: string
+    }
   general: { title: string; description: string }
   security: { title: string; description: string; updatePassword: string }
   fields: {

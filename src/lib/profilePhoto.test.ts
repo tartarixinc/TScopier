@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { profilePhotoObjectPath, validateProfilePhoto } from './profilePhoto'
+import { profilePhotoObjectPath, validateProfilePhoto, validateProfilePhotoSource } from './profilePhoto'
 
 describe('validateProfilePhoto', () => {
   it('accepts a jpeg under the size limit', () => {
@@ -12,6 +12,11 @@ describe('validateProfilePhoto', () => {
 
   it('rejects a file over 2 MB', () => {
     expect(validateProfilePhoto({ type: 'image/png', size: 2 * 1024 * 1024 + 1 })).toBe('size')
+  })
+
+  it('accepts a larger original before cropping', () => {
+    expect(validateProfilePhotoSource({ type: 'image/jpeg', size: 8 * 1024 * 1024 })).toBeNull()
+    expect(validateProfilePhotoSource({ type: 'image/jpeg', size: 12 * 1024 * 1024 + 1 })).toBe('size')
   })
 })
 

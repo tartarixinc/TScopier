@@ -26,10 +26,12 @@ export const settingsJa: SettingsBundleTranslations = {
     },
     photo: {
       change: '写真を変更',
-      hint: 'JPG、PNG、または WebP。2 MB まで。',
-      tooLarge: '写真は 2 MB 以下にしてください。',
+      hint: 'JPG、PNG、または WebP。12 MB まで。',
+      tooLarge: '写真は 12 MB 以下にしてください。',
       invalidType: 'JPG、PNG、または WebP の画像を使ってください。',
       uploadError: 'プロフィール写真を更新できませんでした。',
+      cropTitle: '写真を切り抜く',
+      zoom: 'ズーム',
     },
     general: {
       title: '一般設定',

@@ -1894,10 +1894,12 @@ export const es: Translations = {
     },
     photo: {
       change: 'Cambiar foto',
-      hint: 'JPG, PNG o WebP. Hasta 2 MB.',
-      tooLarge: 'La foto debe pesar 2 MB o menos.',
+      hint: 'JPG, PNG o WebP. Hasta 12 MB.',
+      tooLarge: 'La foto debe pesar 12 MB o menos.',
       invalidType: 'Usa una imagen JPG, PNG o WebP.',
       uploadError: 'No se pudo actualizar tu foto de perfil.',
+      cropTitle: 'Recortar foto',
+      zoom: 'Zoom',
     },
     general: {
       title: 'Ajustes generales',

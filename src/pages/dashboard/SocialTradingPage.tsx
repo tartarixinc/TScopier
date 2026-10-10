@@ -12,12 +12,15 @@ import { PerformanceTradeOutcomeChart } from '../../components/performance/Perfo
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { useAddTradingAccount } from '../../context/AddTradingAccountContext'
+import { useAuth } from '../../context/AuthContext'
 import { useLocale, useT } from '../../context/LocaleContext'
+import { useUserProfile } from '../../context/UserProfileContext'
 import type { SocialTradingPageTranslations } from '../../i18n/locales/types'
 import { useTheme } from '../../context/ThemeContext'
 import { useFormatMoney } from '../../hooks/useFormatMoney'
 import { interpolate } from '../../i18n/interpolate'
 import { chartThemeColors, chartTooltipProps } from '../../lib/chartTheme'
+import { resolveUserAvatarUrl } from '../../lib/userAvatar'
 import {
   SOCIAL_INCOMING_REQUESTS,
   SOCIAL_TRADERS,
@@ -41,6 +44,51 @@ type CopyButtonState = 'follow' | 'following' | 'request' | 'requested'
 
 type SortKey = 'roi' | 'winRate' | 'followers' | 'rating'
 type DirectoryView = 'all' | 'followers' | 'following'
+
+function useOwnAvatarUrl(): string | null {
+  const { user } = useAuth()
+  const { profile } = useUserProfile()
+  return resolveUserAvatarUrl(user, profile)
+}
+
+function TraderAvatar({
+  name,
+  src,
+  size,
+}: {
+  name: string
+  src?: string | null
+  size: 'row' | 'profile'
+}) {
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    setFailed(false)
+  }, [src])
+
+  const showPhoto = Boolean(src && !failed)
+
+  return (
+    <span
+      className={clsx(
+        'flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-neutral-100 font-semibold text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300',
+        size === 'profile' ? 'h-14 w-14 text-lg' : 'h-9 w-9 text-sm',
+      )}
+    >
+      {showPhoto ? (
+        <img
+          src={src!}
+          alt=""
+          className="h-full w-full object-cover"
+          referrerPolicy="no-referrer"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        name.slice(0, 1).toUpperCase()
+      )}
+    </span>
+  )
+}
 
 function initialFollowing(): Set<string> {
   try {
@@ -241,6 +289,7 @@ export function SocialTradingPage() {
   const [access, setAccess] = useState(initialAccess)
   const [outgoing, setOutgoing] = useState(initialOutgoing)
   const [incoming] = useState(initialIncoming)
+  const ownAvatarUrl = useOwnAvatarUrl()
   const view: DirectoryView = params.get('view') === 'followers'
     ? 'followers'
     : params.get('view') === 'following'
@@ -375,9 +424,7 @@ export function SocialTradingPage() {
                     >
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
-                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-sm font-semibold text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">
-                            {name.slice(0, 1).toUpperCase()}
-                          </span>
+                          <TraderAvatar name={name} src={trader.isYou ? ownAvatarUrl : null} size="row" />
                           <div className="min-w-0">
                             <p className="truncate font-medium text-neutral-900 dark:text-neutral-50">{name}</p>
                             <TraderRating rating={trader.rating} count={trader.ratingCount} copy={copy} />
@@ -574,6 +621,7 @@ export function SocialTraderActivityPage() {
   const [access, setAccess] = useState(initialAccess)
   const [outgoing, setOutgoing] = useState(initialOutgoing)
   const [incoming, setIncoming] = useState(initialIncoming)
+  const ownAvatarUrl = useOwnAvatarUrl()
   const [copyModalOpen, setCopyModalOpen] = useState(false)
   const [profileTab, setProfileTab] = useState<'performance' | 'trading' | 'portfolio'>('performance')
 
@@ -629,9 +677,7 @@ export function SocialTraderActivityPage() {
         <Card className="mt-3">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex min-w-0 items-start gap-3">
-              <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-lg font-semibold text-neutral-600 dark:bg-neutral-800 dark:text-neutral-200">
-                {name.slice(0, 1).toUpperCase()}
-              </span>
+              <TraderAvatar name={name} src={trader.isYou ? ownAvatarUrl : null} size="profile" />
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className="truncate text-xl font-semibold text-neutral-900 dark:text-neutral-50">{name}</h1>

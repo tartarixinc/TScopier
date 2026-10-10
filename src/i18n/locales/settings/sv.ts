@@ -26,10 +26,12 @@ export const settingsSv: SettingsBundleTranslations = {
     },
     photo: {
       change: 'Byt foto',
-      hint: 'JPG, PNG eller WebP. Högst 2 MB.',
-      tooLarge: 'Fotot får vara högst 2 MB.',
+      hint: 'JPG, PNG eller WebP. Högst 12 MB.',
+      tooLarge: 'Fotot får vara högst 12 MB.',
       invalidType: 'Använd en JPG-, PNG- eller WebP-bild.',
       uploadError: 'Kunde inte uppdatera profilbilden.',
+      cropTitle: 'Beskär foto',
+      zoom: 'Zoom',
     },
     general: {
       title: 'Allmänna inställningar',

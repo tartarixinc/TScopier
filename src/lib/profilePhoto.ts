@@ -2,6 +2,7 @@ import { supabase } from './supabase'
 
 export const PROFILE_PHOTO_BUCKET = 'profile-photos'
 export const PROFILE_PHOTO_MAX_BYTES = 2 * 1024 * 1024
+export const PROFILE_PHOTO_SOURCE_MAX_BYTES = 12 * 1024 * 1024
 export const PROFILE_PHOTO_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const
 
 export type ProfilePhotoRejection = 'type' | 'size'
@@ -13,6 +14,12 @@ export function profilePhotoObjectPath(userId: string): string {
 export function validateProfilePhoto(file: { type: string; size: number }): ProfilePhotoRejection | null {
   if (!PROFILE_PHOTO_MIME_TYPES.includes(file.type as (typeof PROFILE_PHOTO_MIME_TYPES)[number])) return 'type'
   if (file.size <= 0 || file.size > PROFILE_PHOTO_MAX_BYTES) return 'size'
+  return null
+}
+
+export function validateProfilePhotoSource(file: { type: string; size: number }): ProfilePhotoRejection | null {
+  if (!PROFILE_PHOTO_MIME_TYPES.includes(file.type as (typeof PROFILE_PHOTO_MIME_TYPES)[number])) return 'type'
+  if (file.size <= 0 || file.size > PROFILE_PHOTO_SOURCE_MAX_BYTES) return 'size'
   return null
 }
 

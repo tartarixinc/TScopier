@@ -26,10 +26,12 @@ export const settingsRu: SettingsBundleTranslations = {
     },
     photo: {
       change: 'Изменить фото',
-      hint: 'JPG, PNG или WebP. До 2 МБ.',
-      tooLarge: 'Фото должно быть не больше 2 МБ.',
+      hint: 'JPG, PNG или WebP. До 12 МБ.',
+      tooLarge: 'Фото должно быть не больше 12 МБ.',
       invalidType: 'Используйте изображение JPG, PNG или WebP.',
       uploadError: 'Не удалось обновить фото профиля.',
+      cropTitle: 'Обрезать фото',
+      zoom: 'Масштаб',
     },
     general: {
       title: 'Общие настройки',

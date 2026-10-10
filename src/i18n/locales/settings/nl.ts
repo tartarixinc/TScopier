@@ -26,10 +26,12 @@ export const settingsNl: SettingsBundleTranslations = {
     },
     photo: {
       change: 'Foto wijzigen',
-      hint: 'JPG, PNG of WebP. Maximaal 2 MB.',
-      tooLarge: 'De foto mag maximaal 2 MB zijn.',
+      hint: 'JPG, PNG of WebP. Maximaal 12 MB.',
+      tooLarge: 'De foto mag maximaal 12 MB zijn.',
       invalidType: 'Gebruik een JPG-, PNG- of WebP-afbeelding.',
       uploadError: 'Profielfoto kon niet worden bijgewerkt.',
+      cropTitle: 'Foto bijsnijden',
+      zoom: 'Zoom',
     },
     general: {
       title: 'Algemene instellingen',

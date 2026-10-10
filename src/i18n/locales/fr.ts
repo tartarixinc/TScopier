@@ -1894,10 +1894,12 @@ export const fr: Translations = {
     },
     photo: {
       change: 'Changer la photo',
-      hint: 'JPG, PNG ou WebP. 2 Mo maximum.',
-      tooLarge: 'La photo doit faire 2 Mo ou moins.',
+      hint: 'JPG, PNG ou WebP. 12 Mo maximum.',
+      tooLarge: 'La photo doit faire 12 Mo ou moins.',
       invalidType: 'Utilisez une image JPG, PNG ou WebP.',
       uploadError: 'Impossible de mettre à jour votre photo de profil.',
+      cropTitle: 'Recadrer la photo',
+      zoom: 'Zoom',
     },
     general: {
       title: 'Paramètres généraux',

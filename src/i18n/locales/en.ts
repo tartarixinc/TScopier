@@ -1941,10 +1941,12 @@ broker: {
     },
     photo: {
       change: 'Change photo',
-      hint: 'JPG, PNG, or WebP. Up to 2 MB.',
-      tooLarge: 'Photo must be 2 MB or smaller.',
+      hint: 'JPG, PNG, or WebP. Up to 12 MB.',
+      tooLarge: 'Photo must be 12 MB or smaller.',
       invalidType: 'Use a JPG, PNG, or WebP image.',
       uploadError: 'Could not update your profile photo.',
+      cropTitle: 'Crop photo',
+      zoom: 'Zoom',
     },
     general: {
       title: 'General settings',
