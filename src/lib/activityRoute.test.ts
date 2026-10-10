@@ -74,7 +74,7 @@ test('source_kind selects a non-telegram source', () => {
     [mt5],
   )
   assert.equal(route.source?.kind, 'whatsapp')
-  assert.equal(route.source?.iconSrc, '/WhatsApp-icon.svg')
+  assert.equal(route.source?.iconSrc, '/whatsapp-icon.png')
   assert.equal(route.destination?.iconSrc, '/MT5.png')
 })
 

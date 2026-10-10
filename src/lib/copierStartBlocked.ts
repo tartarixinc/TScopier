@@ -7,12 +7,13 @@ export function resolveCopierStartBlocked(args: {
   hasChannels: boolean
   hasTradingViewWebhook: boolean
   hasDiscordChannel: boolean
+  hasWhatsAppSource: boolean
 }): { blocked: boolean; reason: CopierStartBlockedReason | null } {
   if (!args.hasActiveSubscription) {
     return { blocked: true, reason: 'subscription' }
   }
   const hasTelegramSource = args.hasTelegramSession && args.hasChannels
-  const hasSignalSource = hasTelegramSource || args.hasTradingViewWebhook || args.hasDiscordChannel
+  const hasSignalSource = hasTelegramSource || args.hasTradingViewWebhook || args.hasDiscordChannel || args.hasWhatsAppSource
   if (!args.hasConnectedBroker || !hasSignalSource) {
     return { blocked: true, reason: 'setup' }
   }

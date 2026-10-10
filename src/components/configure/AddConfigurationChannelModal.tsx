@@ -17,7 +17,7 @@ export interface ConfigurationChannelOption {
   display_name: string
   channel_username: string
   channel_id?: string
-  source_kind?: 'telegram' | 'tradingview' | 'discord' | null
+  source_kind?: 'telegram' | 'tradingview' | 'discord' | 'whatsapp' | null
 }
 
 function channelLabel(channel: ConfigurationChannelOption): string {
@@ -63,9 +63,11 @@ export function AddConfigurationChannelModal({
   const formCopy = t.channelsPage
   const { user } = useAuth()
   const { canAddChannel, limits, refresh: refreshSubscription } = useSubscription()
-  const [step, setStep] = useState<'choose' | 'telegram' | 'tradingview' | 'broker'>('choose')
-  const telegramChannels = channels.filter(channel => channel.source_kind !== 'tradingview')
+  const [step, setStep] = useState<'choose' | 'telegram' | 'tradingview' | 'discord' | 'whatsapp' | 'broker'>('choose')
+  const telegramChannels = channels.filter(channel => !channel.source_kind || channel.source_kind === 'telegram')
   const tradingViewChannels = channels.filter(channel => channel.source_kind === 'tradingview')
+  const discordChannels = channels.filter(channel => channel.source_kind === 'discord')
+  const whatsappChannels = channels.filter(channel => channel.source_kind === 'whatsapp')
   const [showForm, setShowForm] = useState(false)
   const [draft, setDraft] = useState({ channel_id: '', channel_username: '', display_name: '' })
   const [saving, setSaving] = useState(false)
@@ -151,7 +153,7 @@ export function AddConfigurationChannelModal({
             {copy.addChannel}
           </h2>
           <div className="flex items-center gap-1">
-            {step === 'choose' || step === 'tradingview' ? null : (
+            {step === 'choose' || step === 'tradingview' || step === 'discord' || step === 'whatsapp' ? null : (
               <button
                 type="button"
                 className="rounded-lg p-2 text-teal-700 hover:bg-teal-50 dark:text-teal-300 dark:hover:bg-teal-950"
@@ -190,6 +192,22 @@ export function AddConfigurationChannelModal({
               >
                 <img src="/Telegram.svg" alt="" aria-hidden className="h-7 w-7 shrink-0 object-contain" />
                 <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{copy.sourceTelegram}</span>
+              </button>
+              <button
+                type="button"
+                className="flex w-full items-center gap-3 rounded-xl border border-neutral-200 px-4 py-3 text-start hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900"
+                onClick={() => setStep('whatsapp')}
+              >
+                <img src="/whatsapp-icon.png" alt="" aria-hidden className="h-7 w-7 shrink-0 rounded-full object-cover" />
+                <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{formCopy.tabWhatsApp}</span>
+              </button>
+              <button
+                type="button"
+                className="flex w-full items-center gap-3 rounded-xl border border-neutral-200 px-4 py-3 text-start hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900"
+                onClick={() => setStep('discord')}
+              >
+                <img src="/discord-logo.png" alt="" aria-hidden className="h-7 w-7 shrink-0 rounded-full object-cover" />
+                <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{formCopy.tabDiscord}</span>
               </button>
               <button
                 type="button"
@@ -270,6 +288,50 @@ export function AddConfigurationChannelModal({
                 </Button>
               </div>
             </form>
+          ) : null}
+          {step === 'whatsapp' && whatsappChannels.length === 0 ? (
+            <p className="text-sm text-neutral-500 dark:text-neutral-400">{formCopy.whatsappEmptyGroups}</p>
+          ) : null}
+          {step === 'whatsapp' && whatsappChannels.length > 0 ? (
+            <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
+              {whatsappChannels.map(channel => {
+                const name = channelLabel(channel) || copy.unknownChannel
+                return (
+                  <li key={channel.id}>
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2.5 py-2.5 text-start hover:bg-neutral-50 dark:hover:bg-neutral-900"
+                      onClick={() => onSelect(channel.id)}
+                    >
+                      <img src="/whatsapp-icon.png" alt="" aria-hidden className="h-7 w-7 shrink-0 rounded-full object-cover" />
+                      <span className="block truncate text-sm font-medium text-neutral-900 dark:text-neutral-50">{name}</span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          ) : null}
+          {step === 'discord' && discordChannels.length === 0 ? (
+            <p className="text-sm text-neutral-500 dark:text-neutral-400">{formCopy.discordEmptyChannels}</p>
+          ) : null}
+          {step === 'discord' && discordChannels.length > 0 ? (
+            <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
+              {discordChannels.map(channel => {
+                const name = channelLabel(channel) || copy.unknownChannel
+                return (
+                  <li key={channel.id}>
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2.5 py-2.5 text-start hover:bg-neutral-50 dark:hover:bg-neutral-900"
+                      onClick={() => onSelect(channel.id)}
+                    >
+                      <img src="/discord-logo.png" alt="" aria-hidden className="h-7 w-7 shrink-0 rounded-full object-cover" />
+                      <span className="block truncate text-sm font-medium text-neutral-900 dark:text-neutral-50">{name}</span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
           ) : null}
           {step === 'tradingview' && tradingViewChannels.length === 0 ? (
             <p className="text-sm text-neutral-500 dark:text-neutral-400">{formCopy.tradingViewEmpty}</p>

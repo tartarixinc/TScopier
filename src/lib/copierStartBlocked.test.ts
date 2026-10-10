@@ -9,6 +9,7 @@ const ready = {
   hasChannels: true,
   hasTradingViewWebhook: false,
   hasDiscordChannel: false,
+  hasWhatsAppSource: false,
 }
 
 describe('resolveCopierStartBlocked', () => {
@@ -45,6 +46,20 @@ describe('resolveCopierStartBlocked', () => {
         hasTelegramSession: false,
         hasChannels: false,
         hasTradingViewWebhook: true,
+      }),
+      { blocked: false, reason: null },
+    )
+  })
+
+  it('allows WhatsApp alone when a session is linked and a group is added', () => {
+    assert.deepEqual(
+      resolveCopierStartBlocked({
+        ...ready,
+        hasTelegramSession: false,
+        hasChannels: false,
+        hasTradingViewWebhook: false,
+        hasDiscordChannel: false,
+        hasWhatsAppSource: true,
       }),
       { blocked: false, reason: null },
     )

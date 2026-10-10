@@ -1566,6 +1566,7 @@ export interface ChannelsPageTranslations {
   useBrokerDefault: string
   tabTelegram: string
   tabDiscord: string
+  tabWhatsApp: string
   tabTradingView: string
   comingSoon: string
   comingSoonBody: string
@@ -1614,6 +1615,21 @@ export interface ChannelsPageTranslations {
   discordClientMissing: string
   discordAdd: string
   discordSync: string
+  whatsappHeroTitle: string
+  whatsappHeroSubtitle: string
+  whatsappHow1: string
+  whatsappHow2: string
+  whatsappHow3: string
+  whatsappConnect: string
+  whatsappListTitle: string
+  whatsappEmptyGroups: string
+  whatsappPickGroups: string
+  whatsappNoGroups: string
+  whatsappDisconnect: string
+  whatsappQrHelp: string
+  whatsappListenerMissing: string
+  whatsappAdd: string
+  whatsappRefresh: string
 }
 
 export interface BacktestOutcomeLabels {

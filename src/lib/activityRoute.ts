@@ -18,7 +18,7 @@ export interface ActivityRoute {
 
 const SOURCE_KIND_MARKS: Record<Exclude<ActivitySourceKind, 'broker'>, { iconSrc: string; label: string }> = {
   telegram: { iconSrc: '/Telegram.svg', label: 'Telegram' },
-  whatsapp: { iconSrc: '/WhatsApp-icon.svg', label: 'WhatsApp' },
+  whatsapp: { iconSrc: '/whatsapp-icon.png', label: 'WhatsApp' },
 }
 
 const PLATFORM_ICONS: Record<string, string> = {

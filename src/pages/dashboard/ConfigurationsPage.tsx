@@ -52,7 +52,7 @@ interface ChannelName {
   channel_username: string
   channel_id: string
   subscriber_count: number | null
-  source_kind?: 'telegram' | 'tradingview' | 'discord' | null
+  source_kind?: 'telegram' | 'tradingview' | 'discord' | 'whatsapp' | null
 }
 
 interface Point {
@@ -326,7 +326,7 @@ export function ConfigurationsPage() {
         setChannelsLoading(false)
         return
       }
-      const rows = (data ?? []) as Array<ChannelName & { signal_channel_id?: string | null; source_kind?: 'telegram' | 'tradingview' | 'discord' | null }>
+      const rows = (data ?? []) as Array<ChannelName & { signal_channel_id?: string | null; source_kind?: 'telegram' | 'tradingview' | 'discord' | 'whatsapp' | null }>
       const registryIds = [...new Set(rows.map(row => row.signal_channel_id).filter((id): id is string => Boolean(id)))]
       const counts = new Map<string, number>()
       if (registryIds.length > 0) {
@@ -2034,6 +2034,7 @@ function ChannelNode({
 }) {
   const tradingView = channel?.source_kind === 'tradingview'
   const discord = channel?.source_kind === 'discord'
+  const whatsapp = channel?.source_kind === 'whatsapp'
   const username = channelUsernameLabel(channel?.channel_username)
   const channelId = channel?.channel_id?.trim() || '—'
   const subscribers = channel?.subscriber_count == null
@@ -2046,15 +2047,19 @@ function ChannelNode({
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-teal-600 text-xs font-semibold text-white">
             TV
           </div>
+        ) : discord ? (
+          <img src="/discord-logo.png" alt="" aria-hidden className="h-10 w-10 shrink-0 rounded-full object-cover" />
+        ) : whatsapp ? (
+          <img src="/whatsapp-icon.png" alt="" aria-hidden className="h-10 w-10 shrink-0 rounded-full object-cover" />
         ) : (
           <ChannelLogo key={username} username={channel?.channel_username ?? ''} />
         )}
         <div className="min-w-0 flex-1">
           <p dir="auto" className="truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">{name}</p>
           <dl className="mt-1.5 space-y-0.5 text-xs">
-            <MetaRow label={copy.username} value={tradingView ? 'TradingView' : username} />
-            {tradingView ? null : <MetaRow label={copy.channelId} value={channelId} />}
-            {tradingView ? null : <MetaRow label={copy.subscribers} value={subscribers} />}
+            <MetaRow label={copy.username} value={tradingView ? 'TradingView' : discord ? 'Discord' : whatsapp ? 'WhatsApp' : username} />
+            {tradingView || discord || whatsapp ? null : <MetaRow label={copy.channelId} value={channelId} />}
+            {tradingView || discord || whatsapp ? null : <MetaRow label={copy.subscribers} value={subscribers} />}
           </dl>
         </div>
       </div>

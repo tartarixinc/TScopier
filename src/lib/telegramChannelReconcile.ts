@@ -32,7 +32,7 @@ export async function reconcileChannelIdentitiesFromTelegram(
 
   let next = [...dbChannels]
   for (const ch of dbChannels) {
-    if (ch.source_kind === 'tradingview' || ch.source_kind === 'discord') continue
+    if (ch.source_kind === 'tradingview' || ch.source_kind === 'discord' || ch.source_kind === 'whatsapp') continue
     if (hasValidTelegramChannelIdentity(ch)) continue
     const match = findTelegramListMatch(ch, tgList)
     if (!match) continue
@@ -70,7 +70,7 @@ export async function removeStaleDuplicateChannels(
     .neq('channel_id', tgChannel.id)
 
   for (const row of (stale ?? []) as TelegramChannel[]) {
-    if (row.source_kind === 'tradingview') continue
+    if (row.source_kind === 'tradingview' || row.source_kind === 'discord' || row.source_kind === 'whatsapp') continue
     if (hasValidTelegramChannelIdentity(row)) continue
     await supabase.from('telegram_channels').delete().eq('id', row.id).eq('user_id', userId)
   }

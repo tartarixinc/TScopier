@@ -40,6 +40,7 @@ import { Input } from '../../components/ui/Input'
 import { TelegramConnectFlow, type TelegramConnectStage, type TelegramAuthMethod } from '../../components/telegram/TelegramConnectFlow'
 import { TradingViewSourcePanel } from '../../components/dashboard/TradingViewSourcePanel'
 import { DiscordSourcePanel } from '../../components/dashboard/DiscordSourcePanel'
+import { WhatsAppSourcePanel } from '../../components/dashboard/WhatsAppSourcePanel'
 import { callTelegramAuth, resolveResendAvailableAt, resolveTelegramAuthErrorMessage, type QrPollResponse, type TelegramCodeStatusResponse } from '../../lib/telegramAuthApi'
 import {
   getCachedTgChannels,
@@ -121,7 +122,7 @@ export function CopierEnginePage() {
   const pw = t.pricing.paywall
   const [channels, setChannels] = useState<TelegramChannel[]>([])
   const [searchParams] = useSearchParams()
-  const [source, setSource] = useState<'telegram' | 'discord' | 'tradingview'>(
+  const [source, setSource] = useState<'telegram' | 'discord' | 'tradingview' | 'whatsapp'>(
     searchParams.get('guild_id') ? 'discord' : 'telegram',
   )
   const [connectMenuChannelId, setConnectMenuChannelId] = useState<string | null>(null)
@@ -910,6 +911,9 @@ export function CopierEnginePage() {
         <SourceTab active={source === 'discord'} onClick={() => setSource('discord')}>
           {t.channelsPage.tabDiscord}
         </SourceTab>
+        <SourceTab active={source === 'whatsapp'} onClick={() => setSource('whatsapp')}>
+          {t.channelsPage.tabWhatsApp}
+        </SourceTab>
         <SourceTab active={source === 'tradingview'} onClick={() => setSource('tradingview')}>
           {t.channelsPage.tabTradingView}
         </SourceTab>
@@ -919,6 +923,8 @@ export function CopierEnginePage() {
         <TradingViewSourcePanel brokers={brokers} replaceBroker={replaceBroker} />
       ) : source === 'discord' ? (
         <DiscordSourcePanel brokers={brokers} replaceBroker={replaceBroker} />
+      ) : source === 'whatsapp' ? (
+        <WhatsAppSourcePanel brokers={brokers} replaceBroker={replaceBroker} />
       ) : (
       <>
 

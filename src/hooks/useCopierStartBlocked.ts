@@ -5,6 +5,7 @@ import { useSubscription } from '../context/SubscriptionContext'
 import { isBrokerSessionConnected } from '../lib/brokerReconnect'
 import { resolveCopierStartBlocked, type CopierStartBlockedReason } from '../lib/copierStartBlocked'
 import { subscribeDiscordSourcesChanged } from '../lib/discordSource'
+import { subscribeWhatsAppSourcesChanged } from '../lib/whatsappSource'
 import { subscribeTradingViewWebhooksChanged } from '../lib/tradingViewWebhook'
 import { getCachedTgSession, setCachedTgSession } from '../lib/telegramSessionCache'
 import { supabase } from '../lib/supabase'
@@ -20,6 +21,7 @@ export function useCopierStartBlocked() {
   const [telegramLoading, setTelegramLoading] = useState(() => user?.id ? telegramConnected === null : false)
   const [hasTradingViewWebhook, setHasTradingViewWebhook] = useState<boolean | null>(() => (user?.id ? null : false))
   const [hasDiscordChannel, setHasDiscordChannel] = useState<boolean | null>(() => (user?.id ? null : false))
+  const [hasWhatsAppSource, setHasWhatsAppSource] = useState<boolean | null>(() => (user?.id ? null : false))
 
   const refreshTelegramSession = useCallback(async () => {
     if (!user?.id) {
@@ -64,23 +66,41 @@ export function useCopierStartBlocked() {
     setHasDiscordChannel(!error && (count ?? 0) > 0)
   }, [user?.id])
 
+  const refreshWhatsApp = useCallback(async () => {
+    if (!user?.id) {
+      setHasWhatsAppSource(false)
+      return
+    }
+    const [groups, session] = await Promise.all([
+      supabase.from('whatsapp_groups').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
+      supabase.from('whatsapp_sessions').select('status').eq('user_id', user.id).maybeSingle(),
+    ])
+    const linked = !session.error && (session.data as { status?: string } | null)?.status === 'connected'
+    setHasWhatsAppSource(!groups.error && linked && (groups.count ?? 0) > 0)
+  }, [user?.id])
+
   useEffect(() => {
     void refreshTelegramSession()
     void refreshTradingViewWebhooks()
     void refreshDiscordChannels()
+    void refreshWhatsApp()
     const stopWebhooks = subscribeTradingViewWebhooksChanged(() => {
       void refreshTradingViewWebhooks()
     })
     const stopDiscord = subscribeDiscordSourcesChanged(() => {
       void refreshDiscordChannels()
     })
+    const stopWhatsApp = subscribeWhatsAppSourcesChanged(() => {
+      void refreshWhatsApp()
+    })
     return () => {
       stopWebhooks()
       stopDiscord()
+      stopWhatsApp()
     }
-  }, [refreshDiscordChannels, refreshTelegramSession, refreshTradingViewWebhooks])
+  }, [refreshDiscordChannels, refreshTelegramSession, refreshTradingViewWebhooks, refreshWhatsApp])
 
-  const resolving = subscriptionLoading || usageLoading || brokersLoading || telegramLoading || hasTradingViewWebhook === null || hasDiscordChannel === null
+  const resolving = subscriptionLoading || usageLoading || brokersLoading || telegramLoading || hasTradingViewWebhook === null || hasDiscordChannel === null || hasWhatsAppSource === null
 
   const hasConnectedBroker = useMemo(
     () => brokers.some(b => b.is_active !== false && isBrokerSessionConnected(b)),
@@ -94,8 +114,10 @@ export function useCopierStartBlocked() {
       hasTelegramSession: telegramConnected === true,
       hasChannels: usage.telegramChannels > 0,
       hasTradingViewWebhook: hasTradingViewWebhook === true,
+      hasDiscordChannel: hasDiscordChannel === true,
+      hasWhatsAppSource: hasWhatsAppSource === true,
     }),
-    [hasActiveSubscription, hasConnectedBroker, telegramConnected, usage.telegramChannels, hasTradingViewWebhook],
+    [hasActiveSubscription, hasConnectedBroker, telegramConnected, usage.telegramChannels, hasTradingViewWebhook, hasDiscordChannel, hasWhatsAppSource],
   )
 
   return {
