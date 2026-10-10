@@ -84,6 +84,8 @@ export interface SocialTrader {
   isYou: boolean
   /** Open traders can be copied immediately. Private traders require an accepted request. */
   access: SocialAccess
+  /** Monthly price to copy this trader, in USD cents. 0 is free. */
+  monthlyCopyPriceCents: number
   allowFollowing: boolean
   roi: number
   winRate: number
@@ -132,6 +134,7 @@ export const SOCIAL_TRADERS: SocialTrader[] = [
     username: 'you',
     isYou: true,
     access: 'open',
+    monthlyCopyPriceCents: 0,
     allowFollowing: true,
     roi: 18.4,
     winRate: 61,
@@ -169,6 +172,7 @@ export const SOCIAL_TRADERS: SocialTrader[] = [
     username: 'amira',
     isYou: false,
     access: 'open',
+    monthlyCopyPriceCents: 5000,
     allowFollowing: true,
     roi: 34.2,
     winRate: 68,
@@ -206,6 +210,7 @@ export const SOCIAL_TRADERS: SocialTrader[] = [
     username: 'leoberg',
     isYou: false,
     access: 'private',
+    monthlyCopyPriceCents: 2500,
     allowFollowing: true,
     roi: 12.6,
     winRate: 54,
@@ -241,6 +246,7 @@ export const SOCIAL_TRADERS: SocialTrader[] = [
     username: 'nora',
     isYou: false,
     access: 'private',
+    monthlyCopyPriceCents: 0,
     allowFollowing: true,
     roi: 27.8,
     winRate: 63,
@@ -278,6 +284,7 @@ export const SOCIAL_TRADERS: SocialTrader[] = [
     username: 'kenji',
     isYou: false,
     access: 'open',
+    monthlyCopyPriceCents: 10000,
     allowFollowing: true,
     roi: 9.1,
     winRate: 57,

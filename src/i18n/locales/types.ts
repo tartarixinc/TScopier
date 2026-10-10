@@ -126,6 +126,7 @@ export interface NavTranslations {
     profileSettings: string
     subscriptionBilling: string
     affiliateProgram: string
+    wallet: string
     rateUs: string
     signOut: string
   }
@@ -925,6 +926,11 @@ export interface SocialTradingPageTranslations {
   private: string
   requestToCopy: string
   requested: string
+  copyForFree: string
+  copyForAmount: string
+  monthlyPrice: string
+  priceFree: string
+  pricePaid: string
   whoCanCopy: string
   anyoneCanCopy: string
   requestsRequired: string
@@ -1999,6 +2005,27 @@ export interface AffiliateTranslations {
   policyMinimumPayout: string
 }
 
+export interface WalletPageTranslations {
+  title: string
+  subtitle: string
+  available: string
+  pending: string
+  refresh: string
+  history: string
+  colDate: string
+  colDescription: string
+  colAmount: string
+  colStatus: string
+  colRole: string
+  statusPending: string
+  statusPaid: string
+  statusReversed: string
+  rolePayer: string
+  roleProvider: string
+  empty: string
+  loadError: string
+}
+
 export interface Translations {
   auth: AuthTranslations
   channelWorker: ChannelWorkerTranslations
@@ -2033,6 +2060,7 @@ export interface Translations {
   performance: PerformanceTranslations
   settings: SettingsTranslations
   affiliate: AffiliateTranslations
+  wallet: WalletPageTranslations
   pages: {
     accountConfiguration: PageMeta
     brokers: PageMeta
@@ -2044,6 +2072,7 @@ export interface Translations {
     featureRequest: PageMeta
     partnerWithUs: PageMeta
     affiliateProgram: PageMeta
+    wallet: PageMeta
     billing: PageMeta
     subscriptions: PageMeta
     marketNews: PageMeta

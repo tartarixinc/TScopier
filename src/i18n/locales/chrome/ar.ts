@@ -89,6 +89,7 @@ export const chromeAr: AppChromeTranslations = {
       profileSettings: 'الملف الشخصي والإعدادات',
       subscriptionBilling: 'الاشتراك والفوترة',
       affiliateProgram: 'برنامج الإحالة',
+      wallet: 'المحفظة',
       rateUs: 'قيّمنا',
       signOut: 'تسجيل الخروج',
     },
@@ -291,6 +292,10 @@ export const chromeAr: AppChromeTranslations = {
     affiliateProgram: {
       title: 'برنامج الإحالة',
       description: 'ادعُ متداولين واكسب 10% إحالة مدى الحياة على كل تجديد اشتراك مدفوع.',
+    },
+    wallet: {
+      title: 'المحفظة',
+      description: 'اعرض رصيد اشتراك النسخ وسجل المدفوعات.',
     },
     billing: {
       title: 'الفوترة',

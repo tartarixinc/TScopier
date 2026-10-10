@@ -88,6 +88,9 @@ const UpdatesPage = lazy(() =>
 const AffiliateProgramPage = lazy(() =>
   import('./pages/dashboard/SupportMembershipPages').then(m => ({ default: m.AffiliateProgramPage })),
 )
+const WalletPage = lazy(() =>
+  import('./pages/dashboard/SupportMembershipPages').then(m => ({ default: m.WalletPage })),
+)
 const BillingPage = lazy(() =>
   import('./pages/dashboard/SupportMembershipPages').then(m => ({ default: m.BillingPage })),
 )
@@ -185,6 +188,7 @@ export default function App() {
             <Route path="/feature-request" element={<LazyPage><FeatureRequestPage /></LazyPage>} />
             <Route path="/partner-with-us" element={<LazyPage><PartnerWithUsPage /></LazyPage>} />
             <Route path="/affiliate-program" element={<LazyPage><AffiliateProgramPage /></LazyPage>} />
+            <Route path="/wallet" element={<LazyPage><WalletPage /></LazyPage>} />
             <Route path="/billing" element={<LazyPage><BillingPage /></LazyPage>} />
             <Route path="/subscriptions" element={<Navigate to="/billing" replace />} />
             <Route path="/performance" element={<LazyPage><PerformancePage /></LazyPage>} />

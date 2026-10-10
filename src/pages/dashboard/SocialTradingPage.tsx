@@ -20,6 +20,12 @@ import { useTheme } from '../../context/ThemeContext'
 import { useFormatMoney } from '../../hooks/useFormatMoney'
 import { interpolate } from '../../i18n/interpolate'
 import { chartThemeColors, chartTooltipProps } from '../../lib/chartTheme'
+import {
+  COPY_PRICE_STORAGE_KEY,
+  copyPriceOfferLabel,
+  dollarsToCopyPriceCents,
+  readMonthlyCopyPriceCents,
+} from '../../lib/socialCopyPrice'
 import { resolveUserAvatarUrl } from '../../lib/userAvatar'
 import {
   SOCIAL_INCOMING_REQUESTS,
@@ -126,6 +132,23 @@ function initialAccess(): SocialAccess {
 function writeAccess(access: SocialAccess) {
   try {
     sessionStorage.setItem(ACCESS_KEY, access)
+  } catch {
+    // The choice still updates this view.
+  }
+}
+
+function initialCopyPriceCents(): number {
+  const fallback = SOCIAL_TRADERS.find(trader => trader.isYou)?.monthlyCopyPriceCents ?? 0
+  try {
+    return readMonthlyCopyPriceCents(localStorage.getItem(COPY_PRICE_STORAGE_KEY), fallback)
+  } catch {
+    return fallback
+  }
+}
+
+function writeCopyPriceCents(cents: number) {
+  try {
+    localStorage.setItem(COPY_PRICE_STORAGE_KEY, String(cents))
   } catch {
     // The choice still updates this view.
   }
@@ -287,6 +310,7 @@ export function SocialTradingPage() {
   const [requestsOnly, setRequestsOnly] = useState(false)
   const [following, setFollowing] = useState(initialFollowing)
   const [access, setAccess] = useState(initialAccess)
+  const [copyPriceCents, setCopyPriceCents] = useState(initialCopyPriceCents)
   const [outgoing, setOutgoing] = useState(initialOutgoing)
   const [incoming] = useState(initialIncoming)
   const ownAvatarUrl = useOwnAvatarUrl()
@@ -330,6 +354,11 @@ export function SocialTradingPage() {
   const chooseAccess = (value: SocialAccess) => {
     setAccess(value)
     writeAccess(value)
+  }
+
+  const chooseCopyPrice = (cents: number) => {
+    setCopyPriceCents(cents)
+    writeCopyPriceCents(cents)
   }
 
   const heading = view === 'followers' ? copy.tabFollowers : view === 'following' ? copy.tabFollowing : copy.tabProviders
@@ -447,13 +476,20 @@ export function SocialTradingPage() {
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-2">
                           {trader.isYou ? (
-                            <AccessChoice access={access} copy={copy} onChange={chooseAccess} />
+                            <div className="flex flex-wrap items-center justify-end gap-2">
+                              <AccessChoice access={access} copy={copy} onChange={chooseAccess} />
+                              <MonthlyPriceChoice cents={copyPriceCents} copy={copy} onChange={chooseCopyPrice} />
+                            </div>
                           ) : (
                             <CopyActionButton
                               trader={trader}
                               following={following}
                               outgoing={outgoing}
                               copy={copy}
+                              offerLabel={copyPriceOfferLabel(trader.monthlyCopyPriceCents, formatMoney, {
+                                free: copy.copyForFree,
+                                paid: copy.copyForAmount,
+                              })}
                               onToggle={runCopyAction}
                             />
                           )}
@@ -571,17 +607,84 @@ function AccessChoice({
   )
 }
 
+function MonthlyPriceChoice({
+  cents,
+  copy,
+  onChange,
+  labelled = false,
+}: {
+  cents: number
+  copy: { monthlyPrice: string; priceFree: string; pricePaid: string }
+  onChange: (cents: number) => void
+  labelled?: boolean
+}) {
+  const paid = cents > 0
+  const [draft, setDraft] = useState(paid ? String(cents / 100) : '50')
+
+  useEffect(() => {
+    if (cents > 0) setDraft(String(cents / 100))
+  }, [cents])
+
+  return (
+    <div
+      className="relative z-10 flex shrink-0 items-end gap-2"
+      onClick={event => event.stopPropagation()}
+      onKeyDown={event => event.stopPropagation()}
+    >
+      <label className="flex flex-col gap-1 text-xs text-neutral-600 dark:text-neutral-300">
+        {labelled ? <span>{copy.monthlyPrice}</span> : <span className="sr-only">{copy.monthlyPrice}</span>}
+        <select
+          value={paid ? 'paid' : 'free'}
+          aria-label={copy.monthlyPrice}
+          onChange={event => {
+            if (event.target.value === 'free') {
+              onChange(0)
+              return
+            }
+            onChange(dollarsToCopyPriceCents(Number(draft) || 50))
+          }}
+          className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-700 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-200"
+        >
+          <option value="free">{copy.priceFree}</option>
+          <option value="paid">{copy.pricePaid}</option>
+        </select>
+      </label>
+      {paid ? (
+        <label className="flex items-center gap-1 text-xs text-neutral-600 dark:text-neutral-300">
+          <span aria-hidden="true">$</span>
+          <input
+            type="number"
+            min={1}
+            step={1}
+            inputMode="decimal"
+            aria-label={copy.monthlyPrice}
+            value={draft}
+            onChange={event => {
+              setDraft(event.target.value)
+              const next = dollarsToCopyPriceCents(Number(event.target.value))
+              if (next > 0) onChange(next)
+            }}
+            className="w-20 rounded-lg border border-neutral-200 bg-white px-2 py-2 text-xs text-neutral-700 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-200"
+          />
+        </label>
+      ) : null}
+    </div>
+  )
+}
+
 function CopyActionButton({
   trader,
   following,
   outgoing,
   copy,
+  offerLabel,
   onToggle,
 }: {
   trader: SocialTrader
   following: Set<string>
   outgoing: Record<string, OutgoingStatus>
-  copy: { follow: string; following: string; requestToCopy: string; requested: string }
+  copy: { following: string; requested: string }
+  offerLabel: string
   onToggle: (id: string) => void
 }) {
   const state = copyButtonState(trader, following, outgoing)
@@ -589,9 +692,7 @@ function CopyActionButton({
     ? copy.following
     : state === 'requested'
       ? copy.requested
-      : state === 'request'
-        ? copy.requestToCopy
-        : copy.follow
+      : offerLabel
   const quiet = state === 'following' || state === 'requested'
   return (
     <Button
@@ -619,6 +720,7 @@ export function SocialTraderActivityPage() {
   const trader = traderId ? socialTraderById(traderId) : undefined
   const [following, setFollowing] = useState(initialFollowing)
   const [access, setAccess] = useState(initialAccess)
+  const [copyPriceCents, setCopyPriceCents] = useState(initialCopyPriceCents)
   const [outgoing, setOutgoing] = useState(initialOutgoing)
   const [incoming, setIncoming] = useState(initialIncoming)
   const ownAvatarUrl = useOwnAvatarUrl()
@@ -651,6 +753,11 @@ export function SocialTraderActivityPage() {
   const chooseAccess = (value: SocialAccess) => {
     setAccess(value)
     writeAccess(value)
+  }
+
+  const chooseCopyPrice = (cents: number) => {
+    setCopyPriceCents(cents)
+    writeCopyPriceCents(cents)
   }
 
   const resolveIncoming = (id: string, status: 'accepted' | 'declined') => {
@@ -701,7 +808,10 @@ export function SocialTraderActivityPage() {
               <HeaderStat label={copy.leverage} value={trader.profile.leverage} />
             </dl>
             {trader.isYou ? (
-              <AccessChoice access={access} copy={copy} onChange={chooseAccess} labelled />
+              <div className="flex flex-wrap items-end gap-3">
+                <AccessChoice access={access} copy={copy} onChange={chooseAccess} labelled />
+                <MonthlyPriceChoice cents={copyPriceCents} copy={copy} onChange={chooseCopyPrice} labelled />
+              </div>
             ) : (
               <div className="flex flex-wrap items-center gap-2">
                 <CopyActionButton
@@ -709,6 +819,10 @@ export function SocialTraderActivityPage() {
                   following={following}
                   outgoing={outgoing}
                   copy={copy}
+                  offerLabel={copyPriceOfferLabel(trader.monthlyCopyPriceCents, formatMoney, {
+                    free: copy.copyForFree,
+                    paid: copy.copyForAmount,
+                  })}
                   onToggle={runCopyAction}
                 />
                 {allowedToCopy ? (

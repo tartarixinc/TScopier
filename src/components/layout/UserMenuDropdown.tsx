@@ -71,6 +71,7 @@ export function UserMenuDropdown({ open, onClose, onSignOut }: UserMenuDropdownP
     { id: 'profile', kind: 'link', label: um.profileSettings, icon: getAppRouteIcon('/settings'), path: '/settings' },
     { id: 'billing', kind: 'link', label: um.subscriptionBilling, icon: getAppRouteIcon('/billing'), path: '/billing' },
     { id: 'affiliate', kind: 'link', label: um.affiliateProgram, icon: getAppRouteIcon('/affiliate-program'), path: '/affiliate-program' },
+    { id: 'wallet', kind: 'link', label: um.wallet, icon: getAppRouteIcon('/wallet'), path: '/wallet' },
     { id: 'rate-us', kind: 'external', label: um.rateUs, icon: Star, href: TRUSTPILOT_REVIEW_URL },
     { id: 'join-telegram', kind: 'external', label: 'Join Telegram', icon: Send, href: 'https://t.me/tscopierai' },
     { id: 'signout', kind: 'action', label: um.signOut, icon: LogOut, destructive: true },

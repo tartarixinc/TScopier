@@ -90,6 +90,7 @@ export const chromePl: AppChromeTranslations = {
       profileSettings: 'Profil i ustawienia',
       subscriptionBilling: 'Subskrypcja i rozliczenia',
       affiliateProgram: 'Program partnerski',
+      wallet: 'Portfel',
       rateUs: 'Oceń nas',
       signOut: 'Wyloguj się',
     },
@@ -293,6 +294,10 @@ export const chromePl: AppChromeTranslations = {
     affiliateProgram: {
       title: 'Program partnerski',
       description: 'Zaproś traderów i zarabiaj 10% prowizji dożywotnio od płatnych subskrypcji.',
+    },
+    wallet: {
+      title: 'Portfel',
+      description: 'Saldo i historia płatności za kopiowanie sygnałów.',
     },
     billing: {
       title: 'Rozliczenia',

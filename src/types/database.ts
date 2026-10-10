@@ -100,6 +100,16 @@ export interface Database {
         Insert: Omit<CommissionLedgerRow, 'id' | 'created_at'> & { id?: string; created_at?: string }
         Update: Partial<Omit<CommissionLedgerRow, 'id' | 'created_at'>>
       }
+      user_wallets: {
+        Row: UserWalletRow
+        Insert: Omit<UserWalletRow, 'created_at' | 'updated_at'> & { created_at?: string; updated_at?: string }
+        Update: Partial<Omit<UserWalletRow, 'user_id' | 'created_at'>>
+      }
+      wallet_ledger: {
+        Row: WalletLedgerRow
+        Insert: Omit<WalletLedgerRow, 'id' | 'created_at'> & { id?: string; created_at?: string }
+        Update: Partial<Omit<WalletLedgerRow, 'id' | 'created_at'>>
+      }
       payout_batches: {
         Row: PayoutBatchRow
         Insert: Omit<PayoutBatchRow, 'id' | 'created_at' | 'updated_at'> & { id?: string; created_at?: string; updated_at?: string }
@@ -156,6 +166,25 @@ export interface ReferralAttributionRow {
   affiliate_user_id: string
   referral_code: string
   attribution_source: 'signup_url' | 'signup_form' | 'onboarding' | 'admin'
+  created_at: string
+}
+
+export interface UserWalletRow {
+  user_id: string
+  available_cents: number
+  pending_cents: number
+  created_at: string
+  updated_at: string
+}
+
+export interface WalletLedgerRow {
+  id: string
+  payer_user_id: string
+  provider_user_id: string
+  amount_cents: number
+  currency: string
+  status: 'pending' | 'paid' | 'reversed'
+  description: string
   created_at: string
 }
 

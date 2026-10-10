@@ -89,6 +89,7 @@ export const chromeJa: AppChromeTranslations = {
       profileSettings: 'プロフィールと設定',
       subscriptionBilling: 'サブスクリプションと請求',
       affiliateProgram: 'アフィリエイトプログラム',
+      wallet: 'ウォレット',
       rateUs: '評価する',
       signOut: 'サインアウト',
     },
@@ -291,6 +292,10 @@ export const chromeJa: AppChromeTranslations = {
     affiliateProgram: {
       title: 'アフィリエイトプログラム',
       description: 'トレーダーを招待して、有料サブスクリプション更新ごとに生涯 10% の紹介報酬を獲得。',
+    },
+    wallet: {
+      title: 'ウォレット',
+      description: 'コピースクの残高と支払い履歴を確認します。',
     },
     billing: {
       title: '請求',

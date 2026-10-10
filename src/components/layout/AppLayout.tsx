@@ -151,6 +151,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
         items: [
           { to: '/billing', label: t.nav.userMenu.subscriptionBilling },
           { to: '/affiliate-program', label: t.nav.userMenu.affiliateProgram },
+          { to: '/wallet', label: t.nav.userMenu.wallet },
         ],
       },
     ],

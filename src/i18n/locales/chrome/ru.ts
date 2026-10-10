@@ -90,6 +90,7 @@ export const chromeRu: AppChromeTranslations = {
       profileSettings: 'Профиль и настройки',
       subscriptionBilling: 'Подписка и биллинг',
       affiliateProgram: 'Партнерская программа',
+      wallet: 'Кошелёк',
       rateUs: 'Оцените нас',
       signOut: 'Выйти',
     },
@@ -293,6 +294,10 @@ export const chromeRu: AppChromeTranslations = {
     affiliateProgram: {
       title: 'Партнерская программа',
       description: 'Приглашайте трейдеров и зарабатывайте 10% пожизненной комиссии с платных подписок.',
+    },
+    wallet: {
+      title: 'Кошелёк',
+      description: 'Баланс и история платежей за копирование сигналов.',
     },
     billing: {
       title: 'Биллинг',

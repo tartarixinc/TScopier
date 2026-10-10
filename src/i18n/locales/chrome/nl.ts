@@ -89,6 +89,7 @@ export const chromeNl: AppChromeTranslations = {
       profileSettings: 'Profiel en instellingen',
       subscriptionBilling: 'Abonnement en facturatie',
       affiliateProgram: 'Affiliateprogramma',
+      wallet: 'Wallet',
       rateUs: 'Beoordeel ons',
       signOut: 'Afmelden',
     },
@@ -292,6 +293,10 @@ export const chromeNl: AppChromeTranslations = {
     affiliateProgram: {
       title: 'Affiliateprogramma',
       description: 'Nodig traders uit en verdien levenslang 10% commissie op betaalde abonnementen.',
+    },
+    wallet: {
+      title: 'Wallet',
+      description: 'Bekijk saldo en betalingsgeschiedenis voor kopieerabonnementen.',
     },
     billing: {
       title: 'Facturatie',

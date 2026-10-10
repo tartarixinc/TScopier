@@ -89,6 +89,7 @@ export const chromeSv: AppChromeTranslations = {
       profileSettings: 'Profil och inställningar',
       subscriptionBilling: 'Prenumeration och fakturering',
       affiliateProgram: 'Affiliateprogram',
+      wallet: 'Plånbok',
       rateUs: 'Betygsätt oss',
       signOut: 'Logga ut',
     },
@@ -292,6 +293,10 @@ export const chromeSv: AppChromeTranslations = {
     affiliateProgram: {
       title: 'Affiliateprogram',
       description: 'Bjud in traders och tjäna 10% livstidsprovision på betalda prenumerationer.',
+    },
+    wallet: {
+      title: 'Plånbok',
+      description: 'Se saldo och betalningshistorik för kopieringsprenumerationer.',
     },
     billing: {
       title: 'Fakturering',
