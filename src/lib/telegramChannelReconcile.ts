@@ -32,7 +32,7 @@ export async function reconcileChannelIdentitiesFromTelegram(
 
   let next = [...dbChannels]
   for (const ch of dbChannels) {
-    if (ch.source_kind === 'tradingview') continue
+    if (ch.source_kind === 'tradingview' || ch.source_kind === 'discord') continue
     if (hasValidTelegramChannelIdentity(ch)) continue
     const match = findTelegramListMatch(ch, tgList)
     if (!match) continue

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import clsx from 'clsx'
 import { Radio, Trash2, RefreshCw, CircleAlert as AlertCircle, ChevronDown, Plus, X } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
@@ -39,6 +39,7 @@ import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { TelegramConnectFlow, type TelegramConnectStage, type TelegramAuthMethod } from '../../components/telegram/TelegramConnectFlow'
 import { TradingViewSourcePanel } from '../../components/dashboard/TradingViewSourcePanel'
+import { DiscordSourcePanel } from '../../components/dashboard/DiscordSourcePanel'
 import { callTelegramAuth, resolveResendAvailableAt, resolveTelegramAuthErrorMessage, type QrPollResponse, type TelegramCodeStatusResponse } from '../../lib/telegramAuthApi'
 import {
   getCachedTgChannels,
@@ -119,7 +120,10 @@ export function CopierEnginePage() {
   const channelLinkDefaultFilters = defaultChannelFiltersForPlan(keywordFiltersEnabled)
   const pw = t.pricing.paywall
   const [channels, setChannels] = useState<TelegramChannel[]>([])
-  const [source, setSource] = useState<'telegram' | 'discord' | 'tradingview'>('telegram')
+  const [searchParams] = useSearchParams()
+  const [source, setSource] = useState<'telegram' | 'discord' | 'tradingview'>(
+    searchParams.get('guild_id') ? 'discord' : 'telegram',
+  )
   const [connectMenuChannelId, setConnectMenuChannelId] = useState<string | null>(null)
   const [connectingBrokerId, setConnectingBrokerId] = useState<string | null>(null)
   const [connectingAllChannelId, setConnectingAllChannelId] = useState<string | null>(null)
@@ -244,7 +248,7 @@ export function CopierEnginePage() {
       supabase.from('telegram_sessions').select('id').eq('user_id', user!.id).maybeSingle(),
     ])
     const allChannelRows = (channelsRes.data ?? []) as TelegramChannel[]
-    const channelRows = allChannelRows.filter(row => row.source_kind !== 'tradingview')
+    const channelRows = allChannelRows.filter(row => !row.source_kind || row.source_kind === 'telegram')
     const tgList = user?.id ? getCachedTgChannels(user.id) : null
     const reconciledChannels = tgList?.length
       ? await reconcileChannelIdentitiesFromTelegram(supabase, user!.id, channelRows, tgList)
@@ -905,7 +909,6 @@ export function CopierEnginePage() {
         </SourceTab>
         <SourceTab active={source === 'discord'} onClick={() => setSource('discord')}>
           {t.channelsPage.tabDiscord}
-          <Badge variant="neutral" size="sm">{t.channelsPage.comingSoon}</Badge>
         </SourceTab>
         <SourceTab active={source === 'tradingview'} onClick={() => setSource('tradingview')}>
           {t.channelsPage.tabTradingView}
@@ -914,13 +917,8 @@ export function CopierEnginePage() {
 
       {source === 'tradingview' ? (
         <TradingViewSourcePanel brokers={brokers} replaceBroker={replaceBroker} />
-      ) : source !== 'telegram' ? (
-        <Card>
-          <div className="py-10 text-center">
-            <Badge variant="neutral">{t.channelsPage.comingSoon}</Badge>
-            <p className="mt-3 text-sm text-neutral-500 dark:text-neutral-400">{t.channelsPage.comingSoonBody}</p>
-          </div>
-        </Card>
+      ) : source === 'discord' ? (
+        <DiscordSourcePanel brokers={brokers} replaceBroker={replaceBroker} />
       ) : (
       <>
 

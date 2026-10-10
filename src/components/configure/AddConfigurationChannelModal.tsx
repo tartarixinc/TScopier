@@ -17,7 +17,7 @@ export interface ConfigurationChannelOption {
   display_name: string
   channel_username: string
   channel_id?: string
-  source_kind?: 'telegram' | 'tradingview' | null
+  source_kind?: 'telegram' | 'tradingview' | 'discord' | null
 }
 
 function channelLabel(channel: ConfigurationChannelOption): string {

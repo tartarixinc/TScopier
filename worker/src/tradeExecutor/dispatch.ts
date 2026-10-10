@@ -189,7 +189,7 @@ export function revisionInflightWaitMs(row: SignalRow, dispatchSource?: string):
 
 const tradingViewSourceCache = new Map<string, { at: number; value: boolean }>()
 
-/** TradingView webhook rows are not Telegram chats, so the listener-live gate does not apply. */
+/** TradingView and Discord rows are not Telegram chats, so the listener-live gate does not apply. */
 export async function isTradingViewSourceChannel(
   supabase: TradeExecutorContext['supabase'],
   channelId: string | null,

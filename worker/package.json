@@ -8,6 +8,8 @@
     "postinstall": "node scripts/apply-node-module-patches.cjs",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
+    "discord": "node -r dotenv/config dist/discordListener.js",
+    "discord:dev": "ts-node -r dotenv/config src/discordListener.ts",
     "test": "node --require ts-node/register --test $(find src -name '*.test.ts' | sort)",
     "replay-parse": "node -r dotenv/config dist/diagnostics/replayChannelParse.js",
     "push-signal-stops": "node -r dotenv/config dist/diagnostics/pushSignalStopsToBroker.js",

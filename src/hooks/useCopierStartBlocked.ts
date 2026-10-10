@@ -4,6 +4,7 @@ import { useBrokerAccounts } from '../context/BrokerAccountsContext'
 import { useSubscription } from '../context/SubscriptionContext'
 import { isBrokerSessionConnected } from '../lib/brokerReconnect'
 import { resolveCopierStartBlocked, type CopierStartBlockedReason } from '../lib/copierStartBlocked'
+import { subscribeDiscordSourcesChanged } from '../lib/discordSource'
 import { subscribeTradingViewWebhooksChanged } from '../lib/tradingViewWebhook'
 import { getCachedTgSession, setCachedTgSession } from '../lib/telegramSessionCache'
 import { supabase } from '../lib/supabase'
@@ -18,6 +19,7 @@ export function useCopierStartBlocked() {
   })
   const [telegramLoading, setTelegramLoading] = useState(() => user?.id ? telegramConnected === null : false)
   const [hasTradingViewWebhook, setHasTradingViewWebhook] = useState<boolean | null>(() => (user?.id ? null : false))
+  const [hasDiscordChannel, setHasDiscordChannel] = useState<boolean | null>(() => (user?.id ? null : false))
 
   const refreshTelegramSession = useCallback(async () => {
     if (!user?.id) {
@@ -49,15 +51,36 @@ export function useCopierStartBlocked() {
     setHasTradingViewWebhook(!error && (count ?? 0) > 0)
   }, [user?.id])
 
+  const refreshDiscordChannels = useCallback(async () => {
+    if (!user?.id) {
+      setHasDiscordChannel(false)
+      return
+    }
+    const { count, error } = await supabase
+      .from('telegram_channels')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('source_kind', 'discord')
+    setHasDiscordChannel(!error && (count ?? 0) > 0)
+  }, [user?.id])
+
   useEffect(() => {
     void refreshTelegramSession()
     void refreshTradingViewWebhooks()
-    return subscribeTradingViewWebhooksChanged(() => {
+    void refreshDiscordChannels()
+    const stopWebhooks = subscribeTradingViewWebhooksChanged(() => {
       void refreshTradingViewWebhooks()
     })
-  }, [refreshTelegramSession, refreshTradingViewWebhooks])
+    const stopDiscord = subscribeDiscordSourcesChanged(() => {
+      void refreshDiscordChannels()
+    })
+    return () => {
+      stopWebhooks()
+      stopDiscord()
+    }
+  }, [refreshDiscordChannels, refreshTelegramSession, refreshTradingViewWebhooks])
 
-  const resolving = subscriptionLoading || usageLoading || brokersLoading || telegramLoading || hasTradingViewWebhook === null
+  const resolving = subscriptionLoading || usageLoading || brokersLoading || telegramLoading || hasTradingViewWebhook === null || hasDiscordChannel === null
 
   const hasConnectedBroker = useMemo(
     () => brokers.some(b => b.is_active !== false && isBrokerSessionConnected(b)),

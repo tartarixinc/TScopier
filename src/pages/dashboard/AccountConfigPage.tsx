@@ -157,7 +157,7 @@ interface ChannelOption {
   channel_username: string
   is_active: boolean
   created_at: string
-  source_kind?: 'telegram' | 'tradingview' | null
+  source_kind?: 'telegram' | 'tradingview' | 'discord' | null
 }
 
 function SourceKindLogo({ sourceKind }: { sourceKind?: ChannelOption['source_kind'] }) {
@@ -165,6 +165,16 @@ function SourceKindLogo({ sourceKind }: { sourceKind?: ChannelOption['source_kin
     return (
       <img
         src="/tradingview-logo.png"
+        alt=""
+        aria-hidden
+        className="h-4 w-4 shrink-0 rounded-full object-cover"
+      />
+    )
+  }
+  if (sourceKind === 'discord') {
+    return (
+      <img
+        src="/discord-logo.png"
         alt=""
         aria-hidden
         className="h-4 w-4 shrink-0 rounded-full object-cover"

@@ -8,6 +8,7 @@ const ready = {
   hasTelegramSession: true,
   hasChannels: true,
   hasTradingViewWebhook: false,
+  hasDiscordChannel: false,
 }
 
 describe('resolveCopierStartBlocked', () => {

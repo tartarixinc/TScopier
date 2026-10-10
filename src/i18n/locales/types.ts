@@ -1601,6 +1601,19 @@ export interface ChannelsPageTranslations {
   tradingViewCopyTo: string
   tradingViewNoBrokers: string
   tradingViewLimit: string
+  discordHeroTitle: string
+  discordHeroSubtitle: string
+  discordHow1: string
+  discordHow2: string
+  discordHow3: string
+  discordConnect: string
+  discordListTitle: string
+  discordEmptyChannels: string
+  discordPickChannels: string
+  discordNoTextChannels: string
+  discordClientMissing: string
+  discordAdd: string
+  discordSync: string
 }
 
 export interface BacktestOutcomeLabels {

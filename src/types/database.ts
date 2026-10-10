@@ -569,8 +569,8 @@ export interface TelegramChannel {
   channel_username: string
   display_name: string
   is_active: boolean
-  /** telegram channels are listened to. tradingview rows are webhook copy targets. */
-  source_kind?: 'telegram' | 'tradingview' | null
+  /** telegram channels are listened to. tradingview rows are webhook copy targets. discord rows are bot channel copy targets. */
+  source_kind?: 'telegram' | 'tradingview' | 'discord' | null
   /** FK to permanent global signal_channels registry row. */
   signal_channel_id?: string | null
   lot_size_override: number | null

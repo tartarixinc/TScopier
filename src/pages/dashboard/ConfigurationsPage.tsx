@@ -52,7 +52,7 @@ interface ChannelName {
   channel_username: string
   channel_id: string
   subscriber_count: number | null
-  source_kind?: 'telegram' | 'tradingview' | null
+  source_kind?: 'telegram' | 'tradingview' | 'discord' | null
 }
 
 interface Point {
@@ -326,7 +326,7 @@ export function ConfigurationsPage() {
         setChannelsLoading(false)
         return
       }
-      const rows = (data ?? []) as Array<ChannelName & { signal_channel_id?: string | null; source_kind?: 'telegram' | 'tradingview' | null }>
+      const rows = (data ?? []) as Array<ChannelName & { signal_channel_id?: string | null; source_kind?: 'telegram' | 'tradingview' | 'discord' | null }>
       const registryIds = [...new Set(rows.map(row => row.signal_channel_id).filter((id): id is string => Boolean(id)))]
       const counts = new Map<string, number>()
       if (registryIds.length > 0) {
@@ -2033,6 +2033,7 @@ function ChannelNode({
   copy: ConfigurationsPageTranslations
 }) {
   const tradingView = channel?.source_kind === 'tradingview'
+  const discord = channel?.source_kind === 'discord'
   const username = channelUsernameLabel(channel?.channel_username)
   const channelId = channel?.channel_id?.trim() || '—'
   const subscribers = channel?.subscriber_count == null
