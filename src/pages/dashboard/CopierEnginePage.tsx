@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useSearchParams } from 'react-router-dom'
 import clsx from 'clsx'
 import { Radio, Trash2, RefreshCw, CircleAlert as AlertCircle, ChevronDown, Plus, X } from 'lucide-react'
@@ -59,7 +60,54 @@ import {
   fetchListenerLeaseStatus,
   type ListenerLeaseSnapshot,
 } from '../../lib/listenerLeaseStatus'
+import { SIGNAL_SOURCE_MARKS, type SignalSourceKind } from '../../lib/signalSourceMark'
 import type { BrokerAccount, TelegramChannel } from '../../types/database'
+
+type AddedSignalSource = SignalSourceKind
+
+const SIGNAL_SOURCE_ORDER: AddedSignalSource[] = ['telegram', 'whatsapp', 'discord', 'tradingview']
+const ADDED_SIGNAL_SOURCES_KEY = 'tscopier.signalSources.added'
+
+function isAddedSignalSource(value: unknown): value is AddedSignalSource {
+  return value === 'telegram' || value === 'whatsapp' || value === 'discord' || value === 'tradingview'
+}
+
+function readAddedSignalSources(userId: string): AddedSignalSource[] {
+  try {
+    const raw = localStorage.getItem(`${ADDED_SIGNAL_SOURCES_KEY}:${userId}`)
+    const parsed = raw ? JSON.parse(raw) : []
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter(isAddedSignalSource)
+  } catch {
+    return []
+  }
+}
+
+function writeAddedSignalSources(userId: string, sources: AddedSignalSource[]) {
+  try {
+    localStorage.setItem(`${ADDED_SIGNAL_SOURCES_KEY}:${userId}`, JSON.stringify(sources))
+  } catch {
+    /* ignore */
+  }
+}
+
+function detectConfiguredSignalSources(input: {
+  hasTelegramSession: boolean
+  channels: Array<{ source_kind?: string | null }>
+  discordInstallations: number
+  whatsappStatus: string | null
+  tradingViewWebhooks: number
+}): AddedSignalSource[] {
+  const hasKind = (kind: AddedSignalSource) =>
+    input.channels.some(row => (row.source_kind ?? 'telegram') === kind)
+  const found: AddedSignalSource[] = []
+  if (input.hasTelegramSession || hasKind('telegram')) found.push('telegram')
+  const whatsappStatus = String(input.whatsappStatus ?? '').trim().toLowerCase()
+  if (whatsappStatus === 'connected' || whatsappStatus === 'qr' || hasKind('whatsapp')) found.push('whatsapp')
+  if (input.discordInstallations > 0 || hasKind('discord')) found.push('discord')
+  if (input.tradingViewWebhooks > 0 || hasKind('tradingview')) found.push('tradingview')
+  return found
+}
 
 function getTelegramAvatarUrl(username?: string): string | null {
   if (!username) return null
@@ -122,9 +170,15 @@ export function CopierEnginePage() {
   const pw = t.pricing.paywall
   const [channels, setChannels] = useState<TelegramChannel[]>([])
   const [searchParams] = useSearchParams()
-  const [source, setSource] = useState<'telegram' | 'discord' | 'tradingview' | 'whatsapp'>(
-    searchParams.get('guild_id') ? 'discord' : 'telegram',
+  const [source, setSource] = useState<AddedSignalSource | null>(
+    searchParams.get('guild_id') ? 'discord' : null,
   )
+  const [pickedSources, setPickedSources] = useState<AddedSignalSource[]>(() => (
+    user?.id ? readAddedSignalSources(user.id) : []
+  ))
+  const [configuredSources, setConfiguredSources] = useState<AddedSignalSource[]>([])
+  const [sourcesReady, setSourcesReady] = useState(false)
+  const [sourcePickerOpen, setSourcePickerOpen] = useState(false)
   const [connectMenuChannelId, setConnectMenuChannelId] = useState<string | null>(null)
   const [connectingBrokerId, setConnectingBrokerId] = useState<string | null>(null)
   const [connectingAllChannelId, setConnectingAllChannelId] = useState<string | null>(null)
@@ -244,9 +298,12 @@ export function CopierEnginePage() {
   }, [user?.id, hasTgSession, refreshListenerLease])
 
   const loadData = async (opts?: { skipTgFetch?: boolean; backgroundTgFetch?: boolean; forceTgFetch?: boolean }) => {
-    const [channelsRes, sessionRes] = await Promise.all([
+    const [channelsRes, sessionRes, discordInstalls, whatsappSession, tradingViewHooks] = await Promise.all([
       supabase.from('telegram_channels').select('*').eq('user_id', user!.id).order('created_at', { ascending: false }),
       supabase.from('telegram_sessions').select('id').eq('user_id', user!.id).maybeSingle(),
+      supabase.from('discord_installations').select('id', { count: 'exact', head: true }).eq('user_id', user!.id),
+      supabase.from('whatsapp_sessions').select('status').eq('user_id', user!.id).maybeSingle(),
+      supabase.from('tradingview_webhooks').select('id', { count: 'exact', head: true }).eq('user_id', user!.id),
     ])
     const allChannelRows = (channelsRes.data ?? []) as TelegramChannel[]
     const channelRows = allChannelRows.filter(row => !row.source_kind || row.source_kind === 'telegram')
@@ -261,6 +318,15 @@ export function CopierEnginePage() {
     const hasSession = !!sessionRes.data
     setHasTgSession(hasSession)
     if (user?.id) setCachedTgSession(user.id, hasSession)
+    const whatsappRow = whatsappSession.data as { status?: string } | null
+    setConfiguredSources(detectConfiguredSignalSources({
+      hasTelegramSession: hasSession,
+      channels: allChannelRows,
+      discordInstallations: discordInstalls.error ? 0 : (discordInstalls.count ?? 0),
+      whatsappStatus: whatsappSession.error ? null : (whatsappRow?.status ?? null),
+      tradingViewWebhooks: tradingViewHooks.error ? 0 : (tradingViewHooks.count ?? 0),
+    }))
+    setSourcesReady(true)
     setTgStage(prev =>
       prev === 'phone' || prev === 'code' || prev === 'twoFa' || prev === 'qr' || prev === 'method'
         ? prev
@@ -884,6 +950,50 @@ export function CopierEnginePage() {
     }
   }
 
+  const visibleSources = useMemo(() => {
+    const added = new Set<AddedSignalSource>([...configuredSources, ...pickedSources])
+    return SIGNAL_SOURCE_ORDER.filter(kind => added.has(kind))
+  }, [configuredSources, pickedSources])
+
+  const guildFromInvite = searchParams.get('guild_id')
+  useEffect(() => {
+    if (!user?.id) return
+    setPickedSources(prev => {
+      const stored = readAddedSignalSources(user.id)
+      const merged = SIGNAL_SOURCE_ORDER.filter(kind =>
+        stored.includes(kind) || prev.includes(kind) || (kind === 'discord' && Boolean(guildFromInvite)),
+      )
+      if (guildFromInvite && !stored.includes('discord')) writeAddedSignalSources(user.id, merged)
+      return merged
+    })
+  }, [guildFromInvite, user?.id])
+
+  useEffect(() => {
+    if (!sourcesReady) return
+    if (source && visibleSources.includes(source)) return
+    setSource(visibleSources[0] ?? null)
+  }, [source, sourcesReady, visibleSources])
+
+  const addSignalSource = (kind: AddedSignalSource) => {
+    if (user?.id) {
+      setPickedSources(prev => {
+        if (prev.includes(kind)) return prev
+        const next = [...prev, kind]
+        writeAddedSignalSources(user.id, next)
+        return next
+      })
+    }
+    setSource(kind)
+    setSourcePickerOpen(false)
+  }
+
+  const sourceTabLabel = (kind: AddedSignalSource) => {
+    if (kind === 'telegram') return t.channelsPage.tabTelegram
+    if (kind === 'whatsapp') return t.channelsPage.tabWhatsApp
+    if (kind === 'discord') return t.channelsPage.tabDiscord
+    return t.channelsPage.tabTradingView
+  }
+
   const showListenerLeaseWarning =
     hasTgSession
     && hasActiveSubscription
@@ -895,32 +1005,63 @@ export function CopierEnginePage() {
       <PageHeader
         title={t.pages.copierEngine.title}
         actions={
-          source === 'telegram' && hasTgSession ? (
-            <Button variant="secondary" size="sm" onClick={() => void fetchTgChannels({ force: true })} loading={loadingTg}>
-              <RefreshCw className="w-3.5 h-3.5" />
-              {t.common.refresh}
+          <div className="flex flex-wrap items-center gap-2">
+            {source === 'telegram' && hasTgSession ? (
+              <Button variant="secondary" size="sm" onClick={() => void fetchTgChannels({ force: true })} loading={loadingTg}>
+                <RefreshCw className="w-3.5 h-3.5" />
+                {t.common.refresh}
+              </Button>
+            ) : null}
+            <Button size="sm" onClick={() => setSourcePickerOpen(true)}>
+              <Plus className="w-3.5 h-3.5" />
+              {ce.newSignalSource}
             </Button>
-          ) : undefined
+          </div>
         }
       />
 
+      {!sourcesReady ? (
+        <div className="h-40 animate-pulse rounded-xl border border-neutral-100 bg-white dark:border-neutral-800 dark:bg-neutral-950" />
+      ) : visibleSources.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-neutral-200 bg-white px-6 py-16 text-center dark:border-neutral-800 dark:bg-neutral-950">
+          <div className="mb-4 flex items-center justify-center gap-3">
+            {SIGNAL_SOURCE_ORDER.map(kind => (
+              <img
+                key={kind}
+                src={SIGNAL_SOURCE_MARKS[kind].iconSrc}
+                alt=""
+                aria-hidden
+                className={clsx(
+                  'h-8 w-8',
+                  kind === 'telegram' ? 'object-contain' : 'rounded-full object-cover',
+                )}
+              />
+            ))}
+          </div>
+          <p className="text-sm font-medium text-neutral-700 dark:text-neutral-200">{ce.noSignalSourcesTitle}</p>
+          <p className="mx-auto mt-1 max-w-sm text-xs text-neutral-400">{ce.noSignalSourcesBody}</p>
+          <Button className="mt-5" onClick={() => setSourcePickerOpen(true)}>
+            <Plus className="w-4 h-4" />
+            {ce.newSignalSource}
+          </Button>
+        </div>
+      ) : (
+      <>
       <nav className="flex gap-6 overflow-x-auto border-b border-neutral-200 dark:border-neutral-800" aria-label={t.pages.copierEngine.title}>
-        <SourceTab active={source === 'telegram'} onClick={() => setSource('telegram')}>
-          <img src="/Telegram.svg" alt="" aria-hidden className="h-4 w-4 shrink-0 object-contain" />
-          {t.channelsPage.tabTelegram}
-        </SourceTab>
-        <SourceTab active={source === 'discord'} onClick={() => setSource('discord')}>
-          <img src="/discord-logo.png" alt="" aria-hidden className="h-4 w-4 shrink-0 rounded-full object-cover" />
-          {t.channelsPage.tabDiscord}
-        </SourceTab>
-        <SourceTab active={source === 'whatsapp'} onClick={() => setSource('whatsapp')}>
-          <img src="/whatsapp-icon.png" alt="" aria-hidden className="h-4 w-4 shrink-0 rounded-full object-cover" />
-          {t.channelsPage.tabWhatsApp}
-        </SourceTab>
-        <SourceTab active={source === 'tradingview'} onClick={() => setSource('tradingview')}>
-          <img src="/tradingview-logo.png" alt="" aria-hidden className="h-4 w-4 shrink-0 rounded-full object-cover" />
-          {t.channelsPage.tabTradingView}
-        </SourceTab>
+        {visibleSources.map(kind => (
+          <SourceTab key={kind} active={source === kind} onClick={() => setSource(kind)}>
+            <img
+              src={SIGNAL_SOURCE_MARKS[kind].iconSrc}
+              alt=""
+              aria-hidden
+              className={clsx(
+                'h-4 w-4 shrink-0',
+                kind === 'telegram' ? 'object-contain' : 'rounded-full object-cover',
+              )}
+            />
+            {sourceTabLabel(kind)}
+          </SourceTab>
+        ))}
       </nav>
 
       {source === 'tradingview' ? (
@@ -929,7 +1070,7 @@ export function CopierEnginePage() {
         <DiscordSourcePanel brokers={brokers} replaceBroker={replaceBroker} />
       ) : source === 'whatsapp' ? (
         <WhatsAppSourcePanel brokers={brokers} replaceBroker={replaceBroker} />
-      ) : (
+      ) : source === 'telegram' ? (
       <>
 
       {showListenerLeaseWarning && (
@@ -1175,8 +1316,117 @@ export function CopierEnginePage() {
         </Card>
       )}
       </>
+      ) : null}
+      </>
       )}
+
+      <NewSignalSourceModal
+        open={sourcePickerOpen}
+        added={visibleSources}
+        title={ce.newSignalSource}
+        hint={ce.chooseSignalSource}
+        addedLabel={ce.added}
+        closeLabel={ce.keywordsClose}
+        onClose={() => setSourcePickerOpen(false)}
+        onSelect={addSignalSource}
+        labelFor={sourceTabLabel}
+      />
     </PageShell>
+  )
+}
+
+function NewSignalSourceModal({
+  open,
+  added,
+  title,
+  hint,
+  addedLabel,
+  closeLabel,
+  onClose,
+  onSelect,
+  labelFor,
+}: {
+  open: boolean
+  added: AddedSignalSource[]
+  title: string
+  hint: string
+  addedLabel: string
+  closeLabel: string
+  onClose: () => void
+  onSelect: (kind: AddedSignalSource) => void
+  labelFor: (kind: AddedSignalSource) => string
+}) {
+  useEffect(() => {
+    if (!open) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, onClose])
+
+  if (!open || typeof document === 'undefined') return null
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="new-signal-source-title"
+        className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white p-5 shadow-xl dark:border-neutral-800 dark:bg-neutral-950"
+        onClick={event => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 id="new-signal-source-title" className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
+              {title}
+            </h2>
+            <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{hint}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={closeLabel}
+            className="rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="mt-4 space-y-2">
+          {SIGNAL_SOURCE_ORDER.map(kind => {
+            const alreadyAdded = added.includes(kind)
+            return (
+              <button
+                key={kind}
+                type="button"
+                onClick={() => onSelect(kind)}
+                className="flex w-full items-center gap-3 rounded-xl border border-neutral-200 px-3 py-3 text-left transition-colors hover:border-teal-600 hover:bg-teal-50/60 dark:border-neutral-800 dark:hover:border-teal-500 dark:hover:bg-teal-950/30"
+              >
+                <img
+                  src={SIGNAL_SOURCE_MARKS[kind].iconSrc}
+                  alt=""
+                  aria-hidden
+                  className={clsx(
+                    'h-8 w-8 shrink-0',
+                    kind === 'telegram' ? 'object-contain' : 'rounded-full object-cover',
+                  )}
+                />
+                <span className="min-w-0 flex-1 text-sm font-medium text-neutral-900 dark:text-neutral-50">
+                  {labelFor(kind)}
+                </span>
+                {alreadyAdded ? (
+                  <span className="text-xs font-medium text-teal-700 dark:text-teal-300">{addedLabel}</span>
+                ) : null}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    </div>,
+    document.body,
   )
 }
 

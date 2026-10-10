@@ -3,6 +3,10 @@ import type { CopierEngineBundleTranslations } from './types'
 export const copierEngineAr: CopierEngineBundleTranslations = {
   copierEnginePage: {
     connectTelegram: 'ربط Telegram',
+    newSignalSource: 'مصدر إشارات جديد',
+    chooseSignalSource: 'اختر مصدر إشارات',
+    noSignalSourcesTitle: 'لا توجد مصادر إشارات',
+    noSignalSourcesBody: 'أضف مصدر إشارات لبدء النسخ.',
     telegramNotConnectedTitle: 'Telegram غير متصل.',
     telegramNotConnectedBody: 'اربط Telegram هنا لتحميل قائمة القنوات وإدارتها.',
     tgConnectHeroTitle: 'اربط حساب Telegram الخاص بك',

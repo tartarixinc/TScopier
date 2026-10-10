@@ -1440,6 +1440,10 @@ broker: {
   },
   copierEnginePage: {
     connectTelegram: 'Connect Telegram',
+    newSignalSource: 'New Signal Source',
+    chooseSignalSource: 'Choose a signal source',
+    noSignalSourcesTitle: 'No signal sources yet',
+    noSignalSourcesBody: 'Add a signal source to start copying trades.',
     telegramNotConnectedTitle: 'Telegram not connected.',
     telegramNotConnectedBody: 'Connect Telegram here to load and manage your channel list.',
     tgConnectHeroTitle: 'Link your Telegram account',

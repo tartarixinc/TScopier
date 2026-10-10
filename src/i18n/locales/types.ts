@@ -1445,6 +1445,10 @@ export interface CopierEngineAdditionalKeywordTranslations {
 
 export interface CopierEnginePageTranslations {
   connectTelegram: string
+  newSignalSource: string
+  chooseSignalSource: string
+  noSignalSourcesTitle: string
+  noSignalSourcesBody: string
   telegramNotConnectedTitle: string
   telegramNotConnectedBody: string
   tgConnectHeroTitle: string

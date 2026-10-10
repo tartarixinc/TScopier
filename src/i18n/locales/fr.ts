@@ -1394,6 +1394,10 @@ export const fr: Translations = {
   },
   copierEnginePage: {
     connectTelegram: 'Connecter Telegram',
+    newSignalSource: 'Nouvelle source de signaux',
+    chooseSignalSource: 'Choisissez une source de signaux',
+    noSignalSourcesTitle: 'Aucune source de signaux',
+    noSignalSourcesBody: 'Ajoutez une source de signaux pour commencer à copier.',
     telegramNotConnectedTitle: 'Telegram non connecté.',
     telegramNotConnectedBody: 'Connectez Telegram ici pour charger et gérer votre liste de canaux.',
     tgConnectHeroTitle: 'Associer votre compte Telegram',
