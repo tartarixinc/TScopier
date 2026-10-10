@@ -91,12 +91,31 @@ describe('managementClose', () => {
     assert.match(result.reason ?? '', /reconciliation required/)
   })
 
-  it('an empty post-close snapshot is not proof of closure', async () => {
+  it('an empty post-close snapshot confirms closure when it was the only open position', async () => {
     let openedCalls = 0
     const api = mockApi({
       openedOrders: async () => {
         openedCalls += 1
         return openedCalls === 1 ? [{ ticket: 12345, type: 0 }] : []
+      },
+    })
+    const result = await closeWithVerification(api, 'uuid', 12345, {
+      liveFast: true,
+      maxAttempts: 1,
+    })
+    assert.equal(result.confirmed, true)
+  })
+
+  it('an empty post-close snapshot is not proof of closure when other positions remained', async () => {
+    let openedCalls = 0
+    const api = mockApi({
+      openedOrders: async () => {
+        openedCalls += 1
+        // First read: the closed ticket plus another position. An empty readback
+        // afterwards cannot be a completed close — the other position would remain.
+        return openedCalls === 1
+          ? [{ ticket: 12345, type: 0 }, { ticket: 999, type: 0 }]
+          : []
       },
     })
     const result = await closeWithVerification(api, 'uuid', 12345, {
