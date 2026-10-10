@@ -5,15 +5,13 @@ import {
   Plus, Trash2, Server, Activity, GitBranch, Eye, DollarSign, RefreshCw,
   SlidersHorizontal, Radio, Target, Filter, Wallet, Link2,
   ChevronLeft, ChevronRight, Search, Settings2, Bookmark, Pencil, ScrollText, AlertTriangle,
-  Infinity as InfinityIcon, Coins, X, MessageSquareText, FileUp, FileDown,
+  Infinity as InfinityIcon, Coins, X, MessageSquareText, FileUp, FileDown, Clock,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useT } from '../../context/LocaleContext'
 import { interpolate } from '../../i18n/interpolate'
-import { Card } from '../../components/ui/Card'
-import { Select } from '../../components/ui/Select'
 import { Toggle } from '../../components/ui/Toggle'
 import { PageHeader } from '../../components/layout/PageHeader'
 import { PageShell } from '../../components/layout/PageShell'
@@ -643,6 +641,55 @@ function formatBrokerMoney(value: number | null | undefined, currency?: string |
   return formatMoneyWithCode(value, currency?.trim() || undefined)
 }
 
+function accountRoiPercent(broker: BrokerAccount): number | null {
+  const baseline = broker.performance_baseline_balance
+  const balance = resolveBrokerTotalBalance(broker)
+  if (baseline == null || baseline <= 0 || balance == null) return null
+  return ((balance - baseline) / baseline) * 100
+}
+
+function formatRoiPercent(value: number): string {
+  const sign = value > 0 ? '+' : ''
+  return `${sign}${value.toFixed(2)}%`
+}
+
+function AccountStatCard({
+  label,
+  value,
+  hint,
+  hintClassName,
+}: {
+  label: string
+  value: string
+  hint?: string
+  hintClassName?: string
+}) {
+  return (
+    <div className="rounded-xl border border-neutral-200 bg-white px-4 py-4 dark:border-neutral-800 dark:bg-neutral-950">
+      <p className="text-sm text-neutral-500 dark:text-neutral-400">{label}</p>
+      <p className="mt-3 truncate text-2xl font-semibold text-neutral-900 dark:text-neutral-50">{value}</p>
+      {hint ? <p className={clsx('mt-2 text-xs', hintClassName)}>{hint}</p> : <p className="mt-2 text-xs text-transparent">.</p>}
+    </div>
+  )
+}
+
+function AccountsEmptyState({ label }: { label: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-6">
+      <svg width="88" height="72" viewBox="0 0 88 72" fill="none" aria-hidden className="text-neutral-300 dark:text-neutral-600">
+        <rect x="18" y="14" width="44" height="32" rx="4" fill="currentColor" opacity="0.35" />
+        <rect x="22" y="18" width="36" height="22" rx="2" className="fill-white dark:fill-neutral-900" />
+        <path d="M14 50h52l6 8H8l6-8z" fill="currentColor" opacity="0.45" />
+        <rect x="54" y="6" width="22" height="14" rx="7" fill="currentColor" opacity="0.55" />
+        <circle cx="61" cy="13" r="1.2" className="fill-white dark:fill-neutral-900" />
+        <circle cx="65" cy="13" r="1.2" className="fill-white dark:fill-neutral-900" />
+        <circle cx="69" cy="13" r="1.2" className="fill-white dark:fill-neutral-900" />
+      </svg>
+      <p className="mt-3 text-sm text-neutral-500 dark:text-neutral-400">{label}</p>
+    </div>
+  )
+}
+
 function accountTypeLabelsFromBrokerList(bl: {
   accountTypeDemo: string
   accountTypeLive: string
@@ -653,25 +700,6 @@ function accountTypeLabelsFromBrokerList(bl: {
     live: bl.accountTypeLive,
     propFirm: bl.accountTypePropFirm,
   }
-}
-
-function AccountDetailCell({
-  label,
-  value,
-  className,
-}: {
-  label: string
-  value: ReactNode
-  className?: string
-}) {
-  return (
-    <div className={clsx('min-w-0 px-4 py-2.5', className)}>
-      <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-400 dark:text-neutral-500">{label}</p>
-      <p className="mt-0.5 text-sm text-neutral-900 dark:text-neutral-50 truncate" title={typeof value === 'string' ? value : undefined}>
-        {value}
-      </p>
-    </div>
-  )
 }
 
 type ManualSubTabId = 'symbols' | 'channel_instructions' | 'signal_examples' | 'risk' | 'stops' | 'management' | 'filters'
@@ -1033,18 +1061,18 @@ export function AccountConfigPage() {
     [brokers],
   )
 
-  const brokerFilterOptions = useMemo(() => {
+  const platformFilterOptions = useMemo(() => {
     const labels = new Set<string>()
     for (const broker of brokers) {
-      const label = resolveBrokerFilterLabel(broker)
-      if (label && label !== '—') labels.add(label)
+      const platform = broker.platform?.trim()
+      if (platform) labels.add(platform)
     }
     return [...labels].sort((a, b) => a.localeCompare(b))
   }, [brokers])
 
   const filteredBrokers = useMemo(() => {
     return brokers.filter(broker => {
-      if (brokerFilter !== 'all' && resolveBrokerFilterLabel(broker) !== brokerFilter) return false
+      if (brokerFilter !== 'all' && (broker.platform?.trim() || '') !== brokerFilter) return false
       return brokerMatchesSearch(broker, brokerSearchQuery)
     })
   }, [brokers, brokerFilter, brokerSearchQuery])
@@ -1066,6 +1094,20 @@ export function AccountConfigPage() {
   )
   const connectedAccountCount = usageLoading ? linkedBrokerCount : usage.brokerAccounts
   const connectedAccountLimit = limits.maxBrokerAccounts
+  const usagePercent = !isAdmin && connectedAccountLimit > 0
+    ? Math.min(100, Math.round((connectedAccountCount / connectedAccountLimit) * 100))
+    : null
+  const accountOverview = useMemo(() => {
+    const total = brokers.length
+    const active = brokers.filter(broker => broker.is_active).length
+    let best: { label: string; roi: number } | null = null
+    for (const broker of brokers) {
+      const roi = accountRoiPercent(broker)
+      if (roi == null) continue
+      if (!best || roi > best.roi) best = { label: broker.label, roi }
+    }
+    return { total, active, inactive: total - active, best }
+  }, [brokers])
 
   useEffect(() => {
     setBrokerPage(1)
@@ -2694,130 +2736,157 @@ export function AccountConfigPage() {
 
   if (loading) {
     return (
-      <PageShell maxWidth="lg" spacing="none" className="space-y-3">
-        {[...Array(2)].map((_, i) => <div key={i} className="h-28 bg-white dark:bg-neutral-950 rounded-xl border border-neutral-100 dark:border-neutral-800 animate-pulse" />)}
+      <PageShell maxWidth="xl" spacing="none" className="space-y-4">
+        <div className="h-10 animate-pulse rounded-xl bg-white dark:bg-neutral-950" />
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {[...Array(4)].map((_, i) => <div key={i} className="h-28 animate-pulse rounded-xl border border-neutral-100 bg-white dark:border-neutral-800 dark:bg-neutral-950" />)}
+        </div>
+        <div className="h-80 animate-pulse rounded-xl border border-neutral-100 bg-white dark:border-neutral-800 dark:bg-neutral-950" />
       </PageShell>
     )
   }
 
   return (
-    <PageShell maxWidth="lg" spacing="none" className="space-y-6">
+    <PageShell maxWidth="xl" spacing="none" className="space-y-4">
       <PageHeader
         title={t.pages.accountConfiguration.title}
         actions={(
-          <Button size="sm" onClick={() => openAddTradingAccount()}>
-            <Plus className="w-3.5 h-3.5" />
-            {t.accountConfig.connectForm.addAccountButton}
-          </Button>
+          <div className="flex items-center gap-3">
+            {usagePercent != null ? (
+              <div className="flex items-center gap-2" title={`${connectedAccountCount}/${connectedAccountLimit}`}>
+                <div className="h-1.5 w-24 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
+                  <div
+                    className={clsx('h-full rounded-full', usagePercent >= 100 ? 'bg-red-500' : 'bg-teal-600')}
+                    style={{ width: `${usagePercent}%` }}
+                  />
+                </div>
+                <span className={clsx('text-xs font-semibold tabular-nums', usagePercent >= 100 ? 'text-red-500' : 'text-neutral-500 dark:text-neutral-400')}>
+                  {usagePercent}%
+                </span>
+              </div>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-neutral-500 dark:text-neutral-400">
+                <InfinityIcon className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" aria-hidden />
+                {bl.connectedAccountsUnlimited}
+              </span>
+            )}
+            <Button size="sm" onClick={() => openAddTradingAccount()}>
+              <Plus className="w-3.5 h-3.5" />
+              {t.accountConfig.connectForm.addAccountButton}
+            </Button>
+          </div>
         )}
       />
 
       {brokersLoadError ? (
-        <Alert variant="error" className="mb-3">
+        <Alert variant="error">
           {brokersLoadError}
         </Alert>
       ) : null}
 
-      {/* ── Broker Accounts ── */}
-      <section>
+      {brokersNeedingRelink.length > 0 && (
+        <Alert variant="warning">
+          {brokersNeedingRelink.length === 1
+            ? bl.relinkOne
+            : interpolate(bl.relinkMany, { count: String(brokersNeedingRelink.length) })}
+        </Alert>
+      )}
 
-        {brokersNeedingRelink.length > 0 && (
-          <Alert variant="warning" className="mb-3">
-            {brokersNeedingRelink.length === 1
-              ? bl.relinkOne
-              : interpolate(bl.relinkMany, { count: String(brokersNeedingRelink.length) })}
-          </Alert>
-        )}
+      {false && brokersNeedingReconnect.length > 0 && (
+        <Alert variant="warning" className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <span>{reconnectBannerText}</span>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="shrink-0"
+            loading={reconnectingBrokerIds.size > 0}
+            onClick={async () => {
+              for (const b of brokersNeedingReconnect) {
+                await reconnectBroker(b.id)
+              }
+            }}
+          >
+            <RefreshCw className="w-4 h-4" />
+            {bl.reconnectAll}
+          </Button>
+        </Alert>
+      )}
 
-        {false && brokersNeedingReconnect.length > 0 && (
-          <Alert variant="warning" className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <span>{reconnectBannerText}</span>
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              className="shrink-0"
-              loading={reconnectingBrokerIds.size > 0}
-              onClick={async () => {
-                for (const b of brokersNeedingReconnect) {
-                  await reconnectBroker(b.id)
-                }
-              }}
-            >
-              <RefreshCw className="w-4 h-4" />
-              {bl.reconnectAll}
-            </Button>
-          </Alert>
-        )}
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <AccountStatCard label={bl.overviewTotal} value={String(accountOverview.total)} />
+        <AccountStatCard label={bl.overviewActive} value={String(accountOverview.active)} />
+        <AccountStatCard label={bl.overviewInactive} value={String(accountOverview.inactive)} />
+        <AccountStatCard
+          label={bl.overviewBest}
+          value={accountOverview.best?.label ?? bl.overviewNotAvailable}
+          hint={interpolate(bl.overviewRoi, {
+            percent: accountOverview.best ? formatRoiPercent(accountOverview.best.roi) : '0.00%',
+          })}
+          hintClassName={accountOverview.best && accountOverview.best.roi < 0 ? 'text-red-600 dark:text-red-400' : 'text-neutral-400'}
+        />
+      </div>
 
-        <p className="mb-3 text-sm font-medium text-neutral-700 dark:text-neutral-300 flex flex-wrap items-center gap-x-1.5">
-          <span>{bl.connectedAccountsHeading}</span>
-          <span className="text-neutral-400 font-normal" aria-hidden>
-            –
-          </span>
-          <span className="tabular-nums inline-flex items-center gap-0.5 font-semibold">
-            {connectedAccountCount}
-            <span className="text-neutral-400 font-normal">/</span>
-            {isAdmin ? (
-              <InfinityIcon
-                className="w-4 h-4 text-teal-600 dark:text-teal-400"
-                aria-label={bl.connectedAccountsUnlimited}
-              />
-            ) : (
-              connectedAccountLimit
-            )}
-          </span>
-        </p>
-
-        {brokers.length === 0 ? (
-          <div className="bg-white dark:bg-neutral-950 rounded-xl border border-dashed border-neutral-200/65 dark:border-neutral-800/55 py-8 text-center">
-            <Server className="w-8 h-8 mx-auto mb-2 text-neutral-300 dark:text-neutral-600" />
-            <p className="text-sm text-neutral-400 dark:text-neutral-500">{t.accountConfig.brokersEmptyTitle}</p>
-            <p className="text-xs text-neutral-300 dark:text-neutral-600 mt-0.5">{t.accountConfig.brokersEmptySubtitle}</p>
+      <section className="overflow-hidden rounded-xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-950">
+        <div className="flex items-center gap-2 border-b border-neutral-100 px-4 py-3 dark:border-neutral-800">
+          <Clock className="h-4 w-4 text-teal-600 dark:text-teal-400" aria-hidden />
+          <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{bl.accountsHeading}</h2>
+          <InfoTooltip text={t.pages.accountConfiguration.description} />
+        </div>
+        <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center">
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+            <input
+              type="search"
+              value={brokerSearchQuery}
+              onChange={e => setBrokerSearchQuery(e.target.value)}
+              placeholder={bl.accountSearchPlaceholder}
+              aria-label={bl.accountSearchLabel}
+              className="w-full rounded-lg border border-neutral-200 bg-white py-2 ps-9 pe-3 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-teal-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-50"
+            />
           </div>
-        ) : (
-          <>
-            <div className="mb-3 flex flex-col gap-3">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                <div className="flex-1">
-                  <label className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                    {bl.accountSearchLabel}
-                  </label>
-                  <div className="relative mt-1.5">
-                    <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
-                    <input
-                      type="search"
-                      value={brokerSearchQuery}
-                      onChange={e => setBrokerSearchQuery(e.target.value)}
-                      placeholder={bl.accountSearchPlaceholder}
-                      className="w-full rounded-lg border border-neutral-200/65 bg-white py-2 ps-9 pe-3 text-sm text-neutral-900 placeholder:text-neutral-400 hover:border-neutral-300 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary-500 dark:border-neutral-800/55 dark:bg-neutral-900 dark:text-neutral-50"
-                    />
-                  </div>
-                </div>
-                <div className="w-full sm:w-64">
-                  <Select
-                    label={bl.brokerFilterLabel}
-                    value={brokerFilter}
-                    onChange={e => setBrokerFilter(e.target.value)}
-                    options={[
-                      { value: 'all', label: bl.brokerFilterAll },
-                      ...brokerFilterOptions.map(label => ({ value: label, label })),
-                    ]}
-                  />
-                </div>
-              </div>
-            </div>
+          <div className="relative w-full sm:w-56">
+            <SlidersHorizontal className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+            <select
+              value={brokerFilter}
+              aria-label={bl.brokerFilterLabel}
+              onChange={event => setBrokerFilter(event.target.value)}
+              className="w-full appearance-none rounded-lg border border-neutral-200 bg-white py-2 ps-9 pe-8 text-sm text-neutral-700 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-teal-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+            >
+              <option value="all">{bl.platformFilterAll}</option>
+              {platformFilterOptions.map(platform => (
+                <option key={platform} value={platform}>{platform}</option>
+              ))}
+            </select>
+            <ChevronRight className="pointer-events-none absolute end-3 top-1/2 h-4 w-4 -translate-y-1/2 rotate-90 text-neutral-400" />
+          </div>
+        </div>
 
-            {filteredBrokers.length === 0 ? (
-              <div className="bg-white dark:bg-neutral-950 rounded-xl border border-dashed border-neutral-200/65 dark:border-neutral-800/55 py-8 text-center">
-                <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                  {brokerSearchQuery.trim() ? bl.accountSearchNoMatch : bl.brokerFilterNoMatch}
-                </p>
-              </div>
-            ) : (
-              <>
-                <div className="space-y-3">
-                  {paginatedBrokers.map(broker => {
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[920px] text-sm">
+            <thead>
+              <tr className="border-y border-neutral-100 text-left text-neutral-500 dark:border-neutral-800 dark:text-neutral-400">
+                <th className="px-4 py-3 font-medium">{bl.colName}</th>
+                <th className="px-3 py-3 font-medium">{bl.colAccount}</th>
+                <th className="px-3 py-3 font-medium">{bl.colPlatform}</th>
+                <th className="px-3 py-3 font-medium">{bl.colBalance}</th>
+                <th className="px-3 py-3 font-medium">{bl.colConnection}</th>
+                <th className="px-3 py-3 font-medium">{bl.colStatus}</th>
+                <th className="px-4 py-3 text-end font-medium">{bl.colActions}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {brokers.length === 0 || filteredBrokers.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-16 text-center">
+                    {brokers.length === 0 ? <AccountsEmptyState label={bl.noData} /> : (
+                      <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                        {brokerSearchQuery.trim() ? bl.accountSearchNoMatch : bl.brokerFilterNoMatch}
+                      </p>
+                    )}
+                  </td>
+                </tr>
+              ) : paginatedBrokers.map(broker => {
               const statusVariant = brokerConnectionBadgeVariant(broker)
               const isReconnecting = isBrokerReconnecting(broker.id)
               const statusLabel = brokerConnectionStatusLabel(broker, bl)
@@ -2830,10 +2899,9 @@ export function AccountConfigPage() {
               const channelsLabel = getBrokerSignalChannelsLabel(broker.id)
               const accountType = resolveLinkedAccountTypeForBroker(broker)
               return (
-                <Card
+                <tr
                   key={broker.id}
-                  padding="none"
-                  role="button"
+                  role="link"
                   tabIndex={0}
                   aria-label={`${t.configurationsPage.title} ${broker.label}`}
                   onClick={() => { void openBrokerConfigurations(broker) }}
@@ -2843,74 +2911,78 @@ export function AccountConfigPage() {
                       void openBrokerConfigurations(broker)
                     }
                   }}
-                  className={clsx(
-                    'group overflow-hidden cursor-pointer transition-all duration-150',
-                    'hover:border-primary-300 hover:shadow-md dark:hover:border-primary-700',
-                    'hover:bg-primary-50/40 dark:hover:bg-primary-950/25',
-                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2',
-                    'dark:focus-visible:ring-offset-neutral-950',
-                  )}
+                  className="cursor-pointer border-t border-neutral-100 hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-teal-600 dark:border-neutral-800 dark:hover:bg-neutral-900"
                 >
-                  <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex min-w-0 flex-1 items-center gap-3">
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary-50 transition-colors group-hover:bg-primary-100 dark:bg-teal-950/60 dark:group-hover:bg-teal-950">
-                      <PlatformIcon platform={broker.platform} />
-                    </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{broker.label}</h3>
-                        <Badge variant={statusVariant} size="sm">{statusLabel}</Badge>
-                        {healthVariant && healthLabel ? (
-                          <button
-                            type="button"
-                            onClick={e => {
-                              e.stopPropagation()
-                              setStatusModalBroker(broker)
-                            }}
-                            className="inline-flex rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
-                            aria-label={bl.statusHealthView}
-                          >
-                            <Badge variant={healthVariant} size="sm">{healthLabel}</Badge>
-                          </button>
-                        ) : null}
-                        <Badge variant="neutral" size="sm">{broker.platform}</Badge>
-                        {brokerLabel && (
-                          <Badge variant="neutral" size="sm">{brokerLabel}</Badge>
+                  <td className="px-4 py-3">
+                    <p className="font-medium text-neutral-900 dark:text-neutral-50">{broker.label}</p>
+                    {brokerLabel ? (
+                      <p className="mt-0.5 truncate text-xs text-neutral-500 dark:text-neutral-400">{brokerLabel}</p>
+                    ) : null}
+                    {channelsLabel ? (
+                      <p className="mt-0.5 truncate text-xs text-neutral-400">{channelsLabel}</p>
+                    ) : null}
+                    {broker.connection_error ? (
+                      <p className="mt-1 text-xs leading-relaxed text-error-600 dark:text-error-400">
+                        {brokerConnectErrorText(
+                          classifyBrokerConnectError(broker.connection_error),
+                          broker.connection_error,
+                          connectErrorLabels,
                         )}
-                        <ChevronRight
-                          className="h-4 w-4 shrink-0 text-primary-500 opacity-0 transition-opacity group-hover:opacity-100 dark:text-primary-400"
-                          aria-hidden
-                        />
-                      </div>
-                        {broker.broker_server && (
-                          <p className="mt-0.5 truncate text-xs text-neutral-500 dark:text-neutral-400">{broker.broker_server}</p>
-                        )}
-                        {broker.connection_error ? (
-                          <p className="mt-1 text-xs text-error-600 dark:text-error-400 leading-relaxed">
-                            {brokerConnectErrorText(
-                              classifyBrokerConnectError(broker.connection_error),
-                              broker.connection_error,
-                              connectErrorLabels,
-                            )}
-                          </p>
-                        ) : null}
+                      </p>
+                    ) : null}
+                  </td>
+                  <td className="px-3 py-3">
+                    <p className="text-neutral-800 dark:text-neutral-100">{broker.account_login || '—'}</p>
+                    <p className={clsx('mt-0.5 text-xs', linkedAccountTypeValueClass(accountType))}>
+                      {formatLinkedAccountTypeLabel(accountType, accountTypeLabelsFromBrokerList(bl))}
+                    </p>
+                  </td>
+                  <td className="px-3 py-3">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-7 w-7 items-center justify-center">
+                        <PlatformIcon platform={broker.platform} />
+                      </span>
+                      <span className="text-neutral-800 dark:text-neutral-100">{broker.platform}</span>
                     </div>
+                  </td>
+                  <td className="px-3 py-3 text-neutral-800 dark:text-neutral-100">
+                    {formatBrokerMoney(resolveBrokerTotalBalance(broker), broker.last_currency)}
+                  </td>
+                  <td className="px-3 py-3">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Badge variant={statusVariant} size="sm">{statusLabel}</Badge>
+                      {healthVariant && healthLabel ? (
+                        <button
+                          type="button"
+                          onClick={e => {
+                            e.stopPropagation()
+                            setStatusModalBroker(broker)
+                          }}
+                          className="inline-flex rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
+                          aria-label={bl.statusHealthView}
+                        >
+                          <Badge variant={healthVariant} size="sm">{healthLabel}</Badge>
+                        </button>
+                      ) : null}
                     </div>
-                    <div
-                      className="flex shrink-0 items-center gap-2"
-                      onClick={e => e.stopPropagation()}
-                      onKeyDown={e => e.stopPropagation()}
-                    >
-                      <div className="flex items-center gap-2 pe-1 border-e border-neutral-200 dark:border-neutral-700 me-1">
-                        <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400 hidden sm:inline">
-                          {bl.copyTrades}
-                        </span>
-                        <Toggle
-                          checked={broker.is_active}
-                          onChange={is_active => { void toggleBrokerActive(broker.id, is_active) }}
-                          disabled={togglingBrokerId === broker.id}
-                        />
-                      </div>
+                  </td>
+                  <td className="px-3 py-3" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
+                    <div className="flex items-center gap-2">
+                      <span className={clsx(
+                        'text-xs font-medium',
+                        broker.is_active ? 'text-emerald-600 dark:text-emerald-400' : 'text-neutral-500 dark:text-neutral-400',
+                      )}>
+                        {broker.is_active ? bl.statusActive : bl.statusInactive}
+                      </span>
+                      <Toggle
+                        checked={broker.is_active}
+                        onChange={is_active => { void toggleBrokerActive(broker.id, is_active) }}
+                        disabled={togglingBrokerId === broker.id}
+                      />
+                    </div>
+                  </td>
+                  <td className="px-4 py-3" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
+                    <div className="flex items-center justify-end gap-1.5">
                       {brokerCanReconnect(broker) ? (
                         <Button
                           type="button"
@@ -2926,85 +2998,48 @@ export function AccountConfigPage() {
                       <button
                         type="button"
                         onClick={() => { void openConfigureModal(broker) }}
-                        className={clsx(
-                          'rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors',
-                          'border-primary-200 bg-primary-50 text-primary-800',
-                          'group-hover:border-primary-300 group-hover:bg-primary-100',
-                          'dark:border-primary-800 dark:bg-primary-950/50 dark:text-primary-200',
-                          'dark:group-hover:border-primary-700 dark:group-hover:bg-primary-950/80',
-                        )}
+                        className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs font-medium text-teal-800 transition-colors hover:bg-teal-100 dark:border-teal-900 dark:bg-teal-950/50 dark:text-teal-200 dark:hover:bg-teal-950"
                       >
                         {bl.configure}
                       </button>
                       <button
                         type="button"
                         onClick={() => { setError(''); setBrokerPendingDelete(broker) }}
-                        className="rounded-lg p-1.5 text-neutral-400 dark:text-neutral-500 hover:bg-error-50 dark:hover:bg-error-950/40 hover:text-error-600 dark:hover:text-error-400 transition-colors"
+                        className="rounded-lg p-1.5 text-neutral-400 transition-colors hover:bg-error-50 hover:text-error-600 dark:text-neutral-500 dark:hover:bg-error-950/40 dark:hover:text-error-400"
                         aria-label={interpolate(bl.removeAria, { label: broker.label })}
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
-                  </div>
-                  <div className="grid grid-cols-2 border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50 transition-colors group-hover:bg-primary-50/50 dark:bg-neutral-800/60 dark:group-hover:bg-primary-950/20 lg:grid-cols-6">
-                    <AccountDetailCell label={bl.detailLogin} value={broker.account_login || '—'} />
-                    <AccountDetailCell
-                      label={bl.detailAccountType}
-                      value={
-                        <span className={linkedAccountTypeValueClass(accountType)}>
-                          {formatLinkedAccountTypeLabel(accountType, accountTypeLabelsFromBrokerList(bl))}
-                        </span>
-                      }
-                      className="border-s border-neutral-100 dark:border-neutral-800 max-lg:border-t-0"
-                    />
-                    <AccountDetailCell
-                      label={bl.detailServer}
-                      value={broker.broker_server || '—'}
-                      className="border-s border-neutral-100 dark:border-neutral-800 max-lg:border-t-0"
-                    />
-                    <AccountDetailCell
-                      label={bl.detailSignalChannels}
-                      value={channelsLabel}
-                      className="col-span-2 border-t border-neutral-100 dark:border-neutral-800 lg:col-span-1 lg:border-t-0 lg:border-s"
-                    />
-                    <AccountDetailCell
-                      label={bl.detailBalance}
-                      value={formatBrokerMoney(resolveBrokerTotalBalance(broker), broker.last_currency)}
-                      className="border-t border-s border-neutral-100 dark:border-neutral-800 lg:border-t-0"
-                    />
-                    <AccountDetailCell
-                      label={bl.detailEquity}
-                      value={formatBrokerMoney(broker.last_equity, broker.last_currency)}
-                      className="border-t border-neutral-100 dark:border-neutral-800 lg:border-s lg:border-t-0"
-                    />
-                  </div>
-                </Card>
+                  </td>
+                </tr>
               )
             })}
-          </div>
+            </tbody>
+          </table>
+        </div>
 
-                {filteredBrokers.length > 0 && (
-                  <AccountBrokerPagination
-                    page={safeBrokerPage}
-                    totalPages={brokerTotalPages}
-                    rangeStart={brokerRangeStart}
-                    rangeEnd={brokerRangeEnd}
-                    total={filteredBrokers.length}
-                    onPageChange={setBrokerPage}
-                    previousLabel={t.common.previous}
-                    nextLabel={t.common.next}
-                    showingRange={interpolate(t.common.showingRange, {
-                      start: String(brokerRangeStart),
-                      end: String(brokerRangeEnd),
-                      total: String(filteredBrokers.length),
-                    })}
-                  />
-                )}
-              </>
-            )}
-          </>
+        {filteredBrokers.length > 0 && (
+          <div className="border-t border-neutral-100 px-4 py-3 dark:border-neutral-800">
+            <AccountBrokerPagination
+              page={safeBrokerPage}
+              totalPages={brokerTotalPages}
+              rangeStart={brokerRangeStart}
+              rangeEnd={brokerRangeEnd}
+              total={filteredBrokers.length}
+              onPageChange={setBrokerPage}
+              previousLabel={t.common.previous}
+              nextLabel={t.common.next}
+              showingRange={interpolate(t.common.showingRange, {
+                start: String(brokerRangeStart),
+                end: String(brokerRangeEnd),
+                total: String(filteredBrokers.length),
+              })}
+            />
+          </div>
         )}
       </section>
+
 
       <RiskLotCalculatorModal
         open={riskCalcOpen && configAccount != null}

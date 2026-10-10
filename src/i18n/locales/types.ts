@@ -799,6 +799,24 @@ export interface AccountConfigBrokerListTranslations {
   accountSearchLabel: string
   accountSearchPlaceholder: string
   accountSearchNoMatch: string
+  overviewTotal: string
+  overviewActive: string
+  overviewInactive: string
+  overviewBest: string
+  overviewNotAvailable: string
+  overviewRoi: string
+  accountsHeading: string
+  noData: string
+  colName: string
+  colAccount: string
+  colPlatform: string
+  colBalance: string
+  colConnection: string
+  colStatus: string
+  colActions: string
+  statusActive: string
+  statusInactive: string
+  platformFilterAll: string
 }
 
 export interface BrokerStatusModalCopy {
