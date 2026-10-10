@@ -15,7 +15,7 @@ export const chromeNl: AppChromeTranslations = {
     items: {
       dashboard: 'Dashboard',
       configuration: 'Configuraties',
-      brokers: 'Brokers',
+      brokers: 'Handelsconfiguratie',
       mirrorTrading: 'Spiegelaccount',
       socialTrading: 'Sociaal handelen',
       trades: 'Trades',
@@ -254,7 +254,7 @@ export const chromeNl: AppChromeTranslations = {
   },
   pages: {
     accountConfiguration: {
-      title: 'Brokers',
+      title: 'Handelsconfiguratie',
       description: 'Verbind MetaTrader-accounts en stel in hoe elk account signalen kopieert.',
     },
     brokers: {

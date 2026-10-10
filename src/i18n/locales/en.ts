@@ -35,7 +35,7 @@ export const en: Translations = {
     items: {
       dashboard: 'Dashboard',
       configuration: 'Configurations',
-      brokers: 'Brokers',
+      brokers: 'Trade Configuration',
       mirrorTrading: 'Mirror Account',
       socialTrading: 'Social Trading',
       trades: 'Trades',
@@ -2034,7 +2034,7 @@ broker: {
   },
   pages: {
     accountConfiguration: {
-      title: 'Brokers',
+      title: 'Trade Configuration',
       description: 'Connect MetaTrader accounts and tune how each one copies signals.',
     },
     brokers: {

@@ -15,7 +15,7 @@ export const chromePl: AppChromeTranslations = {
     items: {
       dashboard: 'Pulpit',
       configuration: 'Konfiguracje',
-      brokers: 'Brokerzy',
+      brokers: 'Konfiguracja handlu',
       mirrorTrading: 'Konto lustrzane',
       socialTrading: 'Trading społecznościowy',
       trades: 'Transakcje',
@@ -255,7 +255,7 @@ export const chromePl: AppChromeTranslations = {
   },
   pages: {
     accountConfiguration: {
-      title: 'Brokerzy',
+      title: 'Konfiguracja handlu',
       description: 'Połącz konta MetaTrader i dostosuj sposób kopiowania sygnałów dla każdego z nich.',
     },
     brokers: {

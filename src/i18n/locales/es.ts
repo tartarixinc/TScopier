@@ -35,7 +35,7 @@ export const es: Translations = {
     items: {
       dashboard: 'Panel',
       configuration: 'Configuraciones',
-      brokers: 'Brokers',
+      brokers: 'Configuración de trading',
       mirrorTrading: 'Cuenta espejo',
       socialTrading: 'Trading social',
       trades: 'Operaciones',
@@ -1987,7 +1987,7 @@ export const es: Translations = {
   },
   pages: {
     accountConfiguration: {
-      title: 'Brokers',
+      title: 'Configuración de trading',
       description: 'Conecta cuentas MetaTrader y ajusta cómo copia cada una.',
     },
     brokers: {

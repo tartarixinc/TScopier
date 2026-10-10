@@ -15,7 +15,7 @@ export const chromeRu: AppChromeTranslations = {
     items: {
       dashboard: 'Панель',
       configuration: 'Конфигурации',
-      brokers: 'Брокеры',
+      brokers: 'Настройка торговли',
       mirrorTrading: 'Зеркальный счёт',
       socialTrading: 'Социальный трейдинг',
       trades: 'Сделки',
@@ -255,7 +255,7 @@ export const chromeRu: AppChromeTranslations = {
   },
   pages: {
     accountConfiguration: {
-      title: 'Брокеры',
+      title: 'Настройка торговли',
       description: 'Подключайте счета MetaTrader и настраивайте, как каждый из них копирует сигналы.',
     },
     brokers: {

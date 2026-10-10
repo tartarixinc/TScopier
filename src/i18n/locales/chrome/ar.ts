@@ -15,7 +15,7 @@ export const chromeAr: AppChromeTranslations = {
     items: {
       dashboard: 'لوحة التحكم',
       configuration: 'الإعدادات',
-      brokers: 'الوسطاء',
+      brokers: 'إعداد التداول',
       mirrorTrading: 'الحساب المرآة',
       socialTrading: 'التداول الاجتماعي',
       trades: 'الصفقات',
@@ -253,7 +253,7 @@ export const chromeAr: AppChromeTranslations = {
   },
   pages: {
     accountConfiguration: {
-      title: 'الوسطاء',
+      title: 'إعداد التداول',
       description: 'اربط حسابات MetaTrader واضبط كيفية نسخ الإشارات لكل حساب.',
     },
     brokers: {

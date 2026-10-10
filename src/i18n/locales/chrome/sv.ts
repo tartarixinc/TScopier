@@ -15,7 +15,7 @@ export const chromeSv: AppChromeTranslations = {
     items: {
       dashboard: 'Översikt',
       configuration: 'Konfigurationer',
-      brokers: 'Mäklare',
+      brokers: 'Handelskonfiguration',
       mirrorTrading: 'Spegelkonto',
       socialTrading: 'Social handel',
       trades: 'Affärer',
@@ -254,7 +254,7 @@ export const chromeSv: AppChromeTranslations = {
   },
   pages: {
     accountConfiguration: {
-      title: 'Mäklare',
+      title: 'Handelskonfiguration',
       description: 'Anslut MetaTrader-konton och finjustera hur varje konto kopierar signaler.',
     },
     brokers: {

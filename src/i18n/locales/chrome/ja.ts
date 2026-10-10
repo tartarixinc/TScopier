@@ -15,7 +15,7 @@ export const chromeJa: AppChromeTranslations = {
     items: {
       dashboard: 'ダッシュボード',
       configuration: '設定',
-      brokers: 'ブローカー',
+      brokers: '取引設定',
       mirrorTrading: 'ミラーアカウント',
       socialTrading: 'ソーシャルトレード',
       trades: '取引',
@@ -253,7 +253,7 @@ export const chromeJa: AppChromeTranslations = {
   },
   pages: {
     accountConfiguration: {
-      title: 'ブローカー',
+      title: '取引設定',
       description: 'MetaTrader口座を接続し、各口座のシグナルコピー方法を調整します。',
     },
     brokers: {
