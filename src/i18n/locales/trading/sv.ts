@@ -72,7 +72,7 @@ export const tradingSv: TradingPagesBundleTranslations = {
     cancel: 'Avbryt',
   },
   channelsPage: {
-    title: 'Källa',
+    title: 'Signalkälla',
     subtitle: 'Hantera vilka Telegram-kanaler du övervakar',
     addChannel: 'Lägg till kanal',
     addFormTitle: 'Lägg till kanal manuellt',

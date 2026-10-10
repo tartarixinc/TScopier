@@ -72,7 +72,7 @@ export const tradingNl: TradingPagesBundleTranslations = {
     cancel: 'Annuleren',
   },
   channelsPage: {
-    title: 'Bron',
+    title: 'Signaalbron',
     subtitle: 'Beheer welke Telegram-kanalen je monitort',
     addChannel: 'Kanaal toevoegen',
     addFormTitle: 'Kanaal handmatig toevoegen',

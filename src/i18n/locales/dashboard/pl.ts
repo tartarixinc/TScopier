@@ -75,9 +75,9 @@ export const dashboardPl: DashboardBundleTranslations = {
     noTradeActivities: 'Brak logów workera kanałów.',
     management: 'Aktywności',
     noData: 'Brak danych',
-    telegramNotConnectedTitle: 'Telegram nie jest połączony',
-    telegramNotConnectedBody: 'Połącz konto Telegram, aby zacząć kopiować sygnały ze swoich kanałów.',
-    connectTelegram: 'Połącz Telegram',
+    telegramNotConnectedTitle: 'Połącz źródło sygnałów, aby zacząć kopiować',
+    telegramNotConnectedBody: 'Połącz źródło sygnałów, aby zacząć kopiować',
+    connectTelegram: 'Połącz źródło',
     linkedAccounts: {
       title: 'Połączone konta',
       subtitle: 'Połączone konta brokera używane przez kopiator',

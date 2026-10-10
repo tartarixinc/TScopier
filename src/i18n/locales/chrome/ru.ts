@@ -20,7 +20,7 @@ export const chromeRu: AppChromeTranslations = {
       socialTrading: 'Социальный трейдинг',
       trades: 'Сделки',
       management: 'Активности',
-      channels: 'Источник',
+      channels: 'Источник сигналов',
       popularChannels: 'Популярные каналы',
       backtest: 'Бэктест',
       copierLogs: 'Логи копирования',
@@ -327,7 +327,7 @@ export const chromeRu: AppChromeTranslations = {
       description: 'Просматривайте распознанные сигналы, связанные с вашим аккаунтом. Фильтруйте по каналу и диапазону дат.',
     },
     copierEngine: {
-      title: 'Источник',
+      title: 'Источник сигналов',
       description: 'Управляйте сигнальными каналами Telegram и настройками копира.',
     },
     settings: {

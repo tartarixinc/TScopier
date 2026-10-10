@@ -72,7 +72,7 @@ export const tradingPl: TradingPagesBundleTranslations = {
     cancel: 'Anuluj',
   },
   channelsPage: {
-    title: 'Źródło',
+    title: 'Źródło sygnałów',
     subtitle: 'Zarządzaj kanałami Telegram, które monitorujesz',
     addChannel: 'Dodaj kanał',
     addFormTitle: 'Dodaj kanał ręcznie',

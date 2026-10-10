@@ -72,7 +72,7 @@ export const tradingJa: TradingPagesBundleTranslations = {
     cancel: 'キャンセル',
   },
   channelsPage: {
-    title: 'ソース',
+    title: 'シグナルソース',
     subtitle: '監視するTelegramチャンネルを管理します',
     addChannel: 'チャンネルを追加',
     addFormTitle: 'チャンネルを手動で追加',

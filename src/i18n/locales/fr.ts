@@ -40,7 +40,7 @@ export const fr: Translations = {
       socialTrading: 'Trading social',
       trades: 'Trades',
       management: 'Activités',
-      channels: 'Source',
+      channels: 'Source de signaux',
       popularChannels: 'Chaînes populaires',
       backtest: 'Backtest',
       copierLogs: 'Journaux',
@@ -957,9 +957,9 @@ export const fr: Translations = {
     noTradeActivities: 'Aucun journal du worker des canaux pour le moment.',
     management: 'Activités',
     noData: 'Aucune donnée',
-    telegramNotConnectedTitle: 'Telegram non connecté',
-    telegramNotConnectedBody: 'Connectez votre compte Telegram pour commencer à copier les signaux de vos canaux.',
-    connectTelegram: 'Connecter Telegram',
+    telegramNotConnectedTitle: 'Connectez une source de signaux pour commencer à copier',
+    telegramNotConnectedBody: 'Connectez une source de signaux pour commencer à copier',
+    connectTelegram: 'Connecter une source',
     pastDuePaymentTitle: 'Le paiement n\'a pas abouti',
     pastDuePaymentBody:
       'Veuillez régler vos factures pour éviter une interruption de service. Le copieur sera arrêté si le paiement n\'est pas reçu.',
@@ -1276,7 +1276,7 @@ export const fr: Translations = {
     cancel: 'Annuler',
   },
   channelsPage: {
-    title: 'Source',
+    title: 'Source de signaux',
     subtitle: 'Gérez les canaux Telegram que vous surveillez',
     addChannel: 'Ajouter un canal',
     addFormTitle: 'Ajouter un canal manuellement',
@@ -2022,7 +2022,7 @@ export const fr: Translations = {
       description: 'Signaux analysés liés à votre compte. Filtrez par canal et date.',
     },
     copierEngine: {
-      title: 'Source',
+      title: 'Source de signaux',
       description: 'Gérez les canaux Telegram et les réglages du copieur.',
     },
     settings: {

@@ -40,7 +40,7 @@ export const en: Translations = {
       socialTrading: 'Social Trading',
       trades: 'Trades',
       management: 'Copier Process',
-      channels: 'Source',
+      channels: 'Signal Source',
       popularChannels: 'Popular Channels',
       backtest: 'Backtest',
       copierLogs: 'Copier Logs',
@@ -954,9 +954,9 @@ broker: {
     noTradeActivities: 'No copier process activity yet.',
     management: 'View all',
     noData: 'No Data',
-    telegramNotConnectedTitle: 'Telegram not connected',
-    telegramNotConnectedBody: 'Connect your Telegram account to start copying signals from your channels.',
-    connectTelegram: 'Connect Telegram',
+    telegramNotConnectedTitle: 'Connect a signal source to start copying',
+    telegramNotConnectedBody: 'Connect a signal source to start copying',
+    connectTelegram: 'Connect source',
     pastDuePaymentTitle: 'Payment did not go through',
     pastDuePaymentBody:
       'Please pay your invoices to avoid service disruptions. We will stop the copier if payment is not received.',
@@ -1322,7 +1322,7 @@ broker: {
     cancel: 'Cancel',
   },
   channelsPage: {
-    title: 'Source',
+    title: 'Signal Source',
     subtitle: 'Manage which Telegram channels you\'re monitoring',
     addChannel: 'Add channel',
     addFormTitle: 'Add channel manually',
@@ -2069,7 +2069,7 @@ broker: {
       description: 'Trade signals from your connected Telegram channels — entries, closes, and SL/TP updates only.',
     },
     copierEngine: {
-      title: 'Source',
+      title: 'Signal Source',
       description: 'Manage Telegram signal channels and copier settings.',
     },
     settings: {

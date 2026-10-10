@@ -72,7 +72,7 @@ export const tradingRu: TradingPagesBundleTranslations = {
     cancel: 'Отмена',
   },
   channelsPage: {
-    title: 'Источник',
+    title: 'Источник сигналов',
     subtitle: 'Управляйте каналами Telegram, которые вы отслеживаете',
     addChannel: 'Добавить канал',
     addFormTitle: 'Добавить канал вручную',

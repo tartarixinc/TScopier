@@ -20,7 +20,7 @@ export const chromePl: AppChromeTranslations = {
       socialTrading: 'Trading społecznościowy',
       trades: 'Transakcje',
       management: 'Aktywności',
-      channels: 'Źródło',
+      channels: 'Źródło sygnałów',
       popularChannels: 'Popularne kanały',
       backtest: 'Backtest',
       copierLogs: 'Dzienniki kopiowania',
@@ -327,7 +327,7 @@ export const chromePl: AppChromeTranslations = {
       description: 'Przeglądaj sparsowane sygnały powiązane z Twoim kontem. Filtruj według kanału i zakresu dat.',
     },
     copierEngine: {
-      title: 'Źródło',
+      title: 'Źródło sygnałów',
       description: 'Zarządzaj kanałami sygnałowymi Telegram i ustawieniami kopiatora.',
     },
     settings: {

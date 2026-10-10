@@ -72,7 +72,7 @@ export const tradingAr: TradingPagesBundleTranslations = {
     cancel: 'إلغاء',
   },
   channelsPage: {
-    title: 'المصدر',
+    title: 'مصدر الإشارات',
     subtitle: 'أدر قنوات Telegram التي تراقبها',
     addChannel: 'إضافة قناة',
     addFormTitle: 'إضافة قناة يدويًا',

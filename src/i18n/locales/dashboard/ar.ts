@@ -75,9 +75,9 @@ export const dashboardAr: DashboardBundleTranslations = {
     noTradeActivities: 'لا سجلات لعامل القنوات.',
     management: 'الأنشطة',
     noData: 'لا بيانات',
-    telegramNotConnectedTitle: 'Telegram غير متصل',
-    telegramNotConnectedBody: 'اربط حساب Telegram لبدء نسخ الإشارات من قنواتك.',
-    connectTelegram: 'ربط Telegram',
+    telegramNotConnectedTitle: 'اربط مصدر إشارات لبدء النسخ',
+    telegramNotConnectedBody: 'اربط مصدر إشارات لبدء النسخ',
+    connectTelegram: 'ربط مصدر',
     linkedAccounts: {
       title: 'الحسابات المرتبطة',
       subtitle: 'حسابات الوسيط المرتبطة المستخدمة من الناسخ',
