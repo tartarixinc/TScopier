@@ -178,7 +178,7 @@ export const channelWorkerEn: ChannelWorkerTranslations = {
     channel_filter_ignored:
       'this channel instruction is set to Ignore in Configure Trading',
     telegram_listener_not_live:
-      'Telegram listener is not connected — open Copier Engine and reconnect Telegram',
+      'Telegram listener is not connected — open Copier Process and reconnect Telegram',
     explicit_stops_required_when_add_to_existing_off:
       'this channel is in single-slot mode (Add to Existing Trades is off), so new entries must include TP/SL parameters',
     entry_not_opened: 'broker did not open any position for this signal',

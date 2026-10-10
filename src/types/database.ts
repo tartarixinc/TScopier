@@ -1,3 +1,5 @@
+import type { CopyRiskSettings } from '../lib/copyRiskTypes'
+
 export type Json = string | number | boolean | null | { [key: string]: Json } | Json[]
 
 export interface Database {
@@ -22,6 +24,16 @@ export interface Database {
         Row: TelegramChannel
         Insert: Omit<TelegramChannel, 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Omit<TelegramChannel, 'id' | 'created_at' | 'updated_at'>>
+      }
+      tradingview_webhooks: {
+        Row: TradingViewWebhook
+        Insert: Omit<TradingViewWebhook, 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Omit<TradingViewWebhook, 'id' | 'created_at'>>
+      }
+      tradingview_webhook_deliveries: {
+        Row: TradingViewWebhookDelivery
+        Insert: Omit<TradingViewWebhookDelivery, 'id' | 'created_at'>
+        Update: Partial<Omit<TradingViewWebhookDelivery, 'id' | 'created_at'>>
       }
       signal_channels: {
         Row: SignalChannel
@@ -382,6 +394,8 @@ export interface ManualSettings {
   resume_after_news_minutes?: number
   /** Per-channel profit targets and max risk (Targets tab). */
   copy_limits?: CopyLimitsConfig
+  /** Mirror and social copy risk profile. Telegram channel config leaves this unset. */
+  copy_risk?: CopyRiskSettings
 }
 
 export type FxsocketConnectionStatus = 'connecting' | 'connected' | 'error' | 'disconnected'
@@ -455,6 +469,8 @@ export interface BrokerAccount {
   copier_mode?: 'ai' | 'manual'
   /** Subscribed telegram_channels row ids; signals copy only when listed here. */
   signal_channel_ids?: string[] | null
+  /** When true, this account is a copy source on the configuration map. */
+  copy_source?: boolean | null
   /** True when at least one channel is explicitly linked. */
   enforce_signal_channel_filter?: boolean | null
   ai_settings?: Json | null
@@ -482,6 +498,17 @@ export interface ChannelTradingPreset {
 }
 
 /** Authoritative per-broker, per-channel trading configuration row. */
+/** Saved map link from a source broker to a destination broker. */
+export interface BrokerCopyLink {
+  id: string
+  user_id: string
+  source_broker_account_id: string
+  destination_broker_account_id: string
+  manual_settings: ManualSettings
+  created_at: string
+  updated_at: string
+}
+
 export interface BrokerChannelTradingConfig {
   id: string
   user_id: string
@@ -512,6 +539,29 @@ export interface TelegramAuthPending {
   expires_at: string
 }
 
+export interface TradingViewWebhook {
+  id: string
+  user_id: string
+  channel_id: string
+  name: string
+  token_hash: string
+  token: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface TradingViewWebhookDelivery {
+  id: string
+  webhook_id: string
+  user_id: string
+  signal_id: string | null
+  status: 'accepted' | 'skipped' | 'error' | 'duplicate'
+  skip_reason: string | null
+  idempotency_key: string
+  created_at: string
+}
+
 export interface TelegramChannel {
   id: string
   user_id: string
@@ -519,6 +569,8 @@ export interface TelegramChannel {
   channel_username: string
   display_name: string
   is_active: boolean
+  /** telegram channels are listened to. tradingview rows are webhook copy targets. discord rows are bot channel copy targets. */
+  source_kind?: 'telegram' | 'tradingview' | 'discord' | 'whatsapp' | null
   /** FK to permanent global signal_channels registry row. */
   signal_channel_id?: string | null
   lot_size_override: number | null

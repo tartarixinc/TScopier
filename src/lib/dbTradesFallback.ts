@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { BROKER_ACCOUNT_CLIENT_SELECT } from './brokerAccountSelect'
+import { selectBrokerAccountColumns } from './brokerAccountSelect'
 import type { MtTrade } from './fxsocketBroker'
 import { filterMtTradesSinceConnect } from './tradesSinceConnect'
 import type { BrokerAccount, Trade } from '../types/database'
@@ -108,11 +108,13 @@ export async function fetchTradesFromDatabase(
   // loop's in-flight guard stuck until the OS gives up on the socket.
   const timeoutSignal = AbortSignal.timeout(DB_TRADES_FALLBACK_TIMEOUT_MS)
   const [accountsRes, tradesRes] = await Promise.all([
-    client
-      .from('broker_accounts')
-      .select(BROKER_ACCOUNT_CLIENT_SELECT)
-      .eq('user_id', userId)
-      .abortSignal(timeoutSignal),
+    selectBrokerAccountColumns(columns =>
+      client
+        .from('broker_accounts')
+        .select(columns)
+        .eq('user_id', userId)
+        .abortSignal(timeoutSignal),
+    ),
     client
       .from('trades')
       .select(DB_TRADES_FALLBACK_SELECT)

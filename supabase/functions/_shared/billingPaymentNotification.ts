@@ -11,19 +11,19 @@ const COPY: Record<
   { subject: string; title: string; body: string; button: string; footer: string }
 > = {
   action_required: {
-    subject: "Action required — confirm your TScopier subscription payment",
+    subject: "Action required — confirm your UniCopier subscription payment",
     title: "Confirm your payment",
     body:
-      "Your bank requires additional verification to complete your TScopier subscription payment. Signal copying is paused until payment is confirmed.",
+      "Your bank requires additional verification to complete your UniCopier subscription payment. Signal copying is paused until payment is confirmed.",
     button: "Complete payment",
     footer:
       "If you did not expect this charge, contact your bank or reply to this email. You can also update your payment method from Billing in the app.",
   },
   failed: {
-    subject: "Payment failed — update your TScopier subscription",
+    subject: "Payment failed — update your UniCopier subscription",
     title: "Payment failed",
     body:
-      "We could not process your latest TScopier subscription payment. Signal copying is paused until your billing is updated.",
+      "We could not process your latest UniCopier subscription payment. Signal copying is paused until your billing is updated.",
     button: "Pay invoice",
     footer:
       "Update your card from the link above or open Billing in the app. Reply to this email if you need help.",
@@ -225,7 +225,7 @@ async function sendResendEmail(args: {
 
   const from = Deno.env.get("RESEND_BILLING_FROM")
     || Deno.env.get("RESEND_CAMPAIGN_FROM")
-    || "TScopier <noreply@tscopier.ai>";
+    || "UniCopier <noreply@tscopier.ai>";
 
   try {
     const res = await fetch("https://api.resend.com/emails", {
@@ -318,18 +318,18 @@ async function sendInvoiceDueEmail(
     explicitUrl: Deno.env.get("EMAIL_LOGO_URL"),
   });
 
-  const subject = `Invoice Due for TScopier ${planLabel} Plan`;
+  const subject = `Invoice Due for UniCopier ${planLabel} Plan`;
   const html = buildAuthEmailHtml({
     title: "Invoice Due",
     greeting: `Hi ${recipient.firstName},`,
     bodyHtml: `
-      <p style="margin:0 0 16px 0;">We're letting you know that an invoice is due for TScopier.</p>
+      <p style="margin:0 0 16px 0;">We're letting you know that an invoice is due for UniCopier.</p>
       <p style="margin:0;">Please take a look at your invoice and pay your outstanding balance to avoid service disruption.</p>
     `,
     buttonLabel: "Invoice",
     buttonUrl: paymentUrl,
     footerNote:
-      "If you have some questions about this invoice, please reply to this email.<br><br>Regards,<br>The TScopier Team",
+      "If you have some questions about this invoice, please reply to this email.<br><br>Regards,<br>The UniCopier Team",
     logoUrl,
   });
 

@@ -6,7 +6,7 @@ export const configureModalEn: ConfigureModalTranslations = {
   saved: 'Saved',
   cancel: 'Cancel',
   save: 'Save',
-  channelsSidebar: 'Channels',
+  channelsSidebar: 'Source',
   addChannel: 'Add channel',
   editLinkedChannels: 'Edit linked channels',
   doneEditingLinkedChannels: 'Done editing channels',
@@ -481,7 +481,7 @@ export const configureModalEn: ConfigureModalTranslations = {
     ruleTriggerTpHit: 'when TP{index} is reached',
     orderCommentsTitle: 'Order comments',
     orderCommentsSubtitle:
-      'When off, TScopier leaves the broker order comment field empty for trades it opens or refreshes.',
+      'When off, UniCopier leaves the broker order comment field empty for trades it opens or refreshes.',
   },
   filters: {
     timeTitle: 'Time filter',

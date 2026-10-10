@@ -92,7 +92,7 @@ export function SubscriptionReminderModal() {
         role="dialog"
         aria-modal="true"
         aria-labelledby="sub-reminder-title"
-        className="relative w-full max-w-md rounded-2xl border border-neutral-200 bg-white shadow-2xl dark:border-neutral-800 dark:bg-neutral-900 animate-modal-in overflow-hidden"
+        className="relative w-full max-w-md rounded-2xl border border-neutral-200/65 bg-white shadow-2xl dark:border-neutral-800/55 dark:bg-neutral-900 animate-modal-in overflow-hidden"
       >
         <button
           type="button"

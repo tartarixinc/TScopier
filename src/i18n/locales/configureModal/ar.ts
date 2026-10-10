@@ -6,7 +6,7 @@ export const configureModalAr: ConfigureModalTranslations = {
   saved: 'تم الحفظ',
   cancel: 'إلغاء',
   save: 'حفظ',
-  channelsSidebar: 'القنوات',
+  channelsSidebar: 'المصدر',
   addChannel: 'إضافة قناة',
   editLinkedChannels: 'تعديل القنوات المرتبطة',
   doneEditingLinkedChannels: 'إنهاء تعديل القنوات',
@@ -444,7 +444,7 @@ export const configureModalAr: ConfigureModalTranslations = {
     ruleTriggerTpHit: 'بعد بلوغ TP{index}',
     orderCommentsTitle: 'تعليقات الأوامر',
     orderCommentsSubtitle:
-      'إيقاف: يترك TScopier حقل تعليق الوسيط فارغًا للصفقات المفتوحة أو المُحدَّثة.',
+      'إيقاف: يترك UniCopier حقل تعليق الوسيط فارغًا للصفقات المفتوحة أو المُحدَّثة.',
   },
   filters: {
     timeTitle: 'فلتر الوقت',

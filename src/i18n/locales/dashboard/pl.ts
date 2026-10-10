@@ -3,8 +3,12 @@ import type { DashboardBundleTranslations } from './types'
 export const dashboardPl: DashboardBundleTranslations = {
   dashboard: {
     title: 'Pulpit',
+    greetingMorning: 'Dzień dobry',
+    greetingAfternoon: 'Dzień dobry',
+    greetingEvening: 'Dobry wieczór',
+    greetingNamed: '{greeting}, {name}.',
     loadingMetrics: 'Ładowanie metryk pulpitu',
-    totalBalance: 'Łączne saldo',
+    totalBalance: 'Wartość portfela',
     acrossAccounts: 'Na {count} połączonych kontach',
     todaysProfit: 'Dzisiejszy zysk',
     todaysProfitHint:
@@ -71,9 +75,9 @@ export const dashboardPl: DashboardBundleTranslations = {
     noTradeActivities: 'Brak logów workera kanałów.',
     management: 'Aktywności',
     noData: 'Brak danych',
-    telegramNotConnectedTitle: 'Telegram nie jest połączony',
-    telegramNotConnectedBody: 'Połącz konto Telegram, aby zacząć kopiować sygnały ze swoich kanałów.',
-    connectTelegram: 'Połącz Telegram',
+    telegramNotConnectedTitle: 'Połącz źródło sygnałów, aby zacząć kopiować',
+    telegramNotConnectedBody: 'Połącz źródło sygnałów, aby zacząć kopiować',
+    connectTelegram: 'Połącz źródło',
     linkedAccounts: {
       title: 'Połączone konta',
       subtitle: 'Połączone konta brokera używane przez kopiator',
@@ -106,7 +110,7 @@ export const dashboardPl: DashboardBundleTranslations = {
       refresh: 'Odśwież',
       notFound: 'Nie znaleziono konta brokera.',
       initialBalance: 'Saldo początkowe',
-      initialBalanceHint: 'Saldo konta zapisane przy pierwszym połączeniu tego brokera z TScopier.',
+      initialBalanceHint: 'Saldo konta zapisane przy pierwszym połączeniu tego brokera z UniCopier.',
       connectedAt: 'Połączono',
       connectedAtHint: 'Data i godzina pierwszego powiązania tego konta brokera oraz gotowości do handlu.',
       currentBalance: 'Bieżące saldo',

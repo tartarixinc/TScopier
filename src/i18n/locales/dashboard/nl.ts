@@ -3,8 +3,12 @@ import type { DashboardBundleTranslations } from './types'
 export const dashboardNl: DashboardBundleTranslations = {
   dashboard: {
     title: 'Dashboard',
+    greetingMorning: 'Goedemorgen',
+    greetingAfternoon: 'Goedemiddag',
+    greetingEvening: 'Goedenavond',
+    greetingNamed: '{greeting}, {name}.',
     loadingMetrics: 'Je dashboardstatistieken worden geladen',
-    totalBalance: 'Totaal saldo',
+    totalBalance: 'Portefeuillewaarde',
     acrossAccounts: 'Over {count} gekoppelde account(s)',
     todaysProfit: 'Winst van vandaag',
     todaysProfitHint:
@@ -71,9 +75,9 @@ export const dashboardNl: DashboardBundleTranslations = {
     noTradeActivities: 'Nog geen kanaalworker-logs.',
     management: 'Activiteiten',
     noData: 'Geen gegevens',
-    telegramNotConnectedTitle: 'Telegram is niet verbonden',
-    telegramNotConnectedBody: 'Verbind je Telegram-account om signalen van je kanalen te gaan kopiëren.',
-    connectTelegram: 'Telegram verbinden',
+    telegramNotConnectedTitle: 'Verbind een signaalbron om te beginnen met kopiëren',
+    telegramNotConnectedBody: 'Verbind een signaalbron om te beginnen met kopiëren',
+    connectTelegram: 'Bron verbinden',
     linkedAccounts: {
       title: 'Gekoppelde accounts',
       subtitle: 'Gekoppelde brokeraccounts die door de copier worden gebruikt',
@@ -106,7 +110,7 @@ export const dashboardNl: DashboardBundleTranslations = {
       refresh: 'Vernieuwen',
       notFound: 'Brokeraccount niet gevonden.',
       initialBalance: 'Beginsaldo',
-      initialBalanceHint: 'Accountsaldo vastgelegd toen deze broker voor het eerst met TScopier werd gekoppeld.',
+      initialBalanceHint: 'Accountsaldo vastgelegd toen deze broker voor het eerst met UniCopier werd gekoppeld.',
       connectedAt: 'Gekoppeld',
       connectedAtHint: 'Datum en tijd waarop dit brokeraccount voor het eerst is gekoppeld en klaar was om te traden.',
       currentBalance: 'Huidig saldo',

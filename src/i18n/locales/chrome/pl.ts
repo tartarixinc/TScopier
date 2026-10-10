@@ -14,11 +14,13 @@ export const chromePl: AppChromeTranslations = {
     },
     items: {
       dashboard: 'Pulpit',
-      configuration: 'Konfiguracja',
+      configuration: 'Konfiguracje',
       brokers: 'Brokerzy',
+      mirrorTrading: 'Konto lustrzane',
+      socialTrading: 'Trading społecznościowy',
       trades: 'Transakcje',
       management: 'Aktywności',
-      channels: 'Kanały',
+      channels: 'Źródło sygnałów',
       popularChannels: 'Popularne kanały',
       backtest: 'Backtest',
       copierLogs: 'Dzienniki kopiowania',
@@ -42,6 +44,7 @@ export const chromePl: AppChromeTranslations = {
     expandSidebar: 'Rozwiń pasek boczny',
     collapseSidebar: 'Zwiń pasek boczny',
     openTradesActive: 'Aktywne otwarte transakcje',
+    openTradesCount: '{count} otwarte',
     highImpactNewsToday: 'Wiadomości wysokiego wpływu dzisiaj',
     planFree: 'Darmowy',
     settings: 'Ustawienia',
@@ -63,6 +66,7 @@ export const chromePl: AppChromeTranslations = {
       setupBroker: 'powiąż brokera',
       setupTelegram: 'połącz Telegram',
       setupChannels: 'dodaj kanał',
+      setupSource: 'połącz źródło sygnału',
       bannerAction: 'Przejdź do konfiguracji',
       bannerText: 'Aby uruchomić kopiator, {items}.',
       bannerLastSep: ' i ',
@@ -103,7 +107,7 @@ export const chromePl: AppChromeTranslations = {
     },
     updatesPage: {
       title: 'Updates',
-      subtitle: 'Recent changes, fixes, and improvements to TScopier.',
+      subtitle: 'Recent changes, fixes, and improvements to UniCopier.',
       empty: 'No updates yet. Check back soon.',
       typeFeature: 'Feature',
       typeFix: 'Fix',
@@ -112,7 +116,7 @@ export const chromePl: AppChromeTranslations = {
 
 
     assistant: {
-      title: 'TScopier Assistant',
+      title: 'UniCopier Assistant',
       subtitle: 'Ask questions or get help taking action',
       ariaLabel: 'Open AI assistant',
       close: 'Close assistant',
@@ -121,12 +125,12 @@ export const chromePl: AppChromeTranslations = {
       newChat: 'New chat',
       historyEmpty: 'No past conversations yet.',
       deleteChat: 'Delete conversation',
-      placeholder: 'Ask anything about TScopier…',
+      placeholder: 'Ask anything about UniCopier…',
       send: 'Send',
       thinking: 'Thinking…',
       confirm: 'Confirm',
       cancel: 'Cancel',
-      welcomeTitle: 'I can help you set up and run TScopier.',
+      welcomeTitle: 'I can help you set up and run UniCopier.',
       suggestions: [
         'Is my Telegram linked?',
         'Pause the copier',
@@ -156,11 +160,11 @@ export const chromePl: AppChromeTranslations = {
         twoFaPlaceholder: 'Cloud password',
         submitPassword: 'Continue',
         restart: 'Start over',
-        openQrInstead: 'Prefer QR code? Open Copier Engine',
+        openQrInstead: 'Prefer QR code? Open Copier Process',
         invalidPhone: 'Enter a valid phone number with country code (e.g. +1…).',
         codeSent: 'Great — a code has been sent to Telegram. Enter it in the secure field below to continue.',
         twoFaNeeded: 'Telegram needs your two-step verification password. Enter it in the secure field below.',
-        linkedSuccess: 'Telegram is linked. You can add channels next on Copier Engine.',
+        linkedSuccess: 'Telegram is linked. You can add channels next on Copier Process.',
         useSecureCodeField: 'Enter the code in the secure field above — don’t send it in chat.',
         sessionExpired: 'Login session expired. Request a new verification code.',
         composerPhoneHint: 'Type your number here or use the field above…',
@@ -260,7 +264,7 @@ export const chromePl: AppChromeTranslations = {
     },
     contactSupport: {
       title: 'Kontakt z pomocą',
-      description: 'Uzyskaj pomoc zespołu TScopier dotyczącą konta, konfiguracji kopiatora lub problemów technicznych.',
+      description: 'Uzyskaj pomoc zespołu UniCopier dotyczącą konta, konfiguracji kopiatora lub problemów technicznych.',
     },
     riskDisclaimer: {
       title: 'Zastrzeżenie ryzyka',
@@ -268,7 +272,7 @@ export const chromePl: AppChromeTranslations = {
     },
     termsOfService: {
       title: 'Warunki korzystania z usługi',
-      description: 'Warunki regulujące korzystanie z TScopier.',
+      description: 'Warunki regulujące korzystanie z UniCopier.',
     },
     privacyPolicy: {
       title: 'Polityka prywatności',
@@ -276,7 +280,7 @@ export const chromePl: AppChromeTranslations = {
     },
     cookiePolicy: {
       title: 'Polityka plików cookie',
-      description: 'Jak TScopier wykorzystuje pliki cookie i podobne technologie.',
+      description: 'Jak UniCopier wykorzystuje pliki cookie i podobne technologie.',
     },
     featureRequest: {
       title: 'Prośba o funkcję',
@@ -323,7 +327,7 @@ export const chromePl: AppChromeTranslations = {
       description: 'Przeglądaj sparsowane sygnały powiązane z Twoim kontem. Filtruj według kanału i zakresu dat.',
     },
     copierEngine: {
-      title: 'Kanały',
+      title: 'Źródło sygnałów',
       description: 'Zarządzaj kanałami sygnałowymi Telegram i ustawieniami kopiatora.',
     },
     settings: {

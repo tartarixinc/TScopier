@@ -99,7 +99,7 @@ describe('filterTscopierOrdersForChannelClose', () => {
     },
   ]
 
-  it('filters by channel slug and TScopier prefix', () => {
+  it('filters by channel slug and UniCopier prefix', () => {
     const out = filterTscopierOrdersForChannelClose({
       orders,
       channelSlug: 'SignalsPRO',

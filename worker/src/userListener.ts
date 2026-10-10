@@ -1331,6 +1331,7 @@ export class UserListener {
       .select('id')
       .eq('user_id', this.userId)
       .eq('is_active', true)
+      .eq('source_kind', 'telegram')
     for (const row of activeChannelRows ?? []) {
       const id = (row as { id?: string }).id
       if (id) invalidateChannelParseCache(id)
@@ -1340,6 +1341,7 @@ export class UserListener {
       .select('id, channel_id, channel_username, signal_channel_id, last_seen_message_id, last_seen_at, last_live_at')
       .eq('user_id', this.userId)
       .eq('is_active', true)
+      .eq('source_kind', 'telegram')
     const changed = this.resetChannelInvalidFailuresForActiveRows((rows ?? []) as ChannelRow[], 'channel_config_changed')
     const activeRows = ((rows ?? []) as ChannelRow[]).filter(row => !this.isChannelLocallyDisabled(row))
 
@@ -1491,6 +1493,7 @@ export class UserListener {
       .select('id, channel_id, channel_username')
       .eq('user_id', this.userId)
       .eq('is_active', true)
+      .eq('source_kind', 'telegram')
 
     const next = new Set<string>()
     for (const ch of data ?? []) {
@@ -1515,6 +1518,7 @@ export class UserListener {
       .select('id, channel_id, channel_username, last_seen_message_id')
       .eq('user_id', this.userId)
       .eq('is_active', true)
+      .eq('source_kind', 'telegram')
     if (error || !rows?.length) return null
 
     const variantSet = new Set(chatIdVariants)
@@ -1682,6 +1686,7 @@ export class UserListener {
       .eq('user_id', this.userId)
       .eq('id', channelRowId)
       .eq('is_active', true)
+      .eq('source_kind', 'telegram')
       .maybeSingle()
     if (error) throw new Error(error.message)
     if (!row) throw new Error('Channel not found')
@@ -1711,6 +1716,7 @@ export class UserListener {
       .eq('user_id', this.userId)
       .eq('id', channelRowId)
       .eq('is_active', true)
+      .eq('source_kind', 'telegram')
       .maybeSingle()
     if (error) throw new Error(error.message)
     if (!row) throw new Error('Channel not found')
@@ -1765,6 +1771,7 @@ export class UserListener {
       .eq('user_id', this.userId)
       .eq('id', channelRowId)
       .eq('is_active', true)
+      .eq('source_kind', 'telegram')
       .maybeSingle()
     if (error) throw new Error(error.message)
     if (!row) throw new Error('Channel not found')
@@ -1981,6 +1988,7 @@ export class UserListener {
         .select('display_name, channel_id, channel_username')
         .eq('user_id', this.userId)
         .eq('is_active', true)
+        .eq('source_kind', 'telegram')
       const configuredSummary = (configured ?? [])
         .map(c => `${c.display_name ?? '?'} id=${c.channel_id ?? '-'} @${c.channel_username ?? '-'}`)
         .join('; ')
@@ -3846,6 +3854,7 @@ export class UserListener {
       .select('id, channel_id, channel_username, last_seen_message_id')
       .eq('user_id', this.userId)
       .eq('is_active', true)
+      .eq('source_kind', 'telegram')
 
     for (const row of (rows ?? []) as ChannelRow[]) {
       await this.advanceChannelLastSeenToLatest(row)
@@ -3884,6 +3893,7 @@ export class UserListener {
       .select('id, channel_id, channel_username')
       .eq('user_id', this.userId)
       .eq('is_active', true)
+      .eq('source_kind', 'telegram')
 
     for (const row of ((rows ?? []) as ChannelRow[]).filter(r => !this.isChannelLocallyDisabled(r))) {
       await this.ensureJoinedPublicChannel(row).catch(() => { /* optional */ })
@@ -3957,6 +3967,7 @@ export class UserListener {
         .select('id, channel_id, channel_username, last_seen_message_id')
         .eq('user_id', this.userId)
         .eq('is_active', true)
+        .eq('source_kind', 'telegram')
 
       for (const row of (rows ?? []) as ChannelRow[]) {
         await this.catchUpChannel(row).catch(err =>
@@ -3978,6 +3989,7 @@ export class UserListener {
         .select('id, channel_id, channel_username, last_seen_message_id')
         .eq('user_id', this.userId)
         .eq('is_active', true)
+        .eq('source_kind', 'telegram')
 
       for (const row of (rows ?? []) as ChannelRow[]) {
         await this.catchUpChannelRecent(row).catch(err =>
@@ -3998,6 +4010,7 @@ export class UserListener {
       .select('id, channel_id, channel_username, signal_channel_id, last_seen_message_id, last_seen_at, last_live_at')
       .eq('user_id', this.userId)
       .eq('is_active', true)
+      .eq('source_kind', 'telegram')
 
     const activeRows = ((rows ?? []) as ChannelRow[]).filter(row => !this.isChannelLocallyDisabled(row))
     await this.mapWithConcurrency(activeRows, CHANNEL_POLL_CONCURRENCY, async row => {
@@ -5061,6 +5074,7 @@ export class UserListener {
           .select('id, channel_id, channel_username, signal_channel_id, last_seen_message_id, last_seen_at, last_live_at')
           .eq('user_id', this.userId)
           .eq('is_active', true)
+          .eq('source_kind', 'telegram')
         this.fastPollRows = ((data ?? []) as ChannelRow[]).filter(row => !this.isChannelLocallyDisabled(row))
         this.fastPollRowsAt = now
       }

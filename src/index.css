@@ -8,7 +8,7 @@
 
 :root {
   color-scheme: light;
-  --tsc-page: #f8fafc;
+  --tsc-page: #ffffff;
   --tsc-surface: #ffffff;
   --tsc-surface-muted: #f8fafc;
   --tsc-border: #e2e8f0;
@@ -19,8 +19,8 @@
 
 html.dark {
   color-scheme: dark;
-  --tsc-page: #020617;
-  --tsc-surface: #0f172a;
+  --tsc-page: #030616;
+  --tsc-surface: #030616;
   --tsc-surface-muted: #1e293b;
   --tsc-border: #334155;
   --tsc-border-subtle: #1e293b;
@@ -97,7 +97,7 @@ html.app-viewport-lock #root {
 
 @layer components {
   .tsc-surface {
-    @apply bg-white border-neutral-200 dark:bg-neutral-900 dark:border-neutral-800;
+    @apply bg-white border-neutral-200/65 dark:bg-neutral-950 dark:border-neutral-800/55;
   }
 
   .tsc-surface-muted {
@@ -113,7 +113,7 @@ html.app-viewport-lock #root {
   }
 
   .marketing-card {
-    @apply rounded-2xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900;
+    @apply rounded-2xl border border-neutral-200/65 bg-white dark:border-neutral-800/55 dark:bg-neutral-900;
   }
 
   .marketing-card-feature {
@@ -138,7 +138,7 @@ html.app-viewport-lock #root {
   }
 
   .marketing-bento-card {
-    @apply relative flex min-h-[10rem] flex-col rounded-2xl border border-neutral-200/90 bg-neutral-50/90 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/90 sm:min-h-[11rem] sm:p-6;
+    @apply relative flex min-h-[10rem] flex-col rounded-2xl border border-neutral-200/60 bg-neutral-50/90 p-5 shadow-sm dark:border-neutral-800/55 dark:bg-neutral-900/90 sm:min-h-[11rem] sm:p-6;
   }
 
   .marketing-bento-column .marketing-bento-card--tall,
@@ -180,7 +180,7 @@ html.app-viewport-lock #root {
   }
 
   .marketing-faq-list {
-    @apply overflow-hidden rounded-2xl border border-neutral-200/90 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900;
+    @apply overflow-hidden rounded-2xl border border-neutral-200/60 bg-white shadow-sm dark:border-neutral-800/55 dark:bg-neutral-900;
   }
 
   .marketing-faq-item {
@@ -204,7 +204,7 @@ html.app-viewport-lock #root {
   }
 
   .marketing-comparison-table-wrap {
-    @apply overflow-x-auto rounded-2xl border border-neutral-200/90 shadow-sm dark:border-neutral-800;
+    @apply overflow-x-auto rounded-2xl border border-neutral-200/60 shadow-sm dark:border-neutral-800/55;
   }
 
   .marketing-comparison-table tbody tr:last-child th,
@@ -258,7 +258,7 @@ html.app-viewport-lock #root {
   }
 
   .marketing-nav-float {
-    @apply relative h-14 rounded-2xl border border-neutral-200/80 bg-white/90 backdrop-blur-md dark:border-neutral-800/80 dark:bg-neutral-900/90;
+    @apply relative h-14 rounded-2xl border border-neutral-200/55 bg-white/90 backdrop-blur-md dark:border-neutral-800/50 dark:bg-neutral-900/90;
     transition:
       height 0.35s cubic-bezier(0.4, 0, 0.2, 1),
       background-color 0.35s cubic-bezier(0.4, 0, 0.2, 1),
@@ -270,7 +270,7 @@ html.app-viewport-lock #root {
   }
 
   .marketing-nav-mobile {
-    @apply rounded-2xl border border-neutral-200/80 bg-white/90 backdrop-blur-md dark:border-neutral-800/80 dark:bg-neutral-900/90;
+    @apply rounded-2xl border border-neutral-200/55 bg-white/90 backdrop-blur-md dark:border-neutral-800/50 dark:bg-neutral-900/90;
     transition:
       background-color 0.35s cubic-bezier(0.4, 0, 0.2, 1),
       border-color 0.35s cubic-bezier(0.4, 0, 0.2, 1);
@@ -285,11 +285,11 @@ html.app-viewport-lock #root {
   }
 
   .marketing-footer {
-    @apply mt-4 border-t border-neutral-200/80 dark:border-neutral-800/80;
+    @apply mt-4 border-t border-neutral-200/55 dark:border-neutral-800/50;
   }
 
   .marketing-footer-cta {
-    @apply relative overflow-hidden border-b border-neutral-200/70 bg-gradient-to-b from-teal-50/50 via-white/95 to-white/95 dark:border-neutral-800/70 dark:from-teal-950/25 dark:via-neutral-900/95 dark:to-neutral-900/95;
+    @apply relative overflow-hidden border-b border-neutral-200/70 bg-gradient-to-b from-teal-50/50 via-white/95 to-white/95 dark:border-neutral-800/45 dark:from-teal-950/25 dark:via-neutral-900/95 dark:to-neutral-900/95;
   }
 
   .marketing-footer-cta-grid {
@@ -310,7 +310,7 @@ html.app-viewport-lock #root {
   }
 
   .marketing-footer-bottom {
-    @apply border-t border-neutral-200/80 bg-neutral-50/90 dark:border-neutral-800/80 dark:bg-neutral-950/80;
+    @apply border-t border-neutral-200/55 bg-neutral-50/90 dark:border-neutral-800/50 dark:bg-neutral-950/80;
   }
 
   .hero-product-showcase {
@@ -335,7 +335,7 @@ html.app-viewport-lock #root {
   }
 
   .hero-product-frame {
-    @apply relative z-10 overflow-hidden rounded-2xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900;
+    @apply relative z-10 overflow-hidden rounded-2xl border border-neutral-200/65 bg-white dark:border-neutral-800/55 dark:bg-neutral-900;
     transform: perspective(1600px) rotateX(3deg);
     transform-origin: center top;
   }
@@ -347,7 +347,7 @@ html.app-viewport-lock #root {
   }
 
   .hero-product-chrome {
-    @apply flex items-center gap-3 border-b border-neutral-200 bg-neutral-50 px-3 py-2 dark:border-neutral-800 dark:bg-neutral-900/80 sm:px-4;
+    @apply flex items-center gap-3 border-b border-neutral-200/65 bg-neutral-50 px-3 py-2 dark:border-neutral-800/55 dark:bg-neutral-900/80 sm:px-4;
   }
 
   .hero-chrome-dot {
@@ -359,7 +359,7 @@ html.app-viewport-lock #root {
   }
 
   .hero-product-screen {
-    @apply overflow-hidden bg-neutral-50 dark:bg-neutral-950;
+    @apply overflow-hidden bg-white dark:bg-neutral-950;
   }
 
   .hero-product-screen > * {
@@ -377,7 +377,7 @@ html.app-viewport-lock #root {
   }
 
   .marketing-feature-panel {
-    @apply relative overflow-hidden rounded-2xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900;
+    @apply relative overflow-hidden rounded-2xl border border-neutral-200/65 bg-white dark:border-neutral-800/55 dark:bg-neutral-900;
   }
 
   .marketing-grid-pattern {
@@ -407,7 +407,7 @@ html.app-viewport-lock #root {
   }
 
   .marketing-feature-visual {
-    @apply relative overflow-hidden rounded-xl border border-neutral-200/80 bg-neutral-50/80 dark:border-neutral-800 dark:bg-neutral-950/50;
+    @apply relative overflow-hidden rounded-xl border border-neutral-200/55 bg-neutral-50/80 dark:border-neutral-800/55 dark:bg-neutral-950/50;
   }
 
   .marketing-feature-node {

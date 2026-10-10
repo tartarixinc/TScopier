@@ -20,7 +20,7 @@ export const settingsPl: SettingsBundleTranslations = {
     },
     personal: {
       title: 'Dane osobowe',
-      description: 'Twoje dane kontaktowe i sposób, w jaki wyświetlasz się w TScopier.',
+      description: 'Twoje dane kontaktowe i sposób, w jaki wyświetlasz się w UniCopier.',
     },
     general: {
       title: 'Ustawienia ogólne',

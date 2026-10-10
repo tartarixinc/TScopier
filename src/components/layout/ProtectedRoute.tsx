@@ -1,13 +1,16 @@
-import { Navigate } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { useUserProfile } from '../../context/UserProfileContext'
 import { isEmailVerified, verifyEmailPath } from '../../lib/emailVerification'
+import { DashboardBootSkeleton, isDashboardBootPath } from '../dashboard/DashboardMetricsSkeleton'
 
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
   const { emailVerifiedAt, loading: profileLoading } = useUserProfile()
+  const location = useLocation()
 
   if (loading || profileLoading) {
+    if (isDashboardBootPath(location.pathname)) return <DashboardBootSkeleton />
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="w-6 h-6 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />

@@ -37,7 +37,7 @@ function SettingsCard({
   footer?: React.ReactNode
 }) {
   return (
-    <section className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 overflow-hidden">
+    <section className="rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-950 overflow-hidden">
       <div className="px-5 sm:px-6 py-4 border-b border-neutral-100 dark:border-neutral-800">
         <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-50">{title}</h2>
         {description ? (
@@ -177,7 +177,7 @@ export function SettingsPage() {
 
   return (
     <PageShell maxWidth="md" spacing="none" className="space-y-6 lg:space-y-8">
-      <PageHeader title={t.settings.title} subtitle={t.settings.subtitle} />
+      <PageHeader title={t.settings.title} />
 
       <div className="flex flex-col gap-6 lg:flex-row lg:gap-8">
         <nav className="lg:w-52 shrink-0 flex lg:flex-col gap-1 overflow-x-auto pb-1 lg:pb-0">
@@ -320,7 +320,7 @@ export function SettingsPage() {
                   required
                   className="sm:col-span-2"
                 />
-                <div className="sm:col-span-2 flex items-start justify-between gap-4 rounded-xl border border-neutral-200 bg-neutral-50/80 px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900/60">
+                <div className="sm:col-span-2 flex items-start justify-between gap-4 rounded-xl border border-neutral-200/65 bg-neutral-50/80 px-4 py-3 dark:border-neutral-800/55 dark:bg-neutral-900/60">
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
                       {t.settings.fields.notificationSound}
@@ -336,7 +336,7 @@ export function SettingsPage() {
                     }
                   />
                 </div>
-                <div className="sm:col-span-2 flex items-start justify-between gap-4 rounded-xl border border-neutral-200 bg-neutral-50/80 px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900/60">
+                <div className="sm:col-span-2 flex items-start justify-between gap-4 rounded-xl border border-neutral-200/65 bg-neutral-50/80 px-4 py-3 dark:border-neutral-800/55 dark:bg-neutral-900/60">
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
                       {t.settings.fields.notificationEmail}

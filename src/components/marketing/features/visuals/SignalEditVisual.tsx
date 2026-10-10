@@ -7,7 +7,7 @@ export function SignalEditVisual() {
   return (
     <div className="flex h-full min-h-[300px] items-center justify-center p-3 sm:p-4">
       <div className="w-full max-w-md space-y-3">
-        <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="overflow-hidden rounded-2xl border border-neutral-200/65 bg-white dark:border-neutral-800/55 dark:bg-neutral-900">
           <div className="flex items-center justify-between gap-2 border-b border-neutral-100 px-4 py-3 dark:border-neutral-800">
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">
@@ -48,7 +48,7 @@ export function SignalEditVisual() {
           </div>
         </div>
 
-        <div className="rounded-xl border border-neutral-200 bg-white px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="rounded-xl border border-neutral-200/65 bg-white px-4 py-3 dark:border-neutral-800/55 dark:bg-neutral-900">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-400">
             {v.workerTitle}
           </p>

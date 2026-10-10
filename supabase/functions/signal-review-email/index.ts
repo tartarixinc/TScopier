@@ -17,7 +17,7 @@ const APP_URL = (Deno.env.get("VITE_APP_URL") || "https://app.tscopier.ai").repl
 );
 const RESEND_FROM =
   Deno.env.get("SIGNAL_REVIEW_EMAIL_FROM") ||
-  "TScopier <alerts@tscopier.ai>";
+  "UniCopier <alerts@tscopier.ai>";
 
 /** Must match AI_REVIEW_MAX_AGE_MS in worker/src/retrySignal.ts. */
 const REVIEW_WINDOW_MS = 2 * 60_000;

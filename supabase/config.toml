@@ -86,3 +86,9 @@ verify_jwt = true
 
 [functions.provider-transition]
 verify_jwt = false
+
+[functions.tradingview-webhook]
+verify_jwt = false
+
+[functions.discord-sync]
+verify_jwt = true

@@ -6,6 +6,7 @@ import type { LegalDocumentPageTranslations } from '../legal/types'
 import type { TradeNotificationsTranslations } from '../tradeNotifications/types'
 import type { ConfigureModalTranslations } from './configureModal/types'
 import type { LandingTranslations } from './landing/types'
+import type { CopyRiskTranslations } from './copyRiskLabels'
 
 export interface GlobalSearchTranslations {
   placeholder: string
@@ -31,6 +32,8 @@ export interface NavTranslations {
     dashboard: string
     configuration: string
     brokers: string
+    mirrorTrading: string
+    socialTrading: string
     trades: string
     management: string
     channels: string
@@ -57,6 +60,8 @@ export interface NavTranslations {
   expandSidebar: string
   collapseSidebar: string
   openTradesActive: string
+  /** Sidebar tag, e.g. "3 Open". */
+  openTradesCount: string
   highImpactNewsToday: string
   planFree: string
   settings: string
@@ -77,6 +82,7 @@ export interface NavTranslations {
     setupBroker?: string
     setupTelegram?: string
     setupChannels?: string
+    setupSource?: string
     bannerAction?: string
     bannerText?: string
     bannerLastSep?: string
@@ -343,6 +349,11 @@ export interface DashboardLinkedAccountsTranslations {
 
 export interface DashboardTranslations {
   title: string
+  greetingMorning: string
+  greetingAfternoon: string
+  greetingEvening: string
+  /** `{greeting}` plus `{name}`, e.g. "Good afternoon, Martins." */
+  greetingNamed: string
   loadingMetrics: string
   totalBalance: string
   acrossAccounts: string
@@ -457,6 +468,10 @@ export interface SignalHistoryPageTranslations {
   saving: string
   originalSignal: string
   overrideSignal: string
+  channelMessageLabel: string
+  brokerAccountLabel: string
+  accountsHolding: string
+  closeOneAccount: string
   applySuccess: string
   applyBrokerSummary: string
   applyPartialBrokers: string
@@ -477,6 +492,8 @@ export interface SignalHistoryPageTranslations {
   closeSuccess: string
   closePartial: string
   closeFailed: string
+  closeMarketClosed: string
+  applyMarketClosed: string
   closeNoOpenTrades: string
   closeNotConnected: string
   closeRetry: string
@@ -723,6 +740,12 @@ export interface AccountConfigBrokerListTranslations {
   reconnectMigrationPasswordBody: string
   reconnectMigrationBack: string
   reconnectManyAccountsHint: string
+  remindLater: string
+  deleteAccountLink: string
+  deleteConfirmTitle: string
+  deleteConfirmBody: string
+  deleteConfirmNote: string
+  deleteConfirmCta: string
   reconnectConnectingTitle: string
   reconnectConnectingBody: string
   reconnectSuccessTitle: string
@@ -800,6 +823,254 @@ export interface AccountConfigBrokerConnectedSuccessTranslations {
   bodyPending: string
   addChannel: string
   configure: string
+}
+
+export interface MirrorTradingPageTranslations {
+  title: string
+  subtitle: string
+  searchDescription: string
+  masters: string
+  slaves: string
+  addMaster: string
+  addSlave: string
+  mastersEmpty: string
+  slavesEmpty: string
+  connectNew: string
+  noAccounts: string
+  copies: string
+  copiesNone: string
+  remove: string
+  login: string
+  balance: string
+  master: string
+  slave: string
+  colAccount: string
+  colCopyFrom: string
+  colRiskType: string
+  colRiskSetting: string
+  colStatus: string
+  colActions: string
+  configure: string
+  pause: string
+  resume: string
+  delete: string
+  riskFixedLot: string
+  riskBalancePercent: string
+  expandSlaves: string
+  collapseSlaves: string
+  resultPerPage: string
+  pageStatus: string
+  back: string
+  next: string
+  loadError: string
+}
+
+export interface SocialTradingPageTranslations {
+  title: string
+  searchPlaceholder: string
+  sortRoi: string
+  sortWinRate: string
+  sortFollowers: string
+  sortRating: string
+  rating: string
+  noRating: string
+  ratingAria: string
+  follow: string
+  following: string
+  followers: string
+  allowFollowing: string
+  open: string
+  private: string
+  requestToCopy: string
+  requested: string
+  whoCanCopy: string
+  anyoneCanCopy: string
+  requestsRequired: string
+  copyRequests: string
+  copyRequestsEmpty: string
+  accept: string
+  decline: string
+  you: string
+  roi: string
+  winRate: string
+  maxDrawdown: string
+  closedTrades: string
+  openTrades: string
+  closedPerformance: string
+  lastActivities: string
+  buy: string
+  sell: string
+  opened: string
+  closed: string
+  back: string
+  notFound: string
+  empty: string
+  viewAll: string
+  viewFollowers: string
+  viewFollowing: string
+  tabProviders: string
+  tabFollowers: string
+  tabFollowing: string
+  colName: string
+  colStatus: string
+  colBalance: string
+  colActions: string
+  statusActive: string
+  visibility: string
+  visibilityAll: string
+  requests: string
+  symbol: string
+  result: string
+  sampleNote: string
+  tabPerformance: string
+  tabTrading: string
+  tabPortfolio: string
+  aum: string
+  leverage: string
+  joined: string
+  rank: string
+  monthlyStatistics: string
+  overview: string
+  dailyProfit: string
+  monthlyProfit: string
+  growth: string
+  drawdown: string
+  profitableTrades: string
+  losingTrades: string
+  balance: string
+  equity: string
+  deposit: string
+  statisticsMonth: string
+  longTrades: string
+  shortTrades: string
+  maxOpenTrades: string
+  sharpeRatio: string
+  avgProfit: string
+  avgHoldingTime: string
+  profitFactor: string
+  pnlCalendar: string
+  noTrades: string
+  tradeCount: string
+  holdingDays: string
+  totalTrades: string
+  lastTrade: string
+  openPosition: string
+  liveCopiers: string
+  bestTrade: string
+  worstTrade: string
+  timezone: string
+  amountFollowing: string
+  netPnl: string
+  winningTrades: string
+  grossPnl: string
+  totalLots: string
+  asset: string
+  unit: string
+  openRate: string
+  closeRate: string
+  openDateTime: string
+  closeDateTime: string
+  pnl: string
+  copySetup: {
+    action: string
+    title: string
+    subtitle: string
+    previewLabel: string
+    destinationAccount: string
+    loadingAccounts: string
+    noAccountsTitle: string
+    noAccountsBody: string
+    connectBroker: string
+    login: string
+    balance: string
+    equity: string
+    copyMethod: string
+    proportional: string
+    proportionalDescription: string
+    fixedLot: string
+    fixedLotDescription: string
+    riskMultiplier: string
+    riskMultiplierDescription: string
+    lots: string
+    protections: string
+    copyStopLoss: string
+    copyTakeProfit: string
+    closeWhenTraderCloses: string
+    copyOpenPositions: string
+    respectRiskLimits: string
+    respectRiskLimitsHint: string
+    setupPreview: string
+    traderAction: string
+    traderSize: string
+    stopLoss: string
+    takeProfit: string
+    yourAccount: string
+    estimatedCopiedLot: string
+    fixedCopiedLot: string
+    copiedLot: string
+    copied: string
+    notCopied: string
+    riskProfile: string
+    proportionalProfile: string
+    estimateUnavailable: string
+    noOpenTrade: string
+    startCopying: string
+    cancel: string
+    successTitle: string
+    successBody: string
+    done: string
+    close: string
+  }
+}
+
+export interface ConfigurationsPageTranslations {
+  title: string
+  searchDescription: string
+  copyingOn: string
+  copyingOff: string
+  master: string
+  login: string
+  username: string
+  channelId: string
+  subscribers: string
+  balance: string
+  equity: string
+  accountType: string
+  accountTypeLive: string
+  accountTypeDemo: string
+  accountTypePropFirm: string
+  noChannelsLinked: string
+  emptyTitle: string
+  emptyBody: string
+  openBrokers: string
+  unknownChannel: string
+  on: string
+  off: string
+  lotSize: string
+  layeringMode: string
+  layeringAutomatic: string
+  layeringPending: string
+  allSymbols: string
+  none: string
+  editConfiguration: string
+  viewConfiguration: string
+  edit: string
+  addChannel: string
+  addBroker: string
+  addDestination: string
+  copyFrom: string
+  copyTo: string
+  dragToConnect: string
+  dragToDisconnect: string
+  removeChannel: string
+  removeSource: string
+  removeDestination: string
+  noAvailableChannels: string
+  noAvailableBrokers: string
+  sourceKindPrompt: string
+  sourceTelegram: string
+  sourceBroker: string
+  loadError: string
 }
 
 export interface AccountConfigTranslations {
@@ -1293,6 +1564,72 @@ export interface ChannelsPageTranslations {
   lotSizeOverride: string
   pipToleranceOverride: string
   useBrokerDefault: string
+  tabTelegram: string
+  tabDiscord: string
+  tabWhatsApp: string
+  tabTradingView: string
+  comingSoon: string
+  comingSoonBody: string
+  tradingViewIntro: string
+  tradingViewCreate: string
+  tradingViewName: string
+  tradingViewUrl: string
+  tradingViewTemplate: string
+  tradingViewTemplateHelp: string
+  tradingViewCopy: string
+  tradingViewCopied: string
+  tradingViewRotate: string
+  tradingViewActive: string
+  tradingViewDelete: string
+  tradingViewShowDetails: string
+  tradingViewEmpty: string
+  tradingViewHeroTitle: string
+  tradingViewHeroSubtitle: string
+  tradingViewHow1: string
+  tradingViewHow2: string
+  tradingViewHow3: string
+  tradingViewConnect: string
+  tradingViewListTitle: string
+  tradingViewCreated: string
+  tradingViewLastEvent: string
+  tradingViewNameRequired: string
+  tradingViewDeliveries: string
+  tradingViewNoDeliveries: string
+  tradingViewAccepted: string
+  tradingViewSkipped: string
+  tradingViewError: string
+  tradingViewDuplicate: string
+  tradingViewCopyTo: string
+  tradingViewNoBrokers: string
+  tradingViewLimit: string
+  discordHeroTitle: string
+  discordHeroSubtitle: string
+  discordHow1: string
+  discordHow2: string
+  discordHow3: string
+  discordConnect: string
+  discordListTitle: string
+  discordEmptyChannels: string
+  discordPickChannels: string
+  discordNoTextChannels: string
+  discordClientMissing: string
+  discordAdd: string
+  discordSync: string
+  whatsappHeroTitle: string
+  whatsappHeroSubtitle: string
+  whatsappHow1: string
+  whatsappHow2: string
+  whatsappHow3: string
+  whatsappConnect: string
+  whatsappListTitle: string
+  whatsappEmptyGroups: string
+  whatsappPickGroups: string
+  whatsappNoGroups: string
+  whatsappDisconnect: string
+  whatsappQrHelp: string
+  whatsappListenerMissing: string
+  whatsappAdd: string
+  whatsappRefresh: string
 }
 
 export interface BacktestOutcomeLabels {
@@ -1614,6 +1951,10 @@ export interface Translations {
   common: CommonTranslations
   pricing: PricingTranslations
   landing: LandingTranslations
+  mirrorTradingPage: MirrorTradingPageTranslations
+  copyRisk: CopyRiskTranslations
+  socialTradingPage: SocialTradingPageTranslations
+  configurationsPage: ConfigurationsPageTranslations
   accountConfig: AccountConfigTranslations
   dashboard: DashboardTranslations
   management: ManagementTranslations

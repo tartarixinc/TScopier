@@ -108,4 +108,65 @@ describe('reconcileOpenTradesForBroker', () => {
     assert.equal(closed, 0)
     assert.equal(openedCalls, 2)
   })
+
+  it('acts on an empty snapshot when the session answers its health check (flat, not disconnected)', async () => {
+    // Regression guard for 2026-10-04: the last trade on an account could never
+    // be reconciled, because closing it is what makes the account empty and an
+    // empty answer used to be treated as "session probably gone".
+    const updates: unknown[] = []
+    const supabase = {
+      from() {
+        const query = {
+          select() { return query },
+          in() { return query },
+          eq() { return query },
+          update(payload: unknown) {
+            updates.push(payload)
+            return {
+              in: () => ({
+                eq: () => ({
+                  select: async () => ({ data: [], error: null }),
+                }),
+              }),
+            }
+          },
+          then(resolve: (value: unknown) => unknown) {
+            return Promise.resolve({
+              data: [{ id: 'a', signal_id: null, broker_account_id: 'b1' }],
+              error: null,
+            }).then(resolve)
+          },
+        }
+        return query
+      },
+    }
+    const api = { openedOrders: async () => [] }
+    await reconcileOpenTradesForBroker(
+      supabase as never,
+      api as never,
+      'acct',
+      [{ id: 'a', broker_account_id: 'b1', metaapi_order_id: '400406267' }],
+      async () => {},
+    )
+    // The close ran (one update attempted) rather than deferring.
+    assert.equal(updates.length, 1)
+    assert.equal((updates[0] as { status?: string }).status, 'closed')
+  })
+
+  it('still defers on an empty snapshot when the session does not answer', async () => {
+    const supabase = {
+      from() {
+        throw new Error('DB must not be touched while the session is unhealthy')
+      },
+    }
+    const api = { openedOrders: async () => [] }
+    const closed = await reconcileOpenTradesForBroker(
+      supabase as never,
+      api as never,
+      'acct',
+      [{ id: 'a', broker_account_id: 'b1', metaapi_order_id: '400406267' }],
+      async () => { throw new Error('disconnected') },
+    )
+    assert.equal(closed, 0)
+  })
 })

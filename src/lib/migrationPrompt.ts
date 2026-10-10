@@ -104,3 +104,29 @@ export function resolveReconnectDialog<T extends { id: string }>(args: {
   if (args.errorAnchor) return { active: args.errorAnchor, stage: 'details' }
   return { active: args.migrationPrompt, stage: 'details' }
 }
+
+/**
+ * "Remind me later" postpones one account until the next app load, so the
+ * snooze lives in memory only: it survives navigation inside the app and is
+ * gone the moment the page reloads — the customer is always prompted again on
+ * the next load. Nothing can silence an account for good; deleting it is the
+ * only permanent exit.
+ */
+const snoozedAccountIds = new Set<string>()
+
+export function snoozedMigrationPromptIds(): ReadonlySet<string> {
+  return snoozedAccountIds
+}
+
+export function snoozeMigrationPrompt(accountId: string): void {
+  snoozedAccountIds.add(String(accountId))
+}
+
+/** Called when a snoozed account reconnects or is deleted, so a future need prompts again. */
+export function unsnoozeMigrationPrompt(accountId: string): void {
+  snoozedAccountIds.delete(String(accountId))
+}
+
+export function isMigrationPromptSnoozed(accountId: string): boolean {
+  return snoozedAccountIds.has(String(accountId))
+}

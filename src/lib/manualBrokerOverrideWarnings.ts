@@ -76,7 +76,7 @@ function warningFromLog(row: ManualBrokerOverrideLogRow): ManualBrokerOverrideWa
     brokerAccountId: String(row.broker_account_id ?? '').trim() || null,
     symbol: String(payload.symbol ?? '').trim().toUpperCase() || null,
     title: 'Manual broker changes were reverted',
-    body: "TScopier detected an SL/TP change made directly on your broker account and restored this signal's managed values. To change SL or TP, use Manage Signal.",
+    body: "UniCopier detected an SL/TP change made directly on your broker account and restored this signal's managed values. To change SL or TP, use Manage Signal.",
     actionLabel: String(payload.cta_label ?? '').trim() || 'Manage Signal',
     actionUrl,
     restoredTradeIds: stringArray(payload.restored_trade_ids),

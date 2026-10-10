@@ -6,7 +6,7 @@ export const configureModalRu: ConfigureModalTranslations = {
   saved: 'Сохранено',
   cancel: 'Отмена',
   save: 'Сохранять',
-  channelsSidebar: 'Каналы',
+  channelsSidebar: 'Источник',
   addChannel: 'Добавить канал',
   editLinkedChannels: 'Редактировать связанные каналы',
   doneEditingLinkedChannels: 'Редактирование каналов завершено.',
@@ -444,7 +444,7 @@ export const configureModalRu: ConfigureModalTranslations = {
     ruleTriggerTpHit: 'когда будет достигнута точка TP{index}',
     orderCommentsTitle: 'Комментарии к ордерам',
     orderCommentsSubtitle:
-      'Выкл.: TScopier оставляет поле комментария брокера пустым для сделок, которые открывает или обновляет.',
+      'Выкл.: UniCopier оставляет поле комментария брокера пустым для сделок, которые открывает или обновляет.',
   },
   filters: {
     timeTitle: 'Временной фильтр',

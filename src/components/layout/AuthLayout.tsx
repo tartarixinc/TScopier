@@ -29,8 +29,8 @@ export function AuthLayout() {
             'lg:static lg:z-auto lg:h-auto lg:px-10 lg:py-4 lg:touch-auto',
           )}
         >
-          <Link to="/" className="flex items-center" aria-label="TScopier home">
-            <AuthBrandLogo className="h-8 w-auto sm:h-6" />
+          <Link to="/" className="flex items-center" aria-label="UniCopier home">
+            <AuthBrandLogo className="h-10 w-auto sm:h-8" />
           </Link>
           <div className="flex items-center gap-1 sm:gap-1.5">
             <LanguageSwitcher />

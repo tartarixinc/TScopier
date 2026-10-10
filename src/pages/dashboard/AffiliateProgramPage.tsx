@@ -147,7 +147,6 @@ export function AffiliateProgramPage() {
     <PageShell>
       <PageHeader
         title={at.title}
-        subtitle={at.subtitle}
         actions={(
           <Button variant="secondary" onClick={() => void refresh()} loading={loading}>
             {at.refresh}
@@ -167,7 +166,7 @@ export function AffiliateProgramPage() {
 
         <Card padding="lg" className="space-y-4">
           <div className="grid gap-4 lg:grid-cols-2">
-            <div className="rounded-xl border border-neutral-200 p-4 dark:border-neutral-800">
+            <div className="rounded-xl border border-neutral-200/65 p-4 dark:border-neutral-800/55">
               <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-neutral-900 dark:text-neutral-100">
                 <Wallet className="h-4 w-4 text-teal-600" />
                 {at.yourReferralCode}
@@ -231,7 +230,7 @@ export function AffiliateProgramPage() {
               )}
             </div>
 
-            <div className="rounded-xl border border-neutral-200 p-4 dark:border-neutral-800">
+            <div className="rounded-xl border border-neutral-200/65 p-4 dark:border-neutral-800/55">
               <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-neutral-900 dark:text-neutral-100">
                 <Link2 className="h-4 w-4 text-teal-600" />
                 {at.yourReferralLink}
@@ -252,7 +251,7 @@ export function AffiliateProgramPage() {
 
           </div>
 
-          <div className="rounded-xl border border-neutral-200 p-4 dark:border-neutral-800">
+          <div className="rounded-xl border border-neutral-200/65 p-4 dark:border-neutral-800/55">
             <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-neutral-900 dark:text-neutral-100">
               {at.payoutWalletAddress}
               {hasSavedWalletAddress ? (
@@ -310,7 +309,7 @@ export function AffiliateProgramPage() {
         </Card>
 
         <Card padding="none" className="overflow-hidden">
-          <div className="border-b border-neutral-200 px-5 py-4 dark:border-neutral-800">
+          <div className="border-b border-neutral-200/65 px-5 py-4 dark:border-neutral-800/55">
             <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-50">{at.referrals}</h2>
           </div>
           <div className="overflow-x-auto">
@@ -324,7 +323,7 @@ export function AffiliateProgramPage() {
               </thead>
               <tbody>
                 {(data?.referrals ?? []).slice(0, 20).map((row) => (
-                  <tr key={row.referred_user_id} className="border-t border-neutral-200 dark:border-neutral-800">
+                  <tr key={row.referred_user_id} className="border-t border-neutral-200/65 dark:border-neutral-800/55">
                     <td className="px-5 py-3">{row.referred_user_name}</td>
                     <td className="px-5 py-3">{row.attribution_source}</td>
                     <td className="px-5 py-3">{new Date(row.created_at).toLocaleDateString(locale)}</td>
@@ -343,7 +342,7 @@ export function AffiliateProgramPage() {
         </Card>
 
         <Card padding="none" className="overflow-hidden">
-          <div className="border-b border-neutral-200 px-5 py-4 dark:border-neutral-800">
+          <div className="border-b border-neutral-200/65 px-5 py-4 dark:border-neutral-800/55">
             <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-50">{at.commissions}</h2>
           </div>
           <div className="overflow-x-auto">
@@ -359,7 +358,7 @@ export function AffiliateProgramPage() {
               </thead>
               <tbody>
                 {(data?.commissions ?? []).slice(0, 30).map((row) => (
-                  <tr key={row.id} className="border-t border-neutral-200 dark:border-neutral-800">
+                  <tr key={row.id} className="border-t border-neutral-200/65 dark:border-neutral-800/55">
                     <td className="px-5 py-3 font-mono text-xs">{row.stripe_invoice_id}</td>
                     <td className="px-5 py-3">{centsToMoney(row.invoice_amount_cents, row.currency.toUpperCase(), locale)}</td>
                     <td className="px-5 py-3">

@@ -27,7 +27,7 @@ export const tradeNotificationsPl: TradeNotificationsTranslations = {
     tradesClosedGeneric: 'Zamknięto {count} transakcji na {broker} z {channel}.',
     tradesClosedSingle: 'Zamknięto transakcję na {broker} z {channel}.',
     reviewRequired: 'Sygnał z {channel} oczekuje na Twoją akceptację.',
-    manualOverrideReverted: 'TScopier detected a manual SL/TP change made directly on your broker account and restored the signal managed values. To change SL or TP for a copied signal, use Manage Signal in TScopier.',
+    manualOverrideReverted: 'UniCopier detected a manual SL/TP change made directly on your broker account and restored the signal managed values. To change SL or TP for a copied signal, use Manage Signal in UniCopier.',
   },
   sides: {
     buy: 'kupna',

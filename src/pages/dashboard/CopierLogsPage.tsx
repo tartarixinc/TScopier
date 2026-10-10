@@ -24,6 +24,8 @@ import {
 } from '../../lib/retrySignalDisplay'
 import { formatCopierSkipReasonShort } from '../../lib/copierLogDetail'
 import { CopierLogDetailModal } from '../../components/dashboard/CopierLogDetailModal'
+import { SignalSourceLogo } from '../../components/dashboard/SignalSourceLogo'
+import { buildChannelSourceKinds, SIGNAL_SOURCE_MARKS, type SignalSourceKind } from '../../lib/signalSourceMark'
 
 const DEFAULT_DETAIL_MODAL = en.copierLogs.detailModal!
 
@@ -32,7 +34,7 @@ type Filter = 'all' | 'executed' | 'skipped' | 'failed' | 'pending'
 const PAGE_SIZE_OPTIONS = [10, 25, 50] as const
 type PageSizeOption = (typeof PAGE_SIZE_OPTIONS)[number]
 
-type ChannelNameRow = { id: string; display_name: string; channel_username?: string | null }
+type ChannelNameRow = { id: string; display_name: string; channel_username?: string | null; source_kind?: string | null }
 
 type StatusVariant = 'success' | 'warning' | 'error' | 'neutral' | 'primary'
 
@@ -62,6 +64,7 @@ function channelLabel(channelId: string | null | undefined, names: Record<string
 function useCopierLogDisplay(
   signal: Signal,
   channelDisplayNames: Record<string, string>,
+  channelSourceKinds: Record<string, SignalSourceKind>,
   symbolContext: CopierSymbolContext,
   batchSignals: Signal[],
   statusConfig: Record<string, { variant: StatusVariant; label: string }>,
@@ -72,6 +75,8 @@ function useCopierLogDisplay(
   const symbol = symbolForCopierLog(signal, symbolContext, batchSignals)
   const status = statusConfig[signal.status] ?? { variant: 'neutral' as const, label: signal.status }
   const channelName = channelLabel(signal.channel_id, channelDisplayNames)
+  const sourceKind = signal.channel_id ? (channelSourceKinds[signal.channel_id] ?? 'telegram') : null
+  const channelTitle = sourceKind ? `${SIGNAL_SOURCE_MARKS[sourceKind].label} · ${channelName}` : channelName
   const reason = formatCopierSkipReasonShort(signal.skip_reason, copierLogs)
   const reasonShort = signal.skip_reason
     ? (reason.length > 80 ? `${reason.slice(0, 80)}…` : reason)
@@ -86,12 +91,13 @@ function useCopierLogDisplay(
     minute: '2-digit',
   })
 
-  return { action, symbol, status, channelName, reason, reasonShort, messagePreview, timeLabel }
+  return { action, symbol, status, channelName, sourceKind, channelTitle, reason, reasonShort, messagePreview, timeLabel }
 }
 
 function CopierLogCard({
   signal,
   channelDisplayNames,
+  channelSourceKinds,
   symbolContext,
   batchSignals,
   statusConfig,
@@ -103,6 +109,7 @@ function CopierLogCard({
 }: {
   signal: Signal
   channelDisplayNames: Record<string, string>
+  channelSourceKinds: Record<string, SignalSourceKind>
   symbolContext: CopierSymbolContext
   batchSignals: Signal[]
   statusConfig: Record<string, { variant: StatusVariant; label: string }>
@@ -112,9 +119,10 @@ function CopierLogCard({
   onRetry?: () => void
   onOpenDetail: () => void
 }) {
-  const { action, symbol, status, channelName, reason, messagePreview, timeLabel } = useCopierLogDisplay(
+  const { action, symbol, status, channelName, sourceKind, channelTitle, reason, messagePreview, timeLabel } = useCopierLogDisplay(
     signal,
     channelDisplayNames,
+    channelSourceKinds,
     symbolContext,
     batchSignals,
     statusConfig,
@@ -139,8 +147,9 @@ function CopierLogCard({
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="min-w-0">
           <p className="text-base font-semibold text-neutral-900 dark:text-neutral-50 truncate">{symbol}</p>
-          <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate mt-0.5" title={channelName}>
-            {channelName}
+          <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400" title={channelTitle}>
+            <SignalSourceLogo kind={sourceKind} />
+            <span className="truncate">{channelName}</span>
           </p>
         </div>
         <div className="flex flex-col items-end gap-1.5 shrink-0">
@@ -195,6 +204,7 @@ function CopierLogCard({
 function CopierLogRow({
   signal,
   channelDisplayNames,
+  channelSourceKinds,
   symbolContext,
   batchSignals,
   statusConfig,
@@ -206,6 +216,7 @@ function CopierLogRow({
 }: {
   signal: Signal
   channelDisplayNames: Record<string, string>
+  channelSourceKinds: Record<string, SignalSourceKind>
   symbolContext: CopierSymbolContext
   batchSignals: Signal[]
   statusConfig: Record<string, { variant: StatusVariant; label: string }>
@@ -215,9 +226,10 @@ function CopierLogRow({
   onOpenDetail: () => void
   viewDetailsLabel: string
 }) {
-  const { action, symbol, status, channelName, reasonShort, messagePreview, timeLabel } = useCopierLogDisplay(
+  const { action, symbol, status, channelName, sourceKind, channelTitle, reasonShort, messagePreview, timeLabel } = useCopierLogDisplay(
     signal,
     channelDisplayNames,
+    channelSourceKinds,
     symbolContext,
     batchSignals,
     statusConfig,
@@ -243,8 +255,9 @@ function CopierLogRow({
       <span className="text-xs text-neutral-600 dark:text-neutral-300 truncate underline decoration-dotted underline-offset-2" title={reasonShort}>
         {reasonShort}
       </span>
-      <span className="text-xs text-neutral-600 dark:text-neutral-400 truncate" title={channelName}>
-        {channelName}
+      <span className="flex min-w-0 items-center gap-1.5 text-xs text-neutral-600 dark:text-neutral-400" title={channelTitle}>
+        <SignalSourceLogo kind={sourceKind} />
+        <span className="truncate">{channelName}</span>
       </span>
       <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{symbol}</span>
       <span className="text-xs text-neutral-500 dark:text-neutral-400 truncate" title={signal.raw_message ?? ''}>
@@ -287,6 +300,7 @@ export function CopierLogsPage() {
   const { user } = useAuth()
   const [signals, setSignals] = useState<Signal[]>([])
   const [channelDisplayNames, setChannelDisplayNames] = useState<Record<string, string>>({})
+  const [channelSourceKinds, setChannelSourceKinds] = useState<Record<string, SignalSourceKind>>({})
   const [symbolContext, setSymbolContext] = useState<CopierSymbolContext>(() => ({
     lookup: new Map(),
     replyParentBySignalId: new Map(),
@@ -334,14 +348,16 @@ export function CopierLogsPage() {
     const [channelsRes, signalsRes] = await Promise.all([
       supabase
         .from('telegram_channels')
-        .select('id,display_name,channel_username')
+        .select('id,display_name,channel_username,source_kind')
         .eq('user_id', user.id),
       query,
     ])
 
     const loaded = ((signalsRes.data ?? []) as Signal[]).filter(s => !isNonTradeSkipReason(s.skip_reason))
     setTotalCount(signalsRes.count ?? loaded.length)
-    setChannelDisplayNames(buildChannelDisplayNames((channelsRes.data ?? []) as ChannelNameRow[]))
+    const channelRows = (channelsRes.data ?? []) as ChannelNameRow[]
+    setChannelDisplayNames(buildChannelDisplayNames(channelRows))
+    setChannelSourceKinds(buildChannelSourceKinds(channelRows))
     setSymbolContext(await buildSignalSymbolLookup(supabase, user.id, loaded))
     setSignals(loaded)
     setLoading(false)
@@ -414,10 +430,11 @@ export function CopierLogsPage() {
     return {
       signal: detailSignal,
       channelName: channelLabel(detailSignal.channel_id, channelDisplayNames),
+      sourceKind: detailSignal.channel_id ? (channelSourceKinds[detailSignal.channel_id] ?? 'telegram') : null,
       symbol: symbolForCopierLog(detailSignal, symbolContext, signals),
       status,
     }
-  }, [detailSignal, statusConfig, channelDisplayNames, symbolContext, signals])
+  }, [detailSignal, statusConfig, channelDisplayNames, channelSourceKinds, symbolContext, signals])
 
   return (
     <PageShell maxWidth="lg" spacing="none" className="space-y-6">
@@ -428,10 +445,9 @@ export function CopierLogsPage() {
       ) : null}
       <PageHeader
         title={t.copierLogs.title}
-        subtitle={t.copierLogs.subtitle}
         actions={(
           <div className="-mx-4 w-full overflow-x-auto px-4 sm:mx-0 sm:w-auto sm:px-0">
-          <div className="inline-flex bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg p-0.5 gap-0.5">
+          <div className="inline-flex bg-white dark:bg-neutral-900 border border-neutral-200/65 dark:border-neutral-800/55 rounded-lg p-0.5 gap-0.5">
             {filters.map(f => (
               <button
                 key={f.value}
@@ -492,6 +508,7 @@ export function CopierLogsPage() {
                   key={signal.id}
                   signal={signal}
                   channelDisplayNames={channelDisplayNames}
+                  channelSourceKinds={channelSourceKinds}
                   symbolContext={symbolContext}
                   batchSignals={signals}
                   statusConfig={statusConfig}
@@ -522,6 +539,7 @@ export function CopierLogsPage() {
                     key={signal.id}
                     signal={signal}
                     channelDisplayNames={channelDisplayNames}
+                  channelSourceKinds={channelSourceKinds}
                     symbolContext={symbolContext}
                     batchSignals={signals}
                     statusConfig={statusConfig}
@@ -565,6 +583,7 @@ export function CopierLogsPage() {
         <CopierLogDetailModal
           signal={detailDisplay.signal}
           channelName={detailDisplay.channelName}
+          sourceKind={detailDisplay.sourceKind}
           symbol={detailDisplay.symbol}
           status={detailDisplay.status}
           onClose={() => setDetailSignal(null)}
@@ -625,7 +644,7 @@ function CopierLogsPagination({
           <select
             value={pageSize}
             onChange={e => onPageSizeChange(Number(e.target.value) as PageSizeOption)}
-            className="h-8 min-w-[4.5rem] rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-2 text-sm text-neutral-900 dark:text-neutral-50 tabular-nums focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+            className="h-8 min-w-[4.5rem] rounded-md border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 px-2 text-sm text-neutral-900 dark:text-neutral-50 tabular-nums focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
             aria-label="Results per page"
           >
             {PAGE_SIZE_OPTIONS.map(n => (
@@ -644,7 +663,7 @@ function CopierLogsPagination({
             type="button"
             onClick={() => onPageChange(page - 1)}
             disabled={page <= 1}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-md border border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-white dark:hover:bg-neutral-900 disabled:opacity-40 disabled:pointer-events-none"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-md border border-neutral-200/65 dark:border-neutral-800/55 text-neutral-700 dark:text-neutral-300 hover:bg-white dark:hover:bg-neutral-900 disabled:opacity-40 disabled:pointer-events-none"
             aria-label="Previous page"
           >
             <ChevronLeft className="w-4 h-4" />
@@ -673,7 +692,7 @@ function CopierLogsPagination({
             type="button"
             onClick={() => onPageChange(page + 1)}
             disabled={page >= totalPages}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-md border border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-white dark:hover:bg-neutral-900 disabled:opacity-40 disabled:pointer-events-none"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-md border border-neutral-200/65 dark:border-neutral-800/55 text-neutral-700 dark:text-neutral-300 hover:bg-white dark:hover:bg-neutral-900 disabled:opacity-40 disabled:pointer-events-none"
             aria-label="Next page"
           >
             <span className="hidden sm:inline">{labels.next}</span>

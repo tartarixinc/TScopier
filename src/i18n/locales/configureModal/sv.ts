@@ -6,7 +6,7 @@ export const configureModalSv: ConfigureModalTranslations = {
   saved: 'Sparad',
   cancel: 'Avboka',
   save: 'Spara',
-  channelsSidebar: 'Kanaler',
+  channelsSidebar: 'Källa',
   addChannel: 'Lägg till kanal',
   editLinkedChannels: 'Redigera länkade kanaler',
   doneEditingLinkedChannels: 'Klar med att redigera kanaler',
@@ -444,7 +444,7 @@ export const configureModalSv: ConfigureModalTranslations = {
     ruleTriggerTpHit: 'när TP{index} nås',
     orderCommentsTitle: 'Orderkommentarer',
     orderCommentsSubtitle:
-      'Av: TScopier lämnar mäklarens kommentarsfält tomt för affärer den öppnar eller uppdaterar.',
+      'Av: UniCopier lämnar mäklarens kommentarsfält tomt för affärer den öppnar eller uppdaterar.',
   },
   filters: {
     timeTitle: 'Tidsfilter',

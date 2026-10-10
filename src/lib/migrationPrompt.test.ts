@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { BrokerAccount } from '../types/database'
 import {
+  isMigrationPromptSnoozed,
   isMigrationSwitchCase,
   isPromptDismissible,
   pickPromptBroker,
   resolveReconnectDialog,
   routeReconnectError,
+  snoozeMigrationPrompt,
+  unsnoozeMigrationPrompt,
 } from './migrationPrompt'
 
 function broker(overrides: Partial<BrokerAccount> & { id: string }): BrokerAccount {
@@ -175,5 +178,20 @@ describe('resolveReconnectDialog', () => {
 
   it('resolves to a closed dialog when nothing is active', () => {
     expect(resolveReconnectDialog(none)).toEqual({ active: null, stage: 'details' })
+  })
+})
+
+describe('migration prompt snooze ("Remind me later")', () => {
+  it('postpones one account without touching the others', () => {
+    expect(isMigrationPromptSnoozed('account-a')).toBe(false)
+    snoozeMigrationPrompt('account-a')
+    expect(isMigrationPromptSnoozed('account-a')).toBe(true)
+    expect(isMigrationPromptSnoozed('account-b')).toBe(false)
+  })
+
+  it('forgets the snooze when the account reconnects or is deleted', () => {
+    snoozeMigrationPrompt('account-c')
+    unsnoozeMigrationPrompt('account-c')
+    expect(isMigrationPromptSnoozed('account-c')).toBe(false)
   })
 })

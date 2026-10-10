@@ -338,7 +338,7 @@ export function ConnectTradingAccountModal({
                         'rounded-xl border px-3 py-2.5 text-left text-sm transition-colors',
                         selectedPlatform === option
                           ? 'border-teal-500 bg-teal-50 text-teal-900 dark:border-teal-400 dark:bg-teal-950/40 dark:text-teal-100'
-                          : 'border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:border-neutral-700',
+                          : 'border-neutral-200/65 bg-white text-neutral-700 hover:border-neutral-300 dark:border-neutral-800/55 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:border-neutral-700',
                       )}
                     >
                       {option === 'MT5' ? cf.platformMt5 : cf.platformMt4}

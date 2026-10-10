@@ -276,7 +276,7 @@ export function BacktestTradeReplayChart({ trade }: BacktestTradeReplayChartProp
   const sourceLabel = replay?.source === 'ticks' ? bt.replaySourceTicks : bt.replaySourceBars
 
   return (
-    <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50/80 dark:bg-neutral-900/50 p-4 space-y-3">
+    <div className="rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50/80 dark:bg-neutral-900/50 p-4 space-y-3">
       <div className="flex items-center justify-between gap-2">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
           {bt.replayTitle}

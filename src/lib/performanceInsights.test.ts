@@ -99,7 +99,7 @@ test('computeProfitByChannel: maps closed MT trade via DB ticket attribution', (
   assert.equal(rows[0]!.pnl, 42)
 })
 
-test('computeProfitByChannel: maps via TScopier comment signal prefix', () => {
+test('computeProfitByChannel: maps via UniCopier comment signal prefix', () => {
   const signalId = '28785f02-000b-4860-a3dd-58d74f890a5d'
   const maps = buildPerformanceChannelLinkMaps(
     [{ id: 'ch-1', display_name: 'VIP Gold Signals' }],
@@ -300,7 +300,7 @@ test('computeProfitByChannel: uses durable attribution when ticket differs in fo
   assert.equal(rows[0]!.key, 'ch-1')
 })
 
-test('resolveChannelIdForTrade: attributes via TScopier slug on connected channel only', () => {
+test('resolveChannelIdForTrade: attributes via UniCopier slug on connected channel only', () => {
   const channelId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
   const maps = buildPerformanceChannelLinkMaps([], [], [], [])
   maps.channelNames[channelId] = 'Test Signal Channel'
@@ -320,7 +320,7 @@ test('resolveChannelIdForTrade: attributes via TScopier slug on connected channe
   assert.equal(resolved, channelId)
 })
 
-test('resolveChannelIdForTrade: single connected channel TScopier fallback', () => {
+test('resolveChannelIdForTrade: single connected channel UniCopier fallback', () => {
   const channelId = 'ch-only'
   const maps = buildPerformanceChannelLinkMaps([], [], [], [])
   maps.channelNames[channelId] = 'VIP'

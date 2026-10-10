@@ -20,6 +20,16 @@ export type OpenTradeReconcileRow = {
   entry_price?: number | null
 }
 
+/** A session probe may only authorise a close when it resolves. */
+async function sessionIsHealthy(probe: () => Promise<unknown>): Promise<boolean> {
+  try {
+    await probe()
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** Open DB legs whose ticket is valid but absent from the broker snapshot. */
 export function findGhostOpenTradeIds(
   openTrades: OpenTradeReconcileRow[],
@@ -52,12 +62,42 @@ export async function reconcileOpenTradesForBroker(
   api: FxsocketBrokerClient,
   metaapiAccountId: string,
   openTrades: OpenTradeReconcileRow[],
+  probeHealthy?: () => Promise<unknown>,
 ): Promise<number> {
   if (!openTrades.length) return 0
   const firstSnapshot = await api.openedOrders(metaapiAccountId)
   // SAFETY: an empty (but successful) OpenedOrders snapshot usually means the
   // broker session is disconnected — never mass-mark every open row closed.
+  // A genuinely flat account answers empty too, so the session itself is
+  // asked: only a healthy session may authorise closing the last rows.
+  // Without that check the final trade on an account could never be
+  // reconciled, because closing it is exactly what makes the account empty
+  // (2026-10-04: trade 400406267 sat open in the database while closed at the
+  // broker, and Manage Signals showed its signal open forever).
   if (!Array.isArray(firstSnapshot) || firstSnapshot.length === 0) {
+    if (probeHealthy && await sessionIsHealthy(probeHealthy)) {
+      const emptyAgain = await api.openedOrders(metaapiAccountId)
+      if (Array.isArray(emptyAgain) && emptyAgain.length > 0) return 0
+      const ghostIds = openTrades
+        .filter(trade => {
+          const ticket = Number(trade.metaapi_order_id)
+          return Number.isFinite(ticket) && ticket > 0
+        })
+        .map(trade => trade.id)
+      if (!ghostIds.length) return 0
+      const closed = await closeStaleOpenTrades(supabase, ghostIds)
+      if (closed > 0) {
+        const scopes = basketScopesForGhosts(openTrades, ghostIds)
+        if (scopes.length) {
+          await purgeRangePendingLegsForBaskets(supabase, scopes, 'basket_flat_reconcile')
+        }
+        console.warn(
+          `[openTradeReconcile] session healthy with no open positions — closed ${closed} stale row(s)`
+          + ` account=${metaapiAccountId}`,
+        )
+      }
+      return closed
+    }
     console.warn(
       `[openTradeReconcile] empty OpenedOrders with ${openTrades.length} tracked open trade(s)`
       + ` account=${metaapiAccountId} — deferring ghost close (suspected disconnect)`,

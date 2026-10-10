@@ -99,7 +99,7 @@ function SectionCard({
   children: ReactNode
 }) {
   return (
-    <section className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50/80 dark:bg-neutral-800/40 p-4">
+    <section className="rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50/80 dark:bg-neutral-800/40 p-4">
       <div className="mb-2 flex items-center gap-2">
         <Icon className="h-4 w-4 text-neutral-500 dark:text-neutral-400" aria-hidden />
         <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
@@ -213,7 +213,7 @@ function BrokerStatusModalInner({
         role="dialog"
         aria-modal="true"
         aria-labelledby="broker-status-modal-title"
-        className="relative flex max-h-[min(90vh,720px)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-2xl dark:border-neutral-800 dark:bg-neutral-900 animate-modal-in"
+        className="relative flex max-h-[min(90vh,720px)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-neutral-200/65 bg-white shadow-2xl dark:border-neutral-800/55 dark:bg-neutral-900 animate-modal-in"
       >
         <div className="shrink-0 border-b border-neutral-100 px-5 py-4 dark:border-neutral-800">
           <div className="flex items-start gap-3">

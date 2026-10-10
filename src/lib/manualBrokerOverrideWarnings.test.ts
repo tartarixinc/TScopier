@@ -108,7 +108,7 @@ describe('manual broker override contextual warnings', () => {
         brokerAccountId: 'broker-1',
         symbol: 'XAUUSD',
         title: 'Manual broker changes were reverted',
-        body: "TScopier detected an SL/TP change made directly on your broker account and restored this signal's managed values. To change SL or TP, use Manage Signal.",
+        body: "UniCopier detected an SL/TP change made directly on your broker account and restored this signal's managed values. To change SL or TP, use Manage Signal.",
         actionLabel: 'Manage Signal',
         actionUrl: manualOverrideManageSignalUrl('signal-1'),
         restoredTradeIds: ['trade-1'],
@@ -118,7 +118,7 @@ describe('manual broker override contextual warnings', () => {
     }))
 
     expect(html).toContain('Manual broker changes were reverted')
-    expect(html).toContain('TScopier detected an SL/TP change made directly on your broker account')
+    expect(html).toContain('UniCopier detected an SL/TP change made directly on your broker account')
     expect(html).toContain('Manage Signal')
   })
 

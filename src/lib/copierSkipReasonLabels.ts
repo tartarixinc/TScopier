@@ -1,5 +1,6 @@
 /** Default English labels when a locale bundle omits a skip-reason key (shallow locale merge). */
 import { normalizeCopierSkipReasonKey } from './brokerBridgeErrorDisplay'
+import { COPY_RISK_REASON_LABELS } from './copyRiskReasons'
 
 export function resolveCopierSkipReasonKey(reason: string | null | undefined): string {
   const raw = String(reason ?? '').trim()
@@ -11,6 +12,7 @@ export function resolveCopierSkipReasonKey(reason: string | null | undefined): s
 }
 
 export const COPIER_SKIP_REASON_LABELS: Record<string, string> = {
+  ...COPY_RISK_REASON_LABELS,
   ai_classified_as_non_actionable: 'AI found no trade signal in this message',
   ai_classified_as_non_entry: 'AI found no entry instruction in this message',
   modification_no_open_trade: 'No open trade to modify',
@@ -83,9 +85,9 @@ export const COPIER_SKIP_REASON_DETAILS: Record<string, string> = {
   no_broker_channel_match:
     'No active broker account is linked to this channel. Open Account Configuration → select your broker → Channels tab → enable this channel → Save.',
   copier_paused:
-    'Signal copying is paused for your account. Resume the copier from the dashboard or Copier Engine.',
+    'Signal copying is paused for your account. Resume the copier from the dashboard or Copier Process.',
   telegram_listener_not_live:
-    'Telegram was not connected when this signal arrived. Open Copier Engine and reconnect Telegram.',
+    'Telegram was not connected when this signal arrived. Open Copier Process and reconnect Telegram.',
   subscription_inactive:
     'Your subscription is inactive. Renew your plan to resume signal copying.',
   plan_advanced_feature_required:

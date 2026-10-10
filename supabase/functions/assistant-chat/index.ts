@@ -72,7 +72,7 @@ function bad(status: number, message: string) {
 
 /** Generic refusal for prompt-injection attempts — never echoes the detected reason. */
 const INJECTION_REFUSAL =
-  "I can't help with that. I'm here to help with TScopier — ask me about your copier, brokers, channels, backtests, or billing.";
+  "I can't help with that. I'm here to help with UniCopier — ask me about your copier, brokers, channels, backtests, or billing.";
 
 function parseArgs(raw: string): Record<string, unknown> {
   try {

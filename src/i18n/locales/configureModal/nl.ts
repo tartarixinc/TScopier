@@ -6,7 +6,7 @@ export const configureModalNl: ConfigureModalTranslations = {
   saved: 'Opgeslagen',
   cancel: 'Annuleren',
   save: 'Redden',
-  channelsSidebar: 'Kanalen',
+  channelsSidebar: 'Bron',
   addChannel: 'Kanaal toevoegen',
   editLinkedChannels: 'Bewerk gekoppelde kanalen',
   doneEditingLinkedChannels: 'Kanalen bewerken is voltooid',
@@ -444,7 +444,7 @@ export const configureModalNl: ConfigureModalTranslations = {
     ruleTriggerTpHit: 'wanneer TP{index} is bereikt',
     orderCommentsTitle: 'Ordercommentaren',
     orderCommentsSubtitle:
-      'Uit: TScopier laat het commentaarveld van de broker leeg voor trades die het opent of vernieuwt.',
+      'Uit: UniCopier laat het commentaarveld van de broker leeg voor trades die het opent of vernieuwt.',
   },
   filters: {
     timeTitle: 'Tijdfilter',

@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import { applyThemeToDocument, readStoredTheme, ThemeProvider } from './context/ThemeContext.tsx'
 import { isAppHost } from './lib/site.ts'
+import { DashboardBootSkeleton, isDashboardBootPath } from './components/dashboard/DashboardMetricsSkeleton.tsx'
 import { clearChunkReloadGuard, registerChunkLoadRecovery } from './lib/chunkLoadRecovery.ts'
 
 registerChunkLoadRecovery()
@@ -27,9 +28,15 @@ createRoot(document.getElementById('root')!).render(
       <BootGuardClear />
       <Suspense
         fallback={
-          <div className="flex min-h-screen items-center justify-center">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary-600 border-t-transparent" />
-          </div>
+          isAppHost() && isDashboardBootPath(window.location.pathname) ? (
+            <div className="flex h-[100dvh] min-h-0">
+              <DashboardBootSkeleton />
+            </div>
+          ) : (
+            <div className="flex min-h-screen items-center justify-center">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary-600 border-t-transparent" />
+            </div>
+          )
         }
       >
         <RootComponent />

@@ -1,40 +1,39 @@
 import { useCallback, useEffect, useState } from 'react'
 import { fetchTradesAcrossProviders } from '../lib/fxsocketBroker'
 import { supabase } from '../lib/supabase'
-import { hasOpenTradesInCache } from '../lib/tradesSessionCache'
+import { openTradeCountInCache } from '../lib/tradesSessionCache'
 import { whenRealtimeReady } from '../lib/whenRealtimeReady'
 
 const REFRESH_MS = 60_000
 const REALTIME_DEBOUNCE_MS = 450
 
-async function fetchHasOpenFromBroker(): Promise<boolean> {
+async function fetchOpenTradeCount(): Promise<number> {
   const res = await fetchTradesAcrossProviders({
     scope: 'open',
     historyProfile: 'trades',
-    limit: 1,
   })
-  return (res.trades ?? []).some(t => t.status === 'open')
+  return (res.trades ?? []).filter(t => t.status === 'open').length
 }
 
-/** Sidebar indicator — broker truth (same source as Account Trades page), not stale DB rows. */
-export function useHasOpenTrades(userId: string | undefined): boolean {
-  const [hasOpen, setHasOpen] = useState(false)
+/** Sidebar count — broker truth (same source as the Trades page), not stale DB rows. */
+export function useOpenTradeCount(userId: string | undefined): number {
+  const [openCount, setOpenCount] = useState(0)
 
   const refresh = useCallback(async () => {
     if (!userId) {
-      setHasOpen(false)
+      setOpenCount(0)
       return
     }
 
-    const cached = hasOpenTradesInCache(userId)
-    if (cached != null) setHasOpen(cached)
+    const cached = openTradeCountInCache(userId)
+    if (cached != null) setOpenCount(cached)
 
     try {
-      setHasOpen(await fetchHasOpenFromBroker())
+      setOpenCount(await fetchOpenTradeCount())
     } catch (e) {
       console.warn('[openTrades] broker check failed', e instanceof Error ? e.message : e)
-      if (cached != null) setHasOpen(cached)
-      else setHasOpen(false)
+      if (cached != null) setOpenCount(cached)
+      else setOpenCount(0)
     }
   }, [userId])
 
@@ -82,5 +81,5 @@ export function useHasOpenTrades(userId: string | undefined): boolean {
     }
   }, [userId, refresh])
 
-  return hasOpen
+  return openCount
 }

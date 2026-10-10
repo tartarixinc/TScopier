@@ -49,7 +49,7 @@ export function AccountPerformanceTable({
     <div className="overflow-x-auto">
       <table className="w-full min-w-[640px] text-start text-sm">
         <thead>
-          <tr className="border-b border-neutral-200 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:border-neutral-800 dark:text-neutral-400">
+          <tr className="border-b border-neutral-200/65 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:border-neutral-800/55 dark:text-neutral-400">
             <th className="px-4 py-3">{labels.account}</th>
             <th className="px-4 py-3">{labels.broker}</th>
             <th className="px-4 py-3 text-end">{labels.equity}</th>

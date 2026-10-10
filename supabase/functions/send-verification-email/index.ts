@@ -69,7 +69,7 @@ Deno.serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
-    const resendFrom = "TScopier <verification@tscopier.ai>";
+    const resendFrom = "UniCopier <verification@tscopier.ai>";
 
     if (!resendApiKey) {
       return json(
@@ -255,7 +255,7 @@ Deno.serve(async (req: Request) => {
     const html = buildAuthEmailHtml({
       title: "Confirm your account",
       greeting: `Hello ${firstName},`,
-      bodyHtml: `<p style="margin:0;">Thank you for signing up for TScopier. Click the button below to confirm your email and activate your account.</p>`,
+      bodyHtml: `<p style="margin:0;">Thank you for signing up for UniCopier. Click the button below to confirm your email and activate your account.</p>`,
       buttonLabel: "Confirm account",
       buttonUrl: confirmUrl,
       logoUrl,
@@ -270,7 +270,7 @@ Deno.serve(async (req: Request) => {
       body: JSON.stringify({
         from: resendFrom,
         to: [normalizedEmail],
-        subject: "Confirm your TScopier account",
+        subject: "Confirm your UniCopier account",
         html,
       }),
     });

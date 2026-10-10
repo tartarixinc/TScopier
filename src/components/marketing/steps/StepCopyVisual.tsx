@@ -11,7 +11,7 @@ export function StepCopyVisual() {
 
   return (
     <div className="flex h-full min-h-[220px] items-stretch p-3 sm:p-4">
-      <div className="flex w-full flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+      <div className="flex w-full flex-col overflow-hidden rounded-xl border border-neutral-200/65 bg-white shadow-sm dark:border-neutral-800/55 dark:bg-neutral-900">
         <div className="border-b border-neutral-100 px-3 py-2 dark:border-neutral-800 sm:px-4">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5">

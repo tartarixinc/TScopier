@@ -11,7 +11,7 @@ export function StepTelegramVisual() {
 
   return (
     <div className="flex h-full min-h-[220px] items-stretch p-3 sm:p-4">
-      <div className="flex w-full flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+      <div className="flex w-full flex-col overflow-hidden rounded-xl border border-neutral-200/65 bg-white shadow-sm dark:border-neutral-800/55 dark:bg-neutral-900">
         <div className="border-b border-neutral-100 bg-gradient-to-br from-[#229ED9]/12 via-sky-50/90 to-white px-4 py-3 dark:border-neutral-800 dark:from-[#229ED9]/20 dark:via-sky-950/30 dark:to-neutral-900">
           <div className="flex items-center gap-2">
             <img src="/Telegram.svg" alt="" className="h-7 w-7 object-contain" aria-hidden />

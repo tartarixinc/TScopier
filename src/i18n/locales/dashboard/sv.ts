@@ -3,8 +3,12 @@ import type { DashboardBundleTranslations } from './types'
 export const dashboardSv: DashboardBundleTranslations = {
   dashboard: {
     title: 'Instrumentpanel',
+    greetingMorning: 'God morgon',
+    greetingAfternoon: 'God eftermiddag',
+    greetingEvening: 'God kväll',
+    greetingNamed: '{greeting}, {name}.',
     loadingMetrics: 'Laddar dina instrumentpanelsmätvärden',
-    totalBalance: 'Totalt saldo',
+    totalBalance: 'Portföljvärde',
     acrossAccounts: 'Över {count} anslutna konto(n)',
     todaysProfit: 'Dagens vinst',
     todaysProfitHint:
@@ -71,9 +75,9 @@ export const dashboardSv: DashboardBundleTranslations = {
     noTradeActivities: 'Inga kanalarbetarloggar ännu.',
     management: 'Aktiviteter',
     noData: 'Ingen data',
-    telegramNotConnectedTitle: 'Telegram är inte anslutet',
-    telegramNotConnectedBody: 'Anslut ditt Telegram-konto för att börja kopiera signaler från dina kanaler.',
-    connectTelegram: 'Anslut Telegram',
+    telegramNotConnectedTitle: 'Anslut en signalkälla för att börja kopiera',
+    telegramNotConnectedBody: 'Anslut en signalkälla för att börja kopiera',
+    connectTelegram: 'Anslut källa',
     linkedAccounts: {
       title: 'Länkade konton',
       subtitle: 'Anslutna mäklarkonton som används av kopieraren',
@@ -106,7 +110,7 @@ export const dashboardSv: DashboardBundleTranslations = {
       refresh: 'Uppdatera',
       notFound: 'Mäklarkonto hittades inte.',
       initialBalance: 'Initialt saldo',
-      initialBalanceHint: 'Kontosaldo som togs när denna mäklare först anslöts till TScopier.',
+      initialBalanceHint: 'Kontosaldo som togs när denna mäklare först anslöts till UniCopier.',
       connectedAt: 'Ansluten',
       connectedAtHint: 'Datum och tid då detta mäklarkonto först länkades och var redo att handla.',
       currentBalance: 'Aktuellt saldo',

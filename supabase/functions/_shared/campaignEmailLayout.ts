@@ -1,4 +1,4 @@
-/** TScopier campaign email shell — matches app brand (teal accent, slate neutrals). */
+/** UniCopier campaign email shell — matches app brand (teal accent, slate neutrals). */
 
 export const BRAND = {
   teal: "#0d9488",
@@ -95,7 +95,7 @@ export function buildCampaignEmailHtml(args: {
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background-color:${BRAND.cardBg};border-radius:16px;overflow:hidden;border:1px solid ${BRAND.border};box-shadow:0 4px 24px rgba(15,23,42,0.06);">
           <tr>
             <td style="background:linear-gradient(135deg,${BRAND.headerBg} 0%,#134e4a 100%);padding:28px 32px 24px;text-align:center;">
-              <img src="${args.logoUrl}" alt="TScopier" width="160" height="40" style="display:block;margin:0 auto 16px;height:40px;width:auto;max-width:200px;border:0;" />
+              <img src="${args.logoUrl}" alt="UniCopier" width="160" height="40" style="display:block;margin:0 auto 16px;height:40px;width:auto;max-width:200px;border:0;" />
               <p style="margin:0;font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:#5eead4;">${escapeHtml(args.eyebrow)}</p>
             </td>
           </tr>

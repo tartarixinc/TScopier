@@ -188,6 +188,7 @@ class UserListener:
             .select("id, channel_id, channel_username, last_seen_message_id, last_seen_at, last_live_at")
             .eq("user_id", self.user_id)
             .eq("is_active", True)
+            .eq("source_kind", "telegram")
             .execute()
         )
         rows = [

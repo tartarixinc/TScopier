@@ -30,7 +30,7 @@ function ContactChannelCard({
     'inline-flex items-center gap-1.5 text-sm font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300'
 
   return (
-    <article className="flex h-full flex-col rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900 sm:p-6">
+    <article className="flex h-full flex-col rounded-2xl border border-neutral-200/65 bg-white p-5 shadow-sm dark:border-neutral-800/55 dark:bg-neutral-950 sm:p-6">
       <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-50 text-teal-600 dark:bg-teal-950/50 dark:text-teal-400">
         <Icon className="h-5 w-5" aria-hidden />
       </span>
@@ -67,7 +67,7 @@ export function ContactSupportPage() {
 
   return (
     <PageShell maxWidth="lg" spacing="loose">
-      <PageHeader title={page.title} subtitle={page.description} />
+      <PageHeader title={page.title} />
 
       <section aria-labelledby="support-channels-heading">
         <div className="mb-4">
@@ -111,12 +111,12 @@ export function ContactSupportPage() {
           </h2>
           <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">{cs.faq.subtitle}</p>
         </div>
-        <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="overflow-hidden rounded-2xl border border-neutral-200/65 bg-white dark:border-neutral-800/55 dark:bg-neutral-950">
           {cs.faq.items.map((item, index) => (
             <details
               key={item.question}
               className={clsx(
-                'group border-neutral-200 dark:border-neutral-800',
+                'group border-neutral-200/65 dark:border-neutral-800/55',
                 index > 0 && 'border-t',
               )}
             >

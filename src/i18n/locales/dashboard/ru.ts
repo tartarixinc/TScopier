@@ -3,8 +3,12 @@ import type { DashboardBundleTranslations } from './types'
 export const dashboardRu: DashboardBundleTranslations = {
   dashboard: {
     title: 'Панель',
+    greetingMorning: 'Доброе утро',
+    greetingAfternoon: 'Добрый день',
+    greetingEvening: 'Добрый вечер',
+    greetingNamed: '{greeting}, {name}.',
     loadingMetrics: 'Загрузка метрик панели',
-    totalBalance: 'Общий баланс',
+    totalBalance: 'Стоимость портфеля',
     acrossAccounts: 'По {count} подключенным счетам',
     todaysProfit: 'Прибыль за сегодня',
     todaysProfitHint:
@@ -71,9 +75,9 @@ export const dashboardRu: DashboardBundleTranslations = {
     noTradeActivities: 'Пока нет логов обработчика каналов.',
     management: 'Активности',
     noData: 'Нет данных',
-    telegramNotConnectedTitle: 'Telegram не подключён',
-    telegramNotConnectedBody: 'Подключите аккаунт Telegram, чтобы начать копировать сигналы с ваших каналов.',
-    connectTelegram: 'Подключить Telegram',
+    telegramNotConnectedTitle: 'Подключите источник сигналов, чтобы начать копирование',
+    telegramNotConnectedBody: 'Подключите источник сигналов, чтобы начать копирование',
+    connectTelegram: 'Подключить источник',
     linkedAccounts: {
       title: 'Связанные счета',
       subtitle: 'Подключенные брокерские счета, используемые копировщиком',
@@ -106,7 +110,7 @@ export const dashboardRu: DashboardBundleTranslations = {
       refresh: 'Обновить',
       notFound: 'Брокерский счет не найден.',
       initialBalance: 'Начальный баланс',
-      initialBalanceHint: 'Снимок баланса счета при первом подключении этого брокера к TScopier.',
+      initialBalanceHint: 'Снимок баланса счета при первом подключении этого брокера к UniCopier.',
       connectedAt: 'Подключен',
       connectedAtHint: 'Дата и время, когда этот брокерский счет был впервые привязан и готов к торговле.',
       currentBalance: 'Текущий баланс',

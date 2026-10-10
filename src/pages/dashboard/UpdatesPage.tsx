@@ -25,7 +25,7 @@ function UpdateCard({ update, t }: { update: PlatformUpdate; t: ReturnType<typeo
   const label = typeLabel(update.type, t)
 
   return (
-    <div className="rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
+    <div className="rounded-xl border border-neutral-200/65 bg-white p-5 dark:border-neutral-800/55 dark:bg-neutral-950">
       <div className="flex items-start gap-3">
         <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${config.color}`}>
           <Icon className="h-4.5 w-4.5" />
@@ -56,7 +56,6 @@ export function UpdatesPage() {
     <PageShell maxWidth="md">
       <PageHeader
         title={t.nav.updatesPage.title}
-        subtitle={t.nav.updatesPage.subtitle}
       />
 
       {PLATFORM_UPDATES.length === 0 ? (

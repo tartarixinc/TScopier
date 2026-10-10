@@ -24,7 +24,7 @@ const LOGO_URL = resolveEmailLogoUrl({
   explicitUrl: Deno.env.get("EMAIL_LOGO_URL"),
 });
 const RESEND_FROM =
-  Deno.env.get("RESEND_CAMPAIGN_FROM") || "TScopier <noreply@tscopier.ai>";
+  Deno.env.get("RESEND_CAMPAIGN_FROM") || "UniCopier <noreply@tscopier.ai>";
 
 function timingSafeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
@@ -131,7 +131,7 @@ Deno.serve(async (req: Request) => {
     const details: Array<[string, string]> = [];
     if (symbol) details.push(["Symbol", symbol]);
     if (brokerLabel) details.push(["Account", brokerLabel]);
-    details.push(["Change", `${sideLabel} restored by TScopier`]);
+    details.push(["Change", `${sideLabel} restored by UniCopier`]);
 
     const detailRows = details.map(([label, value]) =>
       `<tr>
@@ -146,10 +146,10 @@ Deno.serve(async (req: Request) => {
       title: "Manual trade changes were reverted",
       greeting: `Hi ${profile?.first_name || profile?.display_name || "there"},`,
       bodyHtml: `
-        <p style="margin:0 0 16px 0;">TScopier detected a manual SL/TP modification on one of your copied trades.</p>
-        <p style="margin:0 0 16px 0;">Because copied trades are managed by TScopier, broker-side manual changes are automatically reconciled back to the active signal settings.</p>
+        <p style="margin:0 0 16px 0;">UniCopier detected a manual SL/TP modification on one of your copied trades.</p>
+        <p style="margin:0 0 16px 0;">Because copied trades are managed by UniCopier, broker-side manual changes are automatically reconciled back to the active signal settings.</p>
         ${detailsHtml}
-        <p style="margin:0;">To safely update SL or TP, use Manage Signal in TScopier.</p>
+        <p style="margin:0;">To safely update SL or TP, use Manage Signal in UniCopier.</p>
       `,
       buttonLabel: "Manage Signal",
       buttonUrl: manageUrl,
@@ -166,7 +166,7 @@ Deno.serve(async (req: Request) => {
       body: JSON.stringify({
         from: RESEND_FROM,
         to: [email],
-        subject: "Manual trade changes were reverted by TScopier",
+        subject: "Manual trade changes were reverted by UniCopier",
         html,
       }),
     });

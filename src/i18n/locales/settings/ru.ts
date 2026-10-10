@@ -20,7 +20,7 @@ export const settingsRu: SettingsBundleTranslations = {
     },
     personal: {
       title: 'Личная информация',
-      description: 'Ваши контактные данные и то, как вы отображаетесь в TScopier.',
+      description: 'Ваши контактные данные и то, как вы отображаетесь в UniCopier.',
     },
     general: {
       title: 'Общие настройки',

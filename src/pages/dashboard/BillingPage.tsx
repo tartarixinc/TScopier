@@ -112,6 +112,8 @@ export function BillingPage() {
   const subscribeCta = getSubscribeCtaLabel(t, { isPastDue, effectivePlan, hasTrialExpired })
 
   const [portalLoading, setPortalLoading] = useState(false)
+  const [cancelLoading, setCancelLoading] = useState(false)
+  const [cancelError, setCancelError] = useState('')
   const [extraCount, setExtraCount] = useState<number | null>(null)
   const [savingExtras, setSavingExtras] = useState(false)
   const [extraSaved, setExtraSaved] = useState(false)
@@ -253,27 +255,57 @@ export function BillingPage() {
 
   const currentInvoices = invoicePages[invoicePageIndex] ?? []
 
+  const openCustomerPortal = async (flow?: 'cancel') => {
+    if (!session) return
+    const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/customer-portal`
+    const res = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        returnUrl: `${window.location.origin}/billing`,
+        ...(flow ? { flow } : {}),
+      }),
+    })
+    const data = (await res.json().catch(() => ({}))) as { url?: string; error?: string }
+    if (!res.ok || !data.url) {
+      throw new Error(data.error || bt.cancelSubscriptionFailed)
+    }
+    window.location.href = data.url
+  }
+
   const handleManageBilling = async () => {
     if (!session) return
     setPortalLoading(true)
+    setCancelError('')
     try {
-      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/customer-portal`
-      const res = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ returnUrl: `${window.location.origin}/billing` }),
-      })
-      const data = await res.json()
-      if (data.url) {
-        window.location.href = data.url
-      }
+      await openCustomerPortal()
+    } catch {
+      setCancelError(bt.cancelSubscriptionFailed)
     } finally {
       setPortalLoading(false)
     }
   }
+
+  const handleCancelSubscription = async () => {
+    if (!session) return
+    setCancelLoading(true)
+    setCancelError('')
+    try {
+      await openCustomerPortal('cancel')
+    } catch {
+      setCancelError(bt.cancelSubscriptionFailed)
+    } finally {
+      setCancelLoading(false)
+    }
+  }
+
+  const canCancelSubscription =
+    hasActiveSubscription
+    && Boolean(subscription?.stripe_subscription_id?.startsWith('sub_'))
+    && (subscription?.status === 'active' || subscription?.status === 'trialing')
 
   const handleSaveExtras = async () => {
     if (!session || editingExtra === currentExtra) return
@@ -305,7 +337,6 @@ export function BillingPage() {
     <PageShell>
       <PageHeader
         title={bt.title}
-        subtitle={bt.subtitle}
         actions={
           <div className="flex flex-col items-stretch gap-3 sm:items-end">
             <div className="flex flex-wrap items-center justify-end gap-x-5 gap-y-1 text-sm">
@@ -352,21 +383,45 @@ export function BillingPage() {
         </div>
 
         {hasActiveSubscription && subscription ? (
-          <div className="flex flex-wrap gap-3">
-            <Button
-              variant="secondary"
-              onClick={() => void handleManageBilling()}
-              loading={portalLoading}
-              className="gap-2"
-            >
-              {bt.manageBilling}
-              <ExternalLink className="h-3.5 w-3.5" />
-            </Button>
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-3">
+              <Button
+                variant="secondary"
+                onClick={() => void handleManageBilling()}
+                loading={portalLoading}
+                disabled={cancelLoading}
+                className="gap-2"
+              >
+                {bt.manageBilling}
+                <ExternalLink className="h-3.5 w-3.5" />
+              </Button>
+              {canCancelSubscription ? (
+                <Button
+                  variant="danger"
+                  onClick={() => void handleCancelSubscription()}
+                  loading={cancelLoading}
+                  disabled={portalLoading}
+                  className="gap-2"
+                  title={bt.cancelSubscriptionHint}
+                >
+                  {bt.cancelSubscription}
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </Button>
+              ) : null}
+            </div>
+            {canCancelSubscription ? (
+              <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                {bt.cancelSubscriptionHint}
+              </p>
+            ) : null}
+            {cancelError ? (
+              <p className="text-xs text-error-600 dark:text-error-400">{cancelError}</p>
+            ) : null}
           </div>
         ) : null}
 
         <Card padding="none" className="overflow-hidden">
-          <div className="border-b border-neutral-200 px-6 py-4 dark:border-neutral-800">
+          <div className="border-b border-neutral-200/65 px-6 py-4 dark:border-neutral-800/55">
             <div className="flex items-start gap-3">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-teal-50 dark:bg-teal-950/40">
                 <Receipt className="h-4 w-4 text-teal-600 dark:text-teal-400" />
@@ -397,7 +452,7 @@ export function BillingPage() {
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead>
-                  <tr className="border-b border-neutral-200 bg-neutral-50/80 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900/60 dark:text-neutral-400">
+                  <tr className="border-b border-neutral-200/65 bg-neutral-50/80 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:border-neutral-800/55 dark:bg-neutral-900/60 dark:text-neutral-400">
                     <th className="px-6 py-3">{bt.invoiceNumber}</th>
                     <th className="px-6 py-3">{bt.period}</th>
                     <th className="px-6 py-3">{bt.date}</th>
@@ -453,7 +508,7 @@ export function BillingPage() {
           )}
 
           {(invoicePageIndex > 0 || invoiceHasMore) && currentInvoices.length > 0 ? (
-            <div className="flex items-center justify-end gap-2 border-t border-neutral-200 px-6 py-3 dark:border-neutral-800">
+            <div className="flex items-center justify-end gap-2 border-t border-neutral-200/65 px-6 py-3 dark:border-neutral-800/55">
               <Button
                 variant="ghost"
                 size="sm"

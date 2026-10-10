@@ -51,7 +51,6 @@ export function ReportedTradesPage() {
     <PageShell maxWidth="lg" spacing="none" className="space-y-6">
       <PageHeader
         title={tr.reportsTitle}
-        subtitle={tr.reportsSubtitle}
         actions={
           <button
             type="button"
@@ -92,7 +91,7 @@ export function ReportedTradesPage() {
           {reports.map(r => (
             <li
               key={r.id}
-              className="rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900/70"
+              className="rounded-xl border border-neutral-200/65 bg-white p-4 dark:border-neutral-800/55 dark:bg-neutral-900/70"
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2">

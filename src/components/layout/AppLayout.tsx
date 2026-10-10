@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { ChevronDown, PanelLeftClose, PanelLeftOpen, Menu, Sparkles, X, type LucideIcon } from 'lucide-react'
+import { ChevronDown, Flame, PanelLeftClose, PanelLeftOpen, Menu, Sparkles, X, type LucideIcon } from 'lucide-react'
 import clsx from 'clsx'
 import { getAppRouteIcon } from '../../lib/appNavIcons'
 import { TscopierLogo } from '../ui/TscopierLogo'
@@ -14,13 +14,13 @@ import { LanguageSwitcher } from '../auth/LanguageSwitcher'
 import { HelpSidebarNav } from './HelpSidebarNav'
 import { NotificationBell } from './NotificationBell'
 import { CopierPauseToggle } from './CopierPauseToggle'
-import { AppCopierSetupBanner } from './AppCopierSetupBanner'
 import { UserMenuDropdown } from './UserMenuDropdown'
 import { UserAvatar } from './UserAvatar'
 import { DashboardKeepAlive } from './DashboardKeepAlive'
 import { useUserProfile } from '../../context/UserProfileContext'
 import { useSubscription } from '../../context/SubscriptionContext'
-import { useHasOpenTrades } from '../../hooks/useHasOpenTrades'
+import { useOpenTradeCount } from '../../hooks/useHasOpenTrades'
+import { interpolate } from '../../i18n/interpolate'
 import { useHasHighImpactNewsToday } from '../../hooks/useHasHighImpactNewsToday'
 import { useNeedsWelcome } from '../../hooks/useNeedsWelcome'
 
@@ -69,7 +69,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
     const timer = window.setTimeout(enable, 3000)
     return () => window.clearTimeout(timer)
   }, [deferAppBootstrap])
-  const hasOpenTrades = useHasOpenTrades(deferAppBootstrap ? undefined : user?.id)
+  const openTradeCount = useOpenTradeCount(deferAppBootstrap ? undefined : user?.id)
   const hasHighImpactNewsToday = useHasHighImpactNewsToday(
     deferAppBootstrap ? false : calendarCheckEnabled,
   )
@@ -114,6 +114,10 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
         items: [
           { to: '/dashboard', label: t.nav.items.dashboard },
           { to: '/brokers', label: t.nav.items.brokers },
+          { to: '/mirror-trading', label: t.nav.items.mirrorTrading },
+          { to: '/social-trading', label: t.nav.items.socialTrading },
+          // Configurations menu hidden for now.
+          // { to: '/configurations', label: t.nav.items.configuration },
           { to: '/account-trades', label: t.nav.items.trades, showOpenTradesIndicator: true },
         ],
       },
@@ -160,9 +164,9 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
     })
   }, [location.pathname])
 
-  // Subscription reminder modal on dashboard handles the nudge ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â no forced redirect.
+  // Subscription reminder modal on dashboard handles the nudge. No forced redirect.
 
-  // After Stripe success, paywall may have raced to /pricing before webhook sync ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â send back.
+  // After Stripe success, paywall may have raced to /pricing before webhook sync. Send back.
   useEffect(() => {
     if (!checkoutSyncPending) return
     if (location.pathname !== '/pricing') return
@@ -228,8 +232,9 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
       showHighImpactNewsIndicator?: boolean
     },
   ) => {
-    const showOpenIndicator = Boolean(showOpenTradesIndicator && hasOpenTrades)
+    const showOpenIndicator = Boolean(showOpenTradesIndicator && openTradeCount > 0)
     const showFireIndicator = Boolean(showHighImpactNewsIndicator && hasHighImpactNewsToday)
+    const openTradesTag = interpolate(t.nav.openTradesCount, { count: openTradeCount })
     return (
       <>
         <span className="relative inline-flex shrink-0">
@@ -240,31 +245,25 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
             )}
           />
           {showOpenIndicator && opts.collapsed ? (
-            <span
-              className="absolute -end-0.5 -top-0.5 h-2 w-2 rounded-full bg-teal-500 ring-2 ring-white dark:ring-neutral-900"
-              aria-hidden
-            />
+            <span className="absolute -end-2.5 -top-1.5 min-w-[1rem] rounded-full bg-teal-600 px-1 text-center text-[9px] font-semibold leading-4 text-white tabular-nums">
+              {openTradeCount}
+            </span>
           ) : null}
           {showFireIndicator && opts.collapsed && !showOpenIndicator ? (
-            <span
-              className="absolute -end-1 -top-1 text-[10px] leading-none"
+            <Flame
+              className="absolute -end-1 -top-1 h-2.5 w-2.5 text-orange-500"
               aria-hidden
-            >
-              ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¥
-            </span>
+            />
           ) : null}
         </span>
         <span className={clsx(opts.collapsed && 'lg:hidden')}>{label}</span>
         {showOpenIndicator && !opts.collapsed ? (
-          <span
-            className="ms-auto h-2 w-2 shrink-0 rounded-full bg-teal-500"
-            aria-hidden
-          />
+          <span className="ms-auto inline-flex shrink-0 items-center rounded-md border border-teal-200/80 bg-teal-50 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums leading-none text-teal-800 dark:border-teal-800/80 dark:bg-teal-950/50 dark:text-teal-300">
+            {openTradesTag}
+          </span>
         ) : null}
         {showFireIndicator && !opts.collapsed && !showOpenIndicator ? (
-          <span className="ms-auto shrink-0 text-sm leading-none" aria-hidden>
-            ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¥
-          </span>
+          <Flame className="ms-auto h-3.5 w-3.5 shrink-0 text-orange-500" aria-hidden />
         ) : null}
       </>
     )
@@ -291,8 +290,8 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
           <div className="space-y-0.5">
             {sectionItems.map(({ to, label, showOpenTradesIndicator, showHighImpactNewsIndicator, disabled }) => {
               const Icon = getAppRouteIcon(to)
-              const ariaExtra = showOpenTradesIndicator && hasOpenTrades
-                ? t.nav.openTradesActive
+              const ariaExtra = showOpenTradesIndicator && openTradeCount > 0
+                ? interpolate(t.nav.openTradesCount, { count: openTradeCount })
                 : showHighImpactNewsIndicator && hasHighImpactNewsToday
                   ? t.nav.highImpactNewsToday
                   : null
@@ -303,7 +302,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
                     type="button"
                     key={to}
                     title={label}
-                    aria-label={ariaExtra ? `${label} ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ${ariaExtra}` : label}
+                    aria-label={ariaExtra ? `${label}, ${ariaExtra}` : label}
                     onClick={() => {
                       openUpgrade('advanced')
                       opts.onNavigate?.()
@@ -326,7 +325,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
                   key={to}
                   to={to}
                   title={label}
-                  aria-label={ariaExtra ? `${label} ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ${ariaExtra}` : label}
+                  aria-label={ariaExtra ? `${label}, ${ariaExtra}` : label}
                   onClick={opts.onNavigate}
                   className={navLinkClass(opts.collapsed)}
                 >
@@ -350,7 +349,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
   )
 
   return (
-    <div className="flex h-full min-h-0 w-full overflow-hidden overscroll-none bg-neutral-50 dark:bg-neutral-950">
+    <div className="flex h-full min-h-0 w-full overflow-hidden overscroll-none bg-white dark:bg-neutral-950">
       {mobileNavOpen && (
         <button
           type="button"
@@ -362,7 +361,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
 
       <aside
         className={clsx(
-          'fixed inset-y-0 left-0 z-50 flex h-full min-h-0 flex-col overflow-hidden border-e border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900 transition-transform duration-200 ease-out max-lg:overflow-visible rtl:left-auto rtl:right-0',
+          'fixed inset-y-0 left-0 z-50 flex h-full min-h-0 flex-col overflow-hidden border-e border-neutral-100 dark:border-neutral-800 bg-[#F7F8FA] dark:bg-neutral-950 transition-transform duration-200 ease-out max-lg:overflow-visible rtl:left-auto rtl:right-0',
           'w-64 max-w-[85vw]',
           mobileNavOpen ? 'translate-x-0' : 'max-lg:-translate-x-full max-lg:rtl:translate-x-full',
           'lg:sticky lg:top-0 lg:z-30 lg:max-w-none lg:translate-x-0',
@@ -382,7 +381,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
             onClick={() => setMobileNavOpen(false)}
           >
 
-            <TscopierLogo className="h-6 w-auto" />
+            <TscopierLogo brand="unicopier" className="h-6 w-auto" />
           </Link>
           <div className="flex shrink-0 items-center gap-0.5 lg:hidden">
             <LanguageSwitcher compact className="max-lg:[&>button]:gap-0 max-lg:[&>button]:px-2" />
@@ -400,8 +399,9 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
               aria-label={t.nav.items.dashboard}
             >
               <TscopierLogo
+                brand="unicopier"
                 collapsed={!sidebarExpanded}
-                className={sidebarExpanded ? 'h-6 w-auto' : undefined}
+                className={sidebarExpanded ? 'h-12 w-auto' : undefined}
               />
             </Link>
           </div>
@@ -432,7 +432,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
         <header
           ref={setHeaderEl}
           className={clsx(
-            'z-30 flex shrink-0 touch-none items-center gap-1 border-b border-neutral-100 bg-white px-1.5 dark:border-neutral-800 dark:bg-neutral-900 sm:gap-4 sm:px-6',
+            'z-30 flex shrink-0 touch-none items-center gap-1 border-b border-neutral-100 bg-white px-1.5 dark:border-neutral-800 dark:bg-neutral-950 sm:gap-4 sm:px-6',
             'fixed inset-x-0 top-[var(--app-banner-h,0px)] h-[calc(3.5rem+env(safe-area-inset-top,0px))] pt-[env(safe-area-inset-top,0px)] sm:h-[calc(4rem+env(safe-area-inset-top,0px))]',
             'lg:static lg:z-20 lg:h-16 lg:min-h-0 lg:pt-0 lg:touch-auto',
           )}
@@ -545,12 +545,11 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
 
         <main
           className={clsx(
-            'min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain bg-neutral-50 dark:bg-neutral-950',
+            'min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain bg-white dark:bg-neutral-950',
             'pt-[calc(3.5rem+env(safe-area-inset-top,0px))] sm:pt-[calc(4rem+env(safe-area-inset-top,0px))]',
             'lg:pt-0',
           )}
         >
-          {!deferAppBootstrap && <AppCopierSetupBanner />}
           <DashboardKeepAlive />
           {!deferAppBootstrap && !onDashboardRoute && <Outlet />}
         </main>

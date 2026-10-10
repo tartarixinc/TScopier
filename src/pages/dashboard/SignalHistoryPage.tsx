@@ -50,7 +50,7 @@ type DatePreset = 'all' | 'today' | '7d' | '30d' | 'custom'
 const DESKTOP_TD = 'px-4 py-3.5 align-middle border-b border-neutral-100 dark:border-neutral-800'
 
 const DESKTOP_TH =
-  'px-4 py-3 text-start text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide border-b border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900'
+  'px-4 py-3 text-start text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide border-b border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-950'
 
 const OPEN_ROW_BG = 'bg-teal-50 dark:bg-teal-950/40'
 const OPEN_ROW_HOVER = 'group-hover:bg-teal-100 dark:group-hover:bg-teal-900/50'
@@ -58,10 +58,10 @@ const OPEN_ROW_CELL = 'transition-colors duration-150'
 const EDIT_PEN_ICON = 'w-4 h-4 shrink-0 text-teal-600 dark:text-teal-400 opacity-0 group-hover:opacity-100 transition-opacity duration-150'
 
 const selectClass =
-  'px-3 py-2.5 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-sm text-neutral-700 dark:text-neutral-300 focus:outline-none focus:ring-2 focus:ring-primary-500 w-full'
+  'px-3 py-2.5 rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 text-sm text-neutral-700 dark:text-neutral-300 focus:outline-none focus:ring-2 focus:ring-primary-500 w-full'
 
 const dateInputClass =
-  'px-3 py-2.5 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-sm text-neutral-700 dark:text-neutral-300 focus:outline-none focus:ring-2 focus:ring-primary-500 w-full'
+  'px-3 py-2.5 rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 text-sm text-neutral-700 dark:text-neutral-300 focus:outline-none focus:ring-2 focus:ring-primary-500 w-full'
 
 function formatDateInput(date: Date): string {
   const year = date.getFullYear()
@@ -347,8 +347,14 @@ export function SignalHistoryPage() {
     absorbedEntryUpdates: ReadonlyArray<SignalBatchRow>,
     ctx: SignalDisplayContext,
   ) => {
-    setEditSession(buildEditSignalOverrideSnapshot(signal, ctx, absorbedEntryUpdates))
-  }, [])
+    const channel = signal.channel_id ? channelById.get(signal.channel_id) : undefined
+    setEditSession(buildEditSignalOverrideSnapshot(
+      signal,
+      ctx,
+      absorbedEntryUpdates,
+      channelDisplayName(channel),
+    ))
+  }, [channelById])
 
   const closeEditModal = useCallback(() => {
     setEditSession(null)
@@ -526,7 +532,7 @@ export function SignalHistoryPage() {
 
   return (
     <PageShell maxWidth="lg">
-      <PageHeader title={t.pages.signalHistory.title} subtitle={t.pages.signalHistory.description} />
+      <PageHeader title={t.pages.signalHistory.title} />
 
       {banner ? (
         <div
@@ -622,7 +628,7 @@ export function SignalHistoryPage() {
               <col className="w-[14%]" />
               <col className="w-[18%]" />
             </colgroup>
-            <thead className="sticky top-0 z-10 bg-white dark:bg-neutral-900">
+            <thead className="sticky top-0 z-10 bg-white dark:bg-neutral-950">
               <tr>
                 <th className={DESKTOP_TH}>{sh.colChannel}</th>
                 <th className={DESKTOP_TH}>{sh.colSignal}</th>

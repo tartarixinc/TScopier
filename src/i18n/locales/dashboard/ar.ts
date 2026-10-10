@@ -3,8 +3,12 @@ import type { DashboardBundleTranslations } from './types'
 export const dashboardAr: DashboardBundleTranslations = {
   dashboard: {
     title: 'لوحة التحكم',
+    greetingMorning: 'صباح الخير',
+    greetingAfternoon: 'طاب نهارك',
+    greetingEvening: 'مساء الخير',
+    greetingNamed: '{greeting}، {name}.',
     loadingMetrics: 'جارٍ تحميل مقاييس لوحة التحكم',
-    totalBalance: 'إجمالي الرصيد',
+    totalBalance: 'قيمة المحفظة',
     acrossAccounts: 'على {count} حسابات متصلة',
     todaysProfit: 'ربح اليوم',
     todaysProfitHint:
@@ -71,9 +75,9 @@ export const dashboardAr: DashboardBundleTranslations = {
     noTradeActivities: 'لا سجلات لعامل القنوات.',
     management: 'الأنشطة',
     noData: 'لا بيانات',
-    telegramNotConnectedTitle: 'Telegram غير متصل',
-    telegramNotConnectedBody: 'اربط حساب Telegram لبدء نسخ الإشارات من قنواتك.',
-    connectTelegram: 'ربط Telegram',
+    telegramNotConnectedTitle: 'اربط مصدر إشارات لبدء النسخ',
+    telegramNotConnectedBody: 'اربط مصدر إشارات لبدء النسخ',
+    connectTelegram: 'ربط مصدر',
     linkedAccounts: {
       title: 'الحسابات المرتبطة',
       subtitle: 'حسابات الوسيط المرتبطة المستخدمة من الناسخ',
@@ -106,7 +110,7 @@ export const dashboardAr: DashboardBundleTranslations = {
       refresh: 'تحديث',
       notFound: 'لم يُعثر على حساب الوسيط.',
       initialBalance: 'الرصيد الابتدائي',
-      initialBalanceHint: 'رصيد الحساب المسجّل عند أول ربط هذا الوسيط بـ TScopier.',
+      initialBalanceHint: 'رصيد الحساب المسجّل عند أول ربط هذا الوسيط بـ UniCopier.',
       connectedAt: 'تاريخ الربط',
       connectedAtHint: 'التاريخ والوقت لأول ربط حساب الوسيط هذا وجاهزيته للتداول.',
       currentBalance: 'الرصيد الحالي',

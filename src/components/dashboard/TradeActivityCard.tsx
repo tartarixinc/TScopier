@@ -1,7 +1,9 @@
-import { memo } from 'react'
+import { memo, useState } from 'react'
 import clsx from 'clsx'
 import { Loader2, RefreshCw } from 'lucide-react'
+import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
 import { useT } from '../../context/LocaleContext'
+import { resolveActivityRoute, type ActivityRouteMark } from '../../lib/activityRoute'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import type { DisplayableTradeActivity } from '../../lib/tradeActivities'
@@ -12,6 +14,46 @@ function statusVariant(status: DisplayableTradeActivity['status']): StatusVarian
   if (status === 'successful') return 'success'
   if (status === 'skipped') return 'warning'
   return 'error'
+}
+
+function RouteIcon({ mark }: { mark: ActivityRouteMark }) {
+  const [failed, setFailed] = useState(false)
+  if (failed) return null
+  return (
+    <span
+      title={mark.label}
+      className="relative flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white ring-2 ring-white dark:bg-neutral-950 dark:ring-neutral-950"
+    >
+      <img
+        src={mark.iconSrc}
+        alt=""
+        className="h-full w-full object-contain"
+        onError={() => setFailed(true)}
+      />
+    </span>
+  )
+}
+
+function ActivityRouteTag({ activity }: { activity: DisplayableTradeActivity }) {
+  const { brokers } = useBrokerAccounts()
+  const route = resolveActivityRoute(activity, brokers)
+  if (!route.source && !route.destination) return null
+  const routeLabel = [route.source?.label, route.destination?.label].filter(Boolean).join(' → ')
+
+  return (
+    <span
+      className="inline-flex items-center rounded-full bg-neutral-50 py-0.5 pl-0.5 pr-1 ring-1 ring-neutral-200/80 dark:bg-neutral-900 dark:ring-neutral-800"
+      aria-label={routeLabel || undefined}
+      title={routeLabel || undefined}
+    >
+      {route.source ? <RouteIcon mark={route.source} /> : null}
+      {route.destination ? (
+        <span className={clsx('relative z-10', route.source && '-ml-1.5')}>
+          <RouteIcon mark={route.destination} />
+        </span>
+      ) : null}
+    </span>
+  )
 }
 
 function statusLabel(
@@ -44,9 +86,12 @@ export const TradeActivityCard = memo(function TradeActivityCard({
 
   if (variant === 'compact') {
     return (
-      <div className="px-5 py-3">
-        <p className="text-sm text-neutral-800 dark:text-neutral-100">{activity.message}</p>
-        <p className="text-[11px] text-neutral-400 mt-1">{timeLabel}</p>
+      <div className="px-5 py-3.5 transition-colors hover:bg-[#F7F8FA] dark:hover:bg-white/[0.03]">
+        <p className="text-sm leading-5 text-neutral-800 dark:text-neutral-100">{activity.message}</p>
+        <div className="mt-1 flex items-center gap-2">
+          <p className="text-[11px] tabular-nums text-neutral-400">{timeLabel}</p>
+          <ActivityRouteTag activity={activity} />
+        </div>
       </div>
     )
   }
@@ -89,6 +134,7 @@ export const TradeActivityCard = memo(function TradeActivityCard({
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-400">
         <span>{timeLabel}</span>
+        <ActivityRouteTag activity={activity} />
         {activity.symbol ? (
           <>
             <span aria-hidden className="text-neutral-300 dark:text-neutral-600">·</span>

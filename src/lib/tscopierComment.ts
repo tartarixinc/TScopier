@@ -12,7 +12,7 @@ export const LEGACY_TSCOPIER_COMMENT_PREFIX = 'TSCopier:'
 /** Max length of the channel slug segment in MT order comments (matches worker tradeComment). */
 export const CHANNEL_COMMENT_SLUG_MAX = 12
 
-/** True when comment uses the current or legacy TScopier order prefix. */
+/** True when comment uses the current or legacy UniCopier order prefix. */
 export function isTscopierComment(comment: string | null | undefined): boolean {
   if (!comment?.trim()) return false
   const trimmed = comment.trim()
@@ -32,7 +32,7 @@ function stripTscopierCommentPrefix(trimmed: string): string | null {
   return null
 }
 
-/** Strip to broker-safe alphanumeric slug used in TScopier order comments. */
+/** Strip to broker-safe alphanumeric slug used in UniCopier order comments. */
 export function sanitizeChannelCommentSlug(raw: string): string {
   const trimmed = raw.trim().replace(/^@/, '')
   if (!trimmed) return ''

@@ -8,6 +8,7 @@ import {
   hasWorkOnShard,
   monitorActiveIntervalMs,
   monitorIdleIntervalMs,
+  shardUserIds,
   startMonitorLoop,
   type MonitorLoopHandle,
 } from './monitorIdleGate'
@@ -72,7 +73,22 @@ export class TradeBrokerDriftMonitor {
       supabase: this.supabase,
       activeIntervalMs: ACTIVE_MS,
       idleIntervalMs: IDLE_MS,
-      hasWork: sb => hasWorkOnShard(sb, 'trades', q => q.in('status', ['open', 'pending'])),
+      // The sweeps main job is rows the broker still holds while our table says
+      // closed — a state that can have NO open/pending rows at all. Gating on
+      // those alone starved exactly the case it exists for, so any shard user
+      // with a broker account counts as work too.
+      hasWork: async sb => {
+        if (await hasWorkOnShard(sb, 'trades', q => q.in('status', ['open', 'pending']))) return true
+        const uids = await shardUserIds(sb)
+        if (uids === null) return true
+        if (uids.length === 0) return false
+        const { data } = await sb
+          .from('broker_accounts')
+          .select('id')
+          .in('user_id', uids)
+          .limit(1)
+        return Boolean(data?.length)
+      },
       tick: () => this.runTick(),
     })
     console.log(`[tradeBrokerDriftMonitor] started active=${ACTIVE_MS}ms idle=${IDLE_MS}ms`)
@@ -152,8 +168,18 @@ export class TradeBrokerDriftMonitor {
         continue
       }
       if (!Array.isArray(orders) || orders.length === 0) {
-        // An empty answer means we learned nothing (usually a disconnected or
-        // flat session) — it must never count towards "this ticket is gone".
+        // An empty answer is not automatically "no evidence": a flat account
+        // answers empty and is perfectly healthy. Ask the session, and when it
+        // answers, count the account as probed so the two-pass ghost rule can
+        // finally conclude the rows left behind (the last trade on an account
+        // can never be reconciled otherwise — closing it is what empties the
+        // account).
+        try {
+          await runtime.api.checkConnect(runtime.sessionId)
+          probedOkByUser.set(userId, (probedOkByUser.get(userId) ?? 0) + 1)
+        } catch {
+          // disconnected: no evidence, as before
+        }
         continue
       }
       let parsed = 0

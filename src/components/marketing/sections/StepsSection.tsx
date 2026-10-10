@@ -30,7 +30,7 @@ export function StepsSection() {
                 </p>
               </div>
             </div>
-            <div className="marketing-step-visual-panel min-h-[240px] overflow-hidden rounded-2xl border border-neutral-200/80 bg-neutral-50/50 dark:border-neutral-800 dark:bg-neutral-900/40">
+            <div className="marketing-step-visual-panel min-h-[240px] overflow-hidden rounded-2xl border border-neutral-200/55 bg-neutral-50/50 dark:border-neutral-800/55 dark:bg-neutral-900/40">
               <StepVisual id={step.visual} />
             </div>
           </article>

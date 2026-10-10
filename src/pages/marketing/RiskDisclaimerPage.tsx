@@ -6,7 +6,7 @@ export function RiskDisclaimerPage() {
   const page = useT().riskDisclaimerPage
 
   useEffect(() => {
-    document.title = `${page.title} · TScopier`
+    document.title = `${page.title} · UniCopier`
   }, [page.title])
 
   return (
@@ -41,7 +41,7 @@ export function RiskDisclaimerPage() {
           ))}
         </div>
 
-        <p className="mt-10 border-t border-neutral-200 pt-8 text-sm leading-relaxed text-neutral-700 dark:border-neutral-800 dark:text-neutral-300">
+        <p className="mt-10 border-t border-neutral-200/65 pt-8 text-sm leading-relaxed text-neutral-700 dark:border-neutral-800/55 dark:text-neutral-300">
           {page.closing}
         </p>
       </article>

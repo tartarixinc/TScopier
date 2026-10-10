@@ -11,7 +11,7 @@ export function AuthReviewsPanel() {
       <div
         className={clsx(
           'trustpilot-panel-surface relative flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden rounded-3xl',
-          'border border-neutral-200/80 px-8 py-10 dark:border-neutral-800 xl:px-12 xl:py-14',
+          'border border-neutral-200/55 px-8 py-10 dark:border-neutral-800/55 xl:px-12 xl:py-14',
         )}
       >
         <div className="trustpilot-panel-radial" aria-hidden />

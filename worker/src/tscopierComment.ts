@@ -15,7 +15,7 @@ export function signalIdMatchesPrefix(signalId: string, prefix: string): boolean
   return signalId.toLowerCase().startsWith(norm)
 }
 
-/** True when comment uses the current or legacy TScopier order prefix. */
+/** True when comment uses the current or legacy UniCopier order prefix. */
 export function isTscopierComment(comment: string | null | undefined): boolean {
   if (!comment?.trim()) return false
   const trimmed = comment.trim()

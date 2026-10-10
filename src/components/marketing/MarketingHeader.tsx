@@ -146,13 +146,13 @@ export function MarketingHeader() {
           <Link
             to="/"
             className="flex shrink-0 items-center"
-            aria-label="TScopier home"
+            aria-label="UniCopier home"
             onClick={closeMobile}
           >
             <TscopierLogo
               className={clsx(
                 'w-auto transition-all duration-300 ease-out',
-                scrolled ? 'h-5 sm:h-6' : 'h-6 sm:h-7',
+                scrolled ? 'h-8 sm:h-9' : 'h-10 sm:h-11',
               )}
             />
           </Link>

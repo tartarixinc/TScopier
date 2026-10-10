@@ -76,7 +76,7 @@ export function ProfileSignalsPanel({
 
       <div className="overflow-x-auto max-h-64 overflow-y-auto border border-neutral-100 dark:border-neutral-800 rounded-lg">
         <table className="w-full text-xs">
-          <thead className="text-neutral-500 sticky top-0 bg-white dark:bg-neutral-900 z-10">
+          <thead className="text-neutral-500 sticky top-0 bg-white dark:bg-neutral-950 z-10">
             <tr className="border-b border-neutral-100 dark:border-neutral-800">
               <th className="text-left py-2 px-2 font-medium">Time</th>
               <th className="text-left py-2 pr-2 font-medium">Symbol</th>

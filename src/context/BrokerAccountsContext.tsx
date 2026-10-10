@@ -16,7 +16,7 @@ import type { BrokerAccount } from '../types/database'
 import { useBrokerAccountsRealtime } from '../hooks/useBrokerAccountsRealtime'
 import { useBrokerReconnect } from '../hooks/useBrokerReconnect'
 import {
-  BROKER_ACCOUNT_CLIENT_SELECT,
+  selectBrokerAccountColumns,
   sortBrokerAccountsNewestFirst,
 } from '../lib/brokerAccountSelect'
 import { planLimitErrorMessage } from '../lib/telegramChannelApi'
@@ -29,7 +29,11 @@ import {
   pickPromptBroker,
   resolveReconnectDialog,
   routeReconnectError,
+  snoozedMigrationPromptIds,
+  snoozeMigrationPrompt,
+  unsnoozeMigrationPrompt,
 } from '../lib/migrationPrompt'
+import { fxsocketBroker } from '../lib/fxsocketBroker'
 
 interface BrokerAccountsContextValue {
   brokers: BrokerAccount[]
@@ -101,11 +105,13 @@ export function BrokerAccountsProvider({
     const silent = options?.silent || initialLoadDoneRef.current
     if (!silent) setLoading(true)
     setLoadError(null)
-    const { data, error } = await supabase
-      .from('broker_accounts')
-      .select(BROKER_ACCOUNT_CLIENT_SELECT)
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
+    const { data, error } = await selectBrokerAccountColumns(columns =>
+      supabase
+        .from('broker_accounts')
+        .select(columns)
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false }),
+    )
     if (error) {
       setLoadError(error.message)
       if (!silent) setLoading(false)
@@ -176,6 +182,10 @@ export function BrokerAccountsProvider({
   // dialog after the account's row leaves the needs-reconnect list (a
   // mid-connect `pending` row is not on it). Cleared on cancel and on success.
   const [reconnectAttemptId, setReconnectAttemptId] = useState<string | null>(null)
+  // Accounts postponed with "Remind me later" — real state so the prompt
+  // re-picks immediately. The module-level snooze set is kept in step so a
+  // provider remount within this page load still sees the same set.
+  const [snoozedIds, setSnoozedIds] = useState<ReadonlySet<string>>(() => snoozedMigrationPromptIds())
 
   const {
     reconnectBroker: reconnectBrokerBase,
@@ -198,6 +208,15 @@ export function BrokerAccountsProvider({
     onSuccess: (brokerId) => {
       setReconnectError(null)
       setReconnectSuccessId(brokerId)
+      // A reconnected account no longer needs postponing — forget any snooze
+      // so a future reconnect need prompts again immediately.
+      unsnoozeMigrationPrompt(brokerId)
+      setSnoozedIds(prev => {
+        if (!prev.has(brokerId)) return prev
+        const next = new Set(prev)
+        next.delete(brokerId)
+        return next
+      })
       reconnectSuccessHandlerRef.current?.(brokerId)
     },
   })
@@ -214,8 +233,13 @@ export function BrokerAccountsProvider({
   const noopClear = useCallback(async () => ({ error: null as string | null }), [])
 
   const migrationPromptBroker = useMemo(
-    () => pickPromptBroker(brokersNeedingReconnect, reconnectingBrokerIds),
-    [brokersNeedingReconnect, reconnectingBrokerIds],
+    () => pickPromptBroker(
+      // "Remind me later" hides the account from the queue until the next app
+      // load, so the next queued account can be dealt with immediately.
+      brokersNeedingReconnect.filter(broker => !snoozedIds.has(broker.id)),
+      reconnectingBrokerIds,
+    ),
+    [brokersNeedingReconnect, reconnectingBrokerIds, snoozedIds],
   )
 
   const successBroker = reconnectSuccessId
@@ -273,6 +297,48 @@ export function BrokerAccountsProvider({
     setReconnectSuccessId(null)
   }, [cancelPasswordPrompt])
 
+  /** "Remind me later": hide this account until the next app load, then move on. */
+  const handleRemindLater = useCallback(() => {
+    // Unwind any in-flight attempt first: on the password stage the reconnect
+    // is awaiting this prompt, and leaving it unresolved would hold the
+    // account's reconnect lease for the rest of the session.
+    if (passwordPromptBrokerRef.current) cancelPasswordPrompt()
+    const active = activeBrokerRef.current
+    if (active) {
+      snoozeMigrationPrompt(active.id)
+      setSnoozedIds(prev => new Set(prev).add(active.id))
+    }
+    setReconnectError(null)
+    setReconnectAttemptId(null)
+    setReconnectSuccessId(null)
+  }, [cancelPasswordPrompt])
+
+  /** Delete = the permanent exit for an account that cannot be reconnected. */
+  const handleDeleteAccount = useCallback(async () => {
+    const active = activeBrokerRef.current
+    if (!active) return
+    // Same unwind as "remind me later": never leave a reconnect awaiting a
+    // prompt for an account that is about to disappear.
+    if (passwordPromptBrokerRef.current) cancelPasswordPrompt()
+    try {
+      await fxsocketBroker.delete(active.id, active.provider as 'fxsocket' | 'mtapi' | undefined)
+    } catch (err) {
+      setReconnectError(err instanceof Error ? err.message : bl.deleteFailed)
+      return
+    }
+    removeBroker(active.id)
+    unsnoozeMigrationPrompt(active.id)
+    setSnoozedIds(prev => {
+      if (!prev.has(active.id)) return prev
+      const next = new Set(prev)
+      next.delete(active.id)
+      return next
+    })
+    setReconnectError(null)
+    setReconnectAttemptId(null)
+    setReconnectSuccessId(null)
+  }, [bl.deleteFailed, cancelPasswordPrompt, removeBroker])
+
   const handleModalBack = useCallback(() => {
     // Abort the password prompt only — the details stage stays up, and nothing
     // is suppressed, so the customer can step forward again.
@@ -311,10 +377,13 @@ export function BrokerAccountsProvider({
   const modalCopy = useMemo(() => {
     const shared = {
       passwordLabel: bl.reconnectPasswordLabel,
-      passwordHint: bl.reconnectPasswordHint,
       passwordPlaceholder: bl.reconnectPasswordPlaceholder,
-      rememberPasswordLabel: bl.rememberPasswordLabel,
-      rememberPasswordHint: bl.rememberPasswordHint,
+      remindLater: bl.remindLater,
+      deleteAccountLink: bl.deleteAccountLink,
+      deleteConfirmTitle: bl.deleteConfirmTitle,
+      deleteConfirmBody: bl.deleteConfirmBody,
+      deleteConfirmNote: bl.deleteConfirmNote,
+      deleteConfirmCta: bl.deleteConfirmCta,
       detailLogin: bl.detailLogin,
       detailServer: bl.detailServer,
       reconnect: bl.reconnect,
@@ -402,6 +471,8 @@ export function BrokerAccountsProvider({
         onBack={migrationCopy ? handleModalBack : undefined}
         error={reconnectError}
         dismissible={modalDismissible}
+        onRemindLater={handleRemindLater}
+        onDeleteAccount={() => { void handleDeleteAccount() }}
       />
     </BrokerAccountsContext.Provider>
   )

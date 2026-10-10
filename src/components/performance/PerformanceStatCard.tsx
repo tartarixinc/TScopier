@@ -45,7 +45,7 @@ export function PerformanceStatCard({
       : 'bg-teal-50 text-teal-600 dark:bg-teal-950/50 dark:text-teal-400'
 
   return (
-    <div className="rounded-xl border border-neutral-200/80 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+    <div className="rounded-xl border border-neutral-200/55 bg-white p-4 shadow-sm dark:border-neutral-800/55 dark:bg-neutral-950">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400">{label}</p>

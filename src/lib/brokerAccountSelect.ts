@@ -37,6 +37,7 @@ export const BROKER_ACCOUNT_CLIENT_SELECT = [
   'is_active',
   'copier_mode',
   'signal_channel_ids',
+  'copy_source',
   'enforce_signal_channel_filter',
   'ai_settings',
   'manual_settings',
@@ -52,3 +53,22 @@ export const BROKER_ACCOUNT_CLIENT_SELECT = [
   'mtapi_status',
   'linked_account_type',
 ].join(',')
+
+/** Same list without `copy_source`, for databases that have not received that column yet. */
+export const BROKER_ACCOUNT_CLIENT_SELECT_WITHOUT_COPY_SOURCE = BROKER_ACCOUNT_CLIENT_SELECT
+  .split(',')
+  .filter(column => column !== 'copy_source')
+  .join(',')
+
+export function missingCopySourceColumn(message: string): boolean {
+  return /copy_source/i.test(message) && /schema cache|does not exist/i.test(message)
+}
+
+/** Read broker rows, and retry without `copy_source` when that column is not on this database. */
+export async function selectBrokerAccountColumns<T>(
+  run: (columns: string) => PromiseLike<{ data: T; error: { message: string } | null }>,
+): Promise<{ data: T; error: { message: string } | null }> {
+  const first = await run(BROKER_ACCOUNT_CLIENT_SELECT)
+  if (!first.error || !missingCopySourceColumn(first.error.message)) return first
+  return run(BROKER_ACCOUNT_CLIENT_SELECT_WITHOUT_COPY_SOURCE)
+}

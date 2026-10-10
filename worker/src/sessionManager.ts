@@ -1128,7 +1128,7 @@ export class UserSessionManager {
 
   /**
    * User Disconnect: drop pending auth, stop listener immediately, delete session row.
-   * Configured telegram_channels are kept. This is a local TScopier disconnect:
+   * Configured telegram_channels are kept. This is a local UniCopier disconnect:
    * it does not call Telegram auth.LogOut, so Telegram may still list the old
    * authorization until the user revokes it in Telegram or a future hard-logout
    * flow is designed.
@@ -1220,7 +1220,7 @@ export class UserSessionManager {
 
     if (!workerConfig.runsBacktestHttp) {
       throw new Error(
-        'Telegram listener is not connected. Link Telegram on Copier Engine, wait a few seconds, then refresh.',
+        'Telegram listener is not connected. Link Telegram on Copier Process, wait a few seconds, then refresh.',
       )
     }
     return this.withEphemeralTelegram(userId, () =>
@@ -1340,7 +1340,7 @@ export class UserSessionManager {
     }
     console.error(
       `[sessionManager] failed to restart listener after backtest user=${userId}`
-      + ' — open Copier Engine and use Reconnect Telegram',
+      + ' — open Copier Process and use Reconnect Telegram',
     )
   }
 

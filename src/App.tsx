@@ -26,6 +26,18 @@ const AppPricingPage = lazy(() =>
 const AccountConfigPage = lazy(() =>
   import('./pages/dashboard/AccountConfigPage').then(m => ({ default: m.AccountConfigPage })),
 )
+const ConfigurationsPage = lazy(() =>
+  import('./pages/dashboard/ConfigurationsPage').then(m => ({ default: m.ConfigurationsPage })),
+)
+const MirrorTradingPage = lazy(() =>
+  import('./pages/dashboard/MirrorTradingPage').then(m => ({ default: m.MirrorTradingPage })),
+)
+const SocialTradingPage = lazy(() =>
+  import('./pages/dashboard/SocialTradingPage').then(m => ({ default: m.SocialTradingPage })),
+)
+const SocialTraderActivityPage = lazy(() =>
+  import('./pages/dashboard/SocialTradingPage').then(m => ({ default: m.SocialTraderActivityPage })),
+)
 const CopierEnginePage = lazy(() =>
   import('./pages/dashboard/CopierEnginePage').then(m => ({ default: m.CopierEnginePage })),
 )
@@ -146,6 +158,10 @@ export default function App() {
             <Route element={<AppShell />}>
             <Route path="/dashboard/*" element={<DashboardRouteAnchor />} />
             <Route path="/brokers" element={<LazyPage><AccountConfigPage /></LazyPage>} />
+            <Route path="/mirror-trading" element={<LazyPage><MirrorTradingPage /></LazyPage>} />
+            <Route path="/social-trading/:traderId" element={<LazyPage><SocialTraderActivityPage /></LazyPage>} />
+            <Route path="/social-trading" element={<LazyPage><SocialTradingPage /></LazyPage>} />
+            <Route path="/configurations" element={<LazyPage><ConfigurationsPage /></LazyPage>} />
             <Route path="/account-configuration" element={<Navigate to="/brokers" replace />} />
             <Route path="/account-trades" element={<LazyPage><TradesPage /></LazyPage>} />
             <Route path="/channels" element={<LazyPage><CopierEnginePage /></LazyPage>} />

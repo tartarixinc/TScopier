@@ -11,7 +11,7 @@ import type { BrokerAccount } from '../../types/database'
 type ModalProps = Parameters<typeof BrokerReconnectPasswordModal>[0]
 
 const copy = {
-  title: 'We have updated how TScopier connects to your broker',
+  title: 'We have updated how UniCopier connects to your broker',
   body: 'Reconnect this account to keep copying trades.',
   passwordLabel: 'MT account password',
   passwordHint: 'Sent to MT servers only.',
@@ -87,7 +87,7 @@ afterEach(() => {
 describe('BrokerReconnectPasswordModal — not dismissible (automatic prompt)', () => {
   it('shows the account and the Reconnect button on the details stage', () => {
     render({ dismissible: false })
-    expect(document.body.textContent).toContain('We have updated how TScopier connects to your broker')
+    expect(document.body.textContent).toContain('We have updated how UniCopier connects to your broker')
     expect(document.body.textContent).toContain('Exness Demo')
     expect(document.body.textContent).toContain('436990470')
     expect(document.body.textContent).toContain('Exness-MT5Trial9')
@@ -219,6 +219,58 @@ describe('BrokerReconnectPasswordModal — success stage', () => {
     expect(document.querySelector('[role="status"]')).not.toBeNull()
     buttonByLabel('Next account')?.click()
     expect(onContinue).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('BrokerReconnectPasswordModal — remind later and delete', () => {
+  const escapeCopy = {
+    ...copy,
+    remindLater: 'Remind me later',
+    deleteAccountLink: "I can't reconnect — delete this account",
+    deleteConfirmTitle: 'Delete this account?',
+    deleteConfirmBody: 'This removes the account and its history.',
+    deleteConfirmNote: 'This cannot be undone.',
+    deleteConfirmCta: 'Delete account',
+  }
+
+  it('offers Remind me later exactly once and calls it', () => {
+    const onRemindLater = vi.fn()
+    render({ stage: 'details', copy: escapeCopy, onRemindLater })
+    expect(document.body.textContent?.split('Remind me later').length - 1).toBe(1)
+    buttonByLabel('Remind me later')?.click()
+    expect(onRemindLater).toHaveBeenCalledTimes(1)
+  })
+
+  it('offers the escape hatches once on the password stage and not while connecting', () => {
+    render({ stage: 'password', copy: escapeCopy, onRemindLater: vi.fn(), onDeleteAccount: vi.fn() })
+    expect(document.body.textContent?.split('Remind me later').length - 1).toBe(1)
+    expect(document.body.textContent?.split("I can't reconnect").length - 1).toBe(1)
+    act(() => root?.unmount())
+    container?.remove()
+    document.body.innerHTML = ''
+    root = null
+    container = null
+    render({ stage: 'connecting', copy: escapeCopy, onRemindLater: vi.fn(), onDeleteAccount: vi.fn() })
+    expect(document.body.textContent).not.toContain('Remind me later')
+    expect(document.body.textContent).not.toContain("I can't reconnect")
+  })
+
+  it('deletes only after the confirmation step', () => {
+    const onDeleteAccount = vi.fn()
+    render({ stage: 'details', copy: escapeCopy, onDeleteAccount })
+    // The link alone must not delete anything.
+    act(() => { buttonByLabel("I can't reconnect — delete this account")?.click() })
+    expect(onDeleteAccount).not.toHaveBeenCalled()
+    expect(document.body.textContent).toContain('Delete this account?')
+    expect(document.body.textContent).toContain('This cannot be undone.')
+    // Cancel backs out without deleting.
+    act(() => { buttonByLabel('Cancel')?.click() })
+    expect(onDeleteAccount).not.toHaveBeenCalled()
+    expect(document.body.textContent).not.toContain('Delete this account?')
+    // The red button performs it.
+    act(() => { buttonByLabel("I can't reconnect — delete this account")?.click() })
+    act(() => { buttonByLabel('Delete account')?.click() })
+    expect(onDeleteAccount).toHaveBeenCalledTimes(1)
   })
 })
 

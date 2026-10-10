@@ -6,7 +6,7 @@ export const configureModalPl: ConfigureModalTranslations = {
   saved: 'Zapisano',
   cancel: 'Anulować',
   save: 'Ratować',
-  channelsSidebar: 'Kanały',
+  channelsSidebar: 'Źródło',
   addChannel: 'Dodaj kanał',
   editLinkedChannels: 'Edytuj połączone kanały',
   doneEditingLinkedChannels: 'Zakończ edycję kanałów',
@@ -444,7 +444,7 @@ export const configureModalPl: ConfigureModalTranslations = {
     ruleTriggerTpHit: 'po osiągnięciu TP{index}',
     orderCommentsTitle: 'Komentarze zleceń',
     orderCommentsSubtitle:
-      'Wyłączone: TScopier pozostawia pole komentarza brokera puste dla otwieranych lub odświeżanych transakcji.',
+      'Wyłączone: UniCopier pozostawia pole komentarza brokera puste dla otwieranych lub odświeżanych transakcji.',
   },
   filters: {
     timeTitle: 'Filtr czasu',

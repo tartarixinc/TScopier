@@ -244,7 +244,7 @@ const BrokerServerPickerModal = memo(function BrokerServerPickerModal({
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   placeholder={cf.brokerCompanySearchPlaceholder}
-                  className="w-full rounded-xl border border-neutral-200 bg-neutral-50 py-2.5 ps-9 pe-9 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:border-neutral-800 dark:bg-neutral-800/50 dark:text-neutral-50"
+                  className="w-full rounded-xl border border-neutral-200/65 bg-neutral-50 py-2.5 ps-9 pe-9 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:border-neutral-800/55 dark:bg-neutral-800/50 dark:text-neutral-50"
                 />
                 {searchQuery ? (
                   <button
@@ -469,7 +469,7 @@ export function MtCompanyServerPicker({
             required={required}
             onChange={e => setManualServer(e.target.value)}
             placeholder={cf.brokerServerManualLabel}
-            className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 hover:border-neutral-300 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary-500 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-50"
+            className="w-full rounded-lg border border-neutral-200/65 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 hover:border-neutral-300 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary-500 dark:border-neutral-800/55 dark:bg-neutral-900 dark:text-neutral-50"
           />
           <button
             type="button"
@@ -489,7 +489,7 @@ export function MtCompanyServerPicker({
           onClick={openModal}
           className={clsx(
             'flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-start text-sm transition-colors',
-            'border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900',
+            'border-neutral-200/65 bg-white dark:border-neutral-800/55 dark:bg-neutral-900',
             'hover:border-neutral-300 dark:hover:border-neutral-700',
             'focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary-500',
           )}

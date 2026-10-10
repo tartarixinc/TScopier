@@ -15,14 +15,15 @@ export const landingFr: LandingTranslations = {
     menuClose: 'Fermer le menu',
   },
   hero: {
-    headline: 'Signaux Telegram. Copiés automatiquement.',
+    headline: 'La plateforme de copie n°1 pour',
+    headlinePhrases: ['Signaux Telegram', 'Trading social', 'Miroir de comptes'],
     subheadline:
-      'TScopier est une plateforme tout-en-un de copie de signaux Telegram qui connecte votre Telegram et copie les signaux de trading directement sur MT4/MT5 — sans configuration complexe, sans EA ni VPS.',
+      'Automatisez vos trades depuis Telegram, Discord, TradingView ou un compte maître vers plus de 8 plateformes de courtage en moins de 50 ms. Aucun VPS requis.',
     socialProof: 'Classé n°1 des copieurs de signaux Telegram cloud',
     primaryCta: 'Commencez votre essai gratuit de 5 jours',
     secondaryCta: 'Se connecter',
     imageAlt:
-      'Tableau de bord TScopier avec solde, profit du jour, résultats des trades et graphiques de croissance',
+      'Tableau de bord UniCopier avec solde, profit du jour, résultats des trades et graphiques de croissance',
     previewUrl: 'app.tscopier.ai/dashboard',
     dashboard: {
       headlineStats: [
@@ -112,7 +113,7 @@ export const landingFr: LandingTranslations = {
     ],
     eyebrow: 'Une copie plus intelligente commence par de meilleurs outils',
     title:
-      'Chaque fonction de TScopier est conçue pour vous donner contrôle, clarté et des résultats mesurables.',
+      'Chaque fonction de UniCopier est conçue pour vous donner contrôle, clarté et des résultats mesurables.',
     cards: [
       {
         label: 'Vitesse d’exécution',
@@ -208,14 +209,14 @@ export const landingFr: LandingTranslations = {
         eyebrow: 'Copieur de signaux',
         title: 'Copiez les signaux Telegram vers MT4 et MT5 avec précision',
         description:
-          'Reproduisez vos canaux de confiance sur vos comptes broker. TScopier analyse entrées, TPs, couches de range et instructions de gestion, puis exécute avec vos règles de lot, multi-trade et couches sur chaque compte connecté.',
+          'Reproduisez vos canaux de confiance sur vos comptes broker. UniCopier analyse entrées, TPs, couches de range et instructions de gestion, puis exécute avec vos règles de lot, multi-trade et couches sur chaque compte connecté.',
         visual: 'copier',
       },
       {
         eyebrow: 'Signaux multilingues',
         title: 'Prend en charge les signaux en plusieurs langues',
         description:
-          'Copiez des canaux en anglais, espagnol, français, russe, polonais, japonais et plus encore. TScopier reconnaît achat/vente, SL, TP et les consignes de gestion dans chaque langue, avec entraînement par canal pour le vocabulaire exact de votre fournisseur.',
+          'Copiez des canaux en anglais, espagnol, français, russe, polonais, japonais et plus encore. UniCopier reconnaît achat/vente, SL, TP et les consignes de gestion dans chaque langue, avec entraînement par canal pour le vocabulaire exact de votre fournisseur.',
         visual: 'multilingual',
       },
       {
@@ -229,7 +230,7 @@ export const landingFr: LandingTranslations = {
         eyebrow: 'Messages modifiés',
         title: 'Modification de signal depuis les messages édités',
         description:
-          'Quand un fournisseur modifie un message Telegram pour changer le stop ou les take-profits, TScopier détecte la révision et met à jour votre panier ouvert chez le broker — pas de nouvelles entrées, seulement des SL/TP synchronisés sur chaque jambe.',
+          'Quand un fournisseur modifie un message Telegram pour changer le stop ou les take-profits, UniCopier détecte la révision et met à jour votre panier ouvert chez le broker — pas de nouvelles entrées, seulement des SL/TP synchronisés sur chaque jambe.',
         visual: 'signalEdit',
       },
       {
@@ -259,7 +260,7 @@ export const landingFr: LandingTranslations = {
         telegramLabel: 'Canal de signaux',
         channelName: 'Gold Signals Pro',
         channelMeta: '3 nouveaux signaux · à l’instant',
-        hubLabel: 'TScopier',
+        hubLabel: 'UniCopier',
         mt4Label: 'Compte MT4',
         mt4Meta: 'Copie · règles 0.10 lot',
         mt5Label: 'Compte MT5',
@@ -555,20 +556,20 @@ export const landingFr: LandingTranslations = {
   faq: {
     eyebrow: 'FAQ',
     title: 'Questions fréquentes',
-    subtitle: 'Réponses rapides sur la configuration, la copie et ce qui distingue TScopier.',
+    subtitle: 'Réponses rapides sur la configuration, la copie et ce qui distingue UniCopier.',
     items: [
       {
         question: 'Faut-il installer un EA ou un VPS ?',
         answer:
-          'Non. TScopier est entièrement cloud. Vous vous connectez dans le navigateur, liez Telegram et vos comptes MT4/MT5, et le copieur tourne sur notre infrastructure—sans EA ni VPS à maintenir.',
+          'Non. UniCopier est entièrement cloud. Vous vous connectez dans le navigateur, liez Telegram et vos comptes MT4/MT5, et le copieur tourne sur notre infrastructure—sans EA ni VPS à maintenir.',
       },
       {
-        question: 'TScopier fonctionne-t-il avec les prop firms qui interdisent les EA ?',
+        question: 'UniCopier fonctionne-t-il avec les prop firms qui interdisent les EA ?',
         answer:
-          'Oui. TScopier tourne entièrement dans le cloud—rien n’est installé sur votre terminal MT4/MT5. Vous pouvez copier des signaux sur tout compte prop firm, qu’elle autorise ou non les Expert Advisors.',
+          'Oui. UniCopier tourne entièrement dans le cloud—rien n’est installé sur votre terminal MT4/MT5. Vous pouvez copier des signaux sur tout compte prop firm, qu’elle autorise ou non les Expert Advisors.',
       },
       {
-        question: 'Quelles plateformes TScopier prend-il en charge ?',
+        question: 'Quelles plateformes UniCopier prend-il en charge ?',
         answer:
           'Vous connectez des canaux de signaux Telegram et copiez vers MetaTrader 4 et 5. Liez plusieurs courtiers et routez chaque canal vers les comptes de votre choix.',
       },
@@ -583,9 +584,9 @@ export const landingFr: LandingTranslations = {
           'Jusqu’à 100 connexions MT4/MT5 par utilisateur selon votre forfait. Chaque canal Telegram peut être relié à un ou plusieurs comptes depuis la page Canaux.',
       },
       {
-        question: 'TScopier lit-il mes messages Telegram privés ?',
+        question: 'UniCopier lit-il mes messages Telegram privés ?',
         answer:
-          'TScopier ne lit pas vos conversations personnelles. La connexion Telegram donne seulement accès aux canaux et groupes dont vous êtes membre pour recevoir les signaux que vous ajoutez.',
+          'UniCopier ne lit pas vos conversations personnelles. La connexion Telegram donne seulement accès aux canaux et groupes dont vous êtes membre pour recevoir les signaux que vous ajoutez.',
       },
       {
         question: 'Puis-je tester un canal avant le live ?',
@@ -595,7 +596,7 @@ export const landingFr: LandingTranslations = {
       {
         question: 'Prenez-vous en charge le range, le layering et la gestion ?',
         answer:
-          'Oui. TScopier gère entrées single et range, répartition multi-TP, layering, clôture des pires entrées, break-even, profits partiels et plus, avec filtres autoriser/ignorer par canal.',
+          'Oui. UniCopier gère entrées single et range, répartition multi-TP, layering, clôture des pires entrées, break-even, profits partiels et plus, avec filtres autoriser/ignorer par canal.',
       },
       {
         question: 'Que comprend Basic vs Advanced ?',
@@ -611,11 +612,11 @@ export const landingFr: LandingTranslations = {
   },
   comparison: {
     eyebrow: 'Pourquoi les traders changent',
-    title: 'Passez au niveau supérieur avec TScopier',
+    title: 'Passez au niveau supérieur avec UniCopier',
     subtitle:
       'Copieurs Telegram classiques vs une plateforme cloud conçue pour la vitesse, la clarté et l’échelle.',
     otherLabel: 'Autres copieurs',
-    tscopierLabel: 'TScopier',
+    tscopierLabel: 'UniCopier',
     cta: 'Commencez votre essai gratuit de 5 jours',
     rows: [
       {
@@ -857,6 +858,6 @@ export const landingFr: LandingTranslations = {
     platforms: 'Compatible avec',
     copyright: '© {year} Tartarix Inc. Tous droits réservés.',
     disclaimer:
-      'Le trading comporte des risques. TScopier est un outil de copie — pas un conseil financier.',
+      'Le trading comporte des risques. UniCopier est un outil de copie — pas un conseil financier.',
   },
 }

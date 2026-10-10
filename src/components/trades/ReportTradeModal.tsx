@@ -98,7 +98,7 @@ export function ReportTradeModal({ trade, userId, onClose }: ReportTradeModalPro
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-6" role="dialog" aria-modal="true">
       <button type="button" className="absolute inset-0 bg-neutral-950/55" aria-label={tr.close} onClick={onClose} />
-      <div className="relative w-full sm:max-w-md max-h-[92vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-2xl">
+      <div className="relative w-full sm:max-w-md max-h-[92vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 shadow-2xl">
         <div className="sticky top-0 z-10 flex items-center justify-between gap-3 px-5 py-4 border-b border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900">
           <div className="min-w-0">
             <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50 truncate">{tr.reportTitle}</h2>

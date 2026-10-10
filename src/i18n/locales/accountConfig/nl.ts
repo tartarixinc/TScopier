@@ -46,7 +46,7 @@ export const accountConfigNl: AccountConfigBundleTranslations = {
       passwordHint: '',
       rememberPasswordLabel: 'Wachtwoord onthouden voor automatisch opnieuw verbinden',
       rememberPasswordHint:
-        'Versleutelt je MT-wachtwoord op onze servers zodat TScopier de sessie kan herstellen zonder opnieuw te vragen. Je kunt het op elk moment verwijderen.',
+        'Versleutelt je MT-wachtwoord op onze servers zodat UniCopier de sessie kan herstellen zonder opnieuw te vragen. Je kunt het op elk moment verwijderen.',
       connectButton: 'Account koppelen',
       connectingTitle: 'Je broker koppelen',
       connectingStepLinking: 'Je {platform}-account wordt gekoppeld…',
@@ -113,7 +113,7 @@ export const accountConfigNl: AccountConfigBundleTranslations = {
       accountTypeLive: 'Live',
       accountTypePropFirm: 'Prop firm',
       detailServer: 'Server',
-      detailSignalChannels: 'Signaalkanalen',
+      detailSignalChannels: 'Signaalbron',
       detailBalance: 'Saldo',
       detailEquity: 'Equity',
       channelsNoneSelected: 'Geen geselecteerd',
@@ -157,13 +157,19 @@ export const accountConfigNl: AccountConfigBundleTranslations = {
       reconnectPasswordTitle: 'Brokersessie verlopen',
       reconnectPasswordBody:
         'Je brokersessie is verlopen op de tradeserver. Voer je MT-accountwachtwoord in om opnieuw te verbinden.',
-      reconnectMigrationTitle: 'We hebben de manier waarop TScopier verbinding maakt met je broker bijgewerkt',
+      reconnectMigrationTitle: 'We hebben de manier waarop UniCopier verbinding maakt met je broker bijgewerkt',
       reconnectMigrationBody: 'Koppel dit account opnieuw om trades te blijven kopiëren. Je instellingen, handelsgeschiedenis en open posities blijven hetzelfde.',
       reconnectMigrationPasswordTitle: 'Voer je wachtwoord in om opnieuw te verbinden',
       reconnectMigrationPasswordBody: 'Je accountnummer en server zijn al ingevuld. Het wachtwoord wordt versleuteld opgeslagen en alleen gebruikt om verbinding te maken met je broker.',
       reconnectMigrationBack: 'Terug',
       reconnectManyAccountsHint:
         '{count} accounts moeten opnieuw verbonden worden. Je wordt voor elk account om het wachtwoord gevraagd.',
+      remindLater: 'Herinner me later',
+      deleteAccountLink: 'Ik kan niet opnieuw verbinden — dit account verwijderen',
+      deleteConfirmTitle: 'Dit account verwijderen?',
+      deleteConfirmBody: 'Dit verwijdert het account, de transactiegeschiedenis en de instellingen uit UniCopier. De posities blijven bij je broker. Je kunt het later opnieuw verbinden met een nieuw wachtwoord.',
+      deleteConfirmNote: 'Dit kan niet ongedaan worden gemaakt.',
+      deleteConfirmCta: 'Account verwijderen',
       reconnectConnectingTitle: 'Je account wordt verbonden',
       reconnectConnectingBody:
         'Inloggegevens geaccepteerd. Wachten op de broker-verbinding — dit kan even duren.',
@@ -177,7 +183,7 @@ export const accountConfigNl: AccountConfigBundleTranslations = {
       reconnectPasswordPlaceholder: 'Wachtwoord van tradingaccount',
       rememberPasswordLabel: 'Wachtwoord onthouden voor automatisch opnieuw verbinden',
       rememberPasswordHint:
-        'Slaat een versleutelde kopie op zodat TScopier opnieuw kan verbinden zonder opnieuw te vragen. Je kunt dit wissen in Accountconfiguratie.',
+        'Slaat een versleutelde kopie op zodat UniCopier opnieuw kan verbinden zonder opnieuw te vragen. Je kunt dit wissen in Accountconfiguratie.',
       clearStoredCredentials: 'Opgeslagen wachtwoord vergeten',
       storedCredentialsActive: 'Automatisch opnieuw verbinden ingeschakeld',
       deleteFailed: 'Broker verwijderen mislukt',

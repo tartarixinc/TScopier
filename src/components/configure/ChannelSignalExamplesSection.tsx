@@ -227,7 +227,7 @@ export function ChannelSignalExamplesSection({
               return (
                 <li
                   key={example.id}
-                  className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/50 overflow-hidden"
+                  className="rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900/50 overflow-hidden"
                 >
                   <div className="flex flex-wrap items-center gap-2 border-b border-neutral-100 dark:border-neutral-800 px-3 py-2 bg-neutral-50/80 dark:bg-neutral-800/40">
                     <Badge variant={labelVariant(example.label)} size="sm">

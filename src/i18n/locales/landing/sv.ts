@@ -17,12 +17,12 @@ export const landingSv: LandingTranslations = {
   hero: {
     headline: 'Telegram-signaler. Kopieras automatiskt.',
     subheadline:
-      'TScopier är en allt-i-ett-plattform för Telegram-signalkopiering som kopplar Telegram och kopierar handelssignaler direkt till MT4/MT5 — inga komplicerade inställningar, ingen EA och ingen VPS krävs.',
+      'Automatisera dina affärer från Telegram, Discord, TradingView eller ett masterkonto till 8+ mäklarplattformar på under 50 ms. Ingen VPS krävs.',
     socialProof: 'Rankad #1 molnbaserad Telegram-signalkopierare',
     primaryCta: 'Starta din 5-dagars gratis provperiod',
     secondaryCta: 'Logga in',
     imageAlt:
-      'TScopier instrumentpanel med balans, daglig vinst, handelsresultat och kontotillväxtdiagram',
+      'UniCopier instrumentpanel med balans, daglig vinst, handelsresultat och kontotillväxtdiagram',
     previewUrl: 'app.tscopier.ai/dashboard',
     dashboard: {
       headlineStats: [
@@ -112,7 +112,7 @@ export const landingSv: LandingTranslations = {
     ],
     eyebrow: 'Smartare kopiering börjar med smartare verktyg',
     title:
-      'Varje funktion i TScopier är byggd för att ge dig kontroll, tydlighet och mätbara resultat.',
+      'Varje funktion i UniCopier är byggd för att ge dig kontroll, tydlighet och mätbara resultat.',
     cards: [
       {
         label: 'Utförandehastighet',
@@ -208,14 +208,14 @@ export const landingSv: LandingTranslations = {
         eyebrow: 'Signal kopiator',
         title: 'Kopiera Telegram-signaler till MT4 & MT5 med precision',
         description:
-          'Spegla betrodda kanaler till dina mäklarkonton. TScopier analyserar poster, take-profits, intervallben och hanteringsinstruktioner - körs sedan med dina lotsregler, multi-handelsdelning och intervallskiktning på varje anslutet konto.',
+          'Spegla betrodda kanaler till dina mäklarkonton. UniCopier analyserar poster, take-profits, intervallben och hanteringsinstruktioner - körs sedan med dina lotsregler, multi-handelsdelning och intervallskiktning på varje anslutet konto.',
         visual: 'copier',
       },
       {
         eyebrow: 'Flerspråkiga signaler',
         title: 'Stödjer signaler på flera språk',
         description:
-          'Kopiera kanaler som publicerar på engelska, spanska, franska, ryska, polska, japanska med mera. TScopier känner igen köp/sälj, SL, TP och managementfraser på varje språk, plus per-kanalträning för din leverantörs exakta formuleringar.',
+          'Kopiera kanaler som publicerar på engelska, spanska, franska, ryska, polska, japanska med mera. UniCopier känner igen köp/sälj, SL, TP och managementfraser på varje språk, plus per-kanalträning för din leverantörs exakta formuleringar.',
         visual: 'multilingual',
       },
       {
@@ -229,7 +229,7 @@ export const landingSv: LandingTranslations = {
         eyebrow: 'Meddelanderedigeringar',
         title: 'Signalmodifiering från redigerade meddelanden',
         description:
-          'När en leverantör redigerar ett Telegram-meddelande för att ändra stop loss- eller take-profit-nivåer, plockar TScopier upp revisionen och uppdaterar din öppna korg på mäklaren – inga nya poster, bara synkroniserad SL/TP över varje ben.',
+          'När en leverantör redigerar ett Telegram-meddelande för att ändra stop loss- eller take-profit-nivåer, plockar UniCopier upp revisionen och uppdaterar din öppna korg på mäklaren – inga nya poster, bara synkroniserad SL/TP över varje ben.',
         visual: 'signalEdit',
       },
       {
@@ -259,7 +259,7 @@ export const landingSv: LandingTranslations = {
         telegramLabel: 'Signalkanal',
         channelName: 'Gold Signals Pro',
         channelMeta: '3 nya signaler Â· just nu',
-        hubLabel: 'TScopier',
+        hubLabel: 'UniCopier',
         mt4Label: 'MT4 konto',
         mt4Meta: 'Kopiering · 0,10 lotsregler',
         mt5Label: 'MT5 konto',
@@ -555,20 +555,20 @@ export const landingSv: LandingTranslations = {
   faq: {
     eyebrow: 'FAQ',
     title: 'Vanliga frågor',
-    subtitle: 'Snabba svar om installation, kopiering och vad som gör TScopier annorlunda.',
+    subtitle: 'Snabba svar om installation, kopiering och vad som gör UniCopier annorlunda.',
     items: [
       {
         question: 'Behöver jag ladda ner en EA eller köra en VPS?',
         answer:
-          'Nej. TScopier är helt molnbaserad. Du loggar in från din webbläsare, ansluter Telegram och dina MT4/MT5 konton, och kopiatorn körs på vår infrastruktur – ingen expertrådgivare eller VPS att underhålla.',
+          'Nej. UniCopier är helt molnbaserad. Du loggar in från din webbläsare, ansluter Telegram och dina MT4/MT5 konton, och kopiatorn körs på vår infrastruktur – ingen expertrådgivare eller VPS att underhålla.',
       },
       {
-        question: 'Fungerar TScopier med prop firms som förbjuder EA?',
+        question: 'Fungerar UniCopier med prop firms som förbjuder EA?',
         answer:
-          'Ja. TScopier körs helt i molnet—inget installeras på din MT4/MT5-terminal. Du kan kopiera signaler till vilket prop-firmkonto som helst, oavsett om de tillåter Expert Advisors eller inte.',
+          'Ja. UniCopier körs helt i molnet—inget installeras på din MT4/MT5-terminal. Du kan kopiera signaler till vilket prop-firmkonto som helst, oavsett om de tillåter Expert Advisors eller inte.',
       },
       {
-        question: 'Vilka plattformar stöder TScopier?',
+        question: 'Vilka plattformar stöder UniCopier?',
         answer:
           'Du ansluter Telegram signalkanaler och kopierar till MetaTrader 4- och MetaTrader 5-konton. Länka flera mäklare och dirigera varje kanal till de konton du väljer.',
       },
@@ -583,9 +583,9 @@ export const landingSv: LandingTranslations = {
           'Du kan länka upp till 100 MT4/MT5 anslutningar per användare, beroende på din plan. Varje Telegram kanal kan kopplas till ett eller flera mäklarkonton från sidan Kanaler.',
       },
       {
-        question: 'Läser TScopier mina privata Telegram-meddelanden?',
+        question: 'Läser UniCopier mina privata Telegram-meddelanden?',
         answer:
-          'TScopier läser inte dina personliga chattar. Att ansluta Telegram ger endast åtkomst till kanaler och grupper du är medlem i så att kopiatorn kan ta emot signalmeddelanden från källor du lägger till.',
+          'UniCopier läser inte dina personliga chattar. Att ansluta Telegram ger endast åtkomst till kanaler och grupper du är medlem i så att kopiatorn kan ta emot signalmeddelanden från källor du lägger till.',
       },
       {
         question: 'Kan jag testa en kanal innan jag går live?',
@@ -595,7 +595,7 @@ export const landingSv: LandingTranslations = {
       {
         question: 'Stöder du sortimentsaffärer, skiktning och ledningssignaler?',
         answer:
-          'Ja. TScopier hanterar enkel- och intervallposter, multi-TP-lotdelning, skiktning, nära-värre-poster, break-even-drag, partiella vinster och andra hanteringsinstruktioner - med tillåt/ignorera filter per kanal.',
+          'Ja. UniCopier hanterar enkel- och intervallposter, multi-TP-lotdelning, skiktning, nära-värre-poster, break-even-drag, partiella vinster och andra hanteringsinstruktioner - med tillåt/ignorera filter per kanal.',
       },
       {
         question: 'Vad ingår i Basic vs Advanced?',
@@ -611,10 +611,10 @@ export const landingSv: LandingTranslations = {
   },
   comparison: {
     eyebrow: 'Varför handlare byter',
-    title: 'Gå upp i nivå med TScopier',
+    title: 'Gå upp i nivå med UniCopier',
     subtitle: 'Typiska Telegram kopiatorer kontra en molnplattform byggd för hastighet, tydlighet och skala.',
     otherLabel: 'Andra kopiatorer',
-    tscopierLabel: 'TScopier',
+    tscopierLabel: 'UniCopier',
     cta: 'Starta din 5-dagars gratis provperiod',
     rows: [
       {
@@ -855,6 +855,6 @@ export const landingSv: LandingTranslations = {
     platforms: 'Fungerar med',
     copyright: '© {year} Tartarix Inc. Med ensamrätt.',
     disclaimer:
-      'Handel innebär risk. TScopier är ett kopieringsverktyg â inte finansiell rådgivning.',
+      'Handel innebär risk. UniCopier är ett kopieringsverktyg â inte finansiell rådgivning.',
   },
 }

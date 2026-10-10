@@ -5,12 +5,12 @@ export { ContactSupportPage } from './ContactSupportPage'
 
 export function FeatureRequestPage() {
   const t = useT()
-  return <PlaceholderPage title={t.pages.featureRequest.title} description={t.pages.featureRequest.description} />
+  return <PlaceholderPage title={t.pages.featureRequest.title} />
 }
 
 export function PartnerWithUsPage() {
   const t = useT()
-  return <PlaceholderPage title={t.pages.partnerWithUs.title} description={t.pages.partnerWithUs.description} />
+  return <PlaceholderPage title={t.pages.partnerWithUs.title} />
 }
 
 export { AffiliateProgramPage } from './AffiliateProgramPage'
@@ -19,5 +19,5 @@ export { BillingPage } from './BillingPage'
 
 export function SubscriptionsPage() {
   const t = useT()
-  return <PlaceholderPage title={t.pages.subscriptions.title} description={t.pages.subscriptions.description} />
+  return <PlaceholderPage title={t.pages.subscriptions.title} />
 }

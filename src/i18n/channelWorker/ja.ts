@@ -182,7 +182,7 @@ export const channelWorkerJa: ChannelWorkerTranslations = {
     channel_filter_ignored:
       'このチャネル指示は Configure Trading で Ignore に設定されています',
     telegram_listener_not_live:
-      'Telegram listener が未接続です — Copier Engine を開いて Telegram を再接続してください',
+      'Telegram listener が未接続です — Copier Process を開いて Telegram を再接続してください',
     explicit_stops_required_when_add_to_existing_off:
       'このチャネルは single-slot モードです（Add to Existing Trades がオフ）。新規エントリーには TP/SL パラメータが必要です',
     entry_requires_imperative_or_labeled_stops:

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="supabase-anon-key" content="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN4a3Bjb3ZieWFmaWN2dGtwc2RvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5ODY2MDgsImV4cCI6MjA5MzU2MjYwOH0.TPoI1CDwyA8MFuBnbGH757flhCgGCUS1mR8ejEhOtoU">
-  <title>Email Preferences - TScopier</title>
+  <title>Email Preferences - UniCopier</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -81,7 +81,7 @@
 </head>
 <body>
   <div class="logo">
-    <img src="https://sso.tscopier.ai/storage/v1/object/public/email-assets/tscopierlogo-dark.png" alt="TScopier" />
+    <img src="/unicopier_light.png" alt="UniCopier" />
   </div>
 
   <div id="view-loading" class="card">
@@ -97,12 +97,12 @@
       </svg>
     </div>
     <h1>Unsubscribe from emails?</h1>
-    <p class="subtitle">You'll stop receiving subscription reminders and campaign emails from TScopier. Transactional emails (password resets, security alerts) will still be delivered.</p>
+    <p class="subtitle">You'll stop receiving subscription reminders and campaign emails from UniCopier. Transactional emails (password resets, security alerts) will still be delivered.</p>
     <div class="reason-group">
       <span class="reason-label">Help us improve (optional)</span>
       <label class="reason-option"><input type="radio" name="reason" value="too_frequent" /><span>Too many emails</span></label>
       <label class="reason-option"><input type="radio" name="reason" value="not_relevant" /><span>Not relevant to me</span></label>
-      <label class="reason-option"><input type="radio" name="reason" value="no_longer_use" /><span>I no longer use TScopier</span></label>
+      <label class="reason-option"><input type="radio" name="reason" value="no_longer_use" /><span>I no longer use UniCopier</span></label>
       <label class="reason-option"><input type="radio" name="reason" value="other" /><span>Other reason</span></label>
     </div>
     <button id="btn-unsub" type="button" class="btn btn-primary">Unsubscribe me</button>
@@ -116,7 +116,7 @@
       </svg>
     </div>
     <h1 id="success-title">You've been unsubscribed</h1>
-    <p class="subtitle" id="success-sub">You won't receive any more campaign emails from TScopier.</p>
+    <p class="subtitle" id="success-sub">You won't receive any more campaign emails from UniCopier.</p>
     <div class="divider"></div>
     <p class="note">Changed your mind? You can re-enable emails anytime from your <a href="https://app.tscopier.ai/settings">account settings</a>.</p>
   </div>
@@ -161,7 +161,7 @@
         if (statusParam === 'already') {
           document.getElementById('success-title').textContent = 'Already unsubscribed'
           document.getElementById('success-sub').textContent =
-            "You're already unsubscribed from TScopier campaign emails. No further action is needed."
+            "You're already unsubscribed from UniCopier campaign emails. No further action is needed."
         }
         show('view-success')
         return
@@ -203,7 +203,7 @@
           if (res.d.already_unsubscribed) {
             document.getElementById('success-title').textContent = 'Already unsubscribed'
             document.getElementById('success-sub').textContent =
-              "You're already unsubscribed from TScopier campaign emails. No further action is needed."
+              "You're already unsubscribed from UniCopier campaign emails. No further action is needed."
             show('view-success')
             return
           }

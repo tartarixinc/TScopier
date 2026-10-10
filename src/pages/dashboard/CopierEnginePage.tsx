@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import clsx from 'clsx'
 import { Radio, Trash2, RefreshCw, CircleAlert as AlertCircle, ChevronDown, Plus, X } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
@@ -38,6 +38,9 @@ import { PageShell } from '../../components/layout/PageShell'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { TelegramConnectFlow, type TelegramConnectStage, type TelegramAuthMethod } from '../../components/telegram/TelegramConnectFlow'
+import { TradingViewSourcePanel } from '../../components/dashboard/TradingViewSourcePanel'
+import { DiscordSourcePanel } from '../../components/dashboard/DiscordSourcePanel'
+import { WhatsAppSourcePanel } from '../../components/dashboard/WhatsAppSourcePanel'
 import { callTelegramAuth, resolveResendAvailableAt, resolveTelegramAuthErrorMessage, type QrPollResponse, type TelegramCodeStatusResponse } from '../../lib/telegramAuthApi'
 import {
   getCachedTgChannels,
@@ -118,6 +121,10 @@ export function CopierEnginePage() {
   const channelLinkDefaultFilters = defaultChannelFiltersForPlan(keywordFiltersEnabled)
   const pw = t.pricing.paywall
   const [channels, setChannels] = useState<TelegramChannel[]>([])
+  const [searchParams] = useSearchParams()
+  const [source, setSource] = useState<'telegram' | 'discord' | 'tradingview' | 'whatsapp'>(
+    searchParams.get('guild_id') ? 'discord' : 'telegram',
+  )
   const [connectMenuChannelId, setConnectMenuChannelId] = useState<string | null>(null)
   const [connectingBrokerId, setConnectingBrokerId] = useState<string | null>(null)
   const [connectingAllChannelId, setConnectingAllChannelId] = useState<string | null>(null)
@@ -241,14 +248,15 @@ export function CopierEnginePage() {
       supabase.from('telegram_channels').select('*').eq('user_id', user!.id).order('created_at', { ascending: false }),
       supabase.from('telegram_sessions').select('id').eq('user_id', user!.id).maybeSingle(),
     ])
-    const channelRows = (channelsRes.data ?? []) as TelegramChannel[]
+    const allChannelRows = (channelsRes.data ?? []) as TelegramChannel[]
+    const channelRows = allChannelRows.filter(row => !row.source_kind || row.source_kind === 'telegram')
     const tgList = user?.id ? getCachedTgChannels(user.id) : null
     const reconciledChannels = tgList?.length
       ? await reconcileChannelIdentitiesFromTelegram(supabase, user!.id, channelRows, tgList)
       : channelRows
     setChannels(reconciledChannels)
     const brokerRows = await refreshBrokers({ silent: true })
-    const reconciled = await pruneStaleBrokerChannelIds(supabase, user!.id, reconciledChannels, brokerRows)
+    const reconciled = await pruneStaleBrokerChannelIds(supabase, user!.id, allChannelRows, brokerRows)
     setBrokers(reconciled)
     const hasSession = !!sessionRes.data
     setHasTgSession(hasSession)
@@ -886,9 +894,8 @@ export function CopierEnginePage() {
     <PageShell maxWidth="lg" spacing="none" className="space-y-6">
       <PageHeader
         title={t.pages.copierEngine.title}
-        subtitle={t.pages.copierEngine.description}
         actions={
-          hasTgSession ? (
+          source === 'telegram' && hasTgSession ? (
             <Button variant="secondary" size="sm" onClick={() => void fetchTgChannels({ force: true })} loading={loadingTg}>
               <RefreshCw className="w-3.5 h-3.5" />
               {t.common.refresh}
@@ -896,6 +903,34 @@ export function CopierEnginePage() {
           ) : undefined
         }
       />
+
+      <nav className="flex gap-6 overflow-x-auto border-b border-neutral-200 dark:border-neutral-800" aria-label={t.pages.copierEngine.title}>
+        <SourceTab active={source === 'telegram'} onClick={() => setSource('telegram')}>
+          <img src="/Telegram.svg" alt="" aria-hidden className="h-4 w-4 shrink-0 object-contain" />
+          {t.channelsPage.tabTelegram}
+        </SourceTab>
+        <SourceTab active={source === 'discord'} onClick={() => setSource('discord')}>
+          <img src="/discord-logo.png" alt="" aria-hidden className="h-4 w-4 shrink-0 rounded-full object-cover" />
+          {t.channelsPage.tabDiscord}
+        </SourceTab>
+        <SourceTab active={source === 'whatsapp'} onClick={() => setSource('whatsapp')}>
+          <img src="/whatsapp-icon.png" alt="" aria-hidden className="h-4 w-4 shrink-0 rounded-full object-cover" />
+          {t.channelsPage.tabWhatsApp}
+        </SourceTab>
+        <SourceTab active={source === 'tradingview'} onClick={() => setSource('tradingview')}>
+          <img src="/tradingview-logo.png" alt="" aria-hidden className="h-4 w-4 shrink-0 rounded-full object-cover" />
+          {t.channelsPage.tabTradingView}
+        </SourceTab>
+      </nav>
+
+      {source === 'tradingview' ? (
+        <TradingViewSourcePanel brokers={brokers} replaceBroker={replaceBroker} />
+      ) : source === 'discord' ? (
+        <DiscordSourcePanel brokers={brokers} replaceBroker={replaceBroker} />
+      ) : source === 'whatsapp' ? (
+        <WhatsAppSourcePanel brokers={brokers} replaceBroker={replaceBroker} />
+      ) : (
+      <>
 
       {showListenerLeaseWarning && (
         <div className="mb-3 px-4 py-3 bg-warning-50 dark:bg-amber-950/40 border border-warning-200 dark:border-amber-800 rounded-xl text-sm text-warning-800 dark:text-amber-100 flex flex-col sm:flex-row sm:items-center gap-2 sm:justify-between">
@@ -1079,7 +1114,7 @@ export function CopierEnginePage() {
                       onClick={() => addFromTg(ch)}
                       className={`px-3 py-1 text-xs font-medium rounded-lg border transition-colors flex-shrink-0 ${
                         alreadyAdded
-                          ? 'border-neutral-200 dark:border-neutral-800 text-neutral-400 cursor-default'
+                          ? 'border-neutral-200/65 dark:border-neutral-800/55 text-neutral-400 cursor-default'
                           : 'border-primary-500 text-primary-600 hover:bg-primary-50'
                       }`}
                       disabled={alreadyAdded}
@@ -1097,10 +1132,10 @@ export function CopierEnginePage() {
       {/* Channel list */}
       {loading ? (
         <div className="space-y-2">
-          {[...Array(3)].map((_, i) => <div key={i} className="h-14 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-100 dark:border-neutral-800 animate-pulse" />)}
+          {[...Array(3)].map((_, i) => <div key={i} className="h-14 bg-white dark:bg-neutral-950 rounded-xl border border-neutral-100 dark:border-neutral-800 animate-pulse" />)}
         </div>
       ) : channels.length === 0 ? (
-        <div className="bg-white dark:bg-neutral-900 rounded-xl border border-dashed border-neutral-200 dark:border-neutral-800 py-10 text-center">
+        <div className="bg-white dark:bg-neutral-950 rounded-xl border border-dashed border-neutral-200/65 dark:border-neutral-800/55 py-10 text-center">
           <Radio className="w-8 h-8 mx-auto mb-2 text-neutral-200" />
           <p className="text-sm font-medium text-neutral-400">{ce.configuredEmptyTitle}</p>
           <p className="text-xs text-neutral-300 mt-0.5 max-w-sm mx-auto">
@@ -1139,7 +1174,34 @@ export function CopierEnginePage() {
           </div>
         </Card>
       )}
+      </>
+      )}
     </PageShell>
+  )
+}
+
+function SourceTab({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={clsx(
+        '-mb-px inline-flex shrink-0 items-center gap-2 border-b-2 pb-3 text-sm font-medium',
+        active
+          ? 'border-neutral-900 text-neutral-900 dark:border-neutral-50 dark:text-neutral-50'
+          : 'border-transparent text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200',
+      )}
+    >
+      {children}
+    </button>
   )
 }
 

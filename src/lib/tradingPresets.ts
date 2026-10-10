@@ -118,7 +118,7 @@ export function presetToChannelConfigDraft(preset: ChannelTradingPreset): Channe
   }
 }
 
-/** Portable TScopier preset backup (JSON). Extension: .tscp */
+/** Portable UniCopier preset backup (JSON). Extension: .tscp */
 export const TSCOPIER_PRESETS_FORMAT = 'tscopier-presets' as const
 export const TSCOPIER_PRESETS_VERSION = 1 as const
 export const TSCOPIER_PRESETS_EXTENSION = '.tscp'

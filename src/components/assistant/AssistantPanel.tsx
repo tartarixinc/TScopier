@@ -611,7 +611,7 @@ export function AssistantPanel() {
           'dark:border-neutral-800 dark:bg-neutral-950',
         )}
       >
-        <header className="flex items-center gap-2 border-b border-neutral-200 px-4 py-3 dark:border-neutral-800">
+        <header className="flex items-center gap-2 border-b border-neutral-200/65 px-4 py-3 dark:border-neutral-800/55">
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-teal-50 text-teal-700 dark:bg-teal-950/50 dark:text-teal-300">
             <Sparkles className="h-4 w-4" />
           </div>
@@ -638,7 +638,7 @@ export function AssistantPanel() {
               <div
                 role="menu"
                 aria-label={a.historyTitle}
-                className="absolute right-0 top-10 z-50 w-72 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-xl dark:border-neutral-800 dark:bg-neutral-950"
+                className="absolute right-0 top-10 z-50 w-72 overflow-hidden rounded-xl border border-neutral-200/65 bg-white shadow-xl dark:border-neutral-800/55 dark:bg-neutral-950"
               >
                 <div className="flex items-center justify-between border-b border-neutral-100 px-3 py-2 dark:border-neutral-800">
                   <span className="text-xs font-semibold text-neutral-900 dark:text-neutral-100">
@@ -904,7 +904,7 @@ export function AssistantPanel() {
           <p className="px-4 pb-2 text-xs text-red-600 dark:text-red-400">{error}</p>
         ) : null}
 
-        <footer className="border-t border-neutral-200 p-3 dark:border-neutral-800">
+        <footer className="border-t border-neutral-200/65 p-3 dark:border-neutral-800/55">
           {draftImages.length > 0 ? (
             <div className="mb-2 flex flex-wrap gap-2">
               {draftImages.map((src, idx) => (

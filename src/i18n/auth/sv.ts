@@ -14,10 +14,10 @@ export const authSv: AuthTranslations = {
     captchaRequired: 'Slutför säkerhetskontrollen innan du fortsätter.',
   },
   login: {
-    heading: 'Logga in på TScopier',
+    heading: 'Logga in på UniCopier',
     noAccount: 'Har du inget konto?',
     signUpLink: 'Registrera dig',
-    footerPrompt: 'Ny på TScopier?',
+    footerPrompt: 'Ny på UniCopier?',
     footerLink: 'Skapa ett gratis konto',
     email: 'E-post',
     emailPlaceholder: 'du@exempel.se',
@@ -42,7 +42,7 @@ export const authSv: AuthTranslations = {
   },
   resetPassword: {
     heading: 'Ange ett nytt lösenord',
-    subtitle: 'Välj ett starkt lösenord för ditt TScopier-konto.',
+    subtitle: 'Välj ett starkt lösenord för ditt UniCopier-konto.',
     verifyingHeading: 'Verifierar din återställningslänk…',
     verifyingSubtitle: 'Vänta medan vi validerar din länk på ett säkert sätt.',
     securityNote: 'Efter uppdateringen loggas du ut överallt. Logga in igen med ditt nya lösenord.',
@@ -102,14 +102,14 @@ export const authSv: AuthTranslations = {
     backToLogin: 'Tillbaka till inloggning',
   },
   welcome: {
-    title: 'Välkommen till TScopier',
+    title: 'Välkommen till UniCopier',
     subtitle: 'Ditt konto är klart. Anslut Telegram och börja kopiera signaler till din mäklare.',
     steps: [
       'Anslut Telegram och välj signalkanaler',
       'Länka ditt MT4/MT5-mäklarkonto',
       'Kopiera affärer automatiskt med dina riskinställningar',
     ],
-    startUsing: 'Börja använda TScopier',
+    startUsing: 'Börja använda UniCopier',
     exploreDashboard: 'Utforska instrumentpanelen först',
     errorFallback: 'Kunde inte fortsätta. Försök igen.',
   },

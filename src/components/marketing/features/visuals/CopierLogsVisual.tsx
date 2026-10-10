@@ -29,7 +29,7 @@ export function CopierLogsVisual() {
 
   return (
     <div className="flex h-full min-h-[300px] items-center justify-center p-3 sm:p-4">
-      <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
+      <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-neutral-200/65 bg-white dark:border-neutral-800/55 dark:bg-neutral-900">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100 px-4 py-3 dark:border-neutral-800 sm:px-5 sm:py-4">
           <div className="flex items-center gap-2">
             <Clock className="h-4 w-4 shrink-0 text-teal-500" aria-hidden />
