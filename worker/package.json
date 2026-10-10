@@ -29,6 +29,7 @@
     "@types/ws": "^8.18.1",
     "@whiskeysockets/baileys": "^6.7.22",
     "big-integer": "^1.6.52",
+    "discord.js": "^14.27.0",
     "dotenv": "^16.4.5",
     "telegram": "^2.26.0",
     "undici": "^6.25.0",
