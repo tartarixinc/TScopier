@@ -10,6 +10,7 @@ import {
   loadOpenTradesForChannel,
   loadParentSignalSymbol,
   modificationTargetsOpenTrade,
+  isSymbolLessCloseIntent,
   resolveModificationParentSymbol,
   MODIFICATION_NO_OPEN_TRADE_REASON,
   MODIFICATION_PARENT_SYMBOL_CONFLICT_REASON,
@@ -252,6 +253,13 @@ async function groundModificationResult(args: {
   if (openTrades.length === 0) {
     return groundingSkipResult(args.rawMessage, MODIFICATION_NO_OPEN_TRADE_REASON, grounded.source)
   }
+
+  // A global close-all ("close all trades") carries no symbol by design — it
+  // targets every open trade in the channel. The symbol-match below would always
+  // reject it, so ground it straight to the open-trade list and let it through.
+  // Requires an explicit "close all/everything" cue; a bare symbol-less close
+  // still falls through to the skip path (it may be an ambiguous modification).
+  if (isSymbolLessCloseIntent(grounded.intent, args.rawMessage)) return null
 
   if (modificationTargetsOpenTrade(grounded.intent, openTrades)) return null
 

@@ -203,7 +203,14 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
       }
     }
     const refPx = Number(args.price) || 0
-    if (refPx > 0) {
+    const plannedSlForSide = Number(args.stoploss) || 0
+    // A stop on the wrong side of the live price cannot be applied by any broker.
+    // Do not move it (no re-anchor) and do not open naked — reject the copy below
+    // with an "Invalid stops" failure.
+    const wrongSideSl = refPx > 0
+      && plannedSlForSide > 0
+      && (isBuyLeg ? plannedSlForSide >= refPx : plannedSlForSide <= refPx)
+    if (refPx > 0 && !wrongSideSl) {
       const stripped = stripInvalidStopsForSide({
         stoploss: Number(args.stoploss) || 0,
         takeprofit: Number(args.takeprofit) || 0,
@@ -252,6 +259,13 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
 
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
+        // Reject a copy whose signal stop sits on the wrong side of the live price:
+        // no broker can apply it, and we will not move the stop or open naked.
+        if (wrongSideSl) {
+          throw new Error(
+            `Invalid stops: signal stop loss ${plannedSlForSide} is on the wrong side of the live price ${refPx} for ${args.operation}`,
+          )
+        }
         const attemptNo = attempt + 1
         correlation = buildPipelineCorrelation({
           userId: signal.user_id,
@@ -376,7 +390,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
           sendArgs.symbol,
         )
         const hasStops = (Number(sendArgs.stoploss) || 0) > 0 || (Number(sendArgs.takeprofit) || 0) > 0
-        if (attempt === 0 && isInvalidStopsError(lastAttemptError) && hasStops) {
+        if (attempt === 0 && isInvalidStopsError(lastAttemptError) && hasStops && !wrongSideSl) {
           console.warn(
             `[tradeExecutor] retry without stops signal=${signal.id} broker=${broker.id} leg=${leg.idx + 1}/${totalCount}`
             + ` reason="${lastAttemptError}" (sl=${sendArgs.stoploss} tp=${sendArgs.takeprofit})`,

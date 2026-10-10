@@ -42,6 +42,11 @@ const JOB_BATCH_LIMIT = Math.min(
   Math.max(5, Number(process.env.BASKET_RECONCILE_SWEEP_BATCH ?? 50)),
 )
 const HOST_ID = `worker-${process.pid}`
+/** A reconcile job where every leg is unfixable gives up after this many ticks. */
+const RECONCILE_NO_PROGRESS_MAX = (() => {
+  const n = Number(process.env.BASKET_RECONCILE_NO_PROGRESS_MAX ?? 3)
+  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 3
+})()
 
 function reconcileTargetsHaveSl(
   targets: Array<{ stoploss?: number; takeprofit?: number }>,
@@ -514,12 +519,23 @@ export class BasketSlTpReconcileMonitor {
       return
     }
 
-    if (row.attempts >= row.max_attempts) {
+    // Every leg is unfixable and nothing was modified — e.g. an SL the broker
+    // keeps rejecting (wrong side of the live market). Give up early with a clear
+    // reason instead of grinding through max_attempts, one "broker SL still
+    // drifted" error per minute. Transient failures (some legs just failed) keep
+    // the full max_attempts budget.
+    const permanentlyUnresolvable = summary.skippedUnfixable > 0 && summary.modified === 0
+    const exhausted = row.attempts >= row.max_attempts
+      || (permanentlyUnresolvable && row.attempts >= RECONCILE_NO_PROGRESS_MAX)
+
+    if (exhausted) {
       await this.supabase
         .from('basket_reconcile_jobs')
         .update({
           status: 'failed',
-          last_error: partialMsg,
+          last_error: permanentlyUnresolvable && !(row.attempts >= row.max_attempts)
+            ? `unresolvable (${row.attempts} ticks, no change): ${partialMsg}`
+            : partialMsg,
           locked_at: null,
           locked_by: null,
           updated_at: new Date().toISOString(),

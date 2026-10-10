@@ -2,6 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   modificationTargetsOpenTrade,
+  isSymbolLessCloseIntent,
   resolveModificationParentSymbol,
 } from './signalModificationGrounding'
 
@@ -54,8 +55,30 @@ describe('modificationTargetsOpenTrade', () => {
   })
 })
 
-describe('resolveModificationParentSymbol', () => {
-  it('no parent → no enforcement', () => {
+describe('isSymbolLessCloseIntent', () => {
+  it('is true for a symbol-less close with a close-all cue', () => {
+    assert.equal(isSymbolLessCloseIntent({ kind: 'close', symbol: null }, 'Close all trades'), true)
+    assert.equal(isSymbolLessCloseIntent({ kind: 'close', symbol: '  ' }, 'close everything'), true)
+    assert.equal(isSymbolLessCloseIntent({ kind: 'close', symbol: null }, 'CLOSE ALL POSITIONS'), true)
+  })
+
+  it('is false for a bare symbol-less close without a cue', () => {
+    assert.equal(isSymbolLessCloseIntent({ kind: 'close', symbol: null }, 'close now'), false)
+    assert.equal(isSymbolLessCloseIntent({ kind: 'close', symbol: null }, 'close it'), false)
+  })
+
+  it('is false for a close with a symbol', () => {
+    assert.equal(isSymbolLessCloseIntent({ kind: 'close', symbol: 'XAUUSD' }, 'close all'), false)
+  })
+
+  it('is false for a symbol-less non-close modification', () => {
+    assert.equal(isSymbolLessCloseIntent({ kind: 'modify', symbol: null }, 'close all trades'), false)
+    assert.equal(isSymbolLessCloseIntent({ kind: 'partial_close', symbol: null }, 'close all trades'), false)
+    assert.equal(isSymbolLessCloseIntent({ kind: 'breakeven', symbol: null }, 'close all trades'), false)
+  })
+})
+
+describe('resolveModificationParentSymbol', () => {  it('no parent → no enforcement', () => {
     assert.deepEqual(resolveModificationParentSymbol({ parentSymbol: null, modelSymbol: 'EURUSD' }), { kind: 'no_parent' })
   })
 

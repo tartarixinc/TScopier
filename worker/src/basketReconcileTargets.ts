@@ -248,6 +248,20 @@ export async function resolveFreshBasketReconcileTargets(
   }
 }
 
+/**
+ * A stop target on the wrong side of the leg's own entry is structurally
+ * un-applicable — no broker can set it (this is a stale level from a signal
+ * priced off a different market). Chasing it would loop the reconcile job
+ * forever, so the drift checks ignore it (the take-profit is still compared).
+ */
+function slStructurallyUnapplicable(targetSl: number, leg: BasketOpenLeg): boolean {
+  const entry = Number(leg.entry_price)
+  const sl = Number(targetSl)
+  if (!(entry > 0) || !(sl > 0)) return false
+  const isBuy = String(leg.direction ?? '').toLowerCase().includes('buy')
+  return isBuy ? sl >= entry : sl <= entry
+}
+
 /** True when any open leg's DB SL/TP differs from freshly resolved targets. */
 export function basketLegsOutOfSync(
   familyTrades: BasketOpenLeg[],
@@ -288,6 +302,11 @@ export function basketLegsOutOfSync(
       ) {
         compareTarget = { ...target, stoploss: effectiveSl }
       }
+    }
+    // A stop on the wrong side of this leg's entry can never be applied; do not
+    // report it as drift (the take-profit is still checked).
+    if (slStructurallyUnapplicable(target.stoploss, familyTrades[i]!)) {
+      compareTarget = { ...compareTarget, stoploss: 0 }
     }
     if (tpFrozen) {
       const legSl = Number(familyTrades[i]!.sl)
@@ -339,6 +358,7 @@ export function basketLegsOutOfSyncOnBroker(
   for (let i = 0; i < familyTrades.length; i++) {
     const target = expanded[i]
     if (!target || !(target.stoploss > 0)) continue
+    if (slStructurallyUnapplicable(target.stoploss, familyTrades[i]!)) continue
     const ticket = Number(familyTrades[i]!.metaapi_order_id)
     if (!Number.isFinite(ticket) || ticket <= 0) continue
     const raw = ordersByTicket.get(ticket)

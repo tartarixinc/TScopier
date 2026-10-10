@@ -70,6 +70,21 @@ describe('basketLegsOutOfSync', () => {
     ]
     assert.equal(basketLegsOutOfSync(family, alignedSl, 0, { tpFrozen: true }), false)
   })
+
+  it('ignores a stop on the wrong side of the leg entry (structurally un-applicable)', () => {
+    // SELL filled at 82650 with a signal stop of 65000 — below the entry, which
+    // no broker can set. Only the take-profit should be compared.
+    const sell: BasketOpenLeg = {
+      ...leg(62500, 0),
+      entry_price: 82650,
+      direction: 'sell',
+      sl: 0,
+    }
+    const targets = [{ stoploss: 65000, takeprofit: 62500 }]
+    assert.equal(basketLegsOutOfSync([sell], targets, 0), false)
+    // ...but TP drift is still detected.
+    assert.equal(basketLegsOutOfSync([sell], [{ stoploss: 65000, takeprofit: 60500 }], 0), true)
+  })
 })
 
 describe('basketLegsOutOfSyncOnBroker', () => {
