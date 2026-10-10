@@ -1351,6 +1351,8 @@ export interface SettingsTranslations {
   saveError: string
   saved: string
   emailHint: string
+  countryHint: string
+  countryDetecting: string
   passwordHint: string
   passwordTooShort: string
   passwordMismatch: string
@@ -1362,6 +1364,13 @@ export interface SettingsTranslations {
     security: string
   }
   personal: { title: string; description: string }
+  photo: {
+    change: string
+    hint: string
+    tooLarge: string
+    invalidType: string
+    uploadError: string
+  }
   general: { title: string; description: string }
   security: { title: string; description: string; updatePassword: string }
   fields: {

@@ -1923,6 +1923,8 @@ broker: {
     saveError: 'Could not save changes.',
     saved: 'Changes saved.',
     emailHint: 'Email is managed by your sign-in provider and cannot be changed here.',
+    countryHint: 'Set from your location. This can’t be changed.',
+    countryDetecting: 'Detecting your location…',
     passwordHint: 'At least 8 characters.',
     passwordTooShort: 'Password must be at least 8 characters.',
     passwordMismatch: 'Passwords do not match.',
@@ -1936,6 +1938,13 @@ broker: {
     personal: {
       title: 'Personal information',
       description: 'Your contact details and how you appear in UniCopier.',
+    },
+    photo: {
+      change: 'Change photo',
+      hint: 'JPG, PNG, or WebP. Up to 2 MB.',
+      tooLarge: 'Photo must be 2 MB or smaller.',
+      invalidType: 'Use a JPG, PNG, or WebP image.',
+      uploadError: 'Could not update your profile photo.',
     },
     general: {
       title: 'General settings',

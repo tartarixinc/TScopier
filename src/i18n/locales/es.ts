@@ -1876,6 +1876,8 @@ export const es: Translations = {
     saveError: 'No se pudieron guardar los cambios.',
     saved: 'Cambios guardados.',
     emailHint: 'El correo lo gestiona tu proveedor de acceso y no se puede cambiar aquí.',
+    countryHint: 'Se establece según tu ubicación. No se puede cambiar.',
+    countryDetecting: 'Detectando tu ubicación…',
     passwordHint: 'Mínimo 8 caracteres.',
     passwordTooShort: 'La contraseña debe tener al menos 8 caracteres.',
     passwordMismatch: 'Las contraseñas no coinciden.',
@@ -1889,6 +1891,13 @@ export const es: Translations = {
     personal: {
       title: 'Información personal',
       description: 'Tus datos de contacto y cómo apareces en UniCopier.',
+    },
+    photo: {
+      change: 'Cambiar foto',
+      hint: 'JPG, PNG o WebP. Hasta 2 MB.',
+      tooLarge: 'La foto debe pesar 2 MB o menos.',
+      invalidType: 'Usa una imagen JPG, PNG o WebP.',
+      uploadError: 'No se pudo actualizar tu foto de perfil.',
     },
     general: {
       title: 'Ajustes generales',

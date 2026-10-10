@@ -8,6 +8,8 @@ export const settingsNl: SettingsBundleTranslations = {
     saveError: 'Wijzigingen konden niet worden opgeslagen.',
     saved: 'Wijzigingen opgeslagen.',
     emailHint: 'E-mail wordt beheerd door je inlogprovider en kan hier niet worden gewijzigd.',
+    countryHint: 'Ingesteld op basis van je locatie. Dit kan niet worden gewijzigd.',
+    countryDetecting: 'Locatie detecteren…',
     passwordHint: 'Minimaal 8 tekens.',
     passwordTooShort: 'Wachtwoord moet minimaal 8 tekens bevatten.',
     passwordMismatch: 'Wachtwoorden komen niet overeen.',
@@ -21,6 +23,13 @@ export const settingsNl: SettingsBundleTranslations = {
     personal: {
       title: 'Persoonlijke informatie',
       description: 'Je contactgegevens en hoe je in UniCopier wordt weergegeven.',
+    },
+    photo: {
+      change: 'Foto wijzigen',
+      hint: 'JPG, PNG of WebP. Maximaal 2 MB.',
+      tooLarge: 'De foto mag maximaal 2 MB zijn.',
+      invalidType: 'Gebruik een JPG-, PNG- of WebP-afbeelding.',
+      uploadError: 'Profielfoto kon niet worden bijgewerkt.',
     },
     general: {
       title: 'Algemene instellingen',

@@ -8,6 +8,8 @@ export const settingsSv: SettingsBundleTranslations = {
     saveError: 'Kunde inte spara ändringarna.',
     saved: 'Ändringar sparade.',
     emailHint: 'E-post hanteras av din inloggningsleverantör och kan inte ändras här.',
+    countryHint: 'Ställs in från din plats. Det går inte att ändra.',
+    countryDetecting: 'Identifierar din plats…',
     passwordHint: 'Minst 8 tecken.',
     passwordTooShort: 'Lösenordet måste vara minst 8 tecken.',
     passwordMismatch: 'Lösenorden matchar inte.',
@@ -21,6 +23,13 @@ export const settingsSv: SettingsBundleTranslations = {
     personal: {
       title: 'Personuppgifter',
       description: 'Dina kontaktuppgifter och hur du visas i UniCopier.',
+    },
+    photo: {
+      change: 'Byt foto',
+      hint: 'JPG, PNG eller WebP. Högst 2 MB.',
+      tooLarge: 'Fotot får vara högst 2 MB.',
+      invalidType: 'Använd en JPG-, PNG- eller WebP-bild.',
+      uploadError: 'Kunde inte uppdatera profilbilden.',
     },
     general: {
       title: 'Allmänna inställningar',

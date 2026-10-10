@@ -7,18 +7,19 @@ export interface UserAvatarProps {
   user: User | null | undefined
   profile: UserInitialsSource
   email?: string | null
-  size?: 'sm' | 'md'
+  size?: 'sm' | 'md' | 'lg'
   className?: string
 }
 
 const sizeClasses = {
   sm: 'h-8 w-8 text-xs',
   md: 'h-10 w-10 text-sm',
+  lg: 'h-20 w-20 text-xl',
 }
 
 export function UserAvatar({ user, profile, email, size = 'sm', className }: UserAvatarProps) {
   const [imageFailed, setImageFailed] = useState(false)
-  const avatarUrl = resolveUserAvatarUrl(user)
+  const avatarUrl = resolveUserAvatarUrl(user, profile)
   const initials = userInitials(profile, email)
 
   useEffect(() => {

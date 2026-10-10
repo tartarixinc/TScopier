@@ -8,6 +8,8 @@ export const settingsAr: SettingsBundleTranslations = {
     saveError: 'تعذر حفظ التغييرات.',
     saved: 'تم حفظ التغييرات.',
     emailHint: 'يُدار البريد الإلكتروني عبر مزود تسجيل الدخول ولا يمكن تغييره هنا.',
+    countryHint: 'يُحدَّد من موقعك. لا يمكن تغييره.',
+    countryDetecting: 'جارٍ تحديد موقعك…',
     passwordHint: '8 أحرف على الأقل.',
     passwordTooShort: 'يجب أن تكون كلمة المرور 8 أحرف على الأقل.',
     passwordMismatch: 'كلمتا المرور غير متطابقتين.',
@@ -21,6 +23,13 @@ export const settingsAr: SettingsBundleTranslations = {
     personal: {
       title: 'البيانات الشخصية',
       description: 'بيانات الاتصال وكيف تظهر في UniCopier.',
+    },
+    photo: {
+      change: 'تغيير الصورة',
+      hint: 'JPG أو PNG أو WebP. حتى 2 ميغابايت.',
+      tooLarge: 'يجب أن يكون حجم الصورة 2 ميغابايت أو أقل.',
+      invalidType: 'استخدم صورة JPG أو PNG أو WebP.',
+      uploadError: 'تعذر تحديث صورة الملف الشخصي.',
     },
     general: {
       title: 'الإعدادات العامة',

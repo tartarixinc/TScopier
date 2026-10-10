@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Globe,
   Lock,
@@ -12,8 +12,11 @@ import { useAuth } from '../../context/AuthContext'
 import { useLocale, useT } from '../../context/LocaleContext'
 import { useUserProfile } from '../../context/UserProfileContext'
 import { updatePassword } from '../../lib/userProfile'
-import { buildCountryOptions } from '../../lib/countryOptions'
+import { uploadProfilePhoto, validateProfilePhoto } from '../../lib/profilePhoto'
+import { UserAvatar } from '../../components/layout/UserAvatar'
 import { buildBaseCurrencyOptions } from '../../lib/baseCurrencies'
+import { countryDisplayName } from '../../lib/countryOptions'
+import { lookupCountryCodeFromIp } from '../../lib/countryFromIp'
 import { TIMEZONE_OPTIONS } from '../../lib/timezoneOptions'
 import { Input } from '../../components/ui/Input'
 import { SearchableSelect } from '../../components/ui/SearchableSelect'
@@ -60,10 +63,6 @@ export function SettingsPage() {
   const { user } = useAuth()
   const { profile, loading, patchProfile, persistProfile } = useUserProfile()
 
-  const countryOptions = useMemo(
-    () => buildCountryOptions(locale, t.settings.placeholders.selectCountry),
-    [locale, t.settings.placeholders.selectCountry],
-  )
   const currencyOptions = useMemo(
     () => buildBaseCurrencyOptions(profile.base_currency),
     [profile.base_currency],
@@ -74,6 +73,9 @@ export function SettingsPage() {
   const [personalSaving, setPersonalSaving] = useState(false)
   const [generalSaving, setGeneralSaving] = useState(false)
   const [passwordSaving, setPasswordSaving] = useState(false)
+  const [photoSaving, setPhotoSaving] = useState(false)
+  const [countryDetecting, setCountryDetecting] = useState(false)
+  const photoInputRef = useRef<HTMLInputElement>(null)
 
   const [personalMsg, setPersonalMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [generalMsg, setGeneralMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -92,6 +94,31 @@ export function SettingsPage() {
     setEmail(user?.email ?? '')
   }, [user?.email])
 
+  const countryRef = useRef(profile.country)
+  countryRef.current = profile.country
+
+  useEffect(() => {
+    if (!user?.id || loading) return
+    let cancelled = false
+    setCountryDetecting(true)
+    void lookupCountryCodeFromIp().then(async code => {
+      if (cancelled) return
+      setCountryDetecting(false)
+      if (!code || code === countryRef.current) return
+      patchProfile({ country: code })
+      try {
+        await persistProfile({ country: code })
+      } catch {
+        /* The field stays locked. A later save still includes the detected country. */
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+    // Run once after the saved profile is loaded. Later edits are not allowed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, loading])
+
   const applyPreference = async (
     patch: Partial<typeof profile>,
     setMsg: (msg: { type: 'success' | 'error'; text: string } | null) => void,
@@ -105,6 +132,39 @@ export function SettingsPage() {
         type: 'error',
         text: e instanceof Error ? e.message : t.settings.saveError,
       })
+    }
+  }
+
+  const handleChangePhoto = async (file: File | undefined) => {
+    if (!user || !file) return
+    setPersonalMsg(null)
+    const rejection = validateProfilePhoto(file)
+    if (rejection === 'type') {
+      setPersonalMsg({ type: 'error', text: t.settings.photo.invalidType })
+      return
+    }
+    if (rejection === 'size') {
+      setPersonalMsg({ type: 'error', text: t.settings.photo.tooLarge })
+      return
+    }
+    setPhotoSaving(true)
+    try {
+      const avatarUrl = await uploadProfilePhoto(user.id, file)
+      patchProfile({ avatar_url: avatarUrl })
+      setPersonalMsg({ type: 'success', text: t.settings.saved })
+    } catch (e) {
+      const message = e instanceof Error ? e.message : ''
+      setPersonalMsg({
+        type: 'error',
+        text: message === 'invalid_type'
+          ? t.settings.photo.invalidType
+          : message === 'too_large'
+            ? t.settings.photo.tooLarge
+            : t.settings.photo.uploadError,
+      })
+    } finally {
+      setPhotoSaving(false)
+      if (photoInputRef.current) photoInputRef.current.value = ''
     }
   }
 
@@ -219,6 +279,23 @@ export function SettingsPage() {
                   {personalMsg.text}
                 </Alert>
               ) : null}
+              <div className="mb-6 flex items-center gap-4">
+                <UserAvatar user={user} profile={profile} email={user?.email} size="lg" />
+                <div className="min-w-0">
+                  <label className="inline-flex cursor-pointer items-center rounded-lg bg-teal-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-teal-700">
+                    <input
+                      ref={photoInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="sr-only"
+                      disabled={photoSaving}
+                      onChange={event => { void handleChangePhoto(event.target.files?.[0]) }}
+                    />
+                    {photoSaving ? t.common.loading : t.settings.photo.change}
+                  </label>
+                  <p className="mt-1.5 text-xs text-neutral-500 dark:text-neutral-400">{t.settings.photo.hint}</p>
+                </div>
+              </div>
               <div className="grid sm:grid-cols-2 gap-4">
                 <Input
                   label={t.settings.fields.firstName}
@@ -244,16 +321,16 @@ export function SettingsPage() {
                   className="opacity-80"
                   hint={t.settings.emailHint}
                 />
-                <SearchableSelect
-                  label={t.settings.fields.country}
-                  value={profile.country}
-                  onChange={country => patchProfile({ country })}
-                  options={countryOptions}
-                  placeholder={t.settings.placeholders.selectCountry}
-                  searchPlaceholder={t.settings.placeholders.searchCountry}
-                  noMatchesLabel={t.settings.placeholders.noMatches}
-                  className="sm:col-span-2"
-                />
+                <div className="sm:col-span-2">
+                  <Input
+                    label={t.settings.fields.country}
+                    value={countryDetecting && !profile.country ? t.settings.countryDetecting : countryDisplayName(profile.country, locale)}
+                    readOnly
+                    disabled
+                    hint={t.settings.countryHint}
+                    className="opacity-80"
+                  />
+                </div>
                 <Input
                   label={t.settings.fields.city}
                   value={profile.city}

@@ -8,6 +8,8 @@ export const settingsPl: SettingsBundleTranslations = {
     saveError: 'Nie udało się zapisać zmian.',
     saved: 'Zmiany zapisane.',
     emailHint: 'Adres e-mail jest zarządzany przez dostawcę logowania i nie można go tutaj zmienić.',
+    countryHint: 'Ustawiane na podstawie lokalizacji. Nie można tego zmienić.',
+    countryDetecting: 'Wykrywanie lokalizacji…',
     passwordHint: 'Co najmniej 8 znaków.',
     passwordTooShort: 'Hasło musi mieć co najmniej 8 znaków.',
     passwordMismatch: 'Hasła nie są zgodne.',
@@ -21,6 +23,13 @@ export const settingsPl: SettingsBundleTranslations = {
     personal: {
       title: 'Dane osobowe',
       description: 'Twoje dane kontaktowe i sposób, w jaki wyświetlasz się w UniCopier.',
+    },
+    photo: {
+      change: 'Zmień zdjęcie',
+      hint: 'JPG, PNG lub WebP. Do 2 MB.',
+      tooLarge: 'Zdjęcie może mieć najwyżej 2 MB.',
+      invalidType: 'Użyj obrazu JPG, PNG lub WebP.',
+      uploadError: 'Nie udało się zaktualizować zdjęcia profilowego.',
     },
     general: {
       title: 'Ustawienia ogólne',

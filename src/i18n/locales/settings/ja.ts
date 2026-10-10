@@ -8,6 +8,8 @@ export const settingsJa: SettingsBundleTranslations = {
     saveError: '変更を保存できませんでした。',
     saved: '変更を保存しました。',
     emailHint: 'メールアドレスはサインインプロバイダーで管理されているため、ここでは変更できません。',
+    countryHint: '位置情報から自動設定されます。変更できません。',
+    countryDetecting: '位置情報を検出しています…',
     passwordHint: '8文字以上で入力してください。',
     passwordTooShort: 'パスワードは8文字以上である必要があります。',
     passwordMismatch: 'パスワードが一致しません。',
@@ -21,6 +23,13 @@ export const settingsJa: SettingsBundleTranslations = {
     personal: {
       title: '個人情報',
       description: '連絡先情報と、UniCopier上での表示内容を管理します。',
+    },
+    photo: {
+      change: '写真を変更',
+      hint: 'JPG、PNG、または WebP。2 MB まで。',
+      tooLarge: '写真は 2 MB 以下にしてください。',
+      invalidType: 'JPG、PNG、または WebP の画像を使ってください。',
+      uploadError: 'プロフィール写真を更新できませんでした。',
     },
     general: {
       title: '一般設定',

@@ -8,6 +8,8 @@ export const settingsRu: SettingsBundleTranslations = {
     saveError: 'Не удалось сохранить изменения.',
     saved: 'Изменения сохранены.',
     emailHint: 'Адрес электронной почты управляется вашим провайдером входа и не может быть изменен здесь.',
+    countryHint: 'Определяется по вашему местоположению. Изменить нельзя.',
+    countryDetecting: 'Определяем местоположение…',
     passwordHint: 'Минимум 8 символов.',
     passwordTooShort: 'Пароль должен содержать не менее 8 символов.',
     passwordMismatch: 'Пароли не совпадают.',
@@ -21,6 +23,13 @@ export const settingsRu: SettingsBundleTranslations = {
     personal: {
       title: 'Личная информация',
       description: 'Ваши контактные данные и то, как вы отображаетесь в UniCopier.',
+    },
+    photo: {
+      change: 'Изменить фото',
+      hint: 'JPG, PNG или WebP. До 2 МБ.',
+      tooLarge: 'Фото должно быть не больше 2 МБ.',
+      invalidType: 'Используйте изображение JPG, PNG или WebP.',
+      uploadError: 'Не удалось обновить фото профиля.',
     },
     general: {
       title: 'Общие настройки',

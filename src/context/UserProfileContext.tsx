@@ -106,6 +106,7 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
             notification_sound_enabled: row.notification_sound_enabled ?? true,
             notification_email_enabled: row.notification_email_enabled ?? true,
             copier_paused: row.copier_paused ?? false,
+            avatar_url: row.avatar_url ?? null,
           }),
         )
       } else {
