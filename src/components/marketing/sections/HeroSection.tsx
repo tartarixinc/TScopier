@@ -4,7 +4,38 @@ import clsx from 'clsx'
 import { HeroDashboardPreview } from '../HeroDashboardPreview'
 import { MarketingAuthCta } from '../MarketingAuthCta'
 import { MarketingPricingHint } from '../MarketingPricingHint'
+import { SignalSourceLogo } from '../../dashboard/SignalSourceLogo'
 import { useT } from '../../../context/LocaleContext'
+import type { SignalSourceKind } from '../../../lib/signalSourceMark'
+
+const HERO_SOURCE_MARKS: Array<{ pattern: RegExp; kind: SignalSourceKind }> = [
+  { pattern: /^Telegram\p{L}*$/u, kind: 'telegram' },
+  { pattern: /^Discord\p{L}*$/u, kind: 'discord' },
+  { pattern: /^WhatsApp$/u, kind: 'whatsapp' },
+  { pattern: /^TradingView$/u, kind: 'tradingview' },
+]
+
+function heroSourceKind(part: string): SignalSourceKind | null {
+  return HERO_SOURCE_MARKS.find(mark => mark.pattern.test(part))?.kind ?? null
+}
+
+function HeroSubheadline({ text }: { text: string }) {
+  const parts = text.split(/(Telegram\p{L}*|Discord\p{L}*|WhatsApp|TradingView)/gu)
+  return (
+    <>
+      {parts.map((part, index) => {
+        const kind = heroSourceKind(part)
+        if (!kind) return <span key={index}>{part}</span>
+        return (
+          <span key={index} className="inline-flex items-center gap-1.5 whitespace-nowrap align-middle">
+            <SignalSourceLogo kind={kind} className="h-[1.05em] w-[1.05em]" />
+            {part}
+          </span>
+        )
+      })}
+    </>
+  )
+}
 
 function RotatingHeroPhrase({ phrases }: { phrases: string[] }) {
   const [index, setIndex] = useState(0)
@@ -64,7 +95,7 @@ export function HeroSection() {
           </h1>
 
           <p className="mt-5 text-base leading-relaxed text-neutral-600 dark:text-neutral-400 sm:text-xl">
-            {l.hero.subheadline}
+            <HeroSubheadline text={l.hero.subheadline} />
           </p>
 
           <div className="mt-10 flex flex-col items-center">

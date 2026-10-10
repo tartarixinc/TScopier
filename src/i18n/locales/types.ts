@@ -403,6 +403,30 @@ export interface DashboardTranslations {
     brokerErrors: string
     allChecksPassed: string
     checksFailed: string
+    signalSources: string
+    notConnected: string
+    connected: string
+    reconnectRequired: string
+    reconnecting: string
+    operational: string
+    degraded: string
+    stopped: string
+    unknown: string
+    noSignalSource: string
+    readyMessage: string
+    noSourceMessage: string
+    telegramReconnectMessage: string
+    telegramReconnectingMessage: string
+    telegramOfflineMessage: string
+    otherSourcesStillCopying: string
+    listenerOfflineMessage: string
+    whatsappOfflineMessage: string
+    stoppedMessage: string
+    checkingMessage: string
+    unreportedMessage: string
+    lastHealthy: string
+    notAvailable: string
+    refreshStatus: string
   }
   tradeOutcomeTitle: string
   tradeOutcomeSubtitle: string

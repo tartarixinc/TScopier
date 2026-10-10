@@ -16,9 +16,9 @@ export const landingEs: LandingTranslations = {
   },
   hero: {
     headline: 'La plataforma de copiado #1 para',
-    headlinePhrases: ['Señales de Telegram', 'Trading social', 'Espejo de cuentas'],
+    headlinePhrases: ['Señales de trading', 'Trading social', 'Espejo de cuentas'],
     subheadline:
-      'Automatiza tus operaciones desde Telegram, Discord, TradingView o una cuenta maestra a más de 8 plataformas de bróker en menos de 50 ms. Sin VPS.',
+      'Automatiza tus operaciones desde Telegram, WhatsApp, Discord, TradingView o una cuenta maestra a más de 8 plataformas de bróker en menos de 50 ms. Sin VPS.',
     socialProof: 'Clasificado #1 copiador de señales Telegram en la nube',
     primaryCta: 'Empieza tu prueba gratuita de 5 días',
     secondaryCta: 'Iniciar sesión',

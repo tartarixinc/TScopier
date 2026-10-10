@@ -15,9 +15,9 @@ export const landingJa: LandingTranslations = {
     menuClose: 'メニューを閉じる',
   },
   hero: {
-    headline: 'Telegramシグナル。自動でコピー。',
+    headline: '取引シグナル。自動でコピー。',
     subheadline:
-      'Telegram、Discord、TradingView、またはマスター口座から8以上のブローカーへ、50ms未満で取引を自動化。VPSは不要です。',
+      'Telegram、WhatsApp、Discord、TradingView、またはマスター口座から8以上のブローカーへ、50ms未満で取引を自動化。VPSは不要です。',
     socialProof: 'クラウド型Telegramシグナルコピーで評価#1',
     primaryCta: '5日間の無料トライアルを始める',
     secondaryCta: 'ログイン',

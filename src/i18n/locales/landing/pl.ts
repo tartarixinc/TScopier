@@ -15,9 +15,9 @@ export const landingPl: LandingTranslations = {
     menuClose: 'Zamknij menu',
   },
   hero: {
-    headline: 'Sygnały Telegram. Kopiowane automatycznie.',
+    headline: 'Sygnały tradingowe. Kopiowane automatycznie.',
     subheadline:
-      'Automatyzuj transakcje z Telegrama, Discorda, TradingView lub konta master na ponad 8 platform brokerskich w mniej niż 50 ms. Bez VPS.',
+      'Automatyzuj transakcje z Telegrama, WhatsApp, Discorda, TradingView lub konta master na ponad 8 platform brokerskich w mniej niż 50 ms. Bez VPS.',
     socialProof: 'Ocena #1 cloudowy kopiark sygnałów Telegram',
     primaryCta: 'Rozpocznij 5-dniowy bezpłatny okres próbny',
     secondaryCta: 'Zaloguj się',
