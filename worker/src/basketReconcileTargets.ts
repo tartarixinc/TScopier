@@ -262,6 +262,15 @@ function slStructurallyUnapplicable(targetSl: number, leg: BasketOpenLeg): boole
   return isBuy ? sl >= entry : sl <= entry
 }
 
+/** Same rule for a take-profit: a target on the wrong side of the leg entry can never be set. */
+function tpStructurallyUnapplicable(targetTp: number, leg: BasketOpenLeg): boolean {
+  const entry = Number(leg.entry_price)
+  const tp = Number(targetTp)
+  if (!(entry > 0) || !(tp > 0)) return false
+  const isBuy = String(leg.direction ?? '').toLowerCase().includes('buy')
+  return isBuy ? tp <= entry : tp >= entry
+}
+
 /** True when any open leg's DB SL/TP differs from freshly resolved targets. */
 export function basketLegsOutOfSync(
   familyTrades: BasketOpenLeg[],
@@ -303,10 +312,15 @@ export function basketLegsOutOfSync(
         compareTarget = { ...target, stoploss: effectiveSl }
       }
     }
-    // A stop on the wrong side of this leg's entry can never be applied; do not
-    // report it as drift (the take-profit is still checked).
+    // A stop or target on the wrong side of this leg's entry can never be applied;
+    // do not report it as drift (the valid side is still checked). A dropped target
+    // must also not be demanded by requireTakeProfit.
     if (slStructurallyUnapplicable(target.stoploss, familyTrades[i]!)) {
       compareTarget = { ...compareTarget, stoploss: 0 }
+    }
+    const tpUnapplicable = tpStructurallyUnapplicable(target.takeprofit, familyTrades[i]!)
+    if (tpUnapplicable) {
+      compareTarget = { ...compareTarget, takeprofit: 0 }
     }
     if (tpFrozen) {
       const legSl = Number(familyTrades[i]!.sl)
@@ -319,7 +333,7 @@ export function basketLegsOutOfSync(
       continue
     }
     if (!stopsAlreadyMatchDb(familyTrades[i]!, compareTarget, nImmCwe, i, 1e-8, {
-      requireTakeProfit: requireTp,
+      requireTakeProfit: requireTp && !tpUnapplicable,
     })) return true
   }
   return false

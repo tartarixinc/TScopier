@@ -443,7 +443,10 @@ export class BasketSlTpReconcileMonitor {
     }
 
     let brokerStillDrift = false
-    if (!mergeFailed && reconcileTargetsHaveSl(effectiveTargets)) {
+    // Always re-measure broker drift (when there is an SL target) — independent of
+    // mergeFailed, which is also true when a leg was skipped. Otherwise the
+    // completion gate below could finish a job without ever reading the broker.
+    if (reconcileTargetsHaveSl(effectiveTargets)) {
       const ordersByTicket = await fetchBrokerOrdersByTicket(api, uuid)
       brokerStillDrift = basketLegsOutOfSyncOnBroker(
         familyTrades,
@@ -465,7 +468,7 @@ export class BasketSlTpReconcileMonitor {
       signal_id: row.source_signal_id,
       broker_account_id: row.broker_account_id,
       action: 'basket_reconcile_tick',
-      status: mergeFailed || brokerStillDrift ? 'failed' : 'success',
+      status: summary.failed > 0 || brokerStillDrift ? 'failed' : 'success',
       error_message: partialMsg,
       request_payload: {
         job_id: row.id,
@@ -474,7 +477,11 @@ export class BasketSlTpReconcileMonitor {
         leg_errors: legErrors.slice(0, 5),
       } as unknown as Record<string, unknown>,
     })
-    if (!mergeFailed && !brokerStillDrift) {
+    // Complete the job when the broker matches the applicable targets and there were
+    // no hard broker failures. A leg skipped as structurally un-applicable (its stop
+    // or target is on the wrong side of its entry) can never be synced, so it must
+    // not keep the job retrying forever.
+    if (summary.failed === 0 && !brokerStillDrift) {
       await writeExecutionLog(this.supabase, {
         user_id: row.user_id,
         signal_id: row.source_signal_id,

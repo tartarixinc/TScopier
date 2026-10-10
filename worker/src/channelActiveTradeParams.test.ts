@@ -6,8 +6,10 @@ import {
   clearChannelActiveTradeParamsWhenFlat,
   estimateBasketTotalPlannedLegs,
   isFullEntrySignalWithStops,
+  levelFitsDirection,
   mergeParsedWithChannelParams,
   parsedSignalHasExplicitStops,
+  parsedStopsFittableForEntry,
   resolveEntryChannelStops,
   shouldMergeChannelParamsForEntry,
   shouldOverlayChannelParamsOnBasketRefresh,
@@ -665,5 +667,55 @@ describe('channelParamsPredateBasket', () => {
     assert.equal(channelParamsPredateBasket(params(null), '2026-06-10T04:15:00Z'), false)
     assert.equal(channelParamsPredateBasket(params('2026-06-04T14:45:00Z'), null), false)
     assert.equal(channelParamsPredateBasket(null, '2026-06-10T04:15:00Z'), false)
+  })
+})
+
+describe('levelFitsDirection', () => {
+  test('buy: stop below entry, target above', () => {
+    assert.equal(levelFitsDirection(8100, 8200, true, 'sl'), true)
+    assert.equal(levelFitsDirection(8300, 8200, true, 'sl'), false)
+    assert.equal(levelFitsDirection(8300, 8200, true, 'tp'), true)
+    assert.equal(levelFitsDirection(8100, 8200, true, 'tp'), false)
+  })
+
+  test('sell: stop above entry, target below', () => {
+    assert.equal(levelFitsDirection(8300, 8200, false, 'sl'), true)
+    assert.equal(levelFitsDirection(8100, 8200, false, 'sl'), false)
+    assert.equal(levelFitsDirection(8100, 8200, false, 'tp'), true)
+    assert.equal(levelFitsDirection(8300, 8200, false, 'tp'), false)
+  })
+
+  test('non-positive reference or level is never valid', () => {
+    assert.equal(levelFitsDirection(8100, 0, true, 'sl'), false)
+    assert.equal(levelFitsDirection(0, 8200, true, 'sl'), false)
+  })
+})
+
+describe('parsedStopsFittableForEntry', () => {
+  const base = { symbol: 'BTCUSD', entry_price: 82800, tp_unit: 'price', sl_unit: 'price', lot_size: null } as const
+
+  test('buy with stop above entry is not fittable (the incident poison)', () => {
+    const parsed = { ...base, action: 'buy', sl: 83000, tp: [83300, 83800] }
+    assert.equal(parsedStopsFittableForEntry(parsed as never), false)
+  })
+
+  test('buy with a valid stop and targets is fittable', () => {
+    const parsed = { ...base, action: 'buy', sl: 81800, tp: [83300, 83800, 84300] }
+    assert.equal(parsedStopsFittableForEntry(parsed as never), true)
+  })
+
+  test('sell with a target above entry is not fittable', () => {
+    const parsed = { ...base, action: 'sell', sl: 83800, tp: [82300, 83300] }
+    assert.equal(parsedStopsFittableForEntry(parsed as never), false)
+  })
+
+  test('no entry price keeps current behaviour (fittable)', () => {
+    const parsed = { ...base, entry_price: null, action: 'buy', sl: 83000, tp: [83300] }
+    assert.equal(parsedStopsFittableForEntry(parsed as never), true)
+  })
+
+  test('pip-denominated stops are not compared against an absolute entry (not blocked)', () => {
+    const parsed = { ...base, action: 'sell', sl: 30, tp: [20, 40], sl_unit: 'pips', tp_unit: 'pips' }
+    assert.equal(parsedStopsFittableForEntry(parsed as never), true)
   })
 })
