@@ -931,6 +931,7 @@ export interface SocialTradingPageTranslations {
   monthlyPrice: string
   priceFree: string
   pricePaid: string
+  pricePerMonth: string
   whoCanCopy: string
   anyoneCanCopy: string
   requestsRequired: string
@@ -962,6 +963,7 @@ export interface SocialTradingPageTranslations {
   colName: string
   colStatus: string
   colBalance: string
+  colPrice: string
   colActions: string
   statusActive: string
   visibility: string
