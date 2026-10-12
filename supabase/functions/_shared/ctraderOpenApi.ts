@@ -7,8 +7,14 @@ const ACCOUNT_AUTH_REQ = 2102
 const ACCOUNT_AUTH_RES = 2103
 const SYMBOLS_LIST_REQ = 2114
 const SYMBOLS_LIST_RES = 2115
+const SYMBOL_BY_ID_REQ = 2116
+const SYMBOL_BY_ID_RES = 2117
 const SUBSCRIBE_SPOTS_REQ = 2127
+const SUBSCRIBE_SPOTS_RES = 2128
 const SPOT_EVENT = 2131
+const DEAL_LIST_REQ = 2133
+const DEAL_LIST_RES = 2134
+const SPOT_PRICE_SCALE = 100_000
 const TRADER_REQ = 2121
 const TRADER_RES = 2122
 const RECONCILE_REQ = 2124
@@ -49,6 +55,8 @@ type Waiter = {
   timer: number
 }
 
+type SpotListener = (payloadType: number, payload: Record<string, unknown>) => void
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -56,7 +64,9 @@ function asRecord(value: unknown): Record<string, unknown> {
 }
 
 function asArray(value: unknown): Record<string, unknown>[] {
-  return Array.isArray(value) ? value.map(asRecord) : []
+  if (Array.isArray(value)) return value.map(asRecord)
+  if (value && typeof value === "object") return [value as Record<string, unknown>]
+  return []
 }
 
 function finite(value: unknown): number | undefined {
@@ -210,6 +220,7 @@ export async function verifyCtraderState(state: string, userId: string, secret: 
 
 class CtraderSocketSession {
   private readonly pending = new Map<string, Waiter>()
+  private readonly listeners = new Set<SpotListener>()
   private seq = 0
 
   constructor(private readonly socket: WebSocket) {
@@ -218,6 +229,11 @@ class CtraderSocketSession {
       if (raw) this.handle(raw)
     })
     socket.addEventListener("close", () => this.failAll(new Error("cTrader connection closed")))
+  }
+
+  listen(handler: SpotListener): () => void {
+    this.listeners.add(handler)
+    return () => this.listeners.delete(handler)
   }
 
   request(payloadType: number, payload: Record<string, unknown>, responseTypes: number[]): Promise<Record<string, unknown>> {
@@ -242,6 +258,7 @@ class CtraderSocketSession {
     const payloadType = Number(message.payloadType)
     const payload = asRecord(message.payload)
     const clientMsgId = String(message.clientMsgId ?? payload.clientMsgId ?? "")
+    for (const listener of this.listeners) listener(payloadType, payload)
     const failure = payloadType === ERROR_RES || payloadType === ORDER_ERROR_EVENT
     const waiter = this.take(clientMsgId, failure ? null : payloadType)
     if (!waiter) return
@@ -255,8 +272,10 @@ class CtraderSocketSession {
   private take(clientMsgId: string, payloadType: number | null): Waiter | undefined {
     if (clientMsgId && this.pending.has(clientMsgId)) {
       const waiter = this.pending.get(clientMsgId)
+      if (!waiter) return undefined
+      if (payloadType != null && !waiter.types.includes(payloadType)) return undefined
       this.pending.delete(clientMsgId)
-      if (waiter) clearTimeout(waiter.timer)
+      clearTimeout(waiter.timer)
       return waiter
     }
     for (const [id, waiter] of this.pending) {
@@ -358,24 +377,13 @@ export async function ctraderOpenedOrders(args: {
       ctidTraderAccountId: accountId,
       accessToken: args.accessToken,
     }, [ACCOUNT_AUTH_RES])
-    const symbols = await session.request(SYMBOLS_LIST_REQ, { ctidTraderAccountId: accountId }, [SYMBOLS_LIST_RES])
-    const names = new Map<number, { name: string; digits: number; lotSize: number }>()
-    for (const row of asArray(symbols.symbol)) {
-      const symbolId = finite(row.symbolId)
-      if (symbolId == null) continue
-      names.set(symbolId, {
-        name: String(row.symbolName ?? ""),
-        digits: finite(row.digits) ?? 5,
-        lotSize: finite(row.lotSize) ?? 0,
-      })
-    }
+    const names = await loadSymbolIndex(session, accountId)
     const snapshot = await session.request(RECONCILE_REQ, { ctidTraderAccountId: accountId }, [RECONCILE_RES])
     const rows: Record<string, unknown>[] = []
     for (const position of asArray(snapshot.position)) {
       const trade = asRecord(position.tradeData)
       const symbol = names.get(finite(trade.symbolId) ?? -1)
-      const digits = symbol?.digits ?? 5
-      const lotSize = symbol?.lotSize || 1
+      const lotSize = symbol?.lotSize || 0
       const volume = finite(trade.volume) ?? 0
       const price = finite(position.price)
       rows.push({
@@ -383,8 +391,9 @@ export async function ctraderOpenedOrders(args: {
         positionTicket: finite(position.positionId) ?? 0,
         symbol: symbol?.name ?? "",
         operation: operationName(trade.tradeSide),
-        lots: volume / lotSize,
-        openPrice: price == null ? undefined : price / 10 ** digits,
+        lots: lotSize > 0 ? volume / lotSize : 0,
+        openPrice: price != null && price > 0 ? price : undefined,
+        profit: floatingProfit(position, undefined),
         comment: trade.comment == null ? "" : String(trade.comment),
       })
     }
@@ -413,18 +422,13 @@ export async function ctraderQuote(args: {
     const match = asArray(symbols.symbol).find(row => String(row.symbolName ?? "").toUpperCase() === wanted)
     const symbolId = finite(match?.symbolId)
     if (symbolId == null) throw new Error(`Symbol ${args.symbol} is not on this cTrader account`)
-    const digits = finite(match?.digits) ?? 5
-    const spot = await session.request(SUBSCRIBE_SPOTS_REQ, {
-      ctidTraderAccountId: accountId,
-      symbolId: [symbolId],
-    }, [SPOT_EVENT])
-    const bid = finite(spot.bid)
-    const ask = finite(spot.ask)
-    if (bid == null || ask == null) throw new Error("cTrader quote is missing prices")
+    const spots = await collectSpots(session, accountId, [symbolId])
+    const spot = spots.get(symbolId)
+    if (!spot) throw new Error("cTrader quote is missing prices")
     return {
       symbol: String(match?.symbolName ?? args.symbol),
-      bid: bid / 10 ** digits,
-      ask: ask / 10 ** digits,
+      bid: spot.bid,
+      ask: spot.ask,
     }
   } finally {
     socket.close()
@@ -436,22 +440,31 @@ export function ctraderStatusFromTrader(trader: Record<string, unknown>, environ
   tradeAllowed: boolean
   balance: number | undefined
   equity: number | undefined
+  profit: number | undefined
   currency: string | undefined
   login: number | undefined
   status: Record<string, unknown>
 } {
   const access = finite(trader.accessRights)
   const tradeAllowed = access == null || access === 0
-  const balance = finite(trader.balance)
-  const equity = finite(trader.equity)
-  const money = (cents: number | undefined) => cents == null ? undefined : cents / 100
+  const moneyDigits = finite(trader.moneyDigits) ?? 2
+  const balance = moneyAmount(trader.balance, moneyDigits)
+  const unrealized = moneyAmount(
+    trader.unrealizedGrossProfit ?? trader.unrealizedNetProfit ?? trader.unrealizedProfit,
+    moneyDigits,
+  )
+  const reportedEquity = moneyAmount(trader.equity, moneyDigits)
+  const equity = reportedEquity ?? (
+    balance != null && unrealized != null ? balance + unrealized : balance
+  )
   const currency = trader.depositCurrency == null ? undefined : String(trader.depositCurrency)
   const login = finite(trader.traderLogin)
   return {
     healthy: tradeAllowed,
     tradeAllowed,
-    balance: money(balance),
-    equity: money(equity) ?? money(balance),
+    balance,
+    equity,
+    profit: unrealized ?? (balance != null && equity != null ? equity - balance : undefined),
     currency,
     login,
     status: {
@@ -467,5 +480,263 @@ export function ctraderStatusFromTrader(trader: Record<string, unknown>, environ
       },
       bridge: { tradeEaReady: true, symbolsSynced: true },
     },
+  }
+}
+
+type SymbolInfo = { name: string; digits: number; lotSize: number }
+
+function moneyAmount(value: unknown, moneyDigits: number): number | undefined {
+  const amount = finite(value)
+  if (amount == null) return undefined
+  const digits = Number.isFinite(moneyDigits) && moneyDigits >= 0 ? moneyDigits : 2
+  return amount / 10 ** digits
+}
+
+function lotsFromVolume(volume: number, lotSize: number): number {
+  if (!Number.isFinite(volume) || !Number.isFinite(lotSize) || lotSize <= 0) return 0
+  return volume / lotSize
+}
+
+function absolutePrice(value: unknown): number | null {
+  const price = finite(value)
+  if (price == null || price <= 0) return null
+  return price
+}
+
+function floatingProfit(
+  position: Record<string, unknown>,
+  spot: { bid: number; ask: number } | undefined,
+): number | null {
+  if (!spot) return null
+  const trade = asRecord(position.tradeData)
+  const entry = absolutePrice(position.price)
+  const volume = finite(trade.volume)
+  if (entry == null || volume == null || volume <= 0) return null
+  const sell = Number(trade.tradeSide) === 2
+  const mark = sell ? spot.ask : spot.bid
+  const units = volume / 100
+  const profit = (mark - entry) * units * (sell ? -1 : 1)
+  return Number.isFinite(profit) ? Math.round(profit * 100) / 100 : null
+}
+
+async function loadSymbolIndex(
+  session: CtraderSocketSession,
+  accountId: number,
+): Promise<Map<number, SymbolInfo>> {
+  const symbols = await session.request(SYMBOLS_LIST_REQ, { ctidTraderAccountId: accountId }, [SYMBOLS_LIST_RES])
+  const names = new Map<number, SymbolInfo>()
+  const missing: number[] = []
+  for (const row of asArray(symbols.symbol)) {
+    const symbolId = finite(row.symbolId)
+    if (symbolId == null) continue
+    const lotSize = finite(row.lotSize) ?? 0
+    names.set(symbolId, {
+      name: String(row.symbolName ?? ""),
+      digits: finite(row.digits) ?? 5,
+      lotSize,
+    })
+    if (!lotSize) missing.push(symbolId)
+  }
+  if (missing.length) {
+    const detail = await session.request(SYMBOL_BY_ID_REQ, {
+      ctidTraderAccountId: accountId,
+      symbolId: missing,
+    }, [SYMBOL_BY_ID_RES])
+    for (const row of asArray(detail.symbol)) {
+      const symbolId = finite(row.symbolId)
+      if (symbolId == null) continue
+      const current = names.get(symbolId)
+      names.set(symbolId, {
+        name: current?.name || String(row.symbolName ?? ""),
+        digits: finite(row.digits) ?? current?.digits ?? 5,
+        lotSize: finite(row.lotSize) ?? current?.lotSize ?? 0,
+      })
+    }
+  }
+  return names
+}
+
+async function collectSpots(
+  session: CtraderSocketSession,
+  accountId: number,
+  symbolIds: number[],
+): Promise<Map<number, { bid: number; ask: number }>> {
+  const spots = new Map<number, { bid: number; ask: number }>()
+  if (!symbolIds.length) return spots
+  const wanted = new Set(symbolIds)
+  const stop = session.listen((payloadType, payload) => {
+    if (payloadType !== SPOT_EVENT) return
+    const symbolId = finite(payload.symbolId)
+    const bid = finite(payload.bid)
+    const ask = finite(payload.ask)
+    if (symbolId == null || !wanted.has(symbolId) || bid == null || ask == null) return
+    spots.set(symbolId, { bid: bid / SPOT_PRICE_SCALE, ask: ask / SPOT_PRICE_SCALE })
+  })
+  try {
+    await session.request(SUBSCRIBE_SPOTS_REQ, {
+      ctidTraderAccountId: accountId,
+      symbolId: symbolIds,
+    }, [SUBSCRIBE_SPOTS_RES, SPOT_EVENT])
+    const deadline = Date.now() + 2500
+    while (spots.size < wanted.size && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 50))
+    }
+  } finally {
+    stop()
+  }
+  return spots
+}
+
+export type CtraderTradeRow = {
+  id: string
+  broker_id: string
+  broker_label: string
+  broker_name: string | null
+  ticket: number
+  symbol: string
+  direction: "buy" | "sell" | ""
+  type: string
+  lot_size: number
+  entry_price: number | null
+  sl: number | null
+  tp: number | null
+  close_price: number | null
+  profit: number | null
+  swap: number | null
+  commission: number | null
+  comment: string | null
+  magic: number | null
+  opened_at: string | null
+  closed_at: string | null
+  state: string | null
+  status: "open" | "closed"
+}
+
+function isoTime(value: unknown): string | null {
+  const stamp = finite(value)
+  if (stamp == null || stamp <= 0) return null
+  const ms = stamp < 10_000_000_000 ? stamp * 1000 : stamp
+  const date = new Date(ms)
+  return Number.isNaN(date.getTime()) ? null : date.toISOString()
+}
+
+export async function ctraderAccountTrades(args: {
+  app: CtraderApp
+  environment: CtraderEnvironment
+  accountId: string
+  accessToken: string
+  brokerId: string
+  brokerLabel: string
+  brokerName: string | null
+  historyFrom: string
+  historyTo: string
+  scope: string
+}): Promise<CtraderTradeRow[]> {
+  const { socket, session } = await openSession(args.environment, args.app)
+  try {
+    const accountId = Number(args.accountId)
+    await session.request(ACCOUNT_AUTH_REQ, {
+      ctidTraderAccountId: accountId,
+      accessToken: args.accessToken,
+    }, [ACCOUNT_AUTH_RES])
+    const names = await loadSymbolIndex(session, accountId)
+    const rows: CtraderTradeRow[] = []
+    const scope = args.scope.toLowerCase()
+
+    if (scope !== "closed") {
+      const snapshot = await session.request(RECONCILE_REQ, { ctidTraderAccountId: accountId }, [RECONCILE_RES])
+      const positions = asArray(snapshot.position)
+      const symbolIds = [...new Set(positions.map(position => finite(asRecord(position.tradeData).symbolId)).filter((id): id is number => id != null))]
+      const spots = await collectSpots(session, accountId, symbolIds)
+      for (const position of positions) {
+        const trade = asRecord(position.tradeData)
+        const symbol = names.get(finite(trade.symbolId) ?? -1)
+        const ticket = finite(position.positionId) ?? 0
+        if (!ticket) continue
+        const side = Number(trade.tradeSide) === 2 ? "sell" : "buy"
+        const volume = finite(trade.volume) ?? 0
+        rows.push({
+          id: `${args.brokerId}:${ticket}`,
+          broker_id: args.brokerId,
+          broker_label: args.brokerLabel,
+          broker_name: args.brokerName,
+          ticket,
+          symbol: symbol?.name ?? "",
+          direction: side,
+          type: side === "sell" ? "Sell" : "Buy",
+          lot_size: lotsFromVolume(volume, symbol?.lotSize ?? 0),
+          entry_price: absolutePrice(position.price),
+          sl: absolutePrice(position.stopLoss),
+          tp: absolutePrice(position.takeProfit),
+          close_price: null,
+          profit: floatingProfit(position, spots.get(finite(trade.symbolId) ?? -1)),
+          swap: moneyAmount(position.swap, 2),
+          commission: moneyAmount(position.commission, 2),
+          comment: trade.comment == null ? null : String(trade.comment),
+          magic: null,
+          opened_at: isoTime(trade.openTimestamp ?? position.utcLastUpdateTimestamp),
+          closed_at: null,
+          state: null,
+          status: "open",
+        })
+      }
+    }
+
+    if (scope !== "open") {
+      const from = Date.parse(args.historyFrom)
+      const to = Date.parse(args.historyTo)
+      const deals = await session.request(DEAL_LIST_REQ, {
+        ctidTraderAccountId: accountId,
+        fromTimestamp: Number.isFinite(from) ? from : Date.now() - 90 * 24 * 60 * 60 * 1000,
+        toTimestamp: Number.isFinite(to) ? to : Date.now(),
+      }, [DEAL_LIST_RES])
+      const commentsByPosition = new Map<number, string>()
+      for (const deal of asArray(deals.deal)) {
+        const positionId = finite(deal.positionId)
+        const comment = deal.comment == null ? "" : String(deal.comment).trim()
+        if (positionId != null && comment && !commentsByPosition.has(positionId)) {
+          commentsByPosition.set(positionId, comment)
+        }
+      }
+      for (const deal of asArray(deals.deal)) {
+        const close = asRecord(deal.closePositionDetail)
+        if (!Object.keys(close).length) continue
+        const symbol = names.get(finite(deal.symbolId) ?? -1)
+        const ticket = finite(deal.positionId ?? deal.dealId) ?? 0
+        if (!ticket) continue
+        const side = Number(deal.tradeSide) === 2 ? "sell" : "buy"
+        const volume = finite(close.closedVolume ?? deal.filledVolume ?? deal.volume) ?? 0
+        const positionId = finite(deal.positionId)
+        const comment = String(deal.comment ?? (positionId == null ? "" : commentsByPosition.get(positionId) ?? "")).trim()
+        rows.push({
+          id: `${args.brokerId}:deal:${finite(deal.dealId) ?? ticket}`,
+          broker_id: args.brokerId,
+          broker_label: args.brokerLabel,
+          broker_name: args.brokerName,
+          ticket,
+          symbol: symbol?.name ?? "",
+          direction: side,
+          type: side === "sell" ? "Sell" : "Buy",
+          lot_size: lotsFromVolume(volume, symbol?.lotSize ?? 0),
+          entry_price: absolutePrice(close.entryPrice),
+          sl: null,
+          tp: null,
+          close_price: absolutePrice(deal.executionPrice),
+          profit: moneyAmount(close.grossProfit ?? close.profit, 2),
+          swap: moneyAmount(close.swap, 2),
+          commission: moneyAmount(close.commission, 2),
+          comment: comment || null,
+          magic: null,
+          opened_at: isoTime(close.offsetTimestamp ?? close.entryTimestamp),
+          closed_at: isoTime(deal.executionTimestamp ?? deal.createTimestamp),
+          state: null,
+          status: "closed",
+        })
+      }
+    }
+
+    return rows
+  } finally {
+    socket.close()
   }
 }

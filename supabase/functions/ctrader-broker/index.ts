@@ -15,6 +15,7 @@ import {
   allowedCtraderRedirect,
   ctraderAppFromEnv,
   ctraderAuthorizeUrl,
+  ctraderAccountTrades,
   ctraderOpenedOrders,
   ctraderQuote,
   ctraderStatusFromTrader,
@@ -275,6 +276,56 @@ Deno.serve(async (req: Request) => {
       }, { headers: corsHeaders })
     }
 
+    if (action === "trades") {
+      if (!app) return bad(503, CTRADER_NOT_CONFIGURED)
+      const brokerId = String(body.broker_id ?? body.account_id ?? "").trim()
+      const scope = String(body.scope ?? "all")
+      const historyFrom = String(body.history_from ?? "")
+      const historyTo = String(body.history_to ?? "")
+      const accounts: Array<Record<string, unknown>> = []
+      if (brokerId) {
+        const listed = await supabase
+          .from("broker_accounts")
+          .select("*")
+          .eq("id", brokerId)
+          .eq("user_id", userId)
+          .maybeSingle()
+        if (listed.error) return bad(500, listed.error.message)
+        if (!listed.data || listed.data.provider !== "ctrader") {
+          return bad(400, "This account is not a cTrader account.")
+        }
+        accounts.push(listed.data as Record<string, unknown>)
+      } else {
+        const listed = await supabase
+          .from("broker_accounts")
+          .select("*")
+          .eq("user_id", userId)
+          .eq("provider", "ctrader")
+          .eq("is_active", true)
+        if (listed.error) return bad(500, listed.error.message)
+        for (const account of listed.data ?? []) accounts.push(account as Record<string, unknown>)
+      }
+      const trades = []
+      for (const account of accounts) {
+        if (!account?.ctrader_account_id) continue
+        const tokens = await tokensForRow(supabase, account as Record<string, unknown>)
+        const book = await ctraderAccountTrades({
+          app,
+          environment: tokens.environment,
+          accountId: String(account.ctrader_account_id),
+          accessToken: tokens.accessToken,
+          brokerId: String(account.id),
+          brokerLabel: String(account.label ?? account.broker_name ?? "cTrader"),
+          brokerName: account.broker_name == null ? null : String(account.broker_name),
+          historyFrom,
+          historyTo,
+          scope,
+        })
+        trades.push(...book)
+      }
+      return Response.json({ ok: true, trades }, { headers: corsHeaders })
+    }
+
     const accountRowId = String(body.account_id ?? "").trim()
     if (!accountRowId) return bad(400, "account_id required")
     const row = await loadCtraderRow(supabase, userId, accountRowId)
@@ -339,6 +390,7 @@ Deno.serve(async (req: Request) => {
             summary: {
               balance: snapshot.balance,
               equity: snapshot.equity,
+              profit: snapshot.profit,
               currency: snapshot.currency,
               synced: true,
             },
@@ -391,6 +443,27 @@ Deno.serve(async (req: Request) => {
         symbol: String(body.symbol ?? "EURUSD"),
       })
       return Response.json({ ok: true, quote }, { headers: corsHeaders })
+    }
+
+    if (action === "live_snapshot") {
+      const tokens = await tokensForRow(supabase, row as Record<string, unknown>)
+      const trader = await ctraderTrader({
+        app: app!,
+        environment: tokens.environment,
+        accountId: String(row.ctrader_account_id ?? ""),
+        accessToken: tokens.accessToken,
+      })
+      const snapshot = ctraderStatusFromTrader(trader, tokens.environment)
+      return Response.json({
+        ok: true,
+        summary: {
+          balance: snapshot.balance,
+          equity: snapshot.equity,
+          profit: snapshot.profit,
+          currency: snapshot.currency,
+          synced: true,
+        },
+      }, { headers: corsHeaders })
     }
 
     if (action === "opened_orders") {

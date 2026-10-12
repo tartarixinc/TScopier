@@ -15,6 +15,7 @@ export interface CtraderEnvelope {
 
 type Waiter = {
   types: number[]
+  accept?: (payload: Record<string, unknown>) => boolean
   resolve: (payload: Record<string, unknown>) => void
   reject: (error: Error) => void
   timer: ReturnType<typeof setTimeout>
@@ -25,6 +26,7 @@ export class CtraderSession {
   private readonly pending = new Map<string, Waiter>()
   private seq = 0
   private closed = false
+  private tail: Promise<void> = Promise.resolve()
 
   constructor(private readonly socket: CtraderSocket) {
     socket.onMessage(raw => this.handle(raw))
@@ -42,15 +44,28 @@ export class CtraderSession {
     payload: Record<string, unknown>,
     responseTypes: number[],
     timeoutMs = 20_000,
+    accept?: (payload: Record<string, unknown>) => boolean,
   ): Promise<Record<string, unknown>> {
     if (this.closed) return Promise.reject(new Error('cTrader connection closed'))
+    const run = this.tail.then(() => this.dispatch(payloadType, payload, responseTypes, timeoutMs, accept))
+    this.tail = run.then(() => undefined, () => undefined)
+    return run
+  }
+
+  private dispatch(
+    payloadType: number,
+    payload: Record<string, unknown>,
+    responseTypes: number[],
+    timeoutMs: number,
+    accept?: (payload: Record<string, unknown>) => boolean,
+  ): Promise<Record<string, unknown>> {
     const clientMsgId = String(++this.seq)
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(clientMsgId)
         reject(new Error('cTrader request timed out'))
       }, timeoutMs)
-      this.pending.set(clientMsgId, { types: responseTypes, resolve, reject, timer })
+      this.pending.set(clientMsgId, { types: responseTypes, accept, resolve, reject, timer })
       this.socket.send(JSON.stringify({ clientMsgId, payloadType, payload }))
     })
   }
@@ -68,27 +83,44 @@ export class CtraderSession {
     const failure = payloadType === CTRADER_PAYLOAD.ERROR_RES
       || payloadType === CTRADER_PAYLOAD.ORDER_ERROR_EVENT
     if (failure) {
-      const waiter = this.take(clientMsgId, null)
+      const waiter = this.take(clientMsgId, null, payload)
       waiter?.reject(new Error(ctraderErrorMessage(payload)))
       return
     }
-    const waiter = this.take(clientMsgId, payloadType)
+    const waiter = this.take(clientMsgId, payloadType, payload)
     waiter?.resolve(payload)
   }
 
-  private take(clientMsgId: string, payloadType: number | null): Waiter | undefined {
+  private matches(waiter: Waiter, payloadType: number | null, payload: Record<string, unknown>): boolean {
+    if (payloadType != null && !waiter.types.includes(payloadType)) return false
+    if (payloadType != null && waiter.accept && !waiter.accept(payload)) return false
+    return true
+  }
+
+  private take(
+    clientMsgId: string,
+    payloadType: number | null,
+    payload: Record<string, unknown>,
+  ): Waiter | undefined {
     if (clientMsgId && this.pending.has(clientMsgId)) {
       const waiter = this.pending.get(clientMsgId)
+      if (!waiter || !this.matches(waiter, payloadType, payload)) return undefined
       this.pending.delete(clientMsgId)
-      if (waiter) clearTimeout(waiter.timer)
+      clearTimeout(waiter.timer)
       return waiter
     }
+    if (payloadType == null) {
+      const first = this.pending.entries().next().value as [string, Waiter] | undefined
+      if (!first) return undefined
+      this.pending.delete(first[0])
+      clearTimeout(first[1].timer)
+      return first[1]
+    }
     for (const [id, waiter] of this.pending) {
-      if (payloadType == null || waiter.types.includes(payloadType)) {
-        this.pending.delete(id)
-        clearTimeout(waiter.timer)
-        return waiter
-      }
+      if (!this.matches(waiter, payloadType, payload)) continue
+      this.pending.delete(id)
+      clearTimeout(waiter.timer)
+      return waiter
     }
     return undefined
   }

@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 import {
   ctraderAuthorizeUrl,
+  ctraderMarketFillReady,
   ctraderSocketUrl,
   ctraderSpotPrice,
   ctraderVolumeToLots,
@@ -18,6 +19,15 @@ test('cTrader volume converts lots through the symbol lot size', () => {
   assert.equal(lotsToCtraderVolume(0.01, 10_000_000), 100_000)
   assert.equal(ctraderVolumeToLots(1_000_000, 10_000_000), 0.1)
   assert.throws(() => lotsToCtraderVolume(0, 10_000_000), /greater than zero/)
+})
+
+test('cTrader market fill ignores an accepted event that has no position', () => {
+  assert.equal(ctraderMarketFillReady({ executionType: 2, order: { orderId: 555 } }), false)
+  assert.equal(ctraderMarketFillReady({
+    executionType: 3,
+    position: { positionId: 44753770, price: 4170.48, tradeData: { volume: 1000 } },
+  }), true)
+  assert.equal(ctraderMarketFillReady({ executionType: 7 }), true)
 })
 
 test('cTrader spot quotes use a fixed 1/100000 scale', () => {
