@@ -23,6 +23,7 @@ export const CTRADER_PAYLOAD = {
   RECONCILE_RES: 2125,
   EXECUTION_EVENT: 2126,
   SUBSCRIBE_SPOTS_REQ: 2127,
+  SUBSCRIBE_SPOTS_RES: 2128,
   SPOT_EVENT: 2131,
   ORDER_ERROR_EVENT: 2132,
   DEAL_LIST_REQ: 2133,
@@ -105,6 +106,27 @@ export function lotsToCtraderVolume(lots: number, lotSize: number): number {
 export function ctraderVolumeToLots(volume: number, lotSize: number): number {
   if (!Number.isFinite(volume) || !Number.isFinite(lotSize) || lotSize <= 0) return 0
   return volume / lotSize
+}
+
+/**
+ * A market execution is usable once the position id, fill price, and volume
+ * are present. The earlier accepted event often has only an order id.
+ */
+export function ctraderMarketFillReady(payload: Record<string, unknown>): boolean {
+  const executionType = Number(payload.executionType)
+  if (executionType === 5 || executionType === 6 || executionType === 7 || executionType === 8) return true
+  const position = payload.position && typeof payload.position === 'object'
+    ? payload.position as Record<string, unknown>
+    : {}
+  const trade = position.tradeData && typeof position.tradeData === 'object'
+    ? position.tradeData as Record<string, unknown>
+    : {}
+  const positionId = Number(position.positionId)
+  const price = Number(position.price)
+  const volume = Number(trade.volume ?? position.volume)
+  return Number.isFinite(positionId) && positionId > 0
+    && Number.isFinite(price) && price > 0
+    && Number.isFinite(volume) && volume > 0
 }
 
 /** Live spot quotes use 1/100000 of a price unit, for every symbol. */

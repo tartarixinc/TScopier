@@ -18,6 +18,7 @@ import {
   CTRADER_PAYLOAD,
   CTRADER_REJECTED_EXECUTION,
   ctraderErrorMessage,
+  ctraderMarketFillReady,
   ctraderSocketUrl,
   ctraderTokenUrl,
   ctraderVolumeToLots,
@@ -200,10 +201,14 @@ export class CtraderProvider implements BrokerProvider {
     if (mapped.orderType === CTRADER_ORDER_TYPE.STOP || mapped.orderType === CTRADER_ORDER_TYPE.STOP_LIMIT) {
       payload.stopPrice = this.requirePrice(args.price)
     }
+    const market = mapped.orderType === CTRADER_ORDER_TYPE.MARKET
+      || mapped.orderType === CTRADER_ORDER_TYPE.MARKET_RANGE
     const execution = await live.session.request(
       CTRADER_PAYLOAD.NEW_ORDER_REQ,
       payload,
       [CTRADER_PAYLOAD.EXECUTION_EVENT],
+      20_000,
+      market ? ctraderMarketFillReady : undefined,
     )
     return this.resultFromExecution(execution, symbol, args.comment)
   }
@@ -361,6 +366,8 @@ export class CtraderProvider implements BrokerProvider {
       CTRADER_PAYLOAD.SUBSCRIBE_SPOTS_REQ,
       { ctidTraderAccountId: accountNumber(id), symbolId: [info.symbolId] },
       [CTRADER_PAYLOAD.SPOT_EVENT],
+      20_000,
+      payload => finite(payload.bid) != null && finite(payload.ask) != null,
     )
     const bid = finite(spot.bid)
     const ask = finite(spot.ask)

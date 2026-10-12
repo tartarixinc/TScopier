@@ -2013,11 +2013,11 @@ export function DashboardPage() {
   /** Poll AccountSummary. MTAPI has no price stream, so this is the live balance source. */
   const linkedAccountIdsKey = linkedAccounts.map(a => a.id).sort().join(',')
   useEffect(() => {
-    const accounts = linkedAccounts.filter(account =>
-      resolveProvider(account) === 'mtapi'
-        ? hasLinkedBrokerForUi(account)
-        : isFxsocketLinkedBroker(account),
-    )
+    const accounts = linkedAccounts.filter(account => {
+      const provider = resolveProvider(account)
+      if (provider === 'mtapi' || provider === 'ctrader') return hasLinkedBrokerForUi(account)
+      return isFxsocketLinkedBroker(account)
+    })
     if (accounts.length === 0) return
 
     let cancelled = false
@@ -2025,7 +2025,10 @@ export function DashboardPage() {
     // MTAPI AccountSummary shares the trade session. A few-second poll trips
     // "too many requests" and the copier then fails every order. Keep MTAPI
     // refreshes infrequent; FxSocket still polls faster because it has a stream.
-    const hasMtapi = accounts.some(account => resolveProvider(account) === 'mtapi')
+    const hasMtapi = accounts.some(account => {
+      const provider = resolveProvider(account)
+      return provider === 'mtapi' || provider === 'ctrader'
+    })
     const pollIntervalMs = hasMtapi
       ? 45_000
       : Math.min(15_000, Math.max(4_000, 2_000 * Math.ceil(accounts.length / 2)))
@@ -2049,11 +2052,15 @@ export function DashboardPage() {
                 if (refreshed.account) replaceBroker(refreshed.account)
                 return refreshed.pending ? undefined : refreshed.summary
               })()
-            : (await fxsocketBroker.liveSnapshot(account.id)).summary
+            : (await fxsocketBroker.liveSnapshot(account.id, provider === 'ctrader' ? 'ctrader' : undefined)).summary
           if (cancelled || !summary) return
           const snap = parseFxsocketAccountStreamData(summary as Record<string, unknown>)
           const openTrades = linkedBalancesRef.current[account.id]?.open_trades ?? 0
-          const openPnl = resolveFxsocketFloatingOpenPnl(snap, openTrades)
+          let openPnl = resolveFxsocketFloatingOpenPnl(snap, openTrades)
+          if (provider === 'ctrader' && (openPnl == null || openPnl === 0) && openTrades > 0) {
+            const fromBook = snapshotFromPositionBook(positionBooksRef.current[account.id] ?? new Map()).openPnl
+            if (fromBook) openPnl = fromBook
+          }
           const nextBalances = applyFxsocketAccountStreamUpdate(
             account.id,
             openPnl != null ? { ...snap, openPnl } : snap,

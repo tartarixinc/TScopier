@@ -550,9 +550,10 @@ export const fxsocketBroker = {
   fetchBrokerStatus: fetchBrokerStatusCall,
 
   /** Lightweight AccountSummary poll — no baseline/history work (for live Open P/L). */
-  liveSnapshot(accountId: string): Promise<{ summary: AccountSummary }> {
+  liveSnapshot(accountId: string, provider?: BrokerEdgeProvider): Promise<{ summary: AccountSummary }> {
     return call({
       body: { action: 'live_snapshot', account_id: accountId },
+      edgeFn: brokerEdgeFn(provider),
       timeoutMs: 12_000,
       expect: (b) => {
         const row = b as { summary?: AccountSummary }
@@ -713,7 +714,7 @@ export type TradesFetchArgs = {
 }
 
 function isWrongProviderError(message: string): boolean {
-  return /not an MTAPI account|no FxSocket account linked/i.test(message)
+  return /not an MTAPI account|no FxSocket account linked|not a cTrader account/i.test(message)
 }
 
 /**
@@ -734,12 +735,13 @@ export async function fetchTradesAcrossProviders(
     const set = new Set(
       args.accounts
         .map(account => resolveProvider(account))
-        .filter((provider): provider is 'fxsocket' | 'mtapi' => provider === 'fxsocket' || provider === 'mtapi'),
+        .filter((provider): provider is BrokerEdgeProvider =>
+          provider === 'fxsocket' || provider === 'mtapi' || provider === 'ctrader'),
     )
     // Anchors without a provider field resolve to fxsocket — if nothing was
     // explicitly marked, still query both so MTAPI-only data is not dropped.
     const anyExplicit = args.accounts.some(
-      a => a.provider === 'mtapi' || a.provider === 'fxsocket',
+      a => a.provider === 'mtapi' || a.provider === 'fxsocket' || a.provider === 'ctrader',
     )
     providers = anyExplicit && set.size > 0 ? [...set] : ['fxsocket', 'mtapi']
   }

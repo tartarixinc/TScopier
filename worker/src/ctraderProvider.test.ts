@@ -22,7 +22,12 @@ const symbolDetail = {
   symbol: [{ symbolId: 1, symbolName: 'EURUSD', digits: 5, lotSize: 10_000_000 }],
 }
 
-function scriptedSocket(steps: Array<{ request: number; responseType: number; payload?: Record<string, unknown> }>) {
+function scriptedSocket(steps: Array<{
+  request: number
+  responseType: number
+  payload?: Record<string, unknown>
+  followUps?: Array<{ responseType: number; payload?: Record<string, unknown>; clientMsgId?: string | null }>
+}>) {
   const sent: Array<{ payloadType: number; payload: Record<string, unknown> }> = []
   let cursor = 0
   let onMessage: ((data: string) => void) | null = null
@@ -35,11 +40,21 @@ function scriptedSocket(steps: Array<{ request: number; responseType: number; pa
       if (!step || step.request !== message.payloadType) {
         throw new Error(`unexpected cTrader request ${message.payloadType}`)
       }
-      queueMicrotask(() => onMessage?.(JSON.stringify({
-        clientMsgId: message.clientMsgId,
-        payloadType: step.responseType,
-        payload: step.payload ?? {},
-      })))
+      const frame = (
+        responseType: number,
+        payload: Record<string, unknown> | undefined,
+        clientMsgId: string | null | undefined,
+      ) => JSON.stringify({
+        ...(clientMsgId === null ? {} : { clientMsgId: clientMsgId ?? message.clientMsgId }),
+        payloadType: responseType,
+        payload: payload ?? {},
+      })
+      queueMicrotask(() => {
+        onMessage?.(frame(step.responseType, step.payload, undefined))
+        for (const extra of step.followUps ?? []) {
+          onMessage?.(frame(extra.responseType, extra.payload, extra.clientMsgId))
+        }
+      })
     },
     close() {},
     onMessage(handler) { onMessage = handler },
@@ -48,7 +63,12 @@ function scriptedSocket(steps: Array<{ request: number; responseType: number; pa
   return { socket, sent }
 }
 
-function providerFor(steps: Array<{ request: number; responseType: number; payload?: Record<string, unknown> }>) {
+function providerFor(steps: Array<{
+  request: number
+  responseType: number
+  payload?: Record<string, unknown>
+  followUps?: Array<{ responseType: number; payload?: Record<string, unknown>; clientMsgId?: string | null }>
+}>) {
   const script = scriptedSocket(steps)
   const provider = new CtraderProvider({
     openSocket: async () => script.socket,
@@ -171,6 +191,76 @@ test('cTrader reads lot size from the full symbol when the name list omits it', 
   assert.equal(order?.payload.volume, 1_000)
   assert.equal(result.ticket, 9002)
   assert.equal(result.openPrice, 2650.12)
+})
+
+test('cTrader market open waits for the fill after the accepted event', async () => {
+  const { provider } = providerFor([
+    ...authSteps,
+    {
+      request: CTRADER_PAYLOAD.SYMBOLS_LIST_REQ,
+      responseType: CTRADER_PAYLOAD.SYMBOLS_LIST_RES,
+      payload: { symbol: [{ symbolId: 41, symbolName: 'XAUUSD' }] },
+    },
+    {
+      request: CTRADER_PAYLOAD.SYMBOL_BY_ID_REQ,
+      responseType: CTRADER_PAYLOAD.SYMBOL_BY_ID_RES,
+      payload: { symbol: { symbolId: 41, digits: 2, lotSize: 10_000 } },
+    },
+    {
+      request: CTRADER_PAYLOAD.NEW_ORDER_REQ,
+      responseType: CTRADER_PAYLOAD.EXECUTION_EVENT,
+      payload: { executionType: 2, order: { orderId: 555 } },
+      followUps: [{
+        responseType: CTRADER_PAYLOAD.EXECUTION_EVENT,
+        payload: {
+          executionType: 3,
+          position: {
+            positionId: 44753770,
+            price: 4170.48,
+            tradeData: { symbolId: 41, volume: 1_000, tradeSide: 1, comment: 'TScopier:Signaltest:tp1' },
+          },
+        },
+      }],
+    },
+  ])
+  const result = await provider.orderSend('4242', {
+    symbol: 'XAUUSD',
+    operation: 'Buy',
+    volume: 0.1,
+    comment: 'TScopier:Signaltest:tp1',
+  })
+  assert.equal(result.ticket, 44753770)
+  assert.equal(result.openPrice, 4170.48)
+  assert.equal(result.lots, 0.1)
+})
+
+test('cTrader quote ignores the subscribe acknowledgement and reads the spot', async () => {
+  const { provider } = providerFor([
+    ...authSteps,
+    {
+      request: CTRADER_PAYLOAD.SYMBOLS_LIST_REQ,
+      responseType: CTRADER_PAYLOAD.SYMBOLS_LIST_RES,
+      payload: { symbol: [{ symbolId: 41, symbolName: 'XAUUSD' }] },
+    },
+    {
+      request: CTRADER_PAYLOAD.SYMBOL_BY_ID_REQ,
+      responseType: CTRADER_PAYLOAD.SYMBOL_BY_ID_RES,
+      payload: { symbol: { symbolId: 41, digits: 2, lotSize: 10_000 } },
+    },
+    {
+      request: CTRADER_PAYLOAD.SUBSCRIBE_SPOTS_REQ,
+      responseType: CTRADER_PAYLOAD.SUBSCRIBE_SPOTS_RES,
+      payload: {},
+      followUps: [{
+        responseType: CTRADER_PAYLOAD.SPOT_EVENT,
+        clientMsgId: null,
+        payload: { bid: 417048000, ask: 417062000 },
+      }],
+    },
+  ])
+  const quote = await provider.quote('4242', 'XAUUSD')
+  assert.equal(quote.bid, 4170.48)
+  assert.equal(quote.ask, 4170.62)
 })
 
 test('cTrader amends position protection with absolute prices', async () => {
