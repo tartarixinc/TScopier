@@ -72,8 +72,13 @@ function asRecord(value: unknown): Record<string, unknown> {
 }
 
 function asArray(value: unknown): Record<string, unknown>[] {
-  if (!Array.isArray(value)) return []
-  return value.map(asRecord)
+  if (Array.isArray(value)) return value.map(asRecord)
+  if (value && typeof value === 'object') return [asRecord(value)]
+  return []
+}
+
+function firstRecord(value: unknown): Record<string, unknown> | undefined {
+  return asArray(value)[0]
 }
 
 function accountNumber(id: string): number {
@@ -518,31 +523,36 @@ export class CtraderProvider implements BrokerProvider {
     await this.ensureSymbolIndex(live, id)
     const listed = live.symbols.get(key)
     if (!listed) throw new Error(`Symbol ${name} is not on this cTrader account`)
+    if (listed.lotSize) return listed
     const payload = await live.session.request(
       CTRADER_PAYLOAD.SYMBOL_BY_ID_REQ,
       { ctidTraderAccountId: accountNumber(id), symbolId: [listed.symbolId] },
       [CTRADER_PAYLOAD.SYMBOL_BY_ID_RES],
     )
-    const detailed = this.readSymbol(asArray(payload.symbol)[0] ?? listed)
+    // The full symbol carries lotSize and digits. It does not repeat symbolName.
+    const detailed = this.readSymbol(firstRecord(payload.symbol ?? payload.symbols), listed)
     const info = detailed ?? listed
     live.symbols.set(key, info)
     live.symbolsById.set(info.symbolId, info)
     return info
   }
 
-  private readSymbol(row: Record<string, unknown> | undefined): SymbolInfo | null {
+  private readSymbol(
+    row: Record<string, unknown> | undefined,
+    fallback?: SymbolInfo,
+  ): SymbolInfo | null {
     if (!row) return null
-    const symbolId = finite(row.symbolId)
-    const name = String(row.symbolName ?? row.name ?? '').trim()
+    const symbolId = finite(row.symbolId) ?? fallback?.symbolId
+    const name = String(row.symbolName ?? row.name ?? fallback?.name ?? '').trim()
     if (symbolId == null || !name) return null
     return {
       symbolId,
       name,
-      digits: finite(row.digits) ?? 5,
-      lotSize: finite(row.lotSize) ?? 0,
-      minVolume: finite(row.minVolume),
-      maxVolume: finite(row.maxVolume),
-      stepVolume: finite(row.stepVolume),
+      digits: finite(row.digits) ?? fallback?.digits ?? 5,
+      lotSize: finite(row.lotSize ?? row.lot_size) ?? fallback?.lotSize ?? 0,
+      minVolume: finite(row.minVolume ?? row.min_volume) ?? fallback?.minVolume,
+      maxVolume: finite(row.maxVolume ?? row.max_volume) ?? fallback?.maxVolume,
+      stepVolume: finite(row.stepVolume ?? row.step_volume) ?? fallback?.stepVolume,
     }
   }
 

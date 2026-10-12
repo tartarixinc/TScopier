@@ -92,7 +92,11 @@ test('cTrader provider authenticates the app and then the account', async () => 
 test('cTrader market open keeps the copy comment and converts lots', async () => {
   const { provider, sent } = providerFor([
     ...authSteps,
-    { request: CTRADER_PAYLOAD.SYMBOLS_LIST_REQ, responseType: CTRADER_PAYLOAD.SYMBOLS_LIST_RES, payload: symbolList },
+    {
+      request: CTRADER_PAYLOAD.SYMBOLS_LIST_REQ,
+      responseType: CTRADER_PAYLOAD.SYMBOLS_LIST_RES,
+      payload: { symbol: [{ symbolId: 1, symbolName: 'EURUSD' }] },
+    },
     { request: CTRADER_PAYLOAD.SYMBOL_BY_ID_REQ, responseType: CTRADER_PAYLOAD.SYMBOL_BY_ID_RES, payload: symbolDetail },
     {
       request: CTRADER_PAYLOAD.NEW_ORDER_REQ,
@@ -128,6 +132,45 @@ test('cTrader market open keeps the copy comment and converts lots', async () =>
   assert.equal(result.lots, 0.1)
   assert.equal(result.comment, 'TScopier:abc')
   assert.equal(result.openPrice, 1.23456)
+})
+
+test('cTrader reads lot size from the full symbol when the name list omits it', async () => {
+  const { provider, sent } = providerFor([
+    ...authSteps,
+    {
+      request: CTRADER_PAYLOAD.SYMBOLS_LIST_REQ,
+      responseType: CTRADER_PAYLOAD.SYMBOLS_LIST_RES,
+      payload: { symbol: [{ symbolId: 41, symbolName: 'XAUUSD' }] },
+    },
+    {
+      request: CTRADER_PAYLOAD.SYMBOL_BY_ID_REQ,
+      responseType: CTRADER_PAYLOAD.SYMBOL_BY_ID_RES,
+      payload: { symbol: { symbolId: 41, digits: 2, lotSize: 10_000 } },
+    },
+    {
+      request: CTRADER_PAYLOAD.NEW_ORDER_REQ,
+      responseType: CTRADER_PAYLOAD.EXECUTION_EVENT,
+      payload: {
+        executionType: 3,
+        position: {
+          positionId: 9002,
+          price: 265012,
+          tradeData: { symbolId: 41, volume: 1_000, tradeSide: 1, comment: 'TScopier:gold' },
+        },
+      },
+    },
+  ])
+  const result = await provider.orderSend('4242', {
+    symbol: 'XAUUSD',
+    operation: 'Buy',
+    volume: 0.1,
+    comment: 'TScopier:gold',
+  })
+  const order = sent.find(message => message.payloadType === CTRADER_PAYLOAD.NEW_ORDER_REQ)
+  assert.deepEqual(order?.payload.symbolId, 41)
+  assert.equal(order?.payload.volume, 1_000)
+  assert.equal(result.ticket, 9002)
+  assert.equal(result.openPrice, 2650.12)
 })
 
 test('cTrader amends position protection in relative prices', async () => {
