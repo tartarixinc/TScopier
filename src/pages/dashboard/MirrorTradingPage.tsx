@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { createPortal } from 'react-dom'
 import { ChevronDown, ChevronUp, OctagonAlert, Pause, Play, Plus, Settings, Trash2, X } from 'lucide-react'
 import clsx from 'clsx'
-import { CopyRiskEditor } from '../../components/configure/CopyRiskEditor'
+import { SlaveConfigureModal } from '../../components/configure/SlaveConfigureModal'
 import { useAuth } from '../../context/AuthContext'
 import { useAddTradingAccount } from '../../context/AddTradingAccountContext'
 import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
@@ -607,15 +607,16 @@ export function MirrorTradingPage() {
         />
       ) : null}
       {configuringSlave && configuringLink ? (
-        <SlaveConfigureDialog
+        <SlaveConfigureModal
           slave={configuringSlave}
           source={configuringSource}
           settings={copyRiskForEditor(configuringLink.manual_settings)}
           labels={t.copyRisk}
-          copyFromLabel={t.configurationsPage.copyFrom}
-          closeLabel={closeLabel}
-          title={copy.configure}
+          setup={copy.setup}
+          loginLabel={copy.login}
+          balanceLabel={copy.balance}
           saveError={configSaveError}
+          closeLabel={closeLabel}
           onChange={next => patchSlaveSettings(configuringSlave.id, manualSettingsFromCopyRisk(next))}
           onClose={() => setConfiguringSlaveId(null)}
         />
@@ -839,90 +840,3 @@ function SlaveRow({
   )
 }
 
-function SlaveConfigureDialog({
-  slave,
-  source,
-  settings,
-  labels,
-  copyFromLabel,
-  closeLabel,
-  title,
-  saveError,
-  onChange,
-  onClose,
-}: {
-  slave: BrokerAccount
-  source: BrokerAccount | null
-  settings: ReturnType<typeof copyRiskForEditor>
-  labels: CopyRiskTranslations
-  copyFromLabel: string
-  closeLabel: string
-  title: string
-  saveError: string | null
-  onChange: (next: ReturnType<typeof copyRiskForEditor>) => void
-  onClose: () => void
-}) {
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
-
-  return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-6"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="mirror-slave-configure-title"
-    >
-      <button type="button" className="absolute inset-0 bg-neutral-950/55" aria-label={closeLabel} onClick={onClose} />
-      <div className="relative flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl border border-neutral-200/65 bg-white shadow-2xl dark:border-neutral-800/55 dark:bg-neutral-950 sm:max-w-2xl sm:rounded-2xl">
-        <div className="flex items-start justify-between gap-3 border-b border-neutral-100 px-5 py-4 dark:border-neutral-800">
-          <div className="min-w-0">
-            <h2 id="mirror-slave-configure-title" className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
-              {title}
-            </h2>
-            <p className="mt-2 flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-300">
-              <AccountMark platform={slave.platform} size="sm" />
-              <span className="truncate">{accountTitle(slave)}</span>
-            </p>
-            {source ? (
-              <p className="mt-1 truncate text-xs text-neutral-500 dark:text-neutral-400">
-                {copyFromLabel} {accountTitle(source)}
-              </p>
-            ) : null}
-          </div>
-          <button
-            type="button"
-            className="rounded-lg p-2 text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
-            aria-label={closeLabel}
-            onClick={onClose}
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="overflow-y-auto px-5 py-4">
-          <CopyRiskEditor
-            settings={settings}
-            labels={labels}
-            saveError={saveError}
-            currency={slave.last_currency}
-            onChange={onChange}
-          />
-        </div>
-        <div className="flex justify-end border-t border-neutral-100 px-5 py-4 dark:border-neutral-800">
-          <button
-            type="button"
-            className="rounded-lg px-4 py-2 text-sm font-medium text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
-            onClick={onClose}
-          >
-            {closeLabel}
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body,
-  )
-}

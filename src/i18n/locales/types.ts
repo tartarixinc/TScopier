@@ -906,6 +906,40 @@ export interface MirrorTradingPageTranslations {
   back: string
   next: string
   loadError: string
+  setup: {
+    title: string
+    preview: string
+    subtitle: string
+    copyMethod: string
+    protections: string
+    moreSettings: string
+    exampleTrade: string
+    masterSize: string
+    slaveAccount: string
+    estimatedLot: string
+    copied: string
+    notCopied: string
+    riskProfile: string
+    estimateUnavailable: string
+    lots: string
+    done: string
+    advanced: string
+    advancedHint: string
+    proportional: string
+    riskMultiplier: string
+    proportionalProfile: string
+    fixedCopiedLot: string
+    copiedLot: string
+    modes: {
+      fixed_lot: string
+      lot_multiplier: string
+      balance_ratio: string
+      equity_ratio: string
+      percent_risk: string
+      cash_risk: string
+      stop_distance: string
+    }
+  }
 }
 
 export interface SocialTradingPageTranslations {

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { CopyRiskTranslations } from '../../i18n/locales/copyRiskLabels'
 import {
   applyCopyRiskPreset,
@@ -67,10 +67,27 @@ function NumberField({
   onCommit: (value: number | null) => void
 }) {
   const revision = useContext(RevisionContext)
+  const focused = useRef(false)
+  const valueRef = useRef(value)
+  valueRef.current = value
   const [text, setText] = useState(value == null ? '' : String(value))
   useEffect(() => {
-    setText(value == null ? '' : String(value))
-  }, [value, revision])
+    if (!focused.current) setText(value == null ? '' : String(value))
+  }, [value])
+  useEffect(() => {
+    const current = valueRef.current
+    setText(current == null ? '' : String(current))
+  }, [revision])
+
+  const commitText = (raw: string) => {
+    const trimmed = raw.trim()
+    if (!trimmed) {
+      if (allowEmpty) onCommit(null)
+      return
+    }
+    const next = Number(trimmed)
+    if (Number.isFinite(next) && next >= 0) onCommit(next)
+  }
 
   return (
     <Row label={label}>
@@ -78,8 +95,13 @@ function NumberField({
         className={fieldClass}
         inputMode="decimal"
         value={text}
-        onChange={event => setText(event.target.value)}
+        onFocus={() => { focused.current = true }}
+        onChange={event => {
+          setText(event.target.value)
+          commitText(event.target.value)
+        }}
         onBlur={() => {
+          focused.current = false
           const trimmed = text.trim()
           if (!trimmed) {
             if (allowEmpty) onCommit(null)
@@ -192,6 +214,7 @@ export function CopyRiskEditor({
   labels,
   saveError,
   currency,
+  omitSizing = false,
   onChange,
 }: {
   settings: CopyRiskSettings
@@ -199,6 +222,8 @@ export function CopyRiskEditor({
   saveError: string | null
   /** Follower account currency, used on cash drawdown. */
   currency?: string | null
+  /** The slave setup modal shows lot sizing as its own method cards. */
+  omitSizing?: boolean
   onChange: (next: CopyRiskSettings) => void
 }) {
   const [pending, setPending] = useState<(() => void) | null>(null)
@@ -284,7 +309,7 @@ export function CopyRiskEditor({
         onChange={applyPreset}
       />
 
-      <Section title={labels.sections.sizing}>
+      {omitSizing ? null : <Section title={labels.sections.sizing}>
         <SelectField
           label={labels.sections.sizing}
           value={sizing.mode}
@@ -315,7 +340,7 @@ export function CopyRiskEditor({
             <NumberField label={labels.sizing.referencePips} value={sizing.stop_distance_reference_pips} onCommit={value => value != null && value > 0 && patch({ ...settings, sizing: { ...sizing, stop_distance_reference_pips: value } })} />
           </>
         ) : null}
-      </Section>
+      </Section>}
 
       <Section title={labels.sections.protection}>
         <SelectField
