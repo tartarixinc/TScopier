@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ManualSettings, PlannerRangeEntryWait } from './manualPlanning/types'
 import type { BrokerRow, ParsedSignal, SignalRow } from './tradeExecutor/types'
 import { syncWaitRow } from './signalRangeEntryService'
-
+import { writeExecutionLog } from './observability/executionLog'
 export const SIGNAL_RANGE_WAKE_DISPATCH_SOURCE = 'signal_range_wake' as const
 
 export type SignalRangeEntryWaitRow = {
@@ -108,21 +108,17 @@ export async function logSignalRangeEntryNoPrice(
   parsed: ParsedSignal,
   symbol: string,
 ): Promise<void> {
-  try {
-    await supabase.from('trade_execution_logs').insert({
-      user_id: signal.user_id,
-      signal_id: signal.id,
-      broker_account_id: broker.id,
-      action: 'signal_range_entry_no_price',
-      status: 'skipped',
-      request_payload: {
-        direction: String(parsed.action ?? '').toLowerCase(),
-        symbol,
-      },
-    })
-  } catch {
-    /* best-effort */
-  }
+  await writeExecutionLog(supabase, {
+    user_id: signal.user_id,
+    signal_id: signal.id,
+    broker_account_id: broker.id,
+    action: 'signal_range_entry_no_price',
+    status: 'skipped',
+    request_payload: {
+      direction: String(parsed.action ?? '').toLowerCase(),
+      symbol,
+    },
+  })
 }
 
 export async function logSignalRangeEntryWaiting(
@@ -134,27 +130,23 @@ export async function logSignalRangeEntryWaiting(
   bid: number,
   ask: number,
 ): Promise<void> {
-  try {
-    await supabase.from('trade_execution_logs').insert({
-      user_id: signal.user_id,
-      signal_id: signal.id,
-      broker_account_id: broker.id,
-      action: 'signal_range_entry_waiting',
-      status: 'success',
-      request_payload: {
-        direction: wait.isBuy ? 'buy' : 'sell',
-        symbol,
-        entry_price: wait.entryPrice,
-        zone_lo: wait.zoneLo,
-        zone_hi: wait.zoneHi,
-        tolerance_pips: wait.tolerancePips,
-        bid,
-        ask,
-      },
-    })
-  } catch {
-    /* best-effort */
-  }
+  await writeExecutionLog(supabase, {
+    user_id: signal.user_id,
+    signal_id: signal.id,
+    broker_account_id: broker.id,
+    action: 'signal_range_entry_waiting',
+    status: 'success',
+    request_payload: {
+      direction: wait.isBuy ? 'buy' : 'sell',
+      symbol,
+      entry_price: wait.entryPrice,
+      zone_lo: wait.zoneLo,
+      zone_hi: wait.zoneHi,
+      tolerance_pips: wait.tolerancePips,
+      bid,
+      ask,
+    },
+  })
 }
 
 export async function logSignalRangeEntryFired(
@@ -164,25 +156,21 @@ export async function logSignalRangeEntryFired(
   wait: PlannerRangeEntryWait,
   symbol: string,
 ): Promise<void> {
-  try {
-    await supabase.from('trade_execution_logs').insert({
-      user_id: signal.user_id,
-      signal_id: signal.id,
-      broker_account_id: brokerAccountId,
-      action: 'signal_range_entry_fired',
-      status: 'success',
-      request_payload: {
-        direction: wait.isBuy ? 'buy' : 'sell',
-        symbol,
-        entry_price: wait.entryPrice,
-        zone_lo: wait.zoneLo,
-        zone_hi: wait.zoneHi,
-        tolerance_pips: wait.tolerancePips,
-      },
-    })
-  } catch {
-    /* best-effort */
-  }
+  await writeExecutionLog(supabase, {
+    user_id: signal.user_id,
+    signal_id: signal.id,
+    broker_account_id: brokerAccountId,
+    action: 'signal_range_entry_fired',
+    status: 'success',
+    request_payload: {
+      direction: wait.isBuy ? 'buy' : 'sell',
+      symbol,
+      entry_price: wait.entryPrice,
+      zone_lo: wait.zoneLo,
+      zone_hi: wait.zoneHi,
+      tolerance_pips: wait.tolerancePips,
+    },
+  })
 }
 
 export async function logSignalRangeEntryWakeRetry(
@@ -193,16 +181,12 @@ export async function logSignalRangeEntryWakeRetry(
   bid: number,
   ask: number,
 ): Promise<void> {
-  try {
-    await supabase.from('trade_execution_logs').insert({
-      user_id: signal.user_id,
-      signal_id: signal.id,
-      broker_account_id: brokerAccountId,
-      action: 'signal_range_entry_wake_retry',
-      status: 'success',
-      request_payload: { symbol, bid, ask },
-    })
-  } catch {
-    /* best-effort */
-  }
+  await writeExecutionLog(supabase, {
+    user_id: signal.user_id,
+    signal_id: signal.id,
+    broker_account_id: brokerAccountId,
+    action: 'signal_range_entry_wake_retry',
+    status: 'success',
+    request_payload: { symbol, bid, ask },
+  })
 }

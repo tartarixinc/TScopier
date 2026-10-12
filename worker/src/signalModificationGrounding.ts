@@ -8,6 +8,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { symbolsCompatibleForBasket } from './basketModFollowUp'
+import { textLooksLikeMultilingualFullClose } from './multilingualManagementTerms'
 import type { TradeIntent } from './signalIntent/tradeIntent'
 
 export const MODIFICATION_NO_OPEN_TRADE_REASON = 'modification_no_open_trade'
@@ -123,4 +124,25 @@ export function modificationTargetsOpenTrade(
   const sym = String(intent.symbol ?? '').trim().toUpperCase()
   if (!sym) return false
   return openTrades.some(t => symbolsCompatibleForBasket(sym, t.symbol))
+}
+
+/**
+ * A `close` with no symbol AND an explicit "close all / everything" cue is a
+ * global close-all — it targets every open trade in the channel by design. The
+ * symbol-match in `modificationTargetsOpenTrade` exists to catch a *guessed*
+ * symbol and would always reject an empty one, so this case is grounded against
+ * the whole open-trade list instead.
+ *
+ * The cue is required: a bare symbol-less `close` ("close now", "close it") is
+ * exactly the ambiguous case the grounding layer exists to absorb — without the
+ * cue it must fall through to the normal skip/reconcile path rather than
+ * liquidating the channel.
+ */
+export function isSymbolLessCloseIntent(
+  intent: Pick<TradeIntent, 'kind' | 'symbol'>,
+  rawMessage: string,
+): boolean {
+  return intent.kind === 'close'
+    && !String(intent.symbol ?? '').trim()
+    && textLooksLikeMultilingualFullClose(rawMessage)
 }

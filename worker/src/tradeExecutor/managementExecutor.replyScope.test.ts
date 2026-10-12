@@ -142,7 +142,10 @@ function makeSupabase(state: TestState) {
         if (table === 'signals') {
           data = applyFilters(Object.values(state.signals) as unknown as Record<string, unknown>[])
         } else if (table === 'trades') {
+          // Snapshots: production rows come back as deserialized copies, so an
+          // in-flight update never reaches an object the executor already holds.
           data = applyFilters(state.trades as unknown as Record<string, unknown>[])
+            .map(row => ({ ...row }))
         } else if (table === 'range_pending_legs' || table === 'signal_entry_pending_orders') {
           data = []
         } else if (table === 'trade_channel_attributions' || table === 'channel_active_trade_params') {
@@ -161,6 +164,31 @@ function makeSupabase(state: TestState) {
         order() { return query },
         limit(n: number) { limitN = n; return query },
         maybeSingle() {
+          if (updatePatch) {
+            if (limitN !== Infinity || Object.keys(ins).length) {
+              throw new Error('mock: unsupported filter in update+maybeSingle')
+            }
+            // PostgREST update + select: filter, apply the patch, return the row.
+            const rows = table === 'trades'
+              ? (state.trades as unknown as Record<string, unknown>[])
+              : table === 'signals'
+                ? (Object.values(state.signals) as unknown as Record<string, unknown>[])
+                : []
+            const matched: Record<string, unknown>[] = []
+            for (const row of rows) {
+              let ok = true
+              for (const [col, val] of Object.entries(eqs)) {
+                if (row[col] !== val) { ok = false; break }
+              }
+              for (const [col, vals] of Object.entries(ins)) {
+                if (!(vals as unknown[]).includes(row[col])) { ok = false; break }
+              }
+              if (ok) matched.push(row)
+            }
+            state.updates.push({ table, filters: { ...eqs }, patch: updatePatch })
+            for (const row of matched) Object.assign(row, updatePatch)
+            return Promise.resolve({ data: matched[0] ? { ...matched[0] } : null, error: null })
+          }
           return resolve().then(res => ({ data: (res.data as unknown[])[0] ?? null, error: null }))
         },
         insert(payload: unknown) {
@@ -351,12 +379,20 @@ describe('PARTIAL_PROFIT broker verification', () => {
     failPostRead?: boolean
     postTicket?: number
     postAliases?: Record<string, unknown>
+    /** Captured position ticket stored on the row (stale after pre-read reconcile). */
+    capturedTicket?: number
+    /** Order-send ticket that diverges from the captured position ticket. */
+    orderTicket?: number
+    /** If set, the pre-close broker row carries this positionTicket link. */
+    preLinkTicket?: number
   }): Promise<{ state: TestState; closeCalls: Array<{ ticket: number; lots?: number }>; openedCalls: number }> {
     const oldFxKey = process.env.FXSOCKET_API_KEY
     process.env.FXSOCKET_API_KEY = 'test-only'
     try {
       const leg = trade('partial-leg', 'signal-a', 1001, 4308)
       leg.lot_size = args.volume
+      if (args.capturedTicket != null) leg.broker_position_ticket = String(args.capturedTicket)
+      if (args.orderTicket != null) leg.metaapi_order_id = String(args.orderTicket)
       const state = makeState([leg])
       const closeCalls: Array<{ ticket: number; lots?: number }> = []
       let openedCalls = 0
@@ -372,6 +408,9 @@ describe('PARTIAL_PROFIT broker verification', () => {
             operation: 'Buy',
             lots: brokerVolume,
             openPrice: row.entry_price,
+            ...(openedCalls === 1 && args.preLinkTicket != null
+              ? { positionTicket: args.preLinkTicket }
+              : {}),
             ...(openedCalls > 1 ? args.postAliases : {}),
           }))
         },
@@ -452,6 +491,46 @@ describe('PARTIAL_PROFIT broker verification', () => {
     assert.deepEqual(out.closeCalls, [{ ticket: 1001, lots: 0.01 }])
     assert.equal(out.state.trades[0]?.metaapi_order_id, '2002')
     assert.equal(out.state.trades[0]?.lot_size, 0.01)
+    assert.equal(out.state.updates.some(u => u.table === 'signals' && u.patch.status === 'executed'), true)
+  })
+
+  it('keys the post-close readback on the acted-on ticket when the captured ticket is stale', async () => {
+    // The pre-read reconciles 1001 -> 5555 and persists it, but the in-memory
+    // row still carries broker_position_ticket=1001. The verification read must
+    // not chase the stale captured ticket or the replacement CAS misses the row.
+    const out = await runPartial({
+      volume: 0.02,
+      mutateTo: 0.01,
+      postTicket: 2002,
+      capturedTicket: 1001,
+      preLinkTicket: 5555,
+    })
+    assert.deepEqual(out.closeCalls, [{ ticket: 5555, lots: 0.01 }])
+    assert.equal(out.state.trades[0]?.status, 'open')
+    assert.equal(out.state.trades[0]?.lot_size, 0.01)
+    assert.equal(out.state.trades[0]?.broker_position_ticket, '2002')
+    assert.equal(out.state.trades[0]?.metaapi_order_id, '2002')
+    assert.equal(out.state.updates.some(u => u.table === 'signals' && u.patch.status === 'executed'), true)
+  })
+
+  it('persists a captured-only row (divergent order ticket) after verified partial close', async () => {
+    // captureBrokerPositionIdentity writes only broker_position_ticket, so
+    // metaapi_order_id still holds the order-send ticket. The replacement CAS
+    // must land on broker_position_ticket (= the acted-on ticket), not on the
+    // divergent metaapi_order_id, or the persist matches no row and the signal
+    // is skipped after the broker already reduced the position.
+    const out = await runPartial({
+      volume: 0.02,
+      mutateTo: 0.01,
+      postTicket: 2002,
+      capturedTicket: 1001,
+      orderTicket: 9001,
+    })
+    assert.deepEqual(out.closeCalls, [{ ticket: 1001, lots: 0.01 }])
+    assert.equal(out.state.trades[0]?.status, 'open')
+    assert.equal(out.state.trades[0]?.lot_size, 0.01)
+    assert.equal(out.state.trades[0]?.broker_position_ticket, '2002')
+    assert.equal(out.state.trades[0]?.metaapi_order_id, '2002')
     assert.equal(out.state.updates.some(u => u.table === 'signals' && u.patch.status === 'executed'), true)
   })
 

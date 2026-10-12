@@ -56,7 +56,7 @@ import { captureBusinessIssue } from './observability/businessEvents'
 import { parsePersistedLayeringPlan } from './manualPlanning/layeringPlanPersistence'
 import { resolveLayeringModeRolloutDecision } from './manualPlanning/layeringModeRollout'
 import { convergeLayeringPlanAfterLegTerminal } from './layeringPlanLifecycle'
-
+import { writeExecutionLog } from './observability/executionLog'
 /**
  * Worker-side monitor that turns persisted "virtual range pendings" into
  * real market orders the moment the live /Quote crosses their trigger price.
@@ -381,16 +381,14 @@ export class VirtualPendingMonitor {
           await convergeLayeringPlanAfterLegTerminal(this.supabase, r.layer_plan_id)
         }
         if (isUserCopierPausedCached(r.user_id)) continue
-        try {
-          await this.supabase.from('trade_execution_logs').insert({
-            user_id: r.user_id,
-            signal_id: r.signal_id,
-            broker_account_id: r.broker_account_id,
-            action: 'virtual_pending_expired',
-            status: 'info',
-            request_payload: { id: r.id, symbol: r.symbol, step_idx: r.step_idx } as unknown as Record<string, unknown>,
-          })
-        } catch { /* logging is best-effort */ }
+        await writeExecutionLog(this.supabase, {
+          user_id: r.user_id,
+          signal_id: r.signal_id,
+          broker_account_id: r.broker_account_id,
+          action: 'virtual_pending_expired',
+          status: 'info',
+          request_payload: { id: r.id, symbol: r.symbol, step_idx: r.step_idx } as unknown as Record<string, unknown>,
+        })
       }
     }
 
@@ -660,31 +658,26 @@ export class VirtualPendingMonitor {
       )
       if (!stopped) continue
       touched.add(basketKey)
-
-      try {
-        await this.supabase.from('trade_execution_logs').insert({
-          user_id: userId,
-          signal_id: signalId,
-          broker_account_id: brokerAccountId,
-          action: 'virtual_pending_tp_lock',
-          status: 'info',
-          request_payload: {
-            symbol,
-            direction,
-            trigger_price: decision.triggerPrice,
-            trigger_side: decision.triggerSide,
-            lock_trigger: decision.reason,
-            closed_trades: closedCount,
-            open_trades: openRows.length,
-            bid,
-            ask,
-            deleted_rows: deleted,
-            lock_reason: 'layering_stopped',
-          } as unknown as Record<string, unknown>,
-        })
-      } catch {
-        /* best-effort */
-      }
+      await writeExecutionLog(this.supabase, {
+        user_id: userId,
+        signal_id: signalId,
+        broker_account_id: brokerAccountId,
+        action: 'virtual_pending_tp_lock',
+        status: 'info',
+        request_payload: {
+          symbol,
+          direction,
+          trigger_price: decision.triggerPrice,
+          trigger_side: decision.triggerSide,
+          lock_trigger: decision.reason,
+          closed_trades: closedCount,
+          open_trades: openRows.length,
+          bid,
+          ask,
+          deleted_rows: deleted,
+          lock_reason: 'layering_stopped',
+        } as unknown as Record<string, unknown>,
+      })
     }
 
     return touched
@@ -1064,6 +1057,7 @@ export class VirtualPendingMonitor {
         isBuy: leg.is_buy,
         perLegBreakevenSl,
         effectiveSource: effective.source,
+        symbol: leg.symbol,
       })
       if (firing.stoploss > 0) leg.stoploss = firing.stoploss
       if (leg.cwe_close_price == null && firing.takeprofit > 0) leg.takeprofit = firing.takeprofit
@@ -1353,7 +1347,7 @@ export class VirtualPendingMonitor {
           },
         })
         try {
-          await this.supabase.from('trade_execution_logs').insert({
+          await writeExecutionLog(this.supabase, {
             user_id: leg.user_id,
             signal_id: leg.signal_id,
             broker_account_id: leg.broker_account_id,
@@ -1540,7 +1534,7 @@ export class VirtualPendingMonitor {
         )
       }
       try {
-        await this.supabase.from('trade_execution_logs').insert({
+        await writeExecutionLog(this.supabase, {
           user_id: leg.user_id,
           signal_id: leg.signal_id,
           broker_account_id: leg.broker_account_id,
@@ -1584,7 +1578,7 @@ export class VirtualPendingMonitor {
               + ` step=${leg.step_idx} fill=${entryPx} updated=${reanchor.updated}`,
             )
             try {
-              await this.supabase.from('trade_execution_logs').insert({
+              await writeExecutionLog(this.supabase, {
                 user_id: leg.user_id,
                 signal_id: leg.signal_id,
                 broker_account_id: leg.broker_account_id,
@@ -1671,7 +1665,7 @@ export class VirtualPendingMonitor {
         await convergeLayeringPlanAfterLegTerminal(this.supabase, leg.layer_plan_id)
       }
       timestamps.pending_leg_updated_at = Date.now()
-      await this.supabase.from('trade_execution_logs').insert({
+      await writeExecutionLog(this.supabase, {
         user_id: leg.user_id,
         signal_id: leg.signal_id,
         broker_account_id: leg.broker_account_id,
@@ -1796,24 +1790,20 @@ export class VirtualPendingMonitor {
       { signalId: leg.signal_id, brokerAccountId: leg.broker_account_id },
       reason,
     )
-    try {
-      await this.supabase.from('trade_execution_logs').insert({
-        user_id: leg.user_id,
-        signal_id: leg.signal_id,
-        broker_account_id: leg.broker_account_id,
-        action: 'virtual_pending_cancelled',
-        status: 'info',
-        request_payload: {
-          leg_id: leg.id,
-          step_idx: leg.step_idx,
-          symbol: leg.symbol,
-          reason,
-          claimed_by: this.hostId,
-        } as unknown as Record<string, unknown>,
-      })
-    } catch {
-      // Logging failure is non-fatal.
-    }
+    await writeExecutionLog(this.supabase, {
+      user_id: leg.user_id,
+      signal_id: leg.signal_id,
+      broker_account_id: leg.broker_account_id,
+      action: 'virtual_pending_cancelled',
+      status: 'info',
+      request_payload: {
+        leg_id: leg.id,
+        step_idx: leg.step_idx,
+        symbol: leg.symbol,
+        reason,
+        claimed_by: this.hostId,
+      } as unknown as Record<string, unknown>,
+    })
   }
 
   private async rebalanceRangeBasketTakeProfits(

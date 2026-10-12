@@ -50,28 +50,38 @@ function positiveNumber(value: unknown): number | null {
 /**
  * Broker-reported current position volume from an OpenedOrders row.
  *
- * The repository's bridge contracts do not establish a safe precedence when
- * multiple aliases coexist. Accept one positive value (or agreeing aliases)
- * and fail closed when positive aliases conflict.
+ * Lot-denominated aliases (`lots`, `lotSize`, `volumeCurrent`, …) are preferred
+ * and must agree with each other; the `volume` alias is consulted only when no
+ * lot field is present. Evidence — a live MTAPI bridge payload captured
+ * 2026-10-07 (account 62136328, EURUSD): the same row carries `lots: 0.01` and
+ * `volume: 1000000`, so `volume` is not in lots on that bridge (the exact unit
+ * is not established by the capture). Treating the two as comparable fails
+ * closed on every real MTAPI row, which disables attribute matching and manual
+ * partial closes on MTAPI. MT4-style rows (as returned raw by FxSocket's
+ * `OpenedOrders` list) carry `volume` in lots and no `lots` key, so the unit
+ * fallback is correct for them; MTAPI is the only observed source of a
+ * `volume` that is not in lots.
  */
-export function livePositionVolume(row: Record<string, unknown>): number | null {
-  const values = [
-    row.lots,
-    row.Lots,
-    row.volume,
-    row.Volume,
-    row.lotSize,
-    row.LotSize,
-    row.volumeCurrent,
-    row.VolumeCurrent,
-  ].map(positiveNumber).filter((value): value is number => value != null)
-  if (!values.length) return null
+const LOT_VOLUME_KEYS = ['lots', 'Lots', 'lotSize', 'LotSize', 'volumeCurrent', 'VolumeCurrent'] as const
+const UNIT_VOLUME_KEYS = ['volume', 'Volume'] as const
 
+function agreedValue(values: number[]): number | null {
+  if (!values.length) return null
   const first = values[0]!
   const conflict = values.some(value =>
     Math.abs(value - first) > Math.max(1e-9, Math.abs(first) * 1e-9),
   )
   return conflict ? null : first
+}
+
+export function livePositionVolume(row: Record<string, unknown>): number | null {
+  const pick = (keys: readonly string[]): number[] =>
+    keys.map(key => positiveNumber(row[key])).filter((value): value is number => value != null)
+  const lotValues = pick(LOT_VOLUME_KEYS)
+  // A disagreement between lot fields is a real conflict: fail closed and do
+  // not fall back to `volume`.
+  if (lotValues.length) return agreedValue(lotValues)
+  return agreedValue(pick(UNIT_VOLUME_KEYS))
 }
 function nestedTicket(value: unknown): number | null {
   if (value == null) return null
@@ -243,16 +253,50 @@ export function resolveCanonicalOpenPosition(args: {
   }
 }
 
+/**
+ * The broker account logins present in a live-position snapshot. Used to
+ * corroborate that an open-positions read actually belongs to the account we
+ * asked about before concluding that a row is gone: a non-empty snapshot with
+ * none of our login is a wrong/untrusted read, not proof of absence.
+ */
+export function snapshotLogins(openedOrders: unknown[]): Set<string> {
+  const out = new Set<string>()
+  const add = (value: unknown): void => {
+    if (value == null || typeof value === 'object') return
+    const text = String(value).trim()
+    if (text) out.add(text)
+  }
+  for (const raw of openedOrders) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue
+    const row = raw as Record<string, unknown>
+    add(row.login)
+    add(row.Login)
+    for (const nested of ['dealInternalIn', 'DealInternalIn', 'dealInternalOut', 'DealInternalOut', 'position', 'Position'] as const) {
+      const inner = row[nested]
+      if (inner && typeof inner === 'object' && !Array.isArray(inner)) {
+        const obj = inner as Record<string, unknown>
+        add(obj.login)
+        add(obj.Login)
+      }
+    }
+  }
+  return out
+}
+
 export async function persistCanonicalPositionTicket(
   supabase: SupabaseClient,
   trade: LiveTradeIdentity,
   resolution: CanonicalPositionResolution,
+  /** Callers that have *proved* the relationship (e.g. a partial close verified
+   * by a fresh read + volume check) may accept an attribute-only match. Never
+   * set this for a blind resolve. */
+  opts: { allowAttributeMatch?: boolean } = {},
 ): Promise<boolean> {
   if (resolution.status !== 'resolved') return false
   // Never persist a guess: only a ticket-based match (canonical ticket or an
   // explicit order→position relationship) may be frozen into the row. An
   // attribute-only match stays transient and is not written anywhere.
-  if (resolution.matchedBy === 'attributes') return false
+  if (resolution.matchedBy === 'attributes' && !opts.allowAttributeMatch) return false
   if (!resolution.replacement) return true
 
   const stored = String(resolution.storedTicket)
@@ -275,9 +319,14 @@ export async function persistCanonicalPositionTicket(
     return { persisted: !error && data?.id === trade.id, error }
   }
 
-  // A certain replacement is recorded in the position column and leaves the
-  // order ticket untouched (Option A).
-  const first = await apply({ broker_position_ticket: String(resolution.ticket) }, sourceColumn)
+  // A certain replacement is recorded in the position column. The stored
+  // ticket also moves: after a partial close the old ticket is dead at the
+  // broker, so any reader that still keys on `metaapi_order_id` (the remaining
+  // ones) must not be left pointing at it.
+  const first = await apply(
+    { broker_position_ticket: String(resolution.ticket), metaapi_order_id: String(resolution.ticket) },
+    sourceColumn,
+  )
   if (first.persisted) return true
 
   // Before the column exists the update is rejected; keep the legacy behaviour

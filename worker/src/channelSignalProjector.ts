@@ -178,6 +178,13 @@ export async function projectChannelSignalToSubscribers(
                 skip_reason: 'duplicate_provider_signal',
               })
               .eq('id', row.id)
+              .then(({ error }) => {
+                if (error) {
+                  console.warn(
+                    `[channelSignalProjector] failed to mark duplicate signal ${row.id} skipped: ${error.message}`,
+                  )
+                }
+              })
           }
         }
         if (!skipDispatch) {

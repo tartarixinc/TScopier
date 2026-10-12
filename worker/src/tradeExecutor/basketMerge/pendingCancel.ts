@@ -2,7 +2,7 @@ import { deleteRangePendingLegsForBasket } from '../../rangePendingLegDelete'
 import { cancelSignalEntryRowAtBroker, type SignalEntryPendingRow } from '../../signalEntryPendingHelpers'
 import { type TradeExecutorContext } from '../context'
 import { type RangePendingCancelScope } from '../types'
-
+import { writeExecutionLog } from '../../observability/executionLog'
 export async function cancelSignalEntryBrokerRowsForScope(ctx: TradeExecutorContext, 
     scope: RangePendingCancelScope,
     userId: string,
@@ -58,8 +58,7 @@ export async function cancelRangePendingLegsForScopes(ctx: TradeExecutorContext,
             reason,
           )
           if (rowsCancelled > 0) {
-          try {
-            await ctx.supabase.from('trade_execution_logs').insert({
+            await writeExecutionLog(ctx.supabase, {
               user_id: userId,
               signal_id: logSignalId,
               broker_account_id: scope.brokerAccountId,
@@ -71,9 +70,6 @@ export async function cancelRangePendingLegsForScopes(ctx: TradeExecutorContext,
                 rows: rowsCancelled,
               } as unknown as Record<string, unknown>,
             })
-          } catch {
-            // Logging failure is non-fatal.
-          }
           }
           await ctx.cancelSignalEntryBrokerRowsForScope(scope, userId, logSignalId, reason)
         } catch {

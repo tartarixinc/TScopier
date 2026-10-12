@@ -13,7 +13,7 @@ import { resolveCurrentLivePosition } from '../../livePositionIdentity'
 import { cancelRangePendingLegsForScopes } from './pendingCancel'
 import { TRADE_CLOSE_REASON } from '../../tradeCloseReasons'
 import { applyCloseUpdate } from '../../tradeCloseUpdate'
-
+import { writeExecutionLog } from '../../observability/executionLog'
 export async function closeOppositeDirectionTrades(ctx: TradeExecutorContext, 
     signal: SignalRow,
     parsed: ParsedSignal,
@@ -67,7 +67,7 @@ export async function closeOppositeDirectionTrades(ctx: TradeExecutorContext,
         )
         scopes.push({ signalId: t.signal_id, brokerAccountId: broker.id, symbol })
         try {
-          await ctx.supabase.from('trade_execution_logs').insert({
+          await writeExecutionLog(ctx.supabase, {
             user_id: signal.user_id,
             signal_id: signal.id,
             broker_account_id: broker.id,
@@ -89,19 +89,15 @@ export async function closeOppositeDirectionTrades(ctx: TradeExecutorContext,
         console.warn(
           `[tradeExecutor] opposite_signal_close failed trade=${t.id} ticket=${ticket} broker=${broker.id}: ${msg}`,
         )
-        try {
-          await ctx.supabase.from('trade_execution_logs').insert({
-            user_id: signal.user_id,
-            signal_id: signal.id,
-            broker_account_id: broker.id,
-            action: 'opposite_signal_close',
-            status: 'failed',
-            request_payload: { closed_trade_id: t.id, ticket, symbol } as unknown as Record<string, unknown>,
-            error_message: msg,
-          })
-        } catch {
-          // best-effort
-        }
+        await writeExecutionLog(ctx.supabase, {
+          user_id: signal.user_id,
+          signal_id: signal.id,
+          broker_account_id: broker.id,
+          action: 'opposite_signal_close',
+          status: 'failed',
+          request_payload: { closed_trade_id: t.id, ticket, symbol } as unknown as Record<string, unknown>,
+          error_message: msg,
+        })
       }
     }
     if (scopes.length && !isPendingCancelBlocked(

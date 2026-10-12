@@ -55,11 +55,13 @@ import {
   type ChannelActiveTradeParams,
 } from '../channelActiveTradeParams'
 import { resolveTscopierCommentPrefix } from '../tradeComment'
+import { writeExecutionLog } from '../observability/executionLog'
 import type { TradeExecutorContext } from './context'
 import { applySymbolMapping, computeLot, isBuySideOp, isExcluded, isMt5OnlyOperation, roundLot, triggerPriceFor, brokerSessionUuid, type Leg } from './helpers'
 import {
   isExplicitProviderNewOrder,
   missingRequiredSlFailure,
+  stopStatedButUnreadable,
   shouldRunMissingRequiredSlPolicy,
   shouldEnforceSingleOpenSymbolSlot,
 } from './entryPrepareMissingSl'
@@ -345,6 +347,7 @@ export async function prepareEntryExecution(
       {
         missingField: 'stop_loss',
         withheldByProvider: missingSl.withheldByProvider,
+        stopStatedButUnreadable: stopStatedButUnreadable(parsed),
         requestedSymbol,
         brokerSymbol: symbol,
       },
@@ -802,13 +805,9 @@ export async function prepareEntryExecution(
       } as unknown as Record<string, unknown>,
     }
     if (liveEntryFast) {
-      void ctx.supabase.from('trade_execution_logs').insert(fallbackRow)
+      void writeExecutionLog(ctx.supabase, fallbackRow)
     } else {
-      try {
-        await ctx.supabase.from('trade_execution_logs').insert(fallbackRow)
-      } catch {
-        // Logging failure is non-fatal.
-      }
+      await writeExecutionLog(ctx.supabase, fallbackRow)
     }
   }
 
@@ -1092,17 +1091,15 @@ export async function prepareEntryExecution(
       `[tradeExecutor] single trade_style multi_leg_blocked ${legs.length} legs`
       + ` signal=${signal.id} broker=${broker.id}`,
     )
-    try {
-      await ctx.supabase.from('trade_execution_logs').insert({
-        user_id: signal.user_id,
-        signal_id: signal.id,
-        broker_account_id: broker.id,
-        action: 'single_style_multi_leg_blocked',
-        status: 'failed',
-        request_payload: { leg_count: legs.length } as unknown as Record<string, unknown>,
-        error_message: `single trade_style refused ${legs.length} immediate legs`,
-      })
-    } catch { /* best-effort */ }
+    await writeExecutionLog(ctx.supabase, {
+      user_id: signal.user_id,
+      signal_id: signal.id,
+      broker_account_id: broker.id,
+      action: 'single_style_multi_leg_blocked',
+      status: 'failed',
+      request_payload: { leg_count: legs.length },
+      error_message: `single trade_style refused ${legs.length} immediate legs`,
+    })
     return {
       ok: false,
       outcome: {

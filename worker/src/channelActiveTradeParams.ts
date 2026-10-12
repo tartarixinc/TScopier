@@ -204,6 +204,13 @@ export async function refreshChannelParamsFromSignal(
   },
 ): Promise<ChannelActiveTradeParams | null> {
   if (!parsedSignalHasExplicitStops(args.plannerParsed)) return null
+  if (!parsedStopsFittableForEntry(args.plannerParsed)) {
+    console.warn(
+      `[channelActiveTradeParams] skip refresh: parsed stops are on the wrong side of the signal entry`
+      + ` symbol=${args.symbol}`,
+    )
+    return null
+  }
   const refreshTpLevels = (args.plannerParsed.tp ?? []).filter(
     (t): t is number => typeof t === 'number' && Number.isFinite(t) && t > 0,
   )
@@ -416,6 +423,50 @@ export type EntryChannelStopsResult = {
   channelParams: ChannelActiveTradeParams | null
 }
 
+/**
+ * True when a stop/target level sits on the valid side of `referencePrice` for a
+ * position in the given direction:
+ *  - buy:  stop below the reference, target above;
+ *  - sell: stop above the reference, target below.
+ * Used to reject a level that can never be applied to a position (a stale or
+ * opposite-direction value), so a shared per-symbol record cannot corrupt it.
+ */
+export function levelFitsDirection(
+  level: number,
+  referencePrice: number,
+  isBuy: boolean,
+  kind: 'sl' | 'tp',
+): boolean {
+  const ref = Number(referencePrice)
+  const lvl = Number(level)
+  if (!(ref > 0) || !(lvl > 0)) return false
+  if (kind === 'sl') return isBuy ? lvl < ref : lvl > ref
+  return isBuy ? lvl > ref : lvl < ref
+}
+
+/**
+ * True when a signal's own stop and targets are structurally valid for its own
+ * direction relative to its own entry price. A signal whose stop or target sits
+ * on the wrong side of its entry cannot be opened, so it must not be written into
+ * channel memory either — a rejected signal should not mutate shared state.
+ * No usable entry price → keep current behaviour (allow the write).
+ */
+export function parsedStopsFittableForEntry(parsed: ParsedSignal): boolean {
+  const entry = Number(parsed.entry_price)
+  if (!(entry > 0)) return true
+  // Pip-denominated stops are offsets, not prices — they are converted elsewhere.
+  // Do not compare them against an absolute entry price here.
+  if (parsed.sl_unit === 'pips' || parsed.tp_unit === 'pips') return true
+  const isBuy = String(parsed.action ?? '').toLowerCase().includes('buy')
+  const sl = Number(parsed.sl)
+  if (sl > 0 && !levelFitsDirection(sl, entry, isBuy, 'sl')) return false
+  const tps = (parsed.tp ?? []).filter((t): t is number => typeof t === 'number' && t > 0)
+  for (const tp of tps) {
+    if (!levelFitsDirection(tp, entry, isBuy, 'tp')) return false
+  }
+  return true
+}
+
 /** Resolve planner SL/TP for a new entry: prefer channel memory when basket is active. */
 export async function resolveEntryChannelStops(
   supabase: SupabaseClient,
@@ -472,17 +523,24 @@ export async function resolveEntryChannelStops(
   }
 
   if (parsedSignalHasExplicitStops(plannerParsed)) {
-    const refreshTpLevels = (plannerParsed.tp ?? []).filter(
-      (t): t is number => typeof t === 'number' && Number.isFinite(t) && t > 0,
-    )
-    await upsertChannelActiveTradeParams(supabase, {
-      userId: args.userId,
-      channelId: args.channelId,
-      symbols: [args.symbol],
-      stoploss: plannerParsed.sl,
-      tpLevels: refreshTpLevels,
-      replace: preferSignalStops,
-    })
+    if (parsedStopsFittableForEntry(plannerParsed)) {
+      const refreshTpLevels = (plannerParsed.tp ?? []).filter(
+        (t): t is number => typeof t === 'number' && Number.isFinite(t) && t > 0,
+      )
+      await upsertChannelActiveTradeParams(supabase, {
+        userId: args.userId,
+        channelId: args.channelId,
+        symbols: [args.symbol],
+        stoploss: plannerParsed.sl,
+        tpLevels: refreshTpLevels,
+        replace: preferSignalStops,
+      })
+    } else {
+      console.warn(
+        `[channelActiveTradeParams] skip entry write: parsed stops are on the wrong side of the signal entry`
+        + ` signal=${args.signalId ?? 'n/a'} symbol=${args.symbol}`,
+      )
+    }
   } else if (channelParams && hasActiveBasket && !applyOverlay) {
     plannerParsed = mergeParsedWithChannelParams(plannerParsed, channelParams)
     mergedChannelParams = true

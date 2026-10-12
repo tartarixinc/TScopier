@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   isExplicitProviderNewOrder,
   missingRequiredSlFailure,
+  stopStatedButUnreadable,
   shouldEnforceSingleOpenSymbolSlot,
   shouldRunMissingRequiredSlPolicy,
 } from './entryPrepareMissingSl'
@@ -248,5 +249,31 @@ describe('missing-SL policy on Telegram revisions', () => {
 
   it('does not apply manual-entry policy to non-manual execution', () => {
     assert.equal(shouldRunMissingRequiredSlPolicy(false, false), false)
+  })
+})
+describe('stopStatedButUnreadable', () => {
+  it('is true when the message states a stop but the parse carries none', () => {
+    assert.equal(stopStatedButUnreadable(parsed({
+      sl: null,
+      raw_instruction: 'GOLD BUY NOW 4120\nTP1 4124\nSL.TP 4105',
+    })), true)
+  })
+  it('is false once the stop is read', () => {
+    assert.equal(stopStatedButUnreadable(parsed({
+      sl: 4098,
+      raw_instruction: 'GOLD BUY NOW 4120\nSL 4098',
+    })), false)
+  })
+  it('is false when the message never states a stop', () => {
+    assert.equal(stopStatedButUnreadable(parsed({
+      sl: null,
+      raw_instruction: 'GOLD BUY NOW 4120\nTP1 4124',
+    })), false)
+  })
+  it('is false when the provider withholds the stop on purpose', () => {
+    assert.equal(stopStatedButUnreadable(parsed({
+      sl: null,
+      raw_instruction: 'GOLD BUY SL premium members only',
+    })), false)
   })
 })

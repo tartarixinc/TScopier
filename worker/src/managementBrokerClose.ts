@@ -19,7 +19,7 @@ import type { BrokerRow } from './tradeExecutor/types'
 import { brokerSessionUuid } from './tradeExecutor/helpers'
 import { TRADE_CLOSE_REASON } from './tradeCloseReasons'
 import { applyCloseUpdate } from './tradeCloseUpdate'
-
+import { writeExecutionLog } from './observability/executionLog'
 export type BrokerOpenOrderLike = {
   ticket: number
   symbol: string
@@ -169,7 +169,7 @@ export async function tryBrokerFallbackClose(args: {
             symbolHint: order.symbol,
           })
         }
-        await supabase.from('trade_execution_logs').insert({
+        await writeExecutionLog(supabase, {
           user_id: signal.user_id,
           signal_id: signal.id,
           broker_account_id: broker.id,

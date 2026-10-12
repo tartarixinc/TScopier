@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { FxsocketBrokerClient } from './fxsocketClient'
-
+import { writeExecutionLog } from './observability/executionLog'
 export type SignalEntryPendingRow = {
   id: string
   signal_id: string
@@ -230,19 +230,14 @@ export async function cancelSignalEntryRowAtBroker(
       .eq('id', row.trade_id)
       .eq('status', 'pending')
   }
-
-  try {
-    await supabase.from('trade_execution_logs').insert({
-      user_id: row.user_id,
-      signal_id: row.signal_id,
-      broker_account_id: row.broker_account_id,
-      action: 'signal_entry_pending_cancelled',
-      status: 'success',
-      request_payload: { row_id: row.id, ticket, reason } as unknown as Record<string, unknown>,
-    })
-  } catch {
-    /* best-effort */
-  }
+  await writeExecutionLog(supabase, {
+    user_id: row.user_id,
+    signal_id: row.signal_id,
+    broker_account_id: row.broker_account_id,
+    action: 'signal_entry_pending_cancelled',
+    status: 'success',
+    request_payload: { row_id: row.id, ticket, reason } as unknown as Record<string, unknown>,
+  })
   return { ok: true }
 }
 
@@ -299,22 +294,17 @@ export async function markSignalEntryFilled(
       console.warn(`[signalEntryPendingHelpers] partial_tp_legs insert failed row=${row.id}: ${pErr.message}`)
     }
   }
-
-  try {
-    await supabase.from('trade_execution_logs').insert({
-      user_id: row.user_id,
-      signal_id: row.signal_id,
-      broker_account_id: row.broker_account_id,
-      action: 'signal_entry_pending_filled',
-      status: 'success',
-      request_payload: { row_id: row.id, ticket: row.broker_ticket, fill_price: px } as unknown as Record<
-        string,
-        unknown
-      >,
-    })
-  } catch {
-    /* best-effort */
-  }
+  await writeExecutionLog(supabase, {
+    user_id: row.user_id,
+    signal_id: row.signal_id,
+    broker_account_id: row.broker_account_id,
+    action: 'signal_entry_pending_filled',
+    status: 'success',
+    request_payload: { row_id: row.id, ticket: row.broker_ticket, fill_price: px } as unknown as Record<
+      string,
+      unknown
+    >,
+  })
 }
 
 export async function markSignalEntryGoneFromBroker(
@@ -341,17 +331,12 @@ export async function markSignalEntryGoneFromBroker(
       .eq('id', row.trade_id)
       .eq('status', 'pending')
   }
-
-  try {
-    await supabase.from('trade_execution_logs').insert({
-      user_id: row.user_id,
-      signal_id: row.signal_id,
-      broker_account_id: row.broker_account_id,
-      action: 'signal_entry_pending_sync',
-      status: 'info',
-      request_payload: { row_id: row.id, ticket: row.broker_ticket, note } as unknown as Record<string, unknown>,
-    })
-  } catch {
-    /* best-effort */
-  }
+  await writeExecutionLog(supabase, {
+    user_id: row.user_id,
+    signal_id: row.signal_id,
+    broker_account_id: row.broker_account_id,
+    action: 'signal_entry_pending_sync',
+    status: 'info',
+    request_payload: { row_id: row.id, ticket: row.broker_ticket, note } as unknown as Record<string, unknown>,
+  })
 }

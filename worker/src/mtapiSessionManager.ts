@@ -3,6 +3,8 @@ import { decryptMtPassword } from './brokerCredentialsCrypto'
 import type { MtPlatform } from './fxsocketClient'
 import { getMtapiProvider, MtapiApiError, type MtapiProvider } from './mtapiProvider'
 import { authorityFromBrokerRow, withBrokerWriteAuthority } from './brokerWriteAuthority'
+import { captureCriticalHealthIssue } from './observability/criticalHealth'
+import { addWorkerBreadcrumb } from './observability/sentry'
 
 type MtapiSessionRow = {
   id: string
@@ -44,6 +46,30 @@ function safeCode(error: unknown): string {
  */
 const MTAPI_CODE_DETAIL: Record<string, string> = {
   INVALID_ACCOUNT: 'invalid login or password',
+  HTTP_502: 'broker bridge temporarily unavailable',
+  HTTP_503: 'broker bridge temporarily unavailable',
+  HTTP_504: 'broker bridge temporarily unavailable',
+  TRANSPORT_ERROR: 'broker bridge unreachable',
+}
+
+/**
+ * Codes that mean "the bridge could not answer right now", not "this account
+ * can never connect". A temporary failure must be retried rather than marking
+ * the account as `error`: during the 2026-10-08 bridge outage a single 502 was
+ * written as a permanent error and stranded customers until it was reset by
+ * hand. Anything else (for example INVALID_ACCOUNT) is a real rejection and is
+ * surfaced immediately.
+ */
+const TRANSIENT_PROVISION_CODES = new Set([
+  'TRANSPORT_ERROR',
+  'INVALID_RESPONSE',
+  'HTTP_429',
+  'RATE_LIMITED',
+  'TIMEOUT',
+])
+
+export function isTransientProvisionError(code: string): boolean {
+  return TRANSIENT_PROVISION_CODES.has(code) || /^HTTP_5\d\d$/.test(code)
 }
 
 export function mtapiFailureDetail(code: string): string {
@@ -95,11 +121,84 @@ export class MtapiSessionManager {
   private provisionRunning = false
   /** Earliest epoch ms at which the next paced sweep request may start. */
   private nextSweepStartAt = 0
+  /** Wait before trying a temporary bridge failure again, per account. */
+  private readonly provisionRetries = new Map<string, { attempts: number; nextAttemptAt: number }>()
+  /** Start of the current run of bridge-level (5xx/transport) failures. */
+  private bridgeOutageStartedAt: number | null = null
+  private bridgeOutageAlertSent = false
 
   constructor(
     private readonly supabase: SupabaseClient,
     private readonly provider: MtapiProvider = getMtapiProvider(),
   ) {}
+
+  private provisionRetryBaseMs(): number {
+    return resolveIntervalMs(process.env.MTAPI_PROVISION_RETRY_BASE_MS, 15_000, 1_000)
+  }
+
+  private provisionRetryMaxMs(): number {
+    return resolveIntervalMs(process.env.MTAPI_PROVISION_RETRY_MAX_MS, 300_000, 1_000)
+  }
+
+  private bridgeOutageGraceMs(): number {
+    return resolveIntervalMs(process.env.MTAPI_BRIDGE_OUTAGE_GRACE_MS, 120_000, 5_000)
+  }
+
+  /** Epoch ms before which this account must not be tried again. */
+  private nextProvisionAttemptAt(id: string): number {
+    return this.provisionRetries.get(id)?.nextAttemptAt ?? 0
+  }
+
+  private scheduleProvisionRetry(id: string): void {
+    const state = this.provisionRetries.get(id) ?? { attempts: 0, nextAttemptAt: 0 }
+    state.attempts += 1
+    const delay = Math.min(
+      this.provisionRetryMaxMs(),
+      this.provisionRetryBaseMs() * 2 ** (state.attempts - 1),
+    )
+    state.nextAttemptAt = Date.now() + delay
+    this.provisionRetries.set(id, state)
+  }
+
+  /**
+   * Record a bridge-level failure. After a sustained run (default 2 minutes)
+   * raise exactly one Sentry critical-health issue, so a total bridge outage
+   * alerts instead of running silently for hours. Repeated calls are cheap and
+   * controlled by `bridgeOutageAlertSent`, and the critical-health layer
+   * suppresses repeats of its own as well.
+   */
+  private noteBridgeFailure(): void {
+    const now = Date.now()
+    if (this.bridgeOutageStartedAt == null) this.bridgeOutageStartedAt = now
+    if (this.bridgeOutageAlertSent) return
+    if (now - this.bridgeOutageStartedAt < this.bridgeOutageGraceMs()) return
+    this.bridgeOutageAlertSent = true
+    captureCriticalHealthIssue({
+      component: 'broker_rpc',
+      failureClass: 'sustained_outage',
+      provider: 'mtapi',
+      state: 'unavailable',
+      severity: 'critical',
+      reasonCode: 'MTAPI_BRIDGE_UNAVAILABLE',
+      message: 'mtapi_bridge_unavailable',
+      fingerprint: ['critical_health', 'broker_rpc', 'mtapi', 'bridge_unavailable'],
+      dedupeKey: 'critical_health|broker_rpc|mtapi|bridge_unavailable',
+      metadata: { duration_ms: now - this.bridgeOutageStartedAt },
+    })
+  }
+
+  private noteBridgeSuccess(): void {
+    if (this.bridgeOutageStartedAt != null && this.bridgeOutageAlertSent) {
+      addWorkerBreadcrumb({
+        category: 'worker',
+        level: 'info',
+        message: 'MTAPI bridge recovered',
+        data: { duration_ms: Math.max(0, Date.now() - this.bridgeOutageStartedAt) },
+      })
+    }
+    this.bridgeOutageStartedAt = null
+    this.bridgeOutageAlertSent = false
+  }
 
   private async sessions(): Promise<MtapiSessionRow[]> {
     const { data, error } = await this.supabase
@@ -255,8 +354,10 @@ export class MtapiSessionManager {
     try {
       await this.provider.ensureConnected(sessionId)
       await this.syncAccountState(row, sessionId)
+      this.noteBridgeSuccess()
     } catch (error) {
       const code = safeCode(error)
+      if (isTransientProvisionError(code)) this.noteBridgeFailure()
       const detail = mtapiFailureDetail(code)
       console.warn('[mtapiSession] health recovery failed broker=' + row.id + ' code=' + code
         + (detail ? ' detail=' + detail : ''))
@@ -326,6 +427,9 @@ export class MtapiSessionManager {
       console.info('[mtapiSession] provision scan pending=' + pending.length)
     }
     for (const row of pending) {
+      // A temporary bridge failure keeps the row `pending` and schedules a
+      // retry; skip it until that wait has passed.
+      if (this.nextProvisionAttemptAt(row.id) > Date.now()) continue
       const password = decryptMtPassword(row.broker_password_encrypted)
       const login = String(row.account_login ?? '').trim()
       const server = String(row.broker_server ?? '').trim()
@@ -341,6 +445,8 @@ export class MtapiSessionManager {
           password,
           platform: platformOf(row.platform),
         })
+        this.provisionRetries.delete(row.id)
+        this.noteBridgeSuccess()
         const { data: updated, error: updErr } = await this.supabase
           .from('broker_accounts')
           .update({ mtapi_session_id: token, connection_status: 'connected', mtapi_status: 'connected', connection_error: null })
@@ -370,6 +476,27 @@ export class MtapiSessionManager {
       } catch (err) {
         const code = safeCode(err)
         const detail = mtapiFailureDetail(code)
+        if (isTransientProvisionError(code)) {
+          this.noteBridgeFailure()
+          this.scheduleProvisionRetry(row.id)
+          // Leave the row `pending` so it recovers on its own, but tell the
+          // customer why it is taking time. Writing `connection_status='error'`
+          // is what stranded accounts during the 2026-10-08 outage, so only the
+          // message is written here; the status guard keeps a concurrent
+          // successful connect from being overwritten.
+          await this.supabase
+            .from('broker_accounts')
+            .update({ connection_error: 'MTAPI connect failed: ' + mtapiFailureSummary(code) })
+            .eq('id', row.id)
+            .eq('provider', 'mtapi')
+            .eq('connection_status', 'pending')
+          console.warn('[mtapiSession] provision retry scheduled broker=' + row.id
+            + ' code=' + code + (detail ? ' detail=' + detail : '')
+            + ' attempt=' + (this.provisionRetries.get(row.id)?.attempts ?? 0)
+            + ' in_ms=' + Math.max(0, this.nextProvisionAttemptAt(row.id) - Date.now()))
+          continue
+        }
+        this.provisionRetries.delete(row.id)
         console.warn('[mtapiSession] provision failed broker=' + row.id + ' code=' + code
           + (detail ? ' detail=' + detail : ''))
         await this.supabase

@@ -32,7 +32,7 @@ import {
 } from '../types'
 import { reconcileGhostBasketLegs, loadMergeSignalForLinking, resolveBasketMergeLinkContext } from './helpers'
 import { applyBasketSlTpRefresh } from './slTpRefresh'
-
+import { writeExecutionLog } from '../../observability/executionLog'
 export function revisionRefreshSafeSkipOutcome(): MergeOutcome {
   return { handled: true, success: false }
 }
@@ -202,7 +202,7 @@ export async function tryParameterFollowUpMergeModifyOnly(ctx: TradeExecutorCont
       signal.channel_id,
       parsed,
     )) {
-      void ctx.supabase.from('trade_execution_logs').insert({
+      void writeExecutionLog(ctx.supabase, {
         user_id: signal.user_id,
         signal_id: signal.id,
         broker_account_id: broker.id,
@@ -213,7 +213,7 @@ export async function tryParameterFollowUpMergeModifyOnly(ctx: TradeExecutorCont
           channel_id: signal.channel_id,
           symbol,
         } as unknown as Record<string, unknown>,
-      }).then(() => undefined, () => undefined)
+      })
       return { handled: true, success: false }
     }
 
@@ -248,7 +248,7 @@ export async function tryParameterFollowUpMergeModifyOnly(ctx: TradeExecutorCont
       // Fire-and-forget: this is a diagnostic-only log on the live-entry hot
       // path; awaiting it adds ~50–150 ms to send_plan_ms for no functional
       // benefit. Errors are tolerated silently (best-effort).
-      void ctx.supabase.from('trade_execution_logs').insert({
+      void writeExecutionLog(ctx.supabase, {
         user_id: signal.user_id,
         signal_id: signal.id,
         broker_account_id: broker.id,
@@ -260,7 +260,7 @@ export async function tryParameterFollowUpMergeModifyOnly(ctx: TradeExecutorCont
           direction,
           channel_id: signal.channel_id,
         } as unknown as Record<string, unknown>,
-      }).then(() => undefined, () => undefined)
+      })
       return revisionRefreshWithoutOpenBasketOutcome(sameSignalRefresh)
     }
 
@@ -316,7 +316,7 @@ export async function tryParameterFollowUpMergeModifyOnly(ctx: TradeExecutorCont
       || (link.implicitBundleWithinTightWindow && link.implicitSameChannelBundle && parsedSignalHasExplicitStops(parsed))
     if (!sameSignalRevision && !revisionBypassLinking) {
       if (!link.replyOk && !link.threadLinksAnchor && !link.parentLinksAnchor && !allowUnlinkedRefresh) {
-        void ctx.supabase.from('trade_execution_logs').insert({
+        void writeExecutionLog(ctx.supabase, {
           user_id: signal.user_id,
           signal_id: signal.id,
           broker_account_id: broker.id,
@@ -330,11 +330,11 @@ export async function tryParameterFollowUpMergeModifyOnly(ctx: TradeExecutorCont
             anchor_signal_id: anchor.anchorSignalId,
             dt_ms: link.dtMs,
           } as unknown as Record<string, unknown>,
-        }).then(() => undefined, () => undefined)
+        })
         return { handled: false }
       }
       if (!link.isLinked) {
-        void ctx.supabase.from('trade_execution_logs').insert({
+        void writeExecutionLog(ctx.supabase, {
           user_id: signal.user_id,
           signal_id: signal.id,
           broker_account_id: broker.id,
@@ -348,7 +348,7 @@ export async function tryParameterFollowUpMergeModifyOnly(ctx: TradeExecutorCont
             anchor_signal_id: anchor.anchorSignalId,
             dt_ms: link.dtMs,
           } as unknown as Record<string, unknown>,
-        }).then(() => undefined, () => undefined)
+        })
         return { handled: false }
       }
     }
@@ -373,24 +373,20 @@ export async function tryParameterFollowUpMergeModifyOnly(ctx: TradeExecutorCont
       `[tradeExecutor] merge_anchor_selected signal=${signal.id} broker=${broker.id}`
       + ` anchor=${anchor.anchorSignalId} symbol=${symbol} direction=${direction}`,
     )
-
-    try {
-      await ctx.supabase.from('trade_execution_logs').insert({
-        user_id: signal.user_id,
-        signal_id: signal.id,
-        broker_account_id: broker.id,
-        action: 'merge_anchor_selected',
-        status: 'success',
-        request_payload: {
-          anchor_signal_id: anchor.anchorSignalId,
-          symbol,
-          direction,
-          channel_id: signal.channel_id,
-          newest_opened_at: anchor.newestOpenedAt,
-        } as unknown as Record<string, unknown>,
-      })
-    } catch { /* best-effort */ }
-
+    await writeExecutionLog(ctx.supabase, {
+      user_id: signal.user_id,
+      signal_id: signal.id,
+      broker_account_id: broker.id,
+      action: 'merge_anchor_selected',
+      status: 'success',
+      request_payload: {
+        anchor_signal_id: anchor.anchorSignalId,
+        symbol,
+        direction,
+        channel_id: signal.channel_id,
+        newest_opened_at: anchor.newestOpenedAt,
+      } as unknown as Record<string, unknown>,
+    })
     const ghostCheck = await reconcileGhostBasketLegs(ctx, {
       signal,
       broker,

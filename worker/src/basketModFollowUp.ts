@@ -19,7 +19,7 @@ import {
   type RangeBasketTpPhase,
 } from './manualPlanning/tpBucketDistribution'
 import { isBenignOrderModifyError } from './orderModifyBenign'
-
+import { writeExecutionLog } from './observability/executionLog'
 type ParsedMgmt = {
   action?: string
   symbol?: string | null
@@ -177,7 +177,7 @@ async function executeFollowUpModify(
     if (Object.keys(args.dbPatch).length > 0) {
       await supabase.from('trades').update(args.dbPatch).eq('id', args.tradeRowId)
     }
-    await supabase.from('trade_execution_logs').insert({
+    await writeExecutionLog(supabase, {
       user_id: args.userId,
       signal_id: args.sourceSignalId,
       broker_account_id: args.brokerAccountId,
@@ -196,7 +196,7 @@ async function executeFollowUpModify(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     const benign = isBenignOrderModifyError(msg)
-    await supabase.from('trade_execution_logs').insert({
+    await writeExecutionLog(supabase, {
       user_id: args.userId,
       signal_id: args.sourceSignalId,
       broker_account_id: args.brokerAccountId,

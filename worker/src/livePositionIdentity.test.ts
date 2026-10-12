@@ -7,6 +7,7 @@ import {
   persistCanonicalPositionTicket,
   resolveCanonicalOpenPosition,
   resolveCurrentLivePosition,
+  snapshotLogins,
 } from './livePositionIdentity'
 
 describe('MTAPI live identity normalization', () => {
@@ -47,9 +48,24 @@ describe('broker live volume alias authority', () => {
     assert.equal(livePositionVolume({ lots: 0.2, volume: 0.2, volumeCurrent: 0.2 }), 0.2)
   })
 
-  it('fails closed when positive aliases conflict', () => {
-    assert.equal(livePositionVolume({ volume: 0.2, volumeCurrent: 0.1 }), null)
-    assert.equal(livePositionVolume({ lots: 0.3, volume: 0.2 }), null)
+  it('fails closed when lot-denominated aliases conflict', () => {
+    assert.equal(livePositionVolume({ lots: 0.3, volumeCurrent: 0.2 }), null)
+    assert.equal(livePositionVolume({ lots: 0.3, lotSize: 0.2 }), null)
+  })
+
+  it('prefers lot fields over the unit-denominated `volume` alias', () => {
+    assert.equal(livePositionVolume({ volume: 0.2, volumeCurrent: 0.1 }), 0.1)
+    assert.equal(livePositionVolume({ lots: 0.3, volume: 0.2 }), 0.3)
+  })
+
+  it('reads the real MTAPI bridge row shape (lots + unit volume together)', () => {
+    // Captured live 2026-10-07 from mtapi.tscopier.ai (account 62136328,
+    // EURUSD): lots is in lots, volume is in contract units. The old
+    // cross-alias conflict check returned null for this row, which made
+    // attribute matching and manual partial closes fail closed on every
+    // MTAPI position.
+    const row = { lots: 0.01, volume: 1000000, contractSize: 100000, state: 'Filled' }
+    assert.equal(livePositionVolume(row), 0.01)
   })
 
   it('ignores zero or invalid aliases when another positive alias is valid', () => {
@@ -126,7 +142,7 @@ describe('canonical live position resolver', () => {
     })
     assert.equal(await persistCanonicalPositionTicket(supabase as never, trade, resolution), true)
     assert.deepEqual(calls, [
-      ['update', { broker_position_ticket: '303' }],
+      ['update', { broker_position_ticket: '303', metaapi_order_id: '303' }],
       ['id', 'trade-1'],
       ['status', 'open'],
       ['metaapi_order_id', '101'],
@@ -149,7 +165,7 @@ describe('canonical live position resolver', () => {
     })
     assert.equal(await persistCanonicalPositionTicket(supabase as never, capturedTrade, resolution), true)
     assert.deepEqual(calls, [
-      ['update', { broker_position_ticket: '303' }],
+      ['update', { broker_position_ticket: '303', metaapi_order_id: '303' }],
       ['id', 'trade-1'],
       ['status', 'open'],
       ['broker_position_ticket', '101'],
@@ -178,7 +194,7 @@ describe('canonical live position resolver', () => {
     })
     assert.equal(await persistCanonicalPositionTicket(supabase as never, trade, resolution), true)
     assert.deepEqual(updates, [
-      { broker_position_ticket: '303' },
+      { broker_position_ticket: '303', metaapi_order_id: '303' },
       { metaapi_order_id: '303' },
     ])
   })
@@ -332,5 +348,63 @@ describe('attribute-only matches never persist or act', () => {
     })
     assert.equal(res.status, 'ambiguous')
     if (res.status === 'ambiguous') assert.match(res.reason, /attributes/)
+  })
+})
+
+describe('snapshotLogins', () => {
+  it('reads the login from nested deal objects and plain rows', () => {
+    const logins = snapshotLogins([
+      { ticket: 1, dealInternalIn: { login: 52992109 } },
+      { ticket: 2, login: '111222' },
+      { ticket: 3, dealInternalOut: { login: '52992109' } },
+      { ticket: 4 },
+    ])
+    assert.deepEqual([...logins].sort(), ['111222', '52992109'])
+  })
+
+  it('returns nothing for an empty or non-array snapshot', () => {
+    assert.equal(snapshotLogins([]).size, 0)
+  })
+})
+
+describe('persistCanonicalPositionTicket: verified-caller opt-in', () => {
+  const attrTrade = {
+    id: 'trade-verified',
+    metaapi_order_id: '1001',
+    symbol: 'XAUUSD',
+    direction: 'buy',
+    lot_size: 0.01,
+    entry_price: 4146.6,
+  }
+  const postClose = [{ type: 0, ticket: 2002, symbol: 'XAUUSD', lots: 0.01, openPrice: 4146.6 }]
+
+  it('refuses an attribute-only replacement by default', async () => {
+    const calls: unknown[] = []
+    const query = {
+      update(p: unknown) { calls.push(p); return this },
+      eq() { return this }, is() { return this }, select() { return this },
+      async maybeSingle() { return { data: { id: 'trade-verified' }, error: null } },
+    }
+    const resolution = resolveCanonicalOpenPosition({ trade: attrTrade, openedOrders: postClose })
+    assert.equal(await persistCanonicalPositionTicket({ from: () => query } as never, attrTrade, resolution), false)
+    assert.equal(calls.length, 0)
+  })
+
+  it('persists when the caller has verified the relationship', async () => {
+    const updates: Array<Record<string, unknown>> = []
+    const query = {
+      update(p: Record<string, unknown>) { updates.push(p); return this },
+      eq() { return this }, is() { return this }, select() { return this },
+      async maybeSingle() { return { data: { id: 'trade-verified' }, error: null } },
+    }
+    const resolution = resolveCanonicalOpenPosition({ trade: attrTrade, openedOrders: postClose })
+    const ok = await persistCanonicalPositionTicket(
+      { from: () => query } as never,
+      attrTrade,
+      resolution,
+      { allowAttributeMatch: true },
+    )
+    assert.equal(ok, true)
+    assert.deepEqual(updates, [{ broker_position_ticket: '2002', metaapi_order_id: '2002' }])
   })
 })

@@ -504,3 +504,106 @@ describe('reconcileOpenTradesForBroker (non-flat path, B1 close proof)', () => {
     assert.equal(writes.length, 0)
   })
 })
+
+describe('reconcileOpenTradesForBroker (login corroboration)', () => {
+  function mockSupabase2(loaded: Array<{ id: string; signal_id: string | null; broker_account_id: string | null }>, writes: Array<Record<string, unknown>>) {
+    const builder: Record<string, unknown> = {
+      _op: 'select', _ids: [] as string[], _wantRows: false,
+      from() { return builder },
+      select(columns?: string) {
+        if (builder._op !== 'update') { builder._op = 'select'; builder._wantRows = String(columns ?? '').includes('signal_id') }
+        return builder
+      },
+      update(patch: Record<string, unknown>) { builder._op = 'update'; writes.push(patch); return builder },
+      delete() { builder._op = 'delete'; return builder },
+      in(_c: string, ids: string[]) { builder._ids = ids; return builder },
+      eq() { return builder }, is() { return builder }, or() { return builder },
+      order() { return builder }, limit() { return builder },
+      maybeSingle() { return { data: null, error: null } },
+      then(resolve: (v: unknown) => unknown) {
+        const data = builder._op === 'update' ? (builder._ids as string[]).map(id => ({ id })) : builder._wantRows ? loaded : []
+        return Promise.resolve({ data, error: null }).then(resolve)
+      },
+    }
+    return builder as never
+  }
+
+  const position = (login: string) => ({
+    ticket: 7002, orderType: 'Buy', state: 'Filled', symbol: 'XAUUSD', lots: 0.05, openPrice: 4146.61,
+    dealInternalIn: { login },
+  })
+  const closeRow = { ticket: 7001, orderType: 'Buy', state: 'Filled', symbol: 'XAUUSD', lots: 0.05, closeTime: '2026-10-07T10:33:00', closePrice: 4138, profit: 6 }
+  const row = {
+    id: 't1', signal_id: 'sig-1', broker_account_id: 'acct-1',
+    metaapi_order_id: '5001', broker_position_ticket: '7001',
+    symbol: 'XAUUSD', direction: 'buy', lot_size: 0.05, entry_price: 4146.6,
+  }
+  const api = (login: string) => ({ openedOrders: async () => [position(login)], orderHistory: async () => [closeRow] }) as never
+
+  it('defers when the snapshot belongs to a different login (untrusted read)', async () => {
+    const writes: Array<Record<string, unknown>> = []
+    const closed = await reconcileOpenTradesForBroker(
+      mockSupabase2([{ id: 't1', signal_id: 'sig-1', broker_account_id: 'acct-1' }], writes),
+      api('99999999'),
+      'acct-1',
+      [row],
+      undefined,
+      'mtapi',
+      '52992109',
+    )
+    assert.equal(closed, 0)
+    assert.equal(writes.length, 0)
+  })
+
+  it('closes normally when the snapshot login matches', async () => {
+    const writes: Array<Record<string, unknown>> = []
+    const closed = await reconcileOpenTradesForBroker(
+      mockSupabase2([{ id: 't1', signal_id: 'sig-1', broker_account_id: 'acct-1' }], writes),
+      api('52992109'),
+      'acct-1',
+      [row],
+      undefined,
+      'mtapi',
+      '52992109',
+    )
+    assert.equal(closed, 1)
+    assert.equal(writes.length, 1)
+  })
+})
+
+describe('reconcileOpenTradesForBroker (login corroboration applies to MTAPI only)', () => {
+  it('ignores the login check for other providers', async () => {
+    const writes: Array<Record<string, unknown>> = []
+    const builder: Record<string, unknown> = {
+      _op: 'select', _ids: [] as string[], _wantRows: false,
+      from() { return builder },
+      select(c?: string) { if (builder._op !== 'update') { builder._op = 'select'; builder._wantRows = String(c ?? '').includes('signal_id') } return builder },
+      update(p: Record<string, unknown>) { builder._op = 'update'; writes.push(p); return builder },
+      delete() { return builder },
+      in(_c: string, ids: string[]) { builder._ids = ids; return builder },
+      eq() { return builder }, is() { return builder }, or() { return builder },
+      order() { return builder }, limit() { return builder },
+      maybeSingle() { return { data: null, error: null } },
+      then(resolve: (v: unknown) => unknown) {
+        const data = builder._op === 'update' ? (builder._ids as string[]).map(id => ({ id })) : builder._wantRows ? [{ id: 't1', signal_id: 'sig-1', broker_account_id: 'acct-1' }] : []
+        return Promise.resolve({ data, error: null }).then(resolve)
+      },
+    }
+    const api = {
+      openedOrders: async () => [{ ticket: 7002, orderType: 'Buy', state: 'Filled', symbol: 'XAUUSD', lots: 0.05, openPrice: 4146.61, dealInternalIn: { login: '99999999' } }],
+      // FxSocket closing deal shape: entry contains "out", order === 0, keyed by `position`.
+      orderHistory: async () => [{ entry: 'out', order: 0, position: 7001, price: 4138, profit: 6 }],
+    } as never
+    const closed = await reconcileOpenTradesForBroker(
+      builder as never,
+      api,
+      'acct-1',
+      [{ id: 't1', signal_id: 'sig-1', broker_account_id: 'acct-1', metaapi_order_id: '5001', broker_position_ticket: '7001', symbol: 'XAUUSD', direction: 'buy', lot_size: 0.05, entry_price: 4146.6 }],
+      undefined,
+      'fxsocket',
+      '52992109',
+    )
+    assert.equal(closed, 1)
+    assert.equal(writes.length, 1)
+  })
+})

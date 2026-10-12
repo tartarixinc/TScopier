@@ -10,6 +10,7 @@ import {
   loadOpenTradesForChannel,
   loadParentSignalSymbol,
   modificationTargetsOpenTrade,
+  isSymbolLessCloseIntent,
   resolveModificationParentSymbol,
   MODIFICATION_NO_OPEN_TRADE_REASON,
   MODIFICATION_PARENT_SYMBOL_CONFLICT_REASON,
@@ -21,7 +22,7 @@ import {
   reconcileUniversalSignal,
   type UniversalParseResult,
 } from './universalSignalParser'
-
+import { writeExecutionLog } from '../observability/executionLog'
 export type RoutedParseResult = {
   parseResult: ParseChannelMessageResult
   aiMeta?: {
@@ -252,6 +253,13 @@ async function groundModificationResult(args: {
   if (openTrades.length === 0) {
     return groundingSkipResult(args.rawMessage, MODIFICATION_NO_OPEN_TRADE_REASON, grounded.source)
   }
+
+  // A global close-all ("close all trades") carries no symbol by design — it
+  // targets every open trade in the channel. The symbol-match below would always
+  // reject it, so ground it straight to the open-trade list and let it through.
+  // Requires an explicit "close all/everything" cue; a bare symbol-less close
+  // still falls through to the skip path (it may be an ambiguous modification).
+  if (isSymbolLessCloseIntent(grounded.intent, args.rawMessage)) return null
 
   if (modificationTargetsOpenTrade(grounded.intent, openTrades)) return null
 
@@ -856,22 +864,18 @@ async function logShadowDiff(
 ): Promise<void> {
   const diff = compareParseShadowDiff(args.deterministic, args.universal.parseResult)
   if (!diff.differs) return
-  try {
-    await supabase.from('trade_execution_logs').insert({
-      user_id: args.userId,
-      signal_id: args.signalId,
-      action: 'parse_shadow_diff',
-      status: 'skipped',
-      request_payload: {
-        channel_id: args.channelRowId,
-        ...diff,
-        universal_kind: args.universal.intent.kind,
-        universal_source: args.universal.source,
-      },
-    })
-  } catch {
-    // best-effort
-  }
+  await writeExecutionLog(supabase, {
+    user_id: args.userId,
+    signal_id: args.signalId,
+    action: 'parse_shadow_diff',
+    status: 'skipped',
+    request_payload: {
+      channel_id: args.channelRowId,
+      ...diff,
+      universal_kind: args.universal.intent.kind,
+      universal_source: args.universal.source,
+    },
+  })
 }
 
 export { logShadowDiff }

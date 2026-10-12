@@ -18,7 +18,7 @@ import {
 } from './monitorIdleGate'
 import { stopRangeLayeringUnlessEnabled } from './rangeLayerTillClose'
 import { isUserCopierPausedCached } from './copierPause'
-
+import { writeExecutionLog } from './observability/executionLog'
 /**
  * Worker-side monitor that closes "Close-Worse-Entries" positions once the
  * live /Quote crosses their CWE threshold.
@@ -310,7 +310,7 @@ export class CweCloseMonitor {
         },
         patch => this.supabase.from('trades').update(patch).eq('id', trade.id),
       )
-      await this.supabase.from('trade_execution_logs').insert({
+      await writeExecutionLog(this.supabase, {
         user_id: trade.user_id,
         signal_id: trade.signal_id,
         broker_account_id: trade.broker_account_id,
@@ -351,7 +351,7 @@ export class CweCloseMonitor {
         .update({ cwe_close_price: trade.cwe_close_price })
         .eq('id', trade.id)
         .eq('status', 'open')
-      await this.supabase.from('trade_execution_logs').insert({
+      await writeExecutionLog(this.supabase, {
         user_id: trade.user_id,
         signal_id: trade.signal_id,
         broker_account_id: trade.broker_account_id,

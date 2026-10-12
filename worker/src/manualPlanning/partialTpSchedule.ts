@@ -64,7 +64,39 @@ export function resolveSingleTpTargetIndex(args: {
   }
   return finalTps.length - 1
 }
-
+/**
+ * The take-profit price the customer actually selected for a `trade_style === 'single'`
+ * account, resolved against the signal ladder. Returns 0 when the ladder is empty.
+ *
+ * Post-entry paths (reconcile, drift sweep, management) used to reach for the
+ * furthest level of the ladder instead of the selected one; this is the single
+ * place that decides which level is meant.
+ */
+export function resolveChosenTakeProfit(args: {
+  finalTps: number[]
+  singleTpTarget?: `tp${number}` | 'farthest' | null
+  isBuy?: boolean
+}): number {
+  const tps = (Array.isArray(args.finalTps) ? args.finalTps : [])
+    .filter(t => Number.isFinite(t) && t > 0)
+  if (!tps.length) return 0
+  const idx = resolveSingleTpTargetIndex({
+    finalTps: tps,
+    singleTpTarget: args.singleTpTarget ?? undefined,
+    isBuy: args.isBuy,
+  })
+  return idx >= 0 ? (tps[idx] ?? 0) : 0
+}
+/**
+ * True when the account runs one take-profit level per basket. Only then does a
+ * selected target apply to every open leg; multi/range setups spread legs across
+ * the ladder on purpose.
+ */
+export function shouldApplySingleTakeProfitTarget(
+  manual: { trade_style?: string | null } | null | undefined,
+): boolean {
+  return manual?.trade_style === 'single'
+}
 /**
  * Build the per-TP partial close schedule for a `trade_style === 'single'`
  * trade.

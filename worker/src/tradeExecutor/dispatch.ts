@@ -63,7 +63,7 @@ import { evaluateChannelCopyLimitPauseForBroker } from '../copyLimitDispatch'
 import { isV2 } from '../engine/executionMode'
 import { upsertBasketSlTpTarget } from '../basketTargetStore'
 import { captureBusinessIssue } from '../observability/businessEvents'
-
+import { writeExecutionLog } from '../observability/executionLog'
 /** Seed basket desired-state (source 'entry') for v2-flagged brokers only, so the v2
  * reconciler has the full SL/TP ladder. No-op for v1 brokers (zero behavior change). */
 async function seedV2EntryDesiredState(
@@ -279,17 +279,13 @@ export async function logPipelineStage(ctx: TradeExecutorContext,
     action: string,
     payload: Record<string, unknown>,
   ): Promise<void> {
-    try {
-      await ctx.supabase.from('trade_execution_logs').insert({
-        user_id: signal.user_id,
-        signal_id: signal.id,
-        action,
-        status: 'success',
-        request_payload: payload as unknown as Record<string, unknown>,
-      })
-    } catch {
-      /* best-effort */
-    }
+    await writeExecutionLog(ctx.supabase, {
+      user_id: signal.user_id,
+      signal_id: signal.id,
+      action,
+      status: 'success',
+      request_payload: payload as unknown as Record<string, unknown>,
+    })
   }
 
 /** Skip reasons that may clear when listener lease recovers — keep signal parsed for sweep/replay. */
@@ -308,29 +304,29 @@ export async function logDispatchSkipped(ctx: TradeExecutorContext,
         + ` signal=${signal.id} user=${signal.user_id} channel=${signal.channel_id ?? 'n/a'}`,
       )
     }
-    try {
-      await ctx.supabase.from('trade_execution_logs').insert({
-        user_id: signal.user_id,
-        signal_id: signal.id,
-        action: 'dispatch_skipped',
-        status: 'skipped',
-        error_message: skipReason,
-        request_payload: {
-          skip_reason: skipReason,
-          channel_id: signal.channel_id ?? null,
-          transient,
-          ...extra,
-        },
-      })
-      if (!transient) {
+    await writeExecutionLog(ctx.supabase, {
+      user_id: signal.user_id,
+      signal_id: signal.id,
+      action: 'dispatch_skipped',
+      status: 'skipped',
+      error_message: skipReason,
+      request_payload: {
+        skip_reason: skipReason,
+        channel_id: signal.channel_id ?? null,
+        transient,
+        ...extra,
+      },
+    })
+    if (!transient) {
+      try {
         await ctx.supabase
           .from('signals')
           .update({ status: 'skipped', skip_reason: skipReason })
           .eq('id', signal.id)
           .in('status', ['parsed', 'pending'])
+      } catch {
+        /* best-effort */
       }
-    } catch {
-      /* best-effort */
     }
     if (!transient) {
       const reason = skipReason.toUpperCase().replace(/[^A-Z0-9_]+/g, '_')

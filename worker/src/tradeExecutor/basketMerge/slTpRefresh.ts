@@ -62,7 +62,7 @@ import {
   type SymbolCacheEntry
 } from '../types'
 import { persistRangePendingLegRows } from './helpers'
-
+import { writeExecutionLog } from '../../observability/executionLog'
 /**
  * On v2, a split signal (bare entry, then TP/SL follow-up) leaves legs naked and
  * the reconciler only backfills the deepest TP. When enabled (default), the merge
@@ -1016,26 +1016,24 @@ export async function applyBasketSlTpRefresh(ctx: TradeExecutorContext, args: {
     )
 
     if (!alreadySyncedNoBrokerWork) {
-      try {
-        await ctx.supabase.from('trade_execution_logs').insert({
-          user_id: signal.user_id,
-          signal_id: signal.id,
-          broker_account_id: broker.id,
-          action: 'merge_modify_summary',
-          status: mergeFailed ? 'failed' : 'success',
-          error_message: partialMsg,
-          request_payload: {
-            parent_signal_id: anchorSignalId,
-            symbol,
-            modify_only: logAction === 'merge_routed_modify_only',
-            user_message: partialMsg,
-            ...summary,
-            virtual_pendings: virtualPendings.length,
-            leg_errors: legErrors.slice(0, 10),
-            ...(mergeLinkMeta ?? {}),
-          } as unknown as Record<string, unknown>,
-        })
-      } catch { /* best-effort */ }
+      await writeExecutionLog(ctx.supabase, {
+        user_id: signal.user_id,
+        signal_id: signal.id,
+        broker_account_id: broker.id,
+        action: 'merge_modify_summary',
+        status: mergeFailed ? 'failed' : 'success',
+        error_message: partialMsg,
+        request_payload: {
+          parent_signal_id: anchorSignalId,
+          symbol,
+          modify_only: logAction === 'merge_routed_modify_only',
+          user_message: partialMsg,
+          ...summary,
+          virtual_pendings: virtualPendings.length,
+          leg_errors: legErrors.slice(0, 10),
+          ...(mergeLinkMeta ?? {}),
+        } as unknown as Record<string, unknown>,
+      })
     }
 
     if (!mergeFailed) {

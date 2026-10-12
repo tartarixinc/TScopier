@@ -42,7 +42,7 @@ import {
 import { captureDeferredBusinessFailure } from '../observability/deferredBusinessEvents'
 import { collapseIdenticalImmediateLegs } from './collapseIdenticalImmediateLegs'
 import { authorityFromBrokerRow, withBrokerWriteAuthority } from '../brokerWriteAuthority'
-
+import { writeExecutionLog } from '../observability/executionLog'
 export { collapseIdenticalImmediateLegs }
 
 /** Normalized broker fill shape shared by the v1 client and the v2 fxClient. */
@@ -117,19 +117,17 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
       `[tradeExecutor] duplicate_leg_collapsed removed=${collapsed.collapsed}`
       + ` kept=${workingLegs.length} signal=${signal.id} broker=${broker.id}`,
     )
-    try {
-      await ctx.supabase.from('trade_execution_logs').insert({
-        user_id: signal.user_id,
-        signal_id: signal.id,
-        broker_account_id: broker.id,
-        action: 'duplicate_leg_collapsed',
-        status: 'info',
-        request_payload: {
-          removed: collapsed.collapsed,
-          kept: workingLegs.length,
-        } as unknown as Record<string, unknown>,
-      })
-    } catch { /* best-effort */ }
+    await writeExecutionLog(ctx.supabase, {
+      user_id: signal.user_id,
+      signal_id: signal.id,
+      broker_account_id: broker.id,
+      action: 'duplicate_leg_collapsed',
+      status: 'info',
+      request_payload: {
+        removed: collapsed.collapsed,
+        kept: workingLegs.length,
+      } as unknown as Record<string, unknown>,
+    })
   }
 
   if (manual.trade_style !== 'multi' && workingLegs.length > 1) {
@@ -137,17 +135,15 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
       `[tradeExecutor] single_style_multi_leg_blocked ${workingLegs.length} legs`
       + ` signal=${signal.id} broker=${broker.id}`,
     )
-    try {
-      await ctx.supabase.from('trade_execution_logs').insert({
-        user_id: signal.user_id,
-        signal_id: signal.id,
-        broker_account_id: broker.id,
-        action: 'single_style_multi_leg_blocked',
-        status: 'failed',
-        request_payload: { leg_count: workingLegs.length } as unknown as Record<string, unknown>,
-        error_message: `single trade_style refused ${workingLegs.length} immediate legs`,
-      })
-    } catch { /* best-effort */ }
+    await writeExecutionLog(ctx.supabase, {
+      user_id: signal.user_id,
+      signal_id: signal.id,
+      broker_account_id: broker.id,
+      action: 'single_style_multi_leg_blocked',
+      status: 'failed',
+      request_payload: { leg_count: workingLegs.length } as unknown as Record<string, unknown>,
+      error_message: `single trade_style refused ${workingLegs.length} immediate legs`,
+    })
     return {
       channelDelayMs,
       channelDelaySkipped,
@@ -207,7 +203,14 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
       }
     }
     const refPx = Number(args.price) || 0
-    if (refPx > 0) {
+    const plannedSlForSide = Number(args.stoploss) || 0
+    // A stop on the wrong side of the live price cannot be applied by any broker.
+    // Do not move it (no re-anchor) and do not open naked — reject the copy below
+    // with an "Invalid stops" failure.
+    const wrongSideSl = refPx > 0
+      && plannedSlForSide > 0
+      && (isBuyLeg ? plannedSlForSide >= refPx : plannedSlForSide <= refPx)
+    if (refPx > 0 && !wrongSideSl) {
       const stripped = stripInvalidStopsForSide({
         stoploss: Number(args.stoploss) || 0,
         takeprofit: Number(args.takeprofit) || 0,
@@ -256,6 +259,13 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
 
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
+        // Reject a copy whose signal stop sits on the wrong side of the live price:
+        // no broker can apply it, and we will not move the stop or open naked.
+        if (wrongSideSl) {
+          throw new Error(
+            `Invalid stops: signal stop loss ${plannedSlForSide} is on the wrong side of the live price ${refPx} for ${args.operation}`,
+          )
+        }
         const attemptNo = attempt + 1
         correlation = buildPipelineCorrelation({
           userId: signal.user_id,
@@ -380,7 +390,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
           sendArgs.symbol,
         )
         const hasStops = (Number(sendArgs.stoploss) || 0) > 0 || (Number(sendArgs.takeprofit) || 0) > 0
-        if (attempt === 0 && isInvalidStopsError(lastAttemptError) && hasStops) {
+        if (attempt === 0 && isInvalidStopsError(lastAttemptError) && hasStops && !wrongSideSl) {
           console.warn(
             `[tradeExecutor] retry without stops signal=${signal.id} broker=${broker.id} leg=${leg.idx + 1}/${totalCount}`
             + ` reason="${lastAttemptError}" (sl=${sendArgs.stoploss} tp=${sendArgs.takeprofit})`,
@@ -427,7 +437,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
                 `[tradeExecutor] adopted timed-out order signal=${signal.id} broker=${broker.id}`
                 + ` ticket=${rec.ticket} symbol=${sendArgs.symbol}`,
               )
-              void ctx.supabase.from('trade_execution_logs').insert({
+              void writeExecutionLog(ctx.supabase, {
                 user_id: signal.user_id,
                 signal_id: signal.id,
                 broker_account_id: broker.id,
@@ -435,7 +445,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
                 status: 'success',
                 request_payload: { ...sendArgs, adopted_ticket: rec.ticket } as unknown as Record<string, unknown>,
                 error_message: lastAttemptError,
-              }).then(() => undefined, () => undefined)
+              })
               break
             }
             if (rec.status === 'absent' && attempt === 0) {
@@ -523,7 +533,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
           brokerSymbol: sendArgs.symbol,
           operation: sendArgs.operation,
         })
-        await ctx.supabase.from('trade_execution_logs').insert({
+        await writeExecutionLog(ctx.supabase, {
           user_id: signal.user_id,
           signal_id: signal.id,
           broker_account_id: broker.id,
@@ -705,7 +715,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
           })
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err)
-          await ctx.supabase.from('trade_execution_logs').insert({
+          await writeExecutionLog(ctx.supabase, {
             user_id: signal.user_id,
             signal_id: signal.id,
             broker_account_id: broker.id,

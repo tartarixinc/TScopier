@@ -105,6 +105,7 @@ export class OpenTradeReconcileMonitor {
           // its health check; otherwise the loop keeps deferring as before.
           () => runtime.api.checkConnect(runtime.sessionId),
           runtime.provider || 'fxsocket',
+          runtime.accountLogin ?? null,
         )
         if (closed > 0) {
           totalClosed += closed

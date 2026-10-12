@@ -24,7 +24,7 @@ import {
 } from './tradeComment'
 import { brokerHasLinkedSession, brokerSessionUuid } from './tradeExecutor/helpers'
 import type { BrokerRow as ExecutorBrokerRow } from './tradeExecutor/types'
-
+import { writeExecutionLog } from './observability/executionLog'
 export type ForceCloseSignalTradesResult = {
   ok: boolean
   closed: number
@@ -180,7 +180,7 @@ async function insertForceCloseLog(
 ): Promise<void> {
   if (!args.signalId) return
   const status = args.failed > 0 && args.closed === 0 ? 'failed' : 'success'
-  await supabase.from('trade_execution_logs').insert({
+  await writeExecutionLog(supabase, {
     user_id: args.userId,
     signal_id: args.signalId,
     broker_account_id: args.brokerAccountId,

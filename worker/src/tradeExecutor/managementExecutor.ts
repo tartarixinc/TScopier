@@ -29,6 +29,7 @@ import {
   persistCanonicalPositionTicket,
   resolveCanonicalOpenPosition,
   resolveCurrentLivePosition,
+  type LiveTradeIdentity,
 } from '../livePositionIdentity'
 import { planPartialClose, verifyPartialCloseReduction } from '../partialClosePolicy'
 import { closeWithVerification } from '../managementClose'
@@ -88,7 +89,7 @@ import {
   type ManagementBreakevenFailureDiagnostic,
 } from '../managementBreakevenDiagnostics'
 import { authorityFromBrokerRow, withBrokerWriteAuthority } from '../brokerWriteAuthority'
-
+import { writeExecutionLog } from '../observability/executionLog'
 function mgmtCloseOpts(liveMgmtFast: boolean) {
   return { maxAttempts: 2, slippageEscalation: 50, liveFast: liveMgmtFast }
 }
@@ -387,18 +388,14 @@ export async function logSendSkipped(ctx: TradeExecutorContext,
         await ctx.markBrokerSessionDown(broker, uuid, 'broker_session_not_connected')
       }
     }
-    try {
-      await ctx.supabase.from('trade_execution_logs').insert({
-        user_id: signal.user_id,
-        signal_id: signal.id,
-        broker_account_id: broker.id,
-        action: 'order_send',
-        status: 'skipped',
-        request_payload: { skip_reason: reason, ...extra } as unknown as Record<string, unknown>,
-      })
-    } catch {
-      // Logging failure is non-fatal.
-    }
+    await writeExecutionLog(ctx.supabase, {
+      user_id: signal.user_id,
+      signal_id: signal.id,
+      broker_account_id: broker.id,
+      action: 'order_send',
+      status: 'skipped',
+      request_payload: { skip_reason: reason, ...extra } as unknown as Record<string, unknown>,
+    })
     captureBusinessIssue({
       category: reason === 'broker_session_not_connected' ? 'account' : 'trade',
       event: reason === 'broker_session_not_connected'
@@ -439,16 +436,14 @@ async function logBrokerMgmtSkip(
   reason: string,
   extra?: Record<string, unknown>,
 ): Promise<void> {
-  try {
-    await ctx.supabase.from('trade_execution_logs').insert({
-      user_id: signal.user_id,
-      signal_id: signal.id,
-      broker_account_id: brokerId,
-      action: 'mgmt_skip',
-      status: 'skipped',
-      request_payload: { skip_reason: reason, ...extra } as unknown as Record<string, unknown>,
-    })
-  } catch { /* best-effort */ }
+  await writeExecutionLog(ctx.supabase, {
+    user_id: signal.user_id,
+    signal_id: signal.id,
+    broker_account_id: brokerId,
+    action: 'mgmt_skip',
+    status: 'skipped',
+    request_payload: { skip_reason: reason, ...extra } as unknown as Record<string, unknown>,
+  })
 }
 
 async function skipMgmtSignalWithLog(
@@ -458,16 +453,14 @@ async function skipMgmtSignalWithLog(
   extra?: Record<string, unknown>,
 ): Promise<void> {
   await skipMgmtSignal(ctx, signal.id, reason)
-  try {
-    await ctx.supabase.from('trade_execution_logs').insert({
-      user_id: signal.user_id,
-      signal_id: signal.id,
-      broker_account_id: null,
-      action: 'mgmt_skip',
-      status: 'skipped',
-      request_payload: { skip_reason: reason, ...extra } as unknown as Record<string, unknown>,
-    })
-  } catch { /* best-effort */ }
+  await writeExecutionLog(ctx.supabase, {
+    user_id: signal.user_id,
+    signal_id: signal.id,
+    broker_account_id: null,
+    action: 'mgmt_skip',
+    status: 'skipped',
+    request_payload: { skip_reason: reason, ...extra } as unknown as Record<string, unknown>,
+  })
   captureBusinessIssue({
     category: 'management',
     event: 'trade_management_failed',
@@ -583,22 +576,20 @@ export async function applyManagement(
         scopes,
         'delete_pendings',
       )
-      try {
-        await ctx.supabase.from('trade_execution_logs').insert({
-          user_id: signal.user_id,
-          signal_id: signal.id,
-          broker_account_id: null,
-          action: 'delete_pendings',
-          status: 'success',
-          request_payload: {
-            parent_signal_id: parentId,
-            mgmt_scope: 'reply_basket',
-            brokers: eligibleIds.length,
-            had_entry_pending: Boolean(seRows?.length),
-            had_range_pending: Boolean(rangeRows?.length),
-          } as unknown as Record<string, unknown>,
-        })
-      } catch { /* best-effort */ }
+      await writeExecutionLog(ctx.supabase, {
+        user_id: signal.user_id,
+        signal_id: signal.id,
+        broker_account_id: null,
+        action: 'delete_pendings',
+        status: 'success',
+        request_payload: {
+          parent_signal_id: parentId,
+          mgmt_scope: 'reply_basket',
+          brokers: eligibleIds.length,
+          had_entry_pending: Boolean(seRows?.length),
+          had_range_pending: Boolean(rangeRows?.length),
+        } as unknown as Record<string, unknown>,
+      })
       try {
         await ctx.supabase
           .from('signals')
@@ -1243,7 +1234,7 @@ export async function applyManagement(
           })
           if (!plan.ok) {
             partialProfitFailures.push(plan.reason)
-            await ctx.supabase.from('trade_execution_logs').insert({
+            await writeExecutionLog(ctx.supabase, {
               user_id: signal.user_id,
               signal_id: signal.id,
               broker_account_id: broker.id,
@@ -1270,12 +1261,23 @@ export async function applyManagement(
 
           await api.orderClose(uuid, { ticket: effectiveTicket, lots: plan.closeVolume })
           const postOrders = await api.openedOrders(uuid)
+          // The in-memory row can carry a stale captured ticket (the pre-read
+          // may have reconciled `effectiveTicket` without rewriting `trade`).
+          // Key the verification read on the ticket we just acted on, and keep
+          // the captured column present when it was present before: a
+          // captured-only row diverges (`broker_position_ticket` = position,
+          // `metaapi_order_id` = order ticket), so the persist must CAS on the
+          // column that actually holds `effectiveTicket`.
+          const postCloseTrade: LiveTradeIdentity = {
+            ...trade,
+            broker_position_ticket: trade.broker_position_ticket == null
+              ? null
+              : String(effectiveTicket),
+            metaapi_order_id: String(effectiveTicket),
+            lot_size: plan.expectedRemainingVolume,
+          }
           const postResolution = resolveCanonicalOpenPosition({
-            trade: {
-              ...trade,
-              metaapi_order_id: String(effectiveTicket),
-              lot_size: plan.expectedRemainingVolume,
-            },
+            trade: postCloseTrade,
             openedOrders: postOrders,
           })
           if (postResolution.status !== 'resolved') {
@@ -1296,8 +1298,12 @@ export async function applyManagement(
           if (postResolution.replacement) {
             const persisted = await persistCanonicalPositionTicket(
               ctx.supabase,
-              { ...trade, metaapi_order_id: String(effectiveTicket) },
+              postCloseTrade,
               postResolution,
+              // The partial close was just verified against a fresh broker read
+              // and the volume reduction, so the remaining position is provably
+              // this trade's — an attribute match here is not a blind guess.
+              { allowAttributeMatch: true },
             )
             if (!persisted) {
               throw new Error('partial close replacement ticket persistence failed')
@@ -1305,12 +1311,23 @@ export async function applyManagement(
             ticketReconciledFrom = ticketReconciledFrom ?? effectiveTicket
             effectiveTicket = postResolution.ticket
           }
-          const { error: partialUpdateError } = await ctx.supabase.from('trades').update({
-            lot_size: observedRemaining,
-            metaapi_order_id: String(effectiveTicket),
-          }).eq('id', trade.id).eq('status', 'open')
+          const { data: partialUpdated, error: partialUpdateError } = await ctx.supabase
+            .from('trades')
+            .update({
+              lot_size: observedRemaining,
+              metaapi_order_id: String(effectiveTicket),
+            })
+            .eq('id', trade.id)
+            .eq('status', 'open')
+            .select('id')
+            .maybeSingle()
           if (partialUpdateError) {
             throw new Error(`partial close DB state update failed: ${partialUpdateError.message}`)
+          }
+          if (partialUpdated?.id !== trade.id) {
+            // No open row matched: the trade was closed concurrently while the
+            // broker reduction is already done. Do not report success.
+            throw new Error('partial close DB state update matched no open row')
           }
           partialProfitSucceeded += 1
         } else if (action === 'breakeven' || action === 'partial_breakeven') {
@@ -1501,7 +1518,7 @@ export async function applyManagement(
         } else if (action === 'modify') {
           return
         }
-        await ctx.supabase.from('trade_execution_logs').insert({
+        await writeExecutionLog(ctx.supabase, {
           user_id: signal.user_id,
           signal_id: signal.id,
           broker_account_id: broker.id,
@@ -1601,7 +1618,7 @@ export async function applyManagement(
             }
           }
         }
-        await ctx.supabase.from('trade_execution_logs').insert({
+        await writeExecutionLog(ctx.supabase, {
           user_id: signal.user_id,
           signal_id: signal.id,
           broker_account_id: broker.id,
@@ -2217,7 +2234,7 @@ export async function applyCloseWorseEntriesInstruction(ctx: TradeExecutorContex
 
       const manual = (broker.manual_settings ?? {}) as ManualSettings
       if (manual.trade_style !== 'multi') {
-        await ctx.supabase.from('trade_execution_logs').insert({
+        await writeExecutionLog(ctx.supabase, {
           user_id: signal.user_id,
           signal_id: signal.id,
           broker_account_id: broker.id,
@@ -2234,7 +2251,7 @@ export async function applyCloseWorseEntriesInstruction(ctx: TradeExecutorContex
       const uuid = brokerSessionUuid(broker)!
       const api = ctx.apiFor(broker)
       if (!api) {
-        await ctx.supabase.from('trade_execution_logs').insert({
+        await writeExecutionLog(ctx.supabase, {
           user_id: signal.user_id,
           signal_id: signal.id,
           broker_account_id: broker.id,
@@ -2268,7 +2285,7 @@ export async function applyCloseWorseEntriesInstruction(ctx: TradeExecutorContex
           referencePrice = referencePriceForDirection(parsedKey.direction, q.bid, q.ask)
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
-          await ctx.supabase.from('trade_execution_logs').insert({
+          await writeExecutionLog(ctx.supabase, {
             user_id: signal.user_id,
             signal_id: signal.id,
             broker_account_id: broker.id,
@@ -2303,7 +2320,7 @@ export async function applyCloseWorseEntriesInstruction(ctx: TradeExecutorContex
       )
 
       if (!toClose.length) {
-        await ctx.supabase.from('trade_execution_logs').insert({
+        await writeExecutionLog(ctx.supabase, {
           user_id: signal.user_id,
           signal_id: signal.id,
           broker_account_id: broker.id,
@@ -2346,7 +2363,7 @@ export async function applyCloseWorseEntriesInstruction(ctx: TradeExecutorContex
               symbolHint: trade.symbol,
             })
           }
-          await ctx.supabase.from('trade_execution_logs').insert({
+          await writeExecutionLog(ctx.supabase, {
             user_id: signal.user_id,
             signal_id: signal.id,
             broker_account_id: broker.id,
@@ -2384,7 +2401,7 @@ export async function applyCloseWorseEntriesInstruction(ctx: TradeExecutorContex
             }
             return 1
           }
-          await ctx.supabase.from('trade_execution_logs').insert({
+          await writeExecutionLog(ctx.supabase, {
             user_id: signal.user_id,
             signal_id: signal.id,
             broker_account_id: broker.id,
