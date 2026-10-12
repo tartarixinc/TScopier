@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { Lock } from 'lucide-react'
 import clsx from 'clsx'
 import { HeroDashboardPreview } from '../HeroDashboardPreview'
 import { MarketingAuthCta } from '../MarketingAuthCta'
@@ -85,47 +84,40 @@ export function HeroSection() {
       className="relative -mt-[4.75rem] scroll-mt-28 overflow-hidden bg-white pt-[4.75rem] dark:bg-transparent sm:-mt-20 sm:pt-20"
     >
       <div className="marketing-hero-grid" aria-hidden />
-      <div className="relative z-[1] mx-auto max-w-6xl px-5 pb-4 pt-6 sm:px-8 sm:pt-8 sm:pb-8 lg:max-w-7xl lg:pt-10">
-        <div className="mx-auto max-w-3xl text-center">
-          <h1 className="text-5xl font-bold tracking-tighter text-neutral-900 dark:text-neutral-50 sm:text-5xl xl:text-[4.0rem] xl:leading-[1.08]">
+      <div className="relative z-[1] mx-auto flex max-w-[90rem] flex-col items-start gap-8 px-5 pb-6 pt-4 sm:px-8 sm:pt-6 lg:flex-row lg:items-start lg:gap-8 lg:pb-10 lg:pt-6">
+        <div className="w-full max-w-xl shrink-0 text-left lg:ms-12 lg:w-[34rem] lg:pt-2 xl:ms-20 xl:w-[38rem]">
+          <h1 className="text-4xl font-bold tracking-tighter text-neutral-900 dark:text-neutral-50 sm:text-5xl xl:text-[4rem] xl:leading-[1.05]">
             {l.hero.headline}
             {l.hero.headlinePhrases && l.hero.headlinePhrases.length > 0 ? (
               <RotatingHeroPhrase phrases={l.hero.headlinePhrases} />
             ) : null}
           </h1>
 
-          <p className="mt-5 text-base leading-relaxed text-neutral-900 dark:text-neutral-50 sm:text-xl">
+          <p className="mt-5 max-w-lg text-base leading-relaxed text-neutral-900 dark:text-neutral-50 sm:text-lg">
             <HeroSubheadline text={l.hero.subheadline} />
           </p>
 
-          <div className="mt-10 flex flex-col items-center">
+          <div className="mt-8 flex flex-col items-start">
             <MarketingAuthCta variant="hero" />
             <MarketingPricingHint
               basic={l.pricingSnippet.basic}
               advanced={l.pricingSnippet.advanced}
+              className="mt-3 text-left text-[0.625rem] leading-relaxed text-neutral-900 dark:text-neutral-50"
             />
           </div>
         </div>
 
-        <div className="hero-product-showcase relative mx-auto mt-6 w-full max-w-5xl sm:mt-8 lg:mt-10 lg:max-w-7xl">
-          <div className="hero-product-frame">
-            <div className="hero-product-chrome">
-              <div className="flex shrink-0 items-center gap-1.5" aria-hidden>
-                <span className="hero-chrome-dot bg-[#FF5F57]" />
-                <span className="hero-chrome-dot bg-[#FEBC2E]" />
-                <span className="hero-chrome-dot bg-[#28C840]" />
-              </div>
-              <div className="hero-product-url">
-                <Lock className="h-3 w-3 shrink-0 text-green-400/80 dark:text-green-400/80" aria-hidden />
-                <span className="truncate">{l.hero.previewUrl}</span>
-              </div>
+        <div className="w-full min-w-0 flex-1 lg:pt-1">
+          <div className="max-h-[22rem] w-[140%] overflow-hidden rounded-[1.75rem] bg-green-400 p-2.5 sm:max-h-[26rem] sm:w-[148%] sm:p-3 lg:max-h-[30rem] lg:w-[155%]">
+            <div className="mb-2 flex items-center gap-1.5 px-1" aria-hidden>
+              <span className="hero-chrome-dot bg-[#FF5F57]" />
+              <span className="hero-chrome-dot bg-[#FEBC2E]" />
+              <span className="hero-chrome-dot bg-[#28C840]" />
             </div>
-            <div className="hero-product-screen">
+            <div className="overflow-hidden rounded-xl bg-white shadow-sm dark:bg-neutral-950">
               <HeroDashboardPreview />
             </div>
           </div>
-
-          <div className="hero-product-reflection" aria-hidden />
         </div>
       </div>
     </section>
