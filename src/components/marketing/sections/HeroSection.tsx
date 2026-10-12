@@ -84,8 +84,8 @@ export function HeroSection() {
       className="relative scroll-mt-20 overflow-hidden bg-white dark:bg-transparent"
     >
       <div className="marketing-hero-grid" aria-hidden />
-      <div className="relative z-[1] mx-auto flex max-w-[90rem] flex-col items-start gap-8 px-5 pb-6 pt-12 sm:px-8 sm:pt-16 lg:flex-row lg:items-start lg:gap-8 lg:pb-10 lg:pt-20">
-        <div className="w-full max-w-xl shrink-0 text-left lg:ms-12 lg:w-[34rem] lg:pt-2 xl:ms-20 xl:w-[38rem]">
+      <div className="relative z-[1] mx-auto flex max-w-[90rem] flex-col items-center gap-8 px-5 pb-6 pt-12 sm:px-8 sm:pt-16 lg:flex-row lg:items-start lg:gap-8 lg:pb-10 lg:pt-20">
+        <div className="w-full max-w-xl shrink-0 text-center lg:ms-12 lg:w-[34rem] lg:pt-2 lg:text-left xl:ms-20 xl:w-[38rem]">
           <h1 className="text-4xl font-bold tracking-tighter text-neutral-900 dark:text-neutral-50 sm:text-5xl xl:text-[4rem] xl:leading-[1.05]">
             {l.hero.headline}
             {l.hero.headlinePhrases && l.hero.headlinePhrases.length > 0 ? (
@@ -93,16 +93,16 @@ export function HeroSection() {
             ) : null}
           </h1>
 
-          <p className="mt-5 max-w-lg text-base leading-relaxed text-neutral-900 dark:text-neutral-50 sm:text-lg">
+          <p className="mx-auto mt-5 max-w-lg text-base leading-relaxed text-neutral-900 dark:text-neutral-50 sm:text-lg lg:mx-0">
             <HeroSubheadline text={l.hero.subheadline} />
           </p>
 
-          <div className="mt-8 flex flex-col items-start">
+          <div className="mt-8 flex flex-col items-center lg:items-start">
             <MarketingAuthCta variant="hero" />
             <MarketingPricingHint
               basic={l.pricingSnippet.basic}
               advanced={l.pricingSnippet.advanced}
-              className="mt-3 text-left text-[0.625rem] leading-relaxed text-neutral-900 dark:text-neutral-50"
+              className="mt-3 text-center text-[0.625rem] leading-relaxed text-neutral-900 dark:text-neutral-50 lg:text-left"
             />
           </div>
         </div>
