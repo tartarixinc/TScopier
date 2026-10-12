@@ -99,6 +99,11 @@ export async function closeWithVerification(
       }
     }
     if (after.length === 0) {
+      // cTrader reconcile is authoritative: closing the only position leaves an
+      // empty book. An empty FxSocket snapshot is still not proof of closure.
+      if (result.state === 'position_closed') {
+        return { confirmed: true, attempts: attempt, ticket: effectiveTicket }
+      }
       return {
         confirmed: false,
         reason: 'close broker readback was empty; reconciliation required',

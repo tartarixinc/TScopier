@@ -105,9 +105,9 @@ test('cTrader market open keeps the copy comment and converts lots', async () =>
         executionType: 3,
         position: {
           positionId: 9001,
-          price: 123456,
-          stopLoss: 123000,
-          takeProfit: 124000,
+          price: 1.23456,
+          stopLoss: 1.23,
+          takeProfit: 1.24,
           tradeData: { symbolId: 1, volume: 1_000_000, tradeSide: 1, comment: 'TScopier:abc' },
         },
       },
@@ -126,8 +126,8 @@ test('cTrader market open keeps the copy comment and converts lots', async () =>
   assert.equal(order?.payload.orderType, 1)
   assert.equal(order?.payload.tradeSide, 1)
   assert.equal(order?.payload.comment, 'TScopier:abc')
-  assert.equal(order?.payload.stopLoss, 123000)
-  assert.equal(order?.payload.takeProfit, 124000)
+  assert.equal(order?.payload.stopLoss, 1.23)
+  assert.equal(order?.payload.takeProfit, 1.24)
   assert.equal(result.ticket, 9001)
   assert.equal(result.lots, 0.1)
   assert.equal(result.comment, 'TScopier:abc')
@@ -154,7 +154,7 @@ test('cTrader reads lot size from the full symbol when the name list omits it', 
         executionType: 3,
         position: {
           positionId: 9002,
-          price: 265012,
+          price: 2650.12,
           tradeData: { symbolId: 41, volume: 1_000, tradeSide: 1, comment: 'TScopier:gold' },
         },
       },
@@ -173,7 +173,7 @@ test('cTrader reads lot size from the full symbol when the name list omits it', 
   assert.equal(result.openPrice, 2650.12)
 })
 
-test('cTrader amends position protection in relative prices', async () => {
+test('cTrader amends position protection with absolute prices', async () => {
   const { provider, sent } = providerFor([
     ...authSteps,
     { request: CTRADER_PAYLOAD.SYMBOLS_LIST_REQ, responseType: CTRADER_PAYLOAD.SYMBOLS_LIST_RES, payload: symbolList },
@@ -190,7 +190,7 @@ test('cTrader amends position protection in relative prices', async () => {
     {
       request: CTRADER_PAYLOAD.AMEND_POSITION_SLTP_REQ,
       responseType: CTRADER_PAYLOAD.EXECUTION_EVENT,
-      payload: { executionType: 4, position: { positionId: 9001, stopLoss: 122000, takeProfit: 125000 } },
+      payload: { executionType: 4, position: { positionId: 9001, stopLoss: 1.22, takeProfit: 1.25 } },
     },
   ])
   const result = await provider.orderModify('4242', {
@@ -200,8 +200,8 @@ test('cTrader amends position protection in relative prices', async () => {
   })
   const amend = sent.find(message => message.payloadType === CTRADER_PAYLOAD.AMEND_POSITION_SLTP_REQ)
   assert.equal(amend?.payload.positionId, 9001)
-  assert.equal(amend?.payload.stopLoss, 122000)
-  assert.equal(amend?.payload.takeProfit, 125000)
+  assert.equal(amend?.payload.stopLoss, 1.22)
+  assert.equal(amend?.payload.takeProfit, 1.25)
   assert.equal(result.ticket, 9001)
   assert.equal(result.stopLoss, 1.22)
 })
@@ -232,6 +232,7 @@ test('cTrader partial close sends the converted volume', async () => {
   assert.equal(close?.payload.volume, 4_000_000)
   assert.equal(close?.payload.positionId, 9001)
   assert.equal(result.ticket, 9001)
+  assert.equal(result.state, 'position_closed')
 })
 
 test('cTrader opened orders expose ticket, side, lots, and the copy comment', async () => {
