@@ -170,7 +170,7 @@ export async function sendImmediateLegs(input: SendImmediateLegsInput): Promise<
   // v2 entries fire PROTECTED-at-send through the strict fxClient (bounded timeout,
   // strict retcode, no blind 3x retries) instead of the old client. One pre-burst
   // OpenedOrders snapshot powers ambiguous-send adoption so retries never duplicate.
-  // MTAPI brokers must never take the FxClient path (FxSocket-only) — isV2 forces v1 for provider=mtapi.
+  // MTAPI and cTrader must never take the FxClient path (FxSocket-only) — isV2 forces v1 for those providers.
   const useV2 = isV2({ brokerAccountId: broker.id, userId: signal.user_id, provider: broker.provider })
   const v2Platform = toMtPlatform(broker.platform)
   const v2Snapshot: FxOpenOrder[] = useV2
