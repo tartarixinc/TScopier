@@ -87,9 +87,9 @@ export const TradeActivityCard = memo(function TradeActivityCard({
   if (variant === 'compact') {
     return (
       <div className="px-5 py-3.5 transition-colors hover:bg-[#F7F8FA] dark:hover:bg-white/[0.03]">
-        <p className="text-sm leading-5 text-neutral-900 dark:text-neutral-100">{activity.message}</p>
+        <p className="text-base font-regular leading-6 text-neutral-900 dark:text-neutral-100">{activity.message}</p>
         <div className="mt-1 flex items-center gap-2">
-          <p className="text-[11px] tabular-nums text-neutral-900 dark:text-neutral-50">{timeLabel}</p>
+          <p className="text-xs font-regular text-neutral-900 dark:text-neutral-50">{timeLabel}</p>
           <ActivityRouteTag activity={activity} />
         </div>
       </div>

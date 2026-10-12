@@ -2559,7 +2559,7 @@ export function DashboardPage() {
           <div className="overflow-x-auto">
           {/* Table header */}
           <div
-            className={`${DASHBOARD_COPIER_LOG_GRID} min-w-[28rem] border-b border-neutral-100 px-5 py-2.5 text-[11px] font-medium uppercase tracking-[0.06em] text-neutral-900 dark:text-neutral-50 dark:border-neutral-800/80`}
+            className={`${DASHBOARD_COPIER_LOG_GRID} min-w-[28rem] border-b border-neutral-100 px-5 py-2.5 text-xs font-regular uppercase tracking-[0.06em] text-neutral-900 dark:text-neutral-50 dark:border-neutral-800/80`}
           >
             <span>{t.copierLogs.colStatus}</span>
             <span className="min-w-0">{t.copierLogs.colChannel}</span>
@@ -2842,23 +2842,23 @@ function LogRow({ signal, channelName, symbol, sourceKind }: { signal: Signal; c
 
   return (
     <div className={`${DASHBOARD_COPIER_LOG_GRID} px-5 py-3 transition-colors hover:bg-[#F7F8FA] dark:hover:bg-white/[0.03]`}>
-      <span className={`inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${s.color}`}>
+      <span className={`inline-flex w-fit items-center rounded-full px-2.5 py-1 text-sm font-regular ${s.color}`}>
         {s.label}
       </span>
-      <span className="flex min-w-0 items-center gap-2 text-xs text-neutral-900 dark:text-neutral-50" title={channelTitle}>
+      <span className="flex min-w-0 items-center gap-2 text-sm font-regular text-neutral-900 dark:text-neutral-50" title={channelTitle}>
         {sourceKind ? <SignalSourceLogo kind={sourceKind} /> : null}
         <span className="truncate">{channelName}</span>
       </span>
-      <span className="min-w-0 text-sm font-medium text-neutral-900 dark:text-neutral-50 truncate" title={symbol}>{symbol}</span>
+      <span className="min-w-0 text-base font-regular text-neutral-900 dark:text-neutral-50 truncate" title={symbol}>{symbol}</span>
       <span
-        className={`min-w-0 text-xs font-medium uppercase truncate ${
+        className={`min-w-0 text-sm font-regular uppercase truncate ${
           isBuy ? 'text-green-500 dark:text-green-400' : action === 'sell' ? 'text-error-600' : 'text-neutral-900 dark:text-neutral-50'
         }`}
         title={typeLabel}
       >
         {typeLabel}
       </span>
-      <span className="text-xs text-neutral-900 dark:text-neutral-50 text-right whitespace-nowrap">
+      <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50 text-right whitespace-nowrap">
         {signal.created_at
           ? new Date(signal.created_at).toLocaleString([], {
               month: 'short',
