@@ -311,14 +311,21 @@ export class TradeExecutor {
   private async loadBrokers() {
     const brokersQ = await applyShardToQuery(
       this.supabase,
-      this.supabase.from('broker_accounts').select('*').or('mtapi_session_id.neq.,fxsocket_account_id.neq.,metaapi_account_id.neq.'),
+      this.supabase.from('broker_accounts').select('*').or('mtapi_session_id.neq.,fxsocket_account_id.neq.,metaapi_account_id.neq.,ctrader_account_id.neq.'),
     )
     if (!brokersQ) {
       this.brokersByUser.clear()
       this.brokersById.clear()
       return
     }
-    const { data, error } = await brokersQ
+    let { data, error } = await brokersQ
+    if (error && /ctrader_account_id/i.test(error.message)) {
+      const retry = await applyShardToQuery(
+        this.supabase,
+        this.supabase.from('broker_accounts').select('*').or('mtapi_session_id.neq.,fxsocket_account_id.neq.,metaapi_account_id.neq.'),
+      )
+      if (retry) ({ data, error } = await retry)
+    }
     if (error) {
       console.error('[tradeExecutor] loadBrokers failed:', error.message)
       return
