@@ -27,7 +27,7 @@ import { useUserProfile } from '../../context/UserProfileContext'
 import { normalizeCopyLimitState, type CopyLimitState } from '../../lib/copyLimitTypes'
 import { ConfigTitle, ConfigToggleLabel, ConfigureInput, ConfigureSelect, InfoTooltip } from '../../components/ui/InfoTooltip'
 import { fxsocketBroker, BrokerHealthCheckUnsupportedError } from '../../lib/fxsocketBroker'
-import { isLegacyBrokerLink, countLinkedBrokerSessionsForUi, hasFxsocketBrokerSession } from '../../lib/brokerLink'
+import { isLegacyBrokerLink, countLinkedBrokerSessionsForUi, hasFxsocketBrokerSession, hasLinkedBrokerForUi, resolveProvider } from '../../lib/brokerLink'
 import { resolveBrokerTotalBalance } from '../../lib/effectiveBrokerBalance'
 import { brokerCanReconnect, brokerConnectionBadgeVariant, brokerConnectionStatusLabel } from '../../lib/brokerReconnect'
 import {
@@ -1054,8 +1054,8 @@ export function AccountConfigPage() {
   const [riskCalcOpen, setRiskCalcOpen] = useState(false)
   const brokerHealthSyncKey = useMemo(
     () => brokers
-      .filter(b => hasFxsocketBrokerSession(b))
-      .map(b => b.id)
+      .filter(b => hasLinkedBrokerForUi(b))
+      .map(b => `${b.id}:${resolveProvider(b)}`)
       .sort()
       .join(','),
     [brokers],
@@ -1744,13 +1744,13 @@ export function AccountConfigPage() {
   }
 
   const syncBrokerAccountTypesFromHealth = async (list: BrokerAccount[]) => {
-    const linked = list.filter(b => hasFxsocketBrokerSession(b))
+    const linked = list.filter(b => hasLinkedBrokerForUi(b))
     if (linked.length === 0) return
 
     const results = await Promise.all(
       linked.map(async b => {
         try {
-          const { account, status } = await fxsocketBroker.checkStatus(b.id)
+          const { account, status } = await fxsocketBroker.checkStatus(b.id, resolveProvider(b))
           return { account, status } as const
         } catch (err) {
           if (err instanceof BrokerHealthCheckUnsupportedError) {
