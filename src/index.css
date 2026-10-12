@@ -244,44 +244,6 @@ html.app-viewport-lock #root {
     @apply min-h-screen overflow-hidden;
   }
 
-  .marketing-nav-header {
-    transform: translateY(0);
-    transition:
-      padding 0.35s cubic-bezier(0.4, 0, 0.2, 1),
-      transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  .marketing-nav-header--hidden {
-    transform: translateY(calc(-100% - 0.5rem));
-  }
-
-  .marketing-nav-float {
-    @apply relative h-14 rounded-2xl border border-neutral-200/55 bg-white/90 backdrop-blur-md dark:border-neutral-800/50 dark:bg-neutral-900/90;
-    transition:
-      height 0.35s cubic-bezier(0.4, 0, 0.2, 1),
-      background-color 0.35s cubic-bezier(0.4, 0, 0.2, 1),
-      border-color 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  .marketing-nav-float--scrolled {
-    @apply h-12;
-  }
-
-  .marketing-nav-mobile {
-    @apply rounded-2xl border border-neutral-200/55 bg-white/90 backdrop-blur-md dark:border-neutral-800/50 dark:bg-neutral-900/90;
-    transition:
-      background-color 0.35s cubic-bezier(0.4, 0, 0.2, 1),
-      border-color 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .marketing-nav-header,
-    .marketing-nav-float,
-    .marketing-nav-mobile {
-      transition: none;
-    }
-  }
-
   .marketing-footer {
     @apply mt-4 border-t border-neutral-200/55 dark:border-neutral-800/50;
   }

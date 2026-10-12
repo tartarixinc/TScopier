@@ -81,7 +81,7 @@ export function HeroSection() {
   return (
     <section
       id="product"
-      className="relative -mt-[4.75rem] scroll-mt-28 overflow-hidden bg-white pt-[4.75rem] dark:bg-transparent sm:-mt-20 sm:pt-20"
+      className="relative scroll-mt-20 overflow-hidden bg-white dark:bg-transparent"
     >
       <div className="marketing-hero-grid" aria-hidden />
       <div className="relative z-[1] mx-auto flex max-w-[90rem] flex-col items-start gap-8 px-5 pb-6 pt-4 sm:px-8 sm:pt-6 lg:flex-row lg:items-start lg:gap-8 lg:pb-10 lg:pt-6">
