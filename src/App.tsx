@@ -26,6 +26,9 @@ const AppPricingPage = lazy(() =>
 const AccountConfigPage = lazy(() =>
   import('./pages/dashboard/AccountConfigPage').then(m => ({ default: m.AccountConfigPage })),
 )
+const CtraderCallbackPage = lazy(() =>
+  import('./pages/dashboard/CtraderCallbackPage').then(m => ({ default: m.CtraderCallbackPage })),
+)
 const ConfigurationsPage = lazy(() =>
   import('./pages/dashboard/ConfigurationsPage').then(m => ({ default: m.ConfigurationsPage })),
 )
@@ -160,6 +163,7 @@ export default function App() {
             <Route path="/welcome" element={<Navigate to="/dashboard" replace />} />
             <Route element={<AppShell />}>
             <Route path="/dashboard/*" element={<DashboardRouteAnchor />} />
+            <Route path="/brokers/ctrader/callback" element={<LazyPage><CtraderCallbackPage /></LazyPage>} />
             <Route path="/brokers" element={<LazyPage><AccountConfigPage /></LazyPage>} />
             <Route path="/mirror-trading" element={<LazyPage><MirrorTradingPage /></LazyPage>} />
             <Route path="/social-trading/:traderId" element={<LazyPage><SocialTraderActivityPage /></LazyPage>} />

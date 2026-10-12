@@ -2,6 +2,7 @@ import { useEffect, useMemo } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { useBrokerAccounts } from '../../context/BrokerAccountsContext'
 import { fxsocketBroker } from '../../lib/fxsocketBroker'
+import { resolveProvider } from '../../lib/brokerLink'
 
 /** Poll refresh_summary for accounts still linking (must render under BrokerAccountsProvider). */
 export function PendingBrokerConnectionSync() {
@@ -29,7 +30,7 @@ export function PendingBrokerConnectionSync() {
         if (cancelled || !id) continue
         try {
           const broker = brokers.find(b => b.id === id)
-          const { account } = await fxsocketBroker.refreshSummary(id, broker?.provider as 'fxsocket' | 'mtapi' | undefined)
+          const { account } = await fxsocketBroker.refreshSummary(id, broker ? resolveProvider(broker) : undefined)
           if (cancelled) return
           upsertBroker(account)
         } catch {

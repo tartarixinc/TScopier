@@ -16,6 +16,7 @@ import { Button } from '../ui/Button'
 import { Badge } from '../ui/Badge'
 import { BrokerHealthCheckUnsupportedError, fxsocketBroker } from '../../lib/fxsocketBroker'
 import { brokerAccountHealthPatchFromMtStatus } from '../../lib/brokerHealth'
+import { resolveProvider } from '../../lib/brokerLink'
 import {
   isFxsocketMtStatusHealthy,
   listFxsocketMtStatusChecks,
@@ -37,6 +38,7 @@ interface BrokerStatusModalProps {
 function platformLogo(platform: string): string | null {
   if (platform === 'MT5') return '/MT5.png'
   if (platform === 'MT4') return '/MT4.png'
+  if (platform === 'cTrader') return '/cTrader.png'
   return null
 }
 
@@ -138,7 +140,7 @@ function BrokerStatusModalInner({
     try {
       const result = await fxsocketBroker.fetchBrokerStatus(
         broker.id,
-        broker.provider as 'fxsocket' | 'mtapi' | undefined,
+        resolveProvider(broker),
       )
       setStatus(result.status)
       onAccountUpdate?.({

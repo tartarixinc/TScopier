@@ -1,0 +1,54 @@
+import { strict as assert } from 'node:assert'
+import { test } from 'node:test'
+import {
+  ctraderAuthorizeUrl,
+  ctraderSocketUrl,
+  ctraderVolumeToLots,
+  lotsToCtraderVolume,
+  mapCtraderOrder,
+  priceToRelative,
+  readCtraderTokenResponse,
+  relativeToPrice,
+} from './protocol'
+
+test('cTrader volume converts lots through the symbol lot size', () => {
+  assert.equal(lotsToCtraderVolume(1, 10_000_000), 10_000_000)
+  assert.equal(lotsToCtraderVolume(0.1, 10_000_000), 1_000_000)
+  assert.equal(lotsToCtraderVolume(0.01, 10_000_000), 100_000)
+  assert.equal(ctraderVolumeToLots(1_000_000, 10_000_000), 0.1)
+  assert.throws(() => lotsToCtraderVolume(0, 10_000_000), /greater than zero/)
+})
+
+test('cTrader prices are scaled by symbol digits', () => {
+  assert.equal(priceToRelative(1.23456, 5), 123456)
+  assert.equal(relativeToPrice(123456, 5), 1.23456)
+})
+
+test('cTrader order sides map onto Open API enums', () => {
+  assert.deepEqual(mapCtraderOrder('Buy'), { orderType: 1, tradeSide: 1 })
+  assert.deepEqual(mapCtraderOrder('Sell'), { orderType: 1, tradeSide: 2 })
+  assert.deepEqual(mapCtraderOrder('BuyLimit'), { orderType: 2, tradeSide: 1 })
+  assert.deepEqual(mapCtraderOrder('SellStop'), { orderType: 3, tradeSide: 2 })
+  assert.deepEqual(mapCtraderOrder('BuyStopLimit'), { orderType: 6, tradeSide: 1 })
+  assert.throws(() => mapCtraderOrder('Hold'), /Unsupported/)
+})
+
+test('cTrader hosts and token fields accept both casings', () => {
+  assert.equal(ctraderSocketUrl('demo'), 'wss://demo.ctraderapi.com:5036')
+  assert.equal(ctraderSocketUrl('live'), 'wss://live.ctraderapi.com:5036')
+  const url = new URL(ctraderAuthorizeUrl({
+    clientId: 'app',
+    redirectUri: 'https://app.tscopier.ai/brokers/ctrader/callback',
+    state: 'signed',
+  }))
+  assert.equal(url.searchParams.get('scope'), 'trading')
+  assert.equal(url.searchParams.get('client_id'), 'app')
+  assert.deepEqual(
+    readCtraderTokenResponse({ access_token: 'a', refresh_token: 'r', expires_in: 3600 }),
+    { accessToken: 'a', refreshToken: 'r', expiresIn: 3600 },
+  )
+  assert.deepEqual(
+    readCtraderTokenResponse({ accessToken: 'a', refreshToken: 'r', expiresIn: '1800' }),
+    { accessToken: 'a', refreshToken: 'r', expiresIn: 1800 },
+  )
+})

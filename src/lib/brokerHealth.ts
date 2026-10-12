@@ -17,16 +17,17 @@ type BrokerTerminalHealthLabels = {
 function isBrokerLinking(
   account: Pick<BrokerAccount, 'connection_status' | 'fxsocket_status' | 'terminal_connected' | 'trade_allowed' | 'live_terminal_health_phase'> & {
     mtapi_status?: string | null
+    ctrader_status?: string | null
   },
 ): boolean {
   if (account.live_terminal_health_phase === 'healthy' || account.live_terminal_health_phase === 'unhealthy') {
     return false
   }
   if (account.terminal_connected === true && account.trade_allowed === true) return false
-  if (account.mtapi_status === 'connected') return false
+  if (account.mtapi_status === 'connected' || account.ctrader_status === 'connected') return false
   if (account.connection_status === 'pending') return true
   const fx = account.fxsocket_status
-  return fx === 'connecting' || account.mtapi_status === 'connecting'
+  return fx === 'connecting' || account.mtapi_status === 'connecting' || account.ctrader_status === 'connecting'
 }
 
 export function brokerTerminalHealthPhase(
@@ -36,6 +37,7 @@ export function brokerTerminalHealthPhase(
     | 'connection_status'
     | 'fxsocket_status'
     | 'mtapi_status'
+    | 'ctrader_status'
     | 'terminal_connected'
     | 'trade_allowed'
     | 'live_terminal_health_phase'
@@ -58,6 +60,7 @@ export function brokerTerminalHealthLabel(
     | 'connection_status'
     | 'fxsocket_status'
     | 'mtapi_status'
+    | 'ctrader_status'
     | 'terminal_connected'
     | 'trade_allowed'
     | 'live_terminal_health_phase'
@@ -78,6 +81,7 @@ export function brokerTerminalHealthBadgeVariant(
     | 'connection_status'
     | 'fxsocket_status'
     | 'mtapi_status'
+    | 'ctrader_status'
     | 'terminal_connected'
     | 'trade_allowed'
     | 'live_terminal_health_phase'

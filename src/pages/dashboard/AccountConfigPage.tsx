@@ -917,7 +917,7 @@ export function AccountConfigPage() {
   useEffect(() => {
     if (brokersLoading || brokerBalanceRefreshStartedRef.current) return
     const connected = brokers.filter(
-      b => hasFxsocketBrokerSession(b) && b.connection_status === 'connected',
+      b => (hasFxsocketBrokerSession(b) || resolveProvider(b) === 'ctrader') && b.connection_status === 'connected',
     )
     if (connected.length === 0) return
 
@@ -937,7 +937,7 @@ export function AccountConfigPage() {
       for (const b of stale) {
         if (cancelled) return
         try {
-          const { account } = await fxsocketBroker.refreshSummary(b.id, b.provider as 'fxsocket' | 'mtapi' | undefined)
+          const { account } = await fxsocketBroker.refreshSummary(b.id, resolveProvider(b))
           if (!cancelled) replaceBroker(account)
         } catch {
           /* best-effort — throttle must not mark the account disconnected */
@@ -2691,7 +2691,7 @@ export function AccountConfigPage() {
     if (configAccount?.id === id) closeConfigureModal({ force: true })
 
     try {
-      await fxsocketBroker.delete(id, removed.provider as 'fxsocket' | 'mtapi' | undefined)
+      await fxsocketBroker.delete(id, resolveProvider(removed))
     } catch (err) {
       const msg = err instanceof Error ? err.message : bl.deleteFailed
 

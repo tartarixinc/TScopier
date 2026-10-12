@@ -51,6 +51,9 @@ verify_jwt = false
 [functions.fxsocket-broker]
 verify_jwt = true
 
+[functions.ctrader-broker]
+verify_jwt = true
+
 [functions.reconcile-expired-trials]
 verify_jwt = false
 

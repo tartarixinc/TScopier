@@ -73,6 +73,14 @@ describe('brokerLink — MTAPI provider', () => {
     assert.equal(resolveProvider({ provider: 'unknown' }), 'fxsocket')
   })
 
+  it('resolveProvider returns ctrader and treats the row as linked', () => {
+    assert.equal(resolveProvider({ provider: 'ctrader' }), 'ctrader')
+    assert.equal(hasLinkedBrokerForUi({ provider: 'ctrader' }), true)
+    assert.equal(hasAnyBrokerSession({ provider: 'ctrader', ctrader_account_id: '4242' }), true)
+    assert.equal(isBrokerCopyEnabledForUi({ provider: 'ctrader', is_active: true }), true)
+    assert.equal(isFxsocketLinkedBroker({ provider: 'ctrader', fxsocket_account_id: SESSION_UUID }), false)
+  })
+
   it('hasMtapiBrokerSession is true for non-empty session id', () => {
     assert.equal(hasMtapiBrokerSession({ mtapi_session_id: 'sess_abc123' }), true)
   })

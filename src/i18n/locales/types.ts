@@ -642,6 +642,14 @@ export interface AccountConfigConnectFormTranslations {
   platformLabel: string
   platformMt5: string
   platformMt4: string
+  platformCtrader: string
+  ctraderConnectButton: string
+  ctraderConnectHint: string
+  ctraderNotConfigured: string
+  ctraderPickAccount: string
+  ctraderLinkButton: string
+  ctraderDemo: string
+  ctraderLive: string
   brokerServerLabel: string
   brokerServerHint: string
   brokerServerPlaceholder: string
