@@ -46,9 +46,20 @@ function stripSecrets(row: Record<string, unknown>) {
     ctrader_access_token_encrypted: _access,
     ctrader_refresh_token_encrypted: _refresh,
     ctrader_token_expires_at: _expires,
+    ctrader_client_id_encrypted: _clientId,
+    ctrader_client_secret_encrypted: _clientSecret,
     ...safe
   } = row
   return safe
+}
+
+async function encryptedAppCredentials(): Promise<Record<string, string> | null> {
+  const app = ctraderAppFromEnv()
+  if (!app) return null
+  return {
+    ctrader_client_id_encrypted: await encryptMtPasswordRequired(app.clientId, Deno.env),
+    ctrader_client_secret_encrypted: await encryptMtPasswordRequired(app.clientSecret, Deno.env),
+  }
 }
 
 function environmentOf(value: unknown): CtraderEnvironment {
@@ -87,12 +98,14 @@ async function tokensForRow(
   const refreshEncrypted = refreshed.refreshToken
     ? await encryptMtPasswordRequired(refreshed.refreshToken, Deno.env)
     : row.ctrader_refresh_token_encrypted
+  const appCredentials = await encryptedAppCredentials()
   await supabase
     .from("broker_accounts")
     .update({
       ctrader_access_token_encrypted: accessEncrypted,
       ctrader_refresh_token_encrypted: refreshEncrypted,
       ctrader_token_expires_at: refreshed.expiresAt,
+      ...(appCredentials ?? {}),
     })
     .eq("id", row.id)
     .eq("user_id", row.user_id)
@@ -213,6 +226,7 @@ Deno.serve(async (req: Request) => {
       const refreshEncrypted = tokens.refreshToken
         ? await encryptMtPasswordRequired(tokens.refreshToken, Deno.env)
         : null
+      const appCredentials = await encryptedAppCredentials()
       const now = new Date().toISOString()
       const baseline = resolvePerformanceBaselineBalance(null, {
         balance: snapshot.balance,
@@ -230,6 +244,7 @@ Deno.serve(async (req: Request) => {
           ctrader_access_token_encrypted: accessEncrypted,
           ctrader_refresh_token_encrypted: refreshEncrypted,
           ctrader_token_expires_at: tokens.expiresAt,
+          ...(appCredentials ?? {}),
           ctrader_status: "connected",
           account_login: account.accountNumber,
           broker_name: account.brokerName,
@@ -286,7 +301,9 @@ Deno.serve(async (req: Request) => {
         })
         const snapshot = ctraderStatusFromTrader(trader, tokens.environment)
         const now = new Date().toISOString()
+        const appCredentials = await encryptedAppCredentials()
         const patch: Record<string, unknown> = {
+          ...(appCredentials ?? {}),
           ctrader_status: "connected",
           connection_status: "connected",
           terminal_connected: true,
