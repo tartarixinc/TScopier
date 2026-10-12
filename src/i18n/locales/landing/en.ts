@@ -15,7 +15,7 @@ export const landingEn: LandingTranslations = {
     menuClose: 'Close menu',
   },
   hero: {
-    headline: 'The #1 Copier Platform for',
+    headline: 'One Unified copier platform for',
     headlinePhrases: ['Trading Signals', 'Social Trading', 'Account Mirroring'],
     subheadline:
       'Automate your trades from Telegram, WhatsApp, Discord, TradingView, or a Master Account to 8+ broker platforms in under 50ms. No VPS required.',

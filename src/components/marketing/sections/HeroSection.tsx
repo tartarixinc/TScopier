@@ -84,7 +84,7 @@ export function HeroSection() {
       className="relative scroll-mt-20 overflow-hidden bg-white dark:bg-transparent"
     >
       <div className="marketing-hero-grid" aria-hidden />
-      <div className="relative z-[1] mx-auto flex max-w-[90rem] flex-col items-start gap-8 px-5 pb-6 pt-4 sm:px-8 sm:pt-6 lg:flex-row lg:items-start lg:gap-8 lg:pb-10 lg:pt-6">
+      <div className="relative z-[1] mx-auto flex max-w-[90rem] flex-col items-start gap-8 px-5 pb-6 pt-12 sm:px-8 sm:pt-16 lg:flex-row lg:items-start lg:gap-8 lg:pb-10 lg:pt-20">
         <div className="w-full max-w-xl shrink-0 text-left lg:ms-12 lg:w-[34rem] lg:pt-2 xl:ms-20 xl:w-[38rem]">
           <h1 className="text-4xl font-bold tracking-tighter text-neutral-900 dark:text-neutral-50 sm:text-5xl xl:text-[4rem] xl:leading-[1.05]">
             {l.hero.headline}

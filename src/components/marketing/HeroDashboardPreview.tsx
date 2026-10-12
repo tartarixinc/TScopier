@@ -1,23 +1,24 @@
 import { useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
+  Activity,
+  Bell,
+  ChevronDown,
   ChevronRight,
-  CircleHelp,
-  Clock,
   Info,
   PanelLeftClose,
-  Plus,
   Search,
+  Sparkles,
 } from 'lucide-react'
 import { LanguageSwitcher } from '../auth/LanguageSwitcher'
 import { CopierActiveIndicator } from '../layout/CopierActiveIndicator'
+import { SignalSourceLogo } from '../dashboard/SignalSourceLogo'
 import { ThemeToggle } from '../ui/ThemeToggle'
 import { TscopierLogo } from '../ui/TscopierLogo'
 import { DirectionalIcon } from '../ui/DirectionalIcon'
 import { useLocale, useT } from '../../context/LocaleContext'
-import { useTheme } from '../../context/ThemeContext'
 import { getAppRouteIcon } from '../../lib/appNavIcons'
-import { chartThemeColors } from '../../lib/chartTheme'
+import { interpolate } from '../../i18n/interpolate'
 import { formatHeroLiveMoney, useLiveMoneyTicker } from './useLiveMoneyTicker'
 import type {
   LandingBacktestPipsTone,
@@ -28,6 +29,7 @@ import type {
 
 const CANVAS_WIDTH = 1280
 const CANVAS_HEIGHT = 820
+const PREVIEW_NAME = 'Alex'
 
 const COPIER_LOG_GRID_LTR =
   'grid grid-cols-[5.75rem_minmax(0,1fr)_minmax(4rem,0.85fr)_minmax(4.75rem,auto)_minmax(6.75rem,auto)] gap-x-3 items-center'
@@ -35,52 +37,14 @@ const COPIER_LOG_GRID_LTR =
 const COPIER_LOG_GRID_RTL =
   'grid grid-cols-[6.5rem_minmax(0,1fr)_minmax(3.5rem,0.85fr)_minmax(4.25rem,auto)_minmax(6rem,auto)] gap-x-2 items-center'
 
-const TRADE_OUTCOME_DAYS = [
-  { label: 'Mon', profit: 62, loss: 22 },
-  { label: 'Tue', profit: 48, loss: 35 },
-  { label: 'Wed', profit: 78, loss: 15 },
-  { label: 'Thu', profit: 40, loss: 52 },
-  { label: 'Fri', profit: 55, loss: 28 },
-  { label: 'Sat', profit: 88, loss: 10 },
-  { label: 'Sun', profit: 52, loss: 30 },
-] as const
+const DASHBOARD_CARD =
+  'rounded-2xl border border-neutral-200/65 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-neutral-800/55 dark:bg-neutral-950 dark:shadow-none'
 
-const TRADE_OUTCOME_MAX = Math.max(
-  ...TRADE_OUTCOME_DAYS.flatMap(d => [d.profit, d.loss]),
-)
-
-const CHANNEL_PROFIT_ROWS = [
-  { label: 'Gold Signals Pro', pnl: 842 },
-  { label: 'FX Scalper VIP', pnl: 418 },
-  { label: 'Forex Daily', pnl: 215 },
-  { label: 'Indices Daily', pnl: -126 },
-] as const
-
-const CHANNEL_PROFIT_MIN = Math.min(...CHANNEL_PROFIT_ROWS.map(r => r.pnl))
-const CHANNEL_PROFIT_MAX = Math.max(...CHANNEL_PROFIT_ROWS.map(r => r.pnl))
-const CHANNEL_PROFIT_SPAN = CHANNEL_PROFIT_MAX - CHANNEL_PROFIT_MIN || 1
-
-function formatHeroAxisMoney(value: number): string {
-  const abs = Math.abs(value)
-  if (abs >= 1000) return `$${(value / 1000).toFixed(1)}k`
-  return `$${Math.round(value)}`
-}
-
-function channelBarGeometry(pnl: number, plotWidth: number): { x: number; width: number } {
-  const zeroX = ((0 - CHANNEL_PROFIT_MIN) / CHANNEL_PROFIT_SPAN) * plotWidth
-  const width = (Math.abs(pnl) / CHANNEL_PROFIT_SPAN) * plotWidth
-  return {
-    x: pnl >= 0 ? zeroX : zeroX - width,
-    width,
-  }
-}
-
-function barHeightPx(value: number, maxPx: number): number {
-  return Math.max(4, Math.round((value / TRADE_OUTCOME_MAX) * maxPx))
-}
+const SECTION_LINK =
+  'inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-neutral-900 dark:text-neutral-50'
 
 function valueToneClass(tone: LandingBacktestPipsTone): string {
-  if (tone === 'good') return 'text-green-400 dark:text-green-400'
+  if (tone === 'good') return 'text-green-500 dark:text-green-400'
   if (tone === 'bad') return 'text-error-600 dark:text-error-400'
   return 'text-neutral-900 dark:text-neutral-50'
 }
@@ -102,6 +66,15 @@ const OVERVIEW_LABELS: Record<LandingHeroOverviewStatKey, (t: ReturnType<typeof 
   tradesCopiedToday: t => t.dashboard.tradesCopiedToday,
 }
 
+function overviewActionLabel(
+  key: LandingHeroOverviewStatKey,
+  t: ReturnType<typeof useT>,
+): string | null {
+  if (key === 'activeSignalChannels') return t.dashboard.manageChannels
+  if (key === 'tradingAccountsConnected') return t.dashboard.addOrManageAccounts
+  return null
+}
+
 function HeroLiveMoneyValue({
   live,
   tone,
@@ -113,7 +86,7 @@ function HeroLiveMoneyValue({
 
   return (
     <p
-      className={clsx('mb-1.5 text-2xl font-semibold', valueToneClass(tone))}
+      className={clsx('mt-2 text-3xl font-semibold tracking-tight', valueToneClass(tone))}
       aria-live="polite"
       aria-atomic="true"
     >
@@ -124,19 +97,19 @@ function HeroLiveMoneyValue({
 
 function HeroStatBlock({ stat, label }: { stat: LandingHeroHeadlineStat; label: string }) {
   return (
-    <div className="min-w-0 px-4 py-5 sm:px-6">
-      <p className="mb-2 inline-flex min-w-0 items-center gap-1 text-sm leading-snug text-neutral-900 dark:text-neutral-50 rtl:text-xs">
+    <div className="rounded-2xl bg-[#F7F8FA] px-5 py-4 dark:bg-white/[0.03] dark:ring-1 dark:ring-inset dark:ring-white/[0.06]">
+      <p className="inline-flex items-center gap-1 text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-900 dark:text-neutral-50">
         <span className="min-w-0">{label}</span>
-        {stat.showHint ? <Info className="h-3.5 w-3.5 shrink-0 opacity-60" aria-hidden /> : null}
+        {stat.showHint ? <Info className="h-3.5 w-3.5 shrink-0" aria-hidden /> : null}
       </p>
       {stat.live ? (
         <HeroLiveMoneyValue live={stat.live} tone={stat.valueTone} />
       ) : (
-        <p className={clsx('mb-1.5 text-2xl font-semibold', valueToneClass(stat.valueTone))}>
+        <p className={clsx('mt-2 text-3xl font-semibold tracking-tight', valueToneClass(stat.valueTone))}>
           {stat.value}
         </p>
       )}
-      <p className="text-xs text-neutral-900 dark:text-neutral-50">{stat.sub}</p>
+      <p className="mt-1.5 text-xs leading-5 text-neutral-900 dark:text-neutral-50">{stat.sub}</p>
     </div>
   )
 }
@@ -144,194 +117,41 @@ function HeroStatBlock({ stat, label }: { stat: LandingHeroHeadlineStat; label: 
 function HeroOverviewStat({
   label,
   value,
-  showAdd,
+  action,
 }: {
   label: string
   value: string
-  showAdd?: boolean
+  action?: string | null
 }) {
   return (
-    <div>
-      <div className="mb-1 flex items-center justify-between gap-2">
-        <p className="min-w-0 text-xs leading-snug text-neutral-900 dark:text-neutral-50 rtl:text-[10px]">
-          {label}
-        </p>
-        {showAdd ? (
-          <span
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-teal-200 text-green-400 dark:border-teal-800 dark:text-green-400"
-            aria-hidden
-          >
-            <Plus className="h-3.5 w-3.5" />
-          </span>
-        ) : null}
-      </div>
-      <p className="text-2xl font-semibold text-neutral-900 dark:text-neutral-50">{value}</p>
+    <div className="px-5 py-4">
+      <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-900 dark:text-neutral-50">
+        {label}
+      </p>
+      <p className="mt-2 text-xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">{value}</p>
+      {action ? (
+        <span className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-neutral-900 dark:text-neutral-50">
+          {action}
+          <ChevronRight className="h-3.5 w-3.5" />
+        </span>
+      ) : (
+        <span className="mt-2 block h-5" aria-hidden />
+      )}
     </div>
   )
 }
 
-function HeroTradeOutcomeChart() {
-  const t = useT()
-  const { theme } = useTheme()
-  const colors = chartThemeColors(theme)
+function ProcessRouteMark() {
   return (
-    <div className="min-w-0 rounded-2xl border border-neutral-200/65 bg-white p-5 dark:border-neutral-800/55 dark:bg-neutral-950">
-      <div className="mb-4">
-        <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
-          {t.dashboard.tradeOutcomeTitle}
-        </h2>
-        <p className="mt-0.5 text-xs text-neutral-900 dark:text-neutral-50">
-          {t.dashboard.tradeOutcomeSubtitle}
-        </p>
-      </div>
-      <div className="relative flex h-52 gap-2 ps-10 pe-1">
-        <div
-          className="absolute inset-0 start-10 grid grid-rows-4 border-b border-s border-neutral-200 pe-1 dark:border-neutral-700"
-          aria-hidden
-        >
-          {[0, 1, 2, 3].map(i => (
-            <div key={i} className="border-t border-dashed border-neutral-100 dark:border-neutral-800" />
-          ))}
-        </div>
-        <div className="absolute start-0 top-0 flex h-[calc(100%-1.25rem)] w-9 flex-col justify-between py-1 text-xs text-neutral-900 dark:text-neutral-50">
-          {['$900', '$600', '$300', '$0'].map(tick => (
-            <span key={tick}>{tick}</span>
-          ))}
-        </div>
-        <div className="relative flex min-h-0 flex-1 items-end justify-between gap-1.5 pb-5">
-          {TRADE_OUTCOME_DAYS.map(day => (
-            <div key={day.label} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end">
-              <div className="flex h-[8.5rem] w-full max-w-[26px] items-end justify-center gap-0.5">
-                <div
-                  className="w-[46%] min-w-[5px] rounded-t"
-                  style={{
-                    height: barHeightPx(day.loss, 136),
-                    backgroundColor: colors.barActive.loss,
-                  }}
-                />
-                <div
-                  className="w-[46%] min-w-[5px] rounded-t bg-green-400"
-                  style={{ height: barHeightPx(day.profit, 136) }}
-                />
-              </div>
-              <span className="mt-1 text-[10px] text-neutral-900 dark:text-neutral-50">{day.label}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="mt-3 flex justify-center gap-6 text-xs text-neutral-900 dark:text-neutral-50">
-        <span className="inline-flex items-center gap-1.5">
-          <span
-            className="h-2 w-2 rounded-sm"
-            style={{ backgroundColor: colors.barActive.loss }}
-          />
-          {t.dashboard.chartLoss}
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-sm bg-green-400" />
-          {t.dashboard.chartProfit}
-        </span>
-      </div>
-    </div>
-  )
-}
-
-function HeroChannelProfitChart() {
-  const t = useT()
-  const { theme } = useTheme()
-  const colors = chartThemeColors(theme)
-  const plotH = 168
-  const plotW = 256
-  const rowCount = CHANNEL_PROFIT_ROWS.length
-  const rowGap = plotH / rowCount
-  const barHeight = 14
-  const labelWidth = 84
-
-  const xTicks = [0, 1, 2, 3, 4].map(
-    i => CHANNEL_PROFIT_MIN + (CHANNEL_PROFIT_SPAN * i) / 4,
-  )
-  const zeroX = ((0 - CHANNEL_PROFIT_MIN) / CHANNEL_PROFIT_SPAN) * plotW
-
-  return (
-    <div className="min-w-0 rounded-2xl border border-neutral-200/65 bg-white p-5 dark:border-neutral-800/55 dark:bg-neutral-950">
-      <div className="mb-4">
-        <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
-          {t.dashboard.channelProfitTitle}
-        </h2>
-        <p className="mt-0.5 text-xs text-neutral-900 dark:text-neutral-50">
-          {t.dashboard.channelProfitSubtitle}
-        </p>
-      </div>
-      <div className="flex h-52 min-h-[13rem] flex-col">
-        <div
-          className="grid min-h-0 flex-1 gap-x-1"
-          style={{ gridTemplateColumns: `${labelWidth}px 1fr`, gridTemplateRows: '1fr auto' }}
-        >
-          <div className="col-start-1 row-start-1 flex min-h-0 flex-col">
-            {CHANNEL_PROFIT_ROWS.map(row => (
-              <div
-                key={row.label}
-                className="flex min-h-0 flex-1 items-center justify-end pe-1"
-              >
-                <span className="block max-w-full truncate text-end text-[9px] leading-none text-neutral-900 dark:text-neutral-50">
-                  {row.label}
-                </span>
-              </div>
-            ))}
-          </div>
-          <svg
-            viewBox={`0 0 ${plotW} ${plotH}`}
-            className="col-start-2 row-start-1 min-h-0 h-full w-full"
-            preserveAspectRatio="none"
-            aria-hidden
-          >
-            {[0, 1, 2, 3, 4].map(i => {
-              const x = (plotW * i) / 4
-              return (
-                <line
-                  key={i}
-                  x1={x}
-                  x2={x}
-                  y1={0}
-                  y2={plotH}
-                  stroke="currentColor"
-                  className="text-neutral-100 dark:text-neutral-50"
-                  strokeDasharray="4 4"
-                />
-              )
-            })}
-            <line
-              x1={zeroX}
-              x2={zeroX}
-              y1={0}
-              y2={plotH}
-              stroke="currentColor"
-              className="text-neutral-900 dark:text-neutral-50"
-            />
-            {CHANNEL_PROFIT_ROWS.map((row, i) => {
-              const { x, width } = channelBarGeometry(row.pnl, plotW)
-              const y = rowGap * i + (rowGap - barHeight) / 2
-              return (
-                <rect
-                  key={row.label}
-                  x={x}
-                  y={y}
-                  width={Math.max(width, 2)}
-                  height={barHeight}
-                  rx={4}
-                  fill={row.pnl >= 0 ? colors.signedPnl.profit : colors.signedPnl.loss}
-                />
-              )
-            })}
-          </svg>
-          <div className="col-start-2 row-start-2 grid grid-cols-5 pt-1.5 text-center text-[10px] text-neutral-900 dark:text-neutral-50">
-            {xTicks.map(tick => (
-              <span key={tick}>{formatHeroAxisMoney(tick)}</span>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
+    <span className="inline-flex items-center rounded-full bg-neutral-50 py-0.5 ps-0.5 pe-1 ring-1 ring-neutral-200/80 dark:bg-neutral-900 dark:ring-neutral-800">
+      <SignalSourceLogo kind="telegram" className="h-5 w-5 shrink-0 rounded-full" />
+      <img
+        src="/MT5.png"
+        alt=""
+        aria-hidden
+        className="relative z-10 -ms-1.5 h-5 w-5 shrink-0 rounded-full object-contain ring-2 ring-white dark:ring-neutral-950"
+      />
+    </span>
   )
 }
 
@@ -344,10 +164,28 @@ function copierStatusClass(status: LandingHeroCopierLogRow['status']): string {
     case 'skipped':
       return 'text-warning-800 bg-warning-50 dark:!text-amber-100 dark:!bg-amber-900'
     case 'failed':
-      return 'text-neutral-900 bg-neutral-100 dark:text-neutral-50 dark:bg-neutral-800/70'
+      return 'text-error-800 bg-error-50 dark:text-error-300 dark:bg-error-950/70'
     default:
       return 'text-neutral-900 bg-neutral-100 dark:text-neutral-50 dark:bg-neutral-800'
   }
+}
+
+function heroGreeting(t: ReturnType<typeof useT>) {
+  const hour = new Date().getHours()
+  const greeting =
+    hour >= 5 && hour < 12
+      ? t.dashboard.greetingMorning
+      : hour >= 12 && hour < 17
+        ? t.dashboard.greetingAfternoon
+        : t.dashboard.greetingEvening
+  const parts = t.dashboard.greetingNamed.replace('{greeting}', greeting).split('{name}')
+  return (
+    <>
+      {parts[0]}
+      <span className="text-green-500 dark:text-green-400">{PREVIEW_NAME}</span>
+      {parts[1] ?? ''}
+    </>
+  )
 }
 
 export function HeroDashboardPreview() {
@@ -373,14 +211,18 @@ export function HeroDashboardPreview() {
     return () => ro.disconnect()
   }, [])
 
+  const openTradeCount = Number(d.overviewStats.find(stat => stat.key === 'openTrades')?.value ?? 0)
+  const openTradesTag = interpolate(t.nav.openTradesCount, { count: openTradeCount })
+
   const navSections = [
     {
       label: t.nav.sections.general,
       items: [
         { to: '/dashboard', label: t.nav.items.dashboard, active: true },
         { to: '/brokers', label: t.nav.items.brokers, active: false },
-        { to: '/account-trades', label: t.nav.items.trades, active: false },
-        { to: '/activities', label: t.nav.items.management, active: false },
+        { to: '/mirror-trading', label: t.nav.items.mirrorTrading, active: false },
+        { to: '/social-trading', label: t.nav.items.socialTrading, active: false },
+        { to: '/account-trades', label: t.nav.items.trades, active: false, openTag: openTradeCount > 0 },
       ],
     },
     {
@@ -388,6 +230,7 @@ export function HeroDashboardPreview() {
       items: [
         { to: '/channels', label: t.nav.items.channels, active: false },
         { to: '/backtest', label: t.nav.items.backtest, active: false },
+        { to: '/activities', label: t.nav.items.management, active: false },
         { to: '/copier-logs', label: t.nav.items.copierLogs, active: false },
         { to: '/manage-signals', label: t.nav.items.signalHistory, active: false },
         { to: '/performance', label: t.nav.items.performance, active: false },
@@ -398,6 +241,14 @@ export function HeroDashboardPreview() {
       items: [
         { to: '/market-news', label: t.nav.items.marketNews, active: false },
         { to: '/economic-calendar', label: t.nav.items.economicCalendar, active: false },
+      ],
+    },
+    {
+      label: t.nav.sections.membership,
+      items: [
+        { to: '/billing', label: t.nav.userMenu.subscriptionBilling, active: false },
+        { to: '/affiliate-program', label: t.nav.userMenu.affiliateProgram, active: false },
+        { to: '/wallet', label: t.nav.userMenu.wallet, active: false },
       ],
     },
   ]
@@ -439,9 +290,9 @@ export function HeroDashboardPreview() {
         }}
       >
         <div className="flex h-full w-full overflow-hidden bg-white dark:bg-neutral-950" dir={dir}>
-          <aside className="flex w-64 shrink-0 flex-col border-e border-neutral-100 bg-[#F7F8FA] dark:border-neutral-800 dark:bg-neutral-950 rtl:w-[15.5rem]">
+          <aside className="flex w-64 shrink-0 flex-col border-e border-neutral-100 bg-[#F7F8FA] dark:border-neutral-800 dark:bg-neutral-950">
             <div className="flex h-16 shrink-0 items-center border-b border-neutral-100 px-4 dark:border-neutral-800">
-              <TscopierLogo className="h-6 w-auto" />
+              <TscopierLogo className="h-12 w-auto" />
             </div>
             <nav className="min-h-0 flex-1 space-y-5 overflow-hidden px-3 py-4" aria-hidden>
               {navSections.map(section => (
@@ -453,23 +304,25 @@ export function HeroDashboardPreview() {
                     {section.items.map(item => {
                       const Icon = getAppRouteIcon(item.to)
                       return (
-                      <div
-                        key={item.label}
-                        className={clsx(
-                          'flex min-h-[44px] items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium',
-                          item.active
-                            ? 'bg-teal-50 text-green-500 dark:bg-teal-950/60 dark:text-green-400'
-                            : 'text-neutral-900 dark:text-neutral-50',
-                        )}
-                      >
-                        <Icon
+                        <div
+                          key={item.to}
                           className={clsx(
-                            'h-4 w-4 shrink-0',
-                            item.active && 'text-green-400 dark:text-green-400',
+                            'flex min-h-[20px] items-center gap-2 rounded-xl px-3 py-2.5 text-sm',
+                            item.active
+                              ? 'bg-green-400 font-semibold text-neutral-950 dark:bg-green-400 dark:text-neutral-950'
+                              : 'font-medium text-neutral-900 dark:text-neutral-50',
                           )}
-                        />
-                        <span className="min-w-0 truncate text-sm rtl:text-xs">{item.label}</span>
-                      </div>
+                        >
+                          <Icon
+                            className={clsx('h-4 w-4 shrink-0', item.active && 'text-neutral-950')}
+                          />
+                          <span className="min-w-0 truncate">{item.label}</span>
+                          {item.openTag ? (
+                            <span className="ms-auto inline-flex shrink-0 items-center rounded-md border border-green-200 bg-green-100 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-neutral-950 dark:border-green-200 dark:bg-green-100 dark:text-neutral-950">
+                              {openTradesTag}
+                            </span>
+                          ) : null}
+                        </div>
                       )
                     })}
                   </div>
@@ -479,124 +332,127 @@ export function HeroDashboardPreview() {
           </aside>
 
           <div className="flex min-w-0 flex-1 flex-col">
-            <header className="z-20 flex h-16 shrink-0 items-center gap-3 border-b border-neutral-100 bg-white px-4 dark:border-neutral-800 dark:bg-neutral-950 sm:gap-4 sm:px-6">
+            <header className="z-20 flex h-16 shrink-0 items-center gap-3 border-b border-neutral-100 bg-white px-4 dark:border-neutral-800 dark:bg-neutral-950 sm:px-6">
               <DirectionalIcon icon={PanelLeftClose} className="h-5 w-5 shrink-0 text-neutral-900 dark:text-neutral-50" />
-              <div className="flex h-9 min-w-0 max-w-md flex-1 items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 text-sm text-neutral-900 dark:text-neutral-50 dark:border-neutral-700 dark:bg-neutral-800/80">
+              <div className="flex h-9 min-w-0 max-w-md flex-1 items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 text-sm text-neutral-900 dark:border-neutral-700 dark:bg-neutral-800/80 dark:text-neutral-50">
                 <Search className="h-4 w-4 shrink-0" aria-hidden />
-                <span className="min-w-0 truncate rtl:text-xs">{t.globalSearch.placeholder}</span>
-                <span className="ms-auto hidden text-xs text-neutral-900 dark:text-neutral-50 ltr:sm:inline">
-                  {t.globalSearch.shortcut}
-                </span>
+                <span className="min-w-0 truncate">{t.globalSearch.placeholder}</span>
+                <span className="ms-auto hidden text-xs ltr:sm:inline">{t.globalSearch.shortcut}</span>
               </div>
               <div className="ms-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
-                <span
-                  className="flex items-center gap-1 rounded-lg px-1.5 py-1.5 text-xs font-medium text-neutral-900 dark:text-neutral-50 sm:gap-1.5 sm:px-2 sm:text-sm rtl:text-[11px]"
-                  aria-hidden
-                >
+                <span className="flex items-center gap-1.5 px-2 py-1.5 text-sm font-medium text-neutral-900 dark:text-neutral-50">
                   <CopierActiveIndicator />
-                  <span className="max-w-[5.5rem] truncate sm:max-w-none sm:whitespace-nowrap">
-                    {t.nav.copierPause.statusRunning}
-                  </span>
+                  <span className="whitespace-nowrap">{t.nav.copierPause.statusRunning}</span>
+                </span>
+                <span className="inline-flex h-10 w-10 items-center justify-center text-green-500 dark:text-green-400">
+                  <Sparkles className="h-5 w-5" aria-hidden />
                 </span>
                 <LanguageSwitcher />
                 <ThemeToggle />
-                <button
-                  type="button"
-                  className="rounded-lg p-2 text-neutral-900 dark:text-neutral-50 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-                  aria-hidden
-                >
-                  <CircleHelp className="h-5 w-5" />
-                </button>
-                <div className="flex items-center gap-1.5 rounded-lg border border-neutral-200 py-1 ps-1 pe-1.5 dark:border-neutral-700 sm:pe-2">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-green-400 text-xs font-semibold text-neutral-950">
-                    TS
+                <span className="inline-flex h-10 w-10 items-center justify-center text-neutral-900 dark:text-neutral-50">
+                  <Bell className="h-5 w-5" aria-hidden />
+                </span>
+                <div className="flex min-h-10 items-center gap-2 rounded-lg ps-1 pe-2">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-200 text-xs font-semibold text-neutral-950">
+                    {PREVIEW_NAME.slice(0, 1)}
                   </span>
-                  <span className="hidden text-sm font-medium text-neutral-900 dark:text-neutral-100 ltr:inline">
-                    Trader
+                  <span className="hidden text-start md:block">
+                    <span className="block text-sm font-medium leading-tight text-neutral-900 dark:text-neutral-100">
+                      {PREVIEW_NAME}
+                    </span>
+                    <span className="block text-xs leading-tight text-neutral-900 dark:text-neutral-50">
+                      {t.pricing.advanced.name}
+                    </span>
                   </span>
-                  <DirectionalIcon icon={ChevronRight} className="h-3.5 w-3.5 rotate-90 text-neutral-900 dark:text-neutral-50" mirrorInRtl={false} />
+                  <ChevronDown className="hidden h-3.5 w-3.5 text-neutral-900 dark:text-neutral-50 md:block" />
                 </div>
               </div>
             </header>
 
             <main className="min-h-0 flex-1 overflow-hidden bg-white dark:bg-neutral-950">
-              <div className="mx-auto h-full w-full max-w-[1600px] space-y-6 overflow-hidden px-8 py-8">
-                <header>
-                  <h1 className="text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
-                    {t.dashboard.title}
-                  </h1>
-                </header>
+              <div className="mx-auto h-full w-full max-w-[1600px] space-y-5 overflow-hidden px-8 py-6">
+                <h1 className="text-3xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
+                  {heroGreeting(t)}
+                </h1>
 
-                <div className="rounded-2xl border border-neutral-200/65 bg-white dark:border-neutral-800/55 dark:bg-neutral-950">
-                  <div className="grid grid-cols-4 divide-x divide-neutral-100 dark:divide-neutral-800 rtl:divide-x-reverse">
-                    {d.headlineStats.map(stat => (
-                      <HeroStatBlock
-                        key={stat.key}
-                        stat={stat}
-                        label={HEADLINE_LABELS[stat.key](t)}
-                      />
-                    ))}
-                  </div>
-                  <div className="grid grid-cols-4 gap-4 border-t border-neutral-100 p-5 dark:border-neutral-800">
-                    {d.overviewStats.map(stat => (
-                      <HeroOverviewStat
-                        key={stat.key}
-                        label={OVERVIEW_LABELS[stat.key](t)}
-                        value={stat.value}
-                        showAdd={stat.showAdd}
-                      />
-                    ))}
-                  </div>
+                <div className="grid grid-cols-4 gap-3">
+                  {d.headlineStats.map(stat => (
+                    <HeroStatBlock
+                      key={stat.key}
+                      stat={stat}
+                      label={HEADLINE_LABELS[stat.key](t)}
+                    />
+                  ))}
                 </div>
 
-                <div className="grid grid-cols-2 gap-6">
-                  <HeroTradeOutcomeChart />
-                  <HeroChannelProfitChart />
+                <div className={clsx(DASHBOARD_CARD, 'grid grid-cols-4 divide-x divide-neutral-100 dark:divide-neutral-800/70 rtl:divide-x-reverse')}>
+                  {d.overviewStats.map(stat => (
+                    <HeroOverviewStat
+                      key={stat.key}
+                      label={OVERVIEW_LABELS[stat.key](t)}
+                      value={stat.value}
+                      action={stat.showAdd ? overviewActionLabel(stat.key, t) : null}
+                    />
+                  ))}
                 </div>
 
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="min-w-0 overflow-hidden rounded-2xl border border-neutral-200/65 bg-white dark:border-neutral-800/55 dark:bg-neutral-950">
-                    <div className="flex items-center justify-between gap-2 border-b border-neutral-100 px-5 py-4 dark:border-neutral-800">
+                <div className={clsx(DASHBOARD_CARD, 'flex items-center gap-2 px-5 py-4')}>
+                  <Activity className="h-4 w-4 shrink-0 text-neutral-900 dark:text-neutral-50" />
+                  <span className="min-w-0 flex-1 truncate text-sm">
+                    <span className="font-semibold text-neutral-900 dark:text-neutral-50">
+                      {t.dashboard.copierStatus.title}:{' '}
+                    </span>
+                    <span className="font-medium text-green-500 dark:text-green-400">
+                      {t.dashboard.copierStatus.allChecksPassed}
+                    </span>
+                  </span>
+                  <ChevronDown className="h-4 w-4 shrink-0 text-neutral-900 dark:text-neutral-50" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className={clsx(DASHBOARD_CARD, 'min-w-0 overflow-hidden')}>
+                    <div className="flex items-center justify-between gap-2 border-b border-neutral-100 px-5 py-4 dark:border-neutral-800/80">
                       <div className="flex items-center gap-2">
-                        <Clock className="h-4 w-4 text-green-400" aria-hidden />
-                        <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
+                        <h2 className="text-[15px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
                           {t.dashboard.tradeActivities}
-                        </span>
+                        </h2>
                         <Info className="h-3.5 w-3.5 text-neutral-900 dark:text-neutral-50" aria-hidden />
                       </div>
-                      <span className="inline-flex items-center gap-1.5 rounded-lg border border-green-400 px-3 py-1.5 text-xs font-medium text-green-400 dark:border-green-400 dark:text-green-400">
-                        {t.nav.items.channels}
-                        <DirectionalIcon icon={ChevronRight} className="h-3 w-3" />
+                      <span className={SECTION_LINK}>
+                        {t.dashboard.management}
+                        <ChevronRight className="h-3.5 w-3.5" />
                       </span>
                     </div>
                     <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
                       {d.channelWorkerLogs.map(log => (
-                        <div key={log.message} className="px-5 py-3">
-                          <p className="text-sm text-neutral-900 dark:text-neutral-100">{log.message}</p>
-                          <p className="mt-1 text-[11px] text-neutral-900 dark:text-neutral-50">{log.time}</p>
+                        <div key={log.message} className="px-5 py-3.5">
+                          <p className="text-base leading-6 text-neutral-900 dark:text-neutral-100">{log.message}</p>
+                          <div className="mt-1 flex items-center gap-2">
+                            <p className="text-xs text-neutral-900 dark:text-neutral-50">{log.time}</p>
+                            <ProcessRouteMark />
+                          </div>
                         </div>
                       ))}
                     </div>
                   </div>
 
-                  <div className="min-w-0 overflow-hidden rounded-2xl border border-neutral-200/65 bg-white dark:border-neutral-800/55 dark:bg-neutral-950">
-                    <div className="flex items-center justify-between gap-2 border-b border-neutral-100 px-5 py-4 dark:border-neutral-800">
+                  <div className={clsx(DASHBOARD_CARD, 'min-w-0 overflow-hidden')}>
+                    <div className="flex items-center justify-between gap-2 border-b border-neutral-100 px-5 py-4 dark:border-neutral-800/80">
                       <div className="flex items-center gap-2">
-                        <Clock className="h-4 w-4 text-green-400" aria-hidden />
-                        <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
+                        <h2 className="text-[15px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
                           {t.dashboard.copierLogs}
-                        </span>
+                        </h2>
                         <Info className="h-3.5 w-3.5 text-neutral-900 dark:text-neutral-50" aria-hidden />
                       </div>
-                      <span className="inline-flex items-center gap-1.5 rounded-lg border border-green-400 px-3 py-1.5 text-xs font-medium text-green-400 dark:border-green-400 dark:text-green-400">
-                        {t.dashboard.copierLogs}
-                        <DirectionalIcon icon={ChevronRight} className="h-3 w-3" />
+                      <span className={SECTION_LINK}>
+                        {t.dashboard.viewAll}
+                        <ChevronRight className="h-3.5 w-3.5" />
                       </span>
                     </div>
                     <div
                       className={clsx(
                         copierLogGrid,
-                        'border-b border-neutral-100 px-5 py-3 text-xs font-medium uppercase tracking-wide text-neutral-900 dark:text-neutral-50 dark:border-neutral-800 rtl:normal-case rtl:tracking-normal',
+                        'border-b border-neutral-100 px-5 py-2.5 text-xs font-medium uppercase tracking-[0.06em] text-neutral-900 dark:border-neutral-800/80 dark:text-neutral-50',
                       )}
                     >
                       <span>{t.copierLogs.colStatus}</span>
@@ -610,27 +466,30 @@ export function HeroDashboardPreview() {
                         <div key={`${row.channel}-${row.time}`} className={clsx(copierLogGrid, 'px-5 py-3')}>
                           <span
                             className={clsx(
-                              'inline-flex w-fit max-w-full items-center rounded-md px-1.5 py-0.5 text-xs font-medium rtl:px-1 rtl:text-[10px]',
+                              'inline-flex w-fit items-center rounded-full px-2.5 py-1 text-sm',
                               copierStatusClass(row.status),
                             )}
                           >
                             {statusLabel(row.status)}
                           </span>
-                          <span className="min-w-0 truncate text-xs text-neutral-900 dark:text-neutral-50">
-                            {row.channel}
+                          <span className="flex min-w-0 items-center gap-2 text-sm text-neutral-900 dark:text-neutral-50">
+                            <SignalSourceLogo kind="telegram" />
+                            <span className="truncate">{row.channel}</span>
                           </span>
-                          <span className="min-w-0 truncate text-sm font-medium text-neutral-900 dark:text-neutral-50">
+                          <span className="min-w-0 truncate text-base text-neutral-900 dark:text-neutral-50">
                             {row.symbol}
                           </span>
                           <span
                             className={clsx(
-                              'min-w-0 truncate text-xs font-medium uppercase',
-                              row.side === 'buy' ? 'text-green-400' : 'text-error-600 dark:text-error-400',
+                              'min-w-0 truncate text-sm uppercase',
+                              row.side === 'buy' ? 'text-green-500 dark:text-green-400' : 'text-error-600 dark:text-error-400',
                             )}
                           >
                             {row.type}
                           </span>
-                          <span className="text-end text-xs text-neutral-900 dark:text-neutral-50">{row.time}</span>
+                          <span className="text-end text-sm font-medium text-neutral-900 dark:text-neutral-50">
+                            {row.time}
+                          </span>
                         </div>
                       ))}
                     </div>
