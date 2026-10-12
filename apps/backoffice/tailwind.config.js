@@ -32,6 +32,9 @@ export default {
           950: '#052e16',
         },
       },
+      fontFamily: {
+        sans: ['"SF Pro"', '"SF Pro Text"', '"SF Pro Display"', '-apple-system', 'BlinkMacSystemFont', 'system-ui', 'sans-serif'],
+      },
     },
   },
   plugins: [],

@@ -30,13 +30,12 @@ html.dark {
 
 html {
   scroll-behavior: smooth;
-  font-family: "Instrument Sans", system-ui, sans-serif;
+  font-family: "SF Pro", "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   font-optical-sizing: auto;
-  font-variation-settings: "wdth" 100;
 }
 
 html[dir="rtl"] {
-  font-family: "Noto Sans Arabic", "Instrument Sans", system-ui, sans-serif;
+  font-family: "SF Pro", "SF Pro Text", "SF Pro Display", "Noto Sans Arabic", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -53,9 +52,8 @@ html.dark body {
 
 body {
   margin: 0;
-  font-family: "Instrument Sans", system-ui, sans-serif;
+  font-family: "SF Pro", "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   font-optical-sizing: auto;
-  font-variation-settings: "wdth" 100;
   background-color: var(--tsc-page);
   color: var(--tsc-text);
   -webkit-font-smoothing: antialiased;

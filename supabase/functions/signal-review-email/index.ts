@@ -177,7 +177,7 @@ Deno.serve(async (req: Request) => {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Signal review required</title>
 </head>
-<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;background-color:#ffffff;">
+<body style="margin:0;padding:0;font-family:'SF Pro','SF Pro Text','SF Pro Display',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;background-color:#ffffff;">
   <div style="max-width:480px;margin:0 auto;padding:32px 24px;">
     <p style="margin:0 0 16px 0;font-size:15px;line-height:1.5;color:#171717;">Hi ${esc(greetName)},</p>
     <p style="margin:0 0 16px 0;font-size:15px;line-height:1.5;color:#171717;">A signal needs your review before it can be sent to your broker.</p>
