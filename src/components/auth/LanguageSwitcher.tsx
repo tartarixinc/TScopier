@@ -143,7 +143,7 @@ export function LanguageSwitcher({ className, compact = false }: LanguageSwitche
                 className={clsx(
                   'w-full rounded-lg border py-2 ps-8 pe-3 text-sm',
                   'border-neutral-200 bg-neutral-50 text-neutral-900 placeholder:text-neutral-400',
-                  'focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary-500',
+                  'focus:border-transparent focus:outline-none focus:ring-2 focus:ring-green-400',
                   'dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100',
                 )}
               />
@@ -190,7 +190,7 @@ export function LanguageSwitcher({ className, compact = false }: LanguageSwitche
                         <span className="ms-1.5 text-xs text-neutral-400 dark:text-neutral-500">{opt.short}</span>
                       </span>
                       {isSelected ? (
-                        <Check className="h-4 w-4 shrink-0 text-teal-600 dark:text-teal-400" aria-hidden />
+                        <Check className="h-4 w-4 shrink-0 text-green-400 dark:text-green-400" aria-hidden />
                       ) : (
                         <span className="h-4 w-4 shrink-0" aria-hidden />
                       )}

@@ -8,7 +8,7 @@ export function ReviewsSection() {
   return (
     <section className="mx-auto max-w-6xl px-5 py-16 sm:px-8 sm:py-24">
       <div className="mx-auto max-w-2xl text-center">
-        <p className="text-xs font-semibold uppercase tracking-wider text-primary-600 dark:text-primary-400">
+        <p className="text-xs font-semibold uppercase tracking-wider text-green-400 dark:text-green-400">
           {l.trustpilotLabel}
         </p>
         <h2 className="mt-2 text-3xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-4xl">

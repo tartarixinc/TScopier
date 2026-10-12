@@ -185,7 +185,7 @@ Deno.serve(async (req: Request) => {
     ${levelsHtml}
     ${messageBlock}
     <p style="margin:0 0 24px 0;font-size:14px;line-height:1.5;color:#404040;">Your approval window is <strong>2 minutes</strong> from when the signal was received. After that, the signal is skipped automatically.</p>
-    <p style="margin:0 0 24px 0;"><a href="${esc(reviewUrl)}" style="font-size:14px;font-weight:600;color:#0d9488;text-decoration:none;">Review signal &rarr;</a></p>
+    <p style="margin:0 0 24px 0;"><a href="${esc(reviewUrl)}" style="font-size:14px;font-weight:600;color:#4ade80;text-decoration:none;">Review signal &rarr;</a></p>
     <p style="margin:0;font-size:13px;line-height:1.5;color:#a3a3a3;">You can turn off these emails in Settings &rarr; Notifications.</p>
   </div>
 </body>

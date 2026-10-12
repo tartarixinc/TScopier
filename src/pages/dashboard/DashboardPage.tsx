@@ -981,7 +981,7 @@ export function DashboardPage() {
   const dashboardGreeting = greetingParts ? (
     <>
       {greetingParts[0]}
-      <span className="text-teal-600 dark:text-teal-400">{greetingName}</span>
+      <span className="text-green-400 dark:text-green-400">{greetingName}</span>
       {greetingParts[1] ?? ''}
     </>
   ) : (
@@ -2426,7 +2426,7 @@ export function DashboardPage() {
                 t.dashboard.noClosedTradesToday
               ) : (
                 <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-                  <span className="text-teal-700 dark:text-teal-400">
+                  <span className="text-green-500 dark:text-green-400">
                     {interpolate(t.common.won, { count: headlineStats.tradesWon })}
                   </span>
                   <span className="text-neutral-300 dark:text-neutral-600">•</span>
@@ -2454,7 +2454,7 @@ export function DashboardPage() {
                 <button
                   type="button"
                   onClick={() => setOpenPnlModalOpen(true)}
-                  className="font-medium text-teal-700 underline-offset-2 hover:underline dark:text-teal-400"
+                  className="font-medium text-green-500 underline-offset-2 hover:underline dark:text-green-400"
                 >
                   {openPnlSub}
                 </button>
@@ -2827,11 +2827,11 @@ function LogRow({ signal, channelName, symbol, sourceKind }: { signal: Signal; c
   const action = parsed?.action as string | undefined
 
   const statusConfig: Record<string, { color: string; label: string }> = {
-    executed: { color: 'text-teal-700 bg-teal-50 dark:text-teal-300 dark:bg-teal-950/60', label: t.copierLogs.statusExecuted },
+    executed: { color: 'text-green-500 bg-teal-50 dark:text-teal-300 dark:bg-teal-950/60', label: t.copierLogs.statusExecuted },
     skipped:  { color: 'text-warning-800 bg-warning-50 dark:!text-amber-100 dark:!bg-amber-900', label: t.copierLogs.statusSkipped },
     failed:   { color: 'text-error-800 bg-error-50 dark:text-error-300 dark:bg-error-950/70', label: t.copierLogs.statusFailed },
     pending:  { color: 'text-neutral-600 bg-neutral-100 dark:text-neutral-300 dark:bg-neutral-800', label: t.copierLogs.statusPending },
-    parsed:   { color: 'text-teal-700 bg-teal-50 dark:text-teal-300 dark:bg-teal-950/60', label: t.copierLogs.statusParsed },
+    parsed:   { color: 'text-green-500 bg-teal-50 dark:text-teal-300 dark:bg-teal-950/60', label: t.copierLogs.statusParsed },
   }
 
   const s = statusConfig[signal.status] ?? { color: 'text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-800', label: signal.status }
@@ -2852,7 +2852,7 @@ function LogRow({ signal, channelName, symbol, sourceKind }: { signal: Signal; c
       <span className="min-w-0 text-sm font-medium text-neutral-900 dark:text-neutral-50 truncate" title={symbol}>{symbol}</span>
       <span
         className={`min-w-0 text-xs font-medium uppercase truncate ${
-          isBuy ? 'text-primary-600' : action === 'sell' ? 'text-error-600' : 'text-neutral-600 dark:text-neutral-400'
+          isBuy ? 'text-green-400' : action === 'sell' ? 'text-error-600' : 'text-neutral-600 dark:text-neutral-400'
         }`}
         title={typeLabel}
       >
@@ -2912,7 +2912,7 @@ function LinkedAccountSortHeader({
     >
       <span className="truncate">{label}</span>
       <SortIcon
-        className={`h-3.5 w-3.5 shrink-0 ${isActive ? 'text-teal-600 dark:text-teal-400' : 'opacity-50'}`}
+        className={`h-3.5 w-3.5 shrink-0 ${isActive ? 'text-green-400 dark:text-green-400' : 'opacity-50'}`}
         aria-hidden
       />
     </button>
@@ -2951,7 +2951,7 @@ function LinkedAccountRow({
   const statusClass = isDisconnected
     ? 'text-neutral-700 border-neutral-200 bg-neutral-100 dark:text-neutral-300 dark:border-neutral-700 dark:bg-neutral-800/80'
     : account.is_active
-      ? 'text-teal-700 border-teal-200 bg-teal-50 dark:text-teal-300 dark:border-teal-800 dark:bg-teal-950/50'
+      ? 'text-green-500 border-teal-200 bg-teal-50 dark:text-teal-300 dark:border-teal-800 dark:bg-teal-950/50'
       : 'text-neutral-600 border-neutral-200 bg-neutral-100 dark:text-neutral-400 dark:border-neutral-700 dark:bg-neutral-800/80'
   const cashBalance = accountSummary?.balance ?? account.last_balance ?? null
   // Cash balance stays put while positions tick. Show cash + live floating P/L.
@@ -3001,7 +3001,7 @@ function LinkedAccountRow({
   const winRate = performance?.winRate ?? null
   const maxDd = performance?.maxDrawdownPct ?? null
   const winRateColor =
-    winRate == null ? 'text-neutral-900 dark:text-neutral-50' : winRate >= 50 ? 'text-teal-600' : 'text-neutral-900 dark:text-neutral-50'
+    winRate == null ? 'text-neutral-900 dark:text-neutral-50' : winRate >= 50 ? 'text-green-400' : 'text-neutral-900 dark:text-neutral-50'
   const ddColor =
     maxDd == null ? 'text-neutral-900 dark:text-neutral-50' : lossTextClass
 

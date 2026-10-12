@@ -70,7 +70,7 @@ export function BrokerBulkConnectSummaryModal({
       >
         <div className="px-5 pt-5 pb-4">
           <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-teal-400">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-teal-50 dark:bg-teal-950/40 text-green-400 dark:text-green-400">
               <CheckCircle2 className="h-5 w-5" aria-hidden />
             </div>
             <div className="min-w-0 flex-1">

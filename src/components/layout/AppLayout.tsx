@@ -213,7 +213,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
         disabled
           ? 'cursor-pointer font-medium text-neutral-400 opacity-45 hover:bg-neutral-50 hover:text-neutral-600 hover:opacity-80 dark:text-neutral-500 dark:hover:bg-neutral-800 dark:hover:text-neutral-300'
           : isActive
-            ? 'bg-teal-50 text-teal-800 font-semibold dark:bg-teal-950/60 dark:text-teal-400'
+            ? 'bg-teal-50 text-teal-800 font-semibold dark:bg-teal-950/60 dark:text-green-400'
             : 'text-neutral-800 font-medium hover:bg-neutral-50 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100',
       )
 
@@ -242,11 +242,11 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
           <Icon
             className={clsx(
               'w-4 h-4',
-              isActive ? 'text-teal-600 dark:text-teal-400' : '',
+              isActive ? 'text-green-400 dark:text-green-400' : '',
             )}
           />
           {showOpenIndicator && opts.collapsed ? (
-            <span className="absolute -end-2.5 -top-1.5 min-w-[1rem] rounded-full bg-teal-600 px-1 text-center text-[9px] font-semibold leading-4 text-white tabular-nums">
+            <span className="absolute -end-2.5 -top-1.5 min-w-[1rem] rounded-full bg-green-400 px-1 text-center text-[9px] font-semibold leading-4 text-neutral-950 tabular-nums">
               {openTradeCount}
             </span>
           ) : null}
@@ -465,7 +465,7 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
               <button
                 type="button"
                 onClick={() => openUpgrade('advanced')}
-                className="hidden sm:inline-flex items-center rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-700 transition-colors hover:bg-teal-100 dark:border-teal-800 dark:bg-teal-950/40 dark:text-teal-300 dark:hover:bg-teal-950/60"
+                className="hidden sm:inline-flex items-center rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-semibold text-green-500 transition-colors hover:bg-teal-100 dark:border-teal-800 dark:bg-teal-950/40 dark:text-teal-300 dark:hover:bg-teal-950/60"
               >
                 {subscribeCta}
               </button>
@@ -477,8 +477,8 @@ export function AppLayout({ onAssistantTrigger }: AppLayoutProps) {
               aria-label={t.nav.assistant.ariaLabel}
               title={t.nav.assistant.title}
               className={clsx(
-                'inline-flex h-9 w-9 items-center justify-center rounded-lg text-teal-700 transition-colors sm:h-10 sm:w-10',
-                'hover:bg-teal-50 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 focus:ring-offset-white',
+                'inline-flex h-9 w-9 items-center justify-center rounded-lg text-green-500 transition-colors sm:h-10 sm:w-10',
+                'hover:bg-teal-50 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2 focus:ring-offset-white',
                 'dark:text-teal-300 dark:hover:bg-teal-950/50 dark:focus:ring-offset-neutral-900',
               )}
             >

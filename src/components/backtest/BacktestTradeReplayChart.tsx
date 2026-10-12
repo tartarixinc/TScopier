@@ -45,11 +45,11 @@ function chartTheme(dark: boolean) {
 
 function candleColors(dark: boolean) {
   return {
-    upColor: dark ? '#14b8a6' : '#0d9488',
+    upColor: '#4ade80',
     downColor: dark ? '#ef4444' : '#dc2626',
-    borderUpColor: dark ? '#0f766e' : '#0f766e',
+    borderUpColor: '#22c55e',
     borderDownColor: dark ? '#b91c1c' : '#b91c1c',
-    wickUpColor: dark ? '#14b8a6' : '#0d9488',
+    wickUpColor: '#4ade80',
     wickDownColor: dark ? '#ef4444' : '#dc2626',
   }
 }
@@ -179,7 +179,7 @@ export function BacktestTradeReplayChart({ trade }: BacktestTradeReplayChartProp
     markers.tps.forEach((tp, i) => {
       series.createPriceLine({
         price: tp,
-        color: dark ? '#2dd4bf' : '#0d9488',
+        color: dark ? '#4ade80' : '#4ade80',
         lineWidth: 1,
         lineStyle: LineStyle.Solid,
         axisLabelVisible: true,
@@ -200,7 +200,7 @@ export function BacktestTradeReplayChart({ trade }: BacktestTradeReplayChartProp
       chartMarkers.push({
         time: markers.exit.time as UTCTimestamp,
         position: 'inBar',
-        color: dark ? '#2dd4bf' : '#0d9488',
+        color: dark ? '#4ade80' : '#4ade80',
         shape: 'circle',
         text: bt.replayExit,
       })
@@ -209,7 +209,7 @@ export function BacktestTradeReplayChart({ trade }: BacktestTradeReplayChartProp
       chartMarkers.push({
         time: Math.floor(ev.ts / 1000) as UTCTimestamp,
         position: 'aboveBar',
-        color: dark ? '#2dd4bf' : '#0d9488',
+        color: dark ? '#4ade80' : '#4ade80',
         shape: 'arrowDown',
         text: pl.tp.replace('{n}', String(ev.index)),
       })
@@ -320,7 +320,7 @@ export function BacktestTradeReplayChart({ trade }: BacktestTradeReplayChartProp
                   className={clsx(
                     'px-2 py-1 rounded text-[10px] font-medium tabular-nums border',
                     speedIdx === i
-                      ? 'bg-teal-50 border-teal-200 text-teal-700 dark:bg-teal-950/40 dark:border-teal-800 dark:text-teal-300'
+                      ? 'bg-teal-50 border-teal-200 text-green-500 dark:bg-teal-950/40 dark:border-teal-800 dark:text-teal-300'
                       : 'bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-500',
                   )}
                 >
@@ -339,7 +339,7 @@ export function BacktestTradeReplayChart({ trade }: BacktestTradeReplayChartProp
                   stopPlay()
                   setVisibleCount(Number(e.target.value))
                 }}
-                className="flex-1 min-w-[80px] accent-teal-600"
+                className="flex-1 min-w-[80px] accent-green-400"
                 aria-label={bt.replayScrub}
               />
             ) : null}

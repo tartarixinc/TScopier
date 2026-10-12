@@ -97,7 +97,7 @@ export function ReportedTradesPage() {
                 <div className="flex min-w-0 items-center gap-2">
                   <p className="truncate font-semibold text-neutral-900 dark:text-neutral-50">
                     {r.symbol ?? tr.reportTitle}
-                    {r.ticket ? <span className="font-mono text-teal-700 dark:text-teal-300"> #{r.ticket}</span> : null}
+                    {r.ticket ? <span className="font-mono text-green-500 dark:text-teal-300"> #{r.ticket}</span> : null}
                   </p>
                   {r.direction ? (
                     <Badge variant={r.direction === 'buy' ? 'success' : 'error'} size="sm">

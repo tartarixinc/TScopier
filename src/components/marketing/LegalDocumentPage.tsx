@@ -67,7 +67,7 @@ export function LegalDocumentPage({ page }: { page: LegalDocumentPageTranslation
             <div>
               <dt className="font-medium text-neutral-800 dark:text-neutral-200">{c.phone}</dt>
               <dd>
-                <a href={`tel:${LEGAL_COMPANY.phone.replace(/\D/g, '')}`} className="text-teal-600 hover:underline dark:text-teal-400">
+                <a href={`tel:${LEGAL_COMPANY.phone.replace(/\D/g, '')}`} className="text-green-400 hover:underline dark:text-green-400">
                   {LEGAL_COMPANY.phone}
                 </a>
               </dd>
@@ -75,7 +75,7 @@ export function LegalDocumentPage({ page }: { page: LegalDocumentPageTranslation
             <div>
               <dt className="font-medium text-neutral-800 dark:text-neutral-200">{c.emailSupport}</dt>
               <dd>
-                <a href={`mailto:${LEGAL_COMPANY.emails.support}`} className="text-teal-600 hover:underline dark:text-teal-400">
+                <a href={`mailto:${LEGAL_COMPANY.emails.support}`} className="text-green-400 hover:underline dark:text-green-400">
                   {LEGAL_COMPANY.emails.support}
                 </a>
               </dd>
@@ -83,7 +83,7 @@ export function LegalDocumentPage({ page }: { page: LegalDocumentPageTranslation
             <div>
               <dt className="font-medium text-neutral-800 dark:text-neutral-200">{c.emailLegal}</dt>
               <dd>
-                <a href={`mailto:${LEGAL_COMPANY.emails.legal}`} className="text-teal-600 hover:underline dark:text-teal-400">
+                <a href={`mailto:${LEGAL_COMPANY.emails.legal}`} className="text-green-400 hover:underline dark:text-green-400">
                   {LEGAL_COMPANY.emails.legal}
                 </a>
               </dd>
@@ -91,7 +91,7 @@ export function LegalDocumentPage({ page }: { page: LegalDocumentPageTranslation
             <div>
               <dt className="font-medium text-neutral-800 dark:text-neutral-200">{c.emailDisputes}</dt>
               <dd>
-                <a href={`mailto:${LEGAL_COMPANY.emails.disputes}`} className="text-teal-600 hover:underline dark:text-teal-400">
+                <a href={`mailto:${LEGAL_COMPANY.emails.disputes}`} className="text-green-400 hover:underline dark:text-green-400">
                   {LEGAL_COMPANY.emails.disputes}
                 </a>
               </dd>

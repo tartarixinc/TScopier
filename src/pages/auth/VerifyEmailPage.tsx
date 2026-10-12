@@ -153,7 +153,7 @@ export function VerifyEmailPage() {
         <button
           type="button"
           onClick={() => void handleBackToLogin()}
-          className="block w-full text-sm font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300"
+          className="block w-full text-sm font-medium text-green-400 hover:text-green-500 dark:text-green-400 dark:hover:text-teal-300"
         >
           {verifyT.backToLogin}
         </button>

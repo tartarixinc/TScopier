@@ -10,7 +10,7 @@ export function ComparisonSection() {
   return (
     <section className="mx-auto max-w-6xl px-5 py-16 sm:px-8 sm:py-24">
       <div className="mx-auto max-w-2xl text-center">
-        <p className="text-xs font-semibold uppercase tracking-wider text-teal-600 dark:text-teal-400">
+        <p className="text-xs font-semibold uppercase tracking-wider text-green-400 dark:text-green-400">
           {c.eyebrow}
         </p>
         <h2 className="mt-3 text-3xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-4xl">
@@ -47,7 +47,7 @@ export function ComparisonSection() {
               </th>
               <th
                 scope="col"
-                className="border-b border-teal-700/20 bg-teal-600 px-4 py-4 text-xs font-semibold uppercase tracking-wide text-white dark:border-teal-600/40 dark:bg-teal-700 sm:px-5"
+                className="border-b border-green-500/20 bg-green-400 px-4 py-4 text-xs font-semibold uppercase tracking-wide text-neutral-950 dark:border-green-400/40 dark:bg-green-500 sm:px-5"
               >
                 {c.tscopierLabel}
               </th>
@@ -84,7 +84,7 @@ export function ComparisonSection() {
       <div className="mt-8 flex justify-center sm:mt-10">
         <a
           href={appUrl('/signup')}
-          className="inline-flex items-center justify-center rounded-xl bg-teal-600 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-teal-700 dark:bg-teal-500 dark:hover:bg-teal-600"
+          className="inline-flex items-center justify-center rounded-xl bg-green-400 px-6 py-3 text-sm font-semibold text-neutral-950 transition-colors hover:bg-green-500 dark:bg-green-400 dark:hover:bg-green-400"
         >
           {c.cta}
         </a>
@@ -121,7 +121,7 @@ function ComparisonMobileCard({
         <ComparisonCell negative>{row.other}</ComparisonCell>
       </div>
       <div className="bg-teal-50/70 px-4 py-3.5 dark:bg-teal-950/40">
-        <p className="mb-2 text-[0.65rem] font-semibold uppercase tracking-wide text-teal-700 dark:text-teal-400">
+        <p className="mb-2 text-[0.65rem] font-semibold uppercase tracking-wide text-green-500 dark:text-green-400">
           {tscopierLabel}
         </p>
         <ComparisonCell positive>{row.tscopier}</ComparisonCell>
@@ -143,7 +143,7 @@ function ComparisonCell({
     <div className="flex gap-2.5">
       {positive ? (
         <Check
-          className="mt-0.5 h-4 w-4 shrink-0 text-teal-600 dark:text-teal-400"
+          className="mt-0.5 h-4 w-4 shrink-0 text-green-400 dark:text-green-400"
           strokeWidth={2.5}
           aria-hidden
         />

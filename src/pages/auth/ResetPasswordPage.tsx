@@ -129,7 +129,7 @@ export function ResetPasswordPage() {
         <AuthBackHome />
         <ResetCard className="text-center">
           <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-teal-50 dark:bg-teal-900/30">
-            <Loader2 className="h-7 w-7 animate-spin text-teal-600 dark:text-teal-400" aria-hidden />
+            <Loader2 className="h-7 w-7 animate-spin text-green-400 dark:text-green-400" aria-hidden />
           </div>
           <h1 className="text-xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-2xl">
             {t.verifyingHeading}
@@ -151,14 +151,14 @@ export function ResetPasswordPage() {
           <p className="mt-3 text-sm text-neutral-500 dark:text-neutral-400">{t.invalidSubtitle}</p>
           <Link
             to="/forgot-password"
-            className="mt-8 inline-flex items-center justify-center rounded-lg border border-teal-600 bg-teal-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:border-teal-700 hover:bg-teal-700"
+            className="mt-8 inline-flex items-center justify-center rounded-lg border border-green-400 bg-green-400 px-5 py-2.5 text-sm font-medium text-neutral-950 transition-colors hover:border-green-500 hover:bg-green-500"
           >
             {t.requestNewLink}
           </Link>
           <p className="mt-4">
             <Link
               to="/login"
-              className="text-sm font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300"
+              className="text-sm font-medium text-green-400 hover:text-green-500 dark:text-green-400 dark:hover:text-teal-300"
             >
               {t.backToLogin}
             </Link>
@@ -174,7 +174,7 @@ export function ResetPasswordPage() {
         <AuthBackHome />
         <ResetCard className="text-center">
           <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-teal-50 dark:bg-teal-900/30">
-            <CheckCircle2 className="h-8 w-8 text-teal-600 dark:text-teal-400" aria-hidden />
+            <CheckCircle2 className="h-8 w-8 text-green-400 dark:text-green-400" aria-hidden />
           </div>
           <h1 className="text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-3xl">
             {t.successHeading}
@@ -190,7 +190,7 @@ export function ResetPasswordPage() {
       <AuthBackHome />
       <div className="mb-6 flex items-center gap-3">
         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-teal-50 dark:bg-teal-900/30">
-          <KeyRound className="h-6 w-6 text-teal-600 dark:text-teal-400" aria-hidden />
+          <KeyRound className="h-6 w-6 text-green-400 dark:text-green-400" aria-hidden />
         </div>
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-3xl">
@@ -202,7 +202,7 @@ export function ResetPasswordPage() {
 
       <ResetCard>
         <div className="mb-6 flex items-start gap-3 rounded-xl border border-teal-100 bg-teal-50/70 px-4 py-3 dark:border-teal-900/50 dark:bg-teal-950/30">
-          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-teal-600 dark:text-teal-400" aria-hidden />
+          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-green-400 dark:text-green-400" aria-hidden />
           <p className="text-sm leading-relaxed text-neutral-600 dark:text-neutral-300">{t.securityNote}</p>
         </div>
 
@@ -237,7 +237,7 @@ export function ResetPasswordPage() {
       <p className="mt-6 text-center text-sm text-neutral-500 dark:text-neutral-400">
         <Link
           to="/login"
-          className="font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300"
+          className="font-medium text-green-400 hover:text-green-500 dark:text-green-400 dark:hover:text-teal-300"
         >
           {t.backToLogin}
         </Link>

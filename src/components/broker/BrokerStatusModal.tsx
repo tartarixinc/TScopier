@@ -75,7 +75,7 @@ function StatusRow({
       <Icon
         className={clsx(
           'mt-0.5 h-4 w-4 shrink-0',
-          ok ? 'text-primary-600 dark:text-primary-400' : 'text-error-600 dark:text-error-400',
+          ok ? 'text-green-400 dark:text-green-400' : 'text-error-600 dark:text-error-400',
         )}
         aria-hidden
       />
@@ -221,7 +221,7 @@ function BrokerStatusModalInner({
               <img src={logo} alt="" className="h-10 w-10 shrink-0 rounded-lg object-contain" />
             ) : (
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-50 dark:bg-teal-950/60">
-                <Activity className="h-5 w-5 text-primary-600 dark:text-primary-400" aria-hidden />
+                <Activity className="h-5 w-5 text-green-400 dark:text-green-400" aria-hidden />
               </div>
             )}
             <div className="min-w-0 flex-1">

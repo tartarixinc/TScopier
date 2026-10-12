@@ -84,11 +84,11 @@ export function UsersPage() {
                   onClick={() => navigate(`/users/${row.user_id}`)}
                 >
                   <td className="px-4 py-3 font-medium sm:px-5">
-                    <Link to={`/users/${row.user_id}`} className="hover:text-teal-600">
+                    <Link to={`/users/${row.user_id}`} className="hover:text-green-400">
                       {row.name}
                     </Link>
                     {row.admin_active ? (
-                      <span className="ml-2 rounded-full bg-teal-50 px-2 py-0.5 text-[10px] font-semibold uppercase text-teal-700 dark:bg-teal-950/50 dark:text-teal-300">
+                      <span className="ml-2 rounded-full bg-teal-50 px-2 py-0.5 text-[10px] font-semibold uppercase text-green-500 dark:bg-teal-950/50 dark:text-teal-300">
                         Admin
                       </span>
                     ) : null}

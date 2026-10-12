@@ -92,7 +92,7 @@ export function AffiliatePayoutsPage() {
             type="button"
             onClick={() => void markAllPaid()}
             disabled={rows.length === 0 || saving}
-            className="inline-flex items-center rounded-lg bg-teal-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center rounded-lg bg-green-400 px-3 py-2 text-sm font-semibold text-neutral-950 transition-colors hover:bg-green-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Mark all pending as paid
           </button>

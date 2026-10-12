@@ -476,7 +476,7 @@ function WebhookListRow({
         ) : (
           <Link
             to="/brokers"
-            className="inline-flex items-center rounded-lg border border-dashed border-neutral-300 px-3 py-1.5 text-xs font-medium text-primary-600 transition-colors hover:bg-white dark:border-neutral-600 dark:hover:bg-neutral-900"
+            className="inline-flex items-center rounded-lg border border-dashed border-neutral-300 px-3 py-1.5 text-xs font-medium text-green-400 transition-colors hover:bg-white dark:border-neutral-600 dark:hover:bg-neutral-900"
           >
             {ce.connectToBroker}
           </Link>
@@ -520,7 +520,7 @@ function BrokerMenu({
         ))
       )}
       <div className="mt-1 border-t border-neutral-100 pt-1 dark:border-neutral-800">
-        <Link to="/brokers" className="block px-3 py-2 text-xs text-primary-600 hover:bg-neutral-50 dark:hover:bg-neutral-800" onClick={onClose}>
+        <Link to="/brokers" className="block px-3 py-2 text-xs text-green-400 hover:bg-neutral-50 dark:hover:bg-neutral-800" onClick={onClose}>
           {ce.connectBrokerInConfig}
         </Link>
       </div>
@@ -553,7 +553,7 @@ function WelcomeCard({
         <ul className="mb-5 space-y-2.5">
           {steps.map((line, index) => (
             <li key={line} className="flex items-start gap-2.5 text-sm text-neutral-600 dark:text-neutral-300">
-              <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary-100 text-xs font-semibold text-primary-700 dark:bg-primary-900/50 dark:text-primary-300">
+              <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary-100 text-xs font-semibold text-green-500 dark:bg-primary-900/50 dark:text-primary-300">
                 {index + 1}
               </span>
               {line}

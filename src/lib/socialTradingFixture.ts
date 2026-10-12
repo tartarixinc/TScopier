@@ -115,7 +115,7 @@ function chartFor(name: string, start: number, steps: number[], days: Array<[num
     return { label: GROWTH_LABELS[index] ?? '', acc_equity: Math.round(equity) }
   })
   return {
-    series: [{ id: 'equity', name, color: '#0d9488' }],
+    series: [{ id: 'equity', name, color: '#4ade80' }],
     growth,
     outcome: days.map(([profit, loss], index) => ({
       key: GROWTH_LABELS[index] ?? String(index),

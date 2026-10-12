@@ -70,7 +70,7 @@ export function UpgradePrompt({
         <button
           type="button"
           onClick={() => openUpgrade('advanced')}
-          className="font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400"
+          className="font-medium text-green-400 hover:text-green-500 dark:text-green-400"
         >
           {upgradeCta}
         </button>

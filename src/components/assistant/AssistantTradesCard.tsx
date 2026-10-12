@@ -194,7 +194,7 @@ function TradeRow({
       className={clsx(
         'rounded-xl border border-neutral-200/65 bg-white p-2.5 dark:border-neutral-800/55 dark:bg-neutral-900/70',
         clickable &&
-          'cursor-pointer transition hover:border-teal-300 hover:bg-neutral-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/60 dark:hover:border-teal-700 dark:hover:bg-neutral-800/60',
+          'cursor-pointer transition hover:border-teal-300 hover:bg-neutral-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400/60 dark:hover:border-green-500 dark:hover:bg-neutral-800/60',
       )}
       role={clickable ? 'button' : undefined}
       tabIndex={clickable ? 0 : undefined}
@@ -258,7 +258,7 @@ function TradeRow({
         <p className="mt-1.5 text-[11px] text-neutral-600 dark:text-neutral-300">
           {copy.ticket}:{' '}
           {trade.tickets.map((t, i) => (
-            <span key={t} className="font-mono text-teal-700 dark:text-teal-300">
+            <span key={t} className="font-mono text-green-500 dark:text-teal-300">
               {i > 0 ? ', ' : ''}#{t}
             </span>
           ))}
@@ -298,7 +298,7 @@ function ReportRow({ report, copy }: { report: NonNullable<ParsedResult['reports
           <span className="truncate font-semibold text-neutral-900 dark:text-neutral-50">
             {report.symbol ?? copy.title}
             {report.ticket ? (
-              <span className="font-mono text-teal-700 dark:text-teal-300"> #{report.ticket}</span>
+              <span className="font-mono text-green-500 dark:text-teal-300"> #{report.ticket}</span>
             ) : null}
           </span>
           {directionBadge(report.direction)}

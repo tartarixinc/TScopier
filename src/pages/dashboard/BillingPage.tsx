@@ -54,7 +54,7 @@ function invoiceStatusLabel(status: string, bt: ReturnType<typeof useT>['pricing
 function invoiceStatusClass(status: string): string {
   switch (status) {
     case 'paid':
-      return 'bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300'
+      return 'bg-teal-50 text-green-500 dark:bg-teal-950/40 dark:text-teal-300'
     case 'draft':
       return 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400'
     case 'open':
@@ -424,7 +424,7 @@ export function BillingPage() {
           <div className="border-b border-neutral-200/65 px-6 py-4 dark:border-neutral-800/55">
             <div className="flex items-start gap-3">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-teal-50 dark:bg-teal-950/40">
-                <Receipt className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+                <Receipt className="h-4 w-4 text-green-400 dark:text-green-400" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
@@ -492,7 +492,7 @@ export function BillingPage() {
                             href={inv.pdfUrl ?? inv.hostedUrl ?? '#'}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-sm font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400"
+                            className="text-sm font-medium text-green-400 hover:text-green-500 dark:text-green-400"
                           >
                             {bt.downloadInvoice}
                           </a>

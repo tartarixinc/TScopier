@@ -80,7 +80,7 @@ function barHeightPx(value: number, maxPx: number): number {
 }
 
 function valueToneClass(tone: LandingBacktestPipsTone): string {
-  if (tone === 'good') return 'text-teal-600 dark:text-teal-400'
+  if (tone === 'good') return 'text-green-400 dark:text-green-400'
   if (tone === 'bad') return 'text-error-600 dark:text-error-400'
   return 'text-neutral-900 dark:text-neutral-50'
 }
@@ -158,7 +158,7 @@ function HeroOverviewStat({
         </p>
         {showAdd ? (
           <span
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-teal-200 text-teal-600 dark:border-teal-800 dark:text-teal-400"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-teal-200 text-green-400 dark:border-teal-800 dark:text-green-400"
             aria-hidden
           >
             <Plus className="h-3.5 w-3.5" />
@@ -210,7 +210,7 @@ function HeroTradeOutcomeChart() {
                   }}
                 />
                 <div
-                  className="w-[46%] min-w-[5px] rounded-t bg-teal-600"
+                  className="w-[46%] min-w-[5px] rounded-t bg-green-400"
                   style={{ height: barHeightPx(day.profit, 136) }}
                 />
               </div>
@@ -228,7 +228,7 @@ function HeroTradeOutcomeChart() {
           {t.dashboard.chartLoss}
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-sm bg-teal-600" />
+          <span className="h-2 w-2 rounded-sm bg-green-400" />
           {t.dashboard.chartProfit}
         </span>
       </div>
@@ -338,9 +338,9 @@ function HeroChannelProfitChart() {
 function copierStatusClass(status: LandingHeroCopierLogRow['status']): string {
   switch (status) {
     case 'executed':
-      return 'text-teal-700 bg-teal-50 dark:text-teal-300 dark:bg-teal-950/60'
+      return 'text-green-500 bg-teal-50 dark:text-teal-300 dark:bg-teal-950/60'
     case 'parsed':
-      return 'text-teal-700 bg-teal-50 dark:text-teal-300 dark:bg-teal-950/60'
+      return 'text-green-500 bg-teal-50 dark:text-teal-300 dark:bg-teal-950/60'
     case 'skipped':
       return 'text-warning-800 bg-warning-50 dark:!text-amber-100 dark:!bg-amber-900'
     case 'failed':
@@ -458,14 +458,14 @@ export function HeroDashboardPreview() {
                         className={clsx(
                           'flex min-h-[44px] items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium',
                           item.active
-                            ? 'bg-teal-50 text-teal-700 dark:bg-teal-950/60 dark:text-teal-400'
+                            ? 'bg-teal-50 text-green-500 dark:bg-teal-950/60 dark:text-green-400'
                             : 'text-neutral-600 dark:text-neutral-400',
                         )}
                       >
                         <Icon
                           className={clsx(
                             'h-4 w-4 shrink-0',
-                            item.active && 'text-teal-600 dark:text-teal-400',
+                            item.active && 'text-green-400 dark:text-green-400',
                           )}
                         />
                         <span className="min-w-0 truncate text-sm rtl:text-xs">{item.label}</span>
@@ -508,7 +508,7 @@ export function HeroDashboardPreview() {
                   <CircleHelp className="h-5 w-5" />
                 </button>
                 <div className="flex items-center gap-1.5 rounded-lg border border-neutral-200 py-1 ps-1 pe-1.5 dark:border-neutral-700 sm:pe-2">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-teal-600 text-xs font-semibold text-white">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-green-400 text-xs font-semibold text-neutral-950">
                     TS
                   </span>
                   <span className="hidden text-sm font-medium text-neutral-800 dark:text-neutral-100 ltr:inline">
@@ -558,13 +558,13 @@ export function HeroDashboardPreview() {
                   <div className="min-w-0 overflow-hidden rounded-2xl border border-neutral-200/65 bg-white dark:border-neutral-800/55 dark:bg-neutral-950">
                     <div className="flex items-center justify-between gap-2 border-b border-neutral-100 px-5 py-4 dark:border-neutral-800">
                       <div className="flex items-center gap-2">
-                        <Clock className="h-4 w-4 text-teal-500" aria-hidden />
+                        <Clock className="h-4 w-4 text-green-400" aria-hidden />
                         <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
                           {t.dashboard.tradeActivities}
                         </span>
                         <Info className="h-3.5 w-3.5 text-neutral-300 dark:text-neutral-400" aria-hidden />
                       </div>
-                      <span className="inline-flex items-center gap-1.5 rounded-lg border border-teal-500 px-3 py-1.5 text-xs font-medium text-teal-600 dark:border-teal-600 dark:text-teal-400">
+                      <span className="inline-flex items-center gap-1.5 rounded-lg border border-green-400 px-3 py-1.5 text-xs font-medium text-green-400 dark:border-green-400 dark:text-green-400">
                         {t.nav.items.channels}
                         <DirectionalIcon icon={ChevronRight} className="h-3 w-3" />
                       </span>
@@ -582,13 +582,13 @@ export function HeroDashboardPreview() {
                   <div className="min-w-0 overflow-hidden rounded-2xl border border-neutral-200/65 bg-white dark:border-neutral-800/55 dark:bg-neutral-950">
                     <div className="flex items-center justify-between gap-2 border-b border-neutral-100 px-5 py-4 dark:border-neutral-800">
                       <div className="flex items-center gap-2">
-                        <Clock className="h-4 w-4 text-teal-500" aria-hidden />
+                        <Clock className="h-4 w-4 text-green-400" aria-hidden />
                         <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
                           {t.dashboard.copierLogs}
                         </span>
                         <Info className="h-3.5 w-3.5 text-neutral-300 dark:text-neutral-400" aria-hidden />
                       </div>
-                      <span className="inline-flex items-center gap-1.5 rounded-lg border border-teal-500 px-3 py-1.5 text-xs font-medium text-teal-600 dark:border-teal-600 dark:text-teal-400">
+                      <span className="inline-flex items-center gap-1.5 rounded-lg border border-green-400 px-3 py-1.5 text-xs font-medium text-green-400 dark:border-green-400 dark:text-green-400">
                         {t.dashboard.copierLogs}
                         <DirectionalIcon icon={ChevronRight} className="h-3 w-3" />
                       </span>
@@ -625,7 +625,7 @@ export function HeroDashboardPreview() {
                           <span
                             className={clsx(
                               'min-w-0 truncate text-xs font-medium uppercase',
-                              row.side === 'buy' ? 'text-primary-600' : 'text-error-600 dark:text-error-400',
+                              row.side === 'buy' ? 'text-green-400' : 'text-error-600 dark:text-error-400',
                             )}
                           >
                             {row.type}

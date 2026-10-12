@@ -36,8 +36,8 @@ function lineStyle(kind: PriceLevelLine['kind']): { line: string; text: string }
       }
     default:
       return {
-        line: 'border-teal-500',
-        text: 'text-teal-700 dark:text-teal-400',
+        line: 'border-green-400',
+        text: 'text-green-500 dark:text-green-400',
       }
   }
 }
@@ -65,14 +65,14 @@ export function BacktestPriceLadder({ trade, labels: labelsProp }: BacktestPrice
     <div className="rounded-xl border border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50/80 dark:bg-neutral-900/50 p-4">
       <div className="flex items-center gap-2 mb-4">
         {isBuy ? (
-          <TrendingUp className="w-4 h-4 text-teal-600" />
+          <TrendingUp className="w-4 h-4 text-green-400" />
         ) : (
           <TrendingDown className={clsx('w-4 h-4', lossTextClass)} />
         )}
         <span
           className={clsx(
             'text-sm font-semibold uppercase tracking-wide',
-            isBuy ? 'text-teal-700 dark:text-teal-400' : lossTextClass,
+            isBuy ? 'text-green-500 dark:text-green-400' : lossTextClass,
           )}
         >
           {isBuy ? bt.buy : bt.sell}

@@ -87,7 +87,7 @@ export function SearchableSelect({
         aria-controls={listId}
         onClick={() => setOpen(o => !o)}
         className={clsx(
-          'flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm text-start transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent',
+          'flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm text-start transition-colors focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent',
           error
             ? 'border-error-500 bg-error-50 dark:bg-error-950/40'
             : 'border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 hover:border-neutral-300 dark:hover:border-neutral-600',
@@ -113,7 +113,7 @@ export function SearchableSelect({
                 value={query}
                 onChange={e => setQuery(e.target.value)}
                 placeholder={searchPlaceholder}
-                className="w-full rounded-md border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 py-1.5 ps-8 pe-2 text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="w-full rounded-md border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 py-1.5 ps-8 pe-2 text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
               />
             </div>
           </div>

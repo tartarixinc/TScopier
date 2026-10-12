@@ -63,7 +63,7 @@ function RotatingHeroPhrase({ phrases }: { phrases: string[] }) {
   }, [phrases])
 
   return (
-    <span className="mt-2 block min-h-[1.15em] text-teal-600 dark:text-teal-400" aria-live="polite">
+    <span className="mt-2 block min-h-[1.15em] text-green-400 dark:text-green-400" aria-live="polite">
       <span
         className={clsx(
           'inline-block transition-all duration-200',
@@ -116,7 +116,7 @@ export function HeroSection() {
                 <span className="hero-chrome-dot bg-[#28C840]" />
               </div>
               <div className="hero-product-url">
-                <Lock className="h-3 w-3 shrink-0 text-teal-600/80 dark:text-teal-400/80" aria-hidden />
+                <Lock className="h-3 w-3 shrink-0 text-green-400/80 dark:text-green-400/80" aria-hidden />
                 <span className="truncate">{l.hero.previewUrl}</span>
               </div>
             </div>

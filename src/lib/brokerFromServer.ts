@@ -378,7 +378,7 @@ export function formatLinkedAccountTypeLabel(
 
 export function linkedAccountTypeValueClass(type: LinkedAccountType | undefined): string {
   if (type === 'Demo') return 'font-semibold text-amber-700 dark:text-amber-300'
-  if (type === 'Live') return 'font-semibold text-teal-700 dark:text-teal-300'
+  if (type === 'Live') return 'font-semibold text-green-500 dark:text-teal-300'
   if (type === 'PropFirm') return 'font-semibold text-neutral-600 dark:text-neutral-400'
   return 'text-neutral-900 dark:text-neutral-50'
 }

@@ -9,7 +9,7 @@ import { useT } from '../../context/LocaleContext'
 const TYPE_STYLES: Record<string, string> = {
   feature: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400',
   fix: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400',
-  improvement: 'bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-400',
+  improvement: 'bg-teal-50 text-green-500 dark:bg-teal-950/40 dark:text-green-400',
 }
 
 function getSeenUpdates(): Set<string> {
@@ -152,7 +152,7 @@ export function UpdatesAnnouncementModal() {
 
         <div className="px-6 py-8 text-center">
           <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-teal-50 dark:bg-teal-950/40">
-            <Sparkles className="h-7 w-7 text-teal-600 dark:text-teal-400" />
+            <Sparkles className="h-7 w-7 text-green-400 dark:text-green-400" />
           </div>
 
           <h2

@@ -45,7 +45,7 @@ function PageButton({
       className={clsx(
         'min-w-[2rem] h-8 px-2 text-sm rounded-md border tabular-nums transition-colors',
         active
-          ? 'border-teal-500 bg-teal-500 text-white'
+          ? 'border-green-400 bg-green-400 text-neutral-950'
           : 'border-neutral-200/65 dark:border-neutral-800/55 text-neutral-700 dark:text-neutral-300 hover:bg-white dark:hover:bg-neutral-900',
       )}
       aria-current={active ? 'page' : undefined}
@@ -163,7 +163,7 @@ export function BacktestResultsList({ trades, onSelect }: BacktestResultsListPro
                     {formatDurationMs(durationMs)}
                   </p>
                 </div>
-                <ChevronRight className="w-5 h-5 text-neutral-300 group-hover:text-teal-500 shrink-0 transition-colors" />
+                <ChevronRight className="w-5 h-5 text-neutral-300 group-hover:text-green-400 shrink-0 transition-colors" />
               </button>
             </li>
           )
@@ -177,7 +177,7 @@ export function BacktestResultsList({ trades, onSelect }: BacktestResultsListPro
             <select
               value={pageSize}
               onChange={e => setPageSize(Number(e.target.value) as PageSizeOption)}
-              className="h-8 min-w-[4.5rem] rounded-md border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 px-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className="h-8 min-w-[4.5rem] rounded-md border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 px-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-green-400"
               aria-label={bt.resultsPerPage}
             >
               {PAGE_SIZE_OPTIONS.map(n => (

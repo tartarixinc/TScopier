@@ -13,10 +13,10 @@ interface MarketingAuthCtaProps {
 }
 
 const primaryBtnClass =
-  'inline-flex max-w-[11rem] shrink-0 items-center justify-center truncate rounded-lg border border-teal-600 bg-teal-600 px-2.5 py-1.5 text-xs font-medium text-white transition-colors hover:border-teal-700 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 xl:max-w-[16rem] xl:px-3 xl:text-sm 2xl:max-w-none dark:focus:ring-offset-neutral-950'
+  'inline-flex max-w-[11rem] shrink-0 items-center justify-center truncate rounded-lg border border-green-400 bg-green-400 px-2.5 py-1.5 text-xs font-medium text-neutral-950 transition-colors hover:border-green-500 hover:bg-green-500 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2 xl:max-w-[16rem] xl:px-3 xl:text-sm 2xl:max-w-none dark:focus:ring-offset-neutral-950'
 
 const heroCtaClass =
-  'group inline-flex w-full items-center justify-center gap-2 rounded-xl border border-teal-600 bg-teal-600 px-9 py-4 text-lg font-semibold text-white shadow-lg shadow-teal-600/25 transition-all duration-300 hover:border-teal-500 hover:bg-teal-500 hover:shadow-[0_0_28px_rgba(45,212,191,0.55),0_0_56px_rgba(13,148,136,0.22)] sm:w-auto sm:px-11 sm:py-5 sm:text-xl'
+  'group inline-flex w-full items-center justify-center gap-2 rounded-xl border border-green-400 bg-green-400 px-9 py-4 text-lg font-semibold text-neutral-950 shadow-lg shadow-green-400/25 transition-all duration-300 hover:border-green-400 hover:bg-green-400 hover:shadow-[0_0_28px_rgba(74,222,128,0.55),0_0_56px_rgba(74,222,128,0.22)] sm:w-auto sm:px-11 sm:py-5 sm:text-xl'
 
 export function MarketingAuthCta({ variant, onNavigate }: MarketingAuthCtaProps) {
   const { isSignedIn, loading } = useMarketingAuthState()
@@ -52,7 +52,7 @@ export function MarketingAuthCta({ variant, onNavigate }: MarketingAuthCtaProps)
           variant === 'hero' && heroCtaClass,
           variant === 'header' && clsx(primaryBtnClass, 'hidden lg:inline-flex'),
           variant === 'headerMobile' &&
-            'rounded-lg px-3 py-2.5 text-sm font-medium text-teal-600 transition-colors hover:bg-teal-50 dark:text-teal-400 dark:hover:bg-teal-950/40',
+            'rounded-lg px-3 py-2.5 text-sm font-medium text-green-400 transition-colors hover:bg-teal-50 dark:text-green-400 dark:hover:bg-teal-950/40',
         )}
         title={variant === 'header' ? nav.dashboard : undefined}
       >
@@ -101,7 +101,7 @@ export function MarketingAuthCta({ variant, onNavigate }: MarketingAuthCtaProps)
         <a
           href={signupHref}
           onClick={() => onCtaClick('signup')}
-          className="mt-1 inline-flex w-full items-center justify-center rounded-lg border border-teal-600 bg-teal-600 px-3 py-2.5 text-sm font-medium text-white transition-colors hover:border-teal-700 hover:bg-teal-700"
+          className="mt-1 inline-flex w-full items-center justify-center rounded-lg border border-green-400 bg-green-400 px-3 py-2.5 text-sm font-medium text-neutral-950 transition-colors hover:border-green-500 hover:bg-green-500"
         >
           {nav.getStarted}
         </a>

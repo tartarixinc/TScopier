@@ -197,7 +197,7 @@ function SignalRow({
 
   const badgeClass =
     tone === 'good'
-      ? 'border-teal-200 text-teal-700 dark:border-teal-800 dark:text-teal-300'
+      ? 'border-teal-200 text-green-500 dark:border-teal-800 dark:text-teal-300'
       : tone === 'bad'
         ? lossBadgeOutlineClass
         : 'border-neutral-200 text-neutral-600 dark:border-neutral-700 dark:text-neutral-400'
@@ -213,7 +213,7 @@ function SignalRow({
           className={clsx(
             'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
             isBuy
-              ? 'bg-teal-50 text-teal-600 dark:bg-teal-950/50 dark:text-teal-400'
+              ? 'bg-teal-50 text-green-400 dark:bg-teal-950/50 dark:text-green-400'
               : lossIconWrapClass,
           )}
         >
@@ -296,8 +296,8 @@ function SignalRow({
               <ul className="space-y-2 border-l-2 border-neutral-200 dark:border-neutral-700 pl-3">
                 {tpEvents.map((ev) => (
                   <li key={ev.index} className="relative">
-                    <span className="absolute -left-[1.15rem] top-1 h-2 w-2 rounded-full bg-teal-500" />
-                    <p className="font-medium text-teal-700 dark:text-teal-300">
+                    <span className="absolute -left-[1.15rem] top-1 h-2 w-2 rounded-full bg-green-400" />
+                    <p className="font-medium text-green-500 dark:text-teal-300">
                       TP{ev.index} Hit → {formatEntryPrice(ev.price)}
                     </p>
                     <p className="text-neutral-500 dark:text-neutral-400">

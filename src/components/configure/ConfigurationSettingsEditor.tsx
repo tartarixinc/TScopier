@@ -107,7 +107,7 @@ function Choice({
                 aria-selected={selected}
                 className={`block w-full px-3 py-1.5 text-start text-sm ${
                   selected
-                    ? 'font-medium text-teal-700 dark:text-teal-300'
+                    ? 'font-medium text-green-500 dark:text-teal-300'
                     : 'text-neutral-700 hover:bg-neutral-50 dark:text-neutral-200 dark:hover:bg-neutral-900'
                 }`}
                 onClick={() => {
@@ -817,7 +817,7 @@ function LimitRules({
         </div>
       )) : null}
       {enabled ? (
-        <button type="button" className="py-2 text-sm font-medium text-teal-700 dark:text-teal-300" onClick={onAdd}>
+        <button type="button" className="py-2 text-sm font-medium text-green-500 dark:text-teal-300" onClick={onAdd}>
           {addLabel}
         </button>
       ) : null}

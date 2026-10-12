@@ -268,7 +268,7 @@ function TraderRating({
             return (
               <span key={star} className="relative inline-flex h-3.5 w-3.5">
                 <Star className="h-3.5 w-3.5 text-neutral-300 dark:text-neutral-600" />
-                <Star className="absolute inset-0 h-3.5 w-3.5 fill-teal-600 text-teal-600" style={{ clipPath: 'inset(0 50% 0 0)' }} />
+                <Star className="absolute inset-0 h-3.5 w-3.5 fill-green-400 text-green-400" style={{ clipPath: 'inset(0 50% 0 0)' }} />
               </span>
             )
           }
@@ -277,7 +277,7 @@ function TraderRating({
               key={star}
               className={clsx(
                 'h-3.5 w-3.5',
-                fill === 'full' ? 'fill-teal-600 text-teal-600' : 'text-neutral-300 dark:text-neutral-600',
+                fill === 'full' ? 'fill-green-400 text-green-400' : 'text-neutral-300 dark:text-neutral-600',
               )}
             />
           )
@@ -292,7 +292,7 @@ function TraderRating({
 function SideLabel({ side, buy, sell }: { side: SocialTradeSide; buy: string; sell: string }) {
   const isBuy = side === 'buy'
   return (
-    <span className={clsx('text-xs font-medium', isBuy ? 'text-teal-700 dark:text-teal-300' : 'text-red-600 dark:text-red-400')}>
+    <span className={clsx('text-xs font-medium', isBuy ? 'text-green-500 dark:text-teal-300' : 'text-red-600 dark:text-red-400')}>
       {isBuy ? buy : sell}
     </span>
   )
@@ -451,7 +451,7 @@ export function SocialTradingPage() {
                       role="link"
                       tabIndex={0}
                       aria-label={name}
-                      className="cursor-pointer border-t border-neutral-100 hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-teal-500 dark:border-neutral-800 dark:hover:bg-neutral-900"
+                      className="cursor-pointer border-t border-neutral-100 hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-green-400 dark:border-neutral-800 dark:hover:bg-neutral-900"
                       onClick={() => navigate(`/social-trading/${trader.id}`)}
                       onKeyDown={event => {
                         if (event.key === 'Enter' || event.key === ' ') {
@@ -587,7 +587,7 @@ function AccessTag({
       className={clsx(
         'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
         isOpen
-          ? 'bg-teal-50 text-teal-700 dark:bg-teal-950/50 dark:text-teal-300'
+          ? 'bg-teal-50 text-green-500 dark:bg-teal-950/50 dark:text-teal-300'
           : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300',
       )}
     >
@@ -745,7 +745,7 @@ export function SocialTraderActivityPage() {
         <PageHeader title={copy.title} />
         <Card>
           <p className="text-sm text-neutral-500 dark:text-neutral-400">{copy.notFound}</p>
-          <Link to="/social-trading" className="mt-3 inline-block text-sm font-medium text-teal-700 dark:text-teal-300">
+          <Link to="/social-trading" className="mt-3 inline-block text-sm font-medium text-green-500 dark:text-teal-300">
             {copy.back}
           </Link>
         </Card>
@@ -789,7 +789,7 @@ export function SocialTraderActivityPage() {
     <>
     <PageShell maxWidth="xl">
       <div>
-        <Link to="/social-trading" className="text-sm font-medium text-teal-700 hover:text-teal-800 dark:text-teal-300">
+        <Link to="/social-trading" className="text-sm font-medium text-green-500 hover:text-teal-800 dark:text-teal-300">
           {copy.back}
         </Link>
         <Card className="mt-3">
@@ -920,7 +920,7 @@ export function SocialTraderActivityPage() {
                       <SideLabel side={activity.side} buy={copy.buy} sell={copy.sell} />
                       <span className="text-neutral-500 dark:text-neutral-400">{formatWhen(activity.at)}</span>
                       {activity.profit != null ? (
-                        <span className={clsx('ms-auto font-medium', activity.profit >= 0 ? 'text-teal-700 dark:text-teal-300' : 'text-red-600 dark:text-red-400')}>
+                        <span className={clsx('ms-auto font-medium', activity.profit >= 0 ? 'text-green-500 dark:text-teal-300' : 'text-red-600 dark:text-red-400')}>
                           {formatSignedMoney(activity.profit)}
                         </span>
                       ) : null}
@@ -995,7 +995,7 @@ function ProfileTab({
       className={clsx(
         'inline-flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium',
         active
-          ? 'bg-teal-600 text-white'
+          ? 'bg-green-400 text-neutral-950'
           : 'text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800',
       )}
     >
@@ -1019,7 +1019,7 @@ function MonthlyProfitChart({ title, data }: { title: string; data: Array<{ labe
             <XAxis dataKey="label" tick={{ fontSize: 11, fill: colors.tick }} axisLine={false} tickLine={false} />
             <YAxis tick={{ fontSize: 11, fill: colors.tick }} axisLine={false} tickLine={false} tickFormatter={value => formatAxisMoney(Number(value))} width={48} />
             <Tooltip {...chartTooltipProps(colors)} formatter={value => formatAxisMoney(Number(value ?? 0))} />
-            <Bar dataKey="profit" fill="#0d9488" radius={[4, 4, 0, 0]} maxBarSize={36} />
+            <Bar dataKey="profit" fill="#4ade80" radius={[4, 4, 0, 0]} maxBarSize={36} />
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -1249,7 +1249,7 @@ function DayTradesModal({
           <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
             {heading}
             <span className="ms-3 text-sm font-medium text-neutral-500 dark:text-neutral-400">{copy.netPnl}</span>
-            <span className={clsx('ms-2 text-sm font-semibold', (day.profit ?? 0) >= 0 ? 'text-teal-700 dark:text-teal-300' : 'text-red-600 dark:text-red-400')}>
+            <span className={clsx('ms-2 text-sm font-semibold', (day.profit ?? 0) >= 0 ? 'text-green-500 dark:text-teal-300' : 'text-red-600 dark:text-red-400')}>
               {formatSignedMoney(day.profit ?? 0)}
             </span>
           </h2>
@@ -1304,7 +1304,7 @@ function DayTradesModal({
                       <td className="px-2 py-3 text-neutral-700 dark:text-neutral-200">{fill.closeRate}</td>
                       <td className="px-2 py-3 text-neutral-600 dark:text-neutral-300">{stamp(fill.openedAt)}</td>
                       <td className="px-2 py-3 text-neutral-600 dark:text-neutral-300">{stamp(fill.closedAt)}</td>
-                      <td className={clsx('px-2 py-3 text-end font-medium', fill.profit >= 0 ? 'text-teal-700 dark:text-teal-300' : 'text-red-600 dark:text-red-400')}>
+                      <td className={clsx('px-2 py-3 text-end font-medium', fill.profit >= 0 ? 'text-green-500 dark:text-teal-300' : 'text-red-600 dark:text-red-400')}>
                         {formatSignedMoney(fill.profit)}
                       </td>
                     </tr>
@@ -1336,7 +1336,7 @@ function DaySparkline({ values }: { values: number[] }) {
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className="h-16 w-36" aria-hidden="true">
       <polygon points={area} className="fill-teal-100 dark:fill-teal-900" />
-      <polyline points={line} fill="none" className="stroke-teal-600" strokeWidth="2" />
+      <polyline points={line} fill="none" className="stroke-green-400" strokeWidth="2" />
     </svg>
   )
 }
@@ -1360,13 +1360,13 @@ function OverviewPanel({
       <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{copy.overview}</h2>
       <div className="mt-4 grid grid-cols-2 gap-3">
         <div>
-          <p className={clsx('text-lg font-semibold', stats.dailyProfitPercent >= 0 ? 'text-teal-700 dark:text-teal-300' : 'text-red-600')}>
+          <p className={clsx('text-lg font-semibold', stats.dailyProfitPercent >= 0 ? 'text-green-500 dark:text-teal-300' : 'text-red-600')}>
             {stats.dailyProfitPercent.toFixed(2)}%
           </p>
           <p className="text-xs text-neutral-500 dark:text-neutral-400">{copy.dailyProfit}</p>
         </div>
         <div>
-          <p className={clsx('text-lg font-semibold', stats.monthlyProfitPercent >= 0 ? 'text-teal-700 dark:text-teal-300' : 'text-red-600')}>
+          <p className={clsx('text-lg font-semibold', stats.monthlyProfitPercent >= 0 ? 'text-green-500 dark:text-teal-300' : 'text-red-600')}>
             {stats.monthlyProfitPercent.toFixed(2)}%
           </p>
           <p className="text-xs text-neutral-500 dark:text-neutral-400">{copy.monthlyProfit}</p>
@@ -1378,10 +1378,10 @@ function OverviewPanel({
         <div>
           <div className="flex items-center justify-between">
             <dt className="text-neutral-500 dark:text-neutral-400">{copy.winRate}</dt>
-            <dd className="font-semibold text-teal-700 dark:text-teal-300">{trader.winRate.toFixed(2)}%</dd>
+            <dd className="font-semibold text-green-500 dark:text-teal-300">{trader.winRate.toFixed(2)}%</dd>
           </div>
           <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800">
-            <div className="h-full rounded-full bg-teal-600" style={{ width: `${Math.min(trader.winRate, 100)}%` }} />
+            <div className="h-full rounded-full bg-green-400" style={{ width: `${Math.min(trader.winRate, 100)}%` }} />
           </div>
         </div>
         <OverviewRow label={copy.profitableTrades} value={String(stats.profitableTrades)} />
@@ -1406,7 +1406,7 @@ function OverviewRow({ label, value, tone }: { label: string; value: string; ton
   return (
     <div className="flex items-start justify-between gap-3 border-b border-neutral-100 pb-2 dark:border-neutral-800">
       <dt className="text-neutral-500 dark:text-neutral-400">{label}</dt>
-      <dd className={clsx('text-end font-medium text-neutral-900 dark:text-neutral-50', tone === 'up' && 'text-teal-700 dark:text-teal-300', tone === 'down' && 'text-red-600 dark:text-red-400')}>{value}</dd>
+      <dd className={clsx('text-end font-medium text-neutral-900 dark:text-neutral-50', tone === 'up' && 'text-green-500 dark:text-teal-300', tone === 'down' && 'text-red-600 dark:text-red-400')}>{value}</dd>
     </div>
   )
 }
@@ -1415,7 +1415,7 @@ function Metric({ label, value, tone }: { label: string; value: string; tone?: '
   return (
     <div>
       <dt className="text-xs text-neutral-500 dark:text-neutral-400">{label}</dt>
-      <dd className={clsx('mt-1 text-sm font-semibold text-neutral-900 dark:text-neutral-50', tone === 'up' && 'text-teal-700 dark:text-teal-300', tone === 'down' && 'text-red-600 dark:text-red-400')}>{value}</dd>
+      <dd className={clsx('mt-1 text-sm font-semibold text-neutral-900 dark:text-neutral-50', tone === 'up' && 'text-green-500 dark:text-teal-300', tone === 'down' && 'text-red-600 dark:text-red-400')}>{value}</dd>
     </div>
   )
 }
@@ -1461,7 +1461,7 @@ function TradeTable({
                   <SideLabel side={row.side} buy={copy.buy} sell={copy.sell} />
                 </td>
                 <td className="px-3 py-3 text-neutral-600 dark:text-neutral-300">{row.when}</td>
-                <td className={clsx('px-4 py-3 text-end font-medium', row.result == null ? 'text-neutral-400' : row.result >= 0 ? 'text-teal-700 dark:text-teal-300' : 'text-red-600 dark:text-red-400')}>
+                <td className={clsx('px-4 py-3 text-end font-medium', row.result == null ? 'text-neutral-400' : row.result >= 0 ? 'text-green-500 dark:text-teal-300' : 'text-red-600 dark:text-red-400')}>
                   {row.result == null ? '—' : formatSignedMoney(row.result)}
                 </td>
               </tr>

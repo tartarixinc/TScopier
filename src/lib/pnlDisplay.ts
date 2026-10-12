@@ -14,7 +14,7 @@ export const lossBadgeOutlineClass =
 
 export const lossIconWrapClass = 'bg-error-50 text-[#737373] dark:bg-error-950/40'
 
-export const profitTextClass = 'text-teal-600 dark:text-teal-400'
+export const profitTextClass = 'text-green-400 dark:text-green-400'
 
 export type PnlSignTone = 'good' | 'bad' | 'neutral'
 
@@ -25,7 +25,7 @@ export function backtestToneTextClass(tone: PnlSignTone): string {
 }
 
 export function backtestToneBarClass(tone: PnlSignTone): string {
-  if (tone === 'good') return 'bg-teal-500'
+  if (tone === 'good') return 'bg-green-400'
   if (tone === 'bad') return lossBarClass
   return 'bg-neutral-300 dark:bg-neutral-600'
 }

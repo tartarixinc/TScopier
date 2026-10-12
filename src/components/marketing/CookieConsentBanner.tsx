@@ -23,7 +23,7 @@ export function CookieConsentBanner() {
             href={marketingUrl('/cookie-policy')}
             target="_blank"
             rel="noopener noreferrer"
-            className="font-medium text-teal-600 hover:underline dark:text-teal-400"
+            className="font-medium text-green-400 hover:underline dark:text-green-400"
           >
             {c.policyLink}
           </a>
@@ -31,7 +31,7 @@ export function CookieConsentBanner() {
         <div className="mt-3 flex flex-wrap gap-2">
           <button
             type="button"
-            className="inline-flex items-center justify-center rounded-lg bg-teal-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-teal-700"
+            className="inline-flex items-center justify-center rounded-lg bg-green-400 px-3 py-2 text-sm font-semibold text-neutral-950 transition-colors hover:bg-green-500"
             onClick={() => {
               markTrackingConsentAccepted()
               setVisible(false)

@@ -44,7 +44,7 @@ export function MarketNewsCard({ article, readArticle }: MarketNewsCardProps) {
           </p>
         ) : null}
         {article.url ? (
-          <span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-teal-600 dark:text-teal-400">
+          <span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-green-400 dark:text-green-400">
             {readArticle}
             <ExternalLink className="h-3.5 w-3.5" />
           </span>

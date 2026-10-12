@@ -77,7 +77,7 @@ export function AccountPerformanceTable({
               >
                 <td className="px-4 py-3 font-medium text-neutral-900 dark:text-neutral-50">
                   {account.label || 'Unnamed'}
-                  <span className="ml-2 text-[10px] font-semibold uppercase text-teal-600 dark:text-teal-400">
+                  <span className="ml-2 text-[10px] font-semibold uppercase text-green-400 dark:text-green-400">
                     {account.platform}
                   </span>
                 </td>
@@ -101,7 +101,7 @@ export function AccountPerformanceTable({
                 <td className="px-4 py-3 text-end">
                   <Link
                     to="/brokers"
-                    className="text-xs font-semibold text-teal-600 hover:text-teal-700 dark:text-teal-400"
+                    className="text-xs font-semibold text-green-400 hover:text-green-500 dark:text-green-400"
                   >
                     {labels.configure}
                   </Link>

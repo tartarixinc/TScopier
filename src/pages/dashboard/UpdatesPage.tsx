@@ -7,7 +7,7 @@ import { useT } from '../../context/LocaleContext'
 const TYPE_CONFIG: Record<PlatformUpdate['type'], { icon: typeof Sparkles; color: string }> = {
   feature: { icon: Sparkles, color: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400' },
   fix: { icon: Bug, color: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400' },
-  improvement: { icon: Wrench, color: 'bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-400' },
+  improvement: { icon: Wrench, color: 'bg-teal-50 text-green-500 dark:bg-teal-950/40 dark:text-green-400' },
 }
 
 function typeLabel(type: PlatformUpdate['type'], t: ReturnType<typeof useT>): string {

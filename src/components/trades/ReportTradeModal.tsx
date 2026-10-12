@@ -140,7 +140,7 @@ export function ReportTradeModal({ trade, userId, onClose }: ReportTradeModalPro
                       className={clsx(
                         'text-xs font-medium px-3 py-1.5 rounded-full border transition-colors',
                         category === key
-                          ? 'border-teal-500 bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300 dark:border-teal-700'
+                          ? 'border-green-400 bg-teal-50 text-green-500 dark:bg-teal-950/40 dark:text-teal-300 dark:border-green-500'
                           : 'border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800',
                       )}
                     >
@@ -157,7 +157,7 @@ export function ReportTradeModal({ trade, userId, onClose }: ReportTradeModalPro
                   onChange={e => setReason(e.target.value)}
                   placeholder={tr.reportReasonPlaceholder}
                   rows={4}
-                  className="w-full text-sm bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2.5 text-neutral-900 dark:text-neutral-50 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-teal-500/60 resize-none"
+                  className="w-full text-sm bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2.5 text-neutral-900 dark:text-neutral-50 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-green-400/60 resize-none"
                 />
               </div>
 

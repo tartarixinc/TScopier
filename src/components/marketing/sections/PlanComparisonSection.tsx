@@ -9,7 +9,7 @@ function PlanCell({ value }: { value: LandingPlanComparisonRow['basic'] }) {
   if (value === 'yes') {
     return (
       <span className="inline-flex items-center gap-2 text-sm text-neutral-800 dark:text-neutral-100">
-        <Check className="h-4 w-4 shrink-0 text-teal-600 dark:text-teal-400" strokeWidth={2.5} aria-hidden />
+        <Check className="h-4 w-4 shrink-0 text-green-400 dark:text-green-400" strokeWidth={2.5} aria-hidden />
         <span className="sr-only">Included</span>
       </span>
     )
@@ -59,7 +59,7 @@ function MobilePlanCard({
       <p
         className={clsx(
           'mb-2 text-[0.65rem] font-semibold uppercase tracking-wide',
-          highlighted ? 'text-teal-700 dark:text-teal-400' : 'text-neutral-500 dark:text-neutral-400',
+          highlighted ? 'text-green-500 dark:text-green-400' : 'text-neutral-500 dark:text-neutral-400',
         )}
       >
         {planLabel}
@@ -81,7 +81,7 @@ export function PlanComparisonSection({ variant = 'marketing' }: { variant?: 'ma
       )}
     >
       <div className="mx-auto max-w-2xl text-center">
-        <p className="text-xs font-semibold uppercase tracking-wider text-teal-600 dark:text-teal-400">
+        <p className="text-xs font-semibold uppercase tracking-wider text-green-400 dark:text-green-400">
           {c.eyebrow}
         </p>
         <h2 className="mt-3 text-3xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-4xl">
@@ -127,7 +127,7 @@ export function PlanComparisonSection({ variant = 'marketing' }: { variant?: 'ma
               </th>
               <th
                 scope="col"
-                className="border-b border-teal-700/20 bg-teal-600 px-4 py-4 text-xs font-semibold uppercase tracking-wide text-white dark:border-teal-600/40 dark:bg-teal-700 sm:px-5"
+                className="border-b border-green-500/20 bg-green-400 px-4 py-4 text-xs font-semibold uppercase tracking-wide text-neutral-950 dark:border-green-400/40 dark:bg-green-500 sm:px-5"
               >
                 {c.advancedColumn}
               </th>

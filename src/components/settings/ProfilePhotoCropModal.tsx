@@ -214,7 +214,7 @@ export function ProfilePhotoCropModal({
             disabled={!imageSize || busy}
             aria-label={zoomLabel}
             onChange={event => setZoom(Number(event.target.value))}
-            className="mt-1.5 w-full accent-teal-600"
+            className="mt-1.5 w-full accent-green-400"
           />
         </label>
 

@@ -440,7 +440,7 @@ export function Backtest() {
                     className={clsx(
                       'px-3 py-2 rounded-xl text-sm border transition-all disabled:opacity-50',
                       selectedChannelId === ch.id
-                        ? 'border-teal-500 bg-teal-500 text-white shadow-sm'
+                        ? 'border-green-400 bg-green-400 text-neutral-950 shadow-sm'
                         : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-300',
                     )}
                   >
@@ -493,7 +493,7 @@ export function Backtest() {
             <div className="space-y-2">
               <div className="h-2 rounded-full bg-teal-100 dark:bg-teal-900 overflow-hidden">
                 <div
-                  className="h-full bg-teal-500 transition-all duration-500"
+                  className="h-full bg-green-400 transition-all duration-500"
                   style={{ width: `${Math.min(100, Math.max(profileProgress.pct, 4))}%` }}
                 />
               </div>
@@ -551,7 +551,7 @@ export function Backtest() {
                     className={clsx(
                       'px-4 py-2.5 rounded-xl text-sm font-medium border transition-all',
                       selectedSymbol === symbol
-                        ? 'border-teal-500 bg-teal-500 text-white shadow-md shadow-teal-500/20'
+                        ? 'border-green-400 bg-green-400 text-neutral-950 shadow-md shadow-green-400/20'
                         : 'border-neutral-200 dark:border-neutral-700 hover:border-teal-300',
                     )}
                   >
@@ -582,7 +582,7 @@ export function Backtest() {
               {activeRun?.progress_pct != null ? (
                 <div className="h-2 rounded-full bg-teal-100 dark:bg-teal-900 overflow-hidden">
                   <div
-                    className="h-full bg-teal-500 transition-all duration-500"
+                    className="h-full bg-green-400 transition-all duration-500"
                     style={{ width: `${Math.min(100, activeRun.progress_pct)}%` }}
                   />
                 </div>

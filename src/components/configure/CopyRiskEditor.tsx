@@ -635,7 +635,7 @@ export function CopyRiskEditor({
           ))}
           <button
             type="button"
-            className="text-xs font-medium text-teal-700 dark:text-teal-300"
+            className="text-xs font-medium text-green-500 dark:text-teal-300"
             onClick={() => patch({
               ...settings,
               advanced: {

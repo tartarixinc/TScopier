@@ -28,7 +28,7 @@ export function MarketNewsHero({ article, forexBadge, readArticle }: MarketNewsH
         />
         <div className="flex flex-col justify-center p-6 lg:p-8">
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-teal-50 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-teal-700 dark:bg-teal-950/60 dark:text-teal-300">
+            <span className="rounded-full bg-teal-50 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-green-500 dark:bg-teal-950/60 dark:text-teal-300">
               {forexBadge}
             </span>
             {pairLabel ? (
@@ -56,7 +56,7 @@ export function MarketNewsHero({ article, forexBadge, readArticle }: MarketNewsH
               href={article.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300"
+              className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-green-400 hover:text-green-500 dark:text-green-400 dark:hover:text-teal-300"
             >
               {readArticle}
               <ExternalLink className="h-4 w-4" />

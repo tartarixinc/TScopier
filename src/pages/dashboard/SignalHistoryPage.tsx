@@ -55,13 +55,13 @@ const DESKTOP_TH =
 const OPEN_ROW_BG = 'bg-teal-50 dark:bg-teal-950/40'
 const OPEN_ROW_HOVER = 'group-hover:bg-teal-100 dark:group-hover:bg-teal-900/50'
 const OPEN_ROW_CELL = 'transition-colors duration-150'
-const EDIT_PEN_ICON = 'w-4 h-4 shrink-0 text-teal-600 dark:text-teal-400 opacity-0 group-hover:opacity-100 transition-opacity duration-150'
+const EDIT_PEN_ICON = 'w-4 h-4 shrink-0 text-green-400 dark:text-green-400 opacity-0 group-hover:opacity-100 transition-opacity duration-150'
 
 const selectClass =
-  'px-3 py-2.5 rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 text-sm text-neutral-700 dark:text-neutral-300 focus:outline-none focus:ring-2 focus:ring-primary-500 w-full'
+  'px-3 py-2.5 rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 text-sm text-neutral-700 dark:text-neutral-300 focus:outline-none focus:ring-2 focus:ring-green-400 w-full'
 
 const dateInputClass =
-  'px-3 py-2.5 rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 text-sm text-neutral-700 dark:text-neutral-300 focus:outline-none focus:ring-2 focus:ring-primary-500 w-full'
+  'px-3 py-2.5 rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 text-sm text-neutral-700 dark:text-neutral-300 focus:outline-none focus:ring-2 focus:ring-green-400 w-full'
 
 function formatDateInput(date: Date): string {
   const year = date.getFullYear()
@@ -741,7 +741,7 @@ const SignalRow = memo(function SignalRow({
 
   const actionTone =
     action === 'buy'
-      ? 'text-primary-600 dark:text-primary-400'
+      ? 'text-green-400 dark:text-green-400'
       : action === 'sell'
         ? 'text-error-600 dark:text-error-400'
         : 'text-neutral-600 dark:text-neutral-300'

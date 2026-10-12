@@ -340,7 +340,7 @@ export function TelegramLinkStep({ onDone }: Props) {
       <Card>
         <div className="mb-5">
           <div className="flex items-center gap-2 mb-1">
-            <ShieldCheck className="w-5 h-5 text-teal-600" />
+            <ShieldCheck className="w-5 h-5 text-green-400" />
             <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">Secure your Telegram account</h2>
           </div>
           <p className="text-sm text-neutral-500 dark:text-neutral-400">
@@ -360,7 +360,7 @@ export function TelegramLinkStep({ onDone }: Props) {
             type="checkbox"
             checked={twoFaConfirmed}
             onChange={e => setTwoFaConfirmed(e.target.checked)}
-            className="mt-0.5 w-4 h-4 rounded border-neutral-300 text-teal-600 focus:ring-teal-500"
+            className="mt-0.5 w-4 h-4 rounded border-neutral-300 text-green-400 focus:ring-green-400"
           />
           <span className="text-sm text-neutral-700 dark:text-neutral-300">
             I have set a Two-Step Verification password on this Telegram account.

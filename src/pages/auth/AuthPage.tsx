@@ -142,7 +142,7 @@ export function AuthPage() {
         {loginT.noAccount}{' '}
         <a
           href="/signup"
-          className="font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300"
+          className="font-medium text-green-400 hover:text-green-500 dark:text-green-400 dark:hover:text-teal-300"
         >
           {loginT.signUpLink}
         </a>
@@ -204,7 +204,7 @@ export function AuthPage() {
         <div className="-mt-1 flex justify-end">
           <Link
             to="/forgot-password"
-            className="text-sm font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300"
+            className="text-sm font-medium text-green-400 hover:text-green-500 dark:text-green-400 dark:hover:text-teal-300"
           >
             {loginT.forgotPassword}
           </Link>

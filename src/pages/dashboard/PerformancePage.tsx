@@ -288,7 +288,7 @@ export function PerformancePage() {
           </div>
           <Link
             to="/account-trades"
-            className="inline-flex items-center gap-1 text-xs font-semibold text-teal-600 hover:text-teal-700 dark:text-teal-400"
+            className="inline-flex items-center gap-1 text-xs font-semibold text-green-400 hover:text-green-500 dark:text-green-400"
           >
             <Activity className="h-3.5 w-3.5" />
             {p.viewTrades}

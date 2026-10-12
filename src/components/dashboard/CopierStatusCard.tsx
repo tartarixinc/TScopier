@@ -64,7 +64,7 @@ function StatusValue({ children, tone }: { children: string; tone: Tone }) {
     <span
       className={clsx(
         'font-medium tabular-nums',
-        tone === 'ok' && 'text-teal-600 dark:text-teal-400',
+        tone === 'ok' && 'text-green-400 dark:text-green-400',
         tone === 'warn' && 'text-amber-600 dark:text-amber-400',
         tone === 'bad' && 'text-rose-600 dark:text-rose-400',
         tone === 'muted' && 'text-neutral-500 dark:text-neutral-400',
@@ -460,7 +460,7 @@ export function CopierStatusCard({
           <button
             type="button"
             onClick={refreshAll}
-            className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-teal-700 hover:text-teal-800 dark:text-teal-300 dark:hover:text-teal-200"
+            className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-green-500 hover:text-teal-800 dark:text-teal-300 dark:hover:text-teal-200"
           >
             <RefreshCw className="h-4 w-4" aria-hidden />
             {cs.refreshStatus}

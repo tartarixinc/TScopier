@@ -17,7 +17,7 @@ export function CopierFlowVisual() {
         </div>
 
         <div className="marketing-feature-hub z-10">
-          <span className="text-sm font-semibold text-white">{v.hubLabel}</span>
+          <span className="text-sm font-semibold text-neutral-950">{v.hubLabel}</span>
         </div>
 
         <div className="relative z-10 flex w-full max-w-[320px] justify-center gap-4">

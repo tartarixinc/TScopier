@@ -17,7 +17,7 @@ const TYPE_LABEL: Record<LandingCopierLogType, string> = {
 }
 
 function typeClass(type: LandingCopierLogType): string {
-  if (type === 'buy') return 'text-primary-600 dark:text-teal-400'
+  if (type === 'buy') return 'text-green-400 dark:text-green-400'
   if (type === 'sell') return 'text-error-600 dark:text-error-400'
   if (type === 'close') return 'font-medium text-neutral-900 dark:text-neutral-100'
   return 'font-medium text-neutral-600 dark:text-neutral-400'
@@ -32,13 +32,13 @@ export function CopierLogsVisual() {
       <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-neutral-200/65 bg-white dark:border-neutral-800/55 dark:bg-neutral-900">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100 px-4 py-3 dark:border-neutral-800 sm:px-5 sm:py-4">
           <div className="flex items-center gap-2">
-            <Clock className="h-4 w-4 shrink-0 text-teal-500" aria-hidden />
+            <Clock className="h-4 w-4 shrink-0 text-green-400" aria-hidden />
             <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">
               {t.dashboard.copierLogs}
             </span>
             <Info className="h-3.5 w-3.5 text-neutral-300 dark:text-neutral-400" aria-hidden />
           </div>
-          <span className="inline-flex items-center gap-1.5 rounded-lg border border-teal-500 px-3 py-1.5 text-xs font-medium text-teal-600 dark:border-teal-600 dark:text-teal-400">
+          <span className="inline-flex items-center gap-1.5 rounded-lg border border-green-400 px-3 py-1.5 text-xs font-medium text-green-400 dark:border-green-400 dark:text-green-400">
             {t.dashboard.copierLogs}
             <ChevronRight className="h-3 w-3" aria-hidden />
           </span>
@@ -62,7 +62,7 @@ export function CopierLogsVisual() {
               key={`${row.time}-${row.type}-${index}`}
               className={clsx(COPIER_LOG_GRID, 'px-4 py-3 sm:px-5')}
             >
-              <span className="inline-flex w-fit items-center rounded-md bg-teal-50 px-2 py-0.5 text-xs font-medium text-teal-700 dark:bg-teal-950/60 dark:text-teal-300">
+              <span className="inline-flex w-fit items-center rounded-md bg-teal-50 px-2 py-0.5 text-xs font-medium text-green-500 dark:bg-teal-950/60 dark:text-teal-300">
                 {t.copierLogs.statusExecuted}
               </span>
               <span className="min-w-0 truncate text-sm font-medium text-neutral-900 dark:text-neutral-50">

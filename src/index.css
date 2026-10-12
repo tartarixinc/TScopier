@@ -64,7 +64,7 @@ body {
 
 @layer base {
   input[type='checkbox'] {
-    @apply accent-teal-600;
+    @apply accent-green-400;
   }
 }
 
@@ -234,12 +234,12 @@ html.app-viewport-lock #root {
     position: absolute;
     inset: 0;
     background:
-      radial-gradient(ellipse 70% 50% at 80% 0%, rgba(45, 212, 191, 0.12), transparent),
-      radial-gradient(ellipse 50% 40% at 0% 100%, rgba(13, 148, 136, 0.08), transparent);
+      radial-gradient(ellipse 70% 50% at 80% 0%, rgba(74, 222, 128, 0.12), transparent),
+      radial-gradient(ellipse 50% 40% at 0% 100%, rgba(74, 222, 128, 0.08), transparent);
   }
 
   html.dark .trustpilot-panel-radial {
-    background: radial-gradient(ellipse 70% 50% at 80% 0%, rgba(45, 212, 191, 0.08), transparent);
+    background: radial-gradient(ellipse 70% 50% at 80% 0%, rgba(74, 222, 128, 0.08), transparent);
   }
 
   .marketing-hero-bg {
@@ -324,14 +324,14 @@ html.app-viewport-lock #root {
   .hero-product-glow {
     @apply pointer-events-none absolute -inset-6 -z-10 sm:-inset-10;
     background:
-      radial-gradient(ellipse 70% 55% at 50% 40%, rgba(45, 212, 191, 0.35), transparent 68%),
-      radial-gradient(ellipse 45% 35% at 50% 90%, rgba(13, 148, 136, 0.12), transparent);
+      radial-gradient(ellipse 70% 55% at 50% 40%, rgba(74, 222, 128, 0.35), transparent 68%),
+      radial-gradient(ellipse 45% 35% at 50% 90%, rgba(74, 222, 128, 0.12), transparent);
   }
 
   html.dark .hero-product-glow {
     background:
-      radial-gradient(ellipse 70% 55% at 50% 40%, rgba(45, 212, 191, 0.22), transparent 68%),
-      radial-gradient(ellipse 45% 35% at 50% 90%, rgba(13, 148, 136, 0.08), transparent);
+      radial-gradient(ellipse 70% 55% at 50% 40%, rgba(74, 222, 128, 0.22), transparent 68%),
+      radial-gradient(ellipse 45% 35% at 50% 90%, rgba(74, 222, 128, 0.08), transparent);
   }
 
   .hero-product-frame {
@@ -368,12 +368,12 @@ html.app-viewport-lock #root {
 
   .hero-product-reflection {
     @apply absolute -bottom-6 left-[8%] right-[8%] h-16 -z-10 rounded-[100%];
-    background: radial-gradient(ellipse 80% 40% at 50% 0%, rgba(45, 212, 191, 0.2), transparent 70%);
+    background: radial-gradient(ellipse 80% 40% at 50% 0%, rgba(74, 222, 128, 0.2), transparent 70%);
     filter: blur(12px);
   }
 
   html.dark .hero-product-reflection {
-    background: radial-gradient(ellipse 80% 40% at 50% 0%, rgba(45, 212, 191, 0.12), transparent 70%);
+    background: radial-gradient(ellipse 80% 40% at 50% 0%, rgba(74, 222, 128, 0.12), transparent 70%);
   }
 
   .marketing-feature-panel {
@@ -415,11 +415,11 @@ html.app-viewport-lock #root {
   }
 
   .marketing-feature-node--telegram {
-    @apply border-teal-200/80 bg-teal-50/50 dark:border-teal-500/30 dark:bg-teal-950/30;
+    @apply border-teal-200/80 bg-teal-50/50 dark:border-green-400/30 dark:bg-teal-950/30;
   }
 
   .marketing-feature-node-label {
-    @apply text-[10px] font-semibold uppercase tracking-wide text-teal-600 dark:text-teal-400;
+    @apply text-[10px] font-semibold uppercase tracking-wide text-green-400 dark:text-green-400;
   }
 
   .marketing-feature-node--broker {
@@ -427,7 +427,7 @@ html.app-viewport-lock #root {
   }
 
   .marketing-feature-hub {
-    @apply inline-flex items-center justify-center rounded-full bg-teal-600 px-5 py-2.5;
+    @apply inline-flex items-center justify-center rounded-full bg-green-400 px-5 py-2.5;
   }
 
   .marketing-feature-flow::before {
@@ -441,7 +441,7 @@ html.app-viewport-lock #root {
   }
 
   .marketing-feature-pulse-ring {
-    @apply pointer-events-none absolute left-1/2 top-1/2 h-48 w-48 -translate-x-1/2 -translate-y-1/2 rounded-full border border-teal-400/30;
+    @apply pointer-events-none absolute left-1/2 top-1/2 h-48 w-48 -translate-x-1/2 -translate-y-1/2 rounded-full border border-green-400/30;
     animation: marketing-pulse-ring 3s ease-out infinite;
   }
 

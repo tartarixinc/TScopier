@@ -187,7 +187,7 @@ export function PopularChannelsPage() {
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             placeholder="Search channels..."
-            className="w-full pl-9 pr-8 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            className="w-full pl-9 pr-8 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent"
           />
           {searchQuery && (
             <button
@@ -204,7 +204,7 @@ export function PopularChannelsPage() {
           <select
             value={sort}
             onChange={e => setSort(e.target.value as SortKey)}
-            className="w-full pl-9 pr-8 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 appearance-none focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent hover:border-neutral-300 dark:hover:border-neutral-600 transition-colors"
+            className="w-full pl-9 pr-8 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 appearance-none focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent hover:border-neutral-300 dark:hover:border-neutral-600 transition-colors"
           >
             {sortOptions.map(o => (
               <option key={o.key} value={o.key}>{o.label}</option>
@@ -252,7 +252,7 @@ export function PopularChannelsPage() {
                     #{idx + 1}
                   </span>
                   <div className="w-9 h-9 bg-primary-50 rounded-lg flex items-center justify-center shrink-0">
-                    <Radio className="w-4 h-4 text-primary-600" />
+                    <Radio className="w-4 h-4 text-green-400" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-neutral-900 dark:text-neutral-50 truncate">

@@ -120,7 +120,7 @@ function TgChannelAvatar({ title, username }: { title: string; username?: string
   const avatarUrl = getTelegramAvatarUrl(username)
 
   return (
-    <div className="w-8 h-8 rounded-lg bg-primary-50 text-primary-600 flex items-center justify-center flex-shrink-0 overflow-hidden">
+    <div className="w-8 h-8 rounded-lg bg-primary-50 text-green-400 flex items-center justify-center flex-shrink-0 overflow-hidden">
       {avatarUrl && !imageFailed ? (
         <img
           src={avatarUrl}
@@ -1284,7 +1284,7 @@ export function CopierEnginePage() {
                       className={`px-3 py-1 text-xs font-medium rounded-lg border transition-colors flex-shrink-0 ${
                         alreadyAdded
                           ? 'border-neutral-200/65 dark:border-neutral-800/55 text-neutral-400 cursor-default'
-                          : 'border-primary-500 text-primary-600 hover:bg-primary-50'
+                          : 'border-green-400 text-green-400 hover:bg-primary-50'
                       }`}
                       disabled={alreadyAdded}
                     >
@@ -1431,7 +1431,7 @@ function NewSignalSourceModal({
                 key={kind}
                 type="button"
                 onClick={() => onSelect(kind)}
-                className="flex w-full items-center gap-3 rounded-xl border border-neutral-200 px-3 py-3 text-left transition-colors hover:border-teal-600 hover:bg-teal-50/60 dark:border-neutral-800 dark:hover:border-teal-500 dark:hover:bg-teal-950/30"
+                className="flex w-full items-center gap-3 rounded-xl border border-neutral-200 px-3 py-3 text-left transition-colors hover:border-green-400 hover:bg-teal-50/60 dark:border-neutral-800 dark:hover:border-green-400 dark:hover:bg-teal-950/30"
               >
                 <img
                   src={SIGNAL_SOURCE_MARKS[kind].iconSrc}
@@ -1446,7 +1446,7 @@ function NewSignalSourceModal({
                   {labelFor(kind)}
                 </span>
                 {alreadyAdded ? (
-                  <span className="text-xs font-medium text-teal-700 dark:text-teal-300">{addedLabel}</span>
+                  <span className="text-xs font-medium text-green-500 dark:text-teal-300">{addedLabel}</span>
                 ) : null}
               </button>
             )
@@ -1622,7 +1622,7 @@ function ChannelRow({
                       <div className="border-t border-neutral-100 dark:border-neutral-800 mt-1 pt-1">
                         <Link
                           to="/brokers"
-                          className="block px-3 py-2 text-xs text-primary-600 hover:bg-neutral-50 dark:hover:bg-neutral-800"
+                          className="block px-3 py-2 text-xs text-green-400 hover:bg-neutral-50 dark:hover:bg-neutral-800"
                           onClick={onCloseConnectMenu}
                         >
                           {ce.connectBrokerInConfig}
@@ -1679,7 +1679,7 @@ function ChannelRow({
           ) : (
             <Link
               to="/brokers"
-              className="inline-flex items-center rounded-lg border border-dashed border-neutral-300 dark:border-neutral-600 px-3 py-1.5 text-xs font-medium text-primary-600 hover:bg-white dark:hover:bg-neutral-900 transition-colors"
+              className="inline-flex items-center rounded-lg border border-dashed border-neutral-300 dark:border-neutral-600 px-3 py-1.5 text-xs font-medium text-green-400 hover:bg-white dark:hover:bg-neutral-900 transition-colors"
             >
               {ce.connectToBroker}
             </Link>

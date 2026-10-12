@@ -105,7 +105,7 @@ export function AwaitingApprovalSection({
                     type="button"
                     disabled={pendingApprove}
                     onClick={() => { void approve(signal.id) }}
-                    className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="rounded-lg bg-green-400 px-3 py-1.5 text-xs font-semibold text-neutral-950 transition-colors hover:bg-green-500 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     {pendingApprove ? 'Approving…' : 'Approve'}
                   </button>

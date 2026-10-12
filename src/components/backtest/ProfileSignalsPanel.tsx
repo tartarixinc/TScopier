@@ -59,7 +59,7 @@ export function ProfileSignalsPanel({
               className={clsx(
                 'px-3 py-1.5 rounded-lg text-sm border transition-colors',
                 selectedSymbol === symbol
-                  ? 'border-teal-500 bg-teal-50 text-teal-800 dark:bg-teal-950 dark:text-teal-200'
+                  ? 'border-green-400 bg-teal-50 text-teal-800 dark:bg-teal-950 dark:text-teal-200'
                   : 'border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:border-neutral-300',
               )}
             >

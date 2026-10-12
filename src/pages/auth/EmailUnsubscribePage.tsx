@@ -181,7 +181,7 @@ export function EmailUnsubscribePage() {
                 {REASONS.map((r) => (
                   <label
                     key={r.value}
-                    className="flex cursor-pointer items-center rounded-lg border border-slate-200 px-3 py-2.5 transition hover:border-teal-600 hover:bg-teal-50"
+                    className="flex cursor-pointer items-center rounded-lg border border-slate-200 px-3 py-2.5 transition hover:border-green-400 hover:bg-teal-50"
                   >
                     <input
                       type="radio"

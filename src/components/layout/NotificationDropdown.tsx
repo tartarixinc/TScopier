@@ -155,7 +155,7 @@ export function NotificationDropdown({ open, onClose }: NotificationDropdownProp
                             {item.body}
                           </p>
                           {item.actionUrl && item.actionLabel ? (
-                            <span className="mt-2 inline-flex text-xs font-semibold text-teal-700 dark:text-teal-300">
+                            <span className="mt-2 inline-flex text-xs font-semibold text-green-500 dark:text-teal-300">
                               {item.actionLabel}
                             </span>
                           ) : null}
@@ -192,7 +192,7 @@ export function NotificationDropdown({ open, onClose }: NotificationDropdownProp
           onClick={() => {
             markAllRead()
           }}
-          className="text-xs font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300"
+          className="text-xs font-medium text-green-400 hover:text-green-500 dark:text-green-400 dark:hover:text-teal-300"
         >
           {nn.markAllRead}
         </button>

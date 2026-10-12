@@ -612,7 +612,7 @@ export function AssistantPanel() {
         )}
       >
         <header className="flex items-center gap-2 border-b border-neutral-200/65 px-4 py-3 dark:border-neutral-800/55">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-teal-50 text-teal-700 dark:bg-teal-950/50 dark:text-teal-300">
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-teal-50 text-green-500 dark:bg-teal-950/50 dark:text-teal-300">
             <Sparkles className="h-4 w-4" />
           </div>
           <div className="min-w-0 flex-1">
@@ -650,7 +650,7 @@ export function AssistantPanel() {
                       startNewThread()
                       setHistoryOpen(false)
                     }}
-                    className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-teal-700 hover:bg-teal-50 dark:text-teal-300 dark:hover:bg-teal-950/50"
+                    className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-green-500 hover:bg-teal-50 dark:text-teal-300 dark:hover:bg-teal-950/50"
                   >
                     <Plus className="h-3.5 w-3.5" />
                     {a.newChat}
@@ -731,13 +731,13 @@ export function AssistantPanel() {
           ref={listRef}
           className={clsx(
             'flex-1 space-y-4 overflow-y-auto px-4 py-5',
-            'bg-[radial-gradient(ellipse_at_top,_rgba(13,148,136,0.06),_transparent_55%),linear-gradient(to_bottom,_#f8fafc,_#ffffff)]',
-            'dark:bg-[radial-gradient(ellipse_at_top,_rgba(13,148,136,0.12),_transparent_50%),linear-gradient(to_bottom,_#020617,_#0f172a)]',
+            'bg-[radial-gradient(ellipse_at_top,_rgba(74,222,128,0.06),_transparent_55%),linear-gradient(to_bottom,_#f8fafc,_#ffffff)]',
+            'dark:bg-[radial-gradient(ellipse_at_top,_rgba(74,222,128,0.12),_transparent_50%),linear-gradient(to_bottom,_#020617,_#0f172a)]',
           )}
         >
           {messages.length === 0 && !showTelegramCard && !showBrokerCard && (
             <div className="animate-assistant-msg-in mx-auto max-w-sm pt-6 text-center">
-              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 to-teal-700 text-white shadow-lg shadow-teal-600/25">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-green-400 to-green-500 text-neutral-950 shadow-lg shadow-green-400/25">
                 <Sparkles className="h-5 w-5" />
               </div>
               <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{a.welcomeTitle}</p>
@@ -747,7 +747,7 @@ export function AssistantPanel() {
                   <button
                     key={s}
                     type="button"
-                    className="rounded-full border border-neutral-200/90 bg-white/90 px-3 py-1.5 text-start text-xs text-neutral-700 shadow-sm transition hover:border-teal-300 hover:text-teal-800 dark:border-neutral-700 dark:bg-neutral-900/80 dark:text-neutral-200 dark:hover:border-teal-700 dark:hover:text-teal-200"
+                    className="rounded-full border border-neutral-200/90 bg-white/90 px-3 py-1.5 text-start text-xs text-neutral-700 shadow-sm transition hover:border-teal-300 hover:text-teal-800 dark:border-neutral-700 dark:bg-neutral-900/80 dark:text-neutral-200 dark:hover:border-green-500 dark:hover:text-teal-200"
                     onClick={() => setDraft(s)}
                   >
                     {s}
@@ -967,7 +967,7 @@ export function AssistantPanel() {
                     ? a.telegram.composerPhoneHint
                     : a.placeholder
               }
-              className="min-h-[44px] flex-1 resize-none rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-teal-500 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+              className="min-h-[44px] flex-1 resize-none rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-green-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
               disabled={sending || telegramLink.busy || brokerConnect.busy}
             />
             <Button

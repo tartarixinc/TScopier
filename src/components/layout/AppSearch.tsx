@@ -273,7 +273,7 @@ function useAppSearchController(headerEl: HTMLElement | null) {
   }, [activeIndex, showSuggestions])
 
   const inputClassName =
-    'w-full rounded-lg border border-neutral-200 bg-neutral-50 py-2 ps-9 pe-3 text-base md:text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary-500 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 lg:pe-14'
+    'w-full rounded-lg border border-neutral-200 bg-neutral-50 py-2 ps-9 pe-3 text-base md:text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-green-400 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 lg:pe-14'
 
   const renderInput = (opts: { showShortcut: boolean }) => (
     <>
@@ -364,7 +364,7 @@ function useAppSearchController(headerEl: HTMLElement | null) {
                         className={clsx(
                           'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
                           isActive
-                            ? 'bg-teal-100 text-teal-700 dark:bg-teal-900/60 dark:text-teal-300'
+                            ? 'bg-teal-100 text-green-500 dark:bg-teal-900/60 dark:text-teal-300'
                             : 'bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400',
                         )}
                       >
@@ -398,7 +398,7 @@ function useAppSearchController(headerEl: HTMLElement | null) {
       className={clsx(
         'shrink-0 rounded-lg p-1.5 transition-colors sm:p-2 lg:hidden',
         mobileExpanded
-          ? 'text-teal-600 bg-teal-50 dark:text-teal-400 dark:bg-teal-950/50'
+          ? 'text-green-400 bg-teal-50 dark:text-green-400 dark:bg-teal-950/50'
           : 'text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800',
       )}
     >

@@ -323,7 +323,7 @@ function SettingToggle({
       safety && 'bg-teal-50/70 ring-1 ring-teal-200/70 dark:bg-teal-950/20 dark:ring-teal-900',
     )}>
       <div className="flex min-w-0 items-center gap-2">
-        {safety ? <ShieldCheck className="h-4 w-4 shrink-0 text-teal-600 dark:text-teal-400" aria-hidden /> : null}
+        {safety ? <ShieldCheck className="h-4 w-4 shrink-0 text-green-400 dark:text-green-400" aria-hidden /> : null}
         <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100">{label}</p>
       </div>
       <Toggle checked={checked} onChange={onChange} />
@@ -469,7 +469,7 @@ export function SlaveConfigureModal({
               <h2 id="slave-configure-title" className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">
                 {interpolate(setup.title, { account: getBrokerDisplayLabel(slave) })}
               </h2>
-              <span className="rounded-full bg-teal-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-teal-700 dark:bg-teal-950/40 dark:text-teal-300">
+              <span className="rounded-full bg-teal-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-green-500 dark:bg-teal-950/40 dark:text-teal-300">
                 {setup.preview}
               </span>
             </div>
@@ -509,7 +509,7 @@ export function SlaveConfigureModal({
 
               <section aria-labelledby="slave-account-heading">
                 <h3 id="slave-account-heading" className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{setup.slaveAccount}</h3>
-                <div className="mt-2 flex items-center gap-3 rounded-xl border border-teal-500 bg-teal-50/60 px-3 py-3 ring-1 ring-teal-500 dark:bg-teal-950/20">
+                <div className="mt-2 flex items-center gap-3 rounded-xl border border-green-400 bg-teal-50/60 px-3 py-3 ring-1 ring-green-400 dark:bg-teal-950/20">
                   <AccountLogo platform={slave.platform} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-semibold text-neutral-900 dark:text-neutral-50">{getBrokerDisplayLabel(slave)}</span>
@@ -519,7 +519,7 @@ export function SlaveConfigureModal({
                       {login ? <span>{loginLabel} {login}</span> : null}
                     </span>
                   </span>
-                  <Check className="h-5 w-5 shrink-0 text-teal-600 dark:text-teal-400" aria-hidden />
+                  <Check className="h-5 w-5 shrink-0 text-green-400 dark:text-green-400" aria-hidden />
                 </div>
               </section>
 
@@ -535,7 +535,7 @@ export function SlaveConfigureModal({
                       className={clsx(
                         'rounded-xl border px-3 py-2 text-start transition-colors',
                         sizing.mode === mode
-                          ? 'border-teal-500 bg-teal-50/60 ring-1 ring-teal-500 dark:bg-teal-950/20'
+                          ? 'border-green-400 bg-teal-50/60 ring-1 ring-green-400 dark:bg-teal-950/20'
                           : 'border-neutral-200 hover:border-neutral-300 dark:border-neutral-800 dark:hover:border-neutral-700',
                       )}
                       aria-pressed={sizing.mode === mode}
@@ -580,7 +580,7 @@ export function SlaveConfigureModal({
                           className={clsx(
                             'rounded-lg border px-2 py-2 text-xs font-semibold tabular-nums',
                             current === value
-                              ? 'border-teal-500 bg-teal-50 text-teal-700 dark:bg-teal-950/30 dark:text-teal-300'
+                              ? 'border-green-400 bg-teal-50 text-green-500 dark:bg-teal-950/30 dark:text-teal-300'
                               : 'border-neutral-200 text-neutral-600 dark:border-neutral-800 dark:text-neutral-300',
                           )}
                           onClick={() => patch({
@@ -630,7 +630,7 @@ export function SlaveConfigureModal({
                       className={clsx(
                         'rounded-xl border px-3 py-2 text-start transition-colors',
                         activeSimple === method
-                          ? 'border-teal-500 bg-teal-50/60 ring-1 ring-teal-500 dark:bg-teal-950/20'
+                          ? 'border-green-400 bg-teal-50/60 ring-1 ring-green-400 dark:bg-teal-950/20'
                           : 'border-neutral-200 hover:border-neutral-300 dark:border-neutral-800 dark:hover:border-neutral-700',
                       )}
                       aria-pressed={activeSimple === method}
@@ -659,7 +659,7 @@ export function SlaveConfigureModal({
                           className={clsx(
                             'rounded-lg border px-2 py-2 text-xs font-semibold tabular-nums',
                             sizing.lot_multiplier === value
-                              ? 'border-teal-500 bg-teal-50 text-teal-700 dark:bg-teal-950/30 dark:text-teal-300'
+                              ? 'border-green-400 bg-teal-50 text-green-500 dark:bg-teal-950/30 dark:text-teal-300'
                               : 'border-neutral-200 text-neutral-600 dark:border-neutral-800 dark:text-neutral-300',
                           )}
                           onClick={() => patch({ ...settings, sizing: { ...sizing, mode: 'lot_multiplier', lot_multiplier: value } })}
@@ -720,19 +720,19 @@ export function SlaveConfigureModal({
             <section aria-labelledby="slave-preview-heading" className="self-start rounded-2xl border border-neutral-200/80 bg-neutral-50/70 p-4 dark:border-neutral-800 dark:bg-neutral-900/60 sm:p-5 lg:sticky lg:top-0 lg:max-h-[calc(94vh-9rem)] lg:overflow-y-auto">
               <div className="flex items-center justify-between gap-3">
                 <h3 id="slave-preview-heading" className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{setup.preview}</h3>
-                <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-teal-700 dark:text-teal-300">{setup.preview}</span>
+                <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-green-500 dark:text-teal-300">{setup.preview}</span>
               </div>
               <div className="mt-4">
                 <div className="rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-950">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-neutral-400">{setup.exampleTrade}</p>
                   <div className="mt-1 flex items-center justify-between gap-3">
                     <p className="text-base font-semibold text-neutral-900 dark:text-neutral-50">{sourceName ?? setup.exampleTrade}</p>
-                    <p className="text-xs font-semibold text-teal-700 dark:text-teal-300">{setup.masterSize}: {EXAMPLE_LOT.toFixed(2)}</p>
+                    <p className="text-xs font-semibold text-green-500 dark:text-teal-300">{setup.masterSize}: {EXAMPLE_LOT.toFixed(2)}</p>
                   </div>
                 </div>
-                <div className="flex justify-center py-2 text-teal-600 dark:text-teal-400"><ArrowDown className="h-5 w-5" aria-hidden /></div>
+                <div className="flex justify-center py-2 text-green-400 dark:text-green-400"><ArrowDown className="h-5 w-5" aria-hidden /></div>
                 <div className="rounded-xl border border-teal-200 bg-white p-4 dark:border-teal-900 dark:bg-neutral-950">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-teal-700 dark:text-teal-300">{setup.slaveAccount}</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-green-500 dark:text-teal-300">{setup.slaveAccount}</p>
                   <div className="mt-2 flex items-center gap-3">
                     <AccountLogo platform={slave.platform} />
                     <div className="min-w-0">
@@ -766,7 +766,7 @@ export function SlaveConfigureModal({
                 {sourceName ? (
                   <div className="mt-3 flex items-center justify-center gap-2 text-xs font-medium text-neutral-500 dark:text-neutral-400">
                     <span className="truncate">{sourceName}</span>
-                    <ArrowRight className="h-3.5 w-3.5 shrink-0 text-teal-600 dark:text-teal-400" aria-hidden />
+                    <ArrowRight className="h-3.5 w-3.5 shrink-0 text-green-400 dark:text-green-400" aria-hidden />
                     <span className="truncate">{accountRouteLabel(slave)}</span>
                   </div>
                 ) : null}

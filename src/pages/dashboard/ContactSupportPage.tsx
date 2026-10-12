@@ -27,11 +27,11 @@ function ContactChannelCard({
   external?: boolean
 }) {
   const actionClass =
-    'inline-flex items-center gap-1.5 text-sm font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300'
+    'inline-flex items-center gap-1.5 text-sm font-medium text-green-400 hover:text-green-500 dark:text-green-400 dark:hover:text-teal-300'
 
   return (
     <article className="flex h-full flex-col rounded-2xl border border-neutral-200/65 bg-white p-5 shadow-sm dark:border-neutral-800/55 dark:bg-neutral-950 sm:p-6">
-      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-50 text-teal-600 dark:bg-teal-950/50 dark:text-teal-400">
+      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-50 text-green-400 dark:bg-teal-950/50 dark:text-green-400">
         <Icon className="h-5 w-5" aria-hidden />
       </span>
       <h2 className="mt-4 text-base font-semibold text-neutral-900 dark:text-neutral-50">{title}</h2>
@@ -140,7 +140,7 @@ export function ContactSupportPage() {
           </Button>
           <a
             href={`mailto:${SUPPORT_EMAIL}`}
-            className="text-sm font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300"
+            className="text-sm font-medium text-green-400 hover:text-green-500 dark:text-green-400 dark:hover:text-teal-300"
           >
             {SUPPORT_EMAIL}
           </a>

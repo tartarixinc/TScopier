@@ -551,7 +551,7 @@ export function MirrorTradingPage() {
               <Button type="button" variant="secondary" size="sm" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>
                 {copy.back}
               </Button>
-              <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-lg bg-teal-600 px-2 font-medium text-white">
+              <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-lg bg-green-400 px-2 font-medium text-neutral-950">
                 {currentPage}
               </span>
               <Button type="button" variant="secondary" size="sm" disabled={currentPage >= totalPages} onClick={() => setPage(currentPage + 1)}>

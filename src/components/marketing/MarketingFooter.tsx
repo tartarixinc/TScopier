@@ -25,7 +25,7 @@ function FooterNavLink({ link }: { link: FooterLink }) {
   const className = clsx(
     'text-sm transition-colors',
     link.highlight
-      ? 'font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300'
+      ? 'font-medium text-green-400 hover:text-green-500 dark:text-green-400 dark:hover:text-teal-300'
       : 'text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100',
   )
 
@@ -122,7 +122,7 @@ export function MarketingFooter() {
               <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center">
                 <a
                   href={appUrl('/signup')}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-teal-600 bg-teal-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:border-teal-700 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-950"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-green-400 bg-green-400 px-5 py-2.5 text-sm font-medium text-neutral-950 transition-colors hover:border-green-500 hover:bg-green-500 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2 dark:focus:ring-offset-neutral-950"
                 >
                   {f.cta.primary}
                   <ArrowRight className="h-4 w-4" aria-hidden />

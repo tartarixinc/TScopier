@@ -280,7 +280,7 @@ export function SignupPage() {
         {signupT.hasAccount}{' '}
         <a
           href="/login"
-          className="font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300"
+          className="font-medium text-green-400 hover:text-green-500 dark:text-green-400 dark:hover:text-teal-300"
         >
           {signupT.signInLink}
         </a>
@@ -381,7 +381,7 @@ export function SignupPage() {
                   className={clsx(
                     'flex items-center gap-1.5 text-xs',
                     requirement.satisfied
-                      ? 'text-teal-700 dark:text-teal-300'
+                      ? 'text-green-500 dark:text-teal-300'
                       : 'text-neutral-500 dark:text-neutral-400',
                   )}
                 >
@@ -474,7 +474,7 @@ export function SignupPage() {
           href={marketingUrl('/terms')}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-teal-600 hover:underline dark:text-teal-400"
+          className="text-green-400 hover:underline dark:text-green-400"
         >
           {signupT.terms.termsOfService}
         </a>
@@ -483,7 +483,7 @@ export function SignupPage() {
           href={marketingUrl('/privacy')}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-teal-600 hover:underline dark:text-teal-400"
+          className="text-green-400 hover:underline dark:text-green-400"
         >
           {signupT.terms.privacyPolicy}
         </a>

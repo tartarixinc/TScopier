@@ -401,7 +401,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
                   <button
                     type="button"
                     onClick={askAssistantAboutFailure}
-                    className="text-xs font-semibold text-teal-700 dark:text-teal-300 hover:underline underline-offset-2"
+                    className="text-xs font-semibold text-green-500 dark:text-teal-300 hover:underline underline-offset-2"
                   >
                     Ask AI about this issue
                   </button>
@@ -431,7 +431,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
               <button
                 type="button"
                 onClick={handleViewCopierLogs}
-                className="text-xs font-semibold text-teal-700 dark:text-teal-300 hover:underline underline-offset-2"
+                className="text-xs font-semibold text-green-500 dark:text-teal-300 hover:underline underline-offset-2"
               >
                 {tr.viewCopierLogs}
               </button>
@@ -453,7 +453,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
             <>
               <section className="rounded-xl border border-teal-200/80 dark:border-teal-900/60 bg-teal-50/40 dark:bg-teal-950/20 p-4 space-y-2">
                 <div className="flex items-center gap-2">
-                  <Radio className="w-4 h-4 text-teal-600 dark:text-teal-400 shrink-0" />
+                  <Radio className="w-4 h-4 text-green-400 dark:text-green-400 shrink-0" />
                   <p className="text-xs font-semibold uppercase tracking-wide text-teal-800 dark:text-teal-300">
                     {tr.signalChannel}
                   </p>
@@ -476,7 +476,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
               <button
                 type="button"
                 onClick={askAssistantExplainSignal}
-                className="text-xs font-semibold text-teal-700 dark:text-teal-300 hover:underline underline-offset-2"
+                className="text-xs font-semibold text-green-500 dark:text-teal-300 hover:underline underline-offset-2"
               >
                 {t.copierLogs.detailModal?.explainWithAi ?? 'Explain with AI'}
               </button>
@@ -494,7 +494,7 @@ export function TradeDetailModal({ trade, userId, manualOverrideWarningMaps, onC
                       href={context.signal.raw_image_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-xs text-teal-600 dark:text-teal-400 hover:underline"
+                      className="text-xs text-green-400 dark:text-green-400 hover:underline"
                     >
                       {context.signal.raw_image_url}
                     </a>

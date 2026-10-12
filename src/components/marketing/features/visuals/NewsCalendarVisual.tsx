@@ -114,7 +114,7 @@ export function NewsCalendarVisual() {
                   <span className="truncate">{article.source}</span>
                   <span className="shrink-0 tabular-nums">{article.relativeTime}</span>
                 </div>
-                <span className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-semibold text-teal-600 dark:text-teal-400 sm:mt-2 sm:text-xs">
+                <span className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-semibold text-green-400 dark:text-green-400 sm:mt-2 sm:text-xs">
                   {ec.readArticle}
                   <ExternalLink className="h-3 w-3" aria-hidden />
                 </span>

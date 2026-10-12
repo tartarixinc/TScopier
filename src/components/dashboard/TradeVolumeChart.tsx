@@ -74,7 +74,7 @@ export function TradeVolumeChart({ data, loading, stale }: TradeVolumeChartProps
               <Bar
                 dataKey="profit"
                 name={t.dashboard.chartProfit}
-                fill="#0d9488"
+                fill="#4ade80"
                 activeBar={{ fill: colors.barActive.profit, stroke: colors.barActive.profit }}
                 radius={[4, 4, 0, 0]}
                 maxBarSize={28}

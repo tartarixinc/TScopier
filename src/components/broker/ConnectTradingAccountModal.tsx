@@ -337,7 +337,7 @@ export function ConnectTradingAccountModal({
                       className={clsx(
                         'rounded-xl border px-3 py-2.5 text-left text-sm transition-colors',
                         selectedPlatform === option
-                          ? 'border-teal-500 bg-teal-50 text-teal-900 dark:border-teal-400 dark:bg-teal-950/40 dark:text-teal-100'
+                          ? 'border-green-400 bg-teal-50 text-teal-900 dark:border-green-400 dark:bg-teal-950/40 dark:text-teal-100'
                           : 'border-neutral-200/65 bg-white text-neutral-700 hover:border-neutral-300 dark:border-neutral-800/55 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:border-neutral-700',
                       )}
                     >
@@ -357,7 +357,7 @@ export function ConnectTradingAccountModal({
                   <button
                     type="button"
                     onClick={() => setPlatform(serverPlatformMismatch)}
-                    className="mt-2 font-medium text-teal-700 underline underline-offset-2 hover:text-teal-800 dark:text-teal-300 dark:hover:text-teal-200"
+                    className="mt-2 font-medium text-green-500 underline underline-offset-2 hover:text-teal-800 dark:text-teal-300 dark:hover:text-teal-200"
                   >
                     {serverPlatformMismatch === 'MT4' ? cf.platformMt4 : cf.platformMt5}
                   </button>
@@ -447,7 +447,7 @@ export function ConnectTradingAccountModal({
                 role="status"
                 aria-live="polite"
               >
-                <Loader2 className="h-10 w-10 animate-spin text-teal-600 dark:text-teal-400" />
+                <Loader2 className="h-10 w-10 animate-spin text-green-400 dark:text-green-400" />
                 <div>
                   <p className="text-base font-semibold text-neutral-900 dark:text-neutral-50">
                     {cf.connectingTitle}

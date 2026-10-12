@@ -249,7 +249,7 @@ export function SettingsPage() {
   if (loading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center p-8">
-        <Loader2 className="h-8 w-8 animate-spin text-teal-600" />
+        <Loader2 className="h-8 w-8 animate-spin text-green-400" />
       </div>
     )
   }
@@ -274,7 +274,7 @@ export function SettingsPage() {
                     : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 border border-transparent',
                 )}
               >
-                <Icon className={clsx('h-4 w-4', active ? 'text-teal-600 dark:text-teal-400' : 'text-neutral-400')} />
+                <Icon className={clsx('h-4 w-4', active ? 'text-green-400 dark:text-green-400' : 'text-neutral-400')} />
                 {label}
               </button>
             )
@@ -301,7 +301,7 @@ export function SettingsPage() {
               <div className="mb-6 flex items-center gap-4">
                 <UserAvatar user={user} profile={profile} email={user?.email} size="lg" />
                 <div className="min-w-0">
-                  <label className="inline-flex cursor-pointer items-center rounded-lg bg-teal-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-teal-700">
+                  <label className="inline-flex cursor-pointer items-center rounded-lg bg-green-400 px-3 py-1.5 text-sm font-medium text-neutral-950 shadow-sm hover:bg-green-500">
                     <input
                       ref={photoInputRef}
                       type="file"
@@ -370,7 +370,7 @@ export function SettingsPage() {
                     value={profile.address}
                     onChange={e => patchProfile({ address: e.target.value })}
                     rows={3}
-                    className="mt-1.5 w-full px-3 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-y min-h-[88px]"
+                    className="mt-1.5 w-full px-3 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent resize-y min-h-[88px]"
                     placeholder={t.settings.placeholders.address}
                   />
                 </div>

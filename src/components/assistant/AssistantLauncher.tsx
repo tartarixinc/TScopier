@@ -217,8 +217,8 @@ export function AssistantLauncher({
           title={a.title}
           onClick={handleOpen}
           className={clsx(
-            'inline-flex h-12 w-12 cursor-grab items-center justify-center rounded-full border border-teal-200 bg-white text-teal-700 shadow-lg shadow-neutral-900/10 active:cursor-grabbing',
-            'transition hover:-translate-y-0.5 hover:border-teal-300 hover:bg-teal-50 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 focus:ring-offset-white',
+            'inline-flex h-12 w-12 cursor-grab items-center justify-center rounded-full border border-teal-200 bg-white text-green-500 shadow-lg shadow-neutral-900/10 active:cursor-grabbing',
+            'transition hover:-translate-y-0.5 hover:border-teal-300 hover:bg-teal-50 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2 focus:ring-offset-white',
             'dark:border-teal-900/70 dark:bg-neutral-900 dark:text-teal-300 dark:shadow-black/30 dark:hover:bg-teal-950/50 dark:focus:ring-offset-neutral-950',
           )}
         >
@@ -235,7 +235,7 @@ export function AssistantLauncher({
           }}
           className={clsx(
             'absolute -end-1.5 -top-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 shadow-sm',
-            'transition hover:bg-neutral-100 hover:text-neutral-800 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 focus:ring-offset-white',
+            'transition hover:bg-neutral-100 hover:text-neutral-800 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2 focus:ring-offset-white',
             'dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800 dark:focus:ring-offset-neutral-950',
           )}
         >
@@ -265,12 +265,12 @@ export function AssistantLauncher({
         onClick={handleOpen}
         className={clsx(
           'group flex w-full cursor-grab items-center gap-3 rounded-xl border border-neutral-200 bg-white p-3 pe-20 text-start shadow-lg shadow-neutral-900/10 active:cursor-grabbing',
-          'transition hover:-translate-y-0.5 hover:border-teal-200 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 focus:ring-offset-white',
+          'transition hover:-translate-y-0.5 hover:border-teal-200 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2 focus:ring-offset-white',
           'dark:border-neutral-800 dark:bg-neutral-900 dark:shadow-black/30 dark:hover:border-teal-900/80 dark:focus:ring-offset-neutral-950',
         )}
       >
         <span
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-teal-50 text-teal-700 dark:bg-teal-950/50 dark:text-teal-300"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-teal-50 text-green-500 dark:bg-teal-950/50 dark:text-teal-300"
           aria-hidden
         >
           <Sparkles className="h-4 w-4" />
@@ -295,7 +295,7 @@ export function AssistantLauncher({
         }}
         className={clsx(
           'absolute end-10 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-neutral-400',
-          'transition hover:bg-neutral-100 hover:text-neutral-700 focus:outline-none focus:ring-2 focus:ring-teal-500',
+          'transition hover:bg-neutral-100 hover:text-neutral-700 focus:outline-none focus:ring-2 focus:ring-green-400',
           'dark:hover:bg-neutral-800 dark:hover:text-neutral-200',
         )}
       >
@@ -312,7 +312,7 @@ export function AssistantLauncher({
         }}
         className={clsx(
           'absolute end-2.5 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-neutral-400',
-          'transition hover:bg-neutral-100 hover:text-neutral-700 focus:outline-none focus:ring-2 focus:ring-teal-500',
+          'transition hover:bg-neutral-100 hover:text-neutral-700 focus:outline-none focus:ring-2 focus:ring-green-400',
           'dark:hover:bg-neutral-800 dark:hover:text-neutral-200',
         )}
       >

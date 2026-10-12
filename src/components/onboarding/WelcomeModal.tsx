@@ -75,7 +75,7 @@ export function WelcomeModal() {
       >
         <div className="px-6 py-8 text-center">
           <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-teal-50 dark:bg-teal-950/40">
-            <CheckCircle2 className="h-8 w-8 text-teal-600 dark:text-teal-400" />
+            <CheckCircle2 className="h-8 w-8 text-green-400 dark:text-green-400" />
           </div>
 
           <h2
@@ -89,7 +89,7 @@ export function WelcomeModal() {
           <ul className="mt-6 space-y-2.5 text-left text-sm text-neutral-600 dark:text-neutral-400">
             {welcomeT.steps.map(step => (
               <li key={step} className="flex items-start gap-2.5">
-                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-teal-600 dark:text-teal-400" aria-hidden />
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-400 dark:text-green-400" aria-hidden />
                 <span>{step}</span>
               </li>
             ))}

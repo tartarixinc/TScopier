@@ -331,7 +331,7 @@ export function BrokerStatsOverlay() {
               <h2 id="broker-stats-title" className="text-lg font-semibold text-neutral-900 dark:text-neutral-50 truncate">
                 {accountLabel}
               </h2>
-              <p className="text-xs text-primary-600 font-medium uppercase tabular-nums">{platformLine}</p>
+              <p className="text-xs text-green-400 font-medium uppercase tabular-nums">{platformLine}</p>
               <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
                 {brokerLabel}
                 {account ? (
@@ -340,7 +340,7 @@ export function BrokerStatsOverlay() {
                     <span
                       className={clsx(
                         'font-semibold',
-                        accountType === 'Live' && 'text-teal-700 dark:text-teal-300',
+                        accountType === 'Live' && 'text-green-500 dark:text-teal-300',
                         accountType === 'Demo' && 'text-amber-700 dark:text-amber-300',
                       )}
                     >
@@ -526,7 +526,7 @@ export function BrokerStatsOverlay() {
                   </div>
                   <Link
                     to="/account-trades"
-                    className="shrink-0 text-xs font-semibold text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300"
+                    className="shrink-0 text-xs font-semibold text-green-400 hover:text-green-500 dark:text-green-400 dark:hover:text-teal-300"
                   >
                     {bs.seeAll}
                   </Link>

@@ -55,7 +55,7 @@ function metricClass(card: LandingBentoCard, featured: boolean): string {
     if (card.metricVariant === 'amber') return 'text-amber-300'
     return 'text-white'
   }
-  if (card.metricVariant === 'teal') return 'text-teal-700 dark:text-teal-400'
+  if (card.metricVariant === 'teal') return 'text-green-500 dark:text-green-400'
   return 'text-neutral-800 dark:text-neutral-100'
 }
 
@@ -126,7 +126,7 @@ export function WhyChooseSection() {
       <MarketingStatsBar stats={l.stats} />
 
       <div className="mx-auto max-w-3xl text-center">
-        <p className="text-xs font-semibold uppercase tracking-wider text-teal-600 dark:text-teal-400">
+        <p className="text-xs font-semibold uppercase tracking-wider text-green-400 dark:text-green-400">
           {l.eyebrow}
         </p>
         <h2 className="mt-3 text-3xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-4xl lg:text-[2.5rem] lg:leading-tight">

@@ -35,7 +35,7 @@ export function RelatedNewsPanel({ articles, title, empty, readArticle }: Relate
                 <span className="shrink-0 tabular-nums">{formatRelative(articleTimestampSec(article))}</span>
               </div>
               {article.url ? (
-                <span className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-teal-600 dark:text-teal-400">
+                <span className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-green-400 dark:text-green-400">
                   {readArticle}
                   <ExternalLink className="h-3 w-3" />
                 </span>

@@ -86,7 +86,7 @@ export function PerformanceTradeOutcomeChart({
               <Bar
                 dataKey="profit"
                 name={profitLabel}
-                fill="#0d9488"
+                fill="#4ade80"
                 activeBar={{ fill: colors.barActive.profit, stroke: colors.barActive.profit }}
                 radius={[4, 4, 0, 0]}
                 maxBarSize={28}

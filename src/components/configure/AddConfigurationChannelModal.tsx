@@ -156,7 +156,7 @@ export function AddConfigurationChannelModal({
             {step === 'choose' || step === 'tradingview' || step === 'discord' || step === 'whatsapp' ? null : (
               <button
                 type="button"
-                className="rounded-lg p-2 text-teal-700 hover:bg-teal-50 dark:text-teal-300 dark:hover:bg-teal-950"
+                className="rounded-lg p-2 text-green-500 hover:bg-teal-50 dark:text-teal-300 dark:hover:bg-teal-950"
                 aria-label={step === 'telegram' ? formCopy.addFormTitle : copy.addBroker}
                 aria-expanded={step === 'telegram' ? showForm : undefined}
                 onClick={() => {
@@ -214,7 +214,7 @@ export function AddConfigurationChannelModal({
                 className="flex w-full items-center gap-3 rounded-xl border border-neutral-200 px-4 py-3 text-start hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900"
                 onClick={() => setStep('tradingview')}
               >
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-teal-600 text-[10px] font-semibold text-white">TV</span>
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-green-400 text-[10px] font-semibold text-neutral-950">TV</span>
                 <span className="text-sm font-medium text-neutral-900 dark:text-neutral-50">{formCopy.tabTradingView}</span>
               </button>
               <button
@@ -347,7 +347,7 @@ export function AddConfigurationChannelModal({
                       className="flex w-full items-center gap-2.5 py-2.5 text-start hover:bg-neutral-50 dark:hover:bg-neutral-900"
                       onClick={() => onSelect(channel.id)}
                     >
-                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-teal-600 text-[10px] font-semibold text-white">TV</span>
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-green-400 text-[10px] font-semibold text-neutral-950">TV</span>
                       <span className="block truncate text-sm font-medium text-neutral-900 dark:text-neutral-50">{name}</span>
                     </button>
                   </li>

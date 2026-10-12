@@ -236,7 +236,7 @@ export function BulkUploadAccountsModal({ open, onClose, onBatchComplete }: Bulk
               className={clsx(
                 'rounded-2xl border-2 border-dashed px-4 py-8 text-center transition-colors',
                 dragOver
-                  ? 'border-teal-500 bg-teal-50/50 dark:bg-teal-950/20'
+                  ? 'border-green-400 bg-teal-50/50 dark:bg-teal-950/20'
                   : 'border-neutral-200 dark:border-neutral-700',
               )}
             >

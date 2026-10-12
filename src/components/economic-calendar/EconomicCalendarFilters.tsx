@@ -83,7 +83,7 @@ export function EconomicCalendarFilters({
           type="checkbox"
           checked={showNewsFilter}
           onChange={(e) => onNewsFilterChange(e.target.checked)}
-          className="h-4 w-4 rounded border-neutral-300 text-teal-600 focus:ring-teal-500"
+          className="h-4 w-4 rounded border-neutral-300 text-green-400 focus:ring-green-400"
         />
         {labels.newsFilter}
       </label>

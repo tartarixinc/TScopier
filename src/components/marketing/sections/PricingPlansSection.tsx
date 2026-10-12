@@ -164,7 +164,7 @@ export function PricingPlansSection({ variant = 'marketing' }: PricingPlansSecti
       <a
         href={marketingSignupHref(plan)}
         onClick={() => stashPendingPlanSelection(selection)}
-        className="inline-flex w-full items-center justify-center rounded-xl bg-teal-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-teal-700"
+        className="inline-flex w-full items-center justify-center rounded-xl bg-green-400 px-4 py-3 text-sm font-semibold text-neutral-950 transition-colors hover:bg-green-500"
       >
         {label}
       </a>
@@ -195,7 +195,7 @@ export function PricingPlansSection({ variant = 'marketing' }: PricingPlansSecti
             className={clsx(
               'rounded-full px-5 py-2 text-sm font-medium transition-all',
               !isAnnual
-                ? 'bg-teal-600 text-white shadow-sm'
+                ? 'bg-green-400 text-neutral-950 shadow-sm'
                 : 'text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100',
             )}
           >
@@ -207,7 +207,7 @@ export function PricingPlansSection({ variant = 'marketing' }: PricingPlansSecti
             className={clsx(
               'rounded-full px-5 py-2 text-sm font-medium transition-all',
               isAnnual
-                ? 'bg-teal-600 text-white shadow-sm'
+                ? 'bg-green-400 text-neutral-950 shadow-sm'
                 : 'text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100',
             )}
           >
@@ -250,7 +250,7 @@ export function PricingPlansSection({ variant = 'marketing' }: PricingPlansSecti
             <ul className="mt-4 space-y-3">
               {pt.basicFeatures.map((feature) => (
                 <li key={feature} className="flex items-start gap-3">
-                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-teal-500" aria-hidden />
+                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-400" aria-hidden />
                   <span className="text-sm text-neutral-700 dark:text-neutral-300">{feature}</span>
                 </li>
               ))}
@@ -258,8 +258,8 @@ export function PricingPlansSection({ variant = 'marketing' }: PricingPlansSecti
           </div>
         </div>
 
-        <div className="relative rounded-2xl border-2 border-teal-500 bg-white p-8 shadow-md dark:bg-neutral-900 lg:-mt-2 lg:mb-2">
-          <div className="absolute -top-3 left-6 inline-flex items-center gap-1 rounded-full bg-teal-500 px-3 py-1 text-xs font-semibold text-white">
+        <div className="relative rounded-2xl border-2 border-green-400 bg-white p-8 shadow-md dark:bg-neutral-900 lg:-mt-2 lg:mb-2">
+          <div className="absolute -top-3 left-6 inline-flex items-center gap-1 rounded-full bg-green-400 px-3 py-1 text-xs font-semibold text-neutral-950">
             <Zap className="h-3 w-3" aria-hidden />
             {pt.popular}
           </div>
@@ -344,7 +344,7 @@ export function PricingPlansSection({ variant = 'marketing' }: PricingPlansSecti
             <ul className="mt-4 space-y-3">
               {pt.advancedFeatures.map((feature) => (
                 <li key={feature} className="flex items-start gap-3">
-                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-teal-500" aria-hidden />
+                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-400" aria-hidden />
                   <span className="text-sm text-neutral-700 dark:text-neutral-300">{feature}</span>
                 </li>
               ))}
@@ -386,7 +386,7 @@ export function PricingPlansSection({ variant = 'marketing' }: PricingPlansSecti
             <ul className="mt-4 space-y-3">
               {pt.customFeatures.map((feature) => (
                 <li key={feature} className="flex items-start gap-3">
-                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-teal-500" aria-hidden />
+                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-400" aria-hidden />
                   <span className="text-sm text-neutral-700 dark:text-neutral-300">{feature}</span>
                 </li>
               ))}

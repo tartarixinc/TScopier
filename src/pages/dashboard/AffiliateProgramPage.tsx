@@ -168,7 +168,7 @@ export function AffiliateProgramPage() {
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="rounded-xl border border-neutral-200/65 p-4 dark:border-neutral-800/55">
               <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                <Wallet className="h-4 w-4 text-teal-600" />
+                <Wallet className="h-4 w-4 text-green-400" />
                 {at.yourReferralCode}
                 <button
                   type="button"
@@ -232,7 +232,7 @@ export function AffiliateProgramPage() {
 
             <div className="rounded-xl border border-neutral-200/65 p-4 dark:border-neutral-800/55">
               <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                <Link2 className="h-4 w-4 text-teal-600" />
+                <Link2 className="h-4 w-4 text-green-400" />
                 {at.yourReferralLink}
               </div>
               <p className="break-all text-sm text-neutral-700 dark:text-neutral-300">

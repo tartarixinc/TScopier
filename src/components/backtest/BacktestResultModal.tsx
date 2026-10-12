@@ -150,7 +150,7 @@ export function BacktestResultModal({
               <button
                 type="button"
                 disabled={busy}
-                className="p-2 rounded-lg text-neutral-400 hover:text-teal-600 hover:bg-teal-50 dark:hover:bg-teal-950/40 transition-colors disabled:opacity-40"
+                className="p-2 rounded-lg text-neutral-400 hover:text-green-400 hover:bg-teal-50 dark:hover:bg-teal-950/40 transition-colors disabled:opacity-40"
                 aria-label={bt.editSignal}
                 onClick={() => setEditOpen(true)}
               >

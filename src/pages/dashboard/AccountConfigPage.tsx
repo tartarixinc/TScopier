@@ -625,7 +625,7 @@ function getPlatformIconPath(platform: string): string | null {
 function PlatformIcon({ platform }: { platform: string }) {
   const [failed, setFailed] = useState(false)
   const iconPath = getPlatformIconPath(platform)
-  if (!iconPath || failed) return <Server className="w-4 h-4 text-primary-600" />
+  if (!iconPath || failed) return <Server className="w-4 h-4 text-green-400" />
   return (
     <img
       src={iconPath}
@@ -2756,7 +2756,7 @@ export function AccountConfigPage() {
               <div className="flex items-center gap-2" title={`${connectedAccountCount}/${connectedAccountLimit}`}>
                 <div className="h-1.5 w-24 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
                   <div
-                    className={clsx('h-full rounded-full', usagePercent >= 100 ? 'bg-red-500' : 'bg-teal-600')}
+                    className={clsx('h-full rounded-full', usagePercent >= 100 ? 'bg-red-500' : 'bg-green-400')}
                     style={{ width: `${usagePercent}%` }}
                   />
                 </div>
@@ -2766,7 +2766,7 @@ export function AccountConfigPage() {
               </div>
             ) : (
               <span className="inline-flex items-center gap-1 text-xs font-medium text-neutral-500 dark:text-neutral-400">
-                <InfinityIcon className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" aria-hidden />
+                <InfinityIcon className="h-3.5 w-3.5 text-green-400 dark:text-green-400" aria-hidden />
                 {bl.connectedAccountsUnlimited}
               </span>
             )}
@@ -2829,7 +2829,7 @@ export function AccountConfigPage() {
 
       <section className="overflow-hidden rounded-xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-950">
         <div className="flex items-center gap-2 border-b border-neutral-100 px-4 py-3 dark:border-neutral-800">
-          <Clock className="h-4 w-4 text-teal-600 dark:text-teal-400" aria-hidden />
+          <Clock className="h-4 w-4 text-green-400 dark:text-green-400" aria-hidden />
           <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">{bl.accountsHeading}</h2>
           <InfoTooltip text={t.pages.accountConfiguration.description} />
         </div>
@@ -2842,7 +2842,7 @@ export function AccountConfigPage() {
               onChange={e => setBrokerSearchQuery(e.target.value)}
               placeholder={bl.accountSearchPlaceholder}
               aria-label={bl.accountSearchLabel}
-              className="w-full rounded-lg border border-neutral-200 bg-white py-2 ps-9 pe-3 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-teal-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-50"
+              className="w-full rounded-lg border border-neutral-200 bg-white py-2 ps-9 pe-3 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-green-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-50"
             />
           </div>
           <div className="relative w-full sm:w-56">
@@ -2851,7 +2851,7 @@ export function AccountConfigPage() {
               value={brokerFilter}
               aria-label={bl.brokerFilterLabel}
               onChange={event => setBrokerFilter(event.target.value)}
-              className="w-full appearance-none rounded-lg border border-neutral-200 bg-white py-2 ps-9 pe-8 text-sm text-neutral-700 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-teal-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+              className="w-full appearance-none rounded-lg border border-neutral-200 bg-white py-2 ps-9 pe-8 text-sm text-neutral-700 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-green-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
             >
               <option value="all">{bl.platformFilterAll}</option>
               {platformFilterOptions.map(platform => (
@@ -2911,7 +2911,7 @@ export function AccountConfigPage() {
                       void openBrokerConfigurations(broker)
                     }
                   }}
-                  className="cursor-pointer border-t border-neutral-100 hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-teal-600 dark:border-neutral-800 dark:hover:bg-neutral-900"
+                  className="cursor-pointer border-t border-neutral-100 hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-green-400 dark:border-neutral-800 dark:hover:bg-neutral-900"
                 >
                   <td className="px-4 py-3">
                     <p className="font-medium text-neutral-900 dark:text-neutral-50">{broker.label}</p>
@@ -2958,7 +2958,7 @@ export function AccountConfigPage() {
                             e.stopPropagation()
                             setStatusModalBroker(broker)
                           }}
-                          className="inline-flex rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
+                          className="inline-flex rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400"
                           aria-label={bl.statusHealthView}
                         >
                           <Badge variant={healthVariant} size="sm">{healthLabel}</Badge>
@@ -3199,7 +3199,7 @@ export function AccountConfigPage() {
                         className={clsx(
                           'shrink-0 rounded-md p-1.5 transition-colors min-h-[32px] min-w-[32px] flex items-center justify-center',
                           channelLinkEditMode
-                            ? 'bg-primary-100 text-primary-700 dark:bg-teal-950/60 dark:text-teal-300'
+                            ? 'bg-primary-100 text-green-500 dark:bg-teal-950/60 dark:text-teal-300'
                             : 'text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 dark:hover:text-neutral-300 dark:hover:bg-neutral-800',
                         )}
                         aria-label={channelLinkEditMode ? cm.doneEditingLinkedChannels : cm.editLinkedChannels}
@@ -3213,7 +3213,7 @@ export function AccountConfigPage() {
                 {channelOptions.length === 0 ? (
                   <p className="text-xs text-neutral-500 dark:text-neutral-400 px-2 py-1">
                     {cm.channels.noneConnected}{' '}
-                    <Link to="/channels" className="text-primary-600 underline">{cm.channels.connectLink}</Link>
+                    <Link to="/channels" className="text-green-400 underline">{cm.channels.connectLink}</Link>
                   </p>
                 ) : (
                   <>
@@ -3237,7 +3237,7 @@ export function AccountConfigPage() {
                       className={clsx(
                               'flex-1 min-w-0 flex items-center gap-2 text-start px-2 py-2 rounded-lg text-sm transition-colors min-h-[44px] sm:min-h-0',
                               selected
-                                ? 'bg-white dark:bg-neutral-950 text-primary-700 shadow-sm border border-primary-100 dark:border-primary-900/50'
+                                ? 'bg-white dark:bg-neutral-950 text-green-500 shadow-sm border border-primary-100 dark:border-primary-900/50'
                                 : linked
                                   ? 'text-neutral-700 dark:text-neutral-300 hover:bg-white dark:hover:bg-neutral-900 border border-transparent'
                                   : 'text-neutral-600 dark:text-neutral-400 hover:bg-white dark:hover:bg-neutral-900 border border-dashed border-neutral-200 dark:border-neutral-700',
@@ -3290,11 +3290,11 @@ export function AccountConfigPage() {
                             className={clsx(
                                 'shrink-0 flex items-center gap-1.5 px-3 py-2.5 sm:py-2 text-sm transition-colors border-b-2 -mb-px min-h-[44px] sm:min-h-0 whitespace-nowrap',
                               active
-                                  ? 'border-primary-600 text-primary-700 dark:text-primary-400'
+                                  ? 'border-green-400 text-green-500 dark:text-green-400'
                                   : 'border-transparent text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-100',
                             )}
                           >
-                              <SubIcon className={clsx('w-3.5 h-3.5 shrink-0', active ? 'text-primary-600' : 'text-neutral-400')} />
+                              <SubIcon className={clsx('w-3.5 h-3.5 shrink-0', active ? 'text-green-400' : 'text-neutral-400')} />
                             {sub.label}
                           </button>
                         )
@@ -3325,7 +3325,7 @@ export function AccountConfigPage() {
                     </p>
                     <div className="mt-2 h-2 rounded-full bg-primary-100 dark:bg-primary-900 overflow-hidden">
                       <div
-                        className="h-full bg-primary-600 transition-[width] duration-500 ease-out"
+                        className="h-full bg-green-400 transition-[width] duration-500 ease-out"
                         style={{ width: `${activeChannelTrainingProgress}%` }}
                       />
                     </div>
@@ -3339,7 +3339,7 @@ export function AccountConfigPage() {
                   </div>
                 ) : !selectedChannelLinked ? (
                   <div className="py-12 text-center max-w-md mx-auto px-2">
-                    <Link2 className="w-10 h-10 mx-auto mb-3 text-primary-400 dark:text-primary-500" />
+                    <Link2 className="w-10 h-10 mx-auto mb-3 text-green-400 dark:text-green-400" />
                     <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100 inline-flex items-center justify-center gap-1.5 flex-wrap">
                       {interpolate(cm.connectChannelPrompt, {
                         channel: selectedChannelOption?.display_name ?? cm.channelFilters.unnamedChannel,
@@ -3366,13 +3366,13 @@ export function AccountConfigPage() {
                       <div className="inline-flex rounded-lg border border-neutral-200/65 dark:border-neutral-800/55 bg-neutral-50 dark:bg-neutral-800/50 p-1">
                         <button
                           onClick={() => setConfigDraft(prev => ({ ...prev, mode: 'ai' }))}
-                          className={`px-4 py-2 text-sm rounded-md transition-colors ${channelMode === 'ai' ? 'bg-primary-600 text-white' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:bg-neutral-800'}`}
+                          className={`px-4 py-2 text-sm rounded-md transition-colors ${channelMode === 'ai' ? 'bg-green-400 text-neutral-950' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:bg-neutral-800'}`}
                         >
                           AI Expert Mode
                         </button>
                         <button
                           onClick={() => setConfigDraft(prev => ({ ...prev, mode: 'manual' }))}
-                          className={`px-4 py-2 text-sm rounded-md transition-colors ${channelMode === 'manual' ? 'bg-primary-600 text-white' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:bg-neutral-800'}`}
+                          className={`px-4 py-2 text-sm rounded-md transition-colors ${channelMode === 'manual' ? 'bg-green-400 text-neutral-950' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:bg-neutral-800'}`}
                         >
                           Manual
                         </button>
@@ -3551,7 +3551,7 @@ export function AccountConfigPage() {
                               <div className="flex justify-end">
                                 <button
                                   type="button"
-                                  className="text-sm text-teal-600 hover:text-teal-700 hover:underline dark:text-teal-400 dark:hover:text-teal-300"
+                                  className="text-sm text-green-400 hover:text-green-500 hover:underline dark:text-green-400 dark:hover:text-teal-300"
                                   onClick={() => setRiskCalcOpen(true)}
                                 >
                                   {cm.risk.openLotCalculator}
@@ -4144,7 +4144,7 @@ export function AccountConfigPage() {
                                           className={clsx(
                                             'rounded-lg border px-2.5 py-2 text-start text-sm transition-colors',
                                             triggerMode === m.id
-                                              ? 'border-primary-500 bg-primary-50 dark:bg-teal-950/50 text-primary-900 dark:text-teal-300'
+                                              ? 'border-green-400 bg-primary-50 dark:bg-teal-950/50 text-primary-900 dark:text-teal-300'
                                               : 'border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-950 text-neutral-700 dark:text-neutral-300',
                                           )}
                                         >
@@ -4234,7 +4234,7 @@ export function AccountConfigPage() {
                                         className={clsx(
                                           'rounded-lg border px-3 py-2.5 text-start text-sm transition-colors',
                                           beType === 'sl_only'
-                                            ? 'border-primary-500 bg-primary-50 dark:bg-teal-950/50 text-primary-900 dark:text-teal-300'
+                                            ? 'border-green-400 bg-primary-50 dark:bg-teal-950/50 text-primary-900 dark:text-teal-300'
                                             : 'border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-950 text-neutral-700 dark:text-neutral-300 hover:border-neutral-300 dark:hover:border-neutral-600',
                                         )}
                                       >
@@ -4249,7 +4249,7 @@ export function AccountConfigPage() {
                                         className={clsx(
                                           'rounded-lg border px-3 py-2.5 text-start text-sm transition-colors',
                                           beType === 'sl_and_close_half'
-                                            ? 'border-primary-500 bg-primary-50 dark:bg-teal-950/50 text-primary-900 dark:text-teal-300'
+                                            ? 'border-green-400 bg-primary-50 dark:bg-teal-950/50 text-primary-900 dark:text-teal-300'
                                             : 'border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-950 text-neutral-700 dark:text-neutral-300 hover:border-neutral-300 dark:hover:border-neutral-600',
                                         )}
                                       >
@@ -4650,7 +4650,7 @@ export function AccountConfigPage() {
                 href={marketingUrl('/risk-disclaimer')}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-teal-600 hover:underline dark:text-teal-400"
+                className="text-green-400 hover:underline dark:text-green-400"
               >
                 {cm.riskDisclaimer.fullLink}
               </a>
@@ -4691,7 +4691,7 @@ export function AccountConfigPage() {
                   </div>
                       <div className="flex items-center justify-between gap-3 text-sm">
                         <span className="text-neutral-500 dark:text-neutral-400">{cm.applyPresetPresetLabel}</span>
-                        <span className="font-medium text-primary-700 dark:text-primary-400 truncate">
+                        <span className="font-medium text-green-500 dark:text-green-400 truncate">
                           {pendingApplyPreset.name}
                         </span>
                 </div>
@@ -4755,7 +4755,7 @@ export function AccountConfigPage() {
                           <li key={preset.id} className="flex items-stretch gap-1 px-2 py-1.5">
                             <button
                               type="button"
-                              className="min-w-0 flex-1 rounded-lg px-3 py-2.5 text-start text-sm font-medium text-neutral-900 dark:text-neutral-50 hover:bg-neutral-50 dark:hover:bg-neutral-800/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                              className="min-w-0 flex-1 rounded-lg px-3 py-2.5 text-start text-sm font-medium text-neutral-900 dark:text-neutral-50 hover:bg-neutral-50 dark:hover:bg-neutral-800/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400"
                               disabled={configSaving || presetSaving}
                               onClick={() => {
                                 setShowManagePresetsModal(false)
@@ -4766,7 +4766,7 @@ export function AccountConfigPage() {
                             </button>
                             <button
                               type="button"
-                              className="shrink-0 inline-flex items-center justify-center rounded-lg p-2.5 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800 dark:hover:bg-neutral-800 dark:hover:text-neutral-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 disabled:opacity-50"
+                              className="shrink-0 inline-flex items-center justify-center rounded-lg p-2.5 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800 dark:hover:bg-neutral-800 dark:hover:text-neutral-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 disabled:opacity-50"
                               aria-label={cm.managePresetsEdit}
                               title={cm.managePresetsEdit}
                               disabled={configSaving || presetSaving}
@@ -4930,7 +4930,7 @@ export function AccountConfigPage() {
                     <div className="flex items-center gap-2 text-xs">
                       <button
                         type="button"
-                        className="text-primary-700 hover:underline dark:text-primary-400"
+                        className="text-green-500 hover:underline dark:text-green-400"
                         onClick={() => setExportSelection(tradingPresets.map(p => p.id))}
                       >
                         {cm.exportPresetsSelectAll}
@@ -4938,7 +4938,7 @@ export function AccountConfigPage() {
                       <span className="text-neutral-300 dark:text-neutral-600" aria-hidden>·</span>
                       <button
                         type="button"
-                        className="text-primary-700 hover:underline dark:text-primary-400"
+                        className="text-green-500 hover:underline dark:text-green-400"
                         onClick={() => setExportSelection([])}
                       >
                         {cm.exportPresetsSelectNone}
@@ -4954,7 +4954,7 @@ export function AccountConfigPage() {
                             <label className="flex items-center gap-3 px-5 py-3 text-sm text-neutral-900 dark:text-neutral-50 hover:bg-neutral-50 dark:hover:bg-neutral-800/60 cursor-pointer">
                               <input
                                 type="checkbox"
-                                className="rounded border-neutral-300 text-primary-600 focus:ring-primary-500"
+                                className="rounded border-neutral-300 text-green-400 focus:ring-green-400"
                                 checked={checked}
                                 onChange={() => toggleExportPreset(preset.id)}
                               />
@@ -5059,7 +5059,7 @@ function FeatureBullet({ icon: Icon, title, body }: { icon: typeof DollarSign; t
   return (
     <div className="rounded-lg bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200/65 dark:border-neutral-800/55 p-3">
       <p className="text-xs font-medium text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
-        <Icon className="w-3.5 h-3.5 text-primary-600" />
+        <Icon className="w-3.5 h-3.5 text-green-400" />
         {title}
         <InfoTooltip text={body} />
       </p>
@@ -5106,7 +5106,7 @@ function ChannelFiltersCard({
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2">
             <button
               type="button"
-          className="text-xs text-primary-600 hover:text-primary-700 hover:underline shrink-0 self-start sm:self-auto disabled:cursor-not-allowed disabled:opacity-50 disabled:no-underline"
+          className="text-xs text-green-400 hover:text-green-500 hover:underline shrink-0 self-start sm:self-auto disabled:cursor-not-allowed disabled:opacity-50 disabled:no-underline"
               onClick={onReset}
               disabled={disabled || ignoredCount === 0}
             >
@@ -5274,7 +5274,7 @@ function BrokerPageButton({
       className={clsx(
         'min-w-[2rem] px-2 py-1.5 text-sm rounded-md font-medium tabular-nums transition-colors',
         active
-          ? 'bg-teal-600 text-white'
+          ? 'bg-green-400 text-neutral-950'
           : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 border border-transparent hover:border-neutral-200 dark:hover:border-neutral-800',
       )}
     >

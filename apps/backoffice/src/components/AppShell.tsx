@@ -66,7 +66,7 @@ export function AppShell() {
     clsx(
       'flex min-h-[44px] items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
       isActive
-        ? 'bg-teal-50 text-teal-700 dark:bg-teal-950/60 dark:text-teal-400'
+        ? 'bg-teal-50 text-green-500 dark:bg-teal-950/60 dark:text-green-400'
         : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100',
     )
 
@@ -89,7 +89,7 @@ export function AppShell() {
         )}
       >
         <div className="flex h-16 shrink-0 items-center gap-2 border-b border-neutral-100 px-4 dark:border-neutral-800">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-600 text-white">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-green-400 text-neutral-950">
             <Shield className="h-4 w-4" />
           </div>
           <div className="min-w-0">
@@ -115,7 +115,7 @@ export function AppShell() {
                   >
                     {({ isActive }) => (
                       <>
-                        <Icon className={clsx('h-4 w-4 shrink-0', isActive ? 'text-teal-600 dark:text-teal-400' : '')} />
+                        <Icon className={clsx('h-4 w-4 shrink-0', isActive ? 'text-green-400 dark:text-green-400' : '')} />
                         <span>{label}</span>
                       </>
                     )}

@@ -209,7 +209,7 @@ export function SignalReviewDetailModal({ signal, onClose }: SignalReviewDetailM
           <button
             type="button"
             onClick={askAssistantExplainSignal}
-            className="text-xs font-semibold text-teal-700 dark:text-teal-300 hover:underline underline-offset-2"
+            className="text-xs font-semibold text-green-500 dark:text-teal-300 hover:underline underline-offset-2"
           >
             {t.copierLogs.detailModal?.explainWithAi ?? 'Explain with AI'}
           </button>
@@ -264,7 +264,7 @@ export function SignalReviewDetailModal({ signal, onClose }: SignalReviewDetailM
             type="button"
             disabled={pendingApprove || expired}
             onClick={() => { void approve(signal.id) }}
-            className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-lg bg-green-400 px-4 py-2 text-sm font-semibold text-neutral-950 transition-colors hover:bg-green-500 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {pendingApprove ? 'Approving…' : 'Approve'}
           </button>

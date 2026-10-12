@@ -45,8 +45,8 @@ export function BacktestEquityChart({ equity }: BacktestEquityChartProps) {
         <AreaChart data={data} margin={{ top: 8, right: 8, left: 2, bottom: 0 }}>
           <defs>
             <linearGradient id="backtestEqGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#0d9488" stopOpacity={0.35} />
-              <stop offset="100%" stopColor="#0d9488" stopOpacity={0} />
+              <stop offset="0%" stopColor="#4ade80" stopOpacity={0.35} />
+              <stop offset="100%" stopColor="#4ade80" stopOpacity={0} />
             </linearGradient>
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} vertical={false} />
@@ -63,7 +63,7 @@ export function BacktestEquityChart({ equity }: BacktestEquityChartProps) {
           <Area
             type="monotone"
             dataKey="equity"
-            stroke="#0d9488"
+            stroke="#4ade80"
             fill="url(#backtestEqGrad)"
             strokeWidth={2}
           />

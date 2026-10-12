@@ -134,7 +134,7 @@ export function OpenPnlAccountsModal({
                     <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50 truncate">
                       {group.accountLabel}
                     </p>
-                    <p className="text-xs text-primary-600 font-medium uppercase tabular-nums">{group.platformLine}</p>
+                    <p className="text-xs text-green-400 font-medium uppercase tabular-nums">{group.platformLine}</p>
                     <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5 truncate">{group.brokerLabel}</p>
                   </div>
                   <div className="text-right shrink-0">

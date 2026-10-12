@@ -346,7 +346,7 @@ export function CustomSignalExampleModal({
                     type="button"
                     disabled={busy || draft.tpLevels.length >= 5}
                     onClick={() => setDraft(d => ({ ...d, tpLevels: [...d.tpLevels, ''] }))}
-                    className="inline-flex items-center gap-1 text-xs font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 disabled:opacity-40"
+                    className="inline-flex items-center gap-1 text-xs font-medium text-green-400 hover:text-green-500 dark:text-green-400 disabled:opacity-40"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     {labels.addTp}

@@ -11,7 +11,7 @@ function pipsClass(tone: LandingBacktestPipsTone): string {
 }
 
 function toneBarClass(tone: LandingBacktestPipsTone): string {
-  if (tone === 'good') return 'bg-teal-500'
+  if (tone === 'good') return 'bg-green-400'
   if (tone === 'bad') return lossBarClass
   return 'bg-neutral-300 dark:bg-neutral-600'
 }
@@ -41,7 +41,7 @@ export function BacktestVisual() {
         <div className="grid grid-cols-2 gap-2 px-4 pb-3 sm:grid-cols-4">
           <div className="rounded-xl border border-neutral-200/65 p-2.5 dark:border-neutral-800/55">
             <p className="text-[9px] font-medium uppercase tracking-wide text-neutral-400">{v.totalPipsLabel}</p>
-            <p className="mt-0.5 text-lg font-bold tabular-nums text-teal-600 dark:text-teal-400 sm:text-xl">
+            <p className="mt-0.5 text-lg font-bold tabular-nums text-green-400 dark:text-green-400 sm:text-xl">
               {v.totalPips}
             </p>
           </div>

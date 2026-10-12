@@ -78,7 +78,7 @@ export function AuthConfirmedPage() {
         <p className="text-sm text-amber-700 dark:text-amber-300">{error}</p>
         <Link
           to="/login"
-          className="mt-6 text-sm font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400"
+          className="mt-6 text-sm font-medium text-green-400 hover:text-green-500 dark:text-green-400"
         >
           {verifyT.backToLogin}
         </Link>
@@ -88,7 +88,7 @@ export function AuthConfirmedPage() {
 
   return (
     <div className="flex flex-col items-center py-12 text-center">
-      <Loader2 className="h-10 w-10 animate-spin text-teal-600 dark:text-teal-400" aria-hidden />
+      <Loader2 className="h-10 w-10 animate-spin text-green-400 dark:text-green-400" aria-hidden />
       <h1 className="mt-6 text-xl font-semibold text-neutral-900 dark:text-neutral-50">
         {verifyT.confirming ?? 'Confirming your email…'}
       </h1>

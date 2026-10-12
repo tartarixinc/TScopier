@@ -280,7 +280,7 @@ export function ManagementPage() {
                     className={clsx(
                       'shrink-0 px-3 py-2 text-xs rounded-md font-medium transition-colors whitespace-nowrap',
                       filter === f.value
-                        ? 'bg-teal-600 text-white'
+                        ? 'bg-green-400 text-neutral-950'
                         : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800',
                     )}
                   >

@@ -154,7 +154,7 @@ export function BrokerConfigurationsModal({
           {!loading && !error && channelIds.length > 0 ? (
             <button
               type="button"
-              className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
+              className="rounded-lg bg-green-400 px-4 py-2 text-sm font-medium text-neutral-950 hover:bg-green-500"
               onClick={onEdit}
             >
               {copy.edit}

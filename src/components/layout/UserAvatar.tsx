@@ -31,7 +31,7 @@ export function UserAvatar({ user, profile, email, size = 'sm', className }: Use
   return (
     <div
       className={clsx(
-        'flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-teal-600 font-semibold text-white',
+        'flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-green-400 font-semibold text-neutral-950',
         sizeClasses[size],
         className,
       )}

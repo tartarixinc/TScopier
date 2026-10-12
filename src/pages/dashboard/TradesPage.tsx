@@ -147,7 +147,7 @@ export function TradesPage() {
                   }}
                   className={`shrink-0 px-3 py-2 text-sm rounded-md font-medium transition-colors whitespace-nowrap ${
                     filter === f.value
-                      ? 'bg-teal-600 text-white'
+                      ? 'bg-green-400 text-neutral-950'
                       : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:bg-neutral-800'
                   }`}
                 >
@@ -320,7 +320,7 @@ function TradesPagination({
           <select
             value={pageSize}
             onChange={e => onPageSizeChange(Number(e.target.value) as PageSizeOption)}
-            className="h-8 min-w-[4.5rem] rounded-md border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 px-2 text-sm text-neutral-900 dark:text-neutral-50 tabular-nums focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+            className="h-8 min-w-[4.5rem] rounded-md border border-neutral-200/65 dark:border-neutral-800/55 bg-white dark:bg-neutral-900 px-2 text-sm text-neutral-900 dark:text-neutral-50 tabular-nums focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent"
             aria-label="Results per page"
           >
             {PAGE_SIZE_OPTIONS.map(n => (
@@ -390,7 +390,7 @@ function PageButton({ n, active, onClick }: { n: number; active: boolean; onClic
       aria-current={active ? 'page' : undefined}
       className={`min-w-[2rem] px-2 py-1.5 text-sm rounded-md font-medium tabular-nums transition-colors ${
         active
-          ? 'bg-teal-600 text-white'
+          ? 'bg-green-400 text-neutral-950'
           : 'text-neutral-600 dark:text-neutral-400 hover:bg-white dark:bg-neutral-900 border border-transparent hover:border-neutral-200/65 dark:border-neutral-800/55'
       }`}
     >
@@ -470,7 +470,7 @@ function TradeCard({ trade, warning, onSelect }: { trade: MtTrade; warning: Manu
           <dd className="text-neutral-700 dark:text-neutral-300 tabular-nums mt-0.5">{formatTradePrice(trade.tp)}</dd>
         </div>
       </dl>
-      <p className="mt-3 flex items-center justify-end gap-1 text-xs font-medium text-teal-600 dark:text-teal-400 opacity-0 group-hover:opacity-100 transition-opacity">
+      <p className="mt-3 flex items-center justify-end gap-1 text-xs font-medium text-green-400 dark:text-green-400 opacity-0 group-hover:opacity-100 transition-opacity">
         {tr.viewDetails}
         <ChevronRightIcon className="w-3.5 h-3.5" />
       </p>

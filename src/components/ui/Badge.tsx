@@ -16,7 +16,7 @@ export function Badge({ children, variant = 'neutral', size = 'md' }: BadgeProps
           'bg-warning-50 text-warning-800 dark:!bg-amber-900 dark:!text-amber-100': variant === 'warning',
           'bg-error-50 text-error-700 dark:bg-error-950/70 dark:text-error-300': variant === 'error',
           'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300': variant === 'neutral',
-          'bg-teal-50 text-teal-700 dark:bg-teal-950/50 dark:text-teal-400': variant === 'primary',
+          'bg-teal-50 text-green-500 dark:bg-teal-950/50 dark:text-green-400': variant === 'primary',
         },
         {
           'text-xs px-2 py-0.5': size === 'sm',

@@ -190,7 +190,7 @@ export function CopierLogDetailModal({
               {action ? (
                 <span className={clsx(
                   'text-xs font-semibold uppercase',
-                  action === 'buy' ? 'text-primary-600' : action === 'sell' ? 'text-error-600' : 'text-neutral-500',
+                  action === 'buy' ? 'text-green-400' : action === 'sell' ? 'text-error-600' : 'text-neutral-500',
                 )}>
                   {actionLabel}
                 </span>
@@ -220,7 +220,7 @@ export function CopierLogDetailModal({
             <button
               type="button"
               onClick={askAssistantExplainSignal}
-              className="text-xs font-semibold text-teal-700 dark:text-teal-300 hover:underline underline-offset-2"
+              className="text-xs font-semibold text-green-500 dark:text-teal-300 hover:underline underline-offset-2"
             >
               {dm.explainWithAi}
             </button>

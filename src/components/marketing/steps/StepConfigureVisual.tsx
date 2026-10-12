@@ -35,7 +35,7 @@ export function StepConfigureVisual() {
             </label>
             <label className="rounded-lg border border-neutral-200/65 bg-neutral-50 px-2.5 py-2 dark:border-neutral-800/55 dark:bg-neutral-800/50">
               <span className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400">{v.rangeLabel}</span>
-              <p className="mt-0.5 text-sm font-semibold text-teal-700 dark:text-teal-400">{v.rangeValue}</p>
+              <p className="mt-0.5 text-sm font-semibold text-green-500 dark:text-green-400">{v.rangeValue}</p>
             </label>
           </div>
 

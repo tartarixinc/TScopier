@@ -162,7 +162,7 @@ export function MarketNewsPage() {
           href="https://site.financialmodelingprep.com"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-xs text-neutral-400 hover:text-teal-600 dark:hover:text-teal-400"
+          className="text-xs text-neutral-400 hover:text-green-400 dark:hover:text-green-400"
         >
           {mn.dataByFmp}
         </a>

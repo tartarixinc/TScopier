@@ -393,7 +393,7 @@ function RiskLotCalculatorModalInner({
       >
         <div className="shrink-0 border-b border-neutral-100 px-5 py-4 dark:border-neutral-800">
           <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-teal-50 text-teal-600 dark:bg-teal-950/40 dark:text-teal-400">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-teal-50 text-green-400 dark:bg-teal-950/40 dark:text-green-400">
               <Calculator className="h-5 w-5" aria-hidden />
             </div>
             <div className="min-w-0 flex-1">
@@ -536,7 +536,7 @@ function RiskLotCalculatorModalInner({
                   <label className="flex shrink-0 items-center gap-2 text-sm text-neutral-700 dark:text-neutral-300">
                     <input
                       type="checkbox"
-                      className="h-4 w-4 rounded border-neutral-300 text-teal-600 focus:ring-teal-500"
+                      className="h-4 w-4 rounded border-neutral-300 text-green-400 focus:ring-green-400"
                       checked={form.usePredefinedSl}
                       onChange={e => patchForm({ usePredefinedSl: e.target.checked })}
                     />
@@ -558,7 +558,7 @@ function RiskLotCalculatorModalInner({
                     <label className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-300">
                       <input
                         type="checkbox"
-                        className="h-4 w-4 rounded border-neutral-300 text-teal-600 focus:ring-teal-500"
+                        className="h-4 w-4 rounded border-neutral-300 text-green-400 focus:ring-green-400"
                         checked={form.usePredefinedTp}
                         onChange={e => patchForm({ usePredefinedTp: e.target.checked })}
                       />

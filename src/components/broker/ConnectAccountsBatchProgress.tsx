@@ -18,10 +18,10 @@ function statusLabel(status: BulkConnectRowStatus, copy: AccountConfigBulkConnec
 
 function StatusIcon({ status }: { status: BulkConnectRowStatus }) {
   if (status === 'linking') {
-    return <Loader2 className="h-4 w-4 shrink-0 animate-spin text-teal-600 dark:text-teal-400" />
+    return <Loader2 className="h-4 w-4 shrink-0 animate-spin text-green-400 dark:text-green-400" />
   }
   if (status === 'linked') {
-    return <CheckCircle2 className="h-4 w-4 shrink-0 text-teal-600 dark:text-teal-400" />
+    return <CheckCircle2 className="h-4 w-4 shrink-0 text-green-400 dark:text-green-400" />
   }
   if (status === 'failed') {
     return <XCircle className="h-4 w-4 shrink-0 text-error-500" />

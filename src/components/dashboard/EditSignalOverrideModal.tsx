@@ -596,7 +596,7 @@ export function EditSignalOverrideModal({
                   type="button"
                   disabled={busy}
                   onClick={() => setDraft(d => ({ ...d, tpLevels: [...d.tpLevels, ''] }))}
-                  className="inline-flex items-center gap-1 text-xs font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400"
+                  className="inline-flex items-center gap-1 text-xs font-medium text-green-400 hover:text-green-500 dark:text-green-400"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   {sh.addTp}
